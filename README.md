@@ -24,6 +24,10 @@ packages/
 - **Routing** — provider-neutral directions and route geometry.
 - **SDK** — `@goway.to/sdk` exposes maps, Places, search and routing without making consumer apps depend directly on MapLibre or an external geographic provider.
 
+### Places schema ownership
+
+The Places schema is part of GoWay v1, not deferred. Its public/domain contracts live in `packages/shared-types`; its canonical database schema, spatial indexes and migrations live in `packages/backend` using PostgreSQL + PostGIS. We intentionally do **not** create a separate public database-schema package because SDK consumers should depend on stable GoWay contracts, not on GoWay's internal tables or migrations.
+
 GoWay does not need to host the full world map dataset initially. The map infrastructure is replaceable independently from GoWay-owned Places and ecosystem data.
 
 Street-level imagery is intentionally outside the initial release scope.
