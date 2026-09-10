@@ -4,7 +4,7 @@ The SDK should let any Oxy or third-party app consume GoWay maps, Places, search
 
 Target package: **`@goway.to/sdk`**
 
-This follows the same product-owned package convention as `@syra.fm/sdk` and `@clarity.surf/sdk`: GoWay owns the geographic platform contract even when the primary consumers are other Oxy products.
+This follows the same product-owned package convention as `@syra.fm/sdk` and `@clarity.surf/sdk`: the product that owns the API surface also owns the package namespace. GoWay is part of Oxy, but its SDK should remain recognizably GoWay rather than becoming a generic `@oxy.so/*` package.
 
 Core areas:
 
