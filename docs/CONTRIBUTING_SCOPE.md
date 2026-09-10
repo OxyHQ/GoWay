@@ -3,11 +3,12 @@
 The first release should prioritize:
 
 - map rendering
-- place discovery
-- reusable SDK primitives
-- Oxy Places enrichment
+- reusable `@goway.to/sdk` primitives
+- GoWay Places schema + PostgreSQL/PostGIS persistence
+- stable Place IDs, provenance and capability relationships
+- place discovery and geocoding
 - directions/routing
-- FairCoin merchant discovery example
+- FairCoin merchant discovery as the first cross-product SDK example
 
 Explicitly defer:
 
