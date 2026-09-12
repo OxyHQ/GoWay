@@ -10,11 +10,14 @@ GoWay follows the Oxy `packages/*` convention:
 
 ```text
 packages/
-  frontend/       Expo Router app for web, iOS and Android
-  backend/        GoWay API, Places persistence and provider adapters
-  sdk/            public @goway.to/sdk package
-  shared-types/   provider-neutral shared contracts and Places types
+  frontend/                 Expo Router app for web, iOS and Android
+  backend/                  GoWay API, Places persistence and provider adapters
+  sdk/                      public @goway.to/sdk package
+  shared-types/             provider-neutral shared contracts and Places types
+  reconstruction-worker/    Python/CUDA Street 3D worker
 ```
+
+The frontend uses the same Oxy application foundation as the rest of the ecosystem: Expo Router, React Native/react-native-web, `@oxy.so/app-preset`, Bloom, Oxy Services/contracts/core and Oxy authentication. Street 3D contribution UI stays inside this same Expo app rather than becoming a separate product.
 
 ## Core platform
 
@@ -30,4 +33,44 @@ The Places schema is part of GoWay v1, not deferred. Its public/domain contracts
 
 GoWay does not need to host the full world map dataset initially. The map infrastructure is replaceable independently from GoWay-owned Places and ecosystem data.
 
-Street-level imagery is intentionally outside the initial release scope.
+## Street 3D
+
+Street 3D is GoWay's community-built future street-level layer. Instead of depending on proprietary panorama coverage, users can contribute ordinary geotagged photos or videos. GoWay temporarily stores useful source media, matches overlapping views, solves camera geometry and progressively builds versioned 3D Gaussian scenes.
+
+The design is intentionally cost-conscious:
+
+- raw photos/videos are temporary reconstruction inputs, not a permanent archive;
+- default source retention is measured in weeks/months, with aggressive deduplication and early raw-video deletion after useful keyframes are extracted;
+- incomplete areas can become **at risk** when useful temporary captures are nearing expiry, allowing the community to contribute missing viewpoints before the opportunity is lost;
+- published 3D scenes remain durable even after their raw source images are deleted;
+- compact derived metadata, manifests and published splat/LOD assets are kept instead of indefinite raw media;
+- AWS provides the control plane, S3/object storage and queueing during the bootstrap stage;
+- expensive reconstruction can run on owned hardware through `packages/reconstruction-worker`, initially a local RTX 5090 consuming durable AWS SQS jobs;
+- the worker can be offline without breaking GoWay and can later scale to multiple owned/cloud GPUs using the same contract;
+- privacy preprocessing is required before captures become reconstruction inputs, including face/license-plate and dynamic-object handling;
+- Street 3D is streamed by versioned scene/LOD manifests and integrated back into GoWay Places rather than embedding business metadata into 3D assets.
+
+Street 3D is **not required for the first 2D GoWay release**, but it is an explicit GoWay roadmap track rather than an undefined future Street View add-on.
+
+## Roadmap issues
+
+### Mapping platform
+
+- #1 repository/packages/Oxy foundation
+- #2 MapLibre + OpenFreeMap rendering
+- #3 `@goway.to/sdk`
+- #4 GoWay Places + PostgreSQL/PostGIS
+- #5 search/geocoding
+- #6 routing
+- #7 GoWay Bloom map experience
+- #8 FairCoin merchant-discovery reference integration
+
+### Street 3D
+
+- #9 geotagged photo/video contribution pipeline
+- #10 temporary storage, retention, deduplication and cost budgets
+- #11 geospatial capture graph + automated 3D Gaussian reconstruction
+- #12 distributed GPU reconstruction worker + local RTX 5090/AWS SQS
+- #13 privacy-safe capture/reconstruction pipeline
+- #14 streamed Street 3D viewer + map integration
+- #15 coverage health, expiry risk and community rescue UX
