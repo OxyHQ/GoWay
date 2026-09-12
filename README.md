@@ -67,6 +67,7 @@ Street 3D is **not required for the first 2D GoWay release**, but it is an expli
 
 ### Street 3D
 
+- #16 Street 3D epic / implementation order / cost-quality gates
 - #9 geotagged photo/video contribution pipeline
 - #10 temporary storage, retention, deduplication and cost budgets
 - #11 geospatial capture graph + automated 3D Gaussian reconstruction
