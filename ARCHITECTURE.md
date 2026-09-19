@@ -11,11 +11,18 @@ GoWay is split into four layers:
 
 ```text
 packages/
-  frontend/       consumer app
-  backend/        API, Places schema/migrations, provider adapters
-  sdk/            public @goway.to/sdk
-  shared-types/   shared provider-neutral contracts, including Places types
+  frontend/                 consumer app
+  backend/                  API, Places schema/migrations, provider adapters
+  sdk/                      public @goway.to/sdk
+  shared-types/             shared provider-neutral contracts, including Places types
+  reconstruction-worker/    Street 3D reconstruction worker (Python/CUDA)
 ```
+
+`shared-types` is private and is *bundled* into `@goway.to/sdk` at build time: a
+published package naming a `workspace:*` dependency is unresolvable for every
+consumer. `reconstruction-worker` is deliberately not a Bun workspace member —
+it owns its own Python environment through `uv` and is driven by the root
+`worker:setup` / `worker:doctor` / `worker:run` scripts.
 
 ## Principles
 

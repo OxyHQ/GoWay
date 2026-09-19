@@ -4,6 +4,54 @@ GoWay is Oxy's open map and geographic platform, built for web, iOS and Android 
 
 It provides both the consumer map experience at **https://goway.to** and the reusable **`@goway.to/sdk`** used by FairCoin, Moovo, Mercaria, Homiio, Mention, Clarity and other Oxy or third-party apps.
 
+## Getting started
+
+Bun only — never npm, yarn or pnpm, and `bun.lock` is committed with the
+`package.json` change that moved it.
+
+```bash
+bun install
+
+# PostgreSQL 17 + PostGIS 3.5 on 127.0.0.1:5440, loopback only.
+# Both versions are pinned: a floating PostGIS minor is a floating set of
+# function volatilities, and a generated `geography` column needs ST_MakePoint
+# to stay IMMUTABLE.
+docker compose -f docker-compose.postgres.yml up -d --wait postgres
+
+cp packages/backend/.env.example packages/backend/.env
+bun run db:migrate --target-database=goway_dev
+
+bun run dev            # backend + Expo together
+bun run dev:backend    # backend alone, on :3000
+bun run dev:frontend   # Expo alone
+```
+
+Port **5440** rather than 5432: an Oxy developer machine routinely has several
+backends' local databases up at once, and 5432–5439 and 5441 are already spoken
+for (5432 oxy-api, 5433 Mention, 5434 Homiio/Syra, 5435 Mercaria,
+5436 CrowdSource, 5437 Moovo, 5438 Noted, 5439 Peable, 5441 Schedio). A port
+collision does not fail loudly once a container is running — it connects you to
+somebody else's database and migrates it.
+
+`CREATE EXTENSION postgis` is privileged. On a brand-new database a role with
+`rds_superuser` has to run it once before GoWay's migration role can migrate;
+`packages/backend/README.md` explains why `IF NOT EXISTS` hides that.
+
+### Checks
+
+```bash
+bun run typecheck        # tsc -b across every package, plus the non-emitting tools program
+bun run lint
+bun run test             # bun test
+bun run check:migrations # deploy-phase markers + no $1 placeholders in generated SQL
+bun run check:lockfile   # bun.lock matches the manifests it describes
+bun run test:gates       # proves the migration gates can fail
+```
+
+CI runs all of these, and the AWS deploy is a JOB of the CI workflow with
+`needs:` those jobs — not a workflow with its own `push` trigger, which would
+race CI and always win.
+
 ## Monorepo
 
 GoWay follows the Oxy `packages/*` convention:

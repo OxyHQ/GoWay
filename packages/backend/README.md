@@ -1,0 +1,151 @@
+# `@goway/backend`
+
+The GoWay API: Places persistence, provider adapters and the realtime surface.
+Express 5 on Bun in development, compiled to CommonJS and run on Bun in the
+container. PostgreSQL + PostGIS is the only store — there is no MongoDB, no
+cache-as-database and no in-memory fallback, so a process that cannot reach
+Postgres does not start.
+
+## Layout
+
+```text
+server.ts                process bootstrap ONLY: connect → listen → drain → exit
+src/app.ts               createApp(): helmet, CORS, json, routers, notFound, errorHandler
+src/realtime.ts          Socket.IO, attached to the same HTTP server
+src/config/index.ts      zod-parsed environment, ONE parse at module load
+src/db/postgres.ts       connectPostgres/getDb/closePostgres + Database|Transaction handles
+src/db/extensions.ts     REQUIRED_EXTENSIONS — a precondition of the migrator
+src/db/migrate.ts        the one way a migration is ever applied
+src/db/schema/           drizzle tables; index.ts is the barrel and the source of truth
+src/http/apiError.ts     ApiError + the public error-code vocabulary
+src/http/errorHandler.ts the single place a failure becomes a response
+src/middleware/auth.ts   Oxy auth, from @oxy.so/core/server and nowhere else
+src/routes/health.ts     GET /health (liveness + database reachability), GET /ready
+src/utils/logger.ts      pino, with the redaction list
+drizzle/                 GENERATED migrations — never hand-written
+```
+
+`connect BEFORE listen` is the rule `server.ts` exists to hold: a task that binds
+the port first is reachable before it can answer, so the load balancer routes to
+it and every request fails against a pool that is not open yet.
+
+## Getting started
+
+```bash
+docker compose -f ../../docker-compose.postgres.yml up -d --wait postgres
+cp .env.example .env
+bun run db:migrate --target-database=goway_dev
+bun run dev
+```
+
+## Commands
+
+| command | what it does |
+| --- | --- |
+| `bun run dev` | watch-mode server on `PORT` (3000) |
+| `bun run build` | `tsc` → `dist/` (CommonJS; the image runs this output) |
+| `bun run start` | run the compiled server |
+| `bun run typecheck` | the emitting program AND `tsconfig.tools.json` (see below) |
+| `bun run lint` | eslint over every source file, `dist/` excluded |
+| `bun run test` | `bun test` |
+| `bun run db:generate` | diff `src/db/schema/` and WRITE a migration |
+| `bun run db:migrate --target-database=<name>` | APPLY migrations |
+
+`typecheck` runs two programs on purpose. `tsconfig.json` is the emitting build
+and excludes `drizzle.config.ts` (it imports the `drizzle-kit` devDependency the
+runtime image strips) and `src/__tests__/` (dead weight in `dist/`).
+`tsconfig.tools.json` is a non-emitting program over exactly those files —
+because a file outside every `include` is removed from the program and can never
+report an error.
+
+## The error envelope
+
+Every failure is `{ error: { code, message, details? } }`. The CODES are the
+public contract — `packages/shared-types` re-exports the `API_ERROR_CODES` tuple
+and `@goway.to/sdk` builds its typed errors from that re-export, so the SDK's
+union cannot drift from the API's. Routes THROW an `ApiError`; nothing formats an
+error itself. Anything thrown that is not an `ApiError` is a defect, answered
+`500 internal_error`, leaking no message, stack or driver detail.
+
+## Migrations
+
+Never hand-write one. Edit `src/db/schema/`, run `bun run db:generate`, then add
+exactly one marker line to the generated `.sql`:
+
+```
+-- oxy:deploy-phase=pre      additive; safe while the previous image serves
+-- oxy:deploy-phase=post     drops/renames/narrows; only once the new image is live
+```
+
+There is no default, and an unmarked migration is a hard failure in
+`bun run check:migrations` and again in the migrator before any DDL runs.
+
+`bun run db:migrate --target-database=<name>` is the only way to apply one, dry
+runs included — never `drizzle-kit migrate`. The flag is required on every
+invocation because its absence does not fail loudly: pointed at the wrong
+database a migrator finds an empty ledger, applies the entire journal, logs
+`Applied N` and exits 0, leaving the real database untouched while the operator
+reads a success line.
+
+Two things interpolation gets wrong, both caught by `bun run check:migrations`:
+
+- a JavaScript value interpolated into `check()` becomes the literal `$1` in the
+  generated SQL and fails at APPLY time (`there is no parameter $1`) — use
+  `sql.raw(String(value))` for the constant side;
+- `column.name` on a drizzle column is the TypeScript property name, not the SQL
+  one — `sqlColumnName()` from `@oxy.so/db` is how hand-written SQL gets the SQL
+  name.
+
+## PostGIS: `CREATE EXTENSION` is PRIVILEGED
+
+GoWay's Places schema names `geography` in its very first table, so PostGIS has
+to exist before migration `0000` runs. It is therefore in `REQUIRED_EXTENSIONS`
+(`src/db/extensions.ts`) — a precondition the migrator ensures on **every** run,
+in every environment — and NOT in a numbered migration, because anything that
+must be true before the first migration cannot live inside the numbered sequence
+at all.
+
+**Provisioning a NEW production database is a two-party job.** The migrator
+spells it `CREATE EXTENSION IF NOT EXISTS postgis`, and the duplicate check
+short-circuits **before** the privilege check. That gives two opposite outcomes
+from the same statement:
+
+- on a database somebody has already prepared, it is a NOTICE and a silent no-op,
+  even for an unprivileged application role — which is exactly what we want, and
+  exactly why it reads as if no privilege were needed;
+- on a fresh, unprepared database, the same statement raises
+  `permission denied to create extension "postgis"`. Owning the database is not
+  enough.
+
+So before GoWay's migration role can migrate a new database, somebody holding
+`rds_superuser` (RDS) or the local `postgres` superuser must run, once:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS postgis;
+```
+
+See oxy-infra `docs/runbooks/30-postgres-database-provisioning.md`.
+
+**The image alone is not enough either.** `postgis/postgis:17-3.5` seeds PostGIS
+into `POSTGRES_DB` and a `template_postgis` template — never into `template1`.
+Any database created afterwards without a `TEMPLATE` clause (a throwaway test
+database, a second dev database) is cloned from `template1` and lands WITHOUT the
+extension. Running the right image is necessary; the registry is what makes each
+database usable.
+
+Both versions in the image tag are pinned, in `docker-compose.postgres.yml` and
+in `.github/workflows/ci.yml`, and CI asserts the two strings match. A floating
+PostGIS minor is a floating set of function VOLATILITIES, and a generated
+`geography` column needs `ST_MakePoint` and the `geography` cast to stay
+IMMUTABLE.
+
+## Authentication
+
+`@oxy.so/core/server` only — `createOxyAuthMiddleware`, `createOptionalOxyAuth`,
+`createOxyCors`, `createOxyRateLimit`, `authSocket`. No app-local bearer parsing,
+no JWT verification, no second CORS policy. Oxy owns identity, so `oxyUserId`
+carries no foreign key and there is no `users` table.
+
+The map opens without an account: browsing, search and routing sit behind
+`optionalAuth` and must work signed out. Only identity-bound features (saves,
+edits, lists, contributions) use `requireAuth`.

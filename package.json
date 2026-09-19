@@ -1,0 +1,58 @@
+{
+  "name": "goway",
+  "version": "0.1.0",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "description": "GoWay — Oxy's open map and geographic platform",
+  "workspaces": [
+    "packages/shared-types",
+    "packages/sdk",
+    "packages/frontend",
+    "packages/backend"
+  ],
+  "packageManager": "bun@1.4.2",
+  "scripts": {
+    "dev": "bun run --cwd packages/backend dev & bun run --cwd packages/frontend start",
+    "dev:frontend": "bun run --cwd packages/frontend start",
+    "dev:backend": "bun run --cwd packages/backend dev",
+    "build": "bun run build:shared-types && bun run build:sdk && bun run build:backend && bun run build:frontend",
+    "build:shared-types": "bun run --cwd packages/shared-types build",
+    "build:sdk": "bun run --cwd packages/sdk build",
+    "build:frontend": "bun run --cwd packages/frontend export:web",
+    "build:backend": "bun run --cwd packages/backend build",
+    "web": "bun run --cwd packages/frontend web",
+    "android": "bun run --cwd packages/frontend android",
+    "ios": "bun run --cwd packages/frontend ios",
+    "lint": "bun run lint:frontend && bun run lint:backend",
+    "typecheck": "tsc -b && tsc -p packages/backend/tsconfig.tools.json && bun run --cwd packages/frontend typecheck && bun run --cwd packages/sdk typecheck",
+    "test": "bun run --cwd packages/backend test",
+    "doctor:oxy": "oxy-doctor --ci",
+    "db:generate": "bun run --cwd packages/backend db:generate",
+    "db:migrate": "bun run --cwd packages/backend db:migrate",
+    "worker:setup": "make -C packages/reconstruction-worker setup",
+    "worker:doctor": "make -C packages/reconstruction-worker doctor",
+    "worker:run": "make -C packages/reconstruction-worker run",
+    "validate:agents-md": "bun ./scripts/check-agents-md-size.mjs && bun ./scripts/test-check-agents-md-size.mjs",
+    "clean": "bun run --cwd packages/shared-types clean && bun run --cwd packages/sdk clean && bun run --cwd packages/backend clean",
+    "postinstall": "bun run build:shared-types && bun run build:sdk",
+    "lint:frontend": "bun run --cwd packages/frontend lint",
+    "lint:backend": "bun run --cwd packages/backend lint",
+    "test:backend": "bun run --cwd packages/backend test",
+    "check:lockfile": "bun ./scripts/check-lockfile-sync.mjs",
+    "check:migrations": "bun ./scripts/check-migration-phases.mjs && bun ./scripts/check-migration-params.mjs",
+    "test:gates": "bun ./scripts/test-check-migration-phases.mjs && bun ./scripts/test-check-migration-params.mjs",
+    "test:gates:lockfile": "bun ./scripts/test-check-lockfile-sync.mjs"
+  },
+  "devDependencies": {
+    "@oxy.so/doctor": "1.0.0",
+    "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "@oxy.so/core": "^1.7.0",
+    "@oxy.so/bloom": "^3.2.0"
+  },
+  "resolutions": {
+    "@oxy.so/core": "^1.7.0",
+    "@oxy.so/bloom": "^3.2.0"
+  }
+}

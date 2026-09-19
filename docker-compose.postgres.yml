@@ -1,0 +1,72 @@
+##
+## Local PostgreSQL + PostGIS for GoWay.
+##
+## Only the database — the app itself runs on the host via `bun run dev:backend`,
+## so there is nothing else in this compose file.
+##
+## Usage:
+##   docker compose -f docker-compose.postgres.yml up -d --wait postgres
+##   docker compose -f docker-compose.postgres.yml logs -f postgres
+##   docker compose -f docker-compose.postgres.yml down -v   # wipe (data is disposable)
+##
+## Then in packages/backend/.env (copy it from .env.example):
+##   DATABASE_URL=postgres://goway:goway@127.0.0.1:5440/goway_dev
+##
+## and apply the schema:
+##   bun run db:migrate --target-database=goway_dev
+##
+
+services:
+  postgres:
+    # PostGIS, not plain Postgres: GoWay's Places schema is geographic from the
+    # first table, so `geography` columns and `ST_*` functions have to exist
+    # before migration 0000 runs.
+    #
+    # BOTH versions pinned, and neither is decoration. Postgres 17 matches the
+    # managed instance Oxy backends run against — a floating major is a floating
+    # set of behaviours to debug. PostGIS 3.5 because a floating PostGIS minor is
+    # a floating set of function VOLATILITIES: a generated `geography` column
+    # needs `ST_MakePoint` and the `geography` cast to stay IMMUTABLE, and an
+    # image that silently moved to a build where one of them is only STABLE
+    # rejects the migration that creates the column, on a fresh database only.
+    #
+    # The image is necessary and NOT sufficient. It seeds PostGIS into
+    # POSTGRES_DB and a `template_postgis` template, never into `template1` —
+    # so any database created later (a throwaway test database, a second dev
+    # database) lands without the extension. `src/db/extensions.ts` +
+    # `bun run db:migrate` is what makes each database usable; keep the two in
+    # step.
+    image: postgis/postgis:17-3.5
+    container_name: goway-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: goway
+      POSTGRES_PASSWORD: goway
+      # `-` is not legal in an unquoted Postgres identifier, so this is the
+      # scheme (letters and digits only) rather than the package slug.
+      POSTGRES_DB: goway_dev
+    ports:
+      # 5440, and loopback-only. NOT 5432: an Oxy developer machine routinely has
+      # several backends' local databases up at once, and a port collision does
+      # not fail loudly once the container is running — it connects to somebody
+      # else's database and migrates it.
+      #
+      # Every 54xx already spoken for, surveyed across ~/Oxy rather than assumed:
+      # 5432 oxy-api, 5433 Mention, 5434 Homiio/Syra, 5435 Mercaria,
+      # 5436 CrowdSource, 5437 Moovo, 5438 Noted, 5439 PEABLE, 5441 Schedio.
+      # 5439 was the obvious next free number and is not free; it was measured
+      # listening on this machine. 5440 is the gap between Peable and Schedio.
+      # If it is taken on yours, pick the next free port HERE and in
+      # packages/backend/.env together.
+      - '127.0.0.1:5440:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U goway -d goway_dev']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - goway-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  goway-postgres-data:
