@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
+    "@goway.to/sdk": "workspace:*",
     "@goway/shared-types": "workspace:*",
     "@maplibre/maplibre-react-native": "^11.4.0",
     "@oxy.so/app-preset": "^2.0.0",

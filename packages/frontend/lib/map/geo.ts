@@ -104,3 +104,30 @@ export function distanceMeters(a: GeoCoordinate, b: GeoCoordinate): number {
     Math.sin(dLat / 2) ** 2 + Math.sin(dLon / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
   return 2 * radius * Math.asin(Math.min(1, Math.sqrt(h)));
 }
+
+/**
+ * Web Mercator world-pixel coordinates at a zoom level.
+ *
+ * Clustering is a SCREEN-SPACE question — "are these two pins closer together
+ * than a finger is wide?" — and degrees do not answer it: one degree of
+ * longitude is 111 km at the equator and 28 km in Reykjavík, so a
+ * degree-threshold cluster is looser at the equator and tighter at the poles,
+ * for the same apparent gap on screen. Projecting first makes the threshold a
+ * pixel count that means the same thing everywhere.
+ *
+ * The origin is the top-left of the world at the given zoom; the world is
+ * `TILE_SIZE_PX * 2^zoom` pixels square. Latitudes beyond ±85.05° are clamped,
+ * because Mercator sends the poles to infinity.
+ */
+export function projectToPixels(coordinate: GeoCoordinate, zoom: number): { x: number; y: number } {
+  const worldSize = TILE_SIZE_PX * Math.pow(2, zoom);
+  const latitude = Math.max(-MERCATOR_MAX_LATITUDE, Math.min(MERCATOR_MAX_LATITUDE, coordinate.latitude));
+  const sin = Math.sin(latitude * DEG);
+  return {
+    x: worldSize * (coordinate.longitude / 360 + 0.5),
+    y: worldSize * (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)),
+  };
+}
+
+/** The latitude at which Web Mercator is conventionally truncated. */
+const MERCATOR_MAX_LATITUDE = 85.051129;

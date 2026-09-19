@@ -15,15 +15,28 @@
  *
  * Rendered by `MapCanvas` itself, never by feature code — attribution must not
  * be something a screen can forget.
+ *
+ * It also POSITIONS itself, for the same reason. A credit pinned 4px off the
+ * window edge disappears the moment anything parks at that edge — a persistent
+ * half-sheet, a tab bar — and it disappears silently, which for a licence
+ * obligation is the worst way to fail. Reading Bloom's bottom-edge registry
+ * here means the credit rises above whatever is claimed without the claimant
+ * and the credit knowing about each other, and without a screen being able to
+ * get the geometry wrong.
  */
 import { memo, useCallback } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import { Text } from '@oxy.so/bloom/typography';
+import { useBottomEdgeInset } from '@oxy.so/bloom/layout';
 
 import { resolveMapAttribution } from '@/lib/map/provider';
 
+/** Breathing room between the credit and whatever is below it. */
+const ATTRIBUTION_GAP = 4;
+
 function MapAttributionComponent() {
   const attribution = resolveMapAttribution();
+  const bottomEdge = useBottomEdgeInset();
 
   const open = useCallback((href: string) => {
     void Linking.openURL(href).catch(() => {
@@ -34,7 +47,10 @@ function MapAttributionComponent() {
   return (
     <View
       pointerEvents="box-none"
-      className="flex-row flex-wrap items-center gap-space-4 rounded-radius-8 bg-card/80 px-space-8 py-space-2"
+      className="absolute left-space-8 flex-row flex-wrap items-center gap-space-4 rounded-radius-8 bg-card/80 px-space-8 py-space-2"
+      // A claim already folds in the safe area of the surface holding the edge,
+      // so the plain gap is added to it rather than the safe-area-aware one.
+      style={{ bottom: bottomEdge > 0 ? bottomEdge + ATTRIBUTION_GAP : ATTRIBUTION_GAP }}
     >
       {attribution.prefix ? (
         <Text className="text-caption text-muted-foreground">
