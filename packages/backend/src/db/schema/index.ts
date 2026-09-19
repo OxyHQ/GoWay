@@ -8,14 +8,13 @@
  * remember when a new table "does not exist" against a database you just
  * migrated.
  *
- * ## Deliberately EMPTY
+ * ## What is here
  *
- * The scaffolder's `notes` demo table was deleted, along with the `0000`
- * migration that created it, so `drizzle/` holds no journal at all. GoWay's real
- * schema is Places (issue #4) and it will produce `0000` itself. A demo table
- * left here would have shipped into the first migration of every GoWay database
- * that ever exists, and dropping it later would be a `post`-phase migration
- * written to undo something that should never have been created.
+ * GoWay's schema is Places (issue #4) and it produced `0000`. `places.ts` holds
+ * all five tables in one module because they are one aggregate: every child
+ * table has a foreign key to `places`, and `places_capabilities` also references
+ * `places_sources`, so splitting them across modules would only introduce an
+ * export order to get wrong.
  *
  * ## When adding a table
  *
@@ -34,9 +33,7 @@
  *      spell the SQL name by hand, and note that `column.name` on a drizzle
  *      column is the TypeScript property name, not the SQL one —
  *      `sqlColumnName()` is how hand-written SQL gets the SQL name.
- *
- * `export {}` keeps this a module while it exports nothing: without it the file
- * is a global script and `import * as schema from './schema'` stops compiling.
  */
 
-export {};
+export * from './places';
+export * from './valueSets';

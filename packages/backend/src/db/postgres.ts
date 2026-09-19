@@ -199,6 +199,24 @@ export async function assertMigrationsCurrent(): Promise<void> {
   await assertPostgresMigrationsCurrent(instanceClient, JOURNAL);
 }
 
+/**
+ * Point `getDb()` at a throwaway database for the duration of one test file.
+ *
+ * The real-database suites create their own database, migrate it and hand the
+ * handle here so a route exercised over a socket reads the same rows the test
+ * wrote — without `connectPostgres()`, which would open a SECOND pool against
+ * whatever `DATABASE_URL` happens to hold.
+ *
+ * Passing `null` restores the "not connected" state, so a file that forgets to
+ * tear down poisons only itself rather than leaking a closed handle into the
+ * next one. It deliberately does NOT close the handle it replaces: the suite
+ * that created it owns its lifetime and closes it in `afterAll`.
+ */
+export function setDatabaseForTesting(handle: { db: Database; client: postgres.Sql } | null): void {
+  db = handle?.db ?? null;
+  client = handle?.client ?? null;
+}
+
 /** Close the pool (for shutdown hooks). Safe to call when never connected. */
 export async function closePostgres(): Promise<void> {
   const instanceClient = client;
