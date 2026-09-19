@@ -23,6 +23,7 @@ import { apiRateLimit, optionalAuth, requireAuth } from './middleware/auth';
 import { healthRouter } from './routes/health';
 import { createPlacesRouter } from './routes/places';
 import { createRoutesRouter } from './routes/directions';
+import { createSearchRouter } from './routes/search';
 
 /** The largest request body any GoWay route accepts. */
 const JSON_BODY_LIMIT = '1mb';
@@ -61,8 +62,8 @@ export function createApp(): Express {
    * including the authenticated ones — is throttled while the probes above stay
    * unlimited.
    *
-   * Routers mount onto `v1` as they are built. Places (#4) and routing (#6)
-   * are here; search follows. Two caller classes share this router and neither
+   * Routers mount onto `v1` as they are built: Places (#4), routing (#6) and
+   * search (#5). Two caller classes share this router and neither
    * may satisfy the other's routes: a signed-out visitor reaches browse, search
    * and routing through `optionalAuth`, and only identity-bound routes (saves,
    * lists, edits, contributions) sit behind `requireAuth`. Each router declares
@@ -83,6 +84,7 @@ export function createApp(): Express {
   const v1: Router = Router();
   v1.use(createPlacesRouter({ optionalAuth, requireAuth }));
   v1.use(createRoutesRouter({ optionalAuth }));
+  v1.use(createSearchRouter({ optionalAuth }));
   api.use('/v1', v1);
 
   app.use('/api', api);

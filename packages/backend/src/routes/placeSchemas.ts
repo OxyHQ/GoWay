@@ -81,8 +81,12 @@ const limitParam = z.preprocess(
  * hand-written client is as likely to repeat the parameter. Both arrive here.
  * Members are de-duplicated and empty members dropped, so `a,,b` is `[a, b]`
  * rather than a filter that matches nothing.
+ *
+ * Exported because the search endpoints take the SAME two filters (issue #5).
+ * A second spelling of them would be a second chance for `a,,b` to mean
+ * something different on one endpoint than on another.
  */
-const setParam = z.preprocess((value) => {
+export const setParam = z.preprocess((value) => {
   if (value === undefined || value === null) return undefined;
   const members = (Array.isArray(value) ? value : [value])
     .flatMap((entry) => String(entry).split(','))
@@ -99,7 +103,7 @@ const setParam = z.preprocess((value) => {
  * makes the same check before sending, and this is the half that also covers
  * every non-SDK caller.
  */
-const capabilityKeyParam = z.preprocess(
+export const capabilityKeyParam = z.preprocess(
   (value) => setParam.parse(value),
   z
     .array(z.string().regex(/^[^.\s]+(?:\.[^.\s]+)+$/, 'must be a dotted capability key'))
