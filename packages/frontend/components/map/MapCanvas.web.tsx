@@ -9,15 +9,22 @@
  *
  *  - **No WebView, no iframe, no CDN.** `maplibre-gl` is bundled and runs
  *    against the DOM node react-native-web already gives us for a `<View>`.
- *  - **maplibre-gl v5, pinned.** v6 is ESM-only and starts its tile worker from
- *    a URL it derives from `import.meta.url` — which, inside a Metro bundle, is
- *    not the package directory, so the worker never starts and every tile
- *    request fails silently with no build error and no failing test. Working
- *    around that means copying worker modules into `public/` from
- *    `metro.config.js`, and GoWay's `metro.config.js` delegates wholesale to
- *    `@oxy.so/app-preset` (AGENTS.md: fix the preset, never copy config back
- *    into the app). v5's UMD bundle carries its worker inlined as a Blob, so
- *    there is nothing to vendor and nothing to keep in version lockstep.
+ *  - **maplibre-gl v6, with its worker vendored to our own origin.** GoWay used
+ *    to pin v5.24.0 because v5's UMD bundle inlined the tile worker as a Blob
+ *    and there was nothing to vendor. That pin is no longer tenable:
+ *    GHSA-jrc7-96c5-q579 (CRITICAL — "XSS Sanitizer Bypass in DOM.sanitize()
+ *    via Live NamedNodeMap Removal Skip") covers every release `<= 6.4.0`, the
+ *    first patched version is 6.4.1, and 5.24.0 is the last release on the 5.x
+ *    line, so staying there meant staying vulnerable forever.
+ *
+ *    v6 is ESM-only and starts its tile worker from a URL it derives from
+ *    `import.meta.url`, which inside a Metro bundle is not the package
+ *    directory — so left alone the worker never starts and every tile request
+ *    fails silently, with no build error and no failing test. The fix is
+ *    {@link WORKER_URL} below plus `scripts/vendor-maplibre-worker.js`, which
+ *    `metro.config.js` invokes as a side effect BEFORE delegating to
+ *    `@oxy.so/app-preset` — a call in front of the preset, not a fork of it, so
+ *    AGENTS.md's "never copy config back into the app" still holds.
  *
  * Markers are DOM markers whose element React portals Bloom components into, so
  * a marker on the web is the same component as a marker on native.
@@ -63,6 +70,23 @@ import {
   type MapOverlay,
   type ResolvedMapViewport,
 } from './types';
+
+/**
+ * Where MapLibre's tile worker is served from, on this origin.
+ *
+ * maplibre-gl 6 is ESM-only and starts its worker BY URL, derived from
+ * `import.meta.url` — which inside a Metro bundle is not the package's
+ * directory, so without this no worker starts and no tile ever renders.
+ * `scripts/vendor-maplibre-worker.js` (run from `metro.config.js`) copies the
+ * INSTALLED package's worker modules to exactly this path, and keying the path
+ * on `getVersion()` means the worker can never be a different release from the
+ * main-thread code it talks to — their message protocol is internal and
+ * unversioned, so a mismatch is a silent blank map, not an error.
+ */
+const WORKER_URL = `/vendor/maplibre-gl/${maplibregl.getVersion()}/maplibre-gl-worker.mjs`;
+if (typeof window !== 'undefined') {
+  maplibregl.setWorkerUrl(new URL(WORKER_URL, window.location.origin).href);
+}
 
 const DEGENERATE_FIT_ZOOM = 15;
 const DEFAULT_FIT_PADDING = 48;

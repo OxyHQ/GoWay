@@ -39,6 +39,9 @@ the default is F-Droid-compatible, and centring a map does not need fused
 sub-metre positioning.
 
 Web needs none of this — `maplibre-gl` is plain JS and is bundled by Metro.
+Its tile *worker* is the one file the bundle cannot carry; see the
+`maplibre-gl` note under [Known gaps](#known-gaps-stated-rather-than-hidden)
+below and `scripts/vendor-maplibre-worker.js`.
 
 ---
 
@@ -198,14 +201,29 @@ goway:circle:<overlayId>     circle layer
   derived at runtime rather than configured. MapLibre Native cannot hand the
   loaded style back to JS, so native appends overlays on top. A GoWay style
   document with a reserved anchor id closes this (`MapSourceIds.anchors.beforeLabels`).
-- **`maplibre-gl` is pinned to v5, deliberately.** v6 is ESM-only and starts its
-  tile worker from a URL derived from `import.meta.url`, which inside a Metro
-  bundle is not the package directory — the worker never starts, every tile
-  request fails, and there is no build error and no failing test. Working around
-  it means copying worker modules into `public/` from `metro.config.js`, and
-  ours delegates wholesale to `@oxy.so/app-preset` (AGENTS.md: fix the preset,
-  never copy config back into the app). v5's UMD bundle carries its worker
-  inlined as a Blob, so there is nothing to vendor.
+- **`maplibre-gl` is v6, and its worker is vendored to our own origin.** GoWay
+  used to pin v5.24.0, whose UMD bundle inlined the tile worker as a Blob so
+  there was nothing to vendor. That pin is gone: **GHSA-jrc7-96c5-q579**
+  (critical — "XSS Sanitizer Bypass in `DOM.sanitize()` via Live NamedNodeMap
+  Removal Skip") covers every release `<= 6.4.0`, the first patched version is
+  6.4.1, and 5.24.0 is the last release on the 5.x line — there is no patched
+  5.x and there never will be.
+
+  v6 is ESM-only and starts its tile worker from a URL derived from
+  `import.meta.url`, which inside a Metro bundle is not the package directory —
+  so left alone the worker never starts, every tile request fails, and there is
+  no build error and no failing test. `scripts/vendor-maplibre-worker.js` copies
+  the *installed* package's `maplibre-gl-worker.mjs` + `maplibre-gl-shared.mjs`
+  into `public/vendor/maplibre-gl/<version>/`, and `MapCanvas.web.tsx` calls
+  `maplibregl.setWorkerUrl()` with that same version-keyed path, so a bump can
+  never silently serve a stale worker against new main-thread code.
+
+  `metro.config.js` invokes the script as a side effect *before* delegating to
+  `@oxy.so/app-preset` — a call in front of the preset, not a fork of it, so
+  AGENTS.md's "fix the preset, never copy config back into the app" still holds.
+  Every Metro process (`expo start`, `expo export`, CI) therefore has the files
+  before it serves or exports `public/`. The output is gitignored: it is a
+  verbatim copy of a dependency, reproduced by any install + Metro run.
 
 ### Attribution
 
