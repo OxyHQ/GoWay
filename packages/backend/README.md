@@ -17,10 +17,18 @@ src/db/postgres.ts       connectPostgres/getDb/closePostgres + Database|Transact
 src/db/extensions.ts     REQUIRED_EXTENSIONS — a precondition of the migrator
 src/db/migrate.ts        the one way a migration is ever applied
 src/db/schema/           drizzle tables; index.ts is the barrel and the source of truth
+src/db/places/           the ONLY code that touches the Places tables
+  placeGeo.ts            ST_DWithin / ST_Intersects / ST_Distance, each in its one legal place
+  placeMapper.ts         row → the published `Place`; nothing else may build one
+  placesRepository.ts    reads, writes, source linking and duplicate detection
+src/db/__tests__/        the real-database suites + their harness (never built into dist/)
 src/http/apiError.ts     ApiError + the public error-code vocabulary
 src/http/errorHandler.ts the single place a failure becomes a response
+src/http/validation.ts   zod → bad_request | validation_failed, details without values
 src/middleware/auth.ts   Oxy auth, from @oxy.so/core/server and nowhere else
 src/routes/health.ts     GET /health (liveness + database reachability), GET /ready
+src/routes/places.ts     the Places surface, mounted at /api/v1
+src/routes/placeSchemas.ts  the request schemas, at least as strict as the CHECKs behind them
 src/utils/logger.ts      pino, with the redaction list
 drizzle/                 GENERATED migrations — never hand-written
 ```
@@ -36,6 +44,53 @@ docker compose -f ../../docker-compose.postgres.yml up -d --wait postgres
 cp .env.example .env
 bun run db:migrate --target-database=goway_dev
 bun run dev
+```
+
+## Places
+
+`/api/v1` — the base path `@goway.to/sdk` ships as `GOWAY_API_BASE_PATH`. The
+SDK is published contract, so these paths and payload shapes are not ours to
+change unilaterally.
+
+| route | auth | answers |
+| --- | --- | --- |
+| `GET /places/:id` | public | one `Place`, in any status |
+| `GET /places/nearby?latitude&longitude&radiusMeters` | public | `PlaceWithDistance[]`, nearest first |
+| `GET /places/bounds?west&south&east&north` | public | `Place[]` in the viewport |
+| `GET /places?bbox=w,s,e,n` | public | the same, under the spelling issue #4 documents |
+| `POST /places` | Oxy session | 201 + the created `Place` |
+| `PATCH /places/:id` | Oxy session | the updated `Place` |
+
+Reads are public because the map opens without an account. `?capabilities=` is a
+conjunction and `?categories=` a disjunction, both answered without a client
+knowing the capability table exists. A success body IS the contract value —
+there is no envelope; only failures carry `{ error: { code, message, details? } }`.
+
+Three rules the code is written to and the tests measure:
+
+- `ST_DWithin` in a WHERE clause is index-backed; `ST_Distance(...) < r` is not
+  and scans the planet, so `ST_Distance` appears only in a SELECT list or an
+  ORDER BY. `placesGeo.realdb.test.ts` asserts both plans.
+- The `places.geo` point is `GENERATED ALWAYS … STORED` from `longitude` and
+  `latitude` and is never written. A transposed pair is a valid point in the
+  wrong hemisphere, so the ordinate order is asserted against a real distance
+  (Barcelona→Madrid ≈ 507 km; transposed it reads 659 km).
+- Reconciliation links on `(source, sourceId)` and MERGES NOTHING. Look-alikes
+  become rows in `places_duplicate_candidates` for review.
+
+## Tests
+
+`bun run test` needs a real PostgreSQL + PostGIS server. The `*.realdb.test.ts`
+suites REFUSE to run without one rather than skipping — a skipped spatial suite
+and a passing one are the same colour, and PostGIS is where every expensive
+Places bug hides. Each file creates, migrates and drops its own throwaway
+database on the server `TEST_DATABASE_URL` (or `DATABASE_URL`) names; the
+database in that URL is never touched.
+
+```bash
+docker compose -f ../../docker-compose.postgres.yml up -d --wait postgres
+export TEST_DATABASE_URL=postgres://goway:goway@127.0.0.1:5440/goway_dev
+bun run test
 ```
 
 ## Commands

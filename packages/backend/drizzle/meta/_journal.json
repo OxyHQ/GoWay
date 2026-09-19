@@ -1,5 +1,13 @@
 {
   "version": "7",
   "dialect": "postgresql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1789827333743,
+      "tag": "0000_goway_places",
+      "breakpoints": true
+    }
+  ]
 }
