@@ -123,3 +123,20 @@ Street 3D is **not required for the first 2D GoWay release**, but it is an expli
 - #13 privacy-safe capture/reconstruction pipeline
 - #14 streamed Street 3D viewer + map integration
 - #15 coverage health, expiry risk and community rescue UX
+
+## License
+
+The Breathe License 1.0 (`LicenseRef-Breathe-1.0`) — the same licence as the
+rest of the Oxy ecosystem. The full text is in `LICENSE`, with `NOTICE` for
+attribution. Commercial terms:
+<https://github.com/OxyHQ/.github/blob/main/LICENSE-COMMERCIAL.md>.
+
+Attribution under Section 3.1 is required of everyone, including paying
+commercial licensees, and cannot be waived.
+
+`@goway.to/sdk` ships its own copies of `LICENSE` and `NOTICE` in the
+published tarball, because a consumer who installs the package never sees this
+repository. Its release smoke test asserts both are present.
+
+Geographic data served through GoWay carries its own upstream licences and is
+not relicensed by this file — OpenStreetMap-derived data is ODbL.
