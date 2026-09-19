@@ -43,13 +43,19 @@ import type {
   GeoGeometry,
   OpeningHours,
   Place,
+  PlaceClaim,
   PlaceClaimRole,
   PlaceContact,
+  PlaceId,
   PlaceStatus,
   PlaceWithDistance,
   StructuredAddress,
 } from '@goway/shared-types';
 import { ApiError } from '../../http/apiError';
+import {
+  assertWritableVerification,
+  type AssertableVerification,
+} from '../../places/capabilityAuthority';
 import type { Database, DatabaseOrTransaction } from '../postgres';
 import { places, placesCapabilities, placesClaims, placesDuplicateCandidates, placesSources } from '../schema';
 import { distanceTo, withinBoundingBox, withinRadius } from './placeGeo';
@@ -58,6 +64,7 @@ import {
   CLAIM_COLUMNS,
   PLACE_COLUMNS,
   SOURCE_COLUMNS,
+  toClaim,
   toPlace,
   toPlaceWithDistance,
   type CapabilityRow,
@@ -126,10 +133,16 @@ export interface PlaceWriteInput {
  * claims on the place — never from anything in the request body — and it is
  * never `oxy_verified`: that tier is an Oxy moderation act, not something an
  * API caller can assert about themselves.
+ *
+ * The type is `AssertableVerification`, which `places/capabilityAuthority`
+ * DERIVES from the origin classification rather than spelling out. That is what
+ * makes the exclusion structural instead of a convention: no value of this type
+ * can be a moderation-origin tier, so a write path that tried to thread one
+ * through would not compile.
  */
 export interface PlaceActor {
   oxyUserId: string;
-  assertedVerification: Extract<CapabilityVerification, 'business_asserted' | 'community_reported'>;
+  assertedVerification: AssertableVerification;
 }
 
 export interface PlaceListFilters {
@@ -529,9 +542,15 @@ async function applyCapabilities(
     const placeSourceId = capability.source
       ? sourceIdByRef.get(`${capability.source.source}\u0000${capability.source.sourceId}`) ?? null
       : null;
-    const verification: CapabilityVerification = capability.source
-      ? 'external_source'
-      : actor.assertedVerification;
+    // The ONLY expression in this package that produces a value for the
+    // `verification` column. Both branches are server-derived — evidence on the
+    // left, the caller's standing on the right — and neither reads the request
+    // body. `assertWritableVerification` is the runtime half of the guarantee
+    // the `PlaceActor` type makes at compile time: a moderation-only tier that
+    // reached here through a cast refuses the write instead of committing it.
+    const verification: CapabilityVerification = assertWritableVerification(
+      capability.source ? 'external_source' : actor.assertedVerification,
+    );
 
     await tx
       .insert(placesCapabilities)
@@ -715,6 +734,109 @@ export async function updatePlace(
   return findPlaceById(db, id);
 }
 
+// ── Capability assertions ───────────────────────────────────────────────────
+
+/** One capability key, already split into its two parts. */
+export interface CapabilityKeyParts {
+  namespace: string;
+  capability: string;
+}
+
+/**
+ * Assert ONE capability on an existing place, at the tier the caller has
+ * earned.
+ *
+ * The single-capability sibling of the `capabilities` array a place write
+ * carries, and it goes through the SAME {@link applyCapabilities}: one conflict
+ * target, one tier derivation, one `observed_at` rule. A second implementation
+ * of "write a capability" is a second chance for the two to disagree about
+ * which tier a caller gets, which is the one disagreement this issue exists to
+ * prevent.
+ *
+ * Returns `null` when no place has that id — a concurrent delete between the
+ * route's authorization read and this write.
+ */
+export async function assertPlaceCapability(
+  db: Database,
+  placeId: string,
+  assertion: CapabilityInput,
+  actor: PlaceActor,
+): Promise<Place | null> {
+  if (assertion.source) {
+    const owner = await findPlaceIdBySourceRef(db, assertion.source);
+    if (owner !== null && owner !== placeId) {
+      // Recorded before the refusal and outside the transaction below, for the
+      // reason `updatePlace` gives: the claim that these two places are one
+      // record is the evidence a reviewer needs, and a rollback would mean
+      // rediscovering the collision on every retry.
+      await recordDuplicateCandidate(db, placeId, owner, 'shared_source_id');
+      throw new ApiError(
+        'conflict',
+        'That source record is already linked to a different GoWay place.',
+        { placeId: owner },
+      );
+    }
+  }
+
+  const written = await db.transaction(async (tx) => {
+    // `updated_at` moves for a capability-only write too. A client caching on
+    // it must not miss a merchant that started accepting FairCoin because the
+    // `places` row itself was untouched.
+    const [row] = await tx
+      .update(places)
+      .set({ updatedAt: new Date() })
+      .where(eq(places.id, placeId))
+      .returning({ id: places.id });
+    if (!row) return null;
+
+    if (assertion.source) await linkSources(tx, placeId, [assertion.source]);
+    await applyCapabilities(tx, placeId, [assertion], actor);
+    return row.id;
+  });
+
+  if (written === null) return null;
+  return findPlaceById(db, placeId);
+}
+
+/**
+ * Withdraw ONE capability assertion, at ONE verification tier.
+ *
+ * The tier is a parameter rather than a filter the caller composes, and its
+ * type cannot hold `oxy_verified` or `external_source`. That is the whole
+ * safety property of this function: the DELETE is scoped to a tier the caller
+ * was entitled to write, so no API path can erase an Oxy-verified fact or an
+ * external source's assertion — not by asking for it, and not by omitting the
+ * predicate, because there is no predicate to omit.
+ *
+ * Returns whether a row was actually removed, so the route can tell "withdrawn"
+ * from "you had nothing at that tier to withdraw" rather than answering 200 for
+ * a request that changed nothing.
+ */
+export async function withdrawPlaceCapability(
+  db: Database,
+  placeId: string,
+  key: CapabilityKeyParts,
+  verification: AssertableVerification,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const deleted = await tx
+      .delete(placesCapabilities)
+      .where(
+        and(
+          eq(placesCapabilities.placeId, placeId),
+          eq(placesCapabilities.namespace, key.namespace),
+          eq(placesCapabilities.capability, key.capability),
+          eq(placesCapabilities.verification, verification),
+        ),
+      )
+      .returning({ id: placesCapabilities.id });
+    if (deleted.length === 0) return false;
+
+    await tx.update(places).set({ updatedAt: new Date() }).where(eq(places.id, placeId));
+    return true;
+  });
+}
+
 // ── Claims ──────────────────────────────────────────────────────────────────
 
 /**
@@ -751,6 +873,117 @@ export async function createClaim(
     .returning({ id: placesClaims.id });
   if (!row) throw new ApiError('internal_error', 'The claim could not be recorded.');
   return row.id;
+}
+
+/**
+ * Request a claim over a place, as an API caller.
+ *
+ * The thin, PUBLIC wrapper over {@link createClaim}: it cannot be passed a
+ * state, so the only claim an HTTP caller can create is `pending`. That is not
+ * a validation rule the route enforces — the parameter does not exist — which
+ * matters because an approved claim is what grants `business_asserted`, so a
+ * caller who could set their own state could talk their own capability
+ * assertions up a tier by asking nicely.
+ *
+ * A second claim in the SAME role by the same account is a `conflict` rather
+ * than a silent no-op or a second row: the caller needs to know their earlier
+ * request is still pending instead of assuming this one is new.
+ */
+export async function requestClaim(
+  db: DatabaseOrTransaction,
+  request: { placeId: string; oxyAccountId: string; role: PlaceClaimRole; brandId?: string },
+): Promise<PlaceClaim> {
+  const [row] = await db
+    .insert(placesClaims)
+    .values({
+      placeId: request.placeId,
+      oxyAccountId: request.oxyAccountId,
+      role: request.role,
+      brandId: request.brandId ?? null,
+      // Explicitly, rather than by relying on the column default: "a claim is a
+      // request to be recognised, not recognition" is the rule this function
+      // exists to hold, and a default is something a later migration can change.
+      state: 'pending',
+      decidedAt: null,
+    })
+    .onConflictDoNothing({
+      target: [placesClaims.placeId, placesClaims.oxyAccountId, placesClaims.role],
+    })
+    .returning(CLAIM_COLUMNS);
+
+  if (!row) {
+    const [existing] = await db
+      .select(CLAIM_COLUMNS)
+      .from(placesClaims)
+      .where(
+        and(
+          eq(placesClaims.placeId, request.placeId),
+          eq(placesClaims.oxyAccountId, request.oxyAccountId),
+          eq(placesClaims.role, request.role),
+        ),
+      )
+      .limit(1);
+    throw new ApiError(
+      'conflict',
+      'You already hold a claim on this place in that role.',
+      existing ? { claimId: existing.id, state: existing.state } : undefined,
+    );
+  }
+  return toClaim(row);
+}
+
+/**
+ * The claims on a place, and whether this caller is entitled to see them.
+ *
+ * The entitlement rule is the one `findPlaceById` already applies to the
+ * embedded `claims` field, restated here rather than reinvented: an account
+ * that itself holds a claim on the place sees the claims — its own and the ones
+ * it is competing with — and nobody else does. Any state counts, because a
+ * pending claimant has to be able to see that their request is pending.
+ *
+ * `exists` is returned separately so the route can answer 404 for an unknown
+ * place rather than 403, which would tell a stranger that an id they guessed is
+ * real.
+ */
+export async function listPlaceClaims(
+  db: DatabaseOrTransaction,
+  placeId: string,
+  viewerOxyAccountId: string,
+): Promise<{ exists: boolean; entitled: boolean; claims: PlaceClaim[] }> {
+  const [[place], rows] = await Promise.all([
+    db.select({ id: places.id }).from(places).where(eq(places.id, placeId)).limit(1),
+    loadClaims(db, placeId),
+  ]);
+  return {
+    exists: Boolean(place),
+    entitled: rows.some((row) => row.oxyAccountId === viewerOxyAccountId),
+    claims: rows.map(toClaim),
+  };
+}
+
+/** A claim plus the place it is over, for the "my claims" read. */
+export interface AccountPlaceClaim extends PlaceClaim {
+  placeId: PlaceId;
+}
+
+/**
+ * Every claim one Oxy account holds, in every state.
+ *
+ * Keyed on the SESSION's account id and on nothing a caller can send. A
+ * `?oxyAccountId=` parameter on this read would be an enumeration of who has
+ * claimed what, which is a business relationship GoWay publishes to the parties
+ * involved and to nobody else.
+ */
+export async function findAccountClaims(
+  db: DatabaseOrTransaction,
+  oxyAccountId: string,
+): Promise<AccountPlaceClaim[]> {
+  const rows = await db
+    .select(CLAIM_COLUMNS)
+    .from(placesClaims)
+    .where(eq(placesClaims.oxyAccountId, oxyAccountId))
+    .orderBy(placesClaims.claimedAt, placesClaims.id);
+  return rows.map((row) => ({ ...toClaim(row), placeId: row.placeId }));
 }
 
 /** Every place one Oxy account or brand holds a claim on — the chain/franchise read. */

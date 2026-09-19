@@ -113,10 +113,11 @@ as verified.
 An update touches only the fields you pass: GoWay layers enrichment *over* source
 data and never destructively overwrites a source fact.
 
-### FairCoin merchants — the capability filter
+### Capability filters — `places.nearby({ capabilities })`
 
-Capability filtering is generic and typed. A FairCoin wallet asks for nearby
-merchants that advertise FairCoin acceptance like this:
+Capability filtering is generic and typed, and it is the same call whichever Oxy
+product you are: pass the keys a place must assert. A FairCoin wallet asks for
+nearby merchants that advertise FairCoin acceptance like this:
 
 ```ts
 const merchants = await goway.places.nearby({
@@ -126,6 +127,22 @@ const merchants = await goway.places.nearby({
   capabilities: ['payments.faircoin.accepted'],
 });
 ```
+
+```ts
+// The identical call, one product over.
+const pickupPoints = await goway.places.nearby({
+  latitude,
+  longitude,
+  radiusMeters: 1000,
+  capabilities: ['mobility.moovo.pickup'],
+});
+```
+
+A key is `<domain>.<product>.<capability>`, a list is a **conjunction** (a place
+must assert every key listed), and a bare key such as `'faircoin'` is refused
+client-side rather than silently matching nothing. The same `capabilities`
+option is accepted by `places.inBounds` — the viewport read — and by
+`search.query`.
 
 Nothing about the capability table's layout appears in that call, and nothing
 about FairCoin appears in GoWay's renderer. The same mechanism serves
@@ -145,15 +162,23 @@ for (const merchant of merchants) {
 
 Render that honestly. `community_reported` is not `oxy_verified`, and a
 two-year-old `observedAt` is not a current fact — the SDK gives you both so your
-UI can say which it is. Passing an explicit viewport or a coordinate the user
-approved is also what keeps merchant discovery from building a precise location
-history.
+UI can say which it is. A place can carry **several claims for the same key** at
+different verification tiers (nothing is overwritten, so an Oxy verification and
+an older community report coexist); they arrive strongest first, then freshest,
+so take the first row for a key rather than assuming there is only one. Passing
+an explicit viewport or a coordinate the user approved is also what keeps
+merchant discovery from building a precise location history.
 
 Then send the user onward with the canonical link:
 
 ```ts
 goway.links.place(merchant); // https://goway.to/place/gw_place_01H8
 ```
+
+The end-to-end version of this — install, map, capability query, markers,
+evidence, deep link, and how a merchant comes to be marked in the first place —
+is the [merchant discovery integration
+guide](https://github.com/OxyHQ/GoWay/blob/main/docs/integration/merchant-discovery.md).
 
 ### `search`
 

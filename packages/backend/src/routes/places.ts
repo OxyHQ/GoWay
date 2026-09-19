@@ -15,6 +15,12 @@
  * place is a `Place`, a viewport is an array of `Place`, and a nearby search is
  * an array of `PlaceWithDistance` — the SDK's parsers read exactly that.
  *
+ * Issue #8 adds the authorization-aware write surface beside them:
+ * `PUT|DELETE /places/:id/capabilities/:key`, `POST|GET /places/:id/claims` and
+ * `GET /claims`. The capability routes are generic over any
+ * `<namespace>.<capability>` key — FairCoin is the first consumer of them, not
+ * a shape they are built around.
+ *
  * ## Reads are public; writes are authenticated
  *
  * The map opens without an account, so every GET here is behind `optionalAuth`
@@ -32,20 +38,29 @@
  */
 
 import { Router, type RequestHandler, type Request, type Response, type NextFunction } from 'express';
-import type { PlaceActor } from '../db/places/placesRepository';
+import type { CapabilityKeyParts, PlaceActor } from '../db/places/placesRepository';
 import {
+  assertPlaceCapability,
   createPlace,
+  findAccountClaims,
   findPlaceById,
   findPlacesInBounds,
   findPlacesNearby,
   getPlaceAuthorization,
+  listPlaceClaims,
+  requestClaim,
   updatePlace,
+  withdrawPlaceCapability,
 } from '../db/places/placesRepository';
 import { getDb } from '../db/postgres';
 import { ApiError } from '../http/apiError';
 import { parseBody, parseQuery } from '../http/validation';
+import { assertableVerification, withdrawableVerification } from '../places/capabilityAuthority';
 import {
+  assertCapabilitySchema,
   boundsQuerySchema,
+  capabilityKeyPathSchema,
+  createClaimSchema,
   createPlaceSchema,
   nearbyQuerySchema,
   updatePlaceSchema,
@@ -86,6 +101,26 @@ function placeIdParam(request: Request): string {
     throw new ApiError('bad_request', 'A place id must be a single path segment.');
   }
   return id;
+}
+
+/**
+ * The `:key` path parameter, split into a namespace and a capability.
+ *
+ * `bad_request` rather than `validation_failed`, matching {@link placeIdParam}:
+ * a path segment that is not a capability key is a URL the client built wrong,
+ * not a well-formed question this endpoint refuses to answer. An integrator
+ * acts differently on the two — the first is a bug in their URL construction.
+ */
+function capabilityKeyParam(request: Request): CapabilityKeyParts {
+  const key = request.params.key;
+  const parsed = typeof key === 'string' ? capabilityKeyPathSchema.safeParse(key) : null;
+  if (!parsed?.success) {
+    throw new ApiError(
+      'bad_request',
+      'A capability key must be a lower-case <namespace>.<capability>, such as payments.faircoin.accepted.',
+    );
+  }
+  return parsed.data;
 }
 
 function requiredCallerId(request: Request): string {
@@ -248,13 +283,230 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
 
       const actor: PlaceActor = {
         oxyUserId,
-        assertedVerification:
-          authorization.callerRoles.length > 0 ? 'business_asserted' : 'community_reported',
+        assertedVerification: assertableVerification(authorization),
       };
       const place = await updatePlace(db, placeIdParam(request), input, actor);
       // The place existed a moment ago and does not now — a concurrent delete.
       if (!place) throw new ApiError('not_found', 'No place has that id.');
       response.json(place);
+    }),
+  );
+
+  // ── Capability assertions ─────────────────────────────────────────────────
+  //
+  // The write half of the mechanism `GET /places/nearby?capabilities=…` already
+  // reads. Generic over `<namespace>.<capability>` and deliberately not shaped
+  // around FairCoin: `payments.faircoin.accepted`, `commerce.mercaria.store`
+  // and `housing.homiio.listings` are the same URL with a different segment,
+  // which is what "the architecture must generalize" cashes out to. There is no
+  // `/faircoin-merchants` here and there must never be one.
+  //
+  // The key is a PATH segment rather than a body field because it identifies
+  // the thing being written: `PUT /places/:id/capabilities/payments.faircoin.accepted`
+  // is idempotent in the way PUT promises, it gives the assertion a URL that
+  // DELETE can name, and it reads against the existing routes the same way
+  // `/places/:id` does.
+
+  /**
+   * `PUT /places/:id/capabilities/:key` — assert or refresh one capability.
+   *
+   * The VERIFICATION TIER is derived from the caller's approved claims on this
+   * place and never from the body — `places/capabilityAuthority` is the only
+   * thing that decides it. A body that names a `source` is recorded as
+   * `external_source` instead, because the tier then rests on a row in
+   * `places_sources` that a reviewer can go and check.
+   *
+   * ## Why a claimed place is NOT closed to outside assertions
+   *
+   * `PATCH /places/:id` refuses an outsider on a claimed place, and this does
+   * not. The difference is what each write touches. A PATCH rewrites shared
+   * columns — the name, the position, the opening hours — where a stranger's
+   * edit overwrites the business's own. A capability assertion cannot: the
+   * table is unique on `(place, namespace, capability, VERIFICATION)`, so a
+   * passer-by's `community_reported` row lands BESIDE the business's
+   * `business_asserted` one, outranked by it in every published ordering, and
+   * neither can overwrite or demote the other. Closing this route to
+   * non-claimants would buy no protection the schema does not already give, and
+   * it would cost the thing that makes a community map worth reading: a
+   * customer who sees a FairCoin sticker in a claimed shop can say so.
+   */
+  router.put(
+    '/places/:id/capabilities/:key',
+    requireAuth,
+    route(async (request, response) => {
+      const placeId = placeIdParam(request);
+      const key = capabilityKeyParam(request);
+      const input = parseBody(assertCapabilitySchema, request.body);
+      const oxyUserId = requiredCallerId(request);
+      const db = getDb();
+
+      const authorization = await getPlaceAuthorization(db, placeId, oxyUserId);
+      if (!authorization.exists) throw new ApiError('not_found', 'No place has that id.');
+
+      const actor: PlaceActor = {
+        oxyUserId,
+        assertedVerification: assertableVerification(authorization),
+      };
+      const place = await assertPlaceCapability(
+        db,
+        placeId,
+        { ...key, value: input.value, ...(input.source ? { source: input.source } : {}) },
+        actor,
+      );
+      // The place existed a moment ago and does not now — a concurrent delete.
+      if (!place) throw new ApiError('not_found', 'No place has that id.');
+
+      // The whole Place, not the one capability. `@goway/shared-types` names no
+      // standalone capability response, the SDK already parses a `Place`, and
+      // the full record is what shows the caller the EVIDENCE their write now
+      // sits in: every tier asserted for this key, each with its own
+      // `observedAt`, including the ones they are not entitled to write.
+      response.json(place);
+    }),
+  );
+
+  /**
+   * `DELETE /places/:id/capabilities/:key` — withdraw the business's own
+   * assertion.
+   *
+   * Scoped to ONE tier, and the type of that tier cannot hold `oxy_verified` or
+   * `external_source`: an Oxy-verified fact has no API path out, exactly as it
+   * has none in.
+   *
+   * Only an approved claimant may withdraw, because only their tier is
+   * attributable — `places_capabilities` records no author, so the community
+   * row is shared and a stranger deleting it would erase a report they did not
+   * write. A community reporter retracts with `PUT … {"value": false}` instead,
+   * which is better evidence than a deletion: an absent row means "nobody has
+   * said", and a wallet cannot tell that from "somebody checked and it stopped
+   * being true".
+   */
+  router.delete(
+    '/places/:id/capabilities/:key',
+    requireAuth,
+    route(async (request, response) => {
+      const placeId = placeIdParam(request);
+      const key = capabilityKeyParam(request);
+      const oxyUserId = requiredCallerId(request);
+      const db = getDb();
+
+      const authorization = await getPlaceAuthorization(db, placeId, oxyUserId);
+      if (!authorization.exists) throw new ApiError('not_found', 'No place has that id.');
+
+      const verification = withdrawableVerification(authorization);
+      if (verification === null) {
+        throw new ApiError(
+          'forbidden',
+          'Only an approved claimant may withdraw an assertion. Report that a place ' +
+            'no longer has a capability by asserting the value false instead.',
+        );
+      }
+
+      const withdrawn = await withdrawPlaceCapability(db, placeId, key, verification);
+      if (!withdrawn) {
+        throw new ApiError(
+          'not_found',
+          'This place carries no business-asserted claim of that capability to withdraw.',
+        );
+      }
+
+      const place = await findPlaceById(db, placeId, oxyUserId);
+      if (!place) throw new ApiError('not_found', 'No place has that id.');
+      response.json(place);
+    }),
+  );
+
+  // ── Claims ────────────────────────────────────────────────────────────────
+  //
+  // Deferred from #4 and reachable now, because an approved claim is what
+  // raises a capability assertion to `business_asserted` — the write path is
+  // only authorization-aware if there is a way to acquire the authorization.
+  //
+  // Creating and READING claims is all that is here. Approving one is not: it
+  // needs an authority GoWay does not model — there is no admin role, no
+  // moderator and no verification workflow in this repository — and inventing
+  // one would be inventing the very escalation this issue exists to prevent.
+  // Until then an approval is an operator act against the database, which is
+  // reviewable in a way a half-designed endpoint would not be.
+
+  /**
+   * `POST /places/:id/claims` — ask to be recognised as running this place.
+   *
+   * Always `pending`, and not because the route checks: `requestClaim` takes no
+   * state, so there is no value a body could carry into one. 409 when the same
+   * account already holds a claim in the same role, so a caller learns their
+   * earlier request is still pending rather than assuming this one is new.
+   */
+  router.post(
+    '/places/:id/claims',
+    requireAuth,
+    route(async (request, response) => {
+      const placeId = placeIdParam(request);
+      const input = parseBody(createClaimSchema, request.body);
+      const oxyAccountId = requiredCallerId(request);
+      const db = getDb();
+
+      // Checked before the insert so an unknown place is a 404 rather than the
+      // 500 a foreign-key violation would produce.
+      const authorization = await getPlaceAuthorization(db, placeId, oxyAccountId);
+      if (!authorization.exists) throw new ApiError('not_found', 'No place has that id.');
+
+      const claim = await requestClaim(db, {
+        placeId,
+        oxyAccountId,
+        role: input.role,
+        ...(input.brandId ? { brandId: input.brandId } : {}),
+      });
+      response.status(201).json(claim);
+    }),
+  );
+
+  /**
+   * `GET /places/:id/claims` — the claims on one place.
+   *
+   * Visible to an account that itself holds a claim on the place — its own, and
+   * the ones it is competing with — and to nobody else, which is the rule
+   * `GET /places/:id` already applies to the embedded `claims` field. A pending
+   * claimant counts: they have to be able to see that their request is pending.
+   *
+   * 403 rather than an empty list for everyone else. An empty array would
+   * assert that a claimed place has no claims, which is false and is exactly
+   * the kind of confident wrong answer a consumer caches.
+   */
+  router.get(
+    '/places/:id/claims',
+    requireAuth,
+    route(async (request, response) => {
+      const oxyAccountId = requiredCallerId(request);
+      const { exists, entitled, claims } = await listPlaceClaims(
+        getDb(),
+        placeIdParam(request),
+        oxyAccountId,
+      );
+      // 404 first: answering 403 for an id that does not exist would confirm to
+      // a stranger that an id they guessed is real.
+      if (!exists) throw new ApiError('not_found', 'No place has that id.');
+      if (!entitled) {
+        throw new ApiError('forbidden', 'Claim details are visible only to an account that holds a claim on this place.');
+      }
+      response.json(claims);
+    }),
+  );
+
+  /**
+   * `GET /claims` — every claim the CALLER holds, in every state.
+   *
+   * The multi-location read: a chain's account gets its locations back in one
+   * request instead of one per place. Keyed on the session and on nothing a
+   * caller can send — a `?oxyAccountId=` parameter here would be an enumeration
+   * of who has claimed what.
+   */
+  router.get(
+    '/claims',
+    requireAuth,
+    route(async (request, response) => {
+      const claims = await findAccountClaims(getDb(), requiredCallerId(request));
+      response.json(claims);
     }),
   );
 

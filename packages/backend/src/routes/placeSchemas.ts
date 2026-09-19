@@ -26,6 +26,7 @@
  */
 
 import { z } from 'zod';
+import { PLACE_CLAIM_ROLES } from '@goway/shared-types';
 import type { OpeningHoursInterval, PlaceStatus } from '@goway/shared-types';
 
 /** The most places one list response will return. */
@@ -286,12 +287,90 @@ const sourceRef = z.object({
  * `oxy_verified`. The shapes mirror the table's CHECK constraints so a bad key
  * is a 422 naming the field instead of a 500 naming a constraint.
  */
+/**
+ * The two halves of a capability key, mirroring the table's CHECK constraints.
+ *
+ * A namespace may contain dots (`payments.faircoin`); a capability may not.
+ * That asymmetry is what makes `<namespace>.<capability>` unambiguous to split
+ * at the LAST dot, which is how {@link capabilityKeyPathSchema} parses one out
+ * of a URL — and it is why the generated `key` column can be a plain
+ * concatenation without two different rows ever generating the same key.
+ */
+const CAPABILITY_NAMESPACE = /^[a-z0-9_-]+([.][a-z0-9_-]+)*$/;
+const CAPABILITY_NAME = /^[a-z0-9_-]+$/;
+
+/** A capability's value: the three types the contract and the table's CHECK both allow. */
+const capabilityValue = z.union([z.boolean(), z.string().max(512), z.number().finite()]);
+
 const capability = z.object({
-  namespace: z.string().regex(/^[a-z0-9_-]+([.][a-z0-9_-]+)*$/, 'must be a lower-case dotted namespace').max(128),
-  capability: z.string().regex(/^[a-z0-9_-]+$/, 'must be a lower-case capability name').max(64),
-  value: z.union([z.boolean(), z.string().max(512), z.number().finite()]),
+  namespace: z.string().regex(CAPABILITY_NAMESPACE, 'must be a lower-case dotted namespace').max(128),
+  capability: z.string().regex(CAPABILITY_NAME, 'must be a lower-case capability name').max(64),
+  value: capabilityValue,
   source: sourceRef.optional(),
 });
+
+/**
+ * A `<namespace>.<capability>` key as it arrives in a URL PATH segment.
+ *
+ * Split at the LAST dot, which is the only split that agrees with the generated
+ * `key` column: `payments.faircoin.accepted` is the namespace
+ * `payments.faircoin` and the capability `accepted`, never the other grouping,
+ * because a capability may not contain a dot.
+ *
+ * Each half is then held to the same shape the body schema and the table's
+ * CHECKs hold it to, so `PUT /places/:id/capabilities/Payments.FairCoin.Accepted`
+ * is refused at the edge rather than landing as a second, differently-cased row
+ * beside the real one.
+ */
+export const capabilityKeyPathSchema = z
+  .string()
+  .max(192)
+  .refine((key) => key.includes('.'), 'must be a dotted capability key')
+  .transform((key) => {
+    const separator = key.lastIndexOf('.');
+    return { namespace: key.slice(0, separator), capability: key.slice(separator + 1) };
+  })
+  .refine((parts) => CAPABILITY_NAMESPACE.test(parts.namespace), 'must be a lower-case dotted namespace')
+  .refine((parts) => CAPABILITY_NAME.test(parts.capability), 'must be a lower-case capability name');
+
+/**
+ * The body of a single capability assertion.
+ *
+ * `value` is REQUIRED rather than defaulted to `true`. A defaulted flag reads
+ * well for `payments.faircoin.accepted` and silently means the wrong thing for
+ * `payments.faircoin.rate`, and the whole point of the namespace is that this
+ * endpoint does not know which kind of capability it is writing.
+ *
+ * `verification` and `observedAt` are absent here for the same reason they are
+ * absent from the place write schema: the server derives both. zod strips an
+ * unknown key rather than refusing it, so a caller who sends
+ * `"verification": "oxy_verified"` gets a 200 and a `community_reported` row —
+ * which is the honest answer, since what they asked for is not a thing this API
+ * can do for anybody.
+ */
+export const assertCapabilitySchema = z.object({
+  value: capabilityValue,
+  source: sourceRef.optional(),
+});
+
+export type AssertCapabilityInput = z.infer<typeof assertCapabilitySchema>;
+
+/**
+ * The body of a claim request.
+ *
+ * `state` is not here, and that absence is load-bearing: an APPROVED claim is
+ * what earns `business_asserted` on this place's capabilities, so a caller who
+ * could name their own state could promote their own assertions a tier. The
+ * repository's `requestClaim` takes no state parameter either — two independent
+ * reasons the escalation is unreachable rather than merely unvalidated.
+ */
+export const createClaimSchema = z.object({
+  role: z.enum(PLACE_CLAIM_ROLES),
+  /** The Oxy organization this location trades under, for a multi-location business. */
+  brandId: z.string().trim().min(1).max(128).optional(),
+});
+
+export type CreateClaimInput = z.infer<typeof createClaimSchema>;
 
 /**
  * The statuses a caller may set.
