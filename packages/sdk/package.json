@@ -1,8 +1,8 @@
 {
   "name": "@goway.to/sdk",
   "version": "0.1.0",
-  "description": "The canonical, headless TypeScript client for GoWay's public geographic API \u2014 Places, capability filters, search, geocoding, routing, typed errors and canonical links for Node, Bun, browsers and React Native.",
-  "license": "Apache-2.0",
+  "description": "The canonical, headless TypeScript client for GoWay's public geographic API — Places, capability filters, search, geocoding, routing, typed errors and canonical links for Node, Bun, browsers and React Native.",
+  "license": "SEE LICENSE IN LICENSE",
   "author": "The Oxy Collective, Inc.",
   "homepage": "https://github.com/OxyHQ/GoWay/tree/main/packages/sdk#readme",
   "repository": {

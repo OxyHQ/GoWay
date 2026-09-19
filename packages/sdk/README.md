@@ -313,6 +313,11 @@ against the packed tarball, not the working tree.
 
 ## License
 
-Apache-2.0 © The Oxy Collective, Inc. See `LICENSE` and `NOTICE`.
+The Breathe License 1.0 (`LicenseRef-Breathe-1.0`), the same licence as the
+rest of the Oxy ecosystem. See `LICENSE` and `NOTICE`; commercial terms are at
+<https://github.com/OxyHQ/.github/blob/main/LICENSE-COMMERCIAL.md>.
+
+Attribution under Section 3.1 is required of everyone, including paying
+commercial licensees, and cannot be waived.
 Map data served through the GoWay API carries its own upstream licences
 (OpenStreetMap data is ODbL).
