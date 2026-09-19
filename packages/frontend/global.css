@@ -4,6 +4,12 @@
 
 @source "./app/**/*.{js,jsx,ts,tsx}";
 @source "./components/**/*.{js,jsx,ts,tsx}";
+/* Feature code lives here (issue #7). A new top-level directory is INERT on web
+   without its own glob: Tailwind v4 only scans what it is pointed at, the
+   className utilities simply never emit, and the colours still look right
+   because they come from the theme — so the gap shows up as broken LAYOUT and
+   nothing else. */
+@source "./features/**/*.{js,jsx,ts,tsx}";
 @source "./lib/**/*.{js,jsx,ts,tsx}";
 
 /* App base color tokens — registers the color KEYS so utilities like

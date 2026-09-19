@@ -374,9 +374,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         ))}
       </MapLibreMap>
 
-      <View pointerEvents="box-none" className="absolute bottom-space-4 left-space-8">
-        <MapAttribution />
-      </View>
+      <MapAttribution />
 
       {error ? <MapErrorState error={error} onRetry={retry} /> : null}
     </View>

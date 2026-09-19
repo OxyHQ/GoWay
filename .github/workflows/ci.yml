@@ -75,6 +75,17 @@ jobs:
         # to its built dist/. A warm local tree hides this; a clean checkout does
         # not.
         run: bun run build:shared-types
+
+      - name: Build the SDK
+        # BEFORE typecheck, not after. packages/frontend imports @goway.to/sdk by
+        # NAME, which resolves through the workspace link to packages/sdk/dist —
+        # a gitignored build artifact. On a developer's machine the root
+        # postinstall has already produced it, so the dependency is invisible;
+        # in CI `--ignore-scripts` means nothing has, and typecheck fails with
+        # TS2307 on every importing file. Ordering matters here: the SDK bundles
+        # @goway/shared-types, so it must build after it.
+        run: bun run build:sdk
+
       - name: Typecheck
         run: bun run typecheck
       - name: Lint
@@ -92,8 +103,9 @@ jobs:
       - name: Test the SDK
         run: bun run test:sdk
 
-      - name: Build and smoke-test the published SDK tarball
-        run: bun run --cwd packages/sdk build && bun run smoke:sdk
+      - name: Smoke-test the published SDK tarball
+        # The build already ran above; this packs what it produced.
+        run: bun run smoke:sdk
 
   gates:
     name: Repository gates
