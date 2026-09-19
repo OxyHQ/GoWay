@@ -4,17 +4,18 @@
 // react-native-web's base View reset. Pairs with postcss.config.mjs.
 import '../global.css';
 
-import type { ReactNode } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { OxyProvider, useOxy } from '@oxy.so/services';
-import { BloomThemeProvider } from '@oxy.so/bloom/theme';
-import { ImageResolverProvider } from '@oxy.so/bloom/image-resolver';
+import { OxyProvider } from '@oxy.so/services';
+import { BloomProvider } from '@oxy.so/bloom/provider';
+import { PortalOutlet, PortalProvider } from '@oxy.so/bloom/portal';
 import { ConnectionStatusToasts } from '@oxy.so/bloom/connection-status';
-import { API_URL, OXY_CLIENT_ID } from '@/lib/config';
+
+import { OXY_CLIENT_ID } from '@/lib/config';
+import { oxyServices } from '@/lib/oxyServices';
 import { queryClient } from '@/lib/queryClient';
 import { THEME_PERSIST_KEY, themeStorage } from '@/lib/themePersistence';
 import { LocaleProvider } from '@/lib/i18n';
@@ -29,59 +30,64 @@ export function ErrorBoundary(props: { error: Error; retry: () => void }) {
   return <ErrorFallback {...props} />;
 }
 
+/**
+ * GoWay's root.
+ *
+ * **There is no auth route group, and that is the product decision.** The
+ * scaffolder ships an `AuthRouter` that redirects the whole `(app)` group to
+ * `(auth)` until a session resolves; GoWay deletes it, because the map is
+ * public (AGENTS.md → Privacy; issues #2 and #7: "browse without signing in",
+ * "Do not require location permission to open GoWay"). A route-group swap is
+ * the wrong shape for a product whose ENTRY is public and whose private parts
+ * are individual ACTIONS — saving a place, editing one, building a list,
+ * contributing. Those are gated one at a time by `useAuthGate()`
+ * (`lib/authGate.ts`), which opens the in-app Oxy account dialog at the moment
+ * the user asks for the thing, rather than in front of the thing they did not.
+ *
+ * `OxyProvider` remains the single session authority on both platforms, and
+ * sign-in remains the in-app `OxyAccountDialog` — never a redirect to an IdP.
+ *
+ * Provider order, and why:
+ *
+ *  - `BloomProvider` is ABOVE everything that renders, including any future
+ *    splash or loading branch. `useTheme()` throws outside it, and a splash
+ *    rendered as a sibling would be a cold-start-only crash that `tsc` and
+ *    Jest both pass straight over.
+ *  - `PortalProvider`/`PortalOutlet` is mounted here, exactly once. The other
+ *    two Bloom outlets are NOT mounted here on purpose: `OxyProvider` already
+ *    renders `SurfaceProvider` (which renders `SurfaceHost`) and `ToastOutlet`
+ *    internally, and a second mount of either silently duplicates every
+ *    surface and every toast.
+ */
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <KeyboardProvider>
-        <SafeAreaProvider>
-          {/* BloomThemeProvider is the outermost theming authority — it must wrap
-              every render branch, including any pre-auth backdrop. OxyProvider is
-              the single session authority (web + native); it owns the QueryClient
-              and never redirects to an external login. */}
-          <BloomThemeProvider persistKey={THEME_PERSIST_KEY} storage={themeStorage}>
-            <ConnectionStatusToasts />
-            <OxyProvider baseURL={API_URL} clientId={OXY_CLIENT_ID} queryClient={queryClient}>
-              <AppImageResolver>
-                <LocaleProvider>
-                  <AuthRouter />
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <KeyboardProvider>
+          <BloomProvider
+            persistKey={THEME_PERSIST_KEY}
+            storage={themeStorage}
+            imageResolver={(id, variant) => oxyServices.getFileDownloadUrl(id, variant ?? 'thumb')}
+          >
+            <OxyProvider
+              oxyServices={oxyServices}
+              clientId={OXY_CLIENT_ID}
+              queryClient={queryClient}
+            >
+              {/* Renders nothing itself — it pushes to the toast store that
+                  OxyProvider's own <ToastOutlet /> renders. */}
+              <ConnectionStatusToasts />
+              <LocaleProvider>
+                <PortalProvider>
+                  <Stack screenOptions={{ headerShown: false }} />
                   <StatusBar style="auto" />
-                </LocaleProvider>
-              </AppImageResolver>
+                  <PortalOutlet />
+                </PortalProvider>
+              </LocaleProvider>
             </OxyProvider>
-          </BloomThemeProvider>
-        </SafeAreaProvider>
-      </KeyboardProvider>
-    </GestureHandlerRootView>
-  );
-}
-
-/**
- * Registers the Oxy `ImageResolver` so every Bloom `Avatar` resolves a bare file
- * id to a variant-aware URL. Must live inside OxyProvider so `useOxy()` has a
- * client.
- */
-function AppImageResolver({ children }: { children: ReactNode }) {
-  const { oxyServices } = useOxy();
-  return (
-    <ImageResolverProvider value={(id, variant) => oxyServices.getFileDownloadUrl(id, variant ?? 'thumb')}>
-      {children}
-    </ImageResolverProvider>
-  );
-}
-
-/**
- * The root Stack is the SOLE authority for the `(auth)`↔`(app)` group swap,
- * keyed purely on session. Until cold boot resolves (`isAuthResolved === false`)
- * we treat the user as needing auth; once resolved, `isAuthenticated` drives it.
- */
-function AuthRouter() {
-  const { isAuthenticated, isAuthResolved } = useOxy();
-  const needsAuth = isAuthResolved ? !isAuthenticated : true;
-
-  return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(app)" redirect={needsAuth} />
-      <Stack.Screen name="(auth)" redirect={!needsAuth} />
-    </Stack>
+          </BloomProvider>
+        </KeyboardProvider>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }

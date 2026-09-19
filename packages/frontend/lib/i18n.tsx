@@ -7,11 +7,15 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react';
 type Messages = Record<string, string>;
 
 const en: Messages = {
-  'home.title': 'GoWay',
-  'home.subtitle': 'Built with the Oxy SDK.',
-  'home.signedInAs': 'Signed in as',
-  'auth.title': 'Welcome to GoWay',
-  'auth.subtitle': 'Sign in with your Oxy account to continue.',
+  'map.title': 'GoWay',
+  'map.signIn': 'Sign in',
+  'map.myLocation': 'My location',
+  // The "why" in the permission's own words, shown BEFORE the system prompt —
+  // the contextual explanation issue #7 asks for, attached to the control that
+  // triggers it rather than to a screen in front of the map.
+  'map.myLocationHint': 'Centres the map on you. GoWay asks for location only when you tap this.',
+  'map.locationDenied': 'Location is off for GoWay. You can still search and browse the map.',
+  'map.resetNorth': 'Reset to north',
 };
 
 const locales: Record<string, Messages> = { en };
