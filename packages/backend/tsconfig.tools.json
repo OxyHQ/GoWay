@@ -1,0 +1,13 @@
+{
+  "//": "Type-checks the files the EMITTING build excludes, so none of them sits outside every program. A file outside `include` is removed from the program and can never report an error — which is how a broken drizzle.config.ts reaches `db:generate` instead of a type-checker. eslint.config.mjs is JavaScript and is covered by `bun run lint` instead. noEmit + composite:false because this project only reads; `bun run build` still emits from tsconfig.json alone.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false
+  },
+  "include": ["drizzle.config.ts", "src/__tests__/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,10 @@
+{
+  "//": "Solution file for `tsc -b`. It references ONLY the packages that legitimately EMIT: shared-types builds the .d.ts the backend consumes, and the backend compiles to dist/ for its runtime image.",
+  "//frontend": "packages/frontend is deliberately NOT referenced. Its preset sets `composite: true` + `noEmit: false`, and a composite project under `tsc -b` MUST emit — with no outDir that writes a .js/.d.ts/.map beside every single source file, inside the app tree. Metro bundles the frontend from source, so that output is pure litter that then trips eslint. It is type-checked by its own `tsc --noEmit` instead, wired into the root `typecheck` script.",
+  "//sdk": "packages/sdk is not referenced either: it is a non-composite `noEmit` source program (lib ES2020, types []) that proves the published client is isomorphic, which `tsc -b` cannot express. Its own `typecheck` runs both its source and test programs, also from the root script.",
+  "files": [],
+  "references": [
+    { "path": "./packages/shared-types" },
+    { "path": "./packages/backend" }
+  ]
+}

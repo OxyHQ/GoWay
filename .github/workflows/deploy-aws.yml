@@ -1,0 +1,107 @@
+# Deploy the GoWay backend to AWS ECS (Fargate, linux/arm64) via GitHub OIDC.
+#
+# ## This workflow has NO trigger of its own, deliberately
+#
+# It is CALLED by `ci.yml` (`jobs.deploy.uses`) with `needs:` the test jobs, so
+# the rollout cannot start until they have passed. It used to be
+# `on: push: branches: [main]`, which is the shape that has no dependency on CI
+# at all: the two workflows start in parallel on the same commit, a
+# build-and-push is faster than a full test suite, and the deploy always wins the
+# race. Measured on OxyHQ/oxy — a merge deployed to production while that same
+# commit's `API Tests` job was still `in_progress`. Every pull request feels
+# protected; the only unprotected path is the one that starts after the merge
+# button.
+#
+# `workflow_dispatch` remains, as the manual escape hatch for a re-deploy of a
+# commit that is already green.
+#
+# Keep the bun version here aligned with the Dockerfile's `FROM oven/bun:<ver>`;
+# `bun-version-file: package.json` is how the rest of CI does it.
+name: Deploy to AWS
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-west-2
+  ECR_REGISTRY: 237343248947.dkr.ecr.us-west-2.amazonaws.com
+  APP: goway
+  CLUSTER: oxy-cluster
+  DOCKERFILE: packages/backend/Dockerfile
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04-arm
+    # A backstop, with headroom: an arm64 image build plus an ECR push is the
+    # long pole and runs well inside this. A job whose typical duration exceeds
+    # roughly two-thirds of its timeout fails intermittently for reasons
+    # unrelated to any diff — and a job-level timeout reports `cancelled`, which
+    # reads as a supersession rather than a failure.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Configure AWS credentials (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6
+        with:
+          # This role must trust only this repository and grant access only to
+          # this app's SSM path, ECR repository, and ECS service. Never replace
+          # it with a role shared by generated repositories.
+          role-to-assume: arn:aws:iam::237343248947:role/oxy-goway-github-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Sync GitHub secrets -> SSM (GitHub is the source of truth)
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+          # Explicit backend runtime allowlist — do not sync unrelated CI tokens.
+          SSM_SECRET_ALLOWLIST: >-
+            DATABASE_URL REDIS_URL
+            OXY_SERVICE_API_KEY OXY_SERVICE_API_SECRET
+        run: |
+          echo "$SECRETS_JSON" | jq -r --arg allowlist "$SSM_SECRET_ALLOWLIST" '
+            ($allowlist | split(" ")) as $allowed
+            | to_entries[]
+            | select(.key as $k | $allowed | index($k))
+            | [.key,.value]|@tsv
+          ' | \
+          while IFS=$'\t' read -r k v; do
+            [ -z "$k" ] && continue
+            if [ -z "$v" ] || [ "$v" = "-" ]; then
+              echo "::warning::skip empty/placeholder secret $k; SSM unchanged"
+              continue
+            fi
+            path="/oxy/$APP/$k"
+            printf '%s' "$v" | aws ssm put-parameter \
+              --name "$path" \
+              --type SecureString \
+              --value file:///dev/stdin \
+              --overwrite >/dev/null
+            echo "synced -> $path"
+          done
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2
+
+      - name: Build and push (linux/arm64)
+        run: |
+          set -euo pipefail
+          IMG=$ECR_REGISTRY/oxy/$APP
+          docker build -f "$DOCKERFILE" -t "$IMG:${{ github.sha }}" -t "$IMG:latest" .
+          docker push "$IMG:${{ github.sha }}"
+          docker push "$IMG:latest"
+
+      - name: Deploy to ECS (skipped until the service exists)
+        run: |
+          set -euo pipefail
+          STATUS=$(aws ecs describe-services --cluster "$CLUSTER" --services "$APP" --query 'services[0].status' --output text 2>/dev/null || echo NONE)
+          if [ "$STATUS" != "ACTIVE" ]; then
+            echo "ECS service $APP not created yet — image is in ECR, skipping deploy"
+            exit 0
+          fi
+          aws ecs update-service --cluster "$CLUSTER" --service "$APP" --force-new-deployment >/dev/null
+          echo "Triggered new deployment for $APP"
