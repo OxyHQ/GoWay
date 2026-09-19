@@ -1,0 +1,22 @@
+============================================================================
+ NOTICE
+ @goway.to/sdk
+ Copyright (c) 2026-present The Oxy Collective, Inc.
+============================================================================
+
+This product is licensed under the Apache License, Version 2.0. See the
+LICENSE file in this directory.
+
+The rest of the OxyHQ/GoWay repository is licensed separately (see the LICENSE
+file at its root). The public contract declarations and values that the build
+bundles into this package from that repository are published here by the same
+licensor under the Apache License, Version 2.0.
+
+----------------------------------------------------------------------------
+ THIRD PARTY COMPONENTS
+----------------------------------------------------------------------------
+
+This package contains no third party source and has no runtime dependencies.
+It embeds no map data, tiles, geocoding results or routing graphs; those are
+served by the GoWay API and carry their own upstream licences (OpenStreetMap
+data is ODbL).
