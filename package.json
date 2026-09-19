@@ -23,9 +23,9 @@
     "web": "bun run --cwd packages/frontend web",
     "android": "bun run --cwd packages/frontend android",
     "ios": "bun run --cwd packages/frontend ios",
-    "lint": "bun run lint:frontend && bun run lint:backend",
+    "lint": "bun run lint:frontend && bun run lint:backend && bun run lint:sdk",
     "typecheck": "tsc -b && tsc -p packages/backend/tsconfig.tools.json && bun run --cwd packages/frontend typecheck && bun run --cwd packages/sdk typecheck",
-    "test": "bun run --cwd packages/backend test",
+    "test": "bun run --cwd packages/backend test && bun run --cwd packages/sdk test",
     "doctor:oxy": "oxy-doctor --ci",
     "db:generate": "bun run --cwd packages/backend db:generate",
     "db:migrate": "bun run --cwd packages/backend db:migrate",
@@ -41,7 +41,10 @@
     "check:lockfile": "bun ./scripts/check-lockfile-sync.mjs",
     "check:migrations": "bun ./scripts/check-migration-phases.mjs && bun ./scripts/check-migration-params.mjs",
     "test:gates": "bun ./scripts/test-check-migration-phases.mjs && bun ./scripts/test-check-migration-params.mjs",
-    "test:gates:lockfile": "bun ./scripts/test-check-lockfile-sync.mjs"
+    "test:gates:lockfile": "bun ./scripts/test-check-lockfile-sync.mjs",
+    "lint:sdk": "bun run --cwd packages/sdk lint",
+    "test:sdk": "bun run --cwd packages/sdk test",
+    "smoke:sdk": "bun run --cwd packages/sdk smoke"
   },
   "devDependencies": {
     "@oxy.so/doctor": "1.0.0",

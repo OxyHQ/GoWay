@@ -80,6 +80,21 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      # The SDK is checked HERE rather than in the `test` job because it needs
+      # no database — it is a headless client tested against an injected fake
+      # `fetch`. `smoke` is the step that matters most: it packs a real tarball
+      # and imports it under Node ESM, Node CJS, Bun, a browser bundle and a
+      # react-native bundle. A published SDK whose `exports` targets do not
+      # exist is a failure no typecheck can see, and the ecosystem has shipped
+      # exactly that before (@oxyhq/services@30.0.0, `lib/` empty, 26 of 33
+      # exports targets pointing at nothing — `npm publish <tarball>` runs zero
+      # lifecycle scripts, so nothing was there to catch it).
+      - name: Test the SDK
+        run: bun run test:sdk
+
+      - name: Build and smoke-test the published SDK tarball
+        run: bun run --cwd packages/sdk build && bun run smoke:sdk
+
   gates:
     name: Repository gates
     runs-on: ubuntu-latest

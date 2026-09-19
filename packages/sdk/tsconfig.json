@@ -1,11 +1,41 @@
 {
-  "//": "Isomorphic published package (web, React Native, Node) — extends the runtime-neutral Oxy base and turns emit on, rather than the CommonJS backend base.",
-  "extends": "@oxy.so/app-preset/tsconfig/base.json",
+  // The SDK's SOURCE program.
+  //
+  // `lib` is ES2020 with NO `DOM` and `types` is empty, on purpose: the same
+  // entry ships to Node, Bun, browsers and React Native, so nothing in `src/`
+  // may lean on a global that only one of them has. `fetch`, `AbortController`
+  // and the timers are reached through the structural types in
+  // `src/runtime.ts`, which is also what keeps the emitted `.d.ts` compiling in
+  // a consumer whose own `lib` has no DOM (GoWay's own backend, for one).
+  //
+  // This config deliberately does NOT extend `@oxy.so/app-preset`: that base
+  // sets `composite`, `declaration` and `declarationMap` for `tsc -b`, and this
+  // package is not built by `tsc` at all (see `scripts/build.mjs` — tsc cannot
+  // bundle declarations, and the private contract package must be bundled).
+  //
+  // `@goway/shared-types` resolves to its SOURCE rather than its `dist/`, so a
+  // build never depends on that package having been compiled first, and its
+  // modules are type-checked under this program's no-DOM constraint too.
   "compilerOptions": {
-    "rootDir": "./src",
-    "outDir": "./dist",
-    "noEmit": false
+    "target": "ES2020",
+    "lib": ["ES2020"],
+    "types": [],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@goway/shared-types": ["../shared-types/src/index.ts"],
+      "@goway/shared-types/*": ["../shared-types/src/*"]
+    },
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": false,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*.ts"]
 }
