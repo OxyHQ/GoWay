@@ -270,5 +270,14 @@ jobs:
     name: Deploy
     needs: [quality, gates, lockfile, test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # A called workflow cannot ELEVATE permissions beyond what the caller grants,
+    # and the workflow-level grant above is `contents: read`. deploy-aws.yml
+    # declares `id-token: write` for the AWS OIDC exchange, so without this job
+    # scope the whole workflow fails VALIDATION — `startup_failure`, with no jobs
+    # and no log, which reads on the pull request as GoWay's CI simply being
+    # absent while the third-party checks go green.
+    permissions:
+      id-token: write
+      contents: read
     uses: ./.github/workflows/deploy-aws.yml
     secrets: inherit
