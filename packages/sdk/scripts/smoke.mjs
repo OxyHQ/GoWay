@@ -87,8 +87,33 @@ function fail(message) {
   process.exit(1);
 }
 
+/**
+ * `npm config` settings that must not reach the commands this script runs.
+ *
+ * npm passes every config option to lifecycle scripts as an `npm_config_*`
+ * environment variable, and a nested npm *reads them back*. So
+ * `npm publish --dry-run` — the rehearsal a careful person does first — sets
+ * `npm_config_dry_run=true`, `prepublishOnly` runs this script, and the
+ * `npm pack` below inherits the flag: npm reports the tarball it WOULD have
+ * written, writes nothing, and the smoke test dies on `ENOENT` for a file that
+ * was never going to exist.
+ *
+ * The failure is worse than it sounds, because of which way round it fails.
+ * The cautious rehearsal is the one thing that always breaks, while the real
+ * publish works — so the person who checks first sees a broken release and the
+ * person who does not, does not. Measured by the team who published 0.1.0:
+ * `npm_config_dry_run=true bun run smoke` reproduces it exactly, and clearing
+ * the variable makes it pass.
+ *
+ * This script's job is to prove that a real tarball works, so a real tarball is
+ * always what it builds — whatever the outer npm was asked to pretend.
+ */
+const INHERITED_NPM_FLAGS_TO_CLEAR = ['npm_config_dry_run'];
+
 function run(command, args, cwd, what) {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } });
+  const env = { ...process.env, NO_COLOR: '1' };
+  for (const name of INHERITED_NPM_FLAGS_TO_CLEAR) delete env[name];
+  const result = spawnSync(command, args, { cwd, encoding: 'utf8', env });
   if (result.error) fail(`${what}: could not run ${command} (${result.error.message})`);
   if (result.status !== 0) {
     fail(`${what}: ${command} ${args.join(' ')} exited ${result.status}\n${result.stdout}\n${result.stderr}`);
