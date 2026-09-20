@@ -1,0 +1,156 @@
+# ---------------------------------------------------------------------------
+# Publishing `@goway.to/sdk`
+# ---------------------------------------------------------------------------
+#
+# WHY THIS EXISTS AND NOT `npm publish` FROM A LAPTOP.
+#
+# `ci.yml`'s own comment records the incident this workflow is built around:
+# `@oxyhq/services@30.0.0` went to the registry with `lib/` empty and 26 of its
+# 33 `exports` targets pointing at nothing. It happened because **`npm publish
+# <tarball>` runs zero lifecycle scripts** — the `prepublishOnly` gate in
+# `packages/sdk/package.json` is not a safety net for anyone who packs first,
+# and `npm publish` from a working tree is a safety net only for whatever
+# happens to be on that disk.
+#
+# A name and a version on npm are permanent. So the artifact that reaches the
+# registry is the one this job built from a clean checkout of a tagged commit,
+# after the same gate CI runs on every PR, and it carries provenance attesting
+# to exactly that.
+#
+# ## The tag is the trigger, and it has to agree with the manifest
+#
+# Releases are cut by pushing `sdk-v<version>`. The job refuses to publish if
+# the tag disagrees with `packages/sdk/package.json`, because the two drifting
+# is how a `0.2.0` tag ends up publishing `0.1.0` and the mistake is only
+# visible to whoever reads the registry afterwards.
+#
+# `workflow_dispatch` exists for a re-run after an infrastructure failure. It
+# takes the same tag and performs the same check; it is not a way to publish
+# something that was never tagged.
+#
+# ## What it deliberately does NOT do
+#
+# It does not bump the version, write a changelog or create a GitHub release.
+# Deciding that a contract has changed is a human judgement and belongs in the
+# PR that changed it, not in the job that ships it.
+
+name: Publish SDK
+
+on:
+  push:
+    tags:
+      - 'sdk-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing sdk-v* tag to publish'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never two publishes of the same package at once, and never cancel one:
+  # a half-finished publish is not a state npm has a word for.
+  group: publish-sdk
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish @goway.to/sdk
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: read
+      # Required for npm provenance. Without it `--provenance` fails the
+      # publish rather than silently shipping an unattested package.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          # Provenance records the commit, so the checkout must be a real one
+          # rather than a shallow synthetic merge.
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+
+      # `npm publish` is what talks to the registry — bun's own publish does not
+      # support provenance — so Node is set up with the registry and scope the
+      # token is good for.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          scope: '@goway.to'
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: The tag must name the version being published
+        env:
+          REF: ${{ inputs.tag || github.ref_name }}
+        run: |
+          MANIFEST="$(node -p "require('./packages/sdk/package.json').version")"
+          TAGGED="${REF#sdk-v}"
+          if [ "$MANIFEST" != "$TAGGED" ]; then
+            echo "::error::tag $REF says $TAGGED but packages/sdk/package.json says $MANIFEST"
+            exit 1
+          fi
+          echo "publishing @goway.to/sdk@$MANIFEST"
+
+      - name: Refuse a version the registry already has
+        # npm would reject it anyway, but it rejects it AFTER the build, and the
+        # error it gives ("cannot publish over previously published version") is
+        # easy to read as a permissions problem. Failing here says the true
+        # thing in the first line.
+        run: |
+          VERSION="$(node -p "require('./packages/sdk/package.json').version")"
+          if npm view "@goway.to/sdk@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::@goway.to/sdk@$VERSION is already on the registry; versions are permanent"
+            exit 1
+          fi
+
+      # The same gate `ci.yml` runs on every pull request, run again here
+      # against the tagged commit. Not because CI is untrusted, but because the
+      # thing being published is built HERE, and a gate that ran on a different
+      # checkout says nothing about this artifact.
+      - name: Typecheck
+        run: bun run --cwd packages/sdk typecheck
+
+      - name: Lint
+        run: bun run --cwd packages/sdk lint
+
+      - name: Test
+        run: bun run --cwd packages/sdk test
+
+      - name: Build
+        run: bun run --cwd packages/sdk build
+
+      - name: Smoke-test the tarball that will be published
+        # Packs a real tarball and imports it under Node ESM, Node CJS, Bun, a
+        # browser bundle and a react-native bundle. This is the step that would
+        # have caught `@oxyhq/services@30.0.0`.
+        run: bun run --cwd packages/sdk smoke
+
+      - name: Publish
+        working-directory: packages/sdk
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # `--provenance` attests the commit, the workflow and the runner.
+        # `--access public` is redundant with `publishConfig` in the manifest
+        # and is spelled anyway: a scoped package defaults to restricted, and
+        # the failure mode of getting it wrong is a package nobody can install.
+        run: npm publish --provenance --access public
+
+      - name: Confirm the registry agrees
+        # A publish that reports success and a registry that does not serve the
+        # version is the shape the incident above took. Ask.
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          cd "$(mktemp -d)"
+          npm view "@goway.to/sdk@$VERSION" dist.tarball
+        working-directory: packages/sdk
