@@ -34,6 +34,16 @@
 /vendor/maplibre-gl/*
   Cache-Control: public, max-age=31536000, immutable
 
+# GoWay's own MapLibre style documents, committed under `public/map/` and
+# carried into `dist/` by the export. Unlike everything above, these paths are
+# NOT content-hashed — `provider.ts` names them literally, and a native binary
+# in the field reads them from https://goway.to — so they must never be cached
+# immutably. Five minutes is long enough that a map load does not re-fetch the
+# document on every navigation, and short enough that a cartography deploy
+# reaches every client without a version bump nobody can perform.
+/map/*
+  Cache-Control: public, max-age=300, must-revalidate
+
 # Every response. See the note at the top of this file — these two are the
 # headers Pages used to add for free and Workers does not.
 /*

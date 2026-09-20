@@ -34,7 +34,7 @@ import {
 import * as Location from 'expo-location';
 import { useTheme } from '@oxy.so/bloom/theme';
 
-import { resolveMapStyleUrl } from '@/lib/map/provider';
+import { resolveMapAnchors, resolveMapStyleUrl } from '@/lib/map/provider';
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
 
 import { DefaultMapMarker } from './DefaultMapMarker';
@@ -95,6 +95,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 
   const resolvedAppearance = appearance ?? (theme.isDark ? 'dark' : 'light');
   const styleUrl = useMemo(() => resolveMapStyleUrl(resolvedAppearance), [resolvedAppearance]);
+  // `undefined` when the loaded style makes no anchor promise; `<Layer>`
+  // then appends on top, which is what native did before GoWay owned a style.
+  const overlayAnchor = useMemo(() => resolveMapAnchors().beforeLabels, []);
   const gestures = resolveInteraction(interaction);
 
   /**
@@ -307,11 +310,15 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         {showUserLocation && locationGranted ? <UserLocation animated /> : null}
 
         {/*
-          Overlays are appended on top of the basemap. MapLibre Native cannot
-          hand the loaded style back to JS, so there is no first-symbol-layer to
-          anchor `beforeId` against the way the web fork does; a GoWay style
-          document with a reserved anchor id (see `lib/map/provider.ts`) is what
-          closes that difference.
+          Overlays sit UNDER the labels, so a route line never covers a street
+          name. MapLibre Native cannot hand the loaded style back to JS, so
+          there is no first-symbol-layer to derive the way the web fork does —
+          the anchor has to be something the style PROMISES. GoWay's own style
+          document reserves one (`lib/map/provider.ts` →
+          `MapSourceIds.anchors.beforeLabels`), which is what finally closes the
+          platform difference. An `undefined` anchor — a style GoWay did not
+          author, e.g. the `openfreemap` fallback — restores the old behaviour
+          of appending on top.
         */}
         {(overlays ?? []).map((overlay) => {
           if (overlay.visible === false) return null;
@@ -321,6 +328,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               {overlay.kind === 'line' ? (
                 <Layer
                   id={`goway:line:${overlay.id}`}
+                  beforeId={overlayAnchor}
                   type="line"
                   style={{
                     lineColor: paint.color,
@@ -333,6 +341,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               ) : overlay.kind === 'fill' ? (
                 <Layer
                   id={`goway:fill:${overlay.id}`}
+                  beforeId={overlayAnchor}
                   type="fill"
                   style={{
                     fillColor: paint.color,
@@ -343,6 +352,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               ) : (
                 <Layer
                   id={`goway:circle:${overlay.id}`}
+                  beforeId={overlayAnchor}
                   type="circle"
                   style={{
                     circleColor: paint.color,
