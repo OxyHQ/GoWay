@@ -16,10 +16,10 @@
 
 import express, { type Express, Router } from 'express';
 import helmet from 'helmet';
-import { createOxyCors } from '@oxy.so/core/server';
 import { config } from './config';
 import { errorHandler, notFoundHandler } from './http/errorHandler';
 import { apiRateLimit, optionalAuth, requireAuth } from './middleware/auth';
+import { createGoWayCors } from './middleware/cors';
 import { healthRouter } from './routes/health';
 import { createCaptureRouter } from './routes/capture';
 import { createPlacesRouter } from './routes/places';
@@ -42,16 +42,29 @@ export function createApp(): Express {
   app.use(helmet());
 
   /**
-   * Deny-by-default CORS from `@oxy.so/core/server`, never a hand-rolled
-   * allowlist: the shared helper echoes the exact matched origin, refuses to
-   * reflect an arbitrary one, and never pairs a wildcard with credentials.
+   * CORS, in two lanes, decided by `middleware/cors.ts` and nowhere else.
    *
-   * `goway.to` and the HTTPS `oxy.so` apex family are allowed by the helper
-   * already. `corsAppOrigins` is for the Expo dev server and for any future
-   * console on a hostname outside those families — configuration, never a
-   * hardcoded development endpoint in product code.
+   * Deny-by-default from `@oxy.so/core/server` remains the policy for every
+   * credentialed route and for anything unrecognised: the shared helper echoes
+   * the exact matched origin, refuses to reflect an arbitrary one, and never
+   * pairs a wildcard with credentials. It is used as-is — not forked, not
+   * vendored, not handed a wildcard.
+   *
+   * The public read surface — the browse, search and routing endpoints the map
+   * opens with, none of which need an account — answers ANY origin with
+   * `Access-Control-Allow-Origin: *` and no credentials header, which is what
+   * lets a third-party site embed GoWay at all. `middleware/cors.ts` carries the
+   * full argument and the table of exactly which routes that is; read it before
+   * changing either lane.
+   *
+   * The helper's built-in allowance is the HTTPS `oxy.so` apex family and
+   * nothing else — `goway.to` is NOT in it, whatever an earlier reading of this
+   * comment said. So `CORS_APP_ORIGINS` is what carries `https://goway.to`
+   * itself, the Expo dev server, and any future console; a deployment that
+   * omits the canonical origin gets no credentialed lane for its own app.
+   * Configuration, never a hardcoded development endpoint in product code.
    */
-  app.use(createOxyCors({ appOrigins: [...config.corsAppOrigins] }));
+  app.use(createGoWayCors({ appOrigins: config.corsAppOrigins }));
 
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
 

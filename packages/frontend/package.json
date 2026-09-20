@@ -12,8 +12,13 @@
     "export:web": "expo export --platform web",
     "prebuild": "expo prebuild",
     "lint": "expo lint",
+    "test": "bun test",
     "map:style": "bun scripts/build-map-style.ts",
     "map:style:check": "bun scripts/build-map-style.ts --check",
+    "map:glyphs": "bun scripts/build-map-glyphs.ts",
+    "map:glyphs:check": "bun scripts/build-map-glyphs.ts --check",
+    "map:sprite": "bun scripts/build-map-sprite.ts",
+    "map:sprite:check": "bun scripts/build-map-sprite.ts --check",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -70,6 +75,7 @@
     "babel-preset-expo": "~57.0.2",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~57.0.0",
+    "fontkit": "^2",
     "typescript": "^5.9.3"
   },
   "expo": {

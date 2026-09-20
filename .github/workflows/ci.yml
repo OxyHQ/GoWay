@@ -109,6 +109,38 @@ jobs:
         # endpoint and has no business deciding whether a pull request is green.
         run: bun run --cwd packages/frontend map:style:check
 
+      - name: Validate the generated glyphs and sprite
+        # The style document names `/map/fonts/{fontstack}/{range}.pbf` and
+        # `/map/sprites/goway`, and both are GENERATED, COMMITTED artefacts.
+        # Drift between the generator and the committed bytes is the same class
+        # of silent failure the style check exists for, one layer down: a
+        # fontstack renamed in `schema.ts` without a regeneration is a 404 on
+        # every glyph range, which renders a map with no labels at all and logs
+        # nothing a CI job can see.
+        #
+        # Both scripts are deterministic by construction, so `--check` is a
+        # byte comparison and not an approximation.
+        run: |
+          bun run --cwd packages/frontend map:glyphs:check
+          bun run --cwd packages/frontend map:sprite:check
+
+      - name: Test the frontend's pure modules
+        # These suites EXISTED before this step did and nothing ran them —
+        # `bun run test` covered the backend and the SDK only, so
+        # `components/map/__tests__/nanCoordinates.test.ts` (the net under the
+        # crash that once replaced goway.to with its error boundary) was dead
+        # weight in the repository for as long as it had been there.
+        #
+        # Everything here is a pure module: coordinate validation, the embed
+        # parameter parser, and the map Worker's routing. No renderer, no
+        # native module, no Expo runtime — so it needs none of the setup a
+        # component test would, and it takes well under a second.
+        #
+        # `worker/index.js` is the one that could not be checked any other way.
+        # `tsc` does not read it, `expo export` does not bundle it, and its
+        # first execution would otherwise be in production.
+        run: bun run test:frontend
+
       # The SDK is checked HERE rather than in the `test` job because it needs
       # no database — it is a headless client tested against an injected fake
       # `fetch`. `smoke` is the step that matters most: it packs a real tarball

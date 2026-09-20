@@ -42,7 +42,7 @@ import type {
 import { GOWAY_LABEL_ANCHOR_LAYER_ID } from '../provider';
 import { BUILDING_3D_LAYER_ID, buildBuildings3dLayer } from './buildings3d';
 import type { CartographyPalette, RoadTier, RoadTone } from './palette';
-import { OPENMAPTILES_SOURCE_LAYERS as SL } from './schema';
+import { FONT_STACKS, OPENMAPTILES_SOURCE_LAYERS as SL } from './schema';
 import { LOCAL_ROAD_FILL, SHOW_BASEMAP_POIS, SHOW_ROAD_AND_POI_LABELS } from './tuning';
 
 /**
@@ -212,8 +212,14 @@ const classIn = (...values: string[]): ExpressionSpecification =>
  */
 const LABEL_TEXT = expr(['coalesce', ['get', 'name:latin'], ['get', 'name'], '']);
 
-const REGULAR = ['Noto Sans Regular'];
-const BOLD = ['Noto Sans Bold'];
+// The weight ladder, from `schema.ts` rather than written out here: the
+// fontstack names are a contract with the glyph ranges GoWay generates and
+// serves, so a rename that misses one is a label that silently does not draw.
+// `FONT_STACKS.medium` and `.semibold` exist and are not used yet — they are
+// the two rungs OpenFreeMap could not serve, kept available for the type
+// hierarchy rather than spent here.
+const REGULAR: string[] = [...FONT_STACKS.regular];
+const BOLD: string[] = [...FONT_STACKS.bold];
 
 // ---------------------------------------------------------------------------
 // POI vocabulary
@@ -748,10 +754,73 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
 
   // --- Administrative ----------------------------------------------------
 
+  // ## Why these two filters are shaped the way they are
+  //
+  // An ordering operator (`>=`, `<=`) is not the innocent thing it looks like
+  // in a MapLibre filter. `Comparison.parse` wraps the operand of an ORDERING
+  // comparison — and only an ordering one — in a numeric `Assertion`, and that
+  // assertion THROWS on a feature whose property is missing:
+  // "Expected value to be of type number, but found null instead."
+  //
+  // That is not hypothetical here. Measured across 864 real OpenFreeMap tiles
+  // (z3-z10, Europe / US / South Asia / northern Canada / Australia),
+  // **518 of 2949 `boundary` features — 17.6% — carry no `admin_level` at
+  // all**: every one of them an `aboriginal_lands` POLYGON (Inuvialuit Lands,
+  // Tłı̨chǫ Ndé, Peavine Metis Settlement, and their Russian and Australian
+  // equivalents). On tiles like `8/45/66` and `10/185/266` they are 100% of
+  // the boundary features present.
+  //
+  // What that costs is worth stating precisely, because the received version
+  // of this bug overstates it. MapLibre does NOT die on the throw:
+  // `StyleExpression.evaluate` catches it, warns once per unique message, and
+  // returns the filter's default of `false`. So the borders are correct today
+  // and no tile fails to parse. What it actually costs is a constructed and
+  // caught exception per affected feature per layer per tile — 4144 of them in
+  // the sample above — on the tile worker's hot path, plus a console warning
+  // that sends anyone who sees it looking for a rendering bug that is not
+  // there. Fix it for that, not for a crash.
+  //
+  // ## Why `['number', …, sentinel]` and not `['to-number', …, sentinel]`
+  //
+  // Because `to-number`'s fallback is UNREACHABLE for exactly the case that
+  // matters. `Coercion.evaluate` returns `0` the moment an argument evaluates
+  // to `null`, before it ever reaches the next argument, so
+  // `['to-number', ['get','admin_level'], -1]` on a feature with no
+  // `admin_level` is `0`, not `-1`. Substituted into `boundary-country` that
+  // reads `0 <= 2` → true, and the 518 aboriginal-land polygons all become
+  // country borders — measured, at z6, as country selection going 901 → 1419,
+  // which on screen is a heavy country-coloured ring stroked around every
+  // indigenous land area in Canada, Australia, Brazil, the US and Russia.
+  // Raising the sentinel does not help; it is never consulted.
+  //
+  // `['number', …, sentinel]` is an ASSERTION with a fallback, not a coercion:
+  // it returns the first argument whose type already matches and only throws
+  // if the LAST one fails, so a numeric literal in last position makes it
+  // provably non-throwing. It also does not coerce, so a string `"4"` falls to
+  // the sentinel exactly as the current filter's throw-to-`false` does.
+  //
+  // The sentinels are asymmetric and that is mandatory: `-1` fails `>= 3`, and
+  // the country filter is an UPPER bound so it needs a high one (`99`) to
+  // fail `<= 2`. The leading `['has', …]` states the intent and short-circuits
+  // (`all` evaluates its arguments left to right and stops at the first
+  // falsey), so on the 82% of features that do have the property nothing extra
+  // is evaluated at all.
+  //
+  // Verified equivalent: across all 2949 real features at 8 zooms, this pair
+  // selects exactly the set the previous pair selected, with zero throws.
   line(
     'boundary-region',
     SL.boundary,
-    filter(['all', ['>=', ['get', 'admin_level'], 3], ['<=', ['get', 'admin_level'], 6], ['!=', ['get', 'maritime'], 1]]),
+    filter([
+      'all',
+      ['has', 'admin_level'],
+      ['>=', ['number', ['get', 'admin_level'], -1], 3],
+      ['<=', ['number', ['get', 'admin_level'], -1], 6],
+      // `!=` is an equality operator, so it is NOT assertion-wrapped and
+      // cannot throw. A feature with no `maritime` flag passes, which is the
+      // intended reading. Left exactly as it was, deliberately.
+      ['!=', ['get', 'maritime'], 1],
+    ]),
     palette.boundaryRegion,
     [[4, 0.4], [8, 0.8], [12, 1.4]],
     { minzoom: 4, dash: [3, 2] },
@@ -759,7 +828,12 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
   line(
     'boundary-country',
     SL.boundary,
-    filter(['all', ['<=', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1]]),
+    filter([
+      'all',
+      ['has', 'admin_level'],
+      ['<=', ['number', ['get', 'admin_level'], 99], 2],
+      ['!=', ['get', 'maritime'], 1],
+    ]),
     palette.boundaryCountry,
     [[2, 0.6], [6, 1.2], [10, 2]],
   );

@@ -154,14 +154,59 @@ export const POI_CLASSES = [
 ] as const;
 
 /**
- * Glyph fontstacks OpenFreeMap's font server actually answers with.
+ * Glyph fontstacks GoWay's own font server answers with.
  *
- * Checked, not assumed: `Noto Sans Medium` and `Noto Sans SemiBold` both 404,
- * so the weight ladder available to this style is Regular and Bold and nothing
- * in between. MapLibre requests a *combined* stack when a `text-font` names
- * more than one family, and OpenFreeMap does not serve combined stacks, so
- * every `text-font` in this style is a single-element array.
+ * ## What changed, and why it matters for type
+ *
+ * These used to be OpenFreeMap's, and the ladder was two rungs: checked, not
+ * assumed, `Noto Sans Medium` and `Noto Sans SemiBold` both 404 there, so the
+ * style had Regular and Bold and nothing in between. Every attempt at an
+ * Apple-grade hierarchy ran into that — the difference between a district
+ * label and a city label is a weight step, and there was no step to take.
+ *
+ * GoWay now generates its own ranges from **Inter Variable**, which is already
+ * Bloom's `font-bloom-sans` and therefore GoWay's own product typeface, under
+ * the SIL Open Font License 1.1 (the font's `name` table says so; `fsType`
+ * carries no embedding restriction). It is a variable font with a `wght` axis
+ * from 100 to 900, so the instances below are not four fonts we found — they
+ * are four points we chose on one continuous axis, and a fifth is a
+ * regeneration away. See `scripts/build-map-glyphs.ts`.
+ *
+ * ## The rules that have not changed
+ *
+ * MapLibre requests a *combined* stack when a `text-font` names more than one
+ * family, and a combined stack is a separate document a server has to compose.
+ * GoWay's does not compose them either, so every `text-font` in this style
+ * stays a single-element array.
+ *
+ * Coverage is the other constant worth stating out loud: Inter is Latin, Greek
+ * and Cyrillic. A feature with a `name` but no `name:latin` — most of the CJK,
+ * Arabic, Devanagari and Thai world — lands in a range Inter does not have,
+ * and `worker/index.js` answers those by proxying the upstream Noto ranges
+ * through `goway.to`. The label still renders and the browser still talks to
+ * nobody but us; it is simply not set in Inter.
  */
-export const AVAILABLE_FONTS = ['Noto Sans Regular', 'Noto Sans Bold', 'Noto Sans Italic'] as const;
+export const AVAILABLE_FONTS = [
+  'Inter Regular',
+  'Inter Medium',
+  'Inter SemiBold',
+  'Inter Bold',
+] as const;
 
 export type AvailableFont = (typeof AVAILABLE_FONTS)[number];
+
+/**
+ * The fontstacks as MapLibre wants them — one-element arrays, named by role.
+ *
+ * Exported as the single source for `text-font` so that the ladder is
+ * visible in one place rather than as string literals scattered through
+ * `layers.ts`, and so that a regeneration at a different weight is a change
+ * here and nowhere else. `MEDIUM` and `SEMIBOLD` exist because they now CAN:
+ * they are the two rungs OpenFreeMap could not serve.
+ */
+export const FONT_STACKS = {
+  regular: ['Inter Regular'],
+  medium: ['Inter Medium'],
+  semibold: ['Inter SemiBold'],
+  bold: ['Inter Bold'],
+} as const satisfies Record<string, readonly AvailableFont[]>;
