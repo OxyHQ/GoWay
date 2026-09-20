@@ -357,7 +357,14 @@ async function serveTileFromArchive(z, x, y, request, env, ctx) {
   );
 
   const hit = await cache.match(cacheKey);
-  if (hit) return request.method === 'HEAD' ? new Response(null, { headers: hit.headers }) : hit;
+  if (hit) {
+    // `status` has to be carried across, not defaulted. A cached MISS is a
+    // 404, and `new Response(null, { headers })` is a 200 — a HEAD for an
+    // ocean tile would have answered "this tile exists" with an empty body.
+    return request.method === 'HEAD'
+      ? new Response(null, { status: hit.status, headers: hit.headers })
+      : hit;
+  }
 
   let tile;
   try {
