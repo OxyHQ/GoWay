@@ -319,6 +319,19 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     } else {
       map.touchZoomRotate.disableRotation();
     }
+    // Tilt. Both halves of it: `dragRotate` is what Ctrl+drag (and right-drag)
+    // uses on a desktop, and `touchPitch` is the two-finger vertical drag on a
+    // touchscreen — the native fork wires the same gesture as `touchPitch`, so
+    // leaving this one on the renderer's default was the one place the two
+    // forks could disagree about whether a pitch gesture is live.
+    //
+    // `setMaxPitch` is the backstop rather than the mechanism: it clamps the
+    // camera even if a handler somehow fires. 60° is MapLibre's own ceiling and
+    // MapLibre Native's, which is what keeps the forks in step. Pitch stays
+    // reachable at EVERY zoom deliberately — `building-3d` only has volumes to
+    // show from z15.5, but a gesture that silently stops working when you zoom
+    // out is a worse surprise than a tilted view of flat ground.
+    toggle(map.touchPitch, gestures.pitch);
     map.setMaxPitch(gestures.pitch ? 60 : 0);
   }, [gestures.pan, gestures.zoom, gestures.rotate, gestures.pitch, ready]);
 

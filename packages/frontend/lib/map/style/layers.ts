@@ -40,6 +40,7 @@ import type {
 } from '@maplibre/maplibre-gl-style-spec';
 
 import { GOWAY_LABEL_ANCHOR_LAYER_ID } from '../provider';
+import { BUILDING_3D_LAYER_ID, buildBuildings3dLayer } from './buildings3d';
 import type { CartographyPalette, RoadTier, RoadTone } from './palette';
 import { OPENMAPTILES_SOURCE_LAYERS as SL } from './schema';
 import { LOCAL_ROAD_FILL, SHOW_BASEMAP_POIS, SHOW_ROAD_AND_POI_LABELS } from './tuning';
@@ -129,7 +130,7 @@ export const GOWAY_STYLE_LAYER_IDS = {
     'road-rail',
     'road-rail-hatch',
   ],
-  structures: ['building'],
+  structures: ['building', BUILDING_3D_LAYER_ID],
   boundaries: ['boundary-region', 'boundary-country'],
   /** The reserved overlay anchor. Nothing renders it. */
   anchor: [LABEL_ANCHOR_LAYER_ID],
@@ -716,9 +717,10 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
 
   // --- Structures --------------------------------------------------------
 
-  // Flat footprints only. No `fill-extrusion`: GoWay's map is read from above,
-  // and extruded buildings at a pitch hide exactly the streets and labels a
-  // person is trying to read.
+  // The flat footprint. It is what carries buildings from z14 up to where
+  // `building-3d` (below) takes over, and it keeps running underneath the
+  // extrusion afterwards — a prism hides its own base, so the two never
+  // double-draw. Read from straight above, this IS the building layer.
   //
   // Subtle but PRESENT. The first cut faded the edge in so gently that a block
   // of footprints was indistinguishable from bare ground — quiet had become
@@ -737,6 +739,12 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
       'fill-opacity': byZoom([[14, 0], [15, 0.65], [17, 1]], 1),
     },
   });
+
+  // The same footprints with a volume, fading in over the flat fill from
+  // z15.5. Its own module (`buildings3d.ts`) — it is the one layer here tuned
+  // by height and shading rather than by colour, and MapLibre's extrusion has
+  // a hard ceiling that is argued in place there rather than in this list.
+  layers.push(buildBuildings3dLayer(palette, source));
 
   // --- Administrative ----------------------------------------------------
 
