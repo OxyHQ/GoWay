@@ -547,7 +547,22 @@ export function useExplore(
       id: `basemap:${selectedLabel.id}`,
       coordinate: selectedLabel.coordinate,
       kind: 'place',
-      label: truncate(selectedLabel.name),
+      // No `label`, which makes this a compact selection dot rather than a
+      // named pill — and that difference is the whole point of it.
+      //
+      // It used to carry the name. The user's report: "cuando toco es como que
+      // aparece un chip encima, eso no lo hace apple maps o google maps". They
+      // are right, and it was worse than redundant. The basemap has ALREADY
+      // drawn that name — it is the thing they aimed at — so the chip printed
+      // it a second time, in a different typeface, a few pixels off, over the
+      // original. Neither Apple nor Google stamps anything with text on a label
+      // you tapped: the label stays as it was drawn and the card carries the
+      // detail.
+      //
+      // A dot rather than nothing at all, because the card can be a sheet the
+      // user has pushed down or a panel beside a large map, and "which of these
+      // forty names is the card about" has to be answerable by looking at the
+      // map. That is what the selected state is for, and it needs no words.
       selected: true,
       accessibilityLabel: `${selectedLabel.name}, selected`,
     };

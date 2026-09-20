@@ -363,6 +363,48 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     };
 
     /**
+     * The pointer says whether there is something under it to tap.
+     *
+     * Google and Apple both do this and it is not decoration: a name on a map
+     * looks exactly the same whether it is live or painted on, so without the
+     * cursor the only way to find out is to click and see. The user's report
+     * was precisely that — the labels had become tappable and still felt dead.
+     *
+     * Web only, deliberately. There is no hover on a touchscreen, and the
+     * native fork has nothing to set.
+     *
+     * The same `labelAt` the click uses, so the pointer cannot promise a hit
+     * the tap then misses — one query, one rule, one answer. It runs on
+     * `mousemove`, which fires a lot, and two things keep that cheap: the
+     * result is compared against what the cursor already is, so the DOM is
+     * touched only on a change; and the whole thing is skipped while the map
+     * is moving, when the cursor belongs to the drag and the labels under it
+     * are sliding anyway.
+     */
+    const handleMouseMove = (event: maplibregl.MapMouseEvent) => {
+      if (map.isMoving()) return;
+      const canvas = map.getCanvas();
+      const coordinate = { latitude: event.lngLat.lat, longitude: event.lngLat.lng };
+      const over =
+        isDrawableCoordinate(coordinate) &&
+        labelAt(map, event.point, coordinate, queryLayers.current.tap) !== null;
+      const wanted = over ? 'pointer' : '';
+      if (canvas.style.cursor !== wanted) canvas.style.cursor = wanted;
+    };
+
+    /**
+     * Give the cursor back when the pointer leaves, and when a drag starts.
+     *
+     * Without this, leaving the canvas over a label leaves `pointer` set on an
+     * element the user is no longer on, and it is still there when they come
+     * back over empty ground — the stale state is invisible until it is wrong.
+     */
+    const releaseCursor = () => {
+      const canvas = map.getCanvas();
+      if (canvas.style.cursor !== '') canvas.style.cursor = '';
+    };
+
+    /**
      * Report what the basemap is currently labelling.
      *
      * On `idle` rather than `moveend`: `idle` is the frame at which every tile
@@ -407,6 +449,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     map.on('moveend', handleMoveEnd);
     map.on('idle', handleIdle);
     map.on('click', handleClick);
+    map.on('mousemove', handleMouseMove);
+    map.on('mouseout', releaseCursor);
+    map.on('dragstart', releaseCursor);
     map.on('error', handleError);
 
     return () => {
@@ -415,7 +460,13 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       map.off('moveend', handleMoveEnd);
       map.off('idle', handleIdle);
       map.off('click', handleClick);
+      map.off('mousemove', handleMouseMove);
+      map.off('mouseout', releaseCursor);
+      map.off('dragstart', releaseCursor);
       map.off('error', handleError);
+      // The canvas outlives this effect on a style swap; a `pointer` left on it
+      // would belong to handlers that no longer exist.
+      releaseCursor();
       for (const slot of slotRegistry.values()) slot.marker.remove();
       slotRegistry.clear();
       setSlots([]);
