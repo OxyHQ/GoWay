@@ -28,7 +28,7 @@
  * `moveTo` instead — spatial continuity where it is correct, lock-step motion
  * where it is free.
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,11 +39,19 @@ import { useBottomEdgeInset, useTopEdgeInset, windowEdgeGap } from '@oxy.so/bloo
 import { RiCompass3Line } from '@oxy.so/bloom/icons/RiCompass3Line';
 import { RiFocus3Line } from '@oxy.so/bloom/icons/RiFocus3Line';
 
-import { MapCanvas, type MapApi, type MapCanvasError, type MapMarker, type MapViewportChange } from '@/components/map';
+import {
+  MapCanvas,
+  type MapApi,
+  type MapCanvasError,
+  type MapMarker,
+  type MapOverlay,
+  type MapViewportChange,
+} from '@/components/map';
 import { MapSheet, type MapSheetSnap } from '@/components/sheet/MapSheet';
 import { SidePanel } from '@/components/sheet/SidePanel';
 import { useLayoutMode } from '@/lib/useLayoutMode';
 import { useTranslation } from '@/lib/i18n';
+import type { LocationErrorReason } from '@/lib/map/useUserLocation';
 
 import { ExploreBody, ExploreHeader } from './ExploreContent';
 import { ExploreMarker } from './ExploreMarker';
@@ -58,6 +66,39 @@ const BEARING_EPSILON = 1;
 const CONTROLS_COLUMN_WIDTH = 72;
 /** How far the floating controls lift as the sheet is dragged open. */
 const CHROME_LIFT_PX = 28;
+
+/** Stable identity for "no overlays", so the canvas is not re-applied. */
+const EMPTY_OVERLAYS: readonly MapOverlay[] = [];
+
+/**
+ * The one-line notice beside the "My location" control.
+ *
+ * This control has exactly the shape the Directions bug had: `handleLocate`
+ * returns early on a `null` coordinate, so before this every reason but a
+ * decline was a button that visibly did nothing. `denied` keeps its translated
+ * sentence; the rest are stated here, beside the control they are about.
+ */
+function locationNoticeFor(
+  reason: LocationErrorReason | null,
+  canAskAgain: boolean,
+  t: (key: string) => string,
+): string | null {
+  switch (reason) {
+    case null:
+      return null;
+    case 'denied':
+      return canAskAgain
+        ? t('map.locationDenied')
+        : 'Location is blocked for GoWay. Turn it back on for goway.to in your browser or device settings.';
+    case 'insecureContext':
+      return "This page isn't on a secure connection, so the browser won't share location. Open GoWay at https://goway.to.";
+    case 'timeout':
+      return 'Finding you took too long. Tap again to try once more.';
+    case 'unavailable':
+    default:
+      return "Your device couldn't get a location fix. You can still search and browse the map.";
+  }
+}
 
 export interface ExploreScreenProps {
   /** Opened from `https://goway.to/place/<placeId>`. */
@@ -100,6 +141,8 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
 
   const handleLocate = useCallback(async () => {
     const coordinate = await location.locate();
+    // A `null` is not nothing: `location.error` now carries which of the four
+    // reasons it was, and the notice below says it out loud.
     if (!coordinate) return;
     setFollowingLocation(true);
     mapRef.current?.moveTo(coordinate, { zoom: MY_LOCATION_ZOOM });
@@ -126,6 +169,20 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
   );
 
   /**
+   * The route line, when there is one.
+   *
+   * A fresh array literal every render would make `MapCanvas` re-apply the
+   * source and layer on every frame of a sheet drag, so the identity is kept
+   * stable — the empty case included.
+   */
+  const overlays = useMemo<readonly MapOverlay[]>(
+    () => (explore.routeOverlay ? [explore.routeOverlay] : EMPTY_OVERLAYS),
+    [explore.routeOverlay],
+  );
+
+  const locationNotice = locationNoticeFor(location.error, location.canAskAgain, t);
+
+  /**
    * Lift and fade the floating controls with the sheet, on the UI thread.
    *
    * In panel mode `sheetProgress` is never written, so this resolves to the
@@ -145,6 +202,7 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
         ref={mapRef}
         markers={explore.markers}
         renderMarker={renderMarker}
+        overlays={overlays}
         onMarkerPress={explore.onMarkerPress}
         showUserLocation={followingLocation}
         onViewportChange={handleViewportChange}
@@ -204,8 +262,10 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
 
       {/* A declined permission is a normal outcome, not an error screen: the
           map stays fully usable without it, so this says what happened and gets
-          out of the way. */}
-      {location.error === 'denied' ? (
+          out of the way. Every reason gets its own sentence — the control looks
+          equally dead when the page is http:// or the device cannot fix, and
+          neither of those is the user's doing. */}
+      {locationNotice ? (
         <View
           pointerEvents="none"
           accessibilityRole="alert"
@@ -217,7 +277,7 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
           }}
         >
           <View className="rounded-radius-12 bg-card px-space-12 py-space-8 shadow-s">
-            <Text className="text-bodySmall text-muted-foreground">{t('map.locationDenied')}</Text>
+            <Text className="text-bodySmall text-muted-foreground">{locationNotice}</Text>
           </View>
         </View>
       ) : null}

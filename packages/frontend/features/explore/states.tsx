@@ -18,13 +18,18 @@ import { Text } from '@oxy.so/bloom/typography';
 import { useTheme } from '@oxy.so/bloom/theme';
 import type { BloomIconComponent } from '@oxy.so/bloom/icons';
 import { RiErrorWarningLine } from '@oxy.so/bloom/icons/RiErrorWarningLine';
+import { RiLockLine } from '@oxy.so/bloom/icons/RiLockLine';
+import { RiMap2Line } from '@oxy.so/bloom/icons/RiMap2Line';
 import { RiMapPin2Line } from '@oxy.so/bloom/icons/RiMapPin2Line';
 import { RiRefreshLine } from '@oxy.so/bloom/icons/RiRefreshLine';
 import { RiSearchLine } from '@oxy.so/bloom/icons/RiSearchLine';
+import { RiSettings3Line } from '@oxy.so/bloom/icons/RiSettings3Line';
+import { RiTimerLine } from '@oxy.so/bloom/icons/RiTimerLine';
 import { RiWifiLine } from '@oxy.so/bloom/icons/RiWifiLine';
 import { RiFocus3Line } from '@oxy.so/bloom/icons/RiFocus3Line';
 
 import type { GoWayFailureKind } from '@/lib/goway/errors';
+import type { LocationErrorReason } from '@/lib/map/useUserLocation';
 
 export interface PanelStateProps {
   icon: BloomIconComponent;
@@ -32,13 +37,27 @@ export interface PanelStateProps {
   body?: string;
   actionLabel?: string;
   onAction?: () => void;
+  /**
+   * The action's glyph. Defaults to the retry arrow, which is right for the
+   * failure states and wrong for an action that is not a repeat of anything.
+   */
+  actionIcon?: BloomIconComponent;
   /** Extra content below the action (a second explanation, a list). */
   children?: ReactNode;
   testID?: string;
 }
 
 /** One state, one shape: glyph, sentence, at most one action. */
-export function PanelState({ icon: Icon, title, body, actionLabel, onAction, children, testID }: PanelStateProps) {
+export function PanelState({
+  icon: Icon,
+  title,
+  body,
+  actionLabel,
+  onAction,
+  actionIcon = RiRefreshLine,
+  children,
+  testID,
+}: PanelStateProps) {
   const theme = useTheme();
   return (
     <View className="items-center gap-space-8 px-space-24 py-space-32" testID={testID}>
@@ -47,7 +66,7 @@ export function PanelState({ icon: Icon, title, body, actionLabel, onAction, chi
       {body ? <Text className="text-bodySmall text-muted-foreground text-center">{body}</Text> : null}
       {actionLabel && onAction ? (
         <View className="pt-space-8">
-          <Button variant="secondary" size="small" leadingIcon={RiRefreshLine} onPress={onAction}>
+          <Button variant="secondary" size="small" leadingIcon={actionIcon} onPress={onAction}>
             {actionLabel}
           </Button>
         </View>
@@ -133,6 +152,102 @@ export function FailureState({
       );
   }
 }
+
+/**
+ * A location-dependent action that could not get a location.
+ *
+ * Issue #7 → Required states lists "location permission denied", and this is
+ * the state it means — but four things resolve to "no coordinate" and only one
+ * of them is the user declining. Each gets its own sentence, because the next
+ * step differs: a decline can be re-asked, a browser-level block cannot and has
+ * to be undone where the browser keeps it, an insecure page is not the user's
+ * doing at all, and a device that cannot fix is worth simply trying again.
+ *
+ * The alternative origin is the point of the whole state: directions without a
+ * current location should be a detour, not a wall. It is offered as an explicit
+ * choice and never substituted silently — a route reported from somewhere the
+ * user never said they were is worse than no route.
+ */
+export function LocationFailureState({
+  reason,
+  canAskAgain,
+  onRetry,
+  onUseMapOrigin,
+  testID,
+}: {
+  reason: LocationErrorReason;
+  /** From `useUserLocation()`. `false` means a retry provably cannot prompt. */
+  canAskAgain: boolean;
+  onRetry: () => void;
+  /** Offered only when the map has a centre far enough from the destination. */
+  onUseMapOrigin?: () => void;
+  testID?: string;
+}) {
+  const copy = LOCATION_COPY[reason === 'denied' && !canAskAgain ? 'blocked' : reason];
+  // The retry is only offered where it could actually change the answer.
+  const retryable = copy.retryable;
+  const mapButton = onUseMapOrigin ? (
+    <View className={retryable ? 'pt-space-4' : 'pt-space-8'}>
+      <Button variant={retryable ? 'text' : 'secondary'} size="small" leadingIcon={RiMap2Line} onPress={onUseMapOrigin}>
+        Route from the map instead
+      </Button>
+    </View>
+  ) : null;
+
+  return (
+    <PanelState
+      icon={copy.icon}
+      title={copy.title}
+      body={copy.body}
+      actionLabel={retryable ? 'Try again' : undefined}
+      onAction={retryable ? onRetry : undefined}
+      testID={testID ?? `state-location-${reason === 'denied' && !canAskAgain ? 'blocked' : reason}`}
+    >
+      {mapButton}
+    </PanelState>
+  );
+}
+
+interface LocationCopy {
+  icon: BloomIconComponent;
+  title: string;
+  body: string;
+  /** Whether repeating the identical request could plausibly succeed. */
+  retryable: boolean;
+}
+
+const LOCATION_COPY: Record<LocationErrorReason | 'blocked', LocationCopy> = {
+  denied: {
+    icon: RiFocus3Line,
+    title: 'You declined the location prompt',
+    body: "GoWay only asks when you tap something that needs it, so nothing was shared. Try again to be asked once more.",
+    retryable: true,
+  },
+  blocked: {
+    icon: RiSettings3Line,
+    title: 'Location is blocked for GoWay',
+    body: "Your browser or device is refusing without asking, so trying again here won't prompt. Turn location back on for goway.to in its own site or app settings.",
+    retryable: false,
+  },
+  insecureContext: {
+    icon: RiLockLine,
+    title: "This page isn't on a secure connection",
+    body: 'Browsers only share location over https, and this page loaded over http — nobody declined anything. Open GoWay at https://goway.to and it will ask.',
+    retryable: false,
+  },
+  unavailable: {
+    icon: RiErrorWarningLine,
+    title: 'Your device could not get a fix',
+    body: 'Location is allowed, but nothing came back — location services may be off, or there may be no signal where you are.',
+    retryable: true,
+  },
+  timeout: {
+    icon: RiTimerLine,
+    title: 'That took too long',
+    body: 'Your device did not return a position in time. Somewhere with a clearer view of the sky usually helps.',
+    retryable: true,
+  },
+};
 
 /** A search that ran and matched nothing. Not an error; a fact. */
 export function NoResultsState({ query, onClear }: { query: string; onClear?: () => void }) {

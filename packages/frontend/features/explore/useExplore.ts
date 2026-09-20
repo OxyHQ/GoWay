@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useReducedMotion } from 'react-native-reanimated';
+import { toGeoCoordinate } from '@goway.to/sdk';
 import type {
   GeoCoordinate,
   Place,
@@ -31,7 +32,14 @@ import type {
   TravelMode,
 } from '@goway.to/sdk';
 
-import type { GeoBounds, MapApi, MapMarker, MapViewportChange, ResolvedMapViewport } from '@/components/map';
+import type {
+  GeoBounds,
+  MapApi,
+  MapMarker,
+  MapOverlay,
+  MapViewportChange,
+  ResolvedMapViewport,
+} from '@/components/map';
 import { DEFAULT_VIEWPORT } from '@/components/map';
 import { boundsCenter, distanceMeters } from '@/lib/map/geo';
 import { gowayClient } from '@/lib/goway/client';
@@ -41,7 +49,7 @@ import { classifyGoWayError, shouldRetryGoWay, type GoWayFailureKind } from '@/l
 import { buildMarkers } from '@/lib/goway/markers';
 import { MIN_SEARCH_LENGTH, usePlace, usePlacesInBounds, useSearch } from '@/lib/goway/queries';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
-import { useUserLocation } from '@/lib/map/useUserLocation';
+import { useUserLocation, type LocationErrorReason } from '@/lib/map/useUserLocation';
 
 /** What the sheet is currently about. */
 export type ExploreMode = 'browse' | 'search' | 'details';
@@ -71,6 +79,19 @@ const DETAIL_ZOOM = 16;
 
 /** Padding kept around a cluster the user opened, in px. */
 const CLUSTER_FIT_PADDING = 96;
+
+/** Padding kept around a computed route, in px. */
+const ROUTE_FIT_PADDING = 72;
+
+/**
+ * How far an alternative origin must be from the destination to be worth
+ * offering, in metres.
+ *
+ * Opening a place flies the camera to it, so "somewhere on the map" and "the
+ * place you are looking at" can be the same point — and a route from a place
+ * to itself is not a way forward, it is a zero that looks like a bug.
+ */
+const MIN_ALTERNATIVE_ORIGIN_METERS = 50;
 
 interface Committed {
   bounds: GeoBounds;
@@ -130,8 +151,46 @@ export interface ExploreController {
   route: Route | null;
   routeBusy: boolean;
   routeFailure: GoWayFailureKind | 'noRoute' | null;
+  /** The route, as something `MapCanvas` can draw. */
+  routeOverlay: MapOverlay | null;
+  /** WHERE the route starts, so the UI can label it truthfully. */
+  routeOriginKind: RouteOriginKind | null;
+  /**
+   * Why the directions action has no origin, once the user has asked for one.
+   * `null` whenever the user has not asked, or the answer arrived.
+   */
+  locationFailure: LocationErrorReason | null;
+  /** `false` when a retry provably cannot reach a prompt. */
+  canAskLocationAgain: boolean;
+  /** The permission prompt / fix is outstanding. */
+  locationBusy: boolean;
+  /**
+   * Route from the map instead of from the device, as an EXPLICIT choice.
+   * `null` when there is no sensible alternative to offer, so the UI cannot
+   * render a button that would silently invent an origin.
+   */
+  routeFromMap: (() => void) | null;
 
   location: ReturnType<typeof useUserLocation>;
+}
+
+/** Whether the route starts at the device's own fix, or at a point on the map. */
+export type RouteOriginKind = 'device' | 'map';
+
+interface RouteOrigin {
+  kind: RouteOriginKind;
+  coordinate: GeoCoordinate;
+  /**
+   * The marker id this origin was chosen for.
+   *
+   * Carried rather than cleared in an effect, because an effect clears one
+   * render too late: the destination changes during the render the selection
+   * changes in, and a route for {new place, old origin} would already have been
+   * issued — a route the user never asked for, from a point they never
+   * confirmed for this place. Matching it against the live selection makes that
+   * window not exist.
+   */
+  forSelection: string;
 }
 
 export function useExplore(
@@ -377,7 +436,26 @@ export function useExplore(
   // ── Directions ───────────────────────────────────────────────────────────
 
   const [travelMode, setTravelMode] = useState<TravelMode>('walk');
-  const [routeOrigin, setRouteOrigin] = useState<GeoCoordinate | null>(null);
+  const [routeOrigin, setRouteOrigin] = useState<RouteOrigin | null>(null);
+  /**
+   * The place an unanswered Directions press is waiting on, if any.
+   *
+   * It gates the location failure two ways: `useUserLocation` is shared with
+   * the "My location" control, so a failure THERE must not surface as an
+   * unexplained complaint inside a place's directions section; and a permission
+   * prompt the user leaves open while they open a different place must not
+   * answer for that one.
+   */
+  const [askedFor, setAskedFor] = useState<string | null>(null);
+
+  /**
+   * The origin, but only while it still belongs to what is on screen.
+   *
+   * Everything downstream reads THIS, never `routeOrigin` — see
+   * {@link RouteOrigin.forSelection}.
+   */
+  const activeOrigin = routeOrigin && routeOrigin.forSelection === selectedMarkerId ? routeOrigin : null;
+  const directionsAsked = askedFor != null && askedFor === selectedMarkerId;
 
   /**
    * Where the route is going.
@@ -395,14 +473,21 @@ export function useExplore(
     return null;
   }, [placeQuery.data, selection]);
 
+  /**
+   * Where the route starts.
+   *
+   * `travelMode` is part of the key, so switching Walk → Bike → Drive re-runs
+   * the request rather than relabelling the old answer; so is the origin, which
+   * is why upgrading a map origin to a real fix refetches by itself.
+   */
   const routeQuery = useQuery({
-    queryKey: ['goway', 'route', routeDestination, travelMode, routeOrigin],
-    enabled: routeOrigin != null && routeDestination != null,
+    queryKey: ['goway', 'route', routeDestination, travelMode, activeOrigin?.coordinate ?? null],
+    enabled: activeOrigin != null && routeDestination != null,
     retry: shouldRetryGoWay,
     queryFn: async ({ signal }) =>
       gowayClient.routes.directions(
         {
-          origin: { coordinate: routeOrigin as GeoCoordinate },
+          origin: { coordinate: (activeOrigin as RouteOrigin).coordinate },
           destination: routeDestination as RouteLocation,
           mode: travelMode,
         },
@@ -410,16 +495,70 @@ export function useExplore(
       ),
   });
 
+  /** The destination as a POINT, for the "is an alternative origin sane?" test. */
+  const destinationCoordinate: GeoCoordinate | null = useMemo(() => {
+    if (placeQuery.data) return placeQuery.data.location;
+    if (selection?.kind === 'result') return selection.result.coordinate;
+    return null;
+  }, [placeQuery.data, selection]);
+
+  /**
+   * A point on the map the user could route from instead of themselves.
+   *
+   * It is the centre of the box they COMMITTED to — the area they were
+   * browsing — and deliberately not the live camera: opening a place flies the
+   * camera onto it, so the live centre at this moment is the destination.
+   *
+   * `null` means do not offer it at all. Nothing anywhere substitutes this for
+   * the user's position; it becomes the origin only when the user presses the
+   * button that says so.
+   */
+  const mapOrigin = useMemo(() => {
+    const candidate = committed?.center ?? null;
+    if (!candidate || !destinationCoordinate) return null;
+    return distanceMeters(candidate, destinationCoordinate) >= MIN_ALTERNATIVE_ORIGIN_METERS ? candidate : null;
+  }, [committed?.center, destinationCoordinate]);
+
+  const routeFromMap = useCallback(() => {
+    if (!mapOrigin || !selectedMarkerId) return;
+    setRouteOrigin({ kind: 'map', coordinate: mapOrigin, forSelection: selectedMarkerId });
+    // The question has been answered a different way; leaving the location
+    // failure on screen beside a route that now exists describes a problem the
+    // user has already routed around.
+    setAskedFor(null);
+  }, [mapOrigin, selectedMarkerId]);
+
   /**
    * Directions is a location-dependent ACTION, which is the only thing that may
-   * ask for the permission (AGENTS.md → Privacy). A decline is a normal answer:
-   * no route, no error screen, and the map is untouched.
+   * ask for the permission (AGENTS.md → Privacy).
+   *
+   * Every way this can fail is now SAID. The previous version was
+   * `if (coordinate) setRouteOrigin(coordinate)` with no else, so a decline, a
+   * device with no fix, a timeout and a page served over http all produced the
+   * same nothing — the button that "does nothing" the bug report describes.
    */
   const requestDirections = useCallback(() => {
+    const target = selectedMarkerId;
+    if (!target) return;
+    setAskedFor(target);
     void location.locate().then((coordinate) => {
-      if (coordinate) setRouteOrigin(coordinate);
+      if (!coordinate) return; // `location.error` now carries the reason.
+      setRouteOrigin({ kind: 'device', coordinate, forSelection: target });
+      setAskedFor(null);
     });
-  }, [location]);
+  }, [location, selectedMarkerId]);
+
+  /**
+   * Stop HOLDING a coordinate the screen has moved on from.
+   *
+   * Correctness is already handled by matching `forSelection` above; this is
+   * the privacy half of the same rule — a fix is transient request data, so the
+   * moment it can no longer be used it stops being kept (AGENTS.md → Privacy).
+   */
+  useEffect(() => {
+    setRouteOrigin((current) => (current && current.forSelection !== selectedMarkerId ? null : current));
+    setAskedFor((current) => (current !== null && current !== selectedMarkerId ? null : current));
+  }, [selectedMarkerId]);
 
   const route = routeQuery.data?.routes[0] ?? null;
   const routeFailure: GoWayFailureKind | 'noRoute' | null = routeQuery.error
@@ -427,6 +566,47 @@ export function useExplore(
     : routeQuery.data && routeQuery.data.routes.length === 0
       ? 'noRoute'
       : null;
+
+  /**
+   * The route as the map's own vocabulary: a `line` overlay over plain GeoJSON.
+   *
+   * Without this the panel shows an ETA for a route the map does not draw,
+   * which is its own kind of "directions did nothing".
+   */
+  const routeOverlay: MapOverlay | null = useMemo(() => {
+    if (!route) return null;
+    return {
+      id: 'goway-route',
+      kind: 'line',
+      data: { type: 'Feature', geometry: route.geometry, properties: {} },
+      paint: { width: 5 },
+    };
+  }, [route]);
+
+  /**
+   * Frame the whole route once it lands.
+   *
+   * The destination is already centred and the origin can be anywhere, so a
+   * drawn route is regularly entirely off screen. `moveTo`/`fitCoordinates` are
+   * programmatic, so this cannot arm "Search this area". Keyed rather than run
+   * on every render: re-framing on a background refetch would yank the map away
+   * from wherever the user had since dragged it.
+   */
+  const framedRoute = useRef<string | null>(null);
+  useEffect(() => {
+    if (!route) {
+      framedRoute.current = null;
+      return;
+    }
+    const key = `${route.id}:${route.distanceMeters}:${route.geometry.coordinates.length}`;
+    if (framedRoute.current === key) return;
+    framedRoute.current = key;
+    mapRef.current?.fitCoordinates(route.geometry.coordinates.map(toGeoCoordinate), {
+      padding: ROUTE_FIT_PADDING,
+      maxZoom: DETAIL_ZOOM,
+      duration: cameraDuration,
+    });
+  }, [route, cameraDuration, mapRef]);
 
   return {
     mode,
@@ -474,6 +654,12 @@ export function useExplore(
     route,
     routeBusy: routeQuery.isFetching,
     routeFailure,
+    routeOverlay,
+    routeOriginKind: activeOrigin?.kind ?? null,
+    locationFailure: directionsAsked ? location.error : null,
+    canAskLocationAgain: location.canAskAgain,
+    locationBusy: location.isLocating,
+    routeFromMap: mapOrigin ? routeFromMap : null,
 
     location,
   };

@@ -39,8 +39,11 @@ import { resolveCategory } from '@/lib/goway/categories';
 import { formatAddress, formatDistance, formatDuration, formatWebsite, websiteUrl } from '@/lib/goway/format';
 import { evaluateOpeningHours } from '@/lib/goway/openingHours';
 import type { GoWayFailureKind } from '@/lib/goway/errors';
+import type { LocationErrorReason } from '@/lib/map/useUserLocation';
 
 import { CapabilityList } from './CapabilityList';
+import { LocationFailureState } from './states';
+import type { RouteOriginKind } from './useExplore';
 
 /** How GoWay describes its own confidence in a record. Words, never a colour. */
 const VERIFICATION_WORDS: Record<Place['verification']['state'], string | null> = {
@@ -60,6 +63,22 @@ export interface PlaceDetailsProps {
   routePending?: boolean;
   /** Set when directions failed, or when no route exists. */
   routeFailure?: GoWayFailureKind | 'noRoute' | null;
+  /**
+   * Where the route starts. `'map'` is NOT the user's position and is labelled
+   * as such wherever a distance or an ETA is shown.
+   */
+  routeOriginKind?: RouteOriginKind | null;
+  /** The permission prompt / fix is outstanding. */
+  locationPending?: boolean;
+  /**
+   * Why Directions has no origin. Rendering this is the difference between the
+   * button working and the button looking dead — see `useExplore`.
+   */
+  locationFailure?: LocationErrorReason | null;
+  /** `false` when asking again provably cannot reach a prompt. */
+  canAskLocationAgain?: boolean;
+  /** Offered beside a location failure; absent when there is nothing sane to offer. */
+  onRouteFromMap?: (() => void) | null;
   travelMode: TravelMode;
   onTravelModeChange: (mode: TravelMode) => void;
   onDirections: () => void;
@@ -71,6 +90,11 @@ export function PlaceDetails({
   route,
   routePending = false,
   routeFailure = null,
+  routeOriginKind = null,
+  locationPending = false,
+  locationFailure = null,
+  canAskLocationAgain = true,
+  onRouteFromMap = null,
   travelMode,
   onTravelModeChange,
   onDirections,
@@ -136,7 +160,16 @@ export function PlaceDetails({
       </View>
 
       <View className="flex-row flex-wrap items-center gap-space-8">
-        <Button variant="primary" size="small" leadingIcon={RiRouteLine} onPress={onDirections}>
+        <Button
+          variant="primary"
+          size="small"
+          leadingIcon={RiRouteLine}
+          onPress={onDirections}
+          disabled={locationPending}
+          accessibilityLabel={
+            routeOriginKind === 'map' ? 'Directions from your location instead of the map' : 'Directions'
+          }
+        >
           Directions
         </Button>
         <Button
@@ -172,6 +205,17 @@ export function PlaceDetails({
           })}
         </View>
 
+        {/* Asking for the permission and waiting for a fix is its own wait, and
+            a visibly different one from waiting for the router: this is the
+            second or ten during which the user is deciding, and calling it
+            "working out the route" would be describing the wrong thing. */}
+        {locationPending ? (
+          <View className="flex-row items-center gap-space-8">
+            <Loading variant="spinner" size="small" />
+            <Text className="text-bodySmall text-muted-foreground">Finding your location…</Text>
+          </View>
+        ) : null}
+
         {routePending ? (
           <View className="flex-row items-center gap-space-8">
             <Loading variant="spinner" size="small" />
@@ -180,9 +224,20 @@ export function PlaceDetails({
         ) : null}
 
         {route ? (
-          <Text className="text-bodySmall text-foreground">
-            {`${formatDuration(route.durationSeconds)} · ${formatDistance(route.distanceMeters)}`}
-          </Text>
+          <View className="gap-space-4">
+            <Text className="text-bodySmall text-foreground">
+              {`${formatDuration(route.durationSeconds)} · ${formatDistance(route.distanceMeters)}`}
+            </Text>
+            {/* A route measured from a point on the map is never allowed to
+                read as a route from the user. Saying so is the whole reason
+                the origin carries its provenance this far. */}
+            {routeOriginKind === 'map' ? (
+              <Text className="text-caption text-muted-foreground">
+                Measured from the area you were browsing, not from your location. Tap Directions to use your
+                location instead.
+              </Text>
+            ) : null}
+          </View>
         ) : null}
 
         {routeFailure === 'noRoute' ? (
@@ -196,6 +251,18 @@ export function PlaceDetails({
               ? "Directions need a connection, and GoWay can't reach the network."
               : "Directions aren't available right now."}
           </Text>
+        ) : null}
+
+        {/* The state the bug report was missing. Four different reasons, four
+            different sentences, and a way forward that is never a silent
+            substitution of somewhere the user never said they were. */}
+        {locationFailure && !locationPending ? (
+          <LocationFailureState
+            reason={locationFailure}
+            canAskAgain={canAskLocationAgain}
+            onRetry={onDirections}
+            onUseMapOrigin={onRouteFromMap ?? undefined}
+          />
         ) : null}
       </View>
 
