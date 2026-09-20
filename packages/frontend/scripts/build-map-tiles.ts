@@ -138,7 +138,7 @@ const MAX_ZOOM = 14;
  * build machine is half an hour — not enough to justify the ambiguity of a
  * mirror.
  */
-const AREAS: Record<string, { url: string; note: string }> = {
+const AREAS: Record<string, { url: string; file?: string; note: string }> = {
   monaco: {
     url: 'https://download.geofabrik.de/europe/monaco-latest.osm.pbf',
     note: 'The fast loop. ~700 kB in, ~420 kB out, about a minute end to end.',
@@ -149,7 +149,12 @@ const AREAS: Record<string, { url: string; note: string }> = {
   },
   planet: {
     url: 'https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf',
-    note: 'The real thing. ~85 GB in, hours of build, ~100 GB out.',
+    // Named explicitly, and NOT `planet.osm.pbf`. The routing engine pulls
+    // this same 85 GB file under the name the upstream gives it, and a
+    // pipeline that insisted on its own name would download it a second time
+    // — which is the one mistake `OSM_DIR` exists to prevent.
+    file: 'planet-latest.osm.pbf',
+    note: 'The real thing. ~85 GB in, hours of build, ~60–100 GB out.',
   },
 };
 
@@ -297,7 +302,7 @@ async function build(area: string, force: boolean): Promise<string> {
   await mkdir(OSM_DIR, { recursive: true });
 
   const jar = await planetilerJar();
-  const pbf = join(OSM_DIR, `${area}.osm.pbf`);
+  const pbf = join(OSM_DIR, source.file ?? `${area}.osm.pbf`);
   await fetchOnce(source.url, pbf, `${area} OSM extract`);
 
   const archive = join(BUILD_DIR, `${area}.pmtiles`);
