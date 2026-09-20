@@ -80,10 +80,12 @@ import {
   isDrawableBounds,
   isDrawableCoordinate,
   isViewport,
+  optionalScalar,
   reportMapDefect,
   resolveInteraction,
   resolveOverlayPaint,
   resolvePadding,
+  runEngineCommand,
   toLngLat,
 } from './shared';
 import {
@@ -267,24 +269,31 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     const emitViewport = (isFinal: boolean, source: MapMoveSource) => {
       const change = handlers.current.onViewportChange;
       if (!change) return;
-      const center = map.getCenter();
-      const bounds = map.getBounds();
-      change({
-        viewport: {
-          latitude: center.lat,
-          longitude: center.lng,
-          zoom: map.getZoom(),
-          bearing: map.getBearing(),
-          pitch: map.getPitch(),
-        },
-        bounds: {
-          west: bounds.getWest(),
-          south: bounds.getSouth(),
-          east: bounds.getEast(),
-          north: bounds.getNorth(),
-        },
-        source,
-        isFinal,
+      // `getCenter`/`getBounds` BUILD `LngLat`s out of the live transform, so a
+      // camera that has gone non-finite throws HERE — and this runs from the
+      // engine's own `move` event, which `jumpTo` fires synchronously inside
+      // whatever effect commanded it. Not reporting a viewport is a stale
+      // "Search this area"; throwing is the error boundary.
+      runEngineCommand('getViewport', () => {
+        const center = map.getCenter();
+        const bounds = map.getBounds();
+        change({
+          viewport: {
+            latitude: center.lat,
+            longitude: center.lng,
+            zoom: map.getZoom(),
+            bearing: map.getBearing(),
+            pitch: map.getPitch(),
+          },
+          bounds: {
+            west: bounds.getWest(),
+            south: bounds.getSouth(),
+            east: bounds.getEast(),
+            north: bounds.getNorth(),
+          },
+          source,
+          isFinal,
+        });
       });
     };
 
@@ -634,10 +643,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           pitch: asFinite(options?.pitch) ?? asFinite(viewport?.pitch) ?? map.getPitch(),
         };
         if (duration <= 0) {
-          map.jumpTo(camera, PROGRAMMATIC);
+          runEngineCommand('jumpTo', () => map.jumpTo(camera, PROGRAMMATIC));
           return;
         }
-        map.easeTo({ ...camera, duration }, PROGRAMMATIC);
+        runEngineCommand('easeTo', () => map.easeTo({ ...camera, duration }, PROGRAMMATIC));
       },
       fitBounds(bounds, options) {
         const map = mapRef.current;
@@ -672,28 +681,43 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         // `maxZoom` goes STRAIGHT into `Math.min(computedZoom, maxZoom)`, and
         // `Math.min(x, NaN)` is NaN — which MapLibre's own `scaleX < 0` guard
         // does not catch, because nothing compares true to NaN. It reaches the
-        // centre it unprojects and throws. Dropping it means the fit uses the
-        // engine's own maximum, which is what omitting it has always meant.
+        // centre it unprojects and throws.
+        //
+        // `Math.min(x, undefined)` is ALSO NaN, and that is the one that shipped:
+        // dropping a bad `maxZoom` to `undefined` and then still writing the KEY
+        // is not the same as omitting it. MapLibre defaults its own `maxZoom`
+        // with `extend`, which copies an own key whose value is `undefined` over
+        // the default — so every fit that simply did not ask for a maximum (the
+        // planner framing a route; the embed's `span=` box) computed a `NaN`
+        // zoom and threw `Invalid LngLat object: (NaN, NaN)`. From the route
+        // framing that is a throw inside a `useEffect`, which is the error
+        // boundary and the whole application.
+        // `optionalScalar` is what makes "the caller did not say" absent rather
+        // than present-and-undefined; see `shared.ts`.
         const maxZoom = asFinite(options?.maxZoom);
         const duration = asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS;
         if (isDegenerateBounds(bounds)) {
-          map.easeTo(
-            {
-              center: [(bounds.west + bounds.east) / 2, (bounds.south + bounds.north) / 2],
-              zoom: Math.min(maxZoom ?? DEGENERATE_FIT_ZOOM, DEGENERATE_FIT_ZOOM),
-              duration,
-            },
-            PROGRAMMATIC,
+          runEngineCommand('easeTo', () =>
+            map.easeTo(
+              {
+                center: [(bounds.west + bounds.east) / 2, (bounds.south + bounds.north) / 2],
+                zoom: Math.min(maxZoom ?? DEGENERATE_FIT_ZOOM, DEGENERATE_FIT_ZOOM),
+                duration,
+              },
+              PROGRAMMATIC,
+            ),
           );
           return;
         }
-        map.fitBounds(
-          [
-            [bounds.west, bounds.south],
-            [bounds.east, bounds.north],
-          ],
-          { padding, duration, maxZoom },
-          PROGRAMMATIC,
+        runEngineCommand('fitBounds', () =>
+          map.fitBounds(
+            [
+              [bounds.west, bounds.south],
+              [bounds.east, bounds.north],
+            ],
+            { padding, duration, ...optionalScalar('maxZoom', maxZoom) },
+            PROGRAMMATIC,
+          ),
         );
       },
       fitCoordinates(coordinates, options) {
@@ -707,15 +731,23 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           reportMapDefect('setBearing', `Ignored setBearing: ${String(bearing)} is not a bearing.`);
           return;
         }
-        mapRef.current?.easeTo(
-          { bearing: heading, duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS },
-          PROGRAMMATIC,
+        const map = mapRef.current;
+        if (!map) return;
+        runEngineCommand('easeTo', () =>
+          map.easeTo(
+            { bearing: heading, duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS },
+            PROGRAMMATIC,
+          ),
         );
       },
       resetNorth(options) {
-        mapRef.current?.easeTo(
-          { bearing: 0, pitch: 0, duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS },
-          PROGRAMMATIC,
+        const map = mapRef.current;
+        if (!map) return;
+        runEngineCommand('easeTo', () =>
+          map.easeTo(
+            { bearing: 0, pitch: 0, duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS },
+            PROGRAMMATIC,
+          ),
         );
       },
       async getViewport(): Promise<ResolvedMapViewport | null> {
