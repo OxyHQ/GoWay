@@ -283,13 +283,38 @@ jobs:
           local_bytes="$(wc -c <"$dist$entry")"
           echo "entry bundle: $entry ($local_bytes bytes locally)"
 
-          status="$(fetch entry "$origin$entry")"
-          [[ "$status" == "200" ]] || { echo "::error::$origin$entry answered HTTP $status; this build's entry bundle is not live."; exit 1; }
-
-          if grep -Eiq '^content-type: *text/html' "$work/entry.headers"; then
-            echo "::error::$origin$entry came back as HTML — that is the SPA fallback, which means the asset is absent and an old deployment is live."
-            exit 1
-          fi
+          # POLL, rather than sample once. `wrangler deploy` returns as soon as
+          # the upload is accepted, and this step ran 0.9 s later on run
+          # 35491132726 and read the SPA fallback — the deployment was fine and
+          # went live seconds afterwards with exactly this hash and byte count.
+          #
+          # curl's own --retry cannot cover this. The propagation window does
+          # not look like an error to curl: it is a 200 serving index.html, so
+          # --retry-all-errors never fires. The condition to wait on is the
+          # CONTENT TYPE, which only this loop can see.
+          #
+          # The assertion itself is unchanged and still fails the deploy. A
+          # genuinely absent asset serves the fallback forever, so it exhausts
+          # the budget and reports the same error it always did; only a
+          # propagation race now resolves instead of failing the build. The
+          # budget is bounded so a real failure cannot hang the job.
+          entry_deadline=$(( SECONDS + 120 ))
+          while :; do
+            status="$(fetch entry "$origin$entry")"
+            if [[ "$status" == "200" ]] && ! grep -Eiq '^content-type: *text/html' "$work/entry.headers"; then
+              break
+            fi
+            if (( SECONDS >= entry_deadline )); then
+              if [[ "$status" != "200" ]]; then
+                echo "::error::$origin$entry answered HTTP $status for 120s; this build's entry bundle is not live."
+              else
+                echo "::error::$origin$entry came back as HTML for 120s — that is the SPA fallback, which means the asset is absent and an old deployment is live."
+              fi
+              exit 1
+            fi
+            echo "waiting for $entry to propagate (HTTP $status, $(( entry_deadline - SECONDS ))s left)"
+            sleep 5
+          done
 
           served_bytes="$(wc -c <"$work/entry.body")"
           # A floor rather than an equality: a proxy may re-encode, but it
