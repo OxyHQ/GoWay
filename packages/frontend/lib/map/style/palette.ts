@@ -11,15 +11,15 @@
  * to a button destroys the other. So these values live here, in map terms, and
  * nothing in `components/` or `features/` reads them.
  *
- * ## Where the light palette comes from
+ * ## Where the ground colours come from
  *
- * The anchor colours are the ones the product owner supplied. They arrived as a
- * **Google Maps JS API** style array (`featureType` / `elementType` / `stylers`),
- * which is a different language from a MapLibre style document: Google names
- * abstract feature *classes* and cascades; MapLibre names the vector tile's own
- * `source-layer` and `class` values and does not cascade. So the palette was
- * translated onto the OpenMapTiles schema OpenFreeMap actually serves, feature
- * class by feature class, rather than consumed:
+ * The anchor hues were supplied by the product owner as a **Google Maps JS API**
+ * style array (`featureType` / `elementType` / `stylers`), which is a different
+ * language from a MapLibre style document: Google names abstract feature
+ * *classes* and cascades; MapLibre names the vector tile's own `source-layer`
+ * and `class` values and does not cascade. So the palette was translated onto
+ * the OpenMapTiles schema OpenFreeMap serves, feature class by feature class,
+ * rather than consumed:
  *
  * | supplied (Google)                      | here                                   |
  * |----------------------------------------|----------------------------------------|
@@ -27,17 +27,35 @@
  * | `landscape.natural` `#d0e3b4`          | {@link CartographyPalette.natural}, i.e. `landcover` wood/grass/scrub |
  * | `landscape.natural.terrain` hidden     | no relief raster, no hillshade, `landcover class=rock` dropped |
  * | `poi.park` `#bde6ab`                   | {@link CartographyPalette.park} — the `park` source-layer + `landuse class=park` |
- * | `poi.medical` `#fbd3da`                | {@link CartographyPalette.medical} — `landuse` hospital |
+ * | `poi.medical` `#fbd3da`                | {@link CartographyPalette.medical} — toned down, see below |
  * | `transit.station.airport` `#cfb2db`    | {@link CartographyPalette.airport} — the `aeroway` polygons |
  * | `water` `#a2daf2`                      | {@link CartographyPalette.water} |
- * | `road.highway` fill `#ffe15f` / stroke `#efd151` | {@link CartographyPalette.highway} — `motorway` + `trunk` |
- * | `road.arterial` fill `#ffffff`         | {@link CartographyPalette.arterial} — `primary`/`secondary`/`tertiary` |
- * | `road.local` fill black                | {@link CartographyPalette.local} — `minor`/`service`, see `tuning.ts` |
- * | `road` `geometry.stroke` hidden        | casings off everywhere **except** highway, which names a stroke of its own |
+ * | `road.highway` `#ffe15f` / `#efd151`   | {@link CartographyPalette.roads} motorway/trunk — desaturated, see below |
  *
- * Three of the supplied rules are contested rather than applied silently —
- * black local roads, hidden road/POI labels, and POIs switched off entirely.
- * Each is a single flag in `tuning.ts` with the argument written next to it.
+ * ## Where the road model comes from — and why it changed
+ *
+ * The first cut of this style obeyed the supplied array literally: `road` →
+ * `geometry.stroke` → `visibility: off` globally, so only the highway tier kept
+ * a casing, and `road.local` → `geometry.fill` → black. Shipped and looked at,
+ * the first thing the product owner saw was *"unas líneas negras en las
+ * carreteras"* — every residential street rendering as a bare black stroke on
+ * sand, a black mesh over any dense grid. The verdict was Apple over literal
+ * fidelity, so the road model is now Apple's and the supplied road colours are
+ * not used:
+ *
+ *  - **Every class has a casing**, a fine line slightly darker than its fill,
+ *    drawn wider and underneath. That is what makes a road read as a *ribbon*
+ *    rather than a stroke, and it is what separates overlapping roads at a
+ *    junction.
+ *  - **Fills are white or near-white**, warming very slightly up the hierarchy.
+ *  - **Hierarchy is carried by width, not colour.** A motorway is a wide white
+ *    ribbon with a soft warm tint — not a yellow line. The supplied `#ffe15f`
+ *    survives only as the *hue* behind a much paler, desaturated tint.
+ *
+ * The ground colours were never the problem and are unchanged, except
+ * {@link CartographyPalette.medical}: `#fbd3da` measured as one of the brightest
+ * things on screen at city zoom, louder than any label, so it is now a quiet
+ * warm tint in the same family.
  *
  * ## Where the dark palette comes from
  *
@@ -49,10 +67,13 @@
  *    for water to be.
  *  - **Water is darker than land.** In daylight water is the darker mass, so at
  *    night it stays the darker mass or every coastline reads inside-out.
- *  - Accent hues (park green, medical pink, airport violet, highway amber) keep
- *    their hue and lose their lightness and most of their saturation.
+ *  - Accent hues (park green, medical pink, airport violet, motorway amber)
+ *    keep their hue and lose their lightness and most of their saturation.
  *  - Roads are *lighter* than land, so the network reads as lines of light, and
- *    the tiers keep their supplied ranking — see {@link CartographyPalette.local}.
+ *    they keep the same width-led hierarchy. Casings go **darker than the
+ *    land**, because on a dark ground a casing cannot separate a road from the
+ *    terrain — nothing can, the road is already the bright thing — so its only
+ *    remaining job is separating roads from each other at an interchange.
  *  - Labels are warm off-white over dark halos.
  *
  * Every value is an opaque hex or an `rgba()`; MapLibre parses both on web and
@@ -65,15 +86,37 @@ export interface RoadTone {
   /** The road surface itself. */
   fill: string;
   /**
-   * The casing drawn wider and *underneath*, which is what separates
-   * overlapping roads from each other at junctions and interchanges.
+   * The casing drawn wider and *underneath*.
    *
-   * `null` means the supplied palette hides this tier's stroke, and the layer
-   * is not emitted at all — not emitted as transparent, not emitted at width
-   * zero. A layer that draws nothing still costs a tile-wide geometry upload.
+   * `null` means this tier draws no casing and no casing layer is emitted —
+   * not emitted as transparent, not emitted at width zero, because a layer
+   * that draws nothing still costs a tile-wide geometry upload. Only
+   * footpaths, which are dashed, and anything the `LOCAL_ROAD_FILL` override
+   * in `tuning.ts` touches, use it.
    */
   casing: string | null;
 }
+
+/**
+ * The road hierarchy, in OpenMapTiles `transportation.class` terms.
+ *
+ * Named after the schema rather than after Google's abstractions (`highway` /
+ * `arterial` / `local`) so that a filter and a colour can never disagree about
+ * which roads they mean.
+ */
+export type RoadTier =
+  | 'motorway'
+  | 'motorwayLink'
+  | 'trunk'
+  | 'trunkLink'
+  | 'primary'
+  | 'secondary'
+  | 'tertiary'
+  | 'local'
+  | 'service'
+  | 'track'
+  | 'path'
+  | 'tunnel';
 
 /**
  * Semantic POI groups.
@@ -120,7 +163,7 @@ export interface CartographyPalette {
   parkOutline: string;
   /** Sports pitches, playgrounds, golf greens. */
   pitch: string;
-  /** `poi.medical`: hospital and clinic grounds. */
+  /** `poi.medical`: hospital and clinic grounds, toned to a quiet warm tint. */
   medical: string;
   /** Schools, universities, civic campuses. */
   institution: string;
@@ -137,30 +180,8 @@ export interface CartographyPalette {
   waterway: string;
 
   // --- Roads -------------------------------------------------------------
-  /** `road.highway`: `motorway` and `trunk`. The one tier with a stroke. */
-  highway: RoadTone;
-  /** Motorway/trunk slip roads. The same colour, thinner. */
-  highwayLink: RoadTone;
-  /** `road.arterial`: `primary`, `secondary`, `tertiary`. */
-  arterial: RoadTone;
-  /**
-   * `road.local`: `minor` and `service`.
-   *
-   * The supplied palette asks for **black**, which inverts the usual
-   * light-map hierarchy (Apple's local streets are white with a fine casing).
-   * It is applied literally and isolated behind `LOCAL_ROAD_FILL` in
-   * `tuning.ts`; read the argument there before changing it. The dark palette
-   * mirrors the *ranking* rather than the value: in daylight black-on-sand
-   * makes local streets the highest-contrast road, so at night they are the
-   * lightest one.
-   */
-  local: RoadTone;
-  /** Tracks, alleys and driveways: local, muted. */
-  track: RoadTone;
-  /** Footways, pedestrian streets, steps, cycleways. */
-  path: RoadTone;
-  /** Roads passing under something: the same network, dimmed toward {@link land}. */
-  tunnel: RoadTone;
+  /** Every tier's fill + casing. Widths live in `layers.ts`. */
+  roads: Record<RoadTier, RoadTone>;
   rail: string;
   /** The cross-hatching that makes a railway read as a railway. */
   railHatch: string;
@@ -197,13 +218,14 @@ export interface CartographyPalette {
 }
 
 /**
- * Daylight — the supplied palette, translated.
+ * Daylight.
  *
  * The warm sand ground (`#f7f1df`, ~92% lightness at a +45° hue) is the single
- * decision the rest hangs off: on pure white land a white arterial would be
- * invisible, and on neutral grey land the whole map looks printed. Sand keeps
- * `#ffffff` arterials readable as *brighter* than the ground, and gives the
- * yellow highway somewhere to sit.
+ * decision the rest hangs off: on pure white land a white road would be
+ * invisible and the casings would have to carry everything; on neutral grey
+ * land the whole map looks printed. Sand makes `#ffffff` read as *brighter*
+ * than the ground at every width, which is what lets colour step back and let
+ * width do the ranking.
  */
 export const LIGHT_PALETTE: CartographyPalette = {
   appearance: 'light',
@@ -215,9 +237,12 @@ export const LIGHT_PALETTE: CartographyPalette = {
   park: '#bde6ab',
   parkOutline: '#a9d894',
   pitch: '#b5dfa2',
-  medical: '#fbd3da',
+  // Supplied as `#fbd3da`. That measured as the loudest thing on a city-zoom
+  // screen — a hospital campus outshouting every label near it. Same hue, most
+  // of the saturation gone, so it still reads as "not ordinary ground".
+  medical: '#f6e3e1',
   institution: '#efe9d2',
-  airport: '#cfb2db',
+  airport: '#ddc9e6',
   sand: '#f3e6c4',
   wetland: '#c8dcb2',
   ice: '#e6f0f4',
@@ -226,39 +251,52 @@ export const LIGHT_PALETTE: CartographyPalette = {
   water: '#a2daf2',
   waterway: '#96d1ec',
 
-  highway: { fill: '#ffe15f', casing: '#efd151' },
-  highwayLink: { fill: '#ffe894', casing: '#efd151' },
-  // `road` → `geometry.stroke` → visibility off, in the supplied palette.
-  // Highway is the one tier that names a stroke of its own, so it is the one
-  // tier that keeps one.
-  arterial: { fill: '#ffffff', casing: null },
-  local: { fill: '#000000', casing: null },
-  track: { fill: '#ded6bb', casing: null },
-  path: { fill: '#ddd3b5', casing: null },
-  tunnel: { fill: '#eee8d4', casing: null },
+  // Fills warm as the hierarchy rises; casings are one step darker than their
+  // own fill, never a shared grey. The motorway tint is the supplied `#ffe15f`
+  // hue at a fraction of its saturation — warm enough to find the through
+  // route at a glance, quiet enough that it is not the first thing you see.
+  roads: {
+    motorway: { fill: '#fce9bd', casing: '#e7cd8d' },
+    motorwayLink: { fill: '#fdeecc', casing: '#e9d3a0' },
+    trunk: { fill: '#fdf0d2', casing: '#e9d8a9' },
+    trunkLink: { fill: '#fdf3dc', casing: '#ebdcb5' },
+    primary: { fill: '#fffdf6', casing: '#e4dbc3' },
+    secondary: { fill: '#ffffff', casing: '#e6ddc7' },
+    tertiary: { fill: '#ffffff', casing: '#e8e0cc' },
+    local: { fill: '#ffffff', casing: '#e6dfc9' },
+    service: { fill: '#fdfbf4', casing: '#e9e2cd' },
+    track: { fill: '#efe7d0', casing: '#ded4b6' },
+    // Footways are dashed, and a dashed line with a casing reads as a ladder.
+    path: { fill: '#ddd3b5', casing: null },
+    tunnel: { fill: '#f3eddb', casing: '#e7dfc8' },
+  },
   rail: '#d8cdae',
   railHatch: '#c3b78f',
   ferry: '#8dcae8',
-  aeroway: { fill: '#e3d0ea', casing: null },
+  aeroway: { fill: '#ece0f1', casing: null },
 
-  building: '#eee6cd',
-  buildingOutline: '#e0d5b4',
+  // Present, not loud. A footprint should be findable when you look for it and
+  // invisible when you are reading a label over it.
+  building: '#ebe2c6',
+  buildingOutline: '#dccfa8',
 
   boundaryCountry: '#c6b894',
   boundaryRegion: '#d8ceb0',
 
-  labelPlace: '#2f2b21',
-  labelPlaceMinor: '#4e483a',
-  labelRegion: '#5d5646',
-  labelRoad: '#6b6452',
+  labelPlace: '#2b2720',
+  labelPlaceMinor: '#514a3b',
+  labelRegion: '#655d4b',
+  // Street names recede on Apple's map. Lighter than a place label, never
+  // black, and small — see the size ramp in `layers.ts`.
+  labelRoad: '#7a7261',
   labelWater: '#3f87a8',
   labelPark: '#4e7c3c',
-  labelPoi: '#5f5849',
-  halo: 'rgba(247,241,223,0.92)',
+  labelPoi: '#6a6252',
+  halo: 'rgba(247,241,223,0.95)',
   haloStrong: '#ffffff',
 
   // Derived from the three supplied POI hues — park green, medical pink,
-  // airport violet — plus the highway amber, so the ramp reads as one family.
+  // airport violet — plus the motorway amber, so the ramp reads as one family.
   poi: {
     foodDrink: '#d9813f',
     shopping: '#bfa23e',
@@ -277,13 +315,13 @@ export const LIGHT_PALETTE: CartographyPalette = {
 /**
  * Night — derived from the light palette, not from `fiord`.
  *
- * Two inversions that are not inversions:
+ * Same road model: every tier casinged, hierarchy by width, motorway the one
+ * warm tier. Two things invert and neither is an inversion:
  *
  *  - Water (`#111a22`) is darker than land (`#23262b`), as it is in daylight.
- *  - The road tiers keep their supplied *ranking*. In daylight the order of
- *    contrast against the ground is local (black) → highway (yellow) →
- *    arterial (white, deliberately quiet on sand). At night that becomes local
- *    (lightest) → highway (amber) → arterial (quiet mid-grey).
+ *  - Casings go *below* the land's lightness rather than above their fill's.
+ *    A casing's job here is the seam between two roads at an interchange; a
+ *    lighter casing would instead draw a halo around every street.
  */
 export const DARK_PALETTE: CartographyPalette = {
   appearance: 'dark',
@@ -292,10 +330,10 @@ export const DARK_PALETTE: CartographyPalette = {
   landBuiltUp: '#272b31',
   natural: '#273020',
   farmland: '#282c22',
-  park: '#233620',
-  parkOutline: '#2d4229',
-  pitch: '#263b23',
-  medical: '#35242a',
+  park: '#1f2e1c',
+  parkOutline: '#283a24',
+  pitch: '#223420',
+  medical: '#2e2729',
   institution: '#282a2b',
   airport: '#2e2635',
   sand: '#2e2b23',
@@ -306,33 +344,40 @@ export const DARK_PALETTE: CartographyPalette = {
   water: '#111a22',
   waterway: '#16222c',
 
-  highway: { fill: '#5f5326', casing: '#7a6a2e' },
-  highwayLink: { fill: '#554b25', casing: '#6b5d2a' },
-  arterial: { fill: '#3a3e45', casing: null },
-  local: { fill: '#8d949d', casing: null },
-  track: { fill: '#2f3238', casing: null },
-  path: { fill: '#3a3e45', casing: null },
-  tunnel: { fill: '#2a2e34', casing: null },
+  roads: {
+    motorway: { fill: '#5e5234', casing: '#2b2619' },
+    motorwayLink: { fill: '#564c33', casing: '#2b2619' },
+    trunk: { fill: '#524a35', casing: '#282318' },
+    trunkLink: { fill: '#4b4433', casing: '#282318' },
+    primary: { fill: '#4a4f58', casing: '#1a1e23' },
+    secondary: { fill: '#454a53', casing: '#1a1e23' },
+    tertiary: { fill: '#40454d', casing: '#1a1e23' },
+    local: { fill: '#3b4048', casing: '#1a1e23' },
+    service: { fill: '#34383f', casing: '#1a1e23' },
+    track: { fill: '#2f333a', casing: '#1e2127' },
+    path: { fill: '#474c54', casing: null },
+    tunnel: { fill: '#2c3036', casing: '#1e2127' },
+  },
   rail: '#3a3f46',
   railHatch: '#4c525a',
   ferry: '#294050',
   aeroway: { fill: '#373040', casing: null },
 
-  building: '#2a2e34',
-  buildingOutline: '#343941',
+  building: '#2d3138',
+  buildingOutline: '#3a4048',
 
   boundaryCountry: '#4d535c',
   boundaryRegion: '#3a3f47',
 
-  labelPlace: '#efeade',
-  labelPlaceMinor: '#c8c2b4',
-  labelRegion: '#b1aa9c',
-  labelRoad: '#a7a193',
+  labelPlace: '#f1ede3',
+  labelPlaceMinor: '#c5bfb2',
+  labelRegion: '#aaa496',
+  labelRoad: '#9a958a',
   labelWater: '#5d95b1',
   labelPark: '#7ba066',
-  labelPoi: '#b4ada0',
-  halo: 'rgba(18,21,25,0.85)',
-  haloStrong: 'rgba(14,17,20,0.95)',
+  labelPoi: '#aaa499',
+  halo: 'rgba(18,21,25,0.88)',
+  haloStrong: 'rgba(14,17,20,0.96)',
 
   poi: {
     foodDrink: '#e29656',

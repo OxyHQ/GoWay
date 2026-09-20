@@ -197,9 +197,15 @@ line:
 
 | flag | supplied | shipped | why |
 |---|---|---|---|
-| `LOCAL_ROAD_FILL` | black | **black** (literal) | applied as asked; the tension with a label-forward map is written next to it, along with the Apple-like white+casing alternative |
+| `LOCAL_ROAD_FILL` | black, casings off | **`null`** — the palette's Apple recipe | the black shipped, was seen live, and was rejected: *"veo unas líneas negras en las carreteras"*. Roads now use white fills with a casing on every class. Setting a colour here restores the supplied literal treatment |
 | `SHOW_ROAD_AND_POI_LABELS` | off | **on** | a map whose streets and places have no names cannot be searched, navigated or recognised — this restyles nothing, it removes the product's job |
 | `SHOW_BASEMAP_POIS` | `poi.business` off | **on, restrained** | switching POIs off would deliberately ship the dark-mode gap this style exists to close |
+
+The supplied array remains the source for land, water, park, airport and the
+motorway *hue*; those read well and are unchanged. What changed is the road
+model and the two loudest accents — `poi.medical` `#fbd3da` measured as the
+brightest thing on a city-zoom screen and is now a quiet warm tint in the same
+family.
 
 Cartography is **not** Bloom. No Bloom token appears in a geographic layer and
 no cartographic colour is reachable from `components/` or `features/`: a brand
@@ -257,10 +263,15 @@ landcover-wetland  landcover-sand  landuse-pitch  landuse-cemetery
 landuse-medical  landuse-institution  landuse-park  park  park-outline
 water  waterway
 aeroway-area  aeroway-runway  aeroway-taxiway
-road-tunnel  road-path  road-track  road-service  road-local
-road-arterial-tertiary  road-arterial-secondary  road-arterial-primary
-road-highway-link-casing  road-highway-casing  road-highway-link  road-highway
-road-ferry  road-rail  road-rail-hatch
+road-tunnel-casing  road-tunnel
+road-service-casing  road-track-casing  road-local-casing
+road-tertiary-casing  road-secondary-casing  road-primary-casing
+road-trunk-link-casing  road-trunk-casing
+road-motorway-link-casing  road-motorway-casing
+road-service  road-track  road-local
+road-tertiary  road-secondary  road-primary
+road-trunk-link  road-trunk  road-motorway-link  road-motorway
+road-path  road-ferry  road-rail  road-rail-hatch
 building
 boundary-region  boundary-country
 ── goway:anchor:labels ───────────── everything below is terrain, above is type
@@ -273,8 +284,17 @@ label-place-minor  label-place-village  label-place-town  label-place-city
 label-place-region  label-place-country
 ```
 
-Two orderings in there are load-bearing and invisible in review:
+Road ids are named after the OpenMapTiles `transportation.class` they draw, so
+a filter and an id cannot disagree about which roads they mean. They replaced
+`road-highway*` / `road-arterial-*` when casings were added to every tier; if
+you have a branch referencing the old names, that is the rename.
 
+Three orderings in there are load-bearing and invisible in review:
+
+- **All road casings precede all road fills.** Where a residential street meets
+  a primary, the primary's fill covers the residential's casing and the
+  junction reads as continuous tarmac. Interleaved per tier, every crossing
+  grows a visible seam.
 - **`landuse-built-up` is at the BOTTOM of the ground stratum.** `landuse
   class=residential` polygons are enormous — in a Madrid z14 tile they cover
   108% of it — and they share a source-layer with the small specific ones.
@@ -282,6 +302,46 @@ Two orderings in there are load-bearing and invisible in review:
   over the parks; it turned El Retiro into plain sand until the order was fixed.
 - **Place labels are LAST.** MapLibre places symbols starting from the last
   symbol layer, so being last is what makes a city name win a collision.
+
+### The road model, and the type ramp
+
+These two are the whole "does it look like Apple Maps" question, so they are
+written down rather than left in the numbers.
+
+**Roads.** Every class has a fill and a casing — a fine line one step darker,
+drawn wider and underneath. Fills are white or near-white, warming very
+slightly up the hierarchy, and only motorway/trunk carry a visible tint (the
+supplied `#ffe15f` hue at a fraction of its saturation). **Hierarchy is carried
+by width, not colour**: at z15 a motorway is 11.3px, a primary 7.4, a secondary
+6.0, a tertiary 4.8, a residential street 3.6, a service road 1.8 — a clean
+monotonic ladder with roughly 3:1 between the top and the bottom of the
+drivable network, held at about the same ratio at every zoom so the map does
+not re-rank as you zoom.
+
+The casing width is **derived** from the fill width, never written down twice:
+a constant pen (0.7px per side at z8 rising to 5.2px at z20), clamped to 1.2×
+the fill. The constant is what makes every road look drawn with the same
+instrument — a *ratio* would give a motorway a four-times-thicker edge and
+start a second hierarchy competing with the width one. The clamp is what
+rescues low zoom, where a flat pen on a 0.6px residential street renders a town
+as warm-grey tangle with a white thread inside it.
+
+**Type.** Apple is label-forward, and "forward" is a ranking:
+
+```
+city  >  town  >  village  >  neighbourhood  >  POI  >  street
+```
+
+Size carries most of it — a city at z12 is 23px and a street name at z16 is
+10.5px, better than two to one. Colour carries the rest: place names are a
+near-black warm grey, street and POI names a lighter warm grey that visibly
+recedes. Weight would be the third lever, but OpenFreeMap's glyph server serves
+only `Noto Sans Regular` and `Noto Sans Bold` (`Medium` and `SemiBold` both
+404), so the ladder has two rungs and Bold is spent entirely on place names.
+Neighbourhoods are uppercase and letter-spaced, which is Apple's one
+typographic tell for "this is an area, not a point". Halos run 1.4–2.0px
+throughout, because a label-forward map puts type over a busy basemap by
+definition and a thin halo is how a street name dies at a park edge.
 
 Everything **GoWay** adds is namespaced `goway:` — MapLibre keys sources and
 layers in one flat namespace shared with the loaded style document, so an
@@ -309,17 +369,22 @@ goway:anchor:labels          the reserved overlay anchor (in the style itself)
   the reserved `goway:anchor:labels` layer. The old derivation survives as the
   fallback for a style GoWay did not author (the `openfreemap` source, or an
   `EXPO_PUBLIC_MAP_STYLE_URL_*` override), where no such promise exists.
-- **Nobody has seen the cartography in a real renderer yet.** The style is
-  validated against the MapLibre style spec, every layer's filter has been
-  evaluated against real decoded `.pbf` tiles over six cities, and both
-  appearances have been rasterised offline — but an offline rasteriser has no
-  glyphs, no label collision, no dash patterns and no antialiasing rules. Type
-  size, halo weight, label density and the exact feel of the road hierarchy
-  need human eyes at several zooms.
+- **The type ramp has never been seen rendered.** The style is validated
+  against the MapLibre style spec, every layer's filter has been evaluated
+  against real decoded `.pbf` tiles over six cities, and both appearances are
+  rasterised offline before every cartography change — but an offline
+  rasteriser has **no glyphs and no label collision**, so it draws no type at
+  all. Everything in "The road model, and the type ramp" above about sizes,
+  halos and weights is reasoned from Apple's hierarchy, not observed. Label
+  density at z13–z15 in a dense city is the specific thing to look at: too many
+  POI labels and the map stops being quiet.
 - **No road shields, no one-way arrows, no house numbers, no 3D buildings.**
-  All four are available in the schema and all four are deliberate omissions on
-  a "quiet map" brief. Shields in particular are worth revisiting for driving
-  directions (#6).
+  All four are in the schema and all four are deliberate omissions. Shields
+  were considered for this pass and dropped: OpenFreeMap's sprite ships the
+  US-centric `us-interstate_*` / `road_*` images as **non-SDF** PNGs, so they
+  cannot be recoloured to match, and outside the US they would render OSM's
+  shield vocabulary rather than anything Apple-like. They are worth revisiting
+  for driving directions (#6) with GoWay-drawn shield images.
 - **`maplibre-gl` is v6, and its worker is vendored to our own origin.** GoWay
   used to pin v5.24.0, whose UMD bundle inlined the tile worker as a Blob so
   there was nothing to vendor. That pin is gone: **GHSA-jrc7-96c5-q579**
