@@ -402,6 +402,17 @@ describe('serving a tile from R2', () => {
     expect(two.MAP_TILES.reads.length).toBeGreaterThan(0);
   });
 
+  test('answers HEAD for a cached miss with 404, not 200', async () => {
+    // A cached response carries its own status, and `new Response(null, {
+    // headers })` does not: without carrying it across, a HEAD for an ocean
+    // tile would answer "this tile exists" with an empty body.
+    const { env: e } = env(buildArchive(new Map([['14/8290/6119', TILE_BODY]])));
+    const get = tileRequest(14, 8291, 6119);
+    expect((await serveTile(new URL(get.url), get, e, ctx)).status).toBe(404);
+    const head = tileRequest(14, 8291, 6119, 'HEAD');
+    expect((await serveTile(new URL(head.url), head, e, ctx)).status).toBe(404);
+  });
+
   test('answers HEAD with the headers and no body', async () => {
     const { env: e } = env(buildArchive(new Map([['14/8290/6119', TILE_BODY]])));
     const request = tileRequest(14, 8290, 6119, 'HEAD');
