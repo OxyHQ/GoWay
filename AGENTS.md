@@ -33,6 +33,8 @@ Always **bun**; commit `bun.lock` with its `package.json`.
 - `@goway.to/sdk` is the supported integration boundary for FairCoin, Moovo, Mercaria, Homiio, Mention and Clarity. Public contracts live in `packages/shared-types`; the SDK re-exports them.
 - Never publish an internal Drizzle/PostGIS row shape as an SDK contract, and never let a Python worker implementation detail become one.
 - MapLibre, OpenFreeMap, Photon, Nominatim, Valhalla, COLMAP and gsplat are replaceable adapters behind GoWay interfaces. Feature code imports the GoWay abstraction, never the provider.
+- Every map GoWay draws carries the mark bottom-left and the data credit bottom-right, both rendered by `MapCanvas` with no prop to disable — the embed included.
+- The logo is geometry (`packages/frontend/components/brand/artwork.ts`), drawn and never fetched; `public/brand/*` is generated from it and gated by `brand:check`. Its blue is ink (`--color-brand-goway`), never Bloom's `--primary`.
 - Every GoWay-enriched place gets a stable GoWay Place ID independent of provider IDs; deep links use it (`https://goway.to/place/<placeId>`). Preserve source provenance and never destructively overwrite a source fact.
 
 ## Privacy

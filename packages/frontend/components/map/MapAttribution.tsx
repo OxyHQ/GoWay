@@ -23,6 +23,26 @@
  * here means the credit rises above whatever is claimed without the claimant
  * and the credit knowing about each other, and without a screen being able to
  * get the geometry wrong.
+ *
+ * ## Why it is on the RIGHT now
+ *
+ * Because `MapBrand` took the left corner, and the layout is Google's for the
+ * same reason Google's is: brand in one bottom corner, data credit in the
+ * other. Two things follow that are worth stating, because the obvious
+ * alternatives are both wrong:
+ *
+ *  - The credit was MOVED, not shrunk, folded into the logo or dropped. It is
+ *    an OSM/OpenMapTiles licence obligation and it is still a full-size,
+ *    tappable line of links at the same distance from the edge as before.
+ *  - It is not free to sit wherever is left over. A wrapped credit on a narrow
+ *    phone would run straight under the mark, so this reads
+ *    {@link MAP_BRAND_CLEARANCE} and starts after it — the same pattern as the
+ *    bottom-edge inset, one owner for each piece of geometry, no component
+ *    holding a private copy of another's size.
+ *
+ * The positioning box spans that clearance to the right edge and the plate is
+ * a child of it, so the card hugs the text instead of stretching across the
+ * map.
  */
 import { memo, useCallback } from 'react';
 import { Linking, Pressable, View } from 'react-native';
@@ -30,6 +50,7 @@ import { Text } from '@oxy.so/bloom/typography';
 import { useBottomEdgeInset } from '@oxy.so/bloom/layout';
 
 import { resolveMapAttribution } from '@/lib/map/provider';
+import { MAP_BRAND_CLEARANCE } from './MapBrand';
 
 /** Breathing room between the credit and whatever is below it. */
 const ATTRIBUTION_GAP = 4;
@@ -47,29 +68,36 @@ function MapAttributionComponent() {
   return (
     <View
       pointerEvents="box-none"
-      className="absolute left-space-8 flex-row flex-wrap items-center gap-space-4 rounded-radius-8 bg-card/80 px-space-8 py-space-2"
-      // A claim already folds in the safe area of the surface holding the edge,
-      // so the plain gap is added to it rather than the safe-area-aware one.
-      style={{ bottom: bottomEdge > 0 ? bottomEdge + ATTRIBUTION_GAP : ATTRIBUTION_GAP }}
+      className="absolute right-space-8 items-end"
+      style={{
+        // A claim already folds in the safe area of the surface holding the
+        // edge, so the plain gap is added to it rather than the safe-area-aware
+        // one.
+        bottom: bottomEdge > 0 ? bottomEdge + ATTRIBUTION_GAP : ATTRIBUTION_GAP,
+        // Never overlap the mark in the other corner, however the text wraps.
+        left: MAP_BRAND_CLEARANCE,
+      }}
     >
-      {attribution.prefix ? (
-        <Text className="text-caption text-muted-foreground">
-          {attribution.prefix}
-        </Text>
-      ) : null}
-      {attribution.links.map((link) => (
-        <Pressable
-          key={link.href}
-          accessibilityRole="link"
-          accessibilityLabel={link.label}
-          onPress={() => open(link.href)}
-          hitSlop={6}
-        >
-          <Text className="text-caption text-muted-foreground underline">
-            {link.label}
+      <View className="flex-row flex-wrap items-center justify-end gap-space-4 rounded-radius-8 bg-card/80 px-space-8 py-space-2">
+        {attribution.prefix ? (
+          <Text className="text-caption text-muted-foreground">
+            {attribution.prefix}
           </Text>
-        </Pressable>
-      ))}
+        ) : null}
+        {attribution.links.map((link) => (
+          <Pressable
+            key={link.href}
+            accessibilityRole="link"
+            accessibilityLabel={link.label}
+            onPress={() => open(link.href)}
+            hitSlop={6}
+          >
+            <Text className="text-caption text-muted-foreground underline">
+              {link.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
     </View>
   );
 }

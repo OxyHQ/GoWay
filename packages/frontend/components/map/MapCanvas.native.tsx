@@ -39,6 +39,7 @@ import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
 
 import { DefaultMapMarker } from './DefaultMapMarker';
 import { MapAttribution } from './MapAttribution';
+import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
 import {
   asFinite,
@@ -421,6 +422,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         ))}
       </MapLibreMap>
 
+      {/* Both are unconditional and neither takes a prop: the brand and the
+          credit must be on every map GoWay draws, including the embed in
+          somebody else's page. See MapBrand.tsx. */}
+      <MapBrand />
       <MapAttribution />
 
       {error ? <MapErrorState error={error} onRetry={retry} /> : null}
