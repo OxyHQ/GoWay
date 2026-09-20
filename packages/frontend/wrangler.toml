@@ -18,21 +18,37 @@
 # flag.
 name = "goway"
 compatibility_date = "2026-09-09"
+main = "./worker/index.js"
 
-# NO `main`. This Worker runs no code of its own: every response is an asset
-# out of `dist/`, served by the asset pipeline. That is deliberate — GoWay's
-# web build is public by design (the map, search, place details and routing all
-# work signed out), so there is nothing for a Worker script to gate, and a
-# script that exists only to forward to `env.ASSETS` is a runtime failure mode
-# bought for nothing.
+# There IS a `main` now, and the argument that used to be here against one was
+# right and is preserved, because it still governs every path the Worker does
+# not claim: GoWay's web build is public by design (the map, search, place
+# details and routing all work signed out), so there is nothing for a script to
+# gate, and "a script that exists only to forward to `env.ASSETS` is a runtime
+# failure mode bought for nothing".
 #
-# Consequence worth knowing before someone goes looking: with no `main` there
-# is nothing to stop the SPA fallback below answering a *stale hashed asset*
-# URL with `index.html`, which is why Mention and Clarity carry a
-# `worker/index.js`. The exposure here is one already-open tab across a deploy,
-# because Workers Assets serves HTML with `must-revalidate` and every asset URL
-# in a freshly-fetched `index.html` is current. If that ever bites, the fix is
-# a `main` plus `run_worker_first = true`, not a change to this fallback.
+# What changed is that GoWay acquired a path that CANNOT be a static asset.
+# Every map resource now comes from `goway.to` rather than from
+# `tiles.openfreemap.org` — the style documents, the glyph ranges and the
+# sprite are generated here and committed, so they are assets like any other.
+# The TILES are not: the planet is gigabytes, GoWay is deliberately not storing
+# it, and the remaining shape is a proxy with edge caching. A proxy is code.
+#
+# `run_worker_first` below is what keeps the old argument true anyway. It names
+# two prefixes; every other request is answered by the asset pipeline without
+# this Worker executing a line, so the failure mode the old comment warned
+# about is bought only for `/map/tiles/*` and `/map/fonts/*` and not for the
+# app. The `env.ASSETS.fetch` at the bottom of `worker/index.js` is a safety
+# net for a misconfiguration here, not the normal path.
+#
+# Consequence worth knowing before someone goes looking: the SPA fallback below
+# can answer a *stale hashed asset* URL with `index.html`, which is why Mention
+# and Clarity carry a `worker/index.js` of their own. The exposure here is one
+# already-open tab across a deploy, because Workers Assets serves HTML with
+# `must-revalidate` and every asset URL in a freshly-fetched `index.html` is
+# current. That is still not what this Worker is for, and widening
+# `run_worker_first` to fix it is a separate decision with a much larger blast
+# radius.
 #
 # `GET /accounts/{a}/workers/scripts/goway` answers 204 for a Worker in this
 # shape — neither 200 nor 404. Any existence check written against this
@@ -69,6 +85,48 @@ preview_urls = false
 [assets]
 directory = "./dist"
 not_found_handling = "single-page-application"
+
+# `binding` is what makes `env.ASSETS` exist. Without it the Worker's fallback
+# path — and the glyph handler's "static first, upstream second" — throw on an
+# undefined property, which is a 500 on every request the Worker touches.
+binding = "ASSETS"
+
+# The Worker runs BEFORE the asset lookup for these two prefixes only.
+#
+# `/map/tiles/*` has no asset to find; the Worker is the only thing that can
+# answer it. `/map/fonts/*` DOES have assets — the Inter ranges GoWay
+# generates — and the Worker runs first anyway so it can fall back to the
+# upstream Noto ranges for the scripts Inter does not cover (CJK, Arabic,
+# Devanagari, Thai, reached whenever a feature has a `name` but no
+# `name:latin`). It asks `env.ASSETS` first and only proxies on a miss, so the
+# committed ranges are still served by the asset pipeline.
+#
+# Detecting that miss is subtler than it looks, and `worker/index.js` says so
+# at length: with `not_found_handling = "single-page-application"`,
+# `env.ASSETS.fetch()` answers a path it does not have with 200 and
+# `index.html`, not with a 404. Anything here that changes the fallback must be
+# read together with that function.
+#
+# Everything else — the app shell, the JS chunks, the style documents, the
+# sprite — is untouched by the Worker and keeps being served exactly as before.
+run_worker_first = ["/map/tiles/*", "/map/fonts/*"]
+
+# The upstream, as DEPLOYMENT CONFIGURATION rather than as a hostname written
+# into product code. `lib/map/provider.ts` → `OPENFREEMAP_ENDPOINTS` is the one
+# module in the repository that names a map vendor, and these two values must
+# equal the ones recorded there. They are duplicated rather than imported
+# because a Worker bundle and an Expo bundle share no build step; the Worker
+# refuses to serve tiles at all if `MAP_TILE_UPSTREAM` is missing rather than
+# falling back to a copy of its own, which is what keeps `provider.ts`
+# honestly the only place.
+#
+# `MAP_TILE_UPSTREAM` is the TileJSON *document*, not a `{z}/{x}/{y}` template:
+# it names the current date-stamped planet build, old builds are deleted, and
+# resolving it at request time (cached for an hour) is what stops a deployment
+# serving 404s from the day the next planet lands.
+[vars]
+MAP_TILE_UPSTREAM = "https://tiles.openfreemap.org/planet"
+MAP_GLYPH_UPSTREAM = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf"
 
 # The only name this deployment answers to, and the reason `workers_dev` is
 # off. `goway.to` is the zone apex: Cloudflare writes and manages the record

@@ -35,6 +35,7 @@ src/http/apiError.ts     ApiError + the public error-code vocabulary
 src/http/errorHandler.ts the single place a failure becomes a response
 src/http/validation.ts   zod → bad_request | validation_failed, details without values
 src/middleware/auth.ts   Oxy auth, from @oxy.so/core/server and nowhere else
+src/middleware/cors.ts   the public-read lane and the strict one, and which route gets which
 src/routes/health.ts     GET /health (liveness + database reachability), GET /ready
 src/routes/places.ts     the Places surface, mounted at /api/v1
 src/routes/placeSchemas.ts  the request schemas, at least as strict as the CHECKs behind them
@@ -256,9 +257,53 @@ IMMUTABLE.
 
 `@oxy.so/core/server` only — `createOxyAuthMiddleware`, `createOptionalOxyAuth`,
 `createOxyCors`, `createOxyRateLimit`, `authSocket`. No app-local bearer parsing,
-no JWT verification, no second CORS policy. Oxy owns identity, so `oxyUserId`
+no JWT verification, no second allowlist. Oxy owns identity, so `oxyUserId`
 carries no foreign key and there is no `users` table.
+
+The credential is a `Bearer` token in an `Authorization` header and nothing
+else. There is no cookie-borne session anywhere on this API, and that fact is
+what the public CORS lane below rests on.
 
 The map opens without an account: browsing, search and routing sit behind
 `optionalAuth` and must work signed out. Only identity-bound features (saves,
 edits, lists, contributions) use `requireAuth`.
+
+## CORS: two lanes
+
+`src/middleware/cors.ts` picks one per request, ahead of the body parser. It
+carries the full argument; this is the summary.
+
+| lane | who gets it | headers |
+| --- | --- | --- |
+| **public** | the routes in `PUBLIC_READ_ROUTES` | `Access-Control-Allow-Origin: *`, no credentials header, no `Vary` |
+| **strict** | everything else, including anything unrecognised | `createOxyCors`, unchanged: exact echoed origin or nothing, `Access-Control-Allow-Credentials: true`, `Vary: Origin` |
+
+The public lane is exactly:
+
+```text
+GET  /api/v1/places            GET  /api/v1/search
+GET  /api/v1/places/nearby     GET  /api/v1/geocode
+GET  /api/v1/places/bounds     GET  /api/v1/geocode/reverse
+GET  /api/v1/places/:id        GET  /api/v1/geocode/structured
+POST /api/v1/routes
+```
+
+`POST /routes` is a read in every sense but the verb — a directions request is a
+list of coordinates that does not fit in a query string — so its preflight is
+answered on the public lane too, with `Access-Control-Allow-Headers:
+Content-Type`. `Authorization` is deliberately not admitted there: a third-party
+site that needs an AUTHENTICATED read gets its origin added to
+`CORS_APP_ORIGINS` and the strict lane with it, or calls from its own server.
+
+Two properties license the wildcard, and both are load-bearing: the data is
+public and unauthenticated, and GoWay's credential is a non-ambient Bearer
+header rather than a cookie, so a wildcard read carries no caller identity and
+opens no CSRF surface. A spec-compliant `*` cannot be paired with
+`Access-Control-Allow-Credentials: true`, and this lane never emits it.
+
+It fails closed. The table is an explicit inventory, not a prefix rule — a
+prefix rule would have made `GET /places/:id/claims` public — and a route added
+to a router is on the strict lane until somebody writes it into the table.
+`src/middleware/__tests__/cors.test.ts` walks the real routers and fails if
+anything the table admits is mounted behind `requireAuth`, and if the set of
+admitted routes is anything other than the list above.

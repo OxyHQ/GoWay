@@ -34,18 +34,94 @@
 /vendor/maplibre-gl/*
   Cache-Control: public, max-age=31536000, immutable
 
-# GoWay's own MapLibre style documents, committed under `public/map/` and
-# carried into `dist/` by the export. Unlike everything above, these paths are
-# NOT content-hashed — `provider.ts` names them literally, and a native binary
-# in the field reads them from https://goway.to — so they must never be cached
+# GoWay's own cartography: the style documents, the glyph ranges and the sprite
+# atlas, all committed under `public/map/` and carried into `dist/` by the
+# export. (`/map/tiles/*` is NOT here — it is the one map path served by the
+# Worker rather than by the asset pipeline, so `worker/index.js` sets its own
+# headers. Change one and look at the other.)
+#
+# ## Why these carry `Access-Control-Allow-Origin: *`
+#
+# Because without it GoWay is not a map platform, it is a map app. Measured
+# before this rule existed:
+#
+#   curl -H 'Origin: https://homiio.com' https://goway.to/map/goway-light.json
+#     → 200, and NO access-control-allow-origin
+#
+# A 200 with no ACAO is the worst shape a cross-origin fetch can have: the
+# server did the work, the bytes crossed the wire, and the browser threw them
+# away and logged a CORS error. Every third-party site that tried to render
+# GoWay's cartography saw an empty map. The Homiio migration hit exactly this
+# and correctly refused to proxy around it, because a proxy is the layer that
+# migration exists to remove.
+#
+# The wildcard is the RIGHT answer here rather than a shortcut, and the test is
+# whether the response carries anything an attacker could not fetch themselves:
+#
+#   - These are public cartography assets. No cookie, no token, no per-user
+#     content, nothing that varies by caller. `*` can leak nothing because
+#     there is nothing behind an origin check to leak.
+#   - No credentials travel with them, and `*` cannot be combined with
+#     credentials anyway — the spec forbids the pairing and browsers enforce
+#     it, which is the property that makes a wildcard safe here and unsafe on
+#     the API's credentialed routes (see `packages/backend/src/middleware/cors.ts`).
+#   - It matches what the tile service our own style depends on already does:
+#     `https://tiles.openfreemap.org/planet` answers
+#     `access-control-allow-origin: *`. A public map service that does not is
+#     not usable by anyone.
+#
+# `Cross-Origin-Resource-Policy: cross-origin` is the second half of the same
+# statement and is easy to forget: a `*` ACAO admits the fetch, but an embedder
+# that has turned on cross-origin isolation (`COEP: require-corp` — which any
+# site using SharedArrayBuffer or precise timers must) has its browser block
+# every subresource that does not opt in explicitly. Without CORP those sites
+# get a blocked font and a map with no labels, and the console message names
+# COEP rather than GoWay.
+/map/*
+  Access-Control-Allow-Origin: *
+  Cross-Origin-Resource-Policy: cross-origin
+  Cache-Control: public, max-age=300, must-revalidate
+
+# The style documents keep the five-minute rule above: these paths are NOT
+# content-hashed — `provider.ts` names them literally, and a native binary in
+# the field reads them from https://goway.to — so they must never be cached
 # immutably. Five minutes is long enough that a map load does not re-fetch the
 # document on every navigation, and short enough that a cartography deploy
 # reaches every client without a version bump nobody can perform.
-/map/*
-  Cache-Control: public, max-age=300, must-revalidate
+#
+# Glyphs and the sprite are the same kind of path — literal, not hashed — but
+# not the same kind of content, so they get their own rule. The style document
+# is what a cartography change edits, and it is 100 kB; the glyph ranges are
+# megabytes and change only when the FONT changes, which is a deliberate act
+# nobody performs by accident. Re-fetching megabytes of SDF every five minutes
+# to discover that Inter has not moved is a cost paid on every session for a
+# change that happens once a year. A day is the compromise: a font regeneration
+# reaches every client within a day without a version bump, and a normal
+# session pays for the glyphs once.
+#
+# These rules come AFTER `/map/*` deliberately. Cloudflare applies every
+# matching rule and the later one wins for a header it repeats, so each of
+# these restates only `Cache-Control` and inherits the CORS pair above.
+/map/fonts/*
+  Cache-Control: public, max-age=86400
+
+/map/sprites/*
+  Cache-Control: public, max-age=86400
 
 # Every response. See the note at the top of this file — these two are the
 # headers Pages used to add for free and Workers does not.
+#
+# Deliberately NOT here: a framing header. Workers Static Assets sends neither
+# `X-Frame-Options` nor a `frame-ancestors` CSP today, so `/frame` (the embed
+# route — `app/frame.tsx`) is framable with no rule, which is what an embed
+# route needs. Adding a global `frame-ancestors 'none'` and then carving
+# `/frame` back out was considered and rejected: `/frame` and `/` are the SAME
+# document under `not_found_handling = "single-page-application"`, so an
+# exception for one path is an exception for the whole SPA the moment the
+# router moves, and the carve-out would rest on Cloudflare's rule-precedence
+# semantics for a repeated header, which nothing in this repository can test.
+# The honest position is the one recorded in `app/frame.tsx`: the embed renders
+# no sign-in affordance and nothing an embedder can aim a user's click at.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
