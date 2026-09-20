@@ -12,10 +12,17 @@
  *
  * Exactly the reasoning in `MapAttribution` — a thing that must be on every map
  * cannot be something a screen remembers to add. `MapCanvas` renders both, both
- * are bare components with no `enabled` prop, and there is deliberately no way
- * to turn either off. That is what makes `app/frame.tsx` — the embed — carry
- * the brand without asking for it, and what stops the next route that renders a
- * map from shipping without it.
+ * are bare components with no `enabled` prop, and no SCREEN can turn either
+ * off. That is what makes `app/frame.tsx` — the embed — carry the brand without
+ * asking for it, and what stops the next route that renders a map from shipping
+ * without it.
+ *
+ * One exception exists, and it is not a prop. A surface whose own chrome
+ * already shows the logo says so through `BrandedChromeProvider`, and the badge
+ * stands down; GoWay's app does it because `MapTopBar` carries the logo above
+ * the map. The direction is what keeps it safe — a surface opts IN to being
+ * branded already, so forgetting shows the badge rather than hiding it, and an
+ * embed has no chrome from which to forget. See `components/brand/BrandedChrome.tsx`.
  *
  * ## Why there is no plate behind it
  *
@@ -48,7 +55,7 @@ import { memo } from 'react';
 import { View } from 'react-native';
 import { useBottomEdgeInset } from '@oxy.so/bloom/layout';
 
-import { GowayLogo, gowayLogoHeight } from '@/components/brand';
+import { GowayLogo, gowayLogoHeight, useBrandedChrome } from '@/components/brand';
 
 /**
  * How wide the logo draws on the map.
@@ -77,6 +84,12 @@ export const MAP_BRAND_HEIGHT = gowayLogoHeight(MAP_BRAND_WIDTH);
 
 function MapBrandComponent() {
   const bottomEdge = useBottomEdgeInset();
+  const chromeIsBranded = useBrandedChrome();
+
+  // GoWay's own app, whose `MapTopBar` carries the logo above the map. Drawing
+  // it here too is the brand twice on one screen, with the second copy sitting
+  // on the cartography.
+  if (chromeIsBranded) return null;
 
   return (
     <View
