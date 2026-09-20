@@ -71,6 +71,16 @@ export type MapSheetSnap = 'peek' | 'half' | 'full';
 /** Ordered smallest to largest — the order the accessibility stepper walks. */
 export const MAP_SHEET_SNAPS: readonly MapSheetSnap[] = ['peek', 'half', 'full'];
 
+/**
+ * Fraction of the window height the `half` detent sits at, and the default for
+ * {@link MapSheetProps.halfRatio}.
+ *
+ * Exported because the MAP needs it: fitting a route inside the part of the
+ * canvas the sheet is not covering means knowing how much of it that is, and
+ * the screen would otherwise be guessing at a number defined here.
+ */
+export const MAP_SHEET_HALF_RATIO = 0.45;
+
 export interface MapSheetProps {
   /** The current detent. The sheet is controlled — it never moves on its own. */
   snap: MapSheetSnap;
@@ -132,7 +142,7 @@ export function MapSheet({
   header,
   children,
   scrollable = true,
-  halfRatio = 0.45,
+  halfRatio = MAP_SHEET_HALF_RATIO,
   accessibilityLabel = 'Results',
   testID,
 }: MapSheetProps) {

@@ -1,12 +1,13 @@
 /**
- * GoWay's map discovery screen: one map, three states, two layouts.
+ * GoWay's map discovery screen: one map, four states, two layouts.
  *
  * The composition rules, all of which are load-bearing:
  *
- *  - **The map is the screen.** Browse, search and place details are states of
- *    the same mounted `MapCanvas`, never routes. Selecting a result moves the
- *    camera; it does not navigate, so there is no back stack and no moment when
- *    the map is gone.
+ *  - **The map is the screen.** Browse, search, place details and DIRECTIONS
+ *    are states of the same mounted `MapCanvas`, never routes. Selecting a
+ *    result moves the camera; it does not navigate, so there is no back stack
+ *    and no moment when the map is gone — and leaving the directions planner
+ *    puts the user back where they were looking, not somewhere new.
  *  - **Chrome composes through Bloom's edge registry, not through props.** The
  *    top bar CLAIMS the top edge; the sheet CLAIMS the bottom; the controls
  *    column and the "Search this area" pill READ both. None of them imports
@@ -16,7 +17,10 @@
  *    double-count that floats controls in mid-air, so the plain gap is added to
  *    a claim and the safe-area-aware gap only when nothing has claimed.
  *  - **Nothing asks for location to open.** `useUserLocation()` runs only from
- *    "My location" and from the directions action.
+ *    "My location" and from the planner's own request for a starting point.
+ *  - **The canvas is fitted around the chrome, not inside it.** `useMapPadding`
+ *    below turns "the sheet covers the bottom 45%" into the asymmetric padding
+ *    a route is framed with; a uniform padding frames a route behind the sheet.
  *
  * The sheet's `animatedProgress` drives the floating controls on the UI thread,
  * so they lift and fade WITH the finger rather than one to three frames behind
@@ -28,8 +32,8 @@
  * `moveTo` instead — spatial continuity where it is correct, lock-step motion
  * where it is free.
  */
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useWindowDimensions, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Fab } from '@oxy.so/bloom/fab';
@@ -43,15 +47,17 @@ import {
   MapCanvas,
   type MapApi,
   type MapCanvasError,
+  type MapFitOptions,
   type MapMarker,
-  type MapOverlay,
   type MapViewportChange,
 } from '@/components/map';
-import { MapSheet, type MapSheetSnap } from '@/components/sheet/MapSheet';
+import { MAP_SHEET_HALF_RATIO, MapSheet, type MapSheetSnap } from '@/components/sheet/MapSheet';
 import { SidePanel } from '@/components/sheet/SidePanel';
-import { useLayoutMode } from '@/lib/useLayoutMode';
+import { PANEL_WIDTH, useLayoutMode } from '@/lib/useLayoutMode';
 import { useTranslation } from '@/lib/i18n';
 import type { LocationErrorReason } from '@/lib/map/useUserLocation';
+
+import { slotName } from '@/features/directions/stops';
 
 import { ExploreBody, ExploreHeader } from './ExploreContent';
 import { ExploreMarker } from './ExploreMarker';
@@ -67,8 +73,22 @@ const CONTROLS_COLUMN_WIDTH = 72;
 /** How far the floating controls lift as the sheet is dragged open. */
 const CHROME_LIFT_PX = 28;
 
-/** Stable identity for "no overlays", so the canvas is not re-applied. */
-const EMPTY_OVERLAYS: readonly MapOverlay[] = [];
+/**
+ * Breathing room between fitted content and the edge of the FREE canvas, in px.
+ *
+ * It is added to whatever the sheet or the panel is already covering, rather
+ * than being the whole padding: see {@link useMapPadding}.
+ */
+const FIT_GAP_PX = 24;
+
+/**
+ * The largest share of the canvas the padding may claim, per axis.
+ *
+ * A fully-expanded sheet covers nearly the whole screen, and padding that
+ * leaves no viewport gives MapLibre an impossible fit. Clamping here means a
+ * route framed with the sheet wide open is framed badly rather than not at all.
+ */
+const MAX_PADDING_SHARE = 0.65;
 
 /**
  * The one-line notice beside the "My location" control.
@@ -100,6 +120,60 @@ function locationNoticeFor(
   }
 }
 
+/**
+ * How much of the canvas is NOT free, so a fitted route lands where it can be
+ * seen.
+ *
+ * The previous fit used a uniform 72 px, which is the right number for a map
+ * with nothing on top of it and the wrong one for this screen: on a phone the
+ * sheet occupies the bottom 45% at rest, so a route centred in the full canvas
+ * is centred behind the sheet, and the half the user can see is the half the
+ * route is not in. On a wide window the same is true of the left-hand panel.
+ *
+ * So the padding is asymmetric and says exactly what is covered:
+ *
+ *  - **sheet** — the resting height of the current detent along the bottom
+ *    ({@link MAP_SHEET_HALF_RATIO} is the sheet's own number, imported rather
+ *    than guessed), plus the top bar's claim at the top.
+ *  - **panel** — the panel's width plus its gutter on the left.
+ *
+ * Assumptions, since they are worth stating: `peek` is approximated by a
+ * constant because the real peek height is the MEASURED header, which lives
+ * inside the sheet; and `full` is treated as `half` rather than as the whole
+ * screen, because a route fitted into the sliver above a fully-open sheet is
+ * not a useful frame — the user who opens the sheet that far is reading the
+ * turn list, and will collapse it to look at the map.
+ */
+function useMapPadding(layout: 'sheet' | 'panel', snap: MapSheetSnap): MapFitOptions['padding'] {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const topEdge = useTopEdgeInset();
+
+  return useMemo(() => {
+    const top = Math.max(topEdge, insets.top) + FIT_GAP_PX;
+    const cap = (value: number, axis: number) => Math.min(value, Math.round(axis * MAX_PADDING_SHARE) - FIT_GAP_PX);
+
+    if (layout === 'panel') {
+      return {
+        top: cap(top, height),
+        right: FIT_GAP_PX,
+        bottom: FIT_GAP_PX + insets.bottom,
+        left: cap(windowEdgeGap(insets.left, 0) + PANEL_WIDTH + FIT_GAP_PX, width),
+      };
+    }
+
+    // `peek` shows the header only; 140 px is a generous stand-in for it, and
+    // erring large keeps a route above the sheet rather than under its lip.
+    const sheetHeight = snap === 'peek' ? 140 : Math.round(height * MAP_SHEET_HALF_RATIO);
+    return {
+      top: cap(top, height),
+      right: FIT_GAP_PX + windowEdgeGap(insets.right, 0),
+      bottom: cap(sheetHeight + FIT_GAP_PX, height),
+      left: FIT_GAP_PX + windowEdgeGap(insets.left, 0),
+    };
+  }, [height, insets.bottom, insets.left, insets.right, insets.top, layout, snap, topEdge, width]);
+}
+
 export interface ExploreScreenProps {
   /** Opened from `https://goway.to/place/<placeId>`. */
   initialPlaceId?: string | null;
@@ -111,8 +185,13 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
   const insets = useSafeAreaInsets();
   const layout = useLayoutMode();
 
-  const explore = useExplore(mapRef, { initialPlaceId });
-  const { location } = explore;
+  const [snap, setSnap] = useState<MapSheetSnap>('half');
+  // Computed BEFORE the hook that uses it: the screen is the only thing that
+  // knows how much of the canvas its own chrome is standing on.
+  const mapPadding = useMapPadding(layout, snap);
+
+  const explore = useExplore(mapRef, { initialPlaceId, mapPadding });
+  const { directions, location } = explore;
 
   const [bearing, setBearing] = useState(0);
   const [mapError, setMapError] = useState<MapCanvasError | null>(null);
@@ -121,7 +200,6 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
   // arming it until then keeps the two rules independent of each other.
   const [followingLocation, setFollowingLocation] = useState(false);
 
-  const [snap, setSnap] = useState<MapSheetSnap>('half');
   const sheetProgress = useSharedValue(0);
 
   const topEdge = useTopEdgeInset();
@@ -153,6 +231,20 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
   }, []);
 
   /**
+   * Get out of the way while the user is choosing a point on the map.
+   *
+   * The sheet is over the bottom 45% of the canvas at rest, and "tap where you
+   * mean" with half the map unreachable is an instruction the screen is
+   * contradicting. It collapses once, when the mode starts — the user may drag
+   * it back up, and this must not fight them for it.
+   */
+  const picking = directions.picking;
+  useEffect(() => {
+    if (picking == null) return;
+    setSnap('peek');
+  }, [picking]);
+
+  /**
    * Bloom's marker, plus the enriched state for a place asserting a live
    * ecosystem capability. The renderer positions it; it is the same component
    * on web and native.
@@ -168,19 +260,21 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
     [explore],
   );
 
-  /**
-   * The route line, when there is one.
-   *
-   * A fresh array literal every render would make `MapCanvas` re-apply the
-   * source and layer on every frame of a sheet drag, so the identity is kept
-   * stable — the empty case included.
-   */
-  const overlays = useMemo<readonly MapOverlay[]>(
-    () => (explore.routeOverlay ? [explore.routeOverlay] : EMPTY_OVERLAYS),
-    [explore.routeOverlay],
-  );
-
   const locationNotice = locationNoticeFor(location.error, location.canAskAgain, t);
+
+  /**
+   * A tap on the map.
+   *
+   * It only ever means something while the planner is waiting for a point: a
+   * tap that set a stop the user had not asked to set would make the map
+   * unusable for its main job, which is being dragged around.
+   */
+  const handleMapPress = useCallback(
+    (event: { coordinate: { latitude: number; longitude: number } }) => {
+      explore.onMapPress(event.coordinate);
+    },
+    [explore],
+  );
 
   /**
    * Lift and fade the floating controls with the sheet, on the UI thread.
@@ -202,8 +296,9 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
         ref={mapRef}
         markers={explore.markers}
         renderMarker={renderMarker}
-        overlays={overlays}
+        overlays={explore.overlays}
         onMarkerPress={explore.onMarkerPress}
+        onPress={handleMapPress}
         showUserLocation={followingLocation}
         onViewportChange={handleViewportChange}
         onError={setMapError}
@@ -217,7 +312,7 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
           camera frame — a camera the APP moved must never offer to re-run the
           search that moved it. It is hidden while the canvas is degraded: there
           is no visible area to search. */}
-      {explore.areaMoved && !mapError ? (
+      {explore.areaMoved && !mapError && !directions.active ? (
         <View
           pointerEvents="box-none"
           className="absolute left-0 right-0 items-center"
@@ -229,6 +324,25 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
             onPress={explore.searchThisArea}
             testID="search-this-area"
           />
+        </View>
+      ) : null}
+
+      {/* Choosing a stop on the map is a MODE, and a mode with no visible state
+          is a map that mysteriously starts answering taps differently. The
+          notice is an `alert` so it is announced, and it names the field it is
+          about. */}
+      {directions.picking != null && !mapError ? (
+        <View
+          pointerEvents="none"
+          accessibilityRole="alert"
+          className="absolute left-0 right-0 items-center px-space-16"
+          style={{ top: areaTop }}
+        >
+          <View className="rounded-radius-max bg-card px-space-16 py-space-8 shadow-m">
+            <Text className="text-bodySmall text-foreground">
+              {`Tap the map to set the ${slotName(directions.picking, directions.stops.length).toLowerCase()}`}
+            </Text>
+          </View>
         </View>
       ) : null}
 

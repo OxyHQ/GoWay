@@ -19,11 +19,14 @@ import { useMemo } from 'react';
 import { View } from 'react-native';
 import type { Place, PlaceWithDistance } from '@goway.to/sdk';
 import { Admonition } from '@oxy.so/bloom/admonition';
+import { Button } from '@oxy.so/bloom/button';
 import { Divider } from '@oxy.so/bloom/divider';
 import { Loading } from '@oxy.so/bloom/loading';
 import { Text } from '@oxy.so/bloom/typography';
 import * as Skeleton from '@oxy.so/bloom/skeleton';
+import { RiRouteLine } from '@oxy.so/bloom/icons/RiRouteLine';
 
+import { DirectionsBody, DirectionsHeader } from '@/features/directions/DirectionsPanel';
 import { distanceMeters } from '@/lib/map/geo';
 
 import { CategoryShortcuts } from './CategoryShortcuts';
@@ -37,6 +40,14 @@ import { RiMapPin2Line } from '@oxy.so/bloom/icons/RiMapPin2Line';
 /** The sticky chrome: search, and the way back out of a selection. */
 export function ExploreHeader({ explore }: { explore: ExploreController }) {
   const inSelection = explore.selection != null;
+
+  // In the planner the itinerary IS the chrome: it is what the user is editing,
+  // and a turn list that pushes the From field off the top is a form you cannot
+  // see. The search box would be a second, competing text field for the same
+  // job, so it steps aside rather than stacking above.
+  if (explore.directions.active) {
+    return <DirectionsHeader directions={explore.directions} testID="directions-header" />;
+  }
 
   return (
     <View>
@@ -63,6 +74,20 @@ export function ExploreHeader({ explore }: { explore: ExploreController }) {
 }
 
 export function ExploreBody({ explore }: { explore: ExploreController }) {
+  if (explore.directions.active) {
+    return (
+      <DirectionsBody
+        directions={explore.directions}
+        places={explore.places}
+        center={explore.center}
+        viewport={explore.bounds}
+        // Only ever a position the user has already asked for in this session;
+        // nothing here requests one.
+        near={explore.location.coordinate}
+        testID="directions-body"
+      />
+    );
+  }
   if (explore.selection) return <SelectionBody explore={explore} />;
   if (explore.mode === 'search') return <SearchBody explore={explore} />;
   return <BrowseBody explore={explore} />;
@@ -162,7 +187,9 @@ function SelectionBody({ explore }: { explore: ExploreController }) {
   if (!selection) return null;
 
   if (selection.kind === 'result') {
-    // A street or a locality: a name and a point, and honestly nothing else.
+    // A street or a locality: a name and a point, and honestly nothing else —
+    // but it is still somewhere you can be routed to, so it gets the same one
+    // tap into the planner that a place does.
     const { result } = selection;
     return (
       <View className="gap-space-8 px-space-16 pb-space-16">
@@ -171,6 +198,17 @@ function SelectionBody({ explore }: { explore: ExploreController }) {
           {[result.context?.city, result.context?.region, result.context?.country].filter(Boolean).join(', ') ||
             'Area'}
         </Text>
+        <View className="flex-row">
+          <Button
+            variant="primary"
+            size="small"
+            leadingIcon={RiRouteLine}
+            onPress={() => explore.directions.openToResult(result)}
+            accessibilityLabel={`Directions to ${result.displayName}`}
+          >
+            Directions
+          </Button>
+        </View>
         <Text className="text-caption text-muted-foreground">
           {`This is a location from ${result.source}, not a place GoWay holds details for.`}
         </Text>
@@ -189,20 +227,13 @@ function SelectionBody({ explore }: { explore: ExploreController }) {
     );
   }
 
+  const place = explore.selectedPlace;
   return (
     <PlaceDetails
-      place={explore.selectedPlace}
-      route={explore.route}
-      routePending={explore.routeBusy}
-      routeFailure={explore.routeFailure}
-      routeOriginKind={explore.routeOriginKind}
-      locationPending={explore.locationBusy}
-      locationFailure={explore.locationFailure}
-      canAskLocationAgain={explore.canAskLocationAgain}
-      onRouteFromMap={explore.routeFromMap}
-      travelMode={explore.travelMode}
-      onTravelModeChange={explore.setTravelMode}
-      onDirections={explore.requestDirections}
+      place={place}
+      // One tap, same as before: the planner opens with this place as the
+      // destination and asks the device where you are for the starting point.
+      onDirections={() => explore.directions.openTo(place)}
       testID="place-details"
     />
   );
