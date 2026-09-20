@@ -29,10 +29,22 @@
  * position within a few tens of metres. Name alone is not on this list and must
  * not be added to it — "Farmacia" matches several thousand real, distinct
  * places in Spain alone, and a merge is not reversible from the outside.
+ *
+ * `proximity_and_translated_name` is the SAME co-signal rule applied across
+ * `places_names`: two places within the same few tens of metres whose name SETS
+ * intersect, where their default names do not. It is a separate value rather
+ * than a widening of `proximity_and_name` for two reasons. The first is that
+ * each value here is a RULE, and a reviewer who cannot tell which rule fired
+ * cannot weigh the answer. The second is that the false-positive profile is
+ * worse, not better: the generic-name problem gets larger across languages,
+ * because "Farmacia", "Pharmacie", "Pharmacy" and "Apotheke" all collide with
+ * each other as well as with themselves. Widening the existing value would have
+ * changed what every historic `proximity_and_name` row meant.
  */
 export const DUPLICATE_CANDIDATE_REASONS = [
   'shared_source_id',
   'proximity_and_name',
+  'proximity_and_translated_name',
   'manual_report',
 ] as const;
 export type DuplicateCandidateReason = (typeof DUPLICATE_CANDIDATE_REASONS)[number];

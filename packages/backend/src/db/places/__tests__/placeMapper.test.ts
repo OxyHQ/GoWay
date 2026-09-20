@@ -13,7 +13,14 @@
 
 import '../../../__tests__/testEnv';
 import { describe, expect, it } from 'bun:test';
-import { toPlace, type CapabilityRow, type ClaimRow, type PlaceRow, type SourceRow } from '../placeMapper';
+import {
+  toPlace,
+  type CapabilityRow,
+  type ClaimRow,
+  type NameRow,
+  type PlaceRow,
+  type SourceRow,
+} from '../placeMapper';
 
 const CREATED = new Date('2026-01-02T03:04:05.000Z');
 
@@ -183,5 +190,70 @@ describe('sources', () => {
     const stale = { ...SOURCE, id: 'src-2', source: 'wikidata', sourceId: 'Q1', observedAt: new Date('2020-01-01T00:00:00.000Z') };
     const place = toPlace(row(), { sources: [stale, SOURCE], capabilities: [] });
     expect(place.sources.map((source) => source.source)).toEqual(['openstreetmap', 'wikidata']);
+  });
+});
+
+function nameRow(overrides: Partial<NameRow> = {}): NameRow {
+  return {
+    placeId: 'place-1',
+    language: 'es',
+    name: 'Museo Picasso',
+    source: 'openstreetmap',
+    observedAt: CREATED,
+    ...overrides,
+  };
+}
+
+describe('names', () => {
+  const NAMES = [
+    nameRow({ language: 'es', name: 'Museo Picasso' }),
+    nameRow({ language: 'en', name: 'Picasso Museum' }),
+  ];
+
+  it('never lets a locale change `name`', () => {
+    // The whole reason `localizedName` is a second field. If `name` moved with
+    // the request, one cached `Place` would mean different things to different
+    // holders of it — and `@goway.to/sdk@0.1.0` consumers read `name`.
+    const place = toPlace(row(), { sources: [], capabilities: [], names: NAMES }, { publishAll: true, locale: 'es' });
+    expect(place.name).toBe('Bar Pinotxo');
+    expect(place.localizedName?.name).toBe('Museo Picasso');
+  });
+
+  it('distinguishes "not published here" from "no translations"', () => {
+    // A list read omits the set; a detail read of a place with none publishes
+    // `[]`. Exactly the `claims` rule, and the SDK reads it the same way.
+    const list = toPlace(row(), { sources: [], capabilities: [], names: NAMES });
+    expect(list).not.toHaveProperty('names');
+
+    const detail = toPlace(row(), { sources: [], capabilities: [], names: [] }, { publishAll: true });
+    expect(detail.names).toEqual([]);
+  });
+
+  it('resolves without publishing the set, which is what a viewport read does', () => {
+    const place = toPlace(row(), { sources: [], capabilities: [], names: NAMES }, { publishAll: false, locale: 'en' });
+    expect(place).not.toHaveProperty('names');
+    expect(place.localizedName).toEqual({ language: 'en', name: 'Picasso Museum', source: 'openstreetmap' });
+  });
+
+  it('omits `localizedName` when the place has no name in that language', () => {
+    // Not an empty string and not some other language: absent, so
+    // `placeDisplayName` publishes the default and the client renders the name
+    // on the shopfront.
+    const place = toPlace(row(), { sources: [], capabilities: [], names: NAMES }, { publishAll: true, locale: 'ja' });
+    expect(place).not.toHaveProperty('localizedName');
+  });
+
+  it('publishes GoWay\'s correction above the source spelling of the same language', () => {
+    const place = toPlace(
+      row(),
+      {
+        sources: [],
+        capabilities: [],
+        names: [nameRow({ name: 'Museo Picaso' }), nameRow({ name: 'Museo Picasso', source: 'goway' })],
+      },
+      { publishAll: true, locale: 'es' },
+    );
+    expect(place.names?.map((entry) => entry.source)).toEqual(['goway', 'openstreetmap']);
+    expect(place.localizedName?.name).toBe('Museo Picasso');
   });
 });

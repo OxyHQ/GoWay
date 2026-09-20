@@ -15,11 +15,13 @@ import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { isApiError } from '../../http/apiError';
 import {
+  applyPlaceNames,
   createClaim,
   createPlace,
   findClaimedPlaceIds,
   findPlaceById,
   findPlaceIdBySourceRef,
+  findPlacesInBounds,
   updatePlace,
   type PlaceActor,
 } from '../places/placesRepository';
@@ -318,5 +320,163 @@ describe('business identity', () => {
     const place = await createPlace(suite!.db, { name: 'Pending Bar', location: GRACIA }, ACTOR);
     await createClaim(suite!.db, { placeId: place.id, oxyAccountId: 'acct-hopeful', role: 'owner' });
     expect(await findClaimedPlaceIds(suite!.db, { oxyAccountId: 'acct-hopeful' })).toEqual([]);
+  });
+});
+
+describe('names and the re-import', () => {
+  it('lets a GoWay correction and the source spelling of one language coexist', async () => {
+    const place = await createPlace(
+      suite!.db,
+      { name: 'Museu Picasso', location: GRACIA, names: [{ language: 'es', name: 'Museo Picasso' }] },
+      ACTOR,
+    );
+
+    // The importer speaks for OpenStreetMap; the create above spoke for GoWay.
+    await applyPlaceNames(suite!.db, place.id, 'openstreetmap', [
+      { language: 'es', name: 'Museo Picaso' },
+      { language: 'en', name: 'Picasso Museum' },
+    ]);
+
+    const read = await findPlaceById(suite!.db, place.id, null, 'es');
+    // Both rows survive — nothing was overwritten...
+    expect(
+      read!.names!.filter((name) => name.language === 'es').map((name) => name.source).sort(),
+    ).toEqual(['goway', 'openstreetmap']);
+    // ...and the read prefers GoWay's.
+    expect(read!.localizedName).toEqual({ language: 'es', name: 'Museo Picasso', source: 'goway' });
+    // The default name never moves with the locale.
+    expect(read!.name).toBe('Museu Picasso');
+  });
+
+  it('refreshes a source\'s own row in place rather than adding a second', async () => {
+    const place = await createPlace(suite!.db, { name: 'Sagrada Família', location: GRACIA }, ACTOR);
+    await applyPlaceNames(suite!.db, place.id, 'openstreetmap', [{ language: 'en', name: 'Holy Family' }]);
+    await applyPlaceNames(suite!.db, place.id, 'openstreetmap', [
+      { language: 'en', name: 'Sagrada Familia Basilica' },
+    ]);
+
+    const read = await findPlaceById(suite!.db, place.id, null, 'en');
+    expect(read!.names!.filter((name) => name.language === 'en')).toHaveLength(1);
+    expect(read!.localizedName?.name).toBe('Sagrada Familia Basilica');
+  });
+
+  it('refuses to move a name BACKWARD in time, so replaying an old export is a no-op', async () => {
+    // The guard that makes a re-import idempotent in both directions. Without
+    // it, a stale planet file replayed after a fresh one silently reverts every
+    // name it touches.
+    const place = await createPlace(suite!.db, { name: 'Park Güell', location: GRACIA }, ACTOR);
+    const now = new Date();
+    const lastYear = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+
+    await applyPlaceNames(suite!.db, place.id, 'openstreetmap', [{ language: 'en', name: 'Park Guell' }], now);
+    await applyPlaceNames(
+      suite!.db,
+      place.id,
+      'openstreetmap',
+      [{ language: 'en', name: 'STALE' }],
+      lastYear,
+    );
+
+    const read = await findPlaceById(suite!.db, place.id, null, 'en');
+    expect(read!.localizedName?.name).toBe('Park Guell');
+  });
+
+  it('never deletes a language an import simply did not mention', async () => {
+    // Provenance is not a field a later writer owns, and an import can be
+    // partial. Withdrawing a name is a moderation act, not a side effect.
+    const place = await createPlace(suite!.db, { name: 'Casa Batlló', location: GRACIA }, ACTOR);
+    await applyPlaceNames(suite!.db, place.id, 'openstreetmap', [
+      { language: 'en', name: 'Batllo House' },
+      { language: 'fr', name: 'Maison Batlló' },
+    ]);
+    await applyPlaceNames(suite!.db, place.id, 'openstreetmap', [{ language: 'en', name: 'Batllo House' }]);
+
+    const read = await findPlaceById(suite!.db, place.id);
+    expect(read!.names!.map((name) => name.language).sort()).toEqual(['en', 'fr']);
+  });
+
+  it('skips a name:* key that is not a language instead of failing the element', async () => {
+    const place = await createPlace(suite!.db, { name: 'Torre Agbar', location: GRACIA }, ACTOR);
+    await applyPlaceNames(suite!.db, place.id, 'openstreetmap', [
+      { language: 'etymology', name: 'Aigües de Barcelona' },
+      { language: 'ES', name: 'Torre Agbar' },
+    ]);
+
+    const read = await findPlaceById(suite!.db, place.id);
+    // The junk key is gone and the non-canonical one was canonicalized rather
+    // than stored as a second spelling of Spanish.
+    expect(read!.names!.map((name) => name.language)).toEqual(['es']);
+  });
+
+  it('publishes the full name set on a detail read and NOT on a viewport read', async () => {
+    const place = await createPlace(
+      suite!.db,
+      { name: 'Palau de la Música', location: CATALUNYA, names: [{ language: 'en', name: 'Palace of Music' }] },
+      ACTOR,
+    );
+
+    const detail = await findPlaceById(suite!.db, place.id);
+    expect(detail!.names).toHaveLength(1);
+
+    const [listed] = (
+      await findPlacesInBounds(suite!.db, {
+        west: 2.16, south: 41.38, east: 2.18, north: 41.39, limit: 50, locale: 'en',
+      })
+    ).filter((entry) => entry.id === place.id);
+    // 200 pins times every language is a payload nothing renders: a viewport
+    // read resolves ONE name and publishes no set.
+    expect(listed).not.toHaveProperty('names');
+    expect(listed!.localizedName?.name).toBe('Palace of Music');
+  });
+});
+
+describe('cross-language duplicate detection', () => {
+  it('flags two places recorded under two of their own languages, under its OWN reason', async () => {
+    // The blind spot translations open. "Museu Picasso" and "Museo Picasso" are
+    // one museum, they are not equal as DEFAULT names, and before
+    // `places_names` nothing in the database could see the claim.
+    const first = await createPlace(
+      suite!.db,
+      { name: 'Museu Frederic', location: CATALUNYA, names: [{ language: 'es', name: 'Museo Federico' }] },
+      ACTOR,
+    );
+    const second = await createPlace(suite!.db, { name: 'Museo Federico', location: CATALUNYA_NEARBY }, ACTOR);
+
+    // A SEPARATE reason, never a widening of `proximity_and_name`: the
+    // false-positive profile is worse across languages, and a reviewer who
+    // cannot tell which rule fired cannot weigh the answer.
+    expect(await candidatesFor(second.id)).toContainEqual({
+      other: first.id,
+      reason: 'proximity_and_translated_name',
+    });
+    // And nothing merged, as ever.
+    expect(second.id).not.toBe(first.id);
+    expect((await findPlaceById(suite!.db, first.id))?.name).toBe('Museu Frederic');
+  });
+
+  it('does not flag a translated name two kilometres away', async () => {
+    // BOTH conditions, always. The generic-name problem is LARGER across
+    // languages — "Farmacia", "Pharmacie", "Pharmacy" — so the proximity bound
+    // matters more here, not less.
+    const near = await createPlace(
+      suite!.db,
+      { name: 'Farmàcia Nova', location: CATALUNYA, names: [{ language: 'es', name: 'Farmacia Nueva' }] },
+      ACTOR,
+    );
+    const far = await createPlace(suite!.db, { name: 'Farmacia Nueva', location: GRACIA }, ACTOR);
+    expect(await candidatesFor(far.id)).toEqual([]);
+    expect(await candidatesFor(near.id)).toEqual([]);
+  });
+
+  it('leaves the equal-default-name case to `proximity_and_name` alone', async () => {
+    // One pair, one row, one reason — and the reason names the rule that is
+    // actually true of it.
+    const first = await createPlace(
+      suite!.db,
+      { name: 'Forn Turull', location: CATALUNYA, names: [{ language: 'es', name: 'Horno Turull' }] },
+      ACTOR,
+    );
+    const second = await createPlace(suite!.db, { name: 'Forn Turull', location: CATALUNYA_NEARBY }, ACTOR);
+    expect(await candidatesFor(second.id)).toEqual([{ other: first.id, reason: 'proximity_and_name' }]);
   });
 });

@@ -23,6 +23,7 @@
  *    the survivors are the most orienting ones, not the first ones in the
  *    array.
  */
+import { placeDisplayName } from '@goway.to/sdk';
 import type { Place } from '@goway.to/sdk';
 
 import type { MapMarker } from '@/components/map';
@@ -146,7 +147,7 @@ function placeMarker(place: Place, selected: boolean): MapMarker {
   // The accessible name carries everything the pill's shape and colour imply:
   // what it is, what it offers, and whether it is the current selection. Colour
   // is never the only indicator (issue #7 → Accessibility).
-  const parts = [place.name, category.label];
+  const parts = [placeDisplayName(place), category.label];
   if (place.status === 'closed') parts.push('permanently closed');
   if (capabilities) parts.push(capabilities);
   if (selected) parts.push('selected');

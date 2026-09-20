@@ -26,7 +26,7 @@
  */
 
 import { z } from 'zod';
-import { PLACE_CLAIM_ROLES } from '@goway/shared-types';
+import { MAX_LANGUAGE_TAG_LENGTH, normalizeLanguageTag, PLACE_CLAIM_ROLES } from '@goway/shared-types';
 import type { OpeningHoursInterval, PlaceStatus } from '@goway/shared-types';
 
 /** The most places one list response will return. */
@@ -58,6 +58,14 @@ export const MAX_BOUNDS_SPAN_DEGREES = 90;
 /** Longest accepted place name, in characters. */
 const MAX_NAME_LENGTH = 200;
 const MAX_CATEGORIES = 32;
+/**
+ * Most languages one write may set names in.
+ *
+ * Generous — a well-tagged European monument carries a dozen or so, and the
+ * OpenStreetMap record for a country carries far more — and bounded, because
+ * the array is a write amplification factor: every entry is an upsert.
+ */
+const MAX_NAMES = 64;
 const MAX_SOURCES = 32;
 const MAX_CAPABILITIES = 64;
 
@@ -111,11 +119,50 @@ export const capabilityKeyParam = z.preprocess(
     .optional(),
 );
 
+/**
+ * The BCP 47 tag a place read resolves `localizedName` against, in canonical
+ * form.
+ *
+ * NORMALIZED and then REFUSED if it does not normalize, which is the opposite
+ * of the geocoding endpoints' `locale` — and the difference is real rather
+ * than an inconsistency. There, the tag is forwarded verbatim to a provider
+ * that owns its own language registry, so GoWay refusing an unknown-but-
+ * well-formed tag would be GoWay arbitrating a registry it does not hold.
+ * Here, the tag is a KEY into GoWay's own `places_names`, GoWay does define
+ * that key space, and `ES-mx` must resolve exactly as `es-MX` does rather than
+ * matching nothing at all and looking like a place with no Spanish name.
+ */
+export const localeParam = z.preprocess(
+  emptyAsUndefined,
+  z
+    .string()
+    .trim()
+    .max(MAX_LANGUAGE_TAG_LENGTH)
+    .transform((value, ctx) => {
+      const normalized = normalizeLanguageTag(value);
+      if (normalized === undefined) {
+        ctx.addIssue({ code: 'custom', message: 'must be a BCP-47 language tag' });
+        return z.NEVER;
+      }
+      return normalized;
+    })
+    .optional(),
+);
+
 const listFilters = {
   capabilities: capabilityKeyParam,
   categories: setParam,
   limit: limitParam,
+  locale: localeParam,
 };
+
+/**
+ * What `GET /places/:id` accepts beyond the id.
+ *
+ * `locale` only. A single-place read publishes the full `names` set
+ * unconditionally, so there is no "include names" switch to get wrong.
+ */
+export const placeReadQuerySchema = z.object({ locale: localeParam });
 
 // ── Query schemas ───────────────────────────────────────────────────────────
 
@@ -384,6 +431,34 @@ export type CreateClaimInput = z.infer<typeof createClaimSchema>;
 export const WRITABLE_PLACE_STATUSES = ['active', 'closed', 'proposed'] as const satisfies readonly PlaceStatus[];
 
 /**
+ * One translated name as a caller may write it.
+ *
+ * There is no `source` field and there will not be one: a name written through
+ * this API is a GoWay-owned correction and is stored as `goway`, exactly as a
+ * capability written through this API is stored at the tier the caller earned.
+ * A caller who could label their own row `openstreetmap` could put words in
+ * OpenStreetMap's mouth that the next import would then appear to confirm.
+ *
+ * The tag is normalized here, so `ES` and `es` are one row rather than two —
+ * the table's unique key is on the canonical form.
+ */
+const placeName = z.object({
+  language: z
+    .string()
+    .trim()
+    .max(MAX_LANGUAGE_TAG_LENGTH)
+    .transform((value, ctx) => {
+      const normalized = normalizeLanguageTag(value);
+      if (normalized === undefined) {
+        ctx.addIssue({ code: 'custom', message: 'must be a BCP-47 language tag' });
+        return z.NEVER;
+      }
+      return normalized;
+    }),
+  name: z.string().trim().min(1).max(MAX_NAME_LENGTH),
+});
+
+/**
  * The fields a caller may set.
  *
  * `verification`, `id`, `createdAt`, `updatedAt` and the claim list are not
@@ -393,6 +468,7 @@ export const WRITABLE_PLACE_STATUSES = ['active', 'closed', 'proposed'] as const
  */
 const writableFields = {
   name: z.string().trim().min(1).max(MAX_NAME_LENGTH),
+  names: z.array(placeName).max(MAX_NAMES),
   location: coordinate,
   geometry,
   categories: z.array(z.string().trim().min(1).max(64)).max(MAX_CATEGORIES),
@@ -406,6 +482,7 @@ const writableFields = {
 
 export const createPlaceSchema = z.object({
   name: writableFields.name,
+  names: writableFields.names.optional(),
   location: writableFields.location,
   geometry: writableFields.geometry.optional(),
   categories: writableFields.categories.optional(),
@@ -420,6 +497,7 @@ export const createPlaceSchema = z.object({
 export const updatePlaceSchema = z
   .object({
     name: writableFields.name.optional(),
+    names: writableFields.names.optional(),
     location: writableFields.location.optional(),
     geometry: writableFields.geometry.optional(),
     categories: writableFields.categories.optional(),

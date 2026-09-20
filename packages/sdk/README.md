@@ -113,6 +113,41 @@ as verified.
 An update touches only the fields you pass: GoWay layers enrichment *over* source
 data and never destructively overwrites a source fact.
 
+### Names, in every language GoWay has one
+
+`place.name` is the place's **default** name — what is written on the shopfront,
+which is the local language and *not* the English one. It never changes with the
+locale you ask for, so one cached `Place` means the same thing to everybody
+holding it.
+
+```ts
+import { placeDisplayName } from '@goway.to/sdk';
+
+const place = await goway.places.get('gw_place_01H8', { locale: 'es-MX' });
+
+place.name;                    // 'Museu Picasso'   — the default, always
+place.localizedName;           // { language: 'es', name: 'Museo Picasso', source: 'openstreetmap' }
+placeDisplayName(place);       // 'Museo Picasso'   — resolved, or the default
+place.names;                   // every language GoWay holds, each with its provenance
+```
+
+Render `placeDisplayName(place)`. It is `localizedName ?? name` and it is
+published precisely so nobody restates that and quietly drops the locale they
+asked for.
+
+GoWay resolves the locale server-side, once: the exact tag, then the bare
+language, then another variety of that language, and then nothing — an arbitrary
+*other* language is not a better answer than the name on the shopfront. A
+GoWay-owned correction outranks a source's spelling at every step.
+
+`names` is carried by `places.get` and by search results. `places.nearby` and
+`places.inBounds` carry `localizedName` alone: 200 pins × every language is a
+payload nothing on screen renders. An absent `names` means "not published here",
+never "this place has one name".
+
+Set `locale` once on the client and every place, search, geocoding and routing
+call uses it; pass it per call to override.
+
 ### Capability filters — `places.nearby({ capabilities })`
 
 Capability filtering is generic and typed, and it is the same call whichever Oxy

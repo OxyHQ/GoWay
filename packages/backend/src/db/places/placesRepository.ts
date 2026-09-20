@@ -38,6 +38,7 @@ import {
 } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { qualified, sqlColumnName } from '@oxy.so/db';
+import { normalizeLanguageTag } from '@goway/shared-types';
 import type {
   CapabilityVerification,
   GeoGeometry,
@@ -57,11 +58,20 @@ import {
   type AssertableVerification,
 } from '../../places/capabilityAuthority';
 import type { Database, DatabaseOrTransaction } from '../postgres';
-import { places, placesCapabilities, placesClaims, placesDuplicateCandidates, placesSources } from '../schema';
+import {
+  places,
+  placesCapabilities,
+  placesClaims,
+  placesDuplicateCandidates,
+  placesNames,
+  placesSources,
+  type DuplicateCandidateReason,
+} from '../schema';
 import { distanceTo, withinBoundingBox, withinRadius } from './placeGeo';
 import {
   CAPABILITY_COLUMNS,
   CLAIM_COLUMNS,
+  NAME_COLUMNS,
   PLACE_COLUMNS,
   SOURCE_COLUMNS,
   toClaim,
@@ -69,6 +79,8 @@ import {
   toPlaceWithDistance,
   type CapabilityRow,
   type ClaimRow,
+  type NameRow,
+  type PlaceNameView,
   type PlaceRow,
   type SourceRow,
 } from './placeMapper';
@@ -113,8 +125,25 @@ export interface CapabilityInput {
   source?: SourceRefInput;
 }
 
+/**
+ * A translated name as a writer supplies it.
+ *
+ * The SOURCE is absent on purpose and a caller cannot send one, exactly as
+ * `verification` is absent from {@link CapabilityInput}: the write path derives
+ * it. An HTTP caller always writes `goway`, because what they are doing is
+ * making a GoWay-owned correction; the importer calls
+ * {@link applyPlaceNames} directly and names its own source. Nothing can post a
+ * name labelled `openstreetmap` that OpenStreetMap never said.
+ */
+export interface PlaceNameInput {
+  /** Canonical BCP 47. Normalized at the edge and re-checked before the write. */
+  language: string;
+  name: string;
+}
+
 export interface PlaceWriteInput {
   name?: string;
+  names?: PlaceNameInput[];
   location?: { latitude: number; longitude: number };
   geometry?: GeoGeometry;
   categories?: string[];
@@ -149,6 +178,23 @@ export interface PlaceListFilters {
   capabilities?: readonly string[];
   categories?: readonly string[];
   limit: number;
+  /**
+   * Resolve each place's `localizedName` against this BCP 47 tag.
+   *
+   * A hint, never a predicate: a place with no name in that language is still
+   * returned with its default name, because a viewport that hid everything
+   * untranslated would be a map with holes in it.
+   */
+  locale?: string | undefined;
+  /**
+   * Publish the full `names` array as well.
+   *
+   * INTERNAL — there is no query parameter for it. Search sets it because it
+   * matches typed text against every name it holds and then has to show which
+   * one answered; a viewport read does not, and the asymmetry is
+   * {@link PlaceNameView}'s.
+   */
+  includeNames?: boolean;
 }
 
 export interface NearbyQuery extends PlaceListFilters {
@@ -243,6 +289,24 @@ async function loadCapabilities(
     .where(inArray(placesCapabilities.placeId, [...placeIds]));
 }
 
+/** What a list read publishes about names, from the filters it was given. */
+function nameViewOf(filters: PlaceListFilters): PlaceNameView {
+  return { publishAll: filters.includeNames === true, locale: filters.locale };
+}
+
+/** Whether a read has any reason to fetch name rows at all. */
+function needsNames(view: PlaceNameView): boolean {
+  return view.publishAll || view.locale !== undefined;
+}
+
+async function loadNames(
+  db: DatabaseOrTransaction,
+  placeIds: readonly string[],
+): Promise<NameRow[]> {
+  if (placeIds.length === 0) return [];
+  return db.select(NAME_COLUMNS).from(placesNames).where(inArray(placesNames.placeId, [...placeIds]));
+}
+
 async function loadClaims(db: DatabaseOrTransaction, placeId: string): Promise<ClaimRow[]> {
   return db.select(CLAIM_COLUMNS).from(placesClaims).where(eq(placesClaims.placeId, placeId));
 }
@@ -269,18 +333,37 @@ function groupByPlace<T extends { placeId: string }>(rows: readonly T[]): Map<st
  * viewport query has no per-place entitlement check, and answering `[]` would
  * assert that a claimed place has no claims.
  */
-async function hydrate(db: DatabaseOrTransaction, rows: readonly PlaceRow[]): Promise<Map<string, { sources: SourceRow[]; capabilities: CapabilityRow[] }>> {
+async function hydrate(
+  db: DatabaseOrTransaction,
+  rows: readonly PlaceRow[],
+  view: PlaceNameView,
+): Promise<Map<string, { sources: SourceRow[]; capabilities: CapabilityRow[]; names: NameRow[] }>> {
   const ids = rows.map((row) => row.id);
-  const [sources, capabilities] = await Promise.all([loadSources(db, ids), loadCapabilities(db, ids)]);
+  // The third query is issued only when the read was asked about names. A
+  // viewport that never mentioned a locale must not pay for 200 places' worth
+  // of translations to throw them away in the mapper.
+  const [sources, capabilities, names] = await Promise.all([
+    loadSources(db, ids),
+    loadCapabilities(db, ids),
+    needsNames(view) ? loadNames(db, ids) : Promise.resolve([]),
+  ]);
   const sourcesByPlace = groupByPlace(sources);
   const capabilitiesByPlace = groupByPlace(capabilities);
+  const namesByPlace = groupByPlace(names);
   return new Map(
     ids.map((id) => [
       id,
-      { sources: sourcesByPlace.get(id) ?? [], capabilities: capabilitiesByPlace.get(id) ?? [] },
+      {
+        sources: sourcesByPlace.get(id) ?? [],
+        capabilities: capabilitiesByPlace.get(id) ?? [],
+        names: namesByPlace.get(id) ?? [],
+      },
     ]),
   );
 }
+
+/** The empty hydration, for a row whose children somehow did not load. */
+const NO_CHILDREN = { sources: [], capabilities: [], names: [] } as const;
 
 // ── Reads ───────────────────────────────────────────────────────────────────
 
@@ -296,13 +379,15 @@ export async function findPlaceById(
   db: DatabaseOrTransaction,
   id: string,
   viewerOxyAccountId?: string | null,
+  locale?: string | undefined,
 ): Promise<Place | null> {
   const [row] = await db.select(PLACE_COLUMNS).from(places).where(eq(places.id, id)).limit(1);
   if (!row) return null;
 
-  const [sources, capabilities, claims] = await Promise.all([
+  const [sources, capabilities, names, claims] = await Promise.all([
     loadSources(db, [id]),
     loadCapabilities(db, [id]),
+    loadNames(db, [id]),
     viewerOxyAccountId ? loadClaims(db, id) : Promise.resolve(null),
   ]);
 
@@ -311,7 +396,12 @@ export async function findPlaceById(
       ? claims
       : undefined;
 
-  return toPlace(row, { sources, capabilities, claims: visibleClaims });
+  // The single-place read ALWAYS publishes the full set — unconditionally, and
+  // not only when a locale was asked for. "What else is this called" is a fact
+  // about the place, and a detail view that showed it only to callers who
+  // already knew which language to ask for would be useless to the caller who
+  // does not.
+  return toPlace(row, { sources, capabilities, names, claims: visibleClaims }, { publishAll: true, locale });
 }
 
 /**
@@ -334,9 +424,10 @@ export async function findPlacesNearby(
     .orderBy(distance)
     .limit(query.limit);
 
-  const children = await hydrate(db, rows);
+  const view = nameViewOf(query);
+  const children = await hydrate(db, rows, view);
   return rows.map(({ distanceMeters, ...row }) =>
-    toPlaceWithDistance(row, children.get(row.id) ?? { sources: [], capabilities: [] }, distanceMeters),
+    toPlaceWithDistance(row, children.get(row.id) ?? NO_CHILDREN, distanceMeters, view),
   );
 }
 
@@ -358,8 +449,9 @@ export async function findPlacesInBounds(
     .orderBy(places.id)
     .limit(query.limit);
 
-  const children = await hydrate(db, rows);
-  return rows.map((row) => toPlace(row, children.get(row.id) ?? { sources: [], capabilities: [] }));
+  const view = nameViewOf(query);
+  const children = await hydrate(db, rows, view);
+  return rows.map((row) => toPlace(row, children.get(row.id) ?? NO_CHILDREN, view));
 }
 
 // ── Authorization inputs ────────────────────────────────────────────────────
@@ -421,7 +513,7 @@ export async function recordDuplicateCandidate(
   db: DatabaseOrTransaction,
   placeId: string,
   otherPlaceId: string,
-  reason: 'shared_source_id' | 'proximity_and_name' | 'manual_report',
+  reason: DuplicateCandidateReason,
   score?: number,
 ): Promise<void> {
   if (placeId === otherPlaceId) return;
@@ -457,6 +549,156 @@ async function findProximityNameCandidates(
         ne(places.id, placeId),
         sql`${places.nameNormalized} = lower(btrim(${name}))`,
         withinRadius(longitude, latitude, DUPLICATE_PROXIMITY_METERS),
+      ),
+    );
+  return rows.map((row) => row.id);
+}
+
+/**
+ * Write a source's statement of a place's names, in the languages it supplies.
+ *
+ * The importer-facing half of this schema, and the function the OpenStreetMap
+ * POI import is written against. Three properties, and each is the schema's
+ * rather than the caller's:
+ *
+ *  - **A source can only speak for itself.** The conflict target is
+ *    `(place, language, source)`, so an `openstreetmap` refresh cannot name
+ *    GoWay's `goway` row for the same language. A GoWay-owned correction to the
+ *    Spanish name survives the next import because the import has no way to
+ *    address it, not because the importer remembers not to.
+ *  - **Time only moves forward.** `setWhere` refuses an observation OLDER than
+ *    the one already stored, so replaying a stale planet export is a no-op
+ *    instead of a regression. `places_sources` does the same for `observed_at`
+ *    with `greatest(...)`; here the value itself is at stake, so the guard has
+ *    to sit on the UPDATE rather than on one column of it.
+ *  - **Nothing is deleted.** A language absent from this run is not a
+ *    statement that the name is wrong — an import can be partial, a tag can be
+ *    vandalised and reverted, and `places_capabilities` already made this
+ *    trade for the same reason. Withdrawing a name is a moderation act that can
+ *    record who did it, not a side effect of an import that happened to omit
+ *    it.
+ *
+ * A tag that does not normalize is SKIPPED rather than refused: the caller is
+ * typically reading keys it did not choose, and `name:etymology` should cost
+ * that key and not the element.
+ */
+export async function applyPlaceNames(
+  db: DatabaseOrTransaction,
+  placeId: string,
+  source: string,
+  names: readonly PlaceNameInput[],
+  observedAt: Date = new Date(),
+): Promise<void> {
+  if (names.length === 0) return;
+
+  // Last writer wins WITHIN one call, so a source that supplies `name:es`
+  // twice in one element does not deadlock against its own row.
+  const byLanguage = new Map<string, string>();
+  for (const entry of names) {
+    const language = normalizeLanguageTag(entry.language);
+    const name = entry.name.trim();
+    if (language === undefined || name.length === 0) continue;
+    byLanguage.set(language, name);
+  }
+  if (byLanguage.size === 0) return;
+
+  const now = new Date();
+  for (const [language, name] of byLanguage) {
+    await db
+      .insert(placesNames)
+      .values({ placeId, language, name, source, observedAt })
+      .onConflictDoUpdate({
+        target: [placesNames.placeId, placesNames.language, placesNames.source],
+        set: { name, observedAt, updatedAt: now },
+        setWhere: sql`${excluded(placesNames.observedAt)} >= ${qualified(placesNames.observedAt)}`,
+      });
+  }
+}
+
+/**
+ * The source key every name written through the HTTP API carries.
+ *
+ * A caller editing a place through `POST`/`PATCH /places` is making a
+ * GoWay-owned correction, whatever they believe their evidence is. They cannot
+ * write a row attributed to OpenStreetMap, which is the same guarantee
+ * `applyCapabilities` gives about the verification tier and for the same
+ * reason: provenance that a caller can assert is provenance that means nothing.
+ */
+export const GOWAY_NAME_SOURCE = 'goway';
+
+/**
+ * Places within {@link DUPLICATE_PROXIMITY_METERS} whose NAME SET intersects
+ * this place's, where their default names do not.
+ *
+ * The cross-language sibling of {@link findProximityNameCandidates}, and the
+ * blind spot that opens the moment translations exist: "Museu Picasso" and
+ * "Museo Picasso" are two spellings of one museum, they are not equal as
+ * default names, and before `places_names` there was nothing in the database
+ * that could see they were the same claim.
+ *
+ * Still BOTH conditions, always — an intersecting name AND proximity. The
+ * generic-name problem is larger across languages, not smaller: "Farmacia",
+ * "Pharmacie" and "Pharmacy" collide with each other as well as with
+ * themselves, and only the 75 m bound makes that a shopfront recorded twice
+ * rather than two branches of a chain.
+ *
+ * Pairs the plain rule already covers are EXCLUDED, so a pair is reported under
+ * the rule that is true of it. `recordDuplicateCandidate` is
+ * `on conflict do nothing`, so whichever rule fires first names the row and a
+ * candidate already in review is never restated.
+ *
+ * Every comparison is made against the GENERATED `name_normalized` columns, by
+ * Postgres, for the reason {@link findProximityNameCandidates} gives: a
+ * JavaScript `toLowerCase()` and a SQL `lower()` do not agree on every string,
+ * and a disagreement means a duplicate detected on one code path and not the
+ * other.
+ */
+async function findTranslatedNameCandidates(
+  db: DatabaseOrTransaction,
+  placeId: string,
+  longitude: number,
+  latitude: number,
+): Promise<string[]> {
+  // Postgres computes the normalized forms, including this place's own default
+  // name: reading `places.name_normalized` back is what keeps both sides of
+  // every comparison below on the same case-folding rules.
+  const [[self], own] = await Promise.all([
+    db.select({ normalized: places.nameNormalized }).from(places).where(eq(places.id, placeId)).limit(1),
+    db
+      .select({ normalized: placesNames.nameNormalized })
+      .from(placesNames)
+      .where(eq(placesNames.placeId, placeId)),
+  ]);
+  if (!self?.normalized) return [];
+
+  const translated = own
+    .map((row) => row.normalized)
+    .filter((normalized): normalized is string => normalized !== null);
+  const everyName = [...new Set([self.normalized, ...translated])];
+  // With no translation of its own, this place can still match another place's
+  // translation of ITS default name — so the query runs on the default alone.
+
+  const rows = await db
+    .select({ id: places.id })
+    .from(places)
+    .where(
+      and(
+        ne(places.id, placeId),
+        withinRadius(longitude, latitude, DUPLICATE_PROXIMITY_METERS),
+        // The plain rule owns the equal-default-names case.
+        ne(places.nameNormalized, self.normalized),
+        or(
+          // Their default name is one of ours.
+          inArray(places.nameNormalized, everyName),
+          // One of their translations is one of our names.
+          inArray(
+            places.id,
+            db
+              .select({ placeId: placesNames.placeId })
+              .from(placesNames)
+              .where(inArray(placesNames.nameNormalized, everyName)),
+          ),
+        ),
       ),
     );
   return rows.map((row) => row.id);
@@ -657,6 +899,7 @@ export async function createPlace(
     if (!row) throw new ApiError('internal_error', 'The place could not be created.');
 
     await linkSources(tx, row.id, refs);
+    await applyPlaceNames(tx, row.id, GOWAY_NAME_SOURCE, input.names ?? []);
     await applyCapabilities(tx, row.id, input.capabilities ?? [], actor);
     return row.id;
   });
@@ -665,16 +908,7 @@ export async function createPlace(
   // transaction, and a failure to detect is not a failure to create: a missed
   // candidate is a review that does not happen, while a rolled-back create is a
   // contribution the user has to make again.
-  const candidates = await findProximityNameCandidates(
-    db,
-    id,
-    input.name,
-    input.location.longitude,
-    input.location.latitude,
-  );
-  for (const candidate of candidates) {
-    await recordDuplicateCandidate(db, id, candidate, 'proximity_and_name');
-  }
+  await recordNameCandidates(db, id, input.name, input.location.longitude, input.location.latitude);
 
   const place = await findPlaceById(db, id);
   if (!place) throw new ApiError('internal_error', 'The place could not be read back.');
@@ -726,12 +960,58 @@ export async function updatePlace(
     if (!row) return null;
 
     await linkSources(tx, id, refs);
+    await applyPlaceNames(tx, id, GOWAY_NAME_SOURCE, input.names ?? []);
     await applyCapabilities(tx, id, input.capabilities ?? [], actor);
     return row.id;
   });
 
   if (updated === null) return null;
+
+  // A new name — in any language — is new evidence about which places are the
+  // same place, so detection re-runs on the same terms `createPlace` uses. It
+  // does NOT run for an update that touched neither, because re-deriving the
+  // same candidates on every opening-hours edit is a write per edit that
+  // `on conflict do nothing` then discards.
+  if (input.name !== undefined || (input.names?.length ?? 0) > 0) {
+    const [current] = await db
+      .select({ name: places.name, latitude: places.latitude, longitude: places.longitude })
+      .from(places)
+      .where(eq(places.id, id))
+      .limit(1);
+    if (current) {
+      await recordNameCandidates(db, id, current.name, current.longitude, current.latitude);
+    }
+  }
+
   return findPlaceById(db, id);
+}
+
+/**
+ * Run both name rules over a place and file what each one finds.
+ *
+ * One function so the two call sites cannot come to disagree about which rules
+ * apply, and so each candidate is filed under the rule that is actually true of
+ * it — the plain rule for equal default names, the translated rule for an
+ * intersecting name set. A reviewer who cannot tell which fired cannot weigh
+ * the answer.
+ */
+async function recordNameCandidates(
+  db: Database,
+  placeId: string,
+  name: string,
+  longitude: number,
+  latitude: number,
+): Promise<void> {
+  const [exact, translated] = await Promise.all([
+    findProximityNameCandidates(db, placeId, name, longitude, latitude),
+    findTranslatedNameCandidates(db, placeId, longitude, latitude),
+  ]);
+  for (const candidate of exact) {
+    await recordDuplicateCandidate(db, placeId, candidate, 'proximity_and_name');
+  }
+  for (const candidate of translated) {
+    await recordDuplicateCandidate(db, placeId, candidate, 'proximity_and_translated_name');
+  }
 }
 
 // ── Capability assertions ───────────────────────────────────────────────────

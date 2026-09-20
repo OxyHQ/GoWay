@@ -19,6 +19,7 @@
  * be worth offering" — and {@link toRouteLocation} drops it whenever there is a
  * place ID to send instead.
  */
+import { placeDisplayName } from '@goway.to/sdk';
 import type { GeoCoordinate, Place, PlaceId, RouteLocation, SearchResult } from '@goway.to/sdk';
 
 import { isValidCoordinate } from '@/lib/map/geo';
@@ -86,7 +87,7 @@ export function stopFromPlace(place: Place): DirectionsStop | null {
   return {
     id: nextId('place'),
     source: 'place',
-    label: place.name,
+    label: placeDisplayName(place),
     coordinate: place.location,
     placeId: place.id,
   };

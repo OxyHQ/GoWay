@@ -241,6 +241,36 @@ describe('namespaces', () => {
     expect(queryOf(calls[0]?.url ?? '')).toContain('locale=ca');
     expect(queryOf(calls[1]?.url ?? '')).toContain('locale=pt-BR');
   });
+
+  it('carries the client locale into the three place reads', async () => {
+    // Before 0.1.1 the client locale reached search, geocoding and routing but
+    // not `places.*` — so a map set to Catalan fetched its own pins in
+    // whatever language the row happened to be stored in.
+    const { fetch, calls } = fakeFetch(200, PLACE);
+    const client = createGoWayClient({ fetch, locale: 'ca' });
+    await client.places.get('gw_place_01H8');
+    await client.places.get('gw_place_01H8', { locale: 'es-MX' });
+    expect(queryOf(calls[0]?.url ?? '')).toContain('locale=ca');
+    expect(queryOf(calls[1]?.url ?? '')).toContain('locale=es-MX');
+
+    const list = fakeFetch(200, [PLACE]);
+    const listing = createGoWayClient({ fetch: list.fetch, locale: 'ca' });
+    await listing.places.inBounds({ west: 0, south: 0, east: 1, north: 1 });
+    await listing.places.inBounds({ west: 0, south: 0, east: 1, north: 1, locale: 'fr' });
+    expect(queryOf(list.calls[0]?.url ?? '')).toContain('locale=ca');
+    expect(queryOf(list.calls[1]?.url ?? '')).toContain('locale=fr');
+
+    const near = fakeFetch(200, [PLACE_WITH_DISTANCE]);
+    const nearby = createGoWayClient({ fetch: near.fetch, locale: 'ca' });
+    await nearby.places.nearby({ latitude: 0, longitude: 0, radiusMeters: 10 });
+    expect(queryOf(near.calls[0]?.url ?? '')).toContain('locale=ca');
+  });
+
+  it('refuses a locale that is not a language tag, on a place read too', async () => {
+    const { fetch } = fakeFetch(200, PLACE);
+    const client = createGoWayClient({ fetch });
+    await expect(client.places.get('p', { locale: '???' })).rejects.toBeInstanceOf(GoWayValidationError);
+  });
 });
 
 describe('links', () => {

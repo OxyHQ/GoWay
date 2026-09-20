@@ -11,7 +11,7 @@
  * in this database because GoWay knows something about it that the source does
  * not.
  *
- * ## Five tables, and why none of them is a column on `places`
+ * ## Six tables, and why none of them is a column on `places`
  *
  * Each child table exists because collapsing it into `places` would make a
  * real-world case unrepresentable without a later migration:
@@ -34,6 +34,15 @@
  *  - `places_duplicate_candidates` — reconciliation output that is REVIEWABLE.
  *                         Auto-merging is not reversible from the outside; a
  *                         candidate row is.
+ *  - `places_names`     — a place has a name in EVERY language its sources
+ *                         record one in, and each of those names has its own
+ *                         provenance. A `name_es` column is the first of a
+ *                         family with no bound, a `jsonb` map has no per-
+ *                         language conflict target for a re-import to upsert
+ *                         against, and neither can hold a GoWay correction
+ *                         beside the source's own spelling of the same
+ *                         language — which is what stops the next import from
+ *                         destroying the correction.
  *
  * ## Privacy
  *
@@ -58,6 +67,7 @@ import {
 import { createdAt, generatedId, timestamptz, updatedAt } from '@oxy.so/db';
 import {
   CAPABILITY_VERIFICATIONS,
+  LANGUAGE_TAG_SQL_PATTERN,
   PLACE_CLAIM_ROLES,
   PLACE_CLAIM_STATES,
   PLACE_STATUSES,
@@ -94,6 +104,26 @@ export const places = pgTable(
   'places',
   {
     id: generatedId(),
+    /**
+     * The DEFAULT name — OpenStreetMap's bare `name`, which is the LOCAL
+     * language and is not the same thing as English.
+     *
+     * It stays a column on `places`, and `places_names` holds only the
+     * language-TAGGED names beside it, for three reasons worth the
+     * redundancy:
+     *
+     *  - NOT NULL here makes "a place with no name at all" unrepresentable. A
+     *    names-table-only design makes it an ordinary consequence of an
+     *    importer bug, and the symptom is unlabelled pins on a public map.
+     *  - The bare `name`'s language is frequently recorded nowhere, so it has
+     *    no tag to be keyed by. Storing it in `places_names` would need a
+     *    nullable `language` and a partial unique index to keep one per place,
+     *    which is a weaker constraint than `not null` for a worse reason.
+     *  - `name_normalized` below is generated from it and is what duplicate
+     *    detection compares. Moving the default name would change every
+     *    reconciliation rule in the same commit as the schema — see
+     *    `DUPLICATE_CANDIDATE_REASONS`.
+     */
     name: text().notNull(),
     /**
      * `lower(btrim(name))`, GENERATED — the only name form reconciliation is
@@ -107,6 +137,14 @@ export const places = pgTable(
      *
      * Equality on this is NEVER on its own a reason to merge — see
      * `DUPLICATE_CANDIDATE_REASONS`.
+     *
+     * It compares DEFAULT names only, and `places_names` did not change that.
+     * "Museo Picasso" and "Picasso Museum" are still not equal here, so no
+     * pair that was a `proximity_and_name` candidate stopped being one and no
+     * pair that was not became one. Two places recorded under two of their own
+     * languages are caught by a SEPARATE rule with its own reason, against
+     * `places_names.name_normalized` — never by widening what this column
+     * means.
      */
     nameNormalized: text().generatedAlwaysAs(() => sql.raw('lower(btrim(name))')),
 
@@ -191,6 +229,107 @@ export const places = pgTable(
     index('places_status_idx').on(table.status),
     /** Duplicate-candidate detection reads this beside the spatial index. */
     index('places_name_normalized_idx').on(table.nameNormalized),
+  ],
+);
+
+/**
+ * A place's name in ONE language, from ONE source.
+ *
+ * This table is the map's vocabulary for places. Once POIs live in GoWay
+ * Places and the basemap's own `poi-*` layers are switched off, the language of
+ * every shop, restaurant and museum label comes from here rather than from the
+ * tile — so a single-language column would have been a single-language map,
+ * permanently, for the price of one import.
+ *
+ * ## The grain is `(place, language, source)`, and every part earns its place
+ *
+ * Not `(place, language)`. OpenStreetMap says `name:es = "Museo Picasso"` and
+ * GoWay may hold a correction to the same Spanish name; at that grain the two
+ * are one row and the next import overwrites the correction, which is exactly
+ * what `AGENTS.md` forbids — *"never destructively overwrite a source fact"*.
+ * At this grain they are two rows: the importer's upsert targets
+ * `(place, language, 'openstreetmap')` and CANNOT name the `goway` row, so the
+ * correction survives the re-import as a property of the schema rather than of
+ * whoever writes the importer. Reads prefer `goway`; see `places/placeNames`.
+ *
+ * ## Provenance here is a SOURCE, not a source RECORD
+ *
+ * `source` is the same key space as `places_sources.source` — `openstreetmap`,
+ * `goway` — and deliberately not a reference to a `places_sources` row.
+ *
+ * That is a direct response to issue #58, where `places_sources` recorded Museu
+ * Picasso's provenance as `way/34633854`, the Empire State Building: an
+ * identifier that resolves to *something* looks exactly like one that resolves
+ * to the right thing unless somebody dereferences it. A column holding
+ * `openstreetmap` names no foreign record, so there is nothing here that can
+ * point at the wrong continent. The question a name row has to answer is "which
+ * source says this spelling", and it answers that with no dereferenceable claim
+ * to get wrong.
+ *
+ * ## The default name is NOT here
+ *
+ * OpenStreetMap's bare `name` is the local-language name, its language is
+ * usually unrecorded, and it is `places.name`. Every row in this table carries
+ * a real language tag, so `language` is NOT NULL and there is no "which row is
+ * the default" question to answer with a partial index.
+ */
+export const placesNames = pgTable(
+  'places_names',
+  {
+    id: generatedId(),
+    placeId: text()
+      .notNull()
+      .references(() => places.id, { onDelete: 'cascade' }),
+    /**
+     * Canonical BCP 47, as `normalizeLanguageTag` produces it: the `xx` of
+     * OpenStreetMap's `name:xx`, lower-cased language, Titlecase script,
+     * UPPER region.
+     *
+     * The CHECK below is built from the SAME pattern the contract publishes, so
+     * a tag the HTTP layer accepts is a tag this column accepts. Without a
+     * canonical form `es`, `ES` and `es ` are three rows under the unique key
+     * below, and a re-import adds a fourth instead of refreshing the first.
+     */
+    language: text().notNull(),
+    name: text().notNull(),
+    /**
+     * `lower(btrim(name))`, GENERATED — the only form of a translated name
+     * that reconciliation is allowed to compare, for the reasons the identical
+     * column on `places` gives.
+     *
+     * What it feeds is `proximity_and_translated_name` and nothing else. It is
+     * never compared against `places.name_normalized` in a way that changes
+     * what `proximity_and_name` means.
+     */
+    nameNormalized: text().generatedAlwaysAs(() => sql.raw('lower(btrim(name))')),
+    /** `openstreetmap`, `goway`, or another registered source key. */
+    source: text().notNull(),
+    /**
+     * When this source last stated this spelling — the freshness half of
+     * provenance, and the guard that makes a re-import idempotent in both
+     * directions. The upsert in `placesRepository` refuses to move a name
+     * BACKWARD in time, so replaying an old planet export is a no-op rather
+     * than a regression.
+     */
+    observedAt: timestamptz().notNull().defaultNow(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    /** Explicitly named: the derived name would exceed the 63-byte identifier limit. */
+    unique('places_names_language_source_key').on(table.placeId, table.language, table.source),
+    index('places_names_place_idx').on(table.placeId),
+    /**
+     * Cross-language duplicate detection reads this, and a future free-text
+     * search over GoWay's own names reads it for exact and prefix matches. A
+     * trigram index for fuzzy matching is the search issue's decision, not
+     * this one's — it needs `pg_trgm` in `REQUIRED_EXTENSIONS`, and an
+     * extension added speculatively is one nobody can remove.
+     */
+    index('places_names_name_normalized_idx').on(table.nameNormalized),
+    check('places_names_language_tag_check', sql`${table.language} ~ '${sql.raw(LANGUAGE_TAG_SQL_PATTERN)}'`),
+    check('places_names_name_not_blank_check', sql`btrim(${table.name}) <> ''`),
+    check('places_names_source_not_blank_check', sql`btrim(${table.source}) <> ''`),
   ],
 );
 

@@ -17,3 +17,6 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
 - [`SDK_VISION.md`](SDK_VISION.md) — what `@goway.to/sdk` is for, and who for.
 - [`CONTRIBUTING_SCOPE.md`](CONTRIBUTING_SCOPE.md) — what the first release
   prioritizes, and what is deliberately deferred.
+- [`PLACE_NAMES.md`](PLACE_NAMES.md) — how a place is named in more than one
+  language, why `places.name` stayed, and what that means for duplicate
+  detection, search, the SDK contract and the OpenStreetMap re-import.

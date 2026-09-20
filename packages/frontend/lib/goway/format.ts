@@ -6,6 +6,7 @@
  * mechanical form of issue #7's "avoid showing fields that are absent merely to
  * imitate Google Maps density".
  */
+import { placeDisplayName } from '@goway.to/sdk';
 import type { Place, StructuredAddress } from '@goway.to/sdk';
 
 import { resolveCategory } from './categories';
@@ -64,7 +65,9 @@ const MARKER_LABEL_MAX = 18;
  * pill stretched across half the city.
  */
 export function markerLabel(place: Place): string {
-  const name = place.name.trim();
+  // The RESOLVED name, not `place.name`. This pill and the sheet it opens must
+  // read the same, and the sheet uses the same helper.
+  const name = placeDisplayName(place).trim();
   if (name.length <= MARKER_LABEL_MAX) return name;
   return `${name.slice(0, MARKER_LABEL_MAX - 1).trimEnd()}…`;
 }

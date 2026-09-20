@@ -111,6 +111,10 @@ beforeAll(async () => {
       categories: ['food.bar', 'food'],
       address: { street: 'La Rambla', city: 'Barcelona', countryCode: 'ES' },
       contact: { website: 'https://example.test/pinotxo' },
+      names: [
+        { language: 'es', name: 'Bar Pinocho' },
+        { language: 'en', name: 'Pinotxo Bar' },
+      ],
       sources: [{ source: 'openstreetmap', sourceId: 'node/100' }],
       capabilities: [{ namespace: 'payments.faircoin', capability: 'accepted', value: true }],
     },
@@ -136,6 +140,29 @@ afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await destroySuiteDatabase(suite);
   suite = null;
+});
+
+describe('locale on a list read', () => {
+  it('resolves one name per place and publishes no name set', async () => {
+    // 200 pins times every language is a payload nothing on screen renders —
+    // and shipping the set would hand the fallback decision back to the client.
+    const { body } = await call<Place[]>('/places/bounds?west=2.16&south=41.38&east=2.18&north=41.39&locale=en');
+    const pinotxo = body.find((place) => place.id === catalunya.id);
+    expect(pinotxo?.localizedName?.name).toBe('Pinotxo Bar');
+    expect(pinotxo).not.toHaveProperty('names');
+    expect(pinotxo?.name).toBe('Bar Pinotxo');
+  });
+
+  it('still returns a place that has no name in the asked-for language', async () => {
+    // A hint, never a filter. A viewport that hid everything untranslated would
+    // be a map with holes in it.
+    const { body } = await call<PlaceWithDistance[]>(
+      `/places/nearby?latitude=${String(GRACIA.latitude)}&longitude=${String(GRACIA.longitude)}&radiusMeters=500&locale=ja`,
+    );
+    const forn = body.find((place) => place.id === gracia.id);
+    expect(forn?.name).toBe('Forn Gràcia');
+    expect(forn).not.toHaveProperty('localizedName');
+  });
 });
 
 describe('GET /places/:id', () => {
@@ -166,6 +193,40 @@ describe('GET /places/:id', () => {
     for (const internal of ['geo', 'nameNormalized', 'name_normalized', 'createdByOxyUserId', 'verificationState']) {
       expect(body).not.toHaveProperty(internal);
     }
+  });
+
+  it('publishes every language it holds, and never moves `name` with the locale', async () => {
+    // `name` is what `@goway.to/sdk@0.1.0` consumers read and it is the place's
+    // DEFAULT, local-language name. A field whose meaning depended on a query
+    // parameter would make one cached `Place` mean different things.
+    const { body } = await call<Place>(`/places/${catalunya.id}?locale=es-MX`);
+    expect(body.name).toBe('Bar Pinotxo');
+    expect(body.localizedName).toEqual({ language: 'es', name: 'Bar Pinocho', source: 'goway' });
+    expect(body.names?.map((name) => name.language).sort()).toEqual(['en', 'es']);
+
+    // No locale asked for: the set is still published on a detail read, and
+    // there is nothing resolved.
+    const plain = await call<Place>(`/places/${catalunya.id}`);
+    expect(plain.body.names).toHaveLength(2);
+    expect(plain.body).not.toHaveProperty('localizedName');
+  });
+
+  it('omits `localizedName` rather than answering in some other language', async () => {
+    const { body } = await call<Place>(`/places/${catalunya.id}?locale=ja`);
+    expect(body).not.toHaveProperty('localizedName');
+    expect(body.name).toBe('Bar Pinotxo');
+  });
+
+  it('resolves a non-canonical tag, and refuses one that is not a tag', async () => {
+    // `places_names.language` is a key into GoWay's OWN table, so GoWay defines
+    // the canonical form — unlike the geocoding endpoints, where `locale` is
+    // forwarded to a provider that owns its own registry.
+    const canonical = await call<Place>(`/places/${catalunya.id}?locale=ES-mx`);
+    expect(canonical.body.localizedName?.name).toBe('Bar Pinocho');
+
+    const { status, body } = await call<ErrorBody>(`/places/${catalunya.id}?locale=not-a-language-tag`);
+    expect(status).toBe(422);
+    expect(body.error.code).toBe('validation_failed');
   });
 
   it('omits claims entirely for a caller who holds none — absent is not empty', async () => {

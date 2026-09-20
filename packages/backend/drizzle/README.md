@@ -38,6 +38,36 @@ validation, so read them before changing anything there:
   contributed again after the first object has expired and been deleted; a total
   unique constraint would refuse that forever on the strength of a tombstone.
 
+## `0002_goway_place_names`
+
+Place names in every language a source records one in (issue #61): one table,
+`places_names`, plus a widened `places_duplicates_reason_check`. `pre` — nothing
+is dropped, renamed or narrowed, and a widened CHECK is correct against the
+image still serving.
+
+It lands BEFORE the OpenStreetMap POI import that fills it, deliberately. That
+import writes millions of rows, and a single-language `places.name` would have
+fixed the map's vocabulary for places to one language — OSM's bare `name`, which
+is the LOCAL language, not English — for as long as re-importing the planet is
+too expensive to contemplate.
+
+Two constraints are the point of the migration:
+
+- `places_names_language_source_key` is on `(place_id, language, source)`. The
+  third column is what makes a GoWay-owned correction survive the next import:
+  the importer upserts against the `openstreetmap` row and has no way to address
+  the `goway` row, so *"never destructively overwrite a source fact"* holds
+  because of the key rather than because of the importer.
+- `places_names_language_tag_check` is the canonical BCP 47 subset published by
+  `@goway/shared-types`, and its primary subtag is two or three letters on
+  purpose. Under the wider BCP 47 rule, `left`, `right`, `signed` and `prefix`
+  are all well-formed — and all four are real OpenStreetMap `name:*` keys that
+  are not languages.
+
+`places.name` deliberately stays, as the default (local-language) name, so
+`name_normalized`, `places_name_normalized_idx` and every existing
+reconciliation rule are untouched by this migration.
+
 `meta/_journal.json` is never deleted, even when it holds nothing: `readJournal`
 treats a MISSING file as a read failure and throws (correctly — an image shipped
 without its migrations must never read as "nothing to do"), and both `GET /ready`

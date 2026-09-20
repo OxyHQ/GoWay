@@ -50,7 +50,18 @@ function capability(seed: CapabilitySeed): PlaceCapability {
 
 interface PlaceSeed {
   id: string;
+  /** The DEFAULT name — Catalan here, because that is what the sign says. */
   name: string;
+  /**
+   * `{ language: name }` for the other languages this place is known by.
+   *
+   * Only on the handful of places that really do have a widely-used exonym.
+   * Translating every fixture would be inventing facts, which is the same
+   * defect as a fabricated route — and it would also hide the case that
+   * matters, where GoWay has NO name in the reader's language and has to fall
+   * back to the default.
+   */
+  names?: Record<string, string>;
   latitude: number;
   longitude: number;
   categories: string[];
@@ -88,6 +99,14 @@ function place(seed: PlaceSeed): Place {
     updatedAt: daysAgo(6),
   };
 
+  if (seed.names) {
+    built.names = Object.entries(seed.names).map(([language, name]) => ({
+      language,
+      name,
+      source: 'openstreetmap' as const,
+    }));
+  }
+
   if (seed.street || seed.locality) {
     built.address = {
       ...(seed.houseNumber ? { houseNumber: seed.houseNumber } : {}),
@@ -122,6 +141,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
   place({
     id: 'gw_mercat_boqueria',
     name: 'Mercat de la Boqueria',
+    names: { es: 'Mercado de La Boquería', en: 'La Boqueria Market' },
     latitude: 41.3817,
     longitude: 2.1716,
     categories: ['grocery', 'shop'],
@@ -141,6 +161,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
   place({
     id: 'gw_parc_ciutadella',
     name: 'Parc de la Ciutadella',
+    names: { es: 'Parque de la Ciudadela', en: 'Ciutadella Park' },
     latitude: 41.3881,
     longitude: 2.1871,
     categories: ['park'],
@@ -152,6 +173,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
   place({
     id: 'gw_museu_picasso',
     name: 'Museu Picasso',
+    names: { es: 'Museo Picasso', en: 'Picasso Museum', fr: 'Musée Picasso' },
     latitude: 41.3851,
     longitude: 2.1806,
     categories: ['museum'],
@@ -167,6 +189,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
   place({
     id: 'gw_hospital_clinic',
     name: 'Hospital Clínic',
+    names: { es: 'Hospital Clínico', en: 'Hospital Clinic' },
     latitude: 41.3893,
     longitude: 2.1516,
     categories: ['hospital'],
@@ -348,6 +371,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
   place({
     id: 'gw_mercat_santa_caterina',
     name: 'Mercat de Santa Caterina',
+    names: { es: 'Mercado de Santa Caterina' },
     latitude: 41.3870,
     longitude: 2.1769,
     categories: ['grocery', 'shop'],

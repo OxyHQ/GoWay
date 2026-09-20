@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGoWayClient, GoWayResponseError, type GoWayError } from '../src/index';
+import { createGoWayClient, GoWayResponseError, placeDisplayName, type GoWayError } from '../src/index';
 import { fakeFetch, rejection } from './helpers';
 import { PLACE, PLACE_WITH_DISTANCE, ROUTE_RESPONSE, SEARCH_RESULTS } from './fixtures';
 
@@ -122,6 +122,58 @@ describe('place parsing', () => {
     );
     expect(error).toBeInstanceOf(GoWayResponseError);
     expect(error.message).toContain('response[1].distanceMeters');
+  });
+});
+
+describe('place names', () => {
+  const NAMES = [
+    { language: 'ca', name: 'Museu Picasso', source: 'openstreetmap' },
+    { language: 'es', name: 'Museo Picasso', source: 'goway' },
+  ];
+
+  it('parses the name set and the resolved name field by field', async () => {
+    const { fetch } = fakeFetch(200, {
+      ...PLACE,
+      names: NAMES.map((entry) => ({ ...entry, internalRowId: 7 })),
+      localizedName: { ...NAMES[1], internalRowId: 8 },
+    });
+    const place = await createGoWayClient({ fetch }).places.get('p');
+    expect(place.names).toEqual(NAMES);
+    expect(place.names?.[0]).not.toHaveProperty('internalRowId');
+    expect(place.localizedName).toEqual(NAMES[1]);
+  });
+
+  it('reads an absent name set as "not published here", never as empty', async () => {
+    // A viewport read omits `names`. A UI that treated absent as "this place
+    // has one name" would be wrong about every pin on the map.
+    const { fetch } = fakeFetch(200, PLACE);
+    const place = await createGoWayClient({ fetch }).places.get('p');
+    expect(place).not.toHaveProperty('names');
+    expect(place).not.toHaveProperty('localizedName');
+  });
+
+  it('rejects a malformed name rather than dropping it', async () => {
+    const error = await parsePlaceBody({ ...PLACE, names: [{ language: 'es' }] });
+    expect(error).toBeInstanceOf(GoWayResponseError);
+    expect(error.message).toContain('response.names[0].name');
+  });
+
+  it('carries an unrecognised name source through', async () => {
+    // The source registry is GoWay's to extend; an SDK that refused a new key
+    // would break on the release that added one.
+    const { fetch } = fakeFetch(200, {
+      ...PLACE,
+      names: [{ language: 'es', name: 'Museo Picasso', source: 'some_new_registry' }],
+    });
+    const place = await createGoWayClient({ fetch }).places.get('p');
+    expect(place.names?.[0]?.source).toBe('some_new_registry');
+  });
+
+  it('placeDisplayName resolves, and falls back to the default name', () => {
+    expect(placeDisplayName({ name: 'Museu Picasso' })).toBe('Museu Picasso');
+    expect(
+      placeDisplayName({ name: 'Museu Picasso', localizedName: NAMES[1]! }),
+    ).toBe('Museo Picasso');
   });
 });
 

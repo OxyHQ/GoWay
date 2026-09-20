@@ -25,6 +25,7 @@
  * behaviour is not observable without them, and the fault modes issue #7
  * requires intentional states for (`EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS`).
  */
+import { baseLanguageTag, normalizeLanguageTag } from '@goway.to/sdk';
 import type {
   GoWayFetch,
   GoWayFetchInit,
@@ -204,6 +205,40 @@ function matchesFilters(entry: Place, categories: readonly string[], capabilitie
 
 // ── Endpoint handlers ───────────────────────────────────────────────────────
 
+/**
+ * Apply the `locale` parameter the way the real API does.
+ *
+ * Two behaviours worth mirroring rather than approximating, because a fixture
+ * that is more generous than the server hides the bug it should surface:
+ *
+ *  - A LIST read publishes `localizedName` and NOT `names`. A UI that reached
+ *    for `place.names` on a viewport read would work here and break against
+ *    `api.goway.to`.
+ *  - A place with no name in the asked-for language keeps its default name and
+ *    gets no `localizedName` at all. That is the common case, not the edge one,
+ *    and `placeDisplayName` is what makes it invisible.
+ *
+ * The resolution itself is the SDK's published normalizer plus the server's
+ * order — exact tag, then bare language, then another variety of it.
+ */
+function localize<T extends Place>(place: T, locale: string | undefined, full: boolean): T {
+  const requested = normalizeLanguageTag(locale);
+  const base = requested === undefined ? undefined : baseLanguageTag(requested);
+  const names = place.names ?? [];
+  const resolved =
+    requested === undefined
+      ? undefined
+      : names.find((name) => name.language === requested) ??
+        names.find((name) => name.language === base) ??
+        names.find((name) => baseLanguageTag(name.language) === base);
+
+  const { names: _all, ...rest } = place;
+  const result = { ...rest } as T;
+  if (full && place.names) result.names = place.names;
+  if (resolved) result.localizedName = resolved;
+  return result;
+}
+
 function placesInBounds(params: Map<string, string>): Place[] {
   const west = num(params, 'west') ?? -180;
   const south = num(params, 'south') ?? -90;
@@ -223,7 +258,8 @@ function placesInBounds(params: Map<string, string>): Place[] {
     return withinLongitude && latitude >= south && latitude <= north;
   })
     .filter((entry) => matchesFilters(entry, categories, capabilities))
-    .slice(0, limit);
+    .slice(0, limit)
+    .map((entry) => localize(entry, params.get('locale'), false));
 }
 
 function placesNearby(params: Map<string, string>) {
@@ -241,7 +277,8 @@ function placesNearby(params: Map<string, string>) {
     .filter((entry) => entry.distanceMeters <= radiusMeters)
     .filter((entry) => matchesFilters(entry, categories, capabilities))
     .sort((a, b) => a.distanceMeters - b.distanceMeters)
-    .slice(0, limit);
+    .slice(0, limit)
+    .map((entry) => localize(entry, params.get('locale'), false));
 }
 
 /** A couple of geocoder-only candidates, so results are not all GoWay places. */
@@ -321,7 +358,10 @@ function search(params: Map<string, string>): SearchResults {
     ? []
     : GEOCODED.filter((entry) => fold(entry.displayName).includes(needle));
 
-  const results = [...biased.map(placeAsResult), ...geocoded].slice(0, limit);
+  const results = [
+    ...biased.map((entry) => placeAsResult(localize(entry, params.get('locale'), true))),
+    ...geocoded,
+  ].slice(0, limit);
   const response: SearchResults = { results, providers: ['goway', 'photon'] };
   if (faults.search === 'degraded') {
     response.providers = ['goway'];
@@ -343,7 +383,12 @@ function reverseGeocode(params: Map<string, string>): SearchResults {
     .sort((a, b) => a.distance - b.distance)
     .slice(0, num(params, 'limit') ?? 5);
 
-  return { results: nearest.map((candidate) => placeAsResult(candidate.entry)), providers: ['goway', 'nominatim'] };
+  return {
+    results: nearest.map((candidate) =>
+      placeAsResult(localize(candidate.entry, params.get('locale'), true)),
+    ),
+    providers: ['goway', 'nominatim'],
+  };
 }
 
 /**
@@ -492,7 +537,7 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
       const id = decodeURIComponent(path.slice('/places/'.length));
       const found = FIXTURE_PLACES_BY_ID.get(id);
       return found
-        ? respond(200, found)
+        ? respond(200, localize(found, params.get('locale'), true))
         : respond(404, errorBody('not_found', `No place with id ${id}`));
     }
     if (path === '/search' || path === '/geocode') return respond(200, search(params));

@@ -15,6 +15,13 @@
       "when": 1789887768071,
       "tag": "0001_goway_capture",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789919537804,
+      "tag": "0002_goway_place_names",
+      "breakpoints": true
     }
   ]
 }

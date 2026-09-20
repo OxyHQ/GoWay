@@ -21,6 +21,17 @@
  * `<namespace>.<capability>` key — FairCoin is the first consumer of them, not
  * a shape they are built around.
  *
+ * ## `locale` is a QUERY PARAMETER, never `Accept-Language`
+ *
+ * Every read takes `?locale=` and none of them reads the inbound
+ * `Accept-Language` header, which would be the HTTP-native spelling and is
+ * deliberately not used. `GET /places/bounds` is the response a CDN is most
+ * worth caching, a header that is not in the cache key is a header that does
+ * not vary the cached copy, and the failure mode is one visitor's language
+ * served to the next. A parameter is in the URL, so it is in the key by
+ * construction — and it also means a caller can ask for a language that is not
+ * their browser's, which a header cannot express at all.
+ *
  * ## Reads are public; writes are authenticated
  *
  * The map opens without an account, so every GET here is behind `optionalAuth`
@@ -63,6 +74,7 @@ import {
   createClaimSchema,
   createPlaceSchema,
   nearbyQuerySchema,
+  placeReadQuerySchema,
   updatePlaceSchema,
   withQueryAliases,
 } from './placeSchemas';
@@ -216,7 +228,8 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
     '/places/:id',
     optionalAuth,
     route(async (request, response) => {
-      const place = await findPlaceById(getDb(), placeIdParam(request), callerId(request));
+      const { locale } = parseQuery(placeReadQuerySchema, { ...request.query });
+      const place = await findPlaceById(getDb(), placeIdParam(request), callerId(request), locale);
       if (!place) throw new ApiError('not_found', 'No place has that id.');
       response.json(place);
     }),

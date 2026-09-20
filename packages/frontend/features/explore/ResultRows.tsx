@@ -12,6 +12,7 @@
  * makes the list keyboard-navigable without a custom focus manager.
  */
 import { View } from 'react-native';
+import { placeDisplayName } from '@goway.to/sdk';
 import type { Place, PlaceWithDistance, SearchResult } from '@goway.to/sdk';
 import { Item } from '@oxy.so/bloom/item';
 import { Text } from '@oxy.so/bloom/typography';
@@ -52,8 +53,9 @@ export function PlaceRow({ place, selected = false, onPress, testID }: PlaceRowP
 
   // The accessible name carries everything the visual tags carry, in words, so
   // colour and iconography are never the only channel.
+  const displayName = placeDisplayName(place);
   const spoken = [
-    place.name,
+    displayName,
     subtitle,
     place.status === 'closed' ? 'permanently closed' : null,
     opening.state === 'open' ? `open until ${opening.closesAt}` : null,
@@ -82,7 +84,7 @@ export function PlaceRow({ place, selected = false, onPress, testID }: PlaceRowP
       <View className="flex-1 gap-space-2">
         <View className="flex-row items-center gap-space-4">
           <Text className="text-body text-foreground" numberOfLines={1}>
-            {place.name}
+            {displayName}
           </Text>
           {oxyVerified ? (
             <RiVerifiedBadgeLine width={14} height={14} fill={theme.colors.primary} />
