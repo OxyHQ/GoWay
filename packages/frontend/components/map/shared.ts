@@ -296,6 +296,14 @@ const EMPTY_OVERLAYS: readonly MapOverlay[] = [];
  * an empty ring are exactly what a mis-sliced route produces, they draw
  * nothing, and they are indistinguishable from "the route did not arrive"
  * unless something says so.
+ *
+ * A composite geometry needs the same check one level up, for the same reason
+ * and one that is easier to miss: `[].every()` is `true`, so an empty
+ * `coordinates` array satisfies every per-part rule vacuously. An empty
+ * `Polygon` has no ring that can fail `ring()`, and a `MultiPolygon` of `[[]]`
+ * has no polygon that can. Both are what a slice that matched nothing
+ * produces, both reach the engine, and both draw exactly nothing — so every
+ * composite array is required to be non-empty BEFORE its parts are checked.
  */
 export function isDrawableGeoJSON(data: GeoJSON.GeoJSON | null | undefined): boolean {
   if (!data || typeof data !== 'object') return false;
@@ -319,13 +327,13 @@ export function isDrawableGeoJSON(data: GeoJSON.GeoJSON | null | undefined): boo
     case 'LineString':
       return ring(data.coordinates, 2);
     case 'MultiLineString':
-      return Array.isArray(data.coordinates) && data.coordinates.every((l) => ring(l, 2));
+      return nonEmpty(data.coordinates) && data.coordinates.every((l) => ring(l, 2));
     case 'Polygon':
-      return Array.isArray(data.coordinates) && data.coordinates.every((r) => ring(r, 4));
+      return nonEmpty(data.coordinates) && data.coordinates.every((r) => ring(r, 4));
     case 'MultiPolygon':
       return (
-        Array.isArray(data.coordinates) &&
-        data.coordinates.every((p) => Array.isArray(p) && p.every((r) => ring(r, 4)))
+        nonEmpty(data.coordinates) &&
+        data.coordinates.every((p) => nonEmpty(p) && p.every((r) => ring(r, 4)))
       );
     default:
       return false;
@@ -336,6 +344,19 @@ function ring(positions: unknown, minimum: number): boolean {
   return (
     Array.isArray(positions) && positions.length >= minimum && positions.every(isDrawablePosition)
   );
+}
+
+/**
+ * An array with something in it.
+ *
+ * `[].every()` is `true`, so a composite geometry whose only check is `every`
+ * accepts the empty case: `{ type: 'Polygon', coordinates: [] }` has no ring to
+ * fail `ring()` and passed every test above. That is the exact silent failure
+ * this module exists to catch — a geometry the engine accepts, tiles, and draws
+ * nothing for — so the outer array is checked before the inner ones are.
+ */
+function nonEmpty(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value) && value.length > 0;
 }
 
 /** A GeoJSON position is `[longitude, latitude]`, altitude optional. */

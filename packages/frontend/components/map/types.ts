@@ -188,12 +188,30 @@ export interface MapCanvasError {
   message?: string;
 }
 
-/** Which map interactions are enabled. Everything defaults to on. */
+/**
+ * Which map interactions are enabled. Everything defaults to on.
+ *
+ * The four flags are INDEPENDENT, and identically so on web and on native.
+ * `rotate` and `pitch` are the pair that could plausibly be read otherwise:
+ * MapLibre GL JS drives bearing and tilt from a single desktop handler
+ * (Ctrl-drag or right-drag), so `{ rotate: false, pitch: true }` reads like an
+ * option that cannot exist there. It can — see `components/map/dragAxes.ts` —
+ * and it means the same thing on both platforms: the user may tilt the camera
+ * and may not turn it.
+ *
+ * Each flag names one thing the user may do, never a gesture on one device:
+ * `pitch` covers both the two-finger vertical drag and the desktop Ctrl-drag,
+ * and turning it off also clamps `maxPitch` to 0 so no other path can tilt the
+ * camera either.
+ */
 export interface MapInteractionOptions {
+  /** Drag to move the camera over the ground. */
   pan?: boolean;
+  /** Scroll, pinch and double-tap zoom. */
   zoom?: boolean;
-  /** Rotate/bearing, where the platform's gesture conventions allow it. */
+  /** Turn the camera: bearing. Independent of {@link pitch}. */
   rotate?: boolean;
+  /** Tilt the camera off straight-down: pitch. Independent of {@link rotate}. */
   pitch?: boolean;
 }
 

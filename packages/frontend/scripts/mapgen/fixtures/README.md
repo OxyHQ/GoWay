@@ -41,3 +41,43 @@ ascender of 26px, which is FreeType's `size->metrics.ascender` for Noto Sans at
 
 Refetch it only if upstream's toolchain changes and the check starts failing
 for a reason that has been understood first.
+
+## `fallback/` — what the Worker's fallback would have drawn
+
+Also not GoWay's, also fetched from OpenFreeMap, and — unlike the file above —
+**served to browsers**. `NOTICE` records the licence and the measurement behind
+it.
+
+```bash
+bun run --cwd packages/frontend map:glyphs:fallback   # writes everything here
+bun run --cwd packages/frontend map:glyphs            # offline, consumes it
+```
+
+Two artefacts, both committed so the build and its `--check` gate stay offline:
+
+- **`fallback/coverage.json`** — for each upstream fontstack, the code points it
+  serves in each range (hex runs) and the pixel ascender its `top` values are
+  measured from. This is what makes "is this range complete?" a measurement.
+  The Worker's fallback is per RANGE and keys on whether the asset exists, so a
+  range file that exists and is short is not a partial answer — it is the whole
+  answer, and the fallback can never fire for it. `build-map-glyphs.ts` uses
+  this manifest to decide which ranges it is allowed to publish at all.
+
+  A code point upstream does not draw either is not a hole, which is why this is
+  measured against upstream rather than against Unicode: dropping `7680-7935`
+  over U+1E9C would set every Vietnamese label in Noto to fix a letter nobody
+  can draw. Controls and `Default_Ignorable_Code_Point`s are excluded for the
+  same reason in reverse — Noto's cmap maps the C0 controls, and counting those
+  as holes would have condemned the Latin-1 range.
+
+- **`fallback/<stack>/<range>.pbf`** — only the glyphs Inter lacks, and only for
+  the ranges `COMPLETED_RANGES` names. ~78 kB in total, against ~1.7 MB for a
+  mirror of the same ranges. `build-map-glyphs.ts` merges these into GoWay's
+  own ranges and re-bases each `top` from Noto's 26px ascender onto Inter's
+  24px one, so a merged range has ONE baseline rather than two 2px apart.
+
+Refetch when the build asks for it: it says so by name when a range is not in
+the manifest (Inter's coverage moved) or when the pack cannot complete a range
+(`COMPLETED_RANGES` grew). The third reason — upstream changing what it serves
+— nothing here can detect, and it can only matter if upstream ADDS code points
+to a range Inter partly covers.

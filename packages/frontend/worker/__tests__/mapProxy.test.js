@@ -23,7 +23,11 @@
  */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
-import worker, { GLYPH_PATH, TILE_PATH, serveGlyphs, serveTile } from '../index.js';
+import worker, { GLYPH_PATH, TILE_PATH, UPSTREAM_FONTSTACK, serveGlyphs, serveTile } from '../index.js';
+import {
+  UPSTREAM_FONTSTACK as BUILD_UPSTREAM_FONTSTACK,
+  UPSTREAM_GLYPH_TEMPLATE,
+} from '../../scripts/build-map-glyphs.ts';
 
 const TILEJSON = 'https://tiles.openfreemap.org/planet';
 const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
@@ -312,5 +316,25 @@ describe('the entry point', () => {
     );
     expect(await response.text()).toBe('shell');
     expect(fetched).toEqual([]);
+  });
+});
+
+describe('the build and the Worker agree about the fallback', () => {
+  // They have to, and nothing links them: a Worker bundle and the Expo build
+  // share no module graph, so `scripts/build-map-glyphs.ts` keeps its own copy
+  // of this mapping. It is not decoration there. It decides which upstream
+  // fontstack a range's COMPLETENESS is measured against — `Inter SemiBold`
+  // falls back to `Noto Sans Bold`, so its holes are Bold's code points — and
+  // a build measuring against the wrong stack publishes ranges with holes in
+  // them, which is a fallback that can never fire.
+  test('the same stacks map to the same upstream', () => {
+    expect(BUILD_UPSTREAM_FONTSTACK).toEqual(UPSTREAM_FONTSTACK);
+  });
+
+  test('and to the same upstream host as wrangler.toml deploys', async () => {
+    const wrangler = await Bun.file(new URL('../../wrangler.toml', import.meta.url)).text();
+    const declared = /MAP_GLYPH_UPSTREAM\s*=\s*"([^"]+)"/.exec(wrangler);
+    expect(declared).not.toBeNull();
+    expect(UPSTREAM_GLYPH_TEMPLATE).toBe(declared[1]);
   });
 });

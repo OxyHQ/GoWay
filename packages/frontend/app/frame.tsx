@@ -79,14 +79,19 @@
  * not offer, and it would buy nothing the "View larger map" affordance — which
  * says out loud where it goes — does not already buy.
  */
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Text } from '@oxy.so/bloom/typography';
 
 import { MapCanvas, type MapApi, type MapMarker } from '@/components/map';
 import { isDegenerateBounds } from '@/lib/map/geo';
-import { initialViewportFrom, parseEmbedParams, shouldFitBounds } from '@/lib/map/embed';
+import {
+  initialViewportFrom,
+  parseEmbedParams,
+  shouldCentreOnPlace,
+  shouldFitBounds,
+} from '@/lib/map/embed';
 import { usePlace } from '@/lib/goway/queries';
 import type { PlaceId } from '@goway.to/sdk';
 
@@ -138,6 +143,16 @@ export default function FrameRoute() {
   }
 
   /**
+   * How many times the canvas has reported itself ready.
+   *
+   * A counter rather than a flag because `onReady` fires again after a retry
+   * rebuilds the engine, and the camera an embedder asked for has to be
+   * re-applied to the new one — the same reason `span=` is applied on ready
+   * rather than on mount.
+   */
+  const [readyCount, setReadyCount] = useState(0);
+
+  /**
    * Apply `span=` once the canvas is ready.
    *
    * On `onReady` rather than on mount because `fitBounds` before the engine
@@ -146,6 +161,7 @@ export default function FrameRoute() {
    * like it is ignored.
    */
   const handleReady = useCallback(() => {
+    setReadyCount((count) => count + 1);
     if (!shouldFitBounds(parsed) || !parsed.bounds) return;
     // A zero-area box makes both engines jump to maximum zoom, which is a
     // street-level view of a region the embedder asked to see whole.
@@ -159,17 +175,41 @@ export default function FrameRoute() {
    * Only when the embedder gave no camera of their own: `?place=X&center=Y`
    * means "show the area around Y, and mark X", and moving the camera to X
    * would be overruling an explicit instruction with an inferred one.
+   *
+   * ## Why `readyCount` is a dependency
+   *
+   * Two things resolve here in an order nothing controls: the place query and
+   * the engine. Both `MapCanvas` forks expose the imperative handle from the
+   * first render — before their engine exists — and both `moveTo`s return
+   * silently when it does not, so a `moveTo` made too early is not deferred,
+   * it is DISCARDED. A cached `place=` resolves on the first render and loses
+   * its camera move exactly that way, leaving the embed at `DEFAULT_VIEWPORT`
+   * with the marker it was asked to show possibly off screen; the `span=`
+   * handler above only ever retried `fitBounds`, never this.
+   *
+   * Depending on the ready counter makes the effect run on whichever of the
+   * two arrives second, so the move lands in either order — and re-lands after
+   * a retry, which resets the camera.
    */
   const placeCoordinate = place.data ? place.data.location : null;
-  const hasExplicitCamera = parsed.center !== undefined || parsed.bounds !== undefined;
+  const centreOnPlace = shouldCentreOnPlace(parsed, {
+    placeResolved: placeCoordinate !== null,
+    canvasReady: readyCount > 0,
+  });
   useEffect(() => {
-    if (!placeCoordinate || hasExplicitCamera) return;
+    if (!centreOnPlace || !placeCoordinate) return;
     mapRef.current?.moveTo(placeCoordinate, { zoom: parsed.zoom ?? 16, duration: 0 });
     // Coordinates are compared by value: the object identity changes on every
     // render of a successful query, and depending on it would re-centre the
     // map continuously and make it impossible to pan.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placeCoordinate?.latitude, placeCoordinate?.longitude, hasExplicitCamera, parsed.zoom]);
+  }, [
+    readyCount,
+    centreOnPlace,
+    placeCoordinate?.latitude,
+    placeCoordinate?.longitude,
+    parsed.zoom,
+  ]);
 
   const openFullMap = useCallback(() => {
     const target = parsed.placeId

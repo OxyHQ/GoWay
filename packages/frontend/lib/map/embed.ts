@@ -346,3 +346,30 @@ export function initialViewportFrom(parsed: EmbedParams): MapViewport {
 export function shouldFitBounds(parsed: EmbedParams): boolean {
   return parsed.bounds !== undefined && parsed.zoom === undefined;
 }
+
+/**
+ * Should the route move the camera onto a resolved `place=`?
+ *
+ * Two rules, and both have already been got wrong once.
+ *
+ * **An explicit camera wins.** `?place=X&center=Y` means "show the area around
+ * Y, and mark X"; moving to X would overrule an instruction the embedder gave
+ * with one GoWay inferred. A `span=` counts as that instruction too, which is
+ * why `bounds` is checked and not just `center`.
+ *
+ * **The canvas has to exist first.** Both `MapCanvas` forks hand out their
+ * imperative handle from the first render — before their engine is built — and
+ * both `moveTo`s return silently when the engine is not there yet. A move made
+ * too early is therefore not queued, it is discarded, and a `place=` that
+ * resolves from cache resolves BEFORE the style loads. The single move is
+ * spent into nothing and the embed sits at the default viewport with the
+ * marker it was asked to show possibly off screen. So the answer is `false`
+ * until the canvas has reported ready, and the caller asks again when it has.
+ */
+export function shouldCentreOnPlace(
+  parsed: EmbedParams,
+  options: { placeResolved: boolean; canvasReady: boolean },
+): boolean {
+  if (!options.canvasReady || !options.placeResolved) return false;
+  return parsed.center === undefined && parsed.bounds === undefined;
+}

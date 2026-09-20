@@ -25,6 +25,7 @@ import {
   MAX_MARKERS,
   initialViewportFrom,
   parseEmbedParams,
+  shouldCentreOnPlace,
   shouldFitBounds,
   type RawParams,
 } from '@/lib/map/embed';
@@ -237,5 +238,47 @@ describe('the contract: never throws, never emits a non-finite number', () => {
       const viewport = initialViewportFrom(parsed);
       expect(Number.isFinite(viewport.latitude * viewport.longitude * viewport.zoom)).toBe(true);
     }
+  });
+});
+
+describe('centring on a resolved place=', () => {
+  const params = (raw: RawParams) => parseEmbedParams(raw);
+
+  test('waits for the canvas — a cached place= resolves before the engine exists', () => {
+    // The defect: the route moved the camera the moment the query resolved,
+    // with no dependency on canvas readiness. Both `MapCanvas` forks hand out
+    // their imperative handle from the first render and both `moveTo`s return
+    // silently when the engine is not built yet (`if (!map) return`), so that
+    // single move was spent into nothing and nothing retried it — leaving the
+    // embed at the default viewport with the marker possibly off screen.
+    const parsed = params({ place: 'goway:place:abc' });
+    expect(shouldCentreOnPlace(parsed, { placeResolved: true, canvasReady: false })).toBe(false);
+    expect(shouldCentreOnPlace(parsed, { placeResolved: true, canvasReady: true })).toBe(true);
+  });
+
+  test('and works in the other order too — engine first, place second', () => {
+    const parsed = params({ place: 'goway:place:abc' });
+    expect(shouldCentreOnPlace(parsed, { placeResolved: false, canvasReady: true })).toBe(false);
+    expect(shouldCentreOnPlace(parsed, { placeResolved: true, canvasReady: true })).toBe(true);
+  });
+
+  test('an explicit camera still beats an inferred one', () => {
+    // `?place=X&center=Y` is "show Y, mark X". Unchanged by the fix, and the
+    // readiness gate must not become a way for the inferred camera to win a
+    // second time once the canvas reports in.
+    const centred = params({ place: 'goway:place:abc', center: '41.3874,2.1686' });
+    expect(shouldCentreOnPlace(centred, { placeResolved: true, canvasReady: true })).toBe(false);
+
+    const spanned = params({ place: 'goway:place:abc', center: '41.3874,2.1686', span: '0.1,0.1' });
+    expect(shouldCentreOnPlace(spanned, { placeResolved: true, canvasReady: true })).toBe(false);
+  });
+
+  test('a malformed center= is not an explicit camera', () => {
+    // The module contract: a malformed parameter is ignored. An embedder whose
+    // template emitted `center=undefined,undefined` asked for no camera at
+    // all, so the place they DID name is what the frame should show.
+    const parsed = params({ place: 'goway:place:abc', center: 'undefined,undefined' });
+    expect(parsed.center).toBeUndefined();
+    expect(shouldCentreOnPlace(parsed, { placeResolved: true, canvasReady: true })).toBe(true);
   });
 });
