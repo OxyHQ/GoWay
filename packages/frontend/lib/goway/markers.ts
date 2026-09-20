@@ -113,9 +113,20 @@ export function buildMarkers({
       if (selectedMember && bucketPlaces.length > 1) {
         // The rest of the bucket collapses into a bubble beside the selection.
         const rest = bucketPlaces.filter((place) => place.id !== selectedMember.id);
-        const clusterId = `cluster:${key}`;
-        clusters.set(clusterId, rest);
-        markers.push(clusterMarker(clusterId, rest));
+        // `rest` is EMPTY when every entry in the bucket is the selected place —
+        // which happens whenever the source list carries the same place twice
+        // (a duplicate row, a refetch merged onto a stale page). Building a
+        // cluster from it used to produce a "0 places" bubble whose centroid was
+        // `0 / 0` on BOTH axes, i.e. `{ latitude: NaN, longitude: NaN }`, and a
+        // marker with that coordinate is what makes MapLibre throw
+        // `Invalid LngLat object: (NaN, NaN)` out of `setLngLat` — into the
+        // screen's error boundary. There is nothing to collapse, so nothing is
+        // drawn.
+        if (rest.length > 0) {
+          const clusterId = `cluster:${key}`;
+          clusters.set(clusterId, rest);
+          markers.push(clusterMarker(clusterId, rest));
+        }
       }
       continue;
     }
@@ -161,7 +172,14 @@ function clusterMarker(id: string, places: readonly Place[]): MapMarker {
   };
 }
 
-/** The mean of a bucket's coordinates. A bucket is ~72 px wide; a mean is fine. */
+/**
+ * The mean of a bucket's coordinates. A bucket is ~72 px wide; a mean is fine.
+ *
+ * `places` must not be empty: the mean of nothing is `0 / 0`, and a `NaN`
+ * coordinate is a thrown `Invalid LngLat object` rather than a misplaced pin.
+ * Both `clusterMarker` call sites now have at least one place by construction;
+ * the one that once did not is commented where it is guarded.
+ */
 function centroid(places: readonly Place[]): { latitude: number; longitude: number } {
   let latitude = 0;
   let longitude = 0;

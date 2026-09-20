@@ -41,8 +41,13 @@ import { DefaultMapMarker } from './DefaultMapMarker';
 import { MapAttribution } from './MapAttribution';
 import { MapErrorState } from './MapErrorState';
 import {
+  describeNumbers,
+  drawableMarkers,
   fromLngLat,
+  isDrawableBounds,
+  isDrawableCoordinate,
   isViewport,
+  reportMapDefect,
   resolveInteraction,
   resolveOverlayPaint,
   resolvePadding,
@@ -93,6 +98,13 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // a style that failed to load is not re-fetched by setting the same URL.
   const [reloadKey, setReloadKey] = useState(0);
 
+  // A camera the engine cannot build is not a reason to have no map; the world
+  // view is a truthful starting frame. Identical to the web fork.
+  const start = isDrawableCoordinate(initialViewport) ? initialViewport : DEFAULT_VIEWPORT;
+  if (start !== initialViewport) {
+    reportMapDefect('viewport:initial', 'initialViewport is not drawable; opened on the default camera.');
+  }
+
   const resolvedAppearance = appearance ?? (theme.isDark ? 'dark' : 'light');
   const styleUrl = useMemo(() => resolveMapStyleUrl(resolvedAppearance), [resolvedAppearance]);
   // `undefined` when the loaded style makes no anchor promise; `<Layer>`
@@ -135,6 +147,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         const coordinate = isViewport(target)
           ? { latitude: target.latitude, longitude: target.longitude }
           : target;
+        // Same rule as the web fork — see `shared.ts` → `isDrawableCoordinate`.
+        // The engine differs; the contract the two forks present does not.
+        if (!isDrawableCoordinate(coordinate)) {
+          reportMapDefect('moveTo', `Ignored moveTo: target is not drawable (${describeNumbers(coordinate)}).`);
+          return;
+        }
         const viewport = isViewport(target) ? target : undefined;
         const duration = options?.duration ?? DEFAULT_CAMERA_DURATION_MS;
         const stop = {
@@ -152,6 +170,14 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       fitBounds(bounds, options) {
         const camera = cameraRef.current;
         if (!camera) return;
+        // Before `isDegenerateBounds`, which answers `false` for a NaN box
+        // because every comparison against NaN is false.
+        if (!isDrawableBounds(bounds)) {
+          reportMapDefect('fitBounds', `Ignored fitBounds: box is not drawable (${describeNumbers(bounds)}).`);
+          return;
+        }
+        const fitPadding = resolvePadding(options?.padding, DEFAULT_FIT_PADDING);
+        if (!fitPadding) return;
         if (isDegenerateBounds(bounds)) {
           camera.easeTo({
             center: [(bounds.west + bounds.east) / 2, (bounds.south + bounds.north) / 2],
@@ -160,9 +186,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           });
           return;
         }
-        const padding = resolvePadding(options?.padding, DEFAULT_FIT_PADDING);
         camera.fitBounds(toBoundsArray(bounds), {
-          padding,
+          padding: fitPadding,
           duration: options?.duration ?? DEFAULT_CAMERA_DURATION_MS,
           zoom: options?.maxZoom,
         });
@@ -300,10 +325,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         <Camera
           ref={cameraRef}
           initialViewState={{
-            center: toLngLat(initialViewport),
-            zoom: initialViewport.zoom,
-            bearing: initialViewport.bearing,
-            pitch: initialViewport.pitch,
+            center: toLngLat(start),
+            zoom: Number.isFinite(start.zoom) ? start.zoom : DEFAULT_VIEWPORT.zoom,
+            bearing: start.bearing,
+            pitch: start.pitch,
           }}
         />
 
@@ -365,7 +390,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           );
         })}
 
-        {(markers ?? []).map((marker: MapMarker) => (
+        {/* Undrawable pins are dropped rather than handed to the engine — see
+            `shared.ts` → `isDrawableCoordinate`. Identical to the web fork. */}
+        {drawableMarkers(markers).map((marker: MapMarker) => (
           <Marker
             key={marker.id}
             id={marker.id}
