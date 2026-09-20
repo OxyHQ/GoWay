@@ -1,0 +1,122 @@
+# Rebuild GoWay's routing tiles and publish the engine image.
+#
+# ## Why this is a workflow and not a runbook
+#
+# OpenStreetMap changes every day. A routing engine whose tiles were built once,
+# by hand, on somebody's laptop, is a map that ages silently: the roads it knows
+# are the roads that existed the afternoon it was built, and nothing anywhere
+# says so. The monthly schedule below is the difference between "GoWay has a
+# routing engine" and "GoWay had one".
+#
+# It is also the reproducibility story. `packages/routing-engine/build-tiles.sh`
+# is the same script a developer runs locally, invoked the same way, so a tile
+# set built here and one built on a workstation are the same tile set.
+#
+# ## Separate from deploy-aws.yml, deliberately
+#
+# The backend image is ~200 MB and rebuilds on every merge. This one is ~2.3 GB
+# and has nothing to do with the commit being merged — its input is Geofabrik's
+# extract, not this repository. Merging them would put a twenty-minute tile
+# build in front of every backend deploy to produce a byte-identical image.
+#
+# ## Precondition, stated because it fails with an unhelpful message
+#
+# `oxy-goway-github-deploy` must be allowed to push to `oxy/goway-routing`.
+# Until oxy-infra's `iam-goway-deploy.tf` lists that repository alongside
+# `oxy/goway`, the push step dies with `AccessDeniedException` on
+# `ecr:InitiateLayerUpload`, which reads like a broken workflow rather than a
+# missing grant.
+#
+# ## This publishes; it does not deploy
+#
+# The new image lands in ECR as `:latest` and as a dated tag. Rolling the
+# service onto it is a separate, deliberate act — `aws ecs update-service
+# --cluster oxy-cluster --service goway-routing --force-new-deployment` — so a
+# tile rebuild can never be the unexplained reason last night's routes changed.
+name: Build routing tiles
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: 'Geofabrik path, without -latest.osm.pbf (e.g. europe/spain)'
+        required: false
+        default: 'europe/spain'
+  schedule:
+    # 03:10 UTC on the 3rd of each month. Geofabrik publishes daily; the 3rd is
+    # simply far enough from the 1st that a monthly extract has settled.
+    - cron: '10 3 3 * *'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-west-2
+  ECR_REGISTRY: 237343248947.dkr.ecr.us-west-2.amazonaws.com
+  REPOSITORY: oxy/goway-routing
+
+concurrency:
+  group: goway-routing-tiles
+  cancel-in-progress: false
+
+jobs:
+  tiles:
+    name: Build tiles and publish the engine image
+    runs-on: ubuntu-24.04-arm
+    # Measured: Spain's extract is 1.5 GB and its tiles build in under five
+    # minutes on 32 cores. A hosted runner has four, and the ECR push is 2.1 GB.
+    # The budget is for a bad day on Geofabrik's bandwidth, not for the build.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # A hosted runner has ~14 GB free on `/` and the build wants ~12 GB at its
+      # peak (extract + intermediate bins + tiles + tar). `/mnt` has ~70 GB.
+      # Without this the build dies two thirds of the way through with ENOSPC,
+      # which surfaces as an unexplained Valhalla crash.
+      - name: Build on the large volume
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /mnt/goway-tiles
+          sudo chown "$USER" /mnt/goway-tiles
+          df -h / /mnt
+
+      - name: Build the tiles
+        env:
+          REGION: ${{ inputs.region || 'europe/spain' }}
+          OUT: /mnt/goway-tiles
+        run: ./packages/routing-engine/build-tiles.sh
+
+      - name: Configure AWS credentials (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6
+        with:
+          role-to-assume: arn:aws:iam::237343248947:role/oxy-goway-github-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2
+
+      - name: Build and push the engine image
+        env:
+          OUT: /mnt/goway-tiles
+        run: |
+          set -euo pipefail
+          # The Dockerfile expects `build/` beside it. The tiles were built on
+          # the large volume, so the context comes to them rather than 2 GB
+          # being copied back.
+          cp packages/routing-engine/Dockerfile "$OUT/Dockerfile"
+          mkdir -p "$OUT/build"
+          for f in valhalla.json admins.sqlite timezones.sqlite tiles.tar; do
+            [ -f "$OUT/$f" ] || { echo "::error::$OUT/$f is missing; the tile build did not finish."; exit 1; }
+            ln -f "$OUT/$f" "$OUT/build/$f"
+          done
+          tag="$(date -u +%Y%m%d)"
+          img="$ECR_REGISTRY/$REPOSITORY"
+          # Native arm64 runner, so no emulation and no --platform needed.
+          docker build -t "$img:$tag" -t "$img:latest" "$OUT"
+          docker push "$img:$tag"
+          docker push "$img:latest"
+          echo "Published $REPOSITORY:$tag ($(du -h "$OUT/tiles.tar" | cut -f1) of tiles)."
+          echo "Roll it out deliberately:" 
+          echo "  aws ecs update-service --cluster oxy-cluster --service goway-routing --force-new-deployment"

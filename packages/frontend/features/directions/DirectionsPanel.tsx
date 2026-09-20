@@ -35,6 +35,7 @@ import { RiWalkLine } from '@oxy.so/bloom/icons/RiWalkLine';
 
 import type { GeoBounds } from '@/components/map';
 import type { GeoCoordinate, Place } from '@goway.to/sdk';
+import { USING_FIXTURES } from '@/lib/goway/client';
 import { formatDistance, formatDuration } from '@/lib/goway/format';
 
 import { LocationFailureState } from '../explore/states';
@@ -229,6 +230,80 @@ export interface DirectionsBodyProps {
   testID?: string;
 }
 
+/**
+ * Why there is no line on the map.
+ *
+ * This is the honesty half of the directions feature, and the reason it is a
+ * component of its own rather than two ternaries: every branch below is
+ * reached with `overlays` EMPTY, so whatever it says is the only thing the
+ * user is told. The one thing none of them does is show a route.
+ *
+ * The failure mode this replaces is the worst one a directions feature has.
+ * Drawing the straight line between the stops when the engine could not answer
+ * renders, in the route's own colour and with a distance beside it, a road
+ * that does not exist — and a user cannot tell that apart from "this is the
+ * way". An error is recoverable; being confidently wrong about how to get
+ * somewhere is not. So the sentences below name what GoWay does not know, and
+ * `useDirections` draws nothing.
+ *
+ * `noRoute` and `unsupportedMode` are not errors and deliberately carry no
+ * "Try again": repeating the identical request cannot change either answer.
+ * They are statements about the world and about this deployment's coverage,
+ * and the action each implies (move a stop, pick another mode) is already on
+ * screen above.
+ */
+function RouteFailure({
+  kind,
+  mode,
+  onRetry,
+}: {
+  kind: NonNullable<DirectionsController['routeFailure']>;
+  mode: TravelMode;
+  onRetry: () => void;
+}) {
+  const modeLabel = MODE_LABELS[mode].toLowerCase();
+
+  if (kind === 'noRoute') {
+    return (
+      <Text className="px-space-16 text-bodySmall text-muted-foreground" testID="route-no-route">
+        {`No ${modeLabel} route between these stops. Try another travel mode, or move a stop.`}
+      </Text>
+    );
+  }
+
+  if (kind === 'unsupportedMode') {
+    return (
+      <Text className="px-space-16 text-bodySmall text-muted-foreground" testID="route-unsupported-mode">
+        {`GoWay can't give ${modeLabel} directions here yet. Try another travel mode.`}
+      </Text>
+    );
+  }
+
+  // Everything else is a failure to ANSWER rather than an answer, so it says
+  // so, says we are not guessing, and offers the one action that could help.
+  const reason =
+    kind === 'offline'
+      ? "Directions need a connection, and GoWay can't reach the network."
+      : kind === 'timeout'
+        ? "GoWay didn't work out this route in time."
+        : "GoWay can't work out this route right now.";
+
+  return (
+    <View className="gap-space-8 px-space-16" testID="route-unavailable">
+      <Text className="text-bodySmall text-foreground">{reason}</Text>
+      <Text className="text-caption text-muted-foreground">
+        Nothing is drawn on the map, because a straight line between your stops would not be the
+        way there.
+      </Text>
+      <View className="flex-row">
+        <Button variant="secondary" size="small" onPress={onRetry}>
+          Try again
+        </Button>
+      </View>
+    </View>
+  );
+}
+
 export function DirectionsBody({
   directions,
   places,
@@ -374,27 +449,28 @@ function RouteBody({ directions, testID }: { directions: DirectionsController; t
               Measured from a point on the map, not from your location.
             </Text>
           ) : null}
+          {/* The same rule, applied to the app's own scaffolding. A fixture
+              build answers `POST /routes` with the straight line between the
+              stops (see `lib/goway/mockTransport.ts`), and a straight line
+              rendered under a distance and an ETA is exactly the defect this
+              feature was fixed for. The deployed site does not take this
+              branch — `EXPO_PUBLIC_GOWAY_FIXTURES` is `0` there — so this
+              sentence exists to stop a DEVELOPER mistaking the scaffolding for
+              the engine, which is how it reached production the first time. */}
+          {USING_FIXTURES ? (
+            <Text className="text-caption text-muted-foreground" testID="route-fixture-notice">
+              Sample data: this is the straight line between your stops, not a real route.
+            </Text>
+          ) : null}
         </View>
       ) : null}
 
-      {directions.routeFailure === 'noRoute' ? (
-        <Text className="px-space-16 text-bodySmall text-muted-foreground">
-          {`No ${MODE_LABELS[directions.travelMode].toLowerCase()} route between these stops. Try another travel mode, or move a stop.`}
-        </Text>
-      ) : null}
-      {directions.routeFailure && directions.routeFailure !== 'noRoute' ? (
-        <View className="gap-space-8 px-space-16">
-          <Text className="text-bodySmall text-muted-foreground">
-            {directions.routeFailure === 'offline'
-              ? "Directions need a connection, and GoWay can't reach the network."
-              : "Directions aren't available right now."}
-          </Text>
-          <View className="flex-row">
-            <Button variant="secondary" size="small" onPress={directions.retryRoute}>
-              Try again
-            </Button>
-          </View>
-        </View>
+      {directions.routeFailure ? (
+        <RouteFailure
+          kind={directions.routeFailure}
+          mode={directions.travelMode}
+          onRetry={directions.retryRoute}
+        />
       ) : null}
 
       {route && directions.steps.length > 0 ? (
