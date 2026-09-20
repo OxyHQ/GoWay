@@ -296,7 +296,31 @@ jobs:
   deploy:
     name: Deploy
     needs: [quality, gates, lockfile, test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # GATED ON A REPOSITORY VARIABLE, because the AWS side does not exist yet.
+    #
+    # `deploy-aws.yml` assumes an IAM role `oxy-goway-github-deploy`, an ECR
+    # repository `oxy/goway` and an ECS service, none of which are provisioned.
+    # It therefore failed on the FIRST step — the OIDC credential exchange — on
+    # every one of the first five merges to main, and nobody noticed: the job
+    # runs on `push`, after the merge button, so a green pull request tells you
+    # nothing about it.
+    #
+    # The two obvious fixes are both wrong. Deleting the job loses the wiring
+    # that took a `startup_failure` to get right. `continue-on-error` makes it
+    # green while it fails, which is how a deploy becomes invisible — the exact
+    # defect this file's header argues against for `on: push` deploys.
+    #
+    # A variable is neither: unset, the job is SKIPPED, which is honest about a
+    # deploy that genuinely cannot run, and main stops being red for a reason
+    # unrelated to any diff. Set `AWS_DEPLOY_ENABLED` to `true` once
+    # `terraform-uswest2/app-goway.tf` and `iam-goway-deploy.tf` are applied,
+    # and the job arms itself with no workflow edit. `vars` is used rather than
+    # `secrets` deliberately: the `secrets` context is not available in a
+    # job-level `if`, and this is configuration, not a credential.
+    if: >-
+      github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
+      && vars.AWS_DEPLOY_ENABLED == 'true'
     # A called workflow cannot ELEVATE permissions beyond what the caller grants,
     # and the workflow-level grant above is `contents: read`. deploy-aws.yml
     # declares `id-token: write` for the AWS OIDC exchange, so without this job
@@ -307,4 +331,23 @@ jobs:
       id-token: write
       contents: read
     uses: ./.github/workflows/deploy-aws.yml
+    secrets: inherit
+
+  # The web app, deployed the same way and for the same reason: a workflow with
+  # its own `push` trigger would race these jobs and win. It is NOT `needs:` the
+  # backend deploy above — the two are independent today, because the exported
+  # bundle runs on the fixture transport in
+  # `packages/frontend/lib/goway/client.ts` and makes no call to `api.goway.to`
+  # at all. Coupling them would mean a red backend rollout leaves `goway.to`
+  # serving a stale build for no reason.
+  #
+  # `contents: read` only: deploy-frontend.yml talks to Cloudflare with an API
+  # token from `secrets`, not to AWS over OIDC, so it needs no `id-token`.
+  deploy-frontend:
+    name: Deploy frontend
+    needs: [quality, gates, lockfile, test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/deploy-frontend.yml
     secrets: inherit

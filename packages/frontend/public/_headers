@@ -1,0 +1,41 @@
+# Response headers for the static web export, read by Cloudflare Workers Static
+# Assets (`wrangler.toml` → `[assets]`). `expo export --platform web` copies
+# `public/` into `dist/` verbatim, so this file ships as `dist/_headers` and is
+# never referenced by the app itself.
+#
+# THE `/*` RULE AT THE BOTTOM IS THE LOAD-BEARING ONE, and it exists because of
+# a platform difference that no build, deploy or test in this repository can
+# see. Cloudflare PAGES adds `x-content-type-options: nosniff` and
+# `referrer-policy: strict-origin-when-cross-origin` to every response it
+# serves, automatically, with nothing in the project asking for them — measured
+# fleet-wide on `oxy-auth.pages.dev`, a Pages project carrying no `_headers`
+# rule for either. Workers Static Assets does NOT. GoWay was born on Workers,
+# so it never had them; without this rule it never would, and nothing here
+# reads a response header to notice. `nosniff` is the one that matters: without
+# it a browser may disregard a declared Content-Type and sniff the bytes
+# instead, which turns any response carrying attacker-influenced content into a
+# possible script.
+
+# Expo emits content-hashed JS chunks under /_expo/static and every imported
+# asset — Bloom's .woff2 web fonts among them — under /assets. Both carry a
+# content hash in the filename, so a changed file is a changed URL and the
+# response can be cached forever.
+/_expo/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The MapLibre GL worker and shared chunk, copied out of the INSTALLED
+# maplibre-gl by scripts/vendor-maplibre-worker.js into a path keyed on the
+# package version (`/vendor/maplibre-gl/<version>/…`). Version-keyed is the
+# same guarantee a content hash gives: a bump changes the URL, so the old URL
+# may be cached indefinitely.
+/vendor/maplibre-gl/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Every response. See the note at the top of this file — these two are the
+# headers Pages used to add for free and Workers does not.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

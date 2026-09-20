@@ -4,3 +4,8 @@
 # a stale worker outlive a version bump — exactly the failure the version-keyed
 # path exists to prevent. Homiio does the same.
 public/vendor/
+
+# wrangler's local state: the workerd cache and asset manifest written by
+# `wrangler dev`/`wrangler deploy` beside wrangler.toml. Machine-local build
+# scratch, never an input to a deploy.
+.wrangler/
