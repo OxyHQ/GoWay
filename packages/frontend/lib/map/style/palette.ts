@@ -11,51 +11,75 @@
  * to a button destroys the other. So these values live here, in map terms, and
  * nothing in `components/` or `features/` reads them.
  *
- * ## Where the ground colours come from
+ * ## What this palette is aiming at
  *
- * The anchor hues were supplied by the product owner as a **Google Maps JS API**
- * style array (`featureType` / `elementType` / `stylers`), which is a different
- * language from a MapLibre style document: Google names abstract feature
- * *classes* and cascades; MapLibre names the vector tile's own `source-layer`
- * and `class` values and does not cascade. So the palette was translated onto
- * the OpenMapTiles schema OpenFreeMap serves, feature class by feature class,
- * rather than consumed:
+ * Apple Maps' **current** cartography, described by property rather than by
+ * sample — see the honesty note at the bottom of this block. The properties, in
+ * the order they matter:
  *
- * | supplied (Google)                      | here                                   |
+ *  1. **Very low contrast, and a lot of light.** Until labels are drawn the map
+ *     is close to monochrome. Colour appears sparingly and never competes with
+ *     type. Every decision below is downstream of this one.
+ *  2. **Land is a very pale warm grey**, near-white. The warmth is a hint, not
+ *     a tint — enough that white roads read as brighter than the ground, and no
+ *     more.
+ *  3. **Water is a muted, slightly grey blue.** It is the one large area
+ *     allowed any saturation, and even that is restrained.
+ *  4. **Green space is soft sage, close in value to the land**, so a park reads
+ *     as a calm area rather than a bright patch.
+ *  5. **Roads are white.** Motorways are *not* yellow — the hierarchy is width
+ *     plus casing strength, with at most a whisper of warmth at the top.
+ *  6. **Category tints are nearly gone.** A hospital campus, an airport apron,
+ *     a school: present, below the land's own contrast, never the brightest
+ *     thing on screen.
+ *
+ * ## The retired source — READ THIS BEFORE REINTRODUCING ANY HEX BELOW
+ *
+ * The first two versions of this palette were built from a Google Maps JS API
+ * style array supplied as an "Apple Maps" reference. It is
+ * **snazzymaps.com/style/42, published 20 November 2013**, by an anonymous
+ * author, whose own description claims only that it "largely resembles the
+ * Apple Maps theme, albeit somewhat flatter". It imitates **iOS 6/7-era** Apple
+ * Maps: creamy land, saturated green, bright blue water, and — the loudest
+ * giveaway — **yellow motorways**, which Apple retired years ago. Following it
+ * faithfully is precisely what made this map look unlike Apple Maps today.
+ *
+ * It is recorded here for provenance and for nothing else. **These are not
+ * targets.** If a value below drifts back toward one of them, that is a
+ * regression, not a restoration:
+ *
+ * | retired 2013 source (Google)           | what it drove                          |
  * |----------------------------------------|----------------------------------------|
- * | `landscape.man_made` `#f7f1df`         | {@link CartographyPalette.land} and the `landuse` built-up fills |
- * | `landscape.natural` `#d0e3b4`          | {@link CartographyPalette.natural}, i.e. `landcover` wood/grass/scrub |
- * | `landscape.natural.terrain` hidden     | no relief raster, no hillshade, `landcover class=rock` dropped |
- * | `poi.park` `#bde6ab`                   | {@link CartographyPalette.park} — the `park` source-layer + `landuse class=park` |
- * | `poi.medical` `#fbd3da`                | {@link CartographyPalette.medical} — toned down, see below |
- * | `transit.station.airport` `#cfb2db`    | {@link CartographyPalette.airport} — the `aeroway` polygons |
- * | `water` `#a2daf2`                      | {@link CartographyPalette.water} |
- * | `road.highway` `#ffe15f` / `#efd151`   | {@link CartographyPalette.roads} motorway/trunk — desaturated, see below |
+ * | `landscape.man_made` `#f7f1df`         | {@link CartographyPalette.land} — now a pale warm grey |
+ * | `landscape.natural` `#d0e3b4`          | {@link CartographyPalette.natural} — now desaturated sage |
+ * | `landscape.natural.terrain` hidden     | still hidden: no relief raster, no hillshade, `landcover class=rock` dropped |
+ * | `poi.park` `#bde6ab`                   | {@link CartographyPalette.park} — now close in value to the land |
+ * | `poi.medical` `#fbd3da`                | {@link CartographyPalette.medical} — now barely a tint |
+ * | `transit.station.airport` `#cfb2db`    | {@link CartographyPalette.airport} — now barely a tint |
+ * | `water` `#a2daf2`                      | {@link CartographyPalette.water} — now muted and greyer |
+ * | `road.highway` `#ffe15f` / `#efd151`   | motorway/trunk — **now white**, see below |
  *
- * ## Where the road model comes from — and why it changed
+ * The translation *method* still applies to anything new: Google names abstract
+ * feature classes and cascades, MapLibre names the vector tile's own
+ * `source-layer` and `class` values and does not, so a Google style is
+ * translated feature class by feature class, never consumed.
  *
- * The first cut of this style obeyed the supplied array literally: `road` →
- * `geometry.stroke` → `visibility: off` globally, so only the highway tier kept
- * a casing, and `road.local` → `geometry.fill` → black. Shipped and looked at,
- * the first thing the product owner saw was *"unas líneas negras en las
- * carreteras"* — every residential street rendering as a bare black stroke on
- * sand, a black mesh over any dense grid. The verdict was Apple over literal
- * fidelity, so the road model is now Apple's and the supplied road colours are
- * not used:
+ * ## The road model, which did NOT change
  *
- *  - **Every class has a casing**, a fine line slightly darker than its fill,
- *    drawn wider and underneath. That is what makes a road read as a *ribbon*
- *    rather than a stroke, and it is what separates overlapping roads at a
- *    junction.
- *  - **Fills are white or near-white**, warming very slightly up the hierarchy.
- *  - **Hierarchy is carried by width, not colour.** A motorway is a wide white
- *    ribbon with a soft warm tint — not a yellow line. The supplied `#ffe15f`
- *    survives only as the *hue* behind a much paler, desaturated tint.
+ * The geometry is right and stays. The first cut obeyed the 2013 array
+ * literally — `road` → `geometry.stroke` → `visibility: off` globally, so only
+ * the highway tier kept a casing, and `road.local` → `geometry.fill` → black.
+ * Shipped and looked at, the first thing the product owner saw was *"unas
+ * líneas negras en las carreteras"*. The model that replaced it is Apple's and
+ * survives this pass untouched:
  *
- * The ground colours were never the problem and are unchanged, except
- * {@link CartographyPalette.medical}: `#fbd3da` measured as one of the brightest
- * things on screen at city zoom, louder than any label, so it is now a quiet
- * warm tint in the same family.
+ *  - **Every class has a casing**, a fine line darker than its fill, drawn
+ *    wider and underneath. That is what makes a road read as a *ribbon* rather
+ *    than a stroke, and what separates overlapping roads at a junction.
+ *  - **Fills are white or near-white**, the whole way up the hierarchy.
+ *  - **Hierarchy is carried by width and by casing strength, not by colour.**
+ *    A motorway is the widest ribbon with the firmest edge. Its fill carries a
+ *    whisper of warmth and nothing more; `#ffe15f` is gone entirely.
  *
  * ## Where the dark palette comes from
  *
@@ -67,14 +91,20 @@
  *    for water to be.
  *  - **Water is darker than land.** In daylight water is the darker mass, so at
  *    night it stays the darker mass or every coastline reads inside-out.
- *  - Accent hues (park green, medical pink, airport violet, motorway amber)
- *    keep their hue and lose their lightness and most of their saturation.
- *  - Roads are *lighter* than land, so the network reads as lines of light, and
- *    they keep the same width-led hierarchy. Casings go **darker than the
- *    land**, because on a dark ground a casing cannot separate a road from the
- *    terrain — nothing can, the road is already the bright thing — so its only
- *    remaining job is separating roads from each other at an interchange.
+ *  - Roads are a touch *lighter* than the ground, keeping the same width-led
+ *    hierarchy. Casings go **darker than the land**, because on a dark ground a
+ *    casing cannot separate a road from the terrain — nothing can, the road is
+ *    already the bright thing — so its only remaining job is separating roads
+ *    from each other at an interchange.
  *  - Labels are warm off-white over dark halos.
+ *
+ * ## Honesty note
+ *
+ * Nobody who worked on this file has seen Apple Maps 2026. These values are
+ * reasoned from its design *language* — low contrast, light ground, width-led
+ * roads, sparing colour — and not matched against a screenshot or a sample.
+ * Treat the result as "built to those properties", not as "matches Apple Maps",
+ * and let the person looking at both decide.
  *
  * Every value is an opaque hex or an `rgba()`; MapLibre parses both on web and
  * native. No `hsl(var(--x))` — that is a Bloom/Tailwind idiom, and a style
@@ -85,6 +115,19 @@
 export interface RoadTone {
   /** The road surface itself. */
   fill: string;
+  /**
+   * A stronger casing colour used at LOW zoom, fading to {@link casing} by
+   * z14.
+   *
+   * Only the tiers that carry the strategic network set it. At z11 a motorway
+   * is a 3.8px ribbon with about a pixel of casing on each side, and on a
+   * near-white ground a pale edge at that scale is not an edge — the first
+   * render of this palette turned the whole Madrid region into an unreadable
+   * white tangle where the A-roads could not be traced. Deepening the casing
+   * as you zoom out restores the network without making the same edge look
+   * drawn in pencil at z17, where the ribbon is 24px wide and needs no help.
+   */
+  casingLowZoom?: string;
   /**
    * The casing drawn wider and *underneath*.
    *
@@ -227,170 +270,211 @@ export interface CartographyPalette {
  * than the ground at every width, which is what lets colour step back and let
  * width do the ranking.
  */
+/**
+ * Daylight.
+ *
+ * `#f3f2ef` — a pale warm grey at ~95% lightness with barely 5% saturation —
+ * replaces the 2013 array's creamy `#f7f1df`. That single value is most of the
+ * change: on a cream ground every white road had to be tinted to stay visible
+ * and every landcover had to be saturated to stay distinct, so the whole map
+ * drifted warm and bright. On a near-white warm grey, `#ffffff` roads read as
+ * brighter than the ground on their own, and green space can be a sage sitting
+ * four or five points of lightness below the land instead of a fresh green
+ * shouting over it.
+ *
+ * The road ladder is **casing strength plus width**, never fill colour: a
+ * motorway's casing is `#d8d2c4` and a residential street's is `#e7e4dc`, so
+ * the firmer edge and the wider ribbon rank together and reinforce each other.
+ */
 export const LIGHT_PALETTE: CartographyPalette = {
   appearance: 'light',
 
-  land: '#f7f1df',
-  landBuiltUp: '#f2ecd8',
-  natural: '#d0e3b4',
-  farmland: '#e6e8c6',
-  park: '#bde6ab',
-  parkOutline: '#a9d894',
-  pitch: '#b5dfa2',
-  // Supplied as `#fbd3da`. That measured as the loudest thing on a city-zoom
-  // screen — a hospital campus outshouting every label near it. Same hue, most
-  // of the saturation gone, so it still reads as "not ordinary ground".
-  medical: '#f6e3e1',
-  institution: '#efe9d2',
-  airport: '#ddc9e6',
-  sand: '#f3e6c4',
-  wetland: '#c8dcb2',
-  ice: '#e6f0f4',
-  cemetery: '#d7e3bd',
+  land: '#f3f2ef',
+  landBuiltUp: '#ebeae6',
+  natural: '#dde4d4',
+  farmland: '#e8eade',
+  park: '#d6e2ca',
+  parkOutline: '#c7d7b9',
+  pitch: '#cfdcc3',
+  // Both of these were vivid enough in the 2013 source to be the brightest
+  // thing on a city-zoom screen. They are now a breath away from the land:
+  // enough to say "this block is a hospital / an airport", never enough to
+  // outrank a label.
+  medical: '#f1eae9',
+  institution: '#eeeeea',
+  airport: '#e9e6ee',
+  sand: '#efe9da',
+  wetland: '#dbe2d5',
+  ice: '#e9eef1',
+  cemetery: '#e0e5d7',
 
-  water: '#a2daf2',
-  waterway: '#96d1ec',
+  // The one large area allowed any saturation, and even this is restrained:
+  // `#a2daf2` was a bright swimming-pool blue that pulled the eye off every
+  // label near a river.
+  water: '#b5cfdd',
+  waterway: '#abc7d7',
 
-  // Fills warm as the hierarchy rises; casings are one step darker than their
-  // own fill, never a shared grey. The motorway tint is the supplied `#ffe15f`
-  // hue at a fraction of its saturation — warm enough to find the through
-  // route at a glance, quiet enough that it is not the first thing you see.
+  // NO YELLOW ANYWHERE. Motorway fills carry a whisper of warmth — three
+  // points, invisible in isolation — so that at region zoom the strategic
+  // network reads as very slightly warmer than the arterials beside it. The
+  // work is done by the casings, which darken monotonically up the hierarchy.
   roads: {
-    motorway: { fill: '#fce9bd', casing: '#e7cd8d' },
-    motorwayLink: { fill: '#fdeecc', casing: '#e9d3a0' },
-    trunk: { fill: '#fdf0d2', casing: '#e9d8a9' },
-    trunkLink: { fill: '#fdf3dc', casing: '#ebdcb5' },
-    primary: { fill: '#fffdf6', casing: '#e4dbc3' },
-    secondary: { fill: '#ffffff', casing: '#e6ddc7' },
-    tertiary: { fill: '#ffffff', casing: '#e8e0cc' },
-    local: { fill: '#ffffff', casing: '#e6dfc9' },
-    service: { fill: '#fdfbf4', casing: '#e9e2cd' },
-    track: { fill: '#efe7d0', casing: '#ded4b6' },
+    motorway: { fill: '#fffdf8', casing: '#d3ccbb', casingLowZoom: '#b9ae95' },
+    motorwayLink: { fill: '#fffdf8', casing: '#dad3c4', casingLowZoom: '#c3b9a2' },
+    trunk: { fill: '#fffefb', casing: '#d7d0c0', casingLowZoom: '#c0b69f' },
+    trunkLink: { fill: '#fffefb', casing: '#ddd6c7', casingLowZoom: '#c7bda7' },
+    primary: { fill: '#ffffff', casing: '#dcd8cc', casingLowZoom: '#cbc4b0' },
+    secondary: { fill: '#ffffff', casing: '#e0dcd2', casingLowZoom: '#d4cdbc' },
+    tertiary: { fill: '#ffffff', casing: '#e3dfd6' },
+    local: { fill: '#ffffff', casing: '#e4e1d7' },
+    service: { fill: '#fdfdfb', casing: '#eae7df' },
+    track: { fill: '#eae6da', casing: '#ddd8c9' },
     // Footways are dashed, and a dashed line with a casing reads as a ladder.
-    path: { fill: '#ddd3b5', casing: null },
-    tunnel: { fill: '#f3eddb', casing: '#e7dfc8' },
+    path: { fill: '#d8d2c3', casing: null },
+    tunnel: { fill: '#efeee8', casing: '#e3e0d6' },
   },
-  rail: '#d8cdae',
-  railHatch: '#c3b78f',
-  ferry: '#8dcae8',
-  aeroway: { fill: '#ece0f1', casing: null },
+  rail: '#d5d1c6',
+  railHatch: '#bfbbad',
+  ferry: '#9dbfd0',
+  aeroway: { fill: '#e6e2ea', casing: null },
 
-  // Present, not loud. A footprint should be findable when you look for it and
-  // invisible when you are reading a label over it.
-  building: '#ebe2c6',
-  buildingOutline: '#dccfa8',
+  // A very light neutral grey. Present when you look for a footprint, gone
+  // when you are reading a label over one.
+  building: '#e8e6df',
+  buildingOutline: '#d7d4ca',
 
-  boundaryCountry: '#c6b894',
-  boundaryRegion: '#d8ceb0',
+  boundaryCountry: '#c0bbab',
+  boundaryRegion: '#d2cec1',
 
-  labelPlace: '#2b2720',
-  labelPlaceMinor: '#514a3b',
-  labelRegion: '#655d4b',
-  // Street names recede on Apple's map. Lighter than a place label, never
-  // black, and small — see the size ramp in `layers.ts`.
-  labelRoad: '#7a7261',
-  labelWater: '#3f87a8',
-  labelPark: '#4e7c3c',
-  labelPoi: '#6a6252',
-  halo: 'rgba(247,241,223,0.95)',
+  // RE-DARKENED for the new ground. The previous values were lightened to
+  // recede against a cream land; against a near-white one they would have gone
+  // faint, and street names sit on `#ffffff` ribbons where a light warm grey
+  // has even less to push against. Place names are near-black; street and POI
+  // names are a medium warm grey that still clears 4.5:1 on white.
+  labelPlace: '#26251f',
+  labelPlaceMinor: '#4a4840',
+  labelRegion: '#5f5c52',
+  labelRoad: '#6c6a5f',
+  // Both of these are DARKER than a blue-grey/green of this family would
+  // normally be, because their backgrounds moved: muted water and sage park
+  // sit far closer to the land's lightness than the 2013 palette's bright blue
+  // and fresh green did. Measured against their own fills rather than eyeballed
+  // — `#5b87a3` on `#b5cfdd` is 2.38:1, which is a label you can see is there
+  // and cannot read.
+  labelWater: '#2d5c75',
+  labelPark: '#4a6839',
+  labelPoi: '#5e5c51',
+  halo: 'rgba(243,242,239,0.95)',
   haloStrong: '#ffffff',
 
-  // Derived from the three supplied POI hues — park green, medical pink,
-  // airport violet — plus the motorway amber, so the ramp reads as one family.
+  // The one place the basemap still spends saturation, because a POI dot is
+  // content rather than terrain. Pulled back from the previous ramp so the
+  // dots sit on a quieter ground without turning a high street into confetti.
   poi: {
-    foodDrink: '#d9813f',
-    shopping: '#bfa23e',
-    outdoors: '#63a64e',
-    transit: '#8a68ad',
-    lodging: '#7f76bd',
-    health: '#d97e8d',
-    civic: '#6f8096',
-    culture: '#b3689b',
-    worship: '#8f869a',
-    vehicle: '#6d8fae',
-    other: '#93886e',
+    foodDrink: '#cc8450',
+    shopping: '#b79a4e',
+    outdoors: '#67a05a',
+    transit: '#8571a8',
+    lodging: '#7d79b3',
+    health: '#cc8189',
+    civic: '#73808f',
+    culture: '#a96f95',
+    worship: '#8b8794',
+    vehicle: '#6f8da4',
+    other: '#8f8b80',
   },
 };
 
 /**
  * Night — derived from the light palette, not from `fiord`.
  *
- * Same road model: every tier casinged, hierarchy by width, motorway the one
- * warm tier. Two things invert and neither is an inversion:
+ * Same road model: every tier casinged, hierarchy by width and casing. Two
+ * things invert and neither is an inversion:
  *
- *  - Water (`#111a22`) is darker than land (`#23262b`), as it is in daylight.
+ *  - Water (`#0f151c`) is darker than land (`#212429`), as it is in daylight.
  *  - Casings go *below* the land's lightness rather than above their fill's.
  *    A casing's job here is the seam between two roads at an interchange; a
  *    lighter casing would instead draw a halo around every street.
+ *
+ * The ground is a shade deeper and a shade bluer than the previous pass, for
+ * the same reason daylight went pale: the less the terrain asserts, the more
+ * the labels and the route line have to work with.
  */
 export const DARK_PALETTE: CartographyPalette = {
   appearance: 'dark',
 
-  land: '#23262b',
-  landBuiltUp: '#272b31',
-  natural: '#273020',
-  farmland: '#282c22',
-  park: '#1f2e1c',
-  parkOutline: '#283a24',
-  pitch: '#223420',
-  medical: '#2e2729',
-  institution: '#282a2b',
-  airport: '#2e2635',
-  sand: '#2e2b23',
-  wetland: '#222e22',
-  ice: '#262d33',
-  cemetery: '#262c23',
+  land: '#212429',
+  landBuiltUp: '#252930',
+  natural: '#242b22',
+  farmland: '#262a21',
+  park: '#1e2a1c',
+  parkOutline: '#273423',
+  pitch: '#213021',
+  medical: '#2a2528',
+  institution: '#262829',
+  airport: '#282630',
+  sand: '#2a2823',
+  wetland: '#212a22',
+  ice: '#242b30',
+  cemetery: '#242a22',
 
-  water: '#111a22',
-  waterway: '#16222c',
+  water: '#0f151c',
+  waterway: '#141d26',
 
+  // Same ladder as daylight, read the other way up: the fill lightens toward
+  // the top of the hierarchy and the motorway keeps its whisper of warmth.
+  // Casings are one value below the land, so they are a seam at an interchange
+  // and nothing at all in open ground.
   roads: {
-    motorway: { fill: '#5e5234', casing: '#2b2619' },
-    motorwayLink: { fill: '#564c33', casing: '#2b2619' },
-    trunk: { fill: '#524a35', casing: '#282318' },
-    trunkLink: { fill: '#4b4433', casing: '#282318' },
-    primary: { fill: '#4a4f58', casing: '#1a1e23' },
-    secondary: { fill: '#454a53', casing: '#1a1e23' },
-    tertiary: { fill: '#40454d', casing: '#1a1e23' },
-    local: { fill: '#3b4048', casing: '#1a1e23' },
-    service: { fill: '#34383f', casing: '#1a1e23' },
-    track: { fill: '#2f333a', casing: '#1e2127' },
-    path: { fill: '#474c54', casing: null },
-    tunnel: { fill: '#2c3036', casing: '#1e2127' },
+    motorway: { fill: '#4f5157', casing: '#191c21', casingLowZoom: '#12151a' },
+    motorwayLink: { fill: '#4b4d53', casing: '#191c21', casingLowZoom: '#12151a' },
+    trunk: { fill: '#494b51', casing: '#191c21', casingLowZoom: '#13161b' },
+    trunkLink: { fill: '#45474d', casing: '#191c21', casingLowZoom: '#13161b' },
+    primary: { fill: '#42474e', casing: '#191c21', casingLowZoom: '#15181d' },
+    secondary: { fill: '#3e434a', casing: '#191c21' },
+    tertiary: { fill: '#3a3f46', casing: '#191c21' },
+    local: { fill: '#373c43', casing: '#191c21' },
+    service: { fill: '#32373d', casing: '#191c21' },
+    track: { fill: '#2d3138', casing: '#1c1f25' },
+    path: { fill: '#41464d', casing: null },
+    tunnel: { fill: '#292d33', casing: '#1c1f25' },
   },
-  rail: '#3a3f46',
-  railHatch: '#4c525a',
-  ferry: '#294050',
-  aeroway: { fill: '#373040', casing: null },
+  rail: '#383d44',
+  railHatch: '#4a5058',
+  ferry: '#25394a',
+  aeroway: { fill: '#302c38', casing: null },
 
-  building: '#2d3138',
-  buildingOutline: '#3a4048',
+  building: '#2b2f35',
+  buildingOutline: '#383d45',
 
-  boundaryCountry: '#4d535c',
-  boundaryRegion: '#3a3f47',
+  boundaryCountry: '#4a505a',
+  boundaryRegion: '#383d45',
 
-  labelPlace: '#f1ede3',
-  labelPlaceMinor: '#c5bfb2',
-  labelRegion: '#aaa496',
-  labelRoad: '#9a958a',
-  labelWater: '#5d95b1',
-  labelPark: '#7ba066',
-  labelPoi: '#aaa499',
-  halo: 'rgba(18,21,25,0.88)',
-  haloStrong: 'rgba(14,17,20,0.96)',
+  labelPlace: '#f0ede6',
+  labelPlaceMinor: '#c3beb3',
+  labelRegion: '#a9a498',
+  // Lifted for the same reason in reverse: a street name sits ON the road
+  // ribbon, and a `#373c43` ribbon is lighter than the land the rest of the
+  // type is measured against.
+  labelRoad: '#aca79b',
+  labelWater: '#5c8ea8',
+  labelPark: '#79a06a',
+  labelPoi: '#a9a49a',
+  halo: 'rgba(16,19,24,0.9)',
+  haloStrong: 'rgba(12,15,19,0.96)',
 
   poi: {
-    foodDrink: '#e29656',
-    shopping: '#ccb257',
-    outdoors: '#74bc5d',
-    transit: '#a381c6',
-    lodging: '#968dd3',
-    health: '#e595a3',
-    civic: '#8493a8',
-    culture: '#c67cae',
-    worship: '#9c93a6',
-    vehicle: '#82a3c2',
-    other: '#a89d81',
+    foodDrink: '#d9945f',
+    shopping: '#c2a95f',
+    outdoors: '#74b166',
+    transit: '#9a85bd',
+    lodging: '#8e8ac6',
+    health: '#d9929a',
+    civic: '#8391a1',
+    culture: '#bb82a7',
+    worship: '#9a96a3',
+    vehicle: '#7f9cb5',
+    other: '#a09b8f',
   },
 };
 
