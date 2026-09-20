@@ -124,9 +124,15 @@ jobs:
             echo "rolled=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          aws ecs update-service --cluster "$CLUSTER" --service "$APP" --force-new-deployment >/dev/null
-          echo "Triggered new deployment for $APP"
+          # The deployment id is captured, not discarded. Everything below waits
+          # on THIS rollout by id; asking the service whether it is "stable"
+          # instead lets a rollout that finished BEFORE this step began answer
+          # for the one that has not started yet.
+          deployment=$(aws ecs update-service --cluster "$CLUSTER" --service "$APP" \
+            --force-new-deployment --query 'service.deployments[?status==`PRIMARY`].id' --output text)
+          echo "Triggered deployment $deployment for $APP"
           echo "rolled=true" >> "$GITHUB_OUTPUT"
+          echo "deployment=$deployment" >> "$GITHUB_OUTPUT"
 
       # WAIT FOR IT, AND FAIL IF IT DID NOT TAKE.
       #
@@ -143,20 +149,59 @@ jobs:
       #
       # The failure is then reported with the ONE instruction that fixes it,
       # because "tasks failed to start" sends a reader to the wrong place.
-      - name: Wait for the rollout, and say what went wrong if it failed
+      #
+      # ## And it polls the DEPLOYMENT, not the service
+      #
+      # `aws ecs wait services-stable` cannot answer this question. Its success
+      # condition is "one deployment, and runningCount == desiredCount", which
+      # is true of the PREVIOUS rollout for as long as it takes ECS to register
+      # the new one — and true again for the ~30 s between the old task
+      # draining and ECS marking the new deployment COMPLETED. It reported both
+      # on its first run: a rollout that was entirely healthy (task started,
+      # registered, old one drained) failed this job because the waiter was
+      # satisfied one poll before `rolloutState` flipped.
+      #
+      # Same lesson as the frontend deploy's entry-bundle check (#53): poll the
+      # thing you actually care about, keyed to the artefact this run produced,
+      # instead of sampling a proxy for it.
+      - name: Wait for THIS rollout, and say what went wrong if it failed
         if: steps.deploy.outputs.rolled == 'true'
+        env:
+          DEPLOYMENT: ${{ steps.deploy.outputs.deployment }}
         run: |
           set -euo pipefail
-          echo "Waiting for $APP to reach a steady state…"
-          if aws ecs wait services-stable --cluster "$CLUSTER" --services "$APP"; then
+          echo "Waiting for deployment $DEPLOYMENT…"
+          # 15 minutes: an arm64 image pull plus two 30 s health checks plus the
+          # old task's deregistration delay, with room for a slow ECR.
+          deadline=$(( SECONDS + 900 ))
+          while :; do
             state=$(aws ecs describe-services --cluster "$CLUSTER" --services "$APP" \
-              --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' --output text)
-            if [ "$state" = "COMPLETED" ]; then
-              echo "Rollout completed."
-              exit 0
+              --query "services[0].deployments[?id=='$DEPLOYMENT'].rolloutState | [0]" --output text)
+            case "$state" in
+              COMPLETED)
+                echo "Rollout completed."
+                exit 0
+                ;;
+              FAILED)
+                echo "::error::Deployment $DEPLOYMENT FAILED. The circuit breaker has restored the previous image."
+                break
+                ;;
+              None|'')
+                # The deployment is no longer on the service: it was rolled
+                # back, or a later merge superseded it. Either way this run
+                # cannot claim its image is serving, and the events below say
+                # which of the two it was.
+                echo "::error::Deployment $DEPLOYMENT is gone before completing — rolled back, or superseded by a later deploy."
+                break
+                ;;
+            esac
+            if (( SECONDS >= deadline )); then
+              echo "::error::Deployment $DEPLOYMENT was still $state after 15 minutes."
+              break
             fi
-          fi
-          echo "::error::The $APP rollout did not complete. The previous image is still serving."
+            echo "  $state ($(( deadline - SECONDS ))s left)"
+            sleep 15
+          done
           echo "--- recent service events ---"
           aws ecs describe-services --cluster "$CLUSTER" --services "$APP" \
             --query 'services[0].events[0:12].[createdAt,message]' --output text
