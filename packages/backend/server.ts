@@ -80,4 +80,23 @@ if (require.main === module) {
   void boot();
 }
 
-export { app, io, server };
+// NOTHING is exported from this file, and that is load-bearing rather than
+// tidiness.
+//
+// The image runs `bun packages/backend/dist/server.js`. Bun's entry wrapper
+// treats a CommonJS module's `module.exports` as a `default` export and then
+// calls `Bun.serve()` on it. An Express app is not a Bun server config, so the
+// process printed the banner, served nothing, and exited 1:
+//
+//     TypeError: Bun.serve() needs either:
+//       - A routes object ... - Or a fetch handler ...
+//
+// Reproduced exactly outside the container: `boot()` runs FIRST and the throw
+// comes afterwards, which is why the logs showed a healthy start and the task
+// still died. The guard is the absence of exported VALUES — the `__esModule`
+// marker alone is harmless, so `tsc` emitting it is not the problem.
+//
+// `app`, `io` and `server` were exported and imported by nothing. If a test
+// ever needs them, it should import the factory they come from rather than
+// re-exporting them here, or the container goes back into a restart loop.
+// `packages/backend/src/__tests__/entrypoint.test.ts` fails if this returns.
