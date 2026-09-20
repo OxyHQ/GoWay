@@ -120,6 +120,14 @@ jobs:
         #
         # Both scripts are deterministic by construction, so `--check` is a
         # byte comparison and not an approximation.
+        #
+        # The glyph check also asserts COMPLETENESS, which is the other silent
+        # failure: the Worker chooses between a committed range and the upstream
+        # Noto proxy on whether the asset EXISTS, so a range file that exists and
+        # is short is not a partial answer — it is the whole answer, and the
+        # fallback can never fire for it. Every published range is measured
+        # against `scripts/mapgen/fixtures/fallback/coverage.json` and the build
+        # fails on one with a hole in it.
         run: |
           bun run --cwd packages/frontend map:glyphs:check
           bun run --cwd packages/frontend map:sprite:check

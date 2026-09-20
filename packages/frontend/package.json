@@ -17,6 +17,7 @@
     "map:style:check": "bun scripts/build-map-style.ts --check",
     "map:glyphs": "bun scripts/build-map-glyphs.ts",
     "map:glyphs:check": "bun scripts/build-map-glyphs.ts --check",
+    "map:glyphs:fallback": "bun scripts/refresh-map-fallback.ts",
     "map:sprite": "bun scripts/build-map-sprite.ts",
     "map:sprite:check": "bun scripts/build-map-sprite.ts --check",
     "typecheck": "tsc --noEmit"

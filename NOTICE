@@ -52,14 +52,46 @@ because that is the case the package manager cannot speak for.
     them as a logo or brand identity -- the three uses section 3 prohibits.
 
  3. Noto Sans, by the Noto Project Authors.
+    Copyright 2022 The Noto Project Authors
+    (https://github.com/notofonts/latin-greek-cyrillic).
     SIL Open Font License, Version 1.1 -- https://scripts.sil.org/OFL
 
-    ONE 76 kB glyph range (`Noto Sans Regular`, codepoints 0-255) is committed
-    at packages/frontend/scripts/mapgen/fixtures/ as a TEST FIXTURE. It is
-    never served and never reaches a build output. It is the reference file
-    against which GoWay's own glyph encoder is checked, and it is committed
-    rather than fetched so that the check is offline and cannot pass because a
-    third-party host was unreachable.
+    Redistributed as RASTERISED SIGNED-DISTANCE-FIELD GLYPHS in two places,
+    both of them produced by Mapbox's `sdf-glyph-foundry` and served by
+    OpenFreeMap rather than rasterised here:
+
+      a. packages/frontend/scripts/mapgen/fixtures/fallback/ -- the code
+         points Inter does not draw, for the six ranges GoWay completes
+         locally, plus a manifest of what the upstream fallback serves. About
+         78 kB. These are a build INPUT.
+
+      b. packages/frontend/public/map/fonts/ -- the same glyphs, merged into
+         GoWay's own Inter ranges and re-based onto Inter's ascender, in the
+         six ranges listed as COMPLETED_RANGES in
+         packages/frontend/scripts/build-map-glyphs.ts. These ARE served to
+         browsers. A range GoWay cannot complete is not published at all and
+         is proxied from OpenFreeMap at request time instead, so most of Noto
+         reaches a user without passing through this repository.
+
+    Plus ONE 76 kB glyph range (`Noto Sans Regular`, codepoints 0-255)
+    committed at packages/frontend/scripts/mapgen/fixtures/ as a TEST FIXTURE.
+    It is never served. It is the reference file against which GoWay's own
+    glyph encoder is checked, and it is committed rather than fetched so that
+    the check is offline and cannot pass because a third-party host was
+    unreachable.
+
+    The OFL permits this, and the permission was read off the font rather than
+    off a web page. NotoSans-Regular.ttf, version 2.015, measured with fontkit:
+    the `name` table's license record is "This Font Software is licensed under
+    the SIL Open Font License, Version 1.1"; it declares no Reserved Font Name,
+    so the derived ranges may keep the name; and OS/2 fsType is
+    {noEmbedding: false, viewOnly: false, editable: false, noSubsetting: false,
+    bitmapOnly: false} -- installable embedding, with no restriction on
+    subsetting or editing. The same file reports ascent 1069 at unitsPerEm
+    1000, which is where the 26px ascender recorded in
+    scripts/mapgen/fixtures/fallback/coverage.json comes from
+    (ceil(1069 / 1000 * 24)); the glyphs' own metrics agree with it
+    independently.
 
 Map DATA is a separate obligation and is discharged separately: GoWay renders
 OpenStreetMap-derived vector tiles served by OpenFreeMap in the OpenMapTiles

@@ -517,3 +517,79 @@ describe('seam — the camera SCALARS, which poison the transform one step later
     expect(asFinite(NaN)).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// The door `every()` left open: a composite geometry with no parts
+// ---------------------------------------------------------------------------
+
+describe('seam — an EMPTY composite geometry is the same silent failure', () => {
+  const geometry = (data: unknown): GeoJSON.GeoJSON =>
+    ({ type: 'Feature', properties: {}, geometry: data } as unknown as GeoJSON.GeoJSON);
+
+  const overlay = (data: unknown): MapOverlay => ({
+    id: 'goway-route',
+    kind: 'line',
+    data: geometry(data),
+  });
+
+  test('`[].every()` is true — which is what let these through', () => {
+    // The fact the bug rests on, asserted rather than asserted about: a
+    // predicate applied to no elements is vacuously satisfied, so a geometry
+    // whose ONLY check is `coordinates.every(...)` accepts `coordinates: []`
+    // no matter how strict the per-part rule is.
+    expect(([] as unknown[]).every(() => false)).toBe(true);
+  });
+
+  test('rejects a composite geometry with nothing in it', () => {
+    for (const data of [
+      { type: 'MultiLineString', coordinates: [] },
+      { type: 'Polygon', coordinates: [] },
+      { type: 'MultiPolygon', coordinates: [] },
+      // A MultiPolygon of one polygon that has no rings: the outer array is
+      // non-empty, so only the inner check can catch this one.
+      { type: 'MultiPolygon', coordinates: [[]] },
+      { type: 'MultiPoint', coordinates: [] },
+    ]) {
+      expect(isDrawableGeoJSON(geometry(data))).toBe(false);
+    }
+  });
+
+  test('still accepts the same geometries with real parts', () => {
+    const ring = [
+      [2.1, 41.3],
+      [2.2, 41.3],
+      [2.2, 41.4],
+      [2.1, 41.3],
+    ];
+    expect(
+      isDrawableGeoJSON(
+        geometry({
+          type: 'MultiLineString',
+          coordinates: [
+            [
+              [2.1, 41.3],
+              [2.2, 41.4],
+            ],
+          ],
+        }),
+      ),
+    ).toBe(true);
+    expect(isDrawableGeoJSON(geometry({ type: 'Polygon', coordinates: [ring] }))).toBe(true);
+    expect(isDrawableGeoJSON(geometry({ type: 'MultiPolygon', coordinates: [[ring]] }))).toBe(true);
+  });
+
+  test('drawableOverlays drops the empty polygon rather than drawing nothing', () => {
+    // The whole point of the validator: an empty Polygon is accepted by
+    // MapLibre, tiled by geojson-vt, and renders as absolutely nothing with
+    // not a word anywhere. It has to be reported here or not at all.
+    const empty = { ...overlay({ type: 'Polygon', coordinates: [] }), id: 'goway-area' };
+    const good = overlay({
+      type: 'LineString',
+      coordinates: [
+        [2.1, 41.3],
+        [2.2, 41.4],
+      ],
+    });
+    expect(drawableOverlays([good, empty]).map((o) => o.id)).toEqual(['goway-route']);
+  });
+});

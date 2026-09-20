@@ -54,6 +54,7 @@ import {
 } from '@/lib/map/provider';
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
 
+import { applyDragAxes } from './dragAxes';
 import { DefaultMapMarker } from './DefaultMapMarker';
 import { MapAttribution } from './MapAttribution';
 import { MapErrorState } from './MapErrorState';
@@ -315,14 +316,20 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     toggle(map.touchZoomRotate, gestures.zoom);
     toggle(map.doubleClickZoom, gestures.zoom);
     toggle(map.keyboard, true);
-    toggle(map.dragRotate, gestures.rotate);
     if (gestures.rotate) {
       map.touchZoomRotate.enableRotation();
     } else {
       map.touchZoomRotate.disableRotation();
     }
-    // Tilt. Both halves of it: `dragRotate` is what Ctrl+drag (and right-drag)
-    // uses on a desktop, and `touchPitch` is the two-finger vertical drag on a
+    // Bearing and tilt on a desktop are ONE MapLibre handler over two axes, so
+    // they go through `applyDragAxes` rather than a `toggle`. Gating that
+    // handler on `rotate` alone is what used to leave `{ rotate: false,
+    // pitch: true }` with a two-finger pitch gesture and no desktop one at all,
+    // while the native fork — which has a prop per axis — honoured both.
+    // `dragAxes.ts` carries the contract and what it reaches past to keep it.
+    applyDragAxes(map.dragRotate, { rotate: gestures.rotate, pitch: gestures.pitch });
+
+    // Tilt's other half: `touchPitch` is the two-finger vertical drag on a
     // touchscreen — the native fork wires the same gesture as `touchPitch`, so
     // leaving this one on the renderer's default was the one place the two
     // forks could disagree about whether a pitch gesture is live.
