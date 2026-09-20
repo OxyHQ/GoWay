@@ -1,0 +1,82 @@
+# GoWay's web app is a Cloudflare WORKER serving static assets, not a Pages
+# project.
+#
+# WHY NOT PAGES: a Pages project ALWAYS serves `<project>.pages.dev` and
+# Cloudflare offers no way to switch it off — `wrangler pages project` has only
+# `list`, `create` and `delete`. The fleet measured what that costs before
+# migrating: `alia.onl` and `alia-app.pages.dev` served byte-identical
+# deployments, and the second was in no CORS allowlist and no Oxy application's
+# `redirectUris`, so it rendered the shell and failed every call it made — an
+# indexable, signed-out copy of the app that looks alive and is not. GoWay
+# would inherit exactly that the moment its API goes live: the backend admits
+# an explicit list of origins (`CORS_APP_ORIGINS`, parsed in
+# `packages/backend/src/config`), and the Oxy application behind
+# `EXPO_PUBLIC_OXY_CLIENT_ID` carries an explicit `redirectUris` list — a
+# `goway.pages.dev` would be in neither, so it would boot and then fail every
+# call and every sign-in. `workers_dev = false` below is what closes it, and it
+# is the whole reason this file is a Worker config rather than a `pages deploy`
+# flag.
+name = "goway"
+compatibility_date = "2026-09-09"
+
+# NO `main`. This Worker runs no code of its own: every response is an asset
+# out of `dist/`, served by the asset pipeline. That is deliberate — GoWay's
+# web build is public by design (the map, search, place details and routing all
+# work signed out), so there is nothing for a Worker script to gate, and a
+# script that exists only to forward to `env.ASSETS` is a runtime failure mode
+# bought for nothing.
+#
+# Consequence worth knowing before someone goes looking: with no `main` there
+# is nothing to stop the SPA fallback below answering a *stale hashed asset*
+# URL with `index.html`, which is why Mention and Clarity carry a
+# `worker/index.js`. The exposure here is one already-open tab across a deploy,
+# because Workers Assets serves HTML with `must-revalidate` and every asset URL
+# in a freshly-fetched `index.html` is current. If that ever bites, the fix is
+# a `main` plus `run_worker_first = true`, not a change to this fallback.
+#
+# `GET /accounts/{a}/workers/scripts/goway` answers 204 for a Worker in this
+# shape — neither 200 nor 404. Any existence check written against this
+# deployment must read `/workers/services/goway`, which is 200/404 for both
+# shapes; the scripts endpoint will report a Worker that plainly exists as
+# neither present nor absent.
+workers_dev = false
+
+# Stated rather than left to the default, because the default is not a
+# constant: Cloudflare's rule is `preview_urls = workers_dev`, so this line
+# currently changes nothing and keeps changing nothing if that rule moves. A
+# preview URL is a second hostname, which is the defect this file exists to
+# remove.
+preview_urls = false
+
+# `app.config.js` sets `web.output: 'single'`, so `expo export --platform web`
+# emits ONE `index.html` plus content-hashed assets — a client-routed SPA, not
+# per-route static HTML. Every expo-router route (`/place/<id>`, `/search`, a
+# shared deep link) exists only in the bundle, so any of them arriving as a
+# cold request must be answered with `index.html`. That is what
+# `not_found_handling` does here; without it a shared place link is a 404.
+#
+# `public/_headers` is carried into `dist/` verbatim by the export — verified
+# on this tree, `dist/_headers` is present after `bun run --cwd
+# packages/frontend export:web` — and it is what re-adds the two response
+# headers Cloudflare Pages used to inject for free and Workers Static Assets
+# does not (`x-content-type-options`, `referrer-policy`). Read that file before
+# changing anything about caching here.
+#
+# `public/vendor/maplibre-gl/<version>/` is generated into the export by
+# `scripts/vendor-maplibre-worker.js` on every Metro run and travels the same
+# way; it is gitignored on purpose, so it exists in CI only because the export
+# step regenerates it.
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+
+# The only name this deployment answers to, and the reason `workers_dev` is
+# off. `goway.to` is the zone apex: Cloudflare writes and manages the record
+# for a custom domain itself, which is why the apex must carry NO pre-existing
+# address record when this first deploys — a Worker custom domain refuses a
+# hostname that already has externally managed DNS records (`code: 100117`).
+# Order is DNS → deploy, never the reverse; README.md → "Deploying the web app"
+# has the one-time steps.
+[[routes]]
+pattern = "goway.to"
+custom_domain = true

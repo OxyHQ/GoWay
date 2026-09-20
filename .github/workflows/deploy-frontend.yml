@@ -1,0 +1,313 @@
+# Deploy the GoWay web app to Cloudflare as a Worker serving static assets.
+#
+# ## What this ships, and why it is useful before the backend exists
+#
+# `packages/frontend/lib/goway/client.ts` injects a fixture `fetch` into the
+# REAL `@goway.to/sdk` client whenever `EXPO_PUBLIC_GOWAY_FIXTURES` is not
+# `0`/`false`, so the exported bundle is a complete, browsable map — search,
+# place details, routing, every degraded state — that makes no network call to
+# a GoWay API at all. A static deploy is therefore the whole product today, and
+# `goway.to` serving nothing is a deployment gap, not a missing backend.
+#
+# ## This workflow has NO `push` trigger, deliberately
+#
+# Same reasoning as `deploy-aws.yml`, which is in the same shape: a deploy
+# workflow with its own `on: push` has no dependency on CI. Both start on the
+# same commit, an `expo export` beats a full test suite, and the deploy always
+# wins — measured on OxyHQ/oxy, where a merge deployed to production while that
+# commit's tests were still `in_progress`. It is CALLED by `ci.yml`
+# (`jobs.deploy-frontend.uses`) with `needs:` the test jobs.
+#
+# `workflow_dispatch` remains as the manual escape hatch for re-publishing a
+# commit that is already green.
+#
+# ## A WORKER, not a Pages project
+#
+# See `packages/frontend/wrangler.toml` — `workers_dev = false` is the point,
+# and everything else about the deploy (assets directory, SPA fallback, the
+# `goway.to` custom domain) is declared there rather than passed on the command
+# line here, so a deploy cannot disagree with the config.
+name: Deploy frontend
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a deploy in flight: a cancelled `wrangler deploy` can leave the
+# upload half-done, and the next run has to redo it anyway. Queue instead.
+concurrency:
+  group: deploy-goway-frontend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and publish the web app
+    runs-on: ubuntu-latest
+    # MAIN ONLY. `workflow_dispatch` can be aimed at any branch from the Actions
+    # UI, and `wrangler deploy` here is not a preview — it replaces what
+    # `goway.to` serves, in one step, with no separate promotion. Without this
+    # line a dispatch from a feature branch publishes that branch to production
+    # and nothing anywhere says so. On the `workflow_call` path `github.ref` is
+    # the CALLER's ref, which is `refs/heads/main` by ci.yml's own `if:`.
+    if: github.ref == 'refs/heads/main'
+    # Headroom on purpose. The long pole is `expo export`, a Metro bundle of the
+    # whole app including MapLibre; a job that typically consumes most of its
+    # budget fails intermittently for reasons unrelated to any diff, and a
+    # job-level timeout reports `cancelled`, which reads as a supersession
+    # rather than a failure.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          # NOT a literal version, exactly as ci.yml does it:
+          # `packageManager: "bun@x.y.z"` in package.json is the same string the
+          # Dockerfile and check-lockfile-sync.mjs read, so CI, the image, the
+          # lockfile gate and this deploy cannot disagree about which bun built
+          # what shipped.
+          bun-version-file: package.json
+
+      - name: Install exact dependency graph
+        # `--ignore-scripts` matches ci.yml. The root `postinstall` builds
+        # shared-types and the SDK, and letting it run here would mean the two
+        # steps below are silently redundant on a good day and silently
+        # DIFFERENT on a bad one — the install script and the explicit steps
+        # would be two places that decide build order. They are built below, in
+        # dependency order, where the order is visible.
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Build shared contracts
+        # Every other package imports `@goway/shared-types` by NAME, which
+        # resolves to its built `dist/`. A warm local tree hides this; a clean
+        # CI checkout does not.
+        run: bun run build:shared-types
+
+      - name: Build the SDK
+        # BEFORE the export, and this exact ordering has already broken CI once.
+        # `packages/frontend` imports `@goway.to/sdk` by NAME, which resolves
+        # through the workspace link to `packages/sdk/dist` — a GITIGNORED build
+        # artifact. On a developer's machine the root postinstall has already
+        # produced it, so the dependency is invisible; here `--ignore-scripts`
+        # means nothing has, and the frontend fails with TS2307 on every
+        # importing file. The SDK bundles `@goway/shared-types`, so it must
+        # build after it.
+        run: bun run build:sdk
+
+      - name: Export the web bundle
+        # `expo export --platform web` with `web.output: 'single'`
+        # (`app.config.js`): ONE index.html plus content-hashed assets. It also
+        # regenerates `public/vendor/maplibre-gl/<version>/` — gitignored, so it
+        # exists in this checkout only because this step runs — and copies all
+        # of `public/` into `dist/`, which is how `public/_headers` ships.
+        run: bun run --cwd packages/frontend export:web
+        env:
+          NODE_ENV: production
+          # GoWay's production Oxy client id. A repo VARIABLE, not a secret: the
+          # id travels inside the bundle, so it is public by construction and a
+          # secret would only cost the ability to see what production uses.
+          # `lib/config.ts` falls back to `''`, which is not a build failure —
+          # the map, search, place details and routing are all public and work
+          # signed out — so an unset variable costs sign-in only, silently.
+          EXPO_PUBLIC_OXY_CLIENT_ID: ${{ vars.EXPO_PUBLIC_OXY_CLIENT_ID }}
+          EXPO_PUBLIC_API_URL: https://api.goway.to
+          # FIXTURES ON, stated rather than left to the default. There is no
+          # GoWay API deployed; with fixtures off the identical bundle would
+          # point at `api.goway.to`, and every panel would render its error
+          # state against a host that does not answer. `client.ts` defaults this
+          # ON for the same reason, but a default is not a decision — when the
+          # backend lands, changing this one line to '0' is the cutover, and the
+          # diff is the record of when it happened.
+          EXPO_PUBLIC_GOWAY_FIXTURES: '1'
+
+      # A precondition check, not a test: it costs nothing and it fails HERE,
+      # before anything is published, rather than as a mystery in the live
+      # verification below. `_headers` is the file that re-adds the two response
+      # headers Cloudflare Pages injected for free and Workers Static Assets
+      # does not, and it reaches the Worker only by being copied out of
+      # `public/` by the export.
+      - name: Assert the export produced what the Worker will serve
+        run: |
+          set -euo pipefail
+          dist=packages/frontend/dist
+          for required in "$dist/index.html" "$dist/_headers"; do
+            if [[ ! -f "$required" ]]; then
+              echo "::error::$required is missing from the export; the deploy would publish an incomplete site."
+              exit 1
+            fi
+          done
+          if ! grep -q 'X-Content-Type-Options: nosniff' "$dist/_headers"; then
+            echo "::error::dist/_headers carries no nosniff rule. Workers Static Assets adds no security headers of its own, so the live site would have none."
+            exit 1
+          fi
+          # The one asset every other assertion is derived from. `web.output` is
+          # 'single', so index.html is the entry point for every route.
+          if ! grep -q '<div id="root">' "$dist/index.html"; then
+            echo "::error::dist/index.html has no React root element; the export is not a usable app."
+            exit 1
+          fi
+          echo "Exported $(find "$dist" -type f | wc -l) files, $(du -sh "$dist" | cut -f1)."
+
+      # DEPLOYED WITH `bunx wrangler@4`, NOT `cloudflare/wrangler-action`.
+      # Do not "modernise" this to the action; it is forbidden fleet-wide, for
+      # two measured reasons:
+      #
+      #   1. It installs its own wrangler into the working tree mid-deploy and
+      #      that install intermittently dies with
+      #      `Fail extracting tarball for "wrangler"`, publishing nothing.
+      #      Homiio took a production outage from exactly that on 2026-08-09 —
+      #      a stale bundle left running against a changed API.
+      #   2. It picks its package manager by looking for a lockfile beside its
+      #      `workingDirectory`. In this monorepo the lockfile is at the ROOT,
+      #      so aimed at `packages/frontend` it falls back to npm, and npm
+      #      cannot resolve `workspace:*` at all — which is how `@goway.to/sdk`
+      #      and `@goway/shared-types` are depended on here.
+      #
+      # PINNED TO A MAJOR on purpose: unpinned, `bunx wrangler` re-resolves the
+      # latest major on every run, changing the deploy path with no diff to show
+      # for it. `wrangler.toml` was validated against 4.135.0.
+      #
+      # wrangler reads its credentials from the ENVIRONMENT, which is why these
+      # are `env:` and not arguments. See README.md → "Deploying the web app"
+      # for where the two values come from, and for why a repo-level
+      # `CLOUDFLARE_API_TOKEN` must not be added when an org-level one exists.
+      - name: Deploy the Worker
+        working-directory: packages/frontend
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          set -euo pipefail
+          # An empty token is not a wrangler error worth reading: it fails deep
+          # inside an API call with `Authentication error [code: 10000]`, which
+          # looks like a permissions problem rather than an absent secret. The
+          # most likely cause of an empty value here is a repo-level secret
+          # shadowing the org-level one — see README.md.
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is empty. Check for a repo-level secret shadowing the org-level one before re-adding anything."
+            exit 1
+          fi
+          bunx wrangler@4 deploy
+
+      # VERIFY THE ARTEFACT, NOT THE EXIT CODE.
+      #
+      # `wrangler deploy` exiting 0 says an upload was accepted. It does not say
+      # `goway.to` serves this build, and the SPA fallback declared in
+      # `wrangler.toml` makes the naive check actively misleading: with
+      # `not_found_handling = "single-page-application"`, EVERY path that misses
+      # an asset answers 200 with index.html. A `curl -o /dev/null -w %{http_code}`
+      # against any URL at all would pass against a deployment containing
+      # nothing but a stale index.html.
+      #
+      # So each assertion below is either a SIZE FLOOR or a POSITIVE MARKER:
+      #
+      #   * `/` is at least 1 KB and carries the React root, the title and
+      #     several hashed script references — an empty or truncated shell fails.
+      #   * the two headers from `_headers` are on the live response, which is
+      #     the only thing anywhere that reads them.
+      #   * the entry bundle THIS RUN just built, addressed by the content hash
+      #     taken out of the LOCAL dist, comes back as JavaScript and not HTML.
+      #     This is the assertion that cannot pass against the previous
+      #     deployment (different hash -> fallback -> `text/html`) and cannot
+      #     pass against the fallback itself (`text/html` again). It is the load
+      #     bearing one.
+      #   * a route that exists only inside the bundle answers with the shell,
+      #     proving the fallback is configured — a shared place link 404ing is
+      #     the defect this replaces.
+      - name: Verify goway.to serves this exact build
+        run: |
+          set -euo pipefail
+          origin=https://goway.to
+          dist=packages/frontend/dist
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+
+          fetch() {
+            # No `--fail`: every assertion below reads the STATUS, and a curl
+            # that exits non-zero on a 404 would abort this script under
+            # `set -e` before the line that explains what the 404 means.
+            # --retry-all-errors covers the propagation window after a first
+            # deploy to a new custom domain; --max-redirs 0 so a redirect to
+            # some other host cannot be mistaken for a served asset.
+            curl --silent --show-error \
+              --max-time 30 --retry 8 --retry-delay 5 --retry-all-errors \
+              --max-redirs 0 \
+              --dump-header "$work/$1.headers" --output "$work/$1.body" \
+              --write-out '%{http_code}' "$2"
+          }
+
+          status="$(fetch shell "$origin/")"
+          [[ "$status" == "200" ]] || { echo "::error::$origin/ answered HTTP $status."; exit 1; }
+
+          bytes="$(wc -c <"$work/shell.body")"
+          if (( bytes < 1000 )); then
+            echo "::error::$origin/ returned $bytes bytes; the shell this build produced is $(wc -c <"$dist/index.html"). Something is serving a stub."
+            exit 1
+          fi
+
+          for marker in '<div id="root">' '<title>GoWay</title>'; do
+            if ! grep -qF "$marker" "$work/shell.body"; then
+              echo "::error::$origin/ does not contain $marker. It is not serving the GoWay shell."
+              exit 1
+            fi
+          done
+
+          scripts="$(grep -oE '/_expo/static/js/web/[^"]+\.js' "$work/shell.body" | sort -u | wc -l)"
+          if (( scripts < 3 )); then
+            echo "::error::$origin/ references $scripts hashed Expo bundles (expected at least 3). The shell is not wired to this export."
+            exit 1
+          fi
+
+          # The headers `_headers` exists to restore. Nothing else in this
+          # repository reads a response header, which is exactly why their loss
+          # would otherwise be invisible.
+          for header in 'x-content-type-options: *nosniff' \
+                        'referrer-policy: *strict-origin-when-cross-origin'; do
+            if ! grep -Eiq "^$header" "$work/shell.headers"; then
+              echo "::error::$origin/ is missing a response header required by public/_headers ($header). Check that dist/_headers reached the Worker."
+              exit 1
+            fi
+          done
+
+          # The hash comes from the LOCAL build, so this URL can only be served
+          # by the deployment this run just published.
+          entry="$(grep -oE '/_expo/static/js/web/entry-[^"]+\.js' "$dist/index.html" | head -n 1)"
+          if [[ -z "$entry" ]]; then
+            echo "::error::Could not find the entry bundle in $dist/index.html; there is nothing unique to verify against."
+            exit 1
+          fi
+          local_bytes="$(wc -c <"$dist$entry")"
+          echo "entry bundle: $entry ($local_bytes bytes locally)"
+
+          status="$(fetch entry "$origin$entry")"
+          [[ "$status" == "200" ]] || { echo "::error::$origin$entry answered HTTP $status; this build's entry bundle is not live."; exit 1; }
+
+          if grep -Eiq '^content-type: *text/html' "$work/entry.headers"; then
+            echo "::error::$origin$entry came back as HTML — that is the SPA fallback, which means the asset is absent and an old deployment is live."
+            exit 1
+          fi
+
+          served_bytes="$(wc -c <"$work/entry.body")"
+          # A floor rather than an equality: a proxy may re-encode, but it
+          # cannot turn a megabyte bundle into a stub.
+          if (( served_bytes * 10 < local_bytes * 9 )); then
+            echo "::error::$origin$entry returned $served_bytes bytes against $local_bytes built. The served bundle is truncated."
+            exit 1
+          fi
+
+          # A route that exists only inside the bundle: `web.output: 'single'`
+          # means no HTML file was ever written for it, so a correct deployment
+          # answers with the shell and a misconfigured one 404s.
+          deep="/place/deploy-check-${GITHUB_RUN_ID:-manual}"
+          status="$(fetch deep "$origin$deep")"
+          [[ "$status" == "200" ]] || { echo "::error::$origin$deep answered HTTP $status; the single-page-application fallback is not working and every shared deep link is broken."; exit 1; }
+          if ! grep -qF '<div id="root">' "$work/deep.body"; then
+            echo "::error::$origin$deep answered 200 without the app shell."
+            exit 1
+          fi
+
+          echo "goway.to serves this build: shell $bytes bytes, $scripts bundles, entry $served_bytes bytes, deep-link fallback OK."

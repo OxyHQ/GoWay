@@ -308,3 +308,22 @@ jobs:
       contents: read
     uses: ./.github/workflows/deploy-aws.yml
     secrets: inherit
+
+  # The web app, deployed the same way and for the same reason: a workflow with
+  # its own `push` trigger would race these jobs and win. It is NOT `needs:` the
+  # backend deploy above — the two are independent today, because the exported
+  # bundle runs on the fixture transport in
+  # `packages/frontend/lib/goway/client.ts` and makes no call to `api.goway.to`
+  # at all. Coupling them would mean a red backend rollout leaves `goway.to`
+  # serving a stale build for no reason.
+  #
+  # `contents: read` only: deploy-frontend.yml talks to Cloudflare with an API
+  # token from `secrets`, not to AWS over OIDC, so it needs no `id-token`.
+  deploy-frontend:
+    name: Deploy frontend
+    needs: [quality, gates, lockfile, test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/deploy-frontend.yml
+    secrets: inherit

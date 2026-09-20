@@ -50,7 +50,110 @@ bun run test:gates       # proves the migration gates can fail
 
 CI runs all of these, and the AWS deploy is a JOB of the CI workflow with
 `needs:` those jobs — not a workflow with its own `push` trigger, which would
-race CI and always win.
+race CI and always win. The Cloudflare frontend deploy is a second such job
+(`deploy-frontend`), for the same reason and on the same gates.
+
+## Deploying the web app
+
+`https://goway.to` is served by a **Cloudflare Worker serving static assets**,
+published by `.github/workflows/deploy-frontend.yml` on every push to `main`
+that passes CI. The build is an `expo export --platform web` of
+`packages/frontend`; the Worker is configured entirely by
+`packages/frontend/wrangler.toml`.
+
+**It needs no backend.** `packages/frontend/lib/goway/client.ts` injects a
+fixture `fetch` into the real `@goway.to/sdk` client while
+`EXPO_PUBLIC_GOWAY_FIXTURES` is not `0`, so the deployed bundle is a complete,
+browsable map — search, place details, routing, every degraded state — that
+makes no call to `api.goway.to` at all. When the API is live, flipping that one
+env value in the deploy workflow is the cutover.
+
+### A Worker, not Pages — and why `workers_dev = false` is the point
+
+A Cloudflare **Pages** project ALWAYS serves `<project>.pages.dev` and offers
+no way to turn it off (`wrangler pages project` has only `list`, `create`,
+`delete`). Every Oxy app that was on Pages therefore had a second, indexable
+copy of itself on a hostname in no CORS allowlist and no Oxy application's
+`redirectUris` — it rendered the shell and failed every call it made. GoWay is
+born on Workers so it never has that hostname, and `workers_dev = false` in
+`wrangler.toml` is the line that keeps it that way. Do not "simplify" this to
+`wrangler pages deploy`.
+
+The trade that comes with it: **Pages adds `x-content-type-options: nosniff`
+and `referrer-policy: strict-origin-when-cross-origin` to every response;
+Workers Static Assets does not.** Nothing in this repository asks for them, so
+the difference is invisible to every build, test and deploy. They are declared
+explicitly in `packages/frontend/public/_headers`, which `expo export` copies
+into `dist/` verbatim, and the deploy workflow asserts both are on the live
+response afterwards.
+
+### One-time human setup
+
+Everything below is done ONCE, by a human with access to Oxy's Cloudflare
+account and the GitHub org. The deploy is fully automatic afterwards.
+
+**1. Actions secrets — and the shadowing trap.**
+
+The workflow reads exactly two values from `secrets`:
+
+| Secret | Value |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | The Oxy **org-level** token — the same one every sibling frontend (Clarity, Inbox, Mention, Allo, Noted) deploys its Worker with. It must be Workers-capable: **Workers Scripts: Edit** on the account, and **Zone: Read** plus **Workers Routes: Edit** on the `goway.to` zone, which is what lets `wrangler` attach the custom domain and have Cloudflare write the record. |
+| `CLOUDFLARE_ACCOUNT_ID` | The Oxy Cloudflare account id. |
+
+If the first deploy fails with `Authentication error [code: 10000]`, the token
+is Pages-scoped rather than Workers-capable — which is the failure the
+shadowing note below describes.
+
+> **Do NOT add these as repository secrets if the org already provides them.**
+> **A repo-level Actions secret silently SHADOWS the org-level one of the same
+> name**, and nothing reports it. `OxyHQ/Noted` carried its own
+> `CLOUDFLARE_API_TOKEN` from 2026-07-15, scoped to Pages only; when the org
+> token was rotated to a Workers-capable one on 2026-09-05 the repo copy kept
+> winning and Noted's deploy failed `Authentication error [code: 10000]` while
+> every sibling repo deployed fine. Check the org secrets first. If a repo-level
+> copy already exists, **delete it** rather than updating its value.
+
+Optionally set the repository **variable** `EXPO_PUBLIC_OXY_CLIENT_ID` to
+GoWay's production Oxy client id. A variable, not a secret: the id ships inside
+the bundle, so it is public by construction. Unset, the map still works — only
+sign-in is disabled, and silently.
+
+**2. DNS, in this order: DNS → deploy.** This order is not a preference.
+
+**A Worker custom domain REFUSES a hostname that already has externally
+managed DNS records (`code: 100117`).** Cloudflare writes and manages the
+record for a custom domain itself, so the apex must be empty of address records
+when `wrangler deploy` first runs.
+
+1. In the `goway.to` zone, delete any existing **A / AAAA / CNAME** record at
+   the apex. **Type-scoped** — a `TXT`/SPF/DMARC record at the same name must
+   survive; deleting those breaks mail, not the website.
+2. If `goway.to` is attached to a Cloudflare Pages project, detach it there too.
+3. Run the workflow (merge to `main`, or `workflow_dispatch` on `main`).
+   `wrangler` creates the Worker, attaches `goway.to` as a custom domain and
+   writes the DNS record.
+
+The downtime is that window — roughly 30 seconds when the build is ready first.
+`api.goway.to` is a separate record in front of the AWS ALB and is **not**
+touched by any of this.
+
+### What the deploy proves before it reports success
+
+`wrangler deploy` exiting 0 means an upload was accepted, not that `goway.to`
+serves this build — and the SPA fallback makes the naive check actively
+misleading, because with `not_found_handling = "single-page-application"` every
+path that misses an asset answers **200 with `index.html`**. A bare status
+check would pass against a deployment containing nothing but a stale shell.
+
+So the final step asserts a size floor plus positive markers: the shell is at
+least 1 KB and carries the React root, the title and three or more hashed
+bundle references; both `_headers` security headers are on the live response;
+**the entry bundle this run just built, addressed by the content hash read out
+of the local `dist/`, comes back as JavaScript rather than `text/html`** (the
+one assertion that cannot pass against the previous deployment or against the
+fallback); and a route that exists only inside the bundle answers with the
+shell, proving deep links work.
 
 ## Monorepo
 
