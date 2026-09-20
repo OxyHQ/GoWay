@@ -43,6 +43,7 @@ import { useBottomEdgeInset, useTopEdgeInset, windowEdgeGap } from '@oxy.so/bloo
 import { RiCompass3Line } from '@oxy.so/bloom/icons/RiCompass3Line';
 import { RiFocus3Line } from '@oxy.so/bloom/icons/RiFocus3Line';
 
+import { BrandedChromeProvider } from '@/components/brand';
 import {
   MapCanvas,
   type MapApi,
@@ -300,7 +301,14 @@ export default function ExploreScreen({
   const body = <ExploreBody explore={explore} />;
 
   return (
-    <View className="flex-1 bg-background">
+    // `MapTopBar` below carries the GoWay logo, so the badge `MapCanvas` draws
+    // on every other map stands down here: one brand per screen, and not the
+    // one sitting on the cartography. Declared HERE rather than at the route,
+    // because `app/place/[placeId].tsx` mounts this same screen and a third
+    // route would otherwise have to remember. Never in `app/_layout.tsx` — that
+    // also owns `app/frame.tsx`, which is the case the badge exists for.
+    <BrandedChromeProvider>
+      <View className="flex-1 bg-background">
       <MapCanvas
         ref={mapRef}
         initialViewport={initialViewport ?? undefined}
@@ -423,6 +431,7 @@ export default function ExploreScreen({
           {body}
         </MapSheet>
       )}
-    </View>
+      </View>
+    </BrandedChromeProvider>
   );
 }

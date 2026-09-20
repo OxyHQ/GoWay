@@ -18,13 +18,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useOxy } from '@oxy.so/services';
 import { getNormalizedUserHandle } from '@oxy.so/core';
 import { Avatar } from '@oxy.so/bloom/avatar';
-import { Text } from '@oxy.so/bloom/typography';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { useClaimTopEdge, windowEdgeGap } from '@oxy.so/bloom/layout';
 import { RiUserLine } from '@oxy.so/bloom/icons/RiUserLine';
 
+import { GowayLogo } from '@/components/brand';
 import { useAuthGate } from '@/lib/authGate';
 import { useTranslation } from '@/lib/i18n';
+
+/**
+ * How wide the logo draws in the bar.
+ *
+ * Derived rather than chosen: the account button opposite is `h-11` (44px), and
+ * the wordmark's 1.582:1 makes 44px tall exactly 70px wide, so the two ends of
+ * the bar occupy the same vertical band.
+ */
+const BRAND_WIDTH = 70;
 
 export function MapTopBar() {
   const { t } = useTranslation();
@@ -54,9 +63,15 @@ export function MapTopBar() {
       className="absolute left-0 right-0 top-0 flex-row items-center justify-between gap-space-12"
       style={{ paddingTop: topGap, paddingHorizontal: sideGap, paddingBottom: 0 }}
     >
-      <View className="flex-row items-center rounded-radius-max bg-card px-space-16 py-space-8 shadow-m">
-        <Text className="text-subtitle text-foreground">{t('map.title')}</Text>
-      </View>
+      {/* The logo, not the word, and standing on the map rather than on a
+          plate. Both follow from the artwork: it is a sticker whose heavy
+          outline is what separates it from whatever it sits on, measured over
+          the eight colours that actually cover a GoWay map (see `MapBrand`). A
+          card behind it would add a rectangle to the map and buy nothing.
+
+          `t('map.title')` stays as the accessible label — the logo is the app's
+          name drawn rather than typed, and a screen reader should hear a name. */}
+      <GowayLogo width={BRAND_WIDTH} label={t('map.title')} />
 
       <Pressable
         accessibilityRole="button"
