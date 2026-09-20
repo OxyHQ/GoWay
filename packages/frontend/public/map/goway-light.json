@@ -2705,11 +2705,11 @@
             "render_height"
           ],
           0,
-          "#e8e6df",
+          "#f7eed9",
           60,
-          "#e2e0d8",
+          "#f0e7cf",
           180,
-          "#dedbd2"
+          "#ece1c8"
         ],
         "fill-extrusion-opacity": [
           "interpolate",
