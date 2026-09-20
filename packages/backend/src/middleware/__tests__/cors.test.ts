@@ -223,6 +223,12 @@ describe('the public preflight', () => {
     // lane's cacheability rests on its bodies being identical for everyone.
     // A third-party site that needs an authenticated read gets its origin added
     // to CORS_APP_ORIGINS and the strict lane with it.
+    //
+    // This originally asserted that the request stayed HERE and was answered
+    // `Content-Type` — which is what the comment above says must not happen,
+    // and what broke every signed-in first-party read. The request is now
+    // routed off this lane by `carriesAuthorization`, so what a foreign origin
+    // gets is the strict lane's refusal: no CORS headers at all.
     const response = await fetch(`${appOrigin}${BASE}/places/sample-value`, {
       method: 'OPTIONS',
       headers: {
@@ -231,7 +237,8 @@ describe('the public preflight', () => {
         'access-control-request-headers': 'authorization',
       },
     });
-    expect(response.headers.get('access-control-allow-headers')).toBe('Content-Type');
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+    expect(response.headers.get('access-control-allow-headers')).toBeNull();
   });
 
   it('refuses a preflight that asks about a method the table does not admit', async () => {
@@ -514,5 +521,104 @@ describe('the public table, checked against the routers it claims to describe', 
       'POST /places/:id/claims',
       'PUT /places/:id/capabilities/:key',
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The credential decides the lane, not the path
+// ---------------------------------------------------------------------------
+
+describe('a SIGNED-IN read of a public route', () => {
+  // GoWay's own app is cross-origin to its own API (`goway.to` →
+  // `api.goway.to`) and `@goway.to/sdk` attaches the Oxy token to every request
+  // it makes, public route or not. Before the credential check, the lane was
+  // picked from the method and the path alone: these preflights were answered
+  // `Access-Control-Allow-Headers: Content-Type` and the browser refused to
+  // send the real request. Every signed-in map read failed, and only in a
+  // browser — server-side callers and signed-out visitors were unaffected,
+  // which is why nothing caught it.
+
+  it('preflights through the STRICT lane, which admits Authorization', async () => {
+    const response = await fetch(`${publicSurfaceOrigin}${BASE}/places/nearby`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: ALLOWLISTED,
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'authorization',
+      },
+    });
+
+    // The echoed origin, never `*`: a caller-specific answer cannot be handed
+    // out under a wildcard.
+    expect(response.headers.get('access-control-allow-origin')).toBe(ALLOWLISTED);
+    const allowed = (response.headers.get('access-control-allow-headers') ?? '').toLowerCase();
+    expect(allowed).toContain('authorization');
+  });
+
+  it('answers the real request on the strict lane, not with a wildcard', async () => {
+    const response = await fetch(`${publicSurfaceOrigin}${BASE}/places/nearby`, {
+      headers: { Origin: ALLOWLISTED, Authorization: 'Bearer token-shaped-value' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).toBe(ALLOWLISTED);
+    expect(response.headers.get('access-control-allow-origin')).not.toBe('*');
+  });
+
+  it('does not hand a foreign origin an authenticated answer', async () => {
+    // The public lane exists for anonymous cross-origin reads. A foreign site
+    // sending somebody's Bearer token is not that, and it gets the strict
+    // lane's refusal rather than a `*` it could read a caller-specific body
+    // through.
+    const response = await fetch(`${publicSurfaceOrigin}${BASE}/places/nearby`, {
+      headers: { Origin: FOREIGN, Authorization: 'Bearer token-shaped-value' },
+    });
+
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
+
+describe('the anonymous public lane, still intact', () => {
+  // The positive control for the change above: moving authenticated requests
+  // off this lane must not have moved anything else off it.
+
+  it('still answers a foreign anonymous read with a wildcard', async () => {
+    const response = await fetch(`${publicSurfaceOrigin}${BASE}/places/nearby`, {
+      headers: { Origin: FOREIGN },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('access-control-allow-credentials')).toBeNull();
+  });
+
+  it('varies its preflight on the header that now chooses the lane', async () => {
+    // Two answers exist for this preflight depending on
+    // `Access-Control-Request-Headers`, so it has to be in the cache key. The
+    // actual responses still carry no `Vary` and still need none.
+    const response = await fetch(`${publicSurfaceOrigin}${BASE}/places/nearby`, {
+      method: 'OPTIONS',
+      headers: { Origin: FOREIGN, 'Access-Control-Request-Method': 'GET' },
+    });
+
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect((response.headers.get('vary') ?? '').toLowerCase()).toContain(
+      'access-control-request-headers',
+    );
+  });
+
+  it('is not diverted by a header that merely contains the word', async () => {
+    // A substring test would send this to the strict lane and break an
+    // ordinary anonymous embed. The match is token-wise.
+    const response = await fetch(`${publicSurfaceOrigin}${BASE}/places/nearby`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: FOREIGN,
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'x-authorization-scheme',
+      },
+    });
+
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
   });
 });
