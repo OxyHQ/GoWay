@@ -374,8 +374,18 @@ million Class B** (reads), **$0 egress**. From the measured artefacts:
 
 | | size | storage/month |
 |---|---|---|
-| Catalonia (186 MB) | 0.19 GB | $0.003 |
-| planet, extrapolated | ~100 GB | **~$1.50** |
+| Monaco, measured | 0.00042 GB | $0.000006 |
+| Catalonia, measured | 0.186 GB | $0.003 |
+| planet, extrapolated | 60–100 GB | **$0.90–$1.50** |
+
+The planet row is a range and stays one until the build finishes, because the
+two honest ways to estimate it disagree and neither is wrong. Catalonia's own
+ratio is **0.69 archive bytes per PBF byte** (186 MB out of 270 MB), which puts
+an 85 GB planet at ~59 GB; published planet OpenMapTiles PMTiles builds land
+nearer 100 GB, because a dense urban extract is not representative of a world
+that is mostly ocean and mostly empty at low zoom. At $0.015/GB-month the
+disagreement is worth sixty cents a month, which is why it was not worth
+resolving before landing the pipeline.
 
 The upload is one multipart `PutObject` — hundreds of Class A operations for a
 100 GB archive, well under a cent. Reads are what scale, and they are what the
