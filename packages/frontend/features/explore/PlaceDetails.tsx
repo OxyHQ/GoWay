@@ -14,17 +14,14 @@
  */
 import { useCallback } from 'react';
 import { Linking, Platform, View } from 'react-native';
-import type { Place, Route, TravelMode } from '@goway.to/sdk';
+import type { Place } from '@goway.to/sdk';
 import * as WebBrowser from 'expo-web-browser';
 import { Button } from '@oxy.so/bloom/button';
 import { Divider } from '@oxy.so/bloom/divider';
 import { Item } from '@oxy.so/bloom/item';
-import { Loading } from '@oxy.so/bloom/loading';
 import { Text } from '@oxy.so/bloom/typography';
 import { useTheme } from '@oxy.so/bloom/theme';
-import { RiBikeLine } from '@oxy.so/bloom/icons/RiBikeLine';
 import { RiBookmarkLine } from '@oxy.so/bloom/icons/RiBookmarkLine';
-import { RiCarLine } from '@oxy.so/bloom/icons/RiCarLine';
 import { RiEditLine } from '@oxy.so/bloom/icons/RiEditLine';
 import { RiGlobalLine } from '@oxy.so/bloom/icons/RiGlobalLine';
 import { RiMapPin2Line } from '@oxy.so/bloom/icons/RiMapPin2Line';
@@ -32,18 +29,13 @@ import { RiPhoneLine } from '@oxy.so/bloom/icons/RiPhoneLine';
 import { RiRouteLine } from '@oxy.so/bloom/icons/RiRouteLine';
 import { RiTimeLine } from '@oxy.so/bloom/icons/RiTimeLine';
 import { RiVerifiedBadgeLine } from '@oxy.so/bloom/icons/RiVerifiedBadgeLine';
-import { RiWalkLine } from '@oxy.so/bloom/icons/RiWalkLine';
 
 import { useAuthGate } from '@/lib/authGate';
 import { resolveCategory } from '@/lib/goway/categories';
-import { formatAddress, formatDistance, formatDuration, formatWebsite, websiteUrl } from '@/lib/goway/format';
+import { formatAddress, formatWebsite, websiteUrl } from '@/lib/goway/format';
 import { evaluateOpeningHours } from '@/lib/goway/openingHours';
-import type { GoWayFailureKind } from '@/lib/goway/errors';
-import type { LocationErrorReason } from '@/lib/map/useUserLocation';
 
 import { CapabilityList } from './CapabilityList';
-import { LocationFailureState } from './states';
-import type { RouteOriginKind } from './useExplore';
 
 /** How GoWay describes its own confidence in a record. Words, never a colour. */
 const VERIFICATION_WORDS: Record<Place['verification']['state'], string | null> = {
@@ -53,53 +45,21 @@ const VERIFICATION_WORDS: Record<Place['verification']['state'], string | null> 
   owner_verified: 'Verified by the owner',
 };
 
-const MODE_ICONS = { walk: RiWalkLine, bike: RiBikeLine, drive: RiCarLine } as const;
-const MODE_LABELS: Record<TravelMode, string> = { walk: 'Walk', bike: 'Bike', drive: 'Drive' };
-
 export interface PlaceDetailsProps {
   place: Place;
-  /** The computed route, when the user has asked for directions. */
-  route?: Route | null;
-  routePending?: boolean;
-  /** Set when directions failed, or when no route exists. */
-  routeFailure?: GoWayFailureKind | 'noRoute' | null;
   /**
-   * Where the route starts. `'map'` is NOT the user's position and is labelled
-   * as such wherever a distance or an ETA is shown.
+   * Enter the directions planner with this place as the destination.
+   *
+   * The card deliberately shows no ETA and no travel-mode chips: a route has an
+   * origin, an origin is a thing the user gets to CHOOSE, and choosing it is
+   * the planner's whole job. Half a planner on a place card was the shape that
+   * could only ever answer one question.
    */
-  routeOriginKind?: RouteOriginKind | null;
-  /** The permission prompt / fix is outstanding. */
-  locationPending?: boolean;
-  /**
-   * Why Directions has no origin. Rendering this is the difference between the
-   * button working and the button looking dead — see `useExplore`.
-   */
-  locationFailure?: LocationErrorReason | null;
-  /** `false` when asking again provably cannot reach a prompt. */
-  canAskLocationAgain?: boolean;
-  /** Offered beside a location failure; absent when there is nothing sane to offer. */
-  onRouteFromMap?: (() => void) | null;
-  travelMode: TravelMode;
-  onTravelModeChange: (mode: TravelMode) => void;
   onDirections: () => void;
   testID?: string;
 }
 
-export function PlaceDetails({
-  place,
-  route,
-  routePending = false,
-  routeFailure = null,
-  routeOriginKind = null,
-  locationPending = false,
-  locationFailure = null,
-  canAskLocationAgain = true,
-  onRouteFromMap = null,
-  travelMode,
-  onTravelModeChange,
-  onDirections,
-  testID,
-}: PlaceDetailsProps) {
+export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps) {
   const theme = useTheme();
   const gate = useAuthGate();
 
@@ -165,10 +125,7 @@ export function PlaceDetails({
           size="small"
           leadingIcon={RiRouteLine}
           onPress={onDirections}
-          disabled={locationPending}
-          accessibilityLabel={
-            routeOriginKind === 'map' ? 'Directions from your location instead of the map' : 'Directions'
-          }
+          accessibilityLabel={`Directions to ${place.name}`}
         >
           Directions
         </Button>
@@ -181,89 +138,6 @@ export function PlaceDetails({
         >
           Save
         </Button>
-      </View>
-
-      {/* Travel mode + the route's own summary. A mode the router cannot serve
-          fails with its own message rather than an empty card. */}
-      <View className="gap-space-8">
-        <View className="flex-row items-center gap-space-8">
-          {(['walk', 'bike', 'drive'] as const).map((mode) => {
-            const Icon = MODE_ICONS[mode];
-            const active = mode === travelMode;
-            return (
-              <Button
-                key={mode}
-                variant={active ? 'primary' : 'secondary'}
-                size="xs"
-                leadingIcon={Icon}
-                onPress={() => onTravelModeChange(mode)}
-                accessibilityLabel={`${MODE_LABELS[mode]} directions${active ? ', selected' : ''}`}
-              >
-                {MODE_LABELS[mode]}
-              </Button>
-            );
-          })}
-        </View>
-
-        {/* Asking for the permission and waiting for a fix is its own wait, and
-            a visibly different one from waiting for the router: this is the
-            second or ten during which the user is deciding, and calling it
-            "working out the route" would be describing the wrong thing. */}
-        {locationPending ? (
-          <View className="flex-row items-center gap-space-8">
-            <Loading variant="spinner" size="small" />
-            <Text className="text-bodySmall text-muted-foreground">Finding your location…</Text>
-          </View>
-        ) : null}
-
-        {routePending ? (
-          <View className="flex-row items-center gap-space-8">
-            <Loading variant="spinner" size="small" />
-            <Text className="text-bodySmall text-muted-foreground">Working out the route…</Text>
-          </View>
-        ) : null}
-
-        {route ? (
-          <View className="gap-space-4">
-            <Text className="text-bodySmall text-foreground">
-              {`${formatDuration(route.durationSeconds)} · ${formatDistance(route.distanceMeters)}`}
-            </Text>
-            {/* A route measured from a point on the map is never allowed to
-                read as a route from the user. Saying so is the whole reason
-                the origin carries its provenance this far. */}
-            {routeOriginKind === 'map' ? (
-              <Text className="text-caption text-muted-foreground">
-                Measured from the area you were browsing, not from your location. Tap Directions to use your
-                location instead.
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
-
-        {routeFailure === 'noRoute' ? (
-          <Text className="text-bodySmall text-muted-foreground">
-            {`No ${MODE_LABELS[travelMode].toLowerCase()} route to here. Try another travel mode.`}
-          </Text>
-        ) : null}
-        {routeFailure && routeFailure !== 'noRoute' ? (
-          <Text className="text-bodySmall text-muted-foreground">
-            {routeFailure === 'offline'
-              ? "Directions need a connection, and GoWay can't reach the network."
-              : "Directions aren't available right now."}
-          </Text>
-        ) : null}
-
-        {/* The state the bug report was missing. Four different reasons, four
-            different sentences, and a way forward that is never a silent
-            substitution of somewhere the user never said they were. */}
-        {locationFailure && !locationPending ? (
-          <LocationFailureState
-            reason={locationFailure}
-            canAskAgain={canAskLocationAgain}
-            onRetry={onDirections}
-            onUseMapOrigin={onRouteFromMap ?? undefined}
-          />
-        ) : null}
       </View>
 
       {hasDetail ? <Divider /> : null}

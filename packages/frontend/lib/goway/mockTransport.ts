@@ -347,73 +347,103 @@ function reverseGeocode(params: Map<string, string>): SearchResults {
 }
 
 /**
- * A straight-line "route".
+ * A straight-line "route", through every stop in order.
  *
- * Deliberately crude, and labelled as such: routing is issue #6's job and this
- * exists only so the directions ACTION on place details has something to hand
- * back. A fake polyline along real streets would be a worse lie than an
- * obvious one.
+ * Deliberately crude, and labelled as such: real routing is the backend's job
+ * (Valhalla, issue #6) and this exists so the directions FLOW has something
+ * shaped like a route to work against. A fake polyline along real streets would
+ * be a worse lie than an obvious one.
+ *
+ * It does honour the things the planner depends on, because a fixture that does
+ * not is a fixture that hides bugs:
+ *
+ *  - **`waypoints` are visited in the order given.** That is the contract's own
+ *    promise, and the whole meaning of reordering a stop.
+ *  - **One leg per pair of consecutive stops**, each with its own maneuvers,
+ *    so a multi-stop itinerary produces the multi-leg response the panel heads
+ *    with "To <stop>".
+ *  - **`geometryIndex` is an index into the ROUTE's geometry**, not the leg's,
+ *    matching what `shared-types` documents — which is what the step highlight
+ *    slices with.
+ *  - **A `placeId` resolves through the place table**, so passing a place ID
+ *    rather than a coordinate is exercised end to end.
  */
 function directions(body: unknown) {
+  interface FixtureRouteLocation {
+    coordinate?: { latitude: number; longitude: number };
+    placeId?: string;
+    name?: string;
+  }
   const request = body as {
-    origin?: { coordinate?: { latitude: number; longitude: number }; placeId?: string };
-    destination?: { coordinate?: { latitude: number; longitude: number }; placeId?: string };
+    origin?: FixtureRouteLocation;
+    destination?: FixtureRouteLocation;
+    waypoints?: FixtureRouteLocation[];
     mode?: string;
   };
 
-  const resolve = (end: typeof request.origin) => {
-    if (end?.coordinate) return end.coordinate;
-    if (end?.placeId) return FIXTURE_PLACES_BY_ID.get(end.placeId)?.location;
+  const resolve = (end: FixtureRouteLocation | undefined) => {
+    if (end?.coordinate) return { point: end.coordinate, name: end.name };
+    if (end?.placeId) {
+      const place = FIXTURE_PLACES_BY_ID.get(end.placeId);
+      return place ? { point: place.location, name: end.name ?? place.name } : undefined;
+    }
     return undefined;
   };
 
-  const from = resolve(request.origin);
-  const to = resolve(request.destination);
-  // "No route exists" is a normal answer for this domain, not a failure.
-  if (!from || !to) return { routes: [] };
+  const stops = [request.origin, ...(request.waypoints ?? []), request.destination].map(resolve);
+  // "No route exists" is a normal answer for this domain, not a failure — and
+  // an unresolvable stop is exactly how a caller gets one.
+  if (stops.length < 2 || stops.some((stop) => stop === undefined)) return { routes: [] };
+  const resolved = stops as Array<{ point: { latitude: number; longitude: number }; name?: string }>;
 
   const mode = request.mode === 'drive' || request.mode === 'bike' ? request.mode : 'walk';
-  const metres = distanceMeters(from, to) * 1.25;
   const speed = mode === 'drive' ? 8.3 : mode === 'bike' ? 4.2 : 1.35;
+
+  const legs = resolved.slice(0, -1).map((from, index) => {
+    const to = resolved[index + 1];
+    // 1.25× the straight line: a road is never the crow's path, and rounding a
+    // fixture UP keeps it from reading as suspiciously exact.
+    const metres = Math.round(distanceMeters(from.point, to.point) * 1.25);
+    const seconds = Math.round(metres / speed);
+    const last = index === resolved.length - 2;
+    return {
+      distanceMeters: metres,
+      durationSeconds: seconds,
+      maneuvers: [
+        {
+          type: index === 0 ? 'depart' : 'continue',
+          instruction: to.name ? `Head toward ${to.name}` : 'Head toward the next stop',
+          distanceMeters: metres,
+          durationSeconds: seconds,
+          coordinate: from.point,
+          geometryIndex: index,
+        },
+        {
+          type: 'arrive',
+          instruction: last
+            ? `You have arrived${to.name ? ` at ${to.name}` : ''}`
+            : `Stop at ${to.name ?? 'your next stop'}`,
+          distanceMeters: 0,
+          durationSeconds: 0,
+          coordinate: to.point,
+          geometryIndex: index + 1,
+        },
+      ],
+    };
+  });
 
   return {
     routes: [
       {
-        id: `fixture-${mode}`,
+        id: `fixture-${mode}-${legs.length}`,
         mode,
-        distanceMeters: Math.round(metres),
-        durationSeconds: Math.round(metres / speed),
+        distanceMeters: legs.reduce((total, leg) => total + leg.distanceMeters, 0),
+        durationSeconds: legs.reduce((total, leg) => total + leg.durationSeconds, 0),
         geometry: {
           type: 'LineString',
-          coordinates: [
-            [from.longitude, from.latitude],
-            [to.longitude, to.latitude],
-          ],
+          coordinates: resolved.map(({ point }) => [point.longitude, point.latitude]),
         },
-        legs: [
-          {
-            distanceMeters: Math.round(metres),
-            durationSeconds: Math.round(metres / speed),
-            maneuvers: [
-              {
-                type: 'depart',
-                instruction: 'Head toward your destination',
-                distanceMeters: Math.round(metres),
-                durationSeconds: Math.round(metres / speed),
-                coordinate: from,
-                geometryIndex: 0,
-              },
-              {
-                type: 'arrive',
-                instruction: 'You have arrived',
-                distanceMeters: 0,
-                durationSeconds: 0,
-                coordinate: to,
-                geometryIndex: 1,
-              },
-            ],
-          },
-        ],
+        legs,
       },
     ],
   };
