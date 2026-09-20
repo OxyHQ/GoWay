@@ -76,6 +76,14 @@ public map are the same defect as a fabricated route. The basemap still draws
 every POI it has, every name on it is tappable, search is real and directions
 are real.
 
+**The seed now exists and has not been run.** `packages/backend/src/import/osm/`
+imports OpenStreetMap POIs into `places` — 771,515 of them for Spain, measured —
+and `packages/backend/README.md` has the one-shot `aws ecs run-task` that
+applies it, plus the IAM grant `oxy-goway-github-deploy` still needs before
+`.github/workflows/import-osm-pois.yml` can do it instead. Switching the
+basemap's own `poi-*` layers off is the change AFTER that, not before: turning
+them off over an empty table is an empty map.
+
 ### A Worker, not Pages — and why `workers_dev = false` is the point
 
 A Cloudflare **Pages** project ALWAYS serves `<project>.pages.dev` and offers

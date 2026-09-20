@@ -1,0 +1,188 @@
+# Import OpenStreetMap POIs into GoWay Places, as a one-shot task inside the VPC.
+#
+# ## Why a task and not a step
+#
+# `oxy-postgres` is not publicly accessible. Nothing on a GitHub runner can
+# reach it, so anything that writes to it runs inside the VPC — which is the
+# same reason migrations run as a one-shot `aws ecs run-task` against the
+# `oxy-goway` family rather than as a step in `deploy-aws.yml`. This workflow is
+# that invocation, written out: the image is already built and already carries
+# the importer, so all that is needed is a `command` override.
+#
+# ## This cannot run until oxy-infra grants it
+#
+# `oxy-goway-github-deploy` is scoped in `terraform-uswest2/iam-goway-deploy.tf`
+# to ECR push, four exact `ssm:PutParameter` names, and `ecs:DescribeServices` +
+# `ecs:UpdateService` on the one service. It has NO `ecs:RunTask`, no
+# `iam:PassRole`, no `ecs:DescribeTasks` and no `logs:GetLogEvents`, and that
+# file's own header says so deliberately. Until it lists them, this workflow
+# fails at the `run-task` step with `AccessDeniedException`, and the import has
+# to be run by a human with the command in `packages/backend/README.md`.
+#
+# The grant it needs, from that file's own wording:
+#
+#   ecs:RunTask        on task-definition/oxy-goway:*, conditioned on ecs:cluster
+#   iam:PassRole       on aws_iam_role.goway_task AND the ECS execution role
+#   ecs:DescribeTasks  on the cluster
+#   logs:GetLogEvents  on /oxy/ecs
+#
+# ## Sizing, measured rather than guessed
+#
+# The serving `oxy-goway` task is 512 CPU / 1024 MB, which is right for an API
+# and too small for this. A measured dry run over Spain (1.48 GB extract,
+# 775k POIs) peaked at 596 MB resident and wrote 1.48 GB to disk, so the
+# override is 2 vCPU / 4 GB — six times the measured peak — and ephemeral
+# storage is left at Fargate's default 20 GiB, which the extract fits inside
+# many times over. A PLANET import would need both raised: 95 GB of extract
+# needs `ephemeralStorage`, and ten times the POI ways needs the memory.
+#
+# `run-task` overrides accept task-level `cpu`, `memory` and `ephemeralStorage`,
+# so the import borrows the same family at a size that fits and gives it back
+# when it exits. Registering a new REVISION of the serving family to change the
+# size is the trap oxy-infra's runbook names twice: the next deploy rolls the
+# service onto whatever revision was registered last.
+name: Import OpenStreetMap POIs
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: 'Geofabrik path, without -latest.osm.pbf (e.g. europe/spain)'
+        required: false
+        default: 'europe/spain'
+      dry_run:
+        description: 'Read and measure; write nothing'
+        type: boolean
+        default: false
+      limit:
+        description: 'Stop after this many places (0 = no limit)'
+        required: false
+        default: '0'
+      bbox:
+        description: 'Keep only places inside west,south,east,north (empty = the whole region)'
+        required: false
+        default: ''
+      skip_duplicates:
+        description: 'Skip duplicate-candidate detection'
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-west-2
+  CLUSTER: oxy-cluster
+  SERVICE: goway
+  TASK_FAMILY: oxy-goway
+  CONTAINER: goway
+  LOG_GROUP: /oxy/ecs
+
+concurrency:
+  # One import at a time. Two passes over the same country are not harmful —
+  # every write is an upsert — but they are two multi-gigabyte downloads and two
+  # sets of duplicate-candidate scans for one result.
+  group: goway-osm-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    name: Run the import inside the VPC
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Authenticate to AWS
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6
+        with:
+          role-to-assume: arn:aws:iam::237343248947:role/oxy-goway-github-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Read the network identity off the live service
+        id: network
+        # Read, never hardcoded: a subnet or security group copied into this file
+        # is one that goes stale silently, and a task in the wrong subnet cannot
+        # reach `oxy-postgres` — which looks like a broken importer rather than a
+        # misplaced task.
+        run: |
+          set -euo pipefail
+          config=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query 'services[0].networkConfiguration.awsvpcConfiguration' --output json)
+          subnets=$(echo "$config" | jq -r '.subnets | join(",")')
+          groups=$(echo "$config" | jq -r '.securityGroups | join(",")')
+          public=$(echo "$config" | jq -r '.assignPublicIp')
+          test -n "$subnets" && test -n "$groups"
+          echo "value=awsvpcConfiguration={subnets=[$subnets],securityGroups=[$groups],assignPublicIp=$public}" >> "$GITHUB_OUTPUT"
+
+      - name: Start the import
+        id: task
+        run: |
+          set -euo pipefail
+          command='["bun","packages/backend/dist/src/import/osm/run.js","--target-database=goway","--region=${{ inputs.region }}"]'
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            command=$(echo "$command" | jq -c '. + ["--dry-run"]')
+          fi
+          if [ "${{ inputs.limit }}" != "0" ]; then
+            command=$(echo "$command" | jq -c '. + ["--limit=${{ inputs.limit }}"]')
+          fi
+          if [ -n "${{ inputs.bbox }}" ]; then
+            command=$(echo "$command" | jq -c '. + ["--bbox=${{ inputs.bbox }}"]')
+          fi
+          if [ "${{ inputs.skip_duplicates }}" = "true" ]; then
+            command=$(echo "$command" | jq -c '. + ["--skip-duplicates"]')
+          fi
+
+          overrides=$(jq -cn --argjson command "$command" --arg container "$CONTAINER" '{
+            cpu: "2048",
+            memory: "4096",
+            containerOverrides: [{ name: $container, command: $command }]
+          }')
+
+          task=$(aws ecs run-task --cluster "$CLUSTER" --task-definition "$TASK_FAMILY" \
+            --launch-type FARGATE --count 1 \
+            --network-configuration '${{ steps.network.outputs.value }}' \
+            --overrides "$overrides" --query 'tasks[0].taskArn' --output text)
+          test -n "$task" && test "$task" != None
+          echo "arn=$task" >> "$GITHUB_OUTPUT"
+          echo "id=${task##*/}" >> "$GITHUB_OUTPUT"
+          echo "Started $task"
+
+      - name: Wait for it to finish
+        id: wait
+        # `aws ecs wait tasks-stopped` gives up after 100 polls — ten minutes,
+        # which is shorter than the import. So the poll is written out, with a
+        # budget that matches the job's.
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 9000 ))
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            status=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "${{ steps.task.outputs.arn }}" \
+              --query 'tasks[0].lastStatus' --output text)
+            if [ "$status" = "STOPPED" ]; then
+              echo "stopped=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "status=$status"
+            sleep 30
+          done
+          echo "::error::The import task did not stop within the budget."
+          exit 1
+
+      - name: Report what it did
+        # The log stream, never the task's environment: `DATABASE_URL` is a
+        # secret and `describe-tasks` would print the override verbatim.
+        run: |
+          set -euo pipefail
+          stream="$CONTAINER/$CONTAINER/${{ steps.task.outputs.id }}"
+          aws logs get-log-events --log-group-name "$LOG_GROUP" --log-stream-name "$stream" \
+            --query 'events[].message' --output text | tail -100 || true
+
+          exit_code=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "${{ steps.task.outputs.arn }}" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          reason=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "${{ steps.task.outputs.arn }}" \
+            --query 'tasks[0].stoppedReason' --output text)
+          echo "exit=$exit_code reason=$reason"
+          if [ "$exit_code" != "0" ]; then
+            echo "::error::The import exited $exit_code ($reason). The log above is $LOG_GROUP/$stream."
+            exit 1
+          fi
