@@ -52,6 +52,7 @@
       "road-rail",
       "road-rail-hatch",
       "building",
+      "building-3d",
       "boundary-region",
       "boundary-country",
       "goway:anchor:labels",
@@ -77,6 +78,16 @@
       "label-place-country"
     ],
     "goway:generator": "packages/frontend/scripts/build-map-style.ts"
+  },
+  "light": {
+    "anchor": "viewport",
+    "position": [
+      1.15,
+      210,
+      30
+    ],
+    "color": "#ffffff",
+    "intensity": 0.2
   },
   "glyphs": "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
   "sprite": "https://tiles.openfreemap.org/sprites/ofm_f384/ofm",
@@ -2617,6 +2628,100 @@
           15,
           0.65,
           17,
+          1
+        ]
+      }
+    },
+    {
+      "id": "building-3d",
+      "type": "fill-extrusion",
+      "source": "openmaptiles",
+      "source-layer": "building",
+      "minzoom": 15.5,
+      "filter": [
+        "!=",
+        [
+          "get",
+          "hide_3d"
+        ],
+        true
+      ],
+      "paint": {
+        "fill-extrusion-height": [
+          "max",
+          [
+            "coalesce",
+            [
+              "get",
+              "render_height"
+            ],
+            0
+          ],
+          3
+        ],
+        "fill-extrusion-base": [
+          "case",
+          [
+            ">=",
+            [
+              "coalesce",
+              [
+                "get",
+                "render_min_height"
+              ],
+              0
+            ],
+            [
+              "max",
+              [
+                "coalesce",
+                [
+                  "get",
+                  "render_height"
+                ],
+                0
+              ],
+              3
+            ]
+          ],
+          0,
+          [
+            "coalesce",
+            [
+              "get",
+              "render_min_height"
+            ],
+            0
+          ]
+        ],
+        "fill-extrusion-vertical-gradient": true,
+        "fill-extrusion-color": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "get",
+            "render_height"
+          ],
+          0,
+          "#e8e6df",
+          60,
+          "#e2e0d8",
+          180,
+          "#dedbd2"
+        ],
+        "fill-extrusion-opacity": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          15.5,
+          0,
+          16.5,
           1
         ]
       }

@@ -31,6 +31,7 @@
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec';
 
 import type { MapAppearance } from '../provider';
+import { BUILDINGS_LIGHT } from './buildings3d';
 import { buildLayers, GOWAY_STYLE_LAYER_ID_LIST, LABEL_ANCHOR_LAYER_ID } from './layers';
 import { CARTOGRAPHY_PALETTES } from './palette';
 
@@ -99,6 +100,14 @@ export function buildGowayMapStyle(
       'goway:layers': GOWAY_STYLE_LAYER_ID_LIST,
       'goway:generator': 'packages/frontend/scripts/build-map-style.ts',
     },
+    // The document-level light. It shades nothing but `building-3d`, and it is
+    // here rather than in `buildings3d.ts` only because MapLibre puts `light`
+    // on the style rather than on the layer it lights. Leaving it unset means
+    // taking MapLibre's `intensity: 0.5`, which turns pale buildings into white
+    // lids on black walls. It is the one thing besides colour that differs per
+    // appearance, because MapLibre's shading is multiplicative and the same
+    // ratio is a far smaller difference on a dark palette — see the constant.
+    light: BUILDINGS_LIGHT[appearance],
     glyphs: endpoints.glyphs,
     ...(endpoints.sprite === undefined ? {} : { sprite: endpoints.sprite }),
     sources: {
