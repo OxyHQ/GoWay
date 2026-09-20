@@ -17,16 +17,18 @@
  * — and never to `goway.to` for any of them. The product's whole proposition
  * is being the map platform, so that is the wrong architecture no matter how
  * good the cartography is. Glyphs and the sprite became genuinely ours
- * (generated, committed, static). Tiles cannot: the planet is gigabytes and
- * GoWay is deliberately not storing it. A proxy is the only shape left, and a
- * proxy is code.
+ * (generated, committed, static); the tiles were, at first, only proxied,
+ * because the planet is gigabytes and the argument at the time was that GoWay
+ * should not store it. That argument no longer holds — see below — but the
+ * conclusion it reached does: a tile path is not an asset, and whatever
+ * answers it is code.
  *
  * ## What the tiles are now
  *
  * GoWay's own. `scripts/build-map-tiles.ts` runs Planetiler over an
  * OpenStreetMap extract and writes one **PMTiles** archive; that archive lives
  * in **Cloudflare R2**; and this Worker reads byte ranges out of it. There is
- * no tile server anywhere, and no request leaves Cloudflare.
+ * no tile server anywhere, and no tile request leaves Cloudflare.
  *
  * PMTiles is what makes those three things fit together. R2 is object storage:
  * it can hand back a range of an object and nothing else, so either the whole
@@ -83,7 +85,8 @@ const TILE_EDGE_TTL_SECONDS = 86400;
 /**
  * How long the edge may keep a piece of the archive's directory tree.
  *
- * This is the number that decides the storage bill. Every tile request needs
+ * This is the number that decides the OPERATIONS bill — the storage bill is
+ * decided by the archive and is about a dollar fifty. Every tile request needs
  * the header, the root directory and usually one leaf directory before it can
  * ask for a single byte of map, and those are the same few kilobytes for every
  * visitor in a colo. Cached, a warm tile request is ONE R2 read; uncached it
@@ -357,7 +360,14 @@ async function serveTileFromArchive(z, x, y, request, env, ctx) {
   );
 
   const hit = await cache.match(cacheKey);
-  if (hit) return request.method === 'HEAD' ? new Response(null, { headers: hit.headers }) : hit;
+  if (hit) {
+    // `status` has to be carried across, not defaulted. A cached MISS is a
+    // 404, and `new Response(null, { headers })` is a 200 — a HEAD for an
+    // ocean tile would have answered "this tile exists" with an empty body.
+    return request.method === 'HEAD'
+      ? new Response(null, { status: hit.status, headers: hit.headers })
+      : hit;
+  }
 
   let tile;
   try {

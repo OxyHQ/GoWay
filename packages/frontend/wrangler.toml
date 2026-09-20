@@ -141,8 +141,13 @@ run_worker_first = ["/map/tiles/*", "/map/fonts/*"]
 #   2. `wrangler r2 bucket create goway-map-tiles`
 #   3. R2 → Manage API tokens → create an access key pair, then
 #      `bun run --cwd packages/frontend map:tiles:upload --archive=… --key=…`
-#   4. Uncomment the six lines below, set the key to the one just uploaded,
-#      and merge. The upstream proxy stops being reached on that deploy.
+#   4. Delete the `# ` from the three `[[r2_buckets]]` lines below and from
+#      `MAP_TILE_ARCHIVE` inside `[vars]`, set the key to the one just
+#      uploaded, and merge. The upstream proxy stops being reached on that
+#      deploy. Checked with `wrangler deploy --dry-run` in both states, which
+#      is also why `MAP_TILE_ARCHIVE` sits inside the EXISTING `[vars]` table
+#      rather than in a second one: TOML rejects a duplicate table, so a
+#      commented-out `[vars]` header would have made step 4 a syntax error.
 #   5. Once it has been live long enough to trust, delete `MAP_TILE_UPSTREAM`
 #      below, the fallback in `worker/index.js`, and `OPENFREEMAP_ENDPOINTS`
 #      from `lib/map/provider.ts` — in the same commit, because each of them
@@ -151,9 +156,6 @@ run_worker_first = ["/map/tiles/*", "/map/fonts/*"]
 # [[r2_buckets]]
 # binding = "MAP_TILES"
 # bucket_name = "goway-map-tiles"
-#
-# [vars]
-# MAP_TILE_ARCHIVE = "basemap/planet-YYYYMMDD.pmtiles"
 
 # The FALLBACK upstream, as deployment configuration rather than as a hostname
 # written into product code. `lib/map/provider.ts` → `OPENFREEMAP_ENDPOINTS` is
@@ -172,6 +174,7 @@ run_worker_first = ["/map/tiles/*", "/map/fonts/*"]
 # resolving it at request time (cached for an hour) is what stops a deployment
 # serving 404s from the day the next planet lands.
 [vars]
+# MAP_TILE_ARCHIVE = "basemap/planet-YYYYMMDD.pmtiles"
 MAP_TILE_UPSTREAM = "https://tiles.openfreemap.org/planet"
 MAP_GLYPH_UPSTREAM = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf"
 
