@@ -68,6 +68,14 @@ lib/map/
   provider.ts            the ONLY place a tile/style vendor is named
   geo.ts                 bounds, distance, metres→pixels
   useUserLocation.ts     contextual, non-persisted device location
+  style/                 GoWay's OWN MapLibre style document
+    index.ts             buildGowayMapStyle(appearance, endpoints)
+    layers.ts            the layer list + the published id contract
+    palette.ts           the cartographic palette, light + dark
+    schema.ts            the OpenMapTiles v3 vocabulary, read off live tiles
+    tuning.ts            the three contested style decisions, one flag each
+scripts/
+  build-map-style.ts     renders public/map/*.json, validates, fails on drift
 ```
 
 Metro resolves the platform fork; TypeScript resolves `MapCanvas.tsx`, so that
@@ -137,15 +145,66 @@ Individual gestures are switched off through `interaction={{ pan, zoom, rotate, 
 
 ---
 
-## Map source — OpenFreeMap, behind configuration
+## Cartography — GoWay's own style, OpenFreeMap's tiles
 
 `lib/map/provider.ts` is the only file that names a tile vendor. Everything
 else asks for an *appearance* and gets a style document back.
 
-| appearance | style | notes |
+A style document and a tile source are different things, and the split is what
+this section is about. The **tiles** are OSM-derived vector data in the
+**OpenMapTiles v3** schema, served free and keyless by OpenFreeMap. The
+**style** — what to draw, in what order, in what colour — is GoWay's, generated
+from `lib/map/style/` into `public/map/goway-{light,dark}.json`. Because the
+schema is an open standard, the same style renders unchanged the day the tiles
+move to GoWay-hosted PMTiles.
+
+| appearance | style document | notes |
 |---|---|---|
-| light | `https://tiles.openfreemap.org/styles/liberty` | full layer set incl. POIs |
-| dark  | `https://tiles.openfreemap.org/styles/fiord`   | no `poi` source-layer — see below |
+| light | `/map/goway-light.json` | "GoWay Daylight" — warm sand ground |
+| dark  | `/map/goway-dark.json`  | "GoWay Night" — desaturated blue-grey charcoal |
+
+`expo export --platform web` copies `public/` into `dist/` verbatim and
+`wrangler.toml` serves `dist/`, so publishing a cartography change is the same
+deploy as everything else. The JSON is **committed**, not generated at build
+time, so a palette change is reviewable as a diff.
+
+```bash
+bun run --cwd packages/frontend map:style          # re-render both documents
+bun run --cwd packages/frontend map:style:check    # validate + fail on drift
+bun run --cwd packages/frontend map:style:check --online   # also re-verify the live tile schema
+```
+
+`map:style:check` is the guard that matters, because **a broken style document
+fails silently**: a wrong `source-layer` renders nothing, a missing fontstack
+renders no text, a moved layer id breaks an overlay's `beforeId` — none of them
+crash, log or fail a render. So the script validates the document against the
+real MapLibre style spec (`validateStyleMin`), asserts every `source-layer` and
+every `text-font` exists, asserts the id contract, asserts light and dark are
+in step, and fails if the committed JSON has drifted from the source. Run it
+before pushing a cartography change.
+
+### Where the palette came from
+
+The light palette was supplied by the product owner as a **Google Maps JS API**
+style array, which is a different language from MapLibre — it names abstract
+feature classes and cascades. It was translated onto the OpenMapTiles schema
+feature by feature; the table is in `lib/map/style/palette.ts`. Dark is derived
+from the same hues, not inherited from OpenFreeMap's `fiord`.
+
+Three of the supplied rules are contested and are hoisted into
+`lib/map/style/tuning.ts` — one flag each, argued in place, flippable in one
+line:
+
+| flag | supplied | shipped | why |
+|---|---|---|---|
+| `LOCAL_ROAD_FILL` | black | **black** (literal) | applied as asked; the tension with a label-forward map is written next to it, along with the Apple-like white+casing alternative |
+| `SHOW_ROAD_AND_POI_LABELS` | off | **on** | a map whose streets and places have no names cannot be searched, navigated or recognised — this restyles nothing, it removes the product's job |
+| `SHOW_BASEMAP_POIS` | `poi.business` off | **on, restrained** | switching POIs off would deliberately ship the dark-mode gap this style exists to close |
+
+Cartography is **not** Bloom. No Bloom token appears in a geographic layer and
+no cartographic colour is reachable from `components/` or `features/`: a brand
+accent in a landcover fill ruins the map, and a landcover green on a button
+ruins the interface.
 
 OpenFreeMap is keyless, free, OSM-derived and OpenMapTiles-schema'd, so
 development and the first production release need no API key and no $30/month
@@ -156,29 +215,76 @@ traffic.
 Override per deployment (all optional, see `.env.example`):
 
 ```
-EXPO_PUBLIC_MAP_SOURCE=openfreemap
+EXPO_PUBLIC_MAP_SOURCE=goway|openfreemap
+EXPO_PUBLIC_MAP_STYLE_ORIGIN=http://192.168.1.10:8081   # native dev builds
 EXPO_PUBLIC_MAP_STYLE_URL_LIGHT=…
 EXPO_PUBLIC_MAP_STYLE_URL_DARK=…
 ```
 
-A GoWay-hosted PMTiles/vector build registers a second entry in `SOURCES` and
-becomes the default by changing `EXPO_PUBLIC_MAP_SOURCE`. No feature code and no
-SDK contract moves.
+`EXPO_PUBLIC_MAP_STYLE_ORIGIN` exists because the style paths are
+origin-relative and **a native app has no origin**. Web resolves them against
+`window.location.origin` (so `expo start --web` and every preview deployment
+style themselves from their own bundle); native falls back to `https://goway.to`
+unless this is set. Point it at the Metro dev server to iterate on cartography
+in a native dev build.
+
+`EXPO_PUBLIC_MAP_SOURCE=openfreemap` is the escape hatch: it routes back to
+`liberty`/`fiord` with no rebuild if a style deploy goes wrong. Setting either
+`_STYLE_URL_` override also **clears the `beforeLabels` anchor**, because the
+anchor is a promise about a document `provider.ts` has seen.
 
 ### Source and layer IDs
 
-Later GoWay styles and overlays depend on these, so they are recorded rather
-than rediscovered:
+Later GoWay styles and overlays (#5 search pins, #6 route lines) depend on
+these, so they are a contract rather than a description. The authoritative list
+is `GOWAY_STYLE_LAYER_IDS` in `lib/map/style/layers.ts`, and it is also stamped
+into each document's `metadata["goway:layers"]`.
 
 | role | id |
 |---|---|
-| vector source (both styles) | `openmaptiles` |
-| raster relief source | `ne2_shaded` |
+| vector source | `openmaptiles` |
 | background layer | `background` |
-| source-layers GoWay reads | `building`, `landcover`, `landuse`, `park`, `place`, `poi`, `transportation`, `transportation_name`, `water`, `water_name` (OpenMapTiles schema v3) |
+| **overlay anchor** | `goway:anchor:labels` |
+| source-layers | `aerodrome_label`, `aeroway`, `boundary`, `building`, `housenumber`, `landcover`, `landuse`, `mountain_peak`, `park`, `place`, `poi`, `transportation`, `transportation_name`, `water`, `water_name`, `waterway` (OpenMapTiles v3) |
+
+Layer ids, bottom to top — **identical in light and dark**, which is the
+property that makes the anchor a promise:
+
+```
+background
+landuse-built-up  landcover-farmland  landcover-natural  landcover-ice
+landcover-wetland  landcover-sand  landuse-pitch  landuse-cemetery
+landuse-medical  landuse-institution  landuse-park  park  park-outline
+water  waterway
+aeroway-area  aeroway-runway  aeroway-taxiway
+road-tunnel  road-path  road-track  road-service  road-local
+road-arterial-tertiary  road-arterial-secondary  road-arterial-primary
+road-highway-link-casing  road-highway-casing  road-highway-link  road-highway
+road-ferry  road-rail  road-rail-hatch
+building
+boundary-region  boundary-country
+── goway:anchor:labels ───────────── everything below is terrain, above is type
+poi-dot  poi-dot-minor  poi-transit-dot
+label-waterway  label-water-line  label-water-point
+label-road-local  label-road-arterial  label-road-highway
+label-poi-minor  label-poi  label-poi-transit
+label-aerodrome  label-park
+label-place-minor  label-place-village  label-place-town  label-place-city
+label-place-region  label-place-country
+```
+
+Two orderings in there are load-bearing and invisible in review:
+
+- **`landuse-built-up` is at the BOTTOM of the ground stratum.** `landuse
+  class=residential` polygons are enormous — in a Madrid z14 tile they cover
+  108% of it — and they share a source-layer with the small specific ones.
+  Drawing `landcover` first and `landuse` second paints the residential blanket
+  over the parks; it turned El Retiro into plain sand until the order was fixed.
+- **Place labels are LAST.** MapLibre places symbols starting from the last
+  symbol layer, so being last is what makes a city name win a collision.
 
 Everything **GoWay** adds is namespaced `goway:` — MapLibre keys sources and
-layers in one flat namespace shared with the vendor's style document, so an
+layers in one flat namespace shared with the loaded style document, so an
 unprefixed `"buildings"` overlay would collide with whatever the next style
 calls its own:
 
@@ -187,20 +293,33 @@ goway:src:<overlayId>        source
 goway:line:<overlayId>       line layer
 goway:fill:<overlayId>       fill layer
 goway:circle:<overlayId>     circle layer
+goway:anchor:labels          the reserved overlay anchor (in the style itself)
 ```
 
 ### Known gaps, stated rather than hidden
 
-- **Dark mode has no basemap POIs.** No OpenFreeMap dark style ships a `poi`
-  source-layer; `fiord` is the closest one that still keeps parks and buildings.
-  Until GoWay authors its own style document, POI pins in dark mode come from
-  GoWay's marker layer, not the basemap.
-- **Overlay anchoring differs by platform.** Web inserts GoWay layers before
-  the first symbol layer of the *loaded* style, so a route line sits under
-  labels. `liberty` and `fiord` disagree about which layer that is, so the id is
-  derived at runtime rather than configured. MapLibre Native cannot hand the
-  loaded style back to JS, so native appends overlays on top. A GoWay style
-  document with a reserved anchor id closes this (`MapSourceIds.anchors.beforeLabels`).
+- ~~**Dark mode has no basemap POIs.**~~ **Closed.** No OpenFreeMap *dark* style
+  ships a `poi` source-layer, which is why `fiord` had none. GoWay's own style
+  reads the same `poi` source-layer in both appearances, and draws POIs as
+  category-tinted dots rather than sprite icons — the OpenFreeMap sprite is 264
+  non-SDF dark-on-transparent PNGs that cannot be recoloured for a dark ground,
+  so the dots are what make parity possible at all.
+- ~~**Overlay anchoring differs by platform.**~~ **Closed.** Both adapters now
+  read `MapSourceIds.anchors.beforeLabels`, which GoWay's style guarantees as
+  the reserved `goway:anchor:labels` layer. The old derivation survives as the
+  fallback for a style GoWay did not author (the `openfreemap` source, or an
+  `EXPO_PUBLIC_MAP_STYLE_URL_*` override), where no such promise exists.
+- **Nobody has seen the cartography in a real renderer yet.** The style is
+  validated against the MapLibre style spec, every layer's filter has been
+  evaluated against real decoded `.pbf` tiles over six cities, and both
+  appearances have been rasterised offline — but an offline rasteriser has no
+  glyphs, no label collision, no dash patterns and no antialiasing rules. Type
+  size, halo weight, label density and the exact feel of the road hierarchy
+  need human eyes at several zooms.
+- **No road shields, no one-way arrows, no house numbers, no 3D buildings.**
+  All four are available in the schema and all four are deliberate omissions on
+  a "quiet map" brief. Shields in particular are worth revisiting for driving
+  directions (#6).
 - **`maplibre-gl` is v6, and its worker is vendored to our own origin.** GoWay
   used to pin v5.24.0, whose UMD bundle inlined the tile worker as a Blob so
   there was nothing to vendor. That pin is gone: **GHSA-jrc7-96c5-q579**

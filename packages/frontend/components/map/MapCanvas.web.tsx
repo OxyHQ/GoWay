@@ -46,7 +46,12 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import * as Location from 'expo-location';
 import { useTheme } from '@oxy.so/bloom/theme';
 
-import { overlayLayerId, overlaySourceId, resolveMapStyleUrl } from '@/lib/map/provider';
+import {
+  overlayLayerId,
+  overlaySourceId,
+  resolveMapAnchors,
+  resolveMapStyleUrl,
+} from '@/lib/map/provider';
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
 
 import { DefaultMapMarker } from './DefaultMapMarker';
@@ -348,11 +353,15 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     if (!map || !ready) return;
 
     const next = overlays ?? [];
-    // Overlays go UNDER the first symbol layer so labels stay readable over a
-    // route line. The id is derived from the style actually loaded rather than
-    // hardcoded, because OpenFreeMap's light and dark styles disagree about
-    // which layer that is (see `lib/map/provider.ts`).
-    const beforeId = firstSymbolLayerId(map.getStyle());
+    // Overlays go UNDER the labels so a route line never covers a street name.
+    // GoWay's own style document reserves an anchor layer for exactly this, so
+    // the id is CONFIGURED; the derivation below is the fallback for a style
+    // that makes no such promise (OpenFreeMap's `liberty` and `fiord` disagree
+    // about which layer is first, which is why one had to be invented). See
+    // `lib/map/provider.ts` → `MapSourceIds.anchors.beforeLabels`.
+    const anchor = resolveMapAnchors().beforeLabels;
+    const beforeId =
+      anchor && map.getLayer(anchor) ? anchor : firstSymbolLayerId(map.getStyle());
 
     for (const overlay of next) {
       applyOverlay(map, overlay, accent, beforeId);

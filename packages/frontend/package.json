@@ -12,6 +12,8 @@
     "export:web": "expo export --platform web",
     "prebuild": "expo prebuild",
     "lint": "expo lint",
+    "map:style": "bun scripts/build-map-style.ts",
+    "map:style:check": "bun scripts/build-map-style.ts --check",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
