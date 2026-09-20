@@ -22,6 +22,9 @@
     "map:glyphs:fallback": "bun scripts/refresh-map-fallback.ts",
     "map:sprite": "bun scripts/build-map-sprite.ts",
     "map:sprite:check": "bun scripts/build-map-sprite.ts --check",
+    "map:tiles": "bun scripts/build-map-tiles.ts",
+    "map:tiles:verify": "bun scripts/build-map-tiles.ts --verify",
+    "map:tiles:upload": "bun scripts/build-map-tiles.ts --upload",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

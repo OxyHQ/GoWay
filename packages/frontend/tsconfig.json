@@ -8,6 +8,12 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
+    // The PMTiles reader is plain JS because it is deployed INSIDE the Worker
+    // bundle, which has no TypeScript step. `scripts/build-map-tiles.ts`
+    // imports it anyway — deliberately, so that the build-time verifier reads
+    // a finished archive with exactly the code the edge serves it with — and a
+    // file a program imports has to be in that program.
+    "worker/pmtiles.js",
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
     "nativewind-env.d.ts"

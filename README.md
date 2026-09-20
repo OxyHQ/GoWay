@@ -172,7 +172,7 @@ The frontend uses the same Oxy application foundation as the rest of the ecosyst
 
 ## Core platform
 
-- **Maps** — MapLibre rendering, initially using OpenFreeMap/OpenStreetMap-derived vector data.
+- **Maps** — MapLibre rendering over **GoWay's own vector tiles**: Planetiler builds one PMTiles archive from an OpenStreetMap extract, it lives in Cloudflare R2, and the Cloudflare Worker reads byte ranges out of it. No tile server, and no third-party tile origin. See `packages/frontend/README.md` → "The tiles".
 - **Places** — a first-class GoWay Places schema backed by PostgreSQL + PostGIS, with stable place IDs, source provenance, business relationships and extensible capabilities such as FairCoin acceptance.
 - **Search** — provider-neutral place/address search, geocoding and reverse geocoding.
 - **Routing** — provider-neutral directions and route geometry.
@@ -182,7 +182,7 @@ The frontend uses the same Oxy application foundation as the rest of the ecosyst
 
 The Places schema is part of GoWay v1, not deferred. Its public/domain contracts live in `packages/shared-types`; its canonical database schema, spatial indexes and migrations live in `packages/backend` using PostgreSQL + PostGIS. We intentionally do **not** create a separate public database-schema package because SDK consumers should depend on stable GoWay contracts, not on GoWay's internal tables or migrations.
 
-GoWay does not need to host the full world map dataset initially. The map infrastructure is replaceable independently from GoWay-owned Places and ecosystem data.
+GoWay hosts the map dataset itself — a planet PMTiles build in R2, at roughly $1.50 a month because R2 charges nothing for egress. The map infrastructure is still replaceable independently from GoWay-owned Places and ecosystem data: `lib/map/provider.ts` is the one module that names where cartography comes from, and moving the tiles from a third party to GoWay's own storage touched no component, no screen and no SDK contract.
 
 ## Street 3D
 

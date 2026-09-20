@@ -9,3 +9,12 @@ public/vendor/
 # `wrangler dev`/`wrangler deploy` beside wrangler.toml. Machine-local build
 # scratch, never an input to a deploy.
 .wrangler/
+
+# Tile builds: the PMTiles archives `scripts/build-map-tiles.ts` writes, the
+# pinned Planetiler jar it downloads, and the build receipts beside them. A
+# city is 186 MB and the planet is ~100 GB; these are deploy artefacts that
+# live in R2, and what is committed is the recipe that produces them. The OSM
+# extracts themselves are not even here — they go to `~/osm-data`, outside the
+# repository, because the routing engine wants the same 85 GB planet file and
+# two pipelines downloading it separately is invisible waste.
+.tiles/

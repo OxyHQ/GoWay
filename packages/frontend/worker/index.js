@@ -21,47 +21,44 @@
  * GoWay is deliberately not storing it. A proxy is the only shape left, and a
  * proxy is code.
  *
- * ## Be honest about what the tile proxy buys
+ * ## What the tiles are now
  *
- * It buys two real things:
+ * GoWay's own. `scripts/build-map-tiles.ts` runs Planetiler over an
+ * OpenStreetMap extract and writes one **PMTiles** archive; that archive lives
+ * in **Cloudflare R2**; and this Worker reads byte ranges out of it. There is
+ * no tile server anywhere, and no request leaves Cloudflare.
  *
- *  - The third-party origin leaves the browser. Every byte of GoWay's map now
- *    comes from `goway.to`, which is what makes the map embeddable, what keeps
- *    it working behind the kind of network policy that blocks unknown hosts,
- *    and what stops a vendor's name being the most prominent thing in a
- *    network panel.
- *  - A seam. Self-hosted tiles — PMTiles in R2, a different planet build, a
- *    regional extract — become a change to `MAP_TILE_UPSTREAM` and this file,
- *    with no style change, no app release and no client that ever knew.
+ * PMTiles is what makes those three things fit together. R2 is object storage:
+ * it can hand back a range of an object and nothing else, so either the whole
+ * planet is one object addressed by `Range:` or it is 350 million objects that
+ * cost more in write operations to upload than the bytes cost to keep. The
+ * Worker was already standing between the browser and the tiles, so the Worker
+ * is the thing that reads the ranges. `pmtiles.js` is the reader, and it is the
+ * SAME reader `map:tiles:verify` opens a finished build with.
  *
- * It buys NOTHING resembling independence. If OpenFreeMap is down, GoWay's map
- * is down, exactly as it was before. Edge caching narrows the window in which
- * that is visible; it does not change the dependency, and anyone reading this
- * should not tell a user otherwise.
+ * ## What this buys that the proxy did not
  *
- * ## The upstream's position, as far as it was actually checked
+ * The proxy that used to be here bought two real things — the third-party
+ * origin left the browser, and there was a seam to swap. Its header said
+ * plainly what it did not buy: "If OpenFreeMap is down, GoWay's map is down,
+ * exactly as it was before." That sentence is what this change deletes.
  *
- * Read off openfreemap.org, and quoted rather than paraphrased because the
- * temptation here is to hear permission that was not given:
+ * It also bought something nobody was looking for. Running the build means
+ * choosing what goes in the tile, and what goes in the tile now is the
+ * **OpenStreetMap element id** — Planetiler writes `osmId * 10 + 1|2|3` for
+ * node, way and relation. A GoWay place whose provenance is
+ * `openstreetmap:way/188938001` can therefore be joined to the basemap's own
+ * label for the same thing, which is the join that de-duplicating a GoWay chip
+ * against the basemap needs and could not previously have.
  *
- *   - "there are no limits on the number of map views or requests"
- *   - commercial use: "Yes"
- *   - "no registration, no user database, no API keys, and no cookies"
- *   - "You can either self-host or use our public instance", with weekly full
- *     planet downloads offered for anyone who wants their own infrastructure
+ * ## The upstream proxy is still here, and only as a rollback
  *
- * What is NOT there: any statement about proxying, mirroring or caching, in
- * either direction. So this proxy is not blessed by their terms; it is merely
- * not forbidden by them, and the honest summary is that GoWay is a heavy user
- * of a service that publishes no limits and offers a self-host path for
- * exactly this situation.
- *
- * Edge caching ought to mean FEWER requests reach them than direct client hits
- * would — one visitor's tile fetch serves the next visitor from Cloudflare —
- * but that is a reasonable expectation and not a measurement, and it will stop
- * being the interesting question at the point where GoWay should be taking the
- * weekly planet download instead. Re-read this before traffic grows by an
- * order of magnitude.
+ * If `MAP_TILES` (the R2 binding) or `MAP_TILE_ARCHIVE` (the object key) is
+ * missing, {@link serveTile} falls back to proxying `MAP_TILE_UPSTREAM`
+ * exactly as before. That is not indecision: R2 is a bucket a human has to
+ * create, and a deployment that went out before the bucket existed must serve
+ * a map rather than a 503. Delete the fallback once the bucket has been live
+ * long enough to trust, and delete `MAP_TILE_UPSTREAM` with it.
  *
  * The attribution obligation is separate, unaffected, and discharged by the
  * style document's `attribution` and by `components/map/MapAttribution.tsx`.
@@ -70,8 +67,36 @@
  *      product code, and the paths this file answers.
  */
 
-/** How long the edge may keep a vector tile. Tiles change on a planet rebuild. */
+import { PMTiles, contentEncodingFor } from './pmtiles.js';
+
+/**
+ * How long the edge may keep a vector tile.
+ *
+ * A day, and it could honestly be a year: the edge cache key below includes
+ * the ARCHIVE KEY, and a rebuild goes to a new key rather than overwriting the
+ * old object, so a cached tile can never be stale with respect to the archive
+ * it came from. A day is kept because it also bounds how long a rolled-back
+ * archive keeps being served from a colo nobody has re-warmed.
+ */
 const TILE_EDGE_TTL_SECONDS = 86400;
+
+/**
+ * How long the edge may keep a piece of the archive's directory tree.
+ *
+ * This is the number that decides the storage bill. Every tile request needs
+ * the header, the root directory and usually one leaf directory before it can
+ * ask for a single byte of map, and those are the same few kilobytes for every
+ * visitor in a colo. Cached, a warm tile request is ONE R2 read; uncached it
+ * would be three or four, and the Class B operations — not the bytes — are
+ * what R2 charges for.
+ *
+ * A week rather than a day because a directory is immutable for the life of an
+ * archive key, which is the same reason it is safe to cache at all.
+ */
+const DIRECTORY_EDGE_TTL_SECONDS = 604800;
+
+/** The media type a vector tile is served as. */
+const TILE_CONTENT_TYPE = 'application/vnd.mapbox-vector-tile';
 
 /** How long the edge may keep a proxied glyph range Inter does not cover. */
 const GLYPH_EDGE_TTL_SECONDS = 86400;
@@ -243,37 +268,140 @@ async function upstreamTileTemplate(upstreamTileJson, ctx) {
 }
 
 /**
- * `/map/tiles/{z}/{x}/{y}.pbf`.
+ * The highest zoom any GoWay archive is built to.
  *
- * The coordinate is validated rather than interpolated on trust. The regex
- * already admits digits only, so there is no path traversal to worry about,
- * but an out-of-range `x` or `y` would still become an upstream request for a
- * tile that cannot exist — and at scale that is a stranger using GoWay to
- * generate misses against a free service. `z > 14` is not an error: the planet
- * build stops there and MapLibre overzooms from z14 on its own, so a request
- * above it is a bug in a style and is answered as a miss, not forwarded.
+ * Checked before storage is touched, deliberately. The archive header carries
+ * the same number and {@link PMTiles.getTile} honours it, but reaching that
+ * check costs a read; refusing here costs nothing. `z > 14` is not an error
+ * either way — OpenMapTiles stops at 14 and MapLibre overzooms from there on
+ * its own, so a request above it is a bug in a style document and is answered
+ * as a miss.
  */
-async function serveTile(url, request, env, ctx) {
-  const match = TILE_PATH.exec(url.pathname);
-  if (!match) return notFound('Not a tile path.');
+const MAX_TILE_ZOOM = 14;
 
-  const z = Number(match[1]);
-  const x = Number(match[2]);
-  const y = Number(match[3]);
-  if (!Number.isInteger(z) || z > 14) return notFound('Zoom outside the planet build.');
-  const span = 2 ** z;
-  if (x >= span || y >= span) return notFound('Tile coordinate outside the world at that zoom.');
+/**
+ * A PMTiles byte source backed by an R2 bucket and the colo's shared cache.
+ *
+ * `hot` reads — the header, the root directory, a leaf directory — go through
+ * `caches.default` and are therefore read from R2 once per colo per week
+ * rather than once per tile. Tile bodies do not: they are cached as whole
+ * responses by {@link serveTileFromArchive}, and caching them twice would
+ * double the edge storage for nothing.
+ *
+ * The cache key names the archive key, so pointing `MAP_TILE_ARCHIVE` at a new
+ * build invalidates every cached directory in the world at the moment of the
+ * deploy. That is the entire cutover procedure, and the reason a rebuild is
+ * never written over the object a Worker is mid-request against: a PMTiles
+ * archive is addressed by byte offset, so overwriting one in place does not
+ * serve a stale tile, it serves whatever now lives at that offset.
+ */
+function archiveSource(bucket, key, ctx) {
+  const cache = caches.default;
+  return {
+    async read(offset, length, options = {}) {
+      const range = { offset, length };
+      if (!options.hot) {
+        const object = await bucket.get(key, { range });
+        if (!object) throw new Error(`the archive "${key}" is missing from the bucket`);
+        return new Uint8Array(await object.arrayBuffer());
+      }
 
-  const upstreamTileJson = env.MAP_TILE_UPSTREAM;
-  if (!upstreamTileJson) {
-    // Deliberately not a hardcoded fallback host. `lib/map/provider.ts` is the
-    // one place in the repository that names an upstream, and a Worker that
-    // quietly substituted its own copy would make that false the first time
-    // the two drifted.
-    return new Response('MAP_TILE_UPSTREAM is not configured for this deployment.', {
-      status: 503,
+      const cacheKey = new Request(
+        `https://goway.internal/pmtiles/${encodeURIComponent(key)}/${offset}-${length}`,
+      );
+      const hit = await cache.match(cacheKey);
+      if (hit) return new Uint8Array(await hit.arrayBuffer());
+
+      const object = await bucket.get(key, { range });
+      if (!object) throw new Error(`the archive "${key}" is missing from the bucket`);
+      const bytes = new Uint8Array(await object.arrayBuffer());
+      ctx.waitUntil(
+        cache.put(
+          cacheKey,
+          new Response(bytes, {
+            headers: { 'cache-control': `public, max-age=${DIRECTORY_EDGE_TTL_SECONDS}` },
+          }),
+        ),
+      );
+      return bytes;
+    },
+  };
+}
+
+/**
+ * `/map/tiles/{z}/{x}/{y}.pbf`, out of GoWay's own archive in R2.
+ *
+ * ## The bytes are never decompressed
+ *
+ * Planetiler writes gzipped MVT and the PMTiles header says so, so the stored
+ * bytes ARE the response body and `content-encoding: gzip` is the whole of the
+ * work. Decompressing here to let the platform re-compress on the wire would
+ * burn CPU on every tile to arrive at the same bytes. This is also the one
+ * place where getting a header wrong produces the classic unexplained failure:
+ * a gzipped body forwarded WITHOUT `content-encoding` is a `.pbf` MapLibre
+ * cannot parse and will not explain.
+ *
+ * ## A missing tile is a 404 and that is correct
+ *
+ * An OpenMapTiles build omits every tile that would be empty — mid-ocean,
+ * empty desert — and MapLibre treats a 404 as an empty tile. Turning that into
+ * a 502 would make the Atlantic an incident. It is cached for the full TTL
+ * like any other answer, because a tile absent from a given archive key is
+ * absent from it forever.
+ */
+async function serveTileFromArchive(z, x, y, request, env, ctx) {
+  const cache = caches.default;
+  const key = env.MAP_TILE_ARCHIVE;
+  const cacheKey = new Request(
+    `https://goway.internal/map/tiles/${encodeURIComponent(key)}/${z}/${x}/${y}.pbf`,
+  );
+
+  const hit = await cache.match(cacheKey);
+  if (hit) return request.method === 'HEAD' ? new Response(null, { headers: hit.headers }) : hit;
+
+  let tile;
+  try {
+    tile = await new PMTiles(archiveSource(env.MAP_TILES, key, ctx)).getTile(z, x, y);
+  } catch (error) {
+    // A bucket that answers and an archive that does not parse are different
+    // problems from an empty tile, and only this one deserves a 5xx.
+    return new Response(`The tile archive could not be read: ${error.message}`, {
+      status: 502,
       headers: { ...publicHeaders(0), 'content-type': 'text/plain; charset=utf-8' },
     });
+  }
+
+  const headers = new Headers(publicHeaders(TILE_EDGE_TTL_SECONDS));
+  if (!tile) {
+    const miss = new Response(null, { status: 404, headers });
+    ctx.waitUntil(cache.put(cacheKey, miss.clone()));
+    return miss;
+  }
+
+  headers.set('content-type', TILE_CONTENT_TYPE);
+  headers.set('content-length', String(tile.bytes.length));
+  const encoding = contentEncodingFor(tile.compression);
+  if (encoding) headers.set('content-encoding', encoding);
+
+  const response = new Response(tile.bytes, { headers });
+  ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  return request.method === 'HEAD' ? new Response(null, { headers }) : response;
+}
+
+/**
+ * `/map/tiles/{z}/{x}/{y}.pbf`, proxied from the upstream planet build.
+ *
+ * The rollback path, kept for exactly as long as it takes to trust the bucket.
+ * Everything it was and everything it was not is in this file's header.
+ */
+async function proxyTile(z, x, y, request, env, ctx) {
+  const upstreamTileJson = env.MAP_TILE_UPSTREAM;
+  if (!upstreamTileJson) {
+    return new Response(
+      'Neither an R2 tile archive (MAP_TILES + MAP_TILE_ARCHIVE) nor MAP_TILE_UPSTREAM is ' +
+        'configured for this deployment.',
+      { status: 503, headers: { ...publicHeaders(0), 'content-type': 'text/plain; charset=utf-8' } },
+    );
   }
 
   const template = await upstreamTileTemplate(upstreamTileJson, ctx);
@@ -294,11 +422,35 @@ async function serveTile(url, request, env, ctx) {
     cf: { cacheEverything: true, cacheTtl: TILE_EDGE_TTL_SECONDS },
   });
 
-  // A 404 from upstream is normal and frequent: OpenMapTiles omits tiles that
-  // contain nothing (ocean, empty desert), and MapLibre treats a 404 as an
-  // empty tile. Forwarding it as a 404 is correct; turning it into a 502 would
-  // make every ocean tile an error in somebody's dashboard.
   return reissue(upstream, TILE_EDGE_TTL_SECONDS);
+}
+
+/**
+ * `/map/tiles/{z}/{x}/{y}.pbf`.
+ *
+ * The coordinate is validated rather than trusted, and it is validated BEFORE
+ * either backend is chosen. The regex already admits digits only, so there is
+ * no path traversal to worry about, but an out-of-range `x` or `y` would still
+ * become a lookup for a tile that cannot exist — a stranger generating misses
+ * against GoWay's storage, which now costs GoWay operations rather than
+ * costing a free service its bandwidth. The argument for refusing it got
+ * stronger, not weaker, when the tiles became ours.
+ */
+async function serveTile(url, request, env, ctx) {
+  const match = TILE_PATH.exec(url.pathname);
+  if (!match) return notFound('Not a tile path.');
+
+  const z = Number(match[1]);
+  const x = Number(match[2]);
+  const y = Number(match[3]);
+  if (!Number.isInteger(z) || z > MAX_TILE_ZOOM) return notFound('Zoom outside the planet build.');
+  const span = 2 ** z;
+  if (x >= span || y >= span) return notFound('Tile coordinate outside the world at that zoom.');
+
+  if (env.MAP_TILES && env.MAP_TILE_ARCHIVE) {
+    return serveTileFromArchive(z, x, y, request, env, ctx);
+  }
+  return proxyTile(z, x, y, request, env, ctx);
 }
 
 /**
@@ -383,4 +535,14 @@ export default {
 // Exported for `worker/__tests__/`: the routing and validation above is the
 // part with edge cases, and it is testable without a Workers runtime as long
 // as the pieces are reachable. The default export stays the deployed contract.
-export { GLYPH_PATH, TILE_PATH, UPSTREAM_FONTSTACK, publicHeaders, serveGlyphs, serveTile };
+//
+// One rule, learned from a real `wrangler dev` rather than from a document:
+// **every named export of a Worker's entry module must be a function or an
+// object.** workerd inspects them looking for entrypoint classes, and a
+// `export const MAX_TILE_ZOOM = 14` makes the whole service refuse to start
+// with `Incorrect type for map entry 'MAX_TILE_ZOOM': the provided value is
+// not of type 'function or ExportedHandler'`. That is a total outage for the
+// map, produced by a constant exported for a unit test. The regexes and the
+// fontstack table below are objects and are therefore fine; numbers and
+// strings are not. `worker/__tests__/pmtiles.test.js` asserts this.
+export { GLYPH_PATH, TILE_PATH, UPSTREAM_FONTSTACK, archiveSource, publicHeaders, serveGlyphs, serveTile };
