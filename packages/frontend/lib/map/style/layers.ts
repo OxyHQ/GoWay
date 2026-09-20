@@ -566,12 +566,24 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
   //
   // `landscape.man_made`, one shade off the ground so a built-up block reads as
   // built up without becoming a second colour on the map.
-  fill(
-    'landuse-built-up',
-    SL.landuse,
-    filter(classIn('residential', 'suburb', 'neighbourhood', 'quarter', 'garages', 'industrial', 'commercial', 'retail', 'railway', 'quarry')),
-    palette.landBuiltUp,
-  );
+  // ZOOM-GATED, because Apple's is. The built-up tint covers ~15% of a z14
+  // Manhattan canvas and is entirely absent from a z10 one — the same is true
+  // of the violet in dark mode. At region scale Apple wants bare land, green
+  // and the motorway network and nothing else; the urban fabric arrives as you
+  // come down. Rendering it at every zoom is what made GoWay's region view a
+  // flat wash where Apple's has structure.
+  layers.push({
+    id: 'landuse-built-up',
+    type: 'fill',
+    source,
+    'source-layer': SL.landuse,
+    minzoom: 10,
+    filter: filter(classIn('residential', 'suburb', 'neighbourhood', 'quarter', 'garages', 'industrial', 'commercial', 'retail', 'railway', 'quarry')),
+    paint: {
+      'fill-color': palette.landBuiltUp,
+      'fill-opacity': byZoom([[10, 0], [13, 1]], 1),
+    },
+  });
 
   // `landscape.natural`. `rock`/`scree` are absent on purpose: the supplied
   // palette hides `landscape.natural.terrain`, and this style carries no
@@ -678,7 +690,12 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
 
   for (const tier of ROAD_TIERS) {
     const tone = toneFor(palette, tier.tier);
-    line(tier.id, SL.transportation, tierFilter(tier), tone.fill, tier.widths, { minzoom: tier.minzoom });
+    // Motorway and trunk shift hue as you zoom out — measured, see
+    // `RoadTone.fillLowZoom`. Everything else is one colour at every zoom.
+    const fillColor = tone.fillLowZoom
+      ? colorByZoom([[9, tone.fillLowZoom], [13, tone.fill]])
+      : tone.fill;
+    line(tier.id, SL.transportation, tierFilter(tier), fillColor, tier.widths, { minzoom: tier.minzoom });
   }
 
   // Footways last of the road block so a park path is not buried under the
