@@ -359,7 +359,9 @@ change meant to be invisible.
 3. R2 → *Manage API tokens* → an access key pair (**not** the Workers API
    token), exported as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, then
    `map:tiles:upload`.
-4. Uncomment the block in `wrangler.toml`, set the key, merge.
+4. Delete the `# ` from the three `[[r2_buckets]]` lines and from
+   `MAP_TILE_ARCHIVE` inside `[vars]`, set the key, merge. Both states were
+   checked with `wrangler deploy --dry-run`.
 5. Once it has been live long enough to trust, delete `MAP_TILE_UPSTREAM`, the
    fallback in `worker/index.js` and `OPENFREEMAP_ENDPOINTS` from
    `lib/map/provider.ts` — in one commit, because each exists only for the
