@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
-  "description": "GoWay — Oxy's open map and geographic platform",
+  "description": "GoWay \u2014 Oxy's open map and geographic platform",
   "workspaces": [
     "packages/shared-types",
     "packages/sdk",
@@ -41,6 +41,7 @@
     "test:frontend": "bun run --cwd packages/frontend test",
     "check:lockfile": "bun ./scripts/check-lockfile-sync.mjs",
     "check:migrations": "bun ./scripts/check-migration-phases.mjs && bun ./scripts/check-migration-params.mjs",
+    "check:routing": "bun ./scripts/check-routing.mjs",
     "test:gates": "bun ./scripts/test-check-migration-phases.mjs && bun ./scripts/test-check-migration-params.mjs",
     "test:gates:lockfile": "bun ./scripts/test-check-lockfile-sync.mjs",
     "lint:sdk": "bun run --cwd packages/sdk lint",

@@ -137,6 +137,21 @@ export function FailureState({
           testID="state-not-found"
         />
       );
+    // Two ANSWERS rather than faults, and they belong to the directions domain
+    // — `DirectionsPanel` renders each one in its own words, beside the stops
+    // it is about. They are spelled out here anyway, without a retry, because
+    // the `default` below would otherwise turn a perfectly good answer into
+    // "Something went wrong" the first time one reached a generic panel.
+    case 'noRoute':
+    case 'unsupportedMode':
+      return (
+        <PanelState
+          icon={RiMap2Line}
+          title="GoWay can't answer that here"
+          body={`There is no answer GoWay can give for ${what} with these settings. Nothing is guessed.`}
+          testID="state-no-answer"
+        />
+      );
     case 'malformed':
     case 'unknown':
     default:

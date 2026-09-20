@@ -114,14 +114,38 @@ jobs:
           # signed out — so an unset variable costs sign-in only, silently.
           EXPO_PUBLIC_OXY_CLIENT_ID: ${{ vars.EXPO_PUBLIC_OXY_CLIENT_ID }}
           EXPO_PUBLIC_API_URL: https://api.goway.to
-          # FIXTURES ON, stated rather than left to the default. There is no
-          # GoWay API deployed; with fixtures off the identical bundle would
-          # point at `api.goway.to`, and every panel would render its error
-          # state against a host that does not answer. `client.ts` defaults this
-          # ON for the same reason, but a default is not a decision — when the
-          # backend lands, changing this one line to '0' is the cutover, and the
-          # diff is the record of when it happened.
-          EXPO_PUBLIC_GOWAY_FIXTURES: '1'
+          # FIXTURES OFF. This is the cutover the line above used to promise,
+          # and this comment is its record.
+          #
+          # `api.goway.to` is live and answering: `/health` reports the database
+          # up, `GET /search?q=barcelona` returns real Photon results, and
+          # `POST /routes` returns a real 621 km road route from GoWay's own
+          # Valhalla deployment. The fixtures were written when none of that
+          # existed. Keeping them now would mean goway.to shows a route that is
+          # a straight line at 1.25× the crow's distance while the API behind it
+          # knows the actual roads, which is the defect this change exists to
+          # remove.
+          #
+          # WHAT THIS COSTS, stated rather than discovered: `GET /places/bounds`
+          # answers `[]` on production, because GoWay Places has no rows yet. So
+          # the GoWay-owned Places layer — the pins, their capabilities, their
+          # cards — is EMPTY on the live site until Places is seeded, where
+          # before it showed fourteen fixture places in Barcelona.
+          #
+          # That trade was taken on purpose, and the reasoning is the same
+          # honesty rule as the route line. Those fixtures are real Barcelona
+          # names (the Boqueria, Museu Picasso, Bar Marsella) carrying INVENTED
+          # facts — opening hours, accessibility, which of them take FairCoin —
+          # served from goway.to as if GoWay knew them. Fabricated place data on
+          # a public map is the same defect as a fabricated route, and an empty
+          # layer is not an empty map: the basemap draws every POI it has and
+          # every name on it is tappable (#51), search is real, and directions
+          # are real. What is gone is the pretence.
+          #
+          # `lib/goway/client.ts` still DEFAULTS fixtures on, so `bun run
+          # dev:frontend` against no backend is unchanged. Only what ships is
+          # live.
+          EXPO_PUBLIC_GOWAY_FIXTURES: '0'
 
       # A precondition check, not a test: it costs nothing and it fails HERE,
       # before anything is published, rather than as a mystery in the live

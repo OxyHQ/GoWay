@@ -44,6 +44,7 @@ bun run typecheck        # tsc -b across every package, plus the non-emitting to
 bun run lint
 bun run test             # bun test
 bun run check:migrations # deploy-phase markers + no $1 placeholders in generated SQL
+bun run check:routing    # api.goway.to returns a REAL Barcelona->Madrid route, not a straight line
 bun run check:lockfile   # bun.lock matches the manifests it describes
 bun run test:gates       # proves the migration gates can fail
 ```
@@ -61,12 +62,19 @@ that passes CI. The build is an `expo export --platform web` of
 `packages/frontend`; the Worker is configured entirely by
 `packages/frontend/wrangler.toml`.
 
-**It needs no backend.** `packages/frontend/lib/goway/client.ts` injects a
-fixture `fetch` into the real `@goway.to/sdk` client while
-`EXPO_PUBLIC_GOWAY_FIXTURES` is not `0`, so the deployed bundle is a complete,
-browsable map — search, place details, routing, every degraded state — that
-makes no call to `api.goway.to` at all. When the API is live, flipping that one
-env value in the deploy workflow is the cutover.
+**It runs against the live API.** `.github/workflows/deploy-frontend.yml` sets
+`EXPO_PUBLIC_GOWAY_FIXTURES: '0'`, so goway.to talks to `api.goway.to`: real
+search, real geocoding, and real turn-by-turn routing from GoWay's own Valhalla
+(`packages/routing-engine`). `packages/frontend/lib/goway/client.ts` still
+DEFAULTS fixtures on, so `bun run dev:frontend` works against nothing.
+
+One thing is knowingly empty: **GoWay Places has no rows in production**, so
+`/places/bounds` answers `[]` and the GoWay-owned pin layer is blank until it is
+seeded. That was chosen over keeping the fixtures live, because those fixtures
+are real Barcelona names carrying invented facts, and fabricated places on a
+public map are the same defect as a fabricated route. The basemap still draws
+every POI it has, every name on it is tappable, search is real and directions
+are real.
 
 ### A Worker, not Pages — and why `workers_dev = false` is the point
 

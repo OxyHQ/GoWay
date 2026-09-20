@@ -15,12 +15,14 @@
 import {
   GoWayAbortError,
   GoWayNetworkError,
+  GoWayNoRouteError,
   GoWayNotFoundError,
   GoWayRateLimitError,
   GoWayResponseError,
   GoWayTimeoutError,
   GoWayUnauthorizedError,
   GoWayUnavailableError,
+  GoWayUnsupportedModeError,
   isGoWayError,
 } from '@goway.to/sdk';
 
@@ -31,6 +33,21 @@ export type GoWayFailureKind =
   | 'timeout'
   /** GoWay, or a geographic provider behind it, is degraded. */
   | 'unavailable'
+  /**
+   * There is no route between these points, and there never will be — two
+   * points separated by an ocean have no driving route. A NORMAL answer for
+   * the directions domain, not a fault: `shared-types` says the same thing
+   * twice, and it arrives in two shapes (a 200 with an empty `routes` array,
+   * or `no_route`) that must render identically.
+   */
+  | 'noRoute'
+  /**
+   * GoWay does not route this travel mode HERE — a statement about coverage,
+   * not about the request being wrong. It is its own kind because the only
+   * useful action is "pick another mode", and a "Try again" button against it
+   * is a button that cannot work.
+   */
+  | 'unsupportedMode'
   /** This place does not exist (GoWay said so, not a proxy). */
   | 'notFound'
   | 'rateLimited'
@@ -50,10 +67,15 @@ export interface GoWayFailure {
 
 /**
  * Order matters: `GoWayTimeoutError` extends `GoWayNetworkError`, so the
- * subclass must be tested first or every timeout reads as "offline".
+ * subclass must be tested first or every timeout reads as "offline". The two
+ * routing-domain answers are tested before the generic classes for the same
+ * reason — both extend `GoWayApiError`, which would otherwise fall through to
+ * `unknown` and render "Something went wrong" for an answer that is not wrong.
  */
 export function classifyGoWayError(error: unknown): GoWayFailure {
   if (error instanceof GoWayAbortError) return { kind: 'aborted', retryable: false };
+  if (error instanceof GoWayNoRouteError) return { kind: 'noRoute', retryable: false };
+  if (error instanceof GoWayUnsupportedModeError) return { kind: 'unsupportedMode', retryable: false };
   if (error instanceof GoWayTimeoutError) return { kind: 'timeout', retryable: true };
   if (error instanceof GoWayNetworkError) return { kind: 'offline', retryable: true };
   if (error instanceof GoWayUnavailableError) return { kind: 'unavailable', retryable: true };

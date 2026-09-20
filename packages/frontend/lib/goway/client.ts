@@ -8,21 +8,36 @@
  * call `gowayClient.places.inBounds(...)` and get a parsed `Place[]` or a typed
  * error.
  *
- * ## Fixtures, and how the real backend replaces them
+ * ## Fixtures, and the backend that has replaced them
  *
- * There is no GoWay API deployed yet. Rather than stub the client, this module
- * injects a fixture `fetch` (`mockTransport.ts`) into the REAL client, so every
- * request still goes through the SDK's query serialisation, response parsing,
- * cancellation and error classification. The swap to the live backend is the
- * deletion of one option:
+ * `api.goway.to` is live: Places, search, geocoding and real Valhalla routing.
+ * **The deployed site runs against it** —
+ * `.github/workflows/deploy-frontend.yml` sets `EXPO_PUBLIC_GOWAY_FIXTURES: '0'`
+ * — and the fixture layer is now a LOCAL convenience only, for working on the
+ * app with no backend running.
+ *
+ * Rather than stub the client, this module injects a fixture `fetch`
+ * (`mockTransport.ts`) into the REAL client, so every request still goes
+ * through the SDK's query serialisation, response parsing, cancellation and
+ * error classification. Going live is the deletion of one option:
  *
  * ```ts
- * createGoWayClient({ apiBaseUrl: API_URL, getAccessToken })   // live
- * createGoWayClient({ apiBaseUrl: API_URL, getAccessToken, fetch: fixtures })  // now
+ * createGoWayClient({ apiBaseUrl: API_URL, getAccessToken })   // deployed
+ * createGoWayClient({ apiBaseUrl: API_URL, getAccessToken, fetch: fixtures })  // local
  * ```
  *
- * It is controlled by `EXPO_PUBLIC_GOWAY_FIXTURES`, which defaults to ON while
- * no backend exists. Setting it to `0` points the identical app at a real API.
+ * The default is still ON, so `bun run dev:frontend` works with nothing else
+ * running. Set `EXPO_PUBLIC_GOWAY_FIXTURES=0` in `packages/frontend/.env` to
+ * develop against the real API, which is what the deployed bundle does.
+ *
+ * ## The fixture route is a STRAIGHT LINE, and the app says so
+ *
+ * `mockTransport.ts` answers `POST /routes` with the crow's path between the
+ * stops at 1.25×, because a fake polyline along real streets would be a worse
+ * lie than an obvious one. It is still a lie, so {@link USING_FIXTURES} is
+ * exported and `DirectionsPanel` prints a line under any route drawn from it.
+ * A developer must never mistake the fixture for the engine — that confusion
+ * is what shipped a straight line to production.
  *
  * ## Token custody
  *

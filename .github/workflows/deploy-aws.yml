@@ -46,6 +46,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # For `scripts/check-routing.mjs` at the end of this job. Version from
+      # `packageManager` in package.json, exactly as ci.yml and
+      # deploy-frontend.yml do it, so CI, the image and this deploy cannot
+      # disagree about which bun ran what.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+
       - name: Configure AWS credentials (OIDC, no stored keys)
         uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6
         with:
@@ -107,12 +115,78 @@ jobs:
           docker push "$IMG:latest"
 
       - name: Deploy to ECS (skipped until the service exists)
+        id: deploy
         run: |
           set -euo pipefail
           STATUS=$(aws ecs describe-services --cluster "$CLUSTER" --services "$APP" --query 'services[0].status' --output text 2>/dev/null || echo NONE)
           if [ "$STATUS" != "ACTIVE" ]; then
             echo "ECS service $APP not created yet — image is in ECR, skipping deploy"
+            echo "rolled=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           aws ecs update-service --cluster "$CLUSTER" --service "$APP" --force-new-deployment >/dev/null
           echo "Triggered new deployment for $APP"
+          echo "rolled=true" >> "$GITHUB_OUTPUT"
+
+      # WAIT FOR IT, AND FAIL IF IT DID NOT TAKE.
+      #
+      # `update-service` returning is not a deploy. It queues one. Without this
+      # step the job goes green the moment the queue accepts the request, and
+      # the thing that actually happens next is invisible — which is not a
+      # hypothetical: on 2026-09-20 four consecutive merges reported a
+      # successful deploy while every rollout failed and rolled back, because
+      # the new image shipped a migration (`0001_goway_capture`) that nobody had
+      # applied. `/ready` answers 503 until the schema is current, the target
+      # group refused every new task, the circuit breaker restored the old one,
+      # and api.goway.to served a four-hour-old build for the rest of the day
+      # with four green checkmarks above it.
+      #
+      # The failure is then reported with the ONE instruction that fixes it,
+      # because "tasks failed to start" sends a reader to the wrong place.
+      - name: Wait for the rollout, and say what went wrong if it failed
+        if: steps.deploy.outputs.rolled == 'true'
+        run: |
+          set -euo pipefail
+          echo "Waiting for $APP to reach a steady state…"
+          if aws ecs wait services-stable --cluster "$CLUSTER" --services "$APP"; then
+            state=$(aws ecs describe-services --cluster "$CLUSTER" --services "$APP" \
+              --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' --output text)
+            if [ "$state" = "COMPLETED" ]; then
+              echo "Rollout completed."
+              exit 0
+            fi
+          fi
+          echo "::error::The $APP rollout did not complete. The previous image is still serving."
+          echo "--- recent service events ---"
+          aws ecs describe-services --cluster "$CLUSTER" --services "$APP" \
+            --query 'services[0].events[0:12].[createdAt,message]' --output text
+          cat <<'HINT'
+          ::error::If the events say tasks failed to start and /ready returned 503, the
+          most likely cause is a migration shipped in this image that has not been
+          applied. `/ready` checks the migration journal, so an unmigrated database takes
+          every new task out of the target group and the circuit breaker restores the old
+          one. Apply it with the one-shot task documented in oxy-infra
+          terraform-uswest2/app-goway.tf step 5, then re-run this workflow:
+
+            aws ecs run-task --cluster oxy-cluster --task-definition oxy-goway \
+              --launch-type FARGATE --network-configuration '<the service's own>' \
+              --overrides '{"containerOverrides":[{"name":"goway","command":[
+                 "bun","packages/backend/dist/src/db/migrate.js","--target-database=goway"]}]}'
+          HINT
+          exit 1
+
+      # THE assertion that cannot pass while the bug is present.
+      #
+      # Everything above proves an image was built and a task is running.
+      # Nothing above proves GoWay can work out how to get from one place to
+      # another, and that is the thing that was broken: `POST /routes` answered
+      # `service_unavailable` in production for as long as it existed, and the
+      # web app drew the crow's path instead. `scripts/check-routing.mjs` asks
+      # api.goway.to for Barcelona → Madrid, signed out, and fails unless the
+      # answer is LONGER than the 505 km great circle, carries hundreds of
+      # coordinates and names real roads. A straight line cannot satisfy it.
+      - name: Prove directions follow roads
+        if: steps.deploy.outputs.rolled == 'true'
+        env:
+          GOWAY_API_URL: https://api.goway.to
+        run: bun scripts/check-routing.mjs

@@ -163,7 +163,19 @@ export interface DirectionsController {
 
   route: Route | null;
   routeBusy: boolean;
-  routeFailure: GoWayFailureKind | 'noRoute' | null;
+  /**
+   * Why there is no route to show, or `null` when there is one (or when none
+   * has been asked for yet).
+   *
+   * When this is set, {@link DirectionsController.overlays} is EMPTY. That
+   * pairing is the whole honesty rule of this feature: GoWay either knows the
+   * way and draws it, or says it does not. It never draws the straight line
+   * between the stops, because a straight line rendered in the route's own
+   * colour is indistinguishable from an answer — and being confidently wrong
+   * about how to get somewhere is worse than admitting we could not work it
+   * out.
+   */
+  routeFailure: GoWayFailureKind | null;
   retryRoute: () => void;
   steps: readonly RouteStep[];
   selectedStep: number | null;
@@ -559,11 +571,14 @@ export function useDirections(options: DirectionsOptions): DirectionsController 
 
   const route = routeQuery.data?.routes[0] ?? null;
 
-  const routeFailure: GoWayFailureKind | 'noRoute' | null = useMemo(() => {
+  const routeFailure: GoWayFailureKind | null = useMemo(() => {
     if (routeQuery.error) {
       const { kind } = classifyGoWayError(routeQuery.error);
       return kind === 'aborted' ? null : kind;
     }
+    // The OTHER shape of "no route exists": a 200 with an empty array. The SDK
+    // documents both as valid and `classifyGoWayError` maps `no_route` to the
+    // same kind, so the panel has one branch to render rather than two.
     if (routeQuery.data && routeQuery.data.routes.length === 0) return 'noRoute';
     return null;
   }, [routeQuery.data, routeQuery.error]);
