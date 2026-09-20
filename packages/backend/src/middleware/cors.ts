@@ -227,6 +227,21 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
  * strict lane — exact echoed origin, credentials, `Vary: Origin` — or it calls
  * from its own server, where CORS does not apply. Both of those are decisions
  * somebody makes; this lane is the one nobody has to.
+ *
+ * That argument only holds if an authenticated request never REACHES this
+ * lane, and originally nothing enforced it: the lane was chosen from the
+ * method and the path alone, before anything looked at `Authorization`. GoWay's
+ * own app is cross-origin to its own API (`goway.to` → `api.goway.to`) and
+ * `@goway.to/sdk` attaches the token to every request it makes, public route or
+ * not — so a signed-in first-party read preflighted for `authorization`, was
+ * answered `Content-Type`, and the browser blocked it. The sentence above
+ * described the strict lane as the answer for an authenticated read while
+ * nothing routed one there.
+ *
+ * {@link carriesAuthorization} is what makes it true. An authenticated request
+ * goes to the strict lane whatever its path, so this constant stays exactly as
+ * narrow as its reasoning requires and the lane's responses stay identical for
+ * every caller.
  */
 const PUBLIC_ALLOWED_HEADERS = 'Content-Type';
 
@@ -312,6 +327,29 @@ function preflightMethod(request: Request): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
+/**
+ * Whether this request is, or is asking to become, an authenticated one.
+ *
+ * Two shapes, because a browser asks before it sends. On a preflight the token
+ * is not present yet — `Access-Control-Request-Headers` names what the real
+ * request intends to send, and `authorization` there is the browser asking
+ * permission to attach one. On the real request the header itself is there.
+ *
+ * Either way the answer routes to the strict lane, which is what keeps the
+ * public lane's responses identical for every caller (see
+ * {@link PUBLIC_ALLOWED_HEADERS}). Matching is case-insensitive and
+ * token-wise: `Access-Control-Request-Headers` is a comma-separated list the
+ * browser lowercases, but an intermediary may not have, and a substring test
+ * would match a header merely CONTAINING the word.
+ */
+function carriesAuthorization(request: Request): boolean {
+  if (request.headers.authorization !== undefined) return true;
+  const requested = request.headers['access-control-request-headers'];
+  const value = Array.isArray(requested) ? requested.join(',') : requested;
+  if (typeof value !== 'string') return false;
+  return value.split(',').some((name) => name.trim().toLowerCase() === 'authorization');
+}
+
 /** Answer a preflight for a public route. */
 function answerPublicPreflight(response: Response, method: string): void {
   response.setHeader('Access-Control-Allow-Origin', '*');
@@ -321,8 +359,17 @@ function answerPublicPreflight(response: Response, method: string): void {
   response.setHeader('Access-Control-Allow-Methods', `${method}, OPTIONS`);
   response.setHeader('Access-Control-Allow-Headers', PUBLIC_ALLOWED_HEADERS);
   response.setHeader('Access-Control-Max-Age', String(PUBLIC_MAX_AGE_SECONDS));
-  // No `Access-Control-Allow-Credentials`, and no `Vary`. See the module docs:
-  // both absences are the policy, not an omission.
+  // No `Access-Control-Allow-Credentials`: see the module docs, that absence is
+  // the policy rather than an omission.
+  //
+  // `Vary` IS set here, and only here. A preflight for one of these paths now
+  // has two possible answers — this one, or the strict lane's, depending on
+  // whether the real request intends to send `Authorization` — so the request
+  // header that decides it has to be part of the cache key. The actual
+  // responses still carry no `Vary` and still need none: an authenticated
+  // request never reaches this lane, so what it returns is identical for every
+  // caller, which is the whole cacheability argument.
+  response.setHeader('Vary', 'Access-Control-Request-Headers');
   response.sendStatus(204);
 }
 
@@ -340,13 +387,28 @@ export interface GoWayCorsOptions {
 /**
  * The CORS middleware `app.ts` mounts, ahead of the body parser.
  *
- * Public read → `Access-Control-Allow-Origin: *`, no credentials header.
- * Everything else → `createOxyCors`, unchanged and unwrapped.
+ * Anonymous public read → `Access-Control-Allow-Origin: *`, no credentials
+ * header. Everything else — anything authenticated, and every route outside
+ * the public table — → `createOxyCors`, unchanged and unwrapped.
+ *
+ * The lane is chosen by credential FIRST and path second. A public path is
+ * necessary for the wildcard lane, never sufficient.
  */
 export function createGoWayCors(options: GoWayCorsOptions): RequestHandler {
   const strict = createOxyCors({ appOrigins: [...options.appOrigins] });
 
   return (request, response, next) => {
+    // Asked first, and ahead of the path table, because it decides the LANE
+    // rather than the route. A public path plus a credential is an
+    // authenticated read of public data — GoWay's own signed-in app is exactly
+    // that — and it belongs on the lane that can echo an origin and answer for
+    // a specific caller. Sending it to the wildcard lane is what made every
+    // signed-in first-party read fail its preflight.
+    if (carriesAuthorization(request)) {
+      strict(request, response, next);
+      return;
+    }
+
     if (request.method === 'OPTIONS') {
       const asked = preflightMethod(request);
       if (asked !== null && isPublicReadRequest(asked, request.path)) {
