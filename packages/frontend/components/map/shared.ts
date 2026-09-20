@@ -6,16 +6,19 @@
  * every call site where a swapped pair renders a plausible map of the wrong
  * place and nothing errors.
  *
- * It is also the gate: `isDrawableCoordinate` / `drawableMarkers` /
- * `isDrawableBounds` / `resolvePadding` are what keep a `NaN` from reaching an
- * engine, which is a THROW rather than a bad frame. See the block comment above
- * {@link isDrawableCoordinate}.
+ * It is also the gate. `isDrawableCoordinate` / `drawableMarkers` /
+ * `isDrawableBounds` / `resolvePadding` / `asFinite` keep a `NaN` from reaching
+ * an engine, which is a THROW rather than a bad frame — see the block comment
+ * above {@link isDrawableCoordinate}. `drawableOverlays` covers the one path
+ * that fails the OTHER way: raw GeoJSON does not throw, it renders nowhere and
+ * says nothing.
  */
 import type {
   GeoBounds,
   GeoCoordinate,
   MapInteractionOptions,
   MapMarker,
+  MapOverlay,
   MapOverlayKind,
   MapOverlayPaint,
   MapViewport,
@@ -61,18 +64,47 @@ export function resolveOverlayPaint(
   accent: string,
 ): Required<Omit<MapOverlayPaint, 'outlineColor'>> & { outlineColor: string } {
   const color = paint?.color ?? accent;
+  // `asFinite` on the numbers for the same reason as everywhere else in this
+  // file: these go into a style layer's paint, and a non-finite one is rejected
+  // by MapLibre's style validator — which fails the whole `addLayer`, so the
+  // overlay does not appear at all. A default width is a visible line.
   return {
     color,
-    width: paint?.width ?? 4,
-    opacity: paint?.opacity ?? (kind === 'fill' ? 0.15 : 1),
+    width: asFinite(paint?.width) ?? 4,
+    opacity: asFinite(paint?.opacity) ?? (kind === 'fill' ? 0.15 : 1),
     outlineColor: paint?.outlineColor ?? color,
-    radius: paint?.radius ?? 6,
+    radius: asFinite(paint?.radius) ?? 6,
   };
 }
 
-/** Normalise a `moveTo` target: a bare coordinate leaves the camera's zoom alone. */
+/**
+ * Normalise a `moveTo` target: a bare coordinate leaves the camera's zoom alone.
+ *
+ * `Number.isFinite`, not `typeof === 'number'` — `typeof NaN` IS `'number'`, so
+ * the old test accepted `{ latitude, longitude, zoom: NaN }` as a viewport and
+ * passed that `NaN` on to the engine. See {@link asFinite} for what that costs.
+ * A viewport whose zoom is not a number is treated as the bare coordinate it
+ * usefully is.
+ */
 export function isViewport(target: GeoCoordinate | MapViewport): target is MapViewport {
-  return typeof (target as MapViewport).zoom === 'number';
+  return Number.isFinite((target as MapViewport).zoom);
+}
+
+/**
+ * A camera scalar the engine can use, or `undefined`.
+ *
+ * Zoom, bearing, pitch, duration and maxZoom are the seam's unchecked numbers,
+ * and a `NaN` in any of them is not a bad frame — it is the SAME crash a bad
+ * coordinate is, one step later. `transform.setZoom(NaN)` survives MapLibre's
+ * own `clamp` (every comparison against `NaN` is false), so `_scale` and
+ * `worldSize` become `NaN`; the next unprojection — `map.getBounds()`, which
+ * this canvas calls on every `move` event, and which `jumpTo` fires
+ * SYNCHRONOUSLY — builds a `LngLat` out of two `NaN`s and throws
+ * `Invalid LngLat object: (NaN, NaN)` from inside the caller's own React
+ * handler. The camera simply not moving is the better failure.
+ */
+export function asFinite(value: number | null | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 /**
@@ -195,6 +227,122 @@ export function drawableMarkers(markers: readonly MapMarker[] | undefined): read
 }
 
 const EMPTY_MARKERS: readonly MapMarker[] = [];
+
+/**
+ * The overlays an engine may be given, with the undrawable ones removed.
+ *
+ * Overlays were the one path from feature code into an engine that this seam
+ * did not check, and they are not a small one: the route line, the highlighted
+ * step and any service area all travel as raw GeoJSON handed straight to
+ * `addSource`/`setData`.
+ *
+ * ## What a bad overlay actually does, measured
+ *
+ * Unlike a marker or a camera move, a bad coordinate here does NOT throw. A
+ * GeoJSON source is tiled in the worker by geojson-vt, whose `projectX`/
+ * `projectY` are plain arithmetic: `NaN` in, `NaN` out, no `LngLat` anywhere on
+ * the path (`GeoJSONSource.setData` only serialises and posts). A `LineString`
+ * with a `NaN` vertex, an empty `coordinates: []`, a one-point `LineString` —
+ * all produce a feature whose bounding box is `[NaN, NaN, NaN, NaN]`, which
+ * belongs to no tile and is therefore drawn NOWHERE, silently, with no error
+ * event and nothing in the console.
+ *
+ * That is why this is worth checking rather than leaving to the engine: the
+ * failure mode is a route the user asked for that simply is not on the map, and
+ * nothing anywhere says why.
+ *
+ * ## Why it drops rather than repairs
+ *
+ * Filtering the bad vertices out of a line would leave a line that still draws
+ * — straight through whatever is between the two surviving points. A route that
+ * cuts a corner it does not cut is a lie the user has no way to detect. A
+ * missing line is visibly missing.
+ */
+export function drawableOverlays(
+  overlays: readonly MapOverlay[] | undefined,
+): readonly MapOverlay[] {
+  if (!overlays || overlays.length === 0) return EMPTY_OVERLAYS;
+  let firstBad = -1;
+  for (let index = 0; index < overlays.length; index += 1) {
+    if (!isDrawableGeoJSON(overlays[index].data)) {
+      firstBad = index;
+      break;
+    }
+  }
+  if (firstBad < 0) return overlays;
+
+  const kept = overlays.slice(0, firstBad);
+  for (let index = firstBad; index < overlays.length; index += 1) {
+    const overlay = overlays[index];
+    if (isDrawableGeoJSON(overlay.data)) {
+      kept.push(overlay);
+      continue;
+    }
+    reportMapDefect(
+      `overlay:${overlay.id}`,
+      `Dropped overlay "${overlay.id}": its geometry is not drawable, so it would have rendered nowhere.`,
+    );
+  }
+  return kept;
+}
+
+const EMPTY_OVERLAYS: readonly MapOverlay[] = [];
+
+/**
+ * Every position in a GeoJSON document is a point the engine can project, and
+ * every geometry has enough of them to BE that geometry.
+ *
+ * The arity check is not pedantry about RFC 7946: a one-point `LineString` and
+ * an empty ring are exactly what a mis-sliced route produces, they draw
+ * nothing, and they are indistinguishable from "the route did not arrive"
+ * unless something says so.
+ */
+export function isDrawableGeoJSON(data: GeoJSON.GeoJSON | null | undefined): boolean {
+  if (!data || typeof data !== 'object') return false;
+  switch (data.type) {
+    case 'FeatureCollection':
+      return Array.isArray(data.features) && data.features.every((f) => isDrawableGeoJSON(f));
+    case 'Feature':
+      // A null geometry is legal GeoJSON and draws nothing, which for an
+      // overlay is the same as not being there.
+      return data.geometry != null && isDrawableGeoJSON(data.geometry);
+    case 'GeometryCollection':
+      return (
+        Array.isArray(data.geometries) &&
+        data.geometries.length > 0 &&
+        data.geometries.every((g) => isDrawableGeoJSON(g))
+      );
+    case 'Point':
+      return isDrawablePosition(data.coordinates);
+    case 'MultiPoint':
+      return ring(data.coordinates, 1);
+    case 'LineString':
+      return ring(data.coordinates, 2);
+    case 'MultiLineString':
+      return Array.isArray(data.coordinates) && data.coordinates.every((l) => ring(l, 2));
+    case 'Polygon':
+      return Array.isArray(data.coordinates) && data.coordinates.every((r) => ring(r, 4));
+    case 'MultiPolygon':
+      return (
+        Array.isArray(data.coordinates) &&
+        data.coordinates.every((p) => Array.isArray(p) && p.every((r) => ring(r, 4)))
+      );
+    default:
+      return false;
+  }
+}
+
+function ring(positions: unknown, minimum: number): boolean {
+  return (
+    Array.isArray(positions) && positions.length >= minimum && positions.every(isDrawablePosition)
+  );
+}
+
+/** A GeoJSON position is `[longitude, latitude]`, altitude optional. */
+function isDrawablePosition(position: unknown): boolean {
+  if (!Array.isArray(position) || position.length < 2) return false;
+  return isDrawableCoordinate({ longitude: position[0], latitude: position[1] });
+}
 
 /**
  * Say it ONCE per defect.
