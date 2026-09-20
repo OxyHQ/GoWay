@@ -183,15 +183,40 @@ every `text-font` exists, asserts the id contract, asserts light and dark are
 in step, and fails if the committed JSON has drifted from the source. Run it
 before pushing a cartography change.
 
-### Where the palette came from
+### What the palette is aiming at, and the source that was retired
 
-The light palette was supplied by the product owner as a **Google Maps JS API**
-style array, which is a different language from MapLibre — it names abstract
-feature classes and cascades. It was translated onto the OpenMapTiles schema
-feature by feature; the table is in `lib/map/style/palette.ts`. Dark is derived
-from the same hues, not inherited from OpenFreeMap's `fiord`.
+The target is **Apple Maps' current cartography**, described by property:
+very low contrast and a lot of light, a near-white warm-grey ground, muted
+grey-blue water, sage green close in value to the land, white roads ranked by
+width and casing strength, and category tints pulled below the land's own
+contrast so no block is ever the brightest thing on screen.
 
-Three of the supplied rules are contested and are hoisted into
+**Nobody who worked on this has seen Apple Maps 2026.** The values are reasoned
+from that design language, not matched against a sample. Treat the result as
+"built to those properties", never as "matches Apple Maps".
+
+The first two versions were built instead from a Google Maps JS API style array
+supplied as an Apple reference. It is **snazzymaps.com/style/42, published 20
+November 2013**, anonymous, and its own description claims only that it "largely
+resembles the Apple Maps theme, albeit somewhat flatter". It imitates iOS 6/7
+Apple Maps — creamy land, saturated green, bright blue water and **yellow
+motorways**, which Apple retired years ago. Following it faithfully is what made
+this map look unlike Apple Maps today.
+
+That array is now recorded in `lib/map/style/palette.ts` for provenance only,
+with each hex marked against what it used to drive. **It is not a target.** A
+value drifting back toward one of them is a regression, not a restoration. The
+translation *method* still applies to anything new: Google names abstract
+feature classes and cascades, MapLibre names the tile's own `source-layer` and
+`class` values and does not, so a Google style is translated feature class by
+feature class and never consumed.
+
+What survived the palette change, deliberately: the whole road *model* (casings
+on every tier, white fills, width-led hierarchy, derived casing widths, the
+casings-before-fills ordering), the 69-layer id contract, the anchor, light/dark
+parity and the type ramp's ranking. Only colour moved.
+
+Three rules from the retired array are contested and are hoisted into
 `lib/map/style/tuning.ts` — one flag each, argued in place, flippable in one
 line:
 
@@ -201,11 +226,14 @@ line:
 | `SHOW_ROAD_AND_POI_LABELS` | off | **on** | a map whose streets and places have no names cannot be searched, navigated or recognised — this restyles nothing, it removes the product's job |
 | `SHOW_BASEMAP_POIS` | `poi.business` off | **on, restrained** | switching POIs off would deliberately ship the dark-mode gap this style exists to close |
 
-The supplied array remains the source for land, water, park, airport and the
-motorway *hue*; those read well and are unchanged. What changed is the road
-model and the two loudest accents — `poi.medical` `#fbd3da` measured as the
-brightest thing on a city-zoom screen and is now a quiet warm tint in the same
-family.
+One colour decision is worth calling out because it is counter-intuitive:
+**`labelWater` and `labelPark` are darker than their hue family would suggest,
+and the dark mode's `labelRoad` is lighter.** Their backgrounds moved. Muted
+water and sage park sit far closer to the land's lightness than 2013's bright
+blue and fresh green did, so the old label colours measured 2.38:1 and 3.58:1
+against their own fills — visible as marks, unreadable as words. Every label
+colour in `palette.ts` is now checked against the ground it actually sits on
+rather than against the land.
 
 Cartography is **not** Bloom. No Bloom token appears in a geographic layer and
 no cartographic colour is reachable from `components/` or `features/`: a brand
@@ -309,9 +337,16 @@ These two are the whole "does it look like Apple Maps" question, so they are
 written down rather than left in the numbers.
 
 **Roads.** Every class has a fill and a casing — a fine line one step darker,
-drawn wider and underneath. Fills are white or near-white, warming very
-slightly up the hierarchy, and only motorway/trunk carry a visible tint (the
-supplied `#ffe15f` hue at a fraction of its saturation). **Hierarchy is carried
+drawn wider and underneath. Fills are white or near-white the whole way up;
+**motorways are not yellow**, and the retired 2013 array's `#ffe15f` is gone
+entirely. The ladder is **width plus casing strength**: a motorway's casing is
+`#d3ccbb` and a residential street's is `#e4e1d7`, so the firmer edge and the
+wider ribbon rank together. Motorway, trunk, primary and secondary additionally
+*deepen* their casing as you zoom out, reaching their normal colour by z14 —
+at z11 a motorway is a 3.8px ribbon with about a pixel of edge per side, and on
+a near-white ground a pale edge at that scale is not an edge. The first render
+of this palette without that ramp turned the whole Madrid region into a white
+tangle in which the A-roads could not be traced. **Hierarchy is carried
 by width, not colour**: at z15 a motorway is 11.3px, a primary 7.4, a secondary
 6.0, a tertiary 4.8, a residential street 3.6, a service road 1.8 — a clean
 monotonic ladder with roughly 3:1 between the top and the bottom of the

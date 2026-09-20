@@ -529,7 +529,7 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     id: string,
     sourceLayer: string,
     layerFilter: FilterSpecification,
-    color: string,
+    color: string | ExpressionSpecification,
     widths: readonly (readonly [number, number])[],
     options: { minzoom?: number; dash?: number[]; opacity?: number; cap?: 'butt' | 'round' } = {},
   ): void => {
@@ -664,7 +664,14 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
   for (const tier of ROAD_TIERS) {
     const tone = toneFor(palette, tier.tier);
     if (!tone.casing) continue;
-    line(`${tier.id}-casing`, SL.transportation, tierFilter(tier), tone.casing, casingWidths(tier.widths), {
+    // A tier that names a `casingLowZoom` deepens its edge as you zoom out,
+    // reaching its normal colour by z14. See the field's docs: on a near-white
+    // ground a pale one-pixel edge at z11 is not an edge, and the strategic
+    // network stops being traceable.
+    const casingColor = tone.casingLowZoom
+      ? colorByZoom([[9, tone.casingLowZoom], [14, tone.casing]])
+      : tone.casing;
+    line(`${tier.id}-casing`, SL.transportation, tierFilter(tier), casingColor, casingWidths(tier.widths), {
       minzoom: tier.minzoom,
     });
   }
