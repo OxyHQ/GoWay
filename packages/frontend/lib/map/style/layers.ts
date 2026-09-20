@@ -40,14 +40,9 @@ import type {
 } from '@maplibre/maplibre-gl-style-spec';
 
 import { GOWAY_LABEL_ANCHOR_LAYER_ID } from '../provider';
-import type { CartographyPalette, RoadTone } from './palette';
+import type { CartographyPalette, RoadTier, RoadTone } from './palette';
 import { OPENMAPTILES_SOURCE_LAYERS as SL } from './schema';
-import {
-  LOCAL_ROAD_CASING_WHEN_WHITE,
-  LOCAL_ROAD_FILL,
-  SHOW_BASEMAP_POIS,
-  SHOW_ROAD_AND_POI_LABELS,
-} from './tuning';
+import { LOCAL_ROAD_FILL, SHOW_BASEMAP_POIS, SHOW_ROAD_AND_POI_LABELS } from './tuning';
 
 /**
  * The reserved anchor layer, re-exported from the id contract in `provider.ts`.
@@ -100,19 +95,36 @@ export const GOWAY_STYLE_LAYER_IDS = {
   water: ['water', 'waterway'],
   aeroway: ['aeroway-area', 'aeroway-runway', 'aeroway-taxiway'],
   /** Casings first, then fills — see the stacking note above. */
+  /**
+   * Every road tier twice — its casing, then its fill — with all casings
+   * emitted before all fills. Ids are named after the OpenMapTiles
+   * `transportation.class` they draw, so a filter and an id can never disagree
+   * about which roads they mean.
+   */
   roads: [
+    'road-tunnel-casing',
     'road-tunnel',
-    'road-path',
-    'road-track',
+    'road-service-casing',
+    'road-track-casing',
+    'road-local-casing',
+    'road-tertiary-casing',
+    'road-secondary-casing',
+    'road-primary-casing',
+    'road-trunk-link-casing',
+    'road-trunk-casing',
+    'road-motorway-link-casing',
+    'road-motorway-casing',
     'road-service',
+    'road-track',
     'road-local',
-    'road-arterial-tertiary',
-    'road-arterial-secondary',
-    'road-arterial-primary',
-    'road-highway-link-casing',
-    'road-highway-casing',
-    'road-highway-link',
-    'road-highway',
+    'road-tertiary',
+    'road-secondary',
+    'road-primary',
+    'road-trunk-link',
+    'road-trunk',
+    'road-motorway-link',
+    'road-motorway',
+    'road-path',
     'road-ferry',
     'road-rail',
     'road-rail-hatch',
@@ -336,45 +348,144 @@ const POI_MINOR_MAX_RANK = 24;
 // ---------------------------------------------------------------------------
 
 /**
- * Widths, in px, per zoom, per tier.
+ * Widths, in px, per zoom, per tier — the **fill** width.
  *
- * This table *is* the road hierarchy. The supplied palette gives motorway,
- * arterial and local three colours that do not rank cleanly against each other
- * (white arterials are quieter than black local streets), so what tells a
- * driver which road is the through route is width, and width alone. The ratios
- * are held roughly constant across zoom — a motorway is ~2× an arterial and
- * ~3× a local street at every scale — which is what keeps the network legible
- * when zooming rather than re-ranking as you go.
+ * This table *is* the road hierarchy. Every tier is white or near-white, so
+ * colour ranks nothing; what tells you which road is the through route is how
+ * wide it is. The ratios are held roughly constant across zoom — a motorway is
+ * ~1.5× a primary and ~3× a residential street at every scale — which is what
+ * keeps the network legible while zooming instead of re-ranking as you go.
+ *
+ * The ramps are tuned to be readable from z10 (a motorway at 3px, a primary at
+ * 2px, residential streets not yet drawn) through z18 (ribbons wide enough to
+ * carry a label inside them).
  */
 const ROAD_WIDTHS = {
-  highway: [[5, 0.6], [8, 1.5], [11, 3], [13, 4.6], [15, 8.5], [17, 17], [20, 46]],
-  highwayCasing: [[5, 1.5], [8, 3], [11, 4.8], [13, 6.8], [15, 11.5], [17, 21], [20, 54]],
-  highwayLink: [[11, 0.8], [13, 1.8], [15, 3.6], [17, 8], [20, 22]],
-  highwayLinkCasing: [[11, 1.8], [13, 3.4], [15, 5.8], [17, 11], [20, 28]],
-  arterialPrimary: [[7, 0.5], [10, 1.2], [12, 2.2], [14, 3.8], [16, 8], [18, 17], [20, 34]],
-  arterialSecondary: [[9, 0.4], [12, 1.5], [14, 2.8], [16, 6.2], [18, 13.5], [20, 28]],
-  arterialTertiary: [[11, 0.4], [13, 1.4], [15, 3], [17, 7], [20, 24]],
-  local: [[12, 0.4], [14, 1.5], [16, 3.2], [18, 8], [20, 20]],
-  service: [[14, 0.5], [16, 1.6], [18, 4], [20, 11]],
-  track: [[14, 0.5], [16, 1.1], [18, 2.4], [20, 5.5]],
-  path: [[14, 0.5], [16, 1.1], [18, 1.9], [20, 3.6]],
-  tunnel: [[12, 0.6], [14, 2], [16, 4], [18, 9], [20, 22]],
+  motorway: [[5, 0.6], [8, 1.6], [10, 3], [12, 5], [14, 8], [16, 16], [18, 34], [20, 70]],
+  motorwayLink: [[11, 1.4], [13, 2.4], [14, 3.6], [16, 7.5], [18, 16], [20, 32]],
+  trunk: [[6, 0.6], [9, 1.6], [10, 2.6], [12, 4.2], [14, 6.6], [16, 13], [18, 28], [20, 58]],
+  trunkLink: [[11, 1.2], [13, 2.1], [14, 3.2], [16, 6.5], [18, 14], [20, 28]],
+  primary: [[7, 0.5], [10, 2], [12, 3.2], [14, 5.2], [16, 10.5], [18, 22], [20, 46]],
+  secondary: [[9, 0.5], [11, 1.4], [12, 2.3], [14, 4.2], [16, 8.6], [18, 19], [20, 40]],
+  tertiary: [[10, 0.5], [12, 1.6], [14, 3.3], [16, 7], [18, 16], [20, 34]],
+  local: [[12, 0.6], [13, 1.2], [14, 2.2], [16, 5.5], [18, 13], [20, 28]],
+  service: [[13, 0.5], [14, 1], [16, 3], [18, 7], [20, 16]],
+  track: [[13, 0.5], [14, 0.9], [16, 2.2], [18, 4.5], [20, 9]],
+  path: [[14, 0.8], [16, 1.4], [18, 2.4], [20, 4.5]],
+  tunnel: [[12, 1.2], [14, 2.6], [16, 5.5], [18, 12], [20, 24]],
   rail: [[11, 0.5], [14, 1], [16, 1.8], [18, 3], [20, 5]],
   railHatch: [[14, 2.5], [16, 3.6], [18, 5.5], [20, 8]],
   ferry: [[8, 0.6], [12, 1], [16, 1.8], [20, 3]],
 } as const satisfies Record<string, readonly (readonly [number, number])[]>;
+
+/**
+ * How much wider than its fill a casing is drawn, per zoom.
+ *
+ * A **constant additive**, not a ratio, and that is the whole trick. A ratio
+ * makes a motorway's casing four times thicker than a residential street's, so
+ * the edge weight itself becomes a second hierarchy competing with the width
+ * one. A constant gives every road the same fine edge — the line looks drawn
+ * with one pen — and it only grows with zoom because at z18 a one-pixel edge on
+ * a 34-pixel ribbon disappears.
+ */
+const CASING_DELTA: readonly (readonly [number, number])[] = [
+  [8, 0.7], [10, 0.8], [12, 1.0], [14, 1.4], [16, 2.2], [18, 3.4], [20, 5.2],
+];
+
+function casingDeltaAt(zoom: number): number {
+  const stops = CASING_DELTA;
+  if (zoom <= stops[0][0]) return stops[0][1];
+  const last = stops[stops.length - 1];
+  if (zoom >= last[0]) return last[1];
+  for (let i = 1; i < stops.length; i += 1) {
+    const [z0, d0] = stops[i - 1];
+    const [z1, d1] = stops[i];
+    if (zoom <= z1) return d0 + ((d1 - d0) * (zoom - z0)) / (z1 - z0);
+  }
+  return last[1];
+}
+
+/**
+ * A tier's casing width, derived from its fill width.
+ *
+ * Derived rather than written down a second time: two hand-maintained ramps
+ * drift, and a casing narrower than its fill at one zoom stop is a road that
+ * loses its edge in a band and gets it back — visible, and almost impossible to
+ * find by reading the table.
+ */
+function casingWidths(
+  fillStops: readonly (readonly [number, number])[],
+): readonly (readonly [number, number])[] {
+  return fillStops.map(([zoom, width]) => {
+    // CLAMPED to a share of the fill, and the clamp is what rescues low zoom.
+    // A residential street is 0.6px wide at z12; adding a flat 0.9px pen to
+    // each side makes the casing four times the road, so a town renders as a
+    // tangle of warm-grey lines with a white thread inside them instead of a
+    // street network. Past ~z14 the clamp never binds and the constant pen
+    // takes over, which is where it belongs.
+    const pen = Math.min(casingDeltaAt(zoom) * 2, width * 1.2);
+    return [zoom, Number((width + pen).toFixed(2))] as const;
+  });
+}
 
 /** Roads at or above the surface. Tunnels are drawn by their own layer. */
 const NOT_TUNNEL = expr(['!=', ['get', 'brunnel'], 'tunnel']);
 /** Slip roads. Rendered thinner so an interchange does not read as a junction. */
 const IS_RAMP = expr(['==', ['get', 'ramp'], 1]);
 
-/** The local-road recipe, after `tuning.ts` has had its say. */
-function localRoadTone(palette: CartographyPalette): RoadTone {
-  if (LOCAL_ROAD_FILL === null) return LOCAL_ROAD_CASING_WHEN_WHITE;
-  return palette.appearance === 'light'
-    ? { fill: LOCAL_ROAD_FILL, casing: null }
-    : palette.local;
+/**
+ * The road tiers, bottom to top, each bound to the `transportation.class`
+ * values it draws.
+ *
+ * One table drives the casing pass, the fill pass and the id contract, so a
+ * tier cannot exist in one and not the others. Order here is paint order:
+ * quietest first, so a motorway is drawn over the service road it crosses.
+ */
+const ROAD_TIERS: readonly {
+  id: string;
+  tier: RoadTier;
+  classes: readonly string[];
+  widths: readonly (readonly [number, number])[];
+  minzoom: number;
+  /** Slip roads only (`ramp = 1`), or explicitly not slip roads. */
+  ramp?: boolean;
+  /** Dashed, and therefore casing-less. */
+  dash?: number[];
+}[] = [
+  { id: 'road-service', tier: 'service', classes: ['service'], widths: ROAD_WIDTHS.service, minzoom: 13 },
+  { id: 'road-track', tier: 'track', classes: ['track'], widths: ROAD_WIDTHS.track, minzoom: 13 },
+  { id: 'road-local', tier: 'local', classes: ['minor'], widths: ROAD_WIDTHS.local, minzoom: 12 },
+  { id: 'road-tertiary', tier: 'tertiary', classes: ['tertiary'], widths: ROAD_WIDTHS.tertiary, minzoom: 10 },
+  { id: 'road-secondary', tier: 'secondary', classes: ['secondary'], widths: ROAD_WIDTHS.secondary, minzoom: 8 },
+  { id: 'road-primary', tier: 'primary', classes: ['primary'], widths: ROAD_WIDTHS.primary, minzoom: 7 },
+  { id: 'road-trunk-link', tier: 'trunkLink', classes: ['trunk'], widths: ROAD_WIDTHS.trunkLink, minzoom: 11, ramp: true },
+  { id: 'road-trunk', tier: 'trunk', classes: ['trunk'], widths: ROAD_WIDTHS.trunk, minzoom: 6, ramp: false },
+  { id: 'road-motorway-link', tier: 'motorwayLink', classes: ['motorway'], widths: ROAD_WIDTHS.motorwayLink, minzoom: 11, ramp: true },
+  { id: 'road-motorway', tier: 'motorway', classes: ['motorway'], widths: ROAD_WIDTHS.motorway, minzoom: 5, ramp: false },
+];
+
+/** Footways, drawn after the vehicle network so a park path is not buried. */
+const PATH_TIER = {
+  id: 'road-path',
+  tier: 'path' as RoadTier,
+  classes: ['path'],
+  widths: ROAD_WIDTHS.path,
+  minzoom: 14,
+  dash: [2, 1.6],
+};
+
+/**
+ * A tier's tone, after `tuning.ts` has had its say.
+ *
+ * {@link LOCAL_ROAD_FILL} is the reversible half of a rejected instruction: a
+ * non-null value restores the supplied literal treatment for the two local
+ * tiers — flat fill, no casing — and `null`, the default, uses the palette.
+ */
+function toneFor(palette: CartographyPalette, tier: RoadTier): RoadTone {
+  if (LOCAL_ROAD_FILL !== null && (tier === 'local' || tier === 'service')) {
+    return { fill: LOCAL_ROAD_FILL, casing: null };
+  }
+  return palette.roads[tier];
 }
 
 // ---------------------------------------------------------------------------
@@ -388,7 +499,6 @@ function localRoadTone(palette: CartographyPalette): RoadTone {
  * @param source  - the vector source id these layers read (`provider.ts` owns it).
  */
 export function buildLayers(palette: CartographyPalette, source: string): LayerSpecification[] {
-  const local = localRoadTone(palette);
   const layers: LayerSpecification[] = [];
 
   /** A `fill` over one source-layer. */
@@ -519,38 +629,62 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
   line('aeroway-taxiway', SL.aeroway, filter(['all', IS_LINE, classIn('taxiway')]), palette.aeroway.fill, [[12, 0.6], [15, 2], [18, 6]], { minzoom: 12, cap: 'butt' });
 
   // --- Roads -------------------------------------------------------------
+  //
+  // ALL CASINGS FIRST, THEN ALL FILLS. That ordering is the difference between
+  // a road network and a pile of lines: where a residential street meets a
+  // primary, the primary's fill covers the residential's casing and the
+  // junction reads as continuous tarmac. Interleaved per tier, every crossing
+  // grows a visible seam.
 
-  // Tunnels: one dimmed layer for the whole network rather than a shadow copy
-  // of every tier. A road you cannot drive onto does not need a hierarchy.
+  // Tunnels: one dimmed, dashed layer for the whole network rather than a
+  // shadow copy of every tier. A road you cannot turn onto does not need a
+  // hierarchy of its own.
+  const tunnelTone = toneFor(palette, 'tunnel');
+  const tunnelFilter = filter([
+    'all',
+    IS_LINE,
+    ['==', ['get', 'brunnel'], 'tunnel'],
+    classIn('motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'minor', 'service'),
+  ]);
+  if (tunnelTone.casing) {
+    line('road-tunnel-casing', SL.transportation, tunnelFilter, tunnelTone.casing, casingWidths(ROAD_WIDTHS.tunnel), { minzoom: 12 });
+  }
+  line('road-tunnel', SL.transportation, tunnelFilter, tunnelTone.fill, ROAD_WIDTHS.tunnel, { minzoom: 12, dash: [0.6, 0.3] });
+
+  /** `class` + optional `ramp` test shared by a tier's casing and its fill. */
+  const tierFilter = (tier: (typeof ROAD_TIERS)[number]): FilterSpecification =>
+    filter([
+      'all',
+      IS_LINE,
+      NOT_TUNNEL,
+      classIn(...tier.classes),
+      ...(tier.ramp === undefined ? [] : [tier.ramp ? IS_RAMP : ['!', IS_RAMP]]),
+    ]);
+
+  for (const tier of ROAD_TIERS) {
+    const tone = toneFor(palette, tier.tier);
+    if (!tone.casing) continue;
+    line(`${tier.id}-casing`, SL.transportation, tierFilter(tier), tone.casing, casingWidths(tier.widths), {
+      minzoom: tier.minzoom,
+    });
+  }
+
+  for (const tier of ROAD_TIERS) {
+    const tone = toneFor(palette, tier.tier);
+    line(tier.id, SL.transportation, tierFilter(tier), tone.fill, tier.widths, { minzoom: tier.minzoom });
+  }
+
+  // Footways last of the road block so a park path is not buried under the
+  // service road beside it. Dashed, and therefore casing-less — a dashed line
+  // inside a casing reads as a ladder.
   line(
-    'road-tunnel',
+    PATH_TIER.id,
     SL.transportation,
-    filter(['all', IS_LINE, ['==', ['get', 'brunnel'], 'tunnel'], classIn('motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'minor', 'service')]),
-    palette.tunnel.fill,
-    ROAD_WIDTHS.tunnel,
-    { minzoom: 12, dash: [0.6, 0.3] },
+    filter(['all', IS_LINE, NOT_TUNNEL, classIn(...PATH_TIER.classes)]),
+    toneFor(palette, PATH_TIER.tier).fill,
+    PATH_TIER.widths,
+    { minzoom: PATH_TIER.minzoom, dash: PATH_TIER.dash },
   );
-
-  line('road-path', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, classIn('path')]), palette.path.fill, ROAD_WIDTHS.path, { minzoom: 14, dash: [2, 1.6] });
-  line('road-track', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, classIn('track')]), palette.track.fill, ROAD_WIDTHS.track, { minzoom: 13 });
-  // Service roads take the local tier's colour at a narrower width: a driveway
-  // and a residential street are the same kind of road, differing in scale.
-  line('road-service', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, classIn('service')]), local.fill, ROAD_WIDTHS.service, { minzoom: 13, opacity: 0.75 });
-  line('road-local', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, classIn('minor')]), local.fill, ROAD_WIDTHS.local, { minzoom: 11 });
-  line('road-arterial-tertiary', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, classIn('tertiary')]), palette.arterial.fill, ROAD_WIDTHS.arterialTertiary, { minzoom: 10 });
-  line('road-arterial-secondary', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, classIn('secondary')]), palette.arterial.fill, ROAD_WIDTHS.arterialSecondary, { minzoom: 8 });
-  line('road-arterial-primary', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, classIn('primary')]), palette.arterial.fill, ROAD_WIDTHS.arterialPrimary, { minzoom: 7 });
-
-  // The only tier the supplied palette gives a stroke to — `road` →
-  // `geometry.stroke` is hidden globally, and `road.highway` overrides it.
-  if (palette.highwayLink.casing) {
-    line('road-highway-link-casing', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, IS_RAMP, classIn('motorway', 'trunk')]), palette.highwayLink.casing, ROAD_WIDTHS.highwayLinkCasing, { minzoom: 11 });
-  }
-  if (palette.highway.casing) {
-    line('road-highway-casing', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, ['!', IS_RAMP], classIn('motorway', 'trunk')]), palette.highway.casing, ROAD_WIDTHS.highwayCasing, { minzoom: 5 });
-  }
-  line('road-highway-link', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, IS_RAMP, classIn('motorway', 'trunk')]), palette.highwayLink.fill, ROAD_WIDTHS.highwayLink, { minzoom: 11 });
-  line('road-highway', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, ['!', IS_RAMP], classIn('motorway', 'trunk')]), palette.highway.fill, ROAD_WIDTHS.highway, { minzoom: 5 });
 
   line('road-ferry', SL.transportation, filter(['all', IS_LINE, classIn('ferry')]), palette.ferry, ROAD_WIDTHS.ferry, { minzoom: 8, dash: [3, 3] });
   line('road-rail', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, classIn('rail', 'transit')]), palette.rail, ROAD_WIDTHS.rail, { minzoom: 11 });
@@ -560,8 +694,13 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
 
   // Flat footprints only. No `fill-extrusion`: GoWay's map is read from above,
   // and extruded buildings at a pitch hide exactly the streets and labels a
-  // person is trying to read. The edge fades in at z16 so a dense block does
-  // not turn into a grey mass at the zoom where footprints first appear.
+  // person is trying to read.
+  //
+  // Subtle but PRESENT. The first cut faded the edge in so gently that a block
+  // of footprints was indistinguishable from bare ground — quiet had become
+  // absent. Apple's buildings are barely-there at z15 and clearly delineated by
+  // z17, which is the zoom at which a footprint starts being information (which
+  // side of the courtyard, where the entrance is) rather than texture.
   layers.push({
     id: 'building',
     type: 'fill',
@@ -570,8 +709,8 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     minzoom: 14,
     paint: {
       'fill-color': palette.building,
-      'fill-outline-color': colorByZoom([[14, palette.building], [16.5, palette.buildingOutline]]),
-      'fill-opacity': byZoom([[14, 0], [15, 0.9]], 1),
+      'fill-outline-color': colorByZoom([[14.5, palette.building], [16, palette.buildingOutline]]),
+      'fill-opacity': byZoom([[14, 0], [15, 0.65], [17, 1]], 1),
     },
   });
 
@@ -715,22 +854,45 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     });
   };
 
-  lineLabel('label-waterway', SL.waterway, filter(['all', IS_LINE, ['has', 'name']]), palette.labelWater, [[13, 10], [18, 13]], { minzoom: 13, halo: palette.halo });
-  lineLabel('label-water-line', SL.waterName, filter(['all', IS_LINE]), palette.labelWater, [[10, 11], [16, 14]], { minzoom: 10, halo: palette.halo });
-  pointLabel('label-water-point', SL.waterName, filter(['all', IS_POINT]), palette.labelWater, [[6, 11], [12, 14], [16, 16]], { minzoom: 5, halo: palette.halo, letterSpacing: 0.04 });
+  // ## The type hierarchy
+  //
+  // Apple's map is label-forward, and "forward" is a RANKING, not a volume
+  // knob. The ordering it enforces, loudest first:
+  //
+  //   city  >  town  >  village  >  neighbourhood  >  POI  >  street
+  //
+  // Two properties carry it. SIZE: a city at z12 is ~23px and a street name at
+  // z16 is ~10px, a ratio of more than two to one — the first cut had them at
+  // 21 and 11.5 and the map read flat. COLOUR: place names are near-black warm
+  // grey, street and POI names are a lighter warm grey that visibly recedes.
+  // Weight would be the third, but OpenFreeMap's glyph server serves only
+  // Regular and Bold (Medium and SemiBold both 404), so the ladder is two rungs
+  // and Bold is spent entirely on place names.
+  //
+  // Halos are generous throughout — 1.4 to 2.0px — because a label-forward map
+  // puts its type over a busy basemap by definition, and a thin halo is how a
+  // street name becomes unreadable the moment it crosses a park edge.
+
+  lineLabel('label-waterway', SL.waterway, filter(['all', IS_LINE, ['has', 'name']]), palette.labelWater, [[13, 9.5], [18, 12]], { minzoom: 13, halo: palette.halo });
+  lineLabel('label-water-line', SL.waterName, filter(['all', IS_LINE]), palette.labelWater, [[10, 10.5], [16, 13.5]], { minzoom: 10, halo: palette.halo });
+  pointLabel('label-water-point', SL.waterName, filter(['all', IS_POINT]), palette.labelWater, [[6, 10.5], [12, 13.5], [16, 15.5]], { minzoom: 5, halo: palette.halo, letterSpacing: 0.04 });
 
   if (SHOW_ROAD_AND_POI_LABELS) {
-    lineLabel('label-road-local', SL.transportationName, filter(['all', IS_LINE, classIn('minor', 'service', 'track')]), palette.labelRoad, [[15, 9], [18, 11.5], [20, 13]], { minzoom: 15 });
-    lineLabel('label-road-arterial', SL.transportationName, filter(['all', IS_LINE, classIn('primary', 'secondary', 'tertiary')]), palette.labelRoad, [[13, 9.5], [16, 11.5], [20, 14]], { minzoom: 13 });
-    lineLabel('label-road-highway', SL.transportationName, filter(['all', IS_LINE, classIn('motorway', 'trunk')]), palette.labelRoad, [[12, 10], [16, 12], [20, 15]], { minzoom: 12 });
+    // Streets are the quietest type on the map: small, light, and only once
+    // the road carrying them is wide enough to sit inside. `haloStrong` rather
+    // than the ground halo, because these sit ON the white ribbon, not beside
+    // it.
+    lineLabel('label-road-local', SL.transportationName, filter(['all', IS_LINE, classIn('minor', 'service', 'track')]), palette.labelRoad, [[15, 8.5], [18, 10.5], [20, 12]], { minzoom: 15 });
+    lineLabel('label-road-arterial', SL.transportationName, filter(['all', IS_LINE, classIn('primary', 'secondary', 'tertiary')]), palette.labelRoad, [[13, 8.5], [16, 10.5], [20, 12.5]], { minzoom: 13 });
+    lineLabel('label-road-highway', SL.transportationName, filter(['all', IS_LINE, classIn('motorway', 'trunk')]), palette.labelRoad, [[12, 9], [16, 11], [20, 13]], { minzoom: 12 });
 
-    pointLabel('label-poi-minor', SL.poi, poiFilter('minor'), palette.labelPoi, [[17, 10], [19, 11.5]], {
+    pointLabel('label-poi-minor', SL.poi, poiFilter('minor'), palette.labelPoi, [[17, 9.5], [19, 11]], {
       minzoom: 17, anchor: 'top', offset: [0, 0.75], maxWidth: 9, sortKey: expr(['get', 'rank']),
     });
-    pointLabel('label-poi', SL.poi, poiFilter('major'), palette.labelPoi, [[15, 10.5], [18, 12], [20, 13]], {
+    pointLabel('label-poi', SL.poi, poiFilter('major'), palette.labelPoi, [[15, 10], [18, 11.5], [20, 12.5]], {
       minzoom: 15, anchor: 'top', offset: [0, 0.8], maxWidth: 9, sortKey: expr(['get', 'rank']),
     });
-    pointLabel('label-poi-transit', SL.poi, poiFilter('station'), palette.labelPoi, [[14, 10.5], [18, 12.5]], {
+    pointLabel('label-poi-transit', SL.poi, poiFilter('station'), palette.labelPoi, [[14, 10], [18, 12]], {
       minzoom: 14, anchor: 'top', offset: [0, 0.9], maxWidth: 9, sortKey: expr(['get', 'rank']),
     });
   }
@@ -741,25 +903,31 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
 
   // The `park` source-layer's polygons get their name at the pole of
   // inaccessibility, which is why this is a point label over polygon geometry.
-  pointLabel('label-park', SL.park, filter(['all', ['has', 'name']]), palette.labelPark, [[12, 10.5], [16, 13], [19, 15]], {
+  pointLabel('label-park', SL.park, filter(['all', ['has', 'name']]), palette.labelPark, [[12, 10.5], [16, 12.5], [19, 14.5]], {
     minzoom: 12, maxWidth: 7, sortKey: expr(['get', 'rank']),
   });
 
   // Place labels last: MapLibre places symbols from the last layer backwards,
-  // so being last is what makes these win every collision.
-  pointLabel('label-place-minor', SL.place, filter(classIn('neighbourhood', 'quarter', 'suburb', 'island', 'aboriginal_lands')), palette.labelPlaceMinor, [[12, 10.5], [15, 12.5], [17, 14]], {
-    minzoom: 11, uppercase: true, letterSpacing: 0.09, maxWidth: 7,
+  // so being last is what makes these win every collision. Within the block the
+  // order is smallest place to largest, so a city outranks the neighbourhood
+  // it contains.
+  //
+  // Neighbourhoods are uppercase and letter-spaced — Apple's one typographic
+  // tell for "this is an area, not a point". It also lets them stay small
+  // without reading as a POI.
+  pointLabel('label-place-minor', SL.place, filter(classIn('neighbourhood', 'quarter', 'suburb', 'island', 'aboriginal_lands')), palette.labelPlaceMinor, [[11, 9.5], [14, 11.5], [17, 13]], {
+    minzoom: 11, uppercase: true, letterSpacing: 0.1, maxWidth: 7, haloWidth: 1.5,
   });
-  pointLabel('label-place-village', SL.place, filter(classIn('village')), palette.labelPlace, [[10, 11], [13, 13], [16, 15]], { minzoom: 9, font: BOLD });
-  pointLabel('label-place-town', SL.place, filter(classIn('town')), palette.labelPlace, [[7, 11.5], [11, 14.5], [14, 17]], { minzoom: 6, font: BOLD });
-  pointLabel('label-place-city', SL.place, filter(classIn('city')), palette.labelPlace, [[3, 11], [6, 13.5], [9, 17], [12, 21]], { minzoom: 3, font: BOLD, haloWidth: 1.6 });
+  pointLabel('label-place-village', SL.place, filter(classIn('village')), palette.labelPlace, [[9, 10.5], [12, 13], [16, 15.5]], { minzoom: 9, font: BOLD, haloWidth: 1.6 });
+  pointLabel('label-place-town', SL.place, filter(classIn('town')), palette.labelPlace, [[6, 11], [10, 14], [13, 17], [16, 19]], { minzoom: 6, font: BOLD, haloWidth: 1.7 });
+  pointLabel('label-place-city', SL.place, filter(classIn('city')), palette.labelPlace, [[3, 11], [6, 14], [9, 18], [12, 23], [15, 26]], { minzoom: 3, font: BOLD, haloWidth: 2 });
   // Regions and countries drop out once their cities can carry the map: past
   // z9 a state name is a label for something entirely off screen.
   pointLabel('label-place-region', SL.place, filter(classIn('state', 'province')), palette.labelRegion, [[4, 10], [7, 13]], {
     minzoom: 4, maxzoom: 9, font: BOLD, uppercase: true, letterSpacing: 0.13, maxWidth: 6,
   });
   pointLabel('label-place-country', SL.place, filter(classIn('country')), palette.labelRegion, [[2, 10], [5, 14], [8, 17]], {
-    minzoom: 1, maxzoom: 10, font: BOLD, uppercase: true, letterSpacing: 0.15, maxWidth: 6, haloWidth: 1.6,
+    minzoom: 1, maxzoom: 10, font: BOLD, uppercase: true, letterSpacing: 0.15, maxWidth: 6, haloWidth: 1.7,
   });
 
   return layers;

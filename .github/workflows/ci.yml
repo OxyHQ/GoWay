@@ -91,6 +91,24 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Validate the map style documents
+        # A broken MapLibre style document fails SILENTLY — a wrong
+        # `source-layer` renders nothing, a fontstack the glyph server does not
+        # serve renders no text, a moved layer id breaks an overlay's
+        # `beforeId` — and none of those crash, log, or fail a render. Nothing
+        # above this line can see any of it: the style is data, not code, so
+        # typecheck and lint both pass straight over a map that has stopped
+        # drawing roads.
+        #
+        # This step validates `public/map/goway-{light,dark}.json` against the
+        # real MapLibre style spec, asserts every source-layer and text-font
+        # exists, asserts the documented layer-id contract, asserts light and
+        # dark stay in step, and fails if the committed JSON has drifted from
+        # `packages/frontend/lib/map/style/`. Offline on purpose: `--online`
+        # additionally re-reads OpenFreeMap's TileJSON, which is a third-party
+        # endpoint and has no business deciding whether a pull request is green.
+        run: bun run --cwd packages/frontend map:style:check
+
       # The SDK is checked HERE rather than in the `test` job because it needs
       # no database — it is a headless client tested against an injected fake
       # `fetch`. `smoke` is the step that matters most: it packs a real tarball
