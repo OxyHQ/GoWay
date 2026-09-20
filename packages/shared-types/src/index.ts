@@ -12,6 +12,7 @@
 
 export * from './geo';
 export * from './place';
+export * from './capture';
 export * from './search';
 export * from './routes';
 export * from './errors';

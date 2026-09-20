@@ -1,0 +1,2001 @@
+{
+  "id": "5f3bc700-7422-4c12-87e7-7df410667808",
+  "prevId": "e1807896-4757-4271-b878-d14cbb19398a",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.places": {
+      "name": "places",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name_normalized": {
+          "name": "name_normalized",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "lower(btrim(name))",
+            "type": "stored"
+          }
+        },
+        "latitude": {
+          "name": "latitude",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "longitude": {
+          "name": "longitude",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "geo": {
+          "name": "geo",
+          "type": "geography",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography",
+            "type": "stored"
+          }
+        },
+        "geometry": {
+          "name": "geometry",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "categories": {
+          "name": "categories",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "address_house_number": {
+          "name": "address_house_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_street": {
+          "name": "address_street",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_locality": {
+          "name": "address_locality",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_city": {
+          "name": "address_city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_region": {
+          "name": "address_region",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_postal_code": {
+          "name": "address_postal_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_country_code": {
+          "name": "address_country_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_country": {
+          "name": "address_country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_formatted": {
+          "name": "address_formatted",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contact_phone": {
+          "name": "contact_phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contact_email": {
+          "name": "contact_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contact_website": {
+          "name": "contact_website",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "opening_hours": {
+          "name": "opening_hours",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "verification_state": {
+          "name": "verification_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unverified'"
+        },
+        "verified_at": {
+          "name": "verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by_oxy_user_id": {
+          "name": "created_by_oxy_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        }
+      },
+      "indexes": {
+        "places_geo_gist": {
+          "name": "places_geo_gist",
+          "columns": [
+            {
+              "expression": "geo",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gist",
+          "with": {}
+        },
+        "places_categories_gin": {
+          "name": "places_categories_gin",
+          "columns": [
+            {
+              "expression": "categories",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "places_status_idx": {
+          "name": "places_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "places_name_normalized_idx": {
+          "name": "places_name_normalized_idx",
+          "columns": [
+            {
+              "expression": "name_normalized",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "places_status_check": {
+          "name": "places_status_check",
+          "value": "\"places\".\"status\" in ('active', 'closed', 'proposed', 'removed')"
+        },
+        "places_verification_state_check": {
+          "name": "places_verification_state_check",
+          "value": "\"places\".\"verification_state\" in ('unverified', 'community_reviewed', 'oxy_verified', 'owner_verified')"
+        },
+        "places_latitude_range_check": {
+          "name": "places_latitude_range_check",
+          "value": "\"places\".\"latitude\" between -90 and 90"
+        },
+        "places_longitude_range_check": {
+          "name": "places_longitude_range_check",
+          "value": "\"places\".\"longitude\" between -180 and 180"
+        },
+        "places_name_not_blank_check": {
+          "name": "places_name_not_blank_check",
+          "value": "btrim(\"places\".\"name\") <> ''"
+        },
+        "places_country_code_check": {
+          "name": "places_country_code_check",
+          "value": "\"places\".\"address_country_code\" is null or \"places\".\"address_country_code\" ~ '^[A-Z]{2}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.places_capabilities": {
+      "name": "places_capabilities",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "place_id": {
+          "name": "place_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "namespace": {
+          "name": "namespace",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "capability": {
+          "name": "capability",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "namespace || '.' || capability",
+            "type": "stored"
+          }
+        },
+        "value": {
+          "name": "value",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verification": {
+          "name": "verification",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "place_source_id": {
+          "name": "place_source_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        }
+      },
+      "indexes": {
+        "places_capabilities_key_idx": {
+          "name": "places_capabilities_key_idx",
+          "columns": [
+            {
+              "expression": "key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "places_capabilities_place_idx": {
+          "name": "places_capabilities_place_idx",
+          "columns": [
+            {
+              "expression": "place_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "places_capabilities_place_id_places_id_fk": {
+          "name": "places_capabilities_place_id_places_id_fk",
+          "tableFrom": "places_capabilities",
+          "tableTo": "places",
+          "columnsFrom": [
+            "place_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "places_capabilities_place_source_id_places_sources_id_fk": {
+          "name": "places_capabilities_place_source_id_places_sources_id_fk",
+          "tableFrom": "places_capabilities",
+          "tableTo": "places_sources",
+          "columnsFrom": [
+            "place_source_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "places_capabilities_assertion_key": {
+          "name": "places_capabilities_assertion_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "place_id",
+            "namespace",
+            "capability",
+            "verification"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "places_capabilities_verification_check": {
+          "name": "places_capabilities_verification_check",
+          "value": "\"places_capabilities\".\"verification\" in ('community_reported', 'external_source', 'business_asserted', 'oxy_verified')"
+        },
+        "places_capabilities_namespace_shape_check": {
+          "name": "places_capabilities_namespace_shape_check",
+          "value": "\"places_capabilities\".\"namespace\" ~ '^[a-z0-9_-]+([.][a-z0-9_-]+)*$'"
+        },
+        "places_capabilities_capability_shape_check": {
+          "name": "places_capabilities_capability_shape_check",
+          "value": "\"places_capabilities\".\"capability\" ~ '^[a-z0-9_-]+$'"
+        },
+        "places_capabilities_value_type_check": {
+          "name": "places_capabilities_value_type_check",
+          "value": "jsonb_typeof(\"places_capabilities\".\"value\") in ('boolean', 'string', 'number')"
+        },
+        "places_capabilities_external_source_check": {
+          "name": "places_capabilities_external_source_check",
+          "value": "\"places_capabilities\".\"verification\" <> 'external_source' or \"places_capabilities\".\"place_source_id\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.places_claims": {
+      "name": "places_claims",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "place_id": {
+          "name": "place_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "oxy_account_id": {
+          "name": "oxy_account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "brand_id": {
+          "name": "brand_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        }
+      },
+      "indexes": {
+        "places_claims_place_state_idx": {
+          "name": "places_claims_place_state_idx",
+          "columns": [
+            {
+              "expression": "place_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "places_claims_account_idx": {
+          "name": "places_claims_account_idx",
+          "columns": [
+            {
+              "expression": "oxy_account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "places_claims_brand_idx": {
+          "name": "places_claims_brand_idx",
+          "columns": [
+            {
+              "expression": "brand_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "places_claims_place_id_places_id_fk": {
+          "name": "places_claims_place_id_places_id_fk",
+          "tableFrom": "places_claims",
+          "tableTo": "places",
+          "columnsFrom": [
+            "place_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "places_claims_account_role_key": {
+          "name": "places_claims_account_role_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "place_id",
+            "oxy_account_id",
+            "role"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "places_claims_role_check": {
+          "name": "places_claims_role_check",
+          "value": "\"places_claims\".\"role\" in ('owner', 'operator', 'manager', 'brand')"
+        },
+        "places_claims_state_check": {
+          "name": "places_claims_state_check",
+          "value": "\"places_claims\".\"state\" in ('pending', 'approved', 'rejected', 'revoked')"
+        },
+        "places_claims_decided_at_check": {
+          "name": "places_claims_decided_at_check",
+          "value": "(\"places_claims\".\"state\" = 'pending') = (\"places_claims\".\"decided_at\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.places_duplicate_candidates": {
+      "name": "places_duplicate_candidates",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "place_id": {
+          "name": "place_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "candidate_place_id": {
+          "name": "candidate_place_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "score": {
+          "name": "score",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_by_oxy_user_id": {
+          "name": "decided_by_oxy_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        }
+      },
+      "indexes": {
+        "places_duplicates_state_idx": {
+          "name": "places_duplicates_state_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "places_duplicates_candidate_idx": {
+          "name": "places_duplicates_candidate_idx",
+          "columns": [
+            {
+              "expression": "candidate_place_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "places_duplicate_candidates_place_id_places_id_fk": {
+          "name": "places_duplicate_candidates_place_id_places_id_fk",
+          "tableFrom": "places_duplicate_candidates",
+          "tableTo": "places",
+          "columnsFrom": [
+            "place_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "places_duplicate_candidates_candidate_place_id_places_id_fk": {
+          "name": "places_duplicate_candidates_candidate_place_id_places_id_fk",
+          "tableFrom": "places_duplicate_candidates",
+          "tableTo": "places",
+          "columnsFrom": [
+            "candidate_place_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "places_duplicates_pair_key": {
+          "name": "places_duplicates_pair_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "place_id",
+            "candidate_place_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "places_duplicates_reason_check": {
+          "name": "places_duplicates_reason_check",
+          "value": "\"places_duplicate_candidates\".\"reason\" in ('shared_source_id', 'proximity_and_name', 'manual_report')"
+        },
+        "places_duplicates_state_check": {
+          "name": "places_duplicates_state_check",
+          "value": "\"places_duplicate_candidates\".\"state\" in ('open', 'confirmed', 'rejected')"
+        },
+        "places_duplicates_pair_order_check": {
+          "name": "places_duplicates_pair_order_check",
+          "value": "\"places_duplicate_candidates\".\"place_id\" < \"places_duplicate_candidates\".\"candidate_place_id\""
+        },
+        "places_duplicates_score_range_check": {
+          "name": "places_duplicates_score_range_check",
+          "value": "\"places_duplicate_candidates\".\"score\" is null or \"places_duplicate_candidates\".\"score\" between 0 and 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.places_sources": {
+      "name": "places_sources",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "place_id": {
+          "name": "place_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "source_data": {
+          "name": "source_data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        }
+      },
+      "indexes": {
+        "places_sources_place_idx": {
+          "name": "places_sources_place_idx",
+          "columns": [
+            {
+              "expression": "place_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "places_sources_place_id_places_id_fk": {
+          "name": "places_sources_place_id_places_id_fk",
+          "tableFrom": "places_sources",
+          "tableTo": "places",
+          "columnsFrom": [
+            "place_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "places_sources_source_record_key": {
+          "name": "places_sources_source_record_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "source",
+            "source_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "places_sources_source_not_blank_check": {
+          "name": "places_sources_source_not_blank_check",
+          "value": "btrim(\"places_sources\".\"source\") <> ''"
+        },
+        "places_sources_source_id_not_blank_check": {
+          "name": "places_sources_source_id_not_blank_check",
+          "value": "btrim(\"places_sources\".\"source_id\") <> ''"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.capture_assets": {
+      "name": "capture_assets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "media_object_id": {
+          "name": "media_object_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "oxy_user_id": {
+          "name": "oxy_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "media_kind": {
+          "name": "media_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'expected'"
+        },
+        "captured_at": {
+          "name": "captured_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "anchor_latitude": {
+          "name": "anchor_latitude",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchor_longitude": {
+          "name": "anchor_longitude",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchor_geo": {
+          "name": "anchor_geo",
+          "type": "geography",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "ST_SetSRID(ST_MakePoint(anchor_longitude, anchor_latitude), 4326)::geography",
+            "type": "stored"
+          }
+        },
+        "geo_cell": {
+          "name": "geo_cell",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "ST_GeoHash(ST_SetSRID(ST_MakePoint(anchor_longitude, anchor_latitude), 4326), 9)",
+            "type": "stored"
+          }
+        },
+        "anchor_origin": {
+          "name": "anchor_origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchor_witness": {
+          "name": "anchor_witness",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchor_accuracy_meters": {
+          "name": "anchor_accuracy_meters",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "privacy_state": {
+          "name": "privacy_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "privacy_pipeline_version": {
+          "name": "privacy_pipeline_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "privacy_completed_at": {
+          "name": "privacy_completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reconstruction_eligible": {
+          "name": "reconstruction_eligible",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "privacy_state = 'passed' and privacy_pipeline_version is not null and state in ('accepted', 'waiting_for_overlap', 'reconstruction_candidate', 'integrated')",
+            "type": "stored"
+          }
+        },
+        "camera_width_pixels": {
+          "name": "camera_width_pixels",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "camera_height_pixels": {
+          "name": "camera_height_pixels",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "exif_orientation": {
+          "name": "exif_orientation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "focal_length_mm": {
+          "name": "focal_length_mm",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "focal_length_equivalent_mm": {
+          "name": "focal_length_equivalent_mm",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "camera_make": {
+          "name": "camera_make",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "camera_model": {
+          "name": "camera_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "camera_lens": {
+          "name": "camera_lens",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_seconds": {
+          "name": "duration_seconds",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "frame_rate": {
+          "name": "frame_rate",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quality_score": {
+          "name": "quality_score",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        }
+      },
+      "indexes": {
+        "capture_assets_geo_gist": {
+          "name": "capture_assets_geo_gist",
+          "columns": [
+            {
+              "expression": "anchor_geo",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gist",
+          "with": {}
+        },
+        "capture_assets_geo_cell_idx": {
+          "name": "capture_assets_geo_cell_idx",
+          "columns": [
+            {
+              "expression": "geo_cell",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_pattern_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "capture_assets_session_idx": {
+          "name": "capture_assets_session_idx",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "capture_assets_media_object_idx": {
+          "name": "capture_assets_media_object_idx",
+          "columns": [
+            {
+              "expression": "media_object_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "capture_assets_contributor_idx": {
+          "name": "capture_assets_contributor_idx",
+          "columns": [
+            {
+              "expression": "oxy_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "capture_assets_state_idx": {
+          "name": "capture_assets_state_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "capture_assets_privacy_pending_idx": {
+          "name": "capture_assets_privacy_pending_idx",
+          "columns": [
+            {
+              "expression": "privacy_state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"capture_assets\".\"privacy_state\" in ('pending', 'in_progress', 'failed')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "capture_assets_session_id_capture_sessions_id_fk": {
+          "name": "capture_assets_session_id_capture_sessions_id_fk",
+          "tableFrom": "capture_assets",
+          "tableTo": "capture_sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "capture_assets_media_object_id_capture_media_objects_id_fk": {
+          "name": "capture_assets_media_object_id_capture_media_objects_id_fk",
+          "tableFrom": "capture_assets",
+          "tableTo": "capture_media_objects",
+          "columnsFrom": [
+            "media_object_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "capture_assets_media_kind_check": {
+          "name": "capture_assets_media_kind_check",
+          "value": "\"capture_assets\".\"media_kind\" in ('photo', 'video')"
+        },
+        "capture_assets_source_check": {
+          "name": "capture_assets_source_check",
+          "value": "\"capture_assets\".\"source\" in ('camera', 'library', 'guided_session')"
+        },
+        "capture_assets_state_check": {
+          "name": "capture_assets_state_check",
+          "value": "\"capture_assets\".\"state\" in ('expected', 'abandoned', 'uploaded', 'validating', 'accepted', 'rejected', 'waiting_for_overlap', 'reconstruction_candidate', 'integrated', 'expired', 'deleted')"
+        },
+        "capture_assets_anchor_origin_check": {
+          "name": "capture_assets_anchor_origin_check",
+          "value": "\"capture_assets\".\"anchor_origin\" in ('device_capture', 'media_metadata', 'user_placed')"
+        },
+        "capture_assets_anchor_witness_check": {
+          "name": "capture_assets_anchor_witness_check",
+          "value": "\"capture_assets\".\"anchor_witness\" in ('client', 'goway_ingest')"
+        },
+        "capture_assets_privacy_state_check": {
+          "name": "capture_assets_privacy_state_check",
+          "value": "\"capture_assets\".\"privacy_state\" in ('pending', 'in_progress', 'passed', 'failed', 'blocked')"
+        },
+        "capture_assets_latitude_range_check": {
+          "name": "capture_assets_latitude_range_check",
+          "value": "\"capture_assets\".\"anchor_latitude\" between -90 and 90"
+        },
+        "capture_assets_longitude_range_check": {
+          "name": "capture_assets_longitude_range_check",
+          "value": "\"capture_assets\".\"anchor_longitude\" between -180 and 180"
+        },
+        "capture_assets_accuracy_check": {
+          "name": "capture_assets_accuracy_check",
+          "value": "\"capture_assets\".\"anchor_accuracy_meters\" is null or \"capture_assets\".\"anchor_accuracy_meters\" >= 0"
+        },
+        "capture_assets_user_placed_witness_check": {
+          "name": "capture_assets_user_placed_witness_check",
+          "value": "\"capture_assets\".\"anchor_origin\" <> 'user_placed' or \"capture_assets\".\"anchor_witness\" = 'client'"
+        },
+        "capture_assets_privacy_gate_check": {
+          "name": "capture_assets_privacy_gate_check",
+          "value": "\"capture_assets\".\"state\" not in ('reconstruction_candidate', 'integrated') or \"capture_assets\".\"privacy_state\" = 'passed'"
+        },
+        "capture_assets_privacy_version_check": {
+          "name": "capture_assets_privacy_version_check",
+          "value": "\"capture_assets\".\"privacy_state\" <> 'passed' or \"capture_assets\".\"privacy_pipeline_version\" is not null"
+        },
+        "capture_assets_privacy_completed_check": {
+          "name": "capture_assets_privacy_completed_check",
+          "value": "(\"capture_assets\".\"privacy_state\" in ('passed', 'failed', 'blocked')) = (\"capture_assets\".\"privacy_completed_at\" is not null)"
+        },
+        "capture_assets_exif_orientation_check": {
+          "name": "capture_assets_exif_orientation_check",
+          "value": "\"capture_assets\".\"exif_orientation\" is null or \"capture_assets\".\"exif_orientation\" between 1 and 8"
+        },
+        "capture_assets_pixels_check": {
+          "name": "capture_assets_pixels_check",
+          "value": "(\"capture_assets\".\"camera_width_pixels\" is null or \"capture_assets\".\"camera_width_pixels\" > 0)\n          and (\"capture_assets\".\"camera_height_pixels\" is null or \"capture_assets\".\"camera_height_pixels\" > 0)"
+        },
+        "capture_assets_focal_length_check": {
+          "name": "capture_assets_focal_length_check",
+          "value": "(\"capture_assets\".\"focal_length_mm\" is null or \"capture_assets\".\"focal_length_mm\" > 0)\n          and (\"capture_assets\".\"focal_length_equivalent_mm\" is null or \"capture_assets\".\"focal_length_equivalent_mm\" > 0)"
+        },
+        "capture_assets_video_fields_check": {
+          "name": "capture_assets_video_fields_check",
+          "value": "\"capture_assets\".\"media_kind\" = 'video' or (\"capture_assets\".\"duration_seconds\" is null and \"capture_assets\".\"frame_rate\" is null)"
+        },
+        "capture_assets_duration_check": {
+          "name": "capture_assets_duration_check",
+          "value": "(\"capture_assets\".\"duration_seconds\" is null or \"capture_assets\".\"duration_seconds\" > 0)\n          and (\"capture_assets\".\"frame_rate\" is null or \"capture_assets\".\"frame_rate\" > 0)"
+        },
+        "capture_assets_quality_score_check": {
+          "name": "capture_assets_quality_score_check",
+          "value": "\"capture_assets\".\"quality_score\" is null or \"capture_assets\".\"quality_score\" between 0 and 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.capture_location_evidence": {
+      "name": "capture_location_evidence",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "witness": {
+          "name": "witness",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "latitude": {
+          "name": "latitude",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "longitude": {
+          "name": "longitude",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accuracy_meters": {
+          "name": "accuracy_meters",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "altitude_meters": {
+          "name": "altitude_meters",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "heading_degrees": {
+          "name": "heading_degrees",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        }
+      },
+      "indexes": {
+        "capture_evidence_asset_idx": {
+          "name": "capture_evidence_asset_idx",
+          "columns": [
+            {
+              "expression": "asset_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "capture_location_evidence_asset_id_capture_assets_id_fk": {
+          "name": "capture_location_evidence_asset_id_capture_assets_id_fk",
+          "tableFrom": "capture_location_evidence",
+          "tableTo": "capture_assets",
+          "columnsFrom": [
+            "asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "capture_evidence_assertion_key": {
+          "name": "capture_evidence_assertion_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "asset_id",
+            "origin",
+            "witness"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "capture_evidence_origin_check": {
+          "name": "capture_evidence_origin_check",
+          "value": "\"capture_location_evidence\".\"origin\" in ('device_capture', 'media_metadata', 'user_placed')"
+        },
+        "capture_evidence_witness_check": {
+          "name": "capture_evidence_witness_check",
+          "value": "\"capture_location_evidence\".\"witness\" in ('client', 'goway_ingest')"
+        },
+        "capture_evidence_latitude_range_check": {
+          "name": "capture_evidence_latitude_range_check",
+          "value": "\"capture_location_evidence\".\"latitude\" between -90 and 90"
+        },
+        "capture_evidence_longitude_range_check": {
+          "name": "capture_evidence_longitude_range_check",
+          "value": "\"capture_location_evidence\".\"longitude\" between -180 and 180"
+        },
+        "capture_evidence_accuracy_check": {
+          "name": "capture_evidence_accuracy_check",
+          "value": "\"capture_location_evidence\".\"accuracy_meters\" is null or \"capture_location_evidence\".\"accuracy_meters\" >= 0"
+        },
+        "capture_evidence_heading_check": {
+          "name": "capture_evidence_heading_check",
+          "value": "\"capture_location_evidence\".\"heading_degrees\" is null or (\"capture_location_evidence\".\"heading_degrees\" >= 0 and \"capture_location_evidence\".\"heading_degrees\" < 360)"
+        },
+        "capture_evidence_user_placed_witness_check": {
+          "name": "capture_evidence_user_placed_witness_check",
+          "value": "\"capture_location_evidence\".\"origin\" <> 'user_placed' or \"capture_location_evidence\".\"witness\" = 'client'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.capture_media_objects": {
+      "name": "capture_media_objects",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confirmed_byte_size": {
+          "name": "confirmed_byte_size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "storage_state": {
+          "name": "storage_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'expected'"
+        },
+        "upload_intent_expires_at": {
+          "name": "upload_intent_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stored_at": {
+          "name": "stored_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retention_class": {
+          "name": "retention_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "retention_reason": {
+          "name": "retention_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "deletion_eligible_at": {
+          "name": "deletion_eligible_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "protected_until": {
+          "name": "protected_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retention_extension_count": {
+          "name": "retention_extension_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deletion_reason": {
+          "name": "deletion_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        }
+      },
+      "indexes": {
+        "capture_objects_live_content_hash_key": {
+          "name": "capture_objects_live_content_hash_key",
+          "columns": [
+            {
+              "expression": "content_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"capture_media_objects\".\"deleted_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "capture_objects_expiry_idx": {
+          "name": "capture_objects_expiry_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"capture_media_objects\".\"deleted_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "capture_objects_orphan_idx": {
+          "name": "capture_objects_orphan_idx",
+          "columns": [
+            {
+              "expression": "upload_intent_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"capture_media_objects\".\"storage_state\" = 'expected'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "capture_objects_storage_state_idx": {
+          "name": "capture_objects_storage_state_idx",
+          "columns": [
+            {
+              "expression": "storage_state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "capture_objects_retention_class_idx": {
+          "name": "capture_objects_retention_class_idx",
+          "columns": [
+            {
+              "expression": "retention_class",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "capture_objects_object_key_key": {
+          "name": "capture_objects_object_key_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "object_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "capture_objects_storage_state_check": {
+          "name": "capture_objects_storage_state_check",
+          "value": "\"capture_media_objects\".\"storage_state\" in ('expected', 'stored', 'deleting', 'deleted')"
+        },
+        "capture_objects_retention_class_check": {
+          "name": "capture_objects_retention_class_check",
+          "value": "\"capture_media_objects\".\"retention_class\" in ('raw_photo', 'raw_video', 'extracted_keyframe', 'privacy_safe_proxy', 'thumbnail')"
+        },
+        "capture_objects_retention_reason_check": {
+          "name": "capture_objects_retention_reason_check",
+          "value": "\"capture_media_objects\".\"retention_reason\" in ('awaiting_privacy_processing', 'awaiting_overlap', 'reconstruction_input', 'derivation_source', 'audit_window', 'rescue_extension', 'published_artifact')"
+        },
+        "capture_objects_deletion_reason_check": {
+          "name": "capture_objects_deletion_reason_check",
+          "value": "\"capture_media_objects\".\"deletion_reason\" in ('expired', 'contributor_request', 'moderation', 'duplicate', 'invalid_media', 'superseded_by_derivative')"
+        },
+        "capture_objects_content_hash_check": {
+          "name": "capture_objects_content_hash_check",
+          "value": "\"capture_media_objects\".\"content_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        "capture_objects_object_key_check": {
+          "name": "capture_objects_object_key_check",
+          "value": "btrim(\"capture_media_objects\".\"object_key\") <> ''"
+        },
+        "capture_objects_byte_size_check": {
+          "name": "capture_objects_byte_size_check",
+          "value": "\"capture_media_objects\".\"byte_size\" > 0"
+        },
+        "capture_objects_confirmed_byte_size_check": {
+          "name": "capture_objects_confirmed_byte_size_check",
+          "value": "\"capture_media_objects\".\"confirmed_byte_size\" is null or \"capture_media_objects\".\"confirmed_byte_size\" > 0"
+        },
+        "capture_objects_expiry_after_creation_check": {
+          "name": "capture_objects_expiry_after_creation_check",
+          "value": "\"capture_media_objects\".\"expires_at\" > \"capture_media_objects\".\"created_at\""
+        },
+        "capture_objects_expiry_ceiling_check": {
+          "name": "capture_objects_expiry_ceiling_check",
+          "value": "\"capture_media_objects\".\"expires_at\" <= \"capture_media_objects\".\"created_at\" + interval '400 days'"
+        },
+        "capture_objects_deletion_eligible_check": {
+          "name": "capture_objects_deletion_eligible_check",
+          "value": "\"capture_media_objects\".\"deletion_eligible_at\" is null or \"capture_media_objects\".\"deletion_eligible_at\" <= \"capture_media_objects\".\"expires_at\""
+        },
+        "capture_objects_protected_until_check": {
+          "name": "capture_objects_protected_until_check",
+          "value": "\"capture_media_objects\".\"protected_until\" is null or \"capture_media_objects\".\"protected_until\" <= \"capture_media_objects\".\"expires_at\""
+        },
+        "capture_objects_extension_count_check": {
+          "name": "capture_objects_extension_count_check",
+          "value": "\"capture_media_objects\".\"retention_extension_count\" between 0 and 3"
+        },
+        "capture_objects_tombstone_check": {
+          "name": "capture_objects_tombstone_check",
+          "value": "(\"capture_media_objects\".\"deleted_at\" is null) = (\"capture_media_objects\".\"deletion_reason\" is null)"
+        },
+        "capture_objects_deleted_state_check": {
+          "name": "capture_objects_deleted_state_check",
+          "value": "(\"capture_media_objects\".\"storage_state\" = 'deleted') = (\"capture_media_objects\".\"deleted_at\" is not null)"
+        },
+        "capture_objects_stored_at_present_check": {
+          "name": "capture_objects_stored_at_present_check",
+          "value": "\"capture_media_objects\".\"storage_state\" not in ('stored', 'deleting') or \"capture_media_objects\".\"stored_at\" is not null"
+        },
+        "capture_objects_stored_at_absent_check": {
+          "name": "capture_objects_stored_at_absent_check",
+          "value": "\"capture_media_objects\".\"storage_state\" <> 'expected' or \"capture_media_objects\".\"stored_at\" is null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.capture_sessions": {
+      "name": "capture_sessions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "oxy_user_id": {
+          "name": "oxy_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consent_version": {
+          "name": "consent_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        }
+      },
+      "indexes": {
+        "capture_sessions_contributor_idx": {
+          "name": "capture_sessions_contributor_idx",
+          "columns": [
+            {
+              "expression": "oxy_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "capture_sessions_source_check": {
+          "name": "capture_sessions_source_check",
+          "value": "\"capture_sessions\".\"source\" in ('camera', 'library', 'guided_session')"
+        },
+        "capture_sessions_consent_version_check": {
+          "name": "capture_sessions_consent_version_check",
+          "value": "btrim(\"capture_sessions\".\"consent_version\") <> ''"
+        },
+        "capture_sessions_ended_at_check": {
+          "name": "capture_sessions_ended_at_check",
+          "value": "\"capture_sessions\".\"ended_at\" is null or \"capture_sessions\".\"ended_at\" >= \"capture_sessions\".\"started_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.capture_storage_budgets": {
+      "name": "capture_storage_budgets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_key": {
+          "name": "scope_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "retention_class": {
+          "name": "retention_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "byte_ceiling": {
+          "name": "byte_ceiling",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "effective_from": {
+          "name": "effective_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "effective_until": {
+          "name": "effective_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', now())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "capture_budgets_scope_key": {
+          "name": "capture_budgets_scope_key",
+          "nullsNotDistinct": true,
+          "columns": [
+            "scope",
+            "scope_key",
+            "retention_class"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "capture_budgets_scope_check": {
+          "name": "capture_budgets_scope_check",
+          "value": "\"capture_storage_budgets\".\"scope\" in ('global', 'contributor', 'geo_cell')"
+        },
+        "capture_budgets_retention_class_check": {
+          "name": "capture_budgets_retention_class_check",
+          "value": "\"capture_storage_budgets\".\"retention_class\" in ('raw_photo', 'raw_video', 'extracted_keyframe', 'privacy_safe_proxy', 'thumbnail')"
+        },
+        "capture_budgets_byte_ceiling_check": {
+          "name": "capture_budgets_byte_ceiling_check",
+          "value": "\"capture_storage_budgets\".\"byte_ceiling\" > 0"
+        },
+        "capture_budgets_scope_key_check": {
+          "name": "capture_budgets_scope_key_check",
+          "value": "(\"capture_storage_budgets\".\"scope\" = 'global') = (\"capture_storage_budgets\".\"scope_key\" = '')"
+        },
+        "capture_budgets_effective_window_check": {
+          "name": "capture_budgets_effective_window_check",
+          "value": "\"capture_storage_budgets\".\"effective_until\" is null or \"capture_storage_budgets\".\"effective_until\" > \"capture_storage_budgets\".\"effective_from\""
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
