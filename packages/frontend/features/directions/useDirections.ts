@@ -579,6 +579,10 @@ export function useDirections(options: DirectionsOptions): DirectionsController 
     const step = selectedStep != null ? steps[selectedStep] : undefined;
     if (!step) return [line];
     const highlight = stepCoordinates(route, step);
+    // No drawable slice, no highlight — rather than a Point built out of
+    // `highlight[0].longitude` on an empty array, which is a `TypeError` inside
+    // a `useMemo` and therefore the whole screen.
+    if (highlight.length === 0) return [line];
     // A single-point slice cannot be a line; a circle says "here" honestly,
     // where a two-identical-point LineString would draw nothing at all.
     const overlay: MapOverlay =

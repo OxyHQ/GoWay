@@ -23,6 +23,8 @@
  */
 import type { GeoCoordinate, Route, RouteManeuver } from '@goway.to/sdk';
 
+import { isValidCoordinate } from '@/lib/map/geo';
+
 export interface RouteStep {
   /** Position in the flattened list — the selection key. */
   index: number;
@@ -93,14 +95,28 @@ export function routeSteps(route: Route): RouteStep[] {
   });
 }
 
-/** The coordinates a step covers, ready for an overlay or a camera fit. */
+/**
+ * The coordinates a step covers, ready for an overlay or a camera fit.
+ *
+ * Only points that are really on the earth come back, and the list may be
+ * EMPTY. Both matter downstream: these coordinates become GeoJSON for an
+ * overlay, and a `NaN` vertex there does not fail loudly — geojson-vt projects
+ * it to a `NaN` tile coordinate, the feature belongs to no tile, and the
+ * highlight the user asked for is simply absent with nothing in the console.
+ * A caller that dereferences `[0]` without checking gets a `TypeError` instead.
+ * Nothing here can produce such a point today (`@goway.to/sdk` validates every
+ * position it decodes), so this is the guarantee, not a repair.
+ */
 export function stepCoordinates(route: Route, step: RouteStep): GeoCoordinate[] {
   const [start, end] = step.range;
   const slice = route.geometry.coordinates.slice(start, end + 1);
-  const points = slice.map(([longitude, latitude]) => ({ latitude, longitude }));
+  const points = slice
+    .map(([longitude, latitude]) => ({ latitude, longitude }))
+    .filter(isValidCoordinate);
   // A one-point slice is still worth framing; the caller decides whether to
   // draw a line through it or simply centre on it.
-  return points.length > 0 ? points : [step.maneuver.coordinate];
+  if (points.length > 0) return points;
+  return isValidCoordinate(step.maneuver.coordinate) ? [step.maneuver.coordinate] : [];
 }
 
 /**

@@ -14,13 +14,16 @@
  * search led to arithmetic (`0 / 0`, `Infinity + -Infinity`) rather than to
  * missing data.
  *
- * Three layers are covered, in the order a coordinate meets them:
+ * Four layers are covered, in the order a coordinate meets them:
  *
  *  1. the PRODUCERS — an empty cluster's centroid, a padding computed against a
  *     zero-sized window, a stop built around an unusable fix;
  *  2. the SEAM — `components/map/shared.ts`, which both renderer forks route
  *     every coordinate through, and which must drop rather than throw;
- *  3. the FACTS the seam depends on, especially that `isDegenerateBounds`
+ *  3. the SEAM'S OTHER TWO DOORS — overlays (raw GeoJSON) and the camera
+ *     SCALARS (zoom, bearing, pitch, duration, maxZoom). These were added after
+ *     the first fix, because guarding coordinates alone left both open;
+ *  4. the FACTS the seam depends on, especially that `isDegenerateBounds`
  *     answers `false` for a NaN box (every comparison against NaN is false), so
  *     the finite check has to come first or the NaN walks straight past it.
  *
@@ -29,16 +32,21 @@
  * that throws in production.
  */
 import { describe, expect, mock, test } from 'bun:test';
-import { LngLat } from 'maplibre-gl';
+import { LngLat, LngLatBounds, MercatorCoordinate } from 'maplibre-gl';
 
 import {
+  asFinite,
   drawableMarkers,
+  drawableOverlays,
   isDrawableBounds,
   isDrawableCoordinate,
+  isDrawableGeoJSON,
+  isViewport,
+  resolveOverlayPaint,
   resolvePadding,
   toLngLat,
 } from '@/components/map/shared';
-import type { MapMarker } from '@/components/map/types';
+import type { MapMarker, MapOverlay } from '@/components/map/types';
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
 import {
   MAX_PADDING_SHARE,
@@ -326,5 +334,186 @@ describe('facts the seam depends on (lib/map/geo.ts)', () => {
       east: 2.1686,
       north: 41.3874,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The two doors the first fix left open
+// ---------------------------------------------------------------------------
+
+describe('seam — overlays are raw GeoJSON, and they fail the OTHER way', () => {
+  const line = (coordinates: unknown): MapOverlay => ({
+    id: 'goway-route',
+    kind: 'line',
+    data: {
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'LineString', coordinates },
+    } as unknown as GeoJSON.GeoJSON,
+  });
+
+  test('a bad overlay does NOT throw in the engine — it renders nowhere', () => {
+    // Measured, not assumed. A geojson source is tiled in the WORKER by
+    // geojson-vt, whose projection is plain arithmetic and builds no `LngLat`:
+    //
+    //   projectX(x) = x / 360 + 0.5
+    //   projectY(y) = clamp01(0.5 - 0.25 * log((1 + sin(y°)) / (1 - sin(y°))) / π)
+    //
+    // (dist/maplibre-gl-shared-dev.mjs:20354). NaN in, NaN out, no throw — so
+    // the feature's bbox is [NaN, NaN, NaN, NaN], it belongs to no tile, and
+    // the route line is simply ABSENT with nothing in the console. That is why
+    // `drawableOverlays` exists: the engine will not complain for us.
+    const projectX = (x: number) => x / 360 + 0.5;
+    const projectY = (y: number) => {
+      const sin = Math.sin((y * Math.PI) / 180);
+      const y2 = 0.5 - (0.25 * Math.log((1 + sin) / (1 - sin))) / Math.PI;
+      return y2 < 0 ? 0 : y2 > 1 ? 1 : y2;
+    };
+    expect(Number.isNaN(projectX(NaN))).toBe(true);
+    expect(Number.isNaN(projectY(NaN))).toBe(true);
+
+    // The engine's bounds API, by contrast, IS strict about the same position —
+    // which is the rule `isDrawableGeoJSON` encodes.
+    expect(() => new LngLatBounds().extend([NaN, NaN])).toThrow(
+      'Invalid LngLat object: (NaN, NaN)',
+    );
+  });
+
+  test('rejects every shape a mis-sliced route produces', () => {
+    const bad: unknown[] = [
+      [
+        [2.1, 41.3],
+        [NaN, NaN],
+        [2.2, 41.4],
+      ], // a NaN vertex
+      [], // coordinates: []
+      [[2.1, 41.3]], // a one-point LineString draws nothing
+      [
+        [2.1, 41.3],
+        [undefined, undefined],
+      ], // highlight[0] never arrived
+      [
+        [2.1, 41.3],
+        [2.2, 91],
+      ], // a latitude off the earth
+      [[2.1], [2.2, 41.4]], // a position with one axis
+    ];
+    for (const coordinates of bad) {
+      expect(isDrawableGeoJSON(line(coordinates).data)).toBe(false);
+    }
+  });
+
+  test('accepts the shapes Directions actually draws', () => {
+    expect(
+      isDrawableGeoJSON(
+        line([
+          [2.1, 41.3],
+          [2.15, 41.35],
+          [2.2, 41.4],
+        ]).data,
+      ),
+    ).toBe(true);
+    // The step highlight collapses to a Point when the slice is one vertex.
+    expect(
+      isDrawableGeoJSON({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Point', coordinates: [2.1686, 41.3874] },
+      }),
+    ).toBe(true);
+    // Altitude is a legal third ordinate and must not be mistaken for junk.
+    expect(
+      isDrawableGeoJSON(
+        line([
+          [2.1, 41.3, 12],
+          [2.2, 41.4, 14],
+        ]).data,
+      ),
+    ).toBe(true);
+    // An unwrapped longitude past the antimeridian, same as everywhere else.
+    expect(
+      isDrawableGeoJSON(
+        line([
+          [181, 41.3],
+          [182, 41.4],
+        ]).data,
+      ),
+    ).toBe(true);
+  });
+
+  test('drops the bad overlay and keeps the rest', () => {
+    const good = line([
+      [2.1, 41.3],
+      [2.2, 41.4],
+    ]);
+    const broken = {
+      ...line([
+        [2.1, 41.3],
+        [NaN, NaN],
+      ]),
+      id: 'goway-route-step',
+    };
+    const kept = drawableOverlays([good, broken]);
+    expect(kept.map((overlay) => overlay.id)).toEqual(['goway-route']);
+
+    // Untouched when nothing is wrong, so the forks' effect deps keep their
+    // identity and the source is not torn down and rebuilt every render.
+    const clean = [good];
+    expect(drawableOverlays(clean)).toBe(clean);
+    expect(drawableOverlays(undefined)).toEqual([]);
+  });
+
+  test('a non-finite paint number cannot fail the whole addLayer', () => {
+    const paint = resolveOverlayPaint('line', { width: NaN, opacity: NaN, radius: NaN }, '#000');
+    expect(paint.width).toBe(4);
+    expect(paint.opacity).toBe(1);
+    expect(paint.radius).toBe(6);
+  });
+});
+
+describe('seam — the camera SCALARS, which poison the transform one step later', () => {
+  test('a NaN zoom is the same crash, arriving through getBounds()', () => {
+    // MapLibre's own clamp does not stop it: nothing compares true to NaN.
+    const clamp = (n: number, min: number, max: number) => Math.min(Math.max(n, min), max);
+    expect(Number.isNaN(clamp(NaN, 0, 22))).toBe(true);
+    expect(Number.isNaN(Math.pow(2, NaN))).toBe(true);
+
+    // So `transform._scale` and `worldSize` become NaN, and the next
+    // unprojection — which is literally `screenPointToMercatorCoordinate(p)
+    // .toLngLat()`, run four times by `getBounds()`, which this canvas calls on
+    // every `move` event and which `jumpTo` fires SYNCHRONOUSLY — throws the
+    // exact string the user saw.
+    expect(() => new MercatorCoordinate(100 / NaN, 100 / NaN).toLngLat()).toThrow(
+      'Invalid LngLat object: (NaN, NaN)',
+    );
+  });
+
+  test('isViewport no longer mistakes a NaN zoom for a viewport', () => {
+    // `typeof NaN === 'number'`, so the old test said yes and handed the NaN on.
+    // Treating it as a bare coordinate keeps the camera's current zoom.
+    expect(isViewport({ latitude: 41.3874, longitude: 2.1686, zoom: NaN })).toBe(false);
+    expect(isViewport({ latitude: 41.3874, longitude: 2.1686, zoom: 15 })).toBe(true);
+    expect(isViewport({ latitude: 41.3874, longitude: 2.1686 })).toBe(false);
+  });
+
+  test('asFinite passes real numbers and nothing else', () => {
+    expect(asFinite(0)).toBe(0);
+    expect(asFinite(-3.5)).toBe(-3.5);
+    expect(asFinite(NaN)).toBeUndefined();
+    expect(asFinite(Infinity)).toBeUndefined();
+    expect(asFinite(-Infinity)).toBeUndefined();
+    expect(asFinite(undefined)).toBeUndefined();
+    expect(asFinite(null)).toBeUndefined();
+  });
+
+  test('a NaN maxZoom would have reached the fitted centre', () => {
+    // `zoom = Math.min(computedZoom, options.maxZoom)` — and Math.min with NaN
+    // is NaN, which MapLibre's `scaleX < 0` guard does not catch. It ends up
+    // multiplying the padding offset by `scale / 2 ** NaN`.
+    expect(Number.isNaN(Math.min(11.5, NaN))).toBe(true);
+    expect(() => new LngLat(0 * (1 / Math.pow(2, NaN)), 0 * (1 / Math.pow(2, NaN)))).toThrow(
+      'Invalid LngLat object: (NaN, NaN)',
+    );
+    expect(asFinite(NaN)).toBeUndefined();
   });
 });

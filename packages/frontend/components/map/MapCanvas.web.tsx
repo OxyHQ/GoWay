@@ -58,8 +58,10 @@ import { DefaultMapMarker } from './DefaultMapMarker';
 import { MapAttribution } from './MapAttribution';
 import { MapErrorState } from './MapErrorState';
 import {
+  asFinite,
   describeNumbers,
   drawableMarkers,
+  drawableOverlays,
   isDrawableBounds,
   isDrawableCoordinate,
   isViewport,
@@ -197,9 +199,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         container,
         style: styleUrl,
         center: toLngLat(start),
-        zoom: Number.isFinite(start.zoom) ? start.zoom : DEFAULT_VIEWPORT.zoom,
-        bearing: start.bearing ?? 0,
-        pitch: start.pitch ?? 0,
+        zoom: asFinite(start.zoom) ?? DEFAULT_VIEWPORT.zoom,
+        bearing: asFinite(start.bearing) ?? 0,
+        pitch: asFinite(start.pitch) ?? 0,
         // GoWay renders its own credit (see MapAttribution): the OpenFreeMap
         // style documents carry no source `attribution`, so this control would
         // render an EMPTY box — the failure mode where the obligation looks
@@ -382,7 +384,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     const map = mapRef.current;
     if (!map || !ready) return;
 
-    const next = overlays ?? [];
+    // Raw GeoJSON is the one path into the engine that fails SILENTLY rather
+    // than loudly: geojson-vt projects a NaN vertex to a NaN tile coordinate,
+    // the feature lands in no tile, and the route line the user asked for is
+    // simply absent with nothing in the console. See `shared.ts` →
+    // `drawableOverlays`.
+    const next = drawableOverlays(overlays);
     // Overlays go UNDER the labels so a route line never covers a street name.
     // GoWay's own style document reserves an anchor layer for exactly this, so
     // the id is CONFIGURED; the derivation below is the fallback for a style
@@ -488,12 +495,18 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           return;
         }
         const viewport = isViewport(target) ? target : undefined;
-        const duration = options?.duration ?? DEFAULT_CAMERA_DURATION_MS;
+        // `asFinite` on every scalar: a NaN zoom does not tilt the camera oddly,
+        // it makes `transform.worldSize` NaN, and the `getBounds()` this canvas
+        // runs on the very next `move` event then throws the same
+        // `Invalid LngLat object: (NaN, NaN)` a bad coordinate does. Falling
+        // back to where the camera already is keeps the move partial rather
+        // than fatal.
+        const duration = asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS;
         const camera = {
           center: toLngLat(coordinate),
-          zoom: options?.zoom ?? viewport?.zoom ?? map.getZoom(),
-          bearing: options?.bearing ?? viewport?.bearing ?? map.getBearing(),
-          pitch: options?.pitch ?? viewport?.pitch ?? map.getPitch(),
+          zoom: asFinite(options?.zoom) ?? asFinite(viewport?.zoom) ?? map.getZoom(),
+          bearing: asFinite(options?.bearing) ?? asFinite(viewport?.bearing) ?? map.getBearing(),
+          pitch: asFinite(options?.pitch) ?? asFinite(viewport?.pitch) ?? map.getPitch(),
         };
         if (duration <= 0) {
           map.jumpTo(camera, PROGRAMMATIC);
@@ -531,12 +544,19 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           reportMapDefect('fitBounds:noCanvas', 'Ignored fitBounds: the canvas has no size yet.');
           return;
         }
+        // `maxZoom` goes STRAIGHT into `Math.min(computedZoom, maxZoom)`, and
+        // `Math.min(x, NaN)` is NaN — which MapLibre's own `scaleX < 0` guard
+        // does not catch, because nothing compares true to NaN. It reaches the
+        // centre it unprojects and throws. Dropping it means the fit uses the
+        // engine's own maximum, which is what omitting it has always meant.
+        const maxZoom = asFinite(options?.maxZoom);
+        const duration = asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS;
         if (isDegenerateBounds(bounds)) {
           map.easeTo(
             {
               center: [(bounds.west + bounds.east) / 2, (bounds.south + bounds.north) / 2],
-              zoom: Math.min(options?.maxZoom ?? DEGENERATE_FIT_ZOOM, DEGENERATE_FIT_ZOOM),
-              duration: options?.duration ?? DEFAULT_CAMERA_DURATION_MS,
+              zoom: Math.min(maxZoom ?? DEGENERATE_FIT_ZOOM, DEGENERATE_FIT_ZOOM),
+              duration,
             },
             PROGRAMMATIC,
           );
@@ -547,11 +567,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
             [bounds.west, bounds.south],
             [bounds.east, bounds.north],
           ],
-          {
-            padding,
-            duration: options?.duration ?? DEFAULT_CAMERA_DURATION_MS,
-            maxZoom: options?.maxZoom,
-          },
+          { padding, duration, maxZoom },
           PROGRAMMATIC,
         );
       },
@@ -561,14 +577,19 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         api.fitBounds(bounds, options);
       },
       setBearing(bearing, options) {
+        const heading = asFinite(bearing);
+        if (heading === undefined) {
+          reportMapDefect('setBearing', `Ignored setBearing: ${String(bearing)} is not a bearing.`);
+          return;
+        }
         mapRef.current?.easeTo(
-          { bearing, duration: options?.duration ?? DEFAULT_CAMERA_DURATION_MS },
+          { bearing: heading, duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS },
           PROGRAMMATIC,
         );
       },
       resetNorth(options) {
         mapRef.current?.easeTo(
-          { bearing: 0, pitch: 0, duration: options?.duration ?? DEFAULT_CAMERA_DURATION_MS },
+          { bearing: 0, pitch: 0, duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS },
           PROGRAMMATIC,
         );
       },

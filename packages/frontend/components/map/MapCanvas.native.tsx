@@ -41,8 +41,10 @@ import { DefaultMapMarker } from './DefaultMapMarker';
 import { MapAttribution } from './MapAttribution';
 import { MapErrorState } from './MapErrorState';
 import {
+  asFinite,
   describeNumbers,
   drawableMarkers,
+  drawableOverlays,
   fromLngLat,
   isDrawableBounds,
   isDrawableCoordinate,
@@ -154,12 +156,14 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           return;
         }
         const viewport = isViewport(target) ? target : undefined;
-        const duration = options?.duration ?? DEFAULT_CAMERA_DURATION_MS;
+        // Same rule as web: `undefined` means "leave this axis alone", which is
+        // what a NaN was silently NOT doing. See `shared.ts` -> `asFinite`.
+        const duration = asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS;
         const stop = {
           center: toLngLat(coordinate),
-          zoom: options?.zoom ?? viewport?.zoom,
-          bearing: options?.bearing ?? viewport?.bearing,
-          pitch: options?.pitch ?? viewport?.pitch,
+          zoom: asFinite(options?.zoom) ?? asFinite(viewport?.zoom),
+          bearing: asFinite(options?.bearing) ?? asFinite(viewport?.bearing),
+          pitch: asFinite(options?.pitch) ?? asFinite(viewport?.pitch),
         };
         if (duration <= 0) {
           camera.jumpTo(stop);
@@ -178,19 +182,17 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         }
         const fitPadding = resolvePadding(options?.padding, DEFAULT_FIT_PADDING);
         if (!fitPadding) return;
+        const maxZoom = asFinite(options?.maxZoom);
+        const duration = asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS;
         if (isDegenerateBounds(bounds)) {
           camera.easeTo({
             center: [(bounds.west + bounds.east) / 2, (bounds.south + bounds.north) / 2],
-            zoom: Math.min(options?.maxZoom ?? DEGENERATE_FIT_ZOOM, DEGENERATE_FIT_ZOOM),
-            duration: options?.duration ?? DEFAULT_CAMERA_DURATION_MS,
+            zoom: Math.min(maxZoom ?? DEGENERATE_FIT_ZOOM, DEGENERATE_FIT_ZOOM),
+            duration,
           });
           return;
         }
-        camera.fitBounds(toBoundsArray(bounds), {
-          padding: fitPadding,
-          duration: options?.duration ?? DEFAULT_CAMERA_DURATION_MS,
-          zoom: options?.maxZoom,
-        });
+        camera.fitBounds(toBoundsArray(bounds), { padding: fitPadding, duration, zoom: maxZoom });
       },
       fitCoordinates(coordinates, options) {
         const bounds = boundsOf(coordinates);
@@ -198,9 +200,14 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         api.fitBounds(bounds, options);
       },
       setBearing(bearing, options) {
+        const heading = asFinite(bearing);
+        if (heading === undefined) {
+          reportMapDefect('setBearing', `Ignored setBearing: ${String(bearing)} is not a bearing.`);
+          return;
+        }
         cameraRef.current?.setStop({
-          bearing,
-          duration: options?.duration ?? DEFAULT_CAMERA_DURATION_MS,
+          bearing: heading,
+          duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS,
           easing: 'ease',
         });
       },
@@ -208,7 +215,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         cameraRef.current?.setStop({
           bearing: 0,
           pitch: 0,
-          duration: options?.duration ?? DEFAULT_CAMERA_DURATION_MS,
+          duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS,
           easing: 'ease',
         });
       },
@@ -326,9 +333,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           ref={cameraRef}
           initialViewState={{
             center: toLngLat(start),
-            zoom: Number.isFinite(start.zoom) ? start.zoom : DEFAULT_VIEWPORT.zoom,
-            bearing: start.bearing,
-            pitch: start.pitch,
+            zoom: asFinite(start.zoom) ?? DEFAULT_VIEWPORT.zoom,
+            bearing: asFinite(start.bearing),
+            pitch: asFinite(start.pitch),
           }}
         />
 
@@ -345,7 +352,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           author, e.g. the `openfreemap` fallback — restores the old behaviour
           of appending on top.
         */}
-        {(overlays ?? []).map((overlay) => {
+        {/* Raw GeoJSON fails SILENTLY rather than loudly — a NaN vertex tiles
+            to nothing and the route line is simply absent. Same rule, same
+            helper, as the web fork. See `shared.ts` -> `drawableOverlays`. */}
+        {drawableOverlays(overlays).map((overlay) => {
           if (overlay.visible === false) return null;
           const paint = resolveOverlayPaint(overlay.kind, overlay.paint, accent);
           return (
