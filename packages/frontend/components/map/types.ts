@@ -132,6 +132,73 @@ export interface MapOverlay {
   visible?: boolean;
 }
 
+/**
+ * What kind of named thing the BASEMAP is labelling.
+ *
+ * Four values, because four is what the product acts on differently:
+ *
+ *  - **`poi`** — a thing at a point with a door: a shop, a station, an airport.
+ *    The only kind that may turn out to be a GoWay Place.
+ *  - **`road`** — a street or route name. A line, so its point is wherever on
+ *    the way the user pointed.
+ *  - **`water`** — a river, a lake, a bay.
+ *  - **`area`** — a named region: a city, a district, a park, a peak.
+ *
+ * `poi` is the only one GoWay ever looks up, and deliberately: GoWay Places
+ * holds businesses and venues, not the gazetteer and not the street network
+ * (`packages/backend/src/search/merge.ts`). The other three always show what
+ * the basemap knows and nothing more.
+ */
+export type MapLabelKind = 'poi' | 'road' | 'water' | 'area';
+
+/**
+ * A label the basemap drew, as GoWay sees it.
+ *
+ * The vector tiles have always carried these and the style has always painted
+ * them; this is what makes them TAPPABLE. It is deliberately thin — a name, a
+ * point, and whatever the tiles said it was — because that is genuinely all the
+ * basemap knows, and a shape with room for a phone number would invite a card
+ * that pretends to have one.
+ *
+ * **Nothing here is, or can become, a GoWay identity.** `id` is derived from a
+ * tile feature id, and that id joins to nothing: OpenFreeMap's tiles are built
+ * by Planetiler, whose feature ids bear no relation to the OpenStreetMap
+ * element ids `places_sources` stores. Measured — the Boqueria is OSM
+ * `way/25336101` and tile id `62887353`; the Museu Picasso is `way/34633854`
+ * and tile id `1889380012`. So resolving a label to a Place is an inference
+ * made through GoWay's own search (`lib/goway/basemapLabels.ts`), never a join,
+ * and nothing may treat this shape as a `Place`.
+ */
+export interface MapLabelFeature {
+  /** Stable for as long as the loaded tiles are. NOT a GoWay Place ID. */
+  id: string;
+  /** The name as the basemap draws it — `name:latin`, else `name`. */
+  name: string;
+  kind: MapLabelKind;
+  /**
+   * Where this label is: its own point, the nearest point on its line, or —
+   * when it has neither, as for a park's name — where the user tapped.
+   */
+  coordinate: GeoCoordinate;
+  /**
+   * `false` when {@link MapLabelFeature.coordinate} is the tap rather than the
+   * feature's own position, so a caller can tell "this IS here" from "you
+   * pointed at this".
+   */
+  anchored: boolean;
+  /** The tiles' own `class`, verbatim (`restaurant`, `primary`, `city`, …). */
+  category?: string;
+  /** The tiles' finer `subclass`, verbatim. */
+  subcategory?: string;
+  /** OpenMapTiles' importance ordering, where the tiles supply one. */
+  rank?: number;
+}
+
+export interface MapPressEvent {
+  coordinate: GeoCoordinate;
+  label?: MapLabelFeature;
+}
+
 export interface MapCameraOptions {
   zoom?: number;
   bearing?: number;
@@ -239,8 +306,40 @@ export interface MapCanvasProps {
   showUserLocation?: boolean;
   interaction?: MapInteractionOptions;
   onViewportChange?: (change: MapViewportChange) => void;
-  onPress?: (event: { coordinate: GeoCoordinate }) => void;
+  /**
+   * A tap on the map, carrying the basemap label under it when there was one.
+   *
+   * ## Hit priority
+   *
+   * A tap resolves to exactly ONE of three things, in this order:
+   *
+   *  1. a GoWay marker → {@link MapCanvasProps.onMarkerPress}, and this does
+   *     not fire. (On web that is not free: a `maplibregl.Marker` lives inside
+   *     the canvas container, so a click on one bubbles and MapLibre fires its
+   *     own `click` for it — which is why this used to fire underneath every
+   *     marker press, and why "tap the map to set a stop" could set a stop the
+   *     user had aimed at a pin.)
+   *  2. a basemap label inside the hit pad → this, with `label` set;
+   *  3. bare map → this, with no `label`.
+   */
+  onPress?: (event: MapPressEvent) => void;
   onMarkerPress?: (marker: MapMarker) => void;
+  /**
+   * The basemap labels currently PLACED in the viewport, on each settled frame.
+   *
+   * Only an engine can answer this — it is the output of the collision system,
+   * not of the tiles — so the canvas reports it and feature code decides what
+   * to do with it. Its one consumer is the overlay-side duplicate suppression
+   * in `lib/goway/basemapLabels.ts`: a GoWay chip drawn over a name the
+   * basemap is already drawing is the double-draw this whole seam exists to
+   * stop.
+   *
+   * Reported labels are the ones MapLibre actually PLACED, not the ones the
+   * tiles contain (measured: 16 of 3185 over central Barcelona at z16), which
+   * is the property that makes suppression safe — a label lost to a collision
+   * cannot hide a chip.
+   */
+  onLabelsChange?: (labels: readonly MapLabelFeature[]) => void;
   /** Fired once the style has loaded and the first frame is on screen. */
   onReady?: () => void;
   /** Fired when the canvas enters its degraded state. */

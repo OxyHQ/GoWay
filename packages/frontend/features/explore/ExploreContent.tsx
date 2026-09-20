@@ -216,6 +216,10 @@ function SelectionBody({ explore }: { explore: ExploreController }) {
     );
   }
 
+  if (selection.kind === 'label') {
+    return <BasemapLabelBody explore={explore} />;
+  }
+
   if (explore.selectedPlaceFailure) {
     return <FailureState kind={explore.selectedPlaceFailure} what="this place" />;
   }
@@ -236,6 +240,59 @@ function SelectionBody({ explore }: { explore: ExploreController }) {
       onDirections={() => explore.directions.openTo(place)}
       testID="place-details"
     />
+  );
+}
+
+/**
+ * A name the map itself is showing, tapped.
+ *
+ * Every shop, street, district and river on the map comes out of the vector
+ * tiles, and until they became tappable that was unreachable. What this must
+ * NOT do now is imitate a place card. The tiles carry a name, a point and a
+ * category token; there is no address here, no hours, no phone number, and no
+ * skeleton pretending one is loading, because none of those is coming.
+ *
+ * ## Why it does not apologise
+ *
+ * An earlier draft ended with "GoWay doesn't hold a place record for it yet",
+ * which is true and reads like a database error to everybody who is not us.
+ * Apple and Google, handed a name and nothing else, show the name, say what
+ * kind of thing it is, and offer to take you there — the absence is simply the
+ * absence, not an announcement. So does this. The one sentence that remains is
+ * about where the name CAME from, which is a fact worth having when two sources
+ * disagree, and it is the last line rather than the headline.
+ *
+ * While search is still deciding whether GoWay holds a record, even that line
+ * is held back: the answer arrives within one request, and a card that says the
+ * wrong thing for 400 ms is worse than a card that says less.
+ */
+function BasemapLabelBody({ explore }: { explore: ExploreController }) {
+  const label = explore.selectedLabel;
+  if (!label) return null;
+
+  return (
+    <View className="gap-space-12 px-space-16 pb-space-16" testID="basemap-label-details">
+      <View className="gap-space-4">
+        <Text className="text-sectionTitle text-foreground">{label.name}</Text>
+        {explore.labelCategory ? (
+          <Text className="text-bodySmall text-muted-foreground">{explore.labelCategory}</Text>
+        ) : null}
+      </View>
+      <View className="flex-row">
+        <Button
+          variant="primary"
+          size="small"
+          leadingIcon={RiRouteLine}
+          onPress={() => explore.directions.openToPoint(label.coordinate, label.name)}
+          accessibilityLabel={`Directions to ${label.name}`}
+        >
+          Directions
+        </Button>
+      </View>
+      {explore.selectedLabelBusy ? null : (
+        <Text className="text-caption text-muted-foreground">From the map data.</Text>
+      )}
+    </View>
   );
 }
 
