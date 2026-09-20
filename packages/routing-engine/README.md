@@ -53,9 +53,12 @@ start-up, and that is a deliberate trade:
 `REGION` defaults to `europe/spain` (a Geofabrik extract path). Measured on a
 32-core workstation, 2026-09-20:
 
-| Region | Extract | Tile build | `tiles.tar` | Image |
+| Region | Extract | Tile build | `tiles.tar` | Image in ECR |
 | --- | --- | --- | --- | --- |
-| `europe/spain` | 1.48 GB | **4m 43s** | 2.07 GB | ~2.3 GB |
+| `europe/spain` | 1.48 GB | **4m 43s** | 2.07 GB | 1.23 GB |
+
+The image column is what ECR bills, which is the COMPRESSED size — 2.3 GB of
+tiles and databases on disk, 1.23 GB over the wire and at rest.
 
 The planet is roughly 80 GB of extract and 25–30× this in tiles, wants tens of
 GB of RAM to build, and would not fit the Fargate task below at any size worth
@@ -114,10 +117,16 @@ One Fargate ARM task, us-west-2, on-demand, 730 h/month:
 | 1 vCPU / 4 GB | $23.64 | $10.38 | **$34.02** |
 | 2 vCPU / 8 GB | $47.28 | $20.77 | **$68.05** |
 
-at $0.032384 per vCPU-hour and $0.003556 per GB-hour. Plus ECR storage: 2.2 GB
-× $0.10/GB-month × 3 retained images ≈ **$0.66**. No ALB (it is registered in
+at $0.032384 per vCPU-hour and $0.003556 per GB-hour. Plus ECR storage: 1.23 GB
+× $0.10/GB-month × 3 retained images ≈ **$0.37**. No ALB (it is registered in
 Cloud Map and never leaves the VPC), no NAT (same subnets as the API), no data
 transfer (same AZ).
+
+**Total: about $34.40 a month.** If that is too much, the cheaper shapes, in
+order: run `europe/spain/cataluna` tiles on 0.5 vCPU / 2 GB (~$17), or set
+`desired_count` to 0 between demos — the tiles live in the image, so bringing
+it back is a number, not a rebuild. Routing then answers
+`provider_unavailable`, which the app renders honestly rather than as a line.
 
 **GoWay runs the 1 vCPU / 4 GB size, at about $34/month.** Valhalla mmaps
 `tiles.tar` and lets the page cache do the work, so memory is a performance
