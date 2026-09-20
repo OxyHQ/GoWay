@@ -50,10 +50,12 @@ import {
   isDrawableBounds,
   isDrawableCoordinate,
   isViewport,
+  optionalScalar,
   reportMapDefect,
   resolveInteraction,
   resolveOverlayPaint,
   resolvePadding,
+  runEngineCommand,
   toBoundsArray,
   toLngLat,
 } from './shared';
@@ -167,10 +169,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           pitch: asFinite(options?.pitch) ?? asFinite(viewport?.pitch),
         };
         if (duration <= 0) {
-          camera.jumpTo(stop);
+          runEngineCommand('jumpTo', () => camera.jumpTo(stop));
           return;
         }
-        camera.easeTo({ ...stop, duration, easing: 'ease' });
+        runEngineCommand('easeTo', () => camera.easeTo({ ...stop, duration, easing: 'ease' }));
       },
       fitBounds(bounds, options) {
         const camera = cameraRef.current;
@@ -186,14 +188,26 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         const maxZoom = asFinite(options?.maxZoom);
         const duration = asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS;
         if (isDegenerateBounds(bounds)) {
-          camera.easeTo({
-            center: [(bounds.west + bounds.east) / 2, (bounds.south + bounds.north) / 2],
-            zoom: Math.min(maxZoom ?? DEGENERATE_FIT_ZOOM, DEGENERATE_FIT_ZOOM),
-            duration,
-          });
+          runEngineCommand('easeTo', () =>
+            camera.easeTo({
+              center: [(bounds.west + bounds.east) / 2, (bounds.south + bounds.north) / 2],
+              zoom: Math.min(maxZoom ?? DEGENERATE_FIT_ZOOM, DEGENERATE_FIT_ZOOM),
+              duration,
+            }),
+          );
           return;
         }
-        camera.fitBounds(toBoundsArray(bounds), { padding: fitPadding, duration, zoom: maxZoom });
+        // The cap is `zoom` here and `maxZoom` on web, and it is ABSENT rather
+        // than `undefined` on both: see `shared.ts` -> `optionalScalar` for what
+        // writing the key cost the web fork. The two forks must agree about what
+        // "the caller did not ask for a maximum" means.
+        runEngineCommand('fitBounds', () =>
+          camera.fitBounds(toBoundsArray(bounds), {
+            padding: fitPadding,
+            duration,
+            ...optionalScalar('zoom', maxZoom),
+          }),
+        );
       },
       fitCoordinates(coordinates, options) {
         const bounds = boundsOf(coordinates);
@@ -206,19 +220,27 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           reportMapDefect('setBearing', `Ignored setBearing: ${String(bearing)} is not a bearing.`);
           return;
         }
-        cameraRef.current?.setStop({
-          bearing: heading,
-          duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS,
-          easing: 'ease',
-        });
+        const camera = cameraRef.current;
+        if (!camera) return;
+        runEngineCommand('setStop', () =>
+          camera.setStop({
+            bearing: heading,
+            duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS,
+            easing: 'ease',
+          }),
+        );
       },
       resetNorth(options) {
-        cameraRef.current?.setStop({
-          bearing: 0,
-          pitch: 0,
-          duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS,
-          easing: 'ease',
-        });
+        const camera = cameraRef.current;
+        if (!camera) return;
+        runEngineCommand('setStop', () =>
+          camera.setStop({
+            bearing: 0,
+            pitch: 0,
+            duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS,
+            easing: 'ease',
+          }),
+        );
       },
       async getViewport(): Promise<ResolvedMapViewport | null> {
         const map = mapRef.current;

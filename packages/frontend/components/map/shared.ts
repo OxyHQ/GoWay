@@ -11,7 +11,12 @@
  * an engine, which is a THROW rather than a bad frame — see the block comment
  * above {@link isDrawableCoordinate}. `drawableOverlays` covers the one path
  * that fails the OTHER way: raw GeoJSON does not throw, it renders nowhere and
- * says nothing.
+ * says nothing. `optionalScalar` covers the third: a key that is PRESENT and
+ * `undefined` is not the same as an absent one, and an engine that defaults the
+ * absent one does not default this one.
+ *
+ * And `runEngineCommand` is the floor under all of it: whatever still gets
+ * through, an engine call that throws costs the CALL, not the application.
  */
 import type {
   GeoBounds,
@@ -105,6 +110,44 @@ export function isViewport(target: GeoCoordinate | MapViewport): target is MapVi
  */
 export function asFinite(value: number | null | undefined): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * A scalar an engine's options object may carry — or NOTHING AT ALL.
+ *
+ * ## The defect this exists to remove
+ *
+ * `{ maxZoom: undefined }` and `{}` look interchangeable in TypeScript, and to
+ * MapLibre GL JS they are opposites. `Map._cameraForBoxAndBearing` fills in its
+ * own defaults with
+ *
+ * ```
+ * options = extend({ padding, offset: [0, 0], maxZoom: this.transform.maxZoom }, options);
+ * ```
+ *
+ * and `extend` is `for (const k in src) dest[k] = src[k]` — an OWN key wins
+ * even when its value is `undefined`. So passing the key at all replaces the
+ * engine's maximum zoom with `undefined`, and the very next line is
+ *
+ * ```
+ * const zoom = Math.min(scaleZoom(tr.scale * Math.min(scaleX, scaleY)), options.maxZoom);
+ * ```
+ *
+ * `Math.min(anything, undefined)` is `NaN`. That `NaN` divides into
+ * `offsetAtFinalZoom`, reaches the centre `cameraForBoxAndBearing` unprojects,
+ * and `new LngLat(NaN, NaN)` THROWS — from inside the React effect that asked
+ * for the fit, which is the error boundary and the whole app. Omitting the key
+ * is the only way to mean "use yours".
+ *
+ * Every optional scalar this seam forwards therefore goes through here, so
+ * "the caller did not say" can never arrive as "the caller said nothing".
+ */
+export function optionalScalar<K extends string>(
+  key: K,
+  value: number | null | undefined,
+): Partial<Record<K, number>> {
+  const finite = asFinite(value);
+  return finite === undefined ? {} : ({ [key]: finite } as Partial<Record<K, number>>);
 }
 
 /**
@@ -380,6 +423,37 @@ export function reportMapDefect(key: string, message: string): void {
   if (reported.has(key)) return;
   reported.add(key);
   console.warn(`[goway/map] ${message}`);
+}
+
+/**
+ * Run one engine command, and let a throw cost the COMMAND rather than the app.
+ *
+ * This is the BACKSTOP, deliberately separate from the checks above. Those
+ * refuse the bad values we know about; this one is for the ones we do not. Every
+ * guard in this file was written after a crash, which is the evidence that the
+ * next non-finite number will arrive from somewhere nobody predicted — a
+ * renderer upgrade that starts rejecting an input it used to accept, a new
+ * option forwarded through an unexamined path, a device API that changes shape.
+ *
+ * What makes that catastrophic rather than cosmetic is WHERE these calls run:
+ * a camera move issued from a `useEffect` throws inside React's commit phase,
+ * so the nearest error boundary unmounts the tree and the user gets "Something
+ * went wrong" instead of a map. A camera that did not move is a map. That is
+ * the whole trade, and it is not close.
+ *
+ * It is not a licence to stop validating: a swallowed throw is a `console.warn`
+ * nobody reads, so anything we can name is still refused BEFORE it gets here,
+ * by a check that says which value was wrong and why.
+ */
+export function runEngineCommand(command: string, run: () => void): void {
+  try {
+    run();
+  } catch (cause) {
+    reportMapDefect(
+      `engine:${command}`,
+      `The map engine threw on "${command}" and the command was dropped: ${String(cause)}`,
+    );
+  }
 }
 
 /**
