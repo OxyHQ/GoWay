@@ -151,6 +151,12 @@ export const POI_CLASSES = [
   'recycling', 'restaurant', 'running', 'sally_port', 'school', 'shelter', 'shop', 'sports_centre',
   'stadium', 'stile', 'swimming_pool', 'telephone', 'theatre', 'toilets', 'toll_booth', 'town_hall',
   'veterinary', 'waste_basket', 'yoga',
+  // Documented by the OpenMapTiles v3 `poi_class` table but NOT seen in any of
+  // the sampled cities, so they are recorded separately from the rest: they
+  // are schema truth rather than observation. `layers.ts` colours both, and
+  // the filter-coverage sweep in `build-map-style.ts` needs them here to tell
+  // "a class we have not happened to see" from "a class that does not exist".
+  'motorcycle', 'zoo',
 ] as const;
 
 /**

@@ -139,6 +139,7 @@ export const GOWAY_STYLE_LAYER_IDS = {
   /** Type. `label-road-*` and `label-poi*` are *(flag)* —
    *  `SHOW_ROAD_AND_POI_LABELS`. */
   labels: [
+    'road-oneway',
     'label-waterway',
     'label-water-line',
     'label-water-point',
@@ -216,10 +217,30 @@ const LABEL_TEXT = expr(['coalesce', ['get', 'name:latin'], ['get', 'name'], '']
 // fontstack names are a contract with the glyph ranges GoWay generates and
 // serves, so a rename that misses one is a label that silently does not draw.
 // `FONT_STACKS.medium` and `.semibold` exist and are not used yet — they are
-// the two rungs OpenFreeMap could not serve, kept available for the type
-// hierarchy rather than spent here.
+// the two rungs OpenFreeMap could not serve.
 const REGULAR: string[] = [...FONT_STACKS.regular];
 const BOLD: string[] = [...FONT_STACKS.bold];
+
+/**
+ * The face hydrographic names are set in — and it is NOT italic, which is a
+ * known divergence from Apple rather than an oversight.
+ *
+ * Apple sets every water name in italic — "Balearic Sea", "Rambla de Mar" —
+ * and it is the one typographic distinction on its map carried by a *face*
+ * rather than by size or colour. This was measured and it is worth having.
+ *
+ * It cannot ship yet. GoWay serves its own glyphs now, generated from Inter at
+ * 400/500/600/700, and `AVAILABLE_FONTS` has no italic; `map:style:check`
+ * admits only fontstacks our own endpoint answers with, so naming an upstream
+ * `Noto Sans Italic` here would fail the gate — correctly, because nothing
+ * would serve it. Italic returns when the glyph pipeline generates Inter
+ * Italic, which is a separate range set rather than another weight.
+ *
+ * Until then water keeps every other part of the treatment that was measured
+ * against Apple: its own colour, the small sizes, the wide letter-spacing and
+ * the long `symbol-spacing`.
+ */
+const WATER: string[] = REGULAR;
 
 // ---------------------------------------------------------------------------
 // POI vocabulary
@@ -281,6 +302,23 @@ function poiColor(palette: CartographyPalette): ExpressionSpecification {
 }
 
 /**
+ * The same `match`, over the TEXT ramp.
+ *
+ * Apple prints a POI's name in its category's colour, and that — not the pin —
+ * is what makes its map read as Apple's: counting connected ink components in a
+ * z16 Barcelona capture gives Apple ~1380 coloured to ~340 neutral, while this
+ * style scored 83 to 380 before the ramp existed. The colours are the darkened
+ * twins in {@link CartographyPalette.poiLabel}, because the vivid pin hues are
+ * 1.8:1 to 4.1:1 as text and the floor is 4.5:1.
+ */
+function poiLabelColor(palette: CartographyPalette): ExpressionSpecification {
+  const match: unknown[] = ['match', ['get', 'class']];
+  for (const [group, classes] of POI_GROUPS) match.push(classes, palette.poiLabel[group]);
+  match.push(palette.poiLabel.other);
+  return expr(match);
+}
+
+/**
  * Classes held back to the minor tier regardless of how well they rank.
  *
  * Measured, not guessed: evaluating this style against real z16 tiles over
@@ -296,14 +334,40 @@ const POI_LATE_CLASSES = ['bus', 'atm', 'post', 'toilets', 'picnic_site', 'bicyc
 type PoiTier = 'station' | 'major' | 'minor';
 
 /**
+ * How far down the importance ordering a layer reaches.
+ *
+ * There are TWO of these, and the difference between them is the whole design.
+ * A name is placed by MapLibre's collision detection, so asking for more names
+ * than fit costs nothing — the ones that do not fit are simply not drawn. A dot
+ * is a `circle`, and a circle layer has no collision at all: every feature that
+ * passes the filter draws, always. So the two cannot share a cap. They did, and
+ * widening it to get Apple's mix of shops and restaurants put ~250 dots over a
+ * z15 Eixample with names on 58 of them — a field of anonymous coloured specks,
+ * which is a worse map than the institutional one it replaced.
+ *
+ * {@link POI_DOT_CAPS} is therefore "how many places does this map acknowledge"
+ * and {@link POI_LABEL_CAPS} is "how many is it willing to name". The first is
+ * a hard density budget; the second is a candidate pool that collision thins.
+ */
+interface PoiCaps {
+  major: number;
+  minor: number;
+}
+
+/** The marks. Hard budget — every one of these draws. */
+const POI_DOT_CAPS: PoiCaps = { major: 12, minor: 30 };
+/** The names. A candidate pool; `text-padding` and collision do the thinning. */
+const POI_LABEL_CAPS: PoiCaps = { major: 18, minor: 40 };
+
+/**
  * The shared POI eligibility test: a named point that is not clutter.
  *
  * `has name` is doing real work — an unnamed POI cannot be recognised, tapped
  * with intent, or searched for, so drawing it only costs the map contrast.
  */
-function poiFilter(tier: PoiTier): FilterSpecification {
+function poiFilter(tier: PoiTier, caps: PoiCaps = POI_LABEL_CAPS): FilterSpecification {
   const notClutter = ['!', ['in', ['get', 'class'], ['literal', POI_CLUTTER_CLASSES]]];
-  const rank = ['coalesce', ['get', 'rank'], 999];
+  const rank = poiImportance();
 
   if (tier === 'station') {
     return filter([
@@ -311,7 +375,8 @@ function poiFilter(tier: PoiTier): FilterSpecification {
       IS_POINT,
       ['has', 'name'],
       ['in', ['get', 'class'], ['literal', POI_STATION_CLASSES]],
-      ['<=', rank, POI_MINOR_MAX_RANK],
+      PRINCIPAL_STOP,
+      ['<=', rank, caps.minor],
     ]);
   }
 
@@ -324,8 +389,9 @@ function poiFilter(tier: PoiTier): FilterSpecification {
       ['has', 'name'],
       notClutter,
       notStation,
+      PRINCIPAL_STOP,
       ['!', ['in', ['get', 'class'], ['literal', POI_LATE_CLASSES]]],
-      ['<=', rank, POI_MAJOR_MAX_RANK],
+      ['<=', rank, caps.major],
     ]);
   }
 
@@ -336,19 +402,75 @@ function poiFilter(tier: PoiTier): FilterSpecification {
     ['has', 'name'],
     notClutter,
     notStation,
-    ['<=', rank, POI_MINOR_MAX_RANK],
-    ['any', ['>', rank, POI_MAJOR_MAX_RANK], ['in', ['get', 'class'], ['literal', POI_LATE_CLASSES]]],
+    PRINCIPAL_STOP,
+    ['<=', rank, caps.minor],
+    ['any', ['>', rank, caps.major], ['in', ['get', 'class'], ['literal', POI_LATE_CLASSES]]],
   ]);
 }
 
 /**
+ * How much each category is demoted, independent of `rank`.
+ *
  * `rank` in the `poi` source-layer is an importance ordering *within a tile*,
  * so a cap on it is a density cap that behaves the same in Manhattan and in a
  * village — far better than a zoom threshold, which is a density cap only in
- * the city it was tuned for.
+ * the city it was tuned for. But OpenMapTiles builds that ordering from a fixed
+ * CLASS table (hospital, railway, bus, attraction, college, school, stadium,
+ * town hall, park, library, police, post, then shops at 400, groceries at 500,
+ * fast food at 600, bars at 800, everything else at 1000), so `rank` does not
+ * order a tile's POIs by importance — it orders them by institutionality, and
+ * a tight cap on it selects clinics and schools. That is what shipped: the z15
+ * Eixample frame drew eighteen medical centres and two shops, where Apple's
+ * matched frame is Zara, Mercadona, La Pedrera, Casa Batlló, Honest Greens and
+ * a few metro stops. Apple curates and GoWay cannot, but GoWay can say which
+ * category loses when two labels want the same pixels.
+ *
+ * The numbers are small on purpose. A genuinely top-ranked hospital still beats
+ * a middling café, which is right — a hospital is a landmark.
  */
-const POI_MAJOR_MAX_RANK = 8;
-const POI_MINOR_MAX_RANK = 24;
+const POI_CATEGORY_PENALTY: Partial<Record<keyof CartographyPalette['poi'], number>> = {
+  health: 12,
+  civic: 9,
+  vehicle: 12,
+  worship: 5,
+};
+
+/**
+ * `rank` corrected for the categories the schema over-represents.
+ *
+ * The ONE number the POI layers use: {@link poiFilter} caps it to decide which
+ * POIs exist at all, and `symbol-sort-key` orders by it to decide which of them
+ * wins a collision. MapLibre places the LOWEST sort key first, so the penalty
+ * above is a demotion in both roles at once.
+ */
+function poiImportance(): ExpressionSpecification {
+  const penalty: unknown[] = ['match', ['get', 'class']];
+  for (const [group, classes] of POI_GROUPS) penalty.push(classes, POI_CATEGORY_PENALTY[group] ?? 0);
+  penalty.push(0);
+  return expr(['+', ['coalesce', ['get', 'rank'], 999], penalty]);
+}
+
+/**
+ * One point per station, not one per entrance.
+ *
+ * `agg_stop` is an OpenMapTiles v3 field (confirmed present in OpenFreeMap's
+ * live TileJSON for the `poi` layer) that marks the PRINCIPAL member of a group
+ * of stops sharing a name — the station itself among its street entrances. It
+ * is absent on anything that is not part of such a group, which is why the test
+ * has to accept absence as well as `1`.
+ *
+ * Without it a Barcelona z15 view renders "Passeig de Gràcia" four times,
+ * "Verdaguer" three and "Urquinaona" twice, all within a few hundred metres,
+ * because every metro entrance is its own named point. Apple draws each of
+ * those once. This is the single largest source of the repetition the product
+ * owner reported as *"los textos"*, and it is a filter rather than a threshold:
+ * it removes duplicates, not information.
+ */
+const PRINCIPAL_STOP = expr([
+  'any',
+  ['!', ['has', 'agg_stop']],
+  ['==', ['get', 'agg_stop'], 1],
+]);
 
 // ---------------------------------------------------------------------------
 // Road geometry
@@ -588,7 +710,17 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     filter: filter(classIn('residential', 'suburb', 'neighbourhood', 'quarter', 'garages', 'industrial', 'commercial', 'retail', 'railway', 'quarry')),
     paint: {
       'fill-color': palette.landBuiltUp,
-      'fill-opacity': byZoom([[10, 0], [13, 1]], 1),
+      // ...and it fades back OUT once `building` takes over. The tint's job is
+      // to say "this is urban" at a scale where the footprints are not drawn;
+      // from z16 they are drawn, and the two together are the same statement
+      // made twice. Made twice, on Barcelona, it is the "patchwork": OSM tags
+      // `landuse=residential` block by block in the Eixample, so some blocks
+      // carry the tint and their neighbours do not, and the grid turns into a
+      // chequerboard that Apple's uniform cream has nothing like. Measured on
+      // a z15 capture of the same frame, Apple spends 6.2% of the canvas on
+      // its built-up tint and 37% on bare land; this ramp is what moves GoWay
+      // toward that ratio without losing the region-scale fabric at z11-z14.
+      'fill-opacity': byZoom([[10, 0], [13, 1], [15, 1], [16.5, 0.35]], 1),
     },
   });
 
@@ -738,11 +870,20 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     type: 'fill',
     source,
     'source-layer': SL.building,
-    minzoom: 14,
+    // z15.4, not z14, and the ramp is short. Apple draws NO footprints at z15
+    // — a matched z15 capture of the Eixample is unbroken cream — and clearly
+    // delineated ones at z16. GoWay drew them from z14 at `fill-opacity` 0.65,
+    // and a 0.65 fill is the thing that made the "texturas" complaint: a
+    // half-opaque building over the built-up tint, over land, is three layers
+    // multiplying into six intermediate creams, all of them block-shaped and
+    // grid-aligned. The z15 histogram of that frame shows it exactly — five of
+    // the top six colours (#f7f0df #f7efdb #f8efda #f9f0db #f6f4eb) are blends
+    // of the same three fills. A footprint is either drawn or it is not.
+    minzoom: 15,
     paint: {
       'fill-color': palette.building,
-      'fill-outline-color': colorByZoom([[14.5, palette.building], [16, palette.buildingOutline]]),
-      'fill-opacity': byZoom([[14, 0], [15, 0.65], [17, 1]], 1),
+      'fill-outline-color': colorByZoom([[15.4, palette.building], [16.5, palette.buildingOutline]]),
+      'fill-opacity': byZoom([[15, 0], [15.4, 0], [16, 1]], 1),
     },
   });
 
@@ -869,9 +1010,15 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
       });
     };
 
-    dot('poi-dot', poiFilter('major'), 15, [[15, 2.4], [17, 3.4], [19, 4.4]]);
-    dot('poi-dot-minor', poiFilter('minor'), 17, [[17, 2.4], [19, 3.4]]);
-    dot('poi-transit-dot', poiFilter('station'), 14, [[14, 2.4], [17, 4], [19, 5]]);
+    // Bigger than they were. Apple's POI mark is a ~14px filled circle carrying
+    // a white glyph; GoWay has no SDF glyph set to put inside one, so the mark
+    // is the disc alone — but at a 2.4px radius it read as a speck of dust
+    // beside the label rather than as the label's own mark. These radii put the
+    // disc at roughly two thirds of Apple's diameter, which is as large as a
+    // glyph-less dot can go before it starts looking like a missing icon.
+    dot('poi-dot', poiFilter('major', POI_DOT_CAPS), 14, [[14, 2.8], [15, 3.2], [17, 4.4], [19, 5.4]]);
+    dot('poi-dot-minor', poiFilter('minor', POI_DOT_CAPS), 17, [[17, 3], [19, 4]]);
+    dot('poi-transit-dot', poiFilter('station', POI_DOT_CAPS), 14, [[14, 3.2], [17, 5], [19, 6]]);
   }
 
   // --- Type --------------------------------------------------------------
@@ -883,7 +1030,17 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     layerFilter: FilterSpecification,
     color: string,
     sizes: readonly (readonly [number, number])[],
-    options: { minzoom?: number; halo?: string } = {},
+    options: {
+      minzoom?: number;
+      halo?: string;
+      font?: string[];
+      /** How far apart repeats of the SAME name are placed, in px. */
+      spacing?: number;
+      uppercase?: boolean;
+      letterSpacing?: number;
+      /** Extra px around the collision box. See the road labels' note. */
+      padding?: number;
+    } = {},
   ): void => {
     layers.push({
       id,
@@ -895,12 +1052,18 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
       layout: {
         'symbol-placement': 'line',
         'text-field': LABEL_TEXT,
-        'text-font': REGULAR,
+        'text-font': options.font ?? REGULAR,
         'text-size': byZoom(sizes, 1.2),
         'text-rotation-alignment': 'map',
         'text-pitch-alignment': 'viewport',
-        'symbol-spacing': 280,
+        // 280 px is roughly two Eixample blocks, which is why "Ronda Litoral"
+        // appeared four times in one view and "Passeig de Gràcia" three. Apple
+        // names a street once per screenful of it and no more.
+        'symbol-spacing': options.spacing ?? 280,
         'text-max-angle': 32,
+        ...(options.padding === undefined ? {} : { 'text-padding': options.padding }),
+        ...(options.uppercase ? { 'text-transform': 'uppercase' as const } : {}),
+        ...(options.letterSpacing === undefined ? {} : { 'text-letter-spacing': options.letterSpacing }),
       },
       paint: {
         'text-color': color,
@@ -916,7 +1079,9 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     id: string,
     sourceLayer: string,
     layerFilter: FilterSpecification,
-    color: string,
+    // An expression, not just a hex, because a POI's label is printed in its
+    // own category's colour — `poiLabelColor()` is a `match` over `class`.
+    color: string | ExpressionSpecification,
     sizes: readonly (readonly [number, number])[],
     options: {
       minzoom?: number;
@@ -926,6 +1091,8 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
       haloWidth?: number;
       offset?: [number, number];
       anchor?: 'center' | 'top' | 'bottom';
+      /** Extra px around the collision box. A zoom ramp thins by density. */
+      padding?: number | ExpressionSpecification;
       uppercase?: boolean;
       letterSpacing?: number;
       maxWidth?: number;
@@ -949,6 +1116,7 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
         ...(options.offset === undefined ? {} : { 'text-offset': options.offset }),
         ...(options.uppercase ? { 'text-transform': 'uppercase' as const } : {}),
         ...(options.letterSpacing === undefined ? {} : { 'text-letter-spacing': options.letterSpacing }),
+        ...(options.padding === undefined ? {} : { 'text-padding': options.padding }),
         ...(options.sortKey === undefined ? {} : { 'symbol-sort-key': options.sortKey }),
       },
       paint: {
@@ -979,27 +1147,139 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
   // puts its type over a busy basemap by definition, and a thin halo is how a
   // street name becomes unreadable the moment it crosses a park edge.
 
-  lineLabel('label-waterway', SL.waterway, filter(['all', IS_LINE, ['has', 'name']]), palette.labelWater, [[13, 9.5], [18, 12]], { minzoom: 13, halo: palette.halo });
-  lineLabel('label-water-line', SL.waterName, filter(['all', IS_LINE]), palette.labelWater, [[10, 10.5], [16, 13.5]], { minzoom: 10, halo: palette.halo });
-  pointLabel('label-water-point', SL.waterName, filter(['all', IS_POINT]), palette.labelWater, [[6, 10.5], [12, 13.5], [16, 15.5]], { minzoom: 5, halo: palette.halo, letterSpacing: 0.04 });
+  // ONE-WAY ARROWS, drawn as type rather than as an icon.
+  //
+  // `transportation.oneway` is in OpenFreeMap's live schema (1 forward, -1
+  // against the digitised direction), so the data has always been there; what
+  // was missing was something to draw with. The sprite does ship `oneway` and
+  // `arrow`, but every one of its 264 images is non-SDF, so `icon-color` cannot
+  // touch them and a #706a6a arrow that is passable on a white street is
+  // invisible on a #5d6d82 one — it would have shipped a light-mode-only
+  // feature into a style whose whole contract is that the two appearances are
+  // the same map. U+2192 and U+2190 DO have bitmaps in `Noto Sans Regular` on
+  // that glyph server (checked by decoding the 8448-8703 range: 14x6 each), and
+  // text takes `text-color`, so the arrows recolour per appearance for free.
+  //
+  // `text-keep-upright` MUST be false. Its default flips a symbol that would
+  // otherwise read upside down, which is right for a name and catastrophic for
+  // an arrow: every westbound street would point the wrong way.
+  if (SHOW_ROAD_AND_POI_LABELS) {
+    layers.push({
+      id: 'road-oneway',
+      type: 'symbol',
+      source,
+      'source-layer': SL.transportation,
+      minzoom: 15,
+      filter: filter([
+        'all',
+        IS_LINE,
+        NOT_TUNNEL,
+        classIn('motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'minor', 'service'),
+        ['!=', ['coalesce', ['get', 'oneway'], 0], 0],
+      ]),
+      layout: {
+        'symbol-placement': 'line',
+        'text-field': expr(['case', ['==', ['get', 'oneway'], -1], '←', '→']),
+        'text-font': REGULAR,
+        'text-size': byZoom([[15, 9], [17, 12], [19, 15]], 1.2),
+        'text-rotation-alignment': 'map',
+        'text-pitch-alignment': 'viewport',
+        'text-keep-upright': false,
+        'symbol-spacing': 170,
+        'text-max-angle': 30,
+        // An arrow is a hint, not a name: it must never be the reason a street
+        // name is dropped, and it may overlap its own street's casing.
+        'text-allow-overlap': false,
+        'text-ignore-placement': true,
+      },
+      paint: {
+        'text-color': palette.labelRoad,
+        'text-opacity': 0.55,
+        'text-halo-color': palette.haloStrong,
+        'text-halo-width': 0.8,
+      },
+    });
+  }
+
+  // Water is the one class Apple sets in italic, and it sets it small, light
+  // and letter-spaced. GoWay's were upright, dark and the largest type in the
+  // Barcelona harbour — "Dàrsena del Comerç" outweighed the city name beside
+  // it. Sizes come down by ~20%, and the colour, the letter-spacing and the
+  // long `symbol-spacing` carry the distinction for now. The face cannot: see
+  // `WATER`, which is upright until the glyph pipeline generates Inter Italic.
+  lineLabel('label-waterway', SL.waterway, filter(['all', IS_LINE, ['has', 'name']]), palette.labelWater, [[13, 8.5], [18, 10.5]], { minzoom: 13, halo: palette.halo, font: WATER, spacing: 420, letterSpacing: 0.04 });
+  lineLabel('label-water-line', SL.waterName, filter(['all', IS_LINE]), palette.labelWater, [[10, 9], [16, 11.5]], { minzoom: 10, halo: palette.halo, font: WATER, spacing: 420, letterSpacing: 0.05 });
+  pointLabel('label-water-point', SL.waterName, filter(['all', IS_POINT]), palette.labelWater, [[6, 9], [12, 11], [16, 12.5]], { minzoom: 5, halo: palette.halo, font: WATER, letterSpacing: 0.06 });
 
   if (SHOW_ROAD_AND_POI_LABELS) {
     // Streets are the quietest type on the map: small, light, and only once
     // the road carrying them is wide enough to sit inside. `haloStrong` rather
     // than the ground halo, because these sit ON the white ribbon, not beside
     // it.
-    lineLabel('label-road-local', SL.transportationName, filter(['all', IS_LINE, classIn('minor', 'service', 'track')]), palette.labelRoad, [[15, 8.5], [18, 10.5], [20, 12]], { minzoom: 15 });
-    lineLabel('label-road-arterial', SL.transportationName, filter(['all', IS_LINE, classIn('primary', 'secondary', 'tertiary')]), palette.labelRoad, [[13, 8.5], [16, 10.5], [20, 12.5]], { minzoom: 13 });
-    lineLabel('label-road-highway', SL.transportationName, filter(['all', IS_LINE, classIn('motorway', 'trunk')]), palette.labelRoad, [[12, 9], [16, 11], [20, 13]], { minzoom: 12 });
+    // UPPERCASE, and that is a measurement, not a flourish. Apple sets every
+    // street name in caps at every zoom it draws one — "CARRER DE MUNTANER",
+    // "AVINGUDA DIAGONAL", "VIA LAIETANA" — in both appearances, and it is the
+    // most visible single difference between the two maps after colour. Caps
+    // also do two useful things here: they set the same name in a smaller
+    // point size for the same apparent weight, and they take more width, so
+    // fewer repeats fit and the line thins itself out.
+    //
+    // SPACING is the other half of *"los textos"*. At 280 px a street is
+    // relabelled every two Eixample blocks.
+    // `spacing` only thins repeats WITHIN one line feature. OSM splits a long
+    // street into many features at every junction and administrative edge, so
+    // the fourth "Ronda Litoral" in a view was four different features each
+    // exercising its right to one label — `symbol-spacing` cannot see them.
+    // `text-padding` can: it inflates the collision box, so the second label of
+    // the same street loses to the first unless they are genuinely far apart.
+    // It has to stay SMALL. A padded box is padded on every side, and parallel
+    // Eixample streets are only ~37 px apart at z15, so a 14 px pad (28 px of
+    // added width) made every street label collide with its neighbour's and
+    // took the grid's names from 99 placed to 8. 4-6 px is enough to make a
+    // second copy of the same name lose without touching the street beside it.
+    lineLabel('label-road-local', SL.transportationName, filter(['all', IS_LINE, classIn('minor', 'service', 'track')]), palette.labelRoad, [[15, 7.5], [18, 9], [20, 10.5]], { minzoom: 15, spacing: 380, uppercase: true, letterSpacing: 0.05, padding: 6 });
+    lineLabel('label-road-arterial', SL.transportationName, filter(['all', IS_LINE, classIn('primary', 'secondary', 'tertiary')]), palette.labelRoad, [[13, 7.5], [16, 9], [20, 11]], { minzoom: 13, spacing: 400, uppercase: true, letterSpacing: 0.05, padding: 7 });
+    lineLabel('label-road-highway', SL.transportationName, filter(['all', IS_LINE, classIn('motorway', 'trunk')]), palette.labelRoad, [[12, 8], [16, 9.5], [20, 11.5]], { minzoom: 12, spacing: 440, uppercase: true, letterSpacing: 0.06, padding: 8 });
 
-    pointLabel('label-poi-minor', SL.poi, poiFilter('minor'), palette.labelPoi, [[17, 9.5], [19, 11]], {
-      minzoom: 17, anchor: 'top', offset: [0, 0.75], maxWidth: 9, sortKey: expr(['get', 'rank']),
+    // The POI label carries the CATEGORY COLOUR. See `poiLabelColor`.
+    //
+    // `symbol-sort-key` coalesces because `rank` is absent on a real minority
+    // of POI features, and a null sort key is a per-tile console warning from
+    // the MapLibre worker plus an undefined ordering. 999 sorts them last,
+    // which is what an unranked POI deserves.
+    // `padding` is doing duplicate suppression, not spacing. OpenStreetMap maps
+    // a metro station as one named point per ENTRANCE, and `agg_stop` only
+    // dedupes the ones OSM actually grouped — "Verdaguer" and "Urquinaona"
+    // survived it twice each in a z15 Barcelona frame. A padded collision box
+    // means the second copy loses to the first, which is the behaviour wanted
+    // for a duplicate and harmless for two genuinely different places, since
+    // the loser is the lower-ranked one.
+    const key = poiImportance();
+    // `text-padding` is the density control, and it RAMPS WITH ZOOM because
+    // Apple's POI density does. A `rank` cap cannot do this on its own: `rank`
+    // is per TILE, a viewport covers about the same number of tiles at every
+    // zoom, so a fixed cap hands the screen the same number of candidates at
+    // z15 as at z18 — flat, where Apple roughly doubles. Counted on matched
+    // frames, Apple places ~75 POI labels at z15 and ~150 at z16; a flat cap
+    // that gave 75 at z15 starved z16, and one that gave 150 at z16 buried z15
+    // (and, because POI labels are placed before road labels, took the street
+    // grid with it — 99 street names became 8). A padded collision box at low
+    // zoom and a tight one high up produces the ramp without touching supply.
+    const poiPadding = byZoom([[14, 30], [15, 16], [16, 8], [18, 4], [20, 3]], 1);
+    pointLabel('label-poi-minor', SL.poi, poiFilter('minor'), poiLabelColor(palette), [[17, 9], [19, 10.5]], {
+      minzoom: 17, anchor: 'top', offset: [0, 0.85], maxWidth: 9, sortKey: key, padding: poiPadding,
     });
-    pointLabel('label-poi', SL.poi, poiFilter('major'), palette.labelPoi, [[15, 10], [18, 11.5], [20, 12.5]], {
-      minzoom: 15, anchor: 'top', offset: [0, 0.8], maxWidth: 9, sortKey: expr(['get', 'rank']),
+    // From z14, not z15. Apple already names a dozen places at z14 — Sagrada
+    // Família, Park Güell, the Arc de Triomf, a supermarket — and GoWay named
+    // none, so its z14 was a map of metro stations: every coloured label in a
+    // matched frame came from the transit layer, which is one hue. The padding
+    // ramp keeps it to the handful that fit.
+    pointLabel('label-poi', SL.poi, poiFilter('major'), poiLabelColor(palette), [[14, 9], [15, 9.5], [18, 11], [20, 12]], {
+      minzoom: 14, anchor: 'top', offset: [0, 0.9], maxWidth: 9, sortKey: key, padding: poiPadding,
     });
-    pointLabel('label-poi-transit', SL.poi, poiFilter('station'), palette.labelPoi, [[14, 10], [18, 12]], {
-      minzoom: 14, anchor: 'top', offset: [0, 0.9], maxWidth: 9, sortKey: expr(['get', 'rank']),
+    pointLabel('label-poi-transit', SL.poi, poiFilter('station'), poiLabelColor(palette), [[14, 9.5], [18, 11.5]], {
+      minzoom: 14, anchor: 'top', offset: [0, 1], maxWidth: 9, sortKey: key,
+      padding: byZoom([[14, 34], [16, 18], [18, 8]], 1),
     });
   }
 
@@ -1009,8 +1289,8 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
 
   // The `park` source-layer's polygons get their name at the pole of
   // inaccessibility, which is why this is a point label over polygon geometry.
-  pointLabel('label-park', SL.park, filter(['all', ['has', 'name']]), palette.labelPark, [[12, 10.5], [16, 12.5], [19, 14.5]], {
-    minzoom: 12, maxWidth: 7, sortKey: expr(['get', 'rank']),
+  pointLabel('label-park', SL.park, filter(['all', ['has', 'name']]), palette.labelPark, [[12, 9.5], [16, 11], [19, 13]], {
+    minzoom: 12, maxWidth: 7, sortKey: expr(['coalesce', ['get', 'rank'], 999]),
   });
 
   // Place labels last: MapLibre places symbols from the last layer backwards,
@@ -1021,8 +1301,14 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
   // Neighbourhoods are uppercase and letter-spaced — Apple's one typographic
   // tell for "this is an area, not a point". It also lets them stay small
   // without reading as a POI.
-  pointLabel('label-place-minor', SL.place, filter(classIn('neighbourhood', 'quarter', 'suburb', 'island', 'aboriginal_lands')), palette.labelPlaceMinor, [[11, 9.5], [14, 11.5], [17, 13]], {
-    minzoom: 11, uppercase: true, letterSpacing: 0.1, maxWidth: 7, haloWidth: 1.5,
+  // Sized DOWN. Measured on matched z14 captures of the same frame, Apple's
+  // "SANT ANTONI" has a 7.5 px cap height and GoWay's had 10 — a third larger,
+  // on the class the product owner named first. Apple's is not lighter (it
+  // samples #595e5e against this file's #646969, marginally darker in fact), so
+  // the whole of the "large and dark" impression is size, and size is what
+  // changes here.
+  pointLabel('label-place-minor', SL.place, filter(classIn('neighbourhood', 'quarter', 'suburb', 'island', 'aboriginal_lands')), palette.labelPlaceMinor, [[11, 8], [14, 9.5], [17, 10.5]], {
+    minzoom: 11, uppercase: true, letterSpacing: 0.09, maxWidth: 7, haloWidth: 1.5,
   });
   pointLabel('label-place-village', SL.place, filter(classIn('village')), palette.labelPlace, [[9, 10.5], [12, 13], [16, 15.5]], { minzoom: 9, font: BOLD, haloWidth: 1.6 });
   pointLabel('label-place-town', SL.place, filter(classIn('town')), palette.labelPlace, [[6, 11], [10, 14], [13, 17], [16, 19]], { minzoom: 6, font: BOLD, haloWidth: 1.7 });

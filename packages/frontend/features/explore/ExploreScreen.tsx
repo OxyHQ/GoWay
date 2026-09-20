@@ -49,6 +49,7 @@ import {
   type MapCanvasError,
   type MapFitOptions,
   type MapMarker,
+  type MapViewport,
   type MapViewportChange,
 } from '@/components/map';
 import { MAP_SHEET_HALF_RATIO, MapSheet, type MapSheetSnap } from '@/components/sheet/MapSheet';
@@ -173,9 +174,21 @@ function useMapPadding(layout: 'sheet' | 'panel', snap: MapSheetSnap): MapFitOpt
 export interface ExploreScreenProps {
   /** Opened from `https://goway.to/place/<placeId>`. */
   initialPlaceId?: string | null;
+  /**
+   * Camera on first render, from `https://goway.to/?lat=…&lng=…&zoom=…`.
+   *
+   * `null` — the normal case, and what an unreadable link resolves to — means
+   * the canvas opens on its own default. The route parses it (`app/index.tsx`);
+   * this screen only passes it on, because the canvas is the thing that owns
+   * "initial" and nothing here should be tempted to re-apply it later.
+   */
+  initialViewport?: MapViewport | null;
 }
 
-export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenProps) {
+export default function ExploreScreen({
+  initialPlaceId = null,
+  initialViewport = null,
+}: ExploreScreenProps) {
   const { t } = useTranslation();
   const mapRef = useRef<MapApi>(null);
   const insets = useSafeAreaInsets();
@@ -290,6 +303,7 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
     <View className="flex-1 bg-background">
       <MapCanvas
         ref={mapRef}
+        initialViewport={initialViewport ?? undefined}
         markers={explore.markers}
         renderMarker={renderMarker}
         overlays={explore.overlays}

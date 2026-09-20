@@ -220,7 +220,6 @@ export interface CartographyPalette {
   labelRoad: string;
   labelWater: string;
   labelPark: string;
-  labelPoi: string;
   /** The halo behind every label. Generous halos are half of the reason a
    *  label-forward map stays readable over a dense basemap. */
   halo: string;
@@ -228,6 +227,39 @@ export interface CartographyPalette {
   haloStrong: string;
 
   poi: PoiPalette;
+  /**
+   * The same category hues, as TEXT.
+   *
+   * Apple's single strongest cartographic device is that a POI's *label* is
+   * printed in its category's colour, not just its pin: a view of Barcelona at
+   * z16 contains ~1380 coloured glyph components and ~340 neutral ones, so the
+   * coloured type IS the map. Measured on `apple-bcn-z16-light`; GoWay scored
+   * 83 to 380 the other way round before this field existed.
+   *
+   * It cannot be {@link poi} itself. A pin is a filled disc and reads at
+   * 3:1; text is thin strokes and needs 4.5:1, and `#fc791e` on the halo cream
+   * is **2.41:1** — Apple ships that, and a product with an accessibility floor
+   * cannot. So every hue here is its {@link poi} twin walked down (light) or up
+   * (dark) its own lightness axis, hue and saturation untouched, until it
+   * clears 4.5:1. The family survives the walk: the orange is still the orange
+   * next to the green, which is the entire job the colour is doing.
+   *
+   * Contrast is quoted against the HALO, because a haloed glyph sits on its
+   * halo and not on the ground — light `#f6f4eb`, dark the 0.9-alpha halo over
+   * land, `#29364a` effective. The light values additionally clear 4.5:1
+   * against `#fefefe`, the brightest thing a POI label can land on (a street).
+   *
+   * This REPLACES a single `labelPoi` grey (`#3b3d3d` / `#b9c5d4`), which is
+   * why that field is gone: a POI label now has no colour of its own, only its
+   * category's. `other` is the grey an unmapped class falls to.
+   *
+   * On a DARK ground the brightening cannot go further without losing the
+   * device. Walking the same hues to 6.5:1 instead of 4.5:1 collapses civic and
+   * vehicle onto the same `#c8d1f1` and turns the orange into `#ffc6a0`, at
+   * which point there are no longer eleven distinguishable categories — so
+   * dark mode's POI type is measurably dimmer than Apple's and stays that way.
+   */
+  poiLabel: PoiPalette;
 }
 
 /**
@@ -324,7 +356,6 @@ export const LIGHT_PALETTE: CartographyPalette = {
   labelRoad: '#636766', // (chosen)
   labelWater: '#245f7c', // (chosen) 4.53:1 on #8ddbf6; a lighter blue cannot clear it
   labelPark: '#166a2f', // measured #1f823d -> 4.98:1 (a11y divergence; measured is 3.62:1)
-  labelPoi: '#3b3d3d', // (chosen) Apple's POI labels are near-black with a coloured icon
   halo: 'rgba(246,244,235,0.95)', // the land colour, which is what Apple haloes with
   haloStrong: '#ffffff',
 
@@ -343,6 +374,23 @@ export const LIGHT_PALETTE: CartographyPalette = {
     worship: '#8a7fb8', // (chosen) between lodging and civic
     vehicle: '#5f75ce', // (chosen) civic blue, one step lighter
     other: '#8d8f8f', // (chosen) neutral grey for an unnamed class
+  },
+
+  // Each one is its `poi` twin darkened until it clears 4.5:1 on the halo
+  // cream, hue and saturation held. The trailing numbers are `halo / white
+  // street` — the second is the worst ground a POI label lands on.
+  poiLabel: {
+    foodDrink: '#bc4e03', // from #fc791e (2.41:1) -> 4.51:1 / 4.92:1
+    shopping: '#926607', // from #f4aa0b (1.80:1) -> 4.62:1 / 5.05:1
+    outdoors: '#1a7f35', // from #23ae48 (2.64:1) -> 4.61:1 / 5.04:1
+    transit: '#1a64e5', // already 4.77:1 / 5.21:1 — unchanged
+    lodging: '#9248dd', // from #a568e3 (3.35:1) -> 4.55:1 / 4.97:1
+    health: '#da104e', // from #f25283 (3.02:1) -> 4.58:1 / 5.00:1
+    civic: '#5169c8', // from #5b71cb (4.08:1) -> 4.53:1 / 4.95:1
+    culture: '#cb2299', // from #e76ec3 (2.57:1) -> 4.51:1 / 4.92:1
+    worship: '#7466aa', // from #8a7fb8 (3.28:1) -> 4.51:1 / 4.93:1
+    vehicle: '#5169ca', // from #5f75ce (3.87:1) -> 4.51:1 / 4.93:1
+    other: '#6e7070', // from #8d8f8f (2.95:1) -> 4.52:1 / 4.94:1
   },
 };
 
@@ -414,7 +462,6 @@ export const DARK_PALETTE: CartographyPalette = {
   labelRoad: '#f2f5f9', // (chosen) 4.31:1 on ordinary streets
   labelWater: '#7fa8d8', // (chosen)
   labelPark: '#7ee0b4', // (chosen) 4.86:1 on #005d5b
-  labelPoi: '#b9c5d4', // (chosen)
   halo: 'rgba(40,53,72,0.9)', // a shade under the land, which is what Apple haloes with
   haloStrong: 'rgba(32,42,58,0.95)',
 
@@ -431,6 +478,23 @@ export const DARK_PALETTE: CartographyPalette = {
     worship: '#a79ccd',
     vehicle: '#8397e0',
     other: '#a6a9ad',
+  },
+
+  // Lifted rather than darkened — on a dark ground the legible direction is up.
+  // Contrast is quoted on the halo (`rgba(40,53,72,0.9)` over land, `#29364a`
+  // effective), then on bare land, which is the softer of the two.
+  poiLabel: {
+    foodDrink: '#ff944c', // from #ff9147 (4.42:1 land) -> 5.57:1 / 4.52:1
+    shopping: '#f8bc3a', // already 7.12:1 / 5.77:1 — unchanged
+    outdoors: '#41c769', // from #3fc667 (4.47:1) -> 5.58:1 / 4.52:1
+    transit: '#87b1f5', // from #4a89f0 (2.89:1) -> 5.60:1 / 4.54:1
+    lodging: '#c59ff1', // from #b98bee (3.76:1) -> 5.58:1 / 4.52:1
+    health: '#fa90af', // from #f9789d (3.86:1) -> 5.62:1 / 4.55:1
+    civic: '#9faee6', // from #7f93de (3.36:1) -> 5.62:1 / 4.55:1
+    culture: '#f090d7', // from #f08ed6 (4.49:1) -> 5.62:1 / 4.56:1
+    worship: '#b3aad4', // from #a79ccd (3.90:1) -> 5.59:1 / 4.53:1
+    vehicle: '#9eade7', // from #8397e0 (3.52:1) -> 5.57:1 / 4.51:1
+    other: '#adafb3', // from #a6a9ad (4.19:1) -> 5.56:1 / 4.50:1
   },
 };
 
