@@ -29,6 +29,28 @@
   --color-card: var(--card);
 }
 
+/* GoWay's BRAND ink — the logo's own two blues, and nothing else's.
+
+   These are not a re-skin of Bloom and they deliberately do NOT redefine
+   `--primary`. `BloomThemeProvider` owns `--primary` and rewrites it at runtime
+   from whichever Oxy theme the user picked; a logo that followed it would be a
+   different logo in every theme, which is the one thing a logo may not be. And
+   overriding it here would repaint every Bloom control in the app blue as a
+   side effect of shipping a logo. So GoWay's blue sits BESIDE Bloom's primary
+   — a new key, no existing token restated.
+
+   Registering them under `@theme` is what makes `bg-brand-goway` /
+   `text-brand-goway-tint` emit at build time for chrome that has to sit next to
+   the mark. The logo ITSELF never reads these: it is drawn by
+   `components/brand/`, from `GOWAY_INK` in `components/brand/artwork.ts`, which
+   is the declaration these two lines mirror. React Native cannot read a CSS
+   variable, so the two spellings are unavoidable; `components/brand/__tests__`
+   fails the build if they ever disagree. */
+@theme {
+  --color-brand-goway: #004aad;
+  --color-brand-goway-tint: #acd0ff;
+}
+
 /* :root fallbacks so the build's color vars are non-empty before the theme
    provider hydrates. BloomThemeProvider overrides these at runtime. */
 @layer base {

@@ -49,6 +49,7 @@ import {
   type MapCanvasError,
   type MapFitOptions,
   type MapMarker,
+  type MapPressEvent,
   type MapViewportChange,
 } from '@/components/map';
 import { MAP_SHEET_HALF_RATIO, MapSheet, type MapSheetSnap } from '@/components/sheet/MapSheet';
@@ -261,13 +262,14 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
   /**
    * A tap on the map.
    *
-   * It only ever means something while the planner is waiting for a point: a
-   * tap that set a stop the user had not asked to set would make the map
-   * unusable for its main job, which is being dragged around.
+   * The canvas has already decided WHICH of the three things was hit — a GoWay
+   * marker (in which case this does not fire at all), one of the basemap's own
+   * labels, or bare map. What that means for the product is `useExplore`'s
+   * call, not this component's; see `onMapPress` there.
    */
   const handleMapPress = useCallback(
-    (event: { coordinate: { latitude: number; longitude: number } }) => {
-      explore.onMapPress(event.coordinate);
+    (event: MapPressEvent) => {
+      explore.onMapPress(event);
     },
     [explore],
   );
@@ -295,6 +297,9 @@ export default function ExploreScreen({ initialPlaceId = null }: ExploreScreenPr
         overlays={explore.overlays}
         onMarkerPress={explore.onMarkerPress}
         onPress={handleMapPress}
+        // What the basemap is already labelling, so GoWay does not draw a
+        // second chip over it. See `lib/goway/basemapLabels.ts`.
+        onLabelsChange={explore.onLabelsChange}
         showUserLocation={followingLocation}
         onViewportChange={handleViewportChange}
         onError={setMapError}

@@ -216,6 +216,10 @@ function SelectionBody({ explore }: { explore: ExploreController }) {
     );
   }
 
+  if (selection.kind === 'label') {
+    return <BasemapLabelBody explore={explore} />;
+  }
+
   if (explore.selectedPlaceFailure) {
     return <FailureState kind={explore.selectedPlaceFailure} what="this place" />;
   }
@@ -236,6 +240,57 @@ function SelectionBody({ explore }: { explore: ExploreController }) {
       onDirections={() => explore.directions.openTo(place)}
       testID="place-details"
     />
+  );
+}
+
+/**
+ * A label the BASEMAP drew, tapped, that GoWay holds no record for.
+ *
+ * The map has always known these — every shop and station name on it comes out
+ * of the vector tiles — and until they became tappable that knowledge was
+ * unreachable. What it must NOT do now is imitate a place card: the tiles carry
+ * a name, a point and a category token, and that is the whole of it. There is
+ * no address here, no hours, no phone number and no skeleton pretending one is
+ * loading, because none of those is coming.
+ *
+ * What it does carry is the one action that genuinely works on a bare point —
+ * directions — and, while search reconciliation is still running, silence
+ * rather than a premature "GoWay doesn't have this": the answer arrives within
+ * a request, and a card that says the wrong thing for 400 ms is worse than a
+ * card that says less.
+ */
+function BasemapLabelBody({ explore }: { explore: ExploreController }) {
+  const label = explore.selectedLabel;
+  if (!label) return null;
+
+  return (
+    <View className="gap-space-8 px-space-16 pb-space-16" testID="basemap-label-details">
+      <Text className="text-sectionTitle text-foreground">{label.name}</Text>
+      {explore.labelCategory ? (
+        <Text className="text-bodySmall text-muted-foreground">{explore.labelCategory}</Text>
+      ) : null}
+      <View className="flex-row">
+        <Button
+          variant="primary"
+          size="small"
+          leadingIcon={RiRouteLine}
+          onPress={() => explore.directions.openToPoint(label.coordinate, label.name)}
+          accessibilityLabel={`Directions to ${label.name}`}
+        >
+          Directions
+        </Button>
+      </View>
+      {explore.selectedLabelBusy ? (
+        <View className="flex-row items-center gap-space-8">
+          <Loading variant="spinner" size="small" />
+          <Text className="text-caption text-muted-foreground">Checking GoWay for this place…</Text>
+        </View>
+      ) : (
+        <Text className="text-caption text-muted-foreground">
+          This is a name from the map data. GoWay doesn&apos;t hold a place record for it yet.
+        </Text>
+      )}
+    </View>
   );
 }
 

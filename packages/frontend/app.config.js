@@ -5,6 +5,33 @@ const IS_DEV = process.env.APP_VARIANT === 'development';
 const APP_ID = IS_DEV ? 'to.goway.app.dev' : 'to.goway.app';
 const APP_NAME = IS_DEV ? 'GoWay (Dev)' : 'GoWay';
 
+// GoWay's icons, rendered from the ONE piece of artwork in
+// `components/brand/artwork.ts` — the same geometry the map badge draws, so an
+// icon can never be a different logo from the one in the product.
+//
+// These four are PNG because Expo's image pipeline is PNG: `icon` becomes the
+// iOS asset catalogue, `foregroundImage` becomes the Android adaptive layers,
+// and both are rasterised at build time from whatever file is named here. The
+// web favicon is the exception and gets the SVG as well — see `app/+html.tsx`.
+//
+// Each is the MARK, never the wordmark, except the splash. Two rows of bubble
+// letters do not survive a 60px launcher grid; the note on `GOWAY_MARK` records
+// where even the single "G" stops reading, and the sizes below sit well above
+// it. The splash has a whole screen, so it gets the full lockup.
+//
+//  - `icon.png`          1024, opaque white, mark at 70%. iOS forbids alpha and
+//                        masks the corners itself, so it is drawn full-bleed.
+//  - `adaptive-icon.png` 1024, transparent, mark at 56% — inside Android's
+//                        central safe zone, which is all a round, squircle or
+//                        squared launcher mask is guaranteed to keep.
+//  - `splash-icon.png`   1024x648, transparent, so ONE file works over both
+//                        the light and dark splash backgrounds below.
+//  - `favicon.png`       64, opaque — a fallback for browsers with no SVG icon.
+const ICON = './assets/brand/icon.png';
+const ADAPTIVE_ICON = './assets/brand/adaptive-icon.png';
+const SPLASH_ICON = './assets/brand/splash-icon.png';
+const FAVICON = './assets/brand/favicon.png';
+
 module.exports = {
   expo: {
     name: APP_NAME,
@@ -13,6 +40,7 @@ module.exports = {
     version: '0.1.0',
     orientation: 'portrait',
     userInterfaceStyle: 'automatic',
+    icon: ICON,
     newArchEnabled: true,
     experiments: {
       typedRoutes: true,
@@ -24,18 +52,35 @@ module.exports = {
     },
     android: {
       package: APP_ID,
+      adaptiveIcon: {
+        foregroundImage: ADAPTIVE_ICON,
+        // White rather than GoWay blue: the mark's own #004aad outline is what
+        // separates it from its surroundings, and on a blue plate that outline
+        // vanishes and the "G" becomes a pale blob. Checked by rendering the
+        // logo over the eight colours a GoWay map is actually made of before
+        // the badge was designed — see `components/map/MapBrand.tsx`.
+        backgroundColor: '#ffffff',
+      },
     },
     web: {
       bundler: 'metro',
       output: 'single',
+      favicon: FAVICON,
     },
     plugins: [
       'expo-router',
       [
         'expo-splash-screen',
         {
+          // ONE image for both appearances. The lockup carries its own heavy
+          // outline, so it reads unchanged on the near-white and the near-black
+          // background; rendered over both before this was committed rather
+          // than assumed. That is also why there is no `dark.image`.
+          image: SPLASH_ICON,
+          imageWidth: 240,
+          resizeMode: 'contain',
           backgroundColor: '#faf1f6',
-          dark: { backgroundColor: '#100d10' },
+          dark: { image: SPLASH_ICON, backgroundColor: '#100d10' },
         },
       ],
       // MapLibre Native — the iOS/Android map renderer behind

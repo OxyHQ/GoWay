@@ -619,10 +619,70 @@ surface is public, and a key would only be a way for the embed to break).
 Anything beyond this belongs in `@goway.to/sdk`, where the caller owns the page.
 
 The embed renders `MapCanvas` and nothing else — no top bar, no sheet, no
-search, no location control, no sign-in. Two things are non-negotiable and are
-rendered anyway: the attribution (`MapCanvas` renders it itself, and feature
-code cannot turn it off) and a "View larger map" link, because an embed that is
-a dead end is a screenshot.
+search, no location control, no sign-in. Three things are non-negotiable and
+are rendered anyway: **the GoWay mark** in the bottom-left corner, the
+attribution in the bottom-right, and a "View larger map" link, because an embed
+that is a dead end is a screenshot. The first two are rendered by `MapCanvas`
+itself and neither takes a prop, so there is no parameter that removes them and
+no route that can forget them. See the next section.
+
+## The brand
+
+One drawing, everywhere: `components/brand/artwork.ts`. It is the logo as
+geometry — the delivered 118 kB SVG flattened, cropped to its ink and
+re-encoded at 53 kB, with the rewrite proved against the original pixel by
+pixel rather than eyeballed (the numbers, and the traps, are in that file's
+header).
+
+| where | what | drawn by |
+|---|---|---|
+| every map, bottom-left | wordmark, 76px | `components/map/MapBrand.tsx` |
+| the embed, `/frame` | the same, unconditionally | `MapCanvas` |
+| tab / favicon | the "G" mark, SVG | `app/+html.tsx` → `/brand/goway-mark.svg` |
+| iOS & Android icon, splash | mark / wordmark, PNG | `app.config.js` → `assets/brand/` |
+| anyone else's page | `https://goway.to/brand/goway-wordmark.svg` | `public/brand/` |
+
+Three rules, each of which is a gate and not a convention:
+
+- **The app never fetches its own logo.** `GowayLogo` draws the geometry
+  through `react-native-svg` on web and native alike, so the brand is part of
+  the bundle: if the app rendered, the logo rendered. A logo that arrives over
+  the network fails by being *absent*, which is the one failure a brand mark
+  cannot have.
+- **`public/brand/*.svg` is generated, never hand-edited.** `bun run brand`
+  writes it from the same artwork; `bun run brand:check` fails CI on drift.
+  Two copies of a logo diverge silently and are noticed a release later.
+- **The blue is ink, not theme.** `--color-brand-goway` /
+  `--color-brand-goway-tint` sit *beside* Bloom's `--primary`, never over it —
+  `BloomThemeProvider` rewrites `--primary` at runtime from the user's Oxy
+  theme, and a logo that followed it would be a different logo in every theme.
+  `components/brand/__tests__/artwork.test.ts` fails if the CSS and the TS
+  spellings ever disagree.
+
+No light and dark variants, and no plate behind the mark on the map: the
+artwork's own heavy `#004aad` outline is what separates it from the map. That
+was checked by rendering it over the eight colours a GoWay map is actually made
+of, from `lib/map/style/palette.ts`, not assumed — on the light ones the
+outline carries it, on the dark ones the outline recedes and the `#acd0ff` and
+`#ffffff` counters carry it instead.
+
+**`app/+html.tsx` does not ship** and did not before this either. `web.output`
+is `'single'`, and expo-router renders `+html.tsx` only for `'static'` /
+`'server'`; the export writes Expo's own template, so the `theme-color` entries
+that have been in that file all along have never reached a browser. The tab
+icon works anyway, through `web.favicon` (Expo emits `dist/favicon.ico` and the
+one `<link>` its template does write) and through `public/apple-touch-icon.png`
+at the site root, which is the path iOS fetches when no `<link>` declares one.
+The casualty is `og:image` — unfurlers do not run JavaScript, so a link to
+goway.to has no share card until `output: 'static'`. The image is generated and
+served at `/brand/goway-og.png`, waiting.
+
+**The mark's honest limit is 16px.** At 32px and above the "G" is unmistakable;
+at 16 the heavy outline closes its counter and it reads as a round blue
+letter-shape. That is why the favicon is shipped as SVG — a 16px tab slot on a
+2x display rasterises at 32 device pixels — and why no 16x16 PNG is baked from
+it. The wordmark dies much earlier, below about 48px, which is why it is never
+the icon.
 
 ## App shell
 
@@ -691,3 +751,7 @@ elevation `shadow-s|m`.
   `className` layout is inert. `app/`, `components/` and `lib/` are covered.
 - Never restate a token Bloom defines, and never write `hsl(var(--x))` — Bloom
   writes full `rgb(...)`, so double-wrapping yields transparent.
+- `--color-brand-goway` and `--color-brand-goway-tint` are the exception that
+  proves it: they are GoWay's logo ink, a key Bloom does not define, and they
+  are declared once beside Bloom's palette rather than over it. See
+  "The brand".

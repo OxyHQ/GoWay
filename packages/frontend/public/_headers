@@ -108,6 +108,30 @@
 /map/sprites/*
   Cache-Control: public, max-age=86400
 
+# GoWay's brand assets — the logo as files, for everything that can only take a
+# URL. Generated from `components/brand/artwork.ts` (the wordmark and the mark)
+# or rasterised from those two (the apple-touch icon and the og:image).
+#
+# They carry the SAME `Access-Control-Allow-Origin: *` and
+# `Cross-Origin-Resource-Policy: cross-origin` pair as `/map/*`, and for the
+# same reason, written out here rather than assumed: a partner who embeds
+# `/frame` will also want to put the GoWay mark in their own page, their docs
+# or their attribution line, and a 200 with no ACAO is the shape where the
+# bytes cross the wire and the browser throws them away. Everything under this
+# path is a public logo — no cookie, no token, nothing that varies by caller —
+# so a wildcard can leak nothing. A brand asset a third party cannot fetch is a
+# brand nobody puts on their page, which is the entire point of shipping it.
+#
+# Cached like the style documents rather than like the glyphs: these paths are
+# NOT content-hashed (`app/+html.tsx` and other people's pages name them
+# literally), so they must never be immutable, and an hour is long enough that
+# a favicon is fetched once a session and short enough that a logo revision
+# reaches every client the same day.
+/brand/*
+  Access-Control-Allow-Origin: *
+  Cross-Origin-Resource-Policy: cross-origin
+  Cache-Control: public, max-age=3600, must-revalidate
+
 # Every response. See the note at the top of this file — these two are the
 # headers Pages used to add for free and Workers does not.
 #

@@ -129,7 +129,15 @@ export interface DirectionsController {
   chooseOnMap: (index: number) => void;
   cancelPicking: () => void;
   /** Feed a map tap in. Does nothing unless a slot is waiting for one. */
-  onMapPress: (coordinate: GeoCoordinate) => void;
+  /**
+   * A tap on the map while a slot is waiting for a point.
+   *
+   * `name` is what the BASEMAP called whatever was under the finger, when the
+   * tap landed on one of its labels. Supplying it is not cosmetic: it is both a
+   * better label than "Point on the map" and a saved reverse geocode, because
+   * the name the user was looking at is the name they meant.
+   */
+  onMapPress: (coordinate: GeoCoordinate, name?: string) => void;
 
   setStopFromPlace: (index: number, place: Place) => void;
   setStopFromResult: (index: number, result: SearchResult) => void;
@@ -179,6 +187,15 @@ export interface DirectionsController {
   openTo: (place: Place) => void;
   /** Enter the planner with this search result as the destination. */
   openToResult: (result: SearchResult) => void;
+  /**
+   * Enter with a bare point as the destination, under a name somebody can read.
+   *
+   * For a basemap label GoWay holds no place record for: there is no place ID
+   * to route by, so the coordinate travels, and the name travels with it so the
+   * field does not read "Point on the map" for something the user tapped BY
+   * name.
+   */
+  openToPoint: (coordinate: GeoCoordinate, name: string) => void;
   /** Enter the planner with nothing filled in. */
   open: () => void;
   /** Leave. The camera is not moved: browsing resumes where the map already is. */
@@ -389,14 +406,18 @@ export function useDirections(options: DirectionsOptions): DirectionsController 
   useEffect(() => () => reverseGeocode.current?.abort(), []);
 
   const onMapPress = useCallback(
-    (coordinate: GeoCoordinate) => {
+    (coordinate: GeoCoordinate, name?: string) => {
       if (picking == null) return;
-      const stop = stopFromPoint(coordinate);
+      const named = name?.trim();
+      const stop = named ? stopFromPoint(coordinate, named) : stopFromPoint(coordinate);
       // A press the engine could not turn into a real point is not a stop, so
       // the slot stays open and nothing is reverse-geocoded for it.
       if (!stop) return;
       setStopAt(picking, stop);
-      nameThePoint(stop.id, coordinate);
+      // No reverse geocode when the basemap already told us what this is. The
+      // label the user tapped is a better answer than the nearest address, and
+      // overwriting it a moment later with one would look like a bug.
+      if (!named) nameThePoint(stop.id, coordinate);
     },
     [nameThePoint, picking, setStopAt],
   );
@@ -458,6 +479,10 @@ export function useDirections(options: DirectionsOptions): DirectionsController 
   const openTo = useCallback((place: Place) => openWith(stopFromPlace(place)), [openWith]);
   const openToResult = useCallback(
     (result: SearchResult) => openWith(stopFromResult(result)),
+    [openWith],
+  );
+  const openToPoint = useCallback(
+    (coordinate: GeoCoordinate, name: string) => openWith(stopFromPoint(coordinate, name)),
     [openWith],
   );
 
@@ -713,6 +738,7 @@ export function useDirections(options: DirectionsOptions): DirectionsController 
 
     openTo,
     openToResult,
+    openToPoint,
     open,
     close,
   };
