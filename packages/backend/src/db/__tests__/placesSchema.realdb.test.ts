@@ -254,20 +254,122 @@ describe('places_duplicate_candidates', () => {
   });
 });
 
+describe('places_names', () => {
+  it('holds one row per (place, language, SOURCE), so a correction survives a re-import', async () => {
+    // The whole point of the third column. OpenStreetMap's Spanish name and
+    // GoWay's correction of it coexist; an importer refreshing the first has
+    // no way to address the second.
+    await suite!.client`
+      INSERT INTO places_names (id, place_id, language, name, source)
+      VALUES ('n-1', 'p-1', 'es', 'Cafe Central', 'openstreetmap'),
+             ('n-2', 'p-1', 'es', 'Café Central', 'goway')
+    `;
+    const [row] = await suite!.client<{ count: string }[]>`
+      SELECT count(*)::text AS count FROM places_names WHERE place_id = 'p-1' AND language = 'es'
+    `;
+    expect(row?.count).toBe('2');
+  });
+
+  it('refuses a second row for the same place, language and source', async () => {
+    const message = await statementFailure(
+      () => suite!.client`
+        INSERT INTO places_names (id, place_id, language, name, source)
+        VALUES ('n-dup', 'p-1', 'es', 'Otra cosa', 'openstreetmap')
+      `,
+    );
+    expect(message).toContain('places_names_language_source_key');
+  });
+
+  it('generates name_normalized without touching the name a contributor typed', async () => {
+    const [row] = await suite!.client<{ name: string; name_normalized: string }[]>`
+      SELECT name, name_normalized FROM places_names WHERE id = 'n-2'
+    `;
+    expect(row?.name).toBe('Café Central');
+    expect(row?.name_normalized).toBe('café central');
+  });
+
+  it('refuses a language tag that is not canonical BCP 47', async () => {
+    // `ES` and `es` would be two rows under the unique key above, so the
+    // canonical form is enforced HERE and not only at the HTTP edge — an
+    // importer, a backfill and a psql session all reach this table with no zod
+    // schema in front of them.
+    for (const tag of ['ES', 'es_MX', 'es-mx', ' es']) {
+      const message = await statementFailure(
+        () => suite!.client`
+          INSERT INTO places_names (id, place_id, language, name, source)
+          VALUES (${`n-bad-${tag}`}, 'p-1', ${tag}, 'X', 'openstreetmap')
+        `,
+      );
+      expect(message).toContain('places_names_language_tag_check');
+    }
+  });
+
+  it('refuses the OpenStreetMap name:* keys that are not languages', async () => {
+    // `left`, `right`, `signed` and `prefix` are all real `name:*` suffixes and
+    // all well-formed under the wider BCP 47 rule. A street's left-hand-side
+    // label is not a translation and must not enter the map's vocabulary as
+    // one.
+    for (const key of ['left', 'right', 'signed', 'etymology']) {
+      const message = await statementFailure(
+        () => suite!.client`
+          INSERT INTO places_names (id, place_id, language, name, source)
+          VALUES (${`n-key-${key}`}, 'p-1', ${key}, 'X', 'openstreetmap')
+        `,
+      );
+      expect(message).toContain('places_names_language_tag_check');
+    }
+  });
+
+  it('accepts the shapes OpenStreetMap really carries', async () => {
+    await suite!.client`
+      INSERT INTO places_names (id, place_id, language, name, source)
+      VALUES ('n-ok-1', 'p-1', 'zh-Hant', 'X', 'openstreetmap'),
+             ('n-ok-2', 'p-1', 'en-GB', 'X', 'openstreetmap'),
+             ('n-ok-3', 'p-1', 'es-419', 'X', 'openstreetmap'),
+             ('n-ok-4', 'p-1', 'ca-valencia', 'X', 'openstreetmap'),
+             ('n-ok-5', 'p-1', 'zh-Hant-HK', 'X', 'openstreetmap')
+    `;
+    const [row] = await suite!.client<{ count: string }[]>`
+      SELECT count(*)::text AS count FROM places_names WHERE id LIKE 'n-ok-%'
+    `;
+    expect(row?.count).toBe('5');
+  });
+
+  it('refuses a blank name and a blank source', async () => {
+    const blankName = await statementFailure(
+      () => suite!.client`
+        INSERT INTO places_names (id, place_id, language, name, source)
+        VALUES ('n-blank', 'p-1', 'fr', '   ', 'openstreetmap')
+      `,
+    );
+    expect(blankName).toContain('places_names_name_not_blank_check');
+
+    const blankSource = await statementFailure(
+      () => suite!.client`
+        INSERT INTO places_names (id, place_id, language, name, source)
+        VALUES ('n-nosource', 'p-1', 'fr', 'Café', '  ')
+      `,
+    );
+    expect(blankSource).toContain('places_names_source_not_blank_check');
+  });
+});
+
 describe('deleting a place', () => {
   it('takes its sources, capabilities, claims and duplicate candidates with it', async () => {
-    // Every child declares an explicit `onDelete`, and for these four it is
+    // Every child declares an explicit `onDelete`, and for these five it is
     // `cascade`: none of them means anything without the place. A dangling
     // capability row would keep answering a `?capabilities=` filter for a place
-    // that no longer exists.
+    // that no longer exists, and a dangling name row would keep the place's
+    // Spanish label alive after the place itself is gone.
     await suite!.client`DELETE FROM places WHERE id = 'p-1'`;
-    const [counts] = await suite!.client<{ sources: string; capabilities: string; claims: string; duplicates: string }[]>`
+    const [counts] = await suite!.client<{ sources: string; capabilities: string; claims: string; duplicates: string; names: string }[]>`
       SELECT
         (SELECT count(*) FROM places_sources WHERE place_id = 'p-1')::text AS sources,
         (SELECT count(*) FROM places_capabilities WHERE place_id = 'p-1')::text AS capabilities,
         (SELECT count(*) FROM places_claims WHERE place_id = 'p-1')::text AS claims,
+        (SELECT count(*) FROM places_names WHERE place_id = 'p-1')::text AS names,
         (SELECT count(*) FROM places_duplicate_candidates WHERE place_id = 'p-1' OR candidate_place_id = 'p-1')::text AS duplicates
     `;
-    expect(counts).toEqual({ sources: '0', capabilities: '0', claims: '0', duplicates: '0' });
+    expect(counts).toEqual({ sources: '0', capabilities: '0', claims: '0', names: '0', duplicates: '0' });
   });
 });

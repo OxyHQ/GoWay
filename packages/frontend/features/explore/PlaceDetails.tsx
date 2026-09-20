@@ -14,6 +14,7 @@
  */
 import { useCallback } from 'react';
 import { Linking, Platform, View } from 'react-native';
+import { placeDisplayName } from '@goway.to/sdk';
 import type { Place } from '@goway.to/sdk';
 import * as WebBrowser from 'expo-web-browser';
 import { Button } from '@oxy.so/bloom/button';
@@ -92,6 +93,8 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
     });
   }, [gate]);
 
+  const displayName = placeDisplayName(place);
+
   const suggestEdit = useCallback(() => {
     gate.run(() => {
       // Authored edits land with the contribution flow; identity is required
@@ -102,7 +105,10 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
   return (
     <View className="gap-space-16 px-space-16 pb-space-16" testID={testID}>
       <View className="gap-space-4">
-        <Text className="text-sectionTitle text-foreground">{place.name}</Text>
+        {/* The resolved name for the reader's locale, falling back to the
+            place's default. `placeDisplayName` is the SDK's own one-liner, so
+            the sheet, the marker pill and the result row cannot disagree. */}
+        <Text className="text-sectionTitle text-foreground">{displayName}</Text>
         <View className="flex-row flex-wrap items-center gap-space-8">
           <Text className="text-bodySmall text-muted-foreground">{category.label}</Text>
           {place.status === 'closed' ? (
@@ -125,7 +131,7 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
           size="small"
           leadingIcon={RiRouteLine}
           onPress={onDirections}
-          accessibilityLabel={`Directions to ${place.name}`}
+          accessibilityLabel={`Directions to ${displayName}`}
         >
           Directions
         </Button>
@@ -172,7 +178,7 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
           onPress={callPhone}
           leading={<RiPhoneLine width={18} height={18} fill={theme.colors.textSecondary} />}
           title={phone}
-          accessibilityLabel={`Call ${place.name} on ${phone}`}
+          accessibilityLabel={`Call ${displayName} on ${phone}`}
         />
       ) : null}
 
@@ -182,7 +188,7 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
           onPress={openWebsite}
           leading={<RiGlobalLine width={18} height={18} fill={theme.colors.textSecondary} />}
           title={website}
-          accessibilityLabel={`Open the website for ${place.name}${Platform.OS === 'web' ? '' : ' in a browser'}`}
+          accessibilityLabel={`Open the website for ${displayName}${Platform.OS === 'web' ? '' : ' in a browser'}`}
         />
       ) : null}
 

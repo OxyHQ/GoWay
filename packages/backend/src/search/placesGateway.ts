@@ -31,7 +31,13 @@ export interface PlacesGateway {
    * {@link sourceRefKey}. Refs with no binding are simply absent.
    */
   findPlaceIdsBySourceRefs(refs: readonly SourceRefInput[]): Promise<Map<string, string>>;
-  findPlacesByIds(ids: readonly string[]): Promise<Map<string, Place>>;
+  /**
+   * `locale` resolves each place's `localizedName` and is optional so a test
+   * fake may ignore it. A reconciled place's label comes from GoWay's row, not
+   * from the geocoder's, so without this a Spanish-speaking caller loses the
+   * localization Photon already gave them the moment the result reconciles.
+   */
+  findPlacesByIds(ids: readonly string[], locale?: string): Promise<Map<string, Place>>;
   findPlacesNearby(query: NearbyQuery): Promise<PlaceWithDistance[]>;
   findPlacesInBounds(query: BoundsQuery): Promise<Place[]>;
 }

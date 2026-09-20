@@ -38,6 +38,7 @@ import type {
   SearchResultKind,
   SearchSource,
 } from '@goway/shared-types';
+import { placeDisplayName } from '@goway/shared-types';
 import type { SourceRefInput } from '../db/places/placesRepository';
 import { composeDisplayName, contextFrom, put, resultId } from './normalize';
 import type { PlacesGateway } from './placesGateway';
@@ -76,7 +77,11 @@ export function searchResultFromPlace(place: Place): SearchResult {
   const result: SearchResult = {
     id: resultId('goway', place.id),
     displayName: composeDisplayName([
-      place.name,
+      // The resolved name when the request asked for a locale and GoWay holds
+      // one, and the default otherwise — `placeDisplayName` is the contract's
+      // own one-liner, so this label and the one the client renders beside it
+      // cannot disagree.
+      placeDisplayName(place),
       place.address?.city,
       place.address?.region,
       place.address?.country,
@@ -145,6 +150,8 @@ export interface MergeRequest {
   /** A conjunction. A candidate with no reconciled place cannot satisfy one. */
   capabilities?: readonly CapabilityKey[];
   bias?: SpatialBias | undefined;
+  /** BCP 47 tag the reconciled places' names are resolved against. */
+  locale?: string | undefined;
 }
 
 /**
@@ -171,7 +178,7 @@ export async function mergeCandidates(request: MergeRequest): Promise<SearchResu
   const placeById = new Map<string, Place>(ownPlaces.map((place) => [place.id, place]));
   const missing = [...new Set(placeIdByRef.values())].filter((id) => !placeById.has(id));
   if (missing.length > 0) {
-    for (const [id, place] of await gateway.findPlacesByIds(missing)) placeById.set(id, place);
+    for (const [id, place] of await gateway.findPlacesByIds(missing, request.locale)) placeById.set(id, place);
   }
 
   const groups = new Map<string, Group>();

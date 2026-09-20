@@ -11,6 +11,7 @@
  */
 
 export * from './geo';
+export * from './language';
 export * from './place';
 export * from './capture';
 export * from './search';

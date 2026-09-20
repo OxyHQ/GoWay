@@ -56,10 +56,10 @@ export function createPlacesGateway(options: PlacesGatewayOptions = {}): PlacesG
       return resolved;
     },
 
-    async findPlacesByIds(ids) {
+    async findPlacesByIds(ids, locale) {
       const db = getDb();
       const unique = [...new Set(ids)];
-      const places = await Promise.all(unique.map((id) => findPlaceById(db, id, viewer)));
+      const places = await Promise.all(unique.map((id) => findPlaceById(db, id, viewer, locale)));
       const byId = new Map<string, Place>();
       for (const place of places) {
         if (place !== null) byId.set(place.id, place);

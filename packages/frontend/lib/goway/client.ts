@@ -39,6 +39,19 @@
  * A developer must never mistake the fixture for the engine — that confusion
  * is what shipped a straight line to production.
  *
+ * ## The locale is set ONCE, here
+ *
+ * Every place, search, geocoding and routing call the app makes carries the
+ * device's language tag, because it is a client option rather than a parameter
+ * each call site remembers. A locale threaded per call is a locale some call
+ * site forgets, and the symptom is a pin labelled in one language and the sheet
+ * it opens labelled in another.
+ *
+ * It does not change `Place.name`, which is always the place's default,
+ * local-language name; it adds `localizedName`, and `placeDisplayName` is what
+ * the UI renders. A street or a city label still comes from the tile and is
+ * still `name:latin` — that is a separate problem, and a separate issue.
+ *
  * ## Token custody
  *
  * `getAccessToken` is called before every request and the SDK never caches it —
@@ -50,6 +63,7 @@
 import { createGoWayClient, type GoWayClient } from '@goway.to/sdk';
 
 import { API_URL } from '@/lib/config';
+import { deviceLocale } from '@/lib/i18n';
 import { oxyServices } from '@/lib/oxyServices';
 
 import { createFixtureFetch, parseFixtureFaults } from './mockTransport';
@@ -66,6 +80,7 @@ export const USING_FIXTURES = !/^(0|false)$/i.test(process.env.EXPO_PUBLIC_GOWAY
 
 export const gowayClient: GoWayClient = createGoWayClient({
   apiBaseUrl: API_URL,
+  locale: deviceLocale(),
   // Oxy owns the session; the SDK borrows the token per request and keeps none.
   getAccessToken: () => oxyServices.getAccessToken(),
   ...(USING_FIXTURES

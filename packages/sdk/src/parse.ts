@@ -17,6 +17,7 @@ import type {
   Place,
   PlaceCapability,
   PlaceClaim,
+  PlaceName,
   PlaceContact,
   PlaceSourceRef,
   PlaceVerification,
@@ -352,6 +353,22 @@ function parseClaim(value: unknown, path: string): PlaceClaim {
 
 // ── Places ──────────────────────────────────────────────────────────────────
 
+/**
+ * One of a place's names, in one language.
+ *
+ * `source` is a free string rather than a closed set, exactly as on
+ * {@link parseSourceRef}: the source registry is GoWay's to extend, and an SDK
+ * that refused an unrecognised key would break on the release that added one.
+ */
+function parsePlaceName(value: unknown, path: string): PlaceName {
+  const record = object(value, path);
+  return {
+    language: nonEmptyString(record.language, `${path}.language`),
+    name: string(record.name, `${path}.name`),
+    source: nonEmptyString(record.source, `${path}.source`),
+  };
+}
+
 export function parsePlace(value: unknown, path: string): Place {
   const record = object(value, path);
   const place: Place = {
@@ -375,6 +392,16 @@ export function parsePlace(value: unknown, path: string): Place {
   put(place, 'claims', optional(record.claims, `${path}.claims`, (claims, claimsPath) =>
     array(claims, claimsPath, parseClaim),
   ));
+  // Absent from a viewport or nearby list, where GoWay does not publish the
+  // whole set — which is NOT the same as "this place has one name", so an
+  // absent list is never read as empty. `[]` means GoWay holds no translation.
+  put(place, 'names', optional(record.names, `${path}.names`, (names, namesPath) =>
+    array(names, namesPath, parsePlaceName),
+  ));
+  // Present only when the request named a `locale` AND GoWay holds a name in
+  // it. `placeDisplayName` is the published one-liner that falls back to
+  // `name`, so no consumer has to restate the rule.
+  put(place, 'localizedName', optional(record.localizedName, `${path}.localizedName`, parsePlaceName));
   return place;
 }
 

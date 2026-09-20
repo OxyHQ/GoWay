@@ -121,12 +121,26 @@ export type PlaceCreateInput = Pick<Place, 'name' | 'location'> &
  */
 export type PlaceUpdateInput = Partial<PlaceCreateInput>;
 
+/** {@link GoWayRequestOptions} plus the locale a single-place read resolves against. */
+export interface GoWayPlaceReadOptions extends GoWayRequestOptions {
+  /**
+   * BCP 47 tag for {@link Place.localizedName}, overriding the client's own
+   * `locale` for this call. It never changes {@link Place.name}, which is
+   * always the place's default, local-language name.
+   */
+  locale?: string;
+}
+
 export interface GoWayPlacesApi {
   /**
    * One place by its stable GoWay Place ID. Never a provider id: an OSM node
    * can be renumbered without GoWay losing the place's identity.
+   *
+   * A single-place read always carries `names` — every language GoWay holds
+   * one in. The list reads below do not; they carry `localizedName` alone, for
+   * the locale that was asked for.
    */
-  get(placeId: PlaceId, options?: GoWayRequestOptions): Promise<Place>;
+  get(placeId: PlaceId, options?: GoWayPlaceReadOptions): Promise<Place>;
   /**
    * Places within `radiusMeters` of a point, nearest first, each carrying its
    * distance.
@@ -321,7 +335,7 @@ function categoryKeys(value: unknown): readonly string[] | undefined {
   return value as readonly string[];
 }
 
-function nearbyQuery(query: NearbyPlacesQuery): Record<string, QueryValue> {
+function nearbyQuery(query: NearbyPlacesQuery, defaultLocale: string | undefined): Record<string, QueryValue> {
   const record = requireObject(query, 'query');
   return {
     latitude: latitude(record.latitude, 'latitude'),
@@ -330,10 +344,11 @@ function nearbyQuery(query: NearbyPlacesQuery): Record<string, QueryValue> {
     capabilities: capabilityKeys(record.capabilities),
     categories: categoryKeys(record.categories),
     limit: limitOf(record.limit),
+    locale: localeOf(record.locale, defaultLocale),
   };
 }
 
-function boundsQuery(query: PlacesInBoundsQuery): Record<string, QueryValue> {
+function boundsQuery(query: PlacesInBoundsQuery, defaultLocale: string | undefined): Record<string, QueryValue> {
   const record = requireObject(query, 'query');
   const south = latitude(record.south, 'south');
   const north = latitude(record.north, 'north');
@@ -348,6 +363,7 @@ function boundsQuery(query: PlacesInBoundsQuery): Record<string, QueryValue> {
     capabilities: capabilityKeys(record.capabilities),
     categories: categoryKeys(record.categories),
     limit: limitOf(record.limit),
+    locale: localeOf(record.locale, defaultLocale),
   };
 }
 
@@ -610,24 +626,29 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
   const defaultLocale = options.locale;
 
   const places: GoWayPlacesApi = Object.freeze({
-    get: async (placeId: PlaceId, callOptions: GoWayRequestOptions = {}) =>
+    get: async (placeId: PlaceId, callOptions: GoWayPlaceReadOptions = {}) =>
       request(
         config,
-        { method: 'GET', path: `/places/${pathSegment(placeId, 'placeId')}`, signal: callOptions.signal },
+        {
+          method: 'GET',
+          path: `/places/${pathSegment(placeId, 'placeId')}`,
+          query: { locale: localeOf(callOptions.locale, defaultLocale) },
+          signal: callOptions.signal,
+        },
         parsePlace,
       ),
 
     nearby: async (query: NearbyPlacesQuery, callOptions: GoWayRequestOptions = {}) =>
       request(
         config,
-        { method: 'GET', path: '/places/nearby', query: nearbyQuery(query), signal: callOptions.signal },
+        { method: 'GET', path: '/places/nearby', query: nearbyQuery(query, defaultLocale), signal: callOptions.signal },
         parsePlaceWithDistanceList,
       ),
 
     inBounds: async (query: PlacesInBoundsQuery, callOptions: GoWayRequestOptions = {}) =>
       request(
         config,
-        { method: 'GET', path: '/places/bounds', query: boundsQuery(query), signal: callOptions.signal },
+        { method: 'GET', path: '/places/bounds', query: boundsQuery(query, defaultLocale), signal: callOptions.signal },
         parsePlaceList,
       ),
 

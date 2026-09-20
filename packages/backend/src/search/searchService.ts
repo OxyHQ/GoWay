@@ -172,7 +172,18 @@ function foldText(value: string): string {
 export function placeMatchesText(place: Place, query: string): boolean {
   const needle = foldText(query);
   if (needle === '') return true;
-  const haystack = [place.name, ...place.categories, place.address?.street, place.address?.city]
+  const haystack = [
+    place.name,
+    // EVERY language GoWay holds, not the one resolved for this request. A
+    // search box is where the user types what they know the place as, and
+    // that is routinely not the language they read the map in: "Munich" has
+    // to find München for an English speaker in Bavaria, whose locale is
+    // German and whose resolved label will still say München.
+    ...(place.names ?? []).map((name) => name.name),
+    ...place.categories,
+    place.address?.street,
+    place.address?.city,
+  ]
     .filter((part): part is string => typeof part === 'string')
     .map(foldText);
   return haystack.some((part) => part.includes(needle));
@@ -270,6 +281,14 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       ...(query.capabilities && query.capabilities.length > 0 ? { capabilities: [...query.capabilities] } : {}),
       ...(query.categories && query.categories.length > 0 ? { categories: [...query.categories] } : {}),
       limit: Math.min(MAX_PLACES_CANDIDATES, query.limit * PLACES_CANDIDATE_MULTIPLIER),
+      ...(query.locale !== undefined ? { locale: query.locale } : {}),
+      // Search is the one list read that publishes the full name set. It has
+      // to: `placeMatchesText` matches against every language, so a result the
+      // user got by typing "Munich" would otherwise arrive with no evidence of
+      // why it matched. The candidate set is bounded by the result limit, not
+      // by a viewport, so the payload is a handful of rows rather than a
+      // screenful of pins.
+      includeNames: true,
     };
 
     let found: Place[];
@@ -307,6 +326,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       limit: number;
       capabilities?: readonly CapabilityKey[];
       bias?: SpatialBias | undefined;
+      locale?: string | undefined;
     },
   ): Promise<SearchResults> => {
     const lists: CandidateList[] = outcomes.flatMap((outcome) =>
@@ -320,6 +340,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       limit: context.limit,
       ...(context.capabilities ? { capabilities: context.capabilities } : {}),
       bias: context.bias,
+      locale: context.locale,
     });
 
     const answered = outcomes.filter((outcome) => outcome.candidates !== undefined);
@@ -409,6 +430,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       limit: query.limit,
       ...(query.capabilities ? { capabilities: query.capabilities } : {}),
       bias: spatialBiasFor(query),
+      locale: query.locale,
     });
   };
 
@@ -447,6 +469,8 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
           longitude: query.coordinate.longitude,
           radiusMeters,
           limit: query.limit,
+          ...(query.locale !== undefined ? { locale: query.locale } : {}),
+          includeNames: true,
         }),
       ]);
 
@@ -457,6 +481,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
         placesDegraded,
         limit: query.limit,
         bias: { center: query.coordinate, decayMeters: radiusMeters },
+        locale: query.locale,
       });
     },
 
@@ -521,6 +546,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
         placesConsulted: false,
         placesDegraded,
         limit: query.limit,
+        locale: query.locale,
       });
     },
   };

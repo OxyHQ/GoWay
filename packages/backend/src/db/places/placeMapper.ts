@@ -25,6 +25,7 @@ import type {
   CapabilityVerification,
   Place,
   PlaceCapability,
+  PlaceName,
   PlaceClaim,
   PlaceClaimRole,
   PlaceClaimState,
@@ -37,7 +38,8 @@ import type {
 } from '@goway/shared-types';
 import { CAPABILITY_VERIFICATIONS } from '@goway/shared-types';
 import type { SelectedRow } from '@oxy.so/db';
-import { places, placesCapabilities, placesClaims, placesSources } from '../schema';
+import { comparePublishedNames, resolveLocalizedName } from '../../places/placeNames';
+import { places, placesCapabilities, placesClaims, placesNames, placesSources } from '../schema';
 
 /**
  * The columns a place read actually selects.
@@ -79,6 +81,24 @@ export const PLACE_COLUMNS = {
 
 export type PlaceRow = SelectedRow<typeof PLACE_COLUMNS>;
 
+/**
+ * The columns a name read selects.
+ *
+ * `nameNormalized` is absent — reconciliation's private view, exactly as on
+ * `places` — and so is `id`, because a name row has no identity a consumer can
+ * act on: it is addressed by its `(place, language, source)` triple, which is
+ * also the only thing a writer can upsert against.
+ */
+export const NAME_COLUMNS = {
+  placeId: placesNames.placeId,
+  language: placesNames.language,
+  name: placesNames.name,
+  source: placesNames.source,
+  observedAt: placesNames.observedAt,
+} as const;
+
+export type NameRow = SelectedRow<typeof NAME_COLUMNS>;
+
 export const SOURCE_COLUMNS = {
   id: placesSources.id,
   placeId: placesSources.placeId,
@@ -115,10 +135,36 @@ export const CLAIM_COLUMNS = {
 
 export type ClaimRow = SelectedRow<typeof CLAIM_COLUMNS>;
 
+/**
+ * How a read publishes a place's names.
+ *
+ * Two independent questions, because the answers differ by endpoint. A
+ * single-place read publishes the whole set — a detail view genuinely wants
+ * "also known as". A viewport read resolves ONE name and publishes no set: 200
+ * pins carrying every language each is a payload nothing on screen renders,
+ * and shipping it would also hand the fallback decision back to the client
+ * this module exists to keep it away from.
+ */
+export interface PlaceNameView {
+  /** Publish the full `names` array. */
+  publishAll: boolean;
+  /** Resolve `localizedName` against this BCP 47 tag, when the request named one. */
+  locale?: string | undefined;
+}
+
+/** Publish neither — what a read that was not asked about names does. */
+export const NO_NAME_VIEW: PlaceNameView = { publishAll: false };
+
 /** The children a place read hydrates before mapping. */
 export interface PlaceChildren {
   sources: readonly SourceRow[];
   capabilities: readonly CapabilityRow[];
+  /**
+   * The name rows that were LOADED, which is not the same question as what is
+   * published — see {@link PlaceNameView}. Absent means the read did not ask
+   * for names at all, which reads identically to a place that has none.
+   */
+  names?: readonly NameRow[];
   /**
    * `undefined` means "this caller may not see claims" and is published as an
    * absent field. An empty array means "there are none", which is a different
@@ -159,6 +205,10 @@ function toContact(row: PlaceRow): PlaceContact | undefined {
   put(contact, 'email', optionalText(row.contactEmail));
   put(contact, 'website', optionalText(row.contactWebsite));
   return Object.keys(contact).length === 0 ? undefined : contact;
+}
+
+export function toPlaceName(row: NameRow): PlaceName {
+  return { language: row.language, name: row.name, source: row.source };
 }
 
 export function toSourceRef(row: SourceRow): PlaceSourceRef {
@@ -224,11 +274,19 @@ export function toClaim(row: ClaimRow): PlaceClaim {
  * and a consumer that takes the first row per key gets the strongest current
  * answer without having to know the ranking.
  */
-export function toPlace(row: PlaceRow, children: PlaceChildren): Place {
+export function toPlace(
+  row: PlaceRow,
+  children: PlaceChildren,
+  nameView: PlaceNameView = NO_NAME_VIEW,
+): Place {
   const sourcesById = new Map(children.sources.map((source) => [source.id, source]));
 
   const place: Place = {
     id: row.id,
+    // The DEFAULT name, always, whatever locale was asked for. A field whose
+    // meaning changed with a query parameter would make a cached `Place` mean
+    // different things to different holders of it; the resolved answer is a
+    // second field, below.
     name: row.name,
     location: { latitude: row.latitude, longitude: row.longitude },
     categories: row.categories,
@@ -263,6 +321,13 @@ export function toPlace(row: PlaceRow, children: PlaceChildren): Place {
   if (row.openingHours !== null) place.openingHours = row.openingHours;
   if (children.claims !== undefined) place.claims = children.claims.map(toClaim);
 
+  const names = children.names ?? [];
+  if (nameView.publishAll) {
+    place.names = [...names].sort(comparePublishedNames).map(toPlaceName);
+  }
+  const localized = resolveLocalizedName(names, nameView.locale);
+  if (localized) place.localizedName = toPlaceName(localized);
+
   return place;
 }
 
@@ -271,6 +336,7 @@ export function toPlaceWithDistance(
   row: PlaceRow,
   children: PlaceChildren,
   distanceMeters: number,
+  nameView: PlaceNameView = NO_NAME_VIEW,
 ): PlaceWithDistance {
-  return { ...toPlace(row, children), distanceMeters };
+  return { ...toPlace(row, children, nameView), distanceMeters };
 }
