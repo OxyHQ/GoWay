@@ -61,6 +61,7 @@ import { slotName } from '@/features/directions/stops';
 
 import { ExploreBody, ExploreHeader } from './ExploreContent';
 import { ExploreMarker } from './ExploreMarker';
+import { clampFitPadding } from './mapPadding';
 import { MapTopBar } from './MapTopBar';
 import { useExplore } from './useExplore';
 
@@ -80,15 +81,6 @@ const CHROME_LIFT_PX = 28;
  * than being the whole padding: see {@link useMapPadding}.
  */
 const FIT_GAP_PX = 24;
-
-/**
- * The largest share of the canvas the padding may claim, per axis.
- *
- * A fully-expanded sheet covers nearly the whole screen, and padding that
- * leaves no viewport gives MapLibre an impossible fit. Clamping here means a
- * route framed with the sheet wide open is framed badly rather than not at all.
- */
-const MAX_PADDING_SHARE = 0.65;
 
 /**
  * The one-line notice beside the "My location" control.
@@ -151,26 +143,30 @@ function useMapPadding(layout: 'sheet' | 'panel', snap: MapSheetSnap): MapFitOpt
 
   return useMemo(() => {
     const top = Math.max(topEdge, insets.top) + FIT_GAP_PX;
-    const cap = (value: number, axis: number) => Math.min(value, Math.round(axis * MAX_PADDING_SHARE) - FIT_GAP_PX);
 
-    if (layout === 'panel') {
-      return {
-        top: cap(top, height),
-        right: FIT_GAP_PX,
-        bottom: FIT_GAP_PX + insets.bottom,
-        left: cap(windowEdgeGap(insets.left, 0) + PANEL_WIDTH + FIT_GAP_PX, width),
-      };
-    }
+    // What the chrome WANTS. `clampFitPadding` decides what is safe to hand an
+    // engine — see `mapPadding.ts` for why that is not the same question, and
+    // why it used to be answered with a per-side cap that could go negative on
+    // a small window and claim 130% of an axis on a large one.
+    const desired =
+      layout === 'panel'
+        ? {
+            top,
+            right: FIT_GAP_PX,
+            bottom: FIT_GAP_PX + insets.bottom,
+            left: windowEdgeGap(insets.left, 0) + PANEL_WIDTH + FIT_GAP_PX,
+          }
+        : {
+            top,
+            right: FIT_GAP_PX + windowEdgeGap(insets.right, 0),
+            // `peek` shows the header only; 140 px is a generous stand-in for
+            // it, and erring large keeps a route above the sheet rather than
+            // under its lip.
+            bottom: (snap === 'peek' ? 140 : Math.round(height * MAP_SHEET_HALF_RATIO)) + FIT_GAP_PX,
+            left: FIT_GAP_PX + windowEdgeGap(insets.left, 0),
+          };
 
-    // `peek` shows the header only; 140 px is a generous stand-in for it, and
-    // erring large keeps a route above the sheet rather than under its lip.
-    const sheetHeight = snap === 'peek' ? 140 : Math.round(height * MAP_SHEET_HALF_RATIO);
-    return {
-      top: cap(top, height),
-      right: FIT_GAP_PX + windowEdgeGap(insets.right, 0),
-      bottom: cap(sheetHeight + FIT_GAP_PX, height),
-      left: FIT_GAP_PX + windowEdgeGap(insets.left, 0),
-    };
+    return clampFitPadding(desired, { width, height }, FIT_GAP_PX);
   }, [height, insets.bottom, insets.left, insets.right, insets.top, layout, snap, topEdge, width]);
 }
 

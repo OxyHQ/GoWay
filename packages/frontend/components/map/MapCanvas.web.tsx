@@ -58,7 +58,12 @@ import { DefaultMapMarker } from './DefaultMapMarker';
 import { MapAttribution } from './MapAttribution';
 import { MapErrorState } from './MapErrorState';
 import {
+  describeNumbers,
+  drawableMarkers,
+  isDrawableBounds,
+  isDrawableCoordinate,
   isViewport,
+  reportMapDefect,
   resolveInteraction,
   resolveOverlayPaint,
   resolvePadding,
@@ -178,15 +183,23 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     const container = hostRef.current as unknown as HTMLDivElement | null;
     if (!container) return;
 
+    // A camera the engine cannot build is not a reason to have no map: the
+    // world view is a truthful starting frame, and whoever passed the bad one
+    // is named in the console rather than in an error boundary.
+    const start = isDrawableCoordinate(initialViewport) ? initialViewport : DEFAULT_VIEWPORT;
+    if (start !== initialViewport) {
+      reportMapDefect('viewport:initial', 'initialViewport is not drawable; opened on the default camera.');
+    }
+
     let map: maplibregl.Map;
     try {
       map = new maplibregl.Map({
         container,
         style: styleUrl,
-        center: toLngLat(initialViewport),
-        zoom: initialViewport.zoom,
-        bearing: initialViewport.bearing ?? 0,
-        pitch: initialViewport.pitch ?? 0,
+        center: toLngLat(start),
+        zoom: Number.isFinite(start.zoom) ? start.zoom : DEFAULT_VIEWPORT.zoom,
+        bearing: start.bearing ?? 0,
+        pitch: start.pitch ?? 0,
         // GoWay renders its own credit (see MapAttribution): the OpenFreeMap
         // style documents carry no source `attribution`, so this control would
         // render an EMPTY box — the failure mode where the obligation looks
@@ -315,7 +328,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     const map = mapRef.current;
     if (!map || !ready) return;
 
-    const next = markers ?? [];
+    // Undrawable pins never reach `setLngLat`, which throws on one. A dropped
+    // marker also has its slot torn down below (it is not in `seen`), so a pin
+    // whose coordinate goes bad disappears rather than freezing at its last
+    // good position.
+    const next = drawableMarkers(markers);
     const seen = new Set<string>();
     let changed = false;
 
@@ -400,10 +417,16 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         { accuracy: Location.Accuracy.Balanced, distanceInterval: 10 },
         (position) => {
           if (cancelled || !mapRef.current) return;
-          const lngLat: [number, number] = [
-            position.coords.longitude,
-            position.coords.latitude,
-          ];
+          const fix = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          };
+          // A fix with no usable position is "no dot", not "no app".
+          if (!isDrawableCoordinate(fix)) {
+            reportMapDefect('userLocation', 'Skipped a location fix with a non-drawable coordinate.');
+            return;
+          }
+          const lngLat: [number, number] = [fix.longitude, fix.latitude];
           if (userMarkerRef.current) {
             userMarkerRef.current.setLngLat(lngLat);
             return;
@@ -445,6 +468,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         const coordinate = isViewport(target)
           ? { latitude: target.latitude, longitude: target.longitude }
           : target;
+        // Leaving the camera where it is beats throwing out of the effect that
+        // asked for the move.
+        if (!isDrawableCoordinate(coordinate)) {
+          reportMapDefect('moveTo', `Ignored moveTo: target is not drawable (${describeNumbers(coordinate)}).`);
+          return;
+        }
         const viewport = isViewport(target) ? target : undefined;
         const duration = options?.duration ?? DEFAULT_CAMERA_DURATION_MS;
         const camera = {
@@ -462,6 +491,33 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       fitBounds(bounds, options) {
         const map = mapRef.current;
         if (!map) return;
+        // `isDegenerateBounds` answers `false` for a NaN box — every comparison
+        // against NaN is false — so the check below has to come FIRST, or a NaN
+        // box walks straight into `map.fitBounds` and throws.
+        if (!isDrawableBounds(bounds)) {
+          reportMapDefect('fitBounds', `Ignored fitBounds: box is not drawable (${describeNumbers(bounds)}).`);
+          return;
+        }
+        const padding = resolvePadding(options?.padding, DEFAULT_FIT_PADDING);
+        if (!padding) return;
+        // A canvas with no size is the last route to the same throw, and it is a
+        // real state: the first frame before layout, a hidden tab, a collapsed
+        // container. `cameraForBoxAndBearing` divides the FREE viewport
+        // (`width - padding`) by the box being framed, so a zero width with a
+        // zero horizontal padding is `0 / 0`, and the NaN reaches the `LngLat`
+        // it builds for the new centre. There is nothing to frame into zero
+        // pixels anyway.
+        //
+        // Web-shaped on purpose: this is maplibre-gl's own arithmetic, running
+        // in this thread. The native fork's fit happens inside the platform SDK
+        // across the bridge and cannot throw into JS. The VALIDATION above —
+        // drawable box, finite padding — is identical on both forks, which is
+        // the part that has to be.
+        const container = map.getContainer();
+        if (!container.clientWidth || !container.clientHeight) {
+          reportMapDefect('fitBounds:noCanvas', 'Ignored fitBounds: the canvas has no size yet.');
+          return;
+        }
         if (isDegenerateBounds(bounds)) {
           map.easeTo(
             {
@@ -479,7 +535,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
             [bounds.east, bounds.north],
           ],
           {
-            padding: resolvePadding(options?.padding, DEFAULT_FIT_PADDING),
+            padding,
             duration: options?.duration ?? DEFAULT_CAMERA_DURATION_MS,
             maxZoom: options?.maxZoom,
           },

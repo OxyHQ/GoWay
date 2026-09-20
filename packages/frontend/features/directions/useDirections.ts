@@ -199,7 +199,18 @@ export function useDirections(options: DirectionsOptions): DirectionsController 
 
   // ── Editing the itinerary ────────────────────────────────────────────────
 
-  const setStopAt = useCallback((index: number, stop: DirectionsStop) => {
+  /**
+   * Put a stop in a slot.
+   *
+   * `null` means the stop could not be BUILT — `stops.ts` refuses a coordinate
+   * that is not a point on the earth, because a stop becomes a pin and a pin
+   * with a `NaN` coordinate throws out of MapLibre rather than drawing wrong.
+   * It leaves the slot exactly as it was: an empty field the user can fill
+   * again, not a cleared one and not a broken one. Clearing on purpose is
+   * `clearStop`.
+   */
+  const setStopAt = useCallback((index: number, stop: DirectionsStop | null) => {
+    if (!stop) return;
     setStops((current) => {
       if (index < 0 || index >= current.length) return current;
       const next = current.slice();
@@ -381,6 +392,9 @@ export function useDirections(options: DirectionsOptions): DirectionsController 
     (coordinate: GeoCoordinate) => {
       if (picking == null) return;
       const stop = stopFromPoint(coordinate);
+      // A press the engine could not turn into a real point is not a stop, so
+      // the slot stays open and nothing is reverse-geocoded for it.
+      if (!stop) return;
       setStopAt(picking, stop);
       nameThePoint(stop.id, coordinate);
     },
@@ -422,7 +436,10 @@ export function useDirections(options: DirectionsOptions): DirectionsController 
    * permission prompt the old button produced, in the same gesture.
    */
   const openWith = useCallback(
-    (destination: DirectionsStop) => {
+    (destination: DirectionsStop | null) => {
+      // No drawable destination, no planner: entering it with an empty B and no
+      // way to say why is worse than staying where the user was.
+      if (!destination) return;
       setActive(true);
       setStops([null, destination]);
       setEditing(null);

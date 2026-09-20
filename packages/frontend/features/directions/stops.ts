@@ -21,6 +21,8 @@
  */
 import type { GeoCoordinate, Place, PlaceId, RouteLocation, SearchResult } from '@goway.to/sdk';
 
+import { isValidCoordinate } from '@/lib/map/geo';
+
 /**
  * Where a stop came from, which is the only thing that licenses the sentence
  * "from your location".
@@ -63,7 +65,24 @@ function nextId(prefix: string): string {
   return `${prefix}-${sequence}`;
 }
 
-export function stopFromPlace(place: Place): DirectionsStop {
+/**
+ * A stop is only ever built around a coordinate that can actually be drawn.
+ *
+ * Every constructor below answers `null` rather than producing a stop whose
+ * coordinate is not a point on the earth, and the caller leaves the slot as it
+ * was. The reason is mechanical: a stop becomes a `MapMarker`, and a marker
+ * with a `NaN` coordinate does not render badly — it makes MapLibre THROW
+ * (`Invalid LngLat object: (NaN, NaN)`) out of the effect that positions it,
+ * which reaches the screen's error boundary and replaces the whole app with
+ * "Something went wrong". `components/map/` drops such a marker as a backstop;
+ * this is the layer that stops one existing.
+ *
+ * The bound is `isValidCoordinate` — a REAL point, longitude within ±180 —
+ * rather than the looser "the engine will accept it" rule, because a stop also
+ * travels to the routing contract, which requires the same range.
+ */
+export function stopFromPlace(place: Place): DirectionsStop | null {
+  if (!isValidCoordinate(place.location)) return null;
   return {
     id: nextId('place'),
     source: 'place',
@@ -81,8 +100,9 @@ export function stopFromPlace(place: Place): DirectionsStop {
  * treatment. A geocoder-only candidate has no place ID, and honestly is the
  * point it is.
  */
-export function stopFromResult(result: SearchResult): DirectionsStop {
+export function stopFromResult(result: SearchResult): DirectionsStop | null {
   if (result.place) return stopFromPlace(result.place);
+  if (!isValidCoordinate(result.coordinate)) return null;
   return {
     id: nextId('result'),
     source: 'result',
@@ -92,12 +112,17 @@ export function stopFromResult(result: SearchResult): DirectionsStop {
 }
 
 /** The device's own fix. The only stop that may be called "your location". */
-export function stopFromDevice(coordinate: GeoCoordinate): DirectionsStop {
+export function stopFromDevice(coordinate: GeoCoordinate): DirectionsStop | null {
+  if (!isValidCoordinate(coordinate)) return null;
   return { id: nextId('device'), source: 'device', label: 'Your location', coordinate };
 }
 
 /** A point on the map. `label` is provisional until a reverse geocode lands. */
-export function stopFromPoint(coordinate: GeoCoordinate, label = 'Point on the map'): DirectionsStop {
+export function stopFromPoint(
+  coordinate: GeoCoordinate,
+  label = 'Point on the map',
+): DirectionsStop | null {
+  if (!isValidCoordinate(coordinate)) return null;
   return { id: nextId('point'), source: 'map', label, coordinate };
 }
 
