@@ -10,6 +10,7 @@
 export { MapCanvas } from './MapCanvas';
 export { MapErrorState } from './MapErrorState';
 export { MapAttribution } from './MapAttribution';
+export { MapBrand, MAP_BRAND_WIDTH, MAP_BRAND_HEIGHT, MAP_BRAND_CLEARANCE } from './MapBrand';
 export { DefaultMapMarker } from './DefaultMapMarker';
 export { DEFAULT_VIEWPORT } from './types';
 

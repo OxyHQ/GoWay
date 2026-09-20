@@ -124,6 +124,20 @@ jobs:
           bun run --cwd packages/frontend map:glyphs:check
           bun run --cwd packages/frontend map:sprite:check
 
+      - name: Validate the brand assets
+        # `public/brand/*.svg` is GoWay's logo as files — the favicon, and the
+        # copy a partner embedding `/frame` will put in their own page. The app
+        # itself never loads them: it draws the logo from
+        # `components/brand/artwork.ts`, which means the files and the product
+        # are two copies of one drawing and nothing but this step notices when
+        # they stop matching. The failure is silent and slow — the mark on the
+        # website quietly stops being the mark in the app, and somebody spots it
+        # a release later with the two side by side.
+        #
+        # A byte comparison of the whole document, so a changed viewBox, colour
+        # or label fails it as surely as changed geometry does.
+        run: bun run --cwd packages/frontend brand:check
+
       - name: Test the frontend's pure modules
         # These suites EXISTED before this step did and nothing ran them —
         # `bun run test` covered the backend and the SDK only, so

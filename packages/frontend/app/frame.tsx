@@ -25,12 +25,24 @@
  * not mount `ExploreScreen` at all, because every piece of chrome that screen
  * grows would otherwise appear in strangers' pages the day it lands.
  *
- * Two things ARE rendered and both are non-negotiable:
+ * Three things ARE rendered and all three are non-negotiable:
  *
  *  - The attribution. `MapCanvas` renders it itself and feature code cannot
  *    turn it off, which is the property that makes the licence obligation
  *    survive a route like this one. An embed is precisely where a credit would
  *    get dropped if dropping it were possible.
+ *  - **The GoWay mark**, bottom-left, for exactly the same structural reason:
+ *    `MapCanvas` renders `MapBrand` unconditionally and it takes no prop, so
+ *    there is nothing here to pass, nothing to forget and nothing an embedder
+ *    can switch off. It is the whole reason an embed route is worth having.
+ *    Google's logo is in the corner of every Google map on every site that has
+ *    ever iframed one, and Apple's is in the corner of every Apple map, and
+ *    neither is being generous: a map platform that is invisible inside other
+ *    people's pages is a map platform nobody has heard of. An embed that
+ *    carried GoWay's tiles, GoWay's cartography and GoWay's search under
+ *    somebody else's masthead would be free infrastructure, not distribution.
+ *    The mark is not a link, deliberately — see the framing note at the bottom
+ *    of this file, and `components/map/MapBrand.tsx`.
  *  - A link back to the full map. Apple and Google both do this, and not out
  *    of generosity: an embed that is a dead end is a screenshot, and an embed
  *    someone can click into is how a map platform acquires the users who have
@@ -61,6 +73,11 @@
  * only pans has none. If a future version of this route grows a button that
  * does something on the user's behalf, that calculation changes and this
  * comment is where to start.
+ *
+ * That is also why the brand mark is drawn and not linked. A clickable logo in
+ * the corner would be precisely the target this paragraph says the route does
+ * not offer, and it would buy nothing the "View larger map" affordance — which
+ * says out loud where it goes — does not already buy.
  */
 import { useCallback, useEffect, useRef } from 'react';
 import { Linking, Pressable, View } from 'react-native';
