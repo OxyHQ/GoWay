@@ -44,7 +44,8 @@
     "test:gates:lockfile": "bun ./scripts/test-check-lockfile-sync.mjs",
     "lint:sdk": "bun run --cwd packages/sdk lint",
     "test:sdk": "bun run --cwd packages/sdk test",
-    "smoke:sdk": "bun run --cwd packages/sdk smoke"
+    "smoke:sdk": "bun run --cwd packages/sdk smoke",
+    "check:dockerfile": "bun ./scripts/check-dockerfile-workspaces.mjs"
   },
   "devDependencies": {
     "@oxy.so/doctor": "1.0.0",

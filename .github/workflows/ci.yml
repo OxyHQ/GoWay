@@ -154,6 +154,14 @@ jobs:
       - name: Verify migration deploy phases and parameters
         run: bun run check:migrations
 
+      # A workspace member missing from the backend Dockerfile only fails
+      # inside a container build — the most expensive place to learn it,
+      # and one no developer machine exercises. packages/sdk was absent for
+      # five merges and stayed invisible because the deploy job never got
+      # as far as the image build.
+      - name: Verify the Dockerfile copies every workspace manifest
+        run: bun run check:dockerfile
+
   lockfile:
     name: Lockfile sync
     runs-on: ubuntu-latest
