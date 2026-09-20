@@ -90,6 +90,24 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      - name: The tag must be on main
+        # Everything below checks that the VERSION is sensible; nothing checked
+        # that the COMMIT is. Anyone who can push a tag could tag an unmerged
+        # branch, and the version and registry checks would all pass on it — the
+        # artifact would carry provenance attesting truthfully to a commit that
+        # never passed review.
+        #
+        # The `npm-publish` environment is the other control, and the better one,
+        # but it is also the one most likely to be created in a hurry with no
+        # required reviewers. This costs nothing and does not depend on somebody
+        # having configured that correctly.
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_SHA is not an ancestor of origin/main; only merged commits are published"
+            exit 1
+          fi
+
       - name: The tag must name the version being published
         env:
           REF: ${{ inputs.tag || github.ref_name }}
@@ -149,8 +167,31 @@ jobs:
       - name: Confirm the registry agrees
         # A publish that reports success and a registry that does not serve the
         # version is the shape the incident above took. Ask.
+        #
+        # It polls rather than asking once, because "published" and "served" are
+        # genuinely different events and the gap is long. Measured on the very
+        # first publish of this package: `npm publish` printed
+        # `+ @goway.to/sdk@0.1.0` while a GET of the packument answered **404 for
+        # about 285 seconds**, with `npm access list packages` showing the
+        # package throughout. A single check here would have failed that release
+        # and sent somebody hunting a permissions problem that did not exist.
+        #
+        # The same trap as the frontend deploy, from the other side: there, the
+        # tool returned before the edge had the bytes; here, the registry accepts
+        # the write before its read path serves it. Neither is an error a retry
+        # flag can see — a 404 from a CDN is a perfectly good HTTP response — so
+        # the wait has to be explicit and bounded.
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           cd "$(mktemp -d)"
-          npm view "@goway.to/sdk@$VERSION" dist.tarball
+          for attempt in $(seq 1 30); do
+            if npm view "@goway.to/sdk@$VERSION" dist.tarball 2>/dev/null; then
+              echo "registry serves $VERSION after ${attempt} attempt(s)"
+              exit 0
+            fi
+            echo "not served yet (attempt ${attempt}/30); waiting 20s"
+            sleep 20
+          done
+          echo "::error::published @goway.to/sdk@$VERSION but the registry did not serve it within 10 minutes"
+          exit 1
         working-directory: packages/sdk
