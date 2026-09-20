@@ -187,6 +187,37 @@ export class PbfReader {
     return (raw >>> 1) ^ -(raw & 1);
   }
 
+  /**
+   * A 32-bit IEEE float, little-endian.
+   *
+   * Not needed by `glyphs.proto`, which is why this reader shipped without it.
+   * The vector tile `Value` message does carry one, and `mvt.ts` decodes real
+   * tiles to verify GoWay's own builds, so the two fixed-width readers below
+   * exist for that one caller. They are three lines each and they close the
+   * gap between "can skip a fixed field" and "can read one".
+   */
+  readFloat(): number {
+    if (this.offset + 4 > this.end) throw new RangeError('truncated float');
+    const value = new DataView(this.data.buffer, this.data.byteOffset + this.offset, 4).getFloat32(0, true);
+    this.offset += 4;
+    return value;
+  }
+
+  /** A 64-bit IEEE double, little-endian. */
+  readDouble(): number {
+    if (this.offset + 8 > this.end) throw new RangeError('truncated double');
+    const value = new DataView(this.data.buffer, this.data.byteOffset + this.offset, 8).getFloat64(0, true);
+    this.offset += 8;
+    return value;
+  }
+
+  /** Undo the zigzag transform on a value that may exceed 32 bits. */
+  readSint64(): number {
+    const raw = this.readVarint();
+    const magnitude = Math.floor(raw / 2);
+    return raw % 2 === 0 ? magnitude : -(magnitude + 1);
+  }
+
   readBytes(): Uint8Array {
     const length = this.readVarint();
     if (this.offset + length > this.end) throw new RangeError('truncated length-delimited field');

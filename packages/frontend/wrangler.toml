@@ -111,14 +111,61 @@ binding = "ASSETS"
 # sprite — is untouched by the Worker and keeps being served exactly as before.
 run_worker_first = ["/map/tiles/*", "/map/fonts/*"]
 
-# The upstream, as DEPLOYMENT CONFIGURATION rather than as a hostname written
-# into product code. `lib/map/provider.ts` → `OPENFREEMAP_ENDPOINTS` is the one
-# module in the repository that names a map vendor, and these two values must
-# equal the ones recorded there. They are duplicated rather than imported
-# because a Worker bundle and an Expo bundle share no build step; the Worker
-# refuses to serve tiles at all if `MAP_TILE_UPSTREAM` is missing rather than
-# falling back to a copy of its own, which is what keeps `provider.ts`
-# honestly the only place.
+# GoWay's OWN tiles: one PMTiles archive in R2, read by byte range.
+#
+# `worker/index.js` serves `/map/tiles/{z}/{x}/{y}.pbf` out of this bucket, and
+# `scripts/build-map-tiles.ts` is what puts an archive in it. There is no tile
+# server: R2 hands back byte ranges and PMTiles is the format that makes a
+# planet addressable that way. R2 charges nothing for egress, which for a map
+# is the entire cost — the same planet on S3 would bill $0.09 per GB out.
+#
+# `MAP_TILE_ARCHIVE` is a VERSIONED key and a new build always gets a new one.
+# A PMTiles archive is addressed by byte offset, so overwriting the object a
+# Worker is mid-request against does not serve a stale tile — it serves
+# whatever now lives at that offset, which is a directory decoded as a tile or
+# a tile from somewhere else on Earth. Upload, point this at the new key,
+# deploy, then delete the old object. That sequence is also the rollback.
+#
+# ## Why these five lines are commented out
+#
+# Because R2 is not enabled on the Oxy Cloudflare account yet, and `wrangler
+# deploy` refuses a binding to a bucket that does not exist. A deployment that
+# failed here would take `goway.to` down for a change that is supposed to be
+# invisible, so the Worker is written to fall back to the upstream proxy
+# whenever `MAP_TILES` or `MAP_TILE_ARCHIVE` is absent, and this block waits.
+#
+# ONE-TIME HUMAN SETUP, in this order — README.md has the full version:
+#
+#   1. Cloudflare dashboard → R2 → Enable (this is the step that needs a human;
+#      it is an account-level opt-in with a billing term attached).
+#   2. `wrangler r2 bucket create goway-map-tiles`
+#   3. R2 → Manage API tokens → create an access key pair, then
+#      `bun run --cwd packages/frontend map:tiles:upload --archive=… --key=…`
+#   4. Uncomment the six lines below, set the key to the one just uploaded,
+#      and merge. The upstream proxy stops being reached on that deploy.
+#   5. Once it has been live long enough to trust, delete `MAP_TILE_UPSTREAM`
+#      below, the fallback in `worker/index.js`, and `OPENFREEMAP_ENDPOINTS`
+#      from `lib/map/provider.ts` — in the same commit, because each of them
+#      exists only for the others.
+#
+# [[r2_buckets]]
+# binding = "MAP_TILES"
+# bucket_name = "goway-map-tiles"
+#
+# [vars]
+# MAP_TILE_ARCHIVE = "basemap/planet-YYYYMMDD.pmtiles"
+
+# The FALLBACK upstream, as deployment configuration rather than as a hostname
+# written into product code. `lib/map/provider.ts` → `OPENFREEMAP_ENDPOINTS` is
+# the one module in the repository that names a map vendor, and these two
+# values must equal the ones recorded there. They are duplicated rather than
+# imported because a Worker bundle and an Expo bundle share no build step.
+#
+# `MAP_TILE_UPSTREAM` is reached ONLY while the R2 binding above is commented
+# out. `MAP_GLYPH_UPSTREAM` is a different matter and is not going anywhere
+# yet: GoWay generates its own Inter ranges, but Inter is Latin, Greek and
+# Cyrillic, and a Tokyo label with no `name:latin` still falls through to the
+# upstream Noto ranges. Removing it would remove the label, not the dependency.
 #
 # `MAP_TILE_UPSTREAM` is the TileJSON *document*, not a `{z}/{x}/{y}` template:
 # it names the current date-stamped planet build, old builds are deleted, and

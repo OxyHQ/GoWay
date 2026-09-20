@@ -22,9 +22,12 @@
  *     `@maplibre/maplibre-gl-style-spec` is the same validator the renderer
  *     uses. If it complains, the map would have been broken.
  *  2. **Schema reality.** Every `source-layer` named must exist in the
- *     OpenMapTiles v3 schema recorded in `lib/map/style/schema.ts`, which was
- *     read off OpenFreeMap's live TileJSON and real decoded `.pbf` tiles.
- *     `--online` re-reads the TileJSON and checks the recording is still true.
+ *     OpenMapTiles v3 schema recorded in `lib/map/style/schema.ts`. That file
+ *     is now asserted the other way round too, against the artefact GoWay
+ *     actually serves: `map:tiles --verify` opens the built PMTiles archive
+ *     and fails if its `vector_layers` and the record disagree. `--online`
+ *     here re-reads the fallback upstream's TileJSON, which is the weaker
+ *     check and outlives only the rollback path.
  *  3. **Font reality.** Only fontstacks GoWay's own glyph endpoint answers
  *     with (`AVAILABLE_FONTS`), and only single-family stacks, because a
  *     combined stack is a separate document nobody composes.
@@ -352,9 +355,11 @@ function checkOne(appearance: MapAppearance, style: StyleSpecification, problems
  * It walks the whole document rather than the known fields, because the point
  * is to catch the URL somebody adds in a place this function's author did not
  * anticipate. `attribution` is the deliberate exception: it is HTML full of
- * links to OpenStreetMap, OpenMapTiles and OpenFreeMap, and those links are a
- * LICENCE OBLIGATION. Stripping them to satisfy a first-party rule would be
- * trading a cosmetic property for a legal one.
+ * links to OpenStreetMap and OpenMapTiles, and those links are a LICENCE
+ * OBLIGATION — ODbL and CC-BY respectively. Stripping them to satisfy a
+ * first-party rule would be trading a cosmetic property for a legal one, and
+ * they are unaffected by where the tiles are stored: GoWay building and
+ * hosting its own tiles changed the origin, not the licence.
  */
 function checkFirstPartyOrigins(
   appearance: MapAppearance,
@@ -537,7 +542,16 @@ function checkPair(light: StyleSpecification, dark: StyleSpecification, problems
   }
 }
 
-/** Optional: re-read OpenFreeMap's TileJSON and confirm the recorded schema. */
+/**
+ * Optional: re-read the FALLBACK upstream's TileJSON and confirm the schema.
+ *
+ * This checked the right artefact when OpenFreeMap's planet was the only tile
+ * source GoWay had. It is now the secondary one: GoWay's own archive is
+ * verified against `schema.ts` in BOTH directions by
+ * `map:tiles --verify`, which opens the finished PMTiles file rather than
+ * asking a CDN. This stays because `MAP_TILE_UPSTREAM` is still the rollback
+ * path, and it should be deleted in the same commit that deletes the rollback.
+ */
 async function checkOnline(problems: string[]): Promise<void> {
   const response = await fetch(OPENFREEMAP_ENDPOINTS.tileJson);
   if (!response.ok) {

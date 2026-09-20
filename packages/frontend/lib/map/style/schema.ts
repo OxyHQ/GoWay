@@ -7,16 +7,31 @@
  * wrong `source-layer` is the worst kind of mistake here — MapLibre renders
  * nothing, logs nothing and throws nothing, so a typo ships as an empty map.
  *
- * Everything below was read off the live endpoints rather than remembered:
+ * Everything below was read off real artefacts rather than remembered:
  *
- *  - The source-layer names and their fields come from the TileJSON at
- *    `https://tiles.openfreemap.org/planet` (`vector_layers[].id` / `.fields`).
- *  - The `class` vocabularies come from **decoding real `.pbf` tiles** at z6,
- *    z10 and z14 over Madrid, Manhattan, Tokyo, Barcelona, London and open
- *    countryside, and collecting the distinct values that actually appear.
- *    That is why, for example, `street` and `street_limited` are absent: they
- *    are Mapbox-schema road classes, and OpenFreeMap's own `liberty` style
- *    carries layers filtering on them that can never match anything.
+ *  - The source-layer names and their fields were first read from the TileJSON
+ *    at `https://tiles.openfreemap.org/planet`, and are now asserted against
+ *    **GoWay's own archive** — `map:tiles --verify` opens the finished PMTiles
+ *    build and fails if its `vector_layers` and this list disagree in either
+ *    direction.
+ *  - The `class` vocabularies come from **decoding real `.pbf` tiles** and
+ *    collecting the distinct values that actually appear. That is why, for
+ *    example, `street` and `street_limited` are absent: they are Mapbox-schema
+ *    road classes, and OpenFreeMap's own `liberty` style carries layers
+ *    filtering on them that can never match anything.
+ *
+ * ## Why this file did not have to change when the tiles became GoWay's
+ *
+ * Because Planetiler's basemap profile IS an OpenMapTiles v3 implementation,
+ * and it is the same generator OpenFreeMap runs. GoWay's first self-hosted
+ * build emitted the same sixteen `vector_layers` ids recorded below, so the
+ * style document needed no change at all. What DID change is the confidence
+ * behind the vocabularies: they can now be swept from an archive on disk
+ * rather than sampled through somebody else's CDN, and the sweep immediately
+ * turned up values six cities of sampling had missed — `busway`, `raceway`,
+ * `campsite`, `prison`, `hamlet`, the `*_construction` road classes the
+ * comment below had always claimed were there. Those are marked where they
+ * were added.
  *
  * `scripts/build-map-style.ts --check` asserts that every `source-layer` the
  * style names appears in {@link OPENMAPTILES_SOURCE_LAYERS}, so this file and
@@ -67,13 +82,16 @@ export const OPENMAPTILES_SOURCE_LAYER_NAMES: readonly string[] = Object.values(
  * that does not exist yet is noise on a map used to get somewhere today.
  */
 export const TRANSPORTATION_CLASSES = [
+  'aerialway',
   'bridge',
+  'busway',
   'ferry',
   'minor',
   'motorway',
   'path',
   'pier',
   'primary',
+  'raceway',
   'rail',
   'secondary',
   'service',
@@ -81,6 +99,17 @@ export const TRANSPORTATION_CLASSES = [
   'track',
   'transit',
   'trunk',
+  // The `*_construction` variants, which this comment always claimed were real
+  // and which no sample had ever actually produced until the vocabulary was
+  // swept out of GoWay's own archive. Still deliberately unstyled.
+  'minor_construction',
+  'motorway_construction',
+  'path_construction',
+  'primary_construction',
+  'secondary_construction',
+  'service_construction',
+  'tertiary_construction',
+  'trunk_construction',
 ] as const;
 
 /** `landcover.class`, observed. `rock` is omitted from the style on purpose —
@@ -117,6 +146,12 @@ export const LANDUSE_CLASSES = [
   'track',
   'university',
   'zoo',
+  // Swept out of GoWay's own build; not seen in the original city sampling.
+  'dam',
+  'grass',
+  'music_venue',
+  'racetrack',
+  'recreation_ground',
 ] as const;
 
 /** `place.class`, observed. */
@@ -132,6 +167,9 @@ export const PLACE_CLASSES = [
   'suburb',
   'town',
   'village',
+  // Swept out of GoWay's own build.
+  'hamlet',
+  'isolated_dwelling',
 ] as const;
 
 /** `water.class`, observed. */
@@ -157,6 +195,12 @@ export const POI_CLASSES = [
   // the filter-coverage sweep in `build-map-style.ts` needs them here to tell
   // "a class we have not happened to see" from "a class that does not exist".
   'motorcycle', 'zoo',
+  // Swept out of GoWay's OWN archive (888 tiles, z0–z14, across a whole
+  // region rather than six city centres). Observation again, not schema
+  // truth — but observation of the artefact GoWay serves.
+  'aerialway', 'basin', 'basketball', 'boules', 'campsite', 'chess', 'climbing', 'harbor',
+  'karting', 'orienteering', 'prison', 'rc_car', 'reservoir', 'sailing', 'scuba_diving',
+  'shooting', 'swimming', 'table_tennis', 'theme_park',
 ] as const;
 
 /**

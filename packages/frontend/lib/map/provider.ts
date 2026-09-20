@@ -5,7 +5,9 @@
  * renderer. WHERE the cartography comes from is a separate, replaceable
  * decision, and it lives here so that moving from OpenFreeMap to GoWay-hosted
  * PMTiles/vector tiles is a change to this file and nothing else — no feature
- * code, no component prop, no public SDK contract.
+ * code, no component prop, no public SDK contract. That move has now happened,
+ * and it cost exactly what this file promised it would: the endpoints below,
+ * the Worker, and nothing in the app.
  *
  * Rules this file exists to enforce (GoWay AGENTS.md → "Product boundaries"):
  *
@@ -20,11 +22,12 @@
  *
  * ## What changed with GoWay's own style document
  *
- * The cartography is now GoWay's (`lib/map/style/`), built against the same
- * OpenMapTiles v3 schema OpenFreeMap serves and rendered to
- * `public/map/goway-{light,dark}.json` by `scripts/build-map-style.ts`. The
- * *tiles*, *glyphs* and *sprite* are still OpenFreeMap's, and they are still
- * named only here — the style builder takes every endpoint as an argument.
+ * The cartography is GoWay's (`lib/map/style/`), built against the
+ * OpenMapTiles v3 schema and rendered to `public/map/goway-{light,dark}.json`
+ * by `scripts/build-map-style.ts`. The *tiles*, *glyphs* and *sprite* are now
+ * GoWay's too — the tiles built by `scripts/build-map-tiles.ts` and served
+ * from R2 — and the one vendor left anywhere in this file is the glyph
+ * fallback for the scripts Inter does not cover.
  *
  * Three consequences worth knowing:
  *
@@ -139,18 +142,20 @@ export interface MapSourceConfig {
 /**
  * The UPSTREAM tile vendor. **No browser ever fetches these URLs.**
  *
- * This is the vendor boundary, and after the first-party-origin change it is
- * also the only place in the repository where `openfreemap.org` is written
- * down. Two consumers read it and neither of them is the app:
+ * This is the vendor boundary, and it is the only place in the repository
+ * where `openfreemap.org` is written down. Two consumers read it and neither
+ * of them is the app:
  *
- *  1. `worker/index.js`, GoWay's Cloudflare Worker, which proxies
- *     `https://goway.to/map/tiles/{z}/{x}/{y}.pbf` to the upstream planet
- *     build. The Worker takes the value from `wrangler.toml` → `[vars]`
- *     (`MAP_TILE_UPSTREAM`) rather than importing this module — a Worker and
- *     an Expo bundle share no build — and refuses to start serving tiles if
- *     the var is missing rather than falling back to a hardcoded host. The two
- *     values must agree; each file names the other so a change to one is a
- *     change somebody is told to make to the other.
+ *  1. `worker/index.js`, GoWay's Cloudflare Worker. Tiles now come from
+ *     GoWay's own PMTiles archive in R2, and `MAP_TILE_UPSTREAM` is reached
+ *     only as a ROLLBACK — when the R2 binding is absent, which is the state
+ *     of any deployment made before the bucket exists. `MAP_GLYPH_UPSTREAM` is
+ *     not a rollback and is not going anywhere yet: Inter covers Latin, Greek
+ *     and Cyrillic, and a Tokyo label with no `name:latin` still falls through
+ *     to the upstream Noto ranges. The Worker takes both from `wrangler.toml`
+ *     → `[vars]` rather than importing this module — a Worker and an Expo
+ *     bundle share no build — so the two values must agree, and each file
+ *     names the other.
  *  2. {@link OPENFREEMAP_SOURCE}, the escape hatch. Selecting it with
  *     `EXPO_PUBLIC_MAP_SOURCE=openfreemap` deliberately puts the third-party
  *     origin back in the browser, which is the point of an escape hatch: if a
@@ -202,13 +207,17 @@ export const OPENFREEMAP_ENDPOINTS = {
  *    **SDF**, where OpenFreeMap's is 264 flat dark-on-transparent PNGs. An SDF
  *    sprite is recolourable per layer, which is what a per-category POI icon
  *    and a non-US-centric road shield both require. Kilobytes.
- *  - **Tiles** (`/map/tiles/{z}/{x}/{y}.pbf`) — PROXIED by the Worker with
- *    edge caching. Not mirrored: the planet is gigabytes and GoWay is not
- *    storing it. **Be clear-eyed about what this buys.** It removes the
- *    third-party origin from the browser and gives us a seam at which
- *    self-hosted tiles can be swapped in with no client change, no style
- *    change and no app release. It does NOT remove the dependency: if
- *    OpenFreeMap is down, GoWay's map is down, exactly as before.
+ *  - **Tiles** (`/map/tiles/{z}/{x}/{y}.pbf`) — BUILT BY US and served out of
+ *    GoWay's own **PMTiles archive in Cloudflare R2**, read by byte range by
+ *    `worker/index.js`. The seam the proxy bought is the seam this went
+ *    through: not one line of app code, style document or public contract
+ *    changed, because the client only ever knew a `goway.to` URL.
+ *
+ *    The proxy that used to be here said plainly what it did not buy — "if
+ *    OpenFreeMap is down, GoWay's map is down, exactly as before" — and that
+ *    is the sentence this deletes. `scripts/build-map-tiles.ts` runs
+ *    Planetiler over an OpenStreetMap extract on hardware Oxy operates; R2
+ *    charges nothing for egress, which for a map is the entire cost.
  *
  * ## Why these are absolute rather than origin-relative
  *
@@ -224,7 +233,7 @@ export const OPENFREEMAP_ENDPOINTS = {
 export const GOWAY_MAP_PATHS = {
   /** TileJSON GoWay serves for its own proxied tiles. Generated, committed. */
   tileJson: '/map/tiles.json',
-  /** The proxied vector tiles themselves — the Worker answers these. */
+  /** The vector tiles themselves — the Worker reads them out of R2. */
   tiles: '/map/tiles/{z}/{x}/{y}.pbf',
   /** Glyph ranges, ours where Inter covers them and proxied where it does not. */
   glyphs: '/map/fonts/{fontstack}/{range}.pbf',
@@ -232,15 +241,29 @@ export const GOWAY_MAP_PATHS = {
   sprite: '/map/sprites/goway',
 } as const;
 
-/** The credit line, as HTML, for the `attribution` field of a style source. */
+/**
+ * The credit line, as HTML, for the `attribution` field of a style source.
+ *
+ * ## Why OpenFreeMap is no longer named, and why the other two still are
+ *
+ * The credit follows the OBLIGATION, not the hostname. OpenStreetMap's is
+ * ODbL and OpenMapTiles' is the CC-BY the schema is granted under — both
+ * survive the move to GoWay's own storage untouched, and both are exactly
+ * what Planetiler writes into the archive's own metadata when it builds one.
+ * OpenFreeMap asked for no credit; naming them was courtesy for serving the
+ * bytes, and GoWay serves its own bytes now.
+ *
+ * The obligation being unchanged is the whole point. Moving the data to R2
+ * changes where a tile comes from, not what it is: it is still OSM data, still
+ * ODbL, and `components/map/MapAttribution.tsx` still renders this on every
+ * frame of both platforms because neither engine can derive it.
+ */
 export const ATTRIBUTION_HTML =
-  '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> ' +
   '<a href="https://www.openmaptiles.org/" target="_blank">&copy; OpenMapTiles</a> ' +
-  'Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
+  '<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>';
 
 const ATTRIBUTION: MapAttribution = {
   links: [
-    { label: 'OpenFreeMap', href: 'https://openfreemap.org' },
     { label: '© OpenMapTiles', href: 'https://www.openmaptiles.org/' },
     { label: '© OpenStreetMap', href: 'https://www.openstreetmap.org/copyright' },
   ],
@@ -312,16 +335,25 @@ export const GOWAY_MAP_ORIGIN = process.env.GOWAY_MAP_ORIGIN || GOWAY_ORIGIN;
 /**
  * GoWay's map, served entirely from GoWay's origin — the default source.
  *
- * The style document, the glyphs and the sprite are ours outright. The vector
- * DATA underneath is still OpenFreeMap's planet build, in the open
- * OpenMapTiles v3 schema, reached through GoWay's own tile path rather than
- * directly — see {@link GOWAY_MAP_PATHS} for what that does and does not buy,
- * and {@link ATTRIBUTION} for the credit that travels with it either way.
+ * The style document, the glyphs, the sprite AND the vector data are now all
+ * ours: `scripts/build-map-tiles.ts` builds the tiles with Planetiler, in the
+ * open OpenMapTiles v3 schema the style already speaks, and the Worker serves
+ * them out of R2. See {@link GOWAY_MAP_PATHS} and {@link ATTRIBUTION} for the
+ * credit that travels with the data wherever it is stored.
  *
- * That split is the whole point: the visual identity can move without the data
- * moving, and the data can move without the visual identity moving — and now
- * the data can move without the CLIENT moving either, because the client only
- * ever knew a `goway.to` URL.
+ * The split that made this possible is worth keeping in view, because it is
+ * what let the data move without anything else moving: the visual identity can
+ * move without the data moving, the data can move without the visual identity
+ * moving, and neither can move the CLIENT, because the client only ever knew a
+ * `goway.to` URL. The change from a third-party planet to GoWay's own touched
+ * no component, no screen and no SDK contract.
+ *
+ * It also put something IN the tile that could not be asked for before. The
+ * feature ids are OpenStreetMap element ids (`osmId * 10 + 1|2|3` for node,
+ * way and relation, which is Planetiler's encoding), so a GoWay place carrying
+ * `openstreetmap:way/188938001` in `places_sources` can be joined to the
+ * basemap's own label for the same museum. `map:tiles --verify` asserts it on
+ * every build.
  */
 export const GOWAY_SOURCE: MapSourceConfig = {
   id: 'goway',
@@ -374,8 +406,12 @@ export const OPENFREEMAP_SOURCE: MapSourceConfig = {
 };
 
 /**
- * Registry of the sources GoWay knows how to talk to. A GoWay-hosted PMTiles
- * build lands here as a third entry, selected by `EXPO_PUBLIC_MAP_SOURCE`.
+ * Registry of the sources GoWay knows how to talk to.
+ *
+ * Two, and there is no third coming: {@link GOWAY_SOURCE} became the
+ * GoWay-hosted PMTiles build this registry used to anticipate, so the entry it
+ * was reserving is the one that was already here. {@link OPENFREEMAP_SOURCE}
+ * stays only as the env-var escape hatch it always was.
  */
 const SOURCES: Record<string, MapSourceConfig> = {
   [GOWAY_SOURCE.id]: GOWAY_SOURCE,
