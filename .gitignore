@@ -33,3 +33,10 @@ yarn-error.*
 .DS_Store
 *.tsbuildinfo
 .turbo/
+
+# Third-party Apple Maps screenshots, kept only as a colour reference while
+# GoWay's own cartography is matched against them. They are somebody else's
+# rendering of somebody else's data: useful to sample, never ours to
+# redistribute, and worthless to a future reader once the hexes they produced
+# are recorded in `lib/map/style/palette.ts` with their provenance.
+.apple-maps-reference/

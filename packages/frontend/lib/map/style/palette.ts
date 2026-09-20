@@ -11,110 +11,80 @@
  * to a button destroys the other. So these values live here, in map terms, and
  * nothing in `components/` or `features/` reads them.
  *
- * ## What this palette is aiming at
+ * ## Every value here is MEASURED
  *
- * Apple Maps' **current** cartography, described by property rather than by
- * sample — see the honesty note at the bottom of this block. The properties, in
- * the order they matter:
+ * Three earlier versions of this file were reasoned — first from a 2013
+ * snazzymaps array sold as "Apple Maps-esque", then twice from a description of
+ * Apple's design language. All three were wrong, and wrong in the same
+ * direction: they assumed the target was quiet, desaturated and near
+ * monochrome. It is not. Apple Maps is **warm and saturated in daylight and
+ * blue-violet at night**, and it spends real colour on water, parks and the
+ * built-up fabric of a city.
  *
- *  1. **Very low contrast, and a lot of light.** Until labels are drawn the map
- *     is close to monochrome. Colour appears sparingly and never competes with
- *     type. Every decision below is downstream of this one.
- *  2. **Land is a very pale warm grey**, near-white. The warmth is a hint, not
- *     a tint — enough that white roads read as brighter than the ground, and no
- *     more.
- *  3. **Water is a muted, slightly grey blue.** It is the one large area
- *     allowed any saturation, and even that is restrained.
- *  4. **Green space is soft sage, close in value to the land**, so a park reads
- *     as a calm area rather than a bright patch.
- *  5. **Roads are white.** Motorways are *not* yellow — the hierarchy is width
- *     plus casing strength, with at most a whisper of warmth at the top.
- *  6. **Category tints are nearly gone.** A hospital campus, an airport apron,
- *     a school: present, below the land's own contrast, never the brightest
- *     thing on screen.
+ * So this pass stopped reasoning. Apple Maps was captured in a headless browser
+ * — eleven views across Manhattan, the New York metro area, JFK, the Catskills,
+ * upper Manhattan and central Madrid, in both appearances — and every colour
+ * below was sampled off those renders. The method mattered: single pixels are
+ * unreliable next to antialiasing and label halos, so each value is the
+ * dominant colour of a REGION, and nothing was accepted until it appeared in at
+ * least two independent captures. Run-length scans across roads were used to
+ * tell a fill from its casing, which no region sample can do.
  *
- * ## The retired source — READ THIS BEFORE REINTRODUCING ANY HEX BELOW
+ * Each field carries its measurement in a trailing comment:
+ *   `// #8ddbf6 — light-city 17.8%, jfk 96%, light-wide 20.4%`
+ * A field with **(chosen)** was NOT measurable — either Apple does not draw
+ * that class, or no capture contained it — and is an interpolation between
+ * neighbours. Those are the ones to distrust first.
  *
- * The first two versions of this palette were built from a Google Maps JS API
- * style array supplied as an "Apple Maps" reference. It is
- * **snazzymaps.com/style/42, published 20 November 2013**, by an anonymous
- * author, whose own description claims only that it "largely resembles the
- * Apple Maps theme, albeit somewhat flatter". It imitates **iOS 6/7-era** Apple
- * Maps: creamy land, saturated green, bright blue water, and — the loudest
- * giveaway — **yellow motorways**, which Apple retired years ago. Following it
- * faithfully is precisely what made this map look unlike Apple Maps today.
+ * The captures live in `.apple-maps-reference/` and are gitignored: they are
+ * someone else's rendering of someone else's data, useful to sample and not
+ * ours to redistribute. Once the hexes are recorded here with their provenance,
+ * the images have done their job. `shoot.ts` in that folder takes more.
  *
- * It is recorded here for provenance and for nothing else. **These are not
- * targets.** If a value below drifts back toward one of them, that is a
- * regression, not a restoration:
+ * ## What the measurements overturned
  *
- * | retired 2013 source (Google)           | what it drove                          |
- * |----------------------------------------|----------------------------------------|
- * | `landscape.man_made` `#f7f1df`         | {@link CartographyPalette.land} — now a pale warm grey |
- * | `landscape.natural` `#d0e3b4`          | {@link CartographyPalette.natural} — now desaturated sage |
- * | `landscape.natural.terrain` hidden     | still hidden: no relief raster, no hillshade, `landcover class=rock` dropped |
- * | `poi.park` `#bde6ab`                   | {@link CartographyPalette.park} — now close in value to the land |
- * | `poi.medical` `#fbd3da`                | {@link CartographyPalette.medical} — now barely a tint |
- * | `transit.station.airport` `#cfb2db`    | {@link CartographyPalette.airport} — now barely a tint |
- * | `water` `#a2daf2`                      | {@link CartographyPalette.water} — now muted and greyer |
- * | `road.highway` `#ffe15f` / `#efd151`   | motorway/trunk — **now white**, see below |
+ * Four structural findings, each of which changed a layer and not just a hex:
  *
- * The translation *method* still applies to anything new: Google names abstract
- * feature classes and cascades, MapLibre names the vector tile's own
- * `source-layer` and `class` values and does not, so a Google style is
- * translated feature class by feature class, never consumed.
+ *  1. **Motorways are a solid cool grey, not white and not yellow.** At every
+ *     zoom from z10 to z15, Apple draws expressways as an unbroken `#b3b5b9`
+ *     ribbon while ordinary streets are `#fefefe` with a cool casing. The
+ *     hierarchy inverts the usual one: the biggest road is the *darkest*, not
+ *     the brightest. Measured by scanning across the Henry Hudson Parkway, the
+ *     FDR and I-495.
+ *  2. **The built-up tint is zoom-gated.** `#fef4df` covers 15% of a z14
+ *     Manhattan canvas and is entirely absent from a z10 one; the same is true
+ *     of its dark counterpart `#45476e`. It fades in, and `layers.ts` fades it
+ *     in with it.
+ *  3. **Road casings are COOL on warm land.** `#e0e3e6` and `#ced1d4` are
+ *     blue-greys sitting on `#f6f4eb` cream. Every previous version of this
+ *     file used warm casings, which is why the roads never separated from the
+ *     ground the way Apple's do.
+ *  4. **Dark mode is blue-violet, not charcoal.** Land `#34445b`, built-up
+ *     `#45476e`, water `#1c347a`, parks `#005d5b`. There is no grey in it.
  *
- * ## The road model, which did NOT change
+ * ## Honesty
  *
- * The geometry is right and stays. The first cut obeyed the 2013 array
- * literally — `road` → `geometry.stroke` → `visibility: off` globally, so only
- * the highway tier kept a casing, and `road.local` → `geometry.fill` → black.
- * Shipped and looked at, the first thing the product owner saw was *"unas
- * líneas negras en las carreteras"*. The model that replaced it is Apple's and
- * survives this pass untouched:
- *
- *  - **Every class has a casing**, a fine line darker than its fill, drawn
- *    wider and underneath. That is what makes a road read as a *ribbon* rather
- *    than a stroke, and what separates overlapping roads at a junction.
- *  - **Fills are white or near-white**, the whole way up the hierarchy.
- *  - **Hierarchy is carried by width and by casing strength, not by colour.**
- *    A motorway is the widest ribbon with the firmest edge. Its fill carries a
- *    whisper of warmth and nothing more; `#ffe15f` is gone entirely.
- *
- * ## Where the dark palette comes from
- *
- * Derived here, from the same hues — not inherited from OpenFreeMap's `fiord`,
- * which is a different map with a different idea of what matters. The rules:
- *
- *  - The base is a deep, desaturated blue-grey charcoal. Never `#000`: pure
- *    black makes an OLED panel look like a hole and leaves nothing underneath
- *    for water to be.
- *  - **Water is darker than land.** In daylight water is the darker mass, so at
- *    night it stays the darker mass or every coastline reads inside-out.
- *  - Roads are a touch *lighter* than the ground, keeping the same width-led
- *    hierarchy. Casings go **darker than the land**, because on a dark ground a
- *    casing cannot separate a road from the terrain — nothing can, the road is
- *    already the bright thing — so its only remaining job is separating roads
- *    from each other at an interchange.
- *  - Labels are warm off-white over dark halos.
- *
- * ## Honesty note
- *
- * Nobody who worked on this file has seen Apple Maps 2026. These values are
- * reasoned from its design *language* — low contrast, light ground, width-led
- * roads, sparing colour — and not matched against a screenshot or a sample.
- * Treat the result as "built to those properties", not as "matches Apple Maps",
- * and let the person looking at both decide.
- *
- * Every value is an opaque hex or an `rgba()`; MapLibre parses both on web and
- * native. No `hsl(var(--x))` — that is a Bloom/Tailwind idiom, and a style
- * document is not CSS.
+ * These are measurements of Apple Maps as captured on 2026-09-20, at the zooms
+ * and in the places listed. They are not a claim that GoWay looks like Apple
+ * Maps: GoWay reads a different tile schema, which distinguishes things Apple
+ * merges and merges things Apple distinguishes. Where that bites, the field
+ * comment says so.
  */
 
 /** A road tier's two-tone recipe: the ribbon, and the line around it. */
 export interface RoadTone {
   /** The road surface itself. */
   fill: string;
+  /**
+   * A different FILL colour used at low zoom, fading to {@link fill} by z13.
+   *
+   * Apple's expressways are measurably bluer when you zoom out — `#b3baca` in
+   * a z10 capture against `#b3b5b9` in a z14 one, and `#889dbf` against
+   * `#7d91b1` at night. Small, but it is the difference between a motorway
+   * network that reads as a system at region scale and one that reads as
+   * scratches, so it is reproduced rather than averaged away.
+   */
+  fillLowZoom?: string;
   /**
    * A stronger casing colour used at LOW zoom, fading to {@link casing} by
    * z14.
@@ -271,210 +241,196 @@ export interface CartographyPalette {
  * width do the ranking.
  */
 /**
- * Daylight.
+ * Daylight — measured from `light-city.png` (Manhattan z14), `light-wide.png`
+ * (NY metro z10), `campus-light.png` (upper Manhattan z15),
+ * `madrid-light.png` (central Madrid z15), `jfk-light.png` (JFK z13) and
+ * `rural-light.png` (Catskills z9).
  *
- * `#f3f2ef` — a pale warm grey at ~95% lightness with barely 5% saturation —
- * replaces the 2013 array's creamy `#f7f1df`. That single value is most of the
- * change: on a cream ground every white road had to be tinted to stay visible
- * and every landcover had to be saturated to stay distinct, so the whole map
- * drifted warm and bright. On a near-white warm grey, `#ffffff` roads read as
- * brighter than the ground on their own, and green space can be a sage sitting
- * four or five points of lightness below the land instead of a fresh green
- * shouting over it.
- *
- * The road ladder is **casing strength plus width**, never fill colour: a
- * motorway's casing is `#d8d2c4` and a residential street's is `#e7e4dc`, so
- * the firmer edge and the wider ribbon rank together and reinforce each other.
+ * The two values that set everything else: land `#f6f4eb`, a warm cream at 31%
+ * of a city canvas, and water `#8ddbf6`, a genuinely vivid cyan at 18%. Every
+ * previous version of this file had the land too grey and the water far too
+ * desaturated, and those two errors dragged the rest of the palette with them.
  */
 export const LIGHT_PALETTE: CartographyPalette = {
   appearance: 'light',
 
-  land: '#f3f2ef',
-  landBuiltUp: '#ebeae6',
-  natural: '#dde4d4',
-  farmland: '#e8eade',
-  park: '#d6e2ca',
-  parkOutline: '#c7d7b9',
-  pitch: '#cfdcc3',
-  // Both of these were vivid enough in the 2013 source to be the brightest
-  // thing on a city-zoom screen. They are now a breath away from the land:
-  // enough to say "this block is a hospital / an airport", never enough to
-  // outrank a label.
-  medical: '#f1eae9',
-  institution: '#eeeeea',
-  airport: '#e9e6ee',
-  sand: '#efe9da',
-  wetland: '#dbe2d5',
-  ice: '#e9eef1',
-  cemetery: '#e0e5d7',
+  land: '#f6f4eb', // light-city 31.3%; campus/jfk agree; light-wide reads #f5f1ea
+  landBuiltUp: '#fef4df', // light-city 14.6%; madrid-light #fef5e3. Zoom-gated, see layers.ts
+  natural: '#c2e5a8', // rural-light forest mass (hillshaded #bcdea3..#c4e6ab)
+  farmland: '#f2f0e2', // (chosen) rural-light draws farmland as bare land; a hair off land
+  park: '#c6e9a8', // light-city; campus-light #b7dd9d under its own shading
+  parkOutline: '#bce2a0', // (chosen) Apple draws NO park outline — kept near-invisible
+  pitch: '#cdebb0', // madrid-light Prado gardens; light-wide #cce8b5
+  medical: '#fbebe8', // campus-light (CUIMC) + madrid-light (Hospital de la VOT)
+  institution: '#edede6', // campus-light, the Columbia/NewYork-Presbyterian blocks
+  airport: '#dbe5ee', // jfk-light aerodrome polygon 57%
+  sand: '#efe3cc', // (chosen) no capture contained a drawn beach
+  wetland: '#e3ecc2', // jfk-light Jamaica Bay salt marsh
+  ice: '#e8f3f7', // (chosen) no capture contained ice
+  cemetery: '#d9e7c4', // (chosen) between park and pitch
 
-  // The one large area allowed any saturation, and even this is restrained:
-  // `#a2daf2` was a bright swimming-pool blue that pulled the eye off every
-  // label near a river.
-  water: '#b5cfdd',
-  waterway: '#abc7d7',
+  water: '#8ddbf6', // light-city 17.8%, jfk-light 96%, light-wide 20.4% — identical in all
+  waterway: '#8ddbf6', // rural-light rivers render in the same cyan
 
-  // NO YELLOW ANYWHERE. Motorway fills carry a whisper of warmth — three
-  // points, invisible in isolation — so that at region zoom the strategic
-  // network reads as very slightly warmer than the arterials beside it. The
-  // work is done by the casings, which darken monotonically up the hierarchy.
+  // THE INVERSION. Apple's expressways are a solid cool grey at every zoom
+  // measured, while ordinary streets are white with a cool casing — so the
+  // most important road is the DARKEST thing in the network, not the
+  // brightest. Verified by run-length scans across the Henry Hudson Parkway
+  // (campus-light), the FDR (light-city) and I-495 (light-wide).
   roads: {
-    motorway: { fill: '#fffdf8', casing: '#d3ccbb', casingLowZoom: '#b9ae95' },
-    motorwayLink: { fill: '#fffdf8', casing: '#dad3c4', casingLowZoom: '#c3b9a2' },
-    trunk: { fill: '#fffefb', casing: '#d7d0c0', casingLowZoom: '#c0b69f' },
-    trunkLink: { fill: '#fffefb', casing: '#ddd6c7', casingLowZoom: '#c7bda7' },
-    primary: { fill: '#ffffff', casing: '#dcd8cc', casingLowZoom: '#cbc4b0' },
-    secondary: { fill: '#ffffff', casing: '#e0dcd2', casingLowZoom: '#d4cdbc' },
-    tertiary: { fill: '#ffffff', casing: '#e3dfd6' },
-    local: { fill: '#ffffff', casing: '#e4e1d7' },
-    service: { fill: '#fdfdfb', casing: '#eae7df' },
-    track: { fill: '#eae6da', casing: '#ddd8c9' },
+    // The grey tiers' casings sit only ONE step under their fill. Apple's
+    // expressway ribbon reads as a single uniform grey with a hairline edge;
+    // a casing as dark as an ordinary road's turns it into a heavy dark band
+    // at region zoom, which is what the first render of this palette did.
+    motorway: { fill: '#b3b5b9', casing: '#a8abb0', fillLowZoom: '#b3baca' }, // fill light-city/campus; fillLowZoom light-wide; casing (chosen)
+    motorwayLink: { fill: '#bfc1c5', casing: '#b1b4b9' }, // (chosen) one step off motorway
+    trunk: { fill: '#c4c7ca', casing: '#b6b9bd' }, // (chosen) between motorway grey and white
+    trunkLink: { fill: '#cdcfd2', casing: '#bfc2c6' }, // (chosen)
+    primary: { fill: '#fefefe', casing: '#ced1d4' }, // fill + casing both light-city
+    secondary: { fill: '#fefefe', casing: '#d8dadd' }, // (chosen) between the two measured casings
+    tertiary: { fill: '#fefefe', casing: '#e0e3e6' }, // light-city, madrid-light
+    local: { fill: '#fefefe', casing: '#e0e3e6' }, // light-city, madrid-light, campus-light
+    service: { fill: '#fdfdfc', casing: '#e6e8ea' }, // (chosen) one step quieter than local
+    track: { fill: '#efece4', casing: '#ddd9cf' }, // fill = jfk-light unpaved/terminal tone
     // Footways are dashed, and a dashed line with a casing reads as a ladder.
-    path: { fill: '#d8d2c3', casing: null },
-    tunnel: { fill: '#efeee8', casing: '#e3e0d6' },
+    path: { fill: '#d8d3c6', casing: null }, // (chosen) madrid-light draws them as dotted tan
+    tunnel: { fill: '#eceef0', casing: '#dcdee1' }, // (chosen)
   },
-  rail: '#d5d1c6',
-  railHatch: '#bfbbad',
-  ferry: '#9dbfd0',
-  aeroway: { fill: '#e6e2ea', casing: null },
+  rail: '#c9ccd0', // (chosen) campus-light shows a thin grey line with hatching
+  railHatch: '#aeb2b7', // (chosen)
+  ferry: '#7cc4dd', // (chosen) light-wide draws ferry routes as a dotted blue
+  aeroway: { fill: '#cad9e3', casing: null }, // jfk-light runway 87%; apron reads #d6e4ec
 
-  // A very light neutral grey. Present when you look for a footprint, gone
-  // when you are reading a label over one.
-  building: '#e8e6df',
-  buildingOutline: '#d7d4ca',
+  // Apple draws only NOTABLE buildings as distinct shapes (#e7e4dc with a
+  // #b0aea8 edge, measured on the Royal Palace); ordinary ones melt into the
+  // block tint at #fdf4e2. GoWay draws every footprint the tile carries, so
+  // taking the notable-building grey would turn a dense city into a grey mass
+  // Apple never shows. This sits between the two.
+  building: '#f7eed9', // (chosen) between measured #fdf4e2 (ordinary) and #e7e4dc (notable)
+  buildingOutline: '#e4d9bd', // (chosen)
 
-  boundaryCountry: '#c0bbab',
-  boundaryRegion: '#d2cec1',
+  boundaryCountry: '#b8b3a6', // (chosen) light-wide draws a thin grey dashed line
+  boundaryRegion: '#c9c4b8', // (chosen)
 
-  // RE-DARKENED for the new ground. The previous values were lightened to
-  // recede against a cream land; against a near-white one they would have gone
-  // faint, and street names sit on `#ffffff` ribbons where a light warm grey
-  // has even less to push against. Place names are near-black; street and POI
-  // names are a medium warm grey that still clears 4.5:1 on white.
-  labelPlace: '#26251f',
-  labelPlaceMinor: '#4a4840',
-  labelRegion: '#5f5c52',
-  labelRoad: '#6c6a5f',
-  // Both of these are DARKER than a blue-grey/green of this family would
-  // normally be, because their backgrounds moved: muted water and sage park
-  // sit far closer to the land's lightness than the 2013 palette's bright blue
-  // and fresh green did. Measured against their own fills rather than eyeballed
-  // — `#5b87a3` on `#b5cfdd` is 2.38:1, which is a label you can see is there
-  // and cannot read.
-  labelWater: '#2d5c75',
-  labelPark: '#4a6839',
-  labelPoi: '#5e5c51',
-  halo: 'rgba(243,242,239,0.95)',
+  labelPlace: '#222222', // light-wide "New York" / "Newark" — near-black, not a soft grey
+  // DARKENED from the measured #747979, which lands at 4.01:1 on the built-up
+  // cream. Apple can afford that; a product with an accessibility floor cannot.
+  labelPlaceMinor: '#646969', // measured #747979 -> 5.10:1 (a11y divergence)
+  labelRegion: '#6a6f6f', // (chosen) 4.63:1 on land; #8a8f8f would be 2.97:1
+  // 4.9:1 on the white street fill that carries almost every road label. Over
+  // the grey motorway ribbon no text colour reaches 4.5:1 without going
+  // near-black, so there the 1.3px white halo is the mechanism — see the
+  // divergence table in the README.
+  labelRoad: '#636766', // (chosen)
+  labelWater: '#245f7c', // (chosen) 4.53:1 on #8ddbf6; a lighter blue cannot clear it
+  labelPark: '#166a2f', // measured #1f823d -> 4.98:1 (a11y divergence; measured is 3.62:1)
+  labelPoi: '#3b3d3d', // (chosen) Apple's POI labels are near-black with a coloured icon
+  halo: 'rgba(246,244,235,0.95)', // the land colour, which is what Apple haloes with
   haloStrong: '#ffffff',
 
-  // The one place the basemap still spends saturation, because a POI dot is
-  // content rather than terrain. Pulled back from the previous ramp so the
-  // dots sit on a quieter ground without turning a high street into confetti.
+  // Apple's own category colours, sampled from the pin glyphs in madrid-light.
+  // These are the one place the basemap is allowed to be vivid, and Apple is
+  // very vivid here — `#fc791e` is a real orange, not a muted terracotta.
   poi: {
-    foodDrink: '#cc8450',
-    shopping: '#b79a4e',
-    outdoors: '#67a05a',
-    transit: '#8571a8',
-    lodging: '#7d79b3',
-    health: '#cc8189',
-    civic: '#73808f',
-    culture: '#a96f95',
-    worship: '#8b8794',
-    vehicle: '#6f8da4',
-    other: '#8f8b80',
+    foodDrink: '#fc791e', // madrid-light restaurant pins
+    shopping: '#f4aa0b', // madrid-light shop/supermarket pins
+    outdoors: '#23ae48', // madrid-light park/garden pins
+    transit: '#1a64e5', // madrid-light metro/rail pins
+    lodging: '#a568e3', // madrid-light hotel pins
+    health: '#f25283', // madrid-light hospital/pharmacy pins
+    civic: '#5b71cb', // madrid-light civic/attraction pins
+    culture: '#e76ec3', // madrid-light museum/theatre pins
+    worship: '#8a7fb8', // (chosen) between lodging and civic
+    vehicle: '#5f75ce', // (chosen) civic blue, one step lighter
+    other: '#8d8f8f', // (chosen) neutral grey for an unnamed class
   },
 };
 
 /**
- * Night — derived from the light palette, not from `fiord`.
+ * Night — measured from `dark-city.png` (Manhattan z14), `dark-wide.png`
+ * (NY metro z10), `madrid-dark.png` (central Madrid z15) and `jfk-dark.png`.
  *
- * Same road model: every tier casinged, hierarchy by width and casing. Two
- * things invert and neither is an inversion:
- *
- *  - Water (`#0f151c`) is darker than land (`#212429`), as it is in daylight.
- *  - Casings go *below* the land's lightness rather than above their fill's.
- *    A casing's job here is the seam between two roads at an interchange; a
- *    lighter casing would instead draw a halo around every street.
- *
- * The ground is a shade deeper and a shade bluer than the previous pass, for
- * the same reason daylight went pale: the less the terrain asserts, the more
- * the labels and the route line have to work with.
+ * **There is no grey in it.** Apple's dark map is a blue-violet: slate-blue
+ * land, violet built-up blocks, deep indigo water, teal-green parks. Every
+ * previous version of this file used a desaturated charcoal, which is why dark
+ * mode read as a different product from light mode rather than the same map at
+ * night.
  */
 export const DARK_PALETTE: CartographyPalette = {
   appearance: 'dark',
 
-  land: '#212429',
-  landBuiltUp: '#252930',
-  natural: '#242b22',
-  farmland: '#262a21',
-  park: '#1e2a1c',
-  parkOutline: '#273423',
-  pitch: '#213021',
-  medical: '#2a2528',
-  institution: '#262829',
-  airport: '#282630',
-  sand: '#2a2823',
-  wetland: '#212a22',
-  ice: '#242b30',
-  cemetery: '#242a22',
+  land: '#34445b', // dark-city 27.9%; dark-wide/jfk-dark read #314256
+  landBuiltUp: '#45476e', // dark-city 13.0%; madrid-dark #42496a. Zoom-gated like its light twin
+  natural: '#1c3e3a', // (chosen) dark-wide leaves forest untinted; teal, between land and park
+  farmland: '#333f4f', // (chosen)
+  park: '#005d5b', // dark-city, dark-wide, madrid-dark — all three agree
+  parkOutline: '#00706d', // (chosen) Apple draws none
+  pitch: '#016b63', // (chosen) one step brighter than park
+  medical: '#404458', // dark-city, the Bellevue/NYU blocks
+  institution: '#3b4560', // (chosen) between land and built-up
+  airport: '#314d76', // jfk-dark aerodrome polygon 58%
+  sand: '#3a4053', // (chosen)
+  wetland: '#16655f', // jfk-dark Jamaica Bay marsh
+  ice: '#36485e', // (chosen)
+  cemetery: '#2a4a48', // (chosen)
 
-  water: '#0f151c',
-  waterway: '#141d26',
+  water: '#1c347a', // dark-city 16.6%, jfk-dark 96%; dark-wide reads #213782
+  waterway: '#1c347a',
 
-  // Same ladder as daylight, read the other way up: the fill lightens toward
-  // the top of the hierarchy and the motorway keeps its whisper of warmth.
-  // Casings are one value below the land, so they are a seam at an interchange
-  // and nothing at all in open ground.
+  // Dark inverts the light hierarchy back the usual way round: the expressway
+  // is the BRIGHTEST road, ordinary streets are dimmer, and one casing colour
+  // sits between the land and the street for all of them.
   roads: {
-    motorway: { fill: '#4f5157', casing: '#191c21', casingLowZoom: '#12151a' },
-    motorwayLink: { fill: '#4b4d53', casing: '#191c21', casingLowZoom: '#12151a' },
-    trunk: { fill: '#494b51', casing: '#191c21', casingLowZoom: '#13161b' },
-    trunkLink: { fill: '#45474d', casing: '#191c21', casingLowZoom: '#13161b' },
-    primary: { fill: '#42474e', casing: '#191c21', casingLowZoom: '#15181d' },
-    secondary: { fill: '#3e434a', casing: '#191c21' },
-    tertiary: { fill: '#3a3f46', casing: '#191c21' },
-    local: { fill: '#373c43', casing: '#191c21' },
-    service: { fill: '#32373d', casing: '#191c21' },
-    track: { fill: '#2d3138', casing: '#1c1f25' },
-    path: { fill: '#41464d', casing: null },
-    tunnel: { fill: '#292d33', casing: '#1c1f25' },
+    motorway: { fill: '#7d91b1', casing: '#43536b', fillLowZoom: '#889dbf' }, // dark-city FDR; fillLowZoom dark-wide
+    motorwayLink: { fill: '#75889f', casing: '#43536b' }, // (chosen)
+    trunk: { fill: '#7a8ba1', casing: '#43536b' }, // dark-city
+    trunkLink: { fill: '#72839a', casing: '#43536b' }, // (chosen)
+    primary: { fill: '#6d7f97', casing: '#43536b' }, // (chosen) between trunk and secondary
+    secondary: { fill: '#63758d', casing: '#43536b' }, // dark-city, madrid-dark
+    tertiary: { fill: '#63758d', casing: '#43536b' }, // dark-city, madrid-dark
+    local: { fill: '#5d6d82', casing: '#43536b' }, // jfk-dark residential streets
+    service: { fill: '#526277', casing: '#3d4b60' }, // jfk-dark
+    track: { fill: '#4a5a6e', casing: '#3a485d' }, // (chosen)
+    path: { fill: '#5a6a7f', casing: null }, // jfk-dark
+    tunnel: { fill: '#43536b', casing: '#3a485d' }, // dark-city
   },
-  rail: '#383d44',
-  railHatch: '#4a5058',
-  ferry: '#25394a',
-  aeroway: { fill: '#302c38', casing: null },
+  rail: '#55647a', // (chosen)
+  railHatch: '#6d7f97', // (chosen)
+  ferry: '#2f4a86', // (chosen)
+  aeroway: { fill: '#304b73', casing: null }, // jfk-dark runway 87%
 
-  building: '#2b2f35',
-  buildingOutline: '#383d45',
+  building: '#4c4f74', // (chosen) between measured #42496a (block) and #637690 (notable)
+  buildingOutline: '#5b5f86', // (chosen)
 
-  boundaryCountry: '#4a505a',
-  boundaryRegion: '#383d45',
+  boundaryCountry: '#5b6b81', // (chosen)
+  boundaryRegion: '#45536a', // (chosen)
 
-  labelPlace: '#f0ede6',
-  labelPlaceMinor: '#c3beb3',
-  labelRegion: '#a9a498',
-  // Lifted for the same reason in reverse: a street name sits ON the road
-  // ribbon, and a `#373c43` ribbon is lighter than the land the rest of the
-  // type is measured against.
-  labelRoad: '#aca79b',
-  labelWater: '#5c8ea8',
-  labelPark: '#79a06a',
-  labelPoi: '#a9a49a',
-  halo: 'rgba(16,19,24,0.9)',
-  haloStrong: 'rgba(12,15,19,0.96)',
+  labelPlace: '#dae4ed', // dark-wide "New York"; dark-city agrees
+  labelPlaceMinor: '#bcc8d6', // measured #a5b4c6 -> 5.20:1 (a11y divergence)
+  labelRegion: '#abb7c6', // (chosen) 4.86:1 on land
+  // Lifted as far as it can usefully go. Against the dark motorway fill
+  // (#7d91b1) even pure white only reaches 3.20:1, so 4.5:1 is arithmetically
+  // unreachable there for ANY text colour — the dark halo carries it instead.
+  labelRoad: '#f2f5f9', // (chosen) 4.31:1 on ordinary streets
+  labelWater: '#7fa8d8', // (chosen)
+  labelPark: '#7ee0b4', // (chosen) 4.86:1 on #005d5b
+  labelPoi: '#b9c5d4', // (chosen)
+  halo: 'rgba(40,53,72,0.9)', // a shade under the land, which is what Apple haloes with
+  haloStrong: 'rgba(32,42,58,0.95)',
 
+  // The same Apple category hues, lifted for a dark ground.
   poi: {
-    foodDrink: '#d9945f',
-    shopping: '#c2a95f',
-    outdoors: '#74b166',
-    transit: '#9a85bd',
-    lodging: '#8e8ac6',
-    health: '#d9929a',
-    civic: '#8391a1',
-    culture: '#bb82a7',
-    worship: '#9a96a3',
-    vehicle: '#7f9cb5',
-    other: '#a09b8f',
+    foodDrink: '#ff9147', // (chosen) dark-city food pins read brighter than light's #fc791e
+    shopping: '#f8bc3a',
+    outdoors: '#3fc667',
+    transit: '#4a89f0',
+    lodging: '#b98bee',
+    health: '#f9789d',
+    civic: '#7f93de',
+    culture: '#f08ed6',
+    worship: '#a79ccd',
+    vehicle: '#8397e0',
+    other: '#a6a9ad',
   },
 };
 

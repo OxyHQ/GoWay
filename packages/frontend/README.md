@@ -183,57 +183,120 @@ every `text-font` exists, asserts the id contract, asserts light and dark are
 in step, and fails if the committed JSON has drifted from the source. Run it
 before pushing a cartography change.
 
-### What the palette is aiming at, and the source that was retired
+### Where every colour comes from — measured, not reasoned
 
-The target is **Apple Maps' current cartography**, described by property:
-very low contrast and a lot of light, a near-white warm-grey ground, muted
-grey-blue water, sage green close in value to the land, white roads ranked by
-width and casing strength, and category tints pulled below the land's own
-contrast so no block is ever the brightest thing on screen.
+The palette is **sampled from Apple Maps**, not designed to resemble it. Three
+earlier versions were reasoned — first from a Google Maps style array supplied
+as an "Apple Maps" reference, then twice from a description of Apple's design
+language — and all three were wrong in the same direction: they assumed the
+target was quiet, desaturated and near-monochrome. It is not. Apple Maps is
+warm and saturated in daylight and blue-violet at night.
 
-**Nobody who worked on this has seen Apple Maps 2026.** The values are reasoned
-from that design language, not matched against a sample. Treat the result as
-"built to those properties", never as "matches Apple Maps".
+So this pass measured it. `.apple-maps-reference/` (gitignored — third-party
+screenshots, sampled and not redistributed) holds eleven captures taken with
+`shoot.ts`, which drives headless Chromium over the DevTools Protocol because
+no CLI flag emulates `prefers-color-scheme` and without `Emulation.setEmulatedMedia`
+you get Chrome's auto-darkened light basemap instead of Apple's real dark one:
 
-The first two versions were built instead from a Google Maps JS API style array
-supplied as an Apple reference. It is **snazzymaps.com/style/42, published 20
-November 2013**, anonymous, and its own description claims only that it "largely
-resembles the Apple Maps theme, albeit somewhat flatter". It imitates iOS 6/7
-Apple Maps — creamy land, saturated green, bright blue water and **yellow
-motorways**, which Apple retired years ago. Following it faithfully is what made
-this map look unlike Apple Maps today.
+| capture | what it is | what it was for |
+|---|---|---|
+| `light-city` / `dark-city` | Manhattan, z14 | land, built-up, water, roads, casings |
+| `light-wide` / `dark-wide` | NY metro, z10 | motorways at region scale, forest, coastline |
+| `campus-light` / `campus-dark` | upper Manhattan, z15 | hospital, university, wooded park, expressway |
+| `madrid-light` / `madrid-dark` | central Madrid, z15 | a non-US road mix, POI pin colours, plazas |
+| `jfk-light` / `jfk-dark` | JFK, z13 | aerodrome, runways, aprons, salt marsh |
+| `rural-light` | Catskills, z9 | forest, farmland, hillshading |
 
-That array is now recorded in `lib/map/style/palette.ts` for provenance only,
-with each hex marked against what it used to drive. **It is not a target.** A
-value drifting back toward one of them is a regression, not a restoration. The
-translation *method* still applies to anything new: Google names abstract
-feature classes and cascades, MapLibre names the tile's own `source-layer` and
-`class` values and does not, so a Google style is translated feature class by
-feature class and never consumed.
+Method, because it matters: single pixels are unreliable next to antialiasing
+and label halos, so every value is the **dominant colour of a region**, and
+nothing was accepted until it appeared in at least two independent captures.
+Run-length scans across roads were used to separate a fill from its casing,
+which no region sample can do. Every field in `palette.ts` carries its
+measurement in a trailing comment; a field marked **(chosen)** could not be
+measured and is an interpolation between neighbours — those are the ones to
+distrust first.
 
-What survived the palette change, deliberately: the whole road *model* (casings
-on every tier, white fills, width-led hierarchy, derived casing widths, the
-casings-before-fills ordering), the 69-layer id contract, the anchor, light/dark
-parity and the type ramp's ranking. Only colour moved.
+#### The headline values
 
-Three rules from the retired array are contested and are hoisted into
+| class | light | dark |
+|---|---|---|
+| land | `#f6f4eb` | `#34445b` |
+| built-up blocks | `#fef4df` | `#45476e` |
+| water | `#8ddbf6` | `#1c347a` |
+| park | `#c6e9a8` | `#005d5b` |
+| motorway | `#b3b5b9` | `#7d91b1` |
+| street fill | `#fefefe` | `#63758d` |
+| street casing | `#e0e3e6` | `#43536b` |
+| medical | `#fbebe8` | `#404458` |
+| aerodrome | `#dbe5ee` | `#314d76` |
+| place label | `#222222` | `#dae4ed` |
+
+#### Four findings that changed a layer, not just a hex
+
+1. **Motorways are a solid cool grey — not white, and certainly not yellow.**
+   At every zoom from z10 to z15 Apple draws expressways as an unbroken
+   `#b3b5b9` ribbon while ordinary streets are white with a cool casing. The
+   hierarchy inverts the usual one: the most important road is the *darkest*
+   thing in the network. Found by scanning across the Henry Hudson Parkway, the
+   FDR and I-495; no region sample would have shown it.
+2. **The built-up tint is zoom-gated.** `#fef4df` is 15% of a z14 Manhattan
+   canvas and entirely absent from a z10 one, and the same is true of the dark
+   `#45476e`. `landuse-built-up` now fades in from z10 to z13.
+3. **Road casings are COOL greys on WARM land.** `#e0e3e6` and `#ced1d4` sit on
+   `#f6f4eb` cream. Every previous version used warm casings, which is why the
+   roads never separated from the ground the way Apple's do.
+4. **Motorway fills shift hue with zoom** — `#b3baca` at z10 against `#b3b5b9`
+   at z14, `#889dbf` against `#7d91b1` at night. Small, but it is the
+   difference between a motorway network that reads as a system at region scale
+   and one that reads as scratches. `RoadTone.fillLowZoom` reproduces it.
+
+#### Where readability beat fidelity
+
+The style holds a 4.5:1 contrast floor for label text against the ground it
+actually sits on. Five measured Apple values fall below it, and in those five
+places GoWay diverges on purpose:
+
+| label | Apple's measured value | measured ratio | GoWay uses | ratio |
+|---|---|---|---|---|
+| light neighbourhood | `#747979` | 4.01:1 | `#646969` | 5.10:1 |
+| light park | `#1f823d` | 3.62:1 | `#166a2f` | 4.98:1 |
+| dark neighbourhood | `#a5b4c6` | 4.18:1 | `#bcc8d6` | 5.20:1 |
+| light street over a **motorway** | — | 2.8:1 | `#636766` | 5.7:1 on the white street fill it normally sits on; over the grey ribbon nothing reaches 4.5:1 without going near-black, so the 1.3px white halo carries it |
+| dark street over a **motorway** | — | — | `#f2f5f9` | 4.3:1 on ordinary streets. Against the `#7d91b1` motorway fill, **even pure white only reaches 3.20:1** — 4.5:1 is arithmetically unreachable for any text colour, and the dark halo is the mechanism |
+
+#### The three contested rules from the retired source
+
+The Google array that seeded the first two versions carried three rules that
+were product decisions rather than colours. They live in
 `lib/map/style/tuning.ts` — one flag each, argued in place, flippable in one
-line:
+line — and they survive the move to measured colour unchanged:
 
 | flag | supplied | shipped | why |
 |---|---|---|---|
-| `LOCAL_ROAD_FILL` | black, casings off | **`null`** — the palette's Apple recipe | the black shipped, was seen live, and was rejected: *"veo unas líneas negras en las carreteras"*. Roads now use white fills with a casing on every class. Setting a colour here restores the supplied literal treatment |
-| `SHOW_ROAD_AND_POI_LABELS` | off | **on** | a map whose streets and places have no names cannot be searched, navigated or recognised — this restyles nothing, it removes the product's job |
+| `LOCAL_ROAD_FILL` | black, casings off | **`null`** — the palette's own recipe | the black shipped, was seen live, and was rejected: *"veo unas líneas negras en las carreteras"* |
+| `SHOW_ROAD_AND_POI_LABELS` | off | **on** | a map whose streets and places have no names cannot be searched, navigated or recognised — that removes the product's job rather than restyling it |
 | `SHOW_BASEMAP_POIS` | `poi.business` off | **on, restrained** | switching POIs off would deliberately ship the dark-mode gap this style exists to close |
 
-One colour decision is worth calling out because it is counter-intuitive:
-**`labelWater` and `labelPark` are darker than their hue family would suggest,
-and the dark mode's `labelRoad` is lighter.** Their backgrounds moved. Muted
-water and sage park sit far closer to the land's lightness than 2013's bright
-blue and fresh green did, so the old label colours measured 2.38:1 and 3.58:1
-against their own fills — visible as marks, unreadable as words. Every label
-colour in `palette.ts` is now checked against the ground it actually sits on
-rather than against the land.
+#### What could not be matched
+
+- **No hillshading.** `rural-light` shows Apple modulating forest green with
+  terrain relief. GoWay carries no relief raster (the style has no DEM source
+  and OpenFreeMap serves none that fits), so large forests render flat.
+- **Built-up coverage is uneven, and that is the tiles, not the style.** The
+  Madrid z14 tile carries `landuse class=residential` over 108% of its area;
+  the Manhattan one carries 0.1%. So GoWay's cream block tint appears in Madrid
+  and is nearly absent in Manhattan, where Apple — which has its own built-up
+  dataset — tints the whole island. A GoWay-hosted tile build could add the
+  layer; OpenMapTiles cannot.
+- **Apple draws only *notable* buildings as distinct shapes**; ordinary ones
+  melt into the block tint. GoWay draws every footprint the `building`
+  source-layer carries, so its building fill is deliberately set between
+  Apple's two measured values rather than at either.
+- **Beach/sand, ice and ferry were never visible** in any capture, so those
+  three are `(chosen)`.
+- **Apple does not visibly distinguish farmland**, cemeteries or tracks at the
+  zooms captured. GoWay has layers for them; they are set a hair off their
+  neighbours rather than invented.
 
 Cartography is **not** Bloom. No Bloom token appears in a geographic layer and
 no cartographic colour is reachable from `components/` or `features/`: a brand
@@ -337,17 +400,20 @@ These two are the whole "does it look like Apple Maps" question, so they are
 written down rather than left in the numbers.
 
 **Roads.** Every class has a fill and a casing — a fine line one step darker,
-drawn wider and underneath. Fills are white or near-white the whole way up;
-**motorways are not yellow**, and the retired 2013 array's `#ffe15f` is gone
-entirely. The ladder is **width plus casing strength**: a motorway's casing is
-`#d3ccbb` and a residential street's is `#e4e1d7`, so the firmer edge and the
-wider ribbon rank together. Motorway, trunk, primary and secondary additionally
-*deepen* their casing as you zoom out, reaching their normal colour by z14 —
-at z11 a motorway is a 3.8px ribbon with about a pixel of edge per side, and on
-a near-white ground a pale edge at that scale is not an edge. The first render
-of this palette without that ramp turned the whole Madrid region into a white
-tangle in which the A-roads could not be traced. **Hierarchy is carried
-by width, not colour**: at z15 a motorway is 11.3px, a primary 7.4, a secondary
+drawn wider and underneath — and all casings are emitted before all fills.
+
+The **colour** model is Apple's, measured: ordinary streets (primary and below)
+are `#fefefe` with a cool grey casing that darkens up the tiers (`#e0e3e6` for
+a residential street, `#ced1d4` for a primary), while **motorway and trunk are
+a solid cool grey** (`#b3b5b9`, `#c4c7ca`) with a casing only one step under
+their own fill. So the strategic network is the *darkest* thing in the road
+hierarchy in daylight and the *brightest* at night — the inverse of the usual
+white-motorway convention, and the single most visible thing about Apple's
+roads. Their fills also shift hue as you zoom out (`RoadTone.fillLowZoom`), and
+primary/secondary casings deepen as you zoom out (`RoadTone.casingLowZoom`),
+because a pale one-pixel edge at z11 is not an edge — without that ramp the
+Madrid region rendered as a white tangle in which the A-roads could not be
+traced. **Width still carries the ranking**: at z15 a motorway is 11.3px, a primary 7.4, a secondary
 6.0, a tertiary 4.8, a residential street 3.6, a service road 1.8 — a clean
 monotonic ladder with roughly 3:1 between the top and the bottom of the
 drivable network, held at about the same ratio at every zoom so the map does
