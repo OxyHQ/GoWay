@@ -29,6 +29,7 @@
     "doctor:oxy": "oxy-doctor --ci",
     "db:generate": "bun run --cwd packages/backend db:generate",
     "db:migrate": "bun run --cwd packages/backend db:migrate",
+    "import:osm": "bun run --cwd packages/backend import:osm",
     "worker:setup": "make -C packages/reconstruction-worker setup",
     "worker:doctor": "make -C packages/reconstruction-worker doctor",
     "worker:run": "make -C packages/reconstruction-worker run",

@@ -14,7 +14,8 @@
     "test": "bun test",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "bun run src/db/migrate.ts"
+    "db:migrate": "bun run src/db/migrate.ts",
+    "import:osm": "bun run src/import/osm/run.ts"
   },
   "dependencies": {
     "@goway/shared-types": "workspace:*",

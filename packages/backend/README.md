@@ -30,6 +30,18 @@ src/capture/             the capture decisions that are not database access
   retention.ts           what is stored, why, and until when
 src/storage/objectStore.ts  the GoWay interface; S3 is an adapter behind it
 src/storage/s3ObjectStore.ts  SigV4 presigning over node:crypto — no AWS SDK
+src/import/osm/          the OpenStreetMap POI import (#63) — a one-shot task, not a route
+  protobuf.ts            the six protobuf wire constructs osmformat.proto uses
+  pbf.ts                 blob framing, PrimitiveBlock, and per-blob offsets
+  poiTags.ts             which OSM tags are a POI, and what GoWay calls them
+  placeRecord.ts         one element → the facts GoWay stores. Pure.
+  extract.ts             the three passes a sorted extract forces
+  merge.ts               what a RE-import may change. Pure.
+  writePlaces.ts         batched upserts; the only writer outside db/places/
+  duplicates.ts          feeds places_duplicate_candidates; merges nothing
+  download.ts            a resumable fetch, because the image has no curl
+  verifyProvenance.ts    dereferences a sample against OpenStreetMap (see #58)
+  run.ts                 the entry point the ECS one-shot invokes
 src/db/__tests__/        the real-database suites + their harness (never built into dist/)
 src/http/apiError.ts     ApiError + the public error-code vocabulary
 src/http/errorHandler.ts the single place a failure becomes a response
@@ -90,6 +102,144 @@ Three rules the code is written to and the tests measure:
   (Barcelona→Madrid ≈ 507 km; transposed it reads 659 km).
 - Reconciliation links on `(source, sourceId)` and MERGES NOTHING. Look-alikes
   become rows in `places_duplicate_candidates` for review.
+
+## Importing OpenStreetMap POIs
+
+`src/import/osm/` fills `places` from an OpenStreetMap extract, so the shops,
+bars and museums on the map are GoWay records with GoWay ids rather than
+labels baked into somebody else's tile. It is a one-shot task, never a route
+and never a background job on the API.
+
+### What it imports, measured
+
+A `--dry-run` over `europe/spain` on a GitHub runner, against the 1.48 GB
+(1,483,405,280 byte) Geofabrik extract — measured, not estimated:
+
+| | |
+| --- | --- |
+| places | **771,515** — 553,974 nodes, 209,346 ways, 8,195 relations, 0 unpositioned |
+| translated names | **31,331** on 25,825 places, across 20+ languages |
+| top languages | `es` 13,448 · `en` 5,294 · `ca` 4,612 · `eu` 1,772 · `fr` 1,361 · `gl` 960 |
+| extract passes | 73 s + 29 s + 41 s = **143 s**, 51,308 blobs inflated |
+| download | 1.48 GB in 113 s |
+| peak resident memory | **541 MB** (670 MB for the whole runtime) |
+| mean record size | **779 bytes** of normalized facts per place |
+| provenance sample | **25 of 25** elements dereferenced to the right element |
+
+The largest categories are `bus_stop` (70k), `restaurant` (58k),
+`place_of_worship` (35k), `cafe` (20k), `bar` (20k) and `park` (20k) — which is
+what a country looks like, and a useful shape to compare a future run against.
+
+Reproduce it anywhere, including on a laptop, without a database:
+
+```bash
+bun run import:osm -- --dry-run --region=europe/spain
+```
+
+What is NOT measured here is the write itself: it needs `oxy-postgres`, which
+is unreachable from anywhere a measurement can run. 772 batches of a thousand
+places, five statements each, is the shape it was designed for; the first real
+run is the number.
+
+### What counts as a POI
+
+`poiTags.ts` has the full reasoning. In short: the imported set must be a
+SUPERSET of what the basemap's `poi-*` layers draw, or switching those layers
+off loses places a user can see today. So inclusion is by tag KEY rather than by
+a whitelist of values — `amenity=*`, `shop=*`, `tourism=*`, `leisure=*`,
+`historic=*`, `office=*`, `craft=*`, `sport=*`, plus narrow value lists for the
+keys whose other values are not places — and every POI must have a `name`,
+which is what every one of those layer filters already requires. The classes the
+style draws NOWHERE (`POI_CLUTTER_CLASSES`: bollards, gates, waste baskets,
+station entrances) are the one deliberate exclusion.
+
+`poiTags.test.ts` reads `packages/frontend/lib/map/style/layers.ts` and
+`schema.ts` and checks the copy against them, so "copied from the map style" is
+a verified claim rather than a comment.
+
+### Running it in production
+
+`oxy-postgres` is not publicly accessible, so the import runs inside the VPC as
+a one-shot ECS task against the SHIPPED image — exactly as a migration does:
+
+```bash
+# The network identity comes off the live service; never hardcode a subnet.
+NETWORK=$(aws ecs describe-services --cluster oxy-cluster --services goway \
+  --query 'services[0].networkConfiguration.awsvpcConfiguration' --output json \
+  | jq -r '"awsvpcConfiguration={subnets=[" + (.subnets|join(",")) + "],securityGroups=[" + (.securityGroups|join(",")) + "],assignPublicIp=" + .assignPublicIp + "}"')
+
+aws ecs run-task --cluster oxy-cluster --task-definition oxy-goway \
+  --launch-type FARGATE --count 1 --network-configuration "$NETWORK" \
+  --overrides '{
+    "cpu": "2048", "memory": "4096",
+    "containerOverrides": [{ "name": "goway", "command": [
+      "bun","packages/backend/dist/src/import/osm/run.js",
+      "--target-database=goway","--region=europe/spain"]}]}'
+```
+
+Output goes to CloudWatch `/oxy/ecs`, stream `goway/goway/<task-id>`.
+
+**Cost.** Fargate ARM in `us-west-2` is $0.03238 per vCPU-hour and $0.00356 per
+GB-hour, so 2 vCPU / 4 GB is **$0.079 an hour** — about **four cents** for a
+half-hour run and under a dime if the write path takes twice as long as the
+extract suggests. Ingress from Geofabrik is not charged. This is small enough
+that running it nightly costs less than a coffee a month; it is not a reason to
+run it nightly, but it is a reason not to hesitate over a re-run.
+
+**2 vCPU / 4 GB, and 20 GiB of ephemeral storage, are measured rather than
+chosen**: the pass peaks at 596 MB and the extract is 1.48 GB. The serving task
+is 512/1024, which is right for an API and too small for this; overriding at
+`run-task` borrows the family for one run instead of registering a new revision
+of it, which the next deploy would roll the service onto.
+
+`.github/workflows/import-osm-pois.yml` is the same invocation as a
+`workflow_dispatch`. **It cannot run until oxy-infra grants
+`oxy-goway-github-deploy` `ecs:RunTask`, `iam:PassRole`, `ecs:DescribeTasks` and
+`logs:GetLogEvents`** — `iam-goway-deploy.tf` deliberately has none of them, and
+its own header says what to add. Until then the command above, run by a human
+with those permissions, is the only path.
+
+A first run does not have to be a whole country: `--bbox=2.15,41.37,2.19,41.40`
+is central Barcelona, a few thousand places, and proves the write path before it
+is asked for three quarters of a million.
+
+### Running a second time
+
+Designed to be run repeatedly, and cheap when nothing has changed:
+
+- **Places are matched on `(openstreetmap, <type>/<id>)`**, which is unique
+  across `places_sources`, so a re-import updates rather than duplicating.
+- **A GoWay correction survives.** `merge.ts` compares three values for every
+  column — what it holds, what the source said LAST time (kept in
+  `places_sources.source_data`) and what it says now — and only moves a column
+  that still equals the source's own previous value. Names get the same
+  guarantee from the schema instead: the upsert targets
+  `(place, language, 'openstreetmap')` and has no way to address a `goway` row.
+- **Nothing is ever deleted.** A POI absent from today's extract is not a
+  statement that the place closed.
+- **An unchanged place produces no write at all**, so a re-run does not churn
+  `updated_at` for a country and re-invalidate every client's cache.
+
+### What it does NOT import
+
+- **Opening hours.** `OpeningHours.intervals` is a structured weekly schedule
+  and OSM's `opening_hours` is a small language. An empty `intervals` reads as
+  "never open", which is worse than no data, and a real parser is its own issue.
+- **Footprints.** `places.geometry` stays null; a way POI is positioned at the
+  mean of its vertices, which is where a pin goes, not where a polygon is.
+- **Relations with no way members**, and ways whose nodes the extract does not
+  contain. Both are counted as `unpositioned` in the summary (0 for Spain).
+
+### Locally
+
+```bash
+bun run import:osm -- --target-database=goway_dev \
+  --region=europe/monaco --verify-sample=5
+```
+
+Monaco is 700 kB and finishes in seconds. A `--dry-run` writes nothing and opens
+no connection, but still needs a syntactically valid `DATABASE_URL`: this
+package parses its whole configuration at module load, on purpose.
 
 ## Street 3D capture
 
@@ -164,6 +314,7 @@ bun run test
 | `bun run test` | `bun test` |
 | `bun run db:generate` | diff `src/db/schema/` and WRITE a migration |
 | `bun run db:migrate --target-database=<name>` | APPLY migrations |
+| `bun run import:osm -- --target-database=<name>` | import OpenStreetMap POIs |
 
 `typecheck` runs two programs on purpose. `tsconfig.json` is the emitting build
 and excludes `drizzle.config.ts` (it imports the `drizzle-kit` devDependency the
