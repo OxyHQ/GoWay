@@ -10,11 +10,15 @@
  *
  * ## What is here
  *
- * GoWay's schema is Places (issue #4) and it produced `0000`. `places.ts` holds
- * all five tables in one module because they are one aggregate: every child
- * table has a foreign key to `places`, and `places_capabilities` also references
+ * GoWay's schema is Places (issue #4), which produced `0000`, and Street 3D
+ * capture (issues #9/#10), which produced `0001`. `places.ts` holds all five of
+ * its tables in one module because they are one aggregate: every child table has
+ * a foreign key to `places`, and `places_capabilities` also references
  * `places_sources`, so splitting them across modules would only introduce an
- * export order to get wrong.
+ * export order to get wrong. `capture.ts` is one aggregate for the same reason,
+ * and it is a SEPARATE module because it shares no foreign key with Places at
+ * all — a capture is contributed content about a street, not a fact about a
+ * place, and the two must stay independently deletable.
  *
  * ## When adding a table
  *
@@ -36,4 +40,5 @@
  */
 
 export * from './places';
+export * from './capture';
 export * from './valueSets';

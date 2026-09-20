@@ -21,6 +21,15 @@ src/db/places/           the ONLY code that touches the Places tables
   placeGeo.ts            ST_DWithin / ST_Intersects / ST_Distance, each in its one legal place
   placeMapper.ts         row → the published `Place`; nothing else may build one
   placesRepository.ts    reads, writes, source linking and duplicate detection
+src/db/capture/          the ONLY code that touches the Street 3D capture tables
+  captureMapper.ts       row → the published contract; keeps object keys and Oxy ids OUT
+  captureRepository.ts   registration, deduplication, finalize and storage reporting
+src/capture/             the capture decisions that are not database access
+  anchor.ts              which position claim wins, and what its provenance was
+  exif.ts                EXIF/QuickTime GPS → a GoWay coordinate, refs and all
+  retention.ts           what is stored, why, and until when
+src/storage/objectStore.ts  the GoWay interface; S3 is an adapter behind it
+src/storage/s3ObjectStore.ts  SigV4 presigning over node:crypto — no AWS SDK
 src/db/__tests__/        the real-database suites + their harness (never built into dist/)
 src/http/apiError.ts     ApiError + the public error-code vocabulary
 src/http/errorHandler.ts the single place a failure becomes a response
@@ -29,6 +38,9 @@ src/middleware/auth.ts   Oxy auth, from @oxy.so/core/server and nowhere else
 src/routes/health.ts     GET /health (liveness + database reachability), GET /ready
 src/routes/places.ts     the Places surface, mounted at /api/v1
 src/routes/placeSchemas.ts  the request schemas, at least as strict as the CHECKs behind them
+src/routes/capture.ts    the Street 3D contribution surface (#9/#10)
+src/routes/captureSchemas.ts  its request schemas, with EXIF normalized at the boundary
+src/config/capture.ts    retention windows, media limits and the object-store settings
 src/utils/logger.ts      pino, with the redaction list
 drizzle/                 GENERATED migrations — never hand-written
 ```
@@ -77,6 +89,52 @@ Three rules the code is written to and the tests measure:
   (Barcelona→Madrid ≈ 507 km; transposed it reads 659 km).
 - Reconciliation links on `(source, sourceId)` and MERGES NOTHING. Look-alikes
   become rows in `places_duplicate_candidates` for review.
+
+## Street 3D capture
+
+The contribution surface for #9/#10. Everything here needs an Oxy session
+except the policy read — submitting has to be attributable so consent, deletion
+and abuse handling are possible at all, while a visitor deciding whether to
+contribute is entitled to know the retention policy first.
+
+| route | auth | answers |
+| --- | --- | --- |
+| `GET /captures/policy` | public | `CaptureUploadPolicy` — accepted media, limits, retention |
+| `POST /captures/sessions` | Oxy session | 201 + `CaptureSession`, recording the consent version |
+| `GET /captures/sessions/:id` | Oxy session | the caller's own session |
+| `GET /captures/sessions/:id/assets` | Oxy session | its `CaptureAsset[]`, with state, gate and expiry |
+| `POST /captures/sessions/:id/assets` | Oxy session | 201 + `CaptureUploadTicket` |
+| `GET /captures/assets/:id` | Oxy session | one `CaptureAsset` |
+| `POST /captures/assets/:id/finalize` | Oxy session | the `CaptureAsset`, idempotently |
+
+```text
+app  →  POST …/assets            registers the contribution, returns an upload target
+app  →  PUT  <object store>      the bytes, DIRECTLY — never through this process
+app  →  POST …/:id/finalize      GoWay asks the store whether they arrived
+```
+
+Four rules the schema enforces rather than the code remembering:
+
+- **No raw media is permanent by accident.** `capture_media_objects` declares
+  `retention_class`, `retention_reason` and `expires_at` NOT NULL and CHECKs the
+  expiry against a 400-day backstop no configuration can raise, so a permanent
+  raw upload cannot be inserted — by this application or by a backfill.
+- **Exact duplicates are one object.** A PARTIAL unique index on
+  `(content_hash) WHERE deleted_at IS NULL`: the same photo twice is one stored
+  object and two contributions, and the same bytes can be contributed again once
+  the first object has expired. Near-duplicates are deliberately NOT handled —
+  see the note in `src/db/schema/capture.ts`.
+- **Privacy fails closed.** `capture_assets.reconstruction_eligible` is
+  `GENERATED ALWAYS`, so nothing can write it, and a CHECK additionally refuses
+  to let an asset enter a reconstruction state while the gate is shut.
+- **A position is evidence.** Every claim is a row in
+  `capture_location_evidence` with its origin AND its witness; the resolved
+  anchor on the asset records which one won. A client can never claim GoWay
+  measured a position itself.
+
+There is no user location history here and there must not be one: every
+coordinate hangs off a submitted asset, and `capture_sessions` holds no position
+at all.
 
 ## Tests
 
