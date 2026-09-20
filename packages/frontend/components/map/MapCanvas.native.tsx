@@ -36,8 +36,17 @@ import { useTheme } from '@oxy.so/bloom/theme';
 
 import { resolveMapAnchors, resolveMapStyleUrl } from '@/lib/map/provider';
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
+import { LABEL_LAYER_IDS, TAP_LAYER_IDS } from '@/lib/map/tapLayers';
 
 import { DefaultMapMarker } from './DefaultMapMarker';
+import {
+  collectLabelFeatures,
+  isLabelSourceLayer,
+  LABEL_HIT_PAD_PX,
+  labelCandidatesOf,
+  pickLabelFeature,
+  type QueriedLabel,
+} from './labels';
 import { MapAttribution } from './MapAttribution';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
@@ -60,6 +69,7 @@ import {
 import {
   DEFAULT_VIEWPORT,
   type GeoBounds,
+  type GeoCoordinate,
   type MapApi,
   type MapCanvasError,
   type MapCanvasProps,
@@ -85,6 +95,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     onViewportChange,
     onPress,
     onMarkerPress,
+    onLabelsChange,
     onReady,
     onError,
     style,
@@ -277,11 +288,112 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     [onViewportChange],
   );
 
+  /**
+   * A tap, resolved against the basemap's own labels.
+   *
+   * Asynchronous where the web fork is synchronous, and unavoidably so: the
+   * query runs inside the platform SDK and the answer comes back over the
+   * bridge. The CONTRACT is what has to match, and it does — the same padded
+   * box, the same `pickLabelFeature` ranking, the same `MapPressEvent`. The
+   * one-frame delay is invisible against a sheet that animates anyway.
+   *
+   * Hit priority's first step needs no code here. A `<Marker>` on native is a
+   * real React Native view, so its `Pressable` consumes the touch and the map's
+   * own gesture recogniser never sees it — which is exactly the guarantee the
+   * web fork has to reconstruct by hand, because a `maplibregl.Marker` is a DOM
+   * child of the canvas container and its clicks bubble.
+   */
   const handlePress = useCallback(
     (event: NativeSyntheticEvent<PressEvent>) => {
-      onPress?.({ coordinate: fromLngLat(event.nativeEvent.lngLat) });
+      const press = onPress;
+      if (!press) return;
+      const coordinate = fromLngLat(event.nativeEvent.lngLat);
+      if (!isDrawableCoordinate(coordinate)) {
+        reportMapDefect('press:coordinate', 'Ignored a map press: the engine reported a non-drawable coordinate.');
+        return;
+      }
+      const map = mapRef.current;
+      const point = event.nativeEvent.point;
+      if (!map || !Array.isArray(point)) {
+        press({ coordinate });
+        return;
+      }
+      const [x, y] = point;
+      void map
+        .queryRenderedFeatures(
+          [
+            [x - LABEL_HIT_PAD_PX, y - LABEL_HIT_PAD_PX],
+            [x + LABEL_HIT_PAD_PX, y + LABEL_HIT_PAD_PX],
+          ],
+          { layers: [...TAP_LAYER_IDS] },
+        )
+        .then(async (features) => {
+          // Anchoring is pure geometry and runs here, synchronously, for every
+          // candidate — including the streets and rivers, whose anchor is the
+          // nearest point on the way. That is the whole reason `labels.ts`
+          // anchors in a local planar frame rather than in screen pixels:
+          // projecting every vertex of every street in the box would be one
+          // bridge call each, and there is no affordable version of that.
+          const labels = labelCandidatesOf(queriedLabelsOf(features), coordinate);
+          if (labels.length === 0) {
+            press({ coordinate });
+            return;
+          }
+          // One projection per candidate, gathered up front, so the ranking can
+          // run against a plain lookup — identical arithmetic to web's.
+          const projected = new Map<string, { x: number; y: number }>();
+          await Promise.all(
+            labels.map(async (candidate) => {
+              if (!candidate.anchored) return;
+              try {
+                const [px, py] = await map.project([
+                  candidate.coordinate.longitude,
+                  candidate.coordinate.latitude,
+                ]);
+                projected.set(pointKey(candidate.coordinate), { x: px, y: py });
+              } catch {
+                // Unprojectable is ranked as unanchored, not dropped: the
+                // engine drew it.
+              }
+            }),
+          );
+          const label = pickLabelFeature(labels, { x, y }, (target) =>
+            projected.get(pointKey(target)) ?? null,
+          );
+          press({ coordinate, ...(label ? { label } : {}) });
+        })
+        .catch(() => {
+          // A query the platform refused is a tap on bare map, not a dead tap.
+          press({ coordinate });
+        });
     },
     [onPress],
+  );
+
+  /**
+   * Report what the basemap is currently labelling, on the settled frame.
+   *
+   * `onRegionDidChange` is the closest native has to web's `idle`; there is no
+   * event for "the collision system has finished placing". The consequence is
+   * honest and small: a label that appears as the last tiles decode is reported
+   * on the NEXT settled frame rather than this one.
+   */
+  const reportLabels = useCallback(
+    (centre: GeoCoordinate) => {
+      const report = onLabelsChange;
+      const map = mapRef.current;
+      if (!report || !map || !isDrawableCoordinate(centre)) return;
+      void map
+        .queryRenderedFeatures({ layers: [...LABEL_LAYER_IDS] })
+        .then((features) => {
+          report(collectLabelFeatures(queriedLabelsOf(features), centre));
+        })
+        .catch(() => {
+          // Nothing to report is not the same as reporting nothing: leaving the
+          // previous set alone keeps suppression stable across a hiccup.
+        });
+    },
+    [onLabelsChange],
   );
 
   const handleStyleLoaded = useCallback(() => {
@@ -326,7 +438,13 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         compassPosition={{ top: 8, right: 8 }}
         onPress={handlePress}
         onRegionIsChanging={(event) => emitViewport(event, false)}
-        onRegionDidChange={(event) => emitViewport(event, true)}
+        onRegionDidChange={(event) => {
+          emitViewport(event, true);
+          // The settled frame is also when the basemap's labels are worth
+          // re-reading — see `reportLabels`.
+          const [longitude, latitude] = event.nativeEvent.center;
+          reportLabels({ latitude, longitude });
+        }}
         onDidFinishLoadingStyle={handleStyleLoaded}
         onDidFailLoadingMap={handleStyleFailed}
       >
@@ -433,6 +551,91 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   );
 });
 
+// ---------------------------------------------------------------------------
+// Basemap labels
+// ---------------------------------------------------------------------------
+
+/**
+ * The platform's GeoJSON features, with the platform removed.
+ *
+ * Native returns plain GeoJSON, so `sourceLayer` arrives as a property rather
+ * than as a field on the feature the way maplibre-gl hands it over. Both
+ * spellings are accepted because the two platform SDKs do not agree about it,
+ * and a feature this cannot classify is dropped rather than guessed at — the
+ * source-layer is what decides whether a hit is a POI or a district, and being
+ * wrong about that opens the wrong sheet.
+ */
+function queriedLabelsOf(features: readonly GeoJSON.Feature[]): QueriedLabel[] {
+  const out: QueriedLabel[] = [];
+  for (const feature of features) {
+    const properties = (feature.properties ?? {}) as Readonly<Record<string, unknown>>;
+    const sourceLayer = sourceLayerOf(feature, properties);
+    if (!sourceLayer || !isLabelSourceLayer(sourceLayer)) continue;
+    const geometry = feature.geometry;
+    const coordinate =
+      geometry?.type === 'Point'
+        ? { longitude: geometry.coordinates[0], latitude: geometry.coordinates[1] }
+        : null;
+    out.push({
+      featureId: feature.id ?? null,
+      sourceLayer,
+      properties,
+      coordinate,
+      // A street or a river is a LINE: `labels.ts` anchors it at the point on
+      // the way the user pointed at. Identical to the web fork.
+      path: pathOf(geometry),
+    });
+  }
+  return out;
+}
+
+function sourceLayerOf(
+  feature: GeoJSON.Feature,
+  properties: Readonly<Record<string, unknown>>,
+): string | null {
+  const direct = (feature as { sourceLayer?: unknown }).sourceLayer;
+  if (typeof direct === 'string' && direct) return direct;
+  for (const key of ['source-layer', 'sourceLayer', 'layer']) {
+    const value = properties[key];
+    if (typeof value === 'string' && value) return value;
+  }
+  return null;
+}
+
+/** A line feature's vertices, capped. Identical to the web fork. */
+const MAX_PATH_VERTICES = 512;
+
+function pathOf(geometry: GeoJSON.Geometry | null | undefined): GeoCoordinate[] | null {
+  if (!geometry) return null;
+  const lines =
+    geometry.type === 'LineString'
+      ? [geometry.coordinates]
+      : geometry.type === 'MultiLineString'
+        ? geometry.coordinates
+        : null;
+  if (!lines) return null;
+  const out: GeoCoordinate[] = [];
+  for (const line of lines) {
+    for (const position of line) {
+      if (out.length >= MAX_PATH_VERTICES) return out;
+      out.push({ longitude: position[0], latitude: position[1] });
+    }
+  }
+  return out.length > 0 ? out : null;
+}
+
+/**
+ * Key for the projected-position lookup.
+ *
+ * Native projects one coordinate per bridge call, so the ranking cannot ask for
+ * a position mid-comparison the way web's synchronous `map.project` lets it.
+ * Six decimals is ~11 cm — finer than any two distinct POIs, coarse enough that
+ * the same coordinate always produces the same key.
+ */
+function pointKey(coordinate: GeoCoordinate): string {
+  return `${coordinate.longitude.toFixed(6)},${coordinate.latitude.toFixed(6)}`;
+}
+
 export type {
   GeoBounds,
   GeoCoordinate,
@@ -443,11 +646,14 @@ export type {
   MapErrorReason,
   MapFitOptions,
   MapInteractionOptions,
+  MapLabelFeature,
+  MapLabelKind,
   MapMarker,
   MapMoveSource,
   MapOverlay,
   MapOverlayKind,
   MapOverlayPaint,
+  MapPressEvent,
   MapViewport,
   MapViewportChange,
   ResolvedMapViewport,

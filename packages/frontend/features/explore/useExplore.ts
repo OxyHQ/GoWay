@@ -32,14 +32,18 @@ import type {
   GeoBounds,
   MapApi,
   MapFitOptions,
+  MapLabelFeature,
   MapMarker,
   MapOverlay,
+  MapPressEvent,
   MapViewportChange,
   ResolvedMapViewport,
 } from '@/components/map';
 import { DEFAULT_VIEWPORT } from '@/components/map';
+import { sameLabelSet } from '@/components/map/labels';
 import { useDirections, type DirectionsController } from '@/features/directions/useDirections';
 import { boundsCenter, distanceMeters } from '@/lib/map/geo';
+import { declutterMarkerLabels, describeLabel, reconcileLabel } from '@/lib/goway/basemapLabels';
 import { visibleCapabilities } from '@/lib/goway/capabilities';
 import { CATEGORY_SHORTCUTS } from '@/lib/goway/categories';
 import { classifyGoWayError, type GoWayFailureKind } from '@/lib/goway/errors';
@@ -54,7 +58,17 @@ export type ExploreMode = 'browse' | 'search' | 'details';
 /** What the user picked. A geocoder candidate is NOT a place; see `ResultRows`. */
 export type ExploreSelection =
   | { kind: 'place'; placeId: string; seed?: Place }
-  | { kind: 'result'; result: SearchResult };
+  | { kind: 'result'; result: SearchResult }
+  /**
+   * A label the BASEMAP drew, tapped, and not (yet) known to be a GoWay place.
+   *
+   * It is a selection like any other so that the map behaves the same way for
+   * it — the camera moves, a pin appears, the sheet opens — while the card it
+   * produces says only what the tiles said. The state is frequently temporary:
+   * search reconciliation runs underneath it, and a match upgrades this to a
+   * `place` selection in place.
+   */
+  | { kind: 'label'; label: MapLabelFeature };
 
 /** How long the search box waits for typing to stop. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -70,6 +84,9 @@ const SEARCH_DEBOUNCE_MS = 250;
  */
 const AREA_MOVE_FRACTION = 0.3;
 const AREA_ZOOM_DELTA = 1;
+
+/** Nothing reported yet. A stable identity, so it is not a new array per render. */
+const NO_LABELS: readonly MapLabelFeature[] = [];
 
 /** Zoom the camera settles at when a place is opened from a list. */
 const DETAIL_ZOOM = 16;
@@ -121,6 +138,17 @@ export interface ExploreController {
   setShortcutId: (id: string | null) => void;
 
   selection: ExploreSelection | null;
+  /**
+   * The basemap label the user tapped, while GoWay has nothing better for it.
+   *
+   * Present only in the `label` selection state. `labelCategory` is what the
+   * TILES said it was, tidied into words and not translated into a GoWay
+   * category — see `basemapLabels.ts` → `describeLabel`.
+   */
+  selectedLabel: MapLabelFeature | null;
+  labelCategory: string | null;
+  /** Search reconciliation is still in flight for the tapped label. */
+  selectedLabelBusy: boolean;
   selectedPlace: Place | null;
   selectedPlaceBusy: boolean;
   selectedPlaceFailure: GoWayFailureKind | null;
@@ -129,6 +157,14 @@ export interface ExploreController {
   clearSelection: () => void;
 
   markers: readonly MapMarker[];
+  /**
+   * What the BASEMAP is labelling right now, straight from the canvas.
+   *
+   * Wired to `MapCanvas.onLabelsChange`. Its only job is keeping GoWay's own
+   * chips from stacking their text on a name the map already drew; nothing
+   * else should read it.
+   */
+  onLabelsChange: (labels: readonly MapLabelFeature[]) => void;
   /**
    * Marker id → the strongest live ecosystem capability that place asserts.
    * Drives the enriched marker state; absent for everything else.
@@ -148,8 +184,16 @@ export interface ExploreController {
   directions: DirectionsController;
   /** What the canvas should draw: the route, and the selected step. */
   overlays: readonly MapOverlay[];
-  /** A tap on the map. Only the planner's "choose on map" acts on it. */
-  onMapPress: (coordinate: GeoCoordinate) => void;
+  /**
+   * A tap on the map.
+   *
+   * Three outcomes, and which one happens is decided here rather than in the
+   * canvas: the planner's "choose on map" takes the coordinate (and the
+   * label's name, when there was one, which saves a reverse geocode); a tap on
+   * a basemap label opens it; a tap on bare map does nothing, exactly as
+   * before.
+   */
+  onMapPress: (event: MapPressEvent) => void;
 
   location: ReturnType<typeof useUserLocation>;
 }
@@ -185,6 +229,18 @@ export function useExplore(
     options.initialPlaceId ? { kind: 'place', placeId: options.initialPlaceId } : null,
   );
 
+  /**
+   * What the basemap is currently labelling.
+   *
+   * Reported by the canvas on every settled frame, and compared by id before it
+   * is stored: a fresh array of the same labels would rebuild every marker on
+   * the map for nothing. See `components/map/labels.ts` -> `sameLabelSet`.
+   */
+  const [basemapLabels, setBasemapLabels] = useState<readonly MapLabelFeature[]>(NO_LABELS);
+  const onLabelsChange = useCallback((next: readonly MapLabelFeature[]) => {
+    setBasemapLabels((current) => (sameLabelSet(current, next) ? current : next));
+  }, []);
+
   const [committed, setCommitted] = useState<Committed | null>(null);
   const [zoom, setZoom] = useState(DEFAULT_VIEWPORT.zoom);
   const [areaMoved, setAreaMoved] = useState(false);
@@ -215,6 +271,33 @@ export function useExplore(
 
   const selectedPlaceId = selection?.kind === 'place' ? selection.placeId : null;
   const placeQuery = usePlace(selectedPlaceId, selection?.kind === 'place' ? selection.seed : undefined);
+
+  /**
+   * Resolving a tapped basemap label to a GoWay place — through SEARCH, which
+   * is the reconciliation GoWay already has.
+   *
+   * There is deliberately no second reconciliation rule here and no new
+   * endpoint. `SearchResult.place` is populated by the backend only when a
+   * candidate matched a GoWay place through `places_sources` — the
+   * `(source, sourceId)` binding that is the one rule for "these are the same
+   * record" — so asking search for the label's own name, biased at the label's
+   * own point, and keeping a reconciled result that lands within
+   * `LABEL_MATCH_RADIUS_M` reuses that machinery exactly. The React Query cache
+   * means tapping the same label twice costs one request.
+   *
+   * It runs only in the `label` selection state, which the cheap in-memory
+   * match in `onMapPress` has already failed to resolve.
+   */
+  const selectedLabel = selection?.kind === 'label' ? selection.label : null;
+  const labelSearch = useSearch(selectedLabel?.name ?? '', {
+    near: selectedLabel?.coordinate ?? null,
+    enabled: selectedLabel != null,
+    limit: 10,
+  });
+  const labelPlace = useMemo(
+    () => (selectedLabel ? reconcileLabel(selectedLabel, labelSearch.data?.results ?? []) : null),
+    [labelSearch.data, selectedLabel],
+  );
 
   // ── Mode ─────────────────────────────────────────────────────────────────
 
@@ -359,6 +442,41 @@ export function useExplore(
   const clearSelection = useCallback(() => setSelection(null), []);
 
   /**
+   * A tap on the basemap's own label.
+   *
+   * The label becomes the selection immediately and on its own terms — a name
+   * and a category, which is what the user pointed at and all the tiles hold —
+   * and GoWay's own search runs underneath it to see whether there is a place
+   * record behind it. That order matters: the card is useful in the first
+   * frame, and it degrades to the truth rather than to a spinner over an empty
+   * card.
+   *
+   * There is deliberately no client-side shortcut that matches the label
+   * against the places already on screen. That would be a second definition of
+   * "these are the same record", competing with the backend's one
+   * (`places_sources`), written in name strings — see `basemapLabels.ts`.
+   */
+  const selectLabel = useCallback(
+    (label: MapLabelFeature) => {
+      setSelection({ kind: 'label', label });
+      focus(label.coordinate);
+    },
+    [focus],
+  );
+
+  /**
+   * Upgrade a label selection the moment search reconciles it.
+   *
+   * In place, without a second navigation: the sheet is already open on this
+   * thing, the camera is already on it, and what changes is that the card stops
+   * saying "GoWay has no record of this" and starts being the record.
+   */
+  useEffect(() => {
+    if (!labelPlace || selection?.kind !== 'label') return;
+    setSelection({ kind: 'place', placeId: labelPlace.id, seed: labelPlace });
+  }, [labelPlace, selection]);
+
+  /**
    * Frame a deep-linked place once it arrives.
    *
    * `https://goway.to/place/<id>` has a place ID and no coordinate, so the
@@ -414,7 +532,69 @@ export function useExplore(
    * where a map stops answering the question it was asked, so the markers
    * become the stops: A, B and whatever is between them.
    */
-  const markers = directions.active ? directions.markers : built.markers;
+  /**
+   * The pin for a tapped basemap label.
+   *
+   * A selection the user cannot see is not one, and this is the one case where
+   * GoWay deliberately DOES draw a chip over a basemap label: the label says
+   * what the place is called, the chip says "this is the thing you tapped and
+   * the sheet is about it". It is appended rather than built, because it is not
+   * a GoWay place and must not enter the clustering or the marker cap.
+   */
+  const labelMarker = useMemo<MapMarker | null>(() => {
+    if (!selectedLabel) return null;
+    return {
+      id: `basemap:${selectedLabel.id}`,
+      coordinate: selectedLabel.coordinate,
+      kind: 'place',
+      label: truncate(selectedLabel.name),
+      selected: true,
+      accessibilityLabel: `${selectedLabel.name}, selected`,
+    };
+  }, [selectedLabel]);
+
+  /**
+   * What the canvas draws.
+   *
+   * In the planner the map is about the ROUTE, so the markers become the stops
+   * and nothing is decluttered — A and B must read as A and B whatever the
+   * basemap is saying underneath them.
+   *
+   * Otherwise: the built markers, plus the pin for a tapped basemap label, with
+   * the TEXT dropped from any chip sitting on a name the basemap already drew.
+   * Nothing is removed — see `basemapLabels.ts` for why this is de-confliction
+   * rather than suppression, and why GoWay does not suppress at all.
+   */
+  const markers = useMemo(() => {
+    if (directions.active) return directions.markers;
+    const drawn = labelMarker ? [...built.markers, labelMarker] : built.markers;
+    return declutterMarkerLabels({ markers: drawn, labels: basemapLabels, zoom });
+  }, [basemapLabels, built.markers, directions.active, directions.markers, labelMarker, zoom]);
+
+  /**
+   * A tap on the map, now that the map answers.
+   *
+   * Hit priority's last two steps live here (the first — a GoWay marker wins —
+   * is enforced inside the canvas, which is the only thing that can see a
+   * marker was hit). The planner keeps first claim on the gesture while it is
+   * waiting for a point, because a tap that opened a place card instead of
+   * setting the stop the screen just asked for would be the screen
+   * contradicting itself. It now passes the label's NAME along, so "Point on
+   * the map" becomes the shop's name without a reverse geocode.
+   */
+  const onMapPress = useCallback(
+    (event: MapPressEvent) => {
+      if (directions.picking != null) {
+        directions.onMapPress(event.coordinate, event.label?.name);
+        return;
+      }
+      // Bare map stays inert. A tap that selected whatever was nearest would
+      // make the map unusable for its main job, which is being dragged around.
+      if (!event.label) return;
+      selectLabel(event.label);
+    },
+    [directions, selectLabel],
+  );
 
   const onMarkerPress = useCallback(
     (marker: MapMarker) => {
@@ -470,6 +650,12 @@ export function useExplore(
     setShortcutId,
 
     selection,
+    selectedLabel,
+    labelCategory: selectedLabel ? describeLabel(selectedLabel) : null,
+    // Busy while search is still deciding whether GoWay knows this place. The
+    // card is already useful during it; this only decides whether it may say
+    // "GoWay has no record of this" yet.
+    selectedLabelBusy: selectedLabel != null && labelSearch.isFetching,
     selectedPlace: placeQuery.data ?? null,
     selectedPlaceBusy: placeQuery.isPending && placeQuery.fetchStatus !== 'idle',
     selectedPlaceFailure: failureOf(placeQuery.error),
@@ -479,6 +665,7 @@ export function useExplore(
 
     markers,
     ecosystem,
+    onLabelsChange,
     onMarkerPress,
     onViewportChange,
 
@@ -487,7 +674,7 @@ export function useExplore(
 
     directions,
     overlays: directions.overlays,
-    onMapPress: directions.onMapPress,
+    onMapPress,
 
     location,
   };
@@ -506,13 +693,20 @@ function failureOf(error: unknown): GoWayFailureKind | null {
   return kind === 'aborted' ? null : kind;
 }
 
+/** What fits in a marker pill. Longer than this and the pill is the map. */
+const MARKER_LABEL_MAX = 18;
+
+function truncate(value: string): string {
+  return value.length > MARKER_LABEL_MAX ? `${value.slice(0, MARKER_LABEL_MAX - 1)}…` : value;
+}
+
 /** A search result's marker. A candidate with no reconciled place has no label. */
 function resultMarker(result: SearchResult, selected: boolean): MapMarker {
   return {
     id: result.id,
     coordinate: result.coordinate,
     kind: result.place ? 'place' : result.kind,
-    label: result.displayName.length > 18 ? `${result.displayName.slice(0, 17)}…` : result.displayName,
+    label: truncate(result.displayName),
     selected,
     accessibilityLabel: `${result.displayName}${selected ? ', selected' : ''}`,
   };

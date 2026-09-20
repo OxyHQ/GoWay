@@ -41,7 +41,12 @@ import {
 import { createPortal } from 'react-dom';
 import { View } from 'react-native';
 import * as maplibregl from 'maplibre-gl';
-import type { GeoJSONSource, MapLayerMouseEvent, StyleSpecification } from 'maplibre-gl';
+import type {
+  GeoJSONSource,
+  MapGeoJSONFeature,
+  MapLayerMouseEvent,
+  StyleSpecification,
+} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import * as Location from 'expo-location';
 import { useTheme } from '@oxy.so/bloom/theme';
@@ -56,6 +61,14 @@ import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
 
 import { applyDragAxes } from './dragAxes';
 import { DefaultMapMarker } from './DefaultMapMarker';
+import {
+  collectLabelFeatures,
+  isLabelSourceLayer,
+  LABEL_HIT_PAD_PX,
+  labelCandidatesOf,
+  pickLabelFeature,
+  type QueriedLabel,
+} from './labels';
 import { MapAttribution } from './MapAttribution';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
@@ -76,9 +89,11 @@ import {
 import {
   DEFAULT_VIEWPORT,
   type GeoBounds,
+  type GeoCoordinate,
   type MapApi,
   type MapCanvasError,
   type MapCanvasProps,
+  type MapLabelFeature,
   type MapMarker,
   type MapMoveSource,
   type MapOverlay,
@@ -142,6 +157,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     onViewportChange,
     onPress,
     onMarkerPress,
+    onLabelsChange,
     onReady,
     onError,
     style,
@@ -171,8 +187,29 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // Callbacks are read through refs inside the engine's own listeners so that
   // re-creating the map is driven ONLY by the style/reload key — a new inline
   // `onPress` from a parent render must not tear down and rebuild the canvas.
-  const handlers = useRef({ onViewportChange, onPress, onReady, onError });
-  handlers.current = { onViewportChange, onPress, onReady, onError };
+  const handlers = useRef({ onViewportChange, onPress, onLabelsChange, onReady, onError });
+  handlers.current = { onViewportChange, onPress, onLabelsChange, onReady, onError };
+
+  /**
+   * Which style layers a tap and a viewport read are queried against, derived
+   * from the style that actually LOADED.
+   *
+   * Deriving beats naming here, and the web fork is the one that can: the
+   * layers are flag-gated (`tuning.ts` omits the POI set entirely when
+   * `SHOW_BASEMAP_POIS` is off), they can be renamed, and under the
+   * `openfreemap` fallback style none of GoWay's ids exist at all. Walking the
+   * loaded document by `source-layer` — the OpenMapTiles schema name, which is
+   * the part no vendor gets to rename — answers correctly in all three cases.
+   * `MapCanvas.native.tsx` cannot do this (MapLibre Native does not hand the
+   * style back to JS) and names them instead; see `lib/map/tapLayers.ts`.
+   *
+   * `tap` is symbols AND circles — the POI dot is what sits at the anchor, and
+   * the label is drawn below it, so a tap on the dot has to resolve. `labels`
+   * is symbols only, because the suppression rule downstream is about a NAME
+   * the basemap is already drawing: a dot whose label lost its collision is not
+   * a reason to hide GoWay's own chip.
+   */
+  const queryLayers = useRef<{ tap: string[]; labels: string[] }>({ tap: [], labels: [] });
 
   const emitError = useCallback((next: MapCanvasError) => {
     setError(next);
@@ -221,6 +258,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     const slotRegistry = markerSlots.current;
 
     const handleLoad = () => {
+      queryLayers.current = resolveQueryLayers(map);
       setReady(true);
       setError(null);
       handlers.current.onReady?.();
@@ -262,10 +300,87 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       emitViewport(true, moveSourceOf(event));
     };
 
+    /**
+     * Was this click aimed at something GoWay drew?
+     *
+     * It has to be asked, and it is not obvious that it does. A
+     * `maplibregl.Marker`'s element is appended to the map's own CANVAS
+     * CONTAINER, and MapLibre binds its handlers there — so a click on a marker
+     * bubbles up and MapLibre fires a map `click` for it as well. (Measured, in
+     * headless Chromium, before any of this was written: one marker click
+     * produced one marker event and one map event whose `target` was the marker
+     * div.) That is a live bug and not only a theoretical one: while the
+     * directions planner is waiting for a point, tapping a PIN used to both
+     * open that stop's field and set a stop under it.
+     *
+     * The test is our own element registry rather than MapLibre's
+     * `.maplibregl-marker` class: the registry is what this component actually
+     * owns, and a vendor class name is a string that can change in a patch
+     * release without anything failing. The user-location dot is checked too —
+     * it is a marker, and a tap on it is no more "a tap on the map" than a tap
+     * on a pin is.
+     */
+    const pressedOwnMarker = (target: EventTarget | null): boolean => {
+      if (!(target instanceof Node)) return false;
+      for (const slot of slotRegistry.values()) {
+        if (slot.element === target || slot.element.contains(target)) return true;
+      }
+      const dot = userMarkerRef.current?.getElement();
+      return dot != null && (dot === target || dot.contains(target));
+    };
+
     const handleClick = (event: MapLayerMouseEvent) => {
-      handlers.current.onPress?.({
-        coordinate: { latitude: event.lngLat.lat, longitude: event.lngLat.lng },
-      });
+      const press = handlers.current.onPress;
+      if (!press) return;
+
+      // Hit priority, step 1: a GoWay marker wins outright, and `onPress` does
+      // not fire underneath it. `onMarkerPress` has already run via the
+      // marker's own Bloom `Pressable`.
+      if (pressedOwnMarker(event.originalEvent?.target ?? null)) return;
+
+      const coordinate = { latitude: event.lngLat.lat, longitude: event.lngLat.lng };
+      // The engine cannot hand us a non-finite lngLat today, but everything
+      // downstream of this event becomes a marker or a camera target, and the
+      // seam's rule is that nothing crosses it unchecked.
+      if (!isDrawableCoordinate(coordinate)) {
+        reportMapDefect('press:coordinate', 'Ignored a map press: the engine reported a non-drawable coordinate.');
+        return;
+      }
+
+      // Step 2: the basemap's own label, if the tap landed inside the pad.
+      const label = labelAt(map, event.point, coordinate, queryLayers.current.tap);
+      // Step 3: bare map — `label` is simply absent.
+      press({ coordinate, ...(label ? { label } : {}) });
+    };
+
+    /**
+     * Report what the basemap is currently labelling.
+     *
+     * On `idle` rather than `moveend`: `idle` is the frame at which every tile
+     * has arrived AND the collision system has finished placing, which is the
+     * only moment the answer is the one the user can see. A `moveend` read
+     * describes the labels of the tiles that happened to be decoded by then.
+     */
+    const handleIdle = () => {
+      const report = handlers.current.onLabelsChange;
+      if (!report) return;
+      const layers = queryLayers.current.labels;
+      if (layers.length === 0) {
+        report(EMPTY_LABELS);
+        return;
+      }
+      const centre = map.getCenter();
+      const fallback = { latitude: centre.lat, longitude: centre.lng };
+      if (!isDrawableCoordinate(fallback)) return;
+      let hits: MapGeoJSONFeature[];
+      try {
+        hits = map.queryRenderedFeatures({ layers });
+      } catch {
+        // A style swapped out from under the query is not a product failure —
+        // the next idle frame answers correctly.
+        return;
+      }
+      report(collectLabelFeatures(queriedLabelsOf(hits), fallback));
     };
 
     const handleError = (event: maplibregl.ErrorEvent & { sourceId?: string }) => {
@@ -281,6 +396,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     map.on('load', handleLoad);
     map.on('move', handleMove);
     map.on('moveend', handleMoveEnd);
+    map.on('idle', handleIdle);
     map.on('click', handleClick);
     map.on('error', handleError);
 
@@ -288,6 +404,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       map.off('load', handleLoad);
       map.off('move', handleMove);
       map.off('moveend', handleMoveEnd);
+      map.off('idle', handleIdle);
       map.off('click', handleClick);
       map.off('error', handleError);
       for (const slot of slotRegistry.values()) slot.marker.remove();
@@ -679,6 +796,139 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 });
 
 // ---------------------------------------------------------------------------
+// Basemap labels
+// ---------------------------------------------------------------------------
+
+const EMPTY_LABELS: readonly MapLabelFeature[] = [];
+
+/**
+ * The tap and label-read layer sets, from the style that loaded.
+ *
+ * Filtering on `type` is what keeps a tap on open grass from opening the park:
+ * the `park` source-layer is styled as a `fill` and a `line` as well as a
+ * label, and a fill is hit anywhere inside its polygon. Only the symbol (and,
+ * for the tap read, the POI circle) layers describe something the basemap has
+ * actually put a NAME on at a point.
+ */
+function resolveQueryLayers(map: maplibregl.Map): { tap: string[]; labels: string[] } {
+  const tap: string[] = [];
+  const labels: string[] = [];
+  const style = map.getStyle();
+  for (const layer of style?.layers ?? []) {
+    const sourceLayer = (layer as { 'source-layer'?: string })['source-layer'];
+    if (!sourceLayer || !isLabelSourceLayer(sourceLayer)) continue;
+    if (!map.getLayer(layer.id)) continue;
+    if (layer.type === 'symbol') {
+      tap.push(layer.id);
+      labels.push(layer.id);
+    } else if (layer.type === 'circle') {
+      tap.push(layer.id);
+    }
+  }
+  return { tap, labels };
+}
+
+/** MapLibre's features, with MapLibre removed. */
+function queriedLabelsOf(features: readonly MapGeoJSONFeature[]): QueriedLabel[] {
+  const out: QueriedLabel[] = [];
+  for (const feature of features) {
+    const sourceLayer = feature.sourceLayer;
+    if (!sourceLayer || !isLabelSourceLayer(sourceLayer)) continue;
+    const geometry = feature.geometry;
+    // A Point becomes a coordinate; a LineString becomes a PATH, so that
+    // `labels.ts` can anchor a street or a river at the point on the way the
+    // user actually pointed at. A polygon (a park) gets neither: its name is
+    // placed at a pole of inaccessibility that exists only inside MapLibre, and
+    // `labels.ts` falls back to the tap, which is inside the thing anyway.
+    const coordinate =
+      geometry?.type === 'Point'
+        ? { longitude: geometry.coordinates[0], latitude: geometry.coordinates[1] }
+        : null;
+    const path = pathOf(geometry);
+    out.push({
+      featureId: feature.id ?? null,
+      sourceLayer,
+      layerId: feature.layer?.id,
+      properties: (feature.properties ?? {}) as Readonly<Record<string, unknown>>,
+      coordinate,
+      path,
+    });
+  }
+  return out;
+}
+
+/**
+ * A line feature's vertices, in GoWay coordinates — or `null`.
+ *
+ * Capped, because a motorway clipped to a tile can carry a great many points
+ * and this runs inside a click handler. The cap costs nothing in accuracy that
+ * matters: the query box is 36 px across, so the part of the line the user
+ * could have meant is a handful of segments, and the anchor search walks them
+ * in order.
+ */
+const MAX_PATH_VERTICES = 512;
+
+function pathOf(geometry: GeoJSON.Geometry | null | undefined): GeoCoordinate[] | null {
+  if (!geometry) return null;
+  const lines =
+    geometry.type === 'LineString'
+      ? [geometry.coordinates]
+      : geometry.type === 'MultiLineString'
+        ? geometry.coordinates
+        : null;
+  if (!lines) return null;
+  const out: GeoCoordinate[] = [];
+  for (const line of lines) {
+    for (const position of line) {
+      if (out.length >= MAX_PATH_VERTICES) return out;
+      out.push({ longitude: position[0], latitude: position[1] });
+    }
+  }
+  return out.length > 0 ? out : null;
+}
+
+/**
+ * The basemap label a tap meant, or `null`.
+ *
+ * A BOX, never the exact pixel. Measured against the real style and real tiles:
+ * a query at a POI's own anchor returns the dot alone, six pixels away it
+ * returns nothing, and the label glyph the user was aiming at sits 12–20 px
+ * below the anchor because `text-anchor` is `top`. See `labels.ts` →
+ * {@link LABEL_HIT_PAD_PX}.
+ */
+function labelAt(
+  map: maplibregl.Map,
+  point: { x: number; y: number },
+  coordinate: GeoCoordinate,
+  layers: readonly string[],
+): MapLabelFeature | null {
+  if (layers.length === 0) return null;
+  let hits: MapGeoJSONFeature[];
+  try {
+    hits = map.queryRenderedFeatures(
+      [
+        [point.x - LABEL_HIT_PAD_PX, point.y - LABEL_HIT_PAD_PX],
+        [point.x + LABEL_HIT_PAD_PX, point.y + LABEL_HIT_PAD_PX],
+      ],
+      { layers: [...layers] },
+    );
+  } catch {
+    // A layer that vanished between the style load and this click. A tap that
+    // resolves to nothing is the pre-existing behaviour, not a failure.
+    return null;
+  }
+  // Anchor first (pure geometry), then rank by projected distance. The two
+  // steps are split because the NATIVE fork has to await its projections in
+  // between; keeping the same two calls on both forks is what keeps the rule
+  // identical.
+  const labels = labelCandidatesOf(queriedLabelsOf(hits), coordinate);
+  return pickLabelFeature(labels, point, (target) => {
+    const projected = map.project([target.longitude, target.latitude]);
+    return { x: projected.x, y: projected.y };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Overlay plumbing
 // ---------------------------------------------------------------------------
 
@@ -781,11 +1031,14 @@ export type {
   MapErrorReason,
   MapFitOptions,
   MapInteractionOptions,
+  MapLabelFeature,
+  MapLabelKind,
   MapMarker,
   MapMoveSource,
   MapOverlay,
   MapOverlayKind,
   MapOverlayPaint,
+  MapPressEvent,
   MapViewport,
   MapViewportChange,
   ResolvedMapViewport,
