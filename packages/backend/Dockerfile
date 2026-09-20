@@ -15,6 +15,12 @@ COPY package.json bun.lock bunfig.toml tsconfig.json ./
 COPY packages/shared-types/package.json packages/shared-types/
 COPY packages/backend/package.json packages/backend/
 COPY packages/frontend/package.json packages/frontend/
+# The SDK is not a backend dependency and none of its code ships in this
+# image — but `bun install --frozen-lockfile` resolves the whole workspace
+# graph, and bun.lock records that @goway/frontend depends on
+# @goway.to/sdk. A member named in the lockfile and absent from the build
+# context is a hard error: "listed in bun.lock but not on disk".
+COPY packages/sdk/package.json packages/sdk/
 
 # --ignore-scripts skips the root postinstall (it builds shared-types before the
 # source is copied); shared-types + backend are built explicitly below.
@@ -36,6 +42,7 @@ COPY --from=builder /app/package.json /app/bun.lock /app/bunfig.toml ./
 COPY --from=builder /app/packages/shared-types/package.json packages/shared-types/
 COPY --from=builder /app/packages/backend/package.json packages/backend/
 COPY --from=builder /app/packages/frontend/package.json packages/frontend/
+COPY --from=builder /app/packages/sdk/package.json packages/sdk/
 COPY --from=builder /app/packages/shared-types/dist/ packages/shared-types/dist/
 COPY --from=builder /app/packages/backend/dist/ packages/backend/dist/
 
