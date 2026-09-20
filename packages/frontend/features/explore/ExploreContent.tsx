@@ -195,6 +195,11 @@ function SelectionBody({ explore }: { explore: ExploreController }) {
       route={explore.route}
       routePending={explore.routeBusy}
       routeFailure={explore.routeFailure}
+      routeOriginKind={explore.routeOriginKind}
+      locationPending={explore.locationBusy}
+      locationFailure={explore.locationFailure}
+      canAskLocationAgain={explore.canAskLocationAgain}
+      onRouteFromMap={explore.routeFromMap}
       travelMode={explore.travelMode}
       onTravelModeChange={explore.setTravelMode}
       onDirections={explore.requestDirections}
