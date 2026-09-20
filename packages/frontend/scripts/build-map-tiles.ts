@@ -148,13 +148,30 @@ const AREAS: Record<string, { url: string; file?: string; note: string }> = {
     note: 'The reference extract: Barcelona, and the two places the OSM id join is asserted on.',
   },
   planet: {
-    url: 'https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf',
+    // A MIRROR, and not `planet.openstreetmap.org`, which is a measurement
+    // rather than a preference: on the build machine the origin dropped every
+    // long TLS connection with `SSL_read: decryption failed or bad record
+    // mac`, repeatedly, and never once completed. Measured throughput of the
+    // two official mirrors that carry the file: ftp.osuosl.org 34–72 MB/s,
+    // ftpmirror.your.org 7 MB/s.
+    url:
+      process.env.GOWAY_PLANET_URL ||
+      'https://ftp.osuosl.org/pub/openstreetmap/pbf/planet-latest.osm.pbf',
     // Named explicitly, and NOT `planet.osm.pbf`. The routing engine pulls
-    // this same 85 GB file under the name the upstream gives it, and a
-    // pipeline that insisted on its own name would download it a second time
-    // — which is the one mistake `OSM_DIR` exists to prevent.
-    file: 'planet-latest.osm.pbf',
-    note: 'The real thing. ~85 GB in, hours of build, ~60–100 GB out.',
+    // this same file under the name the upstream gives it, and a pipeline that
+    // insisted on its own name would download 95 GB a second time — which is
+    // the one mistake `OSM_DIR` exists to prevent.
+    //
+    // `GOWAY_PLANET_SNAPSHOT=260914` stores it under the DATED name instead,
+    // which is what a reproducible build wants: `-latest` rotates weekly, and
+    // a download resumed across a rotation is a corrupt planet that still
+    // parses. The receipt records the replication sequence either way, so a
+    // build can always be identified after the fact — but only a dated file
+    // can be re-fetched.
+    file: process.env.GOWAY_PLANET_SNAPSHOT
+      ? `planet-${process.env.GOWAY_PLANET_SNAPSHOT}.osm.pbf`
+      : 'planet-latest.osm.pbf',
+    note: 'The real thing. ~95 GB in, hours of build, ~60–100 GB out.',
   },
 };
 
@@ -250,21 +267,88 @@ async function sha256(path: string): Promise<string> {
   return hash.digest('hex');
 }
 
+/** The `Content-Length` the server reports, or `null` if it will not say. */
+async function upstreamSize(url: string): Promise<number | null> {
+  try {
+    const response = await fetch(url, { method: 'HEAD', redirect: 'follow' });
+    const length = response.headers.get('content-length');
+    return length ? Number(length) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** How many times a stalled or dropped transfer is resumed before giving up. */
+const DOWNLOAD_ATTEMPTS = 40;
+
 /**
  * Fetch a file once, resumably, and only if it is not already here.
  *
- * `curl -C -` rather than `fetch`, because the planet is 85 GB and a
- * `Response.arrayBuffer()` of 85 GB is not a download strategy. The existing
+ * `curl -C -` rather than `fetch`, because the planet is 95 GB and a
+ * `Response.arrayBuffer()` of 95 GB is not a download strategy. The existing
  * file is left alone: re-running a build must not re-pull the extract, which
- * is also what lets a second agent on this machine share the download.
+ * is also what lets the routing engine on this machine share the download.
+ *
+ * ## Why the retry loop is HERE and not `curl --retry`
+ *
+ * Because `--retry` does not compose with `-C -`, and the failure is silent
+ * and expensive. curl computes the resume offset ONCE, when it is invoked; a
+ * retry inside the same invocation that the server answers without honouring
+ * `Range:` rewrites the file from byte 0. Measured on a real planet pull: the
+ * output file went from 62 GB BACKWARDS to 55 GB, leaving a tail that nothing
+ * downstream can trust and that no exit code complained about. Re-invoking
+ * curl is what recomputes the offset, so the loop has to be out here.
+ *
+ * `--speed-time`/`--speed-limit` turn a stalled socket into a failed attempt
+ * instead of a process that hangs until somebody notices; `-f` is what stops a
+ * 404 being written INTO the output as an HTML error page that every later
+ * resume then treats as a partial download.
+ *
+ * ## Why the size is checked
+ *
+ * A resumed download has no natural completion signal — curl exits 0 on a
+ * transfer that ended early just as happily as on one that finished. The
+ * upstream `Content-Length` is the only thing that distinguishes "done" from
+ * "stopped", so a server that reports one turns this into a real assertion.
  */
 async function fetchOnce(url: string, destination: string, label: string): Promise<void> {
   if (await exists(destination)) {
     console.log(`· ${label} already present at ${destination}`);
     return;
   }
-  console.log(`· fetching ${label} from ${url}`);
-  await run('curl', ['-fL', '--retry', '5', '-C', '-', '-o', destination, url], `curl ${label}`);
+  const expected = await upstreamSize(url);
+  console.log(
+    `· fetching ${label} from ${url}${expected ? ` (${(expected / 1e9).toFixed(1)} GB)` : ''}`,
+  );
+
+  let previous = 0;
+  for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt += 1) {
+    try {
+      await run(
+        'curl',
+        ['-fsSL', '-C', '-', '--speed-time', '60', '--speed-limit', '200000', '-o', destination, url],
+        `curl ${label}`,
+      );
+    } catch (error) {
+      if (attempt === DOWNLOAD_ATTEMPTS) throw error;
+    }
+
+    const size = (await exists(destination)) ? (await stat(destination)).size : 0;
+    if (expected === null || size === expected) {
+      if (expected !== null) console.log(`· ${label} complete: ${size} bytes`);
+      return;
+    }
+    if (size < previous) {
+      throw new Error(
+        `${label} SHRANK from ${previous} to ${size} bytes: the server is not honouring Range, ` +
+          'so the file cannot be resumed and its tail cannot be trusted. Delete it and use a ' +
+          'mirror that answers a range request with 206.',
+      );
+    }
+    previous = size;
+    console.log(`· ${label} attempt ${attempt}: ${size} of ${expected} bytes`);
+  }
+  throw new Error(`${label} did not finish in ${DOWNLOAD_ATTEMPTS} attempts`);
 }
 
 async function planetilerJar(): Promise<string> {

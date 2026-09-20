@@ -303,9 +303,21 @@ A planet build that happened once on a laptop is not infrastructure.
 - **Planetiler** is pinned to a version *and* a sha256; the build refuses a jar
   that does not match, because an unpinned build tool is an unpinned schema.
 - **The OSM extract** is named by URL in `AREAS`, so a change of source is a
-  change in the diff. The planet is the dated file from
-  `planet.openstreetmap.org` (or an official mirror), never `-latest`, so a
-  resumed download cannot straddle two weekly builds.
+  change in the diff. The planet comes from **`ftp.osuosl.org`**, which is a
+  measurement rather than a preference: `planet.openstreetmap.org` dropped
+  every long TLS connection on the build machine (`SSL_read: decryption failed
+  or bad record mac`) and never completed once, and of the two official mirrors
+  that carry the file osuosl served 34–72 MB/s against your.org's 7 MB/s.
+  Set `GOWAY_PLANET_SNAPSHOT=260914` to store it under the **dated** name,
+  which is what a reproducible build wants — `-latest` rotates weekly and a
+  download resumed across a rotation is a corrupt planet that still parses.
+- **A 95 GB download needs a real completion signal.** curl exits 0 on a
+  transfer that ended early just as happily as on one that finished, so the
+  fetch asserts the final size against the upstream `Content-Length`. It also
+  keeps its retry loop *outside* curl: `--retry` does not compose with `-C -`
+  (the resume offset is computed once per invocation, so a retry the server
+  answers without honouring `Range:` rewrites from byte 0 — observed, with the
+  output going from 62 GB backwards to 55 GB and no exit code complaining).
 - **Extracts live in `~/osm-data`**, outside the repository, because the
   routing engine wants the same 85 GB planet PBF and two pipelines downloading
   it separately is invisible waste. `GOWAY_OSM_DIR` overrides it.
