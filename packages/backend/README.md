@@ -203,6 +203,27 @@ A first run does not have to be a whole country: `--bbox=2.15,41.37,2.19,41.40`
 is central Barcelona, a few thousand places, and proves the write path before it
 is asked for three quarters of a million.
 
+### Checking it worked
+
+`/places/bounds` is a viewport read and publishes ONE name per place, so the
+check is two requests. The first asks for the same places in Spanish; the
+second opens one of them, which publishes the full `names` set
+unconditionally:
+
+```bash
+BOX='west=2.15&south=41.37&east=2.19&north=41.40'
+curl -s "https://api.goway.to/api/v1/places/bounds?$BOX&locale=es&limit=5" \
+  | jq '.places[] | {id, name, localizedName, categories}'
+
+curl -s "https://api.goway.to/api/v1/places/<id>" | jq '{name, names, sources}'
+```
+
+Before this import, the first answers `{"places":[]}`. After it, every place
+has non-empty `categories`, a `localizedName` that differs from `name` wherever
+OpenStreetMap records one, and a `sources` entry whose `sourceId` is a
+`<type>/<id>` that `https://www.openstreetmap.org/<type>/<id>` opens on the
+right building.
+
 ### Running a second time
 
 Designed to be run repeatedly, and cheap when nothing has changed:
