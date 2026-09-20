@@ -73,7 +73,17 @@ import {
 } from '../lib/map/provider';
 import { buildGowayMapStyle } from '../lib/map/style';
 import { GOWAY_STYLE_LAYER_ID_LIST } from '../lib/map/style/layers';
-import { AVAILABLE_FONTS, OPENMAPTILES_SOURCE_LAYER_NAMES } from '../lib/map/style/schema';
+import {
+  AVAILABLE_FONTS,
+  LANDCOVER_CLASSES,
+  LANDUSE_CLASSES,
+  OPENMAPTILES_SOURCE_LAYER_NAMES,
+  OPENMAPTILES_SOURCE_LAYERS,
+  PLACE_CLASSES,
+  POI_CLASSES,
+  TRANSPORTATION_CLASSES,
+  WATER_CLASSES,
+} from '../lib/map/style/schema';
 
 const FRONTEND_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -165,6 +175,57 @@ function serialise(style: StyleSpecification): string {
 // Checks
 // ---------------------------------------------------------------------------
 
+/**
+ * The `class` vocabularies, per source-layer, as decoded from real tiles.
+ *
+ * Source-layers absent here either carry no `class` (`building`, `boundary`)
+ * or carry one that is free text rather than an enumeration — `park.class`
+ * really does contain values like "Zona de Especial Protección para las Aves",
+ * so a closed list would be a lie and the sweep below skips them.
+ */
+const CLASS_VOCABULARY: Partial<Record<string, readonly string[]>> = {
+  [OPENMAPTILES_SOURCE_LAYERS.transportation]: TRANSPORTATION_CLASSES,
+  // `transportation_name` carries the SAME class values as `transportation`.
+  [OPENMAPTILES_SOURCE_LAYERS.transportationName]: TRANSPORTATION_CLASSES,
+  [OPENMAPTILES_SOURCE_LAYERS.landcover]: LANDCOVER_CLASSES,
+  [OPENMAPTILES_SOURCE_LAYERS.landuse]: LANDUSE_CLASSES,
+  [OPENMAPTILES_SOURCE_LAYERS.place]: PLACE_CLASSES,
+  [OPENMAPTILES_SOURCE_LAYERS.water]: WATER_CLASSES,
+  [OPENMAPTILES_SOURCE_LAYERS.poi]: POI_CLASSES,
+};
+
+/**
+ * Every string this expression tests `class` against.
+ *
+ * Walks the two shapes the style actually writes — `['match', ['get','class'],
+ * [..values], …]` from `classIn()` and `['in', ['get','class'], ['literal',
+ * [..values]]]` from the POI filters — and ignores everything else. A filter
+ * naming a class the tiles never carry is the second silent failure mode after
+ * a wrong `source-layer`: it matches nothing, renders nothing, and logs
+ * nothing. `street` and `street_limited` are the live example — Mapbox-schema
+ * road classes that OpenFreeMap's own `liberty` style still filters on.
+ */
+function classValuesIn(node: unknown, out: Set<string>): void {
+  if (!Array.isArray(node)) return;
+  const [head, arg, third] = node as unknown[];
+  const readsClass =
+    Array.isArray(arg) && arg.length === 2 && arg[0] === 'get' && arg[1] === 'class';
+  if (head === 'match' && readsClass) {
+    // ['match', ['get','class'], labelsA, outA, labelsB, outB, …, fallback]
+    for (let i = 2; i + 1 < node.length; i += 2) {
+      const labels = node[i];
+      for (const label of Array.isArray(labels) ? labels : [labels]) {
+        if (typeof label === 'string') out.add(label);
+      }
+    }
+  } else if ((head === '==' || head === '!=') && readsClass && typeof third === 'string') {
+    out.add(third);
+  } else if (head === 'in' && readsClass && Array.isArray(third) && third[0] === 'literal') {
+    for (const label of third[1] as unknown[]) if (typeof label === 'string') out.add(label);
+  }
+  for (const child of node) classValuesIn(child, out);
+}
+
 /** A layer's `source-layer`, when it has one. */
 function sourceLayerOf(layer: LayerSpecification): string | undefined {
   return 'source-layer' in layer ? layer['source-layer'] : undefined;
@@ -216,6 +277,25 @@ function checkOne(appearance: MapAppearance, style: StyleSpecification, problems
         );
       } else if (!knownFonts.has(font[0])) {
         problems.push(where(`layer "${layer.id}" uses font "${font[0]}", which the glyph server does not serve`));
+      }
+    }
+
+    // 7. Filter coverage. Every `class` a filter names must be one the tiles
+    //    really carry, or the layer is dead code that renders nothing.
+    if (sourceLayer !== undefined && 'filter' in layer && layer.filter !== undefined) {
+      const vocabulary = CLASS_VOCABULARY[sourceLayer];
+      if (vocabulary !== undefined) {
+        const named = new Set<string>();
+        classValuesIn(layer.filter, named);
+        for (const value of named) {
+          if (!vocabulary.includes(value)) {
+            problems.push(
+              where(
+                `layer "${layer.id}" filters on class "${value}", which the ${sourceLayer} tiles do not carry — it can never match`,
+              ),
+            );
+          }
+        }
       }
     }
 

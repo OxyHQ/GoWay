@@ -59,6 +59,7 @@
       "poi-dot",
       "poi-dot-minor",
       "poi-transit-dot",
+      "road-oneway",
       "label-waterway",
       "label-water-line",
       "label-water-point",
@@ -147,7 +148,11 @@
           10,
           0,
           13,
-          1
+          1,
+          15,
+          1,
+          16.5,
+          0.35
         ]
       }
     },
@@ -2598,7 +2603,7 @@
       "type": "fill",
       "source": "openmaptiles",
       "source-layer": "building",
-      "minzoom": 14,
+      "minzoom": 15,
       "paint": {
         "fill-color": "#f7eed9",
         "fill-outline-color": [
@@ -2609,9 +2614,9 @@
           [
             "zoom"
           ],
-          14.5,
+          15.4,
           "#f7eed9",
-          16,
+          16.5,
           "#e4d9bd"
         ],
         "fill-opacity": [
@@ -2623,11 +2628,11 @@
           [
             "zoom"
           ],
-          14,
-          0,
           15,
-          0.65,
-          17,
+          0,
+          15.4,
+          0,
+          16,
           1
         ]
       }
@@ -2868,7 +2873,7 @@
       "type": "circle",
       "source": "openmaptiles",
       "source-layer": "poi",
-      "minzoom": 15,
+      "minzoom": 14,
       "filter": [
         "all",
         [
@@ -2937,6 +2942,24 @@
           ]
         ],
         [
+          "any",
+          [
+            "!",
+            [
+              "has",
+              "agg_stop"
+            ]
+          ],
+          [
+            "==",
+            [
+              "get",
+              "agg_stop"
+            ],
+            1
+          ]
+        ],
+        [
           "!",
           [
             "in",
@@ -2960,14 +2983,126 @@
         [
           "<=",
           [
-            "coalesce",
+            "+",
             [
-              "get",
-              "rank"
+              "coalesce",
+              [
+                "get",
+                "rank"
+              ],
+              999
             ],
-            999
+            [
+              "match",
+              [
+                "get",
+                "class"
+              ],
+              [
+                "restaurant",
+                "fast_food",
+                "cafe",
+                "bar",
+                "beer",
+                "ice_cream"
+              ],
+              0,
+              [
+                "shop",
+                "clothing_store",
+                "grocery",
+                "alcohol_shop",
+                "bakery",
+                "butcher",
+                "hairdresser",
+                "laundry"
+              ],
+              0,
+              [
+                "park",
+                "garden",
+                "playground",
+                "pitch",
+                "dog_park",
+                "picnic_site",
+                "golf",
+                "zoo",
+                "sports_centre",
+                "stadium",
+                "swimming_pool",
+                "ice_rink",
+                "athletics",
+                "cycling",
+                "running",
+                "yoga",
+                "boxing",
+                "gymnastics",
+                "equestrian"
+              ],
+              0,
+              [
+                "bus",
+                "railway",
+                "ferry_terminal"
+              ],
+              0,
+              [
+                "lodging"
+              ],
+              0,
+              [
+                "hospital",
+                "pharmacy",
+                "doctors",
+                "dentist",
+                "veterinary"
+              ],
+              12,
+              [
+                "school",
+                "college",
+                "library",
+                "town_hall",
+                "police",
+                "fire_station",
+                "post",
+                "office",
+                "bank",
+                "atm"
+              ],
+              9,
+              [
+                "museum",
+                "art_gallery",
+                "theatre",
+                "cinema",
+                "attraction",
+                "monument",
+                "castle",
+                "aquarium",
+                "music",
+                "escape_game",
+                "hackerspace"
+              ],
+              0,
+              [
+                "place_of_worship",
+                "cemetery"
+              ],
+              5,
+              [
+                "parking",
+                "fuel",
+                "car",
+                "bicycle",
+                "bicycle_rental",
+                "motorcycle"
+              ],
+              12,
+              0
+            ]
           ],
-          8
+          12
         ]
       ],
       "paint": {
@@ -3089,12 +3224,14 @@
           [
             "zoom"
           ],
+          14,
+          2.8,
           15,
-          2.4,
+          3.2,
           17,
-          3.4,
+          4.4,
           19,
-          4.4
+          5.4
         ],
         "circle-stroke-color": "#f6f4eb",
         "circle-stroke-width": [
@@ -3188,21 +3325,27 @@
           ]
         ],
         [
-          "<=",
-          [
-            "coalesce",
-            [
-              "get",
-              "rank"
-            ],
-            999
-          ],
-          24
-        ],
-        [
           "any",
           [
-            ">",
+            "!",
+            [
+              "has",
+              "agg_stop"
+            ]
+          ],
+          [
+            "==",
+            [
+              "get",
+              "agg_stop"
+            ],
+            1
+          ]
+        ],
+        [
+          "<=",
+          [
+            "+",
             [
               "coalesce",
               [
@@ -3211,7 +3354,243 @@
               ],
               999
             ],
-            8
+            [
+              "match",
+              [
+                "get",
+                "class"
+              ],
+              [
+                "restaurant",
+                "fast_food",
+                "cafe",
+                "bar",
+                "beer",
+                "ice_cream"
+              ],
+              0,
+              [
+                "shop",
+                "clothing_store",
+                "grocery",
+                "alcohol_shop",
+                "bakery",
+                "butcher",
+                "hairdresser",
+                "laundry"
+              ],
+              0,
+              [
+                "park",
+                "garden",
+                "playground",
+                "pitch",
+                "dog_park",
+                "picnic_site",
+                "golf",
+                "zoo",
+                "sports_centre",
+                "stadium",
+                "swimming_pool",
+                "ice_rink",
+                "athletics",
+                "cycling",
+                "running",
+                "yoga",
+                "boxing",
+                "gymnastics",
+                "equestrian"
+              ],
+              0,
+              [
+                "bus",
+                "railway",
+                "ferry_terminal"
+              ],
+              0,
+              [
+                "lodging"
+              ],
+              0,
+              [
+                "hospital",
+                "pharmacy",
+                "doctors",
+                "dentist",
+                "veterinary"
+              ],
+              12,
+              [
+                "school",
+                "college",
+                "library",
+                "town_hall",
+                "police",
+                "fire_station",
+                "post",
+                "office",
+                "bank",
+                "atm"
+              ],
+              9,
+              [
+                "museum",
+                "art_gallery",
+                "theatre",
+                "cinema",
+                "attraction",
+                "monument",
+                "castle",
+                "aquarium",
+                "music",
+                "escape_game",
+                "hackerspace"
+              ],
+              0,
+              [
+                "place_of_worship",
+                "cemetery"
+              ],
+              5,
+              [
+                "parking",
+                "fuel",
+                "car",
+                "bicycle",
+                "bicycle_rental",
+                "motorcycle"
+              ],
+              12,
+              0
+            ]
+          ],
+          30
+        ],
+        [
+          "any",
+          [
+            ">",
+            [
+              "+",
+              [
+                "coalesce",
+                [
+                  "get",
+                  "rank"
+                ],
+                999
+              ],
+              [
+                "match",
+                [
+                  "get",
+                  "class"
+                ],
+                [
+                  "restaurant",
+                  "fast_food",
+                  "cafe",
+                  "bar",
+                  "beer",
+                  "ice_cream"
+                ],
+                0,
+                [
+                  "shop",
+                  "clothing_store",
+                  "grocery",
+                  "alcohol_shop",
+                  "bakery",
+                  "butcher",
+                  "hairdresser",
+                  "laundry"
+                ],
+                0,
+                [
+                  "park",
+                  "garden",
+                  "playground",
+                  "pitch",
+                  "dog_park",
+                  "picnic_site",
+                  "golf",
+                  "zoo",
+                  "sports_centre",
+                  "stadium",
+                  "swimming_pool",
+                  "ice_rink",
+                  "athletics",
+                  "cycling",
+                  "running",
+                  "yoga",
+                  "boxing",
+                  "gymnastics",
+                  "equestrian"
+                ],
+                0,
+                [
+                  "bus",
+                  "railway",
+                  "ferry_terminal"
+                ],
+                0,
+                [
+                  "lodging"
+                ],
+                0,
+                [
+                  "hospital",
+                  "pharmacy",
+                  "doctors",
+                  "dentist",
+                  "veterinary"
+                ],
+                12,
+                [
+                  "school",
+                  "college",
+                  "library",
+                  "town_hall",
+                  "police",
+                  "fire_station",
+                  "post",
+                  "office",
+                  "bank",
+                  "atm"
+                ],
+                9,
+                [
+                  "museum",
+                  "art_gallery",
+                  "theatre",
+                  "cinema",
+                  "attraction",
+                  "monument",
+                  "castle",
+                  "aquarium",
+                  "music",
+                  "escape_game",
+                  "hackerspace"
+                ],
+                0,
+                [
+                  "place_of_worship",
+                  "cemetery"
+                ],
+                5,
+                [
+                  "parking",
+                  "fuel",
+                  "car",
+                  "bicycle",
+                  "bicycle_rental",
+                  "motorcycle"
+                ],
+                12,
+                0
+              ]
+            ],
+            12
           ],
           [
             "in",
@@ -3353,9 +3732,9 @@
             "zoom"
           ],
           17,
-          2.4,
+          3,
           19,
-          3.4
+          4
         ],
         "circle-stroke-color": "#f6f4eb",
         "circle-stroke-width": [
@@ -3414,16 +3793,146 @@
           ]
         ],
         [
-          "<=",
+          "any",
           [
-            "coalesce",
+            "!",
+            [
+              "has",
+              "agg_stop"
+            ]
+          ],
+          [
+            "==",
             [
               "get",
-              "rank"
+              "agg_stop"
             ],
-            999
+            1
+          ]
+        ],
+        [
+          "<=",
+          [
+            "+",
+            [
+              "coalesce",
+              [
+                "get",
+                "rank"
+              ],
+              999
+            ],
+            [
+              "match",
+              [
+                "get",
+                "class"
+              ],
+              [
+                "restaurant",
+                "fast_food",
+                "cafe",
+                "bar",
+                "beer",
+                "ice_cream"
+              ],
+              0,
+              [
+                "shop",
+                "clothing_store",
+                "grocery",
+                "alcohol_shop",
+                "bakery",
+                "butcher",
+                "hairdresser",
+                "laundry"
+              ],
+              0,
+              [
+                "park",
+                "garden",
+                "playground",
+                "pitch",
+                "dog_park",
+                "picnic_site",
+                "golf",
+                "zoo",
+                "sports_centre",
+                "stadium",
+                "swimming_pool",
+                "ice_rink",
+                "athletics",
+                "cycling",
+                "running",
+                "yoga",
+                "boxing",
+                "gymnastics",
+                "equestrian"
+              ],
+              0,
+              [
+                "bus",
+                "railway",
+                "ferry_terminal"
+              ],
+              0,
+              [
+                "lodging"
+              ],
+              0,
+              [
+                "hospital",
+                "pharmacy",
+                "doctors",
+                "dentist",
+                "veterinary"
+              ],
+              12,
+              [
+                "school",
+                "college",
+                "library",
+                "town_hall",
+                "police",
+                "fire_station",
+                "post",
+                "office",
+                "bank",
+                "atm"
+              ],
+              9,
+              [
+                "museum",
+                "art_gallery",
+                "theatre",
+                "cinema",
+                "attraction",
+                "monument",
+                "castle",
+                "aquarium",
+                "music",
+                "escape_game",
+                "hackerspace"
+              ],
+              0,
+              [
+                "place_of_worship",
+                "cemetery"
+              ],
+              5,
+              [
+                "parking",
+                "fuel",
+                "car",
+                "bicycle",
+                "bicycle_rental",
+                "motorcycle"
+              ],
+              12,
+              0
+            ]
           ],
-          24
+          30
         ]
       ],
       "paint": {
@@ -3546,11 +4055,11 @@
             "zoom"
           ],
           14,
-          2.4,
+          3.2,
           17,
-          4,
+          5,
           19,
-          5
+          6
         ],
         "circle-stroke-color": "#f6f4eb",
         "circle-stroke-width": [
@@ -3568,6 +4077,114 @@
           1.2
         ],
         "circle-opacity": 0.95
+      }
+    },
+    {
+      "id": "road-oneway",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "minzoom": 15,
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "geometry-type"
+          ],
+          [
+            "LineString",
+            "MultiLineString"
+          ],
+          true,
+          false
+        ],
+        [
+          "!=",
+          [
+            "get",
+            "brunnel"
+          ],
+          "tunnel"
+        ],
+        [
+          "match",
+          [
+            "get",
+            "class"
+          ],
+          [
+            "motorway",
+            "trunk",
+            "primary",
+            "secondary",
+            "tertiary",
+            "minor",
+            "service"
+          ],
+          true,
+          false
+        ],
+        [
+          "!=",
+          [
+            "coalesce",
+            [
+              "get",
+              "oneway"
+            ],
+            0
+          ],
+          0
+        ]
+      ],
+      "layout": {
+        "symbol-placement": "line",
+        "text-field": [
+          "case",
+          [
+            "==",
+            [
+              "get",
+              "oneway"
+            ],
+            -1
+          ],
+          "←",
+          "→"
+        ],
+        "text-font": [
+          "Inter Regular"
+        ],
+        "text-size": [
+          "interpolate",
+          [
+            "exponential",
+            1.2
+          ],
+          [
+            "zoom"
+          ],
+          15,
+          9,
+          17,
+          12,
+          19,
+          15
+        ],
+        "text-rotation-alignment": "map",
+        "text-pitch-alignment": "viewport",
+        "text-keep-upright": false,
+        "symbol-spacing": 170,
+        "text-max-angle": 30,
+        "text-allow-overlap": false,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#636766",
+        "text-opacity": 0.55,
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 0.8
       }
     },
     {
@@ -3622,14 +4239,15 @@
             "zoom"
           ],
           13,
-          9.5,
+          8.5,
           18,
-          12
+          10.5
         ],
         "text-rotation-alignment": "map",
         "text-pitch-alignment": "viewport",
-        "symbol-spacing": 280,
-        "text-max-angle": 32
+        "symbol-spacing": 420,
+        "text-max-angle": 32,
+        "text-letter-spacing": 0.04
       },
       "paint": {
         "text-color": "#245f7c",
@@ -3686,14 +4304,15 @@
             "zoom"
           ],
           10,
-          10.5,
+          9,
           16,
-          13.5
+          11.5
         ],
         "text-rotation-alignment": "map",
         "text-pitch-alignment": "viewport",
-        "symbol-spacing": 280,
-        "text-max-angle": 32
+        "symbol-spacing": 420,
+        "text-max-angle": 32,
+        "text-letter-spacing": 0.05
       },
       "paint": {
         "text-color": "#245f7c",
@@ -3749,15 +4368,15 @@
             "zoom"
           ],
           6,
-          10.5,
+          9,
           12,
-          13.5,
+          11,
           16,
-          15.5
+          12.5
         ],
         "text-max-width": 8,
         "text-anchor": "center",
-        "text-letter-spacing": 0.04
+        "text-letter-spacing": 0.06
       },
       "paint": {
         "text-color": "#245f7c",
@@ -3828,16 +4447,19 @@
             "zoom"
           ],
           15,
-          8.5,
+          7.5,
           18,
-          10.5,
+          9,
           20,
-          12
+          10.5
         ],
         "text-rotation-alignment": "map",
         "text-pitch-alignment": "viewport",
-        "symbol-spacing": 280,
-        "text-max-angle": 32
+        "symbol-spacing": 380,
+        "text-max-angle": 32,
+        "text-padding": 6,
+        "text-transform": "uppercase",
+        "text-letter-spacing": 0.05
       },
       "paint": {
         "text-color": "#636766",
@@ -3908,16 +4530,19 @@
             "zoom"
           ],
           13,
-          8.5,
+          7.5,
           16,
-          10.5,
+          9,
           20,
-          12.5
+          11
         ],
         "text-rotation-alignment": "map",
         "text-pitch-alignment": "viewport",
-        "symbol-spacing": 280,
-        "text-max-angle": 32
+        "symbol-spacing": 400,
+        "text-max-angle": 32,
+        "text-padding": 7,
+        "text-transform": "uppercase",
+        "text-letter-spacing": 0.05
       },
       "paint": {
         "text-color": "#636766",
@@ -3987,16 +4612,19 @@
             "zoom"
           ],
           12,
-          9,
+          8,
           16,
-          11,
+          9.5,
           20,
-          13
+          11.5
         ],
         "text-rotation-alignment": "map",
         "text-pitch-alignment": "viewport",
-        "symbol-spacing": 280,
-        "text-max-angle": 32
+        "symbol-spacing": 440,
+        "text-max-angle": 32,
+        "text-padding": 8,
+        "text-transform": "uppercase",
+        "text-letter-spacing": 0.06
       },
       "paint": {
         "text-color": "#636766",
@@ -4079,21 +4707,27 @@
           ]
         ],
         [
-          "<=",
-          [
-            "coalesce",
-            [
-              "get",
-              "rank"
-            ],
-            999
-          ],
-          24
-        ],
-        [
           "any",
           [
-            ">",
+            "!",
+            [
+              "has",
+              "agg_stop"
+            ]
+          ],
+          [
+            "==",
+            [
+              "get",
+              "agg_stop"
+            ],
+            1
+          ]
+        ],
+        [
+          "<=",
+          [
+            "+",
             [
               "coalesce",
               [
@@ -4102,7 +4736,243 @@
               ],
               999
             ],
-            8
+            [
+              "match",
+              [
+                "get",
+                "class"
+              ],
+              [
+                "restaurant",
+                "fast_food",
+                "cafe",
+                "bar",
+                "beer",
+                "ice_cream"
+              ],
+              0,
+              [
+                "shop",
+                "clothing_store",
+                "grocery",
+                "alcohol_shop",
+                "bakery",
+                "butcher",
+                "hairdresser",
+                "laundry"
+              ],
+              0,
+              [
+                "park",
+                "garden",
+                "playground",
+                "pitch",
+                "dog_park",
+                "picnic_site",
+                "golf",
+                "zoo",
+                "sports_centre",
+                "stadium",
+                "swimming_pool",
+                "ice_rink",
+                "athletics",
+                "cycling",
+                "running",
+                "yoga",
+                "boxing",
+                "gymnastics",
+                "equestrian"
+              ],
+              0,
+              [
+                "bus",
+                "railway",
+                "ferry_terminal"
+              ],
+              0,
+              [
+                "lodging"
+              ],
+              0,
+              [
+                "hospital",
+                "pharmacy",
+                "doctors",
+                "dentist",
+                "veterinary"
+              ],
+              12,
+              [
+                "school",
+                "college",
+                "library",
+                "town_hall",
+                "police",
+                "fire_station",
+                "post",
+                "office",
+                "bank",
+                "atm"
+              ],
+              9,
+              [
+                "museum",
+                "art_gallery",
+                "theatre",
+                "cinema",
+                "attraction",
+                "monument",
+                "castle",
+                "aquarium",
+                "music",
+                "escape_game",
+                "hackerspace"
+              ],
+              0,
+              [
+                "place_of_worship",
+                "cemetery"
+              ],
+              5,
+              [
+                "parking",
+                "fuel",
+                "car",
+                "bicycle",
+                "bicycle_rental",
+                "motorcycle"
+              ],
+              12,
+              0
+            ]
+          ],
+          40
+        ],
+        [
+          "any",
+          [
+            ">",
+            [
+              "+",
+              [
+                "coalesce",
+                [
+                  "get",
+                  "rank"
+                ],
+                999
+              ],
+              [
+                "match",
+                [
+                  "get",
+                  "class"
+                ],
+                [
+                  "restaurant",
+                  "fast_food",
+                  "cafe",
+                  "bar",
+                  "beer",
+                  "ice_cream"
+                ],
+                0,
+                [
+                  "shop",
+                  "clothing_store",
+                  "grocery",
+                  "alcohol_shop",
+                  "bakery",
+                  "butcher",
+                  "hairdresser",
+                  "laundry"
+                ],
+                0,
+                [
+                  "park",
+                  "garden",
+                  "playground",
+                  "pitch",
+                  "dog_park",
+                  "picnic_site",
+                  "golf",
+                  "zoo",
+                  "sports_centre",
+                  "stadium",
+                  "swimming_pool",
+                  "ice_rink",
+                  "athletics",
+                  "cycling",
+                  "running",
+                  "yoga",
+                  "boxing",
+                  "gymnastics",
+                  "equestrian"
+                ],
+                0,
+                [
+                  "bus",
+                  "railway",
+                  "ferry_terminal"
+                ],
+                0,
+                [
+                  "lodging"
+                ],
+                0,
+                [
+                  "hospital",
+                  "pharmacy",
+                  "doctors",
+                  "dentist",
+                  "veterinary"
+                ],
+                12,
+                [
+                  "school",
+                  "college",
+                  "library",
+                  "town_hall",
+                  "police",
+                  "fire_station",
+                  "post",
+                  "office",
+                  "bank",
+                  "atm"
+                ],
+                9,
+                [
+                  "museum",
+                  "art_gallery",
+                  "theatre",
+                  "cinema",
+                  "attraction",
+                  "monument",
+                  "castle",
+                  "aquarium",
+                  "music",
+                  "escape_game",
+                  "hackerspace"
+                ],
+                0,
+                [
+                  "place_of_worship",
+                  "cemetery"
+                ],
+                5,
+                [
+                  "parking",
+                  "fuel",
+                  "car",
+                  "bicycle",
+                  "bicycle_rental",
+                  "motorcycle"
+                ],
+                12,
+                0
+              ]
+            ],
+            18
           ],
           [
             "in",
@@ -4150,23 +5020,267 @@
             "zoom"
           ],
           17,
-          9.5,
+          9,
           19,
-          11
+          10.5
         ],
         "text-max-width": 9,
         "text-anchor": "top",
         "text-offset": [
           0,
-          0.75
+          0.85
+        ],
+        "text-padding": [
+          "interpolate",
+          [
+            "exponential",
+            1
+          ],
+          [
+            "zoom"
+          ],
+          14,
+          30,
+          15,
+          16,
+          16,
+          8,
+          18,
+          4,
+          20,
+          3
         ],
         "symbol-sort-key": [
-          "get",
-          "rank"
+          "+",
+          [
+            "coalesce",
+            [
+              "get",
+              "rank"
+            ],
+            999
+          ],
+          [
+            "match",
+            [
+              "get",
+              "class"
+            ],
+            [
+              "restaurant",
+              "fast_food",
+              "cafe",
+              "bar",
+              "beer",
+              "ice_cream"
+            ],
+            0,
+            [
+              "shop",
+              "clothing_store",
+              "grocery",
+              "alcohol_shop",
+              "bakery",
+              "butcher",
+              "hairdresser",
+              "laundry"
+            ],
+            0,
+            [
+              "park",
+              "garden",
+              "playground",
+              "pitch",
+              "dog_park",
+              "picnic_site",
+              "golf",
+              "zoo",
+              "sports_centre",
+              "stadium",
+              "swimming_pool",
+              "ice_rink",
+              "athletics",
+              "cycling",
+              "running",
+              "yoga",
+              "boxing",
+              "gymnastics",
+              "equestrian"
+            ],
+            0,
+            [
+              "bus",
+              "railway",
+              "ferry_terminal"
+            ],
+            0,
+            [
+              "lodging"
+            ],
+            0,
+            [
+              "hospital",
+              "pharmacy",
+              "doctors",
+              "dentist",
+              "veterinary"
+            ],
+            12,
+            [
+              "school",
+              "college",
+              "library",
+              "town_hall",
+              "police",
+              "fire_station",
+              "post",
+              "office",
+              "bank",
+              "atm"
+            ],
+            9,
+            [
+              "museum",
+              "art_gallery",
+              "theatre",
+              "cinema",
+              "attraction",
+              "monument",
+              "castle",
+              "aquarium",
+              "music",
+              "escape_game",
+              "hackerspace"
+            ],
+            0,
+            [
+              "place_of_worship",
+              "cemetery"
+            ],
+            5,
+            [
+              "parking",
+              "fuel",
+              "car",
+              "bicycle",
+              "bicycle_rental",
+              "motorcycle"
+            ],
+            12,
+            0
+          ]
         ]
       },
       "paint": {
-        "text-color": "#3b3d3d",
+        "text-color": [
+          "match",
+          [
+            "get",
+            "class"
+          ],
+          [
+            "restaurant",
+            "fast_food",
+            "cafe",
+            "bar",
+            "beer",
+            "ice_cream"
+          ],
+          "#bc4e03",
+          [
+            "shop",
+            "clothing_store",
+            "grocery",
+            "alcohol_shop",
+            "bakery",
+            "butcher",
+            "hairdresser",
+            "laundry"
+          ],
+          "#926607",
+          [
+            "park",
+            "garden",
+            "playground",
+            "pitch",
+            "dog_park",
+            "picnic_site",
+            "golf",
+            "zoo",
+            "sports_centre",
+            "stadium",
+            "swimming_pool",
+            "ice_rink",
+            "athletics",
+            "cycling",
+            "running",
+            "yoga",
+            "boxing",
+            "gymnastics",
+            "equestrian"
+          ],
+          "#1a7f35",
+          [
+            "bus",
+            "railway",
+            "ferry_terminal"
+          ],
+          "#1a64e5",
+          [
+            "lodging"
+          ],
+          "#9248dd",
+          [
+            "hospital",
+            "pharmacy",
+            "doctors",
+            "dentist",
+            "veterinary"
+          ],
+          "#da104e",
+          [
+            "school",
+            "college",
+            "library",
+            "town_hall",
+            "police",
+            "fire_station",
+            "post",
+            "office",
+            "bank",
+            "atm"
+          ],
+          "#5169c8",
+          [
+            "museum",
+            "art_gallery",
+            "theatre",
+            "cinema",
+            "attraction",
+            "monument",
+            "castle",
+            "aquarium",
+            "music",
+            "escape_game",
+            "hackerspace"
+          ],
+          "#cb2299",
+          [
+            "place_of_worship",
+            "cemetery"
+          ],
+          "#7466aa",
+          [
+            "parking",
+            "fuel",
+            "car",
+            "bicycle",
+            "bicycle_rental",
+            "motorcycle"
+          ],
+          "#5169ca",
+          "#6e7070"
+        ],
         "text-halo-color": "rgba(246,244,235,0.95)",
         "text-halo-width": 1.4,
         "text-halo-blur": 0.4
@@ -4177,7 +5291,7 @@
       "type": "symbol",
       "source": "openmaptiles",
       "source-layer": "poi",
-      "minzoom": 15,
+      "minzoom": 14,
       "filter": [
         "all",
         [
@@ -4246,6 +5360,24 @@
           ]
         ],
         [
+          "any",
+          [
+            "!",
+            [
+              "has",
+              "agg_stop"
+            ]
+          ],
+          [
+            "==",
+            [
+              "get",
+              "agg_stop"
+            ],
+            1
+          ]
+        ],
+        [
           "!",
           [
             "in",
@@ -4269,14 +5401,126 @@
         [
           "<=",
           [
-            "coalesce",
+            "+",
             [
-              "get",
-              "rank"
+              "coalesce",
+              [
+                "get",
+                "rank"
+              ],
+              999
             ],
-            999
+            [
+              "match",
+              [
+                "get",
+                "class"
+              ],
+              [
+                "restaurant",
+                "fast_food",
+                "cafe",
+                "bar",
+                "beer",
+                "ice_cream"
+              ],
+              0,
+              [
+                "shop",
+                "clothing_store",
+                "grocery",
+                "alcohol_shop",
+                "bakery",
+                "butcher",
+                "hairdresser",
+                "laundry"
+              ],
+              0,
+              [
+                "park",
+                "garden",
+                "playground",
+                "pitch",
+                "dog_park",
+                "picnic_site",
+                "golf",
+                "zoo",
+                "sports_centre",
+                "stadium",
+                "swimming_pool",
+                "ice_rink",
+                "athletics",
+                "cycling",
+                "running",
+                "yoga",
+                "boxing",
+                "gymnastics",
+                "equestrian"
+              ],
+              0,
+              [
+                "bus",
+                "railway",
+                "ferry_terminal"
+              ],
+              0,
+              [
+                "lodging"
+              ],
+              0,
+              [
+                "hospital",
+                "pharmacy",
+                "doctors",
+                "dentist",
+                "veterinary"
+              ],
+              12,
+              [
+                "school",
+                "college",
+                "library",
+                "town_hall",
+                "police",
+                "fire_station",
+                "post",
+                "office",
+                "bank",
+                "atm"
+              ],
+              9,
+              [
+                "museum",
+                "art_gallery",
+                "theatre",
+                "cinema",
+                "attraction",
+                "monument",
+                "castle",
+                "aquarium",
+                "music",
+                "escape_game",
+                "hackerspace"
+              ],
+              0,
+              [
+                "place_of_worship",
+                "cemetery"
+              ],
+              5,
+              [
+                "parking",
+                "fuel",
+                "car",
+                "bicycle",
+                "bicycle_rental",
+                "motorcycle"
+              ],
+              12,
+              0
+            ]
           ],
-          8
+          18
         ]
       ],
       "layout": {
@@ -4304,26 +5548,272 @@
           [
             "zoom"
           ],
+          14,
+          9,
           15,
-          10,
+          9.5,
           18,
-          11.5,
+          11,
           20,
-          12.5
+          12
         ],
         "text-max-width": 9,
         "text-anchor": "top",
         "text-offset": [
           0,
-          0.8
+          0.9
+        ],
+        "text-padding": [
+          "interpolate",
+          [
+            "exponential",
+            1
+          ],
+          [
+            "zoom"
+          ],
+          14,
+          30,
+          15,
+          16,
+          16,
+          8,
+          18,
+          4,
+          20,
+          3
         ],
         "symbol-sort-key": [
-          "get",
-          "rank"
+          "+",
+          [
+            "coalesce",
+            [
+              "get",
+              "rank"
+            ],
+            999
+          ],
+          [
+            "match",
+            [
+              "get",
+              "class"
+            ],
+            [
+              "restaurant",
+              "fast_food",
+              "cafe",
+              "bar",
+              "beer",
+              "ice_cream"
+            ],
+            0,
+            [
+              "shop",
+              "clothing_store",
+              "grocery",
+              "alcohol_shop",
+              "bakery",
+              "butcher",
+              "hairdresser",
+              "laundry"
+            ],
+            0,
+            [
+              "park",
+              "garden",
+              "playground",
+              "pitch",
+              "dog_park",
+              "picnic_site",
+              "golf",
+              "zoo",
+              "sports_centre",
+              "stadium",
+              "swimming_pool",
+              "ice_rink",
+              "athletics",
+              "cycling",
+              "running",
+              "yoga",
+              "boxing",
+              "gymnastics",
+              "equestrian"
+            ],
+            0,
+            [
+              "bus",
+              "railway",
+              "ferry_terminal"
+            ],
+            0,
+            [
+              "lodging"
+            ],
+            0,
+            [
+              "hospital",
+              "pharmacy",
+              "doctors",
+              "dentist",
+              "veterinary"
+            ],
+            12,
+            [
+              "school",
+              "college",
+              "library",
+              "town_hall",
+              "police",
+              "fire_station",
+              "post",
+              "office",
+              "bank",
+              "atm"
+            ],
+            9,
+            [
+              "museum",
+              "art_gallery",
+              "theatre",
+              "cinema",
+              "attraction",
+              "monument",
+              "castle",
+              "aquarium",
+              "music",
+              "escape_game",
+              "hackerspace"
+            ],
+            0,
+            [
+              "place_of_worship",
+              "cemetery"
+            ],
+            5,
+            [
+              "parking",
+              "fuel",
+              "car",
+              "bicycle",
+              "bicycle_rental",
+              "motorcycle"
+            ],
+            12,
+            0
+          ]
         ]
       },
       "paint": {
-        "text-color": "#3b3d3d",
+        "text-color": [
+          "match",
+          [
+            "get",
+            "class"
+          ],
+          [
+            "restaurant",
+            "fast_food",
+            "cafe",
+            "bar",
+            "beer",
+            "ice_cream"
+          ],
+          "#bc4e03",
+          [
+            "shop",
+            "clothing_store",
+            "grocery",
+            "alcohol_shop",
+            "bakery",
+            "butcher",
+            "hairdresser",
+            "laundry"
+          ],
+          "#926607",
+          [
+            "park",
+            "garden",
+            "playground",
+            "pitch",
+            "dog_park",
+            "picnic_site",
+            "golf",
+            "zoo",
+            "sports_centre",
+            "stadium",
+            "swimming_pool",
+            "ice_rink",
+            "athletics",
+            "cycling",
+            "running",
+            "yoga",
+            "boxing",
+            "gymnastics",
+            "equestrian"
+          ],
+          "#1a7f35",
+          [
+            "bus",
+            "railway",
+            "ferry_terminal"
+          ],
+          "#1a64e5",
+          [
+            "lodging"
+          ],
+          "#9248dd",
+          [
+            "hospital",
+            "pharmacy",
+            "doctors",
+            "dentist",
+            "veterinary"
+          ],
+          "#da104e",
+          [
+            "school",
+            "college",
+            "library",
+            "town_hall",
+            "police",
+            "fire_station",
+            "post",
+            "office",
+            "bank",
+            "atm"
+          ],
+          "#5169c8",
+          [
+            "museum",
+            "art_gallery",
+            "theatre",
+            "cinema",
+            "attraction",
+            "monument",
+            "castle",
+            "aquarium",
+            "music",
+            "escape_game",
+            "hackerspace"
+          ],
+          "#cb2299",
+          [
+            "place_of_worship",
+            "cemetery"
+          ],
+          "#7466aa",
+          [
+            "parking",
+            "fuel",
+            "car",
+            "bicycle",
+            "bicycle_rental",
+            "motorcycle"
+          ],
+          "#5169ca",
+          "#6e7070"
+        ],
         "text-halo-color": "rgba(246,244,235,0.95)",
         "text-halo-width": 1.4,
         "text-halo-blur": 0.4
@@ -4368,16 +5858,146 @@
           ]
         ],
         [
-          "<=",
+          "any",
           [
-            "coalesce",
+            "!",
+            [
+              "has",
+              "agg_stop"
+            ]
+          ],
+          [
+            "==",
             [
               "get",
-              "rank"
+              "agg_stop"
             ],
-            999
+            1
+          ]
+        ],
+        [
+          "<=",
+          [
+            "+",
+            [
+              "coalesce",
+              [
+                "get",
+                "rank"
+              ],
+              999
+            ],
+            [
+              "match",
+              [
+                "get",
+                "class"
+              ],
+              [
+                "restaurant",
+                "fast_food",
+                "cafe",
+                "bar",
+                "beer",
+                "ice_cream"
+              ],
+              0,
+              [
+                "shop",
+                "clothing_store",
+                "grocery",
+                "alcohol_shop",
+                "bakery",
+                "butcher",
+                "hairdresser",
+                "laundry"
+              ],
+              0,
+              [
+                "park",
+                "garden",
+                "playground",
+                "pitch",
+                "dog_park",
+                "picnic_site",
+                "golf",
+                "zoo",
+                "sports_centre",
+                "stadium",
+                "swimming_pool",
+                "ice_rink",
+                "athletics",
+                "cycling",
+                "running",
+                "yoga",
+                "boxing",
+                "gymnastics",
+                "equestrian"
+              ],
+              0,
+              [
+                "bus",
+                "railway",
+                "ferry_terminal"
+              ],
+              0,
+              [
+                "lodging"
+              ],
+              0,
+              [
+                "hospital",
+                "pharmacy",
+                "doctors",
+                "dentist",
+                "veterinary"
+              ],
+              12,
+              [
+                "school",
+                "college",
+                "library",
+                "town_hall",
+                "police",
+                "fire_station",
+                "post",
+                "office",
+                "bank",
+                "atm"
+              ],
+              9,
+              [
+                "museum",
+                "art_gallery",
+                "theatre",
+                "cinema",
+                "attraction",
+                "monument",
+                "castle",
+                "aquarium",
+                "music",
+                "escape_game",
+                "hackerspace"
+              ],
+              0,
+              [
+                "place_of_worship",
+                "cemetery"
+              ],
+              5,
+              [
+                "parking",
+                "fuel",
+                "car",
+                "bicycle",
+                "bicycle_rental",
+                "motorcycle"
+              ],
+              12,
+              0
+            ]
           ],
-          24
+          40
         ]
       ],
       "layout": {
@@ -4406,23 +6026,263 @@
             "zoom"
           ],
           14,
-          10,
+          9.5,
           18,
-          12
+          11.5
         ],
         "text-max-width": 9,
         "text-anchor": "top",
         "text-offset": [
           0,
-          0.9
+          1
+        ],
+        "text-padding": [
+          "interpolate",
+          [
+            "exponential",
+            1
+          ],
+          [
+            "zoom"
+          ],
+          14,
+          34,
+          16,
+          18,
+          18,
+          8
         ],
         "symbol-sort-key": [
-          "get",
-          "rank"
+          "+",
+          [
+            "coalesce",
+            [
+              "get",
+              "rank"
+            ],
+            999
+          ],
+          [
+            "match",
+            [
+              "get",
+              "class"
+            ],
+            [
+              "restaurant",
+              "fast_food",
+              "cafe",
+              "bar",
+              "beer",
+              "ice_cream"
+            ],
+            0,
+            [
+              "shop",
+              "clothing_store",
+              "grocery",
+              "alcohol_shop",
+              "bakery",
+              "butcher",
+              "hairdresser",
+              "laundry"
+            ],
+            0,
+            [
+              "park",
+              "garden",
+              "playground",
+              "pitch",
+              "dog_park",
+              "picnic_site",
+              "golf",
+              "zoo",
+              "sports_centre",
+              "stadium",
+              "swimming_pool",
+              "ice_rink",
+              "athletics",
+              "cycling",
+              "running",
+              "yoga",
+              "boxing",
+              "gymnastics",
+              "equestrian"
+            ],
+            0,
+            [
+              "bus",
+              "railway",
+              "ferry_terminal"
+            ],
+            0,
+            [
+              "lodging"
+            ],
+            0,
+            [
+              "hospital",
+              "pharmacy",
+              "doctors",
+              "dentist",
+              "veterinary"
+            ],
+            12,
+            [
+              "school",
+              "college",
+              "library",
+              "town_hall",
+              "police",
+              "fire_station",
+              "post",
+              "office",
+              "bank",
+              "atm"
+            ],
+            9,
+            [
+              "museum",
+              "art_gallery",
+              "theatre",
+              "cinema",
+              "attraction",
+              "monument",
+              "castle",
+              "aquarium",
+              "music",
+              "escape_game",
+              "hackerspace"
+            ],
+            0,
+            [
+              "place_of_worship",
+              "cemetery"
+            ],
+            5,
+            [
+              "parking",
+              "fuel",
+              "car",
+              "bicycle",
+              "bicycle_rental",
+              "motorcycle"
+            ],
+            12,
+            0
+          ]
         ]
       },
       "paint": {
-        "text-color": "#3b3d3d",
+        "text-color": [
+          "match",
+          [
+            "get",
+            "class"
+          ],
+          [
+            "restaurant",
+            "fast_food",
+            "cafe",
+            "bar",
+            "beer",
+            "ice_cream"
+          ],
+          "#bc4e03",
+          [
+            "shop",
+            "clothing_store",
+            "grocery",
+            "alcohol_shop",
+            "bakery",
+            "butcher",
+            "hairdresser",
+            "laundry"
+          ],
+          "#926607",
+          [
+            "park",
+            "garden",
+            "playground",
+            "pitch",
+            "dog_park",
+            "picnic_site",
+            "golf",
+            "zoo",
+            "sports_centre",
+            "stadium",
+            "swimming_pool",
+            "ice_rink",
+            "athletics",
+            "cycling",
+            "running",
+            "yoga",
+            "boxing",
+            "gymnastics",
+            "equestrian"
+          ],
+          "#1a7f35",
+          [
+            "bus",
+            "railway",
+            "ferry_terminal"
+          ],
+          "#1a64e5",
+          [
+            "lodging"
+          ],
+          "#9248dd",
+          [
+            "hospital",
+            "pharmacy",
+            "doctors",
+            "dentist",
+            "veterinary"
+          ],
+          "#da104e",
+          [
+            "school",
+            "college",
+            "library",
+            "town_hall",
+            "police",
+            "fire_station",
+            "post",
+            "office",
+            "bank",
+            "atm"
+          ],
+          "#5169c8",
+          [
+            "museum",
+            "art_gallery",
+            "theatre",
+            "cinema",
+            "attraction",
+            "monument",
+            "castle",
+            "aquarium",
+            "music",
+            "escape_game",
+            "hackerspace"
+          ],
+          "#cb2299",
+          [
+            "place_of_worship",
+            "cemetery"
+          ],
+          "#7466aa",
+          [
+            "parking",
+            "fuel",
+            "car",
+            "bicycle",
+            "bicycle_rental",
+            "motorcycle"
+          ],
+          "#5169ca",
+          "#6e7070"
+        ],
         "text-halo-color": "rgba(246,244,235,0.95)",
         "text-halo-width": 1.4,
         "text-halo-blur": 0.4
@@ -4533,17 +6393,21 @@
             "zoom"
           ],
           12,
-          10.5,
+          9.5,
           16,
-          12.5,
+          11,
           19,
-          14.5
+          13
         ],
         "text-max-width": 7,
         "text-anchor": "center",
         "symbol-sort-key": [
-          "get",
-          "rank"
+          "coalesce",
+          [
+            "get",
+            "rank"
+          ],
+          999
         ]
       },
       "paint": {
@@ -4601,16 +6465,16 @@
             "zoom"
           ],
           11,
-          9.5,
+          8,
           14,
-          11.5,
+          9.5,
           17,
-          13
+          10.5
         ],
         "text-max-width": 7,
         "text-anchor": "center",
         "text-transform": "uppercase",
-        "text-letter-spacing": 0.1
+        "text-letter-spacing": 0.09
       },
       "paint": {
         "text-color": "#646969",
