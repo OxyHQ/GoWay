@@ -21,7 +21,9 @@
  * to the asset half; and `cf: { cacheEverything }` doing anything. Those are
  * platform behaviours with no local surface.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock, test } from 'bun:test';
+
+import { readFile } from 'node:fs/promises';
 
 import worker, { GLYPH_PATH, TILE_PATH, UPSTREAM_FONTSTACK, serveGlyphs, serveTile } from '../index.js';
 import {
@@ -336,5 +338,44 @@ describe('the build and the Worker agree about the fallback', () => {
     const declared = /MAP_GLYPH_UPSTREAM\s*=\s*"([^"]+)"/.exec(wrangler);
     expect(declared).not.toBeNull();
     expect(UPSTREAM_GLYPH_TEMPLATE).toBe(declared[1]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The header that only a deploy could disprove
+// ---------------------------------------------------------------------------
+
+describe('the tile response tells workerd the body is already encoded', () => {
+  // This is a source assertion rather than a behavioural one, and deliberately.
+  //
+  // workerd assumes it owns transfer encoding: it treats a body handed to
+  // `Response` as already-decoded content and re-derives `content-encoding`, so
+  // one set by hand is dropped on the way out unless the init says otherwise.
+  // Nothing in this file's fake runtime reproduces that — `Response` here is
+  // Bun's, which keeps whatever header it is given — and `wrangler dev` does not
+  // reproduce it either, because its local proxy re-compresses the body and
+  // sets the header itself.
+  //
+  // So the first request that ever showed the bug was a browser against
+  // goway.to: tiles arrived as gzip bytes labelled
+  // `application/vnd.mapbox-vector-tile`, MapLibre could not parse them, and
+  // the map said "Map data unavailable" with nothing in the console. The
+  // function's own docblock had described that exact failure and was trying to
+  // prevent it; what it was missing was this one option.
+  //
+  // Asserting the source is the only check available that fails without the
+  // fix, which makes it worth more than a behavioural test that cannot.
+  it('passes encodeBody: manual wherever it serves stored tile bytes', async () => {
+    const source = await readFile(
+      new URL('../index.js', import.meta.url),
+      'utf8',
+    );
+    const serveTile = source.slice(source.indexOf('async function serveTile'));
+    const body = serveTile.slice(0, serveTile.indexOf('\n}\n'));
+
+    expect(body).toContain("encodeBody: 'manual'");
+    // The gzip bytes and the header travel together or not at all: a response
+    // built without the init is the bug.
+    expect(body).not.toMatch(/new Response\(tile\.bytes,\s*\{\s*headers\s*\}\)/);
   });
 });
