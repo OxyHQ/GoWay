@@ -264,7 +264,7 @@ export function findEntry(entries, tileId) {
 }
 
 /** Undo the archive's internal compression. Only gzip is ever written. */
-async function decompress(bytes, compression) {
+export async function decompress(bytes, compression) {
   if (compression === COMPRESSION.NONE) return bytes;
   const encoding = contentEncodingFor(compression);
   if (encoding !== 'gzip' && encoding !== 'deflate') {

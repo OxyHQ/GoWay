@@ -345,37 +345,25 @@ describe('the build and the Worker agree about the fallback', () => {
 // The header that only a deploy could disprove
 // ---------------------------------------------------------------------------
 
-describe('the tile response tells workerd the body is already encoded', () => {
-  // This is a source assertion rather than a behavioural one, and deliberately.
+describe('the tile body reaches the browser as plain MVT', () => {
+  // The bug this guards is the one that made the map blank: stored tiles are
+  // gzip, and workerd drops a hand-set `content-encoding`, so forwarding them
+  // compressed delivers a `.pbf` MapLibre cannot parse. `encodeBody: 'manual'`
+  // was tried against the live edge and changed nothing.
   //
-  // workerd assumes it owns transfer encoding: it treats a body handed to
-  // `Response` as already-decoded content and re-derives `content-encoding`, so
-  // one set by hand is dropped on the way out unless the init says otherwise.
-  // Nothing in this file's fake runtime reproduces that — `Response` here is
-  // Bun's, which keeps whatever header it is given — and `wrangler dev` does not
-  // reproduce it either, because its local proxy re-compresses the body and
-  // sets the header itself.
-  //
-  // So the first request that ever showed the bug was a browser against
-  // goway.to: tiles arrived as gzip bytes labelled
-  // `application/vnd.mapbox-vector-tile`, MapLibre could not parse them, and
-  // the map said "Map data unavailable" with nothing in the console. The
-  // function's own docblock had described that exact failure and was trying to
-  // prevent it; what it was missing was this one option.
-  //
-  // Asserting the source is the only check available that fails without the
-  // fix, which makes it worth more than a behavioural test that cannot.
-  it('passes encodeBody: manual wherever it serves stored tile bytes', async () => {
-    const source = await readFile(
-      new URL('../index.js', import.meta.url),
-      'utf8',
-    );
+  // A source assertion, because nothing available here reproduces it: this
+  // file's `Response` is Bun's, which keeps whatever header it is given, and
+  // `wrangler dev`'s local proxy re-compresses the body and sets the header
+  // itself. The first request that ever showed the bug was a browser.
+  it('decompresses before responding and declares no content-encoding', async () => {
+    const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
     const serveTile = source.slice(source.indexOf('async function serveTile'));
     const body = serveTile.slice(0, serveTile.indexOf('\n}\n'));
 
-    expect(body).toContain("encodeBody: 'manual'");
-    // The gzip bytes and the header travel together or not at all: a response
-    // built without the init is the bug.
-    expect(body).not.toMatch(/new Response\(tile\.bytes,\s*\{\s*headers\s*\}\)/);
+    expect(body).toContain('await decompress(tile.bytes, tile.compression)');
+    // Declaring an encoding is the failure, not the fix.
+    expect(body).not.toContain("headers.set('content-encoding'");
+    // And the stored bytes must not be what goes out.
+    expect(body).not.toMatch(/new Response\(tile\.bytes/);
   });
 });

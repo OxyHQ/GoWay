@@ -17,12 +17,16 @@
  *
  * ## What this canNOT prove
  *
- * That Cloudflare passes a manually-set `content-encoding: gzip` through
- * without re-encoding the body, that `caches.default` behaves like the stub
- * here, and that an R2 `get` with a range returns what this fake returns.
- * Those are platform behaviours; they were checked once against a real
- * `wrangler dev` with a local bucket, and the result is in the pull request,
- * not in an assertion here.
+ * That `caches.default` behaves like the stub here, and that an R2 `get` with
+ * a range returns what this fake returns. Those are platform behaviours.
+ *
+ * It also could not prove the one that mattered most, and said so in a form
+ * that read as reassurance: it used to claim Cloudflare passes a manually-set
+ * `content-encoding: gzip` through without re-encoding the body. **It does
+ * not.** workerd owns transfer encoding and drops a hand-set header, so the
+ * tile reached the browser as gzip labelled as MVT and `goway.to` showed "Map
+ * data unavailable" from an empty console. The Worker now decompresses before
+ * responding, and these tests assert THAT.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
@@ -316,18 +320,21 @@ describe('serving a tile from R2', () => {
     return { env: { MAP_TILES: bucket, MAP_TILE_ARCHIVE: 'basemap/test.pmtiles' }, bucket };
   };
 
-  test('answers with the stored bytes and declares their encoding', async () => {
+  test('answers with decoded MVT and declares no encoding', async () => {
     const { env: e } = env(buildArchive(new Map([['14/8290/6119', TILE_BODY]])));
     const request = tileRequest(14, 8290, 6119);
     const response = await serveTile(new URL(request.url), request, e, ctx);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('content-encoding')).toBe('gzip');
+    // No encoding is declared, because none is applied: declaring one is what
+    // broke the map, since workerd drops the header and keeps the gzip body.
+    expect(response.headers.get('content-encoding')).toBeNull();
     expect(response.headers.get('content-type')).toBe('application/vnd.mapbox-vector-tile');
     expect(response.headers.get('access-control-allow-origin')).toBe('*');
     expect(response.headers.get('cross-origin-resource-policy')).toBe('cross-origin');
-    // The body is the STORED body — it is never decompressed and recompressed.
-    expect(Bun.gunzipSync(new Uint8Array(await response.arrayBuffer()))).toEqual(TILE_BODY);
+    // The body is the tile MapLibre can actually read, decoded from what the
+    // archive stores.
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(TILE_BODY);
   });
 
   test('answers a tile the archive does not hold with a 404, not an error', async () => {
@@ -418,7 +425,7 @@ describe('serving a tile from R2', () => {
     const request = tileRequest(14, 8290, 6119, 'HEAD');
     const response = await serveTile(new URL(request.url), request, e, ctx);
     expect(response.status).toBe(200);
-    expect(response.headers.get('content-encoding')).toBe('gzip');
+    expect(response.headers.get('content-encoding')).toBeNull();
     expect(await response.text()).toBe('');
   });
 

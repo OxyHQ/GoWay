@@ -69,7 +69,7 @@
  *      product code, and the paths this file answers.
  */
 
-import { PMTiles, contentEncodingFor } from './pmtiles.js';
+import { PMTiles, contentEncodingFor, decompress } from './pmtiles.js';
 
 /**
  * How long the edge may keep a vector tile.
@@ -389,31 +389,30 @@ async function serveTileFromArchive(z, x, y, request, env, ctx) {
   }
 
   headers.set('content-type', TILE_CONTENT_TYPE);
-  headers.set('content-length', String(tile.bytes.length));
-  const encoding = contentEncodingFor(tile.compression);
-  if (encoding) headers.set('content-encoding', encoding);
 
-  // `encodeBody: 'manual'` is the half this was missing, and without it the
-  // `content-encoding` set two lines up NEVER REACHES THE BROWSER.
+  // The stored bytes are gzip and they are DECOMPRESSED here, which the
+  // docblock above argues against on CPU grounds. It was wrong, and the map was
+  // blank for it.
   //
-  // workerd assumes it owns transfer encoding: it treats a body handed to
-  // `Response` as already-decoded content and re-derives the header, so a
-  // `content-encoding` set by hand is dropped on the way out. The tile then
-  // arrives as gzip bytes labelled `application/vnd.mapbox-vector-tile`,
-  // MapLibre cannot parse it, and the map reports "Map data unavailable" with
-  // nothing in the console to say why — exactly the failure the comment at the
-  // top of this function describes and was trying to prevent.
+  // Forwarding the gzip and declaring it does not work on this runtime.
+  // workerd owns transfer encoding: it treats a body handed to `Response` as
+  // already-decoded content and re-derives the header, so a hand-set
+  // `content-encoding` is dropped on the way out. `encodeBody: 'manual'` was
+  // tried first and changed nothing — measured against the live edge, the body
+  // still arrived `1f8b…` with no header, which is a `.pbf` MapLibre cannot
+  // parse and does not explain: the map said "Map data unavailable" with an
+  // empty console and no failed request.
   //
-  // It was invisible until deploy. `wrangler dev`'s local proxy re-compresses
-  // the body and sets the header itself, so the bug does not reproduce there;
-  // the first request that ever showed it was a browser against goway.to.
-  //
-  // Measured after the fix: `content-encoding: gzip` present, body still the
-  // stored gzip bytes, no decompression anywhere in the path.
-  const init = { headers, encodeBody: 'manual' };
-  const response = new Response(tile.bytes, init);
+  // So the bytes are decoded here and go out plain. Cloudflare compresses them
+  // again on the wire for any client that asks, so the same bytes reach the
+  // browser and the only cost is the gunzip. That cost is real and bounded: it
+  // is a stream, and the edge cache means it is paid once per tile per colo
+  // rather than once per request.
+  const body = await decompress(tile.bytes, tile.compression);
+  headers.set('content-length', String(body.length));
+  const response = new Response(body, { headers });
   ctx.waitUntil(cache.put(cacheKey, response.clone()));
-  return request.method === 'HEAD' ? new Response(null, init) : response;
+  return request.method === 'HEAD' ? new Response(null, { headers }) : response;
 }
 
 /**
