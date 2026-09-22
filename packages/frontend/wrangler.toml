@@ -126,36 +126,32 @@ run_worker_first = ["/map/tiles/*", "/map/fonts/*"]
 # a tile from somewhere else on Earth. Upload, point this at the new key,
 # deploy, then delete the old object. That sequence is also the rollback.
 #
-# ## Why these five lines are commented out
+# ## These are live as of 2026-09-21
 #
-# Because R2 is not enabled on the Oxy Cloudflare account yet, and `wrangler
-# deploy` refuses a binding to a bucket that does not exist. A deployment that
-# failed here would take `goway.to` down for a change that is supposed to be
-# invisible, so the Worker is written to fall back to the upstream proxy
-# whenever `MAP_TILES` or `MAP_TILE_ARCHIVE` is absent, and this block waits.
+# The setup they waited for is done: R2 is enabled on the account, the bucket
+# exists, and `planet/20260921.pmtiles` is in it — 84.2 GB, zoom 0-14, built
+# from the 2026-09-13 planet with the pinned Planetiler and verified before
+# upload (16 layers matching `lib/map/style/schema.ts`, and 7002 of 7002
+# sampled `poi` features carrying their OSM element id, which is the property
+# the whole exercise was for).
 #
-# ONE-TIME HUMAN SETUP, in this order — README.md has the full version:
+# `MAP_TILE_UPSTREAM` below is now dead weight on the happy path: the Worker
+# reaches it only if this binding or the key goes missing. It stays for one
+# more cycle as the rollback, and step 5 remains:
 #
-#   1. Cloudflare dashboard → R2 → Enable (this is the step that needs a human;
-#      it is an account-level opt-in with a billing term attached).
-#   2. `wrangler r2 bucket create goway-map-tiles`
-#   3. R2 → Manage API tokens → create an access key pair, then
-#      `bun run --cwd packages/frontend map:tiles:upload --archive=… --key=…`
-#   4. Delete the `# ` from the three `[[r2_buckets]]` lines below and from
-#      `MAP_TILE_ARCHIVE` inside `[vars]`, set the key to the one just
-#      uploaded, and merge. The upstream proxy stops being reached on that
-#      deploy. Checked with `wrangler deploy --dry-run` in both states, which
-#      is also why `MAP_TILE_ARCHIVE` sits inside the EXISTING `[vars]` table
-#      rather than in a second one: TOML rejects a duplicate table, so a
-#      commented-out `[vars]` header would have made step 4 a syntax error.
-#   5. Once it has been live long enough to trust, delete `MAP_TILE_UPSTREAM`
-#      below, the fallback in `worker/index.js`, and `OPENFREEMAP_ENDPOINTS`
-#      from `lib/map/provider.ts` — in the same commit, because each of them
-#      exists only for the others.
+#   Once this has been live long enough to trust, delete `MAP_TILE_UPSTREAM`
+#   below, the fallback in `worker/index.js`, and `OPENFREEMAP_ENDPOINTS` from
+#   `lib/map/provider.ts` — in the same commit, because each of them exists
+#   only for the others.
 #
-# [[r2_buckets]]
-# binding = "MAP_TILES"
-# bucket_name = "goway-map-tiles"
+# To publish a NEW planet: upload under a new dated key, change the one line
+# below, deploy, then delete the old object. Never overwrite the object this
+# points at — a PMTiles archive is addressed by byte offset, so a Worker
+# mid-request would read a directory as a tile.
+#
+[[r2_buckets]]
+binding = "MAP_TILES"
+bucket_name = "goway-map-tiles"
 
 # The FALLBACK upstream, as deployment configuration rather than as a hostname
 # written into product code. `lib/map/provider.ts` → `OPENFREEMAP_ENDPOINTS` is
@@ -174,7 +170,7 @@ run_worker_first = ["/map/tiles/*", "/map/fonts/*"]
 # resolving it at request time (cached for an hour) is what stops a deployment
 # serving 404s from the day the next planet lands.
 [vars]
-# MAP_TILE_ARCHIVE = "basemap/planet-YYYYMMDD.pmtiles"
+MAP_TILE_ARCHIVE = "planet/20260921.pmtiles"
 MAP_TILE_UPSTREAM = "https://tiles.openfreemap.org/planet"
 MAP_GLYPH_UPSTREAM = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf"
 
