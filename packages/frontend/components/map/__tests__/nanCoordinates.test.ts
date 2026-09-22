@@ -31,7 +31,10 @@
  * agrees with our own predicate proves nothing; these assert against the engine
  * that throws in production.
  */
-import { describe, expect, mock, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+import { describe, expect, it, mock, test } from 'bun:test';
 import { LngLat, LngLatBounds, MercatorCoordinate } from 'maplibre-gl';
 
 import {
@@ -591,5 +594,44 @@ describe('seam — an EMPTY composite geometry is the same silent failure', () =
       ],
     });
     expect(drawableOverlays([good, empty]).map((o) => o.id)).toEqual(['goway-route']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A failing tile must not speak for the whole canvas
+// ---------------------------------------------------------------------------
+
+describe('the degraded state is left as well as entered', () => {
+  // `goway.to` showed "Map data unavailable" over a map that was drawing
+  // perfectly. The cause was a handful of stale edge-cached tiles among
+  // thousands of good ones: `emitError` latched on the first of them and
+  // nothing ever retracted it, so one square of a viewport spoke for all of it
+  // and kept speaking after the square came good.
+  //
+  // Source assertions, because the behaviour lives in a MapLibre `idle`
+  // listener and there is no engine here to fire one. What they pin is the
+  // shape of the rule, which is what was missing rather than mis-implemented.
+  const web = () =>
+    readFileSync(fileURLToPath(new URL('../MapCanvas.web.tsx', import.meta.url).href), 'utf8');
+
+  it('clears a tile error once the viewport settles with its tiles', () => {
+    const source = web();
+    expect(source).toContain('map.areTilesLoaded()');
+    expect(source).toMatch(/reason !== 'tiles'\) return current;/);
+  });
+
+  it('never clears a style error the same way', () => {
+    // Nothing about a viewport finishing says the style document arrived, and a
+    // map with no style has nothing to draw whatever the tiles do.
+    const idle = web().slice(web().indexOf('const handleIdle'));
+    const body = idle.slice(0, idle.indexOf('\n    };'));
+    expect(body).not.toContain("'style'");
+  });
+
+  it('tells the screen about the recovery, not only the failure', () => {
+    // ExploreScreen hides "Search this area" and the directions picker while
+    // `mapError` is set. Without this call they stay hidden for the life of the
+    // screen on a map that is working.
+    expect(web()).toContain('handlers.current.onError?.(null)');
   });
 });

@@ -413,6 +413,22 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
      * describes the labels of the tiles that happened to be decoded by then.
      */
     const handleIdle = () => {
+      // `idle` with every tile in hand is the map saying it drew what was
+      // asked for, and it is the only honest moment to retract a tile error.
+      // It fires AFTER the failure did, so a square that 404s mid-pan stops
+      // speaking for the whole canvas as soon as the view settles.
+      //
+      // A style error is never cleared here: nothing about a viewport
+      // finishing says the style document arrived, and a map with no style has
+      // nothing to draw whatever the tiles do.
+      if (map.areTilesLoaded()) {
+        setError((current) => {
+          if (current?.reason !== 'tiles') return current;
+          handlers.current.onError?.(null);
+          return null;
+        });
+      }
+
       const report = handlers.current.onLabelsChange;
       if (!report) return;
       const layers = queryLayers.current.labels;
@@ -438,6 +454,17 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       // A source id means a tile/source request failed; without one the style
       // document itself did not load. Both are product failures, and the user
       // gets a different sentence for each.
+      //
+      // The difference that matters is whether it is RECOVERABLE. A style that
+      // did not load leaves nothing to draw and nothing to retry on its own. A
+      // tile is one square of a viewport full of them: the rest render, the
+      // camera still works, and the next pan may well succeed.
+      //
+      // Until `handleIdle` learned to clear this, it did not behave that way.
+      // One failing tile latched the whole canvas into "Map data unavailable"
+      // for the life of the component, and `goway.to` sat in that state on a
+      // map that was otherwise complete — the cause was a handful of stale
+      // edge-cached tiles among thousands of good ones.
       emitError({
         reason: event.sourceId ? 'tiles' : 'style',
         message: event.error?.message,
