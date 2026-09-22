@@ -342,8 +342,23 @@ export interface MapCanvasProps {
   onLabelsChange?: (labels: readonly MapLabelFeature[]) => void;
   /** Fired once the style has loaded and the first frame is on screen. */
   onReady?: () => void;
-  /** Fired when the canvas enters its degraded state. */
-  onError?: (error: MapCanvasError) => void;
+  /**
+   * Fired when the canvas enters its degraded state, and **with `null` when it
+   * leaves it**.
+   *
+   * The second half is what makes the first usable. A screen that only ever
+   * hears about failure latches on the first one: `ExploreScreen` hides
+   * "Search this area" and the directions picker while `mapError` is set, and
+   * without a recovery signal they stay hidden on a map that is drawing
+   * perfectly. That is what happened on `goway.to` — a handful of stale
+   * edge-cached tiles among thousands of good ones, and the canvas reported
+   * the failure and never the return.
+   *
+   * A `tiles` failure is recoverable and is retracted once the viewport settles
+   * with every tile in hand. A `style` failure is not: nothing to draw, and
+   * nothing that arrives later changes it short of a retry.
+   */
+  onError?: (error: MapCanvasError | null) => void;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
