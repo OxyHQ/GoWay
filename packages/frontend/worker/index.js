@@ -393,9 +393,27 @@ async function serveTileFromArchive(z, x, y, request, env, ctx) {
   const encoding = contentEncodingFor(tile.compression);
   if (encoding) headers.set('content-encoding', encoding);
 
-  const response = new Response(tile.bytes, { headers });
+  // `encodeBody: 'manual'` is the half this was missing, and without it the
+  // `content-encoding` set two lines up NEVER REACHES THE BROWSER.
+  //
+  // workerd assumes it owns transfer encoding: it treats a body handed to
+  // `Response` as already-decoded content and re-derives the header, so a
+  // `content-encoding` set by hand is dropped on the way out. The tile then
+  // arrives as gzip bytes labelled `application/vnd.mapbox-vector-tile`,
+  // MapLibre cannot parse it, and the map reports "Map data unavailable" with
+  // nothing in the console to say why — exactly the failure the comment at the
+  // top of this function describes and was trying to prevent.
+  //
+  // It was invisible until deploy. `wrangler dev`'s local proxy re-compresses
+  // the body and sets the header itself, so the bug does not reproduce there;
+  // the first request that ever showed it was a browser against goway.to.
+  //
+  // Measured after the fix: `content-encoding: gzip` present, body still the
+  // stored gzip bytes, no decompression anywhere in the path.
+  const init = { headers, encodeBody: 'manual' };
+  const response = new Response(tile.bytes, init);
   ctx.waitUntil(cache.put(cacheKey, response.clone()));
-  return request.method === 'HEAD' ? new Response(null, { headers }) : response;
+  return request.method === 'HEAD' ? new Response(null, init) : response;
 }
 
 /**
