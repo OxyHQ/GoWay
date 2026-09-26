@@ -67,7 +67,7 @@ export default function RootLayout() {
           <BloomProvider
             persistKey={THEME_PERSIST_KEY}
             storage={themeStorage}
-            imageResolver={(id, variant) => oxyServices.getFileDownloadUrl(id, variant ?? 'thumb')}
+            imageResolver={(id, variant) => oxyServices.assets.publicUrl(id, variant ?? 'thumb')}
           >
             <OxyProvider
               oxyServices={oxyServices}

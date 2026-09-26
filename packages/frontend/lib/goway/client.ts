@@ -82,7 +82,7 @@ export const gowayClient: GoWayClient = createGoWayClient({
   apiBaseUrl: API_URL,
   locale: deviceLocale(),
   // Oxy owns the session; the SDK borrows the token per request and keeps none.
-  getAccessToken: () => oxyServices.getAccessToken(),
+  getAccessToken: () => oxyServices.session.accessToken,
   ...(USING_FIXTURES
     ? { fetch: createFixtureFetch(parseFixtureFaults(process.env.EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS)) }
     : {}),
