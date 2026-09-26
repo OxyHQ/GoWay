@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@goway/shared-types": "workspace:*",
-    "@oxy.so/core": "^1.7.0",
+    "@oxy.so/core": "^1.16.0",
     "@oxy.so/db": "^1.0.0",
     "cors": "^2.8.6",
     "dotenv": "^16.4.7",
