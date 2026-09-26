@@ -7,7 +7,7 @@
  *
  * ## Rooms derive from the AUTHENTICATED user, never from the client
  *
- * `authSocket()` is `@oxy.so/core`'s own handshake verifier, the socket
+ * `middleware.socket()` is `@oxy.so/core/server`'s own handshake verifier, the socket
  * equivalent of `createOxyAuthMiddleware`. A connection that does not carry a
  * valid Oxy session never reaches `connection`, and the room name is built from
  * the id the handshake resolved. A room name taken from a client-supplied value
@@ -33,7 +33,7 @@ export function attachRealtime(httpServer: HttpServer): SocketIOServer {
     },
   });
 
-  io.use(oxyClient.authSocket());
+  io.use(oxyClient.middleware.socket());
   io.on('connection', (socket: AuthedSocket) => {
     const userId = socket.user?.id;
     if (!userId) {

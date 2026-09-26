@@ -21,11 +21,11 @@
  * id is an authorization bypass with extra steps.
  */
 
-import { OxyServices } from '@oxy.so/core';
 import {
   createOptionalOxyAuth,
   createOxyAuthMiddleware,
   createOxyRateLimit,
+  OxyServer,
   type OxyRequestUser,
 } from '@oxy.so/core/server';
 import type { RequestHandler } from 'express';
@@ -50,8 +50,12 @@ declare global {
   }
 }
 
-/** The Oxy client this process authenticates against. */
-export const oxyClient = new OxyServices({ baseURL: config.oxyApiUrl });
+/**
+ * The Oxy server client this process authenticates against. It only verifies
+ * sessions (GoWay makes no service-to-service calls), so it takes no
+ * `serviceAuth`.
+ */
+export const oxyClient = new OxyServer({ baseURL: config.oxyApiUrl });
 
 /** Fail-closed: the request is refused unless it carries a valid Oxy session. */
 export const requireAuth: RequestHandler = createOxyAuthMiddleware(oxyClient);

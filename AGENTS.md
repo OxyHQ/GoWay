@@ -10,7 +10,7 @@ Always **bun**; commit `bun.lock` with its `package.json`.
 - All Expo config comes from `@oxy.so/app-preset`; fix the preset, never copy config back into the app.
 - Theming is NativeWind via `BloomThemeProvider`; never hardcode brand colors and never restate a token `@oxy.so/bloom/design-tokens/theme.css` already defines.
 - Gate private API calls on `useAuth().canUsePrivateApi`; the root `Stack` alone swaps route groups.
-- Backend auth is `@oxy.so/core/server` only (`createOxyAuthMiddleware`, `createOxyCors`, `createOxyRateLimit`, `authSocket`); no app-local auth, bearer parsing or CORS. Call your own API via `oxyServices.createLinkedClient({ baseURL })`.
+- Backend auth is `@oxy.so/core/server` only (`OxyServer`, `createOxyAuthMiddleware`, `createOxyCors`, `createOxyRateLimit`, `middleware.socket()`); no app-local auth, bearer parsing or CORS. Call your own API via `oxyServices.createLinkedClient({ baseURL })`.
 
 ## Database (drizzle)
 
