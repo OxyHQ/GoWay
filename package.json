@@ -55,11 +55,11 @@
     "typescript": "^5.9.3"
   },
   "overrides": {
-    "@oxy.so/core": "^1.16.0",
+    "@oxy.so/core": "^1.18.0",
     "@oxy.so/bloom": "^4.28.0"
   },
   "resolutions": {
-    "@oxy.so/core": "^1.16.0",
+    "@oxy.so/core": "^1.18.0",
     "@oxy.so/bloom": "^4.28.0"
   }
 }
