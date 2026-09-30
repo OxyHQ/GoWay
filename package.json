@@ -55,13 +55,13 @@
     "typescript": "^5.9.3"
   },
   "overrides": {
-    "@oxy.so/core": "^3.2.0",
-    "@oxy.so/contracts": "^4.3.0",
+    "@oxy.so/core": "^4.0.0",
+    "@oxy.so/contracts": "^4.4.0",
     "@oxy.so/bloom": "^6.3.0"
   },
   "resolutions": {
-    "@oxy.so/core": "^3.2.0",
-    "@oxy.so/contracts": "^4.3.0",
+    "@oxy.so/core": "^4.0.0",
+    "@oxy.so/contracts": "^4.4.0",
     "@oxy.so/bloom": "^6.3.0"
   }
 }
