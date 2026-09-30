@@ -127,20 +127,22 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
 
       <View className="flex-row flex-wrap items-center gap-space-8">
         <Button
-          variant="primary"
-          size="small"
+          size="sm"
           leadingIcon={RiRouteLine}
           onPress={onDirections}
           accessibilityLabel={`Directions to ${displayName}`}
+          tone="accent"
+          appearance="solid"
         >
           Directions
         </Button>
         <Button
-          variant="secondary"
-          size="small"
+          size="sm"
           leadingIcon={RiBookmarkLine}
           onPress={save}
           accessibilityLabel={gate.canUsePrivateApi ? 'Save this place' : 'Sign in to save this place'}
+          tone="neutral"
+          appearance="outline"
         >
           Save
         </Button>
@@ -202,13 +204,14 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
           </Text>
           <View className="flex-row">
             <Button
-              variant="secondary"
-              size="small"
+              size="sm"
               leadingIcon={RiEditLine}
               onPress={suggestEdit}
               accessibilityLabel={
                 gate.canUsePrivateApi ? 'Add details for this place' : 'Sign in to add details for this place'
               }
+              tone="neutral"
+              appearance="outline"
             >
               Add details
             </Button>

@@ -107,31 +107,34 @@ export function StopPicker({
     <View className="pb-space-16" testID={testID}>
       <View className="flex-row flex-wrap items-center gap-space-8 px-space-16 pb-space-8">
         <Button
-          variant="secondary"
-          size="small"
+          size="sm"
           leadingIcon={RiFocus3Line}
           onPress={onUseDevice}
           disabled={locationBusy}
           accessibilityLabel={`Use your location as the ${slotName.toLowerCase()}`}
+          tone="neutral"
+          appearance="outline"
         >
           Your location
         </Button>
         <Button
-          variant="secondary"
-          size="small"
+          size="sm"
           leadingIcon={RiMap2Line}
           onPress={onChooseOnMap}
           accessibilityLabel={`Choose the ${slotName.toLowerCase()} on the map`}
+          tone="neutral"
+          appearance="outline"
         >
           Choose on map
         </Button>
         {/* Opening a field must not be a one-way door: changing your mind
             leaves the field exactly as it was. */}
         <Button
-          variant="text"
-          size="small"
+          size="sm"
           onPress={onCancel}
           accessibilityLabel={`Stop editing the ${slotName.toLowerCase()}`}
+          tone="accent"
+          appearance="plain"
         >
           Cancel
         </Button>
@@ -139,7 +142,7 @@ export function StopPicker({
 
       {locationBusy ? (
         <View className="flex-row items-center gap-space-8 px-space-16 pb-space-8">
-          <Loading variant="spinner" size="small" />
+          <Loading variant="spinner" size="sm" />
           <Text className="text-bodySmall text-muted-foreground">Finding your location…</Text>
         </View>
       ) : null}
@@ -220,7 +223,7 @@ function SearchResults({
   if (busy && results.length === 0) {
     return (
       <View className="flex-row items-center gap-space-8 px-space-16 py-space-16">
-        <Loading variant="spinner" size="small" />
+        <Loading variant="spinner" size="sm" />
         <Text className="text-bodySmall text-muted-foreground">Searching…</Text>
       </View>
     );

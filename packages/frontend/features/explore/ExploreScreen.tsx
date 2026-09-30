@@ -378,22 +378,24 @@ export default function ExploreScreen({
       >
         {Math.abs(bearing) > BEARING_EPSILON ? (
           <Fab
-            variant="surface"
-            size="small"
-            placement="static"
-            icon={<RiCompass3Line width={20} height={20} />}
+            size="xs"
+            icon={RiCompass3Line}
+            iconSize={20}
             accessibilityLabel={t('map.resetNorth')}
             onPress={handleResetNorth}
+            appearance="subtle"
+            tone="neutral"
           />
         ) : null}
         <Fab
-          variant="surface"
-          placement="static"
-          icon={<RiFocus3Line width={22} height={22} />}
+          icon={RiFocus3Line}
+          iconSize={22}
           accessibilityLabel={t('map.myLocation')}
           accessibilityHint={t('map.myLocationHint')}
           disabled={location.isLocating}
           onPress={() => void handleLocate()}
+          appearance="subtle"
+          tone="neutral"
         />
       </Animated.View>
 

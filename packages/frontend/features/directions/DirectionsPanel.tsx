@@ -101,11 +101,12 @@ export function DirectionsHeader({ directions, testID }: DirectionsHeaderProps) 
       {directions.canAddStop ? (
         <View className="flex-row">
           <Button
-            variant="text"
             size="xs"
             leadingIcon={RiAddLine}
             onPress={directions.addStop}
             accessibilityLabel="Add a stop along the way"
+            tone="accent"
+            appearance="plain"
           >
             Add stop
           </Button>
@@ -149,7 +150,7 @@ function StopField({
       </View>
 
       <View className="flex-1">
-        <TextField size="small">
+        <TextField size="sm">
           <TextFieldInput
             label={name}
             // While a slot is being re-filled the field is empty and the OLD
@@ -296,7 +297,7 @@ function RouteFailure({
         way there.
       </Text>
       <View className="flex-row">
-        <Button variant="secondary" size="small" onPress={onRetry}>
+        <Button appearance="outline" tone="neutral" size="sm" onPress={onRetry}>
           Try again
         </Button>
       </View>
@@ -325,7 +326,7 @@ export function DirectionsBody({
           Drag the map to where you mean, then tap the spot. GoWay will name it if it recognises it.
         </Text>
         <View className="pt-space-8">
-          <Button variant="secondary" size="small" onPress={directions.cancelPicking}>
+          <Button appearance="outline" tone="neutral" size="sm" onPress={directions.cancelPicking}>
             Cancel
           </Button>
         </View>
@@ -382,7 +383,8 @@ function RouteBody({ directions, testID }: { directions: DirectionsController; t
           return (
             <Button
               key={mode}
-              variant={active ? 'primary' : 'secondary'}
+              appearance={active ? 'solid' : 'outline'}
+              tone={active ? 'accent' : 'neutral'}
               size="xs"
               leadingIcon={Icon}
               onPress={() => directions.setTravelMode(mode)}
@@ -491,8 +493,7 @@ function RouteBody({ directions, testID }: { directions: DirectionsController; t
           moved on the way out — browsing resumes exactly where it is. */}
       <View className="flex-row px-space-16">
         <Button
-          variant="secondary"
-          size="small"
+          size="sm"
           leadingIcon={RiCloseLine}
           onPress={directions.close}
           accessibilityLabel={
@@ -500,6 +501,8 @@ function RouteBody({ directions, testID }: { directions: DirectionsController; t
               ? 'Clear the route and go back to browsing the map'
               : 'Leave directions and go back to browsing the map'
           }
+          tone="neutral"
+          appearance="outline"
         >
           {route ? 'Clear route' : 'Cancel'}
         </Button>
@@ -511,7 +514,7 @@ function RouteBody({ directions, testID }: { directions: DirectionsController; t
 function Wait({ children }: { children: string }) {
   return (
     <View className="flex-row items-center gap-space-8 px-space-16">
-      <Loading variant="spinner" size="small" />
+      <Loading variant="spinner" size="sm" />
       <Text className="text-bodySmall text-muted-foreground">{children}</Text>
     </View>
   );
