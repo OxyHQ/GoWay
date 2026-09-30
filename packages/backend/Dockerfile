@@ -43,6 +43,12 @@ COPY --from=builder /app/packages/shared-types/package.json packages/shared-type
 COPY --from=builder /app/packages/backend/package.json packages/backend/
 COPY --from=builder /app/packages/frontend/package.json packages/frontend/
 COPY --from=builder /app/packages/sdk/package.json packages/sdk/
+
+# Production dependencies, from the manifests and lockfile alone. It runs
+# BEFORE the build output is copied, so a source-only change reuses this layer
+# from the build cache.
+RUN bun install --frozen-lockfile --production --ignore-scripts
+
 COPY --from=builder /app/packages/shared-types/dist/ packages/shared-types/dist/
 COPY --from=builder /app/packages/backend/dist/ packages/backend/dist/
 
@@ -51,8 +57,6 @@ COPY --from=builder /app/packages/backend/dist/ packages/backend/dist/
 # task AND by every serving task, because readiness reads this journal to
 # decide whether the database is current with the image (GET /ready).
 COPY --from=builder /app/packages/backend/drizzle/ packages/backend/drizzle/
-
-RUN bun install --frozen-lockfile --production --ignore-scripts
 
 USER appuser
 EXPOSE 3000
