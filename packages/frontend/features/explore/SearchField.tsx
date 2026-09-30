@@ -49,7 +49,7 @@ export const SearchField = forwardRef<TextInput, SearchFieldProps>(function Sear
       </View>
       {busy ? (
         <View accessibilityRole="progressbar" accessibilityLabel="Searching">
-          <Loading variant="spinner" size="small" />
+          <Loading variant="spinner" size="sm" />
         </View>
       ) : null}
     </View>

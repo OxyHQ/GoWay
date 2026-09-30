@@ -63,7 +63,7 @@ function MapErrorStateComponent({ error, onRetry, retryLabel = 'Try again' }: Ma
       <Text className="text-sectionTitle text-foreground text-center">{copy.title}</Text>
       <Text className="text-bodySmall text-muted-foreground text-center">{copy.body}</Text>
       {onRetry ? (
-        <Button variant="secondary" size="small" leadingIcon={RiRefreshLine} onPress={onRetry}>
+        <Button appearance="outline" tone="neutral" size="sm" leadingIcon={RiRefreshLine} onPress={onRetry}>
           {retryLabel}
         </Button>
       ) : null}

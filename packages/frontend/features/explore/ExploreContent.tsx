@@ -200,11 +200,12 @@ function SelectionBody({ explore }: { explore: ExploreController }) {
         </Text>
         <View className="flex-row">
           <Button
-            variant="primary"
-            size="small"
+            size="sm"
             leadingIcon={RiRouteLine}
             onPress={() => explore.directions.openToResult(result)}
             accessibilityLabel={`Directions to ${result.displayName}`}
+            tone="accent"
+            appearance="solid"
           >
             Directions
           </Button>
@@ -280,11 +281,12 @@ function BasemapLabelBody({ explore }: { explore: ExploreController }) {
       </View>
       <View className="flex-row">
         <Button
-          variant="primary"
-          size="small"
+          size="sm"
           leadingIcon={RiRouteLine}
           onPress={() => explore.directions.openToPoint(label.coordinate, label.name)}
           accessibilityLabel={`Directions to ${label.name}`}
+          tone="accent"
+          appearance="solid"
         >
           Directions
         </Button>
@@ -329,7 +331,7 @@ function DetailSkeleton() {
         <Skeleton.Box width={86} height={32} borderRadius={16} />
       </Skeleton.Row>
       <View className="flex-row items-center gap-space-8">
-        <Loading variant="spinner" size="small" />
+        <Loading variant="spinner" size="sm" />
         <Text className="text-caption text-muted-foreground">Loading details…</Text>
       </View>
     </View>

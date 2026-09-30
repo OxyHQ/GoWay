@@ -66,7 +66,7 @@ export function PanelState({
       {body ? <Text className="text-bodySmall text-muted-foreground text-center">{body}</Text> : null}
       {actionLabel && onAction ? (
         <View className="pt-space-8">
-          <Button variant="secondary" size="small" leadingIcon={actionIcon} onPress={onAction}>
+          <Button appearance="outline" tone="neutral" size="sm" leadingIcon={actionIcon} onPress={onAction}>
             {actionLabel}
           </Button>
         </View>
@@ -203,7 +203,13 @@ export function LocationFailureState({
   const retryable = copy.retryable;
   const mapButton = onUseMapOrigin ? (
     <View className={retryable ? 'pt-space-4' : 'pt-space-8'}>
-      <Button variant={retryable ? 'text' : 'secondary'} size="small" leadingIcon={RiMap2Line} onPress={onUseMapOrigin}>
+      <Button
+        appearance={retryable ? 'plain' : 'outline'}
+        tone={retryable ? 'accent' : 'neutral'}
+        size="sm"
+        leadingIcon={RiMap2Line}
+        onPress={onUseMapOrigin}
+      >
         Route from the map instead
       </Button>
     </View>
