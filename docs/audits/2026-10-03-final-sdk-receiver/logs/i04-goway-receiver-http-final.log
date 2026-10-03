@@ -1,0 +1,69 @@
+$ bun test src/__tests__/receiverSdk.test.ts
+bun test v1.4.2 (744846f84)
+
+src/__tests__/receiverSdk.test.ts:
+2026-10-03T17:10:15.220Z WARN [oxy.auth] refused SESSION_REQUIRED: User access token is not bound to a session {
+  component: "auth",
+  method: "auth",
+  code: "SESSION_REQUIRED",
+  stage: "token",
+  reason: "User access token is not bound to a session",
+  status: 401,
+  optional: true,
+  path: "/owned-fixture",
+}
+2026-10-03T17:10:15.220Z WARN [oxy.auth] 401 after refusal SESSION_REQUIRED: User access token is not bound to a session {
+  component: "auth",
+  method: "requireOxyAuth",
+  code: "SESSION_REQUIRED",
+  stage: "token",
+  reason: "User access token is not bound to a session",
+}
+(pass) candidate SDK receiver authority > refuses missing and sessionless bearers before the protected handler [7.33ms]
+2026-10-03T17:10:15.225Z WARN [oxy.auth] Token rejected — claimed user does not own the session {
+  component: "auth",
+  method: "auth",
+  claimedUserId: "other-owner",
+  validatedUserId: "receiver-owner",
+}
+2026-10-03T17:10:15.225Z WARN [oxy.auth] refused SESSION_USER_MISMATCH: Token user claim does not own the presented session {
+  component: "auth",
+  method: "auth",
+  code: "SESSION_USER_MISMATCH",
+  stage: "session",
+  reason: "Token user claim does not own the presented session",
+  status: 401,
+  optional: true,
+  path: "/owned-fixture",
+}
+2026-10-03T17:10:15.225Z WARN [oxy.auth] 401 after refusal SESSION_USER_MISMATCH: Token user claim does not own the presented session {
+  component: "auth",
+  method: "requireOxyAuth",
+  code: "SESSION_USER_MISMATCH",
+  stage: "session",
+  reason: "Token user claim does not own the presented session",
+}
+(pass) candidate SDK receiver authority > uses the live validated owner and rejects a conflicting token claim [5.00ms]
+2026-10-03T17:10:15.227Z WARN [oxy.auth] refused INVALID_SESSION: Session is invalid, revoked or expired {
+  component: "auth",
+  method: "auth",
+  code: "INVALID_SESSION",
+  stage: "session",
+  reason: "Session is invalid, revoked or expired",
+  status: 401,
+  optional: true,
+  path: "/owned-fixture",
+}
+2026-10-03T17:10:15.227Z WARN [oxy.auth] 401 after refusal INVALID_SESSION: Session is invalid, revoked or expired {
+  component: "auth",
+  method: "requireOxyAuth",
+  code: "INVALID_SESSION",
+  stage: "session",
+  reason: "Session is invalid, revoked or expired",
+}
+(pass) candidate SDK receiver authority > revalidates on the next call and refuses revocation without a cached admit [2.17ms]
+
+ 3 pass
+ 0 fail
+ 11 expect() calls
+Ran 3 tests across 1 file. [135.00ms]
