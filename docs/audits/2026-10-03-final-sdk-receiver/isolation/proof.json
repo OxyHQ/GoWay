@@ -1,0 +1,51 @@
+{
+  "sourceCommit": "dee44a0c14bd801513d9a6cc9f5fbb47597a3940",
+  "sources": [
+    {
+      "path": "packages/backend/src/__tests__/receiverSdk.test.ts",
+      "sha256": "18f0ec3a7b802c92bdfef1b657d1c41cc3066dc8a289c74a9ad2833965aa0f7c",
+      "bytes": 1045
+    },
+    {
+      "path": "packages/backend/src/__tests__/fixtures/receiver-sdk-probe.ts",
+      "sha256": "ac4b33fd7e2369045a5648babcf31dc958c0293e222ba845d1f77b32f9a4c22e",
+      "bytes": 4531
+    }
+  ],
+  "records": [
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-receiver/isolation/logs/i04-goway-isolated-receiver.log",
+      "sha256": "183e5e64ec112ddad10fbe2cac3153d2f0861ad597bd0a094ee78da2a6bbb70f",
+      "bytes": 274
+    },
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-receiver/isolation/logs/i04-goway-isolated-types.log",
+      "sha256": "a73c5a7ec6f24aec2b0c8abcdb9a27765fb579a333c6621ce760e06c686958b5",
+      "bytes": 814
+    },
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-receiver/isolation/logs/i04-goway-isolated-final.log",
+      "sha256": "462872e74c05d9f02db924335964932024292e7fd5d8575eb784cace26c604b2",
+      "bytes": 327
+    },
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-receiver/isolation/logs/i04-goway-isolated-lint.log",
+      "sha256": "61899d8b70d0c103f7797d80e83d533bc71cd8cd06b826befa153098721d106e",
+      "bytes": 250
+    },
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-receiver/isolation/logs/i04-goway-isolated-lint-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  ],
+  "changes": [
+    "Parent test imports no product modules and mutates no environment; owned Bun child has minimal env and --no-env-file, setting loopback issuer before dynamic product imports.",
+    "Child fetch proxy refuses every non-http or non-127.0.0.1 request; test invokes the same installed SDK and middleware/factory with three controls.",
+    "spawnSync has a 15-second timeout; child closes both HTTP servers in nested finally blocks. No product database is opened.",
+    "Final run: one test asserts three receiver controls, exactly four authority validations and two admitted fixture handlers; types passed.",
+    "Final const-only declaration lint correction follows the final runtime/type run; scoped lint passes.",
+    "Willo filtered parent command provides an explicit unused port1 DATABASE_URL for baseline module parsing, without a DB connection. Initial missing-env collection failure retained.",
+    "Candidate package provenance remains in parent proof; frontend candidate manifests may now include Services/Bloom and remain local, uncommitted. No final registry or deploy claim."
+  ]
+}
