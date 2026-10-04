@@ -23,11 +23,21 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import express, { type RequestHandler } from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { Place, PlaceWithDistance } from '@goway/shared-types';
+import { eq } from 'drizzle-orm';
+import {
+  placeClaimPageSchema,
+  placePageSchema,
+  placeSchema,
+  placeWithDistancePageSchema,
+  type Place,
+  type PlacePage,
+  type PlaceWithDistancePage,
+} from '@goway/contracts';
+import { places } from '../../db/schema';
 import { createPlace, createClaim, type PlaceActor } from '../../db/places/placesRepository';
 import { SUITE_SETUP_TIMEOUT_MS, createSuiteDatabase, destroySuiteDatabase, type SuiteDatabase } from '../../db/__tests__/testDatabase';
 import { ApiError } from '../../http/apiError';
-import { errorHandler, notFoundHandler } from '../../http/errorHandler';
+import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import { createPlacesRouter } from '../places';
 
 const CONTRIBUTOR: PlaceActor = { oxyUserId: 'user-contributor', assertedVerification: 'community_reported' };
@@ -96,7 +106,7 @@ beforeAll(async () => {
   // Mounted at the path `GOWAY_API_BASE_PATH` names, so every URL this file
   // requests is byte-identical to one the SDK would build.
   app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth }));
-  app.use(notFoundHandler);
+  app.use(unknownRouteHandler);
   app.use(errorHandler);
 
   server = app.listen(0);
@@ -146,8 +156,8 @@ describe('locale on a list read', () => {
   it('resolves one name per place and publishes no name set', async () => {
     // 200 pins times every language is a payload nothing on screen renders —
     // and shipping the set would hand the fallback decision back to the client.
-    const { body } = await call<Place[]>('/places/bounds?west=2.16&south=41.38&east=2.18&north=41.39&locale=en');
-    const pinotxo = body.find((place) => place.id === catalunya.id);
+    const { body } = await call<PlacePage>('/places/bounds?west=2.16&south=41.38&east=2.18&north=41.39&locale=en');
+    const pinotxo = body.items.find((place) => place.id === catalunya.id);
     expect(pinotxo?.localizedName?.name).toBe('Pinotxo Bar');
     expect(pinotxo).not.toHaveProperty('names');
     expect(pinotxo?.name).toBe('Bar Pinotxo');
@@ -156,16 +166,33 @@ describe('locale on a list read', () => {
   it('still returns a place that has no name in the asked-for language', async () => {
     // A hint, never a filter. A viewport that hid everything untranslated would
     // be a map with holes in it.
-    const { body } = await call<PlaceWithDistance[]>(
+    const { body } = await call<PlaceWithDistancePage>(
       `/places/nearby?latitude=${String(GRACIA.latitude)}&longitude=${String(GRACIA.longitude)}&radiusMeters=500&locale=ja`,
     );
-    const forn = body.find((place) => place.id === gracia.id);
+    const forn = body.items.find((place) => place.id === gracia.id);
     expect(forn?.name).toBe('Forn Gràcia');
     expect(forn).not.toHaveProperty('localizedName');
   });
 });
 
-describe('GET /places/:id', () => {
+describe('the published shapes', () => {
+  it('are exactly what the contract — and so the SDK — parses', async () => {
+    // The contract's zod schemas are what `@goway.to/sdk` parses every
+    // response with, failing closed. A mapper that drifted from them (a `null`
+    // where the contract says absent, a status it does not publish) would pass
+    // every other test here and break every consumer.
+    placeSchema.parse((await call<unknown>(`/places/${catalunya.id}?locale=es`)).body);
+    placeSchema.parse((await call<unknown>(`/places/${claimed.id}`, asUser('user-owner'))).body);
+    placeWithDistancePageSchema.parse(
+      (await call<unknown>(`/places/nearby?latitude=${CATALUNYA.latitude}&longitude=${CATALUNYA.longitude}&radiusMeters=5000&limit=2&locale=en`)).body,
+    );
+    placePageSchema.parse((await call<unknown>('/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5&limit=1')).body);
+    placeClaimPageSchema.parse((await call<unknown>(`/places/${claimed.id}/claims`, asUser('user-owner'))).body);
+    placeClaimPageSchema.parse((await call<unknown>('/claims', asUser('user-owner'))).body);
+  });
+});
+
+describe('GET /places/{placeId}', () => {
   it('answers a signed-out caller with the published Place shape', async () => {
     // The map opens without an account; a read that required one would break
     // the product's first rule.
@@ -178,7 +205,7 @@ describe('GET /places/:id', () => {
     expect(body.verification.state).toBe('unverified');
     expect(body.address?.countryCode).toBe('ES');
     expect(body.sources[0]?.sourceId).toBe('node/100');
-    // The invariant the SDK's parser REFUSES a response over.
+    // The invariant the contract's schema — and so the SDK — REFUSES a response over.
     expect(body.capabilities[0]?.key).toBe(
       `${body.capabilities[0]?.namespace}.${body.capabilities[0]?.capability}`,
     );
@@ -246,55 +273,120 @@ describe('GET /places/:id', () => {
     expect(status).toBe(404);
     expect(body.error.code).toBe('not_found');
   });
+
+  it('answers a REMOVED place with gone, and refuses to write to it', async () => {
+    // Withdrawn is not the same as never-existed: a consumer holding a
+    // persisted id learns the place was retired rather than that its id was
+    // always wrong. And a withdrawn place is not quietly editable.
+    const removed = await createPlace(suite!.db, { name: 'Withdrawn', location: CATALUNYA }, CONTRIBUTOR);
+    await suite!.db.update(places).set({ status: 'removed' }).where(eq(places.id, removed.id));
+
+    const read = await call<ErrorBody>(`/places/${removed.id}`);
+    expect(read.status).toBe(410);
+    expect(read.body.error.code).toBe('gone');
+
+    const write = await call<ErrorBody>(`/places/${removed.id}`, {
+      method: 'PATCH',
+      ...asUser('user-passerby', json({ name: 'Back again' })),
+    });
+    expect(write.status).toBe(410);
+    expect(write.body.error.code).toBe('gone');
+
+    const nearby = await call<PlaceWithDistancePage>(
+      `/places/nearby?latitude=${CATALUNYA.latitude}&longitude=${CATALUNYA.longitude}&radiusMeters=5000`,
+    );
+    expect(nearby.body.items.map((place) => place.id)).not.toContain(removed.id);
+  });
 });
 
 describe('GET /places/nearby', () => {
-  it('returns nearest-first with a real distance in metres', async () => {
-    const { status, body } = await call<PlaceWithDistance[]>(
-      `/places/nearby?latitude=${CATALUNYA.latitude}&longitude=${CATALUNYA.longitude}&radiusMeters=5000`,
+  const near = (query: string) =>
+    call<PlaceWithDistancePage>(
+      `/places/nearby?latitude=${CATALUNYA.latitude}&longitude=${CATALUNYA.longitude}&${query}`,
     );
+
+  it('returns a page, nearest-first, with a real distance in metres', async () => {
+    const { status, body } = await near('radiusMeters=5000');
     expect(status).toBe(200);
-    expect(body[0]?.distanceMeters).toBeLessThan(1);
+    expect(body.nextCursor).toBeNull();
+    expect(body.items[0]?.distanceMeters).toBeLessThan(1);
     // Gràcia is ~1.2 km away and Madrid ~505 km: the radius excludes Madrid
     // rather than merely ranking it last.
-    const names = body.map((place) => place.name);
+    const names = body.items.map((place) => place.name);
     expect(names).toContain('Forn Gràcia');
     expect(names).not.toContain('Puerta del Sol');
-    expect(body[body.length - 1]?.distanceMeters).toBeGreaterThan(1000);
+    expect(body.items[body.items.length - 1]?.distanceMeters).toBeGreaterThan(1000);
   });
 
-  it('accepts the short parameter names issue #4 documents', async () => {
-    const { status, body } = await call<PlaceWithDistance[]>(
-      `/places/nearby?lat=${CATALUNYA.latitude}&lng=${CATALUNYA.longitude}&radius=500`,
+  it('walks every place exactly once, one per page, through keyset cursors', async () => {
+    // Two places share the exact same point, so the walk crosses a distance
+    // TIE — the case a `distance > last` keyset skips and an offset repeats.
+    const all = await near('radiusMeters=5000');
+    const walked: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const page = await near(`radiusMeters=5000&limit=1${cursor ? `&cursor=${cursor}` : ''}`);
+      expect(page.status).toBe(200);
+      expect(page.body.items.length).toBeLessThanOrEqual(1);
+      walked.push(...page.body.items.map((place) => place.id));
+      cursor = page.body.nextCursor;
+    } while (cursor !== null);
+    expect(walked).toEqual(all.body.items.map((place) => place.id));
+    expect(new Set(walked).size).toBe(walked.length);
+  });
+
+  it('refuses a cursor replayed under other filters, or on another list', async () => {
+    const first = await near('radiusMeters=5000&limit=1');
+    const cursor = first.body.nextCursor;
+    expect(cursor).not.toBeNull();
+
+    const otherRadius = await call<ErrorBody>(
+      `/places/nearby?latitude=${CATALUNYA.latitude}&longitude=${CATALUNYA.longitude}&radiusMeters=4000&cursor=${cursor}`,
     );
-    expect(status).toBe(200);
-    expect(body.map((place) => place.name)).toEqual(['Bar Pinotxo', 'Casa Batlló']);
+    expect(otherRadius.status).toBe(400);
+    expect(otherRadius.body.error).toMatchObject({ code: 'bad_request', details: { field: 'cursor' } });
+
+    const otherList = await call<ErrorBody>(`/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5&cursor=${cursor}`);
+    expect(otherList.status).toBe(400);
+
+    // The page size is not part of the binding: a caller may change it.
+    expect((await near(`radiusMeters=5000&limit=5&cursor=${cursor}`)).status).toBe(200);
+  });
+
+  it('refuses a parameter the contract does not declare, and a repeated one', async () => {
+    // `lat`/`lng`/`radius` were short forms once. One spelling per parameter:
+    // a silently ignored `radius` answers a different question.
+    const short = await call<ErrorBody>(`/places/nearby?lat=${CATALUNYA.latitude}&lng=${CATALUNYA.longitude}&radius=500`);
+    expect(short.status).toBe(400);
+    expect(short.body.error.code).toBe('bad_request');
+
+    const repeated = await near('radiusMeters=5000&categories=food.bar&categories=food.bakery');
+    expect(repeated.status).toBe(400);
+  });
+
+  it('refuses a limit outside the documented range rather than clamping it', async () => {
+    const { status, body } = await call<ErrorBody>(
+      `/places/nearby?latitude=${CATALUNYA.latitude}&longitude=${CATALUNYA.longitude}&radiusMeters=5000&limit=500`,
+    );
+    expect(status).toBe(422);
+    expect(body.error.details?.field).toBe('limit');
   });
 
   it('filters by capability without a client knowing the capability table exists', async () => {
-    const { body } = await call<PlaceWithDistance[]>(
-      `/places/nearby?latitude=${CATALUNYA.latitude}&longitude=${CATALUNYA.longitude}` +
-        '&radiusMeters=5000&capabilities=payments.faircoin.accepted',
-    );
-    expect(body.map((place) => place.name)).toEqual(['Bar Pinotxo']);
+    const { body } = await near('radiusMeters=5000&capabilities=payments.faircoin.accepted');
+    expect(body.items.map((place) => place.name)).toEqual(['Bar Pinotxo']);
   });
 
   it('treats several capabilities as a CONJUNCTION', async () => {
     // Asking for both means both. A disjunction here would send a FairCoin
     // wallet to a shop that takes something else entirely.
-    const { body } = await call<PlaceWithDistance[]>(
-      `/places/nearby?latitude=${CATALUNYA.latitude}&longitude=${CATALUNYA.longitude}` +
-        '&radiusMeters=5000&capabilities=payments.faircoin.accepted,commerce.mercaria.store',
-    );
-    expect(body).toEqual([]);
+    const { body } = await near('radiusMeters=5000&capabilities=payments.faircoin.accepted,commerce.mercaria.store');
+    expect(body.items).toEqual([]);
   });
 
   it('treats several categories as a DISJUNCTION', async () => {
-    const { body } = await call<PlaceWithDistance[]>(
-      `/places/nearby?latitude=${CATALUNYA.latitude}&longitude=${CATALUNYA.longitude}` +
-        '&radiusMeters=5000&categories=food.bar,food.bakery',
-    );
-    expect(body.map((place) => place.name).sort()).toEqual(['Bar Pinotxo', 'Forn Gràcia']);
+    const { body } = await near('radiusMeters=5000&categories=food.bar,food.bakery');
+    expect(body.items.map((place) => place.name).sort()).toEqual(['Bar Pinotxo', 'Forn Gràcia']);
   });
 
   it('answers an out-of-range coordinate with validation_failed, not a 500', async () => {
@@ -327,18 +419,26 @@ describe('GET /places/nearby', () => {
   });
 });
 
-describe('GET /places/bounds and GET /places?bbox=', () => {
-  it('returns the places inside the viewport', async () => {
-    const { status, body } = await call<Place[]>('/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5');
+describe('GET /places/bounds', () => {
+  it('returns a page of the places inside the viewport', async () => {
+    const { status, body } = await call<PlacePage>('/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5');
     expect(status).toBe(200);
-    expect(body.map((place) => place.name).sort()).toEqual(['Bar Pinotxo', 'Casa Batlló', 'Forn Gràcia']);
+    expect(body.nextCursor).toBeNull();
+    expect(body.items.map((place) => place.name).sort()).toEqual(['Bar Pinotxo', 'Casa Batlló', 'Forn Gràcia']);
   });
 
-  it('answers the documented bbox spelling identically', async () => {
-    const named = await call<Place[]>('/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5');
-    const bbox = await call<Place[]>('/places?bbox=2.0,41.3,2.3,41.5');
-    expect(bbox.status).toBe(200);
-    expect(bbox.body.map((place) => place.id)).toEqual(named.body.map((place) => place.id));
+  it('walks the viewport by place id, one page at a time', async () => {
+    const all = await call<PlacePage>('/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5');
+    const walked: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const page: Fetched<PlacePage> = await call<PlacePage>(
+        `/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5&limit=2${cursor ? `&cursor=${cursor}` : ''}`,
+      );
+      walked.push(...page.body.items.map((place) => place.id));
+      cursor = page.body.nextCursor;
+    } while (cursor !== null);
+    expect(walked).toEqual(all.body.items.map((place) => place.id));
   });
 
   it('refuses south > north with validation_failed', async () => {
@@ -350,17 +450,16 @@ describe('GET /places/bounds and GET /places?bbox=', () => {
   it('ACCEPTS west > east — that is how an antimeridian box is spelled', async () => {
     // Refusing it would make the Pacific unmappable. The asymmetry with
     // south/north is the contract, not an oversight.
-    const { status, body } = await call<Place[]>('/places/bounds?west=170&south=-25&east=-170&north=-10');
+    const { status, body } = await call<PlacePage>('/places/bounds?west=170&south=-25&east=-170&north=-10');
     expect(status).toBe(200);
-    expect(body).toEqual([]);
+    expect(body.items).toEqual([]);
   });
 
-  it('refuses a bare GET /places with no box', async () => {
-    // An unbounded list would be a scan of every place on Earth truncated by a
-    // LIMIT, which reads to a client as missing data rather than as a refusal.
-    const { status, body } = await call<ErrorBody>('/places');
-    expect(status).toBe(422);
-    expect(body.error.code).toBe('validation_failed');
+  it('has no second spelling under the collection path', async () => {
+    // `GET /places?bbox=` was a duplicate of this read. One operation, one URL.
+    const { status, body } = await call<ErrorBody>('/places?bbox=2.0,41.3,2.3,41.5');
+    expect(status).toBe(404);
+    expect(body.error.code).toBe('unknown_route');
   });
 });
 
@@ -437,7 +536,7 @@ describe('POST /places', () => {
   });
 });
 
-describe('PATCH /places/:id', () => {
+describe('PATCH /places/{placeId}', () => {
   it('lets anyone signed in edit an UNCLAIMED place', async () => {
     // Community editing is the product. A wiki map where only owners may edit
     // has no contributors.

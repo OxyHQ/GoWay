@@ -33,7 +33,7 @@
  *   an identity. The OSM element reference is.
  */
 
-import type { GeoBoundingBox, SearchResult, SearchResultKind, StructuredAddress } from '@goway/shared-types';
+import type { GeoBoundingBox, SearchResult, SearchResultKind, StructuredAddress } from '@goway/contracts';
 import type { NominatimConfig } from '../config/search';
 import {
   asObject,

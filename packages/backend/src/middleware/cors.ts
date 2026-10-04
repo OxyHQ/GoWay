@@ -119,6 +119,7 @@
  */
 
 import { createOxyCors } from '@oxy.so/core/server';
+import { GOWAY_API_BASE_PATH } from '@goway/contracts';
 import type { Request, RequestHandler, Response } from 'express';
 
 /**
@@ -131,7 +132,7 @@ import type { Request, RequestHandler, Response } from 'express';
  * socket, so a divergence between this constant and the mount is a failing
  * test and not a silently private API.
  */
-const API_BASE_PATH = '/api/v1';
+const API_BASE_PATH = GOWAY_API_BASE_PATH;
 
 /** A method the public table may admit. `HEAD` is folded into `GET` below. */
 type PublicMethod = 'GET' | 'POST';
@@ -147,35 +148,31 @@ interface PublicRoute {
 /**
  * Every route that answers any origin. Nothing else does.
  *
- * `GET /places/:id` subsumes `/places/nearby` and `/places/bounds` as a matter
+ * `GET /places/:placeId` subsumes `/places/nearby` and `/places/bounds` as a matter
  * of regular expressions, and they are listed anyway: this table is read as the
  * inventory of GoWay's public surface, and an entry missing from it reads as a
  * route somebody decided to keep private.
  *
  * Deliberately ABSENT, and each for a reason:
- *   - `POST|PATCH /places`, `PUT|DELETE /places/:id/capabilities/:key`,
- *     `POST /places/:id/claims` — writes, behind `requireAuth`.
- *   - `GET /places/:id/claims`, `GET /claims` — one account's claim history,
+ *   - `POST|PATCH /places`, `PUT|DELETE /places/:placeId/capabilities/:key`,
+ *     `POST /places/:placeId/claims` — writes, behind `requireAuth`.
+ *   - `GET /places/:placeId/claims`, `GET /claims` — one account's claim history,
  *     behind `requireAuth`. A read, but not a public one.
  *   - every `/captures/*` route — contributions are identity-bound, and even
  *     `GET /captures/policy` (`optionalAuth`) stays on the strict lane: it is
  *     the contribution surface, which no third-party page has a reason to call
  *     and which is where upload intents are minted.
- *   - `POST /street3d/scenes/:id/reports` — a moderation request somebody is
+ *   - `POST /street3d/scenes/:sceneId/reports` — a moderation request somebody is
  *     accountable for, behind `requireAuth`, on the strict lane.
  *   - `GET /health`, `GET /ready` — operational probes, not an API.
  */
 export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
-  {
-    method: 'GET',
-    path: '/places',
-    because: 'the viewport/bbox collection read — a map embed with no account',
-  },
+  { method: 'GET', path: '/openapi.json', because: 'the API description; integrators and doc tools fetch it from anywhere' },
   { method: 'GET', path: '/places/nearby', because: 'proximity search, signed out' },
   { method: 'GET', path: '/places/bounds', because: 'viewport search, signed out' },
   {
     method: 'GET',
-    path: '/places/:id',
+    path: '/places/:placeId',
     because: 'one public place; a deep link anybody already holds must resolve',
   },
   { method: 'GET', path: '/search', because: 'the search box, signed out' },
@@ -204,7 +201,7 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
   { method: 'GET', path: '/street3d/coverage', because: 'Street 3D coverage on the map, signed out' },
   {
     method: 'GET',
-    path: '/street3d/scenes/:id',
+    path: '/street3d/scenes/:sceneId',
     because: 'one published Street 3D scene manifest; a viewer embed with no account',
   },
 ];
@@ -268,7 +265,7 @@ function escapeSegment(segment: string): string {
  * Compile a path template into an anchored matcher.
  *
  * `:name` becomes exactly one segment (`[^/]+`), never a greedy `.*` — that is
- * what keeps `/places/:id` from swallowing `/places/:id/claims`. Anchored at
+ * what keeps `/places/:placeId` from swallowing `/places/:placeId/claims`. Anchored at
  * both ends for the same reason: a prefix match is how a private sub-route
  * becomes public.
  *

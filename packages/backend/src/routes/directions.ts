@@ -14,7 +14,7 @@
  *
  * ## "No route" is a 200, not an error
  *
- * `@goway/shared-types` says it twice — `RouteResponse.routes` "may be empty:
+ * `@goway/contracts` says it twice — `RouteResponse.routes` "may be empty:
  * 'no route exists between these points' is a normal answer for this domain,
  * not a failure, and a consumer must render it as such rather than as an
  * error" — and the SDK's `parseRouteResponse` documents an empty array as
@@ -39,14 +39,17 @@
  */
 
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
-import type { GeoCoordinate, PlaceId, RouteResponse, TravelMode } from '@goway/shared-types';
-import { TRAVEL_MODES } from '@goway/shared-types';
+import type { z } from 'zod';
+import type { GeoCoordinate, PlaceId, RouteResponse, TravelMode } from '@goway/contracts';
+import { routeRequestSchema, TRAVEL_MODES } from '@goway/contracts';
 import { findPlaceById } from '../db/places/placesRepository';
 import { getDb } from '../db/postgres';
 import { ApiError } from '../http/apiError';
 import { parseBody } from '../http/validation';
 import { getRoutingProvider, type RoutePoint, type RoutingProvider } from '../routing';
-import { routeRequestSchema, type RouteLocationInput, type RouteRequestInput } from './routeSchemas';
+
+type RouteRequestInput = z.output<typeof routeRequestSchema>;
+type RouteLocationInput = RouteRequestInput['origin'];
 
 /**
  * Forward a rejected handler to the error middleware.

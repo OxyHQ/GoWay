@@ -67,7 +67,7 @@ export const generatedGeographyPoint = (longitudeColumn: string, latitudeColumn:
  * removing a value is not supported at all. A CHECK is an ordinary migration.
  *
  * Both arguments come from the SAME `as const` tuple that types the column —
- * and for every set in this schema that tuple lives in `@goway/shared-types`,
+ * and for every set in this schema that tuple lives in `@goway/contracts`,
  * so the public contract, the TypeScript union and the database constraint are
  * one definition rather than three.
  *

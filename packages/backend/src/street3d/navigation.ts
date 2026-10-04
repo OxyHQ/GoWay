@@ -16,7 +16,7 @@
  * inside observed space. It carries no timestamp, no sequence and no identity.
  */
 
-import type { StreetSceneNavigation, StreetSceneViewpoint } from '@goway/shared-types';
+import type { StreetSceneNavigation, StreetSceneViewpoint } from '@goway/contracts';
 import type { SceneReconstructResult } from './workerContract';
 
 export const MIN_VIEWPOINT_SPACING_METERS = 1.5;

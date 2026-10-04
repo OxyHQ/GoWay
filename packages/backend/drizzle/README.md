@@ -59,7 +59,7 @@ Two constraints are the point of the migration:
   the `goway` row, so *"never destructively overwrite a source fact"* holds
   because of the key rather than because of the importer.
 - `places_names_language_tag_check` is the canonical BCP 47 subset published by
-  `@goway/shared-types`, and its primary subtag is two or three letters on
+  `@goway/contracts`, and its primary subtag is two or three letters on
   purpose. Under the wider BCP 47 rule, `left`, `right`, `signed` and `prefix`
   are all well-formed — and all four are real OpenStreetMap `name:*` keys that
   are not languages.

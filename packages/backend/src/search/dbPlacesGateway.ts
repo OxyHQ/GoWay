@@ -7,7 +7,7 @@
  * repository.
  */
 
-import type { Place } from '@goway/shared-types';
+import type { Place } from '@goway/contracts';
 import type { SourceRefInput } from '../db/places/placesRepository';
 import {
   findPlaceById,

@@ -17,8 +17,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import express, { Router, type RequestHandler } from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { GeoCoordinate, Route, TravelMode } from '@goway/shared-types';
-import { errorHandler, notFoundHandler } from '../../http/errorHandler';
+import type { GeoCoordinate, Route, TravelMode } from '@goway/contracts';
+import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import type { RoutingProvider, RoutingRequest } from '../../routing';
 import { createRoutesRouter, type PlaceLocationResolver } from '../directions';
 
@@ -106,7 +106,7 @@ beforeAll(async () => {
     }),
   );
   app.use('/api/v1', v1);
-  app.use(notFoundHandler);
+  app.use(unknownRouteHandler);
   app.use(errorHandler);
 
   // Port 0: the OS picks a free one. A fixed port makes the suite fail when

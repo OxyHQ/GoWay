@@ -34,7 +34,7 @@
  * the answer is deterministic and a re-fetch does not reshuffle a label.
  */
 
-import { baseLanguageTag, normalizeLanguageTag } from '@goway/shared-types';
+import { baseLanguageTag, normalizeLanguageTag } from '@goway/contracts';
 
 /** GoWay's own corrections outrank every external source's spelling. */
 const GOWAY_SOURCE = 'goway';

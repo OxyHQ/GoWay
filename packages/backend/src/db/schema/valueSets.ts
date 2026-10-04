@@ -3,7 +3,7 @@
  *
  * Every set the API publishes — place status, verification state, capability
  * verification, claim role and claim state — is declared once in
- * `@goway/shared-types` and imported from there by both the schema and the
+ * `@goway/contracts` and imported from there by both the schema and the
  * SDK, so the public contract, the TypeScript union and the database CHECK
  * cannot drift apart. Nothing in that family belongs in this file.
  *
@@ -101,7 +101,7 @@ export type CaptureBudgetScope = (typeof CAPTURE_BUDGET_SCOPES)[number];
 // ── Street 3D reconstruction (#11–#16) ──────────────────────────────────────
 //
 // The job, scene and derivative machinery is INTERNAL. What a viewer may see is
-// `@goway/shared-types/street3d` (manifests, coverage areas, reports); the
+// `@goway/contracts/street3d` (manifests, coverage areas, reports); the
 // states below are how the backend gets there, and publishing them would freeze
 // the scheduler's design into an SDK contract.
 

@@ -33,14 +33,15 @@
  * loss of hit rate rather than an oversight.
  */
 
+import { SEARCH_MAX_DEPTH } from '@goway/contracts';
 import type {
   CapabilityKey,
   GeoBoundingBox,
   GeoCoordinate,
   Place,
-  SearchResults,
+  SearchResult,
   SearchSource,
-} from '@goway/shared-types';
+} from '@goway/contracts';
 import type { SearchConfig } from '../config/search';
 import { BoundedCache } from './cache';
 import { mergeCandidates, type CandidateList } from './merge';
@@ -84,6 +85,8 @@ export interface ResolvedSearchQuery {
   capabilities?: readonly CapabilityKey[];
   categories?: readonly string[];
   limit: number;
+  /** How many results earlier pages already served. */
+  offset: number;
   locale?: string;
 }
 
@@ -91,6 +94,7 @@ export interface ResolvedReverseQuery {
   coordinate: GeoCoordinate;
   radiusMeters?: number;
   limit: number;
+  offset: number;
   locale?: string;
 }
 
@@ -102,16 +106,46 @@ export interface ResolvedStructuredQuery {
   postalCode?: string;
   countryCode?: string;
   limit: number;
+  offset: number;
   locale?: string;
+}
+
+/**
+ * One window of a blended result list.
+ *
+ * `hasMore` rather than a cursor: the cursor is the HTTP layer's business (it
+ * binds the position to the request's filters), and the service only knows
+ * whether the ranked list continued past the window it was asked for.
+ */
+export interface SearchWindow {
+  results: SearchResult[];
+  hasMore: boolean;
+  /** Providers that contributed to this response. */
+  providers: SearchSource[];
+  /** Providers that were asked but failed or timed out. */
+  degradedProviders?: SearchSource[];
 }
 
 export interface SearchService {
   /** The search box: interactive providers only, blended with GoWay Places. */
-  search(query: ResolvedSearchQuery, context: SearchRequestContext): Promise<SearchResults>;
+  search(query: ResolvedSearchQuery, context: SearchRequestContext): Promise<SearchWindow>;
   /** An explicit forward geocode. Every configured provider may answer. */
-  forward(query: ResolvedSearchQuery, context: SearchRequestContext): Promise<SearchResults>;
-  reverse(query: ResolvedReverseQuery, context: SearchRequestContext): Promise<SearchResults>;
-  structured(query: ResolvedStructuredQuery, context: SearchRequestContext): Promise<SearchResults>;
+  forward(query: ResolvedSearchQuery, context: SearchRequestContext): Promise<SearchWindow>;
+  reverse(query: ResolvedReverseQuery, context: SearchRequestContext): Promise<SearchWindow>;
+  structured(query: ResolvedStructuredQuery, context: SearchRequestContext): Promise<SearchWindow>;
+}
+
+/**
+ * How many ranked results a window needs: everything up to its end, plus one
+ * to learn whether the list continues — never past {@link SEARCH_MAX_DEPTH}.
+ *
+ * A blended order is a fused score recomputed per request, so page two is the
+ * same ranking with the first page sliced off; the providers are asked for the
+ * whole prefix every time. Bounded by the depth, that is at most one provider
+ * call of `SEARCH_MAX_DEPTH` rows.
+ */
+function rankedDepth(window: { offset: number; limit: number }): number {
+  return Math.min(window.offset + window.limit + 1, SEARCH_MAX_DEPTH);
 }
 
 export interface SearchServiceOptions {
@@ -258,7 +292,9 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
     };
     return {
       findPlaceIdsBySourceRefs: (refs) => guard(() => gateway.findPlaceIdsBySourceRefs(refs), new Map()),
-      findPlacesByIds: (ids) => guard(() => gateway.findPlacesByIds(ids), new Map()),
+      // The locale is passed through, or every place reconciled through this
+      // wrapper loses its `localizedName` — which is every search result.
+      findPlacesByIds: (ids, locale) => guard(() => gateway.findPlacesByIds(ids, locale), new Map()),
       findPlacesNearby: (query) => guard(() => gateway.findPlacesNearby(query), []),
       findPlacesInBounds: (query) => guard(() => gateway.findPlacesInBounds(query), []),
     };
@@ -280,7 +316,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
     const filters = {
       ...(query.capabilities && query.capabilities.length > 0 ? { capabilities: [...query.capabilities] } : {}),
       ...(query.categories && query.categories.length > 0 ? { categories: [...query.categories] } : {}),
-      limit: Math.min(MAX_PLACES_CANDIDATES, query.limit * PLACES_CANDIDATE_MULTIPLIER),
+      limit: Math.min(MAX_PLACES_CANDIDATES, rankedDepth(query) * PLACES_CANDIDATE_MULTIPLIER),
       ...(query.locale !== undefined ? { locale: query.locale } : {}),
       // Search is the one list read that publishes the full name set. It has
       // to: `placeMatchesText` matches against every language, so a result the
@@ -312,7 +348,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       (query.categories?.length ?? 0) > 0 || (query.capabilities?.length ?? 0) > 0
         ? found
         : found.filter((place) => placeMatchesText(place, query.query));
-    return { places: filtered.slice(0, query.limit), consulted: true };
+    return { places: filtered.slice(0, rankedDepth(query)), consulted: true };
   };
 
   /** Assemble the response from provider outcomes plus the Places side. */
@@ -323,12 +359,12 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       places: readonly Place[];
       placesConsulted: boolean;
       placesDegraded: boolean;
-      limit: number;
+      window: { offset: number; limit: number };
       capabilities?: readonly CapabilityKey[];
       bias?: SpatialBias | undefined;
       locale?: string | undefined;
     },
-  ): Promise<SearchResults> => {
+  ): Promise<SearchWindow> => {
     const lists: CandidateList[] = outcomes.flatMap((outcome) =>
       outcome.candidates ? [{ source: outcome.source, candidates: outcome.candidates }] : [],
     );
@@ -337,7 +373,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       lists,
       places: context.places,
       gateway: context.gateway,
-      limit: context.limit,
+      limit: rankedDepth(context.window),
       ...(context.capabilities ? { capabilities: context.capabilities } : {}),
       bias: context.bias,
       locale: context.locale,
@@ -362,8 +398,10 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
     if (placesContributed && !context.placesDegraded) providers.push('goway');
     if (context.placesDegraded) degraded.push('goway');
 
+    const end = context.window.offset + context.window.limit;
     return {
-      results,
+      results: results.slice(context.window.offset, end),
+      hasMore: results.length > end,
       providers,
       ...(degraded.length > 0 ? { degradedProviders: degraded } : {}),
     };
@@ -384,7 +422,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
     query: ResolvedSearchQuery,
     context: SearchRequestContext,
     mode: 'search' | 'geocode',
-  ): Promise<SearchResults> => {
+  ): Promise<SearchWindow> => {
     let placesDegraded = false;
     const gateway = resilient(context.gateway, () => {
       placesDegraded = true;
@@ -399,7 +437,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
             (target) =>
               target.forward({
                 query: query.query,
-                limit: query.limit,
+                limit: rankedDepth(query),
                 ...(query.locale !== undefined ? { locale: query.locale } : {}),
                 ...(query.near ? { near: query.near } : {}),
                 ...(query.viewport ? { viewport: query.viewport } : {}),
@@ -411,7 +449,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
                   mode,
                   provider.id,
                   query.query.toLowerCase(),
-                  String(query.limit),
+                  String(rankedDepth(query)),
                   query.locale ?? '',
                   (query.categories ?? []).join(','),
                 ].join('|')
@@ -427,7 +465,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       places: places.places,
       placesConsulted: places.consulted,
       placesDegraded,
-      limit: query.limit,
+      window: query,
       ...(query.capabilities ? { capabilities: query.capabilities } : {}),
       bias: spatialBiasFor(query),
       locale: query.locale,
@@ -454,7 +492,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
               (target) =>
                 target.reverse({
                   coordinate: query.coordinate,
-                  limit: query.limit,
+                  limit: rankedDepth(query),
                   ...(query.radiusMeters !== undefined ? { radiusMeters: query.radiusMeters } : {}),
                   ...(query.locale !== undefined ? { locale: query.locale } : {}),
                   ...(context.signal ? { signal: context.signal } : {}),
@@ -468,7 +506,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
           latitude: query.coordinate.latitude,
           longitude: query.coordinate.longitude,
           radiusMeters,
-          limit: query.limit,
+          limit: rankedDepth(query),
           ...(query.locale !== undefined ? { locale: query.locale } : {}),
           includeNames: true,
         }),
@@ -479,7 +517,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
         places,
         placesConsulted: true,
         placesDegraded,
-        limit: query.limit,
+        window: query,
         bias: { center: query.coordinate, decayMeters: radiusMeters },
         locale: query.locale,
       });
@@ -511,7 +549,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
               // call site are separated by a closure the compiler cannot follow.
               if (!target.structured) throw new ApiError('internal_error', 'Provider lost its structured endpoint.');
               return target.structured({
-                limit: query.limit,
+                limit: rankedDepth(query),
                 ...(query.street !== undefined ? { street: query.street } : {}),
                 ...(query.houseNumber !== undefined ? { houseNumber: query.houseNumber } : {}),
                 ...(query.city !== undefined ? { city: query.city } : {}),
@@ -531,7 +569,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
               query.region ?? '',
               query.postalCode ?? '',
               query.countryCode ?? '',
-              String(query.limit),
+              String(rankedDepth(query)),
               query.locale ?? '',
             ].join('|'),
           ),
@@ -545,7 +583,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
         // the Places side contributes only through reconciliation.
         placesConsulted: false,
         placesDegraded,
-        limit: query.limit,
+        window: query,
         locale: query.locale,
       });
     },

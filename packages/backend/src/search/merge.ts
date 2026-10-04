@@ -37,8 +37,8 @@ import type {
   SearchResult,
   SearchResultKind,
   SearchSource,
-} from '@goway/shared-types';
-import { placeDisplayName } from '@goway/shared-types';
+} from '@goway/contracts';
+import { placeDisplayName, placeHasCapability } from '@goway/contracts';
 import type { SourceRefInput } from '../db/places/placesRepository';
 import { composeDisplayName, contextFrom, put, resultId } from './normalize';
 import type { PlacesGateway } from './placesGateway';
@@ -98,12 +98,16 @@ export function searchResultFromPlace(place: Place): SearchResult {
   return result;
 }
 
-/** Whether a place asserts every requested capability. A conjunction, as in Places. */
-function assertsAll(place: Place | undefined, capabilities: readonly CapabilityKey[]): boolean {
+/**
+ * Whether a place HAS every requested capability — a conjunction, by the
+ * contract's own `placeHasCapability`, which is the rule the Places filter
+ * applies in SQL. Mentioning a key is not having it: a business that asserted
+ * `false` does not match.
+ */
+function hasAll(place: Place | undefined, capabilities: readonly CapabilityKey[]): boolean {
   if (capabilities.length === 0) return true;
   if (!place) return false;
-  const held = new Set(place.capabilities.map((capability) => capability.key));
-  return capabilities.every((capability) => held.has(capability));
+  return capabilities.every((capability) => placeHasCapability(place, capability));
 }
 
 /**
@@ -224,7 +228,7 @@ export async function mergeCandidates(request: MergeRequest): Promise<SearchResu
 
   const scored: { result: SearchResult; score: number; key: string }[] = [];
   for (const group of groups.values()) {
-    if (!assertsAll(group.place, capabilities)) continue;
+    if (!hasAll(group.place, capabilities)) continue;
     const result = representative(group);
     if (!result) continue;
     scored.push({

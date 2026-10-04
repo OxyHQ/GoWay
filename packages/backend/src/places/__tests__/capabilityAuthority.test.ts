@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { CAPABILITY_VERIFICATIONS, PLACE_CLAIM_ROLES } from '@goway/shared-types';
+import { CAPABILITY_VERIFICATIONS, PLACE_CLAIM_ROLES } from '@goway/contracts';
 import type { PlaceAuthorization } from '../../db/places/placesRepository';
 import { isApiError } from '../../http/apiError';
 import {
@@ -28,7 +28,7 @@ import {
 } from '../capabilityAuthority';
 
 function authorization(overrides: Partial<PlaceAuthorization> = {}): PlaceAuthorization {
-  return { exists: true, claimed: false, callerRoles: [], ...overrides };
+  return { exists: true, removed: false, claimed: false, callerRoles: [], ...overrides };
 }
 
 describe('assertableVerification', () => {
@@ -81,7 +81,7 @@ describe('the origin classification', () => {
   it('classifies every published verification tier', () => {
     // A total `Record<CapabilityVerification, …>` is a COMPILE-time guarantee;
     // this is the runtime half, which also catches a tier that was added to
-    // the tuple in a shared-types version this package resolved at runtime but
+    // the tuple in a contracts build this package resolved at runtime but
     // did not type-check against.
     for (const verification of CAPABILITY_VERIFICATIONS) {
       expect(VERIFICATION_ORIGIN[verification]).toBeDefined();

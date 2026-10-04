@@ -85,6 +85,7 @@ const CLAIM: ClaimRow = {
   role: 'owner',
   state: 'approved',
   claimedAt: CREATED,
+  decidedAt: CREATED,
 };
 
 describe('absent is not empty', () => {
@@ -120,10 +121,12 @@ describe('absent is not empty', () => {
     const visible = toPlace(row(), { sources: [], capabilities: [], claims: [CLAIM] });
     expect(visible.claims?.[0]).toEqual({
       id: 'claim-1',
+      placeId: 'place-1',
       role: 'owner',
       state: 'approved',
       oxyAccountId: 'acct-1',
       claimedAt: CREATED.toISOString(),
+      decidedAt: CREATED.toISOString(),
     });
     // `brandId` was null, so it is absent rather than `undefined` or `null`.
     expect(visible.claims?.[0]).not.toHaveProperty('brandId');

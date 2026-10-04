@@ -6,7 +6,7 @@
  * that are worth more than the indirection costs:
  *
  *  - Every read goes out through `placeMapper`, so the published shape is the
- *    contract in `@goway/shared-types` and never a table. A column added to
+ *    contract in `@goway/contracts` and never a table. A column added to
  *    `places` cannot reach a consumer by being spread into a response, because
  *    nothing here spreads a row.
  *  - Every spatial predicate goes through `placeGeo`, so `ST_DWithin` stays in
@@ -29,7 +29,9 @@
 import {
   and,
   arrayOverlaps,
+  desc,
   eq,
+  gt,
   inArray,
   ne,
   or,
@@ -38,7 +40,7 @@ import {
 } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { qualified, sqlColumnName } from '@oxy.so/db';
-import { normalizeLanguageTag } from '@goway/shared-types';
+import { CAPABILITY_VERIFICATIONS, normalizeLanguageTag } from '@goway/contracts';
 import type {
   CapabilityVerification,
   GeoGeometry,
@@ -47,12 +49,13 @@ import type {
   PlaceClaim,
   PlaceClaimRole,
   PlaceContact,
-  PlaceId,
   PlaceStatus,
   PlaceWithDistance,
   StructuredAddress,
-} from '@goway/shared-types';
+  WritablePlaceStatus,
+} from '@goway/contracts';
 import { ApiError } from '../../http/apiError';
+import type { Paged, TimeWindow } from '../../http/cursor';
 import {
   assertWritableVerification,
   type AssertableVerification,
@@ -150,7 +153,7 @@ export interface PlaceWriteInput {
   address?: StructuredAddress;
   contact?: PlaceContact;
   openingHours?: OpeningHours;
-  status?: PlaceStatus;
+  status?: WritablePlaceStatus;
   sources?: SourceRefInput[];
   capabilities?: CapabilityInput[];
 }
@@ -197,10 +200,15 @@ export interface PlaceListFilters {
   includeNames?: boolean;
 }
 
+/** Where a nearby page resumes: the last place served, by distance and then id. */
+export type NearbyKeyset = readonly [distanceMeters: number, placeId: string];
+
 export interface NearbyQuery extends PlaceListFilters {
   latitude: number;
   longitude: number;
   radiusMeters: number;
+  /** Resume strictly after this position. */
+  after?: NearbyKeyset | undefined;
 }
 
 export interface BoundsQuery extends PlaceListFilters {
@@ -208,11 +216,15 @@ export interface BoundsQuery extends PlaceListFilters {
   south: number;
   east: number;
   north: number;
+  /** Resume strictly after this place id — ids are uuidv7, so this is creation order. */
+  after?: string | undefined;
 }
 
 /** What a caller is allowed to do to a place, and what the place already is. */
 export interface PlaceAuthorization {
   exists: boolean;
+  /** The place was withdrawn by moderation: it answers `410 gone`, and nothing writes to it. */
+  removed: boolean;
   /** Whether ANY account holds an approved claim — a claimed business is not community-editable. */
   claimed: boolean;
   /** The approved roles THIS caller holds on the place. Empty for everyone else. */
@@ -222,27 +234,59 @@ export interface PlaceAuthorization {
 // ── Filters ─────────────────────────────────────────────────────────────────
 
 /**
+ * A capability's verification tier as a sortable rank, in SQL — the position in
+ * `CAPABILITY_VERIFICATIONS`, weakest first, exactly as `placeMapper` and the
+ * contract's `strongestCapability` rank it.
+ */
+const verificationRank = sql`array_position(ARRAY[${sql.join(
+  CAPABILITY_VERIFICATIONS.map((verification) => sql`${verification}`),
+  sql`, `,
+)}]::text[], ${placesCapabilities.verification})`;
+
+/**
  * Capability filtering, expressed so a client never has to know the capability
  * table exists.
  *
  * A CONJUNCTION: `?capabilities=payments.faircoin.accepted,commerce.mercaria.store`
  * means both, which is what a wallet looking for somewhere to spend actually
- * wants. `count(distinct key) = n` rather than n EXISTS subqueries, so the
- * planner sees one indexed pass over `places_capabilities_key_idx` regardless
- * of how many keys were asked for.
+ * wants.
  *
- * The subquery is NOT correlated — it groups and returns place ids — which is
- * what lets it be written with drizzle's builder instead of hand-spelled SQL,
- * and sidesteps the bare-column trap a correlated reference would carry.
+ * ## The VALUE decides, through the strongest assertion
+ *
+ * A place matches a key when its STRONGEST assertion of that key holds — the
+ * same rule as the contract's `placeHasCapability`. Matching the key alone is
+ * the bug this replaces: a shop whose business asserted
+ * `payments.faircoin.accepted = false` because it stopped accepting FairCoin
+ * still came back as a FairCoin merchant, which is the most expensive wrong
+ * answer this filter can give. "Strongest" is by verification tier, then
+ * freshness, so a business's `false` outranks a community report's `true`, and
+ * Oxy verification outranks both.
+ *
+ * `DISTINCT ON (place, key)` picks that assertion per key in one indexed pass
+ * over `places_capabilities_key_idx`; the outer query keeps the places where
+ * every requested key survived. Neither subquery is correlated, which is what
+ * lets both be written with drizzle's builder and sidesteps the bare-column
+ * trap a correlated reference would carry.
  */
 function matchesAllCapabilities(db: DatabaseOrTransaction, keys: readonly string[]): SQL {
-  const matching = db
-    .select({ placeId: placesCapabilities.placeId })
+  const unique = [...new Set(keys)];
+  const strongest = db
+    .selectDistinctOn([placesCapabilities.placeId, placesCapabilities.key], {
+      placeId: placesCapabilities.placeId,
+      value: placesCapabilities.value,
+    })
     .from(placesCapabilities)
-    .where(inArray(placesCapabilities.key, [...keys]))
-    .groupBy(placesCapabilities.placeId)
-    .having(sql`count(distinct ${placesCapabilities.key}) = ${keys.length}`);
-  return inArray(places.id, matching);
+    .where(inArray(placesCapabilities.key, unique))
+    .orderBy(placesCapabilities.placeId, placesCapabilities.key, desc(verificationRank), desc(placesCapabilities.observedAt))
+    .as('strongest_capability');
+  const holding = db
+    .select({ placeId: strongest.placeId })
+    .from(strongest)
+    // `capabilityValueHolds`, in jsonb: anything but false, 0 or the empty string.
+    .where(sql`${strongest.value} not in ('false'::jsonb, '0'::jsonb, '""'::jsonb)`)
+    .groupBy(strongest.placeId)
+    .having(sql`count(*) = ${unique.length}`);
+  return inArray(places.id, holding);
 }
 
 /**
@@ -368,7 +412,10 @@ const NO_CHILDREN = { sources: [], capabilities: [], names: [] } as const;
 // ── Reads ───────────────────────────────────────────────────────────────────
 
 /**
- * One place by its GoWay id, in any status.
+ * One published place by its GoWay id — any status but `removed`.
+ *
+ * A removed place is `null` here exactly as a missing one is; a route that has
+ * to tell the two apart (`404` against `410`) asks {@link findPlaceStatus}.
  *
  * `viewerOxyAccountId` decides whether claim details are published: they are
  * shown to an account that itself holds a claim on the place (its own claim and
@@ -381,7 +428,11 @@ export async function findPlaceById(
   viewerOxyAccountId?: string | null,
   locale?: string | undefined,
 ): Promise<Place | null> {
-  const [row] = await db.select(PLACE_COLUMNS).from(places).where(eq(places.id, id)).limit(1);
+  const [row] = await db
+    .select(PLACE_COLUMNS)
+    .from(places)
+    .where(and(eq(places.id, id), ne(places.status, 'removed')))
+    .limit(1);
   if (!row) return null;
 
   const [sources, capabilities, names, claims] = await Promise.all([
@@ -405,8 +456,8 @@ export async function findPlaceById(
 }
 
 /**
- * Places within a radius, nearest first, with the distance each is from the
- * query point.
+ * Places within a radius, nearest first (ties by id), with the distance each
+ * is from the query point.
  *
  * `ST_DWithin` chooses the rows through the GiST index; `ST_Distance` orders
  * and measures the few that survived. Reversing that — `ST_Distance(...) < r`
@@ -417,11 +468,19 @@ export async function findPlacesNearby(
   query: NearbyQuery,
 ): Promise<PlaceWithDistance[]> {
   const distance = distanceTo(query.longitude, query.latitude);
+  const predicates = [withinRadius(query.longitude, query.latitude, query.radiusMeters), ...listPredicates(db, query)];
+  if (query.after) {
+    // A row comparison, so a tie in distance resumes by id rather than
+    // skipping or repeating the places that share it. `ST_Distance` is
+    // deterministic for the same inputs and the float round-trips exactly, so
+    // the position names the same row it was minted from.
+    predicates.push(sql`(${distance}, ${places.id}) > (${query.after[0]}::float8, ${query.after[1]})`);
+  }
   const rows = await db
     .select({ ...PLACE_COLUMNS, distanceMeters: distance })
     .from(places)
-    .where(and(withinRadius(query.longitude, query.latitude, query.radiusMeters), ...listPredicates(db, query)))
-    .orderBy(distance)
+    .where(and(...predicates))
+    .orderBy(distance, places.id)
     .limit(query.limit);
 
   const view = nameViewOf(query);
@@ -442,10 +501,12 @@ export async function findPlacesInBounds(
   db: DatabaseOrTransaction,
   query: BoundsQuery,
 ): Promise<Place[]> {
+  const predicates = [withinBoundingBox(query), ...listPredicates(db, query)];
+  if (query.after !== undefined) predicates.push(gt(places.id, query.after));
   const rows = await db
     .select(PLACE_COLUMNS)
     .from(places)
-    .where(and(withinBoundingBox(query), ...listPredicates(db, query)))
+    .where(and(...predicates))
     .orderBy(places.id)
     .limit(query.limit);
 
@@ -471,7 +532,7 @@ export async function getPlaceAuthorization(
   oxyAccountId: string,
 ): Promise<PlaceAuthorization> {
   const [[place], claims] = await Promise.all([
-    db.select({ id: places.id }).from(places).where(eq(places.id, placeId)).limit(1),
+    db.select({ status: places.status }).from(places).where(eq(places.id, placeId)).limit(1),
     db
       .select({ oxyAccountId: placesClaims.oxyAccountId, role: placesClaims.role })
       .from(placesClaims)
@@ -480,11 +541,24 @@ export async function getPlaceAuthorization(
 
   return {
     exists: Boolean(place),
+    removed: place?.status === 'removed',
     claimed: claims.length > 0,
     callerRoles: claims
       .filter((claim) => claim.oxyAccountId === oxyAccountId)
       .map((claim) => claim.role as PlaceClaimRole),
   };
+}
+
+/**
+ * A place's stored status, or `null` when no place has the id.
+ *
+ * What a read route asks after {@link findPlaceById} came back empty, to answer
+ * `410 gone` for a place moderation removed and `404 not_found` for one that
+ * never existed — a consumer holding a persisted id acts differently on each.
+ */
+export async function findPlaceStatus(db: DatabaseOrTransaction, placeId: string): Promise<PlaceStatus | null> {
+  const [row] = await db.select({ status: places.status }).from(places).where(eq(places.id, placeId)).limit(1);
+  return row ? (row.status as PlaceStatus) : null;
 }
 
 // ── Reconciliation ──────────────────────────────────────────────────────────
@@ -1212,42 +1286,69 @@ export async function requestClaim(
   return toClaim(row);
 }
 
+/** A `(claimedAt, id)` keyset over claims, oldest first. See `timeKeysetSchema` for why the timestamp is text. */
+function claimWindow(window: TimeWindow): SQL | undefined {
+  return window.after
+    ? sql`(${placesClaims.claimedAt}, ${placesClaims.id}) > (${window.after[0]}::timestamptz, ${window.after[1]})`
+    : undefined;
+}
+
+const CLAIM_PAGE_COLUMNS = { ...CLAIM_COLUMNS, position: sql<string>`${placesClaims.claimedAt}::text` } as const;
+
+function pagedClaim(row: ClaimRow & { position: string }): Paged<PlaceClaim> {
+  return { item: toClaim(row), position: [row.position, row.id] };
+}
+
 /**
- * The claims on a place, and whether this caller is entitled to see them.
+ * One window of the claims on a place, and whether this caller may see them.
  *
  * The entitlement rule is the one `findPlaceById` already applies to the
  * embedded `claims` field, restated here rather than reinvented: an account
  * that itself holds a claim on the place sees the claims — its own and the ones
  * it is competing with — and nobody else does. Any state counts, because a
- * pending claimant has to be able to see that their request is pending.
+ * pending claimant has to be able to see that their request is pending. It is
+ * asked of the whole table, not of the window, so it does not depend on which
+ * page the caller's own claim falls on.
  *
- * `exists` is returned separately so the route can answer 404 for an unknown
- * place rather than 403, which would tell a stranger that an id they guessed is
- * real.
+ * `exists` and `removed` are returned separately so the route can answer 404
+ * for an unknown place rather than 403, which would tell a stranger that an id
+ * they guessed is real, and 410 for a withdrawn one.
  */
 export async function listPlaceClaims(
   db: DatabaseOrTransaction,
   placeId: string,
   viewerOxyAccountId: string,
-): Promise<{ exists: boolean; entitled: boolean; claims: PlaceClaim[] }> {
-  const [[place], rows] = await Promise.all([
-    db.select({ id: places.id }).from(places).where(eq(places.id, placeId)).limit(1),
-    loadClaims(db, placeId),
+  window: TimeWindow,
+): Promise<{ exists: boolean; removed: boolean; entitled: boolean; claims: Paged<PlaceClaim>[] }> {
+  const [[place], [own], rows] = await Promise.all([
+    db.select({ status: places.status }).from(places).where(eq(places.id, placeId)).limit(1),
+    db
+      .select({ id: placesClaims.id })
+      .from(placesClaims)
+      .where(and(eq(placesClaims.placeId, placeId), eq(placesClaims.oxyAccountId, viewerOxyAccountId)))
+      .limit(1),
+    db
+      .select(CLAIM_PAGE_COLUMNS)
+      .from(placesClaims)
+      .where(and(eq(placesClaims.placeId, placeId), claimWindow(window)))
+      .orderBy(placesClaims.claimedAt, placesClaims.id)
+      .limit(window.limit),
   ]);
+  const entitled = own !== undefined;
   return {
     exists: Boolean(place),
-    entitled: rows.some((row) => row.oxyAccountId === viewerOxyAccountId),
-    claims: rows.map(toClaim),
+    removed: place?.status === 'removed',
+    entitled,
+    // Rows are read alongside the entitlement check and dropped, rather than
+    // read after it, so a refused caller costs no extra round trip — and gets
+    // nothing back.
+    claims: entitled ? rows.map(pagedClaim) : [],
   };
 }
 
-/** A claim plus the place it is over, for the "my claims" read. */
-export interface AccountPlaceClaim extends PlaceClaim {
-  placeId: PlaceId;
-}
-
 /**
- * Every claim one Oxy account holds, in every state.
+ * One window of every claim one Oxy account holds, in every state, oldest
+ * first.
  *
  * Keyed on the SESSION's account id and on nothing a caller can send. A
  * `?oxyAccountId=` parameter on this read would be an enumeration of who has
@@ -1257,13 +1358,15 @@ export interface AccountPlaceClaim extends PlaceClaim {
 export async function findAccountClaims(
   db: DatabaseOrTransaction,
   oxyAccountId: string,
-): Promise<AccountPlaceClaim[]> {
+  window: TimeWindow,
+): Promise<Paged<PlaceClaim>[]> {
   const rows = await db
-    .select(CLAIM_COLUMNS)
+    .select(CLAIM_PAGE_COLUMNS)
     .from(placesClaims)
-    .where(eq(placesClaims.oxyAccountId, oxyAccountId))
-    .orderBy(placesClaims.claimedAt, placesClaims.id);
-  return rows.map((row) => ({ ...toClaim(row), placeId: row.placeId }));
+    .where(and(eq(placesClaims.oxyAccountId, oxyAccountId), claimWindow(window)))
+    .orderBy(placesClaims.claimedAt, placesClaims.id)
+    .limit(window.limit);
+  return rows.map(pagedClaim);
 }
 
 /** Every place one Oxy account or brand holds a claim on — the chain/franchise read. */

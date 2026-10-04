@@ -6,7 +6,7 @@
  * more than the indirection costs:
  *
  *  - Every read goes out through `captureMapper`, so the published shape is the
- *    contract in `@goway/shared-types` and never a table. The object key, the
+ *    contract in `@goway/contracts` and never a table. The object key, the
  *    contributor's Oxy id and the internal geographic bucketing key cannot
  *    reach a consumer by being spread into a response, because nothing here
  *    spreads a row.
@@ -34,12 +34,12 @@ import type {
   CaptureRetentionClass,
   CaptureSession,
   CaptureSource,
-  CaptureStorageUsage,
-} from '@goway/shared-types';
-import { CAPTURE_RETENTION_CLASSES } from '@goway/shared-types';
+} from '@goway/contracts';
+import { CAPTURE_RETENTION_CLASSES } from '@goway/contracts';
 import { evidenceDistanceMeters, resolveCaptureAnchor } from '../../capture/anchor';
 import { extendedExpiry, planOriginalRetention, uploadIntentExpiry } from '../../capture/retention';
 import { ApiError } from '../../http/apiError';
+import type { Paged, TimeWindow } from '../../http/cursor';
 import { logger } from '../../utils/logger';
 import { retractCaptureFromStreet3d } from '../street3d/moderation';
 import type { Database, DatabaseOrTransaction } from '../postgres';
@@ -207,14 +207,30 @@ export async function findOwnedSession(
   return toCaptureSession(row, counted?.assets ?? 0);
 }
 
-export async function listOwnedSessions(db: Database, oxyUserId: string): Promise<CaptureSession[]> {
+/** One window of the contributor's sessions, newest first, keyset on `(created_at, id)` descending. */
+export async function listOwnedSessions(
+  db: Database,
+  oxyUserId: string,
+  window: TimeWindow,
+): Promise<Paged<CaptureSession>[]> {
   const counts = db.select({ sessionId: captureAssets.sessionId, assets: count().as('assets') })
     .from(captureAssets).groupBy(captureAssets.sessionId).as('session_asset_counts');
-  const rows = await db.select({ ...SESSION_COLUMNS, assetCount: sql<number>`coalesce(${counts.assets}, 0)::integer` })
+  const rows = await db
+    .select({
+      ...SESSION_COLUMNS,
+      assetCount: sql<number>`coalesce(${counts.assets}, 0)::integer`,
+      position: sql<string>`${captureSessions.createdAt}::text`,
+    })
     .from(captureSessions).leftJoin(counts, eq(counts.sessionId, captureSessions.id))
-    .where(eq(captureSessions.oxyUserId, oxyUserId))
-    .orderBy(desc(captureSessions.createdAt), desc(captureSessions.id)).limit(50);
-  return rows.map((row) => toCaptureSession(row, row.assetCount));
+    .where(and(
+      eq(captureSessions.oxyUserId, oxyUserId),
+      window.after
+        ? sql`(${captureSessions.createdAt}, ${captureSessions.id}) < (${window.after[0]}::timestamptz, ${window.after[1]})`
+        : undefined,
+    ))
+    .orderBy(desc(captureSessions.createdAt), desc(captureSessions.id))
+    .limit(window.limit);
+  return rows.map((row) => ({ item: toCaptureSession(row, row.assetCount), position: [row.position, row.id] }));
 }
 
 // ── Assets ──────────────────────────────────────────────────────────────────
@@ -299,18 +315,28 @@ export async function objectKeyForOwnedAsset(
   return row?.objectKey ?? null;
 }
 
-/** Every asset in one of the contributor's sessions, oldest first. */
+/** One window of the assets in one of the contributor's sessions, oldest first, keyset on `(created_at, id)`. */
 export async function listSessionAssets(
   db: Database,
   sessionId: string,
   oxyUserId: string,
-): Promise<CaptureAsset[]> {
+  window: TimeWindow,
+): Promise<Paged<CaptureAsset>[]> {
   const rows = await db
-    .select(ASSET_COLUMNS)
+    .select({ ...ASSET_COLUMNS, position: sql<string>`${captureAssets.createdAt}::text` })
     .from(captureAssets)
-    .where(and(eq(captureAssets.sessionId, sessionId), eq(captureAssets.oxyUserId, oxyUserId)))
-    .orderBy(captureAssets.createdAt);
-  return Promise.all(rows.map((row) => hydrate(db, row)));
+    .where(and(
+      eq(captureAssets.sessionId, sessionId),
+      eq(captureAssets.oxyUserId, oxyUserId),
+      window.after
+        ? sql`(${captureAssets.createdAt}, ${captureAssets.id}) > (${window.after[0]}::timestamptz, ${window.after[1]})`
+        : undefined,
+    ))
+    .orderBy(captureAssets.createdAt, captureAssets.id)
+    .limit(window.limit);
+  return Promise.all(
+    rows.map(async ({ position, ...row }) => ({ item: await hydrate(db, row), position: [position, row.id] })),
+  );
 }
 
 /**
@@ -606,6 +632,27 @@ export async function withdrawCaptureAsset(db: Database, assetId: string, oxyUse
 }
 
 // ── Storage reporting ───────────────────────────────────────────────────────
+
+/**
+ * Storage consumed by captures, grouped for cost control.
+ *
+ * An OPERATOR report, not an API response: it lives here rather than in
+ * `@goway/contracts` because nothing publishes it. The KPI #10 asks for is not
+ * "GB uploaded" — it is bytes retained, by class and by area, so that "did this
+ * additional 10 GB materially improve coverage?" has an answer.
+ */
+export interface CaptureStorageUsage {
+  retentionClass: CaptureRetentionClass;
+  /** Bytes currently stored. */
+  storedBytes: number;
+  /** Bytes whose objects expire within seven days. */
+  expiringWithin7dBytes: number;
+  /** Bytes whose objects expire within thirty days. */
+  expiringWithin30dBytes: number;
+  /** Bytes a second contribution of identical media did NOT cost, through deduplication. */
+  deduplicatedBytes: number;
+  objectCount: number;
+}
 
 /**
  * Bytes stored, by retention class, with what is about to expire.

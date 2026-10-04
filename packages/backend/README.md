@@ -63,11 +63,11 @@ src/http/validation.ts   zod → bad_request | validation_failed, details withou
 src/middleware/auth.ts   Oxy auth, from @oxy.so/core/server and nowhere else
 src/middleware/cors.ts   the public-read lane and the strict one, and which route gets which
 src/routes/health.ts     GET /health (liveness + database reachability), GET /ready
+src/http/cursor.ts       opaque page cursors, bound to their list and filters by a fingerprint
 src/routes/places.ts     the Places surface, mounted at /api/v1
-src/routes/placeSchemas.ts  the request schemas, at least as strict as the CHECKs behind them
 src/routes/capture.ts    the Street 3D contribution surface (#9/#10)
-src/routes/captureSchemas.ts  its request schemas, with EXIF normalized at the boundary
 src/routes/street3d.ts   public coverage and scene reads, authenticated reports
+src/routes/openapi.ts    GET /api/v1/openapi.json, generated from @goway/contracts
 src/config/capture.ts    retention windows, media limits and the object-store settings
 src/config/street3d.ts   queues, buckets, thresholds, gates and budgets; inert when unset
 src/utils/logger.ts      pino, with the redaction list
@@ -89,29 +89,36 @@ bun run dev
 
 ## Places
 
-`/api/v1` — the base path `@goway.to/sdk` ships as `GOWAY_API_BASE_PATH`. The
-SDK is published contract, so these paths and payload shapes are not ours to
-change unilaterally.
+`/api/v1` — the base path `@goway.to/sdk` ships as `GOWAY_API_BASE_PATH`. Every
+route, parameter and payload is an operation in the `@goway/contracts` registry
+(`API_OPERATIONS`), parsed with that registry's zod schema and published as
+`packages/contracts/openapi.json` (served at `/api/v1/openapi.json`). The full
+list is the OpenAPI document; the Places reads:
 
 | route | auth | answers |
 | --- | --- | --- |
-| `GET /places/:id` | public | one `Place`, in any status |
-| `GET /places/nearby?latitude&longitude&radiusMeters` | public | `PlaceWithDistance[]`, nearest first |
-| `GET /places/bounds?west&south&east&north` | public | `Place[]` in the viewport |
-| `GET /places?bbox=w,s,e,n` | public | the same, under the spelling issue #4 documents |
+| `GET /places/{placeId}` | public | one `Place`; `410 gone` if moderation removed it |
+| `GET /places/nearby?latitude&longitude&radiusMeters` | public | a `PlaceWithDistancePage`, nearest first |
+| `GET /places/bounds?west&south&east&north` | public | a `PlacePage` of the viewport, by place id |
 | `POST /places` | Oxy session | 201 + the created `Place` |
-| `PATCH /places/:id` | Oxy session | the updated `Place` |
+| `PATCH /places/{placeId}` | Oxy session | the updated `Place` |
 
 Reads are public because the map opens without an account. `?capabilities=` is a
-conjunction and `?categories=` a disjunction, both answered without a client
-knowing the capability table exists. A success body IS the contract value —
-there is no envelope; only failures carry `{ error: { code, message, details? } }`.
+conjunction over each key's STRONGEST assertion, which must hold (a business's
+`false` outranks a community `true`); `?categories=` is a disjunction. A success
+body IS the contract value — there is no envelope; failures carry
+`{ error: { code, message, details? } }`, the rate limiter's 429 included.
+Every list is `{ items, nextCursor }`: pass `cursor` back with the SAME filters
+(another list's cursor is `bad_request`); `limit` outside its range is
+`validation_failed`; an unknown or repeated query parameter is `bad_request`.
 
 Three rules the code is written to and the tests measure:
 
 - `ST_DWithin` in a WHERE clause is index-backed; `ST_Distance(...) < r` is not
-  and scans the planet, so `ST_Distance` appears only in a SELECT list or an
-  ORDER BY. `placesGeo.realdb.test.ts` asserts both plans.
+  and scans the planet, so `ST_Distance` is never the radius predicate. It
+  appears in a SELECT list, an ORDER BY, and — on a nearby page after the first
+  — in the `(distance, id)` keyset BESIDE `ST_DWithin`, which still selects
+  through the index. `placesGeo.realdb.test.ts` asserts all three plans.
 - The `places.geo` point is `GENERATED ALWAYS … STORED` from `longitude` and
   `latitude` and is never written. A transposed pair is a valid point in the
   wrong hemisphere, so the ordinate order is asserted against a real distance
@@ -382,9 +389,9 @@ report an error.
 ## The error envelope
 
 Every failure is `{ error: { code, message, details? } }`. The CODES are the
-public contract — `packages/shared-types` re-exports the `API_ERROR_CODES` tuple
-and `@goway.to/sdk` builds its typed errors from that re-export, so the SDK's
-union cannot drift from the API's. Routes THROW an `ApiError`; nothing formats an
+public contract — `packages/contracts` defines the `API_ERROR_CODES` tuple and
+`@goway.to/sdk` builds its typed errors from it, so the SDK's union cannot drift
+from the API's. Routes THROW an `ApiError`; nothing formats an
 error itself. Anything thrown that is not an `ApiError` is a defect, answered
 `500 internal_error`, leaking no message, stack or driver detail.
 

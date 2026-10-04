@@ -20,7 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import express, { type RequestHandler } from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { Place, PlaceClaim } from '@goway/shared-types';
+import type { Place, PlaceClaim, PlaceClaimPage } from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {
   SUITE_SETUP_TIMEOUT_MS,
@@ -29,7 +29,7 @@ import {
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
 import { ApiError } from '../../http/apiError';
-import { errorHandler, notFoundHandler } from '../../http/errorHandler';
+import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import { createPlacesRouter } from '../places';
 
 const CONTRIBUTOR: PlaceActor = {
@@ -79,7 +79,6 @@ function json(body: unknown): RequestInit {
 }
 
 type ErrorBody = { error: { code: string; message: string; details?: Record<string, unknown> } };
-type AccountClaim = PlaceClaim & { placeId: string };
 
 /** Unclaimed at the start of the suite. */
 let vacant: Place;
@@ -95,7 +94,7 @@ beforeAll(async () => {
   const app = express();
   app.use(express.json());
   app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth }));
-  app.use(notFoundHandler);
+  app.use(unknownRouteHandler);
   app.use(errorHandler);
 
   server = app.listen(0);
@@ -233,7 +232,7 @@ describe('POST /places/:id/claims', () => {
   });
 });
 
-describe('GET /places/:id/claims', () => {
+describe('GET /places/{placeId}/claims', () => {
   it('refuses a signed-out reader', async () => {
     const { status } = await call<ErrorBody>(`/places/${held.id}/claims`);
     expect(status).toBe(401);
@@ -263,15 +262,28 @@ describe('GET /places/:id/claims', () => {
       ...asUser('user-second', json({ role: 'operator' })),
     });
 
-    const { status, body } = await call<PlaceClaim[]>(
+    const { status, body } = await call<PlaceClaimPage>(
       `/places/${contested.id}/claims`,
       asUser('user-first'),
     );
     expect(status).toBe(200);
     // A PENDING claimant counts as entitled: they have to be able to see that
     // their own request is pending, and that somebody else is asking too.
-    expect(body.map((claim) => claim.oxyAccountId).sort()).toEqual(['user-first', 'user-second']);
-    expect(body.every((claim) => claim.state === 'pending')).toBe(true);
+    expect(body.items.map((claim) => claim.oxyAccountId).sort()).toEqual(['user-first', 'user-second']);
+    expect(body.items.every((claim) => claim.state === 'pending' && claim.placeId === contested.id)).toBe(true);
+    expect(body.items.every((claim) => claim.decidedAt === undefined)).toBe(true);
+
+    // Entitlement is asked of the whole table, not of the page: a claimant
+    // whose own claim falls on the SECOND page still reads the first.
+    const first = await call<PlaceClaimPage>(`/places/${contested.id}/claims?limit=1`, asUser('user-second'));
+    expect(first.status).toBe(200);
+    expect(first.body.items.map((claim) => claim.oxyAccountId)).toEqual(['user-first']);
+    const second = await call<PlaceClaimPage>(
+      `/places/${contested.id}/claims?limit=1&cursor=${first.body.nextCursor ?? ''}`,
+      asUser('user-second'),
+    );
+    expect(second.body.items.map((claim) => claim.oxyAccountId)).toEqual(['user-second']);
+    expect(second.body.nextCursor).toBeNull();
   });
 
   it('answers an unknown place with not_found, before it answers forbidden', async () => {
@@ -285,24 +297,48 @@ describe('GET /places/:id/claims', () => {
 
 describe('GET /claims', () => {
   it('returns the caller own claims across places, with the place each is over', async () => {
-    const { status, body } = await call<AccountClaim[]>('/claims', asUser('user-chain'));
+    const { status, body } = await call<PlaceClaimPage>('/claims', asUser('user-chain'));
     expect(status).toBe(200);
     // The multi-location read: a chain gets its locations in one request
     // instead of one per place.
-    expect(body.map((claim) => claim.placeId).sort()).toEqual([branchOne.id, branchTwo.id].sort());
-    expect(body.every((claim) => claim.oxyAccountId === 'user-chain')).toBe(true);
-    expect(body.every((claim) => claim.brandId === 'org-cadena')).toBe(true);
+    expect(body.items.map((claim) => claim.placeId).sort()).toEqual([branchOne.id, branchTwo.id].sort());
+    expect(body.items.every((claim) => claim.oxyAccountId === 'user-chain')).toBe(true);
+    expect(body.items.every((claim) => claim.brandId === 'org-cadena')).toBe(true);
+    // Both still pending, so neither carries a decision time.
+    expect(body.items.every((claim) => claim.state === 'pending' && claim.decidedAt === undefined)).toBe(true);
+  });
+
+  it('pages oldest first, and refuses one account cursor under another', async () => {
+    const first = await call<PlaceClaimPage>('/claims?limit=1', asUser('user-chain'));
+    expect(first.body.items).toHaveLength(1);
+    const cursor = first.body.nextCursor ?? '';
+    expect(cursor).not.toBe('');
+
+    const second = await call<PlaceClaimPage>(`/claims?limit=1&cursor=${cursor}`, asUser('user-chain'));
+    expect(second.body.items).toHaveLength(1);
+    expect(second.body.items[0]?.id).not.toBe(first.body.items[0]?.id);
+
+    // The session is in the cursor's binding: replaying it as somebody else is
+    // a foreign cursor, not a view of the chain's claims.
+    const replayed = await call<ErrorBody>(`/claims?limit=1&cursor=${cursor}`, asUser('user-nobody'));
+    expect(replayed.status).toBe(400);
+    expect(replayed.body.error.code).toBe('bad_request');
   });
 
   it('is keyed on the SESSION and not on anything the caller can send', async () => {
     // A `?oxyAccountId=` parameter here would be an enumeration of who has
     // claimed what — a business relationship GoWay publishes to the parties
     // involved and to nobody else.
-    const { body } = await call<AccountClaim[]>(
+    // Not even accepted as a parameter: an unknown one is `bad_request`.
+    const { status, body } = await call<ErrorBody>(
       `/claims?oxyAccountId=user-chain&brandId=org-cadena`,
       asUser('user-nobody'),
     );
-    expect(body).toEqual([]);
+    expect(status).toBe(400);
+    expect(body.error.code).toBe('bad_request');
+
+    const own = await call<PlaceClaimPage>('/claims', asUser('user-nobody'));
+    expect(own.body).toEqual({ items: [], nextCursor: null });
   });
 
   it('refuses a signed-out reader', async () => {

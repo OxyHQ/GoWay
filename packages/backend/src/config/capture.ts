@@ -26,7 +26,7 @@
 
 import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
-import type { CaptureRetentionClass } from '@goway/shared-types';
+import type { CaptureRetentionClass } from '@goway/contracts';
 import type { EnvironmentSource } from './index';
 
 // Type-only import above, so this module does not pull the core configuration
@@ -38,7 +38,7 @@ loadDotenv();
  * Default retention windows, in days, per capture retention class.
  *
  * A TOTAL `Record<CaptureRetentionClass, number>` rather than a partial map with
- * a fallback: a class added to the tuple in `@goway/shared-types` and forgotten
+ * a fallback: a class added to the tuple in `@goway/contracts` and forgotten
  * here is a compile error, instead of a new kind of stored object silently
  * inheriting somebody else's window — which is precisely how a temporary store
  * grows a permanent corner.

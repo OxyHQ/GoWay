@@ -34,13 +34,23 @@ import express, { type RequestHandler } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import {
+  captureAssetPageSchema,
+  captureAssetSchema,
+  captureSessionPageSchema,
+  captureSessionSchema,
+  captureUploadPolicySchema,
+  captureUploadTicketSchema,
+} from '@goway/contracts';
 import type {
   ApiErrorBody,
   CaptureAsset,
+  CaptureAssetPage,
   CaptureSession,
+  CaptureSessionPage,
   CaptureUploadPolicy,
   CaptureUploadTicket,
-} from '@goway/shared-types';
+} from '@goway/contracts';
 import { and, eq } from 'drizzle-orm';
 import { captureAssets, captureMediaObjects } from '../../db/schema';
 import { sweepExpiredCaptures } from '../../capture/cleanup';
@@ -48,7 +58,7 @@ import { summarizeCaptureStorage } from '../../db/capture/captureRepository';
 import { getDb } from '../../db/postgres';
 import { SUITE_SETUP_TIMEOUT_MS, createSuiteDatabase, destroySuiteDatabase, type SuiteDatabase } from '../../db/__tests__/testDatabase';
 import { ApiError } from '../../http/apiError';
-import { errorHandler, notFoundHandler } from '../../http/errorHandler';
+import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import type { CaptureObjectStore, UploadTargetRequest } from '../../storage/objectStore';
 import { createCaptureRouter, currentUploadPolicy } from '../capture';
 
@@ -126,7 +136,9 @@ interface Fetched<T> {
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<Fetched<T>> {
   const response = await fetch(`${origin}/api/v1${path}`, init);
-  return { status: response.status, body: (await response.json()) as T, headers: response.headers };
+  // A 204 has no body to parse; the status is the whole answer.
+  const body = response.status === 204 ? undefined : await response.json();
+  return { status: response.status, body: body as T, headers: response.headers };
 }
 
 function asUser(user: string, init: RequestInit = {}): RequestInit {
@@ -182,7 +194,7 @@ beforeAll(async () => {
   const api = express.Router();
   api.use(createCaptureRouter({ optionalAuth, requireAuth, objectStore: store }));
   app.use('/api/v1', api);
-  app.use(notFoundHandler);
+  app.use(unknownRouteHandler);
   app.use(errorHandler);
 
   server = app.listen(0);
@@ -546,6 +558,20 @@ describe('what a contribution is refused for', () => {
 });
 
 describe('contributor-facing history, and storage reporting', () => {
+  it('answers in exactly the shapes the contract — and so the SDK — parses', async () => {
+    // `@goway.to/sdk` parses every response with these schemas, failing
+    // closed: a `null` where the contract says absent breaks every consumer.
+    const session = await openSession('user-shapes');
+    captureSessionSchema.parse(session);
+    captureUploadPolicySchema.parse((await call<unknown>('/captures/policy', asUser('user-shapes'))).body);
+    const ticket = captureUploadTicketSchema.parse(
+      (await call<unknown>(`/captures/sessions/${session.id}/assets`, json('user-shapes', photoBody('shapes')))).body,
+    );
+    captureAssetSchema.parse((await call<unknown>(`/captures/assets/${ticket.asset.id}`, asUser('user-shapes'))).body);
+    captureAssetPageSchema.parse((await call<unknown>(`/captures/sessions/${session.id}/assets`, asUser('user-shapes'))).body);
+    captureSessionPageSchema.parse((await call<unknown>('/captures/sessions', asUser('user-shapes'))).body);
+  });
+
   it('lists a session’s contributions with their state, gate and expiry', async () => {
     // Contribution OBJECTS, scoped to one session — deliberately not a feed of
     // every capture the account ever made ordered by time, which is a travel
@@ -553,11 +579,12 @@ describe('contributor-facing history, and storage reporting', () => {
     const session = await openSession('user-d');
     await call<CaptureUploadTicket>(`/captures/sessions/${session.id}/assets`, json('user-d', photoBody('k')));
 
-    const listed = await call<CaptureAsset[]>(`/captures/sessions/${session.id}/assets`, asUser('user-d'));
+    const listed = await call<CaptureAssetPage>(`/captures/sessions/${session.id}/assets`, asUser('user-d'));
     expect(listed.status).toBe(200);
-    expect(listed.body).toHaveLength(1);
-    expect(listed.body[0]?.reconstructionEligible).toBe(false);
-    expect(listed.body[0]?.media.lifecycle.expiresAt).toBeDefined();
+    expect(listed.body.items).toHaveLength(1);
+    expect(listed.body.nextCursor).toBeNull();
+    expect(listed.body.items[0]?.reconstructionEligible).toBe(false);
+    expect(listed.body.items[0]?.media.lifecycle.expiresAt).toBeDefined();
 
     const reread = await call<CaptureSession>(`/captures/sessions/${session.id}`, asUser('user-d'));
     expect(reread.body.assetCount).toBe(1);
@@ -607,7 +634,7 @@ describe('a deployment with no object store', () => {
     const api = express.Router();
     api.use(createCaptureRouter({ optionalAuth, requireAuth, objectStore: null }));
     app.use('/api/v1', api);
-    app.use(notFoundHandler);
+    app.use(unknownRouteHandler);
     app.use(errorHandler);
     const unconfigured = app.listen(0);
     await new Promise<void>((resolve) => unconfigured.once('listening', resolve));
@@ -648,12 +675,22 @@ describe('safe retries and contributor withdrawal', () => {
     expect(new Set(results.map((r) => r.body.asset.id)).size).toBe(1);
     const mismatch = await call(`/captures/sessions/${session.id}/assets`, json(user, { ...input, byteSize: 100 }));
     expect(mismatch.status).toBe(409);
-    const history = await call<CaptureSession[]>('/captures/sessions', asUser(user));
-    expect(history.body).toHaveLength(1);
-    expect(history.body[0]?.assetCount).toBe(1);
+    const history = await call<CaptureSessionPage>('/captures/sessions', asUser(user));
+    expect(history.body.items).toHaveLength(1);
+    expect(history.body.items[0]?.assetCount).toBe(1);
     const empty = await openSession(user);
-    const next = await call<CaptureSession[]>('/captures/sessions', asUser(user));
-    expect(next.body.find((s) => s.id === empty.id)?.assetCount).toBe(0);
+    const next = await call<CaptureSessionPage>('/captures/sessions', asUser(user));
+    expect(next.body.items.find((s) => s.id === empty.id)?.assetCount).toBe(0);
+
+    // Newest first, one page at a time, through the keyset cursor — and the
+    // cursor is this contributor's, refused for anybody else.
+    const page = await call<CaptureSessionPage>('/captures/sessions?limit=1', asUser(user));
+    expect(page.body.items.map((s) => s.id)).toEqual([empty.id]);
+    const rest = await call<CaptureSessionPage>(`/captures/sessions?limit=1&cursor=${page.body.nextCursor ?? ''}`, asUser(user));
+    expect(rest.body.items.map((s) => s.id)).toEqual([session.id]);
+    expect(rest.body.nextCursor).toBeNull();
+    const foreign = await call<ApiErrorBody>(`/captures/sessions?limit=1&cursor=${page.body.nextCursor ?? ''}`, asUser(randomUUID()));
+    expect(foreign.status).toBe(400);
   });
 
   it('does not finalize different bytes with the declared size', async () => {
@@ -681,10 +718,11 @@ describe('safe retries and contributor withdrawal', () => {
     expect((await call(`/captures/assets/${first.body.asset.id}`, asUser(b, { method: 'DELETE' }))).status).toBe(404);
     const path = `/captures/assets/${first.body.asset.id}`;
     for (let attempt = 0; attempt < 2; attempt++) {
-      const removed = await call<CaptureAsset>(path, asUser(a, { method: 'DELETE' }));
-      expect(removed.status).toBe(200);
-      expect(removed.body.state).toBe('deleted');
-      expect(removed.body.reconstructionEligible).toBe(false);
+      const removed = await call<undefined>(path, asUser(a, { method: 'DELETE' }));
+      expect(removed.status).toBe(204);
+      const withdrawn = await call<CaptureAsset>(path, asUser(a));
+      expect(withdrawn.body.state).toBe('deleted');
+      expect(withdrawn.body.reconstructionEligible).toBe(false);
     }
     const db = getDb();
     const [object] = await db.select().from(captureMediaObjects).where(eq(captureMediaObjects.objectKey, target.key));

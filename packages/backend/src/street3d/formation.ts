@@ -28,7 +28,7 @@
  * superseded — that would throw away GPU time already spent.
  */
 
-import type { StreetSceneProfile } from '@goway/shared-types';
+import type { StreetSceneProfile } from '@goway/contracts';
 import type { Street3dConfig } from '../config/street3d';
 import {
   createScene,

@@ -2,16 +2,16 @@
  * The wall between the database and the published contract.
  *
  * Every row that leaves the Places repository passes through here and becomes a
- * `@goway/shared-types` `Place`. Nothing spreads a row into a response: the
+ * `@goway/contracts` `Place`. Nothing spreads a row into a response: the
  * mapper READS the columns the contract names and WRITES a fresh object holding
  * exactly those, so a column added to `places` tomorrow — a moderation note, a
  * reviewer id, a contributor's Oxy user id — cannot reach an API consumer by
  * accident. `AGENTS.md` says a Drizzle/PostGIS row shape is never an SDK
  * contract; this module is what makes that true rather than aspirational.
  *
- * It is the mirror of `packages/sdk/src/parse.ts`, which rebuilds the same
- * objects field by field on the way in. Two independent projections of one
- * contract, meeting in the middle.
+ * Its output is held to the contract's own `placeSchema` — the schema
+ * `@goway.to/sdk` parses every response with — so a mapper that drifted from
+ * the contract fails a test here rather than a consumer's parse.
  *
  * ## Absent is not empty
  *
@@ -31,12 +31,11 @@ import type {
   PlaceClaimState,
   PlaceContact,
   PlaceSourceRef,
-  PlaceStatus,
   PlaceVerificationState,
   PlaceWithDistance,
   StructuredAddress,
-} from '@goway/shared-types';
-import { CAPABILITY_VERIFICATIONS } from '@goway/shared-types';
+} from '@goway/contracts';
+import { CAPABILITY_VERIFICATIONS } from '@goway/contracts';
 import type { SelectedRow } from '@oxy.so/db';
 import { comparePublishedNames, resolveLocalizedName } from '../../places/placeNames';
 import { places, placesCapabilities, placesClaims, placesNames, placesSources } from '../schema';
@@ -131,6 +130,7 @@ export const CLAIM_COLUMNS = {
   role: placesClaims.role,
   state: placesClaims.state,
   claimedAt: placesClaims.claimedAt,
+  decidedAt: placesClaims.decidedAt,
 } as const;
 
 export type ClaimRow = SelectedRow<typeof CLAIM_COLUMNS>;
@@ -240,7 +240,8 @@ export function toCapability(row: CapabilityRow, source?: SourceRow): PlaceCapab
     namespace: row.namespace,
     capability: row.capability,
     // `key` is a GENERATED column, so it cannot disagree with its two parts —
-    // which is exactly the invariant the SDK's parser refuses a response over.
+    // which is exactly the invariant the contract's `placeCapabilitySchema`
+    // refuses a response over.
     // The fallback keeps TypeScript honest about a generated column's
     // nullability without ever being reached.
     key: row.key ?? `${row.namespace}.${row.capability}`,
@@ -255,12 +256,14 @@ export function toCapability(row: CapabilityRow, source?: SourceRow): PlaceCapab
 export function toClaim(row: ClaimRow): PlaceClaim {
   const claim: PlaceClaim = {
     id: row.id,
+    placeId: row.placeId,
     role: row.role as PlaceClaimRole,
     state: row.state as PlaceClaimState,
     oxyAccountId: row.oxyAccountId,
     claimedAt: row.claimedAt.toISOString(),
   };
   put(claim, 'brandId', optionalText(row.brandId));
+  if (row.decidedAt !== null) claim.decidedAt = row.decidedAt.toISOString();
   return claim;
 }
 
@@ -290,7 +293,9 @@ export function toPlace(
     name: row.name,
     location: { latitude: row.latitude, longitude: row.longitude },
     categories: row.categories,
-    status: row.status as PlaceStatus,
+    // Every read that maps a row excludes `removed` in SQL, so the published
+    // status is one of the three a place can be published in.
+    status: row.status as Place['status'],
     verification: { state: row.verificationState as PlaceVerificationState },
     sources: [...children.sources]
       .sort((a, b) => b.observedAt.getTime() - a.observedAt.getTime())

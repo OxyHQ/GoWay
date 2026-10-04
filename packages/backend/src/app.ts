@@ -7,21 +7,22 @@
  * then listen" stays visible in exactly one place.
  *
  * Middleware order below is load-bearing:
- *   helmet → CORS → body parser → health → API router → notFound → errorHandler
+ *   helmet → CORS → body parser → health → API router → unknownRoute → errorHandler
  * CORS before the body parser so a rejected cross-origin preflight never gets a
  * body parsed for it, and the two terminal handlers LAST because Express matches
- * in registration order — a `notFoundHandler` mounted before a router would
+ * in registration order — an `unknownRouteHandler` mounted before a router would
  * answer 404 for every route that router defines.
  */
 
 import express, { type Express, Router } from 'express';
 import helmet from 'helmet';
 import { config } from './config';
-import { errorHandler, notFoundHandler } from './http/errorHandler';
+import { errorHandler, unknownRouteHandler } from './http/errorHandler';
 import { apiRateLimit, optionalAuth, requireAuth, street3dReportRateLimit } from './middleware/auth';
 import { createGoWayCors } from './middleware/cors';
 import { healthRouter } from './routes/health';
 import { createCaptureRouter } from './routes/capture';
+import { createOpenApiRouter } from './routes/openapi';
 import { createPlacesRouter } from './routes/places';
 import { createRoutesRouter } from './routes/directions';
 import { createSearchRouter } from './routes/search';
@@ -99,6 +100,7 @@ export function createApp(): Express {
   api.use(apiRateLimit);
 
   const v1: Router = Router();
+  v1.use(createOpenApiRouter());
   v1.use(createPlacesRouter({ optionalAuth, requireAuth }));
   v1.use(createRoutesRouter({ optionalAuth }));
   v1.use(createSearchRouter({ optionalAuth }));
@@ -124,7 +126,7 @@ export function createApp(): Express {
 
   app.use('/api', api);
 
-  app.use(notFoundHandler);
+  app.use(unknownRouteHandler);
   app.use(errorHandler);
 
   return app;

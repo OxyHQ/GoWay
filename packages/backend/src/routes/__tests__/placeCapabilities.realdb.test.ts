@@ -21,7 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import express, { type RequestHandler } from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { Place, PlaceCapability, PlaceClaim } from '@goway/shared-types';
+import type { Place, PlaceCapability, PlaceClaim, PlaceWithDistancePage } from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {
   SUITE_SETUP_TIMEOUT_MS,
@@ -30,7 +30,7 @@ import {
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
 import { ApiError } from '../../http/apiError';
-import { errorHandler, notFoundHandler } from '../../http/errorHandler';
+import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import { createPlacesRouter } from '../places';
 
 const CONTRIBUTOR: PlaceActor = {
@@ -73,7 +73,8 @@ interface Fetched<T> {
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<Fetched<T>> {
   const response = await fetch(`${origin}/api/v1${path}`, init);
-  return { status: response.status, body: (await response.json()) as T };
+  // A 204 has no body to parse; the status is the whole answer.
+  return { status: response.status, body: (response.status === 204 ? undefined : await response.json()) as T };
 }
 
 function asUser(user: string, init: RequestInit = {}): RequestInit {
@@ -120,7 +121,7 @@ beforeAll(async () => {
   const app = express();
   app.use(express.json());
   app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth }));
-  app.use(notFoundHandler);
+  app.use(unknownRouteHandler);
   app.use(errorHandler);
 
   server = app.listen(0);
@@ -162,7 +163,7 @@ afterAll(async () => {
   suite = null;
 });
 
-describe('PUT /places/:id/capabilities/:key', () => {
+describe('PUT /places/{placeId}/capabilities/{key}', () => {
   it('refuses an unauthenticated assertion', async () => {
     const { status, body } = await call<ErrorBody>(`/places/${open.id}/capabilities/${FAIRCOIN}`, {
       method: 'PUT',
@@ -316,11 +317,52 @@ describe('PUT /places/:id/capabilities/:key', () => {
     expect(tierOf(moovo.body, 'mobility.moovo.pickup', 'community_reported')?.value).toBe(true);
 
     // And the generic READ filter picks the place up with no change of its own.
-    const { body } = await call<Place[]>(
+    const { body } = await call<PlaceWithDistancePage>(
       `/places/nearby?latitude=${CATALUNYA.latitude}&longitude=${CATALUNYA.longitude}` +
         '&radiusMeters=500&capabilities=housing.homiio.listings,mobility.moovo.pickup',
     );
-    expect(body.map((place) => place.id)).toEqual([open.id]);
+    expect(body.items.map((place) => place.id)).toEqual([open.id]);
+  });
+
+  it('filters on the VALUE of the strongest assertion, not on the key being mentioned', async () => {
+    // The filter used to match the key alone, so a shop whose own business
+    // said `false` — it stopped taking FairCoin — kept coming back as a
+    // FairCoin merchant. The strongest tier now decides, and its value has to
+    // hold.
+    const shop = await createPlace(
+      suite!.db,
+      {
+        name: 'Deixa FairCoin',
+        location: CATALUNYA,
+        capabilities: [{ namespace: 'payments.faircoin', capability: 'accepted', value: true }],
+      },
+      CONTRIBUTOR,
+    );
+    await createClaim(suite!.db, { placeId: shop.id, oxyAccountId: 'user-shop', role: 'owner', state: 'approved' });
+    const merchants = async () =>
+      (
+        await call<PlaceWithDistancePage>(
+          `/places/nearby?latitude=${CATALUNYA.latitude}&longitude=${CATALUNYA.longitude}` +
+            `&radiusMeters=500&capabilities=${FAIRCOIN}&limit=200`,
+        )
+      ).body.items.map((place) => place.id);
+
+    expect(await merchants()).toContain(shop.id);
+
+    await call<Place>(`/places/${shop.id}/capabilities/${FAIRCOIN}`, {
+      method: 'PUT',
+      ...asUser('user-shop', json({ value: false })),
+    });
+    // The community's `true` is still published — nothing is destroyed — but
+    // it is outranked, and the place is no longer a FairCoin merchant.
+    expect(await storedTiers(shop.id, FAIRCOIN)).toEqual(['business_asserted', 'community_reported']);
+    expect(await merchants()).not.toContain(shop.id);
+
+    await call<Place>(`/places/${shop.id}/capabilities/${FAIRCOIN}`, {
+      method: 'PUT',
+      ...asUser('user-shop', json({ value: true })),
+    });
+    expect(await merchants()).toContain(shop.id);
   });
 
   it('records a sourced assertion as external_source, with the source published', async () => {
@@ -417,7 +459,7 @@ describe('PUT /places/:id/capabilities/:key', () => {
   });
 });
 
-describe('DELETE /places/:id/capabilities/:key', () => {
+describe('DELETE /places/{placeId}/capabilities/{key}', () => {
   it('refuses a community reporter, and points at the honest retraction', async () => {
     const { status, body } = await call<ErrorBody>(`/places/${open.id}/capabilities/${FAIRCOIN}`, {
       method: 'DELETE',
@@ -435,13 +477,14 @@ describe('DELETE /places/:id/capabilities/:key', () => {
       'community_reported',
     ]);
 
-    const { status, body } = await call<Place>(`/places/${claimed.id}/capabilities/${FAIRCOIN}`, {
+    const { status } = await call<undefined>(`/places/${claimed.id}/capabilities/${FAIRCOIN}`, {
       method: 'DELETE',
       ...asUser('user-owner', {}),
     });
-    expect(status).toBe(200);
+    expect(status).toBe(204);
     // The community report survives the owner's withdrawal: it is somebody
     // else's statement, at a tier the owner was never entitled to write.
+    const { body } = await call<Place>(`/places/${claimed.id}`);
     expect(assertionsOf(body, FAIRCOIN).map((capability) => capability.verification)).toEqual([
       'community_reported',
     ]);

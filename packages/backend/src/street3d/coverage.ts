@@ -34,7 +34,7 @@
  */
 
 import { and, eq, inArray, isNull, lt, notInArray, sql } from 'drizzle-orm';
-import type { StreetCoverageAreaState } from '@goway/shared-types';
+import type { StreetCoverageAreaState } from '@goway/contracts';
 import type { Street3dConfig } from '../config/street3d';
 import type { Database } from '../db/postgres';
 import {

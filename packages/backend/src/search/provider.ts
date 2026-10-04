@@ -5,7 +5,7 @@
  * gsplat are replaceable adapters behind GoWay interfaces. Feature code imports
  * the GoWay abstraction, never the provider." This file IS that abstraction for
  * search — an adapter takes a GoWay request and returns `SearchResult[]` from
- * `@goway/shared-types`, so nothing above it can tell Photon from Nominatim
+ * `@goway/contracts`, so nothing above it can tell Photon from Nominatim
  * from whatever replaces them.
  *
  * ## Why the interface returns results rather than raw payloads
@@ -27,7 +27,7 @@
  * variable, which is the point: a policy breach should not be one typo away.
  */
 
-import type { GeoBoundingBox, GeoCoordinate, SearchResult } from '@goway/shared-types';
+import type { GeoBoundingBox, GeoCoordinate, SearchResult } from '@goway/contracts';
 import type { SearchProviderId } from '../config/search';
 
 /**

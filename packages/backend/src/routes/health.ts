@@ -11,6 +11,7 @@
  */
 
 import { Router } from 'express';
+import type { HealthResponse, ReadinessResponse } from '@goway/contracts';
 import { assertMigrationsCurrent, checkPostgresHealth } from '../db/postgres';
 import { logger } from '../utils/logger';
 
@@ -28,11 +29,12 @@ export const healthRouter: Router = Router();
  */
 healthRouter.get('/health', async (_request, response) => {
   const database = (await checkPostgresHealth()) ? 'up' : 'down';
-  response.status(database === 'up' ? 200 : 503).json({
+  const body: HealthResponse = {
     status: database === 'up' ? 'ok' : 'degraded',
     service: 'goway-backend',
     database,
-  });
+  };
+  response.status(database === 'up' ? 200 : 503).json(body);
 });
 
 /**
@@ -47,15 +49,15 @@ healthRouter.get('/health', async (_request, response) => {
  */
 healthRouter.get('/ready', async (_request, response) => {
   if (!(await checkPostgresHealth())) {
-    response.status(503).json({ status: 'not-ready', reason: 'database-unreachable' });
+    response.status(503).json({ status: 'not-ready', reason: 'database-unreachable' } satisfies ReadinessResponse);
     return;
   }
   try {
     await assertMigrationsCurrent();
   } catch (error) {
     logger.warn({ err: error }, 'Not ready — migrations are not current');
-    response.status(503).json({ status: 'not-ready', reason: 'migrations-pending' });
+    response.status(503).json({ status: 'not-ready', reason: 'migrations-pending' } satisfies ReadinessResponse);
     return;
   }
-  response.json({ status: 'ready' });
+  response.json({ status: 'ready' } satisfies ReadinessResponse);
 });

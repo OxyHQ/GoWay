@@ -74,7 +74,7 @@ import {
   PLACE_VERIFICATION_STATES,
   type GeoGeometry,
   type OpeningHours,
-} from '@goway/shared-types';
+} from '@goway/contracts';
 import {
   closedSet,
   foreignServiceId,

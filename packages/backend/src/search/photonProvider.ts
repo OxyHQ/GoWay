@@ -28,7 +28,7 @@
  * by contract, so an explicit OSM tag is forwarded as `osm_tag`.
  */
 
-import type { GeoBoundingBox, SearchResult, SearchResultKind, StructuredAddress } from '@goway/shared-types';
+import type { GeoBoundingBox, SearchResult, SearchResultKind, StructuredAddress } from '@goway/contracts';
 import type { PhotonConfig } from '../config/search';
 import {
   asObject,

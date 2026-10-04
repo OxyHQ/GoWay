@@ -34,7 +34,7 @@ afterAll(async () => {
 
 describe('places', () => {
   it('refuses a status outside the published tuple', async () => {
-    // The tuple lives in `@goway/shared-types` and types the column, builds the
+    // The tuple lives in `@goway/contracts` and types the column, builds the
     // CHECK and types the SDK. This is the assertion that the third of those is
     // really enforced rather than merely declared.
     const message = await statementFailure(

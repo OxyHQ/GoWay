@@ -60,7 +60,7 @@ import {
   type StreetSceneNavigation,
   type StreetSceneQuality,
   type StreetSceneWorldTransform,
-} from '@goway/shared-types';
+} from '@goway/contracts';
 import { ABSOLUTE_RETENTION_CEILING_DAYS, MAX_RETENTION_EXTENSIONS, captureAssets } from './capture';
 import { closedSet, foreignServiceId, generatedGeographyPoint, latitude, longitude } from './columns';
 import {

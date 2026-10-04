@@ -2,9 +2,9 @@
  * The search HTTP surface, over a real socket.
  *
  * What is asserted here is the CONTRACT an SDK consumer sees: the paths, the
- * parameter names `@goway.to/sdk` sends, the unwrapped `SearchResults` body,
- * and the fact that a refused value is a 422 naming the field rather than a
- * 500. The service itself is a double — its behaviour is covered in
+ * parameter names `@goway.to/sdk` sends, the unwrapped `SearchResults` page,
+ * its cursors, and the fact that a refused value is a 422 naming the field
+ * rather than a 500. The service itself is a double — its behaviour is covered in
  * `src/search/__tests__`, and doubling it here is what keeps these cases free
  * of a database and a geocoder.
  *
@@ -17,22 +17,24 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import express, { type Express } from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { SearchResults } from '@goway/shared-types';
+import type { SearchResults } from '@goway/contracts';
 import { parseSearchConfig } from '../../config/search';
 import { ApiError } from '../../http/apiError';
-import { errorHandler, notFoundHandler } from '../../http/errorHandler';
+import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import { fakeGateway } from '../../search/__tests__/fixtures';
 import type {
   ResolvedReverseQuery,
   ResolvedSearchQuery,
   ResolvedStructuredQuery,
   SearchService,
+  SearchWindow,
 } from '../../search/searchService';
 import { createSearchRouter } from '../search';
 
 const CONFIG = parseSearchConfig({ SEARCH_DEFAULT_LIMIT: '3', SEARCH_MAX_LIMIT: '5' });
 
-const EMPTY_RESULTS: SearchResults = { results: [], providers: ['photon'] };
+const EMPTY_WINDOW: SearchWindow = { results: [], hasMore: false, providers: ['photon'] };
+const EMPTY_RESULTS: SearchResults = { items: [], nextCursor: null, providers: ['photon'] };
 
 interface Recorded {
   search: ResolvedSearchQuery[];
@@ -43,23 +45,24 @@ interface Recorded {
 
 const recorded: Recorded = { search: [], forward: [], reverse: [], structured: [] };
 let nextFailure: ApiError | null = null;
+let nextWindow: SearchWindow = EMPTY_WINDOW;
 
 const service: SearchService = {
   search: (query) => {
     recorded.search.push(query);
-    return nextFailure ? Promise.reject(nextFailure) : Promise.resolve(EMPTY_RESULTS);
+    return nextFailure ? Promise.reject(nextFailure) : Promise.resolve(nextWindow);
   },
   forward: (query) => {
     recorded.forward.push(query);
-    return Promise.resolve(EMPTY_RESULTS);
+    return Promise.resolve(EMPTY_WINDOW);
   },
   reverse: (query) => {
     recorded.reverse.push(query);
-    return Promise.resolve(EMPTY_RESULTS);
+    return Promise.resolve(EMPTY_WINDOW);
   },
   structured: (query) => {
     recorded.structured.push(query);
-    return Promise.resolve(EMPTY_RESULTS);
+    return Promise.resolve(EMPTY_WINDOW);
   },
 };
 
@@ -76,7 +79,7 @@ function buildApp(): Express {
       config: CONFIG,
     }),
   );
-  app.use(notFoundHandler);
+  app.use(unknownRouteHandler);
   app.use(errorHandler);
   return app;
 }
@@ -128,21 +131,63 @@ describe('GET /api/v1/search', () => {
     expect(recorded.search.at(-1)?.viewport).toEqual({ west: 2, south: 41.3, east: 2.2, north: 41.5 });
   });
 
-  it('accepts the documented short forms as aliases', async () => {
-    await fetch(`${origin}/api/v1/search?q=museum&lat=41.4&lng=2.17`);
-    expect(recorded.search.at(-1)?.near).toEqual({ latitude: 41.4, longitude: 2.17 });
-
-    await fetch(`${origin}/api/v1/search?query=museum&bbox=2.0,41.3,2.2,41.5`);
-    expect(recorded.search.at(-1)?.query).toBe('museum');
-    expect(recorded.search.at(-1)?.viewport).toEqual({ west: 2, south: 41.3, east: 2.2, north: 41.5 });
+  it('refuses a parameter the contract does not declare, and a repeated one, as bad_request', async () => {
+    // One spelling per parameter: `lat` and `bbox` were short forms once, and a
+    // silently ignored `lat` answers an unbiased search to a caller who asked
+    // for a biased one.
+    expect(await errorCodeOf('/api/v1/search?q=museum&lat=41.4&lng=2.17')).toMatchObject({
+      status: 400,
+      code: 'bad_request',
+    });
+    expect(await errorCodeOf('/api/v1/search?q=museum&categories=a&categories=b')).toMatchObject({
+      status: 400,
+      code: 'bad_request',
+      field: 'categories',
+    });
   });
 
-  it('applies the configured default limit and clamps to the configured maximum', async () => {
+  it('applies the configured default limit and refuses one above the configured maximum', async () => {
     await fetch(`${origin}/api/v1/search?q=cafe`);
-    expect(recorded.search.at(-1)?.limit).toBe(3);
+    expect(recorded.search.at(-1)).toMatchObject({ limit: 3, offset: 0 });
 
-    await fetch(`${origin}/api/v1/search?q=cafe&limit=50`);
-    expect(recorded.search.at(-1)?.limit).toBe(5);
+    // Outside the range is `validation_failed`, never a silent clamp: a caller
+    // who asked for 50 and got 5 would conclude there were 5.
+    expect(await errorCodeOf('/api/v1/search?q=cafe&limit=50')).toMatchObject({
+      status: 422,
+      code: 'validation_failed',
+      field: 'limit',
+    });
+  });
+
+  it('pages by a cursor bound to the query, and refuses it under another one', async () => {
+    const result = (id: string): SearchWindow['results'][number] => ({
+      id,
+      displayName: id,
+      kind: 'poi',
+      coordinate: { latitude: 41.4, longitude: 2.17 },
+      source: 'photon',
+    });
+    nextWindow = { ...EMPTY_WINDOW, results: [result('a'), result('b')], hasMore: true };
+    const first = (await (await fetch(`${origin}/api/v1/search?q=cafe&limit=2`)).json()) as SearchResults;
+    nextWindow = EMPTY_WINDOW;
+    expect(first.nextCursor).toEqual(expect.any(String));
+
+    // The cursor carries how far the last page reached — the offset the
+    // service is asked to resume at — and nothing a caller should parse.
+    const cursor = encodeURIComponent(first.nextCursor ?? '');
+    const second = await fetch(`${origin}/api/v1/search?q=cafe&limit=2&cursor=${cursor}`);
+    expect(second.status).toBe(200);
+    expect(((await second.json()) as SearchResults).nextCursor).toBeNull();
+
+    // A different limit is the same list; a different question is not.
+    await fetch(`${origin}/api/v1/search?q=cafe&limit=3&cursor=${cursor}`);
+    expect(recorded.search.at(-1)).toMatchObject({ offset: 2, limit: 3 });
+    expect(await errorCodeOf(`/api/v1/search?q=bar&cursor=${cursor}`)).toMatchObject({
+      status: 400,
+      code: 'bad_request',
+      field: 'cursor',
+    });
+    expect(await errorCodeOf(`/api/v1/geocode?q=cafe&cursor=${cursor}`)).toMatchObject({ status: 400 });
   });
 
   it('refuses a missing query as validation_failed, not a 500', async () => {
@@ -203,6 +248,7 @@ describe('GET /api/v1/geocode', () => {
     expect(recorded.reverse.at(-1)).toEqual({
       coordinate: { latitude: 41.4036, longitude: 2.1744 },
       limit: 2,
+      offset: 0,
       radiusMeters: 120,
     });
   });
@@ -224,6 +270,7 @@ describe('GET /api/v1/geocode', () => {
       city: 'Barcelona',
       countryCode: 'ES',
       limit: 3,
+      offset: 0,
     });
   });
 

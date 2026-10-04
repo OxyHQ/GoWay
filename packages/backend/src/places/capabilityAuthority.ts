@@ -19,7 +19,7 @@
  *
  *   1. {@link VERIFICATION_ORIGIN} classifies every published tier by where its
  *      value comes from, as a TOTAL `Record<CapabilityVerification, …>`. A tier
- *      added to `@goway/shared-types` fails this package to compile until
+ *      added to `@goway/contracts` fails this package to compile until
  *      somebody decides which kind it is, exactly as `API_ERROR_STATUS` does
  *      for error codes.
  *   2. {@link assertableVerification} derives the tier from a
@@ -42,7 +42,7 @@ import {
   CAPABILITY_VERIFICATIONS,
   type CapabilityVerification,
   type PlaceClaimRole,
-} from '@goway/shared-types';
+} from '@goway/contracts';
 import { ApiError } from '../http/apiError';
 import type { PlaceAuthorization } from '../db/places/placesRepository';
 
@@ -64,7 +64,7 @@ export type VerificationOrigin = 'actor' | 'evidence' | 'moderation';
  * Every published tier, classified.
  *
  * TOTAL over `CapabilityVerification` on purpose. `CAPABILITY_VERIFICATIONS`
- * lives in `@goway/shared-types` and is shared by the SDK, the frontend's
+ * lives in `@goway/contracts` and is shared by the SDK, the frontend's
  * evidence ranking and this table's CHECK constraint; widening it is a
  * deliberate act, and this record makes the second half of that act —
  * "and who is allowed to write it" — impossible to forget.

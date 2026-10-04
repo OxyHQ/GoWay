@@ -23,7 +23,7 @@ import type {
   CaptureMediaKind,
   CaptureRetentionClass,
   RetentionReason,
-} from '@goway/shared-types';
+} from '@goway/contracts';
 
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 

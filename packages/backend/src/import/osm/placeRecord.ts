@@ -32,7 +32,7 @@
  * inventing a language for them.
  */
 
-import { normalizeLanguageTag } from '@goway/shared-types';
+import { normalizeLanguageTag } from '@goway/contracts';
 import { classifyPoi, poiCategories } from './poiTags';
 
 /** Which OSM element a place came from. Part of the source id; never inferred. */
