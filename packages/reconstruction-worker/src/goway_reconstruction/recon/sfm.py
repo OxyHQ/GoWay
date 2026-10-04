@@ -25,9 +25,13 @@ from pathlib import Path
 import numpy as np
 import pycolmap
 
-SEQUENTIAL_OVERLAP = 8
+SEQUENTIAL_OVERLAP = 20
 SPATIAL_RADIUS_M = 60.0
 SPATIAL_NEIGHBOURS = 25
+# Priors that spread less than this cannot rank neighbours (a video carries a
+# single position), so cross-sequence pairs fall back to a regular subsample.
+DEGENERATE_PRIOR_SPREAD_M = 5.0
+CROSS_SEQUENCE_STRIDE = 3
 
 
 @dataclass
@@ -70,7 +74,20 @@ def _pairs(frames: list[SfmFrame]) -> list[tuple[str, str]]:
         for i, a in enumerate(group):
             for b in group[i + 1 : i + 1 + SEQUENTIAL_OVERLAP]:
                 pairs.add(tuple(sorted((a.image_name, b.image_name))))
+            # Exponential jumps give dense keyframes wide baselines too.
+            jump = SEQUENTIAL_OVERLAP * 2
+            while i + jump < len(group):
+                pairs.add(tuple(sorted((a.image_name, group[i + jump].image_name))))
+                jump *= 2
     xy = np.array([[f.east, f.north] for f in frames])
+    if len(frames) > 1 and float(np.ptp(xy, axis=0).max()) < DEGENERATE_PRIOR_SPREAD_M:
+        groups = list(by_group.values())
+        for gi, ga in enumerate(groups):
+            for gb in groups[gi + 1 :]:
+                for a in ga:
+                    for b in gb[a.index % CROSS_SEQUENCE_STRIDE :: CROSS_SEQUENCE_STRIDE]:
+                        pairs.add(tuple(sorted((a.image_name, b.image_name))))
+        return sorted(pairs)
     for i, a in enumerate(frames):
         d = np.hypot(*(xy - xy[i]).T)
         order = np.argsort(d)

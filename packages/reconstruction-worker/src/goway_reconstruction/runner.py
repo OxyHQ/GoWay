@@ -52,6 +52,7 @@ class Runner:
         self.ledger = Ledger(config.state_path)
         self.draining = threading.Event()
         self._detectors = None
+        self._depth = None
         self._device = None
         self.completed = 0
 
@@ -93,6 +94,13 @@ class Runner:
 
             self._detectors = PrivacyDetectors(self.config.models_dir, self.device())
         return self._detectors
+
+    def depth_prior(self):
+        if self._depth is None:
+            from .recon.depth import DepthPrior
+
+            self._depth = DepthPrior(self.config.models_dir, self.device())
+        return self._depth
 
     # ── loop ───────────────────────────────────────────────────────────────
 
@@ -203,7 +211,7 @@ class Runner:
         from .recon import job as scene_job
 
         device = self.device()
-        return scene_job.run(job, ctx, self.aws, self.cache, work, device)
+        return scene_job.run(job, ctx, self.aws, self.cache, work, device, self.depth_prior())
 
 
 def _iso_in(seconds: int) -> str:

@@ -54,6 +54,8 @@ dependencies = [
   "boto3>=1.40,<2",
   "pydantic>=2.11,<3",
   "nvidia-ml-py>=13",
+  "transformers>=4.50,<6",
+  "safetensors>=0.4",
 ]
 
 [project.scripts]

@@ -40,6 +40,7 @@ from ..context import JobContext, JobFailure
 from ..contract import (
     Bounds,
     Edge,
+    CaptureFieldOfView,
     Footprint,
     FrameCounts,
     GateResult,
@@ -50,6 +51,7 @@ from ..contract import (
     SceneMetrics,
     SceneReconstructJob,
     SceneReconstructResult,
+    Viewpoint,
     WorldTransform,
 )
 from ..storage import ContentCache
@@ -144,7 +146,15 @@ def _smoke_test(original: np.ndarray, data: bytes, view: View, sh_degree: int, d
     return -10 * math.log10(max(mse, 1e-10))
 
 
-def run(job: SceneReconstructJob, ctx: JobContext, aws: Aws, cache: ContentCache, work: Path, device: torch.device) -> SceneReconstructResult:
+def run(
+    job: SceneReconstructJob,
+    ctx: JobContext,
+    aws: Aws,
+    cache: ContentCache,
+    work: Path,
+    device: torch.device,
+    depth_prior=None,  # noqa: ANN001 - depth.DepthPrior
+) -> SceneReconstructResult:
     started = time.monotonic()
     ctx.enter("preparing")
     try:
@@ -237,6 +247,7 @@ def run(job: SceneReconstructJob, ctx: JobContext, aws: Aws, cache: ContentCache
             sh_degree=sh_degree,
             on_progress=ctx.report,
             device=device,
+            depth_prior=depth_prior,
         )
     except torch.cuda.OutOfMemoryError as error:
         raise JobFailure("out_of_memory", "training exceeded GPU memory") from error
@@ -274,7 +285,18 @@ def run(job: SceneReconstructJob, ctx: JobContext, aws: Aws, cache: ContentCache
         sha, size = aws.put(prefix + name, data, ctype)
         assets.append(OutputAsset(role=role, format=fmt, key=prefix + name, sha256=sha, byteSize=size, contentType=ctype, gaussians=count))
 
-    centers = np.array([img.projection_center() for img in model.images.values() if img.has_pose])
+    posed = [img for img in model.images.values() if img.has_pose]
+    centers = np.array([img.projection_center() for img in posed])
+    viewpoints = []
+    for img in posed[:: max(1, len(posed) // 2000 + 1)]:
+        forward = img.cam_from_world().rotation.matrix().T @ np.array([0.0, 0.0, 1.0])
+        viewpoints.append(Viewpoint(position=[round(float(x), 3) for x in img.projection_center()], forward=[round(float(x), 4) for x in forward]))
+    fovs = []
+    for img in posed:
+        cam = model.cameras[img.camera_id]
+        f = float(cam.params[0])
+        fovs.append((np.degrees(2 * np.arctan(cam.width / (2 * f))), np.degrees(2 * np.arctan(cam.height / (2 * f)))))
+    fov_h, fov_v = (float(np.median([a for a, _ in fovs])), float(np.median([b for _, b in fovs])))
     footprint, bounds = _footprint(centers[:, :2], anchor, manifest.radiusMeters)
     times = sorted(by_id[i].capturedAt for i in registered_ids if by_id[i].capturedAt)
     edges = [Edge(a=a, b=b, inliers=n) for a, b, n in meta["edges"]]
@@ -322,6 +344,8 @@ def run(job: SceneReconstructJob, ctx: JobContext, aws: Aws, cache: ContentCache
             components=_components(),
             inputs=[{"frameId": f.frameId, "imageSha256": f.imageSha256} for f in manifest.frames],
         ),
+        viewpoints=viewpoints,
+        captureFieldOfView=CaptureFieldOfView(horizontalDegrees=round(fov_h, 2), verticalDegrees=round(fov_v, 2)),
     )
 
 

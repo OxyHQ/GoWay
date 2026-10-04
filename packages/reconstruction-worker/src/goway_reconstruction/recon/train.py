@@ -18,6 +18,12 @@ sit on top:
 - every ``CHECKPOINT_EVERY`` steps the state is written to the job's scratch
   directory, so a restarted worker resumes instead of starting over.
 
+Two more rules fight the artefacts of sparse, one-directional street capture:
+a monocular depth prior (``depth.py``) the rendered inverse depth must
+correlate with, and visibility pruning at export — a Gaussian that fewer than
+``MIN_VISIBLE_VIEWS`` training frames ever saw is not evidence, it is a guess,
+and it is what turns into shards the moment the viewer looks elsewhere.
+
 Every eighth registered frame is held out and scored afterwards; that score is
 a publication gate.
 """
@@ -41,6 +47,8 @@ from .spz import GaussianCloud
 
 SH_C0 = 0.28209479177387814
 CHECKPOINT_EVERY = 2000
+MIN_VISIBLE_VIEWS = 3
+DEPTH_WEIGHT_START, DEPTH_WEIGHT_END = 0.2, 0.02
 MAX_ANISOTROPY = 8.0
 ANISOTROPY_WEIGHT = 0.1
 HOLDOUT_EVERY = 8
@@ -151,7 +159,8 @@ class Trainer:
         sh_degree: int,
         checkpoint: Path,
         device: torch.device,
-        strategy: str = "mcmc",
+        strategy: str = "default",
+        depth_prior=None,  # noqa: ANN001 - depth.DepthPrior, imported lazily
         seed: int = 0,
     ) -> None:
         torch.manual_seed(seed)
@@ -214,6 +223,7 @@ class Trainer:
                 refine_every=100,
                 verbose=False,
             )
+        self.disparity = [depth_prior.disparity(v.image) for v in self.train_views] if depth_prior else None
         # Per-frame colour transforms (exposure / white balance), identity at start.
         n_views = len(self.train_views)
         self.colour = torch.nn.Parameter(torch.eye(3, 4, device=device).repeat(n_views, 1, 1))
@@ -257,7 +267,7 @@ class Trainer:
 
     # ── rendering ──────────────────────────────────────────────────────────
 
-    def render(self, view_K: torch.Tensor, viewmat: torch.Tensor, w: int, h: int, sh_degree: int):
+    def render(self, view_K: torch.Tensor, viewmat: torch.Tensor, w: int, h: int, sh_degree: int, mode: str = "RGB"):
         s = self.splats
         colors = torch.cat([s["sh0"], s["shN"]], 1)
         return rasterization(
@@ -273,6 +283,7 @@ class Trainer:
             sh_degree=sh_degree,
             packed=False,
             rasterize_mode="antialiased",
+            render_mode=mode,
         )
 
     # ── training ───────────────────────────────────────────────────────────
@@ -284,9 +295,10 @@ class Trainer:
             view = self.train_views[index]
             h, w = view.image.shape[:2]
             degree = min(self.step // 1000, self.sh_degree)
-            renders, _alphas, info = self.render(view.K, view.viewmat, w, h, degree)
+            mode = "RGB+ED" if self.disparity is not None else "RGB"
+            renders, _alphas, info = self.render(view.K, view.viewmat, w, h, degree, mode)
             colour = self.colour[index]
-            pred = (renders[0] @ colour[:, :3].T + colour[:, 3]).clamp(0, 1)
+            pred = (renders[0][..., :3] @ colour[:, :3].T + colour[:, 3]).clamp(0, 1)
             gt = view.image.float() / 255.0
             m = view.mask[..., None].float()
             l1 = (torch.abs(pred - gt) * m).sum() / (m.sum() * 3).clamp(min=1)
@@ -295,6 +307,12 @@ class Trainer:
             if self.mcmc:
                 loss = loss + 0.01 * torch.sigmoid(self.splats["opacities"]).mean() + 0.01 * torch.exp(self.splats["scales"]).mean()
             loss = loss + 1e-3 * (self.colour[index] - torch.eye(3, 4, device=self.device)).abs().mean()
+            if self.disparity is not None:
+                from .depth import pearson_depth_loss
+
+                t = self.step / max(1, self.iterations)
+                weight = DEPTH_WEIGHT_START + (DEPTH_WEIGHT_END - DEPTH_WEIGHT_START) * t
+                loss = loss + weight * pearson_depth_loss(renders[0][..., 3], self.disparity[index], view.mask)
             # Needles: a street seen from one direction leaves the ground and
             # walls under-constrained, and the optimiser answers with very
             # elongated Gaussians that look like shards from any other angle.
@@ -340,6 +358,18 @@ class Trainer:
         return float(np.mean(psnrs)), float(np.mean(ssims))
 
     @torch.no_grad()
+    def visible_views(self) -> torch.Tensor:
+        """How many training frames each Gaussian actually lands in."""
+        counts = torch.zeros(self.splats["means"].shape[0], dtype=torch.int32, device=self.device)
+        for view in self.train_views:
+            h, w = view.image.shape[:2]
+            _, _, info = self.render(view.K, view.viewmat, w, h, 0)
+            radii = info["radii"][0]
+            seen = (radii > 0).all(-1) if radii.dim() == 2 else radii > 0
+            counts += seen.int()
+        return counts
+
+    @torch.no_grad()
     def export(self) -> GaussianCloud:
         s = self.splats
         keep = torch.ones(s["means"].shape[0], dtype=torch.bool, device=self.device)
@@ -349,6 +379,7 @@ class Trainer:
         # SPZ's fixed-point range (about ±2 km). Keep a generous radius.
         centre = torch.tensor(self.scene_center, dtype=torch.float32, device=self.device)
         keep &= (s["means"] - centre).norm(dim=1) < max(300.0, 6.0 * self.scene_scale)
+        keep &= self.visible_views() >= MIN_VISIBLE_VIEWS
         idx = keep.nonzero().squeeze(1)
         if idx.numel() > self.max_gaussians:
             order = torch.sigmoid(s["opacities"][idx]).argsort(descending=True)
@@ -392,7 +423,8 @@ def train_scene(
     sh_degree: int,
     on_progress: Callable[[float], None],
     device: torch.device,
-    strategy: str = "mcmc",
+    strategy: str = "default",
+    depth_prior=None,  # noqa: ANN001
 ) -> TrainResult:
     started = time.monotonic()
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -407,6 +439,7 @@ def train_scene(
         checkpoint=work_dir / "train.ckpt",
         device=device,
         strategy=strategy,
+        depth_prior=depth_prior,
     )
     trainer.try_resume()
     trainer.train(on_progress)
