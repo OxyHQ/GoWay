@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "eventId": "a3c4d5e6-f708-4192-8b0c-2d3e4f5a6b7c",
+  "jobId": "7c1e9a02-5d44-4b8b-9e1f-3a6c0d2b8e55",
+  "attempt": 2,
+  "workerId": "w-5f2a9c1d",
+  "type": "failed",
+  "at": "2026-10-04T11:02:00.000Z",
+  "stage": "solving",
+  "failure": { "code": "insufficient_overlap", "retryable": false, "detail": "2 of 14 frames registered" },
+  "result": {
+    "key": "jobs/7c1e9a02-5d44-4b8b-9e1f-3a6c0d2b8e55/attempt-2/result.json",
+    "sha256": "dd00000000000000000000000000000000000000000000000000000000000002",
+    "byteSize": 1311
+  }
+}

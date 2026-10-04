@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "eventId": "e1a2b3c4-d5e6-4f70-8a9b-0c1d2e3f4a5b",
+  "jobId": "7c1e9a02-5d44-4b8b-9e1f-3a6c0d2b8e55",
+  "attempt": 1,
+  "workerId": "w-5f2a9c1d",
+  "type": "heartbeat",
+  "at": "2026-10-04T10:20:00.000Z",
+  "stage": "training",
+  "progress": 0.42,
+  "leaseExpiresAt": "2026-10-04T10:35:00.000Z"
+}

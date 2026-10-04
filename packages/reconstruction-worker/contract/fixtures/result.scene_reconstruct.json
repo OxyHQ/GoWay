@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "jobId": "7c1e9a02-5d44-4b8b-9e1f-3a6c0d2b8e55",
+  "jobType": "scene_reconstruct",
+  "attempt": 1,
+  "sceneId": "a2e4c6f8-1b3d-4e5f-8a9b-0c1d2e3f4a5b",
+  "sceneVersion": 3,
+  "profile": "draft",
+  "inputManifestSha256": "0011223344556677889900aabbccddeeff00112233445566778899aabbccddee",
+  "worldTransform": {
+    "anchor": { "latitude": 48.8684, "longitude": 2.3020, "altitudeMeters": 0 },
+    "frame": "enu",
+    "enuFromScene": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+  },
+  "bounds": { "west": 2.3008, "south": 48.8678, "east": 2.3032, "north": 48.8690 },
+  "footprint": { "type": "Polygon", "coordinates": [[[2.3008, 48.8678], [2.3032, 48.8678], [2.3032, 48.8690], [2.3008, 48.8690], [2.3008, 48.8678]]] },
+  "frames": { "input": 2, "registered": 2, "registeredFrameIds": ["f-01", "f-02"] },
+  "edges": [ { "a": "f-01", "b": "f-02", "inliers": 312 } ],
+  "metrics": {
+    "registrationRatio": 1.0,
+    "meanReprojectionErrorPx": 0.82,
+    "sparsePoints": 18233,
+    "georeferenceInliers": 2,
+    "medianGeoreferenceResidualMeters": 1.4,
+    "heldOutPsnr": 21.3,
+    "heldOutSsim": 0.71,
+    "gaussians": 812345,
+    "trainingIterations": 7000,
+    "trainingSeconds": 412.0,
+    "gpuSeconds": 655.0,
+    "peakVramMb": 9800,
+    "wallSeconds": 980.0,
+    "inputBytesDownloaded": 15233211,
+    "cacheHitRatio": 0.5,
+    "outputBytes": 21003322
+  },
+  "gates": { "passed": true, "failures": [] },
+  "assets": [
+    { "role": "splat", "format": "spz", "key": "jobs/7c1e9a02-5d44-4b8b-9e1f-3a6c0d2b8e55/attempt-1/scene.spz", "sha256": "cc00000000000000000000000000000000000000000000000000000000000001", "byteSize": 18000000, "contentType": "application/octet-stream", "gaussians": 812345 },
+    { "role": "splat_preview", "format": "spz", "key": "jobs/7c1e9a02-5d44-4b8b-9e1f-3a6c0d2b8e55/attempt-1/preview.spz", "sha256": "cc00000000000000000000000000000000000000000000000000000000000002", "byteSize": 2900000, "contentType": "application/octet-stream", "gaussians": 150000 },
+    { "role": "poster", "format": "jpeg", "key": "jobs/7c1e9a02-5d44-4b8b-9e1f-3a6c0d2b8e55/attempt-1/poster.jpg", "sha256": "cc00000000000000000000000000000000000000000000000000000000000003", "byteSize": 103322, "contentType": "image/jpeg" }
+  ],
+  "initialView": { "position": [0, 0, 1.6], "target": [0, 10, 1.6] },
+  "observedFrom": "2024-06-26T09:12:03.000Z",
+  "observedTo": "2024-06-27T10:40:11.000Z",
+  "provenance": {
+    "pipelineVersion": "goway-reconstruction/1",
+    "privacyPipelineVersions": ["goway-privacy/1"],
+    "components": { "sfm": "pycolmap 4.2.1", "trainer": "gsplat 1.5.3", "torch": "2.14.1+cu130" },
+    "inputs": [
+      { "frameId": "f-01", "imageSha256": "aa00000000000000000000000000000000000000000000000000000000000001" },
+      { "frameId": "f-02", "imageSha256": "aa00000000000000000000000000000000000000000000000000000000000002" }
+    ]
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "jobId": "7c1e9a02-5d44-4b8b-9e1f-3a6c0d2b8e55",
+  "sceneId": "a2e4c6f8-1b3d-4e5f-8a9b-0c1d2e3f4a5b",
+  "sceneVersion": 3,
+  "profile": "draft",
+  "anchor": { "latitude": 48.8684, "longitude": 2.3020 },
+  "radiusMeters": 90,
+  "frames": [
+    {
+      "frameId": "f-01",
+      "captureAssetId": "0d3c2f8e-7a51-4c3e-8f0a-2b9d6e4c1a77",
+      "imageKey": "derived/privacy/0d3c2f8e-7a51-4c3e-8f0a-2b9d6e4c1a77/4b0f6a43-1f7e-4a54-9c1e-6f0b8f3d2a10/000000.jpg",
+      "imageSha256": "aa00000000000000000000000000000000000000000000000000000000000001",
+      "maskKey": "derived/privacy/0d3c2f8e-7a51-4c3e-8f0a-2b9d6e4c1a77/4b0f6a43-1f7e-4a54-9c1e-6f0b8f3d2a10/000000.mask.png",
+      "maskSha256": "bb00000000000000000000000000000000000000000000000000000000000001",
+      "width": 2048,
+      "height": 1536,
+      "privacyPipelineVersion": "goway-privacy/1",
+      "sequenceGroup": "g-1",
+      "sequenceIndex": 0,
+      "capturedAt": "2024-06-26T09:12:03.000Z",
+      "prior": { "latitude": 48.86842, "longitude": 2.30199, "altitudeMeters": 52.1, "accuracyMeters": 4.5, "headingDegrees": 271.0 },
+      "camera": { "focalLength35mm": 26 }
+    },
+    {
+      "frameId": "f-02",
+      "captureAssetId": "1e4d3f9a-8b62-4d4f-9a1b-3c0e7f5d2b88",
+      "imageKey": "derived/privacy/1e4d3f9a-8b62-4d4f-9a1b-3c0e7f5d2b88/5c1a7b54-2a8f-4b65-8d2f-7a1c9e4b3f21/000000.jpg",
+      "imageSha256": "aa00000000000000000000000000000000000000000000000000000000000002",
+      "maskKey": "derived/privacy/1e4d3f9a-8b62-4d4f-9a1b-3c0e7f5d2b88/5c1a7b54-2a8f-4b65-8d2f-7a1c9e4b3f21/000000.mask.png",
+      "maskSha256": "bb00000000000000000000000000000000000000000000000000000000000002",
+      "width": 2048,
+      "height": 1536,
+      "privacyPipelineVersion": "goway-privacy/1",
+      "sequenceGroup": "g-2",
+      "sequenceIndex": 0,
+      "prior": { "latitude": 48.86845, "longitude": 2.30204 }
+    }
+  ],
+  "budgets": {
+    "maxTrainingIterations": 7000,
+    "maxGaussians": 1500000,
+    "maxAssetBytes": 60000000,
+    "maxTrainingLongEdgePixels": 1600
+  },
+  "gates": {
+    "minRegisteredFrames": 8,
+    "minRegistrationRatio": 0.5,
+    "maxMeanReprojectionErrorPx": 2.0,
+    "minGeoreferenceInliers": 5,
+    "maxMedianGeoreferenceResidualMeters": 8.0,
+    "minHeldOutPsnr": 17.0
+  }
+}
