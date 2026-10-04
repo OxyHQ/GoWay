@@ -97,11 +97,13 @@ list is the OpenAPI document; the Places reads:
 
 | route | auth | answers |
 | --- | --- | --- |
-| `GET /places/{placeId}` | public | one `Place`; `410 gone` if moderation removed it |
+| `GET /places/{placeId}` | public | one `Place`; `410 gone` if moderation removed it, with `details.mergedInto` if it was merged |
 | `GET /places/nearby?latitude&longitude&radiusMeters` | public | a `PlaceWithDistancePage`, nearest first |
 | `GET /places/bounds?west&south&east&north` | public | a `PlacePage` of the viewport, by place id |
 | `POST /places` | Oxy session | 201 + the created `Place` |
 | `PATCH /places/{placeId}` | Oxy session | the updated `Place` |
+| `GET /places/{placeId}/revisions` | public | a `PlaceRevisionPage`, newest first: what changed and when, never who |
+| `POST /places/{placeId}/reports` | Oxy session | 201 + the `PlaceReport`, or 200 + the reporter's open one |
 
 Reads are public because the map opens without an account. `?capabilities=` is a
 conjunction over each key's STRONGEST assertion, which must hold (a business's
@@ -124,7 +126,28 @@ Three rules the code is written to and the tests measure:
   wrong hemisphere, so the ordinate order is asserted against a real distance
   (Barcelona→Madrid ≈ 507 km; transposed it reads 659 km).
 - Reconciliation links on `(source, sourceId)` and MERGES NOTHING. Look-alikes
-  become rows in `places_duplicate_candidates` for review.
+  become rows in `places_duplicate_candidates`, and only an operator merges
+  (`POST /moderation/duplicates/{id}/resolution`).
+- Every write records one `place_revisions` row IN ITS OWN TRANSACTION.
+  `placeRevisions.realdb.test.ts` proves it by making the revision insert fail
+  and asserting the write did not land.
+
+A claim names an Oxy account — usually an organization — and Oxy decides who may
+act for it: the session that switched into it, or a member Oxy reports as
+`owner`, `admin` or `editor` (`owner`/`admin` to file a claim in its name).
+GoWay asks `GET /accounts/:id` with the caller's own bearer, caches the answer
+30 s per person and account, and answers `503` when Oxy cannot. Design note:
+`docs/BUSINESS_OWNERSHIP.md`.
+
+## Moderation
+
+`/api/v1/moderation/*` is the operator surface: the claim queue and decisions,
+`oxy_verified` capabilities and the place's verification state, removing and
+restoring a place, the duplicate queue and merges, the report queue, and a
+place's full history with who made each change. Every route is behind
+`requireAuth` and the operator allow-list `MODERATION_OPERATOR_OXY_USER_IDS`
+(Oxy user ids, matched against the person behind the session; empty means
+nobody). Every decision records a revision in the same transaction.
 
 ## Importing OpenStreetMap POIs
 
@@ -495,11 +518,12 @@ carries the full argument; this is the summary.
 The public lane is exactly:
 
 ```text
-GET  /api/v1/places            GET  /api/v1/search
-GET  /api/v1/places/nearby     GET  /api/v1/geocode
-GET  /api/v1/places/bounds     GET  /api/v1/geocode/reverse
-GET  /api/v1/places/:id        GET  /api/v1/geocode/structured
-POST /api/v1/routes
+GET  /api/v1/openapi.json            GET  /api/v1/search
+GET  /api/v1/places/nearby           GET  /api/v1/geocode
+GET  /api/v1/places/bounds           GET  /api/v1/geocode/reverse
+GET  /api/v1/places/:id              GET  /api/v1/geocode/structured
+GET  /api/v1/places/:id/revisions    GET  /api/v1/street3d/coverage
+POST /api/v1/routes                  GET  /api/v1/street3d/scenes/:id
 ```
 
 `POST /routes` is a read in every sense but the verb — a directions request is a

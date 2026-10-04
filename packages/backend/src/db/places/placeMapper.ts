@@ -126,7 +126,6 @@ export const CLAIM_COLUMNS = {
   id: placesClaims.id,
   placeId: placesClaims.placeId,
   oxyAccountId: placesClaims.oxyAccountId,
-  brandId: placesClaims.brandId,
   role: placesClaims.role,
   state: placesClaims.state,
   claimedAt: placesClaims.claimedAt,
@@ -262,7 +261,6 @@ export function toClaim(row: ClaimRow): PlaceClaim {
     oxyAccountId: row.oxyAccountId,
     claimedAt: row.claimedAt.toISOString(),
   };
-  put(claim, 'brandId', optionalText(row.brandId));
   if (row.decidedAt !== null) claim.decidedAt = row.decidedAt.toISOString();
   return claim;
 }
@@ -293,8 +291,8 @@ export function toPlace(
     name: row.name,
     location: { latitude: row.latitude, longitude: row.longitude },
     categories: row.categories,
-    // Every read that maps a row excludes `removed` in SQL, so the published
-    // status is one of the three a place can be published in.
+    // Every read that maps a row selects only the published statuses in SQL,
+    // so the status is one of the three a place can be published in.
     status: row.status as Place['status'],
     verification: { state: row.verificationState as PlaceVerificationState },
     sources: [...children.sources]

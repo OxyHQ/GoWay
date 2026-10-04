@@ -32,9 +32,10 @@ import {
 import { ApiError } from '../../http/apiError';
 import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import { createPlacesRouter } from '../places';
+import { apiAuthor, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 
 const CONTRIBUTOR: PlaceActor = {
-  oxyUserId: 'user-contributor',
+  author: apiAuthor('user-contributor'),
   assertedVerification: 'community_reported',
 };
 
@@ -120,7 +121,7 @@ beforeAll(async () => {
 
   const app = express();
   app.use(express.json());
-  app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth }));
+  app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }));
   app.use(unknownRouteHandler);
   app.use(errorHandler);
 

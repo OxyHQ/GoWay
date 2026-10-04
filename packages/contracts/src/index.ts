@@ -24,6 +24,8 @@ export * from './pagination';
 export * from './query';
 export * from './errors';
 export * from './place';
+export * from './revision';
+export * from './moderation';
 export * from './capture';
 export * from './street3d';
 export * from './search';

@@ -41,9 +41,10 @@ import {
 import { ApiError } from '../../http/apiError';
 import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import { createPlacesRouter } from '../places';
+import { apiAuthor, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 
 const CONTRIBUTOR: PlaceActor = {
-  oxyUserId: 'user-contributor',
+  author: apiAuthor('user-contributor'),
   assertedVerification: 'community_reported',
 };
 
@@ -116,7 +117,7 @@ beforeAll(async () => {
 
   const app = express();
   app.use(express.json());
-  app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth }));
+  app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }));
   app.use(unknownRouteHandler);
   app.use(errorHandler);
 
@@ -201,6 +202,6 @@ describe('discovering merchants near a user', () => {
     // The distinction only holds while the column stays unpublished, because a
     // contributor id beside a coordinate reads exactly like a location trace.
     const { body } = await call<Record<string, unknown>>(`/places/${shop.id}`);
-    expect(JSON.stringify(body)).not.toContain(CONTRIBUTOR.oxyUserId);
+    expect(JSON.stringify(body)).not.toContain(CONTRIBUTOR.author.oxyAccountId);
   });
 });

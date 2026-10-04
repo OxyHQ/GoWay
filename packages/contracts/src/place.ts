@@ -58,10 +58,12 @@ export const placeIdSchema = z.string().trim().min(1).max(128);
 /**
  * Lifecycle state of a place as GoWay understands it.
  *
- * `removed` is a stored state and never a published one: a removed place
- * answers `410 gone` by id and is absent from every list.
+ * `removed` and `merged` are stored states and never published ones. A removed
+ * place answers `410 gone` by id and is absent from every list. A merged place
+ * answers `410 gone` too, with `details.mergedInto` naming the place that
+ * absorbed it (see {@link GONE_MERGED_INTO_DETAIL}).
  */
-export const PLACE_STATUSES = ['active', 'closed', 'proposed', 'removed'] as const;
+export const PLACE_STATUSES = ['active', 'closed', 'proposed', 'removed', 'merged'] as const;
 export type PlaceStatus = (typeof PLACE_STATUSES)[number];
 
 /**
@@ -75,8 +77,32 @@ export type PlaceStatus = (typeof PLACE_STATUSES)[number];
 export const WRITABLE_PLACE_STATUSES = ['active', 'closed', 'proposed'] as const satisfies readonly PlaceStatus[];
 export type WritablePlaceStatus = (typeof WRITABLE_PLACE_STATUSES)[number];
 
-/** The statuses a published place can carry: everything but `removed`. */
+/** The statuses a published place can carry: everything but `removed` and `merged`. */
 export const PUBLISHED_PLACE_STATUSES = WRITABLE_PLACE_STATUSES;
+
+/**
+ * The statuses moderation may set directly.
+ *
+ * Everything a caller may write plus `removed`, which withdraws a place from the
+ * map. `merged` is absent: a place becomes merged only by resolving a duplicate
+ * candidate, which is what records the place that absorbed it.
+ */
+export const MODERATED_PLACE_STATUSES = [
+  ...WRITABLE_PLACE_STATUSES,
+  'removed',
+] as const satisfies readonly PlaceStatus[];
+export type ModeratedPlaceStatus = (typeof MODERATED_PLACE_STATUSES)[number];
+
+/**
+ * The `details` key of a `410 gone` that names where a MERGED place went.
+ *
+ * A merged place's id keeps answering, and the answer is a pointer rather than
+ * a body: `{ "error": { "code": "gone", "details": { "mergedInto": "<placeId>" } } }`.
+ * A consumer holding the old id replaces it with this one. The pointer is
+ * always one hop: merging the survivor later re-points every place merged into
+ * it. A removed place's `gone` carries no such key.
+ */
+export const GONE_MERGED_INTO_DETAIL = 'mergedInto';
 
 // ── Address, contact, hours ─────────────────────────────────────────────────
 
@@ -418,17 +444,24 @@ export type PlaceClaimRole = (typeof PLACE_CLAIM_ROLES)[number];
 export const PLACE_CLAIM_STATES = ['pending', 'approved', 'rejected', 'revoked'] as const;
 export type PlaceClaimState = (typeof PLACE_CLAIM_STATES)[number];
 
-/** A claimed relationship between an Oxy account/organization and a place. */
+/** An Oxy account id as a caller names it. Opaque: never parsed. */
+export const oxyAccountIdSchema = z.string().trim().min(1).max(128);
+
+/**
+ * A claimed relationship between an Oxy account and a place.
+ *
+ * The account is usually an Oxy ORGANIZATION: the business is the organization,
+ * and Oxy decides who may act for it. A chain is an organization claiming each
+ * of its locations in the `brand` role; there is no separate brand id.
+ */
 export const placeClaimSchema = z.object({
   id: z.string().min(1),
   /** The place this claim is over. */
   placeId: placeIdSchema,
   role: z.enum(PLACE_CLAIM_ROLES),
   state: z.enum(PLACE_CLAIM_STATES),
-  /** The claiming Oxy account or organization. Oxy owns identity; GoWay stores the reference only. */
+  /** The claiming Oxy account, usually an organization. Oxy owns identity; GoWay stores the reference only. */
   oxyAccountId: z.string().min(1),
-  /** Groups the locations of one multi-location business. */
-  brandId: z.string().min(1).optional(),
   /** ISO 8601. */
   claimedAt: instantSchema,
   /** ISO 8601. When the claim left `pending`; absent while it is pending. */
@@ -445,8 +478,12 @@ export type PlaceClaim = z.infer<typeof placeClaimSchema>;
  */
 export const placeClaimInputSchema = z.object({
   role: z.enum(PLACE_CLAIM_ROLES),
-  /** The Oxy organization this location trades under, for a multi-location business. */
-  brandId: z.string().trim().min(1).max(128).optional(),
+  /**
+   * The Oxy account to file the claim for — usually the business's
+   * organization. Defaults to the session's own account. Naming another account
+   * requires an `owner` or `admin` role in it, which GoWay checks with Oxy.
+   */
+  oxyAccountId: oxyAccountIdSchema.optional(),
 });
 export type PlaceClaimInput = z.input<typeof placeClaimInputSchema>;
 
@@ -713,7 +750,7 @@ export type PlacesInBoundsQuery = z.input<typeof placesInBoundsQuerySchema>;
 export const MAX_CLAIM_LIST_LIMIT = 200;
 export const DEFAULT_CLAIM_LIST_LIMIT = 50;
 
-/** `GET /places/{placeId}/claims` and `GET /claims` — oldest first, keyset-paged by claim time. */
+/** `GET /places/{placeId}/claims` — oldest first, keyset-paged by claim time. */
 export const claimListQuerySchema = z
   .object({
     limit: limitSchema(MAX_CLAIM_LIST_LIMIT, DEFAULT_CLAIM_LIST_LIMIT),
@@ -721,3 +758,17 @@ export const claimListQuerySchema = z
   })
   .strict();
 export type ClaimListQuery = z.input<typeof claimListQuerySchema>;
+
+/** `GET /claims` — one account's claims, oldest first, keyset-paged by claim time. */
+export const accountClaimListQuerySchema = z
+  .object({
+    /**
+     * Whose claims: an Oxy account the caller may act for (an `owner`, `admin`
+     * or `editor` of it). Defaults to the session's own account.
+     */
+    oxyAccountId: oxyAccountIdSchema.optional(),
+    limit: limitSchema(MAX_CLAIM_LIST_LIMIT, DEFAULT_CLAIM_LIST_LIMIT),
+    cursor: cursorSchema.optional(),
+  })
+  .strict();
+export type AccountClaimListQuery = z.input<typeof accountClaimListQuerySchema>;

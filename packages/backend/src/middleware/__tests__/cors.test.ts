@@ -42,7 +42,9 @@ import { createApp } from '../../app';
 import { createCaptureRouter } from '../../routes/capture';
 import { createOpenApiRouter } from '../../routes/openapi';
 import { createRoutesRouter } from '../../routes/directions';
+import { createModerationRouter } from '../../routes/moderation';
 import { createPlacesRouter } from '../../routes/places';
+import { NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createSearchRouter } from '../../routes/search';
 import { createGoWayCors, isPublicReadRequest, PUBLIC_READ_ROUTES } from '../cors';
 
@@ -453,7 +455,10 @@ describe('the public table, checked against the routers it claims to describe', 
   };
 
   const everyRoute: RegisteredRoute[] = [
-    ...registeredRoutes(createPlacesRouter({ optionalAuth, requireAuth })),
+    ...registeredRoutes(
+      createPlacesRouter({ optionalAuth, requireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }),
+    ),
+    ...registeredRoutes(createModerationRouter({ requireAuth, requireOperator: requireAuth })),
     ...registeredRoutes(createRoutesRouter({ optionalAuth, provider: null })),
     ...registeredRoutes(createSearchRouter({ optionalAuth })),
     ...registeredRoutes(createCaptureRouter({ optionalAuth, requireAuth, objectStore: null })),
@@ -496,6 +501,7 @@ describe('the public table, checked against the routers it claims to describe', 
       'GET /geocode/structured',
       'GET /openapi.json',
       'GET /places/:placeId',
+      'GET /places/:placeId/revisions',
       'GET /places/bounds',
       'GET /places/nearby',
       'GET /search',
@@ -511,6 +517,7 @@ describe('the public table, checked against the routers it claims to describe', 
 
     expect(refused).toEqual([
       'DELETE /captures/assets/:assetId',
+      'DELETE /moderation/places/:placeId/capabilities/:key',
       'DELETE /places/:placeId/capabilities/:key',
       'GET /captures/assets/:assetId',
       'GET /captures/policy',
@@ -518,13 +525,23 @@ describe('the public table, checked against the routers it claims to describe', 
       'GET /captures/sessions/:sessionId',
       'GET /captures/sessions/:sessionId/assets',
       'GET /claims',
+      'GET /moderation/claims',
+      'GET /moderation/duplicates',
+      'GET /moderation/places/:placeId/revisions',
+      'GET /moderation/reports',
       'GET /places/:placeId/claims',
+      'PATCH /moderation/places/:placeId',
       'PATCH /places/:placeId',
       'POST /captures/assets/:assetId/finalize',
       'POST /captures/sessions',
       'POST /captures/sessions/:sessionId/assets',
+      'POST /moderation/claims/:claimId/decision',
+      'POST /moderation/duplicates/:candidateId/resolution',
+      'POST /moderation/reports/:reportId/resolution',
       'POST /places',
       'POST /places/:placeId/claims',
+      'POST /places/:placeId/reports',
+      'PUT /moderation/places/:placeId/capabilities/:key',
       'PUT /places/:placeId/capabilities/:key',
     ]);
   });

@@ -158,6 +158,10 @@ interface PublicRoute {
  *     `POST /places/:placeId/claims` — writes, behind `requireAuth`.
  *   - `GET /places/:placeId/claims`, `GET /claims` — one account's claim history,
  *     behind `requireAuth`. A read, but not a public one.
+ *   - `POST /places/:placeId/reports` — a moderation request somebody is
+ *     accountable for, behind `requireAuth`.
+ *   - every `/moderation/*` route — the operator surface, behind `requireAuth`
+ *     and the operator allow-list.
  *   - every `/captures/*` route — contributions are identity-bound, and even
  *     `GET /captures/policy` (`optionalAuth`) stays on the strict lane: it is
  *     the contribution surface, which no third-party page has a reason to call
@@ -174,6 +178,11 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
     method: 'GET',
     path: '/places/:placeId',
     because: 'one public place; a deep link anybody already holds must resolve',
+  },
+  {
+    method: 'GET',
+    path: '/places/:placeId/revisions',
+    because: "a place's public history: what changed and when, never who, the same for every caller",
   },
   { method: 'GET', path: '/search', because: 'the search box, signed out' },
   { method: 'GET', path: '/geocode', because: 'forward geocoding, signed out' },

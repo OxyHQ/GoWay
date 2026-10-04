@@ -39,8 +39,9 @@ import { SUITE_SETUP_TIMEOUT_MS, createSuiteDatabase, destroySuiteDatabase, type
 import { ApiError } from '../../http/apiError';
 import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import { createPlacesRouter } from '../places';
+import { apiAuthor, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 
-const CONTRIBUTOR: PlaceActor = { oxyUserId: 'user-contributor', assertedVerification: 'community_reported' };
+const CONTRIBUTOR: PlaceActor = { author: apiAuthor('user-contributor'), assertedVerification: 'community_reported' };
 
 /** Plaça de Catalunya and two points around it, so distances are real. */
 const CATALUNYA = { latitude: 41.387, longitude: 2.17 };
@@ -105,7 +106,7 @@ beforeAll(async () => {
   app.use(express.json());
   // Mounted at the path `GOWAY_API_BASE_PATH` names, so every URL this file
   // requests is byte-identical to one the SDK would build.
-  app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth }));
+  app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }));
   app.use(unknownRouteHandler);
   app.use(errorHandler);
 

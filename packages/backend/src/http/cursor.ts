@@ -12,7 +12,8 @@
  * ## Keyset where the list has an order, an offset only where it cannot
  *
  * A nearby list resumes at `(distance, id)`, a viewport at `id` (uuidv7, so
- * creation order), claims and captures at `(timestamp, id)`. A keyset position
+ * creation order), claims, captures, revisions and the moderation queues at
+ * `(timestamp, id)`. A keyset position
  * is immune to rows arriving or leaving between pages: no duplicate and no gap,
  * and no cost that grows with depth. Search is the exception — its order is a
  * fused score over several providers' rankings, recomputed per request, so it
@@ -41,7 +42,12 @@ export const CURSOR_KINDS = [
   'places-nearby',
   'places-bounds',
   'place-claims',
-  'my-claims',
+  'account-claims',
+  'place-revisions',
+  'moderation-claims',
+  'moderation-revisions',
+  'moderation-duplicates',
+  'moderation-reports',
   'search',
   'geocode',
   'reverse-geocode',

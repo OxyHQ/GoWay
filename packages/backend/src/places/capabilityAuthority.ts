@@ -23,19 +23,22 @@
  *      somebody decides which kind it is, exactly as `API_ERROR_STATUS` does
  *      for error codes.
  *   2. {@link assertableVerification} derives the tier from a
- *      {@link PlaceAuthorization} — approved claims read from the database —
- *      and returns a type that CANNOT hold `oxy_verified`. Every write path
- *      types its actor with that union, so reaching the strong tier is a type
- *      error rather than a policy violation.
+ *      {@link PlaceStanding} — the approved claims the caller acts for, read
+ *      from the database and resolved against Oxy (`places/claimAuthority`) —
+ *      and returns a type that CANNOT hold `oxy_verified`. Every public write
+ *      path types its actor with that union, so reaching the strong tier is a
+ *      type error rather than a policy violation.
  *   3. {@link assertWritableVerification} is the last gate before the INSERT,
  *      and it refuses a moderation-origin tier at runtime whatever produced it.
  *      Belt and braces on purpose: (2) is erased at compile time, so it cannot
  *      defend against a value that arrives through a `Record<string, unknown>`
  *      or a future `as` cast.
  *
- * `oxy_verified` therefore has no API path in or out. Issue #4 established that
- * deliberately and `placeCapabilities.realdb.test.ts` proves it stays true,
- * including for a caller who sends the field directly.
+ * `oxy_verified` therefore has no PUBLIC path in or out — including for a
+ * caller who sends the field directly, as `placeCapabilities.realdb.test.ts`
+ * proves. Its one path is moderation: `db/places/moderationRepository` writes
+ * and withdraws that tier, behind the operator allow-list, and nothing else in
+ * this package can name it.
  */
 
 import {
@@ -44,7 +47,7 @@ import {
   type PlaceClaimRole,
 } from '@goway/contracts';
 import { ApiError } from '../http/apiError';
-import type { PlaceAuthorization } from '../db/places/placesRepository';
+import type { PlaceStanding } from './claimAuthority';
 
 /**
  * Where a verification tier's value comes from.
@@ -55,8 +58,9 @@ import type { PlaceAuthorization } from '../db/places/placesRepository';
  *                   outlives the request. `external_source` names a row in
  *                   `places_sources`, which the table's CHECK requires and
  *                   which a reviewer can go and check against that source.
- *  - `moderation` — a statement GoWay makes, through a reviewed act that is not
- *                   this API. No request may produce one.
+ *  - `moderation` — a statement GoWay makes, through a reviewed act: an
+ *                   operator on the moderation surface. No public request may
+ *                   produce one.
  */
 export type VerificationOrigin = 'actor' | 'evidence' | 'moderation';
 
@@ -113,10 +117,10 @@ export const ASSERTABLE_VERIFICATIONS: readonly AssertableVerification[] =
  * location; `brand` is the chain the location trades under, and a chain saying
  * "our shops take FairCoin" is a business assertion about its own shops. What
  * separates a business assertion from a community report is not the role — it
- * is that the claim was APPROVED, which {@link PlaceAuthorization} has already
+ * is that the claim was APPROVED, which {@link PlaceStanding} has already
  * filtered on before this is consulted.
  */
-const CLAIM_ROLE_SPEAKS_FOR_BUSINESS: Readonly<Record<PlaceClaimRole, boolean>> = {
+export const CLAIM_ROLE_SPEAKS_FOR_BUSINESS: Readonly<Record<PlaceClaimRole, boolean>> = {
   owner: true,
   operator: true,
   manager: true,
@@ -126,17 +130,18 @@ const CLAIM_ROLE_SPEAKS_FOR_BUSINESS: Readonly<Record<PlaceClaimRole, boolean>> 
 /**
  * The tier this caller's UNSOURCED assertion earns on this place.
  *
- * `business_asserted` for an account holding an approved claim in an
- * authoritative role, `community_reported` for every other authenticated
- * caller. Nothing else is reachable: the return type says so, and the caller's
- * standing is read from `places_claims` rather than from the request.
+ * `business_asserted` for a caller acting for an approved claim in an
+ * authoritative role — the claimant itself, or a member Oxy says may act for
+ * it — and `community_reported` for every other authenticated caller. Nothing
+ * else is reachable: the return type says so, and the caller's standing is
+ * read from `places_claims` and Oxy rather than from the request.
  *
  * A capability that NAMES a source is `external_source` instead, decided in the
  * repository beside the source link that makes it true — evidence, not
  * standing, and the table refuses the tier without the link.
  */
-export function assertableVerification(authorization: PlaceAuthorization): AssertableVerification {
-  const speaksForBusiness = authorization.callerRoles.some(
+export function assertableVerification(standing: PlaceStanding): AssertableVerification {
+  const speaksForBusiness = standing.callerRoles.some(
     (role) => CLAIM_ROLE_SPEAKS_FOR_BUSINESS[role],
   );
   return speaksForBusiness ? 'business_asserted' : 'community_reported';
@@ -162,9 +167,9 @@ export function assertableVerification(authorization: PlaceAuthorization): Asser
  * it stopped being true".
  */
 export function withdrawableVerification(
-  authorization: PlaceAuthorization,
+  standing: PlaceStanding,
 ): Extract<AssertableVerification, 'business_asserted'> | null {
-  return assertableVerification(authorization) === 'business_asserted' ? 'business_asserted' : null;
+  return assertableVerification(standing) === 'business_asserted' ? 'business_asserted' : null;
 }
 
 /**

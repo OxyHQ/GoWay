@@ -81,7 +81,6 @@ const CLAIM: ClaimRow = {
   id: 'claim-1',
   placeId: 'place-1',
   oxyAccountId: 'acct-1',
-  brandId: null,
   role: 'owner',
   state: 'approved',
   claimedAt: CREATED,
@@ -128,8 +127,6 @@ describe('absent is not empty', () => {
       claimedAt: CREATED.toISOString(),
       decidedAt: CREATED.toISOString(),
     });
-    // `brandId` was null, so it is absent rather than `undefined` or `null`.
-    expect(visible.claims?.[0]).not.toHaveProperty('brandId');
   });
 });
 

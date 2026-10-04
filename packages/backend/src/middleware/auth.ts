@@ -30,8 +30,11 @@ import {
   type OxyRequestUser,
 } from '@oxy.so/core/server';
 import type { Request, RequestHandler } from 'express';
+import type { OxyActorChain } from '../oxy/caller';
 import { config } from '../config';
 import { ApiError, type ApiErrorBody } from '../http/apiError';
+import { createAccountRoleResolver, type AccountRoleResolver } from '../oxy/accountRoles';
+import { createRequireOperator } from './operator';
 
 /**
  * Express's `Request` gains the fields `@oxy.so/core/server` populates.
@@ -48,6 +51,8 @@ declare global {
       userId?: string;
       accessToken?: string;
       user?: OxyRequestUser | null;
+      /** Who acted, and as whom. Read it with `oxyCallerOf`, never directly. */
+      oxyActor?: OxyActorChain | null;
     }
   }
 }
@@ -65,6 +70,12 @@ export const requireAuth: RequestHandler = createOxyAuthMiddleware(oxyClient);
  * that is the whole point of a map that opens without an account.
  */
 export const optionalAuth: RequestHandler = createOptionalOxyAuth(oxyClient);
+
+/** Answers "what is this caller's role in that Oxy account?" — see `oxy/accountRoles`. */
+export const accountRoles: AccountRoleResolver = createAccountRoleResolver({ oxyApiUrl: config.oxyApiUrl });
+
+/** The moderation gate for this process's operator allow-list. Mounted after `requireAuth`. */
+export const requireOperator: RequestHandler = createRequireOperator(config.moderationOperatorOxyUserIds);
 
 /**
  * The 429 body: GoWay's error envelope, never the limiter's plain text.
@@ -104,12 +115,13 @@ export function createGoWayRateLimit(options: Omit<OxyRateLimitOptions, 'message
 export const apiRateLimit: RequestHandler = createGoWayRateLimit();
 
 /**
- * A tighter limit for Street 3D scene reports, on top of `apiRateLimit`.
+ * A tighter limit for reports — of a Street 3D scene or of a place — on top of
+ * `apiRateLimit`.
  *
  * A report is a moderation request a human reads; thirty in fifteen minutes is
  * far beyond any honest use and far below what would bury a moderator.
  */
-export const street3dReportRateLimit: RequestHandler = createGoWayRateLimit({
+export const reportRateLimit: RequestHandler = createGoWayRateLimit({
   authenticatedMax: 30,
   anonymousMax: 30,
   windowMs: 15 * 60_000,

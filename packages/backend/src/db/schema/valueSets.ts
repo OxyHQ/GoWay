@@ -2,62 +2,18 @@
  * Closed value sets that are INTERNAL to the backend.
  *
  * Every set the API publishes — place status, verification state, capability
- * verification, claim role and claim state — is declared once in
+ * verification, claim role and claim state, and the duplicate-candidate and
+ * report vocabularies the moderation surface reads — is declared once in
  * `@goway/contracts` and imported from there by both the schema and the
  * SDK, so the public contract, the TypeScript union and the database CHECK
  * cannot drift apart. Nothing in that family belongs in this file.
  *
  * What is here is the vocabulary of GoWay's own MACHINERY, which is
- * deliberately not public: duplicate candidates are review state rather than a
- * place fact, and object storage state is how bytes are being managed rather
- * than anything a contributor can act on. Publishing either would freeze a
- * strategy — matching, or object storage — into an SDK contract that a better
- * implementation could not change.
+ * deliberately not public: object storage state is how bytes are being managed
+ * rather than anything a contributor can act on. Publishing it would freeze an
+ * object-storage strategy into an SDK contract that a better implementation
+ * could not change.
  */
-
-/**
- * Why two places were flagged as possibly the same place.
- *
- * The set is the whole of the "do not merge on name similarity alone" rule
- * expressed as data. `shared_source_id` is DETERMINISTIC — two GoWay places
- * that both claim the same `(source, sourceId)` are the same real-world record
- * by definition of that source's own identifier — and it is still only a
- * candidate, because deciding which of the two survives is a review, not an
- * inference.
- *
- * `proximity_and_name` requires BOTH: an identical normalized name AND a
- * position within a few tens of metres. Name alone is not on this list and must
- * not be added to it — "Farmacia" matches several thousand real, distinct
- * places in Spain alone, and a merge is not reversible from the outside.
- *
- * `proximity_and_translated_name` is the SAME co-signal rule applied across
- * `places_names`: two places within the same few tens of metres whose name SETS
- * intersect, where their default names do not. It is a separate value rather
- * than a widening of `proximity_and_name` for two reasons. The first is that
- * each value here is a RULE, and a reviewer who cannot tell which rule fired
- * cannot weigh the answer. The second is that the false-positive profile is
- * worse, not better: the generic-name problem gets larger across languages,
- * because "Farmacia", "Pharmacie", "Pharmacy" and "Apotheke" all collide with
- * each other as well as with themselves. Widening the existing value would have
- * changed what every historic `proximity_and_name` row meant.
- */
-export const DUPLICATE_CANDIDATE_REASONS = [
-  'shared_source_id',
-  'proximity_and_name',
-  'proximity_and_translated_name',
-  'manual_report',
-] as const;
-export type DuplicateCandidateReason = (typeof DUPLICATE_CANDIDATE_REASONS)[number];
-
-/**
- * Where a duplicate candidate is in review.
- *
- * `open` is the only state this issue's code ever writes. Nothing merges
- * automatically: a candidate is a queue entry for a human or a later reviewed
- * process, which is what keeps a false positive cheap.
- */
-export const DUPLICATE_CANDIDATE_STATES = ['open', 'confirmed', 'rejected'] as const;
-export type DuplicateCandidateState = (typeof DUPLICATE_CANDIDATE_STATES)[number];
 
 /**
  * Where an object's BYTES are, as distinct from what the contribution means.

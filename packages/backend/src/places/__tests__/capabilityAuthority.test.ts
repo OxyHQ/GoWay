@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from 'bun:test';
 import { CAPABILITY_VERIFICATIONS, PLACE_CLAIM_ROLES } from '@goway/contracts';
-import type { PlaceAuthorization } from '../../db/places/placesRepository';
+import type { PlaceStanding } from '../claimAuthority';
 import { isApiError } from '../../http/apiError';
 import {
   ASSERTABLE_VERIFICATIONS,
@@ -27,8 +27,8 @@ import {
   type AssertableVerification,
 } from '../capabilityAuthority';
 
-function authorization(overrides: Partial<PlaceAuthorization> = {}): PlaceAuthorization {
-  return { exists: true, removed: false, claimed: false, callerRoles: [], ...overrides };
+function authorization(overrides: Partial<PlaceStanding> = {}): PlaceStanding {
+  return { claimed: false, callerRoles: [], ...overrides };
 }
 
 describe('assertableVerification', () => {

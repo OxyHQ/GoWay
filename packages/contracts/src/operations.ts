@@ -17,6 +17,12 @@ import { captureListQuerySchema } from './capture';
 import type { ApiErrorCode } from './errors';
 import type { ContractSchemaName } from './json-schema';
 import {
+  duplicateListQuerySchema,
+  moderationClaimListQuerySchema,
+  moderationReportListQuerySchema,
+} from './moderation';
+import {
+  accountClaimListQuerySchema,
   capabilityKeySchema,
   claimListQuerySchema,
   nearbyPlacesQuerySchema,
@@ -24,6 +30,7 @@ import {
   placeReadQuerySchema,
   placesInBoundsQuerySchema,
 } from './place';
+import { revisionListQuerySchema } from './revision';
 import { reverseGeocodeQuerySchema, searchParametersSchema, structuredGeocodeQuerySchema } from './search';
 import { streetCoverageQuerySchema } from './street3d';
 
@@ -39,7 +46,7 @@ export type ApiAuth = 'public' | 'optional' | 'required';
 
 export type ApiMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
-export type ApiTag = 'Places' | 'Claims' | 'Search' | 'Directions' | 'Captures' | 'Street 3D';
+export type ApiTag = 'Places' | 'Claims' | 'Moderation' | 'Search' | 'Directions' | 'Captures' | 'Street 3D';
 
 export interface ApiOperation {
   readonly operationId: string;
@@ -67,6 +74,12 @@ export const UNIVERSAL_ERROR_CODES = ['rate_limited', 'internal_error'] as const
 export const placePathSchema = z.object({ placeId: placeIdSchema });
 /** `{placeId}` and a capability `{key}` such as `payments.faircoin.accepted`. */
 export const capabilityPathSchema = z.object({ placeId: placeIdSchema, key: capabilityKeySchema });
+/** `{claimId}` */
+export const claimPathSchema = z.object({ claimId: z.string().min(1).max(128) });
+/** `{candidateId}` — a duplicate candidate. */
+export const duplicatePathSchema = z.object({ candidateId: z.string().min(1).max(128) });
+/** `{reportId}` — a place report. */
+export const reportPathSchema = z.object({ reportId: z.string().min(1).max(128) });
 /** `{sceneId}` */
 export const scenePathSchema = z.object({ sceneId: z.string().min(1).max(64) });
 /** `{sessionId}` */
@@ -77,6 +90,11 @@ export const assetPathSchema = z.object({ assetId: z.string().min(1).max(128) })
 const READ_ERRORS = ['bad_request', 'validation_failed'] as const satisfies readonly ApiErrorCode[];
 const WRITE_ERRORS = ['bad_request', 'validation_failed', 'unauthorized'] as const satisfies readonly ApiErrorCode[];
 const SEARCH_ERRORS = [...READ_ERRORS, 'provider_unavailable', 'service_unavailable'] as const;
+/**
+ * What every `/moderation` route may answer besides its own codes: no session,
+ * or a session outside the operator allow-list.
+ */
+const MODERATION_ERRORS = [...WRITE_ERRORS, 'forbidden'] as const satisfies readonly ApiErrorCode[];
 
 export const API_OPERATIONS: readonly ApiOperation[] = [
   // ── Places ────────────────────────────────────────────────────────────────
@@ -135,7 +153,7 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     pathParameters: placePathSchema,
     body: 'PlaceUpdateInput',
     responses: { 200: 'Place' },
-    errors: [...WRITE_ERRORS, 'forbidden', 'not_found', 'gone', 'conflict'],
+    errors: [...WRITE_ERRORS, 'forbidden', 'not_found', 'gone', 'conflict', 'service_unavailable'],
   },
   {
     operationId: 'assertPlaceCapability',
@@ -147,7 +165,7 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     pathParameters: capabilityPathSchema,
     body: 'PlaceCapabilityAssertion',
     responses: { 200: 'Place' },
-    errors: [...WRITE_ERRORS, 'not_found', 'gone'],
+    errors: [...WRITE_ERRORS, 'not_found', 'gone', 'service_unavailable'],
   },
   {
     operationId: 'withdrawPlaceCapability',
@@ -158,7 +176,31 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     auth: 'required',
     pathParameters: capabilityPathSchema,
     responses: { 204: null },
-    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found', 'gone'],
+    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found', 'gone', 'service_unavailable'],
+  },
+  {
+    operationId: 'listPlaceRevisions',
+    method: 'get',
+    path: '/places/{placeId}/revisions',
+    tag: 'Places',
+    summary: 'What changed on a place and when, newest first. Never who.',
+    auth: 'public',
+    pathParameters: placePathSchema,
+    query: revisionListQuerySchema,
+    responses: { 200: 'PlaceRevisionPage' },
+    errors: [...READ_ERRORS, 'not_found', 'gone'],
+  },
+  {
+    operationId: 'reportPlace',
+    method: 'post',
+    path: '/places/{placeId}/reports',
+    tag: 'Places',
+    summary: 'Report a place to moderation. Repeating an open report answers the existing one with 200.',
+    auth: 'required',
+    pathParameters: placePathSchema,
+    body: 'PlaceReportInput',
+    responses: { 201: 'PlaceReport', 200: 'PlaceReport' },
+    errors: [...WRITE_ERRORS, 'not_found', 'gone'],
   },
 
   // ── Claims ────────────────────────────────────────────────────────────────
@@ -167,35 +209,153 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     method: 'post',
     path: '/places/{placeId}/claims',
     tag: 'Claims',
-    summary: 'Ask to be recognised as running this place. Always created pending.',
+    summary: 'Ask to be recognised as running this place, for your account or an organization you own or administer. Always created pending.',
     auth: 'required',
     pathParameters: placePathSchema,
     body: 'PlaceClaimInput',
     responses: { 201: 'PlaceClaim' },
-    errors: [...WRITE_ERRORS, 'not_found', 'gone', 'conflict'],
+    errors: [...WRITE_ERRORS, 'forbidden', 'not_found', 'gone', 'conflict', 'service_unavailable'],
   },
   {
     operationId: 'listPlaceClaims',
     method: 'get',
     path: '/places/{placeId}/claims',
     tag: 'Claims',
-    summary: 'The claims on one place, visible to an account that holds one.',
+    summary: 'The claims on one place, visible to whoever may act for an account that holds one.',
     auth: 'required',
     pathParameters: placePathSchema,
     query: claimListQuerySchema,
     responses: { 200: 'PlaceClaimPage' },
-    errors: [...READ_ERRORS, 'unauthorized', 'forbidden', 'not_found', 'gone'],
+    errors: [...READ_ERRORS, 'unauthorized', 'forbidden', 'not_found', 'gone', 'service_unavailable'],
   },
   {
-    operationId: 'listMyClaims',
+    operationId: 'listAccountClaims',
     method: 'get',
     path: '/claims',
     tag: 'Claims',
-    summary: 'Every claim the signed-in account holds, in every state.',
+    summary: 'Every claim one account holds, in every state: your own, or an organization you may act for.',
     auth: 'required',
-    query: claimListQuerySchema,
+    query: accountClaimListQuerySchema,
     responses: { 200: 'PlaceClaimPage' },
-    errors: [...READ_ERRORS, 'unauthorized'],
+    errors: [...READ_ERRORS, 'unauthorized', 'forbidden', 'service_unavailable'],
+  },
+
+  // ── Moderation ────────────────────────────────────────────────────────────
+  {
+    operationId: 'listModerationClaims',
+    method: 'get',
+    path: '/moderation/claims',
+    tag: 'Moderation',
+    summary: 'Claims in one state, oldest first — pending by default: the review queue.',
+    auth: 'required',
+    query: moderationClaimListQuerySchema,
+    responses: { 200: 'PlaceClaimPage' },
+    errors: [...READ_ERRORS, 'unauthorized', 'forbidden'],
+  },
+  {
+    operationId: 'decidePlaceClaim',
+    method: 'post',
+    path: '/moderation/claims/{claimId}/decision',
+    tag: 'Moderation',
+    summary: 'Approve or reject a pending claim, or revoke an approved one.',
+    auth: 'required',
+    pathParameters: claimPathSchema,
+    body: 'ClaimDecisionInput',
+    responses: { 200: 'PlaceClaim' },
+    errors: [...MODERATION_ERRORS, 'not_found', 'conflict'],
+  },
+  {
+    operationId: 'moderatePlace',
+    method: 'patch',
+    path: '/moderation/places/{placeId}',
+    tag: 'Moderation',
+    summary: "Set a place's verification state, or withdraw or restore it.",
+    auth: 'required',
+    pathParameters: placePathSchema,
+    body: 'ModerationPlaceUpdateInput',
+    responses: { 204: null },
+    errors: [...MODERATION_ERRORS, 'not_found', 'gone'],
+  },
+  {
+    operationId: 'verifyPlaceCapability',
+    method: 'put',
+    path: '/moderation/places/{placeId}/capabilities/{key}',
+    tag: 'Moderation',
+    summary: 'Assert one capability at the oxy_verified tier.',
+    auth: 'required',
+    pathParameters: capabilityPathSchema,
+    body: 'ModerationCapabilityInput',
+    responses: { 200: 'Place' },
+    errors: [...MODERATION_ERRORS, 'not_found', 'gone'],
+  },
+  {
+    operationId: 'withdrawVerifiedCapability',
+    method: 'delete',
+    path: '/moderation/places/{placeId}/capabilities/{key}',
+    tag: 'Moderation',
+    summary: 'Withdraw the oxy_verified assertion of one capability.',
+    auth: 'required',
+    pathParameters: capabilityPathSchema,
+    responses: { 204: null },
+    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found', 'gone'],
+  },
+  {
+    operationId: 'listModerationPlaceRevisions',
+    method: 'get',
+    path: '/moderation/places/{placeId}/revisions',
+    tag: 'Moderation',
+    summary: 'Every revision of a place, newest first, with the account and person behind each.',
+    auth: 'required',
+    pathParameters: placePathSchema,
+    query: revisionListQuerySchema,
+    responses: { 200: 'ModerationPlaceRevisionPage' },
+    errors: [...READ_ERRORS, 'unauthorized', 'forbidden', 'not_found'],
+  },
+  {
+    operationId: 'listDuplicateCandidates',
+    method: 'get',
+    path: '/moderation/duplicates',
+    tag: 'Moderation',
+    summary: 'Pairs of places that might be one, oldest first — open by default.',
+    auth: 'required',
+    query: duplicateListQuerySchema,
+    responses: { 200: 'DuplicateCandidatePage' },
+    errors: [...READ_ERRORS, 'unauthorized', 'forbidden'],
+  },
+  {
+    operationId: 'resolveDuplicateCandidate',
+    method: 'post',
+    path: '/moderation/duplicates/{candidateId}/resolution',
+    tag: 'Moderation',
+    summary: 'Merge a pair into the survivor, or keep both.',
+    auth: 'required',
+    pathParameters: duplicatePathSchema,
+    body: 'DuplicateResolutionInput',
+    responses: { 200: 'DuplicateCandidate' },
+    errors: [...MODERATION_ERRORS, 'not_found', 'conflict'],
+  },
+  {
+    operationId: 'listPlaceReports',
+    method: 'get',
+    path: '/moderation/reports',
+    tag: 'Moderation',
+    summary: 'Place reports, oldest first — open by default.',
+    auth: 'required',
+    query: moderationReportListQuerySchema,
+    responses: { 200: 'ModerationPlaceReportPage' },
+    errors: [...READ_ERRORS, 'unauthorized', 'forbidden'],
+  },
+  {
+    operationId: 'resolvePlaceReport',
+    method: 'post',
+    path: '/moderation/reports/{reportId}/resolution',
+    tag: 'Moderation',
+    summary: 'Close a report as actioned or dismissed.',
+    auth: 'required',
+    pathParameters: reportPathSchema,
+    body: 'PlaceReportResolutionInput',
+    responses: { 200: 'ModerationPlaceReport' },
+    errors: [...MODERATION_ERRORS, 'not_found', 'conflict'],
   },
 
   // ── Search ────────────────────────────────────────────────────────────────

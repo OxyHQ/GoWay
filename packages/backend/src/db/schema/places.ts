@@ -11,7 +11,7 @@
  * in this database because GoWay knows something about it that the source does
  * not.
  *
- * ## Six tables, and why none of them is a column on `places`
+ * ## The child tables, and why none of them is a column on `places`
  *
  * Each child table exists because collapsing it into `places` would make a
  * real-world case unrepresentable without a later migration:
@@ -43,6 +43,13 @@
  *                         beside the source's own spelling of the same
  *                         language — which is what stops the next import from
  *                         destroying the correction.
+ *  - `place_revisions`  — the append-only history of every write, one row per
+ *                         write, in the write's own transaction. An
+ *                         `updated_by` column remembers only the last writer;
+ *                         a history is what lets a vandalised place be read
+ *                         back and an operator's decision be traced.
+ *  - `place_reports`    — what signed-in people flagged for moderation, one
+ *                         open report per reporter per place.
  *
  * ## Privacy
  *
@@ -63,17 +70,26 @@ import {
   pgTable,
   text,
   unique,
+  uniqueIndex,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
-import { createdAt, generatedId, timestamptz, updatedAt } from '@oxy.so/db';
+import { createdAt, generatedId, inList, timestamptz, updatedAt } from '@oxy.so/db';
 import {
   CAPABILITY_VERIFICATIONS,
+  DUPLICATE_CANDIDATE_REASONS,
+  DUPLICATE_CANDIDATE_STATES,
   LANGUAGE_TAG_SQL_PATTERN,
   PLACE_CLAIM_ROLES,
   PLACE_CLAIM_STATES,
+  PLACE_REPORT_REASONS,
+  PLACE_REPORT_RESOLUTIONS,
+  PLACE_REVISION_ACTIONS,
+  PLACE_REVISION_SOURCES,
   PLACE_STATUSES,
   PLACE_VERIFICATION_STATES,
   type GeoGeometry,
   type OpeningHours,
+  type PlaceRevisionChange,
 } from '@goway/contracts';
 import {
   closedSet,
@@ -82,7 +98,6 @@ import {
   latitude,
   longitude,
 } from './columns';
-import { DUPLICATE_CANDIDATE_REASONS, DUPLICATE_CANDIDATE_STATES } from './valueSets';
 
 /**
  * A physical place, as GoWay identifies it.
@@ -186,6 +201,17 @@ export const places = pgTable(
     status: text().notNull().default('active'),
     verificationState: text().notNull().default('unverified'),
     verifiedAt: timestamptz(),
+    /**
+     * The place that absorbed this one, when moderation merged them. Set
+     * exactly when `status` is `merged`, and what the `410 gone` for this id
+     * points at.
+     *
+     * Always ONE hop: merging the survivor later re-points every place merged
+     * into it, so a consumer holding an old id follows one pointer, never a
+     * chain. `restrict` rather than `cascade`: a survivor is never deleted out
+     * from under the ids that redirect to it.
+     */
+    mergedIntoPlaceId: text().references((): AnyPgColumn => places.id, { onDelete: 'restrict' }),
 
     /**
      * Who submitted this place, for a GoWay-created one. An Oxy user id: Oxy
@@ -216,6 +242,12 @@ export const places = pgTable(
       'places_country_code_check',
       sql`${table.addressCountryCode} is null or ${table.addressCountryCode} ~ '^[A-Z]{2}$'`,
     ),
+    /** A merged place names its survivor, and only a merged place names one. */
+    check(
+      'places_merged_into_check',
+      sql`(${table.status} = 'merged') = (${table.mergedIntoPlaceId} is not null)`,
+    ),
+    check('places_merged_into_self_check', sql`${table.mergedIntoPlaceId} <> ${table.id}`),
 
     /**
      * The index every spatial read depends on. `ST_DWithin` and `ST_Intersects`
@@ -229,6 +261,8 @@ export const places = pgTable(
     index('places_status_idx').on(table.status),
     /** Duplicate-candidate detection reads this beside the spatial index. */
     index('places_name_normalized_idx').on(table.nameNormalized),
+    /** What a merge reads to re-point the places already merged into the one it absorbs. */
+    index('places_merged_into_idx').on(table.mergedIntoPlaceId),
   ],
 );
 
@@ -497,10 +531,11 @@ export const placesCapabilities = pgTable(
  * company is neither owner nor brand. Each of those is a row here and none of
  * them is representable in a single ownership column.
  *
- * `brand_id` is what groups the locations of one multi-location business. It is
- * an Oxy organization reference, so — like `oxy_account_id` — it carries no
- * foreign key: Oxy owns identity and there is nothing in this database to point
- * at.
+ * The account is usually an Oxy ORGANIZATION, and Oxy — not this table — says
+ * who may act for it: whoever has switched into it, or a member holding an
+ * `owner`, `admin` or `editor` role (`places/claimAuthority`). There is no
+ * member list here and there must never be one. A chain is an organization
+ * claiming each of its locations in the `brand` role; nothing else groups them.
  *
  * `state` is separate from `role` deliberately. A PENDING owner claim is not
  * ownership, and a schema that cannot say so grants control at the moment
@@ -513,10 +548,8 @@ export const placesClaims = pgTable(
     placeId: text()
       .notNull()
       .references(() => places.id, { onDelete: 'cascade' }),
-    /** The claiming Oxy account or organization. Oxy owns identity: no FK. */
+    /** The claiming Oxy account, usually an organization. Oxy owns identity: no FK. */
     oxyAccountId: foreignServiceId().notNull(),
-    /** Groups the locations of one multi-location business. No FK, same reason. */
-    brandId: foreignServiceId(),
     role: text().notNull(),
     state: text().notNull().default('pending'),
     claimedAt: timestamptz().notNull().defaultNow(),
@@ -535,7 +568,8 @@ export const placesClaims = pgTable(
     unique('places_claims_account_role_key').on(table.placeId, table.oxyAccountId, table.role),
     index('places_claims_place_state_idx').on(table.placeId, table.state),
     index('places_claims_account_idx').on(table.oxyAccountId),
-    index('places_claims_brand_idx').on(table.brandId),
+    /** The moderation queue: claims in one state, oldest first. */
+    index('places_claims_state_claimed_idx').on(table.state, table.claimedAt),
   ],
 );
 
@@ -585,7 +619,100 @@ export const placesDuplicateCandidates = pgTable(
     ),
     /** Explicitly named: the derived name would exceed the 63-byte identifier limit. */
     unique('places_duplicates_pair_key').on(table.placeId, table.candidatePlaceId),
-    index('places_duplicates_state_idx').on(table.state),
+    /** The moderation queue: candidates in one state, oldest first. */
+    index('places_duplicates_state_idx').on(table.state, table.createdAt),
     index('places_duplicates_candidate_idx').on(table.candidatePlaceId),
+  ],
+);
+
+/**
+ * One write to a place: what changed, through which door, and as whom.
+ *
+ * APPEND-ONLY. Every write path in `db/places` records exactly one row here in
+ * the SAME transaction as the write, so history and state cannot disagree: a
+ * write that rolled back left no revision, and a revision always describes a
+ * write that committed. Nothing in this package updates or deletes a row; the
+ * repository exposes an insert and two reads, and that is the whole API.
+ *
+ * ## Who, and why it is two columns
+ *
+ * `oxy_account_id` is the account the write was made AS — `req.userId`, which is
+ * an organization when a person switched into one. `operated_by_oxy_user_id` is
+ * the PERSON, from Oxy's actor chain (`getOxyActor`); null when Oxy did not
+ * report one, which is recorded as unknown rather than guessed. Both are Oxy
+ * ids: no foreign key. Neither is ever published — the public history says
+ * what changed and when, never who (`@goway/contracts` `revision.ts`).
+ *
+ * `changes` is a field-level diff in the published shape, never a row dump: a
+ * column added to `places` cannot reach the history by being spread into it.
+ */
+export const placeRevisions = pgTable(
+  'place_revisions',
+  {
+    id: generatedId(),
+    /** `cascade`: a place is never deleted by any API path, and its history goes with it if it ever is. */
+    placeId: text()
+      .notNull()
+      .references(() => places.id, { onDelete: 'cascade' }),
+    action: text().notNull(),
+    source: text().notNull(),
+    /** The account the write was made as. An Oxy id: no FK, never published. */
+    oxyAccountId: foreignServiceId().notNull(),
+    /** The person who made it, when Oxy reported one. An Oxy user id: no FK, never published. */
+    operatedByOxyUserId: foreignServiceId(),
+    changes: jsonb().notNull().$type<PlaceRevisionChange[]>(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    closedSet('place_revisions_action_check', table.action, PLACE_REVISION_ACTIONS),
+    closedSet('place_revisions_source_check', table.source, PLACE_REVISION_SOURCES),
+    check('place_revisions_changes_array_check', sql`jsonb_typeof(${table.changes}) = 'array'`),
+    /** A place's history, newest first — the only order it is read in. */
+    index('place_revisions_place_created_idx').on(table.placeId, table.createdAt, table.id),
+  ],
+);
+
+/**
+ * A signed-in person's report that something about a place is wrong.
+ *
+ * Reports never change a place by themselves — an operator decides, and the
+ * decision is a revision of its own. The reporter and the note are never
+ * published: an operator reads the note, nobody reads the reporter.
+ */
+export const placeReports = pgTable(
+  'place_reports',
+  {
+    id: generatedId(),
+    placeId: text()
+      .notNull()
+      .references(() => places.id, { onDelete: 'cascade' }),
+    /** The reporter. An Oxy user id: no foreign key, never published. */
+    reporterOxyUserId: foreignServiceId().notNull(),
+    reason: text().notNull(),
+    note: text(),
+    createdAt: createdAt(),
+    resolvedAt: timestamptz(),
+    resolution: text(),
+    /** The operator who resolved it. An Oxy user id: no foreign key, never published. */
+    resolvedByOxyUserId: foreignServiceId(),
+  },
+  (table) => [
+    closedSet('place_reports_reason_check', table.reason, PLACE_REPORT_REASONS),
+    check(
+      'place_reports_resolution_check',
+      sql`${table.resolution} is null or ${table.resolution} in (${sql.raw(inList(PLACE_REPORT_RESOLUTIONS))})`,
+    ),
+    /** Resolved means all three: when, how, and by whom. Open means none of them. */
+    check(
+      'place_reports_resolved_check',
+      sql`(${table.resolvedAt} is null) = (${table.resolution} is null) and (${table.resolvedAt} is null) = (${table.resolvedByOxyUserId} is null)`,
+    ),
+    check('place_reports_note_check', sql`${table.note} is null or char_length(${table.note}) <= 500`),
+    /** One open report per reporter per place: a repeat answers the existing one. */
+    uniqueIndex('place_reports_open_key')
+      .on(table.placeId, table.reporterOxyUserId)
+      .where(sql`${table.resolvedAt} is null`),
+    /** The moderation queue, oldest first, in either state. */
+    index('place_reports_queue_idx').on(table.createdAt, table.id),
   ],
 );

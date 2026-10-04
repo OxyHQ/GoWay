@@ -40,15 +40,18 @@ import {
 } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { qualified, sqlColumnName } from '@oxy.so/db';
-import { CAPABILITY_VERIFICATIONS, normalizeLanguageTag } from '@goway/contracts';
+import { CAPABILITY_VERIFICATIONS, normalizeLanguageTag, PUBLISHED_PLACE_STATUSES } from '@goway/contracts';
 import type {
   CapabilityVerification,
+  DuplicateCandidateReason,
   GeoGeometry,
   OpeningHours,
   Place,
   PlaceClaim,
   PlaceClaimRole,
+  PlaceClaimState,
   PlaceContact,
+  PlaceRevisionChange,
   PlaceStatus,
   PlaceWithDistance,
   StructuredAddress,
@@ -68,7 +71,6 @@ import {
   placesDuplicateCandidates,
   placesNames,
   placesSources,
-  type DuplicateCandidateReason,
 } from '../schema';
 import { distanceTo, withinBoundingBox, withinRadius } from './placeGeo';
 import {
@@ -87,6 +89,17 @@ import {
   type PlaceRow,
   type SourceRow,
 } from './placeMapper';
+import {
+  capabilityField,
+  capabilitySnapshot,
+  changeOf,
+  changesBetween,
+  nameField,
+  placeFieldValues,
+  recordRevision,
+  type FieldValues,
+  type RevisionAuthor,
+} from './revisions';
 
 /**
  * How close two identically-named places have to be before they are worth a
@@ -161,10 +174,11 @@ export interface PlaceWriteInput {
 /**
  * Who is writing, and how strongly their unsourced capability claims count.
  *
- * `assertedVerification` is derived by the route from the caller's APPROVED
- * claims on the place — never from anything in the request body — and it is
- * never `oxy_verified`: that tier is an Oxy moderation act, not something an
- * API caller can assert about themselves.
+ * `author` is what the write's revision records. `assertedVerification` is
+ * derived by the route from the APPROVED claims the caller acts for — never
+ * from anything in the request body — and it is never `oxy_verified`: that
+ * tier is an Oxy moderation act, not something an API caller can assert about
+ * themselves.
  *
  * The type is `AssertableVerification`, which `places/capabilityAuthority`
  * DERIVES from the origin classification rather than spelling out. That is what
@@ -173,7 +187,7 @@ export interface PlaceWriteInput {
  * through would not compile.
  */
 export interface PlaceActor {
-  oxyUserId: string;
+  author: RevisionAuthor;
   assertedVerification: AssertableVerification;
 }
 
@@ -220,15 +234,31 @@ export interface BoundsQuery extends PlaceListFilters {
   after?: string | undefined;
 }
 
-/** What a caller is allowed to do to a place, and what the place already is. */
+/**
+ * A place's stored lifecycle: what a route needs to answer `404`, `410`, or a
+ * `410` that points at the place a merged one became.
+ */
+export interface PlaceLifecycle {
+  status: PlaceStatus;
+  /** Set exactly when `status` is `merged`. */
+  mergedIntoPlaceId: string | null;
+}
+
+/** One APPROVED claim: an account and the role it holds. */
+export interface ApprovedClaim {
+  oxyAccountId: string;
+  role: PlaceClaimRole;
+}
+
+/**
+ * The facts a write's authorization is decided from: whether the place can be
+ * written at all, and who holds it. Who the CALLER acts for is resolved from
+ * these against Oxy, in `places/claimAuthority`.
+ */
 export interface PlaceAuthorization {
-  exists: boolean;
-  /** The place was withdrawn by moderation: it answers `410 gone`, and nothing writes to it. */
-  removed: boolean;
-  /** Whether ANY account holds an approved claim — a claimed business is not community-editable. */
-  claimed: boolean;
-  /** The approved roles THIS caller holds on the place. Empty for everyone else. */
-  callerRoles: PlaceClaimRole[];
+  /** `null` when no place has the id. */
+  lifecycle: PlaceLifecycle | null;
+  approvedClaims: ApprovedClaim[];
 }
 
 // ── Filters ─────────────────────────────────────────────────────────────────
@@ -290,16 +320,24 @@ function matchesAllCapabilities(db: DatabaseOrTransaction, keys: readonly string
 }
 
 /**
+ * Only the statuses a place may be published in — never `removed` or `merged`.
+ *
+ * An allow-list rather than `<> 'removed'`, so a stored status added tomorrow
+ * stays off the map until somebody publishes it on purpose.
+ */
+const isPublished = inArray(places.status, [...PUBLISHED_PLACE_STATUSES]);
+
+/**
  * The predicates every list read shares.
  *
- * `removed` places are excluded from LISTS and remain reachable by id: a place
- * withdrawn from the map must stop appearing on it, while a deep link somebody
- * already holds still has to resolve to something rather than 404 — the SDK
- * treats a 404 as "this id is dead" and a consumer may drop a persisted place
- * id on the strength of it.
+ * Removed and merged places are excluded from LISTS and remain reachable by id:
+ * a place withdrawn from the map must stop appearing on it, while a deep link
+ * somebody already holds still has to resolve to something rather than 404 —
+ * the SDK treats a 404 as "this id is dead" and a consumer may drop a persisted
+ * place id on the strength of it. A merged id answers with where it went.
  */
 function listPredicates(db: DatabaseOrTransaction, filters: PlaceListFilters): SQL[] {
-  const predicates: SQL[] = [ne(places.status, 'removed')];
+  const predicates: SQL[] = [isPublished];
   if (filters.capabilities && filters.capabilities.length > 0) {
     predicates.push(matchesAllCapabilities(db, filters.capabilities));
   }
@@ -412,15 +450,19 @@ const NO_CHILDREN = { sources: [], capabilities: [], names: [] } as const;
 // ── Reads ───────────────────────────────────────────────────────────────────
 
 /**
- * One published place by its GoWay id — any status but `removed`.
+ * One published place by its GoWay id — never a removed or merged one.
  *
- * A removed place is `null` here exactly as a missing one is; a route that has
- * to tell the two apart (`404` against `410`) asks {@link findPlaceStatus}.
+ * A removed or merged place is `null` here exactly as a missing one is; a route
+ * that has to tell them apart (`404` against `410`) asks
+ * {@link findPlaceLifecycle}.
  *
  * `viewerOxyAccountId` decides whether claim details are published: they are
- * shown to an account that itself holds a claim on the place (its own claim and
+ * shown to a session that itself holds a claim on the place (its own claim and
  * the ones it is competing with), and absent for everybody else. Absent is not
- * empty — see `placeMapper`.
+ * empty — see `placeMapper`. Only the session's own account counts here, never
+ * a membership: this is the public read, and it must not wait on Oxy or fail
+ * with it. A member who has not switched into the organization reads the
+ * claims through `GET /places/{placeId}/claims`, which does ask.
  */
 export async function findPlaceById(
   db: DatabaseOrTransaction,
@@ -431,7 +473,7 @@ export async function findPlaceById(
   const [row] = await db
     .select(PLACE_COLUMNS)
     .from(places)
-    .where(and(eq(places.id, id), ne(places.status, 'removed')))
+    .where(and(eq(places.id, id), isPublished))
     .limit(1);
   if (!row) return null;
 
@@ -518,47 +560,42 @@ export async function findPlacesInBounds(
 // ── Authorization inputs ────────────────────────────────────────────────────
 
 /**
+ * A place's stored status and merge pointer, or `null` when no place has the id.
+ *
+ * What a route asks to answer `410 gone` for a place moderation removed or
+ * merged — the second with the survivor's id — and `404 not_found` for one that
+ * never existed: a consumer holding a persisted id acts differently on each.
+ */
+export async function findPlaceLifecycle(db: DatabaseOrTransaction, placeId: string): Promise<PlaceLifecycle | null> {
+  const [row] = await db
+    .select({ status: places.status, mergedIntoPlaceId: places.mergedIntoPlaceId })
+    .from(places)
+    .where(eq(places.id, placeId))
+    .limit(1);
+  return row ? { status: row.status as PlaceStatus, mergedIntoPlaceId: row.mergedIntoPlaceId } : null;
+}
+
+/**
  * What the route needs to decide whether this caller may edit this place, and
  * how much their capability claims are worth.
  *
  * Returned as data rather than decided here: authorization is an HTTP-layer
- * concern (it chooses between 403, 404 and a write), and the SAME facts decide
- * the capability verification tier, so computing them twice would be two
- * chances to disagree.
+ * concern (it chooses between 403, 404, 410 and a write), and whether the
+ * caller acts for a claim is a question for Oxy (`places/claimAuthority`), not
+ * for this database.
  */
-export async function getPlaceAuthorization(
-  db: DatabaseOrTransaction,
-  placeId: string,
-  oxyAccountId: string,
-): Promise<PlaceAuthorization> {
-  const [[place], claims] = await Promise.all([
-    db.select({ status: places.status }).from(places).where(eq(places.id, placeId)).limit(1),
+export async function getPlaceAuthorization(db: DatabaseOrTransaction, placeId: string): Promise<PlaceAuthorization> {
+  const [lifecycle, claims] = await Promise.all([
+    findPlaceLifecycle(db, placeId),
     db
       .select({ oxyAccountId: placesClaims.oxyAccountId, role: placesClaims.role })
       .from(placesClaims)
       .where(and(eq(placesClaims.placeId, placeId), eq(placesClaims.state, 'approved'))),
   ]);
-
   return {
-    exists: Boolean(place),
-    removed: place?.status === 'removed',
-    claimed: claims.length > 0,
-    callerRoles: claims
-      .filter((claim) => claim.oxyAccountId === oxyAccountId)
-      .map((claim) => claim.role as PlaceClaimRole),
+    lifecycle,
+    approvedClaims: claims.map((claim) => ({ oxyAccountId: claim.oxyAccountId, role: claim.role as PlaceClaimRole })),
   };
-}
-
-/**
- * A place's stored status, or `null` when no place has the id.
- *
- * What a read route asks after {@link findPlaceById} came back empty, to answer
- * `410 gone` for a place moderation removed and `404 not_found` for one that
- * never existed — a consumer holding a persisted id acts differently on each.
- */
-export async function findPlaceStatus(db: DatabaseOrTransaction, placeId: string): Promise<PlaceStatus | null> {
-  const [row] = await db.select({ status: places.status }).from(places).where(eq(places.id, placeId)).limit(1);
-  return row ? (row.status as PlaceStatus) : null;
 }
 
 // ── Reconciliation ──────────────────────────────────────────────────────────
@@ -787,14 +824,20 @@ async function findTranslatedNameCandidates(
  * a race — a row that a concurrent transaction has just bound to a DIFFERENT
  * place is not updated, returns nothing, and is reported as the conflict it is
  * rather than silently stolen.
+ *
+ * Returns a `sources` change for each record NEWLY bound. A re-confirmation of
+ * a record already bound is a freshness bump, not a change to the place.
+ * `xmax = 0` is Postgres's own answer to "did this upsert insert": an updated
+ * row carries the updating transaction's id there.
  */
 async function linkSources(
   tx: DatabaseOrTransaction,
   placeId: string,
   refs: readonly SourceRefInput[],
-): Promise<void> {
+): Promise<PlaceRevisionChange[]> {
+  const changes: PlaceRevisionChange[] = [];
   for (const ref of refs) {
-    const linked = await tx
+    const [linked] = await tx
       .insert(placesSources)
       .values({ placeId, source: ref.source, sourceId: ref.sourceId })
       .onConflictDoUpdate({
@@ -805,15 +848,42 @@ async function linkSources(
         },
         setWhere: eq(placesSources.placeId, placeId),
       })
-      .returning({ id: placesSources.id });
+      .returning({ id: placesSources.id, inserted: sql<boolean>`(xmax = 0)` });
 
-    if (linked.length === 0) {
+    if (!linked) {
       throw new ApiError(
         'conflict',
         'That source record is already linked to a different GoWay place.',
       );
     }
+    if (linked.inserted) changes.push({ field: 'sources', after: { source: ref.source, sourceId: ref.sourceId } });
   }
+  return changes;
+}
+
+/**
+ * Write a caller's translated names as GoWay corrections, and say which changed.
+ *
+ * {@link applyPlaceNames} is the importer's function too, and it stays exactly
+ * that: the diff is taken around it, from the `goway` rows before and after,
+ * rather than threaded through a signature the import shares.
+ */
+async function applyGowayNames(
+  tx: DatabaseOrTransaction,
+  placeId: string,
+  names: readonly PlaceNameInput[],
+): Promise<PlaceRevisionChange[]> {
+  if (names.length === 0) return [];
+  const read = async (): Promise<FieldValues> => {
+    const rows = await tx
+      .select({ language: placesNames.language, name: placesNames.name })
+      .from(placesNames)
+      .where(and(eq(placesNames.placeId, placeId), eq(placesNames.source, GOWAY_NAME_SOURCE)));
+    return Object.fromEntries(rows.map((row) => [nameField(row.language), { name: row.name, source: GOWAY_NAME_SOURCE }]));
+  };
+  const before = await read();
+  await applyPlaceNames(tx, placeId, GOWAY_NAME_SOURCE, names);
+  return changesBetween(before, await read());
 }
 
 /** Every source reference a write mentions, including the ones on capabilities. */
@@ -844,8 +914,8 @@ async function applyCapabilities(
   placeId: string,
   capabilities: readonly CapabilityInput[],
   actor: PlaceActor,
-): Promise<void> {
-  if (capabilities.length === 0) return;
+): Promise<PlaceRevisionChange[]> {
+  if (capabilities.length === 0) return [];
 
   const sourceRows = await tx
     .select({ id: placesSources.id, source: placesSources.source, sourceId: placesSources.sourceId })
@@ -854,6 +924,7 @@ async function applyCapabilities(
   const sourceIdByRef = new Map(sourceRows.map((row) => [`${row.source}\u0000${row.sourceId}`, row.id]));
 
   const now = new Date();
+  const changes: PlaceRevisionChange[] = [];
   for (const capability of capabilities) {
     const placeSourceId = capability.source
       ? sourceIdByRef.get(`${capability.source.source}\u0000${capability.source.sourceId}`) ?? null
@@ -867,8 +938,15 @@ async function applyCapabilities(
     const verification: CapabilityVerification = assertWritableVerification(
       capability.source ? 'external_source' : actor.assertedVerification,
     );
+    const atTier = and(
+      eq(placesCapabilities.placeId, placeId),
+      eq(placesCapabilities.namespace, capability.namespace),
+      eq(placesCapabilities.capability, capability.capability),
+      eq(placesCapabilities.verification, verification),
+    );
+    const [before] = await tx.select(CAPABILITY_COLUMNS).from(placesCapabilities).where(atTier).limit(1);
 
-    await tx
+    const [after] = await tx
       .insert(placesCapabilities)
       .values({
         placeId,
@@ -892,8 +970,17 @@ async function applyCapabilities(
           placeSourceId: excluded(placesCapabilities.placeSourceId),
           updatedAt: now,
         },
-      });
+      })
+      .returning(CAPABILITY_COLUMNS);
+
+    const change = changeOf(
+      capabilityField(`${capability.namespace}.${capability.capability}`),
+      before ? capabilitySnapshot(before) : undefined,
+      after ? capabilitySnapshot(after) : undefined,
+    );
+    if (change) changes.push(change);
   }
+  return changes;
 }
 
 /** The `places` column values a write sets, address and contact flattened. */
@@ -941,6 +1028,9 @@ function placeColumnValues(input: PlaceWriteInput): Record<string, unknown> {
  *
  * The place is never assigned a verification state above `unverified` here.
  * Nothing a caller sends can raise it: verification is an Oxy act.
+ *
+ * Its `place_created` revision records every field the place was created
+ * with, in the same transaction.
  */
 export async function createPlace(
   db: Database,
@@ -967,14 +1057,18 @@ export async function createPlace(
         name: input.name,
         latitude: input.location.latitude,
         longitude: input.location.longitude,
-        createdByOxyUserId: actor.oxyUserId,
+        createdByOxyUserId: actor.author.oxyAccountId,
       })
-      .returning({ id: places.id });
+      .returning(PLACE_COLUMNS);
     if (!row) throw new ApiError('internal_error', 'The place could not be created.');
 
-    await linkSources(tx, row.id, refs);
-    await applyPlaceNames(tx, row.id, GOWAY_NAME_SOURCE, input.names ?? []);
-    await applyCapabilities(tx, row.id, input.capabilities ?? [], actor);
+    const changes = [
+      ...changesBetween({}, placeFieldValues(row)),
+      ...(await linkSources(tx, row.id, refs)),
+      ...(await applyGowayNames(tx, row.id, input.names ?? [])),
+      ...(await applyCapabilities(tx, row.id, input.capabilities ?? [], actor)),
+    ];
+    await recordRevision(tx, { placeId: row.id, action: 'place_created', author: actor.author, changes });
     return row.id;
   });
 
@@ -997,6 +1091,11 @@ export async function createPlace(
  * ref already bound to a DIFFERENT place is refused — and the two places are
  * recorded as duplicate candidates first, since somebody has just told GoWay
  * they are the same record.
+ *
+ * The row is locked `FOR UPDATE` before it is read, so the `place_updated`
+ * revision's BEFORE side is the value this write replaced: two concurrent
+ * edits are serialized, and neither's history claims to have changed a value
+ * the other had already overwritten.
  */
 export async function updatePlace(
   db: Database,
@@ -1022,21 +1121,27 @@ export async function updatePlace(
   }
 
   const updated = await db.transaction(async (tx) => {
-    const values = placeColumnValues(input);
+    const [before] = await tx.select(PLACE_COLUMNS).from(places).where(eq(places.id, id)).for('update');
+    if (!before) return null;
+
     // `updated_at` moves for ANY change the request makes, including one that
     // only touches children — a client caching on `updatedAt` must not miss a
     // new capability because the `places` row itself was untouched.
-    const [row] = await tx
+    const [after] = await tx
       .update(places)
-      .set({ ...values, updatedAt: new Date() })
+      .set({ ...placeColumnValues(input), updatedAt: new Date() })
       .where(eq(places.id, id))
-      .returning({ id: places.id });
-    if (!row) return null;
+      .returning(PLACE_COLUMNS);
+    if (!after) return null;
 
-    await linkSources(tx, id, refs);
-    await applyPlaceNames(tx, id, GOWAY_NAME_SOURCE, input.names ?? []);
-    await applyCapabilities(tx, id, input.capabilities ?? [], actor);
-    return row.id;
+    const changes = [
+      ...changesBetween(placeFieldValues(before), placeFieldValues(after)),
+      ...(await linkSources(tx, id, refs)),
+      ...(await applyGowayNames(tx, id, input.names ?? [])),
+      ...(await applyCapabilities(tx, id, input.capabilities ?? [], actor)),
+    ];
+    await recordRevision(tx, { placeId: id, action: 'place_updated', author: actor.author, changes });
+    return after.id;
   });
 
   if (updated === null) return null;
@@ -1143,8 +1248,11 @@ export async function assertPlaceCapability(
       .returning({ id: places.id });
     if (!row) return null;
 
-    if (assertion.source) await linkSources(tx, placeId, [assertion.source]);
-    await applyCapabilities(tx, placeId, [assertion], actor);
+    const changes = [
+      ...(assertion.source ? await linkSources(tx, placeId, [assertion.source]) : []),
+      ...(await applyCapabilities(tx, placeId, [assertion], actor)),
+    ];
+    await recordRevision(tx, { placeId, action: 'capability_asserted', author: actor.author, changes });
     return row.id;
   });
 
@@ -1171,35 +1279,59 @@ export async function withdrawPlaceCapability(
   placeId: string,
   key: CapabilityKeyParts,
   verification: AssertableVerification,
+  author: RevisionAuthor,
 ): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    const deleted = await tx
-      .delete(placesCapabilities)
-      .where(
-        and(
-          eq(placesCapabilities.placeId, placeId),
-          eq(placesCapabilities.namespace, key.namespace),
-          eq(placesCapabilities.capability, key.capability),
-          eq(placesCapabilities.verification, verification),
-        ),
-      )
-      .returning({ id: placesCapabilities.id });
-    if (deleted.length === 0) return false;
+  return db.transaction(async (tx) => deleteCapabilityAtTier(tx, placeId, key, verification, author));
+}
 
-    await tx.update(places).set({ updatedAt: new Date() }).where(eq(places.id, placeId));
-    return true;
+/**
+ * Delete one capability assertion at one tier and record its
+ * `capability_withdrawn` revision, in the caller's transaction.
+ *
+ * Shared by the business's withdrawal above and moderation's withdrawal of the
+ * `oxy_verified` tier, so the two cannot disagree about what a withdrawal
+ * records. The tier is always a parameter its caller was entitled to name.
+ */
+export async function deleteCapabilityAtTier(
+  tx: DatabaseOrTransaction,
+  placeId: string,
+  key: CapabilityKeyParts,
+  verification: CapabilityVerification,
+  author: RevisionAuthor,
+): Promise<boolean> {
+  const [deleted] = await tx
+    .delete(placesCapabilities)
+    .where(
+      and(
+        eq(placesCapabilities.placeId, placeId),
+        eq(placesCapabilities.namespace, key.namespace),
+        eq(placesCapabilities.capability, key.capability),
+        eq(placesCapabilities.verification, verification),
+      ),
+    )
+    .returning(CAPABILITY_COLUMNS);
+  if (!deleted) return false;
+
+  await tx.update(places).set({ updatedAt: new Date() }).where(eq(places.id, placeId));
+  await recordRevision(tx, {
+    placeId,
+    action: 'capability_withdrawn',
+    author,
+    changes: [{ field: capabilityField(`${key.namespace}.${key.capability}`), before: capabilitySnapshot(deleted) }],
   });
+  return true;
 }
 
 // ── Claims ──────────────────────────────────────────────────────────────────
 
 /**
- * Record a claim over a place.
+ * Seed a claim in any state, with no revision.
  *
- * `pending` by default, and that default is the point: a claim is a request to
- * be recognised, not recognition. Approving one is a reviewed act that belongs
- * to the claims surface (#6), which is why nothing here can create an approved
- * claim by accident — the state has to be passed explicitly.
+ * A FIXTURE writer for tests and data repair, and nothing an HTTP path calls:
+ * the API files claims through {@link requestClaim}, which can only create a
+ * `pending` one and records its revision, and moderation decides them through
+ * `moderationRepository`, which records theirs. Nothing here can create an
+ * approved claim by accident — the state has to be passed explicitly.
  */
 export async function createClaim(
   db: DatabaseOrTransaction,
@@ -1207,7 +1339,6 @@ export async function createClaim(
     placeId: string;
     oxyAccountId: string;
     role: PlaceClaimRole;
-    brandId?: string;
     state?: 'pending' | 'approved' | 'rejected' | 'revoked';
   },
 ): Promise<string> {
@@ -1218,7 +1349,6 @@ export async function createClaim(
       placeId: claim.placeId,
       oxyAccountId: claim.oxyAccountId,
       role: claim.role,
-      brandId: claim.brandId ?? null,
       state,
       // The CHECK constraint ties these together: a decided claim has a
       // decision time and a pending one does not.
@@ -1229,61 +1359,81 @@ export async function createClaim(
   return row.id;
 }
 
+/** The field a claim's revisions are recorded under. Claims are moderation-visible only. */
+export function claimField(claimId: string): string {
+  return `claims.${claimId}`;
+}
+
 /**
  * Request a claim over a place, as an API caller.
  *
- * The thin, PUBLIC wrapper over {@link createClaim}: it cannot be passed a
- * state, so the only claim an HTTP caller can create is `pending`. That is not
- * a validation rule the route enforces — the parameter does not exist — which
- * matters because an approved claim is what grants `business_asserted`, so a
- * caller who could set their own state could talk their own capability
- * assertions up a tier by asking nicely.
+ * The PUBLIC way a claim comes to exist: it cannot be passed a state, so the
+ * only claim an HTTP caller can create is `pending`. That is not a validation
+ * rule the route enforces — the parameter does not exist — which matters
+ * because an approved claim is what grants `business_asserted`, so a caller who
+ * could set their own state could talk their own capability assertions up a
+ * tier by asking nicely.
+ *
+ * `oxyAccountId` is the account the claim is FOR, which the route has already
+ * checked the caller may file for; `author` is who filed it, and the
+ * `claim_requested` revision records both in the same transaction.
  *
  * A second claim in the SAME role by the same account is a `conflict` rather
  * than a silent no-op or a second row: the caller needs to know their earlier
  * request is still pending instead of assuming this one is new.
  */
 export async function requestClaim(
-  db: DatabaseOrTransaction,
-  request: { placeId: string; oxyAccountId: string; role: PlaceClaimRole; brandId?: string },
+  db: Database,
+  request: { placeId: string; oxyAccountId: string; role: PlaceClaimRole },
+  author: RevisionAuthor,
 ): Promise<PlaceClaim> {
-  const [row] = await db
-    .insert(placesClaims)
-    .values({
-      placeId: request.placeId,
-      oxyAccountId: request.oxyAccountId,
-      role: request.role,
-      brandId: request.brandId ?? null,
-      // Explicitly, rather than by relying on the column default: "a claim is a
-      // request to be recognised, not recognition" is the rule this function
-      // exists to hold, and a default is something a later migration can change.
-      state: 'pending',
-      decidedAt: null,
-    })
-    .onConflictDoNothing({
-      target: [placesClaims.placeId, placesClaims.oxyAccountId, placesClaims.role],
-    })
-    .returning(CLAIM_COLUMNS);
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(placesClaims)
+      .values({
+        placeId: request.placeId,
+        oxyAccountId: request.oxyAccountId,
+        role: request.role,
+        // Explicitly, rather than by relying on the column default: "a claim is
+        // a request to be recognised, not recognition" is the rule this function
+        // exists to hold, and a default is something a later migration can change.
+        state: 'pending',
+        decidedAt: null,
+      })
+      .onConflictDoNothing({
+        target: [placesClaims.placeId, placesClaims.oxyAccountId, placesClaims.role],
+      })
+      .returning(CLAIM_COLUMNS);
 
-  if (!row) {
-    const [existing] = await db
-      .select(CLAIM_COLUMNS)
-      .from(placesClaims)
-      .where(
-        and(
-          eq(placesClaims.placeId, request.placeId),
-          eq(placesClaims.oxyAccountId, request.oxyAccountId),
-          eq(placesClaims.role, request.role),
-        ),
-      )
-      .limit(1);
-    throw new ApiError(
-      'conflict',
-      'You already hold a claim on this place in that role.',
-      existing ? { claimId: existing.id, state: existing.state } : undefined,
-    );
-  }
-  return toClaim(row);
+    if (!row) {
+      const [existing] = await tx
+        .select(CLAIM_COLUMNS)
+        .from(placesClaims)
+        .where(
+          and(
+            eq(placesClaims.placeId, request.placeId),
+            eq(placesClaims.oxyAccountId, request.oxyAccountId),
+            eq(placesClaims.role, request.role),
+          ),
+        )
+        .limit(1);
+      throw new ApiError(
+        'conflict',
+        'That account already holds a claim on this place in that role.',
+        existing ? { claimId: existing.id, state: existing.state } : undefined,
+      );
+    }
+
+    await recordRevision(tx, {
+      placeId: request.placeId,
+      action: 'claim_requested',
+      author,
+      changes: [
+        { field: claimField(row.id), after: { oxyAccountId: row.oxyAccountId, role: row.role, state: row.state } },
+      ],
+    });
+    return toClaim(row);
+  });
 }
 
 /** A `(claimedAt, id)` keyset over claims, oldest first. See `timeKeysetSchema` for why the timestamp is text. */
@@ -1300,33 +1450,28 @@ function pagedClaim(row: ClaimRow & { position: string }): Paged<PlaceClaim> {
 }
 
 /**
- * One window of the claims on a place, and whether this caller may see them.
+ * One window of the claims on a place, and the facts the route decides who may
+ * see them from.
  *
- * The entitlement rule is the one `findPlaceById` already applies to the
- * embedded `claims` field, restated here rather than reinvented: an account
- * that itself holds a claim on the place sees the claims — its own and the ones
- * it is competing with — and nobody else does. Any state counts, because a
- * pending claimant has to be able to see that their request is pending. It is
- * asked of the whole table, not of the window, so it does not depend on which
- * page the caller's own claim falls on.
- *
- * `exists` and `removed` are returned separately so the route can answer 404
- * for an unknown place rather than 403, which would tell a stranger that an id
- * they guessed is real, and 410 for a withdrawn one.
+ * `claimantAccountIds` is every account holding a claim on the place in ANY
+ * state, asked of the whole table rather than the window so the answer does
+ * not depend on which page the caller's own claim falls on. The route lets a
+ * caller see the claims when they act for one of those accounts — its own
+ * claim and the ones it is competing with — which is the rule `findPlaceById`
+ * applies to the embedded `claims` field, widened to Oxy membership. A pending
+ * claimant counts: they have to be able to see that their request is pending.
  */
 export async function listPlaceClaims(
   db: DatabaseOrTransaction,
   placeId: string,
-  viewerOxyAccountId: string,
   window: TimeWindow,
-): Promise<{ exists: boolean; removed: boolean; entitled: boolean; claims: Paged<PlaceClaim>[] }> {
-  const [[place], [own], rows] = await Promise.all([
-    db.select({ status: places.status }).from(places).where(eq(places.id, placeId)).limit(1),
+): Promise<{ lifecycle: PlaceLifecycle | null; claimantAccountIds: string[]; claims: Paged<PlaceClaim>[] }> {
+  const [lifecycle, accounts, rows] = await Promise.all([
+    findPlaceLifecycle(db, placeId),
     db
-      .select({ id: placesClaims.id })
+      .selectDistinct({ oxyAccountId: placesClaims.oxyAccountId })
       .from(placesClaims)
-      .where(and(eq(placesClaims.placeId, placeId), eq(placesClaims.oxyAccountId, viewerOxyAccountId)))
-      .limit(1),
+      .where(eq(placesClaims.placeId, placeId)),
     db
       .select(CLAIM_PAGE_COLUMNS)
       .from(placesClaims)
@@ -1334,26 +1479,35 @@ export async function listPlaceClaims(
       .orderBy(placesClaims.claimedAt, placesClaims.id)
       .limit(window.limit),
   ]);
-  const entitled = own !== undefined;
   return {
-    exists: Boolean(place),
-    removed: place?.status === 'removed',
-    entitled,
-    // Rows are read alongside the entitlement check and dropped, rather than
-    // read after it, so a refused caller costs no extra round trip — and gets
-    // nothing back.
-    claims: entitled ? rows.map(pagedClaim) : [],
+    lifecycle,
+    claimantAccountIds: accounts.map((account) => account.oxyAccountId),
+    claims: rows.map(pagedClaim),
   };
+}
+
+/** One window of the claims in one state, oldest first — moderation's review queue. */
+export async function findClaimsInState(
+  db: DatabaseOrTransaction,
+  state: PlaceClaimState,
+  window: TimeWindow,
+): Promise<Paged<PlaceClaim>[]> {
+  const rows = await db
+    .select(CLAIM_PAGE_COLUMNS)
+    .from(placesClaims)
+    .where(and(eq(placesClaims.state, state), claimWindow(window)))
+    .orderBy(placesClaims.claimedAt, placesClaims.id)
+    .limit(window.limit);
+  return rows.map(pagedClaim);
 }
 
 /**
  * One window of every claim one Oxy account holds, in every state, oldest
  * first.
  *
- * Keyed on the SESSION's account id and on nothing a caller can send. A
- * `?oxyAccountId=` parameter on this read would be an enumeration of who has
- * claimed what, which is a business relationship GoWay publishes to the parties
- * involved and to nobody else.
+ * The route decides whose: the session's own account, or one the caller acts
+ * for. Nothing here can enumerate who has claimed what for an account nobody
+ * asked Oxy about.
  */
 export async function findAccountClaims(
   db: DatabaseOrTransaction,
@@ -1369,18 +1523,11 @@ export async function findAccountClaims(
   return rows.map(pagedClaim);
 }
 
-/** Every place one Oxy account or brand holds a claim on — the chain/franchise read. */
-export async function findClaimedPlaceIds(
-  db: DatabaseOrTransaction,
-  by: { oxyAccountId?: string; brandId?: string },
-): Promise<string[]> {
-  const conditions: SQL[] = [];
-  if (by.oxyAccountId) conditions.push(eq(placesClaims.oxyAccountId, by.oxyAccountId));
-  if (by.brandId) conditions.push(eq(placesClaims.brandId, by.brandId));
-  if (conditions.length === 0) return [];
+/** Every place one Oxy account holds an approved claim on — a chain's locations, when the account is its brand. */
+export async function findClaimedPlaceIds(db: DatabaseOrTransaction, oxyAccountId: string): Promise<string[]> {
   const rows = await db
     .selectDistinct({ placeId: placesClaims.placeId })
     .from(placesClaims)
-    .where(and(eq(placesClaims.state, 'approved'), or(...conditions)));
+    .where(and(eq(placesClaims.state, 'approved'), eq(placesClaims.oxyAccountId, oxyAccountId)));
   return rows.map((row) => row.placeId);
 }

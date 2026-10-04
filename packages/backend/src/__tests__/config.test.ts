@@ -95,6 +95,17 @@ describe('parseConfig', () => {
     expect(message).toContain('nodeEnv');
   });
 
+  it('reads the moderation operator allow-list, empty unless a deployment opts in', () => {
+    expect(parseConfig(MINIMAL).moderationOperatorOxyUserIds).toEqual([]);
+    expect(parseConfig({ ...MINIMAL, MODERATION_OPERATOR_OXY_USER_IDS: '' }).moderationOperatorOxyUserIds).toEqual([]);
+    expect(
+      parseConfig({ ...MINIMAL, MODERATION_OPERATOR_OXY_USER_IDS: ' u-1 ,u_2,, ' }).moderationOperatorOxyUserIds,
+    ).toEqual(['u-1', 'u_2']);
+    expect(() => parseConfig({ ...MINIMAL, MODERATION_OPERATOR_OXY_USER_IDS: 'u-1,not an id' })).toThrow(
+      /moderationOperatorOxyUserIds/,
+    );
+  });
+
   it('derives isProduction and isTest from NODE_ENV', () => {
     expect(parseConfig({ ...MINIMAL, NODE_ENV: 'production' }).isProduction).toBe(true);
     expect(parseConfig({ ...MINIMAL, NODE_ENV: 'test' }).isTest).toBe(true);
