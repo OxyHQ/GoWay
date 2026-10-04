@@ -264,6 +264,10 @@ package parses its whole configuration at module load, on purpose.
 
 ## Street 3D capture
 
+Expired temporary media is removed by the bounded `bun run captures:cleanup`
+task. See [the lifecycle runbook](../../docs/STREET3D_LIFECYCLE.md) for migration,
+dry-run, scheduling, bucket requirements and the remaining epic gates.
+
 The contribution surface for #9/#10. Everything here needs an Oxy session
 except the policy read — submitting has to be attributable so consent, deletion
 and abuse handling are possible at all, while a visitor deciding whether to

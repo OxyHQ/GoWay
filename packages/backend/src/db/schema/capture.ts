@@ -392,10 +392,10 @@ export const captureMediaObjects = pgTable(
       'capture_objects_deleted_state_check',
       sql`(${table.storageState} = 'deleted') = (${table.deletedAt} is not null)`,
     ),
-    /** Bytes that are present must know when they arrived; bytes merely expected must not claim to. */
+    /** Deleting may also describe an unfinalized upload; never invent a storedAt for it. */
     check(
       'capture_objects_stored_at_present_check',
-      sql`${table.storageState} not in ('stored', 'deleting') or ${table.storedAt} is not null`,
+      sql`${table.storageState} <> 'stored' or ${table.storedAt} is not null`,
     ),
     check(
       'capture_objects_stored_at_absent_check',

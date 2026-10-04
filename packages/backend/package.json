@@ -15,7 +15,8 @@
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run src/db/migrate.ts",
-    "import:osm": "bun run src/import/osm/run.ts"
+    "import:osm": "bun run src/import/osm/run.ts",
+    "captures:cleanup": "bun run src/capture/runCleanup.ts"
   },
   "dependencies": {
     "@goway/shared-types": "workspace:*",

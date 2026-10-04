@@ -338,13 +338,14 @@ export async function registerAsset(
   }
 
   return db.transaction(async (tx) => {
+    // A row lock cannot lock an absent hash. Serialize first registrations too,
+    // otherwise simultaneous duplicate uploads race the partial unique index.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.contentHash}, 0))`);
     const [existing] = await tx
       .select({ ...MEDIA_OBJECT_COLUMNS, objectKey: captureMediaObjects.objectKey })
       .from(captureMediaObjects)
       .where(and(eq(captureMediaObjects.contentHash, input.contentHash), isNull(captureMediaObjects.deletedAt)))
-      // The partial unique index guarantees at most one live row per hash; the
-      // lock is against a concurrent registration of the same bytes, which
-      // would otherwise both see "no object" and both try to insert one.
+      // This lock also serializes registration against the expiry sweeper.
       .for('update');
 
     let objectId: string;
@@ -352,6 +353,11 @@ export async function registerAsset(
     let uploadRequired: boolean;
 
     if (existing) {
+      // A committed deletion intent may already have reached S3 even if the
+      // process crashed before recording success. It can never be cancelled.
+      if (existing.storageState === 'deleting') {
+        throw new ApiError('conflict', 'These bytes are being removed. Retry after cleanup completes.');
+      }
       objectId = existing.id;
       objectKey = existing.objectKey;
       uploadRequired = existing.storageState === 'expected';
@@ -360,18 +366,6 @@ export async function registerAsset(
         .set({
           expiresAt: extendedExpiry(existing.expiresAt, plan),
           ...(uploadRequired ? { uploadIntentExpiresAt: intentExpiresAt } : {}),
-          /**
-           * A new contribution CANCELS a pending deletion.
-           *
-           * `deleting` means the sweeper recorded an intent and has not yet
-           * called the store. #10 requires it to re-check that nothing still
-           * needs the object before deleting, and a contribution arriving in
-           * that window is exactly such a reference: handing this contributor
-           * an asset whose bytes are about to disappear would be worse than
-           * either deleting or keeping. The row is `stored`, so it already has
-           * a `stored_at` and the state CHECK is satisfied.
-           */
-          ...(existing.storageState === 'deleting' ? { storageState: 'stored' as const } : {}),
           updatedAt: now,
         })
         .where(eq(captureMediaObjects.id, objectId));
@@ -488,8 +482,17 @@ export async function finalizeAsset(
       .where(and(eq(captureAssets.id, assetId), eq(captureAssets.oxyUserId, oxyUserId)));
     if (!row) return null;
 
-    const mediaObject = await loadMediaObject(tx, row.mediaObjectId);
+    // Lock the object before changing either row, in the same order as cleanup.
+    // The preceding HEAD can race a committed deletion intent.
+    const [mediaObject] = await tx.select(MEDIA_OBJECT_COLUMNS)
+      .from(captureMediaObjects)
+      .where(eq(captureMediaObjects.id, row.mediaObjectId))
+      .for('update');
     if (!mediaObject) throw new ApiError('internal_error', 'A capture asset has no media object.');
+    if (mediaObject.storageState === 'deleting' || mediaObject.storageState === 'deleted'
+      || mediaObject.expiresAt <= now) {
+      throw new ApiError('conflict', 'This capture has expired or is being removed. Start a new contribution.');
+    }
 
     if (mediaObject.storageState === 'expected') {
       await tx

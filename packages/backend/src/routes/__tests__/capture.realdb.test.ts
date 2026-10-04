@@ -371,25 +371,24 @@ describe('deduplication', () => {
     expect(body.asset.media.deduplicated).toBe(true);
   });
 
-  it('cancels a pending deletion when the same bytes are contributed again', async () => {
-    // `deleting` is the window between a sweeper recording its intent and
-    // calling the store. #10 requires it to re-check that nothing still needs
-    // the object, and a contribution arriving right then is exactly such a
-    // reference — handing this contributor an asset whose bytes are about to
-    // disappear would be worse than either deleting or keeping.
+  it('refuses to revive bytes once deletion has started', async () => {
+    // S3 may already have deleted the object without a tombstone being written.
+    // Use a separate fixture so later dedup tests retain their original object.
+    const ownerSession = await openSession('user-e');
+    await call(`/captures/sessions/${ownerSession.id}/assets`, json('user-e', photoBody('deleting')));
     await suite!.client`
-      UPDATE capture_media_objects SET storage_state = 'deleting' WHERE content_hash = ${hash('a')}
+      UPDATE capture_media_objects SET storage_state = 'deleting' WHERE content_hash = ${hash('deleting')}
     `;
     const session = await openSession('user-e');
-    const { body } = await call<CaptureUploadTicket>(
+    const { status } = await call<CaptureUploadTicket>(
       `/captures/sessions/${session.id}/assets`,
-      json('user-e', photoBody('a')),
+      json('user-e', photoBody('deleting')),
     );
-    expect(body.asset.state).toBe('uploaded');
+    expect(status).toBe(409);
     const [row] = await suite!.client<{ storage_state: string }[]>`
-      SELECT storage_state FROM capture_media_objects WHERE content_hash = ${hash('a')}
+      SELECT storage_state FROM capture_media_objects WHERE content_hash = ${hash('deleting')}
     `;
-    expect(row?.storage_state).toBe('stored');
+    expect(row?.storage_state).toBe('deleting');
   });
 
   it('gives the second contributor their own full retention window', async () => {
@@ -576,9 +575,9 @@ describe('contributor-facing history, and storage reporting', () => {
     const photos = byClass.get('raw_photo');
     expect(photos?.storedBytes).toBeGreaterThan(0);
     expect(photos?.expiringWithin30dBytes).toBe(0);
-    // Four contributions of one photo cost one object, so three copies' worth
+    // Three contributions of one photo cost one object, so two copies' worth
     // of bytes were never paid for.
-    expect(photos?.deduplicatedBytes).toBe(3 * 2_048_000);
+    expect(photos?.deduplicatedBytes).toBe(2 * 2_048_000);
 
     expect(byClass.get('raw_video')?.storedBytes).toBe(80_000_000);
     // Video expires inside thirty days by policy; this is the number that makes

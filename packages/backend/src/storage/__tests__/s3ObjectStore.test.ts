@@ -165,6 +165,28 @@ describe('statObject', () => {
 });
 
 describe('deleteObject', () => {
+  it('does not mistake a versioned delete marker for erased bytes', async () => {
+    const versioned = store({
+      bucket: 'b', region: 'r', resolveCredentials: async () => credentials,
+      fetchImpl: async () => new Response(null, { status: 204, headers: { 'x-amz-delete-marker': 'true' } }),
+    });
+    await expect(versioned.deleteObject('captures/x')).rejects.toThrow('instead of erasing bytes');
+  });
+
+  it('bounds network calls and fails on provider errors without exposing the signed URL', async () => {
+    let signal: AbortSignal | undefined;
+    const failing = store({
+      bucket: 'b', region: 'r', resolveCredentials: async () => credentials,
+      fetchImpl: async (_url, init) => {
+        signal = init?.signal;
+        return new Response(null, { status: 503 });
+      },
+    });
+    await expect(failing.deleteObject('captures/private')).rejects.toThrow('503');
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal?.aborted).toBe(false);
+  });
+
   it('treats an absent object as deleted, because deletion is idempotent', async () => {
     const gone = store({
       bucket: 'b',
