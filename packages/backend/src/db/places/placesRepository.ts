@@ -61,6 +61,8 @@ import type {
   PlaceClaimState,
   PlaceContact,
   PlaceHoursException,
+  PlaceMediaKind,
+  PlaceRating,
   PlaceRevisionChange,
   PlaceStatus,
   PlaceWithDistance,
@@ -77,9 +79,12 @@ import { timezoneAt } from '../../places/timezone';
 import type { Database, DatabaseOrTransaction } from '../postgres';
 import {
   placeHoursExceptions,
+  placeMedia,
+  placeReviewAggregates,
   places,
   placesCapabilities,
   placesClaims,
+  placesDescriptions,
   placesDuplicateCandidates,
   placesNames,
   placesSources,
@@ -88,6 +93,7 @@ import { distanceTo, withinBoundingBox, withinRadius } from './placeGeo';
 import {
   CAPABILITY_COLUMNS,
   CLAIM_COLUMNS,
+  DESCRIPTION_COLUMNS,
   HOURS_EXCEPTION_COLUMNS,
   NAME_COLUMNS,
   PLACE_COLUMNS,
@@ -98,8 +104,10 @@ import {
   toPlaceWithDistance,
   type CapabilityRow,
   type ClaimRow,
+  type DescriptionRow,
   type HoursExceptionRow,
   type NameRow,
+  type PlaceChildren,
   type PlaceNameView,
   type PlaceRow,
   type SourceRow,
@@ -109,6 +117,7 @@ import {
   capabilitySnapshot,
   changeOf,
   changesBetween,
+  descriptionField,
   hoursExceptionField,
   hoursExceptionSnapshot,
   nameField,
@@ -175,9 +184,24 @@ export interface PlaceNameInput {
   name: string;
 }
 
+/**
+ * A translated description as a writer supplies it — `null` withdraws GoWay's
+ * own wording in that language. The source is derived, as for a name.
+ */
+export interface PlaceDescriptionInput {
+  language: string;
+  description: string | null;
+}
+
 export interface PlaceWriteInput {
   name?: string;
   names?: PlaceNameInput[];
+  description?: string | null;
+  descriptions?: PlaceDescriptionInput[];
+  /** The Oxy file of a visible `logo` gallery item of this place; `null` clears it. Update only. */
+  logoFileId?: string | null;
+  /** The Oxy file of a visible `cover` gallery item of this place; `null` clears it. Update only. */
+  coverFileId?: string | null;
   location?: { latitude: number; longitude: number };
   geometry?: GeoGeometry;
   categories?: string[];
@@ -470,6 +494,53 @@ async function loadCurrentHoursExceptions(db: DatabaseOrTransaction, placeId: st
     .limit(MAX_EMBEDDED_HOURS_EXCEPTIONS);
 }
 
+async function loadDescriptions(db: DatabaseOrTransaction, placeId: string): Promise<DescriptionRow[]> {
+  return db.select(DESCRIPTION_COLUMNS).from(placesDescriptions).where(eq(placesDescriptions.placeId, placeId));
+}
+
+/**
+ * The rating summary of each place that has a published review, by place id.
+ *
+ * Read from the DERIVED aggregate row, never computed here: the row is
+ * recomputed inside every review write, and a second computation would be a
+ * second answer.
+ */
+export async function loadRatings(
+  db: DatabaseOrTransaction,
+  placeIds: readonly string[],
+): Promise<Map<string, PlaceRating>> {
+  if (placeIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      placeId: placeReviewAggregates.placeId,
+      count: placeReviewAggregates.reviewCount,
+      average: placeReviewAggregates.ratingAverage,
+    })
+    .from(placeReviewAggregates)
+    .where(and(inArray(placeReviewAggregates.placeId, [...placeIds]), gt(placeReviewAggregates.reviewCount, 0)));
+  return new Map(
+    rows.flatMap((row) =>
+      row.average === null ? [] : [[row.placeId, { average: Math.round(row.average * 10) / 10, count: row.count }] as const],
+    ),
+  );
+}
+
+/**
+ * The Oxy file of each VISIBLE gallery item a page's logos and covers name,
+ * by item id. One query for the page, and none when no place on it has either.
+ */
+async function loadMediaFiles(db: DatabaseOrTransaction, rows: readonly PlaceRow[]): Promise<Map<string, string>> {
+  const ids = [
+    ...new Set(rows.flatMap((row) => [row.logoMediaId, row.coverMediaId].filter((id): id is string => id !== null))),
+  ];
+  if (ids.length === 0) return new Map();
+  const media = await db
+    .select({ id: placeMedia.id, fileId: placeMedia.oxyFileId })
+    .from(placeMedia)
+    .where(and(inArray(placeMedia.id, ids), eq(placeMedia.state, 'visible')));
+  return new Map(media.map((item) => [item.id, item.fileId]));
+}
+
 async function loadClaims(db: DatabaseOrTransaction, placeId: string): Promise<ClaimRow[]> {
   return db.select(CLAIM_COLUMNS).from(placesClaims).where(eq(placesClaims.placeId, placeId));
 }
@@ -500,33 +571,38 @@ async function hydrate(
   db: DatabaseOrTransaction,
   rows: readonly PlaceRow[],
   view: PlaceNameView,
-): Promise<Map<string, { sources: SourceRow[]; capabilities: CapabilityRow[]; names: NameRow[] }>> {
+): Promise<Map<string, PlaceChildren>> {
   const ids = rows.map((row) => row.id);
-  // The third query is issued only when the read was asked about names. A
+  // The names query is issued only when the read was asked about names. A
   // viewport that never mentioned a locale must not pay for 200 places' worth
   // of translations to throw them away in the mapper.
-  const [sources, capabilities, names] = await Promise.all([
+  const [sources, capabilities, names, ratings, mediaFiles] = await Promise.all([
     loadSources(db, ids),
     loadCapabilities(db, ids),
     needsNames(view) ? loadNames(db, ids) : Promise.resolve([]),
+    loadRatings(db, ids),
+    loadMediaFiles(db, rows),
   ]);
   const sourcesByPlace = groupByPlace(sources);
   const capabilitiesByPlace = groupByPlace(capabilities);
   const namesByPlace = groupByPlace(names);
   return new Map(
-    ids.map((id) => [
-      id,
-      {
+    ids.map((id) => {
+      const children: PlaceChildren = {
         sources: sourcesByPlace.get(id) ?? [],
         capabilities: capabilitiesByPlace.get(id) ?? [],
         names: namesByPlace.get(id) ?? [],
-      },
-    ]),
+        mediaFiles,
+      };
+      const rating = ratings.get(id);
+      if (rating) children.rating = rating;
+      return [id, children];
+    }),
   );
 }
 
 /** The empty hydration, for a row whose children somehow did not load. */
-const NO_CHILDREN = { sources: [], capabilities: [], names: [] } as const;
+const NO_CHILDREN: PlaceChildren = { sources: [], capabilities: [], names: [] };
 
 // ── Reads ───────────────────────────────────────────────────────────────────
 
@@ -558,12 +634,15 @@ export async function findPlaceById(
     .limit(1);
   if (!row) return null;
 
-  const [sources, capabilities, names, hoursExceptions, claims] = await Promise.all([
+  const [sources, capabilities, names, hoursExceptions, claims, descriptions, ratings, mediaFiles] = await Promise.all([
     loadSources(db, [id]),
     loadCapabilities(db, [id]),
     loadNames(db, [id]),
     loadCurrentHoursExceptions(db, id),
     viewerOxyAccountId ? loadClaims(db, id) : Promise.resolve(null),
+    loadDescriptions(db, id),
+    loadRatings(db, [id]),
+    loadMediaFiles(db, [row]),
   ]);
 
   const visibleClaims =
@@ -575,12 +654,19 @@ export async function findPlaceById(
   // not only when a locale was asked for. "What else is this called" is a fact
   // about the place, and a detail view that showed it only to callers who
   // already knew which language to ask for would be useless to the caller who
-  // does not.
-  return toPlace(
-    row,
-    { sources, capabilities, names, hoursExceptions, claims: visibleClaims },
-    { publishAll: true, locale },
-  );
+  // does not. Descriptions follow the same rule.
+  const children: PlaceChildren = {
+    sources,
+    capabilities,
+    names,
+    hoursExceptions,
+    claims: visibleClaims,
+    descriptions,
+    mediaFiles,
+  };
+  const rating = ratings.get(id);
+  if (rating) children.rating = rating;
+  return toPlace(row, children, { publishAll: true, locale });
 }
 
 /**
@@ -972,6 +1058,92 @@ async function applyGowayNames(
   return changesBetween(before, await read());
 }
 
+/**
+ * Write a caller's translated descriptions as GoWay's own wording, and say
+ * which changed.
+ *
+ * A description is upserted on `(place, language, 'goway')` — the importer's
+ * rows for the same language are other keys, untouched — and `null` deletes
+ * GoWay's row for that language alone. Last writer wins within one call.
+ */
+async function applyGowayDescriptions(
+  tx: DatabaseOrTransaction,
+  placeId: string,
+  descriptions: readonly PlaceDescriptionInput[],
+): Promise<PlaceRevisionChange[]> {
+  if (descriptions.length === 0) return [];
+  const byLanguage = new Map<string, string | null>();
+  for (const entry of descriptions) {
+    const language = normalizeLanguageTag(entry.language);
+    if (language !== undefined) byLanguage.set(language, entry.description?.trim() || null);
+  }
+  const read = async (): Promise<FieldValues> => {
+    const rows = await tx
+      .select({ language: placesDescriptions.language, description: placesDescriptions.description })
+      .from(placesDescriptions)
+      .where(and(eq(placesDescriptions.placeId, placeId), eq(placesDescriptions.source, GOWAY_NAME_SOURCE)));
+    return Object.fromEntries(
+      rows.map((row) => [descriptionField(row.language), { description: row.description, source: GOWAY_NAME_SOURCE }]),
+    );
+  };
+  const before = await read();
+  const now = new Date();
+  for (const [language, description] of byLanguage) {
+    const key = and(
+      eq(placesDescriptions.placeId, placeId),
+      eq(placesDescriptions.language, language),
+      eq(placesDescriptions.source, GOWAY_NAME_SOURCE),
+    );
+    if (description === null) {
+      await tx.delete(placesDescriptions).where(key);
+      continue;
+    }
+    await tx
+      .insert(placesDescriptions)
+      .values({ placeId, language, description, source: GOWAY_NAME_SOURCE, observedAt: now })
+      .onConflictDoUpdate({
+        target: [placesDescriptions.placeId, placesDescriptions.language, placesDescriptions.source],
+        set: { description, observedAt: now, updatedAt: now },
+      });
+  }
+  return changesBetween(before, await read());
+}
+
+/**
+ * The gallery item a write names as the place's logo or cover, by its Oxy file.
+ *
+ * It must be a VISIBLE item of THIS place, of the matching kind — a pointer at
+ * anything else would publish an image the gallery does not, or one from
+ * another place. Anything else is `validation_failed` naming the field.
+ */
+async function galleryItemFor(
+  tx: DatabaseOrTransaction,
+  placeId: string,
+  fileId: string,
+  kind: Extract<PlaceMediaKind, 'logo' | 'cover'>,
+  field: string,
+): Promise<string> {
+  const [item] = await tx
+    .select({ id: placeMedia.id })
+    .from(placeMedia)
+    .where(
+      and(
+        eq(placeMedia.placeId, placeId),
+        eq(placeMedia.oxyFileId, fileId),
+        eq(placeMedia.kind, kind),
+        eq(placeMedia.state, 'visible'),
+      ),
+    )
+    .limit(1);
+  if (!item) {
+    throw new ApiError('validation_failed', `The ${field} must be a visible ${kind} in this place's gallery.`, {
+      field,
+      issue: 'not_in_gallery',
+    });
+  }
+  return item.id;
+}
+
 /** Every source reference a write mentions, including the ones on capabilities. */
 function collectSourceRefs(input: PlaceWriteInput): SourceRefInput[] {
   const seen = new Map<string, SourceRefInput>();
@@ -1083,6 +1255,7 @@ function placeColumnValues(input: PlaceWriteInput): Record<string, unknown> {
   if (input.categories !== undefined) values.categories = input.categories;
   if (input.status !== undefined) values.status = input.status;
   if (input.openingHours !== undefined) values.openingHours = input.openingHours;
+  if (input.description !== undefined) values.description = input.description;
   if (input.address !== undefined) {
     values.addressHouseNumber = input.address.houseNumber ?? null;
     values.addressStreet = input.address.street ?? null;
@@ -1155,6 +1328,7 @@ export async function createPlace(
       ...changesBetween({}, placeFieldValues(row)),
       ...(await linkSources(tx, row.id, refs)),
       ...(await applyGowayNames(tx, row.id, input.names ?? [])),
+      ...(await applyGowayDescriptions(tx, row.id, input.descriptions ?? [])),
       ...(await applyCapabilities(tx, row.id, input.capabilities ?? [], actor)),
     ];
     await recordRevision(tx, { placeId: row.id, action: 'place_created', author: actor.author, changes });
@@ -1213,12 +1387,24 @@ export async function updatePlace(
     const [before] = await tx.select(PLACE_COLUMNS).from(places).where(eq(places.id, id)).for('update');
     if (!before) return null;
 
+    // A logo or cover names a gallery item by its Oxy file; the column holds
+    // the item, resolved under the same lock as the rest of the write.
+    const pointers: { logoMediaId?: string | null; coverMediaId?: string | null } = {};
+    if (input.logoFileId !== undefined) {
+      pointers.logoMediaId =
+        input.logoFileId === null ? null : await galleryItemFor(tx, id, input.logoFileId, 'logo', 'logoFileId');
+    }
+    if (input.coverFileId !== undefined) {
+      pointers.coverMediaId =
+        input.coverFileId === null ? null : await galleryItemFor(tx, id, input.coverFileId, 'cover', 'coverFileId');
+    }
+
     // `updated_at` moves for ANY change the request makes, including one that
     // only touches children — a client caching on `updatedAt` must not miss a
     // new capability because the `places` row itself was untouched.
     const [after] = await tx
       .update(places)
-      .set({ ...placeColumnValues(input), updatedAt: new Date() })
+      .set({ ...placeColumnValues(input), ...pointers, updatedAt: new Date() })
       .where(eq(places.id, id))
       .returning(PLACE_COLUMNS);
     if (!after) return null;
@@ -1227,6 +1413,7 @@ export async function updatePlace(
       ...changesBetween(placeFieldValues(before), placeFieldValues(after)),
       ...(await linkSources(tx, id, refs)),
       ...(await applyGowayNames(tx, id, input.names ?? [])),
+      ...(await applyGowayDescriptions(tx, id, input.descriptions ?? [])),
       ...(await applyCapabilities(tx, id, input.capabilities ?? [], actor)),
     ];
     await recordRevision(tx, { placeId: id, action: 'place_updated', author: actor.author, changes });

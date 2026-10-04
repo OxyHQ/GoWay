@@ -10,6 +10,11 @@
  *     POST /moderation/duplicates/{candidateId}/resolution   merge or keep both
  *     GET  /moderation/reports                           the report queue
  *     POST /moderation/reports/{reportId}/resolution     close a report
+ *     GET  /moderation/places/{placeId}/media            a gallery, every state, with contributors
+ *     PATCH /moderation/places/{placeId}/media/{mediaId}  hide or restore an item
+ *     GET  /moderation/places/{placeId}/reviews          reviews, every status
+ *     PATCH /moderation/places/{placeId}/reviews/{reviewId}  hide or restore a review
+ *     DELETE /moderation/places/{placeId}/reviews/{reviewId}/reply  remove the business's reply
  *
  * ## Who may call it
  *
@@ -37,15 +42,23 @@ import {
   duplicatePathSchema,
   duplicateResolutionInputSchema,
   moderationCapabilityInputSchema,
+  mediaPathSchema,
   moderationClaimListQuerySchema,
+  moderationMediaInputSchema,
+  moderationMediaListQuerySchema,
   moderationPlaceUpdateInputSchema,
+  moderationReviewInputSchema,
+  moderationReviewListQuerySchema,
   moderationReportListQuerySchema,
   placePathSchema,
   placeReportResolutionInputSchema,
   reportPathSchema,
+  reviewPathSchema,
   revisionListQuerySchema,
   splitCapabilityKey,
 } from '@goway/contracts';
+import { listModerationMedia, moderatePlaceMedia } from '../db/places/mediaRepository';
+import { listModerationReviews, moderateReview, withdrawReply } from '../db/places/reviewsRepository';
 import {
   decideClaim,
   listDuplicateCandidates,
@@ -181,6 +194,82 @@ export function createModerationRouter(dependencies: ModerationRouterDependencie
       if ((await findPlaceLifecycle(db, placeId)) === null) throw new ApiError('not_found', 'No place has that id.');
       const revisions = await listPlaceRevisions(db, placeId, 'moderation', timeWindowOf(query, binding));
       response.json(timePageOf(revisions, query.limit, binding));
+    }),
+  );
+
+  // ── Media and reviews ─────────────────────────────────────────────────────
+  //
+  // Hide and restore: reversible, recorded, and the only way an item or a
+  // review leaves the public place without its author's say. A place that was
+  // removed or merged is still reachable here — reading back what happened to
+  // its content is part of the job.
+
+  /** A place's gallery items in one state, or every state, oldest first, with who added each. */
+  router.get(
+    '/moderation/places/:placeId/media',
+    ...operatorOnly,
+    route(async (request, response) => {
+      const { placeId } = parsePath(placePathSchema, request.params);
+      const { state, ...query } = parseQuery(moderationMediaListQuerySchema, request.query);
+      const db = getDb();
+      if ((await findPlaceLifecycle(db, placeId)) === null) throw new ApiError('not_found', 'No place has that id.');
+      const binding = cursorBinding('moderation-media', { placeId, state });
+      const items = await listModerationMedia(db, placeId, state, timeWindowOf(query, binding));
+      response.json(timePageOf(items, query.limit, binding));
+    }),
+  );
+
+  /** Hide a gallery item, or restore a hidden one. A withdrawn item, or one already in that state, is `409`. */
+  router.patch(
+    '/moderation/places/:placeId/media/:mediaId',
+    ...operatorOnly,
+    route(async (request, response) => {
+      const { placeId, mediaId } = parsePath(mediaPathSchema, request.params);
+      const { state } = parseBody(moderationMediaInputSchema, request.body);
+      const item = await moderatePlaceMedia(getDb(), placeId, mediaId, state, operator(request));
+      if (!item) throw new ApiError('not_found', 'This place has no gallery item with that id.');
+      response.json(item);
+    }),
+  );
+
+  /** A place's reviews in one status, or every status, newest first. */
+  router.get(
+    '/moderation/places/:placeId/reviews',
+    ...operatorOnly,
+    route(async (request, response) => {
+      const { placeId } = parsePath(placePathSchema, request.params);
+      const { status, ...query } = parseQuery(moderationReviewListQuerySchema, request.query);
+      const db = getDb();
+      if ((await findPlaceLifecycle(db, placeId)) === null) throw new ApiError('not_found', 'No place has that id.');
+      const binding = cursorBinding('moderation-reviews', { placeId, status });
+      const reviews = await listModerationReviews(db, placeId, status, timeWindowOf(query, binding));
+      response.json(timePageOf(reviews, query.limit, binding));
+    }),
+  );
+
+  /** Hide a review, or restore a hidden one; the place's rating is recomputed with it. */
+  router.patch(
+    '/moderation/places/:placeId/reviews/:reviewId',
+    ...operatorOnly,
+    route(async (request, response) => {
+      const { placeId, reviewId } = parsePath(reviewPathSchema, request.params);
+      const { status } = parseBody(moderationReviewInputSchema, request.body);
+      const review = await moderateReview(getDb(), placeId, reviewId, status, operator(request));
+      if (!review) throw new ApiError('not_found', 'This place has no review with that id.');
+      response.json(review);
+    }),
+  );
+
+  /** Remove the business's reply to a review. `204`. */
+  router.delete(
+    '/moderation/places/:placeId/reviews/:reviewId/reply',
+    ...operatorOnly,
+    route(async (request, response) => {
+      const { placeId, reviewId } = parsePath(reviewPathSchema, request.params);
+      if (!(await withdrawReply(getDb(), placeId, reviewId, operator(request)))) {
+        throw new ApiError('not_found', 'That review carries no reply to remove.');
+      }
+      response.status(204).end();
     }),
   );
 

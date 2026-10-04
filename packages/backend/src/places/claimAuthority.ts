@@ -118,3 +118,28 @@ export async function standingOn(
   }
   return { claimed: true, callerRoles };
 }
+
+/**
+ * Whether the caller is AFFILIATED with any of these accounts: is one — the
+ * session, or the person behind it — or holds ANY active role in one, as Oxy
+ * reports it.
+ *
+ * Deliberately wider than {@link mayActFor}. Acting for a business is a
+ * question of authority, so a `viewer` does not; having an interest in it is a
+ * question of conflict, so a `viewer` does — an employee reviewing their
+ * employer's shop is the case this exists for. An Oxy failure is a 503, as
+ * everywhere else: "we could not tell" is not "no".
+ */
+export async function affiliatedWithAny(
+  caller: OxyCaller,
+  oxyAccountIds: readonly string[],
+  roles: AccountRoleResolver,
+): Promise<boolean> {
+  const accounts = [...new Set(oxyAccountIds)];
+  const self = new Set([caller.oxyAccountId, caller.operatedByOxyUserId].filter((id): id is string => id !== null));
+  if (accounts.some((account) => self.has(account))) return true;
+  for (const account of accounts) {
+    if ((await roles.roleIn(caller, account)) !== null) return true;
+  }
+  return false;
+}

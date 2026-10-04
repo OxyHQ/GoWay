@@ -12,8 +12,9 @@
  * ## Keyset where the list has an order, an offset only where it cannot
  *
  * A nearby list resumes at `(distance, id)`, a viewport at `id` (uuidv7, so
- * creation order), claims, captures, revisions and the moderation queues at
- * `(timestamp, id)`. A keyset position
+ * creation order), a gallery at `(position, id)`, reviews at `(timestamp, id)`
+ * or `(rating, timestamp, id)`, claims, captures, revisions and the moderation
+ * queues at `(timestamp, id)`. A keyset position
  * is immune to rows arriving or leaving between pages: no duplicate and no gap,
  * and no cost that grows with depth. Search is the exception — its order is a
  * fused score over several providers' rankings, recomputed per request, so it
@@ -43,12 +44,16 @@ export const CURSOR_KINDS = [
   'places-bounds',
   'place-claims',
   'place-hours-exceptions',
+  'place-media',
+  'place-reviews',
   'account-claims',
   'place-revisions',
   'moderation-claims',
   'moderation-revisions',
   'moderation-duplicates',
   'moderation-reports',
+  'moderation-media',
+  'moderation-reviews',
   'search',
   'geocode',
   'reverse-geocode',
@@ -168,13 +173,14 @@ export function pageOf<Row, Item>(
  * a position rebuilt from `toISOString()` sorts on the wrong side of the row it
  * came from and the next page would repeat or skip it.
  */
-export const timeKeysetSchema = z.tuple([
+export const timestampTextSchema = z
   // The shape Postgres renders a `timestamptz` as. Checked, not trusted: a
   // cursor is only base64, so a caller can edit it, and a value Postgres then
   // failed to cast would be a 500 instead of the `bad_request` it is.
-  z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?[+-]\d{2}(?::\d{2})?$/),
-  z.string().min(1).max(128),
-]);
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?[+-]\d{2}(?::\d{2})?$/);
+
+export const timeKeysetSchema = z.tuple([timestampTextSchema, z.string().min(1).max(128)]);
 export type TimeKeyset = z.infer<typeof timeKeysetSchema>;
 
 /** A window over a time-ordered list: how many rows, and where to resume. */

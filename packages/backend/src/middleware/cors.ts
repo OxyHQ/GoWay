@@ -190,6 +190,16 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
     path: '/places/:placeId/hours-exceptions',
     because: "a public place's dated closures and special hours, signed out",
   },
+  {
+    method: 'GET',
+    path: '/places/:placeId/media',
+    because: "a public place's gallery: Oxy file ids a client renders from Oxy's CDN, never who added them",
+  },
+  {
+    method: 'GET',
+    path: '/places/:placeId/reviews',
+    because: "a public place's published reviews, the same for every caller",
+  },
   { method: 'GET', path: '/categories', because: 'the category taxonomy every client labels places with' },
   { method: 'GET', path: '/search', because: 'the search box, signed out' },
   { method: 'GET', path: '/geocode', because: 'forward geocoding, signed out' },

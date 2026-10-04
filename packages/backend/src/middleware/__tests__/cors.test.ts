@@ -44,8 +44,10 @@ import { createCategoriesRouter } from '../../routes/categories';
 import { createOpenApiRouter } from '../../routes/openapi';
 import { createRoutesRouter } from '../../routes/directions';
 import { createModerationRouter } from '../../routes/moderation';
+import { createPlaceMediaRouter } from '../../routes/placeMedia';
+import { createPlaceReviewsRouter } from '../../routes/placeReviews';
 import { createPlacesRouter } from '../../routes/places';
-import { NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
+import { NO_FILES, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createSearchRouter } from '../../routes/search';
 import { createGoWayCors, isPublicReadRequest, PUBLIC_READ_ROUTES } from '../cors';
 
@@ -459,6 +461,24 @@ describe('the public table, checked against the routers it claims to describe', 
     ...registeredRoutes(
       createPlacesRouter({ optionalAuth, requireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }),
     ),
+    ...registeredRoutes(
+      createPlaceMediaRouter({
+        optionalAuth,
+        requireAuth,
+        accountRoles: NO_MEMBERSHIPS,
+        placeFiles: NO_FILES,
+        reportRateLimit: NO_RATE_LIMIT,
+        contributionRateLimit: NO_RATE_LIMIT,
+      }),
+    ),
+    ...registeredRoutes(
+      createPlaceReviewsRouter({
+        requireAuth,
+        accountRoles: NO_MEMBERSHIPS,
+        reportRateLimit: NO_RATE_LIMIT,
+        contributionRateLimit: NO_RATE_LIMIT,
+      }),
+    ),
     ...registeredRoutes(createModerationRouter({ requireAuth, requireOperator: requireAuth })),
     ...registeredRoutes(createRoutesRouter({ optionalAuth, provider: null })),
     ...registeredRoutes(createSearchRouter({ optionalAuth })),
@@ -505,6 +525,8 @@ describe('the public table, checked against the routers it claims to describe', 
       'GET /openapi.json',
       'GET /places/:placeId',
       'GET /places/:placeId/hours-exceptions',
+      'GET /places/:placeId/media',
+      'GET /places/:placeId/reviews',
       'GET /places/:placeId/revisions',
       'GET /places/bounds',
       'GET /places/nearby',
@@ -522,8 +544,12 @@ describe('the public table, checked against the routers it claims to describe', 
     expect(refused).toEqual([
       'DELETE /captures/assets/:assetId',
       'DELETE /moderation/places/:placeId/capabilities/:key',
+      'DELETE /moderation/places/:placeId/reviews/:reviewId/reply',
       'DELETE /places/:placeId/capabilities/:key',
       'DELETE /places/:placeId/hours-exceptions/:exceptionId',
+      'DELETE /places/:placeId/media/:mediaId',
+      'DELETE /places/:placeId/reviews/:reviewId/reply',
+      'DELETE /places/:placeId/reviews/mine',
       'GET /captures/assets/:assetId',
       'GET /captures/policy',
       'GET /captures/sessions',
@@ -532,10 +558,15 @@ describe('the public table, checked against the routers it claims to describe', 
       'GET /claims',
       'GET /moderation/claims',
       'GET /moderation/duplicates',
+      'GET /moderation/places/:placeId/media',
+      'GET /moderation/places/:placeId/reviews',
       'GET /moderation/places/:placeId/revisions',
       'GET /moderation/reports',
       'GET /places/:placeId/claims',
+      'GET /places/:placeId/reviews/mine',
       'PATCH /moderation/places/:placeId',
+      'PATCH /moderation/places/:placeId/media/:mediaId',
+      'PATCH /moderation/places/:placeId/reviews/:reviewId',
       'PATCH /places/:placeId',
       'POST /captures/assets/:assetId/finalize',
       'POST /captures/sessions',
@@ -546,10 +577,16 @@ describe('the public table, checked against the routers it claims to describe', 
       'POST /places',
       'POST /places/:placeId/claims',
       'POST /places/:placeId/hours-exceptions',
+      'POST /places/:placeId/media',
+      'POST /places/:placeId/media/:mediaId/reports',
       'POST /places/:placeId/reports',
+      'POST /places/:placeId/reviews/:reviewId/reports',
       'PUT /moderation/places/:placeId/capabilities/:key',
       'PUT /places/:placeId/capabilities/:key',
       'PUT /places/:placeId/hours-exceptions/:exceptionId',
+      'PUT /places/:placeId/media/order',
+      'PUT /places/:placeId/reviews/:reviewId/reply',
+      'PUT /places/:placeId/reviews/mine',
     ]);
   });
 });

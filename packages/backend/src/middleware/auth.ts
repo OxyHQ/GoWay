@@ -34,6 +34,7 @@ import type { OxyActorChain } from '../oxy/caller';
 import { config } from '../config';
 import { ApiError, type ApiErrorBody } from '../http/apiError';
 import { createAccountRoleResolver, type AccountRoleResolver } from '../oxy/accountRoles';
+import { createOxyPlaceFileStore, type PlaceFileStore } from '../oxy/placeFiles';
 import { createRequireOperator } from './operator';
 
 /**
@@ -74,6 +75,9 @@ export const optionalAuth: RequestHandler = createOptionalOxyAuth(oxyClient);
 /** Answers "what is this caller's role in that Oxy account?" — see `oxy/accountRoles`. */
 export const accountRoles: AccountRoleResolver = createAccountRoleResolver({ oxyApiUrl: config.oxyApiUrl });
 
+/** Checks, links and unlinks the Oxy files place galleries reference — see `oxy/placeFiles`. */
+export const placeFiles: PlaceFileStore = createOxyPlaceFileStore({ oxyApiUrl: config.oxyApiUrl });
+
 /** The moderation gate for this process's operator allow-list. Mounted after `requireAuth`. */
 export const requireOperator: RequestHandler = createRequireOperator(config.moderationOperatorOxyUserIds);
 
@@ -113,6 +117,19 @@ export function createGoWayRateLimit(options: Omit<OxyRateLimitOptions, 'message
  * unlimited: a throttled probe reports a service down that is merely popular.
  */
 export const apiRateLimit: RequestHandler = createGoWayRateLimit();
+
+/**
+ * A limit for contributions — reviews, replies and gallery writes — on top of
+ * `apiRateLimit`.
+ *
+ * Each is a public statement somebody else reads; sixty in fifteen minutes is
+ * a busy afternoon of honest reviewing and nowhere near a flood.
+ */
+export const contributionRateLimit: RequestHandler = createGoWayRateLimit({
+  authenticatedMax: 60,
+  anonymousMax: 60,
+  windowMs: 15 * 60_000,
+});
 
 /**
  * A tighter limit for reports — of a Street 3D scene or of a place — on top of

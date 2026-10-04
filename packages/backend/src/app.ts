@@ -21,7 +21,9 @@ import { errorHandler, unknownRouteHandler } from './http/errorHandler';
 import {
   accountRoles,
   apiRateLimit,
+  contributionRateLimit,
   optionalAuth,
+  placeFiles,
   reportRateLimit,
   requireAuth,
   requireOperator,
@@ -32,6 +34,8 @@ import { createCaptureRouter } from './routes/capture';
 import { createCategoriesRouter } from './routes/categories';
 import { createModerationRouter } from './routes/moderation';
 import { createOpenApiRouter } from './routes/openapi';
+import { createPlaceMediaRouter } from './routes/placeMedia';
+import { createPlaceReviewsRouter } from './routes/placeReviews';
 import { createPlacesRouter } from './routes/places';
 import { createRoutesRouter } from './routes/directions';
 import { createSearchRouter } from './routes/search';
@@ -112,6 +116,15 @@ export function createApp(): Express {
   v1.use(createOpenApiRouter());
   v1.use(createCategoriesRouter());
   v1.use(createPlacesRouter({ optionalAuth, requireAuth, accountRoles, reportRateLimit }));
+  /**
+   * A place's gallery and reviews. Images are Oxy files the client uploaded;
+   * GoWay checks and links them with Oxy (`oxy/placeFiles`) and never touches
+   * the bytes.
+   */
+  v1.use(
+    createPlaceMediaRouter({ optionalAuth, requireAuth, accountRoles, placeFiles, reportRateLimit, contributionRateLimit }),
+  );
+  v1.use(createPlaceReviewsRouter({ requireAuth, accountRoles, reportRateLimit, contributionRateLimit }));
   /**
    * Moderation: claim decisions, Oxy verification, duplicate merges and the
    * report queue — every route behind `requireAuth` and the operator allow-list

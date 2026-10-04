@@ -39,10 +39,13 @@ import { baseLanguageTag, normalizeLanguageTag } from '@goway/contracts';
 /** GoWay's own corrections outrank every external source's spelling. */
 const GOWAY_SOURCE = 'goway';
 
-/** The fields resolution reads. Structural, so a row or a fixture both fit. */
+/**
+ * The fields resolution reads. Structural, so a row or a fixture both fit — and
+ * so a place's DESCRIPTIONS, which are keyed exactly as its names are, resolve
+ * by the same chain rather than a second copy of it.
+ */
 export interface ResolvableName {
   language: string;
-  name: string;
   source: string;
   observedAt: Date;
 }

@@ -6,6 +6,7 @@
 import type { RequestHandler } from 'express';
 import type { RevisionAuthor } from '../db/places/revisions';
 import type { AccountRoleResolver } from '../oxy/accountRoles';
+import type { PlaceFileStore } from '../oxy/placeFiles';
 
 /** A write made through the public API by `oxyAccountId`, acting as itself. */
 export function apiAuthor(oxyAccountId: string): RevisionAuthor {
@@ -26,4 +27,17 @@ export const NO_MEMBERSHIPS: AccountRoleResolver = {
 /** A rate limit that never limits, for suites that are not about one. */
 export const NO_RATE_LIMIT: RequestHandler = (_request, _response, next) => {
   next();
+};
+
+/**
+ * Oxy files, as a suite that never adds to a gallery sees them: nothing may be
+ * attached. A suite about galleries runs the real store against `fakeOxy`.
+ */
+export const NO_FILES: PlaceFileStore = {
+  async attach() {
+    throw new Error('This suite does not attach Oxy files.');
+  },
+  async detach() {
+    return undefined;
+  },
 };

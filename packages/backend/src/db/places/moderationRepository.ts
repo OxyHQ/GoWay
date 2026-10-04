@@ -46,10 +46,13 @@ import {
   places,
   placesCapabilities,
   placesClaims,
+  placesDescriptions,
   placesDuplicateCandidates,
   placesNames,
   placesSources,
 } from '../schema';
+import { moveMediaToSurvivor } from './mediaRepository';
+import { moveReviewsToSurvivor } from './reviewsRepository';
 import { CAPABILITY_COLUMNS, CLAIM_COLUMNS, HOURS_EXCEPTION_COLUMNS, toClaim } from './placeMapper';
 import {
   claimField,
@@ -61,6 +64,7 @@ import {
   capabilityField,
   capabilitySnapshot,
   changeOf,
+  descriptionField,
   hoursExceptionField,
   hoursExceptionSnapshot,
   nameField,
@@ -103,6 +107,8 @@ function createdWindow(createdAt: PgColumn, id: PgColumn, window: TimeWindow): S
 const REPORT_COLUMNS = {
   id: placeReports.id,
   placeId: placeReports.placeId,
+  mediaId: placeReports.mediaId,
+  reviewId: placeReports.reviewId,
   reason: placeReports.reason,
   note: placeReports.note,
   createdAt: placeReports.createdAt,
@@ -114,6 +120,8 @@ const REPORT_COLUMNS = {
 type ReportRow = {
   id: string;
   placeId: string;
+  mediaId: string | null;
+  reviewId: string | null;
   reason: string;
   note: string | null;
   createdAt: Date;
@@ -122,13 +130,19 @@ type ReportRow = {
 };
 
 function toPlaceReport(row: ReportRow): PlaceReport {
-  return {
+  const report: PlaceReport = {
     id: row.id,
     placeId: row.placeId,
     reason: row.reason as PlaceReportReason,
     createdAt: row.createdAt.toISOString(),
   };
+  if (row.mediaId !== null) report.mediaId = row.mediaId;
+  if (row.reviewId !== null) report.reviewId = row.reviewId;
+  return report;
 }
+
+/** What a report is about: the place itself, or one gallery item or review on it. */
+export type ReportSubject = { mediaId: string } | { reviewId: string } | Record<string, never>;
 
 function toModerationReport(row: ReportRow): ModerationPlaceReport {
   const report: ModerationPlaceReport = toPlaceReport(row);
@@ -139,9 +153,10 @@ function toModerationReport(row: ReportRow): ModerationPlaceReport {
 }
 
 /**
- * File a report, or answer the reporter's existing OPEN one on the same place.
+ * File a report, or answer the reporter's existing OPEN one on the same
+ * subject — the place, or one gallery item or review on it.
  *
- * One open report per reporter per place is a unique index, so a repeat is
+ * One open report per reporter per subject is a unique index, so a repeat is
  * `on conflict do nothing` followed by a read of the row that won — no failed
  * statement, nothing for a retry to duplicate. A report that was resolved does
  * not block a new one: the place may have gone wrong again.
@@ -151,10 +166,13 @@ export async function createPlaceReport(
   placeId: string,
   reporterOxyUserId: string,
   input: PlaceReportInput,
+  subject: ReportSubject = {},
 ): Promise<{ report: PlaceReport; created: boolean }> {
+  const mediaId = 'mediaId' in subject ? subject.mediaId : null;
+  const reviewId = 'reviewId' in subject ? subject.reviewId : null;
   const [inserted] = await db
     .insert(placeReports)
-    .values({ placeId, reporterOxyUserId, reason: input.reason, note: input.note ?? null })
+    .values({ placeId, reporterOxyUserId, mediaId, reviewId, reason: input.reason, note: input.note ?? null })
     .onConflictDoNothing()
     .returning(REPORT_COLUMNS);
   if (inserted) return { report: toPlaceReport(inserted), created: true };
@@ -166,6 +184,8 @@ export async function createPlaceReport(
       and(
         eq(placeReports.placeId, placeId),
         eq(placeReports.reporterOxyUserId, reporterOxyUserId),
+        mediaId === null ? isNull(placeReports.mediaId) : eq(placeReports.mediaId, mediaId),
+        reviewId === null ? isNull(placeReports.reviewId) : eq(placeReports.reviewId, reviewId),
         isNull(placeReports.resolvedAt),
       ),
     )
@@ -481,8 +501,13 @@ function movable<T extends { id: string }>(absorbed: readonly T[], survivor: rea
  *    so a source can only ever name one place, and the next import of that
  *    OpenStreetMap node has to update the survivor rather than a place nobody
  *    reads.
- *  - Names, capabilities, hours exceptions and claims move wherever the
- *    survivor holds no row of its own under the same key ({@link movable}).
+ *  - Names, descriptions, capabilities, hours exceptions and claims move
+ *    wherever the survivor holds no row of its own under the same key
+ *    ({@link movable}); gallery items wherever the survivor does not already
+ *    show the same Oxy file. Reviews all move, and where one person reviewed
+ *    both places the older review is set aside as `hidden`; both ratings are
+ *    recomputed. Reviews are not itemized in the public `place_absorbed`
+ *    revision, as claims are not.
  *  - The survivor's own columns — name, location and the timezone derived
  *    from it, categories, address, contact, weekly hours — are its statement
  *    and are never rewritten by a merge, exactly as its children win every
@@ -526,6 +551,30 @@ async function mergePlaces(
     received.push(...names.map((row) => ({ field: nameField(row.language), after: { name: row.name, source: row.source } })));
   }
 
+  const descriptionColumns = {
+    id: placesDescriptions.id,
+    language: placesDescriptions.language,
+    source: placesDescriptions.source,
+    description: placesDescriptions.description,
+  };
+  const [absorbedDescriptions, survivorDescriptions] = await Promise.all([
+    tx.select(descriptionColumns).from(placesDescriptions).where(eq(placesDescriptions.placeId, absorbedId)),
+    tx.select(descriptionColumns).from(placesDescriptions).where(eq(placesDescriptions.placeId, survivorId)),
+  ]);
+  const descriptions = movable(absorbedDescriptions, survivorDescriptions, (row) => `${row.language}\u0000${row.source}`);
+  if (descriptions.length > 0) {
+    await tx
+      .update(placesDescriptions)
+      .set({ placeId: survivorId, updatedAt: now })
+      .where(inArray(placesDescriptions.id, descriptions.map((row) => row.id)));
+    received.push(
+      ...descriptions.map((row) => ({
+        field: descriptionField(row.language),
+        after: { description: row.description, source: row.source },
+      })),
+    );
+  }
+
   const [absorbedCapabilities, survivorCapabilities] = await Promise.all([
     tx.select(CAPABILITY_COLUMNS).from(placesCapabilities).where(eq(placesCapabilities.placeId, absorbedId)),
     tx.select(CAPABILITY_COLUMNS).from(placesCapabilities).where(eq(placesCapabilities.placeId, survivorId)),
@@ -566,6 +615,12 @@ async function mergePlaces(
   if (claims.length > 0) {
     await tx.update(placesClaims).set({ placeId: survivorId, updatedAt: now }).where(inArray(placesClaims.id, claims.map((row) => row.id)));
   }
+
+  // The gallery moves wherever the survivor does not already show the same
+  // file; reviews all move, with one person's older review set aside when
+  // they wrote one on each. Neither re-links an Oxy file (`oxy/placeFiles`).
+  received.push(...(await moveMediaToSurvivor(tx, survivorId, absorbedId)));
+  await moveReviewsToSurvivor(tx, survivorId, absorbedId, author);
 
   // Everything already merged INTO the absorbed place now points at the survivor.
   const repointed = await tx

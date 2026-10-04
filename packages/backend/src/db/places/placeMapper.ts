@@ -31,7 +31,9 @@ import type {
   PlaceClaimRole,
   PlaceClaimState,
   PlaceContact,
+  PlaceDescription,
   PlaceHoursException,
+  PlaceRating,
   PlaceSourceRef,
   PlaceVerificationState,
   PlaceWithDistance,
@@ -45,6 +47,7 @@ import {
   places,
   placesCapabilities,
   placesClaims,
+  placesDescriptions,
   placesNames,
   placesSources,
 } from '../schema';
@@ -81,6 +84,9 @@ export const PLACE_COLUMNS = {
   contactWebsite: places.contactWebsite,
   openingHours: places.openingHours,
   timezone: places.timezone,
+  description: places.description,
+  logoMediaId: places.logoMediaId,
+  coverMediaId: places.coverMediaId,
   status: places.status,
   verificationState: places.verificationState,
   verifiedAt: places.verifiedAt,
@@ -107,6 +113,17 @@ export const NAME_COLUMNS = {
 } as const;
 
 export type NameRow = SelectedRow<typeof NAME_COLUMNS>;
+
+/** The columns a description read selects — the shape of {@link NAME_COLUMNS}, for its reason. */
+export const DESCRIPTION_COLUMNS = {
+  placeId: placesDescriptions.placeId,
+  language: placesDescriptions.language,
+  description: placesDescriptions.description,
+  source: placesDescriptions.source,
+  observedAt: placesDescriptions.observedAt,
+} as const;
+
+export type DescriptionRow = SelectedRow<typeof DESCRIPTION_COLUMNS>;
 
 export const SOURCE_COLUMNS = {
   id: placesSources.id,
@@ -200,6 +217,20 @@ export interface PlaceChildren {
    * statement and is published as an empty array.
    */
   claims?: readonly ClaimRow[];
+  /**
+   * The description rows. Present only for a single-place read, which is the
+   * only read that publishes `description`, `descriptions` and
+   * `localizedDescription` — absent, as for `names` on a list.
+   */
+  descriptions?: readonly DescriptionRow[];
+  /**
+   * The Oxy file of each VISIBLE gallery item the place's logo or cover names,
+   * by item id. An item that left the gallery is not here, so its pointer is
+   * not published even for the instant before the write that cleared it.
+   */
+  mediaFiles?: ReadonlyMap<string, string>;
+  /** The published reviews, summarised. Absent: none. */
+  rating?: PlaceRating;
 }
 
 /** Assigns `value` under `key` only when present, so no contract key is ever `undefined`. */
@@ -263,6 +294,10 @@ export function toHoursException(row: HoursExceptionRow): PlaceHoursException {
   };
   put(exception, 'note', optionalText(row.note));
   return exception;
+}
+
+export function toPlaceDescription(row: DescriptionRow): PlaceDescription {
+  return { language: row.language, description: row.description, source: row.source };
 }
 
 export function toPlaceName(row: NameRow): PlaceName {
@@ -386,6 +421,15 @@ export function toPlace(
     place.hoursExceptions = children.hoursExceptions.map(toHoursException);
   }
   if (children.claims !== undefined) place.claims = children.claims.map(toClaim);
+  if (children.descriptions !== undefined) {
+    put(place, 'description', optionalText(row.description));
+    place.descriptions = [...children.descriptions].sort(comparePublishedNames).map(toPlaceDescription);
+    const localizedDescription = resolveLocalizedName(children.descriptions, nameView.locale);
+    if (localizedDescription) place.localizedDescription = toPlaceDescription(localizedDescription);
+  }
+  if (row.logoMediaId !== null) put(place, 'logoFileId', children.mediaFiles?.get(row.logoMediaId));
+  if (row.coverMediaId !== null) put(place, 'coverFileId', children.mediaFiles?.get(row.coverMediaId));
+  put(place, 'rating', children.rating);
 
   const names = children.names ?? [];
   if (nameView.publishAll) {

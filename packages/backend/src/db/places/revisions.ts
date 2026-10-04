@@ -108,6 +108,9 @@ export type PlaceFieldRow = Pick<
   | 'contactWebsite'
   | 'openingHours'
   | 'timezone'
+  | 'description'
+  | 'logoMediaId'
+  | 'coverMediaId'
   | 'status'
 >;
 
@@ -141,6 +144,10 @@ export function placeFieldValues(row: PlaceFieldRow): FieldValues {
     'contact.website': json(row.contactWebsite),
     openingHours: json(row.openingHours),
     timezone: json(row.timezone),
+    description: json(row.description),
+    // The gallery ITEM, never its Oxy file: see `mediaSnapshot`.
+    logo: json(row.logoMediaId),
+    cover: json(row.coverMediaId),
     status: row.status,
   };
 }
@@ -151,6 +158,52 @@ export function placeFieldValues(row: PlaceFieldRow): FieldValues {
  */
 export function nameField(language: string): string {
   return `names.${language}`;
+}
+
+/** The field a translated description is recorded under. Its value is `{ description, source }`, as a name's is. */
+export function descriptionField(language: string): string {
+  return `descriptions.${language}`;
+}
+
+/** The field a gallery item is recorded under. */
+export function mediaField(mediaId: string): string {
+  return `media.${mediaId}`;
+}
+
+/**
+ * A gallery item as a revision records it: what it is and where it sits —
+ * NEVER its Oxy file id. History is append-only and the public one is
+ * readable by anybody, so a file id written here would keep pointing at an
+ * image an operator hid or its contributor withdrew, for as long as Oxy
+ * serves it.
+ */
+export function mediaSnapshot(row: { kind: string; position: number; verification: string; state: string }): RevisionValue {
+  return { kind: row.kind, position: row.position, verification: row.verification, state: row.state };
+}
+
+/** The field a review is recorded under. Reviews are moderation-visible only. */
+export function reviewField(reviewId: string): string {
+  return `reviews.${reviewId}`;
+}
+
+/**
+ * A review as a revision records it — NEVER its words or its reply's. A
+ * withdrawn review's text is erased from its row; a history that kept it would
+ * undo the withdrawal. `replied` says whether the business had answered.
+ */
+export function reviewSnapshot(row: {
+  rating: number;
+  status: string;
+  locale: string | null;
+  replyBody: string | null;
+}): RevisionValue {
+  const snapshot: { [key: string]: RevisionValue } = {
+    rating: row.rating,
+    status: row.status,
+    replied: row.replyBody !== null,
+  };
+  if (row.locale !== null) snapshot.locale = row.locale;
+  return snapshot;
 }
 
 /** The field a capability assertion is recorded under. */
