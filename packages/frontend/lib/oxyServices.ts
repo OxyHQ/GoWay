@@ -1,6 +1,6 @@
 import { OxyServices } from '@oxy.so/core';
 
-import { API_URL } from './config';
+import { OXY_BASE_URL } from './config';
 
 /**
  * The one `OxyServices` instance for the app.
@@ -11,6 +11,7 @@ import { API_URL } from './config';
  * instance, so there is still exactly one client and one session authority.
  *
  * Session restore stays entirely OxyProvider's: device-first credential mint,
- * then silent OAuth. Only `baseURL` is configured here.
+ * then silent OAuth. Only `baseURL` is configured here, and it is OXY's API —
+ * GoWay's own API is reached through `createLinkedClient`, never as this base.
  */
-export const oxyServices = new OxyServices({ baseURL: API_URL });
+export const oxyServices = new OxyServices({ baseURL: OXY_BASE_URL });

@@ -4,6 +4,16 @@ import { DEFAULT_GOWAY_WEB_BASE_URL } from '@goway.to/sdk';
 /** Backend API base URL. */
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://api.goway.to';
 
+/**
+ * Oxy's own API — the identity service sign-in, session restore and token
+ * refresh talk to. NOT GoWay's backend: `OxyServices` is constructed with this,
+ * and GoWay's API is reached through `oxyServices.createLinkedClient({ baseURL:
+ * API_URL })`. Pointing `OxyServices` at GoWay's API sends Oxy's own auth calls
+ * (`/auth/oauth/client/…`) to a server that does not have them, and sign-in
+ * fails.
+ */
+export const OXY_BASE_URL = process.env.EXPO_PUBLIC_OXY_BASE_URL ?? 'https://api.oxy.so';
+
 /** The app's registered Oxy client id (ApplicationCredential publicKey). */
 export const OXY_CLIENT_ID = process.env.EXPO_PUBLIC_OXY_CLIENT_ID ?? '';
 
