@@ -90,6 +90,45 @@ describe('street3d parsers', () => {
     expect(() => parseStreetSceneManifest({ ...manifest, quality: { ...manifest.quality, placement: 'exact' } })).toThrow();
   });
 
+  it('parse guided navigation strictly when present and leave it absent otherwise', () => {
+    expect(parseStreetSceneManifest(manifest)).not.toHaveProperty('navigation');
+    expect(parseStreetSceneManifest({ ...manifest, navigation: null })).not.toHaveProperty('navigation');
+
+    const navigation = {
+      viewpoints: [
+        { position: [0, 0, 1.6], forward: [0, 1, 0] },
+        { position: [0.1, 2.5, 1.6], forward: [0, 1, 0] },
+      ],
+      fieldOfView: { horizontalDegrees: 66, verticalDegrees: 50 },
+    };
+    const parsed = parseStreetSceneManifest({
+      ...manifest,
+      navigation: {
+        ...navigation,
+        viewpoints: navigation.viewpoints.map((viewpoint) => ({ ...viewpoint, capturedAt: time, contributor: 'private' })),
+        order: 'private',
+      },
+    });
+    expect(parsed.navigation).toEqual(navigation);
+    expect(JSON.stringify(parsed)).not.toContain('private');
+    expect(JSON.stringify(parsed)).not.toContain('capturedAt');
+    expect(parseStreetSceneManifest({ ...manifest, navigation: { viewpoints: [] } }).navigation).toEqual({ viewpoints: [] });
+
+    const malformed: unknown[] = [
+      { fieldOfView: navigation.fieldOfView },
+      { viewpoints: 'everywhere' },
+      { viewpoints: [{ position: [0, 0], forward: [0, 1, 0] }] },
+      { viewpoints: [{ position: [0, 0, Number.NaN], forward: [0, 1, 0] }] },
+      { viewpoints: [{ position: [0, 0, 1.6], forward: [0, '1', 0] }] },
+      { viewpoints: [{ position: [0, 0, 1.6] }] },
+      { viewpoints: [], fieldOfView: { horizontalDegrees: 0, verticalDegrees: 50 } },
+      { viewpoints: [], fieldOfView: { horizontalDegrees: 66, verticalDegrees: 180 } },
+      { viewpoints: [], fieldOfView: { horizontalDegrees: 66 } },
+      'nearby',
+    ];
+    for (const bad of malformed) expect(() => parseStreetSceneManifest({ ...manifest, navigation: bad })).toThrow();
+  });
+
   it('surfaces a malformed body as a response error', async () => {
     const { fetch } = fakeFetch(200, { scenes: 'nope', areas: [] });
     expect(await rejection(createGoWayClient({ fetch }).street3d.coverage({ west: 2.3, south: 48.86, east: 2.31, north: 48.87 }))).toBeInstanceOf(GoWayResponseError);

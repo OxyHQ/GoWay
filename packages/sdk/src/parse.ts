@@ -42,10 +42,13 @@ import type {
   StreetCoverage,
   StreetCoverageArea,
   StreetSceneAsset,
+  StreetSceneFieldOfView,
   StreetSceneManifest,
+  StreetSceneNavigation,
   StreetSceneQuality,
   StreetSceneReport,
   StreetSceneSummary,
+  StreetSceneViewpoint,
 } from './contract';
 
 /**
@@ -707,6 +710,29 @@ function streetSceneAsset(value: unknown, path: string): StreetSceneAsset {
   return asset;
 }
 
+function streetSceneViewpoint(value: unknown, path: string): StreetSceneViewpoint {
+  const record = object(value, path);
+  return { position: vector3(record.position, `${path}.position`), forward: vector3(record.forward, `${path}.forward`) };
+}
+
+function streetSceneFieldOfView(value: unknown, path: string): StreetSceneFieldOfView {
+  const record = object(value, path);
+  const degrees = 'an angle in [1, 179] degrees';
+  return {
+    horizontalDegrees: inRange(record.horizontalDegrees, `${path}.horizontalDegrees`, 1, 179, degrees),
+    verticalDegrees: inRange(record.verticalDegrees, `${path}.verticalDegrees`, 1, 179, degrees),
+  };
+}
+
+function streetSceneNavigation(value: unknown, path: string): StreetSceneNavigation {
+  const record = object(value, path);
+  const navigation: StreetSceneNavigation = {
+    viewpoints: array(record.viewpoints, `${path}.viewpoints`, streetSceneViewpoint),
+  };
+  put(navigation, 'fieldOfView', optional(record.fieldOfView, `${path}.fieldOfView`, streetSceneFieldOfView));
+  return navigation;
+}
+
 function streetSceneQuality(value: unknown, path: string): StreetSceneQuality {
   const record = object(value, path);
   return {
@@ -726,7 +752,7 @@ export function parseStreetSceneManifest(value: unknown, path = 'scene'): Street
   const matrix = array(transform.enuFromScene, `${path}.worldTransform.enuFromScene`, finiteNumber);
   if (matrix.length !== 16) fail(`${path}.worldTransform.enuFromScene`, 'a 4x4 column-major matrix');
   const view = object(record.initialView, `${path}.initialView`);
-  return {
+  const manifest: StreetSceneManifest = {
     id: nonEmptyString(record.id, `${path}.id`),
     version: nonNegativeNumber(record.version, `${path}.version`),
     bounds: parseBoundingBox(record.bounds, `${path}.bounds`),
@@ -751,6 +777,8 @@ export function parseStreetSceneManifest(value: unknown, path = 'scene'): Street
     attributions: array(record.attributions, `${path}.attributions`, nonEmptyString),
     privacyPipelineVersions: array(record.privacyPipelineVersions, `${path}.privacyPipelineVersions`, nonEmptyString),
   };
+  put(manifest, 'navigation', optional(record.navigation, `${path}.navigation`, streetSceneNavigation));
+  return manifest;
 }
 
 function streetSceneSummary(value: unknown, path: string): StreetSceneSummary {
