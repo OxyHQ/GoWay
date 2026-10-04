@@ -40,6 +40,10 @@ class Message:
     receipt: str
     body: dict
     receive_count: int
+    # The backend's attempt number. A backend retry is a NEW message (its
+    # receive count starts at 1 again), so the attempt travels as a message
+    # attribute; a redelivery of the same message keeps the same attempt.
+    attempt: int
 
 
 class Aws:
@@ -115,16 +119,20 @@ class Aws:
             WaitTimeSeconds=wait_seconds,
             VisibilityTimeout=self.config.visibility_timeout_seconds,
             MessageSystemAttributeNames=["ApproximateReceiveCount"],
+            MessageAttributeNames=["attempt"],
         )
         for raw in response.get("Messages", []):
             try:
                 body = json.loads(raw["Body"])
             except json.JSONDecodeError:
                 body = {}
+            receive_count = int(raw.get("Attributes", {}).get("ApproximateReceiveCount", "1"))
+            attempt_attr = raw.get("MessageAttributes", {}).get("attempt", {}).get("StringValue", "")
             return Message(
                 receipt=raw["ReceiptHandle"],
                 body=body,
-                receive_count=int(raw.get("Attributes", {}).get("ApproximateReceiveCount", "1")),
+                receive_count=receive_count,
+                attempt=int(attempt_attr) if attempt_attr.isdigit() else receive_count,
             )
         return None
 

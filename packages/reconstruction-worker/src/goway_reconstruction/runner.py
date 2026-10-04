@@ -122,7 +122,7 @@ class Runner:
             # Not ours to interpret. Leave it: the redrive policy moves it to the DLQ.
             log.error("received a message that is not a valid job envelope")
             return
-        attempt = message.receive_count
+        attempt = message.attempt
         ctx = JobContext(job_id=job.jobId, attempt=attempt)
 
         def emit(kind: str, **extra) -> None:
