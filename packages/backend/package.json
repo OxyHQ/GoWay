@@ -24,6 +24,7 @@
     "@goway/contracts": "workspace:*",
     "@oxy.so/core": "4.2.0",
     "@oxy.so/db": "^1.0.0",
+    "@photostructure/tz-lookup": "11.7.0",
     "cors": "^2.8.6",
     "dotenv": "^16.4.7",
     "drizzle-orm": "0.45.2",

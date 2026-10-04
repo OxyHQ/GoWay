@@ -50,6 +50,10 @@
  *                         back and an operator's decision be traced.
  *  - `place_reports`    — what signed-in people flagged for moderation, one
  *                         open report per reporter per place.
+ *  - `place_hours_exceptions` — a closure or special hours is a dated CLAIM
+ *                         with a verification tier, and a business's own
+ *                         holiday notice must not be overwritten by a
+ *                         passer-by's report about the same day.
  *
  * ## Privacy
  *
@@ -63,7 +67,9 @@
 
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
+  date,
   doublePrecision,
   index,
   jsonb,
@@ -76,9 +82,11 @@ import {
 import { createdAt, generatedId, inList, timestamptz, updatedAt } from '@oxy.so/db';
 import {
   CAPABILITY_VERIFICATIONS,
+  CATEGORY_KEYS,
   DUPLICATE_CANDIDATE_REASONS,
   DUPLICATE_CANDIDATE_STATES,
   LANGUAGE_TAG_SQL_PATTERN,
+  MAX_HOURS_EXCEPTION_DAYS,
   PLACE_CLAIM_ROLES,
   PLACE_CLAIM_STATES,
   PLACE_REPORT_REASONS,
@@ -87,12 +95,15 @@ import {
   PLACE_REVISION_SOURCES,
   PLACE_STATUSES,
   PLACE_VERIFICATION_STATES,
+  type CapabilityValue,
   type GeoGeometry,
   type OpeningHours,
   type PlaceRevisionChange,
+  type TimeRange,
 } from '@goway/contracts';
 import {
   closedSet,
+  closedSetArray,
   foreignServiceId,
   generatedGeographyPoint,
   latitude,
@@ -174,7 +185,11 @@ export const places = pgTable(
     /** Footprint or service area as GeoJSON, when GoWay has one. */
     geometry: jsonb().$type<GeoGeometry>(),
 
-    /** Normalized category keys, most specific first. */
+    /**
+     * Category taxonomy keys (`food.cafe`), most specific first — constrained
+     * to the contract's registry below. Ancestors are not stored: a filter on
+     * `food` expands to its descendants instead.
+     */
     categories: text()
       .array()
       .notNull()
@@ -196,7 +211,17 @@ export const places = pgTable(
     contactEmail: text(),
     contactWebsite: text(),
 
+    /** The weekly schedule, local wall-clock, read in `timezone`. */
     openingHours: jsonb().$type<OpeningHours>(),
+    /**
+     * The IANA zone the place's clock reads in — `Europe/Madrid`.
+     *
+     * DERIVED from the position on every write that sets one (`places/timezone`),
+     * never accepted from a caller: a zone is a property of where the place is,
+     * and a schedule evaluated in a zone somebody typed is wrong in a way that
+     * looks right. Nullable only for a position no zone covers.
+     */
+    timezone: text(),
 
     status: text().notNull().default('active'),
     verificationState: text().notNull().default('unverified'),
@@ -230,6 +255,12 @@ export const places = pgTable(
     closedSet('places_status_check', table.status, PLACE_STATUSES),
     closedSet('places_verification_state_check', table.verificationState, PLACE_VERIFICATION_STATES),
     /**
+     * Built from `CATEGORY_KEYS`, so a category added to the contract is a
+     * generated migration that widens this, and a free-text category is
+     * refused here as well as at the edge.
+     */
+    closedSetArray('places_categories_taxonomy_check', table.categories, CATEGORY_KEYS),
+    /**
      * The ordinates are bounded HERE as well as in the HTTP layer. A latitude
      * of 120 rejected by zod is a 422; a latitude of 120 that reaches the table
      * through a backfill, a script or a future importer is a point PostGIS will
@@ -248,6 +279,10 @@ export const places = pgTable(
       sql`(${table.status} = 'merged') = (${table.mergedIntoPlaceId} is not null)`,
     ),
     check('places_merged_into_self_check', sql`${table.mergedIntoPlaceId} <> ${table.id}`),
+    check(
+      'places_timezone_check',
+      sql`${table.timezone} is null or ${table.timezone} ~ '^[A-Za-z]+(/[A-Za-z0-9_+-]+)*$'`,
+    ),
 
     /**
      * The index every spatial read depends on. `ST_DWithin` and `ST_Intersects`
@@ -368,6 +403,26 @@ export const placesNames = pgTable(
 );
 
 /**
+ * A source's own statement of a place, versioned.
+ *
+ * `tags` is EVERYTHING the source said, raw — every OpenStreetMap tag, not the
+ * fourteen GoWay happened to map when the row was written — so a mapping added
+ * next year can be applied to what is already stored instead of waiting for a
+ * re-import. `normalized` is what GoWay read from it, in the form it went into
+ * the columns: the import's three-way merge compares the column against it to
+ * tell a GoWay correction from an unchanged source fact.
+ *
+ * `v` is the shape's version. A reader that meets a version it does not know
+ * treats the row as having no previous statement, which makes the merge fill
+ * gaps and change nothing else — the safe direction.
+ */
+export interface PlaceSourceData {
+  v: 2;
+  tags: Record<string, string>;
+  normalized: Record<string, unknown>;
+}
+
+/**
  * Every source a place reconciles against.
  *
  * Provenance is a ROW, not a column, and it is never destructively overwritten:
@@ -399,12 +454,14 @@ export const placesSources = pgTable(
      */
     observedAt: timestamptz().notNull().defaultNow(),
     /**
-     * The normalized facts GoWay took from this source, as the source stated
-     * them. Deliberately not merged into `places`: keeping the source's own
-     * version beside GoWay's lets a later reconciliation see what changed
-     * upstream instead of guessing which side a differing value came from.
+     * What this source said, as it said it and as GoWay read it — see
+     * {@link PlaceSourceData}. Deliberately not merged into `places`: keeping
+     * the source's own version beside GoWay's lets a later reconciliation see
+     * what changed upstream instead of guessing which side a differing value
+     * came from. Null for a source linked through the API, which states no
+     * facts of its own.
      */
-    sourceData: jsonb(),
+    sourceData: jsonb().$type<PlaceSourceData>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -468,12 +525,14 @@ export const placesCapabilities = pgTable(
      */
     key: text().generatedAlwaysAs(() => sql.raw("namespace || '.' || capability")),
     /**
-     * `true`/`false` for a flag, a string or a number for a valued capability —
-     * stored as jsonb so the three round-trip to the contract's
-     * `boolean | string | number` without a discriminator column and without
-     * `'true'` and `true` becoming indistinguishable.
+     * The value, typed by the key's entry in the contract's capability
+     * registry: a flag, an enum value, an enum SET (an array of strings), a
+     * number, a URL or a text. jsonb so each round-trips to the contract
+     * without a discriminator column and without `'true'` and `true` becoming
+     * indistinguishable. Which shape a key takes is validated at every write;
+     * this column only bounds the jsonb types.
      */
-    value: jsonb().notNull().$type<boolean | string | number>(),
+    value: jsonb().notNull().$type<CapabilityValue>(),
     verification: text().notNull(),
     observedAt: timestamptz().notNull().defaultNow(),
     /**
@@ -498,7 +557,7 @@ export const placesCapabilities = pgTable(
     check('places_capabilities_capability_shape_check', sql`${table.capability} ~ '^[a-z0-9_-]+$'`),
     check(
       'places_capabilities_value_type_check',
-      sql`jsonb_typeof(${table.value}) in ('boolean', 'string', 'number')`,
+      sql`jsonb_typeof(${table.value}) in ('boolean', 'string', 'number', 'array')`,
     ),
     /**
      * An `external_source` assertion has to NAME the source it came from.
@@ -714,5 +773,65 @@ export const placeReports = pgTable(
       .where(sql`${table.resolvedAt} is null`),
     /** The moderation queue, oldest first, in either state. */
     index('place_reports_queue_idx').on(table.createdAt, table.id),
+  ],
+);
+
+/**
+ * A dated exception to a place's weekly hours: closed, or open on special
+ * hours, for every day from `starts_on` to `ends_on` inclusive.
+ *
+ * A row rather than a jsonb list on `places`, for the reason
+ * `places_capabilities` is a table: an exception is a CLAIM. "Closed on the
+ * 26th" said by the business and the same thing reported by a passer-by are
+ * two assertions with different weight, so each carries the verification tier
+ * and freshness a capability does, and the unique key includes the tier — a
+ * community report lands BESIDE the business's own and never overwrites it.
+ * Readers take the strongest tier for a date (`openingStatusAt`).
+ *
+ * Dates, not instants: an exception is said in the place's own calendar, and
+ * `places.timezone` is how it is read.
+ *
+ * Mercaria's `location_closures` is the same fact for a pickup location; once
+ * Mercaria reads hours from GoWay it is this table.
+ */
+export const placeHoursExceptions = pgTable(
+  'place_hours_exceptions',
+  {
+    id: generatedId(),
+    placeId: text()
+      .notNull()
+      .references(() => places.id, { onDelete: 'cascade' }),
+    startsOn: date({ mode: 'string' }).notNull(),
+    /** Inclusive: a one-day exception has `starts_on = ends_on`. */
+    endsOn: date({ mode: 'string' }).notNull(),
+    closed: boolean().notNull(),
+    /** The special hours on each day of the range. Empty exactly when `closed`. */
+    intervals: jsonb()
+      .notNull()
+      .$type<TimeRange[]>()
+      .default(sql`'[]'::jsonb`),
+    note: text(),
+    /** `goway` for anything written through the API; the same key space as `places_sources.source`. */
+    source: text().notNull(),
+    verification: text().notNull(),
+    observedAt: timestamptz().notNull().defaultNow(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    closedSet('place_hours_exceptions_verification_check', table.verification, CAPABILITY_VERIFICATIONS),
+    check('place_hours_exceptions_range_check', sql`${table.startsOn} <= ${table.endsOn}`),
+    check(
+      'place_hours_exceptions_span_check',
+      sql`${table.endsOn} - ${table.startsOn} < ${sql.raw(String(MAX_HOURS_EXCEPTION_DAYS))}`,
+    ),
+    check(
+      'place_hours_exceptions_intervals_check',
+      sql`jsonb_typeof(${table.intervals}) = 'array' and ${table.closed} = (jsonb_array_length(${table.intervals}) = 0)`,
+    ),
+    check('place_hours_exceptions_source_not_blank_check', sql`btrim(${table.source}) <> ''`),
+    unique('place_hours_exceptions_range_key').on(table.placeId, table.startsOn, table.endsOn, table.verification),
+    /** The single-place read asks for the exceptions that have not ended yet. */
+    index('place_hours_exceptions_place_ends_idx').on(table.placeId, table.endsOn),
   ],
 );

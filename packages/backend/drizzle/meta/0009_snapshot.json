@@ -1,6 +1,6 @@
 {
-  "id": "e8816ccc-93a1-42b7-90f3-d13e0b683b06",
-  "prevId": "7cd4214f-7ac9-45f6-82e9-3278926cbc2a",
+  "id": "fbbcacad-c95d-496b-bae0-e34466dc37e6",
+  "prevId": "e8816ccc-93a1-42b7-90f3-d13e0b683b06",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -946,12 +946,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "brand_id": {
-          "name": "brand_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "role": {
           "name": "role",
           "type": "text",
@@ -1020,21 +1014,6 @@
           "columns": [
             {
               "expression": "oxy_account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "places_claims_brand_idx": {
-          "name": "places_claims_brand_idx",
-          "columns": [
-            {
-              "expression": "brand_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

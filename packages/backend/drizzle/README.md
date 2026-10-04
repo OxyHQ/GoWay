@@ -108,3 +108,62 @@ any DDL runs. `CREATE EXTENSION` is privileged and `IF NOT EXISTS`
 short-circuits before the privilege check, so a NEWLY provisioned database needs
 a superuser to run it once by hand first — see that module for the full
 explanation.
+
+## `0007_goway_business_moderation`
+
+Business ownership and moderation (`docs/BUSINESS_OWNERSHIP.md`):
+`place_revisions` (the append-only history every place write records in its
+own transaction), `place_reports` (one open report per reporter per place),
+`places.merged_into_place_id` with `places_status_check` widened to admit
+`merged`, and the indexes the moderation queues read. `pre` — new tables, a
+nullable column and a widened CHECK are all correct against the image still
+serving.
+
+## `0008_goway_place_hours`
+
+Place data, the additive half (`docs/PLACE_DATA.md`): `place_hours_exceptions`
+(dated closures and special hours, each at a verification tier, unique on
+`(place, starts_on, ends_on, verification)`), a nullable `places.timezone`
+with a zone-name CHECK, `places_capabilities_value_type_check` widened to
+admit `array` (an enum-set value), and `place_revisions_action_check` widened
+to the three hours-exception actions every exception write records. `pre` —
+a new table, a nullable column and widened CHECKs are all correct against the
+image still serving.
+
+## Every `pre` before every `post`
+
+`0007` and `0008` are `pre`; `0009`–`0011` are `post`. The order is the point:
+a `pre` run applies the pending PREFIX up to the first `post` and BLOCKS on a
+`pre` queued behind an unapplied `post` (`planMigrationRun` in
+`@oxy.so/db/migrate`), so business moderation and place data ship in one
+release only because both additive halves come first.
+
+## `0009_goway_drop_claim_brand`
+
+Drops `places_claims.brand_id` and its index: a chain is an Oxy organization
+claiming each location in the `brand` role, so nothing else groups them.
+`post` — the previous image still reads and writes the column.
+
+## `0010_goway_place_data_conversion`
+
+The one CUSTOM migration (`drizzle-kit generate --custom`): data the previous
+image wrote, converted in place. `post`, because each step narrows what that
+image wrote, and it must run before `0011` adds the CHECK it makes true.
+
+- `places.categories` and the importer's recorded `categories` are rewritten
+  as taxonomy keys by ONE function, so a column that equalled what
+  OpenStreetMap last said still equals it and the next import refreshes it.
+  The function lives in `pg_temp` and dies with the session.
+- A version-1 `places_sources.source_data` becomes `{v: 2, tags: {}, normalized}`.
+- A well-formed `opening_hours.timezone` seeds `places.timezone` and leaves the
+  schedule.
+
+Every statement is a no-op on data it already converted;
+`placeDataConversion.realdb.test.ts` re-runs them to prove it. It is a data
+migration, not an API write, so it records no `place_revisions` rows.
+
+## `0011_goway_category_taxonomy`
+
+`places_categories_taxonomy_check`: every `places.categories` member is a key of
+the contract's taxonomy. `post`, after `0010`, because it narrows the column.
+Adding a category to the contract regenerates this CHECK in a new migration.

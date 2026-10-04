@@ -61,8 +61,29 @@
     {
       "idx": 8,
       "version": "7",
-      "when": 1791123716519,
-      "tag": "0008_goway_drop_claim_brand",
+      "when": 1791126340234,
+      "tag": "0008_goway_place_hours",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791126341031,
+      "tag": "0009_goway_drop_claim_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791126341765,
+      "tag": "0010_goway_place_data_conversion",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791126342503,
+      "tag": "0011_goway_category_taxonomy",
       "breakpoints": true
     }
   ]
