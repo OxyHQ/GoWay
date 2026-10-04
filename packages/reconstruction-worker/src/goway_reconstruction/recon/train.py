@@ -7,8 +7,14 @@ sit on top:
 
 - the loss only sees pixels the privacy mask allows. People and vehicles never
   contribute appearance, so they cannot be learned into the scene;
-- the Gaussian count is a budget, not an outcome: densification stops when it
-  is reached and the final cloud is pruned to it;
+- the Gaussian count is a budget, not an outcome. The default densification is
+  gsplat's MCMC strategy, which relocates Gaussians within a fixed cap instead
+  of growing until something stops it, with light opacity and scale
+  regularisation against floaters;
+- contributions are shot on different days, devices and exposures, so each
+  training frame gets a small learned colour transform (3x3 + bias) applied to
+  the render before the loss. The scene learns the common appearance; the
+  per-frame transforms absorb exposure and white balance and are discarded;
 - every ``CHECKPOINT_EVERY`` steps the state is written to the job's scratch
   directory, so a restarted worker resumes instead of starting over.
 
@@ -29,12 +35,14 @@ import numpy as np
 import pycolmap
 import torch
 import torch.nn.functional as F
-from gsplat import DefaultStrategy, rasterization
+from gsplat import DefaultStrategy, MCMCStrategy, rasterization
 
 from .spz import GaussianCloud
 
 SH_C0 = 0.28209479177387814
 CHECKPOINT_EVERY = 2000
+MAX_ANISOTROPY = 8.0
+ANISOTROPY_WEIGHT = 0.1
 HOLDOUT_EVERY = 8
 
 
@@ -143,6 +151,7 @@ class Trainer:
         sh_degree: int,
         checkpoint: Path,
         device: torch.device,
+        strategy: str = "mcmc",
         seed: int = 0,
     ) -> None:
         torch.manual_seed(seed)
@@ -171,7 +180,7 @@ class Trainer:
                 "means": torch.nn.Parameter(means),
                 "scales": torch.nn.Parameter(torch.log(dist)[:, None].repeat(1, 3)),
                 "quats": torch.nn.Parameter(torch.rand((n, 4), device=device)),
-                "opacities": torch.nn.Parameter(torch.logit(torch.full((n,), 0.1, device=device))),
+                "opacities": torch.nn.Parameter(torch.logit(torch.full((n,), 0.5 if strategy == "mcmc" else 0.1, device=device))),
                 "sh0": torch.nn.Parameter(colors[:, :1]),
                 "shN": torch.nn.Parameter(colors[:, 1:]),
             }
@@ -189,15 +198,29 @@ class Trainer:
             for name, lr in lrs.items()
         }
         self.means_decay = 0.01 ** (1.0 / iterations)
-        self.strategy = DefaultStrategy(
-            refine_start_iter=500,
-            refine_stop_iter=int(iterations * 0.5),
-            reset_every=3000,
-            refine_every=100,
-            verbose=False,
-        )
+        self.mcmc = strategy == "mcmc"
+        if self.mcmc:
+            self.strategy = MCMCStrategy(
+                cap_max=max_gaussians,
+                refine_start_iter=500,
+                refine_stop_iter=int(iterations * 0.85),
+                refine_every=100,
+            )
+        else:
+            self.strategy = DefaultStrategy(
+                refine_start_iter=500,
+                refine_stop_iter=int(iterations * 0.5),
+                reset_every=3000,
+                refine_every=100,
+                verbose=False,
+            )
+        # Per-frame colour transforms (exposure / white balance), identity at start.
+        n_views = len(self.train_views)
+        self.colour = torch.nn.Parameter(torch.eye(3, 4, device=device).repeat(n_views, 1, 1))
+        self.colour_opt = torch.optim.Adam([self.colour], lr=1e-3)
+        self.view_index = {id(v): i for i, v in enumerate(self.train_views)}
         self.strategy.check_sanity(self.splats, self.optimizers)
-        self.state = self.strategy.initialize_state(scene_scale=self.scene_scale)
+        self.state = self.strategy.initialize_state() if self.mcmc else self.strategy.initialize_state(scene_scale=self.scene_scale)
         self.step = 0
 
     # ── checkpoints ────────────────────────────────────────────────────────
@@ -210,6 +233,7 @@ class Trainer:
                 "splats": self.splats.state_dict(),
                 "optimizers": {k: o.state_dict() for k, o in self.optimizers.items()},
                 "refine_stop_iter": self.strategy.refine_stop_iter,
+                "colour": self.colour.detach(),
             },
             tmp,
         )
@@ -225,7 +249,9 @@ class Trainer:
             opt.param_groups[0]["params"] = [self.splats[name]]
             opt.load_state_dict(data["optimizers"][name])
         self.strategy.refine_stop_iter = data["refine_stop_iter"]
-        self.state = self.strategy.initialize_state(scene_scale=self.scene_scale)
+        if "colour" in data and data["colour"].shape == self.colour.shape:
+            self.colour.data.copy_(data["colour"])
+        self.state = self.strategy.initialize_state() if self.mcmc else self.strategy.initialize_state(scene_scale=self.scene_scale)
         self.step = int(data["step"])
         return True
 
@@ -254,27 +280,44 @@ class Trainer:
     def train(self, on_progress: Callable[[float], None]) -> None:
         rng = np.random.default_rng(self.step)
         while self.step < self.iterations:
-            view = self.train_views[int(rng.integers(len(self.train_views)))]
+            index = int(rng.integers(len(self.train_views)))
+            view = self.train_views[index]
             h, w = view.image.shape[:2]
             degree = min(self.step // 1000, self.sh_degree)
             renders, _alphas, info = self.render(view.K, view.viewmat, w, h, degree)
-            pred = renders[0].clamp(0, 1)
+            colour = self.colour[index]
+            pred = (renders[0] @ colour[:, :3].T + colour[:, 3]).clamp(0, 1)
             gt = view.image.float() / 255.0
             m = view.mask[..., None].float()
             l1 = (torch.abs(pred - gt) * m).sum() / (m.sum() * 3).clamp(min=1)
             ssim = _ssim((pred * m).permute(2, 0, 1)[None], (gt * m).permute(2, 0, 1)[None]).mean()
             loss = 0.8 * l1 + 0.2 * (1 - ssim)
+            if self.mcmc:
+                loss = loss + 0.01 * torch.sigmoid(self.splats["opacities"]).mean() + 0.01 * torch.exp(self.splats["scales"]).mean()
+            loss = loss + 1e-3 * (self.colour[index] - torch.eye(3, 4, device=self.device)).abs().mean()
+            # Needles: a street seen from one direction leaves the ground and
+            # walls under-constrained, and the optimiser answers with very
+            # elongated Gaussians that look like shards from any other angle.
+            # Penalise anisotropy beyond MAX_ANISOTROPY (PhysGaussian-style).
+            scales = torch.exp(self.splats["scales"])
+            ratio = scales.max(dim=1).values / scales.min(dim=1).values.clamp(min=1e-8)
+            loss = loss + ANISOTROPY_WEIGHT * torch.relu(ratio - MAX_ANISOTROPY).mean()
 
             self.strategy.step_pre_backward(self.splats, self.optimizers, self.state, self.step, info)
             loss.backward()
             for opt in self.optimizers.values():
                 opt.step()
                 opt.zero_grad(set_to_none=True)
+            self.colour_opt.step()
+            self.colour_opt.zero_grad(set_to_none=True)
+            means_lr = self.optimizers["means"].param_groups[0]["lr"]
             self.optimizers["means"].param_groups[0]["lr"] *= self.means_decay
-            self.strategy.step_post_backward(self.splats, self.optimizers, self.state, self.step, info, packed=False)
-
-            if self.splats["means"].shape[0] >= self.max_gaussians and self.strategy.refine_stop_iter > self.step:
-                self.strategy.refine_stop_iter = self.step  # budget reached: stop growing
+            if self.mcmc:
+                self.strategy.step_post_backward(self.splats, self.optimizers, self.state, self.step, info, lr=means_lr)
+            else:
+                self.strategy.step_post_backward(self.splats, self.optimizers, self.state, self.step, info, packed=False)
+                if self.splats["means"].shape[0] >= self.max_gaussians and self.strategy.refine_stop_iter > self.step:
+                    self.strategy.refine_stop_iter = self.step  # budget reached: stop growing
             self.step += 1
             if self.step % CHECKPOINT_EVERY == 0:
                 self.save()
@@ -302,6 +345,10 @@ class Trainer:
         keep = torch.ones(s["means"].shape[0], dtype=torch.bool, device=self.device)
         keep &= torch.sigmoid(s["opacities"]) > 0.005
         keep &= torch.isfinite(s["means"]).all(1)
+        # Distant Gaussians are sky and floaters, not street; they also leave
+        # SPZ's fixed-point range (about ±2 km). Keep a generous radius.
+        centre = torch.tensor(self.scene_center, dtype=torch.float32, device=self.device)
+        keep &= (s["means"] - centre).norm(dim=1) < max(300.0, 6.0 * self.scene_scale)
         idx = keep.nonzero().squeeze(1)
         if idx.numel() > self.max_gaussians:
             order = torch.sigmoid(s["opacities"][idx]).argsort(descending=True)
@@ -345,6 +392,7 @@ def train_scene(
     sh_degree: int,
     on_progress: Callable[[float], None],
     device: torch.device,
+    strategy: str = "mcmc",
 ) -> TrainResult:
     started = time.monotonic()
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -358,6 +406,7 @@ def train_scene(
         sh_degree=sh_degree,
         checkpoint=work_dir / "train.ckpt",
         device=device,
+        strategy=strategy,
     )
     trainer.try_resume()
     trainer.train(on_progress)

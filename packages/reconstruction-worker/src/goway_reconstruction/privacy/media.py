@@ -40,6 +40,19 @@ def sharpness(rgb: np.ndarray) -> float:
     return float(cv2.Laplacian(grey, cv2.CV_64F).var())
 
 
+def upright(rgb: np.ndarray, rotation: int) -> np.ndarray:
+    """Apply a video's display-matrix rotation.
+
+    FFmpeg/PyAV report the angle counter-clockwise, and a NEGATIVE angle is the
+    usual portrait phone video: ``-90`` means "turn 90° clockwise to display".
+    ``np.rot90`` turns counter-clockwise for positive ``k``, so ``k`` is the
+    angle over 90, taken modulo 4. Getting the sign wrong turns every frame
+    upside down, which SfM happily reconstructs as an upside-down street.
+    """
+    k = (int(rotation) // 90) % 4
+    return np.ascontiguousarray(np.rot90(rgb, k=k)) if k else rgb
+
+
 def _fit(rgb: np.ndarray, long_edge: int) -> np.ndarray:
     h, w = rgb.shape[:2]
     scale = long_edge / max(h, w)
@@ -77,9 +90,7 @@ def decode_video(path: Path, policy: KeyframePolicy) -> list[DecodedFrame]:
                 if len(best) >= policy.maxFrames and window not in best:
                     break
                 rgb = frame.to_ndarray(format="rgb24")
-                rotation = getattr(frame, "rotation", 0) or 0
-                if rotation % 360:
-                    rgb = np.ascontiguousarray(np.rot90(rgb, k=(-rotation // 90) % 4))
+                rgb = upright(rgb, getattr(frame, "rotation", 0) or 0)
                 rgb = _fit(rgb, policy.maxLongEdgePixels)
                 score = sharpness(rgb)
                 current = best.get(window)

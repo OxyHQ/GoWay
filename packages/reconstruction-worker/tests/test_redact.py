@@ -65,3 +65,17 @@ def test_orientation_is_applied(tmp_path):
     Image.fromarray(textured(400, 800)).save(src, exif=exif)
     frame = decode_photo(src, KeyframePolicy(maxFrames=1, minIntervalSeconds=1, maxLongEdgePixels=2048))[0]
     assert frame.rgb.shape[:2] == (800, 400)
+
+
+def test_video_display_rotation_convention():
+    from goway_reconstruction.privacy.media import upright
+
+    # A landscape-stored frame whose top row is marked; a portrait phone video
+    # stores it this way with rotation -90 ("turn clockwise to display").
+    frame = np.zeros((2, 3, 3), np.uint8)
+    frame[0, :, 0] = 255  # top row red
+    turned = upright(frame, -90)
+    assert turned.shape[:2] == (3, 2)
+    assert (turned[:, -1, 0] == 255).all()  # clockwise: the old top is now the right edge
+    assert (upright(frame, 180)[-1, :, 0] == 255).all()
+    assert upright(frame, 0) is frame
