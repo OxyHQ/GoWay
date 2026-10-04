@@ -17,9 +17,13 @@
  */
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
+import { Fab } from '@oxy.so/bloom/fab';
+import { RiArrowDownLine } from '@oxy.so/bloom/icons/RiArrowDownLine';
+import { RiArrowUpLine } from '@oxy.so/bloom/icons/RiArrowUpLine';
 import { Text } from '@oxy.so/bloom/typography';
 
 import { STREET3D_ASSET_ORIGIN } from '@/lib/config';
+import { useTranslation } from '@/lib/i18n';
 import { sceneUp } from '@/lib/street3d/geodesy';
 
 import { planSceneAssets } from './assets';
@@ -80,6 +84,13 @@ function SceneViewerComponent({
   const engineRef = useRef<SceneEngine | null>(null);
   const labelElements = useRef(new Map<string, HTMLElement>());
   const [stats, setStats] = useState<SceneViewerStats | null>(null);
+  const { t } = useTranslation();
+  // Guided navigation: the reachable viewpoints (markers) and the side mask.
+  const [reachable, setReachable] = useState<readonly number[]>([]);
+  const [sideMask, setSideMask] = useState(0);
+  const stepElements = useRef(new Map<number, HTMLElement>());
+  const hasNavigation = (manifest.navigation?.viewpoints.length ?? 0) > 0;
+  const guided = hasNavigation && controlMode === 'walk';
 
   // Callbacks change identity every render; the engine is built once per
   // manifest and reads them through this ref.
@@ -139,6 +150,29 @@ function SceneViewerComponent({
             handlers.current.onStats?.(next);
             setStats(next);
           },
+          navigation: manifest.navigation,
+          onReachable: (indices) => {
+            if (!cancelled) setReachable(indices);
+          },
+          onFrustum: (frustum) => {
+            if (!cancelled) setSideMask(Math.round(frustum.sideMask * 1000) / 1000);
+          },
+          onSteps: (positions) => {
+            for (const [index, element] of stepElements.current) {
+              const at = positions.get(index);
+              if (!at) {
+                element.style.opacity = '0';
+                element.style.pointerEvents = 'none';
+                continue;
+              }
+              element.style.opacity = '1';
+              element.style.pointerEvents = 'auto';
+              element.style.width = `${(at.radius * 2).toFixed(1)}px`;
+              element.style.height = `${(at.radius * 2).toFixed(1)}px`;
+              element.style.transform =
+                `translate(${(at.x - at.radius).toFixed(1)}px, ${(at.y - at.radius).toFixed(1)}px) scaleY(${at.squash.toFixed(3)})`;
+            }
+          },
           onLabels: (positions) => {
             for (const [id, element] of labelElements.current) {
               const at = positions.get(id);
@@ -156,6 +190,9 @@ function SceneViewerComponent({
         engineRef.current = engine;
         engine.setLabels(latest.current.labels);
         engine.setMode(latest.current.controlMode);
+        // A full-screen viewer takes the keyboard: W/S and the arrows work at
+        // once, without a first click (which, guided, is itself a step).
+        host.focus({ preventScroll: true });
         const resize = () => engine.resize(host.clientWidth, host.clientHeight);
         resize();
         observer = typeof ResizeObserver === 'function' ? new ResizeObserver(resize) : null;
@@ -180,6 +217,15 @@ function SceneViewerComponent({
   useEffect(() => {
     engineRef.current?.setLabels(visibleLabels);
   }, [visibleLabels]);
+
+  const registerStep = useCallback((index: number, element: HTMLElement | null) => {
+    if (element) {
+      element.style.opacity = '0';
+      stepElements.current.set(index, element);
+    } else {
+      stepElements.current.delete(index);
+    }
+  }, []);
 
   const registerLabel = useCallback((id: string, element: HTMLElement | null) => {
     if (element) {
@@ -206,13 +252,97 @@ function SceneViewerComponent({
         ref={canvasRef}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', outline: 'none' }}
       />
+      {hasNavigation ? <EdgeShade sideMask={sideMask} /> : null}
+      {guided
+        ? reachable.map((index) => (
+            <div
+              key={index}
+              ref={(node) => registerStep(index, node)}
+              role="button"
+              aria-label={t('street3d.viewer.stepHere')}
+              onClick={() => engineRef.current?.goTo(index)}
+              style={STEP_MARKER_STYLE}
+            />
+          ))
+        : null}
       <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
         {visibleLabels.map((label) => (
           <SceneLabel key={label.id} label={label} register={registerLabel} onPress={onLabelPress} />
         ))}
       </View>
+      {guided ? (
+        <View pointerEvents="box-none" className="absolute left-0 right-0 items-center gap-space-8" style={{ bottom: 72 }}>
+          <Fab
+            size="sm"
+            icon={RiArrowUpLine}
+            appearance="subtle"
+            tone="neutral"
+            accessibilityLabel={t('street3d.viewer.stepForward')}
+            onPress={() => engineRef.current?.step(1)}
+          />
+          <Fab
+            size="sm"
+            icon={RiArrowDownLine}
+            appearance="subtle"
+            tone="neutral"
+            accessibilityLabel={t('street3d.viewer.stepBack')}
+            onPress={() => engineRef.current?.step(-1)}
+          />
+        </View>
+      ) : null}
       {showStats && stats ? <StatsOverlay stats={stats} /> : null}
     </View>
+  );
+}
+
+/**
+ * A ground "step here" marker. Translucent white with a soft ring, like Street
+ * View's chevrons: it sits ON the photograph, where a theme colour would read
+ * as UI pasted over the street. Positioned per frame by the engine.
+ */
+const STEP_MARKER_STYLE = {
+  position: 'absolute',
+  left: 0,
+  top: 0,
+  borderRadius: '50%',
+  background: 'rgba(255, 255, 255, 0.28)',
+  border: '2px solid rgba(255, 255, 255, 0.85)',
+  boxShadow: '0 0 8px rgba(0, 0, 0, 0.35)',
+  cursor: 'pointer',
+  opacity: 0,
+  transition: 'opacity 160ms ease-out',
+  transformOrigin: '50% 50%',
+} as const;
+
+/**
+ * Darkens what the capture never saw, and softly fades every edge.
+ *
+ * `sideMask` is the fraction of the width, per side, beyond the captured
+ * horizontal field of view (a portrait capture on a landscape screen). Those
+ * bands are shaded almost to black with a soft inner edge rather than drawn —
+ * the splat there is extrapolation, and extrapolation is the shards and
+ * needles. Shade is photographic black, not a theme colour: it stands for
+ * "no imagery", which is the same in light and dark mode.
+ */
+function EdgeShade({ sideMask }: { sideMask: number }) {
+  const band = `${(sideMask * 100).toFixed(2)}%`;
+  const soft = `${(Math.min(0.5, sideMask + 0.06) * 100).toFixed(2)}%`;
+  const sides =
+    sideMask > 0
+      ? `linear-gradient(to right, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.92) ${band}, rgba(0,0,0,0) ${soft}, ` +
+        `rgba(0,0,0,0) calc(100% - ${soft}), rgba(0,0,0,0.92) calc(100% - ${band}), rgba(0,0,0,0.92) 100%)`
+      : null;
+  const vignette = 'radial-gradient(ellipse at center, rgba(0,0,0,0) 62%, rgba(0,0,0,0.38) 100%)';
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+        background: sides ? `${sides}, ${vignette}` : vignette,
+      }}
+    />
   );
 }
 

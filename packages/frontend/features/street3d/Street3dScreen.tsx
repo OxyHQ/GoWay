@@ -87,7 +87,11 @@ export function Street3dScreen() {
   const manifest = scene.data;
 
   const [phase, setPhase] = useState<SceneViewerPhase>('loading');
-  const [mode, setMode] = useState<SceneViewerControlMode>('orbit');
+  // Guided Walk is the default whenever the scene publishes where it can be
+  // walked; free Orbit stays behind the toggle. `null` = not chosen yet.
+  const [chosenMode, setMode] = useState<SceneViewerControlMode | null>(null);
+  const guidedAvailable = (manifest?.navigation?.viewpoints.length ?? 0) > 0;
+  const mode: SceneViewerControlMode = chosenMode ?? (guidedAvailable ? 'walk' : 'orbit');
   const [reporting, setReporting] = useState(false);
   const [showStats, setShowStats] = useState(false);
 
@@ -243,13 +247,21 @@ export function Street3dScreen() {
           {IS_WEB ? (
             <View pointerEvents="box-none" className="flex-row flex-wrap items-end justify-between gap-space-8">
               <View className="flex-row items-center gap-space-8 rounded-radius-max bg-card px-space-8 py-space-4 shadow-s">
-                <Button size="xs" appearance={mode === 'orbit' ? 'solid' : 'plain'} tone="neutral" onPress={() => setMode('orbit')}>
-                  {t('street3d.viewer.controls.orbit')}
-                </Button>
-                <Button size="xs" appearance={mode === 'walk' ? 'solid' : 'plain'} tone="neutral" onPress={() => setMode('walk')}>
-                  {t('street3d.viewer.controls.walk')}
-                </Button>
-                <Text className="text-caption text-muted-foreground">{t('street3d.viewer.controls.hint')}</Text>
+                {/* Walk first when it is the guided default; Orbit is the secondary, free mode. */}
+                {(guidedAvailable ? (['walk', 'orbit'] as const) : (['orbit', 'walk'] as const)).map((option) => (
+                  <Button
+                    key={option}
+                    size="xs"
+                    appearance={mode === option ? 'solid' : 'plain'}
+                    tone="neutral"
+                    onPress={() => setMode(option)}
+                  >
+                    {t(`street3d.viewer.controls.${option}`)}
+                  </Button>
+                ))}
+                <Text className="text-caption text-muted-foreground">
+                  {guidedAvailable && mode === 'walk' ? t('street3d.viewer.controls.hintGuided') : t('street3d.viewer.controls.hint')}
+                </Text>
                 {__DEV__ ? (
                   <Pressable onPress={() => setShowStats((value) => !value)} accessibilityRole="button">
                     <Text className="text-caption text-muted-foreground">perf</Text>

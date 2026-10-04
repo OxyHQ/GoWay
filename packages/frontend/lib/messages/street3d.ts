@@ -32,6 +32,10 @@ export const STREET3D_EN: Record<string, string> = {
   'street3d.viewer.controls.orbit': 'Orbit',
   'street3d.viewer.controls.walk': 'Walk',
   'street3d.viewer.controls.hint': 'Drag to look · WASD or arrows to move · scroll or pinch to zoom',
+  'street3d.viewer.controls.hintGuided': 'Drag to look · W/S, arrows or click ahead to walk · A/D to turn',
+  'street3d.viewer.stepForward': 'Step forward',
+  'street3d.viewer.stepBack': 'Step back',
+  'street3d.viewer.stepHere': 'Go here',
 
   // Report
   'street3d.report.title': 'Report this 3D view',
@@ -112,6 +116,10 @@ export const STREET3D_ES: Record<string, string> = {
   'street3d.viewer.controls.orbit': 'Orbitar',
   'street3d.viewer.controls.walk': 'Caminar',
   'street3d.viewer.controls.hint': 'Arrastra para mirar · WASD o flechas para moverte · rueda o pellizco para acercar',
+  'street3d.viewer.controls.hintGuided': 'Arrastra para mirar · W/S, flechas o clic delante para caminar · A/D para girar',
+  'street3d.viewer.stepForward': 'Avanzar',
+  'street3d.viewer.stepBack': 'Retroceder',
+  'street3d.viewer.stepHere': 'Ir aquí',
 
   'street3d.report.title': 'Denunciar esta vista 3D',
   'street3d.report.reason.privacy': 'Privacidad: se ve una cara, una matrícula o un espacio privado',

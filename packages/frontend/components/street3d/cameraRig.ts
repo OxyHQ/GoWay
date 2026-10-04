@@ -47,6 +47,14 @@ export interface CameraRig {
   pan(right: number, up: number): void;
   pose(): CameraPose;
   reset(): void;
+  /** The current view direction (unit). */
+  direction(): Vec3;
+  /** Stand at `position`, keeping the view direction (guided navigation). */
+  placeAt(position: Vec3): void;
+  /** Face `direction` (any length), keeping the position. */
+  lookToward(direction: Vec3): void;
+  /** Limit pitch to ± `radians` (re-clamps the current pitch). */
+  setPitchLimit(radians: number): void;
 }
 
 export function createCameraRig(initial: { position: Vec3; target: Vec3; up: Vec3 }): CameraRig {
@@ -61,6 +69,7 @@ export function createCameraRig(initial: { position: Vec3; target: Vec3; up: Vec
   const R = unit(cross(F, up));
 
   let mode: SceneViewerControlMode = 'orbit';
+  let pitchLimit = MAX_PITCH;
   let yaw = 0;
   let pitch = 0;
   let distance = 0;
@@ -105,7 +114,7 @@ export function createCameraRig(initial: { position: Vec3; target: Vec3; up: Vec
     },
     look(deltaYaw, deltaPitch) {
       yaw += deltaYaw;
-      pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch + deltaPitch));
+      pitch = Math.max(-pitchLimit, Math.min(pitchLimit, pitch + deltaPitch));
       sync();
     },
     move(forwardMeters, rightMeters, upMeters) {
@@ -136,7 +145,27 @@ export function createCameraRig(initial: { position: Vec3; target: Vec3; up: Vec
     },
     reset() {
       reset();
+      pitch = Math.max(-pitchLimit, Math.min(pitchLimit, pitch));
       position = sub(target, scale(direction(), distance));
+    },
+    direction() {
+      return direction();
+    },
+    placeAt(next) {
+      position = [...next];
+      target = add(position, scale(direction(), distance));
+    },
+    lookToward(dir) {
+      const d = unit(dir);
+      if (length(d) === 0) return;
+      pitch = Math.max(-pitchLimit, Math.min(pitchLimit, Math.asin(Math.max(-1, Math.min(1, dot(d, up))))));
+      yaw = Math.atan2(dot(d, R), dot(d, F));
+      sync();
+    },
+    setPitchLimit(radians) {
+      pitchLimit = Math.max(0, Math.min(MAX_PITCH, radians));
+      pitch = Math.max(-pitchLimit, Math.min(pitchLimit, pitch));
+      sync();
     },
   };
 }
