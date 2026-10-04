@@ -675,9 +675,16 @@ function sha256Digest(value: unknown, path: string): string {
   return parsed;
 }
 
+/**
+ * HTTPS, with one exception: plain HTTP on a loopback host. Such a URL can only
+ * ever reach the machine the client runs on, so it downgrades nothing; it is
+ * what a local development server for scene assets looks like.
+ */
+const LOOPBACK_HTTP = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?\//;
+
 function httpsUrl(value: unknown, path: string): string {
   const parsed = nonEmptyString(value, path);
-  if (!/^https:\/\//.test(parsed)) fail(path, 'an HTTPS URL');
+  if (!/^https:\/\//.test(parsed) && !LOOPBACK_HTTP.test(parsed)) fail(path, 'an HTTPS URL');
   return parsed;
 }
 
