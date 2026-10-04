@@ -248,6 +248,36 @@ describe('typed capabilities', () => {
     const refused = await call<ErrorBody>(`/places/nearby?${NEAR_RAVAL}&capabilities=amenities.wifi:maybe`);
     expect(refused.status).toBe(422);
   });
+
+  it('filters a text key by its exact value, through the strongest assertion', async () => {
+    const STORE = 'commerce.mercaria.store';
+    // The business names location A; a passer-by says B beside it. The
+    // business's statement is the place's — B is outranked, not matched.
+    await call(`/places/${claimed.id}/capabilities/${STORE}`, as('user-owner', 'PUT', { value: 'loc-a' }));
+    await call(`/places/${claimed.id}/capabilities/${STORE}`, as('user-x', 'PUT', { value: 'loc-b' }));
+    await call(`/places/${open.id}/capabilities/${STORE}`, as('user-x', 'PUT', { value: 'loc-b' }));
+
+    const ids = async (filter: string) =>
+      (await call<PlaceWithDistancePage>(`/places/nearby?${NEAR_RAVAL}&capabilities=${encodeURIComponent(filter)}`)).body.items
+        .map((place) => place.id)
+        .sort();
+
+    expect(await ids(`${STORE}:loc-a`)).toEqual([claimed.id]);
+    expect(await ids(`${STORE}:loc-b`)).toEqual([open.id]);
+    expect(await ids(`${STORE}:loc`)).toEqual([]);
+    expect(await ids(STORE)).toEqual([claimed.id, open.id].sort());
+    // A conjunction with another value filter, and the same rule in a viewport.
+    expect(await ids(`${STORE}:loc-a,accessibility.wheelchair:no`)).toEqual([claimed.id]);
+    const box = 'west=2.15&south=41.37&east=2.18&north=41.39';
+    const inBox = await call<PlaceWithDistancePage>(`/places/bounds?${box}&capabilities=${STORE}:loc-b`);
+    expect(inBox.body.items.map((place) => place.id)).toEqual([open.id]);
+
+    // A value the key's own schema refuses is refused as a filter too.
+    for (const filter of ['brand.wikidata:not-a-qid', `${STORE}:`]) {
+      const refused = await call<ErrorBody>(`/places/nearby?${NEAR_RAVAL}&capabilities=${encodeURIComponent(filter)}`);
+      expect(refused.status).toBe(422);
+    }
+  });
 });
 
 describe('hours exceptions', () => {
@@ -355,9 +385,16 @@ describe('hours exceptions', () => {
       '2031-02-01',
       '2031-03-01',
     ]);
-    // A list read carries no exceptions at all — absent, not empty.
+    // A list read carries them too — open-now on a list is wrong without them —
+    // and `[]` rather than nothing for a place with none.
     const nearby = await call<PlaceWithDistancePage>(`/places/nearby?${NEAR_RAVAL}`);
-    expect(nearby.body.items.every((item) => item.hoursExceptions === undefined)).toBe(true);
+    const listed = nearby.body.items.find((item) => item.id === open.id);
+    expect(listed?.hoursExceptions?.map((exception) => exception.startsOn)).toEqual([
+      '2031-01-01',
+      '2031-02-01',
+      '2031-03-01',
+    ]);
+    expect(nearby.body.items.every((item) => Array.isArray(item.hoursExceptions))).toBe(true);
   });
 
   it('answers 404 for an unknown place and requires a session to write', async () => {

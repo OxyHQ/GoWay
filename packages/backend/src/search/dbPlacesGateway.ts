@@ -10,8 +10,8 @@
 import type { Place } from '@goway/contracts';
 import type { SourceRefInput } from '../db/places/placesRepository';
 import {
-  findPlaceById,
   findPlaceIdBySourceRef,
+  findPlacesByIds,
   findPlacesInBounds,
   findPlacesNearby,
 } from '../db/places/placesRepository';
@@ -20,7 +20,7 @@ import { sourceRefKey, type PlacesGateway } from './placesGateway';
 
 export interface PlacesGatewayOptions {
   /**
-   * The signed-in caller, when there is one. Passed to `findPlaceById` so a
+   * The signed-in caller, when there is one. Passed to `findPlacesByIds` so a
    * claimant sees their own claim details on a place — and so nobody else does.
    */
   viewerOxyAccountId?: string | null;
@@ -57,14 +57,8 @@ export function createPlacesGateway(options: PlacesGatewayOptions = {}): PlacesG
     },
 
     async findPlacesByIds(ids, locale) {
-      const db = getDb();
-      const unique = [...new Set(ids)];
-      const places = await Promise.all(unique.map((id) => findPlaceById(db, id, viewer, locale)));
-      const byId = new Map<string, Place>();
-      for (const place of places) {
-        if (place !== null) byId.set(place.id, place);
-      }
-      return byId;
+      const places = await findPlacesByIds(getDb(), ids, viewer, locale);
+      return new Map<string, Place>(places.map((place) => [place.id, place]));
     },
 
     findPlacesNearby(query) {

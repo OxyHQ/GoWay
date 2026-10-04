@@ -33,6 +33,7 @@ import {
   eq,
   gt,
   inArray,
+  lte,
   ne,
   or,
   sql,
@@ -193,6 +194,11 @@ export interface PlaceDescriptionInput {
   description: string | null;
 }
 
+/**
+ * A place write, as the contract parsed it — with a PATCH's merge-patch
+ * reading: an absent field (or address or contact part) is left alone, and
+ * `null` clears it. A create simply never sends a `null`.
+ */
 export interface PlaceWriteInput {
   name?: string;
   names?: PlaceNameInput[];
@@ -203,11 +209,11 @@ export interface PlaceWriteInput {
   /** The Oxy file of a visible `cover` gallery item of this place; `null` clears it. Update only. */
   coverFileId?: string | null;
   location?: { latitude: number; longitude: number };
-  geometry?: GeoGeometry;
+  geometry?: GeoGeometry | null;
   categories?: string[];
-  address?: StructuredAddress;
-  contact?: PlaceContact;
-  openingHours?: OpeningHours;
+  address?: Clearable<StructuredAddress> | null;
+  contact?: Clearable<PlaceContact> | null;
+  openingHours?: OpeningHours | null;
   status?: WritablePlaceStatus;
   sources?: SourceRefInput[];
   capabilities?: CapabilityInput[];
@@ -473,29 +479,60 @@ async function loadNames(
   return db.select(NAME_COLUMNS).from(placesNames).where(inArray(placesNames.placeId, [...placeIds]));
 }
 
-/** The most exceptions a single-place read embeds. Every one is still listed by `listHoursExceptions`. */
+/** The most exceptions a place embeds. Every one is still listed by `listHoursExceptions`. */
 const MAX_EMBEDDED_HOURS_EXCEPTIONS = 32;
 
 /**
- * The exceptions a single-place read publishes: those that have not ended,
- * earliest first.
+ * The exceptions each place publishes: those that have not ended, earliest
+ * first, at most {@link MAX_EMBEDDED_HOURS_EXCEPTIONS} per place.
  *
  * "Not ended" is judged a day early, against the database's UTC date, because
  * the place's own date is not known here: somewhere it is still yesterday, and
  * an exception that ended there yesterday may be today's. One stale exception
  * costs a reader nothing — `openingStatusAt` only applies one covering today.
+ *
+ * One query for a whole page, answered by `place_hours_exceptions_place_ends_idx`;
+ * the cap is per place (`row_number` over each place's exceptions), so a place
+ * somebody flooded with reports cannot crowd its neighbours out of a list.
  */
-async function loadCurrentHoursExceptions(db: DatabaseOrTransaction, placeId: string): Promise<HoursExceptionRow[]> {
+async function loadCurrentHoursExceptions(
+  db: DatabaseOrTransaction,
+  placeIds: readonly string[],
+): Promise<HoursExceptionRow[]> {
+  if (placeIds.length === 0) return [];
+  const ranked = db
+    .select({
+      id: placeHoursExceptions.id,
+      rank: sql<number>`row_number() over (partition by ${placeHoursExceptions.placeId} order by ${placeHoursExceptions.startsOn}, ${placeHoursExceptions.id})`.as(
+        'rank',
+      ),
+    })
+    .from(placeHoursExceptions)
+    .where(
+      and(
+        inArray(placeHoursExceptions.placeId, [...placeIds]),
+        sql`${placeHoursExceptions.endsOn} >= current_date - 1`,
+      ),
+    )
+    .as('ranked_hours_exceptions');
   return db
     .select(HOURS_EXCEPTION_COLUMNS)
     .from(placeHoursExceptions)
-    .where(and(eq(placeHoursExceptions.placeId, placeId), sql`${placeHoursExceptions.endsOn} >= current_date - 1`))
-    .orderBy(placeHoursExceptions.startsOn, placeHoursExceptions.id)
-    .limit(MAX_EMBEDDED_HOURS_EXCEPTIONS);
+    .where(
+      inArray(
+        placeHoursExceptions.id,
+        db.select({ id: ranked.id }).from(ranked).where(lte(ranked.rank, MAX_EMBEDDED_HOURS_EXCEPTIONS)),
+      ),
+    )
+    .orderBy(placeHoursExceptions.placeId, placeHoursExceptions.startsOn, placeHoursExceptions.id);
 }
 
-async function loadDescriptions(db: DatabaseOrTransaction, placeId: string): Promise<DescriptionRow[]> {
-  return db.select(DESCRIPTION_COLUMNS).from(placesDescriptions).where(eq(placesDescriptions.placeId, placeId));
+async function loadDescriptions(db: DatabaseOrTransaction, placeIds: readonly string[]): Promise<DescriptionRow[]> {
+  if (placeIds.length === 0) return [];
+  return db
+    .select(DESCRIPTION_COLUMNS)
+    .from(placesDescriptions)
+    .where(inArray(placesDescriptions.placeId, [...placeIds]));
 }
 
 /**
@@ -541,8 +578,9 @@ async function loadMediaFiles(db: DatabaseOrTransaction, rows: readonly PlaceRow
   return new Map(media.map((item) => [item.id, item.fileId]));
 }
 
-async function loadClaims(db: DatabaseOrTransaction, placeId: string): Promise<ClaimRow[]> {
-  return db.select(CLAIM_COLUMNS).from(placesClaims).where(eq(placesClaims.placeId, placeId));
+async function loadClaims(db: DatabaseOrTransaction, placeIds: readonly string[]): Promise<ClaimRow[]> {
+  if (placeIds.length === 0) return [];
+  return db.select(CLAIM_COLUMNS).from(placesClaims).where(inArray(placesClaims.placeId, [...placeIds]));
 }
 
 function groupByPlace<T extends { placeId: string }>(rows: readonly T[]): Map<string, T[]> {
@@ -556,44 +594,69 @@ function groupByPlace<T extends { placeId: string }>(rows: readonly T[]): Map<st
 }
 
 /**
+ * What a read BY ID publishes beyond a list: the descriptions, and the claims
+ * when the session's own account holds one on the place.
+ */
+interface PlaceDetail {
+  viewerOxyAccountId: string | null;
+}
+
+/**
  * Attach children to a page of place rows.
  *
- * Two queries for the whole page rather than two per place. The N+1 shape is
- * invisible on a test fixture and is a viewport's worth of round trips in
- * production — a 200-marker map would issue 401 queries.
+ * One query per KIND of child for the whole page rather than one per place.
+ * The N+1 shape is invisible on a test fixture and is a viewport's worth of
+ * round trips in production — a 200-marker map would issue a thousand queries.
+ *
+ * Hours exceptions are loaded for every read: a list that answers "open now"
+ * from the weekly hours alone is wrong on every holiday.
  *
  * `claims` is deliberately NOT loaded for a list. The contract reads an absent
  * `claims` as "you may not see them", which is the truth for a list read: a
  * viewport query has no per-place entitlement check, and answering `[]` would
- * assert that a claimed place has no claims.
+ * assert that a claimed place has no claims. A read by id (`detail`) applies
+ * the single read's rule to each place it returns.
  */
 async function hydrate(
   db: DatabaseOrTransaction,
   rows: readonly PlaceRow[],
   view: PlaceNameView,
+  detail?: PlaceDetail,
 ): Promise<Map<string, PlaceChildren>> {
   const ids = rows.map((row) => row.id);
   // The names query is issued only when the read was asked about names. A
   // viewport that never mentioned a locale must not pay for 200 places' worth
   // of translations to throw them away in the mapper.
-  const [sources, capabilities, names, ratings, mediaFiles] = await Promise.all([
+  const [sources, capabilities, names, hoursExceptions, ratings, mediaFiles, descriptions, claims] = await Promise.all([
     loadSources(db, ids),
     loadCapabilities(db, ids),
     needsNames(view) ? loadNames(db, ids) : Promise.resolve([]),
+    loadCurrentHoursExceptions(db, ids),
     loadRatings(db, ids),
     loadMediaFiles(db, rows),
+    detail ? loadDescriptions(db, ids) : Promise.resolve(null),
+    detail?.viewerOxyAccountId ? loadClaims(db, ids) : Promise.resolve(null),
   ]);
   const sourcesByPlace = groupByPlace(sources);
   const capabilitiesByPlace = groupByPlace(capabilities);
   const namesByPlace = groupByPlace(names);
+  const exceptionsByPlace = groupByPlace(hoursExceptions);
+  const descriptionsByPlace = descriptions === null ? null : groupByPlace(descriptions);
+  const claimsByPlace = claims === null ? null : groupByPlace(claims);
   return new Map(
     ids.map((id) => {
       const children: PlaceChildren = {
         sources: sourcesByPlace.get(id) ?? [],
         capabilities: capabilitiesByPlace.get(id) ?? [],
         names: namesByPlace.get(id) ?? [],
+        hoursExceptions: exceptionsByPlace.get(id) ?? [],
         mediaFiles,
       };
+      if (descriptionsByPlace) children.descriptions = descriptionsByPlace.get(id) ?? [];
+      // Published only to a session that itself holds a claim on THIS place —
+      // its own and the ones it competes with — exactly as the single read.
+      const placeClaims = claimsByPlace?.get(id) ?? [];
+      if (placeClaims.some((claim) => claim.oxyAccountId === detail?.viewerOxyAccountId)) children.claims = placeClaims;
       const rating = ratings.get(id);
       if (rating) children.rating = rating;
       return [id, children];
@@ -627,46 +690,39 @@ export async function findPlaceById(
   viewerOxyAccountId?: string | null,
   locale?: string | undefined,
 ): Promise<Place | null> {
-  const [row] = await db
+  const [place] = await findPlacesByIds(db, [id], viewerOxyAccountId, locale);
+  return place ?? null;
+}
+
+/**
+ * Published places by id, each in the single read's full shape, in the order
+ * the ids were given — an id with no published place is simply absent. What
+ * `findPlaceById` is the one-id case of, so a batch read and a single read
+ * cannot come to publish different things about the same place.
+ *
+ * A read by id ALWAYS publishes the full name set — unconditionally, and not
+ * only when a locale was asked for. "What else is this called" is a fact about
+ * the place, and a detail view that showed it only to callers who already knew
+ * which language to ask for would be useless to the caller who does not.
+ * Descriptions follow the same rule.
+ */
+export async function findPlacesByIds(
+  db: DatabaseOrTransaction,
+  ids: readonly string[],
+  viewerOxyAccountId?: string | null,
+  locale?: string | undefined,
+): Promise<Place[]> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return [];
+  const rows = await db
     .select(PLACE_COLUMNS)
     .from(places)
-    .where(and(eq(places.id, id), isPublished))
-    .limit(1);
-  if (!row) return null;
+    .where(and(inArray(places.id, unique), isPublished));
 
-  const [sources, capabilities, names, hoursExceptions, claims, descriptions, ratings, mediaFiles] = await Promise.all([
-    loadSources(db, [id]),
-    loadCapabilities(db, [id]),
-    loadNames(db, [id]),
-    loadCurrentHoursExceptions(db, id),
-    viewerOxyAccountId ? loadClaims(db, id) : Promise.resolve(null),
-    loadDescriptions(db, id),
-    loadRatings(db, [id]),
-    loadMediaFiles(db, [row]),
-  ]);
-
-  const visibleClaims =
-    claims !== null && claims.some((claim) => claim.oxyAccountId === viewerOxyAccountId)
-      ? claims
-      : undefined;
-
-  // The single-place read ALWAYS publishes the full set — unconditionally, and
-  // not only when a locale was asked for. "What else is this called" is a fact
-  // about the place, and a detail view that showed it only to callers who
-  // already knew which language to ask for would be useless to the caller who
-  // does not. Descriptions follow the same rule.
-  const children: PlaceChildren = {
-    sources,
-    capabilities,
-    names,
-    hoursExceptions,
-    claims: visibleClaims,
-    descriptions,
-    mediaFiles,
-  };
-  const rating = ratings.get(id);
-  if (rating) children.rating = rating;
-  return toPlace(row, children, { publishAll: true, locale });
+  const view: PlaceNameView = { publishAll: true, locale };
+  const children = await hydrate(db, rows, view, { viewerOxyAccountId: viewerOxyAccountId ?? null });
+  const byId = new Map(rows.map((row) => [row.id, toPlace(row, children.get(row.id) ?? NO_CHILDREN, view)]));
+  return unique.flatMap((id) => byId.get(id) ?? []);
 }
 
 /**
@@ -739,12 +795,22 @@ export async function findPlacesInBounds(
  * never existed: a consumer holding a persisted id acts differently on each.
  */
 export async function findPlaceLifecycle(db: DatabaseOrTransaction, placeId: string): Promise<PlaceLifecycle | null> {
-  const [row] = await db
-    .select({ status: places.status, mergedIntoPlaceId: places.mergedIntoPlaceId })
+  return (await findPlaceLifecycles(db, [placeId])).get(placeId) ?? null;
+}
+
+/** {@link findPlaceLifecycle} for several ids at once: each id a place has, to its lifecycle. */
+export async function findPlaceLifecycles(
+  db: DatabaseOrTransaction,
+  placeIds: readonly string[],
+): Promise<Map<string, PlaceLifecycle>> {
+  if (placeIds.length === 0) return new Map();
+  const rows = await db
+    .select({ id: places.id, status: places.status, mergedIntoPlaceId: places.mergedIntoPlaceId })
     .from(places)
-    .where(eq(places.id, placeId))
-    .limit(1);
-  return row ? { status: row.status as PlaceStatus, mergedIntoPlaceId: row.mergedIntoPlaceId } : null;
+    .where(inArray(places.id, [...new Set(placeIds)]));
+  return new Map(
+    rows.map((row) => [row.id, { status: row.status as PlaceStatus, mergedIntoPlaceId: row.mergedIntoPlaceId }]),
+  );
 }
 
 /**
@@ -1241,7 +1307,52 @@ async function applyCapabilities(
   return changes;
 }
 
-/** The `places` column values a write sets, address and contact flattened. */
+/** Each part of a structured value may be left out (untouched) or `null` (cleared). */
+type Clearable<T> = { [Part in keyof T]?: T[Part] | null };
+
+/** The `places` column behind each address part. */
+const ADDRESS_COLUMNS = {
+  houseNumber: 'addressHouseNumber',
+  street: 'addressStreet',
+  locality: 'addressLocality',
+  city: 'addressCity',
+  region: 'addressRegion',
+  postalCode: 'addressPostalCode',
+  countryCode: 'addressCountryCode',
+  country: 'addressCountry',
+  formatted: 'addressFormatted',
+} as const satisfies Record<keyof StructuredAddress, keyof typeof places.$inferInsert>;
+
+/** The `places` column behind each contact part. */
+const CONTACT_COLUMNS = {
+  phone: 'contactPhone',
+  email: 'contactEmail',
+  website: 'contactWebsite',
+} as const satisfies Record<keyof PlaceContact, keyof typeof places.$inferInsert>;
+
+/**
+ * The columns a structured value writes, part by part: a part left out is
+ * left alone, a `null` part is cleared, and a `null` value clears every part.
+ */
+function partColumnValues<Part extends string>(
+  value: Partial<Record<Part, string | null>> | null,
+  columns: Readonly<Record<Part, string>>,
+): Record<string, string | null> {
+  const values: Record<string, string | null> = {};
+  for (const [part, column] of Object.entries(columns) as [Part, string][]) {
+    const written = value === null ? null : value[part];
+    if (written !== undefined) values[column] = written;
+  }
+  return values;
+}
+
+/**
+ * The `places` column values a write sets, address and contact flattened.
+ *
+ * Merge-patch throughout: only what the input names is in the result, so an
+ * update never touches a column the caller did not mention, and `null` is a
+ * column cleared on purpose.
+ */
 function placeColumnValues(input: PlaceWriteInput): Record<string, unknown> {
   const values: Record<string, unknown> = {};
   if (input.name !== undefined) values.name = input.name;
@@ -1256,22 +1367,8 @@ function placeColumnValues(input: PlaceWriteInput): Record<string, unknown> {
   if (input.status !== undefined) values.status = input.status;
   if (input.openingHours !== undefined) values.openingHours = input.openingHours;
   if (input.description !== undefined) values.description = input.description;
-  if (input.address !== undefined) {
-    values.addressHouseNumber = input.address.houseNumber ?? null;
-    values.addressStreet = input.address.street ?? null;
-    values.addressLocality = input.address.locality ?? null;
-    values.addressCity = input.address.city ?? null;
-    values.addressRegion = input.address.region ?? null;
-    values.addressPostalCode = input.address.postalCode ?? null;
-    values.addressCountryCode = input.address.countryCode ?? null;
-    values.addressCountry = input.address.country ?? null;
-    values.addressFormatted = input.address.formatted ?? null;
-  }
-  if (input.contact !== undefined) {
-    values.contactPhone = input.contact.phone ?? null;
-    values.contactEmail = input.contact.email ?? null;
-    values.contactWebsite = input.contact.website ?? null;
-  }
+  if (input.address !== undefined) Object.assign(values, partColumnValues(input.address, ADDRESS_COLUMNS));
+  if (input.contact !== undefined) Object.assign(values, partColumnValues(input.contact, CONTACT_COLUMNS));
   return values;
 }
 
@@ -2016,7 +2113,7 @@ export async function findClaimsInState(
 
 /**
  * One window of every claim one Oxy account holds, in every state, oldest
- * first.
+ * first — on one place, when `placeId` names it.
  *
  * The route decides whose: the session's own account, or one the caller acts
  * for. Nothing here can enumerate who has claimed what for an account nobody
@@ -2025,12 +2122,19 @@ export async function findClaimsInState(
 export async function findAccountClaims(
   db: DatabaseOrTransaction,
   oxyAccountId: string,
+  placeId: string | undefined,
   window: TimeWindow,
 ): Promise<Paged<PlaceClaim>[]> {
   const rows = await db
     .select(CLAIM_PAGE_COLUMNS)
     .from(placesClaims)
-    .where(and(eq(placesClaims.oxyAccountId, oxyAccountId), claimWindow(window)))
+    .where(
+      and(
+        eq(placesClaims.oxyAccountId, oxyAccountId),
+        placeId === undefined ? undefined : eq(placesClaims.placeId, placeId),
+        claimWindow(window),
+      ),
+    )
     .orderBy(placesClaims.claimedAt, placesClaims.id)
     .limit(window.limit);
   return rows.map(pagedClaim);

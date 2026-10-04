@@ -66,6 +66,27 @@ describe('mergePlaceColumns', () => {
     });
   });
 
+  test('keeps a field somebody cleared empty while the source repeats the value it cleared', () => {
+    const place = element({ phone: '+34 930 000 000', 'addr:street': 'Carrer Vell' });
+    const cleared = { ...place.columns, contactPhone: null, addressStreet: null };
+    expect(mergePlaceColumns(cleared, stated(place), incomingColumns(place))).toBeNull();
+  });
+
+  test('refills a cleared field once the source says something new', () => {
+    const before = element({ phone: '+34 930 000 000', 'addr:street': 'Carrer Vell' });
+    const after = element({ phone: '+34 930 111 111', 'addr:street': 'Carrer Vell' });
+    const cleared = { ...before.columns, contactPhone: null, addressStreet: null };
+    expect(mergePlaceColumns(cleared, stated(before), incomingColumns(after))).toEqual({
+      contactPhone: '+34 930 111 111',
+    });
+  });
+
+  test('keeps cleared opening hours and categories the way it keeps a cleared phone', () => {
+    const place = element({ opening_hours: 'Mo-Fr 09:00-20:00' });
+    const cleared = { ...place.columns, openingHours: null, categories: [] };
+    expect(mergePlaceColumns(cleared, stated(place), incomingColumns(place))).toBeNull();
+  });
+
   test('with no record of what the source said, fills gaps and changes nothing else', () => {
     const after = element({ name: 'Something Else', 'addr:city': 'Barcelona' });
     const current = held({ addressCity: null });

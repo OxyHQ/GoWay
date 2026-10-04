@@ -457,10 +457,12 @@ describe('GET /places/bounds', () => {
   });
 
   it('has no second spelling under the collection path', async () => {
-    // `GET /places?bbox=` was a duplicate of this read. One operation, one URL.
+    // `GET /places?bbox=` was a duplicate of this read. One operation, one URL:
+    // the collection path is the batch read by id, which knows no `bbox`.
     const { status, body } = await call<ErrorBody>('/places?bbox=2.0,41.3,2.3,41.5');
-    expect(status).toBe(404);
-    expect(body.error.code).toBe('unknown_route');
+    expect(status).toBe(400);
+    expect(body.error.code).toBe('bad_request');
+    expect(body.error.message).toContain('bbox');
   });
 });
 

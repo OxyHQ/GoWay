@@ -177,6 +177,11 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
   { method: 'GET', path: '/places/bounds', because: 'viewport search, signed out' },
   {
     method: 'GET',
+    path: '/places',
+    because: 'public places by id, in a batch; persisted ids anybody holds must resolve',
+  },
+  {
+    method: 'GET',
     path: '/places/:placeId',
     because: 'one public place; a deep link anybody already holds must resolve',
   },

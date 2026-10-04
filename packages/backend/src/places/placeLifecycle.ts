@@ -16,6 +16,11 @@ export function isPublishedStatus(status: PlaceStatus): boolean {
   return (PUBLISHED_PLACE_STATUSES as readonly PlaceStatus[]).includes(status);
 }
 
+/** The place a MERGED one now lives at — the one hop every `410` names — or `undefined`. */
+export function mergedIntoOf(lifecycle: PlaceLifecycle): string | undefined {
+  return lifecycle.status === 'merged' && lifecycle.mergedIntoPlaceId !== null ? lifecycle.mergedIntoPlaceId : undefined;
+}
+
 /**
  * The refusal for a place that is missing or not published.
  *
@@ -25,9 +30,10 @@ export function isPublishedStatus(status: PlaceStatus): boolean {
  */
 export function unpublishedPlace(lifecycle: PlaceLifecycle | null): ApiError {
   if (lifecycle === null) return new ApiError('not_found', 'No place has that id.');
-  if (lifecycle.status === 'merged' && lifecycle.mergedIntoPlaceId !== null) {
+  const mergedInto = mergedIntoOf(lifecycle);
+  if (mergedInto !== undefined) {
     return new ApiError('gone', 'This place was merged into another GoWay place.', {
-      [GONE_MERGED_INTO_DETAIL]: lifecycle.mergedIntoPlaceId,
+      [GONE_MERGED_INTO_DETAIL]: mergedInto,
     });
   }
   return new ApiError('gone', 'This place was removed from GoWay.');

@@ -345,6 +345,27 @@ describe('GET /claims', () => {
     expect(replayed.body.error.code).toBe('bad_request');
   });
 
+  it('narrows to one place with placeId, and binds the cursor to it', async () => {
+    const { status, body } = await call<PlaceClaimPage>(`/claims?placeId=${branchTwo.id}`, asUser('user-chain'));
+    expect(status).toBe(200);
+    expect(body.items.map((claim) => [claim.placeId, claim.role])).toEqual([[branchTwo.id, 'brand']]);
+    expect(body.nextCursor).toBeNull();
+
+    // A place the account holds nothing on is an empty list, not a refusal:
+    // the filter narrows the caller's own list and reveals nothing else.
+    const elsewhere = await call<PlaceClaimPage>(`/claims?placeId=does-not-exist`, asUser('user-chain'));
+    expect(elsewhere.body).toEqual({ items: [], nextCursor: null });
+
+    // A cursor minted for every place does not resume a list of one.
+    const first = await call<PlaceClaimPage>('/claims?limit=1', asUser('user-chain'));
+    const narrowed = await call<ErrorBody>(
+      `/claims?limit=1&placeId=${branchTwo.id}&cursor=${first.body.nextCursor ?? ''}`,
+      asUser('user-chain'),
+    );
+    expect(narrowed.status).toBe(400);
+    expect(narrowed.body.error.code).toBe('bad_request');
+  });
+
   it('lists another account only when Oxy says the caller acts for it', async () => {
     // An `?oxyAccountId=` the caller does not act for would be an enumeration of
     // who has claimed what. In this suite Oxy reports no membership at all.

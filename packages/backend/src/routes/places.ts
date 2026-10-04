@@ -8,7 +8,8 @@
  * publishes: `GET /places/nearby`, `GET /places/bounds`, `GET|PATCH
  * /places/{placeId}` and `POST /places`. Each request is parsed with the
  * registry's own schema for it, so a parameter cannot mean one thing here and
- * another in the SDK.
+ * another in the SDK. `GET /places?ids=` reads up to fifty places by id at once,
+ * each as the single read would answer it.
  *
  * A 2xx body IS the contract value. GoWay wraps success in no envelope, so a
  * place is a `Place` and a list is a page — `{ items, nextCursor }` — of them.
@@ -71,6 +72,7 @@ import {
   hoursExceptionPathSchema,
   localDateSchema,
   nearbyPlacesQuerySchema,
+  placeBatchQuerySchema,
   placeCapabilityAssertionSchema,
   placeClaimInputSchema,
   placeCreateInputSchema,
@@ -82,6 +84,7 @@ import {
   placeUpdateInputSchema,
   revisionListQuerySchema,
   splitCapabilityKey,
+  type PlaceBatch,
 } from '@goway/contracts';
 import { createPlaceReport } from '../db/places/moderationRepository';
 import type { PlaceActor } from '../db/places/placesRepository';
@@ -93,6 +96,8 @@ import {
   findHoursException,
   findPlaceById,
   findPlaceLifecycle,
+  findPlaceLifecycles,
+  findPlacesByIds,
   findPlacesInBounds,
   findPlacesNearby,
   getPlaceAuthorization,
@@ -113,7 +118,7 @@ import { requiredOxyCaller } from '../oxy/caller';
 import type { AccountRoleResolver } from '../oxy/accountRoles';
 import { assertableVerification, withdrawableVerification } from '../places/capabilityAuthority';
 import { mayActFor, mayActForAny, mayFileFor, standingOn } from '../places/claimAuthority';
-import { assertPublished, unpublishedPlace } from '../places/placeLifecycle';
+import { assertPublished, mergedIntoOf, unpublishedPlace } from '../places/placeLifecycle';
 
 /**
  * Forward a rejected handler to the error middleware.
@@ -208,6 +213,49 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
         after: decodeCursor(cursor, binding, boundsKeysetSchema),
       });
       response.json(pageOf(rows, limit, binding, (place) => place.id, (place) => place));
+    }),
+  );
+
+  /**
+   * `GET /places?ids=a,b,c` — up to fifty places by id, in one round trip.
+   *
+   * Every id lands in exactly one of three lists, in the order it was asked
+   * for, and each says what `GET /places/{placeId}` would have answered for
+   * it: `items` the published places in the single read's full shape (names,
+   * descriptions, hours exceptions, and claims by the same rule), `gone` the
+   * ones it answers `410` for — removed, or merged with `mergedInto` naming the
+   * survivor — and `missing` the ones it answers `404` for. A consumer holding
+   * a list of persisted ids refreshes them all without fifty requests, and
+   * learns which to replace and which to drop.
+   *
+   * Not a page: the request bounds it, so there is no cursor.
+   */
+  router.get(
+    '/places',
+    optionalAuth,
+    route(async (request, response) => {
+      const { ids, locale } = parseQuery(placeBatchQuerySchema, request.query);
+      const db = getDb();
+      const items = await findPlacesByIds(db, ids, callerId(request), locale);
+      const published = new Set(items.map((place) => place.id));
+      const lifecycles = await findPlaceLifecycles(
+        db,
+        ids.filter((id) => !published.has(id)),
+      );
+
+      const batch: PlaceBatch = { items, gone: [], missing: [] };
+      for (const id of ids) {
+        if (published.has(id)) continue;
+        const lifecycle = lifecycles.get(id);
+        if (lifecycle === undefined) {
+          batch.missing.push(id);
+          continue;
+        }
+        // The single read's `410` and its pointer, decided by the same rule.
+        const mergedInto = mergedIntoOf(lifecycle);
+        batch.gone.push(mergedInto === undefined ? { id } : { id, mergedInto });
+      }
+      response.json(batch);
     }),
   );
 
@@ -713,7 +761,9 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
 
   /**
    * `GET /claims` — every claim one account holds, in every state, oldest
-   * first, keyset-paged by claim time.
+   * first, keyset-paged by claim time; with `placeId`, only its claims on that
+   * place — how a dashboard asks "where does my claim on this place stand"
+   * without walking every location the business has.
    *
    * The session's own account by default, or `oxyAccountId` — an organization
    * the caller acts for in Oxy — which is how a business's dashboard lists its
@@ -725,7 +775,7 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
     '/claims',
     requireAuth,
     route(async (request, response) => {
-      const { oxyAccountId: requested, ...query } = parseQuery(accountClaimListQuerySchema, request.query);
+      const { oxyAccountId: requested, placeId, ...query } = parseQuery(accountClaimListQuerySchema, request.query);
       const caller = requiredOxyCaller(request);
       const oxyAccountId = requested ?? caller.oxyAccountId;
       if (!(await mayActFor(caller, oxyAccountId, accountRoles))) {
@@ -733,8 +783,8 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       }
       // Both accounts are in the binding, so a cursor minted for one session is
       // refused under another rather than resuming somebody else's list.
-      const binding = cursorBinding('account-claims', { oxyAccountId, session: caller.oxyAccountId });
-      const claims = await findAccountClaims(getDb(), oxyAccountId, timeWindowOf(query, binding));
+      const binding = cursorBinding('account-claims', { oxyAccountId, placeId, session: caller.oxyAccountId });
+      const claims = await findAccountClaims(getDb(), oxyAccountId, placeId, timeWindowOf(query, binding));
       response.json(timePageOf(claims, query.limit, binding));
     }),
   );

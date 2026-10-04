@@ -21,17 +21,23 @@
  * what the source said last time, and what it says today — and that is a
  * three-way merge, the same shape as a version-control merge:
  *
- *  - the column is EMPTY → take the source's value; filling a gap destroys
- *    nothing;
  *  - the column still equals what the source said last time → nobody has
  *    touched it, so take the new value;
+ *  - the column is EMPTY and the source never said otherwise → take the
+ *    source's value; filling a gap destroys nothing;
+ *  - the column is EMPTY where the source last said something → somebody
+ *    CLEARED it (`PATCH … { "contact": { "phone": null } }`), which is a
+ *    statement that the source's value is wrong. Keep it empty while the
+ *    source repeats that value, and take the source's value once it CHANGES:
+ *    a new value is new evidence the clear never saw;
  *  - the column differs from what the source said last time → somebody
  *    changed it deliberately. Keep it. The source's own version is not lost:
  *    it is in `source_data`, which is what that column is for.
  *
  * With no `source_data` — a place linked by some earlier path, or the very
- * first run after this importer ships — the middle branch cannot be evaluated,
- * and the answer is the conservative one: fill gaps, change nothing else.
+ * first run after this importer ships — the first branch cannot be evaluated,
+ * and neither can a clear be told from a gap, so the answer is the
+ * conservative one: fill gaps, change nothing else.
  *
  * ## Returning only what changed is not an optimization
  *
@@ -65,9 +71,15 @@ export function mergePlaceColumns(
     const held = current[column];
     const offered = incoming[column];
 
+    const stated = previous !== null && column in previous;
+    const said = stated ? previous[column] : undefined;
+    const untouched = stated && field.same(held, said);
     const gap = field.empty(held);
-    const untouched = previous !== null && column in previous && field.same(held, previous[column]);
+    // Emptied by somebody after the source filled it: refilled only by a
+    // value the source has not already been refused.
+    const cleared = gap && stated && !field.empty(said);
     if (!gap && !untouched) continue;
+    if (cleared && field.same(offered, said)) continue;
     if (field.same(held, offered)) continue;
     changes[column] = offered;
   }

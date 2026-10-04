@@ -207,8 +207,9 @@ export interface PlaceChildren {
    */
   names?: readonly NameRow[];
   /**
-   * The exceptions that have not ended. Absent for a list read, which publishes
-   * no `hoursExceptions` — absent, as for `names`.
+   * The exceptions that have not ended. Every read that answers with places
+   * loads them — open-now is wrong without them — so absent means only that
+   * a caller built children by hand.
    */
   hoursExceptions?: readonly HoursExceptionRow[];
   /**
@@ -218,9 +219,9 @@ export interface PlaceChildren {
    */
   claims?: readonly ClaimRow[];
   /**
-   * The description rows. Present only for a single-place read, which is the
-   * only read that publishes `description`, `descriptions` and
-   * `localizedDescription` — absent, as for `names` on a list.
+   * The description rows. Present only for a read by id — single or batch —
+   * which is the only read that publishes `description`, `descriptions` and
+   * `localizedDescription`: absent, as for `names` on a list.
    */
   descriptions?: readonly DescriptionRow[];
   /**

@@ -20,12 +20,17 @@ import {
   destroySuiteDatabase,
   type SuiteDatabase,
 } from '../../../db/__tests__/testDatabase';
+import { updatePlace, type PlaceActor } from '../../../db/places/placesRepository';
 import { places, placesCapabilities, placesNames, placesSources } from '../../../db/schema';
+import { apiAuthor } from '../../../__tests__/placesFixtures';
 import { detectDuplicates } from '../duplicates';
 import { toImportedPlace, type ImportedPlace } from '../placeRecord';
 import { OSM_SOURCE, emptyWriteStats, writePlaceBatch } from '../writePlaces';
 
 let suite: SuiteDatabase | null = null;
+
+/** Whoever edits a place through the API in this suite. */
+const CLEARER: PlaceActor = { author: apiAuthor('person-business'), assertedVerification: 'community_reported' };
 
 beforeAll(async () => {
   suite = await createSuiteDatabase();
@@ -336,6 +341,36 @@ describe('writePlaceBatch, beyond the name', () => {
       .where(eq(places.id, placeId));
     expect(row?.openingHours).toEqual(corrected);
     expect(row?.categories).toEqual(['food.restaurant', 'food.bar']);
+  });
+
+  it('keeps a field cleared through the API cleared, until OpenStreetMap says something new', async () => {
+    const tags = { ...RICH, phone: '+34 930 000 000', 'addr:street': 'Carrer de Pere IV' };
+    await importBatch([element('node/3005', tags)]);
+    const placeId = await placeIdOf('node/3005');
+
+    // The business clears the phone OpenStreetMap supplied: a PATCH with null.
+    const cleared = await updatePlace(suite!.db, placeId, { contact: { phone: null } }, CLEARER);
+    expect(cleared?.contact?.phone).toBeUndefined();
+
+    // The next import repeats the old number. It is the number that was
+    // cleared, so it stays cleared — and the place row is not touched.
+    const repeated = await importBatch([element('node/3005', tags)], new Date(Date.now() + 60_000));
+    expect(repeated.placesUpdated).toBe(0);
+    const phoneOf = async () =>
+      (await suite!.db.select({ phone: places.contactPhone }).from(places).where(eq(places.id, placeId)))[0]?.phone;
+    expect(await phoneOf()).toBeNull();
+
+    // OpenStreetMap changes the number: new evidence the clear never saw.
+    const changed = await importBatch(
+      [element('node/3005', { ...tags, phone: '+34 930 222 222' })],
+      new Date(Date.now() + 120_000),
+    );
+    expect(changed.placesUpdated).toBe(1);
+    expect(await phoneOf()).toBe('+34 930 222 222');
+
+    // Every other column it owns was untouched throughout.
+    const [row] = await suite!.db.select({ street: places.addressStreet }).from(places).where(eq(places.id, placeId));
+    expect(row?.street).toBe('Carrer de Pere IV');
   });
 
   it('refreshes its own assertion and never touches a business or another source', async () => {

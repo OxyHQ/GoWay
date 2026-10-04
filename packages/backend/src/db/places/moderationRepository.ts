@@ -12,7 +12,7 @@
  * resolving the report does.
  */
 
-import { and, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import type {
   CapabilityValue,
@@ -24,6 +24,7 @@ import type {
   ModerationPlaceReport,
   ModeratedPlaceStatus,
   PlaceClaim,
+  PlaceClaimRole,
   PlaceClaimState,
   PlaceReport,
   PlaceReportInput,
@@ -38,11 +39,13 @@ import type {
 import { CLAIM_DECISION_FROM } from '@goway/contracts';
 import { ApiError } from '../../http/apiError';
 import type { Paged, TimeWindow } from '../../http/cursor';
+import { CLAIM_ROLE_SPEAKS_FOR_BUSINESS } from '../../places/capabilityAuthority';
 import { assertPublished, unpublishedPlace } from '../../places/placeLifecycle';
 import type { Database, DatabaseOrTransaction } from '../postgres';
 import {
   placeHoursExceptions,
   placeReports,
+  placeRevisions,
   places,
   placesCapabilities,
   placesClaims,
@@ -53,7 +56,13 @@ import {
 } from '../schema';
 import { moveMediaToSurvivor } from './mediaRepository';
 import { moveReviewsToSurvivor } from './reviewsRepository';
-import { CAPABILITY_COLUMNS, CLAIM_COLUMNS, HOURS_EXCEPTION_COLUMNS, toClaim } from './placeMapper';
+import {
+  CAPABILITY_COLUMNS,
+  CLAIM_COLUMNS,
+  HOURS_EXCEPTION_COLUMNS,
+  toClaim,
+  type ClaimRow,
+} from './placeMapper';
 import {
   claimField,
   deleteCapabilityAtTier,
@@ -262,6 +271,10 @@ export async function resolvePlaceReport(
  * `decidedAt` is set to now on every decision — it is when the claim's CURRENT
  * state was decided. `null` when no claim has the id; `conflict` when the claim
  * is not in the state the decision starts from (`CLAIM_DECISION_FROM`).
+ *
+ * An APPROVAL also re-tiers what the claimant said while it waited
+ * ({@link retierClaimantStatements}), in the same transaction: the claim and
+ * the tier its statements carry change together or not at all.
  */
 export async function decideClaim(
   db: Database,
@@ -270,6 +283,11 @@ export async function decideClaim(
   author: RevisionAuthor,
 ): Promise<PlaceClaim | null> {
   return db.transaction(async (tx) => {
+    // The place first, then the claim — the order a merge takes them in, so an
+    // approval and a merge of the same place queue rather than deadlock.
+    const [target] = await tx.select({ placeId: placesClaims.placeId }).from(placesClaims).where(eq(placesClaims.id, claimId));
+    if (!target) return null;
+    await lockPlace(tx, target.placeId);
     const [claim] = await tx.select(CLAIM_COLUMNS).from(placesClaims).where(eq(placesClaims.id, claimId)).for('update');
     if (!claim) return null;
     const from: PlaceClaimState = CLAIM_DECISION_FROM[state];
@@ -291,8 +309,161 @@ export async function decideClaim(
       author,
       changes: [{ field: claimField(decided.id), before: snapshot(claim), after: snapshot(decided) }],
     });
+    if (state === 'approved') await retierClaimantStatements(tx, decided);
     return toClaim(decided);
   });
+}
+
+/** Who made a statement, as the revision that last wrote it recorded. */
+interface StatementAuthor {
+  oxyAccountId: string;
+  operatedByOxyUserId: string | null;
+}
+
+/**
+ * Make the business's own what its claimant said while the claim was pending.
+ *
+ * Before approval, whoever acts for a pending claimant earns only
+ * `community_reported` — a pending claim is not ownership. Without this, the
+ * store link, the accessibility flags and the holiday closures a business
+ * entered while it waited would stay at the community tier after approval,
+ * outranked by nothing and rewritable by nobody but the community.
+ *
+ * ## The rule, exactly
+ *
+ * A `community_reported` capability or hours exception on the place is
+ * re-tiered to `business_asserted` when the LATEST revision that wrote its
+ * community row:
+ *
+ *  1. was recorded at or after the claim was filed (`claimedAt`), and
+ *  2. was made AS the claimant account itself (its own session, or a session
+ *     switched into the organization), or AS the person who filed the claim —
+ *     acting as themselves.
+ *
+ * The filer is the one member whose standing GoWay already established with
+ * Oxy: filing in an organization's name needed an `owner` or `admin` role
+ * (`mayFileFor`). Any other member who spoke as themselves is NOT re-tiered:
+ * GoWay asks Oxy about membership with the asker's own bearer, and an
+ * operator's session cannot vouch for somebody else's role. Their statement
+ * stays a community report until the business re-asserts it.
+ *
+ * "Latest" is what makes the rule safe on a shared row: the community tier is
+ * one row per key, and if a stranger wrote it after the claimant did, the row
+ * now holds the stranger's statement and is left alone. A row moved in by a
+ * merge was last written by the operator who merged, and is left alone too.
+ *
+ * The business tier is never overwritten: where it already holds the key, or
+ * the same dates, the community row stays where it is. Only a claim in a role
+ * that speaks for the business re-tiers anything.
+ *
+ * Each re-tier is one `capability_retiered` or `hours_exception_retiered`
+ * revision through the `moderation` door, attributed to whoever made the
+ * statement — its `before` the community row, its `after` the same statement
+ * at the business tier, `observedAt` unchanged: nobody observed it again.
+ */
+async function retierClaimantStatements(tx: DatabaseOrTransaction, claim: ClaimRow): Promise<void> {
+  if (!CLAIM_ROLE_SPEAKS_FOR_BUSINESS[claim.role as PlaceClaimRole]) return;
+  // Held since `decideClaim` began (a no-op re-lock here), which serializes
+  // this with every capability and exception write — each touches the place
+  // row first — so nothing lands on either tier mid-decision.
+  const place = await lockPlace(tx, claim.placeId);
+  if (!place) return;
+
+  const [capabilities, exceptions] = await Promise.all([
+    tx.select(CAPABILITY_COLUMNS).from(placesCapabilities).where(eq(placesCapabilities.placeId, claim.placeId)),
+    tx.select(HOURS_EXCEPTION_COLUMNS).from(placeHoursExceptions).where(eq(placeHoursExceptions.placeId, claim.placeId)),
+  ]);
+  const communityCapabilities = capabilities.filter((row) => row.verification === 'community_reported');
+  const communityExceptions = exceptions.filter((row) => row.verification === 'community_reported');
+  if (communityCapabilities.length === 0 && communityExceptions.length === 0) return;
+
+  // Everything recorded since the claim was filed, newest first: the filing
+  // itself (same transaction, same instant) and every write after it.
+  const revisions = await tx
+    .select({
+      action: placeRevisions.action,
+      oxyAccountId: placeRevisions.oxyAccountId,
+      operatedByOxyUserId: placeRevisions.operatedByOxyUserId,
+      changes: placeRevisions.changes,
+    })
+    .from(placeRevisions)
+    .where(and(eq(placeRevisions.placeId, claim.placeId), gte(placeRevisions.createdAt, claim.claimedAt)))
+    .orderBy(desc(placeRevisions.createdAt), desc(placeRevisions.id));
+
+  const filing = revisions.find(
+    (revision) =>
+      revision.action === 'claim_requested' && revision.changes.some((change) => change.field === claimField(claim.id)),
+  );
+  const filer = filing ? (filing.operatedByOxyUserId ?? filing.oxyAccountId) : null;
+  const speaksForClaimant = (author: StatementAuthor): boolean =>
+    author.oxyAccountId === claim.oxyAccountId || (filer !== null && author.oxyAccountId === filer);
+
+  // The latest author of each community row, by field.
+  const lastWriter = new Map<string, StatementAuthor>();
+  for (const revision of revisions) {
+    for (const change of revision.changes) {
+      if (lastWriter.has(change.field) || !touchesCommunityTier(change)) continue;
+      lastWriter.set(change.field, { oxyAccountId: revision.oxyAccountId, operatedByOxyUserId: revision.operatedByOxyUserId });
+    }
+  }
+
+  const businessKeys = new Set(
+    capabilities.filter((row) => row.verification === 'business_asserted').map((row) => row.key),
+  );
+  const businessDates = new Set(
+    exceptions.filter((row) => row.verification === 'business_asserted').map((row) => `${row.startsOn}/${row.endsOn}`),
+  );
+  const now = new Date();
+  let retiered = false;
+
+  for (const row of communityCapabilities) {
+    const field = capabilityField(row.key ?? `${row.namespace}.${row.capability}`);
+    const asserter = lastWriter.get(field);
+    if (asserter === undefined || !speaksForClaimant(asserter) || businessKeys.has(row.key)) continue;
+    const [moved] = await tx
+      .update(placesCapabilities)
+      .set({ verification: 'business_asserted', updatedAt: now })
+      .where(eq(placesCapabilities.id, row.id))
+      .returning(CAPABILITY_COLUMNS);
+    if (!moved) continue;
+    retiered = true;
+    await recordRevision(tx, {
+      placeId: claim.placeId,
+      action: 'capability_retiered',
+      author: { ...asserter, source: 'moderation' },
+      changes: [{ field, before: capabilitySnapshot(row), after: capabilitySnapshot(moved) }],
+    });
+  }
+
+  for (const row of communityExceptions) {
+    const field = hoursExceptionField(row.id);
+    const asserter = lastWriter.get(field);
+    if (asserter === undefined || !speaksForClaimant(asserter) || businessDates.has(`${row.startsOn}/${row.endsOn}`)) {
+      continue;
+    }
+    const [moved] = await tx
+      .update(placeHoursExceptions)
+      .set({ verification: 'business_asserted', updatedAt: now })
+      .where(eq(placeHoursExceptions.id, row.id))
+      .returning(HOURS_EXCEPTION_COLUMNS);
+    if (!moved) continue;
+    retiered = true;
+    await recordRevision(tx, {
+      placeId: claim.placeId,
+      action: 'hours_exception_retiered',
+      author: { ...asserter, source: 'moderation' },
+      changes: [{ field, before: hoursExceptionSnapshot(row), after: hoursExceptionSnapshot(moved) }],
+    });
+  }
+
+  if (retiered) await tx.update(places).set({ updatedAt: now }).where(eq(places.id, claim.placeId));
+}
+
+/** Whether a recorded change wrote a statement's community-tier row, on either side. */
+function touchesCommunityTier(change: PlaceRevisionChange): boolean {
+  const tierOf = (value: RevisionValue | undefined): unknown =>
+    value !== null && typeof value === 'object' && !Array.isArray(value) ? value.verification : undefined;
+  return tierOf(change.before) === 'community_reported' || tierOf(change.after) === 'community_reported';
 }
 
 // ── Places ──────────────────────────────────────────────────────────────────

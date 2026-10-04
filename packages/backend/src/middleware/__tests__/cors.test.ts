@@ -390,8 +390,9 @@ describe('isPublicReadRequest', () => {
   it('answers HEAD as GET, since Express serves it from the same handler', () => {
     expect(isPublicReadRequest('HEAD', `${BASE}/places/nearby`)).toBe(true);
     expect(isPublicReadRequest('HEAD', `${BASE}/places/bounds`)).toBe(true);
-    // The collection path has no read: `POST /places` is the only route there.
-    expect(isPublicReadRequest('HEAD', `${BASE}/places`)).toBe(false);
+    // The collection path's read is the batch read by id; `POST /places` stays strict.
+    expect(isPublicReadRequest('HEAD', `${BASE}/places`)).toBe(true);
+    expect(isPublicReadRequest('POST', `${BASE}/places`)).toBe(false);
     expect(isPublicReadRequest('HEAD', `${BASE}/claims`)).toBe(false);
   });
 
@@ -523,6 +524,7 @@ describe('the public table, checked against the routers it claims to describe', 
       'GET /geocode/reverse',
       'GET /geocode/structured',
       'GET /openapi.json',
+      'GET /places',
       'GET /places/:placeId',
       'GET /places/:placeId/hours-exceptions',
       'GET /places/:placeId/media',
