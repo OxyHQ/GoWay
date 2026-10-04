@@ -39,9 +39,10 @@ import type {
 import { distanceMeters } from '@/lib/map/geo';
 
 import { FIXTURE_PLACES, FIXTURE_PLACES_BY_ID } from './fixtures';
+import { FIXTURE_SCENES, fixtureCoverage } from './street3dFixtures';
 
 /** Which endpoint families can be made to fail, for the degraded states. */
-export type FixtureFault = 'places' | 'search' | 'geocode' | 'routes';
+export type FixtureFault = 'places' | 'search' | 'geocode' | 'routes' | 'street3d';
 
 /** How a faulted endpoint fails. */
 export type FixtureFaultMode = 'unavailable' | 'network' | 'degraded';
@@ -51,6 +52,8 @@ export interface FixtureFaults {
   search?: FixtureFaultMode;
   geocode?: FixtureFaultMode;
   routes?: FixtureFaultMode;
+  /** `street3d:unavailable` is how the map's "hide the layer silently" path is exercised. */
+  street3d?: FixtureFaultMode;
 }
 
 let faults: FixtureFaults = {};
@@ -73,7 +76,7 @@ export function parseFixtureFaults(spec: string | undefined): FixtureFaults {
   for (const entry of spec.split(',')) {
     const [rawName, rawMode] = entry.trim().split(':');
     const name = rawName as FixtureFault;
-    if (name !== 'places' && name !== 'search' && name !== 'geocode' && name !== 'routes') continue;
+    if (name !== 'places' && name !== 'search' && name !== 'geocode' && name !== 'routes' && name !== 'street3d') continue;
     const mode = rawMode as FixtureFaultMode | undefined;
     parsed[name] = mode === 'network' || mode === 'degraded' ? mode : 'unavailable';
   }
@@ -500,6 +503,7 @@ function familyOf(path: string): FixtureFault {
   if (path.startsWith('/search')) return 'search';
   if (path.startsWith('/geocode')) return 'geocode';
   if (path.startsWith('/routes')) return 'routes';
+  if (path.startsWith('/street3d')) return 'street3d';
   return 'places';
 }
 
@@ -545,6 +549,34 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
     if (path === '/geocode/structured') return respond(200, { results: [], providers: ['nominatim'] });
     if (path === '/routes') {
       return respond(200, directions(init.body ? JSON.parse(init.body) : undefined));
+    }
+
+    if (path === '/street3d/coverage') {
+      return respond(200, fixtureCoverage({
+        west: num(params, 'west') ?? -180,
+        south: num(params, 'south') ?? -90,
+        east: num(params, 'east') ?? 180,
+        north: num(params, 'north') ?? 90,
+      }));
+    }
+    const sceneRoute = /^\/street3d\/scenes\/([^/]+)(\/reports)?$/.exec(path);
+    if (sceneRoute) {
+      const id = decodeURIComponent(sceneRoute[1]);
+      const scene = FIXTURE_SCENES.get(id);
+      if (!scene) return respond(404, errorBody('not_found', `No scene with id ${id}`));
+      if (!sceneRoute[2]) return respond(200, scene);
+      if (init.method !== 'POST') return respond(405, errorBody('bad_request', 'Use POST'));
+      // Mirrors the API: a report is identity-bound, so no bearer is a 401.
+      const authorization = init.headers?.Authorization ?? init.headers?.authorization;
+      if (!authorization) return respond(401, errorBody('unauthorized', 'Sign in to report a scene'));
+      const body = init.body ? (JSON.parse(init.body) as { reason?: string }) : {};
+      return respond(201, {
+        id: `r_fixture_${Math.random().toString(36).slice(2, 10)}`,
+        sceneId: id,
+        version: scene.version,
+        reason: body.reason ?? 'other',
+        createdAt: new Date().toISOString(),
+      });
     }
 
     return respond(404, errorBody('not_found', `No fixture route for ${path}`));
