@@ -1,0 +1,91 @@
+$ bun test --test-name-pattern "validates receiver identity and revocation in an isolated loopback process"
+bun test v1.3.14 (0d9b296a)
+
+src/__tests__/entrypoint.test.ts:
+
+src/__tests__/config.test.ts:
+
+src/__tests__/app.test.ts:
+
+src/__tests__/apiError.test.ts:
+
+src/__tests__/receiverSdk.test.ts:
+(pass) validates receiver identity and revocation in an isolated loopback process [184.78ms]
+
+src/storage/__tests__/s3ObjectStore.test.ts:
+
+src/places/__tests__/placeNames.test.ts:
+
+src/places/__tests__/capabilityAuthority.test.ts:
+
+src/db/__tests__/captureSchema.realdb.test.ts:
+
+src/db/__tests__/placesSchema.realdb.test.ts:
+
+src/db/__tests__/placesGeo.realdb.test.ts:
+
+src/db/__tests__/placesReconciliation.realdb.test.ts:
+
+src/routing/__tests__/polyline.test.ts:
+
+src/routing/__tests__/valhalla.test.ts:
+
+src/routes/__tests__/placeCapabilities.realdb.test.ts:
+
+src/routes/__tests__/placeClaims.realdb.test.ts:
+
+src/routes/__tests__/capture.realdb.test.ts:
+
+src/routes/__tests__/places.realdb.test.ts:
+
+src/routes/__tests__/search.test.ts:
+
+src/routes/__tests__/placesPrivacy.realdb.test.ts:
+
+src/routes/__tests__/directions.test.ts:
+
+src/search/__tests__/upstream.test.ts:
+
+src/search/__tests__/searchConfig.test.ts:
+
+src/search/__tests__/nominatimProvider.test.ts:
+
+src/search/__tests__/cache.test.ts:
+
+src/search/__tests__/searchService.test.ts:
+
+src/search/__tests__/photonProvider.test.ts:
+
+src/middleware/__tests__/cors.test.ts:
+
+src/capture/__tests__/anchor.test.ts:
+
+src/capture/__tests__/exif.test.ts:
+
+src/config/__tests__/routing.test.ts:
+
+src/import/osm/__tests__/extract.test.ts:
+
+src/import/osm/__tests__/osmImport.realdb.test.ts:
+
+src/import/osm/__tests__/merge.test.ts:
+
+src/import/osm/__tests__/duplicates.test.ts:
+
+src/import/osm/__tests__/pbf.test.ts:
+
+src/import/osm/__tests__/protobuf.test.ts:
+
+src/import/osm/__tests__/verifyProvenance.test.ts:
+
+src/import/osm/__tests__/poiTags.test.ts:
+
+src/import/osm/__tests__/placeRecord.test.ts:
+
+src/db/places/__tests__/placeMapper.test.ts:
+
+ 1 pass
+ 535 filtered out
+ 0 fail
+ 5 expect() calls
+Ran 1 test across 41 files. [553.00ms]

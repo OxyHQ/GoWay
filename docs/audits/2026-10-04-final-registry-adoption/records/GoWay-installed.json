@@ -1,0 +1,34 @@
+{
+  "repository": "OxyHQ/GoWay",
+  "installed": true,
+  "installedMembers": [
+    {
+      "importer": "packages/backend/package.json",
+      "name": "@oxy.so/core",
+      "version": "4.2.0",
+      "root": "/home/nate/Oxy/GoWay/.worktrees/1519-final-sdk-adoption-20261003/node_modules/@oxy.so/core",
+      "files": 581,
+      "allFilesEqual": true
+    },
+    {
+      "importer": "packages/frontend/package.json",
+      "name": "@oxy.so/core",
+      "version": "4.2.0",
+      "root": "/home/nate/Oxy/GoWay/.worktrees/1519-final-sdk-adoption-20261003/node_modules/@oxy.so/core",
+      "files": 581,
+      "allFilesEqual": true
+    },
+    {
+      "importer": "packages/frontend/package.json",
+      "name": "@oxy.so/services",
+      "version": "11.1.0",
+      "root": "/home/nate/Oxy/GoWay/.worktrees/1519-final-sdk-adoption-20261003/node_modules/@oxy.so/services",
+      "files": 2418,
+      "allFilesEqual": true
+    }
+  ],
+  "lockSha256": "6f6ad044de36230eb25a457effe00799b354001ce79a81dbc3abae7232bcdb15",
+  "explicitMaterializationRepair": true,
+  "merged": false,
+  "deployed": false
+}

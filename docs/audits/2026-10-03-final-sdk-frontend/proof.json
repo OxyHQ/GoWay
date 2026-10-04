@@ -1,0 +1,111 @@
+{
+  "repository": "GoWay",
+  "sourceCommit": "6b088d3494378771bedaf66e7a174aac67646325",
+  "mainFrontendTree": "a0e28136350b58d42d876b6766212a2c128cd665",
+  "runtimeSourceChanged": false,
+  "records": [
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-frontend/logs/i04-goway-frontend-candidate-export.log",
+      "bytes": 8847,
+      "sha256": "ebeeff2cba6af261b324d66f6a2a7f4dd3a0b0a01a6bc309221e19d2f80673f5"
+    },
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-frontend/logs/i04-goway-frontend-candidate-install.log",
+      "bytes": 139,
+      "sha256": "c760a9836618c61a2d61bb0839d4c8a8c8f2ab30a483176b08e99f8454f0f2d5"
+    },
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-frontend/logs/i04-goway-frontend-candidate-types.log",
+      "bytes": 15,
+      "sha256": "8366207267355d3e3d5bf3bf6e8c94c5f93f6078c34f08973fa2b38cdda6cc92"
+    }
+  ],
+  "inputs": [
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-frontend/inputs/package.json",
+      "bytes": 3954,
+      "sha256": "63207de17206bf4eb9025e546d05dbcde90dedb7966db361e3c36c2a1e3aef1f"
+    },
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-frontend/inputs/bun.lock",
+      "bytes": 357269,
+      "sha256": "48f95ed298a99259e2ffa651e2b5818ac608394dfcc19341ef335eab2bd0c5fd"
+    },
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-frontend/inputs/packages/frontend/package.json",
+      "bytes": 3434,
+      "sha256": "5fff9da11c225b4fbc792d54777fea7bec6817c49a59fdbaf2c35a7d872eb304"
+    }
+  ],
+  "installed": [
+    {
+      "name": "@oxy.so/contracts",
+      "version": "4.9.0",
+      "path": "/home/nate/Oxy/.agent-evidence/i04-consumer-frozen-1b-packs/oxy.so-contracts-4.9.0.tgz",
+      "source": "1b50557ccfe28b382f5b219405a616b332036d42",
+      "sourceTree": "6ff8352ea7920065590dceda3fff3ca420b94b69",
+      "sha256": "6b1e6a8da92341871d2832834ad063df1a1e84a46dc367786599fdd26be6e635",
+      "published": false,
+      "resolved": "/home/nate/Oxy/GoWay/.worktrees/1519-final-sdk-adoption-20261003/node_modules/@oxy.so/contracts",
+      "filesByteEqual": 198,
+      "importers": [
+        "packages/frontend"
+      ]
+    },
+    {
+      "name": "@oxy.so/protocol",
+      "version": "1.2.2",
+      "path": "/home/nate/Oxy/.agent-evidence/i04-consumer-frozen-1b-packs/oxy.so-protocol-1.2.2.tgz",
+      "source": "1b50557ccfe28b382f5b219405a616b332036d42",
+      "sourceTree": "77ed4e428f59cff076fd44daf42e18a1b39f7fdb",
+      "sha256": "325b20125f1cf5159c36ca7a75f32c83a4560cf41c55526828b1718595acc843",
+      "published": false,
+      "resolved": "/home/nate/Oxy/GoWay/.worktrees/1519-final-sdk-adoption-20261003/node_modules/@oxy.so/protocol",
+      "filesByteEqual": 145,
+      "importers": [
+        "packages/frontend"
+      ]
+    },
+    {
+      "name": "@oxy.so/core",
+      "version": "4.2.0",
+      "path": "/home/nate/Oxy/.agent-evidence/i04-consumer-frozen-1b-packs/oxy.so-core-4.2.0.tgz",
+      "source": "1b50557ccfe28b382f5b219405a616b332036d42",
+      "sourceTree": "3937031b8c95a6b8feff65720905de1ad651689d",
+      "sha256": "83059583068cf96d8dc7e4335fe226126cb795f7c6cfba469f8cec4ef9c6a385",
+      "published": false,
+      "resolved": "/home/nate/Oxy/GoWay/.worktrees/1519-final-sdk-adoption-20261003/node_modules/@oxy.so/core",
+      "filesByteEqual": 581,
+      "importers": [
+        "packages/frontend"
+      ]
+    },
+    {
+      "name": "@oxy.so/services",
+      "version": "11.1.0",
+      "path": "/home/nate/Oxy/.agent-evidence/i04-consumer-frozen-1b-packs/oxy.so-services-11.1.0.tgz",
+      "source": "1b50557ccfe28b382f5b219405a616b332036d42",
+      "sourceTree": "9f0c5e719c8bcea54faefb37580713eb14bacf9f",
+      "sha256": "b8d232cb04d934ac38c8be303dbbcf9819d444bec8458628c8478cbbf2155c9c",
+      "published": false,
+      "resolved": "/home/nate/Oxy/GoWay/.worktrees/1519-final-sdk-adoption-20261003/node_modules/@oxy.so/services",
+      "filesByteEqual": 2418,
+      "importers": [
+        "packages/frontend"
+      ]
+    },
+    {
+      "name": "@oxy.so/bloom",
+      "version": "6.2.1",
+      "path": "/home/nate/Oxy/.agent-evidence/root-1519-20261003/bloom621-publication/oxy-so-bloom-6.2.1.tgz",
+      "sha256": "edf4cfe3d8597e4bf86f997bceacf332f7fce4a8f92c541b3cd375decbce3a0a",
+      "published": true,
+      "resolved": "/home/nate/Oxy/GoWay/.worktrees/1519-final-sdk-adoption-20261003/node_modules/@oxy.so/bloom",
+      "filesByteEqual": 20940,
+      "importers": [
+        "packages/frontend"
+      ]
+    }
+  ],
+  "oxyRegistryAdopted": false
+}

@@ -1,0 +1,20 @@
+bun install v1.3.14 (0d9b296a)
+2 |   "lockfileVersion": 2,
+                         ^
+error: Unknown lockfile version
+    at bun.lock:2:22
+UnknownLockfileVersion: failed to parse lockfile: 'bun.lock'
+
+warn: Ignoring lockfile
+Resolving dependencies
+Resolved, downloaded and extracted [156]
+Saved lockfile
+
+$ bun run build:shared-types && bun run build:sdk
+$ bun run --cwd packages/shared-types build
+$ tsc -p tsconfig.json
+$ bun run --cwd packages/sdk build
+$ node scripts/build.mjs
+built dist/index.js, dist/index.cjs, dist/index.d.ts, dist/index.d.cts
+
+98 packages installed [3.17s]

@@ -1,0 +1,6 @@
+
+/home/nate/Oxy/GoWay/.worktrees/1519-final-sdk-adoption-20261003/packages/backend/src/__tests__/fixtures/receiver-sdk-probe.ts
+  64:19  error  'middleware' is never reassigned. Use 'const' instead  prefer-const
+
+✖ 1 problem (1 error, 0 warnings)
+

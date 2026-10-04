@@ -1,0 +1,10 @@
+bun install v1.3.14 (0d9b296a)
+
+$ bun run build:shared-types && bun run build:sdk
+$ bun run --cwd packages/shared-types build
+$ tsc -p tsconfig.json
+$ bun run --cwd packages/sdk build
+$ node scripts/build.mjs
+built dist/index.js, dist/index.cjs, dist/index.d.ts, dist/index.d.cts
+
+Checked 1179 installs across 1231 packages (no changes) [1110.00ms]

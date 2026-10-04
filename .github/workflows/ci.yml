@@ -398,9 +398,9 @@ jobs:
     # `secrets` deliberately: the `secrets` context is not available in a
     # job-level `if`, and this is configuration, not a credential.
     if: >-
-      github.event_name == 'push'
+      ${{ vars.OXY_1519_ROLLOUT_HOLD != 'true' && (github.event_name == 'push'
       && github.ref == 'refs/heads/main'
-      && vars.AWS_DEPLOY_ENABLED == 'true'
+      && vars.AWS_DEPLOY_ENABLED == 'true') }}
     # A called workflow cannot ELEVATE permissions beyond what the caller grants,
     # and the workflow-level grant above is `contents: read`. deploy-aws.yml
     # declares `id-token: write` for the AWS OIDC exchange, so without this job
@@ -426,7 +426,8 @@ jobs:
   deploy-frontend:
     name: Deploy frontend
     needs: [quality, gates, lockfile, test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      ${{ vars.OXY_1519_ROLLOUT_HOLD != 'true' && (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     permissions:
       contents: read
     uses: ./.github/workflows/deploy-frontend.yml

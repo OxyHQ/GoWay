@@ -1,0 +1,16 @@
+[
+  {
+    "name": "frontend-export",
+    "cwd": ".",
+    "argv": [
+      "env",
+      "EXPO_PUBLIC_API_URL=https://api.goway.to",
+      "EXPO_NO_DOTENV=1",
+      "bun",
+      "run",
+      "build:frontend"
+    ],
+    "exitCode": 0,
+    "seconds": 19.719
+  }
+]

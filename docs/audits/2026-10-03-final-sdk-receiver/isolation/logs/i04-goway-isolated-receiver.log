@@ -1,0 +1,10 @@
+$ bun test src/__tests__/receiverSdk.test.ts
+bun test v1.4.2 (744846f84)
+
+src/__tests__/receiverSdk.test.ts:
+(pass) validates receiver identity and revocation in an isolated loopback process [352.13ms]
+
+ 1 pass
+ 0 fail
+ 5 expect() calls
+Ran 1 test across 1 file. [362.00ms]

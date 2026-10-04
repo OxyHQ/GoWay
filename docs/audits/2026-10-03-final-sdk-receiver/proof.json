@@ -1,0 +1,98 @@
+{
+  "repository": "GoWay",
+  "base": "c696e80d420212d3c899963681c421d5cf3b56d0",
+  "sourceCommit": "977cade5971bdb591547dd7268ebee6417400af6",
+  "sources": [
+    {
+      "path": "packages/backend/src/__tests__/receiverSdk.test.ts",
+      "bytes": 4081,
+      "sha256": "a2ae62e1d5268cd20c94d532ceb5be84cc77cfaa65ca6b8684440313e0c99a14"
+    }
+  ],
+  "installed": [
+    {
+      "name": "@oxy.so/core",
+      "version": "4.2.0",
+      "path": "/home/nate/Oxy/.agent-evidence/i04-consumer-frozen-1b-packs/oxy.so-core-4.2.0.tgz",
+      "source": "1b50557ccfe28b382f5b219405a616b332036d42",
+      "sourceTree": "3937031b8c95a6b8feff65720905de1ad651689d",
+      "sha256": "83059583068cf96d8dc7e4335fe226126cb795f7c6cfba469f8cec4ef9c6a385",
+      "published": false,
+      "resolved": "/home/nate/Oxy/GoWay/.worktrees/1519-final-sdk-adoption-20261003/node_modules/@oxy.so/core",
+      "filesByteEqual": 581
+    },
+    {
+      "name": "@oxy.so/contracts",
+      "version": "4.9.0",
+      "path": "/home/nate/Oxy/.agent-evidence/i04-consumer-frozen-1b-packs/oxy.so-contracts-4.9.0.tgz",
+      "source": "1b50557ccfe28b382f5b219405a616b332036d42",
+      "sourceTree": "6ff8352ea7920065590dceda3fff3ca420b94b69",
+      "sha256": "6b1e6a8da92341871d2832834ad063df1a1e84a46dc367786599fdd26be6e635",
+      "published": false,
+      "resolved": "/home/nate/Oxy/GoWay/.worktrees/1519-final-sdk-adoption-20261003/node_modules/@oxy.so/contracts",
+      "filesByteEqual": 198
+    },
+    {
+      "name": "@oxy.so/protocol",
+      "version": "1.2.2",
+      "path": "/home/nate/Oxy/.agent-evidence/i04-consumer-frozen-1b-packs/oxy.so-protocol-1.2.2.tgz",
+      "source": "1b50557ccfe28b382f5b219405a616b332036d42",
+      "sourceTree": "77ed4e428f59cff076fd44daf42e18a1b39f7fdb",
+      "sha256": "325b20125f1cf5159c36ca7a75f32c83a4560cf41c55526828b1718595acc843",
+      "published": false,
+      "resolved": "/home/nate/Oxy/GoWay/.worktrees/1519-final-sdk-adoption-20261003/node_modules/@oxy.so/protocol",
+      "filesByteEqual": 145
+    }
+  ],
+  "records": [
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-receiver/logs/i04-goway-candidate-install.log",
+      "bytes": 204,
+      "sha256": "64b73c2ff3062eb03474c274c56bd7949f976dd897357e8b9792a9d47e48bca7"
+    },
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-receiver/logs/i04-goway-backend-candidate-build.log",
+      "bytes": 62,
+      "sha256": "fe7b67c5793de3404a67ca0d041dae0298a189b7aaf145dae0d8d5effefb80de"
+    },
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-receiver/logs/i04-goway-receiver-http.log",
+      "bytes": 3410,
+      "sha256": "dee46994609461e4aacb12622feb76c33b0fb8ff83416b61d492a94fbded87c4"
+    },
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-receiver/logs/i04-goway-receiver-final-checks.log",
+      "bytes": 53,
+      "sha256": "825c2a03e6896d9fe1b5c8e106852c19087f925210b777cb1dfea3bf4db3799e"
+    },
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-receiver/logs/i04-goway-receiver-http-final.log",
+      "bytes": 2573,
+      "sha256": "48b83348f1eb1d373847dc08c7dee7126cee1d764fdeefd030f374696dcec3e2"
+    }
+  ],
+  "candidateInputs": [
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-receiver/inputs/package.json",
+      "bytes": 3837,
+      "sha256": "32fe99394bff1fd5bfd44ff44d31a3892b1f703b2c615aa2cb036f17e3f24aee"
+    },
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-receiver/inputs/bun.lock",
+      "bytes": 356784,
+      "sha256": "f7d4601aa3f0dc7ea02e9e54a32ce266bf2df877c2daba42156f60ca1c081701"
+    },
+    {
+      "path": "docs/audits/2026-10-03-final-sdk-receiver/inputs/packages__backend__package.json",
+      "bytes": 1438,
+      "sha256": "f326b19a71b7cad3725ea39bb51989033be1a7d8438529833add9ea092fdbc3b"
+    }
+  ],
+  "limits": [
+    "Candidate source1b505; subsequent SDK fix/refreeze and published registry adoption remain pending. Package manifests and lockfile are local file candidates, not committed as adoption.",
+    "Real loopback HTTP and installed SDK; issuer session validation is synthetic, no signing-authority proof, product SQL or domain effects.",
+    "Willo uses its actual createOxyClient factory and canonical auth helper on an owned fixture route; other repos import their actual middleware binding.",
+    "No production configuration, deployment, scopes, grants, schemas or credentials changed.",
+    "Initial Bun fixture cleanup order caused ERR_SERVER_NOT_RUNNING; close then closeAllConnections now passes. Willo initial script selected all src; DB hooks reached only the explicit unused port1 config and failed. Final name filter excludes46 domain tests."
+  ]
+}
