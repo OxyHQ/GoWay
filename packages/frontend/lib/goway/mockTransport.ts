@@ -39,7 +39,7 @@ import type {
 import { distanceMeters } from '@/lib/map/geo';
 
 import { FIXTURE_PLACES, FIXTURE_PLACES_BY_ID } from './fixtures';
-import { FIXTURE_SCENES, fixtureCoverage } from './street3dFixtures';
+import { fixtureCoverage, fixtureSceneResponse } from './street3dFixtures';
 
 /** Which endpoint families can be made to fail, for the degraded states. */
 export type FixtureFault = 'places' | 'search' | 'geocode' | 'routes' | 'street3d';
@@ -562,7 +562,7 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
     const sceneRoute = /^\/street3d\/scenes\/([^/]+)(\/reports)?$/.exec(path);
     if (sceneRoute) {
       const id = decodeURIComponent(sceneRoute[1]);
-      const scene = FIXTURE_SCENES.get(id);
+      const scene = await fixtureSceneResponse(id);
       if (!scene) return respond(404, errorBody('not_found', `No scene with id ${id}`));
       if (!sceneRoute[2]) return respond(200, scene);
       if (init.method !== 'POST') return respond(405, errorBody('bad_request', 'Use POST'));

@@ -35,6 +35,28 @@ altitude (places have none), are capped (nearest first), and are hidden when
 behind the camera, out of frame or too far. They are DOM elements over the
 canvas, never splat pixels.
 
+## Guided navigation
+
+A Gaussian scene is only trustworthy from where it was observed; free flight
+exposes unobserved space as shards and needles, worst at the edges of a portrait
+capture shown on a landscape screen. When a manifest publishes `navigation`, the
+viewer opens in guided **Walk** mode (`components/street3d/guidedNavigation.ts`):
+
+- The camera stands on a viewpoint (the one nearest `initialView.position`,
+  facing `initialView.target`) and glides (~400 ms, eased) to the next one:
+  W/S or the up/down arrows, the on-screen arrows, a click ahead, or a ground
+  marker. The next viewpoint is the best within 45° of the requested ground
+  direction and 0.5–6 m away. A/D and left/right turn; nothing strafes.
+- Look is free in yaw; pitch is clamped to ±35°.
+- The vertical FOV is the captured one (wheel/pinch only narrow it). Where the
+  screen's horizontal FOV exceeds the captured horizontal FOV × 1.3, the sides
+  are shaded instead of drawn; every edge is softly vignetted.
+- Ground markers (1.6 m below each reachable viewpoint, one per direction
+  sector) appear on hover or drag and after each step.
+
+Orbit stays available behind the toggle as the free, secondary mode. Without
+`navigation`, the viewer behaves as before (free orbit/walk).
+
 ## Loading and degrading
 
 `deviceProfile.ts` judges the device before the engine is fetched:
@@ -57,7 +79,7 @@ A development build shows fps, bytes and load timings behind the `perf` toggle.
 | `EXPO_PUBLIC_STREET3D_ENABLED` | off | Coverage layer and viewer. A 404 (no GoWay body) from coverage switches the layer off for the session; 503 hides it until the next viewport. |
 | `EXPO_PUBLIC_STREET3D_ASSET_ORIGIN` | unset | When set, the only origin assets may come from. Otherwise any `https:` URL (the SDK's manifest parser already refuses anything else). |
 | `EXPO_PUBLIC_WEB_ORIGIN` | `https://goway.to` | What the native WebView loads. |
-| `EXPO_PUBLIC_STREET3D_FIXTURE_*` | unset | Fixture splat/poster URLs, anchor, opening view and credit (see `.env.example`). With an anchor, the fixtures are one scene, `s3d_fixture_anchor`, and two cells beside it; without, Barcelona examples. |
+| `EXPO_PUBLIC_STREET3D_FIXTURE_*` | unset | Fixture splat/poster URLs, anchor, opening view and credit (see `.env.example`). With an anchor, the fixtures are one scene, `s3d_fixture_anchor`, and two cells beside it; without, Barcelona examples. `…_NAVIGATION_URL` attaches a `navigation` JSON to the first fixture scene. |
 
 `public/_headers` sets no CSP. If one is added, it must allow the asset origin
 in `connect-src` and `img-src`, and `blob:` in `worker-src`. The scene CDN must

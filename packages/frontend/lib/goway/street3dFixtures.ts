@@ -35,6 +35,13 @@
  *     EXPO_PUBLIC_STREET3D_FIXTURE_ANCHOR=lat,lng,altitude
  *     EXPO_PUBLIC_STREET3D_FIXTURE_VIEW=px,py,pz,tx,ty,tz   # scene coordinates
  *     EXPO_PUBLIC_STREET3D_FIXTURE_ATTRIBUTION=…            # the asset's credit
+ *     EXPO_PUBLIC_STREET3D_FIXTURE_NAVIGATION_URL=…         # JSON, `navigation` shape
+ *
+ * The navigation URL is fetched by the app (so it needs CORS for the dev
+ * origin) and attached to the first fixture scene as `navigation`, which turns
+ * on the viewer's guided Walk mode. It goes through the SDK's parser like the
+ * rest of the manifest, so a malformed file fails the same way a malformed
+ * API answer would.
  */
 import type {
   StreetCoverage,
@@ -70,6 +77,8 @@ for (const [name, url] of [['SPLAT', SPLAT_URL], ['PREVIEW', PREVIEW_URL], ['POS
     console.warn(`[goway/street3d] EXPO_PUBLIC_STREET3D_FIXTURE_${name}_URL must be https: — the SDK rejects other asset URLs.`);
   }
 }
+
+const NAVIGATION_URL = env(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_NAVIGATION_URL);
 
 const ANCHOR = numbers(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_ANCHOR, 3);
 const VIEW = numbers(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_VIEW, 6);
@@ -253,4 +262,30 @@ export function fixtureCoverage(box: { west: number; south: number; east: number
     scenes: [...FIXTURE_SCENES.values()].filter((scene) => intersects(scene.bounds, box)).map(summaryOf),
     areas: FIXTURE_AREAS.filter((entry) => intersects(entry.bounds, box)),
   };
+}
+
+let navigation: Promise<unknown> | null = null;
+
+/**
+ * The fixture manifest for `id` as the API would answer it: with the
+ * configured `navigation` attached to the first fixture scene. `undefined`
+ * for an unknown id.
+ */
+export async function fixtureSceneResponse(id: string): Promise<StreetSceneManifest | undefined> {
+  const manifest = FIXTURE_SCENES.get(id);
+  if (!manifest) return undefined;
+  const first = FIXTURE_SCENES.keys().next().value;
+  if (!NAVIGATION_URL || id !== first) return manifest;
+  navigation ??= fetch(NAVIGATION_URL)
+    .then((response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json() as Promise<unknown>;
+    })
+    .catch((error: unknown) => {
+      console.warn(`[goway/street3d] EXPO_PUBLIC_STREET3D_FIXTURE_NAVIGATION_URL could not be loaded: ${String(error)}`);
+      navigation = null;
+      return undefined;
+    });
+  const loaded = await navigation;
+  return loaded === undefined ? manifest : ({ ...manifest, navigation: loaded } as StreetSceneManifest);
 }
