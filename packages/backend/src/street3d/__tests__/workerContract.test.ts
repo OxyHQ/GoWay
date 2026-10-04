@@ -65,6 +65,19 @@ describe('worker contract fixtures', () => {
     expect(workerEventSchema.safeParse({ ...failed, type: 'exploded' }).success).toBe(false);
   });
 
+  it('bounds the optional navigation inputs', () => {
+    const result = fixture('result.scene_reconstruct.json');
+    const older = { ...result, viewpoints: undefined, captureFieldOfView: undefined };
+    expect(sceneReconstructResultSchema.safeParse(older).success).toBe(true);
+    const viewpoint = { position: [0, 0, 1.6], forward: [0, 1, 0] };
+    expect(sceneReconstructResultSchema.safeParse({ ...result, viewpoints: Array(2000).fill(viewpoint) }).success).toBe(true);
+    expect(sceneReconstructResultSchema.safeParse({ ...result, viewpoints: Array(2001).fill(viewpoint) }).success).toBe(false);
+    expect(sceneReconstructResultSchema.safeParse({ ...result, viewpoints: [{ ...viewpoint, position: [0, 0] }] }).success).toBe(false);
+    expect(sceneReconstructResultSchema.safeParse({ ...result, viewpoints: [{ ...viewpoint, forward: [0, Infinity, 0] }] }).success).toBe(false);
+    expect(sceneReconstructResultSchema.safeParse({ ...result, captureFieldOfView: { horizontalDegrees: 180, verticalDegrees: 50 } }).success).toBe(false);
+    expect(sceneReconstructResultSchema.safeParse({ ...result, captureFieldOfView: { horizontalDegrees: 66, verticalDegrees: 0.5 } }).success).toBe(false);
+  });
+
   it('refuses keys that escape their prefix', () => {
     const job = fixture('job.capture_privacy.json');
     expect(jobEnvelopeSchema.safeParse({ ...job, outputPrefix: '../captures/' }).success).toBe(false);

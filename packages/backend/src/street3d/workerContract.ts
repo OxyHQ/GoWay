@@ -295,6 +295,23 @@ const sceneAssetSchema = z.object({
 export type SceneResultAsset = z.infer<typeof sceneAssetSchema>;
 
 const finiteNumber = z.number().refine(Number.isFinite, 'must be finite');
+const sceneVector = z.tuple([finiteNumber, finiteNumber, finiteNumber]);
+
+/** The most capture viewpoints one result may report. The backend decimates further before storing. */
+export const MAX_RESULT_VIEWPOINTS = 2000;
+
+/**
+ * A solved camera position and facing, in scene coordinates (metric ENU, z
+ * up). `forward` is approximately unit length. Internal input to the published
+ * navigation, which is decimated and reordered before it is stored.
+ */
+const sceneViewpointSchema = z.object({ position: sceneVector, forward: sceneVector });
+export type SceneResultViewpoint = z.infer<typeof sceneViewpointSchema>;
+
+const captureFieldOfViewSchema = z.object({
+  horizontalDegrees: z.number().min(1).max(179),
+  verticalDegrees: z.number().min(1).max(179),
+});
 
 export const sceneReconstructResultSchema = z.object({
   schemaVersion,
@@ -340,10 +357,10 @@ export const sceneReconstructResultSchema = z.object({
     .catchall(finiteNumber),
   gates: z.object({ passed: z.boolean(), failures: z.array(z.string().max(200)) }),
   assets: z.array(sceneAssetSchema),
-  initialView: z.object({
-    position: z.tuple([finiteNumber, finiteNumber, finiteNumber]),
-    target: z.tuple([finiteNumber, finiteNumber, finiteNumber]),
-  }),
+  initialView: z.object({ position: sceneVector, target: sceneVector }),
+  /** Optional: a worker that predates guided navigation omits both. */
+  viewpoints: z.array(sceneViewpointSchema).max(MAX_RESULT_VIEWPOINTS).optional(),
+  captureFieldOfView: captureFieldOfViewSchema.optional(),
   observedFrom: instant,
   observedTo: instant,
   provenance: z.object({

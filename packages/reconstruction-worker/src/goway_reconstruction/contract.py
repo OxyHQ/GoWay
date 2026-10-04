@@ -301,6 +301,18 @@ class InitialView(_Output):
     target: list[float] = Field(min_length=3, max_length=3)
 
 
+class Viewpoint(_Output):
+    """A solved camera position and facing, in scene coordinates (metric ENU, z up)."""
+
+    position: list[float] = Field(min_length=3, max_length=3)
+    forward: list[float] = Field(min_length=3, max_length=3)
+
+
+class CaptureFieldOfView(_Output):
+    horizontalDegrees: float = Field(ge=1, le=179)
+    verticalDegrees: float = Field(ge=1, le=179)
+
+
 class Provenance(_Output):
     pipelineVersion: str
     privacyPipelineVersions: list[str]
@@ -326,6 +338,9 @@ class SceneReconstructResult(_Output):
     gates: GateResult
     assets: list[OutputAsset]
     initialView: InitialView
+    # Optional guided-navigation inputs; the backend decimates and reorders them.
+    viewpoints: list[Viewpoint] | None = Field(default=None, max_length=2000)
+    captureFieldOfView: CaptureFieldOfView | None = None
     observedFrom: str
     observedTo: str
     provenance: Provenance
