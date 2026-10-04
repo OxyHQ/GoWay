@@ -14,13 +14,21 @@ packages/
   frontend/                 consumer app
   backend/                  API, Places schema/migrations, provider adapters
   sdk/                      public @goway.to/sdk
-  shared-types/             shared provider-neutral contracts, including Places types
+  contracts/                the API contract: zod schemas, route registry, openapi.json
   reconstruction-worker/    Street 3D reconstruction worker (Python/CUDA)
 ```
 
-`shared-types` is private and is *bundled* into `@goway.to/sdk` at build time: a
+`contracts` is the single source of truth for the API (`~/Oxy/docs/api-conventions.md`):
+every request, response, error code and closed value set is a zod 4 schema
+there, and every type is `z.infer`/`z.input` of one. The backend validates
+requests with those schemas, `@goway.to/sdk` parses responses with them, and the
+OpenAPI 3.1 document (`packages/contracts/openapi.json`, served at
+`/api/v1/openapi.json`) and the JSON Schemas are generated from them and gated
+fresh in CI. There is no second copy of a shape anywhere to drift.
+
+`contracts` is private and is *bundled* into `@goway.to/sdk` at build time: a
 published package naming a `workspace:*` dependency is unresolvable for every
-consumer. `reconstruction-worker` is deliberately not a Bun workspace member —
+consumer. The SDK's one runtime dependency is `zod`. `reconstruction-worker` is deliberately not a Bun workspace member —
 it owns its own Python environment through `uv` and is driven by the root
 `worker:setup` / `worker:doctor` / `worker:run` scripts.
 

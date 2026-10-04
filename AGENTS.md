@@ -23,14 +23,16 @@ Always **bun**; commit `bun.lock` with its `package.json`.
 
 ## Packages
 
-- `packages/*` only, never `apps/`. Bun workspaces are `shared-types`, `sdk`, `frontend`, `backend`.
+- `packages/*` only, never `apps/`. Bun workspaces are `contracts`, `sdk`, `frontend`, `backend`.
 - `packages/reconstruction-worker` is Python/CUDA and deliberately **not** a Bun workspace; drive it through the root `worker:setup|doctor|run` scripts, which delegate to its `Makefile`/`uv`.
 - Street 3D capture and contribution UI live in `packages/frontend`. There is no second consumer app.
 
 ## Product boundaries
 
 - Canonical origin is `https://goway.to` and the public package is `@goway.to/sdk`. API origins and hosts are configuration-driven; never hardcode a development endpoint into product code.
-- `@goway.to/sdk` is the supported integration boundary for FairCoin, Moovo, Mercaria, Homiio, Mention and Clarity. Public contracts live in `packages/shared-types`; the SDK re-exports them.
+- `@goway.to/sdk` is the supported integration boundary for FairCoin, Moovo, Mercaria, Homiio, Mention and Clarity. Public contracts live in `packages/contracts`; the SDK re-exports them.
+- Every request, response, error code and value set is a zod schema in `packages/contracts`; the backend validates and the SDK parses with it. Never add a `*Schemas.ts`, hand parser or duplicate interface. A route change edits `API_OPERATIONS` and runs `bun run openapi`.
+- API shape follows `~/Oxy/docs/api-conventions.md`: lists are `{ items, nextCursor }` with fingerprinted cursors (`http/cursor.ts`), errors use the contract's closed codes.
 - Never publish an internal Drizzle/PostGIS row shape as an SDK contract, and never let a Python worker implementation detail become one.
 - MapLibre, OpenFreeMap, Photon, Nominatim, Valhalla, COLMAP and gsplat are replaceable adapters behind GoWay interfaces. Feature code imports the GoWay abstraction, never the provider.
 - Every map GoWay draws carries the mark bottom-left and the data credit bottom-right, both rendered by `MapCanvas` with no prop to disable — the embed included.
