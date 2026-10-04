@@ -36,6 +36,9 @@ export interface UploadTarget {
 /** What the store reports about an object that is actually there. */
 export interface StoredObjectStat {
   byteSize: number;
+  /** Verified SHA-256, lower-case hex; never an ETag or client assertion. */
+  checksumSha256?: string;
+  contentType?: string;
   /** The store's own entity tag, when it provides one. Never trusted as a content hash. */
   etag?: string;
 }
@@ -46,6 +49,8 @@ export interface UploadTargetRequest {
   contentType: string;
   /** The exact byte count the target is signed for. */
   byteSize: number;
+  /** SHA-256 of the exact upload bytes, lower-case hex. */
+  contentHash: string;
   /** Seconds the target stays valid. */
   ttlSeconds: number;
 }

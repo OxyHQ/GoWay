@@ -381,3 +381,18 @@ Attribution under Section 3.1 is required of everyone, including paying
 commercial licensees, and cannot be waived.
 Map data served through the GoWay API carries its own upstream licences
 (OpenStreetMap data is ODbL).
+
+### Contributions
+
+`client.captures.policy()` is public. The other capture methods require an Oxy
+session through the client's existing authenticated transport. Create a session
+with the current consent version, then register metadata and a SHA-256 content
+hash using a stable `idempotencyKey`. Upload directly with the returned ticket's
+method and headers, then call `captures.finalize(asset.id)`. Do not attach your
+API authorization header to the storage request. A repeated immutable PUT may
+return 412; finalization verifies the already-stored object's checksum and size.
+
+`captures.sessions()` returns up to 50 recent owned sessions, and
+`captures.assets(sessionId)` lists their contributions. `captures.remove(id)`
+withdraws the contribution; shared bytes are queued for deletion after their
+upload intents expire when no valid contribution still references them.

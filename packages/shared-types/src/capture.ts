@@ -569,6 +569,8 @@ export interface CaptureUploadTicket {
  * guarantee to keep anything that long.
  */
 export interface CaptureUploadPolicy {
+  /** Whether this deployment currently accepts uploads. */
+  enabled?: boolean;
   /** The consent text version a new session must accept. */
   consentVersion: string;
   contentHashAlgorithm: CaptureContentHashAlgorithm;
@@ -583,6 +585,25 @@ export interface CaptureUploadPolicy {
   };
   /** Maximum days GoWay keeps each class of stored object. A ceiling, not a promise. */
   retentionDays: Record<CaptureRetentionClass, number>;
+}
+
+export interface CaptureSessionInput {
+  source: CaptureSource;
+  consentVersion: string;
+  note?: string;
+}
+
+export interface CaptureAssetInput {
+  /** Reuse on retries of this exact request; generate a new UUID for new media. */
+  idempotencyKey?: string;
+  mediaKind: CaptureMediaKind;
+  source: CaptureSource;
+  contentHash: string;
+  byteSize: number;
+  contentType: string;
+  capturedAt?: string;
+  location: Omit<CaptureLocationEvidence, 'witness'>[];
+  camera?: CaptureCameraMetadata;
 }
 
 /**

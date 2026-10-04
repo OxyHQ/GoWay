@@ -1,4 +1,7 @@
 import {
+  CAPTURE_ASSET_STATES, CAPTURE_MEDIA_KINDS, CAPTURE_SOURCES, CAPTURE_PRIVACY_STATES,
+  CAPTURE_LOCATION_ORIGINS, CAPTURE_LOCATION_WITNESSES, CAPTURE_RETENTION_CLASSES,
+  RETENTION_REASONS, DELETION_REASONS,
   CAPABILITY_VERIFICATIONS,
   PLACE_CLAIM_ROLES,
   PLACE_CLAIM_STATES,
@@ -8,6 +11,8 @@ import {
   TRAVEL_MODES,
 } from './contract';
 import type {
+  CaptureAsset, CaptureSession, CaptureUploadPolicy, CaptureUploadTicket,
+  CaptureLocationEvidence, CaptureCameraMetadata, StoredObjectLifecycle,
   GeoBoundingBox,
   GeoCoordinate,
   GeoGeometry,
@@ -521,4 +526,121 @@ export function parseRoute(value: unknown, path: string): Route {
 export function parseRouteResponse(value: unknown, path: string): RouteResponse {
   const record = object(value, path);
   return { routes: array(record.routes, `${path}.routes`, parseRoute) };
+}
+
+// Capture responses are reconstructed field-by-field: private server fields never leak through.
+function boolean(value: unknown, path: string): boolean {
+  if (typeof value !== 'boolean') fail(path, 'a boolean');
+  return value;
+}
+
+export function parseCaptureSession(value: unknown, path = 'session'): CaptureSession {
+  const r = object(value, path);
+  const result: CaptureSession = {
+    id: nonEmptyString(r.id, `${path}.id`), source: oneOf(r.source, CAPTURE_SOURCES, `${path}.source`),
+    consentVersion: nonEmptyString(r.consentVersion, `${path}.consentVersion`),
+    startedAt: instant(r.startedAt, `${path}.startedAt`), assetCount: nonNegativeNumber(r.assetCount, `${path}.assetCount`),
+    createdAt: instant(r.createdAt, `${path}.createdAt`), updatedAt: instant(r.updatedAt, `${path}.updatedAt`),
+  };
+  put(result, 'note', optional(r.note, `${path}.note`, string));
+  put(result, 'endedAt', optional(r.endedAt, `${path}.endedAt`, instant));
+  return result;
+}
+
+function captureEvidence(value: unknown, path: string): CaptureLocationEvidence {
+  const r = object(value, path);
+  const result: CaptureLocationEvidence = {
+    origin: oneOf(r.origin, CAPTURE_LOCATION_ORIGINS, `${path}.origin`),
+    witness: oneOf(r.witness, CAPTURE_LOCATION_WITNESSES, `${path}.witness`),
+    coordinate: parseCoordinate(r.coordinate, `${path}.coordinate`),
+  };
+  put(result, 'accuracyMeters', optional(r.accuracyMeters, `${path}.accuracyMeters`, nonNegativeNumber));
+  put(result, 'altitudeMeters', optional(r.altitudeMeters, `${path}.altitudeMeters`, finiteNumber));
+  put(result, 'headingDegrees', optional(r.headingDegrees, `${path}.headingDegrees`, finiteNumber));
+  put(result, 'observedAt', optional(r.observedAt, `${path}.observedAt`, instant));
+  return result;
+}
+
+export function parseCaptureAsset(value: unknown, path = 'asset'): CaptureAsset {
+  const r = object(value, path), m = object(r.media, `${path}.media`);
+  const p = object(r.privacy, `${path}.privacy`), l = object(m.lifecycle, `${path}.media.lifecycle`);
+  const lifecycle: StoredObjectLifecycle = {
+    retentionClass: oneOf(l.retentionClass, CAPTURE_RETENTION_CLASSES, `${path}.media.lifecycle.retentionClass`),
+    retentionReason: oneOf(l.retentionReason, RETENTION_REASONS, `${path}.media.lifecycle.retentionReason`),
+    storedAt: instant(l.storedAt, `${path}.media.lifecycle.storedAt`),
+    expiresAt: instant(l.expiresAt, `${path}.media.lifecycle.expiresAt`),
+    extensionCount: nonNegativeNumber(l.extensionCount, `${path}.media.lifecycle.extensionCount`),
+  };
+  for (const key of ['deletedAt', 'protectedUntil', 'deletionEligibleAt'] as const) {
+    put(lifecycle, key, optional(l[key], `${path}.media.lifecycle.${key}`, instant));
+  }
+  put(lifecycle, 'deletionReason', optional(l.deletionReason, `${path}.media.lifecycle.deletionReason`, (v, k) => oneOf(v, DELETION_REASONS, k)));
+  const anchor = captureEvidence(r.anchor, `${path}.anchor`);
+  const result: CaptureAsset = {
+    id: nonEmptyString(r.id, `${path}.id`), sessionId: nonEmptyString(r.sessionId, `${path}.sessionId`),
+    mediaKind: oneOf(r.mediaKind, CAPTURE_MEDIA_KINDS, `${path}.mediaKind`),
+    source: oneOf(r.source, CAPTURE_SOURCES, `${path}.source`),
+    state: oneOf(r.state, CAPTURE_ASSET_STATES, `${path}.state`),
+    privacy: { state: oneOf(p.state, CAPTURE_PRIVACY_STATES, `${path}.privacy.state`) },
+    reconstructionEligible: boolean(r.reconstructionEligible, `${path}.reconstructionEligible`),
+    anchor, locationEvidence: array(r.locationEvidence, `${path}.locationEvidence`, captureEvidence),
+    media: {
+      contentHashAlgorithm: oneOf(m.contentHashAlgorithm, ['sha256'], `${path}.media.contentHashAlgorithm`),
+      contentHash: nonEmptyString(m.contentHash, `${path}.media.contentHash`),
+      byteSize: nonNegativeNumber(m.byteSize, `${path}.media.byteSize`),
+      contentType: nonEmptyString(m.contentType, `${path}.media.contentType`),
+      deduplicated: boolean(m.deduplicated, `${path}.media.deduplicated`), lifecycle,
+    },
+    createdAt: instant(r.createdAt, `${path}.createdAt`), updatedAt: instant(r.updatedAt, `${path}.updatedAt`),
+  };
+  put(result, 'capturedAt', optional(r.capturedAt, `${path}.capturedAt`, instant));
+  put(result.privacy, 'pipelineVersion', optional(p.pipelineVersion, `${path}.privacy.pipelineVersion`, nonEmptyString));
+  put(result.privacy, 'completedAt', optional(p.completedAt, `${path}.privacy.completedAt`, instant));
+  if (r.camera !== undefined && r.camera !== null) {
+    const c = object(r.camera, `${path}.camera`), camera: CaptureCameraMetadata = {};
+    for (const key of ['widthPixels', 'heightPixels', 'exifOrientation', 'focalLengthMm', 'focalLength35mm', 'durationSeconds', 'frameRate'] as const) {
+      put(camera, key, optional(c[key], `${path}.camera.${key}`, nonNegativeNumber));
+    }
+    for (const key of ['make', 'model', 'lens'] as const) put(camera, key, optional(c[key], `${path}.camera.${key}`, string));
+    result.camera = camera;
+  }
+  return result;
+}
+
+export function parseCaptureAssets(value: unknown): CaptureAsset[] {
+  return array(value, 'assets', parseCaptureAsset);
+}
+
+export function parseCaptureSessions(value: unknown): CaptureSession[] {
+  return array(value, 'sessions', parseCaptureSession);
+}
+
+export function parseCapturePolicy(value: unknown): CaptureUploadPolicy {
+  const r = object(value, 'policy'), photo = object(r.photo, 'policy.photo'), video = object(r.video, 'policy.video');
+  const days = object(r.retentionDays, 'policy.retentionDays');
+  const result: CaptureUploadPolicy = {
+    consentVersion: nonEmptyString(r.consentVersion, 'policy.consentVersion'),
+    contentHashAlgorithm: oneOf(r.contentHashAlgorithm, ['sha256'], 'policy.contentHashAlgorithm'),
+    photo: { contentTypes: array(photo.contentTypes, 'policy.photo.contentTypes', string), maxByteSize: nonNegativeNumber(photo.maxByteSize, 'policy.photo.maxByteSize') },
+    video: { contentTypes: array(video.contentTypes, 'policy.video.contentTypes', string), maxByteSize: nonNegativeNumber(video.maxByteSize, 'policy.video.maxByteSize'), maxDurationSeconds: nonNegativeNumber(video.maxDurationSeconds, 'policy.video.maxDurationSeconds') },
+    retentionDays: Object.fromEntries(CAPTURE_RETENTION_CLASSES.map((key) => [key, nonNegativeNumber(days[key], `policy.retentionDays.${key}`)])) as CaptureUploadPolicy['retentionDays'],
+  };
+  put(result, 'enabled', optional(r.enabled, 'policy.enabled', boolean));
+  return result;
+}
+
+export function parseCaptureTicket(value: unknown): CaptureUploadTicket {
+  const r = object(value, 'ticket'), result: CaptureUploadTicket = { asset: parseCaptureAsset(r.asset) };
+  if (r.upload !== undefined && r.upload !== null) {
+    const u = object(r.upload, 'ticket.upload'), h = object(u.headers, 'ticket.upload.headers');
+    const url = nonEmptyString(u.url, 'ticket.upload.url');
+    if (!/^https?:\/\//.test(url)) fail('ticket.upload.url', 'an HTTP(S) upload URL');
+    result.upload = {
+      assetId: nonEmptyString(u.assetId, 'ticket.upload.assetId'), method: oneOf(u.method, ['PUT'], 'ticket.upload.method'),
+      url, headers: Object.fromEntries(Object.entries(h).map(([k, v]) => [k, string(v, `ticket.upload.headers.${k}`)])),
+      expiresAt: instant(u.expiresAt, 'ticket.upload.expiresAt'), byteSize: nonNegativeNumber(u.byteSize, 'ticket.upload.byteSize'),
+      contentType: nonEmptyString(u.contentType, 'ticket.upload.contentType'),
+    };
+  }
+  return result;
 }

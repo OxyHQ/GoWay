@@ -13,6 +13,8 @@
  * stays mounted underneath — there is no route to come back from.
  */
 import { useCallback, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { Button } from '@oxy.so/bloom/button';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useOxy } from '@oxy.so/services';
@@ -36,6 +38,7 @@ import { useTranslation } from '@/lib/i18n';
 const BRAND_WIDTH = 70;
 
 export function MapTopBar() {
+  const router = useRouter();
   const { t } = useTranslation();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -72,6 +75,7 @@ export function MapTopBar() {
           `t('map.title')` stays as the accessible label — the logo is the app's
           name drawn rather than typed, and a screen reader should hear a name. */}
       <GowayLogo width={BRAND_WIDTH} label={t('map.title')} />
+      <Button size="sm" appearance="outline" onPress={() => router.push('/contribute')}>Contribute</Button>
 
       <Pressable
         accessibilityRole="button"

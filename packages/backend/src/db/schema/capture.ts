@@ -319,6 +319,9 @@ export const captureMediaObjects = pgTable(
     /** A floor under a bounded extension: the sweeper must not delete before it. */
     protectedUntil: timestamptz(),
     retentionExtensionCount: integer().notNull().default(0),
+    /** Durable removal request; the sweeper waits for outstanding upload permission to expire. */
+    deletionRequestedAt: timestamptz(),
+    deletionRequestedReason: text(),
 
     /** Tombstone. Set together with `deletion_reason`, enforced below. */
     deletedAt: timestamptz(),
@@ -338,6 +341,8 @@ export const captureMediaObjects = pgTable(
     closedSet('capture_objects_retention_class_check', table.retentionClass, CAPTURE_RETENTION_CLASSES),
     closedSet('capture_objects_retention_reason_check', table.retentionReason, RETENTION_REASONS),
     closedSet('capture_objects_deletion_reason_check', table.deletionReason, DELETION_REASONS),
+    closedSet('capture_objects_deletion_requested_reason_check', table.deletionRequestedReason, DELETION_REASONS),
+    check('capture_objects_deletion_request_check', sql`(${table.deletionRequestedAt} is null) = (${table.deletionRequestedReason} is null)`),
 
     check('capture_objects_content_hash_check', sql`${table.contentHash} ~ '^[0-9a-f]{64}$'`),
     check('capture_objects_object_key_check', sql`btrim(${table.objectKey}) <> ''`),
@@ -466,6 +471,8 @@ export const captureAssets = pgTable(
   'capture_assets',
   {
     id: generatedId(),
+    idempotencyKey: text(),
+    requestFingerprint: text(),
     sessionId: text()
       .notNull()
       .references(() => captureSessions.id, { onDelete: 'cascade' }),
@@ -667,6 +674,7 @@ export const captureAssets = pgTable(
     /** Bucketing and budgets. `text_pattern_ops` so a prefix match on a coarser cell is index-backed. */
     index('capture_assets_geo_cell_idx').on(table.geoCell.op('text_pattern_ops')),
     index('capture_assets_session_idx').on(table.sessionId),
+    unique('capture_assets_session_request_key').on(table.sessionId, table.idempotencyKey),
     index('capture_assets_media_object_idx').on(table.mediaObjectId),
     index('capture_assets_contributor_idx').on(table.oxyUserId, table.createdAt),
     index('capture_assets_state_idx').on(table.state),

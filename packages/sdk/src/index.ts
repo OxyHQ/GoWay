@@ -19,6 +19,7 @@ export {
   DEFAULT_GOWAY_WEB_BASE_URL,
 } from './client';
 export type {
+  GoWayCapturesApi,
   GoWayClient,
   GoWayClientOptions,
   GoWayGeocodeApi,
@@ -88,6 +89,9 @@ export {
   WELL_KNOWN_CAPABILITIES,
 } from './contract';
 export type {
+  CaptureAsset, CaptureSession, CaptureUploadPolicy, CaptureUploadTicket,
+  CaptureUploadIntent, CaptureAssetInput, CaptureSessionInput, CaptureLocationEvidence,
+  CaptureCameraMetadata, StoredObjectLifecycle,
   ApiErrorBody,
   ApiErrorCode,
   CapabilityKey,

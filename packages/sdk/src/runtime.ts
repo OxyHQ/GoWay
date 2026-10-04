@@ -28,7 +28,7 @@ export interface GoWayAbortSignal {
 }
 
 /** The HTTP methods the SDK issues. Reads are GET; writes are POST and PATCH. */
-export type GoWayHttpMethod = 'GET' | 'POST' | 'PATCH';
+export type GoWayHttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
 /** What the SDK passes to `fetch`. */
 export interface GoWayFetchInit {

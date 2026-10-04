@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import type { Database } from '../postgres';
 import { captureAssets, captureMediaObjects } from '../schema';
 
@@ -15,7 +15,7 @@ function candidates({ now, retryAfterSeconds }: CaptureCleanupOptions) {
     or(
       and(
         inArray(captureMediaObjects.storageState, ['expected', 'stored']),
-        lte(captureMediaObjects.expiresAt, now),
+        or(lte(captureMediaObjects.expiresAt, now), isNotNull(captureMediaObjects.deletionRequestedAt)),
         lte(captureMediaObjects.uploadIntentExpiresAt, now),
         or(isNull(captureMediaObjects.protectedUntil), lte(captureMediaObjects.protectedUntil, now)),
       ),
@@ -59,7 +59,8 @@ export async function claimCaptureCleanup(db: Database, options: CaptureCleanupO
 /** A repeated successful DELETE may only produce one tombstone / accounting event. */
 export async function completeCaptureCleanup(db: Database, id: string, now: Date): Promise<boolean> {
   const rows = await db.update(captureMediaObjects).set({
-    storageState: 'deleted', deletedAt: now, deletionReason: 'expired', updatedAt: now,
+    storageState: 'deleted', deletedAt: now,
+    deletionReason: sql`coalesce(${captureMediaObjects.deletionRequestedReason}, 'expired')`, updatedAt: now,
   }).where(and(eq(captureMediaObjects.id, id), eq(captureMediaObjects.storageState, 'deleting')))
     .returning({ id: captureMediaObjects.id });
   return rows.length === 1;
