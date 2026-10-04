@@ -63,15 +63,15 @@ category.
 
 ### The conversion
 
-`0011_goway_place_data_conversion` (post) rewrites existing rows with one SQL
+`0012_goway_place_data_conversion` (post) rewrites existing rows with one SQL
 function applied to `places.categories` AND to the importer's recorded
 `categories`: OSM values, OpenMapTiles classes, the ten old groups and the
 app's free-text keys all map (and every taxonomy key maps to itself, so a re-run
 is a no-op); unmapped keys drop; ancestors of kept keys drop. Converting both
 sides with the same function keeps "the column still says what OSM said", so the
 next import refreshes the converted value with the real mapping.
-`0012_goway_category_taxonomy` (post) then adds the CHECK. (`0008` is the
-additive half and `0010` business moderation's `brand_id` drop: every `pre`
+`0013_goway_category_taxonomy` (post) then adds the CHECK. (`0008` is the
+additive half and `0011` business moderation's `brand_id` drop: every `pre`
 migration precedes every `post` one, see `packages/backend/drizzle/README.md`.)
 
 ## 2. The capability registry
@@ -125,9 +125,13 @@ place is NOT accessible). The strongest-assertion rule is unchanged:
 `?capabilities=key` matches a place whose strongest assertion of the key
 holds. A filter may now carry a value — `food.cuisine:italian` (the strongest
 cuisine assertion includes it), `accessibility.wheelchair:limited` (is it),
-`price.level:2` — for enum, enum-set and price keys only. It is answered by jsonb
-containment over the same `DISTINCT ON` pass, with `bool_or` per filter;
-`placeMatchesCapabilityFilter` is the same rule client-side.
+`price.level:2`, `commerce.mercaria.store:<locationId>` (is exactly it) — for
+enum, enum-set, price and text keys. A text value is held to the key's own
+schema (trimmed, its pattern) and may not contain a comma, which would split a
+comma-joined filter list. It is answered by jsonb containment — equality, for a
+scalar — over the same `DISTINCT ON` pass, with `bool_or` per filter, so a
+weaker assertion of the value never matches a place whose strongest says
+otherwise; `placeMatchesCapabilityFilter` is the same rule client-side.
 
 ## 3. Hours
 
@@ -172,8 +176,14 @@ member of the business's Oxy organization, see `docs/BUSINESS_OWNERSHIP.md` —
 Oxy cannot answer about the organization). The same dates at the same tier is a
 409 naming the exception to rewrite. `PUT …/{exceptionId}` rewrites only an
 exception at the caller's own tier; `DELETE` is the approved claimant's, for
-`business_asserted` only. A claimed place is not closed to outside reports. A
-single-place read embeds the exceptions that have not ended; lists omit them.
+`business_asserted` only. A claimed place is not closed to outside reports.
+Approving a claim re-tiers the claimant's own pending exceptions as it does
+capabilities (`docs/BUSINESS_OWNERSHIP.md`).
+
+Every read that answers with places — by id, the batch read, nearby, a
+viewport — embeds the exceptions that have not ended (at most 32 per place, one
+query per page), because open-now on a list is wrong on every holiday without
+them.
 
 Every exception write records one public revision in its transaction —
 `hours_exception_created`, `hours_exception_replaced` (with what it replaced)
@@ -222,7 +232,13 @@ the derived zone. Capabilities, as `external_source` tied to the element's own
 ### And never overwrites a GoWay or business edit
 
 - A column changes only while it still equals what OpenStreetMap last said
-  (`mergePlaceColumns`, unchanged in rule, now one loop over the table).
+  (`mergePlaceColumns`, one loop over the table), or while it is empty and
+  OpenStreetMap never said otherwise.
+- A column somebody CLEARED (`PATCH … { "contact": { "phone": null } }`) where
+  OpenStreetMap had said something stays empty while OpenStreetMap repeats
+  that value, and takes OpenStreetMap's value once it changes: the clear was a
+  statement about the old value, and a new one is new evidence. `source_data`
+  keeps recording what OpenStreetMap says either way.
 - A capability write can address only the `external_source` row, and its
   `setWhere` refuses a row another source asserted and an observation older than
   the stored one; business and community rows are other keys entirely.

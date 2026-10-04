@@ -43,6 +43,8 @@ Always **bun**; commit `bun.lock` with its `package.json`.
 - A place attribute is a registered key in `CAPABILITY_DEFINITIONS` (value kind, labels, group, OSM tags) over `places_capabilities`, never a new column or table; every write goes through its key's schema.
 - `places.timezone` is derived from the position (`places/timezone.ts`), never taken from a caller; evaluate hours only with the contract's `openingStatusAt`.
 - Hours exceptions follow the capability authority rules: derived tier, rewrite at your own tier, claimant-only withdrawal.
+- `PATCH /places` is a merge patch: absent leaves a field (or address/contact part) alone, `null` clears; the import refills a cleared column only once OSM's value changes.
+- Approving a claim re-tiers only the claimant's own (or its filer's) community statements made since filing (`retierClaimantStatements`); never re-tier on a membership GoWay did not check with Oxy.
 - The import's owned columns are declared once in `import/osm/fields.ts`; `source_data` is `{v:2, tags, normalized}` with every raw tag, and OSM attributes are `external_source` capabilities tied to the element's source row.
 - `places.name` is the DEFAULT (local-language) name and never moves with a locale; every tagged name is a `places_names` row keyed `(place, language, source)`, resolved server-side and rendered via `placeDisplayName`. Design note: `docs/PLACE_NAMES.md`.
 - A business is an Oxy organization: a claim stores its `oxyAccountId` and Oxy decides who acts for it (`places/claimAuthority`, asked with the caller's bearer). Never keep a member list or brand id; fail closed with 503 when Oxy cannot answer. Design note: `docs/BUSINESS_OWNERSHIP.md`.

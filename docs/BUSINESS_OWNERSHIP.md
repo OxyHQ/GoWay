@@ -29,7 +29,49 @@ and read the place's claims. **Filing** a new claim in an organization's name is
 or `admin` — because it is a statement about who the business is.
 
 A chain is an organization claiming each of its locations in the `brand` role.
-`places_claims.brand_id` was dropped (post-phase migration `0010`).
+`places_claims.brand_id` was dropped (post-phase migration `0011`).
+
+A business finds its own claim on one place with `GET /claims?placeId=` (and
+`oxyAccountId=` for the organization): the account's list, narrowed, so it
+reveals nothing the unfiltered list would not.
+
+### What was said while the claim was pending
+
+A pending claim is not ownership, so what a business says while it waits — its
+store link, accessibility, a holiday closure — is `community_reported`. Left
+there, it would stay a community report after approval: outranked by nothing
+new, and withdrawable by nobody, because withdrawal is the business tier's.
+So approving a claim (`decideClaim` → `retierClaimantStatements`) re-tiers, in
+the same transaction, every `community_reported` capability and hours
+exception whose LATEST statement:
+
+1. was recorded at or after the claim was filed, and
+2. was made AS the claimant account (its own session, or one switched into
+   the organization) or AS the person who filed the claim, acting as
+   themselves.
+
+The filer is the one member whose standing GoWay established with Oxy —
+filing needed `owner` or `admin`. Any other member who spoke as themselves is
+not re-tiered: membership is asked with the asker's own bearer (above), and an
+operator's session cannot vouch for somebody else's role. Their statement stays
+a community report until the business asserts it again.
+
+"Latest" is what keeps a shared row safe: the community tier is one row per key
+(per dates, for an exception), and when a stranger wrote it after the business
+did, it holds the stranger's statement and is left alone. A row moved in by a
+merge was last written by the operator, and is left alone too. The business
+tier is never overwritten: where it already holds the key or the dates (another
+approved claimant's), the community row stays. Only a claim in a role that
+speaks for the business (`CLAIM_ROLE_SPEAKS_FOR_BUSINESS`) re-tiers anything,
+and a rejection re-tiers nothing.
+
+Each re-tier is its own revision — `capability_retiered` or
+`hours_exception_retiered`, public like the statement it moves, through the
+`moderation` door — attributed to whoever originally made the statement, never
+to the operator. Its one change goes from the community row to the same
+statement at `business_asserted`, `observedAt` unchanged: nobody observed it
+again. The `claim_approved` revision comes first; a re-tier that cannot be
+recorded rolls the approval back with it.
 
 ### How GoWay asks Oxy
 
@@ -71,7 +113,9 @@ in production's runtime template, the Expo dev servers locally.
 records exactly one row **in the same transaction** as the write: place create
 and update, capability assertion and withdrawal, hours-exception creation,
 rewrite and withdrawal, gallery and review writes (`docs/PLACE_MEDIA_REVIEWS.md`),
-claim request and decision, and every moderation action. A write that rolled back left no revision; a
+claim request and decision, and every moderation action. A claim approval also
+records one re-tier revision per statement it re-tiers (above), each authored
+by whoever made the statement. A write that rolled back left no revision; a
 revision always describes a write that committed. The realdb suite proves it by
 making the revision insert fail and asserting the write did not land.
 
@@ -95,9 +139,10 @@ on the place. It publishes **what changed and when, never who**:
   never names its contributors either. The repository does not read those
   columns for the public audience at all.
 - Only actions `PLACE_REVISION_VISIBILITY` classifies `public`: place
-  creation and updates, capability assertions and withdrawals, hours-exception
-  writes (`hours_exception_created`, `_replaced`, `_withdrawn` — an exception is
-  published on the place and by its own public list), merges. Claims
+  creation and updates, capability assertions, withdrawals and re-tiers,
+  hours-exception writes (`hours_exception_created`, `_replaced`, `_withdrawn`,
+  `_retiered` — an exception is published on the place and by its own public
+  list), merges. Claims
   (a business relationship GoWay shows only to the parties), report
   resolutions and duplicate reviews (moderation state) are `moderation`. The
   classification is total, so a new action cannot default to public.

@@ -98,16 +98,19 @@ list is the OpenAPI document; the Places reads:
 | route | auth | answers |
 | --- | --- | --- |
 | `GET /places/{placeId}` | public | one `Place`; `410 gone` if moderation removed it, with `details.mergedInto` if it was merged |
+| `GET /places?ids=a,b,c` | public | a `PlaceBatch` of up to 50 ids: `items` as the single read answers them, `gone` (`{ id, mergedInto? }`), `missing` |
 | `GET /places/nearby?latitude&longitude&radiusMeters` | public | a `PlaceWithDistancePage`, nearest first |
 | `GET /places/bounds?west&south&east&north` | public | a `PlacePage` of the viewport, by place id |
 | `POST /places` | Oxy session | 201 + the created `Place` |
-| `PATCH /places/{placeId}` | Oxy session | the updated `Place` |
+| `PATCH /places/{placeId}` | Oxy session | the updated `Place`; a merge patch — absent leaves a field alone, `null` clears it |
 | `GET /places/{placeId}/revisions` | public | a `PlaceRevisionPage`, newest first: what changed and when, never who |
 | `POST /places/{placeId}/reports` | Oxy session | 201 + the `PlaceReport`, or 200 + the reporter's open one |
 
 Reads are public because the map opens without an account. `?capabilities=` is a
 conjunction over each key's STRONGEST assertion, which must hold (a business's
-`false` outranks a community `true`); `?categories=` is a disjunction. A success
+`false` outranks a community `true`) or, as `key:value`, carry the value (an
+enum, enum-set, price or text key); `?categories=` is a disjunction. Every place
+a read answers with carries its current hours exceptions. A success
 body IS the contract value — there is no envelope; failures carry
 `{ error: { code, message, details? } }`, the rate limiter's 429 included.
 Every list is `{ items, nextCursor }`: pass `cursor` back with the SAME filters
@@ -521,9 +524,10 @@ The public lane is exactly:
 GET  /api/v1/openapi.json            GET  /api/v1/search
 GET  /api/v1/places/nearby           GET  /api/v1/geocode
 GET  /api/v1/places/bounds           GET  /api/v1/geocode/reverse
-GET  /api/v1/places/:id              GET  /api/v1/geocode/structured
-GET  /api/v1/places/:id/revisions    GET  /api/v1/street3d/coverage
-POST /api/v1/routes                  GET  /api/v1/street3d/scenes/:id
+GET  /api/v1/places?ids=             GET  /api/v1/geocode/structured
+GET  /api/v1/places/:id              GET  /api/v1/street3d/coverage
+GET  /api/v1/places/:id/revisions    GET  /api/v1/street3d/scenes/:id
+POST /api/v1/routes
 ```
 
 `POST /routes` is a read in every sense but the verb — a directions request is a

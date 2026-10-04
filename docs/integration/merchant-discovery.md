@@ -40,11 +40,12 @@ documentation, so, as of this writing (API paths below are relative to
 | --- | --- |
 | `@goway.to/sdk` client, types, errors, links | Built (`packages/sdk`). This guide is written against **`0.3.0`, which is not on npm yet**; npm still carries `0.1.0`, which predates pages, the claim and capability-write methods and the typed `gone` error. See the [changelog](../../packages/sdk/CHANGELOG.md). |
 | The contracts | Built. `packages/contracts` (`@goway/contracts`, private, bundled into the SDK) holds the zod schema of every request, response and error — the same schemas the API validates with and the SDK parses with. Published as OpenAPI at `https://api.goway.to/api/v1/openapi.json`. |
-| `GET /places/nearby`, `/places/bounds`, `/places/{placeId}` | Built. Lists are pages, `{ items, nextCursor }`. A place moderation removed answers `410`; a merged one answers `410` with `details.mergedInto`. |
-| `POST /places`, `PATCH /places/{placeId}` with server-derived verification | Built. |
+| `GET /places/nearby`, `/places/bounds`, `/places/{placeId}` | Built. Lists are pages, `{ items, nextCursor }`, and every place on them carries its current hours exceptions. A place moderation removed answers `410`; a merged one answers `410` with `details.mergedInto`. |
+| `GET /places?ids=` (`places.getMany`) | Built. Up to 50 places by id in one request, each as `/places/{placeId}` answers it, or listed as `gone` (with `mergedInto`) or `missing`. |
+| `POST /places`, `PATCH /places/{placeId}` with server-derived verification | Built. `PATCH` is a merge patch: absent leaves a field alone, `null` clears it. |
 | `PUT` / `DELETE /places/{placeId}/capabilities/{key}` | Built. One capability per request; the tier is derived from the caller. |
-| `POST` / `GET /places/{placeId}/claims`, `GET /claims` | Built. A claim is always created `pending`, usually for the business's Oxy organization (`oxyAccountId`). |
-| Approving or rejecting a claim | Built, for GoWay operators only: `POST /moderation/claims/{claimId}/decision`. Until a claim is approved, its holder's assertions are `community_reported`. |
+| `POST` / `GET /places/{placeId}/claims`, `GET /claims` | Built. A claim is always created `pending`, usually for the business's Oxy organization (`oxyAccountId`). `GET /claims?placeId=` narrows an account's claims to one place. |
+| Approving or rejecting a claim | Built, for GoWay operators only: `POST /moderation/claims/{claimId}/decision`. Until a claim is approved, its holder's assertions are `community_reported`; approval re-tiers the claimant's own pending statements to `business_asserted`. |
 | `oxy_verified` capabilities | Built, for GoWay operators only: `PUT` / `DELETE /moderation/places/{placeId}/capabilities/{key}`. No public request can produce or remove the tier. |
 | `GET /places/{placeId}/revisions`, `POST /places/{placeId}/reports` | Built. The public history says what changed and when, never who; reports go to the moderation queue. |
 | Search, geocoding, directions | Built. |
@@ -216,8 +217,14 @@ What the filter means, precisely:
   `social.mention.location`, and the accessibility, payment, amenity, food,
   price, social and brand keys), and each declares the kind of value it holds.
   A new key is a GoWay release — see `docs/PLACE_DATA.md`.
-- **A filter can ask for a value.** An enum, enum-set or price key filters by
-  value as well: `'food.cuisine:italian'`, `'accessibility.wheelchair:limited'`.
+- **A filter can ask for a value.** An enum, enum-set, price or text key
+  filters by value as well: `'food.cuisine:italian'`,
+  `'accessibility.wheelchair:limited'`, `'commerce.mercaria.store:<locationId>'`.
+  The value is matched against the STRONGEST assertion, like the bare key — a
+  community report naming a location does not match when the business's own
+  assertion names another — and a text value matches exactly, after the key's
+  own normalization, and may not contain a comma (a filter list is
+  comma-joined).
 - **An unknown or malformed key is rejected before the request leaves.**
   `capabilities: ['faircoin']`, `['Payments.FairCoin.Accepted']` or an
   unregistered key throws `GoWayValidationError` client-side (`status: null`,
@@ -487,6 +494,18 @@ A single-place read also carries `names`, every language GoWay holds one in; the
 list reads carry only `localizedName`. Render either with `placeDisplayName`,
 never `place.name` alone, or the locale you asked for is silently ignored.
 
+Holding several ids — the merchants a user saved, the places your records point
+at — read them in one request instead of one each:
+
+```ts
+const { items, gone, missing } = await goway.places.getMany(savedPlaceIds); // at most 50
+```
+
+`items` are exactly what `places.get` answers for each; `gone` is every id `get`
+would reject with `GoWayGoneError`, as `{ id, mergedInto? }`; `missing` every id
+it would reject with `GoWayNotFoundError`. All three come back in the order you
+named the ids, and every id is in exactly one of them.
+
 ```ts
 import { GoWayNoRouteError, GoWayUnsupportedModeError } from '@goway.to/sdk';
 
@@ -675,7 +694,10 @@ There is **no public approve or reject call**. A GoWay operator decides every
 claim through the moderation surface, and nothing a client sends can move a
 claim out of `pending`. Until it is approved, the claimant is a community
 reporter like everyone else — their assertions land as `community_reported`,
-and their UI must say so. Every write a business makes is recorded in the
+and their UI must say so. Approval then makes the claimant's own pending
+statements `business_asserted` (the exact rule is under
+[the Mercaria integration](#claiming-and-what-happens-to-what-was-said-while-pending)).
+Every write a business makes is recorded in the
 place's history (`goway.places.revisions`), which publishes what changed and
 when and never who. The design is in
 [`BUSINESS_OWNERSHIP.md`](../BUSINESS_OWNERSHIP.md).
@@ -748,15 +770,130 @@ fields, under the stricter `PATCH` rule below.
 - **A removed or merged place takes no writes.** Every write to it answers
   `410`, as a read does; a merged one's carries `mergedInto`, the id to use
   instead.
-- **Nothing is destroyed.** Rows are keyed by tier, so the history of who said
-  what, when, survives. Updates touch only the fields you pass: GoWay layers
-  enrichment *over* source data and never destructively overwrites a source
-  fact.
+- **Nothing is destroyed by omission.** Rows are keyed by tier, so the history
+  of who said what, when, survives. An update is a merge patch: it touches only
+  the fields — and the `address` and `contact` parts — you pass, because GoWay
+  layers enrichment *over* source data. Clearing is explicit: `null` clears a
+  field that may be empty (`contact: { phone: null }`), and the revision records
+  what it held. A value cleared that OpenStreetMap supplied stays cleared on the
+  next import until OpenStreetMap's own value changes.
 
 In wallet UX terms: a "Report that this shop takes FairCoin" affordance is
 welcome; wording it as "Mark as verified" is not. The user's own report comes
 back as `community_reported` on the next read, and your UI must show it as
 exactly that — including to the person who submitted it.
+
+## The Mercaria integration: a store and its place
+
+Mercaria is the first consumer to use this surface end to end, and its shape
+is the one any product that lets a business attach its own records to a GoWay
+place should copy (Mercaria ADR 0013, "place facts live in GoWay").
+
+### A bidirectional link
+
+A Mercaria **location** (a shop a store sells or hands orders over from) and a
+GoWay **place** (the shop on the map) point at each other:
+
+1. the location stores the **GoWay Place ID** (`goWayPlaceId`) — an opaque id,
+   no foreign key, and nothing else about the place: name, address, position,
+   timezone, weekly hours, exceptions, contact and accessibility are read from
+   GoWay every time;
+2. the place asserts **`commerce.mercaria.store` = the location id** — a `text`
+   capability, written by the merchant's dashboard with the merchant's own Oxy
+   session.
+
+Either half alone proves nothing. A location can name any place; anybody
+signed in can report `commerce.mercaria.store` on any place. What makes the
+pair trustworthy is the TIER of the second half.
+
+### The trust tiers
+
+| Strongest `commerce.mercaria.store` | Who could have written it | Mercaria trades from the place? |
+| --- | --- | --- |
+| `oxy_verified` | A GoWay operator | Yes |
+| `business_asserted` | Whoever acts for an APPROVED claim on the place — the store's Oxy organization, a session switched into it, or its `owner`/`admin`/`editor` | Yes |
+| `external_source`, `community_reported` | Anybody, or an imported dataset | No: `store_link_unverified` |
+
+The claim is filed for the store's owning Oxy account, so a business-tier
+back-reference proves that whoever controls the place controls the store. The
+rule is read off the place on every read (`strongestCapability(place,
+'commerce.mercaria.store')`), never stored, so a revoked claim or a withdrawn
+assertion unlinks the location at the next read. A merged place answers `410`
+with `mergedInto`, and Mercaria's verify act follows it and rewrites the
+stored id.
+
+### Claiming, and what happens to what was said while pending
+
+The dashboard files the claim in the organization's name (filing needs `owner`
+or `admin` in it) and then reads the organization's claim on that one place:
+
+```ts
+await goway.places.claims.create(placeId, { role: 'owner', oxyAccountId: store.oxyAccountId });
+const { items } = await goway.claims.list({ oxyAccountId: store.oxyAccountId, placeId });
+```
+
+A pending claim is not ownership: while it waits, the merchant's store link,
+accessibility flags and holiday closures are recorded at `community_reported`.
+When an operator APPROVES the claim, those statements become the business's
+own in the same transaction — every `community_reported` capability or hours
+exception whose latest statement was made after the claim was filed, by the
+claimant organization (its own or a switched session) or by the person who
+filed the claim, is re-tiered to `business_asserted`, unless the business tier
+already holds that key or those dates. Each re-tier is a public
+`capability_retiered` / `hours_exception_retiered` revision attributed,
+privately, to whoever made the statement. A member other than the filer who
+asserted as themselves is NOT re-tiered — GoWay cannot ask Oxy about somebody
+else's role with an operator's session — and re-asserts after approval; the
+dashboard re-checks the link with a fresh read either way.
+
+### Reading many places at once
+
+Mercaria holds a place id per location and reads them in bulk — a store's
+locations for its dashboard, the candidates of a nearby search, a checkout's
+collection points. That is `places.getMany`, at most `MAX_PLACE_BATCH_SIZE`
+(50) ids a request:
+
+```ts
+const { items, gone, missing } = await goway.places.getMany(placeIds, { locale });
+// items: full places — hours exceptions included, for open-now
+// gone: [{ id, mergedInto? }] — removed, or merged (follow it on verify)
+// missing: ids no place has ever had
+```
+
+Each place in `items` is exactly what `places.get` answers, so the cache entry
+for one id is the same whichever read produced it.
+
+### Finding the stores near a shopper
+
+The nearby read filters on the key and returns every place that HAS a store
+link, nearest first. Each carries its current `hoursExceptions`, so
+`openingStatusAt(place)` answers open-now per candidate without a second read,
+and the tier rule above is applied to the list it already has:
+
+```ts
+const page = await goway.places.nearby({
+  latitude, longitude, radiusMeters,
+  capabilities: ['commerce.mercaria.store'],
+});
+```
+
+To ask about ONE location — "which place names this location, and how
+strongly?" — filter on the value. A text key filters by exact value through the
+strongest assertion, so a community report naming the location never matches a
+place whose business names another:
+
+```ts
+const { items } = await goway.places.inBounds({ ...box, capabilities: [`commerce.mercaria.store:${locationId}`] });
+```
+
+### Editing the place, and clearing a field
+
+The merchant edits the place's facts in GoWay, never in Mercaria. A `PATCH` is
+a merge patch: the contact form sends the parts that changed and `null` for a
+part the merchant emptied — `{ contact: { phone: null } }` clears the phone and
+keeps the email and website. Mercaria's backend only ever reads; every write is
+the merchant's dashboard, with the merchant's session, against GoWay's own
+authorization.
 
 ## Generalizing to other products
 
@@ -766,7 +903,7 @@ in the whole integration is a string.
 | Product | Capability key | Same guide, changed how |
 | --- | --- | --- |
 | FairCoin wallet | `payments.faircoin.accepted` | — |
-| Mercaria | `commerce.mercaria.store` | marker label, evidence copy |
+| Mercaria | `commerce.mercaria.store` | a text value — the location id — read through the [bidirectional link](#the-mercaria-integration-a-store-and-its-place) |
 | Moovo | `mobility.moovo.pickup` | marker label, evidence copy |
 | Homiio | `housing.homiio.listings` | marker label, evidence copy |
 | Mention | `social.mention.location` | marker label, evidence copy |
