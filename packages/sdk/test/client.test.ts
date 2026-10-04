@@ -75,12 +75,12 @@ describe('query serialisation', () => {
       longitude: 2.1686,
       radiusMeters: 5000,
       capabilities: ['payments.faircoin.accepted', 'commerce.mercaria.store'],
-      categories: ['food.cafe', 'food.bar'],
+      categories: ['cafe', 'bar'],
       limit: 20,
     });
     await client.places.nearby({
       limit: 20,
-      categories: ['food.bar', 'food.cafe', 'food.bar'],
+      categories: ['bar', 'cafe', 'bar'],
       capabilities: ['commerce.mercaria.store', 'payments.faircoin.accepted'],
       radiusMeters: 5000,
       longitude: 2.1686,
@@ -89,7 +89,7 @@ describe('query serialisation', () => {
     expect(calls[0]?.url).toBe(calls[1]?.url);
     expect(queryOf(calls[0]?.url ?? '')).toBe(
       'capabilities=commerce.mercaria.store,payments.faircoin.accepted&' +
-        'categories=food.bar,food.cafe&latitude=41.3874&limit=20&longitude=2.1686&radiusMeters=5000',
+        'categories=bar,cafe&latitude=41.3874&limit=20&longitude=2.1686&radiusMeters=5000',
     );
   });
 

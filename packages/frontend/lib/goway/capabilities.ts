@@ -17,7 +17,7 @@
  *    its own key rather than dropped, and a stale claim is labelled stale
  *    rather than quietly upgraded.
  */
-import type { CapabilityVerification, PlaceCapability } from '@goway.to/sdk';
+import { capabilityValueHolds, placeHasCapability, type CapabilityVerification, type PlaceCapability } from '@goway.to/sdk';
 import type { BloomIconComponent } from '@oxy.so/bloom/icons';
 import { RiCoinsLine } from '@oxy.so/bloom/icons/RiCoinsLine';
 import { RiHome5Line } from '@oxy.so/bloom/icons/RiHome5Line';
@@ -122,6 +122,11 @@ export function presentCapability(capability: PlaceCapability, now: number = Dat
  * A capability whose value is explicitly `false` is REMOVED rather than shown
  * as a negative badge: "does not accept FairCoin" is not a feature, and a row
  * of crossed-out pills is noise on every place that has never been asked.
+ *
+ * And a key is shown only when the place HAS it by the contract's rule
+ * (`placeHasCapability`): its strongest assertion holds. Dropping `false` rows
+ * before ranking would let a stale community `true` badge a shop whose own
+ * business said it stopped — the badge the server's filter refuses.
  */
 export function visibleCapabilities(capabilities: readonly PlaceCapability[]): PlaceCapability[] {
   const order: Record<CapabilityVerification, number> = {
@@ -131,7 +136,7 @@ export function visibleCapabilities(capabilities: readonly PlaceCapability[]): P
     community_reported: 3,
   };
   return capabilities
-    .filter((capability) => capability.value !== false)
+    .filter((capability) => placeHasCapability({ capabilities }, capability.key) && capabilityValueHolds(capability.value))
     .slice()
     .sort((a, b) => {
       const byVerification = order[a.verification] - order[b.verification];

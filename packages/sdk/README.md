@@ -94,7 +94,7 @@ const place = await goway.places.get('gw_place_01H8');
 // Everything in the current viewport — the map read. One page at a time.
 const { items: visible, nextCursor } = await goway.places.inBounds({
   west: 2.10, south: 41.36, east: 2.20, north: 41.41,
-  categories: ['food.cafe'],
+  categories: ['cafe', 'food_drink'],
   limit: 200,
 });
 
@@ -102,7 +102,7 @@ const { items: visible, nextCursor } = await goway.places.inBounds({
 const created = await goway.places.create({
   name: 'Cafè de la Plaça',
   location: { latitude: 41.3874, longitude: 2.1686 },
-  categories: ['food.cafe'],
+  categories: ['cafe', 'food_drink'],
   capabilities: [{ namespace: 'payments.faircoin', capability: 'accepted', value: true }],
   names: [{ language: 'es', name: 'Café de la Plaza' }],
 });

@@ -10,7 +10,7 @@ export const PLACE: Record<string, unknown> = {
   id: 'gw_place_01H8',
   name: 'Cafè de la Plaça',
   location: { latitude: 41.3874, longitude: 2.1686 },
-  categories: ['food.cafe'],
+  categories: ['cafe', 'food_drink'],
   status: 'active',
   verification: { state: 'owner_verified', verifiedAt: '2026-01-04T10:00:00.000Z' },
   sources: [{ source: 'openstreetmap', sourceId: 'node/12345', observedAt: '2026-01-01T00:00:00.000Z' }],
