@@ -1,0 +1,25 @@
+# Copy to ~/.config/goway-worker/config.toml (or point GOWAY_WORKER_CONFIG at
+# it) and fill in the real values. That file stays on the worker host; it is
+# never committed. It holds no secret: credentials come from the AWS profile.
+
+region = "us-west-2"
+# A profile whose `credential_process` returns short-lived role credentials
+# (IAM Roles Anywhere). See README.md, "Credentials".
+aws_profile = "goway-worker"
+jobs_queue_url = "https://sqs.<region>.amazonaws.com/<account>/<jobs-queue>"
+events_queue_url = "https://sqs.<region>.amazonaws.com/<account>/<events-queue>"
+bucket = "<temporary-capture-bucket>"
+
+# Local storage. Defaults to ~/.local/share/goway-worker.
+# data_dir = "/fast/disk/goway-worker"
+cache_max_gb = 50
+min_free_disk_gb = 30
+
+# Lease: the visibility timeout a received job gets, and how often it is
+# extended while the job runs.
+visibility_timeout_seconds = 900
+heartbeat_seconds = 120
+
+# Stop accepting new jobs above this GPU temperature (°C).
+max_gpu_temperature_c = 87
+failed_scratch_keep_hours = 24

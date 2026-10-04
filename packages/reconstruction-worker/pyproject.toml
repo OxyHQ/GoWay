@@ -6,23 +6,72 @@
 # packages/* and is driven by the root `worker:*` scripts so the monorepo has
 # one reproducible entry point per task.
 #
-# This package is INTERNAL. Its job contracts reach the rest of GoWay as
-# shared contracts in packages/shared-types, never as a public SDK surface.
-# Implementation lands in #12.
+# This package is INTERNAL. Its job contracts reach the rest of GoWay through
+# the fixtures in contract/, which the backend tests too; nothing here is a
+# public SDK surface.
+#
+# ## Why the CUDA toolkit is a set of pinned wheels
+#
+# gsplat compiles its kernels on first use, which needs nvcc and headers that
+# match the PyTorch build. Installing them as wheels pins the whole toolchain in
+# uv.lock: the worker needs an NVIDIA driver and nothing else from the host, and
+# two workers built from the same lock compile the same kernels. Every toolkit
+# wheel is pinned to the same minor release as the PyTorch CUDA build — a newer
+# NVVM beside an older ptxas fails with "Unsupported .version", which is why
+# nvidia-nvvm and nvidia-cuda-crt are named explicitly.
+#
+# pycolmap is the CPU build. The CUDA build links CUDA 12 and cannot share an
+# environment with the CUDA 13 PyTorch; feature extraction and matching are
+# bounded per scene (no global all-vs-all), so the GPU is spent where it pays —
+# privacy detection and Gaussian training. LICENSES.md reviews every dependency.
 
 [project]
 name = "goway-reconstruction-worker"
 version = "0.1.0"
 description = "GoWay Street 3D reconstruction worker — consumes AWS SQS jobs, produces versioned Gaussian scenes"
-requires-python = ">=3.11"
+requires-python = ">=3.12,<3.13"
 # The Breathe License 1.0, the same licence as the rest of the repository.
 # The text lives in the repository root LICENSE; this package is not
 # published to PyPI, so it carries the reference rather than a copy.
 license = { text = "LicenseRef-Breathe-1.0" }
-dependencies = []
+dependencies = [
+  "torch==2.14.1",
+  "torchvision==0.29.1",
+  "gsplat==1.5.3",
+  "pycolmap==4.2.1",
+  "nvidia-cuda-nvcc==13.0.*",
+  "nvidia-cuda-runtime==13.0.*",
+  "nvidia-cuda-cccl==13.0.*",
+  "nvidia-cuda-crt==13.0.*",
+  "nvidia-nvvm==13.0.*",
+  "ninja==1.13.*",
+  "packaging>=24",
+  "jaxtyping>=0.3",
+  "numpy>=2.2,<3",
+  "pillow>=11,<13",
+  "opencv-python-headless>=4.12,<6",
+  "av>=15,<20",
+  "boto3>=1.40,<2",
+  "pydantic>=2.11,<3",
+  "nvidia-ml-py>=13",
+]
 
 [project.scripts]
 goway-worker = "goway_reconstruction.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
 
 [build-system]
 requires = ["hatchling"]
@@ -31,5 +80,5 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/goway_reconstruction"]
 
-[dependency-groups]
-dev = []
+[tool.pytest.ini_options]
+testpaths = ["tests"]
