@@ -129,10 +129,10 @@ describe('place responses', () => {
 
   it('read a claim with the place it is over and its decision time', async () => {
     const { fetch } = fakeFetch(200, page([{ ...CLAIM, decidedAt: '2026-10-02T00:00:00.000Z', reviewer: 'x' }]));
-    const claims = await createGoWayClient({ fetch }).claims.mine();
+    const claims = await createGoWayClient({ fetch }).claims.list();
     expect(claims.items[0]).toEqual({ ...CLAIM, decidedAt: '2026-10-02T00:00:00.000Z' });
     const missingPlace = fakeFetch(200, page([without(CLAIM, 'placeId')]));
-    expect(await rejection(createGoWayClient({ fetch: missingPlace.fetch }).claims.mine())).toBeInstanceOf(
+    expect(await rejection(createGoWayClient({ fetch: missingPlace.fetch }).claims.list())).toBeInstanceOf(
       GoWayResponseError,
     );
   });

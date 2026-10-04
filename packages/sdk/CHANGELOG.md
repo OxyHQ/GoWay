@@ -4,7 +4,7 @@ All notable changes to `@goway.to/sdk`. The package follows semantic versioning
 with the 0.x rule: while the major version is 0, a MINOR release may break the
 API or the contract, and a PATCH release never does.
 
-## 0.3.0 — 2026-10-04
+## 0.3.0 — unreleased
 
 The SDK now validates every request and parses every response with the
 contract's own zod schemas — the ones the GoWay API validates with — instead of
@@ -79,6 +79,23 @@ almost every part of it is breaking.
 - **`captures.remove(assetId)` resolves with nothing** (the API answers `204`);
   it used to resolve with the withdrawn `CaptureAsset`.
 - **`PlaceClaim` gains a required `placeId`** and an optional `decidedAt`.
+- **A business is an Oxy organization; `brandId` is gone.** `PlaceClaim.brandId`
+  and `PlaceClaimInput.brandId` are removed: a chain is an Oxy organization
+  claiming each location in the `brand` role. `PlaceClaimInput` gains
+  `oxyAccountId` — the account to claim FOR, usually the business's
+  organization, which the caller must own or administer in Oxy; omitted, the
+  claim is the signed-in account's own. Editing a claimed place, asserting at the
+  business tier and reading its claims are open to whoever acts for the claiming
+  account: the session that switched into it, or a member Oxy reports as
+  `owner`, `admin` or `editor`.
+- **Operations that ask Oxy about an organization can reject with
+  `GoWayUnavailableError`** (`service_unavailable`, 503, retryable) when Oxy
+  cannot answer: `places.update`, `places.capabilities.put`/`delete`,
+  `places.claims.create`/`list` and `claims.list`. GoWay fails closed rather
+  than guessing. A place nobody has claimed never needs the answer.
+- **`PlaceStatus` gains `merged`**, a stored state like `removed`: a merged place
+  is never published, and `places.get` of one rejects with `GoWayGoneError`
+  whose new `mergedInto` is the id that replaces it.
 - **Two new error classes**, both non-retryable: `GoWayGoneError` (`gone`, 410)
   and `GoWayUnknownRouteError` (`unknown_route`, 404 — this SDK and the API
   disagree about what routes exist; deliberately not a `GoWayNotFoundError`).
@@ -97,7 +114,25 @@ almost every part of it is breaking.
   `places.capabilities.delete(placeId, key)` → nothing (`204`).
 - `places.claims.create(placeId, input)` → `PlaceClaim`,
   `places.claims.list(placeId, query?)` → `PlaceClaimPage`, and the new
-  `claims` namespace with `claims.mine(query?)` → `PlaceClaimPage`.
+  `claims` namespace with `claims.list(query?)` → `PlaceClaimPage` — the
+  signed-in account's claims, or with `oxyAccountId` an organization's.
+- `places.revisions(placeId, query?)` → `PlaceRevisionPage`: a place's public
+  history, newest first — what changed and when, as field-level
+  `{ field, before?, after? }` changes. It never names an account or a person,
+  and never lists a claim, report or duplicate review. Needs no account.
+- `places.report(placeId, input)` → `PlaceReport`: report a place to moderation
+  with a reason from `PLACE_REPORT_REASONS` and an optional note that only
+  operators read. Repeating it while your report is open resolves with that
+  same report.
+- `GoWayGoneError.mergedInto` — the id a merged place now lives at, or `null`
+  for a place removed outright.
+- The `moderation` namespace — `claims`, `decideClaim`, `updatePlace`,
+  `verifyCapability`, `withdrawVerifiedCapability`, `revisions`, `duplicates`,
+  `resolveDuplicate`, `reports`, `resolveReport` — for GoWay's own operators.
+  Every call needs a session whose person is on the deployment's operator
+  allow-list and rejects with `GoWayForbiddenError` for anybody else. It ships
+  in the SDK so GoWay's tools are built on the same contract; no integration
+  needs it.
 - `iterateGoWayPages(fetchPage)` — an async iterator over every item of a list,
   which throws `GoWayResponseError` if the server ever repeats a cursor.
 - `places.create` / `places.update` accept every field of the contract input,
@@ -118,7 +153,14 @@ almost every part of it is breaking.
   `PlaceNameInput`, `PlaceSourceRefInput`, `WritablePlaceStatus`,
   `CapabilityValue`, `ClaimListQuery`, `CaptureListQuery`, `ApiErrorDetails`,
   the remaining capture types and the `GoWayPlaceCapabilitiesApi`,
-  `GoWayPlaceClaimsApi`, `GoWayClaimsApi` and `GoWayPageLike` interfaces.
+  `GoWayPlaceClaimsApi`, `GoWayClaimsApi`, `GoWayModerationApi` and
+  `GoWayPageLike` interfaces; and for revisions, reports and moderation the
+  value sets `PLACE_REVISION_ACTIONS`, `PLACE_REVISION_VISIBILITY`,
+  `PUBLIC_PLACE_REVISION_ACTIONS`, `PLACE_REVISION_SOURCES`,
+  `PLACE_REPORT_REASONS`, `PLACE_REPORT_RESOLUTIONS`, `PLACE_REPORT_STATES`,
+  `CLAIM_DECISION_STATES`, `CLAIM_DECISION_FROM`, `DUPLICATE_CANDIDATE_REASONS`,
+  `DUPLICATE_CANDIDATE_STATES`, `MODERATED_PLACE_STATUSES` and
+  `GONE_MERGED_INTO_DETAIL`, their limits, and their types.
 - The whole route registry is covered: a unit test holds every operation the
   API publishes to an SDK method.
 

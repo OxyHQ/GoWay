@@ -287,11 +287,53 @@ describe('capabilities and claims', () => {
     expect(claim.decidedAt).toBeUndefined();
   });
 
+  it('files a claim for an organization the caller names', async () => {
+    const { client, calls } = clientFor({ ...CLAIM, oxyAccountId: 'org_cafe' }, 201);
+    const claim = await client.places.claims.create('gw_place_01H8', { role: 'brand', oxyAccountId: ' org_cafe ' });
+    expect(sentBody(calls)).toEqual({ role: 'brand', oxyAccountId: 'org_cafe' });
+    expect(claim.oxyAccountId).toBe('org_cafe');
+  });
+
+  it('lists an organization’s claims when asked for its account', async () => {
+    const { client, calls } = clientFor(page([CLAIM]));
+    await client.claims.list({ oxyAccountId: 'org_cafe', limit: 5 });
+    expect(queryOf(calls[0]?.url ?? '')).toBe('limit=5&oxyAccountId=org_cafe');
+  });
+
+  it('reads a place’s public history as a page, newest first as the server sends it', async () => {
+    const revision = {
+      id: 'rev_1',
+      placeId: 'gw_place_01H8',
+      action: 'place_updated',
+      source: 'api',
+      changes: [{ field: 'name', before: 'Old', after: 'New' }, { field: 'address.postalCode', after: '08012' }],
+      createdAt: '2026-10-04T10:00:00.000Z',
+      oxyAccountId: 'org_secret',
+    };
+    const { client, calls } = clientFor(page([revision], 'next_1'));
+    const history = await client.places.revisions('gw_place_01H8', { limit: 10 });
+    expect(calls[0]?.url).toBe(`${DEFAULT_GOWAY_API_BASE_URL}/api/v1/places/gw_place_01H8/revisions?limit=10`);
+    expect(history.items[0]?.changes).toEqual(revision.changes);
+    // A field the public contract does not name never reaches the caller.
+    expect(history.items[0]).not.toHaveProperty('oxyAccountId');
+  });
+
+  it('reports a place, and refuses a reason outside the set before sending', async () => {
+    const report = { id: 'rep_1', placeId: 'gw_place_01H8', reason: 'spam', createdAt: '2026-10-04T10:00:00.000Z' };
+    const { client, calls } = clientFor(report, 201);
+    expect(await client.places.report('gw_place_01H8', { reason: 'spam', note: ' fake tickets ' })).toEqual(report);
+    expect(sentBody(calls)).toEqual({ reason: 'spam', note: 'fake tickets' });
+
+    const refused = await rejection(client.places.report('gw_place_01H8', { reason: 'boring' } as never));
+    expect(refused).toBeInstanceOf(GoWayValidationError);
+    expect(calls).toHaveLength(1);
+  });
+
   it('lists a place’s claims and the caller’s own claims as pages', async () => {
     const decided = { ...CLAIM, state: 'approved', decidedAt: '2026-10-02T00:00:00.000Z' };
     const { client, calls } = clientFor(page([decided], 'next_1'));
     const onPlace = await client.places.claims.list('gw_place_01H8', { limit: 10 });
-    const mine = await client.claims.mine({ cursor: 'next_1' });
+    const mine = await client.claims.list({ cursor: 'next_1' });
     expect(queryOf(calls[0]?.url ?? '')).toBe('limit=10');
     expect(calls[1]?.url).toBe(`${DEFAULT_GOWAY_API_BASE_URL}/api/v1/claims?cursor=next_1&limit=50`);
     expect(onPlace.items[0]?.decidedAt).toBe('2026-10-02T00:00:00.000Z');

@@ -98,6 +98,14 @@ describe('API error codes', () => {
     expect(gone).toBeInstanceOf(GoWayGoneError);
     expect(gone).not.toBeInstanceOf(GoWayNotFoundError);
     expect(gone.retryable).toBe(false);
+    // Removed outright: there is nowhere to go.
+    expect((gone as GoWayGoneError).mergedInto).toBeNull();
+
+    // Merged: the error carries the id that replaces this one.
+    const merged = await throwing(410, errorBody('gone', 'merged', { mergedInto: 'gw_place_survivor' }));
+    expect(merged).toBeInstanceOf(GoWayGoneError);
+    expect((merged as GoWayGoneError).mergedInto).toBe('gw_place_survivor');
+    expect(merged.toJSON()).toMatchObject({ code: 'gone', mergedInto: 'gw_place_survivor' });
 
     // An SDK newer than the deployment: never evidence that a place is gone.
     const unknownRoute = await throwing(404, errorBody('unknown_route', 'no such route'));

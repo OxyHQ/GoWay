@@ -1,6 +1,27 @@
 import {
+  accountClaimListQuerySchema,
   assetPathSchema,
   capabilityPathSchema,
+  claimDecisionInputSchema,
+  claimPathSchema,
+  duplicateCandidatePageSchema,
+  duplicateCandidateSchema,
+  duplicateListQuerySchema,
+  duplicatePathSchema,
+  duplicateResolutionInputSchema,
+  moderationCapabilityInputSchema,
+  moderationClaimListQuerySchema,
+  moderationPlaceReportPageSchema,
+  moderationPlaceReportSchema,
+  moderationPlaceRevisionPageSchema,
+  moderationPlaceUpdateInputSchema,
+  moderationReportListQuerySchema,
+  placeReportInputSchema,
+  placeReportResolutionInputSchema,
+  placeReportSchema,
+  placeRevisionPageSchema,
+  reportPathSchema,
+  revisionListQuerySchema,
   captureAssetInputSchema,
   captureAssetPageSchema,
   captureAssetSchema,
@@ -43,7 +64,25 @@ import {
   TRAVEL_MODES,
 } from './contract';
 import type {
+  AccountClaimListQuery,
   CapabilityKey,
+  ClaimDecisionInput,
+  DuplicateCandidate,
+  DuplicateCandidatePage,
+  DuplicateListQuery,
+  DuplicateResolutionInput,
+  ModerationCapabilityInput,
+  ModerationClaimListQuery,
+  ModerationPlaceReport,
+  ModerationPlaceReportPage,
+  ModerationPlaceRevisionPage,
+  ModerationPlaceUpdateInput,
+  ModerationReportListQuery,
+  PlaceReport,
+  PlaceReportInput,
+  PlaceReportResolutionInput,
+  PlaceRevisionPage,
+  RevisionListQuery,
   CaptureAsset,
   CaptureAssetInput,
   CaptureAssetPage,
@@ -173,9 +212,14 @@ export interface GoWayPlaceCapabilitiesApi {
 
 /** Claims on one place: the request to be recognised as running it. */
 export interface GoWayPlaceClaimsApi {
-  /** Ask to be recognised as running this place. Always created `pending`. Identity-bound. */
+  /**
+   * Ask to be recognised as running this place. Always created `pending`.
+   * Identity-bound. Pass `oxyAccountId` to claim for an Oxy organization you
+   * own or administer — the usual case: the business IS the organization.
+   * Omitted, the claim is for the signed-in account.
+   */
   create(placeId: PlaceId, input: PlaceClaimInput, options?: GoWayRequestOptions): Promise<PlaceClaim>;
-  /** The claims on this place, visible to an account that holds one. Oldest first. */
+  /** The claims on this place, visible to whoever may act for an account that holds one. Oldest first. */
   list(placeId: PlaceId, query?: ClaimListQuery, options?: GoWayRequestOptions): Promise<PlaceClaimPage>;
 }
 
@@ -207,14 +251,66 @@ export interface GoWayPlacesApi {
   create(input: PlaceCreateInput, options?: GoWayRequestOptions): Promise<Place>;
   /** Update a place the caller is entitled to edit. Only the fields present are touched. Identity-bound. */
   update(placeId: PlaceId, input: PlaceUpdateInput, options?: GoWayRequestOptions): Promise<Place>;
+  /**
+   * One page of a place's public history, newest first: what changed and when.
+   * Never who — no account and no person is published — and never a claim, a
+   * report or a duplicate review. Needs no account.
+   */
+  revisions(placeId: PlaceId, query?: RevisionListQuery, options?: GoWayRequestOptions): Promise<PlaceRevisionPage>;
+  /**
+   * Report a place to moderation. Identity-bound. Repeating it while your
+   * report is open resolves with that same report.
+   */
+  report(placeId: PlaceId, input: PlaceReportInput, options?: GoWayRequestOptions): Promise<PlaceReport>;
   readonly capabilities: GoWayPlaceCapabilitiesApi;
   readonly claims: GoWayPlaceClaimsApi;
 }
 
-/** The signed-in account's own claims, across every place. */
+/** One account's claims, across every place. */
 export interface GoWayClaimsApi {
-  /** Every claim the signed-in account holds, in every state, oldest first. Identity-bound. */
-  mine(query?: ClaimListQuery, options?: GoWayRequestOptions): Promise<PlaceClaimPage>;
+  /**
+   * Every claim one account holds, in every state, oldest first —
+   * identity-bound. The signed-in account's own by default; pass
+   * `oxyAccountId` for an Oxy organization you act for (owner, admin or editor
+   * in it), which is how a business dashboard lists its locations.
+   */
+  list(query?: AccountClaimListQuery, options?: GoWayRequestOptions): Promise<PlaceClaimPage>;
+}
+
+/**
+ * GoWay's moderation surface, for GoWay operators only.
+ *
+ * Every call needs an Oxy session whose person is on the deployment's operator
+ * allow-list; anybody else gets `GoWayForbiddenError`. It is in this SDK so
+ * GoWay's own tools are built on the same contract as everything else — no
+ * integration needs it, and none should call it.
+ */
+export interface GoWayModerationApi {
+  /** Claims in one state, oldest first — `pending` by default: the review queue. */
+  claims(query?: ModerationClaimListQuery, options?: GoWayRequestOptions): Promise<PlaceClaimPage>;
+  /** Approve or reject a pending claim, or revoke an approved one. */
+  decideClaim(claimId: string, input: ClaimDecisionInput, options?: GoWayRequestOptions): Promise<PlaceClaim>;
+  /** Set a place's verification state, or remove or restore it. Resolves with nothing (`204`). */
+  updatePlace(placeId: PlaceId, input: ModerationPlaceUpdateInput, options?: GoWayRequestOptions): Promise<void>;
+  /** Assert one capability at the `oxy_verified` tier, and get the place back. */
+  verifyCapability(
+    placeId: PlaceId,
+    key: CapabilityKey,
+    input: ModerationCapabilityInput,
+    options?: GoWayRequestOptions,
+  ): Promise<Place>;
+  /** Withdraw the `oxy_verified` assertion of one capability. Resolves with nothing (`204`). */
+  withdrawVerifiedCapability(placeId: PlaceId, key: CapabilityKey, options?: GoWayRequestOptions): Promise<void>;
+  /** A place's full history, newest first, with the account and person behind each revision. */
+  revisions(placeId: PlaceId, query?: RevisionListQuery, options?: GoWayRequestOptions): Promise<ModerationPlaceRevisionPage>;
+  /** Pairs of places that might be one, oldest first — `open` by default. */
+  duplicates(query?: DuplicateListQuery, options?: GoWayRequestOptions): Promise<DuplicateCandidatePage>;
+  /** Merge a pair into its survivor, or keep both. */
+  resolveDuplicate(candidateId: string, input: DuplicateResolutionInput, options?: GoWayRequestOptions): Promise<DuplicateCandidate>;
+  /** Place reports, oldest first — `open` by default. */
+  reports(query?: ModerationReportListQuery, options?: GoWayRequestOptions): Promise<ModerationPlaceReportPage>;
+  /** Close a report as actioned or dismissed. */
+  resolveReport(reportId: string, input: PlaceReportResolutionInput, options?: GoWayRequestOptions): Promise<ModerationPlaceReport>;
 }
 
 export interface GoWaySearchApi {
@@ -304,6 +400,7 @@ export interface GoWayCapturesApi {
 export interface GoWayClient {
   readonly places: GoWayPlacesApi;
   readonly claims: GoWayClaimsApi;
+  readonly moderation: GoWayModerationApi;
   readonly search: GoWaySearchApi;
   readonly geocode: GoWayGeocodeApi;
   readonly routes: GoWayRoutesApi;
@@ -385,6 +482,21 @@ function placePath(placeId: PlaceId): string {
 function capabilityPath(placeId: PlaceId, key: CapabilityKey): string {
   const path = validInput(capabilityPathSchema, { placeId, key }, 'path');
   return `/places/${pathSegment(path.placeId, 'placeId')}/capabilities/${pathSegment(path.key, 'key')}`;
+}
+
+function claimPath(claimId: string): string {
+  const path = validInput(claimPathSchema, { claimId }, 'path');
+  return `/moderation/claims/${pathSegment(path.claimId, 'claimId')}`;
+}
+
+function duplicatePath(candidateId: string): string {
+  const path = validInput(duplicatePathSchema, { candidateId }, 'path');
+  return `/moderation/duplicates/${pathSegment(path.candidateId, 'candidateId')}`;
+}
+
+function reportPath(reportId: string): string {
+  const path = validInput(reportPathSchema, { reportId }, 'path');
+  return `/moderation/reports/${pathSegment(path.reportId, 'reportId')}`;
 }
 
 function sessionPath(sessionId: string): string {
@@ -564,6 +676,30 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         placeSchema,
       ),
 
+    revisions: async (placeId: PlaceId, query: RevisionListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: `${placePath(placeId)}/revisions`,
+          query: validInput(revisionListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        placeRevisionPageSchema,
+      ),
+
+    report: async (placeId: PlaceId, input: PlaceReportInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'POST',
+          path: `${placePath(placeId)}/reports`,
+          body: validInput(placeReportInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        placeReportSchema,
+      ),
+
     capabilities: Object.freeze({
       put: async (
         placeId: PlaceId,
@@ -618,16 +754,138 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
   });
 
   const claims: GoWayClaimsApi = Object.freeze({
-    mine: async (query: ClaimListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+    list: async (query: AccountClaimListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
       request(
         config,
         {
           method: 'GET',
           path: '/claims',
-          query: validInput(claimListQuerySchema, query, 'query'),
+          query: validInput(accountClaimListQuerySchema, query, 'query'),
           signal: callOptions.signal,
         },
         placeClaimPageSchema,
+      ),
+  });
+
+  const moderation: GoWayModerationApi = Object.freeze({
+    claims: async (query: ModerationClaimListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: '/moderation/claims',
+          query: validInput(moderationClaimListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        placeClaimPageSchema,
+      ),
+
+    decideClaim: async (claimId: string, input: ClaimDecisionInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'POST',
+          path: `${claimPath(claimId)}/decision`,
+          body: validInput(claimDecisionInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        placeClaimSchema,
+      ),
+
+    updatePlace: async (placeId: PlaceId, input: ModerationPlaceUpdateInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'PATCH',
+          path: `/moderation${placePath(placeId)}`,
+          body: validInput(moderationPlaceUpdateInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        null,
+      ),
+
+    verifyCapability: async (
+      placeId: PlaceId,
+      key: CapabilityKey,
+      input: ModerationCapabilityInput,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
+      request(
+        config,
+        {
+          method: 'PUT',
+          path: `/moderation${capabilityPath(placeId, key)}`,
+          body: validInput(moderationCapabilityInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        placeSchema,
+      ),
+
+    withdrawVerifiedCapability: async (placeId: PlaceId, key: CapabilityKey, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        { method: 'DELETE', path: `/moderation${capabilityPath(placeId, key)}`, signal: callOptions.signal },
+        null,
+      ),
+
+    revisions: async (placeId: PlaceId, query: RevisionListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: `/moderation${placePath(placeId)}/revisions`,
+          query: validInput(revisionListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        moderationPlaceRevisionPageSchema,
+      ),
+
+    duplicates: async (query: DuplicateListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: '/moderation/duplicates',
+          query: validInput(duplicateListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        duplicateCandidatePageSchema,
+      ),
+
+    resolveDuplicate: async (candidateId: string, input: DuplicateResolutionInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'POST',
+          path: `${duplicatePath(candidateId)}/resolution`,
+          body: validInput(duplicateResolutionInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        duplicateCandidateSchema,
+      ),
+
+    reports: async (query: ModerationReportListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: '/moderation/reports',
+          query: validInput(moderationReportListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        moderationPlaceReportPageSchema,
+      ),
+
+    resolveReport: async (reportId: string, input: PlaceReportResolutionInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'POST',
+          path: `${reportPath(reportId)}/resolution`,
+          body: validInput(placeReportResolutionInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        moderationPlaceReportSchema,
       ),
   });
 
@@ -785,6 +1043,7 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
   return Object.freeze({
     places,
     claims,
+    moderation,
     search,
     geocode,
     routes,

@@ -1,5 +1,5 @@
-import { API_ERROR_RETRYABLE } from './contract';
-import type { ApiErrorCode } from './contract';
+import { API_ERROR_RETRYABLE, GONE_MERGED_INTO_DETAIL } from './contract';
+import type { ApiErrorCode, PlaceId } from './contract';
 
 /**
  * Every code a {@link GoWayError} can carry.
@@ -210,19 +210,33 @@ export class GoWayNotFoundError extends GoWayError {
 }
 
 /**
- * 410: the place existed and GoWay withdrew it (`removed`).
+ * 410: the place existed and is retired — GoWay withdrew it (`removed`), or
+ * merged it into another place, whose id is {@link GoWayGoneError.mergedInto}.
  *
  * Not {@link GoWayNotFoundError}, and deliberately not a subclass of it: "this
  * id was real and is retired" is the answer that lets a consumer holding a
- * persisted GoWay Place ID drop it with confidence, while "not found" may only
- * mean the caller cannot see it. Like `not_found`, raised only from a genuine
+ * persisted GoWay Place ID drop it — or replace it — with confidence, while
+ * "not found" may only mean the caller cannot see it. Like `not_found`, raised only from a genuine
  * GoWay error body — a bare 410 from a proxy proves nothing.
  */
 export class GoWayGoneError extends GoWayError {
   static override readonly errorName: string = 'GoWayGoneError';
 
+  /**
+   * The GoWay Place ID a MERGED place now lives at — replace the id you hold
+   * with this one — or `null` when the place was removed outright. Read from
+   * `details.mergedInto`, which GoWay keeps one hop deep.
+   */
+  readonly mergedInto: PlaceId | null;
+
   constructor(message: string, options: GoWayErrorOptions = {}) {
     super(message, withDefaults(options, { code: 'gone' }));
+    const pointer = this.details?.[GONE_MERGED_INTO_DETAIL];
+    this.mergedInto = typeof pointer === 'string' && pointer.length > 0 ? pointer : null;
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return { ...super.toJSON(), mergedInto: this.mergedInto };
   }
 }
 

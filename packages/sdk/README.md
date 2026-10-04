@@ -176,8 +176,8 @@ for await (const merchant of iterateGoWayPages((cursor) => goway.places.nearby({
 ```
 
 It works with any list: `places.inBounds`, `search.query`, the `geocode.*`
-calls, `places.claims.list`, `claims.mine`, `captures.sessions` and
-`captures.assets`. Each list's `limit` has a documented default and maximum
+calls, `places.claims.list`, `claims.list`, `places.revisions`,
+`captures.sessions` and `captures.assets`. Each list's `limit` has a documented default and maximum
 (`DEFAULT_PLACE_LIST_LIMIT`/`MAX_PLACE_LIST_LIMIT`, `SEARCH_MAX_LIMIT`,
 `MAX_CLAIM_LIST_LIMIT`, `MAX_CAPTURE_LIST_LIMIT`); a value outside it is refused,
 never silently clamped. A search lists at most `SEARCH_MAX_DEPTH` results across
@@ -271,8 +271,37 @@ always created `pending`, and its `state` is not yours to set:
 ```ts
 const claim = await goway.places.claims.create(place.id, { role: 'owner' });
 const onThisPlace = await goway.places.claims.list(place.id);   // PlaceClaimPage
-const mine = await goway.claims.mine();                         // every claim you hold, in every state
+const mine = await goway.claims.list();                         // every claim you hold, in every state
 ```
+
+A business is an **Oxy organization**, so claim for it: pass its account id, and
+GoWay checks with Oxy that you own or administer it. From then on anybody Oxy
+says may act for the organization — a session switched into it, or a member
+who is its `owner`, `admin` or `editor` — edits the place, asserts at the
+business tier and reads its claims, from GoWay or from any other Oxy app:
+
+```ts
+await goway.places.claims.create(place.id, { role: 'owner', oxyAccountId: organizationId });
+const locations = await goway.claims.list({ oxyAccountId: organizationId });
+```
+
+A chain is one organization claiming each location in the `brand` role. When
+Oxy cannot be asked, these calls reject with `GoWayUnavailableError` — retry
+later; GoWay never guesses who belongs to a business.
+
+### History and reports
+
+```ts
+const history = await goway.places.revisions(place.id);   // PlaceRevisionPage, newest first
+// [{ action: 'place_updated', source: 'api', changes: [{ field: 'name', before: 'Old', after: 'New' }], … }]
+
+await goway.places.report(place.id, { reason: 'permanently_closed', note: 'Shuttered since May' });
+```
+
+The history needs no account and says what changed and when — never who, and
+never a claim, a report or a duplicate review. A report needs a session; the
+note is read by GoWay's moderators only. (`goway.moderation` is the operator
+surface behind GoWay's allow-list; it is not for integrations.)
 
 The end-to-end version of this — install, map, capability query, markers,
 evidence, deep link, and how a merchant comes to be marked in the first place —
@@ -357,7 +386,7 @@ Every failure is one class from one hierarchy, and every class carries `code`,
 | `GoWayUnauthorizedError` | `unauthorized` | 401 | no | No token, or one that did not verify. Refresh and retry once. |
 | `GoWayForbiddenError` | `forbidden` | 403 | no | Authenticated, but not permitted (an unapproved place claim, say). |
 | `GoWayNotFoundError` | `not_found` | 404 | no | GoWay has no such place, or it is not visible to this caller. |
-| `GoWayGoneError` | `gone` | 410 | no | The place existed and GoWay withdrew it. Safe to drop a persisted id. |
+| `GoWayGoneError` | `gone` | 410 | no | The place existed and is retired. `mergedInto` is the id to use instead when it was merged; otherwise drop the persisted id. |
 | `GoWayUnknownRouteError` | `unknown_route` | 404 | no | The API has no such route: this SDK is newer than the deployment, or pointed at the wrong origin. Never evidence about a resource. |
 | `GoWayConflictError` | `conflict` | 409 | no | A duplicate claim, or a stale update. |
 | `GoWayRateLimitError` | `rate_limited` | 429 | **yes** | Back off; `retryAfterSeconds` (from `details.retryAfterSeconds`, or `Retry-After`). |
