@@ -10,7 +10,7 @@ public contract is `packages/shared-types/src/street3d.ts`.
 
 | Piece | Where | Owns |
 | --- | --- | --- |
-| API seam | `features/street3d/api.ts` | `coverage`, `scene`, `report`. Uses `client.street3d` from `@goway.to/sdk` when the installed SDK has it, otherwise performs the same requests with the SDK's error classes. Delete the fallback once the SDK release ships. |
+| API | `features/street3d/client.ts` | `@goway.to/sdk`'s `street3d` namespace: reads on the app's `gowayClient` (fixture transport included), `report` on the Oxy linked client. |
 | Map layer | `features/street3d/useStreet3dLayer.tsx`, `coverageStyle.ts` | Footprints (`fill` + `line`), area dots (`circle`, one overlay per state), a poster chip per scene, the "contribute here" hint. |
 | Viewer seam | `components/street3d/` | Provider-neutral `SceneViewer`. Feature code never imports `three` or `@sparkjsdev/spark`. |
 | Web engine | `components/street3d/engine/sparkEngine.ts` | three.js + Spark, loaded by dynamic `import()` into its own chunk (~3.5 MB); nobody who never opens a scene downloads it. |
@@ -55,9 +55,9 @@ A development build shows fps, bytes and load timings behind the `perf` toggle.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `EXPO_PUBLIC_STREET3D_ENABLED` | off | Coverage layer and viewer. A 404 (no GoWay body) from coverage switches the layer off for the session; 503 hides it until the next viewport. |
-| `EXPO_PUBLIC_STREET3D_ASSET_ORIGIN` | unset | When set, the only origin assets may come from. Otherwise any `https:` URL; `http:` only on loopback or in a development build. |
+| `EXPO_PUBLIC_STREET3D_ASSET_ORIGIN` | unset | When set, the only origin assets may come from. Otherwise any `https:` URL (the SDK's manifest parser already refuses anything else). |
 | `EXPO_PUBLIC_WEB_ORIGIN` | `https://goway.to` | What the native WebView loads. |
-| `EXPO_PUBLIC_STREET3D_FIXTURE_*` | unset | Fixture splat/poster URLs, anchor, opening view and credit (see `.env.example`). |
+| `EXPO_PUBLIC_STREET3D_FIXTURE_*` | unset | Fixture splat/poster URLs, anchor, opening view and credit (see `.env.example`). With an anchor, the fixtures are one scene, `s3d_fixture_anchor`, and two cells beside it; without, Barcelona examples. |
 
 `public/_headers` sets no CSP. If one is added, it must allow the asset origin
 in `connect-src` and `img-src`, and `blob:` in `worker-src`. The scene CDN must
@@ -65,7 +65,8 @@ answer with `Access-Control-Allow-Origin`.
 
 No sample splat is committed or linked by default: GoWay ships only assets whose
 licence has been verified. Point the fixture variables at a `.spz` you are
-entitled to use, served with CORS.
+entitled to use, served over HTTPS (the SDK's parser rejects any other asset
+URL) with CORS.
 
 ## Native strategy
 

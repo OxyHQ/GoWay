@@ -8,7 +8,8 @@
  * No sample `.spz` is committed or linked by default: GoWay ships only assets
  * whose licence has been verified, and a fixture is no exception. To see real
  * pixels locally, point these at any `.spz` you are entitled to use (and a
- * JPEG poster), served with `Access-Control-Allow-Origin` for your dev origin:
+ * JPEG poster), served over HTTPS (the SDK rejects any other asset URL, as the
+ * contract requires) with `Access-Control-Allow-Origin` for your dev origin:
  *
  *     EXPO_PUBLIC_STREET3D_FIXTURE_SPLAT_URL=
  *     EXPO_PUBLIC_STREET3D_FIXTURE_PREVIEW_URL=   # optional, defaults to the splat
@@ -18,9 +19,12 @@
  * resolve — so the viewer's load-failure state is what a fresh checkout shows,
  * and nothing is ever fetched from a host nobody chose.
  *
- * The default placement is a plausible stretch of La Rambla so that the
- * fixture Places at the Boqueria and Liceu fall inside the scene and the label
- * overlay has something to draw.
+ * Without `EXPO_PUBLIC_STREET3D_FIXTURE_ANCHOR`, the fixtures are Barcelona
+ * examples: a plausible stretch of La Rambla (so the fixture Places at the
+ * Boqueria and Liceu fall inside it and get labels), an approximately placed
+ * second scene, and one area per state. WITH an anchor there is exactly one
+ * scene, `s3d_fixture_anchor`, placed there — never a local scene shown beside
+ * fake Barcelona chips that would open the same file.
  *
  * The transform is the IDENTITY, which is what the reconstruction worker
  * publishes today: scene space IS metric ENU around the anchor (x east, y
@@ -56,6 +60,15 @@ const ATTRIBUTION = env(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_ATTRIBUTION);
 function numbers(value: string | undefined, count: number): number[] | undefined {
   const parts = env(value)?.split(',').map((part) => Number(part.trim()));
   return parts && parts.length === count && parts.every(Number.isFinite) ? parts : undefined;
+}
+
+// The SDK refuses a manifest whose asset URLs are not `https:` (the published
+// contract), and this transport is answered THROUGH the SDK — so an `http:`
+// fixture URL turns into "this 3D view couldn't be loaded". Say why, once.
+for (const [name, url] of [['SPLAT', SPLAT_URL], ['PREVIEW', PREVIEW_URL], ['POSTER', POSTER_URL]] as const) {
+  if (url && !/^https:\/\//i.test(url)) {
+    console.warn(`[goway/street3d] EXPO_PUBLIC_STREET3D_FIXTURE_${name}_URL must be https: — the SDK rejects other asset URLs.`);
+  }
 }
 
 const ANCHOR = numbers(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_ANCHOR, 3);
@@ -107,27 +120,34 @@ interface SceneSeed {
   placement: 'precise' | 'approximate';
 }
 
-const SCENES: readonly SceneSeed[] = [
-  ANCHOR
-    ? {
-        id: 's3d_fixture_rambla_liceu',
+/** The anchor-driven scene: ONE scene, the configured one, and nothing invented beside it. */
+export const ANCHORED_FIXTURE_SCENE_ID = 's3d_fixture_anchor';
+/** The Barcelona examples, used only when no anchor is configured. */
+export const BARCELONA_FIXTURE_SCENE_ID = 's3d_fixture_rambla_liceu';
+
+const SCENES: readonly SceneSeed[] = ANCHOR
+  ? [
+      {
+        id: ANCHORED_FIXTURE_SCENE_ID,
         anchor: { latitude: ANCHOR[0], longitude: ANCHOR[1], altitudeMeters: ANCHOR[2] },
         bounds: boundsAround(ANCHOR[0], ANCHOR[1]),
         placement: 'precise',
-      }
-    : {
-        id: 's3d_fixture_rambla_liceu',
+      },
+    ]
+  : [
+      {
+        id: BARCELONA_FIXTURE_SCENE_ID,
         anchor: { latitude: 41.381, longitude: 2.1725, altitudeMeters: 52 },
         bounds: { west: 2.1705, south: 41.3797, east: 2.1745, north: 41.3825 },
         placement: 'precise',
       },
-  {
-    id: 's3d_fixture_santa_caterina',
-    anchor: { latitude: 41.3868, longitude: 2.1782, altitudeMeters: 50 },
-    bounds: { west: 2.1770, south: 41.3860, east: 2.1795, north: 41.3877 },
-    placement: 'approximate',
-  },
-];
+      {
+        id: 's3d_fixture_santa_caterina',
+        anchor: { latitude: 41.3868, longitude: 2.1782, altitudeMeters: 50 },
+        bounds: { west: 2.1770, south: 41.3860, east: 2.1795, north: 41.3877 },
+        placement: 'approximate',
+      },
+    ];
 
 function manifestOf(seed: SceneSeed): StreetSceneManifest {
   const { west, south, east, north } = seed.bounds;
@@ -176,7 +196,12 @@ function summaryOf(manifest: StreetSceneManifest): StreetSceneSummary {
   };
 }
 
-/** One area per state, so every style is visible in one Barcelona viewport. */
+/**
+ * Without an anchor: one area per state, so every style is visible in one
+ * Barcelona viewport. With one: a single at-risk and a single partial cell
+ * beside the configured scene, so the hint and the dots still have something
+ * to show without inventing a second city around a real local scene.
+ */
 const CELL = 0.0012;
 function area(id: string, state: StreetCoverageArea['state'], latitude: number, longitude: number,
   extra: Partial<StreetCoverageArea> = {}): StreetCoverageArea {
@@ -190,15 +215,33 @@ function area(id: string, state: StreetCoverageArea['state'], latitude: number, 
   };
 }
 
-export const FIXTURE_AREAS: readonly StreetCoverageArea[] = [
-  area('a_fixture_born', 'at_risk', 41.3846, 2.1820, { atRiskUntil: iso(9) }),
-  area('a_fixture_raval', 'partial', 41.3800, 2.1680),
-  area('a_fixture_gotic', 'seeded', 41.3830, 2.1770, { contributionBand: '1-4' }),
-  area('a_fixture_barceloneta', 'reconstructable', 41.3800, 2.1890, { contributionBand: '20+' }),
-  area('a_fixture_sant_pere', 'reconstructing', 41.3885, 2.1765, { contributionBand: '20+' }),
-  area('a_fixture_poble_sec', 'needs_more_capture', 41.3745, 2.1640),
-  area('a_fixture_liceu', 'partial', 41.3806, 2.1732, { sceneId: 's3d_fixture_rambla_liceu' }),
-];
+function offset(latitude: number, longitude: number, eastMeters: number, northMeters: number) {
+  return {
+    latitude: latitude + northMeters / 111_320,
+    longitude: longitude + eastMeters / (111_320 * Math.cos((latitude * Math.PI) / 180)),
+  };
+}
+
+function anchoredAreas(latitude: number, longitude: number): StreetCoverageArea[] {
+  const east = offset(latitude, longitude, 260, 0);
+  const west = offset(latitude, longitude, -260, 0);
+  return [
+    area('a_fixture_anchor_at_risk', 'at_risk', east.latitude, east.longitude, { atRiskUntil: iso(9) }),
+    area('a_fixture_anchor_partial', 'partial', west.latitude, west.longitude),
+  ];
+}
+
+export const FIXTURE_AREAS: readonly StreetCoverageArea[] = ANCHOR
+  ? anchoredAreas(ANCHOR[0], ANCHOR[1])
+  : [
+      area('a_fixture_born', 'at_risk', 41.3846, 2.1820, { atRiskUntil: iso(9) }),
+      area('a_fixture_raval', 'partial', 41.3800, 2.1680),
+      area('a_fixture_gotic', 'seeded', 41.3830, 2.1770, { contributionBand: '1-4' }),
+      area('a_fixture_barceloneta', 'reconstructable', 41.3800, 2.1890, { contributionBand: '20+' }),
+      area('a_fixture_sant_pere', 'reconstructing', 41.3885, 2.1765, { contributionBand: '20+' }),
+      area('a_fixture_poble_sec', 'needs_more_capture', 41.3745, 2.1640),
+      area('a_fixture_liceu', 'partial', 41.3806, 2.1732, { sceneId: BARCELONA_FIXTURE_SCENE_ID }),
+    ];
 
 const intersects = (
   a: { west: number; south: number; east: number; north: number },
