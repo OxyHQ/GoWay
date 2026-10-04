@@ -18,13 +18,14 @@ import express, { type Express, Router } from 'express';
 import helmet from 'helmet';
 import { config } from './config';
 import { errorHandler, notFoundHandler } from './http/errorHandler';
-import { apiRateLimit, optionalAuth, requireAuth } from './middleware/auth';
+import { apiRateLimit, optionalAuth, requireAuth, street3dReportRateLimit } from './middleware/auth';
 import { createGoWayCors } from './middleware/cors';
 import { healthRouter } from './routes/health';
 import { createCaptureRouter } from './routes/capture';
 import { createPlacesRouter } from './routes/places';
 import { createRoutesRouter } from './routes/directions';
 import { createSearchRouter } from './routes/search';
+import { createStreet3dRouter } from './routes/street3d';
 import { createConfiguredObjectStore } from './storage';
 
 /** The largest request body any GoWay route accepts. */
@@ -112,6 +113,13 @@ export function createApp(): Express {
    * real credentials, which in practice means it is not tested.
    */
   v1.use(createCaptureRouter({ optionalAuth, requireAuth, objectStore: createConfiguredObjectStore() }));
+  /**
+   * Street 3D viewing (#14/#15): coverage and published scene manifests,
+   * signed out, plus authenticated reports. Inert — 503/404 — unless
+   * `STREET3D_VIEWING_ENABLED` is set. It reads only the database: no queue,
+   * bucket or external worker is on the request path.
+   */
+  v1.use(createStreet3dRouter({ requireAuth, reportRateLimit: street3dReportRateLimit }));
   api.use('/v1', v1);
 
   app.use('/api', api);
