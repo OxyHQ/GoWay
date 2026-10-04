@@ -24,12 +24,12 @@ Oxy's `AccountRole` (`ACCOUNT_ROLE_AUTHORITY`), so a role Oxy adds stops the
 build until somebody classifies it.
 
 Acting for an approved claim lets a caller edit the claimed place, assert
-capabilities at `business_asserted`, withdraw that tier, and read the place's
-claims. **Filing** a new claim in an organization's name is narrower — `owner`
+capabilities and hours exceptions at `business_asserted`, withdraw that tier,
+and read the place's claims. **Filing** a new claim in an organization's name is narrower — `owner`
 or `admin` — because it is a statement about who the business is.
 
 A chain is an organization claiming each of its locations in the `brand` role.
-`places_claims.brand_id` was dropped (post-phase migration `0008`).
+`places_claims.brand_id` was dropped (post-phase migration `0009`).
 
 ### How GoWay asks Oxy
 
@@ -69,8 +69,9 @@ in production's runtime template, the Expo dev servers locally.
 
 `place_revisions` is **append-only**, and every write path in `db/places`
 records exactly one row **in the same transaction** as the write: place create
-and update, capability assertion and withdrawal, claim request and decision,
-and every moderation action. A write that rolled back left no revision; a
+and update, capability assertion and withdrawal, hours-exception creation,
+rewrite and withdrawal, claim request and decision, and every moderation
+action. A write that rolled back left no revision; a
 revision always describes a write that committed. The realdb suite proves it by
 making the revision insert fail and asserting the write did not land.
 
@@ -79,7 +80,9 @@ Each row holds the action (a closed set in contracts), the source (`api` or
 from Oxy's actor chain (`operated_by_oxy_user_id`, null when Oxy did not report
 one — recorded as unknown, never guessed), and a field-level diff in the
 published shape: `{ field, before?, after? }`, where `field` is `name`,
-`address.city`, `names.es`, `capabilities.payments.faircoin.accepted`, …
+`address.city`, `timezone`, `names.es`, `capabilities.payments.faircoin.accepted`,
+`hoursExceptions.<id>`, … The derived `timezone` is diffed like any other
+column, so a move that changes it says so.
 
 ### The exposure rule
 
@@ -92,7 +95,9 @@ on the place. It publishes **what changed and when, never who**:
   never names its contributors either. The repository does not read those
   columns for the public audience at all.
 - Only actions `PLACE_REVISION_VISIBILITY` classifies `public`: place
-  creation and updates, capability assertions and withdrawals, merges. Claims
+  creation and updates, capability assertions and withdrawals, hours-exception
+  writes (`hours_exception_created`, `_replaced`, `_withdrawn` — an exception is
+  published on the place and by its own public list), merges. Claims
   (a business relationship GoWay shows only to the parties), report
   resolutions and duplicate reviews (moderation state) are `moderation`. The
   classification is total, so a new action cannot default to public.
@@ -115,7 +120,8 @@ neither grants nor removes operator rights. Empty means nobody.
   `revoked` withdraws an `approved` one, anything else is `409`. `decidedAt` is
   when the claim's current state was decided.
 - **Verification**: `oxy_verified` capabilities are written and withdrawn only
-  here, beside every other tier's row; the place's `verificationState` (with
+  here, beside every other tier's row, and the value is held to the key's
+  registry entry exactly as a public assertion's is (`docs/PLACE_DATA.md`); the place's `verificationState` (with
   `verifiedAt`) and its removal or restoration are one `PATCH`.
 - **Reports**: any signed-in person may report a place for a closed reason
   (`PLACE_REPORT_REASONS`), one open report per person per place. Operators see
@@ -132,9 +138,16 @@ with both places locked in id order:
 - **Sources move**, all of them. `(source, sourceId)` is unique across the
   table, so the next import of that OpenStreetMap node updates the survivor
   rather than a place nobody reads.
-- **Names, capabilities and claims move** wherever the survivor holds no row of
-  its own under the same key. The survivor's statement wins every collision; the
-  losing row stays on the absorbed place rather than being destroyed.
+- **Names, capabilities, hours exceptions and claims move** wherever the
+  survivor holds no row of its own under the same key — for an exception, the
+  same dates at the same tier. The survivor's statement wins every collision;
+  the losing row stays on the absorbed place rather than being destroyed.
+- **The survivor's own columns are never rewritten.** Its name, position and
+  the `timezone` derived from it, `categories`, address, contact and weekly
+  hours are its statement, exactly as its children win their collisions; the
+  absorbed place's columns stay on the absorbed row. A moved source refreshes
+  the survivor at the next import only where the import's own rule allows (a
+  column changes only while it still equals what that source last said).
 - The absorbed place becomes `merged` with `merged_into_place_id` set (a CHECK
   ties the two together, and the self-referencing foreign key is `restrict`).
   Every place already merged into it is re-pointed at the survivor, so a

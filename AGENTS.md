@@ -39,6 +39,11 @@ Always **bun**; commit `bun.lock` with its `package.json`.
 - The logo is geometry (`packages/frontend/components/brand/artwork.ts`), drawn and never fetched; `public/brand/*` is generated from it and gated by `brand:check`. Its blue is ink (`--color-brand-goway`), never Bloom's `--primary`.
 - Every GoWay-enriched place gets a stable GoWay Place ID independent of provider IDs; deep links use it (`https://goway.to/place/<placeId>`). Preserve source provenance and never destructively overwrite a source fact.
 - The OpenStreetMap import writes only `openstreetmap`-sourced rows, never deletes a place, and changes a `places` column only while it still holds what that source last said.
+- `places.categories` holds only taxonomy keys from `CATEGORY_DEFINITIONS` (`packages/contracts`), CHECKed from it; never store an ancestor beside its child. Design note: `docs/PLACE_DATA.md`.
+- A place attribute is a registered key in `CAPABILITY_DEFINITIONS` (value kind, labels, group, OSM tags) over `places_capabilities`, never a new column or table; every write goes through its key's schema.
+- `places.timezone` is derived from the position (`places/timezone.ts`), never taken from a caller; evaluate hours only with the contract's `openingStatusAt`.
+- Hours exceptions follow the capability authority rules: derived tier, rewrite at your own tier, claimant-only withdrawal.
+- The import's owned columns are declared once in `import/osm/fields.ts`; `source_data` is `{v:2, tags, normalized}` with every raw tag, and OSM attributes are `external_source` capabilities tied to the element's source row.
 - `places.name` is the DEFAULT (local-language) name and never moves with a locale; every tagged name is a `places_names` row keyed `(place, language, source)`, resolved server-side and rendered via `placeDisplayName`. Design note: `docs/PLACE_NAMES.md`.
 - A business is an Oxy organization: a claim stores its `oxyAccountId` and Oxy decides who acts for it (`places/claimAuthority`, asked with the caller's bearer). Never keep a member list or brand id; fail closed with 503 when Oxy cannot answer. Design note: `docs/BUSINESS_OWNERSHIP.md`.
 - Every place write records exactly one `place_revisions` row through `recordRevision`, inside the write's transaction. The public history never names an account or person; classify a new action in `PLACE_REVISION_VISIBILITY`.

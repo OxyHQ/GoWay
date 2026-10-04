@@ -198,12 +198,11 @@ export async function allNearbyMerchants(center: GeoCoordinate): Promise<PlaceWi
 
 What the filter means, precisely:
 
-- **The key grammar is `<domain>.<product>.<capability>`** — `namespace` +
-  `capability`, joined with a dot. `payments.faircoin` + `accepted` gives
-  `payments.faircoin.accepted`.
+- **A key is `<namespace>.<capability>`**, split at the last dot.
+  `payments.faircoin` + `accepted` gives `payments.faircoin.accepted`.
 - **A place matches only when it HAS the capability:** its *strongest*
   assertion of the key — highest verification tier, then freshest — holds,
-  meaning its value is not `false`, `0` or `''`. A business that stopped taking
+  meaning its value is not `false`, `0`, `''` or `[]`. A business that stopped taking
   FairCoin and says so (`business_asserted`, `false`) drops out of the filter
   even though a customer once reported `true`. Merely *mentioning* the key is
   not enough. `placeHasCapability(place, key)` asks the same question, by the
@@ -211,16 +210,19 @@ What the filter means, precisely:
   search that did not filter.
 - **A list is a conjunction.** `capabilities: ['payments.faircoin.accepted',
   'commerce.mercaria.store']` returns places that have *both*, not either.
-- **The namespace is open.** `WELL_KNOWN_CAPABILITIES` is exported and
-  autocompletes (`payments.faircoin.accepted`, `commerce.mercaria.store`,
+- **The key space is a closed, typed registry.** `CAPABILITY_KEYS` lists every
+  key (`payments.faircoin.accepted`, `commerce.mercaria.store`,
   `mobility.moovo.pickup`, `housing.homiio.listings`,
-  `social.mention.location`), but any dotted key is valid and an unrecognised one
-  is carried through rather than dropped. A third party can define its own
-  capability without waiting for a GoWay release.
-- **A malformed key is rejected before the request leaves.** Keys are
-  lower-case. `capabilities: ['faircoin']` or `['Payments.FairCoin.Accepted']`
-  throws `GoWayValidationError` client-side (`status: null`, nothing sent): it
-  would match nothing, and it is far more likely a typo than an intent.
+  `social.mention.location`, and the accessibility, payment, amenity, food,
+  price, social and brand keys), and each declares the kind of value it holds.
+  A new key is a GoWay release — see `docs/PLACE_DATA.md`.
+- **A filter can ask for a value.** An enum, enum-set or price key filters by
+  value as well: `'food.cuisine:italian'`, `'accessibility.wheelchair:limited'`.
+- **An unknown or malformed key is rejected before the request leaves.**
+  `capabilities: ['faircoin']`, `['Payments.FairCoin.Accepted']` or an
+  unregistered key throws `GoWayValidationError` client-side (`status: null`,
+  nothing sent): it would match nothing, and it is far more likely a typo than an
+  intent.
 - **Nothing about the capability table leaks into the call.** No join, no table
   name, no internal id. The filter is served by an indexed pass GoWay owns, and
   the shape of that index is free to change.
@@ -239,25 +241,21 @@ const { items: cafes } = await goway.places.nearby({
   longitude: center.longitude,
   radiusMeters: 2_000,
   capabilities: ['payments.faircoin.accepted'],
-  categories: ['cafe'],
+  categories: ['food.cafe'],
 });
 ```
 
 Unlike `capabilities`, a `categories` list is a **disjunction**: a place
-carrying *any* listed key matches. `Place.categories` is an open list of flat,
-lower-case keys, most specific first, and the contract deliberately fixes no
-closed vocabulary for it. The keys GoWay itself emits come from its
-OpenStreetMap import (`poiCategories` in
-`packages/backend/src/import/osm/poiTags.ts`): up to three per place — the OSM
-value as tagged (`cafe`, `bakery`, `supermarket`), the OpenMapTiles class it
-rolls up into (`cafe`, `shop`, `grocery`, `lodging`), and one of ten browsing
-groups (`food_drink`, `shopping`, `outdoors`, `transit`, `lodging`, `health`,
-`civic`, `culture`, `worship`, `vehicle`). So `amenity=cafe` is
-`['cafe', 'food_drink']`, and `categories: ['food_drink']` asks for every
-restaurant, café and bar without enumerating them. Keys are not dotted:
-`food.cafe` matches nothing. GoWay's app draws a subset of these with icons
-(`packages/frontend/lib/goway/categories.ts`) and gives anything else a generic
-pin; do the same, rather than dropping a place whose category you do not know.
+carrying *any* listed key matches. `Place.categories` holds keys of GoWay's
+closed category taxonomy (`CATEGORIES`, `CATEGORY_KEYS`, and `GET /categories`
+for a client without the SDK): dotted keys such as `food.cafe`, `shop.books` or
+`transport.rail_station`, most specific first, each under a root that is a
+browsing group (`food`, `shop`, `lodging`, `leisure`, `culture`, `transport`, …).
+A filter on a root asks for everything below it, so `categories: ['food']` is
+every restaurant, café and bar without enumerating them. A key outside the
+taxonomy is refused client-side. Label one with `categoryLabel(key, locale)`;
+a key newer than your SDK build still arrives as a key, so give it a generic pin
+rather than dropping the place. The design is in `docs/PLACE_DATA.md`.
 
 ## Read the evidence, and say only what it supports
 
@@ -284,8 +282,9 @@ community history that justified checking. Never assume there is only one.
 The one that decides is the **strongest**: highest tier, then the freshest
 within a tier. The SDK publishes that rule rather than leaving every wallet to
 re-derive it — `strongestCapability(place, key)` returns the deciding assertion,
-`capabilityValueHolds(value)` says whether a value counts (anything but `false`,
-`0` or `''`), and `placeHasCapability(place, key)` is the two together. They are
+`capabilityHolds(key, value)` says whether a value counts (anything but `false`,
+`0`, `''` or `[]`, nor a value the key names as an absence), and
+`placeHasCapability(place, key)` is the two together. They are
 the same rule the server's `capabilities` filter applies, so a badge and a
 filter cannot disagree about one place.
 
@@ -298,7 +297,7 @@ Then turn that one assertion into something you are willing to put on screen:
 
 ```ts
 import {
-  capabilityValueHolds,
+  capabilityHolds,
   strongestCapability,
   type CapabilityVerification,
   type Place,
@@ -329,7 +328,7 @@ export function faircoinAcceptance(place: Place, now: number = Date.now()): Acce
   // The deciding assertion: strongest tier, then freshest — the server's rule.
   const claim = strongestCapability(place, FAIRCOIN);
   // Nobody has said so, or the strongest voice says it stopped.
-  if (!claim || !capabilityValueHolds(claim.value)) {
+  if (!claim || !capabilityHolds(FAIRCOIN, claim.value)) {
     return { headline: 'none', evidence: null, observedAt: null, stale: false };
   }
 
@@ -710,7 +709,7 @@ valued capabilities, where a default would silently mean the wrong thing.
 const created = await goway.places.create({
   name: 'Cafè de la Plaça',
   location: { latitude: 41.3874, longitude: 2.1686 },
-  categories: ['cafe', 'food_drink'],
+  categories: ['food.cafe'],
   capabilities: [{ namespace: 'payments.faircoin', capability: 'accepted', value: true }],
 });
 ```
@@ -746,8 +745,9 @@ fields, under the stricter `PATCH` rule below.
   separate, reviewed act.
 - **A claim is always `pending` when created**, and a second claim by the same
   account in the same role is `409`.
-- **A removed place takes no writes.** Every write to it answers `410`, as a
-  read does.
+- **A removed or merged place takes no writes.** Every write to it answers
+  `410`, as a read does; a merged one's carries `mergedInto`, the id to use
+  instead.
 - **Nothing is destroyed.** Rows are keyed by tier, so the history of who said
   what, when, survives. Updates touch only the fields you pass: GoWay layers
   enrichment *over* source data and never destructively overwrites a source
@@ -793,17 +793,19 @@ columns, nor tables, nor a schema fork.
   surface, options, namespaces and the error table;
   [`CHANGELOG.md`](../../packages/sdk/CHANGELOG.md) for what changed in `0.3.0`.
 - `packages/contracts/src/place.ts` — `Place`, `PlaceCapability`,
-  `CapabilityVerification`, `WELL_KNOWN_CAPABILITIES`, `NearbyPlacesQuery`,
-  `PlaceClaim`, and the helpers `strongestCapability`, `placeHasCapability`,
-  `capabilityValueHolds` and `placeDisplayName`.
+  `NearbyPlacesQuery`, `PlaceClaim`, and the helpers `strongestCapability`,
+  `placeHasCapability`, `placeMatchesCapabilityFilter` and `placeDisplayName`;
+  `packages/contracts/src/capability-registry.ts` — `CAPABILITY_KEYS`,
+  `CapabilityVerification` and every key's value type;
+  `packages/contracts/src/category.ts` — the category taxonomy.
 - `packages/contracts/src/pagination.ts` — pages and cursors;
   `packages/contracts/src/errors.ts` — every error code, its status and whether
   it is retryable; `packages/contracts/src/operations.ts` — the route registry.
 - `https://api.goway.to/api/v1/openapi.json` (committed as
   `packages/contracts/openapi.json`) — the same contract, for a non-TypeScript
   client.
-- `packages/backend/src/import/osm/poiTags.ts` — the category keys GoWay emits;
-  `packages/frontend/lib/goway/categories.ts` — the ones its app draws.
+- `docs/PLACE_DATA.md` — the taxonomy, the capability registry and hours;
+  `packages/frontend/lib/goway/categories.ts` — how GoWay's app draws them.
 - `packages/frontend/components/map/` — the provider-neutral map seam
   (`MapCanvas`, `MapApi`, `MapMarker`, `MapViewport`, `DefaultMapMarker`).
 - `packages/frontend/lib/goway/capabilities.ts` — the evidence-presentation

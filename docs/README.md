@@ -22,6 +22,9 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
 - [`BUSINESS_OWNERSHIP.md`](BUSINESS_OWNERSHIP.md) — a business is an Oxy
   organization: who may act for a claim, the place history and what it never
   publishes, and the moderation surface, including how a merge redirects.
+- [`PLACE_DATA.md`](PLACE_DATA.md) — the category taxonomy, the typed
+  capability registry, the derived timezone and dated hours exceptions, and
+  how the OpenStreetMap import keeps what it reads.
 - [`PLACE_NAMES.md`](PLACE_NAMES.md) — how a place is named in more than one
   language, why `places.name` stayed, and what that means for duplicate
   detection, search, the SDK contract and the OpenStreetMap re-import.
