@@ -71,3 +71,15 @@ export const optionalAuth: RequestHandler = createOptionalOxyAuth(oxyClient);
  * unlimited: a throttled probe reports a service down that is merely popular.
  */
 export const apiRateLimit: RequestHandler = createOxyRateLimit(oxyClient);
+
+/**
+ * A tighter limit for Street 3D scene reports, on top of `apiRateLimit`.
+ *
+ * A report is a moderation request a human reads; thirty in fifteen minutes is
+ * far beyond any honest use and far below what would bury a moderator.
+ */
+export const street3dReportRateLimit: RequestHandler = createOxyRateLimit(oxyClient, {
+  authenticatedMax: 30,
+  anonymousMax: 30,
+  windowMs: 15 * 60_000,
+});

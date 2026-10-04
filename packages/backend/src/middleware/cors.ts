@@ -161,6 +161,8 @@ interface PublicRoute {
  *     `GET /captures/policy` (`optionalAuth`) stays on the strict lane: it is
  *     the contribution surface, which no third-party page has a reason to call
  *     and which is where upload intents are minted.
+ *   - `POST /street3d/scenes/:id/reports` — a moderation request somebody is
+ *     accountable for, behind `requireAuth`, on the strict lane.
  *   - `GET /health`, `GET /ready` — operational probes, not an API.
  */
 export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
@@ -198,6 +200,12 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
      * cross-origin no matter what the actual response says.
      */
     because: 'directions: a read whose arguments do not fit in a query string',
+  },
+  { method: 'GET', path: '/street3d/coverage', because: 'Street 3D coverage on the map, signed out' },
+  {
+    method: 'GET',
+    path: '/street3d/scenes/:id',
+    because: 'one published Street 3D scene manifest; a viewer embed with no account',
   },
 ];
 

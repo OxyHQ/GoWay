@@ -8,6 +8,10 @@ import {
   PLACE_STATUSES,
   PLACE_VERIFICATION_STATES,
   SEARCH_RESULT_KINDS,
+  STREET_COVERAGE_AREA_STATES,
+  STREET_SCENE_ASSET_ROLES,
+  STREET_SCENE_PROFILES,
+  STREET_SCENE_REPORT_REASONS,
   TRAVEL_MODES,
 } from './contract';
 import type {
@@ -35,6 +39,16 @@ import type {
   SearchResultContext,
   SearchResults,
   StructuredAddress,
+  StreetCoverage,
+  StreetCoverageArea,
+  StreetSceneAsset,
+  StreetSceneFieldOfView,
+  StreetSceneManifest,
+  StreetSceneNavigation,
+  StreetSceneQuality,
+  StreetSceneReport,
+  StreetSceneSummary,
+  StreetSceneViewpoint,
 } from './contract';
 
 /**
@@ -543,6 +557,7 @@ export function parseCaptureSession(value: unknown, path = 'session'): CaptureSe
     createdAt: instant(r.createdAt, `${path}.createdAt`), updatedAt: instant(r.updatedAt, `${path}.updatedAt`),
   };
   put(result, 'note', optional(r.note, `${path}.note`, string));
+  put(result, 'attribution', optional(r.attribution, `${path}.attribution`, nonEmptyString));
   put(result, 'endedAt', optional(r.endedAt, `${path}.endedAt`, instant));
   return result;
 }
@@ -643,4 +658,173 @@ export function parseCaptureTicket(value: unknown): CaptureUploadTicket {
     };
   }
   return result;
+}
+
+// ── Street 3D ───────────────────────────────────────────────────────────────
+//
+// Reconstructed field-by-field like every other shape: a scene manifest that
+// regressed into leaking a storage key, a capture id or a worker id would still
+// not reach an SDK object. Asset URLs must be HTTPS — a viewer fetches and
+// caches them indefinitely, and a downgraded or non-web URL is not an asset.
+
+const SHA256 = /^[0-9a-f]{64}$/;
+
+function sha256Digest(value: unknown, path: string): string {
+  const parsed = string(value, path);
+  if (!SHA256.test(parsed)) fail(path, 'a lower-case hex SHA-256 digest');
+  return parsed;
+}
+
+function httpsUrl(value: unknown, path: string): string {
+  const parsed = nonEmptyString(value, path);
+  if (!/^https:\/\//.test(parsed)) fail(path, 'an HTTPS URL');
+  return parsed;
+}
+
+function vector3(value: unknown, path: string): [number, number, number] {
+  if (!Array.isArray(value) || value.length !== 3) fail(path, 'three finite numbers');
+  return [finiteNumber(value[0], `${path}[0]`), finiteNumber(value[1], `${path}[1]`), finiteNumber(value[2], `${path}[2]`)];
+}
+
+function footprint(value: unknown, path: string): { type: 'Polygon'; coordinates: number[][][] } {
+  const record = object(value, path);
+  if (record.type !== 'Polygon') fail(`${path}.type`, 'Polygon');
+  return {
+    type: 'Polygon',
+    coordinates: array(record.coordinates, `${path}.coordinates`, (ring, ringPath) =>
+      array(ring, ringPath, (position, positionPath) => [...parsePosition(position, positionPath)]),
+    ),
+  };
+}
+
+function streetSceneAsset(value: unknown, path: string): StreetSceneAsset {
+  const record = object(value, path);
+  const asset: StreetSceneAsset = {
+    role: oneOf(record.role, STREET_SCENE_ASSET_ROLES, `${path}.role`),
+    format: oneOf(record.format, ['spz', 'jpeg'] as const, `${path}.format`),
+    url: httpsUrl(record.url, `${path}.url`),
+    byteSize: nonNegativeNumber(record.byteSize, `${path}.byteSize`),
+    sha256: sha256Digest(record.sha256, `${path}.sha256`),
+  };
+  put(asset, 'gaussians', optional(record.gaussians, `${path}.gaussians`, nonNegativeNumber));
+  return asset;
+}
+
+function streetSceneViewpoint(value: unknown, path: string): StreetSceneViewpoint {
+  const record = object(value, path);
+  return { position: vector3(record.position, `${path}.position`), forward: vector3(record.forward, `${path}.forward`) };
+}
+
+function streetSceneFieldOfView(value: unknown, path: string): StreetSceneFieldOfView {
+  const record = object(value, path);
+  const degrees = 'an angle in [1, 179] degrees';
+  return {
+    horizontalDegrees: inRange(record.horizontalDegrees, `${path}.horizontalDegrees`, 1, 179, degrees),
+    verticalDegrees: inRange(record.verticalDegrees, `${path}.verticalDegrees`, 1, 179, degrees),
+  };
+}
+
+function streetSceneNavigation(value: unknown, path: string): StreetSceneNavigation {
+  const record = object(value, path);
+  const navigation: StreetSceneNavigation = {
+    viewpoints: array(record.viewpoints, `${path}.viewpoints`, streetSceneViewpoint),
+  };
+  put(navigation, 'fieldOfView', optional(record.fieldOfView, `${path}.fieldOfView`, streetSceneFieldOfView));
+  return navigation;
+}
+
+function streetSceneQuality(value: unknown, path: string): StreetSceneQuality {
+  const record = object(value, path);
+  return {
+    profile: oneOf(record.profile, STREET_SCENE_PROFILES, `${path}.profile`),
+    registrationRatio: inRange(record.registrationRatio, `${path}.registrationRatio`, 0, 1, 'a ratio in [0, 1]'),
+    alignmentResidualMeters: nonNegativeNumber(record.alignmentResidualMeters, `${path}.alignmentResidualMeters`),
+    heldOutPsnr: finiteNumber(record.heldOutPsnr, `${path}.heldOutPsnr`),
+    placement: oneOf(record.placement, ['precise', 'approximate'] as const, `${path}.placement`),
+  };
+}
+
+export function parseStreetSceneManifest(value: unknown, path = 'scene'): StreetSceneManifest {
+  const record = object(value, path);
+  const transform = object(record.worldTransform, `${path}.worldTransform`);
+  const anchor = object(transform.anchor, `${path}.worldTransform.anchor`);
+  if (transform.frame !== 'enu') fail(`${path}.worldTransform.frame`, 'enu');
+  const matrix = array(transform.enuFromScene, `${path}.worldTransform.enuFromScene`, finiteNumber);
+  if (matrix.length !== 16) fail(`${path}.worldTransform.enuFromScene`, 'a 4x4 column-major matrix');
+  const view = object(record.initialView, `${path}.initialView`);
+  const manifest: StreetSceneManifest = {
+    id: nonEmptyString(record.id, `${path}.id`),
+    version: nonNegativeNumber(record.version, `${path}.version`),
+    bounds: parseBoundingBox(record.bounds, `${path}.bounds`),
+    footprint: footprint(record.footprint, `${path}.footprint`),
+    worldTransform: {
+      anchor: {
+        ...parseCoordinate(anchor, `${path}.worldTransform.anchor`),
+        altitudeMeters: finiteNumber(anchor.altitudeMeters, `${path}.worldTransform.anchor.altitudeMeters`),
+      },
+      frame: 'enu',
+      enuFromScene: matrix,
+    },
+    initialView: {
+      position: vector3(view.position, `${path}.initialView.position`),
+      target: vector3(view.target, `${path}.initialView.target`),
+    },
+    assets: array(record.assets, `${path}.assets`, streetSceneAsset),
+    quality: streetSceneQuality(record.quality, `${path}.quality`),
+    observedFrom: instant(record.observedFrom, `${path}.observedFrom`),
+    observedTo: instant(record.observedTo, `${path}.observedTo`),
+    publishedAt: instant(record.publishedAt, `${path}.publishedAt`),
+    attributions: array(record.attributions, `${path}.attributions`, nonEmptyString),
+    privacyPipelineVersions: array(record.privacyPipelineVersions, `${path}.privacyPipelineVersions`, nonEmptyString),
+  };
+  put(manifest, 'navigation', optional(record.navigation, `${path}.navigation`, streetSceneNavigation));
+  return manifest;
+}
+
+function streetSceneSummary(value: unknown, path: string): StreetSceneSummary {
+  const record = object(value, path);
+  const summary: StreetSceneSummary = {
+    id: nonEmptyString(record.id, `${path}.id`),
+    version: nonNegativeNumber(record.version, `${path}.version`),
+    center: parseCoordinate(record.center, `${path}.center`),
+    bounds: parseBoundingBox(record.bounds, `${path}.bounds`),
+    footprint: footprint(record.footprint, `${path}.footprint`),
+    placement: oneOf(record.placement, ['precise', 'approximate'] as const, `${path}.placement`),
+    publishedAt: instant(record.publishedAt, `${path}.publishedAt`),
+  };
+  put(summary, 'posterUrl', optional(record.posterUrl, `${path}.posterUrl`, httpsUrl));
+  return summary;
+}
+
+function streetCoverageArea(value: unknown, path: string): StreetCoverageArea {
+  const record = object(value, path);
+  const area: StreetCoverageArea = {
+    id: nonEmptyString(record.id, `${path}.id`),
+    state: oneOf(record.state, STREET_COVERAGE_AREA_STATES, `${path}.state`),
+    center: parseCoordinate(record.center, `${path}.center`),
+    bounds: parseBoundingBox(record.bounds, `${path}.bounds`),
+    contributionBand: oneOf(record.contributionBand, ['1-4', '5-19', '20+'] as const, `${path}.contributionBand`),
+  };
+  put(area, 'atRiskUntil', optional(record.atRiskUntil, `${path}.atRiskUntil`, instant));
+  put(area, 'sceneId', optional(record.sceneId, `${path}.sceneId`, nonEmptyString));
+  return area;
+}
+
+export function parseStreetCoverage(value: unknown, path = 'coverage'): StreetCoverage {
+  const record = object(value, path);
+  return {
+    scenes: array(record.scenes, `${path}.scenes`, streetSceneSummary),
+    areas: array(record.areas, `${path}.areas`, streetCoverageArea),
+  };
+}
+
+export function parseStreetSceneReport(value: unknown, path = 'report'): StreetSceneReport {
+  const record = object(value, path);
+  return {
+    id: nonEmptyString(record.id, `${path}.id`),
+    sceneId: nonEmptyString(record.sceneId, `${path}.sceneId`),
+    version: nonNegativeNumber(record.version, `${path}.version`),
+    reason: oneOf(record.reason, STREET_SCENE_REPORT_REASONS, `${path}.reason`),
+    createdAt: instant(record.createdAt, `${path}.createdAt`),
+  };
 }

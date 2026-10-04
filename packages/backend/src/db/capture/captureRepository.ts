@@ -41,6 +41,7 @@ import { evidenceDistanceMeters, resolveCaptureAnchor } from '../../capture/anch
 import { extendedExpiry, planOriginalRetention, uploadIntentExpiry } from '../../capture/retention';
 import { ApiError } from '../../http/apiError';
 import { logger } from '../../utils/logger';
+import { retractCaptureFromStreet3d } from '../street3d/moderation';
 import type { Database, DatabaseOrTransaction } from '../postgres';
 import { captureAssets, captureLocationEvidence, captureMediaObjects, captureSessions } from '../schema';
 import {
@@ -61,6 +62,7 @@ export interface CreateSessionInput {
   source: CaptureSource;
   consentVersion: string;
   note?: string;
+  attribution?: string;
   startedAt?: Date;
 }
 
@@ -171,6 +173,7 @@ export async function createCaptureSession(
       source: input.source,
       consentVersion: input.consentVersion,
       ...(input.note === undefined ? {} : { note: input.note }),
+      ...(input.attribution === undefined ? {} : { attribution: input.attribution }),
       ...(input.startedAt === undefined ? {} : { startedAt: input.startedAt }),
     })
     .returning(SESSION_COLUMNS);
@@ -566,15 +569,28 @@ export async function finalizeAsset(
   });
 }
 
-/** Remove only the caller's contribution. Shared bytes remain for other consented contributions. */
+/**
+ * Remove only the caller's contribution. Shared bytes remain for other
+ * consented contributions.
+ *
+ * Street 3D follows in the SAME transaction (`retractCaptureFromStreet3d`):
+ * open jobs that read this capture are cancelled, its privacy-safe derivatives
+ * are marked for deletion, and any scene whose published version registered it
+ * is queued for a rebuild without it. See `db/street3d/moderation.ts` for the
+ * derived-data policy.
+ */
 export async function withdrawCaptureAsset(db: Database, assetId: string, oxyUserId: string): Promise<CaptureAsset | null> {
   return db.transaction(async (tx) => {
     const [asset] = await tx.select(ASSET_COLUMNS).from(captureAssets)
       .where(and(eq(captureAssets.id, assetId), eq(captureAssets.oxyUserId, oxyUserId)));
     if (!asset) return null;
+    const now = new Date();
+    // Street 3D first: it locks job rows, and every path that holds a job lock
+    // takes it BEFORE capture rows. Taking the object lock first here would
+    // invert that order against an event being applied for the same capture.
+    await retractCaptureFromStreet3d(tx, assetId, 'contributor_request', now);
     await tx.select({ id: captureMediaObjects.id }).from(captureMediaObjects)
       .where(eq(captureMediaObjects.id, asset.mediaObjectId)).for('update');
-    const now = new Date();
     const [removed] = await tx.update(captureAssets).set({ state: 'deleted', privacyState: 'blocked', privacyCompletedAt: now, updatedAt: now })
       .where(eq(captureAssets.id, assetId)).returning(ASSET_COLUMNS);
     const [remaining] = await tx.select({ count: count() }).from(captureAssets)

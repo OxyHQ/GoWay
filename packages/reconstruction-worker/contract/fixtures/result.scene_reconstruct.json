@@ -41,6 +41,13 @@
     { "role": "poster", "format": "jpeg", "key": "jobs/7c1e9a02-5d44-4b8b-9e1f-3a6c0d2b8e55/attempt-1/poster.jpg", "sha256": "cc00000000000000000000000000000000000000000000000000000000000003", "byteSize": 103322, "contentType": "image/jpeg" }
   ],
   "initialView": { "position": [0, 0, 1.6], "target": [0, 10, 1.6] },
+  "viewpoints": [
+    { "position": [0, 0, 1.6], "forward": [0, 1, 0] },
+    { "position": [0.12, 2.48, 1.61], "forward": [0.02, 0.9998, 0] },
+    { "position": [0.25, 5.03, 1.59], "forward": [-0.01, 0.9999, 0] },
+    { "position": [0.31, 7.52, 1.6], "forward": [0, 0.9994, -0.035] }
+  ],
+  "captureFieldOfView": { "horizontalDegrees": 66, "verticalDegrees": 50 },
   "observedFrom": "2024-06-26T09:12:03.000Z",
   "observedTo": "2024-06-27T10:40:11.000Z",
   "provenance": {

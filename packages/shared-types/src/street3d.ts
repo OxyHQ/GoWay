@@ -85,6 +85,38 @@ export interface StreetSceneInitialView {
   target: [number, number, number];
 }
 
+/** A position imagery was captured from, in scene coordinates. */
+export interface StreetSceneViewpoint {
+  position: [number, number, number];
+  /** Approximate unit direction the camera faced. */
+  forward: [number, number, number];
+}
+
+/** The angular extent of the source imagery, in degrees. */
+export interface StreetSceneFieldOfView {
+  horizontalDegrees: number;
+  verticalDegrees: number;
+}
+
+/**
+ * Where a viewer can move without leaving observed space.
+ *
+ * `viewpoints` are positions imagery was captured from, in scene coordinates
+ * (metric ENU, z up). They are decimated and merged across every contribution
+ * the version was built from, and carry no timestamp, no per-contributor order
+ * and no identity: they say where the scene was seen from, not who walked
+ * where, or when.
+ *
+ * A Gaussian scene is only trustworthy from where it was observed. A viewer
+ * should keep the camera near these positions and its view within the captured
+ * `fieldOfView` — moving between viewpoints Street-View-style rather than
+ * flying freely — because unobserved space renders poorly.
+ */
+export interface StreetSceneNavigation {
+  viewpoints: StreetSceneViewpoint[];
+  fieldOfView?: StreetSceneFieldOfView;
+}
+
 /** A published scene version, as a viewer needs it. */
 export interface StreetSceneManifest {
   id: StreetSceneId;
@@ -95,6 +127,8 @@ export interface StreetSceneManifest {
   footprint: { type: 'Polygon'; coordinates: number[][][] };
   worldTransform: StreetSceneWorldTransform;
   initialView: StreetSceneInitialView;
+  /** Guided-navigation data. Absent for a version reconstructed without it. */
+  navigation?: StreetSceneNavigation;
   assets: StreetSceneAsset[];
   quality: StreetSceneQuality;
   /** ISO 8601 bounds of when the source imagery was observed. */

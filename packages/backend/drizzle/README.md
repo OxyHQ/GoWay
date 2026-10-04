@@ -68,6 +68,31 @@ Two constraints are the point of the migration:
 `name_normalized`, `places_name_normalized_idx` and every existing
 reconciliation rule are untouched by this migration.
 
+## `0006_goway_street3d`
+
+Street 3D reconstruction (issues #11–#16): `capture_derivatives`,
+`street3d_jobs`, `street3d_job_events`, `street3d_scenes`,
+`street3d_scene_versions`, `street3d_scene_inputs`, `street3d_capture_edges`,
+`street3d_scene_reports`, `street3d_capture_blocks`,
+`street3d_coverage_areas`, plus a nullable, CHECKed
+`capture_sessions.attribution`. `pre` — new tables and one nullable column;
+nothing is dropped, renamed or narrowed, and the previous image never reads
+them.
+
+The constraints that carry the design:
+
+- `capture_derivatives` repeats the raw-media guarantees — NOT NULL expiry
+  under `capture_derivatives_expiry_ceiling_check`, protection bounded by
+  expiry, at most three extensions — and its class CHECK admits only
+  `privacy_safe_proxy`, so a raw upload is unrepresentable there.
+- `street3d_jobs_open_scene_key` / `street3d_jobs_open_asset_key` are partial
+  unique indexes: ONE open job per scene and per capture, whatever two
+  concurrent scheduler ticks decide.
+- `street3d_versions_published_key` allows one served version per scene, so
+  publication is a swap inside one transaction, never two versions at once.
+- `street3d_job_events` is keyed by the worker's `eventId`; SQS redelivery is
+  absorbed there.
+
 `meta/_journal.json` is never deleted, even when it holds nothing: `readJournal`
 treats a MISSING file as a read failure and throws (correctly — an image shipped
 without its migrations must never read as "nothing to do"), and both `GET /ready`

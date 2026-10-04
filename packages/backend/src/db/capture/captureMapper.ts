@@ -57,6 +57,7 @@ export const SESSION_COLUMNS = {
   source: captureSessions.source,
   consentVersion: captureSessions.consentVersion,
   note: captureSessions.note,
+  attribution: captureSessions.attribution,
   startedAt: captureSessions.startedAt,
   endedAt: captureSessions.endedAt,
   createdAt: captureSessions.createdAt,
@@ -163,6 +164,7 @@ export function toCaptureSession(row: SessionRow, assetCount: number): CaptureSe
     updatedAt: row.updatedAt.toISOString(),
   };
   put(session, 'note', optionalText(row.note));
+  put(session, 'attribution', optionalText(row.attribution));
   put(session, 'endedAt', optionalInstant(row.endedAt));
   return session;
 }

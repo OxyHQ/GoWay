@@ -23,7 +23,11 @@ import { createApp } from './src/app';
 import { config } from './src/config';
 import { closePostgres, connectPostgres } from './src/db/postgres';
 import { attachRealtime } from './src/realtime';
-import { logger } from './src/utils/logger';
+import { street3dConfig } from './src/config/street3d';
+import { getDb } from './src/db/postgres';
+import { startScheduler } from './src/street3d/scheduler';
+import { createConfiguredStreet3dServices } from './src/street3d/services';
+import { createLogger, logger } from './src/utils/logger';
 
 /** Seconds a shutdown waits for in-flight work before exiting anyway. */
 const SHUTDOWN_GRACE_SECONDS = 20;
@@ -33,6 +37,26 @@ const server = http.createServer(app);
 const io = attachRealtime(server);
 
 let shuttingDown = false;
+let stopStreet3d: (() => void) | null = null;
+
+/**
+ * Start the Street 3D scheduler, AFTER the server is listening and only when
+ * explicitly enabled. It is never a readiness dependency: a missing queue or an
+ * offline external worker leaves the map serving. Misconfiguration is logged
+ * (without values) and the scheduler stays off.
+ */
+function startStreet3d(): void {
+  if (!street3dConfig.schedulerEnabled) return;
+  const services = createConfiguredStreet3dServices();
+  if (!services) {
+    logger.warn('Street 3D scheduler is enabled but the pipeline is not configured; it stays off');
+    return;
+  }
+  stopStreet3d = startScheduler(
+    { db: getDb(), services, config: street3dConfig, logger: createLogger('street3d') },
+    street3dConfig.schedulerIntervalSeconds,
+  );
+}
 
 function shutdown(signal: string): void {
   // A second SIGTERM during a drain must not start a second drain: the two would
@@ -40,6 +64,7 @@ function shutdown(signal: string): void {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info({ signal }, 'Shutting down');
+  stopStreet3d?.();
 
   // A drain that never finishes is worse than an abrupt exit: the orchestrator
   // SIGKILLs the task after its own grace period and the shutdown path is never
@@ -70,6 +95,7 @@ async function boot(): Promise<void> {
 
   server.listen(config.port, () => {
     logger.info({ port: config.port, nodeEnv: config.nodeEnv }, 'GoWay backend listening');
+    startStreet3d();
   });
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));

@@ -208,6 +208,14 @@ export const captureSessions = pgTable(
     consentVersion: text().notNull(),
     /** Optional contributor note — what they were trying to capture. */
     note: text(),
+    /**
+     * A credit every scene built from this session must display — the licence
+     * line of an imported open-imagery dataset, e.g. `Imagery © Example, CC BY-SA
+     * 4.0`. Set once, at session creation, and copied into each published
+     * version's `attributions`. Null for an ordinary contribution, which GoWay
+     * publishes without naming anybody.
+     */
+    attribution: text(),
     startedAt: timestamptz().notNull().defaultNow(),
     /** When the contributor finished. Null while the session is open. */
     endedAt: timestamptz(),
@@ -217,6 +225,10 @@ export const captureSessions = pgTable(
   (table) => [
     closedSet('capture_sessions_source_check', table.source, CAPTURE_SOURCES),
     check('capture_sessions_consent_version_check', sql`btrim(${table.consentVersion}) <> ''`),
+    check(
+      'capture_sessions_attribution_check',
+      sql`${table.attribution} is null or (btrim(${table.attribution}) <> '' and char_length(${table.attribution}) <= 200)`,
+    ),
     check(
       'capture_sessions_ended_at_check',
       sql`${table.endedAt} is null or ${table.endedAt} >= ${table.startedAt}`,
