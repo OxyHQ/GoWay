@@ -12,6 +12,22 @@
  */
 
 export const STREET3D_EN: Record<string, string> = {
+  // Capture guide
+  'contribute.guide.title': 'How to capture a street',
+  'contribute.guide.why': 'A street becomes a good 3D view when it is seen from many positions and directions. Several people capturing the same street on different days is better than one perfect pass.',
+  'contribute.guide.phone.title': 'With your phone (works today)',
+  'contribute.guide.phone.landscape': 'Record 4K video holding the phone in landscape, at chest height and steady.',
+  'contribute.guide.phone.slow': 'Walk slowly, about 3 km/h, without sudden turns.',
+  'contribute.guide.phone.sides': 'Cover each stretch twice: once looking along the street, once facing each side of it, from both pavements.',
+  'contribute.guide.phone.people': 'Prefer quieter times. Faces and number plates are blurred automatically, and people and vehicles are left out of the 3D view.',
+  'contribute.guide.camera.title': 'With a 360° camera (recommended for mapping)',
+  'contribute.guide.camera.soon': '360° uploads are coming soon.',
+  'contribute.guide.camera.recommendation': 'An affordable option is a GoPro MAX (first generation, often available second-hand): it records 360° photos with built-in GPS. A 360° camera sees both sides of the street at once, which makes much better 3D views.',
+  'contribute.guide.camera.mount': 'Mount it on a pole or helmet about 30–50 cm above your head.',
+  'contribute.guide.camera.interval': 'Use interval photo mode, one photo every 1–2 metres, with GPS on.',
+  'contribute.guide.camera.walk': 'Walk at 3–4 km/h along both pavements; bright, overcast days work best.',
+  'contribute.guide.camera.repeat': 'Coming back on another day helps: new captures are combined with earlier ones automatically.',
+  'contribute.guide.privacy': 'Only capture public streets from public places. Do not film into homes or private spaces.',
   // Map layer
   'street3d.layer.open': 'Open Street 3D view',
   'street3d.layer.approximate': 'approximate placement',
@@ -98,6 +114,22 @@ export const STREET3D_EN: Record<string, string> = {
 };
 
 export const STREET3D_ES: Record<string, string> = {
+  // Capture guide
+  'contribute.guide.title': 'Cómo capturar una calle',
+  'contribute.guide.why': 'Una calle se convierte en una buena vista 3D cuando se ve desde muchas posiciones y direcciones. Varias personas capturando la misma calle en días distintos es mejor que una sola pasada perfecta.',
+  'contribute.guide.phone.title': 'Con tu móvil (funciona hoy)',
+  'contribute.guide.phone.landscape': 'Graba vídeo 4K con el móvil en horizontal, a la altura del pecho y estable.',
+  'contribute.guide.phone.slow': 'Camina despacio, a unos 3 km/h, sin giros bruscos.',
+  'contribute.guide.phone.sides': 'Cubre cada tramo dos veces: una mirando a lo largo de la calle y otra mirando a cada lado, desde ambas aceras.',
+  'contribute.guide.phone.people': 'Mejor en horas tranquilas. Las caras y matrículas se difuminan automáticamente y las personas y vehículos se excluyen de la vista 3D.',
+  'contribute.guide.camera.title': 'Con una cámara 360° (recomendada para mapear)',
+  'contribute.guide.camera.soon': 'La subida de 360° llegará pronto.',
+  'contribute.guide.camera.recommendation': 'Una opción asequible es una GoPro MAX (primera generación, fácil de encontrar de segunda mano): hace fotos 360° con GPS integrado. Una cámara 360° ve ambos lados de la calle a la vez, lo que da vistas 3D mucho mejores.',
+  'contribute.guide.camera.mount': 'Móntala en un palo o casco unos 30–50 cm por encima de tu cabeza.',
+  'contribute.guide.camera.interval': 'Usa el modo foto por intervalos, una foto cada 1–2 metros, con el GPS activado.',
+  'contribute.guide.camera.walk': 'Camina a 3–4 km/h por ambas aceras; los días claros pero nublados son los mejores.',
+  'contribute.guide.camera.repeat': 'Volver otro día ayuda: las nuevas capturas se combinan con las anteriores automáticamente.',
+  'contribute.guide.privacy': 'Captura solo calles públicas desde lugares públicos. No grabes el interior de viviendas ni espacios privados.',
   'street3d.layer.open': 'Abrir vista Street 3D',
   'street3d.layer.approximate': 'ubicación aproximada',
   'street3d.layer.contributeHint': 'Más fotos aquí podrían completar una vista Street 3D.',

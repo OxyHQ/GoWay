@@ -14,6 +14,7 @@ import type { CaptureAsset, CaptureAssetInput, CaptureSession, CaptureUploadPoli
 import { MapCanvas, type MapApi } from '@/components/map';
 import { useAuthGate } from '@/lib/authGate';
 import { captureClient } from './client';
+import { CaptureGuide } from './CaptureGuide';
 import { ContributionStatusCard } from './ContributionStatusCard';
 import { hashMedia, selectMedia, uploadMedia } from './media';
 import { mediaLocation, type SelectedMedia } from './media.shared';
@@ -145,6 +146,7 @@ export function ContributeScreen() {
       <Button appearance="plain" tone="neutral" onPress={() => router.back()}>Back to map</Button>
       <Text variant="title-1-bold">Contribute to Street 3D</Text>
       <Text>Help build a community 3D view with ordinary photos and videos. Complementary viewpoints are more useful than repeated copies.</Text>
+      <CaptureGuide />
       {!gate.canUsePrivateApi && <Button onPress={() => gate.run(() => {})}>Sign in to contribute</Button>}
       {error ? <Text accessibilityRole="alert">{error}</Text> : null}
       {!policy && !error && <ActivityIndicator accessibilityLabel="Loading contribution policy" />}
