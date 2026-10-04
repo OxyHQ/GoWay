@@ -23,6 +23,7 @@
 
 import type {
   CapabilityVerification,
+  OpeningHours,
   Place,
   PlaceCapability,
   PlaceName,
@@ -30,6 +31,7 @@ import type {
   PlaceClaimRole,
   PlaceClaimState,
   PlaceContact,
+  PlaceHoursException,
   PlaceSourceRef,
   PlaceVerificationState,
   PlaceWithDistance,
@@ -38,7 +40,14 @@ import type {
 import { CAPABILITY_VERIFICATIONS } from '@goway/contracts';
 import type { SelectedRow } from '@oxy.so/db';
 import { comparePublishedNames, resolveLocalizedName } from '../../places/placeNames';
-import { places, placesCapabilities, placesClaims, placesNames, placesSources } from '../schema';
+import {
+  placeHoursExceptions,
+  places,
+  placesCapabilities,
+  placesClaims,
+  placesNames,
+  placesSources,
+} from '../schema';
 
 /**
  * The columns a place read actually selects.
@@ -71,6 +80,7 @@ export const PLACE_COLUMNS = {
   contactEmail: places.contactEmail,
   contactWebsite: places.contactWebsite,
   openingHours: places.openingHours,
+  timezone: places.timezone,
   status: places.status,
   verificationState: places.verificationState,
   verifiedAt: places.verifiedAt,
@@ -134,6 +144,21 @@ export const CLAIM_COLUMNS = {
 
 export type ClaimRow = SelectedRow<typeof CLAIM_COLUMNS>;
 
+export const HOURS_EXCEPTION_COLUMNS = {
+  id: placeHoursExceptions.id,
+  placeId: placeHoursExceptions.placeId,
+  startsOn: placeHoursExceptions.startsOn,
+  endsOn: placeHoursExceptions.endsOn,
+  closed: placeHoursExceptions.closed,
+  intervals: placeHoursExceptions.intervals,
+  note: placeHoursExceptions.note,
+  source: placeHoursExceptions.source,
+  verification: placeHoursExceptions.verification,
+  observedAt: placeHoursExceptions.observedAt,
+} as const;
+
+export type HoursExceptionRow = SelectedRow<typeof HOURS_EXCEPTION_COLUMNS>;
+
 /**
  * How a read publishes a place's names.
  *
@@ -164,6 +189,11 @@ export interface PlaceChildren {
    * for names at all, which reads identically to a place that has none.
    */
   names?: readonly NameRow[];
+  /**
+   * The exceptions that have not ended. Absent for a list read, which publishes
+   * no `hoursExceptions` — absent, as for `names`.
+   */
+  hoursExceptions?: readonly HoursExceptionRow[];
   /**
    * `undefined` means "this caller may not see claims" and is published as an
    * absent field. An empty array means "there are none", which is a different
@@ -204,6 +234,35 @@ function toContact(row: PlaceRow): PlaceContact | undefined {
   put(contact, 'email', optionalText(row.contactEmail));
   put(contact, 'website', optionalText(row.contactWebsite));
   return Object.keys(contact).length === 0 ? undefined : contact;
+}
+
+/**
+ * The schedule, rebuilt from its two contract fields rather than passed
+ * through: a jsonb blob is a row shape too, and one written before the timezone
+ * moved to its own column still carries a `timezone` key.
+ */
+function toOpeningHours(value: OpeningHours): OpeningHours {
+  const hours: OpeningHours = {
+    intervals: value.intervals.map(({ day, opens, closes }) => ({ day, opens, closes })),
+  };
+  put(hours, 'raw', value.raw);
+  return hours;
+}
+
+export function toHoursException(row: HoursExceptionRow): PlaceHoursException {
+  const exception: PlaceHoursException = {
+    id: row.id,
+    placeId: row.placeId,
+    startsOn: row.startsOn,
+    endsOn: row.endsOn,
+    closed: row.closed,
+    intervals: row.intervals.map(({ opens, closes }) => ({ opens, closes })),
+    source: row.source,
+    verification: row.verification as CapabilityVerification,
+    observedAt: row.observedAt.toISOString(),
+  };
+  put(exception, 'note', optionalText(row.note));
+  return exception;
 }
 
 export function toPlaceName(row: NameRow): PlaceName {
@@ -321,7 +380,11 @@ export function toPlace(
   if (row.geometry !== null) place.geometry = row.geometry;
   put(place, 'address', toStructuredAddress(row));
   put(place, 'contact', toContact(row));
-  if (row.openingHours !== null) place.openingHours = row.openingHours;
+  if (row.openingHours !== null) place.openingHours = toOpeningHours(row.openingHours);
+  put(place, 'timezone', optionalText(row.timezone));
+  if (children.hoursExceptions !== undefined) {
+    place.hoursExceptions = children.hoursExceptions.map(toHoursException);
+  }
   if (children.claims !== undefined) place.claims = children.claims.map(toClaim);
 
   const names = children.names ?? [];

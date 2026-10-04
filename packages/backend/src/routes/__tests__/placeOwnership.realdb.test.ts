@@ -232,7 +232,7 @@ describe('when Oxy cannot answer', () => {
 
   it('does not stop a business that needs no answer: the claimant itself, or an unclaimed place', async () => {
     oxy.mode = 'down';
-    const own = await api.call<Place>('PATCH', `/places/${cafe.id}`, session('org-cafe', 'person-owner'), { categories: ['cafe'] });
+    const own = await api.call<Place>('PATCH', `/places/${cafe.id}`, session('org-cafe', 'person-owner'), { categories: ['food.cafe'] });
     expect(own.status).toBe(200);
     const open = await api.call<Place>('PATCH', `/places/${vacant.id}`, session('person-anyone'), { categories: ['shop'] });
     expect(open.status).toBe(200);

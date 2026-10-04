@@ -107,7 +107,7 @@ async function errorCodeOf(path: string): Promise<{ status: number; code: string
 describe('GET /api/v1/search', () => {
   it('answers the SDK’s parameters with an unwrapped SearchResults body', async () => {
     const response = await fetch(
-      `${origin}/api/v1/search?q=cafe&latitude=41.4036&longitude=2.1744&capabilities=payments.faircoin.accepted&categories=cafe,bakery&locale=ca-ES`,
+      `${origin}/api/v1/search?q=cafe&latitude=41.4036&longitude=2.1744&capabilities=payments.faircoin.accepted&categories=food.cafe,food.bakery&locale=ca-ES`,
     );
 
     expect(response.status).toBe(200);
@@ -121,7 +121,7 @@ describe('GET /api/v1/search', () => {
       query: 'cafe',
       near: { latitude: 41.4036, longitude: 2.1744 },
       capabilities: ['payments.faircoin.accepted'],
-      categories: ['cafe', 'bakery'],
+      categories: ['food.cafe', 'food.bakery'],
       locale: 'ca-ES',
     });
   });

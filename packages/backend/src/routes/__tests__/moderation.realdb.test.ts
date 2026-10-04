@@ -125,7 +125,7 @@ describe('claim decisions', () => {
     expect(body.state).toBe('approved');
     expect(Number.isNaN(Date.parse(body.decidedAt ?? ''))).toBe(false);
 
-    expect((await api.call('PATCH', `/places/${shop.id}`, session('person-passerby'), { categories: ['bar'] })).status).toBe(403);
+    expect((await api.call('PATCH', `/places/${shop.id}`, session('person-passerby'), { categories: ['food.bar'] })).status).toBe(403);
     const owner = await api.call<Place>('PUT', `/places/${shop.id}/capabilities/${FAIRCOIN}`, session('org-shop'), { value: true });
     expect(owner.body.capabilities.find((capability) => capability.key === FAIRCOIN)?.verification).toBe('business_asserted');
   });

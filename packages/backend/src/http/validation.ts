@@ -130,3 +130,23 @@ export function parsePath<S extends z.ZodObject>(schema: S, params: unknown): z.
   if (result.success) return result.data;
   refuse(result.error, 'bad_request', 'request path');
 }
+
+/**
+ * Hold an already well-formed value to a narrower schema — a capability value
+ * to its key's registry entry once the path has named the key.
+ *
+ * Always `validation_failed`: the request parsed, so a value the narrower
+ * schema refuses is a value this endpoint will not accept, not a malformed
+ * request. `field` names the path from `prefix`.
+ */
+export function parseValue<S extends z.ZodType>(schema: S, value: unknown, prefix: string): z.output<S> {
+  const result = schema.safeParse(value);
+  if (result.success) return result.data;
+  const [first] = result.error.issues;
+  const field = [prefix, ...(first?.path ?? []).map(String)].join('.');
+  throw new ApiError('validation_failed', `The request body is not acceptable: ${field}.`, {
+    field,
+    issue: first?.code ?? 'invalid',
+    issueCount: result.error.issues.length,
+  });
+}

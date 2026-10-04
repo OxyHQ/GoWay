@@ -155,6 +155,7 @@ interface PublicRoute {
  *
  * Deliberately ABSENT, and each for a reason:
  *   - `POST|PATCH /places`, `PUT|DELETE /places/:placeId/capabilities/:key`,
+ *     `POST|PUT|DELETE /places/:placeId/hours-exceptions[/:exceptionId]`,
  *     `POST /places/:placeId/claims` — writes, behind `requireAuth`.
  *   - `GET /places/:placeId/claims`, `GET /claims` — one account's claim history,
  *     behind `requireAuth`. A read, but not a public one.
@@ -184,6 +185,12 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
     path: '/places/:placeId/revisions',
     because: "a place's public history: what changed and when, never who, the same for every caller",
   },
+  {
+    method: 'GET',
+    path: '/places/:placeId/hours-exceptions',
+    because: "a public place's dated closures and special hours, signed out",
+  },
+  { method: 'GET', path: '/categories', because: 'the category taxonomy every client labels places with' },
   { method: 'GET', path: '/search', because: 'the search box, signed out' },
   { method: 'GET', path: '/geocode', because: 'forward geocoding, signed out' },
   { method: 'GET', path: '/geocode/reverse', because: 'reverse geocoding, signed out' },

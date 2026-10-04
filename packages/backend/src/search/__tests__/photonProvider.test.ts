@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { createPhotonProvider } from '../photonProvider';
+import { createPhotonProvider, photonOsmTags } from '../photonProvider';
 import type { PhotonConfig } from '../../config/search';
 import { jsonResponse, paramsOf, recordingFetch } from './fixtures';
 
@@ -184,12 +184,22 @@ describe('the Photon adapter', () => {
     expect(paramsOf(recorder.urls[1] ?? '').get('lang')).toBeNull();
   });
 
-  it('forwards only categories spelled as an explicit OSM tag', async () => {
+  it('forwards a GoWay category as the OpenStreetMap tags the taxonomy maps to it', async () => {
     const { photon, recorder } = provider(() => jsonResponse({ type: 'FeatureCollection', features: [] }));
-    await photon.forward({ query: 'coffee', limit: 5, categories: ['amenity:cafe', 'speciality-coffee'] });
+    await photon.forward({ query: 'coffee', limit: 5, categories: ['food.cafe'] });
 
     const tags = paramsOf(recorder.urls[0] ?? '').getAll('osm_tag');
-    expect(tags).toEqual(['amenity:cafe']);
+    expect(tags).toEqual(['amenity:cafe', 'shop:coffee', 'shop:tea']);
+  });
+
+  it('expands a parent to its descendants, and a key-wide fallback to the bare key', () => {
+    expect(photonOsmTags(['food'])).toContain('amenity:restaurant');
+    expect(photonOsmTags(['food'])).toContain('shop:bakery');
+    // `shop=*` makes every `shop:<value>` below it redundant.
+    const shops = photonOsmTags(['shop']);
+    expect(shops).toContain('shop');
+    expect(shops.filter((tag) => tag.startsWith('shop:'))).toEqual([]);
+    expect(shops).toContain('amenity:marketplace');
   });
 
   it('converts the reverse radius from metres to kilometres', async () => {

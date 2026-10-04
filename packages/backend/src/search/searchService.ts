@@ -33,9 +33,8 @@
  * loss of hit rate rather than an oversight.
  */
 
-import { SEARCH_MAX_DEPTH } from '@goway/contracts';
+import { categoryDefinition, SEARCH_MAX_DEPTH } from '@goway/contracts';
 import type {
-  CapabilityKey,
   GeoBoundingBox,
   GeoCoordinate,
   Place,
@@ -82,7 +81,7 @@ export interface ResolvedSearchQuery {
   query: string;
   near?: GeoCoordinate;
   viewport?: GeoBoundingBox;
-  capabilities?: readonly CapabilityKey[];
+  capabilities?: readonly string[];
   categories?: readonly string[];
   limit: number;
   /** How many results earlier pages already served. */
@@ -214,7 +213,12 @@ export function placeMatchesText(place: Place, query: string): boolean {
     // to find München for an English speaker in Bavaria, whose locale is
     // German and whose resolved label will still say München.
     ...(place.names ?? []).map((name) => name.name),
-    ...place.categories,
+    // A category by what it is CALLED, in every label language — "cafetería"
+    // finds a `food.cafe` — and never by its key, which nobody types.
+    ...place.categories.flatMap((key) => {
+      const definition = categoryDefinition(key);
+      return definition ? Object.values(definition.labels) : [];
+    }),
     place.address?.street,
     place.address?.city,
   ]
@@ -360,7 +364,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       placesConsulted: boolean;
       placesDegraded: boolean;
       window: { offset: number; limit: number };
-      capabilities?: readonly CapabilityKey[];
+      capabilities?: readonly string[];
       bias?: SpatialBias | undefined;
       locale?: string | undefined;
     },

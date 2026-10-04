@@ -15,7 +15,8 @@
  *
  * Issue #8 adds the authorization-aware write surface beside them:
  * `PUT|DELETE /places/:id/capabilities/:key`, `POST|GET /places/:id/claims` and
- * `GET /claims`. The capability routes are generic over any
+ * `GET /claims`; the hours exceptions under `/places/:id/hours-exceptions`
+ * follow the capability routes' authority rules. The capability routes are generic over any
  * `<namespace>.<capability>` key — FairCoin is the first consumer of them, not
  * a shape they are built around. `GET /places/:id/revisions` publishes a
  * place's history and `POST /places/:id/reports` flags it for moderation.
@@ -64,11 +65,16 @@ import { z } from 'zod';
 import {
   accountClaimListQuerySchema,
   capabilityPathSchema,
+  capabilityValueSchemaFor,
   claimListQuerySchema,
+  hoursExceptionListQuerySchema,
+  hoursExceptionPathSchema,
+  localDateSchema,
   nearbyPlacesQuerySchema,
   placeCapabilityAssertionSchema,
   placeClaimInputSchema,
   placeCreateInputSchema,
+  placeHoursExceptionInputSchema,
   placePathSchema,
   placeReadQuerySchema,
   placeReportInputSchema,
@@ -81,23 +87,28 @@ import { createPlaceReport } from '../db/places/moderationRepository';
 import type { PlaceActor } from '../db/places/placesRepository';
 import {
   assertPlaceCapability,
+  createHoursException,
   createPlace,
   findAccountClaims,
+  findHoursException,
   findPlaceById,
   findPlaceLifecycle,
   findPlacesInBounds,
   findPlacesNearby,
   getPlaceAuthorization,
+  listHoursExceptions,
   listPlaceClaims,
+  replaceHoursException,
   requestClaim,
   updatePlace,
+  withdrawHoursException,
   withdrawPlaceCapability,
 } from '../db/places/placesRepository';
 import { listPlaceRevisions, revisionAuthor } from '../db/places/revisions';
 import { getDb } from '../db/postgres';
 import { ApiError } from '../http/apiError';
 import { cursorBinding, decodeCursor, pageOf, timePageOf, timeWindowOf } from '../http/cursor';
-import { parseBody, parsePath, parseQuery } from '../http/validation';
+import { parseBody, parsePath, parseQuery, parseValue } from '../http/validation';
 import { requiredOxyCaller } from '../oxy/caller';
 import type { AccountRoleResolver } from '../oxy/accountRoles';
 import { assertableVerification, withdrawableVerification } from '../places/capabilityAuthority';
@@ -132,6 +143,8 @@ function placeIdParam(request: Request): string {
 const nearbyKeysetSchema = z.tuple([z.number().min(0), z.string().min(1)]);
 /** A viewport page resumes after a place id. */
 const boundsKeysetSchema = z.string().min(1);
+/** An hours-exception page resumes at `(startsOn, exceptionId)`. */
+const hoursExceptionKeysetSchema = z.tuple([localDateSchema, z.string().min(1).max(128)]);
 
 export interface PlacesRouterDependencies {
   /** Resolves a session when one is present and continues regardless. */
@@ -340,6 +353,9 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
     route(async (request, response) => {
       const { placeId, key } = parsePath(capabilityPathSchema, request.params);
       const input = parseBody(placeCapabilityAssertionSchema, request.body);
+      // The path named the key, so the value is held to that key's registry
+      // entry — and comes back normalized by it (a handle as its URL).
+      const value = parseValue(capabilityValueSchemaFor(key), input.value, 'value');
       const caller = requiredOxyCaller(request);
       const db = getDb();
 
@@ -354,7 +370,7 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       const place = await assertPlaceCapability(
         db,
         placeId,
-        { ...splitCapabilityKey(key), value: input.value, ...(input.source ? { source: input.source } : {}) },
+        { ...splitCapabilityKey(key), value, ...(input.source ? { source: input.source } : {}) },
         actor,
       );
       // The place existed a moment ago and does not now — a concurrent delete.
@@ -472,6 +488,151 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
         input,
       );
       response.status(created ? 201 : 200).json(report);
+    }),
+  );
+
+  // ── Hours exceptions ──────────────────────────────────────────────────────
+  //
+  // A closure or special hours is a CLAIM, so these routes follow the
+  // capability routes' authority rules exactly: any signed-in account may
+  // report one (`community_reported`), a report made by whoever may act for an
+  // approved claimant is `business_asserted`, the tier is never the body's,
+  // and a claimed place is NOT closed to outside reports — the tier is in the
+  // unique key, so a passer-by's report lands beside the business's own and
+  // cannot overwrite it. Every write records a revision in its transaction.
+
+  /**
+   * `GET /places/{placeId}/hours-exceptions` — every exception, past ones
+   * included, earliest first, keyset-paged by start date. Public, as the place
+   * is; a single-place read already embeds the ones that have not ended.
+   */
+  router.get(
+    '/places/:placeId/hours-exceptions',
+    optionalAuth,
+    route(async (request, response) => {
+      const placeId = placeIdParam(request);
+      const query = parseQuery(hoursExceptionListQuerySchema, request.query);
+      const db = getDb();
+      assertPublished(await findPlaceLifecycle(db, placeId));
+      const binding = cursorBinding('place-hours-exceptions', { placeId });
+      const rows = await listHoursExceptions(db, placeId, {
+        limit: query.limit + 1,
+        after: decodeCursor(query.cursor, binding, hoursExceptionKeysetSchema),
+      });
+      response.json(pageOf(rows, query.limit, binding, (row) => [row.startsOn, row.id], (row) => row));
+    }),
+  );
+
+  /**
+   * `POST /places/{placeId}/hours-exceptions` — report a closure or special
+   * hours. 409 when the caller's tier already holds an exception for exactly
+   * those dates: they rewrite that one instead.
+   */
+  router.post(
+    '/places/:placeId/hours-exceptions',
+    requireAuth,
+    route(async (request, response) => {
+      const placeId = placeIdParam(request);
+      const input = parseBody(placeHoursExceptionInputSchema, request.body);
+      const caller = requiredOxyCaller(request);
+      const db = getDb();
+
+      const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
+      assertPublished(lifecycle);
+      const standing = await standingOn(approvedClaims, caller, accountRoles);
+
+      const actor: PlaceActor = {
+        author: revisionAuthor(caller, 'api'),
+        assertedVerification: assertableVerification(standing),
+      };
+      const exception = await createHoursException(db, placeId, input, actor);
+      // The place existed a moment ago and does not now — a concurrent delete.
+      if (!exception) throw new ApiError('not_found', 'No place has that id.');
+      response
+        .status(201)
+        .location(
+          `/api/v1/places/${encodeURIComponent(placeId)}/hours-exceptions/${encodeURIComponent(exception.id)}`,
+        )
+        .json(exception);
+    }),
+  );
+
+  /**
+   * `PUT /places/{placeId}/hours-exceptions/{exceptionId}` — rewrite one
+   * exception, whole. Only at the caller's OWN tier: a community reporter
+   * corrects the community report, a claimant the business's notice, and
+   * neither can rewrite the other's — the same line a capability write draws.
+   */
+  router.put(
+    '/places/:placeId/hours-exceptions/:exceptionId',
+    requireAuth,
+    route(async (request, response) => {
+      const { placeId, exceptionId } = parsePath(hoursExceptionPathSchema, request.params);
+      const input = parseBody(placeHoursExceptionInputSchema, request.body);
+      const caller = requiredOxyCaller(request);
+      const db = getDb();
+
+      const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
+      assertPublished(lifecycle);
+      const existing = await findHoursException(db, placeId, exceptionId);
+      if (!existing) throw new ApiError('not_found', 'This place has no exception with that id.');
+
+      const verification = assertableVerification(await standingOn(approvedClaims, caller, accountRoles));
+      if (existing.verification !== verification) {
+        throw new ApiError(
+          'forbidden',
+          'An exception can be rewritten only at the tier that wrote it. Report your own instead.',
+        );
+      }
+      const exception = await replaceHoursException(
+        db,
+        placeId,
+        exceptionId,
+        input,
+        verification,
+        revisionAuthor(caller, 'api'),
+      );
+      if (!exception) throw new ApiError('not_found', 'This place has no exception with that id.');
+      response.json(exception);
+    }),
+  );
+
+  /**
+   * `DELETE /places/{placeId}/hours-exceptions/{exceptionId}` — withdraw the
+   * business's own exception. `204`. Only whoever may act for an approved
+   * claimant, and only at `business_asserted`, for the reason a capability
+   * withdrawal is: that tier is attributable, and the community's is a shared
+   * row nobody may erase.
+   */
+  router.delete(
+    '/places/:placeId/hours-exceptions/:exceptionId',
+    requireAuth,
+    route(async (request, response) => {
+      const { placeId, exceptionId } = parsePath(hoursExceptionPathSchema, request.params);
+      const caller = requiredOxyCaller(request);
+      const db = getDb();
+
+      const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
+      assertPublished(lifecycle);
+
+      const verification = withdrawableVerification(await standingOn(approvedClaims, caller, accountRoles));
+      if (verification === null) {
+        throw new ApiError(
+          'forbidden',
+          'Only an approved claimant may withdraw an exception. Correct a report by rewriting it instead.',
+        );
+      }
+      const withdrawn = await withdrawHoursException(
+        db,
+        placeId,
+        exceptionId,
+        verification,
+        revisionAuthor(caller, 'api'),
+      );
+      if (!withdrawn) {
+        throw new ApiError('not_found', 'This place carries no business-asserted exception with that id.');
+      }
+      response.status(204).end();
     }),
   );
 

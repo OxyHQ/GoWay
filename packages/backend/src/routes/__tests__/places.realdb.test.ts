@@ -482,7 +482,7 @@ describe('POST /places', () => {
         json({
           name: 'Llibreria Calders',
           location: GRACIA,
-          categories: ['shopping.books'],
+          categories: ['shop.books'],
           // A caller cannot talk their own submission up: these two fields are
           // not in the schema at all, so they are dropped, and the server
           // derives both.

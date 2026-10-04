@@ -25,9 +25,13 @@
  * DISCARDS everything outside the box, so a viewport is applied as `lat`/`lon`
  * location bias around the viewport's centre instead — Photon's own biasing
  * mechanism, which re-ranks. `categories` is the opposite case: it IS a filter
- * by contract, so an explicit OSM tag is forwarded as `osm_tag`.
+ * by contract, so each GoWay category is translated into the OpenStreetMap tags
+ * the contract's taxonomy maps to it (and to every category below it) and
+ * forwarded as `osm_tag` — Photon indexes OpenStreetMap, so those are the
+ * words it understands.
  */
 
+import { categoryDefinition, categoryDescendants } from '@goway/contracts';
 import type { GeoBoundingBox, SearchResult, SearchResultKind, StructuredAddress } from '@goway/contracts';
 import type { PhotonConfig } from '../config/search';
 import {
@@ -58,8 +62,24 @@ import type {
 } from './provider';
 import { fetchUpstreamJson, UpstreamError } from './upstream';
 
-/** A category the caller spelled as an explicit OSM tag, e.g. `amenity:cafe`. */
-const OSM_TAG = /^[a-z][a-z0-9_]*[:=][a-z0-9_.-]+$/i;
+/**
+ * The `osm_tag` filters for GoWay categories: every `key=value` the taxonomy
+ * maps to a requested category or one below it, as Photon spells them
+ * (`amenity:cafe`), and a key-wide `key=*` as the bare key. A value whose key
+ * is already wanted whole is redundant and dropped.
+ */
+export function photonOsmTags(categories: readonly string[]): string[] {
+  const tags = new Set<string>();
+  for (const category of categories) {
+    for (const key of categoryDescendants(category)) {
+      for (const tag of categoryDefinition(key)?.osm ?? []) tags.add(tag);
+    }
+  }
+  const wholeKeys = new Set([...tags].filter((tag) => tag.endsWith('=*')).map((tag) => tag.slice(0, -2)));
+  return [...tags]
+    .filter((tag) => tag.endsWith('=*') || !wholeKeys.has(tag.slice(0, tag.indexOf('='))))
+    .map((tag) => (tag.endsWith('=*') ? tag.slice(0, -2) : tag.replace('=', ':')));
+}
 
 /** Photon's reverse radius is in kilometres; the contract is in metres. */
 const METERS_PER_KILOMETER = 1_000;
@@ -269,9 +289,7 @@ export function createPhotonProvider(options: PhotonProviderOptions): SearchProv
         ['lat', bias?.latitude],
         ['lon', bias?.longitude],
       ];
-      for (const category of request.categories ?? []) {
-        if (OSM_TAG.test(category)) params.push(['osm_tag', category.replace('=', ':')]);
-      }
+      for (const tag of photonOsmTags(request.categories ?? [])) params.push(['osm_tag', tag]);
       return call('/api', params, request.signal);
     },
 

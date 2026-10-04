@@ -40,6 +40,7 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../../app';
 import { createCaptureRouter } from '../../routes/capture';
+import { createCategoriesRouter } from '../../routes/categories';
 import { createOpenApiRouter } from '../../routes/openapi';
 import { createRoutesRouter } from '../../routes/directions';
 import { createModerationRouter } from '../../routes/moderation';
@@ -463,6 +464,7 @@ describe('the public table, checked against the routers it claims to describe', 
     ...registeredRoutes(createSearchRouter({ optionalAuth })),
     ...registeredRoutes(createCaptureRouter({ optionalAuth, requireAuth, objectStore: null })),
     ...registeredRoutes(createOpenApiRouter()),
+    ...registeredRoutes(createCategoriesRouter()),
   ];
 
   it('found the real routers, so the cases below are measuring something', () => {
@@ -496,11 +498,13 @@ describe('the public table, checked against the routers it claims to describe', 
       .sort();
 
     expect(admitted).toEqual([
+      'GET /categories',
       'GET /geocode',
       'GET /geocode/reverse',
       'GET /geocode/structured',
       'GET /openapi.json',
       'GET /places/:placeId',
+      'GET /places/:placeId/hours-exceptions',
       'GET /places/:placeId/revisions',
       'GET /places/bounds',
       'GET /places/nearby',
@@ -519,6 +523,7 @@ describe('the public table, checked against the routers it claims to describe', 
       'DELETE /captures/assets/:assetId',
       'DELETE /moderation/places/:placeId/capabilities/:key',
       'DELETE /places/:placeId/capabilities/:key',
+      'DELETE /places/:placeId/hours-exceptions/:exceptionId',
       'GET /captures/assets/:assetId',
       'GET /captures/policy',
       'GET /captures/sessions',
@@ -540,9 +545,11 @@ describe('the public table, checked against the routers it claims to describe', 
       'POST /moderation/reports/:reportId/resolution',
       'POST /places',
       'POST /places/:placeId/claims',
+      'POST /places/:placeId/hours-exceptions',
       'POST /places/:placeId/reports',
       'PUT /moderation/places/:placeId/capabilities/:key',
       'PUT /places/:placeId/capabilities/:key',
+      'PUT /places/:placeId/hours-exceptions/:exceptionId',
     ]);
   });
 });

@@ -32,13 +32,12 @@
  */
 
 import type {
-  CapabilityKey,
   Place,
   SearchResult,
   SearchResultKind,
   SearchSource,
 } from '@goway/contracts';
-import { placeDisplayName, placeHasCapability } from '@goway/contracts';
+import { placeDisplayName, placeMatchesCapabilityFilter } from '@goway/contracts';
 import type { SourceRefInput } from '../db/places/placesRepository';
 import { composeDisplayName, contextFrom, put, resultId } from './normalize';
 import type { PlacesGateway } from './placesGateway';
@@ -99,15 +98,15 @@ export function searchResultFromPlace(place: Place): SearchResult {
 }
 
 /**
- * Whether a place HAS every requested capability — a conjunction, by the
- * contract's own `placeHasCapability`, which is the rule the Places filter
- * applies in SQL. Mentioning a key is not having it: a business that asserted
- * `false` does not match.
+ * Whether a place matches every requested capability filter — a conjunction,
+ * by the contract's own `placeMatchesCapabilityFilter`, which is the rule the
+ * Places filter applies in SQL. Mentioning a key is not having it: a business
+ * that asserted `false` does not match.
  */
-function hasAll(place: Place | undefined, capabilities: readonly CapabilityKey[]): boolean {
+function hasAll(place: Place | undefined, capabilities: readonly string[]): boolean {
   if (capabilities.length === 0) return true;
   if (!place) return false;
-  return capabilities.every((capability) => placeHasCapability(place, capability));
+  return capabilities.every((capability) => placeMatchesCapabilityFilter(place, capability));
 }
 
 /**
@@ -152,7 +151,7 @@ export interface MergeRequest {
   gateway: PlacesGateway;
   limit: number;
   /** A conjunction. A candidate with no reconciled place cannot satisfy one. */
-  capabilities?: readonly CapabilityKey[];
+  capabilities?: readonly string[];
   bias?: SpatialBias | undefined;
   /** BCP 47 tag the reconciled places' names are resolved against. */
   locale?: string | undefined;

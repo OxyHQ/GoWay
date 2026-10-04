@@ -446,9 +446,12 @@ describe('placeMatchesText', () => {
     expect(placeMatchesText(buildPlace({ name: 'Café Sagrada' }), 'cafe')).toBe(true);
   });
 
-  it('matches on a category and on the street', () => {
-    const place = buildPlace({ name: 'Nothing Relevant', categories: ['bakery'], address: { street: 'Gran Via' } });
+  it('matches on a category, by its label in every label language, and on the street', () => {
+    const place = buildPlace({ name: 'Nothing Relevant', categories: ['food.bakery'], address: { street: 'Gran Via' } });
     expect(placeMatchesText(place, 'bakery')).toBe(true);
+    expect(placeMatchesText(place, 'panadería')).toBe(true);
+    // A key is not a word anybody types.
+    expect(placeMatchesText(place, 'food.')).toBe(false);
     expect(placeMatchesText(place, 'gran via')).toBe(true);
     expect(placeMatchesText(place, 'pharmacy')).toBe(false);
   });

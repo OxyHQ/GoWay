@@ -56,7 +56,7 @@ export function buildPlace(overrides: Partial<Place> = {}): Place {
     id,
     name: `Place ${id}`,
     location: { latitude: 41.4036, longitude: 2.1744 },
-    categories: ['cafe'],
+    categories: ['food.cafe'],
     status: 'active',
     verification: { state: 'unverified' },
     sources: [],

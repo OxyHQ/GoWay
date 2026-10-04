@@ -40,8 +40,17 @@ import {
 } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { qualified, sqlColumnName } from '@oxy.so/db';
-import { CAPABILITY_VERIFICATIONS, normalizeLanguageTag, PUBLISHED_PLACE_STATUSES } from '@goway/contracts';
+import {
+  ABSENT_CAPABILITY_VALUES,
+  CAPABILITY_VERIFICATIONS,
+  capabilityFilterOf,
+  categoryDescendants,
+  normalizeLanguageTag,
+  PUBLISHED_PLACE_STATUSES,
+} from '@goway/contracts';
 import type {
+  CapabilityFilter,
+  CapabilityValue,
   CapabilityVerification,
   DuplicateCandidateReason,
   GeoGeometry,
@@ -51,6 +60,7 @@ import type {
   PlaceClaimRole,
   PlaceClaimState,
   PlaceContact,
+  PlaceHoursException,
   PlaceRevisionChange,
   PlaceStatus,
   PlaceWithDistance,
@@ -63,8 +73,10 @@ import {
   assertWritableVerification,
   type AssertableVerification,
 } from '../../places/capabilityAuthority';
+import { timezoneAt } from '../../places/timezone';
 import type { Database, DatabaseOrTransaction } from '../postgres';
 import {
+  placeHoursExceptions,
   places,
   placesCapabilities,
   placesClaims,
@@ -76,14 +88,17 @@ import { distanceTo, withinBoundingBox, withinRadius } from './placeGeo';
 import {
   CAPABILITY_COLUMNS,
   CLAIM_COLUMNS,
+  HOURS_EXCEPTION_COLUMNS,
   NAME_COLUMNS,
   PLACE_COLUMNS,
   SOURCE_COLUMNS,
   toClaim,
+  toHoursException,
   toPlace,
   toPlaceWithDistance,
   type CapabilityRow,
   type ClaimRow,
+  type HoursExceptionRow,
   type NameRow,
   type PlaceNameView,
   type PlaceRow,
@@ -94,6 +109,8 @@ import {
   capabilitySnapshot,
   changeOf,
   changesBetween,
+  hoursExceptionField,
+  hoursExceptionSnapshot,
   nameField,
   placeFieldValues,
   recordRevision,
@@ -136,7 +153,8 @@ export interface SourceRefInput {
 export interface CapabilityInput {
   namespace: string;
   capability: string;
-  value: boolean | string | number;
+  /** Already held to the key's registry entry by the contract schema. */
+  value: CapabilityValue;
   /** The source that asserted it, if it came from outside GoWay. */
   source?: SourceRefInput;
 }
@@ -192,7 +210,9 @@ export interface PlaceActor {
 }
 
 export interface PlaceListFilters {
+  /** `key` or `key:value` filter strings, already validated by the contract. */
   capabilities?: readonly string[];
+  /** Taxonomy keys; each matches itself and every key below it. */
   categories?: readonly string[];
   limit: number;
   /**
@@ -274,18 +294,43 @@ const verificationRank = sql`array_position(ARRAY[${sql.join(
 )}]::text[], ${placesCapabilities.verification})`;
 
 /**
+ * `capabilityHolds`, in SQL, over a subquery's `key` and `value`: anything but
+ * `false`, `0`, `""` or `[]`, and not an enum value the registry names as the
+ * absence of the thing (`accessibility.wheelchair = "no"`).
+ */
+function holds(key: SQL | PgColumn, value: SQL | PgColumn): SQL {
+  const absent = ABSENT_CAPABILITY_VALUES.map(
+    ([absentKey, absentValue]) => sql`(${key} = ${absentKey} and ${value} = ${JSON.stringify(absentValue)}::jsonb)`,
+  );
+  const notAbsent = absent.length > 0 ? sql` and not (${sql.join(absent, sql` or `)})` : sql``;
+  return sql`${value} not in ('false'::jsonb, '0'::jsonb, '""'::jsonb, '[]'::jsonb)${notAbsent}`;
+}
+
+/**
+ * One filter against the strongest assertion of its key. A value matches by
+ * jsonb containment, which is equality for a scalar and membership for an enum
+ * set (`["italian","pizza"] @> "italian"`).
+ */
+function matchesFilter(key: SQL | PgColumn, value: SQL | PgColumn, filter: CapabilityFilter): SQL {
+  return filter.value === undefined
+    ? sql`(${key} = ${filter.key} and ${holds(key, value)})`
+    : sql`(${key} = ${filter.key} and ${value} @> ${JSON.stringify(filter.value)}::jsonb)`;
+}
+
+/**
  * Capability filtering, expressed so a client never has to know the capability
  * table exists.
  *
- * A CONJUNCTION: `?capabilities=payments.faircoin.accepted,commerce.mercaria.store`
+ * A CONJUNCTION: `?capabilities=payments.faircoin.accepted,food.cuisine:italian`
  * means both, which is what a wallet looking for somewhere to spend actually
  * wants.
  *
  * ## The VALUE decides, through the strongest assertion
  *
  * A place matches a key when its STRONGEST assertion of that key holds — the
- * same rule as the contract's `placeHasCapability`. Matching the key alone is
- * the bug this replaces: a shop whose business asserted
+ * same rule as the contract's `placeHasCapability` — and a `key:value` filter
+ * when that strongest assertion carries the value (`placeMatchesCapabilityFilter`).
+ * Matching the key alone was the original bug: a shop whose business asserted
  * `payments.faircoin.accepted = false` because it stopped accepting FairCoin
  * still came back as a FairCoin merchant, which is the most expensive wrong
  * answer this filter can give. "Strongest" is by verification tier, then
@@ -293,29 +338,42 @@ const verificationRank = sql`array_position(ARRAY[${sql.join(
  * Oxy verification outranks both.
  *
  * `DISTINCT ON (place, key)` picks that assertion per key in one indexed pass
- * over `places_capabilities_key_idx`; the outer query keeps the places where
- * every requested key survived. Neither subquery is correlated, which is what
- * lets both be written with drizzle's builder and sidesteps the bare-column
- * trap a correlated reference would carry.
+ * over `places_capabilities_key_idx`; the outer query keeps the places for
+ * which EVERY filter matched one of those rows (`bool_or` per filter). Neither
+ * subquery is correlated, which is what lets both be written with drizzle's
+ * builder and sidesteps the bare-column trap a correlated reference would
+ * carry.
  */
-function matchesAllCapabilities(db: DatabaseOrTransaction, keys: readonly string[]): SQL {
-  const unique = [...new Set(keys)];
+function matchesAllCapabilities(db: DatabaseOrTransaction, rawFilters: readonly string[]): SQL {
+  const filters = rawFilters
+    .map(capabilityFilterOf)
+    .filter((filter): filter is CapabilityFilter => filter !== undefined);
+  if (filters.length !== rawFilters.length) {
+    // The contract refuses a malformed filter before here; matching nothing is
+    // the only answer that cannot be a wrong one.
+    return sql`false`;
+  }
+  const keys = [...new Set(filters.map((filter) => filter.key))];
   const strongest = db
     .selectDistinctOn([placesCapabilities.placeId, placesCapabilities.key], {
       placeId: placesCapabilities.placeId,
+      key: placesCapabilities.key,
       value: placesCapabilities.value,
     })
     .from(placesCapabilities)
-    .where(inArray(placesCapabilities.key, unique))
+    .where(inArray(placesCapabilities.key, keys))
     .orderBy(placesCapabilities.placeId, placesCapabilities.key, desc(verificationRank), desc(placesCapabilities.observedAt))
     .as('strongest_capability');
   const holding = db
     .select({ placeId: strongest.placeId })
     .from(strongest)
-    // `capabilityValueHolds`, in jsonb: anything but false, 0 or the empty string.
-    .where(sql`${strongest.value} not in ('false'::jsonb, '0'::jsonb, '""'::jsonb)`)
     .groupBy(strongest.placeId)
-    .having(sql`count(*) = ${unique.length}`);
+    .having(
+      sql.join(
+        filters.map((filter) => sql`bool_or(${matchesFilter(strongest.key, strongest.value, filter)})`),
+        sql` and `,
+      ),
+    );
   return inArray(places.id, holding);
 }
 
@@ -343,9 +401,11 @@ function listPredicates(db: DatabaseOrTransaction, filters: PlaceListFilters): S
   }
   if (filters.categories && filters.categories.length > 0) {
     // A DISJUNCTION — "cafe or bakery" — because a place carries several
-    // categories and asking for two is asking for either. `&&` is array
-    // overlap, answered by `places_categories_gin`.
-    predicates.push(arrayOverlaps(places.categories, [...filters.categories]));
+    // categories and asking for two is asking for either. A parent asks for
+    // every key below it: a place stores `food.cafe`, never `food` as well.
+    // `&&` is array overlap, answered by `places_categories_gin`.
+    const keys = [...new Set(filters.categories.flatMap(categoryDescendants))];
+    predicates.push(arrayOverlaps(places.categories, keys));
   }
   return predicates;
 }
@@ -387,6 +447,27 @@ async function loadNames(
 ): Promise<NameRow[]> {
   if (placeIds.length === 0) return [];
   return db.select(NAME_COLUMNS).from(placesNames).where(inArray(placesNames.placeId, [...placeIds]));
+}
+
+/** The most exceptions a single-place read embeds. Every one is still listed by `listHoursExceptions`. */
+const MAX_EMBEDDED_HOURS_EXCEPTIONS = 32;
+
+/**
+ * The exceptions a single-place read publishes: those that have not ended,
+ * earliest first.
+ *
+ * "Not ended" is judged a day early, against the database's UTC date, because
+ * the place's own date is not known here: somewhere it is still yesterday, and
+ * an exception that ended there yesterday may be today's. One stale exception
+ * costs a reader nothing — `openingStatusAt` only applies one covering today.
+ */
+async function loadCurrentHoursExceptions(db: DatabaseOrTransaction, placeId: string): Promise<HoursExceptionRow[]> {
+  return db
+    .select(HOURS_EXCEPTION_COLUMNS)
+    .from(placeHoursExceptions)
+    .where(and(eq(placeHoursExceptions.placeId, placeId), sql`${placeHoursExceptions.endsOn} >= current_date - 1`))
+    .orderBy(placeHoursExceptions.startsOn, placeHoursExceptions.id)
+    .limit(MAX_EMBEDDED_HOURS_EXCEPTIONS);
 }
 
 async function loadClaims(db: DatabaseOrTransaction, placeId: string): Promise<ClaimRow[]> {
@@ -477,10 +558,11 @@ export async function findPlaceById(
     .limit(1);
   if (!row) return null;
 
-  const [sources, capabilities, names, claims] = await Promise.all([
+  const [sources, capabilities, names, hoursExceptions, claims] = await Promise.all([
     loadSources(db, [id]),
     loadCapabilities(db, [id]),
     loadNames(db, [id]),
+    loadCurrentHoursExceptions(db, id),
     viewerOxyAccountId ? loadClaims(db, id) : Promise.resolve(null),
   ]);
 
@@ -494,7 +576,11 @@ export async function findPlaceById(
   // about the place, and a detail view that showed it only to callers who
   // already knew which language to ask for would be useless to the caller who
   // does not.
-  return toPlace(row, { sources, capabilities, names, claims: visibleClaims }, { publishAll: true, locale });
+  return toPlace(
+    row,
+    { sources, capabilities, names, hoursExceptions, claims: visibleClaims },
+    { publishAll: true, locale },
+  );
 }
 
 /**
@@ -990,6 +1076,8 @@ function placeColumnValues(input: PlaceWriteInput): Record<string, unknown> {
   if (input.location !== undefined) {
     values.latitude = input.location.latitude;
     values.longitude = input.location.longitude;
+    // Derived here and never accepted from the body — see `places/timezone`.
+    values.timezone = timezoneAt(input.location.latitude, input.location.longitude);
   }
   if (input.geometry !== undefined) values.geometry = input.geometry;
   if (input.categories !== undefined) values.categories = input.categories;
@@ -1057,6 +1145,7 @@ export async function createPlace(
         name: input.name,
         latitude: input.location.latitude,
         longitude: input.location.longitude,
+        timezone: timezoneAt(input.location.latitude, input.location.longitude),
         createdByOxyUserId: actor.author.oxyAccountId,
       })
       .returning(PLACE_COLUMNS);
@@ -1320,6 +1409,243 @@ export async function deleteCapabilityAtTier(
     changes: [{ field: capabilityField(`${key.namespace}.${key.capability}`), before: capabilitySnapshot(deleted) }],
   });
   return true;
+}
+
+// ── Hours exceptions ────────────────────────────────────────────────────────
+
+/** The source key every exception written through the API carries — as for names. */
+export const GOWAY_HOURS_SOURCE = 'goway';
+
+/** An exception as a writer supplies it, already parsed by the contract. */
+export interface HoursExceptionInput {
+  startsOn: string;
+  endsOn?: string | undefined;
+  closed: boolean;
+  intervals?: { opens: string; closes: string }[] | undefined;
+  note?: string | undefined;
+}
+
+/** The columns an input writes — `ends_on` defaulted, intervals empty when closed. */
+function hoursExceptionValues(input: HoursExceptionInput) {
+  return {
+    startsOn: input.startsOn,
+    endsOn: input.endsOn ?? input.startsOn,
+    closed: input.closed,
+    intervals: input.closed ? [] : (input.intervals ?? []),
+    note: input.note ?? null,
+  };
+}
+
+/** The `conflict` for a range this tier already holds an exception for. */
+function rangeTaken(existing: { id: string } | undefined): ApiError {
+  return new ApiError(
+    'conflict',
+    'An exception for exactly those dates already exists at your tier; rewrite that one instead.',
+    existing ? { exceptionId: existing.id } : undefined,
+  );
+}
+
+/** The existing exception for a range at a tier, if any. */
+async function findExceptionForRange(
+  db: DatabaseOrTransaction,
+  placeId: string,
+  range: { startsOn: string; endsOn: string },
+  verification: CapabilityVerification,
+): Promise<{ id: string } | undefined> {
+  const [row] = await db
+    .select({ id: placeHoursExceptions.id })
+    .from(placeHoursExceptions)
+    .where(
+      and(
+        eq(placeHoursExceptions.placeId, placeId),
+        eq(placeHoursExceptions.startsOn, range.startsOn),
+        eq(placeHoursExceptions.endsOn, range.endsOn),
+        eq(placeHoursExceptions.verification, verification),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+/**
+ * Record a dated exception at the tier the caller's standing earns.
+ *
+ * The tier comes from {@link PlaceActor}, exactly as for a capability: the
+ * body cannot name one, and `assertWritableVerification` refuses a moderation
+ * tier that reached here by a cast. A second exception for the SAME dates at
+ * the same tier is a `conflict` naming the existing one — rewrite it — while
+ * the same dates at another tier land beside it, so a passer-by's report never
+ * replaces the business's own notice.
+ *
+ * `places.updated_at` moves with it: a client caching a place must not miss
+ * that it is closed tomorrow. The `hours_exception_created` revision is
+ * recorded in the same transaction.
+ */
+export async function createHoursException(
+  db: Database,
+  placeId: string,
+  input: HoursExceptionInput,
+  actor: PlaceActor,
+): Promise<PlaceHoursException | null> {
+  const verification = assertWritableVerification(actor.assertedVerification);
+  const values = hoursExceptionValues(input);
+  return db.transaction(async (tx) => {
+    const [place] = await tx
+      .update(places)
+      .set({ updatedAt: new Date() })
+      .where(eq(places.id, placeId))
+      .returning({ id: places.id });
+    if (!place) return null;
+
+    const [row] = await tx
+      .insert(placeHoursExceptions)
+      .values({ placeId, ...values, source: GOWAY_HOURS_SOURCE, verification, observedAt: new Date() })
+      .onConflictDoNothing({
+        target: [
+          placeHoursExceptions.placeId,
+          placeHoursExceptions.startsOn,
+          placeHoursExceptions.endsOn,
+          placeHoursExceptions.verification,
+        ],
+      })
+      .returning(HOURS_EXCEPTION_COLUMNS);
+    if (!row) throw rangeTaken(await findExceptionForRange(tx, placeId, values, verification));
+
+    await recordRevision(tx, {
+      placeId,
+      action: 'hours_exception_created',
+      author: actor.author,
+      changes: [{ field: hoursExceptionField(row.id), after: hoursExceptionSnapshot(row) }],
+    });
+    return toHoursException(row);
+  });
+}
+
+/** One exception of one place, or `undefined`. */
+export async function findHoursException(
+  db: DatabaseOrTransaction,
+  placeId: string,
+  exceptionId: string,
+): Promise<PlaceHoursException | undefined> {
+  const [row] = await db
+    .select(HOURS_EXCEPTION_COLUMNS)
+    .from(placeHoursExceptions)
+    .where(and(eq(placeHoursExceptions.placeId, placeId), eq(placeHoursExceptions.id, exceptionId)))
+    .limit(1);
+  return row ? toHoursException(row) : undefined;
+}
+
+/**
+ * Rewrite one exception, keeping its tier.
+ *
+ * The route has already checked that the caller's tier IS the row's tier; the
+ * UPDATE re-states it as a predicate, so a row whose tier is not the caller's
+ * cannot be rewritten even by a route that forgot. Returns `undefined` when no
+ * row of that id and tier exists. The row is locked before it is read, so the
+ * `hours_exception_replaced` revision's BEFORE side is the value this write
+ * replaced.
+ */
+export async function replaceHoursException(
+  db: Database,
+  placeId: string,
+  exceptionId: string,
+  input: HoursExceptionInput,
+  verification: AssertableVerification,
+  author: RevisionAuthor,
+): Promise<PlaceHoursException | undefined> {
+  const values = hoursExceptionValues(input);
+  return db.transaction(async (tx) => {
+    const atTier = and(
+      eq(placeHoursExceptions.placeId, placeId),
+      eq(placeHoursExceptions.id, exceptionId),
+      eq(placeHoursExceptions.verification, verification),
+    );
+    const [before] = await tx.select(HOURS_EXCEPTION_COLUMNS).from(placeHoursExceptions).where(atTier).for('update');
+    if (!before) return undefined;
+
+    const clash = await findExceptionForRange(tx, placeId, values, verification);
+    if (clash && clash.id !== exceptionId) throw rangeTaken(clash);
+
+    const now = new Date();
+    const [row] = await tx
+      .update(placeHoursExceptions)
+      .set({ ...values, observedAt: now, updatedAt: now })
+      .where(atTier)
+      .returning(HOURS_EXCEPTION_COLUMNS);
+    if (!row) return undefined;
+    await tx.update(places).set({ updatedAt: now }).where(eq(places.id, placeId));
+
+    const field = hoursExceptionField(row.id);
+    const change = changeOf(field, hoursExceptionSnapshot(before), hoursExceptionSnapshot(row));
+    await recordRevision(tx, {
+      placeId,
+      action: 'hours_exception_replaced',
+      author,
+      changes: change ? [change] : [],
+    });
+    return toHoursException(row);
+  });
+}
+
+/**
+ * Withdraw one exception at ONE tier — the capability rule: the tier is a
+ * parameter whose type cannot hold `oxy_verified` or `external_source`, so no
+ * API path can delete an exception it was not entitled to write. The
+ * `hours_exception_withdrawn` revision records what was withdrawn.
+ */
+export async function withdrawHoursException(
+  db: Database,
+  placeId: string,
+  exceptionId: string,
+  verification: AssertableVerification,
+  author: RevisionAuthor,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [deleted] = await tx
+      .delete(placeHoursExceptions)
+      .where(
+        and(
+          eq(placeHoursExceptions.placeId, placeId),
+          eq(placeHoursExceptions.id, exceptionId),
+          eq(placeHoursExceptions.verification, verification),
+        ),
+      )
+      .returning(HOURS_EXCEPTION_COLUMNS);
+    if (!deleted) return false;
+    await tx.update(places).set({ updatedAt: new Date() }).where(eq(places.id, placeId));
+    await recordRevision(tx, {
+      placeId,
+      action: 'hours_exception_withdrawn',
+      author,
+      changes: [{ field: hoursExceptionField(deleted.id), before: hoursExceptionSnapshot(deleted) }],
+    });
+    return true;
+  });
+}
+
+/** Where a page of exceptions resumes: the last one served, by start date and id. */
+export type HoursExceptionKeyset = readonly [startsOn: string, exceptionId: string];
+
+/** One window of a place's exceptions, past ones included, earliest first. */
+export async function listHoursExceptions(
+  db: DatabaseOrTransaction,
+  placeId: string,
+  window: { limit: number; after?: HoursExceptionKeyset | undefined },
+): Promise<PlaceHoursException[]> {
+  const rows = await db
+    .select(HOURS_EXCEPTION_COLUMNS)
+    .from(placeHoursExceptions)
+    .where(
+      and(
+        eq(placeHoursExceptions.placeId, placeId),
+        window.after
+          ? sql`(${placeHoursExceptions.startsOn}, ${placeHoursExceptions.id}) > (${window.after[0]}::date, ${window.after[1]})`
+          : undefined,
+      ),
+    )
+    .orderBy(placeHoursExceptions.startsOn, placeHoursExceptions.id)
+    .limit(window.limit);
+  return rows.map(toHoursException);
 }
 
 // ── Claims ──────────────────────────────────────────────────────────────────

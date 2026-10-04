@@ -17,6 +17,7 @@ import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import {
   PLACE_REVISION_ACTIONS,
   PUBLIC_PLACE_REVISION_ACTIONS,
+  type CapabilityValue,
   type ModerationPlaceRevision,
   type PlaceRevision,
   type PlaceRevisionAction,
@@ -106,6 +107,7 @@ export type PlaceFieldRow = Pick<
   | 'contactEmail'
   | 'contactWebsite'
   | 'openingHours'
+  | 'timezone'
   | 'status'
 >;
 
@@ -138,6 +140,7 @@ export function placeFieldValues(row: PlaceFieldRow): FieldValues {
     'contact.email': json(row.contactEmail),
     'contact.website': json(row.contactWebsite),
     openingHours: json(row.openingHours),
+    timezone: json(row.timezone),
     status: row.status,
   };
 }
@@ -157,11 +160,41 @@ export function capabilityField(key: string): string {
 
 /** One capability assertion at one tier, as a revision records it. */
 export function capabilitySnapshot(row: {
-  value: boolean | string | number;
+  value: CapabilityValue;
   verification: string;
   observedAt: Date;
 }): RevisionValue {
   return { value: row.value, verification: row.verification, observedAt: row.observedAt.toISOString() };
+}
+
+/** The field an hours exception is recorded under: one exception, by id. */
+export function hoursExceptionField(exceptionId: string): string {
+  return `hoursExceptions.${exceptionId}`;
+}
+
+/**
+ * One hours exception as a revision records it — the exception at its tier,
+ * without the id the field already names or the source every API write shares.
+ */
+export function hoursExceptionSnapshot(row: {
+  startsOn: string;
+  endsOn: string;
+  closed: boolean;
+  intervals: readonly { opens: string; closes: string }[];
+  note: string | null;
+  verification: string;
+  observedAt: Date;
+}): RevisionValue {
+  const snapshot: { [key: string]: RevisionValue } = {
+    startsOn: row.startsOn,
+    endsOn: row.endsOn,
+    closed: row.closed,
+    intervals: row.intervals.map(({ opens, closes }) => ({ opens, closes })),
+    verification: row.verification,
+    observedAt: row.observedAt.toISOString(),
+  };
+  if (row.note !== null) snapshot.note = row.note;
+  return snapshot;
 }
 
 /**

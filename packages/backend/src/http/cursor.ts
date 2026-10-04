@@ -42,6 +42,7 @@ export const CURSOR_KINDS = [
   'places-nearby',
   'places-bounds',
   'place-claims',
+  'place-hours-exceptions',
   'account-claims',
   'place-revisions',
   'moderation-claims',

@@ -45,6 +45,7 @@ function row(overrides: Partial<PlaceRow> = {}): PlaceRow {
     contactEmail: null,
     contactWebsite: null,
     openingHours: null,
+    timezone: null,
     status: 'active',
     verificationState: 'unverified',
     verifiedAt: null,

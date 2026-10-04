@@ -15,6 +15,7 @@
 import { and, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import type {
+  CapabilityValue,
   ClaimDecisionState,
   DuplicateCandidate,
   DuplicateCandidateReason,
@@ -40,6 +41,7 @@ import type { Paged, TimeWindow } from '../../http/cursor';
 import { assertPublished, unpublishedPlace } from '../../places/placeLifecycle';
 import type { Database, DatabaseOrTransaction } from '../postgres';
 import {
+  placeHoursExceptions,
   placeReports,
   places,
   placesCapabilities,
@@ -48,7 +50,7 @@ import {
   placesNames,
   placesSources,
 } from '../schema';
-import { CAPABILITY_COLUMNS, CLAIM_COLUMNS, toClaim } from './placeMapper';
+import { CAPABILITY_COLUMNS, CLAIM_COLUMNS, HOURS_EXCEPTION_COLUMNS, toClaim } from './placeMapper';
 import {
   claimField,
   deleteCapabilityAtTier,
@@ -59,6 +61,8 @@ import {
   capabilityField,
   capabilitySnapshot,
   changeOf,
+  hoursExceptionField,
+  hoursExceptionSnapshot,
   nameField,
   recordRevision,
   type RevisionAuthor,
@@ -339,7 +343,7 @@ export async function verifyPlaceCapability(
   db: Database,
   placeId: string,
   key: CapabilityKeyParts,
-  value: boolean | string | number,
+  value: CapabilityValue,
   author: RevisionAuthor,
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
@@ -477,8 +481,14 @@ function movable<T extends { id: string }>(absorbed: readonly T[], survivor: rea
  *    so a source can only ever name one place, and the next import of that
  *    OpenStreetMap node has to update the survivor rather than a place nobody
  *    reads.
- *  - Names, capabilities and claims move wherever the survivor holds no row of
- *    its own under the same key ({@link movable}).
+ *  - Names, capabilities, hours exceptions and claims move wherever the
+ *    survivor holds no row of its own under the same key ({@link movable}).
+ *  - The survivor's own columns — name, location and the timezone derived
+ *    from it, categories, address, contact, weekly hours — are its statement
+ *    and are never rewritten by a merge, exactly as its children win every
+ *    collision. The absorbed place's columns stay on the absorbed row; a
+ *    moved source refreshes the survivor at the next import only where the
+ *    import's own provenance rule allows.
  *  - The absorbed place becomes `merged`, pointing at the survivor, and every
  *    place that pointed at the absorbed one now points at the survivor, so a
  *    redirect is always one hop.
@@ -527,6 +537,25 @@ async function mergePlaces(
       .set({ placeId: survivorId, updatedAt: now })
       .where(inArray(placesCapabilities.id, capabilities.map((row) => row.id)));
     received.push(...capabilities.map((row) => ({ field: capabilityField(row.key ?? `${row.namespace}.${row.capability}`), after: capabilitySnapshot(row) })));
+  }
+
+  // Hours exceptions are claims at a tier, keyed like a capability: the same
+  // dates at the same tier on the survivor win, everything else moves.
+  const [absorbedExceptions, survivorExceptions] = await Promise.all([
+    tx.select(HOURS_EXCEPTION_COLUMNS).from(placeHoursExceptions).where(eq(placeHoursExceptions.placeId, absorbedId)),
+    tx.select(HOURS_EXCEPTION_COLUMNS).from(placeHoursExceptions).where(eq(placeHoursExceptions.placeId, survivorId)),
+  ]);
+  const exceptions = movable(
+    absorbedExceptions,
+    survivorExceptions,
+    (row) => `${row.startsOn}\u0000${row.endsOn}\u0000${row.verification}`,
+  );
+  if (exceptions.length > 0) {
+    await tx
+      .update(placeHoursExceptions)
+      .set({ placeId: survivorId, updatedAt: now })
+      .where(inArray(placeHoursExceptions.id, exceptions.map((row) => row.id)));
+    received.push(...exceptions.map((row) => ({ field: hoursExceptionField(row.id), after: hoursExceptionSnapshot(row) })));
   }
 
   const [absorbedClaims, survivorClaims] = await Promise.all([

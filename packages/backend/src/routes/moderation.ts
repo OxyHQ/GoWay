@@ -30,6 +30,7 @@
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import {
   capabilityPathSchema,
+  capabilityValueSchemaFor,
   claimDecisionInputSchema,
   claimPathSchema,
   duplicateListQuerySchema,
@@ -60,7 +61,7 @@ import { listPlaceRevisions, revisionAuthor } from '../db/places/revisions';
 import { getDb } from '../db/postgres';
 import { ApiError } from '../http/apiError';
 import { cursorBinding, timePageOf, timeWindowOf } from '../http/cursor';
-import { parseBody, parsePath, parseQuery } from '../http/validation';
+import { parseBody, parsePath, parseQuery, parseValue } from '../http/validation';
 import { requiredOxyCaller } from '../oxy/caller';
 import { unpublishedPlace } from '../places/placeLifecycle';
 
@@ -136,7 +137,12 @@ export function createModerationRouter(dependencies: ModerationRouterDependencie
     ...operatorOnly,
     route(async (request, response) => {
       const { placeId, key } = parsePath(capabilityPathSchema, request.params);
-      const { value } = parseBody(moderationCapabilityInputSchema, request.body);
+      // The path named the key, so the value is held to that key's registry
+      // entry exactly as a public assertion's is: an operator cannot verify a
+      // value the registry would refuse from anybody, and it is stored
+      // normalized by the entry (a handle as its URL, a set in registry order).
+      const input = parseBody(moderationCapabilityInputSchema, request.body);
+      const value = parseValue(capabilityValueSchemaFor(key), input.value, 'value');
       const db = getDb();
       if (!(await verifyPlaceCapability(db, placeId, splitCapabilityKey(key), value, operator(request)))) {
         throw new ApiError('not_found', 'No place has that id.');

@@ -29,6 +29,7 @@ import {
 import { createGoWayCors } from './middleware/cors';
 import { healthRouter } from './routes/health';
 import { createCaptureRouter } from './routes/capture';
+import { createCategoriesRouter } from './routes/categories';
 import { createModerationRouter } from './routes/moderation';
 import { createOpenApiRouter } from './routes/openapi';
 import { createPlacesRouter } from './routes/places';
@@ -109,6 +110,7 @@ export function createApp(): Express {
 
   const v1: Router = Router();
   v1.use(createOpenApiRouter());
+  v1.use(createCategoriesRouter());
   v1.use(createPlacesRouter({ optionalAuth, requireAuth, accountRoles, reportRateLimit }));
   /**
    * Moderation: claim decisions, Oxy verification, duplicate merges and the
