@@ -332,7 +332,7 @@ const place = {
   id: 'gw_place_01H8',
   name: 'Cafè de la Plaça',
   location: { latitude: 41.3874, longitude: 2.1686 },
-  categories: ['cafe', 'food_drink'],
+  categories: ['food.cafe'],
   status: 'active',
   verification: { state: 'owner_verified', verifiedAt: '2026-01-04T10:00:00.000Z' },
   sources: [{ source: 'openstreetmap', sourceId: 'node/12345' }],
@@ -386,7 +386,9 @@ async function exercise(sdk) {
   check(urls.length === 2, 'and never sent');
 
   check(sdk.toGeoPosition(first.items[0].location)[0] === 2.1686, 'bundled helper is longitude-first');
-  check(sdk.WELL_KNOWN_CAPABILITIES.includes('payments.faircoin.accepted'), 'bundled value set');
+  check(sdk.CAPABILITY_KEYS.includes('payments.faircoin.accepted'), 'bundled capability registry');
+  check(sdk.categoryLabel('food.cafe', 'es') === 'Cafetería', 'bundled category taxonomy');
+  check(sdk.openingStatusAt({}).state === 'unknown', 'bundled opening-hours evaluation');
   check(sdk.API_ERROR_RETRYABLE.no_route === false, 'bundled retryability table');
   check(sdk.GOWAY_API_BASE_PATH === '/api/v1', 'bundled API root');
 

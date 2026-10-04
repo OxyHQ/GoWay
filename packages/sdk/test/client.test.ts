@@ -6,6 +6,7 @@ import {
   GoWayValidationError,
   MAX_PLACE_LIST_LIMIT,
   MAX_WAYPOINTS,
+  type CapabilityKey,
   type GoWayClient,
   type PlaceCapabilityInput,
   type PlaceCreateInput,
@@ -75,12 +76,12 @@ describe('query serialisation', () => {
       longitude: 2.1686,
       radiusMeters: 5000,
       capabilities: ['payments.faircoin.accepted', 'commerce.mercaria.store'],
-      categories: ['cafe', 'bar'],
+      categories: ['food.cafe', 'food.bar'],
       limit: 20,
     });
     await client.places.nearby({
       limit: 20,
-      categories: ['bar', 'cafe', 'bar'],
+      categories: ['food.bar', 'food.cafe', 'food.bar'],
       capabilities: ['commerce.mercaria.store', 'payments.faircoin.accepted'],
       radiusMeters: 5000,
       longitude: 2.1686,
@@ -89,7 +90,7 @@ describe('query serialisation', () => {
     expect(calls[0]?.url).toBe(calls[1]?.url);
     expect(queryOf(calls[0]?.url ?? '')).toBe(
       'capabilities=commerce.mercaria.store,payments.faircoin.accepted&' +
-        'categories=bar,cafe&latitude=41.3874&limit=20&longitude=2.1686&radiusMeters=5000',
+        'categories=food.bar,food.cafe&latitude=41.3874&limit=20&longitude=2.1686&radiusMeters=5000',
     );
   });
 
@@ -260,14 +261,18 @@ describe('capabilities and claims', () => {
     expect(place.id).toBe('gw_place_01H8');
   });
 
-  it('refuses a capability key in the path that is not lower-case and namespaced', async () => {
+  it('refuses a capability key in the path that is not a registered one', async () => {
     const { client, calls } = clientFor(PLACE);
+    // The casts are the point: an untyped caller can still send these.
     await expect(
-      client.places.capabilities.put('gw_place_01H8', 'Payments.FairCoin', { value: true }),
+      client.places.capabilities.put('gw_place_01H8', 'Payments.FairCoin' as CapabilityKey, { value: true }),
     ).rejects.toBeInstanceOf(GoWayValidationError);
-    await expect(client.places.capabilities.delete('gw_place_01H8', 'faircoin')).rejects.toBeInstanceOf(
-      GoWayValidationError,
-    );
+    await expect(
+      client.places.capabilities.delete('gw_place_01H8', 'faircoin' as CapabilityKey),
+    ).rejects.toBeInstanceOf(GoWayValidationError);
+    await expect(
+      client.places.capabilities.put('gw_place_01H8', 'payments.faircoin.rate' as CapabilityKey, { value: 1 }),
+    ).rejects.toBeInstanceOf(GoWayValidationError);
     expect(calls).toHaveLength(0);
   });
 

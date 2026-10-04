@@ -9,7 +9,7 @@ import {
   duplicateListQuerySchema,
   duplicatePathSchema,
   duplicateResolutionInputSchema,
-  moderationCapabilityInputSchema,
+  moderationCapabilityInputSchemaFor,
   moderationClaimListQuerySchema,
   moderationPlaceReportPageSchema,
   moderationPlaceReportSchema,
@@ -31,15 +31,21 @@ import {
   captureSessionSchema,
   captureUploadPolicySchema,
   captureUploadTicketSchema,
+  categoryPageSchema,
   claimListQuerySchema,
   geoCoordinateSchema,
+  hoursExceptionListQuerySchema,
+  hoursExceptionPathSchema,
   nearbyPlacesQuerySchema,
   normalizeLanguageTag,
-  placeCapabilityAssertionSchema,
+  placeCapabilityAssertionSchemaFor,
   placeClaimInputSchema,
   placeClaimPageSchema,
   placeClaimSchema,
   placeCreateInputSchema,
+  placeHoursExceptionInputSchema,
+  placeHoursExceptionPageSchema,
+  placeHoursExceptionSchema,
   placePageSchema,
   placePathSchema,
   placeReadQuerySchema,
@@ -92,7 +98,9 @@ import type {
   CaptureSessionPage,
   CaptureUploadPolicy,
   CaptureUploadTicket,
+  CategoryPage,
   ClaimListQuery,
+  HoursExceptionListQuery,
   MapViewport,
   NearbyPlacesQuery,
   Place,
@@ -101,6 +109,9 @@ import type {
   PlaceClaimInput,
   PlaceClaimPage,
   PlaceCreateInput,
+  PlaceHoursException,
+  PlaceHoursExceptionInput,
+  PlaceHoursExceptionPage,
   PlaceId,
   PlacePage,
   PlacesInBoundsQuery,
@@ -201,13 +212,39 @@ export interface GoWayPlaceReadOptions extends GoWayRequestOptions {
  */
 export interface GoWayPlaceCapabilitiesApi {
   /**
-   * Assert or refresh `key` on a place, and get the place back. `value` is
-   * required — a community reporter retracts with `false`, which is better
-   * evidence than a deletion. Identity-bound.
+   * Assert or refresh `key` on a place, and get the place back. `key` must be
+   * one of `CAPABILITY_KEYS`, and `value` must be the kind that key declares
+   * (a flag, an enum value, a set of them, a number, a URL or a handle, a
+   * text) — both are checked before anything is sent. `value` is required: a
+   * community reporter retracts with `false`, which is better evidence than a
+   * deletion. Identity-bound.
    */
   put(placeId: PlaceId, key: CapabilityKey, assertion: PlaceCapabilityAssertion, options?: GoWayRequestOptions): Promise<Place>;
   /** Withdraw the business's own assertion of `key`. Resolves with nothing (`204`). Identity-bound. */
   delete(placeId: PlaceId, key: CapabilityKey, options?: GoWayRequestOptions): Promise<void>;
+}
+
+/**
+ * Dated exceptions to a place's weekly hours: closures and special hours.
+ *
+ * Writes follow the capability rules: the tier is the server's to derive (an
+ * approved claim earns `business_asserted`), a caller rewrites only an
+ * exception at their own tier, and only an approved claimant may withdraw one.
+ */
+export interface GoWayPlaceHoursExceptionsApi {
+  /** Every exception, past ones included, earliest first. */
+  list(placeId: PlaceId, query?: HoursExceptionListQuery, options?: GoWayRequestOptions): Promise<PlaceHoursExceptionPage>;
+  /** Report a closure or special hours. Identity-bound. */
+  create(placeId: PlaceId, input: PlaceHoursExceptionInput, options?: GoWayRequestOptions): Promise<PlaceHoursException>;
+  /** Rewrite one exception, whole, at the caller's own tier. Identity-bound. */
+  replace(
+    placeId: PlaceId,
+    exceptionId: string,
+    input: PlaceHoursExceptionInput,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceHoursException>;
+  /** Withdraw the business's own exception. Resolves with nothing (`204`). Identity-bound. */
+  delete(placeId: PlaceId, exceptionId: string, options?: GoWayRequestOptions): Promise<void>;
 }
 
 /** Claims on one place: the request to be recognised as running it. */
@@ -263,7 +300,18 @@ export interface GoWayPlacesApi {
    */
   report(placeId: PlaceId, input: PlaceReportInput, options?: GoWayRequestOptions): Promise<PlaceReport>;
   readonly capabilities: GoWayPlaceCapabilitiesApi;
+  readonly hoursExceptions: GoWayPlaceHoursExceptionsApi;
   readonly claims: GoWayPlaceClaimsApi;
+}
+
+/** The place category taxonomy. */
+export interface GoWayCategoriesApi {
+  /**
+   * Every category, its parent, its glyph key and its labels, in one page.
+   * The same table ships inside this SDK (`CATEGORIES`, `categoryLabel`), so
+   * this is for a client that wants the server's current copy.
+   */
+  list(options?: GoWayRequestOptions): Promise<CategoryPage>;
 }
 
 /** One account's claims, across every place. */
@@ -399,6 +447,7 @@ export interface GoWayCapturesApi {
 
 export interface GoWayClient {
   readonly places: GoWayPlacesApi;
+  readonly categories: GoWayCategoriesApi;
   readonly claims: GoWayClaimsApi;
   readonly moderation: GoWayModerationApi;
   readonly search: GoWaySearchApi;
@@ -497,6 +546,11 @@ function duplicatePath(candidateId: string): string {
 function reportPath(reportId: string): string {
   const path = validInput(reportPathSchema, { reportId }, 'path');
   return `/moderation/reports/${pathSegment(path.reportId, 'reportId')}`;
+}
+
+function hoursExceptionPath(placeId: PlaceId, exceptionId: string): string {
+  const path = validInput(hoursExceptionPathSchema, { placeId, exceptionId }, 'path');
+  return `/places/${pathSegment(path.placeId, 'placeId')}/hours-exceptions/${pathSegment(path.exceptionId, 'exceptionId')}`;
 }
 
 function sessionPath(sessionId: string): string {
@@ -712,7 +766,9 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
           {
             method: 'PUT',
             path: capabilityPath(placeId, key),
-            body: validInput(placeCapabilityAssertionSchema, assertion, 'assertion'),
+            // `capabilityPath` has already refused an unregistered key, so the
+            // value can be held to that key's own entry.
+            body: validInput(placeCapabilityAssertionSchemaFor(key), assertion, 'assertion'),
             signal: callOptions.signal,
           },
           placeSchema,
@@ -722,6 +778,56 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         request(
           config,
           { method: 'DELETE', path: capabilityPath(placeId, key), signal: callOptions.signal },
+          null,
+        ),
+    }),
+
+    hoursExceptions: Object.freeze({
+      list: async (placeId: PlaceId, query: HoursExceptionListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          {
+            method: 'GET',
+            path: `${placePath(placeId)}/hours-exceptions`,
+            query: validInput(hoursExceptionListQuerySchema, query, 'query'),
+            signal: callOptions.signal,
+          },
+          placeHoursExceptionPageSchema,
+        ),
+
+      create: async (placeId: PlaceId, input: PlaceHoursExceptionInput, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          {
+            method: 'POST',
+            path: `${placePath(placeId)}/hours-exceptions`,
+            body: validInput(placeHoursExceptionInputSchema, input, 'input'),
+            signal: callOptions.signal,
+          },
+          placeHoursExceptionSchema,
+        ),
+
+      replace: async (
+        placeId: PlaceId,
+        exceptionId: string,
+        input: PlaceHoursExceptionInput,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
+        request(
+          config,
+          {
+            method: 'PUT',
+            path: hoursExceptionPath(placeId, exceptionId),
+            body: validInput(placeHoursExceptionInputSchema, input, 'input'),
+            signal: callOptions.signal,
+          },
+          placeHoursExceptionSchema,
+        ),
+
+      delete: async (placeId: PlaceId, exceptionId: string, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          { method: 'DELETE', path: hoursExceptionPath(placeId, exceptionId), signal: callOptions.signal },
           null,
         ),
     }),
@@ -751,6 +857,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
           placeClaimPageSchema,
         ),
     }),
+  });
+
+  const categories: GoWayCategoriesApi = Object.freeze({
+    list: async (callOptions: GoWayRequestOptions = {}) =>
+      request(config, { method: 'GET', path: '/categories', signal: callOptions.signal }, categoryPageSchema),
   });
 
   const claims: GoWayClaimsApi = Object.freeze({
@@ -815,7 +926,9 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         {
           method: 'PUT',
           path: `/moderation${capabilityPath(placeId, key)}`,
-          body: validInput(moderationCapabilityInputSchema, input, 'input'),
+          // As for a public assertion: the key is registered by now, so the
+          // value is held to that key's own entry before it is sent.
+          body: validInput(moderationCapabilityInputSchemaFor(key), input, 'input'),
           signal: callOptions.signal,
         },
         placeSchema,
@@ -1042,6 +1155,7 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
 
   return Object.freeze({
     places,
+    categories,
     claims,
     moderation,
     search,

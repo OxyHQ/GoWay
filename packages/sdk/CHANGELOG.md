@@ -91,6 +91,7 @@ almost every part of it is breaking.
 - **Operations that ask Oxy about an organization can reject with
   `GoWayUnavailableError`** (`service_unavailable`, 503, retryable) when Oxy
   cannot answer: `places.update`, `places.capabilities.put`/`delete`,
+  `places.hoursExceptions.create`/`replace`/`delete`,
   `places.claims.create`/`list` and `claims.list`. GoWay fails closed rather
   than guessing. A place nobody has claimed never needs the answer.
 - **`PlaceStatus` gains `merged`**, a stored state like `removed`: a merged place
@@ -107,6 +108,30 @@ almost every part of it is breaking.
   gains `names`, its `status` narrows as above, and a written `source` is a
   `PlaceSourceRefInput` (`source` and `sourceId`; `observedAt` is the server's
   clock). `GoWayHttpMethod` adds `PUT`.
+- **Categories are a closed taxonomy of dotted keys** (`food.cafe`,
+  `shop.books`, `transport.rail_station`; `CATEGORY_KEYS`). `Place.categories`
+  holds those keys only — the OpenMapTiles-style `cafe`/`food_drink` values the
+  importer wrote are converted server-side — and a category in a write or a
+  `categories` filter that is not in the taxonomy is refused client-side. A
+  filter on a parent (`food`) matches every key below it, so a place no longer
+  carries its ancestors.
+- **Capability keys are a closed, typed registry** (`CAPABILITY_KEYS`).
+  `WELL_KNOWN_CAPABILITIES` and `WellKnownCapability` are gone; `CapabilityKey`
+  is now the union of registered keys. Each key declares its value kind
+  (boolean, enum, enum set, integer, price level, URL, text) and every write —
+  `capabilities.put` and a place body's `capabilities` — is held to it before
+  anything is sent: an unregistered key or a value of the wrong kind is a
+  `GoWayValidationError`. A value comes back normalized by its key (a social
+  handle as its URL, an enum set in registry order). `CapabilityValue` widens
+  to `boolean | string | number | string[]`.
+- **`capabilityValueHolds(value)` is replaced by `capabilityHolds(key, value)`**:
+  whether a value holds now depends on the key (`accessibility.wheelchair: 'no'`
+  is an assertion that the place does NOT have it), and `[]` never holds.
+- **`OpeningHours.timezone` is removed.** The zone is `Place.timezone`, which
+  GoWay derives from the position and no caller can write; `openingHoursInput`
+  no longer accepts one.
+- The `capabilities` filter is a list of `key` or `key:value` strings
+  (`'food.cuisine:italian'`), typed `string[]` rather than `CapabilityKey[]`.
 
 ### Added
 
@@ -119,7 +144,11 @@ almost every part of it is breaking.
 - `places.revisions(placeId, query?)` → `PlaceRevisionPage`: a place's public
   history, newest first — what changed and when, as field-level
   `{ field, before?, after? }` changes. It never names an account or a person,
-  and never lists a claim, report or duplicate review. Needs no account.
+  and never lists a claim, report or duplicate review. Needs no account. An
+  hours-exception write is history too: `hours_exception_created`,
+  `hours_exception_replaced` and `hours_exception_withdrawn` are public
+  actions whose change is `hoursExceptions.<id>`, and a move that changes the
+  derived `timezone` lists it.
 - `places.report(placeId, input)` → `PlaceReport`: report a place to moderation
   with a reason from `PLACE_REPORT_REASONS` and an optional note that only
   operators read. Repeating it while your report is open resolves with that
@@ -130,7 +159,9 @@ almost every part of it is breaking.
   `verifyCapability`, `withdrawVerifiedCapability`, `revisions`, `duplicates`,
   `resolveDuplicate`, `reports`, `resolveReport` — for GoWay's own operators.
   Every call needs a session whose person is on the deployment's operator
-  allow-list and rejects with `GoWayForbiddenError` for anybody else. It ships
+  allow-list and rejects with `GoWayForbiddenError` for anybody else.
+  `verifyCapability` holds its value to the key's registry entry, as
+  `places.capabilities.put` does, before anything is sent. It ships
   in the SDK so GoWay's tools are built on the same contract; no integration
   needs it.
 - `iterateGoWayPages(fetchPage)` — an async iterator over every item of a list,
@@ -146,7 +177,7 @@ almost every part of it is breaking.
   `DEFAULT_CAPTURE_LIST_LIMIT`, `SEARCH_MAX_LIMIT`, `SEARCH_MAX_DEPTH`,
   `MAX_SEARCH_QUERY_LENGTH`, `MAX_WAYPOINTS`, `MAX_CURSOR_LENGTH`,
   `MAX_LANGUAGE_TAG_LENGTH`; the helpers `placeHasCapability`,
-  `strongestCapability`, `capabilityValueHolds`, `splitCapabilityKey` and
+  `strongestCapability`, `splitCapabilityKey` and
   `boundingBoxWidth`; and the types `Page`, `PlacePage`,
   `PlaceWithDistancePage`, `PlaceClaimPage`, `CaptureSessionPage`,
   `CaptureAssetPage`, `PlaceCapabilityAssertion`, `PlaceClaimInput`,
@@ -163,6 +194,36 @@ almost every part of it is breaking.
   `GONE_MERGED_INTO_DETAIL`, their limits, and their types.
 - The whole route registry is covered: a unit test holds every operation the
   API publishes to an SDK method.
+- Place data: `Place.timezone` (IANA, derived from the position) and
+  `Place.hoursExceptions` (dated closures and special hours that have not
+  ended, on a single-place read; absent from lists).
+- `openingStatusAt(place, now?)` → `OpeningStatus`: `open`/`closed`/`unknown`,
+  today's local date, the next change as an instant and as the place's own
+  clock reads it, and the exception deciding today. The same evaluation the
+  GoWay API and app use; it answers `unknown` without a zone rather than
+  guessing one.
+- `places.hoursExceptions.list|create|replace|delete` over
+  `/places/{placeId}/hours-exceptions`, with the capability authority rules:
+  the tier is derived, a caller rewrites only their own tier's exception, and
+  only whoever acts for an approved claimant withdraws one. A merged place's
+  exceptions move to the place that absorbed it, unless that place already
+  holds one for the same dates at the same tier.
+- `categories.list()` → `CategoryPage` (`GET /categories`), and the bundled
+  taxonomy: `CATEGORIES`, `CATEGORY_KEYS`, `CATEGORY_ICONS`, `categoryLabel`,
+  `categoryOf`, `categoryParent`, `categoryRoot`, `categoryDescendants`, `isCategoryKey`.
+- The capability registry's public half: `CAPABILITY_KEYS`,
+  `CAPABILITY_GROUPS`, `CAPABILITY_VALUE_KINDS`, `capabilityLabel`,
+  `capabilityValueLabel`, `capabilityGroupLabel`, `capabilityGroupOf`,
+  `capabilityValueKind`, `isCapabilityKey`, `capabilityHolds` and
+  `placeMatchesCapabilityFilter`.
+- `LABEL_LANGUAGES` and `localizedLabel` — every label is English and Spanish,
+  with English as the fallback.
+- Types `Category`, `CategoryKey`, `CategoryIcon`, `CategoryPage`,
+  `CapabilityGroup`, `CapabilityValueKind`, `PlaceHoursException`,
+  `PlaceHoursExceptionInput`, `PlaceHoursExceptionPage`, `HoursExceptionListQuery`,
+  `TimeRange`, `OpeningStatus`, `OpeningChange`, `OpeningFacts`, `Labels`,
+  `LabelLanguage`, and the `GoWayCategoriesApi` and
+  `GoWayPlaceHoursExceptionsApi` interfaces.
 
 ## 0.2.0 — unreleased
 

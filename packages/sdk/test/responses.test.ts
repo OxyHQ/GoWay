@@ -49,6 +49,7 @@ describe('place responses', () => {
       'name',
       'sources',
       'status',
+      'timezone',
       'updatedAt',
       'verification',
     ]);

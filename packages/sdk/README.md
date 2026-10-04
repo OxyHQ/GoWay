@@ -94,7 +94,7 @@ const place = await goway.places.get('gw_place_01H8');
 // Everything in the current viewport — the map read. One page at a time.
 const { items: visible, nextCursor } = await goway.places.inBounds({
   west: 2.10, south: 41.36, east: 2.20, north: 41.41,
-  categories: ['cafe', 'food_drink'],
+  categories: ['food'],          // a parent matches every category below it
   limit: 200,
 });
 
@@ -102,12 +102,26 @@ const { items: visible, nextCursor } = await goway.places.inBounds({
 const created = await goway.places.create({
   name: 'Cafè de la Plaça',
   location: { latitude: 41.3874, longitude: 2.1686 },
-  categories: ['cafe', 'food_drink'],
+  categories: ['food.cafe'],
   capabilities: [{ namespace: 'payments.faircoin', capability: 'accepted', value: true }],
   names: [{ language: 'es', name: 'Café de la Plaza' }],
 });
 await goway.places.update(created.id, { contact: { website: 'https://example.org' } });
 ```
+
+Categories are keys of one closed taxonomy (`CATEGORIES`, `CATEGORY_KEYS`; the
+server's copy is `goway.categories.list()`): `food.cafe`, `shop.books`,
+`transport.rail_station`. A key outside it is refused client-side. Render one
+with `categoryLabel(key, locale)` (English and Spanish today, English as the
+fallback). A place stores its most specific keys; filtering by a parent matches
+its descendants.
+
+Opening hours are a weekly schedule read in `place.timezone` — which GoWay
+derives from the position — plus `place.hoursExceptions`, the dated closures and
+special hours that have not ended (on a single-place read). Never evaluate them
+yourself: `openingStatusAt(place)` answers `open`/`closed`/`unknown` and when that
+next changes, exactly as GoWay's own app does. Exceptions are written through
+`places.hoursExceptions.create|replace|delete`, under the capability rules below.
 
 A place write is parsed by the contract's input schema and the PARSED body is
 what is sent: `id`, `verification` and a capability's `verification`/`observedAt`
@@ -208,9 +222,12 @@ const { items: pickupPoints } = await goway.places.nearby({
 });
 ```
 
-A key is a lower-case `<domain>.<product>.<capability>`, and a list is a
-**conjunction**: a place matches only when it HAS every key listed — its
-strongest assertion of each one holds (is not `false`, `0` or `''`). A business
+A key is one of `CAPABILITY_KEYS` — the registry that types every value — and a
+list is a **conjunction**: a place matches only when it HAS every key listed —
+its strongest assertion of each one holds (is not `false`, `0`, `''` or `[]`,
+nor a value the key names as an absence, like `accessibility.wheelchair: 'no'`).
+An enum, enum-set or price key can also be filtered by value:
+`'food.cuisine:italian'`, `'accessibility.wheelchair:limited'`, `'price.level:2'`. A business
 that asserts `false` outranks a community report of `true`, so a merchant that
 stopped accepting FairCoin drops out of the filter. A bare key such as
 `'faircoin'`, or a mixed-case one, is refused client-side rather than silently
@@ -221,9 +238,13 @@ option is accepted by `places.inBounds` — the viewport read — and by
 
 Nothing about the capability table's layout appears in that call, and nothing
 about FairCoin appears in GoWay's renderer. The same mechanism serves
-`commerce.mercaria.*`, `mobility.moovo.*`, `housing.homiio.*` and any key a
-third party defines — `WELL_KNOWN_CAPABILITIES` autocompletes, but the namespace
-is open, so a new consumer does not need a GoWay release.
+accessibility, payment methods, amenities, cuisine, price, social links and the
+ecosystem keys (`commerce.mercaria.store`, `mobility.moovo.pickup`,
+`housing.homiio.listings`). The key space is CLOSED: each key declares the kind
+of value it holds, `capabilities.put` checks the value before sending, and a key
+GoWay has not registered is refused — a new key is a GoWay release. Label one
+with `capabilityLabel(key, locale)` and `capabilityValueLabel(key, value, locale)`,
+and group them with `capabilityGroupOf(key)`.
 
 Each result carries its distance and the **evidence** behind every claim:
 
