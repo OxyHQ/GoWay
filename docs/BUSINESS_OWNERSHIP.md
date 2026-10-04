@@ -70,8 +70,8 @@ in production's runtime template, the Expo dev servers locally.
 `place_revisions` is **append-only**, and every write path in `db/places`
 records exactly one row **in the same transaction** as the write: place create
 and update, capability assertion and withdrawal, hours-exception creation,
-rewrite and withdrawal, claim request and decision, and every moderation
-action. A write that rolled back left no revision; a
+rewrite and withdrawal, gallery and review writes (`docs/PLACE_MEDIA_REVIEWS.md`),
+claim request and decision, and every moderation action. A write that rolled back left no revision; a
 revision always describes a write that committed. The realdb suite proves it by
 making the revision insert fail and asserting the write did not land.
 
@@ -138,10 +138,13 @@ with both places locked in id order:
 - **Sources move**, all of them. `(source, sourceId)` is unique across the
   table, so the next import of that OpenStreetMap node updates the survivor
   rather than a place nobody reads.
-- **Names, capabilities, hours exceptions and claims move** wherever the
-  survivor holds no row of its own under the same key — for an exception, the
-  same dates at the same tier. The survivor's statement wins every collision;
-  the losing row stays on the absorbed place rather than being destroyed.
+- **Names, descriptions, capabilities, hours exceptions and claims move**
+  wherever the survivor holds no row of its own under the same key — for an
+  exception, the same dates at the same tier. The survivor's statement wins
+  every collision; the losing row stays on the absorbed place rather than being
+  destroyed. Gallery items move where the survivor does not already show the
+  same Oxy file; every review moves, one person's older review set aside as
+  `hidden` when they reviewed both (`docs/PLACE_MEDIA_REVIEWS.md`).
 - **The survivor's own columns are never rewritten.** Its name, position and
   the `timezone` derived from it, `categories`, address, contact and weekly
   hours are its statement, exactly as its children win their collisions; the

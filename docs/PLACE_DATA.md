@@ -233,6 +233,11 @@ the derived zone. Capabilities, as `external_source` tied to the element's own
 `osmImport.realdb.test.ts` holds each of these, including a second identical
 run writing no place row.
 
+## 5. Photos, reviews and descriptions
+
+Gallery items (Oxy files), reviews with their derived rating, and descriptions
+per language are `docs/PLACE_MEDIA_REVIEWS.md`.
+
 ## Deliberate debt
 
 - Price level and two accessibility flags (step-free entrance, accessible parking) have no OpenStreetMap mapping; they
