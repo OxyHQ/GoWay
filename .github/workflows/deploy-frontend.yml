@@ -73,18 +73,18 @@ jobs:
 
       - name: Install exact dependency graph
         # `--ignore-scripts` matches ci.yml. The root `postinstall` builds
-        # shared-types and the SDK, and letting it run here would mean the two
+        # the contracts and the SDK, and letting it run here would mean the two
         # steps below are silently redundant on a good day and silently
         # DIFFERENT on a bad one — the install script and the explicit steps
         # would be two places that decide build order. They are built below, in
         # dependency order, where the order is visible.
         run: bun install --frozen-lockfile --ignore-scripts
 
-      - name: Build shared contracts
-        # Every other package imports `@goway/shared-types` by NAME, which
-        # resolves to its built `dist/`. A warm local tree hides this; a clean
-        # CI checkout does not.
-        run: bun run build:shared-types
+      - name: Build the contracts
+        # The SDK bundles `@goway/contracts` from its source, and the backend
+        # imports it by NAME from its built `dist/`. Built first, in dependency
+        # order, exactly as ci.yml does.
+        run: bun run build:contracts
 
       - name: Build the SDK
         # BEFORE the export, and this exact ordering has already broken CI once.
@@ -93,7 +93,7 @@ jobs:
         # artifact. On a developer's machine the root postinstall has already
         # produced it, so the dependency is invisible; here `--ignore-scripts`
         # means nothing has, and the frontend fails with TS2307 on every
-        # importing file. The SDK bundles `@goway/shared-types`, so it must
+        # importing file. The SDK bundles `@goway/contracts`, so it must
         # build after it.
         run: bun run build:sdk
 
@@ -188,7 +188,7 @@ jobs:
       #      `workingDirectory`. In this monorepo the lockfile is at the ROOT,
       #      so aimed at `packages/frontend` it falls back to npm, and npm
       #      cannot resolve `workspace:*` at all — which is how `@goway.to/sdk`
-      #      and `@goway/shared-types` are depended on here.
+      #      is depended on here.
       #
       # PINNED TO A MAJOR on purpose: unpinned, `bunx wrangler` re-resolves the
       # latest major on every run, changing the deploy path with no diff to show

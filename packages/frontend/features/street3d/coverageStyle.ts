@@ -16,7 +16,7 @@ import {
   type StreetCoverageArea,
   type StreetCoverageAreaState,
   type StreetSceneSummary,
-} from '@goway/shared-types';
+} from '@goway.to/sdk';
 
 import type { GeoBounds, MapMarker, MapOverlay } from '@/components/map/types';
 

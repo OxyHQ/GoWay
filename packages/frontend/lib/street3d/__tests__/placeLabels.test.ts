@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { Place } from '@goway.to/sdk';
-import type { StreetSceneWorldTransform } from '@goway/shared-types';
+import type { StreetSceneWorldTransform } from '@goway.to/sdk';
 
 import { geodeticToEnu, transformPoint } from '../geodesy';
 import { placeLabelsForScene } from '../placeLabels';

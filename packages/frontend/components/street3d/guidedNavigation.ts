@@ -12,7 +12,7 @@
  * Pure numbers, no renderer: the engine asks these questions every input and
  * every frame, and they are unit-tested here.
  */
-import type { StreetSceneFieldOfView, StreetSceneViewpoint } from '@goway/shared-types';
+import type { StreetSceneFieldOfView, StreetSceneViewpoint } from '@goway.to/sdk';
 
 import type { Vec3 } from './types';
 

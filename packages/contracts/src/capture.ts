@@ -36,7 +36,10 @@
  * to change how it retrieves neighbours without a public contract change.
  */
 
-import type { GeoCoordinate } from './geo';
+import { z } from 'zod';
+import { geoCoordinateSchema } from './geo';
+import { cursorSchema, limitSchema, pageSchema } from './pagination';
+import { instantSchema } from './time';
 
 /** A stable GoWay capture session identifier. */
 export type CaptureSessionId = string;
@@ -130,37 +133,39 @@ export type CaptureLocationWitness = (typeof CAPTURE_LOCATION_WITNESSES)[number]
  * side by side rather than reconciled into one column, so a later privacy or
  * georeferencing pass can see that they disagreed.
  */
-export interface CaptureLocationEvidence {
-  origin: CaptureLocationOrigin;
-  witness: CaptureLocationWitness;
-  coordinate: GeoCoordinate;
+export const captureLocationEvidenceSchema = z.object({
+  origin: z.enum(CAPTURE_LOCATION_ORIGINS),
+  witness: z.enum(CAPTURE_LOCATION_WITNESSES),
+  coordinate: geoCoordinateSchema,
   /**
    * Horizontal accuracy in metres, as the platform reported it — a radius, not
    * an error bar. Absent means unknown, which is NOT the same as accurate.
    */
-  accuracyMeters?: number;
+  accuracyMeters: z.number().min(0).optional(),
   /** Metres above the WGS 84 ellipsoid, when the source records one. */
-  altitudeMeters?: number;
+  altitudeMeters: z.number().optional(),
   /** Compass heading in degrees clockwise from true north, `[0, 360)`. */
-  headingDegrees?: number;
+  headingDegrees: z.number().optional(),
   /** ISO 8601 instant this position was observed. */
-  observedAt?: string;
-}
+  observedAt: instantSchema.optional(),
+});
+export type CaptureLocationEvidence = z.infer<typeof captureLocationEvidenceSchema>;
 
 /**
  * The position GoWay actually uses for this capture, and where it came from.
  *
  * Derived from {@link CaptureLocationEvidence} by GoWay and never sent by a
  * client. A consumer that needs to know how much to trust it reads `origin` and
- * `witness`, exactly as a consumer of {@link import('./place').PlaceCapability}
- * reads `verification`.
+ * `witness`, exactly as a consumer of a place's `PlaceCapability` reads
+ * `verification`.
  */
-export interface CaptureAnchor {
-  coordinate: GeoCoordinate;
-  origin: CaptureLocationOrigin;
-  witness: CaptureLocationWitness;
-  accuracyMeters?: number;
-}
+export const captureAnchorSchema = captureLocationEvidenceSchema.pick({
+  coordinate: true,
+  origin: true,
+  witness: true,
+  accuracyMeters: true,
+});
+export type CaptureAnchor = z.infer<typeof captureAnchorSchema>;
 
 // ── What the camera was doing ───────────────────────────────────────────────
 
@@ -178,25 +183,26 @@ export interface CaptureAnchor {
  * DEVICE rather than a CAMERA is a fingerprint, and #13 forbids assembling one
  * out of contribution metadata.
  */
-export interface CaptureCameraMetadata {
-  widthPixels?: number;
-  heightPixels?: number;
+export const captureCameraMetadataSchema = z.object({
+  widthPixels: z.number().min(0).optional(),
+  heightPixels: z.number().min(0).optional(),
   /** EXIF orientation tag, 1–8. Normalized on ingest; consumers do not reapply it. */
-  exifOrientation?: number;
-  focalLengthMm?: number;
+  exifOrientation: z.number().min(0).optional(),
+  focalLengthMm: z.number().min(0).optional(),
   /** 35 mm equivalent focal length — the comparable number across sensor sizes. */
-  focalLength35mm?: number;
+  focalLength35mm: z.number().min(0).optional(),
   /** Camera make, e.g. `Apple`. An intrinsics hint, never a device id. */
-  make?: string;
+  make: z.string().optional(),
   /** Camera model, e.g. `iPhone 15 Pro`. */
-  model?: string;
+  model: z.string().optional(),
   /** Lens model, where the platform reports one distinctly. */
-  lens?: string;
+  lens: z.string().optional(),
   /** Video only. */
-  durationSeconds?: number;
+  durationSeconds: z.number().min(0).optional(),
   /** Video only. */
-  frameRate?: number;
-}
+  frameRate: z.number().min(0).optional(),
+});
+export type CaptureCameraMetadata = z.infer<typeof captureCameraMetadataSchema>;
 
 // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -269,13 +275,14 @@ export type CapturePrivacyState = (typeof CAPTURE_PRIVACY_STATES)[number];
  * GoWay rebuild old scenes when detection materially improves. The backend's
  * schema refuses a `passed` row that does not name one.
  */
-export interface CapturePrivacyGate {
-  state: CapturePrivacyState;
+export const capturePrivacyGateSchema = z.object({
+  state: z.enum(CAPTURE_PRIVACY_STATES),
   /** The privacy pipeline that produced the verdict. Present exactly when `passed`. */
-  pipelineVersion?: string;
+  pipelineVersion: z.string().min(1).optional(),
   /** ISO 8601 instant the verdict was reached. */
-  completedAt?: string;
-}
+  completedAt: instantSchema.optional(),
+});
+export type CapturePrivacyGate = z.infer<typeof capturePrivacyGateSchema>;
 
 // ── Retention ───────────────────────────────────────────────────────────────
 
@@ -390,32 +397,33 @@ export type DeletionReason = (typeof DELETION_REASONS)[number];
  * store's own lifecycle rules are a backstop underneath these fields, not the
  * source of truth above them.
  */
-export interface StoredObjectLifecycle {
-  retentionClass: CaptureRetentionClass;
-  retentionReason: RetentionReason;
+export const storedObjectLifecycleSchema = z.object({
+  retentionClass: z.enum(CAPTURE_RETENTION_CLASSES),
+  retentionReason: z.enum(RETENTION_REASONS),
   /** ISO 8601 instant the bytes were first stored. */
-  storedAt: string;
+  storedAt: instantSchema,
   /**
    * ISO 8601 instant the bytes die. A MAXIMUM, never a promise to keep them
    * that long — moderation, a contributor's deletion or successful derivation
    * all remove an object earlier.
    */
-  expiresAt: string;
+  expiresAt: instantSchema,
   /**
    * ISO 8601 instant from which the sweeper MAY delete, when that is earlier
    * than expiry. A raw video becomes eligible as soon as its keyframes are
    * safely stored, which is normally weeks before its window runs out.
    */
-  deletionEligibleAt?: string;
+  deletionEligibleAt: instantSchema.optional(),
   /** ISO 8601 floor under an extension — the sweeper must not delete before it. */
-  protectedUntil?: string;
+  protectedUntil: instantSchema.optional(),
   /** How many bounded extensions this object has received. Never unbounded. */
-  extensionCount: number;
+  extensionCount: z.number().int().min(0),
   /** ISO 8601 instant the bytes were deleted. Present only on a tombstone. */
-  deletedAt?: string;
+  deletedAt: instantSchema.optional(),
   /** Why they were deleted. Present exactly when `deletedAt` is. */
-  deletionReason?: DeletionReason;
-}
+  deletionReason: z.enum(DELETION_REASONS).optional(),
+});
+export type StoredObjectLifecycle = z.infer<typeof storedObjectLifecycleSchema>;
 
 // ── The published shapes ────────────────────────────────────────────────────
 
@@ -436,16 +444,17 @@ export type CaptureContentHashAlgorithm = typeof CAPTURE_CONTENT_HASH_ALGORITHM;
  * contributions, one object, one lifecycle — which is why the lifecycle lives
  * here and not on the asset.
  */
-export interface CaptureMediaObject {
-  contentHashAlgorithm: CaptureContentHashAlgorithm;
+export const captureMediaObjectSchema = z.object({
+  contentHashAlgorithm: z.literal(CAPTURE_CONTENT_HASH_ALGORITHM),
   /** Lower-case hex digest of the exact bytes. */
-  contentHash: string;
-  byteSize: number;
+  contentHash: z.string().min(1),
+  byteSize: z.number().int().min(0),
   /** The stored media type, e.g. `image/jpeg`. */
-  contentType: string;
-  deduplicated: boolean;
-  lifecycle: StoredObjectLifecycle;
-}
+  contentType: z.string().min(1),
+  deduplicated: z.boolean(),
+  lifecycle: storedObjectLifecycleSchema,
+});
+export type CaptureMediaObject = z.infer<typeof captureMediaObjectSchema>;
 
 /**
  * One contributed photo or video, as GoWay publishes it back to its
@@ -457,28 +466,29 @@ export interface CaptureMediaObject {
  * than re-deriving the rule, because the rule will get stricter and a
  * re-derivation in a client will not.
  */
-export interface CaptureAsset {
-  id: CaptureAssetId;
-  sessionId: CaptureSessionId;
-  mediaKind: CaptureMediaKind;
-  source: CaptureSource;
-  state: CaptureAssetState;
-  privacy: CapturePrivacyGate;
+export const captureAssetSchema = z.object({
+  id: z.string().min(1),
+  sessionId: z.string().min(1),
+  mediaKind: z.enum(CAPTURE_MEDIA_KINDS),
+  source: z.enum(CAPTURE_SOURCES),
+  state: z.enum(CAPTURE_ASSET_STATES),
+  privacy: capturePrivacyGateSchema,
   /** Whether this capture may be used as a reconstruction input. Derived; never sent. */
-  reconstructionEligible: boolean;
+  reconstructionEligible: z.boolean(),
   /** The position GoWay uses, and where it came from. */
-  anchor: CaptureAnchor;
+  anchor: captureAnchorSchema,
   /** Every position GoWay holds for this capture, claimed and measured alike. */
-  locationEvidence: CaptureLocationEvidence[];
+  locationEvidence: z.array(captureLocationEvidenceSchema),
   /** ISO 8601 instant the media was captured, where that is known. */
-  capturedAt?: string;
-  camera?: CaptureCameraMetadata;
-  media: CaptureMediaObject;
+  capturedAt: instantSchema.optional(),
+  camera: captureCameraMetadataSchema.optional(),
+  media: captureMediaObjectSchema,
   /** ISO 8601. */
-  createdAt: string;
+  createdAt: instantSchema,
   /** ISO 8601. */
-  updatedAt: string;
-}
+  updatedAt: instantSchema,
+});
+export type CaptureAsset = z.infer<typeof captureAssetSchema>;
 
 /**
  * One contribution act: a walk down a street, or a handful of library photos
@@ -494,30 +504,31 @@ export interface CaptureAsset {
  * accepted when they opened the flow. Recorded per session rather than per
  * account so that what somebody agreed to is legible after the text changes.
  */
-export interface CaptureSession {
-  id: CaptureSessionId;
-  source: CaptureSource;
+export const captureSessionSchema = z.object({
+  id: z.string().min(1),
+  source: z.enum(CAPTURE_SOURCES),
   /** The consent text version accepted for this contribution. */
-  consentVersion: string;
+  consentVersion: z.string().min(1),
   /** Optional contributor note, e.g. what they were trying to capture. */
-  note?: string;
+  note: z.string().optional(),
   /**
    * A credit every scene built from this session must display — the licence
    * line of an imported open-imagery dataset. Absent for an ordinary
    * contribution, which GoWay publishes without naming anybody.
    */
-  attribution?: string;
+  attribution: z.string().min(1).optional(),
   /** ISO 8601 instant the contributor started capturing. */
-  startedAt: string;
+  startedAt: instantSchema,
   /** ISO 8601 instant they finished. Absent while the session is open. */
-  endedAt?: string;
+  endedAt: instantSchema.optional(),
   /** How many assets have been registered against this session. */
-  assetCount: number;
+  assetCount: z.number().int().min(0),
   /** ISO 8601. */
-  createdAt: string;
+  createdAt: instantSchema,
   /** ISO 8601. */
-  updatedAt: string;
-}
+  updatedAt: instantSchema,
+});
+export type CaptureSession = z.infer<typeof captureSessionSchema>;
 
 /**
  * A scoped, expiring permission to put exactly one object into GoWay's store.
@@ -533,18 +544,19 @@ export interface CaptureSession {
  * declared length, so a target issued for a 2 MB JPEG cannot be spent on a
  * 2 GB video.
  */
-export interface CaptureUploadIntent {
-  assetId: CaptureAssetId;
-  method: 'PUT';
-  url: string;
+export const captureUploadIntentSchema = z.object({
+  assetId: z.string().min(1),
+  method: z.literal('PUT'),
+  url: z.string().regex(/^https?:\/\//, 'must be an HTTP(S) upload URL'),
   /** Send these verbatim. They are covered by the signature. */
-  headers: Record<string, string>;
+  headers: z.record(z.string(), z.string()),
   /** ISO 8601 instant after which this target is refused by the store. */
-  expiresAt: string;
+  expiresAt: instantSchema,
   /** The exact byte count this target was signed for. */
-  byteSize: number;
-  contentType: string;
-}
+  byteSize: z.number().int().min(0),
+  contentType: z.string().min(1),
+});
+export type CaptureUploadIntent = z.infer<typeof captureUploadIntentSchema>;
 
 /**
  * What `POST …/assets` answers: the registered asset, and how to upload it.
@@ -555,11 +567,12 @@ export interface CaptureUploadIntent {
  * upload and go straight to finalizing, which is the whole point of hashing
  * before asking.
  */
-export interface CaptureUploadTicket {
-  asset: CaptureAsset;
+export const captureUploadTicketSchema = z.object({
+  asset: captureAssetSchema,
   /** Absent when the bytes were deduplicated against an object GoWay already has. */
-  upload?: CaptureUploadIntent;
-}
+  upload: captureUploadIntentSchema.optional(),
+});
+export type CaptureUploadTicket = z.infer<typeof captureUploadTicketSchema>;
 
 /**
  * What a client must know BEFORE it asks a contributor to pick a file.
@@ -574,29 +587,120 @@ export interface CaptureUploadTicket {
  * The retention numbers are MAXIMA and are configuration. They are not a
  * guarantee to keep anything that long.
  */
-export interface CaptureUploadPolicy {
-  /** Whether this deployment currently accepts uploads. */
-  enabled?: boolean;
+export const captureUploadPolicySchema = z.object({
+  /** Whether this deployment currently accepts uploads from this caller. */
+  enabled: z.boolean(),
   /** The consent text version a new session must accept. */
-  consentVersion: string;
-  contentHashAlgorithm: CaptureContentHashAlgorithm;
-  photo: {
-    contentTypes: string[];
-    maxByteSize: number;
-  };
-  video: {
-    contentTypes: string[];
-    maxByteSize: number;
-    maxDurationSeconds: number;
-  };
+  consentVersion: z.string().min(1),
+  contentHashAlgorithm: z.literal(CAPTURE_CONTENT_HASH_ALGORITHM),
+  photo: z.object({
+    contentTypes: z.array(z.string()),
+    maxByteSize: z.number().int().min(0),
+  }),
+  video: z.object({
+    contentTypes: z.array(z.string()),
+    maxByteSize: z.number().int().min(0),
+    maxDurationSeconds: z.number().min(0),
+  }),
   /** Maximum days GoWay keeps each class of stored object. A ceiling, not a promise. */
-  retentionDays: Record<CaptureRetentionClass, number>;
-}
+  retentionDays: z.record(z.enum(CAPTURE_RETENTION_CLASSES), z.number().min(0)),
+});
+export type CaptureUploadPolicy = z.infer<typeof captureUploadPolicySchema>;
 
-export interface CaptureSessionInput {
-  source: CaptureSource;
-  consentVersion: string;
-  note?: string;
+// ── Requests ────────────────────────────────────────────────────────────────
+//
+// A client may describe its media; it may not describe its storage. The bodies
+// below say what the media IS — kind, size, hash, type, where it was taken, what
+// the camera was doing. They cannot say where the bytes go, how long they are
+// kept, what the object is called, which retention class it belongs to or
+// whether the privacy gate has passed: those are server decisions, and the way
+// to keep them server decisions is for there to be no field to put them in.
+
+/** Longest accepted contributor note, in characters. */
+const MAX_NOTE_LENGTH = 500;
+/** Longest accepted licence credit; the same bound as `capture_sessions_attribution_check`. */
+const MAX_ATTRIBUTION_LENGTH = 200;
+/** Longest accepted camera make/model/lens string. */
+const MAX_CAMERA_STRING = 120;
+/** The most pieces of location evidence one contribution may carry. */
+const MAX_LOCATION_EVIDENCE = 4;
+
+/** One EXIF GPS magnitude, as a client reads it out of the file. */
+const exifGpsMagnitudeSchema = z.object({
+  degrees: z.number().min(0).max(180),
+  minutes: z.number().min(0).max(59.999999).optional(),
+  seconds: z.number().min(0).max(59.999999).optional(),
+  /** `N`/`S` or `E`/`W`. */
+  ref: z.string().trim().length(1),
+});
+
+/**
+ * A raw EXIF GPS block. The server converts it — the conversion whose classic
+ * bug silently mirrors a photo into the wrong hemisphere happens once, in
+ * tested code, rather than in whatever each client got right.
+ */
+export const exifGpsSchema = z.object({
+  latitude: exifGpsMagnitudeSchema,
+  longitude: exifGpsMagnitudeSchema,
+  altitude: z.number().min(0).optional(),
+  altitudeRef: z.literal([0, 1]).optional(),
+  imageDirection: z.number().optional(),
+});
+export type ExifGps = z.infer<typeof exifGpsSchema>;
+
+/**
+ * One position claim, as a client sends it.
+ *
+ * Exactly one of `coordinate` and `exifGps` — a body carrying both is a client
+ * that has two answers and has not decided, and picking one for it would be
+ * choosing which street the photo is on by coin flip.
+ *
+ * `witness` is NOT here. Everything arriving over HTTP is witnessed by the
+ * client, by definition; a body that could claim `goway_ingest` would be a
+ * client laundering its own coordinate into a measurement GoWay never made.
+ */
+export const captureLocationEvidenceInputSchema = z
+  .object({
+    origin: z.enum(CAPTURE_LOCATION_ORIGINS),
+    coordinate: geoCoordinateSchema.optional(),
+    exifGps: exifGpsSchema.optional(),
+    accuracyMeters: z.number().min(0).max(100_000).optional(),
+    altitudeMeters: z.number().min(-12_000).max(12_000).optional(),
+    headingDegrees: z.number().min(0).max(360).optional(),
+    observedAt: instantSchema.optional(),
+  })
+  .refine(
+    (value) => (value.coordinate === undefined) !== (value.exifGps === undefined),
+    'exactly one of coordinate and exifGps is required',
+  );
+export type CaptureLocationEvidenceInput = z.input<typeof captureLocationEvidenceInputSchema>;
+
+/** Camera metadata as a client sends it, bounded. Orientation is normalized server-side. */
+export const captureCameraInputSchema = z.object({
+  widthPixels: z.number().int().positive().max(1_000_000).optional(),
+  heightPixels: z.number().int().positive().max(1_000_000).optional(),
+  exifOrientation: z.number().int().optional(),
+  focalLengthMm: z.number().positive().max(10_000).optional(),
+  focalLength35mm: z.number().positive().max(10_000).optional(),
+  make: z.string().trim().max(MAX_CAMERA_STRING).optional(),
+  model: z.string().trim().max(MAX_CAMERA_STRING).optional(),
+  lens: z.string().trim().max(MAX_CAMERA_STRING).optional(),
+  durationSeconds: z.number().positive().max(86_400).optional(),
+  frameRate: z.number().positive().max(1_000).optional(),
+});
+
+/**
+ * The body of `POST /captures/sessions`.
+ *
+ * `consentVersion` is REQUIRED and is not defaulted to the current one.
+ * Defaulting would record that a contributor accepted text the client may never
+ * have shown them, which is worse than not recording consent at all: it is a
+ * false audit trail.
+ */
+export const captureSessionInputSchema = z.object({
+  source: z.enum(CAPTURE_SOURCES),
+  consentVersion: z.string().trim().min(1).max(64),
+  note: z.string().trim().max(MAX_NOTE_LENGTH).optional(),
   /**
    * The credit an imported open dataset's licence requires, at most 200
    * characters, e.g. `Imagery © Example contributors, CC BY-SA 4.0`. It is
@@ -604,40 +708,63 @@ export interface CaptureSessionInput {
    * this session's captures, and it is the ONLY contributor-supplied text a
    * scene ever displays — so it is for a licence credit, not a signature.
    */
-  attribution?: string;
-}
+  attribution: z.string().trim().min(1).max(MAX_ATTRIBUTION_LENGTH).optional(),
+  /** ISO 8601 instant the contributor started capturing. Defaults to now. */
+  startedAt: instantSchema.optional(),
+});
+export type CaptureSessionInput = z.input<typeof captureSessionInputSchema>;
 
-export interface CaptureAssetInput {
+export const captureAssetInputSchema = z.object({
   /** Reuse on retries of this exact request; generate a new UUID for new media. */
-  idempotencyKey?: string;
-  mediaKind: CaptureMediaKind;
-  source: CaptureSource;
-  contentHash: string;
-  byteSize: number;
-  contentType: string;
-  capturedAt?: string;
-  location: Omit<CaptureLocationEvidence, 'witness'>[];
-  camera?: CaptureCameraMetadata;
-}
+  idempotencyKey: z.uuid().optional(),
+  mediaKind: z.enum(CAPTURE_MEDIA_KINDS),
+  source: z.enum(CAPTURE_SOURCES),
+  /**
+   * Hashed by the CLIENT before anything is sent. That is what makes
+   * deduplication answerable before a byte moves.
+   */
+  contentHash: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[0-9a-f]{64}$/, 'must be a lower-case hex SHA-256 digest'),
+  byteSize: z.number().int().positive(),
+  contentType: z.string().trim().toLowerCase().max(120),
+  capturedAt: instantSchema.optional(),
+  location: z.array(captureLocationEvidenceInputSchema).min(1).max(MAX_LOCATION_EVIDENCE),
+  camera: captureCameraInputSchema.optional(),
+});
+export type CaptureAssetInput = z.input<typeof captureAssetInputSchema>;
 
 /**
- * Storage consumed by captures, grouped for cost control.
+ * The body of `POST /captures/assets/{assetId}/finalize`: EMPTY on purpose.
  *
- * The KPI #10 asks for is not "GB uploaded" — it is bytes retained, by class
- * and by area, so that "did this additional 10 GB materially improve coverage?"
- * has an answer. `scope` is deliberately opaque: the backend's geographic
- * bucketing key is internal, because #11 must be free to change how it buckets
- * without breaking a published shape.
+ * A `byteSize` here would be the client telling GoWay how big the object it
+ * just wrote is — which GoWay asks the object store, because the store is the
+ * only party that actually knows.
  */
-export interface CaptureStorageUsage {
-  retentionClass: CaptureRetentionClass;
-  /** Bytes currently stored. */
-  storedBytes: number;
-  /** Bytes whose objects expire within seven days. */
-  expiringWithin7dBytes: number;
-  /** Bytes whose objects expire within thirty days. */
-  expiringWithin30dBytes: number;
-  /** Bytes a second contribution of identical media did NOT cost, through deduplication. */
-  deduplicatedBytes: number;
-  objectCount: number;
-}
+export const captureFinalizeInputSchema = z.object({}).strict();
+
+// ── Lists ───────────────────────────────────────────────────────────────────
+
+/** The most sessions or assets one page returns. */
+export const MAX_CAPTURE_LIST_LIMIT = 100;
+export const DEFAULT_CAPTURE_LIST_LIMIT = 50;
+
+/**
+ * `GET /captures/sessions` (newest first) and `GET /captures/sessions/{sessionId}/assets`
+ * (oldest first) — both keyset-paged by creation time.
+ */
+export const captureListQuerySchema = z
+  .object({
+    limit: limitSchema(MAX_CAPTURE_LIST_LIMIT, DEFAULT_CAPTURE_LIST_LIMIT),
+    cursor: cursorSchema.optional(),
+  })
+  .strict();
+export type CaptureListQuery = z.input<typeof captureListQuerySchema>;
+
+export const captureSessionPageSchema = pageSchema(captureSessionSchema);
+export type CaptureSessionPage = z.infer<typeof captureSessionPageSchema>;
+
+export const captureAssetPageSchema = pageSchema(captureAssetSchema);
+export type CaptureAssetPage = z.infer<typeof captureAssetPageSchema>;

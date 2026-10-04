@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { StreetSceneManifest } from '@goway/shared-types';
+import type { StreetSceneManifest } from '@goway.to/sdk';
 
 import { isAllowedAssetUrl, planSceneAssets } from '../assets';
 import { embedUrl, encodeBridgeMessage, isOnOrigin, parseBridgeMessage } from '../bridge';

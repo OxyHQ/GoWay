@@ -9,7 +9,11 @@
  * fails to typecheck instead of drifting silently.
  *
  * These codes are a **public contract**. Renaming one is a breaking change.
+ * The shared half of the list and its statuses are `~/Oxy/docs/api-conventions.md`;
+ * `no_route`, `unsupported_mode` and `provider_unavailable` are GoWay's own.
  */
+
+import { z } from 'zod';
 
 /**
  * Every error code the GoWay API may return, in status order.
@@ -25,7 +29,10 @@
  *   which is a different thing to tell a user.
  */
 export const API_ERROR_CODES = [
-  /** Malformed request: bad JSON, wrong type, missing required field. */
+  /**
+   * Malformed request: bad JSON, wrong type, missing required field, an unknown
+   * or repeated query parameter, or a cursor another list issued.
+   */
   'bad_request',
   /** No credentials, or credentials that did not verify. */
   'unauthorized',
@@ -33,10 +40,22 @@ export const API_ERROR_CODES = [
   'forbidden',
   /** The addressed resource does not exist, or is not visible to this caller. */
   'not_found',
+  /**
+   * No route has this path at all. Not `not_found`: a client that sees this is
+   * talking to an older or newer API than it was built for, and should say so
+   * rather than conclude that a resource is gone.
+   */
+  'unknown_route',
   /** The route exists but not for this HTTP method. */
   'method_not_allowed',
   /** The request conflicts with current state (duplicate claim, stale update). */
   'conflict',
+  /**
+   * The resource existed and was withdrawn — a place GoWay `removed`. Not
+   * `not_found`: a consumer that persisted the id learns it is retired rather
+   * than that it was never real.
+   */
+  'gone',
   /** The request body exceeded the accepted size. */
   'payload_too_large',
   /** Well-formed, but a value failed semantic validation. */
@@ -57,6 +76,9 @@ export const API_ERROR_CODES = [
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 
+/** The closed code list as a schema. */
+export const apiErrorCodeSchema = z.enum(API_ERROR_CODES);
+
 /**
  * Machine-readable context for a failure.
  *
@@ -65,20 +87,26 @@ export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
  * a user's precise location is transient request data that is never persisted
  * anywhere — including somebody else's log index.
  */
-export type ApiErrorDetails = Record<string, string | number | boolean | null>;
+export const apiErrorDetailsSchema = z.record(
+  z.string(),
+  z.union([z.string(), z.number(), z.boolean(), z.null()]),
+);
+export type ApiErrorDetails = z.infer<typeof apiErrorDetailsSchema>;
 
 /**
  * The serialized error envelope. Every non-2xx GoWay API response has this
- * shape, so a consumer never has to branch on which endpoint failed.
+ * shape — the rate limiter's 429 included — so a consumer never has to branch
+ * on which endpoint failed.
  */
-export interface ApiErrorBody {
-  error: {
-    code: ApiErrorCode;
+export const apiErrorBodySchema = z.object({
+  error: z.object({
+    code: apiErrorCodeSchema,
     /** Human-readable, safe to log. Not safe to parse — the code is the contract. */
-    message: string;
-    details?: ApiErrorDetails;
-  };
-}
+    message: z.string(),
+    details: apiErrorDetailsSchema.optional(),
+  }),
+});
+export type ApiErrorBody = z.infer<typeof apiErrorBodySchema>;
 
 /**
  * The HTTP status each code is answered with.
@@ -92,8 +120,10 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   unauthorized: 401,
   forbidden: 403,
   not_found: 404,
+  unknown_route: 404,
   method_not_allowed: 405,
   conflict: 409,
+  gone: 410,
   payload_too_large: 413,
   validation_failed: 422,
   no_route: 422,
@@ -116,8 +146,10 @@ export const API_ERROR_RETRYABLE: Readonly<Record<ApiErrorCode, boolean>> = {
   unauthorized: false,
   forbidden: false,
   not_found: false,
+  unknown_route: false,
   method_not_allowed: false,
   conflict: false,
+  gone: false,
   payload_too_large: false,
   validation_failed: false,
   no_route: false,

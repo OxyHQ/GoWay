@@ -8,10 +8,10 @@
     "strict": true,
     "rootDir": "./",
     "outDir": "dist",
-    // No `paths` mapping to ../shared-types/src on purpose. This is an EMITTING
+    // No `paths` mapping to ../contracts/src on purpose. This is an EMITTING
     // project with `rootDir: "./"`, so pulling another package's SOURCE into the
     // program puts files outside rootDir and fails with TS6059. The project
-    // reference below is the supported mechanism: shared-types builds first and
+    // reference below is the supported mechanism: contracts builds first and
     // this package resolves it through node_modules to its emitted .d.ts.
     "baseUrl": "."
   },
@@ -30,5 +30,5 @@
   // It is NOT left unchecked — tsconfig.tools.json puts it in a non-emitting
   // program, because a file outside every `include` can never report an error.
   "exclude": ["node_modules", "dist", "drizzle.config.ts", "**/__tests__/**"],
-  "references": [{ "path": "../shared-types" }]
+  "references": [{ "path": "../contracts" }]
 }

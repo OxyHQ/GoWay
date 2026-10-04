@@ -9,7 +9,7 @@
  */
 import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { GeoBoundingBox } from '@goway.to/sdk';
-import type { StreetCoverage, StreetSceneManifest, StreetSceneReportInput } from '@goway/shared-types';
+import type { StreetCoverage, StreetSceneManifest, StreetSceneReportInput } from '@goway.to/sdk';
 
 import { classifyGoWayError, shouldRetryGoWay } from '@/lib/goway/errors';
 

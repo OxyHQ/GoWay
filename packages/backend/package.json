@@ -21,7 +21,7 @@
     "street3d:admin": "bun run src/street3d/runAdmin.ts"
   },
   "dependencies": {
-    "@goway/shared-types": "workspace:*",
+    "@goway/contracts": "workspace:*",
     "@oxy.so/core": "4.2.0",
     "@oxy.so/db": "^1.0.0",
     "cors": "^2.8.6",

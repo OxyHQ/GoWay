@@ -13,7 +13,7 @@
       "name": "@goway/backend",
       "version": "0.1.0",
       "dependencies": {
-        "@goway/shared-types": "workspace:*",
+        "@goway/contracts": "workspace:*",
         "@oxy.so/core": "4.2.0",
         "@oxy.so/db": "^1.0.0",
         "cors": "^2.8.6",
@@ -41,13 +41,22 @@
         "typescript": "^5.9.3",
       },
     },
+    "packages/contracts": {
+      "name": "@goway/contracts",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.6.5",
+      },
+      "devDependencies": {
+        "typescript": "^5.9.3",
+      },
+    },
     "packages/frontend": {
       "name": "@goway/frontend",
       "version": "0.1.0",
       "dependencies": {
         "@expo/vector-icons": "^15.1.1",
         "@goway.to/sdk": "workspace:*",
-        "@goway/shared-types": "workspace:*",
         "@maplibre/maplibre-react-native": "^11.4.0",
         "@noble/hashes": "1.8.0",
         "@oxy.so/app-preset": "^3.0.0",
@@ -111,10 +120,13 @@
     },
     "packages/sdk": {
       "name": "@goway.to/sdk",
-      "version": "0.2.0",
+      "version": "0.3.0",
+      "dependencies": {
+        "zod": "^4.6.5",
+      },
       "devDependencies": {
         "@eslint/js": "^9.39.5",
-        "@goway/shared-types": "workspace:*",
+        "@goway/contracts": "workspace:*",
         "@typescript-eslint/eslint-plugin": "^8.46.0",
         "@typescript-eslint/parser": "^8.46.0",
         "esbuild": "^0.25.12",
@@ -123,13 +135,6 @@
         "rollup-plugin-dts": "~6.4.1",
         "typescript": "^5.9.3",
         "vitest": "^4.1.10",
-      },
-    },
-    "packages/shared-types": {
-      "name": "@goway/shared-types",
-      "version": "0.1.0",
-      "devDependencies": {
-        "typescript": "^5.9.3",
       },
     },
   },
@@ -447,9 +452,9 @@
 
     "@goway/backend": ["@goway/backend@workspace:packages/backend"],
 
-    "@goway/frontend": ["@goway/frontend@workspace:packages/frontend"],
+    "@goway/contracts": ["@goway/contracts@workspace:packages/contracts"],
 
-    "@goway/shared-types": ["@goway/shared-types@workspace:packages/shared-types"],
+    "@goway/frontend": ["@goway/frontend@workspace:packages/frontend"],
 
     "@humanfs/core": ["@humanfs/core@0.19.2", "", { "dependencies": { "@humanfs/types": "^0.15.0" } }, "sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA=="],
 

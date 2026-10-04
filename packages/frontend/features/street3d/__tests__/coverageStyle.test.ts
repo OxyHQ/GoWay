@@ -4,7 +4,7 @@ import {
   type StreetCoverage,
   type StreetCoverageArea,
   type StreetSceneSummary,
-} from '@goway/shared-types';
+} from '@goway.to/sdk';
 
 import {
   AREA_STATE_COLOR,

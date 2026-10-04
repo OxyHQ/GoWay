@@ -11,7 +11,7 @@
 import { useCallback, useMemo, useState, type ReactNode, type RefObject } from 'react';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@oxy.so/bloom/theme';
-import type { StreetCoverageArea } from '@goway/shared-types';
+import type { StreetCoverageArea } from '@goway.to/sdk';
 
 import type { GeoBounds, MapApi, MapMarker, MapOverlay, MapViewportChange } from '@/components/map';
 import { STREET3D_ENABLED } from '@/lib/config';

@@ -33,7 +33,7 @@ import {
   STREET_SCENE_REPORT_REASONS,
   type StreetSceneManifest,
   type StreetSceneReportReason,
-} from '@goway/shared-types';
+} from '@goway.to/sdk';
 
 import {
   SceneViewer,
