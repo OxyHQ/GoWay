@@ -44,7 +44,7 @@ def service_snapshot(cluster, service):
     return response['services'][0]
 
 
-def deploy(cluster, service, image, database, restore_capacity=False, call=aws, snapshot=service_snapshot, execution_role=None):
+def deploy(cluster, service, image, database, restore_capacity=False, call=aws, snapshot=service_snapshot, execution_role=None, task_definition=None):
     before = snapshot(cluster, service)
     desired = before['desiredCount']
     print(json.dumps({'stage': 'inspect', 'desired': desired, 'running': before['runningCount']}), flush=True)
@@ -52,7 +52,9 @@ def deploy(cluster, service, image, database, restore_capacity=False, call=aws, 
         raise RuntimeError('Backend service is not active')
     if desired == 0 and not restore_capacity:
         raise RuntimeError('Backend capacity is zero; explicitly request restore-capacity to bring it online')
-    source = call('ecs', 'describe-task-definition', '--task-definition', before['taskDefinition'])['taskDefinition']
+    source = call('ecs', 'describe-task-definition', '--task-definition', task_definition or before['taskDefinition'])['taskDefinition']
+    if task_definition and source['family'] != before['taskDefinition'].split('/')[-1].split(':')[0]:
+        raise ValueError('Runtime template must belong to the existing service family')
     definition = definition_for_image(source, service, image)
     if execution_role:
         definition['executionRoleArn'] = execution_role
@@ -112,8 +114,9 @@ def main():
     parser.add_argument('--database', required=True)
     parser.add_argument('--restore-capacity', action='store_true')
     parser.add_argument('--execution-role')
+    parser.add_argument('--task-definition')
     args = parser.parse_args()
-    deploy(args.cluster, args.service, args.image, args.database, args.restore_capacity, execution_role=args.execution_role)
+    deploy(args.cluster, args.service, args.image, args.database, args.restore_capacity, execution_role=args.execution_role, task_definition=args.task_definition)
 
 
 if __name__ == '__main__':
