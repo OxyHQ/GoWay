@@ -21,21 +21,22 @@ class DeployTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.definition_for_image(original, 'goway', 'repo:latest')
 
-    def simulate(self, exit_code=0, desired=1, restore=False, execution_role=None):
+    def simulate(self, exit_code=0, desired=1, restore=False, execution_role=None, task_definition=None, template_family='goway'):
         calls = []
         snapshot_count = 0
         def snapshot(*_args):
             nonlocal snapshot_count
             snapshot_count += 1
             return {'status': 'ACTIVE', 'desiredCount': desired if snapshot_count == 1 else max(1, desired),
-                    'runningCount': desired if snapshot_count == 1 else max(1, desired), 'taskDefinition': 'old',
+                    'runningCount': desired if snapshot_count == 1 else max(1, desired), 'taskDefinition': 'arn:aws:ecs:region:account:task-definition/goway:1',
                     'networkConfiguration': {'awsvpcConfiguration': {'subnets': ['private'], 'securityGroups': ['existing']}},
                     'deployments': [{'id': 'new-rollout', 'taskDefinition': 'new', 'rolloutState': 'COMPLETED', 'runningCount': max(1, desired)}]}
         def call(*args):
             calls.append(args)
             action = args[1]
             if action == 'describe-task-definition':
-                return {'taskDefinition': {'family': 'goway', 'containerDefinitions': [{'name': 'goway', 'image': 'old'}]}}
+                self.assertEqual(args[-1], task_definition or 'arn:aws:ecs:region:account:task-definition/goway:1')
+                return {'taskDefinition': {'family': template_family, 'containerDefinitions': [{'name': 'goway', 'image': 'old'}]}}
             if action == 'register-task-definition':
                 definition = json.loads(args[args.index('--cli-input-json') + 1])
                 if execution_role:
@@ -52,7 +53,7 @@ class DeployTests(unittest.TestCase):
                 return {'service': {'deployments': [{'status': 'PRIMARY', 'id': 'new-rollout'}]}}
             raise AssertionError(action)
         try:
-            module.deploy('cluster', 'goway', 'repo@sha256:abc', 'goway', restore, call, snapshot, execution_role=execution_role)
+            module.deploy('cluster', 'goway', 'repo@sha256:abc', 'goway', restore, call, snapshot, execution_role=execution_role, task_definition=task_definition)
         except RuntimeError:
             return calls, False
         return calls, True
@@ -72,6 +73,12 @@ class DeployTests(unittest.TestCase):
         self.assertTrue(succeeded)
         run = next(c for c in calls if c[1] == 'run-task')
         self.assertEqual(run[run.index('--tags') + 1], 'key=App,value=goway')
+
+    def test_reviewed_template_is_adopted_only_within_the_existing_family(self):
+        _, succeeded = self.simulate(task_definition='arn:aws:ecs:region:account:task-definition/goway:2')
+        self.assertTrue(succeeded)
+        with self.assertRaisesRegex(ValueError, 'existing service family'):
+            self.simulate(task_definition='other-app:1', template_family='other-app')
 
     def test_paused_service_requires_explicit_restore(self):
         calls, succeeded = self.simulate(desired=0)

@@ -23,6 +23,10 @@ on:
   workflow_call:
   workflow_dispatch:
     inputs:
+      task_definition:
+        description: 'Exact reviewed infrastructure task definition ARN to adopt (optional)'
+        type: string
+        required: false
       restore_capacity:
         description: 'Restore a paused backend to one CPU service task'
         type: boolean
@@ -146,11 +150,13 @@ jobs:
         id: deploy
         env:
           RESTORE_CAPACITY: ${{ inputs.restore_capacity || 'false' }}
+          TASK_DEFINITION: ${{ inputs.task_definition || '' }}
         run: |
           set -euo pipefail
           digest=$(aws ecr describe-images --repository-name "oxy/$APP" --image-ids imageTag="${{ github.sha }}" --query 'imageDetails[0].imageDigest' --output text)
           args=()
           if [ "$RESTORE_CAPACITY" = 'true' ]; then args+=(--restore-capacity); fi
+          if [ -n "$TASK_DEFINITION" ]; then args+=(--task-definition "$TASK_DEFINITION"); fi
           python3 .github/scripts/deploy-backend.py \
             --cluster "$CLUSTER" --service "$APP" --database goway \
             --execution-role arn:aws:iam::237343248947:role/oxy-goway-execution \
@@ -164,6 +170,9 @@ jobs:
       # api.goway.to for Barcelona → Madrid, signed out, and fails unless the
       # answer is LONGER than the 505 km great circle, carries hundreds of
       # coordinates and names real roads. A straight line cannot satisfy it.
+      - name: Verify the canonical browser can reach contribution endpoints
+        run: python3 .github/scripts/check-browser-cors.py
+
       - name: Prove directions follow roads
         if: steps.deploy.outputs.rolled == 'true'
         env:
