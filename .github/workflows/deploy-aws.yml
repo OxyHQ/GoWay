@@ -22,6 +22,11 @@ name: Deploy to AWS
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      restore_capacity:
+        description: 'Restore a paused backend to one CPU service task'
+        type: boolean
+        default: false
 
 permissions:
   id-token: write
@@ -36,6 +41,7 @@ env:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04-arm
     # A backstop, with headroom: an arm64 image build plus an ECR push is the
     # long pole and runs well inside this. A job whose typical duration exceeds
@@ -136,115 +142,20 @@ jobs:
             --push \
             .
 
-      - name: Deploy to ECS (skipped until the service exists)
+      - name: Migrate and deploy the immutable image
         id: deploy
-        run: |
-          set -euo pipefail
-          STATUS=$(aws ecs describe-services --cluster "$CLUSTER" --services "$APP" --query 'services[0].status' --output text 2>/dev/null || echo NONE)
-          if [ "$STATUS" != "ACTIVE" ]; then
-            echo "ECS service $APP not created yet — image is in ECR, skipping deploy"
-            echo "rolled=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # The deployment id is captured, not discarded. Everything below waits
-          # on THIS rollout by id; asking the service whether it is "stable"
-          # instead lets a rollout that finished BEFORE this step began answer
-          # for the one that has not started yet.
-          deployment=$(aws ecs update-service --cluster "$CLUSTER" --service "$APP" \
-            --force-new-deployment --query 'service.deployments[?status==`PRIMARY`].id' --output text)
-          echo "Triggered deployment $deployment for $APP"
-          echo "rolled=true" >> "$GITHUB_OUTPUT"
-          echo "deployment=$deployment" >> "$GITHUB_OUTPUT"
-
-      # WAIT FOR IT, AND FAIL IF IT DID NOT TAKE.
-      #
-      # `update-service` returning is not a deploy. It queues one. Without this
-      # step the job goes green the moment the queue accepts the request, and
-      # the thing that actually happens next is invisible — which is not a
-      # hypothetical: on 2026-09-20 four consecutive merges reported a
-      # successful deploy while every rollout failed and rolled back, because
-      # the new image shipped a migration (`0001_goway_capture`) that nobody had
-      # applied. `/ready` answers 503 until the schema is current, the target
-      # group refused every new task, the circuit breaker restored the old one,
-      # and api.goway.to served a four-hour-old build for the rest of the day
-      # with four green checkmarks above it.
-      #
-      # The failure is then reported with the ONE instruction that fixes it,
-      # because "tasks failed to start" sends a reader to the wrong place.
-      #
-      # ## And it polls the DEPLOYMENT, not the service
-      #
-      # `aws ecs wait services-stable` cannot answer this question. Its success
-      # condition is "one deployment, and runningCount == desiredCount", which
-      # is true of the PREVIOUS rollout for as long as it takes ECS to register
-      # the new one — and true again for the ~30 s between the old task
-      # draining and ECS marking the new deployment COMPLETED. It reported both
-      # on its first run: a rollout that was entirely healthy (task started,
-      # registered, old one drained) failed this job because the waiter was
-      # satisfied one poll before `rolloutState` flipped.
-      #
-      # Same lesson as the frontend deploy's entry-bundle check (#53): poll the
-      # thing you actually care about, keyed to the artefact this run produced,
-      # instead of sampling a proxy for it.
-      - name: Wait for THIS rollout, and say what went wrong if it failed
-        if: steps.deploy.outputs.rolled == 'true'
         env:
-          DEPLOYMENT: ${{ steps.deploy.outputs.deployment }}
+          RESTORE_CAPACITY: ${{ inputs.restore_capacity || 'false' }}
         run: |
           set -euo pipefail
-          echo "Waiting for deployment $DEPLOYMENT…"
-          # 15 minutes: an arm64 image pull plus two 30 s health checks plus the
-          # old task's deregistration delay, with room for a slow ECR.
-          deadline=$(( SECONDS + 900 ))
-          while :; do
-            state=$(aws ecs describe-services --cluster "$CLUSTER" --services "$APP" \
-              --query "services[0].deployments[?id=='$DEPLOYMENT'].rolloutState | [0]" --output text)
-            case "$state" in
-              COMPLETED)
-                echo "Rollout completed."
-                exit 0
-                ;;
-              FAILED)
-                echo "::error::Deployment $DEPLOYMENT FAILED. The circuit breaker has restored the previous image."
-                break
-                ;;
-              None|'')
-                # The deployment is no longer on the service: it was rolled
-                # back, or a later merge superseded it. Either way this run
-                # cannot claim its image is serving, and the events below say
-                # which of the two it was.
-                echo "::error::Deployment $DEPLOYMENT is gone before completing — rolled back, or superseded by a later deploy."
-                break
-                ;;
-            esac
-            if (( SECONDS >= deadline )); then
-              echo "::error::Deployment $DEPLOYMENT was still $state after 15 minutes."
-              break
-            fi
-            echo "  $state ($(( deadline - SECONDS ))s left)"
-            sleep 15
-          done
-          echo "--- recent service events ---"
-          aws ecs describe-services --cluster "$CLUSTER" --services "$APP" \
-            --query 'services[0].events[0:12].[createdAt,message]' --output text
-          cat <<'HINT'
-          ::error::If the events say tasks failed to start and /ready returned 503, the
-          most likely cause is a migration shipped in this image that has not been
-          applied. `/ready` checks the migration journal, so an unmigrated database takes
-          every new task out of the target group and the circuit breaker restores the old
-          one. Apply it with the one-shot task documented in oxy-infra
-          terraform-uswest2/app-goway.tf step 5, then re-run this workflow:
+          digest=$(aws ecr describe-images --repository-name "oxy/$APP" --image-ids imageTag="${{ github.sha }}" --query 'imageDetails[0].imageDigest' --output text)
+          args=()
+          if [ "$RESTORE_CAPACITY" = 'true' ]; then args+=(--restore-capacity); fi
+          python3 .github/scripts/deploy-backend.py \
+            --cluster "$CLUSTER" --service "$APP" --database goway \
+            --image "$ECR_REGISTRY/oxy/$APP@$digest" "${args[@]}"
+          echo "rolled=true" >> "$GITHUB_OUTPUT"
 
-            aws ecs run-task --cluster oxy-cluster --task-definition oxy-goway \
-              --launch-type FARGATE --network-configuration '<the service's own>' \
-              --overrides '{"containerOverrides":[{"name":"goway","command":[
-                 "bun","packages/backend/dist/src/db/migrate.js","--target-database=goway"]}]}'
-          HINT
-          exit 1
-
-      # THE assertion that cannot pass while the bug is present.
-      #
-      # Everything above proves an image was built and a task is running.
       # Nothing above proves GoWay can work out how to get from one place to
       # another, and that is the thing that was broken: `POST /routes` answered
       # `service_unavailable` in production for as long as it existed, and the
