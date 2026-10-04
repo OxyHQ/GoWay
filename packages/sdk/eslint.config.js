@@ -13,8 +13,9 @@
  *    the backstop that measures the built output.
  *  - `no-console` in `src/`: the SDK never logs, so an access token can never
  *    reach a log line through it.
- *  - `@typescript-eslint/no-explicit-any` as an error: the parsers are the wall
- *    between an untrusted body and a typed contract, and `any` is a hole in it.
+ *  - `@typescript-eslint/no-explicit-any` as an error: the contract schemas are
+ *    the wall between an untrusted body and a typed value, and `any` is a hole
+ *    in it.
  */
 import js from '@eslint/js';
 import tseslint from '@typescript-eslint/eslint-plugin';
@@ -41,6 +42,9 @@ export default [
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', ignoreRestSiblings: true }],
       '@typescript-eslint/no-explicit-any': 'error',
       'no-undef': 'off', // TypeScript handles this
+      // The base rule reads a TypeScript overload signature as a redeclaration.
+      'no-redeclare': 'off',
+      '@typescript-eslint/no-redeclare': 'error',
     },
   },
   {

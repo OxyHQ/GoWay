@@ -1,61 +1,92 @@
 /**
  * The public contract, taken from its ONE definition.
  *
- * Every shape and closed value set below is defined in `@goway/shared-types`,
- * the package the GoWay backend validates against. That package is PRIVATE and
- * never published, so the build BUNDLES what this module reaches — declarations
- * into the `.d.ts`, the handful of runtime values into the JavaScript — and
- * `scripts/smoke.mjs` fails the release if any shipped file still names the
- * private scope. Nothing here re-declares a type: an SDK holding its own copy of
- * `Place` would be the second source of truth that `packages/shared-types`
- * exists to prevent.
+ * Every shape, closed value set, limit and schema below is defined in
+ * `@goway/contracts` — zod 4 schemas the GoWay backend validates requests with
+ * and this SDK parses responses with. That package is PRIVATE and never
+ * published, so the build BUNDLES what this module reaches (declarations into
+ * the `.d.ts`, values and schemas into the JavaScript) while `zod` itself stays
+ * an ordinary dependency, and `scripts/smoke.mjs` fails the release if any
+ * shipped file still names the private scope. Nothing here re-declares a type:
+ * an SDK holding its own copy of `Place` would be a second source of truth.
  *
- * This is the only module in `src/` that imports the private package.
+ * This is the only module in `src/` that imports the private package. The
+ * schemas at the bottom are for the SDK's own use and are deliberately NOT
+ * re-exported from `index.ts`: a consumer's contract is the TYPES and the
+ * values, and a zod object in the public surface would make every internal
+ * refinement a breaking change.
  */
 
 export {
-  CAPTURE_ASSET_STATES, CAPTURE_MEDIA_KINDS, CAPTURE_SOURCES, CAPTURE_PRIVACY_STATES,
-  CAPTURE_LOCATION_ORIGINS, CAPTURE_LOCATION_WITNESSES, CAPTURE_RETENTION_CLASSES,
-  RETENTION_REASONS, DELETION_REASONS,
-  API_ERROR_CODES,
-  API_ERROR_RETRYABLE,
-  API_ERROR_STATUS,
+  // Places
+  PLACE_STATUSES,
+  WRITABLE_PLACE_STATUSES,
+  PUBLISHED_PLACE_STATUSES,
+  PLACE_VERIFICATION_STATES,
   CAPABILITY_VERIFICATIONS,
-  isApiErrorCode,
-  MANEUVER_TYPES,
+  WELL_KNOWN_CAPABILITIES,
   PLACE_CLAIM_ROLES,
   PLACE_CLAIM_STATES,
-  baseLanguageTag,
-  LANGUAGE_TAG_PATTERN,
-  normalizeLanguageTag,
+  MAX_PLACE_LIST_LIMIT,
+  DEFAULT_PLACE_LIST_LIMIT,
+  MAX_RADIUS_METERS,
+  MAX_BOUNDS_SPAN_DEGREES,
+  MAX_CLAIM_LIST_LIMIT,
+  DEFAULT_CLAIM_LIST_LIMIT,
+  capabilityValueHolds,
   placeDisplayName,
-  PLACE_STATUSES,
-  PLACE_VERIFICATION_STATES,
-  SEARCH_RESULT_KINDS,
-  SEARCH_SOURCES,
+  placeHasCapability,
+  splitCapabilityKey,
+  strongestCapability,
+  // Captures
+  CAPTURE_ASSET_STATES,
+  CAPTURE_CONTENT_HASH_ALGORITHM,
+  CAPTURE_LOCATION_ORIGIN_RANK,
+  CAPTURE_LOCATION_ORIGINS,
+  CAPTURE_LOCATION_WITNESSES,
+  CAPTURE_MEDIA_KINDS,
+  CAPTURE_PRIVACY_STATES,
+  CAPTURE_RETENTION_CLASSES,
+  CAPTURE_SOURCES,
+  DELETION_REASONS,
+  RETENTION_CLASSES,
+  RETENTION_REASONS,
+  MAX_CAPTURE_LIST_LIMIT,
+  DEFAULT_CAPTURE_LIST_LIMIT,
+  // Street 3D
   STREET_COVERAGE_AREA_STATES,
   STREET_SCENE_ASSET_ROLES,
   STREET_SCENE_PROFILES,
   STREET_SCENE_REPORT_REASONS,
+  // Search and directions
+  SEARCH_RESULT_KINDS,
+  SEARCH_SOURCES,
+  SEARCH_MAX_LIMIT,
+  SEARCH_MAX_DEPTH,
+  MAX_SEARCH_QUERY_LENGTH,
+  STRUCTURED_GEOCODE_FIELDS,
+  TRAVEL_MODES,
+  MANEUVER_TYPES,
+  MAX_WAYPOINTS,
+  // Geography, language, paging
+  boundingBoxWidth,
   toGeoCoordinate,
   toGeoPosition,
-  TRAVEL_MODES,
-  WELL_KNOWN_CAPABILITIES,
-} from '@goway/shared-types';
+  baseLanguageTag,
+  normalizeLanguageTag,
+  LANGUAGE_TAG_PATTERN,
+  MAX_LANGUAGE_TAG_LENGTH,
+  MAX_CURSOR_LENGTH,
+  // Errors and the API root
+  API_ERROR_CODES,
+  API_ERROR_RETRYABLE,
+  API_ERROR_STATUS,
+  isApiErrorCode,
+  GOWAY_API_BASE_PATH,
+} from '@goway/contracts';
 
 export type {
-  CaptureAsset, CaptureSession, CaptureUploadPolicy, CaptureUploadTicket,
-  CaptureUploadIntent, CaptureAssetInput, CaptureSessionInput, CaptureLocationEvidence,
-  CaptureCameraMetadata, StoredObjectLifecycle,
-  StreetCoverage, StreetCoverageArea, StreetCoverageAreaState, StreetCoverageQuery,
-  StreetSceneAsset, StreetSceneAssetRole, StreetSceneFieldOfView, StreetSceneId, StreetSceneInitialView,
-  StreetSceneManifest, StreetSceneNavigation,
-  StreetSceneProfile, StreetSceneQuality, StreetSceneReport, StreetSceneReportInput, StreetSceneReportReason,
-  StreetSceneSummary, StreetSceneViewpoint, StreetSceneWorldTransform,
-  ApiErrorBody,
-  ApiErrorCode,
-  CapabilityKey,
-  CapabilityVerification,
+  // Geography
   GeoBoundingBox,
   GeoCoordinate,
   GeoGeometry,
@@ -64,52 +95,166 @@ export type {
   GeoJsonPoint,
   GeoJsonPolygon,
   GeoPosition,
-  ManeuverType,
   MapViewport,
   Meters,
+  Seconds,
+  // Paging and errors
+  Page,
+  ApiErrorBody,
+  ApiErrorCode,
+  ApiErrorDetails,
+  // Places
+  CapabilityKey,
+  CapabilityValue,
+  CapabilityVerification,
+  ClaimListQuery,
   NearbyPlacesQuery,
   OpeningHours,
   OpeningHoursInterval,
   Place,
   PlaceCapability,
+  PlaceCapabilityAssertion,
+  PlaceCapabilityInput,
   PlaceClaim,
+  PlaceClaimInput,
+  PlaceClaimPage,
   PlaceClaimRole,
   PlaceClaimState,
   PlaceContact,
+  PlaceCreateInput,
   PlaceId,
   PlaceName,
-  PlaceReadOptions,
+  PlaceNameInput,
+  PlacePage,
+  PlaceReadQuery,
   PlacesInBoundsQuery,
   PlaceSourceRef,
+  PlaceSourceRefInput,
   PlaceStatus,
+  PlaceUpdateInput,
   PlaceVerification,
   PlaceVerificationState,
   PlaceWithDistance,
+  PlaceWithDistancePage,
+  StructuredAddress,
+  WellKnownCapability,
+  WritablePlaceStatus,
+  // Captures
+  CaptureAnchor,
+  CaptureAsset,
+  CaptureAssetId,
+  CaptureAssetInput,
+  CaptureAssetPage,
+  CaptureAssetState,
+  CaptureCameraMetadata,
+  CaptureContentHashAlgorithm,
+  CaptureListQuery,
+  CaptureLocationEvidence,
+  CaptureLocationEvidenceInput,
+  CaptureLocationOrigin,
+  CaptureLocationWitness,
+  CaptureMediaKind,
+  CaptureMediaObject,
+  CapturePrivacyGate,
+  CapturePrivacyState,
+  CaptureRetentionClass,
+  CaptureSession,
+  CaptureSessionId,
+  CaptureSessionInput,
+  CaptureSessionPage,
+  CaptureSource,
+  CaptureUploadIntent,
+  CaptureUploadPolicy,
+  CaptureUploadTicket,
+  DeletionReason,
+  ExifGps,
+  RetentionClass,
+  RetentionReason,
+  StoredObjectLifecycle,
+  // Street 3D
+  StreetCoverage,
+  StreetCoverageArea,
+  StreetCoverageAreaState,
+  StreetCoverageQuery,
+  StreetSceneAsset,
+  StreetSceneAssetRole,
+  StreetSceneFieldOfView,
+  StreetSceneId,
+  StreetSceneInitialView,
+  StreetSceneManifest,
+  StreetSceneNavigation,
+  StreetSceneProfile,
+  StreetSceneQuality,
+  StreetSceneReport,
+  StreetSceneReportInput,
+  StreetSceneReportReason,
+  StreetSceneSummary,
+  StreetSceneViewpoint,
+  StreetSceneWorldTransform,
+  // Search
   ReverseGeocodeQuery,
-  Route,
-  RouteLeg,
-  RouteLocation,
-  RouteManeuver,
-  RouteRequest,
-  RouteResponse,
   SearchQuery,
   SearchResult,
   SearchResultContext,
   SearchResultKind,
   SearchResults,
   SearchSource,
-  Seconds,
-  StructuredAddress,
   StructuredGeocodeQuery,
+  // Directions
+  ManeuverType,
+  Route,
+  RouteLeg,
+  RouteLocation,
+  RouteManeuver,
+  RouteRequest,
+  RouteResponse,
   TravelMode,
-  WellKnownCapability,
-} from '@goway/shared-types';
+} from '@goway/contracts';
 
-/**
- * The path every public GoWay API route hangs off.
- *
- * Versioned in the PATH rather than in a header so a cached URL is a complete
- * description of what was requested, and so a consumer pinned to v1 keeps
- * working when v2 ships beside it.
- */
-export const GOWAY_API_BASE_PATH = '/api/v1';
+// ── Schemas: the SDK's own use only, never re-exported from `index.ts` ───────
+
+export {
+  // Path parameters
+  assetPathSchema,
+  capabilityPathSchema,
+  placePathSchema,
+  scenePathSchema,
+  sessionPathSchema,
+  // Requests
+  captureAssetInputSchema,
+  captureListQuerySchema,
+  captureSessionInputSchema,
+  claimListQuerySchema,
+  geoCoordinateSchema,
+  nearbyPlacesQuerySchema,
+  placeCapabilityAssertionSchema,
+  placeClaimInputSchema,
+  placeCreateInputSchema,
+  placeReadQuerySchema,
+  placesInBoundsQuerySchema,
+  placeUpdateInputSchema,
+  reverseGeocodeQuerySchema,
+  routeRequestSchema,
+  searchParametersOf,
+  searchParametersSchema,
+  streetCoverageQuerySchema,
+  streetSceneReportInputSchema,
+  structuredGeocodeQuerySchema,
+  // Responses
+  captureAssetPageSchema,
+  captureAssetSchema,
+  captureSessionPageSchema,
+  captureSessionSchema,
+  captureUploadPolicySchema,
+  captureUploadTicketSchema,
+  placeClaimPageSchema,
+  placeClaimSchema,
+  placePageSchema,
+  placeSchema,
+  placeWithDistancePageSchema,
+  routeResponseSchema,
+  searchResultsSchema,
+  streetCoverageSchema,
+  streetSceneManifestSchema,
+  streetSceneReportSchema,
+} from '@goway/contracts';

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { createGoWayClient, GoWayNotFoundError, GoWayResponseError, GoWayValidationError } from '../src/index';
-import { parseStreetCoverage, parseStreetSceneManifest, parseStreetSceneReport } from '../src/parse';
 import { fakeFetch, queryOf, rejection } from './helpers';
 
 const time = '2026-10-04T10:00:00.000Z';
@@ -55,21 +54,36 @@ describe('street3d client', () => {
     expect(await rejection(createGoWayClient({ fetch: missing.fetch }).street3d.scene('nope'))).toBeInstanceOf(GoWayNotFoundError);
   });
 
-  it('reports with a session and sends only the contract fields', async () => {
+  it('reports with a session and refuses anything the strict contract does not name', async () => {
     const report = { id: 'r-1', sceneId: 'scene-1', version: 3, reason: 'privacy', createdAt: time };
     const { fetch, calls } = fakeFetch(201, report);
     const client = createGoWayClient({ fetch, getAccessToken: () => 'session-token' });
-    const sent = await client.street3d.report('scene-1', { reason: 'privacy', note: 'a face', extra: 'dropped' } as never);
+    const sent = await client.street3d.report('scene-1', { reason: 'privacy', note: '  a face ' });
     expect(sent).toEqual(report);
     expect(calls[0]?.init.method).toBe('POST');
     expect(JSON.parse(calls[0]!.init.body!)).toEqual({ reason: 'privacy', note: 'a face' });
     expect(await rejection(client.street3d.report('scene-1', { reason: 'spam' } as never))).toBeInstanceOf(GoWayValidationError);
+    expect(
+      await rejection(client.street3d.report('scene-1', { reason: 'privacy', extra: 'x' } as never)),
+    ).toBeInstanceOf(GoWayValidationError);
+    expect(calls).toHaveLength(1);
   });
 });
 
-describe('street3d parsers', () => {
-  it('strip private fields and keep only the contract', () => {
-    const parsed = parseStreetSceneManifest({
+/** The body a scene or coverage read resolves with, through the real client. */
+async function manifestFrom(body: unknown) {
+  const { fetch } = fakeFetch(200, body);
+  return createGoWayClient({ fetch }).street3d.scene('scene-1');
+}
+
+async function coverageFrom(body: unknown) {
+  const { fetch } = fakeFetch(200, body);
+  return createGoWayClient({ fetch }).street3d.coverage({ west: 2.3, south: 48.86, east: 2.31, north: 48.87 });
+}
+
+describe('street3d responses', () => {
+  it('strip private fields and keep only the contract', async () => {
+    const parsed = await manifestFrom({
       ...manifest,
       jobId: 'private', captureAssetIds: ['private'],
       assets: manifest.assets.map((asset) => ({ ...asset, key: 'private/key', sourceKey: 'jobs/private' })),
@@ -77,25 +91,31 @@ describe('street3d parsers', () => {
     });
     expect(JSON.stringify(parsed)).not.toContain('private');
     expect(JSON.stringify(parsed)).not.toContain('gpuSeconds');
-    const area = parseStreetCoverage({ ...coverage, areas: [{ ...coverage.areas[0], cell: 'u09wh2h', count: 7 }] }).areas[0];
+    const area = (await coverageFrom({ ...coverage, areas: [{ ...coverage.areas[0], cell: 'u09wh2h', count: 7 }] })).areas[0];
     expect(Object.keys(area!).sort()).toEqual(['atRiskUntil', 'bounds', 'center', 'contributionBand', 'id', 'state']);
-    expect(Object.keys(parseStreetSceneReport({ id: 'r', sceneId: 's', version: 1, reason: 'other', createdAt: time, reporter: 'x' }))).not.toContain('reporter');
+    const reported = fakeFetch(201, { id: 'r', sceneId: 's', version: 1, reason: 'other', createdAt: time, reporter: 'x' });
+    const report = await createGoWayClient({ fetch: reported.fetch }).street3d.report('s', { reason: 'other' });
+    expect(Object.keys(report)).not.toContain('reporter');
   });
 
-  it('fail closed on unknown states, insecure URLs, bad digests and a malformed transform', () => {
-    expect(() => parseStreetCoverage({ ...coverage, areas: [{ ...coverage.areas[0], state: 'great' }] })).toThrow();
-    expect(() => parseStreetSceneManifest({ ...manifest, assets: [{ ...manifest.assets[0], url: 'http://cdn.example.test/a.spz' }] })).toThrow();
+  it('fail closed on unknown states, insecure URLs, bad digests and a malformed transform', async () => {
+    const malformed = [
+      coverageFrom({ ...coverage, areas: [{ ...coverage.areas[0], state: 'great' }] }),
+      manifestFrom({ ...manifest, assets: [{ ...manifest.assets[0], url: 'http://cdn.example.test/a.spz' }] }),
+      manifestFrom({ ...manifest, assets: [{ ...manifest.assets[0], sha256: 'xyz' }] }),
+      manifestFrom({ ...manifest, worldTransform: { ...manifest.worldTransform, enuFromScene: [1, 0, 0] } }),
+      manifestFrom({ ...manifest, quality: { ...manifest.quality, placement: 'exact' } }),
+    ];
+    for (const pending of malformed) expect(await rejection(pending)).toBeInstanceOf(GoWayResponseError);
     // Plain HTTP only on loopback: a local asset server, which downgrades nothing.
-    expect(parseStreetSceneManifest({ ...manifest, assets: [{ ...manifest.assets[0], url: 'http://localhost:8811/a.spz' }] }).assets[0]?.url).toBe('http://localhost:8811/a.spz');
-    expect(() => parseStreetSceneManifest({ ...manifest, assets: [{ ...manifest.assets[0], url: 'http://localhost.example.test/a.spz' }] })).toThrow();
-    expect(() => parseStreetSceneManifest({ ...manifest, assets: [{ ...manifest.assets[0], sha256: 'xyz' }] })).toThrow();
-    expect(() => parseStreetSceneManifest({ ...manifest, worldTransform: { ...manifest.worldTransform, enuFromScene: [1, 0, 0] } })).toThrow();
-    expect(() => parseStreetSceneManifest({ ...manifest, quality: { ...manifest.quality, placement: 'exact' } })).toThrow();
+    expect((await manifestFrom({ ...manifest, assets: [{ ...manifest.assets[0], url: 'http://localhost:8811/a.spz' }] })).assets[0]?.url).toBe('http://localhost:8811/a.spz');
+    expect(await rejection(manifestFrom({ ...manifest, assets: [{ ...manifest.assets[0], url: 'http://localhost.example.test/a.spz' }] }))).toBeInstanceOf(GoWayResponseError);
   });
 
-  it('parse guided navigation strictly when present and leave it absent otherwise', () => {
-    expect(parseStreetSceneManifest(manifest)).not.toHaveProperty('navigation');
-    expect(parseStreetSceneManifest({ ...manifest, navigation: null })).not.toHaveProperty('navigation');
+  it('parse guided navigation strictly when present and leave it absent otherwise', async () => {
+    expect(await manifestFrom(manifest)).not.toHaveProperty('navigation');
+    // `null` is not "absent": the contract field is optional, not nullable.
+    expect(await rejection(manifestFrom({ ...manifest, navigation: null }))).toBeInstanceOf(GoWayResponseError);
 
     const navigation = {
       viewpoints: [
@@ -104,7 +124,7 @@ describe('street3d parsers', () => {
       ],
       fieldOfView: { horizontalDegrees: 66, verticalDegrees: 50 },
     };
-    const parsed = parseStreetSceneManifest({
+    const parsed = await manifestFrom({
       ...manifest,
       navigation: {
         ...navigation,
@@ -115,7 +135,7 @@ describe('street3d parsers', () => {
     expect(parsed.navigation).toEqual(navigation);
     expect(JSON.stringify(parsed)).not.toContain('private');
     expect(JSON.stringify(parsed)).not.toContain('capturedAt');
-    expect(parseStreetSceneManifest({ ...manifest, navigation: { viewpoints: [] } }).navigation).toEqual({ viewpoints: [] });
+    expect((await manifestFrom({ ...manifest, navigation: { viewpoints: [] } })).navigation).toEqual({ viewpoints: [] });
 
     const malformed: unknown[] = [
       { fieldOfView: navigation.fieldOfView },
@@ -129,7 +149,9 @@ describe('street3d parsers', () => {
       { viewpoints: [], fieldOfView: { horizontalDegrees: 66 } },
       'nearby',
     ];
-    for (const bad of malformed) expect(() => parseStreetSceneManifest({ ...manifest, navigation: bad })).toThrow();
+    for (const bad of malformed) {
+      expect(await rejection(manifestFrom({ ...manifest, navigation: bad }))).toBeInstanceOf(GoWayResponseError);
+    }
   });
 
   it('surfaces a malformed body as a response error', async () => {

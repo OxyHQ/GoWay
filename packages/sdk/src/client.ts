@@ -1,40 +1,85 @@
-import { TRAVEL_MODES } from './contract';
+import {
+  assetPathSchema,
+  capabilityPathSchema,
+  captureAssetInputSchema,
+  captureAssetPageSchema,
+  captureAssetSchema,
+  captureListQuerySchema,
+  captureSessionInputSchema,
+  captureSessionPageSchema,
+  captureSessionSchema,
+  captureUploadPolicySchema,
+  captureUploadTicketSchema,
+  claimListQuerySchema,
+  geoCoordinateSchema,
+  nearbyPlacesQuerySchema,
+  normalizeLanguageTag,
+  placeCapabilityAssertionSchema,
+  placeClaimInputSchema,
+  placeClaimPageSchema,
+  placeClaimSchema,
+  placeCreateInputSchema,
+  placePageSchema,
+  placePathSchema,
+  placeReadQuerySchema,
+  placeSchema,
+  placesInBoundsQuerySchema,
+  placeUpdateInputSchema,
+  placeWithDistancePageSchema,
+  reverseGeocodeQuerySchema,
+  routeRequestSchema,
+  routeResponseSchema,
+  scenePathSchema,
+  searchParametersOf,
+  searchParametersSchema,
+  searchResultsSchema,
+  sessionPathSchema,
+  streetCoverageQuerySchema,
+  streetCoverageSchema,
+  streetSceneManifestSchema,
+  streetSceneReportInputSchema,
+  streetSceneReportSchema,
+  structuredGeocodeQuerySchema,
+  TRAVEL_MODES,
+} from './contract';
 import type {
-  CaptureAsset, CaptureAssetInput, CaptureSession, CaptureSessionInput, CaptureUploadPolicy, CaptureUploadTicket,
-  GeoCoordinate,
+  CapabilityKey,
+  CaptureAsset,
+  CaptureAssetInput,
+  CaptureAssetPage,
+  CaptureListQuery,
+  CaptureSession,
+  CaptureSessionInput,
+  CaptureSessionPage,
+  CaptureUploadPolicy,
+  CaptureUploadTicket,
+  ClaimListQuery,
   MapViewport,
   NearbyPlacesQuery,
   Place,
+  PlaceCapabilityAssertion,
+  PlaceClaim,
+  PlaceClaimInput,
+  PlaceClaimPage,
+  PlaceCreateInput,
   PlaceId,
-  PlaceSourceRef,
+  PlacePage,
   PlacesInBoundsQuery,
-  PlaceWithDistance,
+  PlaceUpdateInput,
+  PlaceWithDistancePage,
   ReverseGeocodeQuery,
-  RouteLocation,
   RouteRequest,
   RouteResponse,
   SearchQuery,
   SearchResults,
-  StructuredGeocodeQuery,
   StreetCoverage,
   StreetCoverageQuery,
   StreetSceneManifest,
   StreetSceneReport,
   StreetSceneReportInput,
+  StructuredGeocodeQuery,
 } from './contract';
-import { STREET_SCENE_REPORT_REASONS } from './contract';
 import { GoWayValidationError } from './errors';
-import {
-  parseCaptureAsset, parseCaptureAssets, parseCaptureSession, parseCaptureSessions, parseCapturePolicy, parseCaptureTicket,
-  parsePlace,
-  parsePlaceList,
-  parsePlaceWithDistanceList,
-  parseRouteResponse,
-  parseSearchResults,
-  parseStreetCoverage,
-  parseStreetSceneManifest,
-  parseStreetSceneReport,
-} from './parse';
 import type { GoWayAbortSignal, GoWayFetch } from './runtime';
 import {
   pathSegment,
@@ -43,6 +88,7 @@ import {
   type QueryValue,
   type TransportConfig,
 } from './transport';
+import { validInput } from './validate';
 
 /** The public API origin a client talks to unless told otherwise. */
 export const DEFAULT_GOWAY_API_BASE_URL = 'https://api.goway.to';
@@ -71,12 +117,14 @@ export interface GoWayClientOptions {
    *
    * Omitting it is a normal configuration: the map, search and routing all work
    * signed out. Only identity-bound calls — creating or editing a place,
-   * asserting a capability — need a token.
+   * asserting a capability, claiming, contributing — need a token.
    */
   getAccessToken?: GoWayAccessTokenGetter;
   /**
    * The default locale (a BCP 47 tag such as `es` or `pt-BR`) for localized
-   * names and maneuver instructions. Each call that accepts one can override it.
+   * names and maneuver instructions, applied to every call that accepts one and
+   * names none. Normalized once (`ES` → `es`), so equivalent spellings are one
+   * cache key.
    */
   locale?: string;
   /** Per-request timeout in milliseconds. Defaults to {@link DEFAULT_GOWAY_TIMEOUT_MS}. */
@@ -95,43 +143,6 @@ export interface GoWayRequestOptions {
   signal?: GoWayAbortSignal;
 }
 
-/**
- * A capability claim as a CLIENT asserts it.
- *
- * `verification` is deliberately absent: the server derives it from the
- * caller's authorization, so a community report cannot arrive labelled
- * `oxy_verified` simply because the client said so. `observedAt` is the
- * server's clock for the same reason.
- */
-export interface PlaceCapabilityInput {
-  /** e.g. `payments.faircoin` */
-  namespace: string;
-  /** e.g. `accepted` */
-  capability: string;
-  /** `true`/`false` for a flag; a string or number for a valued capability. */
-  value: boolean | string | number;
-  /** The outside source this claim came from, when it did. */
-  source?: PlaceSourceRef;
-}
-
-/** The fields a client may set when creating a place. */
-export type PlaceCreateInput = Pick<Place, 'name' | 'location'> &
-  Partial<Pick<Place, 'geometry' | 'categories' | 'address' | 'contact' | 'openingHours' | 'status'>> & {
-    capabilities?: readonly PlaceCapabilityInput[];
-    /** The outside records this place reconciles against, when the caller knows them. */
-    sources?: readonly PlaceSourceRef[];
-  };
-
-/**
- * The fields a client may change on an existing place.
- *
- * Every field is optional and only the ones present are touched: GoWay layers
- * enrichment OVER source data and never destructively overwrites a source fact,
- * so an update that omits `address` leaves the address alone rather than
- * clearing it.
- */
-export type PlaceUpdateInput = Partial<PlaceCreateInput>;
-
 /** {@link GoWayRequestOptions} plus the locale a single-place read resolves against. */
 export interface GoWayPlaceReadOptions extends GoWayRequestOptions {
   /**
@@ -142,6 +153,32 @@ export interface GoWayPlaceReadOptions extends GoWayRequestOptions {
   locale?: string;
 }
 
+/**
+ * One capability of one place, written by the business or a contributor.
+ *
+ * The verification tier is never the caller's to name: the server derives it
+ * from who is asking (an approved claim earns `business_asserted`) and whether a
+ * `source` is cited.
+ */
+export interface GoWayPlaceCapabilitiesApi {
+  /**
+   * Assert or refresh `key` on a place, and get the place back. `value` is
+   * required — a community reporter retracts with `false`, which is better
+   * evidence than a deletion. Identity-bound.
+   */
+  put(placeId: PlaceId, key: CapabilityKey, assertion: PlaceCapabilityAssertion, options?: GoWayRequestOptions): Promise<Place>;
+  /** Withdraw the business's own assertion of `key`. Resolves with nothing (`204`). Identity-bound. */
+  delete(placeId: PlaceId, key: CapabilityKey, options?: GoWayRequestOptions): Promise<void>;
+}
+
+/** Claims on one place: the request to be recognised as running it. */
+export interface GoWayPlaceClaimsApi {
+  /** Ask to be recognised as running this place. Always created `pending`. Identity-bound. */
+  create(placeId: PlaceId, input: PlaceClaimInput, options?: GoWayRequestOptions): Promise<PlaceClaim>;
+  /** The claims on this place, visible to an account that holds one. Oldest first. */
+  list(placeId: PlaceId, query?: ClaimListQuery, options?: GoWayRequestOptions): Promise<PlaceClaimPage>;
+}
+
 export interface GoWayPlacesApi {
   /**
    * One place by its stable GoWay Place ID. Never a provider id: an OSM node
@@ -149,26 +186,35 @@ export interface GoWayPlacesApi {
    *
    * A single-place read always carries `names` — every language GoWay holds
    * one in. The list reads below do not; they carry `localizedName` alone, for
-   * the locale that was asked for.
+   * the locale that was asked for. A place GoWay withdrew rejects with
+   * `GoWayGoneError`, not `GoWayNotFoundError`.
    */
   get(placeId: PlaceId, options?: GoWayPlaceReadOptions): Promise<Place>;
   /**
-   * Places within `radiusMeters` of a point, nearest first, each carrying its
-   * distance.
+   * One page of places within `radiusMeters` of a point, nearest first, each
+   * carrying its distance.
    *
    * `capabilities` is the generic filter every Oxy product shares — pass
    * `['payments.faircoin.accepted']` for FairCoin merchants, or
-   * `['mobility.moovo.pickup']` for Moovo pickup points. A place must assert
-   * EVERY listed capability. Nothing about the capability table's layout leaks
-   * into this call.
+   * `['mobility.moovo.pickup']` for Moovo pickup points. A place must HAVE
+   * every listed capability: its strongest assertion of each key holds.
+   * Nothing about the capability table's layout leaks into this call.
    */
-  nearby(query: NearbyPlacesQuery, options?: GoWayRequestOptions): Promise<PlaceWithDistance[]>;
-  /** Places inside a bounding box — the map-viewport read. */
-  inBounds(query: PlacesInBoundsQuery, options?: GoWayRequestOptions): Promise<Place[]>;
+  nearby(query: NearbyPlacesQuery, options?: GoWayRequestOptions): Promise<PlaceWithDistancePage>;
+  /** One page of places inside a bounding box — the map-viewport read. */
+  inBounds(query: PlacesInBoundsQuery, options?: GoWayRequestOptions): Promise<PlacePage>;
   /** Create a GoWay-owned place. Identity-bound: requires an Oxy access token. */
   create(input: PlaceCreateInput, options?: GoWayRequestOptions): Promise<Place>;
-  /** Update a place the caller is entitled to edit. Identity-bound. */
+  /** Update a place the caller is entitled to edit. Only the fields present are touched. Identity-bound. */
   update(placeId: PlaceId, input: PlaceUpdateInput, options?: GoWayRequestOptions): Promise<Place>;
+  readonly capabilities: GoWayPlaceCapabilitiesApi;
+  readonly claims: GoWayPlaceClaimsApi;
+}
+
+/** The signed-in account's own claims, across every place. */
+export interface GoWayClaimsApi {
+  /** Every claim the signed-in account holds, in every state, oldest first. Identity-bound. */
+  mine(query?: ClaimListQuery, options?: GoWayRequestOptions): Promise<PlaceClaimPage>;
 }
 
 export interface GoWaySearchApi {
@@ -218,16 +264,6 @@ export interface GoWayLinks {
   map(viewport: MapViewport): string;
 }
 
-export interface GoWayClient {
-  readonly captures: GoWayCapturesApi;
-  readonly places: GoWayPlacesApi;
-  readonly search: GoWaySearchApi;
-  readonly geocode: GoWayGeocodeApi;
-  readonly routes: GoWayRoutesApi;
-  readonly street3d: GoWayStreet3dApi;
-  readonly links: GoWayLinks;
-}
-
 /**
  * Street 3D: published scenes and coarse contribution coverage.
  *
@@ -246,17 +282,34 @@ export interface GoWayStreet3dApi {
   report(id: string, input: StreetSceneReportInput, options?: GoWayRequestOptions): Promise<StreetSceneReport>;
 }
 
+/**
+ * Street 3D contributions. `policy` is public; everything else is the signed-in
+ * contributor's own sessions and assets.
+ */
 export interface GoWayCapturesApi {
-  /** Most recent 50 contribution sessions owned by the authenticated caller. */
-  sessions(options?: GoWayRequestOptions): Promise<CaptureSession[]>;
+  /** One page of the contributor's sessions, newest first. */
+  sessions(query?: CaptureListQuery, options?: GoWayRequestOptions): Promise<CaptureSessionPage>;
   policy(options?: GoWayRequestOptions): Promise<CaptureUploadPolicy>;
   createSession(input: CaptureSessionInput, options?: GoWayRequestOptions): Promise<CaptureSession>;
-  session(id: string, options?: GoWayRequestOptions): Promise<CaptureSession>;
-  assets(sessionId: string, options?: GoWayRequestOptions): Promise<CaptureAsset[]>;
+  session(sessionId: string, options?: GoWayRequestOptions): Promise<CaptureSession>;
+  /** One page of a session's contributions, oldest first. */
+  assets(sessionId: string, query?: CaptureListQuery, options?: GoWayRequestOptions): Promise<CaptureAssetPage>;
   register(sessionId: string, input: CaptureAssetInput, options?: GoWayRequestOptions): Promise<CaptureUploadTicket>;
-  asset(id: string, options?: GoWayRequestOptions): Promise<CaptureAsset>;
-  finalize(id: string, options?: GoWayRequestOptions): Promise<CaptureAsset>;
-  remove(id: string, options?: GoWayRequestOptions): Promise<CaptureAsset>;
+  asset(assetId: string, options?: GoWayRequestOptions): Promise<CaptureAsset>;
+  finalize(assetId: string, options?: GoWayRequestOptions): Promise<CaptureAsset>;
+  /** Withdraw a contribution: its media is deleted and it never feeds a scene. Resolves with nothing (`204`). */
+  remove(assetId: string, options?: GoWayRequestOptions): Promise<void>;
+}
+
+export interface GoWayClient {
+  readonly places: GoWayPlacesApi;
+  readonly claims: GoWayClaimsApi;
+  readonly search: GoWaySearchApi;
+  readonly geocode: GoWayGeocodeApi;
+  readonly routes: GoWayRoutesApi;
+  readonly captures: GoWayCapturesApi;
+  readonly street3d: GoWayStreet3dApi;
+  readonly links: GoWayLinks;
 }
 
 // ── Option validation (programmer errors → TypeError, at construction) ───────
@@ -269,13 +322,6 @@ function baseUrl(value: unknown, name: string, fallback: string): string {
     throw new TypeError(`${name} must be an absolute http(s) URL without a query or fragment`);
   }
   return value.replace(/\/+$/, '');
-}
-
-/** A BCP 47-shaped tag. The server decides which locales it serves. */
-const LOCALE = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8})*$/;
-
-function isLocale(value: unknown): value is string {
-  return typeof value === 'string' && LOCALE.test(value);
 }
 
 /** An HTTP header name (RFC 9110 token). */
@@ -300,326 +346,79 @@ function extraHeaders(value: unknown): Readonly<Record<string, string>> {
   return Object.freeze(result);
 }
 
-// ── Input validation (→ GoWayValidationError, no request sent) ──────────────
-
-function requireObject(value: unknown, what: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new GoWayValidationError(`${what} must be an object`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function latitude(value: unknown, what: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < -90 || value > 90) {
-    throw new GoWayValidationError(`${what} must be a latitude in [-90, 90]`);
-  }
-  return value;
-}
-
-function longitude(value: unknown, what: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < -180 || value > 180) {
-    throw new GoWayValidationError(`${what} must be a longitude in [-180, 180]`);
-  }
-  return value;
-}
-
-function finiteNumberOf(value: unknown, what: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new GoWayValidationError(`${what} must be a finite number`);
-  }
-  return value;
-}
-
-function positiveMeters(value: unknown, what: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    throw new GoWayValidationError(`${what} must be a positive number of metres`);
-  }
-  return value;
-}
-
-/** The server decides the maximum; this only refuses a value that is not a count. */
-function limitOf(value: unknown): number | undefined {
+function defaultLocaleOf(value: unknown): string | undefined {
   if (value === undefined) return undefined;
-  if (!Number.isInteger(value) || (value as number) < 1) {
-    throw new GoWayValidationError('limit must be a positive integer');
-  }
-  return value as number;
+  const normalized = typeof value === 'string' ? normalizeLanguageTag(value) : undefined;
+  if (normalized === undefined) throw new TypeError('locale must be a BCP 47 language tag');
+  return normalized;
 }
 
-function localeOf(override: unknown, fallback: string | undefined): string | undefined {
-  if (override === undefined) return fallback;
-  if (!isLocale(override)) throw new GoWayValidationError('locale must be a BCP 47 language tag');
-  return override;
+// ── Request assembly ────────────────────────────────────────────────────────
+//
+// Every input below goes through its CONTRACT schema (`validInput`) — path
+// parameters included — and the parsed value is what is sent. What remains
+// hand-written is what the contract has no schema for: refusing a `.`/`..`
+// segment (`pathSegment`), and the `links` viewport, which is a web URL rather
+// than an API request.
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
- * A capability filter list.
+ * `value` with the client's default locale filled in, when it names none.
  *
- * Each key must be `<namespace>.<capability>` — a bare `faircoin` would match
- * nothing and is far more likely a typo than an intent. The keys are NOT
- * checked against `WELL_KNOWN_CAPABILITIES`: the namespace is open by design,
- * so a third party can define its own without waiting for a GoWay release.
+ * Anything that is not an object is passed through untouched for its schema to
+ * refuse, so a `null` query is a `GoWayValidationError` rather than a
+ * `TypeError` from a spread.
  */
-function capabilityKeys(value: unknown): readonly string[] | undefined {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value)) throw new GoWayValidationError('capabilities must be an array of capability keys');
-  for (const key of value as unknown[]) {
-    if (typeof key !== 'string' || !/^[^.\s]+(?:\.[^.\s]+)+$/.test(key)) {
-      throw new GoWayValidationError('each capability must be a dotted key such as payments.faircoin.accepted');
-    }
-  }
-  return value as readonly string[];
+function withLocale<T>(value: T, locale: string | undefined): T {
+  if (locale === undefined || !isRecord(value) || value.locale !== undefined) return value;
+  return { ...value, locale };
 }
 
-function categoryKeys(value: unknown): readonly string[] | undefined {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value) || (value as unknown[]).some((entry) => typeof entry !== 'string' || entry.trim() === '')) {
-    throw new GoWayValidationError('categories must be an array of non-empty strings');
-  }
-  return value as readonly string[];
+function placePath(placeId: PlaceId): string {
+  const path = validInput(placePathSchema, { placeId }, 'path');
+  return `/places/${pathSegment(path.placeId, 'placeId')}`;
 }
 
-function nearbyQuery(query: NearbyPlacesQuery, defaultLocale: string | undefined): Record<string, QueryValue> {
-  const record = requireObject(query, 'query');
-  return {
-    latitude: latitude(record.latitude, 'latitude'),
-    longitude: longitude(record.longitude, 'longitude'),
-    radiusMeters: positiveMeters(record.radiusMeters, 'radiusMeters'),
-    capabilities: capabilityKeys(record.capabilities),
-    categories: categoryKeys(record.categories),
-    limit: limitOf(record.limit),
-    locale: localeOf(record.locale, defaultLocale),
-  };
+function capabilityPath(placeId: PlaceId, key: CapabilityKey): string {
+  const path = validInput(capabilityPathSchema, { placeId, key }, 'path');
+  return `/places/${pathSegment(path.placeId, 'placeId')}/capabilities/${pathSegment(path.key, 'key')}`;
 }
 
-function boundsQuery(query: PlacesInBoundsQuery, defaultLocale: string | undefined): Record<string, QueryValue> {
-  const record = requireObject(query, 'query');
-  const south = latitude(record.south, 'south');
-  const north = latitude(record.north, 'north');
-  if (south > north) throw new GoWayValidationError('south must not be north of north');
-  // `west > east` is NOT an error: that is how a box crossing the antimeridian
-  // is spelled, and refusing it would make the Pacific unmappable.
-  return {
-    west: longitude(record.west, 'west'),
-    south,
-    east: longitude(record.east, 'east'),
-    north,
-    capabilities: capabilityKeys(record.capabilities),
-    categories: categoryKeys(record.categories),
-    limit: limitOf(record.limit),
-    locale: localeOf(record.locale, defaultLocale),
-  };
+function sessionPath(sessionId: string): string {
+  const path = validInput(sessionPathSchema, { sessionId }, 'path');
+  return `/captures/sessions/${pathSegment(path.sessionId, 'sessionId')}`;
 }
 
-function coverageQuery(query: StreetCoverageQuery): Record<string, QueryValue> {
-  const record = requireObject(query, 'query');
-  const south = latitude(record.south, 'south');
-  const north = latitude(record.north, 'north');
-  if (south > north) throw new GoWayValidationError('south must not be north of north');
-  return { west: longitude(record.west, 'west'), south, east: longitude(record.east, 'east'), north };
+function assetPath(assetId: string): string {
+  const path = validInput(assetPathSchema, { assetId }, 'path');
+  return `/captures/assets/${pathSegment(path.assetId, 'assetId')}`;
 }
 
-/** Only the two contract fields are sent, so nothing else a caller passes reaches the server. */
-function reportBody(input: StreetSceneReportInput): StreetSceneReportInput {
-  const record = requireObject(input, 'input');
-  if (typeof record.reason !== 'string' || !(STREET_SCENE_REPORT_REASONS as readonly string[]).includes(record.reason)) {
-    throw new GoWayValidationError(`reason must be one of ${STREET_SCENE_REPORT_REASONS.join(', ')}`);
-  }
-  if (record.note !== undefined && (typeof record.note !== 'string' || record.note.length > 500)) {
-    throw new GoWayValidationError('note must be a string of at most 500 characters');
-  }
-  return {
-    reason: record.reason as StreetSceneReportInput['reason'],
-    ...(typeof record.note === 'string' ? { note: record.note } : {}),
-  };
+function scenePath(sceneId: string): string {
+  const path = validInput(scenePathSchema, { sceneId }, 'path');
+  return `/street3d/scenes/${pathSegment(path.sceneId, 'sceneId')}`;
 }
 
-function coordinateOf(value: unknown, what: string): GeoCoordinate {
-  const record = requireObject(value, what);
-  return {
-    latitude: latitude(record.latitude, `${what}.latitude`),
-    longitude: longitude(record.longitude, `${what}.longitude`),
-  };
-}
-
-function searchQuery(query: SearchQuery, defaultLocale: string | undefined): Record<string, QueryValue> {
-  const record = requireObject(query, 'query');
-  const text = typeof record.query === 'string' ? record.query.trim() : '';
-  if (text === '') throw new GoWayValidationError('query.query must be a non-empty string');
-
-  const near = record.near === undefined ? undefined : coordinateOf(record.near, 'near');
-  let viewport: Record<string, QueryValue> = {};
-  if (record.viewport !== undefined) {
-    const box = requireObject(record.viewport, 'viewport');
-    viewport = {
-      west: longitude(box.west, 'viewport.west'),
-      south: latitude(box.south, 'viewport.south'),
-      east: longitude(box.east, 'viewport.east'),
-      north: latitude(box.north, 'viewport.north'),
-    };
-  }
-  return {
-    q: text,
-    ...(near ? { latitude: near.latitude, longitude: near.longitude } : {}),
-    ...viewport,
-    capabilities: capabilityKeys(record.capabilities),
-    categories: categoryKeys(record.categories),
-    limit: limitOf(record.limit),
-    locale: localeOf(record.locale, defaultLocale),
-  };
-}
-
-function reverseQuery(query: ReverseGeocodeQuery, defaultLocale: string | undefined): Record<string, QueryValue> {
-  const record = requireObject(query, 'query');
-  return {
-    latitude: latitude(record.latitude, 'latitude'),
-    longitude: longitude(record.longitude, 'longitude'),
-    radiusMeters: record.radiusMeters === undefined ? undefined : positiveMeters(record.radiusMeters, 'radiusMeters'),
-    limit: limitOf(record.limit),
-    locale: localeOf(record.locale, defaultLocale),
-  };
-}
-
-const STRUCTURED_FIELDS = ['street', 'houseNumber', 'city', 'region', 'postalCode', 'countryCode'] as const;
-
-function structuredQuery(
-  query: StructuredGeocodeQuery,
-  defaultLocale: string | undefined,
-): Record<string, QueryValue> {
-  const record = requireObject(query, 'query');
-  const parts: Record<string, QueryValue> = {};
-  for (const field of STRUCTURED_FIELDS) {
-    const value = record[field];
-    if (value === undefined) continue;
-    if (typeof value !== 'string' || value.trim() === '') {
-      throw new GoWayValidationError(`${field} must be a non-empty string`);
-    }
-    parts[field] = value.trim();
-  }
-  if (Object.keys(parts).length === 0) {
-    throw new GoWayValidationError(`a structured lookup needs at least one of ${STRUCTURED_FIELDS.join(', ')}`);
-  }
-  return { ...parts, limit: limitOf(record.limit), locale: localeOf(record.locale, defaultLocale) };
-}
-
-/** One end of a route. Exactly one of `coordinate`/`placeId` must be usable. */
-function routeLocation(value: unknown, what: string): RouteLocation {
-  const record = requireObject(value, what);
-  const hasCoordinate = record.coordinate !== undefined;
-  const hasPlaceId = record.placeId !== undefined;
-  if (!hasCoordinate && !hasPlaceId) {
-    throw new GoWayValidationError(`${what} must carry a coordinate or a placeId`);
-  }
-  const location: RouteLocation = {};
-  if (hasCoordinate) location.coordinate = coordinateOf(record.coordinate, `${what}.coordinate`);
-  if (hasPlaceId) {
-    if (typeof record.placeId !== 'string' || record.placeId.trim() === '') {
-      throw new GoWayValidationError(`${what}.placeId must be a non-empty GoWay Place ID`);
-    }
-    location.placeId = record.placeId;
-  }
-  if (record.name !== undefined) {
-    if (typeof record.name !== 'string') throw new GoWayValidationError(`${what}.name must be a string`);
-    location.name = record.name;
-  }
-  return location;
-}
-
-function routeBody(routeRequest: RouteRequest, defaultLocale: string | undefined): RouteRequest {
-  const record = requireObject(routeRequest, 'routeRequest');
-  if (!(TRAVEL_MODES as readonly string[]).includes(record.mode as string)) {
-    throw new GoWayValidationError(`mode must be one of ${TRAVEL_MODES.join(', ')}`);
-  }
-  const body: RouteRequest = {
-    origin: routeLocation(record.origin, 'origin'),
-    destination: routeLocation(record.destination, 'destination'),
-    mode: record.mode as RouteRequest['mode'],
-  };
-  if (record.waypoints !== undefined) {
-    if (!Array.isArray(record.waypoints)) throw new GoWayValidationError('waypoints must be an array');
-    body.waypoints = (record.waypoints as unknown[]).map((waypoint, index) =>
-      routeLocation(waypoint, `waypoints[${index}]`),
-    );
-  }
-  if (record.alternatives !== undefined) {
-    if (typeof record.alternatives !== 'boolean') {
-      throw new GoWayValidationError('alternatives must be a boolean');
-    }
-    body.alternatives = record.alternatives;
-  }
-  const locale = localeOf(record.locale, defaultLocale);
-  if (locale !== undefined) body.locale = locale;
-  return body;
+/** The flat wire parameters of a free-text search, validated. */
+function searchParameters(query: SearchQuery, locale: string | undefined) {
+  const flattened: unknown = isRecord(query) ? searchParametersOf(withLocale(query, locale)) : query;
+  return validInput(searchParametersSchema, flattened, 'query');
 }
 
 /**
- * The body of a place write, assembled field by field.
- *
- * The caller's object is never forwarded: a request built by spreading it would
- * let a consumer post `verification: 'oxy_verified'`, an `id`, or whatever else
- * a future server happens to read. Every write here carries exactly the fields
- * this SDK version knows a client may set.
+ * A directions body. The contract types `mode` as a bounded string so the
+ * SERVER can answer `unsupported_mode` for a mode it has not learned; this SDK
+ * knows exactly which modes it was built for, and a mode outside them is a
+ * caller's typo rather than a coverage question.
  */
-function placeWriteBody(input: PlaceCreateInput | PlaceUpdateInput, requireName: boolean): Record<string, unknown> {
-  const record = requireObject(input, 'input');
-  const body: Record<string, unknown> = {};
-
-  if (record.name !== undefined) {
-    if (typeof record.name !== 'string' || record.name.trim() === '') {
-      throw new GoWayValidationError('name must be a non-empty string');
-    }
-    body.name = record.name;
-  } else if (requireName) {
-    throw new GoWayValidationError('name is required to create a place');
+function routeBody(routeRequest: RouteRequest, locale: string | undefined) {
+  const body = validInput(routeRequestSchema, withLocale(routeRequest, locale), 'routeRequest');
+  if (!(TRAVEL_MODES as readonly string[]).includes(body.mode)) {
+    throw new GoWayValidationError(`routeRequest.mode: must be one of ${TRAVEL_MODES.join(', ')}`);
   }
-
-  if (record.location !== undefined) body.location = coordinateOf(record.location, 'location');
-  else if (requireName) throw new GoWayValidationError('location is required to create a place');
-
-  if (record.geometry !== undefined) body.geometry = requireObject(record.geometry, 'geometry');
-  if (record.categories !== undefined) body.categories = categoryKeys(record.categories);
-  if (record.address !== undefined) body.address = requireObject(record.address, 'address');
-  if (record.contact !== undefined) body.contact = requireObject(record.contact, 'contact');
-  if (record.openingHours !== undefined) body.openingHours = requireObject(record.openingHours, 'openingHours');
-  if (record.status !== undefined) {
-    if (typeof record.status !== 'string') throw new GoWayValidationError('status must be a place status');
-    body.status = record.status;
-  }
-  if (record.sources !== undefined) {
-    if (!Array.isArray(record.sources)) throw new GoWayValidationError('sources must be an array');
-    body.sources = (record.sources as unknown[]).map((source, index) => {
-      const entry = requireObject(source, `sources[${index}]`);
-      if (typeof entry.source !== 'string' || typeof entry.sourceId !== 'string') {
-        throw new GoWayValidationError(`sources[${index}] must carry source and sourceId`);
-      }
-      return { source: entry.source, sourceId: entry.sourceId };
-    });
-  }
-  if (record.capabilities !== undefined) {
-    if (!Array.isArray(record.capabilities)) throw new GoWayValidationError('capabilities must be an array');
-    body.capabilities = (record.capabilities as unknown[]).map((capability, index) => {
-      const entry = requireObject(capability, `capabilities[${index}]`);
-      const namespace = entry.namespace;
-      const name = entry.capability;
-      if (typeof namespace !== 'string' || namespace.trim() === '') {
-        throw new GoWayValidationError(`capabilities[${index}].namespace must be a non-empty string`);
-      }
-      if (typeof name !== 'string' || name.trim() === '') {
-        throw new GoWayValidationError(`capabilities[${index}].capability must be a non-empty string`);
-      }
-      const value = entry.value;
-      if (typeof value !== 'boolean' && typeof value !== 'string' && typeof value !== 'number') {
-        throw new GoWayValidationError(`capabilities[${index}].value must be a boolean, string or number`);
-      }
-      // `verification` and `observedAt` are NOT sent even if the caller set
-      // them: the server derives both, which is what stops a community report
-      // arriving labelled as verified.
-      const written: Record<string, unknown> = { namespace, capability: name, value };
-      if (entry.source !== undefined) written.source = requireObject(entry.source, `capabilities[${index}].source`);
-      return written;
-    });
-  }
-  if (Object.keys(body).length === 0) throw new GoWayValidationError('an update must change at least one field');
   return body;
 }
 
@@ -627,12 +426,18 @@ function placeWriteBody(input: PlaceCreateInput | PlaceUpdateInput, requireName:
 
 function placeIdOf(value: unknown): string {
   if (typeof value === 'string') return value;
-  if (typeof value === 'object' && value !== null) {
-    const record = value as { id?: unknown; placeId?: unknown };
-    const candidate = typeof record.placeId === 'string' ? record.placeId : record.id;
+  if (isRecord(value)) {
+    const candidate = typeof value.placeId === 'string' ? value.placeId : value.id;
     if (typeof candidate === 'string' && candidate.trim() !== '') return candidate;
   }
   throw new GoWayValidationError('expected a GoWay Place ID, a Place, or an object carrying a placeId');
+}
+
+function finiteNumberOf(value: unknown, what: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new GoWayValidationError(`${what} must be a finite number`);
+  }
+  return value;
 }
 
 function createLinks(webBaseUrl: string): GoWayLinks {
@@ -643,14 +448,19 @@ function createLinks(webBaseUrl: string): GoWayLinks {
       return `${webBaseUrl}/place/${encodeURIComponent(id)}`;
     },
     map: (viewport: MapViewport) => {
-      const record = requireObject(viewport, 'viewport');
+      const record: Record<string, unknown> = isRecord(viewport) ? viewport : {};
+      const center = validInput(
+        geoCoordinateSchema,
+        { latitude: record.latitude, longitude: record.longitude },
+        'viewport',
+      );
       const query: Record<string, QueryValue> = {
-        lat: latitude(record.latitude, 'latitude'),
-        lng: longitude(record.longitude, 'longitude'),
-        zoom: finiteNumberOf(record.zoom, 'zoom'),
+        lat: center.latitude,
+        lng: center.longitude,
+        zoom: finiteNumberOf(record.zoom, 'viewport.zoom'),
       };
-      if (record.bearing !== undefined) query.bearing = finiteNumberOf(record.bearing, 'bearing');
-      if (record.pitch !== undefined) query.pitch = finiteNumberOf(record.pitch, 'pitch');
+      if (record.bearing !== undefined) query.bearing = finiteNumberOf(record.bearing, 'viewport.bearing');
+      if (record.pitch !== undefined) query.pitch = finiteNumberOf(record.pitch, 'viewport.pitch');
       const serialized = Object.keys(query)
         .sort()
         .map((key) => `${key}=${encodeURIComponent(String(query[key]))}`)
@@ -666,6 +476,10 @@ function createLinks(webBaseUrl: string): GoWayLinks {
  * Create a GoWay client. Every option is optional; with none, the client reads
  * anonymously from the production API — which is the supported way to render a
  * map, search and route without an Oxy account.
+ *
+ * Every method validates its input against the contract BEFORE anything is
+ * sent (`GoWayValidationError`, `status: null`), and parses every answer
+ * against it (`GoWayResponseError` when the server drifted).
  */
 export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient {
   if (options.fetch !== undefined && typeof options.fetch !== 'function') {
@@ -673,9 +487,6 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
   }
   if (options.getAccessToken !== undefined && typeof options.getAccessToken !== 'function') {
     throw new TypeError('getAccessToken must be a function');
-  }
-  if (options.locale !== undefined && !isLocale(options.locale)) {
-    throw new TypeError('locale must be a BCP 47 language tag');
   }
   const timeoutMs = options.timeoutMs ?? DEFAULT_GOWAY_TIMEOUT_MS;
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647) {
@@ -690,7 +501,7 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     headers: extraHeaders(options.headers),
   });
   const webBaseUrl = baseUrl(options.webBaseUrl, 'webBaseUrl', DEFAULT_GOWAY_WEB_BASE_URL);
-  const defaultLocale = options.locale;
+  const locale = defaultLocaleOf(options.locale);
 
   const places: GoWayPlacesApi = Object.freeze({
     get: async (placeId: PlaceId, callOptions: GoWayPlaceReadOptions = {}) =>
@@ -698,32 +509,47 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         config,
         {
           method: 'GET',
-          path: `/places/${pathSegment(placeId, 'placeId')}`,
-          query: { locale: localeOf(callOptions.locale, defaultLocale) },
+          path: placePath(placeId),
+          query: validInput(placeReadQuerySchema, { locale: callOptions.locale ?? locale }, 'options'),
           signal: callOptions.signal,
         },
-        parsePlace,
+        placeSchema,
       ),
 
     nearby: async (query: NearbyPlacesQuery, callOptions: GoWayRequestOptions = {}) =>
       request(
         config,
-        { method: 'GET', path: '/places/nearby', query: nearbyQuery(query, defaultLocale), signal: callOptions.signal },
-        parsePlaceWithDistanceList,
+        {
+          method: 'GET',
+          path: '/places/nearby',
+          query: validInput(nearbyPlacesQuerySchema, withLocale(query, locale), 'query'),
+          signal: callOptions.signal,
+        },
+        placeWithDistancePageSchema,
       ),
 
     inBounds: async (query: PlacesInBoundsQuery, callOptions: GoWayRequestOptions = {}) =>
       request(
         config,
-        { method: 'GET', path: '/places/bounds', query: boundsQuery(query, defaultLocale), signal: callOptions.signal },
-        parsePlaceList,
+        {
+          method: 'GET',
+          path: '/places/bounds',
+          query: validInput(placesInBoundsQuerySchema, withLocale(query, locale), 'query'),
+          signal: callOptions.signal,
+        },
+        placePageSchema,
       ),
 
     create: async (input: PlaceCreateInput, callOptions: GoWayRequestOptions = {}) =>
       request(
         config,
-        { method: 'POST', path: '/places', body: placeWriteBody(input, true), signal: callOptions.signal },
-        parsePlace,
+        {
+          method: 'POST',
+          path: '/places',
+          body: validInput(placeCreateInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        placeSchema,
       ),
 
     update: async (placeId: PlaceId, input: PlaceUpdateInput, callOptions: GoWayRequestOptions = {}) =>
@@ -731,11 +557,77 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         config,
         {
           method: 'PATCH',
-          path: `/places/${pathSegment(placeId, 'placeId')}`,
-          body: placeWriteBody(input, false),
+          path: placePath(placeId),
+          body: validInput(placeUpdateInputSchema, input, 'input'),
           signal: callOptions.signal,
         },
-        parsePlace,
+        placeSchema,
+      ),
+
+    capabilities: Object.freeze({
+      put: async (
+        placeId: PlaceId,
+        key: CapabilityKey,
+        assertion: PlaceCapabilityAssertion,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
+        request(
+          config,
+          {
+            method: 'PUT',
+            path: capabilityPath(placeId, key),
+            body: validInput(placeCapabilityAssertionSchema, assertion, 'assertion'),
+            signal: callOptions.signal,
+          },
+          placeSchema,
+        ),
+
+      delete: async (placeId: PlaceId, key: CapabilityKey, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          { method: 'DELETE', path: capabilityPath(placeId, key), signal: callOptions.signal },
+          null,
+        ),
+    }),
+
+    claims: Object.freeze({
+      create: async (placeId: PlaceId, input: PlaceClaimInput, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          {
+            method: 'POST',
+            path: `${placePath(placeId)}/claims`,
+            body: validInput(placeClaimInputSchema, input, 'input'),
+            signal: callOptions.signal,
+          },
+          placeClaimSchema,
+        ),
+
+      list: async (placeId: PlaceId, query: ClaimListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          {
+            method: 'GET',
+            path: `${placePath(placeId)}/claims`,
+            query: validInput(claimListQuerySchema, query, 'query'),
+            signal: callOptions.signal,
+          },
+          placeClaimPageSchema,
+        ),
+    }),
+  });
+
+  const claims: GoWayClaimsApi = Object.freeze({
+    mine: async (query: ClaimListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: '/claims',
+          query: validInput(claimListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        placeClaimPageSchema,
       ),
   });
 
@@ -743,8 +635,8 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     query: async (query: SearchQuery, callOptions: GoWayRequestOptions = {}) =>
       request(
         config,
-        { method: 'GET', path: '/search', query: searchQuery(query, defaultLocale), signal: callOptions.signal },
-        parseSearchResults,
+        { method: 'GET', path: '/search', query: searchParameters(query, locale), signal: callOptions.signal },
+        searchResultsSchema,
       ),
   });
 
@@ -752,8 +644,8 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     forward: async (query: SearchQuery, callOptions: GoWayRequestOptions = {}) =>
       request(
         config,
-        { method: 'GET', path: '/geocode', query: searchQuery(query, defaultLocale), signal: callOptions.signal },
-        parseSearchResults,
+        { method: 'GET', path: '/geocode', query: searchParameters(query, locale), signal: callOptions.signal },
+        searchResultsSchema,
       ),
 
     reverse: async (query: ReverseGeocodeQuery, callOptions: GoWayRequestOptions = {}) =>
@@ -762,10 +654,10 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         {
           method: 'GET',
           path: '/geocode/reverse',
-          query: reverseQuery(query, defaultLocale),
+          query: validInput(reverseGeocodeQuerySchema, withLocale(query, locale), 'query'),
           signal: callOptions.signal,
         },
-        parseSearchResults,
+        searchResultsSchema,
       ),
 
     structured: async (query: StructuredGeocodeQuery, callOptions: GoWayRequestOptions = {}) =>
@@ -774,10 +666,10 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         {
           method: 'GET',
           path: '/geocode/structured',
-          query: structuredQuery(query, defaultLocale),
+          query: validInput(structuredGeocodeQuerySchema, withLocale(query, locale), 'query'),
           signal: callOptions.signal,
         },
-        parseSearchResults,
+        searchResultsSchema,
       ),
   });
 
@@ -785,38 +677,119 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     directions: async (routeRequest: RouteRequest, callOptions: GoWayRequestOptions = {}) =>
       request(
         config,
-        {
-          method: 'POST',
-          path: '/routes',
-          body: routeBody(routeRequest, defaultLocale),
-          signal: callOptions.signal,
-        },
-        parseRouteResponse,
+        { method: 'POST', path: '/routes', body: routeBody(routeRequest, locale), signal: callOptions.signal },
+        routeResponseSchema,
       ),
   });
 
   const captures: GoWayCapturesApi = Object.freeze({
-    sessions: (o: GoWayRequestOptions = {}) => request(config, { method: 'GET', path: '/captures/sessions', signal: o.signal }, parseCaptureSessions),
-    policy: (o: GoWayRequestOptions = {}) => request(config, { method: 'GET', path: '/captures/policy', signal: o.signal }, parseCapturePolicy),
-    createSession: (input: CaptureSessionInput, o: GoWayRequestOptions = {}) => request(config, { method: 'POST', path: '/captures/sessions', body: input, signal: o.signal }, parseCaptureSession),
-    session: (id: string, o: GoWayRequestOptions = {}) => request(config, { method: 'GET', path: `/captures/sessions/${pathSegment(id, 'sessionId')}`, signal: o.signal }, parseCaptureSession),
-    assets: (id: string, o: GoWayRequestOptions = {}) => request(config, { method: 'GET', path: `/captures/sessions/${pathSegment(id, 'sessionId')}/assets`, signal: o.signal }, parseCaptureAssets),
-    register: (id: string, input: CaptureAssetInput, o: GoWayRequestOptions = {}) => request(config, { method: 'POST', path: `/captures/sessions/${pathSegment(id, 'sessionId')}/assets`, body: input, signal: o.signal }, parseCaptureTicket),
-    asset: (id: string, o: GoWayRequestOptions = {}) => request(config, { method: 'GET', path: `/captures/assets/${pathSegment(id, 'assetId')}`, signal: o.signal }, parseCaptureAsset),
-    finalize: (id: string, o: GoWayRequestOptions = {}) => request(config, { method: 'POST', path: `/captures/assets/${pathSegment(id, 'assetId')}/finalize`, body: {}, signal: o.signal }, parseCaptureAsset),
-    remove: (id: string, o: GoWayRequestOptions = {}) => request(config, { method: 'DELETE', path: `/captures/assets/${pathSegment(id, 'assetId')}`, signal: o.signal }, parseCaptureAsset),
-  });
-  const street3d: GoWayStreet3dApi = Object.freeze({
-    coverage: async (query: StreetCoverageQuery, o: GoWayRequestOptions = {}) =>
-      request(config, { method: 'GET', path: '/street3d/coverage', query: coverageQuery(query), signal: o.signal }, parseStreetCoverage),
-    scene: async (id: string, o: GoWayRequestOptions = {}) =>
-      request(config, { method: 'GET', path: `/street3d/scenes/${pathSegment(id, 'sceneId')}`, signal: o.signal }, parseStreetSceneManifest),
-    report: async (id: string, input: StreetSceneReportInput, o: GoWayRequestOptions = {}) =>
+    sessions: async (query: CaptureListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
       request(
         config,
-        { method: 'POST', path: `/street3d/scenes/${pathSegment(id, 'sceneId')}/reports`, body: reportBody(input), signal: o.signal },
-        parseStreetSceneReport,
+        {
+          method: 'GET',
+          path: '/captures/sessions',
+          query: validInput(captureListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        captureSessionPageSchema,
+      ),
+
+    policy: async (callOptions: GoWayRequestOptions = {}) =>
+      request(config, { method: 'GET', path: '/captures/policy', signal: callOptions.signal }, captureUploadPolicySchema),
+
+    createSession: async (input: CaptureSessionInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'POST',
+          path: '/captures/sessions',
+          body: validInput(captureSessionInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        captureSessionSchema,
+      ),
+
+    session: async (sessionId: string, callOptions: GoWayRequestOptions = {}) =>
+      request(config, { method: 'GET', path: sessionPath(sessionId), signal: callOptions.signal }, captureSessionSchema),
+
+    assets: async (sessionId: string, query: CaptureListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: `${sessionPath(sessionId)}/assets`,
+          query: validInput(captureListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        captureAssetPageSchema,
+      ),
+
+    register: async (sessionId: string, input: CaptureAssetInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'POST',
+          path: `${sessionPath(sessionId)}/assets`,
+          body: validInput(captureAssetInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        captureUploadTicketSchema,
+      ),
+
+    asset: async (assetId: string, callOptions: GoWayRequestOptions = {}) =>
+      request(config, { method: 'GET', path: assetPath(assetId), signal: callOptions.signal }, captureAssetSchema),
+
+    // The finalize body is empty by contract: the object store, not the
+    // client, is the authority on what was uploaded.
+    finalize: async (assetId: string, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        { method: 'POST', path: `${assetPath(assetId)}/finalize`, body: {}, signal: callOptions.signal },
+        captureAssetSchema,
+      ),
+
+    remove: async (assetId: string, callOptions: GoWayRequestOptions = {}) =>
+      request(config, { method: 'DELETE', path: assetPath(assetId), signal: callOptions.signal }, null),
+  });
+
+  const street3d: GoWayStreet3dApi = Object.freeze({
+    coverage: async (query: StreetCoverageQuery, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: '/street3d/coverage',
+          query: validInput(streetCoverageQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        streetCoverageSchema,
+      ),
+
+    scene: async (sceneId: string, callOptions: GoWayRequestOptions = {}) =>
+      request(config, { method: 'GET', path: scenePath(sceneId), signal: callOptions.signal }, streetSceneManifestSchema),
+
+    report: async (sceneId: string, input: StreetSceneReportInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'POST',
+          path: `${scenePath(sceneId)}/reports`,
+          body: validInput(streetSceneReportInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        streetSceneReportSchema,
       ),
   });
-  return Object.freeze({ places, search, geocode, routes, captures, street3d, links: createLinks(webBaseUrl) });
+
+  return Object.freeze({
+    places,
+    claims,
+    search,
+    geocode,
+    routes,
+    captures,
+    street3d,
+    links: createLinks(webBaseUrl),
+  });
 }

@@ -8,6 +8,7 @@ import {
   GoWayConflictError,
   GoWayError,
   GoWayForbiddenError,
+  GoWayGoneError,
   GoWayNetworkError,
   GoWayNoRouteError,
   GoWayNotFoundError,
@@ -15,6 +16,7 @@ import {
   GoWayResponseError,
   GoWayUnauthorizedError,
   GoWayUnavailableError,
+  GoWayUnknownRouteError,
   GoWayUnsupportedModeError,
   GoWayValidationError,
   isGoWayError,
@@ -26,7 +28,7 @@ import { failingFetch, fakeFetch, rejection } from './helpers';
 /**
  * The expected class for every code, written out INDEPENDENTLY of the mapping
  * in `src/errors.ts`. `API_ERROR_CODES` drives the loop, so a code added to
- * `packages/shared-types` and forgotten here fails this test as well as the
+ * `packages/contracts` and forgotten here fails this test as well as the
  * build.
  */
 const EXPECTED: Record<ApiErrorCode, new (...args: never[]) => GoWayError> = {
@@ -35,6 +37,8 @@ const EXPECTED: Record<ApiErrorCode, new (...args: never[]) => GoWayError> = {
   unauthorized: GoWayUnauthorizedError,
   forbidden: GoWayForbiddenError,
   not_found: GoWayNotFoundError,
+  unknown_route: GoWayUnknownRouteError,
+  gone: GoWayGoneError,
   conflict: GoWayConflictError,
   rate_limited: GoWayRateLimitError,
   no_route: GoWayNoRouteError,
@@ -89,6 +93,21 @@ describe('API error codes', () => {
     expect(mode).not.toBeInstanceOf(GoWayValidationError);
   });
 
+  it('tells a withdrawn place and a missing route apart from a missing resource', async () => {
+    const gone = await throwing(410, errorBody('gone', 'this place was removed'));
+    expect(gone).toBeInstanceOf(GoWayGoneError);
+    expect(gone).not.toBeInstanceOf(GoWayNotFoundError);
+    expect(gone.retryable).toBe(false);
+
+    // An SDK newer than the deployment: never evidence that a place is gone.
+    const unknownRoute = await throwing(404, errorBody('unknown_route', 'no such route'));
+    expect(unknownRoute).toBeInstanceOf(GoWayUnknownRouteError);
+    expect(unknownRoute).toBeInstanceOf(GoWayApiError);
+    expect(unknownRoute).not.toBeInstanceOf(GoWayNotFoundError);
+    expect(unknownRoute.status).toBe(404);
+    expect(unknownRoute.retryable).toBe(false);
+  });
+
   it('carries the details envelope and reads retryAfterSeconds from it', async () => {
     const error = (await throwing(
       429,
@@ -112,10 +131,13 @@ describe('API error codes', () => {
 });
 
 describe('errors with no GoWay error body', () => {
-  it('does not claim a bare 404 means the place is gone', async () => {
-    const error = await throwing(404, '<html>nginx</html>');
-    expect(error).toBeInstanceOf(GoWayApiError);
-    expect(error).not.toBeInstanceOf(GoWayNotFoundError);
+  it('does not claim a bare 404 or 410 means the place is missing or gone', async () => {
+    const missing = await throwing(404, '<html>nginx</html>');
+    expect(missing).toBeInstanceOf(GoWayApiError);
+    expect(missing).not.toBeInstanceOf(GoWayNotFoundError);
+    const gone = await throwing(410, '');
+    expect(gone).toBeInstanceOf(GoWayApiError);
+    expect(gone).not.toBeInstanceOf(GoWayGoneError);
   });
 
   it('still classifies 401, 403, 429 and 5xx from the status alone', async () => {

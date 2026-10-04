@@ -5348,7 +5348,7 @@
                 },
                 "posterUrl": {
                   "type": "string",
-                  "pattern": "^https:\\/\\/"
+                  "pattern": "^(https:\\/\\/|http:\\/\\/(localhost|127\\.0\\.0\\.1|\\[::1\\])(:\\d+)?\\/)"
                 },
                 "publishedAt": {
                   "type": "string",
@@ -5651,7 +5651,7 @@
                 },
                 "url": {
                   "type": "string",
-                  "pattern": "^https:\\/\\/"
+                  "pattern": "^(https:\\/\\/|http:\\/\\/(localhost|127\\.0\\.0\\.1|\\[::1\\])(:\\d+)?\\/)"
                 },
                 "byteSize": {
                   "type": "integer",

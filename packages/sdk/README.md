@@ -3,9 +3,11 @@
 The canonical, headless TypeScript client for GoWay — Oxy's open map and
 geographic platform.
 
-One client gives you GoWay Places, ecosystem capability filters, search,
-geocoding, routing and the canonical `goway.to` links, with **no runtime
-dependencies**, on Node 18+, Bun, browsers and React Native.
+One client gives you GoWay Places, ecosystem capability filters, claims, search,
+geocoding, routing, Street 3D and the canonical `goway.to` links, on Node 18+,
+Bun, browsers and React Native. Its one runtime dependency is
+[zod](https://zod.dev) 4: the contract *is* zod schemas, and the SDK validates
+every request and parses every response with them.
 
 ```bash
 bun add @goway.to/sdk    # npm i @goway.to/sdk
@@ -18,7 +20,7 @@ OpenFreeMap tiles, geocodes with Photon and Nominatim and routes with Valhalla �
 and **none of that is in this package or in its contract**. Those are
 replaceable adapters behind the GoWay API; when GoWay swaps one, your code does
 not change, because it never named the provider in the first place. Installing
-this SDK pulls in no renderer, no provider client, and no dependency at all.
+this SDK pulls in no renderer and no provider client — only zod.
 
 A result does tell you which provider answered (`SearchResult.source`,
 `SearchResults.providers`) — provenance is never discarded — but that is
@@ -64,7 +66,8 @@ Every option is validated when the client is constructed, so a typo throws a
 ### Authentication
 
 Identity-bound features — creating or editing a place, asserting a capability,
-anything tied to an Oxy account — need an Oxy access token. Supply it with
+claiming a place, contributing imagery, anything tied to an Oxy account — need
+an Oxy access token. Supply it with
 `getAccessToken`:
 
 ```ts
@@ -88,8 +91,8 @@ no login flow.
 // One place, by its stable GoWay Place ID.
 const place = await goway.places.get('gw_place_01H8');
 
-// Everything in the current viewport — the map read.
-const visible = await goway.places.inBounds({
+// Everything in the current viewport — the map read. One page at a time.
+const { items: visible, nextCursor } = await goway.places.inBounds({
   west: 2.10, south: 41.36, east: 2.20, north: 41.41,
   categories: ['food.cafe'],
   limit: 200,
@@ -101,14 +104,18 @@ const created = await goway.places.create({
   location: { latitude: 41.3874, longitude: 2.1686 },
   categories: ['food.cafe'],
   capabilities: [{ namespace: 'payments.faircoin', capability: 'accepted', value: true }],
+  names: [{ language: 'es', name: 'Café de la Plaza' }],
 });
 await goway.places.update(created.id, { contact: { website: 'https://example.org' } });
 ```
 
-A place write carries only the fields this SDK knows a client may set; `id`,
-`verification` and a capability's `verification`/`observedAt` are **server-derived
-and never sent**, which is what stops a community report from arriving labelled
-as verified.
+A place write is parsed by the contract's input schema and the PARSED body is
+what is sent: `id`, `verification` and a capability's `verification`/`observedAt`
+are **server-derived and never sent**, even if you pass them, which is what stops
+a community report from arriving labelled as verified. A caller sets `status` to
+`active`, `closed` or `proposed` (`WRITABLE_PLACE_STATUSES`); withdrawing a place
+from the map is a moderation act, and a withdrawn place answers `places.get`
+with `GoWayGoneError`.
 
 An update touches only the fields you pass: GoWay layers enrichment *over* source
 data and never destructively overwrites a source fact.
@@ -146,7 +153,35 @@ payload nothing on screen renders. An absent `names` means "not published here",
 never "this place has one name".
 
 Set `locale` once on the client and every place, search, geocoding and routing
-call uses it; pass it per call to override.
+call uses it; pass it per call to override. Tags are normalized (`ES` → `es`,
+`zh_hant` → `zh-Hant`), so equivalent spellings are one request.
+
+### Pages, and walking all of them
+
+Every list answers one page, `{ items, nextCursor }`. Pass `nextCursor` back as
+`cursor` — with the **same** filters — for the next page; it is `null` on the
+last one. Cursors are opaque: never build or parse one, and never reuse one with
+other filters (GoWay refuses it as `bad_request`). There are no totals.
+
+`iterateGoWayPages` walks every page for you, and throws `GoWayResponseError`
+if the server ever repeats a cursor rather than looping forever:
+
+```ts
+import { iterateGoWayPages } from '@goway.to/sdk';
+
+const query = { latitude, longitude, radiusMeters: 2000, capabilities: ['payments.faircoin.accepted'] };
+for await (const merchant of iterateGoWayPages((cursor) => goway.places.nearby({ ...query, cursor }))) {
+  addMarker(merchant);
+}
+```
+
+It works with any list: `places.inBounds`, `search.query`, the `geocode.*`
+calls, `places.claims.list`, `claims.mine`, `captures.sessions` and
+`captures.assets`. Each list's `limit` has a documented default and maximum
+(`DEFAULT_PLACE_LIST_LIMIT`/`MAX_PLACE_LIST_LIMIT`, `SEARCH_MAX_LIMIT`,
+`MAX_CLAIM_LIST_LIMIT`, `MAX_CAPTURE_LIST_LIMIT`); a value outside it is refused,
+never silently clamped. A search lists at most `SEARCH_MAX_DEPTH` results across
+all its pages.
 
 ### Capability filters — `places.nearby({ capabilities })`
 
@@ -155,7 +190,7 @@ product you are: pass the keys a place must assert. A FairCoin wallet asks for
 nearby merchants that advertise FairCoin acceptance like this:
 
 ```ts
-const merchants = await goway.places.nearby({
+const { items: merchants } = await goway.places.nearby({
   latitude,
   longitude,
   radiusMeters: 5000,
@@ -165,7 +200,7 @@ const merchants = await goway.places.nearby({
 
 ```ts
 // The identical call, one product over.
-const pickupPoints = await goway.places.nearby({
+const { items: pickupPoints } = await goway.places.nearby({
   latitude,
   longitude,
   radiusMeters: 1000,
@@ -173,9 +208,14 @@ const pickupPoints = await goway.places.nearby({
 });
 ```
 
-A key is `<domain>.<product>.<capability>`, a list is a **conjunction** (a place
-must assert every key listed), and a bare key such as `'faircoin'` is refused
-client-side rather than silently matching nothing. The same `capabilities`
+A key is a lower-case `<domain>.<product>.<capability>`, and a list is a
+**conjunction**: a place matches only when it HAS every key listed — its
+strongest assertion of each one holds (is not `false`, `0` or `''`). A business
+that asserts `false` outranks a community report of `true`, so a merchant that
+stopped accepting FairCoin drops out of the filter. A bare key such as
+`'faircoin'`, or a mixed-case one, is refused client-side rather than silently
+matching nothing. Ask the same question of a `Place` you already hold with
+`placeHasCapability(place, key)`. The same `capabilities`
 option is accepted by `places.inBounds` — the viewport read — and by
 `search.query`.
 
@@ -188,8 +228,10 @@ is open, so a new consumer does not need a GoWay release.
 Each result carries its distance and the **evidence** behind every claim:
 
 ```ts
+import { strongestCapability } from '@goway.to/sdk';
+
 for (const merchant of merchants) {
-  const claim = merchant.capabilities.find((c) => c.key === 'payments.faircoin.accepted');
+  const claim = strongestCapability(merchant, 'payments.faircoin.accepted');
   // 'oxy_verified' | 'business_asserted' | 'external_source' | 'community_reported'
   console.log(merchant.name, Math.round(merchant.distanceMeters), claim?.verification, claim?.observedAt);
 }
@@ -200,7 +242,7 @@ two-year-old `observedAt` is not a current fact — the SDK gives you both so yo
 UI can say which it is. A place can carry **several claims for the same key** at
 different verification tiers (nothing is overwritten, so an Oxy verification and
 an older community report coexist); they arrive strongest first, then freshest,
-so take the first row for a key rather than assuming there is only one. Passing
+and `strongestCapability` picks the one that decides. Passing
 an explicit viewport or a coordinate the user approved is also what keeps
 merchant discovery from building a precise location history.
 
@@ -208,6 +250,28 @@ Then send the user onward with the canonical link:
 
 ```ts
 goway.links.place(merchant); // https://goway.to/place/gw_place_01H8
+```
+
+### Asserting capabilities, and claiming a place
+
+A business or a contributor writes ONE capability at a time; the verification
+tier is never yours to name — GoWay derives it from who is asking (an approved
+claim earns `business_asserted`) and whether a `source` is cited:
+
+```ts
+await goway.places.capabilities.put(place.id, 'payments.faircoin.accepted', { value: true });
+await goway.places.capabilities.put(place.id, 'payments.faircoin.accepted', { value: false }); // retract
+await goway.places.capabilities.delete(place.id, 'payments.faircoin.accepted');                 // withdraw yours
+```
+
+`value` is required: a reporter retracts with `false`, which is better evidence
+than a deletion. To be recognised as running a place, claim it — a claim is
+always created `pending`, and its `state` is not yours to set:
+
+```ts
+const claim = await goway.places.claims.create(place.id, { role: 'owner' });
+const onThisPlace = await goway.places.claims.list(place.id);   // PlaceClaimPage
+const mine = await goway.claims.mine();                         // every claim you hold, in every state
 ```
 
 The end-to-end version of this — install, map, capability query, markers,
@@ -225,6 +289,7 @@ const results = await goway.search.query({
   limit: 10,
 });
 
+for (const result of results.items) render(result);
 if (results.degradedProviders?.length) {
   // A short list because a source was down — not the same as "no matches".
 }
@@ -292,8 +357,10 @@ Every failure is one class from one hierarchy, and every class carries `code`,
 | `GoWayUnauthorizedError` | `unauthorized` | 401 | no | No token, or one that did not verify. Refresh and retry once. |
 | `GoWayForbiddenError` | `forbidden` | 403 | no | Authenticated, but not permitted (an unapproved place claim, say). |
 | `GoWayNotFoundError` | `not_found` | 404 | no | GoWay has no such place, or it is not visible to this caller. |
+| `GoWayGoneError` | `gone` | 410 | no | The place existed and GoWay withdrew it. Safe to drop a persisted id. |
+| `GoWayUnknownRouteError` | `unknown_route` | 404 | no | The API has no such route: this SDK is newer than the deployment, or pointed at the wrong origin. Never evidence about a resource. |
 | `GoWayConflictError` | `conflict` | 409 | no | A duplicate claim, or a stale update. |
-| `GoWayRateLimitError` | `rate_limited` | 429 | **yes** | Back off; `retryAfterSeconds` when GoWay said. |
+| `GoWayRateLimitError` | `rate_limited` | 429 | **yes** | Back off; `retryAfterSeconds` (from `details.retryAfterSeconds`, or `Retry-After`). |
 | `GoWayNoRouteError` | `no_route` | 422 | no | **A normal answer**: no route exists between those points. |
 | `GoWayUnsupportedModeError` | `unsupported_mode` | 422 | no | **A normal answer**: the active router does not cover that mode here. |
 | `GoWayUnavailableError` | `provider_unavailable` | 503 | **yes** | An upstream geographic provider failed or timed out. |
@@ -323,6 +390,19 @@ try {
 }
 ```
 
+### Validation before anything is sent
+
+Every input is checked against the contract's own request schema before a
+request is made, and the parsed, normalized value is what is sent. A refusal is
+a `GoWayValidationError` with `status: null` and a message naming the field and
+what was expected — `query.latitude: Too big: expected number to be <=90` —
+never the value, which may be a user's location. Query parameters are strict: a
+key the contract does not name is refused rather than silently dropped.
+
+Responses are parsed the same way. A key the contract does not name is
+stripped, so nothing GoWay leaks by mistake reaches your objects, and a body
+that is not the contract is a `GoWayResponseError` naming the path.
+
 `instanceof` works even when a process holds both the ESM and the CommonJS copy
 of this package: every error is branded with a `Symbol.for` lineage that each
 class checks alongside its prototype chain.
@@ -344,11 +424,15 @@ ignores `signal` still cannot outlive it.
 ## Types
 
 Every domain type is re-exported here — `Place`, `PlaceWithDistance`,
-`PlaceCapability`, `CapabilityKey`, `SearchResult`, `SearchResults`, `Route`,
-`RouteRequest`, `GeoCoordinate`, `GeoBoundingBox`, `MapViewport`, `TravelMode`,
-`ApiErrorCode` and the rest — from GoWay's single definition of them, bundled
-into this package's declarations. You never import a private GoWay package, and
-you never keep your own copy of `Place`.
+`PlacePage`, `PlaceCapability`, `CapabilityKey`, `PlaceClaim`, `SearchResult`,
+`SearchResults`, `Route`, `RouteRequest`, `GeoCoordinate`, `GeoBoundingBox`,
+`MapViewport`, `TravelMode`, `ApiErrorCode`, every request input and the rest —
+from GoWay's single definition of them, bundled into this package's
+declarations, together with the closed value sets (`WRITABLE_PLACE_STATUSES`,
+`CAPABILITY_VERIFICATIONS`, `TRAVEL_MODES`, …) and the limits the API enforces.
+Types are `z.infer` of the contract schemas, so the declarations import zod's
+types; the schemas themselves are not exported. You never import a private
+GoWay package, and you never keep your own copy of `Place`.
 
 These are contracts, not rows: GoWay's Drizzle/PostGIS schema is deliberately
 not published, so a database migration cannot break your build.
@@ -364,11 +448,12 @@ appears only inside real GeoJSON geometry. Convert with the exported
 ## Runtimes
 
 One build, four runtimes: Node 18+ (ESM and CommonJS), Bun, browsers and React
-Native. `fetch` is taken from `globalThis` at call time — so a polyfill installed
+Native, with zod as its one dependency. `fetch` is taken from `globalThis` at call time — so a polyfill installed
 after the client was created is still picked up — or injected through the `fetch`
 option. The source compiles with no DOM lib and no Node types, so the published
-declarations never force `lib: ["DOM"]` on a server consumer, and there is no
-Node built-in anywhere in the bundle. The release smoke test asserts all of that
+declarations never force `lib: ["DOM"]` on a server consumer (zod's own
+declarations name the global `URL` type, which every one of these runtimes'
+types provides), and there is no Node built-in anywhere in the bundle. The release smoke test asserts all of that
 against the packed tarball, not the working tree.
 
 ## License
@@ -392,7 +477,8 @@ method and headers, then call `captures.finalize(asset.id)`. Do not attach your
 API authorization header to the storage request. A repeated immutable PUT may
 return 412; finalization verifies the already-stored object's checksum and size.
 
-`captures.sessions()` returns up to 50 recent owned sessions, and
-`captures.assets(sessionId)` lists their contributions. `captures.remove(id)`
-withdraws the contribution; shared bytes are queued for deletion after their
-upload intents expire when no valid contribution still references them.
+`captures.sessions(query?)` pages your sessions, newest first, and
+`captures.assets(sessionId, query?)` pages a session's contributions, oldest
+first. `captures.remove(id)` withdraws the contribution and resolves with
+nothing; shared bytes are queued for deletion after their upload intents expire
+when no valid contribution still references them.

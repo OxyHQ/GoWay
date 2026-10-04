@@ -28,8 +28,15 @@ export type StreetSceneId = string;
 export const STREET_SCENE_PROFILES = ['draft', 'standard'] as const;
 export type StreetSceneProfile = (typeof STREET_SCENE_PROFILES)[number];
 
-/** An immutable, content-addressed HTTPS URL. */
-const httpsUrlSchema = z.string().regex(/^https:\/\//, 'must be an HTTPS URL');
+/**
+ * HTTPS, with one exception: plain HTTP on a loopback host. Such a URL can only
+ * ever reach the machine the client runs on, so it downgrades nothing; it is
+ * what a local development server for scene assets looks like.
+ */
+const HTTPS_OR_LOOPBACK_HTTP = /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?\/)/;
+
+/** An immutable, content-addressed HTTPS URL (or a loopback HTTP one). */
+const httpsUrlSchema = z.string().regex(HTTPS_OR_LOOPBACK_HTTP, 'must be an HTTPS URL');
 
 /** A point or direction in scene space: three finite numbers. */
 const vector3Schema = z.tuple([z.number(), z.number(), z.number()]);
