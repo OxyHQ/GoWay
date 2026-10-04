@@ -1,0 +1,77 @@
+import importlib.util
+from pathlib import Path
+import unittest
+
+spec = importlib.util.spec_from_file_location('deploy_backend', Path(__file__).with_name('deploy-backend.py'))
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+
+class DeployTests(unittest.TestCase):
+    def test_definition_preserves_roles_and_settings_but_pins_only_backend(self):
+        original = {'family': 'goway', 'taskRoleArn': 'role', 'revision': 9,
+                    'containerDefinitions': [{'name': 'goway', 'image': 'old', 'secrets': [{'name': 'DATABASE_URL', 'valueFrom': 'ssm-path'}]}, {'name': 'sidecar', 'image': 'sidecar'}]}
+        result = module.definition_for_image(original, 'goway', 'repo@sha256:abc')
+        self.assertEqual(result['taskRoleArn'], 'role')
+        self.assertNotIn('revision', result)
+        self.assertEqual(result['containerDefinitions'][0]['image'], 'repo@sha256:abc')
+        self.assertEqual(result['containerDefinitions'][1]['image'], 'sidecar')
+        self.assertEqual(original['containerDefinitions'][0]['image'], 'old')
+        with self.assertRaises(ValueError):
+            module.definition_for_image(original, 'goway', 'repo:latest')
+
+    def simulate(self, exit_code=0, desired=1, restore=False):
+        calls = []
+        snapshot_count = 0
+        def snapshot(*_args):
+            nonlocal snapshot_count
+            snapshot_count += 1
+            return {'status': 'ACTIVE', 'desiredCount': desired if snapshot_count == 1 else max(1, desired),
+                    'runningCount': desired if snapshot_count == 1 else max(1, desired), 'taskDefinition': 'old',
+                    'networkConfiguration': {'awsvpcConfiguration': {'subnets': ['private'], 'securityGroups': ['existing']}},
+                    'deployments': [{'id': 'new-rollout', 'taskDefinition': 'new', 'rolloutState': 'COMPLETED', 'runningCount': max(1, desired)}]}
+        def call(*args):
+            calls.append(args)
+            action = args[1]
+            if action == 'describe-task-definition':
+                return {'taskDefinition': {'family': 'goway', 'containerDefinitions': [{'name': 'goway', 'image': 'old'}]}}
+            if action == 'register-task-definition':
+                return {'taskDefinition': {'taskDefinitionArn': 'new'}}
+            if action == 'run-task':
+                self.assertIn('--network-configuration', args)
+                self.assertIn('--phase=pre', args[args.index('--overrides') + 1])
+                return {'tasks': [{'taskArn': 'migration'}]}
+            if action == 'describe-tasks':
+                return {'tasks': [{'lastStatus': 'STOPPED', 'containers': [{'name': 'goway', 'exitCode': exit_code}]}]}
+            if action == 'update-service':
+                self.assertIn('describe-tasks', [c[1] for c in calls])
+                return {'service': {'deployments': [{'status': 'PRIMARY', 'id': 'new-rollout'}]}}
+            raise AssertionError(action)
+        try:
+            module.deploy('cluster', 'goway', 'repo@sha256:abc', 'goway', restore, call, snapshot)
+        except RuntimeError:
+            return calls, False
+        return calls, True
+
+    def test_migration_failure_never_changes_service(self):
+        calls, succeeded = self.simulate(exit_code=1)
+        self.assertFalse(succeeded)
+        self.assertNotIn('update-service', [c[1] for c in calls])
+
+    def test_healthy_rollout_requires_successful_migration(self):
+        calls, succeeded = self.simulate()
+        self.assertTrue(succeeded)
+        self.assertIn('update-service', [c[1] for c in calls])
+
+    def test_paused_service_requires_explicit_restore(self):
+        calls, succeeded = self.simulate(desired=0)
+        self.assertFalse(succeeded)
+        self.assertEqual(calls, [])
+        calls, succeeded = self.simulate(desired=0, restore=True)
+        self.assertTrue(succeeded)
+        update = next(c for c in calls if c[1] == 'update-service')
+        self.assertEqual(update[update.index('--desired-count') + 1], '1')
+
+
+if __name__ == '__main__':
+    unittest.main()

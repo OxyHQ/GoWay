@@ -213,6 +213,9 @@ jobs:
       # and one no developer machine exercises. packages/sdk was absent for
       # five merges and stayed invisible because the deploy job never got
       # as far as the image build.
+      - name: Test backend deployment safety
+        run: python3 -m unittest discover -s .github/scripts -p test_deploy_backend.py
+
       - name: Verify the Dockerfile copies every workspace manifest
         run: bun run check:dockerfile
 
