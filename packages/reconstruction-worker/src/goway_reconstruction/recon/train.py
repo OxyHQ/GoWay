@@ -347,6 +347,7 @@ def train_scene(
     device: torch.device,
 ) -> TrainResult:
     started = time.monotonic()
+    work_dir.mkdir(parents=True, exist_ok=True)
     torch.cuda.reset_peak_memory_stats(device)
     views = load_views(model, images_dir, masks_dir, long_edge, device)
     trainer = Trainer(
