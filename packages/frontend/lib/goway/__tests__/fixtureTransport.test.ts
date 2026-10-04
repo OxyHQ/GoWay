@@ -92,10 +92,11 @@ describe('lists are pages', () => {
     expect(accessible.items.map((place) => place.id)).toContain('gw_museu_picasso');
   });
 
-  test('a list read carries no hours exceptions; a single read does', async () => {
+  test('a list read carries the hours exceptions open-now needs, as a single read does', async () => {
     const client = fixtureClient();
     const listed = await client.places.inBounds(BARCELONA);
-    expect(listed.items.every((place) => place.hoursExceptions === undefined)).toBe(true);
+    expect(listed.items.every((place) => Array.isArray(place.hoursExceptions))).toBe(true);
+    expect(listed.items.find((place) => place.id === 'gw_museu_picasso')?.hoursExceptions).toHaveLength(2);
     const museum = await client.places.get('gw_museu_picasso');
     expect(museum.hoursExceptions).toHaveLength(2);
     expect(museum.timezone).toBe('Europe/Madrid');

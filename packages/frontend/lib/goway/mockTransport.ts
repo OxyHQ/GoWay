@@ -365,9 +365,10 @@ function matchesFilters(entry: Place, categories: readonly string[], capabilitie
  * Two behaviours worth mirroring rather than approximating, because a fixture
  * that is more generous than the server hides the bug it should surface:
  *
- *  - A LIST read publishes `localizedName` and NOT `names` — nor
- *    `hoursExceptions`. A UI that reached for either on a viewport read would
- *    work here and break against `api.goway.to`.
+ *  - A LIST read publishes `localizedName` and NOT `names` — nor the
+ *    descriptions. A UI that reached for either on a viewport read would
+ *    work here and break against `api.goway.to`. `hoursExceptions` is on
+ *    every read, `[]` when there are none, because open-now needs it.
  *  - A place with no name in the asked-for language keeps its default name and
  *    gets no `localizedName` at all. That is the common case, not the edge one,
  *    and `placeDisplayName` is what makes it invisible.
@@ -395,7 +396,7 @@ function localize<T extends Place>(place: T, locale: string | undefined, full: b
   } = place;
   const result = { ...rest } as T;
   if (full && place.names) result.names = place.names;
-  if (full && place.hoursExceptions) result.hoursExceptions = place.hoursExceptions;
+  result.hoursExceptions = place.hoursExceptions ?? [];
   if (resolved) result.localizedName = resolved;
   // Descriptions are a single-place read's, like `names`, and resolve the same way.
   if (full && place.description) result.description = place.description;
