@@ -1,6 +1,8 @@
 import { normalizeLanguageTag } from '@goway.to/sdk';
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
+import { STREET3D_EN, STREET3D_ES } from './messages/street3d';
+
 // Minimal, dependency-free i18n. Synchronous by design — no suspense — so it is
 // safe to mount at the root of the provider tree. Swap in i18next later if the
 // app grows to need pluralization / interpolation / lazy locale loading.
@@ -17,9 +19,31 @@ const en: Messages = {
   'map.myLocationHint': 'Centres the map on you. GoWay asks for location only when you tap this.',
   'map.locationDenied': 'Location is off for GoWay. You can still search and browse the map.',
   'map.resetNorth': 'Reset to north',
+  ...STREET3D_EN,
 };
 
-const locales: Record<string, Messages> = { en };
+const es: Messages = {
+  'map.title': 'GoWay',
+  'map.signIn': 'Iniciar sesión',
+  'map.myLocation': 'Mi ubicación',
+  'map.myLocationHint': 'Centra el mapa en ti. GoWay solo pide tu ubicación cuando tocas aquí.',
+  'map.locationDenied': 'La ubicación está desactivada para GoWay. Puedes seguir buscando y explorando el mapa.',
+  'map.resetNorth': 'Orientar al norte',
+  ...STREET3D_ES,
+};
+
+const locales: Record<string, Messages> = { en, es };
+
+/** Interpolation values for `{name}` placeholders. */
+export type MessageValues = Readonly<Record<string, string | number>>;
+
+/** Replace `{name}` placeholders. An unknown placeholder is left as written. */
+export function formatMessage(template: string, values?: MessageValues): string {
+  if (!values) return template;
+  return template.replace(/\{(\w+)\}/g, (match, name: string) =>
+    Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : match,
+  );
+}
 
 /**
  * The device's language tag, outside React.
@@ -50,7 +74,7 @@ export function deviceLocale(): string {
 
 interface I18nValue {
   locale: string;
-  t: (key: string) => string;
+  t: (key: string, values?: MessageValues) => string;
 }
 
 const I18nContext = createContext<I18nValue | null>(null);
@@ -60,7 +84,9 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     const full = deviceLocale();
     const base = full.split('-')[0];
     const messages = locales[base] ?? en;
-    return { locale: full, t: (key) => messages[key] ?? key };
+    // A key missing from a translation falls back to English, never to the
+    // raw key: a half-translated locale reads as English, not as `map.title`.
+    return { locale: full, t: (key, values) => formatMessage(messages[key] ?? en[key] ?? key, values) };
   }, []);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

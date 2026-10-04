@@ -1,0 +1,172 @@
+/**
+ * Street 3D and contribution-status strings, per locale.
+ *
+ * Kept beside `lib/i18n.tsx` rather than inside it because there are many of
+ * them and they are a feature's, not the map's. `__tests__/messages.test.ts`
+ * asserts every locale carries every key, so a new string cannot ship
+ * half-translated.
+ *
+ * Copy rules (issue #15): say what is true now, explain it plainly, and never
+ * imply that a PUBLISHED scene will disappear — expiry is always about the
+ * temporary source media.
+ */
+
+export const STREET3D_EN: Record<string, string> = {
+  // Map layer
+  'street3d.layer.open': 'Open Street 3D view',
+  'street3d.layer.approximate': 'approximate placement',
+  'street3d.layer.contributeHint': 'More photos here could complete a Street 3D view.',
+  'street3d.contribute.cta': 'Contribute here',
+
+  // Viewer
+  'street3d.viewer.close': 'Back to map',
+  'street3d.viewer.report': 'Report',
+  'street3d.viewer.loading': 'Loading 3D view…',
+  'street3d.viewer.unsupported': "This device can't display 3D views. The map works as usual.",
+  'street3d.viewer.error': "This 3D view couldn't be loaded.",
+  'street3d.viewer.notFound': "This 3D view isn't available.",
+  'street3d.viewer.retry': 'Try again',
+  'street3d.viewer.approximate': 'Approximate placement: this view may be offset from the map.',
+  'street3d.viewer.observed': 'Imagery from {from} to {to}',
+  'street3d.viewer.observedSame': 'Imagery from {date}',
+  'street3d.viewer.controls.orbit': 'Orbit',
+  'street3d.viewer.controls.walk': 'Walk',
+  'street3d.viewer.controls.hint': 'Drag to look · WASD or arrows to move · scroll or pinch to zoom',
+
+  // Report
+  'street3d.report.title': 'Report this 3D view',
+  'street3d.report.reason.privacy': 'Privacy: a face, plate or private space is visible',
+  'street3d.report.reason.inappropriate': 'Inappropriate content',
+  'street3d.report.reason.inaccurate': 'Inaccurate or misplaced',
+  'street3d.report.reason.other': 'Something else',
+  'street3d.report.note': 'Details (optional, never published)',
+  'street3d.report.submit': 'Send report',
+  'street3d.report.cancel': 'Cancel',
+  'street3d.report.done': 'Done',
+  'street3d.report.sent': 'Thank you. Your report was sent for review.',
+  'street3d.report.failed': "The report couldn't be sent. Please try again.",
+  'street3d.report.signIn': 'Sign in to send a report.',
+
+  // Contribution status (#15)
+  'contribute.kind.photo': 'Photo',
+  'contribute.kind.video': 'Video',
+  'contribute.withdraw': 'Withdraw contribution',
+  'contribute.status.expected.title': 'Waiting for upload',
+  'contribute.status.expected.body': "The upload hasn't arrived yet. Retry to resume it.",
+  'contribute.status.abandoned.title': 'Upload expired',
+  'contribute.status.abandoned.body': 'The upload was never completed, so nothing was kept.',
+  'contribute.status.checking.title': 'Checking media',
+  'contribute.status.checking.body': 'GoWay is checking the file before privacy processing.',
+  'contribute.status.privacyPending.title': 'Privacy processing pending',
+  'contribute.status.privacyPending.body':
+    'Before anything else, faces and licence plates are blurred. This runs on an external worker and can take a while.',
+  'contribute.status.privacyProcessing.title': 'Privacy processing',
+  'contribute.status.privacyProcessing.body': 'Faces and licence plates are being blurred now.',
+  'contribute.status.privacyFailed.title': 'Privacy check failed',
+  'contribute.status.privacyFailed.body':
+    "The privacy check couldn't clear this media, so it won't be used. Nothing from it was published.",
+  'contribute.status.blocked.title': 'Removed by moderation',
+  'contribute.status.blocked.body': "This media won't be used.",
+  'contribute.status.accepted.title': 'Privacy check passed',
+  'contribute.status.accepted.body': 'Waiting to be matched with nearby views.',
+  'contribute.status.rejected.title': 'Not usable',
+  'contribute.status.rejected.body': "This file couldn't be used, so it won't be part of a 3D view.",
+  'contribute.status.waitingForOverlap.title': 'Waiting for complementary views',
+  'contribute.status.waitingForOverlap.body':
+    'A 3D view needs several overlapping photos of the same spot from different angles. Yours is kept until it expires in case others arrive.',
+  'contribute.status.reconstructionCandidate.title': 'Selected for reconstruction',
+  'contribute.status.reconstructionCandidate.body':
+    "There's enough overlap here. It's queued for reconstruction, which can take days. Not every reconstruction is published.",
+  'contribute.status.integrated.title': 'Helped build a 3D view',
+  'contribute.status.integrated.body':
+    'Your contribution was used in a reconstruction. A published 3D view stays available after the original media expires.',
+  'contribute.status.expired.title': 'Temporary source expired',
+  'contribute.status.expired.body':
+    'The original media reached the end of its retention period and was deleted. Anything already published is unaffected.',
+  'contribute.status.deleted.title': 'Contribution withdrawn',
+  'contribute.status.deleted.body':
+    'Removed from future use. Temporary files are queued for cleanup when no other contribution needs them.',
+  'contribute.status.privacyPassedLine': 'Privacy check passed.',
+  'contribute.status.expires': 'Temporary source expected to expire around {date}.',
+  'contribute.status.protected': 'Kept until {date} because it may help complete a 3D view nearby.',
+  'contribute.status.atRisk': 'Area at risk — more photos here could complete it.',
+  'contribute.status.atRiskUntil': 'Area at risk — more photos here before {date} could complete it.',
+};
+
+export const STREET3D_ES: Record<string, string> = {
+  'street3d.layer.open': 'Abrir vista Street 3D',
+  'street3d.layer.approximate': 'ubicación aproximada',
+  'street3d.layer.contributeHint': 'Más fotos aquí podrían completar una vista Street 3D.',
+  'street3d.contribute.cta': 'Contribuir aquí',
+
+  'street3d.viewer.close': 'Volver al mapa',
+  'street3d.viewer.report': 'Denunciar',
+  'street3d.viewer.loading': 'Cargando vista 3D…',
+  'street3d.viewer.unsupported': 'Este dispositivo no puede mostrar vistas 3D. El mapa funciona como siempre.',
+  'street3d.viewer.error': 'No se pudo cargar esta vista 3D.',
+  'street3d.viewer.notFound': 'Esta vista 3D no está disponible.',
+  'street3d.viewer.retry': 'Reintentar',
+  'street3d.viewer.approximate': 'Ubicación aproximada: esta vista puede estar desplazada respecto al mapa.',
+  'street3d.viewer.observed': 'Imágenes de {from} a {to}',
+  'street3d.viewer.observedSame': 'Imágenes de {date}',
+  'street3d.viewer.controls.orbit': 'Orbitar',
+  'street3d.viewer.controls.walk': 'Caminar',
+  'street3d.viewer.controls.hint': 'Arrastra para mirar · WASD o flechas para moverte · rueda o pellizco para acercar',
+
+  'street3d.report.title': 'Denunciar esta vista 3D',
+  'street3d.report.reason.privacy': 'Privacidad: se ve una cara, una matrícula o un espacio privado',
+  'street3d.report.reason.inappropriate': 'Contenido inapropiado',
+  'street3d.report.reason.inaccurate': 'Inexacta o mal ubicada',
+  'street3d.report.reason.other': 'Otro motivo',
+  'street3d.report.note': 'Detalles (opcional, nunca se publican)',
+  'street3d.report.submit': 'Enviar denuncia',
+  'street3d.report.cancel': 'Cancelar',
+  'street3d.report.done': 'Listo',
+  'street3d.report.sent': 'Gracias. Tu denuncia se ha enviado para revisión.',
+  'street3d.report.failed': 'No se pudo enviar la denuncia. Inténtalo de nuevo.',
+  'street3d.report.signIn': 'Inicia sesión para enviar una denuncia.',
+
+  'contribute.kind.photo': 'Foto',
+  'contribute.kind.video': 'Vídeo',
+  'contribute.withdraw': 'Retirar contribución',
+  'contribute.status.expected.title': 'Esperando la subida',
+  'contribute.status.expected.body': 'La subida aún no ha llegado. Reintenta para reanudarla.',
+  'contribute.status.abandoned.title': 'Subida caducada',
+  'contribute.status.abandoned.body': 'La subida no se completó, así que no se guardó nada.',
+  'contribute.status.checking.title': 'Comprobando el archivo',
+  'contribute.status.checking.body': 'GoWay está comprobando el archivo antes del procesamiento de privacidad.',
+  'contribute.status.privacyPending.title': 'Procesamiento de privacidad pendiente',
+  'contribute.status.privacyPending.body':
+    'Antes que nada, se difuminan caras y matrículas. Esto se ejecuta en un procesador externo y puede tardar.',
+  'contribute.status.privacyProcessing.title': 'Procesando privacidad',
+  'contribute.status.privacyProcessing.body': 'Se están difuminando caras y matrículas.',
+  'contribute.status.privacyFailed.title': 'La comprobación de privacidad falló',
+  'contribute.status.privacyFailed.body':
+    'La comprobación de privacidad no pudo validar este archivo, así que no se usará. No se ha publicado nada de él.',
+  'contribute.status.blocked.title': 'Retirado por moderación',
+  'contribute.status.blocked.body': 'Este archivo no se usará.',
+  'contribute.status.accepted.title': 'Privacidad comprobada',
+  'contribute.status.accepted.body': 'Esperando a combinarse con vistas cercanas.',
+  'contribute.status.rejected.title': 'No utilizable',
+  'contribute.status.rejected.body': 'Este archivo no se pudo usar, así que no formará parte de una vista 3D.',
+  'contribute.status.waitingForOverlap.title': 'Esperando vistas complementarias',
+  'contribute.status.waitingForOverlap.body':
+    'Una vista 3D necesita varias fotos solapadas del mismo lugar desde distintos ángulos. La tuya se guarda hasta que caduque por si llegan otras.',
+  'contribute.status.reconstructionCandidate.title': 'Seleccionada para reconstrucción',
+  'contribute.status.reconstructionCandidate.body':
+    'Aquí hay suficiente solapamiento. Está en cola para la reconstrucción, que puede tardar días. No todas las reconstrucciones se publican.',
+  'contribute.status.integrated.title': 'Ayudó a crear una vista 3D',
+  'contribute.status.integrated.body':
+    'Tu contribución se usó en una reconstrucción. Una vista 3D publicada sigue disponible aunque caduque el archivo original.',
+  'contribute.status.expired.title': 'Archivo temporal caducado',
+  'contribute.status.expired.body':
+    'El archivo original llegó al final de su periodo de conservación y se eliminó. Lo que ya está publicado no se ve afectado.',
+  'contribute.status.deleted.title': 'Contribución retirada',
+  'contribute.status.deleted.body':
+    'Ya no se usará. Los archivos temporales se eliminarán cuando ninguna otra contribución los necesite.',
+  'contribute.status.privacyPassedLine': 'Comprobación de privacidad superada.',
+  'contribute.status.expires': 'Se espera que el archivo temporal caduque hacia el {date}.',
+  'contribute.status.protected': 'Se conserva hasta el {date} porque puede ayudar a completar una vista 3D cercana.',
+  'contribute.status.atRisk': 'Zona en riesgo: más fotos aquí podrían completarla.',
+  'contribute.status.atRiskUntil': 'Zona en riesgo: más fotos aquí antes del {date} podrían completarla.',
+};
