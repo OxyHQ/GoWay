@@ -54,6 +54,18 @@ export const PLACE_REVISION_ACTIONS = [
   'hours_exception_created',
   'hours_exception_replaced',
   'hours_exception_withdrawn',
+  'media_added',
+  'media_removed',
+  'media_reordered',
+  'media_hidden',
+  'media_restored',
+  'review_published',
+  'review_updated',
+  'review_withdrawn',
+  'review_replied',
+  'review_reply_withdrawn',
+  'review_hidden',
+  'review_restored',
 ] as const;
 export type PlaceRevisionAction = (typeof PLACE_REVISION_ACTIONS)[number];
 
@@ -86,6 +98,23 @@ export const PLACE_REVISION_VISIBILITY = {
   hours_exception_created: 'public',
   hours_exception_replaced: 'public',
   hours_exception_withdrawn: 'public',
+  // The gallery is published on the place, so what was added, removed or
+  // reordered is history — never the file, never who. An operator hiding or
+  // restoring an item is moderation state.
+  media_added: 'public',
+  media_removed: 'public',
+  media_reordered: 'public',
+  media_hidden: 'moderation',
+  media_restored: 'moderation',
+  // A review is the reviewer's statement, not a fact about the place: its
+  // history is moderation's, and never holds its text.
+  review_published: 'moderation',
+  review_updated: 'moderation',
+  review_withdrawn: 'moderation',
+  review_replied: 'moderation',
+  review_reply_withdrawn: 'moderation',
+  review_hidden: 'moderation',
+  review_restored: 'moderation',
 } as const satisfies Record<PlaceRevisionAction, PlaceRevisionVisibility>;
 
 /** The actions the public history lists. */
@@ -112,10 +141,17 @@ export type RevisionValue = z.infer<typeof revisionValueSchema>;
  *
  * `field` is a dotted path into the published `Place` shape — `name`,
  * `address.city`, `openingHours`, `timezone`, `names.es`,
- * `capabilities.payments.faircoin.accepted`, `hoursExceptions.<id>` — or, for a
+ * `capabilities.payments.faircoin.accepted`, `hoursExceptions.<id>`,
+ * `description`, `descriptions.es`, `media.<id>`, `logo`, `cover` — or, for a
  * moderation-only action, into the record it moved (`claims.<id>`,
- * `reports.<id>`, `duplicates.<id>`). `before` is absent when the field had no
- * value, `after` when the write cleared or withdrew it.
+ * `reports.<id>`, `duplicates.<id>`, `reviews.<id>`). `before` is absent when
+ * the field had no value, `after` when the write cleared or withdrew it.
+ *
+ * Two things never appear in a change: an Oxy file id (a gallery item is
+ * `{ kind, position, verification }`, and `logo`/`cover` name the gallery
+ * item), and the words of a review or a reply (a review is
+ * `{ rating, status, locale? }`). History is append-only, so a photo an
+ * operator hid and a review its author withdrew must not live on in it.
  *
  * A capability's value is its assertion AT ONE TIER — `{ value, verification,
  * observedAt }` — because tiers coexist and a write touches exactly one. An

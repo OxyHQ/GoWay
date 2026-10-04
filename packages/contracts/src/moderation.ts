@@ -43,8 +43,25 @@ export const PLACE_REPORT_REASONS = [
   'spam',
   'offensive',
   'privacy',
+  'not_this_place',
+  'conflict_of_interest',
 ] as const;
 export type PlaceReportReason = (typeof PLACE_REPORT_REASONS)[number];
+
+/**
+ * Why somebody reported one gallery item or one review: the reasons that are
+ * about CONTENT rather than about whether the place is real. `not_this_place`
+ * is a photo or review of somewhere else; `conflict_of_interest` is a review by
+ * the business or a competitor.
+ */
+export const CONTENT_REPORT_REASONS = [
+  'spam',
+  'offensive',
+  'privacy',
+  'not_this_place',
+  'conflict_of_interest',
+] as const satisfies readonly PlaceReportReason[];
+export type ContentReportReason = (typeof CONTENT_REPORT_REASONS)[number];
 
 /**
  * How an operator closed a report.
@@ -66,11 +83,30 @@ export const placeReportInputSchema = z
   .strict();
 export type PlaceReportInput = z.input<typeof placeReportInputSchema>;
 
-/** A report as its reporter gets it back: no note, no reporter. */
+/**
+ * The body of `POST /places/{placeId}/media/{mediaId}/reports` and
+ * `POST /places/{placeId}/reviews/{reviewId}/reports`: a report about one item
+ * of content on a place, filed in the same queue as reports about the place.
+ */
+export const contentReportInputSchema = z
+  .object({
+    reason: z.enum(CONTENT_REPORT_REASONS),
+    /** Optional free text, at most 500 characters. Read by operators; never published. */
+    note: z.string().trim().max(500).optional(),
+  })
+  .strict();
+export type ContentReportInput = z.input<typeof contentReportInputSchema>;
+
+/**
+ * A report as its reporter gets it back: no note, no reporter. `mediaId` or
+ * `reviewId` names the item it is about; neither means the place itself.
+ */
 export const placeReportSchema = z.object({
   id: z.string().min(1),
   placeId: placeIdSchema,
   reason: z.enum(PLACE_REPORT_REASONS),
+  mediaId: z.string().min(1).optional(),
+  reviewId: z.string().min(1).optional(),
   createdAt: instantSchema,
 });
 export type PlaceReport = z.infer<typeof placeReportSchema>;

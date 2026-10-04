@@ -495,6 +495,65 @@ export const placeNameInputSchema = z.object({
 });
 export type PlaceNameInput = z.input<typeof placeNameInputSchema>;
 
+// ── Description ─────────────────────────────────────────────────────────────
+
+/** The longest description GoWay stores, in characters. */
+export const MAX_DESCRIPTION_LENGTH = 2000;
+
+/**
+ * A place's description in one language, from one source — the grain
+ * {@link PlaceName} has, for the reason it has it: a business's own wording
+ * and a source's must both survive, and the next import may only ever restate
+ * its own.
+ */
+export const placeDescriptionSchema = z.object({
+  /** Canonical BCP 47 tag. */
+  language: canonicalLanguageTagSchema,
+  description: z.string(),
+  /** Which source supplies this wording. `goway` is written through this API. */
+  source: z.string().min(1),
+});
+export type PlaceDescription = z.infer<typeof placeDescriptionSchema>;
+
+/** A description as a writer supplies one: trimmed, bounded, never blank. */
+const descriptionTextSchema = z.string().trim().min(1).max(MAX_DESCRIPTION_LENGTH);
+
+/**
+ * One translated description as a caller may write it.
+ *
+ * As for a name, there is no `source`: anything written here is GoWay's
+ * (`goway`). `description: null` withdraws GoWay's wording in that language;
+ * a source's own wording, if any, is untouched.
+ */
+export const placeDescriptionInputSchema = z.object({
+  language: languageTagSchema,
+  description: descriptionTextSchema.nullable(),
+});
+export type PlaceDescriptionInput = z.input<typeof placeDescriptionInputSchema>;
+
+// ── Media references and the rating summary ─────────────────────────────────
+
+/**
+ * An Oxy file id. Opaque: never parsed. Render it through the Oxy SDK
+ * (`oxy.assets.publicUrl(fileId, variant)`) — GoWay itself never fetches or
+ * serves an image.
+ */
+export const oxyFileIdSchema = z.string().trim().min(1).max(128);
+
+/**
+ * The published reviews of a place, summarised.
+ *
+ * DERIVED from the reviews every time one is written, hidden or merged, never
+ * incremented — so a hidden review leaves the average by construction.
+ */
+export const placeRatingSchema = z.object({
+  /** The mean of the published ratings, to one decimal place. */
+  average: z.number().min(1).max(5),
+  /** How many published reviews the average is over. At least one. */
+  count: z.number().int().min(1),
+});
+export type PlaceRating = z.infer<typeof placeRatingSchema>;
+
 // ── The place ───────────────────────────────────────────────────────────────
 
 /** A place as GoWay publishes it. */
@@ -547,6 +606,30 @@ export const placeSchema = z.object({
    * first. Published on a single-place read; ABSENT from lists, as `names` is.
    */
   hoursExceptions: z.array(placeHoursExceptionSchema).optional(),
+  /**
+   * The place's own description, in its default language — what `name` is to
+   * `names`. Published on a single-place read; ABSENT from lists, as `names` is.
+   */
+  description: z.string().optional(),
+  /**
+   * Every language GoWay holds a description in, GoWay's own wording first
+   * within a language. Single-place read only.
+   */
+  descriptions: z.array(placeDescriptionSchema).optional(),
+  /**
+   * The description for the locale the request asked for, resolved by the
+   * rule {@link Place.localizedName} follows. Single-place read only.
+   */
+  localizedDescription: placeDescriptionSchema.optional(),
+  /**
+   * The place's logo: the Oxy file of one of its visible `logo` media items.
+   * Absent when none is set, or when the item it named left the gallery.
+   */
+  logoFileId: oxyFileIdSchema.optional(),
+  /** The place's cover image: the Oxy file of one of its visible `cover` media items. */
+  coverFileId: oxyFileIdSchema.optional(),
+  /** The published reviews, summarised. Absent until the place has one. */
+  rating: placeRatingSchema.optional(),
   status: z.enum(PUBLISHED_PLACE_STATUSES),
   verification: placeVerificationSchema,
   /** Every source this record reconciles against. Never empty for an imported place. */
@@ -619,6 +702,17 @@ const writablePlaceFields = {
   /** The outside records this place reconciles against, when the caller knows them. */
   sources: z.array(placeSourceRefInputSchema).max(32),
   capabilities: z.array(placeCapabilityInputSchema).max(64),
+  /** The default-language description. `null` clears it. */
+  description: descriptionTextSchema.nullable(),
+  /** Translations, written as GoWay's own. Merged by language; absent languages are untouched. */
+  descriptions: z.array(placeDescriptionInputSchema).max(64),
+  /**
+   * The Oxy file of one of this place's visible `logo` media items — add the
+   * item first (`POST /places/{placeId}/media`). `null` clears the logo.
+   */
+  logoFileId: oxyFileIdSchema.nullable(),
+  /** The Oxy file of one of this place's visible `cover` media items. `null` clears it. */
+  coverFileId: oxyFileIdSchema.nullable(),
 };
 
 /** The body of `POST /places`. */
@@ -634,6 +728,8 @@ export const placeCreateInputSchema = z.object({
   status: writablePlaceFields.status.optional(),
   sources: writablePlaceFields.sources.optional(),
   capabilities: writablePlaceFields.capabilities.optional(),
+  description: writablePlaceFields.description.optional(),
+  descriptions: writablePlaceFields.descriptions.optional(),
 });
 export type PlaceCreateInput = z.input<typeof placeCreateInputSchema>;
 
@@ -644,9 +740,17 @@ export type PlaceCreateInput = z.input<typeof placeCreateInputSchema>;
  * enrichment OVER source data and never destructively overwrites a source fact,
  * so an update that omits `address` leaves the address alone rather than
  * clearing it. An update that names nothing is refused.
+ *
+ * `logoFileId` and `coverFileId` are here and not on a create: each names an
+ * item already in the place's gallery, and a place that does not exist yet has
+ * none.
  */
 export const placeUpdateInputSchema = placeCreateInputSchema
   .partial()
+  .extend({
+    logoFileId: writablePlaceFields.logoFileId.optional(),
+    coverFileId: writablePlaceFields.coverFileId.optional(),
+  })
   .refine((body) => Object.keys(body).length > 0, {
     message: 'an update must change at least one field',
     path: ['(root)'],

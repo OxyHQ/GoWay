@@ -28,6 +28,8 @@ export * from './category';
 export * from './capability-registry';
 export * from './hours';
 export * from './place';
+export * from './media';
+export * from './review';
 export * from './revision';
 export * from './moderation';
 export * from './capture';

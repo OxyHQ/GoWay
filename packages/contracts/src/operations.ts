@@ -18,6 +18,7 @@ import type { ApiErrorCode } from './errors';
 import type { ContractSchemaName } from './json-schema';
 import { capabilityKeySchema } from './capability-registry';
 import { hoursExceptionListQuerySchema } from './hours';
+import { mediaListQuerySchema, moderationMediaListQuerySchema } from './media';
 import {
   duplicateListQuerySchema,
   moderationClaimListQuerySchema,
@@ -31,6 +32,7 @@ import {
   placeReadQuerySchema,
   placesInBoundsQuerySchema,
 } from './place';
+import { moderationReviewListQuerySchema, reviewListQuerySchema } from './review';
 import { revisionListQuerySchema } from './revision';
 import { reverseGeocodeQuerySchema, searchParametersSchema, structuredGeocodeQuerySchema } from './search';
 import { streetCoverageQuerySchema } from './street3d';
@@ -51,6 +53,8 @@ export type ApiTag =
   | 'Places'
   | 'Categories'
   | 'Hours'
+  | 'Media'
+  | 'Reviews'
   | 'Claims'
   | 'Moderation'
   | 'Search'
@@ -92,6 +96,10 @@ export const duplicatePathSchema = z.object({ candidateId: z.string().min(1).max
 export const reportPathSchema = z.object({ reportId: z.string().min(1).max(128) });
 /** `{placeId}` and an hours exception's `{exceptionId}`. */
 export const hoursExceptionPathSchema = z.object({ placeId: placeIdSchema, exceptionId: z.string().min(1).max(128) });
+/** `{placeId}` and a gallery item's `{mediaId}`. */
+export const mediaPathSchema = z.object({ placeId: placeIdSchema, mediaId: z.string().min(1).max(128) });
+/** `{placeId}` and a review's `{reviewId}`. */
+export const reviewPathSchema = z.object({ placeId: placeIdSchema, reviewId: z.string().min(1).max(128) });
 /** `{sceneId}` */
 export const scenePathSchema = z.object({ sceneId: z.string().min(1).max(64) });
 /** `{sessionId}` */
@@ -276,6 +284,150 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found', 'gone', 'service_unavailable'],
   },
 
+  // ── Media ─────────────────────────────────────────────────────────────────
+  {
+    operationId: 'listPlaceMedia',
+    method: 'get',
+    path: '/places/{placeId}/media',
+    tag: 'Media',
+    summary: "A place's visible gallery, in the business's order. Each item is an Oxy file id.",
+    auth: 'optional',
+    pathParameters: placePathSchema,
+    query: mediaListQuerySchema,
+    responses: { 200: 'PlaceMediaPage' },
+    errors: [...READ_ERRORS, 'not_found', 'gone'],
+  },
+  {
+    operationId: 'addPlaceMedia',
+    method: 'post',
+    path: '/places/{placeId}/media',
+    tag: 'Media',
+    summary: 'Add an image you uploaded to Oxy as public to the gallery. GoWay checks the file with Oxy.',
+    auth: 'required',
+    pathParameters: placePathSchema,
+    body: 'PlaceMediaInput',
+    responses: { 201: 'PlaceMedia' },
+    errors: [...WRITE_ERRORS, 'forbidden', 'not_found', 'gone', 'conflict', 'service_unavailable'],
+  },
+  {
+    operationId: 'reorderPlaceMedia',
+    method: 'put',
+    path: '/places/{placeId}/media/order',
+    tag: 'Media',
+    summary: 'Put the named gallery items first, in this order. The business only.',
+    auth: 'required',
+    pathParameters: placePathSchema,
+    body: 'PlaceMediaOrderInput',
+    responses: { 204: null },
+    errors: [...WRITE_ERRORS, 'forbidden', 'not_found', 'gone', 'service_unavailable'],
+  },
+  {
+    operationId: 'removePlaceMedia',
+    method: 'delete',
+    path: '/places/{placeId}/media/{mediaId}',
+    tag: 'Media',
+    summary: 'Withdraw a gallery item: its contributor, or the business.',
+    auth: 'required',
+    pathParameters: mediaPathSchema,
+    responses: { 204: null },
+    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found', 'gone', 'service_unavailable'],
+  },
+  {
+    operationId: 'reportPlaceMedia',
+    method: 'post',
+    path: '/places/{placeId}/media/{mediaId}/reports',
+    tag: 'Media',
+    summary: 'Report a gallery item to moderation. Repeating an open report answers the existing one with 200.',
+    auth: 'required',
+    pathParameters: mediaPathSchema,
+    body: 'ContentReportInput',
+    responses: { 201: 'PlaceReport', 200: 'PlaceReport' },
+    errors: [...WRITE_ERRORS, 'not_found', 'gone'],
+  },
+
+  // ── Reviews ───────────────────────────────────────────────────────────────
+  {
+    operationId: 'listPlaceReviews',
+    method: 'get',
+    path: '/places/{placeId}/reviews',
+    tag: 'Reviews',
+    summary: "A place's published reviews: newest, highest or lowest first.",
+    auth: 'public',
+    pathParameters: placePathSchema,
+    query: reviewListQuerySchema,
+    responses: { 200: 'PlaceReviewPage' },
+    errors: [...READ_ERRORS, 'not_found', 'gone'],
+  },
+  {
+    operationId: 'getMyPlaceReview',
+    method: 'get',
+    path: '/places/{placeId}/reviews/mine',
+    tag: 'Reviews',
+    summary: 'Your own review of a place, with where it stands.',
+    auth: 'required',
+    pathParameters: placePathSchema,
+    responses: { 200: 'PlaceReviewWithStatus' },
+    errors: ['bad_request', 'unauthorized', 'not_found', 'gone'],
+  },
+  {
+    operationId: 'putMyPlaceReview',
+    method: 'put',
+    path: '/places/{placeId}/reviews/mine',
+    tag: 'Reviews',
+    summary: "Write or rewrite your review. Refused to the place's business and to an organization session.",
+    auth: 'required',
+    pathParameters: placePathSchema,
+    body: 'PlaceReviewInput',
+    responses: { 201: 'PlaceReviewWithStatus', 200: 'PlaceReviewWithStatus' },
+    errors: [...WRITE_ERRORS, 'forbidden', 'not_found', 'gone', 'service_unavailable'],
+  },
+  {
+    operationId: 'withdrawMyPlaceReview',
+    method: 'delete',
+    path: '/places/{placeId}/reviews/mine',
+    tag: 'Reviews',
+    summary: 'Withdraw your review; its words are erased.',
+    auth: 'required',
+    pathParameters: placePathSchema,
+    responses: { 204: null },
+    errors: ['bad_request', 'unauthorized', 'not_found', 'gone'],
+  },
+  {
+    operationId: 'replyToPlaceReview',
+    method: 'put',
+    path: '/places/{placeId}/reviews/{reviewId}/reply',
+    tag: 'Reviews',
+    summary: "Write or rewrite the business's reply to a review. The business only.",
+    auth: 'required',
+    pathParameters: reviewPathSchema,
+    body: 'PlaceReviewReplyInput',
+    responses: { 200: 'PlaceReview' },
+    errors: [...WRITE_ERRORS, 'forbidden', 'not_found', 'gone', 'service_unavailable'],
+  },
+  {
+    operationId: 'withdrawPlaceReviewReply',
+    method: 'delete',
+    path: '/places/{placeId}/reviews/{reviewId}/reply',
+    tag: 'Reviews',
+    summary: "Withdraw the business's reply to a review. The business only.",
+    auth: 'required',
+    pathParameters: reviewPathSchema,
+    responses: { 204: null },
+    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found', 'gone', 'service_unavailable'],
+  },
+  {
+    operationId: 'reportPlaceReview',
+    method: 'post',
+    path: '/places/{placeId}/reviews/{reviewId}/reports',
+    tag: 'Reviews',
+    summary: 'Report a review to moderation. Repeating an open report answers the existing one with 200.',
+    auth: 'required',
+    pathParameters: reviewPathSchema,
+    body: 'ContentReportInput',
+    responses: { 201: 'PlaceReport', 200: 'PlaceReport' },
+    errors: [...WRITE_ERRORS, 'not_found', 'gone'],
+  },
+
   // ── Claims ────────────────────────────────────────────────────────────────
   {
     operationId: 'createPlaceClaim',
@@ -383,6 +535,65 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     query: revisionListQuerySchema,
     responses: { 200: 'ModerationPlaceRevisionPage' },
     errors: [...READ_ERRORS, 'unauthorized', 'forbidden', 'not_found'],
+  },
+  {
+    operationId: 'listModerationPlaceMedia',
+    method: 'get',
+    path: '/moderation/places/{placeId}/media',
+    tag: 'Moderation',
+    summary: "A place's gallery items in one state, or in every state, oldest first, with who added each.",
+    auth: 'required',
+    pathParameters: placePathSchema,
+    query: moderationMediaListQuerySchema,
+    responses: { 200: 'ModerationPlaceMediaPage' },
+    errors: [...READ_ERRORS, 'unauthorized', 'forbidden', 'not_found'],
+  },
+  {
+    operationId: 'moderatePlaceMedia',
+    method: 'patch',
+    path: '/moderation/places/{placeId}/media/{mediaId}',
+    tag: 'Moderation',
+    summary: 'Hide a gallery item, or restore a hidden one.',
+    auth: 'required',
+    pathParameters: mediaPathSchema,
+    body: 'ModerationMediaInput',
+    responses: { 200: 'ModerationPlaceMedia' },
+    errors: [...MODERATION_ERRORS, 'not_found', 'conflict'],
+  },
+  {
+    operationId: 'listModerationPlaceReviews',
+    method: 'get',
+    path: '/moderation/places/{placeId}/reviews',
+    tag: 'Moderation',
+    summary: "A place's reviews in one status, or in every status, newest first.",
+    auth: 'required',
+    pathParameters: placePathSchema,
+    query: moderationReviewListQuerySchema,
+    responses: { 200: 'PlaceReviewWithStatusPage' },
+    errors: [...READ_ERRORS, 'unauthorized', 'forbidden', 'not_found'],
+  },
+  {
+    operationId: 'moderatePlaceReview',
+    method: 'patch',
+    path: '/moderation/places/{placeId}/reviews/{reviewId}',
+    tag: 'Moderation',
+    summary: 'Hide a review, or restore a hidden one.',
+    auth: 'required',
+    pathParameters: reviewPathSchema,
+    body: 'ModerationReviewInput',
+    responses: { 200: 'PlaceReviewWithStatus' },
+    errors: [...MODERATION_ERRORS, 'not_found', 'conflict'],
+  },
+  {
+    operationId: 'removePlaceReviewReply',
+    method: 'delete',
+    path: '/moderation/places/{placeId}/reviews/{reviewId}/reply',
+    tag: 'Moderation',
+    summary: "Remove the business's reply to a review.",
+    auth: 'required',
+    pathParameters: reviewPathSchema,
+    responses: { 204: null },
+    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found'],
   },
   {
     operationId: 'listDuplicateCandidates',
