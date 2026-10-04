@@ -61,6 +61,7 @@ export interface CreateSessionInput {
   source: CaptureSource;
   consentVersion: string;
   note?: string;
+  attribution?: string;
   startedAt?: Date;
 }
 
@@ -171,6 +172,7 @@ export async function createCaptureSession(
       source: input.source,
       consentVersion: input.consentVersion,
       ...(input.note === undefined ? {} : { note: input.note }),
+      ...(input.attribution === undefined ? {} : { attribution: input.attribution }),
       ...(input.startedAt === undefined ? {} : { startedAt: input.startedAt }),
     })
     .returning(SESSION_COLUMNS);

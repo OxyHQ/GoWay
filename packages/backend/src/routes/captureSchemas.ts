@@ -38,6 +38,8 @@ import { normalizeExifGps, normalizeExifOrientation } from '../capture/exif';
 
 /** Longest accepted contributor note, in characters. */
 const MAX_NOTE_LENGTH = 500;
+/** Longest accepted licence credit; the same bound as `capture_sessions_attribution_check`. */
+const MAX_ATTRIBUTION_LENGTH = 200;
 /** Longest accepted camera make/model/lens string. */
 const MAX_CAMERA_STRING = 120;
 /** The most pieces of location evidence one contribution may carry. */
@@ -74,6 +76,8 @@ export const createSessionSchema = z.object({
   source: z.enum(CAPTURE_SOURCES),
   consentVersion: z.string().trim().min(1).max(64),
   note: z.string().trim().max(MAX_NOTE_LENGTH).optional(),
+  /** A licence credit for imported open imagery. Published with every scene it feeds. */
+  attribution: z.string().trim().min(1).max(MAX_ATTRIBUTION_LENGTH).optional(),
   startedAt: instant.optional(),
 });
 

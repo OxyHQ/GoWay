@@ -18,7 +18,10 @@
  * export order to get wrong. `capture.ts` is one aggregate for the same reason,
  * and it is a SEPARATE module because it shares no foreign key with Places at
  * all — a capture is contributed content about a street, not a fact about a
- * place, and the two must stay independently deletable.
+ * place, and the two must stay independently deletable. `street3d.ts` (#11–#16)
+ * holds the reconstruction machinery built ON captures — derivatives, jobs,
+ * scenes, versions — and is exported after `capture.ts` because its foreign
+ * keys point there.
  *
  * ## When adding a table
  *
@@ -41,4 +44,6 @@
 
 export * from './places';
 export * from './capture';
+// After `capture`: derivatives, jobs and scene inputs reference `capture_assets`.
+export * from './street3d';
 export * from './valueSets';

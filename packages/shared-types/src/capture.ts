@@ -501,6 +501,12 @@ export interface CaptureSession {
   consentVersion: string;
   /** Optional contributor note, e.g. what they were trying to capture. */
   note?: string;
+  /**
+   * A credit every scene built from this session must display — the licence
+   * line of an imported open-imagery dataset. Absent for an ordinary
+   * contribution, which GoWay publishes without naming anybody.
+   */
+  attribution?: string;
   /** ISO 8601 instant the contributor started capturing. */
   startedAt: string;
   /** ISO 8601 instant they finished. Absent while the session is open. */
@@ -591,6 +597,14 @@ export interface CaptureSessionInput {
   source: CaptureSource;
   consentVersion: string;
   note?: string;
+  /**
+   * The credit an imported open dataset's licence requires, at most 200
+   * characters, e.g. `Imagery © Example contributors, CC BY-SA 4.0`. It is
+   * copied into the `attributions` of every published scene version built from
+   * this session's captures, and it is the ONLY contributor-supplied text a
+   * scene ever displays — so it is for a licence credit, not a signature.
+   */
+  attribution?: string;
 }
 
 export interface CaptureAssetInput {
