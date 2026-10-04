@@ -16,7 +16,13 @@ import type {
   SearchQuery,
   SearchResults,
   StructuredGeocodeQuery,
+  StreetCoverage,
+  StreetCoverageQuery,
+  StreetSceneManifest,
+  StreetSceneReport,
+  StreetSceneReportInput,
 } from './contract';
+import { STREET_SCENE_REPORT_REASONS } from './contract';
 import { GoWayValidationError } from './errors';
 import {
   parseCaptureAsset, parseCaptureAssets, parseCaptureSession, parseCaptureSessions, parseCapturePolicy, parseCaptureTicket,
@@ -25,6 +31,9 @@ import {
   parsePlaceWithDistanceList,
   parseRouteResponse,
   parseSearchResults,
+  parseStreetCoverage,
+  parseStreetSceneManifest,
+  parseStreetSceneReport,
 } from './parse';
 import type { GoWayAbortSignal, GoWayFetch } from './runtime';
 import {
@@ -215,7 +224,26 @@ export interface GoWayClient {
   readonly search: GoWaySearchApi;
   readonly geocode: GoWayGeocodeApi;
   readonly routes: GoWayRoutesApi;
+  readonly street3d: GoWayStreet3dApi;
   readonly links: GoWayLinks;
+}
+
+/**
+ * Street 3D: published scenes and coarse contribution coverage.
+ *
+ * `coverage` and `scene` need no account. `report` needs an Oxy session (pass
+ * `getAccessToken`). A deployment with Street 3D switched off answers
+ * `coverage` with `GoWayUnavailableError` and `scene` with
+ * `GoWayNotFoundError`. Nothing here exposes how scenes are built: no job,
+ * worker, capture or storage shape is part of this API.
+ */
+export interface GoWayStreet3dApi {
+  /** Published scenes and coverage areas in a box. The server caps the box size. */
+  coverage(query: StreetCoverageQuery, options?: GoWayRequestOptions): Promise<StreetCoverage>;
+  /** The served manifest of one published scene. */
+  scene(id: string, options?: GoWayRequestOptions): Promise<StreetSceneManifest>;
+  /** Report a scene to moderation. Repeating a report returns the existing one. */
+  report(id: string, input: StreetSceneReportInput, options?: GoWayRequestOptions): Promise<StreetSceneReport>;
 }
 
 export interface GoWayCapturesApi {
@@ -380,6 +408,29 @@ function boundsQuery(query: PlacesInBoundsQuery, defaultLocale: string | undefin
     categories: categoryKeys(record.categories),
     limit: limitOf(record.limit),
     locale: localeOf(record.locale, defaultLocale),
+  };
+}
+
+function coverageQuery(query: StreetCoverageQuery): Record<string, QueryValue> {
+  const record = requireObject(query, 'query');
+  const south = latitude(record.south, 'south');
+  const north = latitude(record.north, 'north');
+  if (south > north) throw new GoWayValidationError('south must not be north of north');
+  return { west: longitude(record.west, 'west'), south, east: longitude(record.east, 'east'), north };
+}
+
+/** Only the two contract fields are sent, so nothing else a caller passes reaches the server. */
+function reportBody(input: StreetSceneReportInput): StreetSceneReportInput {
+  const record = requireObject(input, 'input');
+  if (typeof record.reason !== 'string' || !(STREET_SCENE_REPORT_REASONS as readonly string[]).includes(record.reason)) {
+    throw new GoWayValidationError(`reason must be one of ${STREET_SCENE_REPORT_REASONS.join(', ')}`);
+  }
+  if (record.note !== undefined && (typeof record.note !== 'string' || record.note.length > 500)) {
+    throw new GoWayValidationError('note must be a string of at most 500 characters');
+  }
+  return {
+    reason: record.reason as StreetSceneReportInput['reason'],
+    ...(typeof record.note === 'string' ? { note: record.note } : {}),
   };
 }
 
@@ -755,5 +806,17 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     finalize: (id: string, o: GoWayRequestOptions = {}) => request(config, { method: 'POST', path: `/captures/assets/${pathSegment(id, 'assetId')}/finalize`, body: {}, signal: o.signal }, parseCaptureAsset),
     remove: (id: string, o: GoWayRequestOptions = {}) => request(config, { method: 'DELETE', path: `/captures/assets/${pathSegment(id, 'assetId')}`, signal: o.signal }, parseCaptureAsset),
   });
-  return Object.freeze({ places, search, geocode, routes, captures, links: createLinks(webBaseUrl) });
+  const street3d: GoWayStreet3dApi = Object.freeze({
+    coverage: async (query: StreetCoverageQuery, o: GoWayRequestOptions = {}) =>
+      request(config, { method: 'GET', path: '/street3d/coverage', query: coverageQuery(query), signal: o.signal }, parseStreetCoverage),
+    scene: async (id: string, o: GoWayRequestOptions = {}) =>
+      request(config, { method: 'GET', path: `/street3d/scenes/${pathSegment(id, 'sceneId')}`, signal: o.signal }, parseStreetSceneManifest),
+    report: async (id: string, input: StreetSceneReportInput, o: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        { method: 'POST', path: `/street3d/scenes/${pathSegment(id, 'sceneId')}/reports`, body: reportBody(input), signal: o.signal },
+        parseStreetSceneReport,
+      ),
+  });
+  return Object.freeze({ places, search, geocode, routes, captures, street3d, links: createLinks(webBaseUrl) });
 }

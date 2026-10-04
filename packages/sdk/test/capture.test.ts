@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createGoWayClient, type CaptureAssetInput } from '../src/index';
-import { parseCaptureAsset, parseCaptureTicket } from '../src/parse';
+import { parseCaptureAsset, parseCaptureSession, parseCaptureTicket } from '../src/parse';
 import { fakeFetch } from './helpers';
 
 const time = '2026-10-01T00:00:00.000Z';
@@ -45,5 +45,11 @@ describe('contribution client boundary', () => {
     expect(() => parseCaptureAsset({ ...asset, privacy: { state: 'trusted' } })).toThrow();
     expect(() => parseCaptureTicket({ asset, upload: { ...upload, url: 'javascript:bad()' } })).toThrow();
     expect(parseCaptureTicket({ asset }).upload).toBeUndefined();
+  });
+  it('reads a session licence credit and rejects a blank one', () => {
+    const session = { id: 's', source: 'library', consentVersion: 'v', startedAt: time, assetCount: 0, createdAt: time, updatedAt: time };
+    expect(parseCaptureSession({ ...session, attribution: 'Imagery © Example, CC BY-SA 4.0' }).attribution).toBe('Imagery © Example, CC BY-SA 4.0');
+    expect(parseCaptureSession(session).attribution).toBeUndefined();
+    expect(() => parseCaptureSession({ ...session, attribution: '  ' })).toThrow();
   });
 });
