@@ -161,7 +161,13 @@ export function pageOf<Row, Item>(
  * a position rebuilt from `toISOString()` sorts on the wrong side of the row it
  * came from and the next page would repeat or skip it.
  */
-export const timeKeysetSchema = z.tuple([z.string().min(1).max(64), z.string().min(1).max(128)]);
+export const timeKeysetSchema = z.tuple([
+  // The shape Postgres renders a `timestamptz` as. Checked, not trusted: a
+  // cursor is only base64, so a caller can edit it, and a value Postgres then
+  // failed to cast would be a 500 instead of the `bad_request` it is.
+  z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?[+-]\d{2}(?::\d{2})?$/),
+  z.string().min(1).max(128),
+]);
 export type TimeKeyset = z.infer<typeof timeKeysetSchema>;
 
 /** A window over a time-ordered list: how many rows, and where to resume. */

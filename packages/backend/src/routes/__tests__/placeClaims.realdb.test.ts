@@ -318,6 +318,14 @@ describe('GET /claims', () => {
     expect(second.body.items).toHaveLength(1);
     expect(second.body.items[0]?.id).not.toBe(first.body.items[0]?.id);
 
+    // A cursor is opaque, not sealed: an edited position is refused as
+    // `bad_request`, never handed to Postgres to fail as a 500.
+    const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { p: [string, string] };
+    const edited = Buffer.from(JSON.stringify({ ...decoded, p: ['not a time', decoded.p[1]] })).toString('base64url');
+    const tampered = await call<ErrorBody>(`/claims?limit=1&cursor=${edited}`, asUser('user-chain'));
+    expect(tampered.status).toBe(400);
+    expect(tampered.body.error.code).toBe('bad_request');
+
     // The session is in the cursor's binding: replaying it as somebody else is
     // a foreign cursor, not a view of the chain's claims.
     const replayed = await call<ErrorBody>(`/claims?limit=1&cursor=${cursor}`, asUser('user-nobody'));
