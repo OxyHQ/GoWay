@@ -196,6 +196,7 @@ CREATE TABLE "street3d_scene_versions" (
 	"footprint" jsonb NOT NULL,
 	"world_transform" jsonb NOT NULL,
 	"initial_view" jsonb NOT NULL,
+	"navigation" jsonb,
 	"assets" jsonb NOT NULL,
 	"quality" jsonb NOT NULL,
 	"metrics" jsonb NOT NULL,
@@ -223,6 +224,7 @@ CREATE TABLE "street3d_scene_versions" (
 	CONSTRAINT "street3d_versions_observed_check" CHECK ("street3d_scene_versions"."observed_from" <= "street3d_scene_versions"."observed_to"),
 	CONSTRAINT "street3d_versions_digest_check" CHECK ("street3d_scene_versions"."result_sha256" ~ '^[0-9a-f]{64}$'),
 	CONSTRAINT "street3d_versions_assets_check" CHECK (jsonb_typeof("street3d_scene_versions"."assets") = 'array'),
+	CONSTRAINT "street3d_versions_navigation_check" CHECK ("street3d_scene_versions"."navigation" is null or coalesce(jsonb_typeof("street3d_scene_versions"."navigation" -> 'viewpoints') = 'array', false)),
 	CONSTRAINT "street3d_versions_published_check" CHECK ("street3d_scene_versions"."state" not in ('published', 'superseded') or "street3d_scene_versions"."published_at" is not null),
 	CONSTRAINT "street3d_versions_disabled_check" CHECK (("street3d_scene_versions"."state" = 'disabled') = ("street3d_scene_versions"."disabled_at" is not null)),
 	CONSTRAINT "street3d_versions_disabled_reason_check" CHECK (("street3d_scene_versions"."disabled_at" is null) = ("street3d_scene_versions"."disabled_reason" is null))

@@ -29,6 +29,7 @@ import { and, eq, inArray, isNotNull, ne, or, sql, type Column, type SQL } from 
 import { sqlColumnName } from '@oxy.so/db';
 import type { StreetSceneAsset, StreetSceneQuality } from '@goway/shared-types';
 import type { SceneReconstructResult } from '../../street3d/workerContract';
+import { publishedNavigation } from '../../street3d/navigation';
 import type { DatabaseOrTransaction, Transaction } from '../postgres';
 import {
   captureAssets,
@@ -152,6 +153,7 @@ export async function recordSceneOutcome(
       footprint: result.footprint as { type: 'Polygon'; coordinates: number[][][] },
       worldTransform: result.worldTransform,
       initialView: result.initialView,
+      navigation: publishedNavigation(result),
       assets: outcome.assets,
       quality: outcome.quality,
       metrics: numericMetrics(result.metrics),

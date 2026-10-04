@@ -142,6 +142,14 @@ manifest.
 Published manifests carry no contributor identity, no device metadata and no
 source object keys.
 
+A result may report `viewpoints` (solved camera positions and facings, at most
+2000) and a `captureFieldOfView`. They are published as the manifest's optional
+`navigation`, so a viewer can move between observed positions instead of flying
+into unobserved space. Before storing, the backend rounds positions to
+centimetres, sorts them by position, thins them so none is within 1.5 m of
+another and keeps at most 1000: what is published is the set of places the
+scene was seen from, never a capture sequence, a time or a contributor's path.
+
 ## Retention
 
 - Raw photos become deletion-eligible a short audit window after their

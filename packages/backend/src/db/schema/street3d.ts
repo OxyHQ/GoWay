@@ -57,6 +57,7 @@ import {
   RETENTION_REASONS,
   type StreetSceneAsset,
   type StreetSceneInitialView,
+  type StreetSceneNavigation,
   type StreetSceneQuality,
   type StreetSceneWorldTransform,
 } from '@goway/shared-types';
@@ -380,6 +381,8 @@ export const street3dSceneVersions = pgTable(
     footprint: jsonb().notNull().$type<{ type: 'Polygon'; coordinates: number[][][] }>(),
     worldTransform: jsonb().notNull().$type<StreetSceneWorldTransform>(),
     initialView: jsonb().notNull().$type<StreetSceneInitialView>(),
+    /** Published guided navigation, already decimated and reordered. Null when the worker reported none. */
+    navigation: jsonb().$type<StreetSceneNavigation>(),
     assets: jsonb().notNull().$type<(StreetSceneAsset & { key: string })[]>(),
     quality: jsonb().notNull().$type<StreetSceneQuality>(),
     metrics: jsonb().notNull().$type<Record<string, number>>(),
@@ -412,6 +415,11 @@ export const street3dSceneVersions = pgTable(
     check('street3d_versions_observed_check', sql`${table.observedFrom} <= ${table.observedTo}`),
     check('street3d_versions_digest_check', sql`${table.resultSha256} ~ ${sql.raw(SHA256_PATTERN)}`),
     check('street3d_versions_assets_check', sql`jsonb_typeof(${table.assets}) = 'array'`),
+    /** `coalesce`: a missing `viewpoints` key makes `jsonb_typeof` null, which a bare CHECK would let through. */
+    check(
+      'street3d_versions_navigation_check',
+      sql`${table.navigation} is null or coalesce(jsonb_typeof(${table.navigation} -> 'viewpoints') = 'array', false)`,
+    ),
     /** A version that was ever served says when; one that was never served does not. */
     check(
       'street3d_versions_published_check',

@@ -19,6 +19,7 @@ import type {
   StreetCoverageArea,
   StreetSceneAsset,
   StreetSceneManifest,
+  StreetSceneNavigation,
   StreetSceneReport,
   StreetSceneReportInput,
   StreetSceneSummary,
@@ -50,8 +51,24 @@ function publicAssets(assets: readonly (StreetSceneAsset & { key: string })[]): 
 
 type VersionRow = typeof street3dSceneVersions.$inferSelect;
 
+function publicNavigation(navigation: StreetSceneNavigation): StreetSceneNavigation {
+  const published: StreetSceneNavigation = {
+    viewpoints: navigation.viewpoints.map((viewpoint) => ({
+      position: [...viewpoint.position] as [number, number, number],
+      forward: [...viewpoint.forward] as [number, number, number],
+    })),
+  };
+  if (navigation.fieldOfView) {
+    published.fieldOfView = {
+      horizontalDegrees: navigation.fieldOfView.horizontalDegrees,
+      verticalDegrees: navigation.fieldOfView.verticalDegrees,
+    };
+  }
+  return published;
+}
+
 function toManifest(row: VersionRow): StreetSceneManifest {
-  return {
+  const manifest: StreetSceneManifest = {
     id: row.sceneId,
     version: row.version,
     bounds: { west: row.boundsWest, south: row.boundsSouth, east: row.boundsEast, north: row.boundsNorth },
@@ -83,6 +100,8 @@ function toManifest(row: VersionRow): StreetSceneManifest {
     attributions: [...row.attributions],
     privacyPipelineVersions: [...row.privacyPipelineVersions],
   };
+  if (row.navigation) manifest.navigation = publicNavigation(row.navigation);
+  return manifest;
 }
 
 /** The served manifest of a scene, or `null`. */

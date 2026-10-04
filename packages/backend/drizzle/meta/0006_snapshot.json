@@ -1,5 +1,5 @@
 {
-  "id": "1075e353-6652-41b0-b8cb-eba6bee44990",
+  "id": "46cdaa8b-84a7-4589-b9f3-38959a57cec4",
   "prevId": "403abcfd-975b-416a-9fdf-e406f2f09af3",
   "version": "7",
   "dialect": "postgresql",
@@ -3707,6 +3707,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "navigation": {
+          "name": "navigation",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "assets": {
           "name": "assets",
           "type": "jsonb",
@@ -3934,6 +3940,10 @@
         "street3d_versions_assets_check": {
           "name": "street3d_versions_assets_check",
           "value": "jsonb_typeof(\"street3d_scene_versions\".\"assets\") = 'array'"
+        },
+        "street3d_versions_navigation_check": {
+          "name": "street3d_versions_navigation_check",
+          "value": "\"street3d_scene_versions\".\"navigation\" is null or coalesce(jsonb_typeof(\"street3d_scene_versions\".\"navigation\" -> 'viewpoints') = 'array', false)"
         },
         "street3d_versions_published_check": {
           "name": "street3d_versions_published_check",

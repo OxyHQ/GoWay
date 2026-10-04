@@ -125,6 +125,9 @@ describe('versions and the graph', () => {
     const [jobB] = await db.insert(street3dJobs).values(sceneJob(11, { state: 'completed', finishedAt: new Date() })).returning();
     const [first] = await db.insert(street3dSceneVersions).values(version(10, jobA!.id)).returning();
     expect(await refusedBy(() => db.insert(street3dSceneVersions).values(version(11, jobB!.id)))).toContain('street3d_versions_published_key');
+    const unpublished = { ...version(11, jobB!.id), state: 'failed_quality', publishedAt: null };
+    expect(await refusedBy(() => db.insert(street3dSceneVersions).values({ ...unpublished, navigation: { fieldOfView: { horizontalDegrees: 66, verticalDegrees: 50 } } as never })))
+      .toContain('street3d_versions_navigation_check');
 
     const [a] = await db.insert(captureDerivatives).values(derivative({ frameIndex: 1 })).returning();
     const [b] = await db.insert(captureDerivatives).values(derivative({ frameIndex: 2 })).returning();

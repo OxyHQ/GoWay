@@ -323,6 +323,12 @@ export class FakeWorker {
         { role: 'poster', format: 'jpeg', key: `${prefix}poster.jpg`, sha256: poster.sha256, byteSize: poster.byteSize, contentType: 'image/jpeg' },
       ],
       initialView: { position: [0, 0, 1.6], target: [0, 10, 1.6] },
+      // A walk back down the street, every half metre, as a capture sequence reports it.
+      viewpoints: Array.from({ length: 21 }, (_, index) => ({
+        position: [0.004, 10 - index * 0.5, 1.6],
+        forward: [0, -2, 0],
+      })),
+      captureFieldOfView: { horizontalDegrees: 66, verticalDegrees: 50 },
       observedFrom: '2026-09-01T09:00:00.000Z',
       observedTo: '2026-09-02T10:00:00.000Z',
       provenance: {

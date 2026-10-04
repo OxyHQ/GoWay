@@ -83,6 +83,10 @@ async function scene(state: 'published' | 'failed_quality' | 'disabled' = 'publi
       footprint: { type: 'Polygon', coordinates: [[[2.3008, 48.8678], [2.3032, 48.8678], [2.3032, 48.869], [2.3008, 48.8678]]] },
       worldTransform: { anchor: { latitude: 48.8684, longitude: 2.302, altitudeMeters: 0 }, frame: 'enu', enuFromScene: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
       initialView: { position: [0, 0, 1.6], target: [0, 10, 1.6] },
+      navigation: {
+        viewpoints: [{ position: [0, 0, 1.6], forward: [0, 1, 0] }, { position: [0, 2.5, 1.6], forward: [0, 1, 0] }],
+        fieldOfView: { horizontalDegrees: 66, verticalDegrees: 50 },
+      },
       assets: [
         { role: 'splat', format: 'spz', url: `https://cdn.example.test/${ASSET_KEY}`, key: ASSET_KEY, byteSize: 10, sha256: 'c'.repeat(64), gaussians: 5 },
         { role: 'poster', format: 'jpeg', url: 'https://cdn.example.test/poster.jpg', key: 'scenes/s/v1/p.jpg', byteSize: 3, sha256: 'd'.repeat(64) },
@@ -169,6 +173,10 @@ describe('scene manifests', () => {
     expect(manifest).toMatchObject({ id: sceneId, version: 1, attributions: ['Imagery © Example, CC BY-SA 4.0'] });
     expect(JSON.stringify(manifest)).not.toContain('"key"');
     expect(manifest.assets.every((asset) => !('key' in asset))).toBe(true);
+    expect(manifest.navigation).toEqual({
+      viewpoints: [{ position: [0, 0, 1.6], forward: [0, 1, 0] }, { position: [0, 2.5, 1.6], forward: [0, 1, 0] }],
+      fieldOfView: { horizontalDegrees: 66, verticalDegrees: 50 },
+    });
 
     expect((await fetch(`${on}/street3d/scenes/${await scene('failed_quality')}`)).status).toBe(404);
     expect((await fetch(`${on}/street3d/scenes/${await scene('disabled')}`)).status).toBe(404);

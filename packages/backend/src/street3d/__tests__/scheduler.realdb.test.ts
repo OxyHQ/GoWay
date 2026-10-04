@@ -356,6 +356,11 @@ describe('scene formation and reconstruction', () => {
     expect(manifest!.attributions).toEqual([OPEN_CREDIT]);
     expect(manifest!.privacyPipelineVersions).toEqual(['goway-privacy/1']);
     expect(manifest!.assets).toHaveLength(3);
+    // Decimated to 1.5 m, rounded, unit-length and sorted: not the walk's order.
+    expect(manifest!.navigation).toEqual({
+      viewpoints: [0, 1.5, 3, 4.5, 6, 7.5, 9].map((y) => ({ position: [0, y, 1.6], forward: [0, -1, 0] })),
+      fieldOfView: { horizontalDegrees: 66, verticalDegrees: 50 },
+    });
     for (const asset of manifest!.assets) {
       expect(asset.url).toMatch(new RegExp(`^https://cdn\\.example\\.test/street3d/scenes/${job!.envelope.sceneId}/v1/${asset.sha256}\\.(spz|jpg)$`));
       expect(Object.keys(asset)).not.toContain('key');
