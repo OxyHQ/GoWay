@@ -14,6 +14,7 @@ export * from './geo';
 export * from './language';
 export * from './place';
 export * from './capture';
+export * from './street3d';
 export * from './search';
 export * from './routes';
 export * from './errors';
