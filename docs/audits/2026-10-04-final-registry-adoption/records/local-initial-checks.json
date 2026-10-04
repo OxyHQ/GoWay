@@ -1,0 +1,48 @@
+[
+  {
+    "name": "receiver",
+    "cwd": "packages/backend",
+    "argv": [
+      "bun",
+      "run",
+      "test",
+      "--test-name-pattern",
+      "validates receiver identity and revocation in an isolated loopback process"
+    ],
+    "exitCode": 0,
+    "seconds": 0.615
+  },
+  {
+    "name": "backend-build",
+    "cwd": ".",
+    "argv": [
+      "bun",
+      "run",
+      "build:backend"
+    ],
+    "exitCode": 0,
+    "seconds": 1.969
+  },
+  {
+    "name": "backend-types",
+    "cwd": "packages/backend",
+    "argv": [
+      "bun",
+      "run",
+      "typecheck"
+    ],
+    "exitCode": 0,
+    "seconds": 2.52
+  },
+  {
+    "name": "frontend-types",
+    "cwd": "packages/frontend",
+    "argv": [
+      "bun",
+      "run",
+      "typecheck"
+    ],
+    "exitCode": 0,
+    "seconds": 3.923
+  }
+]

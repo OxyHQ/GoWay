@@ -1,0 +1,157 @@
+{
+  "source": "90dc9d543a3553e792ae230aa51705668ee0ad1b",
+  "sources": [
+    {
+      "path": "package.json",
+      "sha256": "cb03265e6c865e03ca4c64edebfa1d860742b517b4eacc5fbb900d14d4e7068b"
+    },
+    {
+      "path": "packages/backend/package.json",
+      "sha256": "dadef3cd2fcc2bd68e5d71e80b3499370d1d9b435db5ef7b4eb00cb136f8d235"
+    },
+    {
+      "path": "packages/frontend/package.json",
+      "sha256": "2a9f7619f02a3ec90cbc8eebc6ccc1bb3ffdb8066f887ae00885352d850adc2e"
+    },
+    {
+      "path": "bun.lock",
+      "sha256": "6f6ad044de36230eb25a457effe00799b354001ce79a81dbc3abae7232bcdb15"
+    }
+  ],
+  "records": [
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/GoWay-frozen.log",
+      "sha256": "e5c8d42f186328e9f9d29f9965e1a8d290dd6b0c6771d5c3eea4adfac347a712",
+      "bytes": 349
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/GoWay-installed.json",
+      "sha256": "73511dd1366e80460dfe4865c5a950c361f79dbf84645c702e5e5f7edde09369",
+      "bytes": 1088
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/GoWay-resolve.log",
+      "sha256": "7580ed16b30a181ec8413f3fe5c094bcb7379595d3c6b592aa69d1aaf18e62cd",
+      "bytes": 584
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/backend-build.log",
+      "sha256": "fe7b67c5793de3404a67ca0d041dae0298a189b7aaf145dae0d8d5effefb80de",
+      "bytes": 62
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/backend-types.log",
+      "sha256": "825c2a03e6896d9fe1b5c8e106852c19087f925210b777cb1dfea3bf4db3799e",
+      "bytes": 53
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/bloom-final-importers.json",
+      "sha256": "56fa6c92386ddb5ee2338cfc0139ba6f793ab045ffd7ec70daef1c2caf03d98f",
+      "bytes": 361
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/checks-export.json",
+      "sha256": "dd876985121302338c7e53eb8c11f5b0e7147eb76f89fd7b079ffb3718a9155f",
+      "bytes": 454
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/checks-initial.json",
+      "sha256": "3cf4506c42fa007bd1eda6a2385764c04079e321a0bf97091bed87479a647522",
+      "bytes": 938
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/contracts-registry.json",
+      "sha256": "fb1ded2797bdbd0ca31460f3cba087f078a86dc201365c923da9fcc23b07ed7b",
+      "bytes": 380
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/core-registry.json",
+      "sha256": "99b7f8a1cc87cf46ff54b3113a1911a938f39b4f086537e0a4138ee38dd035b7",
+      "bytes": 375
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/failed.json",
+      "sha256": "e45a08861b705a4bd04a1ac5bec7dfdc902621991070d99debf9062f9e6cfe3d",
+      "bytes": 89
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/frontend-export.log",
+      "sha256": "0ed3115e5955add1f219f3881565c2c8d0ed0877eb5ea3dc3848428954ae36bc",
+      "bytes": 8874
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/frontend-types.log",
+      "sha256": "8366207267355d3e3d5bf3bf6e8c94c5f93f6078c34f08973fa2b38cdda6cc92",
+      "bytes": 15
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/intent.json",
+      "sha256": "bd89d8d911ed01c93adbb9ab44d9208a37b42115393162136c33fd8129538ee0",
+      "bytes": 149
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/local-export-check.json",
+      "sha256": "9f03687b7aca6aba4556f300ce4099a1b2459a92cbf136bf9ab6829e5fecf456",
+      "bytes": 259
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/local-initial-checks.json",
+      "sha256": "eb0a9c214d7e764aaa511b1be6a492b8eb83114cb7dd05fa7bd2cca5b587935a",
+      "bytes": 792
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/materialization-frozen.log",
+      "sha256": "d264b89b19ada1fe2653df1d1fdac8b668d66c1e46704c41ceec1bd0fc712bdf",
+      "bytes": 310
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/materialization-repair-intent.json",
+      "sha256": "3a854947d135643ec104712c7349ac1a29b73969bbf8289a0e65681bce40fb1c",
+      "bytes": 529
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/mcp-registry.json",
+      "sha256": "cc279f4f5b1ca68041f6f0d3583e4d9dc218bd7c0b77846207aa3b981086d7ac",
+      "bytes": 373
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/preflight.json",
+      "sha256": "139c2db1355d433bdee86dac76ac4ee9c6a78ce149ae230378a202f5f2861f3a",
+      "bytes": 250
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/protocol-registry.json",
+      "sha256": "cc0b427dca92d55ea5e1debe7e76580618a26f997b2c888b8484537b64b70bbd",
+      "bytes": 379
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/receiver.log",
+      "sha256": "62511f57c813121f8b6b9b6a027b8d92468b3709191bfc7087b9aab34185a1f8",
+      "bytes": 2097
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/registry.json",
+      "sha256": "a39da224fafeec388f0ac27e08ea13cf666427a0177b67f7b077c65cadb59df0",
+      "bytes": 415373
+    },
+    {
+      "path": "docs/audits/2026-10-04-final-registry-adoption/records/services-registry.json",
+      "sha256": "444599f0eb56d104d64c288ed3a6544163e54430c0f275c2feec219d5f624611",
+      "bytes": 381
+    }
+  ],
+  "validation": {
+    "receiverFiles": 1,
+    "receiverPassed": 1,
+    "filteredTests": 535,
+    "sdkImporterMembers": 3580,
+    "bloomImporterMembers": 20940,
+    "buildExport": "passed"
+  },
+  "limits": [
+    "Published registry archives and all installed SDK importer members were compared byte for byte. Stale same-version candidate materializations were retained and repaired with a frozen install; their setup failures remain in the records.",
+    "Local web export proves compilation, not browser/native acceptance or deployed public-client configuration. Required PR/main CI and root image/promotion remain separate.",
+    "No production database, provider writes, grants, credentials or auth fixtures were changed. Receiver fixture runs in an isolated child with loopback-only synthetic issuer authority; no SQL fixture is required.",
+    "Filtered tests are not full-suite acceptance; required CI remains separate. Nilo export uses independently verified existing public client configuration; GoWay registered-client provisioning remains a root operation and is not proved by export."
+  ]
+}
