@@ -16,9 +16,13 @@
  */
 
 import { z } from 'zod';
+import {
+  capabilityValueInputSchema,
+  capabilityValueSchemaFor,
+  type CapabilityKey,
+} from './capability-registry';
 import { cursorSchema, limitSchema, pageSchema } from './pagination';
 import {
-  capabilityValueSchema,
   MODERATED_PLACE_STATUSES,
   PLACE_CLAIM_STATES,
   PLACE_VERIFICATION_STATES,
@@ -144,11 +148,18 @@ export type ModerationPlaceUpdateInput = z.input<typeof moderationPlaceUpdateInp
  * The body of `PUT /moderation/places/{placeId}/capabilities/{key}`.
  *
  * Writes the `oxy_verified` tier — and nothing else can. The value is required
- * for the reason the public assertion's is: this endpoint does not know which
- * kind of capability it is writing.
+ * for the reason the public assertion's is: the key's registry entry, not this
+ * schema, says which kind of value it is. Once the path has named the key the
+ * value is held to that entry ({@link moderationCapabilityInputSchemaFor}), so
+ * an operator cannot verify a value the registry would refuse from anybody.
  */
-export const moderationCapabilityInputSchema = z.object({ value: capabilityValueSchema }).strict();
+export const moderationCapabilityInputSchema = z.object({ value: capabilityValueInputSchema }).strict();
 export type ModerationCapabilityInput = z.input<typeof moderationCapabilityInputSchema>;
+
+/** The same body, held to one key's registry entry: what the API applies once the path has named the key. */
+export function moderationCapabilityInputSchemaFor(key: CapabilityKey) {
+  return moderationCapabilityInputSchema.extend({ value: capabilityValueSchemaFor(key) });
+}
 
 // ── Duplicates ──────────────────────────────────────────────────────────────
 

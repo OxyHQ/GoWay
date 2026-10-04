@@ -38,6 +38,19 @@ import {
   latitudeSchema,
   longitudeSchema,
 } from './geo';
+import {
+  CAPABILITY_VERIFICATIONS,
+  capabilityFilterOf,
+  capabilityFilterSchema,
+  capabilityHolds,
+  capabilityValueInputSchema,
+  capabilityValueSchema,
+  capabilityValueSchemaFor,
+  isCapabilityKey,
+  type CapabilityKey,
+} from './capability-registry';
+import { categoryKeySchema, publishedCategoryKeySchema } from './category';
+import { openingHoursInputSchema, openingHoursSchema, placeHoursExceptionSchema, timezoneSchema } from './hours';
 import { canonicalLanguageTagSchema, languageTagSchema } from './language';
 import { cursorSchema, limitSchema, pageSchema } from './pagination';
 import { instantSchema } from './time';
@@ -104,7 +117,7 @@ export type ModeratedPlaceStatus = (typeof MODERATED_PLACE_STATUSES)[number];
  */
 export const GONE_MERGED_INTO_DETAIL = 'mergedInto';
 
-// ── Address, contact, hours ─────────────────────────────────────────────────
+// ── Address and contact ─────────────────────────────────────────────────────
 
 /**
  * A postal address broken into parts, as far as the source actually supports.
@@ -171,42 +184,6 @@ export const placeContactInputSchema = z.object({
     .optional(),
 });
 
-/** A local 24-hour wall-clock time, `HH:mm`. */
-const clockTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'must be a local 24-hour time, HH:mm');
-
-/**
- * One interval in a weekly opening schedule.
- *
- * `day` is 0 = Sunday through 6 = Saturday. Times are local wall-clock `HH:mm`
- * in the place's own timezone, not UTC: a place does not change its opening
- * hours when the reader travels.
- */
-export const openingHoursIntervalSchema = z.object({
-  day: z.literal([0, 1, 2, 3, 4, 5, 6]),
-  /** Local `HH:mm`, 24-hour. */
-  opens: clockTimeSchema,
-  /** Local `HH:mm`, 24-hour. May be `<= opens` when the interval crosses midnight. */
-  closes: clockTimeSchema,
-});
-export type OpeningHoursInterval = z.infer<typeof openingHoursIntervalSchema>;
-
-/** A weekly opening schedule plus the raw source expression it came from. */
-export const openingHoursSchema = z.object({
-  intervals: z.array(openingHoursIntervalSchema),
-  /** IANA timezone, e.g. `Europe/Madrid`. Required to evaluate `intervals`. */
-  timezone: z.string().min(1).optional(),
-  /** The source's own unparsed expression (e.g. an OSM `opening_hours` string). */
-  raw: z.string().optional(),
-});
-export type OpeningHours = z.infer<typeof openingHoursSchema>;
-
-export const openingHoursInputSchema = z.object({
-  intervals: z.array(openingHoursIntervalSchema).max(64),
-  /** IANA timezone. Not validated against the tz database here. */
-  timezone: z.string().min(1).max(64).optional(),
-  raw: z.string().max(512).optional(),
-});
-
 // ── Verification and provenance ─────────────────────────────────────────────
 
 /** How strongly GoWay vouches for a place record itself. */
@@ -247,41 +224,11 @@ export type PlaceSourceRefInput = z.input<typeof placeSourceRefInputSchema>;
 
 // ── Capabilities ────────────────────────────────────────────────────────────
 
-/**
- * How a capability claim came to be believed.
- *
- * Ordered weakest to strongest, and the ORDER is the contract: it is the rank
- * {@link strongestCapability} reads and the capability filter applies. A
- * historic community report must never be presented as guaranteed current
- * acceptance without qualification — see `observedAt` on {@link PlaceCapability}.
- */
-export const CAPABILITY_VERIFICATIONS = [
-  'community_reported',
-  'external_source',
-  'business_asserted',
-  'oxy_verified',
-] as const;
-export type CapabilityVerification = (typeof CAPABILITY_VERIFICATIONS)[number];
-
-/**
- * Well-known ecosystem capability keys, `<domain>.<product>.<capability>`.
- *
- * The namespace exists so a new Oxy product does not add a product-specific
- * table or a schema fork to Places. The list is open: an unrecognised key is
- * carried through rather than dropped, which is what lets a third party define
- * its own without a GoWay release.
- */
-export const WELL_KNOWN_CAPABILITIES = [
-  'payments.faircoin.accepted',
-  'commerce.mercaria.store',
-  'mobility.moovo.pickup',
-  'housing.homiio.listings',
-  'social.mention.location',
-] as const;
-export type WellKnownCapability = (typeof WELL_KNOWN_CAPABILITIES)[number];
-
-/** A capability key. Well-known keys autocomplete; any namespaced key is valid. */
-export type CapabilityKey = WellKnownCapability | (string & {});
+/** A key split at its last dot: `payments.faircoin.accepted` → `payments.faircoin` + `accepted`. */
+export function splitCapabilityKey(key: string): { namespace: string; capability: string } {
+  const separator = key.lastIndexOf('.');
+  return { namespace: key.slice(0, separator), capability: key.slice(separator + 1) };
+}
 
 /**
  * The two halves of a capability key, mirroring the table's CHECK constraints.
@@ -295,32 +242,6 @@ const CAPABILITY_NAMESPACE = /^[a-z0-9_-]+(?:[.][a-z0-9_-]+)*$/;
 const CAPABILITY_NAME = /^[a-z0-9_-]+$/;
 
 /**
- * A full capability key: a lower-case namespace and a capability, at least two
- * dot-separated parts. The same shape whether it filters a list
- * (`?capabilities=`) or names the assertion a URL writes
- * (`PUT /places/{placeId}/capabilities/{key}`), so a key that can be filtered
- * on is a key that can be written, and `Payments.FairCoin.Accepted` is refused
- * at the edge rather than landing beside the real row as a second spelling.
- */
-export const capabilityKeySchema = z
-  .string()
-  .max(192)
-  .regex(/^[a-z0-9_-]+(?:[.][a-z0-9_-]+)+$/, 'must be a lower-case <namespace>.<capability> key');
-
-/** A key split at its last dot: `payments.faircoin.accepted` → `payments.faircoin` + `accepted`. */
-export function splitCapabilityKey(key: string): { namespace: string; capability: string } {
-  const separator = key.lastIndexOf('.');
-  return { namespace: key.slice(0, separator), capability: key.slice(separator + 1) };
-}
-
-/** A capability's value: the three types the contract and the table's CHECK both allow. */
-export const capabilityValueSchema = z.union([z.boolean(), z.string(), z.number()]);
-export type CapabilityValue = z.infer<typeof capabilityValueSchema>;
-
-/** A written capability value. Strings are bounded; numbers are finite by construction. */
-const capabilityValueInputSchema = z.union([z.boolean(), z.string().max(512), z.number()]);
-
-/**
  * One asserted capability of a place, with the provenance needed to decide how
  * much to trust it and how loudly to present it.
  */
@@ -332,7 +253,7 @@ export const placeCapabilitySchema = z
     capability: z.string().min(1),
     /** The full `<namespace>.<capability>` key, for filtering. */
     key: z.string().min(1),
-    /** `true`/`false` for a flag; a string or number for a valued capability. */
+    /** Typed by the key's registry entry: a flag, an enum value, a set of them, a number, a URL or a text. */
     value: capabilityValueSchema,
     verification: z.enum(CAPABILITY_VERIFICATIONS),
     /**
@@ -356,26 +277,45 @@ export type PlaceCapability = z.infer<typeof placeCapabilitySchema>;
  * them they are dropped rather than refused — the server derives both from who
  * is asking and from whether a source is named, which is the whole mechanism
  * that stops a community report arriving labelled `oxy_verified`.
+ *
+ * The key must be registered and the value must fit its entry; the value comes
+ * out normalized by that entry (a handle as its URL, a set in registry order).
  */
-export const placeCapabilityInputSchema = z.object({
-  /** e.g. `payments.faircoin` */
-  namespace: z.string().max(128).regex(CAPABILITY_NAMESPACE, 'must be a lower-case dotted namespace'),
-  /** e.g. `accepted` */
-  capability: z.string().max(64).regex(CAPABILITY_NAME, 'must be a lower-case capability name'),
-  value: capabilityValueInputSchema,
-  /** The outside source this claim came from, when it did. */
-  source: placeSourceRefInputSchema.optional(),
-});
+export const placeCapabilityInputSchema = z
+  .object({
+    /** e.g. `payments.faircoin` */
+    namespace: z.string().max(128).regex(CAPABILITY_NAMESPACE, 'must be a lower-case dotted namespace'),
+    /** e.g. `accepted` */
+    capability: z.string().max(64).regex(CAPABILITY_NAME, 'must be a lower-case capability name'),
+    value: capabilityValueInputSchema,
+    /** The outside source this claim came from, when it did. */
+    source: placeSourceRefInputSchema.optional(),
+  })
+  .transform((input, context) => {
+    const key = `${input.namespace}.${input.capability}`;
+    if (!isCapabilityKey(key)) {
+      context.addIssue({ code: 'custom', message: 'must be a registered capability', path: ['capability'] });
+      return z.NEVER;
+    }
+    const value = capabilityValueSchemaFor(key).safeParse(input.value);
+    if (!value.success) {
+      for (const issue of value.error.issues) {
+        context.addIssue({ code: 'custom', message: issue.message, path: ['value', ...issue.path] });
+      }
+      return z.NEVER;
+    }
+    return { ...input, value: value.data };
+  });
 export type PlaceCapabilityInput = z.input<typeof placeCapabilityInputSchema>;
 
 /**
  * The body of `PUT /places/{placeId}/capabilities/{key}`.
  *
- * `value` is REQUIRED rather than defaulted to `true`. A defaulted flag reads
- * well for `payments.faircoin.accepted` and silently means the wrong thing for
- * `payments.faircoin.rate`, and the whole point of the namespace is that this
- * endpoint does not know which kind of capability it is writing. A community
- * reporter retracts with `false`, which is better evidence than a deletion.
+ * `value` is REQUIRED rather than defaulted to `true`: a flag is one of seven
+ * value kinds, and the key's registry entry — not this schema — says which.
+ * Once the path has named the key the value is held to that entry
+ * ({@link placeCapabilityAssertionSchemaFor}). A community reporter retracts
+ * with `false` (or `no`), which is better evidence than a deletion.
  */
 export const placeCapabilityAssertionSchema = z.object({
   value: capabilityValueInputSchema,
@@ -383,9 +323,12 @@ export const placeCapabilityAssertionSchema = z.object({
 });
 export type PlaceCapabilityAssertion = z.input<typeof placeCapabilityAssertionSchema>;
 
-/** Whether a capability VALUE says the capability holds: anything but `false`, `0` or `''`. */
-export function capabilityValueHolds(value: CapabilityValue): boolean {
-  return value !== false && value !== 0 && value !== '';
+/**
+ * The same body, held to one key's registry entry. What the API applies once
+ * the path has named the key, and what the SDK checks before sending.
+ */
+export function placeCapabilityAssertionSchemaFor(key: CapabilityKey) {
+  return placeCapabilityAssertionSchema.extend({ value: capabilityValueSchemaFor(key) });
 }
 
 /**
@@ -398,7 +341,7 @@ export function capabilityValueHolds(value: CapabilityValue): boolean {
  */
 export function strongestCapability(
   place: { capabilities: readonly PlaceCapability[] },
-  key: CapabilityKey,
+  key: string,
 ): PlaceCapability | undefined {
   let strongest: PlaceCapability | undefined;
   for (const capability of place.capabilities) {
@@ -417,15 +360,37 @@ export function strongestCapability(
 }
 
 /**
- * Whether a place HAS a capability: its strongest assertion for the key holds.
+ * Whether a place HAS a capability: its strongest assertion for the key holds
+ * ({@link capabilityHolds}).
  *
  * The same rule the `?capabilities=` filter applies server-side. A place that
  * merely MENTIONS `payments.faircoin.accepted` — with `false`, because it
- * stopped — does not have it.
+ * stopped — does not have it, and neither does one whose strongest wheelchair
+ * assertion is `no`.
  */
-export function placeHasCapability(place: { capabilities: readonly PlaceCapability[] }, key: CapabilityKey): boolean {
+export function placeHasCapability(place: { capabilities: readonly PlaceCapability[] }, key: string): boolean {
   const strongest = strongestCapability(place, key);
-  return strongest !== undefined && capabilityValueHolds(strongest.value);
+  return strongest !== undefined && capabilityHolds(key, strongest.value);
+}
+
+/**
+ * Whether a place matches one `?capabilities=` entry — `key` or `key:value` —
+ * by the rule the server's filter applies: its STRONGEST assertion of the key
+ * holds, or carries the value (is it, for an enum or a price level; includes
+ * it, for an enum set). A malformed filter matches nothing.
+ */
+export function placeMatchesCapabilityFilter(
+  place: { capabilities: readonly PlaceCapability[] },
+  filter: string,
+): boolean {
+  const parsed = capabilityFilterOf(filter);
+  if (parsed === undefined) return false;
+  if (parsed.value === undefined) return placeHasCapability(place, parsed.key);
+  const strongest = strongestCapability(place, parsed.key);
+  if (strongest === undefined) return false;
+  return Array.isArray(strongest.value)
+    ? strongest.value.includes(String(parsed.value))
+    : strongest.value === parsed.value;
 }
 
 // ── Claims ──────────────────────────────────────────────────────────────────
@@ -563,11 +528,25 @@ export const placeSchema = z.object({
   location: geoCoordinateSchema,
   /** Footprint or service area, when GoWay has one. */
   geometry: geoGeometrySchema.optional(),
-  /** Normalized category keys, most specific first. */
-  categories: z.array(z.string()),
+  /**
+   * Taxonomy keys (`food.cafe`), most specific first. Read them with
+   * `categoryLabel`; a key this build does not know is still a key.
+   */
+  categories: z.array(publishedCategoryKeySchema),
   address: structuredAddressSchema.optional(),
   contact: placeContactSchema.optional(),
+  /** The weekly schedule, read in {@link Place.timezone}. Evaluate with `openingStatusAt`. */
   openingHours: openingHoursSchema.optional(),
+  /**
+   * The IANA zone the place's clock reads in, derived by GoWay from its
+   * position. Absent only where no zone could be derived.
+   */
+  timezone: timezoneSchema.optional(),
+  /**
+   * Dated exceptions to the weekly schedule that have not yet ended, earliest
+   * first. Published on a single-place read; ABSENT from lists, as `names` is.
+   */
+  hoursExceptions: z.array(placeHoursExceptionSchema).optional(),
   status: z.enum(PUBLISHED_PLACE_STATUSES),
   verification: placeVerificationSchema,
   /** Every source this record reconciles against. Never empty for an imported place. */
@@ -628,7 +607,11 @@ const writablePlaceFields = {
   names: z.array(placeNameInputSchema).max(64),
   location: geoCoordinateSchema,
   geometry: geoGeometrySchema,
-  categories: z.array(z.string().trim().min(1).max(64)).max(32),
+  /** Taxonomy keys, most specific first. Repeats collapse. */
+  categories: z
+    .array(categoryKeySchema)
+    .max(32)
+    .transform((keys) => [...new Set(keys)]),
   address: structuredAddressInputSchema,
   contact: placeContactInputSchema,
   openingHours: openingHoursInputSchema,
@@ -707,10 +690,13 @@ const localeField = {
 
 /** The filters and paging every place list shares. */
 const placeListFields = {
-  /** A CONJUNCTION: only places whose strongest assertion of EVERY listed key holds. */
-  capabilities: z.array(capabilityKeySchema).max(64).optional(),
-  /** A DISJUNCTION: places carrying ANY listed category. */
-  categories: z.array(z.string().max(128)).max(64).optional(),
+  /**
+   * A CONJUNCTION: only places whose strongest assertion of EVERY listed key
+   * holds — or, for `key:value`, carries that value.
+   */
+  capabilities: z.array(capabilityFilterSchema).max(64).optional(),
+  /** A DISJUNCTION: places carrying ANY listed category or any category below it. */
+  categories: z.array(categoryKeySchema).max(64).optional(),
   limit: limitSchema(MAX_PLACE_LIST_LIMIT, DEFAULT_PLACE_LIST_LIMIT),
   ...localeField,
   cursor: cursorSchema.optional(),

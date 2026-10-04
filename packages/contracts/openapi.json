@@ -16,6 +16,12 @@
       "name": "Places"
     },
     {
+      "name": "Categories"
+    },
+    {
+      "name": "Hours"
+    },
+    {
       "name": "Claims"
     },
     {
@@ -88,8 +94,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "maxLength": 192,
-                "pattern": "^[a-z0-9_-]+(?:[.][a-z0-9_-]+)+$"
+                "maxLength": 256
               }
             },
             "style": "form",
@@ -104,7 +109,156 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "maxLength": 128
+                "enum": [
+                  "food",
+                  "food.restaurant",
+                  "food.fast_food",
+                  "food.cafe",
+                  "food.bar",
+                  "food.pub",
+                  "food.nightclub",
+                  "food.ice_cream",
+                  "food.bakery",
+                  "food.confectionery",
+                  "shop",
+                  "shop.supermarket",
+                  "shop.convenience",
+                  "shop.greengrocer",
+                  "shop.butcher",
+                  "shop.deli",
+                  "shop.marketplace",
+                  "shop.alcohol",
+                  "shop.books",
+                  "shop.clothes",
+                  "shop.shoes",
+                  "shop.jewelry",
+                  "shop.gift",
+                  "shop.florist",
+                  "shop.hardware",
+                  "shop.furniture",
+                  "shop.electronics",
+                  "shop.beauty",
+                  "shop.hairdresser",
+                  "shop.optician",
+                  "shop.chemist",
+                  "shop.department_store",
+                  "shop.sports",
+                  "shop.bicycle",
+                  "shop.music",
+                  "shop.toys",
+                  "shop.stationery",
+                  "shop.newsagent",
+                  "shop.tobacco",
+                  "shop.pet",
+                  "shop.laundry",
+                  "shop.second_hand",
+                  "shop.art",
+                  "shop.travel_agency",
+                  "lodging",
+                  "lodging.hotel",
+                  "lodging.hostel",
+                  "lodging.guest_house",
+                  "lodging.apartment",
+                  "lodging.camping",
+                  "lodging.hut",
+                  "leisure",
+                  "leisure.park",
+                  "leisure.garden",
+                  "leisure.playground",
+                  "leisure.dog_park",
+                  "leisure.picnic_site",
+                  "leisure.nature_reserve",
+                  "leisure.beach",
+                  "leisure.marina",
+                  "leisure.water",
+                  "leisure.amusement",
+                  "leisure.fitness",
+                  "sport",
+                  "sport.centre",
+                  "sport.pitch",
+                  "sport.stadium",
+                  "sport.swimming",
+                  "sport.golf",
+                  "sport.ice_rink",
+                  "sport.horse_riding",
+                  "sport.climbing",
+                  "sport.skiing",
+                  "culture",
+                  "culture.museum",
+                  "culture.gallery",
+                  "culture.theatre",
+                  "culture.cinema",
+                  "culture.music_venue",
+                  "culture.attraction",
+                  "culture.viewpoint",
+                  "culture.artwork",
+                  "culture.zoo",
+                  "culture.aquarium",
+                  "culture.information",
+                  "culture.historic",
+                  "culture.monument",
+                  "culture.castle",
+                  "culture.archaeological_site",
+                  "transport",
+                  "transport.bus_stop",
+                  "transport.bus_station",
+                  "transport.rail_station",
+                  "transport.tram_stop",
+                  "transport.aerialway",
+                  "transport.ferry_terminal",
+                  "transport.taxi",
+                  "transport.bicycle_rental",
+                  "transport.car_rental",
+                  "vehicle",
+                  "vehicle.fuel",
+                  "vehicle.charging",
+                  "vehicle.parking",
+                  "vehicle.repair",
+                  "vehicle.dealer",
+                  "vehicle.car_wash",
+                  "vehicle.motorcycle",
+                  "health",
+                  "health.hospital",
+                  "health.clinic",
+                  "health.doctor",
+                  "health.dentist",
+                  "health.pharmacy",
+                  "health.veterinary",
+                  "health.care_home",
+                  "education",
+                  "education.school",
+                  "education.kindergarten",
+                  "education.university",
+                  "education.library",
+                  "education.training",
+                  "civic",
+                  "civic.townhall",
+                  "civic.courthouse",
+                  "civic.police",
+                  "civic.fire_station",
+                  "civic.post_office",
+                  "civic.post_box",
+                  "civic.community_centre",
+                  "civic.embassy",
+                  "civic.toilets",
+                  "civic.cemetery",
+                  "finance",
+                  "finance.bank",
+                  "finance.atm",
+                  "finance.exchange",
+                  "worship",
+                  "services",
+                  "office",
+                  "office.coworking",
+                  "office.company",
+                  "office.government",
+                  "office.estate_agent",
+                  "office.lawyer",
+                  "office.insurance",
+                  "craft",
+                  "craft.brewery",
+                  "craft.winery"
+                ]
               }
             },
             "style": "form",
@@ -259,8 +413,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "maxLength": 192,
-                "pattern": "^[a-z0-9_-]+(?:[.][a-z0-9_-]+)+$"
+                "maxLength": 256
               }
             },
             "style": "form",
@@ -275,7 +428,156 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "maxLength": 128
+                "enum": [
+                  "food",
+                  "food.restaurant",
+                  "food.fast_food",
+                  "food.cafe",
+                  "food.bar",
+                  "food.pub",
+                  "food.nightclub",
+                  "food.ice_cream",
+                  "food.bakery",
+                  "food.confectionery",
+                  "shop",
+                  "shop.supermarket",
+                  "shop.convenience",
+                  "shop.greengrocer",
+                  "shop.butcher",
+                  "shop.deli",
+                  "shop.marketplace",
+                  "shop.alcohol",
+                  "shop.books",
+                  "shop.clothes",
+                  "shop.shoes",
+                  "shop.jewelry",
+                  "shop.gift",
+                  "shop.florist",
+                  "shop.hardware",
+                  "shop.furniture",
+                  "shop.electronics",
+                  "shop.beauty",
+                  "shop.hairdresser",
+                  "shop.optician",
+                  "shop.chemist",
+                  "shop.department_store",
+                  "shop.sports",
+                  "shop.bicycle",
+                  "shop.music",
+                  "shop.toys",
+                  "shop.stationery",
+                  "shop.newsagent",
+                  "shop.tobacco",
+                  "shop.pet",
+                  "shop.laundry",
+                  "shop.second_hand",
+                  "shop.art",
+                  "shop.travel_agency",
+                  "lodging",
+                  "lodging.hotel",
+                  "lodging.hostel",
+                  "lodging.guest_house",
+                  "lodging.apartment",
+                  "lodging.camping",
+                  "lodging.hut",
+                  "leisure",
+                  "leisure.park",
+                  "leisure.garden",
+                  "leisure.playground",
+                  "leisure.dog_park",
+                  "leisure.picnic_site",
+                  "leisure.nature_reserve",
+                  "leisure.beach",
+                  "leisure.marina",
+                  "leisure.water",
+                  "leisure.amusement",
+                  "leisure.fitness",
+                  "sport",
+                  "sport.centre",
+                  "sport.pitch",
+                  "sport.stadium",
+                  "sport.swimming",
+                  "sport.golf",
+                  "sport.ice_rink",
+                  "sport.horse_riding",
+                  "sport.climbing",
+                  "sport.skiing",
+                  "culture",
+                  "culture.museum",
+                  "culture.gallery",
+                  "culture.theatre",
+                  "culture.cinema",
+                  "culture.music_venue",
+                  "culture.attraction",
+                  "culture.viewpoint",
+                  "culture.artwork",
+                  "culture.zoo",
+                  "culture.aquarium",
+                  "culture.information",
+                  "culture.historic",
+                  "culture.monument",
+                  "culture.castle",
+                  "culture.archaeological_site",
+                  "transport",
+                  "transport.bus_stop",
+                  "transport.bus_station",
+                  "transport.rail_station",
+                  "transport.tram_stop",
+                  "transport.aerialway",
+                  "transport.ferry_terminal",
+                  "transport.taxi",
+                  "transport.bicycle_rental",
+                  "transport.car_rental",
+                  "vehicle",
+                  "vehicle.fuel",
+                  "vehicle.charging",
+                  "vehicle.parking",
+                  "vehicle.repair",
+                  "vehicle.dealer",
+                  "vehicle.car_wash",
+                  "vehicle.motorcycle",
+                  "health",
+                  "health.hospital",
+                  "health.clinic",
+                  "health.doctor",
+                  "health.dentist",
+                  "health.pharmacy",
+                  "health.veterinary",
+                  "health.care_home",
+                  "education",
+                  "education.school",
+                  "education.kindergarten",
+                  "education.university",
+                  "education.library",
+                  "education.training",
+                  "civic",
+                  "civic.townhall",
+                  "civic.courthouse",
+                  "civic.police",
+                  "civic.fire_station",
+                  "civic.post_office",
+                  "civic.post_box",
+                  "civic.community_centre",
+                  "civic.embassy",
+                  "civic.toilets",
+                  "civic.cemetery",
+                  "finance",
+                  "finance.bank",
+                  "finance.atm",
+                  "finance.exchange",
+                  "worship",
+                  "services",
+                  "office",
+                  "office.coworking",
+                  "office.company",
+                  "office.government",
+                  "office.estate_agent",
+                  "office.lawyer",
+                  "office.insurance",
+                  "craft",
+                  "craft.brewery",
+                  "craft.winery"
+                ]
               }
             },
             "style": "form",
@@ -746,8 +1048,38 @@
             "required": true,
             "schema": {
               "type": "string",
-              "maxLength": 192,
-              "pattern": "^[a-z0-9_-]+(?:[.][a-z0-9_-]+)+$"
+              "enum": [
+                "accessibility.wheelchair",
+                "accessibility.toilets_wheelchair",
+                "accessibility.step_free_entrance",
+                "accessibility.parking_accessible",
+                "accessibility.hearing_loop",
+                "payments.cash",
+                "payments.cards",
+                "payments.contactless",
+                "payments.faircoin.accepted",
+                "amenities.wifi",
+                "amenities.outdoor_seating",
+                "amenities.takeaway",
+                "amenities.delivery",
+                "amenities.reservations",
+                "amenities.drive_through",
+                "amenities.toilets",
+                "amenities.air_conditioning",
+                "food.cuisine",
+                "food.diet",
+                "price.level",
+                "social.instagram",
+                "social.facebook",
+                "social.x",
+                "social.tiktok",
+                "social.whatsapp",
+                "brand.wikidata",
+                "commerce.mercaria.store",
+                "mobility.moovo.pickup",
+                "housing.homiio.listings",
+                "social.mention.location"
+              ]
             }
           }
         ],
@@ -882,8 +1214,38 @@
             "required": true,
             "schema": {
               "type": "string",
-              "maxLength": 192,
-              "pattern": "^[a-z0-9_-]+(?:[.][a-z0-9_-]+)+$"
+              "enum": [
+                "accessibility.wheelchair",
+                "accessibility.toilets_wheelchair",
+                "accessibility.step_free_entrance",
+                "accessibility.parking_accessible",
+                "accessibility.hearing_loop",
+                "payments.cash",
+                "payments.cards",
+                "payments.contactless",
+                "payments.faircoin.accepted",
+                "amenities.wifi",
+                "amenities.outdoor_seating",
+                "amenities.takeaway",
+                "amenities.delivery",
+                "amenities.reservations",
+                "amenities.drive_through",
+                "amenities.toilets",
+                "amenities.air_conditioning",
+                "food.cuisine",
+                "food.diet",
+                "price.level",
+                "social.instagram",
+                "social.facebook",
+                "social.x",
+                "social.tiktok",
+                "social.whatsapp",
+                "brand.wikidata",
+                "commerce.mercaria.store",
+                "mobility.moovo.pickup",
+                "housing.homiio.listings",
+                "social.mention.location"
+              ]
             }
           }
         ],
@@ -1207,6 +1569,582 @@
           },
           "500": {
             "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/categories": {
+      "get": {
+        "operationId": "listCategories",
+        "summary": "The place category taxonomy: every key, its parent, its glyph and its labels.",
+        "tags": [
+          "Categories"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryPage"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/places/{placeId}/hours-exceptions": {
+      "get": {
+        "operationId": "listPlaceHoursExceptions",
+        "summary": "Dated exceptions to a place's weekly hours, earliest first, past ones included.",
+        "tags": [
+          "Hours"
+        ],
+        "security": [
+          {},
+          {
+            "oxySession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "placeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceHoursExceptionPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found: `not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Withdrawn: `gone`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refused values: `validation_failed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPlaceHoursException",
+        "summary": "Report a closure or special hours, at the tier the caller's claims earn.",
+        "tags": [
+          "Hours"
+        ],
+        "security": [
+          {
+            "oxySession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "placeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaceHoursExceptionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceHoursException"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid Oxy session: `unauthorized`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found: `not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with current state: `conflict`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Withdrawn: `gone`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refused values: `validation_failed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/places/{placeId}/hours-exceptions/{exceptionId}": {
+      "put": {
+        "operationId": "replacePlaceHoursException",
+        "summary": "Rewrite an exception at the caller's own tier.",
+        "tags": [
+          "Hours"
+        ],
+        "security": [
+          {
+            "oxySession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "placeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "exceptionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaceHoursExceptionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceHoursException"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid Oxy session: `unauthorized`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not permitted: `forbidden`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found: `not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with current state: `conflict`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Withdrawn: `gone`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refused values: `validation_failed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "withdrawPlaceHoursException",
+        "summary": "Withdraw the business's own exception.",
+        "tags": [
+          "Hours"
+        ],
+        "security": [
+          {
+            "oxySession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "placeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "exceptionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid Oxy session: `unauthorized`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not permitted: `forbidden`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found: `not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Withdrawn: `gone`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
             "content": {
               "application/json": {
                 "schema": {
@@ -2047,8 +2985,38 @@
             "required": true,
             "schema": {
               "type": "string",
-              "maxLength": 192,
-              "pattern": "^[a-z0-9_-]+(?:[.][a-z0-9_-]+)+$"
+              "enum": [
+                "accessibility.wheelchair",
+                "accessibility.toilets_wheelchair",
+                "accessibility.step_free_entrance",
+                "accessibility.parking_accessible",
+                "accessibility.hearing_loop",
+                "payments.cash",
+                "payments.cards",
+                "payments.contactless",
+                "payments.faircoin.accepted",
+                "amenities.wifi",
+                "amenities.outdoor_seating",
+                "amenities.takeaway",
+                "amenities.delivery",
+                "amenities.reservations",
+                "amenities.drive_through",
+                "amenities.toilets",
+                "amenities.air_conditioning",
+                "food.cuisine",
+                "food.diet",
+                "price.level",
+                "social.instagram",
+                "social.facebook",
+                "social.x",
+                "social.tiktok",
+                "social.whatsapp",
+                "brand.wikidata",
+                "commerce.mercaria.store",
+                "mobility.moovo.pickup",
+                "housing.homiio.listings",
+                "social.mention.location"
+              ]
             }
           }
         ],
@@ -2183,8 +3151,38 @@
             "required": true,
             "schema": {
               "type": "string",
-              "maxLength": 192,
-              "pattern": "^[a-z0-9_-]+(?:[.][a-z0-9_-]+)+$"
+              "enum": [
+                "accessibility.wheelchair",
+                "accessibility.toilets_wheelchair",
+                "accessibility.step_free_entrance",
+                "accessibility.parking_accessible",
+                "accessibility.hearing_loop",
+                "payments.cash",
+                "payments.cards",
+                "payments.contactless",
+                "payments.faircoin.accepted",
+                "amenities.wifi",
+                "amenities.outdoor_seating",
+                "amenities.takeaway",
+                "amenities.delivery",
+                "amenities.reservations",
+                "amenities.drive_through",
+                "amenities.toilets",
+                "amenities.air_conditioning",
+                "food.cuisine",
+                "food.diet",
+                "price.level",
+                "social.instagram",
+                "social.facebook",
+                "social.x",
+                "social.tiktok",
+                "social.whatsapp",
+                "brand.wikidata",
+                "commerce.mercaria.store",
+                "mobility.moovo.pickup",
+                "housing.homiio.listings",
+                "social.mention.location"
+              ]
             }
           }
         ],
@@ -2991,8 +3989,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "maxLength": 192,
-                "pattern": "^[a-z0-9_-]+(?:[.][a-z0-9_-]+)+$"
+                "maxLength": 256
               }
             },
             "style": "form",
@@ -3007,7 +4004,156 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "maxLength": 128
+                "enum": [
+                  "food",
+                  "food.restaurant",
+                  "food.fast_food",
+                  "food.cafe",
+                  "food.bar",
+                  "food.pub",
+                  "food.nightclub",
+                  "food.ice_cream",
+                  "food.bakery",
+                  "food.confectionery",
+                  "shop",
+                  "shop.supermarket",
+                  "shop.convenience",
+                  "shop.greengrocer",
+                  "shop.butcher",
+                  "shop.deli",
+                  "shop.marketplace",
+                  "shop.alcohol",
+                  "shop.books",
+                  "shop.clothes",
+                  "shop.shoes",
+                  "shop.jewelry",
+                  "shop.gift",
+                  "shop.florist",
+                  "shop.hardware",
+                  "shop.furniture",
+                  "shop.electronics",
+                  "shop.beauty",
+                  "shop.hairdresser",
+                  "shop.optician",
+                  "shop.chemist",
+                  "shop.department_store",
+                  "shop.sports",
+                  "shop.bicycle",
+                  "shop.music",
+                  "shop.toys",
+                  "shop.stationery",
+                  "shop.newsagent",
+                  "shop.tobacco",
+                  "shop.pet",
+                  "shop.laundry",
+                  "shop.second_hand",
+                  "shop.art",
+                  "shop.travel_agency",
+                  "lodging",
+                  "lodging.hotel",
+                  "lodging.hostel",
+                  "lodging.guest_house",
+                  "lodging.apartment",
+                  "lodging.camping",
+                  "lodging.hut",
+                  "leisure",
+                  "leisure.park",
+                  "leisure.garden",
+                  "leisure.playground",
+                  "leisure.dog_park",
+                  "leisure.picnic_site",
+                  "leisure.nature_reserve",
+                  "leisure.beach",
+                  "leisure.marina",
+                  "leisure.water",
+                  "leisure.amusement",
+                  "leisure.fitness",
+                  "sport",
+                  "sport.centre",
+                  "sport.pitch",
+                  "sport.stadium",
+                  "sport.swimming",
+                  "sport.golf",
+                  "sport.ice_rink",
+                  "sport.horse_riding",
+                  "sport.climbing",
+                  "sport.skiing",
+                  "culture",
+                  "culture.museum",
+                  "culture.gallery",
+                  "culture.theatre",
+                  "culture.cinema",
+                  "culture.music_venue",
+                  "culture.attraction",
+                  "culture.viewpoint",
+                  "culture.artwork",
+                  "culture.zoo",
+                  "culture.aquarium",
+                  "culture.information",
+                  "culture.historic",
+                  "culture.monument",
+                  "culture.castle",
+                  "culture.archaeological_site",
+                  "transport",
+                  "transport.bus_stop",
+                  "transport.bus_station",
+                  "transport.rail_station",
+                  "transport.tram_stop",
+                  "transport.aerialway",
+                  "transport.ferry_terminal",
+                  "transport.taxi",
+                  "transport.bicycle_rental",
+                  "transport.car_rental",
+                  "vehicle",
+                  "vehicle.fuel",
+                  "vehicle.charging",
+                  "vehicle.parking",
+                  "vehicle.repair",
+                  "vehicle.dealer",
+                  "vehicle.car_wash",
+                  "vehicle.motorcycle",
+                  "health",
+                  "health.hospital",
+                  "health.clinic",
+                  "health.doctor",
+                  "health.dentist",
+                  "health.pharmacy",
+                  "health.veterinary",
+                  "health.care_home",
+                  "education",
+                  "education.school",
+                  "education.kindergarten",
+                  "education.university",
+                  "education.library",
+                  "education.training",
+                  "civic",
+                  "civic.townhall",
+                  "civic.courthouse",
+                  "civic.police",
+                  "civic.fire_station",
+                  "civic.post_office",
+                  "civic.post_box",
+                  "civic.community_centre",
+                  "civic.embassy",
+                  "civic.toilets",
+                  "civic.cemetery",
+                  "finance",
+                  "finance.bank",
+                  "finance.atm",
+                  "finance.exchange",
+                  "worship",
+                  "services",
+                  "office",
+                  "office.coworking",
+                  "office.company",
+                  "office.government",
+                  "office.estate_agent",
+                  "office.lawyer",
+                  "office.insurance",
+                  "craft",
+                  "craft.brewery",
+                  "craft.winery"
+                ]
               }
             },
             "style": "form",
@@ -3201,8 +4347,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "maxLength": 192,
-                "pattern": "^[a-z0-9_-]+(?:[.][a-z0-9_-]+)+$"
+                "maxLength": 256
               }
             },
             "style": "form",
@@ -3217,7 +4362,156 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "maxLength": 128
+                "enum": [
+                  "food",
+                  "food.restaurant",
+                  "food.fast_food",
+                  "food.cafe",
+                  "food.bar",
+                  "food.pub",
+                  "food.nightclub",
+                  "food.ice_cream",
+                  "food.bakery",
+                  "food.confectionery",
+                  "shop",
+                  "shop.supermarket",
+                  "shop.convenience",
+                  "shop.greengrocer",
+                  "shop.butcher",
+                  "shop.deli",
+                  "shop.marketplace",
+                  "shop.alcohol",
+                  "shop.books",
+                  "shop.clothes",
+                  "shop.shoes",
+                  "shop.jewelry",
+                  "shop.gift",
+                  "shop.florist",
+                  "shop.hardware",
+                  "shop.furniture",
+                  "shop.electronics",
+                  "shop.beauty",
+                  "shop.hairdresser",
+                  "shop.optician",
+                  "shop.chemist",
+                  "shop.department_store",
+                  "shop.sports",
+                  "shop.bicycle",
+                  "shop.music",
+                  "shop.toys",
+                  "shop.stationery",
+                  "shop.newsagent",
+                  "shop.tobacco",
+                  "shop.pet",
+                  "shop.laundry",
+                  "shop.second_hand",
+                  "shop.art",
+                  "shop.travel_agency",
+                  "lodging",
+                  "lodging.hotel",
+                  "lodging.hostel",
+                  "lodging.guest_house",
+                  "lodging.apartment",
+                  "lodging.camping",
+                  "lodging.hut",
+                  "leisure",
+                  "leisure.park",
+                  "leisure.garden",
+                  "leisure.playground",
+                  "leisure.dog_park",
+                  "leisure.picnic_site",
+                  "leisure.nature_reserve",
+                  "leisure.beach",
+                  "leisure.marina",
+                  "leisure.water",
+                  "leisure.amusement",
+                  "leisure.fitness",
+                  "sport",
+                  "sport.centre",
+                  "sport.pitch",
+                  "sport.stadium",
+                  "sport.swimming",
+                  "sport.golf",
+                  "sport.ice_rink",
+                  "sport.horse_riding",
+                  "sport.climbing",
+                  "sport.skiing",
+                  "culture",
+                  "culture.museum",
+                  "culture.gallery",
+                  "culture.theatre",
+                  "culture.cinema",
+                  "culture.music_venue",
+                  "culture.attraction",
+                  "culture.viewpoint",
+                  "culture.artwork",
+                  "culture.zoo",
+                  "culture.aquarium",
+                  "culture.information",
+                  "culture.historic",
+                  "culture.monument",
+                  "culture.castle",
+                  "culture.archaeological_site",
+                  "transport",
+                  "transport.bus_stop",
+                  "transport.bus_station",
+                  "transport.rail_station",
+                  "transport.tram_stop",
+                  "transport.aerialway",
+                  "transport.ferry_terminal",
+                  "transport.taxi",
+                  "transport.bicycle_rental",
+                  "transport.car_rental",
+                  "vehicle",
+                  "vehicle.fuel",
+                  "vehicle.charging",
+                  "vehicle.parking",
+                  "vehicle.repair",
+                  "vehicle.dealer",
+                  "vehicle.car_wash",
+                  "vehicle.motorcycle",
+                  "health",
+                  "health.hospital",
+                  "health.clinic",
+                  "health.doctor",
+                  "health.dentist",
+                  "health.pharmacy",
+                  "health.veterinary",
+                  "health.care_home",
+                  "education",
+                  "education.school",
+                  "education.kindergarten",
+                  "education.university",
+                  "education.library",
+                  "education.training",
+                  "civic",
+                  "civic.townhall",
+                  "civic.courthouse",
+                  "civic.police",
+                  "civic.fire_station",
+                  "civic.post_office",
+                  "civic.post_box",
+                  "civic.community_centre",
+                  "civic.embassy",
+                  "civic.toilets",
+                  "civic.cemetery",
+                  "finance",
+                  "finance.bank",
+                  "finance.atm",
+                  "finance.exchange",
+                  "worship",
+                  "services",
+                  "office",
+                  "office.coworking",
+                  "office.company",
+                  "office.government",
+                  "office.estate_agent",
+                  "office.lawyer",
+                  "office.insurance",
+                  "craft",
+                  "craft.brewery",
+                  "craft.winery"
+                ]
               }
             },
             "style": "form",
@@ -5317,7 +6611,8 @@
           "categories": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[a-z0-9_]+(?:[.][a-z0-9_]+)*$"
             }
           },
           "address": {
@@ -5374,6 +6669,14 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "opens": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    },
+                    "closes": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    },
                     "day": {
                       "type": "number",
                       "enum": [
@@ -5385,26 +6688,14 @@
                         5,
                         6
                       ]
-                    },
-                    "opens": {
-                      "type": "string",
-                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
-                    },
-                    "closes": {
-                      "type": "string",
-                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
                     }
                   },
                   "required": [
-                    "day",
                     "opens",
-                    "closes"
+                    "closes",
+                    "day"
                   ]
                 }
-              },
-              "timezone": {
-                "type": "string",
-                "minLength": 1
               },
               "raw": {
                 "type": "string"
@@ -5413,6 +6704,17 @@
             "required": [
               "intervals"
             ]
+          },
+          "timezone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "hoursExceptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaceHoursException"
+            }
           },
           "status": {
             "type": "string",
@@ -5542,10 +6844,22 @@
             "minLength": 1
           },
           "value": {
-            "type": [
-              "boolean",
-              "string",
-              "number"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             ]
           },
           "verification": {
@@ -5677,7 +6991,8 @@
           "categories": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[a-z0-9_]+(?:[.][a-z0-9_]+)*$"
             }
           },
           "address": {
@@ -5734,6 +7049,14 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "opens": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    },
+                    "closes": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    },
                     "day": {
                       "type": "number",
                       "enum": [
@@ -5745,26 +7068,14 @@
                         5,
                         6
                       ]
-                    },
-                    "opens": {
-                      "type": "string",
-                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
-                    },
-                    "closes": {
-                      "type": "string",
-                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
                     }
                   },
                   "required": [
-                    "day",
                     "opens",
-                    "closes"
+                    "closes",
+                    "day"
                   ]
                 }
-              },
-              "timezone": {
-                "type": "string",
-                "minLength": 1
               },
               "raw": {
                 "type": "string"
@@ -5773,6 +7084,17 @@
             "required": [
               "intervals"
             ]
+          },
+          "timezone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "hoursExceptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaceHoursException"
+            }
           },
           "status": {
             "type": "string",
@@ -5954,6 +7276,185 @@
           "nextCursor"
         ]
       },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+(?:[.][a-z0-9_]+)*$"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9_]+(?:[.][a-z0-9_]+)*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "icon": {
+            "type": "string",
+            "minLength": 1
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "en": {
+                "type": "string",
+                "minLength": 1
+              },
+              "es": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "en",
+              "es"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "parent",
+          "icon",
+          "labels"
+        ]
+      },
+      "CategoryPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Category"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^[A-Za-z0-9_-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "PlaceHoursException": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "placeId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "startsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "endsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "closed": {
+            "type": "boolean"
+          },
+          "intervals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "opens": {
+                  "type": "string",
+                  "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                },
+                "closes": {
+                  "type": "string",
+                  "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                }
+              },
+              "required": [
+                "opens",
+                "closes"
+              ]
+            }
+          },
+          "note": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verification": {
+            "type": "string",
+            "enum": [
+              "community_reported",
+              "external_source",
+              "business_asserted",
+              "oxy_verified"
+            ]
+          },
+          "observedAt": {
+            "type": "string",
+            "minLength": 1,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "placeId",
+          "startsOn",
+          "endsOn",
+          "closed",
+          "intervals",
+          "source",
+          "verification",
+          "observedAt"
+        ]
+      },
+      "PlaceHoursExceptionPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaceHoursException"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^[A-Za-z0-9_-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
       "RevisionValue": {
         "anyOf": [
           {
@@ -6011,7 +7512,10 @@
               "place_merged",
               "place_absorbed",
               "duplicate_rejected",
-              "report_resolved"
+              "report_resolved",
+              "hours_exception_created",
+              "hours_exception_replaced",
+              "hours_exception_withdrawn"
             ]
           },
           "source": {
@@ -6149,7 +7653,10 @@
               "place_merged",
               "place_absorbed",
               "duplicate_rejected",
-              "report_resolved"
+              "report_resolved",
+              "hours_exception_created",
+              "hours_exception_replaced",
+              "hours_exception_withdrawn"
             ]
           },
           "source": {
@@ -8139,8 +9646,156 @@
             "type": "array",
             "items": {
               "type": "string",
-              "minLength": 1,
-              "maxLength": 64
+              "enum": [
+                "food",
+                "food.restaurant",
+                "food.fast_food",
+                "food.cafe",
+                "food.bar",
+                "food.pub",
+                "food.nightclub",
+                "food.ice_cream",
+                "food.bakery",
+                "food.confectionery",
+                "shop",
+                "shop.supermarket",
+                "shop.convenience",
+                "shop.greengrocer",
+                "shop.butcher",
+                "shop.deli",
+                "shop.marketplace",
+                "shop.alcohol",
+                "shop.books",
+                "shop.clothes",
+                "shop.shoes",
+                "shop.jewelry",
+                "shop.gift",
+                "shop.florist",
+                "shop.hardware",
+                "shop.furniture",
+                "shop.electronics",
+                "shop.beauty",
+                "shop.hairdresser",
+                "shop.optician",
+                "shop.chemist",
+                "shop.department_store",
+                "shop.sports",
+                "shop.bicycle",
+                "shop.music",
+                "shop.toys",
+                "shop.stationery",
+                "shop.newsagent",
+                "shop.tobacco",
+                "shop.pet",
+                "shop.laundry",
+                "shop.second_hand",
+                "shop.art",
+                "shop.travel_agency",
+                "lodging",
+                "lodging.hotel",
+                "lodging.hostel",
+                "lodging.guest_house",
+                "lodging.apartment",
+                "lodging.camping",
+                "lodging.hut",
+                "leisure",
+                "leisure.park",
+                "leisure.garden",
+                "leisure.playground",
+                "leisure.dog_park",
+                "leisure.picnic_site",
+                "leisure.nature_reserve",
+                "leisure.beach",
+                "leisure.marina",
+                "leisure.water",
+                "leisure.amusement",
+                "leisure.fitness",
+                "sport",
+                "sport.centre",
+                "sport.pitch",
+                "sport.stadium",
+                "sport.swimming",
+                "sport.golf",
+                "sport.ice_rink",
+                "sport.horse_riding",
+                "sport.climbing",
+                "sport.skiing",
+                "culture",
+                "culture.museum",
+                "culture.gallery",
+                "culture.theatre",
+                "culture.cinema",
+                "culture.music_venue",
+                "culture.attraction",
+                "culture.viewpoint",
+                "culture.artwork",
+                "culture.zoo",
+                "culture.aquarium",
+                "culture.information",
+                "culture.historic",
+                "culture.monument",
+                "culture.castle",
+                "culture.archaeological_site",
+                "transport",
+                "transport.bus_stop",
+                "transport.bus_station",
+                "transport.rail_station",
+                "transport.tram_stop",
+                "transport.aerialway",
+                "transport.ferry_terminal",
+                "transport.taxi",
+                "transport.bicycle_rental",
+                "transport.car_rental",
+                "vehicle",
+                "vehicle.fuel",
+                "vehicle.charging",
+                "vehicle.parking",
+                "vehicle.repair",
+                "vehicle.dealer",
+                "vehicle.car_wash",
+                "vehicle.motorcycle",
+                "health",
+                "health.hospital",
+                "health.clinic",
+                "health.doctor",
+                "health.dentist",
+                "health.pharmacy",
+                "health.veterinary",
+                "health.care_home",
+                "education",
+                "education.school",
+                "education.kindergarten",
+                "education.university",
+                "education.library",
+                "education.training",
+                "civic",
+                "civic.townhall",
+                "civic.courthouse",
+                "civic.police",
+                "civic.fire_station",
+                "civic.post_office",
+                "civic.post_box",
+                "civic.community_centre",
+                "civic.embassy",
+                "civic.toilets",
+                "civic.cemetery",
+                "finance",
+                "finance.bank",
+                "finance.atm",
+                "finance.exchange",
+                "worship",
+                "services",
+                "office",
+                "office.coworking",
+                "office.company",
+                "office.government",
+                "office.estate_agent",
+                "office.lawyer",
+                "office.insurance",
+                "craft",
+                "craft.brewery",
+                "craft.winery"
+              ]
             }
           },
           "address": {
@@ -8212,6 +9867,14 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "opens": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    },
+                    "closes": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    },
                     "day": {
                       "type": "number",
                       "enum": [
@@ -8223,27 +9886,14 @@
                         5,
                         6
                       ]
-                    },
-                    "opens": {
-                      "type": "string",
-                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
-                    },
-                    "closes": {
-                      "type": "string",
-                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
                     }
                   },
                   "required": [
-                    "day",
                     "opens",
-                    "closes"
+                    "closes",
+                    "day"
                   ]
                 }
-              },
-              "timezone": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 64
               },
               "raw": {
                 "type": "string",
@@ -8308,10 +9958,18 @@
                     },
                     {
                       "type": "string",
-                      "maxLength": 512
+                      "maxLength": 2048
                     },
                     {
                       "type": "number"
+                    },
+                    {
+                      "maxItems": 64,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 64
+                      }
                     }
                   ]
                 },
@@ -8654,8 +10312,156 @@
             "type": "array",
             "items": {
               "type": "string",
-              "minLength": 1,
-              "maxLength": 64
+              "enum": [
+                "food",
+                "food.restaurant",
+                "food.fast_food",
+                "food.cafe",
+                "food.bar",
+                "food.pub",
+                "food.nightclub",
+                "food.ice_cream",
+                "food.bakery",
+                "food.confectionery",
+                "shop",
+                "shop.supermarket",
+                "shop.convenience",
+                "shop.greengrocer",
+                "shop.butcher",
+                "shop.deli",
+                "shop.marketplace",
+                "shop.alcohol",
+                "shop.books",
+                "shop.clothes",
+                "shop.shoes",
+                "shop.jewelry",
+                "shop.gift",
+                "shop.florist",
+                "shop.hardware",
+                "shop.furniture",
+                "shop.electronics",
+                "shop.beauty",
+                "shop.hairdresser",
+                "shop.optician",
+                "shop.chemist",
+                "shop.department_store",
+                "shop.sports",
+                "shop.bicycle",
+                "shop.music",
+                "shop.toys",
+                "shop.stationery",
+                "shop.newsagent",
+                "shop.tobacco",
+                "shop.pet",
+                "shop.laundry",
+                "shop.second_hand",
+                "shop.art",
+                "shop.travel_agency",
+                "lodging",
+                "lodging.hotel",
+                "lodging.hostel",
+                "lodging.guest_house",
+                "lodging.apartment",
+                "lodging.camping",
+                "lodging.hut",
+                "leisure",
+                "leisure.park",
+                "leisure.garden",
+                "leisure.playground",
+                "leisure.dog_park",
+                "leisure.picnic_site",
+                "leisure.nature_reserve",
+                "leisure.beach",
+                "leisure.marina",
+                "leisure.water",
+                "leisure.amusement",
+                "leisure.fitness",
+                "sport",
+                "sport.centre",
+                "sport.pitch",
+                "sport.stadium",
+                "sport.swimming",
+                "sport.golf",
+                "sport.ice_rink",
+                "sport.horse_riding",
+                "sport.climbing",
+                "sport.skiing",
+                "culture",
+                "culture.museum",
+                "culture.gallery",
+                "culture.theatre",
+                "culture.cinema",
+                "culture.music_venue",
+                "culture.attraction",
+                "culture.viewpoint",
+                "culture.artwork",
+                "culture.zoo",
+                "culture.aquarium",
+                "culture.information",
+                "culture.historic",
+                "culture.monument",
+                "culture.castle",
+                "culture.archaeological_site",
+                "transport",
+                "transport.bus_stop",
+                "transport.bus_station",
+                "transport.rail_station",
+                "transport.tram_stop",
+                "transport.aerialway",
+                "transport.ferry_terminal",
+                "transport.taxi",
+                "transport.bicycle_rental",
+                "transport.car_rental",
+                "vehicle",
+                "vehicle.fuel",
+                "vehicle.charging",
+                "vehicle.parking",
+                "vehicle.repair",
+                "vehicle.dealer",
+                "vehicle.car_wash",
+                "vehicle.motorcycle",
+                "health",
+                "health.hospital",
+                "health.clinic",
+                "health.doctor",
+                "health.dentist",
+                "health.pharmacy",
+                "health.veterinary",
+                "health.care_home",
+                "education",
+                "education.school",
+                "education.kindergarten",
+                "education.university",
+                "education.library",
+                "education.training",
+                "civic",
+                "civic.townhall",
+                "civic.courthouse",
+                "civic.police",
+                "civic.fire_station",
+                "civic.post_office",
+                "civic.post_box",
+                "civic.community_centre",
+                "civic.embassy",
+                "civic.toilets",
+                "civic.cemetery",
+                "finance",
+                "finance.bank",
+                "finance.atm",
+                "finance.exchange",
+                "worship",
+                "services",
+                "office",
+                "office.coworking",
+                "office.company",
+                "office.government",
+                "office.estate_agent",
+                "office.lawyer",
+                "office.insurance",
+                "craft",
+                "craft.brewery",
+                "craft.winery"
+              ]
             }
           },
           "address": {
@@ -8727,6 +10533,14 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "opens": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    },
+                    "closes": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    },
                     "day": {
                       "type": "number",
                       "enum": [
@@ -8738,27 +10552,14 @@
                         5,
                         6
                       ]
-                    },
-                    "opens": {
-                      "type": "string",
-                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
-                    },
-                    "closes": {
-                      "type": "string",
-                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
                     }
                   },
                   "required": [
-                    "day",
                     "opens",
-                    "closes"
+                    "closes",
+                    "day"
                   ]
                 }
-              },
-              "timezone": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 64
               },
               "raw": {
                 "type": "string",
@@ -8823,10 +10624,18 @@
                     },
                     {
                       "type": "string",
-                      "maxLength": 512
+                      "maxLength": 2048
                     },
                     {
                       "type": "number"
+                    },
+                    {
+                      "maxItems": 64,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 64
+                      }
                     }
                   ]
                 },
@@ -8869,10 +10678,18 @@
               },
               {
                 "type": "string",
-                "maxLength": 512
+                "maxLength": 2048
               },
               {
                 "type": "number"
+              },
+              {
+                "maxItems": 64,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 64
+                }
               }
             ]
           },
@@ -8920,6 +10737,52 @@
         },
         "required": [
           "role"
+        ]
+      },
+      "PlaceHoursExceptionInput": {
+        "type": "object",
+        "properties": {
+          "startsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "endsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "closed": {
+            "type": "boolean"
+          },
+          "intervals": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "opens": {
+                  "type": "string",
+                  "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                },
+                "closes": {
+                  "type": "string",
+                  "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                }
+              },
+              "required": [
+                "opens",
+                "closes"
+              ]
+            }
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 280
+          }
+        },
+        "required": [
+          "startsOn",
+          "closed"
         ]
       },
       "PlaceReportInput": {
@@ -8993,10 +10856,25 @@
         "type": "object",
         "properties": {
           "value": {
-            "type": [
-              "boolean",
-              "string",
-              "number"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string",
+                "maxLength": 2048
+              },
+              {
+                "type": "number"
+              },
+              {
+                "maxItems": 64,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 64
+                }
+              }
             ]
           }
         },

@@ -13,8 +13,9 @@
  * **What JSON Schema does NOT carry.** Zod refinements have no JSON Schema
  * equivalent and are dropped by the conversion: `south <= north`, the viewport
  * span cap, "exactly one of `coordinate` and `exifGps`", "an update must change
- * a field", `key === namespace + '.' + capability`, and the language-tag
- * normalization. So a payload that passes the JSON Schema is well-FORMED, not
+ * a field", `key === namespace + '.' + capability`, a capability value
+ * held to its key's registry entry, an hours exception's date order, and the
+ * language-tag normalization. So a payload that passes the JSON Schema is well-FORMED, not
  * accepted. The server validates with zod, and that is the authority.
  */
 
@@ -31,8 +32,14 @@ import {
   captureUploadTicketSchema,
 } from './capture';
 import { routeRequestSchema, routeResponseSchema, routeSchema } from './directions';
+import { categoryPageSchema, categorySchema } from './category';
 import { apiErrorBodySchema } from './errors';
 import { geoBoundingBoxSchema, geoCoordinateSchema, geoGeometrySchema } from './geo';
+import {
+  placeHoursExceptionInputSchema,
+  placeHoursExceptionPageSchema,
+  placeHoursExceptionSchema,
+} from './hours';
 import {
   placeCapabilityAssertionSchema,
   placeCapabilitySchema,
@@ -103,6 +110,11 @@ export const CONTRACT_SCHEMA_NAMES = [
   'PlaceUpdateInput',
   'PlaceCapabilityAssertion',
   'PlaceClaimInput',
+  'Category',
+  'CategoryPage',
+  'PlaceHoursException',
+  'PlaceHoursExceptionPage',
+  'PlaceHoursExceptionInput',
   'RevisionValue',
   'PlaceRevision',
   'PlaceRevisionPage',
@@ -168,6 +180,11 @@ export const CONTRACT_SCHEMAS: Readonly<Record<ContractSchemaName, ContractSchem
   PlaceUpdateInput: request(placeUpdateInputSchema),
   PlaceCapabilityAssertion: request(placeCapabilityAssertionSchema),
   PlaceClaimInput: request(placeClaimInputSchema),
+  Category: response(categorySchema),
+  CategoryPage: response(categoryPageSchema),
+  PlaceHoursException: response(placeHoursExceptionSchema),
+  PlaceHoursExceptionPage: response(placeHoursExceptionPageSchema),
+  PlaceHoursExceptionInput: request(placeHoursExceptionInputSchema),
   RevisionValue: response(revisionValueSchema),
   PlaceRevision: response(placeRevisionSchema),
   PlaceRevisionPage: response(placeRevisionPageSchema),

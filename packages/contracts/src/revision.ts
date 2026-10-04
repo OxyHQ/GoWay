@@ -51,6 +51,9 @@ export const PLACE_REVISION_ACTIONS = [
   'place_absorbed',
   'duplicate_rejected',
   'report_resolved',
+  'hours_exception_created',
+  'hours_exception_replaced',
+  'hours_exception_withdrawn',
 ] as const;
 export type PlaceRevisionAction = (typeof PLACE_REVISION_ACTIONS)[number];
 
@@ -78,6 +81,11 @@ export const PLACE_REVISION_VISIBILITY = {
   place_absorbed: 'public',
   duplicate_rejected: 'moderation',
   report_resolved: 'moderation',
+  // An exception is published on the place and by its own public list, so its
+  // history is public too; the revision still never says who wrote it.
+  hours_exception_created: 'public',
+  hours_exception_replaced: 'public',
+  hours_exception_withdrawn: 'public',
 } as const satisfies Record<PlaceRevisionAction, PlaceRevisionVisibility>;
 
 /** The actions the public history lists. */
@@ -103,13 +111,16 @@ export type RevisionValue = z.infer<typeof revisionValueSchema>;
  * One field that changed.
  *
  * `field` is a dotted path into the published `Place` shape — `name`,
- * `address.city`, `openingHours`, `names.es`, `capabilities.payments.faircoin.accepted`
- * — or, for a moderation-only action, into the record it moved (`claims.<id>`,
+ * `address.city`, `openingHours`, `timezone`, `names.es`,
+ * `capabilities.payments.faircoin.accepted`, `hoursExceptions.<id>` — or, for a
+ * moderation-only action, into the record it moved (`claims.<id>`,
  * `reports.<id>`, `duplicates.<id>`). `before` is absent when the field had no
  * value, `after` when the write cleared or withdrew it.
  *
  * A capability's value is its assertion AT ONE TIER — `{ value, verification,
- * observedAt }` — because tiers coexist and a write touches exactly one.
+ * observedAt }` — because tiers coexist and a write touches exactly one. An
+ * hours exception's is the exception itself, tier included and id excluded:
+ * `{ startsOn, endsOn, closed, intervals, note?, verification, observedAt }`.
  */
 export const placeRevisionChangeSchema = z.object({
   field: z.string().min(1),

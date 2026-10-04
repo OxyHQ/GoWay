@@ -25,10 +25,11 @@
 import { z } from 'zod';
 import { boundingBoxWidth, geoBoundingBoxSchema, geoCoordinateSchema, latitudeSchema, longitudeSchema } from './geo';
 import type { GeoBoundingBox, GeoCoordinate } from './geo';
+import { capabilityFilterSchema } from './capability-registry';
+import { categoryKeySchema } from './category';
 import { languageTagSchema } from './language';
 import { cursorSchema } from './pagination';
 import {
-  capabilityKeySchema,
   MAX_BOUNDS_SPAN_DEGREES,
   MAX_RADIUS_METERS,
   placeIdSchema,
@@ -143,9 +144,10 @@ export const searchParametersSchema = z
     south: latitudeSchema.optional(),
     east: longitudeSchema.optional(),
     north: latitudeSchema.optional(),
-    /** Only candidates whose reconciled place has every listed capability. */
-    capabilities: z.array(capabilityKeySchema).max(64).optional(),
-    categories: z.array(z.string().max(128)).max(64).optional(),
+    /** Only candidates whose reconciled place has every listed capability (`key` or `key:value`). */
+    capabilities: z.array(capabilityFilterSchema).max(64).optional(),
+    /** Taxonomy keys; a parent matches its descendants. */
+    categories: z.array(categoryKeySchema).max(64).optional(),
     ...searchListFields,
   })
   .strict()

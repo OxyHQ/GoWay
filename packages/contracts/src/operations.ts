@@ -16,6 +16,8 @@ import { z } from 'zod';
 import { captureListQuerySchema } from './capture';
 import type { ApiErrorCode } from './errors';
 import type { ContractSchemaName } from './json-schema';
+import { capabilityKeySchema } from './capability-registry';
+import { hoursExceptionListQuerySchema } from './hours';
 import {
   duplicateListQuerySchema,
   moderationClaimListQuerySchema,
@@ -23,7 +25,6 @@ import {
 } from './moderation';
 import {
   accountClaimListQuerySchema,
-  capabilityKeySchema,
   claimListQuerySchema,
   nearbyPlacesQuerySchema,
   placeIdSchema,
@@ -46,7 +47,16 @@ export type ApiAuth = 'public' | 'optional' | 'required';
 
 export type ApiMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
-export type ApiTag = 'Places' | 'Claims' | 'Moderation' | 'Search' | 'Directions' | 'Captures' | 'Street 3D';
+export type ApiTag =
+  | 'Places'
+  | 'Categories'
+  | 'Hours'
+  | 'Claims'
+  | 'Moderation'
+  | 'Search'
+  | 'Directions'
+  | 'Captures'
+  | 'Street 3D';
 
 export interface ApiOperation {
   readonly operationId: string;
@@ -80,6 +90,8 @@ export const claimPathSchema = z.object({ claimId: z.string().min(1).max(128) })
 export const duplicatePathSchema = z.object({ candidateId: z.string().min(1).max(128) });
 /** `{reportId}` — a place report. */
 export const reportPathSchema = z.object({ reportId: z.string().min(1).max(128) });
+/** `{placeId}` and an hours exception's `{exceptionId}`. */
+export const hoursExceptionPathSchema = z.object({ placeId: placeIdSchema, exceptionId: z.string().min(1).max(128) });
 /** `{sceneId}` */
 export const scenePathSchema = z.object({ sceneId: z.string().min(1).max(64) });
 /** `{sessionId}` */
@@ -201,6 +213,67 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     body: 'PlaceReportInput',
     responses: { 201: 'PlaceReport', 200: 'PlaceReport' },
     errors: [...WRITE_ERRORS, 'not_found', 'gone'],
+  },
+
+  // ── Categories ────────────────────────────────────────────────────────────
+  {
+    operationId: 'listCategories',
+    method: 'get',
+    path: '/categories',
+    tag: 'Categories',
+    summary: 'The place category taxonomy: every key, its parent, its glyph and its labels.',
+    auth: 'public',
+    responses: { 200: 'CategoryPage' },
+    errors: [],
+  },
+
+  // ── Hours exceptions ──────────────────────────────────────────────────────
+  {
+    operationId: 'listPlaceHoursExceptions',
+    method: 'get',
+    path: '/places/{placeId}/hours-exceptions',
+    tag: 'Hours',
+    summary: 'Dated exceptions to a place\'s weekly hours, earliest first, past ones included.',
+    auth: 'optional',
+    pathParameters: placePathSchema,
+    query: hoursExceptionListQuerySchema,
+    responses: { 200: 'PlaceHoursExceptionPage' },
+    errors: [...READ_ERRORS, 'not_found', 'gone'],
+  },
+  {
+    operationId: 'createPlaceHoursException',
+    method: 'post',
+    path: '/places/{placeId}/hours-exceptions',
+    tag: 'Hours',
+    summary: "Report a closure or special hours, at the tier the caller's claims earn.",
+    auth: 'required',
+    pathParameters: placePathSchema,
+    body: 'PlaceHoursExceptionInput',
+    responses: { 201: 'PlaceHoursException' },
+    errors: [...WRITE_ERRORS, 'not_found', 'gone', 'conflict', 'service_unavailable'],
+  },
+  {
+    operationId: 'replacePlaceHoursException',
+    method: 'put',
+    path: '/places/{placeId}/hours-exceptions/{exceptionId}',
+    tag: 'Hours',
+    summary: "Rewrite an exception at the caller's own tier.",
+    auth: 'required',
+    pathParameters: hoursExceptionPathSchema,
+    body: 'PlaceHoursExceptionInput',
+    responses: { 200: 'PlaceHoursException' },
+    errors: [...WRITE_ERRORS, 'forbidden', 'not_found', 'gone', 'conflict', 'service_unavailable'],
+  },
+  {
+    operationId: 'withdrawPlaceHoursException',
+    method: 'delete',
+    path: '/places/{placeId}/hours-exceptions/{exceptionId}',
+    tag: 'Hours',
+    summary: "Withdraw the business's own exception.",
+    auth: 'required',
+    pathParameters: hoursExceptionPathSchema,
+    responses: { 204: null },
+    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found', 'gone', 'service_unavailable'],
   },
 
   // ── Claims ────────────────────────────────────────────────────────────────
