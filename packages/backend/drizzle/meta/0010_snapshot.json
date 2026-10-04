@@ -1,5 +1,5 @@
 {
-  "id": "147a6cd5-4462-4010-82dd-eb13caf54bfa",
+  "id": "e0ccc380-8cc1-4f49-a8a6-5aad9d17fb2d",
   "prevId": "d20bc837-bee1-437f-adb3-e3b363dbce77",
   "version": "7",
   "dialect": "postgresql",
@@ -1062,7 +1062,7 @@
       "checkConstraints": {
         "place_revisions_action_check": {
           "name": "place_revisions_action_check",
-          "value": "\"place_revisions\".\"action\" in ('place_created', 'place_updated', 'capability_asserted', 'capability_withdrawn', 'claim_requested', 'claim_approved', 'claim_rejected', 'claim_revoked', 'place_merged', 'place_absorbed', 'duplicate_rejected', 'report_resolved', 'hours_exception_created', 'hours_exception_replaced', 'hours_exception_withdrawn', 'media_added', 'media_removed', 'media_reordered', 'media_hidden', 'media_restored', 'review_published', 'review_updated', 'review_withdrawn', 'review_replied', 'review_reply_withdrawn', 'review_hidden', 'review_restored')"
+          "value": "\"place_revisions\".\"action\" in ('place_created', 'place_updated', 'capability_asserted', 'capability_withdrawn', 'claim_requested', 'claim_approved', 'claim_rejected', 'claim_revoked', 'place_merged', 'place_absorbed', 'duplicate_rejected', 'report_resolved', 'hours_exception_created', 'hours_exception_replaced', 'hours_exception_withdrawn', 'media_added', 'media_removed', 'media_reordered', 'media_hidden', 'media_restored', 'review_published', 'review_updated', 'review_withdrawn', 'review_replied', 'review_reply_withdrawn', 'review_hidden', 'review_restored', 'capability_retiered', 'hours_exception_retiered')"
         },
         "place_revisions_source_check": {
           "name": "place_revisions_source_check",
@@ -1648,6 +1648,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "brand_id": {
+          "name": "brand_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "role": {
           "name": "role",
           "type": "text",
@@ -1716,6 +1722,21 @@
           "columns": [
             {
               "expression": "oxy_account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "places_claims_brand_idx": {
+          "name": "places_claims_brand_idx",
+          "columns": [
+            {
+              "expression": "brand_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

@@ -143,27 +143,35 @@ and revision actions. The open-report unique index is replaced by one keyed on
 the subject as well — WIDER, so the previous image's one-per-place rows still
 fit it. `pre`.
 
+## `0010_goway_claim_retier`
+
+`place_revisions_action_check` widened to `capability_retiered` and
+`hours_exception_retiered`: the revisions a claim approval records for each
+statement the claimant made at the community tier while the claim was pending
+and that becomes the business's own (`docs/BUSINESS_OWNERSHIP.md`). `pre` — a
+widened CHECK is correct against the image still serving.
+
 ## Every `pre` before every `post`
 
-`0007`–`0009` are `pre`; `0010`–`0012` are `post`. The order is the point:
+`0007`–`0010` are `pre`; `0011`–`0013` are `post`. The order is the point:
 a `pre` run applies the pending PREFIX up to the first `post` and BLOCKS on a
 `pre` queued behind an unapplied `post` (`planMigrationRun` in
-`@oxy.so/db/migrate`), so business moderation, place data and media and
-reviews ship in one release only because every additive half comes first.
-`0009` was generated before the three `post` migrations were regenerated on
-top of it, with their SQL unchanged.
+`@oxy.so/db/migrate`), so business moderation, place data, media and reviews
+and the claim re-tier ship in one release only because every additive half
+comes first. `0009` and `0010` were each generated before the three `post`
+migrations were regenerated on top of them, with their SQL unchanged.
 
-## `0010_goway_drop_claim_brand`
+## `0011_goway_drop_claim_brand`
 
 Drops `places_claims.brand_id` and its index: a chain is an Oxy organization
 claiming each location in the `brand` role, so nothing else groups them.
 `post` — the previous image still reads and writes the column.
 
-## `0011_goway_place_data_conversion`
+## `0012_goway_place_data_conversion`
 
 The one CUSTOM migration (`drizzle-kit generate --custom`): data the previous
 image wrote, converted in place. `post`, because each step narrows what that
-image wrote, and it must run before `0012` adds the CHECK it makes true.
+image wrote, and it must run before `0013` adds the CHECK it makes true.
 
 - `places.categories` and the importer's recorded `categories` are rewritten
   as taxonomy keys by ONE function, so a column that equalled what
@@ -177,8 +185,8 @@ Every statement is a no-op on data it already converted;
 `placeDataConversion.realdb.test.ts` re-runs them to prove it. It is a data
 migration, not an API write, so it records no `place_revisions` rows.
 
-## `0012_goway_category_taxonomy`
+## `0013_goway_category_taxonomy`
 
 `places_categories_taxonomy_check`: every `places.categories` member is a key of
-the contract's taxonomy. `post`, after `0011`, because it narrows the column.
+the contract's taxonomy. `post`, after `0012`, because it narrows the column.
 Adding a category to the contract regenerates this CHECK in a new migration.

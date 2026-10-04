@@ -1,5 +1,5 @@
 /**
- * `0011_goway_place_data_conversion` — the data the previous image wrote,
+ * `0012_goway_place_data_conversion` — the data the previous image wrote,
  * converted, run against a real server.
  *
  * The migration has already been applied to the suite's database (empty, so it
@@ -18,7 +18,7 @@ import type postgres from 'postgres';
 import { MIGRATIONS_FOLDER } from '../migrationsFolder';
 import { SUITE_SETUP_TIMEOUT_MS, createSuiteDatabase, destroySuiteDatabase, type SuiteDatabase } from './testDatabase';
 
-const STATEMENTS = readFileSync(join(MIGRATIONS_FOLDER, '0011_goway_place_data_conversion.sql'), 'utf8')
+const STATEMENTS = readFileSync(join(MIGRATIONS_FOLDER, '0012_goway_place_data_conversion.sql'), 'utf8')
   .split('--> statement-breakpoint')
   .map((statement) => statement.trim())
   .filter((statement) => statement.length > 0);

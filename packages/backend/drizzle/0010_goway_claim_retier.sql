@@ -1,0 +1,6 @@
+-- oxy:deploy-phase=pre
+-- Claim re-tier (docs/BUSINESS_OWNERSHIP.md): the two revision actions a claim
+-- approval records when what the claimant said while it was pending becomes
+-- the business's own. A widened CHECK, correct against the image still serving.
+ALTER TABLE "place_revisions" DROP CONSTRAINT "place_revisions_action_check";--> statement-breakpoint
+ALTER TABLE "place_revisions" ADD CONSTRAINT "place_revisions_action_check" CHECK ("place_revisions"."action" in ('place_created', 'place_updated', 'capability_asserted', 'capability_withdrawn', 'claim_requested', 'claim_approved', 'claim_rejected', 'claim_revoked', 'place_merged', 'place_absorbed', 'duplicate_rejected', 'report_resolved', 'hours_exception_created', 'hours_exception_replaced', 'hours_exception_withdrawn', 'media_added', 'media_removed', 'media_reordered', 'media_hidden', 'media_restored', 'review_published', 'review_updated', 'review_withdrawn', 'review_replied', 'review_reply_withdrawn', 'review_hidden', 'review_restored', 'capability_retiered', 'hours_exception_retiered'));
