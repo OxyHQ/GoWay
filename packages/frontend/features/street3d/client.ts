@@ -1,43 +1,25 @@
 /**
- * The app's Street 3D API instance — see `api.ts` for why it is an adapter.
+ * The app's Street 3D API: `@goway.to/sdk`'s `street3d` namespace, split by
+ * who authenticates the request.
  *
- * Transport choices mirror the rest of the app exactly:
+ *  - Public reads (`coverage`, `scene`) go through the app's one `gowayClient`,
+ *    like every other public read — including its fixture transport when
+ *    `EXPO_PUBLIC_GOWAY_FIXTURES` is on.
+ *  - The identity-bound write (`report`) goes through the Oxy linked client,
+ *    like captures, so Oxy stays the session and refresh authority. With
+ *    fixtures on it stays on `gowayClient`, whose fixture transport answers it.
  *
- *  - Fixtures on → the same fixture `fetch` the main client uses, so the
- *    Street 3D routes are answered locally like every other route.
- *  - Fixtures off → public reads (coverage, scene) over the global `fetch`
- *    with the borrowed Oxy token, like `gowayClient`; the identity-bound write
- *    (report) over the Oxy linked client, like `captureClient`, so Oxy stays the
- *    session and refresh authority.
+ * That split is the whole reason this file exists; everything else is the SDK.
  */
-import type { GoWayFetch } from '@goway.to/sdk';
+import type { GoWayStreet3dApi } from '@goway.to/sdk';
 
+import { linkedGowayClient } from '@/features/contribute/client';
 import { gowayClient, USING_FIXTURES } from '@/lib/goway/client';
-import { createFixtureFetch, parseFixtureFaults } from '@/lib/goway/mockTransport';
-import { API_URL } from '@/lib/config';
-import { oxyServices } from '@/lib/oxyServices';
 
-import { createStreet3dApi } from './api';
+const writer = USING_FIXTURES ? gowayClient : linkedGowayClient;
 
-function linkedFetch(): GoWayFetch {
-  const linked = oxyServices.createLinkedClient({ baseURL: API_URL });
-  return (url, init) =>
-    linked.client.requestResponse({
-      url,
-      method: init.method,
-      headers: init.headers,
-      body: init.body,
-      signal: init.signal,
-    });
-}
-
-const fixtureFetch = USING_FIXTURES
-  ? createFixtureFetch(parseFixtureFaults(process.env.EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS))
-  : undefined;
-
-export const street3dApi = createStreet3dApi({
-  client: gowayClient,
-  apiBaseUrl: API_URL,
-  getAccessToken: () => oxyServices.session.accessToken,
-  ...(fixtureFetch ? { fetch: fixtureFetch, writeFetch: fixtureFetch } : { writeFetch: linkedFetch() }),
-});
+export const street3dApi: GoWayStreet3dApi = {
+  coverage: gowayClient.street3d.coverage,
+  scene: gowayClient.street3d.scene,
+  report: writer.street3d.report,
+};

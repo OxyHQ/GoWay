@@ -1,5 +1,5 @@
 /**
- * React Query over the Street 3D seam (`api.ts`).
+ * React Query over the SDK's Street 3D namespace (`client.ts`).
  *
  * The coverage layer is OPTIONAL map furniture, and its error policy says so:
  * a coverage failure never renders an error. A 404 with no GoWay body means the
@@ -8,19 +8,15 @@
  * hides the layer until the next viewport.
  */
 import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query';
-import { GoWayApiError, GoWayNotFoundError, type GeoBoundingBox } from '@goway.to/sdk';
+import type { GeoBoundingBox } from '@goway.to/sdk';
 import type { StreetCoverage, StreetSceneManifest, StreetSceneReportInput } from '@goway/shared-types';
 
 import { classifyGoWayError, shouldRetryGoWay } from '@/lib/goway/errors';
 
+import { isStreet3dEndpointMissing } from './availability';
 import { street3dApi } from './client';
 
 let endpointMissing = false;
-
-/** Whether this error means "this deployment has no Street 3D API". */
-export function isCoverageEndpointMissing(error: unknown): boolean {
-  return error instanceof GoWayApiError && !(error instanceof GoWayNotFoundError) && error.status === 404;
-}
 
 function round(value: number): number {
   // ~10 m: coverage cells are far coarser than that, and coarser keys mean a
@@ -36,7 +32,7 @@ export function useStreetCoverage(
   return useQuery({
     queryKey: ['goway', 'street3d', 'coverage', key],
     enabled: enabled && bounds != null && !endpointMissing,
-    retry: (count, error) => !isCoverageEndpointMissing(error) && classifyGoWayError(error).kind !== 'unavailable' && shouldRetryGoWay(count, error),
+    retry: (count, error) => !isStreet3dEndpointMissing(error) && classifyGoWayError(error).kind !== 'unavailable' && shouldRetryGoWay(count, error),
     placeholderData: (previous) => previous,
     staleTime: 60_000,
     ...(gcTime !== undefined ? { gcTime } : {}),
@@ -44,7 +40,7 @@ export function useStreetCoverage(
       try {
         return await street3dApi.coverage(bounds as GeoBoundingBox, { signal });
       } catch (error) {
-        if (isCoverageEndpointMissing(error)) endpointMissing = true;
+        if (isStreet3dEndpointMissing(error)) endpointMissing = true;
         throw error;
       }
     },

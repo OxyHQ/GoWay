@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { STREET_COVERAGE_AREA_STATES, type StreetCoverage } from '@goway/shared-types';
-
-import { fixtureCoverage } from '@/lib/goway/street3dFixtures';
+import {
+  STREET_COVERAGE_AREA_STATES,
+  type StreetCoverage,
+  type StreetCoverageArea,
+  type StreetSceneSummary,
+} from '@goway/shared-types';
 
 import {
   AREA_STATE_COLOR,
@@ -18,7 +21,47 @@ import {
 /** Every role resolves to its own name, so a test can see which role was used. */
 const COLORS = new Proxy({}, { get: (_, key) => `role:${String(key)}` }) as CoverageColors;
 
-const WORLD = { west: -180, south: -90, east: 180, north: 90 };
+/**
+ * A self-contained coverage answer — independent of the fixture env, which a
+ * developer may have pointed at a local scene — with both placements, every
+ * area state, and one area that improves a visible scene.
+ */
+function scene(id: string, placement: 'precise' | 'approximate', longitude: number): StreetSceneSummary {
+  const box = { west: longitude - 0.001, south: 41.38, east: longitude + 0.001, north: 41.382 };
+  return {
+    id,
+    version: 1,
+    center: { latitude: 41.381, longitude },
+    bounds: box,
+    footprint: {
+      type: 'Polygon',
+      coordinates: [[[box.west, box.south], [box.east, box.south], [box.east, box.north], [box.west, box.north], [box.west, box.south]]],
+    },
+    placement,
+    publishedAt: '2026-09-01T00:00:00.000Z',
+  };
+}
+
+function area(id: string, state: StreetCoverageArea['state'], longitude: number, extra: Partial<StreetCoverageArea> = {}): StreetCoverageArea {
+  return {
+    id,
+    state,
+    center: { latitude: 41.39, longitude },
+    bounds: { west: longitude - 0.0005, south: 41.3895, east: longitude + 0.0005, north: 41.3905 },
+    contributionBand: '5-19',
+    ...extra,
+  };
+}
+
+const COVERAGE: StreetCoverage = {
+  scenes: [scene('s-precise', 'precise', 2.17), scene('s-approx', 'approximate', 2.18)],
+  areas: [
+    ...STREET_COVERAGE_AREA_STATES.map((state, index) =>
+      area(`a-${state}`, state, 2.16 + index * 0.002, state === 'at_risk' ? { atRiskUntil: '2026-10-20T00:00:00.000Z' } : {}),
+    ),
+    area('a-improving', 'partial', 2.17, { sceneId: 's-precise' }),
+  ],
+};
 
 describe('state → Bloom role', () => {
   test('every published state has a role, and only theme roles are used', () => {
@@ -32,7 +75,7 @@ describe('state → Bloom role', () => {
   });
 
   test('at_risk is the warning role and is drawn larger', () => {
-    const overlays = coverageOverlays(fixtureCoverage(WORLD), COLORS);
+    const overlays = coverageOverlays(COVERAGE, COLORS);
     const atRisk = overlays.find((overlay) => overlay.id === 'street3d-areas-at_risk');
     expect(atRisk?.kind).toBe('circle');
     expect(atRisk?.paint?.color).toBe('role:warning');
@@ -43,7 +86,7 @@ describe('state → Bloom role', () => {
 
 describe('coverageOverlays', () => {
   test('precise footprints are a primary fill + line; approximate ones are muted and thinner', () => {
-    const overlays = coverageOverlays(fixtureCoverage(WORLD), COLORS);
+    const overlays = coverageOverlays(COVERAGE, COLORS);
     const byId = new Map(overlays.map((overlay) => [overlay.id, overlay]));
     expect(byId.get('street3d-scenes-precise-fill')?.kind).toBe('fill');
     expect(byId.get('street3d-scenes-precise-line')?.paint?.color).toBe('role:primary');
@@ -53,7 +96,7 @@ describe('coverageOverlays', () => {
   });
 
   test('an area that improves a visible scene is not drawn twice', () => {
-    const coverage = fixtureCoverage(WORLD);
+    const coverage = COVERAGE;
     const improving = coverage.areas.find((entry) => entry.sceneId);
     expect(improving).toBeDefined();
     const overlays = coverageOverlays(coverage, COLORS);
@@ -68,8 +111,8 @@ describe('coverageOverlays', () => {
   });
 
   test('ids are stable for the same answer', () => {
-    const a = coverageOverlays(fixtureCoverage(WORLD), COLORS).map((overlay) => overlay.id);
-    const b = coverageOverlays(fixtureCoverage(WORLD), COLORS).map((overlay) => overlay.id);
+    const a = coverageOverlays(COVERAGE, COLORS).map((overlay) => overlay.id);
+    const b = coverageOverlays(COVERAGE, COLORS).map((overlay) => overlay.id);
     expect(a).toEqual(b);
     expect(new Set(a).size).toBe(a.length);
   });
@@ -77,7 +120,7 @@ describe('coverageOverlays', () => {
 
 describe('scene markers', () => {
   test('round-trip a scene id, and ignore every other marker', () => {
-    const coverage: StreetCoverage = fixtureCoverage(WORLD);
+    const coverage: StreetCoverage = COVERAGE;
     const markers = sceneMarkers(coverage.scenes, 'Open');
     expect(markers).toHaveLength(coverage.scenes.length);
     for (const [index, marker] of markers.entries()) {
@@ -98,7 +141,7 @@ describe('zoom gate', () => {
 });
 
 describe('areas and points', () => {
-  const coverage = fixtureCoverage(WORLD);
+  const coverage = COVERAGE;
 
   test('areasWantingCapture keeps only the states another photo helps', () => {
     const states = new Set(areasWantingCapture(coverage.areas).map((entry) => entry.state));
