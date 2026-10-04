@@ -24,9 +24,20 @@
  *  - dated hours exceptions, relative to today, so "closed today" and an
  *    upcoming holiday both render;
  *  - one `closed` place, because a lifecycle state other than `active` must
- *    render as itself rather than vanish.
+ *    render as itself rather than vanish;
+ *  - descriptions (one translated, one not), galleries with a logo, and
+ *    reviews with a business reply — on a few places only, so a place with
+ *    none of them is the common case it is.
  */
-import type { CapabilityKey, CategoryKey, Place, PlaceCapability, PlaceHoursException } from '@goway.to/sdk';
+import type {
+  CapabilityKey,
+  CategoryKey,
+  Place,
+  PlaceCapability,
+  PlaceHoursException,
+  PlaceMedia,
+  PlaceReview,
+} from '@goway.to/sdk';
 
 const DAY_MS = 86_400_000;
 /** Fixed at module load so a session's relative timestamps stay consistent. */
@@ -85,6 +96,11 @@ interface PlaceSeed {
   /** `[fromToday, days, closed-or-hours, note]` — dated exceptions to the week. */
   exceptions?: Array<{ in: number; days?: number; hours?: [string, string]; note?: string; verification: PlaceHoursException['verification'] }>;
   osmId?: string;
+  /** The default-language description, and GoWay's translations of it. */
+  description?: string;
+  descriptions?: Record<string, string>;
+  /** The Oxy file of the place's logo — one of its `logo` gallery items. */
+  logoFileId?: string;
 }
 
 function place(seed: PlaceSeed): Place {
@@ -140,6 +156,15 @@ function place(seed: PlaceSeed): Place {
       intervals: seed.hours.map(([day, opens, closes]) => ({ day, opens, closes })),
     };
   }
+  if (seed.description) built.description = seed.description;
+  if (seed.description || seed.descriptions) {
+    built.descriptions = Object.entries(seed.descriptions ?? {}).map(([language, description]) => ({
+      language,
+      description,
+      source: 'goway',
+    }));
+  }
+  if (seed.logoFileId) built.logoFileId = seed.logoFileId;
   if (seed.exceptions) {
     built.hoursExceptions = seed.exceptions.map((exception, index) => ({
       id: `${seed.id}_exception_${index}`,
@@ -177,6 +202,12 @@ export const FIXTURE_PLACES: readonly Place[] = [
     website: 'https://www.boqueria.barcelona',
     hours: [...weekdays('08:00', '20:30'), [6, '08:00', '20:30']],
     osmId: 'way/25336101',
+    description: "El mercat més antic de la ciutat: parades de fruita, peix, embotits i taulells on menjar a peu dret.",
+    descriptions: {
+      es: 'El mercado más antiguo de la ciudad: puestos de fruta, pescado, embutidos y barras donde comer de pie.',
+      en: "The city's oldest market: fruit, fish and charcuterie stalls, and counters to eat at standing up.",
+    },
+    logoFileId: 'fixture-file-boqueria-logo',
     exceptions: [{ in: 3, note: 'Public holiday', verification: 'business_asserted' }],
     capabilities: [
       { key: 'payments.faircoin.accepted', verification: 'oxy_verified', daysAgo: 9 },
@@ -213,6 +244,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     website: 'museupicasso.bcn.cat',
     hours: [[2, '10:00', '19:00'], [3, '10:00', '19:00'], [4, '10:00', '19:00'], [5, '10:00', '19:00'], [6, '10:00', '20:00'], [0, '10:00', '20:00']],
     osmId: 'way/34633854',
+    description: "Més de 4.000 obres de Picasso en cinc palaus medievals del carrer de Montcada.",
     capabilities: [
       { key: 'accessibility.wheelchair', value: 'yes', verification: 'external_source', daysAgo: 12 },
       { key: 'accessibility.toilets_wheelchair', verification: 'external_source', daysAgo: 12 },
@@ -489,6 +521,106 @@ export const FIXTURE_PLACES: readonly Place[] = [
     capabilities: [{ key: 'mobility.moovo.pickup', verification: 'oxy_verified', daysAgo: 1 }],
   }),
 ];
+
+interface MediaSeed {
+  fileId: string;
+  kind: PlaceMedia['kind'];
+  caption?: string;
+  verification?: PlaceMedia['verification'];
+  attribution?: string;
+  license?: string;
+}
+
+function gallery(placeId: string, seeds: readonly MediaSeed[]): PlaceMedia[] {
+  return seeds.map((seed, position) => ({
+    id: `${placeId}_media_${position}`,
+    placeId,
+    fileId: seed.fileId,
+    kind: seed.kind,
+    verification: seed.verification ?? 'community_reported',
+    position,
+    ...(seed.caption ? { caption: seed.caption } : {}),
+    ...(seed.attribution ? { attribution: seed.attribution } : {}),
+    ...(seed.license ? { license: seed.license } : {}),
+    width: 1600,
+    height: 1200,
+    createdAt: daysAgo(30 - position),
+  }));
+}
+
+/**
+ * Each place's VISIBLE gallery, in order. The file ids are fixture ids, so
+ * against Oxy's CDN they render nothing — which is exactly the case the
+ * gallery must survive: an image that does not load is not drawn.
+ */
+export const FIXTURE_MEDIA: ReadonlyMap<string, readonly PlaceMedia[]> = new Map([
+  [
+    'gw_mercat_boqueria',
+    gallery('gw_mercat_boqueria', [
+      { fileId: 'fixture-file-boqueria-logo', kind: 'logo', verification: 'business_asserted' },
+      { fileId: 'fixture-file-boqueria-entrance', kind: 'exterior', caption: 'The entrance on La Rambla' },
+      { fileId: 'fixture-file-boqueria-stall', kind: 'interior', caption: 'Fruit stalls in the morning' },
+      {
+        fileId: 'fixture-file-boqueria-commons',
+        kind: 'photo',
+        verification: 'external_source',
+        attribution: 'Wikimedia Commons contributor',
+        license: 'CC BY-SA 4.0',
+      },
+    ]),
+  ],
+  [
+    'gw_museu_picasso',
+    gallery('gw_museu_picasso', [{ fileId: 'fixture-file-picasso-courtyard', kind: 'exterior', caption: 'The courtyard' }]),
+  ],
+]);
+
+interface ReviewSeed {
+  author: string;
+  rating: number;
+  title?: string;
+  body?: string;
+  locale?: string;
+  daysAgo: number;
+  reply?: string;
+}
+
+function reviews(placeId: string, seeds: readonly ReviewSeed[]): PlaceReview[] {
+  return seeds.map((seed, index) => ({
+    id: `${placeId}_review_${index}`,
+    placeId,
+    rating: seed.rating,
+    ...(seed.title ? { title: seed.title } : {}),
+    ...(seed.body ? { body: seed.body } : {}),
+    ...(seed.locale ? { locale: seed.locale } : {}),
+    authorOxyUserId: seed.author,
+    createdAt: daysAgo(seed.daysAgo),
+    ...(seed.reply ? { reply: { body: seed.reply, repliedAt: daysAgo(seed.daysAgo - 1) } } : {}),
+  }));
+}
+
+/**
+ * Each place's PUBLISHED reviews. The authors are fixture ids, so Oxy resolves
+ * no profile for them — the anonymous-author state is the one a fixture shows.
+ * `Place.rating` is derived from these by the fixture transport, as the API
+ * derives it, rather than stated beside them where it could disagree.
+ */
+export const FIXTURE_REVIEWS: ReadonlyMap<string, readonly PlaceReview[]> = new Map([
+  [
+    'gw_mercat_boqueria',
+    reviews('gw_mercat_boqueria', [
+      { author: 'fixture-user-1', rating: 5, title: 'Unmissable', body: 'Go early, before the crowds. The juice stalls are worth it.', locale: 'en', daysAgo: 12, reply: 'Thank you! We open at 8.' },
+      { author: 'fixture-user-2', rating: 3, body: 'Massa turístic al migdia, però el peix és excel·lent.', locale: 'ca', daysAgo: 40 },
+      { author: 'fixture-user-3', rating: 4, daysAgo: 90 },
+    ]),
+  ],
+  [
+    'gw_museu_picasso',
+    reviews('gw_museu_picasso', [
+      { author: 'fixture-user-4', rating: 5, title: 'Las Meninas', body: 'La serie de Las Meninas justifica la visita.', locale: 'es', daysAgo: 5 },
+    ]),
+  ],
+]);
 
 /** Every fixture place keyed by its GoWay Place ID. */
 export const FIXTURE_PLACES_BY_ID: ReadonlyMap<string, Place> = new Map(

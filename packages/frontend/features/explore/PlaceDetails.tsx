@@ -7,16 +7,23 @@
  * honest sentence plus the one action that could fix it — not a skeleton of
  * grey bars that never fill in.
  *
- * The two identity-bound actions (saving, contributing) go through
- * `useAuthGate()`: pressing one while signed out opens the in-app Oxy dialog
- * OVER the map and leaves everything mounted. Everything else on this screen —
- * the place, its hours, its capabilities, directions — works signed out.
+ * The identity-bound actions (saving, contributing, adding a photo, writing a
+ * review) go through `useAuthGate()`: pressing one while signed out opens the
+ * in-app Oxy dialog OVER the map and leaves everything mounted. Everything else
+ * on this screen — the place, its hours, its capabilities, its photos and
+ * reviews, directions — works signed out.
+ *
+ * Below the facts come what people made of the place: its photos (Oxy files,
+ * drawn from Oxy's CDN), its description, the products slot a later phase
+ * fills from Mercaria, and its reviews with the business's replies — each a
+ * section that is absent when there is nothing in it.
  */
 import { useCallback, useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
 import { placeDisplayName } from '@goway.to/sdk';
 import type { Place } from '@goway.to/sdk';
 import * as WebBrowser from 'expo-web-browser';
+import { Avatar } from '@oxy.so/bloom/avatar';
 import { Button } from '@oxy.so/bloom/button';
 import { Divider } from '@oxy.so/bloom/divider';
 import { Item } from '@oxy.so/bloom/item';
@@ -37,6 +44,9 @@ import { formatAddress, formatWebsite, websiteUrl } from '@/lib/goway/format';
 import { openingSummary, upcomingExceptions, weeklySchedule } from '@/lib/goway/hours';
 
 import { CapabilityList } from './CapabilityList';
+import { PlaceGallery } from './PlaceGallery';
+import { PlaceProducts } from './PlaceProducts';
+import { PlaceReviews } from './PlaceReviews';
 
 /** How GoWay describes its own confidence in a record. Words, never a colour. */
 const VERIFICATION_WORDS: Record<Place['verification']['state'], string | null> = {
@@ -73,11 +83,20 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
   const website = formatWebsite(place.contact?.website);
   const phone = place.contact?.phone;
   const verification = VERIFICATION_WORDS[place.verification.state];
+  // GoWay resolved the reader's language; the place's own wording otherwise.
+  const description = place.localizedDescription?.description ?? place.description;
 
   // "Do we know anything at all?" — the test the incomplete-metadata state
   // hangs off, written once rather than as five nested ternaries below.
   const hasDetail = Boolean(
-    address || phone || website || opening || schedule || exceptions.length > 0 || place.capabilities.length > 0,
+    address ||
+      phone ||
+      website ||
+      opening ||
+      schedule ||
+      exceptions.length > 0 ||
+      place.capabilities.length > 0 ||
+      description,
   );
 
   const openWebsite = useCallback(() => {
@@ -113,7 +132,13 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
         {/* The resolved name for the reader's locale, falling back to the
             place's default. `placeDisplayName` is the SDK's own one-liner, so
             the sheet, the marker pill and the result row cannot disagree. */}
-        <Text className="text-sectionTitle text-foreground">{displayName}</Text>
+        <View className="flex-row items-center gap-space-8">
+          {place.logoFileId ? (
+            // An Oxy file id, resolved by Bloom's image resolver like every other.
+            <Avatar source={place.logoFileId} variant="thumb" name={displayName} size="md" />
+          ) : null}
+          <Text className="flex-1 text-sectionTitle text-foreground">{displayName}</Text>
+        </View>
         <View className="flex-row flex-wrap items-center gap-space-8">
           <Text className="text-bodySmall text-muted-foreground">{category.label}</Text>
           {place.status === 'closed' ? (
@@ -219,6 +244,14 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
       ) : null}
 
       <CapabilityList capabilities={place.capabilities} />
+
+      <PlaceGallery placeId={place.id} placeName={displayName} />
+
+      {description ? <Text className="text-bodySmall text-foreground">{description}</Text> : null}
+
+      <PlaceProducts place={place} />
+
+      <PlaceReviews place={place} />
 
       {!hasDetail ? (
         <View className="gap-space-8">

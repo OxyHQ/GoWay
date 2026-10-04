@@ -30,7 +30,9 @@ import {
   baseLanguageTag,
   categoryDescendants,
   categoryOf,
+  DEFAULT_MEDIA_LIST_LIMIT,
   DEFAULT_PLACE_LIST_LIMIT,
+  DEFAULT_REVIEW_LIST_LIMIT,
   normalizeLanguageTag,
   placeMatchesCapabilityFilter,
 } from '@goway.to/sdk';
@@ -41,6 +43,12 @@ import type {
   GoWayFetchResponse,
   Page,
   Place,
+  PlaceMedia,
+  PlaceMediaInput,
+  PlaceRating,
+  PlaceReview,
+  PlaceReviewInput,
+  PlaceReviewWithStatus,
   SearchResult,
   SearchResults,
   StructuredAddress,
@@ -48,7 +56,13 @@ import type {
 
 import { distanceMeters } from '@/lib/map/geo';
 
-import { FIXTURE_PLACES, FIXTURE_PLACES_BY_ID, FIXTURE_WITHDRAWN_PLACE_IDS } from './fixtures';
+import {
+  FIXTURE_MEDIA,
+  FIXTURE_PLACES,
+  FIXTURE_PLACES_BY_ID,
+  FIXTURE_REVIEWS,
+  FIXTURE_WITHDRAWN_PLACE_IDS,
+} from './fixtures';
 import { fixtureCoverage, fixtureSceneResponse } from './street3dFixtures';
 
 /** Which endpoint families can be made to fail, for the degraded states. */
@@ -93,10 +107,118 @@ export function parseFixtureFaults(spec: string | undefined): FixtureFaults {
   return parsed;
 }
 
+// ── Galleries and reviews ───────────────────────────────────────────────────
+
+/**
+ * The account every fixture write is made as. The fixture layer has no
+ * sessions; a review written locally is "yours", and reads it back as such.
+ */
+export const FIXTURE_REVIEWER = 'fixture-you';
+
+/**
+ * The galleries and reviews, copied from the fixtures so a local write changes
+ * this session's copy and never the dataset. Reset by `createFixtureFetch`.
+ */
+let mediaByPlace = new Map<string, PlaceMedia[]>();
+let reviewsByPlace = new Map<string, PlaceReview[]>();
+
+function resetContent(): void {
+  mediaByPlace = new Map([...FIXTURE_MEDIA].map(([placeId, items]) => [placeId, [...items]]));
+  reviewsByPlace = new Map([...FIXTURE_REVIEWS].map(([placeId, items]) => [placeId, [...items]]));
+}
+
+/** `Place.rating`, DERIVED from the reviews as the API derives it — never stated beside them. */
+function ratingOf(placeId: string): PlaceRating | undefined {
+  const reviews = reviewsByPlace.get(placeId) ?? [];
+  if (reviews.length === 0) return undefined;
+  const sum = reviews.reduce((total, review) => total + review.rating, 0);
+  return { average: Math.round((sum / reviews.length) * 10) / 10, count: reviews.length };
+}
+
+/** The published reviews in the order asked for, newest first within a rating, as the API orders them. */
+function sortedReviews(placeId: string, sort: string | undefined): PlaceReview[] {
+  const newestFirst = (a: PlaceReview, b: PlaceReview) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
+  const reviews = [...(reviewsByPlace.get(placeId) ?? [])];
+  if (sort === 'highest') return reviews.sort((a, b) => b.rating - a.rating || newestFirst(a, b));
+  if (sort === 'lowest') return reviews.sort((a, b) => a.rating - b.rating || newestFirst(a, b));
+  return reviews.sort(newestFirst);
+}
+
+function withStatus(review: PlaceReview): PlaceReviewWithStatus {
+  return { ...review, status: 'published' };
+}
+
+/** `/places/<id>/media` and `/places/<id>/reviews[/mine]`, or `null` for a path that is neither. */
+function content(path: string, params: Map<string, string>, init: GoWayFetchInit): GoWayFetchResponse | null {
+  const match = /^\/places\/([^/]+)\/(media|reviews|reviews\/mine)$/.exec(path);
+  if (!match) return null;
+  const placeId = decodeURIComponent(match[1]!);
+  if (FIXTURE_WITHDRAWN_PLACE_IDS.has(placeId)) return fail('gone', `Place ${placeId} has been withdrawn`);
+  if (!FIXTURE_PLACES_BY_ID.has(placeId)) return fail('not_found', `No place with id ${placeId}`);
+  const body = init.body ? (JSON.parse(init.body) as unknown) : undefined;
+
+  if (match[2] === 'media') {
+    const gallery = mediaByPlace.get(placeId) ?? [];
+    if (init.method === 'GET') {
+      const kinds = list(params, 'kinds');
+      return respond(200, page(kinds.length > 0 ? gallery.filter((item) => kinds.includes(item.kind)) : gallery, params, DEFAULT_MEDIA_LIST_LIMIT));
+    }
+    if (init.method === 'POST') {
+      const input = body as PlaceMediaInput;
+      if (gallery.some((item) => item.fileId === input.fileId)) return fail('conflict', 'That file is already in this gallery.');
+      const item: PlaceMedia = {
+        id: `${placeId}_media_local_${gallery.length}`,
+        placeId,
+        fileId: input.fileId,
+        kind: input.kind,
+        verification: 'community_reported',
+        position: gallery.length,
+        ...(input.caption ? { caption: input.caption } : {}),
+        createdAt: new Date().toISOString(),
+      };
+      mediaByPlace.set(placeId, [...gallery, item]);
+      return respond(201, item);
+    }
+    return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
+  }
+
+  if (match[2] === 'reviews') {
+    if (init.method !== 'GET') return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
+    return respond(200, page(sortedReviews(placeId, params.get('sort')), params, DEFAULT_REVIEW_LIST_LIMIT));
+  }
+
+  const reviews = reviewsByPlace.get(placeId) ?? [];
+  const mine = reviews.find((review) => review.authorOxyUserId === FIXTURE_REVIEWER);
+  if (init.method === 'GET') return mine ? respond(200, withStatus(mine)) : fail('not_found', 'You have not reviewed this place.');
+  if (init.method === 'DELETE') {
+    if (!mine) return fail('not_found', 'You have no review of this place to withdraw.');
+    reviewsByPlace.set(placeId, reviews.filter((review) => review !== mine));
+    return respond(204, null);
+  }
+  if (init.method === 'PUT') {
+    const input = body as PlaceReviewInput;
+    const now = new Date().toISOString();
+    const written: PlaceReview = {
+      id: mine?.id ?? `${placeId}_review_local`,
+      placeId,
+      rating: input.rating,
+      ...(input.title ? { title: input.title } : {}),
+      ...(input.body ? { body: input.body } : {}),
+      ...(input.locale ? { locale: input.locale } : {}),
+      authorOxyUserId: FIXTURE_REVIEWER,
+      createdAt: mine?.createdAt ?? now,
+      ...(mine ? { editedAt: now } : {}),
+    };
+    reviewsByPlace.set(placeId, [...reviews.filter((review) => review !== mine), written]);
+    return respond(mine ? 200 : 201, withStatus(written));
+  }
+  return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
+}
+
 // ── Response plumbing ───────────────────────────────────────────────────────
 
 function respond(status: number, body: unknown): GoWayFetchResponse {
-  const text = JSON.stringify(body);
+  const text = status === 204 ? '' : JSON.stringify(body);
   return {
     status,
     headers: { get: () => null },
@@ -264,11 +386,31 @@ function localize<T extends Place>(place: T, locale: string | undefined, full: b
         names.find((name) => name.language === base) ??
         names.find((name) => baseLanguageTag(name.language) === base);
 
-  const { names: _all, hoursExceptions: _exceptions, ...rest } = place;
+  const {
+    names: _all,
+    hoursExceptions: _exceptions,
+    description: _description,
+    descriptions: _descriptions,
+    ...rest
+  } = place;
   const result = { ...rest } as T;
   if (full && place.names) result.names = place.names;
   if (full && place.hoursExceptions) result.hoursExceptions = place.hoursExceptions;
   if (resolved) result.localizedName = resolved;
+  // Descriptions are a single-place read's, like `names`, and resolve the same way.
+  if (full && place.description) result.description = place.description;
+  if (full && place.descriptions) {
+    result.descriptions = place.descriptions;
+    const description =
+      requested === undefined
+        ? undefined
+        : place.descriptions.find((entry) => entry.language === requested) ??
+          place.descriptions.find((entry) => entry.language === base) ??
+          place.descriptions.find((entry) => baseLanguageTag(entry.language) === base);
+    if (description) result.localizedDescription = description;
+  }
+  const rating = ratingOf(place.id);
+  if (rating) result.rating = rating;
   return result;
 }
 
@@ -553,6 +695,7 @@ function familyOf(path: string): FixtureFault {
  */
 export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetch {
   setFixtureFaults(initialFaults);
+  resetContent();
 
   return async function fixtureFetch(url: string, init: GoWayFetchInit): Promise<GoWayFetchResponse> {
     const { path, params } = splitUrl(url);
@@ -610,10 +753,12 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
       });
     }
 
-    // Every fixture route is a read except directions, which is a POST.
+    const served = content(path, params, init);
+    if (served) return served;
+
+    // Every other fixture route is a read except directions, which is a POST.
     const placeId = /^\/places\/([^/]+)$/.exec(path)?.[1];
-    const served = placeId !== undefined || FIXTURE_ROUTES.has(path);
-    if (!served) return fail('unknown_route', `No route for ${path}`);
+    if (placeId === undefined && !FIXTURE_ROUTES.has(path)) return fail('unknown_route', `No route for ${path}`);
     if (init.method !== (path === '/routes' ? 'POST' : 'GET')) {
       return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
     }

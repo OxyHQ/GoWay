@@ -188,3 +188,51 @@ describe('failures arrive as the contract envelope', () => {
     expect(JSON.parse(await response.text())).toMatchObject({ error: { code: 'unknown_route' } });
   });
 });
+
+describe('galleries and reviews', () => {
+  test("a place's gallery and reviews are pages, and its rating is derived from the reviews", async () => {
+    const client = fixtureClient();
+    const gallery = await client.places.media.list('gw_mercat_boqueria');
+    expect(gallery.items.length).toBeGreaterThan(0);
+    const reviews = await client.places.reviews.list('gw_mercat_boqueria');
+    const place = await client.places.get('gw_mercat_boqueria');
+    const average = reviews.items.reduce((total, review) => total + review.rating, 0) / reviews.items.length;
+    expect(place.rating).toEqual({ average: Math.round(average * 10) / 10, count: reviews.items.length });
+    expect(place.logoFileId).toBe(gallery.items.find((item) => item.kind === 'logo')?.fileId);
+  });
+
+  test('reviews come in the three orders', async () => {
+    const client = fixtureClient();
+    const highest = await client.places.reviews.list('gw_mercat_boqueria', { sort: 'highest' });
+    const ratings = highest.items.map((review) => review.rating);
+    expect(ratings).toEqual([...ratings].sort((a, b) => b - a));
+    const lowest = await client.places.reviews.list('gw_mercat_boqueria', { sort: 'lowest' });
+    expect(lowest.items.map((review) => review.rating)).toEqual([...ratings].reverse());
+  });
+
+  test('a description is a single-place read, resolved for the locale, and absent from lists', async () => {
+    const client = fixtureClient();
+    const place = await client.places.get('gw_mercat_boqueria');
+    expect(place.localizedDescription?.language).toBe('es');
+    expect(place.description).toBeDefined();
+    const listed = (await client.places.inBounds(BARCELONA)).items.find((entry) => entry.id === 'gw_mercat_boqueria');
+    expect(listed?.description).toBeUndefined();
+    expect(listed?.descriptions).toBeUndefined();
+  });
+
+  test('your review is written, read back, counted, and withdrawn', async () => {
+    const client = fixtureClient();
+    expect(await failureOf(client.places.reviews.mine('gw_parc_ciutadella'))).toBeInstanceOf(GoWayNotFoundError);
+    const written = await client.places.reviews.put('gw_parc_ciutadella', { rating: 4, body: 'Lovely on Sundays.' });
+    expect(written.status).toBe('published');
+    expect((await client.places.reviews.mine('gw_parc_ciutadella')).rating).toBe(4);
+    expect((await client.places.get('gw_parc_ciutadella')).rating).toEqual({ average: 4, count: 1 });
+    await client.places.reviews.delete('gw_parc_ciutadella');
+    expect((await client.places.get('gw_parc_ciutadella')).rating).toBeUndefined();
+  });
+
+  test('a withdrawn place answers its gallery with gone', async () => {
+    const [withdrawn] = [...FIXTURE_WITHDRAWN_PLACE_IDS];
+    expect(await failureOf(fixtureClient().places.media.list(withdrawn!))).toBeInstanceOf(GoWayGoneError);
+  });
+});
