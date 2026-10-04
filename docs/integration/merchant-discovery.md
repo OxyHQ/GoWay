@@ -40,12 +40,13 @@ documentation, so, as of this writing (API paths below are relative to
 | --- | --- |
 | `@goway.to/sdk` client, types, errors, links | Built (`packages/sdk`). This guide is written against **`0.3.0`, which is not on npm yet**; npm still carries `0.1.0`, which predates pages, the claim and capability-write methods and the typed `gone` error. See the [changelog](../../packages/sdk/CHANGELOG.md). |
 | The contracts | Built. `packages/contracts` (`@goway/contracts`, private, bundled into the SDK) holds the zod schema of every request, response and error — the same schemas the API validates with and the SDK parses with. Published as OpenAPI at `https://api.goway.to/api/v1/openapi.json`. |
-| `GET /places/nearby`, `/places/bounds`, `/places/{placeId}` | Built. Lists are pages, `{ items, nextCursor }`. A place moderation removed answers `410`. |
+| `GET /places/nearby`, `/places/bounds`, `/places/{placeId}` | Built. Lists are pages, `{ items, nextCursor }`. A place moderation removed answers `410`; a merged one answers `410` with `details.mergedInto`. |
 | `POST /places`, `PATCH /places/{placeId}` with server-derived verification | Built. |
 | `PUT` / `DELETE /places/{placeId}/capabilities/{key}` | Built. One capability per request; the tier is derived from the caller. |
-| `POST` / `GET /places/{placeId}/claims`, `GET /claims` | Built. A claim is always created `pending`. |
-| Approving or rejecting a claim | **No endpoint.** Approval is an operator act today; a moderation surface is planned for the next phase. Until a claim is approved, its holder's assertions are `community_reported`. |
-| `oxy_verified` capabilities | Represented in the contract and readable; setting one is an Oxy moderation act with no API path in or out. |
+| `POST` / `GET /places/{placeId}/claims`, `GET /claims` | Built. A claim is always created `pending`, usually for the business's Oxy organization (`oxyAccountId`). |
+| Approving or rejecting a claim | Built, for GoWay operators only: `POST /moderation/claims/{claimId}/decision`. Until a claim is approved, its holder's assertions are `community_reported`. |
+| `oxy_verified` capabilities | Built, for GoWay operators only: `PUT` / `DELETE /moderation/places/{placeId}/capabilities/{key}`. No public request can produce or remove the tier. |
+| `GET /places/{placeId}/revisions`, `POST /places/{placeId}/reports` | Built. The public history says what changed and when, never who; reports go to the moderation queue. |
 | Search, geocoding, directions | Built. |
 | A deployed public API at `https://api.goway.to` | Deployed; `goway.to` itself runs against it. What is and is not populated yet is in the [README](../../README.md#deploying-the-web-app). |
 | Map rendering primitives inside the SDK | **Not yet.** The SDK is headless; the map seam lives in `packages/frontend/components/map`. See [Render the merchants](#render-the-merchants). |
@@ -586,18 +587,21 @@ export async function savedMerchant(placeId: string): Promise<Place | null> {
   `limit` above the contract maximum, an unknown query key. Its message names
   the field (`query.latitude: …`) and never quotes the value, which may be a
   user's location. It is a bug in your call, not a server condition.
-- `GoWayGoneError` (`gone`, 410) means moderation removed the place: it is
-  absent from every list and answers `410` by id. With `GoWayNotFoundError` it
-  is the signal that justifies dropping a persisted place id.
+- `GoWayGoneError` (`gone`, 410) means the place is retired: moderation removed
+  it, or merged it into another place. Either way it is absent from every list
+  and answers `410` by id. When `error.mergedInto` is set, replace the persisted
+  id with it; when it is `null`, the place was removed, and with
+  `GoWayNotFoundError` that is the signal that justifies dropping the id.
 - `GoWayUnknownRouteError` (`unknown_route`, 404) is **not** a missing place:
   the API has no such route — the SDK is newer than the deployment, or
   `apiBaseUrl` points somewhere else. Never drop a saved id on the strength of
   it.
 - `GoWayForbiddenError` (403) on a write means the place is claimed and the
-  caller holds no approved claim on it (a `PATCH`), or the caller may not
-  withdraw that assertion (a capability `DELETE`).
-- `GoWayUnavailableError` (`provider_unavailable`) is retryable; the SDK never
-  retries by itself, so the backoff policy stays yours.
+  caller does not act for an approved claim on it (a `PATCH`), or the caller may
+  not withdraw that assertion (a capability `DELETE`).
+- `GoWayUnavailableError` (`provider_unavailable`, or `service_unavailable` when
+  Oxy could not confirm who belongs to the claiming organization) is retryable;
+  the SDK never retries by itself, so the backoff policy stays yours.
 - Cancel in-flight discovery when the user moves on:
   `goway.places.nearby(query, { signal: controller.signal })` rejects with
   `GoWayAbortError`.
@@ -613,13 +617,14 @@ label its own assertion as verified.
 
 ### The three authoritative paths
 
-1. **Verified business self-assertion.** An Oxy account with an **approved
+1. **Verified business self-assertion.** Somebody who acts for an **approved
    claim** on the place (`PlaceClaim`, roles `owner` / `operator` / `manager` /
-   `brand`) asserts the capability. The server records it as
-   `business_asserted`.
-2. **Oxy/FairCoin verification.** A verification act by Oxy or FairCoin records
-   `oxy_verified`. No client can ask for this tier; it is a moderation
-   capability, and there is no public endpoint for it.
+   `brand`) asserts the capability: the claiming Oxy account itself, a session
+   switched into that organization, or a member Oxy reports as its `owner`,
+   `admin` or `editor`. The server records it as `business_asserted`.
+2. **Oxy/FairCoin verification.** A GoWay operator records `oxy_verified`
+   through the moderation surface. No client can ask for this tier; the routes
+   that write it refuse everybody off GoWay's operator allow-list.
 3. **Community reports pending verification.** Any signed-in Oxy account can
    report acceptance. It is recorded as `community_reported` and it stays that
    way until something stronger arrives. It does not overwrite or demote a
@@ -631,8 +636,14 @@ the messenger.
 
 ### Becoming the business: claims
 
-A business earns path 1 by claiming the place. All three claim calls need a
-signed-in session:
+A business is an **Oxy organization**, and it earns path 1 by claiming the
+place in the organization's name. GoWay keeps no member list: it asks Oxy, with
+the caller's own session, who may act for the organization. Filing a claim for
+it needs the caller to be its `owner` or `admin`; running the claimed place —
+editing it, asserting at the business tier, reading its claims — is open to its
+`owner`, `admin` and `editor`, and to any session switched into the
+organization. A chain is one organization claiming each location in the
+`brand` role. All three claim calls need a signed-in session:
 
 ```ts
 import { GoWayConflictError, iterateGoWayPages } from '@goway.to/sdk';
@@ -640,29 +651,35 @@ import { GoWayConflictError, iterateGoWayPages } from '@goway.to/sdk';
 // Ask to be recognised as running the place. Always created `pending`:
 // `state` is not a field the caller can send.
 try {
-  const claim = await goway.places.claims.create(placeId, { role: 'owner' });
+  const claim = await goway.places.claims.create(placeId, { role: 'owner', oxyAccountId: organizationId });
   show(`Claim ${claim.id} is ${claim.state}`);
 } catch (error) {
-  // 409: this account already holds a claim in that role on this place.
+  // 409: the organization already holds a claim in that role on this place.
+  // 403: Oxy says you do not own or administer that organization.
   if (error instanceof GoWayConflictError) return show('Your claim is already on file');
   throw error;
 }
 
-// Follow it: every claim this account holds, on every place, in every state.
-for await (const claim of iterateGoWayPages((cursor) => goway.claims.mine({ cursor }))) {
+// Follow it: every claim the organization holds, on every place, in every state.
+const byOrganization = (cursor?: string) => goway.claims.list({ oxyAccountId: organizationId, cursor });
+for await (const claim of iterateGoWayPages(byOrganization)) {
   if (claim.state === 'approved') show(`You can now speak for ${claim.placeId}`);
 }
 
-// The claims on one place — visible only to an account that holds one there,
-// pending included. Anyone else gets GoWayForbiddenError rather than an empty list.
+// The claims on one place — visible only to somebody who acts for an account
+// holding one there, pending included. Anyone else gets GoWayForbiddenError
+// rather than an empty list.
 const { items: competing } = await goway.places.claims.list(placeId);
 ```
 
-There is **no public approve or reject call**. Approval is an operator act
-today, and a moderation surface is the next phase's work; nothing a client sends
-can move a claim out of `pending`. Until it is approved, the claimant is a
-community reporter like everyone else — their assertions land as
-`community_reported`, and their UI must say so.
+There is **no public approve or reject call**. A GoWay operator decides every
+claim through the moderation surface, and nothing a client sends can move a
+claim out of `pending`. Until it is approved, the claimant is a community
+reporter like everyone else — their assertions land as `community_reported`,
+and their UI must say so. Every write a business makes is recorded in the
+place's history (`goway.places.revisions`), which publishes what changed and
+when and never who. The design is in
+[`BUSINESS_OWNERSHIP.md`](../BUSINESS_OWNERSHIP.md).
 
 ### What a client actually writes
 
@@ -713,7 +730,7 @@ fields, under the stricter `PATCH` rule below.
   not a convention — that stops a community report from arriving labelled
   `oxy_verified`.
 - **An unclaimed place is community-editable; a claimed place is not.** Once an
-  approved claim exists, only an account holding one may `PATCH` it; everyone
+  approved claim exists, only somebody acting for one may `PATCH` it; everyone
   else gets `403` (`GoWayForbiddenError`) rather than a silent no-op.
 - **A capability assertion stays open on a claimed place.** A passer-by's
   `community_reported` row lands *beside* the business's `business_asserted`
@@ -721,7 +738,8 @@ fields, under the stricter `PATCH` rule below.
   sees a FairCoin sticker in a claimed shop can still say so.
 - **Only an approved claimant may withdraw, and only their own tier.** A
   capability `DELETE` from anyone else is `403`; one with no business-asserted
-  row to remove is `404`. `oxy_verified` has no API path in or out.
+  row to remove is `404`. `oxy_verified` has no public path in or out; only
+  GoWay's moderation surface writes or withdraws it.
 - **A new place's capabilities are `community_reported`, whatever the body
   says.** A place that did not exist a moment ago can carry no approved claim,
   so its creator is a community reporter by construction. Claiming it is a

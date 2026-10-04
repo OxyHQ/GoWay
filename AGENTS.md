@@ -40,6 +40,9 @@ Always **bun**; commit `bun.lock` with its `package.json`.
 - Every GoWay-enriched place gets a stable GoWay Place ID independent of provider IDs; deep links use it (`https://goway.to/place/<placeId>`). Preserve source provenance and never destructively overwrite a source fact.
 - The OpenStreetMap import writes only `openstreetmap`-sourced rows, never deletes a place, and changes a `places` column only while it still holds what that source last said.
 - `places.name` is the DEFAULT (local-language) name and never moves with a locale; every tagged name is a `places_names` row keyed `(place, language, source)`, resolved server-side and rendered via `placeDisplayName`. Design note: `docs/PLACE_NAMES.md`.
+- A business is an Oxy organization: a claim stores its `oxyAccountId` and Oxy decides who acts for it (`places/claimAuthority`, asked with the caller's bearer). Never keep a member list or brand id; fail closed with 503 when Oxy cannot answer. Design note: `docs/BUSINESS_OWNERSHIP.md`.
+- Every place write records exactly one `place_revisions` row through `recordRevision`, inside the write's transaction. The public history never names an account or person; classify a new action in `PLACE_REVISION_VISIBILITY`.
+- Claim decisions, `oxy_verified`, removal and merges are moderation acts behind `MODERATION_OPERATOR_OXY_USER_IDS` (matched on the person); no public route may produce them.
 
 ## Privacy
 
