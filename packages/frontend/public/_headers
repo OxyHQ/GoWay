@@ -132,6 +132,13 @@
   Cross-Origin-Resource-Policy: cross-origin
   Cache-Control: public, max-age=3600, must-revalidate
 
+# Street 3D scene assets (splats, posters) are NOT served from here: they live
+# on the scene CDN, configured at build time by EXPO_PUBLIC_STREET3D_ASSET_ORIGIN,
+# and that origin must answer them with `Access-Control-Allow-Origin` (splats
+# are fetched). No CSP is set below; if one is ever added it must allow that
+# origin in `connect-src` and `img-src`, and `blob:` in `worker-src` (the splat
+# decoder runs in a blob worker). See docs/STREET3D_VIEWER.md.
+
 # Every response. See the note at the top of this file — these two are the
 # headers Pages used to add for free and Workers does not.
 #

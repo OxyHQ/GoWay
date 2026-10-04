@@ -1,0 +1,89 @@
+# Street 3D viewer
+
+Part of [#14](https://github.com/OxyHQ/GoWay/issues/14) and
+[#15](https://github.com/OxyHQ/GoWay/issues/15): how published scenes reach a
+user on the map and in the viewer, and what contributors are told. The
+reconstruction side is in [`STREET3D_PIPELINE.md`](./STREET3D_PIPELINE.md); the
+public contract is `packages/shared-types/src/street3d.ts`.
+
+## Layers
+
+| Piece | Where | Owns |
+| --- | --- | --- |
+| API seam | `features/street3d/api.ts` | `coverage`, `scene`, `report`. Uses `client.street3d` from `@goway.to/sdk` when the installed SDK has it, otherwise performs the same requests with the SDK's error classes. Delete the fallback once the SDK release ships. |
+| Map layer | `features/street3d/useStreet3dLayer.tsx`, `coverageStyle.ts` | Footprints (`fill` + `line`), area dots (`circle`, one overlay per state), a poster chip per scene, the "contribute here" hint. |
+| Viewer seam | `components/street3d/` | Provider-neutral `SceneViewer`. Feature code never imports `three` or `@sparkjsdev/spark`. |
+| Web engine | `components/street3d/engine/sparkEngine.ts` | three.js + Spark, loaded by dynamic `import()` into its own chunk (~3.5 MB); nobody who never opens a scene downloads it. |
+| Native | `components/street3d/SceneViewer.native.tsx` | A WebView on `<EXPO_PUBLIC_WEB_ORIGIN>/street3d/<id>?embed=1`. |
+| Screen | `features/street3d/Street3dScreen.tsx`, `app/street3d/[sceneId].tsx` | Chrome, poster, credits, report, place labels, the 2D ⇄ 3D handoff. |
+| Contribution status | `features/contribute/status.ts`, `ContributionStatusCard.tsx` | The truthful per-capture state, source expiry, and the at-risk hint. |
+
+## Frames
+
+Scene space is metric ENU around `worldTransform.anchor`: x east, y north, z up,
+ground near z = 0; `enuFromScene` is the identity for current worker output.
+Spark decodes `.spz` values as stored. The viewer therefore does **not** rotate
+the mesh into three.js's Y-up: it sets the camera's up to `sceneUp(enuFromScene)`
+and keeps `initialView` and labels in scene coordinates. Any other similarity is
+handled by the same code; a transform that is not a similarity yields no labels
+rather than wrong ones.
+
+Places become labels by WGS 84 → ECEF → ENU around the anchor
+(`lib/street3d/geodesy.ts`), then the inverse of `enuFromScene`
+(`lib/street3d/placeLabels.ts`). Labels float a few metres above the anchor's
+altitude (places have none), are capped (nearest first), and are hidden when
+behind the camera, out of frame or too far. They are DOM elements over the
+canvas, never splat pixels.
+
+## Loading and degrading
+
+`deviceProfile.ts` judges the device before the engine is fetched:
+
+- no WebGL2 → `unsupported`: no engine download, the poster and a sentence;
+- low memory, few cores, Save-Data, a slow connection, a small max texture or a
+  splat too large for reported memory → `preview`: the light splat only, pixel
+  ratio 1;
+- otherwise `full`: `splat_preview` first, then `splat` streamed in and swapped,
+  pixel ratio capped at 1.5.
+
+The engine stops drawing in hidden tabs and on unmount frees both meshes, the
+Spark renderer and the WebGL context. Splats are fetched without credentials.
+A development build shows fps, bytes and load timings behind the `perf` toggle.
+
+## Configuration
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `EXPO_PUBLIC_STREET3D_ENABLED` | off | Coverage layer and viewer. A 404 (no GoWay body) from coverage switches the layer off for the session; 503 hides it until the next viewport. |
+| `EXPO_PUBLIC_STREET3D_ASSET_ORIGIN` | unset | When set, the only origin assets may come from. Otherwise any `https:` URL; `http:` only on loopback or in a development build. |
+| `EXPO_PUBLIC_WEB_ORIGIN` | `https://goway.to` | What the native WebView loads. |
+| `EXPO_PUBLIC_STREET3D_FIXTURE_*` | unset | Fixture splat/poster URLs, anchor, opening view and credit (see `.env.example`). |
+
+`public/_headers` sets no CSP. If one is added, it must allow the asset origin
+in `connect-src` and `img-src`, and `blob:` in `worker-src`. The scene CDN must
+answer with `Access-Control-Allow-Origin`.
+
+No sample splat is committed or linked by default: GoWay ships only assets whose
+licence has been verified. Point the fixture variables at a `.spz` you are
+entitled to use, served with CORS.
+
+## Native strategy
+
+The WebView is the initial native renderer on purpose: #14 Phase F asks for the
+final native renderer to be chosen from device benchmarks. The WebView loads only
+the configured web origin, has geolocation off, and speaks a validated two-message
+protocol (`bridge.ts`): a place tap (→ native `router.push('/place/<id>')`) and
+the viewer phase. Report and contribute are native controls that use the app's
+own Oxy session; nothing identity-bound runs in the WebView.
+
+## Privacy and honesty
+
+- Viewing is public. Reporting and "contribute here" are gated by `useAuthGate`
+  at the moment they are asked for.
+- Nothing requests location. The at-risk lookup on the contribution screen sends
+  the capture's own anchor (the contributor's data) as a small box and keeps the
+  answer in memory only.
+- Expiry copy is always about temporary source media; a published scene survives
+  its inputs and no string says otherwise (`lib/messages/__tests__`).
+- An `approximate` scene is drawn muted and thinner on the map and labelled as
+  approximate in the viewer.
