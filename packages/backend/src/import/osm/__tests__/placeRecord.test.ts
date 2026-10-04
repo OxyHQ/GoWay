@@ -70,16 +70,17 @@ describe('toImportedPlace', () => {
     const place = toImportedPlace('way', 188_938_001, 41.385_262, 2.180_75, MUSEU_PICASSO);
     expect(place).not.toBeNull();
     expect(place?.sourceId).toBe('way/188938001');
-    expect(place?.name).toBe('Museu Picasso');
-    expect(place?.categories).toEqual(['museum', 'culture']);
-    expect(place?.addressStreet).toBe('Carrer de Montcada');
-    expect(place?.addressHouseNumber).toBe('15-23');
-    expect(place?.addressCity).toBe('Barcelona');
-    expect(place?.addressPostalCode).toBe('08003');
+    expect(place?.columns.name).toBe('Museu Picasso');
+    expect(place?.columns.categories).toEqual(['culture.museum']);
+    expect(place?.columns.addressStreet).toBe('Carrer de Montcada');
+    expect(place?.columns.addressHouseNumber).toBe('15-23');
+    expect(place?.columns.addressCity).toBe('Barcelona');
+    expect(place?.columns.addressPostalCode).toBe('08003');
     // `addr:country` is lower-case in the wild and the column's CHECK is not.
-    expect(place?.addressCountryCode).toBe('ES');
-    expect(place?.contactWebsite).toBe('https://www.museupicasso.bcn.cat');
-    expect(place?.contactPhone).toBe('+34 932 56 30 00');
+    expect(place?.columns.addressCountryCode).toBe('ES');
+    expect(place?.columns.contactWebsite).toBe('https://www.museupicasso.bcn.cat');
+    expect(place?.columns.contactPhone).toBe('+34 932 56 30 00');
+    expect(place?.columns.timezone).toBe('Europe/Madrid');
     expect(place?.names).toHaveLength(3);
   });
 
@@ -100,7 +101,7 @@ describe('toImportedPlace', () => {
 
   test('rejects an implausibly long country code rather than failing the CHECK later', () => {
     const place = toImportedPlace('node', 1, 41, 2, tags({ amenity: 'cafe', name: 'X', 'addr:country': 'Spain' }));
-    expect(place?.addressCountryCode).toBeNull();
+    expect(place?.columns.addressCountryCode).toBeNull();
   });
 });
 
@@ -110,15 +111,84 @@ describe('roundCoordinate and sourceDataOf', () => {
     expect(roundCoordinate(roundCoordinate(2.1807501))).toBe(roundCoordinate(2.1807501));
   });
 
-  test('records exactly the normalized values that went into the columns', () => {
-    const place = toImportedPlace('node', 7, 41.1, 2.2, tags({ amenity: 'cafe', name: 'Bar Pepe' }));
+  test('records every raw tag and exactly the normalized values that went into the columns', () => {
+    const place = toImportedPlace(
+      'node',
+      7,
+      41.1,
+      2.2,
+      tags({ amenity: 'cafe', name: 'Bar Pepe', 'payment:cash': 'yes', fixme: 'check hours' }),
+    );
     expect(place).not.toBeNull();
     const stated = sourceDataOf(place!);
-    expect(stated.name).toBe('Bar Pepe');
-    expect(stated.latitude).toBe(place!.latitude);
-    expect(stated.categories).toEqual(place!.categories);
-    // Not the raw tags: what is stored is what the comparison on the next run
-    // needs, in the form the column holds it.
-    expect(stated).not.toHaveProperty('amenity');
+    expect(stated.v).toBe(2);
+    // EVERY tag, including the ones no mapping reads today.
+    expect(stated.tags).toEqual({ amenity: 'cafe', name: 'Bar Pepe', 'payment:cash': 'yes', fixme: 'check hours' });
+    expect(stated.normalized.name).toBe('Bar Pepe');
+    expect(stated.normalized.latitude).toBe(place!.columns.latitude);
+    expect(stated.normalized.categories).toEqual(place!.columns.categories);
+    expect(stated.normalized.capabilities).toEqual({ 'payments.cash': true });
+  });
+});
+
+describe('what the tags say beyond the name and the address', () => {
+  test('reads opening hours, and keeps the raw expression when it cannot', () => {
+    const readable = toImportedPlace('node', 1, 41.38, 2.17, tags({ amenity: 'cafe', name: 'X', opening_hours: 'Mo-Fr 08:00-20:00; Sa 09:00-14:00' }));
+    expect(readable?.columns.openingHours?.intervals).toHaveLength(6);
+    expect(readable?.columns.openingHours?.raw).toBe('Mo-Fr 08:00-20:00; Sa 09:00-14:00');
+
+    const seasonal = toImportedPlace('node', 1, 41.38, 2.17, tags({ amenity: 'cafe', name: 'X', opening_hours: 'Jun-Sep Mo-Su 10:00-22:00' }));
+    expect(seasonal?.columns.openingHours).toEqual({ intervals: [], raw: 'Jun-Sep Mo-Su 10:00-22:00' });
+  });
+
+  test('turns accessibility, payment, amenity, food, brand and social tags into typed capabilities', () => {
+    const place = toImportedPlace(
+      'node',
+      1,
+      41.38,
+      2.17,
+      tags({
+        amenity: 'restaurant',
+        name: 'Can Tapes',
+        wheelchair: 'limited',
+        'toilets:wheelchair': 'no',
+        'payment:cash': 'yes',
+        'payment:credit_cards': 'yes',
+        'payment:contactless': 'no',
+        internet_access: 'wlan',
+        outdoor_seating: 'yes',
+        takeaway: 'only',
+        reservation: 'recommended',
+        cuisine: 'tapas;Spanish;unheard_of',
+        'diet:vegan': 'yes',
+        'diet:gluten_free': 'only',
+        'diet:halal': 'no',
+        'brand:wikidata': 'Q123',
+        'contact:instagram': '@cantapes',
+        'contact:whatsapp': '+34 600 11 22 33',
+      }),
+    );
+    expect(Object.fromEntries(place!.capabilities.map((capability) => [capability.key, capability.value]))).toEqual({
+      'accessibility.wheelchair': 'limited',
+      'accessibility.toilets_wheelchair': false,
+      'payments.cash': true,
+      'payments.cards': true,
+      'payments.contactless': false,
+      'amenities.wifi': true,
+      'amenities.outdoor_seating': true,
+      'amenities.takeaway': true,
+      'amenities.reservations': true,
+      // Registry order, unknown values dropped, case folded.
+      'food.cuisine': ['spanish', 'tapas'],
+      'food.diet': ['vegan', 'gluten_free'],
+      'brand.wikidata': 'Q123',
+      'social.instagram': 'https://www.instagram.com/cantapes',
+      'social.whatsapp': 'https://wa.me/34600112233',
+    });
+  });
+
+  test('says nothing about a capability the tags say nothing about', () => {
+    const place = toImportedPlace('node', 1, 41.38, 2.17, tags({ amenity: 'cafe', name: 'X', wheelchair: 'perhaps' }));
+    expect(place?.capabilities).toEqual([]);
   });
 });

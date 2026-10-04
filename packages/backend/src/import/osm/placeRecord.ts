@@ -33,7 +33,10 @@
  */
 
 import { normalizeLanguageTag } from '@goway/contracts';
-import { classifyPoi, poiCategories } from './poiTags';
+import type { PlaceSourceData } from '../../db/schema';
+import { osmCapabilities, type ImportedCapability } from './capabilityTags';
+import { cleanText, readColumns, type ImportedColumns } from './fields';
+import { classifyPoi } from './poiTags';
 
 /** Which OSM element a place came from. Part of the source id; never inferred. */
 export type OsmElementType = 'node' | 'way' | 'relation';
@@ -48,33 +51,23 @@ export interface ImportedName {
 /**
  * Everything one element contributes, in the shape the write path consumes.
  *
- * `sourceData` is the SAME object, minus the fields that are redundant with it
- * — it is what `places_sources.source_data` stores, and what the next run
- * compares against to tell a GoWay correction from an unchanged source fact.
- * Keeping it derived from this record rather than assembled separately is what
- * stops the two from disagreeing.
+ * `columns` is every `places` column the import owns, read by the one field
+ * table in `fields.ts`; `tags` is everything the element said, raw. Both go
+ * into `places_sources.source_data` ({@link sourceDataOf}), which is what the
+ * next run compares against to tell a GoWay correction from an unchanged
+ * source fact.
  */
 export interface ImportedPlace {
   osmType: OsmElementType;
   osmId: number;
   /** `node/26947722`, `way/188938001`, `relation/6288735`. */
   sourceId: string;
-  name: string;
+  /** Every tag on the element, verbatim. */
+  tags: Record<string, string>;
+  columns: ImportedColumns;
   names: ImportedName[];
-  latitude: number;
-  longitude: number;
-  /** Most specific first — see `poiCategories`. */
-  categories: string[];
-  addressHouseNumber: string | null;
-  addressStreet: string | null;
-  addressLocality: string | null;
-  addressCity: string | null;
-  addressRegion: string | null;
-  addressPostalCode: string | null;
-  addressCountryCode: string | null;
-  contactPhone: string | null;
-  contactEmail: string | null;
-  contactWebsite: string | null;
+  /** Written as `external_source` assertions tied to this element's source row. */
+  capabilities: ImportedCapability[];
 }
 
 /** `<type>/<id>` — the identifier `places_sources.source_id` carries for `openstreetmap`. */
@@ -93,34 +86,6 @@ export function osmSourceId(type: OsmElementType, id: number): string {
  */
 export function roundCoordinate(value: number): number {
   return Math.round(value * 1e7) / 1e7;
-}
-
-/** The longest value this importer will store in a text column it does not control. */
-const MAX_TEXT_LENGTH = 500;
-
-/** Trim, collapse runs of whitespace, and refuse anything empty or absurd. */
-function cleanText(value: string | undefined): string | null {
-  if (value === undefined) return null;
-  const collapsed = value.replace(/\s+/g, ' ').trim();
-  if (collapsed.length === 0 || collapsed.length > MAX_TEXT_LENGTH) return null;
-  return collapsed;
-}
-
-/** The first of several tags that carries a usable value. */
-function firstOf(tags: ReadonlyMap<string, string>, ...keys: string[]): string | null {
-  for (const key of keys) {
-    const value = cleanText(tags.get(key));
-    if (value !== null) return value;
-  }
-  return null;
-}
-
-/** ISO 3166-1 alpha-2, uppercase, or nothing — the shape `places_country_code_check` demands. */
-function countryCode(tags: ReadonlyMap<string, string>): string | null {
-  const raw = firstOf(tags, 'addr:country');
-  if (raw === null) return null;
-  const upper = raw.toUpperCase();
-  return /^[A-Z]{2}$/.test(upper) ? upper : null;
 }
 
 /**
@@ -151,13 +116,25 @@ export function importedNames(tags: ReadonlyMap<string, string>, defaultName: st
 }
 
 /**
+ * Whether these tags describe a place at all: a name, and a qualifying tag the
+ * basemap draws. The cheap test the extract runs on a way or relation before
+ * it pays to position one.
+ */
+export function isImportablePoi(tags: ReadonlyMap<string, string>): boolean {
+  return cleanText(tags.get('name')) !== null && classifyPoi(tags) !== null;
+}
+
+/**
  * The place an element describes, or `null` if it does not describe one.
  *
- * `null` covers three cases a caller never needs to tell apart: no qualifying
- * tag, a class the basemap draws nowhere (see `poiTags`), and no name. The
- * last is not a judgement about importance — `places.name` is NOT NULL, every
- * `poi-*` layer filter in the map style carries `['has', 'name']`, and an
- * unnamed bench is not a place.
+ * `null` covers four cases a caller never needs to tell apart: no qualifying
+ * tag, a class the basemap draws nowhere (see `poiTags`), no name, and a
+ * position outside the ordinate ranges. The name rule is not a judgement about
+ * importance — `places.name` is NOT NULL, every `poi-*` layer filter in the
+ * map style carries `['has', 'name']`, and an unnamed bench is not a place.
+ *
+ * A way or relation is built only once its position is known, because the
+ * timezone is read from the position like every other derived column.
  */
 export function toImportedPlace(
   type: OsmElementType,
@@ -166,63 +143,43 @@ export function toImportedPlace(
   longitude: number,
   tags: ReadonlyMap<string, string>,
 ): ImportedPlace | null {
-  const name = cleanText(tags.get('name'));
-  if (name === null) return null;
-
-  const kind = classifyPoi(tags);
-  if (kind === null) return null;
-
+  if (!isImportablePoi(tags)) return null;
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
   if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
 
+  const columns = readColumns({
+    tags,
+    latitude: roundCoordinate(latitude),
+    longitude: roundCoordinate(longitude),
+  });
   return {
     osmType: type,
     osmId: id,
     sourceId: osmSourceId(type, id),
-    name,
-    names: importedNames(tags, name),
-    latitude: roundCoordinate(latitude),
-    longitude: roundCoordinate(longitude),
-    categories: poiCategories(kind),
-    addressHouseNumber: firstOf(tags, 'addr:housenumber'),
-    addressStreet: firstOf(tags, 'addr:street'),
-    addressLocality: firstOf(tags, 'addr:suburb', 'addr:neighbourhood', 'addr:district'),
-    addressCity: firstOf(tags, 'addr:city', 'addr:town', 'addr:village'),
-    addressRegion: firstOf(tags, 'addr:province', 'addr:state'),
-    addressPostalCode: firstOf(tags, 'addr:postcode'),
-    addressCountryCode: countryCode(tags),
-    contactPhone: firstOf(tags, 'contact:phone', 'phone'),
-    contactEmail: firstOf(tags, 'contact:email', 'email'),
-    contactWebsite: firstOf(tags, 'contact:website', 'website', 'url'),
+    tags: Object.fromEntries(tags),
+    columns,
+    names: importedNames(tags, columns.name),
+    capabilities: osmCapabilities(tags),
   };
 }
 
 /**
- * What `places_sources.source_data` records: the facts this source stated, in
- * the normalized form GoWay derived them in.
+ * What `places_sources.source_data` records — version 2.
  *
- * Not the raw tags. The column's job is to let the NEXT run tell "nobody has
- * touched this since we wrote it" from "somebody corrected it", and that
- * question is asked about the normalized value that actually went into the
- * column — so this is that value, and `mergePlaceColumns` compares against it
- * directly. Storing the raw tags instead would leave every comparison to
- * re-derive the normalization and to drift the moment the derivation changes.
+ * `tags` is the whole element, so a mapping added later can be applied to what
+ * is stored. `normalized` is the value each owned column was given, in the form
+ * it went in: `mergePlaceColumns` compares the column against it directly, and
+ * re-deriving it from the raw tags on the next run would drift the moment the
+ * derivation changed. The capabilities the element asserted ride along, keyed,
+ * for the same reconciliation.
  */
-export function sourceDataOf(place: ImportedPlace): Record<string, unknown> {
+export function sourceDataOf(place: ImportedPlace): PlaceSourceData {
   return {
-    name: place.name,
-    latitude: place.latitude,
-    longitude: place.longitude,
-    categories: place.categories,
-    addressHouseNumber: place.addressHouseNumber,
-    addressStreet: place.addressStreet,
-    addressLocality: place.addressLocality,
-    addressCity: place.addressCity,
-    addressRegion: place.addressRegion,
-    addressPostalCode: place.addressPostalCode,
-    addressCountryCode: place.addressCountryCode,
-    contactPhone: place.contactPhone,
-    contactEmail: place.contactEmail,
-    contactWebsite: place.contactWebsite,
+    v: 2,
+    tags: place.tags,
+    normalized: {
+      ...place.columns,
+      capabilities: Object.fromEntries(place.capabilities.map((capability) => [capability.key, capability.value])),
+    },
   };
 }

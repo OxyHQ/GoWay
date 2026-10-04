@@ -74,7 +74,7 @@ function liveNames(tags: Record<string, string>): Set<string> {
 
 /** Every name GoWay holds for this place, lower-cased. */
 function heldNames(place: ImportedPlace): string[] {
-  return [place.name, ...place.names.map((name) => name.name)].map((name) => name.toLowerCase());
+  return [place.columns.name, ...place.names.map((name) => name.name)].map((name) => name.toLowerCase());
 }
 
 /**
@@ -93,14 +93,14 @@ export async function verifyProvenance(
   for (const place of sample) {
     const tags = await fetchElement(place.sourceId);
     if (tags === null) {
-      checked.push({ sourceId: place.sourceId, expected: place.name, actual: null, status: 'missing' });
+      checked.push({ sourceId: place.sourceId, expected: place.columns.name, actual: null, status: 'missing' });
       continue;
     }
     const live = liveNames(tags);
     const matched = heldNames(place).some((name) => live.has(name));
     checked.push({
       sourceId: place.sourceId,
-      expected: place.name,
+      expected: place.columns.name,
       actual: tags.name ?? null,
       status: matched ? 'match' : 'name-differs',
     });
