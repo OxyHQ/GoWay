@@ -31,7 +31,7 @@
 import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import express, { type RequestHandler } from 'express';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type {
@@ -41,6 +41,9 @@ import type {
   CaptureUploadPolicy,
   CaptureUploadTicket,
 } from '@goway/shared-types';
+import { and, eq } from 'drizzle-orm';
+import { captureAssets, captureMediaObjects } from '../../db/schema';
+import { sweepExpiredCaptures } from '../../capture/cleanup';
 import { summarizeCaptureStorage } from '../../db/capture/captureRepository';
 import { getDb } from '../../db/postgres';
 import { SUITE_SETUP_TIMEOUT_MS, createSuiteDatabase, destroySuiteDatabase, type SuiteDatabase } from '../../db/__tests__/testDatabase';
@@ -66,6 +69,7 @@ class FakeObjectStore implements CaptureObjectStore {
   readonly targets: UploadTargetRequest[] = [];
   readonly stored = new Map<string, number>();
   readonly deleted: string[] = [];
+  readonly checksumOverrides = new Map<string, string>();
 
   async createUploadTarget(request: UploadTargetRequest) {
     this.targets.push(request);
@@ -78,7 +82,8 @@ class FakeObjectStore implements CaptureObjectStore {
 
   async statObject(key: string) {
     const byteSize = this.stored.get(key);
-    return byteSize === undefined ? null : { byteSize };
+    const target = this.targets.find((entry) => entry.key === key);
+    return byteSize === undefined ? null : { byteSize, checksumSha256: this.checksumOverrides.get(key) ?? target?.contentHash, contentType: target?.contentType };
   }
 
   async createReadUrl(key: string) {
@@ -629,5 +634,73 @@ describe('a deployment with no object store', () => {
     } finally {
       await new Promise<void>((resolve) => unconfigured.close(() => resolve()));
     }
+  });
+});
+
+describe('safe retries and contributor withdrawal', () => {
+  it('retries concurrently as one asset, rejects a changed request, and lists accurate owned counts', async () => {
+    const user = randomUUID();
+    const session = await openSession(user);
+    const input = photoBody(user, { idempotencyKey: randomUUID() });
+    const results = await Promise.all(Array.from({ length: 4 }, () =>
+      call<CaptureUploadTicket>(`/captures/sessions/${session.id}/assets`, json(user, input))));
+    expect(results.map((r) => r.status)).toEqual([201, 201, 201, 201]);
+    expect(new Set(results.map((r) => r.body.asset.id)).size).toBe(1);
+    const mismatch = await call(`/captures/sessions/${session.id}/assets`, json(user, { ...input, byteSize: 100 }));
+    expect(mismatch.status).toBe(409);
+    const history = await call<CaptureSession[]>('/captures/sessions', asUser(user));
+    expect(history.body).toHaveLength(1);
+    expect(history.body[0]?.assetCount).toBe(1);
+    const empty = await openSession(user);
+    const next = await call<CaptureSession[]>('/captures/sessions', asUser(user));
+    expect(next.body.find((s) => s.id === empty.id)?.assetCount).toBe(0);
+  });
+
+  it('does not finalize different bytes with the declared size', async () => {
+    const user = randomUUID(), session = await openSession(user);
+    const result = await call<CaptureUploadTicket>(`/captures/sessions/${session.id}/assets`, json(user, photoBody(user)));
+    const target = store.targets.at(-1)!;
+    store.stored.set(target.key, target.byteSize);
+    store.checksumOverrides.set(target.key, hash('wrong bytes'));
+    const response = await call(`/captures/assets/${result.body.asset.id}/finalize`, json(user, {}));
+    expect(response.status).toBe(409);
+    const asset = await call<CaptureAsset>(`/captures/assets/${result.body.asset.id}`, asUser(user));
+    expect(asset.body.state).toBe('expected');
+  });
+
+  it('withdraws only owned assets, preserves shared bytes and cleans the final reference after upload expiry', async () => {
+    const a = randomUUID(), b = randomUUID();
+    const sa = await openSession(a), sb = await openSession(b);
+    const input = photoBody(a, { idempotencyKey: randomUUID() });
+    const first = await call<CaptureUploadTicket>(`/captures/sessions/${sa.id}/assets`, json(a, input));
+    const target = store.targets.at(-1)!;
+    store.stored.set(target.key, target.byteSize);
+    expect((await call(`/captures/assets/${first.body.asset.id}/finalize`, json(a, {}))).status).toBe(200);
+    const second = await call<CaptureUploadTicket>(`/captures/sessions/${sb.id}/assets`, json(b, input));
+    expect(second.body.upload).toBeUndefined();
+    expect((await call(`/captures/assets/${first.body.asset.id}`, asUser(b, { method: 'DELETE' }))).status).toBe(404);
+    const path = `/captures/assets/${first.body.asset.id}`;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const removed = await call<CaptureAsset>(path, asUser(a, { method: 'DELETE' }));
+      expect(removed.status).toBe(200);
+      expect(removed.body.state).toBe('deleted');
+      expect(removed.body.reconstructionEligible).toBe(false);
+    }
+    const db = getDb();
+    const [object] = await db.select().from(captureMediaObjects).where(eq(captureMediaObjects.objectKey, target.key));
+    expect(object!.deletionRequestedAt).toBeNull();
+    expect((await call(`/captures/sessions/${sa.id}/assets`, json(a, input))).status).toBe(409);
+    expect((await call<CaptureAsset>(`/captures/assets/${second.body.asset.id}`, asUser(b))).body.state).toBe('uploaded');
+    await call(`/captures/assets/${second.body.asset.id}`, asUser(b, { method: 'DELETE' }));
+    // An issued PUT must expire before deletion, or it could recreate erased bytes.
+    await sweepExpiredCaptures(db, store);
+    expect(store.deleted).not.toContain(target.key);
+    await db.update(captureMediaObjects).set({ uploadIntentExpiresAt: new Date(Date.now() - 1000) })
+      .where(eq(captureMediaObjects.id, object!.id));
+    await sweepExpiredCaptures(db, store);
+    expect(store.deleted.filter((key) => key === target.key)).toHaveLength(1);
+    const [deleted] = await db.select().from(captureMediaObjects).where(eq(captureMediaObjects.id, object!.id));
+    expect(deleted!.deletionReason).toBe('contributor_request');
+    expect((await db.select().from(captureAssets).where(and(eq(captureAssets.mediaObjectId, object!.id), eq(captureAssets.state, 'deleted'))))).toHaveLength(2);
   });
 });

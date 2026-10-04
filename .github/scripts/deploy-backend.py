@@ -2,6 +2,7 @@
 """Migrate an immutable ECS image before serving it; verify the exact rollout."""
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
@@ -18,7 +19,9 @@ def aws(*args):
     result = subprocess.run(['aws', *args, '--output', 'json'], capture_output=True, text=True)
     if result.returncode:
         # Do not print task definitions, environments, credentials or SQL logs.
-        raise RuntimeError(f'AWS {args[0]} {args[1]} failed (exit {result.returncode})')
+        code = re.search(r'An error occurred \(([A-Za-z0-9]+)\)', result.stderr)
+        reason = code.group(1) if code else f'exit {result.returncode}'
+        raise RuntimeError(f'AWS {args[0]} {args[1]} failed ({reason})')
     return json.loads(result.stdout) if result.stdout.strip() else {}
 
 
@@ -41,7 +44,7 @@ def service_snapshot(cluster, service):
     return response['services'][0]
 
 
-def deploy(cluster, service, image, database, restore_capacity=False, call=aws, snapshot=service_snapshot):
+def deploy(cluster, service, image, database, restore_capacity=False, call=aws, snapshot=service_snapshot, execution_role=None):
     before = snapshot(cluster, service)
     desired = before['desiredCount']
     print(json.dumps({'stage': 'inspect', 'desired': desired, 'running': before['runningCount']}), flush=True)
@@ -51,6 +54,8 @@ def deploy(cluster, service, image, database, restore_capacity=False, call=aws, 
         raise RuntimeError('Backend capacity is zero; explicitly request restore-capacity to bring it online')
     source = call('ecs', 'describe-task-definition', '--task-definition', before['taskDefinition'])['taskDefinition']
     definition = definition_for_image(source, service, image)
+    if execution_role:
+        definition['executionRoleArn'] = execution_role
     registered = call('ecs', 'register-task-definition', '--cli-input-json', json.dumps(definition))['taskDefinition']['taskDefinitionArn']
     override = {'containerOverrides': [{'name': service, 'command': [
         'bun', 'packages/backend/dist/src/db/migrate.js', f'--target-database={database}', '--phase=pre',
@@ -58,7 +63,7 @@ def deploy(cluster, service, image, database, restore_capacity=False, call=aws, 
     launch = ['--capacity-provider-strategy', json.dumps(before['capacityProviderStrategy'])] if before.get('capacityProviderStrategy') else ['--launch-type', before.get('launchType', 'FARGATE')]
     response = call('ecs', 'run-task', '--cluster', cluster, '--task-definition', registered,
                     *launch, '--network-configuration', json.dumps(before['networkConfiguration']),
-                    '--overrides', json.dumps(override), '--count', '1')
+                    '--overrides', json.dumps(override), '--tags', 'key=App,value=goway', '--count', '1')
     if response.get('failures') or len(response.get('tasks', [])) != 1:
         raise RuntimeError('Could not start the migration task; service was not changed')
     task = response['tasks'][0]['taskArn']
@@ -106,8 +111,9 @@ def main():
     parser.add_argument('--image', required=True)
     parser.add_argument('--database', required=True)
     parser.add_argument('--restore-capacity', action='store_true')
+    parser.add_argument('--execution-role')
     args = parser.parse_args()
-    deploy(args.cluster, args.service, args.image, args.database, args.restore_capacity)
+    deploy(args.cluster, args.service, args.image, args.database, args.restore_capacity, execution_role=args.execution_role)
 
 
 if __name__ == '__main__':

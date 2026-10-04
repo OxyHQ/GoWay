@@ -47,8 +47,10 @@ import {
   findOwnedAsset,
   findOwnedSession,
   listSessionAssets,
+  listOwnedSessions,
   objectKeyForOwnedAsset,
   registerAsset,
+  withdrawCaptureAsset,
 } from '../db/capture/captureRepository';
 import { getDb } from '../db/postgres';
 import { ApiError } from '../http/apiError';
@@ -104,6 +106,7 @@ function idParam(request: Request, name: string, what: string): string {
 /** The current upload policy, as the contract publishes it. */
 export function currentUploadPolicy(): CaptureUploadPolicy {
   return {
+    enabled: captureConfig.enabled,
     consentVersion: captureConfig.consentVersion,
     contentHashAlgorithm: 'sha256',
     photo: {
@@ -301,6 +304,7 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
         db,
         { id: sessionId, oxyUserId },
         {
+          ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
           mediaKind: input.mediaKind,
           source: input.source,
           contentHash: input.contentHash,
@@ -319,6 +323,7 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
           key: registered.objectKey,
           contentType: registered.contentType,
           byteSize: registered.byteSize,
+          contentHash: registered.asset.media.contentHash,
           ttlSeconds: captureConfig.uploadIntentTtlSeconds,
         });
         const upload: CaptureUploadIntent = {
@@ -402,12 +407,25 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
           storedByteSize: stat.byteSize,
         });
       }
+      if (stat.checksumSha256 !== existing.media.contentHash || stat.contentType !== existing.media.contentType) {
+        throw new ApiError('conflict', 'The object checksum or content type does not match this contribution.');
+      }
 
       const asset = await finalizeAsset(db, assetId, oxyUserId, { byteSize: stat.byteSize });
       if (!asset) throw new ApiError('not_found', 'No capture of yours has that id.');
       response.json(asset);
     }),
   );
+
+  router.get('/captures/sessions', requireAuth, route(async (request, response) => {
+    response.json(await listOwnedSessions(getDb(), requiredCallerId(request)));
+  }));
+
+  router.delete('/captures/assets/:id', requireAuth, route(async (request, response) => {
+    const removed = await withdrawCaptureAsset(getDb(), idParam(request, 'id', 'asset'), requiredCallerId(request));
+    if (!removed) throw new ApiError('not_found', 'No capture of yours has that id.');
+    response.json(removed);
+  }));
 
   return router;
 }

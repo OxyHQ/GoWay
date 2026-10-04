@@ -506,9 +506,11 @@ describe('the public table, checked against the routers it claims to describe', 
       .sort();
 
     expect(refused).toEqual([
+      'DELETE /captures/assets/:id',
       'DELETE /places/:id/capabilities/:key',
       'GET /captures/assets/:id',
       'GET /captures/policy',
+      'GET /captures/sessions',
       'GET /captures/sessions/:id',
       'GET /captures/sessions/:id/assets',
       'GET /claims',

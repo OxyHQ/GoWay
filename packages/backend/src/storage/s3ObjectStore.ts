@@ -319,26 +319,33 @@ export function createS3ObjectStore(options: S3ObjectStoreOptions): CaptureObjec
       const headers = {
         'content-type': request.contentType,
         'content-length': String(request.byteSize),
+        'x-amz-checksum-sha256': Buffer.from(request.contentHash, 'hex').toString('base64'),
+        'if-none-match': '*',
       };
       const url = await signed('PUT', request.key, request.ttlSeconds, headers);
       return {
         url,
-        headers: { 'Content-Type': request.contentType, 'Content-Length': String(request.byteSize) },
+        headers: { ...headers },
         expiresAt: new Date(now().getTime() + request.ttlSeconds * 1000),
       };
     },
 
     async statObject(key: string): Promise<StoredObjectStat | null> {
-      const url = await signed('HEAD', key, 60);
-      const response = await fetchImpl(url, { method: 'HEAD', signal: AbortSignal.timeout(30_000) });
+      const headers = { 'x-amz-checksum-mode': 'ENABLED' };
+      const url = await signed('HEAD', key, 60, headers);
+      const response = await fetchImpl(url, { method: 'HEAD', headers, signal: AbortSignal.timeout(30_000) });
       if (response.status === 404) return null;
       if (!response.ok) {
         throw new Error(`The object store answered ${response.status} for a HEAD.`);
       }
       const length = response.headers.get('content-length');
       const etag = response.headers.get('etag');
+      const checksum = response.headers.get('x-amz-checksum-sha256');
+      const contentType = response.headers.get('content-type');
       return {
         byteSize: length ? Number(length) : 0,
+        ...(checksum ? { checksumSha256: Buffer.from(checksum, 'base64').toString('hex') } : {}),
+        ...(contentType ? { contentType } : {}),
         ...(etag ? { etag: etag.replace(/"/g, '') } : {}),
       };
     },

@@ -14,6 +14,9 @@
  */
 
 export {
+  CAPTURE_ASSET_STATES, CAPTURE_MEDIA_KINDS, CAPTURE_SOURCES, CAPTURE_PRIVACY_STATES,
+  CAPTURE_LOCATION_ORIGINS, CAPTURE_LOCATION_WITNESSES, CAPTURE_RETENTION_CLASSES,
+  RETENTION_REASONS, DELETION_REASONS,
   API_ERROR_CODES,
   API_ERROR_RETRYABLE,
   API_ERROR_STATUS,
@@ -37,6 +40,9 @@ export {
 } from '@goway/shared-types';
 
 export type {
+  CaptureAsset, CaptureSession, CaptureUploadPolicy, CaptureUploadTicket,
+  CaptureUploadIntent, CaptureAssetInput, CaptureSessionInput, CaptureLocationEvidence,
+  CaptureCameraMetadata, StoredObjectLifecycle,
   ApiErrorBody,
   ApiErrorCode,
   CapabilityKey,

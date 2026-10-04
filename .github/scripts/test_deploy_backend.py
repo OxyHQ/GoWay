@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import unittest
 
@@ -20,7 +21,7 @@ class DeployTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.definition_for_image(original, 'goway', 'repo:latest')
 
-    def simulate(self, exit_code=0, desired=1, restore=False):
+    def simulate(self, exit_code=0, desired=1, restore=False, execution_role=None):
         calls = []
         snapshot_count = 0
         def snapshot(*_args):
@@ -36,6 +37,9 @@ class DeployTests(unittest.TestCase):
             if action == 'describe-task-definition':
                 return {'taskDefinition': {'family': 'goway', 'containerDefinitions': [{'name': 'goway', 'image': 'old'}]}}
             if action == 'register-task-definition':
+                definition = json.loads(args[args.index('--cli-input-json') + 1])
+                if execution_role:
+                    self.assertEqual(definition['executionRoleArn'], execution_role)
                 return {'taskDefinition': {'taskDefinitionArn': 'new'}}
             if action == 'run-task':
                 self.assertIn('--network-configuration', args)
@@ -48,7 +52,7 @@ class DeployTests(unittest.TestCase):
                 return {'service': {'deployments': [{'status': 'PRIMARY', 'id': 'new-rollout'}]}}
             raise AssertionError(action)
         try:
-            module.deploy('cluster', 'goway', 'repo@sha256:abc', 'goway', restore, call, snapshot)
+            module.deploy('cluster', 'goway', 'repo@sha256:abc', 'goway', restore, call, snapshot, execution_role=execution_role)
         except RuntimeError:
             return calls, False
         return calls, True
@@ -62,6 +66,12 @@ class DeployTests(unittest.TestCase):
         calls, succeeded = self.simulate()
         self.assertTrue(succeeded)
         self.assertIn('update-service', [c[1] for c in calls])
+
+    def test_dedicated_execution_identity_is_used_for_migration_and_service(self):
+        calls, succeeded = self.simulate(execution_role='arn:aws:iam::123456789012:role/goway-execution')
+        self.assertTrue(succeeded)
+        run = next(c for c in calls if c[1] == 'run-task')
+        self.assertEqual(run[run.index('--tags') + 1], 'key=App,value=goway')
 
     def test_paused_service_requires_explicit_restore(self):
         calls, succeeded = self.simulate(desired=0)

@@ -1,5 +1,6 @@
 import { TRAVEL_MODES } from './contract';
 import type {
+  CaptureAsset, CaptureAssetInput, CaptureSession, CaptureSessionInput, CaptureUploadPolicy, CaptureUploadTicket,
   GeoCoordinate,
   MapViewport,
   NearbyPlacesQuery,
@@ -18,6 +19,7 @@ import type {
 } from './contract';
 import { GoWayValidationError } from './errors';
 import {
+  parseCaptureAsset, parseCaptureAssets, parseCaptureSession, parseCaptureSessions, parseCapturePolicy, parseCaptureTicket,
   parsePlace,
   parsePlaceList,
   parsePlaceWithDistanceList,
@@ -208,11 +210,25 @@ export interface GoWayLinks {
 }
 
 export interface GoWayClient {
+  readonly captures: GoWayCapturesApi;
   readonly places: GoWayPlacesApi;
   readonly search: GoWaySearchApi;
   readonly geocode: GoWayGeocodeApi;
   readonly routes: GoWayRoutesApi;
   readonly links: GoWayLinks;
+}
+
+export interface GoWayCapturesApi {
+  /** Most recent 50 contribution sessions owned by the authenticated caller. */
+  sessions(options?: GoWayRequestOptions): Promise<CaptureSession[]>;
+  policy(options?: GoWayRequestOptions): Promise<CaptureUploadPolicy>;
+  createSession(input: CaptureSessionInput, options?: GoWayRequestOptions): Promise<CaptureSession>;
+  session(id: string, options?: GoWayRequestOptions): Promise<CaptureSession>;
+  assets(sessionId: string, options?: GoWayRequestOptions): Promise<CaptureAsset[]>;
+  register(sessionId: string, input: CaptureAssetInput, options?: GoWayRequestOptions): Promise<CaptureUploadTicket>;
+  asset(id: string, options?: GoWayRequestOptions): Promise<CaptureAsset>;
+  finalize(id: string, options?: GoWayRequestOptions): Promise<CaptureAsset>;
+  remove(id: string, options?: GoWayRequestOptions): Promise<CaptureAsset>;
 }
 
 // ── Option validation (programmer errors → TypeError, at construction) ───────
@@ -728,5 +744,16 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
       ),
   });
 
-  return Object.freeze({ places, search, geocode, routes, links: createLinks(webBaseUrl) });
+  const captures: GoWayCapturesApi = Object.freeze({
+    sessions: (o: GoWayRequestOptions = {}) => request(config, { method: 'GET', path: '/captures/sessions', signal: o.signal }, parseCaptureSessions),
+    policy: (o: GoWayRequestOptions = {}) => request(config, { method: 'GET', path: '/captures/policy', signal: o.signal }, parseCapturePolicy),
+    createSession: (input: CaptureSessionInput, o: GoWayRequestOptions = {}) => request(config, { method: 'POST', path: '/captures/sessions', body: input, signal: o.signal }, parseCaptureSession),
+    session: (id: string, o: GoWayRequestOptions = {}) => request(config, { method: 'GET', path: `/captures/sessions/${pathSegment(id, 'sessionId')}`, signal: o.signal }, parseCaptureSession),
+    assets: (id: string, o: GoWayRequestOptions = {}) => request(config, { method: 'GET', path: `/captures/sessions/${pathSegment(id, 'sessionId')}/assets`, signal: o.signal }, parseCaptureAssets),
+    register: (id: string, input: CaptureAssetInput, o: GoWayRequestOptions = {}) => request(config, { method: 'POST', path: `/captures/sessions/${pathSegment(id, 'sessionId')}/assets`, body: input, signal: o.signal }, parseCaptureTicket),
+    asset: (id: string, o: GoWayRequestOptions = {}) => request(config, { method: 'GET', path: `/captures/assets/${pathSegment(id, 'assetId')}`, signal: o.signal }, parseCaptureAsset),
+    finalize: (id: string, o: GoWayRequestOptions = {}) => request(config, { method: 'POST', path: `/captures/assets/${pathSegment(id, 'assetId')}/finalize`, body: {}, signal: o.signal }, parseCaptureAsset),
+    remove: (id: string, o: GoWayRequestOptions = {}) => request(config, { method: 'DELETE', path: `/captures/assets/${pathSegment(id, 'assetId')}`, signal: o.signal }, parseCaptureAsset),
+  });
+  return Object.freeze({ places, search, geocode, routes, captures, links: createLinks(webBaseUrl) });
 }

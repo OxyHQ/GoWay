@@ -153,6 +153,7 @@ jobs:
           if [ "$RESTORE_CAPACITY" = 'true' ]; then args+=(--restore-capacity); fi
           python3 .github/scripts/deploy-backend.py \
             --cluster "$CLUSTER" --service "$APP" --database goway \
+            --execution-role arn:aws:iam::237343248947:role/oxy-goway-execution \
             --image "$ECR_REGISTRY/oxy/$APP@$digest" "${args[@]}"
           echo "rolled=true" >> "$GITHUB_OUTPUT"
 

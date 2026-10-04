@@ -4,6 +4,14 @@ All notable changes to `@goway.to/sdk`. The package follows semantic versioning
 with the 0.x rule: while the major version is 0, a MINOR release may break the
 API or the contract, and a PATCH release never does.
 
+## 0.2.0 — unreleased
+
+- Add the typed `captures` namespace for policy, sessions, registration, upload
+  finalization, contribution history and withdrawal.
+- Registration accepts an idempotency key so clients can retry the same intent.
+- Upload tickets describe direct, checksum-bound object storage requests. The
+  SDK never forwards account credentials or media bytes to object storage.
+
 ## 0.1.1 — unreleased
 
 A PATCH, and the version number is the claim: nothing in 0.1.0 changed meaning,

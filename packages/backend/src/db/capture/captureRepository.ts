@@ -23,8 +23,9 @@
  * detectable; creating one on the happy path would be an odd way to start.
  */
 
-import { and, count, eq, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { uuidv7 } from '@oxy.so/db';
+import { createHash } from 'node:crypto';
 import type {
   CaptureAsset,
   CaptureCameraMetadata,
@@ -74,6 +75,7 @@ export interface CreateSessionInput {
  * There is no object key here and there cannot be: the server generates it.
  */
 export interface RegisterAssetInput {
+  idempotencyKey?: string;
   mediaKind: CaptureMediaKind;
   source: CaptureSource;
   contentHash: string;
@@ -200,6 +202,16 @@ export async function findOwnedSession(
     .from(captureAssets)
     .where(eq(captureAssets.sessionId, sessionId));
   return toCaptureSession(row, counted?.assets ?? 0);
+}
+
+export async function listOwnedSessions(db: Database, oxyUserId: string): Promise<CaptureSession[]> {
+  const counts = db.select({ sessionId: captureAssets.sessionId, assets: count().as('assets') })
+    .from(captureAssets).groupBy(captureAssets.sessionId).as('session_asset_counts');
+  const rows = await db.select({ ...SESSION_COLUMNS, assetCount: sql<number>`coalesce(${counts.assets}, 0)::integer` })
+    .from(captureSessions).leftJoin(counts, eq(counts.sessionId, captureSessions.id))
+    .where(eq(captureSessions.oxyUserId, oxyUserId))
+    .orderBy(desc(captureSessions.createdAt), desc(captureSessions.id)).limit(50);
+  return rows.map((row) => toCaptureSession(row, row.assetCount));
 }
 
 // ── Assets ──────────────────────────────────────────────────────────────────
@@ -338,11 +350,37 @@ export async function registerAsset(
   }
 
   return db.transaction(async (tx) => {
+    const canonical = (value: unknown): string => {
+      if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+      if (value !== null && typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`).join(',')}}`;
+      }
+      return JSON.stringify(value);
+    };
+    const fingerprint = createHash('sha256').update(canonical(JSON.parse(JSON.stringify(input)))).digest('hex');
+    if (input.idempotencyKey) {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${session.id + ':' + input.idempotencyKey}, 1))`);
+      const [prior] = await tx.select({ ...ASSET_COLUMNS, fingerprint: captureAssets.requestFingerprint }).from(captureAssets)
+        .where(and(eq(captureAssets.sessionId, session.id), eq(captureAssets.idempotencyKey, input.idempotencyKey)));
+      if (prior) {
+        if (prior.fingerprint !== fingerprint) throw new ApiError('conflict', 'This upload request key was already used for different media or metadata.');
+        const [media] = await tx.select().from(captureMediaObjects).where(eq(captureMediaObjects.id, prior.mediaObjectId)).for('update');
+        const [current] = await tx.select({ state: captureAssets.state }).from(captureAssets).where(eq(captureAssets.id, prior.id));
+        if (!current || current.state === 'deleted' || !media || media.deletedAt || media.deletionRequestedAt || media.storageState === 'deleting' || media.expiresAt <= now || prior.state === 'deleted') {
+          throw new ApiError('conflict', 'This contribution is no longer active. Start a new contribution.');
+        }
+        if (media.storageState === 'expected') {
+          await tx.update(captureMediaObjects).set({ uploadIntentExpiresAt: intentExpiresAt, updatedAt: now }).where(eq(captureMediaObjects.id, media.id));
+        }
+        return { asset: await hydrate(tx, prior), objectKey: media.objectKey, uploadRequired: media.storageState === 'expected', byteSize: media.byteSize, contentType: media.contentType };
+      }
+    }
     // A row lock cannot lock an absent hash. Serialize first registrations too,
     // otherwise simultaneous duplicate uploads race the partial unique index.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.contentHash}, 0))`);
     const [existing] = await tx
-      .select({ ...MEDIA_OBJECT_COLUMNS, objectKey: captureMediaObjects.objectKey })
+      .select({ ...MEDIA_OBJECT_COLUMNS, objectKey: captureMediaObjects.objectKey, deletionRequestedAt: captureMediaObjects.deletionRequestedAt })
       .from(captureMediaObjects)
       .where(and(eq(captureMediaObjects.contentHash, input.contentHash), isNull(captureMediaObjects.deletedAt)))
       // This lock also serializes registration against the expiry sweeper.
@@ -355,7 +393,10 @@ export async function registerAsset(
     if (existing) {
       // A committed deletion intent may already have reached S3 even if the
       // process crashed before recording success. It can never be cancelled.
-      if (existing.storageState === 'deleting') {
+      if (existing.byteSize !== input.byteSize || existing.contentType !== input.contentType || existing.retentionClass !== plan.retentionClass) {
+        throw new ApiError('conflict', 'The declared media metadata does not match these bytes.');
+      }
+      if (existing.storageState === 'deleting' || existing.deletionRequestedAt !== null) {
         throw new ApiError('conflict', 'These bytes are being removed. Retry after cleanup completes.');
       }
       objectId = existing.id;
@@ -392,6 +433,8 @@ export async function registerAsset(
       .insert(captureAssets)
       .values({
         sessionId: session.id,
+        idempotencyKey: input.idempotencyKey ?? null,
+        requestFingerprint: input.idempotencyKey ? fingerprint : null,
         mediaObjectId: objectId,
         oxyUserId: session.oxyUserId,
         mediaKind: input.mediaKind,
@@ -476,7 +519,7 @@ export async function finalizeAsset(
 ): Promise<CaptureAsset | null> {
   const now = confirmed.now ?? new Date();
   return db.transaction(async (tx) => {
-    const [row] = await tx
+    let [row] = await tx
       .select(ASSET_COLUMNS)
       .from(captureAssets)
       .where(and(eq(captureAssets.id, assetId), eq(captureAssets.oxyUserId, oxyUserId)));
@@ -484,13 +527,15 @@ export async function finalizeAsset(
 
     // Lock the object before changing either row, in the same order as cleanup.
     // The preceding HEAD can race a committed deletion intent.
-    const [mediaObject] = await tx.select(MEDIA_OBJECT_COLUMNS)
+    const [mediaObject] = await tx.select({ ...MEDIA_OBJECT_COLUMNS, deletionRequestedAt: captureMediaObjects.deletionRequestedAt })
       .from(captureMediaObjects)
       .where(eq(captureMediaObjects.id, row.mediaObjectId))
       .for('update');
     if (!mediaObject) throw new ApiError('internal_error', 'A capture asset has no media object.');
+    [row] = await tx.select(ASSET_COLUMNS).from(captureAssets).where(eq(captureAssets.id, assetId));
+    if (!row) return null;
     if (mediaObject.storageState === 'deleting' || mediaObject.storageState === 'deleted'
-      || mediaObject.expiresAt <= now) {
+      || mediaObject.deletionRequestedAt !== null || row.state === 'deleted' || mediaObject.expiresAt <= now) {
       throw new ApiError('conflict', 'This capture has expired or is being removed. Start a new contribution.');
     }
 
@@ -518,6 +563,29 @@ export async function finalizeAsset(
       : [row];
     if (!updated) throw new ApiError('internal_error', 'The capture asset vanished during finalize.');
     return hydrate(tx, updated);
+  });
+}
+
+/** Remove only the caller's contribution. Shared bytes remain for other consented contributions. */
+export async function withdrawCaptureAsset(db: Database, assetId: string, oxyUserId: string): Promise<CaptureAsset | null> {
+  return db.transaction(async (tx) => {
+    const [asset] = await tx.select(ASSET_COLUMNS).from(captureAssets)
+      .where(and(eq(captureAssets.id, assetId), eq(captureAssets.oxyUserId, oxyUserId)));
+    if (!asset) return null;
+    await tx.select({ id: captureMediaObjects.id }).from(captureMediaObjects)
+      .where(eq(captureMediaObjects.id, asset.mediaObjectId)).for('update');
+    const now = new Date();
+    const [removed] = await tx.update(captureAssets).set({ state: 'deleted', privacyState: 'blocked', privacyCompletedAt: now, updatedAt: now })
+      .where(eq(captureAssets.id, assetId)).returning(ASSET_COLUMNS);
+    const [remaining] = await tx.select({ count: count() }).from(captureAssets)
+      .where(and(eq(captureAssets.mediaObjectId, asset.mediaObjectId), ne(captureAssets.state, 'deleted')));
+    if (remaining?.count === 0) {
+      await tx.update(captureMediaObjects).set({
+        deletionRequestedAt: now, deletionRequestedReason: 'contributor_request', protectedUntil: null, updatedAt: now,
+      }).where(and(eq(captureMediaObjects.id, asset.mediaObjectId), isNull(captureMediaObjects.deletedAt)));
+    }
+    if (!removed) throw new ApiError('internal_error', 'The capture vanished during withdrawal.');
+    return hydrate(tx, removed);
   });
 }
 

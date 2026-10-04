@@ -181,6 +181,7 @@ const cameraSchema = z.object({
  * verify the hash without reading the object, which is #11's job, not the API's.
  */
 export const registerAssetSchema = z.object({
+  idempotencyKey: z.string().uuid().optional(),
   mediaKind: z.enum(CAPTURE_MEDIA_KINDS),
   source: z.enum(CAPTURE_SOURCES),
   contentHash: z
