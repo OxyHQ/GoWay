@@ -47,6 +47,7 @@ import { fileURLToPath } from "node:url";
 export const EXPECTED_OPERATIONS = [
   { method: "get", path: "/places/nearby", body: false, auth: false },
   { method: "get", path: "/places/bounds", body: false, auth: false },
+  { method: "get", path: "/places", body: false, auth: false },
   { method: "get", path: "/places/{placeId}", body: false, auth: false },
   { method: "post", path: "/places", body: true, auth: true },
   { method: "patch", path: "/places/{placeId}", body: true, auth: true },

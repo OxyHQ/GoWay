@@ -37,6 +37,14 @@ import { instantSchema } from './time';
  * {@link PlaceRevision.changes}. `place_merged` is written on the place that
  * was absorbed and `place_absorbed` on the one that survived, so each side's
  * history explains itself.
+ *
+ * `capability_retiered` and `hours_exception_retiered` are written when a
+ * claim is APPROVED, for each statement the claimant made at the community
+ * tier while the claim was pending and that now becomes the business's own
+ * (`docs/BUSINESS_OWNERSHIP.md`). The change is one field whose `before` is
+ * the community row and whose `after` is the same statement at
+ * `business_asserted`; the revision is attributed to whoever originally made
+ * the statement, through the `moderation` door that approved it.
  */
 export const PLACE_REVISION_ACTIONS = [
   'place_created',
@@ -66,6 +74,8 @@ export const PLACE_REVISION_ACTIONS = [
   'review_reply_withdrawn',
   'review_hidden',
   'review_restored',
+  'capability_retiered',
+  'hours_exception_retiered',
 ] as const;
 export type PlaceRevisionAction = (typeof PLACE_REVISION_ACTIONS)[number];
 
@@ -115,6 +125,11 @@ export const PLACE_REVISION_VISIBILITY = {
   review_reply_withdrawn: 'moderation',
   review_hidden: 'moderation',
   review_restored: 'moderation',
+  // A re-tier changes the tier a published capability or exception carries,
+  // which the place itself shows; the revision, as every public one, never
+  // says who made the statement.
+  capability_retiered: 'public',
+  hours_exception_retiered: 'public',
 } as const satisfies Record<PlaceRevisionAction, PlaceRevisionVisibility>;
 
 /** The actions the public history lists. */

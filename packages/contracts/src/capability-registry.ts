@@ -599,9 +599,15 @@ export const capabilityKeySchema = z.enum(CAPABILITY_KEYS);
  * `payments.faircoin.accepted` matches a place whose strongest assertion of
  * the key holds. `food.cuisine:italian` matches one whose strongest cuisine
  * assertion includes `italian`; `accessibility.wheelchair:limited` one whose
- * strongest wheelchair assertion IS `limited`; `price.level:2` one priced at 2.
- * A value is accepted only for an enum, an enum set or a price level, and
- * only when the key's schema accepts it.
+ * strongest wheelchair assertion IS `limited`; `price.level:2` one priced at 2;
+ * `commerce.mercaria.store:<locationId>` one whose strongest store link IS that
+ * location — a text value matches exactly, after the key's own normalization
+ * (trimmed, held to its pattern). A value is accepted for an enum, an enum
+ * set, a price level or a text, and only when the key's schema accepts it.
+ *
+ * Everything after the FIRST `:` is the value, so a text value may itself
+ * contain one. It may not contain a comma: a list of filters is one
+ * comma-joined query parameter, and a comma would split the value in two.
  */
 export interface CapabilityFilter {
   key: CapabilityKey;
@@ -622,6 +628,10 @@ export function capabilityFilterOf(raw: string): CapabilityFilter | undefined {
     return { key, value: text };
   }
   if (spec.kind === 'price_level' && /^[1-4]$/.test(text)) return { key, value: Number(text) };
+  if (spec.kind === 'text' && !text.includes(',')) {
+    const value = capabilityValueSpecSchema(spec).safeParse(text);
+    if (value.success && typeof value.data === 'string') return { key, value: value.data };
+  }
   return undefined;
 }
 
@@ -633,5 +643,5 @@ export const capabilityFilterSchema = z
   .string()
   .max(256)
   .refine((raw) => capabilityFilterOf(raw) !== undefined, {
-    message: 'must be a registered capability key, optionally with :value for an enum or a price level',
+    message: 'must be a registered capability key, optionally with :value for an enum, a price level or a text',
   });

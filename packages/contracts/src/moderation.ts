@@ -155,7 +155,20 @@ export const CLAIM_DECISION_FROM: Readonly<Record<ClaimDecisionState, PlaceClaim
   revoked: 'approved',
 };
 
-/** The body of `POST /moderation/claims/{claimId}/decision`. */
+/**
+ * The body of `POST /moderation/claims/{claimId}/decision`.
+ *
+ * Approving a claim also re-tiers, in the same transaction, what the claimant
+ * said while it was pending: every `community_reported` capability and hours
+ * exception whose CURRENT statement was made after the claim was filed, by the
+ * claimant account itself or by the person who filed the claim, becomes
+ * `business_asserted` — unless the business tier already holds that key or
+ * those dates. Each re-tier is a `capability_retiered` or
+ * `hours_exception_retiered` revision attributed to whoever made the statement.
+ * A member who said something as themselves, other than the filer, is not
+ * re-tiered: GoWay cannot ask Oxy about a membership with an operator's
+ * session, so that statement waits to be re-asserted by the business.
+ */
 export const claimDecisionInputSchema = z.object({ state: z.enum(CLAIM_DECISION_STATES) }).strict();
 export type ClaimDecisionInput = z.input<typeof claimDecisionInputSchema>;
 

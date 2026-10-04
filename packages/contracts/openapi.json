@@ -675,6 +675,195 @@
         }
       }
     },
+    "/places": {
+      "get": {
+        "operationId": "getPlaces",
+        "summary": "Up to 50 places by id in one read: each as the single read answers it, gone or missing.",
+        "tags": [
+          "Places"
+        ],
+        "security": [
+          {},
+          {
+            "oxySession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "minItems": 1,
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            },
+            "style": "form",
+            "explode": false
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 35
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceBatch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refused values: `validation_failed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPlace",
+        "summary": "Create a GoWay-owned place or a community submission.",
+        "tags": [
+          "Places"
+        ],
+        "security": [
+          {
+            "oxySession": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaceCreateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Place"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid Oxy session: `unauthorized`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with current state: `conflict`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refused values: `validation_failed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/places/{placeId}": {
       "get": {
         "operationId": "getPlace",
@@ -918,102 +1107,6 @@
           },
           "503": {
             "description": "Degraded or unavailable; retry later: `service_unavailable`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/places": {
-      "post": {
-        "operationId": "createPlace",
-        "summary": "Create a GoWay-owned place or a community submission.",
-        "tags": [
-          "Places"
-        ],
-        "security": [
-          {
-            "oxySession": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlaceCreateInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Place"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Malformed request: `bad_request`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No valid Oxy session: `unauthorized`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflicts with current state: `conflict`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorBody"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Refused values: `validation_failed`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server defect: `internal_error`",
             "content": {
               "application/json": {
                 "schema": {
@@ -4008,7 +4101,7 @@
     "/claims": {
       "get": {
         "operationId": "listAccountClaims",
-        "summary": "Every claim one account holds, in every state: your own, or an organization you may act for.",
+        "summary": "Every claim one account holds, in every state — on one place with placeId: your own, or an organization you may act for.",
         "tags": [
           "Claims"
         ],
@@ -4020,6 +4113,16 @@
         "parameters": [
           {
             "name": "oxyAccountId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "placeId",
             "in": "query",
             "required": false,
             "schema": {
@@ -9554,6 +9657,51 @@
           "nextCursor"
         ]
       },
+      "PlaceBatch": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Place"
+            }
+          },
+          "gone": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "mergedInto": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                }
+              },
+              "required": [
+                "id"
+              ]
+            }
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        },
+        "required": [
+          "items",
+          "gone",
+          "missing"
+        ]
+      },
       "PlaceClaimPage": {
         "type": "object",
         "properties": {
@@ -10265,7 +10413,9 @@
               "review_replied",
               "review_reply_withdrawn",
               "review_hidden",
-              "review_restored"
+              "review_restored",
+              "capability_retiered",
+              "hours_exception_retiered"
             ]
           },
           "source": {
@@ -10428,7 +10578,9 @@
               "review_replied",
               "review_reply_withdrawn",
               "review_hidden",
-              "review_restored"
+              "review_restored",
+              "capability_retiered",
+              "hours_exception_retiered"
             ]
           },
           "source": {
@@ -12879,137 +13031,17 @@
             ]
           },
           "geometry": {
-            "oneOf": [
+            "anyOf": [
               {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "Point"
-                  },
-                  "coordinates": {
-                    "anyOf": [
-                      {
-                        "type": "array",
-                        "prefixItems": [
-                          {
-                            "type": "number",
-                            "minimum": -180,
-                            "maximum": 180
-                          },
-                          {
-                            "type": "number",
-                            "minimum": -90,
-                            "maximum": 90
-                          }
-                        ],
-                        "items": false,
-                        "minItems": 2,
-                        "maxItems": 2
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "Point"
                       },
-                      {
-                        "type": "array",
-                        "prefixItems": [
-                          {
-                            "type": "number",
-                            "minimum": -180,
-                            "maximum": 180
-                          },
-                          {
-                            "type": "number",
-                            "minimum": -90,
-                            "maximum": 90
-                          },
-                          {
-                            "type": "number"
-                          }
-                        ],
-                        "items": false,
-                        "minItems": 3,
-                        "maxItems": 3
-                      }
-                    ]
-                  }
-                },
-                "required": [
-                  "type",
-                  "coordinates"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "LineString"
-                  },
-                  "coordinates": {
-                    "minItems": 2,
-                    "type": "array",
-                    "items": {
-                      "anyOf": [
-                        {
-                          "type": "array",
-                          "prefixItems": [
-                            {
-                              "type": "number",
-                              "minimum": -180,
-                              "maximum": 180
-                            },
-                            {
-                              "type": "number",
-                              "minimum": -90,
-                              "maximum": 90
-                            }
-                          ],
-                          "items": false,
-                          "minItems": 2,
-                          "maxItems": 2
-                        },
-                        {
-                          "type": "array",
-                          "prefixItems": [
-                            {
-                              "type": "number",
-                              "minimum": -180,
-                              "maximum": 180
-                            },
-                            {
-                              "type": "number",
-                              "minimum": -90,
-                              "maximum": 90
-                            },
-                            {
-                              "type": "number"
-                            }
-                          ],
-                          "items": false,
-                          "minItems": 3,
-                          "maxItems": 3
-                        }
-                      ]
-                    }
-                  }
-                },
-                "required": [
-                  "type",
-                  "coordinates"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "Polygon"
-                  },
-                  "coordinates": {
-                    "minItems": 1,
-                    "type": "array",
-                    "items": {
-                      "minItems": 4,
-                      "type": "array",
-                      "items": {
+                      "coordinates": {
                         "anyOf": [
                           {
                             "type": "array",
@@ -13052,29 +13084,21 @@
                           }
                         ]
                       }
-                    }
-                  }
-                },
-                "required": [
-                  "type",
-                  "coordinates"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "MultiPolygon"
+                    },
+                    "required": [
+                      "type",
+                      "coordinates"
+                    ]
                   },
-                  "coordinates": {
-                    "minItems": 1,
-                    "type": "array",
-                    "items": {
-                      "minItems": 1,
-                      "type": "array",
-                      "items": {
-                        "minItems": 4,
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "LineString"
+                      },
+                      "coordinates": {
+                        "minItems": 2,
                         "type": "array",
                         "items": {
                           "anyOf": [
@@ -13120,13 +13144,148 @@
                           ]
                         }
                       }
-                    }
+                    },
+                    "required": [
+                      "type",
+                      "coordinates"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "Polygon"
+                      },
+                      "coordinates": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "minItems": 4,
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "prefixItems": [
+                                  {
+                                    "type": "number",
+                                    "minimum": -180,
+                                    "maximum": 180
+                                  },
+                                  {
+                                    "type": "number",
+                                    "minimum": -90,
+                                    "maximum": 90
+                                  }
+                                ],
+                                "items": false,
+                                "minItems": 2,
+                                "maxItems": 2
+                              },
+                              {
+                                "type": "array",
+                                "prefixItems": [
+                                  {
+                                    "type": "number",
+                                    "minimum": -180,
+                                    "maximum": 180
+                                  },
+                                  {
+                                    "type": "number",
+                                    "minimum": -90,
+                                    "maximum": 90
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "items": false,
+                                "minItems": 3,
+                                "maxItems": 3
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "coordinates"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "MultiPolygon"
+                      },
+                      "coordinates": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "minItems": 4,
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "array",
+                                  "prefixItems": [
+                                    {
+                                      "type": "number",
+                                      "minimum": -180,
+                                      "maximum": 180
+                                    },
+                                    {
+                                      "type": "number",
+                                      "minimum": -90,
+                                      "maximum": 90
+                                    }
+                                  ],
+                                  "items": false,
+                                  "minItems": 2,
+                                  "maxItems": 2
+                                },
+                                {
+                                  "type": "array",
+                                  "prefixItems": [
+                                    {
+                                      "type": "number",
+                                      "minimum": -180,
+                                      "maximum": 180
+                                    },
+                                    {
+                                      "type": "number",
+                                      "minimum": -90,
+                                      "maximum": 90
+                                    },
+                                    {
+                                      "type": "number"
+                                    }
+                                  ],
+                                  "items": false,
+                                  "minItems": 3,
+                                  "maxItems": 3
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "coordinates"
+                    ]
                   }
-                },
-                "required": [
-                  "type",
-                  "coordinates"
                 ]
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -13288,109 +13447,214 @@
             }
           },
           "address": {
-            "type": "object",
-            "properties": {
-              "houseNumber": {
-                "type": "string",
-                "maxLength": 64
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "houseNumber": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 64
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "street": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 256
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "locality": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 128
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "city": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 128
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "region": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 128
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "postalCode": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 32
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "countryCode": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[A-Za-z]{2}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "country": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 128
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "formatted": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 512
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
               },
-              "street": {
-                "type": "string",
-                "maxLength": 256
-              },
-              "locality": {
-                "type": "string",
-                "maxLength": 128
-              },
-              "city": {
-                "type": "string",
-                "maxLength": 128
-              },
-              "region": {
-                "type": "string",
-                "maxLength": 128
-              },
-              "postalCode": {
-                "type": "string",
-                "maxLength": 32
-              },
-              "countryCode": {
-                "type": "string",
-                "pattern": "^[A-Za-z]{2}$"
-              },
-              "country": {
-                "type": "string",
-                "maxLength": 128
-              },
-              "formatted": {
-                "type": "string",
-                "maxLength": 512
+              {
+                "type": "null"
               }
-            }
+            ]
           },
           "contact": {
-            "type": "object",
-            "properties": {
-              "phone": {
-                "type": "string",
-                "maxLength": 64
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 64
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "email": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 320,
+                        "format": "email",
+                        "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "website": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 2048
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
               },
-              "email": {
-                "type": "string",
-                "maxLength": 320,
-                "format": "email",
-                "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
-              },
-              "website": {
-                "type": "string",
-                "maxLength": 2048
+              {
+                "type": "null"
               }
-            }
+            ]
           },
           "openingHours": {
-            "type": "object",
-            "properties": {
-              "intervals": {
-                "maxItems": 64,
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "opens": {
-                      "type": "string",
-                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
-                    },
-                    "closes": {
-                      "type": "string",
-                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
-                    },
-                    "day": {
-                      "type": "number",
-                      "enum": [
-                        0,
-                        1,
-                        2,
-                        3,
-                        4,
-                        5,
-                        6
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "intervals": {
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "opens": {
+                          "type": "string",
+                          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                        },
+                        "closes": {
+                          "type": "string",
+                          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                        },
+                        "day": {
+                          "type": "number",
+                          "enum": [
+                            0,
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6
+                          ]
+                        }
+                      },
+                      "required": [
+                        "opens",
+                        "closes",
+                        "day"
                       ]
                     }
                   },
-                  "required": [
-                    "opens",
-                    "closes",
-                    "day"
-                  ]
-                }
+                  "raw": {
+                    "type": "string",
+                    "maxLength": 512
+                  }
+                },
+                "required": [
+                  "intervals"
+                ]
               },
-              "raw": {
-                "type": "string",
-                "maxLength": 512
+              {
+                "type": "null"
               }
-            },
-            "required": [
-              "intervals"
             ]
           },
           "status": {

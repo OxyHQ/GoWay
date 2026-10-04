@@ -144,14 +144,28 @@ export const structuredAddressSchema = z.object({
 });
 export type StructuredAddress = z.infer<typeof structuredAddressSchema>;
 
-/** A written address: bounded, and the country code case-folded as the table's CHECK requires. */
-export const structuredAddressInputSchema = z.object({
-  houseNumber: z.string().max(64).optional(),
-  street: z.string().max(256).optional(),
-  locality: z.string().max(128).optional(),
-  city: z.string().max(128).optional(),
-  region: z.string().max(128).optional(),
-  postalCode: z.string().max(32).optional(),
+/**
+ * Each part of a PATCH body made clearable: absent leaves the part alone,
+ * `null` clears it, a value sets it. What `PATCH /places/{placeId}` reads.
+ */
+type Clearable<Shape extends Record<string, z.ZodType>> = {
+  [Part in keyof Shape]: z.ZodOptional<z.ZodNullable<Shape[Part]>>;
+};
+
+function clearable<Shape extends Record<string, z.ZodType>>(shape: Shape): Clearable<Shape> {
+  return Object.fromEntries(
+    Object.entries(shape).map(([part, schema]) => [part, z.optional(z.nullable(schema))]),
+  ) as Clearable<Shape>;
+}
+
+/** Each written address part: bounded, and the country code case-folded as the table's CHECK requires. */
+const addressPartSchemas = {
+  houseNumber: z.string().max(64),
+  street: z.string().max(256),
+  locality: z.string().max(128),
+  city: z.string().max(128),
+  region: z.string().max(128),
+  postalCode: z.string().max(32),
   /**
    * Normalized to uppercase. Case-folding a country code is not inventing a
    * fact — unlike deriving a missing one, which nothing here does.
@@ -159,11 +173,17 @@ export const structuredAddressInputSchema = z.object({
   countryCode: z
     .string()
     .regex(/^[A-Za-z]{2}$/, 'must be an ISO 3166-1 alpha-2 code')
-    .transform((code) => code.toUpperCase())
-    .optional(),
-  country: z.string().max(128).optional(),
-  formatted: z.string().max(512).optional(),
-});
+    .transform((code) => code.toUpperCase()),
+  country: z.string().max(128),
+  formatted: z.string().max(512),
+};
+
+/** A written address, as a create carries it: the parts it knows. */
+export const structuredAddressInputSchema = z.object(addressPartSchemas).partial();
+
+/** An address as a PATCH carries it: each part absent (untouched), `null` (cleared) or a value. */
+export const structuredAddressPatchSchema = z.object(clearable(addressPartSchemas));
+export type StructuredAddressPatch = z.input<typeof structuredAddressPatchSchema>;
 
 /** Contact details, where a source actually publishes them. */
 export const placeContactSchema = z.object({
@@ -174,15 +194,21 @@ export const placeContactSchema = z.object({
 });
 export type PlaceContact = z.infer<typeof placeContactSchema>;
 
-export const placeContactInputSchema = z.object({
-  phone: z.string().max(64).optional(),
-  email: z.email().max(320).optional(),
+const contactPartSchemas = {
+  phone: z.string().max(64),
+  email: z.email().max(320),
   website: z
     .string()
     .max(2048)
-    .refine((value) => /^https?:\/\//i.test(value), 'must be an http(s) URL')
-    .optional(),
-});
+    .refine((value) => /^https?:\/\//i.test(value), 'must be an http(s) URL'),
+};
+
+/** Contact details, as a create carries them. */
+export const placeContactInputSchema = z.object(contactPartSchemas).partial();
+
+/** Contact details as a PATCH carries them: each part absent (untouched), `null` (cleared) or a value. */
+export const placeContactPatchSchema = z.object(clearable(contactPartSchemas));
+export type PlaceContactPatch = z.input<typeof placeContactPatchSchema>;
 
 // ── Verification and provenance ─────────────────────────────────────────────
 
@@ -376,8 +402,8 @@ export function placeHasCapability(place: { capabilities: readonly PlaceCapabili
 /**
  * Whether a place matches one `?capabilities=` entry — `key` or `key:value` —
  * by the rule the server's filter applies: its STRONGEST assertion of the key
- * holds, or carries the value (is it, for an enum or a price level; includes
- * it, for an enum set). A malformed filter matches nothing.
+ * holds, or carries the value (is it, for an enum, a price level or a text;
+ * includes it, for an enum set). A malformed filter matches nothing.
  */
 export function placeMatchesCapabilityFilter(
   place: { capabilities: readonly PlaceCapability[] },
@@ -572,8 +598,8 @@ export const placeSchema = z.object({
    * Every language GoWay holds a name for this place in, strongest provenance
    * first within a language.
    *
-   * Published on a single-place read and on search results; ABSENT — not
-   * empty — from a viewport or nearby list. Absent means "not published here",
+   * Published on a single-place or batch read and on search results; ABSENT —
+   * not empty — from a viewport or nearby list. Absent means "not published here",
    * exactly as it does for `claims`; `[]` means GoWay holds no translation.
    */
   names: z.array(placeNameSchema).optional(),
@@ -603,22 +629,26 @@ export const placeSchema = z.object({
   timezone: timezoneSchema.optional(),
   /**
    * Dated exceptions to the weekly schedule that have not yet ended, earliest
-   * first. Published on a single-place read; ABSENT from lists, as `names` is.
+   * first — every tier, so `openingStatusAt` can pick the strongest for a day.
+   * Published by every read that answers with places — by id, in a batch,
+   * nearby, in a viewport — because "open now" is wrong without them; `[]`
+   * when there are none. Absent only from a place nobody read from GoWay.
    */
   hoursExceptions: z.array(placeHoursExceptionSchema).optional(),
   /**
    * The place's own description, in its default language — what `name` is to
-   * `names`. Published on a single-place read; ABSENT from lists, as `names` is.
+   * `names`. Published on a single-place or batch read; ABSENT from lists, as
+   * `names` is.
    */
   description: z.string().optional(),
   /**
    * Every language GoWay holds a description in, GoWay's own wording first
-   * within a language. Single-place read only.
+   * within a language. Single-place and batch reads only.
    */
   descriptions: z.array(placeDescriptionSchema).optional(),
   /**
    * The description for the locale the request asked for, resolved by the
-   * rule {@link Place.localizedName} follows. Single-place read only.
+   * rule {@link Place.localizedName} follows. Single-place and batch reads only.
    */
   localizedDescription: placeDescriptionSchema.optional(),
   /**
@@ -734,20 +764,45 @@ export const placeCreateInputSchema = z.object({
 export type PlaceCreateInput = z.input<typeof placeCreateInputSchema>;
 
 /**
- * The body of `PATCH /places/{placeId}`.
+ * The body of `PATCH /places/{placeId}` — a merge patch.
  *
- * Every field is optional and only the ones present are touched: GoWay layers
- * enrichment OVER source data and never destructively overwrites a source fact,
- * so an update that omits `address` leaves the address alone rather than
- * clearing it. An update that names nothing is refused.
+ * - **Absent leaves a field alone.** An update that omits `address` keeps the
+ *   address, and one that sends `contact: { phone }` keeps the email and the
+ *   website: GoWay layers enrichment OVER source data and never overwrites a
+ *   fact nobody mentioned.
+ * - **`null` clears a field that may be empty**: `description`, `logoFileId`,
+ *   `coverFileId`, `geometry`, `openingHours`, each `address` and `contact`
+ *   part — and `address: null` or `contact: null` clears every part. A field
+ *   that cannot be empty (`name`, `location`, `status`) is not nullable, and
+ *   `null` there is refused. `timezone` is not writable at all: it follows
+ *   `location`.
+ * - **Lists merge by their own key**: `names` and `descriptions` by language,
+ *   `sources` and `capabilities` are added to; `categories` is replaced, and
+ *   `[]` clears it.
+ *
+ * A field cleared here that OpenStreetMap supplied stays cleared on the next
+ * import, until OpenStreetMap's own value changes. An update that names
+ * nothing is refused.
  *
  * `logoFileId` and `coverFileId` are here and not on a create: each names an
  * item already in the place's gallery, and a place that does not exist yet has
  * none.
  */
-export const placeUpdateInputSchema = placeCreateInputSchema
-  .partial()
-  .extend({
+export const placeUpdateInputSchema = z
+  .object({
+    name: writablePlaceFields.name.optional(),
+    names: writablePlaceFields.names.optional(),
+    location: writablePlaceFields.location.optional(),
+    geometry: writablePlaceFields.geometry.nullable().optional(),
+    categories: writablePlaceFields.categories.optional(),
+    address: structuredAddressPatchSchema.nullable().optional(),
+    contact: placeContactPatchSchema.nullable().optional(),
+    openingHours: writablePlaceFields.openingHours.nullable().optional(),
+    status: writablePlaceFields.status.optional(),
+    sources: writablePlaceFields.sources.optional(),
+    capabilities: writablePlaceFields.capabilities.optional(),
+    description: writablePlaceFields.description.optional(),
+    descriptions: writablePlaceFields.descriptions.optional(),
     logoFileId: writablePlaceFields.logoFileId.optional(),
     coverFileId: writablePlaceFields.coverFileId.optional(),
   })
@@ -810,6 +865,54 @@ const placeListFields = {
 export const placeReadQuerySchema = z.object(localeField).strict();
 export type PlaceReadQuery = z.input<typeof placeReadQuerySchema>;
 
+/** The most places one batch read names. */
+export const MAX_PLACE_BATCH_SIZE = 50;
+
+/** `GET /places?ids=` — several places by id, in one round trip. */
+export const placeBatchQuerySchema = z
+  .object({
+    /**
+     * The place ids, comma-joined in the query like every list
+     * (`ids=a,b,c`). Repeats collapse. At most {@link MAX_PLACE_BATCH_SIZE}.
+     */
+    ids: z.array(placeIdSchema).min(1).max(MAX_PLACE_BATCH_SIZE),
+    ...localeField,
+  })
+  .strict();
+export type PlaceBatchQuery = z.input<typeof placeBatchQuerySchema>;
+
+/**
+ * An id a batch read asked for that answers `410 gone` on its own: removed by
+ * moderation, or merged — then `mergedInto` names the place that absorbed it,
+ * exactly as the single read's `details.mergedInto` does (one hop, always).
+ */
+export const placeBatchGoneSchema = z.object({
+  id: placeIdSchema,
+  /** The survivor of a merge. Absent for a place removed outright. */
+  mergedInto: placeIdSchema.optional(),
+});
+export type PlaceBatchGone = z.infer<typeof placeBatchGoneSchema>;
+
+/**
+ * The answer to `GET /places?ids=`: every id asked for, in exactly one of
+ * three lists, each in the order the ids were asked for — the three answers
+ * the single read gives, without three round trips.
+ *
+ * Not a page: the request bounds it, so there is no next one and no cursor.
+ */
+export const placeBatchSchema = z.object({
+  /**
+   * The published places, each in the single read's full shape — names,
+   * descriptions, hours exceptions, and claims under the single read's rule.
+   */
+  items: z.array(placeSchema),
+  /** Ids that answer `410 gone`: removed, or merged with a pointer. */
+  gone: z.array(placeBatchGoneSchema),
+  /** Ids no place has ever had — what the single read answers `404` for. */
+  missing: z.array(placeIdSchema),
+});
+export type PlaceBatch = z.infer<typeof placeBatchSchema>;
+
 /** `GET /places/nearby` — nearest first, keyset-paged by distance. */
 export const nearbyPlacesQuerySchema = z
   .object({
@@ -857,6 +960,8 @@ export const accountClaimListQuerySchema = z
      * or `editor` of it). Defaults to the session's own account.
      */
     oxyAccountId: oxyAccountIdSchema.optional(),
+    /** Only the account's claims on this one place — every state, every role. */
+    placeId: placeIdSchema.optional(),
     limit: limitSchema(MAX_CLAIM_LIST_LIMIT, DEFAULT_CLAIM_LIST_LIMIT),
     cursor: cursorSchema.optional(),
   })
