@@ -30,7 +30,7 @@ Schedule that command as a small periodic task on the existing backend platform,
 for example every five minutes. This change supplies the command; it does not
 provision a scheduler, bucket or credentials. Start with a dry run and configure
 the schedule before accepting production uploads. Keep this out of API startup:
-map availability must not depend on the cleanup service or an owned GPU.
+map availability must not depend on the cleanup service or an external GPU worker.
 
 Enable execution only after **all API instances** run the registration/finalize
 guards from this change. The older API cancels `deleting` and is unsafe alongside
@@ -132,7 +132,7 @@ this expiry task. [#16](https://github.com/OxyHQ/GoWay/issues/16) is still open:
 | #10 | Deploy cleanup/backstop; enforce storage budgets; derivative cleanup and bounded rescue |
 | #13 | Privacy-safe derivatives, contributor controls, moderation, scene disable/rebuild |
 | #11 | Visual capture graph, camera solve, world alignment, Gaussian training and quality gates |
-| #12 | Durable SQS jobs, worker leases/heartbeat, cancellation, local cache, RTX 5090 validation |
+| #12 | Durable SQS jobs, worker leases/heartbeat, cancellation, local cache, GPU worker validation |
 | #14 | Versioned delivery, renderer, map transitions, Places overlays and device benchmarks |
 | #15 | Coverage health, truthful expiry risk, hints and useful-coverage metrics |
 
