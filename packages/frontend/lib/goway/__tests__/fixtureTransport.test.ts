@@ -76,6 +76,31 @@ describe('lists are pages', () => {
     expect(distances).toEqual([...distances].sort((a, b) => a - b));
   });
 
+  test('a category root matches every category below it, as the API expands it', async () => {
+    const food = await fixtureClient().places.inBounds({ ...BARCELONA, categories: ['food'] });
+    expect(food.items.length).toBeGreaterThan(3);
+    expect(food.items.every((place) => place.categories.some((key) => key.startsWith('food.')))).toBe(true);
+  });
+
+  test('a capability value filter goes through the strongest assertion', async () => {
+    const client = fixtureClient();
+    const seafood = await client.places.inBounds({ ...BARCELONA, capabilities: ['food.cuisine:seafood'] });
+    expect(seafood.items.map((place) => place.id)).toEqual(['gw_restaurant_can_sole']);
+    // Can Solé's business says `no`, over a community `yes`.
+    const accessible = await client.places.inBounds({ ...BARCELONA, capabilities: ['accessibility.wheelchair'] });
+    expect(accessible.items.map((place) => place.id)).not.toContain('gw_restaurant_can_sole');
+    expect(accessible.items.map((place) => place.id)).toContain('gw_museu_picasso');
+  });
+
+  test('a list read carries no hours exceptions; a single read does', async () => {
+    const client = fixtureClient();
+    const listed = await client.places.inBounds(BARCELONA);
+    expect(listed.items.every((place) => place.hoursExceptions === undefined)).toBe(true);
+    const museum = await client.places.get('gw_museu_picasso');
+    expect(museum.hoursExceptions).toHaveLength(2);
+    expect(museum.timezone).toBe('Europe/Madrid');
+  });
+
   test('a cursor the list never issued is refused, not served as page one', async () => {
     const error = await failureOf(fixtureClient().places.inBounds({ ...BARCELONA, cursor: 'forged' }));
     expect(error).toMatchObject({ status: API_ERROR_STATUS.bad_request, code: 'bad_request' });

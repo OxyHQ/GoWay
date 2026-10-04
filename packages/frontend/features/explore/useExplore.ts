@@ -44,7 +44,7 @@ import { sameLabelSet } from '@/components/map/labels';
 import { useDirections, type DirectionsController } from '@/features/directions/useDirections';
 import { boundsCenter, distanceMeters } from '@/lib/map/geo';
 import { declutterMarkerLabels, describeLabel, reconcileLabel } from '@/lib/goway/basemapLabels';
-import { visibleCapabilities } from '@/lib/goway/capabilities';
+import { ecosystemCapabilities } from '@/lib/goway/capabilities';
 import { CATEGORY_SHORTCUTS } from '@/lib/goway/categories';
 import { classifyGoWayError, type GoWayFailureKind } from '@/lib/goway/errors';
 import { buildMarkers } from '@/lib/goway/markers';
@@ -330,7 +330,7 @@ export function useExplore(
    */
   const ecosystem = useMemo(() => {
     const index = new Map<string, PlaceCapability>();
-    const strongest = (place: Place) => visibleCapabilities(place.capabilities)[0];
+    const strongest = (place: Place) => ecosystemCapabilities(place.capabilities)[0];
 
     if (searching) {
       for (const result of results) {

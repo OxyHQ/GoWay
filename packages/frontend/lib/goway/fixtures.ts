@@ -16,22 +16,29 @@
  *    hypothetical;
  *  - capabilities at all four verification levels, including a deliberately
  *    ANCIENT FairCoin report (`bar-marsella`) so the staleness rule is visible;
- *  - categories spread across the three zoom tiers in `categories.ts`, so
- *    zoom-dependent visibility and clustering have something to do;
+ *  - categories from the taxonomy, spread across the three zoom tiers in
+ *    `categories.ts`, so zoom-dependent visibility and clustering have
+ *    something to do;
+ *  - typed capabilities in every group — accessibility, payment, amenities,
+ *    cuisine, price, social — so the grouped list has sections to draw;
+ *  - dated hours exceptions, relative to today, so "closed today" and an
+ *    upcoming holiday both render;
  *  - one `closed` place, because a lifecycle state other than `active` must
  *    render as itself rather than vanish.
  */
-import type { Place, PlaceCapability } from '@goway.to/sdk';
+import type { CapabilityKey, CategoryKey, Place, PlaceCapability, PlaceHoursException } from '@goway.to/sdk';
 
 const DAY_MS = 86_400_000;
 /** Fixed at module load so a session's relative timestamps stay consistent. */
 const NOW = Date.now();
 
 const daysAgo = (days: number): string => new Date(NOW - days * DAY_MS).toISOString();
+/** A calendar date `days` from today, `YYYY-MM-DD`. */
+const dateIn = (days: number): string => new Date(NOW + days * DAY_MS).toISOString().slice(0, 10);
 
 interface CapabilitySeed {
-  key: string;
-  value?: boolean | string | number;
+  key: CapabilityKey;
+  value?: PlaceCapability['value'];
   verification: PlaceCapability['verification'];
   daysAgo: number;
 }
@@ -64,7 +71,7 @@ interface PlaceSeed {
   names?: Record<string, string>;
   latitude: number;
   longitude: number;
-  categories: string[];
+  categories: CategoryKey[];
   status?: Place['status'];
   verification?: Place['verification']['state'];
   street?: string;
@@ -75,6 +82,8 @@ interface PlaceSeed {
   /** `[day, opens, closes]` triples; the timezone is Barcelona's throughout. */
   hours?: Array<[0 | 1 | 2 | 3 | 4 | 5 | 6, string, string]>;
   capabilities?: CapabilitySeed[];
+  /** `[fromToday, days, closed-or-hours, note]` — dated exceptions to the week. */
+  exceptions?: Array<{ in: number; days?: number; hours?: [string, string]; note?: string; verification: PlaceHoursException['verification'] }>;
   osmId?: string;
 }
 
@@ -95,6 +104,8 @@ function place(seed: PlaceSeed): Place {
       ? [{ source: 'openstreetmap', sourceId: seed.osmId, observedAt: daysAgo(12) }]
       : [{ source: 'goway', sourceId: seed.id, observedAt: daysAgo(3) }],
     capabilities: (seed.capabilities ?? []).map(capability),
+    // GoWay derives the zone from the position; every fixture is in Barcelona.
+    timezone: 'Europe/Madrid',
     createdAt: daysAgo(420),
     updatedAt: daysAgo(6),
   };
@@ -127,8 +138,21 @@ function place(seed: PlaceSeed): Place {
   if (seed.hours) {
     built.openingHours = {
       intervals: seed.hours.map(([day, opens, closes]) => ({ day, opens, closes })),
-      timezone: 'Europe/Madrid',
     };
+  }
+  if (seed.exceptions) {
+    built.hoursExceptions = seed.exceptions.map((exception, index) => ({
+      id: `${seed.id}_exception_${index}`,
+      placeId: seed.id,
+      startsOn: dateIn(exception.in),
+      endsOn: dateIn(exception.in + (exception.days ?? 1) - 1),
+      closed: exception.hours === undefined,
+      intervals: exception.hours ? [{ opens: exception.hours[0], closes: exception.hours[1] }] : [],
+      ...(exception.note ? { note: exception.note } : {}),
+      source: 'goway',
+      verification: exception.verification,
+      observedAt: daysAgo(2),
+    }));
   }
   return built;
 }
@@ -144,7 +168,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     names: { es: 'Mercado de La Boquería', en: 'La Boqueria Market' },
     latitude: 41.3817,
     longitude: 2.1716,
-    categories: ['grocery', 'shop'],
+    categories: ['shop.marketplace'],
     verification: 'oxy_verified',
     street: 'La Rambla',
     houseNumber: '91',
@@ -153,9 +177,13 @@ export const FIXTURE_PLACES: readonly Place[] = [
     website: 'https://www.boqueria.barcelona',
     hours: [...weekdays('08:00', '20:30'), [6, '08:00', '20:30']],
     osmId: 'way/25336101',
+    exceptions: [{ in: 3, note: 'Public holiday', verification: 'business_asserted' }],
     capabilities: [
       { key: 'payments.faircoin.accepted', verification: 'oxy_verified', daysAgo: 9 },
       { key: 'commerce.mercaria.store', verification: 'business_asserted', daysAgo: 55 },
+      { key: 'accessibility.wheelchair', value: 'limited', verification: 'community_reported', daysAgo: 30 },
+      { key: 'payments.cash', verification: 'external_source', daysAgo: 12 },
+      { key: 'payments.cards', verification: 'external_source', daysAgo: 12 },
     ],
   }),
   place({
@@ -164,7 +192,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     names: { es: 'Parque de la Ciudadela', en: 'Ciutadella Park' },
     latitude: 41.3881,
     longitude: 2.1871,
-    categories: ['park'],
+    categories: ['leisure.park'],
     verification: 'community_reviewed',
     street: 'Passeig de Picasso',
     locality: 'Sant Pere',
@@ -176,7 +204,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     names: { es: 'Museo Picasso', en: 'Picasso Museum', fr: 'Musée Picasso' },
     latitude: 41.3851,
     longitude: 2.1806,
-    categories: ['museum'],
+    categories: ['culture.museum'],
     verification: 'oxy_verified',
     street: "Carrer de Montcada",
     houseNumber: '15-23',
@@ -185,6 +213,15 @@ export const FIXTURE_PLACES: readonly Place[] = [
     website: 'museupicasso.bcn.cat',
     hours: [[2, '10:00', '19:00'], [3, '10:00', '19:00'], [4, '10:00', '19:00'], [5, '10:00', '19:00'], [6, '10:00', '20:00'], [0, '10:00', '20:00']],
     osmId: 'way/34633854',
+    capabilities: [
+      { key: 'accessibility.wheelchair', value: 'yes', verification: 'external_source', daysAgo: 12 },
+      { key: 'accessibility.toilets_wheelchair', verification: 'external_source', daysAgo: 12 },
+      { key: 'accessibility.hearing_loop', verification: 'business_asserted', daysAgo: 70 },
+    ],
+    exceptions: [
+      { in: 0, hours: ['10:00', '15:00'], note: 'Reduced hours', verification: 'business_asserted' },
+      { in: 20, days: 2, verification: 'business_asserted', note: 'Installing an exhibition' },
+    ],
   }),
   place({
     id: 'gw_hospital_clinic',
@@ -192,7 +229,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     names: { es: 'Hospital Clínico', en: 'Hospital Clinic' },
     latitude: 41.3893,
     longitude: 2.1516,
-    categories: ['hospital'],
+    categories: ['health.hospital'],
     verification: 'oxy_verified',
     street: "Carrer de Villarroel",
     houseNumber: '170',
@@ -205,7 +242,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'Liceu',
     latitude: 41.3803,
     longitude: 2.1735,
-    categories: ['transit_station'],
+    categories: ['transport.rail_station'],
     locality: 'Ciutat Vella',
     osmId: 'node/1725079123',
   }),
@@ -214,7 +251,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'Jaume I',
     latitude: 41.3836,
     longitude: 2.1780,
-    categories: ['transit_station'],
+    categories: ['transport.rail_station'],
     locality: 'Ciutat Vella',
     osmId: 'node/1725079221',
   }),
@@ -223,7 +260,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'Bicing — Passeig del Born',
     latitude: 41.3846,
     longitude: 2.1824,
-    categories: ['bicycle_rental'],
+    categories: ['transport.bicycle_rental'],
     locality: 'El Born',
     capabilities: [{ key: 'mobility.moovo.pickup', verification: 'external_source', daysAgo: 21 }],
   }),
@@ -232,7 +269,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'Cafès El Magnífico',
     latitude: 41.3843,
     longitude: 2.1811,
-    categories: ['cafe'],
+    categories: ['food.cafe'],
     verification: 'owner_verified',
     street: "Carrer de l'Argenteria",
     houseNumber: '64',
@@ -243,6 +280,11 @@ export const FIXTURE_PLACES: readonly Place[] = [
     capabilities: [
       { key: 'payments.faircoin.accepted', verification: 'business_asserted', daysAgo: 4 },
       { key: 'social.mention.location', verification: 'oxy_verified', daysAgo: 2 },
+      { key: 'payments.contactless', verification: 'business_asserted', daysAgo: 4 },
+      { key: 'amenities.wifi', verification: 'business_asserted', daysAgo: 4 },
+      { key: 'amenities.takeaway', verification: 'business_asserted', daysAgo: 4 },
+      { key: 'food.diet', value: ['vegan', 'gluten_free'], verification: 'community_reported', daysAgo: 40 },
+      { key: 'social.instagram', value: 'https://www.instagram.com/cafeselmagnifico', verification: 'business_asserted', daysAgo: 4 },
     ],
   }),
   place({
@@ -250,7 +292,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'Bar Marsella',
     latitude: 41.3790,
     longitude: 2.1697,
-    categories: ['bar'],
+    categories: ['food.bar'],
     street: 'Carrer de Sant Pau',
     houseNumber: '65',
     locality: 'El Raval',
@@ -266,7 +308,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'Baluard Barceloneta',
     latitude: 41.3789,
     longitude: 2.1893,
-    categories: ['bakery'],
+    categories: ['food.bakery'],
     street: 'Carrer del Baluard',
     houseNumber: '38',
     locality: 'La Barceloneta',
@@ -278,19 +320,22 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'Llibreria Calders',
     latitude: 41.3795,
     longitude: 2.1620,
-    categories: ['bookshop', 'shop'],
+    categories: ['shop.books'],
     street: 'Passatge de Pere Calders',
     houseNumber: '9',
     locality: 'Sant Antoni',
     website: 'www.instagram.com/llibreriacalders',
     hours: [...weekdays('10:00', '21:00')],
+    capabilities: [
+      { key: 'social.instagram', value: 'https://www.instagram.com/llibreriacalders', verification: 'external_source', daysAgo: 12 },
+    ],
   }),
   place({
     id: 'gw_coworking_betahaus',
     name: 'Betahaus Barcelona',
     latitude: 41.3862,
     longitude: 2.1639,
-    categories: ['coworking'],
+    categories: ['office.coworking'],
     verification: 'owner_verified',
     street: "Carrer de Vilafranca",
     houseNumber: '7',
@@ -307,7 +352,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'Farmàcia Gran de Gràcia',
     latitude: 41.4023,
     longitude: 2.1552,
-    categories: ['pharmacy'],
+    categories: ['health.pharmacy'],
     street: 'Gran de Gràcia',
     houseNumber: '130',
     locality: 'Gràcia',
@@ -319,20 +364,29 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'Can Solé',
     latitude: 41.3771,
     longitude: 2.1875,
-    categories: ['restaurant'],
+    categories: ['food.restaurant'],
     verification: 'community_reviewed',
     street: 'Carrer de Sant Carles',
     houseNumber: '4',
     locality: 'La Barceloneta',
     phone: '+34932215012',
     hours: [[2, '13:00', '16:00'], [3, '13:00', '16:00'], [4, '13:00', '16:00'], [5, '13:00', '23:00'], [6, '13:00', '23:00']],
+    capabilities: [
+      { key: 'food.cuisine', value: ['catalan', 'seafood'], verification: 'external_source', daysAgo: 12 },
+      { key: 'price.level', value: 3, verification: 'community_reported', daysAgo: 90 },
+      { key: 'amenities.outdoor_seating', verification: 'external_source', daysAgo: 12 },
+      { key: 'amenities.reservations', verification: 'business_asserted', daysAgo: 20 },
+      // The business's own `no` outranks the community's `yes`: no badge.
+      { key: 'accessibility.wheelchair', value: 'yes', verification: 'community_reported', daysAgo: 100 },
+      { key: 'accessibility.wheelchair', value: 'no', verification: 'business_asserted', daysAgo: 20 },
+    ],
   }),
   place({
     id: 'gw_hotel_neri',
     name: 'Hotel Neri',
     latitude: 41.3833,
     longitude: 2.1755,
-    categories: ['hotel'],
+    categories: ['lodging.hotel'],
     street: 'Carrer de Sant Sever',
     houseNumber: '5',
     locality: 'Barri Gòtic',
@@ -344,7 +398,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'Banc Sabadell — Gòtic',
     latitude: 41.3821,
     longitude: 2.1770,
-    categories: ['bank'],
+    categories: ['finance.bank'],
     street: 'Carrer de Ferran',
     houseNumber: '28',
     locality: 'Barri Gòtic',
@@ -374,7 +428,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     names: { es: 'Mercado de Santa Caterina' },
     latitude: 41.3870,
     longitude: 2.1769,
-    categories: ['grocery', 'shop'],
+    categories: ['shop.marketplace'],
     verification: 'community_reviewed',
     street: "Avinguda de Francesc Cambó",
     houseNumber: '16',
@@ -387,7 +441,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'Nømad Coffee Lab',
     latitude: 41.3879,
     longitude: 2.1723,
-    categories: ['cafe'],
+    categories: ['food.cafe'],
     street: 'Passatge Sert',
     houseNumber: '12',
     locality: 'Sant Pere',
@@ -399,7 +453,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'Parc de Joan Miró',
     latitude: 41.3759,
     longitude: 2.1487,
-    categories: ['park'],
+    categories: ['leisure.park'],
     locality: "L'Eixample",
     osmId: 'way/25984122',
   }),
@@ -408,7 +462,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'La Botiga del Raval',
     latitude: 41.3801,
     longitude: 2.1669,
-    categories: ['shop'],
+    categories: ['shop.clothes'],
     status: 'closed',
     street: 'Carrer del Carme',
     houseNumber: '41',
@@ -419,7 +473,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'Escola Massana',
     latitude: 41.3808,
     longitude: 2.1691,
-    categories: ['civic'],
+    categories: ['education.school'],
     street: "Carrer de l'Hospital",
     houseNumber: '56',
     locality: 'El Raval',
@@ -430,7 +484,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     name: 'Moovo — Sants Estació',
     latitude: 41.3791,
     longitude: 2.1400,
-    categories: ['transit_station', 'bicycle_rental'],
+    categories: ['transport.bicycle_rental'],
     locality: 'Sants',
     capabilities: [{ key: 'mobility.moovo.pickup', verification: 'oxy_verified', daysAgo: 1 }],
   }),

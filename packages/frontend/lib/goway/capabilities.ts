@@ -16,14 +16,52 @@
  *  - **Nothing is invented.** A capability GoWay has not heard of is shown with
  *    its own key rather than dropped, and a stale claim is labelled stale
  *    rather than quietly upgraded.
+ *
+ * What a key IS — its label, its value's kind, its enum labels, its group — is
+ * the SDK's capability registry. What is this app's is how it looks: a glyph
+ * per key, how a value reads on screen, and which few keys are Oxy-ecosystem
+ * facts worth a badge on a map pin.
  */
-import { capabilityValueHolds, placeHasCapability, type CapabilityVerification, type PlaceCapability } from '@goway.to/sdk';
+import {
+  CAPABILITY_GROUPS,
+  capabilityGroupLabel,
+  capabilityGroupOf,
+  capabilityHolds,
+  capabilityLabel,
+  capabilityValueKind,
+  capabilityValueLabel,
+  strongestCapability,
+  type CapabilityGroup,
+  type CapabilityKey,
+  type CapabilityVerification,
+  type PlaceCapability,
+} from '@goway.to/sdk';
 import type { BloomIconComponent } from '@oxy.so/bloom/icons';
-import { RiCoinsLine } from '@oxy.so/bloom/icons/RiCoinsLine';
-import { RiHome5Line } from '@oxy.so/bloom/icons/RiHome5Line';
-import { RiMapPin2Line } from '@oxy.so/bloom/icons/RiMapPin2Line';
-import { RiShoppingBasketLine } from '@oxy.so/bloom/icons/RiShoppingBasketLine';
+import { RiBankCardLine } from '@oxy.so/bloom/icons/RiBankCardLine';
 import { RiBikeLine } from '@oxy.so/bloom/icons/RiBikeLine';
+import { RiCalendarLine } from '@oxy.so/bloom/icons/RiCalendarLine';
+import { RiCarLine } from '@oxy.so/bloom/icons/RiCarLine';
+import { RiChat3Line } from '@oxy.so/bloom/icons/RiChat3Line';
+import { RiCoinsLine } from '@oxy.so/bloom/icons/RiCoinsLine';
+import { RiGlobalLine } from '@oxy.so/bloom/icons/RiGlobalLine';
+import { RiHome5Line } from '@oxy.so/bloom/icons/RiHome5Line';
+import { RiInstagramFill } from '@oxy.so/bloom/icons/RiInstagramFill';
+import { RiMapPin2Line } from '@oxy.so/bloom/icons/RiMapPin2Line';
+import { RiMenLine } from '@oxy.so/bloom/icons/RiMenLine';
+import { RiMetaFill } from '@oxy.so/bloom/icons/RiMetaFill';
+import { RiMoneyEuroBoxLine } from '@oxy.so/bloom/icons/RiMoneyEuroBoxLine';
+import { RiPriceTag3Line } from '@oxy.so/bloom/icons/RiPriceTag3Line';
+import { RiRestaurantLine } from '@oxy.so/bloom/icons/RiRestaurantLine';
+import { RiShoppingBag3Line } from '@oxy.so/bloom/icons/RiShoppingBag3Line';
+import { RiShoppingBasketLine } from '@oxy.so/bloom/icons/RiShoppingBasketLine';
+import { RiSnowflakeLine } from '@oxy.so/bloom/icons/RiSnowflakeLine';
+import { RiStore2Line } from '@oxy.so/bloom/icons/RiStore2Line';
+import { RiSunLine } from '@oxy.so/bloom/icons/RiSunLine';
+import { RiTwitterXFill } from '@oxy.so/bloom/icons/RiTwitterXFill';
+import { RiWheelchairLine } from '@oxy.so/bloom/icons/RiWheelchairLine';
+import { RiWifiLine } from '@oxy.so/bloom/icons/RiWifiLine';
+
+import { deviceLocale } from '@/lib/i18n';
 
 /** How the UI should weight a claim. Ordered weakest to strongest. */
 export type CapabilityTone = 'neutral' | 'info' | 'verified';
@@ -31,7 +69,12 @@ export type CapabilityTone = 'neutral' | 'info' | 'verified';
 export interface CapabilityPresentation {
   /** The capability's own key, so an unknown one is still identifiable. */
   key: string;
+  /** What the place has — "Accepts FairCoin", "Partly wheelchair accessible". */
   label: string;
+  /** The value, when it says more than the label: "Italian, Pizza", "●●○○". */
+  value: string | null;
+  /** A link the value opens, for a URL-valued capability. */
+  href: string | null;
   icon: BloomIconComponent;
   /** "Oxy verified", "Reported by the business"… — always rendered as TEXT. */
   provenance: string;
@@ -42,14 +85,58 @@ export interface CapabilityPresentation {
   tone: CapabilityTone;
 }
 
-/** Label + glyph for the capabilities this build knows by name. */
-const KNOWN: Readonly<Record<string, { label: string; icon: BloomIconComponent }>> = {
-  'payments.faircoin.accepted': { label: 'Accepts FairCoin', icon: RiCoinsLine },
-  'commerce.mercaria.store': { label: 'Mercaria store', icon: RiShoppingBasketLine },
-  'mobility.moovo.pickup': { label: 'Moovo pickup point', icon: RiBikeLine },
-  'housing.homiio.listings': { label: 'Homiio listings', icon: RiHome5Line },
-  'social.mention.location': { label: 'Mention location', icon: RiMapPin2Line },
+/** One group of capabilities, in the registry's group order. */
+export interface CapabilityGroupPresentation {
+  group: CapabilityGroup | 'other';
+  label: string;
+  items: CapabilityPresentation[];
+}
+
+/** A glyph per key; a key not listed takes its group's. */
+const ICON_BY_KEY: Partial<Readonly<Record<CapabilityKey, BloomIconComponent>>> = {
+  'payments.faircoin.accepted': RiCoinsLine,
+  'payments.cash': RiMoneyEuroBoxLine,
+  'amenities.wifi': RiWifiLine,
+  'amenities.outdoor_seating': RiSunLine,
+  'amenities.takeaway': RiShoppingBag3Line,
+  'amenities.delivery': RiBikeLine,
+  'amenities.reservations': RiCalendarLine,
+  'amenities.drive_through': RiCarLine,
+  'amenities.toilets': RiMenLine,
+  'amenities.air_conditioning': RiSnowflakeLine,
+  'social.instagram': RiInstagramFill,
+  'social.facebook': RiMetaFill,
+  'social.x': RiTwitterXFill,
+  'social.whatsapp': RiChat3Line,
+  'commerce.mercaria.store': RiShoppingBasketLine,
+  'mobility.moovo.pickup': RiBikeLine,
+  'housing.homiio.listings': RiHome5Line,
+  'social.mention.location': RiMapPin2Line,
 };
+
+const ICON_BY_GROUP: Readonly<Record<CapabilityGroup, BloomIconComponent>> = {
+  accessibility: RiWheelchairLine,
+  payment: RiBankCardLine,
+  amenities: RiStore2Line,
+  food: RiRestaurantLine,
+  price: RiPriceTag3Line,
+  social: RiGlobalLine,
+  brand: RiStore2Line,
+  ecosystem: RiMapPin2Line,
+};
+
+/**
+ * The capabilities that are Oxy-ecosystem facts — the ones a map pin and a
+ * result row badge. An accessible toilet is worth reading on the place card;
+ * it is not worth a badge on every restaurant on the map.
+ */
+const ECOSYSTEM_KEYS: ReadonlySet<string> = new Set<CapabilityKey>([
+  'payments.faircoin.accepted',
+  'commerce.mercaria.store',
+  'mobility.moovo.pickup',
+  'housing.homiio.listings',
+  'social.mention.location',
+]);
 
 /**
  * How the claim came to be believed, in the user's words.
@@ -91,6 +178,50 @@ function describeAge(observedAt: string, now: number): { text: string; stale: bo
   return { text: `Last checked over ${years} year${years === 1 ? '' : 's'} ago`, stale: true };
 }
 
+/** A URL without its scheme and trailing slash — what a person reads. */
+function readableLink(url: string): string {
+  return url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '');
+}
+
+/**
+ * The label and the value text, by the kind of value the key declares.
+ *
+ * An enum's own value label IS the statement ("Partly wheelchair accessible"),
+ * so it replaces the key's label rather than following it.
+ */
+function describeValue(
+  capability: PlaceCapability,
+  locale: string,
+): { label: string; value: string | null; href: string | null } {
+  const label = capabilityLabel(capability.key, locale);
+  const { value } = capability;
+  switch (capabilityValueKind(capability.key)) {
+    case 'enum':
+      return { label: typeof value === 'string' ? capabilityValueLabel(capability.key, value, locale) : label, value: null, href: null };
+    case 'enum_set':
+      return {
+        label,
+        value: Array.isArray(value) ? value.map((member) => capabilityValueLabel(capability.key, member, locale)).join(', ') : null,
+        href: null,
+      };
+    case 'integer':
+      return { label, value: typeof value === 'number' ? String(value) : null, href: null };
+    case 'price_level':
+      return {
+        label,
+        value: typeof value === 'number' ? `${'●'.repeat(value)}${'○'.repeat(Math.max(0, 4 - value))}` : null,
+        href: null,
+      };
+    case 'url':
+      return typeof value === 'string' ? { label, value: readableLink(value), href: value } : { label, value: null, href: null };
+    case 'text':
+      // An opaque reference (a Mercaria location id) is not something to read.
+      return { label, value: capabilityGroupOf(capability.key) === 'brand' && typeof value === 'string' ? value : null, href: null };
+    default:
+      return { label, value: null, href: null };
+  }
+}
+
 /**
  * Presentation for one capability.
  *
@@ -99,16 +230,20 @@ function describeAge(observedAt: string, now: number): { text: string; stale: bo
  * as a current guarantee is the single failure this whole provenance contract
  * exists to prevent.
  */
-export function presentCapability(capability: PlaceCapability, now: number = Date.now()): CapabilityPresentation {
-  const known = KNOWN[capability.key];
+export function presentCapability(
+  capability: PlaceCapability,
+  now: number = Date.now(),
+  locale: string = deviceLocale(),
+): CapabilityPresentation {
   const provenance = PROVENANCE[capability.verification];
   const age = describeAge(capability.observedAt, now);
   const stale = age?.stale ?? false;
+  const group = capabilityGroupOf(capability.key);
 
   return {
     key: capability.key,
-    label: known?.label ?? capability.key,
-    icon: known?.icon ?? RiMapPin2Line,
+    ...describeValue(capability, locale),
+    icon: ICON_BY_KEY[capability.key as CapabilityKey] ?? (group ? ICON_BY_GROUP[group] : RiMapPin2Line),
     provenance: provenance.text,
     freshness: age?.text ?? null,
     stale,
@@ -116,33 +251,65 @@ export function presentCapability(capability: PlaceCapability, now: number = Dat
   };
 }
 
+const TIER_ORDER: Readonly<Record<CapabilityVerification, number>> = {
+  oxy_verified: 0,
+  business_asserted: 1,
+  external_source: 2,
+  community_reported: 3,
+};
+
 /**
- * The capabilities worth showing on a place, strongest and freshest first.
+ * The capabilities worth showing on a place: for each key, its STRONGEST
+ * assertion, when that assertion holds — strongest and freshest first.
  *
- * A capability whose value is explicitly `false` is REMOVED rather than shown
- * as a negative badge: "does not accept FairCoin" is not a feature, and a row
- * of crossed-out pills is noise on every place that has never been asked.
- *
- * And a key is shown only when the place HAS it by the contract's rule
- * (`placeHasCapability`): its strongest assertion holds. Dropping `false` rows
- * before ranking would let a stale community `true` badge a shop whose own
- * business said it stopped — the badge the server's filter refuses.
+ * One row per key, because the strongest assertion is the answer
+ * (`strongestCapability`); the weaker ones are evidence the API still
+ * publishes, not facts to render beside it. And a key whose strongest
+ * assertion does not hold — `false`, or `wheelchair: no` — is not shown as a
+ * negative badge: "does not accept FairCoin" is not a feature, and a row of
+ * crossed-out pills is noise on every place that has never been asked.
  */
 export function visibleCapabilities(capabilities: readonly PlaceCapability[]): PlaceCapability[] {
-  const order: Record<CapabilityVerification, number> = {
-    oxy_verified: 0,
-    business_asserted: 1,
-    external_source: 2,
-    community_reported: 3,
-  };
-  return capabilities
-    .filter((capability) => placeHasCapability({ capabilities }, capability.key) && capabilityValueHolds(capability.value))
-    .slice()
+  const keys = [...new Set(capabilities.map((capability) => capability.key))];
+  return keys
+    .map((key) => strongestCapability({ capabilities }, key))
+    .filter((capability): capability is PlaceCapability => capability !== undefined && capabilityHolds(capability.key, capability.value))
     .sort((a, b) => {
-      const byVerification = order[a.verification] - order[b.verification];
+      const byVerification = TIER_ORDER[a.verification] - TIER_ORDER[b.verification];
       if (byVerification !== 0) return byVerification;
       return Date.parse(b.observedAt) - Date.parse(a.observedAt);
     });
+}
+
+/** The visible capabilities that are Oxy-ecosystem facts — what a pin or a row badges. */
+export function ecosystemCapabilities(capabilities: readonly PlaceCapability[]): PlaceCapability[] {
+  return visibleCapabilities(capabilities).filter((capability) => ECOSYSTEM_KEYS.has(capability.key));
+}
+
+/**
+ * The visible capabilities, grouped as the registry groups them and in its
+ * order, each presented. A key this build does not know lands in `other`,
+ * labelled by its own key, rather than being dropped.
+ */
+export function groupedCapabilities(
+  capabilities: readonly PlaceCapability[],
+  now: number = Date.now(),
+  locale: string = deviceLocale(),
+): CapabilityGroupPresentation[] {
+  const byGroup = new Map<CapabilityGroup | 'other', CapabilityPresentation[]>();
+  for (const capability of visibleCapabilities(capabilities)) {
+    const group = capabilityGroupOf(capability.key) ?? 'other';
+    const items = byGroup.get(group) ?? [];
+    items.push(presentCapability(capability, now, locale));
+    byGroup.set(group, items);
+  }
+  return [...CAPABILITY_GROUPS, 'other' as const]
+    .filter((group) => byGroup.has(group))
+    .map((group) => ({
+      group,
+      label: group === 'other' ? (locale.startsWith('es') ? 'Otros' : 'Other') : capabilityGroupLabel(group, locale),
+      items: byGroup.get(group) ?? [],
+    }));
 }
 
 /**
@@ -153,7 +320,7 @@ export function visibleCapabilities(capabilities: readonly PlaceCapability[]): P
  * the badge never has to be the thing carrying the information.
  */
 export function capabilitySummary(capabilities: readonly PlaceCapability[]): string | null {
-  const visible = visibleCapabilities(capabilities);
+  const visible = ecosystemCapabilities(capabilities);
   if (visible.length === 0) return null;
   return visible.map((capability) => presentCapability(capability).label).join(', ');
 }

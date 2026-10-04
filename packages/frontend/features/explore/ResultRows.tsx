@@ -20,10 +20,10 @@ import { useTheme } from '@oxy.so/bloom/theme';
 import { RiMapPin2Line } from '@oxy.so/bloom/icons/RiMapPin2Line';
 import { RiVerifiedBadgeLine } from '@oxy.so/bloom/icons/RiVerifiedBadgeLine';
 
-import { capabilitySummary, presentCapability, visibleCapabilities } from '@/lib/goway/capabilities';
+import { capabilitySummary, ecosystemCapabilities, presentCapability } from '@/lib/goway/capabilities';
 import { resolveCategory } from '@/lib/goway/categories';
 import { formatAddress, formatDistance, formatPlaceSubtitle } from '@/lib/goway/format';
-import { evaluateOpeningHours } from '@/lib/goway/openingHours';
+import { openingSummary } from '@/lib/goway/hours';
 
 /** A tiny glyph+word pair. Never a bare coloured dot. */
 function Tag({ children, color }: { children: string; color: string }) {
@@ -47,8 +47,8 @@ export function PlaceRow({ place, selected = false, onPress, testID }: PlaceRowP
   const Icon = category.icon;
   const subtitle = formatPlaceSubtitle(place);
   const distance = 'distanceMeters' in place ? formatDistance(place.distanceMeters) : null;
-  const opening = evaluateOpeningHours(place.openingHours);
-  const capabilities = visibleCapabilities(place.capabilities);
+  const opening = openingSummary(place);
+  const capabilities = ecosystemCapabilities(place.capabilities);
   const oxyVerified = place.verification.state === 'oxy_verified' || place.verification.state === 'owner_verified';
 
   // The accessible name carries everything the visual tags carry, in words, so
@@ -58,8 +58,7 @@ export function PlaceRow({ place, selected = false, onPress, testID }: PlaceRowP
     displayName,
     subtitle,
     place.status === 'closed' ? 'permanently closed' : null,
-    opening.state === 'open' ? `open until ${opening.closesAt}` : null,
-    opening.state === 'closed' ? 'closed now' : null,
+    opening?.spoken ?? null,
     oxyVerified ? 'verified by Oxy' : null,
     capabilitySummary(place.capabilities),
     distance ? `${distance} away` : null,
@@ -98,17 +97,14 @@ export function PlaceRow({ place, selected = false, onPress, testID }: PlaceRowP
         ) : null}
 
         {/* Status words, not status colours. The tint is redundant emphasis. */}
-        {(place.status === 'closed' || opening.state !== 'unknown' || capabilities.length > 0) ? (
+        {(place.status === 'closed' || opening || capabilities.length > 0) ? (
           <View className="flex-row flex-wrap items-center gap-space-8">
             {place.status === 'closed' ? (
               <Tag color={theme.colors.errorSubtleForeground}>Permanently closed</Tag>
             ) : null}
-            {place.status !== 'closed' && opening.state === 'open' ? (
-              <Tag color={theme.colors.successSubtleForeground}>{`Open · until ${opening.closesAt}`}</Tag>
-            ) : null}
-            {place.status !== 'closed' && opening.state === 'closed' ? (
-              <Tag color={theme.colors.textSecondary}>
-                {opening.opensAt ? `Closed · opens ${opening.opensAt}` : 'Closed'}
+            {place.status !== 'closed' && opening ? (
+              <Tag color={opening.state === 'open' ? theme.colors.successSubtleForeground : theme.colors.textSecondary}>
+                {opening.text}
               </Tag>
             ) : null}
             {capabilities.slice(0, 2).map((capability) => (

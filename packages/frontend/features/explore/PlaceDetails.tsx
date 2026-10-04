@@ -12,7 +12,7 @@
  * OVER the map and leaves everything mounted. Everything else on this screen —
  * the place, its hours, its capabilities, directions — works signed out.
  */
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
 import { placeDisplayName } from '@goway.to/sdk';
 import type { Place } from '@goway.to/sdk';
@@ -34,7 +34,7 @@ import { RiVerifiedBadgeLine } from '@oxy.so/bloom/icons/RiVerifiedBadgeLine';
 import { useAuthGate } from '@/lib/authGate';
 import { resolveCategory } from '@/lib/goway/categories';
 import { formatAddress, formatWebsite, websiteUrl } from '@/lib/goway/format';
-import { evaluateOpeningHours } from '@/lib/goway/openingHours';
+import { openingSummary, upcomingExceptions, weeklySchedule } from '@/lib/goway/hours';
 
 import { CapabilityList } from './CapabilityList';
 
@@ -66,14 +66,19 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
 
   const category = resolveCategory(place.categories);
   const address = formatAddress(place.address);
-  const opening = evaluateOpeningHours(place.openingHours);
+  const opening = openingSummary(place);
+  const schedule = weeklySchedule(place);
+  const exceptions = upcomingExceptions(place);
+  const [showWeek, setShowWeek] = useState(false);
   const website = formatWebsite(place.contact?.website);
   const phone = place.contact?.phone;
   const verification = VERIFICATION_WORDS[place.verification.state];
 
   // "Do we know anything at all?" — the test the incomplete-metadata state
   // hangs off, written once rather than as five nested ternaries below.
-  const hasDetail = Boolean(address || phone || website || opening.state !== 'unknown' || place.capabilities.length > 0);
+  const hasDetail = Boolean(
+    address || phone || website || opening || schedule || exceptions.length > 0 || place.capabilities.length > 0,
+  );
 
   const openWebsite = useCallback(() => {
     const url = websiteUrl(place.contact?.website);
@@ -159,19 +164,38 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
         />
       ) : null}
 
-      {opening.state !== 'unknown' ? (
-        <Item
-          density="compact"
-          leading={<RiTimeLine width={18} height={18} fill={theme.colors.textSecondary} />}
-          title={
-            opening.state === 'open'
-              ? `Open · closes ${opening.closesAt}`
-              : opening.opensAt
-                ? `Closed · opens ${opening.opensAt}`
-                : 'Closed'
-          }
-          accessibilityLabel={opening.state === 'open' ? `Open now, closes at ${opening.closesAt}` : 'Closed now'}
-        />
+      {opening || schedule ? (
+        <View className="gap-space-4">
+          <Item
+            density="compact"
+            leading={<RiTimeLine width={18} height={18} fill={theme.colors.textSecondary} />}
+            // A schedule GoWay can read but not evaluate (no zone) still shows
+            // its week; it just makes no claim about right now.
+            title={opening?.text ?? 'Opening hours'}
+            onPress={schedule ? () => setShowWeek((shown) => !shown) : undefined}
+            accessibilityLabel={`${opening?.spoken ?? 'Opening hours'}.${schedule ? (showWeek ? ' Hide the week.' : ' Show the week.') : ''}`}
+          />
+          {showWeek && schedule ? (
+            <View className="gap-space-2 pl-space-32">
+              {schedule.map((row) => (
+                <View key={row.day} className="flex-row gap-space-12">
+                  <Text className="w-space-40 text-bodySmall text-muted-foreground">{row.day}</Text>
+                  <Text className="flex-1 text-bodySmall text-foreground">{row.text}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {exceptions.length > 0 ? (
+        <View className="gap-space-4 pl-space-32" accessibilityLabel="Upcoming changes to the usual hours">
+          {exceptions.map((exception) => (
+            <Text key={exception.id} className="text-bodySmall text-muted-foreground">
+              {`${exception.dates} · ${exception.text}${exception.note ? ` · ${exception.note}` : ''}`}
+            </Text>
+          ))}
+        </View>
       ) : null}
 
       {phone ? (

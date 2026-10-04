@@ -25,7 +25,15 @@
  * behaviour is not observable without them, and the fault modes issue #7
  * requires intentional states for (`EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS`).
  */
-import { API_ERROR_STATUS, baseLanguageTag, DEFAULT_PLACE_LIST_LIMIT, normalizeLanguageTag } from '@goway.to/sdk';
+import {
+  API_ERROR_STATUS,
+  baseLanguageTag,
+  categoryDescendants,
+  categoryOf,
+  DEFAULT_PLACE_LIST_LIMIT,
+  normalizeLanguageTag,
+  placeMatchesCapabilityFilter,
+} from '@goway.to/sdk';
 import type {
   ApiErrorCode,
   GoWayFetch,
@@ -217,16 +225,14 @@ function addressText(address: StructuredAddress | undefined): string {
 }
 
 function matchesFilters(entry: Place, categories: readonly string[], capabilities: readonly string[]): boolean {
-  if (categories.length > 0 && !entry.categories.some((key) => categories.includes(key))) return false;
-  // Capabilities are a CONJUNCTION, as the SDK documents: a place must assert
-  // every listed one.
-  if (capabilities.length > 0) {
-    const asserted = new Set(
-      entry.capabilities.filter((capability) => capability.value !== false).map((capability) => capability.key),
-    );
-    if (!capabilities.every((key) => asserted.has(key))) return false;
+  // A parent matches every category below it, as the API expands it.
+  if (categories.length > 0) {
+    const wanted = new Set<string>(categories.flatMap(categoryDescendants));
+    if (!entry.categories.some((key) => wanted.has(key))) return false;
   }
-  return true;
+  // Capabilities are a CONJUNCTION, by the contract's own strongest-assertion
+  // rule — the one the server applies in SQL.
+  return capabilities.every((filter) => placeMatchesCapabilityFilter(entry, filter));
 }
 
 // ── Endpoint handlers ───────────────────────────────────────────────────────
@@ -237,9 +243,9 @@ function matchesFilters(entry: Place, categories: readonly string[], capabilitie
  * Two behaviours worth mirroring rather than approximating, because a fixture
  * that is more generous than the server hides the bug it should surface:
  *
- *  - A LIST read publishes `localizedName` and NOT `names`. A UI that reached
- *    for `place.names` on a viewport read would work here and break against
- *    `api.goway.to`.
+ *  - A LIST read publishes `localizedName` and NOT `names` — nor
+ *    `hoursExceptions`. A UI that reached for either on a viewport read would
+ *    work here and break against `api.goway.to`.
  *  - A place with no name in the asked-for language keeps its default name and
  *    gets no `localizedName` at all. That is the common case, not the edge one,
  *    and `placeDisplayName` is what makes it invisible.
@@ -258,9 +264,10 @@ function localize<T extends Place>(place: T, locale: string | undefined, full: b
         names.find((name) => name.language === base) ??
         names.find((name) => baseLanguageTag(name.language) === base);
 
-  const { names: _all, ...rest } = place;
+  const { names: _all, hoursExceptions: _exceptions, ...rest } = place;
   const result = { ...rest } as T;
   if (full && place.names) result.names = place.names;
+  if (full && place.hoursExceptions) result.hoursExceptions = place.hoursExceptions;
   if (resolved) result.localizedName = resolved;
   return result;
 }
@@ -362,7 +369,12 @@ function search(params: Map<string, string>): SearchResults {
   const matched = FIXTURE_PLACES.filter((entry) => {
     if (!matchesFilters(entry, categories, capabilities)) return false;
     if (needle === '') return false;
-    const haystack = fold([entry.name, addressText(entry.address), entry.categories.join(' ')].join(' '));
+    // A category by its labels, as the server matches it — never by its key.
+    const categoryWords = entry.categories.flatMap((key) => {
+      const category = categoryOf(key);
+      return category ? Object.values(category.labels) : [];
+    });
+    const haystack = fold([entry.name, addressText(entry.address), ...categoryWords].join(' '));
     return haystack.includes(needle);
   });
 

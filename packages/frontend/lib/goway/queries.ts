@@ -16,7 +16,7 @@
  */
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type {
-  CapabilityKey,
+  CategoryKey,
   GeoBoundingBox,
   GeoCoordinate,
   Place,
@@ -38,8 +38,10 @@ function boundsKey(bounds: GeoBoundingBox): [number, number, number, number] {
 }
 
 export interface PlacesInBoundsOptions {
-  categories?: readonly string[];
-  capabilities?: readonly CapabilityKey[];
+  /** Taxonomy keys; a parent matches every category below it. */
+  categories?: readonly CategoryKey[];
+  /** `key` or `key:value` filters, a conjunction. */
+  capabilities?: readonly string[];
   limit?: number;
   enabled?: boolean;
 }
@@ -99,8 +101,10 @@ export interface SearchOptions {
   near?: GeoCoordinate | null;
   /** Bias toward the visible map. Ignored by the API when `near` is set. */
   viewport?: GeoBoundingBox | null;
-  categories?: readonly string[];
-  capabilities?: readonly CapabilityKey[];
+  /** Taxonomy keys; a parent matches every category below it. */
+  categories?: readonly CategoryKey[];
+  /** `key` or `key:value` filters, a conjunction. */
+  capabilities?: readonly string[];
   limit?: number;
   enabled?: boolean;
 }
