@@ -212,7 +212,7 @@ The design is intentionally cost-conscious:
 - published 3D scenes remain durable even after their raw source images are deleted;
 - compact derived metadata, manifests and published splat/LOD assets are kept instead of indefinite raw media;
 - AWS provides the control plane, S3/object storage and queueing during the bootstrap stage;
-- expensive reconstruction can run on owned hardware through `packages/reconstruction-worker`, initially a local RTX 5090 consuming durable AWS SQS jobs;
+- expensive reconstruction can run on external workers through `packages/reconstruction-worker`, initially an external GPU worker consuming durable AWS SQS jobs;
 - the worker can be offline without breaking GoWay and can later scale to multiple owned/cloud GPUs using the same contract;
 - privacy preprocessing is required before captures become reconstruction inputs, including face/license-plate and dynamic-object handling;
 - Street 3D is streamed by versioned scene/LOD manifests and integrated back into GoWay Places rather than embedding business metadata into 3D assets.
@@ -238,7 +238,7 @@ Street 3D is **not required for the first 2D GoWay release**, but it is an expli
 - #9 geotagged photo/video contribution pipeline
 - #10 temporary storage, retention, deduplication and cost budgets
 - #11 geospatial capture graph + automated 3D Gaussian reconstruction
-- #12 distributed GPU reconstruction worker + local RTX 5090/AWS SQS
+- #12 distributed GPU reconstruction worker + external GPU worker/AWS SQS
 - #13 privacy-safe capture/reconstruction pipeline
 - #14 streamed Street 3D viewer + map integration
 - #15 coverage health, expiry risk and community rescue UX

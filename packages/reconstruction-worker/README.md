@@ -37,4 +37,4 @@ public GoWay contract.
 - Python implementation details must never become public SDK contracts.
 
 The worker may be offline without breaking GoWay, and the same contract must
-scale from one local RTX 5090 to multiple owned or cloud GPUs.
+scale from one external GPU worker to multiple external workers.
