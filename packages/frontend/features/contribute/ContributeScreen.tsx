@@ -45,12 +45,16 @@ export function ContributeScreen() {
     if (currentUser.current === account) setSessions(result);
   }, [gate.canUsePrivateApi, user?.id]);
 
+  // The policy is answered FOR THE CALLER (a closed pilot admits named
+  // accounts only), so it is fetched again whenever the session changes: an
+  // answer fetched before sign-in finished is the anonymous one.
   useEffect(() => {
     let mounted = true;
     captureClient.policy().then((value) => { if (mounted) setPolicy(value); })
       .catch(() => { if (mounted) setError('Contribution is temporarily unavailable. Please try again later.'); });
-    return () => { mounted = false; active.current?.abort(); };
-  }, []);
+    return () => { mounted = false; };
+  }, [gate.canUsePrivateApi, user?.id]);
+  useEffect(() => () => active.current?.abort(), []);
   useEffect(() => {
     active.current?.abort(); pending.current = null; setSessions([]); setAssets([]); setConsent(false); setMedia(null); setLocation(null); setStatus(''); setError(''); setBusy(false);
     if (gate.canUsePrivateApi) void refresh().catch(() => setError('Could not load your contributions.'));
