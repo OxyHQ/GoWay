@@ -48,7 +48,7 @@ import type {
  */
 export type ObjectStoreFetch = (
   url: string,
-  init?: { method?: string; headers?: Record<string, string> },
+  init?: { method?: string; headers?: Record<string, string>; signal?: AbortSignal },
 ) => Promise<Response>;
 
 /** Credentials to sign with, however they were obtained. */
@@ -330,7 +330,7 @@ export function createS3ObjectStore(options: S3ObjectStoreOptions): CaptureObjec
 
     async statObject(key: string): Promise<StoredObjectStat | null> {
       const url = await signed('HEAD', key, 60);
-      const response = await fetchImpl(url, { method: 'HEAD' });
+      const response = await fetchImpl(url, { method: 'HEAD', signal: AbortSignal.timeout(30_000) });
       if (response.status === 404) return null;
       if (!response.ok) {
         throw new Error(`The object store answered ${response.status} for a HEAD.`);
@@ -349,7 +349,13 @@ export function createS3ObjectStore(options: S3ObjectStoreOptions): CaptureObjec
 
     async deleteObject(key: string): Promise<void> {
       const url = await signed('DELETE', key, 60);
-      const response = await fetchImpl(url, { method: 'DELETE' });
+      const response = await fetchImpl(url, { method: 'DELETE', signal: AbortSignal.timeout(30_000) });
+      // A marker hides a versioned object but retains its pixels. Never report
+      // that as successful erasure. Temporary captures require an unversioned
+      // bucket; version purging needs a separate adapter before enabling it.
+      if (response.headers.get('x-amz-delete-marker') === 'true') {
+        throw new Error('Capture deletion created a version marker instead of erasing bytes.');
+      }
       // S3 answers 204 for a delete of an absent key, which is the idempotence
       // the interface promises. 404 is what an S3-compatible store may answer
       // instead, and it means the same thing.

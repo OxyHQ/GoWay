@@ -14,6 +14,8 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
 
 ## Design notes
 
+- [`STREET3D_LIFECYCLE.md`](STREET3D_LIFECYCLE.md) — capture expiry, cleanup
+  operations, crash recovery and the remaining Street 3D release gates.
 - [`SDK_VISION.md`](SDK_VISION.md) — what `@goway.to/sdk` is for, and who for.
 - [`CONTRIBUTING_SCOPE.md`](CONTRIBUTING_SCOPE.md) — what the first release
   prioritizes, and what is deliberately deferred.
