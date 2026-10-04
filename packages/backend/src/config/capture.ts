@@ -186,6 +186,26 @@ const schema = z.object({
   privacyProxyRetentionDays: retentionDays(DEFAULT_RETENTION_DAYS.privacy_safe_proxy),
   thumbnailRetentionDays: retentionDays(DEFAULT_RETENTION_DAYS.thumbnail),
   videoDeletionEligibleDays: positiveInteger(DEFAULT_VIDEO_DELETION_ELIGIBLE_DAYS, 90),
+  /**
+   * A closed pilot: when set, ONLY these Oxy user ids may contribute.
+   *
+   * Contribution reaches a pipeline whose privacy and operational controls are
+   * verified end to end in production before anybody else's imagery enters
+   * it. A comma-separated list; unset (or empty) means contribution is open to
+   * every signed-in account, which is the normal state once verified. Oxy
+   * owns identity, so these are foreign ids with nothing in this database to
+   * point at.
+   */
+  pilotOxyUserIds: z.preprocess(
+    (value) =>
+      typeof value === 'string'
+        ? value
+            .split(',')
+            .map((id) => id.trim())
+            .filter((id) => id.length > 0)
+        : value,
+    z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/, 'must be Oxy user ids')).default([]),
+  ),
 });
 
 export type CaptureConfig = Readonly<z.infer<typeof schema>> & {
@@ -219,6 +239,7 @@ export function parseCaptureConfig(source: EnvironmentSource = process.env): Cap
     privacyProxyRetentionDays: source.CAPTURE_RETENTION_DAYS_PRIVACY_PROXY,
     thumbnailRetentionDays: source.CAPTURE_RETENTION_DAYS_THUMBNAIL,
     videoDeletionEligibleDays: source.CAPTURE_VIDEO_DELETION_ELIGIBLE_DAYS,
+    pilotOxyUserIds: source.CAPTURE_PILOT_OXY_USER_IDS,
   });
 
   if (!result.success) {
@@ -248,6 +269,20 @@ export function parseCaptureConfig(source: EnvironmentSource = process.env): Cap
       thumbnail: parsed.thumbnailRetentionDays,
     },
   };
+}
+
+/**
+ * Whether `oxyUserId` may contribute under `config`.
+ *
+ * Contribution needs a configured store, and — while a pilot list is set —
+ * membership of it. Without a list an anonymous caller is told contribution is
+ * available (they sign in to do it; the routes still require an account); with
+ * a list nobody outside it is, signed in or not.
+ */
+export function mayContribute(config: CaptureConfig, oxyUserId: string | undefined): boolean {
+  if (!config.enabled) return false;
+  if (config.pilotOxyUserIds.length === 0) return true;
+  return oxyUserId !== undefined && config.pilotOxyUserIds.includes(oxyUserId);
 }
 
 /** The one capture parse for this process. */

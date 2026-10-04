@@ -40,7 +40,7 @@
 
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import type { CaptureUploadIntent, CaptureUploadPolicy, CaptureUploadTicket } from '@goway/shared-types';
-import { captureConfig } from '../config/capture';
+import { captureConfig, mayContribute } from '../config/capture';
 import {
   createCaptureSession,
   finalizeAsset,
@@ -103,10 +103,16 @@ function idParam(request: Request, name: string, what: string): string {
   return value;
 }
 
-/** The current upload policy, as the contract publishes it. */
-export function currentUploadPolicy(): CaptureUploadPolicy {
+/**
+ * The current upload policy, as the contract publishes it.
+ *
+ * `enabled` is answered FOR THE CALLER: during a closed pilot an account outside
+ * the list sees contribution as unavailable, which is the truth for them, rather
+ * than a form that then refuses to submit.
+ */
+export function currentUploadPolicy(oxyUserId?: string): CaptureUploadPolicy {
   return {
-    enabled: captureConfig.enabled,
+    enabled: mayContribute(captureConfig, oxyUserId),
     consentVersion: captureConfig.consentVersion,
     contentHashAlgorithm: 'sha256',
     photo: {
@@ -120,6 +126,13 @@ export function currentUploadPolicy(): CaptureUploadPolicy {
     },
     retentionDays: { ...captureConfig.retentionDays },
   };
+}
+
+/** Refuse a contribution from an account outside a closed pilot. */
+function assertMayContribute(oxyUserId: string): void {
+  if (captureConfig.enabled && !mayContribute(captureConfig, oxyUserId)) {
+    throw new ApiError('forbidden', 'Contributions are open to a closed pilot group for now.');
+  }
 }
 
 /**
@@ -202,8 +215,8 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
   router.get(
     '/captures/policy',
     optionalAuth,
-    route(async (_request, response) => {
-      response.json(currentUploadPolicy());
+    route(async (request, response) => {
+      response.json(currentUploadPolicy(request.userId ?? undefined));
     }),
   );
 
@@ -220,6 +233,7 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
     requireAuth,
     route(async (request, response) => {
       const input = parseBody(createSessionSchema, request.body);
+      assertMayContribute(requiredCallerId(request));
       if (input.consentVersion !== captureConfig.consentVersion) {
         throw new ApiError(
           'conflict',
@@ -287,6 +301,7 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
     route(async (request, response) => {
       const sessionId = idParam(request, 'id', 'session');
       const oxyUserId = requiredCallerId(request);
+      assertMayContribute(oxyUserId);
       const input = parseBody(registerAssetSchema, request.body);
       assertAcceptableMedia(input);
 
