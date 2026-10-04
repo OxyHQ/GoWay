@@ -31,6 +31,8 @@
     "db:migrate": "bun run --cwd packages/backend db:migrate",
     "import:osm": "bun run --cwd packages/backend import:osm",
     "captures:cleanup": "bun run --cwd packages/backend captures:cleanup",
+    "street3d:tick": "bun run --cwd packages/backend street3d:tick",
+    "street3d:admin": "bun run --cwd packages/backend street3d:admin",
     "worker:setup": "make -C packages/reconstruction-worker setup",
     "worker:doctor": "make -C packages/reconstruction-worker doctor",
     "worker:run": "make -C packages/reconstruction-worker run",

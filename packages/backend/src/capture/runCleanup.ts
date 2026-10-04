@@ -2,7 +2,9 @@ import 'dotenv/config';
 import { parseArgs } from 'node:util';
 import { assertMigrationTarget } from '@oxy.so/db/migrate';
 import { assertMigrationsCurrent, closePostgres, connectPostgres, getDb } from '../db/postgres';
+import { street3dConfig } from '../config/street3d';
 import { createConfiguredObjectStore } from '../storage';
+import { createConfiguredJobObjectStore } from '../street3d/services';
 import { sweepExpiredCaptures } from './cleanup';
 
 async function main() {
@@ -24,9 +26,10 @@ async function main() {
       dryRun: values['dry-run'],
       limit: Number(values.limit),
       retryAfterSeconds: Number(values['retry-after-seconds']),
-    });
+      jobArtifactRetentionDays: street3dConfig.jobArtifactRetentionDays,
+    }, values['dry-run'] ? null : createConfiguredJobObjectStore());
     console.log(JSON.stringify(summary));
-    if (summary.failed > 0) process.exitCode = 1;
+    if (summary.failed > 0 || summary.derivativesFailed > 0 || summary.jobArtifactsFailed > 0) process.exitCode = 1;
   } finally {
     await closePostgres();
   }
