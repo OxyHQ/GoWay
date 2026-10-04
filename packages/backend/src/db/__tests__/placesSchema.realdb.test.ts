@@ -468,6 +468,33 @@ describe('place_revisions and place_reports', () => {
           INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, reason) VALUES ('rp-2', 'r-1', 'person-a', 'privacy')
         `,
       ),
-    ).toContain('place_reports_open_key');
+    ).toContain('place_reports_open_subject_key');
+  });
+
+  it('keeps one open report per person per SUBJECT: the place, a gallery item or a review', async () => {
+    await suite!.client`
+      INSERT INTO place_media (id, place_id, oxy_file_id, oxy_link_place_id, kind, contributor_oxy_account_id, verification, position)
+      VALUES ('pm-1', 'r-1', 'file-1', 'r-1', 'photo', 'person-b', 'community_reported', 0)
+    `;
+    // About the item, beside the open report about the place: a different subject.
+    await suite!.client`
+      INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, media_id, reason) VALUES ('rp-3', 'r-1', 'person-a', 'pm-1', 'offensive')
+    `;
+    expect(
+      await statementFailure(
+        () => suite!.client`
+          INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, media_id, reason) VALUES ('rp-4', 'r-1', 'person-a', 'pm-1', 'spam')
+        `,
+      ),
+    ).toContain('place_reports_open_subject_key');
+    // A report names at most one subject.
+    expect(
+      await statementFailure(
+        () => suite!.client`
+          INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, media_id, review_id, reason)
+          VALUES ('rp-5', 'r-1', 'person-c', 'pm-1', 'nope', 'spam')
+        `,
+      ),
+    ).toMatch(/place_reports_subject_check|place_reports_review_id/);
   });
 });

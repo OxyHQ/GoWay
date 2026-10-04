@@ -130,25 +130,40 @@ to the three hours-exception actions every exception write records. `pre` —
 a new table, a nullable column and widened CHECKs are all correct against the
 image still serving.
 
+## `0009_goway_place_media_reviews`
+
+Place media, reviews and descriptions (`docs/PLACE_MEDIA_REVIEWS.md`):
+`place_media` (a gallery item is a reference to an Oxy file, one live row per
+file per place), `place_reviews` (one PUBLISHED review per person per place, a
+partial unique index), the derived `place_review_aggregates`,
+`places_descriptions` at the `places_names` grain, `places.description`,
+`places.logo_media_id`/`cover_media_id`, the report subject columns
+`place_reports.media_id`/`review_id`, and widened CHECKs on the report reasons
+and revision actions. The open-report unique index is replaced by one keyed on
+the subject as well — WIDER, so the previous image's one-per-place rows still
+fit it. `pre`.
+
 ## Every `pre` before every `post`
 
-`0007` and `0008` are `pre`; `0009`–`0011` are `post`. The order is the point:
+`0007`–`0009` are `pre`; `0010`–`0012` are `post`. The order is the point:
 a `pre` run applies the pending PREFIX up to the first `post` and BLOCKS on a
 `pre` queued behind an unapplied `post` (`planMigrationRun` in
-`@oxy.so/db/migrate`), so business moderation and place data ship in one
-release only because both additive halves come first.
+`@oxy.so/db/migrate`), so business moderation, place data and media and
+reviews ship in one release only because every additive half comes first.
+`0009` was generated before the three `post` migrations were regenerated on
+top of it, with their SQL unchanged.
 
-## `0009_goway_drop_claim_brand`
+## `0010_goway_drop_claim_brand`
 
 Drops `places_claims.brand_id` and its index: a chain is an Oxy organization
 claiming each location in the `brand` role, so nothing else groups them.
 `post` — the previous image still reads and writes the column.
 
-## `0010_goway_place_data_conversion`
+## `0011_goway_place_data_conversion`
 
 The one CUSTOM migration (`drizzle-kit generate --custom`): data the previous
 image wrote, converted in place. `post`, because each step narrows what that
-image wrote, and it must run before `0011` adds the CHECK it makes true.
+image wrote, and it must run before `0012` adds the CHECK it makes true.
 
 - `places.categories` and the importer's recorded `categories` are rewritten
   as taxonomy keys by ONE function, so a column that equalled what
@@ -162,8 +177,8 @@ Every statement is a no-op on data it already converted;
 `placeDataConversion.realdb.test.ts` re-runs them to prove it. It is a data
 migration, not an API write, so it records no `place_revisions` rows.
 
-## `0011_goway_category_taxonomy`
+## `0012_goway_category_taxonomy`
 
 `places_categories_taxonomy_check`: every `places.categories` member is a key of
-the contract's taxonomy. `post`, after `0010`, because it narrows the column.
+the contract's taxonomy. `post`, after `0011`, because it narrows the column.
 Adding a category to the contract regenerates this CHECK in a new migration.

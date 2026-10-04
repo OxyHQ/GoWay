@@ -54,6 +54,15 @@
  *                         with a verification tier, and a business's own
  *                         holiday notice must not be overwritten by a
  *                         passer-by's report about the same day.
+ *  - `places_descriptions` — a description per language and source, for the
+ *                         reason `places_names` has that grain.
+ *  - `place_media`      — a gallery item is a REFERENCE to an Oxy file with
+ *                         its own contributor, tier, moderation state and
+ *                         position; a jsonb list of file ids could hold none
+ *                         of that, and could not be hidden one item at a time.
+ *  - `place_reviews`    — one person's rating and words, with a business
+ *                         reply; `place_review_aggregates` is DERIVED from
+ *                         them in every write that changes them.
  *
  * ## Privacy
  *
@@ -72,7 +81,10 @@ import {
   date,
   doublePrecision,
   index,
+  integer,
   jsonb,
+  numeric,
+  smallint,
   pgTable,
   text,
   unique,
@@ -83,6 +95,16 @@ import { createdAt, generatedId, inList, timestamptz, updatedAt } from '@oxy.so/
 import {
   CAPABILITY_VERIFICATIONS,
   CATEGORY_KEYS,
+  MAX_DESCRIPTION_LENGTH,
+  MAX_MEDIA_CAPTION_LENGTH,
+  MAX_REVIEW_BODY_LENGTH,
+  MAX_REVIEW_RATING,
+  MAX_REVIEW_REPLY_LENGTH,
+  MAX_REVIEW_TITLE_LENGTH,
+  MIN_REVIEW_RATING,
+  PLACE_MEDIA_KINDS,
+  PLACE_MEDIA_STATES,
+  PLACE_REVIEW_STATUSES,
   DUPLICATE_CANDIDATE_REASONS,
   DUPLICATE_CANDIDATE_STATES,
   LANGUAGE_TAG_SQL_PATTERN,
@@ -223,6 +245,21 @@ export const places = pgTable(
      */
     timezone: text(),
 
+    /**
+     * The DEFAULT-language description — what `name` is to `places_names`;
+     * every tagged translation is a `places_descriptions` row.
+     */
+    description: text(),
+    /**
+     * The gallery items that are the place's logo and cover. A pointer to a
+     * `place_media` row rather than an Oxy file id: the row is what carries the
+     * contributor, the state and the Oxy link, and a pointer cannot outlive the
+     * item it names — a write that hides or removes the item clears it in the
+     * same transaction. `set null` for a row that is ever deleted outright.
+     */
+    logoMediaId: text().references((): AnyPgColumn => placeMedia.id, { onDelete: 'set null' }),
+    coverMediaId: text().references((): AnyPgColumn => placeMedia.id, { onDelete: 'set null' }),
+
     status: text().notNull().default('active'),
     verificationState: text().notNull().default('unverified'),
     verifiedAt: timestamptz(),
@@ -282,6 +319,10 @@ export const places = pgTable(
     check(
       'places_timezone_check',
       sql`${table.timezone} is null or ${table.timezone} ~ '^[A-Za-z]+(/[A-Za-z0-9_+-]+)*$'`,
+    ),
+    check(
+      'places_description_check',
+      sql`${table.description} is null or (btrim(${table.description}) <> '' and char_length(${table.description}) <= ${sql.raw(String(MAX_DESCRIPTION_LENGTH))})`,
     ),
 
     /**
@@ -399,6 +440,42 @@ export const placesNames = pgTable(
     check('places_names_language_tag_check', sql`${table.language} ~ '${sql.raw(LANGUAGE_TAG_SQL_PATTERN)}'`),
     check('places_names_name_not_blank_check', sql`btrim(${table.name}) <> ''`),
     check('places_names_source_not_blank_check', sql`btrim(${table.source}) <> ''`),
+  ],
+);
+
+/**
+ * A place's description in ONE language, from ONE source.
+ *
+ * The `places_names` grain, `(place, language, source)`, for its reason: the
+ * API writes `goway` rows and an importer can only ever address its own, so a
+ * business's wording survives the next import as a property of the key.
+ * Reads prefer `goway` within a language (`places/placeNames`).
+ */
+export const placesDescriptions = pgTable(
+  'places_descriptions',
+  {
+    id: generatedId(),
+    placeId: text()
+      .notNull()
+      .references(() => places.id, { onDelete: 'cascade' }),
+    /** Canonical BCP 47, CHECKed by the pattern the contract publishes. */
+    language: text().notNull(),
+    description: text().notNull(),
+    /** `goway` for anything written through the API. */
+    source: text().notNull(),
+    observedAt: timestamptz().notNull().defaultNow(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    unique('places_descriptions_language_source_key').on(table.placeId, table.language, table.source),
+    index('places_descriptions_place_idx').on(table.placeId),
+    check('places_descriptions_language_tag_check', sql`${table.language} ~ '${sql.raw(LANGUAGE_TAG_SQL_PATTERN)}'`),
+    check(
+      'places_descriptions_text_check',
+      sql`btrim(${table.description}) <> '' and char_length(${table.description}) <= ${sql.raw(String(MAX_DESCRIPTION_LENGTH))}`,
+    ),
+    check('places_descriptions_source_not_blank_check', sql`btrim(${table.source}) <> ''`),
   ],
 );
 
@@ -747,6 +824,13 @@ export const placeReports = pgTable(
       .references(() => places.id, { onDelete: 'cascade' }),
     /** The reporter. An Oxy user id: no foreign key, never published. */
     reporterOxyUserId: foreignServiceId().notNull(),
+    /**
+     * The gallery item or review the report is about; neither means the place
+     * itself. `cascade`: neither is ever deleted by an API path, and a report
+     * about a row that is gone has nothing left to decide.
+     */
+    mediaId: text().references((): AnyPgColumn => placeMedia.id, { onDelete: 'cascade' }),
+    reviewId: text().references((): AnyPgColumn => placeReviews.id, { onDelete: 'cascade' }),
     reason: text().notNull(),
     note: text(),
     createdAt: createdAt(),
@@ -767,9 +851,20 @@ export const placeReports = pgTable(
       sql`(${table.resolvedAt} is null) = (${table.resolution} is null) and (${table.resolvedAt} is null) = (${table.resolvedByOxyUserId} is null)`,
     ),
     check('place_reports_note_check', sql`${table.note} is null or char_length(${table.note}) <= 500`),
-    /** One open report per reporter per place: a repeat answers the existing one. */
-    uniqueIndex('place_reports_open_key')
-      .on(table.placeId, table.reporterOxyUserId)
+    check('place_reports_subject_check', sql`${table.mediaId} is null or ${table.reviewId} is null`),
+    /**
+     * One open report per reporter per SUBJECT — the place, one gallery item or
+     * one review: a repeat answers the existing one. `coalesce` because a
+     * unique index treats two nulls as distinct, and "about the place itself"
+     * must be one subject, not an unlimited number of them.
+     */
+    uniqueIndex('place_reports_open_subject_key')
+      .on(
+        table.placeId,
+        table.reporterOxyUserId,
+        sql`coalesce(${table.mediaId}, '')`,
+        sql`coalesce(${table.reviewId}, '')`,
+      )
       .where(sql`${table.resolvedAt} is null`),
     /** The moderation queue, oldest first, in either state. */
     index('place_reports_queue_idx').on(table.createdAt, table.id),
@@ -833,5 +928,231 @@ export const placeHoursExceptions = pgTable(
     unique('place_hours_exceptions_range_key').on(table.placeId, table.startsOn, table.endsOn, table.verification),
     /** The single-place read asks for the exceptions that have not ended yet. */
     index('place_hours_exceptions_place_ends_idx').on(table.placeId, table.endsOn),
+  ],
+);
+
+/**
+ * One item of a place's gallery: a REFERENCE to an Oxy file.
+ *
+ * GoWay stores the file id and never the bytes. The file is checked with Oxy
+ * when it is added — it exists, is an image, is public and is the caller's —
+ * and linked to the place there (`app: 'goway'`, `entityType: 'place'`) so Oxy
+ * keeps it; removing the item drops the link. `oxy_file_id` is a foreign
+ * service's id: no foreign key.
+ *
+ * ## Who, and why it is never published
+ *
+ * `contributor_oxy_account_id` is the account the item was added as and
+ * `operated_by_oxy_user_id` the person, as on a revision. Neither is ever
+ * published: a place does not name its contributors, and a gallery that did
+ * would be a record of where people have been.
+ *
+ * ## State is moderation's vocabulary, and `removed` is terminal
+ *
+ * `visible` is published, `hidden` is an operator's reversible decision,
+ * `removed` is the contributor's or the business's withdrawal — the row stays
+ * so the history that names it still resolves. A file is in a place's live
+ * gallery at most once: the unique index is partial on everything but
+ * `removed`, so a removed item does not stop the same file being added again.
+ */
+export const placeMedia = pgTable(
+  'place_media',
+  {
+    id: generatedId(),
+    placeId: text()
+      .notNull()
+      .references(() => places.id, { onDelete: 'cascade' }),
+    /** The Oxy file. A foreign service's id: no foreign key. */
+    oxyFileId: foreignServiceId().notNull(),
+    /**
+     * The place id the Oxy link names — the place the item was added to. A
+     * merge moves the item and leaves the link (re-linking would rewrite the
+     * file's visibility at Oxy), so unlinking later must name THIS id, not the
+     * survivor's. No foreign key: it is Oxy's record of the link, not GoWay's.
+     */
+    oxyLinkPlaceId: foreignServiceId().notNull(),
+    kind: text().notNull(),
+    /** The account the item was added as — an organization after a switch. Never published. */
+    contributorOxyAccountId: foreignServiceId().notNull(),
+    /** The person who added it, when Oxy reported one. Never published. */
+    operatedByOxyUserId: foreignServiceId(),
+    verification: text().notNull(),
+    state: text().notNull().default('visible'),
+    /** Gallery order, ascending. Ties break by id. */
+    position: integer().notNull(),
+    caption: text(),
+    /** Who made an imported image, as its source credits them. */
+    attribution: text(),
+    /** An imported image's licence. */
+    license: text(),
+    /** Intrinsic size, as Oxy reported it when the item was added. */
+    width: integer(),
+    height: integer(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    closedSet('place_media_kind_check', table.kind, PLACE_MEDIA_KINDS),
+    closedSet('place_media_state_check', table.state, PLACE_MEDIA_STATES),
+    closedSet('place_media_verification_check', table.verification, CAPABILITY_VERIFICATIONS),
+    check('place_media_position_check', sql`${table.position} >= 0`),
+    check(
+      'place_media_caption_check',
+      sql`${table.caption} is null or char_length(${table.caption}) <= ${sql.raw(String(MAX_MEDIA_CAPTION_LENGTH))}`,
+    ),
+    check(
+      'place_media_dimensions_check',
+      sql`(${table.width} is null or ${table.width} > 0) and (${table.height} is null or ${table.height} > 0)`,
+    ),
+    /**
+     * An imported image has to say whose it is and under which licence, for the
+     * reason an `external_source` capability has to name its source row.
+     */
+    check(
+      'place_media_external_source_check',
+      sql`${table.verification} <> 'external_source' or (${table.attribution} is not null and ${table.license} is not null)`,
+    ),
+    check('place_media_file_not_blank_check', sql`btrim(${table.oxyFileId}) <> ''`),
+    uniqueIndex('place_media_live_file_key')
+      .on(table.placeId, table.oxyFileId)
+      .where(sql`${table.state} <> 'removed'`),
+    /** The public gallery, in order. */
+    index('place_media_place_position_idx').on(table.placeId, table.position, table.id),
+    /** What a webhook or an operator looking for one file reads. */
+    index('place_media_file_idx').on(table.oxyFileId),
+  ],
+);
+
+/**
+ * One person's review of one place.
+ *
+ * ## The author is a PERSON
+ *
+ * `author_oxy_user_id` is the human from Oxy's actor chain, never an
+ * organization: a session switched into one is refused before it gets here.
+ * It is published — a review is a signed public statement — and nothing else
+ * about the author is stored.
+ *
+ * ## One PUBLISHED review per person per place
+ *
+ * The unique index is partial on `published`: the one review a person has on a
+ * place is the one a write addresses, and the partial key is what lets a merge
+ * bring a second one onto the survivor, set aside as `hidden`, instead of
+ * destroying either. A withdrawn review (`removed`) keeps its row with its
+ * words erased, and writing again revives it.
+ *
+ * ## The reply is the business's
+ *
+ * Columns rather than a table: one reply per review, written and withdrawn
+ * with it. `reply_oxy_account_id` (the claimant account it was written as) and
+ * `reply_operated_by_oxy_user_id` (the person) are recorded and never
+ * published — a reply speaks for the business, and the claim behind it is a
+ * relationship GoWay shows only to the parties.
+ */
+export const placeReviews = pgTable(
+  'place_reviews',
+  {
+    id: generatedId(),
+    placeId: text()
+      .notNull()
+      .references(() => places.id, { onDelete: 'cascade' }),
+    /** The person. An Oxy user id: no foreign key. Published. */
+    authorOxyUserId: foreignServiceId().notNull(),
+    rating: smallint().notNull(),
+    title: text(),
+    body: text(),
+    /** Canonical BCP 47, when the author said which language they wrote in. */
+    locale: text(),
+    status: text().notNull().default('published'),
+    /** When the author last rewrote it; null if they never did. */
+    editedAt: timestamptz(),
+    replyBody: text(),
+    replyOxyAccountId: foreignServiceId(),
+    replyOperatedByOxyUserId: foreignServiceId(),
+    repliedAt: timestamptz(),
+    replyEditedAt: timestamptz(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    closedSet('place_reviews_status_check', table.status, PLACE_REVIEW_STATUSES),
+    check(
+      'place_reviews_rating_check',
+      sql`${table.rating} between ${sql.raw(String(MIN_REVIEW_RATING))} and ${sql.raw(String(MAX_REVIEW_RATING))}`,
+    ),
+    check(
+      'place_reviews_title_check',
+      sql`${table.title} is null or (btrim(${table.title}) <> '' and char_length(${table.title}) <= ${sql.raw(String(MAX_REVIEW_TITLE_LENGTH))})`,
+    ),
+    check(
+      'place_reviews_body_check',
+      sql`${table.body} is null or (btrim(${table.body}) <> '' and char_length(${table.body}) <= ${sql.raw(String(MAX_REVIEW_BODY_LENGTH))})`,
+    ),
+    check(
+      'place_reviews_locale_check',
+      sql`${table.locale} is null or ${table.locale} ~ '${sql.raw(LANGUAGE_TAG_SQL_PATTERN)}'`,
+    ),
+    /** A withdrawn review keeps no words: its author withdrew them. */
+    check(
+      'place_reviews_removed_erased_check',
+      sql`${table.status} <> 'removed' or (${table.title} is null and ${table.body} is null and ${table.replyBody} is null)`,
+    ),
+    /** A reply is all of body, author and time, or none of them. */
+    check(
+      'place_reviews_reply_check',
+      sql`(${table.replyBody} is null) = (${table.repliedAt} is null) and (${table.replyBody} is null) = (${table.replyOxyAccountId} is null)`,
+    ),
+    check(
+      'place_reviews_reply_length_check',
+      sql`${table.replyBody} is null or (btrim(${table.replyBody}) <> '' and char_length(${table.replyBody}) <= ${sql.raw(String(MAX_REVIEW_REPLY_LENGTH))})`,
+    ),
+    uniqueIndex('place_reviews_published_author_key')
+      .on(table.placeId, table.authorOxyUserId)
+      .where(sql`${table.status} = 'published'`),
+    /** The author's own reviews, whatever their status. */
+    index('place_reviews_author_idx').on(table.authorOxyUserId, table.placeId),
+    /** The newest-first list. */
+    index('place_reviews_place_created_idx').on(table.placeId, table.status, table.createdAt, table.id),
+    /** The by-rating lists. */
+    index('place_reviews_place_rating_idx').on(table.placeId, table.status, table.rating, table.createdAt, table.id),
+  ],
+);
+
+/**
+ * A place's published reviews, summarised — DERIVED, never incremented.
+ *
+ * Every write that changes which reviews are published recomputes this row
+ * from `place_reviews` in its own transaction, with the place row locked, so
+ * the summary cannot drift from the reviews and a hidden review leaves the
+ * average by construction. A place with no published review has a row with a
+ * zero count, or none.
+ */
+export const placeReviewAggregates = pgTable(
+  'place_review_aggregates',
+  {
+    placeId: text()
+      .primaryKey()
+      .references(() => places.id, { onDelete: 'cascade' }),
+    reviewCount: integer().notNull(),
+    /** The mean published rating; null exactly when there is none. */
+    ratingAverage: numeric({ precision: 4, scale: 3, mode: 'number' }),
+    /** How many published reviews gave each rating, 1 through 5. */
+    rating1: integer().notNull(),
+    rating2: integer().notNull(),
+    rating3: integer().notNull(),
+    rating4: integer().notNull(),
+    rating5: integer().notNull(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    check('place_review_aggregates_count_check', sql`${table.reviewCount} >= 0`),
+    check(
+      'place_review_aggregates_average_check',
+      sql`(${table.reviewCount} = 0) = (${table.ratingAverage} is null)`,
+    ),
+    check(
+      'place_review_aggregates_distribution_check',
+      sql`${table.rating1} + ${table.rating2} + ${table.rating3} + ${table.rating4} + ${table.rating5} = ${table.reviewCount}`,
+    ),
   ],
 );

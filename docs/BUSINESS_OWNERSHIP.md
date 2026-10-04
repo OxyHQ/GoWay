@@ -29,7 +29,7 @@ and read the place's claims. **Filing** a new claim in an organization's name is
 or `admin` — because it is a statement about who the business is.
 
 A chain is an organization claiming each of its locations in the `brand` role.
-`places_claims.brand_id` was dropped (post-phase migration `0009`).
+`places_claims.brand_id` was dropped (post-phase migration `0010`).
 
 ### How GoWay asks Oxy
 
