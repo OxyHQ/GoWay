@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "jobId": "7c1e9a02-5d44-4b8b-9e1f-3a6c0d2b8e55",
+  "jobType": "scene_reconstruct",
+  "issuedAt": "2026-10-04T10:05:00.000Z",
+  "sceneId": "a2e4c6f8-1b3d-4e5f-8a9b-0c1d2e3f4a5b",
+  "sceneVersion": 3,
+  "profile": "draft",
+  "inputManifestKey": "jobs/7c1e9a02-5d44-4b8b-9e1f-3a6c0d2b8e55/input.json",
+  "inputManifestSha256": "0011223344556677889900aabbccddeeff00112233445566778899aabbccddee",
+  "outputPrefix": "jobs/7c1e9a02-5d44-4b8b-9e1f-3a6c0d2b8e55/"
+}

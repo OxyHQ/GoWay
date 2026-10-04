@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "jobId": "4b0f6a43-1f7e-4a54-9c1e-6f0b8f3d2a10",
+  "jobType": "capture_privacy",
+  "attempt": 1,
+  "assetId": "0d3c2f8e-7a51-4c3e-8f0a-2b9d6e4c1a77",
+  "verdict": "passed",
+  "privacyPipelineVersion": "goway-privacy/1",
+  "models": [
+    { "name": "face-yunet", "version": "2023mar", "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4" },
+    { "name": "plate-lpd-yunet", "version": "2023mar", "sha256": "1111111111111111111111111111111111111111111111111111111111111111" },
+    { "name": "people-vehicles-maskrcnn", "version": "torchvision-v2-coco", "sha256": "2222222222222222222222222222222222222222222222222222222222222222" }
+  ],
+  "metadataStripped": true,
+  "frames": [
+    {
+      "frameIndex": 0,
+      "imageKey": "derived/privacy/0d3c2f8e-7a51-4c3e-8f0a-2b9d6e4c1a77/4b0f6a43-1f7e-4a54-9c1e-6f0b8f3d2a10/000000.jpg",
+      "imageSha256": "aa00000000000000000000000000000000000000000000000000000000000001",
+      "imageByteSize": 812331,
+      "maskKey": "derived/privacy/0d3c2f8e-7a51-4c3e-8f0a-2b9d6e4c1a77/4b0f6a43-1f7e-4a54-9c1e-6f0b8f3d2a10/000000.mask.png",
+      "maskSha256": "bb00000000000000000000000000000000000000000000000000000000000001",
+      "maskByteSize": 10234,
+      "width": 2048,
+      "height": 1536,
+      "detections": { "faces": 2, "plates": 1, "people": 3, "vehicles": 4 },
+      "maskedFraction": 0.18,
+      "sharpness": 412.5
+    }
+  ],
+  "rejectedFrames": 0
+}

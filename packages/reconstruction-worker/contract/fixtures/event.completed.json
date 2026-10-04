@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "eventId": "f2b3c4d5-e6f7-4081-9a0b-1c2d3e4f5a6b",
+  "jobId": "7c1e9a02-5d44-4b8b-9e1f-3a6c0d2b8e55",
+  "attempt": 1,
+  "workerId": "w-5f2a9c1d",
+  "type": "completed",
+  "at": "2026-10-04T10:40:00.000Z",
+  "result": {
+    "key": "jobs/7c1e9a02-5d44-4b8b-9e1f-3a6c0d2b8e55/attempt-1/result.json",
+    "sha256": "dd00000000000000000000000000000000000000000000000000000000000001",
+    "byteSize": 4211
+  }
+}

@@ -219,6 +219,31 @@ jobs:
       - name: Verify the Dockerfile copies every workspace manifest
         run: bun run check:dockerfile
 
+  worker:
+    name: Reconstruction worker
+    runs-on: ubuntu-latest
+    # The worker's environment is the uv.lock, CUDA toolkit wheels included, so
+    # installing it here is the reproducibility check: a lock that drifted from
+    # pyproject.toml fails `--locked`. The tests need no GPU: they cover the job
+    # contract against the fixtures the backend also parses, SPZ encoding, the
+    # privacy redaction and metadata gate, the cache/ledger and the geometry.
+    # Real GPU reconstruction is validated on the external worker with
+    # `worker:doctor --smoke` and an end-to-end job, never claimed by this job.
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: packages/reconstruction-worker
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: packages/reconstruction-worker/uv.lock
+      - name: Install the locked environment
+        run: uv sync --locked
+      - name: Test the worker
+        run: uv run --locked pytest -q
+
   lockfile:
     name: Lockfile sync
     runs-on: ubuntu-latest
@@ -378,7 +403,7 @@ jobs:
   # reusable workflow. The budget lives on the called workflow's own job.
   deploy:
     name: Deploy
-    needs: [quality, gates, lockfile, test]
+    needs: [quality, gates, worker, lockfile, test]
     # GATED ON A REPOSITORY VARIABLE, because the AWS side does not exist yet.
     #
     # `deploy-aws.yml` assumes an IAM role `oxy-goway-github-deploy`, an ECR
