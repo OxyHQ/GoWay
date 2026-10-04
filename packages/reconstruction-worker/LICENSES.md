@@ -19,6 +19,7 @@ publishes only Gaussian scenes it produced.
 | PyAV | 19 | BSD-3-Clause | video decoding | wheel bundles LGPL FFmpeg and its codec libraries, dynamically linked |
 | Pillow | 12 | MIT-CMU | JPEG decode/encode | |
 | NumPy | 2 | BSD-3-Clause | | |
+| transformers / safetensors | 5.x / 0.x | Apache-2.0 | loads the depth prior model | |
 | boto3 / botocore | 1.43 | Apache-2.0 | S3, SQS | |
 | pydantic | 2 | MIT | contract models | |
 | nvidia-ml-py | 13 | BSD-3-Clause | read-only GPU health | |
@@ -35,6 +36,7 @@ libraries stay the separately replaceable shared objects their wheels ship.
 | YuNet face detector | `face_detection_yunet_2023mar.onnx` | MIT (OpenCV Zoo) | WIDER FACE | Commercial use permitted. Used only to locate regions to destroy. |
 | LPD-YuNet plate detector | `license_plate_detection_lpd_yunet_2023mar.onnx` | Apache-2.0 (OpenCV Zoo) | CCPD (Chinese plates) | Commercial use permitted. Recall on non-Chinese plates is limited, so plates are protected primarily by blurring and masking every detected vehicle whole. Post-processing follows the Apache-2.0 `lpd_yunet.py`, attributed in `privacy/detectors.py`. |
 | Mask R-CNN ResNet-50-FPN v2 | `maskrcnn_resnet50_fpn_v2_coco-73cbd019.pth` | BSD-3-Clause (torchvision code); torchvision documents that pretrained weights may carry dataset terms | COCO 2017 (annotations CC BY 4.0; images under Flickr terms) | Acceptable for internal detection: weights are not redistributed and no COCO pixels reach any output. People and vehicles are only excluded, never learned. Revisit if weights are ever shipped to clients. |
+| Depth Anything V2 **Small** | `depth-anything-v2-small/*` (revision `5426e4f0f365`) | Apache-2.0 | DA-2M synthetic + pseudo-labelled real images | Commercial use permitted. A training-time shape cue only; never shipped. **The Base and Large checkpoints are CC-BY-NC-4.0 and must not be used.** |
 
 No face recognition, plate reading (OCR) or identity model is used. Detectors
 only decide which pixels to destroy and exclude.

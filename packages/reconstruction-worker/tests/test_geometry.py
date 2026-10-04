@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 
-from goway_reconstruction.recon.sfm import SfmFrame, _pairs, _similarity_2d, enu_to_geodetic, geodetic_to_enu
+from goway_reconstruction.recon.sfm import SEQUENTIAL_OVERLAP, SPATIAL_NEIGHBOURS, SfmFrame, _pairs, _similarity_2d, enu_to_geodetic, geodetic_to_enu
 
 
 def test_enu_round_trip():
@@ -31,7 +31,16 @@ def test_pairs_are_bounded_not_all_vs_all():
     far = SfmFrame("far", "g9", 0, "g9/far.jpg", 100, 100, 5000, 5000, 0, None)
     pairs = _pairs(frames + [far])
     n = len(frames) + 1
-    assert len(pairs) < n * (n - 1) / 2 / 3
+    # Linear in the number of frames, never quadratic.
+    per_frame = SEQUENTIAL_OVERLAP + SPATIAL_NEIGHBOURS + 8
+    assert len(pairs) <= n * per_frame < n * (n - 1) / 2 * 4
     assert not any("far" in a or "far" in b for a, b in pairs)
     # different sequences near each other do get compared
     assert any(a.startswith("g0/") and b.startswith("g1/") for a, b in pairs)
+
+
+def test_single_position_videos_still_connect_across_sequences():
+    frames = [SfmFrame(f"{g}-{i}", f"v{g}", i, f"v{g}/{g}-{i}.jpg", 100, 100, 0.0, 0.0, 0, None) for g in range(2) for i in range(30)]
+    pairs = _pairs(frames)
+    cross = [p for p in pairs if p[0].split("/")[0] != p[1].split("/")[0]]
+    assert cross and len(cross) <= 30 * 30 // 3 + 30

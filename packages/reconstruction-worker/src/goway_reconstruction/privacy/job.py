@@ -15,7 +15,7 @@ from .. import PRIVACY_PIPELINE_VERSION
 from ..aws import Aws
 from ..context import JobContext, JobFailure
 from ..contract import CapturePrivacyJob, CapturePrivacyResult, Detections, ModelRef, PrivacyFrame
-from ..models import ALL_MODELS
+from ..models import PRIVACY_MODELS
 from .detectors import PrivacyDetectors
 from .media import CorruptMediaError, decode_photo, decode_video
 from .redact import MAX_MASKED_FRACTION, MIN_SHARPNESS, MetadataSurvivedError, redact
@@ -91,7 +91,7 @@ def run(job: CapturePrivacyJob, ctx: JobContext, aws: Aws, detectors: PrivacyDet
         assetId=job.assetId,
         verdict="passed",
         privacyPipelineVersion=PRIVACY_PIPELINE_VERSION,
-        models=[ModelRef(name=m.name, version=m.version, sha256=m.sha256) for m in ALL_MODELS],
+        models=[ModelRef(name=m.name, version=m.version, sha256=m.sha256) for m in PRIVACY_MODELS],
         metadataStripped=True,
         frames=frames,
         rejectedFrames=rejected,
