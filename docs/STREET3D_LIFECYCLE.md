@@ -32,6 +32,12 @@ provision a scheduler, bucket or credentials. Start with a dry run and configure
 the schedule before accepting production uploads. Keep this out of API startup:
 map availability must not depend on the cleanup service or an owned GPU.
 
+Enable execution only after **all API instances** run the registration/finalize
+guards from this change. The older API cancels `deleting` and is unsafe alongside
+an active sweeper. If rolling back after cleanup has started, retain these guards;
+stopping the scheduler alone does not make outstanding deletion intents safe to
+revive.
+
 Each invocation handles at most `--limit` objects (default 100, maximum 1000).
 It prints aggregate JSON: `candidates`, `declaredBytes`, `deleted`, `failed` and
 `deletedDeclaredBytes`. Byte counts are declared sizes, not measured reclaimed
