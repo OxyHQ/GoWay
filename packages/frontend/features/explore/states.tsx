@@ -133,8 +133,29 @@ export function FailureState({
         <PanelState
           icon={RiMapPin2Line}
           title="We couldn't find that place"
-          body="It may have been removed, or the link may be out of date."
+          body="The link may be out of date."
           testID="state-not-found"
+        />
+      );
+    case 'gone':
+      return (
+        <PanelState
+          icon={RiMapPin2Line}
+          title="This place is no longer on GoWay"
+          body="It was removed from the map, so there is nothing left to show here."
+          testID="state-gone"
+        />
+      );
+    // The app and GoWay disagree about which routes exist. Nothing about the
+    // request is wrong and repeating it changes nothing, so there is no retry:
+    // the fix is a newer build of the app.
+    case 'versionMismatch':
+      return (
+        <PanelState
+          icon={RiRefreshLine}
+          title="GoWay has been updated"
+          body={`This version of the app can't load ${what}. Reload to get the latest version.`}
+          testID="state-version-mismatch"
         />
       );
     // Two ANSWERS rather than faults, and they belong to the directions domain

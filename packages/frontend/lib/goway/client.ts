@@ -5,8 +5,8 @@
  * integration boundary is not good enough for the first-party map, it is not
  * good enough for FairCoin, Moovo or Homiio either. Nothing in `features/` or
  * `components/` constructs a client, builds a URL or names an endpoint — they
- * call `gowayClient.places.inBounds(...)` and get a parsed `Place[]` or a typed
- * error.
+ * call `gowayClient.places.inBounds(...)` and get a parsed page of places or a
+ * typed error.
  *
  * ## Fixtures, and the backend that has replaced them
  *

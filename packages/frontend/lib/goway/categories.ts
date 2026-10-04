@@ -9,7 +9,7 @@
  * one number per row saying the zoom at which it earns a marker.
  *
  * `Place.categories` is "normalized category keys, most specific first"
- * (`@goway/shared-types`), and the set is OPEN — a category GoWay adds
+ * (`@goway/contracts`), and the set is OPEN — a category GoWay adds
  * server-side must not vanish from the map because this table has not caught up
  * — so {@link resolveCategory} walks the list and falls back to a generic pin
  * rather than dropping the place.

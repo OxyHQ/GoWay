@@ -21,7 +21,7 @@
  *  - one `closed` place, because a lifecycle state other than `active` must
  *    render as itself rather than vanish.
  */
-import type { Place, PlaceCapability, PlaceStatus } from '@goway.to/sdk';
+import type { Place, PlaceCapability } from '@goway.to/sdk';
 
 const DAY_MS = 86_400_000;
 /** Fixed at module load so a session's relative timestamps stay consistent. */
@@ -65,7 +65,7 @@ interface PlaceSeed {
   latitude: number;
   longitude: number;
   categories: string[];
-  status?: PlaceStatus;
+  status?: Place['status'];
   verification?: Place['verification']['state'];
   street?: string;
   houseNumber?: string;
@@ -440,3 +440,13 @@ export const FIXTURE_PLACES: readonly Place[] = [
 export const FIXTURE_PLACES_BY_ID: ReadonlyMap<string, Place> = new Map(
   FIXTURE_PLACES.map((entry) => [entry.id, entry]),
 );
+
+/**
+ * GoWay Place IDs GoWay once published and has since withdrawn.
+ *
+ * A withdrawn place is not a `Place` at all — `removed` is never a published
+ * status — so these are ids, not records: `places.get` of one answers `gone`
+ * (410), which is how a stale deep link reaches the "no longer on GoWay" state
+ * rather than "we couldn't find it".
+ */
+export const FIXTURE_WITHDRAWN_PLACE_IDS: ReadonlySet<string> = new Set(['gw_forn_desaparegut']);

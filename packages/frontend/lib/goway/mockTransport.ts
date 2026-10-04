@@ -25,11 +25,13 @@
  * behaviour is not observable without them, and the fault modes issue #7
  * requires intentional states for (`EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS`).
  */
-import { baseLanguageTag, normalizeLanguageTag } from '@goway.to/sdk';
+import { API_ERROR_STATUS, baseLanguageTag, DEFAULT_PLACE_LIST_LIMIT, normalizeLanguageTag } from '@goway.to/sdk';
 import type {
+  ApiErrorCode,
   GoWayFetch,
   GoWayFetchInit,
   GoWayFetchResponse,
+  Page,
   Place,
   SearchResult,
   SearchResults,
@@ -38,7 +40,7 @@ import type {
 
 import { distanceMeters } from '@/lib/map/geo';
 
-import { FIXTURE_PLACES, FIXTURE_PLACES_BY_ID } from './fixtures';
+import { FIXTURE_PLACES, FIXTURE_PLACES_BY_ID, FIXTURE_WITHDRAWN_PLACE_IDS } from './fixtures';
 import { fixtureCoverage, fixtureSceneResponse } from './street3dFixtures';
 
 /** Which endpoint families can be made to fail, for the degraded states. */
@@ -94,9 +96,12 @@ function respond(status: number, body: unknown): GoWayFetchResponse {
   };
 }
 
-/** GoWay's error envelope, exactly as `ApiErrorBody` declares it. */
-function errorBody(code: string, message: string) {
-  return { error: { code, message } };
+/**
+ * GoWay's error envelope, exactly as `ApiErrorBody` declares it, at the status
+ * the contract assigns its code — never a code outside the closed list.
+ */
+function fail(code: ApiErrorCode, message: string): GoWayFetchResponse {
+  return respond(API_ERROR_STATUS[code], { error: { code, message } });
 }
 
 const MIN_LATENCY_MS = 90;
@@ -158,6 +163,24 @@ const num = (params: Map<string, string>, key: string): number | undefined => {
 
 const list = (params: Map<string, string>, key: string): string[] =>
   params.get(key)?.split(',').filter(Boolean) ?? [];
+
+/** The cursors this transport mints: an offset into the list, `o<n>`. */
+const FIXTURE_CURSOR = /^o(\d+)$/;
+
+/**
+ * One page of `entries`, shaped as every GoWay list answers: `{ items,
+ * nextCursor }`, with `nextCursor` `null` on the last page.
+ *
+ * The fixture cursor is an offset. The real API's place lists page by keyset
+ * and only its search pages by offset, but a cursor is OPAQUE to a client —
+ * pass it back with the same filters — so the difference does not reach the
+ * SDK. A cursor this transport did not mint is refused before a handler runs.
+ */
+function page<T>(entries: readonly T[], params: Map<string, string>, defaultLimit: number): Page<T> {
+  const offset = Number(FIXTURE_CURSOR.exec(params.get('cursor') ?? '')?.[1] ?? 0);
+  const end = offset + (num(params, 'limit') ?? defaultLimit);
+  return { items: entries.slice(offset, end), nextCursor: end < entries.length ? `o${end}` : null };
+}
 
 /** Lower-case and strip combining marks, so "cafe" finds "Cafès". */
 function fold(value: string): string {
@@ -242,16 +265,15 @@ function localize<T extends Place>(place: T, locale: string | undefined, full: b
   return result;
 }
 
-function placesInBounds(params: Map<string, string>): Place[] {
+function placesInBounds(params: Map<string, string>): Page<Place> {
   const west = num(params, 'west') ?? -180;
   const south = num(params, 'south') ?? -90;
   const east = num(params, 'east') ?? 180;
   const north = num(params, 'north') ?? 90;
   const categories = list(params, 'categories');
   const capabilities = list(params, 'capabilities');
-  const limit = num(params, 'limit') ?? 200;
 
-  return FIXTURE_PLACES.filter((entry) => {
+  const matched = FIXTURE_PLACES.filter((entry) => {
     const { latitude, longitude } = entry.location;
     // A box crossing the antimeridian has west > east; the fixture set is in
     // Europe, but getting this wrong silently selects the complement.
@@ -261,8 +283,8 @@ function placesInBounds(params: Map<string, string>): Place[] {
     return withinLongitude && latitude >= south && latitude <= north;
   })
     .filter((entry) => matchesFilters(entry, categories, capabilities))
-    .slice(0, limit)
     .map((entry) => localize(entry, params.get('locale'), false));
+  return page(matched, params, DEFAULT_PLACE_LIST_LIMIT);
 }
 
 function placesNearby(params: Map<string, string>) {
@@ -271,17 +293,16 @@ function placesNearby(params: Map<string, string>) {
   const radiusMeters = num(params, 'radiusMeters') ?? 1000;
   const categories = list(params, 'categories');
   const capabilities = list(params, 'capabilities');
-  const limit = num(params, 'limit') ?? 50;
 
-  return FIXTURE_PLACES.map((entry) => ({
+  const matched = FIXTURE_PLACES.map((entry) => ({
     ...entry,
     distanceMeters: distanceMeters({ latitude, longitude }, entry.location),
   }))
     .filter((entry) => entry.distanceMeters <= radiusMeters)
     .filter((entry) => matchesFilters(entry, categories, capabilities))
     .sort((a, b) => a.distanceMeters - b.distanceMeters)
-    .slice(0, limit)
     .map((entry) => localize(entry, params.get('locale'), false));
+  return page(matched, params, DEFAULT_PLACE_LIST_LIMIT);
 }
 
 /** A couple of geocoder-only candidates, so results are not all GoWay places. */
@@ -327,11 +348,10 @@ function placeAsResult(entry: Place): SearchResult {
 }
 
 function search(params: Map<string, string>): SearchResults {
-  // `q`, not `query`: the parameter names here are the SDK's own
-  // (`searchQuery()` in `packages/sdk/src/client.ts`), and a mock that invents
-  // its own is a mock that stops matching the backend the day it ships.
+  // `q`, not `query`: the parameter names here are the contract's own
+  // (`searchParametersOf` in `@goway/contracts`, which the SDK sends through),
+  // and a mock that invents its own stops matching the backend the day it ships.
   const needle = fold(params.get('q') ?? '');
-  const limit = num(params, 'limit') ?? 20;
   const categories = list(params, 'categories');
   const capabilities = list(params, 'capabilities');
   // `near` is serialised FLAT as `latitude`/`longitude`; the viewport box uses
@@ -364,8 +384,8 @@ function search(params: Map<string, string>): SearchResults {
   const results = [
     ...biased.map((entry) => placeAsResult(localize(entry, params.get('locale'), true))),
     ...geocoded,
-  ].slice(0, limit);
-  const response: SearchResults = { results, providers: ['goway', 'photon'] };
+  ];
+  const response: SearchResults = { ...page(results, params, 20), providers: ['goway', 'photon'] };
   if (faults.search === 'degraded') {
     response.providers = ['goway'];
     response.degradedProviders = ['photon'];
@@ -384,14 +404,9 @@ function reverseGeocode(params: Map<string, string>): SearchResults {
   }))
     .filter((candidate) => candidate.distance <= radiusMeters)
     .sort((a, b) => a.distance - b.distance)
-    .slice(0, num(params, 'limit') ?? 5);
+    .map((candidate) => placeAsResult(localize(candidate.entry, params.get('locale'), true)));
 
-  return {
-    results: nearest.map((candidate) =>
-      placeAsResult(localize(candidate.entry, params.get('locale'), true)),
-    ),
-    providers: ['goway', 'nominatim'],
-  };
+  return { ...page(nearest, params, 5), providers: ['goway', 'nominatim'] };
 }
 
 /**
@@ -411,7 +426,7 @@ function reverseGeocode(params: Map<string, string>): SearchResults {
  *    so a multi-stop itinerary produces the multi-leg response the panel heads
  *    with "To <stop>".
  *  - **`geometryIndex` is an index into the ROUTE's geometry**, not the leg's,
- *    matching what `shared-types` documents — which is what the step highlight
+ *    matching what the contract documents — which is what the step highlight
  *    slices with.
  *  - **A `placeId` resolves through the place table**, so passing a place ID
  *    rather than a coordinate is exercised end to end.
@@ -499,6 +514,17 @@ function directions(body: unknown) {
 
 // ── The fetch itself ────────────────────────────────────────────────────────
 
+/** The fixed paths this transport answers, besides `/places/<placeId>`. */
+const FIXTURE_ROUTES: ReadonlySet<string> = new Set([
+  '/places/bounds',
+  '/places/nearby',
+  '/search',
+  '/geocode',
+  '/geocode/reverse',
+  '/geocode/structured',
+  '/routes',
+]);
+
 function familyOf(path: string): FixtureFault {
   if (path.startsWith('/search')) return 'search';
   if (path.startsWith('/geocode')) return 'geocode';
@@ -532,26 +558,16 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
       // both are retryable, but only the first means "the geographic data
       // source is down", which is a different sentence to show a user.
       const code = family === 'search' || family === 'geocode' ? 'provider_unavailable' : 'service_unavailable';
-      return respond(503, errorBody(code, `${family} is temporarily unavailable`));
+      return fail(code, `${family} is temporarily unavailable`);
     }
 
-    if (path === '/places/bounds') return respond(200, placesInBounds(params));
-    if (path === '/places/nearby') return respond(200, placesNearby(params));
-    if (path.startsWith('/places/')) {
-      const id = decodeURIComponent(path.slice('/places/'.length));
-      const found = FIXTURE_PLACES_BY_ID.get(id);
-      return found
-        ? respond(200, localize(found, params.get('locale'), true))
-        : respond(404, errorBody('not_found', `No place with id ${id}`));
-    }
-    if (path === '/search' || path === '/geocode') return respond(200, search(params));
-    if (path === '/geocode/reverse') return respond(200, reverseGeocode(params));
-    if (path === '/geocode/structured') return respond(200, { results: [], providers: ['nominatim'] });
-    if (path === '/routes') {
-      return respond(200, directions(init.body ? JSON.parse(init.body) : undefined));
+    const cursor = params.get('cursor');
+    if (cursor !== undefined && !FIXTURE_CURSOR.test(cursor)) {
+      return fail('bad_request', 'That cursor was not issued by this list.');
     }
 
     if (path === '/street3d/coverage') {
+      if (init.method !== 'GET') return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
       return respond(200, fixtureCoverage({
         west: num(params, 'west') ?? -180,
         south: num(params, 'south') ?? -90,
@@ -563,12 +579,15 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
     if (sceneRoute) {
       const id = decodeURIComponent(sceneRoute[1]);
       const scene = await fixtureSceneResponse(id);
-      if (!scene) return respond(404, errorBody('not_found', `No scene with id ${id}`));
-      if (!sceneRoute[2]) return respond(200, scene);
-      if (init.method !== 'POST') return respond(405, errorBody('bad_request', 'Use POST'));
+      if (!scene) return fail('not_found', `No scene with id ${id}`);
+      if (!sceneRoute[2]) {
+        if (init.method !== 'GET') return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
+        return respond(200, scene);
+      }
+      if (init.method !== 'POST') return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
       // Mirrors the API: a report is identity-bound, so no bearer is a 401.
       const authorization = init.headers?.Authorization ?? init.headers?.authorization;
-      if (!authorization) return respond(401, errorBody('unauthorized', 'Sign in to report a scene'));
+      if (!authorization) return fail('unauthorized', 'Sign in to report a scene');
       const body = init.body ? (JSON.parse(init.body) as { reason?: string }) : {};
       return respond(201, {
         id: `r_fixture_${Math.random().toString(36).slice(2, 10)}`,
@@ -579,6 +598,29 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
       });
     }
 
-    return respond(404, errorBody('not_found', `No fixture route for ${path}`));
+    // Every fixture route is a read except directions, which is a POST.
+    const placeId = /^\/places\/([^/]+)$/.exec(path)?.[1];
+    const served = placeId !== undefined || FIXTURE_ROUTES.has(path);
+    if (!served) return fail('unknown_route', `No route for ${path}`);
+    if (init.method !== (path === '/routes' ? 'POST' : 'GET')) {
+      return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
+    }
+
+    if (path === '/places/bounds') return respond(200, placesInBounds(params));
+    if (path === '/places/nearby') return respond(200, placesNearby(params));
+    if (placeId !== undefined) {
+      const id = decodeURIComponent(placeId);
+      if (FIXTURE_WITHDRAWN_PLACE_IDS.has(id)) return fail('gone', `Place ${id} has been withdrawn`);
+      const found = FIXTURE_PLACES_BY_ID.get(id);
+      return found
+        ? respond(200, localize(found, params.get('locale'), true))
+        : fail('not_found', `No place with id ${id}`);
+    }
+    if (path === '/search' || path === '/geocode') return respond(200, search(params));
+    if (path === '/geocode/reverse') return respond(200, reverseGeocode(params));
+    if (path === '/geocode/structured') {
+      return respond(200, { items: [], nextCursor: null, providers: ['nominatim'] } satisfies SearchResults);
+    }
+    return respond(200, directions(init.body ? JSON.parse(init.body) : undefined));
   };
 }

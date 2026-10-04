@@ -255,7 +255,7 @@ export function useExplore(
   // ── Data ─────────────────────────────────────────────────────────────────
 
   const placesQuery = usePlacesInBounds(committed?.bounds ?? null, { categories });
-  const places = useMemo(() => placesQuery.data ?? [], [placesQuery.data]);
+  const places = useMemo(() => placesQuery.data?.items ?? [], [placesQuery.data]);
 
   const searchQuery = useSearch(debouncedQuery, {
     // `near` (the user's own position) outranks `viewport`; the SDK ignores the
@@ -267,7 +267,7 @@ export function useExplore(
   });
 
   const searching = debouncedQuery.trim().length >= MIN_SEARCH_LENGTH;
-  const results = useMemo(() => searchQuery.data?.results ?? [], [searchQuery.data]);
+  const results = useMemo(() => searchQuery.data?.items ?? [], [searchQuery.data]);
 
   const selectedPlaceId = selection?.kind === 'place' ? selection.placeId : null;
   const placeQuery = usePlace(selectedPlaceId, selection?.kind === 'place' ? selection.seed : undefined);
@@ -295,7 +295,7 @@ export function useExplore(
     limit: 10,
   });
   const labelPlace = useMemo(
-    () => (selectedLabel ? reconcileLabel(selectedLabel, labelSearch.data?.results ?? []) : null),
+    () => (selectedLabel ? reconcileLabel(selectedLabel, labelSearch.data?.items ?? []) : null),
     [labelSearch.data, selectedLabel],
   );
 

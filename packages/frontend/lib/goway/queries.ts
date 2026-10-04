@@ -21,6 +21,7 @@ import type {
   GeoCoordinate,
   Place,
   PlaceId,
+  PlacePage,
   SearchResults,
 } from '@goway.to/sdk';
 
@@ -46,6 +47,11 @@ export interface PlacesInBoundsOptions {
 /**
  * The places inside a box — the map-viewport read.
  *
+ * ONE page, deliberately: the map draws what the first page holds and never
+ * walks `nextCursor`. A viewport dense enough to fill a page is one the user
+ * zooms into, and "Search this area" there asks again for a smaller box —
+ * paging a pan would pile up pins nobody can tell apart.
+ *
  * `bounds` is the box the user has COMMITTED to (the opening view, or the one
  * they pressed "Search this area" on), never the live camera: refetching on
  * every frame of a pan is both a bad network citizen and a UI that never
@@ -55,7 +61,7 @@ export interface PlacesInBoundsOptions {
 export function usePlacesInBounds(
   bounds: GeoBoundingBox | null,
   options: PlacesInBoundsOptions = {},
-): UseQueryResult<Place[]> {
+): UseQueryResult<PlacePage> {
   const { categories, capabilities, limit, enabled = true } = options;
 
   return useQuery({
@@ -71,7 +77,7 @@ export function usePlacesInBounds(
     enabled: enabled && bounds != null,
     retry: shouldRetryGoWay,
     queryFn: async ({ signal }) => {
-      if (!bounds) return [];
+      if (!bounds) return { items: [], nextCursor: null };
       return gowayClient.places.inBounds(
         {
           west: bounds.west,
@@ -108,6 +114,9 @@ export const MIN_SEARCH_LENGTH = 2;
  * Pass an ALREADY-DEBOUNCED string (see `useDebouncedValue`). Debouncing inside
  * the hook would make the query key lag the input by a render, which is the
  * shape that produces a stale result list flashing over a fresh one.
+ *
+ * The first page only: a search box lists the best `limit` matches and never
+ * follows `nextCursor`.
  */
 export function useSearch(query: string, options: SearchOptions = {}): UseQueryResult<SearchResults> {
   const { near, viewport, categories, capabilities, limit, enabled = true } = options;

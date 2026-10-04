@@ -1,0 +1,165 @@
+/**
+ * The fixture transport answers exactly what GoWay answers.
+ *
+ * `mockTransport.ts` sits UNDER the real SDK, and the SDK parses every response
+ * with the contract's own zod schemas — so a fixture that drifts from the
+ * contract (a `null` where a field is optional, a list that is not a page, an
+ * error code outside the closed list) is a `GoWayResponseError` the first time
+ * the app reads it. Every route the app reads is driven here, through the real
+ * client, so that drift fails a test instead of a screen.
+ */
+import { afterEach, describe, expect, test } from 'bun:test';
+import {
+  API_ERROR_STATUS,
+  createGoWayClient,
+  GoWayGoneError,
+  GoWayNotFoundError,
+  iterateGoWayPages,
+  type GoWayClient,
+} from '@goway.to/sdk';
+
+import { classifyGoWayError } from '@/lib/goway/errors';
+import { FIXTURE_PLACES, FIXTURE_WITHDRAWN_PLACE_IDS } from '@/lib/goway/fixtures';
+import { createFixtureFetch, setFixtureFaults, type FixtureFaults } from '@/lib/goway/mockTransport';
+
+const API = 'https://api.goway.to';
+const BARCELONA = { west: 2.1, south: 41.35, east: 2.22, north: 41.42 };
+const PLAÇA_CATALUNYA = { latitude: 41.387, longitude: 2.17 };
+
+/** A client served by the fixtures, degraded from its first request by `faults`. */
+function fixtureClient(faults: FixtureFaults = {}): GoWayClient {
+  return createGoWayClient({ apiBaseUrl: API, locale: 'es', fetch: createFixtureFetch(faults) });
+}
+
+async function failureOf(promise: Promise<unknown>): Promise<unknown> {
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
+  throw new Error('expected the call to fail');
+}
+
+// The fault table is module state; leave it clean for whichever test runs next.
+afterEach(() => setFixtureFaults({}));
+
+describe('lists are pages', () => {
+  test('the viewport read is one page of places, and the last page says so', async () => {
+    const page = await fixtureClient().places.inBounds(BARCELONA);
+    expect(page.items.length).toBeGreaterThan(0);
+    expect(page.nextCursor).toBeNull();
+    // A list read carries `localizedName` alone, never every language.
+    expect(page.items.every((place) => place.names === undefined)).toBe(true);
+  });
+
+  test('a short page hands back a cursor, and walking it reaches the same places', async () => {
+    const client = fixtureClient();
+    const whole = await client.places.inBounds(BARCELONA);
+    const first = await client.places.inBounds({ ...BARCELONA, limit: 3 });
+    expect(first.items).toHaveLength(3);
+    expect(first.nextCursor).not.toBeNull();
+
+    const walked: string[] = [];
+    for await (const place of iterateGoWayPages((cursor) =>
+      client.places.inBounds({ ...BARCELONA, limit: 3, ...(cursor ? { cursor } : {}) }),
+    )) {
+      walked.push(place.id);
+    }
+    expect(walked).toEqual(whole.items.map((place) => place.id));
+  });
+
+  test('nearby is a page of places with distances, nearest first', async () => {
+    const page = await fixtureClient().places.nearby({ ...PLAÇA_CATALUNYA, radiusMeters: 1500 });
+    expect(page.items.length).toBeGreaterThan(0);
+    expect(page.nextCursor).toBeNull();
+    const distances = page.items.map((place) => place.distanceMeters);
+    expect(distances).toEqual([...distances].sort((a, b) => a - b));
+  });
+
+  test('a cursor the list never issued is refused, not served as page one', async () => {
+    const error = await failureOf(fixtureClient().places.inBounds({ ...BARCELONA, cursor: 'forged' }));
+    expect(error).toMatchObject({ status: API_ERROR_STATUS.bad_request, code: 'bad_request' });
+  });
+});
+
+describe('single places', () => {
+  test('every fixture place parses as a published place, names included', async () => {
+    const client = fixtureClient();
+    const read = await Promise.all(FIXTURE_PLACES.map((place) => client.places.get(place.id)));
+    expect(read.map((place) => place.id)).toEqual(FIXTURE_PLACES.map((place) => place.id));
+  });
+
+  test('a withdrawn place is gone, and renders as no longer on GoWay', async () => {
+    const [withdrawn] = FIXTURE_WITHDRAWN_PLACE_IDS;
+    const error = await failureOf(fixtureClient().places.get(withdrawn));
+    expect(error).toBeInstanceOf(GoWayGoneError);
+    expect(classifyGoWayError(error)).toEqual({ kind: 'gone', retryable: false });
+  });
+
+  test('a place that never existed is not found', async () => {
+    const error = await failureOf(fixtureClient().places.get('gw_never_was'));
+    expect(error).toBeInstanceOf(GoWayNotFoundError);
+    expect(classifyGoWayError(error).kind).toBe('notFound');
+  });
+});
+
+describe('search and geocoding answer SearchResults', () => {
+  test('search lists items with the providers that answered', async () => {
+    const results = await fixtureClient().search.query({ query: 'carrer', limit: 20 });
+    expect(results.items.length).toBeGreaterThan(0);
+    expect(results.nextCursor).toBeNull();
+    expect(results.providers).toEqual(['goway', 'photon']);
+    expect(results.degradedProviders).toBeUndefined();
+  });
+
+  test('a degraded provider shortens the list instead of failing it', async () => {
+    const results = await fixtureClient({ search: 'degraded' }).search.query({ query: 'gràcia' });
+    expect(results.degradedProviders).toEqual(['photon']);
+  });
+
+  test('forward, reverse and structured geocoding all parse', async () => {
+    const client = fixtureClient();
+    const forward = await client.geocode.forward({ query: 'gràcia' });
+    const reverse = await client.geocode.reverse({ ...FIXTURE_PLACES[0].location, radiusMeters: 50, limit: 1 });
+    const structured = await client.geocode.structured({ city: 'Barcelona' });
+    expect(forward.items.length).toBeGreaterThan(0);
+    expect(reverse.items).toHaveLength(1);
+    expect(structured).toEqual({ items: [], nextCursor: null, providers: ['nominatim'] });
+  });
+});
+
+describe('directions', () => {
+  test('a multi-stop route parses, one leg per pair of stops', async () => {
+    const [first, second, third] = FIXTURE_PLACES;
+    const response = await fixtureClient().routes.directions({
+      origin: { coordinate: first.location },
+      waypoints: [{ placeId: second.id }],
+      destination: { coordinate: third.location },
+      mode: 'walk',
+    });
+    expect(response.routes[0]?.legs).toHaveLength(2);
+  });
+});
+
+describe('failures arrive as the contract envelope', () => {
+  test('an unavailable family is a 503 the app reads as unavailable', async () => {
+    const error = await failureOf(fixtureClient({ places: 'unavailable' }).places.inBounds(BARCELONA));
+    expect(classifyGoWayError(error)).toEqual({ kind: 'unavailable', retryable: true });
+  });
+
+  test('a dropped connection reads as offline', async () => {
+    const error = await failureOf(fixtureClient({ search: 'network' }).search.query({ query: 'carrer' }));
+    expect(classifyGoWayError(error).kind).toBe('offline');
+  });
+
+  test('a path no route serves is unknown_route, not not_found', async () => {
+    const response = await createFixtureFetch()(`${API}/api/v1/claims`, {
+      method: 'GET',
+      headers: {},
+      credentials: 'omit',
+      redirect: 'follow',
+    });
+    expect(response.status).toBe(API_ERROR_STATUS.unknown_route);
+    expect(JSON.parse(await response.text())).toMatchObject({ error: { code: 'unknown_route' } });
+  });
+});
