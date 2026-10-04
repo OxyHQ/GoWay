@@ -14,15 +14,9 @@ import type { CaptureAsset, CaptureAssetInput, CaptureSession, CaptureUploadPoli
 import { MapCanvas, type MapApi } from '@/components/map';
 import { useAuthGate } from '@/lib/authGate';
 import { captureClient } from './client';
+import { ContributionStatusCard } from './ContributionStatusCard';
 import { hashMedia, selectMedia, uploadMedia } from './media';
 import { mediaLocation, type SelectedMedia } from './media.shared';
-
-const STATE_LABELS: Record<string, string> = {
-  expected: 'Waiting for upload', abandoned: 'Upload expired', uploaded: 'Awaiting privacy processing',
-  validating: 'Checking media', accepted: 'Accepted', rejected: 'Not usable',
-  waiting_for_overlap: 'Waiting for complementary views', reconstruction_candidate: 'Selected for reconstruction',
-  integrated: 'Helped build a scene', expired: 'Temporary source expired', deleted: 'Contribution withdrawn',
-};
 
 export function ContributeScreen() {
   const router = useRouter();
@@ -186,14 +180,7 @@ export function ContributeScreen() {
           void captureClient.assets(session.id).then((items) => { if (currentUser.current === account) setAssets(items); })
             .catch(() => setError('Could not load this contribution.'));
         }}>{new Date(session.createdAt).toLocaleDateString()} · {session.assetCount} item(s)</Button>)}
-        {assets.map((asset) => <View key={asset.id} className="gap-space-8 rounded-radius-lg border border-border p-space-12">
-          <Text>{asset.mediaKind === 'video' ? 'Video' : 'Photo'} · {STATE_LABELS[asset.state] ?? 'Processing'}</Text>
-          {!['deleted', 'expired', 'abandoned'].includes(asset.state) && <>
-            <Text>Temporary source expected to expire around {new Date(asset.media.lifecycle.expiresAt).toLocaleDateString()}.</Text>
-            <Button appearance="outline" disabled={busy} onPress={() => void withdraw(asset)}>Withdraw contribution</Button>
-          </>}
-          {asset.state === 'deleted' && <Text>Removed from future use under this contribution. Temporary bytes are queued for cleanup when no other valid contribution needs them.</Text>}
-        </View>)}
+        {assets.map((asset) => <ContributionStatusCard key={asset.id} asset={asset} busy={busy} onWithdraw={(item) => void withdraw(item)} />)}
       </>}
     </ScrollView>
   </SafeAreaView>;
