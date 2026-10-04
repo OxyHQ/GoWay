@@ -85,6 +85,9 @@ describe('street3d parsers', () => {
   it('fail closed on unknown states, insecure URLs, bad digests and a malformed transform', () => {
     expect(() => parseStreetCoverage({ ...coverage, areas: [{ ...coverage.areas[0], state: 'great' }] })).toThrow();
     expect(() => parseStreetSceneManifest({ ...manifest, assets: [{ ...manifest.assets[0], url: 'http://cdn.example.test/a.spz' }] })).toThrow();
+    // Plain HTTP only on loopback: a local asset server, which downgrades nothing.
+    expect(parseStreetSceneManifest({ ...manifest, assets: [{ ...manifest.assets[0], url: 'http://localhost:8811/a.spz' }] }).assets[0]?.url).toBe('http://localhost:8811/a.spz');
+    expect(() => parseStreetSceneManifest({ ...manifest, assets: [{ ...manifest.assets[0], url: 'http://localhost.example.test/a.spz' }] })).toThrow();
     expect(() => parseStreetSceneManifest({ ...manifest, assets: [{ ...manifest.assets[0], sha256: 'xyz' }] })).toThrow();
     expect(() => parseStreetSceneManifest({ ...manifest, worldTransform: { ...manifest.worldTransform, enuFromScene: [1, 0, 0] } })).toThrow();
     expect(() => parseStreetSceneManifest({ ...manifest, quality: { ...manifest.quality, placement: 'exact' } })).toThrow();

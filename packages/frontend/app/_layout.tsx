@@ -79,7 +79,11 @@ export default function RootLayout() {
               <ConnectionStatusToasts />
               <LocaleProvider>
                 <PortalProvider>
-                  <Stack screenOptions={{ headerShown: false }} />
+                  <Stack screenOptions={{ headerShown: false }}>
+                    {/* 2D → 3D: the scene's poster scales in over a fade,
+                        rather than a sideways push away from the map. */}
+                    <Stack.Screen name="street3d/[sceneId]" options={{ animation: 'fade' }} />
+                  </Stack>
                   <StatusBar style="auto" />
                   <PortalOutlet />
                 </PortalProvider>

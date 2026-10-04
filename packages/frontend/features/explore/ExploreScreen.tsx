@@ -34,8 +34,10 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowDimensions, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Button } from '@oxy.so/bloom/button';
 import { Fab } from '@oxy.so/bloom/fab';
 import { Text } from '@oxy.so/bloom/typography';
 import { MapSearchAreaButton } from '@oxy.so/bloom/map-marker';
@@ -46,6 +48,7 @@ import { RiFocus3Line } from '@oxy.so/bloom/icons/RiFocus3Line';
 import { BrandedChromeProvider } from '@/components/brand';
 import {
   MapCanvas,
+  type GeoBounds,
   type MapApi,
   type MapCanvasError,
   type MapFitOptions,
@@ -57,10 +60,13 @@ import {
 import { MAP_SHEET_HALF_RATIO, MapSheet, type MapSheetSnap } from '@/components/sheet/MapSheet';
 import { SidePanel } from '@/components/sheet/SidePanel';
 import { PANEL_WIDTH, useLayoutMode } from '@/lib/useLayoutMode';
+import { useAuthGate } from '@/lib/authGate';
 import { useTranslation } from '@/lib/i18n';
 import type { LocationErrorReason } from '@/lib/map/useUserLocation';
 
 import { slotName } from '@/features/directions/stops';
+import { takeReturnBounds } from '@/features/street3d/handoff';
+import { useStreet3dLayer } from '@/features/street3d/useStreet3dLayer';
 
 import { ExploreBody, ExploreHeader } from './ExploreContent';
 import { ExploreMarker } from './ExploreMarker';
@@ -74,6 +80,8 @@ const MY_LOCATION_ZOOM = 15;
 const BEARING_EPSILON = 1;
 /** Horizontal room the location notice leaves for the controls column. */
 const CONTROLS_COLUMN_WIDTH = 72;
+/** Wait for the 3D → 2D transition before framing the scene's bounds. */
+const RETURN_FIT_DELAY_MS = 250;
 /** How far the floating controls lift as the sheet is dragged open. */
 const CHROME_LIFT_PX = 28;
 
@@ -203,6 +211,61 @@ export default function ExploreScreen({
 
   const explore = useExplore(mapRef, { initialPlaceId, mapPadding });
   const { directions, location } = explore;
+  const router = useRouter();
+  const gate = useAuthGate();
+
+  // Street 3D coverage: off unless the feature flag is on, and out of the way
+  // while the directions planner owns the map.
+  const street3d = useStreet3dLayer(mapRef, { enabled: !directions.active });
+
+  /**
+   * Coming back from a Street 3D scene: frame the map on the scene the user
+   * just left, so 3D → 2D lands where 2D → 3D took off.
+   *
+   * The fit waits for BOTH a focused screen and a ready canvas. On web the
+   * map may be remounted by the navigation (or unhidden by the same
+   * transition that focuses it), and a fit issued against a canvas that is
+   * not ready, or is zero-sized, is silently a no-op.
+   */
+  const pendingFit = useRef<GeoBounds | null>(null);
+  const mapReady = useRef(false);
+  const applyPendingFit = useCallback(() => {
+    const bounds = pendingFit.current;
+    if (!bounds || !mapReady.current || !mapRef.current) return;
+    pendingFit.current = null;
+    mapRef.current.fitBounds(bounds, { padding: mapPadding, duration: 600, maxZoom: 18 });
+  }, [mapPadding]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const bounds = takeReturnBounds();
+      if (bounds) pendingFit.current = bounds;
+      if (!pendingFit.current) return undefined;
+      const timer = setTimeout(applyPendingFit, RETURN_FIT_DELAY_MS);
+      return () => clearTimeout(timer);
+    }, [applyPendingFit]),
+  );
+
+  const handleMapReady = useCallback(() => {
+    mapReady.current = true;
+    street3d.onMapReady();
+    setTimeout(applyPendingFit, RETURN_FIT_DELAY_MS);
+  }, [applyPendingFit, street3d]);
+
+  const overlays = useMemo(
+    () => (street3d.overlays.length > 0 ? [...street3d.overlays, ...explore.overlays] : explore.overlays),
+    [explore.overlays, street3d.overlays],
+  );
+  const markers = useMemo(
+    () => (street3d.markers.length > 0 ? [...explore.markers, ...street3d.markers] : explore.markers),
+    [explore.markers, street3d.markers],
+  );
+  const handleMarkerPress = useCallback(
+    (marker: MapMarker) => {
+      if (!street3d.handleMarkerPress(marker)) explore.onMarkerPress(marker);
+    },
+    [explore, street3d],
+  );
 
   const [bearing, setBearing] = useState(0);
   const [mapError, setMapError] = useState<MapCanvasError | null>(null);
@@ -224,8 +287,9 @@ export default function ExploreScreen({
     (change: MapViewportChange) => {
       setBearing(change.viewport.bearing);
       explore.onViewportChange(change);
+      street3d.onViewportChange(change);
     },
-    [explore],
+    [explore, street3d],
   );
 
   const handleLocate = useCallback(async () => {
@@ -261,14 +325,15 @@ export default function ExploreScreen({
    * on web and native.
    */
   const renderMarker = useCallback(
-    (marker: MapMarker) => (
-      <ExploreMarker
-        marker={marker}
-        capability={explore.ecosystem.get(marker.id)}
-        onPress={() => explore.onMarkerPress(marker)}
-      />
-    ),
-    [explore],
+    (marker: MapMarker) =>
+      street3d.renderMarker(marker) ?? (
+        <ExploreMarker
+          marker={marker}
+          capability={explore.ecosystem.get(marker.id)}
+          onPress={() => explore.onMarkerPress(marker)}
+        />
+      ),
+    [explore, street3d],
   );
 
   const locationNotice = locationNoticeFor(location.error, location.canAskAgain, t);
@@ -314,10 +379,11 @@ export default function ExploreScreen({
       <MapCanvas
         ref={mapRef}
         initialViewport={initialViewport ?? undefined}
-        markers={explore.markers}
+        markers={markers}
         renderMarker={renderMarker}
-        overlays={explore.overlays}
-        onMarkerPress={explore.onMarkerPress}
+        overlays={overlays}
+        onMarkerPress={handleMarkerPress}
+        onReady={handleMapReady}
         onPress={handleMapPress}
         // What the basemap is already labelling, so GoWay does not draw a
         // second chip over it. See `lib/goway/basemapLabels.ts`.
@@ -347,6 +413,26 @@ export default function ExploreScreen({
             onPress={explore.searchThisArea}
             testID="search-this-area"
           />
+        </View>
+      ) : null}
+
+      {/* Street 3D: an area in view needs more photos. A suggestion, never a
+          wall — it yields to "Search this area" and to the directions picker,
+          and contributing is auth-gated at the moment it is asked for. */}
+      {street3d.wantingCapture.length > 0 && !explore.areaMoved && !mapError && !directions.active ? (
+        <View
+          pointerEvents="box-none"
+          className="absolute left-0 right-0 items-center px-space-16"
+          style={{ top: areaTop }}
+        >
+          <View className="flex-row items-center gap-space-8 rounded-radius-max bg-card py-space-4 pl-space-12 pr-space-4 shadow-m">
+            <Text className="text-bodySmall text-foreground" numberOfLines={2}>
+              {t('street3d.layer.contributeHint')}
+            </Text>
+            <Button size="xs" onPress={() => gate.run(() => router.push('/contribute'))}>
+              {t('street3d.contribute.cta')}
+            </Button>
+          </View>
         </View>
       ) : null}
 
