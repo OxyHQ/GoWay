@@ -62,6 +62,7 @@ async function callEverything(): Promise<Set<string>> {
 
   const calls: Promise<unknown>[] = [
     goway.places.get('p1'),
+    goway.places.getMany(['p1', 'p2']),
     goway.places.nearby({ latitude: 0, longitude: 0, radiusMeters: 10 }),
     goway.places.inBounds(box),
     goway.places.create({ name: 'n', location: { latitude: 0, longitude: 0 } }),

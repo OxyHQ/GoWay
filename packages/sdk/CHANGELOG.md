@@ -132,8 +132,45 @@ almost every part of it is breaking.
   no longer accepts one.
 - The `capabilities` filter is a list of `key` or `key:value` strings
   (`'food.cuisine:italian'`), typed `string[]` rather than `CapabilityKey[]`.
+- **`places.update` is a merge patch, down to the parts of `address` and
+  `contact`.** A part left out is now UNTOUCHED — `contact: { phone }` used to
+  clear the email and the website, and now keeps them — and `null` clears:
+  `contact: { phone: null }`, `address: { houseNumber: null }`, or the whole
+  `address: null` / `contact: null`, as well as `description`, `logoFileId`,
+  `coverFileId`, `geometry` and `openingHours`. `name`, `location`, `status`
+  and `categories` refuse `null` (`categories: []` clears the list), and
+  `timezone` is not writable at all. `PlaceUpdateInput.address` is a
+  `StructuredAddressPatch` and `.contact` a `PlaceContactPatch`. A value
+  cleared this way that OpenStreetMap supplied stays cleared on the next
+  import, until OpenStreetMap's value changes.
+- **Approving a claim re-tiers what the claimant said while it was pending.**
+  A `community_reported` capability or hours exception whose latest statement
+  was made after the claim was filed, by the claimant account itself or by
+  the person who filed the claim, becomes `business_asserted` in the same
+  transaction — unless the business tier already holds that key or those
+  dates. Another member who spoke as themselves is not re-tiered and
+  re-asserts once the claim is approved. Each re-tier is a public
+  `capability_retiered` or `hours_exception_retiered` revision (new values of
+  `PLACE_REVISION_ACTIONS`), whose one change goes from the community row to
+  the same statement at the business tier, `observedAt` unchanged.
 
 ### Added
+
+- `places.getMany(placeIds, options?)` → `PlaceBatch` (`GET /places?ids=`):
+  up to `MAX_PLACE_BATCH_SIZE` (50) places in one request. Every id lands in
+  exactly one of `items` (each place exactly as `places.get` answers it),
+  `gone` (`{ id, mergedInto? }` — what `get` rejects with `GoWayGoneError`)
+  and `missing` (what it rejects with `GoWayNotFoundError`), in the order you
+  named them; repeats collapse. More ids than the maximum is a
+  `GoWayValidationError` before anything is sent.
+- `claims.list({ placeId })` — one account's claims on one place.
+- A text capability key filters by its exact value:
+  `'commerce.mercaria.store:<locationId>'`, `'brand.wikidata:Q42'`, through
+  the strongest assertion like every other value filter
+  (`placeMatchesCapabilityFilter` agrees). The value is held to the key's own
+  schema and may not contain a comma.
+- Exports `MAX_PLACE_BATCH_SIZE` and the types `PlaceBatch`, `PlaceBatchGone`,
+  `PlaceBatchQuery`, `StructuredAddressPatch` and `PlaceContactPatch`.
 
 - `places.capabilities.put(placeId, key, assertion)` → `Place`, and
   `places.capabilities.delete(placeId, key)` → nothing (`204`).
@@ -196,7 +233,8 @@ almost every part of it is breaking.
   API publishes to an SDK method.
 - Place data: `Place.timezone` (IANA, derived from the position) and
   `Place.hoursExceptions` (dated closures and special hours that have not
-  ended, on a single-place read; absent from lists).
+  ended, on every place read — `places.get`, `places.getMany`, `places.nearby`
+  and `places.inBounds` — so open-now is right on a list too; `[]` when none).
 - `openingStatusAt(place, now?)` → `OpeningStatus`: `open`/`closed`/`unknown`,
   today's local date, the next change as an instant and as the place's own
   clock reads it, and the exception deciding today. The same evaluation the
@@ -247,8 +285,8 @@ almost every part of it is breaking.
   `reply` instead, published without naming who wrote it. A review carries its
   author's Oxy user id (`authorOxyUserId`) to resolve to their public profile.
 - **The place profile**: `Place.description` (the default-language one),
-  `Place.descriptions` and `Place.localizedDescription` (single-place read
-  only, absent from lists like `names`), `Place.logoFileId` and
+  `Place.descriptions` and `Place.localizedDescription` (single-place and batch
+  reads only, absent from lists like `names`), `Place.logoFileId` and
   `Place.coverFileId` (Oxy files of visible `logo`/`cover` gallery items), and
   `Place.rating` — `{ average, count }` over the published reviews, derived on
   every review write, absent until the first. `PlaceCreateInput` gains

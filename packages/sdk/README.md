@@ -91,6 +91,10 @@ no login flow.
 // One place, by its stable GoWay Place ID.
 const place = await goway.places.get('gw_place_01H8');
 
+// Up to 50 places you store ids of, in one request: each exactly as `get`
+// answers it, or in `gone` (with `mergedInto` for a merge) or `missing`.
+const { items, gone, missing } = await goway.places.getMany(storedIds);
+
 // Everything in the current viewport — the map read. One page at a time.
 const { items: visible, nextCursor } = await goway.places.inBounds({
   west: 2.10, south: 41.36, east: 2.20, north: 41.41,
@@ -107,6 +111,8 @@ const created = await goway.places.create({
   names: [{ language: 'es', name: 'Café de la Plaza' }],
 });
 await goway.places.update(created.id, { contact: { website: 'https://example.org' } });
+// A merge patch: `null` clears, a part left out is untouched.
+await goway.places.update(created.id, { contact: { phone: null }, address: { houseNumber: null } });
 ```
 
 Categories are keys of one closed taxonomy (`CATEGORIES`, `CATEGORY_KEYS`; the
@@ -118,7 +124,7 @@ its descendants.
 
 Opening hours are a weekly schedule read in `place.timezone` — which GoWay
 derives from the position — plus `place.hoursExceptions`, the dated closures and
-special hours that have not ended (on a single-place read). Never evaluate them
+special hours that have not ended (on every place read, lists included). Never evaluate them
 yourself: `openingStatusAt(place)` answers `open`/`closed`/`unknown` and when that
 next changes, exactly as GoWay's own app does. Exceptions are written through
 `places.hoursExceptions.create|replace|delete`, under the capability rules below.
@@ -131,8 +137,14 @@ a community report from arriving labelled as verified. A caller sets `status` to
 from the map is a moderation act, and a withdrawn place answers `places.get`
 with `GoWayGoneError`.
 
-An update touches only the fields you pass: GoWay layers enrichment *over* source
-data and never destructively overwrites a source fact.
+An update is a merge patch. It touches only the fields you pass — inside
+`address` and `contact`, only the parts you pass — because GoWay layers
+enrichment *over* source data and never destructively overwrites a source fact.
+`null` clears a field that may be empty (`description`, `logoFileId`,
+`coverFileId`, `geometry`, `openingHours`, any `address` or `contact` part, or
+the whole `address`/`contact`); a field a place cannot be without refuses it.
+A value you cleared that OpenStreetMap supplied stays cleared on the next
+import, until OpenStreetMap's own value changes.
 
 ### Photos and reviews
 
@@ -182,7 +194,7 @@ language, then another variety of that language, and then nothing — an arbitra
 *other* language is not a better answer than the name on the shopfront. A
 GoWay-owned correction outranks a source's spelling at every step.
 
-`names` is carried by `places.get` and by search results. `places.nearby` and
+`names` is carried by `places.get`, `places.getMany` and by search results. `places.nearby` and
 `places.inBounds` carry `localizedName` alone: 200 pins × every language is a
 payload nothing on screen renders. An absent `names` means "not published here",
 never "this place has one name".
@@ -247,8 +259,10 @@ A key is one of `CAPABILITY_KEYS` — the registry that types every value — an
 list is a **conjunction**: a place matches only when it HAS every key listed —
 its strongest assertion of each one holds (is not `false`, `0`, `''` or `[]`,
 nor a value the key names as an absence, like `accessibility.wheelchair: 'no'`).
-An enum, enum-set or price key can also be filtered by value:
-`'food.cuisine:italian'`, `'accessibility.wheelchair:limited'`, `'price.level:2'`. A business
+An enum, enum-set, price or text key can also be filtered by value:
+`'food.cuisine:italian'`, `'accessibility.wheelchair:limited'`, `'price.level:2'`,
+`'commerce.mercaria.store:<locationId>'` (a text value matches exactly, and may
+not contain a comma). A business
 that asserts `false` outranks a community report of `true`, so a merchant that
 stopped accepting FairCoin drops out of the filter. A bare key such as
 `'faircoin'`, or a mixed-case one, is refused client-side rather than silently

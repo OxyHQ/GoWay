@@ -67,6 +67,8 @@ import {
   placeHoursExceptionInputSchema,
   placeHoursExceptionPageSchema,
   placeHoursExceptionSchema,
+  placeBatchQuerySchema,
+  placeBatchSchema,
   placePageSchema,
   placePathSchema,
   placeReadQuerySchema,
@@ -153,6 +155,7 @@ import type {
   PlaceHoursExceptionInput,
   PlaceHoursExceptionPage,
   PlaceId,
+  PlaceBatch,
   PlacePage,
   PlacesInBoundsQuery,
   PlaceUpdateInput,
@@ -225,6 +228,23 @@ export interface GoWayClientOptions {
    * goes through `getAccessToken`.
    */
   headers?: Readonly<Record<string, string>>;
+}
+
+/**
+ * A batch answer in the order the CALLER named the ids.
+ *
+ * The URL carries them sorted — the same question is the same URL, which is
+ * what a cache keys on — and the server answers in the order it was asked, so
+ * the caller's own order is put back here.
+ */
+function inCallerOrder(batch: PlaceBatch, ids: readonly PlaceId[]): PlaceBatch {
+  const position = new Map(ids.map((id, index) => [id, index]));
+  const byPosition = (left: PlaceId, right: PlaceId) => (position.get(left) ?? 0) - (position.get(right) ?? 0);
+  return {
+    items: [...batch.items].sort((left, right) => byPosition(left.id, right.id)),
+    gone: [...batch.gone].sort((left, right) => byPosition(left.id, right.id)),
+    missing: [...batch.missing].sort(byPosition),
+  };
 }
 
 /** Options every call accepts. */
@@ -364,21 +384,43 @@ export interface GoWayPlacesApi {
    */
   get(placeId: PlaceId, options?: GoWayPlaceReadOptions): Promise<Place>;
   /**
+   * Up to `MAX_PLACE_BATCH_SIZE` (50) places by id in ONE request — for a
+   * consumer refreshing the place ids it stores.
+   *
+   * Every id lands in exactly one list, in the order given (repeats collapse):
+   * `items` holds each published place exactly as {@link get} would answer
+   * it — names, descriptions, hours exceptions — `gone` the ids `get` would
+   * reject with `GoWayGoneError` (with `mergedInto` for a merged one: store
+   * that id instead), and `missing` the ids `get` would reject with
+   * `GoWayNotFoundError`. More ids than the maximum is a `GoWayValidationError`
+   * before anything is sent: split the list.
+   */
+  getMany(placeIds: readonly PlaceId[], options?: GoWayPlaceReadOptions): Promise<PlaceBatch>;
+  /**
    * One page of places within `radiusMeters` of a point, nearest first, each
    * carrying its distance.
    *
    * `capabilities` is the generic filter every Oxy product shares — pass
    * `['payments.faircoin.accepted']` for FairCoin merchants, or
    * `['mobility.moovo.pickup']` for Moovo pickup points. A place must HAVE
-   * every listed capability: its strongest assertion of each key holds.
-   * Nothing about the capability table's layout leaks into this call.
+   * every listed capability: its strongest assertion of each key holds —
+   * or, for `key:value`, carries that value (`'commerce.mercaria.store:<id>'`
+   * finds the place whose strongest store link names that location). Nothing
+   * about the capability table's layout leaks into this call.
+   *
+   * Each place carries its current `hoursExceptions`, so `openingStatusAt`
+   * answers "open now" per result without a second read.
    */
   nearby(query: NearbyPlacesQuery, options?: GoWayRequestOptions): Promise<PlaceWithDistancePage>;
   /** One page of places inside a bounding box — the map-viewport read. */
   inBounds(query: PlacesInBoundsQuery, options?: GoWayRequestOptions): Promise<PlacePage>;
   /** Create a GoWay-owned place. Identity-bound: requires an Oxy access token. */
   create(input: PlaceCreateInput, options?: GoWayRequestOptions): Promise<Place>;
-  /** Update a place the caller is entitled to edit. Only the fields present are touched. Identity-bound. */
+  /**
+   * Update a place the caller is entitled to edit — a merge patch: a field (or
+   * an `address`/`contact` part) left out is untouched, and `null` clears one
+   * that may be empty. Identity-bound.
+   */
   update(placeId: PlaceId, input: PlaceUpdateInput, options?: GoWayRequestOptions): Promise<Place>;
   /**
    * One page of a place's public history, newest first: what changed and when.
@@ -414,7 +456,8 @@ export interface GoWayClaimsApi {
    * Every claim one account holds, in every state, oldest first —
    * identity-bound. The signed-in account's own by default; pass
    * `oxyAccountId` for an Oxy organization you act for (owner, admin or editor
-   * in it), which is how a business dashboard lists its locations.
+   * in it), which is how a business dashboard lists its locations — and
+   * `placeId` for its claims on one place alone.
    */
   list(query?: AccountClaimListQuery, options?: GoWayRequestOptions): Promise<PlaceClaimPage>;
 }
@@ -805,6 +848,22 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         },
         placeSchema,
       ),
+
+    getMany: async (placeIds: readonly PlaceId[], callOptions: GoWayPlaceReadOptions = {}) => {
+      // Repeats collapse before the maximum is applied, as they do server-side.
+      const ids = [...new Set(placeIds)];
+      const batch = await request(
+        config,
+        {
+          method: 'GET',
+          path: '/places',
+          query: validInput(placeBatchQuerySchema, { ids, locale: callOptions.locale ?? locale }, 'query'),
+          signal: callOptions.signal,
+        },
+        placeBatchSchema,
+      );
+      return inCallerOrder(batch, ids);
+    },
 
     nearby: async (query: NearbyPlacesQuery, callOptions: GoWayRequestOptions = {}) =>
       request(
