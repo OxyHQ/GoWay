@@ -224,6 +224,57 @@ almost every part of it is breaking.
   `TimeRange`, `OpeningStatus`, `OpeningChange`, `OpeningFacts`, `Labels`,
   `LabelLanguage`, and the `GoWayCategoriesApi` and
   `GoWayPlaceHoursExceptionsApi` interfaces.
+- **Place galleries** — `places.media.list|add|remove|reorder|report` over
+  `/places/{placeId}/media`. An item is an Oxy FILE ID: upload the image with
+  the Oxy SDK (`oxy.assets.upload(file, { visibility: 'public' })`), pass its id
+  to `places.media.add`, and render items with
+  `oxy.assets.publicUrl(item.fileId, variant)`. GoWay checks with Oxy, on your
+  session, that the file is a public, active image you own and links it to the
+  place; it never serves image bytes. `add` rejects with `GoWayForbiddenError`
+  for somebody else's file, `GoWayValidationError` for a private, trashed or
+  non-image one, `GoWayConflictError` for a file already in the gallery, and
+  `GoWayUnavailableError` when Oxy cannot be asked. Kinds are
+  `PLACE_MEDIA_KINDS` (`photo`, `logo`, `cover`, `menu`, `interior`,
+  `exterior`); `logo` and `cover` on a claimed place are the business's.
+  `remove` is the contributor's or the business's, `reorder` the business's.
+- **Reviews** — `places.reviews.list|mine|put|delete|reply|deleteReply|report`
+  over `/places/{placeId}/reviews`. One review per person, written and
+  rewritten with `put` (1–5, optional title, body and locale) and withdrawn
+  with `delete`, which erases its words. `list` takes `sort`: `newest`
+  (default), `highest` or `lowest`. A session switched into an organization,
+  and anybody with any role in an organization holding an approved claim on
+  the place, is refused with `GoWayForbiddenError`; the business answers with
+  `reply` instead, published without naming who wrote it. A review carries its
+  author's Oxy user id (`authorOxyUserId`) to resolve to their public profile.
+- **The place profile**: `Place.description` (the default-language one),
+  `Place.descriptions` and `Place.localizedDescription` (single-place read
+  only, absent from lists like `names`), `Place.logoFileId` and
+  `Place.coverFileId` (Oxy files of visible `logo`/`cover` gallery items), and
+  `Place.rating` — `{ average, count }` over the published reviews, derived on
+  every review write, absent until the first. `PlaceCreateInput` gains
+  `description` and `descriptions` (`{ language, description }`, `null`
+  withdrawing a language); `PlaceUpdateInput` also gains `logoFileId` and
+  `coverFileId` (`null` clears).
+- Reports about one item: `places.media.report` and `places.reviews.report`
+  take a `ContentReportInput` with a reason from `CONTENT_REPORT_REASONS`, and
+  `PlaceReport` gains optional `mediaId` and `reviewId`. `PLACE_REPORT_REASONS`
+  gains `not_this_place` and `conflict_of_interest`.
+- Moderation: `moderation.media|moderateMedia` (list a gallery in any state,
+  hide or restore an item), `moderation.reviews|moderateReview` (list reviews
+  in any status, hide or restore one) and `moderation.removeReviewReply`.
+- Revision actions `media_added`, `media_removed` and `media_reordered`
+  (public) and `media_hidden`, `media_restored` and the `review_*` actions
+  (moderation only). No revision carries an Oxy file id or a review's words.
+- Exports: the value sets and limits `PLACE_MEDIA_KINDS`,
+  `BUSINESS_MEDIA_KINDS`, `PLACE_MEDIA_STATES`, `MODERATED_PLACE_MEDIA_STATES`,
+  `PLACE_MEDIA_MIME_TYPES`, `MAX_MEDIA_CAPTION_LENGTH`, `MAX_MEDIA_ORDER_LENGTH`,
+  `MAX_MEDIA_LIST_LIMIT`, `DEFAULT_MEDIA_LIST_LIMIT`, `PLACE_REVIEW_STATUSES`,
+  `MODERATED_PLACE_REVIEW_STATUSES`, `REVIEW_SORTS`, `MIN_REVIEW_RATING`,
+  `MAX_REVIEW_RATING`, `MAX_REVIEW_TITLE_LENGTH`, `MAX_REVIEW_BODY_LENGTH`,
+  `MAX_REVIEW_REPLY_LENGTH`, `MAX_REVIEW_LIST_LIMIT`, `DEFAULT_REVIEW_LIST_LIMIT`,
+  `CONTENT_REPORT_REASONS` and `MAX_DESCRIPTION_LENGTH`; the types for every
+  shape above; and the `GoWayPlaceMediaApi` and `GoWayPlaceReviewsApi`
+  interfaces.
 
 ## 0.2.0 — unreleased
 

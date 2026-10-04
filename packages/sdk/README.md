@@ -134,6 +134,27 @@ with `GoWayGoneError`.
 An update touches only the fields you pass: GoWay layers enrichment *over* source
 data and never destructively overwrites a source fact.
 
+### Photos and reviews
+
+A place's gallery is a list of **Oxy file ids**. Upload the image with the Oxy
+SDK the app already uses, then hand GoWay the id; render an item from Oxy's CDN.
+GoWay checks the file with Oxy on your session — yours, public, an image — and
+never serves image bytes itself:
+
+```ts
+const { file } = await oxy.assets.upload(picked, { visibility: 'public' });
+await goway.places.media.add(placeId, { fileId: file.id, kind: 'photo' });
+
+const { items } = await goway.places.media.list(placeId);
+const src = oxy.assets.publicUrl(items[0].fileId, 'thumb');
+```
+
+Reviews are one per person: `goway.places.reviews.put(placeId, { rating: 4 })`
+writes yours or rewrites it, `delete` withdraws it. A business cannot review its
+own place — anybody with a role in an organization that holds an approved claim
+is refused — and answers with `reviews.reply` instead. `place.rating` is
+`{ average, count }` over the published reviews, absent until there is one.
+
 ### Names, in every language GoWay has one
 
 `place.name` is the place's **default** name — what is written on the shopfront,

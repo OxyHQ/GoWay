@@ -1,6 +1,27 @@
 import {
   accountClaimListQuerySchema,
   assetPathSchema,
+  contentReportInputSchema,
+  mediaListQuerySchema,
+  mediaPathSchema,
+  moderationMediaInputSchema,
+  moderationMediaListQuerySchema,
+  moderationPlaceMediaPageSchema,
+  moderationPlaceMediaSchema,
+  moderationReviewInputSchema,
+  moderationReviewListQuerySchema,
+  placeMediaInputSchema,
+  placeMediaOrderInputSchema,
+  placeMediaPageSchema,
+  placeMediaSchema,
+  placeReviewInputSchema,
+  placeReviewPageSchema,
+  placeReviewReplyInputSchema,
+  placeReviewSchema,
+  placeReviewWithStatusPageSchema,
+  placeReviewWithStatusSchema,
+  reviewListQuerySchema,
+  reviewPathSchema,
   capabilityPathSchema,
   claimDecisionInputSchema,
   claimPathSchema,
@@ -72,6 +93,25 @@ import {
 import type {
   AccountClaimListQuery,
   CapabilityKey,
+  ContentReportInput,
+  MediaListQuery,
+  ModerationMediaInput,
+  ModerationMediaListQuery,
+  ModerationPlaceMedia,
+  ModerationPlaceMediaPage,
+  ModerationReviewInput,
+  ModerationReviewListQuery,
+  PlaceMedia,
+  PlaceMediaInput,
+  PlaceMediaOrderInput,
+  PlaceMediaPage,
+  PlaceReview,
+  PlaceReviewInput,
+  PlaceReviewPage,
+  PlaceReviewReplyInput,
+  PlaceReviewWithStatus,
+  PlaceReviewWithStatusPage,
+  ReviewListQuery,
   ClaimDecisionInput,
   DuplicateCandidate,
   DuplicateCandidatePage,
@@ -247,6 +287,58 @@ export interface GoWayPlaceHoursExceptionsApi {
   delete(placeId: PlaceId, exceptionId: string, options?: GoWayRequestOptions): Promise<void>;
 }
 
+/**
+ * A place's gallery. Every item is an Oxy file: upload the image with the Oxy
+ * SDK first (`oxy.assets.upload(file, { visibility: 'public' })`), then add its
+ * id here; render an item with `oxy.assets.publicUrl(item.fileId, variant)`.
+ * GoWay checks the file with Oxy and never serves the bytes itself.
+ */
+export interface GoWayPlaceMediaApi {
+  /** The visible gallery, in the business's order. Needs no account. */
+  list(placeId: PlaceId, query?: MediaListQuery, options?: GoWayRequestOptions): Promise<PlaceMediaPage>;
+  /**
+   * Add an image you uploaded to Oxy as public. Identity-bound. Rejects with
+   * `GoWayForbiddenError` for a file that is not yours (or a logo or cover on a
+   * place whose business is not you), `GoWayValidationError` for one that is
+   * not a public, active image, `GoWayConflictError` when the gallery already
+   * holds it, and `GoWayUnavailableError` when Oxy cannot be asked.
+   */
+  add(placeId: PlaceId, input: PlaceMediaInput, options?: GoWayRequestOptions): Promise<PlaceMedia>;
+  /** Withdraw an item: yours, or any as the business. Resolves with nothing (`204`). Identity-bound. */
+  remove(placeId: PlaceId, mediaId: string, options?: GoWayRequestOptions): Promise<void>;
+  /** Put the named items first, in this order. The business only. Resolves with nothing (`204`). */
+  reorder(placeId: PlaceId, input: PlaceMediaOrderInput, options?: GoWayRequestOptions): Promise<void>;
+  /** Report an item to moderation. Repeating it while your report is open resolves with that report. */
+  report(placeId: PlaceId, mediaId: string, input: ContentReportInput, options?: GoWayRequestOptions): Promise<PlaceReport>;
+}
+
+/**
+ * A place's reviews. One per person: `put` writes yours or rewrites it whole.
+ * A business may not review its own place — anybody with any role in an
+ * organization that holds an approved claim is refused — and answers with a
+ * reply instead. The place's `rating` is derived from the published reviews.
+ */
+export interface GoWayPlaceReviewsApi {
+  /** Published reviews: `newest` (default), `highest` or `lowest` first. Needs no account. */
+  list(placeId: PlaceId, query?: ReviewListQuery, options?: GoWayRequestOptions): Promise<PlaceReviewPage>;
+  /** Your own review, with its status. Rejects with `GoWayNotFoundError` when you have none. Identity-bound. */
+  mine(placeId: PlaceId, options?: GoWayRequestOptions): Promise<PlaceReviewWithStatus>;
+  /**
+   * Write your review, or rewrite it whole. Identity-bound, and as yourself:
+   * a session switched into an organization is refused. An operator's hide
+   * survives a rewrite.
+   */
+  put(placeId: PlaceId, input: PlaceReviewInput, options?: GoWayRequestOptions): Promise<PlaceReviewWithStatus>;
+  /** Withdraw your review; its words are erased. Resolves with nothing (`204`). */
+  delete(placeId: PlaceId, options?: GoWayRequestOptions): Promise<void>;
+  /** The business's reply to a published review, written or rewritten. The business only. */
+  reply(placeId: PlaceId, reviewId: string, input: PlaceReviewReplyInput, options?: GoWayRequestOptions): Promise<PlaceReview>;
+  /** Withdraw the business's reply. Resolves with nothing (`204`). The business only. */
+  deleteReply(placeId: PlaceId, reviewId: string, options?: GoWayRequestOptions): Promise<void>;
+  /** Report a review to moderation. Repeating it while your report is open resolves with that report. */
+  report(placeId: PlaceId, reviewId: string, input: ContentReportInput, options?: GoWayRequestOptions): Promise<PlaceReport>;
+}
+
 /** Claims on one place: the request to be recognised as running it. */
 export interface GoWayPlaceClaimsApi {
   /**
@@ -301,6 +393,8 @@ export interface GoWayPlacesApi {
   report(placeId: PlaceId, input: PlaceReportInput, options?: GoWayRequestOptions): Promise<PlaceReport>;
   readonly capabilities: GoWayPlaceCapabilitiesApi;
   readonly hoursExceptions: GoWayPlaceHoursExceptionsApi;
+  readonly media: GoWayPlaceMediaApi;
+  readonly reviews: GoWayPlaceReviewsApi;
   readonly claims: GoWayPlaceClaimsApi;
 }
 
@@ -359,6 +453,26 @@ export interface GoWayModerationApi {
   reports(query?: ModerationReportListQuery, options?: GoWayRequestOptions): Promise<ModerationPlaceReportPage>;
   /** Close a report as actioned or dismissed. */
   resolveReport(reportId: string, input: PlaceReportResolutionInput, options?: GoWayRequestOptions): Promise<ModerationPlaceReport>;
+  /** A place's gallery items in one state, or every state, with who added each. */
+  media(placeId: PlaceId, query?: ModerationMediaListQuery, options?: GoWayRequestOptions): Promise<ModerationPlaceMediaPage>;
+  /** Hide a gallery item, or restore a hidden one. */
+  moderateMedia(
+    placeId: PlaceId,
+    mediaId: string,
+    input: ModerationMediaInput,
+    options?: GoWayRequestOptions,
+  ): Promise<ModerationPlaceMedia>;
+  /** A place's reviews in one status, or every status, newest first. */
+  reviews(placeId: PlaceId, query?: ModerationReviewListQuery, options?: GoWayRequestOptions): Promise<PlaceReviewWithStatusPage>;
+  /** Hide a review, or restore a hidden one; the place's rating follows. */
+  moderateReview(
+    placeId: PlaceId,
+    reviewId: string,
+    input: ModerationReviewInput,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceReviewWithStatus>;
+  /** Remove the business's reply to a review. Resolves with nothing (`204`). */
+  removeReviewReply(placeId: PlaceId, reviewId: string, options?: GoWayRequestOptions): Promise<void>;
 }
 
 export interface GoWaySearchApi {
@@ -551,6 +665,16 @@ function reportPath(reportId: string): string {
 function hoursExceptionPath(placeId: PlaceId, exceptionId: string): string {
   const path = validInput(hoursExceptionPathSchema, { placeId, exceptionId }, 'path');
   return `/places/${pathSegment(path.placeId, 'placeId')}/hours-exceptions/${pathSegment(path.exceptionId, 'exceptionId')}`;
+}
+
+function mediaPath(placeId: PlaceId, mediaId: string): string {
+  const path = validInput(mediaPathSchema, { placeId, mediaId }, 'path');
+  return `/places/${pathSegment(path.placeId, 'placeId')}/media/${pathSegment(path.mediaId, 'mediaId')}`;
+}
+
+function reviewPath(placeId: PlaceId, reviewId: string): string {
+  const path = validInput(reviewPathSchema, { placeId, reviewId }, 'path');
+  return `/places/${pathSegment(path.placeId, 'placeId')}/reviews/${pathSegment(path.reviewId, 'reviewId')}`;
 }
 
 function sessionPath(sessionId: string): string {
@@ -832,6 +956,122 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         ),
     }),
 
+    media: Object.freeze({
+      list: async (placeId: PlaceId, query: MediaListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          {
+            method: 'GET',
+            path: `${placePath(placeId)}/media`,
+            query: validInput(mediaListQuerySchema, query, 'query'),
+            signal: callOptions.signal,
+          },
+          placeMediaPageSchema,
+        ),
+
+      add: async (placeId: PlaceId, input: PlaceMediaInput, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          {
+            method: 'POST',
+            path: `${placePath(placeId)}/media`,
+            body: validInput(placeMediaInputSchema, input, 'input'),
+            signal: callOptions.signal,
+          },
+          placeMediaSchema,
+        ),
+
+      remove: async (placeId: PlaceId, mediaId: string, callOptions: GoWayRequestOptions = {}) =>
+        request(config, { method: 'DELETE', path: mediaPath(placeId, mediaId), signal: callOptions.signal }, null),
+
+      reorder: async (placeId: PlaceId, input: PlaceMediaOrderInput, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          {
+            method: 'PUT',
+            path: `${placePath(placeId)}/media/order`,
+            body: validInput(placeMediaOrderInputSchema, input, 'input'),
+            signal: callOptions.signal,
+          },
+          null,
+        ),
+
+      report: async (placeId: PlaceId, mediaId: string, input: ContentReportInput, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          {
+            method: 'POST',
+            path: `${mediaPath(placeId, mediaId)}/reports`,
+            body: validInput(contentReportInputSchema, input, 'input'),
+            signal: callOptions.signal,
+          },
+          placeReportSchema,
+        ),
+    }),
+
+    reviews: Object.freeze({
+      list: async (placeId: PlaceId, query: ReviewListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          {
+            method: 'GET',
+            path: `${placePath(placeId)}/reviews`,
+            query: validInput(reviewListQuerySchema, query, 'query'),
+            signal: callOptions.signal,
+          },
+          placeReviewPageSchema,
+        ),
+
+      mine: async (placeId: PlaceId, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          { method: 'GET', path: `${placePath(placeId)}/reviews/mine`, signal: callOptions.signal },
+          placeReviewWithStatusSchema,
+        ),
+
+      put: async (placeId: PlaceId, input: PlaceReviewInput, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          {
+            method: 'PUT',
+            path: `${placePath(placeId)}/reviews/mine`,
+            body: validInput(placeReviewInputSchema, input, 'input'),
+            signal: callOptions.signal,
+          },
+          placeReviewWithStatusSchema,
+        ),
+
+      delete: async (placeId: PlaceId, callOptions: GoWayRequestOptions = {}) =>
+        request(config, { method: 'DELETE', path: `${placePath(placeId)}/reviews/mine`, signal: callOptions.signal }, null),
+
+      reply: async (placeId: PlaceId, reviewId: string, input: PlaceReviewReplyInput, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          {
+            method: 'PUT',
+            path: `${reviewPath(placeId, reviewId)}/reply`,
+            body: validInput(placeReviewReplyInputSchema, input, 'input'),
+            signal: callOptions.signal,
+          },
+          placeReviewSchema,
+        ),
+
+      deleteReply: async (placeId: PlaceId, reviewId: string, callOptions: GoWayRequestOptions = {}) =>
+        request(config, { method: 'DELETE', path: `${reviewPath(placeId, reviewId)}/reply`, signal: callOptions.signal }, null),
+
+      report: async (placeId: PlaceId, reviewId: string, input: ContentReportInput, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          {
+            method: 'POST',
+            path: `${reviewPath(placeId, reviewId)}/reports`,
+            body: validInput(contentReportInputSchema, input, 'input'),
+            signal: callOptions.signal,
+          },
+          placeReportSchema,
+        ),
+    }),
+
     claims: Object.freeze({
       create: async (placeId: PlaceId, input: PlaceClaimInput, callOptions: GoWayRequestOptions = {}) =>
         request(
@@ -999,6 +1239,61 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
           signal: callOptions.signal,
         },
         moderationPlaceReportSchema,
+      ),
+
+    media: async (placeId: PlaceId, query: ModerationMediaListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: `/moderation${placePath(placeId)}/media`,
+          query: validInput(moderationMediaListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        moderationPlaceMediaPageSchema,
+      ),
+
+    moderateMedia: async (placeId: PlaceId, mediaId: string, input: ModerationMediaInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'PATCH',
+          path: `/moderation${mediaPath(placeId, mediaId)}`,
+          body: validInput(moderationMediaInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        moderationPlaceMediaSchema,
+      ),
+
+    reviews: async (placeId: PlaceId, query: ModerationReviewListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: `/moderation${placePath(placeId)}/reviews`,
+          query: validInput(moderationReviewListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        placeReviewWithStatusPageSchema,
+      ),
+
+    moderateReview: async (placeId: PlaceId, reviewId: string, input: ModerationReviewInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'PATCH',
+          path: `/moderation${reviewPath(placeId, reviewId)}`,
+          body: validInput(moderationReviewInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        placeReviewWithStatusSchema,
+      ),
+
+    removeReviewReply: async (placeId: PlaceId, reviewId: string, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        { method: 'DELETE', path: `/moderation${reviewPath(placeId, reviewId)}/reply`, signal: callOptions.signal },
+        null,
       ),
   });
 
