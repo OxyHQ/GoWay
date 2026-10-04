@@ -153,3 +153,94 @@ source object keys.
 - `jobs/` artifacts are temporary; training checkpoints never leave the worker.
 - Published assets live in the scene bucket and survive the deletion of every
   input.
+
+## Operating it
+
+The backend half lives in `packages/backend/src/street3d/` (scheduler, adapters,
+validation) and `src/db/street3d/` (every statement). Migration
+`0006_goway_street3d` (`pre`) adds its tables.
+
+### Switching it on
+
+Nothing runs until configured; `/ready` never depends on it.
+
+| Variable | Purpose |
+| --- | --- |
+| `STREET3D_SCHEDULER_ENABLED` | Run `tick()` in-process after the server listens (default `false`). |
+| `STREET3D_SCHEDULER_INTERVAL_SECONDS` | Seconds between ticks (default 60). |
+| `STREET3D_VIEWING_ENABLED` | Serve the public read API (default `false`). |
+| `STREET3D_AWS_REGION` | Queues and scene bucket (falls back to `AWS_REGION`). |
+| `STREET3D_JOBS_QUEUE_URL`, `STREET3D_EVENTS_QUEUE_URL` | The two queues. |
+| `STREET3D_JOBS_DLQ_URL` | Optional: the jobs DLQ, for `status` and failing dead-lettered jobs. |
+| `STREET3D_SCENE_BUCKET`, `STREET3D_SCENE_KEY_PREFIX` | Published assets (prefix default `scenes`). |
+| `STREET3D_PUBLIC_ASSET_BASE_URL` | Origin the scene bucket is served from. |
+| `STREET3D_CDN_DISTRIBUTION_ID` | Optional: invalidated on disable. |
+| `CAPTURE_S3_*` | The temporary bucket; `derived/` and `jobs/` live beside `captures/`. |
+
+Thresholds, gates and per-profile budgets are documented in
+`packages/backend/.env.example`; gates and budgets are written into every input
+manifest and re-checked on the result.
+
+Each tick drains events, fails dead-lettered jobs, recovers stale leases,
+writes cancel markers, queues privacy passes, forms scenes, refreshes coverage,
+dispatches the outbox and purges disabled versions. Phases are independently
+safe under concurrency, so the in-process loop, `street3d:tick` and the admin
+command can overlap. The attempt number travels as the SQS message attribute
+`attempt`; envelopes are exactly the contract fixtures.
+
+### Backend task role
+
+| Resource | Actions |
+| --- | --- |
+| Temporary bucket `captures/*` | existing capture permissions (`s3:PutObject` via presign, `s3:GetObject`, `s3:DeleteObject`) |
+| Temporary bucket `jobs/*` | `s3:PutObject` (manifests, cancel markers), `s3:GetObject` (results; source of copies), `s3:DeleteObject` |
+| Temporary bucket `derived/*` | `s3:GetObject`, `s3:DeleteObject` |
+| Temporary bucket | `s3:ListBucket` conditioned on `s3:prefix` `jobs/*` and `derived/*` |
+| Scene bucket `<prefix>/*` | `s3:PutObject` (server-side copy target), `s3:GetObject` (HEAD verification), `s3:DeleteObject` |
+| Jobs queue | `sqs:SendMessage`, `sqs:GetQueueAttributes` |
+| Events queue | `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` |
+| Jobs DLQ (optional) | `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` |
+| CDN distribution (optional) | `cloudfront:CreateInvalidation` |
+
+The external worker's role is separate: receive/delete/change-visibility on the
+jobs queue, send on the events queue, read `captures/*`, `derived/*` and
+`jobs/*`, write `derived/*` and `jobs/*`. It has no access to the scene bucket.
+Use SSE-S3 or an AWS-managed key so neither role needs KMS grants; with a
+customer-managed key add `kms:GenerateDataKey`/`kms:Decrypt` for both.
+
+### Commands
+
+```sh
+bun run street3d:tick  --target-database=goway
+bun run street3d:admin status                                   --target-database=goway
+bun run street3d:admin disable-version <versionId> --reason "…" --target-database=goway
+bun run street3d:admin enable-version  <versionId>              --target-database=goway
+bun run street3d:admin rebuild-scene   <sceneId> [--profile standard] --target-database=goway
+bun run street3d:admin block-capture   <assetId> --reason "…"   --target-database=goway
+bun run street3d:admin cancel-job      <jobId>                  --target-database=goway
+bun run street3d:admin requeue-job     <jobId>                  --target-database=goway
+```
+
+The image ships them as `dist/src/street3d/runTick.js` and `runAdmin.js`. Both
+assert the database and the migration ledger first, print aggregate JSON only
+(no coordinates, keys, URLs or contributor ids) and exit 1 on refusal.
+
+- `status` — queue depth (SQS reports no message age; `oldestWaitingJobAgeSeconds`
+  comes from the job outbox), jobs by kind and state, summed GPU seconds,
+  wall seconds, bytes and mean cache-hit ratio from job metrics, storage bytes by
+  retention class (raw), by state (derivatives) and by version state (published
+  assets), scenes by state and open reports (privacy reports separately). Reports
+  never disable anything automatically.
+- `disable-version` hides at once and purges the public objects (CDN invalidated)
+  in the same command when the pipeline is configured; otherwise the next tick
+  purges. `enable-version` succeeds only if every asset still exists in the scene
+  bucket or can be restored, digest-verified, from the job's result while its
+  `jobs/` artifacts are retained, and only if no registered input has since
+  been withdrawn or blocked.
+- `block-capture` is permanent: the capture's gate is `blocked`, its content hash
+  is recorded so identical bytes are refused too, open jobs are cancelled, every
+  version that registered it is disabled and purged, and a rebuild without it is
+  requested. A blocked capture can never re-enter a manifest.
+- Contributor withdrawal (`DELETE /captures/assets/:id`) cancels open jobs and
+  deletes derivatives; a published version that used it stays until a rebuild
+  replaces it (moderation is the path for immediate removal).

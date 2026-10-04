@@ -29,7 +29,21 @@ src/capture/             the capture decisions that are not database access
   exif.ts                EXIF/QuickTime GPS → a GoWay coordinate, refs and all
   retention.ts           what is stored, why, and until when
 src/storage/objectStore.ts  the GoWay interface; S3 is an adapter behind it
-src/storage/s3ObjectStore.ts  SigV4 presigning over node:crypto — no AWS SDK
+src/storage/s3ObjectStore.ts  presigned capture uploads over the shared signer
+src/aws/sigv4.ts         SigV4 (presign + header signing) over node:crypto — no AWS SDK
+src/db/street3d/         the ONLY code that touches the Street 3D job/scene tables
+  scenes.ts              eligible frames (every manifest exclusion), clustering, job rows
+  publication.ts         a validated result → a version, atomically
+  moderation.ts          withdrawal, blocks, disable/enable/rebuild
+  public.ts              coverage, manifests and reports; keys and ids stay OUT
+src/street3d/            the reconstruction scheduler and its adapters
+  workerContract.ts      zod for the worker's envelopes, manifests, events, results
+  scheduler.ts           tick(): events, leases, privacy, formation, coverage, dispatch
+  formation.ts           when GPU time is worth spending (information gain)
+  sceneValidation.ts     the backend's own gates before anything is published
+  workQueue.ts           SQS, behind a GoWay interface
+  jobObjectStore.ts      the temporary bucket, jobs/ and derived/ only
+  sceneAssetStore.ts     the scene bucket (content-hashed copies) and CDN invalidation
 src/import/osm/          the OpenStreetMap POI import (#63) — a one-shot task, not a route
   protobuf.ts            the six protobuf wire constructs osmformat.proto uses
   pbf.ts                 blob framing, PrimitiveBlock, and per-blob offsets
@@ -53,7 +67,9 @@ src/routes/places.ts     the Places surface, mounted at /api/v1
 src/routes/placeSchemas.ts  the request schemas, at least as strict as the CHECKs behind them
 src/routes/capture.ts    the Street 3D contribution surface (#9/#10)
 src/routes/captureSchemas.ts  its request schemas, with EXIF normalized at the boundary
+src/routes/street3d.ts   public coverage and scene reads, authenticated reports
 src/config/capture.ts    retention windows, media limits and the object-store settings
+src/config/street3d.ts   queues, buckets, thresholds, gates and budgets; inert when unset
 src/utils/logger.ts      pino, with the redaction list
 drizzle/                 GENERATED migrations — never hand-written
 ```
@@ -262,10 +278,25 @@ Monaco is 700 kB and finishes in seconds. A `--dry-run` writes nothing and opens
 no connection, but still needs a syntactically valid `DATABASE_URL`: this
 package parses its whole configuration at module load, on purpose.
 
+## Street 3D reconstruction
+
+Scheduling, the external worker contract, publication and moderation are
+described in [the pipeline doc](../../docs/STREET3D_PIPELINE.md), including its
+operator section (environment, IAM, `street3d:tick` and `street3d:admin`). The
+feature is inert until configured: with no `STREET3D_*` variable set the
+scheduler never starts and the read API below answers 503/404.
+
+| route | auth | answers |
+| --- | --- | --- |
+| `GET /street3d/coverage?west&south&east&north` | public | `StreetCoverage` — served scenes and coarse coverage cells |
+| `GET /street3d/scenes/:sceneId` | public | `StreetSceneManifest` of the served version, or 404 |
+| `POST /street3d/scenes/:sceneId/reports` | Oxy session | 201 + `StreetSceneReport` (200 for a repeat) |
+
 ## Street 3D capture
 
 Expired temporary media is removed by the bounded `bun run captures:cleanup`
-task. See [the lifecycle runbook](../../docs/STREET3D_LIFECYCLE.md) for migration,
+task, which also retires raw originals replaced by privacy-safe derivatives,
+expired derivatives and finished jobs' temporary artifacts. See [the lifecycle runbook](../../docs/STREET3D_LIFECYCLE.md) for migration,
 dry-run, scheduling, bucket requirements and the remaining epic gates.
 
 The contribution surface for #9/#10. Everything here needs an Oxy session

@@ -111,34 +111,63 @@ expired and finished unusually late, after application deletion.
 
 - This pass acts on `expiresAt`, including uploads that were never finalized.
   It does not yet retire abandoned uploads early after their upload window.
-- `deletionEligibleAt` alone does not prove a video's keyframes were safely
-  persisted and privacy-cleared. Early video retirement waits for that durable
-  dependency evidence; deleting purely by this timestamp would lose inputs.
-- Future workers must acquire bounded protection under the same object lock
-  before reading inputs and refuse `deleting`/`deleted`. There are no job leases
-  or reconstruction workers implemented yet.
-- Budget enforcement, bounded rescue extensions, near-duplicate decisions and
-  derivative-aware early cleanup remain in #10–#13.
+- Early retirement of a raw original is now DERIVATIVE-AWARE: an object whose
+  `deletionEligibleAt` has passed is marked `superseded_by_derivative` only
+  when every live contribution using it has a stored privacy-safe derivative
+  (and no job holds protection on it). `deletionEligibleAt` alone is still not
+  proof — a video's is set at registration — so a video with no keyframes yet
+  waits. Its contributions stay reconstruction-eligible through the derivative.
+- Jobs acquire bounded protection under the object lock before the worker reads
+  an input (`protectedUntil`, never past `expiresAt`, refreshed by heartbeats)
+  and refuse `deleting`/`deleted` objects. A contributor's removal request
+  clears protection: withdrawal outranks a job.
+- Derivatives (`capture_derivatives`, class `privacy_safe_proxy`) expire on
+  their own schedule and are swept by the same command; rescue extensions are
+  bounded (at most `MAX_RETENTION_EXTENSIONS`, never past the absolute ceiling)
+  and applied only when an at-risk area receives a new contribution.
+- Finished jobs' `jobs/` artifacts (and a failed privacy job's `derived/`
+  output) are deleted after `STREET3D_JOB_ARTIFACT_RETENTION_DAYS`. Published
+  assets live in the scene bucket and are untouched by this sweeper.
+- Storage budgets are still reported, not enforced, and near-duplicate
+  decisions remain with the capture graph.
+
+The cleanup summary keeps its original fields and adds `supersededMarked`,
+`derivativeCandidates`, `derivativeDeclaredBytes`, `derivativesDeleted`,
+`derivativesFailed`, `jobArtifactCandidates`, `jobArtifactObjectsDeleted` and
+`jobArtifactsFailed`. Any failure gives a nonzero exit. Deleting derivatives and
+job artifacts needs `s3:DeleteObject` on `derived/*` and `jobs/*` and
+`s3:ListBucket` on those prefixes; without them configured the command still
+runs the raw-capture pass.
+
+Add the same lifecycle backstop for `derived/` (above the 400-day ceiling) and a
+short one for `jobs/` (e.g. 30 days): an input manifest written by a scheduler
+tick that then lost a race is an orphan only the backstop removes.
 
 ## Remaining epic gates
 
-The current repository has capture contracts, authenticated registration,
-direct-upload signing, finalize, location normalization, retention metadata and
-this expiry task. [#16](https://github.com/OxyHQ/GoWay/issues/16) is still open:
+The repository now has capture contracts, authenticated registration,
+direct-upload signing, finalize, location normalization, retention metadata,
+this expiry task, and the backend half of reconstruction: durable SQS jobs with
+leases, heartbeats, retries and cancellation; privacy-safe derivatives;
+information-gain scheduling; result validation and publication to a scene
+bucket; withdrawal, moderation blocks, disable/enable/rebuild; coverage with
+bounded rescue; the public coverage/scene/report API and SDK
+(see [`STREET3D_PIPELINE.md`](./STREET3D_PIPELINE.md)).
+[#16](https://github.com/OxyHQ/GoWay/issues/16) is still open:
 
 | Track | Required implementation / validation |
 | --- | --- |
-| #9 | Expo capture UI and SDK surface; real photo/video upload; robust media validation and keyframes |
-| #10 | Deploy cleanup/backstop; enforce storage budgets; derivative cleanup and bounded rescue |
-| #13 | Privacy-safe derivatives, contributor controls, moderation, scene disable/rebuild |
-| #11 | Visual capture graph, camera solve, world alignment, Gaussian training and quality gates |
-| #12 | Durable SQS jobs, worker leases/heartbeat, cancellation, local cache, GPU worker validation |
-| #14 | Versioned delivery, renderer, map transitions, Places overlays and device benchmarks |
-| #15 | Coverage health, truthful expiry risk, hints and useful-coverage metrics |
+| #9 | Expo capture UI; real photo/video upload; robust media validation |
+| #10 | Deploy cleanup/backstop; enforce storage budgets |
+| #13 | The external worker's privacy models and their review; moderation tooling UI |
+| #11 | The worker's camera solve, world alignment, Gaussian training and gates on real data |
+| #12 | External worker validation against real AWS queues; local cache |
+| #14 | Renderer, map transitions, Places overlays and device benchmarks |
+| #15 | Coverage UI, hints and useful-coverage metrics in the app |
 
-A local PostGIS suite with an injected object store validates deletion state,
-crash recovery, concurrent registration/cleanup, expired finalization, dry runs
-and database targeting. It is not evidence of an AWS deletion, real media
-preprocessing, GPU reconstruction or device performance. Release still requires
-the privacy gate, reviewed code/model licenses, an authorized pilot dataset,
-real worker access and the epic's end-to-end acceptance checks.
+The local PostGIS suites with injected stores and a scripted worker validate
+scheduling, idempotency, leases, publication, moderation, coverage and cleanup.
+They are not evidence of an AWS deletion, real media preprocessing, external
+worker reconstruction or device performance. Release still requires the privacy
+gate, reviewed code/model licenses, an authorized pilot dataset, real worker
+access and the epic's end-to-end acceptance checks.
