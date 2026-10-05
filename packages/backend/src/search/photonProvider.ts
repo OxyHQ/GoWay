@@ -25,13 +25,12 @@
  * DISCARDS everything outside the box, so a viewport is applied as `lat`/`lon`
  * location bias around the viewport's centre instead — Photon's own biasing
  * mechanism, which re-ranks. `categories` is the opposite case: it IS a filter
- * by contract, so each GoWay category is translated into the OpenStreetMap tags
- * the contract's taxonomy maps to it (and to every category below it) and
+ * by contract, so each GoWay category arrives translated into the OpenStreetMap
+ * tags GoWay's taxonomy maps to it (and to every category below it) and is
  * forwarded as `osm_tag` — Photon indexes OpenStreetMap, so those are the
  * words it understands.
  */
 
-import { categoryDefinition, categoryDescendants } from '@goway/contracts';
 import type { GeoBoundingBox, SearchResult, SearchResultKind, StructuredAddress } from '@goway/contracts';
 import type { PhotonConfig } from '../config/search';
 import {
@@ -63,18 +62,12 @@ import type {
 import { fetchUpstreamJson, UpstreamError } from './upstream';
 
 /**
- * The `osm_tag` filters for GoWay categories: every `key=value` the taxonomy
- * maps to a requested category or one below it, as Photon spells them
- * (`amenity:cafe`), and a key-wide `key=*` as the bare key. A value whose key
- * is already wanted whole is redundant and dropped.
+ * The `osm_tag` filters for a category search, as Photon spells them: a
+ * `key=value` as `amenity:cafe`, a key-wide `key=*` as the bare key. A value
+ * whose key is already wanted whole is redundant and dropped.
  */
-export function photonOsmTags(categories: readonly string[]): string[] {
-  const tags = new Set<string>();
-  for (const category of categories) {
-    for (const key of categoryDescendants(category)) {
-      for (const tag of categoryDefinition(key)?.osm ?? []) tags.add(tag);
-    }
-  }
+export function photonOsmTags(osmTags: readonly string[]): string[] {
+  const tags = new Set(osmTags);
   const wholeKeys = new Set([...tags].filter((tag) => tag.endsWith('=*')).map((tag) => tag.slice(0, -2)));
   return [...tags]
     .filter((tag) => tag.endsWith('=*') || !wholeKeys.has(tag.slice(0, tag.indexOf('='))))
@@ -289,7 +282,7 @@ export function createPhotonProvider(options: PhotonProviderOptions): SearchProv
         ['lat', bias?.latitude],
         ['lon', bias?.longitude],
       ];
-      for (const tag of photonOsmTags(request.categories ?? [])) params.push(['osm_tag', tag]);
+      for (const tag of photonOsmTags(request.osmTags ?? [])) params.push(['osm_tag', tag]);
       return call('/api', params, request.signal);
     },
 

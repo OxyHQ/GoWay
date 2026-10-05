@@ -16,8 +16,15 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isCategoryKey } from '@goway/contracts';
-import { CLUTTER_CLASSES_FOR_TEST, POI_MAPPING_KEYS, categoryOfTag, classifyPoi, isPoiMappingKey, osmCategories } from '../poiTags';
+import { SEEDED_CATALOG, SEEDED_CATEGORIES } from '../../../__tests__/categoryFixtures';
+import {
+  CLUTTER_CLASSES_FOR_TEST,
+  POI_MAPPING_KEYS,
+  classifyPoi,
+  isMappableOsmTag,
+  isPoiMappingKey,
+  osmCategories,
+} from '../poiTags';
 
 const STYLE_DIRECTORY = join(__dirname, '../../../../../frontend/lib/map/style');
 
@@ -225,34 +232,37 @@ describe('classifyPoi', () => {
   });
 });
 
+// The mapping is the taxonomy's, in the database; these suites classify through
+// the seed `0016` wrote (`__tests__/categoryFixtures`), which a freshly migrated
+// database is held to entry for entry.
 describe('osmCategories', () => {
   test('files an element under the taxonomy key its qualifying tag maps to', () => {
-    expect(osmCategories(tags({ amenity: 'cafe' }))).toEqual(['food.cafe']);
-    expect(osmCategories(tags({ shop: 'supermarket' }))).toEqual(['shop.supermarket']);
-    expect(osmCategories(tags({ shop: 'books' }))).toEqual(['shop.books']);
-    expect(osmCategories(tags({ railway: 'station' }))).toEqual(['transport.rail_station']);
+    expect(osmCategories(tags({ amenity: 'cafe' }), SEEDED_CATALOG)).toEqual(['food.cafe']);
+    expect(osmCategories(tags({ shop: 'supermarket' }), SEEDED_CATALOG)).toEqual(['shop.supermarket']);
+    expect(osmCategories(tags({ shop: 'books' }), SEEDED_CATALOG)).toEqual(['shop.books']);
+    expect(osmCategories(tags({ railway: 'station' }), SEEDED_CATALOG)).toEqual(['transport.rail_station']);
     // `station` under `aerialway` is a cable car, not a train.
-    expect(osmCategories(tags({ aerialway: 'station' }))).toEqual(['transport.aerialway']);
+    expect(osmCategories(tags({ aerialway: 'station' }), SEEDED_CATALOG)).toEqual(['transport.aerialway']);
   });
 
   test('falls back to the key-wide category for a value the taxonomy has not named', () => {
-    expect(osmCategories(tags({ shop: 'pottery' }))).toEqual(['shop']);
-    expect(osmCategories(tags({ amenity: 'mobility_hub' }))).toEqual(['services']);
-    expect(osmCategories(tags({ historic: 'wayside_cross' }))).toEqual(['culture.historic']);
+    expect(osmCategories(tags({ shop: 'pottery' }), SEEDED_CATALOG)).toEqual(['shop']);
+    expect(osmCategories(tags({ amenity: 'mobility_hub' }), SEEDED_CATALOG)).toEqual(['services']);
+    expect(osmCategories(tags({ historic: 'wayside_cross' }), SEEDED_CATALOG)).toEqual(['culture.historic']);
   });
 
   test('is most specific first, by the same precedence that classifies the element', () => {
-    expect(osmCategories(tags({ amenity: 'restaurant', tourism: 'attraction' }))).toEqual([
+    expect(osmCategories(tags({ amenity: 'restaurant', tourism: 'attraction' }), SEEDED_CATALOG)).toEqual([
       'food.restaurant',
       'culture.attraction',
     ]);
   });
 
   test('drops a key that is an ancestor of another, which a parent filter already matches', () => {
-    expect(osmCategories(tags({ leisure: 'pitch', sport: 'soccer' }))).toEqual(['sport.pitch']);
+    expect(osmCategories(tags({ leisure: 'pitch', sport: 'soccer' }), SEEDED_CATALOG)).toEqual(['sport.pitch']);
   });
 
-  test('every element the import admits gets at least one category, from the registry', () => {
+  test('every element the import admits gets at least one category, from the seeded taxonomy', () => {
     // An open key needs a key-wide fallback; a listed value needs its own
     // entry unless the basemap draws it nowhere. This is what keeps the
     // taxonomy complete against what `POI_MAPPING_KEYS` admits.
@@ -260,8 +270,8 @@ describe('osmCategories', () => {
       const probes = values === 'any' ? ['zz_never_tagged'] : values;
       for (const value of probes) {
         if (classifyPoi(tags({ [key]: value })) === null) continue;
-        const category = categoryOfTag(key, value);
-        expect({ key, value, category: category !== undefined && isCategoryKey(category) }).toEqual({
+        const category = SEEDED_CATALOG.osmCategoryOf(key, value);
+        expect({ key, value, category: category !== undefined && SEEDED_CATALOG.taxonomy.of(category) !== undefined }).toEqual({
           key,
           value,
           category: true,
@@ -269,7 +279,28 @@ describe('osmCategories', () => {
       }
     }
     for (const [element] of REPRESENTATIVE_TAGS) {
-      expect({ element, categories: osmCategories(tags(element)).length > 0 }).toEqual({ element, categories: true });
+      expect({ element, categories: osmCategories(tags(element), SEEDED_CATALOG).length > 0 }).toEqual({ element, categories: true });
+    }
+  });
+});
+
+describe('isMappableOsmTag', () => {
+  test('admits a tag the import can file an element through', () => {
+    expect(isMappableOsmTag('amenity=cafe')).toBe(true);
+    expect(isMappableOsmTag('shop=*')).toBe(true);
+    expect(isMappableOsmTag('railway=station')).toBe(true);
+    expect(isMappableOsmTag('railway=*')).toBe(true);
+  });
+
+  test('refuses one it never reads: a key that qualifies nothing, or a value off a listed key', () => {
+    expect(isMappableOsmTag('cuisine=pizza')).toBe(false);
+    expect(isMappableOsmTag('railway=rail')).toBe(false);
+    expect(isMappableOsmTag('amenity')).toBe(false);
+  });
+
+  test('admits every tag the seed maps', () => {
+    for (const { key, osmTags } of SEEDED_CATEGORIES) {
+      for (const tag of osmTags) expect({ key, tag, mappable: isMappableOsmTag(tag) }).toEqual({ key, tag, mappable: true });
     }
   });
 });

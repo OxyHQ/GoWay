@@ -76,7 +76,7 @@ describe('the operator gate', () => {
   const moderation = API_OPERATIONS.filter((operation) => operation.path.startsWith('/moderation'));
 
   it('covers every moderation operation the registry publishes', () => {
-    expect(moderation.length).toBe(15);
+    expect(moderation.length).toBe(20);
   });
 
   for (const operation of moderation) {

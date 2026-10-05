@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'bun:test';
 import type { PlaceCapability, PlaceWithDistance, SearchResultKind } from '@goway/contracts';
+import { SEEDED_CATALOG } from '../../__tests__/categoryFixtures';
 import { isApiError } from '../../http/apiError';
 import { BoundedCache } from '../cache';
 import type { ProviderCandidate, SearchProvider } from '../provider';
@@ -17,6 +18,9 @@ import { UpstreamError } from '../upstream';
 import { buildPlace, fakeGateway } from './fixtures';
 
 const CONFIG = { cacheMaxEntries: 50, cacheTtlSeconds: 60, placesRadiusMeters: 5_000 };
+
+/** The taxonomy as `0016` seeded it. */
+const seeded = async () => SEEDED_CATALOG;
 
 interface StubOptions {
   allowsInteractiveSearch?: boolean;
@@ -78,7 +82,7 @@ const FAIRCOIN: PlaceCapability = {
 };
 
 function service(providers: SearchProvider[], overrides: Partial<typeof CONFIG> = {}): SearchService {
-  return createSearchService({ providers, config: { ...CONFIG, ...overrides } });
+  return createSearchService({ providers, categories: seeded, config: { ...CONFIG, ...overrides } });
 }
 
 const QUERY = { query: 'cafe', limit: 10, offset: 0 };
@@ -431,6 +435,7 @@ describe('caching', () => {
     });
     const subject = createSearchService({
       providers: [provider],
+      categories: seeded,
       config: CONFIG,
       cache: new BoundedCache({ maxEntries: 10, ttlMs: 60_000 }),
     });
@@ -443,16 +448,16 @@ describe('caching', () => {
 
 describe('placeMatchesText', () => {
   it('folds diacritics so "cafe" finds "Café"', () => {
-    expect(placeMatchesText(buildPlace({ name: 'Café Sagrada' }), 'cafe')).toBe(true);
+    expect(placeMatchesText(buildPlace({ name: 'Café Sagrada' }), 'cafe', SEEDED_CATALOG)).toBe(true);
   });
 
   it('matches on a category, by its label in every label language, and on the street', () => {
     const place = buildPlace({ name: 'Nothing Relevant', categories: ['food.bakery'], address: { street: 'Gran Via' } });
-    expect(placeMatchesText(place, 'bakery')).toBe(true);
-    expect(placeMatchesText(place, 'panadería')).toBe(true);
+    expect(placeMatchesText(place, 'bakery', SEEDED_CATALOG)).toBe(true);
+    expect(placeMatchesText(place, 'panadería', SEEDED_CATALOG)).toBe(true);
     // A key is not a word anybody types.
-    expect(placeMatchesText(place, 'food.')).toBe(false);
-    expect(placeMatchesText(place, 'gran via')).toBe(true);
-    expect(placeMatchesText(place, 'pharmacy')).toBe(false);
+    expect(placeMatchesText(place, 'food.', SEEDED_CATALOG)).toBe(false);
+    expect(placeMatchesText(place, 'gran via', SEEDED_CATALOG)).toBe(true);
+    expect(placeMatchesText(place, 'pharmacy', SEEDED_CATALOG)).toBe(false);
   });
 });

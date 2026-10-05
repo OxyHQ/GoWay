@@ -86,6 +86,7 @@ import {
   splitCapabilityKey,
   type PlaceBatch,
 } from '@goway/contracts';
+import { assertCategoryFilter, categoryCatalog } from '../categories/catalog';
 import { createPlaceReport } from '../db/places/moderationRepository';
 import type { PlaceActor } from '../db/places/placesRepository';
 import {
@@ -190,8 +191,10 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
     optionalAuth,
     route(async (request, response) => {
       const { cursor, limit, ...query } = parseQuery(nearbyPlacesQuerySchema, request.query);
+      const db = getDb();
+      if (query.categories) assertCategoryFilter(await categoryCatalog(db), query.categories, 'categories');
       const binding = cursorBinding('places-nearby', query);
-      const rows = await findPlacesNearby(getDb(), {
+      const rows = await findPlacesNearby(db, {
         ...query,
         limit: limit + 1,
         after: decodeCursor(cursor, binding, nearbyKeysetSchema),
@@ -206,8 +209,10 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
     optionalAuth,
     route(async (request, response) => {
       const { cursor, limit, ...query } = parseQuery(placesInBoundsQuerySchema, request.query);
+      const db = getDb();
+      if (query.categories) assertCategoryFilter(await categoryCatalog(db), query.categories, 'categories');
       const binding = cursorBinding('places-bounds', query);
-      const rows = await findPlacesInBounds(getDb(), {
+      const rows = await findPlacesInBounds(db, {
         ...query,
         limit: limit + 1,
         after: decodeCursor(cursor, binding, boundsKeysetSchema),

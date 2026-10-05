@@ -106,6 +106,27 @@
       "when": 1791190178882,
       "tag": "0014_goway_capture_projection",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1791191616770,
+      "tag": "0015_goway_category_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791191617470,
+      "tag": "0016_goway_category_seed",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791191618170,
+      "tag": "0017_goway_drop_category_check",
+      "breakpoints": true
     }
   ]
 }

@@ -223,3 +223,35 @@ continue). `NOT VALID` followed by `VALIDATE` inside this migration would buy
 nothing: the phase's one transaction would hold the ACCESS EXCLUSIVE lock
 through the validating scan anyway. drizzle-kit does not model validity, so a
 later `db:generate` neither notices nor reverts the clause.
+
+## `0015_goway_category_tables`, `0016_goway_category_seed`, `0017_goway_drop_category_check`
+
+The category taxonomy as data (`docs/PLACE_DATA.md`): `0015` (generated)
+creates `place_categories`, `place_category_labels`, `place_category_osm_tags`
+and `place_category_events`; `0016` (CUSTOM, `drizzle-kit generate --custom`)
+seeds the 148 categories of the 0.3.0 registry with their tags and labels in
+twelve languages — generated from the registry and the label translations,
+both since deleted — and creates the functions and triggers drizzle-kit cannot
+model: English required (deferred constraint triggers), keys immutable and
+never deleted while a place carries one, and `places_categories_taxonomy_guard`,
+which refuses a write that ADDS a key that is not an active category; `0017`
+(generated) drops `0013`'s CHECK, which the trigger replaces.
+
+All three are `pre`: the previous image writes only keys of the registry the
+seed came from, so the trigger refuses nothing it writes, and dropping a CHECK
+widens. They need `0011`–`0013` applied first — a `pre` run refuses to queue
+behind an unapplied `post`.
+
+Locks, in order: the seed touches only new tables; `CREATE TRIGGER` takes
+SHARE ROW EXCLUSIVE on `places` (writes wait, reads do not) and `0017`'s DROP
+ACCESS EXCLUSIVE (everything waits), each held until the phase commits.
+Neither scans a row. `0016` sets `SET LOCAL lock_timeout = '5s'` just before
+them, so a long statement already holding `places` fails the phase — rolled
+back whole, ledger unchanged, re-run the deploy — instead of queueing every
+read behind it. Measured on a copy at `0013` with 1.5M places (i9, data in
+RAM): the phase took 61–77 ms, probing reads and writes saw at most 14 ms and
+23 ms. With a transaction holding a row lock on `places` the phase failed at
+5.06 s and reads were untouched; with an open READ transaction it failed at
+5.07 s and a read arriving meanwhile queued up to 5.0 s — the bound
+`lock_timeout` sets. Both re-ran in under 100 ms once the holder ended.
+Production's row count does not change any of this: nothing here reads a row.

@@ -33,6 +33,7 @@
  */
 
 import { normalizeLanguageTag } from '@goway/contracts';
+import type { OsmCategoryMapping } from '../../categories/catalog';
 import type { PlaceSourceData } from '../../db/schema';
 import { osmCapabilities, type ImportedCapability } from './capabilityTags';
 import { cleanText, readColumns, type ImportedColumns } from './fields';
@@ -135,6 +136,7 @@ export function isImportablePoi(tags: ReadonlyMap<string, string>): boolean {
  *
  * A way or relation is built only once its position is known, because the
  * timezone is read from the position like every other derived column.
+ * `categories` is the taxonomy's OpenStreetMap mapping, from the database.
  */
 export function toImportedPlace(
   type: OsmElementType,
@@ -142,16 +144,16 @@ export function toImportedPlace(
   latitude: number,
   longitude: number,
   tags: ReadonlyMap<string, string>,
+  categories: OsmCategoryMapping,
 ): ImportedPlace | null {
   if (!isImportablePoi(tags)) return null;
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
   if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
 
-  const columns = readColumns({
-    tags,
-    latitude: roundCoordinate(latitude),
-    longitude: roundCoordinate(longitude),
-  });
+  const columns = readColumns(
+    { tags, latitude: roundCoordinate(latitude), longitude: roundCoordinate(longitude) },
+    categories,
+  );
   return {
     osmType: type,
     osmId: id,

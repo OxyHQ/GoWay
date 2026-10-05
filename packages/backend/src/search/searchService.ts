@@ -33,7 +33,7 @@
  * loss of hit rate rather than an oversight.
  */
 
-import { categoryDefinition, SEARCH_MAX_DEPTH } from '@goway/contracts';
+import { SEARCH_MAX_DEPTH } from '@goway/contracts';
 import type {
   GeoBoundingBox,
   GeoCoordinate,
@@ -41,6 +41,7 @@ import type {
   SearchResult,
   SearchSource,
 } from '@goway/contracts';
+import { catalogOf, type CategoryCatalog } from '../categories/catalog';
 import type { SearchConfig } from '../config/search';
 import { BoundedCache } from './cache';
 import { mergeCandidates, type CandidateList } from './merge';
@@ -58,6 +59,9 @@ import { ApiError } from '../http/apiError';
  * wants a wider sweep says so with `radiusMeters`.
  */
 const REVERSE_PLACES_RADIUS_METERS = 150;
+
+/** What a search reads categories through when the taxonomy cannot be read. */
+const EMPTY_CATALOG = catalogOf([]);
 
 /** How many GoWay places to pull before the in-memory text filter narrows them. */
 const PLACES_CANDIDATE_MULTIPLIER = 4;
@@ -149,6 +153,12 @@ function rankedDepth(window: { offset: number; limit: number }): number {
 
 export interface SearchServiceOptions {
   providers: readonly SearchProvider[];
+  /**
+   * The category taxonomy — what a category filter expands to in OpenStreetMap
+   * tags, and what a category is CALLED for text matching. Production reads
+   * the process's catalog; a test hands one in.
+   */
+  categories: () => Promise<CategoryCatalog>;
   config: Pick<SearchConfig, 'cacheMaxEntries' | 'cacheTtlSeconds' | 'placesRadiusMeters'>;
   logger?: SearchLogger;
   /** Overridable so a test can control eviction and expiry without sleeping. */
@@ -202,7 +212,7 @@ function foldText(value: string): string {
  * is also why the Places side only contributes when the request is anchored
  * somewhere — see `loadPlaces`.
  */
-export function placeMatchesText(place: Place, query: string): boolean {
+export function placeMatchesText(place: Place, query: string, catalog: CategoryCatalog): boolean {
   const needle = foldText(query);
   if (needle === '') return true;
   const haystack = [
@@ -215,10 +225,7 @@ export function placeMatchesText(place: Place, query: string): boolean {
     ...(place.names ?? []).map((name) => name.name),
     // A category by what it is CALLED, in every label language — "cafetería"
     // finds a `food.cafe` — and never by its key, which nobody types.
-    ...place.categories.flatMap((key) => {
-      const definition = categoryDefinition(key);
-      return definition ? Object.values(definition.labels) : [];
-    }),
+    ...place.categories.flatMap((key) => Object.values(catalog.taxonomy.of(key)?.labels ?? {})),
     place.address?.street,
     place.address?.city,
   ]
@@ -316,6 +323,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
   const loadPlaces = async (
     gateway: PlacesGateway,
     query: ResolvedSearchQuery,
+    catalog: CategoryCatalog,
   ): Promise<{ places: Place[]; consulted: boolean }> => {
     const filters = {
       ...(query.capabilities && query.capabilities.length > 0 ? { capabilities: [...query.capabilities] } : {}),
@@ -351,7 +359,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
     const filtered =
       (query.categories?.length ?? 0) > 0 || (query.capabilities?.length ?? 0) > 0
         ? found
-        : found.filter((place) => placeMatchesText(place, query.query));
+        : found.filter((place) => placeMatchesText(place, query.query, catalog));
     return { places: filtered.slice(0, rankedDepth(query)), consulted: true };
   };
 
@@ -432,6 +440,13 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       placesDegraded = true;
     });
     const cacheable = shouldCache(query);
+    // The taxonomy is GoWay's own data, so its outage is a Places outage: the
+    // geocoders still answer, without a category filter or category words.
+    const catalog = await options.categories().catch(() => {
+      placesDegraded = true;
+      return EMPTY_CATALOG;
+    });
+    const osmTags = query.categories ? catalog.osmTagsUnder(query.categories) : [];
 
     const [outcomes, places] = await Promise.all([
       Promise.all(
@@ -445,7 +460,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
                 ...(query.locale !== undefined ? { locale: query.locale } : {}),
                 ...(query.near ? { near: query.near } : {}),
                 ...(query.viewport ? { viewport: query.viewport } : {}),
-                ...(query.categories ? { categories: query.categories } : {}),
+                ...(osmTags.length > 0 ? { osmTags } : {}),
                 ...(context.signal ? { signal: context.signal } : {}),
               }),
             cacheable
@@ -461,7 +476,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
           ),
         ),
       ),
-      loadPlaces(gateway, query),
+      loadPlaces(gateway, query, catalog),
     ]);
 
     return assemble(outcomes, {

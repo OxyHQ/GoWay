@@ -49,7 +49,7 @@
  * at the source.
  */
 
-import { CATEGORY_DEFINITIONS, type CategoryKey } from '@goway/contracts';
+import type { OsmCategoryMapping } from '../../categories/catalog';
 
 /**
  * The tag keys that make an element a POI, in precedence order, each with the
@@ -147,7 +147,7 @@ const CLUTTER_CLASSES: ReadonlySet<string> = new Set([
  * decides, which elements are clutter (`subway_entrance` is class `entrance`)
  * — and letting `poiTags.test.ts` reconcile what this import admits against
  * the classes the map style colours. It does NOT name GoWay's categories; the
- * contract's taxonomy does ({@link osmCategories}). Where a subclass is not
+ * taxonomy's OpenStreetMap mapping does ({@link osmCategories}). Where a subclass is not
  * listed the class IS the subclass, OpenMapTiles' own fallback.
  */
 const CLASS_BY_SUBCLASS = new Map<string, string>(
@@ -251,24 +251,21 @@ function classOf(subclass: string, mappingKey: string): string {
   return CLASS_BY_SUBCLASS.get(subclass) ?? subclass;
 }
 
-/** `key=value` → category, and `key` → the key-wide `key=*` fallback, from the contract registry. */
-const CATEGORY_BY_TAG = new Map<string, CategoryKey>();
-const CATEGORY_BY_KEY = new Map<string, CategoryKey>();
-for (const definition of CATEGORY_DEFINITIONS) {
-  for (const tag of definition.osm) {
-    const [key, value] = tag.split('=') as [string, string];
-    if (value === '*') CATEGORY_BY_KEY.set(key, definition.key);
-    else CATEGORY_BY_TAG.set(tag, definition.key);
-  }
+/**
+ * Whether the import can ever file an element through this `key=value` (or
+ * `key=*`) tag: its key qualifies elements and, for a key with a value list,
+ * the value is on it. A moderator mapping `cuisine=pizza` would otherwise be
+ * told it worked while it never matched an element.
+ */
+export function isMappableOsmTag(tag: string): boolean {
+  const [key, value] = tag.split('=') as [string, string | undefined];
+  const accepted = MAPPING_KEY_VALUES.get(key);
+  if (accepted === undefined || value === undefined) return false;
+  return value === '*' || accepted === 'any' || accepted.has(value);
 }
 
 /** The most categories one element is filed under. */
 const MAX_CATEGORIES = 3;
-
-/** The taxonomy key one qualifying tag files an element under, or `undefined`. */
-export function categoryOfTag(key: string, value: string): CategoryKey | undefined {
-  return CATEGORY_BY_TAG.get(`${key}=${value}`) ?? CATEGORY_BY_KEY.get(key);
-}
 
 /**
  * GoWay's category keys for an element, MOST SPECIFIC FIRST.
@@ -276,18 +273,19 @@ export function categoryOfTag(key: string, value: string): CategoryKey | undefin
  * Every qualifying tag contributes, in {@link POI_MAPPING_KEYS} precedence, so
  * the first key is always the one {@link classifyPoi} chose — a restaurant
  * tagged `tourism=attraction` is `['food.restaurant', 'culture.attraction']`.
- * The taxonomy decides each key (`@goway/contracts`' `CATEGORY_DEFINITIONS`);
- * this module holds no category vocabulary. A key that is an ancestor of
- * another is dropped, because a filter on the parent already matches the child:
- * `leisure=pitch` + `sport=soccer` is `['sport.pitch']`, not that plus `sport`.
+ * The taxonomy decides each key through `mapping` — `place_category_osm_tags`,
+ * read once per run through the category catalog — and this module holds no
+ * category vocabulary. A key that is an ancestor of another is dropped, because
+ * a filter on the parent already matches the child: `leisure=pitch` +
+ * `sport=soccer` is `['sport.pitch']`, not that plus `sport`.
  */
-export function osmCategories(tags: ReadonlyMap<string, string>): CategoryKey[] {
-  const keys: CategoryKey[] = [];
+export function osmCategories(tags: ReadonlyMap<string, string>, mapping: OsmCategoryMapping): string[] {
+  const keys: string[] = [];
   for (const key of MAPPING_KEY_ORDER) {
     const value = tags.get(key);
     const kind = kindOf(key, value);
     if (!kind) continue;
-    const category = categoryOfTag(key, kind.subclass);
+    const category = mapping.osmCategoryOf(key, kind.subclass);
     if (category !== undefined && !keys.includes(category)) keys.push(category);
   }
   return keys

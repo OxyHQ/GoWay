@@ -60,12 +60,13 @@ export interface ProviderForwardRequest extends ProviderRequestBase {
   near?: GeoCoordinate;
   viewport?: GeoBoundingBox;
   /**
-   * Category keys. Only `key:value` members — an explicit OSM tag — reach an
-   * external provider; anything else is a GoWay Places category and is applied
-   * there. Guessing an OSM tag for a GoWay category would silently change the
-   * question being asked, and the caller would have no way to see it happen.
+   * The OpenStreetMap `key=value` and `key=*` tags the request's GoWay
+   * categories — and every category below them — map to, from GoWay's
+   * taxonomy. A provider that indexes OpenStreetMap filters by them; one that
+   * does not ignores them. A provider never sees a GoWay category key, whose
+   * meaning is GoWay's and changes when a moderator changes it.
    */
-  categories?: readonly string[];
+  osmTags?: readonly string[];
 }
 
 /** A structured address lookup, for providers that support one. */

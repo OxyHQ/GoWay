@@ -17,8 +17,8 @@
 
 import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { CATEGORY_KEYS } from '@goway/contracts';
 import postgres from 'postgres';
+import { SEEDED_CATEGORIES } from '../../__tests__/categoryFixtures';
 import {
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
@@ -87,7 +87,7 @@ describe('the conversion', () => {
 
   it('is the identity on every taxonomy key, so running it twice changes nothing', async () => {
     const moved = await session<{ key: string }[]>`
-      SELECT key FROM unnest(${[...CATEGORY_KEYS]}::text[]) AS key
+      SELECT key FROM unnest(${SEEDED_CATEGORIES.map((category) => category.key)}::text[]) AS key
       WHERE pg_temp.goway_category_keys(ARRAY[key]) IS DISTINCT FROM ARRAY[key]
     `;
     expect([...moved]).toEqual([]);

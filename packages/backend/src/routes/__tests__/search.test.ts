@@ -18,6 +18,7 @@ import express, { type Express } from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { SearchResults } from '@goway/contracts';
+import { SEEDED_CATALOG } from '../../__tests__/categoryFixtures';
 import { parseSearchConfig } from '../../config/search';
 import { ApiError } from '../../http/apiError';
 import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
@@ -77,6 +78,7 @@ function buildApp(): Express {
       service,
       createGateway: () => fakeGateway(),
       config: CONFIG,
+      categories: async () => SEEDED_CATALOG,
     }),
   );
   app.use(unknownRouteHandler);
@@ -123,6 +125,14 @@ describe('GET /api/v1/search', () => {
       capabilities: ['payments.faircoin.accepted'],
       categories: ['food.cafe', 'food.bakery'],
       locale: 'ca-ES',
+    });
+  });
+
+  it('refuses a category filter naming a key that is not a category', async () => {
+    expect(await errorCodeOf('/api/v1/search?q=museum&categories=food.cafe,food.space_diner')).toMatchObject({
+      status: 422,
+      code: 'validation_failed',
+      field: 'categories.1',
     });
   });
 

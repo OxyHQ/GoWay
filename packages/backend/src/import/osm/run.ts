@@ -22,9 +22,10 @@
  *   --target-database=<name>  Required unless --dry-run. Asserted first.
  *   --region=europe/spain     Geofabrik path. Default: europe/spain.
  *   --extract=<path>          Use a local .osm.pbf instead of downloading.
- *   --dry-run                 Read and measure; open no connection and write
- *                             nothing. Reproduces the numbers in
- *                             packages/backend/README.md on any machine.
+ *   --dry-run                 Read and measure; write nothing. Reproduces the
+ *                             numbers in packages/backend/README.md on any
+ *                             machine with a migrated database to read the
+ *                             category mapping from.
  *   --limit=<n>               Stop after n places. For a smoke run.
  *   --bbox=w,s,e,n            Keep only places inside this rectangle. A first
  *                             run over central Barcelona is
@@ -36,10 +37,11 @@
  *   --work-dir=<path>         Where the extract is kept. Default /tmp/osm-data,
  *                             or GOWAY_OSM_DIR.
  *
- * A `--dry-run` still needs a syntactically valid `DATABASE_URL`: this package
- * parses its whole configuration at module load, deliberately, so that nothing
- * can be half-configured while already running. Any well-formed URL will do —
- * nothing connects.
+ * A `--dry-run` connects to `DATABASE_URL` for ONE read: the category
+ * taxonomy's OpenStreetMap mapping (`place_category_osm_tags`), which is data a
+ * moderator edits rather than code, so a measurement that classified elements
+ * without it would measure a different import. It writes nothing and needs no
+ * `--target-database`.
  *
  * ## What it prints
  *
@@ -51,6 +53,7 @@
 
 import { join } from 'node:path';
 import { readTargetDatabase } from '@oxy.so/db/migrate';
+import { categoryCatalog, type OsmCategoryMapping } from '../../categories/catalog';
 import { logger } from '../../utils/logger';
 import { detectDuplicates } from './duplicates';
 import { downloadExtract, geofabrikUrl } from './download';
@@ -144,6 +147,9 @@ async function main(): Promise<void> {
   if (expectedDatabase !== null) {
     db = await openDatabase(expectedDatabase);
   }
+  // Read once, before the extract: a moderator's edit lands in the next run,
+  // never halfway through this one.
+  const categories = await readCategoryMapping(db);
 
   try {
     let path = local;
@@ -175,6 +181,7 @@ async function main(): Promise<void> {
     const started = Date.now();
     const stats = await extractPois({
       path,
+      categories,
       batchSize,
       bounds,
       limit: limit > 0 ? limit : undefined,
@@ -251,11 +258,27 @@ async function main(): Promise<void> {
 }
 
 /**
+ * The taxonomy's OpenStreetMap mapping: through the run's own connection, or —
+ * for a dry run, which has none — through one opened for this read alone.
+ */
+async function readCategoryMapping(
+  db: Awaited<ReturnType<typeof openDatabase>> | null,
+): Promise<OsmCategoryMapping> {
+  if (db) return categoryCatalog(db.handle);
+  const { connectPostgres, closePostgres } = await import('../../db/postgres');
+  const handle = await connectPostgres();
+  try {
+    return await categoryCatalog(handle);
+  } finally {
+    await closePostgres();
+  }
+}
+
+/**
  * Open the pool and prove it is the database the operator named.
  *
- * Dynamically imported so `--dry-run` never loads the connection module at all:
- * a measurement pass on a build runner has no database, and requiring one to
- * count POIs would make the measurement impossible to reproduce.
+ * Dynamically imported, as the dry run's one read is: the connection module
+ * parses nothing and opens nothing until a run actually needs a database.
  */
 async function openDatabase(expectedDatabase: string) {
   const { assertMigrationTarget } = await import('@oxy.so/db/migrate');
