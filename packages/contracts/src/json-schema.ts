@@ -32,7 +32,15 @@ import {
   captureUploadTicketSchema,
 } from './capture';
 import { routeRequestSchema, routeResponseSchema, routeSchema } from './directions';
-import { categoryPageSchema, categorySchema } from './category';
+import {
+  categoryCreateInputSchema,
+  categoryLabelInputSchema,
+  categoryPageSchema,
+  categorySchema,
+  categoryUpdateInputSchema,
+  moderationCategoryPageSchema,
+  moderationCategorySchema,
+} from './category';
 import { apiErrorBodySchema } from './errors';
 import { geoBoundingBoxSchema, geoCoordinateSchema, geoGeometrySchema } from './geo';
 import {
@@ -137,6 +145,11 @@ export const CONTRACT_SCHEMA_NAMES = [
   'PlaceClaimInput',
   'Category',
   'CategoryPage',
+  'ModerationCategory',
+  'ModerationCategoryPage',
+  'CategoryCreateInput',
+  'CategoryUpdateInput',
+  'CategoryLabelInput',
   'PlaceHoursException',
   'PlaceHoursExceptionPage',
   'PlaceHoursExceptionInput',
@@ -225,6 +238,11 @@ export const CONTRACT_SCHEMAS: Readonly<Record<ContractSchemaName, ContractSchem
   PlaceClaimInput: request(placeClaimInputSchema),
   Category: response(categorySchema),
   CategoryPage: response(categoryPageSchema),
+  ModerationCategory: response(moderationCategorySchema),
+  ModerationCategoryPage: response(moderationCategoryPageSchema),
+  CategoryCreateInput: request(categoryCreateInputSchema),
+  CategoryUpdateInput: request(categoryUpdateInputSchema),
+  CategoryLabelInput: request(categoryLabelInputSchema),
   PlaceHoursException: response(placeHoursExceptionSchema),
   PlaceHoursExceptionPage: response(placeHoursExceptionPageSchema),
   PlaceHoursExceptionInput: request(placeHoursExceptionInputSchema),

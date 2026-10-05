@@ -40,8 +40,9 @@ Always **bun**; commit `bun.lock` with its `package.json`.
 - The logo is geometry (`packages/frontend/components/brand/artwork.ts`), drawn and never fetched; `public/brand/*` is generated from it and gated by `brand:check`. Its blue is ink (`--color-brand-goway`), never Bloom's `--primary`.
 - Every GoWay-enriched place gets a stable GoWay Place ID independent of provider IDs; deep links use it (`https://goway.to/place/<placeId>`). Preserve source provenance and never destructively overwrite a source fact.
 - The OpenStreetMap import writes only `openstreetmap`-sourced rows, never deletes a place, and changes a `places` column only while it still holds what that source last said.
-- `places.categories` holds only taxonomy keys from `CATEGORY_DEFINITIONS` (`packages/contracts`), CHECKed from it; never store an ancestor beside its child. Design note: `docs/PLACE_DATA.md`.
+- The category taxonomy is data (`place_categories`, labels, OSM tags), edited via `/moderation/categories`; never put a copy in code. `places.categories` holds active keys (trigger-enforced), never an ancestor beside its child; keys are immutable. Note: `docs/PLACE_DATA.md`.
 - A place attribute is a registered key in `CAPABILITY_DEFINITIONS` (value kind, labels, group, OSM tags) over `places_capabilities`, never a new column or table; every write goes through its key's schema.
+- An in-code vocabulary label carries every `LABEL_LANGUAGES` language; read labels only via `localizedLabel`/`matchLanguageTag` with the whole locale, never `locale.startsWith`. Note: `docs/LABEL_TRANSLATIONS.md`.
 - `places.timezone` is derived from the position (`places/timezone.ts`), never taken from a caller; evaluate hours only with the contract's `openingStatusAt`.
 - Hours exceptions follow the capability authority rules: derived tier, rewrite at your own tier, claimant-only withdrawal.
 - `PATCH /places` is a merge patch: absent leaves a field (or address/contact part) alone, `null` clears; the import refills a cleared column only once OSM's value changes.

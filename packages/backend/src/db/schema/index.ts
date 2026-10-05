@@ -23,6 +23,9 @@
  * scenes, versions — and is exported after `capture.ts` because its foreign
  * keys point there.
  *
+ * The category taxonomy (`categories.ts`) is its own module: a moderator edits
+ * it, it has its own audit, and `places` reaches it only through a trigger.
+ *
  * ## When adding a table
  *
  * Add one line per table module, in DEPENDENCY order once tables reference each
@@ -42,6 +45,9 @@
  *      `sqlColumnName()` is how hand-written SQL gets the SQL name.
  */
 
+// First: nothing references the taxonomy by foreign key — `places.categories`
+// is held to it by a trigger (`categories.ts`).
+export * from './categories';
 export * from './places';
 export * from './capture';
 // After `capture`: derivatives, jobs and scene inputs reference `capture_assets`.

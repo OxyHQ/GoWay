@@ -28,16 +28,17 @@
 import {
   API_ERROR_STATUS,
   baseLanguageTag,
-  categoryDescendants,
-  categoryOf,
+  categoryTaxonomy,
   DEFAULT_MEDIA_LIST_LIMIT,
   DEFAULT_PLACE_LIST_LIMIT,
   DEFAULT_REVIEW_LIST_LIMIT,
+  localizedLabel,
   normalizeLanguageTag,
   placeMatchesCapabilityFilter,
 } from '@goway.to/sdk';
 import type {
   ApiErrorCode,
+  CategoryPage,
   GoWayFetch,
   GoWayFetchInit,
   GoWayFetchResponse,
@@ -57,6 +58,7 @@ import type {
 import { distanceMeters } from '@/lib/map/geo';
 
 import {
+  FIXTURE_CATEGORIES,
   FIXTURE_MEDIA,
   FIXTURE_PLACES,
   FIXTURE_PLACES_BY_ID,
@@ -64,6 +66,9 @@ import {
   FIXTURE_WITHDRAWN_PLACE_IDS,
 } from './fixtures';
 import { fixtureCoverage, fixtureSceneResponse } from './street3dFixtures';
+
+/** The fixture taxonomy, indexed once: what filters expand through and search labels come from. */
+const TAXONOMY = categoryTaxonomy(FIXTURE_CATEGORIES);
 
 /** Which endpoint families can be made to fail, for the degraded states. */
 export type FixtureFault = 'places' | 'search' | 'geocode' | 'routes' | 'street3d';
@@ -349,7 +354,7 @@ function addressText(address: StructuredAddress | undefined): string {
 function matchesFilters(entry: Place, categories: readonly string[], capabilities: readonly string[]): boolean {
   // A parent matches every category below it, as the API expands it.
   if (categories.length > 0) {
-    const wanted = new Set<string>(categories.flatMap(categoryDescendants));
+    const wanted = new Set<string>(categories.flatMap(TAXONOMY.descendants));
     if (!entry.categories.some((key) => wanted.has(key))) return false;
   }
   // Capabilities are a CONJUNCTION, by the contract's own strongest-assertion
@@ -514,7 +519,7 @@ function search(params: Map<string, string>): SearchResults {
     if (needle === '') return false;
     // A category by its labels, as the server matches it — never by its key.
     const categoryWords = entry.categories.flatMap((key) => {
-      const category = categoryOf(key);
+      const category = TAXONOMY.of(key);
       return category ? Object.values(category.labels) : [];
     });
     const haystack = fold([entry.name, addressText(entry.address), ...categoryWords].join(' '));
@@ -667,10 +672,24 @@ function directions(body: unknown) {
   };
 }
 
+/**
+ * `GET /categories`, as the API answers it: the whole list in one page, each
+ * `label` resolved for `locale` by the same matcher the server uses, every
+ * language still in `labels`.
+ */
+function categoryList(params: Map<string, string>): CategoryPage {
+  const locale = params.get('locale');
+  return {
+    items: FIXTURE_CATEGORIES.map((category) => ({ ...category, label: localizedLabel(category.labels, locale) })),
+    nextCursor: null,
+  };
+}
+
 // ── The fetch itself ────────────────────────────────────────────────────────
 
 /** The fixed paths this transport answers, besides `/places/<placeId>`. */
 const FIXTURE_ROUTES: ReadonlySet<string> = new Set([
+  '/categories',
   '/places/bounds',
   '/places/nearby',
   '/search',
@@ -764,6 +783,7 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
       return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
     }
 
+    if (path === '/categories') return respond(200, categoryList(params));
     if (path === '/places/bounds') return respond(200, placesInBounds(params));
     if (path === '/places/nearby') return respond(200, placesNearby(params));
     if (placeId !== undefined) {

@@ -146,7 +146,7 @@ export const searchParametersSchema = z
     north: latitudeSchema.optional(),
     /** Only candidates whose reconciled place has every listed capability (`key` or `key:value`). */
     capabilities: z.array(capabilityFilterSchema).max(64).optional(),
-    /** Taxonomy keys; a parent matches its descendants. */
+    /** Taxonomy keys; a parent matches its descendants. A key that is not a category is `validation_failed`. */
     categories: z.array(categoryKeySchema).max(64).optional(),
     ...searchListFields,
   })

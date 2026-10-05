@@ -49,6 +49,7 @@ import {
   type BlockStrings,
 } from './pbf';
 import { isPoiMappingKey } from './poiTags';
+import type { OsmCategoryMapping } from '../../categories/catalog';
 import { isImportablePoi, toImportedPlace, type ImportedPlace, type OsmElementType } from './placeRecord';
 
 /** How many places accumulate before the consumer is handed a batch. */
@@ -77,6 +78,8 @@ export interface ExtractStats {
 export interface ExtractOptions {
   /** Path to the `.osm.pbf`. */
   path: string;
+  /** The taxonomy's OpenStreetMap mapping, read from the database before the run. */
+  categories: OsmCategoryMapping;
   /** Called with each full batch, and once more with the remainder. */
   onPlaces: (places: ImportedPlace[]) => Promise<void>;
   batchSize?: number;
@@ -313,7 +316,8 @@ export async function extractPois(options: ExtractOptions): Promise<ExtractStats
       onNode: (id, latitude, longitude, keys, vals) => {
         const current = index;
         if (!current || current.nameKey < 0 || !looksLikePoi(current, keys)) return;
-        const place = toImportedPlace('node', id, latitude, longitude, tagsOf(current, keys, vals));
+        const tags = tagsOf(current, keys, vals);
+        const place = toImportedPlace('node', id, latitude, longitude, tags, options.categories);
         if (place) emitLater.push(place);
       },
       onWay: (id, keys, vals, refs) => {
@@ -394,7 +398,9 @@ export async function extractPois(options: ExtractOptions): Promise<ExtractStats
   for (const pending of pendingWays) {
     if (stopped) break;
     const centre = nodes.centre(pending.refs);
-    const place = centre && toImportedPlace(pending.type, pending.id, centre.latitude, centre.longitude, pending.tags);
+    const place =
+      centre &&
+      toImportedPlace(pending.type, pending.id, centre.latitude, centre.longitude, pending.tags, options.categories);
     if (!place) {
       stats.unpositioned += 1;
       continue;
@@ -415,7 +421,9 @@ export async function extractPois(options: ExtractOptions): Promise<ExtractStats
       for (const ref of refs) memberNodes.push(ref);
     }
     const centre = nodes.centre(memberNodes);
-    const place = centre && toImportedPlace(pending.type, pending.id, centre.latitude, centre.longitude, pending.tags);
+    const place =
+      centre &&
+      toImportedPlace(pending.type, pending.id, centre.latitude, centre.longitude, pending.tags, options.categories);
     if (!place) {
       stats.unpositioned += 1;
       continue;

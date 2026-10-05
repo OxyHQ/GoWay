@@ -145,3 +145,16 @@ export type Street3dSceneVersionState = (typeof STREET3D_SCENE_VERSION_STATES)[n
  */
 export const DERIVATIVE_STORAGE_STATES = ['stored', 'deleting', 'deleted'] as const;
 export type DerivativeStorageState = (typeof DERIVATIVE_STORAGE_STATES)[number];
+
+// ── The category taxonomy's audit ───────────────────────────────────────────
+
+/**
+ * What a moderation write to the taxonomy did, as `place_category_events`
+ * records it. Internal until a route publishes the history: the operator's
+ * view of a category today is its current row.
+ *
+ * Deprecation is an `updated` whose diff moves `status`: the same write as a
+ * glyph change, through the same route, so it is not a separate action.
+ */
+export const CATEGORY_EVENT_ACTIONS = ['created', 'updated', 'label_set', 'label_removed'] as const;
+export type CategoryEventAction = (typeof CATEGORY_EVENT_ACTIONS)[number];

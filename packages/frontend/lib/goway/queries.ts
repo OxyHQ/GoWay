@@ -21,9 +21,10 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import { GoWayNotFoundError } from '@goway.to/sdk';
+import { categoryTaxonomy, GoWayNotFoundError } from '@goway.to/sdk';
 import type {
-  CategoryKey,
+  CategoryPage,
+  CategoryTaxonomy,
   GeoBoundingBox,
   GeoCoordinate,
   Place,
@@ -39,6 +40,9 @@ import type {
   SearchResults,
 } from '@goway.to/sdk';
 import type { User } from '@oxy.so/core';
+import { useMemo } from 'react';
+
+import { deviceLocale } from '@/lib/i18n';
 
 import { oxyServices } from '@/lib/oxyServices';
 
@@ -56,7 +60,7 @@ function boundsKey(bounds: GeoBoundingBox): [number, number, number, number] {
 
 export interface PlacesInBoundsOptions {
   /** Taxonomy keys; a parent matches every category below it. */
-  categories?: readonly CategoryKey[];
+  categories?: readonly string[];
   /** `key` or `key:value` filters, a conjunction. */
   capabilities?: readonly string[];
   limit?: number;
@@ -119,7 +123,7 @@ export interface SearchOptions {
   /** Bias toward the visible map. Ignored by the API when `near` is set. */
   viewport?: GeoBoundingBox | null;
   /** Taxonomy keys; a parent matches every category below it. */
-  categories?: readonly CategoryKey[];
+  categories?: readonly string[];
   /** `key` or `key:value` filters, a conjunction. */
   capabilities?: readonly string[];
   limit?: number;
@@ -171,6 +175,35 @@ export function useSearch(query: string, options: SearchOptions = {}): UseQueryR
         { signal },
       ),
   });
+}
+
+/**
+ * How long a fetched taxonomy is fresh. The API caches `GET /categories` for
+ * five minutes; a moderator's edit is rare and reaching a reader ten minutes
+ * later costs nothing, while refetching it on every screen mount would put a
+ * request in front of every map paint.
+ */
+const CATEGORY_TAXONOMY_STALE_MS = 10 * 60_000;
+
+/**
+ * The category taxonomy, indexed — or `undefined` while it loads or after it
+ * failed.
+ *
+ * Public, so it runs signed out. `undefined` is a state every caller handles
+ * by drawing generic pins and no shortcut chips, never by blocking the map:
+ * the taxonomy decorates places, it does not gate them. A refetch keeps the
+ * previous list on screen until the new one arrives.
+ */
+export function useCategoryTaxonomy(): CategoryTaxonomy | undefined {
+  const locale = deviceLocale();
+  const { data } = useQuery<CategoryPage>({
+    queryKey: ['goway', 'categories', locale],
+    retry: shouldRetryGoWay,
+    staleTime: CATEGORY_TAXONOMY_STALE_MS,
+    placeholderData: (previous) => previous,
+    queryFn: async ({ signal }) => gowayClient.categories.list({ locale }, { signal }),
+  });
+  return useMemo(() => (data ? categoryTaxonomy(data.items) : undefined), [data]);
 }
 
 /**

@@ -12,6 +12,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SEEDED_CATALOG } from '../../../__tests__/categoryFixtures';
 import { extractPois } from '../extract';
 import type { ImportedPlace } from '../placeRecord';
 import { buildPbf, type FixtureBlock } from './pbfFixture';
@@ -72,6 +73,7 @@ async function run(path: string, options: { limit?: number; batchSize?: number }
   const batches: number[] = [];
   const stats = await extractPois({
     path,
+    categories: SEEDED_CATALOG,
     batchSize: options.batchSize ?? 1000,
     limit: options.limit,
     onPlaces: async (batch) => {
@@ -134,6 +136,7 @@ describe('extractPois', () => {
     const places: ImportedPlace[] = [];
     await extractPois({
       path: writePbf('bbox.osm.pbf', ARCHIVE),
+      categories: SEEDED_CATALOG,
       // Central Barcelona: the cafe is in it, the museum square and the
       // relation park are not.
       bounds: { west: 2.15, south: 41.37, east: 2.19, north: 41.4 },

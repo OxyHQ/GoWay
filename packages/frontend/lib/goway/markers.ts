@@ -24,7 +24,7 @@
  *    array.
  */
 import { placeDisplayName } from '@goway.to/sdk';
-import type { Place } from '@goway.to/sdk';
+import type { CategoryTaxonomy, Place } from '@goway.to/sdk';
 
 import type { MapMarker } from '@/components/map';
 import { projectToPixels } from '@/lib/map/geo';
@@ -57,18 +57,21 @@ export interface BuildMarkersOptions {
   places: readonly Place[];
   zoom: number;
   selectedPlaceId?: string | null;
+  /** The category taxonomy, or `undefined` while it loads: every place is then a generic pin. */
+  taxonomy: CategoryTaxonomy | undefined;
 }
 
 export function buildMarkers({
   places,
   zoom,
   selectedPlaceId = null,
+  taxonomy,
 }: BuildMarkersOptions): MarkerBuild {
   const visible: Place[] = [];
   let hiddenByZoom = 0;
 
   for (const place of places) {
-    if (place.id === selectedPlaceId || isVisibleAtZoom(place.categories, zoom)) {
+    if (place.id === selectedPlaceId || isVisibleAtZoom(place.categories, zoom, taxonomy)) {
       visible.push(place);
     } else {
       hiddenByZoom += 1;
@@ -89,7 +92,9 @@ export function buildMarkers({
     // Biggest clusters first, then the most orienting categories, so the cap
     // below removes street-level detail rather than landmarks.
     if (b[1].length !== a[1].length) return b[1].length - a[1].length;
-    return resolveCategory(a[1][0]?.categories).minZoom - resolveCategory(b[1][0]?.categories).minZoom;
+    return (
+      resolveCategory(a[1][0]?.categories, taxonomy).minZoom - resolveCategory(b[1][0]?.categories, taxonomy).minZoom
+    );
   });
 
   const markers: MapMarker[] = [];
@@ -110,7 +115,7 @@ export function buildMarkers({
     if (bucketPlaces.length === 1 || selectedMember) {
       const shown = selectedMember ?? bucketPlaces[0];
       if (!shown) continue;
-      markers.push(placeMarker(shown, shown.id === selectedPlaceId));
+      markers.push(placeMarker(shown, shown.id === selectedPlaceId, taxonomy));
       if (selectedMember && bucketPlaces.length > 1) {
         // The rest of the bucket collapses into a bubble beside the selection.
         const rest = bucketPlaces.filter((place) => place.id !== selectedMember.id);
@@ -140,8 +145,8 @@ export function buildMarkers({
   return { markers, clusters, hiddenByZoom };
 }
 
-function placeMarker(place: Place, selected: boolean): MapMarker {
-  const category = resolveCategory(place.categories);
+function placeMarker(place: Place, selected: boolean, taxonomy: CategoryTaxonomy | undefined): MapMarker {
+  const category = resolveCategory(place.categories, taxonomy);
   const capabilities = capabilitySummary(place.capabilities);
 
   // The accessible name carries everything the pill's shape and colour imply:

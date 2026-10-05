@@ -24,6 +24,7 @@ import { capabilitySummary, ecosystemCapabilities, presentCapability } from '@/l
 import { resolveCategory } from '@/lib/goway/categories';
 import { formatAddress, formatDistance, formatPlaceSubtitle } from '@/lib/goway/format';
 import { openingSummary } from '@/lib/goway/hours';
+import { useCategoryTaxonomy } from '@/lib/goway/queries';
 
 /** A tiny glyph+word pair. Never a bare coloured dot. */
 function Tag({ children, color }: { children: string; color: string }) {
@@ -43,9 +44,10 @@ export interface PlaceRowProps {
 
 export function PlaceRow({ place, selected = false, onPress, testID }: PlaceRowProps) {
   const theme = useTheme();
-  const category = resolveCategory(place.categories);
+  const taxonomy = useCategoryTaxonomy();
+  const category = resolveCategory(place.categories, taxonomy);
   const Icon = category.icon;
-  const subtitle = formatPlaceSubtitle(place);
+  const subtitle = formatPlaceSubtitle(place, taxonomy);
   const distance = 'distanceMeters' in place ? formatDistance(place.distanceMeters) : null;
   const opening = openingSummary(place);
   const capabilities = ecosystemCapabilities(place.capabilities);

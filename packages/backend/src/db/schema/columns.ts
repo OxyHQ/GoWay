@@ -80,16 +80,6 @@ export const closedSet = (name: string, column: PgColumn, values: readonly strin
   check(name, sql`${column} in (${sql.raw(inList(values))})`);
 
 /**
- * {@link closedSet} for a `text[]` column: every member must be in the set.
- *
- * `<@` (is contained by) rather than a per-element loop, so the constraint is
- * one expression the planner checks per row. An empty array is contained by
- * anything, which is what "a place with no category yet" needs.
- */
-export const closedSetArray = (name: string, column: PgColumn, values: readonly string[]) =>
-  check(name, sql`${column} <@ ARRAY[${sql.raw(inList(values))}]::text[]`);
-
-/**
  * An id belonging to a FOREIGN service — an Oxy account id, an Oxy user id, an
  * external provider's own reference.
  *

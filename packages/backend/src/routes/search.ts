@@ -52,7 +52,9 @@ import {
   structuredGeocodeQuerySchema,
   type SearchResults,
 } from '@goway/contracts';
+import { assertCategoryFilter, categoryCatalog, type CategoryCatalog } from '../categories/catalog';
 import { searchConfig, type SearchConfig } from '../config/search';
+import { getDb } from '../db/postgres';
 import { createPlacesGateway } from '../search/dbPlacesGateway';
 import type { PlacesGateway } from '../search/placesGateway';
 import { createProviders } from '../search/providers';
@@ -109,11 +111,14 @@ export interface SearchRouterDependencies {
   /** Builds the Places gateway for one request. Injected in tests. */
   createGateway?: (request: Request) => PlacesGateway;
   config?: SearchConfig;
+  /** The category taxonomy. The process's catalog by default; injected in tests. */
+  categories?: () => Promise<CategoryCatalog>;
 }
 
-function defaultService(config: SearchConfig): SearchService {
+function defaultService(config: SearchConfig, categories: () => Promise<CategoryCatalog>): SearchService {
   return createSearchService({
     providers: createProviders({ config }),
+    categories,
     config,
     logger: createLogger('search'),
   });
@@ -130,7 +135,8 @@ function defaultService(config: SearchConfig): SearchService {
  */
 export function createSearchRouter(dependencies: SearchRouterDependencies): Router {
   const config = dependencies.config ?? searchConfig;
-  const service = dependencies.service ?? defaultService(config);
+  const categories = dependencies.categories ?? (() => categoryCatalog(getDb()));
+  const service = dependencies.service ?? defaultService(config, categories);
   const gatewayFor =
     dependencies.createGateway ??
     ((request: Request) => createPlacesGateway({ viewerOxyAccountId: callerId(request) }));
@@ -182,11 +188,16 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
     response.json(body);
   };
 
-  /** The parsed query as the service takes it. Used by `/search` and `/geocode`. */
-  const resolveSearchQuery = (
+  /**
+   * The parsed query as the service takes it. Used by `/search` and `/geocode`.
+   * A category filter naming a key that is not a category is refused here, as
+   * the place lists refuse one.
+   */
+  const resolveSearchQuery = async (
     kind: CursorKind,
     input: z.output<typeof searchParametersSchema>,
-  ): { query: ResolvedSearchQuery; binding: CursorBinding } => {
+  ): Promise<{ query: ResolvedSearchQuery; binding: CursorBinding }> => {
+    if (input.categories) assertCategoryFilter(await categories(), input.categories, 'categories');
     const { cursor, limit, ...filters } = input;
     const binding = cursorBinding(kind, filters);
     const resolved: ResolvedSearchQuery = { query: input.q, ...windowOf({ limit, cursor }, binding) };
@@ -219,7 +230,7 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
     '/search',
     dependencies.optionalAuth,
     route(async (request, response) => {
-      const { query, binding } = resolveSearchQuery('search', parseQuery(searchParametersSchema, request.query));
+      const { query, binding } = await resolveSearchQuery('search', parseQuery(searchParametersSchema, request.query));
       const window = await service.search(query, {
         gateway: gatewayFor(request),
         signal: callerSignal(request, response),
@@ -290,7 +301,7 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
     '/geocode',
     dependencies.optionalAuth,
     route(async (request, response) => {
-      const { query, binding } = resolveSearchQuery('geocode', parseQuery(searchParametersSchema, request.query));
+      const { query, binding } = await resolveSearchQuery('geocode', parseQuery(searchParametersSchema, request.query));
       const window = await service.forward(query, {
         gateway: gatewayFor(request),
         signal: callerSignal(request, response),

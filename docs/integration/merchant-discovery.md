@@ -254,14 +254,16 @@ const { items: cafes } = await goway.places.nearby({
 
 Unlike `capabilities`, a `categories` list is a **disjunction**: a place
 carrying *any* listed key matches. `Place.categories` holds keys of GoWay's
-closed category taxonomy (`CATEGORIES`, `CATEGORY_KEYS`, and `GET /categories`
-for a client without the SDK): dotted keys such as `food.cafe`, `shop.books` or
-`transport.rail_station`, most specific first, each under a root that is a
-browsing group (`food`, `shop`, `lodging`, `leisure`, `culture`, `transport`, …).
-A filter on a root asks for everything below it, so `categories: ['food']` is
-every restaurant, café and bar without enumerating them. A key outside the
-taxonomy is refused client-side. Label one with `categoryLabel(key, locale)`;
-a key newer than your SDK build still arrives as a key, so give it a generic pin
+category taxonomy, which GoWay's moderators keep in its database: dotted keys
+such as `food.cafe`, `shop.books` or `transport.rail_station`, most specific
+first, each under a root that is a browsing group (`food`, `shop`, `lodging`,
+`leisure`, `culture`, `transport`, …). Fetch the taxonomy with
+`categories.list({ locale })` and index it with `categoryTaxonomy` (cache it;
+it changes rarely). A filter on a root asks for everything below it, so
+`categories: ['food']` is every restaurant, café and bar without enumerating
+them. A key that is not a category is refused by the API (`validation_failed`).
+Label one with `taxonomy.label(key, locale)`; a key newer than the list you
+hold still arrives as a key, so give it a generic pin
 rather than dropping the place. The design is in `docs/PLACE_DATA.md`.
 
 ## Read the evidence, and say only what it supports

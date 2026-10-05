@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
+import { SEEDED_CATALOG } from '../../../__tests__/categoryFixtures';
 import { toImportedPlace } from '../placeRecord';
 import { provenanceHolds, sampleEvenly, verifyProvenance } from '../verifyProvenance';
 
@@ -26,6 +27,7 @@ function place(sourceId: string, name: string, translations: Record<string, stri
         ),
       }),
     ),
+    SEEDED_CATALOG,
   );
   if (!built) throw new Error('fixture is not a POI');
   return built;

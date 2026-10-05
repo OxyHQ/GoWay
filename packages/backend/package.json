@@ -17,6 +17,7 @@
     "db:migrate": "bun run src/db/migrate.ts",
     "import:osm": "bun run src/import/osm/run.ts",
     "places:convert-legacy": "bun run src/places/runConvertLegacy.ts",
+    "categories:move": "bun run src/categories/runMoveCategory.ts",
     "captures:cleanup": "bun run src/capture/runCleanup.ts",
     "street3d:tick": "bun run src/street3d/runTick.ts",
     "street3d:admin": "bun run src/street3d/runAdmin.ts"

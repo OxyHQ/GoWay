@@ -18,7 +18,6 @@ import express, { type RequestHandler } from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import {
-  CATEGORY_KEYS,
   type CategoryPage,
   type Place,
   type PlaceHoursException,
@@ -36,6 +35,7 @@ import { ApiError } from '../../http/apiError';
 import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import { createCategoriesRouter } from '../categories';
 import { createPlacesRouter } from '../places';
+import { SEEDED_CATEGORIES } from '../../__tests__/categoryFixtures';
 import { apiAuthor, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 
 const CONTRIBUTOR: PlaceActor = { author: apiAuthor('user-contributor'), assertedVerification: 'community_reported' };
@@ -123,17 +123,31 @@ afterAll(async () => {
 });
 
 describe('GET /categories', () => {
-  it('publishes the whole taxonomy, with parents, glyphs and labels', async () => {
+  it('publishes the whole seeded taxonomy, with parents, glyphs, statuses and labels', async () => {
     const { status, body } = await call<CategoryPage>('/categories');
     expect(status).toBe(200);
     expect(body.nextCursor).toBeNull();
-    expect(body.items.map((category) => category.key)).toEqual([...CATEGORY_KEYS]);
-    expect(body.items.find((category) => category.key === 'food.cafe')).toEqual({
-      key: 'food.cafe',
-      parent: 'food',
-      icon: 'cafe',
-      labels: { en: 'Café', es: 'Cafetería' },
-    });
+    expect(body.items.map((category) => category.key)).toEqual(SEEDED_CATEGORIES.map((category) => category.key));
+    const cafe = body.items.find((category) => category.key === 'food.cafe');
+    expect(cafe).toMatchObject({ key: 'food.cafe', parent: 'food', icon: 'cafe', status: 'active', label: 'Café' });
+    expect(Object.keys(cafe?.labels ?? {}).sort()).toEqual(
+      ['ar', 'bn', 'ca', 'de', 'en', 'es', 'fr', 'hi', 'ja', 'pt-BR', 'ru', 'zh-Hans'],
+    );
+  });
+
+  it('resolves each label for the locale with the label matcher, English when none serves', async () => {
+    const label = async (locale: string) =>
+      (await call<CategoryPage>(`/categories?locale=${locale}`)).body.items.find((item) => item.key === 'food.cafe')
+        ?.label;
+    expect(await label('es-MX')).toBe('Cafetería');
+    expect(await label('pt-PT')).toBe(SEEDED_CATEGORIES.find((entry) => entry.key === 'food.cafe')?.labels['pt-BR']);
+    // Until GoWay holds a `zh-Hant` label, a Traditional reader is served Simplified rather than English.
+    expect(await label('zh-TW')).toBe(SEEDED_CATEGORIES.find((entry) => entry.key === 'food.cafe')?.labels['zh-Hans']);
+    expect(await label('ko')).toBe('Café');
+  });
+
+  it('refuses a locale that is not a language tag', async () => {
+    expect((await call<ErrorBody>('/categories?locale=left-handed')).status).toBe(422);
   });
 });
 

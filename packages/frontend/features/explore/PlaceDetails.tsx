@@ -42,6 +42,7 @@ import { useAuthGate } from '@/lib/authGate';
 import { resolveCategory } from '@/lib/goway/categories';
 import { formatAddress, formatWebsite, websiteUrl } from '@/lib/goway/format';
 import { openingSummary, upcomingExceptions, weeklySchedule } from '@/lib/goway/hours';
+import { useCategoryTaxonomy } from '@/lib/goway/queries';
 
 import { CapabilityList } from './CapabilityList';
 import { PlaceGallery } from './PlaceGallery';
@@ -74,7 +75,8 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
   const theme = useTheme();
   const gate = useAuthGate();
 
-  const category = resolveCategory(place.categories);
+  const taxonomy = useCategoryTaxonomy();
+  const category = resolveCategory(place.categories, taxonomy);
   const address = formatAddress(place.address);
   const opening = openingSummary(place);
   const schedule = weeklySchedule(place);

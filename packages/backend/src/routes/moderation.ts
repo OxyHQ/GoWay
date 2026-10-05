@@ -15,6 +15,10 @@
  *     GET  /moderation/places/{placeId}/reviews          reviews, every status
  *     PATCH /moderation/places/{placeId}/reviews/{reviewId}  hide or restore a review
  *     DELETE /moderation/places/{placeId}/reviews/{reviewId}/reply  remove the business's reply
+ *     GET  /moderation/categories                        the taxonomy, with positions and OSM mapping
+ *     POST /moderation/categories                        add a category
+ *     PATCH /moderation/categories/{key}                 glyph, position, OSM mapping, status
+ *     PUT|DELETE /moderation/categories/{key}/labels/{language}   one label
  *
  * ## Who may call it
  *
@@ -28,13 +32,22 @@
  *
  * Every decision is one transaction with the revision that records it
  * (`db/places/moderationRepository`), attributed to the session's account and
- * to the operator. The operator's decision is the only way a claim is approved,
+ * to the operator. A taxonomy write records a `place_category_events` row the
+ * same way (`db/categories/categoryRepository`) and then drops this process's
+ * category catalog, so the operator's next read — and the next filter, import
+ * or place write here — sees it. The operator's decision is the only way a claim is approved,
  * a capability reaches `oxy_verified`, or two places become one.
  */
 
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import {
   capabilityPathSchema,
+  categoryCreateInputSchema,
+  categoryLabelInputSchema,
+  categoryLabelPathSchema,
+  categoryListQuerySchema,
+  categoryPathSchema,
+  categoryUpdateInputSchema,
   capabilityValueSchemaFor,
   claimDecisionInputSchema,
   claimPathSchema,
@@ -57,6 +70,13 @@ import {
   revisionListQuerySchema,
   splitCapabilityKey,
 } from '@goway/contracts';
+import { categoryCatalog, categoryCatalogs } from '../categories/catalog';
+import {
+  createCategory,
+  removeCategoryLabel,
+  setCategoryLabel,
+  updateCategory,
+} from '../db/categories/categoryRepository';
 import { listModerationMedia, moderatePlaceMedia } from '../db/places/mediaRepository';
 import { listModerationReviews, moderateReview, withdrawReply } from '../db/places/reviewsRepository';
 import {
@@ -75,8 +95,24 @@ import { getDb } from '../db/postgres';
 import { ApiError } from '../http/apiError';
 import { cursorBinding, timePageOf, timeWindowOf } from '../http/cursor';
 import { parseBody, parsePath, parseQuery, parseValue } from '../http/validation';
+import { isMappableOsmTag } from '../import/osm/poiTags';
 import { requiredOxyCaller } from '../oxy/caller';
 import { unpublishedPlace } from '../places/placeLifecycle';
+
+/**
+ * Refuse an OpenStreetMap tag the importer never reads (`osmTags.N`): mapped,
+ * it would look like a working mapping and file nothing.
+ */
+function assertMappableOsmTags(tags: readonly string[] | undefined): void {
+  tags?.forEach((tag, index) => {
+    if (isMappableOsmTag(tag)) return;
+    throw new ApiError(
+      'validation_failed',
+      `The request body is not acceptable: osmTags.${index} is not a tag the OpenStreetMap import reads.`,
+      { field: `osmTags.${index}`, issue: 'unmapped_osm_tag', issueCount: 1 },
+    );
+  });
+}
 
 function route(handler: (request: Request, response: Response) => Promise<void>): RequestHandler {
   return (request, response, next: NextFunction) => {
@@ -322,6 +358,80 @@ export function createModerationRouter(dependencies: ModerationRouterDependencie
       const report = await resolvePlaceReport(getDb(), reportId, resolution, operator(request));
       if (!report) throw new ApiError('not_found', 'No report has that id.');
       response.json(report);
+    }),
+  );
+
+  // ── Categories ────────────────────────────────────────────────────────────
+  //
+  // Keys are immutable and nothing is deleted: a rename is a new key plus the
+  // old one deprecated (`docs/PLACE_DATA.md`). Each write drops this process's
+  // catalog after it commits; other processes re-read within one TTL.
+
+  router.get(
+    '/moderation/categories',
+    ...operatorOnly,
+    route(async (request, response) => {
+      const { locale } = parseQuery(categoryListQuerySchema, request.query);
+      response.json((await categoryCatalog(getDb())).moderationPage(locale));
+    }),
+  );
+
+  /** Add a category. `201` with it; `conflict` for a taken key or tag, or a deprecated parent. */
+  router.post(
+    '/moderation/categories',
+    ...operatorOnly,
+    route(async (request, response) => {
+      const input = parseBody(categoryCreateInputSchema, request.body);
+      assertMappableOsmTags(input.osmTags);
+      const db = getDb();
+      const category = await createCategory(db, input, operator(request));
+      categoryCatalogs.invalidate(db);
+      response.status(201).json(category);
+    }),
+  );
+
+  /** Change a category's glyph, position, OpenStreetMap mapping or status. */
+  router.patch(
+    '/moderation/categories/:key',
+    ...operatorOnly,
+    route(async (request, response) => {
+      const { key } = parsePath(categoryPathSchema, request.params);
+      const input = parseBody(categoryUpdateInputSchema, request.body);
+      assertMappableOsmTags(input.osmTags);
+      const db = getDb();
+      const category = await updateCategory(db, key, input, operator(request));
+      if (!category) throw new ApiError('not_found', 'No category has that key.');
+      categoryCatalogs.invalidate(db);
+      response.json(category);
+    }),
+  );
+
+  router.put(
+    '/moderation/categories/:key/labels/:language',
+    ...operatorOnly,
+    route(async (request, response) => {
+      const { key, language } = parsePath(categoryLabelPathSchema, request.params);
+      const { label } = parseBody(categoryLabelInputSchema, request.body);
+      const db = getDb();
+      const category = await setCategoryLabel(db, key, language, label, operator(request));
+      if (!category) throw new ApiError('not_found', 'No category has that key.');
+      categoryCatalogs.invalidate(db);
+      response.json(category);
+    }),
+  );
+
+  /** Remove one label. `204`; English is `conflict`, a language with no label `not_found`. */
+  router.delete(
+    '/moderation/categories/:key/labels/:language',
+    ...operatorOnly,
+    route(async (request, response) => {
+      const { key, language } = parsePath(categoryLabelPathSchema, request.params);
+      const db = getDb();
+      const removed = await removeCategoryLabel(db, key, language, operator(request));
+      if (removed === null) throw new ApiError('not_found', 'No category has that key.');
+      if (!removed) throw new ApiError('not_found', 'This category has no label in that language.');
+      categoryCatalogs.invalidate(db);
+      response.status(204).end();
     }),
   );
 

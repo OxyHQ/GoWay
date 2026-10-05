@@ -94,7 +94,6 @@ import {
 import { createdAt, generatedId, inList, timestamptz, updatedAt } from '@oxy.so/db';
 import {
   CAPABILITY_VERIFICATIONS,
-  CATEGORY_KEYS,
   MAX_DESCRIPTION_LENGTH,
   MAX_MEDIA_CAPTION_LENGTH,
   MAX_REVIEW_BODY_LENGTH,
@@ -125,7 +124,6 @@ import {
 } from '@goway/contracts';
 import {
   closedSet,
-  closedSetArray,
   foreignServiceId,
   generatedGeographyPoint,
   latitude,
@@ -208,9 +206,10 @@ export const places = pgTable(
     geometry: jsonb().$type<GeoGeometry>(),
 
     /**
-     * Category taxonomy keys (`food.cafe`), most specific first — constrained
-     * to the contract's registry below. Ancestors are not stored: a filter on
-     * `food` expands to its descendants instead.
+     * Category taxonomy keys (`food.cafe`), most specific first. Held to
+     * `place_categories` by the `places_categories_taxonomy_guard` trigger
+     * (`0016`): a key a write ADDS must be an active category. Ancestors are
+     * not stored: a filter on `food` expands to its descendants instead.
      */
     categories: text()
       .array()
@@ -291,12 +290,6 @@ export const places = pgTable(
   (table) => [
     closedSet('places_status_check', table.status, PLACE_STATUSES),
     closedSet('places_verification_state_check', table.verificationState, PLACE_VERIFICATION_STATES),
-    /**
-     * Built from `CATEGORY_KEYS`, so a category added to the contract is a
-     * generated migration that widens this, and a free-text category is
-     * refused here as well as at the edge.
-     */
-    closedSetArray('places_categories_taxonomy_check', table.categories, CATEGORY_KEYS),
     /**
      * The ordinates are bounded HERE as well as in the HTTP layer. A latitude
      * of 120 rejected by zod is a 422; a latitude of 120 that reaches the table

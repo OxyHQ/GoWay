@@ -4,6 +4,82 @@ All notable changes to `@goway.to/sdk`. The package follows semantic versioning
 with the 0.x rule: while the major version is 0, a MINOR release may break the
 API or the contract, and a PATCH release never does.
 
+## 0.4.0 — unreleased
+
+Two changes to how GoWay names places' kinds. The place category taxonomy
+moved out of the contract and into GoWay's database, where GoWay's moderators
+edit it — new categories, labels in any language, OpenStreetMap mappings,
+deprecations — without a release; the SDK no longer bundles a copy. And
+GoWay's vocabulary labels come in Mercaria's twelve languages, with a locale
+matched to one of them by BCP 47 rules instead of by its bare language. A
+MINOR under the 0.x rule, and breaking for every consumer of the bundled
+taxonomy.
+
+### Breaking
+
+- **The bundled taxonomy is gone.** `CATEGORIES`, `CATEGORY_KEYS`,
+  `CategoryKey`, `categoryOf`, `categoryLabel`, `categoryDescendants` and
+  `isCategoryKey` are removed. Fetch the list with `categories.list()` and index
+  it with `categoryTaxonomy(page.items)`, whose `of`, `label` and `descendants`
+  replace them.
+- **A category key is any well-formed dotted key client-side**
+  (`CATEGORY_KEY_PATTERN`, at most `MAX_CATEGORY_KEY_LENGTH`). Membership is the
+  server's question: a key that is not a category is `GoWayValidationError` from
+  the API (`validation_failed`) on a write or a filter, and so is a `deprecated`
+  key on a write that would add it to a place. A place already carrying a
+  deprecated key keeps it, and a filter on it still finds that place.
+- **`categories.list(options?)` is now `categories.list(query?, options?)`**,
+  with `query.locale` (a BCP 47 tag, normalized like every `locale`).
+- **`Category` gains `status`** (`active` | `deprecated`) **and `label`**, the
+  label resolved for the requested locale by `localizedLabel`.
+- **`LABEL_LANGUAGES` has twelve languages**: `en`, `ar`, `bn`, `ca`, `de`,
+  `es`, `fr`, `hi`, `ja`, `pt-BR`, `ru` and `zh-Hans`, all canonical tags.
+  `Labels` requires every one of them, so a `Labels` value built by hand needs
+  all twelve.
+- **`Category.labels` is `LocalizedLabels`**: `{ en: string; [tag]: string }`.
+  English is always there and any other language may be, keyed by canonical
+  tag. `es` is no longer a guaranteed key. Read a category's label with
+  `localizedLabel(category.labels, locale)` rather than indexing it. The
+  response schema is open, so a language GoWay adds later does not break
+  parsing.
+- **`localizedLabel` matches the whole locale.** Pass the reader's full tag,
+  such as `zh-Hans-CN`, `pt-PT` or `es-MX`. The match order is: the exact tag,
+  then the same language in a compatible script (the reader's region first,
+  then no region, then another region), then the same language in another
+  script, then English. `pt` and `pt-PT` read `pt-BR`. `zh`, `zh-CN` and
+  `zh-SG` read `zh-Hans`. `zh-TW`, `zh-HK` and `zh-Hant` read `zh-Hans` until a
+  `zh-Hant` label is offered, which then wins for them.
+
+### Added
+
+- `categoryTaxonomy` and `CategoryTaxonomy`: index a category list to look keys
+  up, label them in a locale (English as the fallback; the key itself for an
+  unknown one) and expand a parent to its descendants.
+- `CATEGORY_STATUSES` and `CategoryStatus`, and `CategoryListQuery`.
+- Constants for the shapes and limits the API enforces: `CATEGORY_KEY_PATTERN`,
+  `OSM_TAG_PATTERN`, `MAX_CATEGORY_KEY_LENGTH`, `MAX_CATEGORY_LABEL_LENGTH`,
+  `MAX_CATEGORY_OSM_TAGS`, `MAX_CATEGORY_POSITION`.
+- Operator methods for the taxonomy on `moderation`: `categories` (every
+  category with its position and OpenStreetMap mapping), `createCategory`,
+  `updateCategory` (glyph, position, mapping, status — a key never changes; a
+  rename is a new key and the old one deprecated), `setCategoryLabel` and
+  `removeCategoryLabel` (English cannot be removed). Label tags in a path or a
+  body are normalized before sending (`pt_br` → `pt-BR`). Types:
+  `ModerationCategory`, `ModerationCategoryPage`, `CategoryCreateInput`,
+  `CategoryUpdateInput`, `CategoryLabelInput`.
+- `matchLanguageTag(offered, locale)`: the BCP 47 best match that
+  `localizedLabel` uses, for labels you store yourself. It returns the offered
+  tag as you spelled it, or `undefined` when nothing serves.
+- The `LocalizedLabels` type.
+- Capability keys, enum values and groups are labelled in all twelve
+  languages. Brand names (FairCoin, Mercaria, Wikidata, WhatsApp, Instagram,
+  X, TikTok, Facebook) are kept as they are. The translations other than
+  English and Spanish are machine-authored and await native review
+  (`docs/LABEL_TRANSLATIONS.md`).
+- Categories are labelled in the same twelve languages, from GoWay's database:
+  the category tables are seeded with them, and `categories.list()` publishes
+  every language a category has.
+
 ## 0.3.0 — unreleased
 
 The SDK now validates every request and parses every response with the

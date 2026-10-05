@@ -45,7 +45,6 @@ import {
   ABSENT_CAPABILITY_VALUES,
   CAPABILITY_VERIFICATIONS,
   capabilityFilterOf,
-  categoryDescendants,
   normalizeLanguageTag,
   PUBLISHED_PLACE_STATUSES,
 } from '@goway/contracts';
@@ -70,6 +69,7 @@ import type {
   StructuredAddress,
   WritablePlaceStatus,
 } from '@goway/contracts';
+import { assertWritableCategories, categoryCatalog, taxonomyRefusal } from '../../categories/catalog';
 import { ApiError } from '../../http/apiError';
 import type { Paged, TimeWindow } from '../../http/cursor';
 import {
@@ -424,7 +424,7 @@ const isPublished = inArray(places.status, [...PUBLISHED_PLACE_STATUSES]);
  * the SDK treats a 404 as "this id is dead" and a consumer may drop a persisted
  * place id on the strength of it. A merged id answers with where it went.
  */
-function listPredicates(db: DatabaseOrTransaction, filters: PlaceListFilters): SQL[] {
+async function listPredicates(db: DatabaseOrTransaction, filters: PlaceListFilters): Promise<SQL[]> {
   const predicates: SQL[] = [isPublished];
   if (filters.capabilities && filters.capabilities.length > 0) {
     predicates.push(matchesAllCapabilities(db, filters.capabilities));
@@ -433,8 +433,9 @@ function listPredicates(db: DatabaseOrTransaction, filters: PlaceListFilters): S
     // A DISJUNCTION — "cafe or bakery" — because a place carries several
     // categories and asking for two is asking for either. A parent asks for
     // every key below it: a place stores `food.cafe`, never `food` as well.
-    // `&&` is array overlap, answered by `places_categories_gin`.
-    const keys = [...new Set(filters.categories.flatMap(categoryDescendants))];
+    // `&&` is array overlap, answered by `places_categories_gin`. The tree is
+    // the database's, read through the process's catalog.
+    const keys = (await categoryCatalog(db)).expand(filters.categories);
     predicates.push(arrayOverlaps(places.categories, keys));
   }
   return predicates;
@@ -738,7 +739,10 @@ export async function findPlacesNearby(
   query: NearbyQuery,
 ): Promise<PlaceWithDistance[]> {
   const distance = distanceTo(query.longitude, query.latitude);
-  const predicates = [withinRadius(query.longitude, query.latitude, query.radiusMeters), ...listPredicates(db, query)];
+  const predicates = [
+    withinRadius(query.longitude, query.latitude, query.radiusMeters),
+    ...(await listPredicates(db, query)),
+  ];
   if (query.after) {
     // A row comparison, so a tie in distance resumes by id rather than
     // skipping or repeating the places that share it. `ST_Distance` is
@@ -771,7 +775,7 @@ export async function findPlacesInBounds(
   db: DatabaseOrTransaction,
   query: BoundsQuery,
 ): Promise<Place[]> {
-  const predicates = [withinBoundingBox(query), ...listPredicates(db, query)];
+  const predicates = [withinBoundingBox(query), ...(await listPredicates(db, query))];
   if (query.after !== undefined) predicates.push(gt(places.id, query.after));
   const rows = await db
     .select(PLACE_COLUMNS)
@@ -1375,6 +1379,19 @@ function placeColumnValues(input: PlaceWriteInput): Record<string, unknown> {
 // ── Writes ──────────────────────────────────────────────────────────────────
 
 /**
+ * A write the database's taxonomy trigger refused, as the 422 the catalog
+ * check gives. Reached only when this process's catalog is older than a
+ * moderator's deprecation in another one (`categories/catalog`).
+ */
+async function withTaxonomyRefusal<T>(write: Promise<T>): Promise<T> {
+  try {
+    return await write;
+  } catch (error) {
+    throw taxonomyRefusal(error) ?? error;
+  }
+}
+
+/**
  * Create a GoWay place.
  *
  * Source collisions are checked BEFORE the transaction opens, because the
@@ -1407,7 +1424,9 @@ export async function createPlace(
     }
   }
 
-  const id = await db.transaction(async (tx) => {
+  if (input.categories) assertWritableCategories(await categoryCatalog(db), input.categories);
+
+  const id = await withTaxonomyRefusal(db.transaction(async (tx) => {
     const [row] = await tx
       .insert(places)
       .values({
@@ -1430,7 +1449,7 @@ export async function createPlace(
     ];
     await recordRevision(tx, { placeId: row.id, action: 'place_created', author: actor.author, changes });
     return row.id;
-  });
+  }));
 
   // Duplicate detection runs AFTER the place is committed and outside its
   // transaction, and a failure to detect is not a failure to create: a missed
@@ -1480,9 +1499,14 @@ export async function updatePlace(
     }
   }
 
-  const updated = await db.transaction(async (tx) => {
+  const catalog = input.categories ? await categoryCatalog(db) : null;
+
+  const updated = await withTaxonomyRefusal(db.transaction(async (tx) => {
     const [before] = await tx.select(PLACE_COLUMNS).from(places).where(eq(places.id, id)).for('update');
     if (!before) return null;
+    // Under the lock, against what the place carries now: a deprecated key it
+    // already has may stay, as the database's trigger allows.
+    if (catalog && input.categories) assertWritableCategories(catalog, input.categories, before.categories);
 
     // A logo or cover names a gallery item by its Oxy file; the column holds
     // the item, resolved under the same lock as the rest of the write.
@@ -1515,7 +1539,7 @@ export async function updatePlace(
     ];
     await recordRevision(tx, { placeId: id, action: 'place_updated', author: actor.author, changes });
     return after.id;
-  });
+  }));
 
   if (updated === null) return null;
 

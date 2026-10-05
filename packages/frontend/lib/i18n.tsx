@@ -61,12 +61,16 @@ export function deviceLocale(): string {
   const resolved = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().locale : 'en-US';
   // `resolvedOptions().locale` can carry an extension sequence — `en-US-u-ca-
   // gregory` on some engines — which is a valid BCP 47 tag and not a name key.
-  // Normalizing the whole tag first keeps the region when there is one; falling
-  // back to the bare language keeps SOMETHING when there is not, and this
-  // function must never return a tag the SDK refuses: it is read at module
-  // load, and a throw there is a blank app rather than an English one.
+  // Everything from the first singleton subtag on is extension or private use,
+  // so it goes, and the script and region before it stay: `zh-Hant-TW-u-nu-
+  // hanidec` must still read as Traditional Chinese, never as a bare `zh` the
+  // label matcher would serve Simplified. Falling back to the bare language
+  // keeps SOMETHING when the rest is not a tag, and this function must never
+  // return a tag the SDK refuses: it is read at module load, and a throw there
+  // is a blank app rather than an English one.
+  const withoutExtensions = resolved.replace(/[-_][A-Za-z0-9](?=[-_]|$)[\s\S]*$/, '');
   return (
-    normalizeLanguageTag(resolved) ??
+    normalizeLanguageTag(withoutExtensions) ??
     normalizeLanguageTag(resolved.split(/[-_]/)[0]) ??
     'en'
   );

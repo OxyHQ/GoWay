@@ -30,10 +30,12 @@ import {
   capabilityLabel,
   capabilityValueKind,
   capabilityValueLabel,
+  localizedLabel,
   strongestCapability,
   type CapabilityGroup,
   type CapabilityKey,
   type CapabilityVerification,
+  type Labels,
   type PlaceCapability,
 } from '@goway.to/sdk';
 import type { BloomIconComponent } from '@oxy.so/bloom/icons';
@@ -286,6 +288,22 @@ export function ecosystemCapabilities(capabilities: readonly PlaceCapability[]):
   return visibleCapabilities(capabilities).filter((capability) => ECOSYSTEM_KEYS.has(capability.key));
 }
 
+/** The heading for keys this build does not know, in every label language. */
+const OTHER_GROUP_LABELS: Labels = {
+  en: 'Other',
+  ar: 'أخرى',
+  bn: 'অন্যান্য',
+  ca: 'Altres',
+  de: 'Sonstiges',
+  es: 'Otros',
+  fr: 'Autres',
+  hi: 'अन्य',
+  ja: 'その他',
+  'pt-BR': 'Outros',
+  ru: 'Другое',
+  'zh-Hans': '其他',
+};
+
 /**
  * The visible capabilities, grouped as the registry groups them and in its
  * order, each presented. A key this build does not know lands in `other`,
@@ -307,7 +325,7 @@ export function groupedCapabilities(
     .filter((group) => byGroup.has(group))
     .map((group) => ({
       group,
-      label: group === 'other' ? (locale.startsWith('es') ? 'Otros' : 'Other') : capabilityGroupLabel(group, locale),
+      label: group === 'other' ? localizedLabel(OTHER_GROUP_LABELS, locale) : capabilityGroupLabel(group, locale),
       items: byGroup.get(group) ?? [],
     }));
 }

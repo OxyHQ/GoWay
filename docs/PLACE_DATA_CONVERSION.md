@@ -244,3 +244,29 @@ What actually shortens the lock is three things together:
 For the same reason, the conversion now runs first in the post phase. The
 brand-column drop's ACCESS EXCLUSIVE lock on `places_claims` is taken after the
 scans, not before them.
+
+## After the category-tables release
+
+The next release (`0015`–`0017`, `docs/PLACE_DATA.md`) moves the taxonomy into
+the database and replaces `places_categories_taxonomy_check` with the
+`places_categories_taxonomy_guard` trigger. Once it is deployed:
+
+- step 6 (`--validate-constraint`) has nothing left to validate: `0017` drops
+  the CHECK. Validating it before that release lands is still worth doing — it
+  is the proof that every existing row holds a taxonomy key — but nothing
+  depends on it;
+- the trigger checks writes only. The independent cross-check for existing
+  rows becomes this query, which must return 0 (12.7 s over 1.5M places on the
+  benchmark machine; a sequential scan, no locks beyond reads):
+
+  ```sql
+  SELECT count(*) FROM places AS p
+  WHERE EXISTS (
+    SELECT 1 FROM unnest(p.categories) AS k
+    WHERE NOT EXISTS (SELECT 1 FROM place_categories AS c WHERE c.key = k)
+  );
+  ```
+
+- `--dry-run`'s `taxonomy-check` still counts against `0013`'s fixed key list,
+  so after a moderator adds a category it counts places carrying it. Use the
+  query above instead.

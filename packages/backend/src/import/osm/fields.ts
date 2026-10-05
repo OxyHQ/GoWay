@@ -26,6 +26,7 @@
 import { z } from 'zod';
 import { openingHoursSchema, type OpeningHours } from '@goway/contracts';
 import type { places } from '../../db/schema';
+import type { OsmCategoryMapping } from '../../categories/catalog';
 import { timezoneAt } from '../../places/timezone';
 import { osmOpeningHoursParser } from './openingHours';
 import { osmCategories } from './poiTags';
@@ -40,8 +41,12 @@ export interface OsmElement {
 
 /** One importable column. Methods, so a field of a narrower type still fits. */
 export interface ImportedField<T> {
-  /** What the column holds for this element; `null` when the source says nothing. */
-  read(element: OsmElement): T;
+  /**
+   * What the column holds for this element; `null` when the source says
+   * nothing. `categories` is the taxonomy's OpenStreetMap mapping, which is
+   * data in the database rather than code, read once per run.
+   */
+  read(element: OsmElement, categories: OsmCategoryMapping): T;
   /** The value's shape, for reading it back out of `source_data` defensively. */
   readonly schema: z.ZodType<T>;
   /** Whether the column holds nothing, so filling it destroys nothing. */
@@ -124,7 +129,7 @@ export const IMPORTED_FIELDS = {
   latitude: ordinate((element) => element.latitude),
   longitude: ordinate((element) => element.longitude),
   categories: {
-    read: (element): string[] => osmCategories(element.tags),
+    read: (element, categories): string[] => osmCategories(element.tags, categories),
     schema: z.array(z.string()),
     empty: (value) => value.length === 0,
     // The same members in the same order: "most specific first" is part of
@@ -180,9 +185,9 @@ export function importedField(column: ImportedColumn): ImportedField<unknown> {
 }
 
 /** Every column read from one element. */
-export function readColumns(element: OsmElement): ImportedColumns {
+export function readColumns(element: OsmElement, categories: OsmCategoryMapping): ImportedColumns {
   return Object.fromEntries(
-    IMPORTED_COLUMNS.map((column) => [column, importedField(column).read(element)]),
+    IMPORTED_COLUMNS.map((column) => [column, importedField(column).read(element, categories)]),
   ) as ImportedColumns;
 }
 

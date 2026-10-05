@@ -31,6 +31,8 @@ import {
   duplicatePathSchema,
   duplicateResolutionInputSchema,
   moderationCapabilityInputSchemaFor,
+  moderationCategoryPageSchema,
+  moderationCategorySchema,
   moderationClaimListQuerySchema,
   moderationPlaceReportPageSchema,
   moderationPlaceReportSchema,
@@ -52,7 +54,13 @@ import {
   captureSessionSchema,
   captureUploadPolicySchema,
   captureUploadTicketSchema,
+  categoryCreateInputSchema,
+  categoryLabelInputSchema,
+  categoryLabelPathSchema,
+  categoryListQuerySchema,
   categoryPageSchema,
+  categoryPathSchema,
+  categoryUpdateInputSchema,
   claimListQuerySchema,
   geoCoordinateSchema,
   hoursExceptionListQuerySchema,
@@ -119,7 +127,13 @@ import type {
   DuplicateCandidatePage,
   DuplicateListQuery,
   DuplicateResolutionInput,
+  CategoryCreateInput,
+  CategoryLabelInput,
+  CategoryListQuery,
+  CategoryUpdateInput,
   ModerationCapabilityInput,
+  ModerationCategory,
+  ModerationCategoryPage,
   ModerationClaimListQuery,
   ModerationPlaceReport,
   ModerationPlaceReportPage,
@@ -443,11 +457,14 @@ export interface GoWayPlacesApi {
 /** The place category taxonomy. */
 export interface GoWayCategoriesApi {
   /**
-   * Every category, its parent, its glyph key and its labels, in one page.
-   * The same table ships inside this SDK (`CATEGORIES`, `categoryLabel`), so
-   * this is for a client that wants the server's current copy.
+   * Every category — its parent, glyph key, status and labels in every
+   * language GoWay holds — in one page, depth-first with siblings in
+   * presentation order. Each `label` is resolved for `locale` (English when
+   * absent or unmatched). The taxonomy lives in GoWay's database and changes
+   * without an SDK release, so this list is the only copy to read it from;
+   * index it with `categoryTaxonomy` to label, look up and expand keys.
    */
-  list(options?: GoWayRequestOptions): Promise<CategoryPage>;
+  list(query?: CategoryListQuery, options?: GoWayRequestOptions): Promise<CategoryPage>;
 }
 
 /** One account's claims, across every place. */
@@ -516,6 +533,24 @@ export interface GoWayModerationApi {
   ): Promise<PlaceReviewWithStatus>;
   /** Remove the business's reply to a review. Resolves with nothing (`204`). */
   removeReviewReply(placeId: PlaceId, reviewId: string, options?: GoWayRequestOptions): Promise<void>;
+  /** Every category, deprecated ones included, with its position and OpenStreetMap mapping. */
+  categories(query?: CategoryListQuery, options?: GoWayRequestOptions): Promise<ModerationCategoryPage>;
+  /** Add a category under an active parent. `labels.en` is required; the key spells the parent. */
+  createCategory(input: CategoryCreateInput, options?: GoWayRequestOptions): Promise<ModerationCategory>;
+  /**
+   * Change a category's glyph, position, OpenStreetMap mapping or status. The
+   * key never changes: a rename is a new category and this one `deprecated`.
+   */
+  updateCategory(key: string, input: CategoryUpdateInput, options?: GoWayRequestOptions): Promise<ModerationCategory>;
+  /** Set a category's label in one language (a BCP 47 tag). */
+  setCategoryLabel(
+    key: string,
+    language: string,
+    input: CategoryLabelInput,
+    options?: GoWayRequestOptions,
+  ): Promise<ModerationCategory>;
+  /** Remove a category's label in one language. English cannot be removed. Resolves with nothing (`204`). */
+  removeCategoryLabel(key: string, language: string, options?: GoWayRequestOptions): Promise<void>;
 }
 
 export interface GoWaySearchApi {
@@ -703,6 +738,16 @@ function duplicatePath(candidateId: string): string {
 function reportPath(reportId: string): string {
   const path = validInput(reportPathSchema, { reportId }, 'path');
   return `/moderation/reports/${pathSegment(path.reportId, 'reportId')}`;
+}
+
+function categoryPath(key: string): string {
+  const path = validInput(categoryPathSchema, { key }, 'path');
+  return `/moderation/categories/${pathSegment(path.key, 'key')}`;
+}
+
+function categoryLabelPath(key: string, language: string): string {
+  const path = validInput(categoryLabelPathSchema, { key, language }, 'path');
+  return `/moderation/categories/${pathSegment(path.key, 'key')}/labels/${pathSegment(path.language, 'language')}`;
 }
 
 function hoursExceptionPath(placeId: PlaceId, exceptionId: string): string {
@@ -1159,8 +1204,17 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
   });
 
   const categories: GoWayCategoriesApi = Object.freeze({
-    list: async (callOptions: GoWayRequestOptions = {}) =>
-      request(config, { method: 'GET', path: '/categories', signal: callOptions.signal }, categoryPageSchema),
+    list: async (query: CategoryListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: '/categories',
+          query: validInput(categoryListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        categoryPageSchema,
+      ),
   });
 
   const claims: GoWayClaimsApi = Object.freeze({
@@ -1354,6 +1408,62 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         { method: 'DELETE', path: `/moderation${reviewPath(placeId, reviewId)}/reply`, signal: callOptions.signal },
         null,
       ),
+
+    categories: async (query: CategoryListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: '/moderation/categories',
+          query: validInput(categoryListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        moderationCategoryPageSchema,
+      ),
+
+    createCategory: async (input: CategoryCreateInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'POST',
+          path: '/moderation/categories',
+          body: validInput(categoryCreateInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        moderationCategorySchema,
+      ),
+
+    updateCategory: async (key: string, input: CategoryUpdateInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'PATCH',
+          path: categoryPath(key),
+          body: validInput(categoryUpdateInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        moderationCategorySchema,
+      ),
+
+    setCategoryLabel: async (
+      key: string,
+      language: string,
+      input: CategoryLabelInput,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
+      request(
+        config,
+        {
+          method: 'PUT',
+          path: categoryLabelPath(key, language),
+          body: validInput(categoryLabelInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        moderationCategorySchema,
+      ),
+
+    removeCategoryLabel: async (key: string, language: string, callOptions: GoWayRequestOptions = {}) =>
+      request(config, { method: 'DELETE', path: categoryLabelPath(key, language), signal: callOptions.signal }, null),
   });
 
   const search: GoWaySearchApi = Object.freeze({

@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
+import { SEEDED_CATALOG } from '../../__tests__/categoryFixtures';
 import { createPhotonProvider, photonOsmTags } from '../photonProvider';
 import type { PhotonConfig } from '../../config/search';
 import { jsonResponse, paramsOf, recordingFetch } from './fixtures';
@@ -184,19 +185,20 @@ describe('the Photon adapter', () => {
     expect(paramsOf(recorder.urls[1] ?? '').get('lang')).toBeNull();
   });
 
-  it('forwards a GoWay category as the OpenStreetMap tags the taxonomy maps to it', async () => {
+  it('forwards the OpenStreetMap tags a category search maps to, as Photon spells them', async () => {
     const { photon, recorder } = provider(() => jsonResponse({ type: 'FeatureCollection', features: [] }));
-    await photon.forward({ query: 'coffee', limit: 5, categories: ['food.cafe'] });
+    await photon.forward({ query: 'coffee', limit: 5, osmTags: SEEDED_CATALOG.osmTagsUnder(['food.cafe']) });
 
     const tags = paramsOf(recorder.urls[0] ?? '').getAll('osm_tag');
     expect(tags).toEqual(['amenity:cafe', 'shop:coffee', 'shop:tea']);
   });
 
-  it('expands a parent to its descendants, and a key-wide fallback to the bare key', () => {
-    expect(photonOsmTags(['food'])).toContain('amenity:restaurant');
-    expect(photonOsmTags(['food'])).toContain('shop:bakery');
+  it('sends a key-wide tag as the bare key, and drops the values it already covers', () => {
+    const food = photonOsmTags(SEEDED_CATALOG.osmTagsUnder(['food']));
+    expect(food).toContain('amenity:restaurant');
+    expect(food).toContain('shop:bakery');
     // `shop=*` makes every `shop:<value>` below it redundant.
-    const shops = photonOsmTags(['shop']);
+    const shops = photonOsmTags(SEEDED_CATALOG.osmTagsUnder(['shop']));
     expect(shops).toContain('shop');
     expect(shops.filter((tag) => tag.startsWith('shop:'))).toEqual([]);
     expect(shops).toContain('amenity:marketplace');

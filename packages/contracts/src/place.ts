@@ -49,7 +49,7 @@ import {
   isCapabilityKey,
   type CapabilityKey,
 } from './capability-registry';
-import { categoryKeySchema, publishedCategoryKeySchema } from './category';
+import { categoryKeySchema } from './category';
 import { openingHoursInputSchema, openingHoursSchema, placeHoursExceptionSchema, timezoneSchema } from './hours';
 import { canonicalLanguageTagSchema, languageTagSchema } from './language';
 import { cursorSchema, limitSchema, pageSchema } from './pagination';
@@ -614,10 +614,11 @@ export const placeSchema = z.object({
   /** Footprint or service area, when GoWay has one. */
   geometry: geoGeometrySchema.optional(),
   /**
-   * Taxonomy keys (`food.cafe`), most specific first. Read them with
-   * `categoryLabel`; a key this build does not know is still a key.
+   * Taxonomy keys (`food.cafe`), most specific first. Label them through the
+   * list `GET /categories` publishes (`categoryTaxonomy`); a key that list does
+   * not hold is still a key.
    */
-  categories: z.array(publishedCategoryKeySchema),
+  categories: z.array(categoryKeySchema),
   address: structuredAddressSchema.optional(),
   contact: placeContactSchema.optional(),
   /** The weekly schedule, read in {@link Place.timezone}. Evaluate with `openingStatusAt`. */
@@ -720,7 +721,12 @@ const writablePlaceFields = {
   names: z.array(placeNameInputSchema).max(64),
   location: geoCoordinateSchema,
   geometry: geoGeometrySchema,
-  /** Taxonomy keys, most specific first. Repeats collapse. */
+  /**
+   * Taxonomy keys, most specific first. Repeats collapse. Each must be an
+   * ACTIVE category; one that is not is `validation_failed` naming
+   * `categories.N` — except a deprecated key the place already carries, which
+   * an update may keep.
+   */
   categories: z
     .array(categoryKeySchema)
     .max(32)
@@ -854,7 +860,11 @@ const placeListFields = {
    * holds — or, for `key:value`, carries that value.
    */
   capabilities: z.array(capabilityFilterSchema).max(64).optional(),
-  /** A DISJUNCTION: places carrying ANY listed category or any category below it. */
+  /**
+   * A DISJUNCTION: places carrying ANY listed category or any category below it.
+   * A key that is not a category is `validation_failed`; a deprecated one still
+   * finds the places that carry it.
+   */
   categories: z.array(categoryKeySchema).max(64).optional(),
   limit: limitSchema(MAX_PLACE_LIST_LIMIT, DEFAULT_PLACE_LIST_LIMIT),
   ...localeField,

@@ -11,6 +11,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import {
   API_ERROR_STATUS,
+  categoryTaxonomy,
   createGoWayClient,
   GoWayGoneError,
   GoWayNotFoundError,
@@ -19,7 +20,7 @@ import {
 } from '@goway.to/sdk';
 
 import { classifyGoWayError } from '@/lib/goway/errors';
-import { FIXTURE_PLACES, FIXTURE_WITHDRAWN_PLACE_IDS } from '@/lib/goway/fixtures';
+import { FIXTURE_CATEGORIES, FIXTURE_PLACES, FIXTURE_WITHDRAWN_PLACE_IDS } from '@/lib/goway/fixtures';
 import { createFixtureFetch, setFixtureFaults, type FixtureFaults } from '@/lib/goway/mockTransport';
 
 const API = 'https://api.goway.to';
@@ -105,6 +106,34 @@ describe('lists are pages', () => {
   test('a cursor the list never issued is refused, not served as page one', async () => {
     const error = await failureOf(fixtureClient().places.inBounds({ ...BARCELONA, cursor: 'forged' }));
     expect(error).toMatchObject({ status: API_ERROR_STATUS.bad_request, code: 'bad_request' });
+  });
+});
+
+describe('the category taxonomy', () => {
+  test('is one page, labelled for the locale asked for, every language kept', async () => {
+    const page = await fixtureClient().categories.list({ locale: 'es-MX' });
+    expect(page.nextCursor).toBeNull();
+    expect(page.items.map((category) => category.key)).toEqual(FIXTURE_CATEGORIES.map((category) => category.key));
+    const cafe = page.items.find((category) => category.key === 'food.cafe');
+    expect(cafe?.label).toBe('Cafetería');
+    expect(cafe?.labels).toEqual({ en: 'Café', es: 'Cafetería' });
+    expect((await fixtureClient().categories.list()).items.find((category) => category.key === 'food.cafe')?.label).toBe('Café');
+  });
+
+  test('holds every key a fixture place carries, and every parent of one', async () => {
+    const taxonomy = categoryTaxonomy((await fixtureClient().categories.list()).items);
+    for (const place of FIXTURE_PLACES) {
+      for (const key of place.categories) expect(taxonomy.of(key)?.key).toBe(key);
+    }
+    for (const category of taxonomy.categories) {
+      if (category.parent !== null) expect(taxonomy.of(category.parent)).toBeDefined();
+    }
+  });
+
+  test('a root filter expands to the categories below it, as the API does', async () => {
+    const page = await fixtureClient().places.inBounds({ ...BARCELONA, categories: ['food'] });
+    expect(page.items.length).toBeGreaterThan(0);
+    expect(page.items.every((place) => place.categories.some((key) => key.startsWith('food.')))).toBe(true);
   });
 });
 

@@ -14,6 +14,7 @@ import '../../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { and, eq } from 'drizzle-orm';
 import { uuidv7 } from '@oxy.so/db';
+import { categoryCatalog, type OsmCategoryMapping } from '../../../categories/catalog';
 import {
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
@@ -28,12 +29,15 @@ import { toImportedPlace, type ImportedPlace } from '../placeRecord';
 import { OSM_SOURCE, emptyWriteStats, writePlaceBatch } from '../writePlaces';
 
 let suite: SuiteDatabase | null = null;
+/** The migrated database's own OpenStreetMap mapping, read as a run reads it. */
+let mapping: OsmCategoryMapping;
 
 /** Whoever edits a place through the API in this suite. */
 const CLEARER: PlaceActor = { author: apiAuthor('person-business'), assertedVerification: 'community_reported' };
 
 beforeAll(async () => {
   suite = await createSuiteDatabase();
+  mapping = await categoryCatalog(suite.db);
 }, SUITE_SETUP_TIMEOUT_MS);
 
 afterAll(async () => {
@@ -54,6 +58,7 @@ function element(
     latitude,
     longitude,
     new Map(Object.entries(tags)),
+    mapping,
   );
   if (!place) throw new Error(`${sourceId} is not a POI`);
   return place;

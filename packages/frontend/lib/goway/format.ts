@@ -7,7 +7,7 @@
  * imitate Google Maps density".
  */
 import { placeDisplayName } from '@goway.to/sdk';
-import type { Place, StructuredAddress } from '@goway.to/sdk';
+import type { CategoryTaxonomy, Place, StructuredAddress } from '@goway.to/sdk';
 
 import { resolveCategory } from './categories';
 
@@ -29,8 +29,8 @@ export function formatAddress(address: StructuredAddress | undefined): string | 
 }
 
 /** The short, secondary line under a place name: category, then locality. */
-export function formatPlaceSubtitle(place: Place): string | null {
-  const category = resolveCategory(place.categories).label;
+export function formatPlaceSubtitle(place: Place, taxonomy: CategoryTaxonomy | undefined): string | null {
+  const category = resolveCategory(place.categories, taxonomy).label;
   const where = place.address?.locality ?? place.address?.city ?? null;
   const parts = [category, where].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(' · ') : null;

@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
+import { SEEDED_CATALOG } from '../../../__tests__/categoryFixtures';
 import { previousColumns, type ImportedColumns } from '../fields';
 import { mergePlaceColumns } from '../merge';
 import { sourceDataOf, toImportedPlace, type ImportedPlace } from '../placeRecord';
@@ -19,6 +20,7 @@ function element(overrides: Record<string, string> = {}, latitude = 41.385) {
     latitude,
     2.173,
     new Map(Object.entries({ amenity: 'cafe', name: 'Bar Pepe', ...overrides })),
+    SEEDED_CATALOG,
   );
   if (!place) throw new Error('fixture is not a POI');
   return place;

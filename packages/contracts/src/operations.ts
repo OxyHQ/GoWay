@@ -17,7 +17,9 @@ import { captureListQuerySchema } from './capture';
 import type { ApiErrorCode } from './errors';
 import type { ContractSchemaName } from './json-schema';
 import { capabilityKeySchema } from './capability-registry';
+import { categoryKeySchema, categoryListQuerySchema } from './category';
 import { hoursExceptionListQuerySchema } from './hours';
+import { languageTagSchema } from './language';
 import { mediaListQuerySchema, moderationMediaListQuerySchema } from './media';
 import {
   duplicateListQuerySchema,
@@ -107,6 +109,10 @@ export const scenePathSchema = z.object({ sceneId: z.string().min(1).max(64) });
 export const sessionPathSchema = z.object({ sessionId: z.string().min(1).max(128) });
 /** `{assetId}` */
 export const assetPathSchema = z.object({ assetId: z.string().min(1).max(128) });
+/** A category `{key}` such as `food.cafe`. */
+export const categoryPathSchema = z.object({ key: categoryKeySchema });
+/** A category `{key}` and one of its label's `{language}`, a BCP 47 tag (`es`, `pt-BR`). */
+export const categoryLabelPathSchema = z.object({ key: categoryKeySchema, language: languageTagSchema });
 
 const READ_ERRORS = ['bad_request', 'validation_failed'] as const satisfies readonly ApiErrorCode[];
 const WRITE_ERRORS = ['bad_request', 'validation_failed', 'unauthorized'] as const satisfies readonly ApiErrorCode[];
@@ -241,10 +247,11 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     method: 'get',
     path: '/categories',
     tag: 'Categories',
-    summary: 'The place category taxonomy: every key, its parent, its glyph and its labels.',
+    summary: 'The place category taxonomy: every key, its parent, its glyph, its status and its labels.',
     auth: 'public',
+    query: categoryListQuerySchema,
     responses: { 200: 'CategoryPage' },
-    errors: [],
+    errors: READ_ERRORS,
   },
 
   // ── Hours exceptions ──────────────────────────────────────────────────────
@@ -652,6 +659,63 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     body: 'PlaceReportResolutionInput',
     responses: { 200: 'ModerationPlaceReport' },
     errors: [...MODERATION_ERRORS, 'not_found', 'conflict'],
+  },
+  {
+    operationId: 'listModerationCategories',
+    method: 'get',
+    path: '/moderation/categories',
+    tag: 'Moderation',
+    summary: 'Every category, deprecated ones included, with its position and OpenStreetMap mapping.',
+    auth: 'required',
+    query: categoryListQuerySchema,
+    responses: { 200: 'ModerationCategoryPage' },
+    errors: [...READ_ERRORS, 'unauthorized', 'forbidden'],
+  },
+  {
+    operationId: 'createCategory',
+    method: 'post',
+    path: '/moderation/categories',
+    tag: 'Moderation',
+    summary: 'Add a category under an active parent, with an English label and any others.',
+    auth: 'required',
+    body: 'CategoryCreateInput',
+    responses: { 201: 'ModerationCategory' },
+    errors: [...MODERATION_ERRORS, 'conflict'],
+  },
+  {
+    operationId: 'updateCategory',
+    method: 'patch',
+    path: '/moderation/categories/{key}',
+    tag: 'Moderation',
+    summary: "Change a category's glyph, position, OpenStreetMap mapping or status. Deprecating it refuses new writes of it.",
+    auth: 'required',
+    pathParameters: categoryPathSchema,
+    body: 'CategoryUpdateInput',
+    responses: { 200: 'ModerationCategory' },
+    errors: [...MODERATION_ERRORS, 'not_found', 'conflict'],
+  },
+  {
+    operationId: 'putCategoryLabel',
+    method: 'put',
+    path: '/moderation/categories/{key}/labels/{language}',
+    tag: 'Moderation',
+    summary: "Set a category's label in one language.",
+    auth: 'required',
+    pathParameters: categoryLabelPathSchema,
+    body: 'CategoryLabelInput',
+    responses: { 200: 'ModerationCategory' },
+    errors: [...MODERATION_ERRORS, 'not_found'],
+  },
+  {
+    operationId: 'deleteCategoryLabel',
+    method: 'delete',
+    path: '/moderation/categories/{key}/labels/{language}',
+    tag: 'Moderation',
+    summary: "Remove a category's label in one language. English, the fallback, cannot be removed.",
+    auth: 'required',
+    pathParameters: categoryLabelPathSchema,
+    responses: { 204: null },
+    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found', 'conflict'],
   },
 
   // ── Search ────────────────────────────────────────────────────────────────

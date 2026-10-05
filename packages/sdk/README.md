@@ -115,12 +115,25 @@ await goway.places.update(created.id, { contact: { website: 'https://example.org
 await goway.places.update(created.id, { contact: { phone: null }, address: { houseNumber: null } });
 ```
 
-Categories are keys of one closed taxonomy (`CATEGORIES`, `CATEGORY_KEYS`; the
-server's copy is `goway.categories.list()`): `food.cafe`, `shop.books`,
-`transport.rail_station`. A key outside it is refused client-side. Render one
-with `categoryLabel(key, locale)` (English and Spanish today, English as the
-fallback). A place stores its most specific keys; filtering by a parent matches
-its descendants.
+Categories are keys of one taxonomy that lives in GoWay's database, edited by
+GoWay's moderators without an SDK release: `food.cafe`, `shop.books`,
+`transport.rail_station`. The SDK bundles no copy of it. Fetch it with
+`goway.categories.list({ locale })` — one page, every category with its parent,
+glyph key, `status`, its `label` resolved for the locale and its `labels` in
+every language GoWay holds (English always) — and index the page with
+`categoryTaxonomy(page.items)` to look a key up (`of`), label it (`label`,
+English as the fallback) or expand a parent (`descendants`). A key is checked
+for its shape client-side and for membership by the server: a key that is not a
+category is `GoWayValidationError` from the API, and so is a `deprecated` one on
+a write that would add it, while places already carrying it keep reading it. A
+place stores its most specific keys; filtering by a parent matches its
+descendants.
+
+```ts
+const { items } = await goway.categories.list({ locale: 'es' });
+const taxonomy = categoryTaxonomy(items);
+taxonomy.label('food.cafe', 'es'); // 'Cafetería'
+```
 
 Opening hours are a weekly schedule read in `place.timezone` — which GoWay
 derives from the position — plus `place.hoursExceptions`, the dated closures and
@@ -279,7 +292,13 @@ ecosystem keys (`commerce.mercaria.store`, `mobility.moovo.pickup`,
 of value it holds, `capabilities.put` checks the value before sending, and a key
 GoWay has not registered is refused — a new key is a GoWay release. Label one
 with `capabilityLabel(key, locale)` and `capabilityValueLabel(key, value, locale)`,
-and group them with `capabilityGroupOf(key)`.
+and group them with `capabilityGroupOf(key)`. Every capability label is written
+in all twelve `LABEL_LANGUAGES` (`en`, `ar`, `bn`, `ca`, `de`, `es`, `fr`, `hi`,
+`ja`, `pt-BR`, `ru`, `zh-Hans`). Pass the reader's whole locale — `zh-Hans-CN`,
+`pt-PT`, `es-MX` — not its language: `matchLanguageTag` picks the best language
+by BCP 47 rules (exact tag; same language and script, own region first; then
+the same language in another script; English otherwise), so `zh-TW` reads
+Simplified Chinese until a `zh-Hant` label exists.
 
 Each result carries its distance and the **evidence** behind every claim:
 
@@ -357,7 +376,10 @@ await goway.places.report(place.id, { reason: 'permanently_closed', note: 'Shutt
 The history needs no account and says what changed and when — never who, and
 never a claim, a report or a duplicate review. A report needs a session; the
 note is read by GoWay's moderators only. (`goway.moderation` is the operator
-surface behind GoWay's allow-list; it is not for integrations.)
+surface behind GoWay's allow-list; it is not for integrations. It includes the
+category taxonomy: `categories`, `createCategory`, `updateCategory` — glyph,
+position, OpenStreetMap mapping, or `status: 'deprecated'`, since a key never
+changes — `setCategoryLabel` and `removeCategoryLabel`, English excepted.)
 
 The end-to-end version of this — install, map, capability query, markers,
 evidence, deep link, and how a merchant comes to be marked in the first place —
