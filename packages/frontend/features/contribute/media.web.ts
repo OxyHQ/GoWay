@@ -1,11 +1,11 @@
 import type { ImagePickerAsset } from 'expo-image-picker';
 import type { CaptureUploadIntent, CaptureUploadPolicy } from '@goway.to/sdk';
-import { describeMedia, hashChunks, type SelectedMedia } from './media.shared';
+import { describeMedia, hashChunks, MediaError, type SelectedMedia } from './media.shared';
 
 async function source(asset: ImagePickerAsset): Promise<Blob> {
   if (asset.file) return asset.file;
   const response = await fetch(asset.uri);
-  if (!response.ok) throw new Error('The selected file is no longer available.');
+  if (!response.ok) throw new MediaError('contribute.error.unavailableFile');
   return response.blob();
 }
 export async function selectMedia(asset: ImagePickerAsset, policy: CaptureUploadPolicy): Promise<SelectedMedia> {
@@ -26,7 +26,7 @@ export async function uploadMedia(media: SelectedMedia, upload: CaptureUploadInt
   // The browser supplies Content-Length from the Blob; scripts cannot set it.
   const response = await fetch(upload.url, { method: 'PUT', headers, body: await source(media.asset), signal, credentials: 'omit', redirect: 'error' });
   // A retry can find its immutable object already stored. Finalize verifies its checksum.
-  if (!response.ok && response.status !== 412) throw new Error('The upload failed. You can retry this contribution.');
+  if (!response.ok && response.status !== 412) throw new MediaError('contribute.error.upload');
 }
 /**
  * Let go of media held through an object URL — a guided recording is one, and
