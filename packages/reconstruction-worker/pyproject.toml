@@ -56,7 +56,13 @@ dependencies = [
   "nvidia-ml-py>=13",
   "transformers>=4.50,<6",
   "safetensors>=0.4",
+  "scipy>=1.14",
 ]
+
+[project.optional-dependencies]
+# CUDA extensions compiled on the worker against its torch (worker:setup).
+# CI installs without them; the trainer falls back to a pure-PyTorch SSIM.
+gpu = ["fused-ssim"]
 
 [project.scripts]
 goway-worker = "goway_reconstruction.cli:main"
@@ -66,7 +72,12 @@ dev = [
     "pytest>=8",
 ]
 
+[tool.uv]
+# fused-ssim compiles a CUDA kernel against the installed torch, so it must see it.
+no-build-isolation-package = ["fused-ssim"]
+
 [tool.uv.sources]
+fused-ssim = { git = "https://github.com/rahul-goel/fused-ssim", rev = "328dc9836f513d00c4b5bc38fe30478b4435cbb5" }
 torch = { index = "pytorch-cu130" }
 torchvision = { index = "pytorch-cu130" }
 

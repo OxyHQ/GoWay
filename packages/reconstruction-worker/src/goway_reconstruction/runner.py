@@ -211,7 +211,9 @@ class Runner:
         from .recon import job as scene_job
 
         device = self.device()
-        return scene_job.run(job, ctx, self.aws, self.cache, work, device, self.depth_prior())
+        # The monocular depth prior stays available (depth_prior=self.depth_prior())
+        # but is not used by default: in side-by-side tests it softened scenes.
+        return scene_job.run(job, ctx, self.aws, self.cache, work, device)
 
 
 def _iso_in(seconds: int) -> str:
