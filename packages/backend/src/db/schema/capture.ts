@@ -86,6 +86,7 @@ import {
   CAPTURE_LOCATION_ORIGINS,
   CAPTURE_LOCATION_WITNESSES,
   CAPTURE_MEDIA_KINDS,
+  CAPTURE_PROJECTIONS,
   CAPTURE_PRIVACY_STATES,
   CAPTURE_RETENTION_CLASSES,
   CAPTURE_SOURCES,
@@ -512,6 +513,13 @@ export const captureAssets = pgTable(
     oxyUserId: foreignServiceId().notNull(),
 
     mediaKind: text().notNull(),
+    /**
+     * The projection the contributor DECLARED: `perspective`, or
+     * `equirectangular` for a 360° capture. A claim, not a fact — the privacy
+     * worker verifies it against the media's own metadata and pixels, and the
+     * backend refuses a privacy result whose verified projection differs.
+     */
+    projection: text().notNull().default('perspective'),
     source: text().notNull(),
     state: text().notNull().default('expected'),
     /** When the media was captured, where that is known. Not when it was uploaded. */
@@ -590,6 +598,7 @@ export const captureAssets = pgTable(
   },
   (table) => [
     closedSet('capture_assets_media_kind_check', table.mediaKind, CAPTURE_MEDIA_KINDS),
+    closedSet('capture_assets_projection_check', table.projection, CAPTURE_PROJECTIONS),
     closedSet('capture_assets_source_check', table.source, CAPTURE_SOURCES),
     closedSet('capture_assets_state_check', table.state, CAPTURE_ASSET_STATES),
     closedSet('capture_assets_anchor_origin_check', table.anchorOrigin, CAPTURE_LOCATION_ORIGINS),

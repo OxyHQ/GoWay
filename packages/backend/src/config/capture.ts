@@ -89,6 +89,21 @@ const DEFAULT_MAX_VIDEO_BYTES = 512 * 1024 * 1024;
 const DEFAULT_MAX_VIDEO_DURATION_SECONDS = 600;
 
 /**
+ * Ceilings on one 360° (equirectangular) file, which replace the ones above.
+ *
+ * A 360° frame is eight views' worth of pixels, so the byte ceilings are
+ * higher; the resolution ceilings are what the privacy worker decodes
+ * comfortably (an ~72 MP photo, an 8K video). Duration is SHORTER than for a
+ * phone video: a minute of 360° video already covers a street from both
+ * pavements, and every keyframe becomes eight derivatives.
+ */
+const DEFAULT_MAX_EQUIRECTANGULAR_PHOTO_BYTES = 64 * 1024 * 1024;
+const DEFAULT_MAX_EQUIRECTANGULAR_PHOTO_WIDTH_PIXELS = 12_000;
+const DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
+const DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_DURATION_SECONDS = 300;
+const DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_WIDTH_PIXELS = 7_680;
+
+/**
  * The media types GoWay accepts.
  *
  * Server-side and authoritative — a client's declared content type is a claim,
@@ -181,6 +196,27 @@ const schema = z.object({
   photoContentTypes: mediaTypeList(DEFAULT_PHOTO_CONTENT_TYPES),
   videoContentTypes: mediaTypeList(DEFAULT_VIDEO_CONTENT_TYPES),
 
+  /**
+   * Whether 360° (equirectangular) photos and videos are accepted. On by
+   * default; switch it off while the privacy worker that verifies and cuts
+   * them is not deployed — the backend refuses a privacy result that did not
+   * process a declared panorama as one, so such contributions would otherwise
+   * fail their privacy gate.
+   */
+  equirectangularEnabled: z.preprocess((value) => {
+    const normalized = emptyAsUndefined(value);
+    if (normalized === undefined) return undefined;
+    const text = String(normalized).trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(text)) return true;
+    if (['0', 'false', 'no', 'off'].includes(text)) return false;
+    return normalized;
+  }, z.boolean().default(true)),
+  maxEquirectangularPhotoBytes: positiveInteger(DEFAULT_MAX_EQUIRECTANGULAR_PHOTO_BYTES, 1024 * 1024 * 1024),
+  maxEquirectangularPhotoWidthPixels: positiveInteger(DEFAULT_MAX_EQUIRECTANGULAR_PHOTO_WIDTH_PIXELS, 16_384),
+  maxEquirectangularVideoBytes: positiveInteger(DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_BYTES, 8 * 1024 * 1024 * 1024),
+  maxEquirectangularVideoDurationSeconds: positiveInteger(DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_DURATION_SECONDS, 3600),
+  maxEquirectangularVideoWidthPixels: positiveInteger(DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_WIDTH_PIXELS, 16_384),
+
   rawPhotoRetentionDays: retentionDays(DEFAULT_RETENTION_DAYS.raw_photo),
   rawVideoRetentionDays: retentionDays(DEFAULT_RETENTION_DAYS.raw_video),
   keyframeRetentionDays: retentionDays(DEFAULT_RETENTION_DAYS.extracted_keyframe),
@@ -225,6 +261,12 @@ export function parseCaptureConfig(source: EnvironmentSource = process.env): Cap
     maxVideoDurationSeconds: source.CAPTURE_MAX_VIDEO_DURATION_SECONDS,
     photoContentTypes: source.CAPTURE_PHOTO_CONTENT_TYPES,
     videoContentTypes: source.CAPTURE_VIDEO_CONTENT_TYPES,
+    equirectangularEnabled: source.CAPTURE_EQUIRECTANGULAR_ENABLED,
+    maxEquirectangularPhotoBytes: source.CAPTURE_MAX_EQUIRECTANGULAR_PHOTO_BYTES,
+    maxEquirectangularPhotoWidthPixels: source.CAPTURE_MAX_EQUIRECTANGULAR_PHOTO_WIDTH_PIXELS,
+    maxEquirectangularVideoBytes: source.CAPTURE_MAX_EQUIRECTANGULAR_VIDEO_BYTES,
+    maxEquirectangularVideoDurationSeconds: source.CAPTURE_MAX_EQUIRECTANGULAR_VIDEO_DURATION_SECONDS,
+    maxEquirectangularVideoWidthPixels: source.CAPTURE_MAX_EQUIRECTANGULAR_VIDEO_WIDTH_PIXELS,
     rawPhotoRetentionDays: source.CAPTURE_RETENTION_DAYS_RAW_PHOTO,
     rawVideoRetentionDays: source.CAPTURE_RETENTION_DAYS_RAW_VIDEO,
     keyframeRetentionDays: source.CAPTURE_RETENTION_DAYS_KEYFRAME,

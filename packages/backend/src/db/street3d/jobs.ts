@@ -45,9 +45,17 @@ export type JobRow = typeof street3dJobs.$inferSelect;
  * are not there. Distinct from a transient fault (S3 or the database being
  * unreachable), which leaves the event in the queue to be retried; a rejected
  * result is recorded as a failed attempt and retried or failed by policy.
+ *
+ * `retryable: false` is for a result whose next attempt would be refused the
+ * same way — a worker that processed a declared 360° capture as a flat image
+ * will do so again — so the job fails at once instead of spending attempts.
  */
 export class ResultRejected extends Error {
-  constructor(readonly code: string, message: string) {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly retryable: boolean = true,
+  ) {
     super(message);
     this.name = 'ResultRejected';
   }

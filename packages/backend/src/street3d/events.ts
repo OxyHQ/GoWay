@@ -119,7 +119,7 @@ async function rejectAttempt(deps: EventDeps, event: WorkerEvent, error: ResultR
     if (!(await recordEvent(tx, { ...event, type: event.type }))) return 'duplicate';
     const job = await lockJob(tx, event.jobId);
     if (!job || isTerminal(job.state)) return 'late';
-    await applyFailure(tx, job, { code: error.code, detail: error.message, retryable: true }, now);
+    await applyFailure(tx, job, { code: error.code, detail: error.message, retryable: error.retryable }, now);
     return 'rejected';
   });
 }

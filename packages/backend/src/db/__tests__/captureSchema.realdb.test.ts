@@ -414,6 +414,15 @@ describe('what the schema refuses to be confused about', () => {
     expect(message).toContain('capture_assets_video_fields_check');
   });
 
+  it('declares every capture perspective unless told otherwise, and knows no other projection', async () => {
+    const [row] = await suite!.client`SELECT projection FROM capture_assets WHERE id = 'asset-1'`;
+    expect(row?.projection).toBe('perspective');
+    const message = await statementFailure(
+      () => suite!.client`UPDATE capture_assets SET projection = 'fisheye' WHERE id = 'asset-1'`,
+    );
+    expect(message).toContain('capture_assets_projection_check');
+  });
+
   it('refuses a consent version that is blank', async () => {
     // A contribution whose consent is unknown is one GoWay cannot honestly keep.
     const message = await statementFailure(

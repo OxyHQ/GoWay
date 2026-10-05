@@ -25,7 +25,7 @@ const FIXTURES = resolve(__dirname, '../../../../reconstruction-worker/contract/
 function schemaFor(file: string): z.ZodType {
   if (file.startsWith('job.')) return jobEnvelopeSchema;
   if (file.startsWith('event.')) return workerEventSchema;
-  if (file === 'result.capture_privacy.json') return capturePrivacyResultSchema;
+  if (file.startsWith('result.capture_privacy.')) return capturePrivacyResultSchema;
   if (file === 'result.scene_reconstruct.json') return sceneReconstructResultSchema;
   if (file === 'scene_input_manifest.json') return sceneInputManifestSchema;
   throw new Error(`No backend parser is registered for fixture ${file}`);
@@ -82,5 +82,30 @@ describe('worker contract fixtures', () => {
     const job = fixture('job.capture_privacy.json');
     expect(jobEnvelopeSchema.safeParse({ ...job, outputPrefix: '../captures/' }).success).toBe(false);
     expect(jobEnvelopeSchema.safeParse({ ...job, outputPrefix: '/derived/x/' }).success).toBe(false);
+  });
+
+  it('carries the declared projection, perspective when a party predates it', () => {
+    const job = fixture('job.capture_privacy.json');
+    const equirectangular = jobEnvelopeSchema.parse(fixture('job.capture_privacy.equirectangular.json'));
+    expect(equirectangular.jobType === 'capture_privacy' && equirectangular.projection).toBe('equirectangular');
+    const older = jobEnvelopeSchema.parse({ ...job, projection: undefined });
+    expect(older.jobType === 'capture_privacy' && older.projection).toBe('perspective');
+    expect(jobEnvelopeSchema.safeParse({ ...job, projection: 'fisheye' }).success).toBe(false);
+  });
+
+  it('accepts panorama views only from a result that verified a panorama', () => {
+    const views = fixture('result.capture_privacy.equirectangular.json');
+    const parsed = capturePrivacyResultSchema.parse(views);
+    expect(parsed.projection).toBe('equirectangular');
+    expect(parsed.frames.map((frame) => frame.panorama?.yawDegrees)).toEqual([0, 45, 0]);
+    // Views reported under a perspective verdict, or a panorama reported as flat frames: refused.
+    expect(capturePrivacyResultSchema.safeParse({ ...views, projection: 'perspective' }).success).toBe(false);
+    const flat = fixture('result.capture_privacy.json');
+    expect(capturePrivacyResultSchema.safeParse({ ...flat, projection: 'equirectangular' }).success).toBe(false);
+    // A result from a worker that predates projections reads as perspective.
+    expect(capturePrivacyResultSchema.parse({ ...flat, projection: undefined }).projection).toBe('perspective');
+    const frames = views.frames as Record<string, unknown>[];
+    const badYaw = { ...views, frames: [{ ...frames[0], panorama: { index: 0, yawDegrees: 360, horizontalFovDegrees: 90 } }] };
+    expect(capturePrivacyResultSchema.safeParse(badYaw).success).toBe(false);
   });
 });

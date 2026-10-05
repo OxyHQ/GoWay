@@ -21,6 +21,7 @@
  */
 
 import { and, asc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
+import type { CaptureProjection } from '@goway/contracts';
 import { qualified, uuidv7 } from '@oxy.so/db';
 import { addDays } from '../../capture/retention';
 import { captureConfig } from '../../config/capture';
@@ -162,6 +163,7 @@ export async function privacyEnvelope(db: Database | Transaction, job: JobRow, i
   const [row] = await db
     .select({
       mediaKind: captureAssets.mediaKind,
+      projection: captureAssets.projection,
       key: captureMediaObjects.objectKey,
       contentType: captureMediaObjects.contentType,
       byteSize: captureMediaObjects.byteSize,
@@ -191,6 +193,7 @@ export async function privacyEnvelope(db: Database | Transaction, job: JobRow, i
       minIntervalSeconds: street3dConfig.keyframeMinIntervalSeconds,
       maxLongEdgePixels: street3dConfig.keyframeMaxLongEdgePixels,
     },
+    projection: row.projection as CaptureProjection,
   };
 }
 
@@ -242,6 +245,16 @@ export async function applyPrivacyResult(
   const [media] = await tx.select().from(captureMediaObjects).where(eq(captureMediaObjects.id, link.mediaObjectId)).for('update');
   const [asset] = await tx.select().from(captureAssets).where(eq(captureAssets.id, assetId)).for('update');
   if (!media || !asset) throw new ResultRejected('result_mismatch', 'The privacy job names a capture that does not exist.');
+  // Fail closed on the projection. A worker that predates 360° captures
+  // ignores the declaration and reports one flat image: that is not a privacy
+  // pass for a panorama, and the next attempt would do the same.
+  if (result.verdict === 'passed' && result.projection !== asset.projection) {
+    throw new ResultRejected(
+      'projection_mismatch',
+      'The privacy result did not process the capture as its declared projection.',
+      false,
+    );
+  }
 
   const [block] = await tx
     .select({ id: street3dCaptureBlocks.id })
@@ -284,6 +297,13 @@ export async function applyPrivacyResult(
           width: frame.width,
           height: frame.height,
           privacyPipelineVersion: result.privacyPipelineVersion,
+          ...(frame.panorama
+            ? {
+                panoramaIndex: frame.panorama.index,
+                panoramaYawDegrees: frame.panorama.yawDegrees,
+                panoramaFovDegrees: frame.panorama.horizontalFovDegrees,
+              }
+            : {}),
           expiresAt,
           createdAt: now,
           updatedAt: now,

@@ -44,7 +44,8 @@ function frame(id: string, fields: Partial<EligibleFrame> = {}): EligibleFrame {
     imageSha256: id.padEnd(64, '0').slice(0, 64), maskKey: null, maskSha256: null, width: 10, height: 10,
     privacyPipelineVersion: 'p/1', expiresAt: new Date(Date.now() + 100 * 86_400_000), capturedAt: null,
     privacyCompletedAt: null, latitude: 41, longitude: 2, accuracyMeters: null, altitudeMeters: null,
-    headingDegrees: null, focalLength35mm: null, geoCell: 'sp3e9bh00', assetState: 'waiting_for_overlap',
+    headingDegrees: null, focalLength35mm: null, panoramaIndex: null, panoramaYawDegrees: null, panoramaFovDegrees: null,
+    geoCell: 'sp3e9bh00', assetState: 'waiting_for_overlap',
     ...fields,
   };
 }
@@ -77,6 +78,22 @@ describe('information gain', () => {
     expect(JSON.stringify(frames)).not.toContain('session-');
     expect(frames.map((entry) => entry.sequenceIndex)).toEqual([0, 1, 0]);
     expect(sequenceGroup('job-2', 'session-x')).not.toBe(groups[0]);
+  });
+
+  it('hands panorama views to the solve as a rig, each looking its own way', () => {
+    const views = [0, 45, 90, 135, 180, 225, 270, 315].map((yaw, k) =>
+      frame(`v${k}`, { assetId: 'a-pano', frameIndex: k, headingDegrees: 300, focalLength35mm: 6, panoramaIndex: 0, panoramaYawDegrees: yaw, panoramaFovDegrees: 90 }),
+    );
+    const manifest = manifestFrames('job-1', views);
+    expect(manifest.map((entry) => entry.panorama)).toEqual(
+      [0, 45, 90, 135, 180, 225, 270, 315].map((yaw) => ({ index: 0, yawDegrees: yaw, horizontalFovDegrees: 90 })),
+    );
+    // A view's heading is the capture's plus its yaw; its intrinsics are its field of view, not the 360° lens.
+    expect(manifest.map((entry) => entry.prior.headingDegrees)).toEqual([300, 345, 30, 75, 120, 165, 210, 255]);
+    expect(manifest.every((entry) => entry.camera === undefined)).toBe(true);
+    // One panorama covers every sector, so it satisfies the heading rule alone.
+    const strict = parseStreet3dConfig({ STREET3D_MIN_ELIGIBLE_FRAMES: '8', STREET3D_MIN_HEADING_SECTORS: '6' });
+    expect(isReconstructable(views, strict)).toBe(true);
   });
 });
 
