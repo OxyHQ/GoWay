@@ -29,3 +29,5 @@ export async function uploadMedia(media: SelectedMedia, upload: CaptureUploadInt
   const response = await fetch(upload.url, { method: 'PUT', headers: upload.headers, body, signal, credentials: 'omit', redirect: 'error' });
   if (!response.ok && response.status !== 412) throw new Error('The upload failed. You can retry this contribution.');
 }
+/** Native media is a file on disk; there is nothing held in memory to let go of. */
+export function releaseMedia(_asset: ImagePickerAsset): void {}

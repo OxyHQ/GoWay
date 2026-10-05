@@ -13,20 +13,27 @@ import { useOxy } from '@oxy.so/services';
 import type { CaptureAsset, CaptureAssetInput, CaptureSession, CaptureUploadPolicy, CaptureUploadTicket } from '@goway.to/sdk';
 import { MapCanvas, type MapApi } from '@/components/map';
 import { useAuthGate } from '@/lib/authGate';
+import { useTranslation } from '@/lib/i18n';
 import { captureClient } from './client';
 import { CaptureGuide } from './CaptureGuide';
 import { ContributionStatusCard } from './ContributionStatusCard';
-import { hashMedia, selectMedia, uploadMedia } from './media';
+import { GuidedCapture, type GuidedRecording } from './guided/GuidedCapture';
+import { formatClock } from './guided/plan';
+import { hashMedia, releaseMedia, selectMedia, uploadMedia } from './media';
 import { mediaLocation, type SelectedMedia } from './media.shared';
 
 export function ContributeScreen() {
   const router = useRouter();
   const gate = useAuthGate();
+  const { t } = useTranslation();
   const { user } = useOxy();
   const [policy, setPolicy] = useState<CaptureUploadPolicy | null>(null);
   const [media, setMedia] = useState<SelectedMedia | null>(null);
   const [location, setLocation] = useState<CaptureAssetInput['location'][number] | null>(null);
-  const [source, setSource] = useState<'camera' | 'library'>('library');
+  const [source, setSource] = useState<CaptureSession['source']>('library');
+  const [guided, setGuided] = useState(false);
+  /** What a guided recording knows that a picked file's metadata would otherwise carry. */
+  const [capture, setCapture] = useState<{ capturedAt: string; frameRate?: number } | null>(null);
   const [consent, setConsent] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -38,6 +45,9 @@ export function ContributeScreen() {
   const pending = useRef<{ sessionId: string; input: CaptureAssetInput; ticket?: CaptureUploadTicket } | null>(null);
   const currentUser = useRef(user?.id);
   currentUser.current = user?.id;
+  // Bumped whenever the media in hand changes, so a location fix asked for at
+  // the start of one guided capture can never attach to a different file.
+  const captureRun = useRef(0);
 
   const refresh = useCallback(async () => {
     if (!gate.canUsePrivateApi) return;
@@ -56,8 +66,10 @@ export function ContributeScreen() {
     return () => { mounted = false; };
   }, [gate.canUsePrivateApi, user?.id]);
   useEffect(() => () => active.current?.abort(), []);
+  // A guided recording on web is held through an object URL; let it go with the media.
+  useEffect(() => () => { if (media) releaseMedia(media.asset); }, [media]);
   useEffect(() => {
-    active.current?.abort(); pending.current = null; setSessions([]); setAssets([]); setConsent(false); setMedia(null); setLocation(null); setStatus(''); setError(''); setBusy(false);
+    active.current?.abort(); pending.current = null; captureRun.current += 1; setSessions([]); setAssets([]); setConsent(false); setMedia(null); setLocation(null); setCapture(null); setGuided(false); setStatus(''); setError(''); setBusy(false);
     if (gate.canUsePrivateApi) void refresh().catch(() => setError('Could not load your contributions.'));
   }, [gate.canUsePrivateApi, user?.id, refresh]);
 
@@ -73,11 +85,65 @@ export function ContributeScreen() {
       if (result.canceled || !result.assets[0]) return;
       const selected = await selectMedia(result.assets[0], policy);
       if (currentUser.current !== account) return;
-      pending.current = null; setMedia(selected); setSource(camera ? 'camera' : 'library'); setStatus('');
+      captureRun.current += 1;
+      pending.current = null; setMedia(selected); setSource(camera ? 'camera' : 'library'); setCapture(null); setStatus('');
       const evidence = mediaLocation(selected.asset);
       setLocation(evidence);
       if (evidence) map.current?.moveTo(evidence.coordinate, { zoom: 17 });
     } catch (e) { setError(e instanceof Error ? e.message : 'The media could not be selected.'); }
+  }
+
+  function openGuided() {
+    if (!policy || busy || !gate.canUsePrivateApi) return;
+    captureRun.current += 1;
+    pending.current = null; setMedia(null); setLocation(null); setCapture(null); setError(''); setStatus('');
+    setGuided(true);
+  }
+
+  /**
+   * The user pressed Start in the guided camera: they are standing where the
+   * recording begins, so this — and only this — asks for location, once. A
+   * refusal is fine: the capture is placed on the map instead.
+   */
+  function guidedStarted() {
+    const account = user?.id;
+    const run = captureRun.current;
+    void (async () => {
+      try {
+        if (!(await Location.requestForegroundPermissionsAsync()).granted) return;
+        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        if (currentUser.current !== account || captureRun.current !== run) return;
+        const coordinate = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+        setLocation((current) => current ?? {
+          origin: 'device_capture', coordinate, accuracyMeters: position.coords.accuracy ?? undefined, observedAt: new Date(position.timestamp).toISOString(),
+        });
+        map.current?.moveTo(coordinate, { zoom: 17 });
+      } catch { /* Placed on the map instead. */ }
+    })();
+  }
+
+  async function guidedRecorded(recording: GuidedRecording) {
+    setGuided(false);
+    if (!policy) { releaseMedia(recording.asset); return; }
+    const account = user?.id;
+    const seconds = (recording.asset.duration ?? 0) / 1000;
+    try {
+      const selected = await selectMedia(recording.asset, policy);
+      if (currentUser.current !== account) { releaseMedia(recording.asset); return; }
+      pending.current = null; setMedia(selected); setSource('guided_session');
+      setCapture({ capturedAt: recording.capturedAt, ...(recording.frameRate ? { frameRate: recording.frameRate } : {}) });
+      const time = formatClock(seconds);
+      const summary = recording.blurryFraction === undefined ? t('contribute.guided.summary', { time })
+        : recording.blurryFraction >= 0.1 ? t('contribute.guided.summaryBlur', { time, percent: Math.round(recording.blurryFraction * 100) })
+        : t('contribute.guided.summarySharp', { time });
+      setStatus(recording.stoppedAtLimit ? `${summary} ${t('contribute.guided.limitReached')}` : summary);
+    } catch (e) {
+      releaseMedia(recording.asset);
+      const tooLarge = (recording.asset.fileSize ?? 0) > policy.video.maxByteSize || seconds > policy.video.maxDurationSeconds;
+      setError(tooLarge
+        ? t('contribute.guided.tooLarge', { megabytes: Math.floor(policy.video.maxByteSize / 1048576), minutes: Math.floor(policy.video.maxDurationSeconds / 60) })
+        : e instanceof Error ? e.message : t('contribute.guided.error.recording'));
+    }
   }
 
   async function locate() {
@@ -108,8 +174,9 @@ export function ContributeScreen() {
         pending.current = { sessionId: session.id, input: {
           idempotencyKey: randomUUID(), mediaKind: media.kind, source, contentHash,
           byteSize: media.byteSize, contentType: media.contentType, location: [location],
+          ...(capture ? { capturedAt: capture.capturedAt } : {}),
           camera: { ...(media.asset.width > 0 ? { widthPixels: media.asset.width } : {}), ...(media.asset.height > 0 ? { heightPixels: media.asset.height } : {}),
-            ...(media.asset.duration ? { durationSeconds: media.asset.duration / 1000 } : {}) },
+            ...(media.asset.duration ? { durationSeconds: media.asset.duration / 1000 } : {}), ...(capture?.frameRate ? { frameRate: capture.frameRate } : {}) },
         } };
       }
       const request = pending.current;
@@ -122,7 +189,7 @@ export function ContributeScreen() {
       setStatus('Confirming the upload…');
       const asset = await captureClient.finalize(ticket.asset.id, { signal: controller.signal });
       if (currentUser.current !== account) return;
-      setAssets([asset]); pending.current = null; setMedia(null); setStatus('Contribution received. Privacy processing must finish before reconstruction.');
+      setAssets([asset]); pending.current = null; setMedia(null); setCapture(null); setStatus('Contribution received. Privacy processing must finish before reconstruction.');
       await refresh();
     } catch {
       if (currentUser.current === account) setError(controller.signal.aborted ? 'Upload cancelled. You can retry or withdraw the pending contribution below.' : 'The contribution could not finish. Retry to resume the same upload.');
@@ -141,6 +208,12 @@ export function ContributeScreen() {
     } catch { setError('The contribution could not be withdrawn. Please try again.'); }
   }
 
+  if (guided && policy) {
+    return <View className="flex-1 bg-background">
+      <GuidedCapture policy={policy} onStart={guidedStarted} onRecorded={(recording) => void guidedRecorded(recording)} onCancel={() => setGuided(false)} />
+    </View>;
+  }
+
   return <SafeAreaView className="flex-1 bg-background">
     <ScrollView contentContainerClassName="mx-auto w-full max-w-2xl gap-space-16 p-space-20">
       <Button appearance="plain" tone="neutral" onPress={() => router.back()}>Back to map</Button>
@@ -156,6 +229,7 @@ export function ContributeScreen() {
           <Button disabled={busy || !gate.canUsePrivateApi} onPress={() => void pick(false)}>Choose photo or video</Button>
           <Button disabled={busy || !gate.canUsePrivateApi} appearance="outline" onPress={() => void pick(true)}>Take photo</Button>
           <Button disabled={busy || !gate.canUsePrivateApi} appearance="outline" onPress={() => void pick(true, true)}>Record video</Button>
+          <Button disabled={busy || !gate.canUsePrivateApi} appearance="outline" onPress={openGuided}>{t('contribute.guided.button')}</Button>
         </View>
         {media && <>
           {media.kind === 'photo' && <Image source={{ uri: media.asset.uri }} style={{ height: 180, width: '100%' }} contentFit="contain" accessibilityLabel="Selected contribution preview" />}
