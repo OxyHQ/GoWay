@@ -165,12 +165,17 @@ def ssim(a_nchw: torch.Tensor, b_nchw: torch.Tensor) -> torch.Tensor:
 
 
 def _knn_scale(points: torch.Tensor) -> torch.Tensor:
-    """Mean distance to the 3 nearest neighbours, chunked to bound memory."""
-    out = torch.empty(points.shape[0], device=points.device)
-    for start in range(0, points.shape[0], 4096):
-        d = torch.cdist(points[start : start + 4096], points)
-        out[start : start + 4096] = d.topk(4, largest=False).values[:, 1:].mean(1)
-    return out.clamp(min=1e-4)
+    """Mean distance to the 3 nearest neighbours.
+
+    A KD-tree, not all-pairs distances: those are quadratic in time and, per
+    chunk, in memory, which a dense initial point cloud of millions of points
+    cannot afford.
+    """
+    from scipy.spatial import cKDTree
+
+    pts = points.detach().cpu().numpy()
+    d, _ = cKDTree(pts).query(pts, k=4, workers=-1)
+    return torch.from_numpy(d[:, 1:].mean(1)).float().to(points.device).clamp(min=1e-4)
 
 
 def _rotation_6d_to_matrix(d6: torch.Tensor) -> torch.Tensor:
