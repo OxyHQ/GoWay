@@ -44,7 +44,7 @@ const EXCEPTION: PlaceHoursException = {
 };
 
 describe('the category taxonomy', () => {
-  it('labels a key in English and Spanish, and falls back to English', () => {
+  it('labels a key in the languages the bundled taxonomy has, and falls back to English', () => {
     expect(categoryLabel('food.cafe')).toBe('Café');
     expect(categoryLabel('food.cafe', 'es-MX')).toBe('Cafetería');
     expect(categoryLabel('food.cafe', 'ja')).toBe('Café');

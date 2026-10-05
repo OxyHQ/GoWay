@@ -38,7 +38,7 @@
  */
 
 import { z } from 'zod';
-import { labels, labelsSchema, localizedLabel, type Labels } from './labels';
+import { localizedLabel, localizedLabelsSchema, type LocalizedLabels } from './labels';
 import { pageSchema } from './pagination';
 
 /**
@@ -108,7 +108,7 @@ export type CategoryIcon = (typeof CATEGORY_ICONS)[number];
 export interface CategoryDefinition<K extends string = string> {
   readonly key: K;
   readonly icon: CategoryIcon;
-  readonly labels: Labels;
+  readonly labels: LocalizedLabels;
   /** `key=value` OpenStreetMap tags filed here; `key=*` is a key-wide fallback. */
   readonly osm: readonly string[];
 }
@@ -120,7 +120,7 @@ function category<const K extends string>(
   es: string,
   osm: readonly string[] = [],
 ): CategoryDefinition<K> {
-  return { key, icon, labels: labels(en, es), osm };
+  return { key, icon, labels: { en, es }, osm };
 }
 
 /**
@@ -417,7 +417,8 @@ export const categorySchema = z.object({
   parent: publishedCategoryKeySchema.nullable(),
   /** A provider-neutral glyph key; each client draws it its own way. */
   icon: z.string().min(1),
-  labels: labelsSchema,
+  /** English always; every other language GoWay has the category in, by canonical tag. */
+  labels: localizedLabelsSchema,
 });
 export type Category = z.infer<typeof categorySchema>;
 

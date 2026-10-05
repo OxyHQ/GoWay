@@ -1,9 +1,24 @@
+import { CAPABILITY_DEFINITIONS, CAPABILITY_GROUP_LABELS, languageTagSchema, labelsSchema } from '@goway/contracts';
 import { describe, expect, it } from 'vitest';
-import { matchLanguageTag } from '../src/index';
+import {
+  CAPABILITY_GROUPS,
+  CAPABILITY_KEYS,
+  LABEL_LANGUAGES,
+  capabilityGroupLabel,
+  capabilityLabel,
+  capabilityValueLabel,
+  createGoWayClient,
+  localizedLabel,
+  matchLanguageTag,
+  type Labels,
+} from '../src/index';
+import { PLACE } from './fixtures';
+import { fakeFetch } from './helpers';
 
 /**
- * The locale matcher every label read goes through: the BCP 47 best match
- * over the languages an entry is written in.
+ * Label languages and the locale matcher every label read goes through: the
+ * BCP 47 best match, the device tags it is handed, and a capability vocabulary
+ * written in every label language with no gaps.
  */
 
 /** Mercaria's locales, as canonical tags. */
@@ -90,5 +105,120 @@ describe('matchLanguageTag', () => {
   it('breaks a tie by the order of the offer', () => {
     expect(matchLanguageTag(['pt-BR', 'pt-AO'], 'pt-PT')).toBe('pt-BR');
     expect(matchLanguageTag(['pt-AO', 'pt-BR'], 'pt-PT')).toBe('pt-AO');
+  });
+});
+
+describe('LABEL_LANGUAGES', () => {
+  it("are Mercaria's locales, English first as the fallback", () => {
+    expect([...LABEL_LANGUAGES]).toEqual(LANGUAGES);
+  });
+});
+
+const CAFE: Labels = {
+  en: 'Café',
+  ar: 'مقهى',
+  bn: 'ক্যাফে',
+  ca: 'Cafeteria',
+  de: 'Café',
+  es: 'Cafetería',
+  fr: 'Café',
+  hi: 'कैफ़े',
+  ja: 'カフェ',
+  'pt-BR': 'Cafeteria',
+  ru: 'Кафе',
+  'zh-Hans': '咖啡馆',
+};
+
+describe('localizedLabel', () => {
+  it('reads the best language, and English when none serves', () => {
+    expect(localizedLabel(CAFE)).toBe('Café');
+    expect(localizedLabel(CAFE, 'zh-Hans-CN')).toBe('咖啡馆');
+    expect(localizedLabel(CAFE, 'pt-PT')).toBe('Cafeteria');
+    expect(localizedLabel(CAFE, 'ja-JP')).toBe('カフェ');
+    expect(localizedLabel(CAFE, 'zh-TW')).toBe('Café');
+    expect(localizedLabel(CAFE, 'it-IT')).toBe('Café');
+    expect(localizedLabel(CAFE, 'not a tag')).toBe('Café');
+  });
+
+  it('reads labels stored as data, with any set of languages', () => {
+    const stored = { en: 'Café', es: 'Cafetería', 'zh-Hant': '咖啡廳' };
+    expect(localizedLabel(stored, 'es-MX')).toBe('Cafetería');
+    expect(localizedLabel(stored, 'zh-HK')).toBe('咖啡廳');
+    expect(localizedLabel(stored, 'zh-CN')).toBe('Café');
+    expect(localizedLabel(stored, 'pt-BR')).toBe('Café');
+  });
+});
+
+describe('device locales', () => {
+  // What `Intl…resolvedOptions().locale` and the OS locale APIs hand the app.
+  const DEVICE_TAGS = ['zh-Hans-CN', 'zh-Hant-TW', 'zh-CN', 'pt-BR', 'pt-PT', 'en-US', 'es-419', 'ca-ES', 'ar-SA', 'hi-IN', 'ja-JP'];
+
+  it('are accepted as a `?locale=` and as the client default', () => {
+    for (const tag of [...LABEL_LANGUAGES, ...DEVICE_TAGS]) {
+      expect(languageTagSchema.safeParse(tag).success, tag).toBe(true);
+      const { fetch } = fakeFetch(200, PLACE);
+      expect(() => createGoWayClient({ fetch, locale: tag }), tag).not.toThrow();
+    }
+  });
+
+  it('each read a label', () => {
+    expect(DEVICE_TAGS.map((tag) => capabilityGroupLabel('payment', tag))).toEqual([
+      '支付',
+      'Payment',
+      '支付',
+      'Pagamento',
+      'Pagamento',
+      'Payment',
+      'Pago',
+      'Pagament',
+      'الدفع',
+      'भुगतान',
+      '支払い',
+    ]);
+  });
+});
+
+describe('the capability vocabulary', () => {
+  it('is written in every label language, with no gaps', () => {
+    const entries: [string, Labels][] = [
+      ...CAPABILITY_GROUPS.map((group) => [`group ${group}`, CAPABILITY_GROUP_LABELS[group]] as [string, Labels]),
+      ...CAPABILITY_KEYS.flatMap((key) => {
+        const definition = CAPABILITY_DEFINITIONS[key];
+        const value = definition.value;
+        const values =
+          value.kind === 'enum' || value.kind === 'enum_set'
+            ? Object.entries(value.values).map(([member, labels]) => [`${key}:${member}`, labels] as [string, Labels])
+            : [];
+        return [[key, definition.labels] as [string, Labels], ...values];
+      }),
+    ];
+    for (const [name, labels] of entries) {
+      expect(labelsSchema.safeParse(labels).success, name).toBe(true);
+      expect(Object.keys(labels), name).toEqual([...LABEL_LANGUAGES]);
+      for (const language of LABEL_LANGUAGES) {
+        expect(labels[language], `${name} ${language}`).toBe(labels[language].trim());
+        // No bidi controls: the Arabic labels carry Latin brand names as they are.
+        expect(labels[language], `${name} ${language}`).not.toMatch(/[‎‏‪-‮⁦-⁩]/);
+      }
+    }
+  });
+
+  it('keeps brand names as they are written', () => {
+    for (const language of LABEL_LANGUAGES) {
+      expect(capabilityLabel('payments.faircoin.accepted', language)).toContain('FairCoin');
+      expect(capabilityLabel('commerce.mercaria.store', language)).toContain('Mercaria');
+      expect(capabilityLabel('brand.wikidata', language)).toContain('Wikidata');
+      expect(capabilityLabel('social.whatsapp', language)).toBe('WhatsApp');
+    }
+  });
+
+  it('labels keys, values and groups in the reader’s language', () => {
+    expect(capabilityLabel('payments.cash', 'ca')).toBe('Efectiu');
+    expect(capabilityLabel('payments.faircoin.accepted', 'ja-JP')).toBe('FairCoin 対応');
+    expect(capabilityValueLabel('food.cuisine', 'catalan', 'ca-ES')).toBe('Catalana');
+    expect(capabilityValueLabel('food.cuisine', 'italian', 'pt-PT')).toBe('Italiana');
+    expect(capabilityValueLabel('accessibility.wheelchair', 'yes', 'de-AT')).toBe('Rollstuhlgerecht');
+    expect(capabilityGroupLabel('accessibility', 'zh-SG')).toBe('无障碍');
+    expect(capabilityGroupLabel('accessibility', 'zh-HK')).toBe('Accessibility');
   });
 });

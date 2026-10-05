@@ -16,7 +16,15 @@
  * this build still draws — under its root's zoom, or as a generic pin — rather
  * than vanishing from the map.
  */
-import { categoryLabel, categoryOf, categoryRoot, type CategoryIcon, type CategoryKey } from '@goway.to/sdk';
+import {
+  categoryLabel,
+  categoryOf,
+  categoryRoot,
+  localizedLabel,
+  type CategoryIcon,
+  type CategoryKey,
+  type Labels,
+} from '@goway.to/sdk';
 import type { BloomIconComponent } from '@oxy.so/bloom/icons';
 import { RiAncientGateLine } from '@oxy.so/bloom/icons/RiAncientGateLine';
 import { RiAncientPavilionLine } from '@oxy.so/bloom/icons/RiAncientPavilionLine';
@@ -180,10 +188,26 @@ const ZOOM_BY_KEY: Readonly<Record<string, number>> = {
   'office.coworking': 14,
 };
 
+/** The generic pin's label, in every label language the registry is written in. */
+const PLACE_LABELS: Labels = {
+  en: 'Place',
+  ar: 'مكان',
+  bn: 'জায়গা',
+  ca: 'Lloc',
+  de: 'Ort',
+  es: 'Lugar',
+  fr: 'Lieu',
+  hi: 'जगह',
+  ja: 'スポット',
+  'pt-BR': 'Local',
+  ru: 'Место',
+  'zh-Hans': '地点',
+};
+
 function generic(locale: string): CategoryPresentation {
   // An unknown category is drawn at the "local detail" tier rather than hidden:
   // GoWay adding a category server-side must not silently empty the map.
-  return { key: 'place', label: locale.startsWith('es') ? 'Lugar' : 'Place', icon: RiMapPin2Line, minZoom: 14 };
+  return { key: 'place', label: localizedLabel(PLACE_LABELS, locale), icon: RiMapPin2Line, minZoom: 14 };
 }
 
 /**

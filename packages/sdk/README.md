@@ -118,8 +118,9 @@ await goway.places.update(created.id, { contact: { phone: null }, address: { hou
 Categories are keys of one closed taxonomy (`CATEGORIES`, `CATEGORY_KEYS`; the
 server's copy is `goway.categories.list()`): `food.cafe`, `shop.books`,
 `transport.rail_station`. A key outside it is refused client-side. Render one
-with `categoryLabel(key, locale)` (English and Spanish today, English as the
-fallback). A place stores its most specific keys; filtering by a parent matches
+with `categoryLabel(key, locale)` (English and Spanish in the bundled
+taxonomy; `categories.list()` publishes every language GoWay has, and
+`localizedLabel(category.labels, locale)` reads them). A place stores its most specific keys; filtering by a parent matches
 its descendants.
 
 Opening hours are a weekly schedule read in `place.timezone` — which GoWay
@@ -279,7 +280,12 @@ ecosystem keys (`commerce.mercaria.store`, `mobility.moovo.pickup`,
 of value it holds, `capabilities.put` checks the value before sending, and a key
 GoWay has not registered is refused — a new key is a GoWay release. Label one
 with `capabilityLabel(key, locale)` and `capabilityValueLabel(key, value, locale)`,
-and group them with `capabilityGroupOf(key)`.
+and group them with `capabilityGroupOf(key)`. Every capability label is written
+in all twelve `LABEL_LANGUAGES` (`en`, `ar`, `bn`, `ca`, `de`, `es`, `fr`, `hi`,
+`ja`, `pt-BR`, `ru`, `zh-Hans`). Pass the reader's whole locale — `zh-Hans-CN`,
+`pt-PT`, `es-MX` — not its language: `matchLanguageTag` picks the best language
+by BCP 47 rules (exact tag; same language and script, own region first; English
+otherwise), and `zh-TW` reads English rather than Simplified Chinese.
 
 Each result carries its distance and the **evidence** behind every claim:
 

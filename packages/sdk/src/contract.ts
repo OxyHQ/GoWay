@@ -189,6 +189,7 @@ export type {
   HoursExceptionListQuery,
   LabelLanguage,
   Labels,
+  LocalizedLabels,
   OpeningChange,
   OpeningFacts,
   OpeningStatus,
