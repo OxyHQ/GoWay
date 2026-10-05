@@ -28,3 +28,10 @@ export async function uploadMedia(media: SelectedMedia, upload: CaptureUploadInt
   // A retry can find its immutable object already stored. Finalize verifies its checksum.
   if (!response.ok && response.status !== 412) throw new Error('The upload failed. You can retry this contribution.');
 }
+/**
+ * Let go of media held through an object URL — a guided recording is one, and
+ * it pins the whole video in memory until the URL is revoked.
+ */
+export function releaseMedia(asset: ImagePickerAsset): void {
+  if (asset.file && asset.uri.startsWith('blob:')) URL.revokeObjectURL(asset.uri);
+}
