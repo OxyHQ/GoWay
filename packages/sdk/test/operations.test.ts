@@ -24,6 +24,7 @@ const PATH_VALUES: Readonly<Record<string, string>> = {
   reportId: 'r1',
   mediaId: 'm1',
   reviewId: 'v1',
+  language: 'es',
 };
 
 function operationKey(method: string, path: string): string {
@@ -106,6 +107,12 @@ async function callEverything(): Promise<Set<string>> {
     goway.moderation.resolveDuplicate('d1', { decision: 'merge', survivorPlaceId: 'p1' }),
     goway.moderation.reports(),
     goway.moderation.resolveReport('r1', { resolution: 'dismissed' }),
+    // `key` is shared with the capability paths: a capability key is also a well-formed category key.
+    goway.moderation.categories(),
+    goway.moderation.createCategory({ key: 'food.cafe', icon: 'cafe', labels: { en: 'Café' } }),
+    goway.moderation.updateCategory('payments.faircoin.accepted', { status: 'deprecated' }),
+    goway.moderation.setCategoryLabel('payments.faircoin.accepted', 'es', { label: 'Aceptado' }),
+    goway.moderation.removeCategoryLabel('payments.faircoin.accepted', 'es'),
     goway.search.query({ query: 'x' }),
     goway.geocode.forward({ query: 'x' }),
     goway.geocode.reverse({ latitude: 0, longitude: 0 }),

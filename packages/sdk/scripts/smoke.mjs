@@ -387,7 +387,14 @@ async function exercise(sdk) {
 
   check(sdk.toGeoPosition(first.items[0].location)[0] === 2.1686, 'bundled helper is longitude-first');
   check(sdk.CAPABILITY_KEYS.includes('payments.faircoin.accepted'), 'bundled capability registry');
-  check(sdk.categoryLabel('food.cafe', 'es') === 'Cafetería', 'bundled category taxonomy');
+  const taxonomy = sdk.categoryTaxonomy([
+    { key: 'food', parent: null, icon: 'restaurant', status: 'active', label: 'Food & drink', labels: { en: 'Food & drink' } },
+    { key: 'food.cafe', parent: 'food', icon: 'cafe', status: 'active', label: 'Café', labels: { en: 'Café', es: 'Cafetería' } },
+  ]);
+  check(
+    taxonomy.label('food.cafe', 'es-MX') === 'Cafetería' && taxonomy.descendants('food').length === 2,
+    'category taxonomy indexes a fetched list',
+  );
   check(sdk.openingStatusAt({}).state === 'unknown', 'bundled opening-hours evaluation');
   check(sdk.API_ERROR_RETRYABLE.no_route === false, 'bundled retryability table');
   check(sdk.GOWAY_API_BASE_PATH === '/api/v1', 'bundled API root');

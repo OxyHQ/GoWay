@@ -1,17 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CATEGORIES,
-  CATEGORY_KEYS,
   GoWayValidationError,
   capabilityLabel,
   capabilityValueLabel,
-  categoryDescendants,
-  categoryLabel,
+  categoryTaxonomy,
   createGoWayClient,
   openingStatusAt,
   placeHasCapability,
   placeMatchesCapabilityFilter,
-  type CategoryKey,
+  type Category,
+  type ModerationCategory,
   type OpeningHours,
   type Place,
   type PlaceCapability,
@@ -21,9 +19,11 @@ import { PLACE, page } from './fixtures';
 import { fakeFetch, rejection } from './helpers';
 
 /**
- * The richer place data as the SDK carries it: the taxonomy and the capability
- * registry it bundles, typed capability writes it checks before sending, the
- * hours-exception and category calls, and the one "open now" evaluation.
+ * The richer place data as the SDK carries it: the category taxonomy it READS
+ * from the API (it bundles none — GoWay's moderators edit it without a
+ * release), the capability registry it bundles, typed capability writes it
+ * checks before sending, the hours-exception and category calls, and the one
+ * "open now" evaluation.
  */
 
 function clientFor(body: unknown, status = 200) {
@@ -43,46 +43,170 @@ const EXCEPTION: PlaceHoursException = {
   observedAt: '2026-10-01T00:00:00.000Z',
 };
 
+/**
+ * A few categories as `GET /categories` publishes them — a fixture, not the
+ * taxonomy, which lives in GoWay's database. Depth-first, siblings in order.
+ */
+const CATEGORY_LIST: Category[] = [
+  {
+    key: 'food',
+    parent: null,
+    icon: 'restaurant',
+    status: 'active',
+    label: 'Food & drink',
+    labels: { en: 'Food & drink', es: 'Comida y bebida' },
+  },
+  {
+    key: 'food.cafe',
+    parent: 'food',
+    icon: 'cafe',
+    status: 'active',
+    label: 'Café',
+    labels: { en: 'Café', es: 'Cafetería', 'pt-BR': 'Cafeteria' },
+  },
+  {
+    key: 'food.bakery',
+    parent: 'food',
+    icon: 'bakery',
+    status: 'deprecated',
+    label: 'Bakery',
+    labels: { en: 'Bakery', es: 'Panadería' },
+  },
+  {
+    key: 'lodging',
+    parent: null,
+    icon: 'hotel',
+    status: 'active',
+    label: 'Stay',
+    labels: { en: 'Stay' },
+  },
+];
+
+const MODERATION_CATEGORY: ModerationCategory = {
+  ...CATEGORY_LIST[1]!,
+  position: 10,
+  osmTags: ['amenity=cafe', 'shop=coffee'],
+  createdAt: '2026-10-01T00:00:00.000Z',
+  updatedAt: '2026-10-01T00:00:00.000Z',
+};
+
 describe('the category taxonomy', () => {
-  it('labels a key in the languages the bundled taxonomy has, and falls back to English', () => {
-    expect(categoryLabel('food.cafe')).toBe('Café');
-    expect(categoryLabel('food.cafe', 'es-MX')).toBe('Cafetería');
-    expect(categoryLabel('food.cafe', 'ja')).toBe('Café');
-    // A key this build does not know is still identifiable.
-    expect(categoryLabel('food.space_diner', 'es')).toBe('food.space_diner');
+  const taxonomy = categoryTaxonomy(CATEGORY_LIST);
+
+  it('labels a key in any language the list holds, and falls back to English', () => {
+    expect(taxonomy.label('food.cafe')).toBe('Café');
+    expect(taxonomy.label('food.cafe', 'es-MX')).toBe('Cafetería');
+    expect(taxonomy.label('food.cafe', 'ja')).toBe('Café');
+    // `pt` is not held, only `pt-BR`: the bare language falls back to English.
+    expect(taxonomy.label('lodging', 'pt')).toBe('Stay');
+    // A key the list does not hold is still identifiable.
+    expect(taxonomy.label('food.space_diner', 'es')).toBe('food.space_diner');
   });
 
-  it('expands a parent to its descendants, and only a known key', () => {
-    expect(categoryDescendants('lodging')).toEqual([
-      'lodging',
-      'lodging.hotel',
-      'lodging.hostel',
-      'lodging.guest_house',
-      'lodging.apartment',
-      'lodging.camping',
-      'lodging.hut',
-    ]);
-    expect(categoryDescendants('food_drink')).toEqual([]);
+  it('looks a key up, and expands a parent to its descendants in list order', () => {
+    expect(taxonomy.of('food.bakery')?.status).toBe('deprecated');
+    expect(taxonomy.of('food_drink')).toBeUndefined();
+    expect(taxonomy.descendants('food')).toEqual(['food', 'food.cafe', 'food.bakery']);
+    expect(taxonomy.descendants('lodging')).toEqual(['lodging']);
+    expect(taxonomy.descendants('food_drink')).toEqual([]);
   });
 
-  it('is one tree: every parent exists and every key is unique', () => {
-    expect(new Set(CATEGORY_KEYS).size).toBe(CATEGORY_KEYS.length);
-    for (const category of CATEGORIES) {
-      if (category.parent !== null) expect(CATEGORY_KEYS).toContain(category.parent);
-    }
+  it('lists the taxonomy from the API, labelled for a normalized locale', async () => {
+    const { client, calls } = clientFor(page(CATEGORY_LIST));
+    const listed = await client.categories.list({ locale: 'ES' });
+    expect(listed.items).toHaveLength(CATEGORY_LIST.length);
+    expect(calls[0]?.url).toBe('https://api.goway.to/api/v1/categories?locale=es');
   });
 
-  it('lists the taxonomy from the API and refuses a category it does not know before sending', async () => {
-    const { client, calls } = clientFor(page([...CATEGORIES]));
+  it('reads a category GoWay added after this build — a new key, a new glyph — rather than failing', async () => {
+    const added: Category = {
+      key: 'food.space_diner',
+      parent: 'food',
+      icon: 'rocket',
+      status: 'active',
+      label: 'Space diner',
+      labels: { en: 'Space diner', 'zh-Hans': '太空餐厅' },
+    };
+    const { client } = clientFor(page([...CATEGORY_LIST, added]));
     const listed = await client.categories.list();
-    expect(listed.items).toHaveLength(CATEGORIES.length);
-    expect(calls[0]?.url).toBe('https://api.goway.to/api/v1/categories');
+    expect(listed.items.at(-1)).toEqual(added);
+  });
 
+  it('refuses a malformed category key before sending, and leaves membership to the server', async () => {
+    const { client, calls } = clientFor(page([]));
     const error = await rejection(
-      client.places.nearby({ latitude: 0, longitude: 0, radiusMeters: 10, categories: ['cafe' as CategoryKey] }),
+      client.places.nearby({ latitude: 0, longitude: 0, radiusMeters: 10, categories: ['Food Cafe'] }),
     );
     expect(error).toBeInstanceOf(GoWayValidationError);
+    expect(calls).toHaveLength(0);
+
+    // Well-formed but unknown to this build: only the server knows the taxonomy.
+    await client.places.nearby({ latitude: 0, longitude: 0, radiusMeters: 10, categories: ['food.space_diner'] });
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe('category moderation', () => {
+  it('lists every category with its mapping', async () => {
+    const { client, calls } = clientFor(page([MODERATION_CATEGORY]));
+    const listed = await client.moderation.categories({ locale: 'es' });
+    expect(listed.items[0]?.osmTags).toEqual(['amenity=cafe', 'shop=coffee']);
+    expect(calls[0]?.url).toBe('https://api.goway.to/api/v1/moderation/categories?locale=es');
+  });
+
+  it('creates a category with normalized label tags, and requires English', async () => {
+    const { client, calls } = clientFor(MODERATION_CATEGORY, 201);
+    await client.moderation.createCategory({
+      key: 'food.cafe',
+      icon: 'cafe',
+      osmTags: ['amenity=cafe', 'amenity=cafe'],
+      labels: { en: 'Café', ES: 'Cafetería', pt_br: 'Cafeteria' },
+    });
+    expect(calls[0]?.init.method).toBe('POST');
+    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({
+      key: 'food.cafe',
+      icon: 'cafe',
+      osmTags: ['amenity=cafe'],
+      labels: { en: 'Café', es: 'Cafetería', 'pt-BR': 'Cafeteria' },
+    });
+
+    const noEnglish = await rejection(
+      client.moderation.createCategory({
+        key: 'food.tea',
+        icon: 'cafe',
+        labels: { es: 'Té' } as unknown as { en: string },
+      }),
+    );
+    expect(noEnglish).toBeInstanceOf(GoWayValidationError);
+
+    const twice = await rejection(
+      client.moderation.createCategory({ key: 'food.tea', icon: 'cafe', labels: { en: 'Tea', es: 'Té', ES: 'Té' } }),
+    );
+    expect(twice).toBeInstanceOf(GoWayValidationError);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('refuses an empty patch before sending, and sends a deprecation', async () => {
+    const { client, calls } = clientFor(MODERATION_CATEGORY);
+    const empty = await rejection(client.moderation.updateCategory('food.cafe', {}));
+    expect(empty).toBeInstanceOf(GoWayValidationError);
+    expect(calls).toHaveLength(0);
+
+    await client.moderation.updateCategory('food.cafe', { status: 'deprecated' });
+    expect(calls[0]?.init.method).toBe('PATCH');
+    expect(calls[0]?.url).toBe('https://api.goway.to/api/v1/moderation/categories/food.cafe');
+  });
+
+  it('addresses a label by its canonical language tag', async () => {
+    const { client, calls } = clientFor(MODERATION_CATEGORY);
+    await client.moderation.setCategoryLabel('food.cafe', 'pt_br', { label: 'Cafeteria' });
+    expect(calls[0]?.init.method).toBe('PUT');
+    expect(calls[0]?.url).toBe('https://api.goway.to/api/v1/moderation/categories/food.cafe/labels/pt-BR');
+
+    const removed = clientFor('', 204);
+    await removed.client.moderation.removeCategoryLabel('food.cafe', 'pt_br');
+    expect(removed.calls[0]?.init.method).toBe('DELETE');
+    expect(removed.calls[0]?.url).toBe('https://api.goway.to/api/v1/moderation/categories/food.cafe/labels/pt-BR');
   });
 });
 
