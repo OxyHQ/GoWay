@@ -31,6 +31,7 @@ import type {
   CaptureCameraMetadata,
   CaptureLocationEvidence,
   CaptureMediaKind,
+  CaptureProjection,
   CaptureRetentionClass,
   CaptureSession,
   CaptureSource,
@@ -79,6 +80,8 @@ export interface CreateSessionInput {
 export interface RegisterAssetInput {
   idempotencyKey?: string;
   mediaKind: CaptureMediaKind;
+  /** Omitted means perspective. A claim the privacy worker verifies. */
+  projection?: CaptureProjection;
   source: CaptureSource;
   contentHash: string;
   byteSize: number;
@@ -467,6 +470,7 @@ export async function registerAsset(
         mediaObjectId: objectId,
         oxyUserId: session.oxyUserId,
         mediaKind: input.mediaKind,
+        projection: input.projection ?? 'perspective',
         source: input.source,
         // `uploaded` straight away when the bytes are already here: there is
         // nothing left for the contributor to do, and leaving it `expected`

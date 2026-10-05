@@ -56,7 +56,7 @@ from ..contract import (
 )
 from ..storage import ContentCache
 from . import spz
-from .sfm import SfmError, SfmFrame, enu_to_geodetic, geodetic_to_enu, georeference, solve
+from .sfm import RigView, SfmError, SfmFrame, enu_to_geodetic, frame_image_name, geodetic_to_enu, georeference, solve
 from .train import Trainer, View, load_views, train_scene
 
 PROFILE_SH_DEGREE = {"draft": 1, "standard": 3}
@@ -170,9 +170,18 @@ def run(
     anchor = (manifest.anchor.latitude, manifest.anchor.longitude)
     frames: list[SfmFrame] = []
     by_id = {}
+    by_name: dict[str, str] = {}
     for i, f in enumerate(manifest.frames):
         ctx.report(i / len(manifest.frames))
-        name = f"{f.sequenceGroup}/{f.frameId}.jpg"
+        rig = (
+            RigView(panorama=f"{f.captureAssetId}-{f.panorama.index:05d}", yaw=f.panorama.yawDegrees, fov=f.panorama.horizontalFovDegrees)
+            if f.panorama
+            else None
+        )
+        name = frame_image_name(f.sequenceGroup, f.frameId, f.width, f.height, rig)
+        if name in by_name:
+            raise JobFailure("corrupt_input", "two input frames claim the same image")
+        by_name[name] = f.frameId
         try:
             _fetch(aws, cache, f.imageKey, f.imageSha256, images / name)
             _fetch(aws, cache, f.maskKey, f.maskSha256, masks / f"{name}.png")
@@ -180,7 +189,12 @@ def run(
             raise JobFailure("corrupt_input", "a derivative is missing or altered") from error
         east, north, _ = geodetic_to_enu(f.prior.latitude, f.prior.longitude, 0.0, *anchor, 0.0)
         focal = f.camera.focalLength35mm if f.camera else None
-        frames.append(SfmFrame(f.frameId, f.sequenceGroup, f.sequenceIndex, name, f.width, f.height, east, north, 0.0, focal))
+        frames.append(
+            SfmFrame(
+                f.frameId, f.sequenceGroup, f.sequenceIndex, name, f.width, f.height, east, north, 0.0, focal,
+                rig=rig, heading=f.prior.headingDegrees,
+            )
+        )
         by_id[f.frameId] = f
 
     resume = work / "resume"

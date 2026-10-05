@@ -228,10 +228,17 @@ export class FakeWorker {
     return event(job, attempt, { type: 'completed', result: { key, sha256: written.sha256, byteSize: written.byteSize } });
   }
 
-  /** Run a privacy job: frames written under its prefix, result written, event posted. */
+  /**
+   * Run a privacy job: frames written under its prefix, result written, event posted.
+   *
+   * `panorama` reports the frames as views of 360° panoramas (eight per
+   * panorama, 45° apart) under a verified `equirectangular` projection;
+   * without it the result names no projection, as a worker that predates 360°
+   * captures would.
+   */
   async completePrivacy(
     job: CapturePrivacyJob,
-    options: { frames?: number; verdict?: 'passed' | 'failed'; attempt?: number; seed?: string } = {},
+    options: { frames?: number; verdict?: 'passed' | 'failed'; attempt?: number; seed?: string; panorama?: boolean } = {},
   ): Promise<WorkerEvent> {
     const attempt = options.attempt ?? 1;
     const verdict = options.verdict ?? 'passed';
@@ -251,8 +258,13 @@ export class FakeWorker {
               maskKey: `${job.outputPrefix}${String(frameIndex).padStart(6, '0')}.mask.png`,
               maskSha256: mask.sha256,
               maskByteSize: mask.byteSize,
-              width: 2048,
-              height: 1536,
+              ...(options.panorama
+                ? {
+                    width: 1280,
+                    height: 960,
+                    panorama: { index: Math.floor(frameIndex / 8), yawDegrees: (frameIndex % 8) * 45, horizontalFovDegrees: 90 },
+                  }
+                : { width: 2048, height: 1536 }),
             };
           })
         : [];
@@ -264,6 +276,7 @@ export class FakeWorker {
       assetId: job.assetId,
       verdict,
       privacyPipelineVersion: 'goway-privacy/1',
+      ...(options.panorama ? { projection: 'equirectangular' } : {}),
       models: [{ name: 'face', version: '1', sha256: 'a'.repeat(64) }],
       metadataStripped: true,
       frames,

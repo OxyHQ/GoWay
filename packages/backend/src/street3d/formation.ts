@@ -68,10 +68,21 @@ export interface FormationDeps {
   now: Date;
 }
 
+/**
+ * Where a frame looks, when known. A view cut from a 360° capture looks its
+ * yaw away from the capture's own heading, so one panorama covers every
+ * sector — which is the point of capturing one.
+ */
+export function frameHeading(frame: Pick<EligibleFrame, 'headingDegrees' | 'panoramaYawDegrees'>): number | null {
+  if (frame.headingDegrees === null) return null;
+  return (((frame.headingDegrees + (frame.panoramaYawDegrees ?? 0)) % 360) + 360) % 360;
+}
+
 function sectorsOf(frames: readonly EligibleFrame[]): Set<number> {
   const sectors = new Set<number>();
   for (const frame of frames) {
-    if (frame.headingDegrees !== null) sectors.add(headingSector(frame.headingDegrees));
+    const heading = frameHeading(frame);
+    if (heading !== null) sectors.add(headingSector(heading));
   }
   return sectors;
 }
@@ -114,6 +125,7 @@ export function manifestFrames(jobId: string, frames: readonly EligibleFrame[]):
     const group = sequenceGroup(jobId, frame.sessionId);
     const index = indexes.get(group) ?? 0;
     indexes.set(group, index + 1);
+    const heading = frameHeading(frame);
     return {
       frameId: frame.derivativeId,
       captureAssetId: frame.assetId,
@@ -131,9 +143,21 @@ export function manifestFrames(jobId: string, frames: readonly EligibleFrame[]):
         longitude: frame.longitude,
         ...(frame.altitudeMeters !== null ? { altitudeMeters: frame.altitudeMeters } : {}),
         ...(frame.accuracyMeters !== null ? { accuracyMeters: frame.accuracyMeters } : {}),
-        ...(frame.headingDegrees !== null ? { headingDegrees: frame.headingDegrees % 360 } : {}),
+        ...(heading !== null ? { headingDegrees: heading } : {}),
       },
-      ...(frame.focalLength35mm !== null ? { camera: { focalLength35mm: frame.focalLength35mm } } : {}),
+      ...(frame.panoramaIndex !== null && frame.panoramaYawDegrees !== null && frame.panoramaFovDegrees !== null
+        ? {
+            // A view's intrinsics are its field of view; a 360° camera's own
+            // focal length describes a lens the view was never taken through.
+            panorama: {
+              index: frame.panoramaIndex,
+              yawDegrees: frame.panoramaYawDegrees,
+              horizontalFovDegrees: frame.panoramaFovDegrees,
+            },
+          }
+        : frame.focalLength35mm !== null
+          ? { camera: { focalLength35mm: frame.focalLength35mm } }
+          : {}),
     };
   });
 }

@@ -1,7 +1,7 @@
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex } from '@noble/hashes/utils';
 import type { ImagePickerAsset } from 'expo-image-picker';
-import type { CaptureLocationEvidenceInput, CaptureUploadPolicy, GeoCoordinate } from '@goway.to/sdk';
+import type { CaptureLocationEvidenceInput, CaptureProjection, CaptureUploadPolicy, GeoCoordinate } from '@goway.to/sdk';
 
 /**
  * Where the contributor says the capture was taken: always a coordinate. The
@@ -18,6 +18,10 @@ export interface SelectedMedia {
   byteSize: number;
   contentType: string;
   kind: 'photo' | 'video';
+  /** What the contribution will DECLARE. GoWay's privacy worker verifies it against the file. */
+  projection: CaptureProjection;
+  /** Whether the file is shaped like a 360° capture, so the contributor may declare it one. */
+  panoramaCandidate: boolean;
 }
 
 export async function hashChunks(chunks: AsyncIterable<Uint8Array>, signal: AbortSignal): Promise<string> {
@@ -30,15 +34,38 @@ export async function hashChunks(chunks: AsyncIterable<Uint8Array>, signal: Abor
   return bytesToHex(digest.digest());
 }
 
-export function describeMedia(asset: ImagePickerAsset, size: number, policy: CaptureUploadPolicy): SelectedMedia {
+/** A full 360° panorama stored equirectangularly is exactly twice as wide as it is high. */
+export function isTwoToOne(width: number, height: number): boolean {
+  return width > 0 && height > 0 && Math.abs(width - 2 * height) <= Math.max(2, 0.01 * width);
+}
+
+/**
+ * Validate a picked file against the policy for the projection it would be
+ * declared with. A 2:1 file on a deployment that accepts 360° media is
+ * suggested as one; that is a suggestion for the contributor to confirm, and
+ * only ever a claim to GoWay, which checks the file's own 360° metadata.
+ */
+export function describeMedia(asset: ImagePickerAsset, size: number, policy: CaptureUploadPolicy, projection?: CaptureProjection): SelectedMedia {
   const kind = asset.type === 'video' ? 'video' : 'photo';
+  const panoramaCandidate = policy.equirectangular !== undefined && isTwoToOne(asset.width, asset.height);
+  const declared = projection ?? (panoramaCandidate ? 'equirectangular' : 'perspective');
+  if (declared === 'equirectangular' && !panoramaCandidate) throw new MediaError('contribute.error.projection');
   const extension = (asset.fileName ?? asset.uri).split(/[?#]/)[0]?.split('.').pop()?.toLowerCase();
   const types: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', heif: 'image/heif', mp4: 'video/mp4', mov: 'video/quicktime' };
   const contentType = asset.mimeType || types[extension ?? ''];
   if (!contentType || !policy[kind].contentTypes.includes(contentType)) throw new MediaError('contribute.error.format');
-  if (!Number.isSafeInteger(size) || size < 1 || size > policy[kind].maxByteSize) throw new MediaError('contribute.error.size');
-  if (kind === 'video' && asset.duration && asset.duration / 1000 > policy.video.maxDurationSeconds) throw new MediaError('contribute.error.duration');
-  return { asset, byteSize: size, contentType, kind };
+  const panorama = declared === 'equirectangular' ? policy.equirectangular : undefined;
+  const maxByteSize = panorama ? panorama[kind].maxByteSize : policy[kind].maxByteSize;
+  if (!Number.isSafeInteger(size) || size < 1 || size > maxByteSize) throw new MediaError('contribute.error.size');
+  const maxDuration = panorama ? panorama.video.maxDurationSeconds : policy.video.maxDurationSeconds;
+  if (kind === 'video' && asset.duration && asset.duration / 1000 > maxDuration) throw new MediaError('contribute.error.duration');
+  if (panorama && asset.width > panorama[kind].maxWidthPixels) throw new MediaError('contribute.error.resolution');
+  return { asset, byteSize: size, contentType, kind, projection: declared, panoramaCandidate };
+}
+
+/** The same media declared the other way, re-checked against that projection's limits. */
+export function withProjection(media: SelectedMedia, projection: CaptureProjection, policy: CaptureUploadPolicy): SelectedMedia {
+  return describeMedia(media.asset, media.byteSize, policy, projection);
 }
 
 export function mediaLocation(asset: ImagePickerAsset): CaptureLocation | null {

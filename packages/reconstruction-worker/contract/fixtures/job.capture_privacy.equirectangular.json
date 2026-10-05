@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "jobId": "6d2e8b17-4c3a-4f5e-9a7b-1e0c3d5f7a92",
+  "jobType": "capture_privacy",
+  "issuedAt": "2026-10-04T10:00:00.000Z",
+  "assetId": "3f7a1c55-9e2b-4d18-b6a0-5c8e2d9f1b34",
+  "mediaKind": "video",
+  "input": {
+    "key": "captures/2026/10/05/3f7a1c55-9e2b-4d18-b6a0-5c8e2d9f1b34",
+    "contentType": "video/mp4",
+    "byteSize": 734003200,
+    "sha256": "5e1a7c3b9d2f4e6a8c0b1d3f5a7c9e1b2d4f6a8c0e2b4d6f8a1c3e5b7d9f0a2c"
+  },
+  "outputPrefix": "derived/privacy/3f7a1c55-9e2b-4d18-b6a0-5c8e2d9f1b34/6d2e8b17-4c3a-4f5e-9a7b-1e0c3d5f7a92/",
+  "keyframes": {
+    "maxFrames": 60,
+    "minIntervalSeconds": 0.5,
+    "maxLongEdgePixels": 2048
+  },
+  "projection": "equirectangular"
+}

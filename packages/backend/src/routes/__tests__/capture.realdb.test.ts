@@ -742,3 +742,99 @@ describe('safe retries and contributor withdrawal', () => {
     expect((await db.select().from(captureAssets).where(and(eq(captureAssets.mediaObjectId, object!.id), eq(captureAssets.state, 'deleted'))))).toHaveLength(2);
   });
 });
+
+// Last: the storage-reporting suite above counts every object this file registers.
+describe('360° captures are declared, bounded and never trusted on their word', () => {
+  let session: CaptureSession;
+
+  beforeAll(async () => {
+    session = await openSession('user-a');
+  });
+
+  it('publishes separate 360° limits, larger in bytes than a phone photo', () => {
+    expect(policy.equirectangular).toBeDefined();
+    const limits = policy.equirectangular as NonNullable<CaptureUploadPolicy['equirectangular']>;
+    expect(limits.photo.maxByteSize).toBeGreaterThan(policy.photo.maxByteSize);
+    expect(limits.video.maxByteSize).toBeGreaterThan(policy.video.maxByteSize);
+    expect(limits.video.maxWidthPixels).toBeGreaterThan(0);
+    expect(limits.video.maxDurationSeconds).toBeGreaterThan(0);
+  });
+
+  it('records the declaration, and a perspective one when nothing is declared', async () => {
+    const pano = await call<CaptureUploadTicket>(
+      `/captures/sessions/${session.id}/assets`,
+      json('user-a', photoBody('360-a', { projection: 'equirectangular', byteSize: policy.photo.maxByteSize + 1, camera: { widthPixels: 5760, heightPixels: 2880 } })),
+    );
+    expect(pano.status).toBe(201);
+    expect(pano.body.asset.projection).toBe('equirectangular');
+    // Not yet a reconstruction input: the worker has not checked the claim.
+    expect(pano.body.asset.reconstructionEligible).toBe(false);
+
+    const flat = await call<CaptureUploadTicket>(`/captures/sessions/${session.id}/assets`, json('user-a', photoBody('360-b')));
+    expect(flat.body.asset.projection).toBe('perspective');
+    const listed = await call<CaptureAssetPage>(`/captures/sessions/${session.id}/assets`, asUser('user-a'));
+    expect(listed.body.items.map((asset) => asset.projection).sort()).toEqual(['equirectangular', 'perspective']);
+  });
+
+  it('refuses a 360° declaration its own dimensions contradict, or one that is too large', async () => {
+    const limits = policy.equirectangular as NonNullable<CaptureUploadPolicy['equirectangular']>;
+    const notTwoToOne = await call<ApiErrorBody>(
+      `/captures/sessions/${session.id}/assets`,
+      json('user-a', photoBody('360-c', { projection: 'equirectangular', camera: { widthPixels: 4032, heightPixels: 3024 } })),
+    );
+    expect(notTwoToOne.status).toBe(422);
+
+    const tooWide = await call<ApiErrorBody>(
+      `/captures/sessions/${session.id}/assets`,
+      json('user-a', photoBody('360-d', {
+        projection: 'equirectangular',
+        camera: { widthPixels: limits.photo.maxWidthPixels * 2, heightPixels: limits.photo.maxWidthPixels },
+      })),
+    );
+    expect(tooWide.status).toBe(422);
+
+    const tooBig = await call<ApiErrorBody>(
+      `/captures/sessions/${session.id}/assets`,
+      json('user-a', photoBody('360-e', {
+        projection: 'equirectangular',
+        byteSize: limits.photo.maxByteSize + 1,
+        camera: { widthPixels: 5760, heightPixels: 2880 },
+      })),
+    );
+    expect(tooBig.status).toBe(413);
+
+    const tooLong = await call<ApiErrorBody>(
+      `/captures/sessions/${session.id}/assets`,
+      json('user-a', photoBody('360-f', {
+        mediaKind: 'video',
+        contentType: 'video/mp4',
+        projection: 'equirectangular',
+        byteSize: 100_000_000,
+        camera: { widthPixels: 5760, heightPixels: 2880, durationSeconds: limits.video.maxDurationSeconds + 1 },
+      })),
+    );
+    expect(tooLong.status).toBe(422);
+
+    const unknown = await call<ApiErrorBody>(
+      `/captures/sessions/${session.id}/assets`,
+      json('user-a', photoBody('360-g', { projection: 'fisheye' })),
+    );
+    expect(unknown.status).toBe(422);
+  });
+
+  it('accepts a 360° video larger than a phone video may be', async () => {
+    const { status, body } = await call<CaptureUploadTicket>(
+      `/captures/sessions/${session.id}/assets`,
+      json('user-a', photoBody('360-h', {
+        mediaKind: 'video',
+        contentType: 'video/mp4',
+        projection: 'equirectangular',
+        byteSize: policy.video.maxByteSize + 1,
+        camera: { widthPixels: 5760, heightPixels: 2880, durationSeconds: 120, frameRate: 30 },
+      })),
+    );
+    expect(status).toBe(201);
+    expect(body.asset.projection).toBe('equirectangular');
+    expect(body.asset.media.lifecycle.retentionClass).toBe('raw_video');
+  });
+});

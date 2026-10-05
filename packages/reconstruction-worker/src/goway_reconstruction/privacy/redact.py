@@ -113,9 +113,15 @@ def assert_no_metadata(jpeg: bytes) -> None:
             raise MetadataSurvivedError("derivative carries metadata")
 
 
-def redact(rgb: np.ndarray, det: FrameDetections) -> RedactedFrame:
+def redact(rgb: np.ndarray, det: FrameDetections, *, always: np.ndarray | None = None) -> RedactedFrame:
+    """``always`` marks pixels destroyed and excluded whatever was detected (a panorama's nadir)."""
     h, w = rgb.shape[:2]
     blur, exclude = sensitive_regions(det, (h, w))
+    if always is not None:
+        if always.shape != (h, w):
+            raise ValueError("the fixed mask does not match the frame")
+        blur |= always
+        exclude |= always
     safe = destroy(rgb, blur)
     mask = np.where(exclude, 0, 255).astype(np.uint8)
     ok, png = cv2.imencode(".png", mask)

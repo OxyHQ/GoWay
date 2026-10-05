@@ -21,12 +21,13 @@ export const STREET3D_EN: Record<string, string> = {
   'contribute.guide.phone.sides': 'Point the phone at the façades, not only ahead: walk each pavement with the phone turned towards the buildings, then once more looking along the street. 2–3 minutes per stretch, ending where you started.',
   'contribute.guide.phone.people': 'Prefer quieter times. Faces and number plates are blurred automatically, and people and vehicles are left out of the 3D view.',
   'contribute.guide.camera.title': 'With a 360° camera (recommended for mapping)',
-  'contribute.guide.camera.soon': '360° uploads are coming soon.',
+  'contribute.guide.camera.upload': 'Choose photo or video accepts 360° photos and videos exported as a full panorama, twice as wide as it is high.',
   'contribute.guide.camera.recommendation': 'An affordable option is a GoPro MAX (first generation, often available second-hand): it records 360° photos with built-in GPS. A 360° camera sees both sides of the street at once, which makes much better 3D views.',
   'contribute.guide.camera.mount': 'Mount it on a pole or helmet about 30–50 cm above your head.',
   'contribute.guide.camera.interval': 'Use interval photo mode, one photo every 1–2 metres, with GPS on.',
   'contribute.guide.camera.walk': 'Walk at 3–4 km/h along both pavements; bright, overcast days work best.',
   'contribute.guide.camera.repeat': 'Coming back on another day helps: new captures are combined with earlier ones automatically.',
+  'contribute.guide.camera.export': "Export from the camera's app as an equirectangular (2:1) photo or MP4 with its 360° metadata. Raw dual-lens files cannot be read yet.",
   'contribute.guide.privacy': 'Only capture public streets from public places. Do not film into homes or private spaces.',
   // Guided capture
   'contribute.guided.button': 'Guided capture',
@@ -164,6 +165,8 @@ export const STREET3D_EN: Record<string, string> = {
   'contribute.previewLabel': 'Selected contribution preview',
   'contribute.selectedVideo': 'Selected video',
   'contribute.selectedPhoto': 'Selected photo',
+  'contribute.projection.label': 'This is a 360° photo or video',
+  'contribute.projection.hint': 'GoWay checks the file’s own 360° information, cuts it into eight views and blurs faces and number plates in every one. The area below the camera, where you and the mount appear, is always removed.',
   'contribute.where': 'Where was this captured?',
   'contribute.locationSelected': 'Location selected. Tap the map to correct it.',
   'contribute.locationPrompt': 'Select the capture location on the map. We never infer it from your history.',
@@ -199,6 +202,8 @@ export const STREET3D_EN: Record<string, string> = {
   'contribute.error.unreadable': 'The selected file could not be read.',
   'contribute.error.unavailableFile': 'The selected file is no longer available.',
   'contribute.error.upload': 'The upload failed. You can retry this contribution.',
+  'contribute.error.projection': 'Only a full 360° panorama, twice as wide as it is high, can be sent as 360°.',
+  'contribute.error.resolution': 'This 360° file has a higher resolution than GoWay accepts. Export it at a lower resolution.',
 };
 
 export const STREET3D_ES: Record<string, string> = {
@@ -211,12 +216,13 @@ export const STREET3D_ES: Record<string, string> = {
   'contribute.guide.phone.sides': 'Apunta el móvil a las fachadas, no solo hacia delante: recorre cada acera con el móvil girado hacia los edificios y luego otra vez mirando a lo largo de la calle. 2–3 minutos por tramo, terminando donde empezaste.',
   'contribute.guide.phone.people': 'Mejor en horas tranquilas. Las caras y matrículas se difuminan automáticamente y las personas y vehículos se excluyen de la vista 3D.',
   'contribute.guide.camera.title': 'Con una cámara 360° (recomendada para mapear)',
-  'contribute.guide.camera.soon': 'La subida de 360° llegará pronto.',
+  'contribute.guide.camera.upload': 'Elegir foto o vídeo acepta fotos y vídeos 360° exportados como panorama completo, el doble de ancho que de alto.',
   'contribute.guide.camera.recommendation': 'Una opción asequible es una GoPro MAX (primera generación, fácil de encontrar de segunda mano): hace fotos 360° con GPS integrado. Una cámara 360° ve ambos lados de la calle a la vez, lo que da vistas 3D mucho mejores.',
   'contribute.guide.camera.mount': 'Móntala en un palo o casco unos 30–50 cm por encima de tu cabeza.',
   'contribute.guide.camera.interval': 'Usa el modo foto por intervalos, una foto cada 1–2 metros, con el GPS activado.',
   'contribute.guide.camera.walk': 'Camina a 3–4 km/h por ambas aceras; los días claros pero nublados son los mejores.',
   'contribute.guide.camera.repeat': 'Volver otro día ayuda: las nuevas capturas se combinan con las anteriores automáticamente.',
+  'contribute.guide.camera.export': 'Exporta desde la app de la cámara una foto equirectangular (2:1) o un MP4 con sus metadatos 360°. Los archivos sin procesar de doble lente aún no se pueden leer.',
   'contribute.guide.privacy': 'Captura solo calles públicas desde lugares públicos. No grabes el interior de viviendas ni espacios privados.',
   // Captura guiada
   'contribute.guided.button': 'Captura guiada',
@@ -350,6 +356,8 @@ export const STREET3D_ES: Record<string, string> = {
   'contribute.previewLabel': 'Vista previa de la contribución seleccionada',
   'contribute.selectedVideo': 'Vídeo seleccionado',
   'contribute.selectedPhoto': 'Foto seleccionada',
+  'contribute.projection.label': 'Es una foto o un vídeo 360°',
+  'contribute.projection.hint': 'GoWay comprueba la información 360° del propio archivo, lo divide en ocho vistas y difumina las caras y matrículas en cada una. La zona bajo la cámara, donde apareces tú y el soporte, se elimina siempre.',
   'contribute.where': '¿Dónde se capturó?',
   'contribute.locationSelected': 'Ubicación seleccionada. Toca el mapa para corregirla.',
   'contribute.locationPrompt': 'Selecciona en el mapa dónde se capturó. Nunca la deducimos de tu historial.',
@@ -385,4 +393,6 @@ export const STREET3D_ES: Record<string, string> = {
   'contribute.error.unreadable': 'No se pudo leer el archivo seleccionado.',
   'contribute.error.unavailableFile': 'El archivo seleccionado ya no está disponible.',
   'contribute.error.upload': 'La subida falló. Puedes reintentar esta contribución.',
+  'contribute.error.projection': 'Solo un panorama 360° completo, el doble de ancho que de alto, puede enviarse como 360°.',
+  'contribute.error.resolution': 'Este archivo 360° tiene más resolución de la que GoWay acepta. Expórtalo a una resolución menor.',
 };

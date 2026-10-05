@@ -26,7 +26,7 @@
  */
 
 import { z } from 'zod';
-import { STREET_SCENE_ASSET_ROLES, STREET_SCENE_PROFILES } from '@goway/contracts';
+import { CAPTURE_PROJECTIONS, STREET_SCENE_ASSET_ROLES, STREET_SCENE_PROFILES } from '@goway/contracts';
 
 export const WORKER_CONTRACT_SCHEMA_VERSION = 1;
 
@@ -88,6 +88,23 @@ export const RETRYABLE_FAILURE_CODES: ReadonlySet<WorkerFailureCode> = new Set([
   'internal',
 ]);
 
+/**
+ * A perspective view cut from a 360° panorama: which panorama of the capture
+ * (0 for a photo, the keyframe for a video), the view's yaw from the
+ * panorama's centre (degrees, clockwise) and its horizontal field of view.
+ * Reported by the privacy worker per derivative and handed back to the solve
+ * in the manifest, which uses it to treat the views of one panorama as a rig.
+ */
+export const panoramaViewSchema = z.object({
+  index: nonNegativeInt,
+  yawDegrees: z.number().min(0).lt(360),
+  horizontalFovDegrees: z.number().gt(0).lt(180),
+});
+export type PanoramaView = z.infer<typeof panoramaViewSchema>;
+
+/** Absent from a party that predates 360° captures, for which everything is perspective. */
+const projection = z.enum(CAPTURE_PROJECTIONS).default('perspective');
+
 // ── Job envelopes (backend → SQS jobs queue) ───────────────────────────────
 
 export const keyframeSettingsSchema = z.object({
@@ -111,6 +128,8 @@ export const capturePrivacyJobSchema = z.object({
   }),
   outputPrefix: objectKey,
   keyframes: keyframeSettingsSchema,
+  /** The DECLARED projection. The worker verifies it against the media and fails closed. */
+  projection,
 });
 export type CapturePrivacyJob = z.infer<typeof capturePrivacyJobSchema>;
 
@@ -159,6 +178,7 @@ export const manifestFrameSchema = z.object({
     headingDegrees: z.number().min(0).lt(360).optional(),
   }),
   camera: z.object({ focalLength35mm: z.number().positive().optional() }).optional(),
+  panorama: panoramaViewSchema.optional(),
 });
 export type ManifestFrame = z.infer<typeof manifestFrameSchema>;
 
@@ -254,6 +274,7 @@ export const privacyFrameSchema = z.object({
   detections: z.record(z.string(), nonNegativeInt).optional(),
   maskedFraction: z.number().min(0).max(1).optional(),
   sharpness: z.number().nonnegative().optional(),
+  panorama: panoramaViewSchema.optional(),
 });
 export type PrivacyFrame = z.infer<typeof privacyFrameSchema>;
 
@@ -266,6 +287,8 @@ export const capturePrivacyResultSchema = z
     assetId: z.string().min(1),
     verdict: z.enum(['passed', 'failed']),
     privacyPipelineVersion: z.string().min(1).max(120),
+    /** The projection the worker VERIFIED. The backend compares it with the declaration. */
+    projection,
     models: z.array(z.object({ name: z.string().min(1), version: z.string().min(1), sha256 })),
     metadataStripped: z.boolean(),
     frames: z.array(privacyFrameSchema),
@@ -280,7 +303,12 @@ export const capturePrivacyResultSchema = z
   .refine((result) => new Set(result.frames.map((frame) => frame.frameIndex)).size === result.frames.length, {
     message: 'frame indexes must be unique',
     path: ['frames'],
-  });
+  })
+  .refine(
+    // A panorama is only ever reported as views, and a view only for a panorama.
+    (result) => result.frames.every((frame) => (frame.panorama !== undefined) === (result.projection === 'equirectangular')),
+    { message: 'panorama views must match the verified projection', path: ['frames'] },
+  );
 export type CapturePrivacyResult = z.infer<typeof capturePrivacyResultSchema>;
 
 const sceneAssetSchema = z.object({

@@ -73,6 +73,23 @@ export type CaptureMediaKind = (typeof CAPTURE_MEDIA_KINDS)[number];
 export const CAPTURE_SOURCES = ['camera', 'library', 'guided_session'] as const;
 export type CaptureSource = (typeof CAPTURE_SOURCES)[number];
 
+/**
+ * How the media's pixels map to directions.
+ *
+ * - `perspective` — an ordinary photo or video from one lens.
+ * - `equirectangular` — a full 360° panorama stored 2:1 (longitude across,
+ *   latitude down), as a 360° camera exports it. Photos and videos alike.
+ *
+ * A contribution DECLARES its projection; the declaration is a claim, never
+ * the decision. GoWay's privacy pipeline reads the projection metadata the
+ * media itself carries (XMP `GPano` for a photo, spherical video metadata for a
+ * video) and the pixel aspect, and refuses a contribution where they disagree —
+ * a 360° capture is processed as eight overlapping views, and processing it
+ * as one flat image would be a privacy failure, not only a quality one.
+ */
+export const CAPTURE_PROJECTIONS = ['perspective', 'equirectangular'] as const;
+export type CaptureProjection = (typeof CAPTURE_PROJECTIONS)[number];
+
 // ── Where it is, and how much to trust that ─────────────────────────────────
 
 /**
@@ -470,6 +487,12 @@ export const captureAssetSchema = z.object({
   id: z.string().min(1),
   sessionId: z.string().min(1),
   mediaKind: z.enum(CAPTURE_MEDIA_KINDS),
+  /**
+   * The projection the contribution was declared with. See
+   * {@link CAPTURE_PROJECTIONS}. A server that predates 360° captures sends
+   * none: everything it holds is perspective.
+   */
+  projection: z.enum(CAPTURE_PROJECTIONS).default('perspective'),
   source: z.enum(CAPTURE_SOURCES),
   state: z.enum(CAPTURE_ASSET_STATES),
   privacy: capturePrivacyGateSchema,
@@ -575,6 +598,26 @@ export const captureUploadTicketSchema = z.object({
 export type CaptureUploadTicket = z.infer<typeof captureUploadTicketSchema>;
 
 /**
+ * Size, duration and resolution ceilings for 360° media.
+ *
+ * Larger than the perspective ones, because a 360° frame is eight views' worth
+ * of pixels. `maxWidthPixels` bounds the equirectangular width (the height is
+ * half of it); a frame narrower than about 4000 px yields soft views.
+ */
+export const captureEquirectangularPolicySchema = z.object({
+  photo: z.object({
+    maxByteSize: z.number().int().min(0),
+    maxWidthPixels: z.number().int().min(0),
+  }),
+  video: z.object({
+    maxByteSize: z.number().int().min(0),
+    maxDurationSeconds: z.number().min(0),
+    maxWidthPixels: z.number().int().min(0),
+  }),
+});
+export type CaptureEquirectangularPolicy = z.infer<typeof captureEquirectangularPolicySchema>;
+
+/**
  * What a client must know BEFORE it asks a contributor to pick a file.
  *
  * Published as a contract rather than hardcoded in the app because every number
@@ -602,6 +645,13 @@ export const captureUploadPolicySchema = z.object({
     maxByteSize: z.number().int().min(0),
     maxDurationSeconds: z.number().min(0),
   }),
+  /**
+   * Limits for 360° media (`projection: 'equirectangular'`), which replace the
+   * ones above for such a contribution. The accepted media types are the
+   * photo and video ones. Absent when this deployment does not accept 360°
+   * media; a client then offers perspective contributions only.
+   */
+  equirectangular: captureEquirectangularPolicySchema.optional(),
   /** Maximum days GoWay keeps each class of stored object. A ceiling, not a promise. */
   retentionDays: z.record(z.enum(CAPTURE_RETENTION_CLASSES), z.number().min(0)),
 });
@@ -718,6 +768,11 @@ export const captureAssetInputSchema = z.object({
   /** Reuse on retries of this exact request; generate a new UUID for new media. */
   idempotencyKey: z.uuid().optional(),
   mediaKind: z.enum(CAPTURE_MEDIA_KINDS),
+  /**
+   * Absent means `perspective`. A claim the privacy pipeline verifies against
+   * the media before anything is derived; see {@link CAPTURE_PROJECTIONS}.
+   */
+  projection: z.enum(CAPTURE_PROJECTIONS).optional(),
   source: z.enum(CAPTURE_SOURCES),
   /**
    * Hashed by the CLIENT before anything is sent. That is what makes

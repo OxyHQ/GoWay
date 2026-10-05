@@ -34,6 +34,11 @@ import {
   validateTaxonomyConstraint,
 } from '../legacyConversion';
 
+/**
+ * The release this deploy test reproduces: its pre/post window is the state the
+ * conversion runs in. A later release's migrations do not exist for it.
+ */
+const PLACES_PLATFORM_RELEASE = '0013_goway_category_taxonomy';
 const plan = loadLegacyConversion();
 
 /** One connection: the mapping and the functions live in its `pg_temp`. */
@@ -199,8 +204,8 @@ describe('the batched converter and the migration', () => {
   }
 
   beforeAll(async () => {
-    converted = await createSuiteDatabase({ run: 'pre' });
-    migratedOnly = await createSuiteDatabase({ run: 'pre' });
+    converted = await createSuiteDatabase({ run: 'pre', throughTag: PLACES_PLATFORM_RELEASE });
+    migratedOnly = await createSuiteDatabase({ run: 'pre', throughTag: PLACES_PLATFORM_RELEASE });
     for (const suite of [converted, migratedOnly]) {
       const sql = sessionFor(suite);
       try {
@@ -260,8 +265,8 @@ describe('the batched converter and the migration', () => {
 
   it('leaves exactly what the migration alone leaves, and the migration then rewrites no row', async () => {
     const before = await versions(converted!);
-    await migrateSuiteDatabase(converted!.databaseUrl, 'post');
-    await migrateSuiteDatabase(migratedOnly!.databaseUrl, 'post');
+    await migrateSuiteDatabase(converted!.databaseUrl, 'post', PLACES_PLATFORM_RELEASE);
+    await migrateSuiteDatabase(migratedOnly!.databaseUrl, 'post', PLACES_PLATFORM_RELEASE);
 
     expect(await versions(converted!)).toEqual(before);
     expect(await rows(converted!)).toEqual(await rows(migratedOnly!));

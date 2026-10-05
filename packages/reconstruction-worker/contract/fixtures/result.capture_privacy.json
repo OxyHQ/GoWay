@@ -6,6 +6,7 @@
   "assetId": "0d3c2f8e-7a51-4c3e-8f0a-2b9d6e4c1a77",
   "verdict": "passed",
   "privacyPipelineVersion": "goway-privacy/1",
+  "projection": "perspective",
   "models": [
     { "name": "face-yunet", "version": "2023mar", "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4" },
     { "name": "plate-lpd-yunet", "version": "2023mar", "sha256": "1111111111111111111111111111111111111111111111111111111111111111" },

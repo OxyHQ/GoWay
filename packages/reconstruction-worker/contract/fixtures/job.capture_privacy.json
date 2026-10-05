@@ -12,5 +12,6 @@
     "sha256": "9f2c7d1e0b4a5c6d8e9f00112233445566778899aabbccddeeff001122334455"
   },
   "outputPrefix": "derived/privacy/0d3c2f8e-7a51-4c3e-8f0a-2b9d6e4c1a77/4b0f6a43-1f7e-4a54-9c1e-6f0b8f3d2a10/",
-  "keyframes": { "maxFrames": 60, "minIntervalSeconds": 0.5, "maxLongEdgePixels": 2048 }
+  "keyframes": { "maxFrames": 60, "minIntervalSeconds": 0.5, "maxLongEdgePixels": 2048 },
+  "projection": "perspective"
 }

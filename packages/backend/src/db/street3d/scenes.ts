@@ -67,6 +67,10 @@ export interface EligibleFrame {
   altitudeMeters: number | null;
   headingDegrees: number | null;
   focalLength35mm: number | null;
+  /** Set for a view cut from a 360° capture; see `capture_derivatives.panorama_*`. */
+  panoramaIndex: number | null;
+  panoramaYawDegrees: number | null;
+  panoramaFovDegrees: number | null;
   geoCell: string;
   assetState: string;
 }
@@ -112,6 +116,9 @@ export async function loadEligibleFrames(db: Database | Transaction, now: Date):
       altitudeMeters: evidenceValue(captureLocationEvidence.altitudeMeters),
       headingDegrees: evidenceValue(captureLocationEvidence.headingDegrees),
       focalLength35mm: captureAssets.focalLengthEquivalentMm,
+      panoramaIndex: captureDerivatives.panoramaIndex,
+      panoramaYawDegrees: captureDerivatives.panoramaYawDegrees,
+      panoramaFovDegrees: captureDerivatives.panoramaFovDegrees,
       geoCell: sql<string>`${captureAssets.geoCell}`,
       assetState: captureAssets.state,
     })

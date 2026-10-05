@@ -28,3 +28,20 @@ describe('closed contribution pilot', () => {
     expect(() => parseCaptureConfig({ ...store, CAPTURE_PILOT_OXY_USER_IDS: 'user a;drop' })).toThrow();
   });
 });
+
+describe('360° media', () => {
+  test('is accepted by default, with its own ceilings', () => {
+    const config = parseCaptureConfig(store);
+    expect(config.equirectangularEnabled).toBe(true);
+    expect(config.maxEquirectangularPhotoBytes).toBeGreaterThan(config.maxPhotoBytes);
+    expect(config.maxEquirectangularVideoWidthPixels).toBe(7680);
+  });
+
+  test('can be switched off and bounded by configuration', () => {
+    const config = parseCaptureConfig({ ...store, CAPTURE_EQUIRECTANGULAR_ENABLED: 'false', CAPTURE_MAX_EQUIRECTANGULAR_VIDEO_DURATION_SECONDS: '90' });
+    expect(config.equirectangularEnabled).toBe(false);
+    expect(config.maxEquirectangularVideoDurationSeconds).toBe(90);
+    expect(parseCaptureConfig({ ...store, CAPTURE_EQUIRECTANGULAR_ENABLED: '' }).equirectangularEnabled).toBe(true);
+    expect(() => parseCaptureConfig({ ...store, CAPTURE_EQUIRECTANGULAR_ENABLED: 'perhaps' })).toThrow();
+  });
+});

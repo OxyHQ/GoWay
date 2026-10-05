@@ -83,7 +83,7 @@ interface Contribution {
 }
 
 async function contribute(
-  options: { offsetMeters?: number; heading?: number; seed?: string; attribution?: string; owner?: string } = {},
+  options: { offsetMeters?: number; heading?: number; seed?: string; attribution?: string; owner?: string; projection?: 'equirectangular' } = {},
 ): Promise<Contribution> {
   const owner = options.owner ?? randomUUID();
   const session = await createCaptureSession(db(), owner, {
@@ -99,6 +99,7 @@ async function contribute(
     { id: session.id, oxyUserId: owner },
     {
       mediaKind: 'photo',
+      ...(options.projection ? { projection: options.projection } : {}),
       source: 'camera',
       contentHash,
       byteSize: 100,
@@ -254,6 +255,75 @@ describe('privacy scheduling', () => {
     expect(summary.events?.outcomes).toMatchObject({ rejected: 1 });
     const job = await jobRow(envelope.jobId);
     expect(job).toMatchObject({ state: 'retry_wait', attempt: 2, failureCode: 'result_digest' });
+  });
+});
+
+describe('360° captures', () => {
+  it('declares the projection to the worker and records each view with its panorama and yaw', async () => {
+    const capture = await contribute({ projection: 'equirectangular' });
+    await run();
+    const [{ envelope }] = await worker.take();
+    expect(envelope).toMatchObject({ jobType: 'capture_privacy', projection: 'equirectangular' });
+    await worker.completePrivacy(envelope as CapturePrivacyJob, { frames: 16, panorama: true });
+    await run();
+    expect(await findOwnedAsset(db(), capture.assetId, capture.owner)).toMatchObject({ projection: 'equirectangular', privacy: { state: 'passed' } });
+    const views = await db().select().from(captureDerivatives).where(eq(captureDerivatives.assetId, capture.assetId));
+    expect(views).toHaveLength(16);
+    expect(new Set(views.map((row) => `${row.panoramaIndex}:${row.panoramaYawDegrees}:${row.panoramaFovDegrees}`)).size).toBe(16);
+    expect(views.every((row) => row.panoramaFovDegrees === 90 && (row.panoramaIndex === 0 || row.panoramaIndex === 1))).toBe(true);
+  });
+
+  it('fails the gate at once when a worker processed a declared panorama as one flat image', async () => {
+    // What a worker that predates 360° captures does: it ignores the
+    // declaration and reports perspective frames. That is no privacy pass for
+    // a panorama, and another attempt would do the same.
+    const capture = await contribute({ projection: 'equirectangular' });
+    await run();
+    const [{ envelope }] = await worker.take();
+    await worker.completePrivacy(envelope as CapturePrivacyJob, { frames: 1 });
+    const summary = await run();
+    expect(summary.events?.outcomes).toMatchObject({ rejected: 1 });
+    // The job fails outright rather than retrying the same attempt…
+    expect(await jobRow(envelope.jobId)).toMatchObject({ state: 'failed', failureCode: 'projection_mismatch', failureRetryable: false });
+    expect((await findOwnedAsset(db(), capture.assetId, capture.owner))?.reconstructionEligible).toBe(false);
+    expect(await db().select().from(captureDerivatives).where(eq(captureDerivatives.assetId, capture.assetId))).toHaveLength(0);
+    // …and the gate gets the bounded fresh passes any failed verdict gets, still declared 360°.
+    const [again] = await worker.take();
+    expect(again?.envelope).toMatchObject({ jobType: 'capture_privacy', assetId: capture.assetId, projection: 'equirectangular' });
+    expect(again?.envelope.jobId).not.toBe(envelope.jobId);
+  });
+
+  it('refuses panorama views for a capture declared perspective', async () => {
+    const capture = await contribute();
+    await run();
+    const [{ envelope }] = await worker.take();
+    expect(envelope).toMatchObject({ projection: 'perspective' });
+    await worker.completePrivacy(envelope as CapturePrivacyJob, { frames: 8, panorama: true });
+    await run();
+    expect(await jobRow(envelope.jobId)).toMatchObject({ state: 'failed', failureCode: 'projection_mismatch' });
+    expect((await findOwnedAsset(db(), capture.assetId, capture.owner))?.reconstructionEligible).toBe(false);
+  });
+
+  it('hands the views to the solve as rigs, each looking the capture heading plus its yaw', async () => {
+    const captures = [
+      await contribute({ projection: 'equirectangular', heading: 90 }),
+      await contribute({ projection: 'equirectangular', heading: 90, offsetMeters: 4 }),
+    ];
+    await run();
+    for (const { envelope } of await worker.take()) await worker.completePrivacy(envelope as CapturePrivacyJob, { frames: 8, panorama: true });
+    await run();
+    const [job] = await sceneJobs();
+    expect(job).toBeDefined();
+    const frames = job!.manifest.frames;
+    expect(frames).toHaveLength(16);
+    for (const capture of captures) {
+      const views = frames.filter((frame) => frame.captureAssetId === capture.assetId);
+      expect(views.map((frame) => frame.panorama?.yawDegrees).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([0, 45, 90, 135, 180, 225, 270, 315]);
+      for (const view of views) {
+        expect(view.prior.headingDegrees).toBe((90 + (view.panorama?.yawDegrees ?? 0)) % 360);
+        expect(view.camera).toBeUndefined();
+      }
+    }
   });
 });
 

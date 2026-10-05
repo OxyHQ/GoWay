@@ -33,6 +33,9 @@
  * milliseconds a fresh database costs.
  */
 
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createDatabase } from '@oxy.so/db';
 import { runMigrations, type MigrationRun } from '@oxy.so/db/migrate';
 import { createTestDatabase, dropTestDatabase } from '@oxy.so/db/testing';
@@ -128,8 +131,14 @@ export interface SuiteDatabase {
  * image here to stay compatible with. A suite that tests the deploy itself —
  * data written between the two phases — passes `run: 'pre'` and applies the
  * post phase with {@link migrateSuiteDatabase}.
+ *
+ * `throughTag` pins the schema to a past release: only the journal up to and
+ * including that migration exists for this database. A deploy test that
+ * reproduces a release's own pre/post window needs it once a LATER release
+ * adds a `pre` migration, which the runner rightly refuses to queue behind
+ * that release's still-pending `post` ones.
  */
-export async function createSuiteDatabase(options: { run?: MigrationRun } = {}): Promise<SuiteDatabase> {
+export async function createSuiteDatabase(options: { run?: MigrationRun; throughTag?: string } = {}): Promise<SuiteDatabase> {
   if (!ADMIN_URL) {
     throw new Error(
       'No database URL for the real-database suites. These tests do not skip: a ' +
@@ -144,7 +153,7 @@ export async function createSuiteDatabase(options: { run?: MigrationRun } = {}):
 
   const databaseUrl = await createTestDatabase({
     adminUrl: ADMIN_URL,
-    migrate: (url) => migrateSuiteDatabase(url, options.run ?? 'all'),
+    migrate: (url) => migrateSuiteDatabase(url, options.run ?? 'all', options.throughTag),
   });
 
   const { db, client } = createDatabase({
@@ -160,11 +169,32 @@ export async function createSuiteDatabase(options: { run?: MigrationRun } = {}):
   return { db, client, databaseUrl };
 }
 
+/**
+ * A copy of the migrations folder holding the journal only up to and including
+ * `tag`, with the `.sql` files byte for byte (so the ledger hashes a later full
+ * run records are identical). One per tag per process.
+ */
+const releaseFolders = new Map<string, string>();
+function migrationsFolderThrough(tag: string): string {
+  const cached = releaseFolders.get(tag);
+  if (cached) return cached;
+  const journal = JSON.parse(readFileSync(join(MIGRATIONS_FOLDER, 'meta', '_journal.json'), 'utf8')) as { entries: { tag: string }[] };
+  const end = journal.entries.findIndex((entry) => entry.tag === tag);
+  if (end === -1) throw new Error(`No migration ${tag} in the journal.`);
+  const folder = mkdtempSync(join(tmpdir(), 'goway-migrations-'));
+  mkdirSync(join(folder, 'meta'));
+  const entries = journal.entries.slice(0, end + 1);
+  writeFileSync(join(folder, 'meta', '_journal.json'), JSON.stringify({ ...journal, entries }));
+  for (const entry of entries) copyFileSync(join(MIGRATIONS_FOLDER, `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`));
+  releaseFolders.set(tag, folder);
+  return folder;
+}
+
 /** Apply one phase of the migrations to a suite database, as the deploy does. */
-export async function migrateSuiteDatabase(databaseUrl: string, run: MigrationRun): Promise<void> {
+export async function migrateSuiteDatabase(databaseUrl: string, run: MigrationRun, throughTag?: string): Promise<void> {
   await runMigrations({
     databaseUrl,
-    migrationsFolder: MIGRATIONS_FOLDER,
+    migrationsFolder: throughTag ? migrationsFolderThrough(throughTag) : MIGRATIONS_FOLDER,
     extensions: REQUIRED_EXTENSIONS,
     run,
     dryRun: false,

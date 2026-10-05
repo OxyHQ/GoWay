@@ -295,6 +295,16 @@ export const captureDerivatives = pgTable(
     width: integer().notNull(),
     height: integer().notNull(),
     privacyPipelineVersion: text().notNull(),
+    /**
+     * For a view cut from a 360° capture: which panorama of the capture (0 for
+     * a photo, the keyframe for a video), the view's yaw from the panorama's
+     * centre (degrees, clockwise) and its horizontal field of view. All three
+     * or none. The views of one panorama share a centre, which the solve uses
+     * to treat them as one rig.
+     */
+    panoramaIndex: integer(),
+    panoramaYawDegrees: doublePrecision(),
+    panoramaFovDegrees: doublePrecision(),
 
     retentionClass: text().notNull().default('privacy_safe_proxy'),
     retentionReason: text().notNull().default('awaiting_overlap'),
@@ -322,6 +332,13 @@ export const captureDerivatives = pgTable(
       sql`${table.imageSha256} ~ ${sql.raw(SHA256_PATTERN)} and (${table.maskSha256} is null or ${table.maskSha256} ~ ${sql.raw(SHA256_PATTERN)})`,
     ),
     check('capture_derivatives_mask_check', sql`(${table.maskKey} is null) = (${table.maskSha256} is null)`),
+    /** `coalesce`: a comparison with a NULL is NULL, which a bare CHECK would let a half-written view through. */
+    check(
+      'capture_derivatives_panorama_check',
+      sql`(${table.panoramaIndex} is null and ${table.panoramaYawDegrees} is null and ${table.panoramaFovDegrees} is null)
+          or coalesce(${table.panoramaIndex} >= 0 and ${table.panoramaYawDegrees} >= 0 and ${table.panoramaYawDegrees} < 360
+              and ${table.panoramaFovDegrees} > 0 and ${table.panoramaFovDegrees} < 180, false)`,
+    ),
     check(
       'capture_derivatives_size_check',
       sql`${table.imageByteSize} > 0 and (${table.maskByteSize} is null or ${table.maskByteSize} > 0)

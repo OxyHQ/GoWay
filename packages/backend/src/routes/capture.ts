@@ -50,6 +50,7 @@ import {
   captureSessionInputSchema,
   sessionPathSchema,
   type CaptureLocationEvidence,
+  type CaptureProjection,
   type CaptureUploadIntent,
   type CaptureUploadPolicy,
   type CaptureUploadTicket,
@@ -150,8 +151,28 @@ export function currentUploadPolicy(oxyUserId?: string): CaptureUploadPolicy {
       maxByteSize: captureConfig.maxVideoBytes,
       maxDurationSeconds: captureConfig.maxVideoDurationSeconds,
     },
+    ...(captureConfig.equirectangularEnabled
+      ? {
+          equirectangular: {
+            photo: {
+              maxByteSize: captureConfig.maxEquirectangularPhotoBytes,
+              maxWidthPixels: captureConfig.maxEquirectangularPhotoWidthPixels,
+            },
+            video: {
+              maxByteSize: captureConfig.maxEquirectangularVideoBytes,
+              maxDurationSeconds: captureConfig.maxEquirectangularVideoDurationSeconds,
+              maxWidthPixels: captureConfig.maxEquirectangularVideoWidthPixels,
+            },
+          },
+        }
+      : {}),
     retentionDays: { ...captureConfig.retentionDays },
   };
+}
+
+/** A full sphere stored equirectangularly is 2:1; an encoder may round one side. */
+function isTwoToOne(width: number, height: number): boolean {
+  return Math.abs(width - 2 * height) <= Math.max(2, 0.01 * width);
 }
 
 /** Refuse a contribution from an account outside a closed pilot. */
@@ -172,11 +193,27 @@ function assertMayContribute(oxyUserId: string): void {
  * Checked server-side even though the policy is published, because a published
  * policy is a courtesy to a well-behaved client and this is the enforcement.
  */
-function assertAcceptableMedia(body: { mediaKind: 'photo' | 'video'; contentType: string; byteSize: number; camera?: { durationSeconds?: number } }): void {
+function assertAcceptableMedia(body: {
+  mediaKind: 'photo' | 'video';
+  projection?: CaptureProjection | undefined;
+  contentType: string;
+  byteSize: number;
+  camera?: { durationSeconds?: number | undefined; widthPixels?: number | undefined; heightPixels?: number | undefined } | undefined;
+}): void {
+  const equirectangular = body.projection === 'equirectangular';
+  if (equirectangular) assertAcceptablePanorama(body);
   const limits =
     body.mediaKind === 'video'
-      ? { types: captureConfig.videoContentTypes, maxBytes: captureConfig.maxVideoBytes }
-      : { types: captureConfig.photoContentTypes, maxBytes: captureConfig.maxPhotoBytes };
+      ? {
+          types: captureConfig.videoContentTypes,
+          maxBytes: equirectangular ? captureConfig.maxEquirectangularVideoBytes : captureConfig.maxVideoBytes,
+          maxDuration: equirectangular ? captureConfig.maxEquirectangularVideoDurationSeconds : captureConfig.maxVideoDurationSeconds,
+        }
+      : {
+          types: captureConfig.photoContentTypes,
+          maxBytes: equirectangular ? captureConfig.maxEquirectangularPhotoBytes : captureConfig.maxPhotoBytes,
+          maxDuration: captureConfig.maxVideoDurationSeconds,
+        };
 
   if (!limits.types.includes(body.contentType)) {
     throw new ApiError('validation_failed', `GoWay does not accept ${body.contentType} for a ${body.mediaKind}.`, {
@@ -191,10 +228,43 @@ function assertAcceptableMedia(body: { mediaKind: 'photo' | 'video'; contentType
     });
   }
   const duration = body.camera?.durationSeconds;
-  if (duration !== undefined && duration > captureConfig.maxVideoDurationSeconds) {
+  if (duration !== undefined && duration > limits.maxDuration) {
     throw new ApiError('validation_failed', 'The video is longer than GoWay currently accepts.', {
       field: 'camera.durationSeconds',
-      maxDurationSeconds: captureConfig.maxVideoDurationSeconds,
+      maxDurationSeconds: limits.maxDuration,
+    });
+  }
+}
+
+/**
+ * Refuse a 360° declaration this deployment cannot honour, or one the
+ * declared dimensions already contradict.
+ *
+ * This is the cheap, early half. The declaration — dimensions included — is
+ * still a claim, and the privacy worker re-checks it against the stored bytes
+ * (their own projection metadata and their decoded pixels) before anything is
+ * derived from them.
+ */
+function assertAcceptablePanorama(body: {
+  mediaKind: 'photo' | 'video';
+  camera?: { widthPixels?: number | undefined; heightPixels?: number | undefined } | undefined;
+}): void {
+  if (!captureConfig.equirectangularEnabled) {
+    throw new ApiError('validation_failed', 'GoWay does not accept 360° media on this deployment yet.', { field: 'projection' });
+  }
+  const width = body.camera?.widthPixels;
+  const height = body.camera?.heightPixels;
+  const maxWidth =
+    body.mediaKind === 'video' ? captureConfig.maxEquirectangularVideoWidthPixels : captureConfig.maxEquirectangularPhotoWidthPixels;
+  if (width !== undefined && height !== undefined && !isTwoToOne(width, height)) {
+    throw new ApiError('validation_failed', 'A 360° capture must be a full equirectangular panorama, twice as wide as it is high.', {
+      field: 'camera.widthPixels',
+    });
+  }
+  if (width !== undefined && width > maxWidth) {
+    throw new ApiError('validation_failed', `A 360° ${body.mediaKind} may be at most ${maxWidth} pixels wide.`, {
+      field: 'camera.widthPixels',
+      maxWidthPixels: maxWidth,
     });
   }
 }
@@ -355,6 +425,9 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
         {
           ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
           mediaKind: input.mediaKind,
+          // Only when declared: an omitted projection is perspective, and the
+          // idempotency fingerprint of every existing request stays the same.
+          ...(input.projection === 'equirectangular' ? { projection: input.projection } : {}),
           source: input.source,
           contentHash: input.contentHash,
           byteSize: input.byteSize,

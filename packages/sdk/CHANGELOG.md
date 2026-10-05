@@ -156,6 +156,13 @@ almost every part of it is breaking.
 
 ### Added
 
+- 360° captures (OxyHQ/GoWay#91): `CaptureAssetInput.projection` declares an
+  `equirectangular` photo or video, `CaptureAsset.projection` reports the
+  declaration (`perspective` when a server sends none), and
+  `CaptureUploadPolicy.equirectangular` carries the 360° size, duration and
+  resolution limits when the deployment accepts such media.
+  `CAPTURE_PROJECTIONS`, `CaptureProjection` and
+  `CaptureEquirectangularPolicy` are exported.
 - `places.getMany(placeIds, options?)` → `PlaceBatch` (`GET /places?ids=`):
   up to `MAX_PLACE_BATCH_SIZE` (50) places in one request. Every id lands in
   exactly one of `items` (each place exactly as `places.get` answers it),

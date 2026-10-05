@@ -99,6 +99,13 @@
       "when": 1791161543171,
       "tag": "0013_goway_category_taxonomy",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791190178882,
+      "tag": "0014_goway_capture_projection",
+      "breakpoints": true
     }
   ]
 }

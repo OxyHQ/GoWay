@@ -94,6 +94,28 @@ describe('contribution client boundary', () => {
     expect(await rejection(insecure.captures.register('s', input))).toBeInstanceOf(GoWayResponseError);
   });
 
+  it('reads the declared projection, and a server that sends none as perspective', async () => {
+    expect((await client(200, asset).captures.asset('asset-1')).projection).toBe('perspective');
+    expect((await client(200, { ...asset, projection: 'equirectangular' }).captures.asset('asset-1')).projection).toBe('equirectangular');
+    expect(await rejection(client(200, { ...asset, projection: 'fisheye' }).captures.asset('asset-1'))).toBeInstanceOf(GoWayResponseError);
+    const { captures, calls } = client(201, { asset: { ...asset, projection: 'equirectangular' } });
+    const input: CaptureAssetInput = { mediaKind: 'photo', projection: 'equirectangular', source: 'library', contentHash: 'a'.repeat(64),
+      byteSize: 42, contentType: 'image/jpeg', location: [{ origin: 'user_placed', coordinate: { latitude: 41, longitude: 2 } }] };
+    await captures.register('s', input);
+    expect(JSON.parse(calls[0]!.init.body!).projection).toBe('equirectangular');
+    await expect(captures.register('s', { ...input, projection: 'fisheye' } as unknown as CaptureAssetInput)).rejects.toBeInstanceOf(GoWayValidationError);
+  });
+
+  it('reads the 360° limits only when the deployment publishes them', async () => {
+    const policy = { enabled: true, consentVersion: 'v', contentHashAlgorithm: 'sha256',
+      photo: { contentTypes: ['image/jpeg'], maxByteSize: 1 }, video: { contentTypes: ['video/mp4'], maxByteSize: 2, maxDurationSeconds: 3 },
+      retentionDays: { raw_photo: 90, raw_video: 30, extracted_keyframe: 180, privacy_safe_proxy: 180, thumbnail: 180 } };
+    expect((await client(200, policy).captures.policy()).equirectangular).toBeUndefined();
+    const equirectangular = { photo: { maxByteSize: 4, maxWidthPixels: 12000 }, video: { maxByteSize: 5, maxDurationSeconds: 6, maxWidthPixels: 7680 } };
+    expect((await client(200, { ...policy, equirectangular }).captures.policy()).equirectangular).toEqual(equirectangular);
+    expect(await rejection(client(200, { ...policy, equirectangular: { photo: {} } }).captures.policy())).toBeInstanceOf(GoWayResponseError);
+  });
+
   it('reads a session licence credit and rejects a blank one', async () => {
     const credited = client(200, { ...session, attribution: 'Imagery © Example, CC BY-SA 4.0' });
     expect((await credited.captures.session('s')).attribution).toBe('Imagery © Example, CC BY-SA 4.0');

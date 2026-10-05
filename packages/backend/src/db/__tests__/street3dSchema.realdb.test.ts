@@ -85,6 +85,20 @@ describe('derivatives are temporary and never raw', () => {
     expect(await refusedBy(() => db.insert(captureDerivatives).values(derivative({ objectKey: 'captures/raw' }))))
       .toContain('capture_derivatives_key_check');
   });
+
+  it('records a panorama view whole or not at all, with a yaw and field of view that make sense', async () => {
+    const db = suite!.db;
+    const view = { panoramaIndex: 0, panoramaYawDegrees: 45, panoramaFovDegrees: 90 };
+    await db.insert(captureDerivatives).values(derivative({ frameIndex: 10, ...view }));
+    expect(await refusedBy(() => db.insert(captureDerivatives).values(derivative({ frameIndex: 11, panoramaIndex: 0 }))))
+      .toContain('capture_derivatives_panorama_check');
+    expect(await refusedBy(() => db.insert(captureDerivatives).values(derivative({ frameIndex: 12, ...view, panoramaYawDegrees: 360 }))))
+      .toContain('capture_derivatives_panorama_check');
+    expect(await refusedBy(() => db.insert(captureDerivatives).values(derivative({ frameIndex: 13, ...view, panoramaFovDegrees: 180 }))))
+      .toContain('capture_derivatives_panorama_check');
+    expect(await refusedBy(() => db.insert(captureDerivatives).values(derivative({ frameIndex: 14, ...view, panoramaIndex: -1 }))))
+      .toContain('capture_derivatives_panorama_check');
+  });
 });
 
 describe('jobs', () => {
