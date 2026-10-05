@@ -57,6 +57,9 @@ dependencies = [
   "transformers>=4.50,<6",
   "safetensors>=0.4",
   "scipy>=1.14",
+  "einops>=0.8,<1",
+  "addict>=2.4,<3",
+  "pyyaml>=6",
 ]
 
 [project.optional-dependencies]

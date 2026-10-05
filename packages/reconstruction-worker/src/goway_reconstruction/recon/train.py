@@ -97,24 +97,44 @@ class TrainResult:
     cc_psnr: float = 0.0
 
 
+def held_out(index: int, count: int) -> bool:
+    """Whether the ``index``-th of ``count`` posed frames (see posed_images) is held out for evaluation.
+
+    The single rule for the trainer's split and for anything else that must
+    not learn from held-out frames, such as the dense initial point cloud.
+    """
+    return count >= 2 * HOLDOUT_EVERY and index % HOLDOUT_EVERY == 0
+
+
+def posed_images(model: pycolmap.Reconstruction) -> list[pycolmap.Image]:
+    """Registered frames in the trainer's order (sorted by name)."""
+    return [img for img in sorted(model.images.values(), key=lambda i: i.name) if img.has_pose]
+
+
+def undistort_frame(
+    model: pycolmap.Reconstruction, img: pycolmap.Image, images_dir: Path, masks_dir: Path
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """A frame at full resolution, undistorted: BGR image, privacy mask, valid area (uint8) and K."""
+    cam = model.cameras[img.camera_id]
+    f, cx, cy = cam.params[0], cam.params[1], cam.params[2]
+    k1 = cam.params[3] if len(cam.params) > 3 else 0.0
+    bgr = cv2.imread(str(images_dir / img.name), cv2.IMREAD_COLOR)
+    mask = cv2.imread(str(masks_dir / f"{img.name}.png"), cv2.IMREAD_GRAYSCALE)
+    if bgr is None or mask is None:
+        raise FileNotFoundError("frame or mask missing from scratch")
+    K = np.array([[f, 0, cx], [0, f, cy], [0, 0, 1]], dtype=np.float64)
+    dist = np.array([k1, 0, 0, 0], dtype=np.float64)
+    bgr = cv2.undistort(bgr, K, dist)
+    valid = cv2.undistort(np.full(mask.shape, 255, np.uint8), K, dist)
+    mask = cv2.undistort(mask, K, dist)
+    return bgr, mask, valid, K
+
+
 def load_views(model: pycolmap.Reconstruction, images_dir: Path, masks_dir: Path, long_edge: int, device: torch.device) -> list[View]:
     """Undistort and downscale every registered frame and its mask."""
     views: list[View] = []
-    for img in sorted(model.images.values(), key=lambda i: i.name):
-        if not img.has_pose:
-            continue
-        cam = model.cameras[img.camera_id]
-        f, cx, cy = cam.params[0], cam.params[1], cam.params[2]
-        k1 = cam.params[3] if len(cam.params) > 3 else 0.0
-        bgr = cv2.imread(str(images_dir / img.name), cv2.IMREAD_COLOR)
-        mask = cv2.imread(str(masks_dir / f"{img.name}.png"), cv2.IMREAD_GRAYSCALE)
-        if bgr is None or mask is None:
-            raise FileNotFoundError("frame or mask missing from scratch")
-        K = np.array([[f, 0, cx], [0, f, cy], [0, 0, 1]], dtype=np.float64)
-        dist = np.array([k1, 0, 0, 0], dtype=np.float64)
-        bgr = cv2.undistort(bgr, K, dist)
-        valid = cv2.undistort(np.full(mask.shape, 255, np.uint8), K, dist)
-        mask = cv2.undistort(mask, K, dist)
+    for img in posed_images(model):
+        bgr, mask, valid, K = undistort_frame(model, img, images_dir, masks_dir)
         h, w = bgr.shape[:2]
         scale = min(1.0, long_edge / max(h, w))
         if scale < 1.0:
@@ -239,6 +259,7 @@ class Trainer:
         sky: bool = True,
         drop_rate: float = DROP_RATE,
         anisotropy: bool = False,
+        init_points: tuple[np.ndarray, np.ndarray] | None = None,
         seed: int = 0,
     ) -> None:
         torch.manual_seed(seed)
@@ -257,9 +278,8 @@ class Trainer:
         self.norm_center = world_centers.mean(0)
         self.norm_scale = float(np.linalg.norm(world_centers - self.norm_center, axis=1).max() * 1.1) or 1.0
         views = [self._to_internal(v) for v in views]
-        enough = len(views) >= 2 * HOLDOUT_EVERY
-        self.train_views = [v for i, v in enumerate(views) if not enough or i % HOLDOUT_EVERY != 0]
-        self.test_views = [v for i, v in enumerate(views) if enough and i % HOLDOUT_EVERY == 0]
+        self.train_views = [v for i, v in enumerate(views) if not held_out(i, len(views))]
+        self.test_views = [v for i, v in enumerate(views) if held_out(i, len(views))]
 
         centers = np.array([v.center for v in views])
         self.scene_center = centers.mean(0)
@@ -267,6 +287,14 @@ class Trainer:
 
         pts = ((np.array([p.xyz for p in model.points3D.values()]) - self.norm_center) / self.norm_scale).astype(np.float32)
         rgb = np.array([p.color for p in model.points3D.values()], dtype=np.float32) / 255.0
+        if init_points is not None:
+            # Extra measured surface points (world xyz, uint8 rgb), such as the
+            # fused multi-view depth of recon/dense.py: Gaussians then also
+            # start on surfaces the sparse solve missed, with initial scales
+            # from the same nearest-neighbour rule as the SfM points.
+            xyz, colour = init_points
+            pts = np.concatenate([pts, ((np.asarray(xyz, np.float64) - self.norm_center) / self.norm_scale).astype(np.float32)])
+            rgb = np.concatenate([rgb, np.asarray(colour, np.float32) / 255.0])
         dist = _knn_scale(torch.tensor(pts, device=device))
         if sky:
             # Fibonacci points on the upper hemisphere (z is up in scene space),
@@ -647,6 +675,7 @@ def train_scene(
     device: torch.device,
     strategy: str = "mcmc",
     depth_prior=None,  # noqa: ANN001
+    init_points: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> TrainResult:
     started = time.monotonic()
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -662,6 +691,7 @@ def train_scene(
         device=device,
         strategy=strategy,
         depth_prior=depth_prior,
+        init_points=init_points,
     )
     trainer.try_resume()
     trainer.train(on_progress)

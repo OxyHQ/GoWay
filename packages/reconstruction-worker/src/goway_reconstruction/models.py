@@ -79,8 +79,33 @@ DEPTH_MODEL_FILES = (
     ),
 )
 
+DENSE_DEPTH_REVISION = "f4a6c9b3c95e41c82048423d3493a81ec3fa810e"
+_DENSE_DEPTH_BASE = f"https://huggingface.co/depth-anything/DA3-BASE/resolve/{DENSE_DEPTH_REVISION}"
+
+# Depth Anything 3 BASE: pose-conditioned multi-view depth for the dense
+# initial point cloud (recon/dense.py), run by the vendored model code. Only
+# DA3-SMALL, DA3-BASE, DA3METRIC-LARGE and DA3MONO-LARGE are Apache-2.0; the
+# LARGE, GIANT and NESTED checkpoints are CC-BY-NC-4.0 and must never be used
+# (see LICENSES.md).
+DENSE_DEPTH_MODEL_FILES = (
+    PinnedModel(
+        name="depth-anything-3-base",
+        version=DENSE_DEPTH_REVISION[:12],
+        filename="da3-base/config.json",
+        url=f"{_DENSE_DEPTH_BASE}/config.json",
+        sha256="5e34115ebc17bd2d8d43033c5f72e9446ac8833fd61d3fa160b7e67e0bb5b7b5",
+    ),
+    PinnedModel(
+        name="depth-anything-3-base",
+        version=DENSE_DEPTH_REVISION[:12],
+        filename="da3-base/model.safetensors",
+        url=f"{_DENSE_DEPTH_BASE}/model.safetensors",
+        sha256="e01067dc1659613083d9145a9a2547ccdbe6ccbbf83c4fe7b3e8a4e2bdae78b5",
+    ),
+)
+
 PRIVACY_MODELS = (FACE_DETECTOR, PLATE_DETECTOR, INSTANCE_SEGMENTER)
-ALL_MODELS = (*PRIVACY_MODELS, *DEPTH_MODEL_FILES)
+ALL_MODELS = (*PRIVACY_MODELS, *DEPTH_MODEL_FILES, *DENSE_DEPTH_MODEL_FILES)
 
 
 class ModelIntegrityError(RuntimeError):
