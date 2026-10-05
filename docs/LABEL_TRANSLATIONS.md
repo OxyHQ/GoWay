@@ -1,8 +1,8 @@
 # Label translations
 
 GoWay's own vocabularies (the category taxonomy, the capability keys, their
-enum values and groups) are contract data, so they are written in the
-languages GoWay publishes, not in each client. The languages are Mercaria's
+enum values and groups) are GoWay's data, so they are written in the languages
+GoWay publishes, not in each client. The languages are Mercaria's
 locales, so the two products read alike:
 
 `en` (the fallback), `ar`, `bn`, `ca`, `de`, `es`, `fr`, `hi`, `ja`, `pt-BR`,
@@ -14,26 +14,69 @@ and every tag is canonical (`normalizeLanguageTag`).
 | vocabulary | where | languages |
 |---|---|---|
 | capability keys, enum values, groups | `capability-registry.ts`, as `Labels` | all twelve, **required** by the type |
-| categories, in the SDK bundle | `category.ts` | `en`, `es` |
-| categories, the other ten | `i18n/category-labels.json` | all twelve, seed data for `place_category_labels` |
+| categories | `place_category_labels`, in the database | `en` **required**; any others. Seeded with all twelve by `0016` |
 | the app's generic pin and "Other" heading | `frontend/lib/goway/{categories,capabilities}.ts` | all twelve |
 
 Capability labels require every language, so the vocabulary never renders as a
 patchwork: a reader sees all of it in their language or all of it in English.
 
-`category-labels.json` is JSON rather than TypeScript for three reasons. It is
-seed data for the migration that fills the category tables, not code. Nothing
-imports it, so it ships in no SDK bundle and no `dist/`. And translation tools
-read it as it is, the same way they read Mercaria's `locales/*.json`.
-`packages/sdk/test/categoryLabels.test.ts` holds it to the taxonomy: every
-key, in registry order, with exactly the twelve languages, and with the same
-English and Spanish as `category.ts`.
+Category labels are data a moderator edits (`PUT`/`DELETE
+/moderation/categories/{key}/labels/{language}`; `docs/PLACE_DATA.md`), so a
+language arrives a row at a time and only English is required. The twelve
+languages were written as `i18n/category-labels.json`, which `0016`'s seed was
+generated from and which was then deleted with the code registry: the database
+is the one copy. The frozen seed — keys, glyphs, tags and those labels — is the
+backend test fixture `src/__tests__/fixtures/categoryTaxonomy-0.3.0.json`, and
+`categoryTables.realdb.test.ts` holds the migrated database to it, with the
+same hygiene the JSON's own test had (twelve languages, trimmed, NFC, no bidi
+controls). The table CHECKs trimmed, non-empty, NFC and at most 80 characters,
+so a label that breaks those rules cannot be stored by any path.
+
+### Delivering more category labels
+
+A batch of category translations is delivered as ONE JSON file, the shape
+`category-labels.json` had:
+
+```json
+{
+  "food": { "it": "Cibo e bevande", "ko": "음식·음료" },
+  "food.cafe": { "it": "Caffè", "ko": "카페" }
+}
+```
+
+- keys: category keys as `GET /moderation/categories` lists them (a key the
+  database does not hold is skipped, never created);
+- languages: canonical BCP 47 tags (`normalizeLanguageTag`): `it`, `ko`,
+  `zh-Hant`, `pt-PT` — never `en`, which is the source;
+- labels: trimmed, NFC, 1–80 characters, no bidi control characters, brand
+  names as they are.
+
+It lands as a custom migration generated from the file (`bun run db:generate
+-- --custom --name goway_category_labels_<langs>`, `pre`), one statement:
+
+```sql
+-- oxy:deploy-phase=pre
+INSERT INTO "place_category_labels" ("category_key", "language", "label")
+SELECT "label"."category_key", "label"."language", "label"."label"
+FROM (VALUES
+  ('food', 'it', 'Cibo e bevande'),
+  ('food.cafe', 'it', 'Caffè')
+) AS "label"("category_key", "language", "label")
+JOIN "place_categories" ON "place_categories"."key" = "label"."category_key"
+ON CONFLICT ("category_key", "language") DO NOTHING;
+```
+
+The JOIN skips a key a moderator never created; `DO NOTHING` keeps a label a
+moderator already wrote. Like the seed, it records no `place_category_events`.
+A handful of corrections goes through the moderation API instead, which
+records each one.
 
 ## Matching a locale
 
 Every label is read through `localizedLabel(entry, locale)`, which uses
 `matchLanguageTag(offered, locale)`. The matcher is exported so that labels
-stored as rows can use it too. Pass the reader's whole tag (`zh-Hans-CN`,
+stored as rows use it too: the category catalog resolves every
+`GET /categories` label through `localizedLabel` unchanged. Pass the reader's whole tag (`zh-Hans-CN`,
 `pt-PT`, `es-MX`), never only its language. The matcher picks:
 
 1. **The exact tag.** `pt-BR` reads `pt-BR`.
@@ -65,14 +108,13 @@ script that matching needs.
 
 1. Add the canonical tag to `LABEL_LANGUAGES` and to `labelsSchema`.
    `typecheck` then lists every capability label that lacks it.
-2. Write those labels, the two frontend fallbacks, and a column in
-   `category-labels.json` (or rows in `place_category_labels` once the tables
-   exist).
+2. Write those labels and the two frontend fallbacks. Deliver the category
+   labels as described under *Delivering more category labels*.
 3. If the language can be written in more than one script, add its likely
    script and any regional exceptions to `LIKELY_SCRIPTS` in `language.ts`.
-4. Run `bun run test:sdk`. It checks that the vocabulary has no gaps, that the
-   JSON is complete, and that no bidi control characters are present. Then add
-   the language to the table below.
+4. Run `bun run test:sdk` (no vocabulary gaps, no bidi control characters) and
+   the backend suite (the migration applies and the CHECKs hold). Then add the
+   language to the table below.
 
 Do not add bidi control characters. Arabic labels carry Latin brand names
 (FairCoin, Mercaria, Oxy) as they are, and the renderer handles direction.

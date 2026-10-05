@@ -179,7 +179,9 @@ The largest categories are `bus_stop` (70k), `restaurant` (58k),
 `place_of_worship` (35k), `cafe` (20k), `bar` (20k) and `park` (20k) — which is
 what a country looks like, and a useful shape to compare a future run against.
 
-Reproduce it anywhere, including on a laptop, without a database:
+Reproduce it anywhere, including on a laptop, against any migrated database —
+the dry run's one read is the category taxonomy's OpenStreetMap mapping, which
+is data in `place_category_osm_tags` rather than code:
 
 ```bash
 bun run import:osm -- --dry-run --region=europe/spain
@@ -307,9 +309,9 @@ bun run import:osm -- --target-database=goway_dev \
   --region=europe/monaco --verify-sample=5
 ```
 
-Monaco is 700 kB and finishes in seconds. A `--dry-run` writes nothing and opens
-no connection, but still needs a syntactically valid `DATABASE_URL`: this
-package parses its whole configuration at module load, on purpose.
+Monaco is 700 kB and finishes in seconds. A `--dry-run` writes nothing; it
+connects to `DATABASE_URL` only to read the category mapping, once, before the
+extract.
 
 ## Street 3D reconstruction
 

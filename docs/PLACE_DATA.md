@@ -2,9 +2,10 @@
 
 *Design note for Phase 2a of the place-data plan. The contracts are
 `packages/contracts/src/category.ts`, `capability-registry.ts` and `hours.ts`;
-the tables are in `packages/backend/src/db/schema/places.ts`; the importer's
-mapping is `packages/backend/src/import/osm/` (`fields.ts`, `poiTags.ts`,
-`capabilityTags.ts`, `openingHours.ts`).*
+the tables are in `packages/backend/src/db/schema/places.ts` and
+`categories.ts`; the taxonomy's server side is `packages/backend/src/categories/`;
+the importer's mapping is `packages/backend/src/import/osm/` (`fields.ts`,
+`poiTags.ts`, `capabilityTags.ts`, `openingHours.ts`).*
 
 GoWay used to know a place's name, address, phone and a flat list of category
 strings. This note is how it now knows what the place IS, what it offers, and
@@ -12,51 +13,130 @@ when it is open — and why each fact lives where it does.
 
 ## 1. The category taxonomy
 
-### One closed tree of dotted keys
+### One tree of dotted keys, held as data
 
 `food.cafe`, `shop.books`, `transport.rail_station`. A key's parent is the key
-minus its last segment, so the tree is spelled by the keys and cannot disagree
-with a separate parent column. Every ROOT is a browsing group (`food`, `shop`,
-`lodging`, `leisure`, `sport`, `culture`, `transport`, `vehicle`, `health`,
-`education`, `civic`, `finance`, `worship`, `services`, `office`, `craft`);
-every child is something a place is.
+minus its last segment, so the tree is spelled by the keys. Every ROOT is a
+browsing group (`food`, `shop`, `lodging`, `leisure`, `sport`, `culture`,
+`transport`, `vehicle`, `health`, `education`, `civic`, `finance`, `worship`,
+`services`, `office`, `craft`); every child is something a place is.
 
-Each registry entry carries its glyph key (`CATEGORY_ICONS` — provider-neutral;
-each client maps it to its own drawing), its labels (English and Spanish in
-code; the other label languages wait in `i18n/category-labels.json` for the
-category tables — `docs/LABEL_TRANSLATIONS.md`), and its OpenStreetMap mapping
-as `key=value` tags, with `key=*` as a key-wide fallback.
+The taxonomy is DATA in four tables (`0015`), which GoWay's moderators edit
+through `/moderation/categories` without a release:
 
-### Closed at three layers
+| table | holds |
+|---|---|
+| `place_categories` | `key` (PK, immutable), `parent_key` (FK, CHECKed to be the key minus its last segment), `icon` (CHECKed against `CATEGORY_ICONS`), `position` among siblings, `status` (`active` \| `deprecated`), created/updated |
+| `place_category_labels` | `(category_key, language)` PK, canonical BCP 47 `language` (the `places_names` CHECK), a trimmed NFC `label`. English is REQUIRED — a deferred constraint trigger refuses a category without one at commit; any other language is optional |
+| `place_category_osm_tags` | `tag` PK (`amenity=cafe`, `shop=*`), `category_key`. A table rather than a `text[]` so the primary key says one tag files under ONE category |
+| `place_category_events` | the audit: one row per moderation write, in its transaction, with the operator and a `{ field, before?, after? }` diff |
+
+`0016` seeded the 148 categories of the 0.3.0 contract registry — glyphs,
+positions in tens, OpenStreetMap tags, and labels in all twelve label
+languages (1,776 rows) — generated from the registry and from
+`i18n/category-labels.json` (`docs/LABEL_TRANSLATIONS.md`), nothing retyped.
+Both sources were then deleted: the database is the one copy. What stays in
+`@goway/contracts` is what is a CONTRACT — the key's shape, `CATEGORY_ICONS`,
+the statuses, the published shapes and `categoryTaxonomy`, the one way any
+reader indexes a list it fetched. The frozen seed survives only as a backend
+test fixture (`src/__tests__/fixtures/categoryTaxonomy-0.3.0.json`), which
+`categoryTables.realdb.test.ts` holds the migrated database to and the
+importer's unit suites classify through.
+
+### Closed by the database
 
 | layer | how |
 |---|---|
-| table | `places_categories_taxonomy_check`: `categories <@ ARRAY[CATEGORY_KEYS]`, built from the registry (`closedSetArray`, the array sibling of `closedSet`) |
-| writes | `categoryKeySchema` (`z.enum(CATEGORY_KEYS)`) on `POST`/`PATCH /places` — a 422 naming `categories.N` |
-| filters | the same schema on `?categories=` for places and search |
+| table | the `places_categories_taxonomy_guard` trigger (`0016`): an INSERT, or an UPDATE that ADDS a key, is refused unless every added key is an ACTIVE category |
+| writes | `POST`/`PATCH /places` check the process's catalog first — a 422 naming `categories.N`, issue `unknown_category` or `deprecated_category` |
+| filters | `?categories=` on places and search refuses a key that is not a category (422, `categories.N`); a deprecated key is allowed |
 
-Responses are deliberately LOOSER (`publishedCategoryKeySchema`, any dotted
-key): a category GoWay adds must not make an older SDK reject the places that
-carry it. Adding a category is one registry entry plus the generated migration
-that widens the CHECK.
+The trigger replaced `0013`'s `places_categories_taxonomy_check`, which `0017`
+drops: a CHECK cannot read another table, and one rebuilt from an array literal
+made every new category a migration. A key the row already carries may stay —
+a deprecated category never makes a place uneditable — and existing rows are
+never re-checked, so what `0013` validated stays valid and a deprecated key
+stays readable.
+
+A junction table (`place_category_assignments(place_id, category_key)`) would
+make membership a foreign key, and was weighed: it means writing ~13M places'
+categories as ~15M new rows and rewriting every read that hydrates a place,
+every filter (`&&` on `places_categories_gin` becomes a join), the importer's
+three-way merge and its recorded `source_data`, on a 2-vCPU instance whose
+migration phase is one transaction. The trigger gives the same guarantee for
+writes and leaves 12.9M rows untouched. Its cost is a PL/pgSQL call per row
+whose categories a write sets, and nothing for any other write (`WHEN`): on the
+benchmark machine 100k bare inserts took 4.1 s against the CHECK's 1.6 s, about
+25 µs a row — a few milliseconds per 1,000-place import batch, whose rows each
+already cost index and source writes.
+
+Responses only check a key's shape: a category a moderator adds after an SDK
+was built must not make that SDK reject the places that carry it.
+
+### Moderation
+
+`/moderation/categories` (operator allow-list, `docs/BUSINESS_OWNERSHIP.md`):
+list with positions and mappings; create (the key spells the parent, which must
+exist and be active; `labels.en` required; position defaults to after the last
+sibling); `PATCH` glyph, position, mapping (replaced whole; a tag must be one
+the import reads, `isMappableOsmTag`, and no other category's) and status; `PUT`
+and `DELETE` one label (never `en`). An active category's parent is active:
+deprecating one with an active child, or reactivating one under a deprecated
+parent, is `409`, serialized by row locks. A deprecated category is refused on
+writes that would add it, mapped by the import to nothing (its tags fall back
+to `key=*`), and still listed, labelled and filterable.
+
+**Keys are immutable, and nothing is deleted.** A trigger refuses an UPDATE of
+a key and the DELETE of one a place carries. A rename is:
+
+1. create the new key, moving the OpenStreetMap tags to it (remove them from
+   the old one first: one tag, one category);
+2. deprecate the old key — nothing writes it from here on;
+3. `bun run categories:move -- --target-database=<name> --from-category=<old>
+   --to-category=<new>` (optionally `--dry-run` first). It rewrites
+   `places.categories` AND the import's recorded `categories` by one rule, in
+   id-ordered batches through the converter's machinery
+   (`places/legacyConversion` — resumable with `--from`, retried on a lock
+   timeout), records no revisions (a data move, like `0011`), and moves
+   `updated_at`. Do not dispatch the import while it runs. Skipping this step
+   loses nothing: the old key keeps reading.
+
+### Read through a cached catalog
+
+`categories/catalog.ts` loads the taxonomy in ONE statement (labels and tags
+aggregated per row, so a reader never sees a category without the labels it
+was created with) and holds it per database handle for 60 s. A moderation
+write drops this process's copy after it commits; another process re-reads
+within the TTL. Staleness is harmless where it matters: the trigger refuses
+what a stale catalog lets through, and the API answers that refusal as the
+same 422 (`issue: inactive_category`).
+
+`GET /categories?locale=` is one page — depth-first, siblings by position, the
+deprecated included — with every label and `label` resolved by `localizedLabel`
+(`matchLanguageTag`, the BCP 47 matcher every GoWay label uses), cacheable for
+5 minutes. Clients index it with `categoryTaxonomy`; the app keeps it in
+TanStack Query.
 
 ### Stored most-specific, filtered by subtree
 
 A place stores its most specific keys; it does not also store `food` beside
-`food.cafe`. `?categories=food` is expanded server-side by
-`categoryDescendants` and answered by `&&` against `places_categories_gin`.
-Storing ancestors would make every key a second write and a second thing to
-keep consistent.
+`food.cafe`. `?categories=food` is expanded server-side through the catalog's
+tree (`expand`) and answered by `&&` against `places_categories_gin`. Storing
+ancestors would make every key a second write and a second thing to keep
+consistent.
 
 ### What the importer files a place under
 
-`osmCategories` (`poiTags.ts`) walks every qualifying tag in `POI_MAPPING_KEYS`
-precedence, so the first key is always the one that classified the element;
-each tag maps through the registry (`key=value`, else `key=*`); an ancestor of
-another key is dropped; at most three. Every open key (`amenity`, `shop`,
-`tourism`, `leisure`, `historic`, `office`, `craft`, `sport`) has a `key=*`
-fallback and every listed value has its own entry, which `poiTags.test.ts`
-holds to: nothing the import admits goes uncategorised.
+The import reads the mapping from the database once per run (a dry run too —
+its one read). `osmCategories` (`poiTags.ts`) walks every qualifying tag in
+`POI_MAPPING_KEYS` precedence, so the first key is always the one that
+classified the element; each tag maps through the catalog (`key=value`, else
+`key=*`, active categories only); an ancestor of another key is dropped; at
+most three. Every open key (`amenity`, `shop`, `tourism`, `leisure`,
+`historic`, `office`, `craft`, `sport`) has a `key=*` fallback in the seed and
+every listed value has its own entry, which `poiTags.test.ts` holds the seed
+to: nothing the import admits goes uncategorised. A moderator's later mapping
+is theirs to keep complete.
 
 The OpenMapTiles class table in `poiTags.ts` stays, for the one job it still
 has — deciding clutter the way the basemap does — and no longer names a
@@ -72,7 +152,8 @@ is a no-op); unmapped keys drop; ancestors of kept keys drop. Converting both
 sides with the same function keeps "the column still says what OSM said", so the
 next import refreshes the converted value with the real mapping.
 `0013_goway_category_taxonomy` (post) then adds the CHECK, `NOT VALID`, and
-the operator validates it after the deploy. (`0008` is the additive half and
+the operator validates it after the deploy; the next release's `0017` replaces
+it with the trigger above. (`0008` is the additive half and
 `0012` business moderation's `brand_id` drop: every `pre` migration precedes
 every `post` one, see `packages/backend/drizzle/README.md`.) Production's ~13M
 rows are converted in batches BEFORE the release by
