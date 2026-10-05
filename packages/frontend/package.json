@@ -31,6 +31,7 @@
     "@expo/vector-icons": "^15.1.1",
     "@goway.to/sdk": "workspace:*",
     "@maplibre/maplibre-react-native": "^11.4.0",
+    "@mercaria.co/sdk": "0.2.0",
     "@noble/hashes": "1.8.0",
     "@oxy.so/app-preset": "^3.0.0",
     "@oxy.so/bloom": "6.2.1",
