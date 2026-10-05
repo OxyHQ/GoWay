@@ -4,6 +4,47 @@ All notable changes to `@goway.to/sdk`. The package follows semantic versioning
 with the 0.x rule: while the major version is 0, a MINOR release may break the
 API or the contract, and a PATCH release never does.
 
+## 0.4.0 — unreleased
+
+GoWay's vocabulary labels now come in Mercaria's twelve languages, and a
+locale is matched to one of them by BCP 47 rules instead of by its bare
+language.
+
+### Breaking
+
+- **`LABEL_LANGUAGES` has twelve languages**: `en`, `ar`, `bn`, `ca`, `de`,
+  `es`, `fr`, `hi`, `ja`, `pt-BR`, `ru` and `zh-Hans`, all canonical tags.
+  `Labels` requires every one of them, so a `Labels` value built by hand needs
+  all twelve.
+- **`Category.labels` is `LocalizedLabels`**: `{ en: string; [tag]: string }`.
+  English is always there and any other language may be, keyed by canonical
+  tag. `es` is no longer a guaranteed key. Read a category's label with
+  `localizedLabel(category.labels, locale)` rather than indexing it. The
+  response schema is open, so a language GoWay adds later does not break
+  parsing.
+- **`localizedLabel` matches the whole locale.** Pass the reader's full tag,
+  such as `zh-Hans-CN`, `pt-PT` or `es-MX`. The match order is: the exact tag,
+  then the same language in a compatible script (the reader's region first,
+  then no region, then another region), then English. `pt` and `pt-PT` read
+  `pt-BR`. `zh`, `zh-CN` and `zh-SG` read `zh-Hans`. `zh-TW`, `zh-HK` and
+  `zh-Hant` read English, never Simplified Chinese.
+
+### Added
+
+- `matchLanguageTag(offered, locale)`: the BCP 47 best match that
+  `localizedLabel` uses, for labels you store yourself. It returns the offered
+  tag as you spelled it, or `undefined` when nothing serves.
+- The `LocalizedLabels` type.
+- Capability keys, enum values and groups are labelled in all twelve
+  languages. Brand names (FairCoin, Mercaria, Wikidata, WhatsApp, Instagram,
+  X, TikTok, Facebook) are kept as they are. The translations other than
+  English and Spanish are machine-authored and await native review
+  (`docs/LABEL_TRANSLATIONS.md`).
+
+The bundled `CATEGORIES` and `categoryLabel` still carry English and Spanish.
+The other ten languages arrive with the category tables, through
+`categories.list()`.
+
 ## 0.3.0 — unreleased
 
 The SDK now validates every request and parses every response with the

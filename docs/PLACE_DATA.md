@@ -22,9 +22,10 @@ with a separate parent column. Every ROOT is a browsing group (`food`, `shop`,
 every child is something a place is.
 
 Each registry entry carries its glyph key (`CATEGORY_ICONS` — provider-neutral;
-each client maps it to its own drawing), its label in every label language
-(English and Spanish, both required — `labels.ts`), and its OpenStreetMap
-mapping as `key=value` tags, with `key=*` as a key-wide fallback.
+each client maps it to its own drawing), its labels (English and Spanish in
+code; the other label languages wait in `i18n/category-labels.json` for the
+category tables — `docs/LABEL_TRANSLATIONS.md`), and its OpenStreetMap mapping
+as `key=value` tags, with `key=*` as a key-wide fallback.
 
 ### Closed at three layers
 
@@ -264,4 +265,6 @@ per language are `docs/PLACE_MEDIA_REVIEWS.md`.
   arrive from businesses, the community and Mercaria.
 - Public-holiday rules from `opening_hours` are not turned into exceptions;
   that needs a holiday calendar per region.
-- Labels exist in English and Spanish only; the app's own chrome is English.
+- The bundled category labels are English and Spanish until the category
+  tables publish the other ten; the capability vocabulary is in all twelve
+  label languages, and the app's own chrome is English.
