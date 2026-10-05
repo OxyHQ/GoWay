@@ -114,6 +114,10 @@ jobs:
           # signed out — so an unset variable costs sign-in only, silently.
           EXPO_PUBLIC_OXY_CLIENT_ID: ${{ vars.EXPO_PUBLIC_OXY_CLIENT_ID }}
           EXPO_PUBLIC_API_URL: https://api.goway.to
+          # Where a place's "Products at this store" is read from. The SDK
+          # defaults to the same origin; it is pinned here, like the API above,
+          # so what production talks to is read off this file.
+          EXPO_PUBLIC_MERCARIA_API_URL: https://api.mercaria.co
           # FIXTURES OFF. This is the cutover the line above used to promise,
           # and this comment is its record.
           #

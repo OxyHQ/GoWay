@@ -36,6 +36,7 @@ Always **bun**; commit `bun.lock` with its `package.json`.
 - API shape follows `~/Oxy/docs/api-conventions.md`: lists are `{ items, nextCursor }` with fingerprinted cursors (`http/cursor.ts`), errors use the contract's closed codes.
 - Never publish an internal Drizzle/PostGIS row shape as an SDK contract, and never let a Python worker implementation detail become one.
 - MapLibre, OpenFreeMap, Photon, Nominatim, Valhalla, COLMAP and gsplat are replaceable adapters behind GoWay interfaces. Feature code imports the GoWay abstraction, never the provider.
+- Mercaria is read through `packages/frontend/lib/mercaria` over `@mercaria.co/sdk`; feature code never imports the SDK, and GoWay stores none of Mercaria's data. A place's `commerce.mercaria.store` only decides whether to ask; render only what Mercaria returns.
 - Every map GoWay draws carries the mark bottom-left and the data credit bottom-right, both rendered by `MapCanvas` with no prop to disable — the embed included.
 - The logo is geometry (`packages/frontend/components/brand/artwork.ts`), drawn and never fetched; `public/brand/*` is generated from it and gated by `brand:check`. Its blue is ink (`--color-brand-goway`), never Bloom's `--primary`.
 - Every GoWay-enriched place gets a stable GoWay Place ID independent of provider IDs; deep links use it (`https://goway.to/place/<placeId>`). Preserve source provenance and never destructively overwrite a source fact.
