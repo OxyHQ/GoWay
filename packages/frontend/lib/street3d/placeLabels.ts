@@ -7,7 +7,7 @@
  * to the screen to the viewer, which does it every frame.
  */
 import { placeDisplayName, type Place } from '@goway.to/sdk';
-import type { StreetSceneWorldTransform } from '@goway/shared-types';
+import type { StreetSceneWorldTransform } from '@goway.to/sdk';
 
 import { geodeticToEnu, invertSimilarity, transformPoint, type Vec3 } from './geodesy';
 

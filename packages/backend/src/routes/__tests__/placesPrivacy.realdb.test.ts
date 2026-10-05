@@ -30,7 +30,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import express, { type RequestHandler } from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { Place, PlaceWithDistance } from '@goway/shared-types';
+import type { Place, PlacePage, PlaceWithDistancePage } from '@goway/contracts';
 import { createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {
   SUITE_SETUP_TIMEOUT_MS,
@@ -39,11 +39,12 @@ import {
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
 import { ApiError } from '../../http/apiError';
-import { errorHandler, notFoundHandler } from '../../http/errorHandler';
+import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import { createPlacesRouter } from '../places';
+import { apiAuthor, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 
 const CONTRIBUTOR: PlaceActor = {
-  oxyUserId: 'user-contributor',
+  author: apiAuthor('user-contributor'),
   assertedVerification: 'community_reported',
 };
 
@@ -116,8 +117,8 @@ beforeAll(async () => {
 
   const app = express();
   app.use(express.json());
-  app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth }));
-  app.use(notFoundHandler);
+  app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }));
+  app.use(unknownRouteHandler);
   app.use(errorHandler);
 
   server = app.listen(0);
@@ -151,22 +152,22 @@ describe('discovering merchants near a user', () => {
     const nearby = `latitude=${USER_POSITION.latitude}&longitude=${USER_POSITION.longitude}&radiusMeters=2000`;
     const filtered = `${nearby}&capabilities=payments.faircoin.accepted`;
 
-    const anonymous = await call<PlaceWithDistance[]>(`/places/nearby?${nearby}`);
+    const anonymous = await call<PlaceWithDistancePage>(`/places/nearby?${nearby}`);
     expect(anonymous.status).toBe(200);
-    expect(anonymous.body.map((place) => place.id)).toContain(shop.id);
+    expect(anonymous.body.items.map((place) => place.id)).toContain(shop.id);
 
     // The FairCoin wallet's own request: a capability-filtered radius search
     // made by somebody GoWay could attribute a position to if it kept one.
-    const identified = await call<PlaceWithDistance[]>(
+    const identified = await call<PlaceWithDistancePage>(
       `/places/nearby?${filtered}`,
       asUser('user-wallet'),
     );
     expect(identified.status).toBe(200);
-    expect(identified.body.map((place) => place.id)).toEqual([shop.id]);
+    expect(identified.body.items.map((place) => place.id)).toEqual([shop.id]);
 
     // The viewport read and the deep link, for the same reason: the map moving
     // is a stream of positions too.
-    await call<Place[]>('/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5', asUser('user-wallet'));
+    await call<PlacePage>('/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5', asUser('user-wallet'));
     await call<Place>(`/places/${shop.id}`, asUser('user-wallet'));
 
     // A REFUSED request as well. An early-return validation path is where an
@@ -201,6 +202,6 @@ describe('discovering merchants near a user', () => {
     // The distinction only holds while the column stays unpublished, because a
     // contributor id beside a coordinate reads exactly like a location trace.
     const { body } = await call<Record<string, unknown>>(`/places/${shop.id}`);
-    expect(JSON.stringify(body)).not.toContain(CONTRIBUTOR.oxyUserId);
+    expect(JSON.stringify(body)).not.toContain(CONTRIBUTOR.author.oxyAccountId);
   });
 });

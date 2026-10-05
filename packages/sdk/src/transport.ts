@@ -1,3 +1,4 @@
+import type { z } from 'zod';
 import { GOWAY_API_BASE_PATH, isApiErrorCode } from './contract';
 import {
   apiError,
@@ -13,7 +14,6 @@ import {
   GoWayUnavailableError,
   GoWayValidationError,
 } from './errors';
-import { ParseFailure } from './parse';
 import {
   createAbortController,
   globalFetch,
@@ -26,6 +26,7 @@ import {
   type GoWayHeadersLike,
   type GoWayHttpMethod,
 } from './runtime';
+import { validResponse } from './validate';
 
 /**
  * Supplies the caller's Oxy access token.
@@ -59,7 +60,7 @@ export interface RequestSpec {
   /** Path below {@link GOWAY_API_BASE_PATH}, with every segment already encoded. */
   path: string;
   query?: Readonly<Record<string, QueryValue>>;
-  /** A JSON body for a write. Never sent on a GET. */
+  /** A JSON body for a write, already validated. Never sent on a GET. */
   body?: unknown;
   signal?: GoWayAbortSignal | undefined;
 }
@@ -99,15 +100,15 @@ export function serializeQuery(query: Readonly<Record<string, QueryValue>>): str
 }
 
 /**
- * One path segment. `.` and `..` are refused rather than encoded: the WHATWG
- * URL parser treats `..` AND `%2e%2e` as a parent-directory segment, so a place
- * id of `..` would silently address a different route.
+ * One path segment, already validated by its contract path schema, encoded.
+ *
+ * `.` and `..` are refused rather than encoded: the WHATWG URL parser treats
+ * `..` AND `%2e%2e` as a parent-directory segment, so a place id of `..` would
+ * silently address a different route. No contract schema can say that, because
+ * it is a property of URLs rather than of ids.
  */
 export function pathSegment(id: string, what: string): string {
-  if (typeof id !== 'string' || id.trim().length === 0) {
-    throw new GoWayValidationError(`${what} must be a non-empty string`);
-  }
-  if (id === '.' || id === '..') throw new GoWayValidationError(`${what} is not a valid id`);
+  if (id === '.' || id === '..') throw new GoWayValidationError(`path.${what}: must not be a dot segment`);
   return encodeURIComponent(id);
 }
 
@@ -178,7 +179,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  *
  * GoWay's own error code decides the class whenever the body is a real
  * {@link ApiErrorBody}; the whole point of defining the vocabulary once in
- * `packages/shared-types` is that this mapping is total and mechanical.
+ * `packages/contracts` is that this mapping is total and mechanical.
  *
  * The status is only a FALLBACK, for a response GoWay did not write — and a 404
  * without a GoWay error body is deliberately a {@link GoWayApiError}, never
@@ -226,36 +227,32 @@ export function errorForResponse(
  * A 2xx body IS the contract value — GoWay wraps success in no envelope, so
  * there is no second place for a response to say "actually this failed". Only
  * non-2xx bodies carry {@link ApiErrorBody}.
+ *
+ * `schema` is `null` for an operation whose contract answer is an empty body
+ * (`204`, a delete): whatever arrives with a 2xx is then ignored rather than
+ * parsed, because there is no contract to hold it to and nothing to return.
  */
 export function interpretResponse<T>(
   response: { status: number; headers: GoWayHeadersLike | undefined; text: string },
-  parse: (data: unknown, path: string) => T,
-): T {
+  schema: z.ZodType<T> | null,
+): T | undefined {
   const { status, headers, text } = response;
   const body = parseJson(text);
 
   if (status < 200 || status >= 300) throw errorForResponse(status, headers, body);
+  if (schema === null) return undefined;
 
   if (body === undefined) {
     throw new GoWayResponseError(`GoWay returned HTTP ${status} with an empty or unparseable body`, { status });
   }
-  try {
-    return parse(body, 'response');
-  } catch (error) {
-    if (error instanceof ParseFailure) {
-      throw new GoWayResponseError(`GoWay returned a malformed response: ${error.message}`, {
-        status,
-        cause: error,
-      });
-    }
-    throw error;
-  }
+  return validResponse(schema, body, status);
 }
 
 type Cancellation = 'aborted' | 'timeout';
 
 /**
- * Perform one request and parse it.
+ * Perform one request and parse its body with the operation's contract schema,
+ * or — with `schema: null` — expect an empty answer and resolve with nothing.
  *
  * Cancellation is enforced HERE, not delegated to `fetch`: every await — the
  * token getter, the request, the body — is raced against the caller's signal
@@ -263,11 +260,13 @@ type Cancellation = 'aborted' | 'timeout';
  * outlive either. The signal is also passed to `fetch` so a real one releases
  * the connection.
  */
+export async function request<T>(config: TransportConfig, spec: RequestSpec, schema: z.ZodType<T>): Promise<T>;
+export async function request(config: TransportConfig, spec: RequestSpec, schema: null): Promise<void>;
 export async function request<T>(
   config: TransportConfig,
   spec: RequestSpec,
-  parse: (data: unknown, path: string) => T,
-): Promise<T> {
+  schema: z.ZodType<T> | null,
+): Promise<T | undefined> {
   const { signal } = spec;
   if (signal?.aborted) throw new GoWayAbortError('The request was aborted before it was sent');
 
@@ -343,7 +342,7 @@ export async function request<T>(
       });
     }
 
-    return interpretResponse({ status: response.status, headers: response.headers, text }, parse);
+    return interpretResponse({ status: response.status, headers: response.headers, text }, schema);
   } catch (error) {
     // A cancellation that lands while the token getter is pending surfaces as
     // the race's own rejection; normalise so the caller always sees one class.

@@ -33,7 +33,7 @@
 import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark';
 import * as THREE from 'three';
 
-import type { StreetSceneNavigation } from '@goway/shared-types';
+import type { StreetSceneNavigation } from '@goway.to/sdk';
 
 import { createCameraRig, MAX_PITCH, type CameraRig } from '../cameraRig';
 import {

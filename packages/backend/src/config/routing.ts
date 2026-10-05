@@ -27,7 +27,7 @@
 
 import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
-import { TRAVEL_MODES } from '@goway/shared-types';
+import { TRAVEL_MODES } from '@goway/contracts';
 import type { EnvironmentSource } from './index';
 
 // Type-only import above, so this module does NOT pull the core configuration

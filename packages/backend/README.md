@@ -63,11 +63,11 @@ src/http/validation.ts   zod → bad_request | validation_failed, details withou
 src/middleware/auth.ts   Oxy auth, from @oxy.so/core/server and nowhere else
 src/middleware/cors.ts   the public-read lane and the strict one, and which route gets which
 src/routes/health.ts     GET /health (liveness + database reachability), GET /ready
+src/http/cursor.ts       opaque page cursors, bound to their list and filters by a fingerprint
 src/routes/places.ts     the Places surface, mounted at /api/v1
-src/routes/placeSchemas.ts  the request schemas, at least as strict as the CHECKs behind them
 src/routes/capture.ts    the Street 3D contribution surface (#9/#10)
-src/routes/captureSchemas.ts  its request schemas, with EXIF normalized at the boundary
 src/routes/street3d.ts   public coverage and scene reads, authenticated reports
+src/routes/openapi.ts    GET /api/v1/openapi.json, generated from @goway/contracts
 src/config/capture.ts    retention windows, media limits and the object-store settings
 src/config/street3d.ts   queues, buckets, thresholds, gates and budgets; inert when unset
 src/utils/logger.ts      pino, with the redaction list
@@ -89,35 +89,68 @@ bun run dev
 
 ## Places
 
-`/api/v1` — the base path `@goway.to/sdk` ships as `GOWAY_API_BASE_PATH`. The
-SDK is published contract, so these paths and payload shapes are not ours to
-change unilaterally.
+`/api/v1` — the base path `@goway.to/sdk` ships as `GOWAY_API_BASE_PATH`. Every
+route, parameter and payload is an operation in the `@goway/contracts` registry
+(`API_OPERATIONS`), parsed with that registry's zod schema and published as
+`packages/contracts/openapi.json` (served at `/api/v1/openapi.json`). The full
+list is the OpenAPI document; the Places reads:
 
 | route | auth | answers |
 | --- | --- | --- |
-| `GET /places/:id` | public | one `Place`, in any status |
-| `GET /places/nearby?latitude&longitude&radiusMeters` | public | `PlaceWithDistance[]`, nearest first |
-| `GET /places/bounds?west&south&east&north` | public | `Place[]` in the viewport |
-| `GET /places?bbox=w,s,e,n` | public | the same, under the spelling issue #4 documents |
+| `GET /places/{placeId}` | public | one `Place`; `410 gone` if moderation removed it, with `details.mergedInto` if it was merged |
+| `GET /places?ids=a,b,c` | public | a `PlaceBatch` of up to 50 ids: `items` as the single read answers them, `gone` (`{ id, mergedInto? }`), `missing` |
+| `GET /places/nearby?latitude&longitude&radiusMeters` | public | a `PlaceWithDistancePage`, nearest first |
+| `GET /places/bounds?west&south&east&north` | public | a `PlacePage` of the viewport, by place id |
 | `POST /places` | Oxy session | 201 + the created `Place` |
-| `PATCH /places/:id` | Oxy session | the updated `Place` |
+| `PATCH /places/{placeId}` | Oxy session | the updated `Place`; a merge patch — absent leaves a field alone, `null` clears it |
+| `GET /places/{placeId}/revisions` | public | a `PlaceRevisionPage`, newest first: what changed and when, never who |
+| `POST /places/{placeId}/reports` | Oxy session | 201 + the `PlaceReport`, or 200 + the reporter's open one |
 
 Reads are public because the map opens without an account. `?capabilities=` is a
-conjunction and `?categories=` a disjunction, both answered without a client
-knowing the capability table exists. A success body IS the contract value —
-there is no envelope; only failures carry `{ error: { code, message, details? } }`.
+conjunction over each key's STRONGEST assertion, which must hold (a business's
+`false` outranks a community `true`) or, as `key:value`, carry the value (an
+enum, enum-set, price or text key); `?categories=` is a disjunction. Every place
+a read answers with carries its current hours exceptions. A success
+body IS the contract value — there is no envelope; failures carry
+`{ error: { code, message, details? } }`, the rate limiter's 429 included.
+Every list is `{ items, nextCursor }`: pass `cursor` back with the SAME filters
+(another list's cursor is `bad_request`); `limit` outside its range is
+`validation_failed`; an unknown or repeated query parameter is `bad_request`.
 
 Three rules the code is written to and the tests measure:
 
 - `ST_DWithin` in a WHERE clause is index-backed; `ST_Distance(...) < r` is not
-  and scans the planet, so `ST_Distance` appears only in a SELECT list or an
-  ORDER BY. `placesGeo.realdb.test.ts` asserts both plans.
+  and scans the planet, so `ST_Distance` is never the radius predicate. It
+  appears in a SELECT list, an ORDER BY, and — on a nearby page after the first
+  — in the `(distance, id)` keyset BESIDE `ST_DWithin`, which still selects
+  through the index. `placesGeo.realdb.test.ts` asserts all three plans.
 - The `places.geo` point is `GENERATED ALWAYS … STORED` from `longitude` and
   `latitude` and is never written. A transposed pair is a valid point in the
   wrong hemisphere, so the ordinate order is asserted against a real distance
   (Barcelona→Madrid ≈ 507 km; transposed it reads 659 km).
 - Reconciliation links on `(source, sourceId)` and MERGES NOTHING. Look-alikes
-  become rows in `places_duplicate_candidates` for review.
+  become rows in `places_duplicate_candidates`, and only an operator merges
+  (`POST /moderation/duplicates/{id}/resolution`).
+- Every write records one `place_revisions` row IN ITS OWN TRANSACTION.
+  `placeRevisions.realdb.test.ts` proves it by making the revision insert fail
+  and asserting the write did not land.
+
+A claim names an Oxy account — usually an organization — and Oxy decides who may
+act for it: the session that switched into it, or a member Oxy reports as
+`owner`, `admin` or `editor` (`owner`/`admin` to file a claim in its name).
+GoWay asks `GET /accounts/:id` with the caller's own bearer, caches the answer
+30 s per person and account, and answers `503` when Oxy cannot. Design note:
+`docs/BUSINESS_OWNERSHIP.md`.
+
+## Moderation
+
+`/api/v1/moderation/*` is the operator surface: the claim queue and decisions,
+`oxy_verified` capabilities and the place's verification state, removing and
+restoring a place, the duplicate queue and merges, the report queue, and a
+place's full history with who made each change. Every route is behind
+`requireAuth` and the operator allow-list `MODERATION_OPERATOR_OXY_USER_IDS`
+(Oxy user ids, matched against the person behind the session; empty means
+nobody). Every decision records a revision in the same transaction.
 
 ## Importing OpenStreetMap POIs
 
@@ -371,6 +404,7 @@ bun run test
 | `bun run db:generate` | diff `src/db/schema/` and WRITE a migration |
 | `bun run db:migrate --target-database=<name>` | APPLY migrations |
 | `bun run import:osm -- --target-database=<name>` | import OpenStreetMap POIs |
+| `bun run places:convert-legacy -- --target-database=<name>` | convert legacy categories and source statements in batches, ahead of `0011` (`docs/PLACE_DATA_CONVERSION.md`) |
 
 `typecheck` runs two programs on purpose. `tsconfig.json` is the emitting build
 and excludes `drizzle.config.ts` (it imports the `drizzle-kit` devDependency the
@@ -382,9 +416,9 @@ report an error.
 ## The error envelope
 
 Every failure is `{ error: { code, message, details? } }`. The CODES are the
-public contract — `packages/shared-types` re-exports the `API_ERROR_CODES` tuple
-and `@goway.to/sdk` builds its typed errors from that re-export, so the SDK's
-union cannot drift from the API's. Routes THROW an `ApiError`; nothing formats an
+public contract — `packages/contracts` defines the `API_ERROR_CODES` tuple and
+`@goway.to/sdk` builds its typed errors from it, so the SDK's union cannot drift
+from the API's. Routes THROW an `ApiError`; nothing formats an
 error itself. Anything thrown that is not an `ApiError` is a defect, answered
 `500 internal_error`, leaking no message, stack or driver detail.
 
@@ -488,10 +522,12 @@ carries the full argument; this is the summary.
 The public lane is exactly:
 
 ```text
-GET  /api/v1/places            GET  /api/v1/search
-GET  /api/v1/places/nearby     GET  /api/v1/geocode
-GET  /api/v1/places/bounds     GET  /api/v1/geocode/reverse
-GET  /api/v1/places/:id        GET  /api/v1/geocode/structured
+GET  /api/v1/openapi.json            GET  /api/v1/search
+GET  /api/v1/places/nearby           GET  /api/v1/geocode
+GET  /api/v1/places/bounds           GET  /api/v1/geocode/reverse
+GET  /api/v1/places?ids=             GET  /api/v1/geocode/structured
+GET  /api/v1/places/:id              GET  /api/v1/street3d/coverage
+GET  /api/v1/places/:id/revisions    GET  /api/v1/street3d/scenes/:id
 POST /api/v1/routes
 ```
 

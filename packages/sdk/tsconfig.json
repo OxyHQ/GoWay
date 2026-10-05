@@ -13,7 +13,7 @@
   // package is not built by `tsc` at all (see `scripts/build.mjs` — tsc cannot
   // bundle declarations, and the private contract package must be bundled).
   //
-  // `@goway/shared-types` resolves to its SOURCE rather than its `dist/`, so a
+  // `@goway/contracts` resolves to its SOURCE rather than its `dist/`, so a
   // build never depends on that package having been compiled first, and its
   // modules are type-checked under this program's no-DOM constraint too.
   "compilerOptions": {
@@ -24,8 +24,8 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "@goway/shared-types": ["../shared-types/src/index.ts"],
-      "@goway/shared-types/*": ["../shared-types/src/*"]
+      "@goway/contracts": ["../contracts/src/index.ts"],
+      "@goway/contracts/*": ["../contracts/src/*"]
     },
     "strict": true,
     "noUncheckedIndexedAccess": true,

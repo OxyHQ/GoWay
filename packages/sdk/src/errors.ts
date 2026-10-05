@@ -1,11 +1,11 @@
-import { API_ERROR_RETRYABLE } from './contract';
-import type { ApiErrorCode } from './contract';
+import { API_ERROR_RETRYABLE, GONE_MERGED_INTO_DETAIL } from './contract';
+import type { ApiErrorCode, PlaceId } from './contract';
 
 /**
  * Every code a {@link GoWayError} can carry.
  *
  * The API's stable codes ({@link ApiErrorCode}, defined once in
- * `packages/shared-types`) pass through unchanged when a response names one.
+ * `packages/contracts`) pass through unchanged when a response names one.
  * The rest describe failures the API never got to report: the request never
  * completed, the caller cancelled it, the body was not the contract, or the
  * status carried no GoWay error body.
@@ -209,6 +209,54 @@ export class GoWayNotFoundError extends GoWayError {
   }
 }
 
+/**
+ * 410: the place existed and is retired — GoWay withdrew it (`removed`), or
+ * merged it into another place, whose id is {@link GoWayGoneError.mergedInto}.
+ *
+ * Not {@link GoWayNotFoundError}, and deliberately not a subclass of it: "this
+ * id was real and is retired" is the answer that lets a consumer holding a
+ * persisted GoWay Place ID drop it — or replace it — with confidence, while
+ * "not found" may only mean the caller cannot see it. Like `not_found`, raised only from a genuine
+ * GoWay error body — a bare 410 from a proxy proves nothing.
+ */
+export class GoWayGoneError extends GoWayError {
+  static override readonly errorName: string = 'GoWayGoneError';
+
+  /**
+   * The GoWay Place ID a MERGED place now lives at — replace the id you hold
+   * with this one — or `null` when the place was removed outright. Read from
+   * `details.mergedInto`, which GoWay keeps one hop deep.
+   */
+  readonly mergedInto: PlaceId | null;
+
+  constructor(message: string, options: GoWayErrorOptions = {}) {
+    super(message, withDefaults(options, { code: 'gone' }));
+    const pointer = this.details?.[GONE_MERGED_INTO_DETAIL];
+    this.mergedInto = typeof pointer === 'string' && pointer.length > 0 ? pointer : null;
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return { ...super.toJSON(), mergedInto: this.mergedInto };
+  }
+}
+
+/**
+ * 404 `unknown_route`: the API has no route at this path at all.
+ *
+ * This client and the API it reached disagree about what the API is — an SDK
+ * newer than the deployment, or one talking to the wrong origin. It is never
+ * evidence about a place or a capture, which is why it is NOT a
+ * {@link GoWayNotFoundError}: a consumer that drops a persisted id on
+ * `not_found` must not drop it because a route is missing.
+ */
+export class GoWayUnknownRouteError extends GoWayApiError {
+  static override readonly errorName: string = 'GoWayUnknownRouteError';
+
+  constructor(message: string, options: GoWayErrorOptions = {}) {
+    super(message, withDefaults(options, { code: 'unknown_route' }));
+  }
+}
+
 /** 409: the write conflicts with current state — a duplicate claim, a stale update. */
 export class GoWayConflictError extends GoWayError {
   static override readonly errorName: string = 'GoWayConflictError';
@@ -311,7 +359,7 @@ export function isGoWayError(value: unknown): value is GoWayError {
  * The class each API error code becomes.
  *
  * Typed as a TOTAL `Record<ApiErrorCode, …>`: adding a code to
- * `packages/shared-types` without giving it a class here fails to compile, so
+ * `packages/contracts` without giving it a class here fails to compile, so
  * the SDK cannot quietly degrade a new, meaningful code into a generic
  * `GoWayApiError` the way a `switch` with a `default` would.
  */
@@ -323,6 +371,8 @@ const API_ERROR_CLASS: Readonly<Record<ApiErrorCode, ApiErrorConstructor>> = {
   unauthorized: GoWayUnauthorizedError,
   forbidden: GoWayForbiddenError,
   not_found: GoWayNotFoundError,
+  unknown_route: GoWayUnknownRouteError,
+  gone: GoWayGoneError,
   conflict: GoWayConflictError,
   rate_limited: GoWayRateLimitError,
   no_route: GoWayNoRouteError,

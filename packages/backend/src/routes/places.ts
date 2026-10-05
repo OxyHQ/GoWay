@@ -3,23 +3,36 @@
  *
  * ## Paths are the SDK's, because the SDK is published contract
  *
- * `@goway.to/sdk` ships `GOWAY_API_BASE_PATH = '/api/v1'` and calls
- * `/places/:id`, `/places/nearby`, `/places/bounds` and `POST|PATCH /places`.
- * Those spellings are what this router answers. Issue #4 sketches
- * `GET /places?bbox=…`, which is what a `curl` or a map embed reaches for, so
- * the collection route accepts it too and resolves to the same handler — an SDK
- * that cannot reach its own API is a silent integration break, and so is a
- * documented URL that 404s.
+ * Every route here is an operation in `@goway/contracts`' registry
+ * (`API_OPERATIONS`), which is what the SDK calls and what the OpenAPI document
+ * publishes: `GET /places/nearby`, `GET /places/bounds`, `GET|PATCH
+ * /places/{placeId}` and `POST /places`. Each request is parsed with the
+ * registry's own schema for it, so a parameter cannot mean one thing here and
+ * another in the SDK. `GET /places?ids=` reads up to fifty places by id at once,
+ * each as the single read would answer it.
  *
  * A 2xx body IS the contract value. GoWay wraps success in no envelope, so a
- * place is a `Place`, a viewport is an array of `Place`, and a nearby search is
- * an array of `PlaceWithDistance` — the SDK's parsers read exactly that.
+ * place is a `Place` and a list is a page — `{ items, nextCursor }` — of them.
  *
  * Issue #8 adds the authorization-aware write surface beside them:
  * `PUT|DELETE /places/:id/capabilities/:key`, `POST|GET /places/:id/claims` and
- * `GET /claims`. The capability routes are generic over any
+ * `GET /claims`; the hours exceptions under `/places/:id/hours-exceptions`
+ * follow the capability routes' authority rules. The capability routes are generic over any
  * `<namespace>.<capability>` key — FairCoin is the first consumer of them, not
- * a shape they are built around.
+ * a shape they are built around. `GET /places/:id/revisions` publishes a
+ * place's history and `POST /places/:id/reports` flags it for moderation.
+ *
+ * ## A business is an Oxy organization
+ *
+ * A claim names an Oxy account, usually an organization, and Oxy decides who
+ * may act for it: the session that switched into it, or a member Oxy reports
+ * as `owner`, `admin` or `editor` (`places/claimAuthority`). The membership is
+ * asked with the caller's own bearer and cached briefly; when Oxy cannot
+ * answer, a write that depends on the answer is `503 service_unavailable`,
+ * never a guess. A place nobody has claimed needs no answer and costs no call.
+ *
+ * Every write records a revision in its own transaction (`db/places/revisions`),
+ * naming the account it was made as and the person who made it.
  *
  * ## `locale` is a QUERY PARAMETER, never `Accept-Language`
  *
@@ -49,35 +62,63 @@
  */
 
 import { Router, type RequestHandler, type Request, type Response, type NextFunction } from 'express';
-import type { CapabilityKeyParts, PlaceActor } from '../db/places/placesRepository';
+import { z } from 'zod';
+import {
+  accountClaimListQuerySchema,
+  capabilityPathSchema,
+  capabilityValueSchemaFor,
+  claimListQuerySchema,
+  hoursExceptionListQuerySchema,
+  hoursExceptionPathSchema,
+  localDateSchema,
+  nearbyPlacesQuerySchema,
+  placeBatchQuerySchema,
+  placeCapabilityAssertionSchema,
+  placeClaimInputSchema,
+  placeCreateInputSchema,
+  placeHoursExceptionInputSchema,
+  placePathSchema,
+  placeReadQuerySchema,
+  placeReportInputSchema,
+  placesInBoundsQuerySchema,
+  placeUpdateInputSchema,
+  revisionListQuerySchema,
+  splitCapabilityKey,
+  type PlaceBatch,
+} from '@goway/contracts';
+import { createPlaceReport } from '../db/places/moderationRepository';
+import type { PlaceActor } from '../db/places/placesRepository';
 import {
   assertPlaceCapability,
+  createHoursException,
   createPlace,
   findAccountClaims,
+  findHoursException,
   findPlaceById,
+  findPlaceLifecycle,
+  findPlaceLifecycles,
+  findPlacesByIds,
   findPlacesInBounds,
   findPlacesNearby,
   getPlaceAuthorization,
+  listHoursExceptions,
   listPlaceClaims,
+  replaceHoursException,
   requestClaim,
   updatePlace,
+  withdrawHoursException,
   withdrawPlaceCapability,
 } from '../db/places/placesRepository';
+import { listPlaceRevisions, revisionAuthor } from '../db/places/revisions';
 import { getDb } from '../db/postgres';
 import { ApiError } from '../http/apiError';
-import { parseBody, parseQuery } from '../http/validation';
+import { cursorBinding, decodeCursor, pageOf, timePageOf, timeWindowOf } from '../http/cursor';
+import { parseBody, parsePath, parseQuery, parseValue } from '../http/validation';
+import { requiredOxyCaller } from '../oxy/caller';
+import type { AccountRoleResolver } from '../oxy/accountRoles';
 import { assertableVerification, withdrawableVerification } from '../places/capabilityAuthority';
-import {
-  assertCapabilitySchema,
-  boundsQuerySchema,
-  capabilityKeyPathSchema,
-  createClaimSchema,
-  createPlaceSchema,
-  nearbyQuerySchema,
-  placeReadQuerySchema,
-  updatePlaceSchema,
-  withQueryAliases,
-} from './placeSchemas';
+import { mayActFor, mayActForAny, mayFileFor, standingOn } from '../places/claimAuthority';
+import { assertPublished, mergedIntoOf, unpublishedPlace } from '../places/placeLifecycle';
 
 /**
  * Forward a rejected handler to the error middleware.
@@ -98,58 +139,27 @@ function callerId(request: Request): string | null {
   return typeof request.userId === 'string' && request.userId.length > 0 ? request.userId : null;
 }
 
-/**
- * The `:id` path parameter as a string.
- *
- * Express 5 types a route parameter as `string | string[]`, and the array case
- * is reachable: a path pattern can bind a parameter more than once. A place id
- * is one segment, so anything else is a malformed request rather than a place
- * that does not exist — answering 404 would tell a consumer their stored id is
- * dead when it was never sent.
- */
+/** The `{placeId}` path parameter. Malformed is `bad_request`, never a 404 for an id that was not sent. */
 function placeIdParam(request: Request): string {
-  const id = request.params.id;
-  if (typeof id !== 'string' || id.length === 0) {
-    throw new ApiError('bad_request', 'A place id must be a single path segment.');
-  }
-  return id;
+  return parsePath(placePathSchema, request.params).placeId;
 }
 
-/**
- * The `:key` path parameter, split into a namespace and a capability.
- *
- * `bad_request` rather than `validation_failed`, matching {@link placeIdParam}:
- * a path segment that is not a capability key is a URL the client built wrong,
- * not a well-formed question this endpoint refuses to answer. An integrator
- * acts differently on the two — the first is a bug in their URL construction.
- */
-function capabilityKeyParam(request: Request): CapabilityKeyParts {
-  const key = request.params.key;
-  const parsed = typeof key === 'string' ? capabilityKeyPathSchema.safeParse(key) : null;
-  if (!parsed?.success) {
-    throw new ApiError(
-      'bad_request',
-      'A capability key must be a lower-case <namespace>.<capability>, such as payments.faircoin.accepted.',
-    );
-  }
-  return parsed.data;
-}
-
-function requiredCallerId(request: Request): string {
-  const id = callerId(request);
-  if (id === null) {
-    // Behind `requireAuth` this is unreachable; if it is ever reached, the
-    // middleware has been rewired and a write is about to run unattributed.
-    throw new ApiError('unauthorized', 'This request requires an Oxy session.');
-  }
-  return id;
-}
+/** A nearby page resumes at `(distanceMeters, placeId)`. */
+const nearbyKeysetSchema = z.tuple([z.number().min(0), z.string().min(1)]);
+/** A viewport page resumes after a place id. */
+const boundsKeysetSchema = z.string().min(1);
+/** An hours-exception page resumes at `(startsOn, exceptionId)`. */
+const hoursExceptionKeysetSchema = z.tuple([localDateSchema, z.string().min(1).max(128)]);
 
 export interface PlacesRouterDependencies {
   /** Resolves a session when one is present and continues regardless. */
   optionalAuth: RequestHandler;
   /** Fail-closed: refuses the request unless it carries a valid Oxy session. */
   requireAuth: RequestHandler;
+  /** The caller's role in an Oxy account — what organization-scoped authorization asks. */
+  accountRoles: AccountRoleResolver;
+  /** Applied to reports only, in addition to the API-wide limit. */
+  reportRateLimit: RequestHandler;
 }
 
 /**
@@ -163,12 +173,13 @@ export interface PlacesRouterDependencies {
  * where the real middlewares are the only thing ever passed.
  */
 export function createPlacesRouter(dependencies: PlacesRouterDependencies): Router {
-  const { optionalAuth, requireAuth } = dependencies;
+  const { optionalAuth, requireAuth, accountRoles, reportRateLimit } = dependencies;
   const router: Router = Router();
 
   /**
    * `GET /places/nearby?latitude&longitude&radiusMeters` — radius search,
-   * nearest first, each result carrying its distance in metres.
+   * nearest first, each result carrying its distance in metres. Keyset-paged
+   * by `(distance, id)`.
    *
    * Registered BEFORE `/places/:id`: Express matches in registration order, and
    * a `:id` route mounted first would swallow `nearby` as a place id and answer
@@ -178,59 +189,98 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
     '/places/nearby',
     optionalAuth,
     route(async (request, response) => {
-      const query = parseQuery(nearbyQuerySchema, withQueryAliases({ ...request.query }));
-      const results = await findPlacesNearby(getDb(), query);
-      response.json(results);
+      const { cursor, limit, ...query } = parseQuery(nearbyPlacesQuerySchema, request.query);
+      const binding = cursorBinding('places-nearby', query);
+      const rows = await findPlacesNearby(getDb(), {
+        ...query,
+        limit: limit + 1,
+        after: decodeCursor(cursor, binding, nearbyKeysetSchema),
+      });
+      response.json(pageOf(rows, limit, binding, (place) => [place.distanceMeters, place.id], (place) => place));
     }),
   );
 
-  /** `GET /places/bounds?west&south&east&north` — the viewport read. */
+  /** `GET /places/bounds?west&south&east&north` — the viewport read, keyset-paged by place id. */
   router.get(
     '/places/bounds',
     optionalAuth,
     route(async (request, response) => {
-      const query = parseQuery(boundsQuerySchema, withQueryAliases({ ...request.query }));
-      const results = await findPlacesInBounds(getDb(), query);
-      response.json(results);
+      const { cursor, limit, ...query } = parseQuery(placesInBoundsQuerySchema, request.query);
+      const binding = cursorBinding('places-bounds', query);
+      const rows = await findPlacesInBounds(getDb(), {
+        ...query,
+        limit: limit + 1,
+        after: decodeCursor(cursor, binding, boundsKeysetSchema),
+      });
+      response.json(pageOf(rows, limit, binding, (place) => place.id, (place) => place));
     }),
   );
 
   /**
-   * `GET /places?bbox=west,south,east,north` — the same viewport read under the
-   * spelling issue #4 documents.
+   * `GET /places?ids=a,b,c` — up to fifty places by id, in one round trip.
    *
-   * There is deliberately no unbounded form: a `GET /places` with no box would
-   * be a scan of every place on Earth truncated by a `LIMIT`, which reads to a
-   * client as missing data rather than as a refused question.
+   * Every id lands in exactly one of three lists, in the order it was asked
+   * for, and each says what `GET /places/{placeId}` would have answered for
+   * it: `items` the published places in the single read's full shape (names,
+   * descriptions, hours exceptions, and claims by the same rule), `gone` the
+   * ones it answers `410` for — removed, or merged with `mergedInto` naming the
+   * survivor — and `missing` the ones it answers `404` for. A consumer holding
+   * a list of persisted ids refreshes them all without fifty requests, and
+   * learns which to replace and which to drop.
+   *
+   * Not a page: the request bounds it, so there is no cursor.
    */
   router.get(
     '/places',
     optionalAuth,
     route(async (request, response) => {
-      const query = parseQuery(boundsQuerySchema, withQueryAliases({ ...request.query }));
-      const results = await findPlacesInBounds(getDb(), query);
-      response.json(results);
+      const { ids, locale } = parseQuery(placeBatchQuerySchema, request.query);
+      const db = getDb();
+      const items = await findPlacesByIds(db, ids, callerId(request), locale);
+      const published = new Set(items.map((place) => place.id));
+      const lifecycles = await findPlaceLifecycles(
+        db,
+        ids.filter((id) => !published.has(id)),
+      );
+
+      const batch: PlaceBatch = { items, gone: [], missing: [] };
+      for (const id of ids) {
+        if (published.has(id)) continue;
+        const lifecycle = lifecycles.get(id);
+        if (lifecycle === undefined) {
+          batch.missing.push(id);
+          continue;
+        }
+        // The single read's `410` and its pointer, decided by the same rule.
+        const mergedInto = mergedIntoOf(lifecycle);
+        batch.gone.push(mergedInto === undefined ? { id } : { id, mergedInto });
+      }
+      response.json(batch);
     }),
   );
 
   /**
-   * `GET /places/:id` — one place by its stable GoWay id.
+   * `GET /places/{placeId}` — one place by its stable GoWay id.
    *
-   * Answers in any status, `removed` included. A deep link somebody already
-   * holds has to resolve to something: the SDK reads a 404 as "this id is
-   * dead", and a consumer may drop a persisted place id on the strength of it.
+   * A place moderation REMOVED answers `410 gone`, not 404: a deep link
+   * somebody already holds has to resolve to something they can act on, and
+   * "this place was withdrawn" is a different thing to tell a consumer holding
+   * a persisted id than "this id was never real". A MERGED place answers
+   * `410 gone` with `details.mergedInto`, the id to use instead.
    *
    * Claim details are published only to an account that itself holds a claim on
    * the place. Everyone else gets no `claims` field at all — absent, which the
    * contract distinguishes from an empty list.
    */
   router.get(
-    '/places/:id',
+    '/places/:placeId',
     optionalAuth,
     route(async (request, response) => {
-      const { locale } = parseQuery(placeReadQuerySchema, { ...request.query });
-      const place = await findPlaceById(getDb(), placeIdParam(request), callerId(request), locale);
-      if (!place) throw new ApiError('not_found', 'No place has that id.');
+      const placeId = placeIdParam(request);
+      const { locale } = parseQuery(placeReadQuerySchema, request.query);
+      const db = getDb();
+      const place = await findPlaceById(db, placeId, callerId(request), locale);
+      if (!place) throw unpublishedPlace(await findPlaceLifecycle(db, placeId));
       response.json(place);
     }),
   );
@@ -251,9 +301,9 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
     '/places',
     requireAuth,
     route(async (request, response) => {
-      const input = parseBody(createPlaceSchema, request.body);
+      const input = parseBody(placeCreateInputSchema, request.body);
       const actor: PlaceActor = {
-        oxyUserId: requiredCallerId(request),
+        author: revisionAuthor(requiredOxyCaller(request), 'api'),
         // A place that does not exist yet can carry no approved claim, so a
         // creator is a community reporter by construction. Claiming it is a
         // separate, reviewed act.
@@ -268,11 +318,11 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
   );
 
   /**
-   * `PATCH /places/:id` — edit a place.
+   * `PATCH /places/{placeId}` — edit a place.
    *
    * An UNCLAIMED place is community-editable: that is what makes GoWay an open
-   * map. A place somebody has an APPROVED claim on is not — only an account
-   * holding one of those claims may edit it, and an outsider's edit is 403
+   * map. A place somebody has an APPROVED claim on is not — only a caller who
+   * acts for one of those claims may edit it, and an outsider's edit is 403
    * rather than a silent no-op.
    *
    * The same fact decides how much the caller's capability assertions weigh: a
@@ -281,24 +331,26 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
    * recorded as `external_source` regardless of who sent it.
    */
   router.patch(
-    '/places/:id',
+    '/places/:placeId',
     requireAuth,
     route(async (request, response) => {
-      const input = parseBody(updatePlaceSchema, request.body);
-      const oxyUserId = requiredCallerId(request);
+      const placeId = placeIdParam(request);
+      const input = parseBody(placeUpdateInputSchema, request.body);
+      const caller = requiredOxyCaller(request);
       const db = getDb();
 
-      const authorization = await getPlaceAuthorization(db, placeIdParam(request), oxyUserId);
-      if (!authorization.exists) throw new ApiError('not_found', 'No place has that id.');
-      if (authorization.claimed && authorization.callerRoles.length === 0) {
+      const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
+      assertPublished(lifecycle);
+      const standing = await standingOn(approvedClaims, caller, accountRoles);
+      if (standing.claimed && standing.callerRoles.length === 0) {
         throw new ApiError('forbidden', 'This place is claimed; only an approved claimant may edit it.');
       }
 
       const actor: PlaceActor = {
-        oxyUserId,
-        assertedVerification: assertableVerification(authorization),
+        author: revisionAuthor(caller, 'api'),
+        assertedVerification: assertableVerification(standing),
       };
-      const place = await updatePlace(db, placeIdParam(request), input, actor);
+      const place = await updatePlace(db, placeId, input, actor);
       // The place existed a moment ago and does not now — a concurrent delete.
       if (!place) throw new ApiError('not_found', 'No place has that id.');
       response.json(place);
@@ -321,7 +373,7 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
   // `/places/:id` does.
 
   /**
-   * `PUT /places/:id/capabilities/:key` — assert or refresh one capability.
+   * `PUT /places/{placeId}/capabilities/{key}` — assert or refresh one capability.
    *
    * The VERIFICATION TIER is derived from the caller's approved claims on this
    * place and never from the body — `places/capabilityAuthority` is the only
@@ -344,43 +396,45 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
    * customer who sees a FairCoin sticker in a claimed shop can say so.
    */
   router.put(
-    '/places/:id/capabilities/:key',
+    '/places/:placeId/capabilities/:key',
     requireAuth,
     route(async (request, response) => {
-      const placeId = placeIdParam(request);
-      const key = capabilityKeyParam(request);
-      const input = parseBody(assertCapabilitySchema, request.body);
-      const oxyUserId = requiredCallerId(request);
+      const { placeId, key } = parsePath(capabilityPathSchema, request.params);
+      const input = parseBody(placeCapabilityAssertionSchema, request.body);
+      // The path named the key, so the value is held to that key's registry
+      // entry — and comes back normalized by it (a handle as its URL).
+      const value = parseValue(capabilityValueSchemaFor(key), input.value, 'value');
+      const caller = requiredOxyCaller(request);
       const db = getDb();
 
-      const authorization = await getPlaceAuthorization(db, placeId, oxyUserId);
-      if (!authorization.exists) throw new ApiError('not_found', 'No place has that id.');
+      const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
+      assertPublished(lifecycle);
+      const standing = await standingOn(approvedClaims, caller, accountRoles);
 
       const actor: PlaceActor = {
-        oxyUserId,
-        assertedVerification: assertableVerification(authorization),
+        author: revisionAuthor(caller, 'api'),
+        assertedVerification: assertableVerification(standing),
       };
       const place = await assertPlaceCapability(
         db,
         placeId,
-        { ...key, value: input.value, ...(input.source ? { source: input.source } : {}) },
+        { ...splitCapabilityKey(key), value, ...(input.source ? { source: input.source } : {}) },
         actor,
       );
       // The place existed a moment ago and does not now — a concurrent delete.
       if (!place) throw new ApiError('not_found', 'No place has that id.');
 
-      // The whole Place, not the one capability. `@goway/shared-types` names no
-      // standalone capability response, the SDK already parses a `Place`, and
-      // the full record is what shows the caller the EVIDENCE their write now
-      // sits in: every tier asserted for this key, each with its own
-      // `observedAt`, including the ones they are not entitled to write.
+      // The whole Place, not the one capability: the full record is what shows
+      // the caller the EVIDENCE their write now sits in — every tier asserted
+      // for this key, each with its own `observedAt`, including the ones they
+      // are not entitled to write.
       response.json(place);
     }),
   );
 
   /**
-   * `DELETE /places/:id/capabilities/:key` — withdraw the business's own
-   * assertion.
+   * `DELETE /places/{placeId}/capabilities/{key}` — withdraw the business's
+   * own assertion. `204`, no body.
    *
    * Scoped to ONE tier, and the type of that tier cannot hold `oxy_verified` or
    * `external_source`: an Oxy-verified fact has no API path out, exactly as it
@@ -395,18 +449,17 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
    * being true".
    */
   router.delete(
-    '/places/:id/capabilities/:key',
+    '/places/:placeId/capabilities/:key',
     requireAuth,
     route(async (request, response) => {
-      const placeId = placeIdParam(request);
-      const key = capabilityKeyParam(request);
-      const oxyUserId = requiredCallerId(request);
+      const { placeId, key } = parsePath(capabilityPathSchema, request.params);
+      const caller = requiredOxyCaller(request);
       const db = getDb();
 
-      const authorization = await getPlaceAuthorization(db, placeId, oxyUserId);
-      if (!authorization.exists) throw new ApiError('not_found', 'No place has that id.');
+      const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
+      assertPublished(lifecycle);
 
-      const verification = withdrawableVerification(authorization);
+      const verification = withdrawableVerification(await standingOn(approvedClaims, caller, accountRoles));
       if (verification === null) {
         throw new ApiError(
           'forbidden',
@@ -415,35 +468,234 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
         );
       }
 
-      const withdrawn = await withdrawPlaceCapability(db, placeId, key, verification);
+      const withdrawn = await withdrawPlaceCapability(
+        db,
+        placeId,
+        splitCapabilityKey(key),
+        verification,
+        revisionAuthor(caller, 'api'),
+      );
       if (!withdrawn) {
         throw new ApiError(
           'not_found',
           'This place carries no business-asserted claim of that capability to withdraw.',
         );
       }
+      response.status(204).end();
+    }),
+  );
 
-      const place = await findPlaceById(db, placeId, oxyUserId);
-      if (!place) throw new ApiError('not_found', 'No place has that id.');
-      response.json(place);
+  // ── History and reports ───────────────────────────────────────────────────
+
+  /**
+   * `GET /places/{placeId}/revisions` — what changed on a place and when,
+   * newest first, keyset-paged by time.
+   *
+   * Public and identical for every caller, so it reads no session at all. It
+   * never says WHO: no account, no person, and none of the moderation-only
+   * actions (claims, reports, duplicate reviews) — see `@goway/contracts`
+   * `revision.ts` for the rule and `docs/BUSINESS_OWNERSHIP.md` for why.
+   */
+  router.get(
+    '/places/:placeId/revisions',
+    route(async (request, response) => {
+      const placeId = placeIdParam(request);
+      const query = parseQuery(revisionListQuerySchema, request.query);
+      const binding = cursorBinding('place-revisions', { placeId });
+      const db = getDb();
+      assertPublished(await findPlaceLifecycle(db, placeId));
+      const revisions = await listPlaceRevisions(db, placeId, 'public', timeWindowOf(query, binding));
+      response.json(timePageOf(revisions, query.limit, binding));
+    }),
+  );
+
+  /**
+   * `POST /places/{placeId}/reports` — tell moderation something about a place
+   * is wrong.
+   *
+   * Any signed-in account, behind the report rate limit. The report is keyed on
+   * the PERSON, so switching into an organization does not buy a second open
+   * report. A repeat while the first is open answers it with `200`, so a retry
+   * never files twice. Nothing about the place changes until an operator
+   * decides.
+   */
+  router.post(
+    '/places/:placeId/reports',
+    reportRateLimit,
+    requireAuth,
+    route(async (request, response) => {
+      const placeId = placeIdParam(request);
+      const input = parseBody(placeReportInputSchema, request.body ?? {});
+      const caller = requiredOxyCaller(request);
+      const db = getDb();
+      assertPublished(await findPlaceLifecycle(db, placeId));
+      const { report, created } = await createPlaceReport(
+        db,
+        placeId,
+        caller.operatedByOxyUserId ?? caller.oxyAccountId,
+        input,
+      );
+      response.status(created ? 201 : 200).json(report);
+    }),
+  );
+
+  // ── Hours exceptions ──────────────────────────────────────────────────────
+  //
+  // A closure or special hours is a CLAIM, so these routes follow the
+  // capability routes' authority rules exactly: any signed-in account may
+  // report one (`community_reported`), a report made by whoever may act for an
+  // approved claimant is `business_asserted`, the tier is never the body's,
+  // and a claimed place is NOT closed to outside reports — the tier is in the
+  // unique key, so a passer-by's report lands beside the business's own and
+  // cannot overwrite it. Every write records a revision in its transaction.
+
+  /**
+   * `GET /places/{placeId}/hours-exceptions` — every exception, past ones
+   * included, earliest first, keyset-paged by start date. Public, as the place
+   * is; a single-place read already embeds the ones that have not ended.
+   */
+  router.get(
+    '/places/:placeId/hours-exceptions',
+    optionalAuth,
+    route(async (request, response) => {
+      const placeId = placeIdParam(request);
+      const query = parseQuery(hoursExceptionListQuerySchema, request.query);
+      const db = getDb();
+      assertPublished(await findPlaceLifecycle(db, placeId));
+      const binding = cursorBinding('place-hours-exceptions', { placeId });
+      const rows = await listHoursExceptions(db, placeId, {
+        limit: query.limit + 1,
+        after: decodeCursor(query.cursor, binding, hoursExceptionKeysetSchema),
+      });
+      response.json(pageOf(rows, query.limit, binding, (row) => [row.startsOn, row.id], (row) => row));
+    }),
+  );
+
+  /**
+   * `POST /places/{placeId}/hours-exceptions` — report a closure or special
+   * hours. 409 when the caller's tier already holds an exception for exactly
+   * those dates: they rewrite that one instead.
+   */
+  router.post(
+    '/places/:placeId/hours-exceptions',
+    requireAuth,
+    route(async (request, response) => {
+      const placeId = placeIdParam(request);
+      const input = parseBody(placeHoursExceptionInputSchema, request.body);
+      const caller = requiredOxyCaller(request);
+      const db = getDb();
+
+      const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
+      assertPublished(lifecycle);
+      const standing = await standingOn(approvedClaims, caller, accountRoles);
+
+      const actor: PlaceActor = {
+        author: revisionAuthor(caller, 'api'),
+        assertedVerification: assertableVerification(standing),
+      };
+      const exception = await createHoursException(db, placeId, input, actor);
+      // The place existed a moment ago and does not now — a concurrent delete.
+      if (!exception) throw new ApiError('not_found', 'No place has that id.');
+      response
+        .status(201)
+        .location(
+          `/api/v1/places/${encodeURIComponent(placeId)}/hours-exceptions/${encodeURIComponent(exception.id)}`,
+        )
+        .json(exception);
+    }),
+  );
+
+  /**
+   * `PUT /places/{placeId}/hours-exceptions/{exceptionId}` — rewrite one
+   * exception, whole. Only at the caller's OWN tier: a community reporter
+   * corrects the community report, a claimant the business's notice, and
+   * neither can rewrite the other's — the same line a capability write draws.
+   */
+  router.put(
+    '/places/:placeId/hours-exceptions/:exceptionId',
+    requireAuth,
+    route(async (request, response) => {
+      const { placeId, exceptionId } = parsePath(hoursExceptionPathSchema, request.params);
+      const input = parseBody(placeHoursExceptionInputSchema, request.body);
+      const caller = requiredOxyCaller(request);
+      const db = getDb();
+
+      const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
+      assertPublished(lifecycle);
+      const existing = await findHoursException(db, placeId, exceptionId);
+      if (!existing) throw new ApiError('not_found', 'This place has no exception with that id.');
+
+      const verification = assertableVerification(await standingOn(approvedClaims, caller, accountRoles));
+      if (existing.verification !== verification) {
+        throw new ApiError(
+          'forbidden',
+          'An exception can be rewritten only at the tier that wrote it. Report your own instead.',
+        );
+      }
+      const exception = await replaceHoursException(
+        db,
+        placeId,
+        exceptionId,
+        input,
+        verification,
+        revisionAuthor(caller, 'api'),
+      );
+      if (!exception) throw new ApiError('not_found', 'This place has no exception with that id.');
+      response.json(exception);
+    }),
+  );
+
+  /**
+   * `DELETE /places/{placeId}/hours-exceptions/{exceptionId}` — withdraw the
+   * business's own exception. `204`. Only whoever may act for an approved
+   * claimant, and only at `business_asserted`, for the reason a capability
+   * withdrawal is: that tier is attributable, and the community's is a shared
+   * row nobody may erase.
+   */
+  router.delete(
+    '/places/:placeId/hours-exceptions/:exceptionId',
+    requireAuth,
+    route(async (request, response) => {
+      const { placeId, exceptionId } = parsePath(hoursExceptionPathSchema, request.params);
+      const caller = requiredOxyCaller(request);
+      const db = getDb();
+
+      const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
+      assertPublished(lifecycle);
+
+      const verification = withdrawableVerification(await standingOn(approvedClaims, caller, accountRoles));
+      if (verification === null) {
+        throw new ApiError(
+          'forbidden',
+          'Only an approved claimant may withdraw an exception. Correct a report by rewriting it instead.',
+        );
+      }
+      const withdrawn = await withdrawHoursException(
+        db,
+        placeId,
+        exceptionId,
+        verification,
+        revisionAuthor(caller, 'api'),
+      );
+      if (!withdrawn) {
+        throw new ApiError('not_found', 'This place carries no business-asserted exception with that id.');
+      }
+      response.status(204).end();
     }),
   );
 
   // ── Claims ────────────────────────────────────────────────────────────────
   //
-  // Deferred from #4 and reachable now, because an approved claim is what
-  // raises a capability assertion to `business_asserted` — the write path is
-  // only authorization-aware if there is a way to acquire the authorization.
-  //
-  // Creating and READING claims is all that is here. Approving one is not: it
-  // needs an authority GoWay does not model — there is no admin role, no
-  // moderator and no verification workflow in this repository — and inventing
-  // one would be inventing the very escalation this issue exists to prevent.
-  // Until then an approval is an operator act against the database, which is
-  // reviewable in a way a half-designed endpoint would not be.
+  // Filing and reading claims is here; deciding them is moderation's
+  // (`routes/moderation.ts`), behind the operator allow-list.
 
   /**
-   * `POST /places/:id/claims` — ask to be recognised as running this place.
+   * `POST /places/{placeId}/claims` — ask to be recognised as running this place.
+   *
+   * For the session's own account by default, or for `oxyAccountId` — usually
+   * the business's organization — when the caller owns or administers it in
+   * Oxy. An editor may run a claimed place but not claim one in the
+   * organization's name: filing is a statement about who the business is.
    *
    * Always `pending`, and not because the route checks: `requestClaim` takes no
    * state, so there is no value a body could carry into one. 409 when the same
@@ -451,35 +703,33 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
    * earlier request is still pending rather than assuming this one is new.
    */
   router.post(
-    '/places/:id/claims',
+    '/places/:placeId/claims',
     requireAuth,
     route(async (request, response) => {
       const placeId = placeIdParam(request);
-      const input = parseBody(createClaimSchema, request.body);
-      const oxyAccountId = requiredCallerId(request);
+      const input = parseBody(placeClaimInputSchema, request.body);
+      const caller = requiredOxyCaller(request);
+      const oxyAccountId = input.oxyAccountId ?? caller.oxyAccountId;
       const db = getDb();
 
-      // Checked before the insert so an unknown place is a 404 rather than the
-      // 500 a foreign-key violation would produce.
-      const authorization = await getPlaceAuthorization(db, placeId, oxyAccountId);
-      if (!authorization.exists) throw new ApiError('not_found', 'No place has that id.');
+      // 404/410 before 403, and checked before the insert so an unknown place
+      // is a 404 rather than the 500 a foreign-key violation would produce.
+      assertPublished(await findPlaceLifecycle(db, placeId));
+      if (!(await mayFileFor(caller, oxyAccountId, accountRoles))) {
+        throw new ApiError('forbidden', 'Only an owner or admin of that Oxy account may claim a place in its name.');
+      }
 
-      const claim = await requestClaim(db, {
-        placeId,
-        oxyAccountId,
-        role: input.role,
-        ...(input.brandId ? { brandId: input.brandId } : {}),
-      });
+      const claim = await requestClaim(db, { placeId, oxyAccountId, role: input.role }, revisionAuthor(caller, 'api'));
       response.status(201).json(claim);
     }),
   );
 
   /**
-   * `GET /places/:id/claims` — the claims on one place.
+   * `GET /places/{placeId}/claims` — the claims on one place, oldest first,
+   * keyset-paged by claim time.
    *
-   * Visible to an account that itself holds a claim on the place — its own, and
-   * the ones it is competing with — and to nobody else, which is the rule
-   * `GET /places/:id` already applies to the embedded `claims` field. A pending
+   * Visible to a caller who acts for an account holding a claim on the place —
+   * its own, and the ones it is competing with — and to nobody else. A pending
    * claimant counts: they have to be able to see that their request is pending.
    *
    * 403 rather than an empty list for everyone else. An empty array would
@@ -487,39 +737,55 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
    * the kind of confident wrong answer a consumer caches.
    */
   router.get(
-    '/places/:id/claims',
+    '/places/:placeId/claims',
     requireAuth,
     route(async (request, response) => {
-      const oxyAccountId = requiredCallerId(request);
-      const { exists, entitled, claims } = await listPlaceClaims(
+      const placeId = placeIdParam(request);
+      const query = parseQuery(claimListQuerySchema, request.query);
+      const caller = requiredOxyCaller(request);
+      const binding = cursorBinding('place-claims', { placeId, oxyAccountId: caller.oxyAccountId });
+      const { lifecycle, claimantAccountIds, claims } = await listPlaceClaims(
         getDb(),
-        placeIdParam(request),
-        oxyAccountId,
+        placeId,
+        timeWindowOf(query, binding),
       );
       // 404 first: answering 403 for an id that does not exist would confirm to
       // a stranger that an id they guessed is real.
-      if (!exists) throw new ApiError('not_found', 'No place has that id.');
-      if (!entitled) {
+      assertPublished(lifecycle);
+      if (!(await mayActForAny(caller, claimantAccountIds, accountRoles))) {
         throw new ApiError('forbidden', 'Claim details are visible only to an account that holds a claim on this place.');
       }
-      response.json(claims);
+      response.json(timePageOf(claims, query.limit, binding));
     }),
   );
 
   /**
-   * `GET /claims` — every claim the CALLER holds, in every state.
+   * `GET /claims` — every claim one account holds, in every state, oldest
+   * first, keyset-paged by claim time; with `placeId`, only its claims on that
+   * place — how a dashboard asks "where does my claim on this place stand"
+   * without walking every location the business has.
    *
-   * The multi-location read: a chain's account gets its locations back in one
-   * request instead of one per place. Keyed on the session and on nothing a
-   * caller can send — a `?oxyAccountId=` parameter here would be an enumeration
-   * of who has claimed what.
+   * The session's own account by default, or `oxyAccountId` — an organization
+   * the caller acts for in Oxy — which is how a business's dashboard lists its
+   * locations without switching into the organization first. Any other account
+   * is 403: a claim list is a business relationship GoWay shows to the parties
+   * involved and to nobody else.
    */
   router.get(
     '/claims',
     requireAuth,
     route(async (request, response) => {
-      const claims = await findAccountClaims(getDb(), requiredCallerId(request));
-      response.json(claims);
+      const { oxyAccountId: requested, placeId, ...query } = parseQuery(accountClaimListQuerySchema, request.query);
+      const caller = requiredOxyCaller(request);
+      const oxyAccountId = requested ?? caller.oxyAccountId;
+      if (!(await mayActFor(caller, oxyAccountId, accountRoles))) {
+        throw new ApiError('forbidden', 'You may list the claims of your own account or of one you act for.');
+      }
+      // Both accounts are in the binding, so a cursor minted for one session is
+      // refused under another rather than resuming somebody else's list.
+      const binding = cursorBinding('account-claims', { oxyAccountId, placeId, session: caller.oxyAccountId });
+      const claims = await findAccountClaims(getDb(), oxyAccountId, placeId, timeWindowOf(query, binding));
+      response.json(timePageOf(claims, query.limit, binding));
     }),
   );
 

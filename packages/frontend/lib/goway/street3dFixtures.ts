@@ -1,6 +1,6 @@
 /**
  * Street 3D fixtures: coverage and scene manifests, typed as the published
- * contract (`packages/shared-types/src/street3d.ts`) and served by
+ * contract (`packages/contracts/src/street3d.ts`) and served by
  * `mockTransport.ts` when `EXPO_PUBLIC_GOWAY_FIXTURES` is on.
  *
  * ## The splat itself is configuration, not a file in this repository
@@ -49,7 +49,7 @@ import type {
   StreetSceneAsset,
   StreetSceneManifest,
   StreetSceneSummary,
-} from '@goway/shared-types';
+} from '@goway.to/sdk';
 
 const UNSET_ORIGIN = 'https://street3d-fixture.goway.invalid';
 

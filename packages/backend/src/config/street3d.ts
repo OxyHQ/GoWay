@@ -30,7 +30,7 @@
 
 import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
-import { STREET_SCENE_PROFILES, type StreetSceneProfile } from '@goway/shared-types';
+import { STREET_SCENE_PROFILES, type StreetSceneProfile } from '@goway/contracts';
 import type { EnvironmentSource } from './index';
 
 loadDotenv();

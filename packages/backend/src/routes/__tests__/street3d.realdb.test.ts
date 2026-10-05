@@ -14,7 +14,9 @@ import express, { type RequestHandler } from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { eq, sql } from 'drizzle-orm';
-import type { StreetCoverage, StreetSceneManifest, StreetSceneReport } from '@goway/shared-types';
+// Parsed with the contract's own schemas — what `@goway.to/sdk` parses with —
+// so a response the SDK would refuse fails here first.
+import { streetCoverageSchema, streetSceneManifestSchema, streetSceneReportSchema } from '@goway/contracts';
 import { parseStreet3dConfig } from '../../config/street3d';
 import {
   street3dCoverageAreas,
@@ -25,7 +27,7 @@ import {
 } from '../../db/schema';
 import { createSuiteDatabase, destroySuiteDatabase, SUITE_SETUP_TIMEOUT_MS, type SuiteDatabase } from '../../db/__tests__/testDatabase';
 import { ApiError } from '../../http/apiError';
-import { errorHandler, notFoundHandler } from '../../http/errorHandler';
+import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import { createStreet3dRouter } from '../street3d';
 
 let suite: SuiteDatabase | null = null;
@@ -49,7 +51,7 @@ async function listen(viewingEnabled: boolean): Promise<string> {
   app.use(express.json());
   const config = parseStreet3dConfig({ STREET3D_VIEWING_ENABLED: viewingEnabled ? 'true' : 'false' });
   app.use('/api/v1', createStreet3dRouter({ requireAuth, reportRateLimit: passThrough, config }));
-  app.use(notFoundHandler);
+  app.use(unknownRouteHandler);
   app.use(errorHandler);
   const server = await new Promise<Server>((resolve) => {
     const started = app.listen(0, '127.0.0.1', () => resolve(started));
@@ -146,7 +148,8 @@ describe('coverage', () => {
     const response = await fetch(`${on}/street3d/coverage?${box}`);
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('public, max-age=60');
-    const body = (await response.json()) as StreetCoverage;
+    const raw: unknown = await response.json();
+    const body = streetCoverageSchema.parse(raw);
     expect(body.scenes.map((entry) => entry.id)).toEqual([sceneId]);
     expect(body.scenes[0]).toMatchObject({ version: 1, placement: 'precise', posterUrl: 'https://cdn.example.test/poster.jpg' });
     expect(body.areas).toEqual([
@@ -156,7 +159,7 @@ describe('coverage', () => {
         atRiskUntil: '2026-10-20T00:00:00.000Z', sceneId,
       },
     ]);
-    expect(JSON.stringify(body)).not.toContain('u09wh2h');
+    expect(JSON.stringify(raw)).not.toContain('u09wh2h');
     expect((await fetch(`${on}/street3d/coverage?west=0&south=0&east=10&north=10`)).status).toBe(422);
     expect((await fetch(`${on}/street3d/coverage?west=2&south=49&east=2.1&north=48`)).status).toBe(422);
     // The antimeridian is a wrap, not an inversion.
@@ -169,10 +172,12 @@ describe('scene manifests', () => {
     const sceneId = await scene();
     const response = await fetch(`${on}/street3d/scenes/${sceneId}`);
     expect(response.status).toBe(200);
-    const manifest = (await response.json()) as StreetSceneManifest;
+    const raw: unknown = await response.json();
+    const manifest = streetSceneManifestSchema.parse(raw);
     expect(manifest).toMatchObject({ id: sceneId, version: 1, attributions: ['Imagery © Example, CC BY-SA 4.0'] });
-    expect(JSON.stringify(manifest)).not.toContain('"key"');
-    expect(manifest.assets.every((asset) => !('key' in asset))).toBe(true);
+    // Checked on the RAW body: parsing strips unknown keys, so the parsed value
+    // could not show a leak.
+    expect(JSON.stringify(raw)).not.toContain('"key"');
     expect(manifest.navigation).toEqual({
       viewpoints: [{ position: [0, 0, 1.6], forward: [0, 1, 0] }, { position: [0, 2.5, 1.6], forward: [0, 1, 0] }],
       fieldOfView: { horizontalDegrees: 66, verticalDegrees: 50 },
@@ -198,12 +203,13 @@ describe('reports', () => {
     expect((await post('u-1', { reason: 'privacy', note: 'x'.repeat(501) })).status).toBe(422);
     const first = await post('u-1', { reason: 'privacy', note: 'a face is visible' });
     expect(first.status).toBe(201);
-    const report = (await first.json()) as StreetSceneReport;
+    const rawReport: unknown = await first.json();
+    const report = streetSceneReportSchema.parse(rawReport);
     expect(report).toMatchObject({ sceneId, version: 1, reason: 'privacy' });
-    expect(JSON.stringify(report)).not.toContain('u-1');
+    expect(JSON.stringify(rawReport)).not.toContain('u-1');
     const again = await post('u-1', { reason: 'privacy' });
     expect(again.status).toBe(200);
-    expect(((await again.json()) as StreetSceneReport).id).toBe(report.id);
+    expect(streetSceneReportSchema.parse(await again.json()).id).toBe(report.id);
     expect((await post('u-2', { reason: 'inaccurate' })).status).toBe(201);
     // No automatic disable.
     expect((await fetch(`${on}/street3d/scenes/${sceneId}`)).status).toBe(200);

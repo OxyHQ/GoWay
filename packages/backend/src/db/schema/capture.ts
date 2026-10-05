@@ -91,7 +91,7 @@ import {
   CAPTURE_SOURCES,
   DELETION_REASONS,
   RETENTION_REASONS,
-} from '@goway/shared-types';
+} from '@goway/contracts';
 import {
   closedSet,
   foreignServiceId,
@@ -311,7 +311,7 @@ export const captureMediaObjects = pgTable(
     /** When the bytes were confirmed present. Null while merely expected. */
     storedAt: timestamptz(),
 
-    /** What KIND of artifact this is — see the class tuple in `@goway/shared-types`. */
+    /** What KIND of artifact this is — see the class tuple in `@goway/contracts`. */
     retentionClass: text().notNull(),
     /** What is still USING it. An object whose reason no longer holds is garbage. */
     retentionReason: text().notNull(),

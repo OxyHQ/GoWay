@@ -13,23 +13,34 @@
  *
  * ## Why esbuild + rollup-plugin-dts, and not tsc or tsup
  *
- * The contract lives in `@goway/shared-types`, which is PRIVATE and never
+ * The contract lives in `@goway/contracts`, which is PRIVATE and never
  * published. The published package therefore cannot depend on it or reference
  * it from its declarations — a consumer resolving `workspace:*` from a registry
  * tarball has nothing to resolve — so both halves are BUNDLED:
  *
- *  - esbuild inlines the runtime values the SDK reaches (the closed value sets
- *    and the two coordinate converters), and emits both module formats from
- *    one source.
+ *  - esbuild inlines the contract modules the SDK reaches (the schemas it
+ *    validates and parses with, the closed value sets, the helpers), and emits
+ *    both module formats from one source.
  *  - rollup-plugin-dts with `respectExternal` inlines the declarations the
  *    public types reach, so the `.d.ts` is self-contained.
  *
  * `tsc` alone cannot do this: it emits one `.d.ts` per input file and has no
  * way to bundle declarations, so its output would still `import type … from
- * '@goway/shared-types'` and fail in every consumer. `tsup` wraps these same
+ * '@goway/contracts'` and fail in every consumer. `tsup` wraps these same
  * two tools, with a dependency tree an order of magnitude larger and less
  * control over resolution and the side-effects flag — nothing it adds is
- * needed for a single-entry, zero-dependency package.
+ * needed for a single-entry package.
+ *
+ * ## `zod` is the one thing NOT bundled
+ *
+ * The contract IS zod schemas, so zod is a real runtime dependency, declared in
+ * `dependencies` and left EXTERNAL in both halves: the JavaScript imports
+ * `zod`, and the declarations import its types (`z.infer<…>` is how every
+ * contract type is spelled). Bundling it would ship a private copy that a
+ * consumer's own zod could not share or deduplicate, and would inline zod's
+ * whole declaration tree into ours. `scripts/smoke.mjs` holds the result to
+ * that: `zod` (and its subpaths, in declarations) is the only bare import any
+ * shipped file may contain.
  *
  * `platform: 'neutral'` and `target: 'es2020'` keep the output free of any
  * Node, browser or bundler-specific shim; the bundle is not minified because
@@ -50,9 +61,14 @@ const dist = join(root, 'dist');
 const entry = join(root, 'src', 'index.ts');
 const tsconfig = join(root, 'tsconfig.json');
 
+/** The runtime dependency, kept out of both bundles: `zod` and any subpath of it. */
+const EXTERNAL = ['zod', 'zod/*'];
+const isExternal = (id) => id === 'zod' || id.startsWith('zod/');
+
 /**
- * Every module of the private contract package is pure types, pure data and
- * pure functions, so a module the SDK does not reach contributes nothing. If
+ * Every module of the private contract package is pure types, schemas, data
+ * and functions, so a module the SDK does not reach contributes nothing — the
+ * OpenAPI builder and the JSON Schema registry, for two, never reach a consumer. If
  * one ever grows a real side effect the SDK depends on, the smoke test — which
  * exercises the BUILT bundle, closed value sets included — is what fails.
  */
@@ -61,8 +77,8 @@ const contractIsSideEffectFree = {
   setup(build) {
     build.onResolve({ filter: /.*/ }, async (args) => {
       if (args.pluginData === 'resolving') return undefined;
-      const fromContract = args.path === '@goway/shared-types' || args.importer.includes('/shared-types/');
-      if (!fromContract) return undefined;
+      const fromContract = args.path === '@goway/contracts' || args.importer.includes('/contracts/');
+      if (!fromContract || isExternal(args.path)) return undefined;
       const resolved = await build.resolve(args.path, {
         importer: args.importer,
         resolveDir: args.resolveDir,
@@ -84,6 +100,7 @@ const shared = {
   legalComments: 'none',
   logLevel: 'warning',
   plugins: [contractIsSideEffectFree],
+  external: EXTERNAL,
   tsconfig,
 };
 
@@ -95,6 +112,9 @@ await esbuild.build({ ...shared, format: 'cjs', outfile: join(dist, 'index.cjs')
 
 const bundle = await rollup({
   input: entry,
+  // `respectExternal` makes the plugin inline declarations from node_modules
+  // too, so zod must be named external here as well or its types are copied in.
+  external: isExternal,
   plugins: [dts({ respectExternal: true, tsconfig })],
   onwarn(warning, warn) {
     // A circular re-export inside the contract package is harmless for
@@ -115,7 +135,7 @@ await copyFile(join(dist, 'index.d.ts'), join(dist, 'index.d.cts'));
  *
  * Bundling a module's declarations carries its file-level docblock along,
  * stranded above the first declaration it happened to precede — design notes
- * about GoWay's internals (the Drizzle schema, private packages, why a parser
+ * about GoWay's internals (the Drizzle schema, private packages, why a schema
  * fails closed) that describe nothing a consumer can use. Every leading comment
  * of a top-level statement except the last one is exactly that, so it is
  * removed; the last one is the declaration's own JSDoc and stays.

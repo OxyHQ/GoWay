@@ -8,8 +8,8 @@
  * because the importer has no way to name it. That is a property of the schema
  * and it costs the importer nothing.
  *
- * `places` has no such key. `name`, `categories` and the address columns are
- * single-valued and GoWay-owned, and the same UPDATE that refreshes a shop's
+ * `places` has no such key. `name`, `categories`, the address columns and the
+ * opening hours are single-valued and GoWay-owned, and the same UPDATE that refreshes a shop's
  * new phone number from OpenStreetMap would flatten a moderator's correction to
  * its name. `AGENTS.md` forbids exactly that — *"never destructively overwrite
  * a source fact"* — and there is no conflict target to hide behind.
@@ -21,17 +21,23 @@
  * what the source said last time, and what it says today — and that is a
  * three-way merge, the same shape as a version-control merge:
  *
- *  - the column is EMPTY → take the source's value; filling a gap destroys
- *    nothing;
  *  - the column still equals what the source said last time → nobody has
  *    touched it, so take the new value;
+ *  - the column is EMPTY and the source never said otherwise → take the
+ *    source's value; filling a gap destroys nothing;
+ *  - the column is EMPTY where the source last said something → somebody
+ *    CLEARED it (`PATCH … { "contact": { "phone": null } }`), which is a
+ *    statement that the source's value is wrong. Keep it empty while the
+ *    source repeats that value, and take the source's value once it CHANGES:
+ *    a new value is new evidence the clear never saw;
  *  - the column differs from what the source said last time → somebody
  *    changed it deliberately. Keep it. The source's own version is not lost:
  *    it is in `source_data`, which is what that column is for.
  *
  * With no `source_data` — a place linked by some earlier path, or the very
- * first run after this importer ships — the middle branch cannot be evaluated,
- * and the answer is the conservative one: fill gaps, change nothing else.
+ * first run after this importer ships — the first branch cannot be evaluated,
+ * and neither can a clear be told from a gap, so the answer is the
+ * conservative one: fill gaps, change nothing else.
  *
  * ## Returning only what changed is not an optimization
  *
@@ -41,107 +47,42 @@
  * because the importer ran, not because anything changed.
  */
 
-import type { ImportedPlace } from './placeRecord';
-
-/** The `places` columns this importer owns. Named exactly as the schema names them. */
-export interface MergeablePlaceColumns {
-  name: string;
-  latitude: number;
-  longitude: number;
-  categories: string[];
-  addressHouseNumber: string | null;
-  addressStreet: string | null;
-  addressLocality: string | null;
-  addressCity: string | null;
-  addressRegion: string | null;
-  addressPostalCode: string | null;
-  addressCountryCode: string | null;
-  contactPhone: string | null;
-  contactEmail: string | null;
-  contactWebsite: string | null;
-}
-
-/** The scalar columns, merged one way; `categories` is an array and is merged the other. */
-const SCALAR_COLUMNS = [
-  'name',
-  'latitude',
-  'longitude',
-  'addressHouseNumber',
-  'addressStreet',
-  'addressLocality',
-  'addressCity',
-  'addressRegion',
-  'addressPostalCode',
-  'addressCountryCode',
-  'contactPhone',
-  'contactEmail',
-  'contactWebsite',
-] as const satisfies readonly (keyof MergeablePlaceColumns)[];
-
-/** The columns an imported place supplies, taken straight off the record. */
-export function incomingColumns(place: ImportedPlace): MergeablePlaceColumns {
-  return {
-    name: place.name,
-    latitude: place.latitude,
-    longitude: place.longitude,
-    categories: place.categories,
-    addressHouseNumber: place.addressHouseNumber,
-    addressStreet: place.addressStreet,
-    addressLocality: place.addressLocality,
-    addressCity: place.addressCity,
-    addressRegion: place.addressRegion,
-    addressPostalCode: place.addressPostalCode,
-    addressCountryCode: place.addressCountryCode,
-    contactPhone: place.contactPhone,
-    contactEmail: place.contactEmail,
-    contactWebsite: place.contactWebsite,
-  };
-}
-
-/** Two category lists are the same list when they have the same members in the same order. */
-function sameCategories(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
+import { IMPORTED_COLUMNS, importedField, type ImportedColumns } from './fields';
 
 /**
  * The subset of columns to write, or `null` when the merge changes nothing.
  *
- * `previous` is `places_sources.source_data` as the last run wrote it — see
- * {@link sourceDataOf}. It is read defensively (`unknown` per field, compared
- * by value) because it is data from a previous release of this importer and may
- * predate any field added since.
+ * `previous` is what the last run recorded in `places_sources.source_data`,
+ * read by `previousColumns`: a column it never stated is absent, and the merge
+ * then fills a gap and changes nothing else. Every column goes through the same
+ * rule, with its own field's idea of EMPTY and SAME — `fields.ts` — so a
+ * schedule, a category list and a phone number are merged by one loop rather
+ * than one branch each.
  */
 export function mergePlaceColumns(
-  current: MergeablePlaceColumns,
-  previous: Record<string, unknown> | null,
-  incoming: MergeablePlaceColumns,
-): Partial<MergeablePlaceColumns> | null {
-  const changes: Record<string, unknown> = {};
+  current: ImportedColumns,
+  previous: Partial<ImportedColumns> | null,
+  incoming: ImportedColumns,
+): Partial<ImportedColumns> | null {
+  const changes: Partial<Record<keyof ImportedColumns, unknown>> = {};
 
-  for (const column of SCALAR_COLUMNS) {
+  for (const column of IMPORTED_COLUMNS) {
+    const field = importedField(column);
     const held = current[column];
     const offered = incoming[column];
-    const stated = previous === null ? undefined : previous[column];
 
-    const gap = held === null || held === undefined || held === '';
-    const untouched = previous !== null && held === stated;
+    const stated = previous !== null && column in previous;
+    const said = stated ? previous[column] : undefined;
+    const untouched = stated && field.same(held, said);
+    const gap = field.empty(held);
+    // Emptied by somebody after the source filled it: refilled only by a
+    // value the source has not already been refused.
+    const cleared = gap && stated && !field.empty(said);
     if (!gap && !untouched) continue;
-    if (held === offered) continue;
+    if (cleared && field.same(offered, said)) continue;
+    if (field.same(held, offered)) continue;
     changes[column] = offered;
   }
 
-  const heldCategories = current.categories ?? [];
-  const statedCategories = Array.isArray(previous?.categories)
-    ? (previous.categories as unknown[]).filter((value): value is string => typeof value === 'string')
-    : null;
-  const categoriesGap = heldCategories.length === 0;
-  const categoriesUntouched = statedCategories !== null && sameCategories(heldCategories, statedCategories);
-  if (
-    (categoriesGap || categoriesUntouched) &&
-    !sameCategories(heldCategories, incoming.categories)
-  ) {
-    changes.categories = incoming.categories;
-  }
-
-  return Object.keys(changes).length === 0 ? null : (changes as Partial<MergeablePlaceColumns>);
+  return Object.keys(changes).length === 0 ? null : (changes as Partial<ImportedColumns>);
 }

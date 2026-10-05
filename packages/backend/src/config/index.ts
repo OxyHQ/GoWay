@@ -16,6 +16,7 @@
 
 import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
+import { oxyUserIdList } from './oxyUserIds';
 
 // Before the parse below, and therefore before anything can import a parsed
 // value. A `.env` file is a developer convenience only: in ECS every variable
@@ -115,6 +116,16 @@ const schema = z.object({
   corsAppOrigins: originList,
   oxyApiUrl: z.preprocess(emptyAsUndefined, httpOrigin.default('https://api.oxy.so')),
   logLevel: z.preprocess(emptyAsUndefined, z.enum(LOG_LEVELS).optional()),
+  /**
+   * The Oxy user ids that may use `/moderation`: approve claims, verify
+   * capabilities, merge duplicates and resolve reports.
+   *
+   * The same allow-list mechanism as the capture pilot, keyed on the PERSON
+   * (Oxy's actor chain), so an operator who switched into an organization is
+   * still an operator and the organization never becomes one. Empty — the
+   * default — means nobody moderates through the API; a deployment opts in.
+   */
+  moderationOperatorOxyUserIds: oxyUserIdList,
 });
 
 /** The parsed configuration. */
@@ -141,6 +152,7 @@ export function parseConfig(source: EnvironmentSource = process.env): Config {
     corsAppOrigins: source.CORS_APP_ORIGINS,
     oxyApiUrl: source.OXY_API_URL,
     logLevel: source.LOG_LEVEL,
+    moderationOperatorOxyUserIds: source.MODERATION_OPERATOR_OXY_USER_IDS,
   });
 
   if (!result.success) {

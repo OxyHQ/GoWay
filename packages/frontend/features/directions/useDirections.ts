@@ -403,7 +403,7 @@ export function useDirections(options: DirectionsOptions): DirectionsController 
         { signal: controller.signal },
       )
       .then((answer) => {
-        const name = answer.results[0]?.displayName;
+        const name = answer.items[0]?.displayName;
         if (!name) return;
         setStops((current) =>
           current.map((stop) => (stop && stop.id === stopId ? { ...stop, label: name } : stop)),

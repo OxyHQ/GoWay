@@ -25,32 +25,44 @@
  * a protocol no registry understands. So the tarball is packed from a staging
  * directory holding `dist/`, the docs and a manifest reduced to the fields a
  * consumer's package manager and the registry read. The result is asserted
- * below: no dependencies of any kind, no scripts, no `workspace:`, and no
- * mention of the private `@goway/` scope in any shipped file.
+ * below: exactly one dependency, `zod`, and nothing else — no dev, peer or
+ * optional dependencies, no scripts, no `workspace:`, and no mention of the
+ * private `@goway/` scope in any shipped file.
+ *
+ * ## Why zod is installed from a tarball too
+ *
+ * The scratch consumer installs `--offline`, so nothing here depends on a
+ * registry being reachable. The SDK's one dependency is therefore packed from
+ * the copy THIS workspace installed and resolved against — the version every
+ * test above ran with — and installed beside the SDK's own tarball.
  *
  * ## What is checked
  *
  *  1. The tarball holds exactly dist + README + CHANGELOG + LICENSE + NOTICE + manifest.
- *  2. No shipped file mentions the private package scope or `workspace:`, and
- *     no JavaScript file imports a Node built-in or any package at all.
+ *  2. No shipped file mentions the private package scope or `workspace:`; no
+ *     file imports a Node built-in; the only package any file imports is
+ *     `zod` (and, in declarations only, a `zod/…` subpath); and the manifest's
+ *     dependencies are exactly `{ zod }`.
  *  3. Node ESM `import` and CJS `require` of the INSTALLED package: create a
- *     client, parse a place through a fetch double (which exercises the bundled
- *     closed value sets), build the canonical deep link, map a `not_found` body
- *     to `GoWayNotFoundError`, and recognise an error from the CJS copy as
- *     `instanceof` the ESM class.
+ *     client, parse a page of places through a fetch double (which exercises
+ *     the bundled schemas and the external zod), walk it with
+ *     `iterateGoWayPages`, refuse an invalid query before sending it, build the
+ *     canonical deep link, map a `not_found` body to `GoWayNotFoundError`, and
+ *     recognise an error from the CJS copy as `instanceof` the ESM class.
  *  4. The same ESM program under Bun.
  *  5. A browser bundle (esbuild, `platform: 'browser'`) and a React Native
  *     bundle (`conditions: ['react-native']`, RN main fields,
- *     `platform: 'neutral'`) both build, resolve the ESM entry, and pull in no
- *     Node built-in.
+ *     `platform: 'neutral'`) both build, resolve the ESM entry and zod, and
+ *     pull in no Node built-in.
  *  6. The declarations type-check in a consumer compiled with `nodenext` in
  *     BOTH module kinds, `lib: ["ES2020"]` (no DOM), `types: []` and
- *     `skipLibCheck: false` — so they are self-contained and ask nothing of the
- *     consumer's environment.
+ *     `skipLibCheck: false` — so they ask nothing of the consumer's
+ *     environment. The one exception is zod's, not ours: see
+ *     {@link RUNTIME_GLOBALS}.
  */
 
 import { spawnSync } from 'node:child_process';
-import { builtinModules } from 'node:module';
+import { builtinModules, createRequire } from 'node:module';
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -63,6 +75,8 @@ const keepDir = outIndex === -1 ? null : resolve(process.argv[outIndex + 1] ?? '
 if (outIndex !== -1 && !process.argv[outIndex + 1]) fail('--out needs a directory');
 
 const PRIVATE_SCOPE = '@goway/';
+/** The SDK's one runtime dependency, and the only package a shipped file may import. */
+const DEPENDENCY = 'zod';
 const EXPECTED_FILES = [
   'package/CHANGELOG.md',
   'package/LICENSE',
@@ -79,7 +93,7 @@ const EXPECTED_FILES = [
 const PUBLISHED_FIELDS = [
   'name', 'version', 'description', 'license', 'author', 'homepage', 'repository', 'bugs', 'keywords',
   'type', 'sideEffects', 'main', 'module', 'types', 'react-native', 'exports', 'files', 'engines',
-  'publishConfig',
+  'publishConfig', 'dependencies',
 ];
 
 function fail(message) {
@@ -155,6 +169,13 @@ async function main() {
     const tarball = join(packDir, packed[0].filename);
     const tarballBytes = (await stat(tarball)).size;
 
+    // The dependency, packed from the copy this workspace resolved.
+    const dependencyDir = dirname(createRequire(join(root, 'package.json')).resolve(`${DEPENDENCY}/package.json`));
+    const dependencyPacked = JSON.parse(
+      run('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', packDir], dependencyDir, `pack ${DEPENDENCY}`),
+    );
+    const dependencyTarball = join(packDir, dependencyPacked[0].filename);
+
     // ── 1. File list ──────────────────────────────────────────────────────────
     const listed = run('tar', ['-tzf', tarball], scratch, 'list tarball').split('\n').filter(Boolean).sort();
     if (JSON.stringify(listed) !== JSON.stringify(EXPECTED_FILES)) {
@@ -173,22 +194,34 @@ async function main() {
       const name = relative(extract, file);
       if (text.includes(PRIVATE_SCOPE)) fail(`${name} mentions the private scope ${PRIVATE_SCOPE}`);
       if (text.includes('workspace:')) fail(`${name} contains a workspace: protocol`);
-      if (/\.(?:c?js|d\.c?ts)$/.test(name)) {
+      const isDeclaration = /\.d\.c?ts$/.test(name);
+      if (isDeclaration || /\.c?js$/.test(name)) {
         for (const [, specifier] of text.matchAll(importSpecifier)) {
           if (builtins.has(specifier)) fail(`${name} imports the Node built-in ${specifier}`);
-          if (!specifier.startsWith('.')) fail(`${name} imports the package ${specifier}; the SDK has no dependencies`);
+          if (specifier.startsWith('.')) continue;
+          // Declarations may name a zod subpath for a type TypeScript could not
+          // spell from the root; the JavaScript imports the root only.
+          const allowed = specifier === DEPENDENCY || (isDeclaration && specifier.startsWith(`${DEPENDENCY}/`));
+          if (!allowed) fail(`${name} imports the package ${specifier}; the SDK's only dependency is ${DEPENDENCY}`);
         }
       }
     }
     const shippedManifest = JSON.parse(await readFile(join(extract, 'package', 'package.json'), 'utf8'));
     for (const field of [
-      'dependencies', 'peerDependencies', 'optionalDependencies', 'devDependencies',
+      'peerDependencies', 'optionalDependencies', 'devDependencies',
       'bundleDependencies', 'bundledDependencies', 'scripts',
     ]) {
       if (field in shippedManifest) fail(`the published manifest carries ${field}`);
     }
+    const dependencies = shippedManifest.dependencies ?? {};
+    if (JSON.stringify(Object.keys(dependencies)) !== JSON.stringify([DEPENDENCY])) {
+      fail(`the published dependencies are ${JSON.stringify(dependencies)}; expected exactly { ${DEPENDENCY} }`);
+    }
+    if (/^(?:workspace|file|link|catalog):/.test(dependencies[DEPENDENCY])) {
+      fail(`the published ${DEPENDENCY} range is ${dependencies[DEPENDENCY]}, which no registry resolves`);
+    }
     if (shippedManifest.name !== '@goway.to/sdk') fail(`published name is ${shippedManifest.name}`);
-    pass('no private scope, no workspace protocol, no dependencies, no scripts, no Node built-in imports');
+    pass(`no private scope, no workspace protocol, no Node built-ins; dependencies and imports are ${DEPENDENCY} alone`);
 
     // ── 3. Node ESM + CJS from the installed tarball ─────────────────────────
     const consumer = join(scratch, 'consumer');
@@ -196,17 +229,20 @@ async function main() {
     await writeFile(join(consumer, 'package.json'), '{ "name": "sdk-smoke-consumer", "private": true }\n');
     run(
       'npm',
-      ['install', tarball, '--no-audit', '--no-fund', '--ignore-scripts', '--no-package-lock', '--offline'],
+      [
+        'install', tarball, dependencyTarball,
+        '--no-audit', '--no-fund', '--ignore-scripts', '--no-package-lock', '--offline',
+      ],
       consumer,
-      'install tarball',
+      'install tarballs',
     );
 
     await writeFile(join(consumer, 'program.mjs'), CONSUMER_ESM);
     await writeFile(join(consumer, 'program.cjs'), CONSUMER_CJS);
     run(process.execPath, ['program.mjs'], consumer, 'node ESM import');
-    pass('node ESM import: client, place parse, deep link, not_found → GoWayNotFoundError, cross-copy instanceof');
+    pass('node ESM import: page parse, iterate, validation, deep link, not_found → GoWayNotFoundError, cross-copy instanceof');
     run(process.execPath, ['program.cjs'], consumer, 'node CJS require');
-    pass('node CJS require: client, place parse, deep link');
+    pass('node CJS require: page parse, iterate, validation, deep link');
 
     // ── 4. Bun ────────────────────────────────────────────────────────────────
     run('bun', ['program.mjs'], consumer, 'bun import');
@@ -244,12 +280,16 @@ async function main() {
       if (!inputs.some((input) => input.endsWith('@goway.to/sdk/dist/index.js'))) {
         fail(`${target} bundle did not resolve the ESM entry (inputs: ${inputs.join(', ')})`);
       }
-      pass(`${target} bundle builds from dist/index.js with no Node built-ins`);
+      if (!inputs.some((input) => input.startsWith(`node_modules/${DEPENDENCY}/`))) {
+        fail(`${target} bundle did not resolve ${DEPENDENCY}`);
+      }
+      pass(`${target} bundle builds from dist/index.js and ${DEPENDENCY} with no Node built-ins`);
     }
 
     // ── 6. Declarations in a no-DOM nodenext consumer, both module kinds ─────
     await writeFile(join(consumer, 'types-esm.mts'), CONSUMER_TYPES);
     await writeFile(join(consumer, 'types-cjs.cts'), CONSUMER_TYPES);
+    await writeFile(join(consumer, 'runtime-globals.d.ts'), RUNTIME_GLOBALS);
     await writeFile(
       join(consumer, 'tsconfig.json'),
       JSON.stringify({
@@ -263,7 +303,7 @@ async function main() {
           noEmit: true,
           skipLibCheck: false,
         },
-        files: ['types-esm.mts', 'types-cjs.cts'],
+        files: ['runtime-globals.d.ts', 'types-esm.mts', 'types-cjs.cts'],
       }),
     );
     const tsc = join(dirname(fileURLToPath(import.meta.resolve('typescript'))), '..', 'bin', 'tsc');
@@ -315,21 +355,42 @@ const respond = (status, body) => async () => ({
 });
 function check(condition, message) { if (!condition) { throw new Error('smoke assertion failed: ' + message); } }
 async function exercise(sdk) {
+  const pages = [
+    { items: [{ ...place, distanceMeters: 412.5 }], nextCursor: 'cursor_1' },
+    { items: [{ ...place, id: 'gw_place_02', distanceMeters: 980 }], nextCursor: null },
+  ];
+  const urls = [];
   const client = sdk.createGoWayClient({
-    fetch: respond(200, [{ ...place, distanceMeters: 412.5 }]),
+    fetch: async (url) => respond(200, pages[urls.push(url) - 1])(),
     getAccessToken: () => 'smoke-token',
   });
-  const merchants = await client.places.nearby({
-    latitude: 41.3874, longitude: 2.1686, radiusMeters: 5000, capabilities: ['payments.faircoin.accepted'],
-  });
-  check(merchants.length === 1, 'one merchant parsed');
-  check(merchants[0].distanceMeters === 412.5, 'distance parsed');
-  check(merchants[0].capabilities[0].verification === 'oxy_verified', 'closed value set survived bundling');
-  check(!('internalRowId' in merchants[0]), 'a leaked backend column is stripped');
-  check(client.links.place(merchants[0]) === 'https://goway.to/place/gw_place_01H8', 'canonical deep link');
-  check(sdk.toGeoPosition(merchants[0].location)[0] === 2.1686, 'bundled helper is longitude-first');
-  check(sdk.WELL_KNOWN_CAPABILITIES.includes('payments.faircoin.accepted'), 'bundled value set');
+  const query = { latitude: 41.3874, longitude: 2.1686, radiusMeters: 5000, capabilities: ['payments.faircoin.accepted'] };
+  const first = await client.places.nearby(query);
+  check(first.items.length === 1 && first.nextCursor === 'cursor_1', 'one page parsed');
+  check(first.items[0].distanceMeters === 412.5, 'distance parsed');
+  check(first.items[0].capabilities[0].verification === 'oxy_verified', 'closed value set survived bundling');
+  check(!('internalRowId' in first.items[0]), 'a leaked backend column is stripped');
+  check(client.links.place(first.items[0]) === 'https://goway.to/place/gw_place_01H8', 'canonical deep link');
+
+  urls.length = 0;
+  const ids = [];
+  for await (const merchant of sdk.iterateGoWayPages((cursor) => client.places.nearby({ ...query, cursor }))) {
+    ids.push(merchant.id);
+  }
+  check(ids.join() === 'gw_place_01H8,gw_place_02', 'iterateGoWayPages walks every page');
+  check(urls[1].includes('cursor=cursor_1'), 'the next cursor is passed back');
+
+  let invalid;
+  try { await client.places.nearby({ ...query, latitude: 120 }); } catch (caught) { invalid = caught; }
+  check(invalid instanceof sdk.GoWayValidationError && invalid.status === null, 'an invalid query is refused client-side');
+  check(urls.length === 2, 'and never sent');
+
+  check(sdk.toGeoPosition(first.items[0].location)[0] === 2.1686, 'bundled helper is longitude-first');
+  check(sdk.CAPABILITY_KEYS.includes('payments.faircoin.accepted'), 'bundled capability registry');
+  check(sdk.categoryLabel('food.cafe', 'es') === 'Cafetería', 'bundled category taxonomy');
+  check(sdk.openingStatusAt({}).state === 'unknown', 'bundled opening-hours evaluation');
   check(sdk.API_ERROR_RETRYABLE.no_route === false, 'bundled retryability table');
+  check(sdk.GOWAY_API_BASE_PATH === '/api/v1', 'bundled API root');
 
   const missing = sdk.createGoWayClient({
     fetch: respond(404, { error: { code: 'not_found', message: 'no such place' } }),
@@ -365,15 +426,35 @@ import { createGoWayClient } from '@goway.to/sdk';
 export const url = createGoWayClient().links.place('gw_place_01H8');
 `;
 
+/**
+ * The consumer's runtime globals: an EMPTY global `URL` type, and nothing else.
+ *
+ * zod's own declarations (`v4/core/schemas.d.cts`, its URL validator) name the
+ * global `URL` type. Every runtime this SDK supports declares one — Node's
+ * types, the DOM lib, React Native's and Bun's — but `lib: ["ES2020"]` alone
+ * does not, so a consumer with no runtime types at all would fail on zod, with
+ * or without this SDK. Declaring it here, empty, keeps the check honest in
+ * both directions: zod needs only the NAME (an empty interface satisfies it),
+ * and the SDK's own declarations need nothing — any use of a `URL` member, or
+ * of any other global, would still fail this compile.
+ */
+const RUNTIME_GLOBALS = `
+interface URL {}
+`;
+
 const CONSUMER_TYPES = `
 import {
   createGoWayClient,
+  GoWayGoneError,
   GoWayNoRouteError,
   GoWayNotFoundError,
+  iterateGoWayPages,
+  placeDisplayName,
   type GoWayClient,
   type NearbyPlacesQuery,
   type Place,
   type PlaceWithDistance,
+  type PlaceWithDistancePage,
   type RouteResponse,
   type SearchResults,
 } from '@goway.to/sdk';
@@ -382,17 +463,23 @@ const client: GoWayClient = createGoWayClient({ getAccessToken: async () => null
 
 export async function merchants(query: NearbyPlacesQuery): Promise<string> {
   try {
-    const nearby: PlaceWithDistance[] = await client.places.nearby(query);
-    const detail: Place = await client.places.get(nearby[0]!.id);
-    const results: SearchResults = await client.search.query({ query: detail.name, limit: 5 });
+    const nearby: PlaceWithDistancePage = await client.places.nearby(query);
+    const first: PlaceWithDistance = nearby.items[0]!;
+    const detail: Place = await client.places.get(first.id);
+    const results: SearchResults = await client.search.query({ query: placeDisplayName(detail), limit: 5 });
     const directions: RouteResponse = await client.routes.directions({
       origin: { coordinate: { latitude: query.latitude, longitude: query.longitude } },
       destination: { placeId: detail.id },
       mode: 'walk',
     });
-    return client.links.place(detail) + results.providers.length + directions.routes.length;
+    let count = 0;
+    for await (const place of iterateGoWayPages((cursor) => client.places.nearby({ ...query, cursor }))) {
+      count += place.distanceMeters > 0 ? 1 : 0;
+    }
+    return client.links.place(detail) + results.items.length + directions.routes.length + count;
   } catch (error) {
     if (error instanceof GoWayNoRouteError) return 'no route';
+    if (error instanceof GoWayGoneError) return 'withdrawn';
     if (error instanceof GoWayNotFoundError) return error.code;
     throw error;
   }

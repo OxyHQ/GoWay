@@ -3,7 +3,8 @@
 *Design note for OxyHQ/GoWay#61. The code is `places_names` in
 `packages/backend/src/db/schema/places.ts`, the resolution chain in
 `packages/backend/src/places/placeNames.ts`, and `PlaceName` /
-`placeDisplayName` in `packages/shared-types`.*
+`placeDisplayName` in `packages/contracts` (`src/place.ts`), with the tag
+rules in `packages/contracts/src/language.ts`.*
 
 This landed **before** the OpenStreetMap POI import, deliberately. That import
 writes millions of rows, and a single-language `places.name` would have fixed
@@ -184,11 +185,15 @@ here; it is made impossible to *introduce*.
   discovered.
 - **The app's own UI strings.** `lib/i18n.tsx` still loads only `en`. Ordinary
   i18n work, independent of this.
-- **Four BCP 47 regexes.** `shared-types/src/language.ts` is now the canonical
-  one and the Places surface uses it; `routes/searchSchemas.ts`,
-  `routes/routeSchemas.ts` and the SDK's `LOCALE` each still carry their own,
-  and the first two are *intentionally* laxer (they forward a tag verbatim to a
-  provider that owns its own language registry). Worth revisiting; not worth
-  changing behaviour for in this issue.
+- **~~Four BCP 47 regexes~~ — paid.** `packages/contracts/src/language.ts` is
+  the one definition. `languageTagSchema` normalizes every tag at the edge —
+  each `locale` parameter on place reads, search, geocoding and directions, and
+  each written name's `language` — so `ES` and `es` are one cache key and one
+  row, and a tag the `places_names.language` CHECK would refuse is a 422 naming
+  the field. The SDK validates with the same schema before sending. The
+  separate, laxer copies in the old `routes/searchSchemas.ts` and
+  `routes/routeSchemas.ts` and the SDK's own `LOCALE` are gone, so a tag outside
+  GoWay's subset is now refused on search and directions too rather than
+  forwarded verbatim to a provider.
 - **Switching off the basemap `poi-*` layers.** The reason this table matters,
   and a separate issue: it needs the import to have run first.

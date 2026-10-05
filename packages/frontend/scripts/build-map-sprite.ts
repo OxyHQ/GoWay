@@ -156,25 +156,26 @@ interface IconSpec {
 }
 
 const ICONS: readonly IconSpec[] = [
-  // One per category in lib/goway/categories.ts.
+  // The categories lib/goway/categories.ts draws at a landmark or errand zoom,
+  // named by taxonomy key. The sprite id is the drawing's, not the key's.
   { name: 'goway-place', component: 'RiMapPin2Line', note: 'category: the generic fallback' },
-  { name: 'goway-park', component: 'RiTreeLine', note: 'category: park' },
-  { name: 'goway-museum', component: 'RiPaletteLine', note: 'category: museum' },
-  { name: 'goway-hospital', component: 'RiHospitalLine', note: 'category: hospital' },
-  { name: 'goway-transit-station', component: 'RiSubwayLine', note: 'category: transit_station' },
+  { name: 'goway-park', component: 'RiTreeLine', note: 'category: leisure.park' },
+  { name: 'goway-museum', component: 'RiPaletteLine', note: 'category: culture.museum' },
+  { name: 'goway-hospital', component: 'RiHospitalLine', note: 'category: health.hospital' },
+  { name: 'goway-transit-station', component: 'RiSubwayLine', note: 'category: transport.rail_station' },
   { name: 'goway-civic', component: 'RiCommunityLine', note: 'category: civic' },
-  { name: 'goway-hotel', component: 'RiHotelLine', note: 'category: hotel' },
-  { name: 'goway-restaurant', component: 'RiRestaurantLine', note: 'category: restaurant' },
-  { name: 'goway-grocery', component: 'RiShoppingBasketLine', note: 'category: grocery' },
+  { name: 'goway-hotel', component: 'RiHotelLine', note: 'category: lodging.hotel' },
+  { name: 'goway-restaurant', component: 'RiRestaurantLine', note: 'category: food.restaurant' },
+  { name: 'goway-grocery', component: 'RiShoppingBasketLine', note: 'category: shop.supermarket' },
   // categories.ts draws pharmacy with RiHospitalLine. On a list row that is
   // fine, because the label is right there. On a map two different categories
   // sharing one mark is a cartography bug, so the sprite splits them.
-  { name: 'goway-pharmacy', component: 'RiCapsuleFill', note: 'category: pharmacy' },
-  { name: 'goway-bank', component: 'RiBankLine', note: 'category: bank' },
-  { name: 'goway-coworking', component: 'RiBriefcase4Line', note: 'category: coworking' },
-  { name: 'goway-bicycle-rental', component: 'RiBikeLine', note: 'category: bicycle_rental' },
-  { name: 'goway-bakery', component: 'RiCake2Line', note: 'category: bakery' },
-  { name: 'goway-bookshop', component: 'RiBookOpenLine', note: 'category: bookshop' },
+  { name: 'goway-pharmacy', component: 'RiCapsuleFill', note: 'category: health.pharmacy' },
+  { name: 'goway-bank', component: 'RiBankLine', note: 'category: finance.bank' },
+  { name: 'goway-coworking', component: 'RiBriefcase4Line', note: 'category: office.coworking' },
+  { name: 'goway-bicycle-rental', component: 'RiBikeLine', note: 'category: transport.bicycle_rental' },
+  { name: 'goway-bakery', component: 'RiCake2Line', note: 'category: food.bakery' },
+  { name: 'goway-bookshop', component: 'RiBookOpenLine', note: 'category: shop.books' },
   { name: 'goway-shop', component: 'RiStore2Line', note: 'category: shop' },
 
   // The ecosystem capabilities lib/goway/capabilities.ts knows by name.

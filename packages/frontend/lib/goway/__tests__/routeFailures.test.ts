@@ -20,6 +20,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 import {
+  API_ERROR_STATUS,
   createGoWayClient,
   GoWayAbortError,
   GoWayNetworkError,
@@ -27,6 +28,7 @@ import {
   GoWayTimeoutError,
   GoWayUnavailableError,
   GoWayUnsupportedModeError,
+  type ApiErrorCode,
   type GoWayClient,
 } from '@goway.to/sdk';
 
@@ -106,23 +108,26 @@ describe('every routing answer survives the whole chain, envelope to sentence', 
     }
   }
 
-  const ANSWERS: ReadonlyArray<readonly [string, number, GoWayFailureKind]> = [
-    ['no_route', 404, 'noRoute'],
-    ['unsupported_mode', 422, 'unsupportedMode'],
+  const ANSWERS: ReadonlyArray<readonly [ApiErrorCode, GoWayFailureKind]> = [
+    ['no_route', 'noRoute'],
+    ['unsupported_mode', 'unsupportedMode'],
     // What production answered before a routing engine existed.
-    ['service_unavailable', 503, 'unavailable'],
-    ['provider_unavailable', 503, 'unavailable'],
+    ['service_unavailable', 'unavailable'],
+    ['provider_unavailable', 'unavailable'],
+    // An API that has no `/routes` at all: this build and the server disagree
+    // about what exists, which no retry fixes.
+    ['unknown_route', 'versionMismatch'],
   ];
 
-  for (const [code, status, expected] of ANSWERS) {
+  for (const [code, expected] of ANSWERS) {
     test(`${code} reaches the panel as "${expected}"`, async () => {
-      expect(await kindFor(status, { error: { code, message: `${code} happened` } })).toBe(expected);
+      expect(await kindFor(API_ERROR_STATUS[code], { error: { code, message: `${code} happened` } })).toBe(expected);
     });
   }
 
   test('not one of them arrives as "Something went wrong"', async () => {
-    for (const [code, status] of ANSWERS) {
-      expect(await kindFor(status, { error: { code, message: 'x' } })).not.toBe('unknown');
+    for (const [code] of ANSWERS) {
+      expect(await kindFor(API_ERROR_STATUS[code], { error: { code, message: 'x' } })).not.toBe('unknown');
     }
   });
 

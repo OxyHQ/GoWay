@@ -11,6 +11,7 @@ export const PLACE: Record<string, unknown> = {
   name: 'Cafè de la Plaça',
   location: { latitude: 41.3874, longitude: 2.1686 },
   categories: ['food.cafe'],
+  timezone: 'Europe/Madrid',
   status: 'active',
   verification: { state: 'owner_verified', verifiedAt: '2026-01-04T10:00:00.000Z' },
   sources: [{ source: 'openstreetmap', sourceId: 'node/12345', observedAt: '2026-01-01T00:00:00.000Z' }],
@@ -31,8 +32,23 @@ export const PLACE: Record<string, unknown> = {
 
 export const PLACE_WITH_DISTANCE: Record<string, unknown> = { ...PLACE, distanceMeters: 412.5 };
 
+/** One page of a GoWay list. */
+export function page(items: unknown[], nextCursor: string | null = null): Record<string, unknown> {
+  return { items, nextCursor };
+}
+
+export const CLAIM: Record<string, unknown> = {
+  id: 'claim_1',
+  placeId: 'gw_place_01H8',
+  role: 'owner',
+  state: 'pending',
+  oxyAccountId: 'oxy_account_1',
+  claimedAt: '2026-10-01T00:00:00.000Z',
+};
+
 export const SEARCH_RESULTS: Record<string, unknown> = {
-  results: [
+  nextCursor: null,
+  items: [
     {
       id: 'photon:node/12345',
       displayName: 'Cafè de la Plaça, Barcelona',

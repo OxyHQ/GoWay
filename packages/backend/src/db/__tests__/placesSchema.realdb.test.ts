@@ -34,7 +34,7 @@ afterAll(async () => {
 
 describe('places', () => {
   it('refuses a status outside the published tuple', async () => {
-    // The tuple lives in `@goway/shared-types` and types the column, builds the
+    // The tuple lives in `@goway/contracts` and types the column, builds the
     // CHECK and types the SDK. This is the assertion that the third of those is
     // really enforced rather than merely declared.
     const message = await statementFailure(
@@ -212,14 +212,15 @@ describe('places_claims', () => {
 
   it('lets one place carry claims from several accounts in different roles', async () => {
     // The shape a single `owner_id` column makes unrepresentable: a franchise
-    // operated by one account under another's brand.
+    // operated by one account under another's brand — the brand being an
+    // organization's own claim, in the `brand` role.
     await suite!.client`
-      INSERT INTO places_claims (id, place_id, oxy_account_id, role, brand_id, state, decided_at)
-      VALUES ('cl-2', 'p-1', 'acct-operator', 'operator', 'brand-chain', 'approved', now())
+      INSERT INTO places_claims (id, place_id, oxy_account_id, role, state, decided_at)
+      VALUES ('cl-2', 'p-1', 'acct-operator', 'operator', 'approved', now())
     `;
     await suite!.client`
-      INSERT INTO places_claims (id, place_id, oxy_account_id, role, brand_id, state, decided_at)
-      VALUES ('cl-3', 'p-1', 'acct-brand', 'brand', 'brand-chain', 'approved', now())
+      INSERT INTO places_claims (id, place_id, oxy_account_id, role, state, decided_at)
+      VALUES ('cl-3', 'p-1', 'org-brand', 'brand', 'approved', now())
     `;
     const rows = await suite!.client<{ role: string }[]>`
       SELECT role FROM places_claims WHERE place_id = 'p-1' AND state = 'approved' ORDER BY role
@@ -371,5 +372,129 @@ describe('deleting a place', () => {
         (SELECT count(*) FROM places_duplicate_candidates WHERE place_id = 'p-1' OR candidate_place_id = 'p-1')::text AS duplicates
     `;
     expect(counts).toEqual({ sources: '0', capabilities: '0', claims: '0', names: '0', duplicates: '0' });
+  });
+});
+
+describe('merges', () => {
+  it('declares the merge pointer as a real self-referencing foreign key', async () => {
+    // Read from `pg_constraint`, never from the declaration: a column-level
+    // circular reference has been silently dropped from a generated migration
+    // before, and the declaration would still read as intended.
+    const [constraint] = await suite!.client<{ target: string; on_delete: string }[]>`
+      SELECT confrelid::regclass::text AS target, confdeltype::text AS on_delete
+      FROM pg_constraint
+      WHERE conrelid = 'places'::regclass AND contype = 'f'
+        AND conkey = ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid = 'places'::regclass AND attname = 'merged_into_place_id')]
+    `;
+    // `r` is RESTRICT: a survivor cannot be deleted out from under the ids that redirect to it.
+    expect(constraint).toEqual({ target: 'places', on_delete: 'r' });
+  });
+
+  it('ties the merged status to its pointer, both ways, and never to itself', async () => {
+    await suite!.client`
+      INSERT INTO places (id, name, latitude, longitude) VALUES ('m-1', 'Merged', 0, 0), ('m-2', 'Survivor', 0, 0)
+    `;
+    expect(
+      await statementFailure(() => suite!.client`UPDATE places SET status = 'merged' WHERE id = 'm-1'`),
+    ).toContain('places_merged_into_check');
+    expect(
+      await statementFailure(() => suite!.client`UPDATE places SET merged_into_place_id = 'm-2' WHERE id = 'm-1'`),
+    ).toContain('places_merged_into_check');
+    expect(
+      await statementFailure(
+        () => suite!.client`UPDATE places SET status = 'merged', merged_into_place_id = 'm-1' WHERE id = 'm-1'`,
+      ),
+    ).toContain('places_merged_into_self_check');
+    expect(
+      await statementFailure(
+        () => suite!.client`UPDATE places SET status = 'merged', merged_into_place_id = 'nowhere' WHERE id = 'm-1'`,
+      ),
+    ).toContain('places_merged_into_place_id_places_id_fk');
+
+    await suite!.client`UPDATE places SET status = 'merged', merged_into_place_id = 'm-2' WHERE id = 'm-1'`;
+    expect(await statementFailure(() => suite!.client`DELETE FROM places WHERE id = 'm-2'`)).toContain(
+      'places_merged_into_place_id_places_id_fk',
+    );
+  });
+});
+
+describe('place_revisions and place_reports', () => {
+  it('holds a revision to the contract action and source sets, and its changes to an array', async () => {
+    await suite!.client`INSERT INTO places (id, name, latitude, longitude) VALUES ('r-1', 'Revised', 0, 0)`;
+    expect(
+      await statementFailure(
+        () => suite!.client`
+          INSERT INTO place_revisions (id, place_id, action, source, oxy_account_id, changes)
+          VALUES ('rv-1', 'r-1', 'place_vandalised', 'api', 'acct', '[]'::jsonb)
+        `,
+      ),
+    ).toContain('place_revisions_action_check');
+    expect(
+      await statementFailure(
+        () => suite!.client`
+          INSERT INTO place_revisions (id, place_id, action, source, oxy_account_id, changes)
+          VALUES ('rv-2', 'r-1', 'place_updated', 'import', 'acct', '[]'::jsonb)
+        `,
+      ),
+    ).toContain('place_revisions_source_check');
+    expect(
+      await statementFailure(
+        () => suite!.client`
+          INSERT INTO place_revisions (id, place_id, action, source, oxy_account_id, changes)
+          VALUES ('rv-3', 'r-1', 'place_updated', 'api', 'acct', '{"name": "x"}'::jsonb)
+        `,
+      ),
+    ).toContain('place_revisions_changes_array_check');
+  });
+
+  it('resolves a report all at once — when, how and by whom — or not at all', async () => {
+    await suite!.client`
+      INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, reason) VALUES ('rp-1', 'r-1', 'person-a', 'spam')
+    `;
+    expect(
+      await statementFailure(() => suite!.client`UPDATE place_reports SET resolved_at = now() WHERE id = 'rp-1'`),
+    ).toContain('place_reports_resolved_check');
+    expect(
+      await statementFailure(
+        () => suite!.client`
+          UPDATE place_reports SET resolved_at = now(), resolution = 'ignored', resolved_by_oxy_user_id = 'op' WHERE id = 'rp-1'
+        `,
+      ),
+    ).toContain('place_reports_resolution_check');
+    // A second OPEN report by the same person about the same place is refused.
+    expect(
+      await statementFailure(
+        () => suite!.client`
+          INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, reason) VALUES ('rp-2', 'r-1', 'person-a', 'privacy')
+        `,
+      ),
+    ).toContain('place_reports_open_subject_key');
+  });
+
+  it('keeps one open report per person per SUBJECT: the place, a gallery item or a review', async () => {
+    await suite!.client`
+      INSERT INTO place_media (id, place_id, oxy_file_id, oxy_link_place_id, kind, contributor_oxy_account_id, verification, position)
+      VALUES ('pm-1', 'r-1', 'file-1', 'r-1', 'photo', 'person-b', 'community_reported', 0)
+    `;
+    // About the item, beside the open report about the place: a different subject.
+    await suite!.client`
+      INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, media_id, reason) VALUES ('rp-3', 'r-1', 'person-a', 'pm-1', 'offensive')
+    `;
+    expect(
+      await statementFailure(
+        () => suite!.client`
+          INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, media_id, reason) VALUES ('rp-4', 'r-1', 'person-a', 'pm-1', 'spam')
+        `,
+      ),
+    ).toContain('place_reports_open_subject_key');
+    // A report names at most one subject.
+    expect(
+      await statementFailure(
+        () => suite!.client`
+          INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, media_id, review_id, reason)
+          VALUES ('rp-5', 'r-1', 'person-c', 'pm-1', 'nope', 'spam')
+        `,
+      ),
+    ).toMatch(/place_reports_subject_check|place_reports_review_id/);
   });
 });

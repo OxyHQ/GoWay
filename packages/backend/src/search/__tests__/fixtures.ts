@@ -7,7 +7,7 @@
  * that does not run on a laptop — which is the same as not having it.
  */
 
-import type { Place, PlaceWithDistance } from '@goway/shared-types';
+import type { Place, PlaceWithDistance } from '@goway/contracts';
 import type { SourceRefInput } from '../../db/places/placesRepository';
 import type { PlacesGateway } from '../placesGateway';
 import { sourceRefKey } from '../placesGateway';
@@ -56,7 +56,7 @@ export function buildPlace(overrides: Partial<Place> = {}): Place {
     id,
     name: `Place ${id}`,
     location: { latitude: 41.4036, longitude: 2.1744 },
-    categories: ['cafe'],
+    categories: ['food.cafe'],
     status: 'active',
     verification: { state: 'unverified' },
     sources: [],
@@ -81,17 +81,21 @@ export interface FakeGatewayOptions {
 export interface FakeGateway extends PlacesGateway {
   /** How many reference-resolution round trips the merge made. */
   readonly refLookups: SourceRefInput[][];
+  /** The locale each place lookup was asked to resolve names in. */
+  readonly placeLocales: (string | undefined)[];
 }
 
 export function fakeGateway(options: FakeGatewayOptions = {}): FakeGateway {
   const bindings = options.bindings ?? {};
   const byId = new Map((options.places ?? []).map((place) => [place.id, place]));
   const refLookups: SourceRefInput[][] = [];
+  const placeLocales: (string | undefined)[] = [];
 
   const reject = <T>(): Promise<T> => Promise.reject(options.failure);
 
   return {
     refLookups,
+    placeLocales,
     findPlaceIdsBySourceRefs(refs) {
       if (options.failure) return reject();
       refLookups.push([...refs]);
@@ -102,8 +106,9 @@ export function fakeGateway(options: FakeGatewayOptions = {}): FakeGateway {
       }
       return Promise.resolve(resolved);
     },
-    findPlacesByIds(ids) {
+    findPlacesByIds(ids, locale) {
       if (options.failure) return reject();
+      placeLocales.push(locale);
       const found = new Map<string, Place>();
       for (const id of ids) {
         const place = byId.get(id);

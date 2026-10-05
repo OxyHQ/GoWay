@@ -11,8 +11,10 @@
 
 import '../../__tests__/testEnv';
 import { describe, expect, it } from 'bun:test';
-import { normalizeLanguageTag, baseLanguageTag } from '@goway/shared-types';
+import { normalizeLanguageTag, baseLanguageTag } from '@goway/contracts';
 import { comparePublishedNames, resolveLocalizedName, type ResolvableName } from '../placeNames';
+
+type TestName = ResolvableName & { name: string };
 
 const OLD = new Date('2024-01-01T00:00:00.000Z');
 const NEW = new Date('2026-01-01T00:00:00.000Z');
@@ -22,7 +24,7 @@ function name(
   value: string,
   source = 'openstreetmap',
   observedAt = OLD,
-): ResolvableName {
+): TestName {
   return { language, name: value, source, observedAt };
 }
 

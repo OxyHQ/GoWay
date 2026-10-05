@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { CAPTURE_ASSET_STATES, CAPTURE_PRIVACY_STATES, STREET_SCENE_REPORT_REASONS } from '@goway/shared-types';
+import { CAPTURE_ASSET_STATES, CAPTURE_PRIVACY_STATES, STREET_SCENE_REPORT_REASONS } from '@goway.to/sdk';
 
 import { contributionStatus } from '@/features/contribute/status';
 

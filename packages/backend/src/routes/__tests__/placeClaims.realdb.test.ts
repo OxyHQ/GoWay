@@ -20,7 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import express, { type RequestHandler } from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { Place, PlaceClaim } from '@goway/shared-types';
+import type { Place, PlaceClaim, PlaceClaimPage } from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {
   SUITE_SETUP_TIMEOUT_MS,
@@ -29,11 +29,12 @@ import {
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
 import { ApiError } from '../../http/apiError';
-import { errorHandler, notFoundHandler } from '../../http/errorHandler';
+import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import { createPlacesRouter } from '../places';
+import { apiAuthor, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 
 const CONTRIBUTOR: PlaceActor = {
-  oxyUserId: 'user-contributor',
+  author: apiAuthor('user-contributor'),
   assertedVerification: 'community_reported',
 };
 
@@ -79,7 +80,6 @@ function json(body: unknown): RequestInit {
 }
 
 type ErrorBody = { error: { code: string; message: string; details?: Record<string, unknown> } };
-type AccountClaim = PlaceClaim & { placeId: string };
 
 /** Unclaimed at the start of the suite. */
 let vacant: Place;
@@ -94,8 +94,8 @@ beforeAll(async () => {
 
   const app = express();
   app.use(express.json());
-  app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth }));
-  app.use(notFoundHandler);
+  app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }));
+  app.use(unknownRouteHandler);
   app.use(errorHandler);
 
   server = app.listen(0);
@@ -134,13 +134,22 @@ describe('POST /places/:id/claims', () => {
     expect(body.error.code).toBe('unauthorized');
   });
 
-  it('records a PENDING claim attributed to the session, not to the body', async () => {
+  it('refuses a claim in another account name unless Oxy says the caller may file for it', async () => {
+    // `oxyAccountId` names an organization the caller claims to speak for. The
+    // claim is only as good as Oxy's answer, and in this suite Oxy reports no
+    // membership in anything.
+    const { status, body } = await call<ErrorBody>(`/places/${vacant.id}/claims`, {
+      method: 'POST',
+      ...asUser('user-applicant', json({ role: 'operator', oxyAccountId: 'user-someone-else' })),
+    });
+    expect(status).toBe(403);
+    expect(body.error.code).toBe('forbidden');
+  });
+
+  it('records a PENDING claim attributed to the session when it names no account', async () => {
     const { status, body } = await call<PlaceClaim>(`/places/${vacant.id}/claims`, {
       method: 'POST',
-      // `oxyAccountId` in the body is a client-supplied identity — an
-      // authorization bypass with extra steps. It is not in the schema, so it
-      // is dropped, and the claim is attributed to the session.
-      ...asUser('user-applicant', json({ role: 'operator', oxyAccountId: 'user-someone-else' })),
+      ...asUser('user-applicant', json({ role: 'operator' })),
     });
 
     expect(status).toBe(201);
@@ -151,17 +160,20 @@ describe('POST /places/:id/claims', () => {
     expect(body.id).toBeString();
   });
 
-  it('carries a brandId through, so a chain can group its locations', async () => {
+  it('files a chain as one account claiming each location in the brand role', async () => {
     const first = await call<PlaceClaim>(`/places/${branchOne.id}/claims`, {
       method: 'POST',
+      // A `brandId` is no longer part of the contract: it is dropped, and the
+      // brand is the account itself.
       ...asUser('user-chain', json({ role: 'brand', brandId: 'org-cadena' })),
     });
     const second = await call<PlaceClaim>(`/places/${branchTwo.id}/claims`, {
       method: 'POST',
-      ...asUser('user-chain', json({ role: 'brand', brandId: 'org-cadena' })),
+      ...asUser('user-chain', json({ role: 'brand' })),
     });
-    expect(first.body.brandId).toBe('org-cadena');
-    expect(second.body.brandId).toBe('org-cadena');
+    expect([first.status, second.status]).toEqual([201, 201]);
+    expect([first.body.role, second.body.role]).toEqual(['brand', 'brand']);
+    expect(first.body).not.toHaveProperty('brandId');
   });
 
   it('refuses a second claim in the SAME role, and says which one already exists', async () => {
@@ -233,7 +245,7 @@ describe('POST /places/:id/claims', () => {
   });
 });
 
-describe('GET /places/:id/claims', () => {
+describe('GET /places/{placeId}/claims', () => {
   it('refuses a signed-out reader', async () => {
     const { status } = await call<ErrorBody>(`/places/${held.id}/claims`);
     expect(status).toBe(401);
@@ -263,15 +275,28 @@ describe('GET /places/:id/claims', () => {
       ...asUser('user-second', json({ role: 'operator' })),
     });
 
-    const { status, body } = await call<PlaceClaim[]>(
+    const { status, body } = await call<PlaceClaimPage>(
       `/places/${contested.id}/claims`,
       asUser('user-first'),
     );
     expect(status).toBe(200);
     // A PENDING claimant counts as entitled: they have to be able to see that
     // their own request is pending, and that somebody else is asking too.
-    expect(body.map((claim) => claim.oxyAccountId).sort()).toEqual(['user-first', 'user-second']);
-    expect(body.every((claim) => claim.state === 'pending')).toBe(true);
+    expect(body.items.map((claim) => claim.oxyAccountId).sort()).toEqual(['user-first', 'user-second']);
+    expect(body.items.every((claim) => claim.state === 'pending' && claim.placeId === contested.id)).toBe(true);
+    expect(body.items.every((claim) => claim.decidedAt === undefined)).toBe(true);
+
+    // Entitlement is asked of the whole table, not of the page: a claimant
+    // whose own claim falls on the SECOND page still reads the first.
+    const first = await call<PlaceClaimPage>(`/places/${contested.id}/claims?limit=1`, asUser('user-second'));
+    expect(first.status).toBe(200);
+    expect(first.body.items.map((claim) => claim.oxyAccountId)).toEqual(['user-first']);
+    const second = await call<PlaceClaimPage>(
+      `/places/${contested.id}/claims?limit=1&cursor=${first.body.nextCursor ?? ''}`,
+      asUser('user-second'),
+    );
+    expect(second.body.items.map((claim) => claim.oxyAccountId)).toEqual(['user-second']);
+    expect(second.body.nextCursor).toBeNull();
   });
 
   it('answers an unknown place with not_found, before it answers forbidden', async () => {
@@ -285,24 +310,77 @@ describe('GET /places/:id/claims', () => {
 
 describe('GET /claims', () => {
   it('returns the caller own claims across places, with the place each is over', async () => {
-    const { status, body } = await call<AccountClaim[]>('/claims', asUser('user-chain'));
+    const { status, body } = await call<PlaceClaimPage>('/claims', asUser('user-chain'));
     expect(status).toBe(200);
     // The multi-location read: a chain gets its locations in one request
     // instead of one per place.
-    expect(body.map((claim) => claim.placeId).sort()).toEqual([branchOne.id, branchTwo.id].sort());
-    expect(body.every((claim) => claim.oxyAccountId === 'user-chain')).toBe(true);
-    expect(body.every((claim) => claim.brandId === 'org-cadena')).toBe(true);
+    expect(body.items.map((claim) => claim.placeId).sort()).toEqual([branchOne.id, branchTwo.id].sort());
+    expect(body.items.every((claim) => claim.oxyAccountId === 'user-chain')).toBe(true);
+    // Both still pending, so neither carries a decision time.
+    expect(body.items.every((claim) => claim.state === 'pending' && claim.decidedAt === undefined)).toBe(true);
   });
 
-  it('is keyed on the SESSION and not on anything the caller can send', async () => {
-    // A `?oxyAccountId=` parameter here would be an enumeration of who has
-    // claimed what — a business relationship GoWay publishes to the parties
-    // involved and to nobody else.
-    const { body } = await call<AccountClaim[]>(
-      `/claims?oxyAccountId=user-chain&brandId=org-cadena`,
-      asUser('user-nobody'),
+  it('pages oldest first, and refuses one account cursor under another', async () => {
+    const first = await call<PlaceClaimPage>('/claims?limit=1', asUser('user-chain'));
+    expect(first.body.items).toHaveLength(1);
+    const cursor = first.body.nextCursor ?? '';
+    expect(cursor).not.toBe('');
+
+    const second = await call<PlaceClaimPage>(`/claims?limit=1&cursor=${cursor}`, asUser('user-chain'));
+    expect(second.body.items).toHaveLength(1);
+    expect(second.body.items[0]?.id).not.toBe(first.body.items[0]?.id);
+
+    // A cursor is opaque, not sealed: an edited position is refused as
+    // `bad_request`, never handed to Postgres to fail as a 500.
+    const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { p: [string, string] };
+    const edited = Buffer.from(JSON.stringify({ ...decoded, p: ['not a time', decoded.p[1]] })).toString('base64url');
+    const tampered = await call<ErrorBody>(`/claims?limit=1&cursor=${edited}`, asUser('user-chain'));
+    expect(tampered.status).toBe(400);
+    expect(tampered.body.error.code).toBe('bad_request');
+
+    // The session is in the cursor's binding: replaying it as somebody else is
+    // a foreign cursor, not a view of the chain's claims.
+    const replayed = await call<ErrorBody>(`/claims?limit=1&cursor=${cursor}`, asUser('user-nobody'));
+    expect(replayed.status).toBe(400);
+    expect(replayed.body.error.code).toBe('bad_request');
+  });
+
+  it('narrows to one place with placeId, and binds the cursor to it', async () => {
+    const { status, body } = await call<PlaceClaimPage>(`/claims?placeId=${branchTwo.id}`, asUser('user-chain'));
+    expect(status).toBe(200);
+    expect(body.items.map((claim) => [claim.placeId, claim.role])).toEqual([[branchTwo.id, 'brand']]);
+    expect(body.nextCursor).toBeNull();
+
+    // A place the account holds nothing on is an empty list, not a refusal:
+    // the filter narrows the caller's own list and reveals nothing else.
+    const elsewhere = await call<PlaceClaimPage>(`/claims?placeId=does-not-exist`, asUser('user-chain'));
+    expect(elsewhere.body).toEqual({ items: [], nextCursor: null });
+
+    // A cursor minted for every place does not resume a list of one.
+    const first = await call<PlaceClaimPage>('/claims?limit=1', asUser('user-chain'));
+    const narrowed = await call<ErrorBody>(
+      `/claims?limit=1&placeId=${branchTwo.id}&cursor=${first.body.nextCursor ?? ''}`,
+      asUser('user-chain'),
     );
-    expect(body).toEqual([]);
+    expect(narrowed.status).toBe(400);
+    expect(narrowed.body.error.code).toBe('bad_request');
+  });
+
+  it('lists another account only when Oxy says the caller acts for it', async () => {
+    // An `?oxyAccountId=` the caller does not act for would be an enumeration of
+    // who has claimed what. In this suite Oxy reports no membership at all.
+    const { status, body } = await call<ErrorBody>('/claims?oxyAccountId=user-chain', asUser('user-nobody'));
+    expect(status).toBe(403);
+    expect(body.error.code).toBe('forbidden');
+
+    // Naming yourself is the default, said out loud.
+    const self = await call<PlaceClaimPage>('/claims?oxyAccountId=user-nobody', asUser('user-nobody'));
+    expect(self.body).toEqual({ items: [], nextCursor: null });
+
+    // A parameter the contract does not declare is still `bad_request`.
+    const unknown = await call<ErrorBody>('/claims?brandId=org-cadena', asUser('user-nobody'));
+    expect(unknown.status).toBe(400);
+    expect(unknown.body.error.code).toBe('bad_request');
   });
 
   it('refuses a signed-out reader', async () => {

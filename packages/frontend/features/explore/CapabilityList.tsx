@@ -12,13 +12,20 @@
  * words. A two-year-old community report and a verification from last week must
  * not be the same pill, which is the whole reason `PlaceCapability` carries
  * `verification` and `observedAt` in the first place.
+ *
+ * Rows are grouped as the capability registry groups them — accessibility,
+ * payment, amenities, food, price, social, brand, the Oxy ecosystem — so a
+ * place that knows twenty things reads as a few short sections rather than a
+ * wall of pills. A group the place says nothing about renders nothing.
  */
-import { View } from 'react-native';
+import { useCallback } from 'react';
+import { Pressable, View } from 'react-native';
 import type { PlaceCapability } from '@goway.to/sdk';
+import * as WebBrowser from 'expo-web-browser';
 import { Text } from '@oxy.so/bloom/typography';
 import { useTheme } from '@oxy.so/bloom/theme';
 
-import { presentCapability, visibleCapabilities, type CapabilityTone } from '@/lib/goway/capabilities';
+import { groupedCapabilities, type CapabilityPresentation, type CapabilityTone } from '@/lib/goway/capabilities';
 
 export interface CapabilityListProps {
   capabilities: readonly PlaceCapability[];
@@ -46,50 +53,64 @@ function toneColors(tone: CapabilityTone, colors: ReturnType<typeof useTheme>['c
   }
 }
 
-export function CapabilityList({ capabilities, testID }: CapabilityListProps) {
+function CapabilityRow({ presented }: { presented: CapabilityPresentation }) {
   const theme = useTheme();
-  const visible = visibleCapabilities(capabilities);
+  const paint = toneColors(presented.tone, theme.colors);
+  const Icon = presented.icon;
+  const provenance = presented.freshness ? `${presented.provenance} · ${presented.freshness}` : presented.provenance;
+  const open = useCallback(() => {
+    if (presented.href) void WebBrowser.openBrowserAsync(presented.href);
+  }, [presented.href]);
+
+  const body = (
+    <View
+      accessibilityLabel={`${presented.label}${presented.value ? `: ${presented.value}` : ''}. ${provenance}.${presented.stale ? ' This report may be out of date.' : ''}`}
+      className="flex-row items-start gap-space-8 rounded-radius-12 px-space-12 py-space-8"
+      style={{ backgroundColor: paint.background }}
+    >
+      <View className="pt-space-2">
+        <Icon width={16} height={16} fill={paint.foreground} />
+      </View>
+      <View className="flex-1">
+        <Text className="text-bodySmall" style={{ color: paint.foreground }}>
+          {presented.value ? `${presented.label} · ${presented.value}` : presented.label}
+        </Text>
+        <Text className="text-caption text-muted-foreground">{provenance}</Text>
+        {presented.stale ? (
+          <Text className="text-caption text-muted-foreground">
+            Old enough that it may no longer be true — worth checking.
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+
+  return presented.href ? (
+    <Pressable accessibilityRole="link" onPress={open}>
+      {body}
+    </Pressable>
+  ) : (
+    <View accessibilityRole="text">{body}</View>
+  );
+}
+
+export function CapabilityList({ capabilities, testID }: CapabilityListProps) {
+  const groups = groupedCapabilities(capabilities);
 
   // Absent is absent. A place nobody has asked about renders no section at all
-  // rather than an empty "Ecosystem" heading.
-  if (visible.length === 0) return null;
+  // rather than an empty heading.
+  if (groups.length === 0) return null;
 
   return (
-    <View className="gap-space-8" testID={testID}>
-      <Text className="text-caption text-muted-foreground">In the Oxy ecosystem</Text>
-      {visible.map((capability) => {
-        const presented = presentCapability(capability);
-        const paint = toneColors(presented.tone, theme.colors);
-        const Icon = presented.icon;
-        const provenance = presented.freshness
-          ? `${presented.provenance} · ${presented.freshness}`
-          : presented.provenance;
-
-        return (
-          <View
-            key={presented.key}
-            accessibilityRole="text"
-            accessibilityLabel={`${presented.label}. ${provenance}.${presented.stale ? ' This report may be out of date.' : ''}`}
-            className="flex-row items-start gap-space-8 rounded-radius-12 px-space-12 py-space-8"
-            style={{ backgroundColor: paint.background }}
-          >
-            <View className="pt-space-2">
-              <Icon width={16} height={16} fill={paint.foreground} />
-            </View>
-            <View className="flex-1">
-              <Text className="text-bodySmall" style={{ color: paint.foreground }}>
-                {presented.label}
-              </Text>
-              <Text className="text-caption text-muted-foreground">{provenance}</Text>
-              {presented.stale ? (
-                <Text className="text-caption text-muted-foreground">
-                  Old enough that it may no longer be true — worth checking.
-                </Text>
-              ) : null}
-            </View>
-          </View>
-        );
-      })}
+    <View className="gap-space-12" testID={testID}>
+      {groups.map((group) => (
+        <View key={group.group} className="gap-space-8">
+          <Text className="text-caption text-muted-foreground">{group.label}</Text>
+          {group.items.map((presented) => (
+            <CapabilityRow key={presented.key} presented={presented} />
+          ))}
+        </View>
+      ))}
     </View>
   );
 }

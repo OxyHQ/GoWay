@@ -1,7 +1,14 @@
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex } from '@noble/hashes/utils';
 import type { ImagePickerAsset } from 'expo-image-picker';
-import type { CaptureAssetInput, CaptureUploadPolicy } from '@goway.to/sdk';
+import type { CaptureLocationEvidenceInput, CaptureUploadPolicy, GeoCoordinate } from '@goway.to/sdk';
+
+/**
+ * Where the contributor says the capture was taken: always a coordinate. The
+ * contract also accepts raw `exifGps`, but this flow resolves the hemisphere
+ * itself and shows the point on a map before anything is sent.
+ */
+export type CaptureLocation = CaptureLocationEvidenceInput & { coordinate: GeoCoordinate };
 
 /** A media problem to show the contributor; `message` is its message key. */
 export class MediaError extends Error {}
@@ -34,7 +41,7 @@ export function describeMedia(asset: ImagePickerAsset, size: number, policy: Cap
   return { asset, byteSize: size, contentType, kind };
 }
 
-export function mediaLocation(asset: ImagePickerAsset): CaptureAssetInput['location'][number] | null {
+export function mediaLocation(asset: ImagePickerAsset): CaptureLocation | null {
   const exif = asset.exif;
   if (!exif || typeof exif.GPSLatitude !== 'number' || typeof exif.GPSLongitude !== 'number') return null;
   const latitude = exif.GPSLatitudeRef === 'S' ? -Math.abs(exif.GPSLatitude) : exif.GPSLatitude;

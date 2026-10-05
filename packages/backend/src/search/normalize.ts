@@ -16,7 +16,7 @@
  * single-line rendering" and is left absent when there is none.
  */
 
-import type { SearchResultContext, StructuredAddress } from '@goway/shared-types';
+import type { SearchResultContext, StructuredAddress } from '@goway/contracts';
 
 /** Assign only when the value is present, so an optional field stays absent. */
 export function put<T extends object, K extends keyof T>(target: T, key: K, value: T[K] | undefined): void {

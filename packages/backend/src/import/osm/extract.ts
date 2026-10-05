@@ -49,7 +49,7 @@ import {
   type BlockStrings,
 } from './pbf';
 import { isPoiMappingKey } from './poiTags';
-import { roundCoordinate, toImportedPlace, type ImportedPlace } from './placeRecord';
+import { isImportablePoi, toImportedPlace, type ImportedPlace, type OsmElementType } from './placeRecord';
 
 /** How many places accumulate before the consumer is handed a batch. */
 const DEFAULT_BATCH_SIZE = 1000;
@@ -95,9 +95,17 @@ export interface ExtractOptions {
   bounds?: { west: number; south: number; east: number; north: number };
 }
 
-/** A way or relation POI whose position is not known yet. */
+/**
+ * A way or relation POI whose position is not known yet.
+ *
+ * Held as its TAGS, and built into a place only once positioned: the timezone
+ * is read from the position like every other derived column, so a place built
+ * at (0, 0) and moved afterwards would carry the Gulf of Guinea's zone.
+ */
 interface PendingPlace {
-  place: ImportedPlace;
+  type: Extract<OsmElementType, 'way' | 'relation'>;
+  id: number;
+  tags: Map<string, string>;
   /** Node ids for a way; member way ids for a relation. */
   refs: number[];
 }
@@ -256,12 +264,10 @@ export async function extractPois(options: ExtractOptions): Promise<ExtractStats
 
   const emit = async (place: ImportedPlace): Promise<void> => {
     if (stopped) return;
+    const { latitude, longitude } = place.columns;
     if (
       bounds &&
-      (place.latitude < bounds.south ||
-        place.latitude > bounds.north ||
-        place.longitude < bounds.west ||
-        place.longitude > bounds.east)
+      (latitude < bounds.south || latitude > bounds.north || longitude < bounds.west || longitude > bounds.east)
     ) {
       return;
     }
@@ -272,7 +278,7 @@ export async function extractPois(options: ExtractOptions): Promise<ExtractStats
     for (const name of place.names) {
       stats.byLanguage.set(name.language, (stats.byLanguage.get(name.language) ?? 0) + 1);
     }
-    const category = place.categories[0] ?? 'unknown';
+    const category = place.columns.categories[0] ?? 'unknown';
     stats.byCategory.set(category, (stats.byCategory.get(category) ?? 0) + 1);
     if (emitted % progressEvery === 0) options.onProgress?.(emitted);
     if (options.limit !== undefined && emitted >= options.limit) stopped = true;
@@ -313,17 +319,17 @@ export async function extractPois(options: ExtractOptions): Promise<ExtractStats
       onWay: (id, keys, vals, refs) => {
         const current = index;
         if (!current || current.nameKey < 0 || !looksLikePoi(current, keys)) return;
-        const place = toImportedPlace('way', id, 0, 0, tagsOf(current, keys, vals));
-        if (!place) return;
+        const tags = tagsOf(current, keys, vals);
+        if (!isImportablePoi(tags)) return;
         const copied = refs.slice();
         for (const ref of copied) wantedNodes.push(ref);
-        pendingWays.push({ place, refs: copied });
+        pendingWays.push({ type: 'way', id, tags, refs: copied });
       },
       onRelation: (id, keys, vals, memberIds, memberTypes) => {
         const current = index;
         if (!current || current.nameKey < 0 || !looksLikePoi(current, keys)) return;
-        const place = toImportedPlace('relation', id, 0, 0, tagsOf(current, keys, vals));
-        if (!place) return;
+        const tags = tagsOf(current, keys, vals);
+        if (!isImportablePoi(tags)) return;
         const ways: number[] = [];
         for (let member = 0; member < memberIds.length; member += 1) {
           if (memberTypes[member] !== MEMBER_TYPE_WAY) continue;
@@ -331,7 +337,7 @@ export async function extractPois(options: ExtractOptions): Promise<ExtractStats
           ways.push(wayId);
           wantedWays.add(wayId);
         }
-        if (ways.length > 0) pendingRelations.push({ place, refs: ways });
+        if (ways.length > 0) pendingRelations.push({ type: 'relation', id, tags, refs: ways });
       },
     });
 
@@ -388,14 +394,13 @@ export async function extractPois(options: ExtractOptions): Promise<ExtractStats
   for (const pending of pendingWays) {
     if (stopped) break;
     const centre = nodes.centre(pending.refs);
-    if (!centre) {
+    const place = centre && toImportedPlace(pending.type, pending.id, centre.latitude, centre.longitude, pending.tags);
+    if (!place) {
       stats.unpositioned += 1;
       continue;
     }
-    pending.place.latitude = roundCoordinate(centre.latitude);
-    pending.place.longitude = roundCoordinate(centre.longitude);
     stats.wayPlaces += 1;
-    await emit(pending.place);
+    await emit(place);
   }
 
   for (const pending of pendingRelations) {
@@ -410,14 +415,13 @@ export async function extractPois(options: ExtractOptions): Promise<ExtractStats
       for (const ref of refs) memberNodes.push(ref);
     }
     const centre = nodes.centre(memberNodes);
-    if (!centre) {
+    const place = centre && toImportedPlace(pending.type, pending.id, centre.latitude, centre.longitude, pending.tags);
+    if (!place) {
       stats.unpositioned += 1;
       continue;
     }
-    pending.place.latitude = roundCoordinate(centre.latitude);
-    pending.place.longitude = roundCoordinate(centre.longitude);
     stats.relationPlaces += 1;
-    await emit(pending.place);
+    await emit(place);
   }
 
   if (batch.length > 0) await options.onPlaces(batch);

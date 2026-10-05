@@ -2,15 +2,15 @@
  * GoWay's error vocabulary, applied.
  *
  * Every failure an API caller can observe is one of the codes in
- * `@goway/shared-types`, inside the envelope `{ error: { code, message,
+ * `@goway/contracts`, inside the envelope `{ error: { code, message,
  * details? } }`. The CODES are the public contract — not the HTTP status, not
  * the message text. An integrator branches on `not_found` to stop retrying and
  * on `service_unavailable` to keep retrying, so a handler that invents its own
  * shape silently changes what a caller does with a failure.
  *
- * ## The vocabulary is DEFINED in shared-types, not here
+ * ## The vocabulary is DEFINED in `@goway/contracts`, not here
  *
- * `packages/shared-types` owns the tuple and `@goway.to/sdk` builds its typed
+ * `packages/contracts` owns the tuple and `@goway.to/sdk` builds its typed
  * errors from the same tuple; this module only re-exports it and adds the
  * server-side `ApiError` class. One definition means the SDK's union cannot
  * drift from the API's: adding a code widens both in the same commit, and both
@@ -30,7 +30,7 @@ import {
   type ApiErrorBody,
   type ApiErrorCode,
   type ApiErrorDetails,
-} from '@goway/shared-types';
+} from '@goway/contracts';
 
 export { API_ERROR_CODES, API_ERROR_STATUS };
 export type { ApiErrorBody, ApiErrorCode, ApiErrorDetails };

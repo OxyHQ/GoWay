@@ -17,7 +17,7 @@
  * process configuration behind it.
  */
 
-import type { Place, PlaceWithDistance } from '@goway/shared-types';
+import type { Place, PlaceWithDistance } from '@goway/contracts';
 import type { BoundsQuery, NearbyQuery, SourceRefInput } from '../db/places/placesRepository';
 
 /** The key a resolved source reference is returned under: `<source>:<sourceId>`. */

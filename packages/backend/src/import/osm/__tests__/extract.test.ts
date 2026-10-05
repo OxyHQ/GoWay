@@ -98,20 +98,22 @@ describe('extractPois', () => {
   test('positions a way at the mean of vertices read in an earlier pass', async () => {
     const { places } = await run(writePbf('way.osm.pbf', ARCHIVE));
     const museum = places.find((place) => place.sourceId === 'way/500');
-    expect(museum?.name).toBe('Museu del Quadrat');
+    expect(museum?.columns.name).toBe('Museu del Quadrat');
     // The closing node repeats the first, so the mean leans towards it — which
     // is a property of the vertex mean and is documented as such.
-    expect(museum?.latitude).toBeCloseTo(41.4, 3);
-    expect(museum?.longitude).toBeCloseTo(2.2, 3);
-    expect(museum?.categories).toEqual(['museum', 'culture']);
+    expect(museum?.columns.latitude).toBeCloseTo(41.4, 3);
+    expect(museum?.columns.longitude).toBeCloseTo(2.2, 3);
+    expect(museum?.columns.categories).toEqual(['culture.museum']);
   });
 
   test('positions a relation through its member ways', async () => {
     const { places } = await run(writePbf('relation.osm.pbf', ARCHIVE));
     const park = places.find((place) => place.sourceId === 'relation/900');
-    expect(park?.latitude).toBeCloseTo(41.0, 6);
-    expect(park?.longitude).toBeCloseTo(2.0, 6);
-    expect(park?.categories).toEqual(['park', 'outdoors']);
+    expect(park?.columns.latitude).toBeCloseTo(41.0, 6);
+    expect(park?.columns.longitude).toBeCloseTo(2.0, 6);
+    expect(park?.columns.categories).toEqual(['leisure.park']);
+    // Built once positioned, so the zone is the position's, not (0, 0)'s.
+    expect(park?.columns.timezone).toBe('Europe/Madrid');
   });
 
   test('carries every language through', async () => {
@@ -123,7 +125,7 @@ describe('extractPois', () => {
 
   test('counts what it emitted, by category and by language', async () => {
     const { stats } = await run(writePbf('stats.osm.pbf', ARCHIVE));
-    expect(Object.fromEntries(stats.byCategory)).toEqual({ cafe: 1, museum: 1, park: 1 });
+    expect(Object.fromEntries(stats.byCategory)).toEqual({ 'culture.museum': 1, 'food.cafe': 1, 'leisure.park': 1 });
     expect(Object.fromEntries(stats.byLanguage)).toEqual({ es: 1 });
     expect(stats.placesWithTranslations).toBe(1);
   });

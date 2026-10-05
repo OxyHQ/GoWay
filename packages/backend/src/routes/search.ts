@@ -3,16 +3,21 @@
  *
  * ## Paths and parameters are the SDK's, because the SDK is published contract
  *
- * `@goway.to/sdk` calls `GET /search`, `GET /geocode`, `GET /geocode/reverse`
- * and `GET /geocode/structured` below `GOWAY_API_BASE_PATH = '/api/v1'`. Those
- * spellings are what this router answers, and `searchSchemas.ts` reads exactly
- * the parameters the SDK sends. An SDK that cannot reach its own API is a
- * silent integration break that only shows up where the real SDK talks to the
- * real API — which is exactly where a contract test that fakes `fetch` cannot
- * see it.
+ * `GET /search`, `GET /geocode`, `GET /geocode/reverse` and
+ * `GET /geocode/structured` are operations in `@goway/contracts`' registry, and
+ * each request is parsed with the registry's own schema for it — the one the
+ * SDK validates with before sending.
  *
- * A 2xx body IS the contract value: `SearchResults`, unwrapped, which is what
- * `parseSearchResults` in the SDK reads.
+ * A 2xx body IS the contract value: `SearchResults`, unwrapped — a page,
+ * `{ items, nextCursor }`, plus which providers answered.
+ *
+ * ## Pages are OFFSETS into one ranking, to a fixed depth
+ *
+ * A blended list has no keyset, so a cursor carries how many results earlier
+ * pages served, bound to the query and its filters, and the list ends at
+ * `SEARCH_MAX_DEPTH`. `limit` above this deployment's `SEARCH_MAX_LIMIT` is
+ * refused as `validation_failed` rather than silently clamped: a caller who
+ * asked for 40 and got 25 would conclude there were 25.
  *
  * ## `/search` and `/geocode` are not the same endpoint
  *
@@ -39,7 +44,14 @@
  */
 
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
-import type { SearchResults } from '@goway/shared-types';
+import { z } from 'zod';
+import {
+  reverseGeocodeQuerySchema,
+  SEARCH_MAX_DEPTH,
+  searchParametersSchema,
+  structuredGeocodeQuerySchema,
+  type SearchResults,
+} from '@goway/contracts';
 import { searchConfig, type SearchConfig } from '../config/search';
 import { createPlacesGateway } from '../search/dbPlacesGateway';
 import type { PlacesGateway } from '../search/placesGateway';
@@ -48,16 +60,15 @@ import {
   createSearchService,
   type ResolvedSearchQuery,
   type SearchService,
+  type SearchWindow,
 } from '../search/searchService';
+import { ApiError } from '../http/apiError';
+import { cursorBinding, decodeCursor, encodeCursor, type CursorBinding, type CursorKind } from '../http/cursor';
 import { parseQuery } from '../http/validation';
 import { createLogger } from '../utils/logger';
-import {
-  reverseQuerySchema,
-  searchQuerySchema,
-  structuredQuerySchema,
-  withSearchQueryAliases,
-  type SearchQueryInput,
-} from './searchSchemas';
+
+/** A search page resumes after this many results. */
+const offsetSchema = z.number().int().min(1).max(SEARCH_MAX_DEPTH - 1);
 
 /** Forward a rejected handler to the error middleware. */
 function route(handler: (request: Request, response: Response) => Promise<void>): RequestHandler {
@@ -125,9 +136,26 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
     ((request: Request) => createPlacesGateway({ viewerOxyAccountId: callerId(request) }));
   const router: Router = Router();
 
-  /** The configured default, clamped to the configured maximum. */
-  const resolveLimit = (requested: number | undefined): number =>
-    Math.min(requested ?? config.defaultLimit, config.maxLimit);
+  /**
+   * The window a request asks for: the deployment's default size when it names
+   * none, and the offset its cursor carries.
+   */
+  const windowOf = (
+    request: { limit?: number | undefined; cursor?: string | undefined },
+    binding: CursorBinding,
+  ): { limit: number; offset: number } => {
+    if (request.limit !== undefined && request.limit > config.maxLimit) {
+      throw new ApiError('validation_failed', `limit may not exceed ${config.maxLimit} on this deployment.`, {
+        field: 'limit',
+        issue: 'too_big',
+        maximum: config.maxLimit,
+      });
+    }
+    const offset = decodeCursor(request.cursor, binding, offsetSchema) ?? 0;
+    // Never past the depth: the last page is cut short rather than the cursor
+    // that would reach beyond it ever being minted.
+    return { offset, limit: Math.min(request.limit ?? config.defaultLimit, SEARCH_MAX_DEPTH - offset) };
+  };
 
   /**
    * A search response.
@@ -137,14 +165,31 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
    * shared cache, and a `private` directive is advice a proxy is free to
    * misread.
    */
-  const send = (response: Response, results: SearchResults): void => {
+  const send = (
+    response: Response,
+    window: SearchWindow,
+    binding: CursorBinding,
+    served: { offset: number; limit: number },
+  ): void => {
+    const end = served.offset + window.results.length;
+    const body: SearchResults = {
+      items: window.results,
+      nextCursor: window.hasMore && end > served.offset && end < SEARCH_MAX_DEPTH ? encodeCursor(binding, end) : null,
+      providers: window.providers,
+      ...(window.degradedProviders ? { degradedProviders: window.degradedProviders } : {}),
+    };
     response.setHeader('Cache-Control', 'no-store');
-    response.json(results);
+    response.json(body);
   };
 
   /** The parsed query as the service takes it. Used by `/search` and `/geocode`. */
-  const resolveSearchQuery = (input: SearchQueryInput): ResolvedSearchQuery => {
-    const resolved: ResolvedSearchQuery = { query: input.q, limit: resolveLimit(input.limit) };
+  const resolveSearchQuery = (
+    kind: CursorKind,
+    input: z.output<typeof searchParametersSchema>,
+  ): { query: ResolvedSearchQuery; binding: CursorBinding } => {
+    const { cursor, limit, ...filters } = input;
+    const binding = cursorBinding(kind, filters);
+    const resolved: ResolvedSearchQuery = { query: input.q, ...windowOf({ limit, cursor }, binding) };
     if (input.latitude !== undefined && input.longitude !== undefined) {
       resolved.near = { latitude: input.latitude, longitude: input.longitude };
     }
@@ -159,7 +204,7 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
     if (input.capabilities) resolved.capabilities = input.capabilities;
     if (input.categories) resolved.categories = input.categories;
     if (input.locale !== undefined) resolved.locale = input.locale;
-    return resolved;
+    return { query: resolved, binding };
   };
 
   /**
@@ -174,12 +219,12 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
     '/search',
     dependencies.optionalAuth,
     route(async (request, response) => {
-      const input = parseQuery(searchQuerySchema, withSearchQueryAliases({ ...request.query }));
-      const results = await service.search(resolveSearchQuery(input), {
+      const { query, binding } = resolveSearchQuery('search', parseQuery(searchParametersSchema, request.query));
+      const window = await service.search(query, {
         gateway: gatewayFor(request),
         signal: callerSignal(request, response),
       });
-      send(response, results);
+      send(response, window, binding, query);
     }),
   );
 
@@ -193,17 +238,19 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
     '/geocode/reverse',
     dependencies.optionalAuth,
     route(async (request, response) => {
-      const input = parseQuery(reverseQuerySchema, withSearchQueryAliases({ ...request.query }));
-      const results = await service.reverse(
+      const { cursor, limit, ...input } = parseQuery(reverseGeocodeQuerySchema, request.query);
+      const binding = cursorBinding('reverse-geocode', input);
+      const served = windowOf({ limit, cursor }, binding);
+      const window = await service.reverse(
         {
           coordinate: { latitude: input.latitude, longitude: input.longitude },
-          limit: resolveLimit(input.limit),
+          ...served,
           ...(input.radiusMeters !== undefined ? { radiusMeters: input.radiusMeters } : {}),
           ...(input.locale !== undefined ? { locale: input.locale } : {}),
         },
         { gateway: gatewayFor(request), signal: callerSignal(request, response) },
       );
-      send(response, results);
+      send(response, window, binding, served);
     }),
   );
 
@@ -212,10 +259,12 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
     '/geocode/structured',
     dependencies.optionalAuth,
     route(async (request, response) => {
-      const input = parseQuery(structuredQuerySchema, { ...request.query });
-      const results = await service.structured(
+      const { cursor, limit, ...input } = parseQuery(structuredGeocodeQuerySchema, request.query);
+      const binding = cursorBinding('structured-geocode', input);
+      const served = windowOf({ limit, cursor }, binding);
+      const window = await service.structured(
         {
-          limit: resolveLimit(input.limit),
+          ...served,
           ...(input.street !== undefined ? { street: input.street } : {}),
           ...(input.houseNumber !== undefined ? { houseNumber: input.houseNumber } : {}),
           ...(input.city !== undefined ? { city: input.city } : {}),
@@ -226,7 +275,7 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
         },
         { gateway: gatewayFor(request), signal: callerSignal(request, response) },
       );
-      send(response, results);
+      send(response, window, binding, served);
     }),
   );
 
@@ -241,12 +290,12 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
     '/geocode',
     dependencies.optionalAuth,
     route(async (request, response) => {
-      const input = parseQuery(searchQuerySchema, withSearchQueryAliases({ ...request.query }));
-      const results = await service.forward(resolveSearchQuery(input), {
+      const { query, binding } = resolveSearchQuery('geocode', parseQuery(searchParametersSchema, request.query));
+      const window = await service.forward(query, {
         gateway: gatewayFor(request),
         signal: callerSignal(request, response),
       });
-      send(response, results);
+      send(response, window, binding, query);
     }),
   );
 

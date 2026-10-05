@@ -20,7 +20,7 @@ import { ContributionStatusCard } from './ContributionStatusCard';
 import { GuidedCapture, type GuidedRecording } from './guided/GuidedCapture';
 import { formatClock } from './guided/plan';
 import { hashMedia, releaseMedia, selectMedia, uploadMedia } from './media';
-import { MediaError, mediaLocation, type SelectedMedia } from './media.shared';
+import { MediaError, mediaLocation, type CaptureLocation, type SelectedMedia } from './media.shared';
 
 export function ContributeScreen() {
   const router = useRouter();
@@ -29,7 +29,7 @@ export function ContributeScreen() {
   const { user } = useOxy();
   const [policy, setPolicy] = useState<CaptureUploadPolicy | null>(null);
   const [media, setMedia] = useState<SelectedMedia | null>(null);
-  const [location, setLocation] = useState<CaptureAssetInput['location'][number] | null>(null);
+  const [location, setLocation] = useState<CaptureLocation | null>(null);
   const [source, setSource] = useState<CaptureSession['source']>('library');
   const [guided, setGuided] = useState(false);
   /** What a guided recording knows that a picked file's metadata would otherwise carry. */
@@ -52,8 +52,8 @@ export function ContributeScreen() {
   const refresh = useCallback(async () => {
     if (!gate.canUsePrivateApi) return;
     const account = user?.id;
-    const result = await captureClient.sessions();
-    if (currentUser.current === account) setSessions(result);
+    const page = await captureClient.sessions();
+    if (currentUser.current === account) setSessions(page.items);
   }, [gate.canUsePrivateApi, user?.id]);
 
   // The policy is answered FOR THE CALLER (a closed pilot admits named
@@ -142,7 +142,7 @@ export function ContributeScreen() {
       const tooLarge = (recording.asset.fileSize ?? 0) > policy.video.maxByteSize || seconds > policy.video.maxDurationSeconds;
       setError(tooLarge
         ? t('contribute.guided.tooLarge', { megabytes: Math.floor(policy.video.maxByteSize / 1048576), minutes: Math.floor(policy.video.maxDurationSeconds / 60) })
-        : e instanceof Error ? e.message : t('contribute.guided.error.recording'));
+        : e instanceof MediaError ? t(e.message) : t('contribute.guided.error.recording'));
     }
   }
 
@@ -201,11 +201,17 @@ export function ContributeScreen() {
     const account = user?.id;
     setError('');
     try {
-      const removed = await captureClient.remove(asset.id);
+      await captureClient.remove(asset.id);
+    } catch { setError(t('contribute.error.withdraw')); return; }
+    if (currentUser.current !== account) return;
+    if (pending.current?.ticket?.asset.id === asset.id) pending.current = null;
+    // The withdrawal answers 204 with nothing to describe; read the asset back
+    // for the state it is in now.
+    try {
+      const withdrawn = await captureClient.asset(asset.id);
       if (currentUser.current !== account) return;
-      setAssets((current) => current.map((item) => item.id === removed.id ? removed : item));
-      if (pending.current?.ticket?.asset.id === asset.id) pending.current = null;
-    } catch { setError(t('contribute.error.withdraw')); }
+      setAssets((current) => current.map((item) => item.id === withdrawn.id ? withdrawn : item));
+    } catch { setError(t('contribute.error.withdrawnNotRefreshed')); }
   }
 
   if (guided && policy) {
@@ -257,7 +263,7 @@ export function ContributeScreen() {
         <Button appearance="plain" onPress={() => void refresh().catch(() => setError(t('contribute.error.refresh')))}>{t('contribute.refresh')}</Button>
         {sessions.map((session) => <Button key={session.id} appearance="outline" onPress={() => {
           const account = user?.id;
-          void captureClient.assets(session.id).then((items) => { if (currentUser.current === account) setAssets(items); })
+          void captureClient.assets(session.id).then((page) => { if (currentUser.current === account) setAssets(page.items); })
             .catch(() => setError(t('contribute.error.loadContribution')));
         }}>{t('contribute.sessionItems', { date: new Date(session.createdAt).toLocaleDateString(locale), count: session.assetCount })}</Button>)}
         {assets.map((asset) => <ContributionStatusCard key={asset.id} asset={asset} busy={busy} onWithdraw={(item) => void withdraw(item)} />)}

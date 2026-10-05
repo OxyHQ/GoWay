@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { StreetSceneSummary } from '@goway/shared-types';
+import type { StreetSceneSummary } from '@goway.to/sdk';
 
 import { rememberSceneSummary, sceneSummary, setReturnBounds, takeReturnBounds, viewportForBounds } from '../handoff';
 

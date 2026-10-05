@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Migrate an immutable ECS image before serving it; verify the exact rollout."""
+"""Migrate an immutable ECS image before serving it; verify the exact rollout; then run post migrations."""
 import argparse
 import json
 import re
@@ -44,6 +44,33 @@ def service_snapshot(cluster, service):
     return response['services'][0]
 
 
+def migrate(cluster, service, registered, database, phase, launch, before, call, outcome):
+    override = {'containerOverrides': [{'name': service, 'command': [
+        'bun', 'packages/backend/dist/src/db/migrate.js', f'--target-database={database}', f'--phase={phase}',
+    ]}]}
+    response = call('ecs', 'run-task', '--cluster', cluster, '--task-definition', registered,
+                    *launch, '--network-configuration', json.dumps(before['networkConfiguration']),
+                    '--overrides', json.dumps(override), '--tags', 'key=App,value=goway', '--count', '1')
+    if response.get('failures') or len(response.get('tasks', [])) != 1:
+        raise RuntimeError(f'Could not start the {phase} migration task; {outcome}')
+    task = response['tasks'][0]['taskArn']
+    deadline = time.monotonic() + 1200
+    while time.monotonic() < deadline:
+        task_state = call('ecs', 'describe-tasks', '--cluster', cluster, '--tasks', task)
+        if task_state.get('failures') or len(task_state.get('tasks', [])) != 1:
+            raise RuntimeError(f'The {phase} migration task disappeared; {outcome}')
+        state = task_state['tasks'][0]
+        if state['lastStatus'] == 'STOPPED':
+            containers = state.get('containers', [])
+            completed = [c for c in containers if c['name'] == service]
+            if len(completed) != 1 or completed[0].get('exitCode') != 0 or any(c.get('exitCode', 0) != 0 for c in containers):
+                raise RuntimeError(f'The {phase} migration task failed; {outcome}. Inspect its restricted task logs')
+            return
+        time.sleep(5)
+    call('ecs', 'stop-task', '--cluster', cluster, '--task', task, '--reason', 'Migration deployment timeout')
+    raise RuntimeError(f'The {phase} migration timed out; {outcome}')
+
+
 def deploy(cluster, service, image, database, restore_capacity=False, call=aws, snapshot=service_snapshot, execution_role=None, task_definition=None):
     before = snapshot(cluster, service)
     desired = before['desiredCount']
@@ -59,32 +86,8 @@ def deploy(cluster, service, image, database, restore_capacity=False, call=aws, 
     if execution_role:
         definition['executionRoleArn'] = execution_role
     registered = call('ecs', 'register-task-definition', '--cli-input-json', json.dumps(definition))['taskDefinition']['taskDefinitionArn']
-    override = {'containerOverrides': [{'name': service, 'command': [
-        'bun', 'packages/backend/dist/src/db/migrate.js', f'--target-database={database}', '--phase=pre',
-    ]}]}
     launch = ['--capacity-provider-strategy', json.dumps(before['capacityProviderStrategy'])] if before.get('capacityProviderStrategy') else ['--launch-type', before.get('launchType', 'FARGATE')]
-    response = call('ecs', 'run-task', '--cluster', cluster, '--task-definition', registered,
-                    *launch, '--network-configuration', json.dumps(before['networkConfiguration']),
-                    '--overrides', json.dumps(override), '--tags', 'key=App,value=goway', '--count', '1')
-    if response.get('failures') or len(response.get('tasks', [])) != 1:
-        raise RuntimeError('Could not start the migration task; service was not changed')
-    task = response['tasks'][0]['taskArn']
-    deadline = time.monotonic() + 1200
-    while time.monotonic() < deadline:
-        task_state = call('ecs', 'describe-tasks', '--cluster', cluster, '--tasks', task)
-        if task_state.get('failures') or len(task_state.get('tasks', [])) != 1:
-            raise RuntimeError('Migration task disappeared; service was not changed')
-        state = task_state['tasks'][0]
-        if state['lastStatus'] == 'STOPPED':
-            containers = state.get('containers', [])
-            completed = [c for c in containers if c['name'] == service]
-            if len(completed) != 1 or completed[0].get('exitCode') != 0 or any(c.get('exitCode', 0) != 0 for c in containers):
-                raise RuntimeError('Migration task failed; service was not changed. Inspect its restricted task logs')
-            break
-        time.sleep(5)
-    else:
-        call('ecs', 'stop-task', '--cluster', cluster, '--task', task, '--reason', 'Migration deployment timeout')
-        raise RuntimeError('Migration timed out; service was not changed')
+    migrate(cluster, service, registered, database, 'pre', launch, before, call, 'service was not changed')
     print(json.dumps({'stage': 'migrated'}), flush=True)
     response = call('ecs', 'update-service', '--cluster', cluster, '--service', service,
                     '--task-definition', registered, '--desired-count', str(max(1, desired)), '--force-new-deployment')
@@ -101,9 +104,15 @@ def deploy(cluster, service, image, database, restore_capacity=False, call=aws, 
         deployed = deployments[0]
         if deployed.get('rolloutState') == 'COMPLETED' and current['desiredCount'] > 0 and current['runningCount'] == current['desiredCount'] and deployed.get('runningCount') == current['desiredCount'] and deployed['taskDefinition'] == registered:
             print(json.dumps({'stage': 'serving', 'running': current['runningCount']}), flush=True)
-            return
+            break
         time.sleep(5)
-    raise RuntimeError('The requested image did not become healthy before the deadline')
+    else:
+        raise RuntimeError('The requested image did not become healthy before the deadline')
+    # Post migrations take something away from the previous image, so they run only once the new one alone is serving.
+    # If one fails the new revision stays: it never needed the post phase, which is safe to apply late and to retry,
+    # whereas rolling back would return the old image to a schema the post phase may already have partly narrowed.
+    migrate(cluster, service, registered, database, 'post', launch, before, call, 'the new revision is still serving; re-run the post phase')
+    print(json.dumps({'stage': 'post-migrated'}), flush=True)
 
 
 def main():

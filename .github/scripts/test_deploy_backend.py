@@ -21,19 +21,22 @@ class DeployTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.definition_for_image(original, 'goway', 'repo:latest')
 
-    def simulate(self, exit_code=0, desired=1, restore=False, execution_role=None, task_definition=None, template_family='goway'):
+    def simulate(self, exit_code=0, desired=1, restore=False, execution_role=None, task_definition=None, template_family='goway', rollout_state='COMPLETED', post_exit_code=0):
         calls = []
+        self.events = []
         snapshot_count = 0
         def snapshot(*_args):
             nonlocal snapshot_count
             snapshot_count += 1
+            self.events.append(('snapshot', snapshot_count))
             return {'status': 'ACTIVE', 'desiredCount': desired if snapshot_count == 1 else max(1, desired),
                     'runningCount': desired if snapshot_count == 1 else max(1, desired), 'taskDefinition': 'arn:aws:ecs:region:account:task-definition/goway:1',
                     'networkConfiguration': {'awsvpcConfiguration': {'subnets': ['private'], 'securityGroups': ['existing']}},
-                    'deployments': [{'id': 'new-rollout', 'taskDefinition': 'new', 'rolloutState': 'COMPLETED', 'runningCount': max(1, desired)}]}
+                    'deployments': [{'id': 'new-rollout', 'taskDefinition': 'new', 'rolloutState': rollout_state, 'runningCount': max(1, desired)}]}
         def call(*args):
             calls.append(args)
             action = args[1]
+            self.events.append(('call', action))
             if action == 'describe-task-definition':
                 self.assertEqual(args[-1], task_definition or 'arn:aws:ecs:region:account:task-definition/goway:1')
                 return {'taskDefinition': {'family': template_family, 'containerDefinitions': [{'name': 'goway', 'image': 'old'}]}}
@@ -44,17 +47,23 @@ class DeployTests(unittest.TestCase):
                 return {'taskDefinition': {'taskDefinitionArn': 'new'}}
             if action == 'run-task':
                 self.assertIn('--network-configuration', args)
-                self.assertIn('--phase=pre', args[args.index('--overrides') + 1])
-                return {'tasks': [{'taskArn': 'migration'}]}
+                self.assertEqual(args[args.index('--task-definition') + 1], 'new')
+                command = json.loads(args[args.index('--overrides') + 1])['containerOverrides'][0]['command']
+                self.assertIn('--target-database=goway', command)
+                phase = next(a for a in command if a.startswith('--phase=')).split('=', 1)[1]
+                self.assertEqual(phase, 'post' if 'update-service' in [c[1] for c in calls] else 'pre')
+                return {'tasks': [{'taskArn': f'migration-{phase}'}]}
             if action == 'describe-tasks':
-                return {'tasks': [{'lastStatus': 'STOPPED', 'containers': [{'name': 'goway', 'exitCode': exit_code}]}]}
+                code = post_exit_code if args[args.index('--tasks') + 1] == 'migration-post' else exit_code
+                return {'tasks': [{'lastStatus': 'STOPPED', 'containers': [{'name': 'goway', 'exitCode': code}]}]}
             if action == 'update-service':
                 self.assertIn('describe-tasks', [c[1] for c in calls])
                 return {'service': {'deployments': [{'status': 'PRIMARY', 'id': 'new-rollout'}]}}
             raise AssertionError(action)
         try:
             module.deploy('cluster', 'goway', 'repo@sha256:abc', 'goway', restore, call, snapshot, execution_role=execution_role, task_definition=task_definition)
-        except RuntimeError:
+        except RuntimeError as error:
+            self.error = str(error)
             return calls, False
         return calls, True
 
@@ -79,6 +88,35 @@ class DeployTests(unittest.TestCase):
         self.assertTrue(succeeded)
         with self.assertRaisesRegex(ValueError, 'existing service family'):
             self.simulate(task_definition='other-app:1', template_family='other-app')
+
+    def phases(self, calls):
+        return [next(a for a in json.loads(c[c.index('--overrides') + 1])['containerOverrides'][0]['command'] if a.startswith('--phase='))
+                for c in calls if c[1] == 'run-task']
+
+    def test_post_migration_runs_only_after_the_new_revision_is_stable(self):
+        calls, succeeded = self.simulate()
+        self.assertTrue(succeeded)
+        self.assertEqual(self.phases(calls), ['--phase=pre', '--phase=post'])
+        post = next(c for c in calls if c[1] == 'run-task' and '--phase=post' in c[c.index('--overrides') + 1])
+        self.assertIn('--target-database=goway', post[post.index('--overrides') + 1])
+        # The stable snapshot (the second) is the last thing seen before the post task starts.
+        stable = self.events.index(('snapshot', 2))
+        self.assertLess(self.events.index(('call', 'update-service')), stable)
+        self.assertEqual([e for e in self.events[stable:] if e[0] == 'call'][0], ('call', 'run-task'))
+
+    def test_failed_rollout_never_runs_post_migration(self):
+        calls, succeeded = self.simulate(rollout_state='FAILED')
+        self.assertFalse(succeeded)
+        self.assertIn('update-service', [c[1] for c in calls])
+        self.assertEqual(self.phases(calls), ['--phase=pre'])
+
+    def test_failed_post_migration_fails_deploy_without_rolling_back(self):
+        calls, succeeded = self.simulate(post_exit_code=1)
+        self.assertFalse(succeeded)
+        self.assertEqual(self.phases(calls), ['--phase=pre', '--phase=post'])
+        self.assertEqual([c[1] for c in calls].count('update-service'), 1)
+        self.assertEqual(calls[-1][1], 'describe-tasks')
+        self.assertIn('post migration task failed; the new revision is still serving', self.error)
 
     def test_paused_service_requires_explicit_restore(self):
         calls, succeeded = self.simulate(desired=0)

@@ -34,7 +34,7 @@
 import { and, asc, eq, gt, gte, inArray, isNotNull, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { uuidv7 } from '@oxy.so/db';
-import type { DuplicateCandidateReason } from '../../db/schema/valueSets';
+import type { DuplicateCandidateReason } from '@goway/contracts';
 import type { Database } from '../../db/postgres';
 import { places, placesDuplicateCandidates, placesNames } from '../../db/schema';
 

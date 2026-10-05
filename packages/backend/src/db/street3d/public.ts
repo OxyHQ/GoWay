@@ -23,7 +23,7 @@ import type {
   StreetSceneReport,
   StreetSceneReportInput,
   StreetSceneSummary,
-} from '@goway/shared-types';
+} from '@goway/contracts';
 import type { Database } from '../postgres';
 import { street3dCoverageAreas, street3dSceneReports, street3dSceneVersions, street3dScenes } from '../schema';
 import { contributionBand } from '../../street3d/geo';

@@ -5,11 +5,14 @@
  *
  *     GET  /captures/policy                    what may be contributed, and for how long
  *     POST /captures/sessions                  open a contribution act, recording consent
- *     POST /captures/sessions/:id/assets       register a contribution, get an upload target
- *     PUT  <the object store, directly>        the bytes, never through this process
- *     POST /captures/assets/:id/finalize       confirm the bytes landed
- *     GET  /captures/sessions/:id[/assets]     what GoWay is holding, and until when
- *     GET  /captures/assets/:id
+ *     POST /captures/sessions/{sessionId}/assets  register a contribution, get an upload target
+ *     PUT  <the object store, directly>           the bytes, never through this process
+ *     POST /captures/assets/{assetId}/finalize    confirm the bytes landed
+ *     GET  /captures/sessions[/{sessionId}[/assets]]  what GoWay is holding, and until when
+ *     GET|DELETE /captures/assets/{assetId}
+
+ * Every request is parsed with its schema from `@goway/contracts`, and both
+ * lists page by `(createdAt, id)` keyset.
  *
  * The API NEVER proxies media. There is no route here that accepts a file, and
  * adding one would make a single Express worker the bandwidth bill and the
@@ -39,7 +42,19 @@
  */
 
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
-import type { CaptureUploadIntent, CaptureUploadPolicy, CaptureUploadTicket } from '@goway/shared-types';
+import {
+  assetPathSchema,
+  captureAssetInputSchema,
+  captureFinalizeInputSchema,
+  captureListQuerySchema,
+  captureSessionInputSchema,
+  sessionPathSchema,
+  type CaptureLocationEvidence,
+  type CaptureUploadIntent,
+  type CaptureUploadPolicy,
+  type CaptureUploadTicket,
+} from '@goway/contracts';
+import { evidenceFromClaim, normalizedCamera } from '../capture/exif';
 import { captureConfig, mayContribute } from '../config/capture';
 import {
   createCaptureSession,
@@ -54,14 +69,9 @@ import {
 } from '../db/capture/captureRepository';
 import { getDb } from '../db/postgres';
 import { ApiError } from '../http/apiError';
-import { parseBody } from '../http/validation';
+import { cursorBinding, timePageOf, timeWindowOf } from '../http/cursor';
+import { parseBody, parsePath, parseQuery } from '../http/validation';
 import type { CaptureObjectStore } from '../storage/objectStore';
-import {
-  createSessionSchema,
-  finalizeAssetSchema,
-  normalizedCamera,
-  registerAssetSchema,
-} from './captureSchemas';
 
 /**
  * Forward a rejected handler to the error middleware.
@@ -88,19 +98,35 @@ function requiredCallerId(request: Request): string {
   return id;
 }
 
+/** The `{sessionId}` path parameter. */
+function sessionIdParam(request: Request): string {
+  return parsePath(sessionPathSchema, request.params).sessionId;
+}
+
+/** The `{assetId}` path parameter. */
+function assetIdParam(request: Request): string {
+  return parsePath(assetPathSchema, request.params).assetId;
+}
+
 /**
- * A single path parameter as a string.
+ * Every position claim in a body, as stored evidence.
  *
- * Express 5 types a route parameter as `string | string[]`, and the array case
- * is reachable. An id is one segment, so anything else is a malformed request
- * rather than a capture that does not exist.
+ * An EXIF block that describes no position is a refused VALUE naming its field,
+ * not a 500 — the schema can check its shape, only the conversion can tell
+ * that its numbers point nowhere.
  */
-function idParam(request: Request, name: string, what: string): string {
-  const value = request.params[name];
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new ApiError('bad_request', `A ${what} id must be a single path segment.`);
-  }
-  return value;
+function evidenceOf(claims: readonly Parameters<typeof evidenceFromClaim>[0][]): CaptureLocationEvidence[] {
+  return claims.map((claim, index) => {
+    const evidence = evidenceFromClaim(claim);
+    if (!evidence) {
+      throw new ApiError('validation_failed', 'The GPS tags do not describe a position.', {
+        field: `location.${String(index)}.exifGps`,
+        issue: 'custom',
+        issueCount: 1,
+      });
+    }
+    return evidence;
+  });
 }
 
 /**
@@ -232,7 +258,7 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
     '/captures/sessions',
     requireAuth,
     route(async (request, response) => {
-      const input = parseBody(createSessionSchema, request.body);
+      const { startedAt, ...input } = parseBody(captureSessionInputSchema, request.body);
       assertMayContribute(requiredCallerId(request));
       if (input.consentVersion !== captureConfig.consentVersion) {
         throw new ApiError(
@@ -241,7 +267,10 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
           { field: 'consentVersion', expected: captureConfig.consentVersion },
         );
       }
-      const session = await createCaptureSession(getDb(), requiredCallerId(request), input);
+      const session = await createCaptureSession(getDb(), requiredCallerId(request), {
+        ...input,
+        ...(startedAt === undefined ? {} : { startedAt: new Date(startedAt) }),
+      });
       response
         .status(201)
         .location(`/api/v1/captures/sessions/${encodeURIComponent(session.id)}`)
@@ -251,10 +280,10 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
 
   /** `GET /captures/sessions/:id` — one of the caller's own sessions. */
   router.get(
-    '/captures/sessions/:id',
+    '/captures/sessions/:sessionId',
     requireAuth,
     route(async (request, response) => {
-      const session = await findOwnedSession(getDb(), idParam(request, 'id', 'session'), requiredCallerId(request));
+      const session = await findOwnedSession(getDb(), sessionIdParam(request), requiredCallerId(request));
       if (!session) throw new ApiError('not_found', 'No capture session of yours has that id.');
       response.json(session);
     }),
@@ -269,15 +298,18 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
    * that shape is a travel timeline, and GoWay does not build one.
    */
   router.get(
-    '/captures/sessions/:id/assets',
+    '/captures/sessions/:sessionId/assets',
     requireAuth,
     route(async (request, response) => {
-      const sessionId = idParam(request, 'id', 'session');
+      const sessionId = sessionIdParam(request);
+      const query = parseQuery(captureListQuerySchema, request.query);
       const oxyUserId = requiredCallerId(request);
       const db = getDb();
       const session = await findOwnedSession(db, sessionId, oxyUserId);
       if (!session) throw new ApiError('not_found', 'No capture session of yours has that id.');
-      response.json(await listSessionAssets(db, sessionId, oxyUserId));
+      const binding = cursorBinding('capture-assets', { sessionId });
+      const assets = await listSessionAssets(db, sessionId, oxyUserId, timeWindowOf(query, binding));
+      response.json(timePageOf(assets, query.limit, binding));
     }),
   );
 
@@ -296,13 +328,15 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
    * finalizing.
    */
   router.post(
-    '/captures/sessions/:id/assets',
+    '/captures/sessions/:sessionId/assets',
     requireAuth,
     route(async (request, response) => {
-      const sessionId = idParam(request, 'id', 'session');
+      const sessionId = sessionIdParam(request);
       const oxyUserId = requiredCallerId(request);
       assertMayContribute(oxyUserId);
-      const input = parseBody(registerAssetSchema, request.body);
+      const input = parseBody(captureAssetInputSchema, request.body);
+      const evidence = evidenceOf(input.location);
+      const camera = normalizedCamera(input.camera);
       assertAcceptableMedia(input);
 
       // Checked before anything is written, so an unknown or someone else's
@@ -325,9 +359,9 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
           contentHash: input.contentHash,
           byteSize: input.byteSize,
           contentType: input.contentType,
-          ...(input.capturedAt ? { capturedAt: input.capturedAt } : {}),
-          evidence: input.location,
-          ...(normalizedCamera(input.camera) ? { camera: normalizedCamera(input.camera) } : {}),
+          ...(input.capturedAt ? { capturedAt: new Date(input.capturedAt) } : {}),
+          evidence,
+          ...(camera ? { camera } : {}),
         },
         { keyPrefix: captureConfig.keyPrefix },
       );
@@ -362,10 +396,10 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
 
   /** `GET /captures/assets/:id` — one of the caller's own contributions. */
   router.get(
-    '/captures/assets/:id',
+    '/captures/assets/:assetId',
     requireAuth,
     route(async (request, response) => {
-      const asset = await findOwnedAsset(getDb(), idParam(request, 'id', 'asset'), requiredCallerId(request));
+      const asset = await findOwnedAsset(getDb(), assetIdParam(request), requiredCallerId(request));
       if (!asset) throw new ApiError('not_found', 'No capture of yours has that id.');
       response.json(asset);
     }),
@@ -385,12 +419,12 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
    * succeeding twice.
    */
   router.post(
-    '/captures/assets/:id/finalize',
+    '/captures/assets/:assetId/finalize',
     requireAuth,
     route(async (request, response) => {
-      const assetId = idParam(request, 'id', 'asset');
+      const assetId = assetIdParam(request);
       const oxyUserId = requiredCallerId(request);
-      parseBody(finalizeAssetSchema, request.body ?? {});
+      parseBody(captureFinalizeInputSchema, request.body ?? {});
 
       const db = getDb();
       const objects = store();
@@ -432,15 +466,34 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
     }),
   );
 
-  router.get('/captures/sessions', requireAuth, route(async (request, response) => {
-    response.json(await listOwnedSessions(getDb(), requiredCallerId(request)));
-  }));
+  /** `GET /captures/sessions` — the caller's sessions, newest first. */
+  router.get(
+    '/captures/sessions',
+    requireAuth,
+    route(async (request, response) => {
+      const query = parseQuery(captureListQuerySchema, request.query);
+      const oxyUserId = requiredCallerId(request);
+      // The account is in the binding, so one session's cursor cannot resume
+      // another account's list.
+      const binding = cursorBinding('capture-sessions', { oxyUserId });
+      const sessions = await listOwnedSessions(getDb(), oxyUserId, timeWindowOf(query, binding));
+      response.json(timePageOf(sessions, query.limit, binding));
+    }),
+  );
 
-  router.delete('/captures/assets/:id', requireAuth, route(async (request, response) => {
-    const removed = await withdrawCaptureAsset(getDb(), idParam(request, 'id', 'asset'), requiredCallerId(request));
-    if (!removed) throw new ApiError('not_found', 'No capture of yours has that id.');
-    response.json(removed);
-  }));
+  /**
+   * `DELETE /captures/assets/{assetId}` — withdraw a contribution. `204`: the
+   * contributor asked for it gone, and there is nothing of it left to describe.
+   */
+  router.delete(
+    '/captures/assets/:assetId',
+    requireAuth,
+    route(async (request, response) => {
+      const removed = await withdrawCaptureAsset(getDb(), assetIdParam(request), requiredCallerId(request));
+      if (!removed) throw new ApiError('not_found', 'No capture of yours has that id.');
+      response.status(204).end();
+    }),
+  );
 
   return router;
 }

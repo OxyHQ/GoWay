@@ -28,7 +28,7 @@
 import { and, desc, eq, inArray, isNotNull, sql, type Column } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { qualified, uuidv7 } from '@oxy.so/db';
-import type { StreetSceneProfile } from '@goway/shared-types';
+import type { StreetSceneProfile } from '@goway/contracts';
 import { street3dConfig } from '../../config/street3d';
 import type { SceneReconstructJob } from '../../street3d/workerContract';
 import { WORKER_CONTRACT_SCHEMA_VERSION } from '../../street3d/workerContract';

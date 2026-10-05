@@ -92,7 +92,7 @@ export function StopPicker({
   const searching = debounced.trim().length >= MIN_SEARCH_LENGTH;
 
   const search = useSearch(debounced, { near, viewport, enabled: searching });
-  const results = useMemo(() => search.data?.results ?? [], [search.data]);
+  const results = useMemo(() => search.data?.items ?? [], [search.data]);
 
   /** Nearest first from the browsed centre — the same ordering the browse list uses. */
   const nearby = useMemo(() => {

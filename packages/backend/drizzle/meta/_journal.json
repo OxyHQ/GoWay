@@ -50,6 +50,55 @@
       "when": 1791118386339,
       "tag": "0006_goway_street3d",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791123715978,
+      "tag": "0007_goway_business_moderation",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791126340234,
+      "tag": "0008_goway_place_hours",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791128108770,
+      "tag": "0009_goway_place_media_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791132017791,
+      "tag": "0010_goway_claim_retier",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791161541932,
+      "tag": "0011_goway_place_data_conversion",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791161542574,
+      "tag": "0012_goway_drop_claim_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791161543171,
+      "tag": "0013_goway_category_taxonomy",
+      "breakpoints": true
     }
   ]
 }

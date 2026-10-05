@@ -15,9 +15,23 @@
 
 import './testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { join } from 'node:path';
+import express from 'express';
+import { API_OPERATIONS, apiErrorBodySchema, GOWAY_API_BASE_PATH } from '@goway/contracts';
 import { createApp } from '../app';
+import { createGoWayRateLimit } from '../middleware/auth';
+
+/** A value each path parameter accepts, so a request reaches the route rather than failing its shape. */
+const SAMPLE_PATH_VALUES: Readonly<Record<string, string>> = {
+  placeId: 'place-1',
+  key: 'payments.faircoin.accepted',
+  sceneId: 'scene-1',
+  sessionId: 'session-1',
+  assetId: 'asset-1',
+};
 
 let server: Server;
 let origin: string;
@@ -36,12 +50,36 @@ afterAll(async () => {
 });
 
 describe('the error envelope', () => {
-  it('answers an unmatched route with { error: { code: not_found } }', async () => {
+  it('answers an unmatched route with { error: { code: unknown_route } }', async () => {
+    // Not `not_found`: a client that sees this is on the wrong API version, and
+    // must not conclude that a resource it holds an id for is gone.
     const response = await fetch(`${origin}/no/such/route`);
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({
-      error: { code: 'not_found', message: 'No route matches this request.' },
+      error: { code: 'unknown_route', message: 'No route matches this request.' },
     });
+  });
+
+  it('answers a rate-limited request with the JSON envelope, not plain text', async () => {
+    const limited = express();
+    limited.use(createGoWayRateLimit({ anonymousMax: 1 }), (_request, response) => {
+      response.json({ ok: true });
+    });
+    const limitedServer = limited.listen(0);
+    try {
+      await new Promise<void>((resolve) => limitedServer.once('listening', () => resolve()));
+      const { port } = limitedServer.address() as AddressInfo;
+      await fetch(`http://127.0.0.1:${String(port)}/x`);
+      const response = await fetch(`http://127.0.0.1:${String(port)}/x`);
+
+      expect(response.status).toBe(429);
+      expect(response.headers.get('content-type')).toContain('application/json');
+      const body = apiErrorBodySchema.parse(await response.json());
+      expect(body.error.code).toBe('rate_limited');
+      expect(body.error.details?.retryAfterSeconds).toEqual(expect.any(Number));
+    } finally {
+      await new Promise<void>((resolve) => limitedServer.close(() => resolve()));
+    }
   });
 
   it('classifies malformed JSON as bad_request, not a 500', async () => {
@@ -108,5 +146,37 @@ describe('GET /health', () => {
       service: 'goway-backend',
       database: 'down',
     });
+  });
+});
+
+describe('the route registry', () => {
+  it('serves the committed OpenAPI document, byte for byte in content', async () => {
+    const response = await fetch(`${origin}${GOWAY_API_BASE_PATH}/openapi.json`);
+    expect(response.status).toBe(200);
+    const committed: unknown = JSON.parse(
+      readFileSync(join(__dirname, '..', '..', '..', 'contracts', 'openapi.json'), 'utf8'),
+    );
+    expect(await response.json()).toEqual(committed);
+  });
+
+  it('mounts every operation the contract registry publishes', async () => {
+    // The registry is what the OpenAPI document and the SDK are built from; a
+    // path in it that this app does not route is a published operation that
+    // answers `unknown_route`. Whatever else each request answers — 401, 422,
+    // 503 with no database — it must not be that.
+    const unrouted: string[] = [];
+    for (const operation of API_OPERATIONS) {
+      const path = operation.path.replace(/\{([A-Za-z]+)\}/g, (_match, name: string) => SAMPLE_PATH_VALUES[name] ?? 'x');
+      const response = await fetch(`${origin}${GOWAY_API_BASE_PATH}${path}`, {
+        method: operation.method.toUpperCase(),
+        ...(operation.method === 'get' || operation.method === 'delete'
+          ? {}
+          : { headers: { 'content-type': 'application/json' }, body: '{}' }),
+      });
+      const body = (await response.json().catch(() => null)) as { error?: { code?: string } } | null;
+      if (body?.error?.code === 'unknown_route') unrouted.push(`${operation.method.toUpperCase()} ${operation.path}`);
+    }
+    expect(unrouted).toEqual([]);
+    expect(API_OPERATIONS.length).toBeGreaterThan(20);
   });
 });

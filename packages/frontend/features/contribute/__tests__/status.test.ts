@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { CaptureAsset } from '@goway.to/sdk';
-import { CAPTURE_ASSET_STATES, CAPTURE_PRIVACY_STATES } from '@goway/shared-types';
+import { CAPTURE_ASSET_STATES, CAPTURE_PRIVACY_STATES } from '@goway.to/sdk';
 
 import { contributionStatus, sourceExpiry } from '../status';
 

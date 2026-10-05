@@ -27,7 +27,7 @@
 
 import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { qualified } from '@oxy.so/db';
-import type { StreetSceneProfile } from '@goway/shared-types';
+import type { StreetSceneProfile } from '@goway/contracts';
 import { street3dConfig } from '../../config/street3d';
 import type { Database, Transaction } from '../postgres';
 import {

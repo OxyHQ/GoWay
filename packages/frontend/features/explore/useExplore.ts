@@ -44,7 +44,7 @@ import { sameLabelSet } from '@/components/map/labels';
 import { useDirections, type DirectionsController } from '@/features/directions/useDirections';
 import { boundsCenter, distanceMeters } from '@/lib/map/geo';
 import { declutterMarkerLabels, describeLabel, reconcileLabel } from '@/lib/goway/basemapLabels';
-import { visibleCapabilities } from '@/lib/goway/capabilities';
+import { ecosystemCapabilities } from '@/lib/goway/capabilities';
 import { CATEGORY_SHORTCUTS } from '@/lib/goway/categories';
 import { classifyGoWayError, type GoWayFailureKind } from '@/lib/goway/errors';
 import { buildMarkers } from '@/lib/goway/markers';
@@ -255,7 +255,7 @@ export function useExplore(
   // ── Data ─────────────────────────────────────────────────────────────────
 
   const placesQuery = usePlacesInBounds(committed?.bounds ?? null, { categories });
-  const places = useMemo(() => placesQuery.data ?? [], [placesQuery.data]);
+  const places = useMemo(() => placesQuery.data?.items ?? [], [placesQuery.data]);
 
   const searchQuery = useSearch(debouncedQuery, {
     // `near` (the user's own position) outranks `viewport`; the SDK ignores the
@@ -267,7 +267,7 @@ export function useExplore(
   });
 
   const searching = debouncedQuery.trim().length >= MIN_SEARCH_LENGTH;
-  const results = useMemo(() => searchQuery.data?.results ?? [], [searchQuery.data]);
+  const results = useMemo(() => searchQuery.data?.items ?? [], [searchQuery.data]);
 
   const selectedPlaceId = selection?.kind === 'place' ? selection.placeId : null;
   const placeQuery = usePlace(selectedPlaceId, selection?.kind === 'place' ? selection.seed : undefined);
@@ -295,7 +295,7 @@ export function useExplore(
     limit: 10,
   });
   const labelPlace = useMemo(
-    () => (selectedLabel ? reconcileLabel(selectedLabel, labelSearch.data?.results ?? []) : null),
+    () => (selectedLabel ? reconcileLabel(selectedLabel, labelSearch.data?.items ?? []) : null),
     [labelSearch.data, selectedLabel],
   );
 
@@ -330,7 +330,7 @@ export function useExplore(
    */
   const ecosystem = useMemo(() => {
     const index = new Map<string, PlaceCapability>();
-    const strongest = (place: Place) => visibleCapabilities(place.capabilities)[0];
+    const strongest = (place: Place) => ecosystemCapabilities(place.capabilities)[0];
 
     if (searching) {
       for (const result of results) {

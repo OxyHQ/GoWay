@@ -36,7 +36,7 @@ import {
   CAPTURE_LOCATION_ORIGIN_RANK,
   type CaptureAnchor,
   type CaptureLocationEvidence,
-} from '@goway/shared-types';
+} from '@goway/contracts';
 
 /** GoWay's own measurement outranks a client's claim, within one origin. */
 const WITNESS_RANK: Readonly<Record<CaptureLocationEvidence['witness'], number>> = {

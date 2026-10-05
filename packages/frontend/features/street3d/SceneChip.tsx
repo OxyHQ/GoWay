@@ -12,7 +12,7 @@ import { Image } from 'expo-image';
 import { Text } from '@oxy.so/bloom/typography';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { RiBox3Line } from '@oxy.so/bloom/icons/RiBox3Line';
-import type { StreetSceneSummary } from '@goway/shared-types';
+import type { StreetSceneSummary } from '@goway.to/sdk';
 
 export interface SceneChipProps {
   summary: StreetSceneSummary | undefined;
