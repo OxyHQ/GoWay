@@ -43,13 +43,18 @@ stored as rows can use it too. Pass the reader's whole tag (`zh-Hans-CN`,
    then a variant the reader did not ask for. So `zh`, `zh-CN`, `zh-SG` and
    `zh-Hans-CN` read `zh-Hans`; `pt` and `pt-PT` read `pt-BR`; `es-MX` reads
    `es`; and `ca-ES-valencia` reads `ca`.
-3. **English.**
+3. **The same language in another script**, ranked the same way: `zh-TW` reads
+   `zh-Hans` while there is no `zh-Hant`.
+4. **English.**
 
 When a tag has no script, the matcher uses CLDR's likely script:
 `zh-TW`/`zh-HK`/`zh-MO` are `Hant`, other `zh` is `Hans`, and `hi` is `Deva`.
-A script mismatch is never a match. Following CLDR, where `zh-Hant` does not
-inherit from `zh`, `zh-TW` and `zh-Hant-HK` read English rather than Simplified
-Chinese, and `hi-Latn` reads English rather than Devanagari. Ties go to the
+The reader's own script always wins, but another script of the same language
+beats English: `zh-TW` and `zh-Hant-HK` read Simplified Chinese until a
+`zh-Hant` label exists, and `hi-Latn` reads Devanagari. This departs from CLDR,
+where `zh-Hant` does not inherit from `zh`, on purpose (product decision,
+2026-10-05): Simplified is far more legible to a Traditional reader than
+English. Ties go to the
 earlier language in the entry.
 
 The app's `deviceLocale()` passes the engine's tag through whole. It drops only

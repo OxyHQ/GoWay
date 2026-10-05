@@ -189,9 +189,11 @@ function subtagsOf(tag: string): Subtags {
  * How well an offered tag serves a requested one that it is not identical to;
  * lower is better, `undefined` is "not at all".
  *
- * Only the same language in a compatible script is an answer: `zh-Hans` is no
- * answer to `zh-TW`, whose readers write Traditional characters. Among the
- * answers, by region —
+ * Only the same language is an answer. The reader's own script always wins,
+ * but another script of the same language still beats the caller's fallback:
+ * a `zh-TW` reader gets `zh-Hant` when it is offered and `zh-Hans` when it is
+ * not, never English (a product decision: Simplified is far more legible to a
+ * Traditional reader than English). Within each script, by region —
  *
  *   1. the reader's own      `es-MX` for `es-MX-…`
  *   2. none at all           `es` for `es-MX`, `zh-Hans` for `zh-CN`
@@ -203,16 +205,15 @@ function subtagsOf(tag: string): Subtags {
  */
 function matchRank(offered: Subtags, requested: Subtags): number | undefined {
   if (offered.language !== requested.language) return undefined;
-  if (offered.script !== undefined && requested.script !== undefined && offered.script !== requested.script) {
-    return undefined;
-  }
+  const scriptRank =
+    offered.script !== undefined && requested.script !== undefined && offered.script !== requested.script ? 1 : 0;
   const regionRank = offered.region === undefined ? 2 : offered.region === requested.region ? 1 : 3;
   const variantRank = offered.variants.some((variant) => !requested.variants.includes(variant))
     ? 2
     : offered.variants.length > 0
       ? 0
       : 1;
-  return regionRank * 3 + variantRank;
+  return scriptRank * 12 + regionRank * 3 + variantRank;
 }
 
 /**
@@ -227,10 +228,11 @@ function matchRank(offered: Subtags, requested: Subtags): number | undefined {
  *                                        `zh-Hans-CN`, `zh-CN`, `zh-SG`, `zh`
  *                                        → `zh-Hans`; `pt`, `pt-PT` → `pt-BR`;
  *                                        `es-MX` → `es`
- *   3. nothing — a script mismatch is NOT a match: `zh-Hant`, `zh-TW` and
- *      `zh-HK` are not served `zh-Hans`, following CLDR, whose `zh-Hant` does
- *      not inherit from `zh`. A reader of Traditional Chinese gets the
- *      caller's fallback rather than the other script.
+ *   3. the same language in another script, ranked the same way by region —
+ *      `zh-Hant`, `zh-TW` and `zh-HK` read `zh-Hans` when no Traditional tag
+ *      is offered. This departs from CLDR (whose `zh-Hant` does not inherit
+ *      from `zh`) on purpose: Simplified beats English for those readers.
+ *   4. nothing — the caller uses its own fallback.
  *
  * The script comes from the tag when it names one and from CLDR's likely
  * subtags when it does not (`zh-TW` is `Hant`, `zh` is `Hans`). Ties go to

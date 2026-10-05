@@ -84,7 +84,7 @@ export const localizedLabelsSchema = z.object({ en: labelSchema }).catchall(labe
  * entry has (see {@link matchLanguageTag}), English when none serves.
  *
  * `es-MX` reads `es`; `pt-PT` reads `pt-BR`; `zh-Hans-CN` and `zh-SG` read
- * `zh-Hans`; `zh-TW` reads English rather than the other script.
+ * `zh-Hans`; `zh-TW` reads `zh-Hans` too until a `zh-Hant` label exists.
  */
 export function localizedLabel(entry: LocalizedLabels, locale?: string | null): string {
   const language = matchLanguageTag(Object.keys(entry), locale);

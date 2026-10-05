@@ -39,11 +39,11 @@ describe('matchLanguageTag', () => {
     }
   });
 
-  it('never serves Simplified Chinese to a reader of Traditional', () => {
+  it('serves Simplified Chinese to a reader of Traditional when no Traditional is offered', () => {
     for (const tag of ['zh-Hant', 'zh-Hant-TW', 'zh-Hant-HK', 'zh-TW', 'zh-HK', 'zh-MO']) {
-      expect(matchLanguageTag(LANGUAGES, tag)).toBeUndefined();
+      expect(matchLanguageTag(LANGUAGES, tag)).toBe('zh-Hans');
     }
-    // …and does serve Traditional when it exists.
+    // …but always prefers Traditional when it exists.
     expect(matchLanguageTag(['en', 'zh-Hans', 'zh-Hant'], 'zh-TW')).toBe('zh-Hant');
     expect(matchLanguageTag(['en', 'zh-Hans', 'zh-Hant'], 'zh-Hant-HK')).toBe('zh-Hant');
     expect(matchLanguageTag(['en', 'zh-Hans', 'zh-Hant'], 'zh-CN')).toBe('zh-Hans');
@@ -82,9 +82,10 @@ describe('matchLanguageTag', () => {
     expect(matchLanguageTag(['ca-valencia'], 'ca-ES')).toBe('ca-valencia');
   });
 
-  it('refuses a script the language is not written in', () => {
-    // Hindi in Latin script is not served Devanagari.
-    expect(matchLanguageTag(LANGUAGES, 'hi-Latn')).toBeUndefined();
+  it('falls back to another script of the same language before giving up', () => {
+    // Hindi in Latin script still reads Hindi: the same language beats English.
+    expect(matchLanguageTag(LANGUAGES, 'hi-Latn')).toBe('hi');
+    // A language GoWay does not have stays unanswered whatever its script.
     expect(matchLanguageTag(LANGUAGES, 'sr-Latn')).toBeUndefined();
   });
 
@@ -135,7 +136,7 @@ describe('localizedLabel', () => {
     expect(localizedLabel(CAFE, 'zh-Hans-CN')).toBe('咖啡馆');
     expect(localizedLabel(CAFE, 'pt-PT')).toBe('Cafeteria');
     expect(localizedLabel(CAFE, 'ja-JP')).toBe('カフェ');
-    expect(localizedLabel(CAFE, 'zh-TW')).toBe('Café');
+    expect(localizedLabel(CAFE, 'zh-TW')).toBe('咖啡馆');
     expect(localizedLabel(CAFE, 'it-IT')).toBe('Café');
     expect(localizedLabel(CAFE, 'not a tag')).toBe('Café');
   });
@@ -144,7 +145,7 @@ describe('localizedLabel', () => {
     const stored = { en: 'Café', es: 'Cafetería', 'zh-Hant': '咖啡廳' };
     expect(localizedLabel(stored, 'es-MX')).toBe('Cafetería');
     expect(localizedLabel(stored, 'zh-HK')).toBe('咖啡廳');
-    expect(localizedLabel(stored, 'zh-CN')).toBe('Café');
+    expect(localizedLabel(stored, 'zh-CN')).toBe('咖啡廳');
     expect(localizedLabel(stored, 'pt-BR')).toBe('Café');
   });
 });
@@ -164,7 +165,7 @@ describe('device locales', () => {
   it('each read a label', () => {
     expect(DEVICE_TAGS.map((tag) => capabilityGroupLabel('payment', tag))).toEqual([
       '支付',
-      'Payment',
+      '支付',
       '支付',
       'Pagamento',
       'Pagamento',
@@ -219,6 +220,6 @@ describe('the capability vocabulary', () => {
     expect(capabilityValueLabel('food.cuisine', 'italian', 'pt-PT')).toBe('Italiana');
     expect(capabilityValueLabel('accessibility.wheelchair', 'yes', 'de-AT')).toBe('Rollstuhlgerecht');
     expect(capabilityGroupLabel('accessibility', 'zh-SG')).toBe('无障碍');
-    expect(capabilityGroupLabel('accessibility', 'zh-HK')).toBe('Accessibility');
+    expect(capabilityGroupLabel('accessibility', 'zh-HK')).toBe('无障碍');
   });
 });
