@@ -447,10 +447,15 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       return EMPTY_CATALOG;
     });
     const osmTags = query.categories ? catalog.osmTagsUnder(query.categories) : [];
+    // A category filter the geocoders cannot express — a moderator's category
+    // with no OSM tags, or the catalog being unreadable — must not reach them
+    // unfiltered: they would answer the bare text with unrelated results beside
+    // the category's own places. Only GoWay Places answers it.
+    const asked = query.categories && osmTags.length === 0 ? [] : selected;
 
     const [outcomes, places] = await Promise.all([
       Promise.all(
-        selected.map((provider) =>
+        asked.map((provider) =>
           run(
             provider,
             (target) =>

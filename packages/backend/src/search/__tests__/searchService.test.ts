@@ -9,7 +9,8 @@
 
 import { describe, expect, it } from 'bun:test';
 import type { PlaceCapability, PlaceWithDistance, SearchResultKind } from '@goway/contracts';
-import { SEEDED_CATALOG } from '../../__tests__/categoryFixtures';
+import { SEEDED_CATALOG, seededCategories } from '../../__tests__/categoryFixtures';
+import { catalogOf } from '../../categories/catalog';
 import { isApiError } from '../../http/apiError';
 import { BoundedCache } from '../cache';
 import type { ProviderCandidate, SearchProvider } from '../provider';
@@ -459,5 +460,52 @@ describe('placeMatchesText', () => {
     expect(placeMatchesText(place, 'food.', SEEDED_CATALOG)).toBe(false);
     expect(placeMatchesText(place, 'gran via', SEEDED_CATALOG)).toBe(true);
     expect(placeMatchesText(place, 'pharmacy', SEEDED_CATALOG)).toBe(false);
+  });
+});
+
+describe('category filters the geocoders cannot express', () => {
+  const counting = () => {
+    const seen = { forwards: 0 };
+    const provider = stub('photon', {
+      onForward: () => {
+        seen.forwards += 1;
+      },
+      forward: [candidate({ source: 'photon', name: 'Unrelated Hotel', latitude: 41.4, longitude: 2.17 })],
+    });
+    return { seen, provider };
+  };
+
+  it('never asks a geocoder for a category with no OpenStreetMap tags', async () => {
+    const { seen, provider } = counting();
+    // A moderator's new category, mapped to no OSM tag.
+    const catalog = catalogOf([
+      ...seededCategories(),
+      { ...seededCategories()[0]!, key: 'food.supper_club', parent: 'food', osmTags: [], position: 9_999 },
+    ]);
+    const subject = createSearchService({ providers: [provider], categories: async () => catalog, config: CONFIG });
+
+    const results = await subject.forward({ ...QUERY, categories: ['food.supper_club'] }, { gateway: fakeGateway() });
+
+    expect(seen.forwards).toBe(0);
+    expect(results.results.map((item) => item.displayName)).not.toContain('Unrelated Hotel');
+  });
+
+  it('never asks a geocoder for a category filter while the catalog is unreadable', async () => {
+    const { seen, provider } = counting();
+    const subject = createSearchService({
+      providers: [provider],
+      categories: () => Promise.reject(new Error('catalog down')),
+      config: CONFIG,
+    });
+
+    await subject.forward({ ...QUERY, categories: ['food.cafe'] }, { gateway: fakeGateway() });
+
+    expect(seen.forwards).toBe(0);
+  });
+
+  it('still asks the geocoders when the category maps to OSM tags', async () => {
+    const { seen, provider } = counting();
+    await service([provider]).forward({ ...QUERY, categories: ['food.cafe'] }, { gateway: fakeGateway() });
+    expect(seen.forwards).toBe(1);
   });
 });

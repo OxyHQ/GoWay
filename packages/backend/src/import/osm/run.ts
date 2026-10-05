@@ -147,11 +147,12 @@ async function main(): Promise<void> {
   if (expectedDatabase !== null) {
     db = await openDatabase(expectedDatabase);
   }
-  // Read once, before the extract: a moderator's edit lands in the next run,
-  // never halfway through this one.
-  const categories = await readCategoryMapping(db);
-
   try {
+    // Read once, before the extract: a moderator's edit lands in the next run,
+    // never halfway through this one. Inside the `try` so a failed read still
+    // closes the pool below.
+    const categories = await readCategoryMapping(db);
+
     let path = local;
     if (path === undefined) {
       const url = geofabrikUrl(region);
