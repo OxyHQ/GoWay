@@ -102,6 +102,49 @@ The models and their licences are reviewed in
 `packages/reconstruction-worker/LICENSES.md`. Code and model weights are reviewed
 separately.
 
+### 360° captures
+
+A contribution declares `projection: "equirectangular"` for a full 360°
+panorama, photo or video ([#91](https://github.com/OxyHQ/GoWay/issues/91)). The
+upload policy publishes separate 360° ceilings (`equirectangular`: bytes,
+duration, width), and `CAPTURE_EQUIRECTANGULAR_ENABLED` switches acceptance off.
+
+- **The claim never decides.** The `capture_privacy` envelope carries the
+  declaration. The worker reads the projection the bytes themselves carry —
+  XMP `GPano:ProjectionType` (full sphere, not cropped) for a photo, Spherical
+  Video V1 (`uuid` box) or V2 (`sv3d`/`proj`/`equi`, mono `st3d`) for a video —
+  and checks every decoded frame is 2:1. Declared 360° without that evidence,
+  evidence of 360° on a capture declared perspective, a cubemap, stereo or
+  cropped panorama, or a frame that is not 2:1: `privacy_failed`.
+- **Views, not panoramas.** Each panorama (the photo, or each video keyframe,
+  streamed so a long 8K video is never held whole) is resized so 90° spans one
+  view width and cut into 8 perspective views of 1280 × 960 at yaw 0°, 45° …
+  315°, pitch 0, 90° horizontal field of view — neighbours overlap by half.
+  Detection, redaction and masking run on every view on its own; any failure
+  fails the job.
+- **The nadir is always masked.** Every view pixel more than 30° below the
+  horizon is destroyed in the derivative and excluded from reconstruction,
+  whether or not a detector saw the operator or the mount there.
+- **Derivatives know their panorama.** Each view reports
+  `panorama: { index, yawDegrees, horizontalFovDegrees }` (`index` is the
+  keyframe; 0 for a photo), stored on `capture_derivatives` and handed back in
+  the manifest. A view's prior heading is the capture's heading plus its yaw,
+  and its intrinsics come from its field of view, not the 360° lens.
+- **Fail closed at the backend too.** A result is refused, without retrying
+  the attempt, unless its verified `projection` equals the declaration — so a
+  worker that predates 360° support, which would process a panorama as one flat
+  image, cannot open the gate. Views without a panorama verdict, or a panorama
+  verdict without views, fail the contract on both sides.
+- **The solve treats a panorama as a rig.** Views pair with their neighbouring
+  yaws in the same panorama, with the same yaw along the sequence (20
+  panoramas, plus exponential jumps), and with neighbouring yaws in the next 4
+  panoramas; across sequences they pair spatially as any frame does, skipping
+  views that face apart when both carry a heading. `pycolmap.apply_rig_config`
+  then makes each panorama one rig frame whose sensors are its yaws, with the
+  relative rotations fixed (`refine_sensor_from_rig` off). If the rig cannot be
+  applied the solve continues on pairing alone. Georeferencing counts one
+  position per panorama, not eight.
+
 ## Scheduling and the capture graph
 
 - Captures cluster around scene anchors by `ST_DWithin` on the asset anchors, not

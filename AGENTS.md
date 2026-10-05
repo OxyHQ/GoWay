@@ -60,3 +60,4 @@ Always **bun**; commit `bun.lock` with its `package.json`.
 - The map opens without an account. Browsing, search and routing must work signed out; require Oxy auth only for identity-bound features (saves, edits, lists, contributions).
 - Location permission is requested only when the user invokes a location-dependent action, never to open the app. Precise coordinates are transient request data; do not persist them as history, and keep user location out of Places tables.
 - A place photo is re-encoded on the device before upload (`features/explore/placePhoto.ts`), so its EXIF location is never published.
+- A capture's declared projection is a claim: the privacy worker verifies 360° media against its own metadata and 2:1 pixels and fails closed; panoramas are processed only as views, nadir masked. Design note: `docs/STREET3D_PIPELINE.md`.

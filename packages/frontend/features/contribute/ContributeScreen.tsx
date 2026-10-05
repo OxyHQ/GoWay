@@ -20,7 +20,7 @@ import { ContributionStatusCard } from './ContributionStatusCard';
 import { GuidedCapture, type GuidedRecording } from './guided/GuidedCapture';
 import { formatClock } from './guided/plan';
 import { hashMedia, releaseMedia, selectMedia, uploadMedia } from './media';
-import { MediaError, mediaLocation, type CaptureLocation, type SelectedMedia } from './media.shared';
+import { MediaError, mediaLocation, withProjection, type CaptureLocation, type SelectedMedia } from './media.shared';
 
 export function ContributeScreen() {
   const router = useRouter();
@@ -67,7 +67,9 @@ export function ContributeScreen() {
   }, [gate.canUsePrivateApi, user?.id]);
   useEffect(() => () => active.current?.abort(), []);
   // A guided recording on web is held through an object URL; let it go with the media.
-  useEffect(() => () => { if (media) releaseMedia(media.asset); }, [media]);
+  // Keyed on the file, not the selection: re-declaring its projection keeps the same file.
+  const pickedAsset = media?.asset;
+  useEffect(() => () => { if (pickedAsset) releaseMedia(pickedAsset); }, [pickedAsset]);
   useEffect(() => {
     active.current?.abort(); pending.current = null; captureRun.current += 1; setSessions([]); setAssets([]); setConsent(false); setMedia(null); setLocation(null); setCapture(null); setGuided(false); setStatus(''); setError(''); setBusy(false);
     if (gate.canUsePrivateApi) void refresh().catch(() => setError(t('contribute.error.loadContributions')));
@@ -90,6 +92,15 @@ export function ContributeScreen() {
       const evidence = mediaLocation(selected.asset);
       setLocation(evidence);
       if (evidence) map.current?.moveTo(evidence.coordinate, { zoom: 17 });
+    } catch (e) { setError(e instanceof MediaError ? t(e.message) : t('contribute.error.select')); }
+  }
+
+  /** The contributor confirms or corrects whether a 2:1 file is a 360° capture. */
+  function declarePanorama(panorama: boolean) {
+    if (!media || !policy || busy || pending.current) return;
+    try {
+      setMedia(withProjection(media, panorama ? 'equirectangular' : 'perspective', policy));
+      setError('');
     } catch (e) { setError(e instanceof MediaError ? t(e.message) : t('contribute.error.select')); }
   }
 
@@ -174,6 +185,7 @@ export function ContributeScreen() {
         pending.current = { sessionId: session.id, input: {
           idempotencyKey: randomUUID(), mediaKind: media.kind, source, contentHash,
           byteSize: media.byteSize, contentType: media.contentType, location: [location],
+          ...(media.projection === 'equirectangular' ? { projection: media.projection } : {}),
           ...(capture ? { capturedAt: capture.capturedAt } : {}),
           camera: { ...(media.asset.width > 0 ? { widthPixels: media.asset.width } : {}), ...(media.asset.height > 0 ? { heightPixels: media.asset.height } : {}),
             ...(media.asset.duration ? { durationSeconds: media.asset.duration / 1000 } : {}), ...(capture?.frameRate ? { frameRate: capture.frameRate } : {}) },
@@ -240,6 +252,8 @@ export function ContributeScreen() {
         {media && <>
           {media.kind === 'photo' && <Image source={{ uri: media.asset.uri }} style={{ height: 180, width: '100%' }} contentFit="contain" accessibilityLabel={t('contribute.previewLabel')} />}
           <Text>{media.asset.fileName ?? (media.kind === 'video' ? t('contribute.selectedVideo') : t('contribute.selectedPhoto'))} · {(media.byteSize / 1048576).toFixed(1)} MB</Text>
+          {media.panoramaCandidate && <Checkbox checked={media.projection === 'equirectangular'} disabled={busy || !!pending.current} onCheckedChange={declarePanorama} label={t('contribute.projection.label')} />}
+          {media.projection === 'equirectangular' && <Text className="text-muted-foreground">{t('contribute.projection.hint')}</Text>}
           <Text variant="body-semibold">{t('contribute.where')}</Text>
           <Text>{location ? t('contribute.locationSelected') : t('contribute.locationPrompt')}</Text>
           <View className="h-64 overflow-hidden rounded-radius-lg">
