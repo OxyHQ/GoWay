@@ -6,7 +6,8 @@ Stages, each a cancellation point and each with its own failure class:
     matching       features on unmasked pixels, bounded pairs
     solving        incremental SfM                 -> insufficient_overlap
     georeferencing robust up + 2D similarity       -> georeference_failed
-    training       gsplat, budgeted, checkpointed  -> out_of_memory
+    training       dense initial points (optional), then gsplat,
+                   budgeted, checkpointed          -> out_of_memory
     optimizing     SPZ + preview LOD, decode-and-render smoke test, poster
     uploading      assets, then result.json        (assets only if gates pass)
 
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import math
 import shutil
 import time
@@ -59,7 +61,11 @@ from . import spz
 from .sfm import RigView, SfmError, SfmFrame, enu_to_geodetic, frame_image_name, geodetic_to_enu, georeference, solve
 from .train import Trainer, View, load_views, train_scene
 
+log = logging.getLogger("goway.worker")
+
 PROFILE_SH_DEGREE = {"draft": 1, "standard": 3}
+# Share of the training stage's reported progress spent on the dense initial points.
+DENSE_PROGRESS = 0.05
 PREVIEW_MIN, PREVIEW_MAX = 100_000, 400_000
 SMOKE_MIN_PSNR = 28.0
 FOOTPRINT_BUFFER_M = 15.0
@@ -154,7 +160,9 @@ def run(
     work: Path,
     device: torch.device,
     depth_prior=None,  # noqa: ANN001 - depth.DepthPrior
+    models_dir: Path | None = None,
 ) -> SceneReconstructResult:
+    """Run one scene job. ``models_dir`` enables the dense initial point cloud (recon/dense.py)."""
     started = time.monotonic()
     ctx.enter("preparing")
     try:
@@ -249,6 +257,9 @@ def run(
     ctx.enter("training")
     sh_degree = PROFILE_SH_DEGREE[job.profile]
     gpu_started = time.monotonic()
+    init_points, dense_component = _dense_init(
+        model, images, masks, resume, models_dir, device, ctx, max_points=manifest.budgets.maxGaussians // 2
+    )
     try:
         trained = train_scene(
             model,
@@ -259,9 +270,10 @@ def run(
             max_gaussians=manifest.budgets.maxGaussians,
             long_edge=manifest.budgets.maxTrainingLongEdgePixels,
             sh_degree=sh_degree,
-            on_progress=ctx.report,
+            on_progress=lambda p: ctx.report(DENSE_PROGRESS + (1 - DENSE_PROGRESS) * p),
             device=device,
             depth_prior=depth_prior,
+            init_points=init_points,
         )
     except torch.cuda.OutOfMemoryError as error:
         raise JobFailure("out_of_memory", "training exceeded GPU memory") from error
@@ -355,7 +367,7 @@ def run(
         provenance=Provenance(
             pipelineVersion=RECONSTRUCTION_PIPELINE_VERSION,
             privacyPipelineVersions=sorted({f.privacyPipelineVersion for f in manifest.frames}),
-            components=_components(),
+            components=_components(dense_component),
             inputs=[{"frameId": f.frameId, "imageSha256": f.imageSha256} for f in manifest.frames],
         ),
         viewpoints=viewpoints,
@@ -363,10 +375,69 @@ def run(
     )
 
 
-def _components() -> dict[str, str]:
+def _dense_init(
+    model: pycolmap.Reconstruction,
+    images: Path,
+    masks: Path,
+    resume: Path,
+    models_dir: Path | None,
+    device: torch.device,
+    ctx: JobContext,
+    *,
+    max_points: int,
+) -> tuple[tuple[np.ndarray, np.ndarray] | None, str | None]:
+    """Dense initial points for training, or None to start from the sparse solve.
+
+    An optimisation, never a gate: any failure is logged (without detail that
+    could carry a path or a value) and training starts from the sparse points.
+    Returns the points and the provenance component that produced them. A
+    resumed training checkpoint already carries its initialisation, so the
+    points are not recomputed; the marker records which one it was.
+    ``max_points`` keeps the initial cloud within the Gaussian budget (half of
+    it, the share the evaluated recipe used), leaving room to densify.
+    """
+    marker = resume / "dense-init.json"
+    if (resume / "train.ckpt").exists():
+        try:
+            return None, json.loads(marker.read_text()).get("component")
+        except (OSError, ValueError):
+            return None, None
+    if models_dir is None:
+        return None, None
+    result, component = None, None
+    try:
+        from .dense import COMPONENT, MAX_POINTS, dense_points
+
+        result = dense_points(
+            model, images, masks, models_dir, device,
+            on_progress=lambda p: ctx.report(DENSE_PROGRESS * p),
+            max_points=min(MAX_POINTS, max_points),
+        )
+        component = COMPONENT
+    except JobFailure:
+        raise
+    except Exception as error:  # noqa: BLE001 - fall back to sparse initialisation
+        log.warning("dense initialisation unavailable (%s); training from sparse points", type(error).__name__)
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+    resume.mkdir(parents=True, exist_ok=True)
+    marker.write_text(json.dumps({"component": component}))
+    if result is None:
+        return None, None
+    log.info(
+        "dense initialisation: %d points from %d frames (%d dropped by the scale check) in %.0fs",
+        len(result.xyz), result.frames_used, result.frames_dropped, result.seconds,
+    )
+    return (result.xyz, result.rgb), component
+
+
+def _components(dense: str | None = None) -> dict[str, str]:
     import gsplat
 
-    return {"sfm": f"pycolmap {pycolmap.__version__}", "trainer": f"gsplat {gsplat.__version__}", "torch": torch.__version__}
+    components = {"sfm": f"pycolmap {pycolmap.__version__}", "trainer": f"gsplat {gsplat.__version__}", "torch": torch.__version__}
+    if dense:
+        components["denseInit"] = dense
+    return components
 
 
 __all__ = ["run", "Trainer"]

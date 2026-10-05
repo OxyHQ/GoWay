@@ -20,6 +20,11 @@ publishes only Gaussian scenes it produced.
 | Pillow | 12 | MIT-CMU | JPEG decode/encode | |
 | NumPy | 2 | BSD-3-Clause | | |
 | transformers / safetensors | 5.x / 0.x | Apache-2.0 | loads the depth prior model | |
+| Depth Anything 3 (network code, vendored) | commit `3d835ec1a580` | Apache-2.0 (ByteDance) | dense multi-view depth for the initial point cloud | minimal subset in `src/goway_reconstruction/vendor/depth_anything_3/`, with the upstream `LICENSE` and a `README.md` listing upstream, commit and every modification (Apache-2.0 §4) |
+| einops | 0.8 | MIT | tensor reshapes in the vendored DA3 code | |
+| addict | 2.4 | MIT | attribute dicts in the vendored DA3 code | |
+| PyYAML | 6 | MIT | reads the vendored DA3 model config | |
+| Bilateral grid (vendored) | gsplat examples | Apache-2.0 (Yuehao Wang) | per-frame photometric compensation | `recon/bilagrid.py`; notice retained in its header |
 | boto3 / botocore | 1.43 | Apache-2.0 | S3, SQS | |
 | pydantic | 2 | MIT | contract models | |
 | nvidia-ml-py | 13 | BSD-3-Clause | read-only GPU health | |
@@ -37,6 +42,7 @@ libraries stay the separately replaceable shared objects their wheels ship.
 | LPD-YuNet plate detector | `license_plate_detection_lpd_yunet_2023mar.onnx` | Apache-2.0 (OpenCV Zoo) | CCPD (Chinese plates) | Commercial use permitted. Recall on non-Chinese plates is limited, so plates are protected primarily by blurring and masking every detected vehicle whole. Post-processing follows the Apache-2.0 `lpd_yunet.py`, attributed in `privacy/detectors.py`. |
 | Mask R-CNN ResNet-50-FPN v2 | `maskrcnn_resnet50_fpn_v2_coco-73cbd019.pth` | BSD-3-Clause (torchvision code); torchvision documents that pretrained weights may carry dataset terms | COCO 2017 (annotations CC BY 4.0; images under Flickr terms) | Acceptable for internal detection: weights are not redistributed and no COCO pixels reach any output. People and vehicles are only excluded, never learned. Revisit if weights are ever shipped to clients. |
 | Depth Anything V2 **Small** | `depth-anything-v2-small/*` (revision `5426e4f0f365`) | Apache-2.0 | DA-2M synthetic + pseudo-labelled real images | Commercial use permitted. A training-time shape cue only; never shipped. **The Base and Large checkpoints are CC-BY-NC-4.0 and must not be used.** |
+| Depth Anything 3 **BASE** | `da3-base/config.json`, `da3-base/model.safetensors` (`depth-anything/DA3-BASE`, revision `f4a6c9b3c95e`) | Apache-2.0 (model card) | public academic datasets (see the upstream model card) | Commercial use permitted. Depth measured from real frames, kept only where neighbouring frames agree, seeds the Gaussians; the weights and their raw outputs are never shipped. **Only DA3-SMALL, DA3-BASE, DA3METRIC-LARGE and DA3MONO-LARGE are Apache-2.0. DA3-LARGE, DA3-GIANT and the NESTED checkpoints are CC-BY-NC-4.0 and must never be used**; only the BASE config is vendored. |
 
 No face recognition, plate reading (OCR) or identity model is used. Detectors
 only decide which pixels to destroy and exclude.

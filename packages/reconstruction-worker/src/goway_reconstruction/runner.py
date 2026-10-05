@@ -213,7 +213,8 @@ class Runner:
         device = self.device()
         # The monocular depth prior stays available (depth_prior=self.depth_prior())
         # but is not used by default: in side-by-side tests it softened scenes.
-        return scene_job.run(job, ctx, self.aws, self.cache, work, device)
+        # The dense initial point cloud (pose-conditioned multi-view depth) is.
+        return scene_job.run(job, ctx, self.aws, self.cache, work, device, models_dir=self.config.models_dir)
 
 
 def _iso_in(seconds: int) -> str:
