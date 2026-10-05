@@ -28,6 +28,10 @@
  * merchant discloses it, and when the shop last confirmed it. The badge's
  * colour repeats the word; it never replaces it. Each tile and the store link
  * open mercaria.co, which is where buying happens.
+ *
+ * Every word is a message (`lib/messages/products.ts`) read through
+ * `useTranslation`; only the store's name and the product's title are
+ * Mercaria's own.
  */
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
@@ -43,6 +47,7 @@ import { Text } from '@oxy.so/bloom/typography';
 import { RiShoppingBag3Line } from '@oxy.so/bloom/icons/RiShoppingBag3Line';
 import { RiStore2Line } from '@oxy.so/bloom/icons/RiStore2Line';
 
+import { useTranslation } from '@/lib/i18n';
 import { mercariaReadState } from '@/lib/mercaria/errors';
 import { formatMercariaPrice, placeOffersMercariaStore, presentStock, spokenProduct } from '@/lib/mercaria/presentation';
 import {
@@ -65,15 +70,16 @@ function openOnMercaria(url: string) {
 
 function ProductTile({ item }: { item: MercariaLocationProduct }) {
   const theme = useTheme();
+  const { t } = useTranslation();
   const [broken, setBroken] = useState(false);
-  const stock = presentStock(item);
+  const stock = presentStock(item, t);
   const image = broken ? null : item.product.primaryImage;
 
   return (
     <Pressable
       onPress={() => openOnMercaria(item.product.url)}
       accessibilityRole="link"
-      accessibilityLabel={`${spokenProduct(item)}. Opens on Mercaria.`}
+      accessibilityLabel={t('products.tile.label', { product: spokenProduct(item, t) })}
       className="gap-space-4"
       style={{ width: TILE }}
     >
@@ -106,8 +112,9 @@ function ProductTile({ item }: { item: MercariaLocationProduct }) {
 }
 
 function StripSkeleton() {
+  const { t } = useTranslation();
   return (
-    <View accessibilityLabel="Loading products">
+    <View accessibilityLabel={t('products.loading')}>
       <Skeleton.Row style={{ gap: 8 }}>
         {[0, 1, 2].map((index) => (
           <Skeleton.Col key={index} style={{ gap: 6 }}>
@@ -123,11 +130,12 @@ function StripSkeleton() {
 
 /** Mercaria could not answer right now. Quiet, because the rest of the place is unaffected. */
 function QuietRetry({ onRetry, retrying }: { onRetry: () => void; retrying: boolean }) {
+  const { t } = useTranslation();
   return (
     <View className="flex-row items-center gap-space-8" accessibilityLiveRegion="polite">
-      <Text className="flex-1 text-bodySmall text-muted-foreground">Products from Mercaria couldn&apos;t load right now.</Text>
+      <Text className="flex-1 text-bodySmall text-muted-foreground">{t('products.retry.message')}</Text>
       <Button size="sm" tone="neutral" appearance="plain" onPress={onRetry} disabled={retrying}>
-        {retrying ? 'Trying…' : 'Try again'}
+        {retrying ? t('products.retry.trying') : t('products.retry.button')}
       </Button>
     </View>
   );
@@ -146,6 +154,7 @@ function StoreProducts({
   onRetry: (() => void) | null;
   retrying: boolean;
 }) {
+  const { t } = useTranslation();
   const { store } = location;
   const openStore = useCallback(() => openOnMercaria(location.url), [location.url]);
 
@@ -155,7 +164,7 @@ function StoreProducts({
         <Avatar source={store.logoUrl} name={store.name} size="sm" />
         <View className="flex-1">
           <Text className="text-bodySmall text-foreground">{store.name}</Text>
-          <Text className="text-caption text-muted-foreground">On Mercaria</Text>
+          <Text className="text-caption text-muted-foreground">{t('products.store.onMercaria')}</Text>
         </View>
       </View>
 
@@ -169,7 +178,7 @@ function StoreProducts({
         </ScrollView>
       ) : null}
       {items && items.length === 0 ? (
-        <Text className="text-bodySmall text-muted-foreground">Nothing confirmed in stock here right now.</Text>
+        <Text className="text-bodySmall text-muted-foreground">{t('products.store.empty')}</Text>
       ) : null}
 
       <View className="flex-row">
@@ -178,11 +187,11 @@ function StoreProducts({
           leadingIcon={RiStore2Line}
           onPress={openStore}
           accessibilityRole="link"
-          accessibilityLabel={`See all at ${store.name}, on Mercaria`}
+          accessibilityLabel={t('products.store.seeAllLabel', { store: store.name })}
           tone="neutral"
           appearance="outline"
         >
-          {`See all at ${store.name}`}
+          {t('products.store.seeAll', { store: store.name })}
         </Button>
       </View>
     </View>
@@ -190,6 +199,7 @@ function StoreProducts({
 }
 
 export function PlaceProducts({ place }: PlaceProductsProps) {
+  const { t } = useTranslation();
   const locations = usePlaceMercariaLocations(place);
   const found = locations.data?.items ?? [];
   const shelves = useMercariaLocationProducts(found);
@@ -209,7 +219,7 @@ export function PlaceProducts({ place }: PlaceProductsProps) {
     .filter((store) => store.state !== 'hidden');
   if (state === 'ready' && stores.length === 0) return null;
 
-  const heading = stores.length > 1 ? 'Products at stores here' : 'Products at this store';
+  const heading = t(stores.length > 1 ? 'products.heading.other' : 'products.heading.one');
 
   return (
     <View className="gap-space-12" accessibilityLabel={heading}>

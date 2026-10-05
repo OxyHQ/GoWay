@@ -1,6 +1,7 @@
-import { normalizeLanguageTag } from '@goway.to/sdk';
+import { matchLanguageTag, normalizeLanguageTag } from '@goway.to/sdk';
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
+import { PRODUCTS_EN, PRODUCTS_ES } from './messages/products';
 import { STREET3D_EN, STREET3D_ES } from './messages/street3d';
 
 // Minimal, dependency-free i18n. Synchronous by design — no suspense — so it is
@@ -20,6 +21,7 @@ const en: Messages = {
   'map.locationDenied': 'Location is off for GoWay. You can still search and browse the map.',
   'map.resetNorth': 'Reset to north',
   ...STREET3D_EN,
+  ...PRODUCTS_EN,
 };
 
 const es: Messages = {
@@ -30,6 +32,7 @@ const es: Messages = {
   'map.locationDenied': 'La ubicación está desactivada para GoWay. Puedes seguir buscando y explorando el mapa.',
   'map.resetNorth': 'Orientar al norte',
   ...STREET3D_ES,
+  ...PRODUCTS_ES,
 };
 
 const locales: Record<string, Messages> = { en, es };
@@ -86,8 +89,9 @@ const I18nContext = createContext<I18nValue | null>(null);
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const value = useMemo<I18nValue>(() => {
     const full = deviceLocale();
-    const base = full.split('-')[0];
-    const messages = locales[base] ?? en;
+    // The table is chosen the way a label is (`matchLanguageTag`, whole tag),
+    // so `es-MX` reads `es` and the chrome never disagrees with the labels.
+    const messages = locales[matchLanguageTag(Object.keys(locales), full) ?? 'en'] ?? en;
     // A key missing from a translation falls back to English, never to the
     // raw key: a half-translated locale reads as English, not as `map.title`.
     return { locale: full, t: (key, values) => formatMessage(messages[key] ?? en[key] ?? key, values) };

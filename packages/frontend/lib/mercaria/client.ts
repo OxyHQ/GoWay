@@ -29,12 +29,17 @@ import { createMercariaClient, type MercariaClient } from '@mercaria.co/sdk';
 
 import { MERCARIA_API_URL } from '@/lib/config';
 import { USING_FIXTURES } from '@/lib/goway/client';
+import { deviceLocale } from '@/lib/i18n';
 import { parseFixtureFaults } from '@/lib/goway/mockTransport';
 
 import { createMercariaFixtureFetch } from './mockTransport';
 
 export const mercariaClient: MercariaClient = createMercariaClient({
   apiBaseUrl: MERCARIA_API_URL,
+  // The reader's whole tag, as GoWay's own client sends it: Mercaria matches it
+  // against the languages a listing is written in, so titles read like the
+  // chrome around them.
+  locale: deviceLocale(),
   ...(USING_FIXTURES
     ? { fetch: createMercariaFixtureFetch(parseFixtureFaults(process.env.EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS).mercaria) }
     : {}),

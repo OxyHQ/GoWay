@@ -7,7 +7,23 @@
 import { placeHasCapability, type Place } from '@goway.to/sdk';
 import type { MercariaLocationAvailability, MercariaLocationProduct, MercariaMoney } from '@mercaria.co/sdk';
 
-import { deviceLocale } from '@/lib/i18n';
+import { deviceLocale, type MessageValues } from '@/lib/i18n';
+
+/**
+ * The app's message lookup — `useTranslation().t` in a component. Taken as an
+ * argument so these stay pure: the words are `lib/messages/products.ts`'s, in
+ * the reader's language, and the rules are tested here without a renderer.
+ */
+export type Translate = (key: string, values?: MessageValues) => string;
+
+/**
+ * The `.one` or `.other` form of a counted message. Enough for every locale
+ * the app's message tables carry (`en`, `es`); a language with more plural
+ * forms adds them here first.
+ */
+export function pluralKey(base: string, count: number): string {
+  return `${base}.${count === 1 ? 'one' : 'other'}`;
+}
 
 /** The capability a place asserts when a Mercaria location trades from it. Its value is the location id. */
 export const MERCARIA_STORE_CAPABILITY = 'commerce.mercaria.store';
@@ -27,11 +43,11 @@ export function placeOffersMercariaStore(place: Pick<Place, 'capabilities'>): bo
   return placeHasCapability(place, MERCARIA_STORE_CAPABILITY);
 }
 
-/** The word for each availability. Never only a colour: the badge carries this text. */
-export const AVAILABILITY_LABELS: Readonly<Record<MercariaLocationAvailability, string>> = {
-  in_stock: 'In stock',
-  low_stock: 'Low stock',
-  out_of_stock: 'Out of stock',
+/** The message for each availability. Never only a colour: the badge carries these words. */
+export const AVAILABILITY_MESSAGES: Readonly<Record<MercariaLocationAvailability, string>> = {
+  in_stock: 'products.availability.in_stock',
+  low_stock: 'products.availability.low_stock',
+  out_of_stock: 'products.availability.out_of_stock',
 };
 
 /** How loudly each availability is badged — redundant emphasis over the words above. */
@@ -52,19 +68,16 @@ const DAY_MS = 24 * HOUR_MS;
  * worth something inside the shop's own confirmation interval, and "today"
  * would hide the difference between this morning and a minute ago.
  */
-export function stockConfirmedAge(confirmedAt: string, now: number = Date.now()): string {
+export function stockConfirmedAge(confirmedAt: string, t: Translate, now: number = Date.now()): string {
   const elapsed = Math.max(0, now - Date.parse(confirmedAt));
-  if (elapsed < MINUTE_MS) return 'Stock confirmed just now';
-  if (elapsed < HOUR_MS) {
-    const minutes = Math.floor(elapsed / MINUTE_MS);
-    return `Stock confirmed ${minutes} minute${minutes === 1 ? '' : 's'} ago`;
-  }
-  if (elapsed < DAY_MS) {
-    const hours = Math.floor(elapsed / HOUR_MS);
-    return `Stock confirmed ${hours} hour${hours === 1 ? '' : 's'} ago`;
-  }
-  const days = Math.floor(elapsed / DAY_MS);
-  return `Stock confirmed ${days} day${days === 1 ? '' : 's'} ago`;
+  if (elapsed < MINUTE_MS) return t('products.confirmed.now');
+  const [unit, count] =
+    elapsed < HOUR_MS
+      ? (['minutes', Math.floor(elapsed / MINUTE_MS)] as const)
+      : elapsed < DAY_MS
+        ? (['hours', Math.floor(elapsed / HOUR_MS)] as const)
+        : (['days', Math.floor(elapsed / DAY_MS)] as const);
+  return t(pluralKey(`products.confirmed.${unit}`, count), { count });
 }
 
 export interface StockPresentation {
@@ -85,12 +98,17 @@ export interface StockPresentation {
  * stale count already reads `out_of_stock` with no number — Mercaria decides
  * that, and this never second-guesses it.
  */
-export function presentStock(item: Pick<MercariaLocationProduct, 'availability' | 'exactQuantity' | 'stockConfirmedAt'>, now: number = Date.now()): StockPresentation {
+export function presentStock(
+  item: Pick<MercariaLocationProduct, 'availability' | 'exactQuantity' | 'stockConfirmedAt'>,
+  t: Translate,
+  now: number = Date.now(),
+): StockPresentation {
+  const disclosed = item.exactQuantity !== undefined && item.availability !== 'out_of_stock' ? item.exactQuantity : null;
   return {
-    label: AVAILABILITY_LABELS[item.availability],
+    label: t(AVAILABILITY_MESSAGES[item.availability]),
     tone: AVAILABILITY_TONES[item.availability],
-    quantity: item.exactQuantity !== undefined && item.availability !== 'out_of_stock' ? `${item.exactQuantity} left` : null,
-    confirmed: stockConfirmedAge(item.stockConfirmedAt, now),
+    quantity: disclosed === null ? null : t(pluralKey('products.quantity', disclosed), { count: disclosed }),
+    confirmed: stockConfirmedAge(item.stockConfirmedAt, t, now),
   };
 }
 
@@ -114,8 +132,13 @@ export function formatMercariaPrice(money: MercariaMoney, locale: string = devic
 }
 
 /** One product tile, as one spoken sentence. */
-export function spokenProduct(item: MercariaLocationProduct, now: number = Date.now(), locale: string = deviceLocale()): string {
-  const stock = presentStock(item, now);
+export function spokenProduct(
+  item: MercariaLocationProduct,
+  t: Translate,
+  now: number = Date.now(),
+  locale: string = deviceLocale(),
+): string {
+  const stock = presentStock(item, t, now);
   return [item.product.title, formatMercariaPrice(item.product.price, locale), stock.label, stock.quantity, stock.confirmed]
     .filter(Boolean)
     .join(', ');

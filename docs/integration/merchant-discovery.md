@@ -917,6 +917,11 @@ for (const location of items) {
   words — in stock, low stock, out of stock — with `exactQuantity` only where
   the merchant discloses it, and "stock confirmed … ago" from
   `stockConfirmedAt`. Each tile, and "See all at <store>", opens mercaria.co.
+- **Words.** Every string the section shows is a message in
+  `packages/frontend/lib/messages/products.ts` (`en`, `es`), read through
+  `useTranslation`, whose table is picked by `matchLanguageTag` on the whole
+  locale. Store names and product titles are Mercaria's, asked for in the
+  reader's locale (the client's `locale` is `deviceLocale()`).
 - **Errors.** An empty page, `MercariaGoneError` and `MercariaNotFoundError`
   hide the store; `MercariaUnavailableError` — usually Mercaria unable to ask
   GoWay — and an offline read show a quiet "Try again" instead, because they
