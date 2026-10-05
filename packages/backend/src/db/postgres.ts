@@ -16,7 +16,12 @@
  */
 
 import { createDatabase, type OxyDatabase } from '@oxy.so/db';
-import { assertPostgresMigrationsCurrent, readJournal } from '@oxy.so/db/migrate';
+import {
+  assertPostgresMigrationsCurrent,
+  MigrationsNotCurrentError,
+  readJournal,
+  readMigrationPhases,
+} from '@oxy.so/db/migrate';
 import type postgres from 'postgres';
 import { config } from '../config';
 import { logger } from '../utils/logger';
@@ -28,6 +33,12 @@ const CLOSE_TIMEOUT_SECONDS = 5;
 
 /** The migration journal this build ships. See {@link assertMigrationsCurrent}. */
 const JOURNAL = readJournal(MIGRATIONS_FOLDER);
+
+/** Each shipped migration's deploy phase, read once beside the journal. */
+const PHASES = readMigrationPhases(
+  JOURNAL.map((entry) => entry.tag),
+  MIGRATIONS_FOLDER,
+).phases;
 
 export type Database = OxyDatabase<typeof schema>;
 
@@ -184,9 +195,15 @@ export async function checkPostgresHealth(): Promise<boolean> {
  * re-reading it per probe would only add a way for readiness to fail on an
  * unrelated filesystem hiccup.
  *
+ * Pending `post` migrations are NOT a failure. The deploy applies them only once
+ * this image is serving (pre phase → rollout → post phase), so an image must
+ * work before its post migrations run — that is what makes them `post`.
+ * Refusing readiness over them would fail every rollout that ships one, since
+ * the post phase waits for the very rollout the probe is blocking.
+ *
  * @throws {Error} `MigrationsNotCurrentError` when the database is behind this
- *   build (its message names the missing tags), or a driver error when the
- *   ledger cannot be read at all.
+ *   build on a `pre` migration (its message names the missing tags), or a
+ *   driver error when the ledger cannot be read at all.
  */
 export async function assertMigrationsCurrent(): Promise<void> {
   const instanceClient = client;
@@ -196,7 +213,17 @@ export async function assertMigrationsCurrent(): Promise<void> {
         'before asserting the migration ledger.',
     );
   }
-  await assertPostgresMigrationsCurrent(instanceClient, JOURNAL);
+  try {
+    await assertPostgresMigrationsCurrent(instanceClient, JOURNAL);
+  } catch (error) {
+    if (error instanceof MigrationsNotCurrentError && onlyPostPhasePending(error.pending)) return;
+    throw error;
+  }
+}
+
+/** Whether every pending migration is one the post phase applies after rollout. */
+export function onlyPostPhasePending(pending: readonly { tag: string }[], phases = PHASES): boolean {
+  return pending.every((entry) => phases.get(entry.tag) === 'post');
 }
 
 /**
