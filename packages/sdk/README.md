@@ -296,8 +296,9 @@ and group them with `capabilityGroupOf(key)`. Every capability label is written
 in all twelve `LABEL_LANGUAGES` (`en`, `ar`, `bn`, `ca`, `de`, `es`, `fr`, `hi`,
 `ja`, `pt-BR`, `ru`, `zh-Hans`). Pass the reader's whole locale — `zh-Hans-CN`,
 `pt-PT`, `es-MX` — not its language: `matchLanguageTag` picks the best language
-by BCP 47 rules (exact tag; same language and script, own region first; English
-otherwise), and `zh-TW` reads English rather than Simplified Chinese.
+by BCP 47 rules (exact tag; same language and script, own region first; then
+the same language in another script; English otherwise), so `zh-TW` reads
+Simplified Chinese until a `zh-Hant` label exists.
 
 Each result carries its distance and the **evidence** behind every claim:
 

@@ -45,9 +45,10 @@ taxonomy.
 - **`localizedLabel` matches the whole locale.** Pass the reader's full tag,
   such as `zh-Hans-CN`, `pt-PT` or `es-MX`. The match order is: the exact tag,
   then the same language in a compatible script (the reader's region first,
-  then no region, then another region), then English. `pt` and `pt-PT` read
-  `pt-BR`. `zh`, `zh-CN` and `zh-SG` read `zh-Hans`. `zh-TW`, `zh-HK` and
-  `zh-Hant` read English, never Simplified Chinese.
+  then no region, then another region), then the same language in another
+  script, then English. `pt` and `pt-PT` read `pt-BR`. `zh`, `zh-CN` and
+  `zh-SG` read `zh-Hans`. `zh-TW`, `zh-HK` and `zh-Hant` read `zh-Hans` until a
+  `zh-Hant` label is offered, which then wins for them.
 
 ### Added
 
