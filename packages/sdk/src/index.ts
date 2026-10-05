@@ -170,6 +170,7 @@ export {
   // Labels
   LABEL_LANGUAGES,
   localizedLabel,
+  matchLanguageTag,
   // Captures
   CAPTURE_ASSET_STATES,
   CAPTURE_CONTENT_HASH_ALGORITHM,
