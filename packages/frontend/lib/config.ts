@@ -1,5 +1,6 @@
 /** Runtime configuration, read from `EXPO_PUBLIC_*` env vars (see `.env.example`). */
 import { DEFAULT_GOWAY_WEB_BASE_URL } from '@goway.to/sdk';
+import { DEFAULT_MERCARIA_API_BASE_URL } from '@mercaria.co/sdk';
 
 /** Backend API base URL. */
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://api.goway.to';
@@ -33,6 +34,14 @@ function origin(value: string | undefined): string | null {
  * setting `EXPO_PUBLIC_WEB_ORIGIN`, never by editing product code.
  */
 export const WEB_ORIGIN = origin(process.env.EXPO_PUBLIC_WEB_ORIGIN) ?? DEFAULT_GOWAY_WEB_BASE_URL;
+
+/**
+ * Mercaria's public API — where "Products at this store" on a place is read
+ * from (`lib/mercaria/client.ts`). Defaults to the origin `@mercaria.co/sdk`
+ * itself names; a build that talks to another Mercaria sets
+ * `EXPO_PUBLIC_MERCARIA_API_URL`, never product code.
+ */
+export const MERCARIA_API_URL = origin(process.env.EXPO_PUBLIC_MERCARIA_API_URL) ?? DEFAULT_MERCARIA_API_BASE_URL;
 
 /**
  * Whether Street 3D VIEWING is on: the coverage layer on the map and the

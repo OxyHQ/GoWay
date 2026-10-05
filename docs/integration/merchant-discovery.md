@@ -50,6 +50,7 @@ documentation, so, as of this writing (API paths below are relative to
 | `GET /places/{placeId}/revisions`, `POST /places/{placeId}/reports` | Built. The public history says what changed and when, never who; reports go to the moderation queue. |
 | Search, geocoding, directions | Built. |
 | A deployed public API at `https://api.goway.to` | Deployed; `goway.to` itself runs against it. What is and is not populated yet is in the [README](../../README.md#deploying-the-web-app). |
+| "Products at this store" on goway.to | Built (`packages/frontend/features/explore/PlaceProducts.tsx`), reading Mercaria through `@mercaria.co/sdk` `0.2.0`. See [GoWay renders the shelf](#goway-renders-the-shelf). |
 | Map rendering primitives inside the SDK | **Not yet.** The SDK is headless; the map seam lives in `packages/frontend/components/map`. See [Render the merchants](#render-the-merchants). |
 
 ## Install
@@ -887,6 +888,52 @@ place whose business names another:
 ```ts
 const { items } = await goway.places.inBounds({ ...box, capabilities: [`commerce.mercaria.store:${locationId}`] });
 ```
+
+### GoWay renders the shelf
+
+The link is also read the other way: GoWay's own place sheet shows what a
+Mercaria shop trading from the place has in stock, through Mercaria's public
+SDK, exactly as any other consumer of Mercaria would. GoWay stores none of it.
+
+```ts
+// packages/frontend/lib/mercaria — GoWay's adapter; feature code never imports @mercaria.co/sdk
+const { items } = await mercaria.locations.list({ goWayPlaceId: place.id });
+for (const location of items) {
+  const page = await mercaria.locations.products(location.ref, { inStock: true, limit: 12 });
+  // location.store.name / .logoUrl, location.url (the store page on mercaria.co, opened on this shop front)
+  // page.items[i]: { product, availability, exactQuantity?, stockConfirmedAt }
+}
+```
+
+- **The capability asks; Mercaria answers.** The sheet asks Mercaria only when
+  the place carries `commerce.mercaria.store`, and renders only what Mercaria
+  returns. Mercaria applies the [trust tiers](#the-trust-tiers) on every read,
+  so a community report draws nothing, and GoWay does not restate the rule.
+- **A list, not a location.** Mercaria's place list is a page; a market or a
+  mall can hold several shop fronts, and each renders as its own store with its
+  own strip, dropping out alone if its read fails. The sheet reads one page
+  at Mercaria's largest size (50). A failed refresh of the list shows the retry
+  and no stores: a link Mercaria is not confirming right now is not drawn.
+- **What a tile says.** Image, title and the price in the listing's own
+  currency (FAIR at its eight decimals), the availability AT THIS LOCATION as
+  words — in stock, low stock, out of stock — with `exactQuantity` only where
+  the merchant discloses it, and "stock confirmed … ago" from
+  `stockConfirmedAt`, re-counted every minute while the sheet is open. Each tile, and "See all at <store>", opens mercaria.co.
+- **Words.** Every string the section shows is a message in
+  `packages/frontend/lib/messages/products.ts` (`en`, `es`), read through
+  `useTranslation`, whose table is picked by `matchLanguageTag` on the whole
+  locale. Store names and product titles are Mercaria's, asked for in the
+  reader's locale (the client's `locale` is `deviceLocale()`).
+- **Errors.** An empty page, `MercariaGoneError` and `MercariaNotFoundError`
+  hide the store; `MercariaUnavailableError` — usually Mercaria unable to ask
+  GoWay — and an offline read show a quiet "Try again" instead, because they
+  say nothing about the store.
+- **Anonymous.** Every read works signed out, and the sheet sends no Oxy token
+  to Mercaria.
+- **Configuration.** `EXPO_PUBLIC_MERCARIA_API_URL`, defaulting to the SDK's
+  own `https://api.mercaria.co`. Under `EXPO_PUBLIC_GOWAY_FIXTURES` the client
+  is served by `lib/mercaria/mockTransport.ts` through the real SDK, and
+  `EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS=mercaria` exercises the retry.
 
 ### Editing the place, and clearing a field
 

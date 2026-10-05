@@ -14,9 +14,10 @@
  * reviews, directions — works signed out.
  *
  * Below the facts come what people made of the place: its photos (Oxy files,
- * drawn from Oxy's CDN), its description, the products slot a later phase
- * fills from Mercaria, and its reviews with the business's replies — each a
- * section that is absent when there is nothing in it.
+ * drawn from Oxy's CDN), its description, the products a Mercaria store
+ * trading from it has in stock (read from Mercaria, stored nowhere here), and
+ * its reviews with the business's replies — each a section that is absent when
+ * there is nothing in it.
  */
 import { useCallback, useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
