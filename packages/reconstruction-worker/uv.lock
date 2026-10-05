@@ -193,6 +193,11 @@ wheels = [
 ]
 
 [[package]]
+name = "fused-ssim"
+version = "0.0.0"
+source = { git = "https://github.com/rahul-goel/fused-ssim?rev=328dc9836f513d00c4b5bc38fe30478b4435cbb5#328dc9836f513d00c4b5bc38fe30478b4435cbb5" }
+
+[[package]]
 name = "goway-reconstruction-worker"
 version = "0.1.0"
 source = { editable = "." }
@@ -220,6 +225,11 @@ dependencies = [
     { name = "transformers" },
 ]
 
+[package.optional-dependencies]
+gpu = [
+    { name = "fused-ssim" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
@@ -229,6 +239,7 @@ dev = [
 requires-dist = [
     { name = "av", specifier = ">=15,<20" },
     { name = "boto3", specifier = ">=1.40,<2" },
+    { name = "fused-ssim", marker = "extra == 'gpu'", git = "https://github.com/rahul-goel/fused-ssim?rev=328dc9836f513d00c4b5bc38fe30478b4435cbb5" },
     { name = "gsplat", specifier = "==1.5.3" },
     { name = "jaxtyping", specifier = ">=0.3" },
     { name = "ninja", specifier = "==1.13.*" },
@@ -249,6 +260,7 @@ requires-dist = [
     { name = "torchvision", specifier = "==0.29.1", index = "https://download.pytorch.org/whl/cu130" },
     { name = "transformers", specifier = ">=4.50,<6" },
 ]
+provides-extras = ["gpu"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]
