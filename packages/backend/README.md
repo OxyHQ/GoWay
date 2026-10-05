@@ -404,6 +404,7 @@ bun run test
 | `bun run db:generate` | diff `src/db/schema/` and WRITE a migration |
 | `bun run db:migrate --target-database=<name>` | APPLY migrations |
 | `bun run import:osm -- --target-database=<name>` | import OpenStreetMap POIs |
+| `bun run places:convert-legacy -- --target-database=<name>` | convert legacy categories and source statements in batches, ahead of `0011` (`docs/PLACE_DATA_CONVERSION.md`) |
 
 `typecheck` runs two programs on purpose. `tsconfig.json` is the emitting build
 and excludes `drizzle.config.ts` (it imports the `drizzle-kit` devDependency the

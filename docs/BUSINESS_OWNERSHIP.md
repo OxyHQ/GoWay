@@ -29,7 +29,7 @@ and read the place's claims. **Filing** a new claim in an organization's name is
 or `admin` — because it is a statement about who the business is.
 
 A chain is an organization claiming each of its locations in the `brand` role.
-`places_claims.brand_id` was dropped (post-phase migration `0011`).
+`places_claims.brand_id` was dropped (post-phase migration `0012`).
 
 A business finds its own claim on one place with `GET /claims?placeId=` (and
 `oxyAccountId=` for the organization): the account's list, narrowed, so it

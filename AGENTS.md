@@ -20,6 +20,7 @@ Always **bun**; commit `bun.lock` with its `package.json`.
 - Declare columns camelCase; `DATABASE_CASING` names them in SQL. Never spell snake_case by hand or use `column.name`: use `sqlColumnName()` from `@oxy.so/db`.
 - `oxyUserId` carries no foreign key and there is no `users` table; Oxy owns identity.
 - Extensions go in `REQUIRED_EXTENSIONS` in `src/db/migrate.ts`, not in a migration — **PostGIS included**.
+- A phase is ONE transaction: never rewrite a big table in a migration (batch it first with an operator command that reads the migration's own SQL, like `places:convert-legacy`), put lock-taking DDL last, and add a CHECK to a big table `NOT VALID`.
 
 ## Packages
 

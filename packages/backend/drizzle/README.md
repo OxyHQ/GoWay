@@ -161,32 +161,65 @@ and the claim re-tier ship in one release only because every additive half
 comes first. `0009` and `0010` were each generated before the three `post`
 migrations were regenerated on top of them, with their SQL unchanged.
 
-## `0011_goway_drop_claim_brand`
+## The `post` phase is one transaction, so its order is its lock time
 
-Drops `places_claims.brand_id` and its index: a chain is an Oxy organization
-claiming each location in the `brand` role, so nothing else groups them.
-`post` — the previous image still reads and writes the column.
+The migrator applies every pending migration of a phase inside ONE
+transaction, and a lock any statement takes is held until that transaction
+commits. So the three `post` migrations run slow-and-unlocking first,
+fast-and-locking last: `0011` converts data (row locks on the rows it changes,
+nothing else), then `0012` and `0013` take ACCESS EXCLUSIVE locks for
+milliseconds each. The order was regenerated with drizzle-kit for exactly this
+(custom migration first, then the two schema diffs), and every `when` stays
+newer than `0010`'s.
 
-## `0012_goway_place_data_conversion`
+## `0011_goway_place_data_conversion`
 
 The one CUSTOM migration (`drizzle-kit generate --custom`): data the previous
 image wrote, converted in place. `post`, because each step narrows what that
 image wrote, and it must run before `0013` adds the CHECK it makes true.
 
 - `places.categories` and the importer's recorded `categories` are rewritten
-  as taxonomy keys by ONE function, so a column that equalled what
-  OpenStreetMap last said still equals it and the next import refreshes it.
-  The function lives in `pg_temp` and dies with the session.
+  as taxonomy keys by ONE function over ONE mapping table, so a column that
+  equalled what OpenStreetMap last said still equals it and the next import
+  refreshes it. Both live in `pg_temp` and die with the session.
 - A version-1 `places_sources.source_data` becomes `{v: 2, tags: {}, normalized}`.
 - A well-formed `opening_hours.timezone` seeds `places.timezone` and leaves the
   schedule.
 
-Every statement is a no-op on data it already converted;
-`placeDataConversion.realdb.test.ts` re-runs them to prove it. It is a data
+Production holds ~13M places and ~13M source rows, so this migration is NOT
+where they are converted: `bun run places:convert-legacy` runs these same
+statements in id-ordered batches before the release is merged
+(`docs/PLACE_DATA_CONVERSION.md`), and here every UPDATE then matches only the
+stragglers written since. The command reads this file rather than restating it,
+which is why the file carries rules of its own (idempotent UPDATEs, one
+line-initial `WHERE` each). `src/places/__tests__/legacyConversion.realdb.test.ts`
+proves the converter followed by this migration equals this migration alone,
+row for row, and that this migration then rewrites no row. It is a data
 migration, not an API write, so it records no `place_revisions` rows.
+
+## `0012_goway_drop_claim_brand`
+
+Drops `places_claims.brand_id` and its index: a chain is an Oxy organization
+claiming each location in the `brand` role, so nothing else groups them.
+`post` — the previous image still reads and writes the column. After `0011`,
+so its ACCESS EXCLUSIVE lock on `places_claims` is not held through the
+conversion's scans.
 
 ## `0013_goway_category_taxonomy`
 
 `places_categories_taxonomy_check`: every `places.categories` member is a key of
-the contract's taxonomy. `post`, after `0012`, because it narrows the column.
+the contract's taxonomy. `post`, after `0011`, because it narrows the column.
 Adding a category to the contract regenerates this CHECK in a new migration.
+
+The generated statement carries one hand-added clause, `NOT VALID`, as the
+phase marker is hand-added. ADD CONSTRAINT takes ACCESS EXCLUSIVE on `places`
+either way; with `NOT VALID` it skips the scan of every existing row, so the
+lock lasts milliseconds instead of a full read of a 13M-row table during which
+no request can read a place. New and updated rows are checked at once. The
+existing rows are validated afterwards by
+`bun run places:convert-legacy -- --target-database=<name> --validate-constraint`,
+which runs `VALIDATE CONSTRAINT` under SHARE UPDATE EXCLUSIVE (reads and writes
+continue). `NOT VALID` followed by `VALIDATE` inside this migration would buy
+nothing: the phase's one transaction would hold the ACCESS EXCLUSIVE lock
+through the validating scan anyway. drizzle-kit does not model validity, so a
+later `db:generate` neither notices nor reverts the clause.
