@@ -3,6 +3,9 @@ import { bytesToHex } from '@noble/hashes/utils';
 import type { ImagePickerAsset } from 'expo-image-picker';
 import type { CaptureAssetInput, CaptureUploadPolicy } from '@goway.to/sdk';
 
+/** A media problem to show the contributor; `message` is its message key. */
+export class MediaError extends Error {}
+
 export interface SelectedMedia {
   asset: ImagePickerAsset;
   byteSize: number;
@@ -25,9 +28,9 @@ export function describeMedia(asset: ImagePickerAsset, size: number, policy: Cap
   const extension = (asset.fileName ?? asset.uri).split(/[?#]/)[0]?.split('.').pop()?.toLowerCase();
   const types: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', heif: 'image/heif', mp4: 'video/mp4', mov: 'video/quicktime' };
   const contentType = asset.mimeType || types[extension ?? ''];
-  if (!contentType || !policy[kind].contentTypes.includes(contentType)) throw new Error('This media format is not supported.');
-  if (!Number.isSafeInteger(size) || size < 1 || size > policy[kind].maxByteSize) throw new Error('This file exceeds the current upload size limit.');
-  if (kind === 'video' && asset.duration && asset.duration / 1000 > policy.video.maxDurationSeconds) throw new Error('This video exceeds the current duration limit.');
+  if (!contentType || !policy[kind].contentTypes.includes(contentType)) throw new MediaError('contribute.error.format');
+  if (!Number.isSafeInteger(size) || size < 1 || size > policy[kind].maxByteSize) throw new MediaError('contribute.error.size');
+  if (kind === 'video' && asset.duration && asset.duration / 1000 > policy.video.maxDurationSeconds) throw new MediaError('contribute.error.duration');
   return { asset, byteSize: size, contentType, kind };
 }
 
