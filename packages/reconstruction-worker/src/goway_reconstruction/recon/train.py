@@ -50,11 +50,19 @@ SH_C0 = 0.28209479177387814
 CHECKPOINT_EVERY = 5000
 HOLDOUT_EVERY = 8
 MIN_VISIBLE_VIEWS = 2
+# Floater cleanup at export (no generated content, only removal):
+IMPORTANCE_KEEP = 0.995  # keep the Gaussians carrying 99.5% of all rendered contribution
+OUTLIER_K, OUTLIER_STD = 16, 3.0  # statistical outlier removal on Gaussian centres
 DEPTH_WEIGHT_START, DEPTH_WEIGHT_END = 0.1, 0.01
 SSIM_LAMBDA = 0.2
 OPACITY_REG = SCALE_REG = 0.01
 POSE_LR, POSE_REG = 1e-5, 1e-6
 BILAGRID_LR, BILAGRID_TV = 2e-3, 10.0
+# Optional regularisers against off-path shards (DropGaussian, anisotropy).
+# Off by default: on a dense-foliage street capture they made the scene hazier
+# without removing the shards, which there come from missing viewpoints.
+DROP_RATE = 0.0
+MAX_ANISOTROPY, ANISOTROPY_WEIGHT = 10.0, 0.1
 SKY_POINTS = 60_000
 
 try:  # MIT, ~5x faster; optional so the worker still trains without the extension
@@ -224,9 +232,13 @@ class Trainer:
         pose_opt: bool = True,
         bilateral_grid: bool = True,
         sky: bool = True,
+        drop_rate: float = DROP_RATE,
+        anisotropy: bool = False,
         seed: int = 0,
     ) -> None:
         torch.manual_seed(seed)
+        self.drop_rate = drop_rate
+        self.anisotropy = anisotropy
         self.device = device
         self.iterations = iterations
         self.max_gaussians = max_gaussians
@@ -373,13 +385,20 @@ class Trainer:
 
     # ── rendering ──────────────────────────────────────────────────────────
 
-    def render(self, view_K: torch.Tensor, viewmat: torch.Tensor, w: int, h: int, sh_degree: int, mode: str = "RGB"):
+    def render(self, view_K: torch.Tensor, viewmat: torch.Tensor, w: int, h: int, sh_degree: int, mode: str = "RGB", drop: float = 0.0):
         s = self.splats
+        opacities = torch.sigmoid(s["opacities"])
+        if drop > 0:
+            # DropGaussian (structural regularisation for sparse views): no single
+            # Gaussian may be needed to explain a frame on its own.
+            keep = (torch.rand_like(opacities) > drop).float()
+            opacities = opacities * keep / (1.0 - drop)
+            opacities = opacities.clamp(max=0.999)
         return rasterization(
             means=s["means"],
             quats=s["quats"],
             scales=torch.exp(s["scales"]),
-            opacities=torch.sigmoid(s["opacities"]),
+            opacities=opacities,
             colors=torch.cat([s["sh0"], s["shN"]], 1),
             viewmats=viewmat[None],
             Ks=view_K[None],
@@ -412,7 +431,7 @@ class Trainer:
             degree = min(self.step // 1000, self.sh_degree)
             viewmat = self.pose(view.viewmat, index) if self.pose is not None else view.viewmat
             with_depth = self.disparity is not None and self.disparity[index] is not None
-            renders, _alphas, info = self.render(view.K, viewmat, w, h, degree, "RGB+ED" if with_depth else "RGB")
+            renders, _alphas, info = self.render(view.K, viewmat, w, h, degree, "RGB+ED" if with_depth else "RGB", drop=self.drop_rate)
             pred = self._compensate(renders[0][..., :3], index).clamp(0, 1)
             gt = view.image.float() / 255.0
             m = view.mask[..., None].float()
@@ -423,6 +442,10 @@ class Trainer:
                 loss = loss + OPACITY_REG * torch.sigmoid(self.splats["opacities"]).mean() + SCALE_REG * torch.exp(self.splats["scales"]).mean()
             if self.bilagrid is not None:
                 loss = loss + BILAGRID_TV * total_variation_loss(self.bilagrid.grids)
+            if self.anisotropy:
+                sc = torch.exp(self.splats["scales"])
+                ratio = sc.max(dim=1).values / sc.min(dim=1).values.clamp(min=1e-8)
+                loss = loss + ANISOTROPY_WEIGHT * torch.relu(ratio - MAX_ANISOTROPY).mean()
             if with_depth:
                 from .depth import pearson_depth_loss
 
@@ -483,6 +506,46 @@ class Trainer:
             counts += ((radii > 0).all(-1) if radii.dim() == 2 else radii > 0).int()
         return counts
 
+    def importance(self) -> torch.Tensor:
+        """How much each Gaussian contributes to the real frames (LightGaussian-style).
+
+        The gradient of the summed rendered colour with respect to each
+        Gaussian's (activated) opacity, times that opacity, accumulates its
+        blending contribution over every pixel of every real frame. Floaters —
+        semi-transparent fragments that barely affect any real view yet show up
+        as shards from new viewpoints — score near zero.
+        """
+        s = self.splats
+        total = torch.zeros(s["means"].shape[0], device=self.device)
+        opacity = torch.sigmoid(s["opacities"]).detach()
+        for view in self.train_views:
+            if view.weight < 1.0:
+                continue
+            h, w = view.image.shape[:2]
+            op = opacity.clone().requires_grad_(True)
+            rgb, _, _ = rasterization(
+                means=s["means"].detach(), quats=s["quats"].detach(), scales=torch.exp(s["scales"]).detach(), opacities=op,
+                colors=torch.cat([s["sh0"], s["shN"]], 1).detach(), viewmats=view.viewmat[None], Ks=view.K[None],
+                width=w, height=h, sh_degree=self.sh_degree, packed=False, rasterize_mode="antialiased",
+            )
+            (rgb * view.mask[None, ..., None]).sum().backward()
+            total += (op.grad * op).abs().detach()
+        return total
+
+    @torch.no_grad()
+    def outliers(self, keep: torch.Tensor) -> torch.Tensor:
+        """Isolated Gaussians: mean distance to K neighbours far above the typical spread."""
+        from scipy.spatial import cKDTree
+
+        idx = keep.nonzero().squeeze(1)
+        pts = self.splats["means"][idx].cpu().numpy()
+        d, _ = cKDTree(pts).query(pts, k=OUTLIER_K + 1, workers=-1)
+        d = d[:, 1:].mean(1)
+        bad = d > d.mean() + OUTLIER_STD * d.std()
+        out = torch.zeros_like(keep)
+        out[idx[torch.from_numpy(bad).to(self.device)]] = True
+        return out
+
     @torch.no_grad()
     def colour_calibration(self, samples_per_view: int = 4000) -> tuple[torch.Tensor, torch.Tensor]:
         """A global affine colour map (3x3, 3) from raw renders to the real frames.
@@ -521,6 +584,15 @@ class Trainer:
         centre = torch.tensor(self.scene_center, dtype=torch.float32, device=self.device)
         keep &= (s["means"] - centre).norm(dim=1) < max(300.0 / self.norm_scale, 6.0 * self.scene_scale, 1.2 * getattr(self, "sky_radius", 0.0))
         keep &= self.visible_views() >= MIN_VISIBLE_VIEWS
+        with torch.enable_grad():
+            score = self.importance()
+        order = torch.argsort(score, descending=True)
+        cumulative = torch.cumsum(score[order], 0)
+        cut = int(torch.searchsorted(cumulative, cumulative[-1] * IMPORTANCE_KEEP).item()) + 1
+        important = torch.zeros_like(keep)
+        important[order[:cut]] = True
+        keep &= important
+        keep &= ~self.outliers(keep)
         idx = keep.nonzero().squeeze(1)
         if idx.numel() > self.max_gaussians:
             idx = idx[torch.sigmoid(s["opacities"][idx]).argsort(descending=True)[: self.max_gaussians]]
