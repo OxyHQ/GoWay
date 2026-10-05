@@ -63,16 +63,20 @@ category.
 
 ### The conversion
 
-`0012_goway_place_data_conversion` (post) rewrites existing rows with one SQL
+`0011_goway_place_data_conversion` (post) rewrites existing rows with one SQL
 function applied to `places.categories` AND to the importer's recorded
 `categories`: OSM values, OpenMapTiles classes, the ten old groups and the
 app's free-text keys all map (and every taxonomy key maps to itself, so a re-run
 is a no-op); unmapped keys drop; ancestors of kept keys drop. Converting both
 sides with the same function keeps "the column still says what OSM said", so the
 next import refreshes the converted value with the real mapping.
-`0013_goway_category_taxonomy` (post) then adds the CHECK. (`0008` is the
-additive half and `0011` business moderation's `brand_id` drop: every `pre`
-migration precedes every `post` one, see `packages/backend/drizzle/README.md`.)
+`0013_goway_category_taxonomy` (post) then adds the CHECK, `NOT VALID`, and
+the operator validates it after the deploy. (`0008` is the additive half and
+`0012` business moderation's `brand_id` drop: every `pre` migration precedes
+every `post` one, see `packages/backend/drizzle/README.md`.) Production's ~13M
+rows are converted in batches BEFORE the release by
+`bun run places:convert-legacy`, from the same SQL; the runbook is
+[`PLACE_DATA_CONVERSION.md`](PLACE_DATA_CONVERSION.md).
 
 ## 2. The capability registry
 

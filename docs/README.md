@@ -25,6 +25,9 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
 - [`PLACE_DATA.md`](PLACE_DATA.md) — the category taxonomy, the typed
   capability registry, the derived timezone and dated hours exceptions, and
   how the OpenStreetMap import keeps what it reads.
+- [`PLACE_DATA_CONVERSION.md`](PLACE_DATA_CONVERSION.md) — the runbook for
+  converting production's legacy categories and source statements in batches
+  before the places-platform release, and what the previous image does meanwhile.
 - [`PLACE_NAMES.md`](PLACE_NAMES.md) — how a place is named in more than one
   language, why `places.name` stayed, and what that means for duplicate
   detection, search, the SDK contract and the OpenStreetMap re-import.
