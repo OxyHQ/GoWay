@@ -206,19 +206,23 @@ export interface ConversionSummary {
   readonly seconds: number;
 }
 
-export interface ConvertLegacyOptions {
-  readonly steps: readonly ConversionStepName[];
+/** How a batched run paces itself, resumes and reports. */
+export interface IdBatchOptions {
   /** Rows per batch, and so per transaction. */
   readonly batchSize: number;
   /** Resume after this id (exclusive). Only meaningful for a single step. */
   readonly from?: string | null;
   /** Sleep between batches, to leave CPU credits and autovacuum room. */
   readonly pauseMs?: number;
-  /** Count what would be converted; write nothing. */
-  readonly dryRun?: boolean;
   /** Attempts per batch on a lock or statement timeout. */
   readonly maxAttempts?: number;
   readonly onProgress?: (progress: ConversionProgress) => void;
+}
+
+export interface ConvertLegacyOptions extends IdBatchOptions {
+  readonly steps: readonly ConversionStepName[];
+  /** Count what would be converted; write nothing. */
+  readonly dryRun?: boolean;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -278,7 +282,17 @@ export async function prepareConversionSession(
   plan: LegacyConversionPlan,
   options: { dryRun?: boolean } = {},
 ): Promise<void> {
-  await session.unsafe(`SET application_name = 'goway-places-convert-legacy'`);
+  await prepareBatchSession(session, 'goway-places-convert-legacy', options);
+  for (const statement of plan.setup) await session.unsafe(statement);
+}
+
+/** The settings every batched operator command runs its one session with. */
+export async function prepareBatchSession(
+  session: postgres.Sql,
+  applicationName: string,
+  options: { dryRun?: boolean } = {},
+): Promise<void> {
+  await session.unsafe(`SET application_name = '${applicationName}'`);
   // A batch that waits on a row lock gives up and is retried, rather than
   // queueing the API behind it.
   await session.unsafe(`SET lock_timeout = '5s'`);
@@ -287,7 +301,6 @@ export async function prepareConversionSession(
   // redoes: every batch is idempotent. Not waiting on the WAL flush per batch is
   // a large share of the run time on gp3.
   if (!options.dryRun) await session.unsafe(`SET synchronous_commit = off`);
-  for (const statement of plan.setup) await session.unsafe(statement);
 }
 
 /** Run one step over its whole table, batch by batch. */
@@ -298,16 +311,43 @@ async function runStep(
   options: ConvertLegacyOptions,
 ): Promise<ConversionSummary> {
   const step = name === 'taxonomy-check' ? null : plan.steps[name];
-  const table = step?.table ?? 'places';
   const statement =
     step === null
       ? rangedCount('places', `NOT (${plan.taxonomyCheck})`)
       : options.dryRun
         ? rangedCount(step.table, step.predicate)
         : rangedUpdate(step);
+  return runIdBatches(
+    session,
+    { name, table: step?.table ?? 'places', statement, counts: step === null || options.dryRun === true },
+    options,
+  );
+}
+
+/**
+ * One statement over a whole table, in id-ordered batches, each its own
+ * transaction — the machinery of this command, shared with every other
+ * operator command that rewrites `places` (`categories:move`).
+ *
+ * `statement` reads its id range as `$1` (exclusive) and `$2` (inclusive), and
+ * any further parameters from `job.parameters` as `$3` onward. With `counts`
+ * it is a `SELECT count(*) AS "rows"`; otherwise its row count is what it
+ * changed.
+ */
+export async function runIdBatches(
+  session: postgres.Sql,
+  job: {
+    readonly name: string;
+    readonly table: 'places' | 'places_sources';
+    readonly statement: string;
+    readonly counts: boolean;
+    readonly parameters?: readonly (string | number)[];
+  },
+  options: IdBatchOptions,
+): Promise<ConversionSummary> {
   const attempts = options.maxAttempts ?? 5;
   const started = Date.now();
-  const estimate = await estimatedRows(session, table);
+  const estimate = await estimatedRows(session, job.table);
 
   let after = options.from ?? '';
   let batches = 0;
@@ -316,22 +356,23 @@ async function runStep(
 
   for (;;) {
     const [batch] = await withRetries(attempts, () =>
-      session.unsafe<{ rows: number; upper: string | null }[]>(nextBatch(table), [after, options.batchSize]),
+      session.unsafe<{ rows: number; upper: string | null }[]>(nextBatch(job.table), [after, options.batchSize]),
     );
     if (!batch || batch.rows === 0 || batch.upper === null) break;
     const upper = batch.upper;
     try {
-      const result = await withRetries(attempts, () => session.unsafe(statement, [after, upper]));
-      const counted = step === null || options.dryRun ? Number((result[0] as { rows?: number })?.rows ?? 0) : result.count;
-      matched += counted;
+      const result = await withRetries(attempts, () =>
+        session.unsafe(job.statement, [after, upper, ...(job.parameters ?? [])]),
+      );
+      matched += job.counts ? Number((result[0] as { rows?: number })?.rows ?? 0) : result.count;
     } catch (error) {
-      throw new ConversionInterruptedError(name, after, error);
+      throw new ConversionInterruptedError(job.name, after, error);
     }
     batches += 1;
     examined += batch.rows;
     after = upper;
     options.onProgress?.({
-      step: name,
+      step: job.name,
       batches,
       examined,
       matched,
@@ -344,8 +385,8 @@ async function runStep(
   }
 
   return {
-    step: name,
-    table,
+    step: job.name,
+    table: job.table,
     batches,
     examined,
     matched,
@@ -404,7 +445,10 @@ export async function validateTaxonomyConstraint(session: postgres.Sql): Promise
     [TAXONOMY_CONSTRAINT],
   );
   if (!constraint) {
-    throw new Error(`"${TAXONOMY_CONSTRAINT}" does not exist yet: deploy the release (its post phase adds it) first.`);
+    throw new Error(
+      `"${TAXONOMY_CONSTRAINT}" does not exist: the places-platform release's post phase adds it, and ` +
+        '`0017` later drops it for the `places_categories_taxonomy_guard` trigger, which needs no validation.',
+    );
   }
   if (constraint.valid) return { alreadyValid: true, seconds: 0 };
   const started = Date.now();

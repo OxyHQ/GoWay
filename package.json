@@ -31,6 +31,7 @@
     "db:migrate": "bun run --cwd packages/backend db:migrate",
     "import:osm": "bun run --cwd packages/backend import:osm",
     "places:convert-legacy": "bun run --cwd packages/backend places:convert-legacy",
+    "categories:move": "bun run --cwd packages/backend categories:move",
     "captures:cleanup": "bun run --cwd packages/backend captures:cleanup",
     "street3d:tick": "bun run --cwd packages/backend street3d:tick",
     "street3d:admin": "bun run --cwd packages/backend street3d:admin",
