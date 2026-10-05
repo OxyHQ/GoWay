@@ -911,12 +911,14 @@ for (const location of items) {
   so a community report draws nothing, and GoWay does not restate the rule.
 - **A list, not a location.** Mercaria's place list is a page; a market or a
   mall can hold several shop fronts, and each renders as its own store with its
-  own strip, dropping out alone if its read fails.
+  own strip, dropping out alone if its read fails. The sheet reads one page
+  at Mercaria's largest size (50). A failed refresh of the list shows the retry
+  and no stores: a link Mercaria is not confirming right now is not drawn.
 - **What a tile says.** Image, title and the price in the listing's own
   currency (FAIR at its eight decimals), the availability AT THIS LOCATION as
   words — in stock, low stock, out of stock — with `exactQuantity` only where
   the merchant discloses it, and "stock confirmed … ago" from
-  `stockConfirmedAt`. Each tile, and "See all at <store>", opens mercaria.co.
+  `stockConfirmedAt`, re-counted every minute while the sheet is open. Each tile, and "See all at <store>", opens mercaria.co.
 - **Words.** Every string the section shows is a message in
   `packages/frontend/lib/messages/products.ts` (`en`, `es`), read through
   `useTranslation`, whose table is picked by `matchLanguageTag` on the whole

@@ -33,7 +33,7 @@
  * `useTranslation`; only the store's name and the product's title are
  * Mercaria's own.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import type { Place } from '@goway.to/sdk';
 import { Image } from 'expo-image';
@@ -60,6 +60,19 @@ import {
 /** One tile's edge, in points — the gallery's, so the two strips line up. */
 const TILE = 120;
 
+/** "Stock confirmed … ago" is counted in minutes, so it is re-read once a minute. */
+const CLOCK_TICK_MS = 60_000;
+
+/** The time the ages are counted to, advancing while the sheet stays open. */
+function useMinuteClock(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
+
 export interface PlaceProductsProps {
   place: Place;
 }
@@ -68,18 +81,18 @@ function openOnMercaria(url: string) {
   void WebBrowser.openBrowserAsync(url);
 }
 
-function ProductTile({ item }: { item: MercariaLocationProduct }) {
+function ProductTile({ item, now }: { item: MercariaLocationProduct; now: number }) {
   const theme = useTheme();
   const { t } = useTranslation();
   const [broken, setBroken] = useState(false);
-  const stock = presentStock(item, t);
+  const stock = presentStock(item, t, now);
   const image = broken ? null : item.product.primaryImage;
 
   return (
     <Pressable
       onPress={() => openOnMercaria(item.product.url)}
       accessibilityRole="link"
-      accessibilityLabel={t('products.tile.label', { product: spokenProduct(item, t) })}
+      accessibilityLabel={t('products.tile.label', { product: spokenProduct(item, t, now) })}
       className="gap-space-4"
       style={{ width: TILE }}
     >
@@ -147,12 +160,14 @@ function StoreProducts({
   loading,
   onRetry,
   retrying,
+  now,
 }: {
   location: MercariaLocation;
   items: readonly MercariaLocationProduct[] | null;
   loading: boolean;
   onRetry: (() => void) | null;
   retrying: boolean;
+  now: number;
 }) {
   const { t } = useTranslation();
   const { store } = location;
@@ -173,7 +188,7 @@ function StoreProducts({
       {items && items.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-space-8">
           {items.map((item) => (
-            <ProductTile key={item.product.ref.id} item={item} />
+            <ProductTile key={item.product.ref.id} item={item} now={now} />
           ))}
         </ScrollView>
       ) : null}
@@ -200,8 +215,12 @@ function StoreProducts({
 
 export function PlaceProducts({ place }: PlaceProductsProps) {
   const { t } = useTranslation();
+  const now = useMinuteClock();
   const locations = usePlaceMercariaLocations(place);
-  const found = locations.data?.items ?? [];
+  // Only a list Mercaria is confirming NOW names stores: a refresh that fails
+  // keeps React Query's last `data`, and those links may since have been
+  // withdrawn, so a failed list shows the retry and nothing it no longer vouches for.
+  const found = locations.status === 'success' ? locations.data.items : [];
   const shelves = useMercariaLocationProducts(found);
 
   if (!placeOffersMercariaStore(place)) return null;
@@ -240,6 +259,7 @@ export function PlaceProducts({ place }: PlaceProductsProps) {
           loading={shelfState === 'loading'}
           onRetry={shelfState === 'retry' ? () => void shelf.refetch() : null}
           retrying={shelf.isFetching}
+          now={now}
         />
       ))}
     </View>

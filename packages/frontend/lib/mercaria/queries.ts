@@ -22,6 +22,13 @@ export type { MercariaLocation, MercariaLocationProduct } from '@mercaria.co/sdk
 export const STORE_STRIP_LIMIT = 12;
 
 /**
+ * How many shop fronts one place lists: Mercaria's largest page, read once.
+ * Even a big market is well under it, and a place past it shows its first 50
+ * rather than paging stores into a sheet.
+ */
+export const PLACE_LOCATIONS_LIMIT = 50;
+
+/**
  * The Mercaria shop fronts that trade from a place — usually none or one, and
  * several only where the place is shared (a market, a mall).
  *
@@ -33,7 +40,7 @@ export function usePlaceMercariaLocations(place: Place): UseQueryResult<Mercaria
     queryKey: ['mercaria', 'locations', 'place', place.id],
     enabled: placeOffersMercariaStore(place),
     retry: shouldRetryMercaria,
-    queryFn: async ({ signal }) => mercariaClient.locations.list({ goWayPlaceId: place.id, signal }),
+    queryFn: async ({ signal }) => mercariaClient.locations.list({ goWayPlaceId: place.id, limit: PLACE_LOCATIONS_LIMIT, signal }),
   });
 }
 
