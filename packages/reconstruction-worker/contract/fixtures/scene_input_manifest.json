@@ -36,6 +36,38 @@
       "sequenceGroup": "g-2",
       "sequenceIndex": 0,
       "prior": { "latitude": 48.86845, "longitude": 2.30204 }
+    },
+    {
+      "frameId": "f-03",
+      "captureAssetId": "3f7a1c55-9e2b-4d18-b6a0-5c8e2d9f1b34",
+      "imageKey": "derived/privacy/3f7a1c55-9e2b-4d18-b6a0-5c8e2d9f1b34/6d2e8b17-4c3a-4f5e-9a7b-1e0c3d5f7a92/000000.jpg",
+      "imageSha256": "cc00000000000000000000000000000000000000000000000000000000000001",
+      "maskKey": "derived/privacy/3f7a1c55-9e2b-4d18-b6a0-5c8e2d9f1b34/6d2e8b17-4c3a-4f5e-9a7b-1e0c3d5f7a92/000000.mask.png",
+      "maskSha256": "dd00000000000000000000000000000000000000000000000000000000000001",
+      "width": 1280,
+      "height": 960,
+      "privacyPipelineVersion": "goway-privacy/2",
+      "sequenceGroup": "g-3",
+      "sequenceIndex": 0,
+      "capturedAt": "2026-10-05T08:30:00.000Z",
+      "prior": { "latitude": 48.86839, "longitude": 2.30211, "headingDegrees": 90.0 },
+      "panorama": { "index": 0, "yawDegrees": 0.0, "horizontalFovDegrees": 90.0 }
+    },
+    {
+      "frameId": "f-04",
+      "captureAssetId": "3f7a1c55-9e2b-4d18-b6a0-5c8e2d9f1b34",
+      "imageKey": "derived/privacy/3f7a1c55-9e2b-4d18-b6a0-5c8e2d9f1b34/6d2e8b17-4c3a-4f5e-9a7b-1e0c3d5f7a92/000001.jpg",
+      "imageSha256": "cc00000000000000000000000000000000000000000000000000000000000002",
+      "maskKey": "derived/privacy/3f7a1c55-9e2b-4d18-b6a0-5c8e2d9f1b34/6d2e8b17-4c3a-4f5e-9a7b-1e0c3d5f7a92/000001.mask.png",
+      "maskSha256": "dd00000000000000000000000000000000000000000000000000000000000002",
+      "width": 1280,
+      "height": 960,
+      "privacyPipelineVersion": "goway-privacy/2",
+      "sequenceGroup": "g-3",
+      "sequenceIndex": 1,
+      "capturedAt": "2026-10-05T08:30:00.000Z",
+      "prior": { "latitude": 48.86839, "longitude": 2.30211, "headingDegrees": 135.0 },
+      "panorama": { "index": 0, "yawDegrees": 45.0, "horizontalFovDegrees": 90.0 }
     }
   ],
   "budgets": {

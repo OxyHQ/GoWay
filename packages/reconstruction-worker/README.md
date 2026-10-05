@@ -66,9 +66,14 @@ to AWS.
    (EXIF orientation applied; video reduced to sharp keyframes), detect faces,
    plates, people and vehicles, destroy those regions, re-encode without any
    metadata, and upload the derivative and a training mask. Any failure is
-   `privacy_failed` or `corrupt_input`. Nothing partial is reported.
+   `privacy_failed` or `corrupt_input`. Nothing partial is reported. A capture
+   declared 360° is first verified against its own projection metadata and its
+   2:1 pixels, then each panorama is cut into eight 90° views that are
+   processed one by one, with the nadir always masked
+   (`docs/STREET3D_PIPELINE.md` → 360° captures).
 2. **`scene_reconstruct`**: fetch the backend's input manifest and the listed
-   derivatives (through the content cache), solve cameras with bounded matching,
+   derivatives (through the content cache), solve cameras with bounded matching
+   (the views of one panorama as a rig),
    georeference with a robust fit, train Gaussians within the profile's budget,
    encode SPZ plus a preview LOD, decode and render the encoded asset as a smoke
    test, and evaluate every gate. Assets are uploaded only when the gates pass.

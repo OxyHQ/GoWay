@@ -8,6 +8,7 @@ in the original, which the backend deletes on its own schedule.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -61,14 +62,15 @@ def _fit(rgb: np.ndarray, long_edge: int) -> np.ndarray:
     return cv2.resize(rgb, (round(w * scale), round(h * scale)), interpolation=cv2.INTER_AREA)
 
 
-def decode_photo(path: Path, policy: KeyframePolicy) -> list[DecodedFrame]:
+def decode_photo(path: Path, policy: KeyframePolicy, *, long_edge: int | None = None) -> list[DecodedFrame]:
+    """``long_edge`` overrides the policy's bound (a panorama is cut into views afterwards)."""
     try:
         with Image.open(path) as image:
             image = ImageOps.exif_transpose(image).convert("RGB")
             rgb = np.asarray(image)
     except Exception as error:  # noqa: BLE001 - any decoder failure is corrupt media
         raise CorruptMediaError("photo could not be decoded") from error
-    rgb = _fit(rgb, policy.maxLongEdgePixels)
+    rgb = _fit(rgb, long_edge or policy.maxLongEdgePixels)
     if min(rgb.shape[:2]) < 256:
         raise CorruptMediaError("photo is too small")
     return [DecodedFrame(rgb=np.ascontiguousarray(rgb), timestamp_seconds=None, sharpness=sharpness(rgb))]
@@ -101,3 +103,58 @@ def decode_video(path: Path, policy: KeyframePolicy) -> list[DecodedFrame]:
     if not best:
         raise CorruptMediaError("video has no decodable frames")
     return [best[k] for k in sorted(best)][: policy.maxFrames]
+
+
+def iter_video_keyframes(path: Path, policy: KeyframePolicy, *, long_edge: int) -> Iterator[DecodedFrame]:
+    """The same keyframe choice as :func:`decode_video`, streamed.
+
+    For large frames (a 360° video): holding the sharpest frame of every window
+    at full size would hold gigabytes, so the first pass only scores frames and
+    the second decodes again and yields the chosen ones one at a time.
+    """
+    import av
+
+    chosen: dict[int, tuple[float, float]] = {}  # window -> (time, sharpness)
+    try:
+        with av.open(str(path)) as container:
+            stream = container.streams.video[0]
+            stream.thread_type = "AUTO"
+            for frame in container.decode(stream):
+                if frame.time is None:
+                    continue
+                window = int(frame.time / policy.minIntervalSeconds)
+                if len(chosen) >= policy.maxFrames and window not in chosen:
+                    break
+                rgb = upright(frame.to_ndarray(format="rgb24"), getattr(frame, "rotation", 0) or 0)
+                score = sharpness(_fit(rgb, policy.maxLongEdgePixels))
+                if window not in chosen or score > chosen[window][1]:
+                    chosen[window] = (float(frame.time), score)
+    except Exception as error:  # noqa: BLE001
+        raise CorruptMediaError("video could not be decoded") from error
+    if not chosen:
+        raise CorruptMediaError("video has no decodable frames")
+
+    wanted = {round(t, 6): score for t, score in chosen.values()}
+    produced = 0
+    try:
+        with av.open(str(path)) as container:
+            stream = container.streams.video[0]
+            stream.thread_type = "AUTO"
+            for frame in container.decode(stream):
+                if frame.time is None:
+                    continue
+                key = round(float(frame.time), 6)
+                if key not in wanted:
+                    continue
+                rgb = upright(frame.to_ndarray(format="rgb24"), getattr(frame, "rotation", 0) or 0)
+                produced += 1
+                yield DecodedFrame(rgb=np.ascontiguousarray(_fit(rgb, long_edge)), timestamp_seconds=key, sharpness=wanted.pop(key))
+                if not wanted:
+                    break
+    except CorruptMediaError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise CorruptMediaError("video could not be decoded") from error
+    if wanted:
+        # A second decode that does not reproduce the first is not a file to trust.
+        raise CorruptMediaError("video keyframes could not be decoded again")

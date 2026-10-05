@@ -14,13 +14,16 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SCHEMA_VERSION = 1
 
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 JobKey = Annotated[str, Field(min_length=1, max_length=1024, pattern=r"^(captures|derived|jobs)/[^\s]+$")]
 Profile = Literal["draft", "standard"]
+# How the pixels of a capture map to directions. A job DECLARES it (the
+# contributor's claim); the privacy job verifies it against the media.
+Projection = Literal["perspective", "equirectangular"]
 
 FAILURE_CODES = (
     "insufficient_overlap",
@@ -94,6 +97,8 @@ class CapturePrivacyJob(_Input):
     input: ObjectRef
     outputPrefix: JobKey
     keyframes: KeyframePolicy
+    # Absent from a backend that predates 360° captures: everything was perspective.
+    projection: Projection = "perspective"
 
 
 class SceneReconstructJob(_Input):
@@ -139,6 +144,14 @@ class FrameCamera(_Input):
     focalLength35mm: float | None = Field(default=None, gt=0)
 
 
+class FramePanorama(_Input):
+    """A perspective view cut from a 360° panorama: which panorama, and where it looks."""
+
+    index: int = Field(ge=0)
+    yawDegrees: float = Field(ge=0, lt=360)
+    horizontalFovDegrees: float = Field(gt=0, lt=180)
+
+
 class InputFrame(_Input):
     frameId: str = Field(min_length=1, max_length=128)
     captureAssetId: str
@@ -154,6 +167,7 @@ class InputFrame(_Input):
     capturedAt: str | None = None
     prior: Prior
     camera: FrameCamera | None = None
+    panorama: FramePanorama | None = None
 
 
 class Budgets(_Input):
@@ -201,6 +215,20 @@ class Detections(_Output):
     vehicles: int
 
 
+class PanoramaView(_Output):
+    """Where a derivative came from when its capture is a 360° panorama.
+
+    ``index`` is the panorama within the capture (0 for a photo, the keyframe
+    for a video); ``yawDegrees`` is the view's direction from the panorama's
+    centre, clockwise. Views of one panorama share a centre, which the solve
+    uses to treat them as a rig.
+    """
+
+    index: int = Field(ge=0)
+    yawDegrees: float = Field(ge=0, lt=360)
+    horizontalFovDegrees: float = Field(gt=0, lt=180)
+
+
 class PrivacyFrame(_Output):
     frameIndex: int
     imageKey: str
@@ -215,6 +243,7 @@ class PrivacyFrame(_Output):
     maskedFraction: float
     sharpness: float
     timestampSeconds: float | None = None
+    panorama: PanoramaView | None = None
 
 
 class CapturePrivacyResult(_Output):
@@ -225,11 +254,20 @@ class CapturePrivacyResult(_Output):
     assetId: str
     verdict: Literal["passed", "failed"]
     privacyPipelineVersion: str
+    # The VERIFIED projection; a backend refuses a result that disagrees with the declaration.
+    projection: Projection = "perspective"
     models: list[ModelRef]
     metadataStripped: bool
     frames: list[PrivacyFrame]
     rejectedFrames: int
     failure: "Failure | None" = None
+
+    @model_validator(mode="after")
+    def _views_match_projection(self) -> "CapturePrivacyResult":
+        # A panorama is only ever reported as views, and a view only for a panorama.
+        if any((f.panorama is not None) != (self.projection == "equirectangular") for f in self.frames):
+            raise ValueError("panorama views must match the verified projection")
+        return self
 
 
 class WorldTransform(_Output):
