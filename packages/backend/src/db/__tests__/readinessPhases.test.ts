@@ -8,6 +8,7 @@
  * places-platform release first failed in production.
  */
 
+import '../../__tests__/testEnv';
 import { describe, expect, it } from 'bun:test';
 import { onlyPostPhasePending } from '../postgres';
 
@@ -39,5 +40,18 @@ describe('onlyPostPhasePending', () => {
         { tag: '0013_goway_category_taxonomy' },
       ]),
     ).toBe(true);
+  });
+
+  it('holds a rollout back until the category-tables pre phase has run', () => {
+    // From production's 0013 ledger: capture projection and the category tables,
+    // seed and CHECK drop are all pre, so none of them may be pending at rollout.
+    const release = [
+      { tag: '0014_goway_capture_projection' },
+      { tag: '0015_goway_category_tables' },
+      { tag: '0016_goway_category_seed' },
+      { tag: '0017_goway_drop_category_check' },
+    ];
+    expect(onlyPostPhasePending(release)).toBe(false);
+    for (const entry of release) expect(onlyPostPhasePending([entry])).toBe(false);
   });
 });
