@@ -23,7 +23,7 @@
  * a plausible point in the wrong hemisphere rather than an error.
  */
 
-import type { GeoPosition } from '@goway/shared-types';
+import type { GeoPosition } from '@goway/contracts';
 
 /** Valhalla's shape precision: six decimal places. */
 export const VALHALLA_POLYLINE_PRECISION = 6;

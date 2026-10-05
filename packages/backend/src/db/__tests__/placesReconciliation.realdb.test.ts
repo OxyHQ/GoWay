@@ -26,8 +26,9 @@ import {
   type PlaceActor,
 } from '../places/placesRepository';
 import { SUITE_SETUP_TIMEOUT_MS, createSuiteDatabase, destroySuiteDatabase, type SuiteDatabase } from './testDatabase';
+import { apiAuthor } from '../../__tests__/placesFixtures';
 
-const ACTOR: PlaceActor = { oxyUserId: 'user-1', assertedVerification: 'community_reported' };
+const ACTOR: PlaceActor = { author: apiAuthor('user-1'), assertedVerification: 'community_reported' };
 
 /** Plaça de Catalunya, Barcelona. Two coffee shops ten metres apart live here. */
 const CATALUNYA = { latitude: 41.3870, longitude: 2.1700 };
@@ -231,7 +232,7 @@ describe('capability provenance', () => {
       },
       // Even a claimant — the strongest an API caller can be — asserts
       // `business_asserted`, never `oxy_verified`.
-      { oxyUserId: 'user-owner', assertedVerification: 'business_asserted' },
+      { author: apiAuthor('user-owner'), assertedVerification: 'business_asserted' },
     );
     expect(place.capabilities[0]?.verification).toBe('business_asserted');
 
@@ -273,45 +274,28 @@ describe('capability provenance', () => {
 });
 
 describe('business identity', () => {
-  it('holds a chain together through a brand, with a different operator per location', async () => {
+  it('holds a chain together through an organization claiming in the brand role, with a different operator per location', async () => {
     // The shape a single `owner_id` column cannot express. Nothing here is a
-    // special case for chains: a claim is a (place, account, role, brand) row,
-    // and a franchise is what you get when two of them share a brand and differ
-    // in operator.
+    // special case for chains: a claim is a (place, account, role) row, the
+    // chain is an Oxy organization claiming each location as its `brand`, and
+    // a franchise is what you get when each location also has an operator.
     const first = await createPlace(suite!.db, { name: 'Cafè Cadena Uno', location: CATALUNYA }, ACTOR);
     const second = await createPlace(suite!.db, { name: 'Cafè Cadena Dos', location: GRACIA }, ACTOR);
     const unrelated = await createPlace(suite!.db, { name: 'Independent', location: GRACIA }, ACTOR);
 
-    await createClaim(suite!.db, {
-      placeId: first.id,
-      oxyAccountId: 'acct-franchisee-a',
-      brandId: 'brand-cadena',
-      role: 'operator',
-      state: 'approved',
-    });
-    await createClaim(suite!.db, {
-      placeId: second.id,
-      oxyAccountId: 'acct-franchisee-b',
-      brandId: 'brand-cadena',
-      role: 'operator',
-      state: 'approved',
-    });
-    // The brand owner holds a claim on both, in a different role, at once.
-    await createClaim(suite!.db, {
-      placeId: first.id,
-      oxyAccountId: 'acct-brand-owner',
-      brandId: 'brand-cadena',
-      role: 'brand',
-      state: 'approved',
-    });
+    await createClaim(suite!.db, { placeId: first.id, oxyAccountId: 'acct-franchisee-a', role: 'operator', state: 'approved' });
+    await createClaim(suite!.db, { placeId: second.id, oxyAccountId: 'acct-franchisee-b', role: 'operator', state: 'approved' });
+    // The chain's organization holds a claim on both, in a different role, at once.
+    await createClaim(suite!.db, { placeId: first.id, oxyAccountId: 'org-cadena', role: 'brand', state: 'approved' });
+    await createClaim(suite!.db, { placeId: second.id, oxyAccountId: 'org-cadena', role: 'brand', state: 'approved' });
 
-    const byBrand = await findClaimedPlaceIds(suite!.db, { brandId: 'brand-cadena' });
+    const byBrand = await findClaimedPlaceIds(suite!.db, 'org-cadena');
     expect(byBrand.sort()).toEqual([first.id, second.id].sort());
     expect(byBrand).not.toContain(unrelated.id);
 
     // One operator sees only their own location, which is the authorization
     // question `PATCH /places/:id` asks.
-    expect(await findClaimedPlaceIds(suite!.db, { oxyAccountId: 'acct-franchisee-b' })).toEqual([second.id]);
+    expect(await findClaimedPlaceIds(suite!.db, 'acct-franchisee-b')).toEqual([second.id]);
   });
 
   it('does not count a PENDING claim as a relationship', async () => {
@@ -319,7 +303,7 @@ describe('business identity', () => {
     // would grant control at the moment somebody asked for it.
     const place = await createPlace(suite!.db, { name: 'Pending Bar', location: GRACIA }, ACTOR);
     await createClaim(suite!.db, { placeId: place.id, oxyAccountId: 'acct-hopeful', role: 'owner' });
-    expect(await findClaimedPlaceIds(suite!.db, { oxyAccountId: 'acct-hopeful' })).toEqual([]);
+    expect(await findClaimedPlaceIds(suite!.db, 'acct-hopeful')).toEqual([]);
   });
 });
 

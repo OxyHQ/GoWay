@@ -14,6 +14,7 @@
  */
 import {
   GoWayAbortError,
+  GoWayGoneError,
   GoWayNetworkError,
   GoWayNoRouteError,
   GoWayNotFoundError,
@@ -22,6 +23,7 @@ import {
   GoWayTimeoutError,
   GoWayUnauthorizedError,
   GoWayUnavailableError,
+  GoWayUnknownRouteError,
   GoWayUnsupportedModeError,
   isGoWayError,
 } from '@goway.to/sdk';
@@ -36,7 +38,7 @@ export type GoWayFailureKind =
   /**
    * There is no route between these points, and there never will be — two
    * points separated by an ocean have no driving route. A NORMAL answer for
-   * the directions domain, not a fault: `shared-types` says the same thing
+   * the directions domain, not a fault: the contract says the same thing
    * twice, and it arrives in two shapes (a 200 with an empty `routes` array,
    * or `no_route`) that must render identically.
    */
@@ -50,6 +52,18 @@ export type GoWayFailureKind =
   | 'unsupportedMode'
   /** This place does not exist (GoWay said so, not a proxy). */
   | 'notFound'
+  /**
+   * This place existed and GoWay withdrew it (`gone`, 410). Not `notFound`:
+   * the link was real, and the honest sentence is "no longer on GoWay" rather
+   * than "we couldn't find it". Never retried — a removal does not undo itself.
+   */
+  | 'gone'
+  /**
+   * GoWay has no such route at all (`unknown_route`): this build of the app and
+   * the API disagree about what exists. A version mismatch, not a missing
+   * resource, and repeating the request cannot fix it — reloading the app can.
+   */
+  | 'versionMismatch'
   | 'rateLimited'
   /** Identity is required and absent — only reachable on a gated write. */
   | 'unauthorized'
@@ -81,6 +95,8 @@ export function classifyGoWayError(error: unknown): GoWayFailure {
   if (error instanceof GoWayUnavailableError) return { kind: 'unavailable', retryable: true };
   if (error instanceof GoWayRateLimitError) return { kind: 'rateLimited', retryable: true };
   if (error instanceof GoWayNotFoundError) return { kind: 'notFound', retryable: false };
+  if (error instanceof GoWayGoneError) return { kind: 'gone', retryable: false };
+  if (error instanceof GoWayUnknownRouteError) return { kind: 'versionMismatch', retryable: false };
   if (error instanceof GoWayUnauthorizedError) return { kind: 'unauthorized', retryable: false };
   if (error instanceof GoWayResponseError) return { kind: 'malformed', retryable: false };
   if (isGoWayError(error)) return { kind: 'unknown', retryable: error.retryable };

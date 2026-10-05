@@ -2,7 +2,7 @@
  * The wall between the capture tables and the published contract.
  *
  * Every row that leaves the capture repository passes through here and becomes
- * a `@goway/shared-types` shape. Nothing spreads a row: the mapper READS the
+ * a `@goway/contracts` shape. Nothing spreads a row: the mapper READS the
  * columns the contract names and WRITES a fresh object holding exactly those,
  * so a column added tomorrow cannot reach a consumer by accident.
  *
@@ -47,8 +47,8 @@ import type {
   DeletionReason,
   RetentionReason,
   StoredObjectLifecycle,
-} from '@goway/shared-types';
-import { CAPTURE_CONTENT_HASH_ALGORITHM } from '@goway/shared-types';
+} from '@goway/contracts';
+import { CAPTURE_CONTENT_HASH_ALGORITHM } from '@goway/contracts';
 import type { SelectedRow } from '@oxy.so/db';
 import { captureAssets, captureLocationEvidence, captureMediaObjects, captureSessions } from '../schema';
 

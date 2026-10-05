@@ -24,7 +24,7 @@
  * previous version.
  */
 
-import type { StreetSceneAsset, StreetSceneProfile, StreetSceneQuality } from '@goway/shared-types';
+import type { StreetSceneAsset, StreetSceneProfile, StreetSceneQuality } from '@goway/contracts';
 import type { Street3dConfig } from '../config/street3d';
 import { ResultRejected, type JobRow } from '../db/street3d/jobs';
 import { privacyVersionsOf, withdrawnInputs, type SceneOutcome } from '../db/street3d/publication';

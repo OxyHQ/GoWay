@@ -23,7 +23,7 @@
  * error message or a log field.
  */
 
-import type { SearchSource } from '@goway/shared-types';
+import type { SearchSource } from '@goway/contracts';
 import { ApiError } from '../http/apiError';
 import type { FetchLike } from './provider';
 

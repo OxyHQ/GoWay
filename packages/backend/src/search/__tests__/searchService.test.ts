@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import type { PlaceCapability, PlaceWithDistance, SearchResultKind } from '@goway/shared-types';
+import type { PlaceCapability, PlaceWithDistance, SearchResultKind } from '@goway/contracts';
 import { isApiError } from '../../http/apiError';
 import { BoundedCache } from '../cache';
 import type { ProviderCandidate, SearchProvider } from '../provider';
@@ -81,7 +81,7 @@ function service(providers: SearchProvider[], overrides: Partial<typeof CONFIG> 
   return createSearchService({ providers, config: { ...CONFIG, ...overrides } });
 }
 
-const QUERY = { query: 'cafe', limit: 10 };
+const QUERY = { query: 'cafe', limit: 10, offset: 0 };
 
 describe('degradation', () => {
   it('answers with a short list and names the degraded provider', async () => {
@@ -191,7 +191,7 @@ describe('GoWay Places enrichment', () => {
       stub('nominatim', {
         forward: [candidate({ source: 'nominatim', name: 'Berlin, Deutschland', latitude: 52.5, longitude: 13.4, osmId: 'node/240109189' })],
       }),
-    ]).forward({ query: 'berlin', limit: 10 }, { gateway: fakeGateway() });
+    ]).forward({ query: 'berlin', limit: 10, offset: 0 }, { gateway: fakeGateway() });
 
     expect(results.results).toHaveLength(1);
     // With no GoWay place to represent the group, the candidate keeps its own
@@ -210,7 +210,7 @@ describe('GoWay Places enrichment', () => {
       ],
     });
 
-    const results = await service([provider]).forward({ query: 'farmacia', limit: 10 }, { gateway: fakeGateway() });
+    const results = await service([provider]).forward({ query: 'farmacia', limit: 10, offset: 0 }, { gateway: fakeGateway() });
     expect(results.results).toHaveLength(2);
   });
 
@@ -230,6 +230,62 @@ describe('GoWay Places enrichment', () => {
 
     expect(results.results).toHaveLength(1);
     expect(results.results[0]?.placeId).toBe('p1');
+  });
+
+  it('does not count a place whose strongest assertion says it stopped', async () => {
+    // A business that asserted `false` outranks the community's `true`: it
+    // mentions FairCoin and does not accept it, and a wallet must not be sent
+    // there.
+    const stopped = buildPlace({
+      id: 'p1',
+      capabilities: [
+        { ...FAIRCOIN, verification: 'community_reported', value: true },
+        { ...FAIRCOIN, verification: 'business_asserted', value: false },
+      ],
+    });
+    const provider = stub('photon', {
+      forward: [candidate({ source: 'photon', name: 'Stopped', latitude: 41.4, longitude: 2.17, osmId: 'node/1' })],
+    });
+
+    const results = await service([provider]).forward(
+      { ...QUERY, capabilities: ['payments.faircoin.accepted'] },
+      { gateway: fakeGateway({ bindings: { 'openstreetmap:node/1': 'p1' }, places: [stopped] }) },
+    );
+
+    expect(results.results).toHaveLength(0);
+  });
+
+  it('reconciles places in the requested locale, through the degradation guard', async () => {
+    // The guard that turns a database outage into a degraded provider once
+    // dropped the locale on its way through, and every reconciled result lost
+    // its `localizedName`.
+    const provider = stub('photon', {
+      forward: [candidate({ source: 'photon', name: 'Museu', latitude: 41.4, longitude: 2.17, osmId: 'node/1' })],
+    });
+    const gateway = fakeGateway({ bindings: { 'openstreetmap:node/1': 'p1' }, places: [buildPlace({ id: 'p1' })] });
+    await service([provider]).forward({ ...QUERY, locale: 'es' }, { gateway });
+
+    expect(gateway.placeLocales).toEqual(['es']);
+  });
+
+  it('serves the requested window of one ranking and says whether it continues', async () => {
+    const names = ['A', 'B', 'C', 'D', 'E'];
+    const provider = stub('photon', {
+      forward: names.map((name, index) =>
+        candidate({ source: 'photon', name, latitude: 41.4, longitude: 2.17, osmId: `node/${String(index)}` }),
+      ),
+    });
+    const subject = service([provider]);
+
+    const first = await subject.forward({ query: 'x', limit: 2, offset: 0 }, { gateway: fakeGateway() });
+    const second = await subject.forward({ query: 'x', limit: 2, offset: 2 }, { gateway: fakeGateway() });
+    const last = await subject.forward({ query: 'x', limit: 2, offset: 4 }, { gateway: fakeGateway() });
+
+    expect(first.results.map((result) => result.displayName)).toEqual(['A', 'B']);
+    expect(first.hasMore).toBe(true);
+    expect(second.results.map((result) => result.displayName)).toEqual(['C', 'D']);
+    expect(last.results.map((result) => result.displayName)).toEqual(['E']);
+    expect(last.hasMore).toBe(false);
   });
 
   it('resolves every source reference in one round trip', async () => {
@@ -304,7 +360,7 @@ describe('endpoint modes', () => {
     });
 
     const results = await service([provider]).reverse(
-      { coordinate: { latitude: 41.4036, longitude: 2.1744 }, limit: 5 },
+      { coordinate: { latitude: 41.4036, longitude: 2.1744 }, limit: 5, offset: 0 },
       { gateway: fakeGateway({ nearby: [{ ...place, distanceMeters: 8 }], places: [place] }) },
     );
 
@@ -319,7 +375,7 @@ describe('endpoint modes', () => {
     });
 
     const results = await service([unsupported, supported]).structured(
-      { street: 'Carrer de Mallorca', houseNumber: '401', limit: 5 },
+      { street: 'Carrer de Mallorca', houseNumber: '401', limit: 5, offset: 0 },
       { gateway: fakeGateway() },
     );
 
@@ -341,8 +397,8 @@ describe('caching', () => {
     });
     const subject = service([provider]);
 
-    await subject.forward({ query: 'berlin', limit: 10 }, { gateway: fakeGateway() });
-    await subject.forward({ query: 'berlin', limit: 10 }, { gateway: fakeGateway() });
+    await subject.forward({ query: 'berlin', limit: 10, offset: 0 }, { gateway: fakeGateway() });
+    await subject.forward({ query: 'berlin', limit: 10, offset: 0 }, { gateway: fakeGateway() });
 
     expect(calls).toBe(1);
   });
@@ -356,7 +412,7 @@ describe('caching', () => {
       forward: [],
     });
     const subject = service([provider]);
-    const query = { query: 'berlin', limit: 10, near: { latitude: 52.5, longitude: 13.4 } };
+    const query = { query: 'berlin', limit: 10, offset: 0, near: { latitude: 52.5, longitude: 13.4 } };
 
     await subject.forward(query, { gateway: fakeGateway() });
     await subject.forward(query, { gateway: fakeGateway() });
@@ -379,8 +435,8 @@ describe('caching', () => {
       cache: new BoundedCache({ maxEntries: 10, ttlMs: 60_000 }),
     });
 
-    await subject.forward({ query: 'berlin', limit: 10 }, { gateway: fakeGateway() });
-    await subject.forward({ query: 'madrid', limit: 10 }, { gateway: fakeGateway() });
+    await subject.forward({ query: 'berlin', limit: 10, offset: 0 }, { gateway: fakeGateway() });
+    await subject.forward({ query: 'madrid', limit: 10, offset: 0 }, { gateway: fakeGateway() });
     expect(calls).toBe(2);
   });
 });
@@ -390,9 +446,12 @@ describe('placeMatchesText', () => {
     expect(placeMatchesText(buildPlace({ name: 'Café Sagrada' }), 'cafe')).toBe(true);
   });
 
-  it('matches on a category and on the street', () => {
-    const place = buildPlace({ name: 'Nothing Relevant', categories: ['bakery'], address: { street: 'Gran Via' } });
+  it('matches on a category, by its label in every label language, and on the street', () => {
+    const place = buildPlace({ name: 'Nothing Relevant', categories: ['food.bakery'], address: { street: 'Gran Via' } });
     expect(placeMatchesText(place, 'bakery')).toBe(true);
+    expect(placeMatchesText(place, 'panadería')).toBe(true);
+    // A key is not a word anybody types.
+    expect(placeMatchesText(place, 'food.')).toBe(false);
     expect(placeMatchesText(place, 'gran via')).toBe(true);
     expect(placeMatchesText(place, 'pharmacy')).toBe(false);
   });

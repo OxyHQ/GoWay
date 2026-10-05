@@ -33,7 +33,7 @@ import {
   STREET_SCENE_REPORT_REASONS,
   type StreetSceneManifest,
   type StreetSceneReportReason,
-} from '@goway/shared-types';
+} from '@goway.to/sdk';
 
 import {
   SceneViewer,
@@ -98,7 +98,7 @@ export function Street3dScreen() {
   // Labels: web only. On native the embedded page draws its own.
   const places = usePlacesInBounds(manifest?.bounds ?? null, { limit: 200, enabled: IS_WEB && manifest != null });
   const labels = useMemo<SceneViewerLabel[]>(
-    () => (manifest && places.data ? placeLabelsForScene(places.data, manifest.worldTransform) : []),
+    () => (manifest && places.data ? placeLabelsForScene(places.data.items, manifest.worldTransform) : []),
     [manifest, places.data],
   );
 

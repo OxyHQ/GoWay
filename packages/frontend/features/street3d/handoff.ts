@@ -16,7 +16,7 @@
  * Module state, deliberately: it is one value per direction, consumed once,
  * and never persisted — nothing here is location history.
  */
-import type { GeoBoundingBox, StreetSceneSummary } from '@goway/shared-types';
+import type { GeoBoundingBox, StreetSceneSummary } from '@goway.to/sdk';
 
 const summaries = new Map<string, StreetSceneSummary>();
 const MAX_SUMMARIES = 50;

@@ -27,8 +27,8 @@ export interface GoWayAbortSignal {
   removeEventListener(type: 'abort', listener: () => void): void;
 }
 
-/** The HTTP methods the SDK issues. Reads are GET; writes are POST and PATCH. */
-export type GoWayHttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+/** The HTTP methods the SDK issues. Reads are GET; writes are POST, PUT, PATCH and DELETE. */
+export type GoWayHttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /** What the SDK passes to `fetch`. */
 export interface GoWayFetchInit {

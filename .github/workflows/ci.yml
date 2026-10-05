@@ -65,16 +65,15 @@ jobs:
           # cannot disagree about which bun wrote bun.lock.
           bun-version-file: package.json
       - name: Install exact dependency graph
-        # --ignore-scripts because the root postinstall builds shared-types and
+        # --ignore-scripts because the root postinstall builds the contracts and
         # the SDK; both are built explicitly below, in dependency order.
         run: bun install --frozen-lockfile --ignore-scripts
       - name: Verify Oxy dependency health
         run: bun run doctor:oxy
-      - name: Build shared contracts
-        # Every other package imports @goway/shared-types by NAME, which resolves
-        # to its built dist/. A warm local tree hides this; a clean checkout does
-        # not.
-        run: bun run build:shared-types
+      - name: Build the contracts
+        # The backend imports @goway/contracts by NAME, which resolves to its
+        # built dist/. A warm local tree hides this; a clean checkout does not.
+        run: bun run build:contracts
 
       - name: Build the SDK
         # BEFORE typecheck, not after. packages/frontend imports @goway.to/sdk by
@@ -83,7 +82,7 @@ jobs:
         # postinstall has already produced it, so the dependency is invisible;
         # in CI `--ignore-scripts` means nothing has, and typecheck fails with
         # TS2307 on every importing file. Ordering matters here: the SDK bundles
-        # @goway/shared-types, so it must build after it.
+        # @goway/contracts, so it must build after it.
         run: bun run build:sdk
 
       - name: Typecheck
@@ -201,12 +200,21 @@ jobs:
       # scan an empty folder on this tree and cannot tell a clean result from a
       # traversal that stopped working. The fixture runs are what prove they can
       # fail at all; without them the two steps below would be decoration.
-      - name: Prove the migration gates can fail
+      - name: Prove the migration and contract gates can fail
         run: bun run test:gates
       - name: Verify AGENTS.md byte budget
         run: bun run validate:agents-md
       - name: Verify migration deploy phases and parameters
         run: bun run check:migrations
+      # The OpenAPI document and the JSON Schemas are GENERATED from the zod
+      # contracts the API validates with. A contract change that did not
+      # regenerate `packages/contracts/openapi.json`, an operation dropped from
+      # the registry, or a schema zod cannot convert fails here rather than in
+      # an integrator's generated client. Read from source: no build needed.
+      - name: Verify the OpenAPI document is fresh and complete
+        run: bun run check:openapi
+      - name: Verify every contract schema converts to JSON Schema
+        run: bun run check:contracts
 
       # A workspace member missing from the backend Dockerfile only fails
       # inside a container build — the most expensive place to learn it,
@@ -314,8 +322,8 @@ jobs:
           test "$compose_image" = "$workflow_image"
       - name: Install exact dependency graph
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Build shared contracts
-        run: bun run build:shared-types
+      - name: Build the contracts
+        run: bun run build:contracts
       - name: Apply migrations
         # The migrator, not `drizzle-kit migrate` — the same code path production
         # runs, including the PostGIS `CREATE EXTENSION` precondition. It is what

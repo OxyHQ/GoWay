@@ -170,9 +170,16 @@ describe('the radius predicate', () => {
     await suite!.client.unsafe('SET enable_seqscan = off');
     try {
       expect(await plan(`ST_DWithin(geo, ${point}, 1000)`)).toContain('places_geo_gist');
-      // The whole reason `ST_Distance` never appears in a WHERE clause in this
+      // The whole reason `ST_Distance` is never the radius predicate in this
       // codebase: identical rows, a sequential scan over every place on Earth.
       expect(await plan(`ST_Distance(geo, ${point}) < 1000`)).toContain('Seq Scan');
+      // A nearby PAGE does compare `ST_Distance` in its WHERE — the keyset
+      // `(distance, id) > (…)` — but only BESIDE `ST_DWithin`, which still
+      // chooses the rows through the index; the comparison filters what the
+      // index found.
+      expect(
+        await plan(`ST_DWithin(geo, ${point}, 1000) AND (ST_Distance(geo, ${point}), id) > (12.5::float8, 'x')`),
+      ).toContain('places_geo_gist');
     } finally {
       await suite!.client.unsafe('RESET enable_seqscan');
     }

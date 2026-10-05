@@ -27,7 +27,7 @@
 
 import { and, eq, inArray, isNotNull, ne, or, sql, type Column, type SQL } from 'drizzle-orm';
 import { sqlColumnName } from '@oxy.so/db';
-import type { StreetSceneAsset, StreetSceneQuality } from '@goway/shared-types';
+import type { StreetSceneAsset, StreetSceneQuality } from '@goway/contracts';
 import type { SceneReconstructResult } from '../../street3d/workerContract';
 import { publishedNavigation } from '../../street3d/navigation';
 import type { DatabaseOrTransaction, Transaction } from '../postgres';

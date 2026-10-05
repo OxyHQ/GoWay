@@ -24,7 +24,7 @@
  * cannot.
  */
 
-import type { GeoBoundingBox, GeoCoordinate } from '@goway/shared-types';
+import type { GeoBoundingBox, GeoCoordinate } from '@goway/contracts';
 
 /**
  * Reciprocal-rank-fusion damping. 60 is the value from the original TREC work

@@ -20,26 +20,43 @@ Always **bun**; commit `bun.lock` with its `package.json`.
 - Declare columns camelCase; `DATABASE_CASING` names them in SQL. Never spell snake_case by hand or use `column.name`: use `sqlColumnName()` from `@oxy.so/db`.
 - `oxyUserId` carries no foreign key and there is no `users` table; Oxy owns identity.
 - Extensions go in `REQUIRED_EXTENSIONS` in `src/db/migrate.ts`, not in a migration — **PostGIS included**.
+- A phase is ONE transaction: never rewrite a big table in a migration (batch it first with an operator command that reads the migration's own SQL, like `places:convert-legacy`), put lock-taking DDL last, and add a CHECK to a big table `NOT VALID`.
 
 ## Packages
 
-- `packages/*` only, never `apps/`. Bun workspaces are `shared-types`, `sdk`, `frontend`, `backend`.
+- `packages/*` only, never `apps/`. Bun workspaces are `contracts`, `sdk`, `frontend`, `backend`.
 - `packages/reconstruction-worker` is Python/CUDA and deliberately **not** a Bun workspace; drive it through the root `worker:setup|doctor|run` scripts, which delegate to its `Makefile`/`uv`.
 - Street 3D capture and contribution UI live in `packages/frontend`. There is no second consumer app.
 
 ## Product boundaries
 
 - Canonical origin is `https://goway.to` and the public package is `@goway.to/sdk`. API origins and hosts are configuration-driven; never hardcode a development endpoint into product code.
-- `@goway.to/sdk` is the supported integration boundary for FairCoin, Moovo, Mercaria, Homiio, Mention and Clarity. Public contracts live in `packages/shared-types`; the SDK re-exports them.
+- `@goway.to/sdk` is the supported integration boundary for FairCoin, Moovo, Mercaria, Homiio, Mention and Clarity. Public contracts live in `packages/contracts`; the SDK re-exports them.
+- Every request, response, error code and value set is a zod schema in `packages/contracts`; the backend validates and the SDK parses with it. Never add a `*Schemas.ts`, hand parser or duplicate interface. A route change edits `API_OPERATIONS` and runs `bun run openapi`.
+- API shape follows `~/Oxy/docs/api-conventions.md`: lists are `{ items, nextCursor }` with fingerprinted cursors (`http/cursor.ts`), errors use the contract's closed codes.
 - Never publish an internal Drizzle/PostGIS row shape as an SDK contract, and never let a Python worker implementation detail become one.
 - MapLibre, OpenFreeMap, Photon, Nominatim, Valhalla, COLMAP and gsplat are replaceable adapters behind GoWay interfaces. Feature code imports the GoWay abstraction, never the provider.
 - Every map GoWay draws carries the mark bottom-left and the data credit bottom-right, both rendered by `MapCanvas` with no prop to disable — the embed included.
 - The logo is geometry (`packages/frontend/components/brand/artwork.ts`), drawn and never fetched; `public/brand/*` is generated from it and gated by `brand:check`. Its blue is ink (`--color-brand-goway`), never Bloom's `--primary`.
 - Every GoWay-enriched place gets a stable GoWay Place ID independent of provider IDs; deep links use it (`https://goway.to/place/<placeId>`). Preserve source provenance and never destructively overwrite a source fact.
 - The OpenStreetMap import writes only `openstreetmap`-sourced rows, never deletes a place, and changes a `places` column only while it still holds what that source last said.
+- `places.categories` holds only taxonomy keys from `CATEGORY_DEFINITIONS` (`packages/contracts`), CHECKed from it; never store an ancestor beside its child. Design note: `docs/PLACE_DATA.md`.
+- A place attribute is a registered key in `CAPABILITY_DEFINITIONS` (value kind, labels, group, OSM tags) over `places_capabilities`, never a new column or table; every write goes through its key's schema.
+- `places.timezone` is derived from the position (`places/timezone.ts`), never taken from a caller; evaluate hours only with the contract's `openingStatusAt`.
+- Hours exceptions follow the capability authority rules: derived tier, rewrite at your own tier, claimant-only withdrawal.
+- `PATCH /places` is a merge patch: absent leaves a field (or address/contact part) alone, `null` clears; the import refills a cleared column only once OSM's value changes.
+- Approving a claim re-tiers only the claimant's own (or its filer's) community statements made since filing (`retierClaimantStatements`); never re-tier on a membership GoWay did not check with Oxy.
+- The import's owned columns are declared once in `import/osm/fields.ts`; `source_data` is `{v:2, tags, normalized}` with every raw tag, and OSM attributes are `external_source` capabilities tied to the element's source row.
 - `places.name` is the DEFAULT (local-language) name and never moves with a locale; every tagged name is a `places_names` row keyed `(place, language, source)`, resolved server-side and rendered via `placeDisplayName`. Design note: `docs/PLACE_NAMES.md`.
+- A business is an Oxy organization: a claim stores its `oxyAccountId` and Oxy decides who acts for it (`places/claimAuthority`, asked with the caller's bearer). Never keep a member list or brand id; fail closed with 503 when Oxy cannot answer. Design note: `docs/BUSINESS_OWNERSHIP.md`.
+- Every place write records exactly one `place_revisions` row through `recordRevision`, inside the write's transaction. The public history never names an account or person; classify a new action in `PLACE_REVISION_VISIBILITY`.
+- Claim decisions, `oxy_verified`, removal and merges are moderation acts behind `MODERATION_OPERATOR_OXY_USER_IDS` (matched on the person); no public route may produce them.
+- A place image is an Oxy file id, checked (owner, public, image) and linked via `oxy/placeFiles` on the caller's bearer; GoWay never fetches, proxies or stores image bytes. Design note: `docs/PLACE_MEDIA_REVIEWS.md`.
+- A review is by the person, never an org session or anyone with any role in an approved claimant; `place_review_aggregates` is recomputed in every review write, never incremented.
+- No revision holds an Oxy file id or a review's words.
 
 ## Privacy
 
 - The map opens without an account. Browsing, search and routing must work signed out; require Oxy auth only for identity-bound features (saves, edits, lists, contributions).
 - Location permission is requested only when the user invokes a location-dependent action, never to open the app. Precise coordinates are transient request data; do not persist them as history, and keep user location out of Places tables.
+- A place photo is re-encoded on the device before upload (`features/explore/placePhoto.ts`), so its EXIF location is never published.

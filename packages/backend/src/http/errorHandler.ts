@@ -34,11 +34,16 @@ function bodyParserFailure(error: unknown): ApiError | null {
   }
 }
 
-/** Answers any request that matched no route. */
-export const notFoundHandler: RequestHandler = (_request, response) => {
+/**
+ * Answers any request that matched no route — `unknown_route`, not
+ * `not_found`. A client that sees it is talking to an API older or newer than
+ * it was built for; telling it "not found" would have it conclude a resource
+ * is gone and drop an id it should have kept.
+ */
+export const unknownRouteHandler: RequestHandler = (_request, response) => {
   response
     .status(404)
-    .json(new ApiError('not_found', 'No route matches this request.').toResponseBody());
+    .json(new ApiError('unknown_route', 'No route matches this request.').toResponseBody());
 };
 
 export const errorHandler: ErrorRequestHandler = (error: unknown, request, response, next) => {

@@ -67,7 +67,7 @@ export const generatedGeographyPoint = (longitudeColumn: string, latitudeColumn:
  * removing a value is not supported at all. A CHECK is an ordinary migration.
  *
  * Both arguments come from the SAME `as const` tuple that types the column —
- * and for every set in this schema that tuple lives in `@goway/shared-types`,
+ * and for every set in this schema that tuple lives in `@goway/contracts`,
  * so the public contract, the TypeScript union and the database constraint are
  * one definition rather than three.
  *
@@ -78,6 +78,16 @@ export const generatedGeographyPoint = (longitudeColumn: string, latitudeColumn:
  */
 export const closedSet = (name: string, column: PgColumn, values: readonly string[]) =>
   check(name, sql`${column} in (${sql.raw(inList(values))})`);
+
+/**
+ * {@link closedSet} for a `text[]` column: every member must be in the set.
+ *
+ * `<@` (is contained by) rather than a per-element loop, so the constraint is
+ * one expression the planner checks per row. An empty array is contained by
+ * anything, which is what "a place with no category yet" needs.
+ */
+export const closedSetArray = (name: string, column: PgColumn, values: readonly string[]) =>
+  check(name, sql`${column} <@ ARRAY[${sql.raw(inList(values))}]::text[]`);
 
 /**
  * An id belonging to a FOREIGN service — an Oxy account id, an Oxy user id, an

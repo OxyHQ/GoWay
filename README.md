@@ -46,7 +46,10 @@ bun run test             # bun test
 bun run check:migrations # deploy-phase markers + no $1 placeholders in generated SQL
 bun run check:routing    # api.goway.to returns a REAL Barcelona->Madrid route, not a straight line
 bun run check:lockfile   # bun.lock matches the manifests it describes
-bun run test:gates       # proves the migration gates can fail
+bun run test:gates       # proves the migration, OpenAPI and JSON Schema gates can fail
+bun run check:openapi    # packages/contracts/openapi.json is complete and fresh
+bun run check:contracts  # every named contract schema converts to JSON Schema
+bun run openapi          # regenerate openapi.json after a contract change
 ```
 
 CI runs all of these, and the AWS deploy is a JOB of the CI workflow with
@@ -69,7 +72,7 @@ search, real geocoding, and real turn-by-turn routing from GoWay's own Valhalla
 DEFAULTS fixtures on, so `bun run dev:frontend` works against nothing.
 
 One thing is knowingly empty: **GoWay Places has no rows in production**, so
-`/places/bounds` answers `[]` and the GoWay-owned pin layer is blank until it is
+`/places/bounds` answers an empty page and the GoWay-owned pin layer is blank until it is
 seeded. That was chosen over keeping the fixtures live, because those fixtures
 are real Barcelona names carrying invented facts, and fabricated places on a
 public map are the same defect as a fabricated route. The basemap still draws
@@ -180,7 +183,7 @@ packages/
   frontend/                 Expo Router app for web, iOS and Android
   backend/                  GoWay API, Places persistence and provider adapters
   sdk/                      public @goway.to/sdk package
-  shared-types/             provider-neutral shared contracts and Places types
+  contracts/                the zod contracts: every request, response, error and value set, the route registry and openapi.json
   reconstruction-worker/    Python/CUDA Street 3D worker
 ```
 
@@ -196,7 +199,7 @@ The frontend uses the same Oxy application foundation as the rest of the ecosyst
 
 ### Places schema ownership
 
-The Places schema is part of GoWay v1, not deferred. Its public/domain contracts live in `packages/shared-types`; its canonical database schema, spatial indexes and migrations live in `packages/backend` using PostgreSQL + PostGIS. We intentionally do **not** create a separate public database-schema package because SDK consumers should depend on stable GoWay contracts, not on GoWay's internal tables or migrations.
+The Places schema is part of GoWay v1, not deferred. Its public/domain contracts live in `packages/contracts`; its canonical database schema, spatial indexes and migrations live in `packages/backend` using PostgreSQL + PostGIS. We intentionally do **not** create a separate public database-schema package because SDK consumers should depend on stable GoWay contracts, not on GoWay's internal tables or migrations.
 
 GoWay hosts the map dataset itself — a planet PMTiles build in R2, at roughly $1.50 a month because R2 charges nothing for egress. The map infrastructure is still replaceable independently from GoWay-owned Places and ecosystem data: `lib/map/provider.ts` is the one module that names where cartography comes from, and moving the tiles from a third party to GoWay's own storage touched no component, no screen and no SDK contract.
 

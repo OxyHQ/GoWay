@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { StreetSceneViewpoint } from '@goway/shared-types';
+import type { StreetSceneViewpoint } from '@goway.to/sdk';
 
 import { createCameraRig } from '../cameraRig';
 import {

@@ -3,7 +3,7 @@
  *
  * Valhalla's request body, its numeric maneuver taxonomy, its unit system, its
  * encoded shapes and its `error_code` table are all in this file and in no
- * other. What leaves is `@goway/shared-types`' `Route`: metres, seconds, a
+ * other. What leaves is `@goway/contracts`' `Route`: metres, seconds, a
  * GeoJSON LineString and a maneuver vocabulary GoWay owns. Issue #6 is explicit
  * that exposing Valhalla's raw response as the stable contract is the thing
  * this layer exists to prevent — a consumer that learned to read
@@ -42,7 +42,7 @@ import {
   type RouteLeg,
   type RouteManeuver,
   type TravelMode,
-} from '@goway/shared-types';
+} from '@goway/contracts';
 import { ApiError } from '../http/apiError';
 import { createLogger } from '../utils/logger';
 import { decodePolyline, PolylineDecodeError } from './polyline';

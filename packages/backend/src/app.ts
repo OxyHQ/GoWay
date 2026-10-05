@@ -7,21 +7,35 @@
  * then listen" stays visible in exactly one place.
  *
  * Middleware order below is load-bearing:
- *   helmet → CORS → body parser → health → API router → notFound → errorHandler
+ *   helmet → CORS → body parser → health → API router → unknownRoute → errorHandler
  * CORS before the body parser so a rejected cross-origin preflight never gets a
  * body parsed for it, and the two terminal handlers LAST because Express matches
- * in registration order — a `notFoundHandler` mounted before a router would
+ * in registration order — an `unknownRouteHandler` mounted before a router would
  * answer 404 for every route that router defines.
  */
 
 import express, { type Express, Router } from 'express';
 import helmet from 'helmet';
 import { config } from './config';
-import { errorHandler, notFoundHandler } from './http/errorHandler';
-import { apiRateLimit, optionalAuth, requireAuth, street3dReportRateLimit } from './middleware/auth';
+import { errorHandler, unknownRouteHandler } from './http/errorHandler';
+import {
+  accountRoles,
+  apiRateLimit,
+  contributionRateLimit,
+  optionalAuth,
+  placeFiles,
+  reportRateLimit,
+  requireAuth,
+  requireOperator,
+} from './middleware/auth';
 import { createGoWayCors } from './middleware/cors';
 import { healthRouter } from './routes/health';
 import { createCaptureRouter } from './routes/capture';
+import { createCategoriesRouter } from './routes/categories';
+import { createModerationRouter } from './routes/moderation';
+import { createOpenApiRouter } from './routes/openapi';
+import { createPlaceMediaRouter } from './routes/placeMedia';
+import { createPlaceReviewsRouter } from './routes/placeReviews';
 import { createPlacesRouter } from './routes/places';
 import { createRoutesRouter } from './routes/directions';
 import { createSearchRouter } from './routes/search';
@@ -78,8 +92,8 @@ export function createApp(): Express {
    * including the authenticated ones — is throttled while the probes above stay
    * unlimited.
    *
-   * Routers mount onto `v1` as they are built: Places (#4), routing (#6),
-   * search (#5) and Street 3D capture (#9/#10). Two caller classes share this
+   * Routers mount onto `v1` as they are built: Places (#4), moderation,
+   * routing (#6), search (#5) and Street 3D capture (#9/#10). Two caller classes share this
    * router and neither
    * may satisfy the other's routes: a signed-out visitor reaches browse, search
    * and routing through `optionalAuth`, and only identity-bound routes (saves,
@@ -99,7 +113,24 @@ export function createApp(): Express {
   api.use(apiRateLimit);
 
   const v1: Router = Router();
-  v1.use(createPlacesRouter({ optionalAuth, requireAuth }));
+  v1.use(createOpenApiRouter());
+  v1.use(createCategoriesRouter());
+  v1.use(createPlacesRouter({ optionalAuth, requireAuth, accountRoles, reportRateLimit }));
+  /**
+   * A place's gallery and reviews. Images are Oxy files the client uploaded;
+   * GoWay checks and links them with Oxy (`oxy/placeFiles`) and never touches
+   * the bytes.
+   */
+  v1.use(
+    createPlaceMediaRouter({ optionalAuth, requireAuth, accountRoles, placeFiles, reportRateLimit, contributionRateLimit }),
+  );
+  v1.use(createPlaceReviewsRouter({ requireAuth, accountRoles, reportRateLimit, contributionRateLimit }));
+  /**
+   * Moderation: claim decisions, Oxy verification, duplicate merges and the
+   * report queue — every route behind `requireAuth` and the operator allow-list
+   * (`MODERATION_OPERATOR_OXY_USER_IDS`).
+   */
+  v1.use(createModerationRouter({ requireAuth, requireOperator }));
   v1.use(createRoutesRouter({ optionalAuth }));
   v1.use(createSearchRouter({ optionalAuth }));
   /**
@@ -119,12 +150,12 @@ export function createApp(): Express {
    * `STREET3D_VIEWING_ENABLED` is set. It reads only the database: no queue,
    * bucket or external worker is on the request path.
    */
-  v1.use(createStreet3dRouter({ requireAuth, reportRateLimit: street3dReportRateLimit }));
+  v1.use(createStreet3dRouter({ requireAuth, reportRateLimit }));
   api.use('/v1', v1);
 
   app.use('/api', api);
 
-  app.use(notFoundHandler);
+  app.use(unknownRouteHandler);
   app.use(errorHandler);
 
   return app;

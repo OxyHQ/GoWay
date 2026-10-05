@@ -10,7 +10,7 @@
 
 import { createHash } from 'node:crypto';
 import { and, count, eq, isNotNull, isNull, sql } from 'drizzle-orm';
-import type { StreetSceneProfile } from '@goway/shared-types';
+import type { StreetSceneProfile } from '@goway/contracts';
 import type { Street3dConfig } from '../config/street3d';
 import type { Database } from '../db/postgres';
 import { summarizeCaptureStorage } from '../db/capture/captureRepository';

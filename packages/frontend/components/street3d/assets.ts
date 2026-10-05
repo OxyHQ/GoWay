@@ -5,7 +5,7 @@
  * Pure: the device tier and the asset-origin policy are inputs, so the whole
  * decision is unit-tested without a browser.
  */
-import type { StreetSceneAsset, StreetSceneManifest } from '@goway/shared-types';
+import type { StreetSceneAsset, StreetSceneManifest } from '@goway.to/sdk';
 
 import type { SceneDeviceTier } from './types';
 

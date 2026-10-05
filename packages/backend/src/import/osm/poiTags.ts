@@ -49,6 +49,8 @@
  * at the source.
  */
 
+import { CATEGORY_DEFINITIONS, type CategoryKey } from '@goway/contracts';
+
 /**
  * The tag keys that make an element a POI, in precedence order, each with the
  * values it accepts.
@@ -141,11 +143,12 @@ const CLUTTER_CLASSES: ReadonlySet<string> = new Set([
 /**
  * OpenMapTiles' `poi_class` grouping: several subclasses that share a pin.
  *
- * Reproduced because the `class` is what `categories` is built from and what
- * every later filter — "coffee near me", a category facet, the pin colour a
- * GoWay-drawn POI layer will need — reads. Where a subclass is not listed the
- * class IS the subclass, which is OpenMapTiles' own fallback and keeps a tag
- * this table has never heard of as a usable category rather than as `other`.
+ * Reproduced for the one job it still has: deciding, the way the basemap
+ * decides, which elements are clutter (`subway_entrance` is class `entrance`)
+ * — and letting `poiTags.test.ts` reconcile what this import admits against
+ * the classes the map style colours. It does NOT name GoWay's categories; the
+ * contract's taxonomy does ({@link osmCategories}). Where a subclass is not
+ * listed the class IS the subclass, OpenMapTiles' own fallback.
  */
 const CLASS_BY_SUBCLASS = new Map<string, string>(
   (
@@ -187,35 +190,6 @@ const CLASS_BY_SUBCLASS = new Map<string, string>(
   ).flatMap(([className, subclasses]) => subclasses.map((subclass) => [subclass, className] as [string, string])),
 );
 
-/**
- * The coarse category each class rolls up into.
- *
- * The same ten groups `POI_GROUPS` in `layers.ts` colours by, for the same
- * reason they exist there: a class is what a place IS and a group is what a
- * person is looking for. It is the third and least specific entry in
- * {@link poiCategories}, which is what makes `?categories=food_drink` a usable
- * filter without the caller enumerating forty subclasses.
- *
- * A class in no group contributes no group — `categories` is shorter rather
- * than carrying a meaningless `other`.
- */
-const GROUP_BY_CLASS = new Map<string, string>(
-  (
-    [
-      ['food_drink', ['restaurant', 'fast_food', 'cafe', 'bar', 'beer', 'ice_cream']],
-      ['shopping', ['shop', 'clothing_store', 'grocery', 'alcohol_shop', 'bakery', 'butcher', 'hairdresser', 'laundry']],
-      ['outdoors', ['park', 'garden', 'playground', 'pitch', 'dog_park', 'picnic_site', 'golf', 'zoo', 'sports_centre', 'stadium', 'swimming_pool', 'swimming', 'ice_rink', 'athletics', 'cycling', 'running', 'yoga', 'boxing', 'gymnastics', 'equestrian', 'campsite']],
-      ['transit', ['bus', 'railway', 'ferry_terminal', 'aerialway']],
-      ['lodging', ['lodging']],
-      ['health', ['hospital', 'pharmacy', 'doctors', 'dentist', 'veterinary']],
-      ['civic', ['school', 'college', 'library', 'town_hall', 'police', 'fire_station', 'post', 'office', 'bank', 'atm']],
-      ['culture', ['museum', 'art_gallery', 'theatre', 'cinema', 'attraction', 'monument', 'castle', 'aquarium', 'music', 'escape_game', 'hackerspace', 'theme_park']],
-      ['worship', ['place_of_worship', 'cemetery']],
-      ['vehicle', ['parking', 'fuel', 'car', 'bicycle', 'bicycle_rental', 'motorcycle', 'harbor']],
-    ] as const
-  ).flatMap(([group, classes]) => classes.map((className) => [className, group] as [string, string])),
-);
-
 /** What the tags say this element is. */
 export interface PoiKind {
   /** The tag key that qualified it — `amenity`, `shop`, … */
@@ -240,17 +214,24 @@ export function isPoiMappingKey(key: string): boolean {
  */
 export function classifyPoi(tags: ReadonlyMap<string, string>): PoiKind | null {
   for (const key of MAPPING_KEY_ORDER) {
-    const value = tags.get(key);
-    if (value === undefined || NON_CLASSIFYING_VALUES.has(value)) continue;
-    const accepted = MAPPING_KEY_VALUES.get(key);
-    if (accepted !== 'any' && !accepted?.has(value)) continue;
-
-    const subclass = value;
-    const className = classOf(subclass, key);
-    if (CLUTTER_CLASSES.has(className)) return null;
-    return { mappingKey: key, subclass, className };
+    const kind = kindOf(key, tags.get(key));
+    if (kind === undefined) continue;
+    return kind;
   }
   return null;
+}
+
+/**
+ * What ONE tag makes an element: a kind, `null` for a class the basemap draws
+ * nowhere, or `undefined` when the tag qualifies nothing.
+ */
+function kindOf(key: string, value: string | undefined): PoiKind | null | undefined {
+  if (value === undefined || NON_CLASSIFYING_VALUES.has(value)) return undefined;
+  const accepted = MAPPING_KEY_VALUES.get(key);
+  if (accepted !== 'any' && !accepted?.has(value)) return undefined;
+  const className = classOf(value, key);
+  if (CLUTTER_CLASSES.has(className)) return null;
+  return { mappingKey: key, subclass: value, className };
 }
 
 /**
@@ -270,19 +251,48 @@ function classOf(subclass: string, mappingKey: string): string {
   return CLASS_BY_SUBCLASS.get(subclass) ?? subclass;
 }
 
+/** `key=value` → category, and `key` → the key-wide `key=*` fallback, from the contract registry. */
+const CATEGORY_BY_TAG = new Map<string, CategoryKey>();
+const CATEGORY_BY_KEY = new Map<string, CategoryKey>();
+for (const definition of CATEGORY_DEFINITIONS) {
+  for (const tag of definition.osm) {
+    const [key, value] = tag.split('=') as [string, string];
+    if (value === '*') CATEGORY_BY_KEY.set(key, definition.key);
+    else CATEGORY_BY_TAG.set(tag, definition.key);
+  }
+}
+
+/** The most categories one element is filed under. */
+const MAX_CATEGORIES = 3;
+
+/** The taxonomy key one qualifying tag files an element under, or `undefined`. */
+export function categoryOfTag(key: string, value: string): CategoryKey | undefined {
+  return CATEGORY_BY_TAG.get(`${key}=${value}`) ?? CATEGORY_BY_KEY.get(key);
+}
+
 /**
- * GoWay's normalized category keys for a POI, MOST SPECIFIC FIRST.
+ * GoWay's category keys for an element, MOST SPECIFIC FIRST.
  *
- * Three at most and never fewer than one: the subclass as OpenStreetMap tagged
- * it, the class it rolls up into, and the group a person browses by. Duplicates
- * collapse, so `amenity=cafe` is `['cafe', 'food_drink']` rather than
- * `['cafe', 'cafe', 'food_drink']`.
+ * Every qualifying tag contributes, in {@link POI_MAPPING_KEYS} precedence, so
+ * the first key is always the one {@link classifyPoi} chose — a restaurant
+ * tagged `tourism=attraction` is `['food.restaurant', 'culture.attraction']`.
+ * The taxonomy decides each key (`@goway/contracts`' `CATEGORY_DEFINITIONS`);
+ * this module holds no category vocabulary. A key that is an ancestor of
+ * another is dropped, because a filter on the parent already matches the child:
+ * `leisure=pitch` + `sport=soccer` is `['sport.pitch']`, not that plus `sport`.
  */
-export function poiCategories(kind: PoiKind): string[] {
-  const categories = [kind.subclass, kind.className];
-  const group = GROUP_BY_CLASS.get(kind.className);
-  if (group) categories.push(group);
-  return [...new Set(categories)];
+export function osmCategories(tags: ReadonlyMap<string, string>): CategoryKey[] {
+  const keys: CategoryKey[] = [];
+  for (const key of MAPPING_KEY_ORDER) {
+    const value = tags.get(key);
+    const kind = kindOf(key, value);
+    if (!kind) continue;
+    const category = categoryOfTag(key, kind.subclass);
+    if (category !== undefined && !keys.includes(category)) keys.push(category);
+  }
+  return keys
+    .filter((key) => !keys.some((other) => other.startsWith(`${key}.`)))
+    .slice(0, MAX_CATEGORIES);
 }
 
 /** Exposed for the test that holds the clutter copy honest. */

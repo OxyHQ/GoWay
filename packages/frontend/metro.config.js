@@ -9,6 +9,6 @@ const { createOxyMetroConfig } = require('@oxy.so/app-preset/metro');
 // fork of it. See scripts/vendor-maplibre-worker.js.
 require('./scripts/vendor-maplibre-worker').vendorMaplibreWorker();
 
-module.exports = createOxyMetroConfig(__dirname, {
-  sharedTypesPackage: '@goway/shared-types',
-});
+// No `sharedTypesPackage`: the app reaches GoWay's contracts only through the
+// built `@goway.to/sdk`, never the private `@goway/contracts` package directly.
+module.exports = createOxyMetroConfig(__dirname);

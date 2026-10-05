@@ -34,7 +34,7 @@
  */
 
 import { createDatabase } from '@oxy.so/db';
-import { runMigrations } from '@oxy.so/db/migrate';
+import { runMigrations, type MigrationRun } from '@oxy.so/db/migrate';
 import { createTestDatabase, dropTestDatabase } from '@oxy.so/db/testing';
 import postgres from 'postgres';
 import { REQUIRED_EXTENSIONS } from '../extensions';
@@ -125,9 +125,11 @@ export interface SuiteDatabase {
  *
  * `--phase=all` is correct for a database created a moment ago: `pre` and
  * `post` describe the two sides of a rolling deploy, and there is no previous
- * image here to stay compatible with.
+ * image here to stay compatible with. A suite that tests the deploy itself —
+ * data written between the two phases — passes `run: 'pre'` and applies the
+ * post phase with {@link migrateSuiteDatabase}.
  */
-export async function createSuiteDatabase(): Promise<SuiteDatabase> {
+export async function createSuiteDatabase(options: { run?: MigrationRun } = {}): Promise<SuiteDatabase> {
   if (!ADMIN_URL) {
     throw new Error(
       'No database URL for the real-database suites. These tests do not skip: a ' +
@@ -142,18 +144,7 @@ export async function createSuiteDatabase(): Promise<SuiteDatabase> {
 
   const databaseUrl = await createTestDatabase({
     adminUrl: ADMIN_URL,
-    migrate: async (url) => {
-      await runMigrations({
-        databaseUrl: url,
-        migrationsFolder: MIGRATIONS_FOLDER,
-        extensions: REQUIRED_EXTENSIONS,
-        run: 'all',
-        dryRun: false,
-        // Silent: a migration log line per test file drowns the assertions,
-        // and a failure throws rather than being reported through this.
-        logger: { info: () => undefined, debug: () => undefined },
-      });
-    },
+    migrate: (url) => migrateSuiteDatabase(url, options.run ?? 'all'),
   });
 
   const { db, client } = createDatabase({
@@ -167,6 +158,20 @@ export async function createSuiteDatabase(): Promise<SuiteDatabase> {
   });
   setDatabaseForTesting({ db, client });
   return { db, client, databaseUrl };
+}
+
+/** Apply one phase of the migrations to a suite database, as the deploy does. */
+export async function migrateSuiteDatabase(databaseUrl: string, run: MigrationRun): Promise<void> {
+  await runMigrations({
+    databaseUrl,
+    migrationsFolder: MIGRATIONS_FOLDER,
+    extensions: REQUIRED_EXTENSIONS,
+    run,
+    dryRun: false,
+    // Silent: a migration log line per test file drowns the assertions,
+    // and a failure throws rather than being reported through this.
+    logger: { info: () => undefined, debug: () => undefined },
+  });
 }
 
 /** Close the handle and drop the database. Safe to call after a failed setup. */

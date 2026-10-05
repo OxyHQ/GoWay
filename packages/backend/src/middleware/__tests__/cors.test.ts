@@ -40,8 +40,14 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../../app';
 import { createCaptureRouter } from '../../routes/capture';
+import { createCategoriesRouter } from '../../routes/categories';
+import { createOpenApiRouter } from '../../routes/openapi';
 import { createRoutesRouter } from '../../routes/directions';
+import { createModerationRouter } from '../../routes/moderation';
+import { createPlaceMediaRouter } from '../../routes/placeMedia';
+import { createPlaceReviewsRouter } from '../../routes/placeReviews';
 import { createPlacesRouter } from '../../routes/places';
+import { NO_FILES, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createSearchRouter } from '../../routes/search';
 import { createGoWayCors, isPublicReadRequest, PUBLIC_READ_ROUTES } from '../cors';
 
@@ -242,7 +248,7 @@ describe('the public preflight', () => {
   });
 
   it('refuses a preflight that asks about a method the table does not admit', async () => {
-    // `DELETE /places/:id/capabilities/:key` exists and is behind requireAuth.
+    // `DELETE /places/:placeId/capabilities/:key` exists and is behind requireAuth.
     // Asking about DELETE on a path whose GET is public must not borrow the
     // GET's answer.
     const response = await fetch(`${appOrigin}${BASE}/places/sample-value`, {
@@ -278,7 +284,7 @@ describe('a credentialed route', () => {
   });
 
   it('gives a non-allowlisted origin nothing on a credentialed READ either', async () => {
-    // `GET /places/:id/claims` is one account's claim history. It is a GET, it
+    // `GET /places/:placeId/claims` is one account's claim history. It is a GET, it
     // lives under `/places`, and it is exactly what a prefix rule or a
     // "GETs are public" convention would have leaked.
     const response = await fetch(`${appOrigin}${BASE}/places/sample-value/claims`, {
@@ -383,7 +389,10 @@ describe('isPublicReadRequest', () => {
 
   it('answers HEAD as GET, since Express serves it from the same handler', () => {
     expect(isPublicReadRequest('HEAD', `${BASE}/places/nearby`)).toBe(true);
+    expect(isPublicReadRequest('HEAD', `${BASE}/places/bounds`)).toBe(true);
+    // The collection path's read is the batch read by id; `POST /places` stays strict.
     expect(isPublicReadRequest('HEAD', `${BASE}/places`)).toBe(true);
+    expect(isPublicReadRequest('POST', `${BASE}/places`)).toBe(false);
     expect(isPublicReadRequest('HEAD', `${BASE}/claims`)).toBe(false);
   });
 
@@ -450,23 +459,46 @@ describe('the public table, checked against the routers it claims to describe', 
   };
 
   const everyRoute: RegisteredRoute[] = [
-    ...registeredRoutes(createPlacesRouter({ optionalAuth, requireAuth })),
+    ...registeredRoutes(
+      createPlacesRouter({ optionalAuth, requireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }),
+    ),
+    ...registeredRoutes(
+      createPlaceMediaRouter({
+        optionalAuth,
+        requireAuth,
+        accountRoles: NO_MEMBERSHIPS,
+        placeFiles: NO_FILES,
+        reportRateLimit: NO_RATE_LIMIT,
+        contributionRateLimit: NO_RATE_LIMIT,
+      }),
+    ),
+    ...registeredRoutes(
+      createPlaceReviewsRouter({
+        requireAuth,
+        accountRoles: NO_MEMBERSHIPS,
+        reportRateLimit: NO_RATE_LIMIT,
+        contributionRateLimit: NO_RATE_LIMIT,
+      }),
+    ),
+    ...registeredRoutes(createModerationRouter({ requireAuth, requireOperator: requireAuth })),
     ...registeredRoutes(createRoutesRouter({ optionalAuth, provider: null })),
     ...registeredRoutes(createSearchRouter({ optionalAuth })),
     ...registeredRoutes(createCaptureRouter({ optionalAuth, requireAuth, objectStore: null })),
+    ...registeredRoutes(createOpenApiRouter()),
+    ...registeredRoutes(createCategoriesRouter()),
   ];
 
   it('found the real routers, so the cases below are measuring something', () => {
     // A refactor that changed Express's layer shape would otherwise turn this
     // whole section into a vacuous pass over an empty list.
     expect(everyRoute.length).toBeGreaterThan(15);
-    expect(everyRoute.some((route) => route.method === 'GET' && route.path === '/places/:id')).toBe(
+    expect(everyRoute.some((route) => route.method === 'GET' && route.path === '/places/:placeId')).toBe(
       true,
     );
   });
 
   it('admits nothing that is mounted behind requireAuth', () => {
-    // THE invariant. `GET /places/:id` has a wildcard segment, so a future
+    // THE invariant. `GET /places/:placeId` has a wildcard segment, so a future
     // `GET /places/mine` behind requireAuth would match it and become readable
     // by any origin. This is what says so before a deploy does.
     const leaked = everyRoute.filter(
@@ -487,11 +519,17 @@ describe('the public table, checked against the routers it claims to describe', 
       .sort();
 
     expect(admitted).toEqual([
+      'GET /categories',
       'GET /geocode',
       'GET /geocode/reverse',
       'GET /geocode/structured',
+      'GET /openapi.json',
       'GET /places',
-      'GET /places/:id',
+      'GET /places/:placeId',
+      'GET /places/:placeId/hours-exceptions',
+      'GET /places/:placeId/media',
+      'GET /places/:placeId/reviews',
+      'GET /places/:placeId/revisions',
       'GET /places/bounds',
       'GET /places/nearby',
       'GET /search',
@@ -506,22 +544,51 @@ describe('the public table, checked against the routers it claims to describe', 
       .sort();
 
     expect(refused).toEqual([
-      'DELETE /captures/assets/:id',
-      'DELETE /places/:id/capabilities/:key',
-      'GET /captures/assets/:id',
+      'DELETE /captures/assets/:assetId',
+      'DELETE /moderation/places/:placeId/capabilities/:key',
+      'DELETE /moderation/places/:placeId/reviews/:reviewId/reply',
+      'DELETE /places/:placeId/capabilities/:key',
+      'DELETE /places/:placeId/hours-exceptions/:exceptionId',
+      'DELETE /places/:placeId/media/:mediaId',
+      'DELETE /places/:placeId/reviews/:reviewId/reply',
+      'DELETE /places/:placeId/reviews/mine',
+      'GET /captures/assets/:assetId',
       'GET /captures/policy',
       'GET /captures/sessions',
-      'GET /captures/sessions/:id',
-      'GET /captures/sessions/:id/assets',
+      'GET /captures/sessions/:sessionId',
+      'GET /captures/sessions/:sessionId/assets',
       'GET /claims',
-      'GET /places/:id/claims',
-      'PATCH /places/:id',
-      'POST /captures/assets/:id/finalize',
+      'GET /moderation/claims',
+      'GET /moderation/duplicates',
+      'GET /moderation/places/:placeId/media',
+      'GET /moderation/places/:placeId/reviews',
+      'GET /moderation/places/:placeId/revisions',
+      'GET /moderation/reports',
+      'GET /places/:placeId/claims',
+      'GET /places/:placeId/reviews/mine',
+      'PATCH /moderation/places/:placeId',
+      'PATCH /moderation/places/:placeId/media/:mediaId',
+      'PATCH /moderation/places/:placeId/reviews/:reviewId',
+      'PATCH /places/:placeId',
+      'POST /captures/assets/:assetId/finalize',
       'POST /captures/sessions',
-      'POST /captures/sessions/:id/assets',
+      'POST /captures/sessions/:sessionId/assets',
+      'POST /moderation/claims/:claimId/decision',
+      'POST /moderation/duplicates/:candidateId/resolution',
+      'POST /moderation/reports/:reportId/resolution',
       'POST /places',
-      'POST /places/:id/claims',
-      'PUT /places/:id/capabilities/:key',
+      'POST /places/:placeId/claims',
+      'POST /places/:placeId/hours-exceptions',
+      'POST /places/:placeId/media',
+      'POST /places/:placeId/media/:mediaId/reports',
+      'POST /places/:placeId/reports',
+      'POST /places/:placeId/reviews/:reviewId/reports',
+      'PUT /moderation/places/:placeId/capabilities/:key',
+      'PUT /places/:placeId/capabilities/:key',
+      'PUT /places/:placeId/hours-exceptions/:exceptionId',
+      'PUT /places/:placeId/media/order',
+      'PUT /places/:placeId/reviews/:reviewId/reply',
+      'PUT /places/:placeId/reviews/mine',
     ]);
   });
 });

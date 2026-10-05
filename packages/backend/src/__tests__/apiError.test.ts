@@ -1,7 +1,7 @@
 /**
  * The error vocabulary.
  *
- * These codes are the PUBLIC contract: `packages/shared-types` re-exports the
+ * These codes are the PUBLIC contract: `packages/contracts` defines the
  * tuple and `@goway.to/sdk` builds its typed errors from it, so a consumer's
  * `switch` is only exhaustive if this list is the one the API actually answers
  * with.

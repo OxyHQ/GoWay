@@ -1,7 +1,7 @@
 /**
  * The external worker's contract, as the backend reads and writes it.
  *
- * ## Internal, and deliberately not in `@goway/shared-types`
+ * ## Internal, and deliberately not in `@goway/contracts`
  *
  * These are the JOB shapes: SQS envelopes, input manifests, events and results.
  * They name object keys, capture asset ids, position priors and worker ids —
@@ -26,7 +26,7 @@
  */
 
 import { z } from 'zod';
-import { STREET_SCENE_ASSET_ROLES, STREET_SCENE_PROFILES } from '@goway/shared-types';
+import { STREET_SCENE_ASSET_ROLES, STREET_SCENE_PROFILES } from '@goway/contracts';
 
 export const WORKER_CONTRACT_SCHEMA_VERSION = 1;
 

@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import type { CaptureLocationEvidence } from '@goway/shared-types';
+import type { CaptureLocationEvidence } from '@goway/contracts';
 import { evidenceDistanceMeters, resolveCaptureAnchor } from '../anchor';
 
 const at = (

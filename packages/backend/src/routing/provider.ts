@@ -2,7 +2,7 @@
  * The routing seam.
  *
  * Everything above this interface — the HTTP route, `@goway.to/sdk`, the app —
- * speaks `@goway/shared-types`' `Route`, `RouteLeg` and `RouteManeuver` and
+ * speaks `@goway/contracts`' `Route`, `RouteLeg` and `RouteManeuver` and
  * nothing else. Everything below it is one engine's opinion about request
  * shapes, units, maneuver taxonomies and error codes, and stops here.
  *
@@ -28,7 +28,7 @@
  * today; the shape simply does not stand in their way.
  */
 
-import type { GeoCoordinate, Route, TravelMode } from '@goway/shared-types';
+import type { GeoCoordinate, Route, TravelMode } from '@goway/contracts';
 
 /** A point a route passes through, already resolved to a coordinate. */
 export interface RoutePoint {
@@ -72,7 +72,7 @@ export interface RoutingProvider {
    *
    * An EMPTY array means "no route exists between these points", which is a
    * normal answer for this domain rather than a failure — see the note on
-   * `RouteResponse` in `@goway/shared-types`. Everything that IS a failure is
+   * `RouteResponse` in `@goway/contracts`. Everything that IS a failure is
    * thrown as an `ApiError` carrying a code from the shared vocabulary, so no
    * caller ever has to interpret an engine's own error shape.
    */

@@ -1,5 +1,5 @@
 # Backend image for GoWay. Two-stage build on oven/bun (linux/arm64 for
-# AWS Graviton). Only the backend + shared-types workspaces are installed; the
+# AWS Graviton). Only the backend + contracts workspaces are built; the
 # heavy Expo frontend tree is excluded via .dockerignore.
 
 # Stage 1: build (tsc → dist)
@@ -12,7 +12,7 @@ COPY package.json bun.lock bunfig.toml tsconfig.json ./
 
 # Every workspace member's package.json is required for a frozen-lockfile install
 # to reconcile, even the ones we do not build here.
-COPY packages/shared-types/package.json packages/shared-types/
+COPY packages/contracts/package.json packages/contracts/
 COPY packages/backend/package.json packages/backend/
 COPY packages/frontend/package.json packages/frontend/
 # The SDK is not a backend dependency and none of its code ships in this
@@ -22,14 +22,14 @@ COPY packages/frontend/package.json packages/frontend/
 # context is a hard error: "listed in bun.lock but not on disk".
 COPY packages/sdk/package.json packages/sdk/
 
-# --ignore-scripts skips the root postinstall (it builds shared-types before the
-# source is copied); shared-types + backend are built explicitly below.
+# --ignore-scripts skips the root postinstall (it builds the contracts before the
+# source is copied); contracts + backend are built explicitly below.
 RUN bun install --frozen-lockfile --ignore-scripts
 
-COPY packages/shared-types/ packages/shared-types/
+COPY packages/contracts/ packages/contracts/
 COPY packages/backend/ packages/backend/
 
-RUN cd packages/shared-types && bun run build
+RUN cd packages/contracts && bun run build
 RUN cd packages/backend && bun run build
 
 # Stage 2: runtime
@@ -39,7 +39,7 @@ WORKDIR /app
 RUN addgroup -g 1001 -S appgroup && adduser -u 1001 -S appuser -G appgroup
 
 COPY --from=builder /app/package.json /app/bun.lock /app/bunfig.toml ./
-COPY --from=builder /app/packages/shared-types/package.json packages/shared-types/
+COPY --from=builder /app/packages/contracts/package.json packages/contracts/
 COPY --from=builder /app/packages/backend/package.json packages/backend/
 COPY --from=builder /app/packages/frontend/package.json packages/frontend/
 COPY --from=builder /app/packages/sdk/package.json packages/sdk/
@@ -49,7 +49,7 @@ COPY --from=builder /app/packages/sdk/package.json packages/sdk/
 # from the build cache.
 RUN bun install --frozen-lockfile --production --ignore-scripts
 
-COPY --from=builder /app/packages/shared-types/dist/ packages/shared-types/dist/
+COPY --from=builder /app/packages/contracts/dist/ packages/contracts/dist/
 COPY --from=builder /app/packages/backend/dist/ packages/backend/dist/
 
 # The SQL migrations, beside packages/backend/package.json — which is how

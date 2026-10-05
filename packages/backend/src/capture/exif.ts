@@ -29,28 +29,16 @@
  * disagree because of arithmetic.
  */
 
-import type { GeoCoordinate } from '@goway/shared-types';
+import {
+  CAPTURE_LOCATION_WITNESSES,
+  type CaptureLocationEvidence,
+  type captureCameraInputSchema,
+  type captureLocationEvidenceInputSchema,
+  type ExifGps,
+  type GeoCoordinate,
+} from '@goway/contracts';
+import type { z } from 'zod';
 
-/** One EXIF GPS magnitude plus its hemisphere reference tag. */
-export interface ExifGpsMagnitude {
-  degrees: number;
-  minutes?: number;
-  seconds?: number;
-  /** `N`/`S` for a latitude, `E`/`W` for a longitude. Case-insensitive. */
-  ref: string;
-}
-
-/** A GPS block as a client reads it out of a photo. */
-export interface ExifGpsBlock {
-  latitude: ExifGpsMagnitude;
-  longitude: ExifGpsMagnitude;
-  /** `GPSAltitude`, in metres, always non-negative in EXIF. */
-  altitude?: number;
-  /** `GPSAltitudeRef`: 0 above sea level, 1 below. */
-  altitudeRef?: number;
-  /** `GPSImgDirection`, degrees. */
-  imageDirection?: number;
-}
 
 /** The normalized result, or `null` when the tags do not describe a position. */
 export interface NormalizedExifGps {
@@ -75,7 +63,7 @@ function isFiniteNonNegative(value: number | undefined): boolean {
  * because an absent or unrecognised one is the exact condition under which a
  * hemisphere gets guessed wrong.
  */
-export function exifGpsToDecimal(magnitude: ExifGpsMagnitude): number | null {
+export function exifGpsToDecimal(magnitude: ExifGps['latitude']): number | null {
   const { degrees, minutes = 0, seconds = 0 } = magnitude;
   if (!Number.isFinite(degrees) || degrees < 0) return null;
   if (!isFiniteNonNegative(minutes) || minutes >= 60) return null;
@@ -97,7 +85,7 @@ export function exifGpsToDecimal(magnitude: ExifGpsMagnitude): number | null {
  * mistake in geographic code, and one that produces a plausible point rather
  * than an error. Refusing it here is the only cheap place to catch it.
  */
-export function normalizeExifGps(block: ExifGpsBlock): NormalizedExifGps | null {
+export function normalizeExifGps(block: ExifGps): NormalizedExifGps | null {
   const latitudeRef = block.latitude.ref.trim().toLowerCase();
   const longitudeRef = block.longitude.ref.trim().toLowerCase();
   if (latitudeRef !== 'n' && latitudeRef !== 's') return null;
@@ -139,4 +127,59 @@ export function normalizeExifGps(block: ExifGpsBlock): NormalizedExifGps | null 
 export function normalizeExifOrientation(value: number | undefined): number | undefined {
   if (value === undefined || !Number.isInteger(value)) return undefined;
   return value >= 1 && value <= 8 ? value : undefined;
+}
+
+/**
+ * One position claim from a request body, as the evidence GoWay stores.
+ *
+ * `null` when it carried an EXIF block that describes no position — the caller
+ * answers that as a refused value naming the field. Normalized HERE, at the
+ * boundary, so the conversion whose classic bug mirrors a photo into the wrong
+ * hemisphere happens once, in tested code.
+ *
+ * The witness is always `client`: everything arriving over HTTP is witnessed by
+ * the client, by definition, and the contract gives a body no field to claim
+ * otherwise.
+ */
+export function evidenceFromClaim(
+  claim: z.output<typeof captureLocationEvidenceInputSchema>,
+): CaptureLocationEvidence | null {
+  let coordinate = claim.coordinate;
+  let altitudeMeters = claim.altitudeMeters;
+  let headingDegrees = claim.headingDegrees;
+
+  if (claim.exifGps) {
+    const normalized = normalizeExifGps(claim.exifGps);
+    if (!normalized) return null;
+    coordinate = normalized.coordinate;
+    altitudeMeters = altitudeMeters ?? normalized.altitudeMeters;
+    headingDegrees = headingDegrees ?? normalized.headingDegrees;
+  }
+  // The contract's refinement guarantees exactly one of the two arrived.
+  if (!coordinate) return null;
+
+  return {
+    origin: claim.origin,
+    witness: CAPTURE_LOCATION_WITNESSES[0],
+    coordinate,
+    ...(claim.accuracyMeters === undefined ? {} : { accuracyMeters: claim.accuracyMeters }),
+    ...(altitudeMeters === undefined ? {} : { altitudeMeters }),
+    // 360 and 0 are the same direction; the column's CHECK is `[0, 360)`.
+    ...(headingDegrees === undefined ? {} : { headingDegrees: headingDegrees % 360 }),
+    ...(claim.observedAt === undefined ? {} : { observedAt: claim.observedAt }),
+  };
+}
+
+/**
+ * Camera metadata with its EXIF orientation normalized, or `undefined`.
+ *
+ * An orientation outside 1–8 is DROPPED rather than defaulted to 1 — see
+ * {@link normalizeExifOrientation}.
+ */
+export function normalizedCamera(camera: z.output<typeof captureCameraInputSchema> | undefined) {
+  if (!camera) return undefined;
+  const orientation = normalizeExifOrientation(camera.exifOrientation);
+  const rest = { ...camera };
+  delete rest.exifOrientation;
+  return { ...rest, ...(orientation === undefined ? {} : { exifOrientation: orientation }) };
 }

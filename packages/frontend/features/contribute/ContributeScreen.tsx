@@ -17,7 +17,7 @@ import { captureClient } from './client';
 import { CaptureGuide } from './CaptureGuide';
 import { ContributionStatusCard } from './ContributionStatusCard';
 import { hashMedia, selectMedia, uploadMedia } from './media';
-import { mediaLocation, type SelectedMedia } from './media.shared';
+import { mediaLocation, type CaptureLocation, type SelectedMedia } from './media.shared';
 
 export function ContributeScreen() {
   const router = useRouter();
@@ -25,7 +25,7 @@ export function ContributeScreen() {
   const { user } = useOxy();
   const [policy, setPolicy] = useState<CaptureUploadPolicy | null>(null);
   const [media, setMedia] = useState<SelectedMedia | null>(null);
-  const [location, setLocation] = useState<CaptureAssetInput['location'][number] | null>(null);
+  const [location, setLocation] = useState<CaptureLocation | null>(null);
   const [source, setSource] = useState<'camera' | 'library'>('library');
   const [consent, setConsent] = useState(false);
   const [status, setStatus] = useState('');
@@ -42,8 +42,8 @@ export function ContributeScreen() {
   const refresh = useCallback(async () => {
     if (!gate.canUsePrivateApi) return;
     const account = user?.id;
-    const result = await captureClient.sessions();
-    if (currentUser.current === account) setSessions(result);
+    const page = await captureClient.sessions();
+    if (currentUser.current === account) setSessions(page.items);
   }, [gate.canUsePrivateApi, user?.id]);
 
   // The policy is answered FOR THE CALLER (a closed pilot admits named
@@ -134,11 +134,17 @@ export function ContributeScreen() {
     const account = user?.id;
     setError('');
     try {
-      const removed = await captureClient.remove(asset.id);
+      await captureClient.remove(asset.id);
+    } catch { setError('The contribution could not be withdrawn. Please try again.'); return; }
+    if (currentUser.current !== account) return;
+    if (pending.current?.ticket?.asset.id === asset.id) pending.current = null;
+    // The withdrawal answers 204 with nothing to describe; read the asset back
+    // for the state it is in now.
+    try {
+      const withdrawn = await captureClient.asset(asset.id);
       if (currentUser.current !== account) return;
-      setAssets((current) => current.map((item) => item.id === removed.id ? removed : item));
-      if (pending.current?.ticket?.asset.id === asset.id) pending.current = null;
-    } catch { setError('The contribution could not be withdrawn. Please try again.'); }
+      setAssets((current) => current.map((item) => item.id === withdrawn.id ? withdrawn : item));
+    } catch { setError('The contribution was withdrawn, but could not be refreshed.'); }
   }
 
   return <SafeAreaView className="flex-1 bg-background">
@@ -183,7 +189,7 @@ export function ContributeScreen() {
         <Button appearance="plain" onPress={() => void refresh().catch(() => setError('Could not refresh contributions.'))}>Refresh</Button>
         {sessions.map((session) => <Button key={session.id} appearance="outline" onPress={() => {
           const account = user?.id;
-          void captureClient.assets(session.id).then((items) => { if (currentUser.current === account) setAssets(items); })
+          void captureClient.assets(session.id).then((page) => { if (currentUser.current === account) setAssets(page.items); })
             .catch(() => setError('Could not load this contribution.'));
         }}>{new Date(session.createdAt).toLocaleDateString()} · {session.assetCount} item(s)</Button>)}
         {assets.map((asset) => <ContributionStatusCard key={asset.id} asset={asset} busy={busy} onWithdraw={(item) => void withdraw(item)} />)}

@@ -12,7 +12,7 @@
  * as decoded, which is the frame `worldTransform.enuFromScene` is defined on.
  */
 import type { StyleProp, ViewStyle } from 'react-native';
-import type { StreetSceneManifest } from '@goway/shared-types';
+import type { StreetSceneManifest } from '@goway.to/sdk';
 
 export type Vec3 = [number, number, number];
 

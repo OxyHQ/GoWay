@@ -1,0 +1,898 @@
+/**
+ * Every write moderation makes, and the reports that feed it.
+ *
+ * Each operator decision here runs in ONE transaction with the revision that
+ * records it (`revisions.ts`), and locks the rows it decides on before reading
+ * them, so two operators acting on the same claim, candidate or report at once
+ * are serialized: the second sees the first's decision and is refused with
+ * `conflict` rather than deciding a state that no longer exists.
+ *
+ * Reporting a place is the one public write in this module. It changes no
+ * place — an operator decides — and so records no revision of its own;
+ * resolving the report does.
+ */
+
+import { and, desc, eq, gte, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
+import type { PgColumn } from 'drizzle-orm/pg-core';
+import type {
+  CapabilityValue,
+  ClaimDecisionState,
+  DuplicateCandidate,
+  DuplicateCandidateReason,
+  DuplicateCandidateState,
+  DuplicateResolutionInput,
+  ModerationPlaceReport,
+  ModeratedPlaceStatus,
+  PlaceClaim,
+  PlaceClaimRole,
+  PlaceClaimState,
+  PlaceReport,
+  PlaceReportInput,
+  PlaceReportReason,
+  PlaceReportResolution,
+  PlaceReportState,
+  PlaceRevisionChange,
+  PlaceStatus,
+  PlaceVerificationState,
+  RevisionValue,
+} from '@goway/contracts';
+import { CLAIM_DECISION_FROM } from '@goway/contracts';
+import { ApiError } from '../../http/apiError';
+import type { Paged, TimeWindow } from '../../http/cursor';
+import { CLAIM_ROLE_SPEAKS_FOR_BUSINESS } from '../../places/capabilityAuthority';
+import { assertPublished, unpublishedPlace } from '../../places/placeLifecycle';
+import type { Database, DatabaseOrTransaction } from '../postgres';
+import {
+  placeHoursExceptions,
+  placeReports,
+  placeRevisions,
+  places,
+  placesCapabilities,
+  placesClaims,
+  placesDescriptions,
+  placesDuplicateCandidates,
+  placesNames,
+  placesSources,
+} from '../schema';
+import { moveMediaToSurvivor } from './mediaRepository';
+import { moveReviewsToSurvivor } from './reviewsRepository';
+import {
+  CAPABILITY_COLUMNS,
+  CLAIM_COLUMNS,
+  HOURS_EXCEPTION_COLUMNS,
+  toClaim,
+  type ClaimRow,
+} from './placeMapper';
+import {
+  claimField,
+  deleteCapabilityAtTier,
+  type CapabilityKeyParts,
+  type PlaceLifecycle,
+} from './placesRepository';
+import {
+  capabilityField,
+  capabilitySnapshot,
+  changeOf,
+  descriptionField,
+  hoursExceptionField,
+  hoursExceptionSnapshot,
+  nameField,
+  recordRevision,
+  type RevisionAuthor,
+} from './revisions';
+
+/** The person a decision is attributed to on the row it decides: the operator, else the session's account. */
+function deciderOf(author: RevisionAuthor): string {
+  return author.operatedByOxyUserId ?? author.oxyAccountId;
+}
+
+/** Lock one place and read its lifecycle, inside a moderation transaction. */
+async function lockPlace(tx: DatabaseOrTransaction, placeId: string) {
+  const [row] = await tx
+    .select({
+      id: places.id,
+      status: places.status,
+      mergedIntoPlaceId: places.mergedIntoPlaceId,
+      verificationState: places.verificationState,
+      verifiedAt: places.verifiedAt,
+    })
+    .from(places)
+    .where(eq(places.id, placeId))
+    .for('update');
+  return row ? { ...row, status: row.status as PlaceStatus } : null;
+}
+
+function lifecycleOf(row: { status: PlaceStatus; mergedIntoPlaceId: string | null }): PlaceLifecycle {
+  return { status: row.status, mergedIntoPlaceId: row.mergedIntoPlaceId };
+}
+
+/** A `(createdAt, id)` keyset over a queue, oldest first. */
+function createdWindow(createdAt: PgColumn, id: PgColumn, window: TimeWindow): SQL | undefined {
+  return window.after ? sql`(${createdAt}, ${id}) > (${window.after[0]}::timestamptz, ${window.after[1]})` : undefined;
+}
+
+// ── Reports ─────────────────────────────────────────────────────────────────
+
+const REPORT_COLUMNS = {
+  id: placeReports.id,
+  placeId: placeReports.placeId,
+  mediaId: placeReports.mediaId,
+  reviewId: placeReports.reviewId,
+  reason: placeReports.reason,
+  note: placeReports.note,
+  createdAt: placeReports.createdAt,
+  resolution: placeReports.resolution,
+  resolvedAt: placeReports.resolvedAt,
+  position: sql<string>`${placeReports.createdAt}::text`,
+} as const;
+
+type ReportRow = {
+  id: string;
+  placeId: string;
+  mediaId: string | null;
+  reviewId: string | null;
+  reason: string;
+  note: string | null;
+  createdAt: Date;
+  resolution: string | null;
+  resolvedAt: Date | null;
+};
+
+function toPlaceReport(row: ReportRow): PlaceReport {
+  const report: PlaceReport = {
+    id: row.id,
+    placeId: row.placeId,
+    reason: row.reason as PlaceReportReason,
+    createdAt: row.createdAt.toISOString(),
+  };
+  if (row.mediaId !== null) report.mediaId = row.mediaId;
+  if (row.reviewId !== null) report.reviewId = row.reviewId;
+  return report;
+}
+
+/** What a report is about: the place itself, or one gallery item or review on it. */
+export type ReportSubject = { mediaId: string } | { reviewId: string } | Record<string, never>;
+
+function toModerationReport(row: ReportRow): ModerationPlaceReport {
+  const report: ModerationPlaceReport = toPlaceReport(row);
+  if (row.note !== null) report.note = row.note;
+  if (row.resolution !== null) report.resolution = row.resolution as PlaceReportResolution;
+  if (row.resolvedAt !== null) report.resolvedAt = row.resolvedAt.toISOString();
+  return report;
+}
+
+/**
+ * File a report, or answer the reporter's existing OPEN one on the same
+ * subject — the place, or one gallery item or review on it.
+ *
+ * One open report per reporter per subject is a unique index, so a repeat is
+ * `on conflict do nothing` followed by a read of the row that won — no failed
+ * statement, nothing for a retry to duplicate. A report that was resolved does
+ * not block a new one: the place may have gone wrong again.
+ */
+export async function createPlaceReport(
+  db: DatabaseOrTransaction,
+  placeId: string,
+  reporterOxyUserId: string,
+  input: PlaceReportInput,
+  subject: ReportSubject = {},
+): Promise<{ report: PlaceReport; created: boolean }> {
+  const mediaId = 'mediaId' in subject ? subject.mediaId : null;
+  const reviewId = 'reviewId' in subject ? subject.reviewId : null;
+  const [inserted] = await db
+    .insert(placeReports)
+    .values({ placeId, reporterOxyUserId, mediaId, reviewId, reason: input.reason, note: input.note ?? null })
+    .onConflictDoNothing()
+    .returning(REPORT_COLUMNS);
+  if (inserted) return { report: toPlaceReport(inserted), created: true };
+
+  const [existing] = await db
+    .select(REPORT_COLUMNS)
+    .from(placeReports)
+    .where(
+      and(
+        eq(placeReports.placeId, placeId),
+        eq(placeReports.reporterOxyUserId, reporterOxyUserId),
+        mediaId === null ? isNull(placeReports.mediaId) : eq(placeReports.mediaId, mediaId),
+        reviewId === null ? isNull(placeReports.reviewId) : eq(placeReports.reviewId, reviewId),
+        isNull(placeReports.resolvedAt),
+      ),
+    )
+    .limit(1);
+  if (!existing) throw new ApiError('internal_error', 'The report could not be recorded.');
+  return { report: toPlaceReport(existing), created: false };
+}
+
+/** One window of reports in one state, oldest first. */
+export async function listPlaceReports(
+  db: DatabaseOrTransaction,
+  state: PlaceReportState,
+  window: TimeWindow,
+): Promise<Paged<ModerationPlaceReport>[]> {
+  const rows = await db
+    .select(REPORT_COLUMNS)
+    .from(placeReports)
+    .where(
+      and(
+        state === 'open' ? isNull(placeReports.resolvedAt) : isNotNull(placeReports.resolvedAt),
+        createdWindow(placeReports.createdAt, placeReports.id, window),
+      ),
+    )
+    .orderBy(placeReports.createdAt, placeReports.id)
+    .limit(window.limit);
+  return rows.map((row) => ({ item: toModerationReport(row), position: [row.position, row.id] }));
+}
+
+/**
+ * Close an open report, and record `report_resolved` on its place.
+ *
+ * `null` when no report has the id; `conflict` when it is already resolved.
+ */
+export async function resolvePlaceReport(
+  db: Database,
+  reportId: string,
+  resolution: PlaceReportResolution,
+  author: RevisionAuthor,
+): Promise<ModerationPlaceReport | null> {
+  return db.transaction(async (tx) => {
+    const [open] = await tx.select(REPORT_COLUMNS).from(placeReports).where(eq(placeReports.id, reportId)).for('update');
+    if (!open) return null;
+    if (open.resolvedAt !== null) {
+      throw new ApiError('conflict', 'This report is already resolved.', { resolution: open.resolution });
+    }
+    const [resolved] = await tx
+      .update(placeReports)
+      .set({ resolution, resolvedAt: new Date(), resolvedByOxyUserId: deciderOf(author) })
+      .where(eq(placeReports.id, reportId))
+      .returning(REPORT_COLUMNS);
+    if (!resolved) return null;
+
+    await recordRevision(tx, {
+      placeId: resolved.placeId,
+      action: 'report_resolved',
+      author,
+      changes: [
+        {
+          field: `reports.${resolved.id}`,
+          before: { reason: open.reason, state: 'open' },
+          after: { reason: resolved.reason, resolution },
+        },
+      ],
+    });
+    return toModerationReport(resolved);
+  });
+}
+
+// ── Claims ──────────────────────────────────────────────────────────────────
+
+/**
+ * Move a claim to `state`, from the one state that decision is allowed from.
+ *
+ * `decidedAt` is set to now on every decision — it is when the claim's CURRENT
+ * state was decided. `null` when no claim has the id; `conflict` when the claim
+ * is not in the state the decision starts from (`CLAIM_DECISION_FROM`).
+ *
+ * An APPROVAL also re-tiers what the claimant said while it waited
+ * ({@link retierClaimantStatements}), in the same transaction: the claim and
+ * the tier its statements carry change together or not at all.
+ */
+export async function decideClaim(
+  db: Database,
+  claimId: string,
+  state: ClaimDecisionState,
+  author: RevisionAuthor,
+): Promise<PlaceClaim | null> {
+  return db.transaction(async (tx) => {
+    // The place first, then the claim — the order a merge takes them in, so an
+    // approval and a merge of the same place queue rather than deadlock.
+    const [target] = await tx.select({ placeId: placesClaims.placeId }).from(placesClaims).where(eq(placesClaims.id, claimId));
+    if (!target) return null;
+    await lockPlace(tx, target.placeId);
+    const [claim] = await tx.select(CLAIM_COLUMNS).from(placesClaims).where(eq(placesClaims.id, claimId)).for('update');
+    if (!claim) return null;
+    const from: PlaceClaimState = CLAIM_DECISION_FROM[state];
+    if (claim.state !== from) {
+      throw new ApiError('conflict', `Only a ${from} claim can be ${state}.`, { state: claim.state });
+    }
+
+    const [decided] = await tx
+      .update(placesClaims)
+      .set({ state, decidedAt: new Date(), updatedAt: new Date() })
+      .where(eq(placesClaims.id, claimId))
+      .returning(CLAIM_COLUMNS);
+    if (!decided) return null;
+
+    const snapshot = (row: typeof claim): RevisionValue => ({ oxyAccountId: row.oxyAccountId, role: row.role, state: row.state });
+    await recordRevision(tx, {
+      placeId: decided.placeId,
+      action: `claim_${state}`,
+      author,
+      changes: [{ field: claimField(decided.id), before: snapshot(claim), after: snapshot(decided) }],
+    });
+    if (state === 'approved') await retierClaimantStatements(tx, decided);
+    return toClaim(decided);
+  });
+}
+
+/** Who made a statement, as the revision that last wrote it recorded. */
+interface StatementAuthor {
+  oxyAccountId: string;
+  operatedByOxyUserId: string | null;
+}
+
+/**
+ * Make the business's own what its claimant said while the claim was pending.
+ *
+ * Before approval, whoever acts for a pending claimant earns only
+ * `community_reported` — a pending claim is not ownership. Without this, the
+ * store link, the accessibility flags and the holiday closures a business
+ * entered while it waited would stay at the community tier after approval,
+ * outranked by nothing and rewritable by nobody but the community.
+ *
+ * ## The rule, exactly
+ *
+ * A `community_reported` capability or hours exception on the place is
+ * re-tiered to `business_asserted` when the LATEST revision that wrote its
+ * community row:
+ *
+ *  1. was recorded at or after the claim was filed (`claimedAt`), and
+ *  2. was made AS the claimant account itself (its own session, or a session
+ *     switched into the organization), or AS the person who filed the claim —
+ *     acting as themselves.
+ *
+ * The filer is the one member whose standing GoWay already established with
+ * Oxy: filing in an organization's name needed an `owner` or `admin` role
+ * (`mayFileFor`). Any other member who spoke as themselves is NOT re-tiered:
+ * GoWay asks Oxy about membership with the asker's own bearer, and an
+ * operator's session cannot vouch for somebody else's role. Their statement
+ * stays a community report until the business re-asserts it.
+ *
+ * "Latest" is what makes the rule safe on a shared row: the community tier is
+ * one row per key, and if a stranger wrote it after the claimant did, the row
+ * now holds the stranger's statement and is left alone. A row moved in by a
+ * merge was last written by the operator who merged, and is left alone too.
+ *
+ * The business tier is never overwritten: where it already holds the key, or
+ * the same dates, the community row stays where it is. Only a claim in a role
+ * that speaks for the business re-tiers anything.
+ *
+ * Each re-tier is one `capability_retiered` or `hours_exception_retiered`
+ * revision through the `moderation` door, attributed to whoever made the
+ * statement — its `before` the community row, its `after` the same statement
+ * at the business tier, `observedAt` unchanged: nobody observed it again.
+ */
+async function retierClaimantStatements(tx: DatabaseOrTransaction, claim: ClaimRow): Promise<void> {
+  if (!CLAIM_ROLE_SPEAKS_FOR_BUSINESS[claim.role as PlaceClaimRole]) return;
+  // Held since `decideClaim` began (a no-op re-lock here), which serializes
+  // this with every capability and exception write — each touches the place
+  // row first — so nothing lands on either tier mid-decision.
+  const place = await lockPlace(tx, claim.placeId);
+  if (!place) return;
+
+  const [capabilities, exceptions] = await Promise.all([
+    tx.select(CAPABILITY_COLUMNS).from(placesCapabilities).where(eq(placesCapabilities.placeId, claim.placeId)),
+    tx.select(HOURS_EXCEPTION_COLUMNS).from(placeHoursExceptions).where(eq(placeHoursExceptions.placeId, claim.placeId)),
+  ]);
+  const communityCapabilities = capabilities.filter((row) => row.verification === 'community_reported');
+  const communityExceptions = exceptions.filter((row) => row.verification === 'community_reported');
+  if (communityCapabilities.length === 0 && communityExceptions.length === 0) return;
+
+  // Everything recorded since the claim was filed, newest first: the filing
+  // itself (same transaction, same instant) and every write after it.
+  const revisions = await tx
+    .select({
+      action: placeRevisions.action,
+      oxyAccountId: placeRevisions.oxyAccountId,
+      operatedByOxyUserId: placeRevisions.operatedByOxyUserId,
+      changes: placeRevisions.changes,
+    })
+    .from(placeRevisions)
+    .where(and(eq(placeRevisions.placeId, claim.placeId), gte(placeRevisions.createdAt, claim.claimedAt)))
+    .orderBy(desc(placeRevisions.createdAt), desc(placeRevisions.id));
+
+  const filing = revisions.find(
+    (revision) =>
+      revision.action === 'claim_requested' && revision.changes.some((change) => change.field === claimField(claim.id)),
+  );
+  const filer = filing ? (filing.operatedByOxyUserId ?? filing.oxyAccountId) : null;
+  const speaksForClaimant = (author: StatementAuthor): boolean =>
+    author.oxyAccountId === claim.oxyAccountId || (filer !== null && author.oxyAccountId === filer);
+
+  // The latest author of each community row, by field.
+  const lastWriter = new Map<string, StatementAuthor>();
+  for (const revision of revisions) {
+    for (const change of revision.changes) {
+      if (lastWriter.has(change.field) || !touchesCommunityTier(change)) continue;
+      lastWriter.set(change.field, { oxyAccountId: revision.oxyAccountId, operatedByOxyUserId: revision.operatedByOxyUserId });
+    }
+  }
+
+  const businessKeys = new Set(
+    capabilities.filter((row) => row.verification === 'business_asserted').map((row) => row.key),
+  );
+  const businessDates = new Set(
+    exceptions.filter((row) => row.verification === 'business_asserted').map((row) => `${row.startsOn}/${row.endsOn}`),
+  );
+  const now = new Date();
+  let retiered = false;
+
+  for (const row of communityCapabilities) {
+    const field = capabilityField(row.key ?? `${row.namespace}.${row.capability}`);
+    const asserter = lastWriter.get(field);
+    if (asserter === undefined || !speaksForClaimant(asserter) || businessKeys.has(row.key)) continue;
+    const [moved] = await tx
+      .update(placesCapabilities)
+      .set({ verification: 'business_asserted', updatedAt: now })
+      .where(eq(placesCapabilities.id, row.id))
+      .returning(CAPABILITY_COLUMNS);
+    if (!moved) continue;
+    retiered = true;
+    await recordRevision(tx, {
+      placeId: claim.placeId,
+      action: 'capability_retiered',
+      author: { ...asserter, source: 'moderation' },
+      changes: [{ field, before: capabilitySnapshot(row), after: capabilitySnapshot(moved) }],
+    });
+  }
+
+  for (const row of communityExceptions) {
+    const field = hoursExceptionField(row.id);
+    const asserter = lastWriter.get(field);
+    if (asserter === undefined || !speaksForClaimant(asserter) || businessDates.has(`${row.startsOn}/${row.endsOn}`)) {
+      continue;
+    }
+    const [moved] = await tx
+      .update(placeHoursExceptions)
+      .set({ verification: 'business_asserted', updatedAt: now })
+      .where(eq(placeHoursExceptions.id, row.id))
+      .returning(HOURS_EXCEPTION_COLUMNS);
+    if (!moved) continue;
+    retiered = true;
+    await recordRevision(tx, {
+      placeId: claim.placeId,
+      action: 'hours_exception_retiered',
+      author: { ...asserter, source: 'moderation' },
+      changes: [{ field, before: hoursExceptionSnapshot(row), after: hoursExceptionSnapshot(moved) }],
+    });
+  }
+
+  if (retiered) await tx.update(places).set({ updatedAt: now }).where(eq(places.id, claim.placeId));
+}
+
+/** Whether a recorded change wrote a statement's community-tier row, on either side. */
+function touchesCommunityTier(change: PlaceRevisionChange): boolean {
+  const tierOf = (value: RevisionValue | undefined): unknown =>
+    value !== null && typeof value === 'object' && !Array.isArray(value) ? value.verification : undefined;
+  return tierOf(change.before) === 'community_reported' || tierOf(change.after) === 'community_reported';
+}
+
+// ── Places ──────────────────────────────────────────────────────────────────
+
+/**
+ * Set what only GoWay may say about a place: its verification state, and
+ * whether it is on the map at all.
+ *
+ * `verifiedAt` is now whenever a verified state is (re)stated, and cleared when
+ * the place goes back to `unverified`. A merged place is refused with the same
+ * `410` its id answers everywhere: it is not a place any more, it is a pointer.
+ *
+ * Returns `null` when no place has the id.
+ */
+export async function moderatePlace(
+  db: Database,
+  placeId: string,
+  input: { status?: ModeratedPlaceStatus | undefined; verificationState?: PlaceVerificationState | undefined },
+  author: RevisionAuthor,
+): Promise<PlaceLifecycle | null> {
+  return db.transaction(async (tx) => {
+    const before = await lockPlace(tx, placeId);
+    if (!before) return null;
+    if (before.status === 'merged') throw unpublishedPlace(lifecycleOf(before));
+
+    const now = new Date();
+    const values: { status?: PlaceStatus; verificationState?: PlaceVerificationState; verifiedAt?: Date | null } = {};
+    if (input.status !== undefined) values.status = input.status;
+    if (input.verificationState !== undefined) {
+      values.verificationState = input.verificationState;
+      values.verifiedAt = input.verificationState === 'unverified' ? null : now;
+    }
+    const [after] = await tx
+      .update(places)
+      .set({ ...values, updatedAt: now })
+      .where(eq(places.id, placeId))
+      .returning({
+        status: places.status,
+        mergedIntoPlaceId: places.mergedIntoPlaceId,
+        verificationState: places.verificationState,
+        verifiedAt: places.verifiedAt,
+      });
+    if (!after) return null;
+
+    const verification = (row: { verificationState: string; verifiedAt: Date | null }): RevisionValue =>
+      row.verifiedAt === null
+        ? { state: row.verificationState }
+        : { state: row.verificationState, verifiedAt: row.verifiedAt.toISOString() };
+    const changes = [
+      changeOf('status', before.status, after.status),
+      changeOf('verification', verification(before), verification(after)),
+    ].filter((change): change is PlaceRevisionChange => change !== null);
+    await recordRevision(tx, { placeId, action: 'place_updated', author, changes });
+    return { status: after.status as PlaceStatus, mergedIntoPlaceId: after.mergedIntoPlaceId };
+  });
+}
+
+/**
+ * Assert one capability at the `oxy_verified` tier.
+ *
+ * The one write in this package that produces that tier, and it is reachable
+ * only from the operator-gated moderation router. It upserts beside every other
+ * tier's row for the key, never over one: an Oxy verification does not erase
+ * the community history that prompted it. Returns `false` when no place has the
+ * id; a place that is not published is refused with its `410`.
+ */
+export async function verifyPlaceCapability(
+  db: Database,
+  placeId: string,
+  key: CapabilityKeyParts,
+  value: CapabilityValue,
+  author: RevisionAuthor,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const place = await lockPlace(tx, placeId);
+    if (!place) return false;
+    assertPublished(lifecycleOf(place));
+
+    const atTier = and(
+      eq(placesCapabilities.placeId, placeId),
+      eq(placesCapabilities.namespace, key.namespace),
+      eq(placesCapabilities.capability, key.capability),
+      eq(placesCapabilities.verification, 'oxy_verified'),
+    );
+    const [before] = await tx.select(CAPABILITY_COLUMNS).from(placesCapabilities).where(atTier).limit(1);
+    const now = new Date();
+    const [after] = await tx
+      .insert(placesCapabilities)
+      .values({ placeId, ...key, value, verification: 'oxy_verified', observedAt: now })
+      .onConflictDoUpdate({
+        target: [
+          placesCapabilities.placeId,
+          placesCapabilities.namespace,
+          placesCapabilities.capability,
+          placesCapabilities.verification,
+        ],
+        set: { value, observedAt: now, updatedAt: now },
+      })
+      .returning(CAPABILITY_COLUMNS);
+    await tx.update(places).set({ updatedAt: now }).where(eq(places.id, placeId));
+
+    const change = changeOf(
+      capabilityField(`${key.namespace}.${key.capability}`),
+      before ? capabilitySnapshot(before) : undefined,
+      after ? capabilitySnapshot(after) : undefined,
+    );
+    await recordRevision(tx, { placeId, action: 'capability_asserted', author, changes: change ? [change] : [] });
+    return true;
+  });
+}
+
+/**
+ * Withdraw the `oxy_verified` assertion of one capability. `null` when no place
+ * has the id; `false` when it carried no such assertion.
+ */
+export async function withdrawVerifiedCapability(
+  db: Database,
+  placeId: string,
+  key: CapabilityKeyParts,
+  author: RevisionAuthor,
+): Promise<boolean | null> {
+  return db.transaction(async (tx) => {
+    const place = await lockPlace(tx, placeId);
+    if (!place) return null;
+    assertPublished(lifecycleOf(place));
+    return deleteCapabilityAtTier(tx, placeId, key, 'oxy_verified', author);
+  });
+}
+
+// ── Duplicates ──────────────────────────────────────────────────────────────
+
+const CANDIDATE_COLUMNS = {
+  id: placesDuplicateCandidates.id,
+  placeId: placesDuplicateCandidates.placeId,
+  candidatePlaceId: placesDuplicateCandidates.candidatePlaceId,
+  reason: placesDuplicateCandidates.reason,
+  score: placesDuplicateCandidates.score,
+  state: placesDuplicateCandidates.state,
+  createdAt: placesDuplicateCandidates.createdAt,
+  decidedAt: placesDuplicateCandidates.decidedAt,
+  position: sql<string>`${placesDuplicateCandidates.createdAt}::text`,
+} as const;
+
+function toCandidate(row: {
+  id: string;
+  placeId: string;
+  candidatePlaceId: string;
+  reason: string;
+  score: number | null;
+  state: string;
+  createdAt: Date;
+  decidedAt: Date | null;
+}): DuplicateCandidate {
+  const candidate: DuplicateCandidate = {
+    id: row.id,
+    placeId: row.placeId,
+    candidatePlaceId: row.candidatePlaceId,
+    reason: row.reason as DuplicateCandidateReason,
+    state: row.state as DuplicateCandidateState,
+    createdAt: row.createdAt.toISOString(),
+  };
+  if (row.score !== null) candidate.score = row.score;
+  if (row.decidedAt !== null) candidate.decidedAt = row.decidedAt.toISOString();
+  return candidate;
+}
+
+/** One window of duplicate candidates in one state, oldest first. */
+export async function listDuplicateCandidates(
+  db: DatabaseOrTransaction,
+  state: DuplicateCandidateState,
+  window: TimeWindow,
+): Promise<Paged<DuplicateCandidate>[]> {
+  const rows = await db
+    .select(CANDIDATE_COLUMNS)
+    .from(placesDuplicateCandidates)
+    .where(
+      and(
+        eq(placesDuplicateCandidates.state, state),
+        createdWindow(placesDuplicateCandidates.createdAt, placesDuplicateCandidates.id, window),
+      ),
+    )
+    .orderBy(placesDuplicateCandidates.createdAt, placesDuplicateCandidates.id)
+    .limit(window.limit);
+  return rows.map((row) => ({ item: toCandidate(row), position: [row.position, row.id] }));
+}
+
+/**
+ * Children of the absorbed place whose key the survivor does not already hold.
+ *
+ * The survivor's own statement wins every collision — its name in a language,
+ * its assertion at a tier, an account's claim in a role — and the absorbed row
+ * that lost stays where it was, on a place nobody reads any more, rather than
+ * being destroyed. Computed from the two places' rows, which the merge has
+ * locked; a concurrent importer write that lands a colliding row in between is
+ * a unique violation that rolls the whole merge back, never a half-merge.
+ */
+function movable<T extends { id: string }>(absorbed: readonly T[], survivor: readonly T[], keyOf: (row: T) => string): T[] {
+  const held = new Set(survivor.map(keyOf));
+  return absorbed.filter((row) => !held.has(keyOf(row)));
+}
+
+/**
+ * Fold the absorbed place into the survivor.
+ *
+ *  - Sources MOVE, all of them: `(source, sourceId)` is unique across the table,
+ *    so a source can only ever name one place, and the next import of that
+ *    OpenStreetMap node has to update the survivor rather than a place nobody
+ *    reads.
+ *  - Names, descriptions, capabilities, hours exceptions and claims move
+ *    wherever the survivor holds no row of its own under the same key
+ *    ({@link movable}); gallery items wherever the survivor does not already
+ *    show the same Oxy file. Reviews all move, and where one person reviewed
+ *    both places the older review is set aside as `hidden`; both ratings are
+ *    recomputed. Reviews are not itemized in the public `place_absorbed`
+ *    revision, as claims are not.
+ *  - The survivor's own columns — name, location and the timezone derived
+ *    from it, categories, address, contact, weekly hours — are its statement
+ *    and are never rewritten by a merge, exactly as its children win every
+ *    collision. The absorbed place's columns stay on the absorbed row; a
+ *    moved source refreshes the survivor at the next import only where the
+ *    import's own provenance rule allows.
+ *  - The absorbed place becomes `merged`, pointing at the survivor, and every
+ *    place that pointed at the absorbed one now points at the survivor, so a
+ *    redirect is always one hop.
+ *
+ * Each side's history records its half: `place_merged` on the absorbed place
+ * (and on any re-pointed one), `place_absorbed` on the survivor with what it
+ * received. Claim moves are not itemized in that public revision — claims are
+ * never published — and remain readable on the claims themselves.
+ */
+async function mergePlaces(
+  tx: DatabaseOrTransaction,
+  survivorId: string,
+  absorbedId: string,
+  absorbedStatus: PlaceStatus,
+  author: RevisionAuthor,
+): Promise<void> {
+  const now = new Date();
+  const received: PlaceRevisionChange[] = [{ field: 'mergedFrom', after: absorbedId }];
+
+  const sources = await tx
+    .update(placesSources)
+    .set({ placeId: survivorId, updatedAt: now })
+    .where(eq(placesSources.placeId, absorbedId))
+    .returning({ source: placesSources.source, sourceId: placesSources.sourceId });
+  received.push(...sources.map((ref) => ({ field: 'sources', after: { source: ref.source, sourceId: ref.sourceId } })));
+
+  const nameColumns = { id: placesNames.id, placeId: placesNames.placeId, language: placesNames.language, source: placesNames.source, name: placesNames.name };
+  const [absorbedNames, survivorNames] = await Promise.all([
+    tx.select(nameColumns).from(placesNames).where(eq(placesNames.placeId, absorbedId)),
+    tx.select(nameColumns).from(placesNames).where(eq(placesNames.placeId, survivorId)),
+  ]);
+  const names = movable(absorbedNames, survivorNames, (row) => `${row.language}\u0000${row.source}`);
+  if (names.length > 0) {
+    await tx.update(placesNames).set({ placeId: survivorId, updatedAt: now }).where(inArray(placesNames.id, names.map((row) => row.id)));
+    received.push(...names.map((row) => ({ field: nameField(row.language), after: { name: row.name, source: row.source } })));
+  }
+
+  const descriptionColumns = {
+    id: placesDescriptions.id,
+    language: placesDescriptions.language,
+    source: placesDescriptions.source,
+    description: placesDescriptions.description,
+  };
+  const [absorbedDescriptions, survivorDescriptions] = await Promise.all([
+    tx.select(descriptionColumns).from(placesDescriptions).where(eq(placesDescriptions.placeId, absorbedId)),
+    tx.select(descriptionColumns).from(placesDescriptions).where(eq(placesDescriptions.placeId, survivorId)),
+  ]);
+  const descriptions = movable(absorbedDescriptions, survivorDescriptions, (row) => `${row.language}\u0000${row.source}`);
+  if (descriptions.length > 0) {
+    await tx
+      .update(placesDescriptions)
+      .set({ placeId: survivorId, updatedAt: now })
+      .where(inArray(placesDescriptions.id, descriptions.map((row) => row.id)));
+    received.push(
+      ...descriptions.map((row) => ({
+        field: descriptionField(row.language),
+        after: { description: row.description, source: row.source },
+      })),
+    );
+  }
+
+  const [absorbedCapabilities, survivorCapabilities] = await Promise.all([
+    tx.select(CAPABILITY_COLUMNS).from(placesCapabilities).where(eq(placesCapabilities.placeId, absorbedId)),
+    tx.select(CAPABILITY_COLUMNS).from(placesCapabilities).where(eq(placesCapabilities.placeId, survivorId)),
+  ]);
+  const capabilities = movable(absorbedCapabilities, survivorCapabilities, (row) => `${row.key ?? ''}\u0000${row.verification}`);
+  if (capabilities.length > 0) {
+    await tx
+      .update(placesCapabilities)
+      .set({ placeId: survivorId, updatedAt: now })
+      .where(inArray(placesCapabilities.id, capabilities.map((row) => row.id)));
+    received.push(...capabilities.map((row) => ({ field: capabilityField(row.key ?? `${row.namespace}.${row.capability}`), after: capabilitySnapshot(row) })));
+  }
+
+  // Hours exceptions are claims at a tier, keyed like a capability: the same
+  // dates at the same tier on the survivor win, everything else moves.
+  const [absorbedExceptions, survivorExceptions] = await Promise.all([
+    tx.select(HOURS_EXCEPTION_COLUMNS).from(placeHoursExceptions).where(eq(placeHoursExceptions.placeId, absorbedId)),
+    tx.select(HOURS_EXCEPTION_COLUMNS).from(placeHoursExceptions).where(eq(placeHoursExceptions.placeId, survivorId)),
+  ]);
+  const exceptions = movable(
+    absorbedExceptions,
+    survivorExceptions,
+    (row) => `${row.startsOn}\u0000${row.endsOn}\u0000${row.verification}`,
+  );
+  if (exceptions.length > 0) {
+    await tx
+      .update(placeHoursExceptions)
+      .set({ placeId: survivorId, updatedAt: now })
+      .where(inArray(placeHoursExceptions.id, exceptions.map((row) => row.id)));
+    received.push(...exceptions.map((row) => ({ field: hoursExceptionField(row.id), after: hoursExceptionSnapshot(row) })));
+  }
+
+  const [absorbedClaims, survivorClaims] = await Promise.all([
+    tx.select(CLAIM_COLUMNS).from(placesClaims).where(eq(placesClaims.placeId, absorbedId)),
+    tx.select(CLAIM_COLUMNS).from(placesClaims).where(eq(placesClaims.placeId, survivorId)),
+  ]);
+  const claims = movable(absorbedClaims, survivorClaims, (row) => `${row.oxyAccountId}\u0000${row.role}`);
+  if (claims.length > 0) {
+    await tx.update(placesClaims).set({ placeId: survivorId, updatedAt: now }).where(inArray(placesClaims.id, claims.map((row) => row.id)));
+  }
+
+  // The gallery moves wherever the survivor does not already show the same
+  // file; reviews all move, with one person's older review set aside when
+  // they wrote one on each. Neither re-links an Oxy file (`oxy/placeFiles`).
+  received.push(...(await moveMediaToSurvivor(tx, survivorId, absorbedId)));
+  await moveReviewsToSurvivor(tx, survivorId, absorbedId, author);
+
+  // Everything already merged INTO the absorbed place now points at the survivor.
+  const repointed = await tx
+    .update(places)
+    .set({ mergedIntoPlaceId: survivorId, updatedAt: now })
+    .where(eq(places.mergedIntoPlaceId, absorbedId))
+    .returning({ id: places.id });
+  for (const { id } of repointed) {
+    await recordRevision(tx, {
+      placeId: id,
+      action: 'place_merged',
+      author,
+      changes: [{ field: 'mergedInto', before: absorbedId, after: survivorId }],
+    });
+  }
+
+  await tx.update(places).set({ status: 'merged', mergedIntoPlaceId: survivorId, updatedAt: now }).where(eq(places.id, absorbedId));
+  await recordRevision(tx, {
+    placeId: absorbedId,
+    action: 'place_merged',
+    author,
+    changes: [
+      { field: 'status', before: absorbedStatus, after: 'merged' },
+      { field: 'mergedInto', after: survivorId },
+    ],
+  });
+
+  await tx.update(places).set({ updatedAt: now }).where(eq(places.id, survivorId));
+  await recordRevision(tx, { placeId: survivorId, action: 'place_absorbed', author, changes: received });
+}
+
+/**
+ * Decide an open duplicate candidate: merge the pair into the survivor, or keep
+ * both.
+ *
+ * Both places are locked in id order — the order every merge takes them in, so
+ * two merges over overlapping pairs cannot deadlock. A merge is refused with
+ * `conflict` when either place is already merged or the survivor was removed:
+ * a redirect must land on a place somebody can read. `null` when no candidate
+ * has the id.
+ */
+export async function resolveDuplicateCandidate(
+  db: Database,
+  candidateId: string,
+  input: DuplicateResolutionInput,
+  author: RevisionAuthor,
+): Promise<DuplicateCandidate | null> {
+  return db.transaction(async (tx) => {
+    const [candidate] = await tx
+      .select(CANDIDATE_COLUMNS)
+      .from(placesDuplicateCandidates)
+      .where(eq(placesDuplicateCandidates.id, candidateId))
+      .for('update');
+    if (!candidate) return null;
+    if (candidate.state !== 'open') {
+      throw new ApiError('conflict', 'This duplicate candidate is already decided.', { state: candidate.state });
+    }
+    // Canonical order (`placeId < candidatePlaceId`), which is the id order both places are locked in.
+    const pair = [candidate.placeId, candidate.candidatePlaceId] as const;
+
+    let state: DuplicateCandidateState;
+    if (input.decision === 'merge') {
+      if (!(pair as readonly string[]).includes(input.survivorPlaceId)) {
+        throw new ApiError('validation_failed', 'The survivor must be one of the two places in the candidate.', {
+          field: 'survivorPlaceId',
+          issue: 'not_in_pair',
+        });
+      }
+      const [low, high] = [await lockPlace(tx, pair[0]), await lockPlace(tx, pair[1])];
+      const [survivor, absorbed] = input.survivorPlaceId === pair[0] ? [low, high] : [high, low];
+      if (!survivor || !absorbed || survivor.status === 'merged' || absorbed.status === 'merged') {
+        throw new ApiError('conflict', 'One of the two places has already been merged. Reject this candidate instead.');
+      }
+      if (survivor.status === 'removed') {
+        throw new ApiError('conflict', 'The survivor was removed from GoWay; restore it or merge the other way.');
+      }
+      await mergePlaces(tx, survivor.id, absorbed.id, absorbed.status, author);
+      state = 'confirmed';
+    } else {
+      for (const [placeId, otherPlaceId] of [pair, [pair[1], pair[0]]] as const) {
+        await recordRevision(tx, {
+          placeId,
+          action: 'duplicate_rejected',
+          author,
+          changes: [
+            {
+              field: `duplicates.${candidate.id}`,
+              before: { state: 'open', otherPlaceId },
+              after: { state: 'rejected', otherPlaceId },
+            },
+          ],
+        });
+      }
+      state = 'rejected';
+    }
+
+    const [decided] = await tx
+      .update(placesDuplicateCandidates)
+      .set({ state, decidedAt: new Date(), decidedByOxyUserId: deciderOf(author), updatedAt: new Date() })
+      .where(eq(placesDuplicateCandidates.id, candidateId))
+      .returning(CANDIDATE_COLUMNS);
+    return decided ? toCandidate(decided) : null;
+  });
+}

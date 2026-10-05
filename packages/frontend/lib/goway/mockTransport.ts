@@ -25,12 +25,30 @@
  * behaviour is not observable without them, and the fault modes issue #7
  * requires intentional states for (`EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS`).
  */
-import { baseLanguageTag, normalizeLanguageTag } from '@goway.to/sdk';
+import {
+  API_ERROR_STATUS,
+  baseLanguageTag,
+  categoryDescendants,
+  categoryOf,
+  DEFAULT_MEDIA_LIST_LIMIT,
+  DEFAULT_PLACE_LIST_LIMIT,
+  DEFAULT_REVIEW_LIST_LIMIT,
+  normalizeLanguageTag,
+  placeMatchesCapabilityFilter,
+} from '@goway.to/sdk';
 import type {
+  ApiErrorCode,
   GoWayFetch,
   GoWayFetchInit,
   GoWayFetchResponse,
+  Page,
   Place,
+  PlaceMedia,
+  PlaceMediaInput,
+  PlaceRating,
+  PlaceReview,
+  PlaceReviewInput,
+  PlaceReviewWithStatus,
   SearchResult,
   SearchResults,
   StructuredAddress,
@@ -38,7 +56,13 @@ import type {
 
 import { distanceMeters } from '@/lib/map/geo';
 
-import { FIXTURE_PLACES, FIXTURE_PLACES_BY_ID } from './fixtures';
+import {
+  FIXTURE_MEDIA,
+  FIXTURE_PLACES,
+  FIXTURE_PLACES_BY_ID,
+  FIXTURE_REVIEWS,
+  FIXTURE_WITHDRAWN_PLACE_IDS,
+} from './fixtures';
 import { fixtureCoverage, fixtureSceneResponse } from './street3dFixtures';
 
 /** Which endpoint families can be made to fail, for the degraded states. */
@@ -83,10 +107,118 @@ export function parseFixtureFaults(spec: string | undefined): FixtureFaults {
   return parsed;
 }
 
+// ── Galleries and reviews ───────────────────────────────────────────────────
+
+/**
+ * The account every fixture write is made as. The fixture layer has no
+ * sessions; a review written locally is "yours", and reads it back as such.
+ */
+export const FIXTURE_REVIEWER = 'fixture-you';
+
+/**
+ * The galleries and reviews, copied from the fixtures so a local write changes
+ * this session's copy and never the dataset. Reset by `createFixtureFetch`.
+ */
+let mediaByPlace = new Map<string, PlaceMedia[]>();
+let reviewsByPlace = new Map<string, PlaceReview[]>();
+
+function resetContent(): void {
+  mediaByPlace = new Map([...FIXTURE_MEDIA].map(([placeId, items]) => [placeId, [...items]]));
+  reviewsByPlace = new Map([...FIXTURE_REVIEWS].map(([placeId, items]) => [placeId, [...items]]));
+}
+
+/** `Place.rating`, DERIVED from the reviews as the API derives it — never stated beside them. */
+function ratingOf(placeId: string): PlaceRating | undefined {
+  const reviews = reviewsByPlace.get(placeId) ?? [];
+  if (reviews.length === 0) return undefined;
+  const sum = reviews.reduce((total, review) => total + review.rating, 0);
+  return { average: Math.round((sum / reviews.length) * 10) / 10, count: reviews.length };
+}
+
+/** The published reviews in the order asked for, newest first within a rating, as the API orders them. */
+function sortedReviews(placeId: string, sort: string | undefined): PlaceReview[] {
+  const newestFirst = (a: PlaceReview, b: PlaceReview) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
+  const reviews = [...(reviewsByPlace.get(placeId) ?? [])];
+  if (sort === 'highest') return reviews.sort((a, b) => b.rating - a.rating || newestFirst(a, b));
+  if (sort === 'lowest') return reviews.sort((a, b) => a.rating - b.rating || newestFirst(a, b));
+  return reviews.sort(newestFirst);
+}
+
+function withStatus(review: PlaceReview): PlaceReviewWithStatus {
+  return { ...review, status: 'published' };
+}
+
+/** `/places/<id>/media` and `/places/<id>/reviews[/mine]`, or `null` for a path that is neither. */
+function content(path: string, params: Map<string, string>, init: GoWayFetchInit): GoWayFetchResponse | null {
+  const match = /^\/places\/([^/]+)\/(media|reviews|reviews\/mine)$/.exec(path);
+  if (!match) return null;
+  const placeId = decodeURIComponent(match[1]!);
+  if (FIXTURE_WITHDRAWN_PLACE_IDS.has(placeId)) return fail('gone', `Place ${placeId} has been withdrawn`);
+  if (!FIXTURE_PLACES_BY_ID.has(placeId)) return fail('not_found', `No place with id ${placeId}`);
+  const body = init.body ? (JSON.parse(init.body) as unknown) : undefined;
+
+  if (match[2] === 'media') {
+    const gallery = mediaByPlace.get(placeId) ?? [];
+    if (init.method === 'GET') {
+      const kinds = list(params, 'kinds');
+      return respond(200, page(kinds.length > 0 ? gallery.filter((item) => kinds.includes(item.kind)) : gallery, params, DEFAULT_MEDIA_LIST_LIMIT));
+    }
+    if (init.method === 'POST') {
+      const input = body as PlaceMediaInput;
+      if (gallery.some((item) => item.fileId === input.fileId)) return fail('conflict', 'That file is already in this gallery.');
+      const item: PlaceMedia = {
+        id: `${placeId}_media_local_${gallery.length}`,
+        placeId,
+        fileId: input.fileId,
+        kind: input.kind,
+        verification: 'community_reported',
+        position: gallery.length,
+        ...(input.caption ? { caption: input.caption } : {}),
+        createdAt: new Date().toISOString(),
+      };
+      mediaByPlace.set(placeId, [...gallery, item]);
+      return respond(201, item);
+    }
+    return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
+  }
+
+  if (match[2] === 'reviews') {
+    if (init.method !== 'GET') return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
+    return respond(200, page(sortedReviews(placeId, params.get('sort')), params, DEFAULT_REVIEW_LIST_LIMIT));
+  }
+
+  const reviews = reviewsByPlace.get(placeId) ?? [];
+  const mine = reviews.find((review) => review.authorOxyUserId === FIXTURE_REVIEWER);
+  if (init.method === 'GET') return mine ? respond(200, withStatus(mine)) : fail('not_found', 'You have not reviewed this place.');
+  if (init.method === 'DELETE') {
+    if (!mine) return fail('not_found', 'You have no review of this place to withdraw.');
+    reviewsByPlace.set(placeId, reviews.filter((review) => review !== mine));
+    return respond(204, null);
+  }
+  if (init.method === 'PUT') {
+    const input = body as PlaceReviewInput;
+    const now = new Date().toISOString();
+    const written: PlaceReview = {
+      id: mine?.id ?? `${placeId}_review_local`,
+      placeId,
+      rating: input.rating,
+      ...(input.title ? { title: input.title } : {}),
+      ...(input.body ? { body: input.body } : {}),
+      ...(input.locale ? { locale: input.locale } : {}),
+      authorOxyUserId: FIXTURE_REVIEWER,
+      createdAt: mine?.createdAt ?? now,
+      ...(mine ? { editedAt: now } : {}),
+    };
+    reviewsByPlace.set(placeId, [...reviews.filter((review) => review !== mine), written]);
+    return respond(mine ? 200 : 201, withStatus(written));
+  }
+  return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
+}
+
 // ── Response plumbing ───────────────────────────────────────────────────────
 
 function respond(status: number, body: unknown): GoWayFetchResponse {
-  const text = JSON.stringify(body);
+  const text = status === 204 ? '' : JSON.stringify(body);
   return {
     status,
     headers: { get: () => null },
@@ -94,9 +226,12 @@ function respond(status: number, body: unknown): GoWayFetchResponse {
   };
 }
 
-/** GoWay's error envelope, exactly as `ApiErrorBody` declares it. */
-function errorBody(code: string, message: string) {
-  return { error: { code, message } };
+/**
+ * GoWay's error envelope, exactly as `ApiErrorBody` declares it, at the status
+ * the contract assigns its code — never a code outside the closed list.
+ */
+function fail(code: ApiErrorCode, message: string): GoWayFetchResponse {
+  return respond(API_ERROR_STATUS[code], { error: { code, message } });
 }
 
 const MIN_LATENCY_MS = 90;
@@ -159,6 +294,24 @@ const num = (params: Map<string, string>, key: string): number | undefined => {
 const list = (params: Map<string, string>, key: string): string[] =>
   params.get(key)?.split(',').filter(Boolean) ?? [];
 
+/** The cursors this transport mints: an offset into the list, `o<n>`. */
+const FIXTURE_CURSOR = /^o(\d+)$/;
+
+/**
+ * One page of `entries`, shaped as every GoWay list answers: `{ items,
+ * nextCursor }`, with `nextCursor` `null` on the last page.
+ *
+ * The fixture cursor is an offset. The real API's place lists page by keyset
+ * and only its search pages by offset, but a cursor is OPAQUE to a client —
+ * pass it back with the same filters — so the difference does not reach the
+ * SDK. A cursor this transport did not mint is refused before a handler runs.
+ */
+function page<T>(entries: readonly T[], params: Map<string, string>, defaultLimit: number): Page<T> {
+  const offset = Number(FIXTURE_CURSOR.exec(params.get('cursor') ?? '')?.[1] ?? 0);
+  const end = offset + (num(params, 'limit') ?? defaultLimit);
+  return { items: entries.slice(offset, end), nextCursor: end < entries.length ? `o${end}` : null };
+}
+
 /** Lower-case and strip combining marks, so "cafe" finds "Cafès". */
 function fold(value: string): string {
   const lowered = value.toLowerCase();
@@ -194,16 +347,14 @@ function addressText(address: StructuredAddress | undefined): string {
 }
 
 function matchesFilters(entry: Place, categories: readonly string[], capabilities: readonly string[]): boolean {
-  if (categories.length > 0 && !entry.categories.some((key) => categories.includes(key))) return false;
-  // Capabilities are a CONJUNCTION, as the SDK documents: a place must assert
-  // every listed one.
-  if (capabilities.length > 0) {
-    const asserted = new Set(
-      entry.capabilities.filter((capability) => capability.value !== false).map((capability) => capability.key),
-    );
-    if (!capabilities.every((key) => asserted.has(key))) return false;
+  // A parent matches every category below it, as the API expands it.
+  if (categories.length > 0) {
+    const wanted = new Set<string>(categories.flatMap(categoryDescendants));
+    if (!entry.categories.some((key) => wanted.has(key))) return false;
   }
-  return true;
+  // Capabilities are a CONJUNCTION, by the contract's own strongest-assertion
+  // rule — the one the server applies in SQL.
+  return capabilities.every((filter) => placeMatchesCapabilityFilter(entry, filter));
 }
 
 // ── Endpoint handlers ───────────────────────────────────────────────────────
@@ -214,9 +365,10 @@ function matchesFilters(entry: Place, categories: readonly string[], capabilitie
  * Two behaviours worth mirroring rather than approximating, because a fixture
  * that is more generous than the server hides the bug it should surface:
  *
- *  - A LIST read publishes `localizedName` and NOT `names`. A UI that reached
- *    for `place.names` on a viewport read would work here and break against
- *    `api.goway.to`.
+ *  - A LIST read publishes `localizedName` and NOT `names` — nor the
+ *    descriptions. A UI that reached for either on a viewport read would
+ *    work here and break against `api.goway.to`. `hoursExceptions` is on
+ *    every read, `[]` when there are none, because open-now needs it.
  *  - A place with no name in the asked-for language keeps its default name and
  *    gets no `localizedName` at all. That is the common case, not the edge one,
  *    and `placeDisplayName` is what makes it invisible.
@@ -235,23 +387,43 @@ function localize<T extends Place>(place: T, locale: string | undefined, full: b
         names.find((name) => name.language === base) ??
         names.find((name) => baseLanguageTag(name.language) === base);
 
-  const { names: _all, ...rest } = place;
+  const {
+    names: _all,
+    hoursExceptions: _exceptions,
+    description: _description,
+    descriptions: _descriptions,
+    ...rest
+  } = place;
   const result = { ...rest } as T;
   if (full && place.names) result.names = place.names;
+  result.hoursExceptions = place.hoursExceptions ?? [];
   if (resolved) result.localizedName = resolved;
+  // Descriptions are a single-place read's, like `names`, and resolve the same way.
+  if (full && place.description) result.description = place.description;
+  if (full && place.descriptions) {
+    result.descriptions = place.descriptions;
+    const description =
+      requested === undefined
+        ? undefined
+        : place.descriptions.find((entry) => entry.language === requested) ??
+          place.descriptions.find((entry) => entry.language === base) ??
+          place.descriptions.find((entry) => baseLanguageTag(entry.language) === base);
+    if (description) result.localizedDescription = description;
+  }
+  const rating = ratingOf(place.id);
+  if (rating) result.rating = rating;
   return result;
 }
 
-function placesInBounds(params: Map<string, string>): Place[] {
+function placesInBounds(params: Map<string, string>): Page<Place> {
   const west = num(params, 'west') ?? -180;
   const south = num(params, 'south') ?? -90;
   const east = num(params, 'east') ?? 180;
   const north = num(params, 'north') ?? 90;
   const categories = list(params, 'categories');
   const capabilities = list(params, 'capabilities');
-  const limit = num(params, 'limit') ?? 200;
 
-  return FIXTURE_PLACES.filter((entry) => {
+  const matched = FIXTURE_PLACES.filter((entry) => {
     const { latitude, longitude } = entry.location;
     // A box crossing the antimeridian has west > east; the fixture set is in
     // Europe, but getting this wrong silently selects the complement.
@@ -261,8 +433,8 @@ function placesInBounds(params: Map<string, string>): Place[] {
     return withinLongitude && latitude >= south && latitude <= north;
   })
     .filter((entry) => matchesFilters(entry, categories, capabilities))
-    .slice(0, limit)
     .map((entry) => localize(entry, params.get('locale'), false));
+  return page(matched, params, DEFAULT_PLACE_LIST_LIMIT);
 }
 
 function placesNearby(params: Map<string, string>) {
@@ -271,17 +443,16 @@ function placesNearby(params: Map<string, string>) {
   const radiusMeters = num(params, 'radiusMeters') ?? 1000;
   const categories = list(params, 'categories');
   const capabilities = list(params, 'capabilities');
-  const limit = num(params, 'limit') ?? 50;
 
-  return FIXTURE_PLACES.map((entry) => ({
+  const matched = FIXTURE_PLACES.map((entry) => ({
     ...entry,
     distanceMeters: distanceMeters({ latitude, longitude }, entry.location),
   }))
     .filter((entry) => entry.distanceMeters <= radiusMeters)
     .filter((entry) => matchesFilters(entry, categories, capabilities))
     .sort((a, b) => a.distanceMeters - b.distanceMeters)
-    .slice(0, limit)
     .map((entry) => localize(entry, params.get('locale'), false));
+  return page(matched, params, DEFAULT_PLACE_LIST_LIMIT);
 }
 
 /** A couple of geocoder-only candidates, so results are not all GoWay places. */
@@ -327,11 +498,10 @@ function placeAsResult(entry: Place): SearchResult {
 }
 
 function search(params: Map<string, string>): SearchResults {
-  // `q`, not `query`: the parameter names here are the SDK's own
-  // (`searchQuery()` in `packages/sdk/src/client.ts`), and a mock that invents
-  // its own is a mock that stops matching the backend the day it ships.
+  // `q`, not `query`: the parameter names here are the contract's own
+  // (`searchParametersOf` in `@goway/contracts`, which the SDK sends through),
+  // and a mock that invents its own stops matching the backend the day it ships.
   const needle = fold(params.get('q') ?? '');
-  const limit = num(params, 'limit') ?? 20;
   const categories = list(params, 'categories');
   const capabilities = list(params, 'capabilities');
   // `near` is serialised FLAT as `latitude`/`longitude`; the viewport box uses
@@ -342,7 +512,12 @@ function search(params: Map<string, string>): SearchResults {
   const matched = FIXTURE_PLACES.filter((entry) => {
     if (!matchesFilters(entry, categories, capabilities)) return false;
     if (needle === '') return false;
-    const haystack = fold([entry.name, addressText(entry.address), entry.categories.join(' ')].join(' '));
+    // A category by its labels, as the server matches it — never by its key.
+    const categoryWords = entry.categories.flatMap((key) => {
+      const category = categoryOf(key);
+      return category ? Object.values(category.labels) : [];
+    });
+    const haystack = fold([entry.name, addressText(entry.address), ...categoryWords].join(' '));
     return haystack.includes(needle);
   });
 
@@ -364,8 +539,8 @@ function search(params: Map<string, string>): SearchResults {
   const results = [
     ...biased.map((entry) => placeAsResult(localize(entry, params.get('locale'), true))),
     ...geocoded,
-  ].slice(0, limit);
-  const response: SearchResults = { results, providers: ['goway', 'photon'] };
+  ];
+  const response: SearchResults = { ...page(results, params, 20), providers: ['goway', 'photon'] };
   if (faults.search === 'degraded') {
     response.providers = ['goway'];
     response.degradedProviders = ['photon'];
@@ -384,14 +559,9 @@ function reverseGeocode(params: Map<string, string>): SearchResults {
   }))
     .filter((candidate) => candidate.distance <= radiusMeters)
     .sort((a, b) => a.distance - b.distance)
-    .slice(0, num(params, 'limit') ?? 5);
+    .map((candidate) => placeAsResult(localize(candidate.entry, params.get('locale'), true)));
 
-  return {
-    results: nearest.map((candidate) =>
-      placeAsResult(localize(candidate.entry, params.get('locale'), true)),
-    ),
-    providers: ['goway', 'nominatim'],
-  };
+  return { ...page(nearest, params, 5), providers: ['goway', 'nominatim'] };
 }
 
 /**
@@ -411,7 +581,7 @@ function reverseGeocode(params: Map<string, string>): SearchResults {
  *    so a multi-stop itinerary produces the multi-leg response the panel heads
  *    with "To <stop>".
  *  - **`geometryIndex` is an index into the ROUTE's geometry**, not the leg's,
- *    matching what `shared-types` documents — which is what the step highlight
+ *    matching what the contract documents — which is what the step highlight
  *    slices with.
  *  - **A `placeId` resolves through the place table**, so passing a place ID
  *    rather than a coordinate is exercised end to end.
@@ -499,6 +669,17 @@ function directions(body: unknown) {
 
 // ── The fetch itself ────────────────────────────────────────────────────────
 
+/** The fixed paths this transport answers, besides `/places/<placeId>`. */
+const FIXTURE_ROUTES: ReadonlySet<string> = new Set([
+  '/places/bounds',
+  '/places/nearby',
+  '/search',
+  '/geocode',
+  '/geocode/reverse',
+  '/geocode/structured',
+  '/routes',
+]);
+
 function familyOf(path: string): FixtureFault {
   if (path.startsWith('/search')) return 'search';
   if (path.startsWith('/geocode')) return 'geocode';
@@ -515,6 +696,7 @@ function familyOf(path: string): FixtureFault {
  */
 export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetch {
   setFixtureFaults(initialFaults);
+  resetContent();
 
   return async function fixtureFetch(url: string, init: GoWayFetchInit): Promise<GoWayFetchResponse> {
     const { path, params } = splitUrl(url);
@@ -532,26 +714,16 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
       // both are retryable, but only the first means "the geographic data
       // source is down", which is a different sentence to show a user.
       const code = family === 'search' || family === 'geocode' ? 'provider_unavailable' : 'service_unavailable';
-      return respond(503, errorBody(code, `${family} is temporarily unavailable`));
+      return fail(code, `${family} is temporarily unavailable`);
     }
 
-    if (path === '/places/bounds') return respond(200, placesInBounds(params));
-    if (path === '/places/nearby') return respond(200, placesNearby(params));
-    if (path.startsWith('/places/')) {
-      const id = decodeURIComponent(path.slice('/places/'.length));
-      const found = FIXTURE_PLACES_BY_ID.get(id);
-      return found
-        ? respond(200, localize(found, params.get('locale'), true))
-        : respond(404, errorBody('not_found', `No place with id ${id}`));
-    }
-    if (path === '/search' || path === '/geocode') return respond(200, search(params));
-    if (path === '/geocode/reverse') return respond(200, reverseGeocode(params));
-    if (path === '/geocode/structured') return respond(200, { results: [], providers: ['nominatim'] });
-    if (path === '/routes') {
-      return respond(200, directions(init.body ? JSON.parse(init.body) : undefined));
+    const cursor = params.get('cursor');
+    if (cursor !== undefined && !FIXTURE_CURSOR.test(cursor)) {
+      return fail('bad_request', 'That cursor was not issued by this list.');
     }
 
     if (path === '/street3d/coverage') {
+      if (init.method !== 'GET') return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
       return respond(200, fixtureCoverage({
         west: num(params, 'west') ?? -180,
         south: num(params, 'south') ?? -90,
@@ -563,12 +735,15 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
     if (sceneRoute) {
       const id = decodeURIComponent(sceneRoute[1]);
       const scene = await fixtureSceneResponse(id);
-      if (!scene) return respond(404, errorBody('not_found', `No scene with id ${id}`));
-      if (!sceneRoute[2]) return respond(200, scene);
-      if (init.method !== 'POST') return respond(405, errorBody('bad_request', 'Use POST'));
+      if (!scene) return fail('not_found', `No scene with id ${id}`);
+      if (!sceneRoute[2]) {
+        if (init.method !== 'GET') return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
+        return respond(200, scene);
+      }
+      if (init.method !== 'POST') return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
       // Mirrors the API: a report is identity-bound, so no bearer is a 401.
       const authorization = init.headers?.Authorization ?? init.headers?.authorization;
-      if (!authorization) return respond(401, errorBody('unauthorized', 'Sign in to report a scene'));
+      if (!authorization) return fail('unauthorized', 'Sign in to report a scene');
       const body = init.body ? (JSON.parse(init.body) as { reason?: string }) : {};
       return respond(201, {
         id: `r_fixture_${Math.random().toString(36).slice(2, 10)}`,
@@ -579,6 +754,31 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
       });
     }
 
-    return respond(404, errorBody('not_found', `No fixture route for ${path}`));
+    const served = content(path, params, init);
+    if (served) return served;
+
+    // Every other fixture route is a read except directions, which is a POST.
+    const placeId = /^\/places\/([^/]+)$/.exec(path)?.[1];
+    if (placeId === undefined && !FIXTURE_ROUTES.has(path)) return fail('unknown_route', `No route for ${path}`);
+    if (init.method !== (path === '/routes' ? 'POST' : 'GET')) {
+      return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
+    }
+
+    if (path === '/places/bounds') return respond(200, placesInBounds(params));
+    if (path === '/places/nearby') return respond(200, placesNearby(params));
+    if (placeId !== undefined) {
+      const id = decodeURIComponent(placeId);
+      if (FIXTURE_WITHDRAWN_PLACE_IDS.has(id)) return fail('gone', `Place ${id} has been withdrawn`);
+      const found = FIXTURE_PLACES_BY_ID.get(id);
+      return found
+        ? respond(200, localize(found, params.get('locale'), true))
+        : fail('not_found', `No place with id ${id}`);
+    }
+    if (path === '/search' || path === '/geocode') return respond(200, search(params));
+    if (path === '/geocode/reverse') return respond(200, reverseGeocode(params));
+    if (path === '/geocode/structured') {
+      return respond(200, { items: [], nextCursor: null, providers: ['nominatim'] } satisfies SearchResults);
+    }
+    return respond(200, directions(init.body ? JSON.parse(init.body) : undefined));
   };
 }

@@ -16,7 +16,7 @@
 import 'dotenv/config';
 import { parseArgs } from 'node:util';
 import { assertMigrationTarget } from '@oxy.so/db/migrate';
-import { STREET_SCENE_PROFILES, type StreetSceneProfile } from '@goway/shared-types';
+import { STREET_SCENE_PROFILES, type StreetSceneProfile } from '@goway/contracts';
 import { street3dConfig } from '../config/street3d';
 import { assertMigrationsCurrent, closePostgres, connectPostgres, getDb } from '../db/postgres';
 import {
