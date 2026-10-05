@@ -265,7 +265,8 @@ export const FIXTURE_PLACES: readonly Place[] = [
     exceptions: [{ in: 3, note: 'Public holiday', verification: 'business_asserted' }],
     capabilities: [
       { key: 'payments.faircoin.accepted', verification: 'oxy_verified', daysAgo: 9 },
-      { key: 'commerce.mercaria.store', verification: 'business_asserted', daysAgo: 55 },
+      // The value is the Mercaria location id the place names back (`lib/mercaria/fixtures.ts`).
+      { key: 'commerce.mercaria.store', value: 'loc_boqueria_fruites_soler', verification: 'business_asserted', daysAgo: 55 },
       { key: 'accessibility.wheelchair', value: 'limited', verification: 'community_reported', daysAgo: 30 },
       { key: 'payments.cash', verification: 'external_source', daysAgo: 12 },
       { key: 'payments.cards', verification: 'external_source', daysAgo: 12 },
@@ -399,7 +400,11 @@ export const FIXTURE_PLACES: readonly Place[] = [
     houseNumber: '38',
     locality: 'La Barceloneta',
     hours: [...weekdays('08:00', '21:00'), [6, '08:00', '21:00']],
-    capabilities: [{ key: 'commerce.mercaria.store', verification: 'community_reported', daysAgo: 130 }],
+    // Only a community report: Mercaria lists no location here, so the place
+    // shows no products — the trust rule is Mercaria's to apply, not this app's.
+    capabilities: [
+      { key: 'commerce.mercaria.store', value: 'loc_forn_baluard', verification: 'community_reported', daysAgo: 130 },
+    ],
   }),
   place({
     id: 'gw_llibreria_calders',

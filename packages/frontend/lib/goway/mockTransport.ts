@@ -70,8 +70,14 @@ import { fixtureCoverage, fixtureSceneResponse } from './street3dFixtures';
 /** The fixture taxonomy, indexed once: what filters expand through and search labels come from. */
 const TAXONOMY = categoryTaxonomy(FIXTURE_CATEGORIES);
 
-/** Which endpoint families can be made to fail, for the degraded states. */
-export type FixtureFault = 'places' | 'search' | 'geocode' | 'routes' | 'street3d';
+/**
+ * Which endpoint families can be made to fail, for the degraded states.
+ *
+ * `mercaria` is not one of GoWay's routes: it is the Mercaria fixture layer
+ * (`lib/mercaria/mockTransport.ts`), listed here so ONE variable degrades
+ * either side.
+ */
+export type FixtureFault = 'places' | 'search' | 'geocode' | 'routes' | 'street3d' | 'mercaria';
 
 /** How a faulted endpoint fails. */
 export type FixtureFaultMode = 'unavailable' | 'network' | 'degraded';
@@ -83,6 +89,8 @@ export interface FixtureFaults {
   routes?: FixtureFaultMode;
   /** `street3d:unavailable` is how the map's "hide the layer silently" path is exercised. */
   street3d?: FixtureFaultMode;
+  /** `mercaria:unavailable` is how a place's "Products at this store" retry is exercised. */
+  mercaria?: FixtureFaultMode;
 }
 
 let faults: FixtureFaults = {};
@@ -98,6 +106,8 @@ export function setFixtureFaults(next: FixtureFaults): void {
   faults = { ...next };
 }
 
+const FIXTURE_FAULTS: readonly FixtureFault[] = ['places', 'search', 'geocode', 'routes', 'street3d', 'mercaria'];
+
 /** Parse `EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS=search,places:network`. */
 export function parseFixtureFaults(spec: string | undefined): FixtureFaults {
   if (!spec) return {};
@@ -105,7 +115,7 @@ export function parseFixtureFaults(spec: string | undefined): FixtureFaults {
   for (const entry of spec.split(',')) {
     const [rawName, rawMode] = entry.trim().split(':');
     const name = rawName as FixtureFault;
-    if (name !== 'places' && name !== 'search' && name !== 'geocode' && name !== 'routes' && name !== 'street3d') continue;
+    if (!FIXTURE_FAULTS.includes(name)) continue;
     const mode = rawMode as FixtureFaultMode | undefined;
     parsed[name] = mode === 'network' || mode === 'degraded' ? mode : 'unavailable';
   }
@@ -266,6 +276,11 @@ function delay(ms: number, signal: GoWayFetchInit['signal']): Promise<void> {
     }
     signal?.addEventListener?.('abort', onAbort);
   });
+}
+
+/** One fixture round trip's worth of waiting — shared with the Mercaria fixture layer. */
+export function fixtureLatency(signal: GoWayFetchInit['signal']): Promise<void> {
+  return delay(MIN_LATENCY_MS + Math.random() * (MAX_LATENCY_MS - MIN_LATENCY_MS), signal);
 }
 
 // ── Query helpers ───────────────────────────────────────────────────────────
@@ -721,7 +736,7 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
     const { path, params } = splitUrl(url);
     const family = familyOf(path);
 
-    await delay(MIN_LATENCY_MS + Math.random() * (MAX_LATENCY_MS - MIN_LATENCY_MS), init.signal);
+    await fixtureLatency(init.signal);
 
     const fault = faults[family];
     // A network fault must look like a network fault: the SDK turns a THROWN
