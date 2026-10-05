@@ -11241,6 +11241,14 @@
               "video"
             ]
           },
+          "projection": {
+            "default": "perspective",
+            "type": "string",
+            "enum": [
+              "perspective",
+              "equirectangular"
+            ]
+          },
           "source": {
             "type": "string",
             "enum": [
@@ -11543,6 +11551,7 @@
           "id",
           "sessionId",
           "mediaKind",
+          "projection",
           "source",
           "state",
           "privacy",
@@ -11611,6 +11620,58 @@
               "contentTypes",
               "maxByteSize",
               "maxDurationSeconds"
+            ]
+          },
+          "equirectangular": {
+            "type": "object",
+            "properties": {
+              "photo": {
+                "type": "object",
+                "properties": {
+                  "maxByteSize": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxWidthPixels": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "maxByteSize",
+                  "maxWidthPixels"
+                ]
+              },
+              "video": {
+                "type": "object",
+                "properties": {
+                  "maxByteSize": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxDurationSeconds": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "maxWidthPixels": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "maxByteSize",
+                  "maxDurationSeconds",
+                  "maxWidthPixels"
+                ]
+              }
+            },
+            "required": [
+              "photo",
+              "video"
             ]
           },
           "retentionDays": {
@@ -14410,6 +14471,13 @@
             "enum": [
               "photo",
               "video"
+            ]
+          },
+          "projection": {
+            "type": "string",
+            "enum": [
+              "perspective",
+              "equirectangular"
             ]
           },
           "source": {
