@@ -63,18 +63,17 @@ import {
   stopFromPoint,
   stopFromResult,
 } from '@/features/directions/stops';
+import { stubCategoryIcons } from '@/lib/goway/__tests__/stubCategoryIcons';
 
 /**
  * `lib/goway/markers.ts` is pure clustering arithmetic, but its neighbours
  * (`categories`, `capabilities`, `format`) carry Bloom ICONS, which reach
  * `react-native` and `react-native-svg` — Flow-typed sources Bun cannot parse.
- * Stubbing the three neighbours is what keeps the module under test importable;
- * none of them has anything to do with where a marker is placed.
+ * `categories` loads for real with its icons stubbed (with no taxonomy every
+ * place is the generic pin, visible from zoom 14); the other two neighbours are
+ * stubbed whole. None of them has anything to do with where a marker is placed.
  */
-mock.module('@/lib/goway/categories', () => ({
-  resolveCategory: () => ({ key: 'place', label: 'Place', minZoom: 0 }),
-  isVisibleAtZoom: () => true,
-}));
+stubCategoryIcons();
 mock.module('@/lib/goway/capabilities', () => ({ capabilitySummary: () => '' }));
 mock.module('@/lib/goway/format', () => ({ markerLabel: (place: { name: string }) => place.name }));
 
@@ -137,6 +136,7 @@ describe('producer — a cluster of no places (lib/goway/markers.ts)', () => {
       places: duplicated,
       zoom: 15,
       selectedPlaceId: 'dup',
+      taxonomy: undefined,
     });
 
     expect(markers).toHaveLength(1);
@@ -145,7 +145,7 @@ describe('producer — a cluster of no places (lib/goway/markers.ts)', () => {
   });
 
   test('every marker it produces survives the engine', () => {
-    for (const marker of buildMarkers({ places: duplicated, zoom: 15, selectedPlaceId: 'dup' }).markers) {
+    for (const marker of buildMarkers({ places: duplicated, zoom: 15, selectedPlaceId: 'dup', taxonomy: undefined }).markers) {
       expect(() => draw(marker.coordinate)).not.toThrow();
     }
   });
@@ -157,7 +157,7 @@ describe('producer — a cluster of no places (lib/goway/markers.ts)', () => {
       place('b', 41.38741, 2.16861),
       place('c', 41.38742, 2.16862),
     ];
-    const { markers, clusters } = buildMarkers({ places: bucket, zoom: 15, selectedPlaceId: 'a' });
+    const { markers, clusters } = buildMarkers({ places: bucket, zoom: 15, selectedPlaceId: 'a', taxonomy: undefined });
 
     expect(markers.map((marker) => marker.id)).toContain('a');
     expect(clusters.size).toBe(1);

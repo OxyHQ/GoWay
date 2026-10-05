@@ -8,9 +8,11 @@
  * that is a different feature.
  */
 import { Chip, ChipRow } from '@oxy.so/bloom/chip';
+import { useMemo } from 'react';
 import { useTheme } from '@oxy.so/bloom/theme';
 
-import { CATEGORY_SHORTCUTS } from '@/lib/goway/categories';
+import { categoryShortcuts } from '@/lib/goway/categories';
+import { useCategoryTaxonomy } from '@/lib/goway/queries';
 
 export interface CategoryShortcutsProps {
   /** The selected shortcut's id, or `null` for "everything". */
@@ -21,6 +23,8 @@ export interface CategoryShortcutsProps {
 
 export function CategoryShortcuts({ selected, onSelect, testID }: CategoryShortcutsProps) {
   const theme = useTheme();
+  const taxonomy = useCategoryTaxonomy();
+  const shortcuts = useMemo(() => categoryShortcuts(taxonomy), [taxonomy]);
 
   return (
     <ChipRow
@@ -29,7 +33,7 @@ export function CategoryShortcuts({ selected, onSelect, testID }: CategoryShortc
       contentInset={16}
       testID={testID}
     >
-      {CATEGORY_SHORTCUTS.map((shortcut) => {
+      {shortcuts.map((shortcut) => {
         const isSelected = selected === shortcut.id;
         const Icon = shortcut.icon;
         return (

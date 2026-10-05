@@ -16,9 +16,9 @@
  *    hypothetical;
  *  - capabilities at all four verification levels, including a deliberately
  *    ANCIENT FairCoin report (`bar-marsella`) so the staleness rule is visible;
- *  - categories from the taxonomy, spread across the three zoom tiers in
- *    `categories.ts`, so zoom-dependent visibility and clustering have
- *    something to do;
+ *  - categories from the taxonomy ({@link FIXTURE_CATEGORIES}), spread across
+ *    the three zoom tiers in `categories.ts`, so zoom-dependent visibility and
+ *    clustering have something to do;
  *  - typed capabilities in every group — accessibility, payment, amenities,
  *    cuisine, price, social — so the grouped list has sections to draw;
  *  - dated hours exceptions, relative to today, so "closed today" and an
@@ -31,7 +31,8 @@
  */
 import type {
   CapabilityKey,
-  CategoryKey,
+  Category,
+  CategoryIcon,
   Place,
   PlaceCapability,
   PlaceHoursException,
@@ -46,6 +47,59 @@ const NOW = Date.now();
 const daysAgo = (days: number): string => new Date(NOW - days * DAY_MS).toISOString();
 /** A calendar date `days` from today, `YYYY-MM-DD`. */
 const dateIn = (days: number): string => new Date(NOW + days * DAY_MS).toISOString().slice(0, 10);
+
+function category(key: string, icon: CategoryIcon, en: string, es: string): Category {
+  const separator = key.lastIndexOf('.');
+  return {
+    key,
+    parent: separator < 0 ? null : key.slice(0, separator),
+    icon,
+    status: 'active',
+    // `GET /categories` resolves this per `locale`; `mockTransport` does too.
+    label: en,
+    labels: { en, es },
+  };
+}
+
+/**
+ * The slice of GoWay's category taxonomy the fixtures need — what
+ * `GET /categories` answers in fixture mode.
+ *
+ * NOT a copy of the taxonomy: that lives in GoWay's database and changes
+ * without an app release. It is the shortcut roots, every key a fixture place
+ * carries, and those keys' parents, labelled as the server labels them, in the
+ * server's order (depth-first, siblings by position).
+ */
+export const FIXTURE_CATEGORIES: readonly Category[] = [
+  category('food', 'restaurant', 'Food & drink', 'Comida y bebida'),
+  category('food.restaurant', 'restaurant', 'Restaurant', 'Restaurante'),
+  category('food.cafe', 'cafe', 'Café', 'Cafetería'),
+  category('food.bar', 'bar', 'Bar', 'Bar'),
+  category('food.bakery', 'bakery', 'Bakery', 'Panadería'),
+  category('shop', 'shop', 'Shops', 'Tiendas'),
+  category('shop.marketplace', 'grocery', 'Market', 'Mercado'),
+  category('shop.books', 'book', 'Bookshop', 'Librería'),
+  category('shop.clothes', 'clothing', 'Clothes', 'Ropa'),
+  category('lodging', 'hotel', 'Stay', 'Alojamiento'),
+  category('lodging.hotel', 'hotel', 'Hotel', 'Hotel'),
+  category('leisure', 'park', 'Leisure', 'Ocio'),
+  category('leisure.park', 'park', 'Park', 'Parque'),
+  category('culture', 'museum', 'Culture & sights', 'Cultura y turismo'),
+  category('culture.museum', 'museum', 'Museum', 'Museo'),
+  category('transport', 'subway', 'Transport', 'Transporte'),
+  category('transport.rail_station', 'train', 'Train station', 'Estación de tren'),
+  category('transport.bicycle_rental', 'bike', 'Bike hire', 'Alquiler de bicicletas'),
+  category('health', 'health', 'Health', 'Salud'),
+  category('health.hospital', 'hospital', 'Hospital', 'Hospital'),
+  category('health.pharmacy', 'pharmacy', 'Pharmacy', 'Farmacia'),
+  category('education', 'school', 'Education', 'Educación'),
+  category('education.school', 'school', 'School', 'Escuela'),
+  category('civic', 'civic', 'Public services', 'Servicios públicos'),
+  category('finance', 'bank', 'Money', 'Dinero'),
+  category('finance.bank', 'bank', 'Bank', 'Banco'),
+  category('office', 'office', 'Offices', 'Oficinas'),
+  category('office.coworking', 'office', 'Coworking', 'Coworking'),
+];
 
 interface CapabilitySeed {
   key: CapabilityKey;
@@ -82,7 +136,7 @@ interface PlaceSeed {
   names?: Record<string, string>;
   latitude: number;
   longitude: number;
-  categories: CategoryKey[];
+  categories: string[];
   status?: Place['status'];
   verification?: Place['verification']['state'];
   street?: string;

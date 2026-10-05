@@ -45,10 +45,10 @@ import { useDirections, type DirectionsController } from '@/features/directions/
 import { boundsCenter, distanceMeters } from '@/lib/map/geo';
 import { declutterMarkerLabels, describeLabel, reconcileLabel } from '@/lib/goway/basemapLabels';
 import { ecosystemCapabilities } from '@/lib/goway/capabilities';
-import { CATEGORY_SHORTCUTS } from '@/lib/goway/categories';
+import { shortcutCategories } from '@/lib/goway/categories';
 import { classifyGoWayError, type GoWayFailureKind } from '@/lib/goway/errors';
 import { buildMarkers } from '@/lib/goway/markers';
-import { MIN_SEARCH_LENGTH, usePlace, usePlacesInBounds, useSearch } from '@/lib/goway/queries';
+import { MIN_SEARCH_LENGTH, useCategoryTaxonomy, usePlace, usePlacesInBounds, useSearch } from '@/lib/goway/queries';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { useUserLocation } from '@/lib/map/useUserLocation';
 
@@ -247,13 +247,11 @@ export function useExplore(
   /** The camera as last reported, for the biasing and movement tests. */
   const viewportRef = useRef<ResolvedMapViewport | null>(null);
 
-  const categories = useMemo(() => {
-    const shortcut = CATEGORY_SHORTCUTS.find((entry) => entry.id === shortcutId);
-    return shortcut ? shortcut.categories : undefined;
-  }, [shortcutId]);
+  const categories = useMemo(() => shortcutCategories(shortcutId), [shortcutId]);
 
   // ── Data ─────────────────────────────────────────────────────────────────
 
+  const taxonomy = useCategoryTaxonomy();
   const placesQuery = usePlacesInBounds(committed?.bounds ?? null, { categories });
   const places = useMemo(() => placesQuery.data?.items ?? [], [placesQuery.data]);
 
@@ -318,8 +316,8 @@ export function useExplore(
         hiddenByZoom: 0,
       };
     }
-    return buildMarkers({ places, zoom, selectedPlaceId });
-  }, [searching, results, selectedMarkerId, places, zoom, selectedPlaceId]);
+    return buildMarkers({ places, zoom, selectedPlaceId, taxonomy });
+  }, [searching, results, selectedMarkerId, places, zoom, selectedPlaceId, taxonomy]);
 
   /**
    * The badge-worthy capability per marker, keyed by MARKER id.

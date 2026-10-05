@@ -9,20 +9,22 @@
  * one number per row saying the zoom at which it earns a marker.
  *
  * `Place.categories` holds keys of GoWay's category taxonomy, most specific
- * first. The taxonomy itself — keys, parents, labels in every label language,
- * glyph keys — is the SDK's (`CATEGORIES`, `categoryLabel`); what lives here is
+ * first. The taxonomy itself — keys, parents, labels in every language GoWay
+ * holds, glyph keys, status — lives in GoWay's database and reaches the app
+ * through `GET /categories` (`useCategoryTaxonomy`), so every function here
+ * takes the {@link CategoryTaxonomy} it was fetched as. What lives here is
  * only what is this APP's to decide: which Bloom drawing each glyph key is, and
- * at which zoom a category earns a marker. A category added server-side after
+ * at which zoom a category earns a marker. A category a moderator adds after
  * this build still draws — under its root's zoom, or as a generic pin — rather
- * than vanishing from the map.
+ * than vanishing from the map, and so does every place while the taxonomy is
+ * still loading or failed to load: `undefined` reads as "nothing is known yet",
+ * never as an error.
  */
 import {
-  categoryLabel,
-  categoryOf,
   categoryRoot,
   localizedLabel,
   type CategoryIcon,
-  type CategoryKey,
+  type CategoryTaxonomy,
   type Labels,
 } from '@goway.to/sdk';
 import type { BloomIconComponent } from '@oxy.so/bloom/icons';
@@ -213,20 +215,22 @@ function generic(locale: string): CategoryPresentation {
 /**
  * The presentation for a place, from its category list.
  *
- * "Most specific first" is honoured literally: the first key this build
- * recognises wins, so a place tagged `['food.bakery', 'culture.attraction']`
- * draws as a bakery.
+ * "Most specific first" is honoured literally: the first key the taxonomy
+ * holds wins, so a place tagged `['food.bakery', 'culture.attraction']` draws
+ * as a bakery. With no taxonomy yet every place is the generic pin.
  */
 export function resolveCategory(
   categories: readonly string[] | undefined,
+  taxonomy: CategoryTaxonomy | undefined,
   locale: string = deviceLocale(),
 ): CategoryPresentation {
+  if (!taxonomy) return generic(locale);
   for (const key of categories ?? []) {
-    const category = categoryOf(key);
+    const category = taxonomy.of(key);
     if (!category) continue;
     return {
       key,
-      label: categoryLabel(key, locale),
+      label: taxonomy.label(key, locale),
       // A glyph newer than this build draws as a pin rather than as nothing.
       icon: (ICONS as Readonly<Record<string, BloomIconComponent>>)[category.icon] ?? RiMapPin2Line,
       minZoom: ZOOM_BY_KEY[key] ?? ZOOM_BY_ROOT[categoryRoot(key)] ?? STREET_ZOOM,
@@ -236,8 +240,12 @@ export function resolveCategory(
 }
 
 /** Whether a place of these categories earns a marker at this zoom. */
-export function isVisibleAtZoom(categories: readonly string[] | undefined, zoom: number): boolean {
-  return zoom >= resolveCategory(categories).minZoom;
+export function isVisibleAtZoom(
+  categories: readonly string[] | undefined,
+  zoom: number,
+  taxonomy: CategoryTaxonomy | undefined,
+): boolean {
+  return zoom >= resolveCategory(categories, taxonomy).minZoom;
 }
 
 /**
@@ -252,10 +260,15 @@ export interface CategoryShortcut {
   id: string;
   label: string;
   icon: BloomIconComponent;
-  categories: readonly CategoryKey[];
+  categories: readonly string[];
 }
 
-const SHORTCUT_ROOTS: readonly { id: string; root: CategoryKey; icon: BloomIconComponent }[] = [
+/**
+ * Which roots get a chip, and with which drawing. App presentation, so it is
+ * fixed here; what each root is CALLED, and whether it still exists, is the
+ * taxonomy's.
+ */
+const SHORTCUT_ROOTS: readonly { id: string; root: string; icon: BloomIconComponent }[] = [
   { id: 'eat', root: 'food', icon: RiRestaurantLine },
   { id: 'shop', root: 'shop', icon: RiStore2Line },
   { id: 'stay', root: 'lodging', icon: RiHotelLine },
@@ -264,14 +277,34 @@ const SHORTCUT_ROOTS: readonly { id: string; root: CategoryKey; icon: BloomIconC
   { id: 'transit', root: 'transport', icon: RiSubwayLine },
 ];
 
-/** The shortcuts, labelled in the reader's language by the taxonomy. */
-export function categoryShortcuts(locale: string = deviceLocale()): readonly CategoryShortcut[] {
-  return SHORTCUT_ROOTS.map(({ id, root, icon }) => ({
-    id,
-    label: categoryLabel(root, locale),
-    icon,
-    categories: [root],
-  }));
+/**
+ * The shortcuts, labelled in the reader's language by the taxonomy.
+ *
+ * A root the taxonomy does not hold, or holds as `deprecated`, gets no chip: a
+ * filter on a key the API refuses, or on one nothing new is filed under, is a
+ * chip that answers with an error or an emptying map. With no taxonomy yet
+ * there are no chips at all — a row of icons with no words, relabelled a
+ * moment later, is the jankier of the two, and the list is cached for every
+ * later launch of the screen.
+ */
+export function categoryShortcuts(
+  taxonomy: CategoryTaxonomy | undefined,
+  locale: string = deviceLocale(),
+): readonly CategoryShortcut[] {
+  if (!taxonomy) return [];
+  return SHORTCUT_ROOTS.flatMap(({ id, root, icon }) =>
+    taxonomy.of(root)?.status === 'active'
+      ? [{ id, label: taxonomy.label(root, locale), icon, categories: [root] }]
+      : [],
+  );
 }
 
-export const CATEGORY_SHORTCUTS: readonly CategoryShortcut[] = categoryShortcuts();
+/**
+ * The filter a shortcut stands for, by id — `undefined` for none or an unknown
+ * id. Needs no taxonomy: the API expands the root, and a chip can only have
+ * been pressed once the taxonomy drew it.
+ */
+export function shortcutCategories(id: string | null): readonly string[] | undefined {
+  const shortcut = SHORTCUT_ROOTS.find((entry) => entry.id === id);
+  return shortcut ? [shortcut.root] : undefined;
+}
