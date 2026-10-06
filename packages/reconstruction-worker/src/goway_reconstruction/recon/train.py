@@ -198,6 +198,25 @@ def _knn_scale(points: torch.Tensor) -> torch.Tensor:
     return torch.from_numpy(d[:, 1:].mean(1)).float().to(points.device).clamp(min=1e-4)
 
 
+def affine_colour_fit(pred: torch.Tensor, target: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Least-squares ``target ≈ pred @ M.T + b`` over (N, 3) colour samples.
+
+    Solved from the 4x4 normal equations in float64, not ``torch.linalg.lstsq``
+    on the samples: the CUDA solver rejects tall matrices (it fails at about
+    9.6M rows, which a scene of 2,400 views reaches), and the normal
+    equations cost the same at any size. A degenerate fit returns identity.
+    """
+    A = torch.cat([pred, torch.ones_like(pred[:, :1])], 1).double()
+    try:
+        sol = torch.linalg.solve(A.T @ A, A.T @ target.double())  # (4, 3)
+    except RuntimeError:
+        sol = None
+    if sol is None or not torch.isfinite(sol).all():
+        return torch.eye(3, device=pred.device), torch.zeros(3, device=pred.device)
+    sol = sol.to(pred.dtype)
+    return sol[:3].T, sol[3]
+
+
 def _rotation_6d_to_matrix(d6: torch.Tensor) -> torch.Tensor:
     a1, a2 = d6[..., :3], d6[..., 3:]
     b1 = F.normalize(a1, dim=-1)
@@ -604,10 +623,7 @@ class Trainer:
             gts.append(gt[pick])
         if not preds:
             return torch.eye(3, device=self.device), torch.zeros(3, device=self.device)
-        P, G = torch.cat(preds), torch.cat(gts)
-        A = torch.cat([P, torch.ones_like(P[:, :1])], 1)
-        sol = torch.linalg.lstsq(A, G).solution  # (4, 3)
-        return sol[:3].T, sol[3]
+        return affine_colour_fit(torch.cat(preds), torch.cat(gts))
 
     @torch.no_grad()
     def export(self) -> GaussianCloud:
