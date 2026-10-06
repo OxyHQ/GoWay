@@ -120,6 +120,9 @@ class _Img:
     def cam_from_world(self) -> _Pose:
         return _Pose()
 
+    def projection_center(self) -> np.ndarray:
+        return np.array([float(self.name[1:4]), 0.0, 0.0])  # a walk along x, one step per frame
+
 
 class _Model:
     def __init__(self, n: int) -> None:

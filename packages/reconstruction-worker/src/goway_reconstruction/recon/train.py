@@ -64,7 +64,7 @@ BILAGRID_LR, BILAGRID_TV = 2e-3, 10.0
 DROP_RATE = 0.0
 MAX_ANISOTROPY, ANISOTROPY_WEIGHT = 10.0, 0.1
 SKY_POINTS = 60_000
-OUTLIER_CAMERA_FACTOR = 10.0
+OUTLIER_CAMERA_NEIGHBOURS, OUTLIER_CAMERA_FACTOR = 10, 20.0
 SPZ_MAX_COORDINATE = float((1 << (23 - FRACTIONAL_BITS)) - 1)  # world units from the origin
 
 try:  # MIT, ~5x faster; optional so the worker still trains without the extension
@@ -200,17 +200,24 @@ def _knn_scale(points: torch.Tensor) -> torch.Tensor:
     return torch.from_numpy(d[:, 1:].mean(1)).float().to(points.device).clamp(min=1e-4)
 
 
-def inlier_cameras(centers: np.ndarray, factor: float = OUTLIER_CAMERA_FACTOR) -> np.ndarray:
-    """Cameras within ``factor`` times the 90th-percentile distance from the median camera.
+def inlier_cameras(centers: np.ndarray, k: int = OUTLIER_CAMERA_NEIGHBOURS, factor: float = OUTLIER_CAMERA_FACTOR) -> np.ndarray:
+    """Cameras that have neighbours: the k-th nearest other camera within
+    ``factor`` times the 90th percentile of that distance.
 
-    A walked street puts its farthest real camera at about twice that
-    distance; a misregistered one can be thousands of times out. The 90th
-    percentile, not the median, so a capture that lingers in one spot and
-    then walks on keeps its walk.
+    Real cameras sit along a walked path, with others a step or two away; a
+    misregistered one is placed somewhere nothing else is (seen: 23 of 2,752
+    views, up to 32 km off a 70 m street). Neighbour distance, not distance
+    from the centre, so several captures of one area some way apart, or a
+    capture that lingers and then walks on, keep every real camera. The 90th
+    percentile, not the median: a capture that stands still for most of its
+    frames has a median neighbour distance of zero.
     """
-    if len(centers) < 3:
+    if len(centers) <= k:
         return np.ones(len(centers), dtype=bool)
-    d = np.linalg.norm(centers - np.median(centers, axis=0), axis=1)
+    from scipy.spatial import cKDTree
+
+    d, _ = cKDTree(centers).query(centers, k=k + 1)
+    d = d[:, -1]
     return d <= factor * max(float(np.percentile(d, 90)), 1e-6)
 
 
@@ -309,8 +316,8 @@ class Trainer:
         # within a unit radius), exactly as gsplat's reference trainer does:
         # every tested hyperparameter — regularisers, MCMC noise, initial
         # scales — assumes that scale. Export maps back to metric scene space.
-        # A camera the solve placed absurdly far away (seen: one of 2,752 at
-        # 900x the 90th-percentile distance) would set that scale and crush the real
+        # A camera the solve placed absurdly far away (seen: 23 of 2,752, one
+        # 32 km off a 70 m street) would set that scale and crush the real
         # scene into a speck. Such views are left out of training entirely;
         # the held-out split is still decided on the full list, so it matches
         # every other stage that indexes posed frames.

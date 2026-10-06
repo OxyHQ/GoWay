@@ -29,5 +29,11 @@ def test_misregistered_cameras_are_outliers_but_a_walk_is_not():
     assert inlier_cameras(walk).all()
     lingered = np.concatenate([np.zeros((800, 3)), walk])  # stood still, then walked
     assert inlier_cameras(lingered).all()
+    two_captures = np.concatenate([walk, walk + [300.0, 0.0, 0.0]])  # one area, captured twice apart
+    assert inlier_cameras(two_captures).all()
     stray = np.concatenate([walk, [[32_000.0, 5.0, 0.0]]])
     assert inlier_cameras(stray).tolist() == [True] * 200 + [False]
+    # a panorama whose views the solve scattered: none of them has neighbours
+    rng = np.random.default_rng(0)
+    scattered = np.concatenate([walk, rng.uniform(-5_000, 5_000, (8, 3))])
+    assert inlier_cameras(scattered).tolist() == [True] * 200 + [False] * 8
