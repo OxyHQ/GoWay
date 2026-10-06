@@ -47,7 +47,7 @@ import pycolmap
 import torch
 
 from ..models import DENSE_DEPTH_MODEL_FILES, DENSE_DEPTH_REVISION, ensure_model
-from .train import held_out, posed_images, undistort_frame
+from .train import held_out, inlier_cameras, posed_images, undistort_frame
 
 log = logging.getLogger("goway.worker")
 
@@ -410,7 +410,8 @@ def dense_points(
     """World points and colours to initialise Gaussians with (at most ``max_points``)."""
     started = time.monotonic()
     posed = posed_images(model)
-    training = [img for i, img in enumerate(posed) if not held_out(i, len(posed))]
+    inlier = inlier_cameras(np.array([img.projection_center() for img in posed]))
+    training = [img for i, img in enumerate(posed) if inlier[i] and not held_out(i, len(posed))]
     if len(training) < 2:
         raise DenseInitError("too few frames for multi-view depth")
     frames: list[DepthFrame] = []
