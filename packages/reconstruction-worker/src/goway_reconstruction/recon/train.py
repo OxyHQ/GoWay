@@ -44,7 +44,7 @@ import torch.nn.functional as F
 from gsplat import DefaultStrategy, MCMCStrategy, rasterization
 
 from .bilagrid import BilateralGrid, slice as bilagrid_slice, total_variation_loss
-from .spz import GaussianCloud
+from .spz import FRACTIONAL_BITS, GaussianCloud
 
 SH_C0 = 0.28209479177387814
 CHECKPOINT_EVERY = 5000
@@ -64,6 +64,8 @@ BILAGRID_LR, BILAGRID_TV = 2e-3, 10.0
 DROP_RATE = 0.0
 MAX_ANISOTROPY, ANISOTROPY_WEIGHT = 10.0, 0.1
 SKY_POINTS = 60_000
+OUTLIER_CAMERA_FACTOR = 10.0
+SPZ_MAX_COORDINATE = float((1 << (23 - FRACTIONAL_BITS)) - 1)  # world units from the origin
 
 try:  # MIT, ~5x faster; optional so the worker still trains without the extension
     from fused_ssim import fused_ssim as _fused_ssim
@@ -198,6 +200,20 @@ def _knn_scale(points: torch.Tensor) -> torch.Tensor:
     return torch.from_numpy(d[:, 1:].mean(1)).float().to(points.device).clamp(min=1e-4)
 
 
+def inlier_cameras(centers: np.ndarray, factor: float = OUTLIER_CAMERA_FACTOR) -> np.ndarray:
+    """Cameras within ``factor`` times the 90th-percentile distance from the median camera.
+
+    A walked street puts its farthest real camera at about twice that
+    distance; a misregistered one can be thousands of times out. The 90th
+    percentile, not the median, so a capture that lingers in one spot and
+    then walks on keeps its walk.
+    """
+    if len(centers) < 3:
+        return np.ones(len(centers), dtype=bool)
+    d = np.linalg.norm(centers - np.median(centers, axis=0), axis=1)
+    return d <= factor * max(float(np.percentile(d, 90)), 1e-6)
+
+
 def affine_colour_fit(pred: torch.Tensor, target: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Least-squares ``target ≈ pred @ M.T + b`` over (N, 3) colour samples.
 
@@ -293,12 +309,20 @@ class Trainer:
         # within a unit radius), exactly as gsplat's reference trainer does:
         # every tested hyperparameter — regularisers, MCMC noise, initial
         # scales — assumes that scale. Export maps back to metric scene space.
+        # A camera the solve placed absurdly far away (seen: one of 2,752 at
+        # 900x the 90th-percentile distance) would set that scale and crush the real
+        # scene into a speck. Such views are left out of training entirely;
+        # the held-out split is still decided on the full list, so it matches
+        # every other stage that indexes posed frames.
         world_centers = np.array([v.center for v in views])
-        self.norm_center = world_centers.mean(0)
-        self.norm_scale = float(np.linalg.norm(world_centers - self.norm_center, axis=1).max() * 1.1) or 1.0
+        inlier = inlier_cameras(world_centers)
+        self.outlier_views = int((~inlier).sum())
+        self.norm_center = world_centers[inlier].mean(0)
+        self.norm_scale = float(np.linalg.norm(world_centers[inlier] - self.norm_center, axis=1).max() * 1.1) or 1.0
         views = [self._to_internal(v) for v in views]
-        self.train_views = [v for i, v in enumerate(views) if not held_out(i, len(views))]
-        self.test_views = [v for i, v in enumerate(views) if held_out(i, len(views))]
+        self.train_views = [v for i, v in enumerate(views) if inlier[i] and not held_out(i, len(views))]
+        self.test_views = [v for i, v in enumerate(views) if inlier[i] and held_out(i, len(views))]
+        views = [v for i, v in enumerate(views) if inlier[i]]
 
         centers = np.array([v.center for v in views])
         self.scene_center = centers.mean(0)
@@ -632,6 +656,9 @@ class Trainer:
         keep &= torch.isfinite(s["means"]).all(1)
         centre = torch.tensor(self.scene_center, dtype=torch.float32, device=self.device)
         keep &= (s["means"] - centre).norm(dim=1) < max(300.0 / self.norm_scale, 6.0 * self.scene_scale, 1.2 * getattr(self, "sky_radius", 0.0))
+        # Never more than SPZ's fixed-point range can hold (from the scene origin).
+        world = s["means"] * self.norm_scale + torch.tensor(self.norm_center, dtype=torch.float32, device=self.device)
+        keep &= (world.abs() < SPZ_MAX_COORDINATE).all(1)
         keep &= self.visible_views() >= MIN_VISIBLE_VIEWS
         with torch.enable_grad():
             score = self.importance()
@@ -663,6 +690,9 @@ class Trainer:
     def initial_view(self, views: list[View]) -> tuple[View, list[float], list[float]]:
         """The world-space frame nearest the middle of the capture, looking where it looked."""
         centers = np.array([v.center for v in views])
+        inlier = inlier_cameras(centers)
+        views = [v for v, ok in zip(views, inlier) if ok]
+        centers = centers[inlier]
         view = views[int(np.argmin(np.linalg.norm(centers - centers.mean(0), axis=1)))]
         forward = view.viewmat[:3, :3].cpu().numpy().T @ np.array([0.0, 0.0, 1.0])
         position = np.asarray(view.center)

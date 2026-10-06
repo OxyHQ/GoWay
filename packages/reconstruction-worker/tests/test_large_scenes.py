@@ -18,3 +18,16 @@ def test_degenerate_samples_fall_back_to_identity():
     got_M, got_b = affine_colour_fit(pred, pred)
     assert torch.equal(got_M, torch.eye(3))
     assert torch.equal(got_b, torch.zeros(3))
+
+
+def test_misregistered_cameras_are_outliers_but_a_walk_is_not():
+    import numpy as np
+
+    from goway_reconstruction.recon.train import inlier_cameras
+
+    walk = np.stack([np.linspace(0, 100, 200), np.zeros(200), np.zeros(200)], 1)
+    assert inlier_cameras(walk).all()
+    lingered = np.concatenate([np.zeros((800, 3)), walk])  # stood still, then walked
+    assert inlier_cameras(lingered).all()
+    stray = np.concatenate([walk, [[32_000.0, 5.0, 0.0]]])
+    assert inlier_cameras(stray).tolist() == [True] * 200 + [False]
