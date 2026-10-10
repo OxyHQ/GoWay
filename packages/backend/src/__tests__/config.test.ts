@@ -41,7 +41,7 @@ describe('parseConfig', () => {
   });
 
   it('refuses a non-postgres DATABASE_URL', () => {
-    expect(() => parseConfig({ DATABASE_URL: 'mongodb://127.0.0.1:27017/goway' })).toThrow();
+    expect(() => parseConfig({ DATABASE_URL: 'mysql://goway:goway@127.0.0.1:3306/goway' })).toThrow();
   });
 
   it('treats an empty string as absent so a default can apply', () => {

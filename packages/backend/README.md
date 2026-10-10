@@ -2,7 +2,7 @@
 
 The GoWay API: Places persistence, provider adapters and the realtime surface.
 Express 5 on Bun in development, compiled to CommonJS and run on Bun in the
-container. PostgreSQL + PostGIS is the only store — there is no MongoDB, no
+container. PostgreSQL + PostGIS is the only store — there is no second database, no
 cache-as-database and no in-memory fallback, so a process that cannot reach
 Postgres does not start.
 
