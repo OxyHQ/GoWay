@@ -68,50 +68,18 @@ jobs:
         uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6
         with:
           # This role must trust only this repository and grant access only to
-          # this app's SSM path, ECR repository, and ECS service. Never replace
+          # this app's ECR repository and ECS service. (Its ssm:PutParameter
+          # grant on /oxy/goway/* is unused since the deploy stopped writing SSM.) Never replace
           # it with a role shared by generated repositories.
           role-to-assume: arn:aws:iam::237343248947:role/oxy-goway-github-deploy
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Sync GitHub secrets -> SSM (GitHub is the source of truth)
-        # Each secret is named EXPLICITLY. Enumerating the whole secrets
-        # context in one expression is forbidden fleet-wide
-        # (`~/Oxy/oxy-infra/AGENTS.md` §Secrets): GitHub reads that as an
-        # exfiltration payload, and every run then completes `action_required`
-        # with ZERO jobs until a human approves it, per run. The expression is
-        # not spelled out anywhere in this file on purpose — the detector is
-        # worth assuming is textual, and a comment is still text. That failure is invisible in the
-        # worst way — a run with no jobs reads as "no checks reported", which is
-        # indistinguishable from "nothing to do" unless you gate on job NAMES.
-        #
-        # This list IS the allowlist now, rather than a filter applied to
-        # everything: an unrelated CI token cannot reach SSM because it is never
-        # read in the first place. Adding a runtime secret means adding it here
-        # AND to the ECS task definition's `secrets[]` — the task definition is
-        # the authority on what the service actually receives.
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          REDIS_URL: ${{ secrets.REDIS_URL }}
-          OXY_SERVICE_API_KEY: ${{ secrets.OXY_SERVICE_API_KEY }}
-          OXY_SERVICE_API_SECRET: ${{ secrets.OXY_SERVICE_API_SECRET }}
-        run: |
-          set -euo pipefail
-          for k in DATABASE_URL REDIS_URL OXY_SERVICE_API_KEY OXY_SERVICE_API_SECRET; do
-            v="${!k-}"
-            # A placeholder is worse than an absent secret: the sync would
-            # overwrite a real SSM value and crash-loop the service.
-            if [ -z "$v" ] || [ "$v" = "-" ]; then
-              echo "::warning::skip empty/placeholder secret $k; SSM unchanged"
-              continue
-            fi
-            path="/oxy/$APP/$k"
-            printf '%s' "$v" | aws ssm put-parameter \
-              --name "$path" \
-              --type SecureString \
-              --value file:///dev/stdin \
-              --overwrite >/dev/null
-            echo "synced -> $path"
-          done
+      # Runtime secrets live ONLY in SSM /oxy/goway/* (SecureString); the task
+      # definition reads them at task start and this deploy writes none. Set or
+      # rotate one with `aws ssm put-parameter --overwrite` (oxy-infra runbook
+      # 46). Until 2026-10-10 a step here copied GitHub repo secrets into SSM.
+      # .github/scripts/test_deploy_backend.py fails CI if a workflow writes SSM
+      # or reads a repo secret beyond the CI-only allowlist.
 
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2

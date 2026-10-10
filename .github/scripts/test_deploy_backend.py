@@ -1,6 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import re
 import unittest
 
 spec = importlib.util.spec_from_file_location('deploy_backend', Path(__file__).with_name('deploy-backend.py'))
@@ -126,6 +127,37 @@ class DeployTests(unittest.TestCase):
         self.assertTrue(succeeded)
         update = next(c for c in calls if c[1] == 'update-service')
         self.assertEqual(update[update.index('--desired-count') + 1], '1')
+
+WORKFLOWS = Path(__file__).resolve().parent.parent / 'workflows'
+# The only repo secrets a workflow may read: what CI itself spends. Runtime
+# secrets live only in SSM /oxy/goway/* (oxy-infra runbook 46); until
+# 2026-10-10 the deploy copied repo secrets into SSM on every run.
+CI_ONLY_SECRETS = {'GITHUB_TOKEN', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'NPM_TOKEN', 'ADD_TO_PROJECT_TOKEN'}
+SSM_WRITE = re.compile(r'\bssm\s+(put-parameter|delete-parameters?|label-parameter-version)\b', re.I)
+SECRET_READ = re.compile(r'\bsecrets\.([A-Za-z_][A-Za-z0-9_]*)')
+
+
+def workflow_violations(name, text):
+    """Comment lines are skipped so the rule can be explained where it applies."""
+    code = '\n'.join(line for line in text.splitlines() if not line.lstrip().startswith('#'))
+    errors = []
+    if SSM_WRITE.search(code):
+        errors.append(f'{name}: writes SSM')
+    errors += [f'{name}: reads repo secret {s}' for s in SECRET_READ.findall(code) if s not in CI_ONLY_SECRETS]
+    return errors
+
+
+class WorkflowSecretTests(unittest.TestCase):
+    def test_no_workflow_writes_ssm_or_reads_a_runtime_secret(self):
+        files = sorted(WORKFLOWS.glob('*.y*ml'))
+        self.assertGreater(len(files), 3)  # vacuity floor
+        errors = [e for f in files for e in workflow_violations(f.name, f.read_text())]
+        self.assertEqual(errors, [])
+
+    def test_the_rule_can_fail(self):
+        self.assertTrue(workflow_violations('w', 'env:\n  DATABASE_URL: ${{ secrets.DATABASE_URL }}\n'))
+        self.assertTrue(workflow_violations('w', 'run: aws ssm put-parameter --name /oxy/goway/X --overwrite\n'))
+        self.assertEqual(workflow_violations('w', '# set with `aws ssm put-parameter`\nenv:\n  T: ${{ secrets.CLOUDFLARE_API_TOKEN }}\n'), [])
 
 
 if __name__ == '__main__':
