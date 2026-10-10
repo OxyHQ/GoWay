@@ -12,7 +12,7 @@ import {
   fetchUpstreamJson,
   isUpstreamError,
   parseRetryAfterSeconds,
-  UpstreamError,
+  type UpstreamError,
 } from '../upstream';
 import type { FetchLike } from '../provider';
 import { jsonResponse, recordingFetch } from './fixtures';

@@ -45,7 +45,7 @@ export type MessageValues = Readonly<Record<string, string | number>>;
 export function formatMessage(template: string, values?: MessageValues): string {
   if (!values) return template;
   return template.replace(/\{(\w+)\}/g, (match, name: string) =>
-    Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : match,
+    Object.hasOwn(values, name) ? String(values[name]) : match,
   );
 }
 

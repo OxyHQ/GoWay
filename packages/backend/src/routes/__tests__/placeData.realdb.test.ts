@@ -17,12 +17,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import express, { type RequestHandler } from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import {
-  type CategoryPage,
-  type Place,
-  type PlaceHoursException,
-  type PlaceHoursExceptionPage,
-  type PlaceWithDistancePage,
+import type {
+  CategoryPage,
+  Place,
+  PlaceHoursException,
+  PlaceHoursExceptionPage,
+  PlaceWithDistancePage,
 } from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {

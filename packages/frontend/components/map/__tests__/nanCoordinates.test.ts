@@ -499,7 +499,7 @@ describe('seam — the camera SCALARS, which poison the transform one step later
     // MapLibre's own clamp does not stop it: nothing compares true to NaN.
     const clamp = (n: number, min: number, max: number) => Math.min(Math.max(n, min), max);
     expect(Number.isNaN(clamp(NaN, 0, 22))).toBe(true);
-    expect(Number.isNaN(Math.pow(2, NaN))).toBe(true);
+    expect(Number.isNaN(2 ** NaN)).toBe(true);
 
     // So `transform._scale` and `worldSize` become NaN, and the next
     // unprojection — which is literally `screenPointToMercatorCoordinate(p)
@@ -534,7 +534,7 @@ describe('seam — the camera SCALARS, which poison the transform one step later
     // is NaN, which MapLibre's `scaleX < 0` guard does not catch. It ends up
     // multiplying the padding offset by `scale / 2 ** NaN`.
     expect(Number.isNaN(Math.min(11.5, NaN))).toBe(true);
-    expect(() => new LngLat(0 * (1 / Math.pow(2, NaN)), 0 * (1 / Math.pow(2, NaN)))).toThrow(
+    expect(() => new LngLat(0 * (1 / 2 ** NaN), 0 * (1 / 2 ** NaN))).toThrow(
       'Invalid LngLat object: (NaN, NaN)',
     );
     expect(asFinite(NaN)).toBeUndefined();

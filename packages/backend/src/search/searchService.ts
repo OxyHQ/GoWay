@@ -48,7 +48,7 @@ import { mergeCandidates, type CandidateList } from './merge';
 import type { PlacesGateway } from './placesGateway';
 import type { ProviderCandidate, SearchProvider } from './provider';
 import { spatialBiasFor, type SpatialBias } from './ranking';
-import { isUpstreamError, UpstreamError } from './upstream';
+import { isUpstreamError, type UpstreamError } from './upstream';
 import { ApiError } from '../http/apiError';
 
 /**
