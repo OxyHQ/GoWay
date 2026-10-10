@@ -151,7 +151,7 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
     openCamera(budget.resolution)
       .then((opened) => {
         if (disposed) {
-          opened.getTracks().forEach((track) => track.stop());
+          for (const track of opened.getTracks()) track.stop();
           return;
         }
         stream.current = opened;
@@ -174,7 +174,7 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
       disposed = true;
       discard.current = true;
       if (recorder.current && recorder.current.state !== 'inactive') recorder.current.stop();
-      stream.current?.getTracks().forEach((track) => track.stop());
+      for (const track of stream.current?.getTracks() ?? []) track.stop();
       stream.current = null;
       exitLandscape();
     };

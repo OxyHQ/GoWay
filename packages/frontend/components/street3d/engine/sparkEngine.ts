@@ -304,9 +304,9 @@ export function createSceneEngine(options: EngineOptions): SceneEngine {
         if (firstIsFull) fullLoadMs = elapsed;
         else previewLoadMs = elapsed;
         setPhase(firstIsFull ? 'full' : 'preview');
-        if (plan.then) {
+        if (plan.upgrade) {
           load(
-            plan.then.url,
+            plan.upgrade.url,
             (full) => {
               show(full);
               fullLoadMs = performance.now() - started;

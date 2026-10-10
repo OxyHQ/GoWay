@@ -171,6 +171,7 @@ describe('the contract: never throws, never emits a non-finite number', () => {
     { center: ',' },
     { center: '1' },
     { center: '1,2,3' },
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: an unfilled template is one of the malformed inputs under test.
     { center: '${lat},${lng}' },
     { center: 'Infinity,-Infinity' },
     { center: '1e400,1e400' },
@@ -234,7 +235,10 @@ describe('the contract: never throws, never emits a non-finite number', () => {
       'interactive',
     ];
     let seed = 20260920;
-    const next = (): number => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    const next = (): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
 
     for (let i = 0; i < 1000; i += 1) {
       const params: RawParams = {};

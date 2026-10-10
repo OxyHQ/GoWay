@@ -7,8 +7,9 @@ import { createCameraRig, MAX_PITCH } from '../cameraRig';
 import { assessDevice, MAX_PIXEL_RATIO } from '../deviceProfile';
 import type { Vec3 } from '../types';
 
-const close = (a: readonly number[], b: readonly number[], digits = 6) =>
-  a.forEach((value, index) => expect(value).toBeCloseTo(b[index], digits));
+const close = (a: readonly number[], b: readonly number[], digits = 6) => {
+  for (const [index, value] of a.entries()) expect(value).toBeCloseTo(b[index], digits);
+};
 
 describe('assessDevice', () => {
   const capable = {
@@ -71,14 +72,14 @@ describe('planSceneAssets', () => {
   test('full tier loads the preview first, then the full splat', () => {
     const plan = planSceneAssets(manifest, 'full', open);
     expect(plan.first?.role).toBe('splat_preview');
-    expect(plan.then?.role).toBe('splat');
+    expect(plan.upgrade?.role).toBe('splat');
     expect(plan.poster?.role).toBe('poster');
   });
 
   test('preview tier never loads the full splat', () => {
     expect(planSceneAssets(manifest, 'preview', open)).toMatchObject({
       first: { role: 'splat_preview' },
-      then: null,
+      upgrade: null,
     });
     const fullOnly = { assets: [asset('splat', 'https://cdn.example/full.spz')] };
     expect(planSceneAssets(fullOnly, 'preview', open).first).toBeNull();
@@ -91,13 +92,13 @@ describe('planSceneAssets', () => {
       open,
     );
     expect(plan.first?.role).toBe('splat');
-    expect(plan.then).toBeNull();
+    expect(plan.upgrade).toBeNull();
   });
 
   test('unsupported loads no splat but keeps the poster', () => {
     expect(planSceneAssets(manifest, 'unsupported', open)).toMatchObject({
       first: null,
-      then: null,
+      upgrade: null,
       poster: { role: 'poster' },
     });
   });

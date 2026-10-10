@@ -124,13 +124,6 @@
       }
     },
     {
-      // Biome's rule also covers `valueOf`/`toString`, which ESLint's
-      // `no-shadow-restricted-names` does not; this test's local `valueOf` helper
-      // is the only hit. The ESLint-covered names stay errors everywhere else.
-      "includes": ["packages/backend/src/routes/__tests__/placeData.realdb.test.ts"],
-      "linter": { "rules": { "suspicious": { "noShadowRestrictedNames": "warn" } } }
-    },
-    {
       // SDK: the base rule read a TypeScript overload as a redeclaration, so the
       // ESLint config used `@typescript-eslint/no-redeclare` at error.
       "includes": ["packages/sdk/src/**", "packages/sdk/test/**", "packages/sdk/vitest.config.ts"],

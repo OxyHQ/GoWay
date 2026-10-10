@@ -26,6 +26,7 @@ const manifest = {
   bounds: { west: 2.3, south: 48.86, east: 2.31, north: 48.87 },
   footprint,
   worldTransform: {
+    // biome-ignore lint/suspicious/noApproximativeNumericConstant: a longitude in Paris, not ln 10.
     anchor: { latitude: 48.8684, longitude: 2.302, altitudeMeters: 0 },
     frame: 'enu',
     enuFromScene: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],

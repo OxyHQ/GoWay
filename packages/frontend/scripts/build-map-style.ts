@@ -411,7 +411,7 @@ function checkFirstPartyOrigins(
       return;
     }
     if (Array.isArray(node)) {
-      node.forEach((item, index) => walk(item, `${path}[${index}]`));
+      for (const [index, item] of node.entries()) walk(item, `${path}[${index}]`);
       return;
     }
     if (node && typeof node === 'object') {
@@ -559,7 +559,7 @@ function checkFilterSafety(
     }
     // `literal` quotes its argument - nothing inside it is an expression.
     if (node[0] === 'literal') return;
-    node.forEach((item, index) => walk(item, layerId, `${path}[${index}]`));
+    for (const [index, item] of node.entries()) walk(item, layerId, `${path}[${index}]`);
   };
 
   for (const layer of style.layers) {

@@ -301,10 +301,10 @@ describe('typed capabilities', () => {
       `/places/${open.id}/capabilities/food.cuisine`,
       as('user-x', 'PUT', { value: ['pizza', 'italian', 'pizza'] }),
     );
-    const valueOf = (key: string) =>
+    const capabilityValue = (key: string) =>
       body.capabilities.find((capability) => capability.key === key)?.value;
-    expect(valueOf('social.instagram')).toBe('https://www.instagram.com/trattoria');
-    expect(valueOf('food.cuisine')).toEqual(['italian', 'pizza']);
+    expect(capabilityValue('social.instagram')).toBe('https://www.instagram.com/trattoria');
+    expect(capabilityValue('food.cuisine')).toEqual(['italian', 'pizza']);
   });
 
   it('filters by an enum-set member, an enum value and a price level, through the strongest assertion', async () => {

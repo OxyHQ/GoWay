@@ -13,7 +13,7 @@ export interface SceneAssetPlan {
   /** Loaded first, always. The light splat, or the full one when no preview exists and the tier allows it. */
   first: StreetSceneAsset | null;
   /** Streamed in after `first`, when the tier allows it and it is a different asset. */
-  then: StreetSceneAsset | null;
+  upgrade: StreetSceneAsset | null;
   poster: StreetSceneAsset | null;
 }
 
@@ -60,13 +60,13 @@ export function planSceneAssets(
   const full = find('splat');
   const poster = find('poster');
 
-  if (tier === 'unsupported') return { first: null, then: null, poster };
+  if (tier === 'unsupported') return { first: null, upgrade: null, poster };
   if (tier === 'preview') {
     // A device that cannot hold the full splat gets the preview — or nothing,
     // rather than the full splat it was just judged unable to hold.
-    return { first: preview, then: null, poster };
+    return { first: preview, upgrade: null, poster };
   }
   const first = preview ?? full;
-  const then = full && first && full.url !== first.url ? full : null;
-  return { first, then, poster };
+  const upgrade = full && first && full.url !== first.url ? full : null;
+  return { first, upgrade, poster };
 }

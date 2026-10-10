@@ -71,7 +71,7 @@ async function listen(viewingEnabled: boolean): Promise<string> {
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1`;
 }
 
-const ASSET_KEY = 'scenes/s/v1/' + 'c'.repeat(64) + '.spz';
+const ASSET_KEY = `scenes/s/v1/${'c'.repeat(64)}.spz`;
 
 /** A scene with one version, in the given state, served or not. */
 async function scene(
@@ -82,6 +82,7 @@ async function scene(
     .insert(street3dScenes)
     .values({
       anchorLatitude: 48.8684,
+      // biome-ignore lint/suspicious/noApproximativeNumericConstant: a longitude in Paris, not ln 10.
       anchorLongitude: 2.302,
       radiusMeters: 90,
       state: 'candidate',
@@ -128,6 +129,7 @@ async function scene(
         ],
       },
       worldTransform: {
+        // biome-ignore lint/suspicious/noApproximativeNumericConstant: a longitude in Paris, not ln 10.
         anchor: { latitude: 48.8684, longitude: 2.302, altitudeMeters: 0 },
         frame: 'enu',
         enuFromScene: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
