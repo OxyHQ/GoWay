@@ -85,10 +85,12 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/three": "0.186.0",
+    "@typescript-eslint/parser": "^8.71.0",
     "babel-plugin-module-resolver": "^5.0.3",
     "babel-preset-expo": "~57.0.2",
     "eslint": "^9.25.0",
-    "eslint-config-expo": "~57.0.0",
+    "eslint-plugin-expo": "^1.1.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "fontkit": "^2",
     "typescript": "^5.9.3"
   },

@@ -104,6 +104,7 @@ function SceneViewerComponent({
     latest.current = { labels: visibleLabels, controlMode };
   });
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the engine is rebuilt per scene VERSION, never per render
   useEffect(() => {
     const host = hostRef.current as unknown as HTMLElement | null;
     const canvas = canvasRef.current;
@@ -207,7 +208,6 @@ function SceneViewerComponent({
       engineRef.current = null;
     };
     // The engine is rebuilt per scene VERSION, never per render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manifest.id, manifest.version]);
 
   useEffect(() => {

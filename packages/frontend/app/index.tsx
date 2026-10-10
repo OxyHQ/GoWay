@@ -30,9 +30,9 @@ export default function MapRoute() {
   // this is memoised against the parameter values rather than recomputed into
   // a fresh object every render — a new object identity on a prop the canvas
   // reads once is harmless today and a re-mount waiting to happen tomorrow.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the camera is initial by contract, memoised against the parameter values
   const initialViewport = useMemo(
     () => parseViewportFromParams(params),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [params.lat, params.lng, params.zoom, params.bearing, params.pitch],
   );
 

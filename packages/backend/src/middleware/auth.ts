@@ -46,7 +46,7 @@ import { createRequireOperator } from './operator';
  * and which then disagrees with what the middleware actually sets.
  */
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
+  // biome-ignore lint/style/noNamespace: Express declares its global augmentation point as `namespace Express`
   namespace Express {
     interface Request {
       userId?: string;

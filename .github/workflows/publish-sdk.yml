@@ -140,7 +140,9 @@ jobs:
         run: bun run --cwd packages/sdk typecheck
 
       - name: Lint
-        run: bun run --cwd packages/sdk lint
+        # Biome, from the root `biome.jsonc`, which carries the SDK's guards
+        # (no Node built-ins and no console in `src/`).
+        run: bunx biome ci packages/sdk
 
       - name: Test
         run: bun run --cwd packages/sdk test

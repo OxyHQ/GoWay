@@ -1,0 +1,193 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true, "defaultBranch": "main" },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!.worktrees",
+      "!**/dist",
+      "!**/coverage",
+      "!**/.expo",
+      "!**/.next",
+      "!**/drizzle/meta",
+      "!**/*.generated.*",
+      // GENERATED and byte-compared by `check:openapi` (ci.yml "Repository gates").
+      "!packages/contracts/openapi.json",
+      // GENERATED map style, sprite index and TileJSON; `map:style:check` and
+      // `map:sprite:check` compare the committed bytes against the generator.
+      "!packages/frontend/public/map",
+      // Glyph coverage fixture read by `map:glyphs:check`.
+      "!packages/frontend/scripts/mapgen/fixtures",
+      // Written by Expo itself; regenerated on `expo start`.
+      "!packages/frontend/expo-env.d.ts",
+      // The 0.3.0 contract registry captured verbatim as a test fixture.
+      "!packages/backend/src/__tests__/fixtures/categoryTaxonomy-0.3.0.json",
+      // Python/CUDA, not a Bun workspace; its JSON contract fixtures are shared
+      // with the backend and stay byte-identical.
+      "!packages/reconstruction-worker",
+      // Dated audit evidence (captured inputs, logs, proof records): a record of
+      // what was measured, never rewritten.
+      "!docs/audits"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "jsxQuoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always",
+      "bracketSpacing": true
+    }
+  },
+  "json": { "formatter": { "trailingCommas": "none" } },
+  "css": { "parser": { "tailwindDirectives": true } },
+  "assist": { "enabled": true, "actions": { "source": { "organizeImports": "off" } } },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      // Ported from ESLint at error: `no-explicit-any` (backend and SDK: "an `any`
+      // is a hole in `strict: true`" / "the contract schemas are the wall between
+      // an untrusted body and a typed value"), `no-control-regex`,
+      // `react-hooks/rules-of-hooks` (frontend).
+      //
+      // Every rule set to "warn" below is a recommended Biome rule that fires on
+      // code that ESLint passed. It is a BASELINE, not a decision: each is a
+      // tightening follow-up (counts in the adoption PR).
+      "a11y": {
+        "noSvgWithoutTitle": "warn",
+        "useFocusableInteractive": "warn",
+        "useKeyWithClickEvents": "warn",
+        "useSemanticElements": "warn"
+      },
+      "complexity": {
+        "noThisInStatic": "warn",
+        "noUselessLoneBlockStatements": "warn",
+        "noUselessStringRaw": "warn",
+        "noUselessSwitchCase": "warn",
+        "useOptionalChain": "warn"
+      },
+      "correctness": {
+        "noUnusedImports": "warn",
+        "useExhaustiveDependencies": "warn",
+        "useHookAtTopLevel": "error"
+      },
+      "style": {
+        "noNonNullAssertion": "warn",
+        "useExponentiationOperator": "warn",
+        "useImportType": "warn",
+        "useNodejsImportProtocol": "warn",
+        "useTemplate": "warn"
+      },
+      "suspicious": {
+        "noApproximativeNumericConstant": "warn",
+        "noArrayIndexKey": "warn",
+        "noAssignInExpressions": "warn",
+        "noControlCharactersInRegex": "error",
+        "noExplicitAny": "error",
+        "noImplicitAnyLet": "warn",
+        "noPrototypeBuiltins": "warn",
+        "noShadowRestrictedNames": "error",
+        "noTemplateCurlyInString": "warn",
+        "noThenProperty": "warn",
+        "useIterableCallbackReturn": "warn"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // Linted but NOT formatted: the backend's `poiTags.test.ts` reads this file
+      // as TEXT and matches each `['group', [ ...classes ]]` entry on one line
+      // with a regex. Reflowing the arrays makes it see 21 classes instead of
+      // 50+ and fail.
+      "includes": ["packages/frontend/lib/map/style/layers.ts"],
+      "formatter": { "enabled": false }
+    },
+    {
+      // Backend: `@typescript-eslint/no-unused-vars` and `no-namespace` were errors.
+      "includes": ["packages/backend/**"],
+      "linter": {
+        "rules": {
+          "correctness": { "noUnusedVariables": "error", "noUnusedImports": "error" },
+          "style": { "noNamespace": "error" }
+        }
+      }
+    },
+    {
+      // Biome's rule also covers `valueOf`/`toString`, which ESLint's
+      // `no-shadow-restricted-names` does not; this test's local `valueOf` helper
+      // is the only hit. The ESLint-covered names stay errors everywhere else.
+      "includes": ["packages/backend/src/routes/__tests__/placeData.realdb.test.ts"],
+      "linter": { "rules": { "suspicious": { "noShadowRestrictedNames": "warn" } } }
+    },
+    {
+      // SDK: the base rule read a TypeScript overload as a redeclaration, so the
+      // ESLint config used `@typescript-eslint/no-redeclare` at error.
+      "includes": ["packages/sdk/src/**", "packages/sdk/test/**", "packages/sdk/vitest.config.ts"],
+      "linter": { "rules": { "suspicious": { "noRedeclare": "error" } } }
+    },
+    {
+      // @goway.to/sdk `src/` is the one source here that must run unchanged on
+      // Node, Bun, browsers and React Native.
+      //
+      //  - noRestrictedImports refuses Node built-ins in `src/`. `tsc` also fails
+      //    on one (`src/` compiles with `types: []`), but with "cannot find
+      //    module", which reads as a missing dependency to install rather than a
+      //    rule; this says why. The browser and React Native bundles in
+      //    `scripts/smoke.mjs` are the backstop that measures the built output.
+      //  - noConsole: the SDK never logs, so an access token can never reach a
+      //    log line through it.
+      "includes": ["packages/sdk/src/**"],
+      "linter": {
+        "rules": {
+          "suspicious": { "noConsole": "error" },
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["node:*"],
+                    "message": "src/ ships to browsers and React Native: no Node built-ins."
+                  }
+                ],
+                "paths": {
+                "assert": "src/ ships to browsers and React Native: no Node built-ins.",
+                "buffer": "src/ ships to browsers and React Native: no Node built-ins.",
+                "child_process": "src/ ships to browsers and React Native: no Node built-ins.",
+                "crypto": "src/ ships to browsers and React Native: no Node built-ins.",
+                "dns": "src/ ships to browsers and React Native: no Node built-ins.",
+                "events": "src/ ships to browsers and React Native: no Node built-ins.",
+                "fs": "src/ ships to browsers and React Native: no Node built-ins.",
+                "fs/promises": "src/ ships to browsers and React Native: no Node built-ins.",
+                "http": "src/ ships to browsers and React Native: no Node built-ins.",
+                "https": "src/ ships to browsers and React Native: no Node built-ins.",
+                "net": "src/ ships to browsers and React Native: no Node built-ins.",
+                "os": "src/ ships to browsers and React Native: no Node built-ins.",
+                "path": "src/ ships to browsers and React Native: no Node built-ins.",
+                "process": "src/ ships to browsers and React Native: no Node built-ins.",
+                "stream": "src/ ships to browsers and React Native: no Node built-ins.",
+                "tls": "src/ ships to browsers and React Native: no Node built-ins.",
+                "url": "src/ ships to browsers and React Native: no Node built-ins.",
+                "util": "src/ ships to browsers and React Native: no Node built-ins.",
+                "worker_threads": "src/ ships to browsers and React Native: no Node built-ins.",
+                "zlib": "src/ ships to browsers and React Native: no Node built-ins."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

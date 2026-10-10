@@ -87,8 +87,14 @@ jobs:
 
       - name: Typecheck
         run: bun run typecheck
-      - name: Lint
-        run: bun run lint
+      - name: Lint and format (Biome)
+        # One root config (`biome.jsonc`) for every package. `ci` is `check`
+        # without writes: lint errors AND unformatted files fail.
+        run: bunx biome ci .
+      - name: Lint the frontend's Expo-only rules (ESLint)
+        # The minimal `packages/frontend/eslint.config.js`: only rules Biome has
+        # no equivalent for (EXPO_PUBLIC_* inlining, React Compiler rules).
+        run: bun run lint:frontend
 
       - name: Validate the map style documents
         # A broken MapLibre style document fails SILENTLY — a wrong

@@ -220,6 +220,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 
   // --- Engine lifecycle ---------------------------------------------------
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `initialViewport` is initial by contract; re-reading it would reset the camera on every render
   useEffect(() => {
     // react-native-web renders a `<View>` as a `<div>`, and its ref IS that DOM
     // node — so MapLibre gets a real container without a portal of its own.
@@ -505,7 +506,6 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     };
     // `initialViewport` is initial by contract — re-reading it here would make
     // a parent's inline object literal reset the camera on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [styleUrl, reloadKey, emitError]);
 
   // --- Interaction toggles ------------------------------------------------

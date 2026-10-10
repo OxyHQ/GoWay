@@ -41,7 +41,9 @@ somebody else's database and migrates it.
 
 ```bash
 bun run typecheck        # tsc -b across every package, plus the non-emitting tools program
-bun run lint
+bun run lint             # Biome (lint + format check) everywhere, then the frontend's minimal Expo ESLint
+bun run lint:fix         # apply Biome's safe fixes and formatting
+bun run format           # Biome formatter only
 bun run test             # bun test
 bun run check:migrations # deploy-phase markers + no $1 placeholders in generated SQL
 bun run check:routing    # api.goway.to returns a REAL Barcelona->Madrid route, not a straight line
