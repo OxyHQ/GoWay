@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   GoWayValidationError,
+  GoWayConflictError,
+  type OpeningHoursDayPatch,
   MAX_PLACE_BATCH_SIZE,
   createGoWayClient,
   placeMatchesCapabilityFilter,
@@ -137,5 +139,43 @@ describe('places.update as a merge patch', () => {
     const error = await rejection(client.places.update('gw_place_01H8', { name: null }));
     expect(error).toBeInstanceOf(GoWayValidationError);
     expect(calls).toHaveLength(0);
+  });
+});
+
+
+describe('atomic weekday hours patches', () => {
+  it('sends only explicit opening weekdays, preserving overnight and 24-hour values', async () => {
+    const { client, calls } = clientFor(PLACE);
+    const openingHoursDays: OpeningHoursDayPatch[] = [
+      { day: 1, intervals: [{ opens: '20:00', closes: '02:00' }] },
+      { day: 3, intervals: [{ opens: '00:00', closes: '00:00' }] },
+      { day: 6, intervals: [] },
+    ];
+    await client.places.update('gw_place_01H8', { openingHoursDays });
+    expect(calls[0]?.init.method).toBe('PATCH');
+    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({ openingHoursDays });
+  });
+
+  it('refuses ambiguous weekday patches before any HTTP request', async () => {
+    const { client, calls } = clientFor(PLACE);
+    const day = { day: 1, intervals: [] } as const;
+    for (const body of [
+      { openingHoursDays: [] },
+      { openingHoursDays: [day, day] },
+      { openingHoursDays: [day], openingHours: null },
+      { openingHoursDays: [{ day: 7, intervals: [] }] },
+      { openingHoursDays: [{ day: 1, intervals: [{ opens: '24:00', closes: '02:00' }] }] },
+      { openingHoursDays: [{ day: 1, intervals: Array.from({ length: 65 }, () => ({ opens: '09:00', closes: '10:00' })) }] },
+    ]) {
+      await expect(client.places.update('gw_place_01H8', body as never)).rejects.toBeInstanceOf(GoWayValidationError);
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it('preserves the server conflict for an unknown schedule without retrying or inventing a full week', async () => {
+    const { client, calls } = clientFor({ error: { code: 'conflict', message: 'Schedule unknown', details: { field: 'openingHoursDays' } } }, 409);
+    const error = await rejection(client.places.update('gw_place_01H8', { openingHoursDays: [{ day: 1, intervals: [] }] }));
+    expect(error).toBeInstanceOf(GoWayConflictError);
+    expect(calls).toHaveLength(1);
   });
 });

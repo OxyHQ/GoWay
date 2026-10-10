@@ -271,6 +271,7 @@ export type {
   NearbyPlacesQuery,
   OpeningHours,
   OpeningHoursInterval,
+  OpeningHoursDayPatch,
   Place,
   PlaceCapability,
   PlaceCapabilityAssertion,

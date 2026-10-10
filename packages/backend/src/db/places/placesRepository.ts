@@ -46,6 +46,7 @@ import {
   CAPABILITY_VERIFICATIONS,
   capabilityFilterOf,
   normalizeLanguageTag,
+  MAX_WEEKLY_HOURS_INTERVALS,
   PUBLISHED_PLACE_STATUSES,
 } from '@goway/contracts';
 import type {
@@ -55,6 +56,7 @@ import type {
   DuplicateCandidateReason,
   GeoGeometry,
   OpeningHours,
+  OpeningHoursDayPatch,
   Place,
   PlaceClaim,
   PlaceClaimRole,
@@ -214,6 +216,7 @@ export interface PlaceWriteInput {
   address?: Clearable<StructuredAddress> | null;
   contact?: Clearable<PlaceContact> | null;
   openingHours?: OpeningHours | null;
+  openingHoursDays?: OpeningHoursDayPatch[];
   status?: WritablePlaceStatus;
   sources?: SourceRefInput[];
   capabilities?: CapabilityInput[];
@@ -1508,6 +1511,27 @@ export async function updatePlace(
     // already has may stay, as the database's trigger allows.
     if (catalog && input.categories) assertWritableCategories(catalog, input.categories, before.categories);
 
+    // Resolve day replacements from the locked CURRENT row, never a client's
+    // stale full-week snapshot. Midnight-crossing spans belong to their opening day.
+    let hours = input.openingHours;
+    if (input.openingHoursDays !== undefined) {
+      const days = new Set(input.openingHoursDays.map(({ day }) => day));
+      const current = before.openingHours;
+      if ((!current || current.intervals.length === 0) && days.size !== 7) {
+        throw new ApiError('conflict', 'The current schedule is unknown; explicitly replace all seven weekdays.', { field: 'openingHoursDays' });
+      }
+      const intervals = [
+        ...(current?.intervals ?? []).filter(({ day }) => !days.has(day)),
+        ...input.openingHoursDays.flatMap(({ day, intervals }) => intervals.map((interval) => ({ ...interval, day }))),
+      ];
+      if (intervals.length > MAX_WEEKLY_HOURS_INTERVALS) {
+        throw new ApiError('validation_failed', 'The resulting schedule exceeds the weekly interval limit.', { field: 'openingHoursDays' });
+      }
+      // The old raw expression no longer describes the edited schedule. Source
+      // provenance remains intact in places_sources, as for full-week replacement.
+      hours = { intervals };
+    }
+
     // A logo or cover names a gallery item by its Oxy file; the column holds
     // the item, resolved under the same lock as the rest of the write.
     const pointers: { logoMediaId?: string | null; coverMediaId?: string | null } = {};
@@ -1525,7 +1549,7 @@ export async function updatePlace(
     // new capability because the `places` row itself was untouched.
     const [after] = await tx
       .update(places)
-      .set({ ...placeColumnValues(input), ...pointers, updatedAt: new Date() })
+      .set({ ...placeColumnValues({ ...input, openingHours: hours }), ...pointers, updatedAt: new Date() })
       .where(eq(places.id, id))
       .returning(PLACE_COLUMNS);
     if (!after) return null;

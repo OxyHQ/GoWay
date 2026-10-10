@@ -243,6 +243,40 @@ otherwise; `placeMatchesCapabilityFilter` is the same rule client-side.
   `(place, starts_on, ends_on, verification)`, for the reason capabilities are.
   Mercaria's `location_closures` is the same fact.
 
+### Atomic edits of weekdays
+
+`PATCH /places/{id}` accepts `openingHoursDays: [{day, intervals}]` through
+`client.places.update`. Each day is unique, Sunday `0` to Saturday `6`;
+`intervals: []` explicitly closes that opening day. Omitted days are unchanged.
+This input is mutually exclusive with `openingHours` (including `null`), which
+continues to replace/clear the entire week. A patch names 1–7 days and the
+resulting week cannot exceed 64 intervals (`validation_failed`, with no write).
+
+The repository reads and merges the current schedule under its existing
+`FOR UPDATE` place lock. Concurrent edits of different days survive; edits of
+the same day replace that whole day in lock/commit order. There is no automatic
+same-day conflict detection. Intervals belong to their **opening** weekday:
+`20:00–02:00` stays overnight and `00:00–00:00` stays 24 hours. No intervals are
+split, rounded or moved into another day. A successful edit records one
+`place_updated` revision with the actual locked before/after values.
+
+An absent schedule, or any schedule with no intervals (with or without a `raw`
+source expression), is unknown according to `openingStatusAt`, not closed. A
+partial weekday update in that state returns `conflict` and changes neither
+facts nor history. Explicitly supplying all seven days is required to replace
+it. A replacement with seven empty days is permitted but remains unknown to the
+existing evaluator; this API does not add a representation for a known
+all-week closure. Successful edits drop the obsolete `raw` expression from
+the edited schedule; original source provenance in `places_sources` is untouched.
+Claim ownership, membership and bearer checks use the existing place PATCH path.
+
+Rollout: deploy the API change first, then publish the SDK version containing
+this contract, then update consumers. Older APIs strip unknown keys, so a client
+must not start sending `openingHoursDays` before that deployment. No migration
+or production deployment is part of this change. The SDK's pending 0.4 release
+also contains unrelated taxonomy changes; consumers must account for those
+when upgrading from 0.3 rather than using an unpublished/local SDK override.
+
 ### One evaluation
 
 `openingStatusAt(place, now)` (contracts) is THE answer to "open now, and until

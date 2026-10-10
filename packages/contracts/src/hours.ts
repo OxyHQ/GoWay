@@ -65,10 +65,29 @@ export const openingHoursSchema = z.object({
 });
 export type OpeningHours = z.infer<typeof openingHoursSchema>;
 
+export const MAX_WEEKLY_HOURS_INTERVALS = 64;
+
 export const openingHoursInputSchema = z.object({
-  intervals: z.array(openingHoursIntervalSchema).max(64),
+  intervals: z.array(openingHoursIntervalSchema).max(MAX_WEEKLY_HOURS_INTERVALS),
   raw: z.string().max(512).optional(),
 });
+
+/** Replace the intervals OPENING on this weekday; an empty list closes that day. */
+export const openingHoursDayPatchSchema = z.object({
+  day: openingHoursIntervalSchema.shape.day,
+  intervals: z.array(timeRangeSchema).max(MAX_WEEKLY_HOURS_INTERVALS),
+});
+export type OpeningHoursDayPatch = z.infer<typeof openingHoursDayPatchSchema>;
+
+/** Atomic weekday replacements, never an inferred full-week schedule. */
+export const openingHoursDaysPatchSchema = z.array(openingHoursDayPatchSchema).min(1).max(7)
+  .refine((days) => new Set(days.map(({ day }) => day)).size === days.length, {
+    message: 'each weekday may be replaced only once',
+  })
+  .refine((days) => days.reduce((count, day) => count + day.intervals.length, 0) <= MAX_WEEKLY_HOURS_INTERVALS, {
+    message: 'a weekly schedule carries at most 64 intervals',
+  })
+  .describe('Atomic replacements of unique opening weekdays (0 Sunday to 6 Saturday). Empty intervals close a day. Omitted days remain unchanged. Mutually exclusive with openingHours. Unknown schedules require all seven days, otherwise conflict. The resulting week may contain at most 64 intervals.');
 
 /** An IANA timezone name as a response publishes it: `Europe/Madrid`. */
 export const timezoneSchema = z.string().min(1).max(64);
