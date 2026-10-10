@@ -6,7 +6,12 @@
 import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { resolve } from 'node:path';
-import { createSuiteDatabase, destroySuiteDatabase, SUITE_SETUP_TIMEOUT_MS, type SuiteDatabase } from '../../db/__tests__/testDatabase';
+import {
+  createSuiteDatabase,
+  destroySuiteDatabase,
+  SUITE_SETUP_TIMEOUT_MS,
+  type SuiteDatabase,
+} from '../../db/__tests__/testDatabase';
 
 let suite: SuiteDatabase | null = null;
 
@@ -19,13 +24,19 @@ afterAll(async () => {
 
 async function cli(script: string, args: string[]) {
   // A clean Street 3D environment: the commands must work with the feature off.
-  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('STREET3D_')));
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !name.startsWith('STREET3D_')),
+  );
   const child = Bun.spawn([process.execPath, resolve(__dirname, '..', script), ...args], {
     env: { ...env, DATABASE_URL: suite!.databaseUrl },
     stdout: 'pipe',
     stderr: 'pipe',
   });
-  const [exitCode, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
   return { exitCode, stdout, stderr };
 }
 
@@ -34,14 +45,24 @@ describe('street3d CLIs', () => {
     const target = new URL(suite!.databaseUrl).pathname.slice(1);
     const status = await cli('runAdmin.ts', ['status', `--target-database=${target}`]);
     expect(status.exitCode).toBe(0);
-    expect(JSON.parse(status.stdout)).toMatchObject({ queues: { jobs: null }, reports: { open: 0, openPrivacy: 0 } });
+    expect(JSON.parse(status.stdout)).toMatchObject({
+      queues: { jobs: null },
+      reports: { open: 0, openPrivacy: 0 },
+    });
 
-    const wrong = await cli('runAdmin.ts', ['status', '--target-database=not_the_street3d_database']);
+    const wrong = await cli('runAdmin.ts', [
+      'status',
+      '--target-database=not_the_street3d_database',
+    ]);
     expect(wrong.exitCode).toBe(1);
     expect(wrong.stdout).toBe('');
     expect(wrong.stderr).not.toContain(suite!.databaseUrl);
 
-    const missing = await cli('runAdmin.ts', ['disable-version', 'v-1', `--target-database=${target}`]);
+    const missing = await cli('runAdmin.ts', [
+      'disable-version',
+      'v-1',
+      `--target-database=${target}`,
+    ]);
     expect(missing.exitCode).toBe(1);
     expect(missing.stderr).toContain('--reason');
   });

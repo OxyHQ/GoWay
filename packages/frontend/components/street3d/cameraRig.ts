@@ -16,7 +16,11 @@ const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const scale = (a: Vec3, s: number): Vec3 => [a[0] * s, a[1] * s, a[2] * s];
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const cross = (a: Vec3, b: Vec3): Vec3 => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
 const length = (a: Vec3) => Math.hypot(a[0], a[1], a[2]);
 const unit = (a: Vec3): Vec3 => {
   const l = length(a);
@@ -90,7 +94,10 @@ export function createCameraRig(initial: { position: Vec3; target: Vec3; up: Vec
     const offset = sub(initial.target, initial.position);
     distance = Math.max(MIN_ORBIT_DISTANCE, length(offset));
     const dir = unit(offset);
-    pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, Math.asin(Math.max(-1, Math.min(1, dot(dir, up))))));
+    pitch = Math.max(
+      -MAX_PITCH,
+      Math.min(MAX_PITCH, Math.asin(Math.max(-1, Math.min(1, dot(dir, up))))),
+    );
     yaw = Math.atan2(dot(dir, R), dot(dir, F));
     target = [...initial.target];
   }
@@ -118,7 +125,10 @@ export function createCameraRig(initial: { position: Vec3; target: Vec3; up: Vec
       sync();
     },
     move(forwardMeters, rightMeters, upMeters) {
-      const delta = add(add(scale(horizontalForward(), forwardMeters), scale(horizontalRight(), rightMeters)), scale(up, upMeters));
+      const delta = add(
+        add(scale(horizontalForward(), forwardMeters), scale(horizontalRight(), rightMeters)),
+        scale(up, upMeters),
+      );
       position = add(position, delta);
       target = add(target, delta);
     },
@@ -158,7 +168,10 @@ export function createCameraRig(initial: { position: Vec3; target: Vec3; up: Vec
     lookToward(dir) {
       const d = unit(dir);
       if (length(d) === 0) return;
-      pitch = Math.max(-pitchLimit, Math.min(pitchLimit, Math.asin(Math.max(-1, Math.min(1, dot(d, up))))));
+      pitch = Math.max(
+        -pitchLimit,
+        Math.min(pitchLimit, Math.asin(Math.max(-1, Math.min(1, dot(d, up))))),
+      );
       yaw = Math.atan2(dot(d, R), dot(d, F));
       sync();
     },

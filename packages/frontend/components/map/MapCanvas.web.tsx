@@ -232,7 +232,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     // is named in the console rather than in an error boundary.
     const start = isDrawableCoordinate(initialViewport) ? initialViewport : DEFAULT_VIEWPORT;
     if (start !== initialViewport) {
-      reportMapDefect('viewport:initial', 'initialViewport is not drawable; opened on the default camera.');
+      reportMapDefect(
+        'viewport:initial',
+        'initialViewport is not drawable; opened on the default camera.',
+      );
     }
 
     let map: maplibregl.Map;
@@ -353,7 +356,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       // downstream of this event becomes a marker or a camera target, and the
       // seam's rule is that nothing crosses it unchecked.
       if (!isDrawableCoordinate(coordinate)) {
-        reportMapDefect('press:coordinate', 'Ignored a map press: the engine reported a non-drawable coordinate.');
+        reportMapDefect(
+          'press:coordinate',
+          'Ignored a map press: the engine reported a non-drawable coordinate.',
+        );
         return;
       }
 
@@ -609,8 +615,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     // about which layer is first, which is why one had to be invented). See
     // `lib/map/provider.ts` → `MapSourceIds.anchors.beforeLabels`.
     const anchor = resolveMapAnchors().beforeLabels;
-    const beforeId =
-      anchor && map.getLayer(anchor) ? anchor : firstSymbolLayerId(map.getStyle());
+    const beforeId = anchor && map.getLayer(anchor) ? anchor : firstSymbolLayerId(map.getStyle());
 
     for (const overlay of next) {
       applyOverlay(map, overlay, accent, beforeId);
@@ -655,7 +660,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           };
           // A fix with no usable position is "no dot", not "no app".
           if (!isDrawableCoordinate(fix)) {
-            reportMapDefect('userLocation', 'Skipped a location fix with a non-drawable coordinate.');
+            reportMapDefect(
+              'userLocation',
+              'Skipped a location fix with a non-drawable coordinate.',
+            );
             return;
           }
           const lngLat: [number, number] = [fix.longitude, fix.latitude];
@@ -703,7 +711,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         // Leaving the camera where it is beats throwing out of the effect that
         // asked for the move.
         if (!isDrawableCoordinate(coordinate)) {
-          reportMapDefect('moveTo', `Ignored moveTo: target is not drawable (${describeNumbers(coordinate)}).`);
+          reportMapDefect(
+            'moveTo',
+            `Ignored moveTo: target is not drawable (${describeNumbers(coordinate)}).`,
+          );
           return;
         }
         const viewport = isViewport(target) ? target : undefined;
@@ -733,7 +744,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         // against NaN is false — so the check below has to come FIRST, or a NaN
         // box walks straight into `map.fitBounds` and throws.
         if (!isDrawableBounds(bounds)) {
-          reportMapDefect('fitBounds', `Ignored fitBounds: box is not drawable (${describeNumbers(bounds)}).`);
+          reportMapDefect(
+            'fitBounds',
+            `Ignored fitBounds: box is not drawable (${describeNumbers(bounds)}).`,
+          );
           return;
         }
         const padding = resolvePadding(options?.padding, DEFAULT_FIT_PADDING);
@@ -813,7 +827,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         if (!map) return;
         runEngineCommand('easeTo', () =>
           map.easeTo(
-            { bearing: heading, duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS },
+            {
+              bearing: heading,
+              duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS,
+            },
             PROGRAMMATIC,
           ),
         );
@@ -823,7 +840,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         if (!map) return;
         runEngineCommand('easeTo', () =>
           map.easeTo(
-            { bearing: 0, pitch: 0, duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS },
+            {
+              bearing: 0,
+              pitch: 0,
+              duration: asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS,
+            },
             PROGRAMMATIC,
           ),
         );

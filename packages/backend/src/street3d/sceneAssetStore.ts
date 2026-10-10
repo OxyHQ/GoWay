@@ -51,7 +51,13 @@ export interface SceneAssetStore {
 }
 
 /** `<prefix>/<sceneId>/v<version>/<sha256>.<ext>`. */
-export function sceneAssetKey(prefix: string, sceneId: string, version: number, sha256: string, format: 'spz' | 'jpeg'): string {
+export function sceneAssetKey(
+  prefix: string,
+  sceneId: string,
+  version: number,
+  sha256: string,
+  format: 'spz' | 'jpeg',
+): string {
   return `${prefix}/${sceneId}/v${version}/${sha256}.${format === 'jpeg' ? 'jpg' : 'spz'}`;
 }
 
@@ -143,7 +149,11 @@ export interface CloudFrontInvalidatorOptions {
 }
 
 function escapeXml(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 /**
@@ -176,7 +186,12 @@ export function createCloudFrontInvalidator(options: CloudFrontInvalidatorOption
         headers: { 'content-type': 'application/xml' },
         body,
       });
-      const response = await fetchImpl(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(30_000) });
+      const response = await fetchImpl(url, {
+        method: 'POST',
+        headers,
+        body,
+        signal: AbortSignal.timeout(30_000),
+      });
       if (!response.ok) {
         const text = await response.text().catch(() => '');
         throw new S3RequestError(response.status, s3ErrorCode(text), 'a CDN invalidation');

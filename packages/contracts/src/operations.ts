@@ -37,7 +37,11 @@ import {
 } from './place';
 import { moderationReviewListQuerySchema, reviewListQuerySchema } from './review';
 import { revisionListQuerySchema } from './revision';
-import { reverseGeocodeQuerySchema, searchParametersSchema, structuredGeocodeQuerySchema } from './search';
+import {
+  reverseGeocodeQuerySchema,
+  searchParametersSchema,
+  structuredGeocodeQuerySchema,
+} from './search';
 import { streetCoverageQuerySchema } from './street3d';
 
 /**
@@ -85,7 +89,10 @@ export interface ApiOperation {
  * Codes any operation may answer: the rate limiter's `rate_limited` and the
  * defect handler's `internal_error`.
  */
-export const UNIVERSAL_ERROR_CODES = ['rate_limited', 'internal_error'] as const satisfies readonly ApiErrorCode[];
+export const UNIVERSAL_ERROR_CODES = [
+  'rate_limited',
+  'internal_error',
+] as const satisfies readonly ApiErrorCode[];
 
 /** `{placeId}` */
 export const placePathSchema = z.object({ placeId: placeIdSchema });
@@ -98,11 +105,20 @@ export const duplicatePathSchema = z.object({ candidateId: z.string().min(1).max
 /** `{reportId}` — a place report. */
 export const reportPathSchema = z.object({ reportId: z.string().min(1).max(128) });
 /** `{placeId}` and an hours exception's `{exceptionId}`. */
-export const hoursExceptionPathSchema = z.object({ placeId: placeIdSchema, exceptionId: z.string().min(1).max(128) });
+export const hoursExceptionPathSchema = z.object({
+  placeId: placeIdSchema,
+  exceptionId: z.string().min(1).max(128),
+});
 /** `{placeId}` and a gallery item's `{mediaId}`. */
-export const mediaPathSchema = z.object({ placeId: placeIdSchema, mediaId: z.string().min(1).max(128) });
+export const mediaPathSchema = z.object({
+  placeId: placeIdSchema,
+  mediaId: z.string().min(1).max(128),
+});
 /** `{placeId}` and a review's `{reviewId}`. */
-export const reviewPathSchema = z.object({ placeId: placeIdSchema, reviewId: z.string().min(1).max(128) });
+export const reviewPathSchema = z.object({
+  placeId: placeIdSchema,
+  reviewId: z.string().min(1).max(128),
+});
 /** `{sceneId}` */
 export const scenePathSchema = z.object({ sceneId: z.string().min(1).max(64) });
 /** `{sessionId}` */
@@ -112,10 +128,17 @@ export const assetPathSchema = z.object({ assetId: z.string().min(1).max(128) })
 /** A category `{key}` such as `food.cafe`. */
 export const categoryPathSchema = z.object({ key: categoryKeySchema });
 /** A category `{key}` and one of its label's `{language}`, a BCP 47 tag (`es`, `pt-BR`). */
-export const categoryLabelPathSchema = z.object({ key: categoryKeySchema, language: languageTagSchema });
+export const categoryLabelPathSchema = z.object({
+  key: categoryKeySchema,
+  language: languageTagSchema,
+});
 
 const READ_ERRORS = ['bad_request', 'validation_failed'] as const satisfies readonly ApiErrorCode[];
-const WRITE_ERRORS = ['bad_request', 'validation_failed', 'unauthorized'] as const satisfies readonly ApiErrorCode[];
+const WRITE_ERRORS = [
+  'bad_request',
+  'validation_failed',
+  'unauthorized',
+] as const satisfies readonly ApiErrorCode[];
 const SEARCH_ERRORS = [...READ_ERRORS, 'provider_unavailable', 'service_unavailable'] as const;
 /**
  * What every `/moderation` route may answer besides its own codes: no session,
@@ -152,7 +175,8 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     method: 'get',
     path: '/places',
     tag: 'Places',
-    summary: 'Up to 50 places by id in one read: each as the single read answers it, gone or missing.',
+    summary:
+      'Up to 50 places by id in one read: each as the single read answers it, gone or missing.',
     auth: 'optional',
     query: placeBatchQuerySchema,
     responses: { 200: 'PlaceBatch' },
@@ -214,7 +238,14 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     auth: 'required',
     pathParameters: capabilityPathSchema,
     responses: { 204: null },
-    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found', 'gone', 'service_unavailable'],
+    errors: [
+      'bad_request',
+      'unauthorized',
+      'forbidden',
+      'not_found',
+      'gone',
+      'service_unavailable',
+    ],
   },
   {
     operationId: 'listPlaceRevisions',
@@ -233,7 +264,8 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     method: 'post',
     path: '/places/{placeId}/reports',
     tag: 'Places',
-    summary: 'Report a place to moderation. Repeating an open report answers the existing one with 200.',
+    summary:
+      'Report a place to moderation. Repeating an open report answers the existing one with 200.',
     auth: 'required',
     pathParameters: placePathSchema,
     body: 'PlaceReportInput',
@@ -247,7 +279,8 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     method: 'get',
     path: '/categories',
     tag: 'Categories',
-    summary: 'The place category taxonomy: every key, its parent, its glyph, its status and its labels.',
+    summary:
+      'The place category taxonomy: every key, its parent, its glyph, its status and its labels.',
     auth: 'public',
     query: categoryListQuerySchema,
     responses: { 200: 'CategoryPage' },
@@ -260,7 +293,7 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     method: 'get',
     path: '/places/{placeId}/hours-exceptions',
     tag: 'Hours',
-    summary: 'Dated exceptions to a place\'s weekly hours, earliest first, past ones included.',
+    summary: "Dated exceptions to a place's weekly hours, earliest first, past ones included.",
     auth: 'optional',
     pathParameters: placePathSchema,
     query: hoursExceptionListQuerySchema,
@@ -300,7 +333,14 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     auth: 'required',
     pathParameters: hoursExceptionPathSchema,
     responses: { 204: null },
-    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found', 'gone', 'service_unavailable'],
+    errors: [
+      'bad_request',
+      'unauthorized',
+      'forbidden',
+      'not_found',
+      'gone',
+      'service_unavailable',
+    ],
   },
 
   // ── Media ─────────────────────────────────────────────────────────────────
@@ -321,7 +361,8 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     method: 'post',
     path: '/places/{placeId}/media',
     tag: 'Media',
-    summary: 'Add an image you uploaded to Oxy as public to the gallery. GoWay checks the file with Oxy.',
+    summary:
+      'Add an image you uploaded to Oxy as public to the gallery. GoWay checks the file with Oxy.',
     auth: 'required',
     pathParameters: placePathSchema,
     body: 'PlaceMediaInput',
@@ -349,14 +390,22 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     auth: 'required',
     pathParameters: mediaPathSchema,
     responses: { 204: null },
-    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found', 'gone', 'service_unavailable'],
+    errors: [
+      'bad_request',
+      'unauthorized',
+      'forbidden',
+      'not_found',
+      'gone',
+      'service_unavailable',
+    ],
   },
   {
     operationId: 'reportPlaceMedia',
     method: 'post',
     path: '/places/{placeId}/media/{mediaId}/reports',
     tag: 'Media',
-    summary: 'Report a gallery item to moderation. Repeating an open report answers the existing one with 200.',
+    summary:
+      'Report a gallery item to moderation. Repeating an open report answers the existing one with 200.',
     auth: 'required',
     pathParameters: mediaPathSchema,
     body: 'ContentReportInput',
@@ -393,7 +442,8 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     method: 'put',
     path: '/places/{placeId}/reviews/mine',
     tag: 'Reviews',
-    summary: "Write or rewrite your review. Refused to the place's business and to an organization session.",
+    summary:
+      "Write or rewrite your review. Refused to the place's business and to an organization session.",
     auth: 'required',
     pathParameters: placePathSchema,
     body: 'PlaceReviewInput',
@@ -432,14 +482,22 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     auth: 'required',
     pathParameters: reviewPathSchema,
     responses: { 204: null },
-    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found', 'gone', 'service_unavailable'],
+    errors: [
+      'bad_request',
+      'unauthorized',
+      'forbidden',
+      'not_found',
+      'gone',
+      'service_unavailable',
+    ],
   },
   {
     operationId: 'reportPlaceReview',
     method: 'post',
     path: '/places/{placeId}/reviews/{reviewId}/reports',
     tag: 'Reviews',
-    summary: 'Report a review to moderation. Repeating an open report answers the existing one with 200.',
+    summary:
+      'Report a review to moderation. Repeating an open report answers the existing one with 200.',
     auth: 'required',
     pathParameters: reviewPathSchema,
     body: 'ContentReportInput',
@@ -453,7 +511,8 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     method: 'post',
     path: '/places/{placeId}/claims',
     tag: 'Claims',
-    summary: 'Ask to be recognised as running this place, for your account or an organization you own or administer. Always created pending.',
+    summary:
+      'Ask to be recognised as running this place, for your account or an organization you own or administer. Always created pending.',
     auth: 'required',
     pathParameters: placePathSchema,
     body: 'PlaceClaimInput',
@@ -470,14 +529,22 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     pathParameters: placePathSchema,
     query: claimListQuerySchema,
     responses: { 200: 'PlaceClaimPage' },
-    errors: [...READ_ERRORS, 'unauthorized', 'forbidden', 'not_found', 'gone', 'service_unavailable'],
+    errors: [
+      ...READ_ERRORS,
+      'unauthorized',
+      'forbidden',
+      'not_found',
+      'gone',
+      'service_unavailable',
+    ],
   },
   {
     operationId: 'listAccountClaims',
     method: 'get',
     path: '/claims',
     tag: 'Claims',
-    summary: 'Every claim one account holds, in every state — on one place with placeId: your own, or an organization you may act for.',
+    summary:
+      'Every claim one account holds, in every state — on one place with placeId: your own, or an organization you may act for.',
     auth: 'required',
     query: accountClaimListQuerySchema,
     responses: { 200: 'PlaceClaimPage' },
@@ -560,7 +627,8 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     method: 'get',
     path: '/moderation/places/{placeId}/media',
     tag: 'Moderation',
-    summary: "A place's gallery items in one state, or in every state, oldest first, with who added each.",
+    summary:
+      "A place's gallery items in one state, or in every state, oldest first, with who added each.",
     auth: 'required',
     pathParameters: placePathSchema,
     query: moderationMediaListQuerySchema,
@@ -665,7 +733,8 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     method: 'get',
     path: '/moderation/categories',
     tag: 'Moderation',
-    summary: 'Every category, deprecated ones included, with its position and OpenStreetMap mapping.',
+    summary:
+      'Every category, deprecated ones included, with its position and OpenStreetMap mapping.',
     auth: 'required',
     query: categoryListQuerySchema,
     responses: { 200: 'ModerationCategoryPage' },
@@ -687,7 +756,8 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     method: 'patch',
     path: '/moderation/categories/{key}',
     tag: 'Moderation',
-    summary: "Change a category's glyph, position, OpenStreetMap mapping or status. Deprecating it refuses new writes of it.",
+    summary:
+      "Change a category's glyph, position, OpenStreetMap mapping or status. Deprecating it refuses new writes of it.",
     auth: 'required',
     pathParameters: categoryPathSchema,
     body: 'CategoryUpdateInput',
@@ -846,12 +916,20 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     method: 'post',
     path: '/captures/sessions/{sessionId}/assets',
     tag: 'Captures',
-    summary: 'Register a photo or video and get an upload target unless the bytes are already stored.',
+    summary:
+      'Register a photo or video and get an upload target unless the bytes are already stored.',
     auth: 'required',
     pathParameters: sessionPathSchema,
     body: 'CaptureAssetInput',
     responses: { 201: 'CaptureUploadTicket' },
-    errors: [...WRITE_ERRORS, 'forbidden', 'not_found', 'conflict', 'payload_too_large', 'service_unavailable'],
+    errors: [
+      ...WRITE_ERRORS,
+      'forbidden',
+      'not_found',
+      'conflict',
+      'payload_too_large',
+      'service_unavailable',
+    ],
   },
   {
     operationId: 'getCaptureAsset',

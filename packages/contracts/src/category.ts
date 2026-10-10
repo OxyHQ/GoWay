@@ -177,7 +177,10 @@ export function categoryRoot(key: string): string {
  * refused by the API (`validation_failed`); a response is read whatever key it
  * carries, so a category GoWay adds does not break an SDK built before it.
  */
-export const categoryKeySchema = z.string().max(MAX_CATEGORY_KEY_LENGTH).regex(CATEGORY_KEY_PATTERN);
+export const categoryKeySchema = z
+  .string()
+  .max(MAX_CATEGORY_KEY_LENGTH)
+  .regex(CATEGORY_KEY_PATTERN);
 
 /** One category as `GET /categories` publishes it. */
 export const categorySchema = z.object({
@@ -217,7 +220,9 @@ export type CategoryListQuery = z.input<typeof categoryListQuerySchema>;
 // ── Moderation ──────────────────────────────────────────────────────────────
 
 /** An OpenStreetMap `key=value` (or `key=*`) tag, as a moderator writes one. */
-export const osmTagSchema = z.string().regex(OSM_TAG_PATTERN, 'must be an OpenStreetMap key=value or key=* tag');
+export const osmTagSchema = z
+  .string()
+  .regex(OSM_TAG_PATTERN, 'must be an OpenStreetMap key=value or key=* tag');
 
 /**
  * One category as a moderator reads it: the published shape, plus its position
@@ -344,8 +349,12 @@ export interface CategoryTaxonomy<C extends Category = Category> {
 }
 
 /** Index a category list. */
-export function categoryTaxonomy<C extends Category>(categories: readonly C[]): CategoryTaxonomy<C> {
-  const byKey: ReadonlyMap<string, C> = new Map(categories.map((category) => [category.key, category]));
+export function categoryTaxonomy<C extends Category>(
+  categories: readonly C[],
+): CategoryTaxonomy<C> {
+  const byKey: ReadonlyMap<string, C> = new Map(
+    categories.map((category) => [category.key, category]),
+  );
   return {
     categories,
     of: (key) => byKey.get(key),

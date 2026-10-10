@@ -253,9 +253,9 @@ export async function detectDuplicates(db: Database): Promise<DuplicateStats> {
           .limit(limit)
       ).map(asNamedPlace),
     async (name) =>
-      (
-        await db.select(placeColumns).from(places).where(eq(places.nameNormalized, name))
-      ).map(asNamedPlace),
+      (await db.select(placeColumns).from(places).where(eq(places.nameNormalized, name))).map(
+        asNamedPlace,
+      ),
   );
   for await (const group of groups) {
     stats.placesScanned += group.length;

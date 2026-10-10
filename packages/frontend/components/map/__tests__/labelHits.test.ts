@@ -50,7 +50,14 @@ function poi(overrides: Partial<QueriedLabel> & { name?: string } = {}): Queried
   return {
     featureId: 52689361761,
     sourceLayer: 'poi',
-    properties: { name, 'name:latin': name, name_int: name, class: 'bar', subclass: 'bar', rank: 12 },
+    properties: {
+      name,
+      'name:latin': name,
+      name_int: name,
+      class: 'bar',
+      subclass: 'bar',
+      rank: 12,
+    },
     coordinate: { latitude: 41.3801, longitude: 2.1699 },
     ...rest,
   };
@@ -67,7 +74,11 @@ function place(name: string, overrides: Partial<QueriedLabel> = {}): QueriedLabe
 }
 
 /** A street: a LineString, no point of its own. */
-function street(name: string, path: [number, number][], overrides: Partial<QueriedLabel> = {}): QueriedLabel {
+function street(
+  name: string,
+  path: [number, number][],
+  overrides: Partial<QueriedLabel> = {},
+): QueriedLabel {
   return {
     featureId: 900001,
     sourceLayer: 'transportation_name',
@@ -135,7 +146,10 @@ describe('what a tile feature becomes', () => {
 
 describe('the NaN gate, which every derived coordinate crosses', () => {
   test('a non-finite geometry falls back to where the user tapped', () => {
-    const label = toLabelFeature(poi({ coordinate: { latitude: Number.NaN, longitude: Number.NaN } }), TAP);
+    const label = toLabelFeature(
+      poi({ coordinate: { latitude: Number.NaN, longitude: Number.NaN } }),
+      TAP,
+    );
     expect(label?.coordinate).toEqual(TAP);
     // …and says so, so a caller can tell "this IS here" from "you pointed here".
     expect(label?.anchored).toBe(false);
@@ -152,11 +166,15 @@ describe('the NaN gate, which every derived coordinate crosses', () => {
     // The last line of defence: a label whose coordinate is NaN becomes a
     // marker and a camera target, and MapLibre THROWS on one of those
     // (`Invalid LngLat object: (NaN, NaN)`) into the screen's error boundary.
-    expect(toLabelFeature(poi({ coordinate: null }), { latitude: Number.NaN, longitude: 2 })).toBeNull();
+    expect(
+      toLabelFeature(poi({ coordinate: null }), { latitude: Number.NaN, longitude: 2 }),
+    ).toBeNull();
   });
 
   test('latitude beyond the poles is refused, as the engine refuses it', () => {
-    expect(toLabelFeature(poi({ coordinate: { latitude: 91, longitude: 2 } }), TAP)?.anchored).toBe(false);
+    expect(toLabelFeature(poi({ coordinate: { latitude: 91, longitude: 2 } }), TAP)?.anchored).toBe(
+      false,
+    );
   });
 
   test('a path of garbage does not become an anchor', () => {
@@ -263,8 +281,16 @@ describe('hit priority inside the box', () => {
   });
 
   test('within a tier the NEAREST wins, and arrival order does not matter', () => {
-    const near = poi({ name: 'Nearer', featureId: 1, coordinate: { latitude: TAP.latitude - 0.002, longitude: TAP.longitude } });
-    const far = poi({ name: 'Further', featureId: 2, coordinate: { latitude: TAP.latitude - 0.05, longitude: TAP.longitude } });
+    const near = poi({
+      name: 'Nearer',
+      featureId: 1,
+      coordinate: { latitude: TAP.latitude - 0.002, longitude: TAP.longitude },
+    });
+    const far = poi({
+      name: 'Further',
+      featureId: 2,
+      coordinate: { latitude: TAP.latitude - 0.05, longitude: TAP.longitude },
+    });
     expect(pick([far, near])?.name).toBe('Nearer');
     expect(pick([near, far])?.name).toBe('Nearer');
   });
@@ -341,7 +367,13 @@ describe('the layer ids native queries, since it cannot read its style', () => {
   });
 
   test('every text the style draws is queried, streets and water included', () => {
-    for (const id of ['label-poi', 'label-place-city', 'label-road-local', 'label-water-point', 'label-waterway']) {
+    for (const id of [
+      'label-poi',
+      'label-place-city',
+      'label-road-local',
+      'label-water-point',
+      'label-waterway',
+    ]) {
       expect(LABEL_LAYER_IDS).toContain(id);
       expect(TAP_LAYER_IDS).toContain(id);
     }
@@ -355,7 +387,16 @@ describe('the layer ids native queries, since it cannot read its style', () => {
     // Web derives its layer list from the loaded style by source-layer; native
     // names the ids. This is the assertion that the two describe one contract.
     expect([...LABEL_SOURCE_LAYERS].sort()).toEqual(
-      ['aerodrome_label', 'mountain_peak', 'park', 'place', 'poi', 'transportation_name', 'water_name', 'waterway'].sort(),
+      [
+        'aerodrome_label',
+        'mountain_peak',
+        'park',
+        'place',
+        'poi',
+        'transportation_name',
+        'water_name',
+        'waterway',
+      ].sort(),
     );
   });
 });

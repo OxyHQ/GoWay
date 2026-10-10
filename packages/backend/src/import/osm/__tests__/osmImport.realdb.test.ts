@@ -33,7 +33,10 @@ let suite: SuiteDatabase | null = null;
 let mapping: OsmCategoryMapping;
 
 /** Whoever edits a place through the API in this suite. */
-const CLEARER: PlaceActor = { author: apiAuthor('person-business'), assertedVerification: 'community_reported' };
+const CLEARER: PlaceActor = {
+  author: apiAuthor('person-business'),
+  assertedVerification: 'community_reported',
+};
 
 beforeAll(async () => {
   suite = await createSuiteDatabase();
@@ -128,7 +131,10 @@ describe('writePlaceBatch', () => {
     expect(stats.placesUpdated).toBe(1);
 
     const placeId = await placeIdOf('node/1002');
-    const [row] = await suite!.db.select({ name: places.name }).from(places).where(eq(places.id, placeId));
+    const [row] = await suite!.db
+      .select({ name: places.name })
+      .from(places)
+      .where(eq(places.id, placeId));
     expect(row?.name).toBe('Cafè Nou');
   });
 
@@ -142,12 +148,19 @@ describe('writePlaceBatch', () => {
     const stats = await importBatch([after]);
     expect(stats.placesUpdated).toBe(0);
 
-    const [row] = await suite!.db.select({ name: places.name }).from(places).where(eq(places.id, placeId));
+    const [row] = await suite!.db
+      .select({ name: places.name })
+      .from(places)
+      .where(eq(places.id, placeId));
     expect(row?.name).toBe('Cafè Ben Escrit');
   });
 
   it('cannot address a goway name row, whatever it does to its own', async () => {
-    const before = element('node/1004', { tourism: 'museum', name: 'Museu X', 'name:es': 'Museo X' });
+    const before = element('node/1004', {
+      tourism: 'museum',
+      name: 'Museu X',
+      'name:es': 'Museo X',
+    });
     await importBatch([before]);
     const placeId = await placeIdOf('node/1004');
 
@@ -160,7 +173,11 @@ describe('writePlaceBatch', () => {
       source: 'goway',
     });
 
-    const after = element('node/1004', { tourism: 'museum', name: 'Museu X', 'name:es': 'Museo X (OSM)' });
+    const after = element('node/1004', {
+      tourism: 'museum',
+      name: 'Museu X',
+      'name:es': 'Museo X (OSM)',
+    });
     await importBatch([after]);
 
     const names = await suite!.db
@@ -176,8 +193,14 @@ describe('writePlaceBatch', () => {
   it('refuses to move a name backward in time', async () => {
     const now = new Date();
     const older = new Date(now.getTime() - 86_400_000);
-    await importBatch([element('node/1005', { amenity: 'bar', name: 'Bar T', 'name:es': 'Bar Nuevo' })], now);
-    await importBatch([element('node/1005', { amenity: 'bar', name: 'Bar T', 'name:es': 'Bar Viejo' })], older);
+    await importBatch(
+      [element('node/1005', { amenity: 'bar', name: 'Bar T', 'name:es': 'Bar Nuevo' })],
+      now,
+    );
+    await importBatch(
+      [element('node/1005', { amenity: 'bar', name: 'Bar T', 'name:es': 'Bar Viejo' })],
+      older,
+    );
 
     const placeId = await placeIdOf('node/1005');
     const [row] = await suite!.db
@@ -222,7 +245,11 @@ describe('writePlaceBatch', () => {
     });
 
     const stats = await importBatch([
-      element('node/1006', { amenity: 'cafe', name: 'BAR DE LA CARME', 'name:es': 'Bar del Carmen' }),
+      element('node/1006', {
+        amenity: 'cafe',
+        name: 'BAR DE LA CARME',
+        'name:es': 'Bar del Carmen',
+      }),
     ]);
     expect(stats.placesInserted).toBe(0);
     expect(stats.conflicts).toBe(0);
@@ -274,7 +301,9 @@ describe('writePlaceBatch, beyond the name', () => {
       })
       .from(placesCapabilities)
       .where(eq(placesCapabilities.placeId, placeId));
-    return rows.sort((left, right) => `${left.key}${left.verification}`.localeCompare(`${right.key}${right.verification}`));
+    return rows.sort((left, right) =>
+      `${left.key}${left.verification}`.localeCompare(`${right.key}${right.verification}`),
+    );
   }
 
   it('keeps every raw tag, the hours, the zone and the typed capabilities it reads', async () => {
@@ -282,7 +311,11 @@ describe('writePlaceBatch, beyond the name', () => {
     const placeId = await placeIdOf('node/3001');
 
     const [place] = await suite!.db
-      .select({ openingHours: places.openingHours, timezone: places.timezone, categories: places.categories })
+      .select({
+        openingHours: places.openingHours,
+        timezone: places.timezone,
+        categories: places.categories,
+      })
       .from(places)
       .where(eq(places.id, placeId));
     expect(place?.categories).toEqual(['food.restaurant']);
@@ -299,21 +332,32 @@ describe('writePlaceBatch, beyond the name', () => {
     expect(source?.sourceData?.tags).toEqual(RICH);
 
     const capabilities = await capabilitiesOf(placeId);
-    expect(capabilities.map(({ key, value, verification }) => ({ key, value, verification }))).toEqual([
+    expect(
+      capabilities.map(({ key, value, verification }) => ({ key, value, verification })),
+    ).toEqual([
       { key: 'accessibility.wheelchair', value: 'yes', verification: 'external_source' },
       { key: 'food.cuisine', value: ['tapas', 'catalan'], verification: 'external_source' },
       { key: 'payments.cards', value: true, verification: 'external_source' },
-      { key: 'social.instagram', value: 'https://www.instagram.com/canric', verification: 'external_source' },
+      {
+        key: 'social.instagram',
+        value: 'https://www.instagram.com/canric',
+        verification: 'external_source',
+      },
     ]);
     // Each one tied to the element's own provenance row.
-    expect(new Set(capabilities.map((capability) => capability.placeSourceId))).toEqual(new Set([source!.id]));
+    expect(new Set(capabilities.map((capability) => capability.placeSourceId))).toEqual(
+      new Set([source!.id]),
+    );
   });
 
   it('is idempotent with everything: a second identical run changes no place row', async () => {
     const rich = element('node/3002', RICH);
     await importBatch([rich]);
     const placeId = await placeIdOf('node/3002');
-    const [before] = await suite!.db.select({ updatedAt: places.updatedAt }).from(places).where(eq(places.id, placeId));
+    const [before] = await suite!.db
+      .select({ updatedAt: places.updatedAt })
+      .from(places)
+      .where(eq(places.id, placeId));
 
     const second = await importBatch([rich], new Date(Date.now() + 60_000));
     expect(second.placesInserted).toBe(0);
@@ -321,7 +365,10 @@ describe('writePlaceBatch, beyond the name', () => {
     expect(second.placesUnchanged).toBe(1);
     expect(second.capabilitiesOffered).toBe(4);
 
-    const [after] = await suite!.db.select({ updatedAt: places.updatedAt }).from(places).where(eq(places.id, placeId));
+    const [after] = await suite!.db
+      .select({ updatedAt: places.updatedAt })
+      .from(places)
+      .where(eq(places.id, placeId));
     expect(after?.updatedAt.getTime()).toBe(before?.updatedAt.getTime());
     expect(await capabilitiesOf(placeId)).toHaveLength(4);
   });
@@ -329,7 +376,10 @@ describe('writePlaceBatch, beyond the name', () => {
   it('never overwrites a GoWay edit to the hours or the categories', async () => {
     await importBatch([element('node/3003', RICH)]);
     const placeId = await placeIdOf('node/3003');
-    const corrected = { intervals: [{ day: 1 as const, opens: '12:00', closes: '15:00' }], raw: 'corrected by GoWay' };
+    const corrected = {
+      intervals: [{ day: 1 as const, opens: '12:00', closes: '15:00' }],
+      raw: 'corrected by GoWay',
+    };
     await suite!.db
       .update(places)
       .set({ openingHours: corrected, categories: ['food.restaurant', 'food.bar'] })
@@ -362,7 +412,12 @@ describe('writePlaceBatch, beyond the name', () => {
     const repeated = await importBatch([element('node/3005', tags)], new Date(Date.now() + 60_000));
     expect(repeated.placesUpdated).toBe(0);
     const phoneOf = async () =>
-      (await suite!.db.select({ phone: places.contactPhone }).from(places).where(eq(places.id, placeId)))[0]?.phone;
+      (
+        await suite!.db
+          .select({ phone: places.contactPhone })
+          .from(places)
+          .where(eq(places.id, placeId))
+      )[0]?.phone;
     expect(await phoneOf()).toBeNull();
 
     // OpenStreetMap changes the number: new evidence the clear never saw.
@@ -374,7 +429,10 @@ describe('writePlaceBatch, beyond the name', () => {
     expect(await phoneOf()).toBe('+34 930 222 222');
 
     // Every other column it owns was untouched throughout.
-    const [row] = await suite!.db.select({ street: places.addressStreet }).from(places).where(eq(places.id, placeId));
+    const [row] = await suite!.db
+      .select({ street: places.addressStreet })
+      .from(places)
+      .where(eq(places.id, placeId));
     expect(row?.street).toBe('Carrer de Pere IV');
   });
 
@@ -398,13 +456,19 @@ describe('writePlaceBatch, beyond the name', () => {
     await suite!.db
       .update(placesCapabilities)
       .set({ value: false, placeSourceId: other!.id })
-      .where(and(eq(placesCapabilities.placeId, placeId), eq(placesCapabilities.key, 'payments.cards')));
+      .where(
+        and(eq(placesCapabilities.placeId, placeId), eq(placesCapabilities.key, 'payments.cards')),
+      );
 
-    const stats = await importBatch([element('node/3004', { ...RICH, wheelchair: 'no', 'payment:cards': 'yes' })]);
+    const stats = await importBatch([
+      element('node/3004', { ...RICH, wheelchair: 'no', 'payment:cards': 'yes' }),
+    ]);
     // A changed capability moves `updated_at` even with every column the same.
     expect(stats.placesUpdated).toBe(1);
 
-    const byKey = new Map((await capabilitiesOf(placeId)).map((row) => [`${row.key}/${row.verification}`, row.value]));
+    const byKey = new Map(
+      (await capabilitiesOf(placeId)).map((row) => [`${row.key}/${row.verification}`, row.value]),
+    );
     expect(byKey.get('accessibility.wheelchair/external_source')).toBe('no');
     expect(byKey.get('accessibility.wheelchair/business_asserted')).toBe('limited');
     // Mercaria's assertion is Mercaria's: OpenStreetMap cannot speak for it.
@@ -414,9 +478,14 @@ describe('writePlaceBatch, beyond the name', () => {
   it('does not move a capability backward in time', async () => {
     const now = new Date();
     await importBatch([element('node/3005', { ...RICH, wheelchair: 'yes' })], now);
-    await importBatch([element('node/3005', { ...RICH, wheelchair: 'no' })], new Date(now.getTime() - 86_400_000));
+    await importBatch(
+      [element('node/3005', { ...RICH, wheelchair: 'no' })],
+      new Date(now.getTime() - 86_400_000),
+    );
     const placeId = await placeIdOf('node/3005');
-    const wheelchair = (await capabilitiesOf(placeId)).find((row) => row.key === 'accessibility.wheelchair');
+    const wheelchair = (await capabilitiesOf(placeId)).find(
+      (row) => row.key === 'accessibility.wheelchair',
+    );
     expect(wheelchair?.value).toBe('yes');
   });
 });
@@ -430,7 +499,12 @@ describe('detectDuplicates', () => {
       // …and one with the same name five kilometres away, which is a branch.
       element('node/2003', { amenity: 'pharmacy', name: 'Farmàcia Central' }, 41.545, 2.5),
       // One museum recorded twice, each under a different language.
-      element('node/2004', { tourism: 'museum', name: 'Museu del Mar', 'name:es': 'Museo del Mar' }, 41.6, 2.6),
+      element(
+        'node/2004',
+        { tourism: 'museum', name: 'Museu del Mar', 'name:es': 'Museo del Mar' },
+        41.6,
+        2.6,
+      ),
       element('node/2005', { tourism: 'museum', name: 'Museo del Mar' }, 41.600_18, 2.6),
     ]);
 
@@ -451,9 +525,11 @@ describe('detectDuplicates', () => {
   });
 
   it('is idempotent: a second detection reopens nothing', async () => {
-    const before = await suite!.client`SELECT count(*)::int AS count FROM places_duplicate_candidates`;
+    const before = await suite!
+      .client`SELECT count(*)::int AS count FROM places_duplicate_candidates`;
     await detectDuplicates(suite!.db);
-    const after = await suite!.client`SELECT count(*)::int AS count FROM places_duplicate_candidates`;
+    const after = await suite!
+      .client`SELECT count(*)::int AS count FROM places_duplicate_candidates`;
     expect(after[0]?.count).toBe(before[0]?.count);
   });
 });

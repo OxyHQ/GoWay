@@ -92,7 +92,10 @@ const evidenceValue = (column: Column) =>
  * Every reconstruction-eligible frame. See this module's header for why every
  * exclusion is here.
  */
-export async function loadEligibleFrames(db: Database | Transaction, now: Date): Promise<EligibleFrame[]> {
+export async function loadEligibleFrames(
+  db: Database | Transaction,
+  now: Date,
+): Promise<EligibleFrame[]> {
   const horizon = new Date(now.getTime() + street3dConfig.jobWindowHours * 3600_000);
   return db
     .select({
@@ -143,7 +146,10 @@ export async function loadEligibleFrames(db: Database | Transaction, now: Date):
 }
 
 /** Nearest scene (any state) within its radius, per capture. Disabled scenes absorb but never build. */
-export async function nearestScenes(db: Database, assetIds: readonly string[]): Promise<Map<string, string>> {
+export async function nearestScenes(
+  db: Database,
+  assetIds: readonly string[],
+): Promise<Map<string, string>> {
   if (assetIds.length === 0) return new Map();
   // Every reference in the correlated subquery is QUALIFIED: drizzle renders a
   // bare column when its table is not in the statement's FROM, and both tables
@@ -165,20 +171,34 @@ export async function nearestScenes(db: Database, assetIds: readonly string[]): 
 }
 
 /** Pairs of the given captures within `radiusMeters` of each other, index-backed. */
-export async function neighbourPairs(db: Database, assetIds: readonly string[], radiusMeters: number): Promise<[string, string][]> {
+export async function neighbourPairs(
+  db: Database,
+  assetIds: readonly string[],
+  radiusMeters: number,
+): Promise<[string, string][]> {
   if (assetIds.length < 2) return [];
   const a = alias(captureAssets, 'a');
   const b = alias(captureAssets, 'b');
   const rows = await db
     .select({ a: a.id, b: b.id })
     .from(a)
-    .innerJoin(b, and(sql`${qualified(a.id)} < ${qualified(b.id)}`, sql`ST_DWithin(${qualified(a.anchorGeo)}, ${qualified(b.anchorGeo)}, ${radiusMeters})`))
+    .innerJoin(
+      b,
+      and(
+        sql`${qualified(a.id)} < ${qualified(b.id)}`,
+        sql`ST_DWithin(${qualified(a.anchorGeo)}, ${qualified(b.anchorGeo)}, ${radiusMeters})`,
+      ),
+    )
     .where(and(inArray(a.id, [...assetIds]), inArray(b.id, [...assetIds])));
   return rows.map((row) => [row.a, row.b]);
 }
 
 /** Create a candidate scene around a cluster's centroid. */
-export async function createScene(db: Database, anchor: { latitude: number; longitude: number }, now: Date): Promise<string> {
+export async function createScene(
+  db: Database,
+  anchor: { latitude: number; longitude: number },
+  now: Date,
+): Promise<string> {
   const [row] = await db
     .insert(street3dScenes)
     .values({
@@ -198,11 +218,17 @@ export type SceneRow = typeof street3dScenes.$inferSelect;
 
 export async function loadScenes(db: Database, ids: readonly string[]): Promise<SceneRow[]> {
   if (ids.length === 0) return [];
-  return db.select().from(street3dScenes).where(inArray(street3dScenes.id, [...ids]));
+  return db
+    .select()
+    .from(street3dScenes)
+    .where(inArray(street3dScenes.id, [...ids]));
 }
 
 /** The open job per scene, if any. */
-export async function openSceneJobs(db: Database, sceneIds: readonly string[]): Promise<Map<string, JobRow>> {
+export async function openSceneJobs(
+  db: Database,
+  sceneIds: readonly string[],
+): Promise<Map<string, JobRow>> {
   if (sceneIds.length === 0) return new Map();
   const rows = await db
     .select()
@@ -228,7 +254,13 @@ export async function lastSceneJob(db: Database, sceneId: string): Promise<JobRo
 }
 
 /** Record the per-tick counters a coverage and status report read. */
-export async function updateSceneCounters(db: Database, sceneId: string, frames: number, sectors: number, now: Date): Promise<void> {
+export async function updateSceneCounters(
+  db: Database,
+  sceneId: string,
+  frames: number,
+  sectors: number,
+  now: Date,
+): Promise<void> {
   await db
     .update(street3dScenes)
     .set({ eligibleFrames: frames, headingSectors: sectors, updatedAt: now })
@@ -236,7 +268,10 @@ export async function updateSceneCounters(db: Database, sceneId: string, frames:
 }
 
 /** Session attributions for a set of captures, distinct and sorted. */
-export async function attributionsFor(db: Database | Transaction, assetIds: readonly string[]): Promise<string[]> {
+export async function attributionsFor(
+  db: Database | Transaction,
+  assetIds: readonly string[],
+): Promise<string[]> {
   if (assetIds.length === 0) return [];
   const rows = await db
     .selectDistinct({ attribution: captureSessions.attribution })
@@ -272,20 +307,39 @@ export function nextSceneJobIdentity(scene: SceneRow): { jobId: string; version:
  * or an open job exists) — the manifest that caller already wrote is then an
  * orphan under `jobs/`, which the bucket's lifecycle backstop removes.
  */
-export async function createSceneJob(db: Database, input: CreateSceneJobInput, now: Date): Promise<boolean> {
+export async function createSceneJob(
+  db: Database,
+  input: CreateSceneJobInput,
+  now: Date,
+): Promise<boolean> {
   return db.transaction(async (tx) => {
     // Lock order: an open job before its scene, as every job transition does.
     if (input.supersede) {
-      await tx.select({ id: street3dJobs.id }).from(street3dJobs).where(eq(street3dJobs.id, input.supersede.id)).for('update');
+      await tx
+        .select({ id: street3dJobs.id })
+        .from(street3dJobs)
+        .where(eq(street3dJobs.id, input.supersede.id))
+        .for('update');
     }
-    const [scene] = await tx.select().from(street3dScenes).where(eq(street3dScenes.id, input.scene.id)).for('update');
-    if (!scene || scene.state === 'disabled' || scene.lastAllocatedVersion + 1 !== input.version) return false;
+    const [scene] = await tx
+      .select()
+      .from(street3dScenes)
+      .where(eq(street3dScenes.id, input.scene.id))
+      .for('update');
+    if (!scene || scene.state === 'disabled' || scene.lastAllocatedVersion + 1 !== input.version)
+      return false;
 
     if (input.supersede) {
-      const cancelled = await cancelOpenJobs(tx, eq(street3dJobs.id, input.supersede.id), 'superseded', now, {
-        supersededByJobId: input.jobId,
-        releaseConsequences: false,
-      });
+      const cancelled = await cancelOpenJobs(
+        tx,
+        eq(street3dJobs.id, input.supersede.id),
+        'superseded',
+        now,
+        {
+          supersededByJobId: input.jobId,
+          releaseConsequences: false,
+        },
+      );
       if (cancelled.length === 0) return false;
     }
 
@@ -328,7 +382,9 @@ export async function createSceneJob(db: Database, input: CreateSceneJobInput, n
     await tx
       .update(captureAssets)
       .set({ state: 'reconstruction_candidate', updatedAt: now })
-      .where(and(inArray(captureAssets.id, assetIds), eq(captureAssets.state, 'waiting_for_overlap')));
+      .where(
+        and(inArray(captureAssets.id, assetIds), eq(captureAssets.state, 'waiting_for_overlap')),
+      );
     await refreshInputProtection(tx, job, now);
     return true;
   });
@@ -336,7 +392,14 @@ export async function createSceneJob(db: Database, input: CreateSceneJobInput, n
 
 /** The SQS envelope for a reconstruction job. */
 export function sceneEnvelope(job: JobRow, issuedAt: Date): SceneReconstructJob | null {
-  if (!job.sceneId || !job.sceneVersion || !job.profile || !job.inputManifestKey || !job.inputManifestSha256) return null;
+  if (
+    !job.sceneId ||
+    !job.sceneVersion ||
+    !job.profile ||
+    !job.inputManifestKey ||
+    !job.inputManifestSha256
+  )
+    return null;
   return {
     schemaVersion: WORKER_CONTRACT_SCHEMA_VERSION,
     jobId: job.id,

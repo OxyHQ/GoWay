@@ -73,5 +73,7 @@ function vendorMaplibreWorker() {
 module.exports = { vendorMaplibreWorker, WORKER_FILES };
 
 if (require.main === module) {
-  console.log(`maplibre-gl worker vendored to ${path.relative(process.cwd(), vendorMaplibreWorker())}`);
+  console.log(
+    `maplibre-gl worker vendored to ${path.relative(process.cwd(), vendorMaplibreWorker())}`,
+  );
 }

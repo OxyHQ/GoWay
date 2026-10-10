@@ -108,7 +108,11 @@ export type CaptureProjection = (typeof CAPTURE_PROJECTIONS)[number];
  *     usable metadata. Honest, coarse, and never inferred: GoWay does not guess
  *     a precise position from anybody's unrelated history.
  */
-export const CAPTURE_LOCATION_ORIGINS = ['device_capture', 'media_metadata', 'user_placed'] as const;
+export const CAPTURE_LOCATION_ORIGINS = [
+  'device_capture',
+  'media_metadata',
+  'user_placed',
+] as const;
 export type CaptureLocationOrigin = (typeof CAPTURE_LOCATION_ORIGINS)[number];
 
 /**

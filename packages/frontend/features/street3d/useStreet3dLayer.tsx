@@ -53,7 +53,10 @@ interface SettledView {
   zoom: number;
 }
 
-export function useStreet3dLayer(mapRef: RefObject<MapApi | null>, { enabled }: { enabled: boolean }): Street3dLayer {
+export function useStreet3dLayer(
+  mapRef: RefObject<MapApi | null>,
+  { enabled }: { enabled: boolean },
+): Street3dLayer {
   const router = useRouter();
   const theme = useTheme();
   const { t } = useTranslation();
@@ -92,11 +95,20 @@ export function useStreet3dLayer(mapRef: RefObject<MapApi | null>, { enabled }: 
   );
 
   const label = t('street3d.layer.open');
-  const markers = useMemo(() => (data ? sceneMarkers(data.scenes, label) : EMPTY_MARKERS), [data, label]);
+  const markers = useMemo(
+    () => (data ? sceneMarkers(data.scenes, label) : EMPTY_MARKERS),
+    [data, label],
+  );
 
-  const wantingCapture = useMemo(() => (data ? areasWantingCapture(data.areas) : EMPTY_AREAS), [data]);
+  const wantingCapture = useMemo(
+    () => (data ? areasWantingCapture(data.areas) : EMPTY_AREAS),
+    [data],
+  );
 
-  const summaries = useMemo(() => new Map((data?.scenes ?? []).map((scene) => [scene.id, scene])), [data]);
+  const summaries = useMemo(
+    () => new Map((data?.scenes ?? []).map((scene) => [scene.id, scene])),
+    [data],
+  );
 
   const openScene = useCallback(
     (sceneId: string) => {
@@ -122,13 +134,28 @@ export function useStreet3dLayer(mapRef: RefObject<MapApi | null>, { enabled }: 
       const sceneId = sceneIdOfMarker(marker);
       if (!sceneId) return null;
       const summary = summaries.get(sceneId);
-      const accessibilityLabel = summary?.placement === 'approximate'
-        ? `${label} · ${t('street3d.layer.approximate')}`
-        : label;
-      return <SceneChip summary={summary} accessibilityLabel={accessibilityLabel} onPress={() => openScene(sceneId)} />;
+      const accessibilityLabel =
+        summary?.placement === 'approximate'
+          ? `${label} · ${t('street3d.layer.approximate')}`
+          : label;
+      return (
+        <SceneChip
+          summary={summary}
+          accessibilityLabel={accessibilityLabel}
+          onPress={() => openScene(sceneId)}
+        />
+      );
     },
     [label, openScene, summaries, t],
   );
 
-  return { overlays, markers, wantingCapture, onViewportChange, onMapReady, handleMarkerPress, renderMarker };
+  return {
+    overlays,
+    markers,
+    wantingCapture,
+    onViewportChange,
+    onMapReady,
+    handleMarkerPress,
+    renderMarker,
+  };
 }

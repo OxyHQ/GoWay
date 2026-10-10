@@ -106,7 +106,14 @@ export function setFixtureFaults(next: FixtureFaults): void {
   faults = { ...next };
 }
 
-const FIXTURE_FAULTS: readonly FixtureFault[] = ['places', 'search', 'geocode', 'routes', 'street3d', 'mercaria'];
+const FIXTURE_FAULTS: readonly FixtureFault[] = [
+  'places',
+  'search',
+  'geocode',
+  'routes',
+  'street3d',
+  'mercaria',
+];
 
 /** Parse `EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS=search,places:network`. */
 export function parseFixtureFaults(spec: string | undefined): FixtureFaults {
@@ -152,7 +159,8 @@ function ratingOf(placeId: string): PlaceRating | undefined {
 
 /** The published reviews in the order asked for, newest first within a rating, as the API orders them. */
 function sortedReviews(placeId: string, sort: string | undefined): PlaceReview[] {
-  const newestFirst = (a: PlaceReview, b: PlaceReview) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
+  const newestFirst = (a: PlaceReview, b: PlaceReview) =>
+    b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
   const reviews = [...(reviewsByPlace.get(placeId) ?? [])];
   if (sort === 'highest') return reviews.sort((a, b) => b.rating - a.rating || newestFirst(a, b));
   if (sort === 'lowest') return reviews.sort((a, b) => a.rating - b.rating || newestFirst(a, b));
@@ -164,11 +172,16 @@ function withStatus(review: PlaceReview): PlaceReviewWithStatus {
 }
 
 /** `/places/<id>/media` and `/places/<id>/reviews[/mine]`, or `null` for a path that is neither. */
-function content(path: string, params: Map<string, string>, init: GoWayFetchInit): GoWayFetchResponse | null {
+function content(
+  path: string,
+  params: Map<string, string>,
+  init: GoWayFetchInit,
+): GoWayFetchResponse | null {
   const match = /^\/places\/([^/]+)\/(media|reviews|reviews\/mine)$/.exec(path);
   if (!match) return null;
   const placeId = decodeURIComponent(match[1]!);
-  if (FIXTURE_WITHDRAWN_PLACE_IDS.has(placeId)) return fail('gone', `Place ${placeId} has been withdrawn`);
+  if (FIXTURE_WITHDRAWN_PLACE_IDS.has(placeId))
+    return fail('gone', `Place ${placeId} has been withdrawn`);
   if (!FIXTURE_PLACES_BY_ID.has(placeId)) return fail('not_found', `No place with id ${placeId}`);
   const body = init.body ? (JSON.parse(init.body) as unknown) : undefined;
 
@@ -176,11 +189,19 @@ function content(path: string, params: Map<string, string>, init: GoWayFetchInit
     const gallery = mediaByPlace.get(placeId) ?? [];
     if (init.method === 'GET') {
       const kinds = list(params, 'kinds');
-      return respond(200, page(kinds.length > 0 ? gallery.filter((item) => kinds.includes(item.kind)) : gallery, params, DEFAULT_MEDIA_LIST_LIMIT));
+      return respond(
+        200,
+        page(
+          kinds.length > 0 ? gallery.filter((item) => kinds.includes(item.kind)) : gallery,
+          params,
+          DEFAULT_MEDIA_LIST_LIMIT,
+        ),
+      );
     }
     if (init.method === 'POST') {
       const input = body as PlaceMediaInput;
-      if (gallery.some((item) => item.fileId === input.fileId)) return fail('conflict', 'That file is already in this gallery.');
+      if (gallery.some((item) => item.fileId === input.fileId))
+        return fail('conflict', 'That file is already in this gallery.');
       const item: PlaceMedia = {
         id: `${placeId}_media_local_${gallery.length}`,
         placeId,
@@ -198,16 +219,26 @@ function content(path: string, params: Map<string, string>, init: GoWayFetchInit
   }
 
   if (match[2] === 'reviews') {
-    if (init.method !== 'GET') return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
-    return respond(200, page(sortedReviews(placeId, params.get('sort')), params, DEFAULT_REVIEW_LIST_LIMIT));
+    if (init.method !== 'GET')
+      return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
+    return respond(
+      200,
+      page(sortedReviews(placeId, params.get('sort')), params, DEFAULT_REVIEW_LIST_LIMIT),
+    );
   }
 
   const reviews = reviewsByPlace.get(placeId) ?? [];
   const mine = reviews.find((review) => review.authorOxyUserId === FIXTURE_REVIEWER);
-  if (init.method === 'GET') return mine ? respond(200, withStatus(mine)) : fail('not_found', 'You have not reviewed this place.');
+  if (init.method === 'GET')
+    return mine
+      ? respond(200, withStatus(mine))
+      : fail('not_found', 'You have not reviewed this place.');
   if (init.method === 'DELETE') {
     if (!mine) return fail('not_found', 'You have no review of this place to withdraw.');
-    reviewsByPlace.set(placeId, reviews.filter((review) => review !== mine));
+    reviewsByPlace.set(
+      placeId,
+      reviews.filter((review) => review !== mine),
+    );
     return respond(204, null);
   }
   if (init.method === 'PUT') {
@@ -326,7 +357,11 @@ const FIXTURE_CURSOR = /^o(\d+)$/;
  * pass it back with the same filters — so the difference does not reach the
  * SDK. A cursor this transport did not mint is refused before a handler runs.
  */
-function page<T>(entries: readonly T[], params: Map<string, string>, defaultLimit: number): Page<T> {
+function page<T>(
+  entries: readonly T[],
+  params: Map<string, string>,
+  defaultLimit: number,
+): Page<T> {
   const offset = Number(FIXTURE_CURSOR.exec(params.get('cursor') ?? '')?.[1] ?? 0);
   const end = offset + (num(params, 'limit') ?? defaultLimit);
   return { items: entries.slice(offset, end), nextCursor: end < entries.length ? `o${end}` : null };
@@ -366,7 +401,11 @@ function addressText(address: StructuredAddress | undefined): string {
     .join(' ');
 }
 
-function matchesFilters(entry: Place, categories: readonly string[], capabilities: readonly string[]): boolean {
+function matchesFilters(
+  entry: Place,
+  categories: readonly string[],
+  capabilities: readonly string[],
+): boolean {
   // A parent matches every category below it, as the API expands it.
   if (categories.length > 0) {
     const wanted = new Set<string>(categories.flatMap(TAXONOMY.descendants));
@@ -403,9 +442,9 @@ function localize<T extends Place>(place: T, locale: string | undefined, full: b
   const resolved =
     requested === undefined
       ? undefined
-      : names.find((name) => name.language === requested) ??
+      : (names.find((name) => name.language === requested) ??
         names.find((name) => name.language === base) ??
-        names.find((name) => baseLanguageTag(name.language) === base);
+        names.find((name) => baseLanguageTag(name.language) === base));
 
   const {
     names: _all,
@@ -425,9 +464,9 @@ function localize<T extends Place>(place: T, locale: string | undefined, full: b
     const description =
       requested === undefined
         ? undefined
-        : place.descriptions.find((entry) => entry.language === requested) ??
+        : (place.descriptions.find((entry) => entry.language === requested) ??
           place.descriptions.find((entry) => entry.language === base) ??
-          place.descriptions.find((entry) => baseLanguageTag(entry.language) === base);
+          place.descriptions.find((entry) => baseLanguageTag(entry.language) === base));
     if (description) result.localizedDescription = description;
   }
   const rating = ratingOf(place.id);
@@ -447,9 +486,10 @@ function placesInBounds(params: Map<string, string>): Page<Place> {
     const { latitude, longitude } = entry.location;
     // A box crossing the antimeridian has west > east; the fixture set is in
     // Europe, but getting this wrong silently selects the complement.
-    const withinLongitude = west <= east
-      ? longitude >= west && longitude <= east
-      : longitude >= west || longitude <= east;
+    const withinLongitude =
+      west <= east
+        ? longitude >= west && longitude <= east
+        : longitude >= west || longitude <= east;
     return withinLongitude && latitude >= south && latitude <= north;
   })
     .filter((entry) => matchesFilters(entry, categories, capabilities))
@@ -481,8 +521,8 @@ const GEOCODED: readonly SearchResult[] = [
     id: 'photon:street:passeig-de-gracia',
     displayName: 'Passeig de Gràcia, Barcelona',
     kind: 'street',
-    coordinate: { latitude: 41.3918, longitude: 2.1650 },
-    boundingBox: { west: 2.1620, south: 41.3866, east: 2.1680, north: 41.3975 },
+    coordinate: { latitude: 41.3918, longitude: 2.165 },
+    boundingBox: { west: 2.162, south: 41.3866, east: 2.168, north: 41.3975 },
     context: { city: 'Barcelona', region: 'Catalonia', country: 'Spain', countryCode: 'ES' },
     source: 'photon',
     sourceId: 'W/7126642',
@@ -492,8 +532,8 @@ const GEOCODED: readonly SearchResult[] = [
     id: 'photon:locality:gracia',
     displayName: 'Gràcia, Barcelona',
     kind: 'locality',
-    coordinate: { latitude: 41.4036, longitude: 2.1560 },
-    boundingBox: { west: 2.1400, south: 41.3960, east: 2.1720, north: 41.4200 },
+    coordinate: { latitude: 41.4036, longitude: 2.156 },
+    boundingBox: { west: 2.14, south: 41.396, east: 2.172, north: 41.42 },
     context: { city: 'Barcelona', region: 'Catalonia', country: 'Spain', countryCode: 'ES' },
     source: 'photon',
     sourceId: 'R/349055',
@@ -542,19 +582,19 @@ function search(params: Map<string, string>): SearchResults {
   });
 
   // `near` only RE-RANKS; it is never a filter (see `SearchQuery`).
-  const biased = nearLatitude != null && nearLongitude != null
-    ? matched
-        .slice()
-        .sort(
-          (a, b) =>
-            distanceMeters({ latitude: nearLatitude, longitude: nearLongitude }, a.location) -
-            distanceMeters({ latitude: nearLatitude, longitude: nearLongitude }, b.location),
-        )
-    : matched;
+  const biased =
+    nearLatitude != null && nearLongitude != null
+      ? matched
+          .slice()
+          .sort(
+            (a, b) =>
+              distanceMeters({ latitude: nearLatitude, longitude: nearLongitude }, a.location) -
+              distanceMeters({ latitude: nearLatitude, longitude: nearLongitude }, b.location),
+          )
+      : matched;
 
-  const geocoded = needle === ''
-    ? []
-    : GEOCODED.filter((entry) => fold(entry.displayName).includes(needle));
+  const geocoded =
+    needle === '' ? [] : GEOCODED.filter((entry) => fold(entry.displayName).includes(needle));
 
   const results = [
     ...biased.map((entry) => placeAsResult(localize(entry, params.get('locale'), true))),
@@ -632,7 +672,10 @@ function directions(body: unknown) {
   // "No route exists" is a normal answer for this domain, not a failure — and
   // an unresolvable stop is exactly how a caller gets one.
   if (stops.length < 2 || stops.some((stop) => stop === undefined)) return { routes: [] };
-  const resolved = stops as Array<{ point: { latitude: number; longitude: number }; name?: string }>;
+  const resolved = stops as Array<{
+    point: { latitude: number; longitude: number };
+    name?: string;
+  }>;
 
   const mode = request.mode === 'drive' || request.mode === 'bike' ? request.mode : 'walk';
   const speed = mode === 'drive' ? 8.3 : mode === 'bike' ? 4.2 : 1.35;
@@ -695,7 +738,10 @@ function directions(body: unknown) {
 function categoryList(params: Map<string, string>): CategoryPage {
   const locale = params.get('locale');
   return {
-    items: FIXTURE_CATEGORIES.map((category) => ({ ...category, label: localizedLabel(category.labels, locale) })),
+    items: FIXTURE_CATEGORIES.map((category) => ({
+      ...category,
+      label: localizedLabel(category.labels, locale),
+    })),
     nextCursor: null,
   };
 }
@@ -732,7 +778,10 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
   setFixtureFaults(initialFaults);
   resetContent();
 
-  return async function fixtureFetch(url: string, init: GoWayFetchInit): Promise<GoWayFetchResponse> {
+  return async function fixtureFetch(
+    url: string,
+    init: GoWayFetchInit,
+  ): Promise<GoWayFetchResponse> {
     const { path, params } = splitUrl(url);
     const family = familyOf(path);
 
@@ -747,7 +796,10 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
       // geocoder, `service_unavailable` for GoWay's own reads. Both are 503 and
       // both are retryable, but only the first means "the geographic data
       // source is down", which is a different sentence to show a user.
-      const code = family === 'search' || family === 'geocode' ? 'provider_unavailable' : 'service_unavailable';
+      const code =
+        family === 'search' || family === 'geocode'
+          ? 'provider_unavailable'
+          : 'service_unavailable';
       return fail(code, `${family} is temporarily unavailable`);
     }
 
@@ -757,13 +809,17 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
     }
 
     if (path === '/street3d/coverage') {
-      if (init.method !== 'GET') return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
-      return respond(200, fixtureCoverage({
-        west: num(params, 'west') ?? -180,
-        south: num(params, 'south') ?? -90,
-        east: num(params, 'east') ?? 180,
-        north: num(params, 'north') ?? 90,
-      }));
+      if (init.method !== 'GET')
+        return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
+      return respond(
+        200,
+        fixtureCoverage({
+          west: num(params, 'west') ?? -180,
+          south: num(params, 'south') ?? -90,
+          east: num(params, 'east') ?? 180,
+          north: num(params, 'north') ?? 90,
+        }),
+      );
     }
     const sceneRoute = /^\/street3d\/scenes\/([^/]+)(\/reports)?$/.exec(path);
     if (sceneRoute) {
@@ -771,10 +827,12 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
       const scene = await fixtureSceneResponse(id);
       if (!scene) return fail('not_found', `No scene with id ${id}`);
       if (!sceneRoute[2]) {
-        if (init.method !== 'GET') return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
+        if (init.method !== 'GET')
+          return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
         return respond(200, scene);
       }
-      if (init.method !== 'POST') return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
+      if (init.method !== 'POST')
+        return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
       // Mirrors the API: a report is identity-bound, so no bearer is a 401.
       const authorization = init.headers?.Authorization ?? init.headers?.authorization;
       if (!authorization) return fail('unauthorized', 'Sign in to report a scene');
@@ -793,7 +851,8 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
 
     // Every other fixture route is a read except directions, which is a POST.
     const placeId = /^\/places\/([^/]+)$/.exec(path)?.[1];
-    if (placeId === undefined && !FIXTURE_ROUTES.has(path)) return fail('unknown_route', `No route for ${path}`);
+    if (placeId === undefined && !FIXTURE_ROUTES.has(path))
+      return fail('unknown_route', `No route for ${path}`);
     if (init.method !== (path === '/routes' ? 'POST' : 'GET')) {
       return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
     }
@@ -803,7 +862,8 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
     if (path === '/places/nearby') return respond(200, placesNearby(params));
     if (placeId !== undefined) {
       const id = decodeURIComponent(placeId);
-      if (FIXTURE_WITHDRAWN_PLACE_IDS.has(id)) return fail('gone', `Place ${id} has been withdrawn`);
+      if (FIXTURE_WITHDRAWN_PLACE_IDS.has(id))
+        return fail('gone', `Place ${id} has been withdrawn`);
       const found = FIXTURE_PLACES_BY_ID.get(id);
       return found
         ? respond(200, localize(found, params.get('locale'), true))
@@ -812,7 +872,11 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
     if (path === '/search' || path === '/geocode') return respond(200, search(params));
     if (path === '/geocode/reverse') return respond(200, reverseGeocode(params));
     if (path === '/geocode/structured') {
-      return respond(200, { items: [], nextCursor: null, providers: ['nominatim'] } satisfies SearchResults);
+      return respond(200, {
+        items: [],
+        nextCursor: null,
+        providers: ['nominatim'],
+      } satisfies SearchResults);
     }
     return respond(200, directions(init.body ? JSON.parse(init.body) : undefined));
   };

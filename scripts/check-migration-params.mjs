@@ -140,7 +140,9 @@ function main() {
       .filter((name) => name.endsWith('.sql'))
       .sort();
   } catch (error) {
-    console.error(`::error::${DRIZZLE_FOLDER} cannot be listed (${error.message}), so no migration was scanned.`);
+    console.error(
+      `::error::${DRIZZLE_FOLDER} cannot be listed (${error.message}), so no migration was scanned.`,
+    );
     process.exit(1);
   }
 
@@ -181,7 +183,7 @@ function main() {
   console.log(
     `No bound-parameter placeholders: scanned ${files.length} migration file(s), ${scannedLines} line(s).` +
       (files.length === 0
-        ? ' The journal is empty — GoWay\'s first migration arrives with the Places schema.'
+        ? " The journal is empty — GoWay's first migration arrives with the Places schema."
         : ''),
   );
 }

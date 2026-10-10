@@ -8,11 +8,21 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { fetchUpstreamJson, isUpstreamError, parseRetryAfterSeconds, UpstreamError } from '../upstream';
+import {
+  fetchUpstreamJson,
+  isUpstreamError,
+  parseRetryAfterSeconds,
+  UpstreamError,
+} from '../upstream';
 import type { FetchLike } from '../provider';
 import { jsonResponse, recordingFetch } from './fixtures';
 
-const BASE = { provider: 'photon' as const, url: 'https://photon.example/api?q=a', timeoutMs: 50, attempts: 1 };
+const BASE = {
+  provider: 'photon' as const,
+  url: 'https://photon.example/api?q=a',
+  timeoutMs: 50,
+  attempts: 1,
+};
 
 /** The `UpstreamError` a call threw, or a failure if it threw something else. */
 async function failureOf(request: Parameters<typeof fetchUpstreamJson>[0]): Promise<UpstreamError> {
@@ -32,8 +42,8 @@ describe('fetchUpstreamJson', () => {
   });
 
   it('maps a 429 to rate_limited and carries Retry-After through', async () => {
-    const { fetch, urls } = recordingFetch(() =>
-      new Response('slow down', { status: 429, headers: { 'retry-after': '30' } }),
+    const { fetch, urls } = recordingFetch(
+      () => new Response('slow down', { status: 429, headers: { 'retry-after': '30' } }),
     );
     // Three attempts CONFIGURED, one attempt made: retrying a rate limit is how
     // a fair-use allowance becomes a block.
@@ -61,7 +71,11 @@ describe('fetchUpstreamJson', () => {
     // is a different thing to tell a user than "GoWay is broken".
     expect(apiError.code).toBe('provider_unavailable');
     expect(apiError.status).toBe(503);
-    expect(apiError.details).toMatchObject({ provider: 'photon', reason: 'http_error', status: 503 });
+    expect(apiError.details).toMatchObject({
+      provider: 'photon',
+      reason: 'http_error',
+      status: 503,
+    });
   });
 
   it('does not retry an upstream 4xx', async () => {
@@ -109,7 +123,12 @@ describe('fetchUpstreamJson', () => {
         controller.abort();
       });
 
-    const failure = await failureOf({ ...BASE, fetch, timeoutMs: 1_000, signal: controller.signal });
+    const failure = await failureOf({
+      ...BASE,
+      fetch,
+      timeoutMs: 1_000,
+      signal: controller.signal,
+    });
     expect(failure.kind).toBe('aborted');
   });
 
@@ -123,7 +142,9 @@ describe('fetchUpstreamJson', () => {
   });
 
   it('reports a 200 that is not JSON as malformed', async () => {
-    const { fetch } = recordingFetch(() => new Response('<html>maintenance</html>', { status: 200 }));
+    const { fetch } = recordingFetch(
+      () => new Response('<html>maintenance</html>', { status: 200 }),
+    );
     const failure = await failureOf({ ...BASE, fetch });
     expect(failure.kind).toBe('malformed');
     expect(failure.toApiError().code).toBe('provider_unavailable');
@@ -133,7 +154,11 @@ describe('fetchUpstreamJson', () => {
     const { fetch } = recordingFetch(() => new Response('', { status: 500 }));
     // The query string carries the user's search text and, on a reverse
     // lookup, their precise coordinate.
-    const failure = await failureOf({ ...BASE, fetch, url: 'https://photon.example/reverse?lat=41.4&lon=2.17' });
+    const failure = await failureOf({
+      ...BASE,
+      fetch,
+      url: 'https://photon.example/reverse?lat=41.4&lon=2.17',
+    });
     expect(failure.message).not.toContain('41.4');
     expect(JSON.stringify(failure.toApiError().details)).not.toContain('41.4');
   });

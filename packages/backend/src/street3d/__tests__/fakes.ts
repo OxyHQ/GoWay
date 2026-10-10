@@ -27,7 +27,8 @@ import {
   type WorkerEvent,
 } from '../workerContract';
 
-export const sha256 = (bytes: Uint8Array | string): string => createHash('sha256').update(bytes).digest('hex');
+export const sha256 = (bytes: Uint8Array | string): string =>
+  createHash('sha256').update(bytes).digest('hex');
 
 export class FakeQueue implements WorkQueue {
   readonly visible: QueueMessage[] = [];
@@ -45,13 +46,17 @@ export class FakeQueue implements WorkQueue {
       receiptHandle: `r-${messageId}`,
       body,
       receiveCount: 0,
-      attributes: Object.fromEntries(Object.entries(attributes).map(([key, value]) => [key, String(value)])),
+      attributes: Object.fromEntries(
+        Object.entries(attributes).map(([key, value]) => [key, String(value)]),
+      ),
     });
     return { messageId };
   }
 
   async receive({ maxMessages }: ReceiveOptions) {
-    const taken = this.visible.splice(0, maxMessages).map((message) => ({ ...message, receiveCount: message.receiveCount + 1 }));
+    const taken = this.visible
+      .splice(0, maxMessages)
+      .map((message) => ({ ...message, receiveCount: message.receiveCount + 1 }));
     for (const message of taken) this.inFlight.set(message.receiptHandle, message);
     return taken;
   }
@@ -138,14 +143,21 @@ export class FakeSceneStore implements SceneAssetStore {
   async copyFromStaging(request: CopyAssetRequest) {
     const bytes = this.staging.objects.get(request.sourceKey);
     if (!bytes) throw new Error('NoSuchKey');
-    if (sha256(bytes) !== request.sha256 || bytes.byteLength !== request.byteSize) throw new Error('digest');
+    if (sha256(bytes) !== request.sha256 || bytes.byteLength !== request.byteSize)
+      throw new Error('digest');
     this.copies.push(request);
     this.objects.set(request.destinationKey, { bytes, contentType: request.contentType });
   }
 
   async head(key: string) {
     const object = this.objects.get(key);
-    return object ? { byteSize: object.bytes.byteLength, checksumSha256: sha256(object.bytes), contentType: object.contentType } : null;
+    return object
+      ? {
+          byteSize: object.bytes.byteLength,
+          checksumSha256: sha256(object.bytes),
+          contentType: object.contentType,
+        }
+      : null;
   }
 
   async delete(key: string) {
@@ -182,7 +194,11 @@ export function fakeServices(): FakeServices {
   };
 }
 
-function event(job: { jobId: string }, attempt: number, fields: Record<string, unknown>): WorkerEvent {
+function event(
+  job: { jobId: string },
+  attempt: number,
+  fields: Record<string, unknown>,
+): WorkerEvent {
   return {
     schemaVersion: 1,
     eventId: randomUUID(),
@@ -218,14 +234,23 @@ export class FakeWorker {
   }
 
   async fail(job: { jobId: string }, code: string, attempt = 1) {
-    return this.post(event(job, attempt, { type: 'failed', stage: 'solving', failure: { code, retryable: false, detail: 'scripted /tmp/x https://x.invalid' } }));
+    return this.post(
+      event(job, attempt, {
+        type: 'failed',
+        stage: 'solving',
+        failure: { code, retryable: false, detail: 'scripted /tmp/x https://x.invalid' },
+      }),
+    );
   }
 
   /** Write a result object and return the `completed` event for it (not yet posted). */
   completedEvent(job: { jobId: string }, attempt: number, result: unknown): WorkerEvent {
     const key = `jobs/${job.jobId}/attempt-${attempt}/result.json`;
     const written = this.services.jobStore.put(key, JSON.stringify(result));
-    return event(job, attempt, { type: 'completed', result: { key, sha256: written.sha256, byteSize: written.byteSize } });
+    return event(job, attempt, {
+      type: 'completed',
+      result: { key, sha256: written.sha256, byteSize: written.byteSize },
+    });
   }
 
   /**
@@ -238,7 +263,13 @@ export class FakeWorker {
    */
   async completePrivacy(
     job: CapturePrivacyJob,
-    options: { frames?: number; verdict?: 'passed' | 'failed'; attempt?: number; seed?: string; panorama?: boolean } = {},
+    options: {
+      frames?: number;
+      verdict?: 'passed' | 'failed';
+      attempt?: number;
+      seed?: string;
+      panorama?: boolean;
+    } = {},
   ): Promise<WorkerEvent> {
     const attempt = options.attempt ?? 1;
     const verdict = options.verdict ?? 'passed';
@@ -249,7 +280,10 @@ export class FakeWorker {
               `${job.outputPrefix}${String(frameIndex).padStart(6, '0')}.jpg`,
               `pixels:${job.assetId}:${frameIndex}:${options.seed ?? ''}`,
             );
-            const mask = this.services.jobStore.put(`${job.outputPrefix}${String(frameIndex).padStart(6, '0')}.mask.png`, `mask:${job.assetId}:${frameIndex}`);
+            const mask = this.services.jobStore.put(
+              `${job.outputPrefix}${String(frameIndex).padStart(6, '0')}.mask.png`,
+              `mask:${job.assetId}:${frameIndex}`,
+            );
             return {
               frameIndex,
               imageKey: `${job.outputPrefix}${String(frameIndex).padStart(6, '0')}.jpg`,
@@ -262,7 +296,11 @@ export class FakeWorker {
                 ? {
                     width: 1280,
                     height: 960,
-                    panorama: { index: Math.floor(frameIndex / 8), yawDegrees: (frameIndex % 8) * 45, horizontalFovDegrees: 90 },
+                    panorama: {
+                      index: Math.floor(frameIndex / 8),
+                      yawDegrees: (frameIndex % 8) * 45,
+                      horizontalFovDegrees: 90,
+                    },
                   }
                 : { width: 2048, height: 1536 }),
             };
@@ -297,7 +335,10 @@ export class FakeWorker {
   ): Record<string, unknown> {
     const attempt = overrides.attempt ?? 1;
     const prefix = `jobs/${job.jobId}/attempt-${attempt}/`;
-    const splat = this.services.jobStore.put(`${prefix}scene.spz`, overrides.splatBytes ?? `splat:${job.jobId}`);
+    const splat = this.services.jobStore.put(
+      `${prefix}scene.spz`,
+      overrides.splatBytes ?? `splat:${job.jobId}`,
+    );
     const preview = this.services.jobStore.put(`${prefix}preview.spz`, `preview:${job.jobId}`);
     const poster = this.services.jobStore.put(`${prefix}poster.jpg`, `poster:${job.jobId}`);
     const registered = overrides.registered ?? manifest.frames.map((frame) => frame.frameId);
@@ -311,9 +352,24 @@ export class FakeWorker {
       sceneVersion: job.sceneVersion,
       profile: job.profile,
       inputManifestSha256: job.inputManifestSha256,
-      worldTransform: { anchor: { latitude: 48.8684, longitude: 2.302, altitudeMeters: 0 }, frame: 'enu', enuFromScene: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+      worldTransform: {
+        anchor: { latitude: 48.8684, longitude: 2.302, altitudeMeters: 0 },
+        frame: 'enu',
+        enuFromScene: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      },
       bounds: { west: 2.3008, south: 48.8678, east: 2.3032, north: 48.869 },
-      footprint: { type: 'Polygon', coordinates: [[[2.3008, 48.8678], [2.3032, 48.8678], [2.3032, 48.869], [2.3008, 48.869], [2.3008, 48.8678]]] },
+      footprint: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [2.3008, 48.8678],
+            [2.3032, 48.8678],
+            [2.3032, 48.869],
+            [2.3008, 48.869],
+            [2.3008, 48.8678],
+          ],
+        ],
+      },
       frames: { input: ids.length, registered: registered.length, registeredFrameIds: registered },
       edges: ids.length >= 2 ? [{ a: ids[1], b: ids[0], inliers: 300 }] : [],
       metrics: {
@@ -331,9 +387,32 @@ export class FakeWorker {
       },
       gates: { passed: true, failures: [] },
       assets: [
-        { role: 'splat', format: 'spz', key: `${prefix}scene.spz`, sha256: splat.sha256, byteSize: splat.byteSize, contentType: 'application/octet-stream', gaussians: 800_000 },
-        { role: 'splat_preview', format: 'spz', key: `${prefix}preview.spz`, sha256: preview.sha256, byteSize: preview.byteSize, contentType: 'application/octet-stream', gaussians: 150_000 },
-        { role: 'poster', format: 'jpeg', key: `${prefix}poster.jpg`, sha256: poster.sha256, byteSize: poster.byteSize, contentType: 'image/jpeg' },
+        {
+          role: 'splat',
+          format: 'spz',
+          key: `${prefix}scene.spz`,
+          sha256: splat.sha256,
+          byteSize: splat.byteSize,
+          contentType: 'application/octet-stream',
+          gaussians: 800_000,
+        },
+        {
+          role: 'splat_preview',
+          format: 'spz',
+          key: `${prefix}preview.spz`,
+          sha256: preview.sha256,
+          byteSize: preview.byteSize,
+          contentType: 'application/octet-stream',
+          gaussians: 150_000,
+        },
+        {
+          role: 'poster',
+          format: 'jpeg',
+          key: `${prefix}poster.jpg`,
+          sha256: poster.sha256,
+          byteSize: poster.byteSize,
+          contentType: 'image/jpeg',
+        },
       ],
       initialView: { position: [0, 0, 1.6], target: [0, 10, 1.6] },
       // A walk back down the street, every half metre, as a capture sequence reports it.
@@ -348,7 +427,10 @@ export class FakeWorker {
         pipelineVersion: 'goway-reconstruction/1',
         privacyPipelineVersions: ['goway-privacy/1'],
         components: { sfm: 'sfm 1', trainer: 'trainer 1' },
-        inputs: manifest.frames.map((frame) => ({ frameId: frame.frameId, imageSha256: frame.imageSha256 })),
+        inputs: manifest.frames.map((frame) => ({
+          frameId: frame.frameId,
+          imageSha256: frame.imageSha256,
+        })),
       },
     };
   }

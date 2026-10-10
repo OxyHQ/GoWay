@@ -134,7 +134,8 @@ export const IMPORTED_FIELDS = {
     empty: (value) => value.length === 0,
     // The same members in the same order: "most specific first" is part of
     // what the list says.
-    same: (left, right) => left.length === right.length && left.every((value, index) => value === right[index]),
+    same: (left, right) =>
+      left.length === right.length && left.every((value, index) => value === right[index]),
   } satisfies ImportedField<string[]>,
   addressHouseNumber: text('addr:housenumber'),
   addressStreet: text('addr:street'),
@@ -167,7 +168,9 @@ export const IMPORTED_FIELDS = {
     empty: (value) => value === null,
     same: (left, right) => left === right,
   } satisfies ImportedField<string | null>,
-} satisfies { [K in keyof typeof places.$inferInsert]?: ImportedField<(typeof places.$inferInsert)[K]> };
+} satisfies {
+  [K in keyof typeof places.$inferInsert]?: ImportedField<(typeof places.$inferInsert)[K]>;
+};
 
 export type ImportedColumn = keyof typeof IMPORTED_FIELDS;
 

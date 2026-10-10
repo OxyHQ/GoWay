@@ -193,7 +193,14 @@ class ContourBuilder {
   }
 }
 
-function quadraticSteps(x0: number, y0: number, cx: number, cy: number, x1: number, y1: number): number {
+function quadraticSteps(
+  x0: number,
+  y0: number,
+  cx: number,
+  cy: number,
+  x1: number,
+  y1: number,
+): number {
   // Max deviation of an n-segment chord approximation is |P0 - 2P1 + P2| / (8 n^2).
   const dx = x0 - 2 * cx + x1;
   const dy = y0 - 2 * cy + y1;
@@ -230,7 +237,10 @@ function cubicSteps(
  * renderer would close it anyway — and leaving the closing edge out would put
  * a gap in the distance field along an edge that visibly exists.
  */
-export function flattenPath(commands: readonly PathCommand[], transform: PointTransform): Contour[] {
+export function flattenPath(
+  commands: readonly PathCommand[],
+  transform: PointTransform,
+): Contour[] {
   const builder = new ContourBuilder();
 
   for (const { command, args } of commands) {
@@ -253,7 +263,10 @@ export function flattenPath(commands: readonly PathCommand[], transform: PointTr
         for (let i = 1; i <= steps; i += 1) {
           const t = i / steps;
           const u = 1 - t;
-          builder.lineTo(u * u * x0 + 2 * u * t * cx + t * t * x, u * u * y0 + 2 * u * t * cy + t * t * y);
+          builder.lineTo(
+            u * u * x0 + 2 * u * t * cx + t * t * x,
+            u * u * y0 + 2 * u * t * cy + t * t * y,
+          );
         }
         break;
       }
@@ -338,7 +351,12 @@ function toSegments(contours: readonly Contour[]): Segments | null {
     }
   }
 
-  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+  if (
+    !Number.isFinite(minX) ||
+    !Number.isFinite(minY) ||
+    !Number.isFinite(maxX) ||
+    !Number.isFinite(maxY)
+  ) {
     return null;
   }
   return { x0, y0, x1, y1, count: at, minX, minY, maxX, maxY };
@@ -445,7 +463,9 @@ export function renderSdf(contours: readonly Contour[], options: SdfOptions): Sd
   const height = options.bounds ? options.bounds.height : top - Math.floor(segments.minY);
   if (width <= 0 || height <= 0) return null;
   if (width > MAX_INK_EXTENT || height > MAX_INK_EXTENT) {
-    throw new Error(`outline ink box is ${width}x${height}px, beyond the ${MAX_INK_EXTENT}px sanity limit`);
+    throw new Error(
+      `outline ink box is ${width}x${height}px, beyond the ${MAX_INK_EXTENT}px sanity limit`,
+    );
   }
 
   const columns = width + 2 * buffer;
@@ -524,7 +544,12 @@ const ASCII_RAMP = ' .:-=+*#%@';
  * it possible to see, without a renderer, whether the mid-grey contour follows
  * the shape or has been shifted by an encoding mistake.
  */
-export function sdfToAscii(width: number, height: number, buffer: number, data: Uint8Array): string {
+export function sdfToAscii(
+  width: number,
+  height: number,
+  buffer: number,
+  data: Uint8Array,
+): string {
   const columns = width + 2 * buffer;
   const rows = height + 2 * buffer;
   const lines: string[] = [];
@@ -532,7 +557,8 @@ export function sdfToAscii(width: number, height: number, buffer: number, data: 
     let line = '';
     for (let column = 0; column < columns; column += 1) {
       const v = data[row * columns + column];
-      line += ASCII_RAMP[Math.min(ASCII_RAMP.length - 1, Math.floor((v / 256) * ASCII_RAMP.length))];
+      line +=
+        ASCII_RAMP[Math.min(ASCII_RAMP.length - 1, Math.floor((v / 256) * ASCII_RAMP.length))];
     }
     lines.push(line);
   }

@@ -44,7 +44,12 @@ function provider(handler: (url: string) => Response) {
   const recorder = recordingFetch(handler);
   return {
     recorder,
-    nominatim: createNominatimProvider({ config: CONFIG, fetch: recorder.fetch, timeoutMs: 1_000, attempts: 1 }),
+    nominatim: createNominatimProvider({
+      config: CONFIG,
+      fetch: recorder.fetch,
+      timeoutMs: 1_000,
+      attempts: 1,
+    }),
   };
 }
 
@@ -110,10 +115,18 @@ describe('the Nominatim adapter', () => {
         category: 'highway',
         type: 'residential',
         display_name: 'Lynarstraße, Gesundbrunnen, Berlin, Deutschland',
-        address: { road: 'Lynarstraße', suburb: 'Gesundbrunnen', city: 'Berlin', country_code: 'de' },
+        address: {
+          road: 'Lynarstraße',
+          suburb: 'Gesundbrunnen',
+          city: 'Berlin',
+          country_code: 'de',
+        },
       }),
     );
-    const candidates = await nominatim.reverse({ coordinate: { latitude: 52.5, longitude: 13.3 }, limit: 1 });
+    const candidates = await nominatim.reverse({
+      coordinate: { latitude: 52.5, longitude: 13.3 },
+      limit: 1,
+    });
 
     expect(candidates).toHaveLength(1);
     expect(candidates[0]?.result.kind).toBe('street');

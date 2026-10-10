@@ -22,14 +22,20 @@ async function main() {
   try {
     await assertMigrationTarget(getDb().$client, target);
     await assertMigrationsCurrent();
-    const summary = await sweepExpiredCaptures(getDb(), createConfiguredObjectStore(), {
-      dryRun: values['dry-run'],
-      limit: Number(values.limit),
-      retryAfterSeconds: Number(values['retry-after-seconds']),
-      jobArtifactRetentionDays: street3dConfig.jobArtifactRetentionDays,
-    }, values['dry-run'] ? null : createConfiguredJobObjectStore());
+    const summary = await sweepExpiredCaptures(
+      getDb(),
+      createConfiguredObjectStore(),
+      {
+        dryRun: values['dry-run'],
+        limit: Number(values.limit),
+        retryAfterSeconds: Number(values['retry-after-seconds']),
+        jobArtifactRetentionDays: street3dConfig.jobArtifactRetentionDays,
+      },
+      values['dry-run'] ? null : createConfiguredJobObjectStore(),
+    );
     console.log(JSON.stringify(summary));
-    if (summary.failed > 0 || summary.derivativesFailed > 0 || summary.jobArtifactsFailed > 0) process.exitCode = 1;
+    if (summary.failed > 0 || summary.derivativesFailed > 0 || summary.jobArtifactsFailed > 0)
+      process.exitCode = 1;
   } finally {
     await closePostgres();
   }
@@ -38,6 +44,8 @@ async function main() {
 main().catch(() => {
   // Configuration, SQL and network errors may carry credentials. The scheduler
   // gets a failed run without exposing connection strings or signed URLs.
-  console.error('Capture cleanup failed. Check its arguments, database and object-store configuration.');
+  console.error(
+    'Capture cleanup failed. Check its arguments, database and object-store configuration.',
+  );
   process.exitCode = 1;
 });

@@ -63,10 +63,18 @@ export function PanelState({
     <View className="items-center gap-space-8 px-space-24 py-space-32" testID={testID}>
       <Icon width={24} height={24} fill={theme.colors.textSecondary} />
       <Text className="text-subtitle text-foreground text-center">{title}</Text>
-      {body ? <Text className="text-bodySmall text-muted-foreground text-center">{body}</Text> : null}
+      {body ? (
+        <Text className="text-bodySmall text-muted-foreground text-center">{body}</Text>
+      ) : null}
       {actionLabel && onAction ? (
         <View className="pt-space-8">
-          <Button appearance="outline" tone="neutral" size="sm" leadingIcon={actionIcon} onPress={onAction}>
+          <Button
+            appearance="outline"
+            tone="neutral"
+            size="sm"
+            leadingIcon={actionIcon}
+            onPress={onAction}
+          >
             {actionLabel}
           </Button>
         </View>
@@ -243,7 +251,9 @@ export function LocationFailureState({
       body={copy.body}
       actionLabel={retryable ? 'Try again' : undefined}
       onAction={retryable ? onRetry : undefined}
-      testID={testID ?? `state-location-${reason === 'denied' && !canAskAgain ? 'blocked' : reason}`}
+      testID={
+        testID ?? `state-location-${reason === 'denied' && !canAskAgain ? 'blocked' : reason}`
+      }
     >
       {mapButton}
     </PanelState>
@@ -262,7 +272,7 @@ const LOCATION_COPY: Record<LocationErrorReason | 'blocked', LocationCopy> = {
   denied: {
     icon: RiFocus3Line,
     title: 'You declined the location prompt',
-    body: "GoWay only asks when you tap something that needs it, so nothing was shared. Try again to be asked once more.",
+    body: 'GoWay only asks when you tap something that needs it, so nothing was shared. Try again to be asked once more.',
     retryable: true,
   },
   blocked: {

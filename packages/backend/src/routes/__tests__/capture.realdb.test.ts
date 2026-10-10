@@ -56,7 +56,12 @@ import { captureAssets, captureMediaObjects } from '../../db/schema';
 import { sweepExpiredCaptures } from '../../capture/cleanup';
 import { summarizeCaptureStorage } from '../../db/capture/captureRepository';
 import { getDb } from '../../db/postgres';
-import { SUITE_SETUP_TIMEOUT_MS, createSuiteDatabase, destroySuiteDatabase, type SuiteDatabase } from '../../db/__tests__/testDatabase';
+import {
+  SUITE_SETUP_TIMEOUT_MS,
+  createSuiteDatabase,
+  destroySuiteDatabase,
+  type SuiteDatabase,
+} from '../../db/__tests__/testDatabase';
 import { ApiError } from '../../http/apiError';
 import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import type { CaptureObjectStore, UploadTargetRequest } from '../../storage/objectStore';
@@ -93,7 +98,13 @@ class FakeObjectStore implements CaptureObjectStore {
   async statObject(key: string) {
     const byteSize = this.stored.get(key);
     const target = this.targets.find((entry) => entry.key === key);
-    return byteSize === undefined ? null : { byteSize, checksumSha256: this.checksumOverrides.get(key) ?? target?.contentHash, contentType: target?.contentType };
+    return byteSize === undefined
+      ? null
+      : {
+          byteSize,
+          checksumSha256: this.checksumOverrides.get(key) ?? target?.contentHash,
+          contentType: target?.contentType,
+        };
   }
 
   async createReadUrl(key: string) {
@@ -293,8 +304,7 @@ describe('the exit condition: upload a geotagged photo', () => {
     expect(lifecycle.retentionReason).toBe('awaiting_privacy_processing');
     expect(lifecycle.extensionCount).toBe(0);
 
-    const daysUntilExpiry =
-      (Date.parse(lifecycle.expiresAt) - Date.now()) / (24 * 60 * 60 * 1000);
+    const daysUntilExpiry = (Date.parse(lifecycle.expiresAt) - Date.now()) / (24 * 60 * 60 * 1000);
     expect(daysUntilExpiry).toBeGreaterThan(policy.retentionDays.raw_photo - 1);
     expect(daysUntilExpiry).toBeLessThan(policy.retentionDays.raw_photo + 1);
   });
@@ -335,14 +345,20 @@ describe('the exit condition: upload a geotagged photo', () => {
     const key = store.targets[0]?.key as string;
     store.stored.set(key, 2_048_000);
 
-    const first = await call<CaptureAsset>(`/captures/assets/${ticket.asset.id}/finalize`, json('user-a', {}));
+    const first = await call<CaptureAsset>(
+      `/captures/assets/${ticket.asset.id}/finalize`,
+      json('user-a', {}),
+    );
     expect(first.status).toBe(200);
     expect(first.body.state).toBe('uploaded');
     expect(first.body.media.byteSize).toBe(2_048_000);
 
     // A contributor on a flaky connection retries. A second finalize must not
     // produce a second asset, a second object, or a 409 for succeeding twice.
-    const again = await call<CaptureAsset>(`/captures/assets/${ticket.asset.id}/finalize`, json('user-a', {}));
+    const again = await call<CaptureAsset>(
+      `/captures/assets/${ticket.asset.id}/finalize`,
+      json('user-a', {}),
+    );
     expect(again.status).toBe(200);
     expect(again.body.id).toBe(first.body.id);
     expect(again.body.state).toBe('uploaded');
@@ -354,7 +370,10 @@ describe('the exit condition: upload a geotagged photo', () => {
 
     // A stranger gets 404 rather than 403: an enumerable "exists but is not
     // yours" tells them which ids are real.
-    const theirs = await call<ApiErrorBody>(`/captures/assets/${ticket.asset.id}`, asUser('user-b'));
+    const theirs = await call<ApiErrorBody>(
+      `/captures/assets/${ticket.asset.id}`,
+      asUser('user-b'),
+    );
     expect(theirs.status).toBe(404);
   });
 
@@ -362,7 +381,10 @@ describe('the exit condition: upload a geotagged photo', () => {
     // Raw imagery is never a public path (#13), and a scene manifest must not
     // carry an Oxy id. Asserted on the serialized body, because that is what a
     // consumer sees — a field the mapper forgot to omit would show up here.
-    const { body } = await call<CaptureAsset>(`/captures/assets/${ticket.asset.id}`, asUser('user-a'));
+    const { body } = await call<CaptureAsset>(
+      `/captures/assets/${ticket.asset.id}`,
+      asUser('user-a'),
+    );
     const serialized = JSON.stringify(body);
     expect(serialized).not.toContain('user-a');
     expect(serialized).not.toContain('captures/2026');
@@ -392,7 +414,10 @@ describe('deduplication', () => {
     // S3 may already have deleted the object without a tombstone being written.
     // Use a separate fixture so later dedup tests retain their original object.
     const ownerSession = await openSession('user-e');
-    await call(`/captures/sessions/${ownerSession.id}/assets`, json('user-e', photoBody('deleting')));
+    await call(
+      `/captures/sessions/${ownerSession.id}/assets`,
+      json('user-e', photoBody('deleting')),
+    );
     await suite!.client`
       UPDATE capture_media_objects SET storage_state = 'deleting' WHERE content_hash = ${hash('deleting')}
     `;
@@ -416,7 +441,8 @@ describe('deduplication', () => {
       `/captures/sessions/${session.id}/assets`,
       json('user-c', photoBody('a')),
     );
-    const days = (Date.parse(body.asset.media.lifecycle.expiresAt) - Date.now()) / (24 * 60 * 60 * 1000);
+    const days =
+      (Date.parse(body.asset.media.lifecycle.expiresAt) - Date.now()) / (24 * 60 * 60 * 1000);
     expect(days).toBeGreaterThan(policy.retentionDays.raw_photo - 1);
     // And it is NOT counted as a rescue extension: that budget exists for
     // GoWay keeping something past policy, not for a contributor getting theirs.
@@ -451,7 +477,9 @@ describe('video is treated as a derivation source, not an archive', () => {
     // Eligible for deletion well before it expires: keyframes replace it, and
     // that early deletion is most of #10's saving.
     expect(lifecycle.deletionEligibleAt).toBeDefined();
-    expect(Date.parse(lifecycle.deletionEligibleAt as string)).toBeLessThan(Date.parse(lifecycle.expiresAt));
+    expect(Date.parse(lifecycle.deletionEligibleAt as string)).toBeLessThan(
+      Date.parse(lifecycle.expiresAt),
+    );
   });
 });
 
@@ -465,7 +493,10 @@ describe('what a contribution is refused for', () => {
   it('refuses media with no geographic anchor at all', async () => {
     const body = photoBody('b') as Record<string, unknown>;
     delete body.location;
-    const { status } = await call<ApiErrorBody>(`/captures/sessions/${session.id}/assets`, json('user-a', body));
+    const { status } = await call<ApiErrorBody>(
+      `/captures/sessions/${session.id}/assets`,
+      json('user-a', body),
+    );
     // No `location` at all is a malformed body; the anchor refusal below is for
     // a well-formed one whose values GoWay cannot use.
     expect(status).toBe(400);
@@ -563,13 +594,26 @@ describe('contributor-facing history, and storage reporting', () => {
     // closed: a `null` where the contract says absent breaks every consumer.
     const session = await openSession('user-shapes');
     captureSessionSchema.parse(session);
-    captureUploadPolicySchema.parse((await call<unknown>('/captures/policy', asUser('user-shapes'))).body);
-    const ticket = captureUploadTicketSchema.parse(
-      (await call<unknown>(`/captures/sessions/${session.id}/assets`, json('user-shapes', photoBody('shapes')))).body,
+    captureUploadPolicySchema.parse(
+      (await call<unknown>('/captures/policy', asUser('user-shapes'))).body,
     );
-    captureAssetSchema.parse((await call<unknown>(`/captures/assets/${ticket.asset.id}`, asUser('user-shapes'))).body);
-    captureAssetPageSchema.parse((await call<unknown>(`/captures/sessions/${session.id}/assets`, asUser('user-shapes'))).body);
-    captureSessionPageSchema.parse((await call<unknown>('/captures/sessions', asUser('user-shapes'))).body);
+    const ticket = captureUploadTicketSchema.parse(
+      (
+        await call<unknown>(
+          `/captures/sessions/${session.id}/assets`,
+          json('user-shapes', photoBody('shapes')),
+        )
+      ).body,
+    );
+    captureAssetSchema.parse(
+      (await call<unknown>(`/captures/assets/${ticket.asset.id}`, asUser('user-shapes'))).body,
+    );
+    captureAssetPageSchema.parse(
+      (await call<unknown>(`/captures/sessions/${session.id}/assets`, asUser('user-shapes'))).body,
+    );
+    captureSessionPageSchema.parse(
+      (await call<unknown>('/captures/sessions', asUser('user-shapes'))).body,
+    );
   });
 
   it('lists a session’s contributions with their state, gate and expiry', async () => {
@@ -577,9 +621,15 @@ describe('contributor-facing history, and storage reporting', () => {
     // every capture the account ever made ordered by time, which is a travel
     // timeline and is the thing #13 forbids building.
     const session = await openSession('user-d');
-    await call<CaptureUploadTicket>(`/captures/sessions/${session.id}/assets`, json('user-d', photoBody('k')));
+    await call<CaptureUploadTicket>(
+      `/captures/sessions/${session.id}/assets`,
+      json('user-d', photoBody('k')),
+    );
 
-    const listed = await call<CaptureAssetPage>(`/captures/sessions/${session.id}/assets`, asUser('user-d'));
+    const listed = await call<CaptureAssetPage>(
+      `/captures/sessions/${session.id}/assets`,
+      asUser('user-d'),
+    );
     expect(listed.status).toBe(200);
     expect(listed.body.items).toHaveLength(1);
     expect(listed.body.nextCursor).toBeNull();
@@ -589,7 +639,10 @@ describe('contributor-facing history, and storage reporting', () => {
     const reread = await call<CaptureSession>(`/captures/sessions/${session.id}`, asUser('user-d'));
     expect(reread.body.assetCount).toBe(1);
 
-    const strangers = await call<ApiErrorBody>(`/captures/sessions/${session.id}/assets`, asUser('user-b'));
+    const strangers = await call<ApiErrorBody>(
+      `/captures/sessions/${session.id}/assets`,
+      asUser('user-b'),
+    );
     expect(strangers.status).toBe(404);
   });
 
@@ -669,11 +722,17 @@ describe('safe retries and contributor withdrawal', () => {
     const user = randomUUID();
     const session = await openSession(user);
     const input = photoBody(user, { idempotencyKey: randomUUID() });
-    const results = await Promise.all(Array.from({ length: 4 }, () =>
-      call<CaptureUploadTicket>(`/captures/sessions/${session.id}/assets`, json(user, input))));
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        call<CaptureUploadTicket>(`/captures/sessions/${session.id}/assets`, json(user, input)),
+      ),
+    );
     expect(results.map((r) => r.status)).toEqual([201, 201, 201, 201]);
     expect(new Set(results.map((r) => r.body.asset.id)).size).toBe(1);
-    const mismatch = await call(`/captures/sessions/${session.id}/assets`, json(user, { ...input, byteSize: 100 }));
+    const mismatch = await call(
+      `/captures/sessions/${session.id}/assets`,
+      json(user, { ...input, byteSize: 100 }),
+    );
     expect(mismatch.status).toBe(409);
     const history = await call<CaptureSessionPage>('/captures/sessions', asUser(user));
     expect(history.body.items).toHaveLength(1);
@@ -686,36 +745,65 @@ describe('safe retries and contributor withdrawal', () => {
     // cursor is this contributor's, refused for anybody else.
     const page = await call<CaptureSessionPage>('/captures/sessions?limit=1', asUser(user));
     expect(page.body.items.map((s) => s.id)).toEqual([empty.id]);
-    const rest = await call<CaptureSessionPage>(`/captures/sessions?limit=1&cursor=${page.body.nextCursor ?? ''}`, asUser(user));
+    const rest = await call<CaptureSessionPage>(
+      `/captures/sessions?limit=1&cursor=${page.body.nextCursor ?? ''}`,
+      asUser(user),
+    );
     expect(rest.body.items.map((s) => s.id)).toEqual([session.id]);
     expect(rest.body.nextCursor).toBeNull();
-    const foreign = await call<ApiErrorBody>(`/captures/sessions?limit=1&cursor=${page.body.nextCursor ?? ''}`, asUser(randomUUID()));
+    const foreign = await call<ApiErrorBody>(
+      `/captures/sessions?limit=1&cursor=${page.body.nextCursor ?? ''}`,
+      asUser(randomUUID()),
+    );
     expect(foreign.status).toBe(400);
   });
 
   it('does not finalize different bytes with the declared size', async () => {
-    const user = randomUUID(), session = await openSession(user);
-    const result = await call<CaptureUploadTicket>(`/captures/sessions/${session.id}/assets`, json(user, photoBody(user)));
+    const user = randomUUID(),
+      session = await openSession(user);
+    const result = await call<CaptureUploadTicket>(
+      `/captures/sessions/${session.id}/assets`,
+      json(user, photoBody(user)),
+    );
     const target = store.targets.at(-1)!;
     store.stored.set(target.key, target.byteSize);
     store.checksumOverrides.set(target.key, hash('wrong bytes'));
-    const response = await call(`/captures/assets/${result.body.asset.id}/finalize`, json(user, {}));
+    const response = await call(
+      `/captures/assets/${result.body.asset.id}/finalize`,
+      json(user, {}),
+    );
     expect(response.status).toBe(409);
-    const asset = await call<CaptureAsset>(`/captures/assets/${result.body.asset.id}`, asUser(user));
+    const asset = await call<CaptureAsset>(
+      `/captures/assets/${result.body.asset.id}`,
+      asUser(user),
+    );
     expect(asset.body.state).toBe('expected');
   });
 
   it('withdraws only owned assets, preserves shared bytes and cleans the final reference after upload expiry', async () => {
-    const a = randomUUID(), b = randomUUID();
-    const sa = await openSession(a), sb = await openSession(b);
+    const a = randomUUID(),
+      b = randomUUID();
+    const sa = await openSession(a),
+      sb = await openSession(b);
     const input = photoBody(a, { idempotencyKey: randomUUID() });
-    const first = await call<CaptureUploadTicket>(`/captures/sessions/${sa.id}/assets`, json(a, input));
+    const first = await call<CaptureUploadTicket>(
+      `/captures/sessions/${sa.id}/assets`,
+      json(a, input),
+    );
     const target = store.targets.at(-1)!;
     store.stored.set(target.key, target.byteSize);
-    expect((await call(`/captures/assets/${first.body.asset.id}/finalize`, json(a, {}))).status).toBe(200);
-    const second = await call<CaptureUploadTicket>(`/captures/sessions/${sb.id}/assets`, json(b, input));
+    expect(
+      (await call(`/captures/assets/${first.body.asset.id}/finalize`, json(a, {}))).status,
+    ).toBe(200);
+    const second = await call<CaptureUploadTicket>(
+      `/captures/sessions/${sb.id}/assets`,
+      json(b, input),
+    );
     expect(second.body.upload).toBeUndefined();
-    expect((await call(`/captures/assets/${first.body.asset.id}`, asUser(b, { method: 'DELETE' }))).status).toBe(404);
+    expect(
+      (await call(`/captures/assets/${first.body.asset.id}`, asUser(b, { method: 'DELETE' })))
+        .status,
+    ).toBe(404);
     const path = `/captures/assets/${first.body.asset.id}`;
     for (let attempt = 0; attempt < 2; attempt++) {
       const removed = await call<undefined>(path, asUser(a, { method: 'DELETE' }));
@@ -725,21 +813,38 @@ describe('safe retries and contributor withdrawal', () => {
       expect(withdrawn.body.reconstructionEligible).toBe(false);
     }
     const db = getDb();
-    const [object] = await db.select().from(captureMediaObjects).where(eq(captureMediaObjects.objectKey, target.key));
+    const [object] = await db
+      .select()
+      .from(captureMediaObjects)
+      .where(eq(captureMediaObjects.objectKey, target.key));
     expect(object!.deletionRequestedAt).toBeNull();
     expect((await call(`/captures/sessions/${sa.id}/assets`, json(a, input))).status).toBe(409);
-    expect((await call<CaptureAsset>(`/captures/assets/${second.body.asset.id}`, asUser(b))).body.state).toBe('uploaded');
+    expect(
+      (await call<CaptureAsset>(`/captures/assets/${second.body.asset.id}`, asUser(b))).body.state,
+    ).toBe('uploaded');
     await call(`/captures/assets/${second.body.asset.id}`, asUser(b, { method: 'DELETE' }));
     // An issued PUT must expire before deletion, or it could recreate erased bytes.
     await sweepExpiredCaptures(db, store);
     expect(store.deleted).not.toContain(target.key);
-    await db.update(captureMediaObjects).set({ uploadIntentExpiresAt: new Date(Date.now() - 1000) })
+    await db
+      .update(captureMediaObjects)
+      .set({ uploadIntentExpiresAt: new Date(Date.now() - 1000) })
       .where(eq(captureMediaObjects.id, object!.id));
     await sweepExpiredCaptures(db, store);
     expect(store.deleted.filter((key) => key === target.key)).toHaveLength(1);
-    const [deleted] = await db.select().from(captureMediaObjects).where(eq(captureMediaObjects.id, object!.id));
+    const [deleted] = await db
+      .select()
+      .from(captureMediaObjects)
+      .where(eq(captureMediaObjects.id, object!.id));
     expect(deleted!.deletionReason).toBe('contributor_request');
-    expect((await db.select().from(captureAssets).where(and(eq(captureAssets.mediaObjectId, object!.id), eq(captureAssets.state, 'deleted'))))).toHaveLength(2);
+    expect(
+      await db
+        .select()
+        .from(captureAssets)
+        .where(
+          and(eq(captureAssets.mediaObjectId, object!.id), eq(captureAssets.state, 'deleted')),
+        ),
+    ).toHaveLength(2);
   });
 });
 
@@ -763,55 +868,93 @@ describe('360° captures are declared, bounded and never trusted on their word',
   it('records the declaration, and a perspective one when nothing is declared', async () => {
     const pano = await call<CaptureUploadTicket>(
       `/captures/sessions/${session.id}/assets`,
-      json('user-a', photoBody('360-a', { projection: 'equirectangular', byteSize: policy.photo.maxByteSize + 1, camera: { widthPixels: 5760, heightPixels: 2880 } })),
+      json(
+        'user-a',
+        photoBody('360-a', {
+          projection: 'equirectangular',
+          byteSize: policy.photo.maxByteSize + 1,
+          camera: { widthPixels: 5760, heightPixels: 2880 },
+        }),
+      ),
     );
     expect(pano.status).toBe(201);
     expect(pano.body.asset.projection).toBe('equirectangular');
     // Not yet a reconstruction input: the worker has not checked the claim.
     expect(pano.body.asset.reconstructionEligible).toBe(false);
 
-    const flat = await call<CaptureUploadTicket>(`/captures/sessions/${session.id}/assets`, json('user-a', photoBody('360-b')));
+    const flat = await call<CaptureUploadTicket>(
+      `/captures/sessions/${session.id}/assets`,
+      json('user-a', photoBody('360-b')),
+    );
     expect(flat.body.asset.projection).toBe('perspective');
-    const listed = await call<CaptureAssetPage>(`/captures/sessions/${session.id}/assets`, asUser('user-a'));
-    expect(listed.body.items.map((asset) => asset.projection).sort()).toEqual(['equirectangular', 'perspective']);
+    const listed = await call<CaptureAssetPage>(
+      `/captures/sessions/${session.id}/assets`,
+      asUser('user-a'),
+    );
+    expect(listed.body.items.map((asset) => asset.projection).sort()).toEqual([
+      'equirectangular',
+      'perspective',
+    ]);
   });
 
   it('refuses a 360° declaration its own dimensions contradict, or one that is too large', async () => {
     const limits = policy.equirectangular as NonNullable<CaptureUploadPolicy['equirectangular']>;
     const notTwoToOne = await call<ApiErrorBody>(
       `/captures/sessions/${session.id}/assets`,
-      json('user-a', photoBody('360-c', { projection: 'equirectangular', camera: { widthPixels: 4032, heightPixels: 3024 } })),
+      json(
+        'user-a',
+        photoBody('360-c', {
+          projection: 'equirectangular',
+          camera: { widthPixels: 4032, heightPixels: 3024 },
+        }),
+      ),
     );
     expect(notTwoToOne.status).toBe(422);
 
     const tooWide = await call<ApiErrorBody>(
       `/captures/sessions/${session.id}/assets`,
-      json('user-a', photoBody('360-d', {
-        projection: 'equirectangular',
-        camera: { widthPixels: limits.photo.maxWidthPixels * 2, heightPixels: limits.photo.maxWidthPixels },
-      })),
+      json(
+        'user-a',
+        photoBody('360-d', {
+          projection: 'equirectangular',
+          camera: {
+            widthPixels: limits.photo.maxWidthPixels * 2,
+            heightPixels: limits.photo.maxWidthPixels,
+          },
+        }),
+      ),
     );
     expect(tooWide.status).toBe(422);
 
     const tooBig = await call<ApiErrorBody>(
       `/captures/sessions/${session.id}/assets`,
-      json('user-a', photoBody('360-e', {
-        projection: 'equirectangular',
-        byteSize: limits.photo.maxByteSize + 1,
-        camera: { widthPixels: 5760, heightPixels: 2880 },
-      })),
+      json(
+        'user-a',
+        photoBody('360-e', {
+          projection: 'equirectangular',
+          byteSize: limits.photo.maxByteSize + 1,
+          camera: { widthPixels: 5760, heightPixels: 2880 },
+        }),
+      ),
     );
     expect(tooBig.status).toBe(413);
 
     const tooLong = await call<ApiErrorBody>(
       `/captures/sessions/${session.id}/assets`,
-      json('user-a', photoBody('360-f', {
-        mediaKind: 'video',
-        contentType: 'video/mp4',
-        projection: 'equirectangular',
-        byteSize: 100_000_000,
-        camera: { widthPixels: 5760, heightPixels: 2880, durationSeconds: limits.video.maxDurationSeconds + 1 },
-      })),
+      json(
+        'user-a',
+        photoBody('360-f', {
+          mediaKind: 'video',
+          contentType: 'video/mp4',
+          projection: 'equirectangular',
+          byteSize: 100_000_000,
+          camera: {
+            widthPixels: 5760,
+            heightPixels: 2880,
+            durationSeconds: limits.video.maxDurationSeconds + 1,
+          },
+        }),
+      ),
     );
     expect(tooLong.status).toBe(422);
 
@@ -825,13 +968,16 @@ describe('360° captures are declared, bounded and never trusted on their word',
   it('accepts a 360° video larger than a phone video may be', async () => {
     const { status, body } = await call<CaptureUploadTicket>(
       `/captures/sessions/${session.id}/assets`,
-      json('user-a', photoBody('360-h', {
-        mediaKind: 'video',
-        contentType: 'video/mp4',
-        projection: 'equirectangular',
-        byteSize: policy.video.maxByteSize + 1,
-        camera: { widthPixels: 5760, heightPixels: 2880, durationSeconds: 120, frameRate: 30 },
-      })),
+      json(
+        'user-a',
+        photoBody('360-h', {
+          mediaKind: 'video',
+          contentType: 'video/mp4',
+          projection: 'equirectangular',
+          byteSize: policy.video.maxByteSize + 1,
+          camera: { widthPixels: 5760, heightPixels: 2880, durationSeconds: 120, frameRate: 30 },
+        }),
+      ),
     );
     expect(status).toBe(201);
     expect(body.asset.projection).toBe('equirectangular');

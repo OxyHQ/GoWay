@@ -243,7 +243,9 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       ttlMs: options.config.cacheTtlSeconds * 1_000,
     });
 
-  const interactiveProviders = options.providers.filter((provider) => provider.allowsInteractiveSearch);
+  const interactiveProviders = options.providers.filter(
+    (provider) => provider.allowsInteractiveSearch,
+  );
 
   /**
    * Run one provider, converting any failure into a recorded outcome.
@@ -295,17 +297,23 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       } catch (error) {
         onFailure();
         logger.warn(
-          { provider: 'goway', kind: 'places_unavailable', error: error instanceof Error ? error.name : 'unknown' },
+          {
+            provider: 'goway',
+            kind: 'places_unavailable',
+            error: error instanceof Error ? error.name : 'unknown',
+          },
           'GoWay Places was skipped for this request',
         );
         return fallback;
       }
     };
     return {
-      findPlaceIdsBySourceRefs: (refs) => guard(() => gateway.findPlaceIdsBySourceRefs(refs), new Map()),
+      findPlaceIdsBySourceRefs: (refs) =>
+        guard(() => gateway.findPlaceIdsBySourceRefs(refs), new Map()),
       // The locale is passed through, or every place reconciled through this
       // wrapper loses its `localizedName` — which is every search result.
-      findPlacesByIds: (ids, locale) => guard(() => gateway.findPlacesByIds(ids, locale), new Map()),
+      findPlacesByIds: (ids, locale) =>
+        guard(() => gateway.findPlacesByIds(ids, locale), new Map()),
       findPlacesNearby: (query) => guard(() => gateway.findPlacesNearby(query), []),
       findPlacesInBounds: (query) => guard(() => gateway.findPlacesInBounds(query), []),
     };
@@ -326,8 +334,12 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
     catalog: CategoryCatalog,
   ): Promise<{ places: Place[]; consulted: boolean }> => {
     const filters = {
-      ...(query.capabilities && query.capabilities.length > 0 ? { capabilities: [...query.capabilities] } : {}),
-      ...(query.categories && query.categories.length > 0 ? { categories: [...query.categories] } : {}),
+      ...(query.capabilities && query.capabilities.length > 0
+        ? { capabilities: [...query.capabilities] }
+        : {}),
+      ...(query.categories && query.categories.length > 0
+        ? { categories: [...query.categories] }
+        : {}),
       limit: Math.min(MAX_PLACES_CANDIDATES, rankedDepth(query) * PLACES_CANDIDATE_MULTIPLIER),
       ...(query.locale !== undefined ? { locale: query.locale } : {}),
       // Search is the one list read that publishes the full name set. It has
@@ -401,7 +413,9 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
     }
 
     const providers: SearchSource[] = answered.map((outcome) => outcome.source);
-    const degraded: SearchSource[] = outcomes.flatMap((outcome) => (outcome.error ? [outcome.source] : []));
+    const degraded: SearchSource[] = outcomes.flatMap((outcome) =>
+      outcome.error ? [outcome.source] : [],
+    );
     // GoWay Places contributed if it was scanned for candidates OR if it
     // reconciled one — an unanchored search never scans, but a result carrying
     // a `placeId` came from the same database and was answered by it.
@@ -571,7 +585,8 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
             (target) => {
               // Narrowed above; the check is restated because `capable` and the
               // call site are separated by a closure the compiler cannot follow.
-              if (!target.structured) throw new ApiError('internal_error', 'Provider lost its structured endpoint.');
+              if (!target.structured)
+                throw new ApiError('internal_error', 'Provider lost its structured endpoint.');
               return target.structured({
                 limit: rankedDepth(query),
                 ...(query.street !== undefined ? { street: query.street } : {}),

@@ -26,8 +26,8 @@
 // The assertion logic is exported and pure so `test-check-contract-json-schemas.mjs`
 // can mutation-test it; the CLI half only does the I/O.
 
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * The fewest names the contracts have ever published. A floor, not an equality —
@@ -35,7 +35,7 @@ import { fileURLToPath } from "node:url";
  */
 const MINIMUM_NAMES = 30;
 
-const DIRECTIONS = new Set(["request", "response"]);
+const DIRECTIONS = new Set(['request', 'response']);
 
 /** Checks the JSON-Schema surface of an imported contracts module. Returns the failures. */
 export function assertJsonSchemaSurface(contracts) {
@@ -44,20 +44,31 @@ export function assertJsonSchemaSurface(contracts) {
   const schemas = contracts.CONTRACT_SCHEMAS;
   const convert = contracts.gowayJsonSchema;
 
-  if (!Array.isArray(names)) return ["CONTRACT_SCHEMA_NAMES is not an array; the package surface is not what this check expects."];
-  if (schemas === null || typeof schemas !== "object") return ["CONTRACT_SCHEMAS is not an object; the package surface is not what this check expects."];
-  if (typeof convert !== "function") return ["gowayJsonSchema is not a function; the package surface is not what this check expects."];
+  if (!Array.isArray(names))
+    return [
+      'CONTRACT_SCHEMA_NAMES is not an array; the package surface is not what this check expects.',
+    ];
+  if (schemas === null || typeof schemas !== 'object')
+    return [
+      'CONTRACT_SCHEMAS is not an object; the package surface is not what this check expects.',
+    ];
+  if (typeof convert !== 'function')
+    return [
+      'gowayJsonSchema is not a function; the package surface is not what this check expects.',
+    ];
 
   if (names.length < MINIMUM_NAMES) {
     failures.push(
       `only ${names.length} schema name(s) found, below the floor of ${MINIMUM_NAMES}. ` +
-        "Either the import is broken or names were removed; neither should pass silently.",
+        'Either the import is broken or names were removed; neither should pass silently.',
     );
   }
 
   const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
   if (duplicates.length > 0) {
-    failures.push(`duplicate name(s): ${[...new Set(duplicates)].join(", ")}. A duplicate inflates the count while hiding an omission.`);
+    failures.push(
+      `duplicate name(s): ${[...new Set(duplicates)].join(', ')}. A duplicate inflates the count while hiding an omission.`,
+    );
   }
 
   const declared = new Set(names);
@@ -65,12 +76,14 @@ export function assertJsonSchemaSurface(contracts) {
   const missingSchema = [...declared].filter((name) => !registered.has(name));
   const missingName = [...registered].filter((name) => !declared.has(name));
   if (missingSchema.length > 0) {
-    failures.push(`named in CONTRACT_SCHEMA_NAMES but absent from CONTRACT_SCHEMAS: ${missingSchema.join(", ")}. Asking for one throws.`);
+    failures.push(
+      `named in CONTRACT_SCHEMA_NAMES but absent from CONTRACT_SCHEMAS: ${missingSchema.join(', ')}. Asking for one throws.`,
+    );
   }
   if (missingName.length > 0) {
     failures.push(
-      `present in CONTRACT_SCHEMAS but not in CONTRACT_SCHEMA_NAMES: ${missingName.join(", ")}. ` +
-        "It never reaches the OpenAPI document or an integrator enumerating the names.",
+      `present in CONTRACT_SCHEMAS but not in CONTRACT_SCHEMA_NAMES: ${missingName.join(', ')}. ` +
+        'It never reaches the OpenAPI document or an integrator enumerating the names.',
     );
   }
 
@@ -87,11 +100,11 @@ export function assertJsonSchemaSurface(contracts) {
     } catch (error) {
       failures.push(
         `gowayJsonSchema('${name}') THREW: ${error instanceof Error ? error.message : String(error)}. ` +
-          "Conversion is lazy, so this would reach an integrator or the OpenAPI generator rather than a build.",
+          'Conversion is lazy, so this would reach an integrator or the OpenAPI generator rather than a build.',
       );
       continue;
     }
-    if (document === null || typeof document !== "object" || Object.keys(document).length === 0) {
+    if (document === null || typeof document !== 'object' || Object.keys(document).length === 0) {
       failures.push(`gowayJsonSchema('${name}') returned no usable document.`);
     }
   }
@@ -100,16 +113,16 @@ export function assertJsonSchemaSurface(contracts) {
 }
 
 if (import.meta.main) {
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-  const contracts = await import(resolve(root, "packages", "contracts", "src", "index.ts"));
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const contracts = await import(resolve(root, 'packages', 'contracts', 'src', 'index.ts'));
   const failures = assertJsonSchemaSurface(contracts);
   if (failures.length > 0) {
-    console.error("The contracts have an unusable JSON-Schema surface:\n");
+    console.error('The contracts have an unusable JSON-Schema surface:\n');
     for (const failure of failures) console.error(`::error::${failure}`);
     process.exit(1);
   }
   console.log(
     `All ${contracts.CONTRACT_SCHEMA_NAMES.length} contract schema name(s) convert to JSON Schema, ` +
-      "and the name list and schema registry agree.",
+      'and the name list and schema registry agree.',
   );
 }

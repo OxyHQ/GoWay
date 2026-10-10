@@ -211,10 +211,7 @@ export const places = pgTable(
      * (`0016`): a key a write ADDS must be an active category. Ancestors are
      * not stored: a filter on `food` expands to its descendants instead.
      */
-    categories: text()
-      .array()
-      .notNull()
-      .default(sql`'{}'::text[]`),
+    categories: text().array().notNull().default(sql`'{}'::text[]`),
 
     addressHouseNumber: text(),
     addressStreet: text(),
@@ -289,7 +286,11 @@ export const places = pgTable(
   },
   (table) => [
     closedSet('places_status_check', table.status, PLACE_STATUSES),
-    closedSet('places_verification_state_check', table.verificationState, PLACE_VERIFICATION_STATES),
+    closedSet(
+      'places_verification_state_check',
+      table.verificationState,
+      PLACE_VERIFICATION_STATES,
+    ),
     /**
      * The ordinates are bounded HERE as well as in the HTTP layer. A latitude
      * of 120 rejected by zod is a 422; a latitude of 120 that reaches the table
@@ -430,7 +431,10 @@ export const placesNames = pgTable(
      * extension added speculatively is one nobody can remove.
      */
     index('places_names_name_normalized_idx').on(table.nameNormalized),
-    check('places_names_language_tag_check', sql`${table.language} ~ '${sql.raw(LANGUAGE_TAG_SQL_PATTERN)}'`),
+    check(
+      'places_names_language_tag_check',
+      sql`${table.language} ~ '${sql.raw(LANGUAGE_TAG_SQL_PATTERN)}'`,
+    ),
     check('places_names_name_not_blank_check', sql`btrim(${table.name}) <> ''`),
     check('places_names_source_not_blank_check', sql`btrim(${table.source}) <> ''`),
   ],
@@ -461,9 +465,16 @@ export const placesDescriptions = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
-    unique('places_descriptions_language_source_key').on(table.placeId, table.language, table.source),
+    unique('places_descriptions_language_source_key').on(
+      table.placeId,
+      table.language,
+      table.source,
+    ),
     index('places_descriptions_place_idx').on(table.placeId),
-    check('places_descriptions_language_tag_check', sql`${table.language} ~ '${sql.raw(LANGUAGE_TAG_SQL_PATTERN)}'`),
+    check(
+      'places_descriptions_language_tag_check',
+      sql`${table.language} ~ '${sql.raw(LANGUAGE_TAG_SQL_PATTERN)}'`,
+    ),
     check(
       'places_descriptions_text_check',
       sql`btrim(${table.description}) <> '' and char_length(${table.description}) <= ${sql.raw(String(MAX_DESCRIPTION_LENGTH))}`,
@@ -617,13 +628,20 @@ export const placesCapabilities = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
-    closedSet('places_capabilities_verification_check', table.verification, CAPABILITY_VERIFICATIONS),
+    closedSet(
+      'places_capabilities_verification_check',
+      table.verification,
+      CAPABILITY_VERIFICATIONS,
+    ),
     /**
      * A namespace may contain dots (`payments.faircoin`); a capability may not.
      * Otherwise `namespace || '.' || capability` would be ambiguous and two
      * different rows could generate the same `key`.
      */
-    check('places_capabilities_namespace_shape_check', sql`${table.namespace} ~ '^[a-z0-9_-]+([.][a-z0-9_-]+)*$'`),
+    check(
+      'places_capabilities_namespace_shape_check',
+      sql`${table.namespace} ~ '^[a-z0-9_-]+([.][a-z0-9_-]+)*$'`,
+    ),
     check('places_capabilities_capability_shape_check', sql`${table.capability} ~ '^[a-z0-9_-]+$'`),
     check(
       'places_capabilities_value_type_check',
@@ -738,10 +756,7 @@ export const placesDuplicateCandidates = pgTable(
   (table) => [
     closedSet('places_duplicates_reason_check', table.reason, DUPLICATE_CANDIDATE_REASONS),
     closedSet('places_duplicates_state_check', table.state, DUPLICATE_CANDIDATE_STATES),
-    check(
-      'places_duplicates_pair_order_check',
-      sql`${table.placeId} < ${table.candidatePlaceId}`,
-    ),
+    check('places_duplicates_pair_order_check', sql`${table.placeId} < ${table.candidatePlaceId}`),
     check(
       'places_duplicates_score_range_check',
       sql`${table.score} is null or ${table.score} between 0 and 1`,
@@ -843,8 +858,14 @@ export const placeReports = pgTable(
       'place_reports_resolved_check',
       sql`(${table.resolvedAt} is null) = (${table.resolution} is null) and (${table.resolvedAt} is null) = (${table.resolvedByOxyUserId} is null)`,
     ),
-    check('place_reports_note_check', sql`${table.note} is null or char_length(${table.note}) <= 500`),
-    check('place_reports_subject_check', sql`${table.mediaId} is null or ${table.reviewId} is null`),
+    check(
+      'place_reports_note_check',
+      sql`${table.note} is null or char_length(${table.note}) <= 500`,
+    ),
+    check(
+      'place_reports_subject_check',
+      sql`${table.mediaId} is null or ${table.reviewId} is null`,
+    ),
     /**
      * One open report per reporter per SUBJECT — the place, one gallery item or
      * one review: a repeat answers the existing one. `coalesce` because a
@@ -894,10 +915,7 @@ export const placeHoursExceptions = pgTable(
     endsOn: date({ mode: 'string' }).notNull(),
     closed: boolean().notNull(),
     /** The special hours on each day of the range. Empty exactly when `closed`. */
-    intervals: jsonb()
-      .notNull()
-      .$type<TimeRange[]>()
-      .default(sql`'[]'::jsonb`),
+    intervals: jsonb().notNull().$type<TimeRange[]>().default(sql`'[]'::jsonb`),
     note: text(),
     /** `goway` for anything written through the API; the same key space as `places_sources.source`. */
     source: text().notNull(),
@@ -907,7 +925,11 @@ export const placeHoursExceptions = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
-    closedSet('place_hours_exceptions_verification_check', table.verification, CAPABILITY_VERIFICATIONS),
+    closedSet(
+      'place_hours_exceptions_verification_check',
+      table.verification,
+      CAPABILITY_VERIFICATIONS,
+    ),
     check('place_hours_exceptions_range_check', sql`${table.startsOn} <= ${table.endsOn}`),
     check(
       'place_hours_exceptions_span_check',
@@ -918,7 +940,12 @@ export const placeHoursExceptions = pgTable(
       sql`jsonb_typeof(${table.intervals}) = 'array' and ${table.closed} = (jsonb_array_length(${table.intervals}) = 0)`,
     ),
     check('place_hours_exceptions_source_not_blank_check', sql`btrim(${table.source}) <> ''`),
-    unique('place_hours_exceptions_range_key').on(table.placeId, table.startsOn, table.endsOn, table.verification),
+    unique('place_hours_exceptions_range_key').on(
+      table.placeId,
+      table.startsOn,
+      table.endsOn,
+      table.verification,
+    ),
     /** The single-place read asks for the exceptions that have not ended yet. */
     index('place_hours_exceptions_place_ends_idx').on(table.placeId, table.endsOn),
   ],
@@ -1105,9 +1132,20 @@ export const placeReviews = pgTable(
     /** The author's own reviews, whatever their status. */
     index('place_reviews_author_idx').on(table.authorOxyUserId, table.placeId),
     /** The newest-first list. */
-    index('place_reviews_place_created_idx').on(table.placeId, table.status, table.createdAt, table.id),
+    index('place_reviews_place_created_idx').on(
+      table.placeId,
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
     /** The by-rating lists. */
-    index('place_reviews_place_rating_idx').on(table.placeId, table.status, table.rating, table.createdAt, table.id),
+    index('place_reviews_place_rating_idx').on(
+      table.placeId,
+      table.status,
+      table.rating,
+      table.createdAt,
+      table.id,
+    ),
   ],
 );
 

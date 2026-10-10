@@ -65,16 +65,24 @@ const ATTRIBUTION = env(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_ATTRIBUTION);
 
 /** `"a,b,c"` → numbers, or `undefined` unless exactly `count` finite values. */
 function numbers(value: string | undefined, count: number): number[] | undefined {
-  const parts = env(value)?.split(',').map((part) => Number(part.trim()));
+  const parts = env(value)
+    ?.split(',')
+    .map((part) => Number(part.trim()));
   return parts && parts.length === count && parts.every(Number.isFinite) ? parts : undefined;
 }
 
 // The SDK refuses a manifest whose asset URLs are not `https:` (the published
 // contract), and this transport is answered THROUGH the SDK — so an `http:`
 // fixture URL turns into "this 3D view couldn't be loaded". Say why, once.
-for (const [name, url] of [['SPLAT', SPLAT_URL], ['PREVIEW', PREVIEW_URL], ['POSTER', POSTER_URL]] as const) {
+for (const [name, url] of [
+  ['SPLAT', SPLAT_URL],
+  ['PREVIEW', PREVIEW_URL],
+  ['POSTER', POSTER_URL],
+] as const) {
   if (url && !/^https:\/\//i.test(url)) {
-    console.warn(`[goway/street3d] EXPO_PUBLIC_STREET3D_FIXTURE_${name}_URL must be https: — the SDK rejects other asset URLs.`);
+    console.warn(
+      `[goway/street3d] EXPO_PUBLIC_STREET3D_FIXTURE_${name}_URL must be https: — the SDK rejects other asset URLs.`,
+    );
   }
 }
 
@@ -92,8 +100,22 @@ const FAKE_SHA = '0'.repeat(64);
 function assets(id: string): StreetSceneAsset[] {
   const splat = SPLAT_URL ?? `${UNSET_ORIGIN}/${id}/scene.spz`;
   const list: StreetSceneAsset[] = [
-    { role: 'splat_preview', format: 'spz', url: PREVIEW_URL ?? splat, byteSize: 2_400_000, sha256: FAKE_SHA, gaussians: 150_000 },
-    { role: 'splat', format: 'spz', url: splat, byteSize: 18_000_000, sha256: FAKE_SHA, gaussians: 1_200_000 },
+    {
+      role: 'splat_preview',
+      format: 'spz',
+      url: PREVIEW_URL ?? splat,
+      byteSize: 2_400_000,
+      sha256: FAKE_SHA,
+      gaussians: 150_000,
+    },
+    {
+      role: 'splat',
+      format: 'spz',
+      url: splat,
+      byteSize: 18_000_000,
+      sha256: FAKE_SHA,
+      gaussians: 1_200_000,
+    },
   ];
   list.push({
     role: 'poster',
@@ -108,7 +130,15 @@ function assets(id: string): StreetSceneAsset[] {
 function rectangle(west: number, south: number, east: number, north: number) {
   return {
     type: 'Polygon' as const,
-    coordinates: [[[west, south], [east, south], [east, north], [west, north], [west, south]]],
+    coordinates: [
+      [
+        [west, south],
+        [east, south],
+        [east, north],
+        [west, north],
+        [west, south],
+      ],
+    ],
   };
 }
 
@@ -119,7 +149,12 @@ const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 function boundsAround(latitude: number, longitude: number) {
   const dLat = 150 / 111_320;
   const dLon = 150 / (111_320 * Math.cos((latitude * Math.PI) / 180));
-  return { west: longitude - dLon, south: latitude - dLat, east: longitude + dLon, north: latitude + dLat };
+  return {
+    west: longitude - dLon,
+    south: latitude - dLat,
+    east: longitude + dLon,
+    north: latitude + dLat,
+  };
 }
 
 interface SceneSeed {
@@ -153,7 +188,7 @@ const SCENES: readonly SceneSeed[] = ANCHOR
       {
         id: 's3d_fixture_santa_caterina',
         anchor: { latitude: 41.3868, longitude: 2.1782, altitudeMeters: 50 },
-        bounds: { west: 2.1770, south: 41.3860, east: 2.1795, north: 41.3877 },
+        bounds: { west: 2.177, south: 41.386, east: 2.1795, north: 41.3877 },
         placement: 'approximate',
       },
     ];
@@ -181,7 +216,9 @@ function manifestOf(seed: SceneSeed): StreetSceneManifest {
     observedFrom: iso(-120),
     observedTo: iso(-95),
     publishedAt: iso(-60),
-    attributions: [ATTRIBUTION ?? 'Fixture scene — local development data, not a published GoWay view'],
+    attributions: [
+      ATTRIBUTION ?? 'Fixture scene — local development data, not a published GoWay view',
+    ],
     privacyPipelineVersions: ['privacy-2026.09'],
   };
 }
@@ -212,13 +249,23 @@ function summaryOf(manifest: StreetSceneManifest): StreetSceneSummary {
  * to show without inventing a second city around a real local scene.
  */
 const CELL = 0.0012;
-function area(id: string, state: StreetCoverageArea['state'], latitude: number, longitude: number,
-  extra: Partial<StreetCoverageArea> = {}): StreetCoverageArea {
+function area(
+  id: string,
+  state: StreetCoverageArea['state'],
+  latitude: number,
+  longitude: number,
+  extra: Partial<StreetCoverageArea> = {},
+): StreetCoverageArea {
   return {
     id,
     state,
     center: { latitude, longitude },
-    bounds: { west: longitude - CELL / 2, south: latitude - CELL / 2, east: longitude + CELL / 2, north: latitude + CELL / 2 },
+    bounds: {
+      west: longitude - CELL / 2,
+      south: latitude - CELL / 2,
+      east: longitude + CELL / 2,
+      north: latitude + CELL / 2,
+    },
     contributionBand: '5-19',
     ...extra,
   };
@@ -235,7 +282,9 @@ function anchoredAreas(latitude: number, longitude: number): StreetCoverageArea[
   const east = offset(latitude, longitude, 260, 0);
   const west = offset(latitude, longitude, -260, 0);
   return [
-    area('a_fixture_anchor_at_risk', 'at_risk', east.latitude, east.longitude, { atRiskUntil: iso(9) }),
+    area('a_fixture_anchor_at_risk', 'at_risk', east.latitude, east.longitude, {
+      atRiskUntil: iso(9),
+    }),
     area('a_fixture_anchor_partial', 'partial', west.latitude, west.longitude),
   ];
 }
@@ -243,12 +292,12 @@ function anchoredAreas(latitude: number, longitude: number): StreetCoverageArea[
 export const FIXTURE_AREAS: readonly StreetCoverageArea[] = ANCHOR
   ? anchoredAreas(ANCHOR[0], ANCHOR[1])
   : [
-      area('a_fixture_born', 'at_risk', 41.3846, 2.1820, { atRiskUntil: iso(9) }),
-      area('a_fixture_raval', 'partial', 41.3800, 2.1680),
-      area('a_fixture_gotic', 'seeded', 41.3830, 2.1770, { contributionBand: '1-4' }),
-      area('a_fixture_barceloneta', 'reconstructable', 41.3800, 2.1890, { contributionBand: '20+' }),
+      area('a_fixture_born', 'at_risk', 41.3846, 2.182, { atRiskUntil: iso(9) }),
+      area('a_fixture_raval', 'partial', 41.38, 2.168),
+      area('a_fixture_gotic', 'seeded', 41.383, 2.177, { contributionBand: '1-4' }),
+      area('a_fixture_barceloneta', 'reconstructable', 41.38, 2.189, { contributionBand: '20+' }),
       area('a_fixture_sant_pere', 'reconstructing', 41.3885, 2.1765, { contributionBand: '20+' }),
-      area('a_fixture_poble_sec', 'needs_more_capture', 41.3745, 2.1640),
+      area('a_fixture_poble_sec', 'needs_more_capture', 41.3745, 2.164),
       area('a_fixture_liceu', 'partial', 41.3806, 2.1732, { sceneId: BARCELONA_FIXTURE_SCENE_ID }),
     ];
 
@@ -257,9 +306,16 @@ const intersects = (
   b: { west: number; south: number; east: number; north: number },
 ) => a.west <= b.east && a.east >= b.west && a.south <= b.north && a.north >= b.south;
 
-export function fixtureCoverage(box: { west: number; south: number; east: number; north: number }): StreetCoverage {
+export function fixtureCoverage(box: {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}): StreetCoverage {
   return {
-    scenes: [...FIXTURE_SCENES.values()].filter((scene) => intersects(scene.bounds, box)).map(summaryOf),
+    scenes: [...FIXTURE_SCENES.values()]
+      .filter((scene) => intersects(scene.bounds, box))
+      .map(summaryOf),
     areas: FIXTURE_AREAS.filter((entry) => intersects(entry.bounds, box)),
   };
 }
@@ -282,10 +338,14 @@ export async function fixtureSceneResponse(id: string): Promise<StreetSceneManif
       return response.json() as Promise<unknown>;
     })
     .catch((error: unknown) => {
-      console.warn(`[goway/street3d] EXPO_PUBLIC_STREET3D_FIXTURE_NAVIGATION_URL could not be loaded: ${String(error)}`);
+      console.warn(
+        `[goway/street3d] EXPO_PUBLIC_STREET3D_FIXTURE_NAVIGATION_URL could not be loaded: ${String(error)}`,
+      );
       navigation = null;
       return undefined;
     });
   const loaded = await navigation;
-  return loaded === undefined ? manifest : ({ ...manifest, navigation: loaded } as StreetSceneManifest);
+  return loaded === undefined
+    ? manifest
+    : ({ ...manifest, navigation: loaded } as StreetSceneManifest);
 }

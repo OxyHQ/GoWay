@@ -37,7 +37,10 @@ const emptyAsUndefined = (value: unknown): unknown =>
   typeof value === 'string' && value.trim().length === 0 ? undefined : value;
 
 const integerFromEnv = (fallback: number, { minimum = 1, maximum = 65535 } = {}) =>
-  z.preprocess(emptyAsUndefined, z.coerce.number().int().min(minimum).max(maximum).default(fallback));
+  z.preprocess(
+    emptyAsUndefined,
+    z.coerce.number().int().min(minimum).max(maximum).default(fallback),
+  );
 
 const httpOrigin = z
   .string()

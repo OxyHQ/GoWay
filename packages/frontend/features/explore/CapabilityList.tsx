@@ -25,7 +25,11 @@ import * as WebBrowser from 'expo-web-browser';
 import { Text } from '@oxy.so/bloom/typography';
 import { useTheme } from '@oxy.so/bloom/theme';
 
-import { groupedCapabilities, type CapabilityPresentation, type CapabilityTone } from '@/lib/goway/capabilities';
+import {
+  groupedCapabilities,
+  type CapabilityPresentation,
+  type CapabilityTone,
+} from '@/lib/goway/capabilities';
 
 export interface CapabilityListProps {
   capabilities: readonly PlaceCapability[];
@@ -57,7 +61,9 @@ function CapabilityRow({ presented }: { presented: CapabilityPresentation }) {
   const theme = useTheme();
   const paint = toneColors(presented.tone, theme.colors);
   const Icon = presented.icon;
-  const provenance = presented.freshness ? `${presented.provenance} · ${presented.freshness}` : presented.provenance;
+  const provenance = presented.freshness
+    ? `${presented.provenance} · ${presented.freshness}`
+    : presented.provenance;
   const open = useCallback(() => {
     if (presented.href) void WebBrowser.openBrowserAsync(presented.href);
   }, [presented.href]);

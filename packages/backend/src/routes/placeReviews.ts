@@ -25,7 +25,13 @@
  * Writes sit behind a contribution rate limit on top of the API-wide one.
  */
 
-import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from 'express';
 import { z } from 'zod';
 import {
   contentReportInputSchema,
@@ -50,7 +56,13 @@ import {
 import { revisionAuthor } from '../db/places/revisions';
 import { getDb } from '../db/postgres';
 import { ApiError } from '../http/apiError';
-import { cursorBinding, decodeCursor, pageOf, timeKeysetSchema, timestampTextSchema } from '../http/cursor';
+import {
+  cursorBinding,
+  decodeCursor,
+  pageOf,
+  timeKeysetSchema,
+  timestampTextSchema,
+} from '../http/cursor';
 import { parseBody, parsePath, parseQuery } from '../http/validation';
 import type { AccountRoleResolver, OxyCaller } from '../oxy/accountRoles';
 import { requiredOxyCaller } from '../oxy/caller';
@@ -110,13 +122,25 @@ export function createPlaceReviewsRouter(dependencies: PlaceReviewsRouterDepende
       const binding = cursorBinding('place-reviews', { placeId, sort });
       const after = decodeCursor(cursor, binding, reviewKeysetSchema);
       if (after !== undefined && after.length !== (sort === 'newest' ? 2 : 3)) {
-        throw new ApiError('bad_request', 'The cursor is not one this list issued for these filters.', {
-          field: 'cursor',
-          issue: 'foreign_cursor',
-        });
+        throw new ApiError(
+          'bad_request',
+          'The cursor is not one this list issued for these filters.',
+          {
+            field: 'cursor',
+            issue: 'foreign_cursor',
+          },
+        );
       }
       const rows = await listPlaceReviews(db, placeId, { sort, limit: limit + 1, after });
-      response.json(pageOf(rows, limit, binding, (row) => row.position, (row) => row.review));
+      response.json(
+        pageOf(
+          rows,
+          limit,
+          binding,
+          (row) => row.position,
+          (row) => row.review,
+        ),
+      );
     }),
   );
 
@@ -155,7 +179,10 @@ export function createPlaceReviewsRouter(dependencies: PlaceReviewsRouterDepende
       assertPublished(lifecycle);
       const claimants = approvedClaims.map((claim) => claim.oxyAccountId);
       if (await affiliatedWithAny(caller, claimants, accountRoles)) {
-        throw new ApiError('forbidden', 'A business may not review its own place. Reply to its reviews instead.');
+        throw new ApiError(
+          'forbidden',
+          'A business may not review its own place. Reply to its reviews instead.',
+        );
       }
 
       const written = await putReview(db, placeId, reviewer, input, revisionAuthor(caller, 'api'));
@@ -205,8 +232,15 @@ export function createPlaceReviewsRouter(dependencies: PlaceReviewsRouterDepende
       const { body } = parseBody(placeReviewReplyInputSchema, request.body);
       const caller = requiredOxyCaller(request);
       await assertBusiness(caller, placeId);
-      const review = await replyToReview(getDb(), placeId, reviewId, body, revisionAuthor(caller, 'api'));
-      if (!review) throw new ApiError('not_found', 'This place has no published review with that id.');
+      const review = await replyToReview(
+        getDb(),
+        placeId,
+        reviewId,
+        body,
+        revisionAuthor(caller, 'api'),
+      );
+      if (!review)
+        throw new ApiError('not_found', 'This place has no published review with that id.');
       response.json(review);
     }),
   );

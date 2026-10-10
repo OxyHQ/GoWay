@@ -25,7 +25,10 @@ let session: postgres.Sql;
 /** Each place's categories before the move, and after it. */
 const CASES: Record<string, [string[], string[]]> = {
   'move-1': [['shop.newsagent'], ['shop.kiosk']],
-  'move-2': [['shop.newsagent', 'culture.attraction'], ['shop.kiosk', 'culture.attraction']],
+  'move-2': [
+    ['shop.newsagent', 'culture.attraction'],
+    ['shop.kiosk', 'culture.attraction'],
+  ],
   // Already carried: the repeat collapses to its first place.
   'move-3': [['shop.kiosk', 'shop.newsagent'], ['shop.kiosk']],
   // An ancestor of the new key is dropped, as the importer drops one.
@@ -41,8 +44,12 @@ beforeAll(async () => {
   await prepareBatchSession(session, 'goway-categories-move-test');
   const db = suite.db;
   await db.transaction(async (tx) => {
-    await tx.insert(placeCategories).values({ key: 'shop.kiosk', parentKey: 'shop', icon: 'book', position: 1000 });
-    await tx.insert(placeCategoryLabels).values({ categoryKey: 'shop.kiosk', language: 'en', label: 'Kiosk' });
+    await tx
+      .insert(placeCategories)
+      .values({ key: 'shop.kiosk', parentKey: 'shop', icon: 'book', position: 1000 });
+    await tx
+      .insert(placeCategoryLabels)
+      .values({ categoryKey: 'shop.kiosk', language: 'en', label: 'Kiosk' });
   });
   for (const [id, [categories]] of Object.entries(CASES)) {
     await db.insert(places).values({ id, name: id, latitude: 40.4, longitude: -3.7, categories });
@@ -63,28 +70,48 @@ afterAll(async () => {
 
 describe('categories:move', () => {
   it('refuses to move off a category that is still active', async () => {
-    await expect(moveCategoryPlaces(session, { ...options, steps: ['places'] })).rejects.toThrow('must be a deprecated category');
+    await expect(moveCategoryPlaces(session, { ...options, steps: ['places'] })).rejects.toThrow(
+      'must be a deprecated category',
+    );
   });
 
   it('counts, moves both sides by one rule, and then finds nothing left', async () => {
-    await suite!.db.update(placeCategories).set({ status: 'deprecated' }).where(eq(placeCategories.key, 'shop.newsagent'));
+    await suite!.db
+      .update(placeCategories)
+      .set({ status: 'deprecated' })
+      .where(eq(placeCategories.key, 'shop.newsagent'));
     const steps = ['places', 'sources'] as const;
     const matched = (summaries: Awaited<ReturnType<typeof moveCategoryPlaces>>) =>
       Object.fromEntries(summaries.map((summary) => [summary.step, summary.matched]));
 
-    expect(matched(await moveCategoryPlaces(session, { ...options, steps, dryRun: true }))).toEqual({ places: 4, sources: 4 });
-    expect(matched(await moveCategoryPlaces(session, { ...options, steps }))).toEqual({ places: 4, sources: 4 });
-    expect(matched(await moveCategoryPlaces(session, { ...options, steps, dryRun: true }))).toEqual({ places: 0, sources: 0 });
+    expect(matched(await moveCategoryPlaces(session, { ...options, steps, dryRun: true }))).toEqual(
+      { places: 4, sources: 4 },
+    );
+    expect(matched(await moveCategoryPlaces(session, { ...options, steps }))).toEqual({
+      places: 4,
+      sources: 4,
+    });
+    expect(matched(await moveCategoryPlaces(session, { ...options, steps, dryRun: true }))).toEqual(
+      { places: 0, sources: 0 },
+    );
 
     const ids = Object.keys(CASES);
-    const rows = await suite!.db.select({ id: places.id, categories: places.categories }).from(places).where(inArray(places.id, ids));
+    const rows = await suite!.db
+      .select({ id: places.id, categories: places.categories })
+      .from(places)
+      .where(inArray(places.id, ids));
     const sources = await suite!.db
       .select({ id: placesSources.placeId, data: placesSources.sourceData })
       .from(placesSources)
       .where(inArray(placesSources.placeId, ids));
     for (const [id, [, after]] of Object.entries(CASES)) {
-      expect({ id, categories: rows.find((row) => row.id === id)?.categories }).toEqual({ id, categories: after });
-      const recorded = sources.find((row) => row.id === id)?.data as { normalized: { categories: string[] } } | undefined;
+      expect({ id, categories: rows.find((row) => row.id === id)?.categories }).toEqual({
+        id,
+        categories: after,
+      });
+      const recorded = sources.find((row) => row.id === id)?.data as
+        | { normalized: { categories: string[] } }
+        | undefined;
       expect({ id, recorded: recorded?.normalized.categories }).toEqual({ id, recorded: after });
     }
   });

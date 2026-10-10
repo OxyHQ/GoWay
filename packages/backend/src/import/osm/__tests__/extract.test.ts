@@ -55,7 +55,11 @@ const ARCHIVE: FixtureBlock[] = [
   },
   {
     ways: [
-      { id: 500, refs: [101, 102, 103, 104, 101], tags: { tourism: 'museum', name: 'Museu del Quadrat' } },
+      {
+        id: 500,
+        refs: [101, 102, 103, 104, 101],
+        tags: { tourism: 'museum', name: 'Museu del Quadrat' },
+      },
       { id: 501, refs: [201, 202] },
       // A way POI whose nodes are not in this archive at all.
       { id: 502, refs: [999_001, 999_002], tags: { shop: 'mall', name: 'Centre Perdut' } },
@@ -127,7 +131,11 @@ describe('extractPois', () => {
 
   test('counts what it emitted, by category and by language', async () => {
     const { stats } = await run(writePbf('stats.osm.pbf', ARCHIVE));
-    expect(Object.fromEntries(stats.byCategory)).toEqual({ 'culture.museum': 1, 'food.cafe': 1, 'leisure.park': 1 });
+    expect(Object.fromEntries(stats.byCategory)).toEqual({
+      'culture.museum': 1,
+      'food.cafe': 1,
+      'leisure.park': 1,
+    });
     expect(Object.fromEntries(stats.byLanguage)).toEqual({ es: 1 });
     expect(stats.placesWithTranslations).toBe(1);
   });
@@ -154,7 +162,9 @@ describe('extractPois', () => {
       longitude: 2,
       tags: { amenity: 'cafe', name: `Bar ${index}` },
     }));
-    const { batches, places } = await run(writePbf('batches.osm.pbf', [{ nodes }]), { batchSize: 3 });
+    const { batches, places } = await run(writePbf('batches.osm.pbf', [{ nodes }]), {
+      batchSize: 3,
+    });
     expect(batches).toEqual([3, 3, 1]);
     expect(places).toHaveLength(7);
   });
@@ -166,7 +176,10 @@ describe('extractPois', () => {
       longitude: 2,
       tags: { amenity: 'cafe', name: `Bar ${index}` },
     }));
-    const { places } = await run(writePbf('limit.osm.pbf', [{ nodes }]), { limit: 5, batchSize: 2 });
+    const { places } = await run(writePbf('limit.osm.pbf', [{ nodes }]), {
+      limit: 5,
+      batchSize: 2,
+    });
     expect(places.length).toBeLessThanOrEqual(6);
     expect(places.length).toBeGreaterThanOrEqual(5);
   });

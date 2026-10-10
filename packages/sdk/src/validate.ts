@@ -42,7 +42,9 @@ function pathOf(root: string, path: readonly PropertyKey[]): string {
 }
 
 function describe(error: z.ZodError, root: string): string {
-  const shown = error.issues.slice(0, MAX_ISSUES_SHOWN).map((issue) => `${pathOf(root, issue.path)}: ${issue.message}`);
+  const shown = error.issues
+    .slice(0, MAX_ISSUES_SHOWN)
+    .map((issue) => `${pathOf(root, issue.path)}: ${issue.message}`);
   const hidden = error.issues.length - shown.length;
   return hidden > 0 ? `${shown.join('; ')} (and ${hidden} more)` : shown.join('; ');
 }
@@ -56,9 +58,14 @@ function describe(error: z.ZodError, root: string): string {
  * trimmed) and it holds only the keys the contract names, so a body can never
  * carry a `verification`, an `id` or anything else a future server might read.
  */
-export function validInput<S extends z.ZodType>(schema: S, value: unknown, what: string): z.output<S> {
+export function validInput<S extends z.ZodType>(
+  schema: S,
+  value: unknown,
+  what: string,
+): z.output<S> {
   const result = schema.safeParse(value, { error: ENGLISH });
-  if (!result.success) throw new GoWayValidationError(describe(result.error, what), { cause: result.error });
+  if (!result.success)
+    throw new GoWayValidationError(describe(result.error, what), { cause: result.error });
   return result.data;
 }
 
@@ -66,10 +73,13 @@ export function validInput<S extends z.ZodType>(schema: S, value: unknown, what:
 export function validResponse<T>(schema: z.ZodType<T>, body: unknown, status: number): T {
   const result = schema.safeParse(body, { error: ENGLISH });
   if (!result.success) {
-    throw new GoWayResponseError(`GoWay returned a malformed response: ${describe(result.error, 'response')}`, {
-      status,
-      cause: result.error,
-    });
+    throw new GoWayResponseError(
+      `GoWay returned a malformed response: ${describe(result.error, 'response')}`,
+      {
+        status,
+        cause: result.error,
+      },
+    );
   }
   return result.data;
 }

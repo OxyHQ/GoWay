@@ -20,10 +20,7 @@
 
 import { and, count, eq, inArray, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import { street3dConfig } from '../../config/street3d';
-import {
-  RETRYABLE_FAILURE_CODES,
-  type WorkerFailureCode,
-} from '../../street3d/workerContract';
+import { RETRYABLE_FAILURE_CODES, type WorkerFailureCode } from '../../street3d/workerContract';
 import type { DatabaseOrTransaction, Transaction } from '../postgres';
 import {
   captureAssets,
@@ -71,7 +68,11 @@ export function isRunning(state: string): boolean {
 
 /** The job, locked for the rest of the transaction. */
 export async function lockJob(tx: Transaction, jobId: string): Promise<JobRow | null> {
-  const [row] = await tx.select().from(street3dJobs).where(eq(street3dJobs.id, jobId)).for('update');
+  const [row] = await tx
+    .select()
+    .from(street3dJobs)
+    .where(eq(street3dJobs.id, jobId))
+    .for('update');
   return row ?? null;
 }
 
@@ -84,11 +85,21 @@ export async function lockJob(tx: Transaction, jobId: string): Promise<JobRow | 
  */
 export async function recordEvent(
   tx: Transaction,
-  event: { eventId: string; jobId: string; attempt: number; type: 'heartbeat' | 'completed' | 'failed' },
+  event: {
+    eventId: string;
+    jobId: string;
+    attempt: number;
+    type: 'heartbeat' | 'completed' | 'failed';
+  },
 ): Promise<boolean> {
   const rows = await tx
     .insert(street3dJobEvents)
-    .values({ eventId: event.eventId, jobId: event.jobId, attempt: event.attempt, type: event.type })
+    .values({
+      eventId: event.eventId,
+      jobId: event.jobId,
+      attempt: event.attempt,
+      type: event.type,
+    })
     .onConflictDoNothing()
     .returning({ eventId: street3dJobEvents.eventId });
   return rows.length === 1;
@@ -147,7 +158,9 @@ async function releaseRawProtection(tx: Transaction, assetId: string, now: Date)
   await tx
     .update(captureMediaObjects)
     .set({ protectedUntil: null, updatedAt: now })
-    .where(and(eq(captureMediaObjects.id, asset.mediaObjectId), isNull(captureMediaObjects.deletedAt)));
+    .where(
+      and(eq(captureMediaObjects.id, asset.mediaObjectId), isNull(captureMediaObjects.deletedAt)),
+    );
 }
 
 /**
@@ -157,8 +170,14 @@ async function releaseRawProtection(tx: Transaction, assetId: string, now: Date)
  * and never applied to an input whose removal was requested: a contributor's
  * withdrawal outranks a job.
  */
-export async function refreshInputProtection(tx: Transaction, job: JobRow, now: Date): Promise<void> {
-  const until = new Date(now.getTime() + street3dConfig.inputProtectionHours * 3600_000).toISOString();
+export async function refreshInputProtection(
+  tx: Transaction,
+  job: JobRow,
+  now: Date,
+): Promise<void> {
+  const until = new Date(
+    now.getTime() + street3dConfig.inputProtectionHours * 3600_000,
+  ).toISOString();
   if (job.kind === 'capture_privacy' && job.assetId) {
     const [asset] = await tx
       .select({ mediaObjectId: captureAssets.mediaObjectId })
@@ -198,7 +217,11 @@ export async function refreshInputProtection(tx: Transaction, job: JobRow, now: 
 }
 
 /** Return a scene job's selected candidates to `waiting_for_overlap`. */
-export async function releaseSceneCandidates(tx: Transaction, job: JobRow, now: Date): Promise<void> {
+export async function releaseSceneCandidates(
+  tx: Transaction,
+  job: JobRow,
+  now: Date,
+): Promise<void> {
   const inputs = job.inputDerivativeIds ?? [];
   if (inputs.length === 0) return;
   const assetIds = tx
@@ -208,7 +231,9 @@ export async function releaseSceneCandidates(tx: Transaction, job: JobRow, now: 
   await tx
     .update(captureAssets)
     .set({ state: 'waiting_for_overlap', updatedAt: now })
-    .where(and(inArray(captureAssets.id, assetIds), eq(captureAssets.state, 'reconstruction_candidate')));
+    .where(
+      and(inArray(captureAssets.id, assetIds), eq(captureAssets.state, 'reconstruction_candidate')),
+    );
 }
 
 /** How many privacy attempts a capture has had, counting every job ever created for it. */
@@ -236,12 +261,22 @@ export async function failPrivacyGate(tx: Transaction, assetId: string, now: Dat
       ...(exhausted ? { state: 'rejected' } : {}),
       updatedAt: now,
     })
-    .where(and(eq(captureAssets.id, assetId), ne(captureAssets.privacyState, 'blocked'), ne(captureAssets.state, 'deleted')));
+    .where(
+      and(
+        eq(captureAssets.id, assetId),
+        ne(captureAssets.privacyState, 'blocked'),
+        ne(captureAssets.state, 'deleted'),
+      ),
+    );
 }
 
 /** The scene state a terminal reconstruction failure implies. */
 export function sceneStateForFailure(code: string): Street3dSceneState {
-  if (code === 'insufficient_overlap' || code === 'camera_solve_failed' || code === 'georeference_failed') {
+  if (
+    code === 'insufficient_overlap' ||
+    code === 'camera_solve_failed' ||
+    code === 'georeference_failed'
+  ) {
     return 'needs_more_capture';
   }
   if (code === 'quality_failed') return 'failed_quality';
@@ -265,7 +300,12 @@ export interface FailureInput {
  * `retry_wait` with `attempt + 1` and is re-sent by the dispatch phase once its
  * backoff passes — same `jobId`, so the worker dedups any copy still in flight.
  */
-export async function applyFailure(tx: Transaction, job: JobRow, failure: FailureInput, now: Date): Promise<'retried' | 'failed' | 'cancelled' | 'ignored'> {
+export async function applyFailure(
+  tx: Transaction,
+  job: JobRow,
+  failure: FailureInput,
+  now: Date,
+): Promise<'retried' | 'failed' | 'cancelled' | 'ignored'> {
   if (isTerminal(job.state)) return 'ignored';
   if (failure.attempt !== undefined && failure.attempt < job.attempt) return 'ignored';
 
@@ -285,7 +325,8 @@ export async function applyFailure(tx: Transaction, job: JobRow, failure: Failur
     return 'cancelled';
   }
 
-  const retryable = failure.retryable ?? RETRYABLE_FAILURE_CODES.has(failure.code as WorkerFailureCode);
+  const retryable =
+    failure.retryable ?? RETRYABLE_FAILURE_CODES.has(failure.code as WorkerFailureCode);
   if (retryable && job.attempt < job.maxAttempts) {
     await tx
       .update(street3dJobs)
@@ -343,7 +384,9 @@ async function endConsequences(
       await tx
         .update(captureAssets)
         .set({ privacyState: 'pending', privacyCompletedAt: null, updatedAt: now })
-        .where(and(eq(captureAssets.id, job.assetId), eq(captureAssets.privacyState, 'in_progress')));
+        .where(
+          and(eq(captureAssets.id, job.assetId), eq(captureAssets.privacyState, 'in_progress')),
+        );
     } else {
       await failPrivacyGate(tx, job.assetId, now);
     }

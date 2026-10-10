@@ -340,7 +340,10 @@ function mapFailure(status: number, errorCode: number | undefined): ApiError | n
   if (errorCode !== undefined) {
     if (NO_ROUTE_CODES.has(errorCode)) return null;
     if (UNSUPPORTED_MODE_CODES.has(errorCode)) {
-      return new ApiError('unsupported_mode', 'The routing engine does not support this travel mode.');
+      return new ApiError(
+        'unsupported_mode',
+        'The routing engine does not support this travel mode.',
+      );
     }
     // 1xx is request parsing and limits; 4xx below 425 is the path service
     // refusing the request it was given. Both mean GoWay asked for something
@@ -400,7 +403,10 @@ class ValhallaProvider implements RoutingProvider {
 
   async route(request: RoutingRequest, callOptions: RoutingCallOptions = {}): Promise<Route[]> {
     if (!this.supportedModes.includes(request.mode)) {
-      throw new ApiError('unsupported_mode', 'This GoWay deployment does not route that travel mode.');
+      throw new ApiError(
+        'unsupported_mode',
+        'This GoWay deployment does not route that travel mode.',
+      );
     }
     if (request.locations.length < 2) {
       throw new ApiError('validation_failed', 'A route needs an origin and a destination.', {
@@ -453,7 +459,10 @@ class ValhallaProvider implements RoutingProvider {
       if (error instanceof PolylineDecodeError) {
         // The engine answered something it called a route and GoWay cannot
         // read. That is an upstream fault, not the caller's.
-        log.warn({ provider: this.name, reason: 'shape_undecodable' }, 'Routing engine returned an unreadable shape');
+        log.warn(
+          { provider: this.name, reason: 'shape_undecodable' },
+          'Routing engine returned an unreadable shape',
+        );
         throw unavailable('upstream_invalid_response');
       }
       throw error;
@@ -500,7 +509,11 @@ class ValhallaProvider implements RoutingProvider {
       // The error's own message can name the endpoint and, for some runtimes,
       // the request. It reaches neither the log line nor the response, so it
       // is not even bound to a name here.
-      const reason = timedOut ? 'timeout' : signal?.aborted === true ? 'client_aborted' : 'unreachable';
+      const reason = timedOut
+        ? 'timeout'
+        : signal?.aborted === true
+          ? 'client_aborted'
+          : 'unreachable';
       log.warn({ provider: this.name, reason }, 'Routing engine call did not complete');
       throw unavailable(reason);
     } finally {

@@ -110,7 +110,8 @@ function readBounds(raw: string | undefined) {
   // viewport. This filter is a plain comparison and cannot express that, so the
   // one it cannot serve is refused rather than silently inverted.
   if (south > north) throw new Error('--bbox south must not be north of north.');
-  if (west > east) throw new Error('--bbox does not support a rectangle crossing the antimeridian.');
+  if (west > east)
+    throw new Error('--bbox does not support a rectangle crossing the antimeridian.');
   return { west, south, east, north };
 }
 

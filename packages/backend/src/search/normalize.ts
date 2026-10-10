@@ -19,7 +19,11 @@
 import type { SearchResultContext, StructuredAddress } from '@goway/contracts';
 
 /** Assign only when the value is present, so an optional field stays absent. */
-export function put<T extends object, K extends keyof T>(target: T, key: K, value: T[K] | undefined): void {
+export function put<T extends object, K extends keyof T>(
+  target: T,
+  key: K,
+  value: T[K] | undefined,
+): void {
   if (value !== undefined) target[key] = value;
 }
 
@@ -76,7 +80,9 @@ export function compactAddress(address: StructuredAddress): StructuredAddress | 
  * The administrative context a result carries, read from the address it already
  * has rather than looked up. `undefined` when the provider named none.
  */
-export function contextFrom(address: StructuredAddress | undefined): SearchResultContext | undefined {
+export function contextFrom(
+  address: StructuredAddress | undefined,
+): SearchResultContext | undefined {
   if (!address) return undefined;
   const context: SearchResultContext = {};
   put(context, 'city', address.city);
@@ -190,7 +196,10 @@ export type QueryParam = readonly [name: string, value: string | number | undefi
  */
 export function buildUrl(baseUrl: string, path: string, params: readonly QueryParam[]): string {
   const query = params
-    .filter((param): param is readonly [string, string | number] => param[1] !== undefined && param[1] !== '')
+    .filter(
+      (param): param is readonly [string, string | number] =>
+        param[1] !== undefined && param[1] !== '',
+    )
     .map(([name, value]) => `${encodeURIComponent(name)}=${encodeURIComponent(String(value))}`)
     .join('&');
   return `${baseUrl}${path}${query === '' ? '' : `?${query}`}`;

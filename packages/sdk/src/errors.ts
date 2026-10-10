@@ -92,7 +92,8 @@ export class GoWayError extends Error {
     const lineage: string[] = [];
     let current: typeof GoWayError | null = target;
     while (current !== null) {
-      if (Object.prototype.hasOwnProperty.call(current, 'errorName')) lineage.push(current.errorName);
+      if (Object.prototype.hasOwnProperty.call(current, 'errorName'))
+        lineage.push(current.errorName);
       if (current === GoWayError) break;
       current = Object.getPrototypeOf(current) as typeof GoWayError | null;
     }
@@ -106,7 +107,11 @@ export class GoWayError extends Error {
     // Non-enumerable, so serialising an error never walks into whatever a
     // `fetch` implementation attached to its own failure.
     if (options.cause !== undefined) {
-      Object.defineProperty(this, 'cause', { value: options.cause, enumerable: false, configurable: true });
+      Object.defineProperty(this, 'cause', {
+        value: options.cause,
+        enumerable: false,
+        configurable: true,
+      });
     }
 
     this.code = options.code ?? 'http_error';

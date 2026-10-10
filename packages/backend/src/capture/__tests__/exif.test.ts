@@ -15,7 +15,10 @@ import { exifGpsToDecimal, normalizeExifGps, normalizeExifOrientation } from '..
 describe('exifGpsToDecimal', () => {
   it('converts degrees, minutes and seconds', () => {
     // 41° 23' 6.36" = 41.3851, which is Barcelona.
-    expect(exifGpsToDecimal({ degrees: 41, minutes: 23, seconds: 6.36, ref: 'N' })).toBeCloseTo(41.3851, 6);
+    expect(exifGpsToDecimal({ degrees: 41, minutes: 23, seconds: 6.36, ref: 'N' })).toBeCloseTo(
+      41.3851,
+      6,
+    );
   });
 
   it('applies the hemisphere ref, which is the whole point', () => {
@@ -64,8 +67,12 @@ describe('normalizeExifGps', () => {
   });
 
   it('signs the altitude by its own ref, which is a second hemisphere trap', () => {
-    expect(normalizeExifGps({ ...barcelona, altitude: 12, altitudeRef: 0 })?.altitudeMeters).toBe(12);
-    expect(normalizeExifGps({ ...barcelona, altitude: 12, altitudeRef: 1 })?.altitudeMeters).toBe(-12);
+    expect(normalizeExifGps({ ...barcelona, altitude: 12, altitudeRef: 0 })?.altitudeMeters).toBe(
+      12,
+    );
+    expect(normalizeExifGps({ ...barcelona, altitude: 12, altitudeRef: 1 })?.altitudeMeters).toBe(
+      -12,
+    );
   });
 
   it('wraps an image direction into [0, 360), which the column requires', () => {
@@ -76,9 +83,7 @@ describe('normalizeExifGps', () => {
   it('refuses a latitude past the pole rather than clamping it', () => {
     // Clamping turns a detectable error into a confident wrong position, which
     // is the one outcome geographic code must never produce.
-    expect(
-      normalizeExifGps({ ...barcelona, latitude: { degrees: 95, ref: 'N' } }),
-    ).toBeNull();
+    expect(normalizeExifGps({ ...barcelona, latitude: { degrees: 95, ref: 'N' } })).toBeNull();
   });
 });
 

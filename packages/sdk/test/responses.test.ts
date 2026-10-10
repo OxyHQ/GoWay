@@ -6,7 +6,14 @@ import {
   placeHasCapability,
   type GoWayError,
 } from '../src/index';
-import { CLAIM, page, PLACE, PLACE_WITH_DISTANCE, ROUTE_RESPONSE, SEARCH_RESULTS } from './fixtures';
+import {
+  CLAIM,
+  page,
+  PLACE,
+  PLACE_WITH_DISTANCE,
+  ROUTE_RESPONSE,
+  SEARCH_RESULTS,
+} from './fixtures';
 import { fakeFetch, rejection } from './helpers';
 
 /**
@@ -58,7 +65,15 @@ describe('place responses', () => {
     expect(place).not.toHaveProperty('claims');
   });
 
-  for (const field of ['id', 'location', 'status', 'verification', 'sources', 'capabilities', 'updatedAt']) {
+  for (const field of [
+    'id',
+    'location',
+    'status',
+    'verification',
+    'sources',
+    'capabilities',
+    'updatedAt',
+  ]) {
     it(`reject a place missing ${field}, naming the path`, async () => {
       const error = await placeError(without(PLACE, field));
       expect(error).toBeInstanceOf(GoWayResponseError);
@@ -69,7 +84,10 @@ describe('place responses', () => {
   }
 
   it('name the path and the expectation but never echo the value', async () => {
-    const error = await placeError({ ...PLACE, location: { latitude: 181.123456, longitude: 2.1686 } });
+    const error = await placeError({
+      ...PLACE,
+      location: { latitude: 181.123456, longitude: 2.1686 },
+    });
     expect(error.message).toContain('response.location.latitude');
     expect(error.message).not.toContain('181.123456');
 
@@ -84,9 +102,9 @@ describe('place responses', () => {
 
   it('refuse a capability with no provenance, and one whose key disagrees with its parts', async () => {
     const [capability] = PLACE.capabilities as Record<string, unknown>[];
-    expect(await placeError({ ...PLACE, capabilities: [without(capability!, 'verification')] })).toBeInstanceOf(
-      GoWayResponseError,
-    );
+    expect(
+      await placeError({ ...PLACE, capabilities: [without(capability!, 'verification')] }),
+    ).toBeInstanceOf(GoWayResponseError);
     const mismatched = { ...capability, key: 'payments.faircoin.refused' };
     const error = await placeError({ ...PLACE, capabilities: [mismatched] });
     expect(error.message).toContain('response.capabilities[0].key');
@@ -112,7 +130,10 @@ describe('place responses', () => {
   });
 
   it('fail a whole page when one item is malformed, rather than dropping it', async () => {
-    const { fetch } = fakeFetch(200, page([PLACE_WITH_DISTANCE, without(PLACE_WITH_DISTANCE, 'distanceMeters')]));
+    const { fetch } = fakeFetch(
+      200,
+      page([PLACE_WITH_DISTANCE, without(PLACE_WITH_DISTANCE, 'distanceMeters')]),
+    );
     const error = await rejection(
       createGoWayClient({ fetch }).places.nearby({ latitude: 0, longitude: 0, radiusMeters: 10 }),
     );
@@ -124,18 +145,23 @@ describe('place responses', () => {
     const query = { latitude: 0, longitude: 0, radiusMeters: 10 };
     for (const body of [{ items: [] }, page([], 'not a cursor!'), [PLACE_WITH_DISTANCE]]) {
       const { fetch } = fakeFetch(200, body);
-      expect(await rejection(createGoWayClient({ fetch }).places.nearby(query))).toBeInstanceOf(GoWayResponseError);
+      expect(await rejection(createGoWayClient({ fetch }).places.nearby(query))).toBeInstanceOf(
+        GoWayResponseError,
+      );
     }
   });
 
   it('read a claim with the place it is over and its decision time', async () => {
-    const { fetch } = fakeFetch(200, page([{ ...CLAIM, decidedAt: '2026-10-02T00:00:00.000Z', reviewer: 'x' }]));
+    const { fetch } = fakeFetch(
+      200,
+      page([{ ...CLAIM, decidedAt: '2026-10-02T00:00:00.000Z', reviewer: 'x' }]),
+    );
     const claims = await createGoWayClient({ fetch }).claims.list();
     expect(claims.items[0]).toEqual({ ...CLAIM, decidedAt: '2026-10-02T00:00:00.000Z' });
     const missingPlace = fakeFetch(200, page([without(CLAIM, 'placeId')]));
-    expect(await rejection(createGoWayClient({ fetch: missingPlace.fetch }).claims.list())).toBeInstanceOf(
-      GoWayResponseError,
-    );
+    expect(
+      await rejection(createGoWayClient({ fetch: missingPlace.fetch }).claims.list()),
+    ).toBeInstanceOf(GoWayResponseError);
   });
 });
 
@@ -158,7 +184,10 @@ describe('place names', () => {
   });
 
   it('reject a name under a language tag that is not canonical', async () => {
-    const error = await placeError({ ...PLACE, names: [{ language: 'ES', name: 'x', source: 'goway' }] });
+    const error = await placeError({
+      ...PLACE,
+      names: [{ language: 'ES', name: 'x', source: 'goway' }],
+    });
     expect(error.message).toContain('response.names[0].language');
   });
 });
@@ -166,11 +195,14 @@ describe('place names', () => {
 describe('search and route responses', () => {
   it('reject a relevance outside 0..1 and a bad result kind', async () => {
     const [result] = SEARCH_RESULTS.items as Record<string, unknown>[];
-    for (const bad of [{ ...result, relevance: 1.5 }, { ...result, kind: 'galaxy' }]) {
+    for (const bad of [
+      { ...result, relevance: 1.5 },
+      { ...result, kind: 'galaxy' },
+    ]) {
       const { fetch } = fakeFetch(200, { ...SEARCH_RESULTS, items: [bad] });
-      expect(await rejection(createGoWayClient({ fetch }).search.query({ query: 'x' }))).toBeInstanceOf(
-        GoWayResponseError,
-      );
+      expect(
+        await rejection(createGoWayClient({ fetch }).search.query({ query: 'x' })),
+      ).toBeInstanceOf(GoWayResponseError);
     }
   });
 
@@ -194,12 +226,29 @@ describe('search and route responses', () => {
     const [route] = ROUTE_RESPONSE.routes as Record<string, unknown>[];
     const bodies = [
       { routes: [{ ...route, geometry: { type: 'Point', coordinates: [2.1686, 41.3874] } }] },
-      { routes: [{ ...route, geometry: { type: 'LineString', coordinates: [[41.3874, 2.1686], [41.3881, 182.17]] } }] },
+      {
+        routes: [
+          {
+            ...route,
+            geometry: {
+              type: 'LineString',
+              coordinates: [
+                [41.3874, 2.1686],
+                [41.3881, 182.17],
+              ],
+            },
+          },
+        ],
+      },
     ];
     for (const body of bodies) {
       const { fetch } = fakeFetch(200, body);
       const error = await rejection(
-        createGoWayClient({ fetch }).routes.directions({ origin: { placeId: 'a' }, destination: { placeId: 'b' }, mode: 'walk' }),
+        createGoWayClient({ fetch }).routes.directions({
+          origin: { placeId: 'a' },
+          destination: { placeId: 'b' },
+          mode: 'walk',
+        }),
       );
       expect(error).toBeInstanceOf(GoWayResponseError);
       expect(error.message).toContain('response.routes[0].geometry');

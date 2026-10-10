@@ -50,7 +50,12 @@ import {
   type CapabilityKey,
 } from './capability-registry';
 import { categoryKeySchema } from './category';
-import { openingHoursInputSchema, openingHoursSchema, placeHoursExceptionSchema, timezoneSchema } from './hours';
+import {
+  openingHoursInputSchema,
+  openingHoursSchema,
+  placeHoursExceptionSchema,
+  timezoneSchema,
+} from './hours';
 import { canonicalLanguageTagSchema, languageTagSchema } from './language';
 import { cursorSchema, limitSchema, pageSchema } from './pagination';
 import { instantSchema } from './time';
@@ -87,7 +92,11 @@ export type PlaceStatus = (typeof PLACE_STATUSES)[number];
  * shut says `closed`. `satisfies` ties this to the full tuple: renaming a
  * status fails this file to compile rather than leaving an unwritable value.
  */
-export const WRITABLE_PLACE_STATUSES = ['active', 'closed', 'proposed'] as const satisfies readonly PlaceStatus[];
+export const WRITABLE_PLACE_STATUSES = [
+  'active',
+  'closed',
+  'proposed',
+] as const satisfies readonly PlaceStatus[];
 export type WritablePlaceStatus = (typeof WRITABLE_PLACE_STATUSES)[number];
 
 /** The statuses a published place can carry: everything but `removed` and `merged`. */
@@ -213,7 +222,12 @@ export type PlaceContactPatch = z.input<typeof placeContactPatchSchema>;
 // ── Verification and provenance ─────────────────────────────────────────────
 
 /** How strongly GoWay vouches for a place record itself. */
-export const PLACE_VERIFICATION_STATES = ['unverified', 'community_reviewed', 'oxy_verified', 'owner_verified'] as const;
+export const PLACE_VERIFICATION_STATES = [
+  'unverified',
+  'community_reviewed',
+  'oxy_verified',
+  'owner_verified',
+] as const;
 export type PlaceVerificationState = (typeof PLACE_VERIFICATION_STATES)[number];
 
 /** Verification state plus when it was last established. */
@@ -310,7 +324,10 @@ export type PlaceCapability = z.infer<typeof placeCapabilitySchema>;
 export const placeCapabilityInputSchema = z
   .object({
     /** e.g. `payments.faircoin` */
-    namespace: z.string().max(128).regex(CAPABILITY_NAMESPACE, 'must be a lower-case dotted namespace'),
+    namespace: z
+      .string()
+      .max(128)
+      .regex(CAPABILITY_NAMESPACE, 'must be a lower-case dotted namespace'),
     /** e.g. `accepted` */
     capability: z.string().max(64).regex(CAPABILITY_NAME, 'must be a lower-case capability name'),
     value: capabilityValueInputSchema,
@@ -320,13 +337,21 @@ export const placeCapabilityInputSchema = z
   .transform((input, context) => {
     const key = `${input.namespace}.${input.capability}`;
     if (!isCapabilityKey(key)) {
-      context.addIssue({ code: 'custom', message: 'must be a registered capability', path: ['capability'] });
+      context.addIssue({
+        code: 'custom',
+        message: 'must be a registered capability',
+        path: ['capability'],
+      });
       return z.NEVER;
     }
     const value = capabilityValueSchemaFor(key).safeParse(input.value);
     if (!value.success) {
       for (const issue of value.error.issues) {
-        context.addIssue({ code: 'custom', message: issue.message, path: ['value', ...issue.path] });
+        context.addIssue({
+          code: 'custom',
+          message: issue.message,
+          path: ['value', ...issue.path],
+        });
       }
       return z.NEVER;
     }
@@ -394,7 +419,10 @@ export function strongestCapability(
  * stopped — does not have it, and neither does one whose strongest wheelchair
  * assertion is `no`.
  */
-export function placeHasCapability(place: { capabilities: readonly PlaceCapability[] }, key: string): boolean {
+export function placeHasCapability(
+  place: { capabilities: readonly PlaceCapability[] },
+  key: string,
+): boolean {
   const strongest = strongestCapability(place, key);
   return strongest !== undefined && capabilityHolds(key, strongest.value);
 }
@@ -944,9 +972,18 @@ export const placesInBoundsQuerySchema = z
     ...placeListFields,
   })
   .strict()
-  .refine((box) => box.south <= box.north, { message: 'south must not be north of north', path: ['south'] })
-  .refine((box) => box.north - box.south <= MAX_BOUNDS_SPAN_DEGREES, { message: 'the box is too tall', path: ['north'] })
-  .refine((box) => boundingBoxWidth(box) <= MAX_BOUNDS_SPAN_DEGREES, { message: 'the box is too wide', path: ['east'] });
+  .refine((box) => box.south <= box.north, {
+    message: 'south must not be north of north',
+    path: ['south'],
+  })
+  .refine((box) => box.north - box.south <= MAX_BOUNDS_SPAN_DEGREES, {
+    message: 'the box is too tall',
+    path: ['north'],
+  })
+  .refine((box) => boundingBoxWidth(box) <= MAX_BOUNDS_SPAN_DEGREES, {
+    message: 'the box is too wide',
+    path: ['east'],
+  });
 export type PlacesInBoundsQuery = z.input<typeof placesInBoundsQuerySchema>;
 
 /** The most claims one page returns. */

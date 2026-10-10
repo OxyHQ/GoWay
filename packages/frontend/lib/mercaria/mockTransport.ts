@@ -40,7 +40,11 @@ function respond(status: number, body: unknown): MercariaFetchResponse {
 }
 
 /** Mercaria's error envelope, `{ error: { code, message } }`, at the status Mercaria gives the code. */
-function fail(status: number, code: MercariaPublicErrorCode, message: string): MercariaFetchResponse {
+function fail(
+  status: number,
+  code: MercariaPublicErrorCode,
+  message: string,
+): MercariaFetchResponse {
   return respond(status, { error: { code, message } });
 }
 
@@ -60,7 +64,8 @@ function page<T>(entries: readonly T[], params: Map<string, string>): MercariaPa
 function splitUrl(url: string): { path: string; params: Map<string, string> } {
   const [beforeQuery, query = ''] = url.split('?');
   const marker = beforeQuery.indexOf(MERCARIA_PUBLIC_API_BASE_PATH);
-  const path = marker >= 0 ? beforeQuery.slice(marker + MERCARIA_PUBLIC_API_BASE_PATH.length) : beforeQuery;
+  const path =
+    marker >= 0 ? beforeQuery.slice(marker + MERCARIA_PUBLIC_API_BASE_PATH.length) : beforeQuery;
   const params = new Map<string, string>();
   for (const pair of query.split('&')) {
     if (!pair) continue;
@@ -74,8 +79,14 @@ function locationsAt(params: Map<string, string>): MercariaPage<MercariaLocation
   return page(MERCARIA_FIXTURE_LOCATIONS.get(params.get('goWayPlaceId') ?? '') ?? [], params);
 }
 
-function shelf(stock: readonly MercariaLocationProduct[], params: Map<string, string>): MercariaPage<MercariaLocationProduct> {
-  const onShelf = params.get('inStock') === 'true' ? stock.filter((item) => item.availability !== 'out_of_stock') : stock;
+function shelf(
+  stock: readonly MercariaLocationProduct[],
+  params: Map<string, string>,
+): MercariaPage<MercariaLocationProduct> {
+  const onShelf =
+    params.get('inStock') === 'true'
+      ? stock.filter((item) => item.availability !== 'out_of_stock')
+      : stock;
   return page(onShelf, params);
 }
 
@@ -89,7 +100,8 @@ export function createMercariaFixtureFetch(fault?: FixtureFaultMode): MercariaFe
 
     // Thrown, so the SDK reads it as `MercariaNetworkError` — what "offline" is.
     if (fault === 'network') throw new TypeError('Network request failed');
-    if (fault) return fail(503, 'service_unavailable', 'Mercaria could not ask GoWay about this place');
+    if (fault)
+      return fail(503, 'service_unavailable', 'Mercaria could not ask GoWay about this place');
 
     const { path, params } = splitUrl(url);
     const cursor = params.get('cursor');

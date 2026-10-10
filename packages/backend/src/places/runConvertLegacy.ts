@@ -56,7 +56,9 @@ function parseSteps(value: string | undefined): ConversionStepName[] {
     .filter((step) => step.length > 0);
   for (const step of steps) {
     if (!(CONVERSION_STEPS as readonly string[]).includes(step)) {
-      throw new Error(`Unknown --step ${JSON.stringify(step)}. Use ${CONVERSION_STEPS.join(', ')}.`);
+      throw new Error(
+        `Unknown --step ${JSON.stringify(step)}. Use ${CONVERSION_STEPS.join(', ')}.`,
+      );
     }
   }
   if (steps.length === 0) throw new Error('--step names no step.');
@@ -65,7 +67,8 @@ function parseSteps(value: string | undefined): ConversionStepName[] {
 
 function positiveInteger(value: string, flag: string, minimum: number): number {
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < minimum) throw new Error(`${flag} must be an integer >= ${minimum}.`);
+  if (!Number.isInteger(parsed) || parsed < minimum)
+    throw new Error(`${flag} must be an integer >= ${minimum}.`);
   return parsed;
 }
 
@@ -81,7 +84,10 @@ function progressReporter(): (progress: ConversionProgress) => void {
       {
         ...progress,
         rowsPerSecond: Math.round(rate),
-        percent: progress.estimatedRows > 0 ? Math.min(100, Math.round((progress.examined / progress.estimatedRows) * 1000) / 10) : null,
+        percent:
+          progress.estimatedRows > 0
+            ? Math.min(100, Math.round((progress.examined / progress.estimatedRows) * 1000) / 10)
+            : null,
         etaSeconds: rate > 0 ? Math.round(remaining / rate) : null,
         resume: `--step=${progress.step} --from=${progress.lastId}`,
       },
@@ -120,12 +126,20 @@ async function main(): Promise<void> {
 
     if (values['validate-constraint']) {
       const result = await validateTaxonomyConstraint(session);
-      logger.info(result, result.alreadyValid ? 'The taxonomy CHECK was already valid' : 'Validated the taxonomy CHECK');
+      logger.info(
+        result,
+        result.alreadyValid
+          ? 'The taxonomy CHECK was already valid'
+          : 'Validated the taxonomy CHECK',
+      );
       return;
     }
 
     await prepareConversionSession(session, plan, { dryRun });
-    logger.info({ steps, batchSize, pauseMs, dryRun, from: values.from ?? null }, 'Starting the legacy place-data conversion');
+    logger.info(
+      { steps, batchSize, pauseMs, dryRun, from: values.from ?? null },
+      'Starting the legacy place-data conversion',
+    );
     const summaries = await convertLegacyPlaceData(session, plan, {
       steps,
       batchSize,

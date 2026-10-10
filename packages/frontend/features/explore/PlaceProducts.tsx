@@ -49,7 +49,12 @@ import { RiStore2Line } from '@oxy.so/bloom/icons/RiStore2Line';
 
 import { useTranslation } from '@/lib/i18n';
 import { mercariaReadState } from '@/lib/mercaria/errors';
-import { formatMercariaPrice, placeOffersMercariaStore, presentStock, spokenProduct } from '@/lib/mercaria/presentation';
+import {
+  formatMercariaPrice,
+  placeOffersMercariaStore,
+  presentStock,
+  spokenProduct,
+} from '@/lib/mercaria/presentation';
 import {
   useMercariaLocationProducts,
   usePlaceMercariaLocations,
@@ -96,7 +101,10 @@ function ProductTile({ item, now }: { item: MercariaLocationProduct; now: number
       className="gap-space-4"
       style={{ width: TILE }}
     >
-      <View className="items-center justify-center overflow-hidden rounded-radius-md bg-muted" style={{ width: TILE, height: TILE }}>
+      <View
+        className="items-center justify-center overflow-hidden rounded-radius-md bg-muted"
+        style={{ width: TILE, height: TILE }}
+      >
         {image ? (
           <Image
             source={{ uri: image.url }}
@@ -112,10 +120,14 @@ function ProductTile({ item, now }: { item: MercariaLocationProduct; now: number
       <Text className="text-bodySmall text-foreground" numberOfLines={2}>
         {item.product.title}
       </Text>
-      <Text className="text-bodySmall text-foreground">{formatMercariaPrice(item.product.price)}</Text>
+      <Text className="text-bodySmall text-foreground">
+        {formatMercariaPrice(item.product.price)}
+      </Text>
       <View className="flex-row flex-wrap items-center gap-space-4">
         <Badge content={stock.label} size="label-small" variant="subtle" color={stock.tone} />
-        {stock.quantity ? <Text className="text-caption text-muted-foreground">{stock.quantity}</Text> : null}
+        {stock.quantity ? (
+          <Text className="text-caption text-muted-foreground">{stock.quantity}</Text>
+        ) : null}
       </View>
       <Text className="text-caption text-muted-foreground" numberOfLines={2}>
         {stock.confirmed}
@@ -146,7 +158,9 @@ function QuietRetry({ onRetry, retrying }: { onRetry: () => void; retrying: bool
   const { t } = useTranslation();
   return (
     <View className="flex-row items-center gap-space-8" accessibilityLiveRegion="polite">
-      <Text className="flex-1 text-bodySmall text-muted-foreground">{t('products.retry.message')}</Text>
+      <Text className="flex-1 text-bodySmall text-muted-foreground">
+        {t('products.retry.message')}
+      </Text>
       <Button size="sm" tone="neutral" appearance="plain" onPress={onRetry} disabled={retrying}>
         {retrying ? t('products.retry.trying') : t('products.retry.button')}
       </Button>
@@ -179,14 +193,20 @@ function StoreProducts({
         <Avatar source={store.logoUrl} name={store.name} size="sm" />
         <View className="flex-1">
           <Text className="text-bodySmall text-foreground">{store.name}</Text>
-          <Text className="text-caption text-muted-foreground">{t('products.store.onMercaria')}</Text>
+          <Text className="text-caption text-muted-foreground">
+            {t('products.store.onMercaria')}
+          </Text>
         </View>
       </View>
 
       {loading ? <StripSkeleton /> : null}
       {onRetry ? <QuietRetry onRetry={onRetry} retrying={retrying} /> : null}
       {items && items.length > 0 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-space-8">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="gap-space-8"
+        >
           {items.map((item) => (
             <ProductTile key={item.product.ref.id} item={item} now={now} />
           ))}
@@ -225,7 +245,11 @@ export function PlaceProducts({ place }: PlaceProductsProps) {
 
   if (!placeOffersMercariaStore(place)) return null;
 
-  const state = mercariaReadState({ status: locations.status, error: locations.error, empty: found.length === 0 });
+  const state = mercariaReadState({
+    status: locations.status,
+    error: locations.error,
+    empty: found.length === 0,
+  });
   if (state === 'hidden') return null;
 
   // A store whose own read is gone, not found or unknown drops out alone.
@@ -233,7 +257,11 @@ export function PlaceProducts({ place }: PlaceProductsProps) {
     .map((location, index) => ({
       location,
       shelf: shelves[index],
-      state: mercariaReadState({ status: shelves[index].status, error: shelves[index].error, empty: false }),
+      state: mercariaReadState({
+        status: shelves[index].status,
+        error: shelves[index].error,
+        empty: false,
+      }),
     }))
     .filter((store) => store.state !== 'hidden');
   if (state === 'ready' && stores.length === 0) return null;

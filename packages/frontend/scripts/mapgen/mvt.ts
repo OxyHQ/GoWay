@@ -32,7 +32,13 @@
  *
  * @see https://github.com/mapbox/vector-tile-spec/tree/master/2.1
  */
-import { PbfReader, WIRE_FIXED32, WIRE_FIXED64, WIRE_LENGTH_DELIMITED, WIRE_VARINT } from './protobuf';
+import {
+  PbfReader,
+  WIRE_FIXED32,
+  WIRE_FIXED64,
+  WIRE_LENGTH_DELIMITED,
+  WIRE_VARINT,
+} from './protobuf';
 
 /** Geometry types, as `vector_tile.proto` numbers them. */
 export const GEOMETRY_TYPE = ['unknown', 'point', 'linestring', 'polygon'] as const;
@@ -143,9 +149,11 @@ function readLayer(reader: PbfReader): VectorTileLayer {
   while (!reader.atEnd) {
     const { field, wireType } = reader.readTag();
     if (field === 1 && wireType === WIRE_LENGTH_DELIMITED) name = reader.readString();
-    else if (field === 2 && wireType === WIRE_LENGTH_DELIMITED) raw.push(reader.readMessage(readFeature));
+    else if (field === 2 && wireType === WIRE_LENGTH_DELIMITED)
+      raw.push(reader.readMessage(readFeature));
     else if (field === 3 && wireType === WIRE_LENGTH_DELIMITED) keys.push(reader.readString());
-    else if (field === 4 && wireType === WIRE_LENGTH_DELIMITED) values.push(reader.readMessage(readValue));
+    else if (field === 4 && wireType === WIRE_LENGTH_DELIMITED)
+      values.push(reader.readMessage(readValue));
     else if (field === 5 && wireType === WIRE_VARINT) extent = reader.readVarint();
     else if (field === 15 && wireType === WIRE_VARINT) version = reader.readVarint();
     else reader.skip(wireType);
@@ -181,7 +189,8 @@ export function decodeVectorTile(bytes: Uint8Array): VectorTileLayer[] {
   const layers: VectorTileLayer[] = [];
   while (!reader.atEnd) {
     const { field, wireType } = reader.readTag();
-    if (field === 3 && wireType === WIRE_LENGTH_DELIMITED) layers.push(reader.readMessage(readLayer));
+    if (field === 3 && wireType === WIRE_LENGTH_DELIMITED)
+      layers.push(reader.readMessage(readLayer));
     else reader.skip(wireType);
   }
   return layers;

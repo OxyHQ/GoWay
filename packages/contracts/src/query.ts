@@ -38,7 +38,11 @@ function kindOf(schema: z.ZodType): QueryKind {
       current = definition.innerType;
     } else if (definition.type === 'pipe' && definition.in) {
       current = definition.in;
-    } else if (definition.type === 'number' || definition.type === 'boolean' || definition.type === 'array') {
+    } else if (
+      definition.type === 'number' ||
+      definition.type === 'boolean' ||
+      definition.type === 'array'
+    ) {
       return definition.type;
     } else {
       return 'string';
@@ -73,7 +77,10 @@ function convert(kind: QueryKind, value: string): unknown {
  * repeated parameter is the caller's job, because it is `bad_request` and not a
  * question this function can answer by converting.
  */
-export function queryValues(schema: z.ZodObject, raw: Readonly<Record<string, string>>): Record<string, unknown> {
+export function queryValues(
+  schema: z.ZodObject,
+  raw: Readonly<Record<string, string>>,
+): Record<string, unknown> {
   const shape = schema.shape as Record<string, z.ZodType>;
   const values: Record<string, unknown> = {};
   for (const [name, value] of Object.entries(raw)) {

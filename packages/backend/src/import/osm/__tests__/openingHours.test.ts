@@ -7,7 +7,8 @@ import { describe, expect, test } from 'bun:test';
 import { osmOpeningHoursParser } from '../openingHours';
 
 const parse = (raw: string) => osmOpeningHoursParser.parse(raw);
-const week = (raw: string) => parse(raw).intervals.map(({ day, opens, closes }) => `${day} ${opens}-${closes}`);
+const week = (raw: string) =>
+  parse(raw).intervals.map(({ day, opens, closes }) => `${day} ${opens}-${closes}`);
 
 describe('osmOpeningHoursParser', () => {
   test('reads weekday ranges, lists and split shifts', () => {
@@ -28,9 +29,11 @@ describe('osmOpeningHoursParser', () => {
   });
 
   test('lets a later rule replace the days it names, as OpenStreetMap does', () => {
-    expect(week('Mo-Sa 09:00-20:00; Sa 10:00-14:00; Su off').filter((entry) => entry.startsWith('6') || entry.startsWith('0'))).toEqual([
-      '6 10:00-14:00',
-    ]);
+    expect(
+      week('Mo-Sa 09:00-20:00; Sa 10:00-14:00; Su off').filter(
+        (entry) => entry.startsWith('6') || entry.startsWith('0'),
+      ),
+    ).toEqual(['6 10:00-14:00']);
   });
 
   test('reads 24/7, a time with no weekday, a wrapping range and hours past midnight', () => {

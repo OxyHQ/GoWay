@@ -1,4 +1,9 @@
-import { CAPABILITY_DEFINITIONS, CAPABILITY_GROUP_LABELS, languageTagSchema, labelsSchema } from '@goway/contracts';
+import {
+  CAPABILITY_DEFINITIONS,
+  CAPABILITY_GROUP_LABELS,
+  languageTagSchema,
+  labelsSchema,
+} from '@goway/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   CAPABILITY_GROUPS,
@@ -152,7 +157,19 @@ describe('localizedLabel', () => {
 
 describe('device locales', () => {
   // What `Intl…resolvedOptions().locale` and the OS locale APIs hand the app.
-  const DEVICE_TAGS = ['zh-Hans-CN', 'zh-Hant-TW', 'zh-CN', 'pt-BR', 'pt-PT', 'en-US', 'es-419', 'ca-ES', 'ar-SA', 'hi-IN', 'ja-JP'];
+  const DEVICE_TAGS = [
+    'zh-Hans-CN',
+    'zh-Hant-TW',
+    'zh-CN',
+    'pt-BR',
+    'pt-PT',
+    'en-US',
+    'es-419',
+    'ca-ES',
+    'ar-SA',
+    'hi-IN',
+    'ja-JP',
+  ];
 
   it('are accepted as a `?locale=` and as the client default', () => {
     for (const tag of [...LABEL_LANGUAGES, ...DEVICE_TAGS]) {
@@ -182,13 +199,17 @@ describe('device locales', () => {
 describe('the capability vocabulary', () => {
   it('is written in every label language, with no gaps', () => {
     const entries: [string, Labels][] = [
-      ...CAPABILITY_GROUPS.map((group) => [`group ${group}`, CAPABILITY_GROUP_LABELS[group]] as [string, Labels]),
+      ...CAPABILITY_GROUPS.map(
+        (group) => [`group ${group}`, CAPABILITY_GROUP_LABELS[group]] as [string, Labels],
+      ),
       ...CAPABILITY_KEYS.flatMap((key) => {
         const definition = CAPABILITY_DEFINITIONS[key];
         const value = definition.value;
         const values =
           value.kind === 'enum' || value.kind === 'enum_set'
-            ? Object.entries(value.values).map(([member, labels]) => [`${key}:${member}`, labels] as [string, Labels])
+            ? Object.entries(value.values).map(
+                ([member, labels]) => [`${key}:${member}`, labels] as [string, Labels],
+              )
             : [];
         return [[key, definition.labels] as [string, Labels], ...values];
       }),
@@ -218,7 +239,9 @@ describe('the capability vocabulary', () => {
     expect(capabilityLabel('payments.faircoin.accepted', 'ja-JP')).toBe('FairCoin 対応');
     expect(capabilityValueLabel('food.cuisine', 'catalan', 'ca-ES')).toBe('Catalana');
     expect(capabilityValueLabel('food.cuisine', 'italian', 'pt-PT')).toBe('Italiana');
-    expect(capabilityValueLabel('accessibility.wheelchair', 'yes', 'de-AT')).toBe('Rollstuhlgerecht');
+    expect(capabilityValueLabel('accessibility.wheelchair', 'yes', 'de-AT')).toBe(
+      'Rollstuhlgerecht',
+    );
     expect(capabilityGroupLabel('accessibility', 'zh-SG')).toBe('无障碍');
     expect(capabilityGroupLabel('accessibility', 'zh-HK')).toBe('无障碍');
   });

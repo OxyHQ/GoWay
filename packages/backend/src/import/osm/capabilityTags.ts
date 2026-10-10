@@ -42,7 +42,11 @@ function valuesOf(tags: ReadonlyMap<string, string>, key: string): string[] {
 }
 
 /** The raw value an element gives a capability, before the key's schema sees it. */
-function rawValue(spec: CapabilityValueSpec, osm: CapabilityOsmTags, tags: ReadonlyMap<string, string>): unknown {
+function rawValue(
+  spec: CapabilityValueSpec,
+  osm: CapabilityOsmTags,
+  tags: ReadonlyMap<string, string>,
+): unknown {
   const keys = osm.tags ?? [];
   const yes = osm.yes ?? ['yes'];
   const no = osm.no ?? ['no'];
@@ -55,14 +59,18 @@ function rawValue(spec: CapabilityValueSpec, osm: CapabilityOsmTags, tags: Reado
       return undefined;
     }
     case 'enum':
-      return keys.flatMap((key) => valuesOf(tags, key)).find((value) => Object.prototype.hasOwnProperty.call(spec.values, value));
+      return keys
+        .flatMap((key) => valuesOf(tags, key))
+        .find((value) => Object.prototype.hasOwnProperty.call(spec.values, value));
     case 'enum_set': {
       const members =
         osm.prefix !== undefined
           ? Object.keys(spec.values).filter((value) =>
               valuesOf(tags, `${osm.prefix}${value}`).some((said) => yes.includes(said)),
             )
-          : keys.flatMap((key) => valuesOf(tags, key)).filter((value) => Object.prototype.hasOwnProperty.call(spec.values, value));
+          : keys
+              .flatMap((key) => valuesOf(tags, key))
+              .filter((value) => Object.prototype.hasOwnProperty.call(spec.values, value));
       return members.length > 0 ? members : undefined;
     }
     case 'url':

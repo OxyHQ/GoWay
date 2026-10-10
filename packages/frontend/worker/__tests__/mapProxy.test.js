@@ -25,7 +25,13 @@ import { afterEach, beforeEach, describe, expect, it, mock, test } from 'bun:tes
 
 import { readFile } from 'node:fs/promises';
 
-import worker, { GLYPH_PATH, TILE_PATH, UPSTREAM_FONTSTACK, serveGlyphs, serveTile } from '../index.js';
+import worker, {
+  GLYPH_PATH,
+  TILE_PATH,
+  UPSTREAM_FONTSTACK,
+  serveGlyphs,
+  serveTile,
+} from '../index.js';
 import {
   UPSTREAM_FONTSTACK as BUILD_UPSTREAM_FONTSTACK,
   UPSTREAM_GLYPH_TEMPLATE,
@@ -223,10 +229,14 @@ describe('serveTile', () => {
 
 describe('serveGlyphs', () => {
   const call = (pathname, assets) =>
-    serveGlyphs(new URL(`https://goway.to${pathname}`), new Request(`https://goway.to${pathname}`), {
-      ...env,
-      ASSETS: assets,
-    });
+    serveGlyphs(
+      new URL(`https://goway.to${pathname}`),
+      new Request(`https://goway.to${pathname}`),
+      {
+        ...env,
+        ASSETS: assets,
+      },
+    );
 
   test('serves a committed Inter range from the asset pipeline, never upstream', async () => {
     const assets = assetsWith(new Map([['/map/fonts/Inter Regular/0-255.pbf', 'inter-bytes']]));

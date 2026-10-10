@@ -30,7 +30,9 @@ function originOf(url: string): { protocol: string; host: string; origin: string
   const protocol = match[1].toLowerCase();
   const authority = match[2].toLowerCase();
   if (authority.includes('@')) return null;
-  const host = authority.startsWith('[') ? authority.slice(0, authority.indexOf(']') + 1) : authority.split(':')[0];
+  const host = authority.startsWith('[')
+    ? authority.slice(0, authority.indexOf(']') + 1)
+    : authority.split(':')[0];
   return { protocol, host, origin: `${protocol}://${authority}` };
 }
 
@@ -52,7 +54,8 @@ export function planSceneAssets(
   policy: AssetPolicy,
 ): SceneAssetPlan {
   const find = (role: StreetSceneAsset['role']) =>
-    manifest.assets.find((asset) => asset.role === role && isAllowedAssetUrl(asset.url, policy)) ?? null;
+    manifest.assets.find((asset) => asset.role === role && isAllowedAssetUrl(asset.url, policy)) ??
+    null;
   const preview = find('splat_preview');
   const full = find('splat');
   const poster = find('poster');

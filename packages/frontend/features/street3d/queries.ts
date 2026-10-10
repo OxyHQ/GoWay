@@ -28,11 +28,16 @@ export function useStreetCoverage(
   bounds: GeoBoundingBox | null,
   { enabled = true, gcTime }: { enabled?: boolean; gcTime?: number } = {},
 ): UseQueryResult<StreetCoverage> {
-  const key = bounds ? [round(bounds.west), round(bounds.south), round(bounds.east), round(bounds.north)] : null;
+  const key = bounds
+    ? [round(bounds.west), round(bounds.south), round(bounds.east), round(bounds.north)]
+    : null;
   return useQuery({
     queryKey: ['goway', 'street3d', 'coverage', key],
     enabled: enabled && bounds != null && !endpointMissing,
-    retry: (count, error) => !isStreet3dEndpointMissing(error) && classifyGoWayError(error).kind !== 'unavailable' && shouldRetryGoWay(count, error),
+    retry: (count, error) =>
+      !isStreet3dEndpointMissing(error) &&
+      classifyGoWayError(error).kind !== 'unavailable' &&
+      shouldRetryGoWay(count, error),
     placeholderData: (previous) => previous,
     staleTime: 60_000,
     ...(gcTime !== undefined ? { gcTime } : {}),

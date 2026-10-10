@@ -28,13 +28,28 @@ export interface SearchFieldProps {
 }
 
 export const SearchField = forwardRef<TextInput, SearchFieldProps>(function SearchField(
-  { value, onChangeText, onClear, onSubmit, busy = false, onBack, backLabel = 'Back to results', placeholder = 'Search places and addresses', testID },
+  {
+    value,
+    onChangeText,
+    onClear,
+    onSubmit,
+    busy = false,
+    onBack,
+    backLabel = 'Back to results',
+    placeholder = 'Search places and addresses',
+    testID,
+  },
   ref,
 ) {
   return (
     <View className="flex-row items-center gap-space-8 px-space-16 py-space-8">
       {onBack ? (
-        <GlyphButton icon={RiArrowLeftLine} accessibilityLabel={backLabel} onPress={onBack} size={36} />
+        <GlyphButton
+          icon={RiArrowLeftLine}
+          accessibilityLabel={backLabel}
+          onPress={onBack}
+          size={36}
+        />
       ) : null}
       <View className="flex-1">
         <Search

@@ -30,20 +30,47 @@ import type { GuidedCaptureProps } from './types';
 import { useGuidedSession } from './useGuidedSession';
 
 /** Keep the overlay upright when the phone is turned, though the app itself is portrait-locked. */
-function Upright({ orientation, children }: { orientation: CameraOrientation | null; children: ReactNode }) {
+function Upright({
+  orientation,
+  children,
+}: {
+  orientation: CameraOrientation | null;
+  children: ReactNode;
+}) {
   const { width, height } = useWindowDimensions();
   // UIDeviceOrientation: `landscapeLeft` is the top of the phone pointing left,
   // so the content turns clockwise to stay upright.
-  const turn = orientation === 'landscapeLeft' ? '90deg' : orientation === 'landscapeRight' ? '-90deg' : null;
-  if (!turn) return <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>{children}</View>;
-  return <View
-    pointerEvents="box-none"
-    style={{ position: 'absolute', width: height, height: width, left: (width - height) / 2, top: (height - width) / 2, transform: [{ rotate: turn }] }}
-  >{children}</View>;
+  const turn =
+    orientation === 'landscapeLeft' ? '90deg' : orientation === 'landscapeRight' ? '-90deg' : null;
+  if (!turn)
+    return (
+      <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+        {children}
+      </View>
+    );
+  return (
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: 'absolute',
+        width: height,
+        height: width,
+        left: (width - height) / 2,
+        top: (height - width) / 2,
+        transform: [{ rotate: turn }],
+      }}
+    >
+      {children}
+    </View>
+  );
 }
 
 function discardFile(uri: string) {
-  try { new File(uri).delete(); } catch { /* already gone */ }
+  try {
+    new File(uri).delete();
+  } catch {
+    /* already gone */
+  }
 }
 
 export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedCaptureProps) {
@@ -63,7 +90,10 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
   /** The camera a recording was started on, for stopping it from cleanup. */
   const recorderView = useRef<CameraView | null>(null);
 
-  function fail(key: string) { setError(t(key)); setPhase('error'); }
+  function fail(key: string) {
+    setError(t(key));
+    setPhase('error');
+  }
 
   useEffect(() => {
     if (!accepted) return;
@@ -73,12 +103,23 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
       .then(({ granted }) => {
         if (!mounted) return;
         setPermission(granted ? 'granted' : 'denied');
-        if (!granted) { setError(t('contribute.guided.error.permission')); setPhase('error'); }
+        if (!granted) {
+          setError(t('contribute.guided.error.permission'));
+          setPhase('error');
+        }
       })
-      .catch(() => { if (mounted) { setError(t('contribute.guided.error.camera')); setPhase('error'); } });
+      .catch(() => {
+        if (mounted) {
+          setError(t('contribute.guided.error.camera'));
+          setPhase('error');
+        }
+      });
     return () => {
       mounted = false;
-      if (recordingActive.current) { discard.current = true; recorderView.current?.stopRecording(); }
+      if (recordingActive.current) {
+        discard.current = true;
+        recorderView.current?.stopRecording();
+      }
     };
   }, [accepted, t]);
 
@@ -103,11 +144,25 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
       const seconds = session.elapsedNow();
       recordingActive.current = false;
       session.stop();
-      if (discard.current) { if (result?.uri) discardFile(result.uri); return; }
-      if (!result?.uri) { fail('contribute.guided.error.recording'); return; }
+      if (discard.current) {
+        if (result?.uri) discardFile(result.uri);
+        return;
+      }
+      if (!result?.uri) {
+        fail('contribute.guided.error.recording');
+        return;
+      }
       const fileName = `guided-capture-${startedAt.toISOString().replace(/[:.]/g, '-')}.${output.extension}`;
       onRecorded({
-        asset: { uri: result.uri, fileName, type: 'video', mimeType: output.contentType, width: 0, height: 0, duration: Math.round(seconds * 1000) },
+        asset: {
+          uri: result.uri,
+          fileName,
+          type: 'video',
+          mimeType: output.contentType,
+          width: 0,
+          height: 0,
+          duration: Math.round(seconds * 1000),
+        },
         capturedAt: startedAt.toISOString(),
         // The recorder ends by itself only at a limit (or when the camera is taken away).
         stoppedAtLimit: !userStopped.current,
@@ -127,47 +182,61 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
   }
 
   function cancel() {
-    if (recordingActive.current) { discard.current = true; camera.current?.stopRecording(); }
+    if (recordingActive.current) {
+      discard.current = true;
+      camera.current?.stopRecording();
+    }
     onCancel();
   }
 
   const recording = phase === 'recording' || phase === 'saving';
-  const notices = (phase === 'ready' ? ['contribute.guided.noLiveChecks']
-    : recording ? [...lockNoticeKeys(lockReport(Platform.OS === 'ios' ? ['focus'] : [])), 'contribute.guided.noLiveChecks']
-    : []).map((key) => t(key));
+  const notices = (
+    phase === 'ready'
+      ? ['contribute.guided.noLiveChecks']
+      : recording
+        ? [
+            ...lockNoticeKeys(lockReport(Platform.OS === 'ios' ? ['focus'] : [])),
+            'contribute.guided.noLiveChecks',
+          ]
+        : []
+  ).map((key) => t(key));
 
-  return <View className="flex-1 bg-background">
-    {permission === 'granted' && accepted && <CameraView
-      ref={camera}
-      style={StyleSheet.absoluteFill}
-      facing="back"
-      mode="video"
-      mute
-      videoQuality={budget.resolution}
-      videoBitrate={budget.bitsPerSecond}
-      // Electronic stabilisation warps each frame differently, which breaks
-      // the single-camera model reconstruction solves for.
-      videoStabilizationMode="off"
-      // iOS: `on` focuses once and holds. Switched on at Start so it focuses
-      // on the street, not on whatever was in front of the lens at launch.
-      autofocus={recording ? 'on' : 'off'}
-      responsiveOrientationWhenOrientationLocked
-      onResponsiveOrientationChanged={({ orientation: next }) => setOrientation(next)}
-      onCameraReady={() => setPhase((current) => (current === 'starting' ? 'ready' : current))}
-      onMountError={() => fail('contribute.guided.error.camera')}
-    />}
-    <Upright orientation={orientation}>
-      <GuidedOverlay
-        phase={accepted ? phase : 'error'}
-        session={session}
-        budget={budget}
-        portrait={orientation === 'portrait' || orientation === 'portraitUpsideDown'}
-        notices={notices}
-        error={accepted ? error : t('contribute.guided.error.format')}
-        onStart={() => void start()}
-        onStop={stop}
-        onCancel={cancel}
-      />
-    </Upright>
-  </View>;
+  return (
+    <View className="flex-1 bg-background">
+      {permission === 'granted' && accepted && (
+        <CameraView
+          ref={camera}
+          style={StyleSheet.absoluteFill}
+          facing="back"
+          mode="video"
+          mute
+          videoQuality={budget.resolution}
+          videoBitrate={budget.bitsPerSecond}
+          // Electronic stabilisation warps each frame differently, which breaks
+          // the single-camera model reconstruction solves for.
+          videoStabilizationMode="off"
+          // iOS: `on` focuses once and holds. Switched on at Start so it focuses
+          // on the street, not on whatever was in front of the lens at launch.
+          autofocus={recording ? 'on' : 'off'}
+          responsiveOrientationWhenOrientationLocked
+          onResponsiveOrientationChanged={({ orientation: next }) => setOrientation(next)}
+          onCameraReady={() => setPhase((current) => (current === 'starting' ? 'ready' : current))}
+          onMountError={() => fail('contribute.guided.error.camera')}
+        />
+      )}
+      <Upright orientation={orientation}>
+        <GuidedOverlay
+          phase={accepted ? phase : 'error'}
+          session={session}
+          budget={budget}
+          portrait={orientation === 'portrait' || orientation === 'portraitUpsideDown'}
+          notices={notices}
+          error={accepted ? error : t('contribute.guided.error.format')}
+          onStart={() => void start()}
+          onStop={stop}
+          onCancel={cancel}
+        />
+      </Upright>
+    </View>
+  );
 }

@@ -206,7 +206,11 @@ function subtagsOf(tag: string): Subtags {
 function matchRank(offered: Subtags, requested: Subtags): number | undefined {
   if (offered.language !== requested.language) return undefined;
   const scriptRank =
-    offered.script !== undefined && requested.script !== undefined && offered.script !== requested.script ? 1 : 0;
+    offered.script !== undefined &&
+    requested.script !== undefined &&
+    offered.script !== requested.script
+      ? 1
+      : 0;
   const regionRank = offered.region === undefined ? 2 : offered.region === requested.region ? 1 : 3;
   const variantRank = offered.variants.some((variant) => !requested.variants.includes(variant))
     ? 2
@@ -242,7 +246,10 @@ function matchRank(offered: Subtags, requested: Subtags): number | undefined {
  * canonical form is, and the tag returned is the one `offered` spelled — the
  * key to read the answer with.
  */
-export function matchLanguageTag(offered: readonly string[], locale: string | null | undefined): string | undefined {
+export function matchLanguageTag(
+  offered: readonly string[],
+  locale: string | null | undefined,
+): string | undefined {
   const normalized = normalizeLanguageTag(locale);
   if (normalized === undefined) return undefined;
   const requested = subtagsOf(normalized);

@@ -48,7 +48,13 @@ import { ecosystemCapabilities } from '@/lib/goway/capabilities';
 import { shortcutCategories } from '@/lib/goway/categories';
 import { classifyGoWayError, type GoWayFailureKind } from '@/lib/goway/errors';
 import { buildMarkers } from '@/lib/goway/markers';
-import { MIN_SEARCH_LENGTH, useCategoryTaxonomy, usePlace, usePlacesInBounds, useSearch } from '@/lib/goway/queries';
+import {
+  MIN_SEARCH_LENGTH,
+  useCategoryTaxonomy,
+  usePlace,
+  usePlacesInBounds,
+  useSearch,
+} from '@/lib/goway/queries';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { useUserLocation } from '@/lib/map/useUserLocation';
 
@@ -268,7 +274,10 @@ export function useExplore(
   const results = useMemo(() => searchQuery.data?.items ?? [], [searchQuery.data]);
 
   const selectedPlaceId = selection?.kind === 'place' ? selection.placeId : null;
-  const placeQuery = usePlace(selectedPlaceId, selection?.kind === 'place' ? selection.seed : undefined);
+  const placeQuery = usePlace(
+    selectedPlaceId,
+    selection?.kind === 'place' ? selection.seed : undefined,
+  );
 
   /**
    * Resolving a tapped basemap label to a GoWay place — through SEARCH, which
@@ -304,7 +313,11 @@ export function useExplore(
   // ── Markers ──────────────────────────────────────────────────────────────
 
   const selectedMarkerId =
-    selection?.kind === 'place' ? selection.placeId : selection?.kind === 'result' ? selection.result.id : null;
+    selection?.kind === 'place'
+      ? selection.placeId
+      : selection?.kind === 'result'
+        ? selection.result.id
+        : null;
 
   const built = useMemo(() => {
     // In search mode the map shows what the user asked for, not what happens to
@@ -358,7 +371,9 @@ export function useExplore(
       // Zoom drives marker visibility, so it has to track the live camera — but
       // only when it has moved enough to change an answer. Re-rendering every
       // marker on a 0.02-level wheel tick is how a map becomes unresponsive.
-      setZoom((current) => (Math.abs(current - change.viewport.zoom) >= 0.25 ? change.viewport.zoom : current));
+      setZoom((current) =>
+        Math.abs(current - change.viewport.zoom) >= 0.25 ? change.viewport.zoom : current,
+      );
 
       if (!change.isFinal) return;
 
@@ -402,7 +417,10 @@ export function useExplore(
       const current = viewportRef.current?.zoom ?? DEFAULT_VIEWPORT.zoom;
       // Never zoom OUT to open a place: the user's frame of reference is what
       // makes a selection feel like a step rather than a jump.
-      mapRef.current?.moveTo(coordinate, { zoom: Math.max(current, DETAIL_ZOOM), duration: cameraDuration });
+      mapRef.current?.moveTo(coordinate, {
+        zoom: Math.max(current, DETAIL_ZOOM),
+        duration: cameraDuration,
+      });
     },
     [cameraDuration, mapRef],
   );
@@ -614,7 +632,9 @@ export function useExplore(
       if (directions.active) {
         // A stop's pin is the same control as its field. Tapping it opens that
         // field, which is the only thing a pin in a planner can usefully mean.
-        const slot = directions.stops.findIndex((stop) => stop && `goway-stop-${stop.id}` === marker.id);
+        const slot = directions.stops.findIndex(
+          (stop) => stop && `goway-stop-${stop.id}` === marker.id,
+        );
         if (slot >= 0) directions.beginEdit(slot);
         return;
       }
@@ -634,7 +654,17 @@ export function useExplore(
       const place = places.find((entry) => entry.id === marker.id);
       if (place) selectPlace(place);
     },
-    [built.clusters, cameraDuration, directions, mapRef, places, results, searching, selectPlace, selectResult],
+    [
+      built.clusters,
+      cameraDuration,
+      directions,
+      mapRef,
+      places,
+      results,
+      searching,
+      selectPlace,
+      selectResult,
+    ],
   );
 
   return {

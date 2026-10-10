@@ -35,7 +35,12 @@ import type { Street3dConfig } from '../config/street3d';
 import type { Database } from '../db/postgres';
 import { street3dJobs, street3dSceneVersions } from '../db/schema';
 import { applyFailure, claimStaleJobs } from '../db/street3d/jobs';
-import { enqueuePrivacyJob, findPrivacyCandidates, privacyEnvelope, reopenOrphanedPrivacyGates } from '../db/street3d/privacy';
+import {
+  enqueuePrivacyJob,
+  findPrivacyCandidates,
+  privacyEnvelope,
+  reopenOrphanedPrivacyGates,
+} from '../db/street3d/privacy';
 import { sceneEnvelope } from '../db/street3d/scenes';
 import { refreshCoverage, type CoverageSummary } from './coverage';
 import { drainDeadLetters, drainEvents, type EventSummary } from './events';
@@ -79,7 +84,10 @@ function errorClass(error: unknown): string {
 const BATCH = 100;
 
 /** Phase 3: stale leases. */
-export async function recoverLeases(deps: SchedulerDeps, now: Date): Promise<NonNullable<TickSummary['leases']>> {
+export async function recoverLeases(
+  deps: SchedulerDeps,
+  now: Date,
+): Promise<NonNullable<TickSummary['leases']>> {
   return deps.db.transaction(async (tx) => {
     const stale = await claimStaleJobs(tx, now, BATCH);
     let retried = 0;
@@ -87,7 +95,12 @@ export async function recoverLeases(deps: SchedulerDeps, now: Date): Promise<Non
     for (const job of stale) {
       // A lost lease is a transient fault by definition: the worker crashed or
       // lost its network. Retried with the same jobId; the worker dedups.
-      const outcome = await applyFailure(tx, job, { code: 'lease_expired', detail: 'Heartbeat went stale.', retryable: true }, now);
+      const outcome = await applyFailure(
+        tx,
+        job,
+        { code: 'lease_expired', detail: 'Heartbeat went stale.', retryable: true },
+        now,
+      );
       if (outcome === 'retried') retried += 1;
       if (outcome === 'failed') failed += 1;
     }
@@ -96,11 +109,16 @@ export async function recoverLeases(deps: SchedulerDeps, now: Date): Promise<Non
 }
 
 /** Phase 4: cancel markers for cancelled jobs the worker may hold. */
-export async function writeCancelMarkers(deps: SchedulerDeps, now: Date): Promise<{ written: number }> {
+export async function writeCancelMarkers(
+  deps: SchedulerDeps,
+  now: Date,
+): Promise<{ written: number }> {
   const pending = await deps.db
     .select({ id: street3dJobs.id, reason: street3dJobs.cancelReason })
     .from(street3dJobs)
-    .where(and(isNotNull(street3dJobs.cancelRequestedAt), isNull(street3dJobs.cancelMarkerWrittenAt)))
+    .where(
+      and(isNotNull(street3dJobs.cancelRequestedAt), isNull(street3dJobs.cancelMarkerWrittenAt)),
+    )
     .orderBy(asc(street3dJobs.cancelRequestedAt))
     .limit(BATCH);
   let written = 0;
@@ -121,7 +139,10 @@ export async function writeCancelMarkers(deps: SchedulerDeps, now: Date): Promis
 }
 
 /** Phase 5: privacy passes. */
-export async function schedulePrivacy(deps: SchedulerDeps, now: Date): Promise<NonNullable<TickSummary['privacy']>> {
+export async function schedulePrivacy(
+  deps: SchedulerDeps,
+  now: Date,
+): Promise<NonNullable<TickSummary['privacy']>> {
   const reopened = await reopenOrphanedPrivacyGates(deps.db, now);
   const candidates = await findPrivacyCandidates(deps.db, now, deps.config.privacyBatchSize);
   let queued = 0;
@@ -160,9 +181,17 @@ export async function dispatchJobs(deps: SchedulerDeps, now: Date): Promise<{ se
         .limit(1)
         .for('update', { skipLocked: true });
       if (!job) return true;
-      const envelope = job.kind === 'capture_privacy' ? await privacyEnvelope(tx, job, now) : sceneEnvelope(job, now);
+      const envelope =
+        job.kind === 'capture_privacy'
+          ? await privacyEnvelope(tx, job, now)
+          : sceneEnvelope(job, now);
       if (!envelope) {
-        await applyFailure(tx, job, { code: 'internal', detail: 'The job could not be described.', retryable: false }, now);
+        await applyFailure(
+          tx,
+          job,
+          { code: 'internal', detail: 'The job could not be described.', retryable: false },
+          now,
+        );
         return false;
       }
       await deps.services.jobsQueue.send(JSON.stringify(envelope), { attempt: job.attempt });
@@ -180,7 +209,9 @@ export async function dispatchJobs(deps: SchedulerDeps, now: Date): Promise<{ se
 
 /** The CDN path of a scene-bucket key, honouring a path on the public asset origin. */
 function cdnPath(config: Street3dConfig, key: string): string {
-  const base = config.publicAssetBaseUrl ? new URL(config.publicAssetBaseUrl).pathname.replace(/\/+$/, '') : '';
+  const base = config.publicAssetBaseUrl
+    ? new URL(config.publicAssetBaseUrl).pathname.replace(/\/+$/, '')
+    : '';
   return `${base}/${key}`;
 }
 
@@ -190,11 +221,19 @@ function cdnPath(config: Street3dConfig, key: string): string {
  * outbox for the next tick; the version is ALREADY hidden from the API, which
  * reads only `published`.
  */
-export async function purgeDisabledVersions(deps: SchedulerDeps, now: Date): Promise<{ versions: number; objects: number }> {
+export async function purgeDisabledVersions(
+  deps: SchedulerDeps,
+  now: Date,
+): Promise<{ versions: number; objects: number }> {
   const pending = await deps.db
     .select()
     .from(street3dSceneVersions)
-    .where(and(eq(street3dSceneVersions.state, 'disabled'), isNull(street3dSceneVersions.assetsPurgedAt)))
+    .where(
+      and(
+        eq(street3dSceneVersions.state, 'disabled'),
+        isNull(street3dSceneVersions.assetsPurgedAt),
+      ),
+    )
     .limit(BATCH);
   let objects = 0;
   for (const version of pending) {
@@ -204,7 +243,10 @@ export async function purgeDisabledVersions(deps: SchedulerDeps, now: Date): Pro
     }
     if (deps.services.cdn && version.assets.length > 0) {
       const prefix = `${deps.config.sceneKeyPrefix}/${version.sceneId}/v${version.version}/`;
-      await deps.services.cdn.invalidate([`${cdnPath(deps.config, prefix)}*`], `goway-street3d-disable-${version.id}`);
+      await deps.services.cdn.invalidate(
+        [`${cdnPath(deps.config, prefix)}*`],
+        `goway-street3d-disable-${version.id}`,
+      );
     }
     await deps.db
       .update(street3dSceneVersions)
@@ -226,7 +268,10 @@ export async function tick(deps: SchedulerDeps): Promise<TickSummary> {
       summary[phase] = await work();
     } catch (error) {
       summary.failedPhases.push(phase);
-      deps.logger?.error({ phase, errorClass: errorClass(error) }, 'Street 3D scheduler phase failed');
+      deps.logger?.error(
+        { phase, errorClass: errorClass(error) },
+        'Street 3D scheduler phase failed',
+      );
     }
   };
 
@@ -248,7 +293,12 @@ export async function tick(deps: SchedulerDeps): Promise<TickSummary> {
 
   let formed: Awaited<ReturnType<typeof formScenes>> | null = null;
   await run('formation', async () => {
-    formed = await formScenes({ db: deps.db, jobStore: deps.services.jobStore, config: deps.config, now: clock() });
+    formed = await formScenes({
+      db: deps.db,
+      jobStore: deps.services.jobStore,
+      config: deps.config,
+      now: clock(),
+    });
     return {
       frames: formed.frames.length,
       scenesCreated: formed.scenesCreated,
@@ -258,7 +308,13 @@ export async function tick(deps: SchedulerDeps): Promise<TickSummary> {
   });
   const formation = formed as Awaited<ReturnType<typeof formScenes>> | null;
   if (formation) {
-    await run('coverage', () => refreshCoverage({ db: deps.db, config: deps.config, now: clock() }, formation.frames, formation.assignment));
+    await run('coverage', () =>
+      refreshCoverage(
+        { db: deps.db, config: deps.config, now: clock() },
+        formation.frames,
+        formation.assignment,
+      ),
+    );
   }
   await run('dispatch', () => dispatchJobs(deps, clock()));
   await run('purge', () => purgeDisabledVersions(deps, clock()));

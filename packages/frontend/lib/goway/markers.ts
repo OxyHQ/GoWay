@@ -93,7 +93,8 @@ export function buildMarkers({
     // below removes street-level detail rather than landmarks.
     if (b[1].length !== a[1].length) return b[1].length - a[1].length;
     return (
-      resolveCategory(a[1][0]?.categories, taxonomy).minZoom - resolveCategory(b[1][0]?.categories, taxonomy).minZoom
+      resolveCategory(a[1][0]?.categories, taxonomy).minZoom -
+      resolveCategory(b[1][0]?.categories, taxonomy).minZoom
     );
   });
 
@@ -145,7 +146,11 @@ export function buildMarkers({
   return { markers, clusters, hiddenByZoom };
 }
 
-function placeMarker(place: Place, selected: boolean, taxonomy: CategoryTaxonomy | undefined): MapMarker {
+function placeMarker(
+  place: Place,
+  selected: boolean,
+  taxonomy: CategoryTaxonomy | undefined,
+): MapMarker {
   const category = resolveCategory(place.categories, taxonomy);
   const capabilities = capabilitySummary(place.capabilities);
 

@@ -75,7 +75,9 @@ export function MapTopBar() {
           `t('map.title')` stays as the accessible label — the logo is the app's
           name drawn rather than typed, and a screen reader should hear a name. */}
       <GowayLogo width={BRAND_WIDTH} label={t('map.title')} />
-      <Button size="sm" appearance="outline" onPress={() => router.push('/contribute')}>Contribute</Button>
+      <Button size="sm" appearance="outline" onPress={() => router.push('/contribute')}>
+        Contribute
+      </Button>
 
       <Pressable
         accessibilityRole="button"

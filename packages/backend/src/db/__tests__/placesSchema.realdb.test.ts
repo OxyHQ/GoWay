@@ -16,7 +16,12 @@
 import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { statementFailure } from './statementFailure';
-import { SUITE_SETUP_TIMEOUT_MS, createSuiteDatabase, destroySuiteDatabase, type SuiteDatabase } from './testDatabase';
+import {
+  SUITE_SETUP_TIMEOUT_MS,
+  createSuiteDatabase,
+  destroySuiteDatabase,
+  type SuiteDatabase,
+} from './testDatabase';
 
 let suite: SuiteDatabase | null = null;
 
@@ -56,14 +61,18 @@ describe('places', () => {
     // of them and that produce a point PostGIS will happily normalize into
     // somewhere else on Earth.
     const message = await statementFailure(
-      () => suite!.client`INSERT INTO places (id, name, latitude, longitude) VALUES ('p-bad', 'X', 120, 0)`,
+      () =>
+        suite!
+          .client`INSERT INTO places (id, name, latitude, longitude) VALUES ('p-bad', 'X', 120, 0)`,
     );
     expect(message).toContain('places_latitude_range_check');
   });
 
   it('refuses a blank name', async () => {
     const message = await statementFailure(
-      () => suite!.client`INSERT INTO places (id, name, latitude, longitude) VALUES ('p-blank', '   ', 0, 0)`,
+      () =>
+        suite!
+          .client`INSERT INTO places (id, name, latitude, longitude) VALUES ('p-blank', '   ', 0, 0)`,
     );
     expect(message).toContain('places_name_not_blank_check');
   });
@@ -363,7 +372,9 @@ describe('deleting a place', () => {
     // that no longer exists, and a dangling name row would keep the place's
     // Spanish label alive after the place itself is gone.
     await suite!.client`DELETE FROM places WHERE id = 'p-1'`;
-    const [counts] = await suite!.client<{ sources: string; capabilities: string; claims: string; duplicates: string; names: string }[]>`
+    const [counts] = await suite!.client<
+      { sources: string; capabilities: string; claims: string; duplicates: string; names: string }[]
+    >`
       SELECT
         (SELECT count(*) FROM places_sources WHERE place_id = 'p-1')::text AS sources,
         (SELECT count(*) FROM places_capabilities WHERE place_id = 'p-1')::text AS capabilities,
@@ -371,7 +382,13 @@ describe('deleting a place', () => {
         (SELECT count(*) FROM places_names WHERE place_id = 'p-1')::text AS names,
         (SELECT count(*) FROM places_duplicate_candidates WHERE place_id = 'p-1' OR candidate_place_id = 'p-1')::text AS duplicates
     `;
-    expect(counts).toEqual({ sources: '0', capabilities: '0', claims: '0', names: '0', duplicates: '0' });
+    expect(counts).toEqual({
+      sources: '0',
+      capabilities: '0',
+      claims: '0',
+      names: '0',
+      duplicates: '0',
+    });
   });
 });
 
@@ -395,32 +412,42 @@ describe('merges', () => {
       INSERT INTO places (id, name, latitude, longitude) VALUES ('m-1', 'Merged', 0, 0), ('m-2', 'Survivor', 0, 0)
     `;
     expect(
-      await statementFailure(() => suite!.client`UPDATE places SET status = 'merged' WHERE id = 'm-1'`),
-    ).toContain('places_merged_into_check');
-    expect(
-      await statementFailure(() => suite!.client`UPDATE places SET merged_into_place_id = 'm-2' WHERE id = 'm-1'`),
+      await statementFailure(
+        () => suite!.client`UPDATE places SET status = 'merged' WHERE id = 'm-1'`,
+      ),
     ).toContain('places_merged_into_check');
     expect(
       await statementFailure(
-        () => suite!.client`UPDATE places SET status = 'merged', merged_into_place_id = 'm-1' WHERE id = 'm-1'`,
+        () => suite!.client`UPDATE places SET merged_into_place_id = 'm-2' WHERE id = 'm-1'`,
+      ),
+    ).toContain('places_merged_into_check');
+    expect(
+      await statementFailure(
+        () =>
+          suite!
+            .client`UPDATE places SET status = 'merged', merged_into_place_id = 'm-1' WHERE id = 'm-1'`,
       ),
     ).toContain('places_merged_into_self_check');
     expect(
       await statementFailure(
-        () => suite!.client`UPDATE places SET status = 'merged', merged_into_place_id = 'nowhere' WHERE id = 'm-1'`,
+        () =>
+          suite!
+            .client`UPDATE places SET status = 'merged', merged_into_place_id = 'nowhere' WHERE id = 'm-1'`,
       ),
     ).toContain('places_merged_into_place_id_places_id_fk');
 
-    await suite!.client`UPDATE places SET status = 'merged', merged_into_place_id = 'm-2' WHERE id = 'm-1'`;
-    expect(await statementFailure(() => suite!.client`DELETE FROM places WHERE id = 'm-2'`)).toContain(
-      'places_merged_into_place_id_places_id_fk',
-    );
+    await suite!
+      .client`UPDATE places SET status = 'merged', merged_into_place_id = 'm-2' WHERE id = 'm-1'`;
+    expect(
+      await statementFailure(() => suite!.client`DELETE FROM places WHERE id = 'm-2'`),
+    ).toContain('places_merged_into_place_id_places_id_fk');
   });
 });
 
 describe('place_revisions and place_reports', () => {
   it('holds a revision to the contract action and source sets, and its changes to an array', async () => {
-    await suite!.client`INSERT INTO places (id, name, latitude, longitude) VALUES ('r-1', 'Revised', 0, 0)`;
+    await suite!
+      .client`INSERT INTO places (id, name, latitude, longitude) VALUES ('r-1', 'Revised', 0, 0)`;
     expect(
       await statementFailure(
         () => suite!.client`
@@ -452,7 +479,9 @@ describe('place_revisions and place_reports', () => {
       INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, reason) VALUES ('rp-1', 'r-1', 'person-a', 'spam')
     `;
     expect(
-      await statementFailure(() => suite!.client`UPDATE place_reports SET resolved_at = now() WHERE id = 'rp-1'`),
+      await statementFailure(
+        () => suite!.client`UPDATE place_reports SET resolved_at = now() WHERE id = 'rp-1'`,
+      ),
     ).toContain('place_reports_resolved_check');
     expect(
       await statementFailure(

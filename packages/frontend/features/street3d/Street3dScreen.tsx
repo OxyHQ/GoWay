@@ -66,7 +66,10 @@ function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function posterOf(manifest: StreetSceneManifest | undefined, fallback: string | undefined): string | undefined {
+function posterOf(
+  manifest: StreetSceneManifest | undefined,
+  fallback: string | undefined,
+): string | undefined {
   return manifest?.assets.find((asset) => asset.role === 'poster')?.url ?? fallback;
 }
 
@@ -96,9 +99,15 @@ export function Street3dScreen() {
   const [showStats, setShowStats] = useState(false);
 
   // Labels: web only. On native the embedded page draws its own.
-  const places = usePlacesInBounds(manifest?.bounds ?? null, { limit: 200, enabled: IS_WEB && manifest != null });
+  const places = usePlacesInBounds(manifest?.bounds ?? null, {
+    limit: 200,
+    enabled: IS_WEB && manifest != null,
+  });
   const labels = useMemo<SceneViewerLabel[]>(
-    () => (manifest && places.data ? placeLabelsForScene(places.data.items, manifest.worldTransform) : []),
+    () =>
+      manifest && places.data
+        ? placeLabelsForScene(places.data.items, manifest.worldTransform)
+        : [],
     [manifest, places.data],
   );
 
@@ -138,7 +147,11 @@ export function Street3dScreen() {
       const viewport = viewportForBounds(bounds, width, height);
       router.replace({
         pathname: '/',
-        params: { lat: String(viewport.latitude), lng: String(viewport.longitude), zoom: String(viewport.zoom) },
+        params: {
+          lat: String(viewport.latitude),
+          lng: String(viewport.longitude),
+          zoom: String(viewport.zoom),
+        },
       });
     } else {
       router.replace('/');
@@ -159,7 +172,9 @@ export function Street3dScreen() {
 
   const formatDate = (iso: string) => {
     try {
-      return new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'short' }).format(new Date(iso));
+      return new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'short' }).format(
+        new Date(iso),
+      );
     } catch {
       return iso.slice(0, 10);
     }
@@ -193,7 +208,12 @@ export function Street3dScreen() {
           pointerEvents="none"
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
         >
-          <Image source={{ uri: poster }} style={{ flex: 1 }} contentFit="cover" accessibilityIgnoresInvertColors />
+          <Image
+            source={{ uri: poster }}
+            style={{ flex: 1 }}
+            contentFit="cover"
+            accessibilityIgnoresInvertColors
+          />
         </Animated.View>
       ) : null}
 
@@ -203,7 +223,13 @@ export function Street3dScreen() {
           className="absolute left-0 right-0 top-0 flex-row items-center justify-between gap-space-8"
           style={{ paddingTop: top, paddingHorizontal: side }}
         >
-          <Button size="sm" appearance="solid" tone="neutral" onPress={close} accessibilityLabel={t('street3d.viewer.close')}>
+          <Button
+            size="sm"
+            appearance="solid"
+            tone="neutral"
+            onPress={close}
+            accessibilityLabel={t('street3d.viewer.close')}
+          >
             {t('street3d.viewer.close')}
           </Button>
           {!unavailable ? (
@@ -211,7 +237,12 @@ export function Street3dScreen() {
               <Button size="sm" appearance="solid" tone="neutral" onPress={contributeHere}>
                 {t('street3d.contribute.cta')}
               </Button>
-              <Button size="sm" appearance="solid" tone="neutral" onPress={() => gate.run(() => setReporting(true))}>
+              <Button
+                size="sm"
+                appearance="solid"
+                tone="neutral"
+                onPress={() => gate.run(() => setReporting(true))}
+              >
                 {t('street3d.viewer.report')}
               </Button>
             </View>
@@ -220,8 +251,15 @@ export function Street3dScreen() {
       ) : null}
 
       {notice ? (
-        <View pointerEvents="box-none" className="absolute left-0 right-0 items-center px-space-16" style={{ top: '45%' }}>
-          <View accessibilityRole="alert" className="items-center gap-space-8 rounded-radius-12 bg-card px-space-16 py-space-12 shadow-m">
+        <View
+          pointerEvents="box-none"
+          className="absolute left-0 right-0 items-center px-space-16"
+          style={{ top: '45%' }}
+        >
+          <View
+            accessibilityRole="alert"
+            className="items-center gap-space-8 rounded-radius-12 bg-card px-space-16 py-space-12 shadow-m"
+          >
             <Text className="text-body text-foreground">{notice}</Text>
             {failure?.retryable && !unavailable ? (
               <Button size="sm" appearance="outline" onPress={() => void scene.refetch()}>
@@ -240,15 +278,23 @@ export function Street3dScreen() {
         >
           {manifest.quality.placement === 'approximate' ? (
             <View className="self-start rounded-radius-8 bg-warning-subtle px-space-8 py-space-4">
-              <Text className="text-caption text-warning-text">{t('street3d.viewer.approximate')}</Text>
+              <Text className="text-caption text-warning-text">
+                {t('street3d.viewer.approximate')}
+              </Text>
             </View>
           ) : null}
 
           {IS_WEB ? (
-            <View pointerEvents="box-none" className="flex-row flex-wrap items-end justify-between gap-space-8">
+            <View
+              pointerEvents="box-none"
+              className="flex-row flex-wrap items-end justify-between gap-space-8"
+            >
               <View className="flex-row items-center gap-space-8 rounded-radius-max bg-card px-space-8 py-space-4 shadow-s">
                 {/* Walk first when it is the guided default; Orbit is the secondary, free mode. */}
-                {(guidedAvailable ? (['walk', 'orbit'] as const) : (['orbit', 'walk'] as const)).map((option) => (
+                {(guidedAvailable
+                  ? (['walk', 'orbit'] as const)
+                  : (['orbit', 'walk'] as const)
+                ).map((option) => (
                   <Button
                     key={option}
                     size="xs"
@@ -260,10 +306,15 @@ export function Street3dScreen() {
                   </Button>
                 ))}
                 <Text className="text-caption text-muted-foreground">
-                  {guidedAvailable && mode === 'walk' ? t('street3d.viewer.controls.hintGuided') : t('street3d.viewer.controls.hint')}
+                  {guidedAvailable && mode === 'walk'
+                    ? t('street3d.viewer.controls.hintGuided')
+                    : t('street3d.viewer.controls.hint')}
                 </Text>
                 {__DEV__ ? (
-                  <Pressable onPress={() => setShowStats((value) => !value)} accessibilityRole="button">
+                  <Pressable
+                    onPress={() => setShowStats((value) => !value)}
+                    accessibilityRole="button"
+                  >
                     <Text className="text-caption text-muted-foreground">perf</Text>
                   </Pressable>
                 ) : null}
@@ -280,7 +331,10 @@ export function Street3dScreen() {
                 <Text className="text-caption text-muted-foreground">
                   {formatDate(manifest.observedFrom) === formatDate(manifest.observedTo)
                     ? t('street3d.viewer.observedSame', { date: formatDate(manifest.observedTo) })
-                    : t('street3d.viewer.observed', { from: formatDate(manifest.observedFrom), to: formatDate(manifest.observedTo) })}
+                    : t('street3d.viewer.observed', {
+                        from: formatDate(manifest.observedFrom),
+                        to: formatDate(manifest.observedTo),
+                      })}
                 </Text>
               </View>
             </View>
@@ -304,7 +358,11 @@ function ReportPanel({ sceneId, onClose }: { sceneId: string; onClose: () => voi
   const [note, setNote] = useState('');
 
   const options = useMemo(
-    () => STREET_SCENE_REPORT_REASONS.map((value) => ({ value, label: t(`street3d.report.reason.${value}`) })),
+    () =>
+      STREET_SCENE_REPORT_REASONS.map((value) => ({
+        value,
+        label: t(`street3d.report.reason.${value}`),
+      })),
     [t],
   );
 
@@ -347,7 +405,9 @@ function ReportPanel({ sceneId, onClose }: { sceneId: string; onClose: () => voi
             />
             {failure && failure.kind !== 'aborted' ? (
               <Text accessibilityRole="alert" className="text-error-text">
-                {failure.kind === 'unauthorized' ? t('street3d.report.signIn') : t('street3d.report.failed')}
+                {failure.kind === 'unauthorized'
+                  ? t('street3d.report.signIn')
+                  : t('street3d.report.failed')}
               </Text>
             ) : null}
             <View className="flex-row justify-end gap-space-8">

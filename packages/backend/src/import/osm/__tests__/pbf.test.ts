@@ -45,7 +45,8 @@ async function readAll(path: string) {
     const tagsOf = (keys: readonly number[], vals: readonly number[]): Record<string, string> => {
       const tags: Record<string, string> = {};
       for (let index = 0; index < keys.length; index += 1) {
-        tags[strings?.text(keys[index] as number) ?? ''] = strings?.text(vals[index] as number) ?? '';
+        tags[strings?.text(keys[index] as number) ?? ''] =
+          strings?.text(vals[index] as number) ?? '';
       }
       return tags;
     };
@@ -103,7 +104,11 @@ describe('readBlobs / readPrimitiveBlock', () => {
     const path = writePbf('mixed.osm.pbf', [
       { nodes: [{ id: 5, latitude: 1, longitude: 1 }] },
       { ways: [{ id: 188_938_001, refs: [5, 9, 400, 5], tags: { tourism: 'museum' } }] },
-      { relations: [{ id: 6_288_735, wayMembers: [188_938_001, 7], tags: { amenity: 'marketplace' } }] },
+      {
+        relations: [
+          { id: 6_288_735, wayMembers: [188_938_001, 7], tags: { amenity: 'marketplace' } },
+        ],
+      },
     ]);
 
     const { ways, relations, blocks } = await readAll(path);
@@ -118,7 +123,10 @@ describe('readBlobs / readPrimitiveBlock', () => {
   test('reads both raw and zlib blobs', async () => {
     const path = writePbf('compression.osm.pbf', [
       { compression: 'raw', nodes: [{ id: 1, latitude: 0, longitude: 0, tags: { name: 'Raw' } }] },
-      { compression: 'zlib', nodes: [{ id: 2, latitude: 0, longitude: 0, tags: { name: 'Zlib' } }] },
+      {
+        compression: 'zlib',
+        nodes: [{ id: 2, latitude: 0, longitude: 0, tags: { name: 'Zlib' } }],
+      },
     ]);
     const { nodes } = await readAll(path);
     expect(nodes.map((node) => node.tags.name)).toEqual(['Raw', 'Zlib']);
@@ -132,7 +140,8 @@ describe('readBlobs / readPrimitiveBlock', () => {
     ]);
 
     const offsets: number[] = [];
-    for await (const blob of readBlobs(path)) if (blob.type === 'OSMData') offsets.push(blob.offset);
+    for await (const blob of readBlobs(path))
+      if (blob.type === 'OSMData') offsets.push(blob.offset);
     expect(offsets).toHaveLength(3);
 
     const wanted = new Set([offsets[1] as number]);

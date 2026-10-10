@@ -51,7 +51,12 @@ import type {
 } from '@goway/contracts';
 import { CAPTURE_CONTENT_HASH_ALGORITHM } from '@goway/contracts';
 import type { SelectedRow } from '@oxy.so/db';
-import { captureAssets, captureLocationEvidence, captureMediaObjects, captureSessions } from '../schema';
+import {
+  captureAssets,
+  captureLocationEvidence,
+  captureMediaObjects,
+  captureSessions,
+} from '../schema';
 
 export const SESSION_COLUMNS = {
   id: captureSessions.id,
@@ -209,7 +214,10 @@ export function toStoredObjectLifecycle(row: MediaObjectRow): StoredObjectLifecy
   return lifecycle;
 }
 
-export function toCaptureMediaObject(row: MediaObjectRow, deduplicated: boolean): CaptureMediaObject {
+export function toCaptureMediaObject(
+  row: MediaObjectRow,
+  deduplicated: boolean,
+): CaptureMediaObject {
   return {
     contentHashAlgorithm: CAPTURE_CONTENT_HASH_ALGORITHM,
     contentHash: row.contentHash,

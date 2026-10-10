@@ -173,7 +173,8 @@ function useMapPadding(layout: 'sheet' | 'panel', snap: MapSheetSnap): MapFitOpt
             // `peek` shows the header only; 140 px is a generous stand-in for
             // it, and erring large keeps a route above the sheet rather than
             // under its lip.
-            bottom: (snap === 'peek' ? 140 : Math.round(height * MAP_SHEET_HALF_RATIO)) + FIT_GAP_PX,
+            bottom:
+              (snap === 'peek' ? 140 : Math.round(height * MAP_SHEET_HALF_RATIO)) + FIT_GAP_PX,
             left: FIT_GAP_PX + windowEdgeGap(insets.left, 0),
           };
 
@@ -253,11 +254,13 @@ export default function ExploreScreen({
   }, [applyPendingFit, street3d]);
 
   const overlays = useMemo(
-    () => (street3d.overlays.length > 0 ? [...street3d.overlays, ...explore.overlays] : explore.overlays),
+    () =>
+      street3d.overlays.length > 0 ? [...street3d.overlays, ...explore.overlays] : explore.overlays,
     [explore.overlays, street3d.overlays],
   );
   const markers = useMemo(
-    () => (street3d.markers.length > 0 ? [...explore.markers, ...street3d.markers] : explore.markers),
+    () =>
+      street3d.markers.length > 0 ? [...explore.markers, ...street3d.markers] : explore.markers,
     [explore.markers, street3d.markers],
   );
   const handleMarkerPress = useCallback(
@@ -376,154 +379,163 @@ export default function ExploreScreen({
     // also owns `app/frame.tsx`, which is the case the badge exists for.
     <BrandedChromeProvider>
       <View className="flex-1 bg-background">
-      <MapCanvas
-        ref={mapRef}
-        initialViewport={initialViewport ?? undefined}
-        markers={markers}
-        renderMarker={renderMarker}
-        overlays={overlays}
-        onMarkerPress={handleMarkerPress}
-        onReady={handleMapReady}
-        onPress={handleMapPress}
-        // What the basemap is already labelling, so GoWay does not draw a
-        // second chip over it. See `lib/goway/basemapLabels.ts`.
-        onLabelsChange={explore.onLabelsChange}
-        showUserLocation={followingLocation}
-        onViewportChange={handleViewportChange}
-        onError={setMapError}
-        testID="goway-map"
-      />
+        <MapCanvas
+          ref={mapRef}
+          initialViewport={initialViewport ?? undefined}
+          markers={markers}
+          renderMarker={renderMarker}
+          overlays={overlays}
+          onMarkerPress={handleMarkerPress}
+          onReady={handleMapReady}
+          onPress={handleMapPress}
+          // What the basemap is already labelling, so GoWay does not draw a
+          // second chip over it. See `lib/goway/basemapLabels.ts`.
+          onLabelsChange={explore.onLabelsChange}
+          showUserLocation={followingLocation}
+          onViewportChange={handleViewportChange}
+          onError={setMapError}
+          testID="goway-map"
+        />
 
-      <MapTopBar />
+        <MapTopBar />
 
-      {/* "Search this area" is Bloom's own control, and it arms itself from the
+        {/* "Search this area" is Bloom's own control, and it arms itself from the
           `source`/`isFinal` signal on the viewport event rather than from every
           camera frame — a camera the APP moved must never offer to re-run the
           search that moved it. It is hidden while the canvas is degraded: there
           is no visible area to search. */}
-      {explore.areaMoved && !mapError && !directions.active ? (
-        <View
-          pointerEvents="box-none"
-          className="absolute left-0 right-0 items-center"
-          style={{ top: areaTop }}
-        >
-          <MapSearchAreaButton
-            variant="button"
-            label="Search this area"
-            onPress={explore.searchThisArea}
-            testID="search-this-area"
-          />
-        </View>
-      ) : null}
+        {explore.areaMoved && !mapError && !directions.active ? (
+          <View
+            pointerEvents="box-none"
+            className="absolute left-0 right-0 items-center"
+            style={{ top: areaTop }}
+          >
+            <MapSearchAreaButton
+              variant="button"
+              label="Search this area"
+              onPress={explore.searchThisArea}
+              testID="search-this-area"
+            />
+          </View>
+        ) : null}
 
-      {/* Street 3D: an area in view needs more photos. A suggestion, never a
+        {/* Street 3D: an area in view needs more photos. A suggestion, never a
           wall — it yields to "Search this area" and to the directions picker,
           and contributing is auth-gated at the moment it is asked for. */}
-      {street3d.wantingCapture.length > 0 && !explore.areaMoved && !mapError && !directions.active ? (
-        <View
-          pointerEvents="box-none"
-          className="absolute left-0 right-0 items-center px-space-16"
-          style={{ top: areaTop }}
-        >
-          <View className="flex-row items-center gap-space-8 rounded-radius-max bg-card py-space-4 pl-space-12 pr-space-4 shadow-m">
-            <Text className="text-bodySmall text-foreground" numberOfLines={2}>
-              {t('street3d.layer.contributeHint')}
-            </Text>
-            <Button size="xs" onPress={() => gate.run(() => router.push('/contribute'))}>
-              {t('street3d.contribute.cta')}
-            </Button>
+        {street3d.wantingCapture.length > 0 &&
+        !explore.areaMoved &&
+        !mapError &&
+        !directions.active ? (
+          <View
+            pointerEvents="box-none"
+            className="absolute left-0 right-0 items-center px-space-16"
+            style={{ top: areaTop }}
+          >
+            <View className="flex-row items-center gap-space-8 rounded-radius-max bg-card py-space-4 pl-space-12 pr-space-4 shadow-m">
+              <Text className="text-bodySmall text-foreground" numberOfLines={2}>
+                {t('street3d.layer.contributeHint')}
+              </Text>
+              <Button size="xs" onPress={() => gate.run(() => router.push('/contribute'))}>
+                {t('street3d.contribute.cta')}
+              </Button>
+            </View>
           </View>
-        </View>
-      ) : null}
+        ) : null}
 
-      {/* Choosing a stop on the map is a MODE, and a mode with no visible state
+        {/* Choosing a stop on the map is a MODE, and a mode with no visible state
           is a map that mysteriously starts answering taps differently. The
           notice is an `alert` so it is announced, and it names the field it is
           about. */}
-      {directions.picking != null && !mapError ? (
-        <View
-          pointerEvents="none"
-          accessibilityRole="alert"
-          className="absolute left-0 right-0 items-center px-space-16"
-          style={{ top: areaTop }}
-        >
-          <View className="rounded-radius-max bg-card px-space-16 py-space-8 shadow-m">
-            <Text className="text-bodySmall text-foreground">
-              {`Tap the map to set the ${slotName(directions.picking, directions.stops.length).toLowerCase()}`}
-            </Text>
+        {directions.picking != null && !mapError ? (
+          <View
+            pointerEvents="none"
+            accessibilityRole="alert"
+            className="absolute left-0 right-0 items-center px-space-16"
+            style={{ top: areaTop }}
+          >
+            <View className="rounded-radius-max bg-card px-space-16 py-space-8 shadow-m">
+              <Text className="text-bodySmall text-foreground">
+                {`Tap the map to set the ${slotName(directions.picking, directions.stops.length).toLowerCase()}`}
+              </Text>
+            </View>
           </View>
-        </View>
-      ) : null}
+        ) : null}
 
-      <Animated.View
-        pointerEvents="box-none"
-        style={[
-          { position: 'absolute', bottom: controlsBottom, right: sideGap, alignItems: 'flex-end', gap: 12 },
-          layout === 'sheet' ? chromeStyle : null,
-        ]}
-      >
-        {Math.abs(bearing) > BEARING_EPSILON ? (
+        <Animated.View
+          pointerEvents="box-none"
+          style={[
+            {
+              position: 'absolute',
+              bottom: controlsBottom,
+              right: sideGap,
+              alignItems: 'flex-end',
+              gap: 12,
+            },
+            layout === 'sheet' ? chromeStyle : null,
+          ]}
+        >
+          {Math.abs(bearing) > BEARING_EPSILON ? (
+            <Fab
+              size="xs"
+              icon={RiCompass3Line}
+              iconSize={20}
+              accessibilityLabel={t('map.resetNorth')}
+              onPress={handleResetNorth}
+              appearance="subtle"
+              tone="neutral"
+            />
+          ) : null}
           <Fab
-            size="xs"
-            icon={RiCompass3Line}
-            iconSize={20}
-            accessibilityLabel={t('map.resetNorth')}
-            onPress={handleResetNorth}
+            icon={RiFocus3Line}
+            iconSize={22}
+            accessibilityLabel={t('map.myLocation')}
+            accessibilityHint={t('map.myLocationHint')}
+            disabled={location.isLocating}
+            onPress={() => void handleLocate()}
             appearance="subtle"
             tone="neutral"
           />
-        ) : null}
-        <Fab
-          icon={RiFocus3Line}
-          iconSize={22}
-          accessibilityLabel={t('map.myLocation')}
-          accessibilityHint={t('map.myLocationHint')}
-          disabled={location.isLocating}
-          onPress={() => void handleLocate()}
-          appearance="subtle"
-          tone="neutral"
-        />
-      </Animated.View>
+        </Animated.View>
 
-      {/* A declined permission is a normal outcome, not an error screen: the
+        {/* A declined permission is a normal outcome, not an error screen: the
           map stays fully usable without it, so this says what happened and gets
           out of the way. Every reason gets its own sentence — the control looks
           equally dead when the page is http:// or the device cannot fix, and
           neither of those is the user's doing. */}
-      {locationNotice ? (
-        <View
-          pointerEvents="none"
-          accessibilityRole="alert"
-          className="absolute items-start"
-          style={{
-            bottom: controlsBottom,
-            left: layout === 'panel' ? undefined : windowEdgeGap(insets.left, 0),
-            right: sideGap + CONTROLS_COLUMN_WIDTH,
-          }}
-        >
-          <View className="rounded-radius-12 bg-card px-space-12 py-space-8 shadow-s">
-            <Text className="text-bodySmall text-muted-foreground">{locationNotice}</Text>
+        {locationNotice ? (
+          <View
+            pointerEvents="none"
+            accessibilityRole="alert"
+            className="absolute items-start"
+            style={{
+              bottom: controlsBottom,
+              left: layout === 'panel' ? undefined : windowEdgeGap(insets.left, 0),
+              right: sideGap + CONTROLS_COLUMN_WIDTH,
+            }}
+          >
+            <View className="rounded-radius-12 bg-card px-space-12 py-space-8 shadow-s">
+              <Text className="text-bodySmall text-muted-foreground">{locationNotice}</Text>
+            </View>
           </View>
-        </View>
-      ) : null}
+        ) : null}
 
-      {layout === 'panel' ? (
-        <SidePanel header={header} accessibilityLabel="Places" testID="explore-panel">
-          {body}
-        </SidePanel>
-      ) : (
-        <MapSheet
-          snap={snap}
-          onSnapChange={setSnap}
-          animatedProgress={sheetProgress}
-          manualActivation
-          header={header}
-          accessibilityLabel="Places"
-          testID="explore-sheet"
-        >
-          {body}
-        </MapSheet>
-      )}
+        {layout === 'panel' ? (
+          <SidePanel header={header} accessibilityLabel="Places" testID="explore-panel">
+            {body}
+          </SidePanel>
+        ) : (
+          <MapSheet
+            snap={snap}
+            onSnapChange={setSnap}
+            animatedProgress={sheetProgress}
+            manualActivation
+            header={header}
+            accessibilityLabel="Places"
+            testID="explore-sheet"
+          >
+            {body}
+          </MapSheet>
+        )}
       </View>
     </BrandedChromeProvider>
   );

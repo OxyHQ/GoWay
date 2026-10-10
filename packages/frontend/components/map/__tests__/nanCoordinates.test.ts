@@ -105,9 +105,9 @@ describe('the throw itself', () => {
     expect(() => new LngLat(NaN, NaN)).toThrow('Invalid LngLat object: (NaN, NaN)');
     // Missing data reads differently. This is the discriminator that sent the
     // hunt towards `0 / 0` rather than towards an absent field.
-    expect(() => new LngLat(undefined as unknown as number, undefined as unknown as number)).toThrow(
-      'Invalid LngLat object: (undefined, undefined)',
-    );
+    expect(
+      () => new LngLat(undefined as unknown as number, undefined as unknown as number),
+    ).toThrow('Invalid LngLat object: (undefined, undefined)');
   });
 
   test('the two ways GoWay could reach it are both (NaN, NaN)', () => {
@@ -145,7 +145,12 @@ describe('producer — a cluster of no places (lib/goway/markers.ts)', () => {
   });
 
   test('every marker it produces survives the engine', () => {
-    for (const marker of buildMarkers({ places: duplicated, zoom: 15, selectedPlaceId: 'dup', taxonomy: undefined }).markers) {
+    for (const marker of buildMarkers({
+      places: duplicated,
+      zoom: 15,
+      selectedPlaceId: 'dup',
+      taxonomy: undefined,
+    }).markers) {
       expect(() => draw(marker.coordinate)).not.toThrow();
     }
   });
@@ -157,7 +162,12 @@ describe('producer — a cluster of no places (lib/goway/markers.ts)', () => {
       place('b', 41.38741, 2.16861),
       place('c', 41.38742, 2.16862),
     ];
-    const { markers, clusters } = buildMarkers({ places: bucket, zoom: 15, selectedPlaceId: 'a', taxonomy: undefined });
+    const { markers, clusters } = buildMarkers({
+      places: bucket,
+      zoom: 15,
+      selectedPlaceId: 'a',
+      taxonomy: undefined,
+    });
 
     expect(markers.map((marker) => marker.id)).toContain('a');
     expect(clusters.size).toBe(1);
@@ -245,7 +255,12 @@ describe('producer — stops (features/directions/stops.ts)', () => {
     expect(stopFromPoint(nowhere)).toBeNull();
     expect(stopFromPoint({ latitude: 91, longitude: 0 })).toBeNull();
     expect(
-      stopFromResult({ id: 'r', displayName: 'Nowhere', kind: 'locality', coordinate: nowhere } as never),
+      stopFromResult({
+        id: 'r',
+        displayName: 'Nowhere',
+        kind: 'locality',
+        coordinate: nowhere,
+      } as never),
     ).toBeNull();
     expect(stopFromPlace({ id: 'p', name: 'Nowhere', location: nowhere } as never)).toBeNull();
   });
@@ -287,9 +302,9 @@ describe('seam — components/map/shared.ts', () => {
 
   test('refuses a box the engine cannot build', () => {
     expect(isDrawableBounds({ west: NaN, south: NaN, east: NaN, north: NaN })).toBe(false);
-    expect(isDrawableBounds({ west: Infinity, south: Infinity, east: -Infinity, north: -Infinity })).toBe(
-      false,
-    );
+    expect(
+      isDrawableBounds({ west: Infinity, south: Infinity, east: -Infinity, north: -Infinity }),
+    ).toBe(false);
     expect(isDrawableBounds(null)).toBe(false);
     expect(isDrawableBounds({ west: 2.1, south: 41.3, east: 2.2, north: 41.4 })).toBe(true);
   });
@@ -321,8 +336,8 @@ describe('facts the seam depends on (lib/map/geo.ts)', () => {
     // The degenerate branch of `fitBounds` eases to the midpoint of the box —
     // which for this one is (NaN, NaN). `boundsOf` never returns it (it answers
     // `null` for an empty set), but `fitBounds` is public and a caller can.
-    expect(() =>
-      new LngLat((sentinel.west + sentinel.east) / 2, (sentinel.south + sentinel.north) / 2),
+    expect(
+      () => new LngLat((sentinel.west + sentinel.east) / 2, (sentinel.south + sentinel.north) / 2),
     ).toThrow('Invalid LngLat object: (NaN, NaN)');
     expect(isDrawableBounds(sentinel)).toBe(false);
   });
@@ -331,7 +346,12 @@ describe('facts the seam depends on (lib/map/geo.ts)', () => {
     expect(boundsOf([])).toBeNull();
     expect(boundsOf([{ latitude: NaN, longitude: NaN }])).toBeNull();
     expect(boundsOf([undefined as never])).toBeNull();
-    expect(boundsOf([{ latitude: 41.3874, longitude: 2.1686 }, { latitude: NaN, longitude: 2 }])).toEqual({
+    expect(
+      boundsOf([
+        { latitude: 41.3874, longitude: 2.1686 },
+        { latitude: NaN, longitude: 2 },
+      ]),
+    ).toEqual({
       west: 2.1686,
       south: 41.3874,
       east: 2.1686,
@@ -527,7 +547,7 @@ describe('seam — the camera SCALARS, which poison the transform one step later
 
 describe('seam — an EMPTY composite geometry is the same silent failure', () => {
   const geometry = (data: unknown): GeoJSON.GeoJSON =>
-    ({ type: 'Feature', properties: {}, geometry: data } as unknown as GeoJSON.GeoJSON);
+    ({ type: 'Feature', properties: {}, geometry: data }) as unknown as GeoJSON.GeoJSON;
 
   const overlay = (data: unknown): MapOverlay => ({
     id: 'goway-route',

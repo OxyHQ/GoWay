@@ -79,10 +79,15 @@ export function boundingBoxWidth(box: Pick<GeoBoundingBox, 'west' | 'east'>): nu
 }
 
 /** A closed linear ring: at least four positions. */
-const linearRingSchema = z.array(geoPositionSchema).min(4, 'a linear ring needs at least four positions');
+const linearRingSchema = z
+  .array(geoPositionSchema)
+  .min(4, 'a linear ring needs at least four positions');
 
 /** GeoJSON Point. */
-export const geoJsonPointSchema = z.object({ type: z.literal('Point'), coordinates: geoPositionSchema });
+export const geoJsonPointSchema = z.object({
+  type: z.literal('Point'),
+  coordinates: geoPositionSchema,
+});
 export type GeoJsonPoint = z.infer<typeof geoJsonPointSchema>;
 
 /** GeoJSON LineString — the shape route geometry takes on the wire. */

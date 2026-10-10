@@ -73,13 +73,17 @@ export const requireAuth: RequestHandler = createOxyAuthMiddleware(oxyClient);
 export const optionalAuth: RequestHandler = createOptionalOxyAuth(oxyClient);
 
 /** Answers "what is this caller's role in that Oxy account?" — see `oxy/accountRoles`. */
-export const accountRoles: AccountRoleResolver = createAccountRoleResolver({ oxyApiUrl: config.oxyApiUrl });
+export const accountRoles: AccountRoleResolver = createAccountRoleResolver({
+  oxyApiUrl: config.oxyApiUrl,
+});
 
 /** Checks, links and unlinks the Oxy files place galleries reference — see `oxy/placeFiles`. */
 export const placeFiles: PlaceFileStore = createOxyPlaceFileStore({ oxyApiUrl: config.oxyApiUrl });
 
 /** The moderation gate for this process's operator allow-list. Mounted after `requireAuth`. */
-export const requireOperator: RequestHandler = createRequireOperator(config.moderationOperatorOxyUserIds);
+export const requireOperator: RequestHandler = createRequireOperator(
+  config.moderationOperatorOxyUserIds,
+);
 
 /**
  * The 429 body: GoWay's error envelope, never the limiter's plain text.
@@ -99,15 +103,22 @@ export const requireOperator: RequestHandler = createRequireOperator(config.mode
  */
 function rateLimitedBody(request: Request & { rateLimit?: { resetTime?: Date } }): ApiErrorBody {
   const resetTime = request.rateLimit?.resetTime;
-  const retryAfterSeconds = resetTime ? Math.max(1, Math.ceil((resetTime.getTime() - Date.now()) / 1000)) : 1;
+  const retryAfterSeconds = resetTime
+    ? Math.max(1, Math.ceil((resetTime.getTime() - Date.now()) / 1000))
+    : 1;
   return new ApiError('rate_limited', 'Too many requests. Retry after the indicated delay.', {
     retryAfterSeconds,
   }).toResponseBody();
 }
 
 /** `createOxyRateLimit`, answering its 429 in the contract's error envelope. */
-export function createGoWayRateLimit(options: Omit<OxyRateLimitOptions, 'message'> = {}): RequestHandler {
-  return createOxyRateLimit(oxyClient, { ...options, message: rateLimitedBody as unknown as string });
+export function createGoWayRateLimit(
+  options: Omit<OxyRateLimitOptions, 'message'> = {},
+): RequestHandler {
+  return createOxyRateLimit(oxyClient, {
+    ...options,
+    message: rateLimitedBody as unknown as string,
+  });
 }
 
 /**

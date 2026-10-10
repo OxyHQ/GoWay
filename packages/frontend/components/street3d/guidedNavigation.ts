@@ -51,7 +51,10 @@ export function horizontal(v: Vec3, up: Vec3): Vec3 {
 }
 
 /** The viewpoint nearest `position`, or `-1` for none. */
-export function nearestViewpoint(viewpoints: readonly StreetSceneViewpoint[], position: Vec3): number {
+export function nearestViewpoint(
+  viewpoints: readonly StreetSceneViewpoint[],
+  position: Vec3,
+): number {
   let best = -1;
   let bestDistance = Infinity;
   viewpoints.forEach((viewpoint, index) => {
@@ -151,7 +154,11 @@ export function reachableViewpoints(
   const axisX = horizontal(Math.abs(up[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], up);
   const lengthX = Math.hypot(axisX[0], axisX[1], axisX[2]);
   const ex = scale(axisX, 1 / lengthX);
-  const ey: Vec3 = [up[1] * ex[2] - up[2] * ex[1], up[2] * ex[0] - up[0] * ex[2], up[0] * ex[1] - up[1] * ex[0]];
+  const ey: Vec3 = [
+    up[1] * ex[2] - up[2] * ex[1],
+    up[2] * ex[0] - up[0] * ex[2],
+    up[0] * ex[1] - up[1] * ex[0],
+  ];
   const best = new Map<number, { index: number; distance: number }>();
   for (const candidate of candidates) {
     const angle = Math.atan2(dot(candidate.offset, ey), dot(candidate.offset, ex));
@@ -196,7 +203,9 @@ export function viewFrustum(
 ): ViewFrustum {
   const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
   const z = Math.max(0.3, Math.min(1, Number.isFinite(zoom) ? zoom : 1));
-  const baseVertical = captured ? Math.max(20, Math.min(100, captured.verticalDegrees)) : DEFAULT_VERTICAL_FOV_DEGREES;
+  const baseVertical = captured
+    ? Math.max(20, Math.min(100, captured.verticalDegrees))
+    : DEFAULT_VERTICAL_FOV_DEGREES;
   const verticalDegrees = baseVertical * z;
   const halfV = (verticalDegrees * DEG) / 2;
   const horizontalDegrees = (2 * Math.atan(Math.tan(halfV) * safeAspect)) / DEG;
@@ -205,7 +214,11 @@ export function viewFrustum(
   const allowed = Math.min(179, captured.horizontalDegrees * HORIZONTAL_FOV_SLACK);
   if (horizontalDegrees <= allowed) return { verticalDegrees, horizontalDegrees, sideMask: 0 };
   const visible = Math.tan((allowed * DEG) / 2) / Math.tan((horizontalDegrees * DEG) / 2);
-  return { verticalDegrees, horizontalDegrees, sideMask: Math.max(0, Math.min(0.5, (1 - visible) / 2)) };
+  return {
+    verticalDegrees,
+    horizontalDegrees,
+    sideMask: Math.max(0, Math.min(0.5, (1 - visible) / 2)),
+  };
 }
 
 /** Ease-in-out (cubic): no lurch at either end of a glide. */

@@ -60,7 +60,11 @@ export class UpstreamError extends Error {
   readonly status?: number;
   readonly retryAfterSeconds?: number;
 
-  constructor(provider: SearchSource, kind: UpstreamFailureKind, options: UpstreamErrorOptions = {}) {
+  constructor(
+    provider: SearchSource,
+    kind: UpstreamFailureKind,
+    options: UpstreamErrorOptions = {},
+  ) {
     super(`The ${provider} geocoder request failed (${kind})`, { cause: options.cause });
     this.name = 'UpstreamError';
     this.provider = provider;
@@ -84,7 +88,9 @@ export class UpstreamError extends Error {
     if (this.kind === 'rate_limited') {
       return new ApiError('rate_limited', 'The upstream geocoder is rate limiting GoWay.', {
         provider: String(this.provider),
-        ...(this.retryAfterSeconds !== undefined ? { retryAfterSeconds: this.retryAfterSeconds } : {}),
+        ...(this.retryAfterSeconds !== undefined
+          ? { retryAfterSeconds: this.retryAfterSeconds }
+          : {}),
       });
     }
     return new ApiError('provider_unavailable', 'The geocoding provider is unavailable.', {

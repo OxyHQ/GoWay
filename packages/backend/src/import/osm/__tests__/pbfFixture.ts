@@ -46,7 +46,10 @@ function varintField(field: number, value: number): number[] {
 
 /** A packed repeated varint field. */
 function packedField(field: number, values: readonly number[]): number[] {
-  return bytesField(field, values.flatMap((value) => varint(value)));
+  return bytesField(
+    field,
+    values.flatMap((value) => varint(value)),
+  );
 }
 
 /** Successive differences, as every delta-encoded field in the format stores them. */
@@ -134,8 +137,14 @@ function way(element: FixtureWay, strings: StringTable): number[] {
   const keys = Object.keys(element.tags ?? {});
   return [
     ...varintField(1, element.id),
-    ...packedField(2, keys.map((key) => strings.index(key))),
-    ...packedField(3, keys.map((key) => strings.index((element.tags ?? {})[key] as string))),
+    ...packedField(
+      2,
+      keys.map((key) => strings.index(key)),
+    ),
+    ...packedField(
+      3,
+      keys.map((key) => strings.index((element.tags ?? {})[key] as string)),
+    ),
     ...packedField(8, deltas(element.refs)),
   ];
 }
@@ -145,12 +154,24 @@ function relation(element: FixtureRelation, strings: StringTable): number[] {
   const keys = Object.keys(element.tags ?? {});
   return [
     ...varintField(1, element.id),
-    ...packedField(2, keys.map((key) => strings.index(key))),
-    ...packedField(3, keys.map((key) => strings.index((element.tags ?? {})[key] as string))),
+    ...packedField(
+      2,
+      keys.map((key) => strings.index(key)),
+    ),
+    ...packedField(
+      3,
+      keys.map((key) => strings.index((element.tags ?? {})[key] as string)),
+    ),
     // roles_sid: one empty role per member.
-    ...packedField(8, element.wayMembers.map(() => 0)),
+    ...packedField(
+      8,
+      element.wayMembers.map(() => 0),
+    ),
     ...packedField(9, deltas(element.wayMembers)),
-    ...packedField(10, element.wayMembers.map(() => 1)),
+    ...packedField(
+      10,
+      element.wayMembers.map(() => 1),
+    ),
   ];
 }
 
@@ -201,11 +222,11 @@ function blob(type: string, payload: Buffer, compression: 'zlib' | 'raw'): Buffe
  * block, in the node → way → relation order every real extract is sorted in.
  */
 export function buildPbf(blocks: readonly FixtureBlock[]): Buffer {
-  const parts = [blob('OSMHeader', Buffer.from(bytesField(4, [...Buffer.from('OsmSchema-V0.6')])), 'raw')];
+  const parts = [
+    blob('OSMHeader', Buffer.from(bytesField(4, [...Buffer.from('OsmSchema-V0.6')])), 'raw'),
+  ];
   for (const block of blocks) {
-    parts.push(
-      blob('OSMData', Buffer.from(primitiveBlock(block)), block.compression ?? 'zlib'),
-    );
+    parts.push(blob('OSMData', Buffer.from(primitiveBlock(block)), block.compression ?? 'zlib'));
   }
   return Buffer.concat(parts);
 }
