@@ -174,7 +174,7 @@ export async function adminEnableVersion(deps: AdminDeps, versionId: string) {
     .select()
     .from(street3dSceneVersions)
     .where(eq(street3dSceneVersions.id, versionId));
-  if (!version || version.state !== 'disabled') return { enabled: false, reason: 'not_disabled' };
+  if (version?.state !== 'disabled') return { enabled: false, reason: 'not_disabled' };
 
   const missing = [];
   for (const asset of version.assets) {

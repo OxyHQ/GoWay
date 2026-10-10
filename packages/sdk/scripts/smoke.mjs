@@ -396,7 +396,7 @@ async function main() {
 
 // ── Consumer programs ───────────────────────────────────────────────────────
 
-const SHARED_PROGRAM = String.raw`
+const SHARED_PROGRAM = `
 const place = {
   id: 'gw_place_01H8',
   name: 'Cafè de la Plaça',

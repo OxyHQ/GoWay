@@ -195,7 +195,7 @@ export async function enableVersion(
       .from(street3dSceneVersions)
       .where(eq(street3dSceneVersions.id, versionId))
       .for('update');
-    if (!version || version.state !== 'disabled' || version.assets.length === 0) return 'missing';
+    if (version?.state !== 'disabled' || version.assets.length === 0) return 'missing';
     const blockedInputs = await tx
       .select({ id: street3dSceneInputs.derivativeId })
       .from(street3dSceneInputs)
