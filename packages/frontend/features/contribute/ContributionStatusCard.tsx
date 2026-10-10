@@ -42,10 +42,13 @@ export function ContributionStatusCard({ asset, busy, onWithdraw }: Contribution
   const expiry = sourceExpiry(asset);
 
   const anchor = asset.anchor?.coordinate;
-  const coverage = useStreetCoverage(status.canStillHelp && anchor ? boxAround(anchor, LOOKUP_RADIUS_METERS) : null, {
-    enabled: status.canStillHelp && anchor != null,
-    gcTime: 0,
-  });
+  const coverage = useStreetCoverage(
+    status.canStillHelp && anchor ? boxAround(anchor, LOOKUP_RADIUS_METERS) : null,
+    {
+      enabled: status.canStillHelp && anchor != null,
+      gcTime: 0,
+    },
+  );
   const area = anchor && coverage.data ? areaContaining(coverage.data.areas, anchor) : null;
   const atRisk = status.canStillHelp && area?.state === 'at_risk';
 
@@ -57,7 +60,8 @@ export function ContributionStatusCard({ asset, busy, onWithdraw }: Contribution
     }
   };
 
-  const kind = asset.mediaKind === 'video' ? t('contribute.kind.video') : t('contribute.kind.photo');
+  const kind =
+    asset.mediaKind === 'video' ? t('contribute.kind.video') : t('contribute.kind.photo');
 
   return (
     <View className="gap-space-8 rounded-radius-lg border border-border p-space-12">
@@ -66,12 +70,16 @@ export function ContributionStatusCard({ asset, busy, onWithdraw }: Contribution
       </Text>
       <Text className="text-muted-foreground">{t(status.bodyKey)}</Text>
       {status.privacyPassed && !status.terminal ? (
-        <Text className="text-caption text-success-text">{t('contribute.status.privacyPassedLine')}</Text>
+        <Text className="text-caption text-success-text">
+          {t('contribute.status.privacyPassedLine')}
+        </Text>
       ) : null}
       {expiry ? (
         <Text className="text-caption text-muted-foreground">
           {t('contribute.status.expires', { date: date(expiry.expiresAt) })}
-          {expiry.protectedUntil ? ` ${t('contribute.status.protected', { date: date(expiry.protectedUntil) })}` : ''}
+          {expiry.protectedUntil
+            ? ` ${t('contribute.status.protected', { date: date(expiry.protectedUntil) })}`
+            : ''}
         </Text>
       ) : null}
       {atRisk ? (

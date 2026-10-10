@@ -25,13 +25,17 @@ export type OxyActorChain = NonNullable<ReturnType<typeof getOxyActor>>;
  * never guessed from the effective account.
  */
 export function oxyCallerOf(request: Request): OxyCaller | null {
-  const oxyAccountId = typeof request.userId === 'string' && request.userId.length > 0 ? request.userId : null;
+  const oxyAccountId =
+    typeof request.userId === 'string' && request.userId.length > 0 ? request.userId : null;
   if (oxyAccountId === null) return null;
   const actor = getOxyActor(request);
   return {
     oxyAccountId,
     operatedByOxyUserId: actor ? actor.actorAccountId : null,
-    accessToken: typeof request.accessToken === 'string' && request.accessToken.length > 0 ? request.accessToken : null,
+    accessToken:
+      typeof request.accessToken === 'string' && request.accessToken.length > 0
+        ? request.accessToken
+        : null,
   };
 }
 

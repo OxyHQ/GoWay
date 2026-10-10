@@ -40,7 +40,8 @@ export interface PlaceGalleryProps {
 /** What a failed upload tells the person, in words they can act on. */
 function uploadFailure(error: Error): string {
   const { kind } = classifyGoWayError(error);
-  if (kind === 'unavailable' || kind === 'offline' || kind === 'timeout') return 'The photo could not be added right now. Try again shortly.';
+  if (kind === 'unavailable' || kind === 'offline' || kind === 'timeout')
+    return 'The photo could not be added right now. Try again shortly.';
   if (kind === 'rateLimited') return 'You have added a lot recently. Try again in a few minutes.';
   return 'The photo could not be added.';
 }
@@ -67,14 +68,21 @@ export function PlaceGallery({ placeId, placeName }: PlaceGalleryProps) {
   return (
     <View className="gap-space-8" accessibilityLabel={`Photos of ${placeName}`}>
       {items.length > 0 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-space-8">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="gap-space-8"
+        >
           {items.map((item) => {
             const credit = mediaCredit(item);
             const uri = resolve?.(item.fileId, 'thumb');
             if (!uri) return null;
             return (
               <View key={item.id} className="gap-space-2" style={{ width: TILE }}>
-                <View className="overflow-hidden rounded-radius-md bg-muted" style={{ width: TILE, height: TILE }}>
+                <View
+                  className="overflow-hidden rounded-radius-md bg-muted"
+                  style={{ width: TILE, height: TILE }}
+                >
                   <Image
                     source={{ uri }}
                     style={{ width: TILE, height: TILE }}
@@ -99,14 +107,21 @@ export function PlaceGallery({ placeId, placeName }: PlaceGalleryProps) {
           leadingIcon={RiImageAddLine}
           onPress={add}
           disabled={addPhoto.isPending}
-          accessibilityLabel={gate.canUsePrivateApi ? `Add a photo of ${placeName}` : `Sign in to add a photo of ${placeName}`}
+          accessibilityLabel={
+            gate.canUsePrivateApi
+              ? `Add a photo of ${placeName}`
+              : `Sign in to add a photo of ${placeName}`
+          }
           tone="neutral"
           appearance="outline"
         >
           {addPhoto.isPending ? 'Adding…' : 'Add photo'}
         </Button>
         {addPhoto.error ? (
-          <Text className="flex-1 text-bodySmall text-muted-foreground" accessibilityLiveRegion="polite">
+          <Text
+            className="flex-1 text-bodySmall text-muted-foreground"
+            accessibilityLiveRegion="polite"
+          >
             {uploadFailure(addPhoto.error)}
           </Text>
         ) : null}

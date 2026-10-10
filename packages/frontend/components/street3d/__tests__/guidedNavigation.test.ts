@@ -17,7 +17,10 @@ import type { Vec3 } from '../types';
 
 /** ENU scene: z up, ground ≈ 0, cameras at eye height. */
 const UP: Vec3 = [0, 0, 1];
-const vp = (x: number, y: number, z = 1.7): StreetSceneViewpoint => ({ position: [x, y, z], forward: [0, 1, 0] });
+const vp = (x: number, y: number, z = 1.7): StreetSceneViewpoint => ({
+  position: [x, y, z],
+  forward: [0, 1, 0],
+});
 
 // A street running north (+y) with a side branch to the east at y = 6.
 const STREET: StreetSceneViewpoint[] = [
@@ -141,7 +144,8 @@ describe('viewFrustum', () => {
     // The unmasked middle spans exactly the captured horizontal FOV × slack.
     const allowed = (portrait.horizontalDegrees * HORIZONTAL_FOV_SLACK * Math.PI) / 180;
     const visibleFraction = 1 - 2 * frustum.sideMask;
-    const visibleAngle = 2 * Math.atan(visibleFraction * Math.tan((frustum.horizontalDegrees * Math.PI) / 360));
+    const visibleAngle =
+      2 * Math.atan(visibleFraction * Math.tan((frustum.horizontalDegrees * Math.PI) / 360));
     expect(visibleAngle).toBeCloseTo(allowed, 6);
   });
 

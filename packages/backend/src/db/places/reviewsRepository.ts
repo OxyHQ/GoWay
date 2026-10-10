@@ -34,7 +34,13 @@ import { ApiError } from '../../http/apiError';
 import type { Paged, TimeWindow } from '../../http/cursor';
 import type { Database, DatabaseOrTransaction } from '../postgres';
 import { placeReviewAggregates, placeReviews, places } from '../schema';
-import { changeOf, recordRevision, reviewField, reviewSnapshot, type RevisionAuthor } from './revisions';
+import {
+  changeOf,
+  recordRevision,
+  reviewField,
+  reviewSnapshot,
+  type RevisionAuthor,
+} from './revisions';
 
 export const REVIEW_COLUMNS = {
   id: placeReviews.id,
@@ -85,7 +91,11 @@ export function toReviewWithStatus(row: ReviewRow): PlaceReviewWithStatus {
  * part of the place a client caches. `false` when no place has the id.
  */
 async function lockPlace(tx: DatabaseOrTransaction, placeId: string): Promise<boolean> {
-  const [row] = await tx.update(places).set({ updatedAt: new Date() }).where(eq(places.id, placeId)).returning({ id: places.id });
+  const [row] = await tx
+    .update(places)
+    .set({ updatedAt: new Date() })
+    .where(eq(places.id, placeId))
+    .returning({ id: places.id });
   return row !== undefined;
 }
 
@@ -141,8 +151,14 @@ async function findAuthorsReview(
   const query = db
     .select(REVIEW_COLUMNS)
     .from(placeReviews)
-    .where(and(eq(placeReviews.placeId, placeId), eq(placeReviews.authorOxyUserId, authorOxyUserId)))
-    .orderBy(sql`(${placeReviews.status} = 'published') desc`, desc(placeReviews.updatedAt), desc(placeReviews.id))
+    .where(
+      and(eq(placeReviews.placeId, placeId), eq(placeReviews.authorOxyUserId, authorOxyUserId)),
+    )
+    .orderBy(
+      sql`(${placeReviews.status} = 'published') desc`,
+      desc(placeReviews.updatedAt),
+      desc(placeReviews.id),
+    )
     .limit(1);
   const [row] = lock ? await query.for('update') : await query;
   return row;
@@ -190,7 +206,12 @@ export async function putReview(
     if (!(await lockPlace(tx, placeId))) return null;
     const existing = await findAuthorsReview(tx, placeId, authorOxyUserId, true);
     const now = new Date();
-    const words = { rating: input.rating, title: input.title ?? null, body: input.body ?? null, locale: input.locale ?? null };
+    const words = {
+      rating: input.rating,
+      title: input.title ?? null,
+      body: input.body ?? null,
+      locale: input.locale ?? null,
+    };
 
     let row: ReviewRow | undefined;
     let action: PlaceRevisionAction;
@@ -217,7 +238,11 @@ export async function putReview(
     }
     if (!row) throw new ApiError('internal_error', 'The review could not be recorded.');
 
-    const change = changeOf(reviewField(row.id), existing ? reviewSnapshot(existing) : undefined, reviewSnapshot(row));
+    const change = changeOf(
+      reviewField(row.id),
+      existing ? reviewSnapshot(existing) : undefined,
+      reviewSnapshot(row),
+    );
     await recordRevision(tx, { placeId, action, author, changes: change ? [change] : [] });
     await recomputeRating(tx, placeId);
     return { review: toReviewWithStatus(row), created: action === 'review_published' };
@@ -255,7 +280,12 @@ export async function withdrawReview(
       .returning(REVIEW_COLUMNS);
     if (!row) return false;
     const change = changeOf(reviewField(row.id), reviewSnapshot(existing), reviewSnapshot(row));
-    await recordRevision(tx, { placeId, action: 'review_withdrawn', author, changes: change ? [change] : [] });
+    await recordRevision(tx, {
+      placeId,
+      action: 'review_withdrawn',
+      author,
+      changes: change ? [change] : [],
+    });
     await recomputeRating(tx, placeId);
     return true;
   });
@@ -270,7 +300,13 @@ export async function findPublishedReview(
   const [row] = await db
     .select(REVIEW_COLUMNS)
     .from(placeReviews)
-    .where(and(eq(placeReviews.placeId, placeId), eq(placeReviews.id, reviewId), eq(placeReviews.status, 'published')))
+    .where(
+      and(
+        eq(placeReviews.placeId, placeId),
+        eq(placeReviews.id, reviewId),
+        eq(placeReviews.status, 'published'),
+      ),
+    )
     .limit(1);
   return row;
 }
@@ -292,7 +328,13 @@ export async function replyToReview(
     const [existing] = await tx
       .select(REVIEW_COLUMNS)
       .from(placeReviews)
-      .where(and(eq(placeReviews.placeId, placeId), eq(placeReviews.id, reviewId), eq(placeReviews.status, 'published')))
+      .where(
+        and(
+          eq(placeReviews.placeId, placeId),
+          eq(placeReviews.id, reviewId),
+          eq(placeReviews.status, 'published'),
+        ),
+      )
       .for('update');
     if (!existing) return null;
     const now = new Date();
@@ -313,7 +355,13 @@ export async function replyToReview(
       placeId,
       action: 'review_replied',
       author,
-      changes: [{ field: `${reviewField(reviewId)}.reply`, ...(existing.repliedAt ? { before: 'replied' } : {}), after: 'replied' }],
+      changes: [
+        {
+          field: `${reviewField(reviewId)}.reply`,
+          ...(existing.repliedAt ? { before: 'replied' } : {}),
+          after: 'replied',
+        },
+      ],
     });
     return toPlaceReview(row);
   });
@@ -341,7 +389,13 @@ export async function withdrawReply(
         replyEditedAt: null,
         updatedAt: new Date(),
       })
-      .where(and(eq(placeReviews.placeId, placeId), eq(placeReviews.id, reviewId), sql`${placeReviews.replyBody} is not null`))
+      .where(
+        and(
+          eq(placeReviews.placeId, placeId),
+          eq(placeReviews.id, reviewId),
+          sql`${placeReviews.replyBody} is not null`,
+        ),
+      )
       .returning({ id: placeReviews.id });
     if (!row) return false;
     await recordRevision(tx, {
@@ -356,17 +410,25 @@ export async function withdrawReply(
 
 // ── Reads ───────────────────────────────────────────────────────────────────
 
-const REVIEW_PAGE_COLUMNS = { ...REVIEW_COLUMNS, createdAtText: sql<string>`${placeReviews.createdAt}::text` } as const;
+const REVIEW_PAGE_COLUMNS = {
+  ...REVIEW_COLUMNS,
+  createdAtText: sql<string>`${placeReviews.createdAt}::text`,
+} as const;
 
 /**
  * Where a review page resumes. `newest` resumes at `(createdAt, id)`; a rating
  * order at `(rating, createdAt, id)`. The timestamp is Postgres's own text, for
  * the reason `timeKeysetSchema` gives.
  */
-export type ReviewKeyset = readonly [createdAt: string, reviewId: string] | readonly [rating: number, createdAt: string, reviewId: string];
+export type ReviewKeyset =
+  | readonly [createdAt: string, reviewId: string]
+  | readonly [rating: number, createdAt: string, reviewId: string];
 
 /** The keyset predicate and the order for one sort. Newest first within every rating. */
-function reviewOrder(sort: ReviewSort, after: ReviewKeyset | undefined): { where: SQL | undefined; orderBy: SQL[] } {
+function reviewOrder(
+  sort: ReviewSort,
+  after: ReviewKeyset | undefined,
+): { where: SQL | undefined; orderBy: SQL[] } {
   const newestFirst = [desc(placeReviews.createdAt), desc(placeReviews.id)];
   if (sort === 'newest') {
     return {
@@ -382,7 +444,9 @@ function reviewOrder(sort: ReviewSort, after: ReviewKeyset | undefined): { where
   if (after && after.length === 3) {
     const [rating, createdAt, id] = after;
     const beyondRating =
-      sort === 'highest' ? sql`${placeReviews.rating} < ${rating}` : sql`${placeReviews.rating} > ${rating}`;
+      sort === 'highest'
+        ? sql`${placeReviews.rating} < ${rating}`
+        : sql`${placeReviews.rating} > ${rating}`;
     where = sql`(${beyondRating} or (${placeReviews.rating} = ${rating} and (${placeReviews.createdAt}, ${placeReviews.id}) < (${createdAt}::timestamptz, ${id})))`;
   }
   return { where, orderBy: [ratingFirst, ...newestFirst] };
@@ -403,7 +467,8 @@ export async function listPlaceReviews(
     .limit(window.limit);
   return rows.map(({ createdAtText, ...row }) => ({
     review: toPlaceReview(row),
-    position: window.sort === 'newest' ? [createdAtText, row.id] : [row.rating, createdAtText, row.id],
+    position:
+      window.sort === 'newest' ? [createdAtText, row.id] : [row.rating, createdAtText, row.id],
   }));
 }
 
@@ -430,7 +495,10 @@ export async function listModerationReviews(
     )
     .orderBy(desc(placeReviews.createdAt), desc(placeReviews.id))
     .limit(window.limit);
-  return rows.map(({ createdAtText, ...row }) => ({ item: toReviewWithStatus(row), position: [createdAtText, row.id] }));
+  return rows.map(({ createdAtText, ...row }) => ({
+    item: toReviewWithStatus(row),
+    position: [createdAtText, row.id],
+  }));
 }
 
 const MODERATION_ACTION: Readonly<Record<ModeratedPlaceReviewStatus, PlaceRevisionAction>> = {
@@ -461,9 +529,14 @@ export async function moderateReview(
       .for('update');
     if (!before) return null;
     if (before.status === 'removed') {
-      throw new ApiError('conflict', 'This review was withdrawn by its author.', { status: before.status });
+      throw new ApiError('conflict', 'This review was withdrawn by its author.', {
+        status: before.status,
+      });
     }
-    if (before.status === status) throw new ApiError('conflict', `This review is already ${status}.`, { status: before.status });
+    if (before.status === status)
+      throw new ApiError('conflict', `This review is already ${status}.`, {
+        status: before.status,
+      });
     if (status === 'published') {
       const [other] = await tx
         .select({ id: placeReviews.id })
@@ -477,7 +550,9 @@ export async function moderateReview(
         )
         .limit(1);
       if (other) {
-        throw new ApiError('conflict', 'Its author already has a published review of this place.', { reviewId: other.id });
+        throw new ApiError('conflict', 'Its author already has a published review of this place.', {
+          reviewId: other.id,
+        });
       }
     }
 
@@ -488,7 +563,12 @@ export async function moderateReview(
       .returning(REVIEW_COLUMNS);
     if (!after) return null;
     const change = changeOf(reviewField(reviewId), reviewSnapshot(before), reviewSnapshot(after));
-    await recordRevision(tx, { placeId, action: MODERATION_ACTION[status], author, changes: change ? [change] : [] });
+    await recordRevision(tx, {
+      placeId,
+      action: MODERATION_ACTION[status],
+      author,
+      changes: change ? [change] : [],
+    });
     await recomputeRating(tx, placeId);
     return toReviewWithStatus(after);
   });
@@ -538,19 +618,33 @@ export async function moveReviewsToSurvivor(
     const theirs = survivorsPublished.get(moving.authorOxyUserId);
     if (moving.status !== 'published' || theirs === undefined) continue;
     const older = writtenAt(moving) > writtenAt(theirs) ? theirs : moving;
-    await tx.update(placeReviews).set({ status: 'hidden', updatedAt: now }).where(eq(placeReviews.id, older.id));
+    await tx
+      .update(placeReviews)
+      .set({ status: 'hidden', updatedAt: now })
+      .where(eq(placeReviews.id, older.id));
     await recordRevision(tx, {
       placeId: older.placeId,
       action: 'review_hidden',
       author,
-      changes: [{ field: reviewField(older.id), before: reviewSnapshot(older), after: reviewSnapshot({ ...older, status: 'hidden' }) }],
+      changes: [
+        {
+          field: reviewField(older.id),
+          before: reviewSnapshot(older),
+          after: reviewSnapshot({ ...older, status: 'hidden' }),
+        },
+      ],
     });
   }
 
   await tx
     .update(placeReviews)
     .set({ placeId: survivorId, updatedAt: now })
-    .where(inArray(placeReviews.id, absorbed.map((row) => row.id)));
+    .where(
+      inArray(
+        placeReviews.id,
+        absorbed.map((row) => row.id),
+      ),
+    );
   await recomputeRating(tx, survivorId);
   await recomputeRating(tx, absorbedId);
   return absorbed.length;

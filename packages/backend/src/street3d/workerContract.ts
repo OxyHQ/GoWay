@@ -26,18 +26,27 @@
  */
 
 import { z } from 'zod';
-import { CAPTURE_PROJECTIONS, STREET_SCENE_ASSET_ROLES, STREET_SCENE_PROFILES } from '@goway/contracts';
+import {
+  CAPTURE_PROJECTIONS,
+  STREET_SCENE_ASSET_ROLES,
+  STREET_SCENE_PROFILES,
+} from '@goway/contracts';
 
 export const WORKER_CONTRACT_SCHEMA_VERSION = 1;
 
 const schemaVersion = z.literal(WORKER_CONTRACT_SCHEMA_VERSION);
 const sha256 = z.string().regex(/^[0-9a-f]{64}$/, 'must be a lower-case hex SHA-256 digest');
-const instant = z.string().refine((value) => Number.isFinite(Date.parse(value)), 'must be an ISO 8601 instant');
+const instant = z
+  .string()
+  .refine((value) => Number.isFinite(Date.parse(value)), 'must be an ISO 8601 instant');
 const objectKey = z
   .string()
   .min(1)
   .max(1024)
-  .refine((key) => !key.startsWith('/') && !key.split('/').includes('..'), 'must be a relative object key');
+  .refine(
+    (key) => !key.startsWith('/') && !key.split('/').includes('..'),
+    'must be a relative object key',
+  );
 const jobId = z.uuid();
 const positiveInt = z.number().int().positive();
 const nonNegativeInt = z.number().int().nonnegative();
@@ -147,7 +156,10 @@ export const sceneReconstructJobSchema = z.object({
 });
 export type SceneReconstructJob = z.infer<typeof sceneReconstructJobSchema>;
 
-export const jobEnvelopeSchema = z.discriminatedUnion('jobType', [capturePrivacyJobSchema, sceneReconstructJobSchema]);
+export const jobEnvelopeSchema = z.discriminatedUnion('jobType', [
+  capturePrivacyJobSchema,
+  sceneReconstructJobSchema,
+]);
 export type JobEnvelope = z.infer<typeof jobEnvelopeSchema>;
 
 // ── Input manifest (backend → S3 jobs/<jobId>/input.json) ──────────────────
@@ -297,16 +309,24 @@ export const capturePrivacyResultSchema = z
   .refine(
     // Fail closed: a pass must carry frames and stripped metadata. A pass with
     // no frames or with surviving metadata is not a pass this backend accepts.
-    (result) => result.verdict === 'failed' || (result.frames.length > 0 && result.metadataStripped),
+    (result) =>
+      result.verdict === 'failed' || (result.frames.length > 0 && result.metadataStripped),
     { message: 'a passed verdict requires frames and stripped metadata', path: ['verdict'] },
   )
-  .refine((result) => new Set(result.frames.map((frame) => frame.frameIndex)).size === result.frames.length, {
-    message: 'frame indexes must be unique',
-    path: ['frames'],
-  })
+  .refine(
+    (result) =>
+      new Set(result.frames.map((frame) => frame.frameIndex)).size === result.frames.length,
+    {
+      message: 'frame indexes must be unique',
+      path: ['frames'],
+    },
+  )
   .refine(
     // A panorama is only ever reported as views, and a view only for a panorama.
-    (result) => result.frames.every((frame) => (frame.panorama !== undefined) === (result.projection === 'equirectangular')),
+    (result) =>
+      result.frames.every(
+        (frame) => (frame.panorama !== undefined) === (result.projection === 'equirectangular'),
+      ),
     { message: 'panorama views must match the verified projection', path: ['frames'] },
   );
 export type CapturePrivacyResult = z.infer<typeof capturePrivacyResultSchema>;

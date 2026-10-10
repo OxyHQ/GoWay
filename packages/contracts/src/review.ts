@@ -55,7 +55,10 @@ export const PLACE_REVIEW_STATUSES = ['published', 'hidden', 'removed'] as const
 export type PlaceReviewStatus = (typeof PLACE_REVIEW_STATUSES)[number];
 
 /** The statuses an operator may move a review between. */
-export const MODERATED_PLACE_REVIEW_STATUSES = ['published', 'hidden'] as const satisfies readonly PlaceReviewStatus[];
+export const MODERATED_PLACE_REVIEW_STATUSES = [
+  'published',
+  'hidden',
+] as const satisfies readonly PlaceReviewStatus[];
 export type ModeratedPlaceReviewStatus = (typeof MODERATED_PLACE_REVIEW_STATUSES)[number];
 
 /** The business's answer to a review. Never names the person who wrote it. */
@@ -124,7 +127,9 @@ export const placeReviewReplyInputSchema = z
 export type PlaceReviewReplyInput = z.input<typeof placeReviewReplyInputSchema>;
 
 /** The body of `PATCH /moderation/places/{placeId}/reviews/{reviewId}`. */
-export const moderationReviewInputSchema = z.object({ status: z.enum(MODERATED_PLACE_REVIEW_STATUSES) }).strict();
+export const moderationReviewInputSchema = z
+  .object({ status: z.enum(MODERATED_PLACE_REVIEW_STATUSES) })
+  .strict();
 export type ModerationReviewInput = z.input<typeof moderationReviewInputSchema>;
 
 /**

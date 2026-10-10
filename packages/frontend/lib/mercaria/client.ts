@@ -41,6 +41,10 @@ export const mercariaClient: MercariaClient = createMercariaClient({
   // chrome around them.
   locale: deviceLocale(),
   ...(USING_FIXTURES
-    ? { fetch: createMercariaFixtureFetch(parseFixtureFaults(process.env.EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS).mercaria) }
+    ? {
+        fetch: createMercariaFixtureFetch(
+          parseFixtureFaults(process.env.EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS).mercaria,
+        ),
+      }
     : {}),
 });

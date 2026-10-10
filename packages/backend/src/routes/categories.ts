@@ -16,7 +16,13 @@
  * make it (`categories/catalog`).
  */
 
-import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from 'express';
 import { categoryListQuerySchema } from '@goway/contracts';
 import { categoryCatalog } from '../categories/catalog';
 import { getDb } from '../db/postgres';

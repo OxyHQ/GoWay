@@ -460,7 +460,12 @@ describe('the public table, checked against the routers it claims to describe', 
 
   const everyRoute: RegisteredRoute[] = [
     ...registeredRoutes(
-      createPlacesRouter({ optionalAuth, requireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }),
+      createPlacesRouter({
+        optionalAuth,
+        requireAuth,
+        accountRoles: NO_MEMBERSHIPS,
+        reportRateLimit: NO_RATE_LIMIT,
+      }),
     ),
     ...registeredRoutes(
       createPlaceMediaRouter({
@@ -492,9 +497,9 @@ describe('the public table, checked against the routers it claims to describe', 
     // A refactor that changed Express's layer shape would otherwise turn this
     // whole section into a vacuous pass over an empty list.
     expect(everyRoute.length).toBeGreaterThan(15);
-    expect(everyRoute.some((route) => route.method === 'GET' && route.path === '/places/:placeId')).toBe(
-      true,
-    );
+    expect(
+      everyRoute.some((route) => route.method === 'GET' && route.path === '/places/:placeId'),
+    ).toBe(true);
   });
 
   it('admits nothing that is mounted behind requireAuth', () => {

@@ -63,8 +63,13 @@ export function shouldRetryMercaria(failureCount: number, error: Error): boolean
  */
 export type MercariaReadState = 'loading' | 'retry' | 'hidden' | 'ready';
 
-export function mercariaReadState(read: { status: 'pending' | 'error' | 'success'; error: Error | null; empty: boolean }): MercariaReadState {
+export function mercariaReadState(read: {
+  status: 'pending' | 'error' | 'success';
+  error: Error | null;
+  empty: boolean;
+}): MercariaReadState {
   if (read.status === 'pending') return 'loading';
-  if (read.status === 'error') return classifyMercariaError(read.error).kind === 'unavailable' ? 'retry' : 'hidden';
+  if (read.status === 'error')
+    return classifyMercariaError(read.error).kind === 'unavailable' ? 'retry' : 'hidden';
   return read.empty ? 'hidden' : 'ready';
 }

@@ -1,7 +1,12 @@
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex } from '@noble/hashes/utils';
 import type { ImagePickerAsset } from 'expo-image-picker';
-import type { CaptureLocationEvidenceInput, CaptureProjection, CaptureUploadPolicy, GeoCoordinate } from '@goway.to/sdk';
+import type {
+  CaptureLocationEvidenceInput,
+  CaptureProjection,
+  CaptureUploadPolicy,
+  GeoCoordinate,
+} from '@goway.to/sdk';
 
 /**
  * Where the contributor says the capture was taken: always a coordinate. The
@@ -24,7 +29,10 @@ export interface SelectedMedia {
   panoramaCandidate: boolean;
 }
 
-export async function hashChunks(chunks: AsyncIterable<Uint8Array>, signal: AbortSignal): Promise<string> {
+export async function hashChunks(
+  chunks: AsyncIterable<Uint8Array>,
+  signal: AbortSignal,
+): Promise<string> {
   const digest = sha256.create();
   for await (const chunk of chunks) {
     signal.throwIfAborted();
@@ -45,34 +53,66 @@ export function isTwoToOne(width: number, height: number): boolean {
  * suggested as one; that is a suggestion for the contributor to confirm, and
  * only ever a claim to GoWay, which checks the file's own 360° metadata.
  */
-export function describeMedia(asset: ImagePickerAsset, size: number, policy: CaptureUploadPolicy, projection?: CaptureProjection): SelectedMedia {
+export function describeMedia(
+  asset: ImagePickerAsset,
+  size: number,
+  policy: CaptureUploadPolicy,
+  projection?: CaptureProjection,
+): SelectedMedia {
   const kind = asset.type === 'video' ? 'video' : 'photo';
-  const panoramaCandidate = policy.equirectangular !== undefined && isTwoToOne(asset.width, asset.height);
+  const panoramaCandidate =
+    policy.equirectangular !== undefined && isTwoToOne(asset.width, asset.height);
   const declared = projection ?? (panoramaCandidate ? 'equirectangular' : 'perspective');
-  if (declared === 'equirectangular' && !panoramaCandidate) throw new MediaError('contribute.error.projection');
+  if (declared === 'equirectangular' && !panoramaCandidate)
+    throw new MediaError('contribute.error.projection');
   const extension = (asset.fileName ?? asset.uri).split(/[?#]/)[0]?.split('.').pop()?.toLowerCase();
-  const types: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', heif: 'image/heif', mp4: 'video/mp4', mov: 'video/quicktime' };
+  const types: Record<string, string> = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    heic: 'image/heic',
+    heif: 'image/heif',
+    mp4: 'video/mp4',
+    mov: 'video/quicktime',
+  };
   const contentType = asset.mimeType || types[extension ?? ''];
-  if (!contentType || !policy[kind].contentTypes.includes(contentType)) throw new MediaError('contribute.error.format');
+  if (!contentType || !policy[kind].contentTypes.includes(contentType))
+    throw new MediaError('contribute.error.format');
   const panorama = declared === 'equirectangular' ? policy.equirectangular : undefined;
   const maxByteSize = panorama ? panorama[kind].maxByteSize : policy[kind].maxByteSize;
-  if (!Number.isSafeInteger(size) || size < 1 || size > maxByteSize) throw new MediaError('contribute.error.size');
-  const maxDuration = panorama ? panorama.video.maxDurationSeconds : policy.video.maxDurationSeconds;
-  if (kind === 'video' && asset.duration && asset.duration / 1000 > maxDuration) throw new MediaError('contribute.error.duration');
-  if (panorama && asset.width > panorama[kind].maxWidthPixels) throw new MediaError('contribute.error.resolution');
+  if (!Number.isSafeInteger(size) || size < 1 || size > maxByteSize)
+    throw new MediaError('contribute.error.size');
+  const maxDuration = panorama
+    ? panorama.video.maxDurationSeconds
+    : policy.video.maxDurationSeconds;
+  if (kind === 'video' && asset.duration && asset.duration / 1000 > maxDuration)
+    throw new MediaError('contribute.error.duration');
+  if (panorama && asset.width > panorama[kind].maxWidthPixels)
+    throw new MediaError('contribute.error.resolution');
   return { asset, byteSize: size, contentType, kind, projection: declared, panoramaCandidate };
 }
 
 /** The same media declared the other way, re-checked against that projection's limits. */
-export function withProjection(media: SelectedMedia, projection: CaptureProjection, policy: CaptureUploadPolicy): SelectedMedia {
+export function withProjection(
+  media: SelectedMedia,
+  projection: CaptureProjection,
+  policy: CaptureUploadPolicy,
+): SelectedMedia {
   return describeMedia(media.asset, media.byteSize, policy, projection);
 }
 
 export function mediaLocation(asset: ImagePickerAsset): CaptureLocation | null {
   const exif = asset.exif;
-  if (!exif || typeof exif.GPSLatitude !== 'number' || typeof exif.GPSLongitude !== 'number') return null;
+  if (!exif || typeof exif.GPSLatitude !== 'number' || typeof exif.GPSLongitude !== 'number')
+    return null;
   const latitude = exif.GPSLatitudeRef === 'S' ? -Math.abs(exif.GPSLatitude) : exif.GPSLatitude;
   const longitude = exif.GPSLongitudeRef === 'W' ? -Math.abs(exif.GPSLongitude) : exif.GPSLongitude;
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    Math.abs(latitude) > 90 ||
+    Math.abs(longitude) > 180
+  )
+    return null;
   return { origin: 'media_metadata', coordinate: { latitude, longitude } };
 }

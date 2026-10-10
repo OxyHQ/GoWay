@@ -253,7 +253,8 @@ export interface GoWayClientOptions {
  */
 function inCallerOrder(batch: PlaceBatch, ids: readonly PlaceId[]): PlaceBatch {
   const position = new Map(ids.map((id, index) => [id, index]));
-  const byPosition = (left: PlaceId, right: PlaceId) => (position.get(left) ?? 0) - (position.get(right) ?? 0);
+  const byPosition = (left: PlaceId, right: PlaceId) =>
+    (position.get(left) ?? 0) - (position.get(right) ?? 0);
   return {
     items: [...batch.items].sort((left, right) => byPosition(left.id, right.id)),
     gone: [...batch.gone].sort((left, right) => byPosition(left.id, right.id)),
@@ -293,7 +294,12 @@ export interface GoWayPlaceCapabilitiesApi {
    * community reporter retracts with `false`, which is better evidence than a
    * deletion. Identity-bound.
    */
-  put(placeId: PlaceId, key: CapabilityKey, assertion: PlaceCapabilityAssertion, options?: GoWayRequestOptions): Promise<Place>;
+  put(
+    placeId: PlaceId,
+    key: CapabilityKey,
+    assertion: PlaceCapabilityAssertion,
+    options?: GoWayRequestOptions,
+  ): Promise<Place>;
   /** Withdraw the business's own assertion of `key`. Resolves with nothing (`204`). Identity-bound. */
   delete(placeId: PlaceId, key: CapabilityKey, options?: GoWayRequestOptions): Promise<void>;
 }
@@ -307,9 +313,17 @@ export interface GoWayPlaceCapabilitiesApi {
  */
 export interface GoWayPlaceHoursExceptionsApi {
   /** Every exception, past ones included, earliest first. */
-  list(placeId: PlaceId, query?: HoursExceptionListQuery, options?: GoWayRequestOptions): Promise<PlaceHoursExceptionPage>;
+  list(
+    placeId: PlaceId,
+    query?: HoursExceptionListQuery,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceHoursExceptionPage>;
   /** Report a closure or special hours. Identity-bound. */
-  create(placeId: PlaceId, input: PlaceHoursExceptionInput, options?: GoWayRequestOptions): Promise<PlaceHoursException>;
+  create(
+    placeId: PlaceId,
+    input: PlaceHoursExceptionInput,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceHoursException>;
   /** Rewrite one exception, whole, at the caller's own tier. Identity-bound. */
   replace(
     placeId: PlaceId,
@@ -329,7 +343,11 @@ export interface GoWayPlaceHoursExceptionsApi {
  */
 export interface GoWayPlaceMediaApi {
   /** The visible gallery, in the business's order. Needs no account. */
-  list(placeId: PlaceId, query?: MediaListQuery, options?: GoWayRequestOptions): Promise<PlaceMediaPage>;
+  list(
+    placeId: PlaceId,
+    query?: MediaListQuery,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceMediaPage>;
   /**
    * Add an image you uploaded to Oxy as public. Identity-bound. Rejects with
    * `GoWayForbiddenError` for a file that is not yours (or a logo or cover on a
@@ -341,9 +359,18 @@ export interface GoWayPlaceMediaApi {
   /** Withdraw an item: yours, or any as the business. Resolves with nothing (`204`). Identity-bound. */
   remove(placeId: PlaceId, mediaId: string, options?: GoWayRequestOptions): Promise<void>;
   /** Put the named items first, in this order. The business only. Resolves with nothing (`204`). */
-  reorder(placeId: PlaceId, input: PlaceMediaOrderInput, options?: GoWayRequestOptions): Promise<void>;
+  reorder(
+    placeId: PlaceId,
+    input: PlaceMediaOrderInput,
+    options?: GoWayRequestOptions,
+  ): Promise<void>;
   /** Report an item to moderation. Repeating it while your report is open resolves with that report. */
-  report(placeId: PlaceId, mediaId: string, input: ContentReportInput, options?: GoWayRequestOptions): Promise<PlaceReport>;
+  report(
+    placeId: PlaceId,
+    mediaId: string,
+    input: ContentReportInput,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceReport>;
 }
 
 /**
@@ -354,7 +381,11 @@ export interface GoWayPlaceMediaApi {
  */
 export interface GoWayPlaceReviewsApi {
   /** Published reviews: `newest` (default), `highest` or `lowest` first. Needs no account. */
-  list(placeId: PlaceId, query?: ReviewListQuery, options?: GoWayRequestOptions): Promise<PlaceReviewPage>;
+  list(
+    placeId: PlaceId,
+    query?: ReviewListQuery,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceReviewPage>;
   /** Your own review, with its status. Rejects with `GoWayNotFoundError` when you have none. Identity-bound. */
   mine(placeId: PlaceId, options?: GoWayRequestOptions): Promise<PlaceReviewWithStatus>;
   /**
@@ -362,15 +393,29 @@ export interface GoWayPlaceReviewsApi {
    * a session switched into an organization is refused. An operator's hide
    * survives a rewrite.
    */
-  put(placeId: PlaceId, input: PlaceReviewInput, options?: GoWayRequestOptions): Promise<PlaceReviewWithStatus>;
+  put(
+    placeId: PlaceId,
+    input: PlaceReviewInput,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceReviewWithStatus>;
   /** Withdraw your review; its words are erased. Resolves with nothing (`204`). */
   delete(placeId: PlaceId, options?: GoWayRequestOptions): Promise<void>;
   /** The business's reply to a published review, written or rewritten. The business only. */
-  reply(placeId: PlaceId, reviewId: string, input: PlaceReviewReplyInput, options?: GoWayRequestOptions): Promise<PlaceReview>;
+  reply(
+    placeId: PlaceId,
+    reviewId: string,
+    input: PlaceReviewReplyInput,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceReview>;
   /** Withdraw the business's reply. Resolves with nothing (`204`). The business only. */
   deleteReply(placeId: PlaceId, reviewId: string, options?: GoWayRequestOptions): Promise<void>;
   /** Report a review to moderation. Repeating it while your report is open resolves with that report. */
-  report(placeId: PlaceId, reviewId: string, input: ContentReportInput, options?: GoWayRequestOptions): Promise<PlaceReport>;
+  report(
+    placeId: PlaceId,
+    reviewId: string,
+    input: ContentReportInput,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceReport>;
 }
 
 /** Claims on one place: the request to be recognised as running it. */
@@ -381,9 +426,17 @@ export interface GoWayPlaceClaimsApi {
    * own or administer — the usual case: the business IS the organization.
    * Omitted, the claim is for the signed-in account.
    */
-  create(placeId: PlaceId, input: PlaceClaimInput, options?: GoWayRequestOptions): Promise<PlaceClaim>;
+  create(
+    placeId: PlaceId,
+    input: PlaceClaimInput,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceClaim>;
   /** The claims on this place, visible to whoever may act for an account that holds one. Oldest first. */
-  list(placeId: PlaceId, query?: ClaimListQuery, options?: GoWayRequestOptions): Promise<PlaceClaimPage>;
+  list(
+    placeId: PlaceId,
+    query?: ClaimListQuery,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceClaimPage>;
 }
 
 export interface GoWayPlacesApi {
@@ -441,12 +494,20 @@ export interface GoWayPlacesApi {
    * Never who — no account and no person is published — and never a claim, a
    * report or a duplicate review. Needs no account.
    */
-  revisions(placeId: PlaceId, query?: RevisionListQuery, options?: GoWayRequestOptions): Promise<PlaceRevisionPage>;
+  revisions(
+    placeId: PlaceId,
+    query?: RevisionListQuery,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceRevisionPage>;
   /**
    * Report a place to moderation. Identity-bound. Repeating it while your
    * report is open resolves with that same report.
    */
-  report(placeId: PlaceId, input: PlaceReportInput, options?: GoWayRequestOptions): Promise<PlaceReport>;
+  report(
+    placeId: PlaceId,
+    input: PlaceReportInput,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceReport>;
   readonly capabilities: GoWayPlaceCapabilitiesApi;
   readonly hoursExceptions: GoWayPlaceHoursExceptionsApi;
   readonly media: GoWayPlaceMediaApi;
@@ -491,9 +552,17 @@ export interface GoWayModerationApi {
   /** Claims in one state, oldest first — `pending` by default: the review queue. */
   claims(query?: ModerationClaimListQuery, options?: GoWayRequestOptions): Promise<PlaceClaimPage>;
   /** Approve or reject a pending claim, or revoke an approved one. */
-  decideClaim(claimId: string, input: ClaimDecisionInput, options?: GoWayRequestOptions): Promise<PlaceClaim>;
+  decideClaim(
+    claimId: string,
+    input: ClaimDecisionInput,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceClaim>;
   /** Set a place's verification state, or remove or restore it. Resolves with nothing (`204`). */
-  updatePlace(placeId: PlaceId, input: ModerationPlaceUpdateInput, options?: GoWayRequestOptions): Promise<void>;
+  updatePlace(
+    placeId: PlaceId,
+    input: ModerationPlaceUpdateInput,
+    options?: GoWayRequestOptions,
+  ): Promise<void>;
   /** Assert one capability at the `oxy_verified` tier, and get the place back. */
   verifyCapability(
     placeId: PlaceId,
@@ -502,19 +571,45 @@ export interface GoWayModerationApi {
     options?: GoWayRequestOptions,
   ): Promise<Place>;
   /** Withdraw the `oxy_verified` assertion of one capability. Resolves with nothing (`204`). */
-  withdrawVerifiedCapability(placeId: PlaceId, key: CapabilityKey, options?: GoWayRequestOptions): Promise<void>;
+  withdrawVerifiedCapability(
+    placeId: PlaceId,
+    key: CapabilityKey,
+    options?: GoWayRequestOptions,
+  ): Promise<void>;
   /** A place's full history, newest first, with the account and person behind each revision. */
-  revisions(placeId: PlaceId, query?: RevisionListQuery, options?: GoWayRequestOptions): Promise<ModerationPlaceRevisionPage>;
+  revisions(
+    placeId: PlaceId,
+    query?: RevisionListQuery,
+    options?: GoWayRequestOptions,
+  ): Promise<ModerationPlaceRevisionPage>;
   /** Pairs of places that might be one, oldest first — `open` by default. */
-  duplicates(query?: DuplicateListQuery, options?: GoWayRequestOptions): Promise<DuplicateCandidatePage>;
+  duplicates(
+    query?: DuplicateListQuery,
+    options?: GoWayRequestOptions,
+  ): Promise<DuplicateCandidatePage>;
   /** Merge a pair into its survivor, or keep both. */
-  resolveDuplicate(candidateId: string, input: DuplicateResolutionInput, options?: GoWayRequestOptions): Promise<DuplicateCandidate>;
+  resolveDuplicate(
+    candidateId: string,
+    input: DuplicateResolutionInput,
+    options?: GoWayRequestOptions,
+  ): Promise<DuplicateCandidate>;
   /** Place reports, oldest first — `open` by default. */
-  reports(query?: ModerationReportListQuery, options?: GoWayRequestOptions): Promise<ModerationPlaceReportPage>;
+  reports(
+    query?: ModerationReportListQuery,
+    options?: GoWayRequestOptions,
+  ): Promise<ModerationPlaceReportPage>;
   /** Close a report as actioned or dismissed. */
-  resolveReport(reportId: string, input: PlaceReportResolutionInput, options?: GoWayRequestOptions): Promise<ModerationPlaceReport>;
+  resolveReport(
+    reportId: string,
+    input: PlaceReportResolutionInput,
+    options?: GoWayRequestOptions,
+  ): Promise<ModerationPlaceReport>;
   /** A place's gallery items in one state, or every state, with who added each. */
-  media(placeId: PlaceId, query?: ModerationMediaListQuery, options?: GoWayRequestOptions): Promise<ModerationPlaceMediaPage>;
+  media(
+    placeId: PlaceId,
+    query?: ModerationMediaListQuery,
+    options?: GoWayRequestOptions,
+  ): Promise<ModerationPlaceMediaPage>;
   /** Hide a gallery item, or restore a hidden one. */
   moderateMedia(
     placeId: PlaceId,
@@ -523,7 +618,11 @@ export interface GoWayModerationApi {
     options?: GoWayRequestOptions,
   ): Promise<ModerationPlaceMedia>;
   /** A place's reviews in one status, or every status, newest first. */
-  reviews(placeId: PlaceId, query?: ModerationReviewListQuery, options?: GoWayRequestOptions): Promise<PlaceReviewWithStatusPage>;
+  reviews(
+    placeId: PlaceId,
+    query?: ModerationReviewListQuery,
+    options?: GoWayRequestOptions,
+  ): Promise<PlaceReviewWithStatusPage>;
   /** Hide a review, or restore a hidden one; the place's rating follows. */
   moderateReview(
     placeId: PlaceId,
@@ -532,16 +631,30 @@ export interface GoWayModerationApi {
     options?: GoWayRequestOptions,
   ): Promise<PlaceReviewWithStatus>;
   /** Remove the business's reply to a review. Resolves with nothing (`204`). */
-  removeReviewReply(placeId: PlaceId, reviewId: string, options?: GoWayRequestOptions): Promise<void>;
+  removeReviewReply(
+    placeId: PlaceId,
+    reviewId: string,
+    options?: GoWayRequestOptions,
+  ): Promise<void>;
   /** Every category, deprecated ones included, with its position and OpenStreetMap mapping. */
-  categories(query?: CategoryListQuery, options?: GoWayRequestOptions): Promise<ModerationCategoryPage>;
+  categories(
+    query?: CategoryListQuery,
+    options?: GoWayRequestOptions,
+  ): Promise<ModerationCategoryPage>;
   /** Add a category under an active parent. `labels.en` is required; the key spells the parent. */
-  createCategory(input: CategoryCreateInput, options?: GoWayRequestOptions): Promise<ModerationCategory>;
+  createCategory(
+    input: CategoryCreateInput,
+    options?: GoWayRequestOptions,
+  ): Promise<ModerationCategory>;
   /**
    * Change a category's glyph, position, OpenStreetMap mapping or status. The
    * key never changes: a rename is a new category and this one `deprecated`.
    */
-  updateCategory(key: string, input: CategoryUpdateInput, options?: GoWayRequestOptions): Promise<ModerationCategory>;
+  updateCategory(
+    key: string,
+    input: CategoryUpdateInput,
+    options?: GoWayRequestOptions,
+  ): Promise<ModerationCategory>;
   /** Set a category's label in one language (a BCP 47 tag). */
   setCategoryLabel(
     key: string,
@@ -615,7 +728,11 @@ export interface GoWayStreet3dApi {
   /** The served manifest of one published scene. */
   scene(id: string, options?: GoWayRequestOptions): Promise<StreetSceneManifest>;
   /** Report a scene to moderation. Repeating a report returns the existing one. */
-  report(id: string, input: StreetSceneReportInput, options?: GoWayRequestOptions): Promise<StreetSceneReport>;
+  report(
+    id: string,
+    input: StreetSceneReportInput,
+    options?: GoWayRequestOptions,
+  ): Promise<StreetSceneReport>;
 }
 
 /**
@@ -629,8 +746,16 @@ export interface GoWayCapturesApi {
   createSession(input: CaptureSessionInput, options?: GoWayRequestOptions): Promise<CaptureSession>;
   session(sessionId: string, options?: GoWayRequestOptions): Promise<CaptureSession>;
   /** One page of a session's contributions, oldest first. */
-  assets(sessionId: string, query?: CaptureListQuery, options?: GoWayRequestOptions): Promise<CaptureAssetPage>;
-  register(sessionId: string, input: CaptureAssetInput, options?: GoWayRequestOptions): Promise<CaptureUploadTicket>;
+  assets(
+    sessionId: string,
+    query?: CaptureListQuery,
+    options?: GoWayRequestOptions,
+  ): Promise<CaptureAssetPage>;
+  register(
+    sessionId: string,
+    input: CaptureAssetInput,
+    options?: GoWayRequestOptions,
+  ): Promise<CaptureUploadTicket>;
   asset(assetId: string, options?: GoWayRequestOptions): Promise<CaptureAsset>;
   finalize(assetId: string, options?: GoWayRequestOptions): Promise<CaptureAsset>;
   /** Withdraw a contribution: its media is deleted and it never feeds a scene. Resolves with nothing (`204`). */
@@ -677,7 +802,9 @@ function extraHeaders(value: unknown): Readonly<Record<string, string>> {
       throw new TypeError('headers must be an object of header names to string values');
     }
     if (SDK_OWNED_HEADERS.includes(name.toLowerCase())) {
-      throw new TypeError(`headers may not set ${name}; the SDK owns it (pass getAccessToken for authorization)`);
+      throw new TypeError(
+        `headers may not set ${name}; the SDK owns it (pass getAccessToken for authorization)`,
+      );
     }
     result[name] = headerValue;
   }
@@ -782,7 +909,9 @@ function scenePath(sceneId: string): string {
 
 /** The flat wire parameters of a free-text search, validated. */
 function searchParameters(query: SearchQuery, locale: string | undefined) {
-  const flattened: unknown = isRecord(query) ? searchParametersOf(withLocale(query, locale)) : query;
+  const flattened: unknown = isRecord(query)
+    ? searchParametersOf(withLocale(query, locale))
+    : query;
   return validInput(searchParametersSchema, flattened, 'query');
 }
 
@@ -808,7 +937,9 @@ function placeIdOf(value: unknown): string {
     const candidate = typeof value.placeId === 'string' ? value.placeId : value.id;
     if (typeof candidate === 'string' && candidate.trim() !== '') return candidate;
   }
-  throw new GoWayValidationError('expected a GoWay Place ID, a Place, or an object carrying a placeId');
+  throw new GoWayValidationError(
+    'expected a GoWay Place ID, a Place, or an object carrying a placeId',
+  );
 }
 
 function finiteNumberOf(value: unknown, what: string): number {
@@ -837,7 +968,8 @@ function createLinks(webBaseUrl: string): GoWayLinks {
         lng: center.longitude,
         zoom: finiteNumberOf(record.zoom, 'viewport.zoom'),
       };
-      if (record.bearing !== undefined) query.bearing = finiteNumberOf(record.bearing, 'viewport.bearing');
+      if (record.bearing !== undefined)
+        query.bearing = finiteNumberOf(record.bearing, 'viewport.bearing');
       if (record.pitch !== undefined) query.pitch = finiteNumberOf(record.pitch, 'viewport.pitch');
       const serialized = Object.keys(query)
         .sort()
@@ -888,7 +1020,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         {
           method: 'GET',
           path: placePath(placeId),
-          query: validInput(placeReadQuerySchema, { locale: callOptions.locale ?? locale }, 'options'),
+          query: validInput(
+            placeReadQuerySchema,
+            { locale: callOptions.locale ?? locale },
+            'options',
+          ),
           signal: callOptions.signal,
         },
         placeSchema,
@@ -902,7 +1038,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         {
           method: 'GET',
           path: '/places',
-          query: validInput(placeBatchQuerySchema, { ids, locale: callOptions.locale ?? locale }, 'query'),
+          query: validInput(
+            placeBatchQuerySchema,
+            { ids, locale: callOptions.locale ?? locale },
+            'query',
+          ),
           signal: callOptions.signal,
         },
         placeBatchSchema,
@@ -946,7 +1086,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         placeSchema,
       ),
 
-    update: async (placeId: PlaceId, input: PlaceUpdateInput, callOptions: GoWayRequestOptions = {}) =>
+    update: async (
+      placeId: PlaceId,
+      input: PlaceUpdateInput,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -958,7 +1102,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         placeSchema,
       ),
 
-    revisions: async (placeId: PlaceId, query: RevisionListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+    revisions: async (
+      placeId: PlaceId,
+      query: RevisionListQuery = {},
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -970,7 +1118,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         placeRevisionPageSchema,
       ),
 
-    report: async (placeId: PlaceId, input: PlaceReportInput, callOptions: GoWayRequestOptions = {}) =>
+    report: async (
+      placeId: PlaceId,
+      input: PlaceReportInput,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -1011,7 +1163,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     }),
 
     hoursExceptions: Object.freeze({
-      list: async (placeId: PlaceId, query: HoursExceptionListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      list: async (
+        placeId: PlaceId,
+        query: HoursExceptionListQuery = {},
+        callOptions: GoWayRequestOptions = {},
+      ) =>
         request(
           config,
           {
@@ -1023,7 +1179,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
           placeHoursExceptionPageSchema,
         ),
 
-      create: async (placeId: PlaceId, input: PlaceHoursExceptionInput, callOptions: GoWayRequestOptions = {}) =>
+      create: async (
+        placeId: PlaceId,
+        input: PlaceHoursExceptionInput,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
         request(
           config,
           {
@@ -1052,16 +1212,28 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
           placeHoursExceptionSchema,
         ),
 
-      delete: async (placeId: PlaceId, exceptionId: string, callOptions: GoWayRequestOptions = {}) =>
+      delete: async (
+        placeId: PlaceId,
+        exceptionId: string,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
         request(
           config,
-          { method: 'DELETE', path: hoursExceptionPath(placeId, exceptionId), signal: callOptions.signal },
+          {
+            method: 'DELETE',
+            path: hoursExceptionPath(placeId, exceptionId),
+            signal: callOptions.signal,
+          },
           null,
         ),
     }),
 
     media: Object.freeze({
-      list: async (placeId: PlaceId, query: MediaListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      list: async (
+        placeId: PlaceId,
+        query: MediaListQuery = {},
+        callOptions: GoWayRequestOptions = {},
+      ) =>
         request(
           config,
           {
@@ -1073,7 +1245,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
           placeMediaPageSchema,
         ),
 
-      add: async (placeId: PlaceId, input: PlaceMediaInput, callOptions: GoWayRequestOptions = {}) =>
+      add: async (
+        placeId: PlaceId,
+        input: PlaceMediaInput,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
         request(
           config,
           {
@@ -1086,9 +1262,17 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         ),
 
       remove: async (placeId: PlaceId, mediaId: string, callOptions: GoWayRequestOptions = {}) =>
-        request(config, { method: 'DELETE', path: mediaPath(placeId, mediaId), signal: callOptions.signal }, null),
+        request(
+          config,
+          { method: 'DELETE', path: mediaPath(placeId, mediaId), signal: callOptions.signal },
+          null,
+        ),
 
-      reorder: async (placeId: PlaceId, input: PlaceMediaOrderInput, callOptions: GoWayRequestOptions = {}) =>
+      reorder: async (
+        placeId: PlaceId,
+        input: PlaceMediaOrderInput,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
         request(
           config,
           {
@@ -1100,7 +1284,12 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
           null,
         ),
 
-      report: async (placeId: PlaceId, mediaId: string, input: ContentReportInput, callOptions: GoWayRequestOptions = {}) =>
+      report: async (
+        placeId: PlaceId,
+        mediaId: string,
+        input: ContentReportInput,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
         request(
           config,
           {
@@ -1114,7 +1303,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     }),
 
     reviews: Object.freeze({
-      list: async (placeId: PlaceId, query: ReviewListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      list: async (
+        placeId: PlaceId,
+        query: ReviewListQuery = {},
+        callOptions: GoWayRequestOptions = {},
+      ) =>
         request(
           config,
           {
@@ -1133,7 +1326,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
           placeReviewWithStatusSchema,
         ),
 
-      put: async (placeId: PlaceId, input: PlaceReviewInput, callOptions: GoWayRequestOptions = {}) =>
+      put: async (
+        placeId: PlaceId,
+        input: PlaceReviewInput,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
         request(
           config,
           {
@@ -1146,9 +1343,22 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         ),
 
       delete: async (placeId: PlaceId, callOptions: GoWayRequestOptions = {}) =>
-        request(config, { method: 'DELETE', path: `${placePath(placeId)}/reviews/mine`, signal: callOptions.signal }, null),
+        request(
+          config,
+          {
+            method: 'DELETE',
+            path: `${placePath(placeId)}/reviews/mine`,
+            signal: callOptions.signal,
+          },
+          null,
+        ),
 
-      reply: async (placeId: PlaceId, reviewId: string, input: PlaceReviewReplyInput, callOptions: GoWayRequestOptions = {}) =>
+      reply: async (
+        placeId: PlaceId,
+        reviewId: string,
+        input: PlaceReviewReplyInput,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
         request(
           config,
           {
@@ -1160,10 +1370,27 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
           placeReviewSchema,
         ),
 
-      deleteReply: async (placeId: PlaceId, reviewId: string, callOptions: GoWayRequestOptions = {}) =>
-        request(config, { method: 'DELETE', path: `${reviewPath(placeId, reviewId)}/reply`, signal: callOptions.signal }, null),
+      deleteReply: async (
+        placeId: PlaceId,
+        reviewId: string,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
+        request(
+          config,
+          {
+            method: 'DELETE',
+            path: `${reviewPath(placeId, reviewId)}/reply`,
+            signal: callOptions.signal,
+          },
+          null,
+        ),
 
-      report: async (placeId: PlaceId, reviewId: string, input: ContentReportInput, callOptions: GoWayRequestOptions = {}) =>
+      report: async (
+        placeId: PlaceId,
+        reviewId: string,
+        input: ContentReportInput,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
         request(
           config,
           {
@@ -1177,7 +1404,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     }),
 
     claims: Object.freeze({
-      create: async (placeId: PlaceId, input: PlaceClaimInput, callOptions: GoWayRequestOptions = {}) =>
+      create: async (
+        placeId: PlaceId,
+        input: PlaceClaimInput,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
         request(
           config,
           {
@@ -1189,7 +1420,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
           placeClaimSchema,
         ),
 
-      list: async (placeId: PlaceId, query: ClaimListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      list: async (
+        placeId: PlaceId,
+        query: ClaimListQuery = {},
+        callOptions: GoWayRequestOptions = {},
+      ) =>
         request(
           config,
           {
@@ -1244,7 +1479,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         placeClaimPageSchema,
       ),
 
-    decideClaim: async (claimId: string, input: ClaimDecisionInput, callOptions: GoWayRequestOptions = {}) =>
+    decideClaim: async (
+      claimId: string,
+      input: ClaimDecisionInput,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -1256,7 +1495,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         placeClaimSchema,
       ),
 
-    updatePlace: async (placeId: PlaceId, input: ModerationPlaceUpdateInput, callOptions: GoWayRequestOptions = {}) =>
+    updatePlace: async (
+      placeId: PlaceId,
+      input: ModerationPlaceUpdateInput,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -1287,14 +1530,26 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         placeSchema,
       ),
 
-    withdrawVerifiedCapability: async (placeId: PlaceId, key: CapabilityKey, callOptions: GoWayRequestOptions = {}) =>
+    withdrawVerifiedCapability: async (
+      placeId: PlaceId,
+      key: CapabilityKey,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
-        { method: 'DELETE', path: `/moderation${capabilityPath(placeId, key)}`, signal: callOptions.signal },
+        {
+          method: 'DELETE',
+          path: `/moderation${capabilityPath(placeId, key)}`,
+          signal: callOptions.signal,
+        },
         null,
       ),
 
-    revisions: async (placeId: PlaceId, query: RevisionListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+    revisions: async (
+      placeId: PlaceId,
+      query: RevisionListQuery = {},
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -1318,7 +1573,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         duplicateCandidatePageSchema,
       ),
 
-    resolveDuplicate: async (candidateId: string, input: DuplicateResolutionInput, callOptions: GoWayRequestOptions = {}) =>
+    resolveDuplicate: async (
+      candidateId: string,
+      input: DuplicateResolutionInput,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -1342,7 +1601,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         moderationPlaceReportPageSchema,
       ),
 
-    resolveReport: async (reportId: string, input: PlaceReportResolutionInput, callOptions: GoWayRequestOptions = {}) =>
+    resolveReport: async (
+      reportId: string,
+      input: PlaceReportResolutionInput,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -1354,7 +1617,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         moderationPlaceReportSchema,
       ),
 
-    media: async (placeId: PlaceId, query: ModerationMediaListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+    media: async (
+      placeId: PlaceId,
+      query: ModerationMediaListQuery = {},
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -1366,7 +1633,12 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         moderationPlaceMediaPageSchema,
       ),
 
-    moderateMedia: async (placeId: PlaceId, mediaId: string, input: ModerationMediaInput, callOptions: GoWayRequestOptions = {}) =>
+    moderateMedia: async (
+      placeId: PlaceId,
+      mediaId: string,
+      input: ModerationMediaInput,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -1378,7 +1650,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         moderationPlaceMediaSchema,
       ),
 
-    reviews: async (placeId: PlaceId, query: ModerationReviewListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+    reviews: async (
+      placeId: PlaceId,
+      query: ModerationReviewListQuery = {},
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -1390,7 +1666,12 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         placeReviewWithStatusPageSchema,
       ),
 
-    moderateReview: async (placeId: PlaceId, reviewId: string, input: ModerationReviewInput, callOptions: GoWayRequestOptions = {}) =>
+    moderateReview: async (
+      placeId: PlaceId,
+      reviewId: string,
+      input: ModerationReviewInput,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -1402,10 +1683,18 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         placeReviewWithStatusSchema,
       ),
 
-    removeReviewReply: async (placeId: PlaceId, reviewId: string, callOptions: GoWayRequestOptions = {}) =>
+    removeReviewReply: async (
+      placeId: PlaceId,
+      reviewId: string,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
-        { method: 'DELETE', path: `/moderation${reviewPath(placeId, reviewId)}/reply`, signal: callOptions.signal },
+        {
+          method: 'DELETE',
+          path: `/moderation${reviewPath(placeId, reviewId)}/reply`,
+          signal: callOptions.signal,
+        },
         null,
       ),
 
@@ -1433,7 +1722,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         moderationCategorySchema,
       ),
 
-    updateCategory: async (key: string, input: CategoryUpdateInput, callOptions: GoWayRequestOptions = {}) =>
+    updateCategory: async (
+      key: string,
+      input: CategoryUpdateInput,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -1462,15 +1755,28 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         moderationCategorySchema,
       ),
 
-    removeCategoryLabel: async (key: string, language: string, callOptions: GoWayRequestOptions = {}) =>
-      request(config, { method: 'DELETE', path: categoryLabelPath(key, language), signal: callOptions.signal }, null),
+    removeCategoryLabel: async (
+      key: string,
+      language: string,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
+      request(
+        config,
+        { method: 'DELETE', path: categoryLabelPath(key, language), signal: callOptions.signal },
+        null,
+      ),
   });
 
   const search: GoWaySearchApi = Object.freeze({
     query: async (query: SearchQuery, callOptions: GoWayRequestOptions = {}) =>
       request(
         config,
-        { method: 'GET', path: '/search', query: searchParameters(query, locale), signal: callOptions.signal },
+        {
+          method: 'GET',
+          path: '/search',
+          query: searchParameters(query, locale),
+          signal: callOptions.signal,
+        },
         searchResultsSchema,
       ),
   });
@@ -1479,7 +1785,12 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     forward: async (query: SearchQuery, callOptions: GoWayRequestOptions = {}) =>
       request(
         config,
-        { method: 'GET', path: '/geocode', query: searchParameters(query, locale), signal: callOptions.signal },
+        {
+          method: 'GET',
+          path: '/geocode',
+          query: searchParameters(query, locale),
+          signal: callOptions.signal,
+        },
         searchResultsSchema,
       ),
 
@@ -1512,7 +1823,12 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     directions: async (routeRequest: RouteRequest, callOptions: GoWayRequestOptions = {}) =>
       request(
         config,
-        { method: 'POST', path: '/routes', body: routeBody(routeRequest, locale), signal: callOptions.signal },
+        {
+          method: 'POST',
+          path: '/routes',
+          body: routeBody(routeRequest, locale),
+          signal: callOptions.signal,
+        },
         routeResponseSchema,
       ),
   });
@@ -1531,7 +1847,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
       ),
 
     policy: async (callOptions: GoWayRequestOptions = {}) =>
-      request(config, { method: 'GET', path: '/captures/policy', signal: callOptions.signal }, captureUploadPolicySchema),
+      request(
+        config,
+        { method: 'GET', path: '/captures/policy', signal: callOptions.signal },
+        captureUploadPolicySchema,
+      ),
 
     createSession: async (input: CaptureSessionInput, callOptions: GoWayRequestOptions = {}) =>
       request(
@@ -1546,9 +1866,17 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
       ),
 
     session: async (sessionId: string, callOptions: GoWayRequestOptions = {}) =>
-      request(config, { method: 'GET', path: sessionPath(sessionId), signal: callOptions.signal }, captureSessionSchema),
+      request(
+        config,
+        { method: 'GET', path: sessionPath(sessionId), signal: callOptions.signal },
+        captureSessionSchema,
+      ),
 
-    assets: async (sessionId: string, query: CaptureListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+    assets: async (
+      sessionId: string,
+      query: CaptureListQuery = {},
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -1560,7 +1888,11 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         captureAssetPageSchema,
       ),
 
-    register: async (sessionId: string, input: CaptureAssetInput, callOptions: GoWayRequestOptions = {}) =>
+    register: async (
+      sessionId: string,
+      input: CaptureAssetInput,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {
@@ -1573,19 +1905,32 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
       ),
 
     asset: async (assetId: string, callOptions: GoWayRequestOptions = {}) =>
-      request(config, { method: 'GET', path: assetPath(assetId), signal: callOptions.signal }, captureAssetSchema),
+      request(
+        config,
+        { method: 'GET', path: assetPath(assetId), signal: callOptions.signal },
+        captureAssetSchema,
+      ),
 
     // The finalize body is empty by contract: the object store, not the
     // client, is the authority on what was uploaded.
     finalize: async (assetId: string, callOptions: GoWayRequestOptions = {}) =>
       request(
         config,
-        { method: 'POST', path: `${assetPath(assetId)}/finalize`, body: {}, signal: callOptions.signal },
+        {
+          method: 'POST',
+          path: `${assetPath(assetId)}/finalize`,
+          body: {},
+          signal: callOptions.signal,
+        },
         captureAssetSchema,
       ),
 
     remove: async (assetId: string, callOptions: GoWayRequestOptions = {}) =>
-      request(config, { method: 'DELETE', path: assetPath(assetId), signal: callOptions.signal }, null),
+      request(
+        config,
+        { method: 'DELETE', path: assetPath(assetId), signal: callOptions.signal },
+        null,
+      ),
   });
 
   const street3d: GoWayStreet3dApi = Object.freeze({
@@ -1602,9 +1947,17 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
       ),
 
     scene: async (sceneId: string, callOptions: GoWayRequestOptions = {}) =>
-      request(config, { method: 'GET', path: scenePath(sceneId), signal: callOptions.signal }, streetSceneManifestSchema),
+      request(
+        config,
+        { method: 'GET', path: scenePath(sceneId), signal: callOptions.signal },
+        streetSceneManifestSchema,
+      ),
 
-    report: async (sceneId: string, input: StreetSceneReportInput, callOptions: GoWayRequestOptions = {}) =>
+    report: async (
+      sceneId: string,
+      input: StreetSceneReportInput,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
       request(
         config,
         {

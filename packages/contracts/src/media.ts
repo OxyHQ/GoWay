@@ -36,7 +36,14 @@ import { instantSchema } from './time';
  * whoever acts for an approved claim may add them, exactly as only they may
  * edit the place. Every other kind is open to any signed-in contributor.
  */
-export const PLACE_MEDIA_KINDS = ['photo', 'logo', 'cover', 'menu', 'interior', 'exterior'] as const;
+export const PLACE_MEDIA_KINDS = [
+  'photo',
+  'logo',
+  'cover',
+  'menu',
+  'interior',
+  'exterior',
+] as const;
 export type PlaceMediaKind = (typeof PLACE_MEDIA_KINDS)[number];
 
 /** The kinds only a claimant may add to a claimed place. */
@@ -54,14 +61,23 @@ export const PLACE_MEDIA_STATES = ['visible', 'hidden', 'removed'] as const;
 export type PlaceMediaState = (typeof PLACE_MEDIA_STATES)[number];
 
 /** The states an operator may move an item between. `removed` is its contributor's or the business's act. */
-export const MODERATED_PLACE_MEDIA_STATES = ['visible', 'hidden'] as const satisfies readonly PlaceMediaState[];
+export const MODERATED_PLACE_MEDIA_STATES = [
+  'visible',
+  'hidden',
+] as const satisfies readonly PlaceMediaState[];
 export type ModeratedPlaceMediaState = (typeof MODERATED_PLACE_MEDIA_STATES)[number];
 
 /**
  * The image types a gallery accepts — what every client can render. Checked
  * against Oxy's own record of the file, never against the caller's word.
  */
-export const PLACE_MEDIA_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif'] as const;
+export const PLACE_MEDIA_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/avif',
+  'image/gif',
+] as const;
 
 /** The longest caption, in characters. */
 export const MAX_MEDIA_CAPTION_LENGTH = 280;
@@ -142,7 +158,9 @@ export const placeMediaOrderInputSchema = z
 export type PlaceMediaOrderInput = z.input<typeof placeMediaOrderInputSchema>;
 
 /** The body of `PATCH /moderation/places/{placeId}/media/{mediaId}`. */
-export const moderationMediaInputSchema = z.object({ state: z.enum(MODERATED_PLACE_MEDIA_STATES) }).strict();
+export const moderationMediaInputSchema = z
+  .object({ state: z.enum(MODERATED_PLACE_MEDIA_STATES) })
+  .strict();
 export type ModerationMediaInput = z.input<typeof moderationMediaInputSchema>;
 
 /** The most items one page returns. */

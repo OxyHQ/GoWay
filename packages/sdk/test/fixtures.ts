@@ -14,7 +14,9 @@ export const PLACE: Record<string, unknown> = {
   timezone: 'Europe/Madrid',
   status: 'active',
   verification: { state: 'owner_verified', verifiedAt: '2026-01-04T10:00:00.000Z' },
-  sources: [{ source: 'openstreetmap', sourceId: 'node/12345', observedAt: '2026-01-01T00:00:00.000Z' }],
+  sources: [
+    { source: 'openstreetmap', sourceId: 'node/12345', observedAt: '2026-01-01T00:00:00.000Z' },
+  ],
   capabilities: [
     {
       namespace: 'payments.faircoin',
@@ -98,6 +100,10 @@ export const ROUTE_RESPONSE: Record<string, unknown> = {
 };
 
 /** The API's error envelope. */
-export function errorBody(code: string, message = 'nope', details?: Record<string, unknown>): Record<string, unknown> {
+export function errorBody(
+  code: string,
+  message = 'nope',
+  details?: Record<string, unknown>,
+): Record<string, unknown> {
   return { error: details === undefined ? { code, message } : { code, message, details } };
 }

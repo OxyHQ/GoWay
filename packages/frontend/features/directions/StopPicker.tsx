@@ -175,7 +175,10 @@ export function StopPicker({
           <Text className="px-space-16 pt-space-12 pb-space-4 text-caption text-muted-foreground">
             {nearby.length > 0 ? 'Nearby' : 'Type to search for a place or an address.'}
           </Text>
-          <View accessibilityRole="list" accessibilityLabel={`Nearby places to use as the ${slotName.toLowerCase()}`}>
+          <View
+            accessibilityRole="list"
+            accessibilityLabel={`Nearby places to use as the ${slotName.toLowerCase()}`}
+          >
             {nearby.map((place) => (
               <PlaceRow
                 key={place.id}
@@ -231,7 +234,10 @@ function SearchResults({
   if (results.length === 0) return <NoResultsState query={query} />;
 
   return (
-    <View accessibilityRole="list" accessibilityLabel={`Results for ${query}, to use as the ${slotName.toLowerCase()}`}>
+    <View
+      accessibilityRole="list"
+      accessibilityLabel={`Results for ${query}, to use as the ${slotName.toLowerCase()}`}
+    >
       {results.map((result) => (
         <SearchResultRow
           key={result.id}

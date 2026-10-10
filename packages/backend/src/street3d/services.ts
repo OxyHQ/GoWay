@@ -43,7 +43,12 @@ export interface Street3dServices {
 export function createConfiguredStreet3dServices(
   settings: Street3dConfig = street3dConfig,
 ): Street3dServices | null {
-  if (!settings.pipelineConfigured || !captureConfig.enabled || !captureConfig.bucket || !captureConfig.region) {
+  if (
+    !settings.pipelineConfigured ||
+    !captureConfig.enabled ||
+    !captureConfig.bucket ||
+    !captureConfig.region
+  ) {
     return null;
   }
   const region = settings.region as string;
@@ -58,7 +63,9 @@ export function createConfiguredStreet3dServices(
   return {
     jobsQueue: queue(settings.jobsQueueUrl as string),
     eventsQueue: queue(settings.eventsQueueUrl as string),
-    deadLetterQueue: settings.jobsDeadLetterQueueUrl ? queue(settings.jobsDeadLetterQueueUrl) : null,
+    deadLetterQueue: settings.jobsDeadLetterQueueUrl
+      ? queue(settings.jobsDeadLetterQueueUrl)
+      : null,
     jobStore: createS3JobObjectStore({
       bucket: captureConfig.bucket,
       region: captureConfig.region,
@@ -74,7 +81,10 @@ export function createConfiguredStreet3dServices(
       resolveCredentials,
     }),
     cdn: settings.cdnDistributionId
-      ? createCloudFrontInvalidator({ distributionId: settings.cdnDistributionId, resolveCredentials })
+      ? createCloudFrontInvalidator({
+          distributionId: settings.cdnDistributionId,
+          resolveCredentials,
+        })
       : null,
   };
 }

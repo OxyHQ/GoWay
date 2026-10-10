@@ -23,13 +23,20 @@ export function formatAddress(address: StructuredAddress | undefined): string | 
   if (address.formatted?.trim()) return address.formatted.trim();
 
   const street = [address.street, address.houseNumber].filter(Boolean).join(' ').trim();
-  const parts = [street || null, address.locality ?? null, address.city ?? null, address.postalCode ?? null]
-    .filter((part): part is string => Boolean(part && part.trim()));
+  const parts = [
+    street || null,
+    address.locality ?? null,
+    address.city ?? null,
+    address.postalCode ?? null,
+  ].filter((part): part is string => Boolean(part && part.trim()));
   return parts.length > 0 ? parts.join(', ') : null;
 }
 
 /** The short, secondary line under a place name: category, then locality. */
-export function formatPlaceSubtitle(place: Place, taxonomy: CategoryTaxonomy | undefined): string | null {
+export function formatPlaceSubtitle(
+  place: Place,
+  taxonomy: CategoryTaxonomy | undefined,
+): string | null {
   const category = resolveCategory(place.categories, taxonomy).label;
   const where = place.address?.locality ?? place.address?.city ?? null;
   const parts = [category, where].filter((part): part is string => Boolean(part));

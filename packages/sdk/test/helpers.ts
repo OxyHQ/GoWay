@@ -7,8 +7,14 @@ export interface RecordedCall {
   init: GoWayFetchInit;
 }
 
-function response(status: number, body: unknown, headers: Record<string, string>): GoWayFetchResponse {
-  const lower = new Map(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]));
+function response(
+  status: number,
+  body: unknown,
+  headers: Record<string, string>,
+): GoWayFetchResponse {
+  const lower = new Map(
+    Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]),
+  );
   return {
     status,
     headers: { get: (name: string) => lower.get(name.toLowerCase()) ?? null },

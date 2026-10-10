@@ -24,7 +24,9 @@ describe('timeouts', () => {
 
   it('aborts the fetch it started, so a real one releases the connection', async () => {
     const { fetch, calls } = hangingFetch();
-    await createGoWayClient({ fetch, timeoutMs: 20 }).places.get('a').catch(() => undefined);
+    await createGoWayClient({ fetch, timeoutMs: 20 })
+      .places.get('a')
+      .catch(() => undefined);
     expect(calls[0]?.init.signal?.aborted).toBe(true);
   });
 

@@ -134,9 +134,18 @@ export function createApp(options: CreateAppOptions = {}): Express {
    * the bytes.
    */
   v1.use(
-    createPlaceMediaRouter({ optionalAuth, requireAuth, accountRoles, placeFiles, reportRateLimit, contributionRateLimit }),
+    createPlaceMediaRouter({
+      optionalAuth,
+      requireAuth,
+      accountRoles,
+      placeFiles,
+      reportRateLimit,
+      contributionRateLimit,
+    }),
   );
-  v1.use(createPlaceReviewsRouter({ requireAuth, accountRoles, reportRateLimit, contributionRateLimit }));
+  v1.use(
+    createPlaceReviewsRouter({ requireAuth, accountRoles, reportRateLimit, contributionRateLimit }),
+  );
   /**
    * Moderation: claim decisions, Oxy verification, duplicate merges and the
    * report queue — every route behind `requireAuth` and the operator allow-list
@@ -155,7 +164,9 @@ export function createApp(options: CreateAppOptions = {}): Express {
    * an AWS account — the alternative is a router that can only be tested with
    * real credentials, which in practice means it is not tested.
    */
-  v1.use(createCaptureRouter({ optionalAuth, requireAuth, objectStore: createConfiguredObjectStore() }));
+  v1.use(
+    createCaptureRouter({ optionalAuth, requireAuth, objectStore: createConfiguredObjectStore() }),
+  );
   /**
    * Street 3D viewing (#14/#15): coverage and published scene manifests,
    * signed out, plus authenticated reports. Inert — 503/404 — unless

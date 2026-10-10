@@ -117,7 +117,15 @@ beforeAll(async () => {
 
   const app = express();
   app.use(express.json());
-  app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }));
+  app.use(
+    '/api/v1',
+    createPlacesRouter({
+      optionalAuth,
+      requireAuth,
+      accountRoles: NO_MEMBERSHIPS,
+      reportRateLimit: NO_RATE_LIMIT,
+    }),
+  );
   app.use(unknownRouteHandler);
   app.use(errorHandler);
 
@@ -167,12 +175,18 @@ describe('discovering merchants near a user', () => {
 
     // The viewport read and the deep link, for the same reason: the map moving
     // is a stream of positions too.
-    await call<PlacePage>('/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5', asUser('user-wallet'));
+    await call<PlacePage>(
+      '/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5',
+      asUser('user-wallet'),
+    );
     await call<Place>(`/places/${shop.id}`, asUser('user-wallet'));
 
     // A REFUSED request as well. An early-return validation path is where an
     // "audit" write is most likely to be added and least likely to be noticed.
-    await call('/places/nearby?latitude=120&longitude=2.17&radiusMeters=500', asUser('user-wallet'));
+    await call(
+      '/places/nearby?latitude=120&longitude=2.17&radiusMeters=500',
+      asUser('user-wallet'),
+    );
 
     expect(await tableCounts()).toEqual(before);
   });

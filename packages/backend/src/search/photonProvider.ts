@@ -31,7 +31,12 @@
  * words it understands.
  */
 
-import type { GeoBoundingBox, SearchResult, SearchResultKind, StructuredAddress } from '@goway/contracts';
+import type {
+  GeoBoundingBox,
+  SearchResult,
+  SearchResultKind,
+  StructuredAddress,
+} from '@goway/contracts';
 import type { PhotonConfig } from '../config/search';
 import {
   asObject,
@@ -68,7 +73,9 @@ import { fetchUpstreamJson, UpstreamError } from './upstream';
  */
 export function photonOsmTags(osmTags: readonly string[]): string[] {
   const tags = new Set(osmTags);
-  const wholeKeys = new Set([...tags].filter((tag) => tag.endsWith('=*')).map((tag) => tag.slice(0, -2)));
+  const wholeKeys = new Set(
+    [...tags].filter((tag) => tag.endsWith('=*')).map((tag) => tag.slice(0, -2)),
+  );
   return [...tags]
     .filter((tag) => tag.endsWith('=*') || !wholeKeys.has(tag.slice(0, tag.indexOf('='))))
     .map((tag) => (tag.endsWith('=*') ? tag.slice(0, -2) : tag.replace('=', ':')));
@@ -130,7 +137,8 @@ function photonBoundingBox(extent: unknown): GeoBoundingBox | undefined {
   const north = latitude(extent[1]);
   const east = longitude(extent[2]);
   const south = latitude(extent[3]);
-  if (west === undefined || north === undefined || east === undefined || south === undefined) return undefined;
+  if (west === undefined || north === undefined || east === undefined || south === undefined)
+    return undefined;
   // `west > east` is legal (an antimeridian crossing); `south > north` is not.
   if (south > north) return undefined;
   return { west, south, east, north };
@@ -307,7 +315,10 @@ export function createPhotonProvider(options: PhotonProviderOptions): SearchProv
       const radiusKm =
         request.radiusMeters === undefined
           ? undefined
-          : Math.min(MAX_REVERSE_RADIUS_KM, Math.max(0.001, request.radiusMeters / METERS_PER_KILOMETER));
+          : Math.min(
+              MAX_REVERSE_RADIUS_KM,
+              Math.max(0.001, request.radiusMeters / METERS_PER_KILOMETER),
+            );
       return call(
         '/reverse',
         [

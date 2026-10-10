@@ -31,7 +31,7 @@ import {
 } from '@/lib/map/embed';
 import { DEFAULT_VIEWPORT } from '@/components/map/types';
 
-describe('Apple\'s spelling — center and span', () => {
+describe("Apple's spelling — center and span", () => {
   test('reads `center=LAT,LON` the way maps.apple.com/frame writes it', () => {
     const parsed = parseEmbedParams({ center: '41.3874,2.1686' });
     expect(parsed.center).toEqual({ latitude: 41.3874, longitude: 2.1686 });
@@ -219,7 +219,20 @@ describe('the contract: never throws, never emits a non-finite number', () => {
     // This covers the ones nobody did, which is the category the NaN crash
     // came from.
     const alphabet = '0123456789.,-+eE aN Ifity{}$_undefllNaN%';
-    const keys = ['center', 'span', 'lat', 'lng', 'zoom', 'z', 'bearing', 'pitch', 'marker', 'place', 'theme', 'interactive'];
+    const keys = [
+      'center',
+      'span',
+      'lat',
+      'lng',
+      'zoom',
+      'z',
+      'bearing',
+      'pitch',
+      'marker',
+      'place',
+      'theme',
+      'interactive',
+    ];
     let seed = 20260920;
     const next = (): number => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
 

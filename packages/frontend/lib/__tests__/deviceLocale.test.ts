@@ -21,7 +21,11 @@ function reporting(locale: string): void {
 }
 
 afterEach(() => {
-  Object.defineProperty(Intl, 'DateTimeFormat', { configurable: true, writable: true, value: realDateTimeFormat });
+  Object.defineProperty(Intl, 'DateTimeFormat', {
+    configurable: true,
+    writable: true,
+    value: realDateTimeFormat,
+  });
 });
 
 describe('deviceLocale', () => {

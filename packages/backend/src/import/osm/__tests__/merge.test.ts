@@ -53,7 +53,9 @@ describe('mergePlaceColumns', () => {
   test('keeps a GoWay correction the source would otherwise flatten', () => {
     const before = element();
     const after = element({ name: 'BAR PEPE!!!' });
-    const corrected = held({ name: 'Bar Pepe' === before.columns.name ? 'Bar Pepe (corrected)' : '' });
+    const corrected = held({
+      name: 'Bar Pepe' === before.columns.name ? 'Bar Pepe (corrected)' : '',
+    });
     // The column no longer equals what the source said last time, so somebody
     // changed it on purpose. The import may not undo that.
     expect(mergePlaceColumns(corrected, stated(before), incomingColumns(after))).toBeNull();
@@ -151,7 +153,10 @@ describe('mergePlaceColumns', () => {
     // jsonb sorts keys shortest first; the importer writes them in contract order.
     const reordered = {
       ...place.columns,
-      openingHours: { raw: 'Mo 09:00-14:00', intervals: [{ closes: '14:00', day: 1 as const, opens: '09:00' }] },
+      openingHours: {
+        raw: 'Mo 09:00-14:00',
+        intervals: [{ closes: '14:00', day: 1 as const, opens: '09:00' }],
+      },
     };
     expect(mergePlaceColumns(reordered, stated(place), incomingColumns(place))).toBeNull();
   });

@@ -85,18 +85,40 @@ export type CoachWarning = 'blur' | 'exposure' | 'dark';
 
 export function initialCoach(): CoachState {
   return {
-    lastT: null, reference: 0, blurry: false, runSince: null, lastBrightness: null,
-    exposureUntil: -Infinity, exposureJumps: 0, darkSince: null, dark: false, sampledMs: 0, blurryMs: 0,
+    lastT: null,
+    reference: 0,
+    blurry: false,
+    runSince: null,
+    lastBrightness: null,
+    exposureUntil: -Infinity,
+    exposureJumps: 0,
+    darkSince: null,
+    dark: false,
+    sampledMs: 0,
+    blurryMs: 0,
   };
 }
 
 /** Is this one sample blurry against the reference it would be judged by? */
-export function isBlurrySample(sharpness: number, reference: number, config: CoachConfig = DEFAULT_COACH_CONFIG): boolean {
+export function isBlurrySample(
+  sharpness: number,
+  reference: number,
+  config: CoachConfig = DEFAULT_COACH_CONFIG,
+): boolean {
   return sharpness < config.blurFloor || sharpness < config.blurRelative * reference;
 }
 
-export function stepCoach(state: CoachState, sample: CoachSample, config: CoachConfig = DEFAULT_COACH_CONFIG): CoachState {
-  if (!Number.isFinite(sample.sharpness) || !Number.isFinite(sample.brightness) || !Number.isFinite(sample.t)) return state;
+export function stepCoach(
+  state: CoachState,
+  sample: CoachSample,
+  config: CoachConfig = DEFAULT_COACH_CONFIG,
+): CoachState {
+  if (
+    !Number.isFinite(sample.sharpness) ||
+    !Number.isFinite(sample.brightness) ||
+    !Number.isFinite(sample.t)
+  )
+    return state;
   const gap = state.lastT === null ? null : sample.t - state.lastT;
   // Out of order, or after a long pause: start the timers over rather than
   // turning a pause into "blurry for 30 seconds".
@@ -124,19 +146,28 @@ export function stepCoach(state: CoachState, sample: CoachSample, config: CoachC
   if (!blurry) {
     if (sampleBlurry) {
       runSince ??= sample.t;
-      if (sample.t - runSince >= config.blurHoldMs) { blurry = true; runSince = null; }
+      if (sample.t - runSince >= config.blurHoldMs) {
+        blurry = true;
+        runSince = null;
+      }
     } else {
       runSince = null;
     }
   } else if (!sampleBlurry) {
     runSince ??= sample.t;
-    if (sample.t - runSince >= config.clearHoldMs) { blurry = false; runSince = null; }
+    if (sample.t - runSince >= config.clearHoldMs) {
+      blurry = false;
+      runSince = null;
+    }
   } else {
     runSince = null;
   }
 
   let { exposureUntil, exposureJumps } = state;
-  if (state.lastBrightness !== null && Math.abs(sample.brightness - state.lastBrightness) >= config.exposureJump) {
+  if (
+    state.lastBrightness !== null &&
+    Math.abs(sample.brightness - state.lastBrightness) >= config.exposureJump
+  ) {
     exposureUntil = sample.t + config.exposureHoldMs;
     exposureJumps += 1;
   }

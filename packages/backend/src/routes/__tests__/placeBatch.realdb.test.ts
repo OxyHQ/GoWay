@@ -12,7 +12,12 @@
 
 import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { MAX_PLACE_BATCH_SIZE, type Place, type PlaceBatch, type PlacePage } from '@goway/contracts';
+import {
+  MAX_PLACE_BATCH_SIZE,
+  type Place,
+  type PlaceBatch,
+  type PlacePage,
+} from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {
   SUITE_SETUP_TIMEOUT_MS,
@@ -20,11 +25,21 @@ import {
   destroySuiteDatabase,
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
-import { fakeOptionalAuth, fakeRequireAuth, serve, session, type ErrorBody, type TestApi } from '../../__tests__/httpHarness';
+import {
+  fakeOptionalAuth,
+  fakeRequireAuth,
+  serve,
+  session,
+  type ErrorBody,
+  type TestApi,
+} from '../../__tests__/httpHarness';
 import { apiAuthor, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createPlacesRouter } from '../places';
 
-const CONTRIBUTOR: PlaceActor = { author: apiAuthor('person-contributor'), assertedVerification: 'community_reported' };
+const CONTRIBUTOR: PlaceActor = {
+  author: apiAuthor('person-contributor'),
+  assertedVerification: 'community_reported',
+};
 const SANT_ANTONI = { latitude: 41.3784, longitude: 2.1622 };
 const BOX = 'west=2.16&south=41.37&east=2.17&north=41.39';
 
@@ -43,7 +58,12 @@ let merged: Place;
 beforeAll(async () => {
   suite = await createSuiteDatabase();
   api = await serve(
-    createPlacesRouter({ optionalAuth: fakeOptionalAuth, requireAuth: fakeRequireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }),
+    createPlacesRouter({
+      optionalAuth: fakeOptionalAuth,
+      requireAuth: fakeRequireAuth,
+      accountRoles: NO_MEMBERSHIPS,
+      reportRateLimit: NO_RATE_LIMIT,
+    }),
   );
 
   forn = await createPlace(
@@ -57,12 +77,29 @@ beforeAll(async () => {
     },
     CONTRIBUTOR,
   );
-  kiosk = await createPlace(suite.db, { name: 'Quiosc del Mercat', location: { latitude: 41.3787, longitude: 2.1625 } }, CONTRIBUTOR);
-  removed = await createPlace(suite.db, { name: 'Botiga Retirada', location: SANT_ANTONI }, CONTRIBUTOR);
-  merged = await createPlace(suite.db, { name: 'Forn Sant Antoni (duplicat)', location: SANT_ANTONI }, CONTRIBUTOR);
+  kiosk = await createPlace(
+    suite.db,
+    { name: 'Quiosc del Mercat', location: { latitude: 41.3787, longitude: 2.1625 } },
+    CONTRIBUTOR,
+  );
+  removed = await createPlace(
+    suite.db,
+    { name: 'Botiga Retirada', location: SANT_ANTONI },
+    CONTRIBUTOR,
+  );
+  merged = await createPlace(
+    suite.db,
+    { name: 'Forn Sant Antoni (duplicat)', location: SANT_ANTONI },
+    CONTRIBUTOR,
+  );
   await suite.client`UPDATE places SET status = 'removed' WHERE id = ${removed.id}`;
   await suite.client`UPDATE places SET status = 'merged', merged_into_place_id = ${forn.id} WHERE id = ${merged.id}`;
-  await createClaim(suite.db, { placeId: forn.id, oxyAccountId: 'org-forn', role: 'owner', state: 'approved' });
+  await createClaim(suite.db, {
+    placeId: forn.id,
+    oxyAccountId: 'org-forn',
+    role: 'owner',
+    state: 'approved',
+  });
   await api.call('POST', `/places/${forn.id}/hours-exceptions`, session('org-forn'), {
     startsOn: '2031-12-25',
     closed: true,
@@ -105,22 +142,31 @@ describe('GET /places?ids=', () => {
     expect(place?.localizedName?.name).toBe('Horno de San Antonio');
     expect(place?.description).toBe('Pa de pagès des de 1902.');
     expect(place?.descriptions?.map((description) => description.language)).toEqual(['en']);
-    expect(place?.hoursExceptions?.map((exception) => [exception.startsOn, exception.verification])).toEqual([
-      ['2031-12-25', 'business_asserted'],
-    ]);
+    expect(
+      place?.hoursExceptions?.map((exception) => [exception.startsOn, exception.verification]),
+    ).toEqual([['2031-12-25', 'business_asserted']]);
     // Signed out: claims are nobody's business.
     expect(place?.claims).toBeUndefined();
   });
 
   it('publishes claims only on the places the session itself holds one on', async () => {
-    const { body } = await api.call<PlaceBatch>('GET', batchPath([forn.id, kiosk.id]), session('org-forn'));
+    const { body } = await api.call<PlaceBatch>(
+      'GET',
+      batchPath([forn.id, kiosk.id]),
+      session('org-forn'),
+    );
     const byId = new Map(body.items.map((place) => [place.id, place]));
-    expect(byId.get(forn.id)?.claims?.map((claim) => [claim.oxyAccountId, claim.state])).toEqual([['org-forn', 'approved']]);
+    expect(byId.get(forn.id)?.claims?.map((claim) => [claim.oxyAccountId, claim.state])).toEqual([
+      ['org-forn', 'approved'],
+    ]);
     expect(byId.get(kiosk.id)?.claims).toBeUndefined();
   });
 
   it('answers an empty `items` when nothing asked for is published', async () => {
-    const { status, body } = await api.call<PlaceBatch>('GET', batchPath([removed.id, 'never-was']));
+    const { status, body } = await api.call<PlaceBatch>(
+      'GET',
+      batchPath([removed.id, 'never-was']),
+    );
     expect(status).toBe(200);
     expect(body).toEqual({ items: [], gone: [{ id: removed.id }], missing: ['never-was'] });
   });
@@ -130,7 +176,10 @@ describe('GET /places?ids=', () => {
     expect(none.status).toBe(422);
     expect(none.body.error.details?.field).toBe('ids');
 
-    const tooMany = Array.from({ length: MAX_PLACE_BATCH_SIZE + 1 }, (_unused, index) => `place-${String(index)}`);
+    const tooMany = Array.from(
+      { length: MAX_PLACE_BATCH_SIZE + 1 },
+      (_unused, index) => `place-${String(index)}`,
+    );
     const over = await api.call<ErrorBody>('GET', batchPath(tooMany));
     expect(over.status).toBe(422);
     expect(over.body.error.code).toBe('validation_failed');
@@ -145,7 +194,9 @@ describe('the lists carry what open-now needs', () => {
   it('embeds the current hours exceptions on a viewport read, and [] where there are none', async () => {
     const { body } = await api.call<PlacePage>('GET', `/places/bounds?${BOX}`);
     const byId = new Map(body.items.map((place) => [place.id, place]));
-    expect(byId.get(forn.id)?.hoursExceptions?.map((exception) => exception.startsOn)).toEqual(['2031-12-25']);
+    expect(byId.get(forn.id)?.hoursExceptions?.map((exception) => exception.startsOn)).toEqual([
+      '2031-12-25',
+    ]);
     expect(byId.get(kiosk.id)?.hoursExceptions).toEqual([]);
     // Still a list: no names set, no descriptions, no claims.
     expect(byId.get(forn.id)?.names).toBeUndefined();

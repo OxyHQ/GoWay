@@ -23,7 +23,9 @@ export function headingSector(headingDegrees: number): number {
  * and order-free, so the same frames in a different SELECT order compare equal.
  */
 export function inputFingerprint(frameDigests: readonly string[]): string {
-  return createHash('sha256').update([...frameDigests].sort().join('\n'), 'utf8').digest('hex');
+  return createHash('sha256')
+    .update([...frameDigests].sort().join('\n'), 'utf8')
+    .digest('hex');
 }
 
 /**

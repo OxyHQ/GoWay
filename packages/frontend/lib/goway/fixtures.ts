@@ -148,7 +148,13 @@ interface PlaceSeed {
   hours?: Array<[0 | 1 | 2 | 3 | 4 | 5 | 6, string, string]>;
   capabilities?: CapabilitySeed[];
   /** `[fromToday, days, closed-or-hours, note]` — dated exceptions to the week. */
-  exceptions?: Array<{ in: number; days?: number; hours?: [string, string]; note?: string; verification: PlaceHoursException['verification'] }>;
+  exceptions?: Array<{
+    in: number;
+    days?: number;
+    hours?: [string, string];
+    note?: string;
+    verification: PlaceHoursException['verification'];
+  }>;
   osmId?: string;
   /** The default-language description, and GoWay's translations of it. */
   description?: string;
@@ -237,8 +243,13 @@ function place(seed: PlaceSeed): Place {
 }
 
 /** Monday–Friday, then Saturday, at the same times. */
-const weekdays = (opens: string, closes: string): Array<[0 | 1 | 2 | 3 | 4 | 5 | 6, string, string]> =>
-  ([1, 2, 3, 4, 5] as const).map((day) => [day, opens, closes] as [1 | 2 | 3 | 4 | 5, string, string]);
+const weekdays = (
+  opens: string,
+  closes: string,
+): Array<[0 | 1 | 2 | 3 | 4 | 5 | 6, string, string]> =>
+  ([1, 2, 3, 4, 5] as const).map(
+    (day) => [day, opens, closes] as [1 | 2 | 3 | 4 | 5, string, string],
+  );
 
 export const FIXTURE_PLACES: readonly Place[] = [
   place({
@@ -256,7 +267,8 @@ export const FIXTURE_PLACES: readonly Place[] = [
     website: 'https://www.boqueria.barcelona',
     hours: [...weekdays('08:00', '20:30'), [6, '08:00', '20:30']],
     osmId: 'way/25336101',
-    description: "El mercat més antic de la ciutat: parades de fruita, peix, embotits i taulells on menjar a peu dret.",
+    description:
+      'El mercat més antic de la ciutat: parades de fruita, peix, embotits i taulells on menjar a peu dret.',
     descriptions: {
       es: 'El mercado más antiguo de la ciudad: puestos de fruta, pescado, embutidos y barras donde comer de pie.',
       en: "The city's oldest market: fruit, fish and charcuterie stalls, and counters to eat at standing up.",
@@ -266,8 +278,18 @@ export const FIXTURE_PLACES: readonly Place[] = [
     capabilities: [
       { key: 'payments.faircoin.accepted', verification: 'oxy_verified', daysAgo: 9 },
       // The value is the Mercaria location id the place names back (`lib/mercaria/fixtures.ts`).
-      { key: 'commerce.mercaria.store', value: 'loc_boqueria_fruites_soler', verification: 'business_asserted', daysAgo: 55 },
-      { key: 'accessibility.wheelchair', value: 'limited', verification: 'community_reported', daysAgo: 30 },
+      {
+        key: 'commerce.mercaria.store',
+        value: 'loc_boqueria_fruites_soler',
+        verification: 'business_asserted',
+        daysAgo: 55,
+      },
+      {
+        key: 'accessibility.wheelchair',
+        value: 'limited',
+        verification: 'community_reported',
+        daysAgo: 30,
+      },
       { key: 'payments.cash', verification: 'external_source', daysAgo: 12 },
       { key: 'payments.cards', verification: 'external_source', daysAgo: 12 },
     ],
@@ -292,21 +314,38 @@ export const FIXTURE_PLACES: readonly Place[] = [
     longitude: 2.1806,
     categories: ['culture.museum'],
     verification: 'oxy_verified',
-    street: "Carrer de Montcada",
+    street: 'Carrer de Montcada',
     houseNumber: '15-23',
     locality: 'El Born',
     phone: '+34932563000',
     website: 'museupicasso.bcn.cat',
-    hours: [[2, '10:00', '19:00'], [3, '10:00', '19:00'], [4, '10:00', '19:00'], [5, '10:00', '19:00'], [6, '10:00', '20:00'], [0, '10:00', '20:00']],
+    hours: [
+      [2, '10:00', '19:00'],
+      [3, '10:00', '19:00'],
+      [4, '10:00', '19:00'],
+      [5, '10:00', '19:00'],
+      [6, '10:00', '20:00'],
+      [0, '10:00', '20:00'],
+    ],
     osmId: 'way/34633854',
-    description: "Més de 4.000 obres de Picasso en cinc palaus medievals del carrer de Montcada.",
+    description: 'Més de 4.000 obres de Picasso en cinc palaus medievals del carrer de Montcada.',
     capabilities: [
-      { key: 'accessibility.wheelchair', value: 'yes', verification: 'external_source', daysAgo: 12 },
+      {
+        key: 'accessibility.wheelchair',
+        value: 'yes',
+        verification: 'external_source',
+        daysAgo: 12,
+      },
       { key: 'accessibility.toilets_wheelchair', verification: 'external_source', daysAgo: 12 },
       { key: 'accessibility.hearing_loop', verification: 'business_asserted', daysAgo: 70 },
     ],
     exceptions: [
-      { in: 0, hours: ['10:00', '15:00'], note: 'Reduced hours', verification: 'business_asserted' },
+      {
+        in: 0,
+        hours: ['10:00', '15:00'],
+        note: 'Reduced hours',
+        verification: 'business_asserted',
+      },
       { in: 20, days: 2, verification: 'business_asserted', note: 'Installing an exhibition' },
     ],
   }),
@@ -318,7 +357,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     longitude: 2.1516,
     categories: ['health.hospital'],
     verification: 'oxy_verified',
-    street: "Carrer de Villarroel",
+    street: 'Carrer de Villarroel',
     houseNumber: '170',
     locality: "L'Eixample",
     phone: '+34932275400',
@@ -337,7 +376,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     id: 'gw_metro_jaume_i',
     name: 'Jaume I',
     latitude: 41.3836,
-    longitude: 2.1780,
+    longitude: 2.178,
     categories: ['transport.rail_station'],
     locality: 'Ciutat Vella',
     osmId: 'node/1725079221',
@@ -370,20 +409,34 @@ export const FIXTURE_PLACES: readonly Place[] = [
       { key: 'payments.contactless', verification: 'business_asserted', daysAgo: 4 },
       { key: 'amenities.wifi', verification: 'business_asserted', daysAgo: 4 },
       { key: 'amenities.takeaway', verification: 'business_asserted', daysAgo: 4 },
-      { key: 'food.diet', value: ['vegan', 'gluten_free'], verification: 'community_reported', daysAgo: 40 },
-      { key: 'social.instagram', value: 'https://www.instagram.com/cafeselmagnifico', verification: 'business_asserted', daysAgo: 4 },
+      {
+        key: 'food.diet',
+        value: ['vegan', 'gluten_free'],
+        verification: 'community_reported',
+        daysAgo: 40,
+      },
+      {
+        key: 'social.instagram',
+        value: 'https://www.instagram.com/cafeselmagnifico',
+        verification: 'business_asserted',
+        daysAgo: 4,
+      },
     ],
   }),
   place({
     id: 'gw_bar_marsella',
     name: 'Bar Marsella',
-    latitude: 41.3790,
+    latitude: 41.379,
     longitude: 2.1697,
     categories: ['food.bar'],
     street: 'Carrer de Sant Pau',
     houseNumber: '65',
     locality: 'El Raval',
-    hours: [[4, '22:00', '02:30'], [5, '22:00', '02:30'], [6, '22:00', '02:30']],
+    hours: [
+      [4, '22:00', '02:30'],
+      [5, '22:00', '02:30'],
+      [6, '22:00', '02:30'],
+    ],
     osmId: 'node/301188112',
     capabilities: [
       // Deliberately ancient: this is the claim the freshness rule must demote.
@@ -403,14 +456,19 @@ export const FIXTURE_PLACES: readonly Place[] = [
     // Only a community report: Mercaria lists no location here, so the place
     // shows no products — the trust rule is Mercaria's to apply, not this app's.
     capabilities: [
-      { key: 'commerce.mercaria.store', value: 'loc_forn_baluard', verification: 'community_reported', daysAgo: 130 },
+      {
+        key: 'commerce.mercaria.store',
+        value: 'loc_forn_baluard',
+        verification: 'community_reported',
+        daysAgo: 130,
+      },
     ],
   }),
   place({
     id: 'gw_llibreria_calders',
     name: 'Llibreria Calders',
     latitude: 41.3795,
-    longitude: 2.1620,
+    longitude: 2.162,
     categories: ['shop.books'],
     street: 'Passatge de Pere Calders',
     houseNumber: '9',
@@ -418,7 +476,12 @@ export const FIXTURE_PLACES: readonly Place[] = [
     website: 'www.instagram.com/llibreriacalders',
     hours: [...weekdays('10:00', '21:00')],
     capabilities: [
-      { key: 'social.instagram', value: 'https://www.instagram.com/llibreriacalders', verification: 'external_source', daysAgo: 12 },
+      {
+        key: 'social.instagram',
+        value: 'https://www.instagram.com/llibreriacalders',
+        verification: 'external_source',
+        daysAgo: 12,
+      },
     ],
   }),
   place({
@@ -428,7 +491,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     longitude: 2.1639,
     categories: ['office.coworking'],
     verification: 'owner_verified',
-    street: "Carrer de Vilafranca",
+    street: 'Carrer de Vilafranca',
     houseNumber: '7',
     locality: 'Gràcia',
     website: 'https://betahaus.bcn',
@@ -461,15 +524,36 @@ export const FIXTURE_PLACES: readonly Place[] = [
     houseNumber: '4',
     locality: 'La Barceloneta',
     phone: '+34932215012',
-    hours: [[2, '13:00', '16:00'], [3, '13:00', '16:00'], [4, '13:00', '16:00'], [5, '13:00', '23:00'], [6, '13:00', '23:00']],
+    hours: [
+      [2, '13:00', '16:00'],
+      [3, '13:00', '16:00'],
+      [4, '13:00', '16:00'],
+      [5, '13:00', '23:00'],
+      [6, '13:00', '23:00'],
+    ],
     capabilities: [
-      { key: 'food.cuisine', value: ['catalan', 'seafood'], verification: 'external_source', daysAgo: 12 },
+      {
+        key: 'food.cuisine',
+        value: ['catalan', 'seafood'],
+        verification: 'external_source',
+        daysAgo: 12,
+      },
       { key: 'price.level', value: 3, verification: 'community_reported', daysAgo: 90 },
       { key: 'amenities.outdoor_seating', verification: 'external_source', daysAgo: 12 },
       { key: 'amenities.reservations', verification: 'business_asserted', daysAgo: 20 },
       // The business's own `no` outranks the community's `yes`: no badge.
-      { key: 'accessibility.wheelchair', value: 'yes', verification: 'community_reported', daysAgo: 100 },
-      { key: 'accessibility.wheelchair', value: 'no', verification: 'business_asserted', daysAgo: 20 },
+      {
+        key: 'accessibility.wheelchair',
+        value: 'yes',
+        verification: 'community_reported',
+        daysAgo: 100,
+      },
+      {
+        key: 'accessibility.wheelchair',
+        value: 'no',
+        verification: 'business_asserted',
+        daysAgo: 20,
+      },
     ],
   }),
   place({
@@ -482,13 +566,15 @@ export const FIXTURE_PLACES: readonly Place[] = [
     houseNumber: '5',
     locality: 'Barri Gòtic',
     website: 'https://hotelneri.com',
-    capabilities: [{ key: 'housing.homiio.listings', value: 12, verification: 'external_source', daysAgo: 45 }],
+    capabilities: [
+      { key: 'housing.homiio.listings', value: 12, verification: 'external_source', daysAgo: 45 },
+    ],
   }),
   place({
     id: 'gw_banc_sabadell_gotic',
     name: 'Banc Sabadell — Gòtic',
     latitude: 41.3821,
-    longitude: 2.1770,
+    longitude: 2.177,
     categories: ['finance.bank'],
     street: 'Carrer de Ferran',
     houseNumber: '28',
@@ -517,15 +603,17 @@ export const FIXTURE_PLACES: readonly Place[] = [
     id: 'gw_mercat_santa_caterina',
     name: 'Mercat de Santa Caterina',
     names: { es: 'Mercado de Santa Caterina' },
-    latitude: 41.3870,
+    latitude: 41.387,
     longitude: 2.1769,
     categories: ['shop.marketplace'],
     verification: 'community_reviewed',
-    street: "Avinguda de Francesc Cambó",
+    street: 'Avinguda de Francesc Cambó',
     houseNumber: '16',
     locality: 'Sant Pere',
     hours: [...weekdays('07:30', '20:00'), [6, '07:30', '15:00']],
-    capabilities: [{ key: 'payments.faircoin.accepted', verification: 'community_reported', daysAgo: 62 }],
+    capabilities: [
+      { key: 'payments.faircoin.accepted', verification: 'community_reported', daysAgo: 62 },
+    ],
   }),
   place({
     id: 'gw_cafe_nomad',
@@ -537,7 +625,9 @@ export const FIXTURE_PLACES: readonly Place[] = [
     houseNumber: '12',
     locality: 'Sant Pere',
     hours: weekdays('09:00', '17:00'),
-    capabilities: [{ key: 'payments.faircoin.accepted', verification: 'business_asserted', daysAgo: 11 }],
+    capabilities: [
+      { key: 'payments.faircoin.accepted', verification: 'business_asserted', daysAgo: 11 },
+    ],
   }),
   place({
     id: 'gw_parc_joan_miro',
@@ -574,7 +664,7 @@ export const FIXTURE_PLACES: readonly Place[] = [
     id: 'gw_moovo_sants',
     name: 'Moovo — Sants Estació',
     latitude: 41.3791,
-    longitude: 2.1400,
+    longitude: 2.14,
     categories: ['transport.bicycle_rental'],
     locality: 'Sants',
     capabilities: [{ key: 'mobility.moovo.pickup', verification: 'oxy_verified', daysAgo: 1 }],
@@ -617,8 +707,16 @@ export const FIXTURE_MEDIA: ReadonlyMap<string, readonly PlaceMedia[]> = new Map
     'gw_mercat_boqueria',
     gallery('gw_mercat_boqueria', [
       { fileId: 'fixture-file-boqueria-logo', kind: 'logo', verification: 'business_asserted' },
-      { fileId: 'fixture-file-boqueria-entrance', kind: 'exterior', caption: 'The entrance on La Rambla' },
-      { fileId: 'fixture-file-boqueria-stall', kind: 'interior', caption: 'Fruit stalls in the morning' },
+      {
+        fileId: 'fixture-file-boqueria-entrance',
+        kind: 'exterior',
+        caption: 'The entrance on La Rambla',
+      },
+      {
+        fileId: 'fixture-file-boqueria-stall',
+        kind: 'interior',
+        caption: 'Fruit stalls in the morning',
+      },
       {
         fileId: 'fixture-file-boqueria-commons',
         kind: 'photo',
@@ -630,7 +728,9 @@ export const FIXTURE_MEDIA: ReadonlyMap<string, readonly PlaceMedia[]> = new Map
   ],
   [
     'gw_museu_picasso',
-    gallery('gw_museu_picasso', [{ fileId: 'fixture-file-picasso-courtyard', kind: 'exterior', caption: 'The courtyard' }]),
+    gallery('gw_museu_picasso', [
+      { fileId: 'fixture-file-picasso-courtyard', kind: 'exterior', caption: 'The courtyard' },
+    ]),
   ],
 ]);
 
@@ -668,15 +768,36 @@ export const FIXTURE_REVIEWS: ReadonlyMap<string, readonly PlaceReview[]> = new 
   [
     'gw_mercat_boqueria',
     reviews('gw_mercat_boqueria', [
-      { author: 'fixture-user-1', rating: 5, title: 'Unmissable', body: 'Go early, before the crowds. The juice stalls are worth it.', locale: 'en', daysAgo: 12, reply: 'Thank you! We open at 8.' },
-      { author: 'fixture-user-2', rating: 3, body: 'Massa turístic al migdia, però el peix és excel·lent.', locale: 'ca', daysAgo: 40 },
+      {
+        author: 'fixture-user-1',
+        rating: 5,
+        title: 'Unmissable',
+        body: 'Go early, before the crowds. The juice stalls are worth it.',
+        locale: 'en',
+        daysAgo: 12,
+        reply: 'Thank you! We open at 8.',
+      },
+      {
+        author: 'fixture-user-2',
+        rating: 3,
+        body: 'Massa turístic al migdia, però el peix és excel·lent.',
+        locale: 'ca',
+        daysAgo: 40,
+      },
       { author: 'fixture-user-3', rating: 4, daysAgo: 90 },
     ]),
   ],
   [
     'gw_museu_picasso',
     reviews('gw_museu_picasso', [
-      { author: 'fixture-user-4', rating: 5, title: 'Las Meninas', body: 'La serie de Las Meninas justifica la visita.', locale: 'es', daysAgo: 5 },
+      {
+        author: 'fixture-user-4',
+        rating: 5,
+        title: 'Las Meninas',
+        body: 'La serie de Las Meninas justifica la visita.',
+        locale: 'es',
+        daysAgo: 5,
+      },
     ]),
   ],
 ]);

@@ -17,7 +17,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { sweepExpiredCaptures } from '../../capture/cleanup';
 import { parseStreet3dConfig } from '../../config/street3d';
-import { createCaptureSession, finalizeAsset, findOwnedAsset, registerAsset, withdrawCaptureAsset } from '../../db/capture/captureRepository';
+import {
+  createCaptureSession,
+  finalizeAsset,
+  findOwnedAsset,
+  registerAsset,
+  withdrawCaptureAsset,
+} from '../../db/capture/captureRepository';
 import {
   captureAssets,
   captureDerivatives,
@@ -37,7 +43,13 @@ import {
   SUITE_SETUP_TIMEOUT_MS,
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
-import { adminBlockCapture, adminDisableVersion, adminEnableVersion, adminRequeueJob, adminStatus } from '../admin';
+import {
+  adminBlockCapture,
+  adminDisableVersion,
+  adminEnableVersion,
+  adminRequeueJob,
+  adminStatus,
+} from '../admin';
 import { tick, type TickSummary } from '../scheduler';
 import {
   sceneInputManifestSchema,
@@ -83,7 +95,14 @@ interface Contribution {
 }
 
 async function contribute(
-  options: { offsetMeters?: number; heading?: number; seed?: string; attribution?: string; owner?: string; projection?: 'equirectangular' } = {},
+  options: {
+    offsetMeters?: number;
+    heading?: number;
+    seed?: string;
+    attribution?: string;
+    owner?: string;
+    projection?: 'equirectangular';
+  } = {},
 ): Promise<Contribution> {
   const owner = options.owner ?? randomUUID();
   const session = await createCaptureSession(db(), owner, {
@@ -93,7 +112,10 @@ async function contribute(
   });
   const contentHash = hash(options.seed ?? randomUUID());
   // ~1 m of latitude is 1/111 000 of a degree.
-  const coordinate = { latitude: PARIS.latitude + (options.offsetMeters ?? 0) / 111_000, longitude: PARIS.longitude };
+  const coordinate = {
+    latitude: PARIS.latitude + (options.offsetMeters ?? 0) / 111_000,
+    longitude: PARIS.longitude,
+  };
   const registered = await registerAsset(
     db(),
     { id: session.id, oxyUserId: owner },
@@ -117,22 +139,33 @@ async function contribute(
     { keyPrefix: 'captures' },
   );
   await finalizeAsset(db(), registered.asset.id, owner, { byteSize: 100 });
-  return { assetId: registered.asset.id, objectKey: registered.objectKey, owner, sessionId: session.id, contentHash };
+  return {
+    assetId: registered.asset.id,
+    objectKey: registered.objectKey,
+    owner,
+    sessionId: session.id,
+    contentHash,
+  };
 }
 
 /** Tick, let the worker clear every privacy job, tick again to apply. */
 async function clearPrivacy(framesPerAsset = 2): Promise<void> {
   await run();
   for (const { envelope } of await worker.take()) {
-    if (envelope.jobType === 'capture_privacy') await worker.completePrivacy(envelope, { frames: framesPerAsset });
+    if (envelope.jobType === 'capture_privacy')
+      await worker.completePrivacy(envelope, { frames: framesPerAsset });
   }
   await run();
 }
 
-async function sceneJobs(): Promise<{ envelope: SceneReconstructJob; manifest: SceneInputManifest; attempt: number }[]> {
+async function sceneJobs(): Promise<
+  { envelope: SceneReconstructJob; manifest: SceneInputManifest; attempt: number }[]
+> {
   return (await worker.take()).flatMap(({ envelope, attempt }) => {
     if (envelope.jobType !== 'scene_reconstruct') return [];
-    const manifest = sceneInputManifestSchema.parse(services.jobStore.json(envelope.inputManifestKey));
+    const manifest = sceneInputManifestSchema.parse(
+      services.jobStore.json(envelope.inputManifestKey),
+    );
     return [{ envelope, manifest, attempt }];
   });
 }
@@ -147,7 +180,12 @@ async function neighbourhood(count: number, framesPerAsset = 2): Promise<Contrib
   const contributions: Contribution[] = [];
   for (let index = 0; index < count; index += 1) {
     // The first is an imported open-licence capture; its credit must reach the manifest.
-    contributions.push(await contribute({ offsetMeters: index * 5, ...(index === 0 ? { attribution: OPEN_CREDIT } : {}) }));
+    contributions.push(
+      await contribute({
+        offsetMeters: index * 5,
+        ...(index === 0 ? { attribution: OPEN_CREDIT } : {}),
+      }),
+    );
   }
   await clearPrivacy(framesPerAsset);
   return contributions;
@@ -158,7 +196,9 @@ async function publishedScene(count = 2) {
   const contributions = await neighbourhood(count);
   const [job] = await sceneJobs();
   if (!job) throw new Error('no scene job');
-  await worker.post(worker.completedEvent(job.envelope, 1, worker.sceneResult(job.envelope, job.manifest)));
+  await worker.post(
+    worker.completedEvent(job.envelope, 1, worker.sceneResult(job.envelope, job.manifest)),
+  );
   await run();
   return { contributions, job };
 }
@@ -188,13 +228,22 @@ describe('privacy scheduling', () => {
     const [sent] = services.jobsQueue.envelopes();
     const envelope = sent!.envelope as CapturePrivacyJob;
     expect(sent!.attempt).toBe(1);
-    expect(envelope).toMatchObject({ jobType: 'capture_privacy', assetId: capture.assetId, input: { key: capture.objectKey, sha256: capture.contentHash } });
+    expect(envelope).toMatchObject({
+      jobType: 'capture_privacy',
+      assetId: capture.assetId,
+      input: { key: capture.objectKey, sha256: capture.contentHash },
+    });
     expect(envelope.outputPrefix).toBe(`derived/privacy/${capture.assetId}/${envelope.jobId}/`);
 
-    const [object] = await db().select().from(captureMediaObjects).where(eq(captureMediaObjects.objectKey, capture.objectKey));
+    const [object] = await db()
+      .select()
+      .from(captureMediaObjects)
+      .where(eq(captureMediaObjects.objectKey, capture.objectKey));
     expect(object?.protectedUntil).not.toBeNull();
     expect(object!.protectedUntil!.getTime()).toBeLessThanOrEqual(object!.expiresAt.getTime());
-    expect((await findOwnedAsset(db(), capture.assetId, capture.owner))?.privacy.state).toBe('in_progress');
+    expect((await findOwnedAsset(db(), capture.assetId, capture.owner))?.privacy.state).toBe(
+      'in_progress',
+    );
 
     // Nothing is queued twice while the job is open.
     expect((await run()).privacy).toMatchObject({ queued: 0 });
@@ -203,11 +252,26 @@ describe('privacy scheduling', () => {
     await worker.completePrivacy(envelope, { frames: 3 });
     await run();
     const asset = await findOwnedAsset(db(), capture.assetId, capture.owner);
-    expect(asset).toMatchObject({ state: 'waiting_for_overlap', reconstructionEligible: true, privacy: { state: 'passed', pipelineVersion: 'goway-privacy/1' } });
-    const derivatives = await db().select().from(captureDerivatives).where(eq(captureDerivatives.assetId, capture.assetId));
+    expect(asset).toMatchObject({
+      state: 'waiting_for_overlap',
+      reconstructionEligible: true,
+      privacy: { state: 'passed', pipelineVersion: 'goway-privacy/1' },
+    });
+    const derivatives = await db()
+      .select()
+      .from(captureDerivatives)
+      .where(eq(captureDerivatives.assetId, capture.assetId));
     expect(derivatives).toHaveLength(3);
-    expect(derivatives.every((row) => row.retentionClass === 'privacy_safe_proxy' && row.objectKey.startsWith('derived/'))).toBe(true);
-    const [after] = await db().select().from(captureMediaObjects).where(eq(captureMediaObjects.objectKey, capture.objectKey));
+    expect(
+      derivatives.every(
+        (row) =>
+          row.retentionClass === 'privacy_safe_proxy' && row.objectKey.startsWith('derived/'),
+      ),
+    ).toBe(true);
+    const [after] = await db()
+      .select()
+      .from(captureMediaObjects)
+      .where(eq(captureMediaObjects.objectKey, capture.objectKey));
     expect(after?.protectedUntil).toBeNull();
     expect(after?.retentionReason).toBe('audit_window');
     const audit = after!.deletionEligibleAt!.getTime() - Date.now();
@@ -224,9 +288,18 @@ describe('privacy scheduling', () => {
     await worker.post('{"not":"the contract"}');
     await worker.post('not json at all');
     const summary = await run();
-    expect(summary.events).toMatchObject({ received: 4, outcomes: { applied: 1, duplicate: 1, invalid: 2 }, deferred: 0 });
+    expect(summary.events).toMatchObject({
+      received: 4,
+      outcomes: { applied: 1, duplicate: 1, invalid: 2 },
+      deferred: 0,
+    });
     expect(services.eventsQueue.inFlight.size).toBe(0);
-    expect(await db().select().from(captureDerivatives).where(eq(captureDerivatives.assetId, capture.assetId))).toHaveLength(2);
+    expect(
+      await db()
+        .select()
+        .from(captureDerivatives)
+        .where(eq(captureDerivatives.assetId, capture.assetId)),
+    ).toHaveLength(2);
   });
 
   it('fails closed on a failed verdict and rejects after bounded attempts', async () => {
@@ -239,7 +312,11 @@ describe('privacy scheduling', () => {
       await run();
     }
     const asset = await findOwnedAsset(db(), capture.assetId, capture.owner);
-    expect(asset).toMatchObject({ state: 'rejected', reconstructionEligible: false, privacy: { state: 'failed' } });
+    expect(asset).toMatchObject({
+      state: 'rejected',
+      reconstructionEligible: false,
+      privacy: { state: 'failed' },
+    });
     expect((await run()).privacy).toMatchObject({ queued: 0 });
   });
 
@@ -266,11 +343,28 @@ describe('360° captures', () => {
     expect(envelope).toMatchObject({ jobType: 'capture_privacy', projection: 'equirectangular' });
     await worker.completePrivacy(envelope as CapturePrivacyJob, { frames: 16, panorama: true });
     await run();
-    expect(await findOwnedAsset(db(), capture.assetId, capture.owner)).toMatchObject({ projection: 'equirectangular', privacy: { state: 'passed' } });
-    const views = await db().select().from(captureDerivatives).where(eq(captureDerivatives.assetId, capture.assetId));
+    expect(await findOwnedAsset(db(), capture.assetId, capture.owner)).toMatchObject({
+      projection: 'equirectangular',
+      privacy: { state: 'passed' },
+    });
+    const views = await db()
+      .select()
+      .from(captureDerivatives)
+      .where(eq(captureDerivatives.assetId, capture.assetId));
     expect(views).toHaveLength(16);
-    expect(new Set(views.map((row) => `${row.panoramaIndex}:${row.panoramaYawDegrees}:${row.panoramaFovDegrees}`)).size).toBe(16);
-    expect(views.every((row) => row.panoramaFovDegrees === 90 && (row.panoramaIndex === 0 || row.panoramaIndex === 1))).toBe(true);
+    expect(
+      new Set(
+        views.map(
+          (row) => `${row.panoramaIndex}:${row.panoramaYawDegrees}:${row.panoramaFovDegrees}`,
+        ),
+      ).size,
+    ).toBe(16);
+    expect(
+      views.every(
+        (row) =>
+          row.panoramaFovDegrees === 90 && (row.panoramaIndex === 0 || row.panoramaIndex === 1),
+      ),
+    ).toBe(true);
   });
 
   it('fails the gate at once when a worker processed a declared panorama as one flat image', async () => {
@@ -284,12 +378,27 @@ describe('360° captures', () => {
     const summary = await run();
     expect(summary.events?.outcomes).toMatchObject({ rejected: 1 });
     // The job fails outright rather than retrying the same attempt…
-    expect(await jobRow(envelope.jobId)).toMatchObject({ state: 'failed', failureCode: 'projection_mismatch', failureRetryable: false });
-    expect((await findOwnedAsset(db(), capture.assetId, capture.owner))?.reconstructionEligible).toBe(false);
-    expect(await db().select().from(captureDerivatives).where(eq(captureDerivatives.assetId, capture.assetId))).toHaveLength(0);
+    expect(await jobRow(envelope.jobId)).toMatchObject({
+      state: 'failed',
+      failureCode: 'projection_mismatch',
+      failureRetryable: false,
+    });
+    expect(
+      (await findOwnedAsset(db(), capture.assetId, capture.owner))?.reconstructionEligible,
+    ).toBe(false);
+    expect(
+      await db()
+        .select()
+        .from(captureDerivatives)
+        .where(eq(captureDerivatives.assetId, capture.assetId)),
+    ).toHaveLength(0);
     // …and the gate gets the bounded fresh passes any failed verdict gets, still declared 360°.
     const [again] = await worker.take();
-    expect(again?.envelope).toMatchObject({ jobType: 'capture_privacy', assetId: capture.assetId, projection: 'equirectangular' });
+    expect(again?.envelope).toMatchObject({
+      jobType: 'capture_privacy',
+      assetId: capture.assetId,
+      projection: 'equirectangular',
+    });
     expect(again?.envelope.jobId).not.toBe(envelope.jobId);
   });
 
@@ -300,8 +409,13 @@ describe('360° captures', () => {
     expect(envelope).toMatchObject({ projection: 'perspective' });
     await worker.completePrivacy(envelope as CapturePrivacyJob, { frames: 8, panorama: true });
     await run();
-    expect(await jobRow(envelope.jobId)).toMatchObject({ state: 'failed', failureCode: 'projection_mismatch' });
-    expect((await findOwnedAsset(db(), capture.assetId, capture.owner))?.reconstructionEligible).toBe(false);
+    expect(await jobRow(envelope.jobId)).toMatchObject({
+      state: 'failed',
+      failureCode: 'projection_mismatch',
+    });
+    expect(
+      (await findOwnedAsset(db(), capture.assetId, capture.owner))?.reconstructionEligible,
+    ).toBe(false);
   });
 
   it('hands the views to the solve as rigs, each looking the capture heading plus its yaw', async () => {
@@ -310,7 +424,8 @@ describe('360° captures', () => {
       await contribute({ projection: 'equirectangular', heading: 90, offsetMeters: 4 }),
     ];
     await run();
-    for (const { envelope } of await worker.take()) await worker.completePrivacy(envelope as CapturePrivacyJob, { frames: 8, panorama: true });
+    for (const { envelope } of await worker.take())
+      await worker.completePrivacy(envelope as CapturePrivacyJob, { frames: 8, panorama: true });
     await run();
     const [job] = await sceneJobs();
     expect(job).toBeDefined();
@@ -318,7 +433,9 @@ describe('360° captures', () => {
     expect(frames).toHaveLength(16);
     for (const capture of captures) {
       const views = frames.filter((frame) => frame.captureAssetId === capture.assetId);
-      expect(views.map((frame) => frame.panorama?.yawDegrees).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([0, 45, 90, 135, 180, 225, 270, 315]);
+      expect(
+        views.map((frame) => frame.panorama?.yawDegrees).sort((a, b) => (a ?? 0) - (b ?? 0)),
+      ).toEqual([0, 45, 90, 135, 180, 225, 270, 315]);
       for (const view of views) {
         expect(view.prior.headingDegrees).toBe((90 + (view.panorama?.yawDegrees ?? 0)) % 360);
         expect(view.camera).toBeUndefined();
@@ -339,7 +456,11 @@ describe('leases', () => {
     const later = new Date(Date.now() + (config.heartbeatStaleSeconds + 60) * 1000);
     const summary = await run(later);
     expect(summary.leases).toMatchObject({ stale: 1, retried: 1 });
-    expect(await jobRow(envelope.jobId)).toMatchObject({ state: 'retry_wait', attempt: 2, failureCode: 'lease_expired' });
+    expect(await jobRow(envelope.jobId)).toMatchObject({
+      state: 'retry_wait',
+      attempt: 2,
+      failureCode: 'lease_expired',
+    });
 
     const afterBackoff = new Date(later.getTime() + 61_000);
     expect((await run(afterBackoff)).dispatch).toMatchObject({ sent: 1 });
@@ -355,9 +476,15 @@ describe('leases', () => {
     await services.deadLetterQueue.send(JSON.stringify(envelope));
     const summary = await run();
     expect(summary.deadLetters).toMatchObject({ received: 1, failed: 1 });
-    expect(await jobRow(envelope.jobId)).toMatchObject({ state: 'failed', failureCode: 'dead_lettered' });
+    expect(await jobRow(envelope.jobId)).toMatchObject({
+      state: 'failed',
+      failureCode: 'dead_lettered',
+    });
     // The gate failed, so the same tick's privacy phase gave it its next bounded attempt.
-    const attempts = await db().select().from(street3dJobs).where(eq(street3dJobs.assetId, capture.assetId));
+    const attempts = await db()
+      .select()
+      .from(street3dJobs)
+      .where(eq(street3dJobs.assetId, capture.assetId));
     expect(attempts.map((row) => row.state).sort()).toEqual(['failed', 'queued']);
   });
 });
@@ -367,23 +494,40 @@ describe('scene formation and reconstruction', () => {
     const lonely = await contribute();
     await clearPrivacy(4);
     expect(await sceneJobs()).toHaveLength(0);
-    expect((await findOwnedAsset(db(), lonely.assetId, lonely.owner))?.state).toBe('waiting_for_overlap');
+    expect((await findOwnedAsset(db(), lonely.assetId, lonely.owner))?.state).toBe(
+      'waiting_for_overlap',
+    );
 
-    const neighbour = await contribute({ offsetMeters: 20, attribution: 'Imagery © Example, CC BY-SA 4.0' });
+    const neighbour = await contribute({
+      offsetMeters: 20,
+      attribution: 'Imagery © Example, CC BY-SA 4.0',
+    });
     await clearPrivacy(2);
     const jobs = await sceneJobs();
     expect(jobs).toHaveLength(1);
     const { envelope, manifest } = jobs[0]!;
     expect(manifest.frames).toHaveLength(6);
-    expect(createHash('sha256').update(services.jobStore.objects.get(envelope.inputManifestKey)!).digest('hex')).toBe(envelope.inputManifestSha256);
+    expect(
+      createHash('sha256')
+        .update(services.jobStore.objects.get(envelope.inputManifestKey)!)
+        .digest('hex'),
+    ).toBe(envelope.inputManifestSha256);
     const text = JSON.stringify(manifest);
-    for (const secret of [lonely.owner, neighbour.owner, lonely.sessionId, neighbour.sessionId, lonely.objectKey]) {
+    for (const secret of [
+      lonely.owner,
+      neighbour.owner,
+      lonely.sessionId,
+      neighbour.sessionId,
+      lonely.objectKey,
+    ]) {
       expect(text).not.toContain(secret);
     }
     expect(new Set(manifest.frames.map((frame) => frame.sequenceGroup)).size).toBe(2);
     expect(manifest.budgets).toEqual(config.budgets.draft);
     expect(manifest.gates).toEqual(config.gates);
-    expect((await findOwnedAsset(db(), neighbour.assetId, neighbour.owner))?.state).toBe('reconstruction_candidate');
+    expect((await findOwnedAsset(db(), neighbour.assetId, neighbour.owner))?.state).toBe(
+      'reconstruction_candidate',
+    );
 
     // Never enqueued twice while open.
     await run();
@@ -397,8 +541,13 @@ describe('scene formation and reconstruction', () => {
     await run();
     const [scene] = await db().select().from(street3dScenes);
     expect(scene?.state).toBe('needs_more_capture');
-    expect(await jobRow(job!.envelope.jobId)).toMatchObject({ state: 'failed', failureCode: 'insufficient_overlap' });
-    expect((await findOwnedAsset(db(), contributions[0]!.assetId, contributions[0]!.owner))?.state).toBe('waiting_for_overlap');
+    expect(await jobRow(job!.envelope.jobId)).toMatchObject({
+      state: 'failed',
+      failureCode: 'insufficient_overlap',
+    });
+    expect(
+      (await findOwnedAsset(db(), contributions[0]!.assetId, contributions[0]!.owner))?.state,
+    ).toBe('waiting_for_overlap');
     // The sanitized detail carries no path or URL.
     expect((await jobRow(job!.envelope.jobId)).failureDetail).not.toMatch(/\/tmp|https?:/);
 
@@ -417,22 +566,39 @@ describe('scene formation and reconstruction', () => {
     const [job] = await sceneJobs();
     const unregistered = job!.manifest.frames.at(-1)!.frameId;
     const registered = job!.manifest.frames.slice(0, -1).map((frame) => frame.frameId);
-    await worker.post(worker.completedEvent(job!.envelope, 1, worker.sceneResult(job!.envelope, job!.manifest, { registered })));
+    await worker.post(
+      worker.completedEvent(
+        job!.envelope,
+        1,
+        worker.sceneResult(job!.envelope, job!.manifest, { registered }),
+      ),
+    );
     const summary = await run();
     expect(summary.events?.outcomes).toMatchObject({ published: 1 });
 
     const manifest = await findPublishedManifest(db(), job!.envelope.sceneId);
-    expect(manifest).toMatchObject({ id: job!.envelope.sceneId, version: 1, quality: { placement: 'precise', profile: 'draft' } });
+    expect(manifest).toMatchObject({
+      id: job!.envelope.sceneId,
+      version: 1,
+      quality: { placement: 'precise', profile: 'draft' },
+    });
     expect(manifest!.attributions).toEqual([OPEN_CREDIT]);
     expect(manifest!.privacyPipelineVersions).toEqual(['goway-privacy/1']);
     expect(manifest!.assets).toHaveLength(3);
     // Decimated to 1.5 m, rounded, unit-length and sorted: not the walk's order.
     expect(manifest!.navigation).toEqual({
-      viewpoints: [0, 1.5, 3, 4.5, 6, 7.5, 9].map((y) => ({ position: [0, y, 1.6], forward: [0, -1, 0] })),
+      viewpoints: [0, 1.5, 3, 4.5, 6, 7.5, 9].map((y) => ({
+        position: [0, y, 1.6],
+        forward: [0, -1, 0],
+      })),
       fieldOfView: { horizontalDegrees: 66, verticalDegrees: 50 },
     });
     for (const asset of manifest!.assets) {
-      expect(asset.url).toMatch(new RegExp(`^https://cdn\\.example\\.test/street3d/scenes/${job!.envelope.sceneId}/v1/${asset.sha256}\\.(spz|jpg)$`));
+      expect(asset.url).toMatch(
+        new RegExp(
+          `^https://cdn\\.example\\.test/street3d/scenes/${job!.envelope.sceneId}/v1/${asset.sha256}\\.(spz|jpg)$`,
+        ),
+      );
       expect(Object.keys(asset)).not.toContain('key');
     }
     expect(services.sceneStore.copies).toHaveLength(3);
@@ -443,7 +609,9 @@ describe('scene formation and reconstruction', () => {
     }
     expect(text).not.toContain('jobs/');
 
-    const states = await db().select({ id: captureAssets.id, state: captureAssets.state }).from(captureAssets);
+    const states = await db()
+      .select({ id: captureAssets.id, state: captureAssets.state })
+      .from(captureAssets);
     expect(states.every((row) => row.state === 'integrated')).toBe(true);
     const inputs = await db().select().from(street3dSceneInputs);
     expect(inputs).toHaveLength(4);
@@ -464,10 +632,19 @@ describe('scene formation and reconstruction', () => {
     await clearPrivacy(2);
     const [second] = await sceneJobs();
     expect(second?.envelope.sceneVersion).toBe(2);
-    await worker.post(worker.completedEvent(second!.envelope, 1, worker.sceneResult(second!.envelope, second!.manifest, { psnr: 9 })));
+    await worker.post(
+      worker.completedEvent(
+        second!.envelope,
+        1,
+        worker.sceneResult(second!.envelope, second!.manifest, { psnr: 9 }),
+      ),
+    );
     expect((await run()).events?.outcomes).toMatchObject({ failed_quality: 1 });
     expect((await findPublishedManifest(db(), first.envelope.sceneId))?.version).toBe(1);
-    const [failed] = await db().select().from(street3dSceneVersions).where(eq(street3dSceneVersions.version, 2));
+    const [failed] = await db()
+      .select()
+      .from(street3dSceneVersions)
+      .where(eq(street3dSceneVersions.version, 2));
     expect(failed).toMatchObject({ state: 'failed_quality' });
     expect(failed?.gateFailures).toContain('held_out_psnr');
 
@@ -475,11 +652,23 @@ describe('scene formation and reconstruction', () => {
     await contribute({ offsetMeters: 14 });
     await clearPrivacy(2);
     const [third] = await sceneJobs();
-    await worker.post(worker.completedEvent(third!.envelope, 1, worker.sceneResult(third!.envelope, third!.manifest)));
+    await worker.post(
+      worker.completedEvent(
+        third!.envelope,
+        1,
+        worker.sceneResult(third!.envelope, third!.manifest),
+      ),
+    );
     await run();
     expect((await findPublishedManifest(db(), first.envelope.sceneId))?.version).toBe(3);
-    const versions = await db().select({ version: street3dSceneVersions.version, state: street3dSceneVersions.state }).from(street3dSceneVersions);
-    expect(versions.sort((a, b) => a.version - b.version).map((row) => row.state)).toEqual(['superseded', 'failed_quality', 'published']);
+    const versions = await db()
+      .select({ version: street3dSceneVersions.version, state: street3dSceneVersions.state })
+      .from(street3dSceneVersions);
+    expect(versions.sort((a, b) => a.version - b.version).map((row) => row.state)).toEqual([
+      'superseded',
+      'failed_quality',
+      'published',
+    ]);
   });
 
   it('refuses a result that names another manifest, and one whose assets are missing', async () => {
@@ -489,7 +678,11 @@ describe('scene formation and reconstruction', () => {
     wrong.inputManifestSha256 = 'f'.repeat(64);
     await worker.post(worker.completedEvent(job!.envelope, 1, wrong));
     expect((await run()).events?.outcomes).toMatchObject({ rejected: 1 });
-    expect(await jobRow(job!.envelope.jobId)).toMatchObject({ state: 'retry_wait', attempt: 2, failureCode: 'result_mismatch' });
+    expect(await jobRow(job!.envelope.jobId)).toMatchObject({
+      state: 'retry_wait',
+      attempt: 2,
+      failureCode: 'result_mismatch',
+    });
 
     const missing = worker.sceneResult(job!.envelope, job!.manifest, { attempt: 2 });
     services.jobStore.objects.delete(`jobs/${job!.envelope.jobId}/attempt-2/scene.spz`);
@@ -506,7 +699,11 @@ describe('scene formation and reconstruction', () => {
     await clearPrivacy(2);
     const [second] = await sceneJobs();
     expect(second?.envelope.sceneVersion).toBe(2);
-    expect(await jobRow(first!.envelope.jobId)).toMatchObject({ state: 'cancelled', cancelReason: 'superseded', supersededByJobId: second!.envelope.jobId });
+    expect(await jobRow(first!.envelope.jobId)).toMatchObject({
+      state: 'cancelled',
+      cancelReason: 'superseded',
+      supersededByJobId: second!.envelope.jobId,
+    });
     await run();
     expect(services.jobStore.objects.has(`jobs/${first!.envelope.jobId}/cancel`)).toBe(true);
   });
@@ -523,26 +720,42 @@ describe('withdrawal and moderation', () => {
 
     const withdrawn = contributions[0]!;
     await withdrawCaptureAsset(db(), withdrawn.assetId, withdrawn.owner);
-    expect(await jobRow(rebuild!.envelope.jobId)).toMatchObject({ state: 'cancelled', cancelReason: 'source_withdrawn' });
-    const derivatives = await db().select().from(captureDerivatives).where(eq(captureDerivatives.assetId, withdrawn.assetId));
-    expect(derivatives.every((row) => row.deletionRequestedReason === 'contributor_request')).toBe(true);
+    expect(await jobRow(rebuild!.envelope.jobId)).toMatchObject({
+      state: 'cancelled',
+      cancelReason: 'source_withdrawn',
+    });
+    const derivatives = await db()
+      .select()
+      .from(captureDerivatives)
+      .where(eq(captureDerivatives.assetId, withdrawn.assetId));
+    expect(derivatives.every((row) => row.deletionRequestedReason === 'contributor_request')).toBe(
+      true,
+    );
     // Derived-data policy: the published version stays until the rebuild replaces it.
     expect((await findPublishedManifest(db(), job.envelope.sceneId))?.version).toBe(1);
 
     await run();
     expect(services.jobStore.objects.has(`jobs/${rebuild!.envelope.jobId}/cancel`)).toBe(true);
     const [next] = await sceneJobs();
-    expect(next?.manifest.frames.some((frame) => frame.captureAssetId === withdrawn.assetId)).toBe(false);
+    expect(next?.manifest.frames.some((frame) => frame.captureAssetId === withdrawn.assetId)).toBe(
+      false,
+    );
   });
 
   it('blocks a capture permanently: disables versions, purges assets, and never re-admits its bytes', async () => {
     const { contributions, job } = await publishedScene(3);
     const blocked = contributions[1]!;
-    const result = await adminBlockCapture({ db: db(), services, config }, blocked.assetId, 'faces visible in reflection');
+    const result = await adminBlockCapture(
+      { db: db(), services, config },
+      blocked.assetId,
+      'faces visible in reflection',
+    );
     expect(result).toMatchObject({ blocked: true, disabledVersions: 1, purged: 1 });
     expect(await findPublishedManifest(db(), job.envelope.sceneId)).toBeNull();
     expect(services.sceneStore.objects.size).toBe(0);
-    expect(services.cdn.invalidations[0]?.paths).toEqual([`/street3d/scenes/${job.envelope.sceneId}/v1/*`]);
+    expect(services.cdn.invalidations[0]?.paths).toEqual([
+      `/street3d/scenes/${job.envelope.sceneId}/v1/*`,
+    ]);
 
     // Its frames can never be selected again.
     const frames = await loadEligibleFrames(db(), new Date());
@@ -551,30 +764,48 @@ describe('withdrawal and moderation', () => {
     await run();
     const [rebuild] = await sceneJobs();
     if (rebuild) {
-      expect(rebuild.manifest.frames.some((frame) => frame.captureAssetId === blocked.assetId)).toBe(false);
+      expect(
+        rebuild.manifest.frames.some((frame) => frame.captureAssetId === blocked.assetId),
+      ).toBe(false);
     }
     // Re-enabling a version with a blocked input is refused.
-    const [disabled] = await db().select().from(street3dSceneVersions).where(eq(street3dSceneVersions.state, 'disabled'));
-    expect(await adminEnableVersion({ db: db(), services, config }, disabled!.id)).toMatchObject({ enabled: false });
+    const [disabled] = await db()
+      .select()
+      .from(street3dSceneVersions)
+      .where(eq(street3dSceneVersions.state, 'disabled'));
+    expect(await adminEnableVersion({ db: db(), services, config }, disabled!.id)).toMatchObject({
+      enabled: false,
+    });
   });
 
   it('refuses identical bytes under a content-hash block at privacy scheduling', async () => {
     const original = await contribute({ seed: 'same-bytes' });
     await adminBlockCapture({ db: db(), services, config }, original.assetId, 'moderation');
     // The block marked the raw object for removal; tombstone it as cleanup would.
-    await sweepExpiredCaptures(db(), { deleteObject: async () => undefined }, { now: () => new Date(Date.now() + 3600_000) });
+    await sweepExpiredCaptures(
+      db(),
+      { deleteObject: async () => undefined },
+      { now: () => new Date(Date.now() + 3600_000) },
+    );
     const again = await contribute({ seed: 'same-bytes' });
     const summary = await run();
     expect(summary.privacy).toMatchObject({ queued: 0, blocked: 1 });
-    expect(await findOwnedAsset(db(), again.assetId, again.owner)).toMatchObject({ state: 'rejected', privacy: { state: 'blocked' } });
+    expect(await findOwnedAsset(db(), again.assetId, again.owner)).toMatchObject({
+      state: 'rejected',
+      privacy: { state: 'blocked' },
+    });
   });
 
   it('hides a disabled version at once, and restores it on enable from the job result', async () => {
     const { job } = await publishedScene();
     const [version] = await db().select().from(street3dSceneVersions);
-    expect(await adminDisableVersion({ db: db(), services, config }, version!.id, 'operator check')).toMatchObject({ disabled: true, purged: 1 });
+    expect(
+      await adminDisableVersion({ db: db(), services, config }, version!.id, 'operator check'),
+    ).toMatchObject({ disabled: true, purged: 1 });
     expect(await findPublishedManifest(db(), job.envelope.sceneId)).toBeNull();
-    expect((await findCoverage(db(), { west: 2.2, south: 48.8, east: 2.4, north: 48.9 })).scenes).toHaveLength(0);
+    expect(
+      (await findCoverage(db(), { west: 2.2, south: 48.8, east: 2.4, north: 48.9 })).scenes,
+    ).toHaveLength(0);
 
     const enabled = await adminEnableVersion({ db: db(), services, config }, version!.id);
     expect(enabled).toMatchObject({ enabled: true, state: 'published', restoredAssets: 3 });
@@ -586,12 +817,16 @@ describe('withdrawal and moderation', () => {
     const [job] = await sceneJobs();
     await worker.fail(job!.envelope, 'camera_solve_failed');
     await run();
-    expect(await adminRequeueJob({ db: db(), services, config }, job!.envelope.jobId)).toEqual({ outcome: 'requeued' });
+    expect(await adminRequeueJob({ db: db(), services, config }, job!.envelope.jobId)).toEqual({
+      outcome: 'requeued',
+    });
     await run();
     const resent = services.jobsQueue.envelopes().at(-1)!;
     expect(resent).toMatchObject({ attempt: 2, envelope: { jobId: job!.envelope.jobId } });
     const status = await adminStatus({ db: db(), services, config });
-    expect(status.jobs.some((row) => row.kind === 'scene_reconstruct' && row.state === 'queued')).toBe(true);
+    expect(
+      status.jobs.some((row) => row.kind === 'scene_reconstruct' && row.state === 'queued'),
+    ).toBe(true);
     expect(JSON.stringify(status)).not.toMatch(/captures\/|derived\/|jobs\//);
   });
 });
@@ -616,21 +851,32 @@ describe('coverage and rescue', () => {
     const soon = new Date(Date.now() + 5 * 86_400_000);
     await db().update(captureDerivatives).set({ expiresAt: soon });
     await run();
-    const [atRisk] = (await findCoverage(db(), { west: 2.2, south: 48.8, east: 2.4, north: 48.9 })).areas;
+    const [atRisk] = (await findCoverage(db(), { west: 2.2, south: 48.8, east: 2.4, north: 48.9 }))
+      .areas;
     expect(atRisk).toMatchObject({ state: 'at_risk', atRiskUntil: soon.toISOString() });
 
     // A new contribution arrives: one bounded rescue.
     await contribute({ offsetMeters: 8 });
     await clearPrivacy(1);
-    const rescued = await db().select().from(captureDerivatives).where(eq(captureDerivatives.assetId, second.assetId));
+    const rescued = await db()
+      .select()
+      .from(captureDerivatives)
+      .where(eq(captureDerivatives.assetId, second.assetId));
     expect(rescued[0]).toMatchObject({ extensionCount: 1, retentionReason: 'rescue_extension' });
-    expect(rescued[0]!.expiresAt.getTime()).toBe(soon.getTime() + config.rescueExtensionDays * 86_400_000);
+    expect(rescued[0]!.expiresAt.getTime()).toBe(
+      soon.getTime() + config.rescueExtensionDays * 86_400_000,
+    );
 
     // Never past the cap: three extensions at most.
-    await db().update(captureDerivatives).set({ extensionCount: 3, expiresAt: soon, protectedUntil: null });
+    await db()
+      .update(captureDerivatives)
+      .set({ extensionCount: 3, expiresAt: soon, protectedUntil: null });
     await contribute({ offsetMeters: 10 });
     await clearPrivacy(1);
-    const capped = await db().select().from(captureDerivatives).where(eq(captureDerivatives.assetId, second.assetId));
+    const capped = await db()
+      .select()
+      .from(captureDerivatives)
+      .where(eq(captureDerivatives.assetId, second.assetId));
     expect(capped[0]).toMatchObject({ extensionCount: 3 });
     expect(capped[0]!.expiresAt.getTime()).toBe(soon.getTime());
   });
@@ -642,7 +888,16 @@ describe('cleanup', () => {
     await clearPrivacy(1);
     const later = new Date(Date.now() + 4 * 86_400_000);
     const deleted: string[] = [];
-    const summary = await sweepExpiredCaptures(db(), { deleteObject: async (key) => { deleted.push(key); } }, { now: () => later }, services.jobStore);
+    const summary = await sweepExpiredCaptures(
+      db(),
+      {
+        deleteObject: async (key) => {
+          deleted.push(key);
+        },
+      },
+      { now: () => later },
+      services.jobStore,
+    );
     expect(summary).toMatchObject({ supersededMarked: 1, deleted: 1, failed: 0 });
     expect(deleted).toEqual([capture.objectKey]);
     const asset = await findOwnedAsset(db(), capture.assetId, capture.owner);
@@ -651,12 +906,27 @@ describe('cleanup', () => {
     expect(asset?.media.lifecycle.deletionReason).toBe('superseded_by_derivative');
 
     // Expired derivatives go too, and the contribution then expires.
-    await db().update(captureDerivatives).set({ expiresAt: new Date(Date.now() + 1000), protectedUntil: null });
+    await db()
+      .update(captureDerivatives)
+      .set({ expiresAt: new Date(Date.now() + 1000), protectedUntil: null });
     const muchLater = new Date(Date.now() + 10 * 86_400_000);
-    const second = await sweepExpiredCaptures(db(), { deleteObject: async () => undefined }, { now: () => muchLater }, services.jobStore);
-    expect(second).toMatchObject({ derivativesDeleted: 1, derivativesFailed: 0, jobArtifactCandidates: 1 });
+    const second = await sweepExpiredCaptures(
+      db(),
+      { deleteObject: async () => undefined },
+      { now: () => muchLater },
+      services.jobStore,
+    );
+    expect(second).toMatchObject({
+      derivativesDeleted: 1,
+      derivativesFailed: 0,
+      jobArtifactCandidates: 1,
+    });
     expect(second.jobArtifactObjectsDeleted).toBeGreaterThan(0);
-    expect([...services.jobStore.objects.keys()].filter((key) => key.startsWith('derived/') || key.startsWith('jobs/'))).toEqual([]);
+    expect(
+      [...services.jobStore.objects.keys()].filter(
+        (key) => key.startsWith('derived/') || key.startsWith('jobs/'),
+      ),
+    ).toEqual([]);
     expect((await findOwnedAsset(db(), capture.assetId, capture.owner))?.state).toBe('expired');
   });
 
@@ -665,13 +935,34 @@ describe('cleanup', () => {
     await clearPrivacy(1);
     // A second contributor of identical bytes, not yet privacy-processed.
     const owner = randomUUID();
-    const session = await createCaptureSession(db(), owner, { source: 'camera', consentVersion: 'test' });
-    await registerAsset(db(), { id: session.id, oxyUserId: owner }, {
-      mediaKind: 'photo', source: 'camera', contentHash: capture.contentHash, byteSize: 100, contentType: 'image/jpeg',
-      evidence: [{ origin: 'user_placed', witness: 'client', coordinate: PARIS }],
-    }, { keyPrefix: 'captures' });
+    const session = await createCaptureSession(db(), owner, {
+      source: 'camera',
+      consentVersion: 'test',
+    });
+    await registerAsset(
+      db(),
+      { id: session.id, oxyUserId: owner },
+      {
+        mediaKind: 'photo',
+        source: 'camera',
+        contentHash: capture.contentHash,
+        byteSize: 100,
+        contentType: 'image/jpeg',
+        evidence: [{ origin: 'user_placed', witness: 'client', coordinate: PARIS }],
+      },
+      { keyPrefix: 'captures' },
+    );
     const later = new Date(Date.now() + 4 * 86_400_000);
-    const summary = await sweepExpiredCaptures(db(), { deleteObject: async () => { throw new Error('must not delete'); } }, { now: () => later }, services.jobStore);
+    const summary = await sweepExpiredCaptures(
+      db(),
+      {
+        deleteObject: async () => {
+          throw new Error('must not delete');
+        },
+      },
+      { now: () => later },
+      services.jobStore,
+    );
     expect(summary).toMatchObject({ supersededMarked: 0, candidates: 0 });
   });
 
@@ -680,8 +971,16 @@ describe('cleanup', () => {
     await clearPrivacy(1);
     const later = new Date(Date.now() + 4 * 86_400_000);
     const summary = await sweepExpiredCaptures(db(), null, { dryRun: true, now: () => later });
-    expect(summary).toMatchObject({ dryRun: true, supersededMarked: 1, deleted: 0, derivativesDeleted: 0 });
-    const [object] = await db().select().from(captureMediaObjects).where(and(eq(captureMediaObjects.storageState, 'stored')));
+    expect(summary).toMatchObject({
+      dryRun: true,
+      supersededMarked: 1,
+      deleted: 0,
+      derivativesDeleted: 0,
+    });
+    const [object] = await db()
+      .select()
+      .from(captureMediaObjects)
+      .where(and(eq(captureMediaObjects.storageState, 'stored')));
     expect(object?.deletionRequestedAt).toBeNull();
   });
 });

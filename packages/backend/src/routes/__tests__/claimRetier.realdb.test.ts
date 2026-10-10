@@ -32,12 +32,22 @@ import {
 } from '../../db/__tests__/testDatabase';
 import { createRequireOperator } from '../../middleware/operator';
 import type { AccountRoleResolver } from '../../oxy/accountRoles';
-import { fakeOptionalAuth, fakeRequireAuth, serve, session, type ErrorBody, type TestApi } from '../../__tests__/httpHarness';
+import {
+  fakeOptionalAuth,
+  fakeRequireAuth,
+  serve,
+  session,
+  type ErrorBody,
+  type TestApi,
+} from '../../__tests__/httpHarness';
 import { apiAuthor, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createModerationRouter } from '../moderation';
 import { createPlacesRouter } from '../places';
 
-const CONTRIBUTOR: PlaceActor = { author: apiAuthor('person-contributor'), assertedVerification: 'community_reported' };
+const CONTRIBUTOR: PlaceActor = {
+  author: apiAuthor('person-contributor'),
+  assertedVerification: 'community_reported',
+};
 const POBLENOU = { latitude: 41.4036, longitude: 2.1975 };
 const OPERATOR = session('person-mod');
 
@@ -67,7 +77,10 @@ beforeAll(async () => {
       accountRoles: ACCOUNT_ROLES,
       reportRateLimit: NO_RATE_LIMIT,
     }),
-    createModerationRouter({ requireAuth: fakeRequireAuth, requireOperator: createRequireOperator(['person-mod']) }),
+    createModerationRouter({
+      requireAuth: fakeRequireAuth,
+      requireOperator: createRequireOperator(['person-mod']),
+    }),
   );
 }, SUITE_SETUP_TIMEOUT_MS);
 
@@ -77,28 +90,49 @@ afterAll(async () => {
   suite = null;
 });
 
-async function assert(placeId: string, key: string, value: unknown, headers: Record<string, string>): Promise<void> {
-  const { status } = await api.call<Place>('PUT', `/places/${placeId}/capabilities/${key}`, headers, { value });
+async function assert(
+  placeId: string,
+  key: string,
+  value: unknown,
+  headers: Record<string, string>,
+): Promise<void> {
+  const { status } = await api.call<Place>(
+    'PUT',
+    `/places/${placeId}/capabilities/${key}`,
+    headers,
+    { value },
+  );
   expect(status).toBe(200);
 }
 
 /** Every stored tier of every key, as `key@tier=value`, sorted. */
 async function tiers(placeId: string): Promise<string[]> {
   const { body } = await api.call<Place>('GET', `/places/${placeId}`);
-  return body.capabilities.map((row) => `${row.key}@${row.verification}=${JSON.stringify(row.value)}`).sort();
+  return body.capabilities
+    .map((row) => `${row.key}@${row.verification}=${JSON.stringify(row.value)}`)
+    .sort();
 }
 
 async function decide(claimId: string, state: 'approved' | 'rejected'): Promise<number> {
-  return (await api.call<PlaceClaim>('POST', `/moderation/claims/${claimId}/decision`, OPERATOR, { state })).status;
+  return (
+    await api.call<PlaceClaim>('POST', `/moderation/claims/${claimId}/decision`, OPERATOR, {
+      state,
+    })
+  ).status;
 }
 
 async function fileClaim(placeId: string): Promise<PlaceClaim> {
   // Filed by the organization's owner, as themselves, in its name — what
   // Mercaria's dashboard does.
-  const { status, body } = await api.call<PlaceClaim>('POST', `/places/${placeId}/claims`, session('person-owner'), {
-    role: 'owner',
-    oxyAccountId: 'org-botiga',
-  });
+  const { status, body } = await api.call<PlaceClaim>(
+    'POST',
+    `/places/${placeId}/claims`,
+    session('person-owner'),
+    {
+      role: 'owner',
+      oxyAccountId: 'org-botiga',
+    },
+  );
   expect(status).toBe(201);
   return body;
 }
@@ -111,7 +145,11 @@ describe('approving a claim', () => {
   let observedBefore: string | undefined;
 
   beforeAll(async () => {
-    shop = await createPlace(suite!.db, { name: 'Botiga del Poblenou', location: POBLENOU }, CONTRIBUTOR);
+    shop = await createPlace(
+      suite!.db,
+      { name: 'Botiga del Poblenou', location: POBLENOU },
+      CONTRIBUTOR,
+    );
 
     // Before the claim existed, even as the organization: a community report.
     await assert(shop.id, 'amenities.toilets', true, session('org-botiga', 'person-owner'));
@@ -120,23 +158,38 @@ describe('approving a claim', () => {
 
     // While it is pending — each lands at the community tier.
     await assert(shop.id, STORE, 'loc-1', session('person-owner')); // the filer, as themselves
-    await assert(shop.id, 'accessibility.step_free_entrance', true, session('org-botiga', 'person-editor')); // as the org
+    await assert(
+      shop.id,
+      'accessibility.step_free_entrance',
+      true,
+      session('org-botiga', 'person-editor'),
+    ); // as the org
     await assert(shop.id, 'amenities.wifi', true, session('person-editor')); // a member, as themselves
     await assert(shop.id, 'payments.cash', true, session('person-stranger'));
     await assert(shop.id, 'payments.cards', true, session('person-owner'));
     await assert(shop.id, 'payments.cards', false, session('person-stranger')); // overwritten since
 
     closure = (
-      await api.call<PlaceHoursException>('POST', `/places/${shop.id}/hours-exceptions`, session('person-owner'), {
-        startsOn: '2031-12-25',
-        closed: true,
-      })
+      await api.call<PlaceHoursException>(
+        'POST',
+        `/places/${shop.id}/hours-exceptions`,
+        session('person-owner'),
+        {
+          startsOn: '2031-12-25',
+          closed: true,
+        },
+      )
     ).body;
     strangersClosure = (
-      await api.call<PlaceHoursException>('POST', `/places/${shop.id}/hours-exceptions`, session('person-stranger'), {
-        startsOn: '2031-12-31',
-        closed: true,
-      })
+      await api.call<PlaceHoursException>(
+        'POST',
+        `/places/${shop.id}/hours-exceptions`,
+        session('person-stranger'),
+        {
+          startsOn: '2031-12-31',
+          closed: true,
+        },
+      )
     ).body;
 
     const before = await api.call<Place>('GET', `/places/${shop.id}`);
@@ -177,13 +230,18 @@ describe('approving a claim', () => {
 
   it("re-tiers the filer's closure and not the stranger's", async () => {
     const { body } = await api.call<Place>('GET', `/places/${shop.id}`);
-    const tierOf = (id: string) => body.hoursExceptions?.find((exception) => exception.id === id)?.verification;
+    const tierOf = (id: string) =>
+      body.hoursExceptions?.find((exception) => exception.id === id)?.verification;
     expect(tierOf(closure.id)).toBe('business_asserted');
     expect(tierOf(strangersClosure.id)).toBe('community_reported');
   });
 
   it('records each re-tier as a revision of whoever made the statement, through the moderation door', async () => {
-    const { body } = await api.call<ModerationPlaceRevisionPage>('GET', `/moderation/places/${shop.id}/revisions?limit=100`, OPERATOR);
+    const { body } = await api.call<ModerationPlaceRevisionPage>(
+      'GET',
+      `/moderation/places/${shop.id}/revisions?limit=100`,
+      OPERATOR,
+    );
     const retiers = body.items
       .filter((revision) => revision.action.endsWith('_retiered'))
       .map((revision) => ({
@@ -196,7 +254,11 @@ describe('approving a claim', () => {
         to: (revision.changes[0]?.after as { verification?: string } | undefined)?.verification,
       }))
       .sort((left, right) => (left.field ?? '').localeCompare(right.field ?? ''));
-    const retier = { source: 'moderation', from: 'community_reported', to: 'business_asserted' } as const;
+    const retier = {
+      source: 'moderation',
+      from: 'community_reported',
+      to: 'business_asserted',
+    } as const;
     expect(retiers).toEqual([
       {
         ...retier,
@@ -205,7 +267,13 @@ describe('approving a claim', () => {
         person: 'person-editor',
         field: 'capabilities.accessibility.step_free_entrance',
       },
-      { ...retier, action: 'capability_retiered', account: 'person-owner', person: 'person-owner', field: `capabilities.${STORE}` },
+      {
+        ...retier,
+        action: 'capability_retiered',
+        account: 'person-owner',
+        person: 'person-owner',
+        field: `capabilities.${STORE}`,
+      },
       {
         ...retier,
         action: 'hours_exception_retiered',
@@ -216,26 +284,39 @@ describe('approving a claim', () => {
     ]);
     // Decided first, re-tiered after, in one transaction.
     const actions = body.items.map((revision) => revision.action);
-    expect(actions.indexOf('claim_approved')).toBeGreaterThan(actions.indexOf('capability_retiered'));
+    expect(actions.indexOf('claim_approved')).toBeGreaterThan(
+      actions.indexOf('capability_retiered'),
+    );
   });
 
   it('publishes the re-tier in the public history, never who', async () => {
-    const { body } = await api.call<PlaceRevisionPage>('GET', `/places/${shop.id}/revisions?limit=100`);
+    const { body } = await api.call<PlaceRevisionPage>(
+      'GET',
+      `/places/${shop.id}/revisions?limit=100`,
+    );
     const retiered = body.items.filter((revision) => revision.action === 'capability_retiered');
     expect(retiered).toHaveLength(2);
     expect(JSON.stringify(body)).not.toContain('person-');
     expect(JSON.stringify(body)).not.toContain('org-botiga');
   });
 
-  it("lets the business withdraw what is now its own, as it may any statement at its tier", async () => {
-    const { status } = await api.call('DELETE', `/places/${shop.id}/capabilities/accessibility.step_free_entrance`, session('person-owner'));
+  it('lets the business withdraw what is now its own, as it may any statement at its tier', async () => {
+    const { status } = await api.call(
+      'DELETE',
+      `/places/${shop.id}/capabilities/accessibility.step_free_entrance`,
+      session('person-owner'),
+    );
     expect(status).toBe(204);
   });
 });
 
 describe('what a decision does not re-tier', () => {
   it('re-tiers nothing on a rejection', async () => {
-    const shop = await createPlace(suite!.db, { name: 'Botiga Rebutjada', location: POBLENOU }, CONTRIBUTOR);
+    const shop = await createPlace(
+      suite!.db,
+      { name: 'Botiga Rebutjada', location: POBLENOU },
+      CONTRIBUTOR,
+    );
     const claim = await fileClaim(shop.id);
     await assert(shop.id, STORE, 'loc-2', session('person-owner'));
     expect(await decide(claim.id, 'rejected')).toBe(200);
@@ -243,8 +324,17 @@ describe('what a decision does not re-tier', () => {
   });
 
   it('never overwrites the business tier another approved claimant already holds', async () => {
-    const shop = await createPlace(suite!.db, { name: 'Botiga de Cadena', location: POBLENOU }, CONTRIBUTOR);
-    await createClaim(suite!.db, { placeId: shop.id, oxyAccountId: 'org-cadena', role: 'brand', state: 'approved' });
+    const shop = await createPlace(
+      suite!.db,
+      { name: 'Botiga de Cadena', location: POBLENOU },
+      CONTRIBUTOR,
+    );
+    await createClaim(suite!.db, {
+      placeId: shop.id,
+      oxyAccountId: 'org-cadena',
+      role: 'brand',
+      state: 'approved',
+    });
     await assert(shop.id, 'amenities.takeaway', true, session('org-cadena'));
 
     const claim = await fileClaim(shop.id);
@@ -257,7 +347,11 @@ describe('what a decision does not re-tier', () => {
   });
 
   it('rolls the approval back with the re-tier when the re-tier cannot be recorded', async () => {
-    const shop = await createPlace(suite!.db, { name: 'Botiga Atomica', location: POBLENOU }, CONTRIBUTOR);
+    const shop = await createPlace(
+      suite!.db,
+      { name: 'Botiga Atomica', location: POBLENOU },
+      CONTRIBUTOR,
+    );
     const claim = await fileClaim(shop.id);
     await assert(shop.id, STORE, 'loc-3', session('person-owner'));
 
@@ -265,9 +359,14 @@ describe('what a decision does not re-tier', () => {
       `ALTER TABLE place_revisions ADD CONSTRAINT test_refuse_retier CHECK (action <> 'capability_retiered') NOT VALID`,
     );
     try {
-      const { status, body } = await api.call<ErrorBody>('POST', `/moderation/claims/${claim.id}/decision`, OPERATOR, {
-        state: 'approved',
-      });
+      const { status, body } = await api.call<ErrorBody>(
+        'POST',
+        `/moderation/claims/${claim.id}/decision`,
+        OPERATOR,
+        {
+          state: 'approved',
+        },
+      );
       expect(status).toBe(500);
       expect(body.error.code).toBe('internal_error');
     } finally {
@@ -275,7 +374,9 @@ describe('what a decision does not re-tier', () => {
     }
 
     // Neither half landed: the claim is still pending, the link still a report.
-    const [stored] = await suite!.client<{ state: string }[]>`SELECT state FROM places_claims WHERE id = ${claim.id}`;
+    const [stored] = await suite!.client<
+      { state: string }[]
+    >`SELECT state FROM places_claims WHERE id = ${claim.id}`;
     expect(stored?.state).toBe('pending');
     expect(await tiers(shop.id)).toEqual(['commerce.mercaria.store@community_reported="loc-3"']);
   });

@@ -94,7 +94,9 @@ async function fetchRange(stack: string, range: string): Promise<MapGlyph[] | un
 
 async function main(): Promise<void> {
   const base = openSync(FONT_FILE);
-  const inter = coverageByRange(base.getVariation({ wght: GLYPH_FONTSTACKS[0].wght, opsz: OPTICAL_SIZE }));
+  const inter = coverageByRange(
+    base.getVariation({ wght: GLYPH_FONTSTACKS[0].wght, opsz: OPTICAL_SIZE }),
+  );
   const ranges = [...inter.keys()].sort((a, b) => a - b);
   const upstreamStacks = [...new Set(Object.values(UPSTREAM_FONTSTACK))];
 
@@ -137,7 +139,9 @@ async function main(): Promise<void> {
       await writeFile(target, encoded);
       packBytes += encoded.length;
       packFiles += 1;
-      console.log(`fallback: ${stackName} ${range} — ${fill.length} glyph(s), ${formatBytes(encoded.length)}`);
+      console.log(
+        `fallback: ${stackName} ${range} — ${fill.length} glyph(s), ${formatBytes(encoded.length)}`,
+      );
     }
 
     if (ascender === undefined) {
@@ -147,7 +151,9 @@ async function main(): Promise<void> {
     }
     stack.ascender = ascender;
     coverage.stacks[stackName] = stack;
-    console.log(`fallback: ${stackName} — ${Object.keys(stack.ranges).length} ranges, ascender ${ascender}px`);
+    console.log(
+      `fallback: ${stackName} — ${Object.keys(stack.ranges).length} ranges, ascender ${ascender}px`,
+    );
   }
 
   const manifest = `${JSON.stringify(coverage, null, 2)}\n`;

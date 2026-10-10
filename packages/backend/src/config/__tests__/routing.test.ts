@@ -55,15 +55,15 @@ describe('parseRoutingConfig', () => {
   it('refuses an endpoint carrying credentials, a query or a fragment', () => {
     // Any of the three ends up in a connection error's message, which is one
     // `logger.error({ err })` away from an aggregator's index.
-    expect(() => parseRoutingConfig({ ROUTING_VALHALLA_URL: 'https://a:b@valhalla.example/route' })).toThrow(
-      /valhallaUrl/,
-    );
+    expect(() =>
+      parseRoutingConfig({ ROUTING_VALHALLA_URL: 'https://a:b@valhalla.example/route' }),
+    ).toThrow(/valhallaUrl/);
     expect(() =>
       parseRoutingConfig({ ROUTING_VALHALLA_URL: 'https://valhalla.example/route?api_key=leaked' }),
     ).toThrow(/valhallaUrl/);
-    expect(() => parseRoutingConfig({ ROUTING_VALHALLA_URL: 'ftp://valhalla.example/route' })).toThrow(
-      /valhallaUrl/,
-    );
+    expect(() =>
+      parseRoutingConfig({ ROUTING_VALHALLA_URL: 'ftp://valhalla.example/route' }),
+    ).toThrow(/valhallaUrl/);
   });
 
   it('treats an empty string as absent so a default can apply', () => {
@@ -106,29 +106,41 @@ describe('parseRoutingConfig', () => {
 
   it('bounds the timeout rather than accepting any number a shell offers', () => {
     expect(parseRoutingConfig({ ...CONFIGURED, ROUTING_TIMEOUT_MS: '2500' }).timeoutMs).toBe(2500);
-    expect(() => parseRoutingConfig({ ...CONFIGURED, ROUTING_TIMEOUT_MS: '0' })).toThrow(/timeoutMs/);
+    expect(() => parseRoutingConfig({ ...CONFIGURED, ROUTING_TIMEOUT_MS: '0' })).toThrow(
+      /timeoutMs/,
+    );
     expect(() => parseRoutingConfig({ ...CONFIGURED, ROUTING_TIMEOUT_MS: '600000' })).toThrow(
       /timeoutMs/,
     );
-    expect(() => parseRoutingConfig({ ...CONFIGURED, ROUTING_TIMEOUT_MS: 'soon' })).toThrow(/timeoutMs/);
+    expect(() => parseRoutingConfig({ ...CONFIGURED, ROUTING_TIMEOUT_MS: 'soon' })).toThrow(
+      /timeoutMs/,
+    );
   });
 
   it('accepts zero alternatives, which switches the feature off', () => {
-    expect(parseRoutingConfig({ ...CONFIGURED, ROUTING_MAX_ALTERNATIVES: '0' }).maxAlternatives).toBe(0);
+    expect(
+      parseRoutingConfig({ ...CONFIGURED, ROUTING_MAX_ALTERNATIVES: '0' }).maxAlternatives,
+    ).toBe(0);
     expect(() => parseRoutingConfig({ ...CONFIGURED, ROUTING_MAX_ALTERNATIVES: '50' })).toThrow(
       /maxAlternatives/,
     );
   });
 
   it('refuses an engine it does not know how to drive', () => {
-    expect(() => parseRoutingConfig({ ...CONFIGURED, ROUTING_PROVIDER: 'osrm' })).toThrow(/provider/);
+    expect(() => parseRoutingConfig({ ...CONFIGURED, ROUTING_PROVIDER: 'osrm' })).toThrow(
+      /provider/,
+    );
   });
 
   it('names every bad variable at once, not just the first', () => {
     // A deployment with three bad values should take one round trip to fix.
     let message = '';
     try {
-      parseRoutingConfig({ ROUTING_VALHALLA_URL: 'nonsense', ROUTING_TIMEOUT_MS: '0', ROUTING_MODES: 'fly' });
+      parseRoutingConfig({
+        ROUTING_VALHALLA_URL: 'nonsense',
+        ROUTING_TIMEOUT_MS: '0',
+        ROUTING_MODES: 'fly',
+      });
     } catch (error) {
       message = (error as Error).message;
     }

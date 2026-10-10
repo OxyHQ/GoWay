@@ -17,7 +17,10 @@ import { fakeFetch, queryOf, rejection } from './helpers';
 
 function clientFor(body: unknown, status = 200) {
   const { fetch, calls } = fakeFetch(status, body);
-  return { client: createGoWayClient({ fetch, getAccessToken: () => 'token', locale: 'ES' }), calls };
+  return {
+    client: createGoWayClient({ fetch, getAccessToken: () => 'token', locale: 'ES' }),
+    calls,
+  };
 }
 
 const BATCH = {
@@ -29,22 +32,36 @@ const BATCH = {
 describe('places.getMany', () => {
   it('reads several places in one request, repeats collapsed, in the client locale', async () => {
     const { client, calls } = clientFor(BATCH);
-    const batch = await client.places.getMany(['gw_place_01H8', 'gw_merged', 'gw_place_01H8', 'gw_removed', 'gw_never']);
+    const batch = await client.places.getMany([
+      'gw_place_01H8',
+      'gw_merged',
+      'gw_place_01H8',
+      'gw_removed',
+      'gw_never',
+    ]);
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.init.method).toBe('GET');
     expect(calls[0]?.url.split('?')[0]).toBe('https://api.goway.to/api/v1/places');
     // Sorted on the wire, so the same question is the same URL to a cache.
-    expect(decodeURIComponent(queryOf(calls[0]?.url ?? ''))).toBe('ids=gw_merged,gw_never,gw_place_01H8,gw_removed&locale=es');
+    expect(decodeURIComponent(queryOf(calls[0]?.url ?? ''))).toBe(
+      'ids=gw_merged,gw_never,gw_place_01H8,gw_removed&locale=es',
+    );
 
     expect(batch.items.map((place) => place.id)).toEqual(['gw_place_01H8']);
-    expect(batch.gone).toEqual([{ id: 'gw_merged', mergedInto: 'gw_place_01H8' }, { id: 'gw_removed' }]);
+    expect(batch.gone).toEqual([
+      { id: 'gw_merged', mergedInto: 'gw_place_01H8' },
+      { id: 'gw_removed' },
+    ]);
     expect(batch.missing).toEqual(['gw_never']);
   });
 
   it("answers in the caller's order, whatever order the lists arrive in", async () => {
     const { client } = clientFor({
-      items: [{ ...PLACE, id: 'gw_b' }, { ...PLACE, id: 'gw_a' }],
+      items: [
+        { ...PLACE, id: 'gw_b' },
+        { ...PLACE, id: 'gw_a' },
+      ],
       gone: [{ id: 'gw_d' }, { id: 'gw_c' }],
       missing: ['gw_f', 'gw_e'],
     });
@@ -56,7 +73,10 @@ describe('places.getMany', () => {
 
   it(`refuses an empty list and more than ${String(MAX_PLACE_BATCH_SIZE)} ids before sending`, async () => {
     const { client, calls } = clientFor(BATCH);
-    const tooMany = Array.from({ length: MAX_PLACE_BATCH_SIZE + 1 }, (_unused, index) => `gw_${String(index)}`);
+    const tooMany = Array.from(
+      { length: MAX_PLACE_BATCH_SIZE + 1 },
+      (_unused, index) => `gw_${String(index)}`,
+    );
     for (const ids of [[], tooMany]) {
       const error = await rejection(client.places.getMany(ids));
       expect(error).toBeInstanceOf(GoWayValidationError);
@@ -92,16 +112,28 @@ describe('a text capability filter', () => {
     });
     expect(calls[0]?.url).toContain('capabilities=commerce.mercaria.store%3Aloc_7f3a');
 
-    for (const filter of ['brand.wikidata:acme', 'commerce.mercaria.store:', 'commerce.mercaria.store:a,b']) {
+    for (const filter of [
+      'brand.wikidata:acme',
+      'commerce.mercaria.store:',
+      'commerce.mercaria.store:a,b',
+    ]) {
       const error = await rejection(
-        client.places.nearby({ latitude: 41.39, longitude: 2.17, radiusMeters: 500, capabilities: [filter] }),
+        client.places.nearby({
+          latitude: 41.39,
+          longitude: 2.17,
+          radiusMeters: 500,
+          capabilities: [filter],
+        }),
       );
       expect(error).toBeInstanceOf(GoWayValidationError);
     }
   });
 
   it('matches exactly against the strongest assertion, client-side too', () => {
-    const link = (value: string, verification: PlaceCapability['verification']): PlaceCapability => ({
+    const link = (
+      value: string,
+      verification: PlaceCapability['verification'],
+    ): PlaceCapability => ({
       namespace: 'commerce.mercaria',
       capability: 'store',
       key: 'commerce.mercaria.store',
@@ -109,7 +141,9 @@ describe('a text capability filter', () => {
       verification,
       observedAt: '2026-10-01T00:00:00.000Z',
     });
-    const place = { capabilities: [link('loc_b', 'community_reported'), link('loc_a', 'business_asserted')] };
+    const place = {
+      capabilities: [link('loc_b', 'community_reported'), link('loc_a', 'business_asserted')],
+    };
     expect(placeMatchesCapabilityFilter(place, 'commerce.mercaria.store:loc_a')).toBe(true);
     expect(placeMatchesCapabilityFilter(place, 'commerce.mercaria.store:loc_b')).toBe(false);
     expect(placeMatchesCapabilityFilter(place, 'commerce.mercaria.store:loc')).toBe(false);

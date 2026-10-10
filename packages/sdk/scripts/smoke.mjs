@@ -91,9 +91,26 @@ const EXPECTED_FILES = [
 
 /** The manifest fields a consumer's package manager and the registry read. */
 const PUBLISHED_FIELDS = [
-  'name', 'version', 'description', 'license', 'author', 'homepage', 'repository', 'bugs', 'keywords',
-  'type', 'sideEffects', 'main', 'module', 'types', 'react-native', 'exports', 'files', 'engines',
-  'publishConfig', 'dependencies',
+  'name',
+  'version',
+  'description',
+  'license',
+  'author',
+  'homepage',
+  'repository',
+  'bugs',
+  'keywords',
+  'type',
+  'sideEffects',
+  'main',
+  'module',
+  'types',
+  'react-native',
+  'exports',
+  'files',
+  'engines',
+  'publishConfig',
+  'dependencies',
 ];
 
 function fail(message) {
@@ -130,14 +147,18 @@ function run(command, args, cwd, what) {
   const result = spawnSync(command, args, { cwd, encoding: 'utf8', env });
   if (result.error) fail(`${what}: could not run ${command} (${result.error.message})`);
   if (result.status !== 0) {
-    fail(`${what}: ${command} ${args.join(' ')} exited ${result.status}\n${result.stdout}\n${result.stderr}`);
+    fail(
+      `${what}: ${command} ${args.join(' ')} exited ${result.status}\n${result.stdout}\n${result.stderr}`,
+    );
   }
   return result.stdout;
 }
 
 async function listFiles(dir) {
   const entries = await readdir(dir, { withFileTypes: true, recursive: true });
-  return entries.filter((entry) => entry.isFile()).map((entry) => join(entry.parentPath, entry.name));
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name));
 }
 
 async function main() {
@@ -151,13 +172,16 @@ async function main() {
   try {
     // ── Stage and pack ────────────────────────────────────────────────────────
     for (const file of ['index.js', 'index.cjs', 'index.d.ts', 'index.d.cts']) {
-      await stat(join(root, 'dist', file)).catch(() => fail(`dist/${file} is missing — run the build first`));
+      await stat(join(root, 'dist', file)).catch(() =>
+        fail(`dist/${file} is missing — run the build first`),
+      );
     }
     const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
     const stage = join(scratch, 'stage');
     await mkdir(stage, { recursive: true });
     await cp(join(root, 'dist'), join(stage, 'dist'), { recursive: true });
-    for (const doc of ['README.md', 'CHANGELOG.md', 'LICENSE', 'NOTICE']) await cp(join(root, doc), join(stage, doc));
+    for (const doc of ['README.md', 'CHANGELOG.md', 'LICENSE', 'NOTICE'])
+      await cp(join(root, doc), join(stage, doc));
     const published = Object.fromEntries(
       PUBLISHED_FIELDS.filter((key) => key in manifest).map((key) => [key, manifest[key]]),
     );
@@ -165,21 +189,35 @@ async function main() {
 
     const packDir = join(scratch, 'pack');
     await mkdir(packDir);
-    const packed = JSON.parse(run('npm', ['pack', '--json', '--pack-destination', packDir], stage, 'pack'));
+    const packed = JSON.parse(
+      run('npm', ['pack', '--json', '--pack-destination', packDir], stage, 'pack'),
+    );
     const tarball = join(packDir, packed[0].filename);
     const tarballBytes = (await stat(tarball)).size;
 
     // The dependency, packed from the copy this workspace resolved.
-    const dependencyDir = dirname(createRequire(join(root, 'package.json')).resolve(`${DEPENDENCY}/package.json`));
+    const dependencyDir = dirname(
+      createRequire(join(root, 'package.json')).resolve(`${DEPENDENCY}/package.json`),
+    );
     const dependencyPacked = JSON.parse(
-      run('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', packDir], dependencyDir, `pack ${DEPENDENCY}`),
+      run(
+        'npm',
+        ['pack', '--json', '--ignore-scripts', '--pack-destination', packDir],
+        dependencyDir,
+        `pack ${DEPENDENCY}`,
+      ),
     );
     const dependencyTarball = join(packDir, dependencyPacked[0].filename);
 
     // ── 1. File list ──────────────────────────────────────────────────────────
-    const listed = run('tar', ['-tzf', tarball], scratch, 'list tarball').split('\n').filter(Boolean).sort();
+    const listed = run('tar', ['-tzf', tarball], scratch, 'list tarball')
+      .split('\n')
+      .filter(Boolean)
+      .sort();
     if (JSON.stringify(listed) !== JSON.stringify(EXPECTED_FILES)) {
-      fail(`tarball files are\n  ${listed.join('\n  ')}\nexpected\n  ${EXPECTED_FILES.join('\n  ')}`);
+      fail(
+        `tarball files are\n  ${listed.join('\n  ')}\nexpected\n  ${EXPECTED_FILES.join('\n  ')}`,
+      );
     }
     pass(`tarball holds exactly ${EXPECTED_FILES.length} files (dist, docs, manifest)`);
 
@@ -188,7 +226,8 @@ async function main() {
     await mkdir(extract);
     run('tar', ['-xzf', tarball, '-C', extract], scratch, 'extract tarball');
     const builtins = new Set(builtinModules.flatMap((name) => [name, `node:${name}`]));
-    const importSpecifier = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)["']([^"']+)["']/g;
+    const importSpecifier =
+      /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)["']([^"']+)["']/g;
     for (const file of await listFiles(extract)) {
       const text = await readFile(file, 'utf8');
       const name = relative(extract, file);
@@ -201,37 +240,62 @@ async function main() {
           if (specifier.startsWith('.')) continue;
           // Declarations may name a zod subpath for a type TypeScript could not
           // spell from the root; the JavaScript imports the root only.
-          const allowed = specifier === DEPENDENCY || (isDeclaration && specifier.startsWith(`${DEPENDENCY}/`));
-          if (!allowed) fail(`${name} imports the package ${specifier}; the SDK's only dependency is ${DEPENDENCY}`);
+          const allowed =
+            specifier === DEPENDENCY || (isDeclaration && specifier.startsWith(`${DEPENDENCY}/`));
+          if (!allowed)
+            fail(
+              `${name} imports the package ${specifier}; the SDK's only dependency is ${DEPENDENCY}`,
+            );
         }
       }
     }
-    const shippedManifest = JSON.parse(await readFile(join(extract, 'package', 'package.json'), 'utf8'));
+    const shippedManifest = JSON.parse(
+      await readFile(join(extract, 'package', 'package.json'), 'utf8'),
+    );
     for (const field of [
-      'peerDependencies', 'optionalDependencies', 'devDependencies',
-      'bundleDependencies', 'bundledDependencies', 'scripts',
+      'peerDependencies',
+      'optionalDependencies',
+      'devDependencies',
+      'bundleDependencies',
+      'bundledDependencies',
+      'scripts',
     ]) {
       if (field in shippedManifest) fail(`the published manifest carries ${field}`);
     }
     const dependencies = shippedManifest.dependencies ?? {};
     if (JSON.stringify(Object.keys(dependencies)) !== JSON.stringify([DEPENDENCY])) {
-      fail(`the published dependencies are ${JSON.stringify(dependencies)}; expected exactly { ${DEPENDENCY} }`);
+      fail(
+        `the published dependencies are ${JSON.stringify(dependencies)}; expected exactly { ${DEPENDENCY} }`,
+      );
     }
     if (/^(?:workspace|file|link|catalog):/.test(dependencies[DEPENDENCY])) {
-      fail(`the published ${DEPENDENCY} range is ${dependencies[DEPENDENCY]}, which no registry resolves`);
+      fail(
+        `the published ${DEPENDENCY} range is ${dependencies[DEPENDENCY]}, which no registry resolves`,
+      );
     }
     if (shippedManifest.name !== '@goway.to/sdk') fail(`published name is ${shippedManifest.name}`);
-    pass(`no private scope, no workspace protocol, no Node built-ins; dependencies and imports are ${DEPENDENCY} alone`);
+    pass(
+      `no private scope, no workspace protocol, no Node built-ins; dependencies and imports are ${DEPENDENCY} alone`,
+    );
 
     // ── 3. Node ESM + CJS from the installed tarball ─────────────────────────
     const consumer = join(scratch, 'consumer');
     await mkdir(consumer);
-    await writeFile(join(consumer, 'package.json'), '{ "name": "sdk-smoke-consumer", "private": true }\n');
+    await writeFile(
+      join(consumer, 'package.json'),
+      '{ "name": "sdk-smoke-consumer", "private": true }\n',
+    );
     run(
       'npm',
       [
-        'install', tarball, dependencyTarball,
-        '--no-audit', '--no-fund', '--ignore-scripts', '--no-package-lock', '--offline',
+        'install',
+        tarball,
+        dependencyTarball,
+        '--no-audit',
+        '--no-fund',
+        '--ignore-scripts',
+        '--no-package-lock',
+        '--offline',
       ],
       consumer,
       'install tarballs',
@@ -240,7 +304,9 @@ async function main() {
     await writeFile(join(consumer, 'program.mjs'), CONSUMER_ESM);
     await writeFile(join(consumer, 'program.cjs'), CONSUMER_CJS);
     run(process.execPath, ['program.mjs'], consumer, 'node ESM import');
-    pass('node ESM import: page parse, iterate, validation, deep link, not_found → GoWayNotFoundError, cross-copy instanceof');
+    pass(
+      'node ESM import: page parse, iterate, validation, deep link, not_found → GoWayNotFoundError, cross-copy instanceof',
+    );
     run(process.execPath, ['program.cjs'], consumer, 'node CJS require');
     pass('node CJS require: page parse, iterate, validation, deep link');
 
@@ -276,7 +342,8 @@ async function main() {
       }
       const inputs = Object.keys(result.metafile.inputs);
       const offending = inputs.filter((input) => builtins.has(input) || input.startsWith('node:'));
-      if (offending.length > 0) fail(`${target} bundle pulled in Node built-ins: ${offending.join(', ')}`);
+      if (offending.length > 0)
+        fail(`${target} bundle pulled in Node built-ins: ${offending.join(', ')}`);
       if (!inputs.some((input) => input.endsWith('@goway.to/sdk/dist/index.js'))) {
         fail(`${target} bundle did not resolve the ESM entry (inputs: ${inputs.join(', ')})`);
       }
@@ -308,7 +375,9 @@ async function main() {
     );
     const tsc = join(dirname(fileURLToPath(import.meta.resolve('typescript'))), '..', 'bin', 'tsc');
     run(process.execPath, [tsc, '-p', 'tsconfig.json'], consumer, 'consumer type-check');
-    pass('declarations type-check under nodenext (ESM and CJS), lib ES2020 without DOM, skipLibCheck off');
+    pass(
+      'declarations type-check under nodenext (ESM and CJS), lib ES2020 without DOM, skipLibCheck off',
+    );
 
     if (keepDir) {
       await mkdir(keepDir, { recursive: true });

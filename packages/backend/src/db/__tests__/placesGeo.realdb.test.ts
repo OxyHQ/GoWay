@@ -28,7 +28,12 @@
 import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { statementFailure } from './statementFailure';
-import { SUITE_SETUP_TIMEOUT_MS, createSuiteDatabase, destroySuiteDatabase, type SuiteDatabase } from './testDatabase';
+import {
+  SUITE_SETUP_TIMEOUT_MS,
+  createSuiteDatabase,
+  destroySuiteDatabase,
+  type SuiteDatabase,
+} from './testDatabase';
 
 /** Real places, so a real distance can be asserted. `[lat, lng]` — named below. */
 const BARCELONA = { latitude: 41.4036, longitude: 2.1744 };
@@ -49,7 +54,11 @@ const TOLERANCE_M = 15_000;
 
 let suite: SuiteDatabase | null = null;
 
-async function seedPlace(id: string, name: string, at: { latitude: number; longitude: number }): Promise<void> {
+async function seedPlace(
+  id: string,
+  name: string,
+  at: { latitude: number; longitude: number },
+): Promise<void> {
   await suite!.client`
     INSERT INTO places (id, name, latitude, longitude)
     VALUES (${id}, ${name}, ${at.latitude}, ${at.longitude})
@@ -178,7 +187,9 @@ describe('the radius predicate', () => {
       // chooses the rows through the index; the comparison filters what the
       // index found.
       expect(
-        await plan(`ST_DWithin(geo, ${point}, 1000) AND (ST_Distance(geo, ${point}), id) > (12.5::float8, 'x')`),
+        await plan(
+          `ST_DWithin(geo, ${point}, 1000) AND (ST_Distance(geo, ${point}), id) > (12.5::float8, 'x')`,
+        ),
       ).toContain('places_geo_gist');
     } finally {
       await suite!.client.unsafe('RESET enable_seqscan');

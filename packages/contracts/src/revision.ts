@@ -133,9 +133,8 @@ export const PLACE_REVISION_VISIBILITY = {
 } as const satisfies Record<PlaceRevisionAction, PlaceRevisionVisibility>;
 
 /** The actions the public history lists. */
-export const PUBLIC_PLACE_REVISION_ACTIONS: readonly PlaceRevisionAction[] = PLACE_REVISION_ACTIONS.filter(
-  (action) => PLACE_REVISION_VISIBILITY[action] === 'public',
-);
+export const PUBLIC_PLACE_REVISION_ACTIONS: readonly PlaceRevisionAction[] =
+  PLACE_REVISION_ACTIONS.filter((action) => PLACE_REVISION_VISIBILITY[action] === 'public');
 
 /**
  * Which door a write came through.

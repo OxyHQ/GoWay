@@ -42,15 +42,15 @@
  * footprint belongs, and this importer does not claim to have one.
  */
 
-import {
-  MEMBER_TYPE_WAY,
-  readBlobs,
-  readPrimitiveBlock,
-  type BlockStrings,
-} from './pbf';
+import { MEMBER_TYPE_WAY, readBlobs, readPrimitiveBlock, type BlockStrings } from './pbf';
 import { isPoiMappingKey } from './poiTags';
 import type { OsmCategoryMapping } from '../../categories/catalog';
-import { isImportablePoi, toImportedPlace, type ImportedPlace, type OsmElementType } from './placeRecord';
+import {
+  isImportablePoi,
+  toImportedPlace,
+  type ImportedPlace,
+  type OsmElementType,
+} from './placeRecord';
 
 /** How many places accumulate before the consumer is handed a batch. */
 const DEFAULT_BATCH_SIZE = 1000;
@@ -141,10 +141,17 @@ function looksLikePoi(index: BlockIndex, keys: readonly number[]): boolean {
 }
 
 /** The element's tags as strings — paid for only once an element looks like a POI. */
-function tagsOf(index: BlockIndex, keys: readonly number[], vals: readonly number[]): Map<string, string> {
+function tagsOf(
+  index: BlockIndex,
+  keys: readonly number[],
+  vals: readonly number[],
+): Map<string, string> {
   const tags = new Map<string, string>();
   for (let position = 0; position < keys.length; position += 1) {
-    tags.set(index.strings.text(keys[position] as number), index.strings.text(vals[position] as number));
+    tags.set(
+      index.strings.text(keys[position] as number),
+      index.strings.text(vals[position] as number),
+    );
   }
   return tags;
 }
@@ -270,7 +277,10 @@ export async function extractPois(options: ExtractOptions): Promise<ExtractStats
     const { latitude, longitude } = place.columns;
     if (
       bounds &&
-      (latitude < bounds.south || latitude > bounds.north || longitude < bounds.west || longitude > bounds.east)
+      (latitude < bounds.south ||
+        latitude > bounds.north ||
+        longitude < bounds.west ||
+        longitude > bounds.east)
     ) {
       return;
     }
@@ -359,7 +369,9 @@ export async function extractPois(options: ExtractOptions): Promise<ExtractStats
   const relationWayRefs = new Map<number, number[]>();
   if (!stopped && wantedWays.size > 0) {
     const wanted = new Set(wayOffsets);
-    for await (const blob of readBlobs(options.path, { shouldRead: (offset) => wanted.has(offset) })) {
+    for await (const blob of readBlobs(options.path, {
+      shouldRead: (offset) => wanted.has(offset),
+    })) {
       if (blob.type !== 'OSMData') continue;
       const data = await blob.inflate();
       stats.blobsInflated += 1;
@@ -381,7 +393,9 @@ export async function extractPois(options: ExtractOptions): Promise<ExtractStats
   wantedNodes.length = 0;
   if (!stopped && nodes.size > 0) {
     const wanted = new Set(nodeOffsets);
-    for await (const blob of readBlobs(options.path, { shouldRead: (offset) => wanted.has(offset) })) {
+    for await (const blob of readBlobs(options.path, {
+      shouldRead: (offset) => wanted.has(offset),
+    })) {
       if (blob.type !== 'OSMData') continue;
       const data = await blob.inflate();
       stats.blobsInflated += 1;
@@ -400,7 +414,14 @@ export async function extractPois(options: ExtractOptions): Promise<ExtractStats
     const centre = nodes.centre(pending.refs);
     const place =
       centre &&
-      toImportedPlace(pending.type, pending.id, centre.latitude, centre.longitude, pending.tags, options.categories);
+      toImportedPlace(
+        pending.type,
+        pending.id,
+        centre.latitude,
+        centre.longitude,
+        pending.tags,
+        options.categories,
+      );
     if (!place) {
       stats.unpositioned += 1;
       continue;
@@ -423,7 +444,14 @@ export async function extractPois(options: ExtractOptions): Promise<ExtractStats
     const centre = nodes.centre(memberNodes);
     const place =
       centre &&
-      toImportedPlace(pending.type, pending.id, centre.latitude, centre.longitude, pending.tags, options.categories);
+      toImportedPlace(
+        pending.type,
+        pending.id,
+        centre.latitude,
+        centre.longitude,
+        pending.tags,
+        options.categories,
+      );
     if (!place) {
       stats.unpositioned += 1;
       continue;

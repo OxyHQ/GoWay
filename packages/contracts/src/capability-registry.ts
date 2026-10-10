@@ -207,14 +207,22 @@ export type CapabilityValueLabels = Readonly<Record<string, Labels>>;
  */
 export type CapabilityValueSpec =
   | { readonly kind: 'boolean' }
-  | { readonly kind: 'enum'; readonly values: CapabilityValueLabels; readonly absent?: readonly string[] }
+  | {
+      readonly kind: 'enum';
+      readonly values: CapabilityValueLabels;
+      readonly absent?: readonly string[];
+    }
   | { readonly kind: 'enum_set'; readonly values: CapabilityValueLabels }
   | { readonly kind: 'integer'; readonly min: number; readonly max: number }
   | { readonly kind: 'price_level' }
   | {
       readonly kind: 'url';
       readonly hosts?: readonly string[];
-      readonly handle?: { readonly url: string; readonly pattern: RegExp; readonly digitsOnly?: boolean };
+      readonly handle?: {
+        readonly url: string;
+        readonly pattern: RegExp;
+        readonly digitsOnly?: boolean;
+      };
     }
   | { readonly kind: 'text'; readonly maxLength: number; readonly pattern?: RegExp };
 
@@ -1117,7 +1125,13 @@ export const CAPABILITY_DEFINITIONS = {
     },
     value: BOOLEAN,
     osm: {
-      tags: ['payment:cards', 'payment:credit_cards', 'payment:debit_cards', 'payment:visa', 'payment:mastercard'],
+      tags: [
+        'payment:cards',
+        'payment:credit_cards',
+        'payment:debit_cards',
+        'payment:visa',
+        'payment:mastercard',
+      ],
     },
   },
   'payments.contactless': {
@@ -1626,7 +1640,8 @@ export function capabilityLabel(key: string, locale?: string | null): string {
 /** The label for one enum value of a key, or the value itself. */
 export function capabilityValueLabel(key: string, value: string, locale?: string | null): string {
   const spec = capabilityDefinition(key)?.value;
-  const entry = spec && (spec.kind === 'enum' || spec.kind === 'enum_set') ? spec.values[value] : undefined;
+  const entry =
+    spec && (spec.kind === 'enum' || spec.kind === 'enum_set') ? spec.values[value] : undefined;
   return entry ? localizedLabel(entry, locale) : value;
 }
 
@@ -1643,7 +1658,12 @@ export function capabilityGroupLabel(group: CapabilityGroup, locale?: string | n
  * An enum set is a string array; the other kinds are scalars. The table's
  * CHECK admits exactly these jsonb types.
  */
-export const capabilityValueSchema = z.union([z.boolean(), z.string(), z.number(), z.array(z.string())]);
+export const capabilityValueSchema = z.union([
+  z.boolean(),
+  z.string(),
+  z.number(),
+  z.array(z.string()),
+]);
 export type CapabilityValue = z.infer<typeof capabilityValueSchema>;
 
 /** A value as a write carries it, before its key's schema is applied. Bounded. */
@@ -1655,7 +1675,10 @@ export const capabilityValueInputSchema = z.union([
 ]);
 
 /** `{handle}` substituted, or the URL itself, or `undefined` when neither fits. */
-function canonicalUrl(spec: Extract<CapabilityValueSpec, { kind: 'url' }>, raw: string): string | undefined {
+function canonicalUrl(
+  spec: Extract<CapabilityValueSpec, { kind: 'url' }>,
+  raw: string,
+): string | undefined {
   const value = raw.trim();
   // A pattern rather than `URL`: this module runs in every runtime the SDK
   // does, and the global is not one this package may assume a type for.
@@ -1676,7 +1699,9 @@ function canonicalUrl(spec: Extract<CapabilityValueSpec, { kind: 'url' }>, raw: 
  * same set is always stored as the same array and two writes of it compare
  * equal. A URL comes back canonical, whether it arrived as a link or a handle.
  */
-export function capabilityValueSpecSchema(spec: CapabilityValueSpec): z.ZodType<CapabilityValue, unknown> {
+export function capabilityValueSpecSchema(
+  spec: CapabilityValueSpec,
+): z.ZodType<CapabilityValue, unknown> {
   switch (spec.kind) {
     case 'boolean':
       return z.boolean();
@@ -1701,7 +1726,10 @@ export function capabilityValueSpecSchema(spec: CapabilityValueSpec): z.ZodType<
         .transform((value, context) => {
           const url = canonicalUrl(spec, value);
           if (url === undefined) {
-            context.addIssue({ code: 'custom', message: 'must be a link to this service, or a handle on it' });
+            context.addIssue({
+              code: 'custom',
+              message: 'must be a link to this service, or a handle on it',
+            });
             return z.NEVER;
           }
           return url;
@@ -1730,7 +1758,8 @@ export function capabilityHolds(key: string, value: CapabilityValue): boolean {
   if (value === false || value === 0 || value === '') return false;
   if (Array.isArray(value)) return value.length > 0;
   const spec = capabilityDefinition(key)?.value;
-  if (spec?.kind === 'enum' && typeof value === 'string' && spec.absent?.includes(value)) return false;
+  if (spec?.kind === 'enum' && typeof value === 'string' && spec.absent?.includes(value))
+    return false;
   return true;
 }
 
@@ -1738,12 +1767,11 @@ export function capabilityHolds(key: string, value: CapabilityValue): boolean {
  * Every `(key, value)` pair that is asserted but does not hold — the enum
  * values named `absent`. For the SQL half of {@link capabilityHolds}.
  */
-export const ABSENT_CAPABILITY_VALUES: readonly (readonly [CapabilityKey, string])[] = CAPABILITY_KEYS.flatMap(
-  (key) => {
+export const ABSENT_CAPABILITY_VALUES: readonly (readonly [CapabilityKey, string])[] =
+  CAPABILITY_KEYS.flatMap((key) => {
     const spec: CapabilityValueSpec = CAPABILITY_DEFINITIONS[key].value;
     return spec.kind === 'enum' ? (spec.absent ?? []).map((value) => [key, value] as const) : [];
-  },
-);
+  });
 
 // ── Filters ─────────────────────────────────────────────────────────────────
 
@@ -1781,7 +1809,10 @@ export function capabilityFilterOf(raw: string): CapabilityFilter | undefined {
 
   const text = raw.slice(separator + 1);
   const spec: CapabilityValueSpec = CAPABILITY_DEFINITIONS[key].value;
-  if ((spec.kind === 'enum' || spec.kind === 'enum_set') && Object.prototype.hasOwnProperty.call(spec.values, text)) {
+  if (
+    (spec.kind === 'enum' || spec.kind === 'enum_set') &&
+    Object.prototype.hasOwnProperty.call(spec.values, text)
+  ) {
     return { key, value: text };
   }
   if (spec.kind === 'price_level' && /^[1-4]$/.test(text)) return { key, value: Number(text) };
@@ -1800,5 +1831,6 @@ export const capabilityFilterSchema = z
   .string()
   .max(256)
   .refine((raw) => capabilityFilterOf(raw) !== undefined, {
-    message: 'must be a registered capability key, optionally with :value for an enum, a price level or a text',
+    message:
+      'must be a registered capability key, optionally with :value for an enum, a price level or a text',
   });

@@ -401,7 +401,7 @@ bun run test
 | `bun run build` | `tsc` → `dist/` (CommonJS; the image runs this output) |
 | `bun run start` | run the compiled server |
 | `bun run typecheck` | the emitting program AND `tsconfig.tools.json` (see below) |
-| `bun run lint` | eslint over every source file, `dist/` excluded |
+| `bun run lint` (repo root) | Biome over the whole repository (`biome.jsonc`); this package has no linter of its own |
 | `bun run test` | `bun test` |
 | `bun run db:generate` | diff `src/db/schema/` and WRITE a migration |
 | `bun run db:migrate --target-database=<name>` | APPLY migrations |

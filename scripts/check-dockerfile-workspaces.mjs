@@ -36,7 +36,9 @@ const DOCKERFILE = 'packages/backend/Dockerfile';
 
 const workspaces = JSON.parse(readFileSync(`${ROOT}package.json`, 'utf8')).workspaces;
 if (!Array.isArray(workspaces) || workspaces.length === 0) {
-  console.error('::error::root package.json declares no `workspaces` array; this check would measure nothing.');
+  console.error(
+    '::error::root package.json declares no `workspaces` array; this check would measure nothing.',
+  );
   process.exit(1);
 }
 
@@ -53,7 +55,9 @@ for (const raw of dockerfile.split('\n')) {
 }
 
 if (copied.size === 0) {
-  console.error(`::error::parsed no COPY instructions out of ${DOCKERFILE}; the parser is broken, not the Dockerfile.`);
+  console.error(
+    `::error::parsed no COPY instructions out of ${DOCKERFILE}; the parser is broken, not the Dockerfile.`,
+  );
   process.exit(1);
 }
 

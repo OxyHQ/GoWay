@@ -61,8 +61,18 @@ import {
   type StreetSceneQuality,
   type StreetSceneWorldTransform,
 } from '@goway/contracts';
-import { ABSOLUTE_RETENTION_CEILING_DAYS, MAX_RETENTION_EXTENSIONS, captureAssets } from './capture';
-import { closedSet, foreignServiceId, generatedGeographyPoint, latitude, longitude } from './columns';
+import {
+  ABSOLUTE_RETENTION_CEILING_DAYS,
+  MAX_RETENTION_EXTENSIONS,
+  captureAssets,
+} from './capture';
+import {
+  closedSet,
+  foreignServiceId,
+  generatedGeographyPoint,
+  latitude,
+  longitude,
+} from './columns';
 import {
   DERIVATIVE_STORAGE_STATES,
   STREET3D_JOB_KINDS,
@@ -98,7 +108,9 @@ export const street3dScenes = pgTable(
     anchorGeo: generatedGeographyPoint('anchor_longitude', 'anchor_latitude'),
     radiusMeters: doublePrecision().notNull(),
     /** The version served to viewers. Null until the first publication or after a disable. */
-    currentVersionId: text().references((): AnyPgColumn => street3dSceneVersions.id, { onDelete: 'set null' }),
+    currentVersionId: text().references((): AnyPgColumn => street3dSceneVersions.id, {
+      onDelete: 'set null',
+    }),
     lastAllocatedVersion: integer().notNull().default(0),
     /**
      * SHA-256 over the sorted input-frame digests of the last QUEUED job. The
@@ -123,17 +135,35 @@ export const street3dScenes = pgTable(
     closedSet('street3d_scenes_state_check', table.state, STREET3D_SCENE_STATES),
     closedSet('street3d_scenes_rebuild_profile_check', table.rebuildProfile, STREET_SCENE_PROFILES),
     check('street3d_scenes_latitude_range_check', sql`${table.anchorLatitude} between -90 and 90`),
-    check('street3d_scenes_longitude_range_check', sql`${table.anchorLongitude} between -180 and 180`),
-    check('street3d_scenes_radius_check', sql`${table.radiusMeters} > 0 and ${table.radiusMeters} <= 1000`),
-    check('street3d_scenes_counts_check', sql`${table.eligibleFrames} >= 0 and ${table.headingSectors} between 0 and 8`),
-    check('street3d_scenes_confidence_check', sql`${table.confidence} is null or ${table.confidence} between 0 and 1`),
+    check(
+      'street3d_scenes_longitude_range_check',
+      sql`${table.anchorLongitude} between -180 and 180`,
+    ),
+    check(
+      'street3d_scenes_radius_check',
+      sql`${table.radiusMeters} > 0 and ${table.radiusMeters} <= 1000`,
+    ),
+    check(
+      'street3d_scenes_counts_check',
+      sql`${table.eligibleFrames} >= 0 and ${table.headingSectors} between 0 and 8`,
+    ),
+    check(
+      'street3d_scenes_confidence_check',
+      sql`${table.confidence} is null or ${table.confidence} between 0 and 1`,
+    ),
     check('street3d_scenes_version_counter_check', sql`${table.lastAllocatedVersion} >= 0`),
     check(
       'street3d_scenes_fingerprint_check',
       sql`${table.lastQueuedInputFingerprint} is null or ${table.lastQueuedInputFingerprint} ~ ${sql.raw(SHA256_PATTERN)}`,
     ),
-    check('street3d_scenes_disabled_check', sql`(${table.disabledAt} is null) = (${table.disabledReason} is null)`),
-    check('street3d_scenes_disabled_state_check', sql`(${table.state} = 'disabled') = (${table.disabledAt} is not null)`),
+    check(
+      'street3d_scenes_disabled_check',
+      sql`(${table.disabledAt} is null) = (${table.disabledReason} is null)`,
+    ),
+    check(
+      'street3d_scenes_disabled_state_check',
+      sql`(${table.state} = 'disabled') = (${table.disabledAt} is not null)`,
+    ),
     check(
       'street3d_scenes_published_check',
       sql`${table.state} <> 'published' or ${table.currentVersionId} is not null`,
@@ -222,23 +252,47 @@ export const street3dJobs = pgTable(
               and ${table.sceneVersion} is not null and ${table.profile} is not null
               and ${table.inputManifestKey} is not null and ${table.inputManifestSha256} is not null)`,
     ),
-    check('street3d_jobs_attempt_check', sql`${table.attempt} between 1 and ${table.maxAttempts} and ${table.maxAttempts} <= 20`),
-    check('street3d_jobs_progress_check', sql`${table.progress} is null or ${table.progress} between 0 and 1`),
-    check('street3d_jobs_version_check', sql`${table.sceneVersion} is null or ${table.sceneVersion} > 0`),
+    check(
+      'street3d_jobs_attempt_check',
+      sql`${table.attempt} between 1 and ${table.maxAttempts} and ${table.maxAttempts} <= 20`,
+    ),
+    check(
+      'street3d_jobs_progress_check',
+      sql`${table.progress} is null or ${table.progress} between 0 and 1`,
+    ),
+    check(
+      'street3d_jobs_version_check',
+      sql`${table.sceneVersion} is null or ${table.sceneVersion} > 0`,
+    ),
     check(
       'street3d_jobs_finished_check',
       sql`(${table.state} in (${terminalJobStates})) = (${table.finishedAt} is not null)`,
     ),
-    check('street3d_jobs_retry_check', sql`${table.state} <> 'retry_wait' or ${table.retryAfter} is not null`),
-    check('street3d_jobs_cancel_check', sql`(${table.cancelRequestedAt} is null) = (${table.cancelReason} is null)`),
+    check(
+      'street3d_jobs_retry_check',
+      sql`${table.state} <> 'retry_wait' or ${table.retryAfter} is not null`,
+    ),
+    check(
+      'street3d_jobs_cancel_check',
+      sql`(${table.cancelRequestedAt} is null) = (${table.cancelReason} is null)`,
+    ),
     check(
       'street3d_jobs_digest_check',
       sql`(${table.inputManifestSha256} is null or ${table.inputManifestSha256} ~ ${sql.raw(SHA256_PATTERN)})
           and (${table.resultSha256} is null or ${table.resultSha256} ~ ${sql.raw(SHA256_PATTERN)})`,
     ),
-    check('street3d_jobs_failure_code_check', sql`${table.failureCode} is null or ${table.failureCode} ~ '^[a-z_]{1,40}$'`),
-    check('street3d_jobs_failure_detail_check', sql`${table.failureDetail} is null or char_length(${table.failureDetail}) <= 200`),
-    check('street3d_jobs_worker_id_check', sql`${table.workerId} is null or char_length(${table.workerId}) <= 64`),
+    check(
+      'street3d_jobs_failure_code_check',
+      sql`${table.failureCode} is null or ${table.failureCode} ~ '^[a-z_]{1,40}$'`,
+    ),
+    check(
+      'street3d_jobs_failure_detail_check',
+      sql`${table.failureDetail} is null or char_length(${table.failureDetail}) <= 200`,
+    ),
+    check(
+      'street3d_jobs_worker_id_check',
+      sql`${table.workerId} is null or char_length(${table.workerId}) <= 64`,
+    ),
     /**
      * ONE open job per capture and per scene. "Never enqueue while a job for
      * that scene is open" is this index, not a SELECT in the scheduler that two
@@ -256,8 +310,12 @@ export const street3dJobs = pgTable(
       .on(table.sceneId, table.sceneVersion)
       .where(sql`${table.sceneId} is not null`),
     index('street3d_jobs_state_idx').on(table.state),
-    index('street3d_jobs_dispatch_idx').on(table.enqueuedAt).where(sql`${table.dispatchedAt} is null`),
-    index('street3d_jobs_finished_idx').on(table.finishedAt).where(sql`${table.artifactsDeletedAt} is null`),
+    index('street3d_jobs_dispatch_idx')
+      .on(table.enqueuedAt)
+      .where(sql`${table.dispatchedAt} is null`),
+    index('street3d_jobs_finished_idx')
+      .on(table.finishedAt)
+      .where(sql`${table.artifactsDeletedAt} is null`),
   ],
 );
 
@@ -322,16 +380,33 @@ export const captureDerivatives = pgTable(
   },
   (table) => [
     /** One class, and it is not a raw class: a raw upload here is unrepresentable. */
-    closedSet('capture_derivatives_retention_class_check', table.retentionClass, ['privacy_safe_proxy']),
-    closedSet('capture_derivatives_retention_reason_check', table.retentionReason, RETENTION_REASONS),
-    closedSet('capture_derivatives_storage_state_check', table.storageState, DERIVATIVE_STORAGE_STATES),
+    closedSet('capture_derivatives_retention_class_check', table.retentionClass, [
+      'privacy_safe_proxy',
+    ]),
+    closedSet(
+      'capture_derivatives_retention_reason_check',
+      table.retentionReason,
+      RETENTION_REASONS,
+    ),
+    closedSet(
+      'capture_derivatives_storage_state_check',
+      table.storageState,
+      DERIVATIVE_STORAGE_STATES,
+    ),
     closedSet('capture_derivatives_deletion_reason_check', table.deletionReason, DELETION_REASONS),
-    closedSet('capture_derivatives_deletion_requested_reason_check', table.deletionRequestedReason, DELETION_REASONS),
+    closedSet(
+      'capture_derivatives_deletion_requested_reason_check',
+      table.deletionRequestedReason,
+      DELETION_REASONS,
+    ),
     check(
       'capture_derivatives_digest_check',
       sql`${table.imageSha256} ~ ${sql.raw(SHA256_PATTERN)} and (${table.maskSha256} is null or ${table.maskSha256} ~ ${sql.raw(SHA256_PATTERN)})`,
     ),
-    check('capture_derivatives_mask_check', sql`(${table.maskKey} is null) = (${table.maskSha256} is null)`),
+    check(
+      'capture_derivatives_mask_check',
+      sql`(${table.maskKey} is null) = (${table.maskSha256} is null)`,
+    ),
     /** `coalesce`: a comparison with a NULL is NULL, which a bare CHECK would let a half-written view through. */
     check(
       'capture_derivatives_panorama_check',
@@ -344,8 +419,14 @@ export const captureDerivatives = pgTable(
       sql`${table.imageByteSize} > 0 and (${table.maskByteSize} is null or ${table.maskByteSize} > 0)
           and ${table.width} > 0 and ${table.height} > 0 and ${table.frameIndex} >= 0`,
     ),
-    check('capture_derivatives_key_check', sql`${table.objectKey} like 'derived/%' and (${table.maskKey} is null or ${table.maskKey} like 'derived/%')`),
-    check('capture_derivatives_expiry_after_creation_check', sql`${table.expiresAt} > ${table.createdAt}`),
+    check(
+      'capture_derivatives_key_check',
+      sql`${table.objectKey} like 'derived/%' and (${table.maskKey} is null or ${table.maskKey} like 'derived/%')`,
+    ),
+    check(
+      'capture_derivatives_expiry_after_creation_check',
+      sql`${table.expiresAt} > ${table.createdAt}`,
+    ),
     check(
       'capture_derivatives_expiry_ceiling_check',
       sql`${table.expiresAt} <= ${table.createdAt} + ${sql.raw(`interval '${ABSOLUTE_RETENTION_CEILING_DAYS} days'`)}`,
@@ -358,13 +439,24 @@ export const captureDerivatives = pgTable(
       'capture_derivatives_extension_count_check',
       sql`${table.extensionCount} between 0 and ${sql.raw(String(MAX_RETENTION_EXTENSIONS))}`,
     ),
-    check('capture_derivatives_deletion_request_check', sql`(${table.deletionRequestedAt} is null) = (${table.deletionRequestedReason} is null)`),
-    check('capture_derivatives_tombstone_check', sql`(${table.deletedAt} is null) = (${table.deletionReason} is null)`),
-    check('capture_derivatives_deleted_state_check', sql`(${table.storageState} = 'deleted') = (${table.deletedAt} is not null)`),
+    check(
+      'capture_derivatives_deletion_request_check',
+      sql`(${table.deletionRequestedAt} is null) = (${table.deletionRequestedReason} is null)`,
+    ),
+    check(
+      'capture_derivatives_tombstone_check',
+      sql`(${table.deletedAt} is null) = (${table.deletionReason} is null)`,
+    ),
+    check(
+      'capture_derivatives_deleted_state_check',
+      sql`(${table.storageState} = 'deleted') = (${table.deletedAt} is not null)`,
+    ),
     unique('capture_derivatives_object_key_key').on(table.objectKey),
     unique('capture_derivatives_job_frame_key').on(table.jobId, table.frameIndex),
     index('capture_derivatives_asset_idx').on(table.assetId),
-    index('capture_derivatives_expiry_idx').on(table.expiresAt).where(sql`${table.deletedAt} is null`),
+    index('capture_derivatives_expiry_idx')
+      .on(table.expiresAt)
+      .where(sql`${table.deletedAt} is null`),
   ],
 );
 
@@ -403,7 +495,9 @@ export const street3dSceneVersions = pgTable(
     assets: jsonb().notNull().$type<(StreetSceneAsset & { key: string })[]>(),
     quality: jsonb().notNull().$type<StreetSceneQuality>(),
     metrics: jsonb().notNull().$type<Record<string, number>>(),
-    provenance: jsonb().notNull().$type<{ pipelineVersion: string; components: Record<string, string> }>(),
+    provenance: jsonb()
+      .notNull()
+      .$type<{ pipelineVersion: string; components: Record<string, string> }>(),
     /** Gate failures for a `failed_quality` version. Empty otherwise. */
     gateFailures: text().array().notNull().default(sql`'{}'::text[]`),
     observedFrom: timestamptz().notNull(),
@@ -430,7 +524,10 @@ export const street3dSceneVersions = pgTable(
           and ${table.boundsWest} between -180 and 180 and ${table.boundsEast} between -180 and 180`,
     ),
     check('street3d_versions_observed_check', sql`${table.observedFrom} <= ${table.observedTo}`),
-    check('street3d_versions_digest_check', sql`${table.resultSha256} ~ ${sql.raw(SHA256_PATTERN)}`),
+    check(
+      'street3d_versions_digest_check',
+      sql`${table.resultSha256} ~ ${sql.raw(SHA256_PATTERN)}`,
+    ),
     check('street3d_versions_assets_check', sql`jsonb_typeof(${table.assets}) = 'array'`),
     /** `coalesce`: a missing `viewpoints` key makes `jsonb_typeof` null, which a bare CHECK would let through. */
     check(
@@ -442,13 +539,26 @@ export const street3dSceneVersions = pgTable(
       'street3d_versions_published_check',
       sql`${table.state} not in ('published', 'superseded') or ${table.publishedAt} is not null`,
     ),
-    check('street3d_versions_disabled_check', sql`(${table.state} = 'disabled') = (${table.disabledAt} is not null)`),
-    check('street3d_versions_disabled_reason_check', sql`(${table.disabledAt} is null) = (${table.disabledReason} is null)`),
+    check(
+      'street3d_versions_disabled_check',
+      sql`(${table.state} = 'disabled') = (${table.disabledAt} is not null)`,
+    ),
+    check(
+      'street3d_versions_disabled_reason_check',
+      sql`(${table.disabledAt} is null) = (${table.disabledReason} is null)`,
+    ),
     unique('street3d_versions_scene_version_key').on(table.sceneId, table.version),
     unique('street3d_versions_job_key').on(table.jobId),
     /** At most ONE served version per scene; publication supersedes in the same transaction. */
-    uniqueIndex('street3d_versions_published_key').on(table.sceneId).where(sql`${table.state} = 'published'`),
-    index('street3d_versions_bounds_idx').on(table.boundsWest, table.boundsSouth, table.boundsEast, table.boundsNorth),
+    uniqueIndex('street3d_versions_published_key')
+      .on(table.sceneId)
+      .where(sql`${table.state} = 'published'`),
+    index('street3d_versions_bounds_idx').on(
+      table.boundsWest,
+      table.boundsSouth,
+      table.boundsEast,
+      table.boundsNorth,
+    ),
   ],
 );
 
@@ -475,7 +585,10 @@ export const street3dSceneInputs = pgTable(
     createdAt: createdAt(),
   },
   (table) => [
-    primaryKey({ name: 'street3d_scene_inputs_pkey', columns: [table.versionId, table.derivativeId] }),
+    primaryKey({
+      name: 'street3d_scene_inputs_pkey',
+      columns: [table.versionId, table.derivativeId],
+    }),
     index('street3d_scene_inputs_asset_idx').on(table.captureAssetId),
   ],
 );
@@ -506,7 +619,10 @@ export const street3dCaptureEdges = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
-    primaryKey({ name: 'street3d_capture_edges_pkey', columns: [table.derivativeA, table.derivativeB] }),
+    primaryKey({
+      name: 'street3d_capture_edges_pkey',
+      columns: [table.derivativeA, table.derivativeB],
+    }),
     check('street3d_capture_edges_order_check', sql`${table.derivativeA} < ${table.derivativeB}`),
     check('street3d_capture_edges_inliers_check', sql`${table.inliers} > 0`),
     index('street3d_capture_edges_b_idx').on(table.derivativeB),
@@ -539,7 +655,10 @@ export const street3dSceneReports = pgTable(
   },
   (table) => [
     closedSet('street3d_reports_reason_check', table.reason, STREET_SCENE_REPORT_REASONS),
-    check('street3d_reports_note_check', sql`${table.note} is null or char_length(${table.note}) <= 500`),
+    check(
+      'street3d_reports_note_check',
+      sql`${table.note} is null or char_length(${table.note}) <= 500`,
+    ),
     /** One open report per reporter per version: a repeat answers the existing one. */
     uniqueIndex('street3d_reports_open_key')
       .on(table.versionId, table.reporterOxyUserId)
@@ -593,8 +712,14 @@ export const street3dCaptureBlocks = pgTable(
     createdAt: createdAt(),
   },
   (table) => [
-    check('street3d_capture_blocks_hash_check', sql`${table.contentHash} ~ ${sql.raw(SHA256_PATTERN)}`),
-    check('street3d_capture_blocks_reason_check', sql`btrim(${table.reason}) <> '' and char_length(${table.reason}) <= 200`),
+    check(
+      'street3d_capture_blocks_hash_check',
+      sql`${table.contentHash} ~ ${sql.raw(SHA256_PATTERN)}`,
+    ),
+    check(
+      'street3d_capture_blocks_reason_check',
+      sql`btrim(${table.reason}) <> '' and char_length(${table.reason}) <= 200`,
+    ),
     unique('street3d_capture_blocks_asset_key').on(table.captureAssetId),
     index('street3d_capture_blocks_hash_idx').on(table.contentHash),
   ],
@@ -633,7 +758,10 @@ export const street3dCoverageAreas = pgTable(
     closedSet('street3d_coverage_state_check', table.state, STREET_COVERAGE_AREA_STATES),
     check('street3d_coverage_count_check', sql`${table.contributionCount} > 0`),
     check('street3d_coverage_cell_check', sql`${table.cell} ~ '^[0-9b-hjkmnp-z]{4,9}$'`),
-    check('street3d_coverage_at_risk_check', sql`${table.state} <> 'at_risk' or ${table.atRiskUntil} is not null`),
+    check(
+      'street3d_coverage_at_risk_check',
+      sql`${table.state} <> 'at_risk' or ${table.atRiskUntil} is not null`,
+    ),
     unique('street3d_coverage_public_id_key').on(table.publicId),
     index('street3d_coverage_center_idx').on(table.centerLatitude, table.centerLongitude),
   ],

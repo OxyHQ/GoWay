@@ -71,7 +71,10 @@ export function distanceMeters(from: GeoCoordinate, to: GeoCoordinate): number {
 
 /** The centre of a viewport, folding an antimeridian crossing back into range. */
 export function centerOf(viewport: GeoBoundingBox): GeoCoordinate {
-  const span = viewport.east >= viewport.west ? viewport.east - viewport.west : 360 - viewport.west + viewport.east;
+  const span =
+    viewport.east >= viewport.west
+      ? viewport.east - viewport.west
+      : 360 - viewport.west + viewport.east;
   const longitude = viewport.west + span / 2;
   return {
     latitude: (viewport.south + viewport.north) / 2,
@@ -117,6 +120,8 @@ export interface FusionInput {
 export function fusedScore(input: FusionInput, bias: SpatialBias | undefined): number {
   const base = input.ranks.reduce((total, rank) => total + 1 / (RRF_K + rank + 1), 0);
   const proximity =
-    bias === undefined ? 0 : Math.exp(-distanceMeters(bias.center, input.coordinate) / bias.decayMeters);
+    bias === undefined
+      ? 0
+      : Math.exp(-distanceMeters(bias.center, input.coordinate) / bias.decayMeters);
   return base * (1 + PROXIMITY_BIAS * proximity) * (1 + (input.enriched ? ENRICHMENT_BIAS : 0));
 }

@@ -153,7 +153,68 @@ const CLUTTER_CLASSES: ReadonlySet<string> = new Set([
 const CLASS_BY_SUBCLASS = new Map<string, string>(
   (
     [
-      ['shop', ['accessories', 'antiques', 'beauty', 'bed', 'boutique', 'camera', 'carpet', 'charity', 'chemist', 'copyshop', 'curtain', 'department_store', 'doityourself', 'dry_cleaning', 'electronics', 'erotic', 'fabric', 'florist', 'frame', 'furniture', 'garden_centre', 'gift', 'hardware', 'hearing_aids', 'hifi', 'houseware', 'interior_decoration', 'jewelry', 'kiosk', 'lamps', 'mall', 'massage', 'mobile_phone', 'newsagent', 'optician', 'outdoor', 'paint', 'perfume', 'perfumery', 'pet', 'photo', 'second_hand', 'shoes', 'sports', 'stationery', 'tailor', 'tattoo', 'ticket', 'tobacco', 'toys', 'travel_agency', 'variety_store', 'video', 'video_games', 'watches', 'weapons', 'wholesale']],
+      [
+        'shop',
+        [
+          'accessories',
+          'antiques',
+          'beauty',
+          'bed',
+          'boutique',
+          'camera',
+          'carpet',
+          'charity',
+          'chemist',
+          'copyshop',
+          'curtain',
+          'department_store',
+          'doityourself',
+          'dry_cleaning',
+          'electronics',
+          'erotic',
+          'fabric',
+          'florist',
+          'frame',
+          'furniture',
+          'garden_centre',
+          'gift',
+          'hardware',
+          'hearing_aids',
+          'hifi',
+          'houseware',
+          'interior_decoration',
+          'jewelry',
+          'kiosk',
+          'lamps',
+          'mall',
+          'massage',
+          'mobile_phone',
+          'newsagent',
+          'optician',
+          'outdoor',
+          'paint',
+          'perfume',
+          'perfumery',
+          'pet',
+          'photo',
+          'second_hand',
+          'shoes',
+          'sports',
+          'stationery',
+          'tailor',
+          'tattoo',
+          'ticket',
+          'tobacco',
+          'toys',
+          'travel_agency',
+          'variety_store',
+          'video',
+          'video_games',
+          'watches',
+          'weapons',
+          'wholesale',
+        ],
+      ],
       ['town_hall', ['townhall', 'public_building', 'courthouse', 'community_centre']],
       ['golf', ['golf', 'golf_course', 'miniature_golf']],
       ['fast_food', ['fast_food', 'food_court']],
@@ -163,10 +224,25 @@ const CLASS_BY_SUBCLASS = new Map<string, string>(
       ['entrance', ['subway_entrance', 'train_station_entrance']],
       ['campsite', ['camp_site', 'caravan_site']],
       ['laundry', ['laundry', 'dry_cleaning']],
-      ['grocery', ['supermarket', 'deli', 'delicatessen', 'greengrocer', 'marketplace', 'convenience']],
+      [
+        'grocery',
+        ['supermarket', 'deli', 'delicatessen', 'greengrocer', 'marketplace', 'convenience'],
+      ],
       ['library', ['books', 'library']],
       ['college', ['university', 'college']],
-      ['lodging', ['hotel', 'motel', 'bed_and_breakfast', 'guest_house', 'hostel', 'dormitory', 'chalet', 'alpine_hut']],
+      [
+        'lodging',
+        [
+          'hotel',
+          'motel',
+          'bed_and_breakfast',
+          'guest_house',
+          'hostel',
+          'dormitory',
+          'chalet',
+          'alpine_hut',
+        ],
+      ],
       ['ice_cream', ['chocolate', 'confectionery', 'ice_cream', 'pastry']],
       ['post', ['post_box', 'post_office', 'parcel_locker']],
       ['cafe', ['cafe', 'coffee']],
@@ -187,7 +263,9 @@ const CLASS_BY_SUBCLASS = new Map<string, string>(
       ['castle', ['castle', 'ruins']],
       ['monument', ['monument', 'memorial']],
     ] as const
-  ).flatMap(([className, subclasses]) => subclasses.map((subclass) => [subclass, className] as [string, string])),
+  ).flatMap(([className, subclasses]) =>
+    subclasses.map((subclass) => [subclass, className] as [string, string]),
+  ),
 );
 
 /** What the tags say this element is. */
@@ -279,7 +357,10 @@ const MAX_CATEGORIES = 3;
  * a filter on the parent already matches the child: `leisure=pitch` +
  * `sport=soccer` is `['sport.pitch']`, not that plus `sport`.
  */
-export function osmCategories(tags: ReadonlyMap<string, string>, mapping: OsmCategoryMapping): string[] {
+export function osmCategories(
+  tags: ReadonlyMap<string, string>,
+  mapping: OsmCategoryMapping,
+): string[] {
   const keys: string[] = [];
   for (const key of MAPPING_KEY_ORDER) {
     const value = tags.get(key);

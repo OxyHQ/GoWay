@@ -18,8 +18,19 @@ import { View } from 'react-native';
 import { useTranslation } from '@/lib/i18n';
 import { GuidedOverlay, type GuidedPhase } from './GuidedOverlay';
 import {
-  lockHeld, lockNoticeKeys, lockReport, lockSteps, pickRecorderType, reachedLimit, recordingBudget, RESOLUTION_PIXELS,
-  type GuidedResolution, type LockCapabilities, type LockFeature, type LockReport, type LockSettings,
+  lockHeld,
+  lockNoticeKeys,
+  lockReport,
+  lockSteps,
+  pickRecorderType,
+  reachedLimit,
+  recordingBudget,
+  RESOLUTION_PIXELS,
+  type GuidedResolution,
+  type LockCapabilities,
+  type LockFeature,
+  type LockReport,
+  type LockSettings,
 } from './recording';
 import { centreCrop, frameSignals, sampleSize } from './sharpness';
 import type { GuidedCaptureProps } from './types';
@@ -32,7 +43,12 @@ async function openCamera(resolution: GuidedResolution): Promise<MediaStream> {
   try {
     return await navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: 30 } },
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: width },
+        height: { ideal: height },
+        frameRate: { ideal: 30 },
+      },
     });
   } catch (error) {
     // `ideal` should never over-constrain, but some browsers still refuse; any camera beats none.
@@ -43,12 +59,15 @@ async function openCamera(resolution: GuidedResolution): Promise<MediaStream> {
 
 /** Lock what the track can lock, one control at a time, keeping only what the settings confirm. */
 async function lockControls(track: MediaStreamTrack): Promise<LockFeature[]> {
-  const capabilities = (typeof track.getCapabilities === 'function' ? track.getCapabilities() : {}) as LockCapabilities;
+  const capabilities = (
+    typeof track.getCapabilities === 'function' ? track.getCapabilities() : {}
+  ) as LockCapabilities;
   const applied: LockFeature[] = [];
   for (const step of lockSteps(capabilities, track.getSettings() as LockSettings)) {
     try {
       await track.applyConstraints({ advanced: [step.constraint as MediaTrackConstraintSet] });
-      if (lockHeld(step, track.getSettings() as unknown as Record<string, unknown>)) applied.push(step.feature);
+      if (lockHeld(step, track.getSettings() as unknown as Record<string, unknown>))
+        applied.push(step.feature);
     } catch {
       // This control stays on auto; the notice says so.
     }
@@ -56,7 +75,10 @@ async function lockControls(track: MediaStreamTrack): Promise<LockFeature[]> {
   return applied;
 }
 
-type LockableOrientation = ScreenOrientation & { lock?: (orientation: string) => Promise<void>; unlock?: () => void };
+type LockableOrientation = ScreenOrientation & {
+  lock?: (orientation: string) => Promise<void>;
+  unlock?: () => void;
+};
 
 /**
  * Best effort, on touch devices only: full screen, then a landscape lock.
@@ -68,14 +90,20 @@ function enterLandscape() {
   if (typeof window === 'undefined' || !window.matchMedia?.('(pointer: coarse)').matches) return;
   const root = document.documentElement;
   if (typeof root.requestFullscreen !== 'function') return;
-  root.requestFullscreen({ navigationUI: 'hide' })
+  root
+    .requestFullscreen({ navigationUI: 'hide' })
     .then(() => (screen.orientation as LockableOrientation | undefined)?.lock?.('landscape'))
     .catch(() => {});
 }
 
 function exitLandscape() {
-  try { (screen.orientation as LockableOrientation | undefined)?.unlock?.(); } catch { /* not locked */ }
-  if (typeof document !== 'undefined' && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+  try {
+    (screen.orientation as LockableOrientation | undefined)?.unlock?.();
+  } catch {
+    /* not locked */
+  }
+  if (typeof document !== 'undefined' && document.fullscreenElement)
+    void document.exitFullscreen().catch(() => {});
 }
 
 export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedCaptureProps) {
@@ -83,8 +111,17 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
   const session = useGuidedSession();
   const { start: startSession, stop: stopSession, sample, elapsedNow, summary } = session;
   const budget = useMemo(() => recordingBudget(policy.video), [policy.video]);
-  const recorderType = useMemo(() => (typeof MediaRecorder === 'undefined' ? null
-    : pickRecorderType((type) => MediaRecorder.isTypeSupported(type), policy.video.contentTypes, budget.resolution)), [policy.video.contentTypes, budget.resolution]);
+  const recorderType = useMemo(
+    () =>
+      typeof MediaRecorder === 'undefined'
+        ? null
+        : pickRecorderType(
+            (type) => MediaRecorder.isTypeSupported(type),
+            policy.video.contentTypes,
+            budget.resolution,
+          ),
+    [policy.video.contentTypes, budget.resolution],
+  );
   const [phase, setPhase] = useState<GuidedPhase>('starting');
   const [error, setError] = useState<string>();
   const [locks, setLocks] = useState<LockReport | null>(null);
@@ -94,27 +131,45 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
   const recorder = useRef<MediaRecorder | null>(null);
   const discard = useRef(false);
 
-  const fail = useCallback((key: string) => { setError(t(key)); setPhase('error'); }, [t]);
-  const unsupported = !recorderType ? 'contribute.guided.error.format'
-    : typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia ? 'contribute.guided.error.camera' : null;
+  const fail = useCallback(
+    (key: string) => {
+      setError(t(key));
+      setPhase('error');
+    },
+    [t],
+  );
+  const unsupported = !recorderType
+    ? 'contribute.guided.error.format'
+    : typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia
+      ? 'contribute.guided.error.camera'
+      : null;
 
   // The camera opens because the user chose guided capture; nothing here asks for location.
   useEffect(() => {
     if (unsupported) return;
     let disposed = false;
-    openCamera(budget.resolution).then((opened) => {
-      if (disposed) { opened.getTracks().forEach((track) => track.stop()); return; }
-      stream.current = opened;
-      if (video.current) {
-        video.current.srcObject = opened;
-        void video.current.play().catch(() => {});
-      }
-      setPhase('ready');
-    }).catch((e: unknown) => {
-      if (disposed) return;
-      const name = (e as DOMException)?.name;
-      fail(name === 'NotAllowedError' || name === 'SecurityError' ? 'contribute.guided.error.permission' : 'contribute.guided.error.camera');
-    });
+    openCamera(budget.resolution)
+      .then((opened) => {
+        if (disposed) {
+          opened.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        stream.current = opened;
+        if (video.current) {
+          video.current.srcObject = opened;
+          void video.current.play().catch(() => {});
+        }
+        setPhase('ready');
+      })
+      .catch((e: unknown) => {
+        if (disposed) return;
+        const name = (e as DOMException)?.name;
+        fail(
+          name === 'NotAllowedError' || name === 'SecurityError'
+            ? 'contribute.guided.error.permission'
+            : 'contribute.guided.error.camera',
+        );
+      });
     return () => {
       disposed = true;
       discard.current = true;
@@ -137,10 +192,29 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
       if (phase !== 'recording' || !context) return;
       const crop = centreCrop(element.videoWidth, element.videoHeight);
       const size = sampleSize(crop.width, crop.height);
-      if (canvas.width !== size.width || canvas.height !== size.height) { canvas.width = size.width; canvas.height = size.height; }
+      if (canvas.width !== size.width || canvas.height !== size.height) {
+        canvas.width = size.width;
+        canvas.height = size.height;
+      }
       try {
-        context.drawImage(element, crop.x, crop.y, crop.width, crop.height, 0, 0, size.width, size.height);
-        sample(frameSignals(context.getImageData(0, 0, size.width, size.height).data, size.width, size.height));
+        context.drawImage(
+          element,
+          crop.x,
+          crop.y,
+          crop.width,
+          crop.height,
+          0,
+          0,
+          size.width,
+          size.height,
+        );
+        sample(
+          frameSignals(
+            context.getImageData(0, 0, size.width, size.height).data,
+            size.width,
+            size.height,
+          ),
+        );
       } catch {
         // A frame that cannot be read is skipped; the coach tolerates gaps.
       }
@@ -157,7 +231,10 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
 
     let next: MediaRecorder;
     try {
-      next = new MediaRecorder(opened, { mimeType: recorderType.recorderType, videoBitsPerSecond: budget.bitsPerSecond });
+      next = new MediaRecorder(opened, {
+        mimeType: recorderType.recorderType,
+        videoBitsPerSecond: budget.bitsPerSecond,
+      });
     } catch {
       fail('contribute.guided.error.format');
       return;
@@ -176,14 +253,20 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
         next.stop();
       }
     };
-    next.onerror = () => { discard.current = true; fail('contribute.guided.error.recording'); };
+    next.onerror = () => {
+      discard.current = true;
+      fail('contribute.guided.error.recording');
+    };
     next.onstop = () => {
       const seconds = elapsedNow();
       stopSession();
       exitLandscape();
       recorder.current = null;
       if (discard.current) return;
-      if (chunks.length === 0) { fail('contribute.guided.error.recording'); return; }
+      if (chunks.length === 0) {
+        fail('contribute.guided.error.recording');
+        return;
+      }
       const settings = track.getSettings();
       const fileName = `guided-capture-${startedAt.toISOString().replace(/[:.]/g, '-')}.mp4`;
       const file = new File(chunks, fileName, { type: recorderType.contentType });
@@ -230,25 +313,33 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
   }
 
   const notices = locks ? lockNoticeKeys(locks).map((key) => t(key)) : [];
-  return <View className="flex-1 bg-background">
-    <video
-      ref={video}
-      autoPlay
-      playsInline
-      muted
-      aria-hidden
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
-    />
-    <GuidedOverlay
-      phase={unsupported ? 'error' : phase}
-      session={session}
-      budget={budget}
-      portrait={portrait}
-      notices={notices}
-      error={unsupported ? t(unsupported) : error}
-      onStart={() => void start()}
-      onStop={stop}
-      onCancel={cancel}
-    />
-  </View>;
+  return (
+    <View className="flex-1 bg-background">
+      <video
+        ref={video}
+        autoPlay
+        playsInline
+        muted
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+        }}
+      />
+      <GuidedOverlay
+        phase={unsupported ? 'error' : phase}
+        session={session}
+        budget={budget}
+        portrait={portrait}
+        notices={notices}
+        error={unsupported ? t(unsupported) : error}
+        onStart={() => void start()}
+        onStop={stop}
+        onCancel={cancel}
+      />
+    </View>
+  );
 }

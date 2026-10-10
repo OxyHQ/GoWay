@@ -26,7 +26,13 @@
  * business's alone; hiding one is an operator's (`routes/moderation.ts`).
  */
 
-import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from 'express';
 import { z } from 'zod';
 import {
   BUSINESS_MEDIA_KINDS,
@@ -46,7 +52,11 @@ import {
   reorderPlaceMedia,
 } from '../db/places/mediaRepository';
 import { createPlaceReport } from '../db/places/moderationRepository';
-import { findPlaceLifecycle, getPlaceAuthorization, type PlaceActor } from '../db/places/placesRepository';
+import {
+  findPlaceLifecycle,
+  getPlaceAuthorization,
+  type PlaceActor,
+} from '../db/places/placesRepository';
 import { revisionAuthor } from '../db/places/revisions';
 import { getDb } from '../db/postgres';
 import { ApiError } from '../http/apiError';
@@ -83,7 +93,14 @@ export interface PlaceMediaRouterDependencies {
 }
 
 export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencies): Router {
-  const { optionalAuth, requireAuth, accountRoles, placeFiles, reportRateLimit, contributionRateLimit } = dependencies;
+  const {
+    optionalAuth,
+    requireAuth,
+    accountRoles,
+    placeFiles,
+    reportRateLimit,
+    contributionRateLimit,
+  } = dependencies;
   const router: Router = Router();
 
   /** `GET /places/{placeId}/media` — the visible gallery, in the business's order. Public. */
@@ -101,7 +118,15 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
         limit: limit + 1,
         after: decodeCursor(cursor, binding, mediaKeysetSchema),
       });
-      response.json(pageOf(rows, limit, binding, (item) => [item.position, item.id], (item) => item));
+      response.json(
+        pageOf(
+          rows,
+          limit,
+          binding,
+          (item) => [item.position, item.id],
+          (item) => item,
+        ),
+      );
     }),
   );
 
@@ -123,8 +148,15 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
       const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
       assertPublished(lifecycle);
       const standing = await standingOn(approvedClaims, caller, accountRoles);
-      if (BUSINESS_KINDS.has(input.kind) && standing.claimed && withdrawableVerification(standing) === null) {
-        throw new ApiError('forbidden', 'This place is claimed; only the business may add its logo or cover.');
+      if (
+        BUSINESS_KINDS.has(input.kind) &&
+        standing.claimed &&
+        withdrawableVerification(standing) === null
+      ) {
+        throw new ApiError(
+          'forbidden',
+          'This place is claimed; only the business may add its logo or cover.',
+        );
       }
 
       const file = await placeFiles.attach(caller, input.fileId, placeId);
@@ -137,12 +169,19 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
         item = await addPlaceMedia(
           db,
           placeId,
-          { fileId: file.fileId, kind: input.kind, caption: input.caption, width: file.width, height: file.height },
+          {
+            fileId: file.fileId,
+            kind: input.kind,
+            caption: input.caption,
+            width: file.width,
+            height: file.height,
+          },
           actor,
         );
       } catch (error) {
         // A file already in the gallery keeps the link it was relying on.
-        if (!(error instanceof ApiError && error.code === 'conflict')) await placeFiles.detach(caller, file.fileId, placeId);
+        if (!(error instanceof ApiError && error.code === 'conflict'))
+          await placeFiles.detach(caller, file.fileId, placeId);
         throw error;
       }
       if (!item) {
@@ -151,7 +190,9 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
       }
       response
         .status(201)
-        .location(`/api/v1/places/${encodeURIComponent(placeId)}/media/${encodeURIComponent(item.id)}`)
+        .location(
+          `/api/v1/places/${encodeURIComponent(placeId)}/media/${encodeURIComponent(item.id)}`,
+        )
         .json(item);
     }),
   );
@@ -173,7 +214,9 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
 
       const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
       assertPublished(lifecycle);
-      if (withdrawableVerification(await standingOn(approvedClaims, caller, accountRoles)) === null) {
+      if (
+        withdrawableVerification(await standingOn(approvedClaims, caller, accountRoles)) === null
+      ) {
         throw new ApiError('forbidden', "Only an approved claimant may order a place's gallery.");
       }
       if (!(await reorderPlaceMedia(db, placeId, mediaIds, revisionAuthor(caller, 'api')))) {
@@ -207,9 +250,16 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
 
       const contributed =
         item.contributorOxyAccountId === caller.oxyAccountId ||
-        (item.operatedByOxyUserId !== null && item.operatedByOxyUserId === caller.operatedByOxyUserId);
-      if (!contributed && withdrawableVerification(await standingOn(approvedClaims, caller, accountRoles)) === null) {
-        throw new ApiError('forbidden', 'Only its contributor or the business may withdraw a gallery item.');
+        (item.operatedByOxyUserId !== null &&
+          item.operatedByOxyUserId === caller.operatedByOxyUserId);
+      if (
+        !contributed &&
+        withdrawableVerification(await standingOn(approvedClaims, caller, accountRoles)) === null
+      ) {
+        throw new ApiError(
+          'forbidden',
+          'Only its contributor or the business may withdraw a gallery item.',
+        );
       }
 
       const removed = await removePlaceMedia(db, placeId, mediaId, revisionAuthor(caller, 'api'));
@@ -235,7 +285,8 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
       const db = getDb();
       assertPublished(await findPlaceLifecycle(db, placeId));
       const item = await findLivePlaceMedia(db, placeId, mediaId);
-      if (!item || item.state !== 'visible') throw new ApiError('not_found', 'This place has no gallery item with that id.');
+      if (!item || item.state !== 'visible')
+        throw new ApiError('not_found', 'This place has no gallery item with that id.');
       const { report, created } = await createPlaceReport(
         db,
         placeId,

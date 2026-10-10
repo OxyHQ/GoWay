@@ -38,7 +38,13 @@
  * cache holding a route is a location history nobody decided to keep.
  */
 
-import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from 'express';
 import type { z } from 'zod';
 import type { GeoCoordinate, PlaceId, RouteResponse, TravelMode } from '@goway/contracts';
 import { routeRequestSchema, TRAVEL_MODES } from '@goway/contracts';
@@ -201,10 +207,14 @@ export function createRoutesRouter(dependencies: RoutesRouterDependencies): Rout
         throw new ApiError('service_unavailable', 'Routing is not configured for this deployment.');
       }
       if (!provider.supportedModes.includes(mode)) {
-        throw new ApiError('unsupported_mode', 'This GoWay deployment does not route that travel mode.', {
-          mode,
-          supported: provider.supportedModes.join(','),
-        });
+        throw new ApiError(
+          'unsupported_mode',
+          'This GoWay deployment does not route that travel mode.',
+          {
+            mode,
+            supported: provider.supportedModes.join(','),
+          },
+        );
       }
 
       const locations = await resolveLocations(input, resolvePlaceLocation);

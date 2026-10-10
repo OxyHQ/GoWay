@@ -254,7 +254,9 @@ function checkOne(appearance: MapAppearance, style: StyleSpecification, problems
     seen.add(layer.id);
     if (!catalogue.has(layer.id)) {
       problems.push(
-        where(`layer "${layer.id}" is not declared in GOWAY_STYLE_LAYER_IDS — the published id contract`),
+        where(
+          `layer "${layer.id}" is not declared in GOWAY_STYLE_LAYER_IDS — the published id contract`,
+        ),
       );
     }
 
@@ -267,7 +269,9 @@ function checkOne(appearance: MapAppearance, style: StyleSpecification, problems
     const sourceLayer = sourceLayerOf(layer);
     if (sourceLayer !== undefined && !knownSourceLayers.has(sourceLayer)) {
       problems.push(
-        where(`layer "${layer.id}" reads source-layer "${sourceLayer}", which is not in the OpenMapTiles v3 schema`),
+        where(
+          `layer "${layer.id}" reads source-layer "${sourceLayer}", which is not in the OpenMapTiles v3 schema`,
+        ),
       );
     }
 
@@ -276,10 +280,16 @@ function checkOne(appearance: MapAppearance, style: StyleSpecification, problems
     if (font !== undefined) {
       if (!Array.isArray(font) || font.length !== 1 || typeof font[0] !== 'string') {
         problems.push(
-          where(`layer "${layer.id}" has a text-font that is not a single-family stack; OpenFreeMap serves no combined stacks`),
+          where(
+            `layer "${layer.id}" has a text-font that is not a single-family stack; OpenFreeMap serves no combined stacks`,
+          ),
         );
       } else if (!knownFonts.has(font[0])) {
-        problems.push(where(`layer "${layer.id}" uses font "${font[0]}", which the glyph server does not serve`));
+        problems.push(
+          where(
+            `layer "${layer.id}" uses font "${font[0]}", which the glyph server does not serve`,
+          ),
+        );
       }
     }
 
@@ -314,12 +324,16 @@ function checkOne(appearance: MapAppearance, style: StyleSpecification, problems
     const above = style.layers.slice(anchorIndex + 1);
     for (const layer of below) {
       if (layer.type === 'symbol') {
-        problems.push(where(`symbol layer "${layer.id}" sits BELOW the label anchor; overlays would cover it`));
+        problems.push(
+          where(`symbol layer "${layer.id}" sits BELOW the label anchor; overlays would cover it`),
+        );
       }
     }
     for (const layer of above) {
       if (layer.type !== 'symbol' && layer.type !== 'circle') {
-        problems.push(where(`"${layer.id}" (${layer.type}) sits ABOVE the label anchor but is not type`));
+        problems.push(
+          where(`"${layer.id}" (${layer.type}) sits ABOVE the label anchor but is not type`),
+        );
       }
     }
   }
@@ -331,9 +345,17 @@ function checkOne(appearance: MapAppearance, style: StyleSpecification, problems
 
   const source = style.sources[GOWAY_BASEMAP_SOURCE_ID];
   if (!source) {
-    problems.push(where(`the basemap source "${GOWAY_BASEMAP_SOURCE_ID}" that provider.ts documents is missing`));
+    problems.push(
+      where(
+        `the basemap source "${GOWAY_BASEMAP_SOURCE_ID}" that provider.ts documents is missing`,
+      ),
+    );
   } else if (!('attribution' in source) || !source.attribution) {
-    problems.push(where('the basemap source carries no attribution — the OSM/ODbL credit must travel with the document'));
+    problems.push(
+      where(
+        'the basemap source carries no attribution — the OSM/ODbL credit must travel with the document',
+      ),
+    );
   }
 }
 
@@ -406,11 +428,40 @@ function checkFirstPartyOrigins(
 
 /** Expression heads whose value is numeric by construction. */
 const NUMERIC_EXPRESSIONS = new Set([
-  'zoom', 'heatmap-density', 'line-progress', 'sky-radial-progress', 'measure-light',
-  'length', 'pitch', 'distance-from-center', 'distance',
-  '+', '-', '*', '/', '%', '^', 'abs', 'round', 'floor', 'ceil', 'min', 'max',
-  'sqrt', 'ln', 'ln2', 'log10', 'log2', 'e', 'pi', 'sin', 'cos', 'tan', 'asin',
-  'acos', 'atan',
+  'zoom',
+  'heatmap-density',
+  'line-progress',
+  'sky-radial-progress',
+  'measure-light',
+  'length',
+  'pitch',
+  'distance-from-center',
+  'distance',
+  '+',
+  '-',
+  '*',
+  '/',
+  '%',
+  '^',
+  'abs',
+  'round',
+  'floor',
+  'ceil',
+  'min',
+  'max',
+  'sqrt',
+  'ln',
+  'ln2',
+  'log10',
+  'log2',
+  'e',
+  'pi',
+  'sin',
+  'cos',
+  'tan',
+  'asin',
+  'acos',
+  'atan',
 ]);
 
 const ORDERING_OPERATORS = new Set(['<', '<=', '>', '>=']);
@@ -531,7 +582,8 @@ function checkPair(light: StyleSpecification, dark: StyleSpecification, problems
   for (let i = 0; i < Math.min(light.layers.length, dark.layers.length); i += 1) {
     const a = light.layers[i];
     const b = dark.layers[i];
-    if (a.type !== b.type) problems.push(`layer "${a.id}" is ${a.type} in light and ${b.type} in dark`);
+    if (a.type !== b.type)
+      problems.push(`layer "${a.id}" is ${a.type} in light and ${b.type} in dark`);
     if (sourceLayerOf(a) !== sourceLayerOf(b)) {
       problems.push(`layer "${a.id}" reads different source-layers in light and dark`);
     }
@@ -555,14 +607,18 @@ function checkPair(light: StyleSpecification, dark: StyleSpecification, problems
 async function checkOnline(problems: string[]): Promise<void> {
   const response = await fetch(OPENFREEMAP_ENDPOINTS.tileJson);
   if (!response.ok) {
-    problems.push(`could not read TileJSON at ${OPENFREEMAP_ENDPOINTS.tileJson}: HTTP ${response.status}`);
+    problems.push(
+      `could not read TileJSON at ${OPENFREEMAP_ENDPOINTS.tileJson}: HTTP ${response.status}`,
+    );
     return;
   }
   const tileJson = (await response.json()) as { vector_layers?: { id: string }[] };
   const live = new Set((tileJson.vector_layers ?? []).map((layer) => layer.id));
   for (const name of OPENMAPTILES_SOURCE_LAYER_NAMES) {
     if (!live.has(name)) {
-      problems.push(`source-layer "${name}" is recorded in schema.ts but the live TileJSON no longer serves it`);
+      problems.push(
+        `source-layer "${name}" is recorded in schema.ts but the live TileJSON no longer serves it`,
+      );
     }
   }
 }
@@ -622,14 +678,18 @@ async function main(): Promise<void> {
 
   if (checkOnly) {
     const layerCount = built.light.layers.length;
-    console.log(`map style: OK — ${layerCount} layers, light + dark in step${online ? ', live schema verified' : ''}`);
+    console.log(
+      `map style: OK — ${layerCount} layers, light + dark in step${online ? ', live schema verified' : ''}`,
+    );
     return;
   }
 
   await mkdir(OUTPUT_DIR, { recursive: true });
   for (const appearance of APPEARANCES) {
     await writeFile(OUTPUTS[appearance], serialise(built[appearance]), 'utf8');
-    console.log(`map style: wrote ${OUTPUTS[appearance]} (${built[appearance].layers.length} layers)`);
+    console.log(
+      `map style: wrote ${OUTPUTS[appearance]} (${built[appearance].layers.length} layers)`,
+    );
   }
   await writeFile(TILEJSON_OUTPUT, tileJson, 'utf8');
   console.log(`map style: wrote ${TILEJSON_OUTPUT}`);

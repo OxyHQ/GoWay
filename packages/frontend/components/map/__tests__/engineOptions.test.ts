@@ -51,7 +51,12 @@
 import { describe, expect, test } from 'bun:test';
 import { LngLat } from 'maplibre-gl';
 
-import { asFinite, optionalScalar, reportMapDefect, runEngineCommand } from '@/components/map/shared';
+import {
+  asFinite,
+  optionalScalar,
+  reportMapDefect,
+  runEngineCommand,
+} from '@/components/map/shared';
 
 /**
  * MapLibre's own defaulting, as `Camera._cameraForBoxAndBearing` performs it.
@@ -165,8 +170,8 @@ describe('neither renderer fork names a camera cap as a plain key', () => {
 
     // `{ ..., maxZoom }` and `{ ..., zoom: maxZoom }` are the two spellings
     // that shipped. Both write the key unconditionally.
-    const written = [...source.matchAll(/,\s*maxZoom\s*[},]|\bzoom:\s*maxZoom\b/g)].map(
-      (match) => match[0].trim(),
+    const written = [...source.matchAll(/,\s*maxZoom\s*[},]|\bzoom:\s*maxZoom\b/g)].map((match) =>
+      match[0].trim(),
     );
     expect(written).toEqual([]);
     // And the cap does still reach the engine — through the one helper that

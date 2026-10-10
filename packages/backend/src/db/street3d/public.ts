@@ -25,7 +25,12 @@ import type {
   StreetSceneSummary,
 } from '@goway/contracts';
 import type { Database } from '../postgres';
-import { street3dCoverageAreas, street3dSceneReports, street3dSceneVersions, street3dScenes } from '../schema';
+import {
+  street3dCoverageAreas,
+  street3dSceneReports,
+  street3dSceneVersions,
+  street3dScenes,
+} from '../schema';
 import { contributionBand } from '../../street3d/geo';
 
 /** The most scenes and areas one coverage answer carries. The bbox cap keeps this generous. */
@@ -71,7 +76,12 @@ function toManifest(row: VersionRow): StreetSceneManifest {
   const manifest: StreetSceneManifest = {
     id: row.sceneId,
     version: row.version,
-    bounds: { west: row.boundsWest, south: row.boundsSouth, east: row.boundsEast, north: row.boundsNorth },
+    bounds: {
+      west: row.boundsWest,
+      south: row.boundsSouth,
+      east: row.boundsEast,
+      north: row.boundsNorth,
+    },
     footprint: { type: 'Polygon', coordinates: row.footprint.coordinates },
     worldTransform: {
       anchor: {
@@ -105,7 +115,10 @@ function toManifest(row: VersionRow): StreetSceneManifest {
 }
 
 /** The served manifest of a scene, or `null`. */
-export async function findPublishedManifest(db: Database, sceneId: string): Promise<StreetSceneManifest | null> {
+export async function findPublishedManifest(
+  db: Database,
+  sceneId: string,
+): Promise<StreetSceneManifest | null> {
   const [row] = await db
     .select({ version: street3dSceneVersions })
     .from(street3dScenes)
@@ -115,7 +128,12 @@ export async function findPublishedManifest(db: Database, sceneId: string): Prom
 }
 
 /** Longitude overlap, honouring a box that crosses the antimeridian (`west > east`). */
-function longitudeOverlap(west: number, east: number, rowWest: typeof street3dSceneVersions.boundsWest, rowEast: typeof street3dSceneVersions.boundsEast) {
+function longitudeOverlap(
+  west: number,
+  east: number,
+  rowWest: typeof street3dSceneVersions.boundsWest,
+  rowEast: typeof street3dSceneVersions.boundsEast,
+) {
   return west <= east
     ? and(lte(rowWest, east), gte(rowEast, west))
     : or(gte(rowEast, west), lte(rowWest, east));
@@ -131,7 +149,12 @@ export async function findCoverage(db: Database, box: GeoBoundingBox): Promise<S
       and(
         lte(street3dSceneVersions.boundsSouth, box.north),
         gte(street3dSceneVersions.boundsNorth, box.south),
-        longitudeOverlap(box.west, box.east, street3dSceneVersions.boundsWest, street3dSceneVersions.boundsEast),
+        longitudeOverlap(
+          box.west,
+          box.east,
+          street3dSceneVersions.boundsWest,
+          street3dSceneVersions.boundsEast,
+        ),
       ),
     )
     .limit(MAX_SCENES);
@@ -145,7 +168,12 @@ export async function findCoverage(db: Database, box: GeoBoundingBox): Promise<S
         latitude: (version.boundsSouth + version.boundsNorth) / 2,
         longitude: (version.boundsWest + version.boundsEast) / 2,
       },
-      bounds: { west: version.boundsWest, south: version.boundsSouth, east: version.boundsEast, north: version.boundsNorth },
+      bounds: {
+        west: version.boundsWest,
+        south: version.boundsSouth,
+        east: version.boundsEast,
+        north: version.boundsNorth,
+      },
       footprint: { type: 'Polygon', coordinates: version.footprint.coordinates },
       placement: version.quality.placement,
       publishedAt: (version.publishedAt ?? version.createdAt).toISOString(),
@@ -156,8 +184,14 @@ export async function findCoverage(db: Database, box: GeoBoundingBox): Promise<S
 
   const lonFilter =
     box.west <= box.east
-      ? and(gte(street3dCoverageAreas.centerLongitude, box.west), lte(street3dCoverageAreas.centerLongitude, box.east))
-      : or(gte(street3dCoverageAreas.centerLongitude, box.west), lte(street3dCoverageAreas.centerLongitude, box.east));
+      ? and(
+          gte(street3dCoverageAreas.centerLongitude, box.west),
+          lte(street3dCoverageAreas.centerLongitude, box.east),
+        )
+      : or(
+          gte(street3dCoverageAreas.centerLongitude, box.west),
+          lte(street3dCoverageAreas.centerLongitude, box.east),
+        );
   const areaRows = await db
     .select({
       publicId: street3dCoverageAreas.publicId,
@@ -173,7 +207,13 @@ export async function findCoverage(db: Database, box: GeoBoundingBox): Promise<S
       sceneId: street3dCoverageAreas.sceneId,
     })
     .from(street3dCoverageAreas)
-    .where(and(gte(street3dCoverageAreas.centerLatitude, box.south), lte(street3dCoverageAreas.centerLatitude, box.north), lonFilter))
+    .where(
+      and(
+        gte(street3dCoverageAreas.centerLatitude, box.south),
+        lte(street3dCoverageAreas.centerLatitude, box.north),
+        lonFilter,
+      ),
+    )
     .limit(MAX_AREAS);
 
   const servedSceneIds = new Set(scenes.map((scene) => scene.id));
@@ -182,10 +222,16 @@ export async function findCoverage(db: Database, box: GeoBoundingBox): Promise<S
       id: row.publicId,
       state: row.state as StreetCoverageArea['state'],
       center: { latitude: row.centerLatitude, longitude: row.centerLongitude },
-      bounds: { west: row.boundsWest, south: row.boundsSouth, east: row.boundsEast, north: row.boundsNorth },
+      bounds: {
+        west: row.boundsWest,
+        south: row.boundsSouth,
+        east: row.boundsEast,
+        north: row.boundsNorth,
+      },
       contributionBand: contributionBand(row.contributionCount),
     };
-    if (row.state === 'at_risk' && row.atRiskUntil) area.atRiskUntil = row.atRiskUntil.toISOString();
+    if (row.state === 'at_risk' && row.atRiskUntil)
+      area.atRiskUntil = row.atRiskUntil.toISOString();
     // Only a scene the caller can actually open is named.
     if (row.sceneId && servedSceneIds.has(row.sceneId)) area.sceneId = row.sceneId;
     return area;

@@ -48,7 +48,10 @@ const booleanFlag = z.preprocess((value) => {
 }, z.boolean().default(false));
 
 const integer = (fallback: number, minimum: number, maximum: number) =>
-  z.preprocess(emptyAsUndefined, z.coerce.number().int().min(minimum).max(maximum).default(fallback));
+  z.preprocess(
+    emptyAsUndefined,
+    z.coerce.number().int().min(minimum).max(maximum).default(fallback),
+  );
 
 const decimal = (fallback: number, minimum: number, maximum: number) =>
   z.preprocess(emptyAsUndefined, z.coerce.number().min(minimum).max(maximum).default(fallback));
@@ -62,7 +65,9 @@ const serviceUrl = z.preprocess(
     .refine((value) => {
       try {
         const url = new URL(value);
-        return (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password;
+        return (
+          (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password
+        );
       } catch {
         return false;
       }
@@ -72,13 +77,21 @@ const serviceUrl = z.preprocess(
 
 const bucketName = z.preprocess(
   emptyAsUndefined,
-  z.string().trim().regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, 'must be an S3 bucket name').optional(),
+  z
+    .string()
+    .trim()
+    .regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, 'must be an S3 bucket name')
+    .optional(),
 );
 
 const keyPrefix = (fallback: string) =>
   z.preprocess(
     emptyAsUndefined,
-    z.string().trim().regex(/^[a-z0-9][a-z0-9/_-]*[a-z0-9]$|^[a-z0-9]$/, 'must be a simple key prefix').default(fallback),
+    z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9][a-z0-9/_-]*[a-z0-9]$|^[a-z0-9]$/, 'must be a simple key prefix')
+      .default(fallback),
   );
 
 /**
@@ -90,8 +103,18 @@ const keyPrefix = (fallback: string) =>
  * `maxAssetBytes` regardless of what the worker reports.
  */
 const DEFAULT_BUDGETS: Readonly<Record<StreetSceneProfile, Street3dBudgets>> = {
-  draft: { maxTrainingIterations: 7000, maxGaussians: 1_500_000, maxAssetBytes: 60_000_000, maxTrainingLongEdgePixels: 1600 },
-  standard: { maxTrainingIterations: 30_000, maxGaussians: 3_000_000, maxAssetBytes: 150_000_000, maxTrainingLongEdgePixels: 2048 },
+  draft: {
+    maxTrainingIterations: 7000,
+    maxGaussians: 1_500_000,
+    maxAssetBytes: 60_000_000,
+    maxTrainingLongEdgePixels: 1600,
+  },
+  standard: {
+    maxTrainingIterations: 30_000,
+    maxGaussians: 3_000_000,
+    maxAssetBytes: 150_000_000,
+    maxTrainingLongEdgePixels: 2048,
+  },
 };
 
 export interface Street3dBudgets {
@@ -115,7 +138,11 @@ const budgetSchema = (profile: StreetSceneProfile) =>
     maxTrainingIterations: integer(DEFAULT_BUDGETS[profile].maxTrainingIterations, 100, 1_000_000),
     maxGaussians: integer(DEFAULT_BUDGETS[profile].maxGaussians, 1000, 100_000_000),
     maxAssetBytes: integer(DEFAULT_BUDGETS[profile].maxAssetBytes, 1_000_000, 4_000_000_000),
-    maxTrainingLongEdgePixels: integer(DEFAULT_BUDGETS[profile].maxTrainingLongEdgePixels, 256, 8192),
+    maxTrainingLongEdgePixels: integer(
+      DEFAULT_BUDGETS[profile].maxTrainingLongEdgePixels,
+      256,
+      8192,
+    ),
   });
 
 const schema = z.object({
@@ -140,7 +167,11 @@ const schema = z.object({
   publicAssetBaseUrl: serviceUrl,
   cdnDistributionId: z.preprocess(
     emptyAsUndefined,
-    z.string().trim().regex(/^[A-Z0-9]{8,32}$/, 'must be a CloudFront distribution id').optional(),
+    z
+      .string()
+      .trim()
+      .regex(/^[A-Z0-9]{8,32}$/, 'must be a CloudFront distribution id')
+      .optional(),
   ),
 
   // ── Scheduling ──────────────────────────────────────────────────────────
@@ -255,7 +286,8 @@ export function parseStreet3dConfig(source: EnvironmentSource = process.env): St
     gateMinRegistrationRatio: source.STREET3D_GATE_MIN_REGISTRATION_RATIO,
     gateMaxMeanReprojectionErrorPx: source.STREET3D_GATE_MAX_MEAN_REPROJECTION_ERROR_PX,
     gateMinGeoreferenceInliers: source.STREET3D_GATE_MIN_GEOREFERENCE_INLIERS,
-    gateMaxMedianGeoreferenceResidualMeters: source.STREET3D_GATE_MAX_MEDIAN_GEOREFERENCE_RESIDUAL_METERS,
+    gateMaxMedianGeoreferenceResidualMeters:
+      source.STREET3D_GATE_MAX_MEDIAN_GEOREFERENCE_RESIDUAL_METERS,
     gateMinHeldOutPsnr: source.STREET3D_GATE_MIN_HELD_OUT_PSNR,
     precisePlacementResidualMeters: source.STREET3D_PRECISE_PLACEMENT_RESIDUAL_METERS,
     draftBudgets: budget('DRAFT'),

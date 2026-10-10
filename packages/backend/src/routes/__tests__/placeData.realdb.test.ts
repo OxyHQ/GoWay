@@ -38,7 +38,10 @@ import { createPlacesRouter } from '../places';
 import { SEEDED_CATEGORIES } from '../../__tests__/categoryFixtures';
 import { apiAuthor, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 
-const CONTRIBUTOR: PlaceActor = { author: apiAuthor('user-contributor'), assertedVerification: 'community_reported' };
+const CONTRIBUTOR: PlaceActor = {
+  author: apiAuthor('user-contributor'),
+  assertedVerification: 'community_reported',
+};
 
 /** A box of Barcelona nothing else in this file writes into. */
 const RAVAL = { latitude: 41.3801, longitude: 2.1669 };
@@ -73,7 +76,10 @@ type ErrorBody = { error: { code: string; message: string; details?: Record<stri
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<Fetched<T>> {
   const response = await fetch(`${origin}/api/v1${path}`, init);
-  return { status: response.status, body: (response.status === 204 ? undefined : await response.json()) as T };
+  return {
+    status: response.status,
+    body: (response.status === 204 ? undefined : await response.json()) as T,
+  };
 }
 
 function as(user: string, method: string, body?: unknown): RequestInit {
@@ -95,7 +101,15 @@ beforeAll(async () => {
   const app = express();
   app.use(express.json());
   app.use('/api/v1', createCategoriesRouter());
-  app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }));
+  app.use(
+    '/api/v1',
+    createPlacesRouter({
+      optionalAuth,
+      requireAuth,
+      accountRoles: NO_MEMBERSHIPS,
+      reportRateLimit: NO_RATE_LIMIT,
+    }),
+  );
   app.use(unknownRouteHandler);
   app.use(errorHandler);
 
@@ -110,10 +124,19 @@ beforeAll(async () => {
   );
   open = await createPlace(
     suite.db,
-    { name: 'Trattoria Oberta', location: { latitude: 41.3805, longitude: 2.1672 }, categories: ['food.restaurant'] },
+    {
+      name: 'Trattoria Oberta',
+      location: { latitude: 41.3805, longitude: 2.1672 },
+      categories: ['food.restaurant'],
+    },
     CONTRIBUTOR,
   );
-  await createClaim(suite.db, { placeId: claimed.id, oxyAccountId: 'user-owner', role: 'owner', state: 'approved' });
+  await createClaim(suite.db, {
+    placeId: claimed.id,
+    oxyAccountId: 'user-owner',
+    role: 'owner',
+    state: 'approved',
+  });
 }, SUITE_SETUP_TIMEOUT_MS);
 
 afterAll(async () => {
@@ -127,22 +150,46 @@ describe('GET /categories', () => {
     const { status, body } = await call<CategoryPage>('/categories');
     expect(status).toBe(200);
     expect(body.nextCursor).toBeNull();
-    expect(body.items.map((category) => category.key)).toEqual(SEEDED_CATEGORIES.map((category) => category.key));
-    const cafe = body.items.find((category) => category.key === 'food.cafe');
-    expect(cafe).toMatchObject({ key: 'food.cafe', parent: 'food', icon: 'cafe', status: 'active', label: 'Café' });
-    expect(Object.keys(cafe?.labels ?? {}).sort()).toEqual(
-      ['ar', 'bn', 'ca', 'de', 'en', 'es', 'fr', 'hi', 'ja', 'pt-BR', 'ru', 'zh-Hans'],
+    expect(body.items.map((category) => category.key)).toEqual(
+      SEEDED_CATEGORIES.map((category) => category.key),
     );
+    const cafe = body.items.find((category) => category.key === 'food.cafe');
+    expect(cafe).toMatchObject({
+      key: 'food.cafe',
+      parent: 'food',
+      icon: 'cafe',
+      status: 'active',
+      label: 'Café',
+    });
+    expect(Object.keys(cafe?.labels ?? {}).sort()).toEqual([
+      'ar',
+      'bn',
+      'ca',
+      'de',
+      'en',
+      'es',
+      'fr',
+      'hi',
+      'ja',
+      'pt-BR',
+      'ru',
+      'zh-Hans',
+    ]);
   });
 
   it('resolves each label for the locale with the label matcher, English when none serves', async () => {
     const label = async (locale: string) =>
-      (await call<CategoryPage>(`/categories?locale=${locale}`)).body.items.find((item) => item.key === 'food.cafe')
-        ?.label;
+      (await call<CategoryPage>(`/categories?locale=${locale}`)).body.items.find(
+        (item) => item.key === 'food.cafe',
+      )?.label;
     expect(await label('es-MX')).toBe('Cafetería');
-    expect(await label('pt-PT')).toBe(SEEDED_CATEGORIES.find((entry) => entry.key === 'food.cafe')?.labels['pt-BR']);
+    expect(await label('pt-PT')).toBe(
+      SEEDED_CATEGORIES.find((entry) => entry.key === 'food.cafe')?.labels['pt-BR'],
+    );
     // Until GoWay holds a `zh-Hant` label, a Traditional reader is served Simplified rather than English.
-    expect(await label('zh-TW')).toBe(SEEDED_CATEGORIES.find((entry) => entry.key === 'food.cafe')?.labels['zh-Hans']);
+    expect(await label('zh-TW')).toBe(
+      SEEDED_CATEGORIES.find((entry) => entry.key === 'food.cafe')?.labels['zh-Hans'],
+    );
     expect(await label('ko')).toBe('Café');
   });
 
@@ -153,7 +200,10 @@ describe('GET /categories', () => {
 
 describe('categories on a place', () => {
   it('refuses a category that is not in the taxonomy, on a write and on a filter', async () => {
-    const write = await call<ErrorBody>('/places', as('user-x', 'POST', { name: 'X', location: RAVAL, categories: ['cafe'] }));
+    const write = await call<ErrorBody>(
+      '/places',
+      as('user-x', 'POST', { name: 'X', location: RAVAL, categories: ['cafe'] }),
+    );
     expect(write.status).toBe(422);
     expect(write.body.error.details?.field).toBe('categories.0');
 
@@ -165,7 +215,9 @@ describe('categories on a place', () => {
     const food = await call<PlaceWithDistancePage>(`/places/nearby?${NEAR_RAVAL}&categories=food`);
     expect(food.body.items.map((place) => place.id).sort()).toEqual([claimed.id, open.id].sort());
 
-    const bakeries = await call<PlaceWithDistancePage>(`/places/nearby?${NEAR_RAVAL}&categories=food.bakery`);
+    const bakeries = await call<PlaceWithDistancePage>(
+      `/places/nearby?${NEAR_RAVAL}&categories=food.bakery`,
+    );
     expect(bakeries.body.items.map((place) => place.id)).toEqual([claimed.id]);
 
     const shops = await call<PlaceWithDistancePage>(`/places/nearby?${NEAR_RAVAL}&categories=shop`);
@@ -176,7 +228,10 @@ describe('categories on a place', () => {
 describe('the timezone', () => {
   it('is derived from the position and follows it', async () => {
     expect(claimed.timezone).toBe('Europe/Madrid');
-    const created = await call<Place>('/places', as('user-x', 'POST', { name: 'Lisboa', location: { latitude: 38.7223, longitude: -9.1393 } }));
+    const created = await call<Place>(
+      '/places',
+      as('user-x', 'POST', { name: 'Lisboa', location: { latitude: 38.7223, longitude: -9.1393 } }),
+    );
     expect(created.body.timezone).toBe('Europe/Lisbon');
 
     const moved = await call<Place>(
@@ -208,7 +263,10 @@ describe('typed capabilities', () => {
   });
 
   it("refuses a value outside the key's own type", async () => {
-    const asText = await call<ErrorBody>(`/places/${open.id}/capabilities/amenities.wifi`, as('user-x', 'PUT', { value: 'yes' }));
+    const asText = await call<ErrorBody>(
+      `/places/${open.id}/capabilities/amenities.wifi`,
+      as('user-x', 'PUT', { value: 'yes' }),
+    );
     expect(asText.status).toBe(422);
     expect(asText.body.error.details?.field).toBe('value');
 
@@ -218,38 +276,56 @@ describe('typed capabilities', () => {
     );
     expect(outOfSet.status).toBe(422);
 
-    const price = await call<ErrorBody>(`/places/${open.id}/capabilities/price.level`, as('user-x', 'PUT', { value: 5 }));
+    const price = await call<ErrorBody>(
+      `/places/${open.id}/capabilities/price.level`,
+      as('user-x', 'PUT', { value: 5 }),
+    );
     expect(price.status).toBe(422);
 
     const inBody = await call<ErrorBody>(
       `/places/${open.id}`,
-      as('user-x', 'PATCH', { capabilities: [{ namespace: 'amenities', capability: 'teleporter', value: true }] }),
+      as('user-x', 'PATCH', {
+        capabilities: [{ namespace: 'amenities', capability: 'teleporter', value: true }],
+      }),
     );
     expect(inBody.status).toBe(422);
     expect(inBody.body.error.details?.field).toBe('capabilities.0.capability');
   });
 
   it('stores a value normalized by its key: a handle as its URL, a set in registry order', async () => {
-    await call<Place>(`/places/${open.id}/capabilities/social.instagram`, as('user-x', 'PUT', { value: '@trattoria' }));
+    await call<Place>(
+      `/places/${open.id}/capabilities/social.instagram`,
+      as('user-x', 'PUT', { value: '@trattoria' }),
+    );
     const { body } = await call<Place>(
       `/places/${open.id}/capabilities/food.cuisine`,
       as('user-x', 'PUT', { value: ['pizza', 'italian', 'pizza'] }),
     );
-    const valueOf = (key: string) => body.capabilities.find((capability) => capability.key === key)?.value;
+    const valueOf = (key: string) =>
+      body.capabilities.find((capability) => capability.key === key)?.value;
     expect(valueOf('social.instagram')).toBe('https://www.instagram.com/trattoria');
     expect(valueOf('food.cuisine')).toEqual(['italian', 'pizza']);
   });
 
   it('filters by an enum-set member, an enum value and a price level, through the strongest assertion', async () => {
-    await call(`/places/${claimed.id}/capabilities/accessibility.wheelchair`, as('user-owner', 'PUT', { value: 'no' }));
-    await call(`/places/${claimed.id}/capabilities/accessibility.wheelchair`, as('user-x', 'PUT', { value: 'yes' }));
-    await call(`/places/${open.id}/capabilities/accessibility.wheelchair`, as('user-x', 'PUT', { value: 'limited' }));
+    await call(
+      `/places/${claimed.id}/capabilities/accessibility.wheelchair`,
+      as('user-owner', 'PUT', { value: 'no' }),
+    );
+    await call(
+      `/places/${claimed.id}/capabilities/accessibility.wheelchair`,
+      as('user-x', 'PUT', { value: 'yes' }),
+    );
+    await call(
+      `/places/${open.id}/capabilities/accessibility.wheelchair`,
+      as('user-x', 'PUT', { value: 'limited' }),
+    );
     await call(`/places/${open.id}/capabilities/price.level`, as('user-x', 'PUT', { value: 2 }));
 
     const ids = async (filter: string) =>
-      (await call<PlaceWithDistancePage>(`/places/nearby?${NEAR_RAVAL}&capabilities=${filter}`)).body.items.map(
-        (place) => place.id,
-      );
+      (
+        await call<PlaceWithDistancePage>(`/places/nearby?${NEAR_RAVAL}&capabilities=${filter}`)
+      ).body.items.map((place) => place.id);
 
     expect(await ids('food.cuisine:italian')).toEqual([open.id]);
     expect(await ids('food.cuisine:sushi')).toEqual([]);
@@ -259,7 +335,9 @@ describe('typed capabilities', () => {
     expect(await ids('accessibility.wheelchair:limited,price.level:2')).toEqual([open.id]);
     expect(await ids('accessibility.wheelchair:limited,price.level:3')).toEqual([]);
 
-    const refused = await call<ErrorBody>(`/places/nearby?${NEAR_RAVAL}&capabilities=amenities.wifi:maybe`);
+    const refused = await call<ErrorBody>(
+      `/places/nearby?${NEAR_RAVAL}&capabilities=amenities.wifi:maybe`,
+    );
     expect(refused.status).toBe(422);
   });
 
@@ -267,12 +345,22 @@ describe('typed capabilities', () => {
     const STORE = 'commerce.mercaria.store';
     // The business names location A; a passer-by says B beside it. The
     // business's statement is the place's — B is outranked, not matched.
-    await call(`/places/${claimed.id}/capabilities/${STORE}`, as('user-owner', 'PUT', { value: 'loc-a' }));
-    await call(`/places/${claimed.id}/capabilities/${STORE}`, as('user-x', 'PUT', { value: 'loc-b' }));
+    await call(
+      `/places/${claimed.id}/capabilities/${STORE}`,
+      as('user-owner', 'PUT', { value: 'loc-a' }),
+    );
+    await call(
+      `/places/${claimed.id}/capabilities/${STORE}`,
+      as('user-x', 'PUT', { value: 'loc-b' }),
+    );
     await call(`/places/${open.id}/capabilities/${STORE}`, as('user-x', 'PUT', { value: 'loc-b' }));
 
     const ids = async (filter: string) =>
-      (await call<PlaceWithDistancePage>(`/places/nearby?${NEAR_RAVAL}&capabilities=${encodeURIComponent(filter)}`)).body.items
+      (
+        await call<PlaceWithDistancePage>(
+          `/places/nearby?${NEAR_RAVAL}&capabilities=${encodeURIComponent(filter)}`,
+        )
+      ).body.items
         .map((place) => place.id)
         .sort();
 
@@ -283,12 +371,16 @@ describe('typed capabilities', () => {
     // A conjunction with another value filter, and the same rule in a viewport.
     expect(await ids(`${STORE}:loc-a,accessibility.wheelchair:no`)).toEqual([claimed.id]);
     const box = 'west=2.15&south=41.37&east=2.18&north=41.39';
-    const inBox = await call<PlaceWithDistancePage>(`/places/bounds?${box}&capabilities=${STORE}:loc-b`);
+    const inBox = await call<PlaceWithDistancePage>(
+      `/places/bounds?${box}&capabilities=${STORE}:loc-b`,
+    );
     expect(inBox.body.items.map((place) => place.id)).toEqual([open.id]);
 
     // A value the key's own schema refuses is refused as a filter too.
     for (const filter of ['brand.wikidata:not-a-qid', `${STORE}:`]) {
-      const refused = await call<ErrorBody>(`/places/nearby?${NEAR_RAVAL}&capabilities=${encodeURIComponent(filter)}`);
+      const refused = await call<ErrorBody>(
+        `/places/nearby?${NEAR_RAVAL}&capabilities=${encodeURIComponent(filter)}`,
+      );
       expect(refused.status).toBe(422);
     }
   });
@@ -314,13 +406,19 @@ describe('hours exceptions', () => {
       verification: 'community_reported',
     });
 
-    const business = await call<PlaceHoursException>(`/places/${claimed.id}/hours-exceptions`, as('user-owner', 'POST', CLOSURE));
+    const business = await call<PlaceHoursException>(
+      `/places/${claimed.id}/hours-exceptions`,
+      as('user-owner', 'POST', CLOSURE),
+    );
     expect(business.status).toBe(201);
     expect(business.body.verification).toBe('business_asserted');
   });
 
   it('refuses the same dates twice at one tier, naming the exception to rewrite', async () => {
-    const { status, body } = await call<ErrorBody>(`/places/${claimed.id}/hours-exceptions`, as('user-y', 'POST', CLOSURE));
+    const { status, body } = await call<ErrorBody>(
+      `/places/${claimed.id}/hours-exceptions`,
+      as('user-y', 'POST', CLOSURE),
+    );
     expect(status).toBe(409);
     expect(body.error.code).toBe('conflict');
     expect(typeof body.error.details?.exceptionId).toBe('string');
@@ -334,7 +432,11 @@ describe('hours exceptions', () => {
     expect(backwards.status).toBe(422);
     const contradictory = await call<ErrorBody>(
       `/places/${claimed.id}/hours-exceptions`,
-      as('user-x', 'POST', { startsOn: '2030-01-10', closed: true, intervals: [{ opens: '10:00', closes: '12:00' }] }),
+      as('user-x', 'POST', {
+        startsOn: '2030-01-10',
+        closed: true,
+        intervals: [{ opens: '10:00', closes: '12:00' }],
+      }),
     );
     expect(contradictory.status).toBe(422);
     const notADate = await call<ErrorBody>(
@@ -346,51 +448,97 @@ describe('hours exceptions', () => {
 
   it('lets each tier rewrite only its own exception', async () => {
     const list = await call<PlaceHoursExceptionPage>(`/places/${claimed.id}/hours-exceptions`);
-    const business = list.body.items.find((exception) => exception.verification === 'business_asserted')!;
-    const community = list.body.items.find((exception) => exception.verification === 'community_reported')!;
+    const business = list.body.items.find(
+      (exception) => exception.verification === 'business_asserted',
+    )!;
+    const community = list.body.items.find(
+      (exception) => exception.verification === 'community_reported',
+    )!;
 
     const intrusion = await call<ErrorBody>(
       `/places/${claimed.id}/hours-exceptions/${business.id}`,
-      as('user-x', 'PUT', { startsOn: '2030-12-25', closed: false, intervals: [{ opens: '10:00', closes: '14:00' }] }),
+      as('user-x', 'PUT', {
+        startsOn: '2030-12-25',
+        closed: false,
+        intervals: [{ opens: '10:00', closes: '14:00' }],
+      }),
     );
     expect(intrusion.status).toBe(403);
 
     const own = await call<PlaceHoursException>(
       `/places/${claimed.id}/hours-exceptions/${community.id}`,
-      as('user-y', 'PUT', { startsOn: '2030-12-25', closed: false, intervals: [{ opens: '10:00', closes: '14:00' }] }),
+      as('user-y', 'PUT', {
+        startsOn: '2030-12-25',
+        closed: false,
+        intervals: [{ opens: '10:00', closes: '14:00' }],
+      }),
     );
     expect(own.status).toBe(200);
-    expect(own.body).toMatchObject({ closed: false, intervals: [{ opens: '10:00', closes: '14:00' }] });
+    expect(own.body).toMatchObject({
+      closed: false,
+      intervals: [{ opens: '10:00', closes: '14:00' }],
+    });
     expect(own.body.note).toBeUndefined();
   });
 
   it('lets only the claimant withdraw, and only the business tier', async () => {
     const list = await call<PlaceHoursExceptionPage>(`/places/${claimed.id}/hours-exceptions`);
-    const business = list.body.items.find((exception) => exception.verification === 'business_asserted')!;
-    const community = list.body.items.find((exception) => exception.verification === 'community_reported')!;
+    const business = list.body.items.find(
+      (exception) => exception.verification === 'business_asserted',
+    )!;
+    const community = list.body.items.find(
+      (exception) => exception.verification === 'community_reported',
+    )!;
 
-    expect((await call(`/places/${claimed.id}/hours-exceptions/${community.id}`, as('user-x', 'DELETE'))).status).toBe(403);
-    expect((await call(`/places/${claimed.id}/hours-exceptions/${community.id}`, as('user-owner', 'DELETE'))).status).toBe(
-      404,
-    );
-    expect((await call(`/places/${claimed.id}/hours-exceptions/${business.id}`, as('user-owner', 'DELETE'))).status).toBe(
-      204,
-    );
+    expect(
+      (await call(`/places/${claimed.id}/hours-exceptions/${community.id}`, as('user-x', 'DELETE')))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await call(
+          `/places/${claimed.id}/hours-exceptions/${community.id}`,
+          as('user-owner', 'DELETE'),
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await call(
+          `/places/${claimed.id}/hours-exceptions/${business.id}`,
+          as('user-owner', 'DELETE'),
+        )
+      ).status,
+    ).toBe(204);
   });
 
   it('pages the full list and embeds the current ones in the place', async () => {
     for (const startsOn of ['2031-01-01', '2031-02-01', '2031-03-01']) {
-      await call(`/places/${open.id}/hours-exceptions`, as('user-x', 'POST', { startsOn, closed: true }));
+      await call(
+        `/places/${open.id}/hours-exceptions`,
+        as('user-x', 'POST', { startsOn, closed: true }),
+      );
     }
     // One that ended long ago: listed, never embedded.
-    await call(`/places/${open.id}/hours-exceptions`, as('user-x', 'POST', { startsOn: '2020-01-01', closed: true }));
+    await call(
+      `/places/${open.id}/hours-exceptions`,
+      as('user-x', 'POST', { startsOn: '2020-01-01', closed: true }),
+    );
 
-    const first = await call<PlaceHoursExceptionPage>(`/places/${open.id}/hours-exceptions?limit=2`);
-    expect(first.body.items.map((exception) => exception.startsOn)).toEqual(['2020-01-01', '2031-01-01']);
+    const first = await call<PlaceHoursExceptionPage>(
+      `/places/${open.id}/hours-exceptions?limit=2`,
+    );
+    expect(first.body.items.map((exception) => exception.startsOn)).toEqual([
+      '2020-01-01',
+      '2031-01-01',
+    ]);
     const second = await call<PlaceHoursExceptionPage>(
       `/places/${open.id}/hours-exceptions?limit=2&cursor=${first.body.nextCursor}`,
     );
-    expect(second.body.items.map((exception) => exception.startsOn)).toEqual(['2031-02-01', '2031-03-01']);
+    expect(second.body.items.map((exception) => exception.startsOn)).toEqual([
+      '2031-02-01',
+      '2031-03-01',
+    ]);
     expect(second.body.nextCursor).toBeNull();
 
     const place = await call<Place>(`/places/${open.id}`);

@@ -94,7 +94,11 @@ export const STREET3D_JOB_STATES = [
 export type Street3dJobState = (typeof STREET3D_JOB_STATES)[number];
 
 /** States in which a job is finished and accepts no further event. */
-export const STREET3D_TERMINAL_JOB_STATES = ['completed', 'failed', 'cancelled'] as const satisfies readonly Street3dJobState[];
+export const STREET3D_TERMINAL_JOB_STATES = [
+  'completed',
+  'failed',
+  'cancelled',
+] as const satisfies readonly Street3dJobState[];
 
 /** States in which the external worker holds the job and must heartbeat. */
 export const STREET3D_RUNNING_JOB_STATES = [

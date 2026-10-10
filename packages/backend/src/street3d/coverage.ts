@@ -91,7 +91,10 @@ export async function refreshCoverage(
     const sceneId = assignment.get(frame.assetId);
     if (sceneId) facts.scenes.add(sceneId);
     if (frame.expiresAt < facts.earliestExpiry) facts.earliestExpiry = frame.expiresAt;
-    if (frame.privacyCompletedAt && (!facts.latestContribution || frame.privacyCompletedAt > facts.latestContribution)) {
+    if (
+      frame.privacyCompletedAt &&
+      (!facts.latestContribution || frame.privacyCompletedAt > facts.latestContribution)
+    ) {
       facts.latestContribution = frame.privacyCompletedAt;
     }
     facts.derivativeIds.push(frame.derivativeId);
@@ -107,17 +110,29 @@ export async function refreshCoverage(
     ? await deps.db
         .select({ sceneId: street3dJobs.sceneId, startedAt: street3dJobs.startedAt })
         .from(street3dJobs)
-        .where(and(inArray(street3dJobs.sceneId, sceneIds), sql`${street3dJobs.state} not in ('completed', 'failed', 'cancelled')`))
+        .where(
+          and(
+            inArray(street3dJobs.sceneId, sceneIds),
+            sql`${street3dJobs.state} not in ('completed', 'failed', 'cancelled')`,
+          ),
+        )
     : [];
   const openBySceneId = new Map(openJobs.map((job) => [job.sceneId as string, job]));
-  const currentVersions = scenes.flatMap((scene) => (scene.currentVersionId ? [scene.currentVersionId] : []));
+  const currentVersions = scenes.flatMap((scene) =>
+    scene.currentVersionId ? [scene.currentVersionId] : [],
+  );
   const integrated = new Set(
     currentVersions.length
       ? (
           await deps.db
             .select({ assetId: street3dSceneInputs.captureAssetId })
             .from(street3dSceneInputs)
-            .where(and(inArray(street3dSceneInputs.versionId, currentVersions), eq(street3dSceneInputs.registered, true)))
+            .where(
+              and(
+                inArray(street3dSceneInputs.versionId, currentVersions),
+                eq(street3dSceneInputs.registered, true),
+              ),
+            )
         ).map((row) => row.assetId)
       : [],
   );
@@ -130,7 +145,10 @@ export async function refreshCoverage(
 
   const atRiskBefore = new Date(deps.now.getTime() + deps.config.atRiskWindowDays * 86_400_000);
   const existing = cells.size
-    ? await deps.db.select().from(street3dCoverageAreas).where(inArray(street3dCoverageAreas.cell, [...cells.keys()]))
+    ? await deps.db
+        .select()
+        .from(street3dCoverageAreas)
+        .where(inArray(street3dCoverageAreas.cell, [...cells.keys()]))
     : [];
   const previous = new Map(existing.map((row) => [row.cell, row]));
 
@@ -139,8 +157,12 @@ export async function refreshCoverage(
   const kept: string[] = [];
 
   for (const [cell, facts] of cells) {
-    const cellScenes = [...facts.scenes].flatMap((id) => (sceneById.has(id) ? [sceneById.get(id)!] : []));
-    const published = cellScenes.find((scene) => scene.currentVersionId !== null && scene.state !== 'disabled');
+    const cellScenes = [...facts.scenes].flatMap((id) =>
+      sceneById.has(id) ? [sceneById.get(id)!] : [],
+    );
+    const published = cellScenes.find(
+      (scene) => scene.currentVersionId !== null && scene.state !== 'disabled',
+    );
     const allIntegrated = [...facts.assets].every((assetId) => integrated.has(assetId));
 
     let state: StreetCoverageAreaState;
@@ -149,10 +171,17 @@ export async function refreshCoverage(
     if (running) state = 'reconstructing';
     else if (queued) state = 'reconstructable';
     else if (published && allIntegrated) continue;
-    else if (cellScenes.some((scene) => scene.state === 'needs_more_capture')) state = 'needs_more_capture';
+    else if (cellScenes.some((scene) => scene.state === 'needs_more_capture'))
+      state = 'needs_more_capture';
     else if (cellScenes.length > 0) {
-      const reconstructable = cellScenes.some((scene) => isReconstructable(framesByScene.get(scene.id) ?? [], deps.config));
-      state = reconstructable ? 'reconstructable' : !published && facts.earliestExpiry < atRiskBefore ? 'at_risk' : 'partial';
+      const reconstructable = cellScenes.some((scene) =>
+        isReconstructable(framesByScene.get(scene.id) ?? [], deps.config),
+      );
+      state = reconstructable
+        ? 'reconstructable'
+        : !published && facts.earliestExpiry < atRiskBefore
+          ? 'at_risk'
+          : 'partial';
     } else state = 'seeded';
 
     const { center, bounds } = decodeGeohash(cell);
@@ -179,7 +208,8 @@ export async function refreshCoverage(
     const newContribution =
       before !== undefined &&
       facts.latestContribution !== null &&
-      (before.latestContributionAt === null || facts.latestContribution > before.latestContributionAt) &&
+      (before.latestContributionAt === null ||
+        facts.latestContribution > before.latestContributionAt) &&
       (before.lastRescueAt === null || facts.latestContribution > before.lastRescueAt);
     if ((before?.state === 'at_risk' || state === 'at_risk') && newContribution && !published) {
       const extended = await rescueDerivatives(deps, facts.derivativeIds, atRiskBefore);
@@ -204,7 +234,11 @@ export async function refreshCoverage(
 }
 
 /** One bounded extension of the derivatives that would otherwise expire inside the window. */
-async function rescueDerivatives(deps: CoverageDeps, derivativeIds: readonly string[], before: Date): Promise<number> {
+async function rescueDerivatives(
+  deps: CoverageDeps,
+  derivativeIds: readonly string[],
+  before: Date,
+): Promise<number> {
   if (derivativeIds.length === 0) return 0;
   // Hours, not days: `+ interval 'N days'` follows the session time zone's
   // daylight-saving shifts, and an extension is an exact duration. The ceiling

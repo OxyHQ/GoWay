@@ -29,7 +29,13 @@ import { sceneUp } from '@/lib/street3d/geodesy';
 import { planSceneAssets } from './assets';
 import { assessDevice, type DeviceSignals } from './deviceProfile';
 import type { SceneEngine } from './engine/sparkEngine';
-import type { SceneViewerLabel, SceneViewerPhase, SceneViewerProps, SceneViewerStats, Vec3 } from './types';
+import type {
+  SceneViewerLabel,
+  SceneViewerPhase,
+  SceneViewerProps,
+  SceneViewerStats,
+  Vec3,
+} from './types';
 
 interface NavigatorSignals {
   deviceMemory?: number;
@@ -104,6 +110,7 @@ function SceneViewerComponent({
     latest.current = { labels: visibleLabels, controlMode };
   });
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the engine is rebuilt per scene VERSION, never per render
   useEffect(() => {
     const host = hostRef.current as unknown as HTMLElement | null;
     const canvas = canvasRef.current;
@@ -140,7 +147,10 @@ function SceneViewerComponent({
           canvas,
           keyTarget: host,
           plan,
-          initialView: { position: manifest.initialView.position, target: manifest.initialView.target },
+          initialView: {
+            position: manifest.initialView.position,
+            target: manifest.initialView.target,
+          },
           up,
           pixelRatio: device.pixelRatio,
           tier: device.tier,
@@ -169,8 +179,7 @@ function SceneViewerComponent({
               element.style.pointerEvents = 'auto';
               element.style.width = `${(at.radius * 2).toFixed(1)}px`;
               element.style.height = `${(at.radius * 2).toFixed(1)}px`;
-              element.style.transform =
-                `translate(${(at.x - at.radius).toFixed(1)}px, ${(at.y - at.radius).toFixed(1)}px) scaleY(${at.squash.toFixed(3)})`;
+              element.style.transform = `translate(${(at.x - at.radius).toFixed(1)}px, ${(at.y - at.radius).toFixed(1)}px) scaleY(${at.squash.toFixed(3)})`;
             }
           },
           onLabels: (positions) => {
@@ -207,7 +216,6 @@ function SceneViewerComponent({
       engineRef.current = null;
     };
     // The engine is rebuilt per scene VERSION, never per render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manifest.id, manifest.version]);
 
   useEffect(() => {
@@ -250,7 +258,14 @@ function SceneViewerComponent({
     >
       <canvas
         ref={canvasRef}
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', outline: 'none' }}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          touchAction: 'none',
+          outline: 'none',
+        }}
       />
       {hasNavigation ? <EdgeShade sideMask={sideMask} /> : null}
       {guided
@@ -265,13 +280,25 @@ function SceneViewerComponent({
             />
           ))
         : null}
-      <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+      <View
+        pointerEvents="box-none"
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+      >
         {visibleLabels.map((label) => (
-          <SceneLabel key={label.id} label={label} register={registerLabel} onPress={onLabelPress} />
+          <SceneLabel
+            key={label.id}
+            label={label}
+            register={registerLabel}
+            onPress={onLabelPress}
+          />
         ))}
       </View>
       {guided ? (
-        <View pointerEvents="box-none" className="absolute left-0 right-0 items-center gap-space-8" style={{ bottom: 72 }}>
+        <View
+          pointerEvents="box-none"
+          className="absolute left-0 right-0 items-center gap-space-8"
+          style={{ bottom: 72 }}
+        >
           <Fab
             size="sm"
             icon={RiArrowUpLine}
@@ -355,7 +382,10 @@ const SceneLabel = memo(function SceneLabel({
   register: (id: string, element: HTMLElement | null) => void;
   onPress?: (id: string) => void;
 }) {
-  const ref = useCallback((node: View | null) => register(label.id, node as unknown as HTMLElement | null), [label.id, register]);
+  const ref = useCallback(
+    (node: View | null) => register(label.id, node as unknown as HTMLElement | null),
+    [label.id, register],
+  );
   return (
     <Pressable
       ref={ref}
@@ -376,7 +406,11 @@ function StatsOverlay({ stats }: { stats: SceneViewerStats }) {
   const kb = Math.round(stats.bytes / 1024);
   return (
     // Below the screen's top chrome, which owns the corners.
-    <View pointerEvents="none" className="absolute rounded-radius-8 bg-card px-space-8 py-space-4" style={{ top: 64, left: 16 }}>
+    <View
+      pointerEvents="none"
+      className="absolute rounded-radius-8 bg-card px-space-8 py-space-4"
+      style={{ top: 64, left: 16 }}
+    >
       <Text className="text-caption text-muted-foreground">
         {`${stats.fps} fps · ${kb} KB · dpr ${stats.pixelRatio} · ${stats.tier}`}
       </Text>

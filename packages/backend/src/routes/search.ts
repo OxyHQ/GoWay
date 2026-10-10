@@ -43,7 +43,13 @@
  * `Cache-Control: no-store` so it is not parked in a shared proxy either.
  */
 
-import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from 'express';
 import { z } from 'zod';
 import {
   reverseGeocodeQuerySchema,
@@ -65,12 +71,22 @@ import {
   type SearchWindow,
 } from '../search/searchService';
 import { ApiError } from '../http/apiError';
-import { cursorBinding, decodeCursor, encodeCursor, type CursorBinding, type CursorKind } from '../http/cursor';
+import {
+  cursorBinding,
+  decodeCursor,
+  encodeCursor,
+  type CursorBinding,
+  type CursorKind,
+} from '../http/cursor';
 import { parseQuery } from '../http/validation';
 import { createLogger } from '../utils/logger';
 
 /** A search page resumes after this many results. */
-const offsetSchema = z.number().int().min(1).max(SEARCH_MAX_DEPTH - 1);
+const offsetSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(SEARCH_MAX_DEPTH - 1);
 
 /** Forward a rejected handler to the error middleware. */
 function route(handler: (request: Request, response: Response) => Promise<void>): RequestHandler {
@@ -115,7 +131,10 @@ export interface SearchRouterDependencies {
   categories?: () => Promise<CategoryCatalog>;
 }
 
-function defaultService(config: SearchConfig, categories: () => Promise<CategoryCatalog>): SearchService {
+function defaultService(
+  config: SearchConfig,
+  categories: () => Promise<CategoryCatalog>,
+): SearchService {
   return createSearchService({
     providers: createProviders({ config }),
     categories,
@@ -151,16 +170,23 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
     binding: CursorBinding,
   ): { limit: number; offset: number } => {
     if (request.limit !== undefined && request.limit > config.maxLimit) {
-      throw new ApiError('validation_failed', `limit may not exceed ${config.maxLimit} on this deployment.`, {
-        field: 'limit',
-        issue: 'too_big',
-        maximum: config.maxLimit,
-      });
+      throw new ApiError(
+        'validation_failed',
+        `limit may not exceed ${config.maxLimit} on this deployment.`,
+        {
+          field: 'limit',
+          issue: 'too_big',
+          maximum: config.maxLimit,
+        },
+      );
     }
     const offset = decodeCursor(request.cursor, binding, offsetSchema) ?? 0;
     // Never past the depth: the last page is cut short rather than the cursor
     // that would reach beyond it ever being minted.
-    return { offset, limit: Math.min(request.limit ?? config.defaultLimit, SEARCH_MAX_DEPTH - offset) };
+    return {
+      offset,
+      limit: Math.min(request.limit ?? config.defaultLimit, SEARCH_MAX_DEPTH - offset),
+    };
   };
 
   /**
@@ -180,7 +206,10 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
     const end = served.offset + window.results.length;
     const body: SearchResults = {
       items: window.results,
-      nextCursor: window.hasMore && end > served.offset && end < SEARCH_MAX_DEPTH ? encodeCursor(binding, end) : null,
+      nextCursor:
+        window.hasMore && end > served.offset && end < SEARCH_MAX_DEPTH
+          ? encodeCursor(binding, end)
+          : null,
       providers: window.providers,
       ...(window.degradedProviders ? { degradedProviders: window.degradedProviders } : {}),
     };
@@ -200,7 +229,10 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
     if (input.categories) assertCategoryFilter(await categories(), input.categories, 'categories');
     const { cursor, limit, ...filters } = input;
     const binding = cursorBinding(kind, filters);
-    const resolved: ResolvedSearchQuery = { query: input.q, ...windowOf({ limit, cursor }, binding) };
+    const resolved: ResolvedSearchQuery = {
+      query: input.q,
+      ...windowOf({ limit, cursor }, binding),
+    };
     if (input.latitude !== undefined && input.longitude !== undefined) {
       resolved.near = { latitude: input.latitude, longitude: input.longitude };
     }
@@ -210,7 +242,12 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
       input.east !== undefined &&
       input.north !== undefined
     ) {
-      resolved.viewport = { west: input.west, south: input.south, east: input.east, north: input.north };
+      resolved.viewport = {
+        west: input.west,
+        south: input.south,
+        east: input.east,
+        north: input.north,
+      };
     }
     if (input.capabilities) resolved.capabilities = input.capabilities;
     if (input.categories) resolved.categories = input.categories;
@@ -230,7 +267,10 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
     '/search',
     dependencies.optionalAuth,
     route(async (request, response) => {
-      const { query, binding } = await resolveSearchQuery('search', parseQuery(searchParametersSchema, request.query));
+      const { query, binding } = await resolveSearchQuery(
+        'search',
+        parseQuery(searchParametersSchema, request.query),
+      );
       const window = await service.search(query, {
         gateway: gatewayFor(request),
         signal: callerSignal(request, response),
@@ -301,7 +341,10 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
     '/geocode',
     dependencies.optionalAuth,
     route(async (request, response) => {
-      const { query, binding } = await resolveSearchQuery('geocode', parseQuery(searchParametersSchema, request.query));
+      const { query, binding } = await resolveSearchQuery(
+        'geocode',
+        parseQuery(searchParametersSchema, request.query),
+      );
       const window = await service.forward(query, {
         gateway: gatewayFor(request),
         signal: callerSignal(request, response),

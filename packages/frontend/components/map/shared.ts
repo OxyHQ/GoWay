@@ -48,7 +48,9 @@ export function toBoundsArray(bounds: GeoBounds): LngLatBoundsArray {
 }
 
 /** Every interaction is on unless a caller turns it off. */
-export function resolveInteraction(options?: MapInteractionOptions): Required<MapInteractionOptions> {
+export function resolveInteraction(
+  options?: MapInteractionOptions,
+): Required<MapInteractionOptions> {
   return {
     pan: options?.pan ?? true,
     zoom: options?.zoom ?? true,
@@ -180,7 +182,10 @@ export function resolvePadding(
     !Number.isFinite(raw.bottom) ||
     !Number.isFinite(raw.left)
   ) {
-    reportMapDefect('padding:non-finite', `Refusing a fit: padding is not finite (${describeNumbers(raw)}).`);
+    reportMapDefect(
+      'padding:non-finite',
+      `Refusing a fit: padding is not finite (${describeNumbers(raw)}).`,
+    );
     return null;
   }
 

@@ -23,7 +23,11 @@ describe('geodeticToEcef', () => {
   });
 
   test('the north pole is one semi-minor axis up on Z', () => {
-    close(geodeticToEcef({ latitude: 90, longitude: 0, altitudeMeters: 0 }), [0, 0, WGS84_A * (1 - WGS84_F)], 3);
+    close(
+      geodeticToEcef({ latitude: 90, longitude: 0, altitudeMeters: 0 }),
+      [0, 0, WGS84_A * (1 - WGS84_F)],
+      3,
+    );
   });
 
   test('altitude is added along the ellipsoid normal', () => {

@@ -14,27 +14,41 @@
 export const STREET3D_EN: Record<string, string> = {
   // Capture guide
   'contribute.guide.title': 'How to capture a street',
-  'contribute.guide.why': 'A street becomes a good 3D view when it is seen from many positions and directions. Several people capturing the same street on different days is better than one perfect pass.',
+  'contribute.guide.why':
+    'A street becomes a good 3D view when it is seen from many positions and directions. Several people capturing the same street on different days is better than one perfect pass.',
   'contribute.guide.phone.title': 'With your phone (works today)',
-  'contribute.guide.phone.landscape': 'Record 4K video in landscape. Before you start, lock exposure and focus (long-press on the screen in your camera app) so brightness does not change while you walk.',
-  'contribute.guide.phone.slow': 'Walk slowly, about 1 m per second, keep the phone steady and at least 1–2 m from walls. Sharp frames matter more than long videos.',
-  'contribute.guide.phone.sides': 'Point the phone at the façades, not only ahead: walk each pavement with the phone turned towards the buildings, then once more looking along the street. 2–3 minutes per stretch, ending where you started.',
-  'contribute.guide.phone.people': 'Prefer quieter times. Faces and number plates are blurred automatically, and people and vehicles are left out of the 3D view.',
+  'contribute.guide.phone.landscape':
+    'Record 4K video in landscape. Before you start, lock exposure and focus (long-press on the screen in your camera app) so brightness does not change while you walk.',
+  'contribute.guide.phone.slow':
+    'Walk slowly, about 1 m per second, keep the phone steady and at least 1–2 m from walls. Sharp frames matter more than long videos.',
+  'contribute.guide.phone.sides':
+    'Point the phone at the façades, not only ahead: walk each pavement with the phone turned towards the buildings, then once more looking along the street. 2–3 minutes per stretch, ending where you started.',
+  'contribute.guide.phone.people':
+    'Prefer quieter times. Faces and number plates are blurred automatically, and people and vehicles are left out of the 3D view.',
   'contribute.guide.camera.title': 'With a 360° camera (recommended for mapping)',
-  'contribute.guide.camera.upload': 'Choose photo or video accepts 360° photos and videos exported as a full panorama, twice as wide as it is high.',
-  'contribute.guide.camera.recommendation': 'An affordable option is a GoPro MAX (first generation, often available second-hand): it records 360° photos with built-in GPS. A 360° camera sees both sides of the street at once, which makes much better 3D views.',
+  'contribute.guide.camera.upload':
+    'Choose photo or video accepts 360° photos and videos exported as a full panorama, twice as wide as it is high.',
+  'contribute.guide.camera.recommendation':
+    'An affordable option is a GoPro MAX (first generation, often available second-hand): it records 360° photos with built-in GPS. A 360° camera sees both sides of the street at once, which makes much better 3D views.',
   'contribute.guide.camera.mount': 'Mount it on a pole or helmet about 30–50 cm above your head.',
-  'contribute.guide.camera.interval': 'Use interval photo mode, one photo every 1–2 metres, with GPS on.',
-  'contribute.guide.camera.walk': 'Walk at 3–4 km/h along both pavements; bright, overcast days work best.',
-  'contribute.guide.camera.repeat': 'Coming back on another day helps: new captures are combined with earlier ones automatically.',
-  'contribute.guide.camera.export': "Export from the camera's app as an equirectangular (2:1) photo or MP4 with its 360° metadata. Raw dual-lens files cannot be read yet.",
-  'contribute.guide.privacy': 'Only capture public streets from public places. Do not film into homes or private spaces.',
+  'contribute.guide.camera.interval':
+    'Use interval photo mode, one photo every 1–2 metres, with GPS on.',
+  'contribute.guide.camera.walk':
+    'Walk at 3–4 km/h along both pavements; bright, overcast days work best.',
+  'contribute.guide.camera.repeat':
+    'Coming back on another day helps: new captures are combined with earlier ones automatically.',
+  'contribute.guide.camera.export':
+    "Export from the camera's app as an equirectangular (2:1) photo or MP4 with its 360° metadata. Raw dual-lens files cannot be read yet.",
+  'contribute.guide.privacy':
+    'Only capture public streets from public places. Do not film into homes or private spaces.',
   // Guided capture
   'contribute.guided.button': 'Guided capture',
   'contribute.guided.title': 'Guided street capture',
-  'contribute.guided.intro': 'Walk a loop of the street while GoWay coaches you. Hold the phone in landscape at chest height, point it at the buildings and walk slowly.',
+  'contribute.guided.intro':
+    'Walk a loop of the street while GoWay coaches you. Hold the phone in landscape at chest height, point it at the buildings and walk slowly.',
   'contribute.guided.format': 'Records {resolution} video without sound, up to {minutes} min.',
-  'contribute.guided.locationHint': 'When you start, GoWay asks for your location once to place this recording. Your route is not tracked.',
+  'contribute.guided.locationHint':
+    'When you start, GoWay asks for your location once to place this recording. Your route is not tracked.',
   'contribute.guided.preparing': 'Starting the camera…',
   'contribute.guided.start': 'Start recording',
   'contribute.guided.next': 'Next step',
@@ -52,23 +66,32 @@ export const STREET3D_EN: Record<string, string> = {
   'contribute.guided.pace.long': 'This stretch {time} · move on at the end of the street',
   'contribute.guided.pace.finish': 'Stop recording when you are back where you started.',
   'contribute.guided.warn.blur': 'Too fast / blurry — slow down',
-  'contribute.guided.warn.exposure': 'Brightness jumped — keep the camera on the buildings, away from the sky',
+  'contribute.guided.warn.exposure':
+    'Brightness jumped — keep the camera on the buildings, away from the sky',
   'contribute.guided.warn.dark': 'Too dark for a good 3D view',
   'contribute.guided.warn.portrait': 'Turn the phone sideways to record in landscape',
   'contribute.guided.lock.exposure': 'Exposure locked',
-  'contribute.guided.lock.noExposure': "This device can't lock exposure. Avoid pointing at the sky.",
+  'contribute.guided.lock.noExposure':
+    "This device can't lock exposure. Avoid pointing at the sky.",
   'contribute.guided.lock.focus': 'Focus locked',
   'contribute.guided.lock.noFocus': "This device can't lock focus.",
-  'contribute.guided.noLiveChecks': "Live sharpness checks aren't available on this device. Walk slowly and keep the phone steady.",
-  'contribute.guided.error.permission': 'Guided capture needs the camera. You can allow it in your settings, or use Record video.',
-  'contribute.guided.error.format': "This browser can't record video in a format GoWay accepts. Use Record video or choose a video instead.",
-  'contribute.guided.error.camera': "The camera couldn't start. Use Record video or choose a video instead.",
+  'contribute.guided.noLiveChecks':
+    "Live sharpness checks aren't available on this device. Walk slowly and keep the phone steady.",
+  'contribute.guided.error.permission':
+    'Guided capture needs the camera. You can allow it in your settings, or use Record video.',
+  'contribute.guided.error.format':
+    "This browser can't record video in a format GoWay accepts. Use Record video or choose a video instead.",
+  'contribute.guided.error.camera':
+    "The camera couldn't start. Use Record video or choose a video instead.",
   'contribute.guided.error.recording': 'The recording failed. Please try again.',
-  'contribute.guided.limitReached': 'Recording stopped at the upload limit. Contribute this part, then start another guided capture for the rest of the street.',
+  'contribute.guided.limitReached':
+    'Recording stopped at the upload limit. Contribute this part, then start another guided capture for the rest of the street.',
   'contribute.guided.summary': 'Recorded {time}.',
-  'contribute.guided.summaryBlur': 'Recorded {time}. About {percent}% looked blurry; walking more slowly next time gives a better 3D view.',
+  'contribute.guided.summaryBlur':
+    'Recorded {time}. About {percent}% looked blurry; walking more slowly next time gives a better 3D view.',
   'contribute.guided.summarySharp': 'Recorded {time}. It looked sharp throughout.',
-  'contribute.guided.tooLarge': 'This recording is over the upload limit of {megabytes} MB or {minutes} min. Record a shorter stretch, one pavement at a time.',
+  'contribute.guided.tooLarge':
+    'This recording is over the upload limit of {megabytes} MB or {minutes} min. Record a shorter stretch, one pavement at a time.',
   // Map layer
   'street3d.layer.open': 'Open Street 3D view',
   'street3d.layer.approximate': 'approximate placement',
@@ -88,8 +111,10 @@ export const STREET3D_EN: Record<string, string> = {
   'street3d.viewer.observedSame': 'Imagery from {date}',
   'street3d.viewer.controls.orbit': 'Orbit',
   'street3d.viewer.controls.walk': 'Walk',
-  'street3d.viewer.controls.hint': 'Drag to look · WASD or arrows to move · scroll or pinch to zoom',
-  'street3d.viewer.controls.hintGuided': 'Drag to look · W/S, arrows or click ahead to walk · A/D to turn',
+  'street3d.viewer.controls.hint':
+    'Drag to look · WASD or arrows to move · scroll or pinch to zoom',
+  'street3d.viewer.controls.hintGuided':
+    'Drag to look · W/S, arrows or click ahead to walk · A/D to turn',
   'street3d.viewer.stepForward': 'Step forward',
   'street3d.viewer.stepBack': 'Step back',
   'street3d.viewer.stepHere': 'Go here',
@@ -131,7 +156,8 @@ export const STREET3D_EN: Record<string, string> = {
   'contribute.status.accepted.title': 'Privacy check passed',
   'contribute.status.accepted.body': 'Waiting to be matched with nearby views.',
   'contribute.status.rejected.title': 'Not usable',
-  'contribute.status.rejected.body': "This file couldn't be used, so it won't be part of a 3D view.",
+  'contribute.status.rejected.body':
+    "This file couldn't be used, so it won't be part of a 3D view.",
   'contribute.status.waitingForOverlap.title': 'Waiting for complementary views',
   'contribute.status.waitingForOverlap.body':
     'A 3D view needs several overlapping photos of the same spot from different angles. Yours is kept until it expires in case others arrive.',
@@ -151,11 +177,13 @@ export const STREET3D_EN: Record<string, string> = {
   'contribute.status.expires': 'Temporary source expected to expire around {date}.',
   'contribute.status.protected': 'Kept until {date} because it may help complete a 3D view nearby.',
   'contribute.status.atRisk': 'Area at risk — more photos here could complete it.',
-  'contribute.status.atRiskUntil': 'Area at risk — more photos here before {date} could complete it.',
+  'contribute.status.atRiskUntil':
+    'Area at risk — more photos here before {date} could complete it.',
   // Contribute screen
   'contribute.back': 'Back to map',
   'contribute.title': 'Contribute to Street 3D',
-  'contribute.intro': 'Help build a community 3D view with ordinary photos and videos. Complementary viewpoints are more useful than repeated copies.',
+  'contribute.intro':
+    'Help build a community 3D view with ordinary photos and videos. Complementary viewpoints are more useful than repeated copies.',
   'contribute.signIn': 'Sign in to contribute',
   'contribute.loadingPolicy': 'Loading contribution policy',
   'contribute.disabled': 'Contributions are not enabled here yet. You can keep using the map.',
@@ -166,15 +194,20 @@ export const STREET3D_EN: Record<string, string> = {
   'contribute.selectedVideo': 'Selected video',
   'contribute.selectedPhoto': 'Selected photo',
   'contribute.projection.label': 'This is a 360° photo or video',
-  'contribute.projection.hint': 'GoWay checks the file’s own 360° information, cuts it into eight views and blurs faces and number plates in every one. The area below the camera, where you and the mount appear, is always removed.',
+  'contribute.projection.hint':
+    'GoWay checks the file’s own 360° information, cuts it into eight views and blurs faces and number plates in every one. The area below the camera, where you and the mount appear, is always removed.',
   'contribute.where': 'Where was this captured?',
   'contribute.locationSelected': 'Location selected. Tap the map to correct it.',
-  'contribute.locationPrompt': 'Select the capture location on the map. We never infer it from your history.',
+  'contribute.locationPrompt':
+    'Select the capture location on the map. We never infer it from your history.',
   'contribute.locationMarker': 'Capture location',
   'contribute.useMyLocation': 'Use my current location',
-  'contribute.retention': 'Original photos are kept for up to about {photoDays} days and original videos for up to about {videoDays} days, often less. Not every contribution becomes a scene.',
-  'contribute.use': 'GoWay may create privacy-processed images, features and 3D assets. Your account is linked to your contribution for consent and removal. Published non-personal geometry may remain after originals expire. We do not capture in the background.',
-  'contribute.consent': 'I have the right to share this media and agree to its use for community 3D reconstruction.',
+  'contribute.retention':
+    'Original photos are kept for up to about {photoDays} days and original videos for up to about {videoDays} days, often less. Not every contribution becomes a scene.',
+  'contribute.use':
+    'GoWay may create privacy-processed images, features and 3D assets. Your account is linked to your contribution for consent and removal. Published non-personal geometry may remain after originals expire. We do not capture in the background.',
+  'contribute.consent':
+    'I have the right to share this media and agree to its use for community 3D reconstruction.',
   'contribute.submit': 'Contribute',
   'contribute.retry': 'Retry contribution',
   'contribute.cancelUpload': 'Cancel upload',
@@ -184,52 +217,75 @@ export const STREET3D_EN: Record<string, string> = {
   'contribute.progress.checking': 'Checking the selected file…',
   'contribute.progress.uploading': 'Uploading directly to secure storage…',
   'contribute.progress.confirming': 'Confirming the upload…',
-  'contribute.progress.received': 'Contribution received. Privacy processing must finish before reconstruction.',
-  'contribute.error.unavailable': 'Contribution is temporarily unavailable. Please try again later.',
+  'contribute.progress.received':
+    'Contribution received. Privacy processing must finish before reconstruction.',
+  'contribute.error.unavailable':
+    'Contribution is temporarily unavailable. Please try again later.',
   'contribute.error.loadContributions': 'Could not load your contributions.',
   'contribute.error.refresh': 'Could not refresh contributions.',
   'contribute.error.loadContribution': 'Could not load this contribution.',
-  'contribute.error.cameraPermission': 'Camera permission is needed only to take this contribution.',
+  'contribute.error.cameraPermission':
+    'Camera permission is needed only to take this contribution.',
   'contribute.error.select': 'The media could not be selected.',
-  'contribute.error.location': 'Your location is unavailable. You can still select the capture location on the map.',
-  'contribute.error.cancelled': 'Upload cancelled. You can retry or withdraw the pending contribution below.',
+  'contribute.error.location':
+    'Your location is unavailable. You can still select the capture location on the map.',
+  'contribute.error.cancelled':
+    'Upload cancelled. You can retry or withdraw the pending contribution below.',
   'contribute.error.failed': 'The contribution could not finish. Retry to resume the same upload.',
   'contribute.error.withdraw': 'The contribution could not be withdrawn. Please try again.',
-  'contribute.error.withdrawnNotRefreshed': 'The contribution was withdrawn, but could not be refreshed.',
+  'contribute.error.withdrawnNotRefreshed':
+    'The contribution was withdrawn, but could not be refreshed.',
   'contribute.error.format': 'This media format is not supported.',
   'contribute.error.size': 'This file exceeds the current upload size limit.',
   'contribute.error.duration': 'This video exceeds the current duration limit.',
   'contribute.error.unreadable': 'The selected file could not be read.',
   'contribute.error.unavailableFile': 'The selected file is no longer available.',
   'contribute.error.upload': 'The upload failed. You can retry this contribution.',
-  'contribute.error.projection': 'Only a full 360° panorama, twice as wide as it is high, can be sent as 360°.',
-  'contribute.error.resolution': 'This 360° file has a higher resolution than GoWay accepts. Export it at a lower resolution.',
+  'contribute.error.projection':
+    'Only a full 360° panorama, twice as wide as it is high, can be sent as 360°.',
+  'contribute.error.resolution':
+    'This 360° file has a higher resolution than GoWay accepts. Export it at a lower resolution.',
 };
 
 export const STREET3D_ES: Record<string, string> = {
   // Capture guide
   'contribute.guide.title': 'Cómo capturar una calle',
-  'contribute.guide.why': 'Una calle se convierte en una buena vista 3D cuando se ve desde muchas posiciones y direcciones. Varias personas capturando la misma calle en días distintos es mejor que una sola pasada perfecta.',
+  'contribute.guide.why':
+    'Una calle se convierte en una buena vista 3D cuando se ve desde muchas posiciones y direcciones. Varias personas capturando la misma calle en días distintos es mejor que una sola pasada perfecta.',
   'contribute.guide.phone.title': 'Con tu móvil (funciona hoy)',
-  'contribute.guide.phone.landscape': 'Graba vídeo 4K en horizontal. Antes de empezar, bloquea la exposición y el enfoque (mantén pulsado en la pantalla de la cámara) para que el brillo no cambie mientras caminas.',
-  'contribute.guide.phone.slow': 'Camina despacio, aproximadamente 1 m por segundo, con el móvil estable y a 1–2 m como mínimo de las paredes. Importan más los fotogramas nítidos que los vídeos largos.',
-  'contribute.guide.phone.sides': 'Apunta el móvil a las fachadas, no solo hacia delante: recorre cada acera con el móvil girado hacia los edificios y luego otra vez mirando a lo largo de la calle. 2–3 minutos por tramo, terminando donde empezaste.',
-  'contribute.guide.phone.people': 'Mejor en horas tranquilas. Las caras y matrículas se difuminan automáticamente y las personas y vehículos se excluyen de la vista 3D.',
+  'contribute.guide.phone.landscape':
+    'Graba vídeo 4K en horizontal. Antes de empezar, bloquea la exposición y el enfoque (mantén pulsado en la pantalla de la cámara) para que el brillo no cambie mientras caminas.',
+  'contribute.guide.phone.slow':
+    'Camina despacio, aproximadamente 1 m por segundo, con el móvil estable y a 1–2 m como mínimo de las paredes. Importan más los fotogramas nítidos que los vídeos largos.',
+  'contribute.guide.phone.sides':
+    'Apunta el móvil a las fachadas, no solo hacia delante: recorre cada acera con el móvil girado hacia los edificios y luego otra vez mirando a lo largo de la calle. 2–3 minutos por tramo, terminando donde empezaste.',
+  'contribute.guide.phone.people':
+    'Mejor en horas tranquilas. Las caras y matrículas se difuminan automáticamente y las personas y vehículos se excluyen de la vista 3D.',
   'contribute.guide.camera.title': 'Con una cámara 360° (recomendada para mapear)',
-  'contribute.guide.camera.upload': 'Elegir foto o vídeo acepta fotos y vídeos 360° exportados como panorama completo, el doble de ancho que de alto.',
-  'contribute.guide.camera.recommendation': 'Una opción asequible es una GoPro MAX (primera generación, fácil de encontrar de segunda mano): hace fotos 360° con GPS integrado. Una cámara 360° ve ambos lados de la calle a la vez, lo que da vistas 3D mucho mejores.',
-  'contribute.guide.camera.mount': 'Móntala en un palo o casco unos 30–50 cm por encima de tu cabeza.',
-  'contribute.guide.camera.interval': 'Usa el modo foto por intervalos, una foto cada 1–2 metros, con el GPS activado.',
-  'contribute.guide.camera.walk': 'Camina a 3–4 km/h por ambas aceras; los días claros pero nublados son los mejores.',
-  'contribute.guide.camera.repeat': 'Volver otro día ayuda: las nuevas capturas se combinan con las anteriores automáticamente.',
-  'contribute.guide.camera.export': 'Exporta desde la app de la cámara una foto equirectangular (2:1) o un MP4 con sus metadatos 360°. Los archivos sin procesar de doble lente aún no se pueden leer.',
-  'contribute.guide.privacy': 'Captura solo calles públicas desde lugares públicos. No grabes el interior de viviendas ni espacios privados.',
+  'contribute.guide.camera.upload':
+    'Elegir foto o vídeo acepta fotos y vídeos 360° exportados como panorama completo, el doble de ancho que de alto.',
+  'contribute.guide.camera.recommendation':
+    'Una opción asequible es una GoPro MAX (primera generación, fácil de encontrar de segunda mano): hace fotos 360° con GPS integrado. Una cámara 360° ve ambos lados de la calle a la vez, lo que da vistas 3D mucho mejores.',
+  'contribute.guide.camera.mount':
+    'Móntala en un palo o casco unos 30–50 cm por encima de tu cabeza.',
+  'contribute.guide.camera.interval':
+    'Usa el modo foto por intervalos, una foto cada 1–2 metros, con el GPS activado.',
+  'contribute.guide.camera.walk':
+    'Camina a 3–4 km/h por ambas aceras; los días claros pero nublados son los mejores.',
+  'contribute.guide.camera.repeat':
+    'Volver otro día ayuda: las nuevas capturas se combinan con las anteriores automáticamente.',
+  'contribute.guide.camera.export':
+    'Exporta desde la app de la cámara una foto equirectangular (2:1) o un MP4 con sus metadatos 360°. Los archivos sin procesar de doble lente aún no se pueden leer.',
+  'contribute.guide.privacy':
+    'Captura solo calles públicas desde lugares públicos. No grabes el interior de viviendas ni espacios privados.',
   // Captura guiada
   'contribute.guided.button': 'Captura guiada',
   'contribute.guided.title': 'Captura guiada de la calle',
-  'contribute.guided.intro': 'Recorre la calle en un circuito mientras GoWay te guía. Sujeta el móvil en horizontal a la altura del pecho, apunta a los edificios y camina despacio.',
+  'contribute.guided.intro':
+    'Recorre la calle en un circuito mientras GoWay te guía. Sujeta el móvil en horizontal a la altura del pecho, apunta a los edificios y camina despacio.',
   'contribute.guided.format': 'Graba vídeo {resolution} sin sonido, hasta {minutes} min.',
-  'contribute.guided.locationHint': 'Al empezar, GoWay pide tu ubicación una sola vez para situar esta grabación. No se registra tu recorrido.',
+  'contribute.guided.locationHint':
+    'Al empezar, GoWay pide tu ubicación una sola vez para situar esta grabación. No se registra tu recorrido.',
   'contribute.guided.preparing': 'Iniciando la cámara…',
   'contribute.guided.start': 'Empezar a grabar',
   'contribute.guided.next': 'Siguiente paso',
@@ -247,23 +303,32 @@ export const STREET3D_ES: Record<string, string> = {
   'contribute.guided.pace.long': 'Este tramo {time} · pasa al siguiente al final de la calle',
   'contribute.guided.pace.finish': 'Detén la grabación cuando vuelvas al punto de partida.',
   'contribute.guided.warn.blur': 'Demasiado rápido / borroso: ve más despacio',
-  'contribute.guided.warn.exposure': 'El brillo ha cambiado de golpe: mantén la cámara en los edificios, lejos del cielo',
+  'contribute.guided.warn.exposure':
+    'El brillo ha cambiado de golpe: mantén la cámara en los edificios, lejos del cielo',
   'contribute.guided.warn.dark': 'Demasiado oscuro para una buena vista 3D',
   'contribute.guided.warn.portrait': 'Gira el móvil para grabar en horizontal',
   'contribute.guided.lock.exposure': 'Exposición bloqueada',
-  'contribute.guided.lock.noExposure': 'Este dispositivo no puede bloquear la exposición. Evita apuntar al cielo.',
+  'contribute.guided.lock.noExposure':
+    'Este dispositivo no puede bloquear la exposición. Evita apuntar al cielo.',
   'contribute.guided.lock.focus': 'Enfoque bloqueado',
   'contribute.guided.lock.noFocus': 'Este dispositivo no puede bloquear el enfoque.',
-  'contribute.guided.noLiveChecks': 'La comprobación de nitidez en directo no está disponible en este dispositivo. Camina despacio y mantén el móvil estable.',
-  'contribute.guided.error.permission': 'La captura guiada necesita la cámara. Puedes permitirla en los ajustes o usar Grabar vídeo.',
-  'contribute.guided.error.format': 'Este navegador no puede grabar vídeo en un formato que GoWay acepte. Usa Grabar vídeo o elige un vídeo.',
-  'contribute.guided.error.camera': 'No se pudo iniciar la cámara. Usa Grabar vídeo o elige un vídeo.',
+  'contribute.guided.noLiveChecks':
+    'La comprobación de nitidez en directo no está disponible en este dispositivo. Camina despacio y mantén el móvil estable.',
+  'contribute.guided.error.permission':
+    'La captura guiada necesita la cámara. Puedes permitirla en los ajustes o usar Grabar vídeo.',
+  'contribute.guided.error.format':
+    'Este navegador no puede grabar vídeo en un formato que GoWay acepte. Usa Grabar vídeo o elige un vídeo.',
+  'contribute.guided.error.camera':
+    'No se pudo iniciar la cámara. Usa Grabar vídeo o elige un vídeo.',
   'contribute.guided.error.recording': 'La grabación falló. Inténtalo de nuevo.',
-  'contribute.guided.limitReached': 'La grabación se detuvo en el límite de subida. Contribuye esta parte y empieza otra captura guiada para el resto de la calle.',
+  'contribute.guided.limitReached':
+    'La grabación se detuvo en el límite de subida. Contribuye esta parte y empieza otra captura guiada para el resto de la calle.',
   'contribute.guided.summary': 'Grabado {time}.',
-  'contribute.guided.summaryBlur': 'Grabado {time}. Alrededor del {percent}% se veía borroso; caminar más despacio la próxima vez da una mejor vista 3D.',
+  'contribute.guided.summaryBlur':
+    'Grabado {time}. Alrededor del {percent}% se veía borroso; caminar más despacio la próxima vez da una mejor vista 3D.',
   'contribute.guided.summarySharp': 'Grabado {time}. Se veía nítido en todo momento.',
-  'contribute.guided.tooLarge': 'Esta grabación supera el límite de subida de {megabytes} MB o {minutes} min. Graba un tramo más corto, una acera cada vez.',
+  'contribute.guided.tooLarge':
+    'Esta grabación supera el límite de subida de {megabytes} MB o {minutes} min. Graba un tramo más corto, una acera cada vez.',
   'street3d.layer.open': 'Abrir vista Street 3D',
   'street3d.layer.approximate': 'ubicación aproximada',
   'street3d.layer.contributeHint': 'Más fotos aquí podrían completar una vista Street 3D.',
@@ -272,23 +337,28 @@ export const STREET3D_ES: Record<string, string> = {
   'street3d.viewer.close': 'Volver al mapa',
   'street3d.viewer.report': 'Denunciar',
   'street3d.viewer.loading': 'Cargando vista 3D…',
-  'street3d.viewer.unsupported': 'Este dispositivo no puede mostrar vistas 3D. El mapa funciona como siempre.',
+  'street3d.viewer.unsupported':
+    'Este dispositivo no puede mostrar vistas 3D. El mapa funciona como siempre.',
   'street3d.viewer.error': 'No se pudo cargar esta vista 3D.',
   'street3d.viewer.notFound': 'Esta vista 3D no está disponible.',
   'street3d.viewer.retry': 'Reintentar',
-  'street3d.viewer.approximate': 'Ubicación aproximada: esta vista puede estar desplazada respecto al mapa.',
+  'street3d.viewer.approximate':
+    'Ubicación aproximada: esta vista puede estar desplazada respecto al mapa.',
   'street3d.viewer.observed': 'Imágenes de {from} a {to}',
   'street3d.viewer.observedSame': 'Imágenes de {date}',
   'street3d.viewer.controls.orbit': 'Orbitar',
   'street3d.viewer.controls.walk': 'Caminar',
-  'street3d.viewer.controls.hint': 'Arrastra para mirar · WASD o flechas para moverte · rueda o pellizco para acercar',
-  'street3d.viewer.controls.hintGuided': 'Arrastra para mirar · W/S, flechas o clic delante para caminar · A/D para girar',
+  'street3d.viewer.controls.hint':
+    'Arrastra para mirar · WASD o flechas para moverte · rueda o pellizco para acercar',
+  'street3d.viewer.controls.hintGuided':
+    'Arrastra para mirar · W/S, flechas o clic delante para caminar · A/D para girar',
   'street3d.viewer.stepForward': 'Avanzar',
   'street3d.viewer.stepBack': 'Retroceder',
   'street3d.viewer.stepHere': 'Ir aquí',
 
   'street3d.report.title': 'Denunciar esta vista 3D',
-  'street3d.report.reason.privacy': 'Privacidad: se ve una cara, una matrícula o un espacio privado',
+  'street3d.report.reason.privacy':
+    'Privacidad: se ve una cara, una matrícula o un espacio privado',
   'street3d.report.reason.inappropriate': 'Contenido inapropiado',
   'street3d.report.reason.inaccurate': 'Inexacta o mal ubicada',
   'street3d.report.reason.other': 'Otro motivo',
@@ -308,7 +378,8 @@ export const STREET3D_ES: Record<string, string> = {
   'contribute.status.abandoned.title': 'Subida caducada',
   'contribute.status.abandoned.body': 'La subida no se completó, así que no se guardó nada.',
   'contribute.status.checking.title': 'Comprobando el archivo',
-  'contribute.status.checking.body': 'GoWay está comprobando el archivo antes del procesamiento de privacidad.',
+  'contribute.status.checking.body':
+    'GoWay está comprobando el archivo antes del procesamiento de privacidad.',
   'contribute.status.privacyPending.title': 'Procesamiento de privacidad pendiente',
   'contribute.status.privacyPending.body':
     'Antes que nada, se difuminan caras y matrículas. Esto se ejecuta en un procesador externo y puede tardar.',
@@ -322,7 +393,8 @@ export const STREET3D_ES: Record<string, string> = {
   'contribute.status.accepted.title': 'Privacidad comprobada',
   'contribute.status.accepted.body': 'Esperando a combinarse con vistas cercanas.',
   'contribute.status.rejected.title': 'No utilizable',
-  'contribute.status.rejected.body': 'Este archivo no se pudo usar, así que no formará parte de una vista 3D.',
+  'contribute.status.rejected.body':
+    'Este archivo no se pudo usar, así que no formará parte de una vista 3D.',
   'contribute.status.waitingForOverlap.title': 'Esperando vistas complementarias',
   'contribute.status.waitingForOverlap.body':
     'Una vista 3D necesita varias fotos solapadas del mismo lugar desde distintos ángulos. La tuya se guarda hasta que caduque por si llegan otras.',
@@ -340,16 +412,20 @@ export const STREET3D_ES: Record<string, string> = {
     'Ya no se usará. Los archivos temporales se eliminarán cuando ninguna otra contribución los necesite.',
   'contribute.status.privacyPassedLine': 'Comprobación de privacidad superada.',
   'contribute.status.expires': 'Se espera que el archivo temporal caduque hacia el {date}.',
-  'contribute.status.protected': 'Se conserva hasta el {date} porque puede ayudar a completar una vista 3D cercana.',
+  'contribute.status.protected':
+    'Se conserva hasta el {date} porque puede ayudar a completar una vista 3D cercana.',
   'contribute.status.atRisk': 'Zona en riesgo: más fotos aquí podrían completarla.',
-  'contribute.status.atRiskUntil': 'Zona en riesgo: más fotos aquí antes del {date} podrían completarla.',
+  'contribute.status.atRiskUntil':
+    'Zona en riesgo: más fotos aquí antes del {date} podrían completarla.',
   // Contribute screen
   'contribute.back': 'Volver al mapa',
   'contribute.title': 'Contribuye a Street 3D',
-  'contribute.intro': 'Ayuda a crear una vista 3D comunitaria con fotos y vídeos normales. Los puntos de vista complementarios son más útiles que las copias repetidas.',
+  'contribute.intro':
+    'Ayuda a crear una vista 3D comunitaria con fotos y vídeos normales. Los puntos de vista complementarios son más útiles que las copias repetidas.',
   'contribute.signIn': 'Inicia sesión para contribuir',
   'contribute.loadingPolicy': 'Cargando las condiciones de contribución',
-  'contribute.disabled': 'Las contribuciones aún no están activadas aquí. Puedes seguir usando el mapa.',
+  'contribute.disabled':
+    'Las contribuciones aún no están activadas aquí. Puedes seguir usando el mapa.',
   'contribute.choose': 'Elegir foto o vídeo',
   'contribute.takePhoto': 'Hacer foto',
   'contribute.recordVideo': 'Grabar vídeo',
@@ -357,15 +433,20 @@ export const STREET3D_ES: Record<string, string> = {
   'contribute.selectedVideo': 'Vídeo seleccionado',
   'contribute.selectedPhoto': 'Foto seleccionada',
   'contribute.projection.label': 'Es una foto o un vídeo 360°',
-  'contribute.projection.hint': 'GoWay comprueba la información 360° del propio archivo, lo divide en ocho vistas y difumina las caras y matrículas en cada una. La zona bajo la cámara, donde apareces tú y el soporte, se elimina siempre.',
+  'contribute.projection.hint':
+    'GoWay comprueba la información 360° del propio archivo, lo divide en ocho vistas y difumina las caras y matrículas en cada una. La zona bajo la cámara, donde apareces tú y el soporte, se elimina siempre.',
   'contribute.where': '¿Dónde se capturó?',
   'contribute.locationSelected': 'Ubicación seleccionada. Toca el mapa para corregirla.',
-  'contribute.locationPrompt': 'Selecciona en el mapa dónde se capturó. Nunca la deducimos de tu historial.',
+  'contribute.locationPrompt':
+    'Selecciona en el mapa dónde se capturó. Nunca la deducimos de tu historial.',
   'contribute.locationMarker': 'Lugar de la captura',
   'contribute.useMyLocation': 'Usar mi ubicación actual',
-  'contribute.retention': 'Las fotos originales se conservan hasta unos {photoDays} días y los vídeos originales hasta unos {videoDays} días, a menudo menos. No todas las contribuciones se convierten en una escena.',
-  'contribute.use': 'GoWay puede crear imágenes procesadas para proteger la privacidad, características y recursos 3D. Tu cuenta queda vinculada a tu contribución para el consentimiento y la retirada. La geometría publicada no personal puede permanecer cuando caduquen los originales. No capturamos en segundo plano.',
-  'contribute.consent': 'Tengo derecho a compartir este contenido y acepto que se use para la reconstrucción 3D comunitaria.',
+  'contribute.retention':
+    'Las fotos originales se conservan hasta unos {photoDays} días y los vídeos originales hasta unos {videoDays} días, a menudo menos. No todas las contribuciones se convierten en una escena.',
+  'contribute.use':
+    'GoWay puede crear imágenes procesadas para proteger la privacidad, características y recursos 3D. Tu cuenta queda vinculada a tu contribución para el consentimiento y la retirada. La geometría publicada no personal puede permanecer cuando caduquen los originales. No capturamos en segundo plano.',
+  'contribute.consent':
+    'Tengo derecho a compartir este contenido y acepto que se use para la reconstrucción 3D comunitaria.',
   'contribute.submit': 'Contribuir',
   'contribute.retry': 'Reintentar la contribución',
   'contribute.cancelUpload': 'Cancelar la subida',
@@ -375,24 +456,33 @@ export const STREET3D_ES: Record<string, string> = {
   'contribute.progress.checking': 'Comprobando el archivo seleccionado…',
   'contribute.progress.uploading': 'Subiendo directamente a un almacenamiento seguro…',
   'contribute.progress.confirming': 'Confirmando la subida…',
-  'contribute.progress.received': 'Contribución recibida. El procesamiento de privacidad debe terminar antes de la reconstrucción.',
-  'contribute.error.unavailable': 'Las contribuciones no están disponibles temporalmente. Inténtalo de nuevo más tarde.',
+  'contribute.progress.received':
+    'Contribución recibida. El procesamiento de privacidad debe terminar antes de la reconstrucción.',
+  'contribute.error.unavailable':
+    'Las contribuciones no están disponibles temporalmente. Inténtalo de nuevo más tarde.',
   'contribute.error.loadContributions': 'No se pudieron cargar tus contribuciones.',
   'contribute.error.refresh': 'No se pudieron actualizar las contribuciones.',
   'contribute.error.loadContribution': 'No se pudo cargar esta contribución.',
-  'contribute.error.cameraPermission': 'El permiso de cámara solo se necesita para hacer esta contribución.',
+  'contribute.error.cameraPermission':
+    'El permiso de cámara solo se necesita para hacer esta contribución.',
   'contribute.error.select': 'No se pudo seleccionar el contenido.',
-  'contribute.error.location': 'Tu ubicación no está disponible. Puedes seleccionar en el mapa dónde se capturó.',
-  'contribute.error.cancelled': 'Subida cancelada. Puedes reintentarla o retirar la contribución pendiente más abajo.',
-  'contribute.error.failed': 'La contribución no pudo terminar. Reinténtala para continuar la misma subida.',
+  'contribute.error.location':
+    'Tu ubicación no está disponible. Puedes seleccionar en el mapa dónde se capturó.',
+  'contribute.error.cancelled':
+    'Subida cancelada. Puedes reintentarla o retirar la contribución pendiente más abajo.',
+  'contribute.error.failed':
+    'La contribución no pudo terminar. Reinténtala para continuar la misma subida.',
   'contribute.error.withdraw': 'No se pudo retirar la contribución. Inténtalo de nuevo.',
-  'contribute.error.withdrawnNotRefreshed': 'La contribución se retiró, pero no se pudo actualizar.',
+  'contribute.error.withdrawnNotRefreshed':
+    'La contribución se retiró, pero no se pudo actualizar.',
   'contribute.error.format': 'Este formato no es compatible.',
   'contribute.error.size': 'Este archivo supera el límite de tamaño de subida actual.',
   'contribute.error.duration': 'Este vídeo supera el límite de duración actual.',
   'contribute.error.unreadable': 'No se pudo leer el archivo seleccionado.',
   'contribute.error.unavailableFile': 'El archivo seleccionado ya no está disponible.',
   'contribute.error.upload': 'La subida falló. Puedes reintentar esta contribución.',
-  'contribute.error.projection': 'Solo un panorama 360° completo, el doble de ancho que de alto, puede enviarse como 360°.',
-  'contribute.error.resolution': 'Este archivo 360° tiene más resolución de la que GoWay acepta. Expórtalo a una resolución menor.',
+  'contribute.error.projection':
+    'Solo un panorama 360° completo, el doble de ancho que de alto, puede enviarse como 360°.',
+  'contribute.error.resolution':
+    'Este archivo 360° tiene más resolución de la que GoWay acepta. Expórtalo a una resolución menor.',
 };

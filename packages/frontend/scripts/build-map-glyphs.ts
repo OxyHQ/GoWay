@@ -198,7 +198,8 @@ export const OPTICAL_SIZE = 14;
  * else, because "complete" measured against a font nobody serves is not a
  * measurement of anything.
  */
-export const UPSTREAM_GLYPH_TEMPLATE = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
+export const UPSTREAM_GLYPH_TEMPLATE =
+  'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
 
 export const UPSTREAM_FONTSTACK: Readonly<Record<string, string>> = {
   'Inter Regular': 'Noto Sans Regular',
@@ -369,7 +370,10 @@ function planRanges(base: FontkitFont, fallback: LoadedFallback, problems: strin
     }
 
     if (!COMPLETED_RANGES.includes(start)) {
-      plan.proxied.push({ start, reason: `${holes.size} code point(s) the fallback draws and Inter does not` });
+      plan.proxied.push({
+        start,
+        reason: `${holes.size} code point(s) the fallback draws and Inter does not`,
+      });
       continue;
     }
 
@@ -431,7 +435,9 @@ function buildStack(
       // The plan is made once, from the first weight's cmap. A weight whose
       // cmap disagrees is not a weight of this typeface, and carrying on would
       // emit a range with nothing in it.
-      throw new Error(`${stack.name}: has no code points in ${range}, which ${GLYPH_FONTSTACKS[0].name} does`);
+      throw new Error(
+        `${stack.name}: has no code points in ${range}, which ${GLYPH_FONTSTACKS[0].name} does`,
+      );
     }
     const glyphs = covered.map((codePoint) => buildGlyph(font, codePoint, ascender));
 
@@ -478,7 +484,9 @@ function buildStack(
         before.top !== after.top ||
         before.advance !== after.advance
       ) {
-        throw new Error(`${stack.name} ${range}: glyph ${before.id} metrics changed across the round trip`);
+        throw new Error(
+          `${stack.name} ${range}: glyph ${before.id} metrics changed across the round trip`,
+        );
       }
       const bitmapBefore = before.bitmap;
       const bitmapAfter = after.bitmap;
@@ -519,12 +527,20 @@ function buildStack(
  * deterministic; the URL it came from is recorded beside it.
  */
 async function checkAgainstReference(problems: string[]): Promise<void> {
-  const fixture = join(FRONTEND_ROOT, 'scripts', 'mapgen', 'fixtures', 'noto-sans-regular-0-255.pbf');
+  const fixture = join(
+    FRONTEND_ROOT,
+    'scripts',
+    'mapgen',
+    'fixtures',
+    'noto-sans-regular-0-255.pbf',
+  );
   let bytes: Uint8Array;
   try {
     bytes = new Uint8Array(await readFile(fixture));
   } catch {
-    problems.push(`reference fixture ${fixture} is missing — see mapgen/fixtures/README for how to refetch it`);
+    problems.push(
+      `reference fixture ${fixture} is missing — see mapgen/fixtures/README for how to refetch it`,
+    );
     return;
   }
 
@@ -534,12 +550,17 @@ async function checkAgainstReference(problems: string[]): Promise<void> {
     return;
   }
   const stack = stacks[0];
-  if (stack.range !== '0-255') problems.push(`reference fixture range is "${stack.range}", expected "0-255"`);
+  if (stack.range !== '0-255')
+    problems.push(`reference fixture range is "${stack.range}", expected "0-255"`);
   if (!stack.name.startsWith('Noto Sans Regular')) {
-    problems.push(`reference fixture stack is "${stack.name}", expected it to start with "Noto Sans Regular"`);
+    problems.push(
+      `reference fixture stack is "${stack.name}", expected it to start with "Noto Sans Regular"`,
+    );
   }
   if (stack.glyphs.length < 200) {
-    problems.push(`reference fixture decoded only ${stack.glyphs.length} glyphs — the wire format read wrong`);
+    problems.push(
+      `reference fixture decoded only ${stack.glyphs.length} glyphs — the wire format read wrong`,
+    );
   }
   for (const glyph of stack.glyphs) {
     assertGlyphConsistent(glyph, 'reference fixture');
@@ -551,7 +572,9 @@ async function checkAgainstReference(problems: string[]): Promise<void> {
   // upstream's have diverged and every halo width in the style is wrong.
   const stem = stack.glyphs.find((glyph) => glyph.id === 0x6c);
   if (!stem?.bitmap) {
-    problems.push('reference fixture has no bitmap for U+006C, so the encoding cannot be re-measured');
+    problems.push(
+      'reference fixture has no bitmap for U+006C, so the encoding cannot be re-measured',
+    );
     return;
   }
   const columns = stem.width + 2 * GLYPH_PBF_BORDER;
@@ -567,12 +590,15 @@ async function checkAgainstReference(problems: string[]): Promise<void> {
 
 function inspect(base: FontkitFont, spec: string): void {
   const codePoint = spec.length === 1 ? spec.codePointAt(0)! : Number.parseInt(spec, 10);
-  if (!Number.isFinite(codePoint)) throw new Error(`--inspect wants a character or a code point, got "${spec}"`);
+  if (!Number.isFinite(codePoint))
+    throw new Error(`--inspect wants a character or a code point, got "${spec}"`);
 
   for (const stack of GLYPH_FONTSTACKS) {
     const font = base.getVariation({ wght: stack.wght, opsz: OPTICAL_SIZE });
     if (!font.hasGlyphForCodePoint(codePoint)) {
-      console.log(`${stack.name}: U+${codePoint.toString(16).toUpperCase().padStart(4, '0')} not covered`);
+      console.log(
+        `${stack.name}: U+${codePoint.toString(16).toUpperCase().padStart(4, '0')} not covered`,
+      );
       continue;
     }
     const glyph = buildGlyph(font, codePoint, ascenderPixels(font));
@@ -601,11 +627,7 @@ function inspect(base: FontkitFont, spec: string): void {
  * file is invisible in production. MapLibre asks once, gets a file, and draws
  * nothing for every code point that file omits. There is no 404 to notice.
  */
-function assertNoHoles(
-  fallback: LoadedFallback,
-  tree: EmitTree,
-  problems: string[],
-): void {
+function assertNoHoles(fallback: LoadedFallback, tree: EmitTree, problems: string[]): void {
   for (const [path, bytes] of tree) {
     const slash = path.lastIndexOf('/');
     const name = path.slice(0, slash);
@@ -614,7 +636,9 @@ function assertNoHoles(
     const upstream = UPSTREAM_FONTSTACK[name];
     const stack = upstream ? fallback.coverage.stacks[upstream] : undefined;
     if (!stack) {
-      problems.push(`${path}: "${name}" has no fallback fontstack, so its completeness cannot be measured`);
+      problems.push(
+        `${path}: "${name}" has no fallback fontstack, so its completeness cannot be measured`,
+      );
       continue;
     }
 
@@ -702,7 +726,9 @@ async function main(): Promise<void> {
   console.log(
     `map glyphs: ${checkOnly ? 'OK — ' : ''}${results.length} fontstacks, ${tree.size} files, ${formatBytes(totalBytes)} total`,
   );
-  console.log(`map glyphs: ranges ${results[0].ranges.map((start) => `${start}-${start + 255}`).join(' ')}`);
+  console.log(
+    `map glyphs: ranges ${results[0].ranges.map((start) => `${start}-${start + 255}`).join(' ')}`,
+  );
   if (plan.proxied.length > 0) {
     console.log(
       `map glyphs: ${plan.proxied.length} range(s) left to the fallback — ${plan.proxied

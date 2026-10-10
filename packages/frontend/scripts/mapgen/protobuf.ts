@@ -198,7 +198,10 @@ export class PbfReader {
    */
   readFloat(): number {
     if (this.offset + 4 > this.end) throw new RangeError('truncated float');
-    const value = new DataView(this.data.buffer, this.data.byteOffset + this.offset, 4).getFloat32(0, true);
+    const value = new DataView(this.data.buffer, this.data.byteOffset + this.offset, 4).getFloat32(
+      0,
+      true,
+    );
     this.offset += 4;
     return value;
   }
@@ -206,7 +209,10 @@ export class PbfReader {
   /** A 64-bit IEEE double, little-endian. */
   readDouble(): number {
     if (this.offset + 8 > this.end) throw new RangeError('truncated double');
-    const value = new DataView(this.data.buffer, this.data.byteOffset + this.offset, 8).getFloat64(0, true);
+    const value = new DataView(this.data.buffer, this.data.byteOffset + this.offset, 8).getFloat64(
+      0,
+      true,
+    );
     this.offset += 8;
     return value;
   }

@@ -100,8 +100,7 @@ export function distanceMeters(a: GeoCoordinate, b: GeoCoordinate): number {
   const lat1 = a.latitude * DEG;
   const lat2 = b.latitude * DEG;
 
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.sin(dLon / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+  const h = Math.sin(dLat / 2) ** 2 + Math.sin(dLon / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
   return 2 * radius * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
@@ -121,7 +120,10 @@ export function distanceMeters(a: GeoCoordinate, b: GeoCoordinate): number {
  */
 export function projectToPixels(coordinate: GeoCoordinate, zoom: number): { x: number; y: number } {
   const worldSize = TILE_SIZE_PX * Math.pow(2, zoom);
-  const latitude = Math.max(-MERCATOR_MAX_LATITUDE, Math.min(MERCATOR_MAX_LATITUDE, coordinate.latitude));
+  const latitude = Math.max(
+    -MERCATOR_MAX_LATITUDE,
+    Math.min(MERCATOR_MAX_LATITUDE, coordinate.latitude),
+  );
   const sin = Math.sin(latitude * DEG);
   return {
     x: worldSize * (coordinate.longitude / 360 + 0.5),

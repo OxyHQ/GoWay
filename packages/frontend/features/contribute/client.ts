@@ -11,9 +11,14 @@ const linked = oxyServices.createLinkedClient({ baseURL: API_URL });
  */
 export const linkedGowayClient = createGoWayClient({
   apiBaseUrl: API_URL,
-  fetch: (url, init) => linked.client.requestResponse({
-    url, method: init.method, headers: init.headers, body: init.body, signal: init.signal,
-  }),
+  fetch: (url, init) =>
+    linked.client.requestResponse({
+      url,
+      method: init.method,
+      headers: init.headers,
+      body: init.body,
+      signal: init.signal,
+    }),
 });
 
 export const captureClient = linkedGowayClient.captures;

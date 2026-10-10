@@ -14,7 +14,11 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { RequestHandler } from 'express';
 import { createApp } from '../app';
-import { startPlatformActivity, type PlatformActivity, type PlatformActivityDeps } from '../platformActivity';
+import {
+  startPlatformActivity,
+  type PlatformActivity,
+  type PlatformActivityDeps,
+} from '../platformActivity';
 
 function fakeTraffic(): { traffic: PlatformActivity; installs: () => number } {
   let installs = 0;

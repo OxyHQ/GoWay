@@ -49,9 +49,7 @@ import type { GeoCoordinate } from '@/components/map/types';
 
 export type LocationPermissionStatus =
   /** Not asked yet in this session — and not asked ON OUR BEHALF at mount. */
-  | 'unknown'
-  | 'granted'
-  | 'denied';
+  'unknown' | 'granted' | 'denied';
 
 export type LocationErrorReason =
   /** The user was asked and said no (or the browser has blocked this origin). */
@@ -185,7 +183,13 @@ export function useUserLocation(): UserLocationApi {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         };
-        setState({ status: 'granted', coordinate, isLocating: false, error: null, canAskAgain: true });
+        setState({
+          status: 'granted',
+          coordinate,
+          isLocating: false,
+          error: null,
+          canAskAgain: true,
+        });
         return coordinate;
       } catch (error) {
         // Web rejects with a `GeolocationPositionError`, which still separates

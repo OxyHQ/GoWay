@@ -143,7 +143,10 @@ export const MIN_SEARCH_LENGTH = 2;
  * The first page only: a search box lists the best `limit` matches and never
  * follows `nextCursor`.
  */
-export function useSearch(query: string, options: SearchOptions = {}): UseQueryResult<SearchResults> {
+export function useSearch(
+  query: string,
+  options: SearchOptions = {},
+): UseQueryResult<SearchResults> {
   const { near, viewport, categories, capabilities, limit, enabled = true } = options;
   const trimmed = query.trim();
   const long = trimmed.length >= MIN_SEARCH_LENGTH;
@@ -231,18 +234,23 @@ export function usePlaceMedia(placeId: PlaceId | null): UseQueryResult<PlaceMedi
     queryKey: ['goway', 'place', placeId, 'media'],
     enabled: placeId != null,
     retry: shouldRetryGoWay,
-    queryFn: async ({ signal }) => gowayClient.places.media.list(placeId as PlaceId, { limit: 12 }, { signal }),
+    queryFn: async ({ signal }) =>
+      gowayClient.places.media.list(placeId as PlaceId, { limit: 12 }, { signal }),
   });
 }
 
 /** The first page of a place's published reviews, in the order asked for. */
-export function usePlaceReviews(placeId: PlaceId | null, sort: ReviewSort): UseQueryResult<PlaceReviewPage> {
+export function usePlaceReviews(
+  placeId: PlaceId | null,
+  sort: ReviewSort,
+): UseQueryResult<PlaceReviewPage> {
   return useQuery({
     queryKey: ['goway', 'place', placeId, 'reviews', sort],
     enabled: placeId != null,
     retry: shouldRetryGoWay,
     placeholderData: (previous) => previous,
-    queryFn: async ({ signal }) => gowayClient.places.reviews.list(placeId as PlaceId, { sort, limit: 10 }, { signal }),
+    queryFn: async ({ signal }) =>
+      gowayClient.places.reviews.list(placeId as PlaceId, { sort, limit: 10 }, { signal }),
   });
 }
 
@@ -252,7 +260,10 @@ export function usePlaceReviews(placeId: PlaceId | null, sort: ReviewSort): UseQ
  * Enabled only with a session: it is identity-bound, and a signed-out reader
  * has no review to find. `404` is the answer "none", not a failure.
  */
-export function useMyPlaceReview(placeId: PlaceId | null, signedIn: boolean): UseQueryResult<PlaceReviewWithStatus | null> {
+export function useMyPlaceReview(
+  placeId: PlaceId | null,
+  signedIn: boolean,
+): UseQueryResult<PlaceReviewWithStatus | null> {
   return useQuery({
     queryKey: ['goway', 'place', placeId, 'reviews', 'mine'],
     enabled: placeId != null && signedIn,
@@ -275,23 +286,31 @@ export function useMyPlaceReview(placeId: PlaceId | null, signedIn: boolean): Us
  * names its author's Oxy id; the name and avatar are Oxy's to publish, never a
  * copy GoWay keeps.
  */
-export function useReviewAuthors(authorIds: readonly string[]): UseQueryResult<ReadonlyMap<string, User>> {
+export function useReviewAuthors(
+  authorIds: readonly string[],
+): UseQueryResult<ReadonlyMap<string, User>> {
   const ids = [...new Set(authorIds)].sort();
   return useQuery({
     queryKey: ['oxy', 'users', ids],
     enabled: ids.length > 0,
     staleTime: 5 * 60_000,
-    queryFn: async () => new Map((await oxyServices.users.getMany(ids)).map((user) => [user.id, user])),
+    queryFn: async () =>
+      new Map((await oxyServices.users.getMany(ids)).map((user) => [user.id, user])),
   });
 }
 
 /** Everything a review write changes: the lists, your own review, and the place's rating. */
-function invalidateReviews(queryClient: ReturnType<typeof useQueryClient>, placeId: PlaceId): Promise<void> {
+function invalidateReviews(
+  queryClient: ReturnType<typeof useQueryClient>,
+  placeId: PlaceId,
+): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: ['goway', 'place', placeId] });
 }
 
 /** Write or rewrite the signed-in person's review. */
-export function useWriteReview(placeId: PlaceId): UseMutationResult<PlaceReviewWithStatus, Error, PlaceReviewInput> {
+export function useWriteReview(
+  placeId: PlaceId,
+): UseMutationResult<PlaceReviewWithStatus, Error, PlaceReviewInput> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: PlaceReviewInput) => gowayClient.places.reviews.put(placeId, input),
@@ -320,13 +339,16 @@ export interface PickedImage {
  * one Oxy client, then hand GoWay the file id. GoWay checks the file with Oxy
  * and links it to the place; the bytes never pass through GoWay.
  */
-export function useAddPlacePhoto(placeId: PlaceId): UseMutationResult<PlaceMedia, Error, { image: PickedImage; kind?: PlaceMediaKind }> {
+export function useAddPlacePhoto(
+  placeId: PlaceId,
+): UseMutationResult<PlaceMedia, Error, { image: PickedImage; kind?: PlaceMediaKind }> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ image, kind = 'photo' }) => {
       const { file } = await oxyServices.assets.upload(image, { visibility: 'public' });
       return gowayClient.places.media.add(placeId, { fileId: file.id, kind });
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['goway', 'place', placeId, 'media'] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['goway', 'place', placeId, 'media'] }),
   });
 }

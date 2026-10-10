@@ -35,13 +35,21 @@ import {
 } from '@goway/contracts';
 import { places } from '../../db/schema';
 import { createPlace, createClaim, type PlaceActor } from '../../db/places/placesRepository';
-import { SUITE_SETUP_TIMEOUT_MS, createSuiteDatabase, destroySuiteDatabase, type SuiteDatabase } from '../../db/__tests__/testDatabase';
+import {
+  SUITE_SETUP_TIMEOUT_MS,
+  createSuiteDatabase,
+  destroySuiteDatabase,
+  type SuiteDatabase,
+} from '../../db/__tests__/testDatabase';
 import { ApiError } from '../../http/apiError';
 import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import { createPlacesRouter } from '../places';
 import { apiAuthor, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 
-const CONTRIBUTOR: PlaceActor = { author: apiAuthor('user-contributor'), assertedVerification: 'community_reported' };
+const CONTRIBUTOR: PlaceActor = {
+  author: apiAuthor('user-contributor'),
+  assertedVerification: 'community_reported',
+};
 
 /** Plaça de Catalunya and two points around it, so distances are real. */
 const CATALUNYA = { latitude: 41.387, longitude: 2.17 };
@@ -106,7 +114,15 @@ beforeAll(async () => {
   app.use(express.json());
   // Mounted at the path `GOWAY_API_BASE_PATH` names, so every URL this file
   // requests is byte-identical to one the SDK would build.
-  app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }));
+  app.use(
+    '/api/v1',
+    createPlacesRouter({
+      optionalAuth,
+      requireAuth,
+      accountRoles: NO_MEMBERSHIPS,
+      reportRateLimit: NO_RATE_LIMIT,
+    }),
+  );
   app.use(unknownRouteHandler);
   app.use(errorHandler);
 
@@ -157,7 +173,9 @@ describe('locale on a list read', () => {
   it('resolves one name per place and publishes no name set', async () => {
     // 200 pins times every language is a payload nothing on screen renders —
     // and shipping the set would hand the fallback decision back to the client.
-    const { body } = await call<PlacePage>('/places/bounds?west=2.16&south=41.38&east=2.18&north=41.39&locale=en');
+    const { body } = await call<PlacePage>(
+      '/places/bounds?west=2.16&south=41.38&east=2.18&north=41.39&locale=en',
+    );
     const pinotxo = body.items.find((place) => place.id === catalunya.id);
     expect(pinotxo?.localizedName?.name).toBe('Pinotxo Bar');
     expect(pinotxo).not.toHaveProperty('names');
@@ -185,10 +203,18 @@ describe('the published shapes', () => {
     placeSchema.parse((await call<unknown>(`/places/${catalunya.id}?locale=es`)).body);
     placeSchema.parse((await call<unknown>(`/places/${claimed.id}`, asUser('user-owner'))).body);
     placeWithDistancePageSchema.parse(
-      (await call<unknown>(`/places/nearby?latitude=${CATALUNYA.latitude}&longitude=${CATALUNYA.longitude}&radiusMeters=5000&limit=2&locale=en`)).body,
+      (
+        await call<unknown>(
+          `/places/nearby?latitude=${CATALUNYA.latitude}&longitude=${CATALUNYA.longitude}&radiusMeters=5000&limit=2&locale=en`,
+        )
+      ).body,
     );
-    placePageSchema.parse((await call<unknown>('/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5&limit=1')).body);
-    placeClaimPageSchema.parse((await call<unknown>(`/places/${claimed.id}/claims`, asUser('user-owner'))).body);
+    placePageSchema.parse(
+      (await call<unknown>('/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5&limit=1')).body,
+    );
+    placeClaimPageSchema.parse(
+      (await call<unknown>(`/places/${claimed.id}/claims`, asUser('user-owner'))).body,
+    );
     placeClaimPageSchema.parse((await call<unknown>('/claims', asUser('user-owner'))).body);
   });
 });
@@ -218,7 +244,13 @@ describe('GET /places/{placeId}', () => {
     // if somebody adds them deliberately. `geo` is the PostGIS blob, and
     // `createdByOxyUserId` is contribution authorship that no consumer is owed.
     const { body } = await call<Record<string, unknown>>(`/places/${catalunya.id}`);
-    for (const internal of ['geo', 'nameNormalized', 'name_normalized', 'createdByOxyUserId', 'verificationState']) {
+    for (const internal of [
+      'geo',
+      'nameNormalized',
+      'name_normalized',
+      'createdByOxyUserId',
+      'verificationState',
+    ]) {
       expect(body).not.toHaveProperty(internal);
     }
   });
@@ -252,7 +284,9 @@ describe('GET /places/{placeId}', () => {
     const canonical = await call<Place>(`/places/${catalunya.id}?locale=ES-mx`);
     expect(canonical.body.localizedName?.name).toBe('Bar Pinocho');
 
-    const { status, body } = await call<ErrorBody>(`/places/${catalunya.id}?locale=not-a-language-tag`);
+    const { status, body } = await call<ErrorBody>(
+      `/places/${catalunya.id}?locale=not-a-language-tag`,
+    );
     expect(status).toBe(422);
     expect(body.error.code).toBe('validation_failed');
   });
@@ -279,7 +313,11 @@ describe('GET /places/{placeId}', () => {
     // Withdrawn is not the same as never-existed: a consumer holding a
     // persisted id learns the place was retired rather than that its id was
     // always wrong. And a withdrawn place is not quietly editable.
-    const removed = await createPlace(suite!.db, { name: 'Withdrawn', location: CATALUNYA }, CONTRIBUTOR);
+    const removed = await createPlace(
+      suite!.db,
+      { name: 'Withdrawn', location: CATALUNYA },
+      CONTRIBUTOR,
+    );
     await suite!.db.update(places).set({ status: 'removed' }).where(eq(places.id, removed.id));
 
     const read = await call<ErrorBody>(`/places/${removed.id}`);
@@ -345,9 +383,14 @@ describe('GET /places/nearby', () => {
       `/places/nearby?latitude=${CATALUNYA.latitude}&longitude=${CATALUNYA.longitude}&radiusMeters=4000&cursor=${cursor}`,
     );
     expect(otherRadius.status).toBe(400);
-    expect(otherRadius.body.error).toMatchObject({ code: 'bad_request', details: { field: 'cursor' } });
+    expect(otherRadius.body.error).toMatchObject({
+      code: 'bad_request',
+      details: { field: 'cursor' },
+    });
 
-    const otherList = await call<ErrorBody>(`/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5&cursor=${cursor}`);
+    const otherList = await call<ErrorBody>(
+      `/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5&cursor=${cursor}`,
+    );
     expect(otherList.status).toBe(400);
 
     // The page size is not part of the binding: a caller may change it.
@@ -357,7 +400,9 @@ describe('GET /places/nearby', () => {
   it('refuses a parameter the contract does not declare, and a repeated one', async () => {
     // `lat`/`lng`/`radius` were short forms once. One spelling per parameter:
     // a silently ignored `radius` answers a different question.
-    const short = await call<ErrorBody>(`/places/nearby?lat=${CATALUNYA.latitude}&lng=${CATALUNYA.longitude}&radius=500`);
+    const short = await call<ErrorBody>(
+      `/places/nearby?lat=${CATALUNYA.latitude}&lng=${CATALUNYA.longitude}&radius=500`,
+    );
     expect(short.status).toBe(400);
     expect(short.body.error.code).toBe('bad_request');
 
@@ -381,7 +426,9 @@ describe('GET /places/nearby', () => {
   it('treats several capabilities as a CONJUNCTION', async () => {
     // Asking for both means both. A disjunction here would send a FairCoin
     // wallet to a shop that takes something else entirely.
-    const { body } = await near('radiusMeters=5000&capabilities=payments.faircoin.accepted,commerce.mercaria.store');
+    const { body } = await near(
+      'radiusMeters=5000&capabilities=payments.faircoin.accepted,commerce.mercaria.store',
+    );
     expect(body.items).toEqual([]);
   });
 
@@ -422,10 +469,16 @@ describe('GET /places/nearby', () => {
 
 describe('GET /places/bounds', () => {
   it('returns a page of the places inside the viewport', async () => {
-    const { status, body } = await call<PlacePage>('/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5');
+    const { status, body } = await call<PlacePage>(
+      '/places/bounds?west=2.0&south=41.3&east=2.3&north=41.5',
+    );
     expect(status).toBe(200);
     expect(body.nextCursor).toBeNull();
-    expect(body.items.map((place) => place.name).sort()).toEqual(['Bar Pinotxo', 'Casa Batlló', 'Forn Gràcia']);
+    expect(body.items.map((place) => place.name).sort()).toEqual([
+      'Bar Pinotxo',
+      'Casa Batlló',
+      'Forn Gràcia',
+    ]);
   });
 
   it('walks the viewport by place id, one page at a time', async () => {
@@ -443,7 +496,9 @@ describe('GET /places/bounds', () => {
   });
 
   it('refuses south > north with validation_failed', async () => {
-    const { status, body } = await call<ErrorBody>('/places/bounds?west=2.0&south=41.5&east=2.3&north=41.3');
+    const { status, body } = await call<ErrorBody>(
+      '/places/bounds?west=2.0&south=41.5&east=2.3&north=41.3',
+    );
     expect(status).toBe(422);
     expect(body.error.code).toBe('validation_failed');
   });
@@ -451,7 +506,9 @@ describe('GET /places/bounds', () => {
   it('ACCEPTS west > east — that is how an antimeridian box is spelled', async () => {
     // Refusing it would make the Pacific unmappable. The asymmetry with
     // south/north is the contract, not an oversight.
-    const { status, body } = await call<PlacePage>('/places/bounds?west=170&south=-25&east=-170&north=-10');
+    const { status, body } = await call<PlacePage>(
+      '/places/bounds?west=170&south=-25&east=-170&north=-10',
+    );
     expect(status).toBe(200);
     expect(body.items).toEqual([]);
   });
@@ -490,7 +547,12 @@ describe('POST /places', () => {
           // derives both.
           verification: { state: 'oxy_verified' },
           capabilities: [
-            { namespace: 'payments.faircoin', capability: 'accepted', value: true, verification: 'oxy_verified' },
+            {
+              namespace: 'payments.faircoin',
+              capability: 'accepted',
+              value: true,
+              verification: 'oxy_verified',
+            },
           ],
         }),
       ),

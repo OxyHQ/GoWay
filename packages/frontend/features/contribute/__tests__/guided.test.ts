@@ -1,16 +1,53 @@
 import { describe, expect, it } from 'bun:test';
-import { blurryFraction, coachWarnings, DEFAULT_COACH_CONFIG, initialCoach, stepCoach, type CoachSample, type CoachState } from '../guided/coach';
 import {
-  advancePlan, currentStep, formatClock, GUIDED_STEPS, hasStretchTarget, isLastStep, startPlan, stepMessageKey, stepSeconds, stepStatus, stretchPace,
+  blurryFraction,
+  coachWarnings,
+  DEFAULT_COACH_CONFIG,
+  initialCoach,
+  stepCoach,
+  type CoachSample,
+  type CoachState,
+} from '../guided/coach';
+import {
+  advancePlan,
+  currentStep,
+  formatClock,
+  GUIDED_STEPS,
+  hasStretchTarget,
+  isLastStep,
+  startPlan,
+  stepMessageKey,
+  stepSeconds,
+  stepStatus,
+  stretchPace,
 } from '../guided/plan';
 import {
-  baseContentType, lockHeld, lockNoticeKeys, lockReport, lockSteps, nativeRecording, pickRecorderType, reachedLimit, recordingBudget,
+  baseContentType,
+  lockHeld,
+  lockNoticeKeys,
+  lockReport,
+  lockSteps,
+  nativeRecording,
+  pickRecorderType,
+  reachedLimit,
+  recordingBudget,
 } from '../guided/recording';
-import { centreCrop, frameSignals, laplacianVariance, meanLuma, sampleSize, toLuma } from '../guided/sharpness';
+import {
+  centreCrop,
+  frameSignals,
+  laplacianVariance,
+  meanLuma,
+  sampleSize,
+  toLuma,
+} from '../guided/sharpness';
 import { STREET3D_EN, STREET3D_ES } from '@/lib/messages/street3d';
 
 /** An RGBA image whose grey level is `f(x, y)`. */
-function image(width: number, height: number, f: (x: number, y: number) => number): Uint8ClampedArray {
+function image(
+  width: number,
+  height: number,
+  f: (x: number, y: number) => number,
+): Uint8ClampedArray {
   const data = new Uint8ClampedArray(width * height * 4);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -23,15 +60,25 @@ function image(width: number, height: number, f: (x: number, y: number) => numbe
 }
 
 /** A 3-tap horizontal box blur, repeated: what fast panning does to a frame. */
-function blurred(width: number, height: number, f: (x: number, y: number) => number, passes: number) {
-  let grid = Array.from({ length: height }, (_, y) => Array.from({ length: width }, (_, x) => f(x, y)));
+function blurred(
+  width: number,
+  height: number,
+  f: (x: number, y: number) => number,
+  passes: number,
+) {
+  let grid = Array.from({ length: height }, (_, y) =>
+    Array.from({ length: width }, (_, x) => f(x, y)),
+  );
   for (let pass = 0; pass < passes; pass += 1) {
-    grid = grid.map((row) => row.map((_, x) => (row[Math.max(0, x - 1)] + row[x] + row[Math.min(width - 1, x + 1)]) / 3));
+    grid = grid.map((row) =>
+      row.map((_, x) => (row[Math.max(0, x - 1)] + row[x] + row[Math.min(width - 1, x + 1)]) / 3),
+    );
   }
   return image(width, height, (x, y) => grid[y][x]);
 }
 
-const checker = (x: number, y: number) => ((Math.floor(x / 2) + Math.floor(y / 2)) % 2 === 0 ? 40 : 210);
+const checker = (x: number, y: number) =>
+  (Math.floor(x / 2) + Math.floor(y / 2)) % 2 === 0 ? 40 : 210;
 
 describe('frame signals', () => {
   it('computes Rec. 601 luma and the mean brightness', () => {
@@ -59,7 +106,8 @@ describe('frame signals', () => {
 });
 
 describe('coach state machine', () => {
-  const feed = (samples: CoachSample[], from: CoachState = initialCoach()) => samples.reduce((state, sample) => stepCoach(state, sample), from);
+  const feed = (samples: CoachSample[], from: CoachState = initialCoach()) =>
+    samples.reduce((state, sample) => stepCoach(state, sample), from);
   const steady = (t0: number, count: number, sharpness: number, brightness = 120) =>
     Array.from({ length: count }, (_, i) => ({ t: t0 + i * 250, sharpness, brightness }));
 
@@ -95,7 +143,15 @@ describe('coach state machine', () => {
     expect(coachWarnings(state, 1000 + DEFAULT_COACH_CONFIG.exposureHoldMs)).toEqual([]);
     expect(state.exposureJumps).toBe(1);
     // A slow drift is not a jump.
-    expect(feed(Array.from({ length: 20 }, (_, i) => ({ t: i * 250, sharpness: 600, brightness: 100 + i * 3 }))).exposureJumps).toBe(0);
+    expect(
+      feed(
+        Array.from({ length: 20 }, (_, i) => ({
+          t: i * 250,
+          sharpness: 600,
+          brightness: 100 + i * 3,
+        })),
+      ).exposureJumps,
+    ).toBe(0);
   });
 
   it('warns when the scene stays too dark', () => {
@@ -157,7 +213,7 @@ describe('recording configuration', () => {
     expect(tight.resolution).toBe('1080p');
     expect(tight.maxSeconds).toBe(598);
     expect(tight.expectedMaxSeconds).toBe(598);
-    expect(tight.bitsPerSecond * tight.maxSeconds / 8).toBeLessThan(tight.stopAtBytes);
+    expect((tight.bitsPerSecond * tight.maxSeconds) / 8).toBeLessThan(tight.stopAtBytes);
 
     const roomy = recordingBudget({ maxByteSize: 8 * 1024 ** 3, maxDurationSeconds: 1200 });
     expect(roomy.resolution).toBe('2160p');
@@ -175,18 +231,37 @@ describe('recording configuration', () => {
   it('records only containers the policy accepts', () => {
     const accepted = ['video/mp4', 'video/quicktime'];
     expect(baseContentType('Video/MP4; codecs=avc1')).toBe('video/mp4');
-    expect(pickRecorderType((t) => t === 'video/mp4', accepted, '1080p')).toEqual({ recorderType: 'video/mp4', contentType: 'video/mp4' });
-    expect(pickRecorderType(() => true, accepted, '2160p')?.recorderType).toBe('video/mp4;codecs=avc1.640033');
+    expect(pickRecorderType((t) => t === 'video/mp4', accepted, '1080p')).toEqual({
+      recorderType: 'video/mp4',
+      contentType: 'video/mp4',
+    });
+    expect(pickRecorderType(() => true, accepted, '2160p')?.recorderType).toBe(
+      'video/mp4;codecs=avc1.640033',
+    );
     expect(pickRecorderType((t) => t.startsWith('video/webm'), accepted, '1080p')).toBeNull();
     expect(pickRecorderType(() => true, ['video/quicktime'], '1080p')).toBeNull();
-    expect(pickRecorderType(() => { throw new Error('old browser'); }, accepted, '1080p')).toBeNull();
+    expect(
+      pickRecorderType(
+        () => {
+          throw new Error('old browser');
+        },
+        accepted,
+        '1080p',
+      ),
+    ).toBeNull();
     expect(nativeRecording('ios')).toEqual({ contentType: 'video/quicktime', extension: 'mov' });
     expect(nativeRecording('android').contentType).toBe('video/mp4');
   });
 
   it('locks to current values, falls back to single-shot, and skips what cannot lock', () => {
     const steps = lockSteps(
-      { exposureMode: ['continuous', 'manual'], exposureTime: { min: 1, max: 1000 }, iso: { min: 50, max: 3200 }, focusMode: ['continuous', 'single-shot'], whiteBalanceMode: ['continuous'] },
+      {
+        exposureMode: ['continuous', 'manual'],
+        exposureTime: { min: 1, max: 1000 },
+        iso: { min: 50, max: 3200 },
+        focusMode: ['continuous', 'single-shot'],
+        whiteBalanceMode: ['continuous'],
+      },
       { exposureTime: 80, iso: 200 },
     );
     expect(steps).toEqual([
@@ -196,14 +271,24 @@ describe('recording configuration', () => {
     // `manual` without a readable current value would lock to an arbitrary one.
     expect(lockSteps({ exposureMode: ['manual'], exposureTime: {} }, {})).toEqual([]);
     expect(lockSteps({}, {})).toEqual([]);
-    expect(lockReport(['exposure'])).toEqual({ exposure: 'locked', focus: 'unavailable', whiteBalance: 'unavailable' });
+    expect(lockReport(['exposure'])).toEqual({
+      exposure: 'locked',
+      focus: 'unavailable',
+      whiteBalance: 'unavailable',
+    });
   });
 
   it('trusts the settings read back, not the applyConstraints promise, and says what was locked', () => {
-    const step = { feature: 'exposure' as const, constraint: { exposureMode: 'manual', exposureTime: 80 } };
+    const step = {
+      feature: 'exposure' as const,
+      constraint: { exposureMode: 'manual', exposureTime: 80 },
+    };
     expect(lockHeld(step, { exposureMode: 'manual', exposureTime: 79.5 })).toBe(true);
     expect(lockHeld(step, { exposureMode: 'continuous' })).toBe(false);
-    expect(lockNoticeKeys(lockReport(['focus']))).toEqual(['contribute.guided.lock.noExposure', 'contribute.guided.lock.focus']);
+    expect(lockNoticeKeys(lockReport(['focus']))).toEqual([
+      'contribute.guided.lock.noExposure',
+      'contribute.guided.lock.focus',
+    ]);
   });
 });
 
@@ -211,9 +296,14 @@ describe('guided capture copy', () => {
   it('has every step, pace, warning and lock string in English and Spanish', () => {
     const keys = [
       ...GUIDED_STEPS.map(stepMessageKey),
-      ...(['short', 'onTarget', 'long', 'finish'] as const).map((pace) => `contribute.guided.pace.${pace}`),
-      ...(['blur', 'exposure', 'dark', 'portrait'] as const).map((warning) => `contribute.guided.warn.${warning}`),
-      ...lockNoticeKeys(lockReport([])), ...lockNoticeKeys(lockReport(['exposure', 'focus'])),
+      ...(['short', 'onTarget', 'long', 'finish'] as const).map(
+        (pace) => `contribute.guided.pace.${pace}`,
+      ),
+      ...(['blur', 'exposure', 'dark', 'portrait'] as const).map(
+        (warning) => `contribute.guided.warn.${warning}`,
+      ),
+      ...lockNoticeKeys(lockReport([])),
+      ...lockNoticeKeys(lockReport(['exposure', 'focus'])),
     ];
     for (const key of keys) {
       expect({ key, en: typeof STREET3D_EN[key] }).toEqual({ key, en: 'string' });

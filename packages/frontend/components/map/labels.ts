@@ -331,10 +331,7 @@ function compareScores(a: Score, b: Score): number {
  * Returns `null` for anything that is not a usable line, so the caller falls
  * back to the feature's own point and then to the tap.
  */
-export function anchorFor(
-  candidate: QueriedLabel,
-  tap: GeoCoordinate,
-): GeoCoordinate | null {
+export function anchorFor(candidate: QueriedLabel, tap: GeoCoordinate): GeoCoordinate | null {
   const path = candidate.path;
   if (!path || path.length === 0) return null;
 

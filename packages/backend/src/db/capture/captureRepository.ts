@@ -44,7 +44,12 @@ import type { Paged, TimeWindow } from '../../http/cursor';
 import { logger } from '../../utils/logger';
 import { retractCaptureFromStreet3d } from '../street3d/moderation';
 import type { Database, DatabaseOrTransaction } from '../postgres';
-import { captureAssets, captureLocationEvidence, captureMediaObjects, captureSessions } from '../schema';
+import {
+  captureAssets,
+  captureLocationEvidence,
+  captureMediaObjects,
+  captureSessions,
+} from '../schema';
 import {
   ASSET_COLUMNS,
   EVIDENCE_COLUMNS,
@@ -123,11 +128,20 @@ const EVIDENCE_DISAGREEMENT_METERS = 250;
  * rule `ApiErrorDetails` already follows — "these two claims are 4 km apart" is
  * the diagnostic; where either of them is, is not.
  */
-function noteEvidenceDisagreement(assetId: string, evidence: readonly CaptureLocationEvidence[]): void {
+function noteEvidenceDisagreement(
+  assetId: string,
+  evidence: readonly CaptureLocationEvidence[],
+): void {
   let worst = 0;
   for (let i = 0; i < evidence.length; i += 1) {
     for (let j = i + 1; j < evidence.length; j += 1) {
-      worst = Math.max(worst, evidenceDistanceMeters(evidence[i] as CaptureLocationEvidence, evidence[j] as CaptureLocationEvidence));
+      worst = Math.max(
+        worst,
+        evidenceDistanceMeters(
+          evidence[i] as CaptureLocationEvidence,
+          evidence[j] as CaptureLocationEvidence,
+        ),
+      );
     }
   }
   if (worst >= EVIDENCE_DISAGREEMENT_METERS) {
@@ -216,33 +230,42 @@ export async function listOwnedSessions(
   oxyUserId: string,
   window: TimeWindow,
 ): Promise<Paged<CaptureSession>[]> {
-  const counts = db.select({ sessionId: captureAssets.sessionId, assets: count().as('assets') })
-    .from(captureAssets).groupBy(captureAssets.sessionId).as('session_asset_counts');
+  const counts = db
+    .select({ sessionId: captureAssets.sessionId, assets: count().as('assets') })
+    .from(captureAssets)
+    .groupBy(captureAssets.sessionId)
+    .as('session_asset_counts');
   const rows = await db
     .select({
       ...SESSION_COLUMNS,
       assetCount: sql<number>`coalesce(${counts.assets}, 0)::integer`,
       position: sql<string>`${captureSessions.createdAt}::text`,
     })
-    .from(captureSessions).leftJoin(counts, eq(counts.sessionId, captureSessions.id))
-    .where(and(
-      eq(captureSessions.oxyUserId, oxyUserId),
-      window.after
-        ? sql`(${captureSessions.createdAt}, ${captureSessions.id}) < (${window.after[0]}::timestamptz, ${window.after[1]})`
-        : undefined,
-    ))
+    .from(captureSessions)
+    .leftJoin(counts, eq(counts.sessionId, captureSessions.id))
+    .where(
+      and(
+        eq(captureSessions.oxyUserId, oxyUserId),
+        window.after
+          ? sql`(${captureSessions.createdAt}, ${captureSessions.id}) < (${window.after[0]}::timestamptz, ${window.after[1]})`
+          : undefined,
+      ),
+    )
     .orderBy(desc(captureSessions.createdAt), desc(captureSessions.id))
     .limit(window.limit);
-  return rows.map((row) => ({ item: toCaptureSession(row, row.assetCount), position: [row.position, row.id] }));
+  return rows.map((row) => ({
+    item: toCaptureSession(row, row.assetCount),
+    position: [row.position, row.id],
+  }));
 }
 
 // ── Assets ──────────────────────────────────────────────────────────────────
 
-async function loadEvidence(
-  db: DatabaseOrTransaction,
-  assetId: string,
-): Promise<EvidenceRow[]> {
-  return db.select(EVIDENCE_COLUMNS).from(captureLocationEvidence).where(eq(captureLocationEvidence.assetId, assetId));
+async function loadEvidence(db: DatabaseOrTransaction, assetId: string): Promise<EvidenceRow[]> {
+  return db
+    .select(EVIDENCE_COLUMNS)
+    .from(captureLocationEvidence)
+    .where(eq(captureLocationEvidence.assetId, assetId));
 }
 
 async function loadMediaObject(
@@ -328,17 +351,22 @@ export async function listSessionAssets(
   const rows = await db
     .select({ ...ASSET_COLUMNS, position: sql<string>`${captureAssets.createdAt}::text` })
     .from(captureAssets)
-    .where(and(
-      eq(captureAssets.sessionId, sessionId),
-      eq(captureAssets.oxyUserId, oxyUserId),
-      window.after
-        ? sql`(${captureAssets.createdAt}, ${captureAssets.id}) > (${window.after[0]}::timestamptz, ${window.after[1]})`
-        : undefined,
-    ))
+    .where(
+      and(
+        eq(captureAssets.sessionId, sessionId),
+        eq(captureAssets.oxyUserId, oxyUserId),
+        window.after
+          ? sql`(${captureAssets.createdAt}, ${captureAssets.id}) > (${window.after[0]}::timestamptz, ${window.after[1]})`
+          : undefined,
+      ),
+    )
     .orderBy(captureAssets.createdAt, captureAssets.id)
     .limit(window.limit);
   return Promise.all(
-    rows.map(async ({ position, ...row }) => ({ item: await hydrate(db, row), position: [position, row.id] })),
+    rows.map(async ({ position, ...row }) => ({
+      item: await hydrate(db, row),
+      position: [position, row.id],
+    })),
   );
 }
 
@@ -386,35 +414,90 @@ export async function registerAsset(
       if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
       if (value !== null && typeof value === 'object') {
         const record = value as Record<string, unknown>;
-        return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`).join(',')}}`;
+        return `{${Object.keys(record)
+          .sort()
+          .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
+          .join(',')}}`;
       }
       return JSON.stringify(value);
     };
-    const fingerprint = createHash('sha256').update(canonical(JSON.parse(JSON.stringify(input)))).digest('hex');
+    const fingerprint = createHash('sha256')
+      .update(canonical(JSON.parse(JSON.stringify(input))))
+      .digest('hex');
     if (input.idempotencyKey) {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${session.id + ':' + input.idempotencyKey}, 1))`);
-      const [prior] = await tx.select({ ...ASSET_COLUMNS, fingerprint: captureAssets.requestFingerprint }).from(captureAssets)
-        .where(and(eq(captureAssets.sessionId, session.id), eq(captureAssets.idempotencyKey, input.idempotencyKey)));
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${session.id + ':' + input.idempotencyKey}, 1))`,
+      );
+      const [prior] = await tx
+        .select({ ...ASSET_COLUMNS, fingerprint: captureAssets.requestFingerprint })
+        .from(captureAssets)
+        .where(
+          and(
+            eq(captureAssets.sessionId, session.id),
+            eq(captureAssets.idempotencyKey, input.idempotencyKey),
+          ),
+        );
       if (prior) {
-        if (prior.fingerprint !== fingerprint) throw new ApiError('conflict', 'This upload request key was already used for different media or metadata.');
-        const [media] = await tx.select().from(captureMediaObjects).where(eq(captureMediaObjects.id, prior.mediaObjectId)).for('update');
-        const [current] = await tx.select({ state: captureAssets.state }).from(captureAssets).where(eq(captureAssets.id, prior.id));
-        if (!current || current.state === 'deleted' || !media || media.deletedAt || media.deletionRequestedAt || media.storageState === 'deleting' || media.expiresAt <= now || prior.state === 'deleted') {
-          throw new ApiError('conflict', 'This contribution is no longer active. Start a new contribution.');
+        if (prior.fingerprint !== fingerprint)
+          throw new ApiError(
+            'conflict',
+            'This upload request key was already used for different media or metadata.',
+          );
+        const [media] = await tx
+          .select()
+          .from(captureMediaObjects)
+          .where(eq(captureMediaObjects.id, prior.mediaObjectId))
+          .for('update');
+        const [current] = await tx
+          .select({ state: captureAssets.state })
+          .from(captureAssets)
+          .where(eq(captureAssets.id, prior.id));
+        if (
+          !current ||
+          current.state === 'deleted' ||
+          !media ||
+          media.deletedAt ||
+          media.deletionRequestedAt ||
+          media.storageState === 'deleting' ||
+          media.expiresAt <= now ||
+          prior.state === 'deleted'
+        ) {
+          throw new ApiError(
+            'conflict',
+            'This contribution is no longer active. Start a new contribution.',
+          );
         }
         if (media.storageState === 'expected') {
-          await tx.update(captureMediaObjects).set({ uploadIntentExpiresAt: intentExpiresAt, updatedAt: now }).where(eq(captureMediaObjects.id, media.id));
+          await tx
+            .update(captureMediaObjects)
+            .set({ uploadIntentExpiresAt: intentExpiresAt, updatedAt: now })
+            .where(eq(captureMediaObjects.id, media.id));
         }
-        return { asset: await hydrate(tx, prior), objectKey: media.objectKey, uploadRequired: media.storageState === 'expected', byteSize: media.byteSize, contentType: media.contentType };
+        return {
+          asset: await hydrate(tx, prior),
+          objectKey: media.objectKey,
+          uploadRequired: media.storageState === 'expected',
+          byteSize: media.byteSize,
+          contentType: media.contentType,
+        };
       }
     }
     // A row lock cannot lock an absent hash. Serialize first registrations too,
     // otherwise simultaneous duplicate uploads race the partial unique index.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.contentHash}, 0))`);
     const [existing] = await tx
-      .select({ ...MEDIA_OBJECT_COLUMNS, objectKey: captureMediaObjects.objectKey, deletionRequestedAt: captureMediaObjects.deletionRequestedAt })
+      .select({
+        ...MEDIA_OBJECT_COLUMNS,
+        objectKey: captureMediaObjects.objectKey,
+        deletionRequestedAt: captureMediaObjects.deletionRequestedAt,
+      })
       .from(captureMediaObjects)
-      .where(and(eq(captureMediaObjects.contentHash, input.contentHash), isNull(captureMediaObjects.deletedAt)))
+      .where(
+        and(
+          eq(captureMediaObjects.contentHash, input.contentHash),
+          isNull(captureMediaObjects.deletedAt),
+        ),
+      )
       // This lock also serializes registration against the expiry sweeper.
       .for('update');
 
@@ -425,11 +508,18 @@ export async function registerAsset(
     if (existing) {
       // A committed deletion intent may already have reached S3 even if the
       // process crashed before recording success. It can never be cancelled.
-      if (existing.byteSize !== input.byteSize || existing.contentType !== input.contentType || existing.retentionClass !== plan.retentionClass) {
+      if (
+        existing.byteSize !== input.byteSize ||
+        existing.contentType !== input.contentType ||
+        existing.retentionClass !== plan.retentionClass
+      ) {
         throw new ApiError('conflict', 'The declared media metadata does not match these bytes.');
       }
       if (existing.storageState === 'deleting' || existing.deletionRequestedAt !== null) {
-        throw new ApiError('conflict', 'These bytes are being removed. Retry after cleanup completes.');
+        throw new ApiError(
+          'conflict',
+          'These bytes are being removed. Retry after cleanup completes.',
+        );
       }
       objectId = existing.id;
       objectKey = existing.objectKey;
@@ -481,7 +571,9 @@ export async function registerAsset(
         anchorLongitude: anchor.coordinate.longitude,
         anchorOrigin: anchor.origin,
         anchorWitness: anchor.witness,
-        ...(anchor.accuracyMeters === undefined ? {} : { anchorAccuracyMeters: anchor.accuracyMeters }),
+        ...(anchor.accuracyMeters === undefined
+          ? {}
+          : { anchorAccuracyMeters: anchor.accuracyMeters }),
         ...cameraColumns(input.camera),
       })
       .returning(ASSET_COLUMNS);
@@ -495,10 +587,18 @@ export async function registerAsset(
           witness: evidence.witness,
           latitude: evidence.coordinate.latitude,
           longitude: evidence.coordinate.longitude,
-          ...(evidence.accuracyMeters === undefined ? {} : { accuracyMeters: evidence.accuracyMeters }),
-          ...(evidence.altitudeMeters === undefined ? {} : { altitudeMeters: evidence.altitudeMeters }),
-          ...(evidence.headingDegrees === undefined ? {} : { headingDegrees: evidence.headingDegrees }),
-          ...(evidence.observedAt === undefined ? {} : { observedAt: new Date(evidence.observedAt) }),
+          ...(evidence.accuracyMeters === undefined
+            ? {}
+            : { accuracyMeters: evidence.accuracyMeters }),
+          ...(evidence.altitudeMeters === undefined
+            ? {}
+            : { altitudeMeters: evidence.altitudeMeters }),
+          ...(evidence.headingDegrees === undefined
+            ? {}
+            : { headingDegrees: evidence.headingDegrees }),
+          ...(evidence.observedAt === undefined
+            ? {}
+            : { observedAt: new Date(evidence.observedAt) }),
         })),
       );
     }
@@ -523,7 +623,9 @@ function cameraColumns(camera: CaptureCameraMetadata | undefined) {
     ...(camera.heightPixels === undefined ? {} : { cameraHeightPixels: camera.heightPixels }),
     ...(camera.exifOrientation === undefined ? {} : { exifOrientation: camera.exifOrientation }),
     ...(camera.focalLengthMm === undefined ? {} : { focalLengthMm: camera.focalLengthMm }),
-    ...(camera.focalLength35mm === undefined ? {} : { focalLengthEquivalentMm: camera.focalLength35mm }),
+    ...(camera.focalLength35mm === undefined
+      ? {}
+      : { focalLengthEquivalentMm: camera.focalLength35mm }),
     ...(camera.make === undefined ? {} : { cameraMake: camera.make }),
     ...(camera.model === undefined ? {} : { cameraModel: camera.model }),
     ...(camera.lens === undefined ? {} : { cameraLens: camera.lens }),
@@ -560,16 +662,28 @@ export async function finalizeAsset(
 
     // Lock the object before changing either row, in the same order as cleanup.
     // The preceding HEAD can race a committed deletion intent.
-    const [mediaObject] = await tx.select({ ...MEDIA_OBJECT_COLUMNS, deletionRequestedAt: captureMediaObjects.deletionRequestedAt })
+    const [mediaObject] = await tx
+      .select({
+        ...MEDIA_OBJECT_COLUMNS,
+        deletionRequestedAt: captureMediaObjects.deletionRequestedAt,
+      })
       .from(captureMediaObjects)
       .where(eq(captureMediaObjects.id, row.mediaObjectId))
       .for('update');
     if (!mediaObject) throw new ApiError('internal_error', 'A capture asset has no media object.');
     [row] = await tx.select(ASSET_COLUMNS).from(captureAssets).where(eq(captureAssets.id, assetId));
     if (!row) return null;
-    if (mediaObject.storageState === 'deleting' || mediaObject.storageState === 'deleted'
-      || mediaObject.deletionRequestedAt !== null || row.state === 'deleted' || mediaObject.expiresAt <= now) {
-      throw new ApiError('conflict', 'This capture has expired or is being removed. Start a new contribution.');
+    if (
+      mediaObject.storageState === 'deleting' ||
+      mediaObject.storageState === 'deleted' ||
+      mediaObject.deletionRequestedAt !== null ||
+      row.state === 'deleted' ||
+      mediaObject.expiresAt <= now
+    ) {
+      throw new ApiError(
+        'conflict',
+        'This capture has expired or is being removed. Start a new contribution.',
+      );
     }
 
     if (mediaObject.storageState === 'expected') {
@@ -587,14 +701,16 @@ export async function finalizeAsset(
     // Only from `expected`. A later state — accepted, integrated, rejected — is
     // a decision something else already made about this contribution, and a
     // retried finalize must not walk it backwards.
-    const [updated] = row.state === 'expected'
-      ? await tx
-          .update(captureAssets)
-          .set({ state: 'uploaded', updatedAt: now })
-          .where(eq(captureAssets.id, assetId))
-          .returning(ASSET_COLUMNS)
-      : [row];
-    if (!updated) throw new ApiError('internal_error', 'The capture asset vanished during finalize.');
+    const [updated] =
+      row.state === 'expected'
+        ? await tx
+            .update(captureAssets)
+            .set({ state: 'uploaded', updatedAt: now })
+            .where(eq(captureAssets.id, assetId))
+            .returning(ASSET_COLUMNS)
+        : [row];
+    if (!updated)
+      throw new ApiError('internal_error', 'The capture asset vanished during finalize.');
     return hydrate(tx, updated);
   });
 }
@@ -609,9 +725,15 @@ export async function finalizeAsset(
  * is queued for a rebuild without it. See `db/street3d/moderation.ts` for the
  * derived-data policy.
  */
-export async function withdrawCaptureAsset(db: Database, assetId: string, oxyUserId: string): Promise<CaptureAsset | null> {
+export async function withdrawCaptureAsset(
+  db: Database,
+  assetId: string,
+  oxyUserId: string,
+): Promise<CaptureAsset | null> {
   return db.transaction(async (tx) => {
-    const [asset] = await tx.select(ASSET_COLUMNS).from(captureAssets)
+    const [asset] = await tx
+      .select(ASSET_COLUMNS)
+      .from(captureAssets)
       .where(and(eq(captureAssets.id, assetId), eq(captureAssets.oxyUserId, oxyUserId)));
     if (!asset) return null;
     const now = new Date();
@@ -619,16 +741,40 @@ export async function withdrawCaptureAsset(db: Database, assetId: string, oxyUse
     // takes it BEFORE capture rows. Taking the object lock first here would
     // invert that order against an event being applied for the same capture.
     await retractCaptureFromStreet3d(tx, assetId, 'contributor_request', now);
-    await tx.select({ id: captureMediaObjects.id }).from(captureMediaObjects)
-      .where(eq(captureMediaObjects.id, asset.mediaObjectId)).for('update');
-    const [removed] = await tx.update(captureAssets).set({ state: 'deleted', privacyState: 'blocked', privacyCompletedAt: now, updatedAt: now })
-      .where(eq(captureAssets.id, assetId)).returning(ASSET_COLUMNS);
-    const [remaining] = await tx.select({ count: count() }).from(captureAssets)
-      .where(and(eq(captureAssets.mediaObjectId, asset.mediaObjectId), ne(captureAssets.state, 'deleted')));
+    await tx
+      .select({ id: captureMediaObjects.id })
+      .from(captureMediaObjects)
+      .where(eq(captureMediaObjects.id, asset.mediaObjectId))
+      .for('update');
+    const [removed] = await tx
+      .update(captureAssets)
+      .set({ state: 'deleted', privacyState: 'blocked', privacyCompletedAt: now, updatedAt: now })
+      .where(eq(captureAssets.id, assetId))
+      .returning(ASSET_COLUMNS);
+    const [remaining] = await tx
+      .select({ count: count() })
+      .from(captureAssets)
+      .where(
+        and(
+          eq(captureAssets.mediaObjectId, asset.mediaObjectId),
+          ne(captureAssets.state, 'deleted'),
+        ),
+      );
     if (remaining?.count === 0) {
-      await tx.update(captureMediaObjects).set({
-        deletionRequestedAt: now, deletionRequestedReason: 'contributor_request', protectedUntil: null, updatedAt: now,
-      }).where(and(eq(captureMediaObjects.id, asset.mediaObjectId), isNull(captureMediaObjects.deletedAt)));
+      await tx
+        .update(captureMediaObjects)
+        .set({
+          deletionRequestedAt: now,
+          deletionRequestedReason: 'contributor_request',
+          protectedUntil: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(captureMediaObjects.id, asset.mediaObjectId),
+            isNull(captureMediaObjects.deletedAt),
+          ),
+        );
     }
     if (!removed) throw new ApiError('internal_error', 'The capture vanished during withdrawal.');
     return hydrate(tx, removed);
@@ -734,17 +880,19 @@ export async function summarizeCaptureStorage(
   // Every class, always, including the ones with nothing in them. A report that
   // omits an empty class reads as "no data" rather than "no bytes", and the
   // difference matters when the question is whether retention is working.
-  return CAPTURE_RETENTION_CLASSES.map((retentionClass: CaptureRetentionClass): CaptureStorageUsage => {
-    const row = byClass.get(retentionClass);
-    // `bigint` arrives from the driver as a string; `Number` is exact well past
-    // any plausible byte total and keeps the contract a plain number.
-    return {
-      retentionClass,
-      storedBytes: Number(row?.storedBytes ?? 0),
-      expiringWithin7dBytes: Number(row?.expiringWithin7dBytes ?? 0),
-      expiringWithin30dBytes: Number(row?.expiringWithin30dBytes ?? 0),
-      deduplicatedBytes: Number(row?.deduplicatedBytes ?? 0),
-      objectCount: Number(row?.objectCount ?? 0),
-    };
-  });
+  return CAPTURE_RETENTION_CLASSES.map(
+    (retentionClass: CaptureRetentionClass): CaptureStorageUsage => {
+      const row = byClass.get(retentionClass);
+      // `bigint` arrives from the driver as a string; `Number` is exact well past
+      // any plausible byte total and keeps the contract a plain number.
+      return {
+        retentionClass,
+        storedBytes: Number(row?.storedBytes ?? 0),
+        expiringWithin7dBytes: Number(row?.expiringWithin7dBytes ?? 0),
+        expiringWithin30dBytes: Number(row?.expiringWithin30dBytes ?? 0),
+        deduplicatedBytes: Number(row?.deduplicatedBytes ?? 0),
+        objectCount: Number(row?.objectCount ?? 0),
+      };
+    },
+  );
 }

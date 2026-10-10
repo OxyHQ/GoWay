@@ -224,7 +224,7 @@ function parseLatLon(raw: string | undefined): GeoCoordinate | undefined {
  */
 function wrapLongitude(longitude: number): number {
   if (longitude >= -180 && longitude <= 180) return longitude;
-  const wrapped = ((longitude + 180) % 360 + 360) % 360 - 180;
+  const wrapped = ((((longitude + 180) % 360) + 360) % 360) - 180;
   // `-180` and `180` are the same meridian; normalising to `180` keeps a
   // round-trip through this function stable rather than flipping sign.
   return wrapped === -180 ? 180 : wrapped;
@@ -239,7 +239,10 @@ function wrapLongitude(longitude: number): number {
  * `fitBounds` with their maximum zoom — which is a street-level view of
  * somewhere the embedder asked to see a region of.
  */
-function parseSpan(raw: string | undefined, center: GeoCoordinate | undefined): GeoBounds | undefined {
+function parseSpan(
+  raw: string | undefined,
+  center: GeoCoordinate | undefined,
+): GeoBounds | undefined {
   if (raw === undefined || center === undefined) return undefined;
   const parts = raw.split(',');
   if (parts.length !== 2) return undefined;
@@ -289,7 +292,11 @@ export function parseEmbedParams(params: RawParams): EmbedParams {
   const interactiveRaw = first(params, 'interactive');
   // Anything other than an explicit opt-out is interactive. An embedder who
   // typed `interactive=yes` meant yes, and so did one who typed nothing.
-  const interactive = !(interactiveRaw === '0' || interactiveRaw === 'false' || interactiveRaw === 'no');
+  const interactive = !(
+    interactiveRaw === '0' ||
+    interactiveRaw === 'false' ||
+    interactiveRaw === 'no'
+  );
 
   const zoom = finiteInRange(first(params, 'zoom', 'z'), 0, MAX_ZOOM);
   const bearing = clamped(first(params, 'bearing'), -360, 360);

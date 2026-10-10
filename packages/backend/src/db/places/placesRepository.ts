@@ -26,19 +26,7 @@
  * claim and a capability now all point at wrongly.
  */
 
-import {
-  and,
-  arrayOverlaps,
-  desc,
-  eq,
-  gt,
-  inArray,
-  lte,
-  ne,
-  or,
-  sql,
-  type SQL,
-} from 'drizzle-orm';
+import { and, arrayOverlaps, desc, eq, gt, inArray, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { qualified, sqlColumnName } from '@oxy.so/db';
 import {
@@ -69,7 +57,11 @@ import type {
   StructuredAddress,
   WritablePlaceStatus,
 } from '@goway/contracts';
-import { assertWritableCategories, categoryCatalog, taxonomyRefusal } from '../../categories/catalog';
+import {
+  assertWritableCategories,
+  categoryCatalog,
+  taxonomyRefusal,
+} from '../../categories/catalog';
 import { ApiError } from '../../http/apiError';
 import type { Paged, TimeWindow } from '../../http/cursor';
 import {
@@ -330,7 +322,8 @@ const verificationRank = sql`array_position(ARRAY[${sql.join(
  */
 function holds(key: SQL | PgColumn, value: SQL | PgColumn): SQL {
   const absent = ABSENT_CAPABILITY_VALUES.map(
-    ([absentKey, absentValue]) => sql`(${key} = ${absentKey} and ${value} = ${JSON.stringify(absentValue)}::jsonb)`,
+    ([absentKey, absentValue]) =>
+      sql`(${key} = ${absentKey} and ${value} = ${JSON.stringify(absentValue)}::jsonb)`,
   );
   const notAbsent = absent.length > 0 ? sql` and not (${sql.join(absent, sql` or `)})` : sql``;
   return sql`${value} not in ('false'::jsonb, '0'::jsonb, '""'::jsonb, '[]'::jsonb)${notAbsent}`;
@@ -392,7 +385,12 @@ function matchesAllCapabilities(db: DatabaseOrTransaction, rawFilters: readonly 
     })
     .from(placesCapabilities)
     .where(inArray(placesCapabilities.key, keys))
-    .orderBy(placesCapabilities.placeId, placesCapabilities.key, desc(verificationRank), desc(placesCapabilities.observedAt))
+    .orderBy(
+      placesCapabilities.placeId,
+      placesCapabilities.key,
+      desc(verificationRank),
+      desc(placesCapabilities.observedAt),
+    )
     .as('strongest_capability');
   const holding = db
     .select({ placeId: strongest.placeId })
@@ -400,7 +398,9 @@ function matchesAllCapabilities(db: DatabaseOrTransaction, rawFilters: readonly 
     .groupBy(strongest.placeId)
     .having(
       sql.join(
-        filters.map((filter) => sql`bool_or(${matchesFilter(strongest.key, strongest.value, filter)})`),
+        filters.map(
+          (filter) => sql`bool_or(${matchesFilter(strongest.key, strongest.value, filter)})`,
+        ),
         sql` and `,
       ),
     );
@@ -424,7 +424,10 @@ const isPublished = inArray(places.status, [...PUBLISHED_PLACE_STATUSES]);
  * the SDK treats a 404 as "this id is dead" and a consumer may drop a persisted
  * place id on the strength of it. A merged id answers with where it went.
  */
-async function listPredicates(db: DatabaseOrTransaction, filters: PlaceListFilters): Promise<SQL[]> {
+async function listPredicates(
+  db: DatabaseOrTransaction,
+  filters: PlaceListFilters,
+): Promise<SQL[]> {
   const predicates: SQL[] = [isPublished];
   if (filters.capabilities && filters.capabilities.length > 0) {
     predicates.push(matchesAllCapabilities(db, filters.capabilities));
@@ -448,7 +451,10 @@ async function loadSources(
   placeIds: readonly string[],
 ): Promise<SourceRow[]> {
   if (placeIds.length === 0) return [];
-  return db.select(SOURCE_COLUMNS).from(placesSources).where(inArray(placesSources.placeId, [...placeIds]));
+  return db
+    .select(SOURCE_COLUMNS)
+    .from(placesSources)
+    .where(inArray(placesSources.placeId, [...placeIds]));
 }
 
 async function loadCapabilities(
@@ -477,7 +483,10 @@ async function loadNames(
   placeIds: readonly string[],
 ): Promise<NameRow[]> {
   if (placeIds.length === 0) return [];
-  return db.select(NAME_COLUMNS).from(placesNames).where(inArray(placesNames.placeId, [...placeIds]));
+  return db
+    .select(NAME_COLUMNS)
+    .from(placesNames)
+    .where(inArray(placesNames.placeId, [...placeIds]));
 }
 
 /** The most exceptions a place embeds. Every one is still listed by `listHoursExceptions`. */
@@ -522,13 +531,19 @@ async function loadCurrentHoursExceptions(
     .where(
       inArray(
         placeHoursExceptions.id,
-        db.select({ id: ranked.id }).from(ranked).where(lte(ranked.rank, MAX_EMBEDDED_HOURS_EXCEPTIONS)),
+        db
+          .select({ id: ranked.id })
+          .from(ranked)
+          .where(lte(ranked.rank, MAX_EMBEDDED_HOURS_EXCEPTIONS)),
       ),
     )
     .orderBy(placeHoursExceptions.placeId, placeHoursExceptions.startsOn, placeHoursExceptions.id);
 }
 
-async function loadDescriptions(db: DatabaseOrTransaction, placeIds: readonly string[]): Promise<DescriptionRow[]> {
+async function loadDescriptions(
+  db: DatabaseOrTransaction,
+  placeIds: readonly string[],
+): Promise<DescriptionRow[]> {
   if (placeIds.length === 0) return [];
   return db
     .select(DESCRIPTION_COLUMNS)
@@ -555,10 +570,22 @@ export async function loadRatings(
       average: placeReviewAggregates.ratingAverage,
     })
     .from(placeReviewAggregates)
-    .where(and(inArray(placeReviewAggregates.placeId, [...placeIds]), gt(placeReviewAggregates.reviewCount, 0)));
+    .where(
+      and(
+        inArray(placeReviewAggregates.placeId, [...placeIds]),
+        gt(placeReviewAggregates.reviewCount, 0),
+      ),
+    );
   return new Map(
     rows.flatMap((row) =>
-      row.average === null ? [] : [[row.placeId, { average: Math.round(row.average * 10) / 10, count: row.count }] as const],
+      row.average === null
+        ? []
+        : [
+            [
+              row.placeId,
+              { average: Math.round(row.average * 10) / 10, count: row.count },
+            ] as const,
+          ],
     ),
   );
 }
@@ -567,9 +594,16 @@ export async function loadRatings(
  * The Oxy file of each VISIBLE gallery item a page's logos and covers name,
  * by item id. One query for the page, and none when no place on it has either.
  */
-async function loadMediaFiles(db: DatabaseOrTransaction, rows: readonly PlaceRow[]): Promise<Map<string, string>> {
+async function loadMediaFiles(
+  db: DatabaseOrTransaction,
+  rows: readonly PlaceRow[],
+): Promise<Map<string, string>> {
   const ids = [
-    ...new Set(rows.flatMap((row) => [row.logoMediaId, row.coverMediaId].filter((id): id is string => id !== null))),
+    ...new Set(
+      rows.flatMap((row) =>
+        [row.logoMediaId, row.coverMediaId].filter((id): id is string => id !== null),
+      ),
+    ),
   ];
   if (ids.length === 0) return new Map();
   const media = await db
@@ -579,9 +613,15 @@ async function loadMediaFiles(db: DatabaseOrTransaction, rows: readonly PlaceRow
   return new Map(media.map((item) => [item.id, item.fileId]));
 }
 
-async function loadClaims(db: DatabaseOrTransaction, placeIds: readonly string[]): Promise<ClaimRow[]> {
+async function loadClaims(
+  db: DatabaseOrTransaction,
+  placeIds: readonly string[],
+): Promise<ClaimRow[]> {
   if (placeIds.length === 0) return [];
-  return db.select(CLAIM_COLUMNS).from(placesClaims).where(inArray(placesClaims.placeId, [...placeIds]));
+  return db
+    .select(CLAIM_COLUMNS)
+    .from(placesClaims)
+    .where(inArray(placesClaims.placeId, [...placeIds]));
 }
 
 function groupByPlace<T extends { placeId: string }>(rows: readonly T[]): Map<string, T[]> {
@@ -628,16 +668,17 @@ async function hydrate(
   // The names query is issued only when the read was asked about names. A
   // viewport that never mentioned a locale must not pay for 200 places' worth
   // of translations to throw them away in the mapper.
-  const [sources, capabilities, names, hoursExceptions, ratings, mediaFiles, descriptions, claims] = await Promise.all([
-    loadSources(db, ids),
-    loadCapabilities(db, ids),
-    needsNames(view) ? loadNames(db, ids) : Promise.resolve([]),
-    loadCurrentHoursExceptions(db, ids),
-    loadRatings(db, ids),
-    loadMediaFiles(db, rows),
-    detail ? loadDescriptions(db, ids) : Promise.resolve(null),
-    detail?.viewerOxyAccountId ? loadClaims(db, ids) : Promise.resolve(null),
-  ]);
+  const [sources, capabilities, names, hoursExceptions, ratings, mediaFiles, descriptions, claims] =
+    await Promise.all([
+      loadSources(db, ids),
+      loadCapabilities(db, ids),
+      needsNames(view) ? loadNames(db, ids) : Promise.resolve([]),
+      loadCurrentHoursExceptions(db, ids),
+      loadRatings(db, ids),
+      loadMediaFiles(db, rows),
+      detail ? loadDescriptions(db, ids) : Promise.resolve(null),
+      detail?.viewerOxyAccountId ? loadClaims(db, ids) : Promise.resolve(null),
+    ]);
   const sourcesByPlace = groupByPlace(sources);
   const capabilitiesByPlace = groupByPlace(capabilities);
   const namesByPlace = groupByPlace(names);
@@ -657,7 +698,8 @@ async function hydrate(
       // Published only to a session that itself holds a claim on THIS place —
       // its own and the ones it competes with — exactly as the single read.
       const placeClaims = claimsByPlace?.get(id) ?? [];
-      if (placeClaims.some((claim) => claim.oxyAccountId === detail?.viewerOxyAccountId)) children.claims = placeClaims;
+      if (placeClaims.some((claim) => claim.oxyAccountId === detail?.viewerOxyAccountId))
+        children.claims = placeClaims;
       const rating = ratings.get(id);
       if (rating) children.rating = rating;
       return [id, children];
@@ -721,8 +763,12 @@ export async function findPlacesByIds(
     .where(and(inArray(places.id, unique), isPublished));
 
   const view: PlaceNameView = { publishAll: true, locale };
-  const children = await hydrate(db, rows, view, { viewerOxyAccountId: viewerOxyAccountId ?? null });
-  const byId = new Map(rows.map((row) => [row.id, toPlace(row, children.get(row.id) ?? NO_CHILDREN, view)]));
+  const children = await hydrate(db, rows, view, {
+    viewerOxyAccountId: viewerOxyAccountId ?? null,
+  });
+  const byId = new Map(
+    rows.map((row) => [row.id, toPlace(row, children.get(row.id) ?? NO_CHILDREN, view)]),
+  );
   return unique.flatMap((id) => byId.get(id) ?? []);
 }
 
@@ -748,7 +794,9 @@ export async function findPlacesNearby(
     // skipping or repeating the places that share it. `ST_Distance` is
     // deterministic for the same inputs and the float round-trips exactly, so
     // the position names the same row it was minted from.
-    predicates.push(sql`(${distance}, ${places.id}) > (${query.after[0]}::float8, ${query.after[1]})`);
+    predicates.push(
+      sql`(${distance}, ${places.id}) > (${query.after[0]}::float8, ${query.after[1]})`,
+    );
   }
   const rows = await db
     .select({ ...PLACE_COLUMNS, distanceMeters: distance })
@@ -798,7 +846,10 @@ export async function findPlacesInBounds(
  * merged — the second with the survivor's id — and `404 not_found` for one that
  * never existed: a consumer holding a persisted id acts differently on each.
  */
-export async function findPlaceLifecycle(db: DatabaseOrTransaction, placeId: string): Promise<PlaceLifecycle | null> {
+export async function findPlaceLifecycle(
+  db: DatabaseOrTransaction,
+  placeId: string,
+): Promise<PlaceLifecycle | null> {
   return (await findPlaceLifecycles(db, [placeId])).get(placeId) ?? null;
 }
 
@@ -813,7 +864,10 @@ export async function findPlaceLifecycles(
     .from(places)
     .where(inArray(places.id, [...new Set(placeIds)]));
   return new Map(
-    rows.map((row) => [row.id, { status: row.status as PlaceStatus, mergedIntoPlaceId: row.mergedIntoPlaceId }]),
+    rows.map((row) => [
+      row.id,
+      { status: row.status as PlaceStatus, mergedIntoPlaceId: row.mergedIntoPlaceId },
+    ]),
   );
 }
 
@@ -826,7 +880,10 @@ export async function findPlaceLifecycles(
  * caller acts for a claim is a question for Oxy (`places/claimAuthority`), not
  * for this database.
  */
-export async function getPlaceAuthorization(db: DatabaseOrTransaction, placeId: string): Promise<PlaceAuthorization> {
+export async function getPlaceAuthorization(
+  db: DatabaseOrTransaction,
+  placeId: string,
+): Promise<PlaceAuthorization> {
   const [lifecycle, claims] = await Promise.all([
     findPlaceLifecycle(db, placeId),
     db
@@ -836,7 +893,10 @@ export async function getPlaceAuthorization(db: DatabaseOrTransaction, placeId: 
   ]);
   return {
     lifecycle,
-    approvedClaims: claims.map((claim) => ({ oxyAccountId: claim.oxyAccountId, role: claim.role as PlaceClaimRole })),
+    approvedClaims: claims.map((claim) => ({
+      oxyAccountId: claim.oxyAccountId,
+      role: claim.role as PlaceClaimRole,
+    })),
   };
 }
 
@@ -874,7 +934,9 @@ export async function recordDuplicateCandidate(
   await db
     .insert(placesDuplicateCandidates)
     .values({ placeId: low, candidatePlaceId: high, reason, score: score ?? null })
-    .onConflictDoNothing({ target: [placesDuplicateCandidates.placeId, placesDuplicateCandidates.candidatePlaceId] });
+    .onConflictDoNothing({
+      target: [placesDuplicateCandidates.placeId, placesDuplicateCandidates.candidatePlaceId],
+    });
 }
 
 /**
@@ -1016,7 +1078,11 @@ async function findTranslatedNameCandidates(
   // name: reading `places.name_normalized` back is what keeps both sides of
   // every comparison below on the same case-folding rules.
   const [[self], own] = await Promise.all([
-    db.select({ normalized: places.nameNormalized }).from(places).where(eq(places.id, placeId)).limit(1),
+    db
+      .select({ normalized: places.nameNormalized })
+      .from(places)
+      .where(eq(places.id, placeId))
+      .limit(1),
     db
       .select({ normalized: placesNames.nameNormalized })
       .from(placesNames)
@@ -1098,7 +1164,8 @@ async function linkSources(
         'That source record is already linked to a different GoWay place.',
       );
     }
-    if (linked.inserted) changes.push({ field: 'sources', after: { source: ref.source, sourceId: ref.sourceId } });
+    if (linked.inserted)
+      changes.push({ field: 'sources', after: { source: ref.source, sourceId: ref.sourceId } });
   }
   return changes;
 }
@@ -1121,7 +1188,9 @@ async function applyGowayNames(
       .select({ language: placesNames.language, name: placesNames.name })
       .from(placesNames)
       .where(and(eq(placesNames.placeId, placeId), eq(placesNames.source, GOWAY_NAME_SOURCE)));
-    return Object.fromEntries(rows.map((row) => [nameField(row.language), { name: row.name, source: GOWAY_NAME_SOURCE }]));
+    return Object.fromEntries(
+      rows.map((row) => [nameField(row.language), { name: row.name, source: GOWAY_NAME_SOURCE }]),
+    );
   };
   const before = await read();
   await applyPlaceNames(tx, placeId, GOWAY_NAME_SOURCE, names);
@@ -1149,11 +1218,22 @@ async function applyGowayDescriptions(
   }
   const read = async (): Promise<FieldValues> => {
     const rows = await tx
-      .select({ language: placesDescriptions.language, description: placesDescriptions.description })
+      .select({
+        language: placesDescriptions.language,
+        description: placesDescriptions.description,
+      })
       .from(placesDescriptions)
-      .where(and(eq(placesDescriptions.placeId, placeId), eq(placesDescriptions.source, GOWAY_NAME_SOURCE)));
+      .where(
+        and(
+          eq(placesDescriptions.placeId, placeId),
+          eq(placesDescriptions.source, GOWAY_NAME_SOURCE),
+        ),
+      );
     return Object.fromEntries(
-      rows.map((row) => [descriptionField(row.language), { description: row.description, source: GOWAY_NAME_SOURCE }]),
+      rows.map((row) => [
+        descriptionField(row.language),
+        { description: row.description, source: GOWAY_NAME_SOURCE },
+      ]),
     );
   };
   const before = await read();
@@ -1172,7 +1252,11 @@ async function applyGowayDescriptions(
       .insert(placesDescriptions)
       .values({ placeId, language, description, source: GOWAY_NAME_SOURCE, observedAt: now })
       .onConflictDoUpdate({
-        target: [placesDescriptions.placeId, placesDescriptions.language, placesDescriptions.source],
+        target: [
+          placesDescriptions.placeId,
+          placesDescriptions.language,
+          placesDescriptions.source,
+        ],
         set: { description, observedAt: now, updatedAt: now },
       });
   }
@@ -1206,10 +1290,14 @@ async function galleryItemFor(
     )
     .limit(1);
   if (!item) {
-    throw new ApiError('validation_failed', `The ${field} must be a visible ${kind} in this place's gallery.`, {
-      field,
-      issue: 'not_in_gallery',
-    });
+    throw new ApiError(
+      'validation_failed',
+      `The ${field} must be a visible ${kind} in this place's gallery.`,
+      {
+        field,
+        issue: 'not_in_gallery',
+      },
+    );
   }
   return item.id;
 }
@@ -1219,7 +1307,9 @@ function collectSourceRefs(input: PlaceWriteInput): SourceRefInput[] {
   const seen = new Map<string, SourceRefInput>();
   for (const ref of [
     ...(input.sources ?? []),
-    ...(input.capabilities ?? []).flatMap((capability) => (capability.source ? [capability.source] : [])),
+    ...(input.capabilities ?? []).flatMap((capability) =>
+      capability.source ? [capability.source] : [],
+    ),
   ]) {
     seen.set(`${ref.source}\u0000${ref.sourceId}`, ref);
   }
@@ -1246,16 +1336,23 @@ async function applyCapabilities(
   if (capabilities.length === 0) return [];
 
   const sourceRows = await tx
-    .select({ id: placesSources.id, source: placesSources.source, sourceId: placesSources.sourceId })
+    .select({
+      id: placesSources.id,
+      source: placesSources.source,
+      sourceId: placesSources.sourceId,
+    })
     .from(placesSources)
     .where(eq(placesSources.placeId, placeId));
-  const sourceIdByRef = new Map(sourceRows.map((row) => [`${row.source}\u0000${row.sourceId}`, row.id]));
+  const sourceIdByRef = new Map(
+    sourceRows.map((row) => [`${row.source}\u0000${row.sourceId}`, row.id]),
+  );
 
   const now = new Date();
   const changes: PlaceRevisionChange[] = [];
   for (const capability of capabilities) {
     const placeSourceId = capability.source
-      ? sourceIdByRef.get(`${capability.source.source}\u0000${capability.source.sourceId}`) ?? null
+      ? (sourceIdByRef.get(`${capability.source.source}\u0000${capability.source.sourceId}`) ??
+        null)
       : null;
     // The ONLY expression in this package that produces a value for the
     // `verification` column. Both branches are server-derived — evidence on the
@@ -1272,7 +1369,11 @@ async function applyCapabilities(
       eq(placesCapabilities.capability, capability.capability),
       eq(placesCapabilities.verification, verification),
     );
-    const [before] = await tx.select(CAPABILITY_COLUMNS).from(placesCapabilities).where(atTier).limit(1);
+    const [before] = await tx
+      .select(CAPABILITY_COLUMNS)
+      .from(placesCapabilities)
+      .where(atTier)
+      .limit(1);
 
     const [after] = await tx
       .insert(placesCapabilities)
@@ -1371,8 +1472,10 @@ function placeColumnValues(input: PlaceWriteInput): Record<string, unknown> {
   if (input.status !== undefined) values.status = input.status;
   if (input.openingHours !== undefined) values.openingHours = input.openingHours;
   if (input.description !== undefined) values.description = input.description;
-  if (input.address !== undefined) Object.assign(values, partColumnValues(input.address, ADDRESS_COLUMNS));
-  if (input.contact !== undefined) Object.assign(values, partColumnValues(input.contact, CONTACT_COLUMNS));
+  if (input.address !== undefined)
+    Object.assign(values, partColumnValues(input.address, ADDRESS_COLUMNS));
+  if (input.contact !== undefined)
+    Object.assign(values, partColumnValues(input.contact, CONTACT_COLUMNS));
   return values;
 }
 
@@ -1416,40 +1519,45 @@ export async function createPlace(
   for (const ref of refs) {
     const owner = await findPlaceIdBySourceRef(db, ref);
     if (owner !== null) {
-      throw new ApiError(
-        'conflict',
-        'That source record is already linked to a GoWay place.',
-        { placeId: owner },
-      );
+      throw new ApiError('conflict', 'That source record is already linked to a GoWay place.', {
+        placeId: owner,
+      });
     }
   }
 
   if (input.categories) assertWritableCategories(await categoryCatalog(db), input.categories);
 
-  const id = await withTaxonomyRefusal(db.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(places)
-      .values({
-        ...placeColumnValues(input),
-        name: input.name,
-        latitude: input.location.latitude,
-        longitude: input.location.longitude,
-        timezone: timezoneAt(input.location.latitude, input.location.longitude),
-        createdByOxyUserId: actor.author.oxyAccountId,
-      })
-      .returning(PLACE_COLUMNS);
-    if (!row) throw new ApiError('internal_error', 'The place could not be created.');
+  const id = await withTaxonomyRefusal(
+    db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(places)
+        .values({
+          ...placeColumnValues(input),
+          name: input.name,
+          latitude: input.location.latitude,
+          longitude: input.location.longitude,
+          timezone: timezoneAt(input.location.latitude, input.location.longitude),
+          createdByOxyUserId: actor.author.oxyAccountId,
+        })
+        .returning(PLACE_COLUMNS);
+      if (!row) throw new ApiError('internal_error', 'The place could not be created.');
 
-    const changes = [
-      ...changesBetween({}, placeFieldValues(row)),
-      ...(await linkSources(tx, row.id, refs)),
-      ...(await applyGowayNames(tx, row.id, input.names ?? [])),
-      ...(await applyGowayDescriptions(tx, row.id, input.descriptions ?? [])),
-      ...(await applyCapabilities(tx, row.id, input.capabilities ?? [], actor)),
-    ];
-    await recordRevision(tx, { placeId: row.id, action: 'place_created', author: actor.author, changes });
-    return row.id;
-  }));
+      const changes = [
+        ...changesBetween({}, placeFieldValues(row)),
+        ...(await linkSources(tx, row.id, refs)),
+        ...(await applyGowayNames(tx, row.id, input.names ?? [])),
+        ...(await applyGowayDescriptions(tx, row.id, input.descriptions ?? [])),
+        ...(await applyCapabilities(tx, row.id, input.capabilities ?? [], actor)),
+      ];
+      await recordRevision(tx, {
+        placeId: row.id,
+        action: 'place_created',
+        author: actor.author,
+        changes,
+      });
+      return row.id;
+    }),
+  );
 
   // Duplicate detection runs AFTER the place is committed and outside its
   // transaction, and a failure to detect is not a failure to create: a missed
@@ -1501,45 +1609,61 @@ export async function updatePlace(
 
   const catalog = input.categories ? await categoryCatalog(db) : null;
 
-  const updated = await withTaxonomyRefusal(db.transaction(async (tx) => {
-    const [before] = await tx.select(PLACE_COLUMNS).from(places).where(eq(places.id, id)).for('update');
-    if (!before) return null;
-    // Under the lock, against what the place carries now: a deprecated key it
-    // already has may stay, as the database's trigger allows.
-    if (catalog && input.categories) assertWritableCategories(catalog, input.categories, before.categories);
+  const updated = await withTaxonomyRefusal(
+    db.transaction(async (tx) => {
+      const [before] = await tx
+        .select(PLACE_COLUMNS)
+        .from(places)
+        .where(eq(places.id, id))
+        .for('update');
+      if (!before) return null;
+      // Under the lock, against what the place carries now: a deprecated key it
+      // already has may stay, as the database's trigger allows.
+      if (catalog && input.categories)
+        assertWritableCategories(catalog, input.categories, before.categories);
 
-    // A logo or cover names a gallery item by its Oxy file; the column holds
-    // the item, resolved under the same lock as the rest of the write.
-    const pointers: { logoMediaId?: string | null; coverMediaId?: string | null } = {};
-    if (input.logoFileId !== undefined) {
-      pointers.logoMediaId =
-        input.logoFileId === null ? null : await galleryItemFor(tx, id, input.logoFileId, 'logo', 'logoFileId');
-    }
-    if (input.coverFileId !== undefined) {
-      pointers.coverMediaId =
-        input.coverFileId === null ? null : await galleryItemFor(tx, id, input.coverFileId, 'cover', 'coverFileId');
-    }
+      // A logo or cover names a gallery item by its Oxy file; the column holds
+      // the item, resolved under the same lock as the rest of the write.
+      const pointers: { logoMediaId?: string | null; coverMediaId?: string | null } = {};
+      if (input.logoFileId !== undefined) {
+        pointers.logoMediaId =
+          input.logoFileId === null
+            ? null
+            : await galleryItemFor(tx, id, input.logoFileId, 'logo', 'logoFileId');
+      }
+      if (input.coverFileId !== undefined) {
+        pointers.coverMediaId =
+          input.coverFileId === null
+            ? null
+            : await galleryItemFor(tx, id, input.coverFileId, 'cover', 'coverFileId');
+      }
 
-    // `updated_at` moves for ANY change the request makes, including one that
-    // only touches children — a client caching on `updatedAt` must not miss a
-    // new capability because the `places` row itself was untouched.
-    const [after] = await tx
-      .update(places)
-      .set({ ...placeColumnValues(input), ...pointers, updatedAt: new Date() })
-      .where(eq(places.id, id))
-      .returning(PLACE_COLUMNS);
-    if (!after) return null;
+      // `updated_at` moves for ANY change the request makes, including one that
+      // only touches children — a client caching on `updatedAt` must not miss a
+      // new capability because the `places` row itself was untouched.
+      const [after] = await tx
+        .update(places)
+        .set({ ...placeColumnValues(input), ...pointers, updatedAt: new Date() })
+        .where(eq(places.id, id))
+        .returning(PLACE_COLUMNS);
+      if (!after) return null;
 
-    const changes = [
-      ...changesBetween(placeFieldValues(before), placeFieldValues(after)),
-      ...(await linkSources(tx, id, refs)),
-      ...(await applyGowayNames(tx, id, input.names ?? [])),
-      ...(await applyGowayDescriptions(tx, id, input.descriptions ?? [])),
-      ...(await applyCapabilities(tx, id, input.capabilities ?? [], actor)),
-    ];
-    await recordRevision(tx, { placeId: id, action: 'place_updated', author: actor.author, changes });
-    return after.id;
-  }));
+      const changes = [
+        ...changesBetween(placeFieldValues(before), placeFieldValues(after)),
+        ...(await linkSources(tx, id, refs)),
+        ...(await applyGowayNames(tx, id, input.names ?? [])),
+        ...(await applyGowayDescriptions(tx, id, input.descriptions ?? [])),
+        ...(await applyCapabilities(tx, id, input.capabilities ?? [], actor)),
+      ];
+      await recordRevision(tx, {
+        placeId: id,
+        action: 'place_updated',
+        author: actor.author,
+        changes,
+      });
+      return after.id;
+    }),
+  );
 
   if (updated === null) return null;
 
@@ -1649,7 +1773,12 @@ export async function assertPlaceCapability(
       ...(assertion.source ? await linkSources(tx, placeId, [assertion.source]) : []),
       ...(await applyCapabilities(tx, placeId, [assertion], actor)),
     ];
-    await recordRevision(tx, { placeId, action: 'capability_asserted', author: actor.author, changes });
+    await recordRevision(tx, {
+      placeId,
+      action: 'capability_asserted',
+      author: actor.author,
+      changes,
+    });
     return row.id;
   });
 
@@ -1678,7 +1807,9 @@ export async function withdrawPlaceCapability(
   verification: AssertableVerification,
   author: RevisionAuthor,
 ): Promise<boolean> {
-  return db.transaction(async (tx) => deleteCapabilityAtTier(tx, placeId, key, verification, author));
+  return db.transaction(async (tx) =>
+    deleteCapabilityAtTier(tx, placeId, key, verification, author),
+  );
 }
 
 /**
@@ -1714,7 +1845,12 @@ export async function deleteCapabilityAtTier(
     placeId,
     action: 'capability_withdrawn',
     author,
-    changes: [{ field: capabilityField(`${key.namespace}.${key.capability}`), before: capabilitySnapshot(deleted) }],
+    changes: [
+      {
+        field: capabilityField(`${key.namespace}.${key.capability}`),
+        before: capabilitySnapshot(deleted),
+      },
+    ],
   });
   return true;
 }
@@ -1807,7 +1943,13 @@ export async function createHoursException(
 
     const [row] = await tx
       .insert(placeHoursExceptions)
-      .values({ placeId, ...values, source: GOWAY_HOURS_SOURCE, verification, observedAt: new Date() })
+      .values({
+        placeId,
+        ...values,
+        source: GOWAY_HOURS_SOURCE,
+        verification,
+        observedAt: new Date(),
+      })
       .onConflictDoNothing({
         target: [
           placeHoursExceptions.placeId,
@@ -1868,7 +2010,11 @@ export async function replaceHoursException(
       eq(placeHoursExceptions.id, exceptionId),
       eq(placeHoursExceptions.verification, verification),
     );
-    const [before] = await tx.select(HOURS_EXCEPTION_COLUMNS).from(placeHoursExceptions).where(atTier).for('update');
+    const [before] = await tx
+      .select(HOURS_EXCEPTION_COLUMNS)
+      .from(placeHoursExceptions)
+      .where(atTier)
+      .for('update');
     if (!before) return undefined;
 
     const clash = await findExceptionForRange(tx, placeId, values, verification);
@@ -1925,7 +2071,9 @@ export async function withdrawHoursException(
       placeId,
       action: 'hours_exception_withdrawn',
       author,
-      changes: [{ field: hoursExceptionField(deleted.id), before: hoursExceptionSnapshot(deleted) }],
+      changes: [
+        { field: hoursExceptionField(deleted.id), before: hoursExceptionSnapshot(deleted) },
+      ],
     });
     return true;
   });
@@ -2063,7 +2211,10 @@ export async function requestClaim(
       action: 'claim_requested',
       author,
       changes: [
-        { field: claimField(row.id), after: { oxyAccountId: row.oxyAccountId, role: row.role, state: row.state } },
+        {
+          field: claimField(row.id),
+          after: { oxyAccountId: row.oxyAccountId, role: row.role, state: row.state },
+        },
       ],
     });
     return toClaim(row);
@@ -2077,7 +2228,10 @@ function claimWindow(window: TimeWindow): SQL | undefined {
     : undefined;
 }
 
-const CLAIM_PAGE_COLUMNS = { ...CLAIM_COLUMNS, position: sql<string>`${placesClaims.claimedAt}::text` } as const;
+const CLAIM_PAGE_COLUMNS = {
+  ...CLAIM_COLUMNS,
+  position: sql<string>`${placesClaims.claimedAt}::text`,
+} as const;
 
 function pagedClaim(row: ClaimRow & { position: string }): Paged<PlaceClaim> {
   return { item: toClaim(row), position: [row.position, row.id] };
@@ -2099,7 +2253,11 @@ export async function listPlaceClaims(
   db: DatabaseOrTransaction,
   placeId: string,
   window: TimeWindow,
-): Promise<{ lifecycle: PlaceLifecycle | null; claimantAccountIds: string[]; claims: Paged<PlaceClaim>[] }> {
+): Promise<{
+  lifecycle: PlaceLifecycle | null;
+  claimantAccountIds: string[];
+  claims: Paged<PlaceClaim>[];
+}> {
   const [lifecycle, accounts, rows] = await Promise.all([
     findPlaceLifecycle(db, placeId),
     db
@@ -2165,7 +2323,10 @@ export async function findAccountClaims(
 }
 
 /** Every place one Oxy account holds an approved claim on — a chain's locations, when the account is its brand. */
-export async function findClaimedPlaceIds(db: DatabaseOrTransaction, oxyAccountId: string): Promise<string[]> {
+export async function findClaimedPlaceIds(
+  db: DatabaseOrTransaction,
+  oxyAccountId: string,
+): Promise<string[]> {
   const rows = await db
     .selectDistinct({ placeId: placesClaims.placeId })
     .from(placesClaims)

@@ -16,7 +16,11 @@ function place(id: string, latitude: number, longitude: number, extra: Partial<P
 
 describe('placeLabelsForScene', () => {
   test('a place north of the anchor lands at -z (south is +z) and at label height', () => {
-    const [label] = placeLabelsForScene([place('n', anchor.latitude + 0.0005, anchor.longitude)], transform, { heightMeters: 3 });
+    const [label] = placeLabelsForScene(
+      [place('n', anchor.latitude + 0.0005, anchor.longitude)],
+      transform,
+      { heightMeters: 3 },
+    );
     expect(label.position[0]).toBeCloseTo(0, 3);
     expect(label.position[1]).toBeCloseTo(3, 2);
     expect(label.position[2]).toBeLessThan(-50);
@@ -27,7 +31,10 @@ describe('placeLabelsForScene', () => {
     const target = place('p', 41.3817, 2.1716);
     const [label] = placeLabelsForScene([target], transform, { heightMeters: 0 });
     const enu = transformPoint(Y_UP, label.position);
-    const expected = geodeticToEnu({ ...target.location, altitudeMeters: anchor.altitudeMeters }, anchor);
+    const expected = geodeticToEnu(
+      { ...target.location, altitudeMeters: anchor.altitudeMeters },
+      anchor,
+    );
     enu.forEach((value, index) => expect(value).toBeCloseTo(expected[index], 6));
   });
 
@@ -47,14 +54,22 @@ describe('placeLabelsForScene', () => {
 
   test('drops places beyond the distance limit and unnamed ones', () => {
     const labels = placeLabelsForScene(
-      [place('way-off', anchor.latitude + 0.01, anchor.longitude), place('blank', anchor.latitude, anchor.longitude, { name: '  ' })],
+      [
+        place('way-off', anchor.latitude + 0.01, anchor.longitude),
+        place('blank', anchor.latitude, anchor.longitude, { name: '  ' }),
+      ],
       transform,
     );
     expect(labels).toEqual([]);
   });
 
   test('a transform that is not a similarity yields no labels rather than wrong ones', () => {
-    const sheared = { ...transform, enuFromScene: [1, 0, 0, 0, 0.5, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] };
-    expect(placeLabelsForScene([place('n', anchor.latitude, anchor.longitude)], sheared)).toEqual([]);
+    const sheared = {
+      ...transform,
+      enuFromScene: [1, 0, 0, 0, 0.5, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+    };
+    expect(placeLabelsForScene([place('n', anchor.latitude, anchor.longitude)], sheared)).toEqual(
+      [],
+    );
   });
 });

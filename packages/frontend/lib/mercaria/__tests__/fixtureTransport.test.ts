@@ -24,11 +24,18 @@ import {
 } from '@mercaria.co/sdk';
 
 import type { FixtureFaultMode } from '@/lib/goway/mockTransport';
-import { classifyMercariaError, mercariaReadState, shouldRetryMercaria } from '@/lib/mercaria/errors';
+import {
+  classifyMercariaError,
+  mercariaReadState,
+  shouldRetryMercaria,
+} from '@/lib/mercaria/errors';
 import { createMercariaFixtureFetch } from '@/lib/mercaria/mockTransport';
 
 function fixtureClient(fault?: FixtureFaultMode): MercariaClient {
-  return createMercariaClient({ apiBaseUrl: 'https://api.mercaria.co', fetch: createMercariaFixtureFetch(fault) });
+  return createMercariaClient({
+    apiBaseUrl: 'https://api.mercaria.co',
+    fetch: createMercariaFixtureFetch(fault),
+  });
 }
 
 async function failureOf(promise: Promise<unknown>): Promise<unknown> {
@@ -42,8 +49,13 @@ async function failureOf(promise: Promise<unknown>): Promise<unknown> {
 
 describe('the fixture layer answers what Mercaria answers', () => {
   test('a shared place lists every shop front trading from it, each linked on mercaria.co', async () => {
-    const { items, nextCursor } = await fixtureClient().locations.list({ goWayPlaceId: 'gw_mercat_boqueria' });
-    expect(items.map((location) => location.store.name)).toEqual(['Fruites Soler', 'Xarcuteria Joan']);
+    const { items, nextCursor } = await fixtureClient().locations.list({
+      goWayPlaceId: 'gw_mercat_boqueria',
+    });
+    expect(items.map((location) => location.store.name)).toEqual([
+      'Fruites Soler',
+      'Xarcuteria Joan',
+    ]);
     expect(nextCursor).toBeNull();
     const client = fixtureClient();
     for (const location of items) {
@@ -54,13 +66,17 @@ describe('the fixture layer answers what Mercaria answers', () => {
 
   test('a place Mercaria does not trade from is an empty page, never an error', async () => {
     // Forn Baluard names a location only at the community tier.
-    expect((await fixtureClient().locations.list({ goWayPlaceId: 'gw_forn_baluard' })).items).toEqual([]);
+    expect(
+      (await fixtureClient().locations.list({ goWayPlaceId: 'gw_forn_baluard' })).items,
+    ).toEqual([]);
   });
 
   test('`inStock` keeps what is on this shelf now', async () => {
     const client = fixtureClient();
     const everything = await client.locations.products('loc_boqueria_fruites_soler');
-    const onShelf = await client.locations.products('loc_boqueria_fruites_soler', { inStock: true });
+    const onShelf = await client.locations.products('loc_boqueria_fruites_soler', {
+      inStock: true,
+    });
     expect(everything.items.some((item) => item.availability === 'out_of_stock')).toBe(true);
     expect(onShelf.items.length).toBeGreaterThan(0);
     expect(onShelf.items.every((item) => item.availability !== 'out_of_stock')).toBe(true);
@@ -68,15 +84,22 @@ describe('the fixture layer answers what Mercaria answers', () => {
 
   test('a count is present only where the merchant discloses it', async () => {
     const client = fixtureClient();
-    const disclosed = await client.locations.products('loc_boqueria_fruites_soler', { inStock: true });
-    const undisclosed = await client.locations.products('loc_boqueria_xarcuteria_joan', { inStock: true });
+    const disclosed = await client.locations.products('loc_boqueria_fruites_soler', {
+      inStock: true,
+    });
+    const undisclosed = await client.locations.products('loc_boqueria_xarcuteria_joan', {
+      inStock: true,
+    });
     expect(disclosed.items.every((item) => typeof item.exactQuantity === 'number')).toBe(true);
     expect(undisclosed.items.every((item) => item.exactQuantity === undefined)).toBe(true);
   });
 
   test('a short page hands back a cursor that reaches the rest', async () => {
     const client = fixtureClient();
-    const first = await client.locations.products('loc_boqueria_fruites_soler', { inStock: true, limit: 1 });
+    const first = await client.locations.products('loc_boqueria_fruites_soler', {
+      inStock: true,
+      limit: 1,
+    });
     expect(first.items).toHaveLength(1);
     expect(first.nextCursor).not.toBeNull();
     const second = await client.locations.products('loc_boqueria_fruites_soler', {
@@ -88,23 +111,35 @@ describe('the fixture layer answers what Mercaria answers', () => {
   });
 
   test('a location that is not public is gone', async () => {
-    expect(await failureOf(fixtureClient().locations.products('loc_withdrawn'))).toBeInstanceOf(MercariaGoneError);
+    expect(await failureOf(fixtureClient().locations.products('loc_withdrawn'))).toBeInstanceOf(
+      MercariaGoneError,
+    );
   });
 
   test('the unavailable fault is a 503, the network fault a network error', async () => {
-    expect(await failureOf(fixtureClient('unavailable').locations.list({ goWayPlaceId: 'gw_mercat_boqueria' }))).toBeInstanceOf(
-      MercariaUnavailableError,
-    );
-    expect(await failureOf(fixtureClient('network').locations.list({ goWayPlaceId: 'gw_mercat_boqueria' }))).toBeInstanceOf(
-      MercariaNetworkError,
-    );
+    expect(
+      await failureOf(
+        fixtureClient('unavailable').locations.list({ goWayPlaceId: 'gw_mercat_boqueria' }),
+      ),
+    ).toBeInstanceOf(MercariaUnavailableError);
+    expect(
+      await failureOf(
+        fixtureClient('network').locations.list({ goWayPlaceId: 'gw_mercat_boqueria' }),
+      ),
+    ).toBeInstanceOf(MercariaNetworkError);
   });
 });
 
 describe('gone and unavailable mean different things', () => {
   test('gone and not found stop, and are never retried', () => {
-    expect(classifyMercariaError(new MercariaGoneError('gone', { status: 410 }))).toEqual({ kind: 'gone', retryable: false });
-    expect(classifyMercariaError(new MercariaNotFoundError('missing', { status: 404 }))).toEqual({ kind: 'notFound', retryable: false });
+    expect(classifyMercariaError(new MercariaGoneError('gone', { status: 410 }))).toEqual({
+      kind: 'gone',
+      retryable: false,
+    });
+    expect(classifyMercariaError(new MercariaNotFoundError('missing', { status: 404 }))).toEqual({
+      kind: 'notFound',
+      retryable: false,
+    });
     expect(shouldRetryMercaria(0, new MercariaGoneError('gone', { status: 410 }))).toBe(false);
   });
 
@@ -117,12 +152,18 @@ describe('gone and unavailable mean different things', () => {
     ]) {
       expect(classifyMercariaError(error)).toEqual({ kind: 'unavailable', retryable: true });
     }
-    expect(shouldRetryMercaria(0, new MercariaUnavailableError('down', { status: 503 }))).toBe(true);
-    expect(shouldRetryMercaria(2, new MercariaUnavailableError('down', { status: 503 }))).toBe(false);
+    expect(shouldRetryMercaria(0, new MercariaUnavailableError('down', { status: 503 }))).toBe(
+      true,
+    );
+    expect(shouldRetryMercaria(2, new MercariaUnavailableError('down', { status: 503 }))).toBe(
+      false,
+    );
   });
 
   test('a 404 with no Mercaria error body proves nothing, and is not "gone"', () => {
-    expect(classifyMercariaError(new MercariaApiError('proxy', { status: 404 })).kind).toBe('unknown');
+    expect(classifyMercariaError(new MercariaApiError('proxy', { status: 404 })).kind).toBe(
+      'unknown',
+    );
   });
 
   test('a cancelled read is nothing at all', () => {

@@ -63,7 +63,8 @@ function nextPowerOfTwo(value: number): number {
  */
 export function shelfPack(inputs: readonly PackInput[], atlasWidth: number): PackResult {
   const ordered = [...inputs].sort(
-    (a, b) => b.height - a.height || b.width - a.width || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
+    (a, b) =>
+      b.height - a.height || b.width - a.width || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
   );
 
   const boxes: PackedBox[] = [];
@@ -73,7 +74,9 @@ export function shelfPack(inputs: readonly PackInput[], atlasWidth: number): Pac
 
   for (const input of ordered) {
     if (input.width > atlasWidth) {
-      throw new Error(`"${input.name}" is ${input.width}px wide, wider than the ${atlasWidth}px atlas`);
+      throw new Error(
+        `"${input.name}" is ${input.width}px wide, wider than the ${atlasWidth}px atlas`,
+      );
     }
     if (cursorX + input.width > atlasWidth) {
       shelfY += shelfHeight;

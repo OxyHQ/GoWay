@@ -102,7 +102,10 @@ describe('API error codes', () => {
     expect((gone as GoWayGoneError).mergedInto).toBeNull();
 
     // Merged: the error carries the id that replaces this one.
-    const merged = await throwing(410, errorBody('gone', 'merged', { mergedInto: 'gw_place_survivor' }));
+    const merged = await throwing(
+      410,
+      errorBody('gone', 'merged', { mergedInto: 'gw_place_survivor' }),
+    );
     expect(merged).toBeInstanceOf(GoWayGoneError);
     expect((merged as GoWayGoneError).mergedInto).toBe('gw_place_survivor');
     expect(merged.toJSON()).toMatchObject({ code: 'gone', mergedInto: 'gw_place_survivor' });
@@ -127,7 +130,9 @@ describe('API error codes', () => {
   });
 
   it('falls back to the Retry-After header', async () => {
-    const error = (await throwing(429, errorBody('rate_limited'), { 'Retry-After': '17' })) as GoWayRateLimitError;
+    const error = (await throwing(429, errorBody('rate_limited'), {
+      'Retry-After': '17',
+    })) as GoWayRateLimitError;
     expect(error.retryAfterSeconds).toBe(17);
   });
 
@@ -188,7 +193,8 @@ describe('the cross-copy lineage brand', () => {
 
   it('brands a real error with its whole ancestry', async () => {
     const brand = Symbol.for('@goway.to/sdk:error-lineage');
-    const error = (await throwing(404, errorBody('not_found'))) as GoWayError & Record<symbol, string[]>;
+    const error = (await throwing(404, errorBody('not_found'))) as GoWayError &
+      Record<symbol, string[]>;
     expect(error[brand]).toEqual(['GoWayNotFoundError', 'GoWayError']);
     expect(Object.keys(error)).not.toContain('cause');
   });

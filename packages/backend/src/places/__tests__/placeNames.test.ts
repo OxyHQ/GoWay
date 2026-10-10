@@ -35,7 +35,9 @@ describe('resolveLocalizedName', () => {
   });
 
   it('falls back to the bare language when the exact tag is missing', () => {
-    expect(resolveLocalizedName([name('es', 'Museo Picasso')], 'es-MX')?.name).toBe('Museo Picasso');
+    expect(resolveLocalizedName([name('es', 'Museo Picasso')], 'es-MX')?.name).toBe(
+      'Museo Picasso',
+    );
   });
 
   it('falls back to another variety of the same language before giving up', () => {
@@ -51,7 +53,9 @@ describe('resolveLocalizedName', () => {
     // refuses. An absent answer publishes the default name, which is the name
     // on the shopfront — the one the sign, the tile and a passer-by all agree
     // on. A random exonym is worse than that, not better.
-    expect(resolveLocalizedName([name('ja', '東京都庁'), name('ko', '도쿄도청')], 'es')).toBeUndefined();
+    expect(
+      resolveLocalizedName([name('ja', '東京都庁'), name('ko', '도쿄도청')], 'es'),
+    ).toBeUndefined();
   });
 
   it('answers nothing when no locale was asked for', () => {
@@ -83,10 +87,7 @@ describe('resolveLocalizedName', () => {
   });
 
   it('prefers the freshest observation between two external sources', () => {
-    const names = [
-      name('es', 'Stale', 'openstreetmap', OLD),
-      name('es', 'Fresh', 'wikidata', NEW),
-    ];
+    const names = [name('es', 'Stale', 'openstreetmap', OLD), name('es', 'Fresh', 'wikidata', NEW)];
     expect(resolveLocalizedName(names, 'es')?.name).toBe('Fresh');
   });
 
@@ -105,12 +106,9 @@ describe('comparePublishedNames', () => {
       name('es', 'Museo Picasso', 'goway', OLD),
       name('ca', 'Museu Picasso'),
     ];
-    expect([...names].sort(comparePublishedNames).map((entry) => `${entry.language}:${entry.source}`)).toEqual([
-      'ca:openstreetmap',
-      'es:goway',
-      'es:openstreetmap',
-      'fr:openstreetmap',
-    ]);
+    expect(
+      [...names].sort(comparePublishedNames).map((entry) => `${entry.language}:${entry.source}`),
+    ).toEqual(['ca:openstreetmap', 'es:goway', 'es:openstreetmap', 'fr:openstreetmap']);
   });
 });
 

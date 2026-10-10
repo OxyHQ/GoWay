@@ -31,12 +31,7 @@
  * round trip away.
  */
 
-import type {
-  Place,
-  SearchResult,
-  SearchResultKind,
-  SearchSource,
-} from '@goway/contracts';
+import type { Place, SearchResult, SearchResultKind, SearchSource } from '@goway/contracts';
 import { placeDisplayName, placeMatchesCapabilityFilter } from '@goway/contracts';
 import type { SourceRefInput } from '../db/places/placesRepository';
 import { composeDisplayName, contextFrom, put, resultId } from './normalize';
@@ -176,16 +171,22 @@ export async function mergeCandidates(request: MergeRequest): Promise<SearchResu
       if (candidate.osmRef) refs.push(candidate.osmRef);
     }
   }
-  const placeIdByRef = refs.length === 0 ? new Map<string, string>() : await gateway.findPlaceIdsBySourceRefs(refs);
+  const placeIdByRef =
+    refs.length === 0 ? new Map<string, string>() : await gateway.findPlaceIdsBySourceRefs(refs);
 
   const placeById = new Map<string, Place>(ownPlaces.map((place) => [place.id, place]));
   const missing = [...new Set(placeIdByRef.values())].filter((id) => !placeById.has(id));
   if (missing.length > 0) {
-    for (const [id, place] of await gateway.findPlacesByIds(missing, request.locale)) placeById.set(id, place);
+    for (const [id, place] of await gateway.findPlacesByIds(missing, request.locale))
+      placeById.set(id, place);
   }
 
   const groups = new Map<string, Group>();
-  const addMember = (key: string, placeId: string | undefined, member: Member | undefined): Group => {
+  const addMember = (
+    key: string,
+    placeId: string | undefined,
+    member: Member | undefined,
+  ): Group => {
     let group = groups.get(key);
     if (!group) {
       group = { key, members: [] };
@@ -212,7 +213,9 @@ export async function mergeCandidates(request: MergeRequest): Promise<SearchResu
 
   for (const list of lists) {
     list.candidates.forEach((candidate, rank) => {
-      const placeId = candidate.osmRef ? placeIdByRef.get(sourceRefKey(candidate.osmRef)) : undefined;
+      const placeId = candidate.osmRef
+        ? placeIdByRef.get(sourceRefKey(candidate.osmRef))
+        : undefined;
       const key =
         placeId !== undefined
           ? `place:${placeId}`

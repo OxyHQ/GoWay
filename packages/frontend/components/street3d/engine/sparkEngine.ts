@@ -49,7 +49,13 @@ import {
   type ViewFrustum,
 } from '../guidedNavigation';
 import type { SceneAssetPlan } from '../assets';
-import type { SceneViewerControlMode, SceneViewerLabel, SceneViewerPhase, SceneViewerStats, Vec3 } from '../types';
+import type {
+  SceneViewerControlMode,
+  SceneViewerLabel,
+  SceneViewerPhase,
+  SceneViewerStats,
+  Vec3,
+} from '../types';
 
 export interface EngineOptions {
   canvas: HTMLCanvasElement;
@@ -64,7 +70,9 @@ export interface EngineOptions {
   onPhase: (phase: SceneViewerPhase) => void;
   onStats: (stats: SceneViewerStats) => void;
   /** Called each frame with every label's screen position, or `null` when hidden. */
-  onLabels: (positions: ReadonlyMap<string, { x: number; y: number; depth: number } | null>) => void;
+  onLabels: (
+    positions: ReadonlyMap<string, { x: number; y: number; depth: number } | null>,
+  ) => void;
   /** Guided-navigation data from the manifest; absent → free orbit/walk only. */
   navigation?: StreetSceneNavigation;
   /** The viewpoints a step can reach from where the camera now stands (guided only). */
@@ -167,7 +175,8 @@ export function createSceneEngine(options: EngineOptions): SceneEngine {
   const guided = () => hasNavigation && mode === 'walk';
 
   function reportReachable() {
-    reachable = guided() && standing >= 0 ? reachableViewpoints(viewpoints, standing, options.up) : [];
+    reachable =
+      guided() && standing >= 0 ? reachableViewpoints(viewpoints, standing, options.up) : [];
     options.onReachable(reachable);
   }
 
@@ -180,7 +189,11 @@ export function createSceneEngine(options: EngineOptions): SceneEngine {
       placed = true;
       // Face where the publisher's opening view faces, from the viewpoint.
       const target = options.initialView.target;
-      const toward: Vec3 = [target[0] - start.position[0], target[1] - start.position[1], target[2] - start.position[2]];
+      const toward: Vec3 = [
+        target[0] - start.position[0],
+        target[1] - start.position[1],
+        target[2] - start.position[2],
+      ];
       rig.lookToward(Math.hypot(...toward) > 0.1 ? toward : start.forward);
     }
     stepsVisibleUntil = performance.now() + STEP_MARKERS_LINGER_MS;
@@ -193,7 +206,12 @@ export function createSceneEngine(options: EngineOptions): SceneEngine {
       queuedStep = () => goTo(index);
       return;
     }
-    glide = { from: rig.pose().position, to: viewpoints[index].position, start: performance.now(), index };
+    glide = {
+      from: rig.pose().position,
+      to: viewpoints[index].position,
+      start: performance.now(),
+      index,
+    };
   }
 
   function stepToward(direction: Vec3) {
@@ -316,7 +334,10 @@ export function createSceneEngine(options: EngineOptions): SceneEngine {
 
   const twoPointerState = () => {
     const [a, b] = [...pointers.values()];
-    return { distance: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
+    return {
+      distance: Math.hypot(a.x - b.x, a.y - b.y),
+      mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+    };
   };
 
   let press: { x: number; y: number; moved: boolean } | null = null;
@@ -343,7 +364,8 @@ export function createSceneEngine(options: EngineOptions): SceneEngine {
     const previous = pointers.get(event.pointerId);
     if (!previous) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > CLICK_SLOP_PX) press.moved = true;
+    if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > CLICK_SLOP_PX)
+      press.moved = true;
     if (pointers.size === 1) {
       const dx = event.clientX - previous.x;
       const dy = event.clientY - previous.y;
@@ -362,7 +384,10 @@ export function createSceneEngine(options: EngineOptions): SceneEngine {
       const state = twoPointerState();
       if (pinchDistance > 0 && state.distance > 0) rig.zoom(pinchDistance / state.distance);
       const metresPerPixel = 0.02;
-      rig.pan(-(state.mid.x - pinchMid.x) * metresPerPixel, (state.mid.y - pinchMid.y) * metresPerPixel);
+      rig.pan(
+        -(state.mid.x - pinchMid.x) * metresPerPixel,
+        (state.mid.y - pinchMid.y) * metresPerPixel,
+      );
       pinchDistance = state.distance;
       pinchMid = state.mid;
     }
@@ -403,7 +428,13 @@ export function createSceneEngine(options: EngineOptions): SceneEngine {
   let running = false;
   function onKeyDown(event: KeyboardEvent) {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
-    if (guided() && (event.code === 'KeyW' || event.code === 'ArrowUp' || event.code === 'KeyS' || event.code === 'ArrowDown')) {
+    if (
+      guided() &&
+      (event.code === 'KeyW' ||
+        event.code === 'ArrowUp' ||
+        event.code === 'KeyS' ||
+        event.code === 'ArrowDown')
+    ) {
       event.preventDefault();
       // A held key keeps walking, one viewpoint per glide.
       if (!event.repeat || !glide) step(event.code === 'KeyW' || event.code === 'ArrowUp' ? 1 : -1);
@@ -504,7 +535,10 @@ export function createSceneEngine(options: EngineOptions): SceneEngine {
       // A circle on the ground seen from eye height is an ellipse: flatter the
       // farther and lower it is.
       toPoint.copy(stepPoint).sub(camera.position);
-      const squash = Math.max(0.2, Math.min(1, Math.abs(toPoint.dot(upVector)) / Math.max(0.01, toPoint.length())));
+      const squash = Math.max(
+        0.2,
+        Math.min(1, Math.abs(toPoint.dot(upVector)) / Math.max(0.01, toPoint.length())),
+      );
       positions.set(index, {
         x: ((projected.x + 1) / 2) * width,
         y: ((1 - projected.y) / 2) * height,

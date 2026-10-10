@@ -35,7 +35,8 @@ describe('createUploadTarget', () => {
       key: 'captures/2026/09/obj-1',
       contentType: 'image/jpeg',
       byteSize: 2048,
-      ttlSeconds: 900, contentHash: 'a' .repeat(64),
+      ttlSeconds: 900,
+      contentHash: 'a'.repeat(64),
     });
     const url = new URL(target.url);
     expect(url.host).toBe('goway-captures.s3.eu-west-1.amazonaws.com');
@@ -57,11 +58,19 @@ describe('createUploadTarget', () => {
       key: 'captures/2026/09/obj-1',
       contentType: 'image/jpeg',
       byteSize: 2048,
-      ttlSeconds: 900, contentHash: 'a' .repeat(64),
+      ttlSeconds: 900,
+      contentHash: 'a'.repeat(64),
     });
     const signedHeaders = new URL(target.url).searchParams.get('X-Amz-SignedHeaders');
-    expect(signedHeaders).toBe('content-length;content-type;host;if-none-match;x-amz-checksum-sha256');
-    expect(target.headers).toMatchObject({ 'content-type': 'image/jpeg', 'content-length': '2048', 'if-none-match': '*', 'x-amz-checksum-sha256': Buffer.from('a'.repeat(64), 'hex').toString('base64') });
+    expect(signedHeaders).toBe(
+      'content-length;content-type;host;if-none-match;x-amz-checksum-sha256',
+    );
+    expect(target.headers).toMatchObject({
+      'content-type': 'image/jpeg',
+      'content-length': '2048',
+      'if-none-match': '*',
+      'x-amz-checksum-sha256': Buffer.from('a'.repeat(64), 'hex').toString('base64'),
+    });
   });
 
   it('produces a different signature for a different size, key or type', async () => {
@@ -69,7 +78,8 @@ describe('createUploadTarget', () => {
       key: 'captures/2026/09/obj-1',
       contentType: 'image/jpeg',
       byteSize: 2048,
-      ttlSeconds: 900, contentHash: 'a' .repeat(64),
+      ttlSeconds: 900,
+      contentHash: 'a'.repeat(64),
     };
     const signatureOf = async (request: typeof base) =>
       new URL((await store().createUploadTarget(request)).url).searchParams.get('X-Amz-Signature');
@@ -97,7 +107,8 @@ describe('createUploadTarget', () => {
       key: 'captures/x',
       contentType: 'image/jpeg',
       byteSize: 1,
-      ttlSeconds: 60, contentHash: 'a'.repeat(64),
+      ttlSeconds: 60,
+      contentHash: 'a'.repeat(64),
     });
     expect(new URL(target.url).searchParams.get('X-Amz-Security-Token')).toBe('TEMP-TOKEN');
   });
@@ -114,7 +125,8 @@ describe('createUploadTarget', () => {
       key: 'captures/x',
       contentType: 'image/jpeg',
       byteSize: 1,
-      ttlSeconds: 60, contentHash: 'a'.repeat(64),
+      ttlSeconds: 60,
+      contentHash: 'a'.repeat(64),
     });
     const url = new URL(target.url);
     expect(url.protocol).toBe('http:');
@@ -167,8 +179,11 @@ describe('statObject', () => {
 describe('deleteObject', () => {
   it('does not mistake a versioned delete marker for erased bytes', async () => {
     const versioned = store({
-      bucket: 'b', region: 'r', resolveCredentials: async () => credentials,
-      fetchImpl: async () => new Response(null, { status: 204, headers: { 'x-amz-delete-marker': 'true' } }),
+      bucket: 'b',
+      region: 'r',
+      resolveCredentials: async () => credentials,
+      fetchImpl: async () =>
+        new Response(null, { status: 204, headers: { 'x-amz-delete-marker': 'true' } }),
     });
     await expect(versioned.deleteObject('captures/x')).rejects.toThrow('instead of erasing bytes');
   });
@@ -176,7 +191,9 @@ describe('deleteObject', () => {
   it('bounds network calls and fails on provider errors without exposing the signed URL', async () => {
     let signal: AbortSignal | undefined;
     const failing = store({
-      bucket: 'b', region: 'r', resolveCredentials: async () => credentials,
+      bucket: 'b',
+      region: 'r',
+      resolveCredentials: async () => credentials,
       fetchImpl: async (_url, init) => {
         signal = init?.signal;
         return new Response(null, { status: 503 });

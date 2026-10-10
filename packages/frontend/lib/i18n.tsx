@@ -29,7 +29,8 @@ const es: Messages = {
   'map.signIn': 'Iniciar sesión',
   'map.myLocation': 'Mi ubicación',
   'map.myLocationHint': 'Centra el mapa en ti. GoWay solo pide tu ubicación cuando tocas aquí.',
-  'map.locationDenied': 'La ubicación está desactivada para GoWay. Puedes seguir buscando y explorando el mapa.',
+  'map.locationDenied':
+    'La ubicación está desactivada para GoWay. Puedes seguir buscando y explorando el mapa.',
   'map.resetNorth': 'Orientar al norte',
   ...STREET3D_ES,
   ...PRODUCTS_ES,
@@ -61,7 +62,8 @@ export function formatMessage(template: string, values?: MessageValues): string 
  * truncating here would throw away the more specific answer.
  */
 export function deviceLocale(): string {
-  const resolved = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().locale : 'en-US';
+  const resolved =
+    typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().locale : 'en-US';
   // `resolvedOptions().locale` can carry an extension sequence — `en-US-u-ca-
   // gregory` on some engines — which is a valid BCP 47 tag and not a name key.
   // Everything from the first singleton subtag on is extension or private use,
@@ -94,7 +96,10 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     const messages = locales[matchLanguageTag(Object.keys(locales), full) ?? 'en'] ?? en;
     // A key missing from a translation falls back to English, never to the
     // raw key: a half-translated locale reads as English, not as `map.title`.
-    return { locale: full, t: (key, values) => formatMessage(messages[key] ?? en[key] ?? key, values) };
+    return {
+      locale: full,
+      t: (key, values) => formatMessage(messages[key] ?? en[key] ?? key, values),
+    };
   }, []);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

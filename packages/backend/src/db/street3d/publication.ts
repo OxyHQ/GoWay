@@ -48,7 +48,10 @@ import { progressSceneState, type JobRow } from './jobs';
  * Registered inputs that may no longer be published: the capture was
  * withdrawn, rejected or blocked, or its derivative has a removal request.
  */
-export async function withdrawnInputs(db: DatabaseOrTransaction, derivativeIds: readonly string[]): Promise<string[]> {
+export async function withdrawnInputs(
+  db: DatabaseOrTransaction,
+  derivativeIds: readonly string[],
+): Promise<string[]> {
   if (derivativeIds.length === 0) return [];
   const rows = await db
     .select({ id: captureDerivatives.id })
@@ -77,7 +80,10 @@ export async function withdrawnInputs(db: DatabaseOrTransaction, derivativeIds: 
 }
 
 /** The privacy pipeline versions of a set of derivatives, distinct and sorted. */
-export async function privacyVersionsOf(db: DatabaseOrTransaction, derivativeIds: readonly string[]): Promise<string[]> {
+export async function privacyVersionsOf(
+  db: DatabaseOrTransaction,
+  derivativeIds: readonly string[],
+): Promise<string[]> {
   if (derivativeIds.length === 0) return [];
   const rows = await db
     .selectDistinct({ version: captureDerivatives.privacyPipelineVersion })
@@ -105,7 +111,10 @@ function excluded(column: Column): SQL {
 
 function numericMetrics(metrics: SceneReconstructResult['metrics']): Record<string, number> {
   return Object.fromEntries(
-    Object.entries(metrics).filter((entry): entry is [string, number] => typeof entry[1] === 'number' && Number.isFinite(entry[1])),
+    Object.entries(metrics).filter(
+      (entry): entry is [string, number] =>
+        typeof entry[1] === 'number' && Number.isFinite(entry[1]),
+    ),
   );
 }
 
@@ -124,9 +133,14 @@ export async function recordSceneOutcome(
   const registered = new Set(outcome.result.frames.registeredFrameIds);
 
   let state: 'published' | 'failed_quality' | 'disabled' = outcome.kind;
-  if (state === 'published' && (await withdrawnInputs(tx, [...registered])).length > 0) state = 'disabled';
+  if (state === 'published' && (await withdrawnInputs(tx, [...registered])).length > 0)
+    state = 'disabled';
 
-  const [scene] = await tx.select().from(street3dScenes).where(eq(street3dScenes.id, sceneId)).for('update');
+  const [scene] = await tx
+    .select()
+    .from(street3dScenes)
+    .where(eq(street3dScenes.id, sceneId))
+    .for('update');
   if (!scene) throw new Error('A reconstruction job names a scene that does not exist.');
   if (state === 'published' && scene.state === 'disabled') state = 'disabled';
 
@@ -134,7 +148,12 @@ export async function recordSceneOutcome(
     await tx
       .update(street3dSceneVersions)
       .set({ state: 'superseded', updatedAt: now })
-      .where(and(eq(street3dSceneVersions.sceneId, sceneId), eq(street3dSceneVersions.state, 'published')));
+      .where(
+        and(
+          eq(street3dSceneVersions.sceneId, sceneId),
+          eq(street3dSceneVersions.state, 'published'),
+        ),
+      );
   }
 
   const { result } = outcome;
@@ -157,15 +176,23 @@ export async function recordSceneOutcome(
       assets: outcome.assets,
       quality: outcome.quality,
       metrics: numericMetrics(result.metrics),
-      provenance: { pipelineVersion: result.provenance.pipelineVersion, components: result.provenance.components },
-      gateFailures: state === 'disabled' && outcome.kind === 'published' ? ['input_withdrawn'] : outcome.gateFailures,
+      provenance: {
+        pipelineVersion: result.provenance.pipelineVersion,
+        components: result.provenance.components,
+      },
+      gateFailures:
+        state === 'disabled' && outcome.kind === 'published'
+          ? ['input_withdrawn']
+          : outcome.gateFailures,
       observedFrom: new Date(result.observedFrom),
       observedTo: new Date(result.observedTo),
       privacyPipelineVersions: outcome.privacyPipelineVersions,
       attributions: outcome.attributions,
       resultSha256: outcome.reference.sha256,
       ...(state === 'published' ? { publishedAt: now } : {}),
-      ...(state === 'disabled' ? { disabledAt: now, disabledReason: 'input withdrawn before publication' } : {}),
+      ...(state === 'disabled'
+        ? { disabledAt: now, disabledReason: 'input withdrawn before publication' }
+        : {}),
       createdAt: now,
       updatedAt: now,
     })
@@ -214,13 +241,16 @@ export async function recordSceneOutcome(
 
   // The capture graph: verified pairs, undirected, stored once.
   const known = new Set(derivatives.map((derivative) => derivative.id));
-  const matcherVersion = (result.provenance.components.sfm ?? result.provenance.pipelineVersion).slice(0, 120);
+  const matcherVersion = (
+    result.provenance.components.sfm ?? result.provenance.pipelineVersion
+  ).slice(0, 120);
   const edges = new Map<string, { a: string; b: string; inliers: number }>();
   for (const edge of result.edges) {
     if (edge.a === edge.b || !known.has(edge.a) || !known.has(edge.b)) continue;
     const [a, b] = edge.a < edge.b ? [edge.a, edge.b] : [edge.b, edge.a];
     const existing = edges.get(`${a}|${b}`);
-    if (!existing || existing.inliers < edge.inliers) edges.set(`${a}|${b}`, { a, b, inliers: edge.inliers });
+    if (!existing || existing.inliers < edge.inliers)
+      edges.set(`${a}|${b}`, { a, b, inliers: edge.inliers });
   }
   if (edges.size > 0) {
     await tx
@@ -250,7 +280,11 @@ export async function recordSceneOutcome(
   // Capture states: registered inputs of a PUBLISHED version are integrated;
   // everything else this job held goes back to waiting for overlap.
   const registeredAssets = [
-    ...new Set(derivatives.filter((derivative) => registered.has(derivative.id)).map((derivative) => derivative.assetId)),
+    ...new Set(
+      derivatives
+        .filter((derivative) => registered.has(derivative.id))
+        .map((derivative) => derivative.assetId),
+    ),
   ];
   if (state === 'published' && registeredAssets.length > 0) {
     await tx
@@ -266,14 +300,24 @@ export async function recordSceneOutcome(
     await tx
       .update(captureDerivatives)
       .set({ retentionReason: 'reconstruction_input', updatedAt: now })
-      .where(and(inArray(captureDerivatives.id, [...registered]), eq(captureDerivatives.storageState, 'stored')));
+      .where(
+        and(
+          inArray(captureDerivatives.id, [...registered]),
+          eq(captureDerivatives.storageState, 'stored'),
+        ),
+      );
   }
   const allAssets = [...new Set(derivatives.map((derivative) => derivative.assetId))];
   if (allAssets.length > 0) {
     await tx
       .update(captureAssets)
       .set({ state: 'waiting_for_overlap', updatedAt: now })
-      .where(and(inArray(captureAssets.id, allAssets), eq(captureAssets.state, 'reconstruction_candidate')));
+      .where(
+        and(
+          inArray(captureAssets.id, allAssets),
+          eq(captureAssets.state, 'reconstruction_candidate'),
+        ),
+      );
   }
 
   await tx

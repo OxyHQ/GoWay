@@ -41,7 +41,8 @@ export const WEB_ORIGIN = origin(process.env.EXPO_PUBLIC_WEB_ORIGIN) ?? DEFAULT_
  * itself names; a build that talks to another Mercaria sets
  * `EXPO_PUBLIC_MERCARIA_API_URL`, never product code.
  */
-export const MERCARIA_API_URL = origin(process.env.EXPO_PUBLIC_MERCARIA_API_URL) ?? DEFAULT_MERCARIA_API_BASE_URL;
+export const MERCARIA_API_URL =
+  origin(process.env.EXPO_PUBLIC_MERCARIA_API_URL) ?? DEFAULT_MERCARIA_API_BASE_URL;
 
 /**
  * Whether Street 3D VIEWING is on: the coverage layer on the map and the

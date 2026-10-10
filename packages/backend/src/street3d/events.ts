@@ -27,7 +27,15 @@
 
 import { createHash } from 'node:crypto';
 import type { Street3dConfig } from '../config/street3d';
-import { applyFailure, isTerminal, lockJob, recordEvent, refreshInputProtection, ResultRejected, type JobRow } from '../db/street3d/jobs';
+import {
+  applyFailure,
+  isTerminal,
+  lockJob,
+  recordEvent,
+  refreshInputProtection,
+  ResultRejected,
+  type JobRow,
+} from '../db/street3d/jobs';
 import { applyPrivacyResult } from '../db/street3d/privacy';
 import { recordSceneOutcome, type SceneOutcome } from '../db/street3d/publication';
 import { progressSceneState } from '../db/street3d/jobs';
@@ -92,18 +100,28 @@ async function alreadyRecorded(db: Database, eventId: string): Promise<boolean> 
  * Fetch a result object and verify it is EXACTLY what the event described:
  * under the job's own output prefix, the declared size, the declared SHA-256.
  */
-async function fetchVerifiedResult(deps: EventDeps, job: JobRow, reference: { key: string; sha256: string; byteSize: number }): Promise<unknown> {
+async function fetchVerifiedResult(
+  deps: EventDeps,
+  job: JobRow,
+  reference: { key: string; sha256: string; byteSize: number },
+): Promise<unknown> {
   if (!reference.key.startsWith(`jobs/${job.id}/`) && !reference.key.startsWith(job.outputPrefix)) {
     throw new ResultRejected('result_mismatch', 'The result object lies outside its job prefix.');
   }
   if (reference.byteSize > deps.config.maxResultBytes) {
-    throw new ResultRejected('result_too_large', 'The result object exceeds the configured ceiling.');
+    throw new ResultRejected(
+      'result_too_large',
+      'The result object exceeds the configured ceiling.',
+    );
   }
   const bytes = await deps.jobStore.getBytes(reference.key, deps.config.maxResultBytes);
   if (!bytes) throw new ResultRejected('result_missing', 'The result object does not exist.');
   const digest = createHash('sha256').update(bytes).digest('hex');
   if (bytes.byteLength !== reference.byteSize || digest !== reference.sha256) {
-    throw new ResultRejected('result_digest', 'The result object does not match its reported size or digest.');
+    throw new ResultRejected(
+      'result_digest',
+      'The result object does not match its reported size or digest.',
+    );
   }
   try {
     return JSON.parse(Buffer.from(bytes).toString('utf8')) as unknown;
@@ -113,18 +131,30 @@ async function fetchVerifiedResult(deps: EventDeps, job: JobRow, reference: { ke
 }
 
 /** Record a rejected result as a failed attempt (retried by policy). */
-async function rejectAttempt(deps: EventDeps, event: WorkerEvent, error: ResultRejected): Promise<EventOutcome> {
+async function rejectAttempt(
+  deps: EventDeps,
+  event: WorkerEvent,
+  error: ResultRejected,
+): Promise<EventOutcome> {
   const now = deps.now();
   return deps.db.transaction(async (tx) => {
     if (!(await recordEvent(tx, { ...event, type: event.type }))) return 'duplicate';
     const job = await lockJob(tx, event.jobId);
     if (!job || isTerminal(job.state)) return 'late';
-    await applyFailure(tx, job, { code: error.code, detail: error.message, retryable: error.retryable }, now);
+    await applyFailure(
+      tx,
+      job,
+      { code: error.code, detail: error.message, retryable: error.retryable },
+      now,
+    );
     return 'rejected';
   });
 }
 
-async function applyHeartbeat(deps: EventDeps, event: Extract<WorkerEvent, { type: 'heartbeat' }>): Promise<EventOutcome> {
+async function applyHeartbeat(
+  deps: EventDeps,
+  event: Extract<WorkerEvent, { type: 'heartbeat' }>,
+): Promise<EventOutcome> {
   const now = deps.now();
   return deps.db.transaction(async (tx) => {
     if (!(await recordEvent(tx, event))) return 'duplicate';
@@ -158,7 +188,10 @@ async function applyHeartbeat(deps: EventDeps, event: Extract<WorkerEvent, { typ
   });
 }
 
-async function applyFailed(deps: EventDeps, event: Extract<WorkerEvent, { type: 'failed' }>): Promise<EventOutcome> {
+async function applyFailed(
+  deps: EventDeps,
+  event: Extract<WorkerEvent, { type: 'failed' }>,
+): Promise<EventOutcome> {
   const now = deps.now();
   return deps.db.transaction(async (tx) => {
     if (!(await recordEvent(tx, event))) return 'duplicate';
@@ -179,12 +212,17 @@ async function applyFailed(deps: EventDeps, event: Extract<WorkerEvent, { type: 
   });
 }
 
-async function applyCompleted(deps: EventDeps, event: Extract<WorkerEvent, { type: 'completed' }>, job: JobRow): Promise<EventOutcome> {
+async function applyCompleted(
+  deps: EventDeps,
+  event: Extract<WorkerEvent, { type: 'completed' }>,
+  job: JobRow,
+): Promise<EventOutcome> {
   const reference = { key: event.result.key, sha256: event.result.sha256 };
   if (job.kind === 'capture_privacy') {
     const raw = await fetchVerifiedResult(deps, job, event.result);
     const parsed = capturePrivacyResultSchema.safeParse(raw);
-    if (!parsed.success) throw new ResultRejected('result_invalid', 'The privacy result is not the contract.');
+    if (!parsed.success)
+      throw new ResultRejected('result_invalid', 'The privacy result is not the contract.');
     const now = deps.now();
     return deps.db.transaction(async (tx) => {
       if (!(await recordEvent(tx, event))) return 'duplicate';
@@ -197,7 +235,8 @@ async function applyCompleted(deps: EventDeps, event: Extract<WorkerEvent, { typ
 
   const raw = await fetchVerifiedResult(deps, job, event.result);
   const parsed = sceneReconstructResultSchema.safeParse(raw);
-  if (!parsed.success) throw new ResultRejected('result_invalid', 'The reconstruction result is not the contract.');
+  if (!parsed.success)
+    throw new ResultRejected('result_invalid', 'The reconstruction result is not the contract.');
   const outcome: SceneOutcome = await evaluateSceneResult(deps, job, parsed.data, reference);
   const now = deps.now();
   return deps.db.transaction(async (tx) => {
@@ -260,7 +299,10 @@ export async function drainEvents(deps: EventDeps, queue: WorkQueue): Promise<Ev
  * received again by mistake) is left alone; only a job that is waiting or
  * whose lease went stale is failed.
  */
-export async function drainDeadLetters(deps: EventDeps, queue: WorkQueue): Promise<{ received: number; failed: number }> {
+export async function drainDeadLetters(
+  deps: EventDeps,
+  queue: WorkQueue,
+): Promise<{ received: number; failed: number }> {
   const result = { received: 0, failed: 0 };
   const messages: QueueMessage[] = await queue.receive({ maxMessages: 10, waitSeconds: 0 });
   for (const message of messages) {
@@ -281,7 +323,16 @@ export async function drainDeadLetters(deps: EventDeps, queue: WorkQueue): Promi
         if (!job || isTerminal(job.state)) return false;
         const alive = job.heartbeatAt !== null && job.heartbeatAt.getTime() > staleBefore;
         if (alive) return false;
-        await applyFailure(tx, job, { code: 'dead_lettered', detail: 'Moved to the dead-letter queue after bounded receives.', retryable: false }, now);
+        await applyFailure(
+          tx,
+          job,
+          {
+            code: 'dead_lettered',
+            detail: 'Moved to the dead-letter queue after bounded receives.',
+            retryable: false,
+          },
+          now,
+        );
         return true;
       });
       if (failed) result.failed += 1;

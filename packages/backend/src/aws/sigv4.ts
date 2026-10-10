@@ -104,7 +104,12 @@ export function amzDates(now: Date): { amzDate: string; dateStamp: string } {
   return { amzDate, dateStamp: amzDate.slice(0, 8) };
 }
 
-function signingKey(credentials: AwsCredentials, dateStamp: string, region: string, service: string): Buffer {
+function signingKey(
+  credentials: AwsCredentials,
+  dateStamp: string,
+  region: string,
+  service: string,
+): Buffer {
   const dateKey = hmac(`AWS4${credentials.secretAccessKey}`, dateStamp);
   const regionKey = hmac(dateKey, region);
   const serviceKey = hmac(regionKey, service);
@@ -146,9 +151,17 @@ function signature(input: {
 }): { signature: string; credentialScope: string; amzDate: string } {
   const { amzDate, dateStamp } = amzDates(input.now);
   const credentialScope = `${dateStamp}/${input.region}/${input.service}/aws4_request`;
-  const stringToSign = [SIGV4_ALGORITHM, amzDate, credentialScope, sha256Hex(input.canonicalRequest)].join('\n');
+  const stringToSign = [
+    SIGV4_ALGORITHM,
+    amzDate,
+    credentialScope,
+    sha256Hex(input.canonicalRequest),
+  ].join('\n');
   return {
-    signature: hmac(signingKey(input.credentials, dateStamp, input.region, input.service), stringToSign).toString('hex'),
+    signature: hmac(
+      signingKey(input.credentials, dateStamp, input.region, input.service),
+      stringToSign,
+    ).toString('hex'),
     credentialScope,
     amzDate,
   };
@@ -181,7 +194,10 @@ export interface PresignInput {
 export function presign(input: PresignInput): string {
   const { amzDate, dateStamp } = amzDates(input.now);
   const credentialScope = `${dateStamp}/${input.region}/${input.service}/aws4_request`;
-  const { canonicalHeaders, signedHeaderList } = canonicalHeaderBlock(input.host, input.signedHeaders);
+  const { canonicalHeaders, signedHeaderList } = canonicalHeaderBlock(
+    input.host,
+    input.signedHeaders,
+  );
 
   const query: Record<string, string> = {
     'X-Amz-Algorithm': SIGV4_ALGORITHM,

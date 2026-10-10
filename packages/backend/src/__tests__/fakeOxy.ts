@@ -49,7 +49,10 @@ export interface FakeOxyLink {
 export interface FakeOxy {
   readonly url: string;
   /** `memberships.set('<person>\u0000<account>', role)` — or `role` with a status. */
-  readonly memberships: Map<string, FakeOxyRole | { role: FakeOxyRole; status: 'active' | 'invited' }>;
+  readonly memberships: Map<
+    string,
+    FakeOxyRole | { role: FakeOxyRole; status: 'active' | 'invited' }
+  >;
   /** Accounts that exist. An account not here is `404`. */
   readonly accounts: Set<string>;
   /** `ok` answers; `down` answers 503 to everything; `unauthorized` answers 401. */
@@ -65,7 +68,8 @@ export interface FakeOxy {
   close(): Promise<void>;
 }
 
-const base64url = (value: object): string => Buffer.from(JSON.stringify(value)).toString('base64url');
+const base64url = (value: object): string =>
+  Buffer.from(JSON.stringify(value)).toString('base64url');
 
 /** The bearer a test session for `person` carries. */
 export function tokenFor(person: string): string {
@@ -76,7 +80,9 @@ export function tokenFor(person: string): string {
 function personOf(authorization: string | undefined): string | undefined {
   const payload = /^Bearer [^.]+\.([^.]+)\.unsigned$/.exec(authorization ?? '')?.[1];
   if (payload === undefined) return undefined;
-  const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { sub?: unknown };
+  const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
+    sub?: unknown;
+  };
   return typeof claims.sub === 'string' ? claims.sub : undefined;
 }
 
@@ -88,7 +94,10 @@ export async function startFakeOxy(): Promise<FakeOxy> {
   const app = express();
   app.use(express.json());
   const state = {
-    memberships: new Map<string, FakeOxyRole | { role: FakeOxyRole; status: 'active' | 'invited' }>(),
+    memberships: new Map<
+      string,
+      FakeOxyRole | { role: FakeOxyRole; status: 'active' | 'invited' }
+    >(),
     accounts: new Set<string>(),
     mode: 'ok' as FakeOxy['mode'],
     requests: [] as FakeOxy['requests'],
@@ -151,8 +160,15 @@ export async function startFakeOxy(): Promise<FakeOxy> {
     for (const { fileId } of requests) {
       const file = state.files.get(fileId);
       if (!file) results[fileId] = { allowed: false, error: 'File not found' };
-      else if (file.visibility !== 'public' && file.ownerUserId !== person) results[fileId] = { allowed: false, error: 'Access denied' };
-      else results[fileId] = { allowed: true, url: `https://cloud.example/${fileId}`, visibility: file.visibility, mime: file.mime };
+      else if (file.visibility !== 'public' && file.ownerUserId !== person)
+        results[fileId] = { allowed: false, error: 'Access denied' };
+      else
+        results[fileId] = {
+          allowed: true,
+          url: `https://cloud.example/${fileId}`,
+          visibility: file.visibility,
+          mime: file.mime,
+        };
     }
     response.json({ data: { results } });
   });
@@ -165,25 +181,54 @@ export async function startFakeOxy(): Promise<FakeOxy> {
       response.status(404).json({ error: 'NOT_FOUND', message: 'File not found' });
       return;
     }
-    const body = request.body as { app: string; entityType: string; entityId: string; visibility?: FakeOxyFile['visibility'] };
+    const body = request.body as {
+      app: string;
+      entityType: string;
+      entityId: string;
+      visibility?: FakeOxyFile['visibility'];
+    };
     // The real link SETS the visibility, and infers `private` for a non-avatar type.
     file.visibility = body.visibility ?? 'private';
     const links = state.links.get(request.params.id) ?? [];
-    if (!links.some((link) => link.app === body.app && link.entityType === body.entityType && link.entityId === body.entityId)) {
-      links.push({ app: body.app, entityType: body.entityType, entityId: body.entityId, createdBy: person });
+    if (
+      !links.some(
+        (link) =>
+          link.app === body.app &&
+          link.entityType === body.entityType &&
+          link.entityId === body.entityId,
+      )
+    ) {
+      links.push({
+        app: body.app,
+        entityType: body.entityType,
+        entityId: body.entityId,
+        createdBy: person,
+      });
     }
     state.links.set(request.params.id, links);
-    response.json({ data: { assetId: request.params.id, file: { id: request.params.id, usageCount: links.length, links, status: file.status } } });
+    response.json({
+      data: {
+        assetId: request.params.id,
+        file: { id: request.params.id, usageCount: links.length, links, status: file.status },
+      },
+    });
   });
 
   app.delete('/assets/:id/links', (request, response) => {
     if (filesCaller(request, response) === null) return;
     const body = request.body as { app: string; entityType: string; entityId: string };
     const links = (state.links.get(request.params.id) ?? []).filter(
-      (link) => !(link.app === body.app && link.entityType === body.entityType && link.entityId === body.entityId),
+      (link) =>
+        !(
+          link.app === body.app &&
+          link.entityType === body.entityType &&
+          link.entityId === body.entityId
+        ),
     );
     state.links.set(request.params.id, links);
-    response.json({ data: { file: { id: request.params.id, usageCount: links.length, links, status: 'active' } } });
+    response.json({
+      data: { file: { id: request.params.id, usageCount: links.length, links, status: 'active' } },
+    });
   });
 
   app.get('/accounts/:id', (request, response) => {
@@ -206,16 +251,26 @@ export async function startFakeOxy(): Promise<FakeOxy> {
     const now = new Date().toISOString();
     if (person === accountId) {
       response.json({
-        account: { accountId, kind: 'personal', parentAccountId: null, account: { id: accountId }, relationship: 'self', callerMembership: null },
+        account: {
+          accountId,
+          kind: 'personal',
+          parentAccountId: null,
+          account: { id: accountId },
+          relationship: 'self',
+          callerMembership: null,
+        },
       });
       return;
     }
     const held = state.memberships.get(membershipKey(person, accountId));
     if (held === undefined) {
-      response.status(403).json({ error: 'FORBIDDEN', message: 'You do not have access to this account' });
+      response
+        .status(403)
+        .json({ error: 'FORBIDDEN', message: 'You do not have access to this account' });
       return;
     }
-    const { role, status } = typeof held === 'string' ? { role: held, status: 'active' as const } : held;
+    const { role, status } =
+      typeof held === 'string' ? { role: held, status: 'active' as const } : held;
     response.json({
       account: {
         accountId,

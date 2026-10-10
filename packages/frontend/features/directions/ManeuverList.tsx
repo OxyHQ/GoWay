@@ -90,7 +90,9 @@ export function ManeuverList({ steps, stops, selected, onSelect, testID }: Maneu
           const detail = [
             step.maneuver.streetName,
             step.maneuver.distanceMeters > 0 ? formatDistance(step.maneuver.distanceMeters) : null,
-            step.maneuver.durationSeconds > 0 ? formatDuration(step.maneuver.durationSeconds) : null,
+            step.maneuver.durationSeconds > 0
+              ? formatDuration(step.maneuver.durationSeconds)
+              : null,
           ]
             .filter(Boolean)
             .join(' · ');

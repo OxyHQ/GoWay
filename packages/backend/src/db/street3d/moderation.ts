@@ -70,7 +70,10 @@ export async function retractCaptureFromStreet3d(
     ...(derivativeIds.length
       ? await cancelOpenJobs(
           tx,
-          sql`${street3dJobs.inputDerivativeIds} && ${sql`array[${sql.join(derivativeIds.map((id) => sql`${id}`), sql`, `)}]::text[]`}`,
+          sql`${street3dJobs.inputDerivativeIds} && ${sql`array[${sql.join(
+            derivativeIds.map((id) => sql`${id}`),
+            sql`, `,
+          )}]::text[]`}`,
           cancelReason,
           now,
         )
@@ -80,8 +83,19 @@ export async function retractCaptureFromStreet3d(
   if (derivativeIds.length) {
     await tx
       .update(captureDerivatives)
-      .set({ deletionRequestedAt: now, deletionRequestedReason: reason, protectedUntil: null, updatedAt: now })
-      .where(and(inArray(captureDerivatives.id, derivativeIds), isNull(captureDerivatives.deletedAt), isNull(captureDerivatives.deletionRequestedAt)));
+      .set({
+        deletionRequestedAt: now,
+        deletionRequestedReason: reason,
+        protectedUntil: null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          inArray(captureDerivatives.id, derivativeIds),
+          isNull(captureDerivatives.deletedAt),
+          isNull(captureDerivatives.deletionRequestedAt),
+        ),
+      );
   }
 
   const versions = await tx
@@ -96,7 +110,10 @@ export async function retractCaptureFromStreet3d(
       ),
     );
   const sceneIds = [
-    ...new Set([...versions.map((row) => row.sceneId), ...cancelled.flatMap((job) => (job.sceneId ? [job.sceneId] : []))]),
+    ...new Set([
+      ...versions.map((row) => row.sceneId),
+      ...cancelled.flatMap((job) => (job.sceneId ? [job.sceneId] : [])),
+    ]),
   ];
   if (sceneIds.length) {
     await tx
@@ -111,14 +128,33 @@ export async function retractCaptureFromStreet3d(
  * Disable one version inside the caller's transaction: hidden from the API at
  * commit, public objects purged by the next purge phase.
  */
-export async function disableVersionInTransaction(tx: Transaction, versionId: string, reason: string, now: Date): Promise<boolean> {
-  const [version] = await tx.select().from(street3dSceneVersions).where(eq(street3dSceneVersions.id, versionId)).for('update');
+export async function disableVersionInTransaction(
+  tx: Transaction,
+  versionId: string,
+  reason: string,
+  now: Date,
+): Promise<boolean> {
+  const [version] = await tx
+    .select()
+    .from(street3dSceneVersions)
+    .where(eq(street3dSceneVersions.id, versionId))
+    .for('update');
   if (!version || version.state === 'disabled') return false;
   await tx
     .update(street3dSceneVersions)
-    .set({ state: 'disabled', disabledAt: now, disabledReason: reason.slice(0, 200), assetsPurgedAt: null, updatedAt: now })
+    .set({
+      state: 'disabled',
+      disabledAt: now,
+      disabledReason: reason.slice(0, 200),
+      assetsPurgedAt: null,
+      updatedAt: now,
+    })
     .where(eq(street3dSceneVersions.id, versionId));
-  const [scene] = await tx.select().from(street3dScenes).where(eq(street3dScenes.id, version.sceneId)).for('update');
+  const [scene] = await tx
+    .select()
+    .from(street3dScenes)
+    .where(eq(street3dScenes.id, version.sceneId))
+    .for('update');
   if (scene && scene.currentVersionId === versionId) {
     await tx
       .update(street3dScenes)
@@ -133,7 +169,12 @@ export async function disableVersionInTransaction(tx: Transaction, versionId: st
   return true;
 }
 
-export async function disableVersion(db: Database, versionId: string, reason: string, now: Date): Promise<boolean> {
+export async function disableVersion(
+  db: Database,
+  versionId: string,
+  reason: string,
+  now: Date,
+): Promise<boolean> {
   return db.transaction((tx) => disableVersionInTransaction(tx, versionId, reason, now));
 }
 
@@ -143,9 +184,17 @@ export async function disableVersion(db: Database, versionId: string, reason: st
  * public objects. It becomes `published` only when it is newer than the
  * scene's current version; otherwise `superseded`.
  */
-export async function enableVersion(db: Database, versionId: string, now: Date): Promise<'published' | 'superseded' | 'refused' | 'missing'> {
+export async function enableVersion(
+  db: Database,
+  versionId: string,
+  now: Date,
+): Promise<'published' | 'superseded' | 'refused' | 'missing'> {
   return db.transaction(async (tx) => {
-    const [version] = await tx.select().from(street3dSceneVersions).where(eq(street3dSceneVersions.id, versionId)).for('update');
+    const [version] = await tx
+      .select()
+      .from(street3dSceneVersions)
+      .where(eq(street3dSceneVersions.id, versionId))
+      .for('update');
     if (!version || version.state !== 'disabled' || version.assets.length === 0) return 'missing';
     const blockedInputs = await tx
       .select({ id: street3dSceneInputs.derivativeId })
@@ -167,10 +216,17 @@ export async function enableVersion(db: Database, versionId: string, now: Date):
       .limit(1);
     if (blockedInputs.length > 0) return 'refused';
 
-    const [scene] = await tx.select().from(street3dScenes).where(eq(street3dScenes.id, version.sceneId)).for('update');
+    const [scene] = await tx
+      .select()
+      .from(street3dScenes)
+      .where(eq(street3dScenes.id, version.sceneId))
+      .for('update');
     if (!scene || scene.state === 'disabled') return 'refused';
     const [current] = scene.currentVersionId
-      ? await tx.select().from(street3dSceneVersions).where(eq(street3dSceneVersions.id, scene.currentVersionId))
+      ? await tx
+          .select()
+          .from(street3dSceneVersions)
+          .where(eq(street3dSceneVersions.id, scene.currentVersionId))
       : [];
     const publish = !current || current.version < version.version;
     if (publish && current) {
@@ -193,7 +249,12 @@ export async function enableVersion(db: Database, versionId: string, now: Date):
     if (publish) {
       await tx
         .update(street3dScenes)
-        .set({ currentVersionId: versionId, state: 'published', confidence: version.quality.registrationRatio, updatedAt: now })
+        .set({
+          currentVersionId: versionId,
+          state: 'published',
+          confidence: version.quality.registrationRatio,
+          updatedAt: now,
+        })
         .where(eq(street3dScenes.id, scene.id));
     }
     return publish ? 'published' : 'superseded';
@@ -201,7 +262,12 @@ export async function enableVersion(db: Database, versionId: string, now: Date):
 }
 
 /** Request a rebuild; the next formation pass queues it if the scene is reconstructable. */
-export async function requestRebuild(db: Database, sceneId: string, profile: StreetSceneProfile | null, now: Date): Promise<boolean> {
+export async function requestRebuild(
+  db: Database,
+  sceneId: string,
+  profile: StreetSceneProfile | null,
+  now: Date,
+): Promise<boolean> {
   const rows = await db
     .update(street3dScenes)
     .set({ rebuildRequestedAt: now, rebuildProfile: profile, updatedAt: now })
@@ -221,17 +287,33 @@ export async function blockCapture(
   now: Date,
 ): Promise<{ disabledVersions: string[]; rebuildScenes: string[]; cancelledJobs: number } | null> {
   return db.transaction(async (tx) => {
-    const [link] = await tx.select({ mediaObjectId: captureAssets.mediaObjectId }).from(captureAssets).where(eq(captureAssets.id, assetId));
+    const [link] = await tx
+      .select({ mediaObjectId: captureAssets.mediaObjectId })
+      .from(captureAssets)
+      .where(eq(captureAssets.id, assetId));
     if (!link) return null;
     // Job rows first, capture rows after — the order every job transition uses.
     const retraction = await retractCaptureFromStreet3d(tx, assetId, 'moderation', now);
-    const [media] = await tx.select().from(captureMediaObjects).where(eq(captureMediaObjects.id, link.mediaObjectId)).for('update');
-    const [asset] = await tx.select().from(captureAssets).where(eq(captureAssets.id, assetId)).for('update');
+    const [media] = await tx
+      .select()
+      .from(captureMediaObjects)
+      .where(eq(captureMediaObjects.id, link.mediaObjectId))
+      .for('update');
+    const [asset] = await tx
+      .select()
+      .from(captureAssets)
+      .where(eq(captureAssets.id, assetId))
+      .for('update');
     if (!media || !asset) return null;
 
     await tx
       .insert(street3dCaptureBlocks)
-      .values({ captureAssetId: assetId, contentHash: media.contentHash, reason: reason.slice(0, 200), createdAt: now })
+      .values({
+        captureAssetId: assetId,
+        contentHash: media.contentHash,
+        reason: reason.slice(0, 200),
+        createdAt: now,
+      })
       .onConflictDoNothing();
     await tx
       .update(captureAssets)
@@ -252,16 +334,34 @@ export async function blockCapture(
     if ((remaining?.count ?? 0) === 0) {
       await tx
         .update(captureMediaObjects)
-        .set({ deletionRequestedAt: now, deletionRequestedReason: 'moderation', protectedUntil: null, updatedAt: now })
-        .where(and(eq(captureMediaObjects.id, media.id), isNull(captureMediaObjects.deletedAt), isNull(captureMediaObjects.deletionRequestedAt)));
+        .set({
+          deletionRequestedAt: now,
+          deletionRequestedReason: 'moderation',
+          protectedUntil: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(captureMediaObjects.id, media.id),
+            isNull(captureMediaObjects.deletedAt),
+            isNull(captureMediaObjects.deletionRequestedAt),
+          ),
+        );
     }
-    return { disabledVersions: retraction.versionIds, rebuildScenes: retraction.sceneIds, cancelledJobs: retraction.cancelledJobs };
+    return {
+      disabledVersions: retraction.versionIds,
+      rebuildScenes: retraction.sceneIds,
+      cancelledJobs: retraction.cancelledJobs,
+    };
   });
 }
 
 /** Cancel one job by id. */
 export async function cancelJob(db: Database, jobId: string, now: Date): Promise<boolean> {
-  return db.transaction(async (tx) => (await cancelOpenJobs(tx, eq(street3dJobs.id, jobId), 'operator', now)).length === 1);
+  return db.transaction(
+    async (tx) =>
+      (await cancelOpenJobs(tx, eq(street3dJobs.id, jobId), 'operator', now)).length === 1,
+  );
 }
 
 /**
@@ -269,7 +369,11 @@ export async function cancelJob(db: Database, jobId: string, now: Date): Promise
  * `jobId`, same manifest, `attempt + 1` (the budget grows by one if it was
  * exhausted). A completed job is never requeued — rebuild the scene instead.
  */
-export async function requeueJob(db: Database, jobId: string, now: Date): Promise<'requeued' | 'refused' | 'missing'> {
+export async function requeueJob(
+  db: Database,
+  jobId: string,
+  now: Date,
+): Promise<'requeued' | 'refused' | 'missing'> {
   return db.transaction(async (tx) => {
     const job: JobRow | null = await lockJob(tx, jobId);
     if (!job) return 'missing';
@@ -280,18 +384,34 @@ export async function requeueJob(db: Database, jobId: string, now: Date): Promis
       .where(
         and(
           ne(street3dJobs.id, jobId),
-          job.assetId ? eq(street3dJobs.assetId, job.assetId) : eq(street3dJobs.sceneId, job.sceneId as string),
+          job.assetId
+            ? eq(street3dJobs.assetId, job.assetId)
+            : eq(street3dJobs.sceneId, job.sceneId as string),
           sql`${street3dJobs.state} not in ('completed', 'failed', 'cancelled')`,
         ),
       )
       .limit(1);
     if (other) return 'refused';
     if (job.kind === 'capture_privacy' && job.assetId) {
-      const [asset] = await tx.select().from(captureAssets).where(eq(captureAssets.id, job.assetId));
-      if (!asset || asset.state === 'deleted' || asset.privacyState === 'blocked' || asset.privacyState === 'passed') return 'refused';
+      const [asset] = await tx
+        .select()
+        .from(captureAssets)
+        .where(eq(captureAssets.id, job.assetId));
+      if (
+        !asset ||
+        asset.state === 'deleted' ||
+        asset.privacyState === 'blocked' ||
+        asset.privacyState === 'passed'
+      )
+        return 'refused';
       await tx
         .update(captureAssets)
-        .set({ privacyState: 'in_progress', privacyCompletedAt: null, state: 'validating', updatedAt: now })
+        .set({
+          privacyState: 'in_progress',
+          privacyCompletedAt: null,
+          state: 'validating',
+          updatedAt: now,
+        })
         .where(eq(captureAssets.id, job.assetId));
     }
     if (job.sceneId) {
@@ -329,14 +449,22 @@ export async function requeueJob(db: Database, jobId: string, now: Date): Promis
 
 /** For `status`: the newest versions of a scene, newest first. */
 export async function versionsOfScene(db: Database, sceneId: string) {
-  return db.select().from(street3dSceneVersions).where(eq(street3dSceneVersions.sceneId, sceneId)).orderBy(desc(street3dSceneVersions.version));
+  return db
+    .select()
+    .from(street3dSceneVersions)
+    .where(eq(street3dSceneVersions.sceneId, sceneId))
+    .orderBy(desc(street3dSceneVersions.version));
 }
 
 /** Defaults the admin command shows next to its counters. */
 export const MODERATION_DEFAULTS = { profile: street3dConfig.defaultProfile };
 
 /** Jobs older than `before` that still hold temporary artifacts. */
-export async function finishedJobsWithArtifacts(db: Database, before: Date, limit: number): Promise<JobRow[]> {
+export async function finishedJobsWithArtifacts(
+  db: Database,
+  before: Date,
+  limit: number,
+): Promise<JobRow[]> {
   return db
     .select()
     .from(street3dJobs)

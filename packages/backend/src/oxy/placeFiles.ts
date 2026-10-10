@@ -107,7 +107,10 @@ function translate(error: unknown): null {
     { status: error instanceof OxyApiError ? error.status : undefined },
     'Oxy files unavailable; refusing a gallery write',
   );
-  throw new ApiError('service_unavailable', 'The file cannot be checked right now because Oxy is unavailable. Try again shortly.');
+  throw new ApiError(
+    'service_unavailable',
+    'The file cannot be checked right now because Oxy is unavailable. Try again shortly.',
+  );
 }
 
 export function createOxyPlaceFileStore(options: PlaceFileStoreOptions): PlaceFileStore {
@@ -135,7 +138,9 @@ export function createOxyPlaceFileStore(options: PlaceFileStoreOptions): PlaceFi
         if (record === null) throw refused('No Oxy file has that id.', 'not_found');
         const { file } = record;
 
-        const owners = [caller.oxyAccountId, caller.operatedByOxyUserId].filter((id): id is string => id !== null);
+        const owners = [caller.oxyAccountId, caller.operatedByOxyUserId].filter(
+          (id): id is string => id !== null,
+        );
         if (!owners.includes(file.ownerUserId)) {
           throw new ApiError('forbidden', 'You can add only a file you uploaded to Oxy yourself.', {
             field: 'fileId',
@@ -143,15 +148,23 @@ export function createOxyPlaceFileStore(options: PlaceFileStoreOptions): PlaceFi
           });
         }
         if (file.status !== 'active') throw refused('That Oxy file is in the trash.', 'not_active');
-        if (!ACCEPTED_MIME_TYPES.has(file.mime)) throw refused('That Oxy file is not an image a gallery can show.', 'not_an_image');
+        if (!ACCEPTED_MIME_TYPES.has(file.mime))
+          throw refused('That Oxy file is not an image a gallery can show.', 'not_an_image');
 
         const access = await client.assets.access([{ fileId }]).catch(translate);
         if (access?.results[fileId]?.visibility !== 'public') {
-          throw refused('Upload the image to Oxy as public before adding it to a place.', 'not_public');
+          throw refused(
+            'Upload the image to Oxy as public before adding it to a place.',
+            'not_public',
+          );
         }
 
         const linked = await client.assets
-          .link(fileId, { app: GOWAY_OXY_APP, entityType: PLACE_ENTITY_TYPE, entityId: placeId }, { visibility: 'public' })
+          .link(
+            fileId,
+            { app: GOWAY_OXY_APP, entityType: PLACE_ENTITY_TYPE, entityId: placeId },
+            { visibility: 'public' },
+          )
           .catch(translate);
         if (linked === null) throw refused('No Oxy file has that id.', 'not_found');
 
@@ -176,7 +189,11 @@ export function createOxyPlaceFileStore(options: PlaceFileStoreOptions): PlaceFi
         return;
       }
       try {
-        await client.assets.unlink(fileId, { app: GOWAY_OXY_APP, entityType: PLACE_ENTITY_TYPE, entityId: placeId });
+        await client.assets.unlink(fileId, {
+          app: GOWAY_OXY_APP,
+          entityType: PLACE_ENTITY_TYPE,
+          entityId: placeId,
+        });
       } catch (error) {
         logger.warn(
           { status: error instanceof OxyApiError ? error.status : undefined },

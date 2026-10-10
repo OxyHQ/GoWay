@@ -98,8 +98,14 @@ const routeEndpointUrl = z
   }, 'must be an http(s) route endpoint without credentials, query or fragment')
   .transform((value) => value.replace(/\/+$/, ''));
 
-const integerFromEnv = (fallback: number, { minimum, maximum }: { minimum: number; maximum: number }) =>
-  z.preprocess(emptyAsUndefined, z.coerce.number().int().min(minimum).max(maximum).default(fallback));
+const integerFromEnv = (
+  fallback: number,
+  { minimum, maximum }: { minimum: number; maximum: number },
+) =>
+  z.preprocess(
+    emptyAsUndefined,
+    z.coerce.number().int().min(minimum).max(maximum).default(fallback),
+  );
 
 /**
  * The travel modes this deployment offers.
@@ -108,15 +114,21 @@ const integerFromEnv = (fallback: number, { minimum, maximum }: { minimum: numbe
  * here, so a caller gets `unsupported_mode` — a stable answer they can hide a
  * button for — instead of an engine error they cannot interpret.
  */
-const modeList = z.preprocess((value) => {
-  if (value === undefined || value === null || value === '') return undefined;
-  if (Array.isArray(value)) return value;
-  const members = String(value)
-    .split(/[\s,]+/)
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
-  return members.length === 0 ? undefined : [...new Set(members)];
-}, z.array(z.enum(TRAVEL_MODES)).min(1).default([...TRAVEL_MODES]));
+const modeList = z.preprocess(
+  (value) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    if (Array.isArray(value)) return value;
+    const members = String(value)
+      .split(/[\s,]+/)
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean);
+    return members.length === 0 ? undefined : [...new Set(members)];
+  },
+  z
+    .array(z.enum(TRAVEL_MODES))
+    .min(1)
+    .default([...TRAVEL_MODES]),
+);
 
 const schema = z.object({
   provider: z.preprocess(emptyAsUndefined, z.enum(ROUTING_PROVIDERS).default('valhalla')),

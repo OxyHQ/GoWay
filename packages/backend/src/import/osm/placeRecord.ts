@@ -103,7 +103,10 @@ export function roundCoordinate(value: number): number {
  * several million rows in `places_names` that say nothing the `places` row does
  * not already say.
  */
-export function importedNames(tags: ReadonlyMap<string, string>, defaultName: string): ImportedName[] {
+export function importedNames(
+  tags: ReadonlyMap<string, string>,
+  defaultName: string,
+): ImportedName[] {
   const byLanguage = new Map<string, string>();
   for (const [key, value] of tags) {
     if (!key.startsWith('name:')) continue;
@@ -181,7 +184,9 @@ export function sourceDataOf(place: ImportedPlace): PlaceSourceData {
     tags: place.tags,
     normalized: {
       ...place.columns,
-      capabilities: Object.fromEntries(place.capabilities.map((capability) => [capability.key, capability.value])),
+      capabilities: Object.fromEntries(
+        place.capabilities.map((capability) => [capability.key, capability.value]),
+      ),
     },
   };
 }

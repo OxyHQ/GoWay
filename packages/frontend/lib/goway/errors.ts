@@ -89,7 +89,8 @@ export interface GoWayFailure {
 export function classifyGoWayError(error: unknown): GoWayFailure {
   if (error instanceof GoWayAbortError) return { kind: 'aborted', retryable: false };
   if (error instanceof GoWayNoRouteError) return { kind: 'noRoute', retryable: false };
-  if (error instanceof GoWayUnsupportedModeError) return { kind: 'unsupportedMode', retryable: false };
+  if (error instanceof GoWayUnsupportedModeError)
+    return { kind: 'unsupportedMode', retryable: false };
   if (error instanceof GoWayTimeoutError) return { kind: 'timeout', retryable: true };
   if (error instanceof GoWayNetworkError) return { kind: 'offline', retryable: true };
   if (error instanceof GoWayUnavailableError) return { kind: 'unavailable', retryable: true };

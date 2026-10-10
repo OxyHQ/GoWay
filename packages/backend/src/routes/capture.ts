@@ -41,7 +41,13 @@
  * serving an object key — a durable path into raw imagery — as an API field.
  */
 
-import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from 'express';
 import {
   assetPathSchema,
   captureAssetInputSchema,
@@ -116,7 +122,9 @@ function assetIdParam(request: Request): string {
  * not a 500 — the schema can check its shape, only the conversion can tell
  * that its numbers point nowhere.
  */
-function evidenceOf(claims: readonly Parameters<typeof evidenceFromClaim>[0][]): CaptureLocationEvidence[] {
+function evidenceOf(
+  claims: readonly Parameters<typeof evidenceFromClaim>[0][],
+): CaptureLocationEvidence[] {
   return claims.map((claim, index) => {
     const evidence = evidenceFromClaim(claim);
     if (!evidence) {
@@ -198,7 +206,13 @@ function assertAcceptableMedia(body: {
   projection?: CaptureProjection | undefined;
   contentType: string;
   byteSize: number;
-  camera?: { durationSeconds?: number | undefined; widthPixels?: number | undefined; heightPixels?: number | undefined } | undefined;
+  camera?:
+    | {
+        durationSeconds?: number | undefined;
+        widthPixels?: number | undefined;
+        heightPixels?: number | undefined;
+      }
+    | undefined;
 }): void {
   const equirectangular = body.projection === 'equirectangular';
   if (equirectangular) assertAcceptablePanorama(body);
@@ -206,26 +220,40 @@ function assertAcceptableMedia(body: {
     body.mediaKind === 'video'
       ? {
           types: captureConfig.videoContentTypes,
-          maxBytes: equirectangular ? captureConfig.maxEquirectangularVideoBytes : captureConfig.maxVideoBytes,
-          maxDuration: equirectangular ? captureConfig.maxEquirectangularVideoDurationSeconds : captureConfig.maxVideoDurationSeconds,
+          maxBytes: equirectangular
+            ? captureConfig.maxEquirectangularVideoBytes
+            : captureConfig.maxVideoBytes,
+          maxDuration: equirectangular
+            ? captureConfig.maxEquirectangularVideoDurationSeconds
+            : captureConfig.maxVideoDurationSeconds,
         }
       : {
           types: captureConfig.photoContentTypes,
-          maxBytes: equirectangular ? captureConfig.maxEquirectangularPhotoBytes : captureConfig.maxPhotoBytes,
+          maxBytes: equirectangular
+            ? captureConfig.maxEquirectangularPhotoBytes
+            : captureConfig.maxPhotoBytes,
           maxDuration: captureConfig.maxVideoDurationSeconds,
         };
 
   if (!limits.types.includes(body.contentType)) {
-    throw new ApiError('validation_failed', `GoWay does not accept ${body.contentType} for a ${body.mediaKind}.`, {
-      field: 'contentType',
-      mediaKind: body.mediaKind,
-    });
+    throw new ApiError(
+      'validation_failed',
+      `GoWay does not accept ${body.contentType} for a ${body.mediaKind}.`,
+      {
+        field: 'contentType',
+        mediaKind: body.mediaKind,
+      },
+    );
   }
   if (body.byteSize > limits.maxBytes) {
-    throw new ApiError('payload_too_large', `A ${body.mediaKind} may not exceed ${limits.maxBytes} bytes.`, {
-      field: 'byteSize',
-      maxByteSize: limits.maxBytes,
-    });
+    throw new ApiError(
+      'payload_too_large',
+      `A ${body.mediaKind} may not exceed ${limits.maxBytes} bytes.`,
+      {
+        field: 'byteSize',
+        maxByteSize: limits.maxBytes,
+      },
+    );
   }
   const duration = body.camera?.durationSeconds;
   if (duration !== undefined && duration > limits.maxDuration) {
@@ -250,22 +278,36 @@ function assertAcceptablePanorama(body: {
   camera?: { widthPixels?: number | undefined; heightPixels?: number | undefined } | undefined;
 }): void {
   if (!captureConfig.equirectangularEnabled) {
-    throw new ApiError('validation_failed', 'GoWay does not accept 360° media on this deployment yet.', { field: 'projection' });
+    throw new ApiError(
+      'validation_failed',
+      'GoWay does not accept 360° media on this deployment yet.',
+      { field: 'projection' },
+    );
   }
   const width = body.camera?.widthPixels;
   const height = body.camera?.heightPixels;
   const maxWidth =
-    body.mediaKind === 'video' ? captureConfig.maxEquirectangularVideoWidthPixels : captureConfig.maxEquirectangularPhotoWidthPixels;
+    body.mediaKind === 'video'
+      ? captureConfig.maxEquirectangularVideoWidthPixels
+      : captureConfig.maxEquirectangularPhotoWidthPixels;
   if (width !== undefined && height !== undefined && !isTwoToOne(width, height)) {
-    throw new ApiError('validation_failed', 'A 360° capture must be a full equirectangular panorama, twice as wide as it is high.', {
-      field: 'camera.widthPixels',
-    });
+    throw new ApiError(
+      'validation_failed',
+      'A 360° capture must be a full equirectangular panorama, twice as wide as it is high.',
+      {
+        field: 'camera.widthPixels',
+      },
+    );
   }
   if (width !== undefined && width > maxWidth) {
-    throw new ApiError('validation_failed', `A 360° ${body.mediaKind} may be at most ${maxWidth} pixels wide.`, {
-      field: 'camera.widthPixels',
-      maxWidthPixels: maxWidth,
-    });
+    throw new ApiError(
+      'validation_failed',
+      `A 360° ${body.mediaKind} may be at most ${maxWidth} pixels wide.`,
+      {
+        field: 'camera.widthPixels',
+        maxWidthPixels: maxWidth,
+      },
+    );
   }
 }
 
@@ -353,7 +395,11 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
     '/captures/sessions/:sessionId',
     requireAuth,
     route(async (request, response) => {
-      const session = await findOwnedSession(getDb(), sessionIdParam(request), requiredCallerId(request));
+      const session = await findOwnedSession(
+        getDb(),
+        sessionIdParam(request),
+        requiredCallerId(request),
+      );
       if (!session) throw new ApiError('not_found', 'No capture session of yours has that id.');
       response.json(session);
     }),
@@ -378,7 +424,12 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
       const session = await findOwnedSession(db, sessionId, oxyUserId);
       if (!session) throw new ApiError('not_found', 'No capture session of yours has that id.');
       const binding = cursorBinding('capture-assets', { sessionId });
-      const assets = await listSessionAssets(db, sessionId, oxyUserId, timeWindowOf(query, binding));
+      const assets = await listSessionAssets(
+        db,
+        sessionId,
+        oxyUserId,
+        timeWindowOf(query, binding),
+      );
       response.json(timePageOf(assets, query.limit, binding));
     }),
   );
@@ -523,14 +574,24 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
         );
       }
       if (stat.byteSize !== existing.media.byteSize) {
-        throw new ApiError('conflict', 'The stored object is not the size this capture was registered for.', {
-          field: 'byteSize',
-          registeredByteSize: existing.media.byteSize,
-          storedByteSize: stat.byteSize,
-        });
+        throw new ApiError(
+          'conflict',
+          'The stored object is not the size this capture was registered for.',
+          {
+            field: 'byteSize',
+            registeredByteSize: existing.media.byteSize,
+            storedByteSize: stat.byteSize,
+          },
+        );
       }
-      if (stat.checksumSha256 !== existing.media.contentHash || stat.contentType !== existing.media.contentType) {
-        throw new ApiError('conflict', 'The object checksum or content type does not match this contribution.');
+      if (
+        stat.checksumSha256 !== existing.media.contentHash ||
+        stat.contentType !== existing.media.contentType
+      ) {
+        throw new ApiError(
+          'conflict',
+          'The object checksum or content type does not match this contribution.',
+        );
       }
 
       const asset = await finalizeAsset(db, assetId, oxyUserId, { byteSize: stat.byteSize });
@@ -562,7 +623,11 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
     '/captures/assets/:assetId',
     requireAuth,
     route(async (request, response) => {
-      const removed = await withdrawCaptureAsset(getDb(), assetIdParam(request), requiredCallerId(request));
+      const removed = await withdrawCaptureAsset(
+        getDb(),
+        assetIdParam(request),
+        requiredCallerId(request),
+      );
       if (!removed) throw new ApiError('not_found', 'No capture of yours has that id.');
       response.status(204).end();
     }),

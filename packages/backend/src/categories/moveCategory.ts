@@ -77,7 +77,11 @@ function moved(keys: string): string {
 }
 
 /** The table, the rows that carry `$3`, and the rewrite, for each step. */
-function stepOf(name: MoveStepName): { table: 'places' | 'places_sources'; predicate: string; update: string } {
+function stepOf(name: MoveStepName): {
+  table: 'places' | 'places_sources';
+  predicate: string;
+  update: string;
+} {
   if (name === 'places') {
     const categories = column(places.categories);
     return {
@@ -100,7 +104,11 @@ function stepOf(name: MoveStepName): { table: 'places' | 'places_sources'; predi
 }
 
 /** Refuse a move the database would not finish, before any batch runs. */
-export async function assertMovable(session: postgres.Sql, from: string, to: string): Promise<void> {
+export async function assertMovable(
+  session: postgres.Sql,
+  from: string,
+  to: string,
+): Promise<void> {
   if (from === to) throw new Error('--from-category and --to-category name the same category.');
   const rows = await session.unsafe<{ key: string; status: string }[]>(
     `SELECT ${column(placeCategories.key)} AS "key", ${column(placeCategories.status)} AS "status" ` +
@@ -109,7 +117,9 @@ export async function assertMovable(session: postgres.Sql, from: string, to: str
   );
   const status = new Map(rows.map((row) => [row.key, row.status]));
   if (status.get(from) !== 'deprecated') {
-    throw new Error(`${from} must be a deprecated category: deprecate it first, so nothing writes it during the move.`);
+    throw new Error(
+      `${from} must be a deprecated category: deprecate it first, so nothing writes it during the move.`,
+    );
   }
   if (status.get(to) !== 'active') throw new Error(`${to} must be an active category.`);
 }
@@ -140,7 +150,9 @@ export async function moveCategoryPlaces(
           counts: options.dryRun === true,
           // A count names only `$3`; an unreferenced `$4` would be a parameter
           // Postgres cannot type.
-          parameters: options.dryRun ? [options.fromCategory] : [options.fromCategory, options.toCategory],
+          parameters: options.dryRun
+            ? [options.fromCategory]
+            : [options.fromCategory, options.toCategory],
         },
         options,
       ),

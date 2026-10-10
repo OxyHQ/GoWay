@@ -173,7 +173,9 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
           size="sm"
           leadingIcon={RiBookmarkLine}
           onPress={save}
-          accessibilityLabel={gate.canUsePrivateApi ? 'Save this place' : 'Sign in to save this place'}
+          accessibilityLabel={
+            gate.canUsePrivateApi ? 'Save this place' : 'Sign in to save this place'
+          }
           tone="neutral"
           appearance="outline"
         >
@@ -217,7 +219,10 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
       ) : null}
 
       {exceptions.length > 0 ? (
-        <View className="gap-space-4 pl-space-32" accessibilityLabel="Upcoming changes to the usual hours">
+        <View
+          className="gap-space-4 pl-space-32"
+          accessibilityLabel="Upcoming changes to the usual hours"
+        >
           {exceptions.map((exception) => (
             <Text key={exception.id} className="text-bodySmall text-muted-foreground">
               {`${exception.dates} · ${exception.text}${exception.note ? ` · ${exception.note}` : ''}`}
@@ -259,8 +264,8 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
       {!hasDetail ? (
         <View className="gap-space-8">
           <Text className="text-bodySmall text-muted-foreground">
-            GoWay doesn&apos;t have any more details for this place yet — no address, hours or contact from any
-            source it reconciles.
+            GoWay doesn&apos;t have any more details for this place yet — no address, hours or
+            contact from any source it reconciles.
           </Text>
           <View className="flex-row">
             <Button
@@ -268,7 +273,9 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
               leadingIcon={RiEditLine}
               onPress={suggestEdit}
               accessibilityLabel={
-                gate.canUsePrivateApi ? 'Add details for this place' : 'Sign in to add details for this place'
+                gate.canUsePrivateApi
+                  ? 'Add details for this place'
+                  : 'Sign in to add details for this place'
               }
               tone="neutral"
               appearance="outline"

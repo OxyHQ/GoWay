@@ -16,13 +16,18 @@ export interface VideoLimits {
 
 export type GuidedResolution = '2160p' | '1080p';
 
-export const RESOLUTION_PIXELS: Readonly<Record<GuidedResolution, { width: number; height: number }>> = {
+export const RESOLUTION_PIXELS: Readonly<
+  Record<GuidedResolution, { width: number; height: number }>
+> = {
   '2160p': { width: 3840, height: 2160 },
   '1080p': { width: 1920, height: 1080 },
 };
 
 /** What each resolution wants for clean H.264 at 30 fps; more buys little. */
-export const RESOLUTION_BITRATE: Readonly<Record<GuidedResolution, number>> = { '2160p': 35_000_000, '1080p': 16_000_000 };
+export const RESOLUTION_BITRATE: Readonly<Record<GuidedResolution, number>> = {
+  '2160p': 35_000_000,
+  '1080p': 16_000_000,
+};
 /** Under this, 4K is worse for feature matching than 1080p at the same bitrate. */
 export const UHD_MIN_BITRATE = 20_000_000;
 /** Under this even 1080p turns to blocks; the byte limit stops the recording early instead. */
@@ -52,14 +57,20 @@ export function recordingBudget(limits: VideoLimits): RecordingBudget {
   const maxSeconds = Math.max(1, Math.floor(limits.maxDurationSeconds) - 2);
   const affordable = (limits.maxByteSize * 8 * 0.9) / maxSeconds;
   const resolution: GuidedResolution = affordable >= UHD_MIN_BITRATE ? '2160p' : '1080p';
-  const bitsPerSecond = Math.round(Math.min(RESOLUTION_BITRATE[resolution], Math.max(MIN_BITRATE, affordable)));
+  const bitsPerSecond = Math.round(
+    Math.min(RESOLUTION_BITRATE[resolution], Math.max(MIN_BITRATE, affordable)),
+  );
   const stopAtBytes = Math.max(0, Math.floor(limits.maxByteSize * 0.98 - (2 * bitsPerSecond) / 8));
   const expectedMaxSeconds = Math.min(maxSeconds, Math.floor((stopAtBytes * 8) / bitsPerSecond));
   return { resolution, bitsPerSecond, maxSeconds, stopAtBytes, expectedMaxSeconds };
 }
 
 /** Should a recording at `elapsedSeconds` and `bytes` stop now? */
-export function reachedLimit(budget: RecordingBudget, elapsedSeconds: number, bytes: number): boolean {
+export function reachedLimit(
+  budget: RecordingBudget,
+  elapsedSeconds: number,
+  bytes: number,
+): boolean {
   return elapsedSeconds >= budget.maxSeconds || bytes >= budget.stopAtBytes;
 }
 
@@ -74,7 +85,12 @@ const RECORDER_TYPES: Readonly<Record<GuidedResolution, readonly string[]>> = {
   // High profile at a level that covers the resolution, then whatever H.264
   // MP4 the browser offers. WebM is deliberately absent: GoWay does not accept
   // it, and a recording the upload refuses is worse than no recording.
-  '2160p': ['video/mp4;codecs=avc1.640033', 'video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1', 'video/mp4'],
+  '2160p': [
+    'video/mp4;codecs=avc1.640033',
+    'video/mp4;codecs=avc1.640028',
+    'video/mp4;codecs=avc1',
+    'video/mp4',
+  ],
   '1080p': ['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1', 'video/mp4'],
 };
 
@@ -92,7 +108,11 @@ export function pickRecorderType(
     const contentType = baseContentType(recorderType);
     if (!accepted.has(contentType)) continue;
     let supported = false;
-    try { supported = isTypeSupported(recorderType); } catch { supported = false; }
+    try {
+      supported = isTypeSupported(recorderType);
+    } catch {
+      supported = false;
+    }
     if (supported) return { recorderType, contentType };
   }
   return null;
@@ -100,7 +120,9 @@ export function pickRecorderType(
 
 /** What the native camera writes: QuickTime on iOS, MP4 on Android. */
 export function nativeRecording(os: string): { contentType: string; extension: string } {
-  return os === 'ios' ? { contentType: 'video/quicktime', extension: 'mov' } : { contentType: 'video/mp4', extension: 'mp4' };
+  return os === 'ios'
+    ? { contentType: 'video/quicktime', extension: 'mov' }
+    : { contentType: 'video/mp4', extension: 'mp4' };
 }
 
 // ── Locks ───────────────────────────────────────────────────────────────────
@@ -136,7 +158,11 @@ export interface LockStep {
   constraint: Record<string, string | number>;
 }
 
-const LOCKS: readonly { feature: LockFeature; mode: 'exposureMode' | 'focusMode' | 'whiteBalanceMode'; values: readonly (keyof LockSettings)[] }[] = [
+const LOCKS: readonly {
+  feature: LockFeature;
+  mode: 'exposureMode' | 'focusMode' | 'whiteBalanceMode';
+  values: readonly (keyof LockSettings)[];
+}[] = [
   { feature: 'exposure', mode: 'exposureMode', values: ['exposureTime', 'iso'] },
   { feature: 'focus', mode: 'focusMode', values: ['focusDistance'] },
   { feature: 'whiteBalance', mode: 'whiteBalanceMode', values: ['colorTemperature'] },
@@ -154,14 +180,20 @@ const LOCKS: readonly { feature: LockFeature; mode: 'exposureMode' | 'focusMode'
 export function lockSteps(capabilities: LockCapabilities, settings: LockSettings): LockStep[] {
   const steps: LockStep[] = [];
   for (const lock of LOCKS) {
-    const modes = Array.isArray(capabilities[lock.mode]) ? capabilities[lock.mode] ?? [] : [];
+    const modes = Array.isArray(capabilities[lock.mode]) ? (capabilities[lock.mode] ?? []) : [];
     const [primary] = lock.values;
     const primaryValue = settings[primary];
-    if (modes.includes('manual') && capabilities[primary] !== undefined && typeof primaryValue === 'number' && Number.isFinite(primaryValue)) {
+    if (
+      modes.includes('manual') &&
+      capabilities[primary] !== undefined &&
+      typeof primaryValue === 'number' &&
+      Number.isFinite(primaryValue)
+    ) {
       const constraint: Record<string, string | number> = { [lock.mode]: 'manual' };
       for (const key of lock.values) {
         const value = settings[key];
-        if (capabilities[key] !== undefined && typeof value === 'number' && Number.isFinite(value)) constraint[key] = value;
+        if (capabilities[key] !== undefined && typeof value === 'number' && Number.isFinite(value))
+          constraint[key] = value;
       }
       steps.push({ feature: lock.feature, constraint });
     } else if (modes.includes('single-shot')) {
@@ -173,7 +205,11 @@ export function lockSteps(capabilities: LockCapabilities, settings: LockSettings
 
 export type LockReport = Readonly<Record<LockFeature, LockState>>;
 
-export const NOTHING_LOCKED: LockReport = { exposure: 'unavailable', focus: 'unavailable', whiteBalance: 'unavailable' };
+export const NOTHING_LOCKED: LockReport = {
+  exposure: 'unavailable',
+  focus: 'unavailable',
+  whiteBalance: 'unavailable',
+};
 
 /** Fold which steps the camera accepted into a report. */
 export function lockReport(applied: readonly LockFeature[]): LockReport {
@@ -187,14 +223,21 @@ export function lockReport(applied: readonly LockFeature[]): LockReport {
  * `advanced` set it cannot satisfy WITHOUT rejecting, so success of the call
  * proves nothing; the settings read back afterwards are the evidence.
  */
-export function lockHeld(step: LockStep, settingsAfter: Readonly<Record<string, unknown>>): boolean {
-  return Object.entries(step.constraint).every(([key, value]) => key.endsWith('Mode') ? settingsAfter[key] === value : true);
+export function lockHeld(
+  step: LockStep,
+  settingsAfter: Readonly<Record<string, unknown>>,
+): boolean {
+  return Object.entries(step.constraint).every(([key, value]) =>
+    key.endsWith('Mode') ? settingsAfter[key] === value : true,
+  );
 }
 
 /** Message keys telling the user what was locked and what could not be. White balance is a silent bonus. */
 export function lockNoticeKeys(report: LockReport): string[] {
   return [
-    report.exposure === 'locked' ? 'contribute.guided.lock.exposure' : 'contribute.guided.lock.noExposure',
+    report.exposure === 'locked'
+      ? 'contribute.guided.lock.exposure'
+      : 'contribute.guided.lock.noExposure',
     report.focus === 'locked' ? 'contribute.guided.lock.focus' : 'contribute.guided.lock.noFocus',
   ];
 }

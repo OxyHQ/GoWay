@@ -45,7 +45,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toGeoCoordinate } from '@goway.to/sdk';
-import type { GeoCoordinate, Place, Route, RouteLocation, SearchResult, TravelMode } from '@goway.to/sdk';
+import type {
+  GeoCoordinate,
+  Place,
+  Route,
+  RouteLocation,
+  SearchResult,
+  TravelMode,
+} from '@goway.to/sdk';
 
 import type { MapApi, MapFitOptions, MapMarker, MapOverlay } from '@/components/map';
 import { gowayClient } from '@/lib/goway/client';
@@ -445,7 +452,11 @@ export function useDirections(options: DirectionsOptions): DirectionsController 
   const mapCentreOffer = useMemo(() => {
     if (!mapCenter) return null;
     const others = stops.filter((stop): stop is DirectionsStop => stop != null);
-    if (others.some((stop) => distanceMeters(mapCenter, stop.coordinate) < MIN_ALTERNATIVE_ORIGIN_METERS)) {
+    if (
+      others.some(
+        (stop) => distanceMeters(mapCenter, stop.coordinate) < MIN_ALTERNATIVE_ORIGIN_METERS,
+      )
+    ) {
       return null;
     }
     return mapCenter;

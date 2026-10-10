@@ -10,7 +10,13 @@ import { Button } from '@oxy.so/bloom/button';
 import { Checkbox } from '@oxy.so/bloom/checkbox';
 import { Text } from '@oxy.so/bloom/typography';
 import { useOxy } from '@oxy.so/services';
-import type { CaptureAsset, CaptureAssetInput, CaptureSession, CaptureUploadPolicy, CaptureUploadTicket } from '@goway.to/sdk';
+import type {
+  CaptureAsset,
+  CaptureAssetInput,
+  CaptureSession,
+  CaptureUploadPolicy,
+  CaptureUploadTicket,
+} from '@goway.to/sdk';
 import { MapCanvas, type MapApi } from '@/components/map';
 import { useAuthGate } from '@/lib/authGate';
 import { useTranslation } from '@/lib/i18n';
@@ -20,7 +26,13 @@ import { ContributionStatusCard } from './ContributionStatusCard';
 import { GuidedCapture, type GuidedRecording } from './guided/GuidedCapture';
 import { formatClock } from './guided/plan';
 import { hashMedia, releaseMedia, selectMedia, uploadMedia } from './media';
-import { MediaError, mediaLocation, withProjection, type CaptureLocation, type SelectedMedia } from './media.shared';
+import {
+  MediaError,
+  mediaLocation,
+  withProjection,
+  type CaptureLocation,
+  type SelectedMedia,
+} from './media.shared';
 
 export function ContributeScreen() {
   const router = useRouter();
@@ -42,7 +54,11 @@ export function ContributeScreen() {
   const [assets, setAssets] = useState<CaptureAsset[]>([]);
   const map = useRef<MapApi | null>(null);
   const active = useRef<AbortController | null>(null);
-  const pending = useRef<{ sessionId: string; input: CaptureAssetInput; ticket?: CaptureUploadTicket } | null>(null);
+  const pending = useRef<{
+    sessionId: string;
+    input: CaptureAssetInput;
+    ticket?: CaptureUploadTicket;
+  } | null>(null);
   const currentUser = useRef(user?.id);
   currentUser.current = user?.id;
   // Bumped whenever the media in hand changes, so a location fix asked for at
@@ -61,18 +77,44 @@ export function ContributeScreen() {
   // answer fetched before sign-in finished is the anonymous one.
   useEffect(() => {
     let mounted = true;
-    captureClient.policy().then((value) => { if (mounted) setPolicy(value); })
-      .catch(() => { if (mounted) setError(t('contribute.error.unavailable')); });
-    return () => { mounted = false; };
+    captureClient
+      .policy()
+      .then((value) => {
+        if (mounted) setPolicy(value);
+      })
+      .catch(() => {
+        if (mounted) setError(t('contribute.error.unavailable'));
+      });
+    return () => {
+      mounted = false;
+    };
   }, [gate.canUsePrivateApi, user?.id]);
   useEffect(() => () => active.current?.abort(), []);
   // A guided recording on web is held through an object URL; let it go with the media.
   // Keyed on the file, not the selection: re-declaring its projection keeps the same file.
   const pickedAsset = media?.asset;
-  useEffect(() => () => { if (pickedAsset) releaseMedia(pickedAsset); }, [pickedAsset]);
+  useEffect(
+    () => () => {
+      if (pickedAsset) releaseMedia(pickedAsset);
+    },
+    [pickedAsset],
+  );
   useEffect(() => {
-    active.current?.abort(); pending.current = null; captureRun.current += 1; setSessions([]); setAssets([]); setConsent(false); setMedia(null); setLocation(null); setCapture(null); setGuided(false); setStatus(''); setError(''); setBusy(false);
-    if (gate.canUsePrivateApi) void refresh().catch(() => setError(t('contribute.error.loadContributions')));
+    active.current?.abort();
+    pending.current = null;
+    captureRun.current += 1;
+    setSessions([]);
+    setAssets([]);
+    setConsent(false);
+    setMedia(null);
+    setLocation(null);
+    setCapture(null);
+    setGuided(false);
+    setStatus('');
+    setError('');
+    setBusy(false);
+    if (gate.canUsePrivateApi)
+      void refresh().catch(() => setError(t('contribute.error.loadContributions')));
   }, [gate.canUsePrivateApi, user?.id, refresh]);
 
   async function pick(camera: boolean, video = false) {
@@ -80,19 +122,35 @@ export function ContributeScreen() {
     const account = user?.id;
     setError('');
     try {
-      if (camera && !(await ImagePicker.requestCameraPermissionsAsync()).granted) throw new MediaError('contribute.error.cameraPermission');
+      if (camera && !(await ImagePicker.requestCameraPermissionsAsync()).granted)
+        throw new MediaError('contribute.error.cameraPermission');
       const result = camera
-        ? await ImagePicker.launchCameraAsync({ mediaTypes: video ? ['videos'] : ['images'], exif: true, quality: 1, videoMaxDuration: policy.video.maxDurationSeconds })
-        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], exif: true, quality: 1 });
+        ? await ImagePicker.launchCameraAsync({
+            mediaTypes: video ? ['videos'] : ['images'],
+            exif: true,
+            quality: 1,
+            videoMaxDuration: policy.video.maxDurationSeconds,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images', 'videos'],
+            exif: true,
+            quality: 1,
+          });
       if (result.canceled || !result.assets[0]) return;
       const selected = await selectMedia(result.assets[0], policy);
       if (currentUser.current !== account) return;
       captureRun.current += 1;
-      pending.current = null; setMedia(selected); setSource(camera ? 'camera' : 'library'); setCapture(null); setStatus('');
+      pending.current = null;
+      setMedia(selected);
+      setSource(camera ? 'camera' : 'library');
+      setCapture(null);
+      setStatus('');
       const evidence = mediaLocation(selected.asset);
       setLocation(evidence);
       if (evidence) map.current?.moveTo(evidence.coordinate, { zoom: 17 });
-    } catch (e) { setError(e instanceof MediaError ? t(e.message) : t('contribute.error.select')); }
+    } catch (e) {
+      setError(e instanceof MediaError ? t(e.message) : t('contribute.error.select'));
+    }
   }
 
   /** The contributor confirms or corrects whether a 2:1 file is a 360° capture. */
@@ -101,13 +159,20 @@ export function ContributeScreen() {
     try {
       setMedia(withProjection(media, panorama ? 'equirectangular' : 'perspective', policy));
       setError('');
-    } catch (e) { setError(e instanceof MediaError ? t(e.message) : t('contribute.error.select')); }
+    } catch (e) {
+      setError(e instanceof MediaError ? t(e.message) : t('contribute.error.select'));
+    }
   }
 
   function openGuided() {
     if (!policy || busy || !gate.canUsePrivateApi) return;
     captureRun.current += 1;
-    pending.current = null; setMedia(null); setLocation(null); setCapture(null); setError(''); setStatus('');
+    pending.current = null;
+    setMedia(null);
+    setLocation(null);
+    setCapture(null);
+    setError('');
+    setStatus('');
     setGuided(true);
   }
 
@@ -122,38 +187,79 @@ export function ContributeScreen() {
     void (async () => {
       try {
         if (!(await Location.requestForegroundPermissionsAsync()).granted) return;
-        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-        if (currentUser.current !== account || captureRun.current !== run) return;
-        const coordinate = { latitude: position.coords.latitude, longitude: position.coords.longitude };
-        setLocation((current) => current ?? {
-          origin: 'device_capture', coordinate, accuracyMeters: position.coords.accuracy ?? undefined, observedAt: new Date(position.timestamp).toISOString(),
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
         });
+        if (currentUser.current !== account || captureRun.current !== run) return;
+        const coordinate = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+        setLocation(
+          (current) =>
+            current ?? {
+              origin: 'device_capture',
+              coordinate,
+              accuracyMeters: position.coords.accuracy ?? undefined,
+              observedAt: new Date(position.timestamp).toISOString(),
+            },
+        );
         map.current?.moveTo(coordinate, { zoom: 17 });
-      } catch { /* Placed on the map instead. */ }
+      } catch {
+        /* Placed on the map instead. */
+      }
     })();
   }
 
   async function guidedRecorded(recording: GuidedRecording) {
     setGuided(false);
-    if (!policy) { releaseMedia(recording.asset); return; }
+    if (!policy) {
+      releaseMedia(recording.asset);
+      return;
+    }
     const account = user?.id;
     const seconds = (recording.asset.duration ?? 0) / 1000;
     try {
       const selected = await selectMedia(recording.asset, policy);
-      if (currentUser.current !== account) { releaseMedia(recording.asset); return; }
-      pending.current = null; setMedia(selected); setSource('guided_session');
-      setCapture({ capturedAt: recording.capturedAt, ...(recording.frameRate ? { frameRate: recording.frameRate } : {}) });
+      if (currentUser.current !== account) {
+        releaseMedia(recording.asset);
+        return;
+      }
+      pending.current = null;
+      setMedia(selected);
+      setSource('guided_session');
+      setCapture({
+        capturedAt: recording.capturedAt,
+        ...(recording.frameRate ? { frameRate: recording.frameRate } : {}),
+      });
       const time = formatClock(seconds);
-      const summary = recording.blurryFraction === undefined ? t('contribute.guided.summary', { time })
-        : recording.blurryFraction >= 0.1 ? t('contribute.guided.summaryBlur', { time, percent: Math.round(recording.blurryFraction * 100) })
-        : t('contribute.guided.summarySharp', { time });
-      setStatus(recording.stoppedAtLimit ? `${summary} ${t('contribute.guided.limitReached')}` : summary);
+      const summary =
+        recording.blurryFraction === undefined
+          ? t('contribute.guided.summary', { time })
+          : recording.blurryFraction >= 0.1
+            ? t('contribute.guided.summaryBlur', {
+                time,
+                percent: Math.round(recording.blurryFraction * 100),
+              })
+            : t('contribute.guided.summarySharp', { time });
+      setStatus(
+        recording.stoppedAtLimit ? `${summary} ${t('contribute.guided.limitReached')}` : summary,
+      );
     } catch (e) {
       releaseMedia(recording.asset);
-      const tooLarge = (recording.asset.fileSize ?? 0) > policy.video.maxByteSize || seconds > policy.video.maxDurationSeconds;
-      setError(tooLarge
-        ? t('contribute.guided.tooLarge', { megabytes: Math.floor(policy.video.maxByteSize / 1048576), minutes: Math.floor(policy.video.maxDurationSeconds / 60) })
-        : e instanceof MediaError ? t(e.message) : t('contribute.guided.error.recording'));
+      const tooLarge =
+        (recording.asset.fileSize ?? 0) > policy.video.maxByteSize ||
+        seconds > policy.video.maxDurationSeconds;
+      setError(
+        tooLarge
+          ? t('contribute.guided.tooLarge', {
+              megabytes: Math.floor(policy.video.maxByteSize / 1048576),
+              minutes: Math.floor(policy.video.maxDurationSeconds / 60),
+            })
+          : e instanceof MediaError
+            ? t(e.message)
+            : t('contribute.guided.error.recording'),
+      );
     }
   }
 
@@ -161,38 +267,69 @@ export function ContributeScreen() {
     const account = user?.id;
     setError('');
     try {
-      if (!(await Location.requestForegroundPermissionsAsync()).granted) throw new Error('location permission refused');
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      if (!(await Location.requestForegroundPermissionsAsync()).granted)
+        throw new Error('location permission refused');
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
       if (currentUser.current !== account) return;
-      const coordinate = { latitude: position.coords.latitude, longitude: position.coords.longitude };
-      setLocation({ origin: 'user_placed', coordinate, accuracyMeters: position.coords.accuracy ?? undefined });
+      const coordinate = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      };
+      setLocation({
+        origin: 'user_placed',
+        coordinate,
+        accuracyMeters: position.coords.accuracy ?? undefined,
+      });
       map.current?.moveTo(coordinate, { zoom: 17 });
-    } catch { setError(t('contribute.error.location')); }
+    } catch {
+      setError(t('contribute.error.location'));
+    }
   }
 
   async function submit() {
     if (!gate.canUsePrivateApi || !media || !location || !policy || !consent || busy) return;
     const account = user?.id;
-    const controller = new AbortController(); active.current = controller;
-    setBusy(true); setError('');
+    const controller = new AbortController();
+    active.current = controller;
+    setBusy(true);
+    setError('');
     try {
       if (!pending.current) {
         setStatus(t('contribute.progress.checking'));
         const contentHash = await hashMedia(media, controller.signal);
-        const session = await captureClient.createSession({ source, consentVersion: policy.consentVersion }, { signal: controller.signal });
+        const session = await captureClient.createSession(
+          { source, consentVersion: policy.consentVersion },
+          { signal: controller.signal },
+        );
         controller.signal.throwIfAborted();
         if (currentUser.current !== account) return;
-        pending.current = { sessionId: session.id, input: {
-          idempotencyKey: randomUUID(), mediaKind: media.kind, source, contentHash,
-          byteSize: media.byteSize, contentType: media.contentType, location: [location],
-          ...(media.projection === 'equirectangular' ? { projection: media.projection } : {}),
-          ...(capture ? { capturedAt: capture.capturedAt } : {}),
-          camera: { ...(media.asset.width > 0 ? { widthPixels: media.asset.width } : {}), ...(media.asset.height > 0 ? { heightPixels: media.asset.height } : {}),
-            ...(media.asset.duration ? { durationSeconds: media.asset.duration / 1000 } : {}), ...(capture?.frameRate ? { frameRate: capture.frameRate } : {}) },
-        } };
+        pending.current = {
+          sessionId: session.id,
+          input: {
+            idempotencyKey: randomUUID(),
+            mediaKind: media.kind,
+            source,
+            contentHash,
+            byteSize: media.byteSize,
+            contentType: media.contentType,
+            location: [location],
+            ...(media.projection === 'equirectangular' ? { projection: media.projection } : {}),
+            ...(capture ? { capturedAt: capture.capturedAt } : {}),
+            camera: {
+              ...(media.asset.width > 0 ? { widthPixels: media.asset.width } : {}),
+              ...(media.asset.height > 0 ? { heightPixels: media.asset.height } : {}),
+              ...(media.asset.duration ? { durationSeconds: media.asset.duration / 1000 } : {}),
+              ...(capture?.frameRate ? { frameRate: capture.frameRate } : {}),
+            },
+          },
+        };
       }
       const request = pending.current;
-      const ticket = await captureClient.register(request.sessionId, request.input, { signal: controller.signal });
+      const ticket = await captureClient.register(request.sessionId, request.input, {
+        signal: controller.signal,
+      });
       request.ticket = ticket;
       if (ticket.upload) {
         setStatus(t('contribute.progress.uploading'));
@@ -201,11 +338,25 @@ export function ContributeScreen() {
       setStatus(t('contribute.progress.confirming'));
       const asset = await captureClient.finalize(ticket.asset.id, { signal: controller.signal });
       if (currentUser.current !== account) return;
-      setAssets([asset]); pending.current = null; setMedia(null); setCapture(null); setStatus(t('contribute.progress.received'));
+      setAssets([asset]);
+      pending.current = null;
+      setMedia(null);
+      setCapture(null);
+      setStatus(t('contribute.progress.received'));
       await refresh();
     } catch {
-      if (currentUser.current === account) setError(controller.signal.aborted ? t('contribute.error.cancelled') : t('contribute.error.failed'));
-    } finally { if (active.current === controller) { active.current = null; setBusy(false); } }
+      if (currentUser.current === account)
+        setError(
+          controller.signal.aborted
+            ? t('contribute.error.cancelled')
+            : t('contribute.error.failed'),
+        );
+    } finally {
+      if (active.current === controller) {
+        active.current = null;
+        setBusy(false);
+      }
+    }
   }
 
   async function withdraw(asset: CaptureAsset) {
@@ -214,7 +365,10 @@ export function ContributeScreen() {
     setError('');
     try {
       await captureClient.remove(asset.id);
-    } catch { setError(t('contribute.error.withdraw')); return; }
+    } catch {
+      setError(t('contribute.error.withdraw'));
+      return;
+    }
     if (currentUser.current !== account) return;
     if (pending.current?.ticket?.asset.id === asset.id) pending.current = null;
     // The withdrawal answers 204 with nothing to describe; read the asset back
@@ -222,66 +376,200 @@ export function ContributeScreen() {
     try {
       const withdrawn = await captureClient.asset(asset.id);
       if (currentUser.current !== account) return;
-      setAssets((current) => current.map((item) => item.id === withdrawn.id ? withdrawn : item));
-    } catch { setError(t('contribute.error.withdrawnNotRefreshed')); }
+      setAssets((current) => current.map((item) => (item.id === withdrawn.id ? withdrawn : item)));
+    } catch {
+      setError(t('contribute.error.withdrawnNotRefreshed'));
+    }
   }
 
   if (guided && policy) {
-    return <View className="flex-1 bg-background">
-      <GuidedCapture policy={policy} onStart={guidedStarted} onRecorded={(recording) => void guidedRecorded(recording)} onCancel={() => setGuided(false)} />
-    </View>;
+    return (
+      <View className="flex-1 bg-background">
+        <GuidedCapture
+          policy={policy}
+          onStart={guidedStarted}
+          onRecorded={(recording) => void guidedRecorded(recording)}
+          onCancel={() => setGuided(false)}
+        />
+      </View>
+    );
   }
 
-  return <SafeAreaView className="flex-1 bg-background">
-    <ScrollView contentContainerClassName="mx-auto w-full max-w-2xl gap-space-16 p-space-20">
-      <Button appearance="plain" tone="neutral" onPress={() => router.back()}>{t('contribute.back')}</Button>
-      <Text variant="title-1-bold">{t('contribute.title')}</Text>
-      <Text>{t('contribute.intro')}</Text>
-      <CaptureGuide />
-      {!gate.canUsePrivateApi && <Button onPress={() => gate.run(() => {})}>{t('contribute.signIn')}</Button>}
-      {error ? <Text accessibilityRole="alert">{error}</Text> : null}
-      {!policy && !error && <ActivityIndicator accessibilityLabel={t('contribute.loadingPolicy')} />}
-      {policy?.enabled === false && <Text>{t('contribute.disabled')}</Text>}
-      {policy && policy.enabled !== false && <>
-        <View className="flex-row flex-wrap gap-space-8">
-          <Button disabled={busy || !gate.canUsePrivateApi} onPress={() => void pick(false)}>{t('contribute.choose')}</Button>
-          <Button disabled={busy || !gate.canUsePrivateApi} appearance="outline" onPress={() => void pick(true)}>{t('contribute.takePhoto')}</Button>
-          <Button disabled={busy || !gate.canUsePrivateApi} appearance="outline" onPress={() => void pick(true, true)}>{t('contribute.recordVideo')}</Button>
-          <Button disabled={busy || !gate.canUsePrivateApi} appearance="outline" onPress={openGuided}>{t('contribute.guided.button')}</Button>
-        </View>
-        {media && <>
-          {media.kind === 'photo' && <Image source={{ uri: media.asset.uri }} style={{ height: 180, width: '100%' }} contentFit="contain" accessibilityLabel={t('contribute.previewLabel')} />}
-          <Text>{media.asset.fileName ?? (media.kind === 'video' ? t('contribute.selectedVideo') : t('contribute.selectedPhoto'))} · {(media.byteSize / 1048576).toFixed(1)} MB</Text>
-          {media.panoramaCandidate && <Checkbox checked={media.projection === 'equirectangular'} disabled={busy || !!pending.current} onCheckedChange={declarePanorama} label={t('contribute.projection.label')} />}
-          {media.projection === 'equirectangular' && <Text className="text-muted-foreground">{t('contribute.projection.hint')}</Text>}
-          <Text variant="body-semibold">{t('contribute.where')}</Text>
-          <Text>{location ? t('contribute.locationSelected') : t('contribute.locationPrompt')}</Text>
-          <View className="h-64 overflow-hidden rounded-radius-lg">
-            <MapCanvas initialViewport={location ? { ...location.coordinate, zoom: 16 } : undefined}
-              ref={map}
-              onPress={(event) => { if (!busy && !pending.current) setLocation({ origin: 'user_placed', coordinate: event.coordinate }); }}
-              markers={location ? [{ id: 'capture', coordinate: location.coordinate, label: t('contribute.locationMarker') }] : []} />
-          </View>
-          <Button appearance="outline" disabled={busy || !!pending.current} onPress={() => void locate()}>{t('contribute.useMyLocation')}</Button>
-          <Text>{t('contribute.retention', { photoDays: policy.retentionDays.raw_photo, videoDays: policy.retentionDays.raw_video })}</Text>
-          <Text>{t('contribute.use')}</Text>
-          <Checkbox checked={consent} disabled={busy} onCheckedChange={setConsent} label={t('contribute.consent')} />
-          <Button disabled={!consent || !location || busy || !gate.canUsePrivateApi} onPress={() => void submit()}>{pending.current ? t('contribute.retry') : t('contribute.submit')}</Button>
-          {busy && <Button appearance="outline" onPress={() => active.current?.abort()}>{t('contribute.cancelUpload')}</Button>}
-        </>}
-      </>}
-      {status ? <Text accessibilityLiveRegion="polite">{status}</Text> : null}
-      {busy && <ActivityIndicator accessibilityLabel={status} />}
-      {gate.canUsePrivateApi && <>
-        <Text variant="body-semibold">{t('contribute.recent')}</Text>
-        <Button appearance="plain" onPress={() => void refresh().catch(() => setError(t('contribute.error.refresh')))}>{t('contribute.refresh')}</Button>
-        {sessions.map((session) => <Button key={session.id} appearance="outline" onPress={() => {
-          const account = user?.id;
-          void captureClient.assets(session.id).then((page) => { if (currentUser.current === account) setAssets(page.items); })
-            .catch(() => setError(t('contribute.error.loadContribution')));
-        }}>{t('contribute.sessionItems', { date: new Date(session.createdAt).toLocaleDateString(locale), count: session.assetCount })}</Button>)}
-        {assets.map((asset) => <ContributionStatusCard key={asset.id} asset={asset} busy={busy} onWithdraw={(item) => void withdraw(item)} />)}
-      </>}
-    </ScrollView>
-  </SafeAreaView>;
+  return (
+    <SafeAreaView className="flex-1 bg-background">
+      <ScrollView contentContainerClassName="mx-auto w-full max-w-2xl gap-space-16 p-space-20">
+        <Button appearance="plain" tone="neutral" onPress={() => router.back()}>
+          {t('contribute.back')}
+        </Button>
+        <Text variant="title-1-bold">{t('contribute.title')}</Text>
+        <Text>{t('contribute.intro')}</Text>
+        <CaptureGuide />
+        {!gate.canUsePrivateApi && (
+          <Button onPress={() => gate.run(() => {})}>{t('contribute.signIn')}</Button>
+        )}
+        {error ? <Text accessibilityRole="alert">{error}</Text> : null}
+        {!policy && !error && (
+          <ActivityIndicator accessibilityLabel={t('contribute.loadingPolicy')} />
+        )}
+        {policy?.enabled === false && <Text>{t('contribute.disabled')}</Text>}
+        {policy && policy.enabled !== false && (
+          <>
+            <View className="flex-row flex-wrap gap-space-8">
+              <Button disabled={busy || !gate.canUsePrivateApi} onPress={() => void pick(false)}>
+                {t('contribute.choose')}
+              </Button>
+              <Button
+                disabled={busy || !gate.canUsePrivateApi}
+                appearance="outline"
+                onPress={() => void pick(true)}
+              >
+                {t('contribute.takePhoto')}
+              </Button>
+              <Button
+                disabled={busy || !gate.canUsePrivateApi}
+                appearance="outline"
+                onPress={() => void pick(true, true)}
+              >
+                {t('contribute.recordVideo')}
+              </Button>
+              <Button
+                disabled={busy || !gate.canUsePrivateApi}
+                appearance="outline"
+                onPress={openGuided}
+              >
+                {t('contribute.guided.button')}
+              </Button>
+            </View>
+            {media && (
+              <>
+                {media.kind === 'photo' && (
+                  <Image
+                    source={{ uri: media.asset.uri }}
+                    style={{ height: 180, width: '100%' }}
+                    contentFit="contain"
+                    accessibilityLabel={t('contribute.previewLabel')}
+                  />
+                )}
+                <Text>
+                  {media.asset.fileName ??
+                    (media.kind === 'video'
+                      ? t('contribute.selectedVideo')
+                      : t('contribute.selectedPhoto'))}{' '}
+                  · {(media.byteSize / 1048576).toFixed(1)} MB
+                </Text>
+                {media.panoramaCandidate && (
+                  <Checkbox
+                    checked={media.projection === 'equirectangular'}
+                    disabled={busy || !!pending.current}
+                    onCheckedChange={declarePanorama}
+                    label={t('contribute.projection.label')}
+                  />
+                )}
+                {media.projection === 'equirectangular' && (
+                  <Text className="text-muted-foreground">{t('contribute.projection.hint')}</Text>
+                )}
+                <Text variant="body-semibold">{t('contribute.where')}</Text>
+                <Text>
+                  {location ? t('contribute.locationSelected') : t('contribute.locationPrompt')}
+                </Text>
+                <View className="h-64 overflow-hidden rounded-radius-lg">
+                  <MapCanvas
+                    initialViewport={location ? { ...location.coordinate, zoom: 16 } : undefined}
+                    ref={map}
+                    onPress={(event) => {
+                      if (!busy && !pending.current)
+                        setLocation({ origin: 'user_placed', coordinate: event.coordinate });
+                    }}
+                    markers={
+                      location
+                        ? [
+                            {
+                              id: 'capture',
+                              coordinate: location.coordinate,
+                              label: t('contribute.locationMarker'),
+                            },
+                          ]
+                        : []
+                    }
+                  />
+                </View>
+                <Button
+                  appearance="outline"
+                  disabled={busy || !!pending.current}
+                  onPress={() => void locate()}
+                >
+                  {t('contribute.useMyLocation')}
+                </Button>
+                <Text>
+                  {t('contribute.retention', {
+                    photoDays: policy.retentionDays.raw_photo,
+                    videoDays: policy.retentionDays.raw_video,
+                  })}
+                </Text>
+                <Text>{t('contribute.use')}</Text>
+                <Checkbox
+                  checked={consent}
+                  disabled={busy}
+                  onCheckedChange={setConsent}
+                  label={t('contribute.consent')}
+                />
+                <Button
+                  disabled={!consent || !location || busy || !gate.canUsePrivateApi}
+                  onPress={() => void submit()}
+                >
+                  {pending.current ? t('contribute.retry') : t('contribute.submit')}
+                </Button>
+                {busy && (
+                  <Button appearance="outline" onPress={() => active.current?.abort()}>
+                    {t('contribute.cancelUpload')}
+                  </Button>
+                )}
+              </>
+            )}
+          </>
+        )}
+        {status ? <Text accessibilityLiveRegion="polite">{status}</Text> : null}
+        {busy && <ActivityIndicator accessibilityLabel={status} />}
+        {gate.canUsePrivateApi && (
+          <>
+            <Text variant="body-semibold">{t('contribute.recent')}</Text>
+            <Button
+              appearance="plain"
+              onPress={() => void refresh().catch(() => setError(t('contribute.error.refresh')))}
+            >
+              {t('contribute.refresh')}
+            </Button>
+            {sessions.map((session) => (
+              <Button
+                key={session.id}
+                appearance="outline"
+                onPress={() => {
+                  const account = user?.id;
+                  void captureClient
+                    .assets(session.id)
+                    .then((page) => {
+                      if (currentUser.current === account) setAssets(page.items);
+                    })
+                    .catch(() => setError(t('contribute.error.loadContribution')));
+                }}
+              >
+                {t('contribute.sessionItems', {
+                  date: new Date(session.createdAt).toLocaleDateString(locale),
+                  count: session.assetCount,
+                })}
+              </Button>
+            ))}
+            {assets.map((asset) => (
+              <ContributionStatusCard
+                key={asset.id}
+                asset={asset}
+                busy={busy}
+                onWithdraw={(item) => void withdraw(item)}
+              />
+            ))}
+          </>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
 }

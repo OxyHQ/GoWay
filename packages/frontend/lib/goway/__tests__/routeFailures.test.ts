@@ -121,13 +121,17 @@ describe('every routing answer survives the whole chain, envelope to sentence', 
 
   for (const [code, expected] of ANSWERS) {
     test(`${code} reaches the panel as "${expected}"`, async () => {
-      expect(await kindFor(API_ERROR_STATUS[code], { error: { code, message: `${code} happened` } })).toBe(expected);
+      expect(
+        await kindFor(API_ERROR_STATUS[code], { error: { code, message: `${code} happened` } }),
+      ).toBe(expected);
     });
   }
 
   test('not one of them arrives as "Something went wrong"', async () => {
     for (const [code] of ANSWERS) {
-      expect(await kindFor(API_ERROR_STATUS[code], { error: { code, message: 'x' } })).not.toBe('unknown');
+      expect(await kindFor(API_ERROR_STATUS[code], { error: { code, message: 'x' } })).not.toBe(
+        'unknown',
+      );
     }
   });
 
