@@ -21,8 +21,13 @@ import { oxyClient } from './middleware/auth';
 
 type AuthedSocket = Socket & { user?: { id: string } };
 
+export interface RealtimeOptions {
+  /** Count the connection in Oxy's ecosystem activity (`./platformActivity`). */
+  observeSocket?: (socket: Socket) => void;
+}
+
 /** Attach the realtime surface. Returns the server so shutdown can close it. */
-export function attachRealtime(httpServer: HttpServer): SocketIOServer {
+export function attachRealtime(httpServer: HttpServer, options: RealtimeOptions = {}): SocketIOServer {
   const io = new SocketIOServer(httpServer, {
     // Socket.IO does its own origin check, so it needs the same list the HTTP
     // side gets from `createOxyCors` — read from config, never hardcoded.
@@ -40,6 +45,7 @@ export function attachRealtime(httpServer: HttpServer): SocketIOServer {
       socket.disconnect(true);
       return;
     }
+    options.observeSocket?.(socket);
     socket.join(`user:${userId}`);
     socket.on('disconnect', () => socket.leave(`user:${userId}`));
   });

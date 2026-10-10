@@ -12,6 +12,12 @@
  *     SIGTERM. Closing the HTTP server first lets in-flight requests finish
  *     against a live connection instead of erroring on a socket closed
  *     underneath them.
+ *   - REPORT TO OXY LAST. The ecosystem activity publisher (`src/platformActivity`)
+ *     is constructed before the app so its observer is the first middleware; it
+ *     reports this instance online only between listen and the start of a drain,
+ *     and is stopped after everything else has closed so the final requests are
+ *     flushed and the instance is removed from Oxy's registry rather than left to
+ *     expire.
  *
  * The application itself is built by `src/app.ts`, which opens no connections
  * and registers no signal handlers, so a test can exercise it without any of
@@ -23,6 +29,7 @@ import { createApp } from './src/app';
 import { config } from './src/config';
 import { closePostgres, connectPostgres } from './src/db/postgres';
 import { attachRealtime } from './src/realtime';
+import { startPlatformActivity } from './src/platformActivity';
 import { street3dConfig } from './src/config/street3d';
 import { getDb } from './src/db/postgres';
 import { startScheduler } from './src/street3d/scheduler';
@@ -32,11 +39,23 @@ import { createLogger, logger } from './src/utils/logger';
 /** Seconds a shutdown waits for in-flight work before exiting anyway. */
 const SHUTDOWN_GRACE_SECONDS = 20;
 
-const app = createApp();
-const server = http.createServer(app);
-const io = attachRealtime(server);
-
 let shuttingDown = false;
+/**
+ * True between `listen` and the start of a drain: Postgres is already connected
+ * (boot exits before listening if it is not), and a draining task must stop
+ * showing as online the moment it stops accepting.
+ */
+let serving = false;
+
+// Not started outside ECS — see src/platformActivity.ts. Without a workload
+// identity `activity` is undefined and every observer below is skipped.
+const activity = startPlatformActivity(() => serving);
+const app = createApp({ activity: activity?.observeHttp });
+const server = http.createServer(app);
+const io = attachRealtime(server, {
+  observeSocket: activity ? (socket) => void activity.observeSocket(socket) : undefined,
+});
+
 let stopStreet3d: (() => void) | null = null;
 
 /**
@@ -63,6 +82,7 @@ function shutdown(signal: string): void {
   // race on the pool and the loser exits on a closed connection.
   if (shuttingDown) return;
   shuttingDown = true;
+  serving = false;
   logger.info({ signal }, 'Shutting down');
   stopStreet3d?.();
 
@@ -77,10 +97,12 @@ function shutdown(signal: string): void {
 
   void io.close(() => {
     server.close(() => {
-      void closePostgres().finally(() => {
-        clearTimeout(forceExit);
-        process.exit(0);
-      });
+      void closePostgres()
+        .finally(() => activity?.stop())
+        .finally(() => {
+          clearTimeout(forceExit);
+          process.exit(0);
+        });
     });
   });
 }
@@ -94,7 +116,11 @@ async function boot(): Promise<void> {
   }
 
   server.listen(config.port, () => {
-    logger.info({ port: config.port, nodeEnv: config.nodeEnv }, 'GoWay backend listening');
+    serving = true;
+    logger.info(
+      { port: config.port, nodeEnv: config.nodeEnv, oxyActivity: activity ? 'publishing' : 'off' },
+      'GoWay backend listening',
+    );
     startStreet3d();
   });
 
