@@ -75,6 +75,7 @@ export function ContributeScreen() {
   // The policy is answered FOR THE CALLER (a closed pilot admits named
   // accounts only), so it is fetched again whenever the session changes: an
   // answer fetched before sign-in finished is the anonymous one.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the session by design (above); a locale change (`t`) must not refetch.
   useEffect(() => {
     let mounted = true;
     captureClient
@@ -99,6 +100,7 @@ export function ContributeScreen() {
     },
     [pickedAsset],
   );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a session change resets the screen; `user?.id` is that trigger, and a locale change (`t`) must not wipe a capture in progress.
   useEffect(() => {
     active.current?.abort();
     pending.current = null;
