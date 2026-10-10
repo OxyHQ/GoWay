@@ -1613,6 +1613,7 @@ export const CAPABILITY_KEYS = Object.keys(CAPABILITY_DEFINITIONS) as unknown as
 
 /** Whether a string is a registered capability key. */
 export function isCapabilityKey(value: string): value is CapabilityKey {
+  // biome-ignore lint/suspicious/noPrototypeBuiltins: the contracts ship in the ES2020 SDK bundle, and Object.hasOwn is ES2022.
   return Object.prototype.hasOwnProperty.call(CAPABILITY_DEFINITIONS, value);
 }
 
@@ -1811,6 +1812,7 @@ export function capabilityFilterOf(raw: string): CapabilityFilter | undefined {
   const spec: CapabilityValueSpec = CAPABILITY_DEFINITIONS[key].value;
   if (
     (spec.kind === 'enum' || spec.kind === 'enum_set') &&
+    // biome-ignore lint/suspicious/noPrototypeBuiltins: the contracts ship in the ES2020 SDK bundle, and Object.hasOwn is ES2022.
     Object.prototype.hasOwnProperty.call(spec.values, text)
   ) {
     return { key, value: text };

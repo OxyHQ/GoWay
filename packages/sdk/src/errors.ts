@@ -92,6 +92,7 @@ export class GoWayError extends Error {
     const lineage: string[] = [];
     let current: typeof GoWayError | null = target;
     while (current !== null) {
+      // biome-ignore lint/suspicious/noPrototypeBuiltins: This ships in the ES2020 SDK bundle, and Object.hasOwn is ES2022.
       if (Object.prototype.hasOwnProperty.call(current, 'errorName'))
         lineage.push(current.errorName);
       if (current === GoWayError) break;

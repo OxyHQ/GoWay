@@ -59,9 +59,12 @@ function rawValue(
       return undefined;
     }
     case 'enum':
-      return keys
-        .flatMap((key) => valuesOf(tags, key))
-        .find((value) => Object.prototype.hasOwnProperty.call(spec.values, value));
+      return (
+        keys
+          .flatMap((key) => valuesOf(tags, key))
+          // biome-ignore lint/suspicious/noPrototypeBuiltins: the backend's TS lib (ES2020, from @oxy.so/app-preset) has no Object.hasOwn.
+          .find((value) => Object.prototype.hasOwnProperty.call(spec.values, value))
+      );
     case 'enum_set': {
       const members =
         osm.prefix !== undefined
@@ -70,6 +73,7 @@ function rawValue(
             )
           : keys
               .flatMap((key) => valuesOf(tags, key))
+              // biome-ignore lint/suspicious/noPrototypeBuiltins: the backend's TS lib (ES2020, from @oxy.so/app-preset) has no Object.hasOwn.
               .filter((value) => Object.prototype.hasOwnProperty.call(spec.values, value));
       return members.length > 0 ? members : undefined;
     }
