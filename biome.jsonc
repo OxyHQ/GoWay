@@ -20,6 +20,9 @@
       "!packages/frontend/public/map",
       // Glyph coverage fixture read by `map:glyphs:check`.
       "!packages/frontend/scripts/mapgen/fixtures",
+      // The logo exactly as it was delivered, kept for provenance and imported by
+      // nothing (see `artwork.ts`, the master). Never edited, so never linted.
+      "!packages/frontend/components/brand/goway.source.svg",
       // Written by Expo itself; regenerated on `expo start`.
       "!packages/frontend/expo-env.d.ts",
       // The 0.3.0 contract registry captured verbatim as a test fixture.

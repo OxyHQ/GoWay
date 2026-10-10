@@ -270,10 +270,13 @@ function SceneViewerComponent({
       {hasNavigation ? <EdgeShade sideMask={sideMask} /> : null}
       {guided
         ? reachable.map((index) => (
-            <div
+            // A real button for assistive tech, kept out of the tab order: the
+            // keyboard path is the focusable host's arrow and W/S keys.
+            <button
               key={index}
+              type="button"
+              tabIndex={-1}
               ref={(node) => registerStep(index, node)}
-              role="button"
               aria-label={t('street3d.viewer.stepHere')}
               onClick={() => engineRef.current?.goTo(index)}
               style={STEP_MARKER_STYLE}
@@ -331,6 +334,10 @@ const STEP_MARKER_STYLE = {
   position: 'absolute',
   left: 0,
   top: 0,
+  // A <button>'s user-agent box: border-box sizing and padding would shrink the
+  // disc the engine sizes by `width`/`height`, so restore a plain box.
+  boxSizing: 'content-box',
+  padding: 0,
   borderRadius: '50%',
   background: 'rgba(255, 255, 255, 0.28)',
   border: '2px solid rgba(255, 255, 255, 0.85)',
