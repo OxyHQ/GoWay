@@ -26,6 +26,7 @@ import type {
 } from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -52,6 +53,7 @@ import { apiAuthor, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createModerationRouter } from '../moderation';
 import { createPlaceMediaRouter } from '../placeMedia';
 import { createPlacesRouter } from '../places';
+import { defined } from '../../__tests__/defined';
 
 const CONTRIBUTOR: PlaceActor = {
   author: apiAuthor('person-contributor'),
@@ -89,27 +91,32 @@ function linksOf(fileId: string): string[] {
 }
 
 async function mediaCount(placeId: string): Promise<number> {
-  const [row] = await suite!.client<
-    { count: string }[]
-  >`SELECT count(*) FROM place_media WHERE place_id = ${placeId}`;
-  return Number(row!.count);
+  const row = defined(
+    (
+      await requireSuite(suite).client<
+        { count: string }[]
+      >`SELECT count(*) FROM place_media WHERE place_id = ${placeId}`
+    )[0],
+  );
+  return Number(row.count);
 }
 
 async function storedRevisions(placeId: string) {
-  return suite!.client<{ action: string; changes: unknown }[]>`
+  return requireSuite(suite).client<{ action: string; changes: unknown }[]>`
     SELECT action, changes FROM place_revisions WHERE place_id = ${placeId} ORDER BY created_at, id
   `;
 }
 
 /** Make the database refuse to record one revision action, for the length of `run`. */
 async function refusingRevisions(action: string, run: () => Promise<void>): Promise<void> {
-  await suite!.client.unsafe(
+  await requireSuite(suite).client.unsafe(
     `ALTER TABLE place_revisions ADD CONSTRAINT test_refuse_action CHECK (action <> '${action}') NOT VALID`,
   );
   try {
     await run();
   } finally {
-    await suite!.client`ALTER TABLE place_revisions DROP CONSTRAINT test_refuse_action`;
+    await requireSuite(suite)
+      .client`ALTER TABLE place_revisions DROP CONSTRAINT test_refuse_action`;
   }
 }
 
@@ -262,13 +269,13 @@ describe('adding an Oxy file to a gallery', () => {
   });
 
   it('answers a file already in the gallery with 409 naming the item, and keeps its link', async () => {
-    const [existing] = await gallery(open.id);
+    const existing = defined((await gallery(open.id))[0]);
     const { status, body } = await add(open.id, session('person-ana'), {
       fileId: 'file-ana-1',
       kind: 'photo',
     });
     expect(status).toBe(409);
-    expect(body.error.details).toEqual({ mediaId: existing!.id });
+    expect(body.error.details).toEqual({ mediaId: existing.id });
     expect(linksOf('file-ana-1')).toEqual([`goway/place/${open.id}`]);
   });
 
@@ -406,19 +413,19 @@ describe('ordering the gallery', () => {
   it('pages the public gallery in its order, by kind when asked', async () => {
     const all = await gallery(cafe.id);
     const first = await api.call<PlaceMediaPage>('GET', `/places/${cafe.id}/media?limit=1`);
-    expect(first.body.items.map((item) => item.id)).toEqual([all[0]!.id]);
+    expect(first.body.items.map((item) => item.id)).toEqual([defined(all[0]).id]);
     const second = await api.call<PlaceMediaPage>(
       'GET',
-      `/places/${cafe.id}/media?limit=1&cursor=${first.body.nextCursor!}`,
+      `/places/${cafe.id}/media?limit=1&cursor=${defined(first.body.nextCursor)}`,
     );
-    expect(second.body.items.map((item) => item.id)).toEqual([all[1]!.id]);
+    expect(second.body.items.map((item) => item.id)).toEqual([defined(all[1]).id]);
     expect((await gallery(cafe.id, '?kinds=logo')).map((item) => item.kind)).toEqual(['logo']);
     // A cursor minted under one filter is refused under another.
     expect(
       (
         await api.call(
           'GET',
-          `/places/${cafe.id}/media?kinds=photo&cursor=${first.body.nextCursor!}`,
+          `/places/${cafe.id}/media?kinds=photo&cursor=${defined(first.body.nextCursor)}`,
         )
       ).status,
     ).toBe(400);
@@ -427,7 +434,9 @@ describe('ordering the gallery', () => {
 
 describe('withdrawing an item', () => {
   it('is open to its contributor, and drops the Oxy link', async () => {
-    const item = (await gallery(cafe.id)).find((entry) => entry.fileId === 'file-stranger-1')!;
+    const item = defined(
+      (await gallery(cafe.id)).find((entry) => entry.fileId === 'file-stranger-1'),
+    );
     expect(linksOf('file-stranger-1')).toEqual([`goway/place/${cafe.id}`]);
     const { status } = await api.call(
       'DELETE',
@@ -466,7 +475,9 @@ describe('withdrawing an item', () => {
   });
 
   it('clears the logo it was, in the same revision', async () => {
-    const logo = (await gallery(cafe.id)).find((entry) => entry.fileId === 'file-editor-logo')!;
+    const logo = defined(
+      (await gallery(cafe.id)).find((entry) => entry.fileId === 'file-editor-logo'),
+    );
     expect(
       (await api.call('DELETE', `/places/${cafe.id}/media/${logo.id}`, session('person-editor')))
         .status,

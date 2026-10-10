@@ -30,6 +30,7 @@ import {
 } from '../../db/places/placesRepository';
 import { putReview } from '../../db/places/reviewsRepository';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -49,6 +50,7 @@ import { createModerationRouter } from '../moderation';
 import { createPlaceMediaRouter } from '../placeMedia';
 import { createPlaceReviewsRouter } from '../placeReviews';
 import { createPlacesRouter } from '../places';
+import { defined } from '../../__tests__/defined';
 
 const CONTRIBUTOR: PlaceActor = {
   author: apiAuthor('person-contributor'),
@@ -101,7 +103,7 @@ describe('descriptions', () => {
 
   beforeAll(async () => {
     place = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Museu del Barri',
         location: GRACIA,
@@ -202,13 +204,15 @@ describe('a merge moves descriptions, the gallery and reviews', () => {
     rating: number,
     at: string,
   ): Promise<void> {
-    const written = await putReview(suite!.db, placeId, author, { rating }, apiAuthor(author));
-    await suite!
-      .client`UPDATE place_reviews SET created_at = ${at}::timestamptz WHERE id = ${written!.review.id}`;
+    const written = defined(
+      await putReview(requireSuite(suite).db, placeId, author, { rating }, apiAuthor(author)),
+    );
+    await requireSuite(suite)
+      .client`UPDATE place_reviews SET created_at = ${at}::timestamptz WHERE id = ${written.review.id}`;
   }
 
   async function galleryOf(placeId: string) {
-    return suite!.client<
+    return requireSuite(suite).client<
       { id: string; oxy_file_id: string; oxy_link_place_id: string; position: number }[]
     >`
       SELECT id, oxy_file_id, oxy_link_place_id, position FROM place_media
@@ -218,12 +222,12 @@ describe('a merge moves descriptions, the gallery and reviews', () => {
 
   beforeAll(async () => {
     survivor = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Can Pere', location: GRACIA, description: 'La casa de sempre.' },
       CONTRIBUTOR,
     );
     absorbed = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Ca n’Pere',
         location: GRACIA,
@@ -235,21 +239,23 @@ describe('a merge moves descriptions, the gallery and reviews', () => {
       author: apiAuthor(person),
       assertedVerification: 'community_reported',
     });
-    const logo = await addPlaceMedia(
-      suite!.db,
-      survivor.id,
-      { fileId: 'file-shared', kind: 'logo' },
-      actor('person-s'),
+    const logo = defined(
+      await addPlaceMedia(
+        requireSuite(suite).db,
+        survivor.id,
+        { fileId: 'file-shared', kind: 'logo' },
+        actor('person-s'),
+      ),
     );
-    survivorLogoMediaId = logo!.id;
+    survivorLogoMediaId = logo.id;
     await addPlaceMedia(
-      suite!.db,
+      requireSuite(suite).db,
       absorbed.id,
       { fileId: 'file-shared', kind: 'logo' },
       actor('person-a'),
     );
     await addPlaceMedia(
-      suite!.db,
+      requireSuite(suite).db,
       absorbed.id,
       { fileId: 'file-only-absorbed', kind: 'photo' },
       actor('person-a'),
@@ -263,15 +269,20 @@ describe('a merge moves descriptions, the gallery and reviews', () => {
     await review(absorbed.id, 'person-older-there', 1, '2026-02-01T10:00:00Z');
     await review(absorbed.id, 'person-only-absorbed', 3, '2026-02-15T10:00:00Z');
 
-    await recordDuplicateCandidate(suite!.db, survivor.id, absorbed.id, 'manual_report');
+    await recordDuplicateCandidate(
+      requireSuite(suite).db,
+      survivor.id,
+      absorbed.id,
+      'manual_report',
+    );
     const { body } = await api.call<DuplicateCandidatePage>(
       'GET',
       '/moderation/duplicates',
       OPERATOR,
     );
-    const candidate = body.items.find((entry) =>
-      [entry.placeId, entry.candidatePlaceId].includes(absorbed.id),
-    )!;
+    const candidate = defined(
+      body.items.find((entry) => [entry.placeId, entry.candidatePlaceId].includes(absorbed.id)),
+    );
     const merged = await api.call(
       'POST',
       `/moderation/duplicates/${candidate.id}/resolution`,
@@ -305,7 +316,7 @@ describe('a merge moves descriptions, the gallery and reviews', () => {
       'person-only-absorbed': 3,
     });
 
-    const hidden = await suite!.client<
+    const hidden = await requireSuite(suite).client<
       { author_oxy_user_id: string; rating: number; place_id: string }[]
     >`
       SELECT author_oxy_user_id, rating, place_id FROM place_reviews WHERE status = 'hidden' ORDER BY author_oxy_user_id
@@ -319,7 +330,7 @@ describe('a merge moves descriptions, the gallery and reviews', () => {
   it('recomputes both ratings', async () => {
     const { body } = await api.call<Place>('GET', `/places/${survivor.id}`);
     expect(body.rating).toEqual({ average: 4, count: 3 });
-    const [left] = await suite!.client<{ review_count: number }[]>`
+    const [left] = await requireSuite(suite).client<{ review_count: number }[]>`
       SELECT review_count FROM place_review_aggregates WHERE place_id = ${absorbed.id}
     `;
     expect(left?.review_count).toBe(0);
@@ -335,7 +346,9 @@ describe('a merge moves descriptions, the gallery and reviews', () => {
 
   it('lists the moved gallery in the public place_absorbed revision, and no review', async () => {
     const { body } = await api.call<PlaceRevisionPage>('GET', `/places/${survivor.id}/revisions`);
-    const absorbedRevision = body.items.find((revision) => revision.action === 'place_absorbed')!;
+    const absorbedRevision = defined(
+      body.items.find((revision) => revision.action === 'place_absorbed'),
+    );
     const fields = absorbedRevision.changes.map((change) => change.field);
     expect(fields.filter((field) => field.startsWith('media.'))).toHaveLength(1);
     expect(fields).toContain('descriptions.es');

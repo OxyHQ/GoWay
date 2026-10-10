@@ -29,6 +29,7 @@ import {
   migrateSuiteDatabase,
   type SuiteDatabase,
 } from './testDatabase';
+import { defined } from '../../__tests__/defined';
 
 /** The label languages the seed carries for every category, `en` first. */
 const SEEDED_LANGUAGES = [
@@ -182,29 +183,29 @@ describe('places.categories', () => {
   });
 
   it('lets a place keep a key that was deprecated after it was written, and refuses adding it anywhere else', async () => {
-    const [carrier] = await insertPlace(['food.cafe']);
-    const [other] = await insertPlace(['food.cafe']);
+    const carrier = defined((await insertPlace(['food.cafe']))[0]);
+    const other = defined((await insertPlace(['food.cafe']))[0]);
     // As a moderator deprecating an existing category leaves things: the row
     // was valid when written, and nothing re-checks it.
     await sql`UPDATE place_categories SET status = 'active' WHERE key = 'food.automat'`;
-    await sql`UPDATE places SET categories = ARRAY['food.automat', 'food.cafe'] WHERE id = ${carrier!.id}`;
+    await sql`UPDATE places SET categories = ARRAY['food.automat', 'food.cafe'] WHERE id = ${carrier.id}`;
     await sql`UPDATE place_categories SET status = 'deprecated' WHERE key = 'food.automat'`;
 
     const [read] = await sql<
       { categories: string[] }[]
-    >`SELECT categories FROM places WHERE id = ${carrier!.id}`;
+    >`SELECT categories FROM places WHERE id = ${carrier.id}`;
     expect(read?.categories).toEqual(['food.automat', 'food.cafe']);
     expect(
-      await refusal(sql`UPDATE places SET name = 'Renamed' WHERE id = ${carrier!.id}`),
+      await refusal(sql`UPDATE places SET name = 'Renamed' WHERE id = ${carrier.id}`),
     ).toBeNull();
     expect(
       await refusal(
-        sql`UPDATE places SET categories = ARRAY['food.automat', 'food.bakery'] WHERE id = ${carrier!.id}`,
+        sql`UPDATE places SET categories = ARRAY['food.automat', 'food.bakery'] WHERE id = ${carrier.id}`,
       ),
     ).toBeNull();
     expect(
       await refusal(
-        sql`UPDATE places SET categories = ARRAY['food.automat'] WHERE id = ${other!.id}`,
+        sql`UPDATE places SET categories = ARRAY['food.automat'] WHERE id = ${other.id}`,
       ),
     ).toEqual({
       constraint: 'places_categories_taxonomy_guard',

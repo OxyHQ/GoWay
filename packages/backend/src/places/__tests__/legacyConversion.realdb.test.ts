@@ -33,6 +33,7 @@ import {
   prepareConversionSession,
   validateTaxonomyConstraint,
 } from '../legacyConversion';
+import { defined } from '../../__tests__/defined';
 
 /**
  * The release this deploy test reproduces: its pre/post window is the state the
@@ -235,7 +236,7 @@ describe('the batched converter and the migration', () => {
   });
 
   it('counts, converts in batches, and then finds nothing left to do', async () => {
-    const sql = sessionFor(converted!);
+    const sql = sessionFor(defined(converted));
     try {
       await prepareConversionSession(sql, plan);
       const steps = ['categories', 'sources', 'timezone'] as const;
@@ -269,7 +270,7 @@ describe('the batched converter and the migration', () => {
   });
 
   it('resumes after an id, covering only what follows it', async () => {
-    const sql = sessionFor(converted!);
+    const sql = sessionFor(defined(converted));
     try {
       await prepareConversionSession(sql, plan, { dryRun: true });
       const [summary] = await convertLegacyPlaceData(sql, plan, {
@@ -285,14 +286,14 @@ describe('the batched converter and the migration', () => {
   });
 
   it('leaves exactly what the migration alone leaves, and the migration then rewrites no row', async () => {
-    const before = await versions(converted!);
-    await migrateSuiteDatabase(converted!.databaseUrl, 'post', PLACES_PLATFORM_RELEASE);
-    await migrateSuiteDatabase(migratedOnly!.databaseUrl, 'post', PLACES_PLATFORM_RELEASE);
+    const before = await versions(defined(converted));
+    await migrateSuiteDatabase(defined(converted).databaseUrl, 'post', PLACES_PLATFORM_RELEASE);
+    await migrateSuiteDatabase(defined(migratedOnly).databaseUrl, 'post', PLACES_PLATFORM_RELEASE);
 
-    expect(await versions(converted!)).toEqual(before);
-    expect(await rows(converted!)).toEqual(await rows(migratedOnly!));
+    expect(await versions(defined(converted))).toEqual(before);
+    expect(await rows(defined(converted))).toEqual(await rows(defined(migratedOnly)));
     // Spot-check the result is the conversion, not two identical no-ops.
-    const { places } = await rows(converted!);
+    const { places } = await rows(defined(converted));
     expect(places.find((p) => p.id === 'place-0007')).toMatchObject({
       categories: ['transport.rail_station'],
       timezone: 'Europe/Madrid',
@@ -300,7 +301,7 @@ describe('the batched converter and the migration', () => {
   });
 
   it('validates the CHECK the post phase added NOT VALID, without rewriting anything', async () => {
-    const sql = sessionFor(converted!);
+    const sql = sessionFor(defined(converted));
     try {
       const [before] =
         await sql`SELECT convalidated FROM pg_constraint WHERE conname = ${TAXONOMY_CONSTRAINT}`;

@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, inArray } from 'drizzle-orm';
 import postgres from 'postgres';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -76,8 +77,8 @@ describe('categories:move', () => {
   });
 
   it('counts, moves both sides by one rule, and then finds nothing left', async () => {
-    await suite!.db
-      .update(placeCategories)
+    await requireSuite(suite)
+      .db.update(placeCategories)
       .set({ status: 'deprecated' })
       .where(eq(placeCategories.key, 'shop.newsagent'));
     const steps = ['places', 'sources'] as const;
@@ -96,12 +97,12 @@ describe('categories:move', () => {
     );
 
     const ids = Object.keys(CASES);
-    const rows = await suite!.db
-      .select({ id: places.id, categories: places.categories })
+    const rows = await requireSuite(suite)
+      .db.select({ id: places.id, categories: places.categories })
       .from(places)
       .where(inArray(places.id, ids));
-    const sources = await suite!.db
-      .select({ id: placesSources.placeId, data: placesSources.sourceData })
+    const sources = await requireSuite(suite)
+      .db.select({ id: placesSources.placeId, data: placesSources.sourceData })
       .from(placesSources)
       .where(inArray(placesSources.placeId, ids));
     for (const [id, [, after]] of Object.entries(CASES)) {

@@ -26,6 +26,7 @@ import {
   type PlaceActor,
 } from '../../db/places/placesRepository';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -43,6 +44,7 @@ import {
 import { apiAuthor, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createModerationRouter } from '../moderation';
 import { createPlacesRouter } from '../places';
+import { defined } from '../../__tests__/defined';
 
 const CONTRIBUTOR: PlaceActor = {
   author: apiAuthor('person-contributor'),
@@ -65,25 +67,30 @@ async function history(placeId: string): Promise<PlaceRevision[]> {
 }
 
 async function newest(placeId: string): Promise<PlaceRevision> {
-  return (await history(placeId))[0]!;
+  return defined((await history(placeId))[0]);
 }
 
 async function storedRevisionCount(placeId: string): Promise<number> {
-  const [row] = await suite!.client<
-    { count: string }[]
-  >`SELECT count(*) FROM place_revisions WHERE place_id = ${placeId}`;
-  return Number(row!.count);
+  const row = defined(
+    (
+      await requireSuite(suite).client<
+        { count: string }[]
+      >`SELECT count(*) FROM place_revisions WHERE place_id = ${placeId}`
+    )[0],
+  );
+  return Number(row.count);
 }
 
 /** Make the database refuse to record one revision action, for the length of `run`. */
 async function refusingRevisions(action: string, run: () => Promise<void>): Promise<void> {
-  await suite!.client.unsafe(
+  await requireSuite(suite).client.unsafe(
     `ALTER TABLE place_revisions ADD CONSTRAINT test_refuse_action CHECK (action <> '${action}') NOT VALID`,
   );
   try {
     await run();
   } finally {
-    await suite!.client`ALTER TABLE place_revisions DROP CONSTRAINT test_refuse_action`;
+    await requireSuite(suite)
+      .client`ALTER TABLE place_revisions DROP CONSTRAINT test_refuse_action`;
   }
 }
 
@@ -114,8 +121,12 @@ describe('every hours-exception write records one public revision', () => {
   let exception: PlaceHoursException;
 
   beforeAll(async () => {
-    place = await createPlace(suite!.db, { name: 'Forn Horari', location: GRACIA }, CONTRIBUTOR);
-    await createClaim(suite!.db, {
+    place = await createPlace(
+      requireSuite(suite).db,
+      { name: 'Forn Horari', location: GRACIA },
+      CONTRIBUTOR,
+    );
+    await createClaim(requireSuite(suite).db, {
       placeId: place.id,
       oxyAccountId: 'org-forn',
       role: 'owner',
@@ -207,7 +218,7 @@ describe('every hours-exception write records one public revision', () => {
     expect(raw).not.toContain('org-forn');
     expect(raw).not.toContain('person-owner');
 
-    const [stored] = await suite!.client<
+    const [stored] = await requireSuite(suite).client<
       { oxy_account_id: string; operated_by_oxy_user_id: string | null }[]
     >`
       SELECT oxy_account_id, operated_by_oxy_user_id FROM place_revisions
@@ -251,7 +262,7 @@ describe('every hours-exception write records one public revision', () => {
 describe('the hours-exception revision is in the write transaction', () => {
   it('rolls a creation back when its revision cannot be recorded', async () => {
     const place = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Horari Atòmic', location: GRACIA },
       CONTRIBUTOR,
     );
@@ -267,18 +278,18 @@ describe('the hours-exception revision is in the write transaction', () => {
       );
       expect(status).toBe(500);
     });
-    const rows = await suite!
+    const rows = await requireSuite(suite)
       .client`SELECT 1 FROM place_hours_exceptions WHERE place_id = ${place.id}`;
     expect(rows).toHaveLength(0);
   });
 
   it('rolls a rewrite and a withdrawal back when their revisions cannot be recorded', async () => {
     const place = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Horari Atòmic Dos', location: GRACIA },
       CONTRIBUTOR,
     );
-    await createClaim(suite!.db, {
+    await createClaim(requireSuite(suite).db, {
       placeId: place.id,
       oxyAccountId: 'org-atomic',
       role: 'owner',
@@ -309,7 +320,7 @@ describe('the hours-exception revision is in the write transaction', () => {
       expect(status).toBe(500);
     });
 
-    const rows = await suite!.client<
+    const rows = await requireSuite(suite).client<
       { closed: boolean }[]
     >`SELECT closed FROM place_hours_exceptions WHERE id = ${exception.id}`;
     expect(rows.map((row) => row.closed)).toEqual([true]);
@@ -341,7 +352,7 @@ describe('the derived timezone is history too', () => {
 
 describe('a merge and the place data', () => {
   async function candidateBetween(a: Place, b: Place): Promise<DuplicateCandidate> {
-    await recordDuplicateCandidate(suite!.db, a.id, b.id, 'manual_report');
+    await recordDuplicateCandidate(requireSuite(suite).db, a.id, b.id, 'manual_report');
     const { body } = await api.call<DuplicateCandidatePage>(
       'GET',
       '/moderation/duplicates?limit=100',
@@ -357,12 +368,12 @@ describe('a merge and the place data', () => {
 
   it("moves the absorbed place's hours exceptions where the survivor holds none, and keeps the survivor's columns", async () => {
     const survivor = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Bar Fusió', location: GRACIA, categories: ['food.bar'] },
       CONTRIBUTOR,
     );
     const absorbed = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Bar Fusió', location: GRACIA, categories: ['food.cafe'] },
       CONTRIBUTOR,
     );
@@ -405,7 +416,7 @@ describe('a merge and the place data', () => {
     ]);
     expect(list.items[1]?.id).toBe(moving.id);
     // The losing exception was not destroyed: it stays with the absorbed place.
-    const kept = await suite!.client<
+    const kept = await requireSuite(suite).client<
       { id: string }[]
     >`SELECT id FROM place_hours_exceptions WHERE place_id = ${absorbed.id}`;
     expect(kept.map((row) => row.id)).toEqual([losing.id]);
@@ -451,7 +462,7 @@ describe('Oxy verification is held to the capability registry', () => {
 
   beforeAll(async () => {
     shop = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Botiga Registrada', location: GRACIA },
       CONTRIBUTOR,
     );
@@ -490,7 +501,8 @@ describe('Oxy verification is held to the capability registry', () => {
     );
     expect(outOfSet.status).toBe(422);
 
-    const rows = await suite!.client`SELECT 1 FROM places_capabilities WHERE place_id = ${shop.id}`;
+    const rows = await requireSuite(suite)
+      .client`SELECT 1 FROM places_capabilities WHERE place_id = ${shop.id}`;
     expect(rows).toHaveLength(0);
   });
 

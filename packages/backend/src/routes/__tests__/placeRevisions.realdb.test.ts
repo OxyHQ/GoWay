@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import type { Place, PlaceRevision, PlaceRevisionPage } from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -29,6 +30,7 @@ import {
 } from '../../__tests__/httpHarness';
 import { apiAuthor, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createPlacesRouter } from '../places';
+import { defined } from '../../__tests__/defined';
 
 const CONTRIBUTOR: PlaceActor = {
   author: apiAuthor('person-contributor'),
@@ -51,25 +53,30 @@ async function history(placeId: string, query = ''): Promise<PlaceRevisionPage> 
 
 async function newest(placeId: string): Promise<PlaceRevision> {
   const page = await history(placeId, '?limit=1');
-  return page.items[0]!;
+  return defined(page.items[0]);
 }
 
 async function storedRevisionCount(placeId: string): Promise<number> {
-  const [row] = await suite!.client<
-    { count: string }[]
-  >`SELECT count(*) FROM place_revisions WHERE place_id = ${placeId}`;
-  return Number(row!.count);
+  const row = defined(
+    (
+      await requireSuite(suite).client<
+        { count: string }[]
+      >`SELECT count(*) FROM place_revisions WHERE place_id = ${placeId}`
+    )[0],
+  );
+  return Number(row.count);
 }
 
 /** Make the database refuse to record one revision action, for the length of `run`. */
 async function refusingRevisions(action: string, run: () => Promise<void>): Promise<void> {
-  await suite!.client.unsafe(
+  await requireSuite(suite).client.unsafe(
     `ALTER TABLE place_revisions ADD CONSTRAINT test_refuse_action CHECK (action <> '${action}') NOT VALID`,
   );
   try {
     await run();
   } finally {
-    await suite!.client`ALTER TABLE place_revisions DROP CONSTRAINT test_refuse_action`;
+    await requireSuite(suite)
+      .client`ALTER TABLE place_revisions DROP CONSTRAINT test_refuse_action`;
   }
 }
 
@@ -111,7 +118,7 @@ describe('every write records one revision', () => {
     const [revision] = page.items;
     expect(revision?.action).toBe('place_created');
     expect(revision?.source).toBe('api');
-    const fields = revision!.changes.map((change) => change.field);
+    const fields = defined(revision).changes.map((change) => change.field);
     expect(fields).toEqual(
       expect.arrayContaining([
         'name',
@@ -124,8 +131,8 @@ describe('every write records one revision', () => {
       ]),
     );
     // A creation has no before.
-    expect(revision!.changes.every((change) => change.before === undefined)).toBe(true);
-    expect(revision!.changes.find((change) => change.field === 'names.es')?.after).toEqual({
+    expect(defined(revision).changes.every((change) => change.before === undefined)).toBe(true);
+    expect(defined(revision).changes.find((change) => change.field === 'names.es')?.after).toEqual({
       name: 'Café Revisado',
       source: 'goway',
     });
@@ -177,7 +184,7 @@ describe('every write records one revision', () => {
   });
 
   it('records a withdrawal with what was withdrawn', async () => {
-    await createClaim(suite!.db, {
+    await createClaim(requireSuite(suite).db, {
       placeId: place.id,
       oxyAccountId: 'org-cafe',
       role: 'owner',
@@ -221,7 +228,11 @@ describe('every write records one revision', () => {
 
 describe('the revision is in the write transaction', () => {
   it('rolls an update back when its revision cannot be recorded', async () => {
-    const place = await createPlace(suite!.db, { name: 'Atòmic', location: GRACIA }, CONTRIBUTOR);
+    const place = await createPlace(
+      requireSuite(suite).db,
+      { name: 'Atòmic', location: GRACIA },
+      CONTRIBUTOR,
+    );
     const before = await storedRevisionCount(place.id);
     await refusingRevisions('place_updated', async () => {
       const { status } = await api.call<ErrorBody>(
@@ -232,7 +243,7 @@ describe('the revision is in the write transaction', () => {
       );
       expect(status).toBe(500);
     });
-    const [row] = await suite!.client<
+    const [row] = await requireSuite(suite).client<
       { name: string }[]
     >`SELECT name FROM places WHERE id = ${place.id}`;
     expect(row?.name).toBe('Atòmic');
@@ -241,7 +252,7 @@ describe('the revision is in the write transaction', () => {
 
   it('rolls a capability assertion back when its revision cannot be recorded', async () => {
     const place = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Atòmic Dos', location: GRACIA },
       CONTRIBUTOR,
     );
@@ -256,7 +267,7 @@ describe('the revision is in the write transaction', () => {
       );
       expect(status).toBe(500);
     });
-    const rows = await suite!
+    const rows = await requireSuite(suite)
       .client`SELECT 1 FROM places_capabilities WHERE place_id = ${place.id}`;
     expect(rows).toHaveLength(0);
   });
@@ -269,13 +280,13 @@ describe('the revision is in the write transaction', () => {
       });
       expect(status).toBe(500);
     });
-    const rows = await suite!.client`SELECT 1 FROM places WHERE name = 'Mai Creat'`;
+    const rows = await requireSuite(suite).client`SELECT 1 FROM places WHERE name = 'Mai Creat'`;
     expect(rows).toHaveLength(0);
   });
 
   it('rolls a claim request back when its revision cannot be recorded', async () => {
     const place = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Atòmic Tres', location: GRACIA },
       CONTRIBUTOR,
     );
@@ -288,7 +299,8 @@ describe('the revision is in the write transaction', () => {
       );
       expect(status).toBe(500);
     });
-    const rows = await suite!.client`SELECT 1 FROM places_claims WHERE place_id = ${place.id}`;
+    const rows = await requireSuite(suite)
+      .client`SELECT 1 FROM places_claims WHERE place_id = ${place.id}`;
     expect(rows).toHaveLength(0);
   });
 });
@@ -297,7 +309,11 @@ describe('the public history', () => {
   let place: Place;
 
   beforeAll(async () => {
-    place = await createPlace(suite!.db, { name: 'Història', location: GRACIA }, CONTRIBUTOR);
+    place = await createPlace(
+      requireSuite(suite).db,
+      { name: 'Història', location: GRACIA },
+      CONTRIBUTOR,
+    );
     for (const name of ['Història I', 'Història II', 'Història III']) {
       await api.call<Place>(
         'PATCH',
@@ -337,10 +353,14 @@ describe('the public history', () => {
   it('leaves out the moderation-only actions, which the table does hold', async () => {
     const actions = (await history(place.id)).items.map((revision) => revision.action);
     expect(actions).not.toContain('claim_requested');
-    const [held] = await suite!.client<{ count: string }[]>`
+    const held = defined(
+      (
+        await requireSuite(suite).client<{ count: string }[]>`
       SELECT count(*) FROM place_revisions WHERE place_id = ${place.id} AND action = 'claim_requested'
-    `;
-    expect(Number(held!.count)).toBe(1);
+    `
+      )[0],
+    );
+    expect(Number(held.count)).toBe(1);
   });
 
   it('pages newest first and refuses its cursor on another place', async () => {
@@ -349,7 +369,7 @@ describe('the public history', () => {
       'Història III',
       'Història II',
     ]);
-    const cursor = first.nextCursor!;
+    const cursor = defined(first.nextCursor);
     const second = await history(place.id, `?limit=2&cursor=${cursor}`);
     expect(second.items.map((revision) => revision.action)).toEqual([
       'place_updated',
@@ -357,7 +377,11 @@ describe('the public history', () => {
     ]);
     expect(second.nextCursor).toBeNull();
 
-    const other = await createPlace(suite!.db, { name: 'Altre', location: GRACIA }, CONTRIBUTOR);
+    const other = await createPlace(
+      requireSuite(suite).db,
+      { name: 'Altre', location: GRACIA },
+      CONTRIBUTOR,
+    );
     const foreign = await api.call<ErrorBody>(
       'GET',
       `/places/${other.id}/revisions?cursor=${cursor}`,
@@ -369,21 +393,21 @@ describe('the public history', () => {
     expect((await api.call<ErrorBody>('GET', '/places/no-such-place/revisions')).status).toBe(404);
 
     const removed = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Retirat', location: GRACIA },
       CONTRIBUTOR,
     );
-    await suite!.client`UPDATE places SET status = 'removed' WHERE id = ${removed.id}`;
+    await requireSuite(suite).client`UPDATE places SET status = 'removed' WHERE id = ${removed.id}`;
     const gone = await api.call<ErrorBody>('GET', `/places/${removed.id}/revisions`);
     expect(gone.status).toBe(410);
     expect(gone.body.error.details).toBeUndefined();
 
     const merged = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Fusionat', location: GRACIA },
       CONTRIBUTOR,
     );
-    await suite!
+    await requireSuite(suite)
       .client`UPDATE places SET status = 'merged', merged_into_place_id = ${place.id} WHERE id = ${merged.id}`;
     const pointer = await api.call<ErrorBody>('GET', `/places/${merged.id}/revisions`);
     expect(pointer.status).toBe(410);

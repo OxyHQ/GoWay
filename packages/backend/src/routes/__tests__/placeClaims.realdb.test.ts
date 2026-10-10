@@ -23,6 +23,7 @@ import type { AddressInfo } from 'node:net';
 import type { Place, PlaceClaim, PlaceClaimPage } from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -250,7 +251,7 @@ describe('POST /places/:id/claims', () => {
       expect(status).toBe(404);
     }
 
-    const rows = await suite!.client<{ state: string }[]>`
+    const rows = await requireSuite(suite).client<{ state: string }[]>`
       SELECT state FROM places_claims WHERE place_id = ${vacant.id}
     `;
     expect(rows.every((row) => row.state === 'pending')).toBe(true);
@@ -277,7 +278,7 @@ describe('GET /places/{placeId}/claims', () => {
 
   it('shows a claimant their own claim and the ones they compete with', async () => {
     const contested = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Local Disputat', location: GRACIA },
       CONTRIBUTOR,
     );

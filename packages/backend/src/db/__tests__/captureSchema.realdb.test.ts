@@ -29,6 +29,7 @@ import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { statementFailure } from './statementFailure';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -75,7 +76,7 @@ describe('no raw media is permanent by accident', () => {
     // The whole guarantee, as one insert. If `expires_at` ever becomes
     // nullable, this is the test that fails.
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO capture_media_objects
           (id, content_hash, object_key, content_type, byte_size, upload_intent_expires_at,
            retention_class, retention_reason)
@@ -89,7 +90,7 @@ describe('no raw media is permanent by accident', () => {
 
   it('refuses an object that does not say what it is or why it is kept', async () => {
     const noClass = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO capture_media_objects
           (id, content_hash, object_key, content_type, byte_size, upload_intent_expires_at,
            retention_reason, expires_at)
@@ -101,7 +102,7 @@ describe('no raw media is permanent by accident', () => {
     expect(noClass).toMatch(/retention_class/);
 
     const noReason = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO capture_media_objects
           (id, content_hash, object_key, content_type, byte_size, upload_intent_expires_at,
            retention_class, expires_at)
@@ -120,7 +121,7 @@ describe('no raw media is permanent by accident', () => {
     // notices for a year. This covers the backfill/script/psql paths that have
     // no zod schema in front of them.
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         UPDATE capture_media_objects SET expires_at = now() + interval '2 years' WHERE id = 'obj-1'
       `,
     );
@@ -129,7 +130,7 @@ describe('no raw media is permanent by accident', () => {
 
   it('refuses an expiry before the object existed', async () => {
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         UPDATE capture_media_objects SET expires_at = created_at - interval '1 day' WHERE id = 'obj-1'
       `,
     );
@@ -140,7 +141,7 @@ describe('no raw media is permanent by accident', () => {
     // A `protected_until` past `expires_at` is a second, invisible expiry that
     // wins — the silent indefinite renewal #10 refuses by name.
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         UPDATE capture_media_objects SET protected_until = expires_at + interval '1 day' WHERE id = 'obj-1'
       `,
     );
@@ -150,7 +151,7 @@ describe('no raw media is permanent by accident', () => {
   it('bounds retention extensions to a countable number', async () => {
     const message = await statementFailure(
       () =>
-        suite!
+        requireSuite(suite)
           .client`UPDATE capture_media_objects SET retention_extension_count = 4 WHERE id = 'obj-1'`,
     );
     expect(message).toContain('capture_objects_extension_count_check');
@@ -162,7 +163,7 @@ describe('no raw media is permanent by accident', () => {
     // confusion #10 spends a section warning about.
     const message = await statementFailure(
       () =>
-        suite!
+        requireSuite(suite)
           .client`UPDATE capture_media_objects SET retention_class = 'published_splat' WHERE id = 'obj-1'`,
     );
     expect(message).toContain('capture_objects_retention_class_check');
@@ -170,7 +171,7 @@ describe('no raw media is permanent by accident', () => {
 
   it('refuses a tombstone that does not say why', async () => {
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         UPDATE capture_media_objects SET storage_state = 'deleted', deleted_at = now() WHERE id = 'obj-1'
       `,
     );
@@ -181,7 +182,7 @@ describe('no raw media is permanent by accident', () => {
 describe('deduplication', () => {
   it('refuses a SECOND live object for the same content hash', async () => {
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO capture_media_objects
           (id, content_hash, object_key, content_type, byte_size, upload_intent_expires_at,
            retention_class, retention_reason, expires_at)
@@ -199,7 +200,7 @@ describe('deduplication', () => {
     // constraint would pass the test above and refuse this forever — a
     // contributor unable to submit a photo because somebody else submitted it
     // and it expired two months ago.
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO capture_media_objects
         (id, content_hash, object_key, content_type, byte_size, upload_intent_expires_at,
          retention_class, retention_reason, expires_at, storage_state, stored_at,
@@ -210,7 +211,7 @@ describe('deduplication', () => {
          now() + interval '1 day', 'deleted', now() - interval '90 days',
          now() - interval '1 day', 'expired')
     `;
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO capture_media_objects
         (id, content_hash, object_key, content_type, byte_size, upload_intent_expires_at,
          retention_class, retention_reason, expires_at)
@@ -219,7 +220,7 @@ describe('deduplication', () => {
          now() + interval '15 minutes', 'raw_photo', 'awaiting_privacy_processing',
          now() + interval '90 days')
     `;
-    const rows = await suite!.client<{ id: string }[]>`
+    const rows = await requireSuite(suite).client<{ id: string }[]>`
       SELECT id FROM capture_media_objects WHERE content_hash = ${hash('e')} ORDER BY id
     `;
     expect(rows.map((row) => row.id)).toEqual(['obj-again', 'obj-gone']);
@@ -228,7 +229,7 @@ describe('deduplication', () => {
   it('refuses two rows claiming the same object path', async () => {
     // Two rows for one stored object would each believe they own its deletion.
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO capture_media_objects
           (id, content_hash, object_key, content_type, byte_size, upload_intent_expires_at,
            retention_class, retention_reason, expires_at)
@@ -245,7 +246,7 @@ describe('deduplication', () => {
     // `restrict`, not `cascade`: a published scene's provenance, a contributor's
     // history and a rebuild's blocklist all outlive the pixels.
     const message = await statementFailure(
-      () => suite!.client`DELETE FROM capture_media_objects WHERE id = 'obj-1'`,
+      () => requireSuite(suite).client`DELETE FROM capture_media_objects WHERE id = 'obj-1'`,
     );
     expect(message).toMatch(/violates foreign key constraint/);
   });
@@ -253,7 +254,7 @@ describe('deduplication', () => {
 
 describe('the privacy gate fails closed', () => {
   it('starts shut: a fresh capture is not a reconstruction input', async () => {
-    const [row] = await suite!.client<
+    const [row] = await requireSuite(suite).client<
       { privacy_state: string; reconstruction_eligible: boolean }[]
     >`
       SELECT privacy_state, reconstruction_eligible FROM capture_assets WHERE id = 'asset-1'
@@ -265,7 +266,7 @@ describe('the privacy gate fails closed', () => {
   it('refuses to let an asset ENTER a reconstruction state while the gate is shut', async () => {
     const message = await statementFailure(
       () =>
-        suite!
+        requireSuite(suite)
           .client`UPDATE capture_assets SET state = 'reconstruction_candidate' WHERE id = 'asset-1'`,
     );
     expect(message).toContain('capture_assets_privacy_gate_check');
@@ -275,7 +276,7 @@ describe('the privacy gate fails closed', () => {
     // A clearance nobody can audit or re-run is not a clearance: #13 keeps the
     // version precisely so old scenes can be rebuilt when detection improves.
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         UPDATE capture_assets SET privacy_state = 'passed', privacy_completed_at = now() WHERE id = 'asset-1'
       `,
     );
@@ -288,27 +289,30 @@ describe('the privacy gate fails closed', () => {
     // database rather than a rule people follow.
     const message = await statementFailure(
       () =>
-        suite!
+        requireSuite(suite)
           .client`UPDATE capture_assets SET reconstruction_eligible = true WHERE id = 'asset-1'`,
     );
     expect(message).toMatch(/can only be updated to DEFAULT|generated column/i);
   });
 
   it('opens only when a versioned pass and an accepted state coincide', async () => {
-    await suite!.client`
+    await requireSuite(suite).client`
       UPDATE capture_assets
       SET privacy_state = 'passed', privacy_pipeline_version = 'faces-plates-2026.09', privacy_completed_at = now()
       WHERE id = 'asset-1'
     `;
-    const [passedButNotAccepted] = await suite!.client<{ reconstruction_eligible: boolean }[]>`
+    const [passedButNotAccepted] = await requireSuite(suite).client<
+      { reconstruction_eligible: boolean }[]
+    >`
       SELECT reconstruction_eligible FROM capture_assets WHERE id = 'asset-1'
     `;
     // Still shut: the pixels are cleared, but the contribution has not been
     // accepted. Both halves are required.
     expect(passedButNotAccepted?.reconstruction_eligible).toBe(false);
 
-    await suite!.client`UPDATE capture_assets SET state = 'accepted' WHERE id = 'asset-1'`;
-    const [open] = await suite!.client<{ reconstruction_eligible: boolean }[]>`
+    await requireSuite(suite)
+      .client`UPDATE capture_assets SET state = 'accepted' WHERE id = 'asset-1'`;
+    const [open] = await requireSuite(suite).client<{ reconstruction_eligible: boolean }[]>`
       SELECT reconstruction_eligible FROM capture_assets WHERE id = 'asset-1'
     `;
     expect(open?.reconstruction_eligible).toBe(true);
@@ -317,14 +321,14 @@ describe('the privacy gate fails closed', () => {
   it('shuts again the moment a verdict is withdrawn', async () => {
     // A moderation block on an already-cleared capture must take it out of
     // reconstruction immediately, without anything remembering to clear a flag.
-    await suite!.client`
+    await requireSuite(suite).client`
       UPDATE capture_assets SET privacy_state = 'blocked', privacy_pipeline_version = NULL WHERE id = 'asset-1'
     `;
-    const [row] = await suite!.client<{ reconstruction_eligible: boolean }[]>`
+    const [row] = await requireSuite(suite).client<{ reconstruction_eligible: boolean }[]>`
       SELECT reconstruction_eligible FROM capture_assets WHERE id = 'asset-1'
     `;
     expect(row?.reconstruction_eligible).toBe(false);
-    await suite!.client`
+    await requireSuite(suite).client`
       UPDATE capture_assets
       SET privacy_state = 'passed', privacy_pipeline_version = 'faces-plates-2026.09'
       WHERE id = 'asset-1'
@@ -337,7 +341,7 @@ describe('the anchor and its provenance', () => {
     // Barcelona, and the point must not be in the Gulf of Guinea or the wrong
     // hemisphere: `ST_MakePoint` takes (lng, lat), the opposite of every
     // `lat, lng` the HTTP layer receives.
-    const [row] = await suite!.client<{ point: string; geo_cell: string }[]>`
+    const [row] = await requireSuite(suite).client<{ point: string; geo_cell: string }[]>`
       SELECT ST_AsText(anchor_geo::geometry) AS point, geo_cell FROM capture_assets WHERE id = 'asset-1'
     `;
     expect(row?.point).toBe('POINT(2.1734 41.3851)');
@@ -356,7 +360,7 @@ describe('the anchor and its provenance', () => {
     // geohash, so it is asserted directly below against a column PostGIS does
     // not read.
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO capture_assets
           (id, session_id, media_object_id, oxy_user_id, media_kind, source,
            anchor_latitude, anchor_longitude, anchor_origin, anchor_witness)
@@ -371,7 +375,7 @@ describe('the anchor and its provenance', () => {
     // is the only thing standing between a backfill and a point PostGIS would
     // happily normalize into somewhere else on Earth.
     const evidence = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO capture_location_evidence (id, asset_id, origin, witness, latitude, longitude)
         VALUES ('ev-bad', 'asset-1', 'device_capture', 'client', 120, 0)
       `,
@@ -384,7 +388,7 @@ describe('the anchor and its provenance', () => {
     // `goway_ingest` produced one is laundering a client's coordinate into a
     // measurement GoWay never made.
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         UPDATE capture_assets SET anchor_origin = 'user_placed', anchor_witness = 'goway_ingest' WHERE id = 'asset-1'
       `,
     );
@@ -395,15 +399,15 @@ describe('the anchor and its provenance', () => {
     // The uniqueness key includes the WITNESS, exactly as `places_capabilities`
     // includes the verification tier: whichever arrives second must not erase
     // the other, because the disagreement is the interesting part.
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO capture_location_evidence (id, asset_id, origin, witness, latitude, longitude)
       VALUES ('ev-client', 'asset-1', 'media_metadata', 'client', 41.3851, 2.1734)
     `;
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO capture_location_evidence (id, asset_id, origin, witness, latitude, longitude)
       VALUES ('ev-ingest', 'asset-1', 'media_metadata', 'goway_ingest', 41.3902, 2.1601)
     `;
-    const rows = await suite!.client<{ witness: string }[]>`
+    const rows = await requireSuite(suite).client<{ witness: string }[]>`
       SELECT witness FROM capture_location_evidence
       WHERE asset_id = 'asset-1' AND origin = 'media_metadata' ORDER BY witness
     `;
@@ -412,7 +416,7 @@ describe('the anchor and its provenance', () => {
 
   it('refuses a SECOND claim from the same witness about the same origin', async () => {
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO capture_location_evidence (id, asset_id, origin, witness, latitude, longitude)
         VALUES ('ev-dup', 'asset-1', 'media_metadata', 'client', 0, 0)
       `,
@@ -424,16 +428,21 @@ describe('the anchor and its provenance', () => {
 describe('what the schema refuses to be confused about', () => {
   it('refuses a photo that claims a duration', async () => {
     const message = await statementFailure(
-      () => suite!.client`UPDATE capture_assets SET duration_seconds = 12 WHERE id = 'asset-1'`,
+      () =>
+        requireSuite(suite)
+          .client`UPDATE capture_assets SET duration_seconds = 12 WHERE id = 'asset-1'`,
     );
     expect(message).toContain('capture_assets_video_fields_check');
   });
 
   it('declares every capture perspective unless told otherwise, and knows no other projection', async () => {
-    const [row] = await suite!.client`SELECT projection FROM capture_assets WHERE id = 'asset-1'`;
+    const [row] = await requireSuite(suite)
+      .client`SELECT projection FROM capture_assets WHERE id = 'asset-1'`;
     expect(row?.projection).toBe('perspective');
     const message = await statementFailure(
-      () => suite!.client`UPDATE capture_assets SET projection = 'fisheye' WHERE id = 'asset-1'`,
+      () =>
+        requireSuite(suite)
+          .client`UPDATE capture_assets SET projection = 'fisheye' WHERE id = 'asset-1'`,
     );
     expect(message).toContain('capture_assets_projection_check');
   });
@@ -441,7 +450,7 @@ describe('what the schema refuses to be confused about', () => {
   it('refuses a consent version that is blank', async () => {
     // A contribution whose consent is unknown is one GoWay cannot honestly keep.
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO capture_sessions (id, oxy_user_id, source, consent_version)
         VALUES ('sess-blank', 'user-1', 'camera', '   ')
       `,
@@ -450,11 +459,11 @@ describe('what the schema refuses to be confused about', () => {
   });
 
   it('stores a contributor id with NO foreign key — Oxy owns identity', async () => {
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO capture_sessions (id, oxy_user_id, source, consent_version)
       VALUES ('sess-stranger', 'account-never-seen-here', 'library', '2026-09-01')
     `;
-    const [row] = await suite!.client<{ oxy_user_id: string }[]>`
+    const [row] = await requireSuite(suite).client<{ oxy_user_id: string }[]>`
       SELECT oxy_user_id FROM capture_sessions WHERE id = 'sess-stranger'
     `;
     expect(row?.oxy_user_id).toBe('account-never-seen-here');
@@ -465,7 +474,7 @@ describe('what the schema refuses to be confused about', () => {
     // Every coordinate in this schema hangs off a submitted asset; nothing is
     // keyed by (user, time, position). If a future table breaks that, this is
     // the test that notices.
-    const columns = await suite!.client<{ table_name: string; column_name: string }[]>`
+    const columns = await requireSuite(suite).client<{ table_name: string; column_name: string }[]>`
       SELECT c.table_name, c.column_name
       FROM information_schema.columns c
       WHERE c.table_schema = 'public'
@@ -478,7 +487,7 @@ describe('what the schema refuses to be confused about', () => {
 
     // And neither of those carries a contributor column beside its position —
     // `capture_assets.oxy_user_id` is authorship, and it is the ONE such column.
-    const contributorColumns = await suite!.client<{ table_name: string }[]>`
+    const contributorColumns = await requireSuite(suite).client<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name LIKE 'capture_%' AND column_name = 'oxy_user_id'
       ORDER BY table_name

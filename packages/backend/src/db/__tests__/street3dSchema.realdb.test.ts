@@ -25,11 +25,13 @@ import {
   street3dScenes,
 } from '../schema';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
   type SuiteDatabase,
 } from './testDatabase';
+import { defined } from '../../__tests__/defined';
 
 let suite: SuiteDatabase | null = null;
 let assetId: string;
@@ -106,21 +108,29 @@ beforeAll(async () => {
     { keyPrefix: 'captures' },
   );
   assetId = registered.asset.id;
-  const [job] = await db
-    .insert(street3dJobs)
-    .values({
-      kind: 'capture_privacy',
-      assetId,
-      maxAttempts: 4,
-      outputPrefix: 'derived/privacy/x/',
-    })
-    .returning();
-  privacyJobId = job!.id;
-  const [scene] = await db
-    .insert(street3dScenes)
-    .values({ anchorLatitude: 41, anchorLongitude: 2, radiusMeters: 90 })
-    .returning();
-  sceneId = scene!.id;
+  const job = defined(
+    (
+      await db
+        .insert(street3dJobs)
+        .values({
+          kind: 'capture_privacy',
+          assetId,
+          maxAttempts: 4,
+          outputPrefix: 'derived/privacy/x/',
+        })
+        .returning()
+    )[0],
+  );
+  privacyJobId = job.id;
+  const scene = defined(
+    (
+      await db
+        .insert(street3dScenes)
+        .values({ anchorLatitude: 41, anchorLongitude: 2, radiusMeters: 90 })
+        .returning()
+    )[0],
+  );
+  sceneId = scene.id;
 }, SUITE_SETUP_TIMEOUT_MS);
 
 afterAll(async () => {
@@ -129,7 +139,7 @@ afterAll(async () => {
 
 describe('derivatives are temporary and never raw', () => {
   it('refuses an expiry past the absolute ceiling, a raw class and protection past expiry', async () => {
-    const db = suite!.db;
+    const db = requireSuite(suite).db;
     expect(
       await refusedBy(() =>
         db
@@ -162,7 +172,7 @@ describe('derivatives are temporary and never raw', () => {
   });
 
   it('records a panorama view whole or not at all, with a yaw and field of view that make sense', async () => {
-    const db = suite!.db;
+    const db = requireSuite(suite).db;
     const view = { panoramaIndex: 0, panoramaYawDegrees: 45, panoramaFovDegrees: 90 };
     await db.insert(captureDerivatives).values(derivative({ frameIndex: 10, ...view }));
     expect(
@@ -196,7 +206,7 @@ describe('derivatives are temporary and never raw', () => {
 
 describe('jobs', () => {
   it('allows one open job per scene and one job per version', async () => {
-    const db = suite!.db;
+    const db = requireSuite(suite).db;
     await db.insert(street3dJobs).values(sceneJob(1));
     expect(await refusedBy(() => db.insert(street3dJobs).values(sceneJob(2)))).toContain(
       'street3d_jobs_open_scene_key',
@@ -216,7 +226,7 @@ describe('jobs', () => {
   });
 
   it('refuses a job without its subject, a terminal job without a finish and an unbounded attempt', async () => {
-    const db = suite!.db;
+    const db = requireSuite(suite).db;
     expect(
       await refusedBy(() =>
         db
@@ -239,7 +249,7 @@ describe('jobs', () => {
 
 describe('versions and the graph', () => {
   it('serves at most one version per scene and stores an edge once', async () => {
-    const db = suite!.db;
+    const db = requireSuite(suite).db;
     const version = (number: number, jobId: string) => ({
       sceneId,
       version: number,
@@ -276,22 +286,29 @@ describe('versions and the graph', () => {
       privacyPipelineVersions: ['p/1'],
       resultSha256: digest('c'),
     });
-    const [jobA] = await db
-      .insert(street3dJobs)
-      .values(sceneJob(10, { state: 'completed', finishedAt: new Date() }))
-      .returning();
-    const [jobB] = await db
-      .insert(street3dJobs)
-      .values(sceneJob(11, { state: 'completed', finishedAt: new Date() }))
-      .returning();
-    const [first] = await db
-      .insert(street3dSceneVersions)
-      .values(version(10, jobA!.id))
-      .returning();
+    const jobA = defined(
+      (
+        await db
+          .insert(street3dJobs)
+          .values(sceneJob(10, { state: 'completed', finishedAt: new Date() }))
+          .returning()
+      )[0],
+    );
+    const jobB = defined(
+      (
+        await db
+          .insert(street3dJobs)
+          .values(sceneJob(11, { state: 'completed', finishedAt: new Date() }))
+          .returning()
+      )[0],
+    );
+    const first = defined(
+      (await db.insert(street3dSceneVersions).values(version(10, jobA.id)).returning())[0],
+    );
     expect(
-      await refusedBy(() => db.insert(street3dSceneVersions).values(version(11, jobB!.id))),
+      await refusedBy(() => db.insert(street3dSceneVersions).values(version(11, jobB.id))),
     ).toContain('street3d_versions_published_key');
-    const unpublished = { ...version(11, jobB!.id), state: 'failed_quality', publishedAt: null };
+    const unpublished = { ...version(11, jobB.id), state: 'failed_quality', publishedAt: null };
     expect(
       await refusedBy(() =>
         db.insert(street3dSceneVersions).values({
@@ -301,23 +318,31 @@ describe('versions and the graph', () => {
       ),
     ).toContain('street3d_versions_navigation_check');
 
-    const [a] = await db
-      .insert(captureDerivatives)
-      .values(derivative({ frameIndex: 1 }))
-      .returning();
-    const [b] = await db
-      .insert(captureDerivatives)
-      .values(derivative({ frameIndex: 2 }))
-      .returning();
-    const [low, high] = [a!.id, b!.id].sort();
+    const a = defined(
+      (
+        await db
+          .insert(captureDerivatives)
+          .values(derivative({ frameIndex: 1 }))
+          .returning()
+      )[0],
+    );
+    const b = defined(
+      (
+        await db
+          .insert(captureDerivatives)
+          .values(derivative({ frameIndex: 2 }))
+          .returning()
+      )[0],
+    );
+    const [low, high] = [a.id, b.id].sort();
     expect(
       await refusedBy(() =>
         db.insert(street3dCaptureEdges).values({
-          derivativeA: high!,
-          derivativeB: low!,
+          derivativeA: defined(high),
+          derivativeB: defined(low),
           inliers: 5,
           matcherVersion: 'm',
-          observedInVersionId: first!.id,
+          observedInVersionId: first.id,
         }),
       ),
     ).toContain('street3d_capture_edges_order_check');
@@ -326,7 +351,7 @@ describe('versions and the graph', () => {
 
 describe('session attribution', () => {
   it('refuses a blank or oversized credit', async () => {
-    const db = suite!.db;
+    const db = requireSuite(suite).db;
     const row = { oxyUserId: randomUUID(), source: 'library', consentVersion: 'test' };
     expect(
       await refusedBy(() => db.insert(captureSessions).values({ ...row, attribution: '   ' })),

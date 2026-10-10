@@ -107,18 +107,17 @@ async function lockPlace(tx: DatabaseOrTransaction, placeId: string): Promise<bo
  * nothing. Call it inside the write's transaction, with the place locked.
  */
 export async function recomputeRating(tx: DatabaseOrTransaction, placeId: string): Promise<void> {
-  const counts = [MIN_REVIEW_RATING, 2, 3, 4, MAX_REVIEW_RATING].map(
-    (rating) => sql<number>`(count(*) filter (where ${placeReviews.rating} = ${rating}))::int`,
-  );
+  const countOf = (rating: number) =>
+    sql<number>`(count(*) filter (where ${placeReviews.rating} = ${rating}))::int`;
   const [derived] = await tx
     .select({
       count: sql<number>`count(*)::int`,
       average: sql<string | null>`avg(${placeReviews.rating})::numeric(4,3)`,
-      rating1: counts[0]!,
-      rating2: counts[1]!,
-      rating3: counts[2]!,
-      rating4: counts[3]!,
-      rating5: counts[4]!,
+      rating1: countOf(MIN_REVIEW_RATING),
+      rating2: countOf(2),
+      rating3: countOf(3),
+      rating4: countOf(4),
+      rating5: countOf(MAX_REVIEW_RATING),
     })
     .from(placeReviews)
     .where(and(eq(placeReviews.placeId, placeId), eq(placeReviews.status, 'published')));

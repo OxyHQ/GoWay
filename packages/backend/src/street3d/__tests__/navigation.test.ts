@@ -13,6 +13,7 @@ import {
   publishedNavigation,
 } from '../navigation';
 import { sceneReconstructResultSchema, type SceneResultViewpoint } from '../workerContract';
+import { defined } from '../../__tests__/defined';
 
 const FIXTURE = resolve(
   __dirname,
@@ -56,7 +57,7 @@ describe('viewpoint decimation', () => {
       { position: [1.23456, -0.004, 1.6049], forward: [0, 3, 4] },
     ]);
     expect(only).toEqual({ position: [1.23, 0, 1.6], forward: [0, 0.6, 0.8] });
-    expect(Object.is(only!.position[1], -0)).toBe(false);
+    expect(Object.is(defined(only).position[1], -0)).toBe(false);
   });
 
   it('depends on the set, not on the order it was reported in', () => {
@@ -90,18 +91,18 @@ describe('viewpoint decimation', () => {
         grid.push({ position: [x * 2, y * 2, 0], forward: [1, 0, 0] });
     const kept = decimateViewpoints(grid);
     expect(kept).toHaveLength(MAX_PUBLISHED_VIEWPOINTS);
-    expect(kept[0]!.position).toEqual([0, 0, 0]);
+    expect(defined(kept[0]).position).toEqual([0, 0, 0]);
     expect(Math.max(...kept.map((viewpoint) => viewpoint.position[0]))).toBeGreaterThanOrEqual(76);
   });
 });
 
 describe('published navigation', () => {
   it('carries the fixture viewpoints and field of view, and nothing else', () => {
-    const navigation = publishedNavigation(result());
-    expect(Object.keys(navigation!).sort()).toEqual(['fieldOfView', 'viewpoints']);
-    expect(navigation!.fieldOfView).toEqual({ horizontalDegrees: 66, verticalDegrees: 50 });
-    expect(navigation!.viewpoints.length).toBeGreaterThan(1);
-    expect(minimumSpacing(navigation!.viewpoints)).toBeGreaterThanOrEqual(
+    const navigation = defined(publishedNavigation(result()));
+    expect(Object.keys(navigation).sort()).toEqual(['fieldOfView', 'viewpoints']);
+    expect(navigation.fieldOfView).toEqual({ horizontalDegrees: 66, verticalDegrees: 50 });
+    expect(navigation.viewpoints.length).toBeGreaterThan(1);
+    expect(minimumSpacing(navigation.viewpoints)).toBeGreaterThanOrEqual(
       MIN_VIEWPOINT_SPACING_METERS,
     );
   });

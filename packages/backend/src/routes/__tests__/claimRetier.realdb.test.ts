@@ -25,6 +25,7 @@ import {
 } from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -146,7 +147,7 @@ describe('approving a claim', () => {
 
   beforeAll(async () => {
     shop = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Botiga del Poblenou', location: POBLENOU },
       CONTRIBUTOR,
     );
@@ -313,7 +314,7 @@ describe('approving a claim', () => {
 describe('what a decision does not re-tier', () => {
   it('re-tiers nothing on a rejection', async () => {
     const shop = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Botiga Rebutjada', location: POBLENOU },
       CONTRIBUTOR,
     );
@@ -325,11 +326,11 @@ describe('what a decision does not re-tier', () => {
 
   it('never overwrites the business tier another approved claimant already holds', async () => {
     const shop = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Botiga de Cadena', location: POBLENOU },
       CONTRIBUTOR,
     );
-    await createClaim(suite!.db, {
+    await createClaim(requireSuite(suite).db, {
       placeId: shop.id,
       oxyAccountId: 'org-cadena',
       role: 'brand',
@@ -348,14 +349,14 @@ describe('what a decision does not re-tier', () => {
 
   it('rolls the approval back with the re-tier when the re-tier cannot be recorded', async () => {
     const shop = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Botiga Atomica', location: POBLENOU },
       CONTRIBUTOR,
     );
     const claim = await fileClaim(shop.id);
     await assert(shop.id, STORE, 'loc-3', session('person-owner'));
 
-    await suite!.client.unsafe(
+    await requireSuite(suite).client.unsafe(
       `ALTER TABLE place_revisions ADD CONSTRAINT test_refuse_retier CHECK (action <> 'capability_retiered') NOT VALID`,
     );
     try {
@@ -370,11 +371,12 @@ describe('what a decision does not re-tier', () => {
       expect(status).toBe(500);
       expect(body.error.code).toBe('internal_error');
     } finally {
-      await suite!.client`ALTER TABLE place_revisions DROP CONSTRAINT test_refuse_retier`;
+      await requireSuite(suite)
+        .client`ALTER TABLE place_revisions DROP CONSTRAINT test_refuse_retier`;
     }
 
     // Neither half landed: the claim is still pending, the link still a report.
-    const [stored] = await suite!.client<
+    const [stored] = await requireSuite(suite).client<
       { state: string }[]
     >`SELECT state FROM places_claims WHERE id = ${claim.id}`;
     expect(stored?.state).toBe('pending');

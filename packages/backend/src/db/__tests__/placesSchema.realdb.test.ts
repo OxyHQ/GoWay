@@ -17,6 +17,7 @@ import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { statementFailure } from './statementFailure';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -43,14 +44,16 @@ describe('places', () => {
     // CHECK and types the SDK. This is the assertion that the third of those is
     // really enforced rather than merely declared.
     const message = await statementFailure(
-      () => suite!.client`UPDATE places SET status = 'demolished' WHERE id = 'p-1'`,
+      () => requireSuite(suite).client`UPDATE places SET status = 'demolished' WHERE id = 'p-1'`,
     );
     expect(message).toContain('places_status_check');
   });
 
   it('refuses a verification state outside the published tuple', async () => {
     const message = await statementFailure(
-      () => suite!.client`UPDATE places SET verification_state = 'trust_me' WHERE id = 'p-1'`,
+      () =>
+        requireSuite(suite)
+          .client`UPDATE places SET verification_state = 'trust_me' WHERE id = 'p-1'`,
     );
     expect(message).toContain('places_verification_state_check');
   });
@@ -62,7 +65,7 @@ describe('places', () => {
     // somewhere else on Earth.
     const message = await statementFailure(
       () =>
-        suite!
+        requireSuite(suite)
           .client`INSERT INTO places (id, name, latitude, longitude) VALUES ('p-bad', 'X', 120, 0)`,
     );
     expect(message).toContain('places_latitude_range_check');
@@ -71,7 +74,7 @@ describe('places', () => {
   it('refuses a blank name', async () => {
     const message = await statementFailure(
       () =>
-        suite!
+        requireSuite(suite)
           .client`INSERT INTO places (id, name, latitude, longitude) VALUES ('p-blank', '   ', 0, 0)`,
     );
     expect(message).toContain('places_name_not_blank_check');
@@ -79,7 +82,8 @@ describe('places', () => {
 
   it('refuses a country code that is not ISO 3166-1 alpha-2 uppercase', async () => {
     const message = await statementFailure(
-      () => suite!.client`UPDATE places SET address_country_code = 'es' WHERE id = 'p-1'`,
+      () =>
+        requireSuite(suite).client`UPDATE places SET address_country_code = 'es' WHERE id = 'p-1'`,
     );
     expect(message).toContain('places_country_code_check');
   });
@@ -88,7 +92,7 @@ describe('places', () => {
     // `name_normalized` is a SEPARATE generated column precisely so the name a
     // contributor typed survives. A schema that lower-cased in place would make
     // "CAFÈ CENTRAL" unrecoverable.
-    const [row] = await suite!.client<{ name: string; name_normalized: string }[]>`
+    const [row] = await requireSuite(suite).client<{ name: string; name_normalized: string }[]>`
       SELECT name, name_normalized FROM places WHERE id = 'p-1'
     `;
     expect(row?.name).toBe('Cafè Central');
@@ -98,11 +102,11 @@ describe('places', () => {
 
 describe('places_capabilities', () => {
   it('generates key as <namespace>.<capability>, which is what the SDK refuses a mismatch on', async () => {
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO places_capabilities (id, place_id, namespace, capability, value, verification)
       VALUES ('c-1', 'p-1', 'payments.faircoin', 'accepted', 'true'::jsonb, 'community_reported')
     `;
-    const [row] = await suite!.client<{ key: string }[]>`
+    const [row] = await requireSuite(suite).client<{ key: string }[]>`
       SELECT key FROM places_capabilities WHERE id = 'c-1'
     `;
     expect(row?.key).toBe('payments.faircoin.accepted');
@@ -113,7 +117,7 @@ describe('places_capabilities', () => {
     // hold dots; the capability may not, and that asymmetry is what keeps the
     // generated key a function of exactly one pair.
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO places_capabilities (id, place_id, namespace, capability, value, verification)
         VALUES ('c-dotted', 'p-1', 'payments', 'faircoin.accepted', 'true'::jsonb, 'community_reported')
       `,
@@ -123,7 +127,7 @@ describe('places_capabilities', () => {
 
   it('refuses a value that is not a boolean, a string or a number', async () => {
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO places_capabilities (id, place_id, namespace, capability, value, verification)
         VALUES ('c-obj', 'p-1', 'payments.faircoin', 'rate', '{"a":1}'::jsonb, 'community_reported')
       `,
@@ -135,7 +139,7 @@ describe('places_capabilities', () => {
     // The weakest-looking tier must not also be the one that can be written
     // with no evidence attached.
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO places_capabilities (id, place_id, namespace, capability, value, verification)
         VALUES ('c-ext', 'p-1', 'payments.faircoin', 'accepted', 'true'::jsonb, 'external_source')
       `,
@@ -147,11 +151,11 @@ describe('places_capabilities', () => {
     // The uniqueness key includes `verification` for exactly this: an
     // Oxy-verified acceptance must not be erased by the next community report,
     // and a client has to be able to tell the two apart.
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO places_capabilities (id, place_id, namespace, capability, value, verification)
       VALUES ('c-2', 'p-1', 'payments.faircoin', 'accepted', 'true'::jsonb, 'oxy_verified')
     `;
-    const rows = await suite!.client<{ verification: string }[]>`
+    const rows = await requireSuite(suite).client<{ verification: string }[]>`
       SELECT verification FROM places_capabilities
       WHERE place_id = 'p-1' AND key = 'payments.faircoin.accepted' ORDER BY verification
     `;
@@ -160,7 +164,7 @@ describe('places_capabilities', () => {
 
   it('refuses a SECOND assertion at the same tier, so a tier holds one current answer', async () => {
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO places_capabilities (id, place_id, namespace, capability, value, verification)
         VALUES ('c-dup', 'p-1', 'payments.faircoin', 'accepted', 'false'::jsonb, 'community_reported')
       `,
@@ -174,15 +178,15 @@ describe('places_sources', () => {
     // The whole of deterministic source linking, as a constraint: a second
     // place claiming an identifier another already holds cannot be written, so
     // reconciliation cannot silently produce two copies of one real record.
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO places (id, name, latitude, longitude) VALUES ('p-2', 'Cafè Central', 41.3852, 2.1735)
     `;
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO places_sources (id, place_id, source, source_id)
       VALUES ('s-1', 'p-1', 'openstreetmap', 'node/123')
     `;
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO places_sources (id, place_id, source, source_id)
         VALUES ('s-2', 'p-2', 'openstreetmap', 'node/123')
       `,
@@ -196,11 +200,11 @@ describe('places_claims', () => {
     // There is no `users` table and there never will be: every account id here
     // is a foreign service's primary key reached over HTTP. A claim referencing
     // an account this database has never heard of is the normal case.
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO places_claims (id, place_id, oxy_account_id, role)
       VALUES ('cl-1', 'p-1', 'acct-never-seen-here', 'owner')
     `;
-    const [row] = await suite!.client<{ state: string }[]>`
+    const [row] = await requireSuite(suite).client<{ state: string }[]>`
       SELECT state FROM places_claims WHERE id = 'cl-1'
     `;
     // Pending by default: a claim is a request to be recognised, not recognition.
@@ -209,12 +213,14 @@ describe('places_claims', () => {
 
   it('refuses a decided claim with no decision time, and a pending one with one', async () => {
     const decidedWithoutTime = await statementFailure(
-      () => suite!.client`UPDATE places_claims SET state = 'approved' WHERE id = 'cl-1'`,
+      () =>
+        requireSuite(suite).client`UPDATE places_claims SET state = 'approved' WHERE id = 'cl-1'`,
     );
     expect(decidedWithoutTime).toContain('places_claims_decided_at_check');
 
     const pendingWithTime = await statementFailure(
-      () => suite!.client`UPDATE places_claims SET decided_at = now() WHERE id = 'cl-1'`,
+      () =>
+        requireSuite(suite).client`UPDATE places_claims SET decided_at = now() WHERE id = 'cl-1'`,
     );
     expect(pendingWithTime).toContain('places_claims_decided_at_check');
   });
@@ -223,15 +229,15 @@ describe('places_claims', () => {
     // The shape a single `owner_id` column makes unrepresentable: a franchise
     // operated by one account under another's brand — the brand being an
     // organization's own claim, in the `brand` role.
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO places_claims (id, place_id, oxy_account_id, role, state, decided_at)
       VALUES ('cl-2', 'p-1', 'acct-operator', 'operator', 'approved', now())
     `;
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO places_claims (id, place_id, oxy_account_id, role, state, decided_at)
       VALUES ('cl-3', 'p-1', 'org-brand', 'brand', 'approved', now())
     `;
-    const rows = await suite!.client<{ role: string }[]>`
+    const rows = await requireSuite(suite).client<{ role: string }[]>`
       SELECT role FROM places_claims WHERE place_id = 'p-1' AND state = 'approved' ORDER BY role
     `;
     expect(rows.map((row) => row.role)).toEqual(['brand', 'operator']);
@@ -241,7 +247,7 @@ describe('places_claims', () => {
 describe('places_duplicate_candidates', () => {
   it('refuses a pair stored out of canonical order, so A/B and B/A cannot both exist', async () => {
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO places_duplicate_candidates (id, place_id, candidate_place_id, reason)
         VALUES ('d-bad', 'p-2', 'p-1', 'proximity_and_name')
       `,
@@ -250,12 +256,12 @@ describe('places_duplicate_candidates', () => {
   });
 
   it('records a pair once', async () => {
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO places_duplicate_candidates (id, place_id, candidate_place_id, reason)
       VALUES ('d-1', 'p-1', 'p-2', 'proximity_and_name')
     `;
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO places_duplicate_candidates (id, place_id, candidate_place_id, reason)
         VALUES ('d-2', 'p-1', 'p-2', 'shared_source_id')
       `,
@@ -269,12 +275,12 @@ describe('places_names', () => {
     // The whole point of the third column. OpenStreetMap's Spanish name and
     // GoWay's correction of it coexist; an importer refreshing the first has
     // no way to address the second.
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO places_names (id, place_id, language, name, source)
       VALUES ('n-1', 'p-1', 'es', 'Cafe Central', 'openstreetmap'),
              ('n-2', 'p-1', 'es', 'Café Central', 'goway')
     `;
-    const [row] = await suite!.client<{ count: string }[]>`
+    const [row] = await requireSuite(suite).client<{ count: string }[]>`
       SELECT count(*)::text AS count FROM places_names WHERE place_id = 'p-1' AND language = 'es'
     `;
     expect(row?.count).toBe('2');
@@ -282,7 +288,7 @@ describe('places_names', () => {
 
   it('refuses a second row for the same place, language and source', async () => {
     const message = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO places_names (id, place_id, language, name, source)
         VALUES ('n-dup', 'p-1', 'es', 'Otra cosa', 'openstreetmap')
       `,
@@ -291,7 +297,7 @@ describe('places_names', () => {
   });
 
   it('generates name_normalized without touching the name a contributor typed', async () => {
-    const [row] = await suite!.client<{ name: string; name_normalized: string }[]>`
+    const [row] = await requireSuite(suite).client<{ name: string; name_normalized: string }[]>`
       SELECT name, name_normalized FROM places_names WHERE id = 'n-2'
     `;
     expect(row?.name).toBe('Café Central');
@@ -305,7 +311,7 @@ describe('places_names', () => {
     // schema in front of them.
     for (const tag of ['ES', 'es_MX', 'es-mx', ' es']) {
       const message = await statementFailure(
-        () => suite!.client`
+        () => requireSuite(suite).client`
           INSERT INTO places_names (id, place_id, language, name, source)
           VALUES (${`n-bad-${tag}`}, 'p-1', ${tag}, 'X', 'openstreetmap')
         `,
@@ -321,7 +327,7 @@ describe('places_names', () => {
     // one.
     for (const key of ['left', 'right', 'signed', 'etymology']) {
       const message = await statementFailure(
-        () => suite!.client`
+        () => requireSuite(suite).client`
           INSERT INTO places_names (id, place_id, language, name, source)
           VALUES (${`n-key-${key}`}, 'p-1', ${key}, 'X', 'openstreetmap')
         `,
@@ -331,7 +337,7 @@ describe('places_names', () => {
   });
 
   it('accepts the shapes OpenStreetMap really carries', async () => {
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO places_names (id, place_id, language, name, source)
       VALUES ('n-ok-1', 'p-1', 'zh-Hant', 'X', 'openstreetmap'),
              ('n-ok-2', 'p-1', 'en-GB', 'X', 'openstreetmap'),
@@ -339,7 +345,7 @@ describe('places_names', () => {
              ('n-ok-4', 'p-1', 'ca-valencia', 'X', 'openstreetmap'),
              ('n-ok-5', 'p-1', 'zh-Hant-HK', 'X', 'openstreetmap')
     `;
-    const [row] = await suite!.client<{ count: string }[]>`
+    const [row] = await requireSuite(suite).client<{ count: string }[]>`
       SELECT count(*)::text AS count FROM places_names WHERE id LIKE 'n-ok-%'
     `;
     expect(row?.count).toBe('5');
@@ -347,7 +353,7 @@ describe('places_names', () => {
 
   it('refuses a blank name and a blank source', async () => {
     const blankName = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO places_names (id, place_id, language, name, source)
         VALUES ('n-blank', 'p-1', 'fr', '   ', 'openstreetmap')
       `,
@@ -355,7 +361,7 @@ describe('places_names', () => {
     expect(blankName).toContain('places_names_name_not_blank_check');
 
     const blankSource = await statementFailure(
-      () => suite!.client`
+      () => requireSuite(suite).client`
         INSERT INTO places_names (id, place_id, language, name, source)
         VALUES ('n-nosource', 'p-1', 'fr', 'Café', '  ')
       `,
@@ -371,8 +377,8 @@ describe('deleting a place', () => {
     // capability row would keep answering a `?capabilities=` filter for a place
     // that no longer exists, and a dangling name row would keep the place's
     // Spanish label alive after the place itself is gone.
-    await suite!.client`DELETE FROM places WHERE id = 'p-1'`;
-    const [counts] = await suite!.client<
+    await requireSuite(suite).client`DELETE FROM places WHERE id = 'p-1'`;
+    const [counts] = await requireSuite(suite).client<
       { sources: string; capabilities: string; claims: string; duplicates: string; names: string }[]
     >`
       SELECT
@@ -397,7 +403,7 @@ describe('merges', () => {
     // Read from `pg_constraint`, never from the declaration: a column-level
     // circular reference has been silently dropped from a generated migration
     // before, and the declaration would still read as intended.
-    const [constraint] = await suite!.client<{ target: string; on_delete: string }[]>`
+    const [constraint] = await requireSuite(suite).client<{ target: string; on_delete: string }[]>`
       SELECT confrelid::regclass::text AS target, confdeltype::text AS on_delete
       FROM pg_constraint
       WHERE conrelid = 'places'::regclass AND contype = 'f'
@@ -408,49 +414,51 @@ describe('merges', () => {
   });
 
   it('ties the merged status to its pointer, both ways, and never to itself', async () => {
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO places (id, name, latitude, longitude) VALUES ('m-1', 'Merged', 0, 0), ('m-2', 'Survivor', 0, 0)
     `;
     expect(
       await statementFailure(
-        () => suite!.client`UPDATE places SET status = 'merged' WHERE id = 'm-1'`,
-      ),
-    ).toContain('places_merged_into_check');
-    expect(
-      await statementFailure(
-        () => suite!.client`UPDATE places SET merged_into_place_id = 'm-2' WHERE id = 'm-1'`,
+        () => requireSuite(suite).client`UPDATE places SET status = 'merged' WHERE id = 'm-1'`,
       ),
     ).toContain('places_merged_into_check');
     expect(
       await statementFailure(
         () =>
-          suite!
+          requireSuite(suite)
+            .client`UPDATE places SET merged_into_place_id = 'm-2' WHERE id = 'm-1'`,
+      ),
+    ).toContain('places_merged_into_check');
+    expect(
+      await statementFailure(
+        () =>
+          requireSuite(suite)
             .client`UPDATE places SET status = 'merged', merged_into_place_id = 'm-1' WHERE id = 'm-1'`,
       ),
     ).toContain('places_merged_into_self_check');
     expect(
       await statementFailure(
         () =>
-          suite!
+          requireSuite(suite)
             .client`UPDATE places SET status = 'merged', merged_into_place_id = 'nowhere' WHERE id = 'm-1'`,
       ),
     ).toContain('places_merged_into_place_id_places_id_fk');
 
-    await suite!
+    await requireSuite(suite)
       .client`UPDATE places SET status = 'merged', merged_into_place_id = 'm-2' WHERE id = 'm-1'`;
     expect(
-      await statementFailure(() => suite!.client`DELETE FROM places WHERE id = 'm-2'`),
+      await statementFailure(() => requireSuite(suite).client`DELETE FROM places WHERE id = 'm-2'`),
     ).toContain('places_merged_into_place_id_places_id_fk');
   });
 });
 
 describe('place_revisions and place_reports', () => {
   it('holds a revision to the contract action and source sets, and its changes to an array', async () => {
-    await suite!
+    await requireSuite(suite)
       .client`INSERT INTO places (id, name, latitude, longitude) VALUES ('r-1', 'Revised', 0, 0)`;
     expect(
       await statementFailure(
-        () => suite!.client`
+        () => requireSuite(suite).client`
           INSERT INTO place_revisions (id, place_id, action, source, oxy_account_id, changes)
           VALUES ('rv-1', 'r-1', 'place_vandalised', 'api', 'acct', '[]'::jsonb)
         `,
@@ -458,7 +466,7 @@ describe('place_revisions and place_reports', () => {
     ).toContain('place_revisions_action_check');
     expect(
       await statementFailure(
-        () => suite!.client`
+        () => requireSuite(suite).client`
           INSERT INTO place_revisions (id, place_id, action, source, oxy_account_id, changes)
           VALUES ('rv-2', 'r-1', 'place_updated', 'import', 'acct', '[]'::jsonb)
         `,
@@ -466,7 +474,7 @@ describe('place_revisions and place_reports', () => {
     ).toContain('place_revisions_source_check');
     expect(
       await statementFailure(
-        () => suite!.client`
+        () => requireSuite(suite).client`
           INSERT INTO place_revisions (id, place_id, action, source, oxy_account_id, changes)
           VALUES ('rv-3', 'r-1', 'place_updated', 'api', 'acct', '{"name": "x"}'::jsonb)
         `,
@@ -475,17 +483,19 @@ describe('place_revisions and place_reports', () => {
   });
 
   it('resolves a report all at once — when, how and by whom — or not at all', async () => {
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, reason) VALUES ('rp-1', 'r-1', 'person-a', 'spam')
     `;
     expect(
       await statementFailure(
-        () => suite!.client`UPDATE place_reports SET resolved_at = now() WHERE id = 'rp-1'`,
+        () =>
+          requireSuite(suite)
+            .client`UPDATE place_reports SET resolved_at = now() WHERE id = 'rp-1'`,
       ),
     ).toContain('place_reports_resolved_check');
     expect(
       await statementFailure(
-        () => suite!.client`
+        () => requireSuite(suite).client`
           UPDATE place_reports SET resolved_at = now(), resolution = 'ignored', resolved_by_oxy_user_id = 'op' WHERE id = 'rp-1'
         `,
       ),
@@ -493,7 +503,7 @@ describe('place_revisions and place_reports', () => {
     // A second OPEN report by the same person about the same place is refused.
     expect(
       await statementFailure(
-        () => suite!.client`
+        () => requireSuite(suite).client`
           INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, reason) VALUES ('rp-2', 'r-1', 'person-a', 'privacy')
         `,
       ),
@@ -501,17 +511,17 @@ describe('place_revisions and place_reports', () => {
   });
 
   it('keeps one open report per person per SUBJECT: the place, a gallery item or a review', async () => {
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO place_media (id, place_id, oxy_file_id, oxy_link_place_id, kind, contributor_oxy_account_id, verification, position)
       VALUES ('pm-1', 'r-1', 'file-1', 'r-1', 'photo', 'person-b', 'community_reported', 0)
     `;
     // About the item, beside the open report about the place: a different subject.
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, media_id, reason) VALUES ('rp-3', 'r-1', 'person-a', 'pm-1', 'offensive')
     `;
     expect(
       await statementFailure(
-        () => suite!.client`
+        () => requireSuite(suite).client`
           INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, media_id, reason) VALUES ('rp-4', 'r-1', 'person-a', 'pm-1', 'spam')
         `,
       ),
@@ -519,7 +529,7 @@ describe('place_revisions and place_reports', () => {
     // A report names at most one subject.
     expect(
       await statementFailure(
-        () => suite!.client`
+        () => requireSuite(suite).client`
           INSERT INTO place_reports (id, place_id, reporter_oxy_user_id, media_id, review_id, reason)
           VALUES ('rp-5', 'r-1', 'person-c', 'pm-1', 'nope', 'spam')
         `,

@@ -19,6 +19,7 @@ import {
   sceneAssetKey,
 } from '../sceneAssetStore';
 import { createSqsWorkQueue, QueueRequestError } from '../workQueue';
+import { defined } from '../../__tests__/defined';
 
 const credentials = async () => ({
   accessKeyId: 'AKIAEXAMPLE',
@@ -77,9 +78,9 @@ describe('SQS work queue', () => {
     expect(call?.headers['content-type']).toBe('application/x-amz-json-1.0');
     expect(call?.headers.authorization).toContain('/eu-west-1/sqs/aws4_request');
     expect(call?.headers['x-amz-content-sha256']).toBe(
-      createHash('sha256').update(call!.body).digest('hex'),
+      createHash('sha256').update(defined(call).body).digest('hex'),
     );
-    expect(JSON.parse(call!.body)).toEqual({
+    expect(JSON.parse(defined(call).body)).toEqual({
       QueueUrl: queueUrl,
       MessageBody: '{"jobId":"x"}',
       MessageAttributes: { attempt: { DataType: 'Number', StringValue: '2' } },
@@ -139,7 +140,7 @@ describe('SQS work queue', () => {
     });
     const [message] = await queue.receive({ maxMessages: 50, waitSeconds: 30 });
     expect(message).toMatchObject({ receiveCount: 3, attributes: { attempt: '2' } });
-    expect(JSON.parse(calls[0]!.body)).toMatchObject({
+    expect(JSON.parse(defined(calls[0]).body)).toMatchObject({
       MaxNumberOfMessages: 10,
       WaitTimeSeconds: 20,
     });
@@ -227,7 +228,7 @@ describe('job object store', () => {
       now,
     });
     expect(await store.list('jobs/j/', 100)).toEqual(['jobs/j/a', 'jobs/j/b&c']);
-    expect(new URL(calls[1]!.url).searchParams.get('continuation-token')).toBe('t2');
+    expect(new URL(defined(calls[1]).url).searchParams.get('continuation-token')).toBe('t2');
   });
 });
 
@@ -263,7 +264,7 @@ describe('scene asset store', () => {
       sha256: digest,
       byteSize: 42,
     });
-    const copy = calls[0]!;
+    const copy = defined(calls[0]);
     expect(copy.url).toBe(`https://goway-scenes.s3.eu-west-1.amazonaws.com/${key}`);
     expect(copy.headers['x-amz-copy-source']).toBe('/goway-temp/jobs/j/attempt-1/scene.spz');
     expect(copy.headers['cache-control']).toBe(IMMUTABLE_CACHE_CONTROL);

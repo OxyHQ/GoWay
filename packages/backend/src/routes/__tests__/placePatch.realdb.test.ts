@@ -13,6 +13,7 @@ import type { ModerationPlaceRevision, Place } from '@goway/contracts';
 import { createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import { listPlaceRevisions } from '../../db/places/revisions';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -28,6 +29,7 @@ import {
 } from '../../__tests__/httpHarness';
 import { apiAuthor, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createPlacesRouter } from '../places';
+import { defined } from '../../__tests__/defined';
 
 const CONTRIBUTOR: PlaceActor = {
   author: apiAuthor('person-contributor'),
@@ -59,7 +61,7 @@ afterAll(async () => {
 /** A place with every clearable field filled. */
 async function fullPlace(name: string): Promise<Place> {
   return createPlace(
-    suite!.db,
+    requireSuite(suite).db,
     {
       name,
       location: { latitude: 41.3917, longitude: 2.1649 },
@@ -87,8 +89,10 @@ async function patch(placeId: string, body: unknown) {
 }
 
 async function latestRevision(placeId: string): Promise<ModerationPlaceRevision> {
-  const [latest] = await listPlaceRevisions(suite!.db, placeId, 'moderation', { limit: 1 });
-  return latest!.item;
+  const latest = defined(
+    (await listPlaceRevisions(requireSuite(suite).db, placeId, 'moderation', { limit: 1 }))[0],
+  );
+  return latest.item;
 }
 
 describe('PATCH /places/{placeId} as a merge patch', () => {

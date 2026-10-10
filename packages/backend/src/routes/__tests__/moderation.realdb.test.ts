@@ -28,6 +28,7 @@ import {
   type PlaceActor,
 } from '../../db/places/placesRepository';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -60,7 +61,7 @@ let suite: SuiteDatabase | null = null;
 let api: TestApi;
 
 async function place(name: string): Promise<Place> {
-  return createPlace(suite!.db, { name, location: GRACIA }, CONTRIBUTOR);
+  return createPlace(requireSuite(suite).db, { name, location: GRACIA }, CONTRIBUTOR);
 }
 
 async function moderationHistory(placeId: string): Promise<ModerationPlaceRevisionPage> {
@@ -362,7 +363,7 @@ describe('Oxy verification and the place state', () => {
 
 describe('duplicate candidates', () => {
   async function candidateBetween(a: Place, b: Place): Promise<DuplicateCandidate> {
-    await recordDuplicateCandidate(suite!.db, a.id, b.id, 'manual_report');
+    await recordDuplicateCandidate(requireSuite(suite).db, a.id, b.id, 'manual_report');
     const { body } = await api.call<DuplicateCandidatePage>(
       'GET',
       '/moderation/duplicates?limit=100',
@@ -404,7 +405,7 @@ describe('duplicate candidates', () => {
 
   it('merges the absorbed place into the survivor, keeping provenance and redirecting its id', async () => {
     const survivor = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Forn Central',
         location: GRACIA,
@@ -413,7 +414,7 @@ describe('duplicate candidates', () => {
       CONTRIBUTOR,
     );
     const absorbed = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Forn Central',
         location: GRACIA,
@@ -423,10 +424,10 @@ describe('duplicate candidates', () => {
       },
       CONTRIBUTOR,
     );
-    await applyPlaceNames(suite!.db, absorbed.id, 'openstreetmap', [
+    await applyPlaceNames(requireSuite(suite).db, absorbed.id, 'openstreetmap', [
       { language: 'es', name: 'Horno Central' },
     ]);
-    await createClaim(suite!.db, {
+    await createClaim(requireSuite(suite).db, {
       placeId: absorbed.id,
       oxyAccountId: 'org-forn',
       role: 'owner',
@@ -472,12 +473,12 @@ describe('duplicate candidates', () => {
     );
     expect(read.names?.find((name) => name.language === 'es')?.name).toBe('Horno Central');
     expect(read.capabilities.map((capability) => capability.key)).toContain(FAIRCOIN);
-    const claims = await suite!.client<
+    const claims = await requireSuite(suite).client<
       { place_id: string }[]
     >`SELECT place_id FROM places_claims WHERE oxy_account_id = 'org-forn'`;
     expect(claims.map((row) => row.place_id)).toEqual([survivor.id]);
     // The losing Catalan name was not destroyed: it stays with the absorbed place.
-    const kept = await suite!.client<
+    const kept = await requireSuite(suite).client<
       { name: string }[]
     >`SELECT name FROM places_names WHERE place_id = ${absorbed.id}`;
     expect(kept.map((row) => row.name)).toEqual(['Forn Central (absorbed)']);

@@ -37,6 +37,7 @@ import {
 import { loadCategories } from '../../db/categories/categoryRepository';
 import { placeCategories, placeCategoryEvents, placeCategoryLabels } from '../../db/schema';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -58,6 +59,7 @@ import { NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createCategoriesRouter } from '../categories';
 import { createModerationRouter } from '../moderation';
 import { createPlacesRouter } from '../places';
+import { defined } from '../../__tests__/defined';
 
 const OPERATOR = session('person-mod');
 const CONTRIBUTOR = session('person-contributor');
@@ -99,8 +101,8 @@ async function publicCategory(key: string, locale?: string) {
 }
 
 async function events(key: string) {
-  return suite!.db
-    .select({
+  return requireSuite(suite)
+    .db.select({
       action: placeCategoryEvents.action,
       changes: placeCategoryEvents.changes,
       by: placeCategoryEvents.operatedByOxyUserId,
@@ -386,9 +388,9 @@ describe('places and categories', () => {
   it('answers a write a stale catalog let through with the database’s refusal, as the same 422', async () => {
     // Prime this process's catalog, then deprecate the way ANOTHER process
     // would: in the database, without touching this one's catalog.
-    await categoryCatalog(suite!.db);
-    await suite!.db
-      .update(placeCategories)
+    await categoryCatalog(requireSuite(suite).db);
+    await requireSuite(suite)
+      .db.update(placeCategories)
       .set({ status: 'deprecated' })
       .where(eq(placeCategories.key, 'food.ice_cream'));
 
@@ -398,15 +400,15 @@ describe('places and categories', () => {
       'validation_failed',
       'inactive_category',
     ]);
-    categoryCatalogs.invalidate(suite!.db);
+    categoryCatalogs.invalidate(requireSuite(suite).db);
     expect((await createPlace(['food.ice_cream'])).body.error.details?.issue).toBe(
       'deprecated_category',
     );
-    await suite!.db
-      .update(placeCategories)
+    await requireSuite(suite)
+      .db.update(placeCategories)
       .set({ status: 'active' })
       .where(eq(placeCategories.key, 'food.ice_cream'));
-    categoryCatalogs.invalidate(suite!.db);
+    categoryCatalogs.invalidate(requireSuite(suite).db);
   });
 });
 
@@ -414,12 +416,13 @@ describe('the catalog', () => {
   it('serves its copy until it expires, then reads the database again', async () => {
     let now = 0;
     const cache = createCategoryCatalogCache({ ttlMs: 1_000, now: () => now });
-    const label = async () => (await cache.get(suite!.db)).taxonomy.label('finance.atm');
+    const label = async () =>
+      (await cache.get(requireSuite(suite).db)).taxonomy.label('finance.atm');
 
     expect(await label()).toBe('Cash machine');
     // Another process's moderator, as far as this cache can tell.
-    await suite!.db
-      .update(placeCategoryLabels)
+    await requireSuite(suite)
+      .db.update(placeCategoryLabels)
       .set({ label: 'ATM' })
       .where(
         and(
@@ -431,12 +434,12 @@ describe('the catalog', () => {
     expect(await label()).toBe('Cash machine');
     now = 1_000;
     expect(await label()).toBe('ATM');
-    cache.invalidate(suite!.db);
+    cache.invalidate(requireSuite(suite).db);
     expect(await label()).toBe('ATM');
   });
 
   it('is a depth-first walk with siblings by position', async () => {
-    const keys = (await loadCategories(suite!.db)).map((category) => category.key);
+    const keys = (await loadCategories(requireSuite(suite).db)).map((category) => category.key);
     expect(keys.indexOf('food.churreria')).toBeGreaterThan(keys.indexOf('food.confectionery'));
     expect(keys.indexOf('food.churreria.madrid')).toBe(keys.indexOf('food.churreria') + 1);
     expect(keys.indexOf('shop')).toBe(keys.indexOf('food.churreria.madrid') + 1);
@@ -446,21 +449,21 @@ describe('the catalog', () => {
 describe('the OpenStreetMap import', () => {
   it('files elements through the database mapping, and never under a deprecated category', async () => {
     const tags = (entries: Record<string, string>) => new Map(Object.entries(entries));
-    const mapping = await categoryCatalog(suite!.db);
+    const mapping = await categoryCatalog(requireSuite(suite).db);
     expect(osmCategories(tags({ shop: 'churros' }), mapping)).toEqual(['food.churreria']);
 
     // Deprecated: the `shop=*` fallback files it instead.
     await api.call('PATCH', '/moderation/categories/food.churreria', OPERATOR, {
       status: 'deprecated',
     });
-    const deprecated = await categoryCatalog(suite!.db);
+    const deprecated = await categoryCatalog(requireSuite(suite).db);
     expect(osmCategories(tags({ shop: 'churros' }), deprecated)).toEqual(['shop']);
     await api.call('PATCH', '/moderation/categories/food.churreria', OPERATOR, {
       status: 'active',
     });
 
     // And the write lands through the trigger.
-    const fresh = await categoryCatalog(suite!.db);
+    const fresh = await categoryCatalog(requireSuite(suite).db);
     const element = toImportedPlace(
       'node',
       991_001,
@@ -471,7 +474,7 @@ describe('the OpenStreetMap import', () => {
     );
     expect(element?.columns.categories).toEqual(['food.churreria']);
     const stats = emptyWriteStats();
-    await writePlaceBatch(suite!.db, [element!], new Date(), stats);
+    await writePlaceBatch(requireSuite(suite).db, [defined(element)], new Date(), stats);
     expect(stats.placesInserted).toBe(1);
   });
 

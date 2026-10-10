@@ -30,6 +30,7 @@ import type {
 } from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -50,6 +51,7 @@ import { apiAuthor, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createModerationRouter } from '../moderation';
 import { createPlaceReviewsRouter } from '../placeReviews';
 import { createPlacesRouter } from '../places';
+import { defined } from '../../__tests__/defined';
 
 const CONTRIBUTOR: PlaceActor = {
   author: apiAuthor('person-contributor'),
@@ -93,45 +95,58 @@ async function ratingOf(placeId: string): Promise<Place['rating']> {
 
 /** The aggregate row, and the same figures computed afresh from the published reviews. */
 async function aggregateAndTruth(placeId: string) {
-  const [stored] = await suite!.client<
-    { review_count: number; rating_average: string | null; rating1: number; rating5: number }[]
-  >`
+  const stored = defined(
+    (
+      await requireSuite(suite).client<
+        { review_count: number; rating_average: string | null; rating1: number; rating5: number }[]
+      >`
     SELECT review_count, rating_average, rating1, rating5 FROM place_review_aggregates WHERE place_id = ${placeId}
-  `;
-  const [truth] = await suite!.client<
-    { count: number; average: string | null; ones: number; fives: number }[]
-  >`
+  `
+    )[0],
+  );
+  const truth = defined(
+    (
+      await requireSuite(suite).client<
+        { count: number; average: string | null; ones: number; fives: number }[]
+      >`
     SELECT count(*)::int AS count, avg(rating)::numeric(4,3) AS average,
            (count(*) FILTER (WHERE rating = 1))::int AS ones, (count(*) FILTER (WHERE rating = 5))::int AS fives
     FROM place_reviews WHERE place_id = ${placeId} AND status = 'published'
-  `;
+  `
+    )[0],
+  );
   return {
     stored: {
-      count: stored!.review_count,
-      average: stored!.rating_average,
-      ones: stored!.rating1,
-      fives: stored!.rating5,
+      count: stored.review_count,
+      average: stored.rating_average,
+      ones: stored.rating1,
+      fives: stored.rating5,
     },
-    truth: { count: truth!.count, average: truth!.average, ones: truth!.ones, fives: truth!.fives },
+    truth: { count: truth.count, average: truth.average, ones: truth.ones, fives: truth.fives },
   };
 }
 
 async function reviewCount(placeId: string): Promise<number> {
-  const [row] = await suite!.client<
-    { count: string }[]
-  >`SELECT count(*) FROM place_reviews WHERE place_id = ${placeId}`;
-  return Number(row!.count);
+  const row = defined(
+    (
+      await requireSuite(suite).client<
+        { count: string }[]
+      >`SELECT count(*) FROM place_reviews WHERE place_id = ${placeId}`
+    )[0],
+  );
+  return Number(row.count);
 }
 
 /** Make the database refuse to record one revision action, for the length of `run`. */
 async function refusingRevisions(action: string, run: () => Promise<void>): Promise<void> {
-  await suite!.client.unsafe(
+  await requireSuite(suite).client.unsafe(
     `ALTER TABLE place_revisions ADD CONSTRAINT test_refuse_action CHECK (action <> '${action}') NOT VALID`,
   );
   try {
     await run();
   } finally {
-    await suite!.client`ALTER TABLE place_revisions DROP CONSTRAINT test_refuse_action`;
+    await requireSuite(suite)
+      .client`ALTER TABLE place_revisions DROP CONSTRAINT test_refuse_action`;
   }
 }
 
@@ -252,7 +267,7 @@ describe("a person's review", () => {
     ).toBe(204);
     expect(await reviewsOf(open.id)).toEqual([]);
     expect(await ratingOf(open.id)).toBeUndefined();
-    const [row] = await suite!.client<
+    const [row] = await requireSuite(suite).client<
       { status: string; title: string | null; body: string | null }[]
     >`
       SELECT status, title, body FROM place_reviews WHERE place_id = ${open.id} AND author_oxy_user_id = 'person-ana'
@@ -313,7 +328,11 @@ describe('the rating is derived, never incremented', () => {
   let target: Place;
 
   beforeAll(async () => {
-    target = await createPlace(suite!.db, { name: 'Bar del Mig', location: GRACIA }, CONTRIBUTOR);
+    target = await createPlace(
+      requireSuite(suite).db,
+      { name: 'Bar del Mig', location: GRACIA },
+      CONTRIBUTOR,
+    );
     for (const [person, rating] of [
       ['person-r1', 5],
       ['person-r2', 4],
@@ -333,10 +352,10 @@ describe('the rating is derived, never incremented', () => {
     await put(target.id, session('person-r3'), { rating: 3 });
     expect(await ratingOf(target.id)).toEqual({ average: 4, count: 3 });
 
-    const [lowest] = await reviewsOf(target.id, '?sort=lowest');
+    const lowest = defined((await reviewsOf(target.id, '?sort=lowest'))[0]);
     expect(
       (
-        await api.call('PATCH', `/moderation/places/${target.id}/reviews/${lowest!.id}`, OPERATOR, {
+        await api.call('PATCH', `/moderation/places/${target.id}/reviews/${lowest.id}`, OPERATOR, {
           status: 'hidden',
         })
       ).status,
@@ -348,7 +367,7 @@ describe('the rating is derived, never incremented', () => {
 
     expect(
       (
-        await api.call('PATCH', `/moderation/places/${target.id}/reviews/${lowest!.id}`, OPERATOR, {
+        await api.call('PATCH', `/moderation/places/${target.id}/reviews/${lowest.id}`, OPERATOR, {
           status: 'published',
         })
       ).status,
@@ -362,16 +381,16 @@ describe('the rating is derived, never incremented', () => {
   });
 
   it("keeps an author's edit from undoing an operator's hide", async () => {
-    const [review] = (await reviewsOf(target.id)).filter(
-      (entry) => entry.authorOxyUserId === 'person-r2',
+    const review = defined(
+      (await reviewsOf(target.id)).filter((entry) => entry.authorOxyUserId === 'person-r2')[0],
     );
-    await api.call('PATCH', `/moderation/places/${target.id}/reviews/${review!.id}`, OPERATOR, {
+    await api.call('PATCH', `/moderation/places/${target.id}/reviews/${review.id}`, OPERATOR, {
       status: 'hidden',
     });
     const rewritten = await put(target.id, session('person-r2'), { rating: 5 });
     expect(rewritten.status).toBe(200);
     expect(rewritten.body.status).toBe('hidden');
-    expect((await reviewsOf(target.id)).some((entry) => entry.id === review!.id)).toBe(false);
+    expect((await reviewsOf(target.id)).some((entry) => entry.id === review.id)).toBe(false);
     expect((await aggregateAndTruth(target.id)).stored).toEqual(
       (await aggregateAndTruth(target.id)).truth,
     );
@@ -383,7 +402,7 @@ describe('the three orders', () => {
 
   beforeAll(async () => {
     ordered = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Llibreria Oberta', location: GRACIA },
       CONTRIBUTOR,
     );
@@ -437,7 +456,7 @@ describe('the three orders', () => {
       (
         await api.call(
           'GET',
-          `/places/${ordered.id}/reviews?sort=newest&cursor=${body.nextCursor!}`,
+          `/places/${ordered.id}/reviews?sort=newest&cursor=${defined(body.nextCursor)}`,
         )
       ).status,
     ).toBe(400);
@@ -474,7 +493,7 @@ describe("the business's reply", () => {
     );
     expect(status).toBe(200);
     expect(body.reply).toEqual({ body: 'Gràcies per venir!', repliedAt: expect.any(String) });
-    const listed = (await reviewsOf(cafe.id)).find((entry) => entry.id === review.id)!;
+    const listed = defined((await reviewsOf(cafe.id)).find((entry) => entry.id === review.id));
     expect(listed.reply?.body).toBe('Gràcies per venir!');
     expect(JSON.stringify(listed)).not.toContain('person-owner');
     expect(JSON.stringify(listed)).not.toContain('org-cafe');
@@ -579,10 +598,10 @@ describe('history', () => {
 
 describe('reports', () => {
   it('files a report about one published review', async () => {
-    const [review] = await reviewsOf(open.id);
+    const review = defined((await reviewsOf(open.id))[0]);
     const filed = await api.call<PlaceReport>(
       'POST',
-      `/places/${open.id}/reviews/${review!.id}/reports`,
+      `/places/${open.id}/reviews/${review.id}/reports`,
       session('person-bob'),
       {
         reason: 'conflict_of_interest',
@@ -590,7 +609,7 @@ describe('reports', () => {
       },
     );
     expect(filed.status).toBe(201);
-    expect(filed.body).toMatchObject({ reviewId: review!.id, reason: 'conflict_of_interest' });
+    expect(filed.body).toMatchObject({ reviewId: review.id, reason: 'conflict_of_interest' });
     expect(
       (
         await api.call(

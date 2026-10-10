@@ -17,6 +17,7 @@ import type { ProviderCandidate, SearchProvider } from '../provider';
 import { createSearchService, placeMatchesText, type SearchService } from '../searchService';
 import { UpstreamError } from '../upstream';
 import { buildPlace, fakeGateway } from './fixtures';
+import { defined } from '../../__tests__/defined';
 
 const CONFIG = { cacheMaxEntries: 50, cacheTtlSeconds: 60, placesRadiusMeters: 5_000 };
 
@@ -702,7 +703,7 @@ describe('category filters the geocoders cannot express', () => {
     const catalog = catalogOf([
       ...seededCategories(),
       {
-        ...seededCategories()[0]!,
+        ...defined(seededCategories()[0]),
         key: 'food.supper_club',
         parent: 'food',
         osmTags: [],

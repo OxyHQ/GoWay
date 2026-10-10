@@ -11,6 +11,7 @@ import {
   sourceDataOf,
   toImportedPlace,
 } from '../placeRecord';
+import { defined } from '../../../__tests__/defined';
 
 function tags(entries: Record<string, string>): Map<string, string> {
   return new Map(Object.entries(entries));
@@ -160,16 +161,17 @@ describe('roundCoordinate and sourceDataOf', () => {
   });
 
   test('records every raw tag and exactly the normalized values that went into the columns', () => {
-    const place = toImportedPlace(
-      'node',
-      7,
-      41.1,
-      2.2,
-      tags({ amenity: 'cafe', name: 'Bar Pepe', 'payment:cash': 'yes', fixme: 'check hours' }),
-      SEEDED_CATALOG,
+    const place = defined(
+      toImportedPlace(
+        'node',
+        7,
+        41.1,
+        2.2,
+        tags({ amenity: 'cafe', name: 'Bar Pepe', 'payment:cash': 'yes', fixme: 'check hours' }),
+        SEEDED_CATALOG,
+      ),
     );
-    expect(place).not.toBeNull();
-    const stated = sourceDataOf(place!);
+    const stated = sourceDataOf(place);
     expect(stated.v).toBe(2);
     // EVERY tag, including the ones no mapping reads today.
     expect(stated.tags).toEqual({
@@ -179,8 +181,8 @@ describe('roundCoordinate and sourceDataOf', () => {
       fixme: 'check hours',
     });
     expect(stated.normalized.name).toBe('Bar Pepe');
-    expect(stated.normalized.latitude).toBe(place!.columns.latitude);
-    expect(stated.normalized.categories).toEqual(place!.columns.categories);
+    expect(stated.normalized.latitude).toBe(place.columns.latitude);
+    expect(stated.normalized.categories).toEqual(place.columns.categories);
     expect(stated.normalized.capabilities).toEqual({ 'payments.cash': true });
   });
 });
@@ -213,36 +215,38 @@ describe('what the tags say beyond the name and the address', () => {
   });
 
   test('turns accessibility, payment, amenity, food, brand and social tags into typed capabilities', () => {
-    const place = toImportedPlace(
-      'node',
-      1,
-      41.38,
-      2.17,
-      tags({
-        amenity: 'restaurant',
-        name: 'Can Tapes',
-        wheelchair: 'limited',
-        'toilets:wheelchair': 'no',
-        'payment:cash': 'yes',
-        'payment:credit_cards': 'yes',
-        'payment:contactless': 'no',
-        internet_access: 'wlan',
-        outdoor_seating: 'yes',
-        takeaway: 'only',
-        reservation: 'recommended',
-        cuisine: 'tapas;Spanish;unheard_of',
-        'diet:vegan': 'yes',
-        'diet:gluten_free': 'only',
-        'diet:halal': 'no',
-        'brand:wikidata': 'Q123',
-        'contact:instagram': '@cantapes',
-        'contact:whatsapp': '+34 600 11 22 33',
-      }),
-      SEEDED_CATALOG,
+    const place = defined(
+      toImportedPlace(
+        'node',
+        1,
+        41.38,
+        2.17,
+        tags({
+          amenity: 'restaurant',
+          name: 'Can Tapes',
+          wheelchair: 'limited',
+          'toilets:wheelchair': 'no',
+          'payment:cash': 'yes',
+          'payment:credit_cards': 'yes',
+          'payment:contactless': 'no',
+          internet_access: 'wlan',
+          outdoor_seating: 'yes',
+          takeaway: 'only',
+          reservation: 'recommended',
+          cuisine: 'tapas;Spanish;unheard_of',
+          'diet:vegan': 'yes',
+          'diet:gluten_free': 'only',
+          'diet:halal': 'no',
+          'brand:wikidata': 'Q123',
+          'contact:instagram': '@cantapes',
+          'contact:whatsapp': '+34 600 11 22 33',
+        }),
+        SEEDED_CATALOG,
+      ),
     );
     expect(
       Object.fromEntries(
-        place!.capabilities.map((capability) => [capability.key, capability.value]),
+        place.capabilities.map((capability) => [capability.key, capability.value]),
       ),
     ).toEqual({
       'accessibility.wheelchair': 'limited',

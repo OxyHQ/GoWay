@@ -157,9 +157,10 @@ export async function refreshCoverage(
   const kept: string[] = [];
 
   for (const [cell, facts] of cells) {
-    const cellScenes = [...facts.scenes].flatMap((id) =>
-      sceneById.has(id) ? [sceneById.get(id)!] : [],
-    );
+    const cellScenes = [...facts.scenes].flatMap((id) => {
+      const scene = sceneById.get(id);
+      return scene ? [scene] : [];
+    });
     const published = cellScenes.find(
       (scene) => scene.currentVersionId !== null && scene.state !== 'disabled',
     );

@@ -33,6 +33,7 @@ import type { AddressInfo } from 'node:net';
 import type { Place, PlacePage, PlaceWithDistancePage } from '@goway/contracts';
 import { createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -97,14 +98,14 @@ function asUser(user: string): RequestInit {
  * of the suite.
  */
 async function tableCounts(): Promise<Record<string, number>> {
-  const tables = await suite!.client<{ tablename: string }[]>`
+  const tables = await requireSuite(suite).client<{ tablename: string }[]>`
     SELECT tablename FROM pg_tables
     WHERE schemaname = 'public' AND tablename <> 'spatial_ref_sys'
     ORDER BY tablename
   `;
   const counts: Record<string, number> = {};
   for (const { tablename } of tables) {
-    const [row] = await suite!.client.unsafe<{ count: number }[]>(
+    const [row] = await requireSuite(suite).client.unsafe<{ count: number }[]>(
       `SELECT count(*)::int AS count FROM "${tablename}"`,
     );
     counts[tablename] = row?.count ?? -1;
@@ -195,14 +196,14 @@ describe('discovering merchants near a user', () => {
     // Row counts alone would miss a coordinate written INTO an existing row —
     // a "last searched near" column on a place, say. The position used above is
     // deliberately distinctive so it can be looked for by value.
-    const [places] = await suite!.client<{ count: number }[]>`
+    const [places] = await requireSuite(suite).client<{ count: number }[]>`
       SELECT count(*)::int AS count FROM places
       WHERE latitude = ${USER_POSITION.latitude} OR longitude = ${USER_POSITION.longitude}
     `;
     expect(places?.count).toBe(0);
 
     // And nothing anywhere in the JSON columns that could carry one unnoticed.
-    const [blobs] = await suite!.client<{ count: number }[]>`
+    const [blobs] = await requireSuite(suite).client<{ count: number }[]>`
       SELECT count(*)::int AS count FROM places
       WHERE coalesce(geometry::text, '') LIKE ${`%${String(USER_POSITION.latitude)}%`}
          OR coalesce(opening_hours::text, '') LIKE ${`%${String(USER_POSITION.latitude)}%`}

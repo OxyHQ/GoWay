@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { eq } from 'drizzle-orm';
 import {
+  requireSuite,
   createSuiteDatabase,
   destroySuiteDatabase,
   SUITE_SETUP_TIMEOUT_MS,
@@ -30,7 +31,7 @@ const claimOptions = { now, limit: 100, retryAfterSeconds: 300 };
 const runOptions = { now: () => now };
 
 async function fixture(stored = true) {
-  const db = suite!.db;
+  const db = requireSuite(suite).db;
   const owner = randomUUID();
   const session = await createCaptureSession(db, owner, {
     source: 'library',
@@ -74,15 +75,15 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   // These tables belong to this suite's disposable database only.
-  await suite!.db.delete(captureAssets);
-  await suite!.db.delete(captureMediaObjects);
-  await suite!.db.delete(captureSessions);
+  await requireSuite(suite).db.delete(captureAssets);
+  await requireSuite(suite).db.delete(captureMediaObjects);
+  await requireSuite(suite).db.delete(captureSessions);
 });
 
 describe('temporary capture expiry', () => {
   it('deletes shared bytes once, preserves provenance, and closes every reconstruction gate', async () => {
     const f = await fixture();
-    const db = suite!.db;
+    const db = requireSuite(suite).db;
     // A second contribution referencing the same object, then expiry again.
     const second = await registerAsset(db, f.registration, f.input, { keyPrefix: 'captures' });
     await db
@@ -136,7 +137,7 @@ describe('temporary capture expiry', () => {
     const f = await fixture(false);
     const keys: string[] = [];
     await sweepExpiredCaptures(
-      suite!.db,
+      requireSuite(suite).db,
       {
         deleteObject: async (key) => {
           keys.push(key);
@@ -145,19 +146,21 @@ describe('temporary capture expiry', () => {
       runOptions,
     );
     expect(keys).toEqual([f.objectKey]);
-    const [object] = await suite!.db
-      .select()
+    const [object] = await requireSuite(suite)
+      .db.select()
       .from(captureMediaObjects)
       .where(eq(captureMediaObjects.id, f.object.id));
     expect(object?.storageState).toBe('deleted');
     expect(object?.storedAt).toBeNull();
-    expect((await findOwnedAsset(suite!.db, f.asset.id, f.owner))?.state).toBe('abandoned');
+    expect((await findOwnedAsset(requireSuite(suite).db, f.asset.id, f.owner))?.state).toBe(
+      'abandoned',
+    );
   });
 
   it('does not treat early video eligibility as proof of safely persisted keyframes', async () => {
     const f = await fixture();
-    await suite!.db
-      .update(captureMediaObjects)
+    await requireSuite(suite)
+      .db.update(captureMediaObjects)
       .set({
         retentionClass: 'raw_video',
         retentionReason: 'derivation_source',
@@ -166,7 +169,7 @@ describe('temporary capture expiry', () => {
       })
       .where(eq(captureMediaObjects.id, f.object.id));
     const result = await sweepExpiredCaptures(
-      suite!.db,
+      requireSuite(suite).db,
       {
         deleteObject: async () => {
           throw new Error('still needed');
@@ -179,17 +182,17 @@ describe('temporary capture expiry', () => {
 
   it('preserves protected inputs and active upload targets', async () => {
     const protectedInput = await fixture();
-    await suite!.db
-      .update(captureMediaObjects)
+    await requireSuite(suite)
+      .db.update(captureMediaObjects)
       .set({ expiresAt: later(86400), protectedUntil: later(3600) })
       .where(eq(captureMediaObjects.id, protectedInput.object.id));
     const uploading = await fixture(false);
-    await suite!.db
-      .update(captureMediaObjects)
+    await requireSuite(suite)
+      .db.update(captureMediaObjects)
       .set({ uploadIntentExpiresAt: later(60) })
       .where(eq(captureMediaObjects.id, uploading.object.id));
     const result = await sweepExpiredCaptures(
-      suite!.db,
+      requireSuite(suite).db,
       {
         deleteObject: async () => {
           throw new Error('must not delete');
@@ -203,26 +206,30 @@ describe('temporary capture expiry', () => {
   it('previews a bounded batch without changing rows or calling a store', async () => {
     const f = await fixture();
     await fixture();
-    const result = await sweepExpiredCaptures(suite!.db, null, {
+    const result = await sweepExpiredCaptures(requireSuite(suite).db, null, {
       ...runOptions,
       dryRun: true,
       limit: 1,
     });
     expect(result).toMatchObject({ dryRun: true, candidates: 1, declaredBytes: 100, deleted: 0 });
-    const [object] = await suite!.db
-      .select()
+    const [object] = await requireSuite(suite)
+      .db.select()
       .from(captureMediaObjects)
       .where(eq(captureMediaObjects.id, f.object.id));
     expect(object?.storageState).toBe('stored');
-    expect((await findOwnedAsset(suite!.db, f.asset.id, f.owner))?.state).toBe('uploaded');
-    await expect(sweepExpiredCaptures(suite!.db, null)).rejects.toThrow('configured object store');
+    expect((await findOwnedAsset(requireSuite(suite).db, f.asset.id, f.owner))?.state).toBe(
+      'uploaded',
+    );
+    await expect(sweepExpiredCaptures(requireSuite(suite).db, null)).rejects.toThrow(
+      'configured object store',
+    );
   });
 
   it('keeps failed intents retryable, waits before retrying, and continues the batch', async () => {
     const f = await fixture();
     await fixture();
     const failed = await sweepExpiredCaptures(
-      suite!.db,
+      requireSuite(suite).db,
       {
         deleteObject: async (key) => {
           if (key === f.objectKey) throw new Error('sensitive provider URL');
@@ -232,43 +239,51 @@ describe('temporary capture expiry', () => {
     );
     expect(failed).toMatchObject({ candidates: 2, deleted: 1, failed: 1 });
     expect(JSON.stringify(failed)).not.toContain('sensitive');
-    const [object] = await suite!.db
-      .select()
+    const [object] = await requireSuite(suite)
+      .db.select()
       .from(captureMediaObjects)
       .where(eq(captureMediaObjects.id, f.object.id));
     expect(object?.deletedAt).toBeNull();
     expect(object?.storageState).toBe('deleting');
     const store = { deleteObject: async () => {} };
-    expect((await sweepExpiredCaptures(suite!.db, store, runOptions)).candidates).toBe(0);
-    const retried = await sweepExpiredCaptures(suite!.db, store, { now: () => later(300) });
+    expect((await sweepExpiredCaptures(requireSuite(suite).db, store, runOptions)).candidates).toBe(
+      0,
+    );
+    const retried = await sweepExpiredCaptures(requireSuite(suite).db, store, {
+      now: () => later(300),
+    });
     expect(retried).toMatchObject({ candidates: 1, deleted: 1, failed: 0 });
   });
 
   it('recovers a crash after intent or S3 success and writes a tombstone only once', async () => {
     const f = await fixture();
-    await claimCaptureCleanup(suite!.db, claimOptions);
+    await claimCaptureCleanup(requireSuite(suite).db, claimOptions);
     // No completion: the process died. The next DELETE may find no object.
     const result = await sweepExpiredCaptures(
-      suite!.db,
+      requireSuite(suite).db,
       { deleteObject: async () => {} },
       { now: () => later(300) },
     );
     expect(result.deleted).toBe(1);
-    expect(await completeCaptureCleanup(suite!.db, f.object.id, later(301))).toBe(false);
+    expect(await completeCaptureCleanup(requireSuite(suite).db, f.object.id, later(301))).toBe(
+      false,
+    );
   });
 
   it('never revives an object while its DELETE is in flight', async () => {
     const f = await fixture(false);
     const result = await sweepExpiredCaptures(
-      suite!.db,
+      requireSuite(suite).db,
       {
         deleteObject: async () => {
           await expect(
-            registerAsset(suite!.db, f.registration, f.input, { keyPrefix: 'captures' }),
+            registerAsset(requireSuite(suite).db, f.registration, f.input, {
+              keyPrefix: 'captures',
+            }),
           ).rejects.toThrow('being removed');
           // The HEAD may have succeeded before cleanup claimed the object.
           await expect(
-            finalizeAsset(suite!.db, f.asset.id, f.owner, { byteSize: 100 }),
+            finalizeAsset(requireSuite(suite).db, f.asset.id, f.owner, { byteSize: 100 }),
           ).rejects.toThrow('expired or is being removed');
         },
       },
@@ -281,8 +296,8 @@ describe('temporary capture expiry', () => {
     await fixture();
     await fixture();
     const results = await Promise.all([
-      claimCaptureCleanup(suite!.db, { ...claimOptions, limit: 1 }),
-      claimCaptureCleanup(suite!.db, { ...claimOptions, limit: 1 }),
+      claimCaptureCleanup(requireSuite(suite).db, { ...claimOptions, limit: 1 }),
+      claimCaptureCleanup(requireSuite(suite).db, { ...claimOptions, limit: 1 }),
     ]);
     expect(results.map((rows) => rows.length)).toEqual([1, 1]);
     expect(new Set(results.flat().map((row) => row.id)).size).toBe(2);
@@ -293,7 +308,7 @@ describe('temporary capture expiry', () => {
     const input = { ...f.input, contentHash: 'b'.repeat(64) };
     const registrations = await Promise.all(
       Array.from({ length: 4 }, () =>
-        registerAsset(suite!.db, f.registration, input, { keyPrefix: 'captures' }),
+        registerAsset(requireSuite(suite).db, f.registration, input, { keyPrefix: 'captures' }),
       ),
     );
     expect(new Set(registrations.map((r) => r.objectKey)).size).toBe(1);
@@ -302,27 +317,27 @@ describe('temporary capture expiry', () => {
 
   it('refuses finalization after expiry even before a sweeper runs', async () => {
     const f = await fixture(false);
-    await expect(finalizeAsset(suite!.db, f.asset.id, f.owner, { byteSize: 100 })).rejects.toThrow(
-      'expired or is being removed',
-    );
+    await expect(
+      finalizeAsset(requireSuite(suite).db, f.asset.id, f.owner, { byteSize: 100 }),
+    ).rejects.toThrow('expired or is being removed');
   });
 
   it('rejects unbounded or invalid cleanup parameters', async () => {
     for (const limit of [0, -1, 1001, NaN, 1.5]) {
-      await expect(sweepExpiredCaptures(suite!.db, null, { dryRun: true, limit })).rejects.toThrow(
-        'limit',
-      );
+      await expect(
+        sweepExpiredCaptures(requireSuite(suite).db, null, { dryRun: true, limit }),
+      ).rejects.toThrow('limit');
     }
     for (const retryAfterSeconds of [0, 29, 86401, NaN]) {
       await expect(
-        sweepExpiredCaptures(suite!.db, null, { dryRun: true, retryAfterSeconds }),
+        sweepExpiredCaptures(requireSuite(suite).db, null, { dryRun: true, retryAfterSeconds }),
       ).rejects.toThrow('retry interval');
     }
   });
 
   it('runs the CLI in dry-run mode and refuses a mismatched database', async () => {
     await fixture();
-    const target = new URL(suite!.databaseUrl).pathname.slice(1);
+    const target = new URL(requireSuite(suite).databaseUrl).pathname.slice(1);
     async function cli(database: string) {
       const child = Bun.spawn(
         [
@@ -332,7 +347,7 @@ describe('temporary capture expiry', () => {
           `--target-database=${database}`,
         ],
         {
-          env: { ...process.env, DATABASE_URL: suite!.databaseUrl },
+          env: { ...process.env, DATABASE_URL: requireSuite(suite).databaseUrl },
           stdout: 'pipe',
           stderr: 'pipe',
         },
@@ -350,6 +365,6 @@ describe('temporary capture expiry', () => {
     const wrong = await cli('not_the_capture_database');
     expect(wrong.exitCode).toBe(1);
     expect(wrong.stdout).toBe('');
-    expect(wrong.stderr).not.toContain(suite!.databaseUrl);
+    expect(wrong.stderr).not.toContain(requireSuite(suite).databaseUrl);
   });
 });

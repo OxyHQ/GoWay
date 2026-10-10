@@ -37,8 +37,8 @@ function unit(vector: Vector3): Vector3 | null {
 }
 
 function compare(a: StreetSceneViewpoint, b: StreetSceneViewpoint): number {
-  for (let axis = 0; axis < 3; axis += 1) {
-    const delta = a.position[axis]! - b.position[axis]! || a.forward[axis]! - b.forward[axis]!;
+  for (const axis of [0, 1, 2] as const) {
+    const delta = a.position[axis] - b.position[axis] || a.forward[axis] - b.forward[axis];
     if (delta !== 0) return delta;
   }
   return 0;
@@ -81,8 +81,10 @@ export function decimateViewpoints(
   // scene off along one axis.
   return Array.from(
     { length: MAX_PUBLISHED_VIEWPOINTS },
-    (_, index) => kept[Math.floor((index * kept.length) / MAX_PUBLISHED_VIEWPOINTS)]!,
-  );
+    (_, index) =>
+      // Always in range; the filter only narrows the type.
+      kept[Math.floor((index * kept.length) / MAX_PUBLISHED_VIEWPOINTS)],
+  ).filter((viewpoint) => viewpoint !== undefined);
 }
 
 /** The navigation a result publishes, or `null` when the worker reported none. */
