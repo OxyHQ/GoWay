@@ -15,6 +15,16 @@ matched to one of them by BCP 47 rules instead of by its bare language. A
 MINOR under the 0.x rule, and breaking for every consumer of the bundled
 taxonomy.
 
+### Added
+
+- `places.update(id, { openingHoursDays })` replaces only explicitly named
+  opening weekdays atomically; exported `OpeningHoursDayPatch` describes each
+  replacement. Empty day intervals close that day. Unknown schedules require
+  all seven days (`GoWayConflictError`); the entire merged week keeps the
+  existing 64-interval limit. Deploy the matching API before consumers use
+  this input. Full `openingHours` replacement/clear remains available and
+  cannot be combined with day patches.
+
 ### Breaking
 
 - **The bundled taxonomy is gone.** `CATEGORIES`, `CATEGORY_KEYS`,

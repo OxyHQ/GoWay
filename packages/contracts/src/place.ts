@@ -50,7 +50,7 @@ import {
   type CapabilityKey,
 } from './capability-registry';
 import { categoryKeySchema } from './category';
-import { openingHoursInputSchema, openingHoursSchema, placeHoursExceptionSchema, timezoneSchema } from './hours';
+import { openingHoursDaysPatchSchema, openingHoursInputSchema, openingHoursSchema, placeHoursExceptionSchema, timezoneSchema } from './hours';
 import { canonicalLanguageTagSchema, languageTagSchema } from './language';
 import { cursorSchema, limitSchema, pageSchema } from './pagination';
 import { instantSchema } from './time';
@@ -804,6 +804,8 @@ export const placeUpdateInputSchema = z
     address: structuredAddressPatchSchema.nullable().optional(),
     contact: placeContactPatchSchema.nullable().optional(),
     openingHours: writablePlaceFields.openingHours.nullable().optional(),
+    /** Replace only the named opening weekdays, under the place write lock. */
+    openingHoursDays: openingHoursDaysPatchSchema.optional(),
     status: writablePlaceFields.status.optional(),
     sources: writablePlaceFields.sources.optional(),
     capabilities: writablePlaceFields.capabilities.optional(),
@@ -811,6 +813,10 @@ export const placeUpdateInputSchema = z
     descriptions: writablePlaceFields.descriptions.optional(),
     logoFileId: writablePlaceFields.logoFileId.optional(),
     coverFileId: writablePlaceFields.coverFileId.optional(),
+  })
+  .refine((body) => body.openingHoursDays === undefined || body.openingHours === undefined, {
+    message: 'openingHoursDays and openingHours cannot be sent together',
+    path: ['openingHoursDays'],
   })
   .refine((body) => Object.keys(body).length > 0, {
     message: 'an update must change at least one field',

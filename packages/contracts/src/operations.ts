@@ -186,7 +186,7 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     method: 'patch',
     path: '/places/{placeId}',
     tag: 'Places',
-    summary: 'Edit a place: community-editable until claimed, then claimant-only.',
+    summary: 'Edit a place, including atomic weekday-hour replacements: community-editable until claimed, then claimant-only.',
     auth: 'required',
     pathParameters: placePathSchema,
     body: 'PlaceUpdateInput',
