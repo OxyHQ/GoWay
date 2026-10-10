@@ -312,9 +312,15 @@ export async function reorderPlaceMedia(
       );
     }
 
+    // Each named item once, even if a caller names one twice: the route refuses
+    // duplicates, and `order` must hold every visible item exactly once so it
+    // lines up with `slots` below.
     const named = new Set(mediaIds);
     const order = [
-      ...mediaIds.map((id) => byId.get(id)!),
+      ...[...named].flatMap((id) => {
+        const row = byId.get(id);
+        return row ? [row] : []; // every id was checked above
+      }),
       ...visible.filter((row) => !named.has(row.id)),
     ];
     // The visible items take the positions the visible items already held, in
@@ -323,8 +329,8 @@ export async function reorderPlaceMedia(
     const slots = visible.map((row) => row.position);
     const changes: PlaceRevisionChange[] = [];
     for (const [index, row] of order.entries()) {
-      const position = slots[index]!;
-      if (row.position === position) continue;
+      const position = slots[index];
+      if (position === undefined || row.position === position) continue;
       await tx
         .update(placeMedia)
         .set({ position, updatedAt: new Date() })

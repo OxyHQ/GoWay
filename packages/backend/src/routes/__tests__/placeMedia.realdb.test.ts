@@ -25,6 +25,7 @@ import type {
   PlaceRevisionPage,
 } from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
+import { reorderPlaceMedia } from '../../db/places/mediaRepository';
 import {
   requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
@@ -395,6 +396,21 @@ describe('ordering the gallery', () => {
     ).toBe(204);
     expect((await gallery(cafe.id)).map((item) => item.id)).toEqual(reversed);
     expect((await storedRevisions(cafe.id)).slice(-1)[0]?.action).toBe('media_reordered');
+  });
+
+  it('names an item once in the repository, even when a caller passes it twice', async () => {
+    // The route refuses a duplicate id; the repository must not depend on that.
+    // Named twice, an item used to take two positions and push the last item
+    // past the end of the gallery's slots.
+    const ids = (await gallery(cafe.id)).map((item) => item.id);
+    expect(ids.length).toBeGreaterThanOrEqual(3);
+    const [a, b] = [defined(ids[0]), defined(ids[1])];
+    const db = requireSuite(suite).db;
+    expect(await reorderPlaceMedia(db, cafe.id, [b, a, b], apiAuthor('person-editor'))).toBe(true);
+    const rest = ids.filter((id) => id !== a && id !== b);
+    expect((await gallery(cafe.id)).map((item) => item.id)).toEqual([b, a, ...rest]);
+    const positions = (await gallery(cafe.id)).map((item) => item.position);
+    expect(new Set(positions).size).toBe(positions.length);
   });
 
   it('refuses an id that is not a visible item of this place', async () => {
