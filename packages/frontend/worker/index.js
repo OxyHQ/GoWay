@@ -69,7 +69,7 @@
  *      product code, and the paths this file answers.
  */
 
-import { PMTiles, contentEncodingFor, decompress } from './pmtiles.js';
+import { PMTiles, decompress } from './pmtiles.js';
 
 /**
  * How long the edge may keep a vector tile.

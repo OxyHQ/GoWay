@@ -17,12 +17,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import express, { type RequestHandler } from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import {
-  type CategoryPage,
-  type Place,
-  type PlaceHoursException,
-  type PlaceHoursExceptionPage,
-  type PlaceWithDistancePage,
+import type {
+  CategoryPage,
+  Place,
+  PlaceHoursException,
+  PlaceHoursExceptionPage,
+  PlaceWithDistancePage,
 } from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {
@@ -301,10 +301,10 @@ describe('typed capabilities', () => {
       `/places/${open.id}/capabilities/food.cuisine`,
       as('user-x', 'PUT', { value: ['pizza', 'italian', 'pizza'] }),
     );
-    const valueOf = (key: string) =>
+    const capabilityValue = (key: string) =>
       body.capabilities.find((capability) => capability.key === key)?.value;
-    expect(valueOf('social.instagram')).toBe('https://www.instagram.com/trattoria');
-    expect(valueOf('food.cuisine')).toEqual(['italian', 'pizza']);
+    expect(capabilityValue('social.instagram')).toBe('https://www.instagram.com/trattoria');
+    expect(capabilityValue('food.cuisine')).toEqual(['italian', 'pizza']);
   });
 
   it('filters by an enum-set member, an enum value and a price level, through the strongest assertion', async () => {

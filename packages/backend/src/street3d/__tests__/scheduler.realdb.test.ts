@@ -70,6 +70,7 @@ const config = parseStreet3dConfig({
 });
 
 /** Rue du Faubourg Saint-Honoré — near the contract fixture's anchor. */
+// biome-ignore lint/suspicious/noApproximativeNumericConstant: a longitude in Paris, not ln 10.
 const PARIS = { latitude: 48.8684, longitude: 2.302 };
 const OPEN_CREDIT = 'Imagery © Example contributors, CC BY-SA 4.0';
 const hash = (seed: string) => createHash('sha256').update(seed).digest('hex');

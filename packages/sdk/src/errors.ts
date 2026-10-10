@@ -65,7 +65,9 @@ export class GoWayError extends Error {
   static readonly errorName: string = 'GoWayError';
 
   static override [Symbol.hasInstance](value: unknown): boolean {
+    // biome-ignore lint/complexity/noThisInStatic: `this` is the subclass `instanceof` was asked about; `GoWayError` would answer for the base.
     if (Function.prototype[Symbol.hasInstance].call(this, value)) return true;
+    // biome-ignore lint/complexity/noThisInStatic: the subclass's own `errorName`, for the same reason.
     return lineageOf(value)?.includes(this.errorName) ?? false;
   }
 
@@ -92,6 +94,7 @@ export class GoWayError extends Error {
     const lineage: string[] = [];
     let current: typeof GoWayError | null = target;
     while (current !== null) {
+      // biome-ignore lint/suspicious/noPrototypeBuiltins: This ships in the ES2020 SDK bundle, and Object.hasOwn is ES2022.
       if (Object.prototype.hasOwnProperty.call(current, 'errorName'))
         lineage.push(current.errorName);
       if (current === GoWayError) break;

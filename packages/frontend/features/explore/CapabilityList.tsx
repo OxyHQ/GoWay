@@ -51,7 +51,6 @@ function toneColors(tone: CapabilityTone, colors: ReturnType<typeof useTheme>['c
       return { background: colors.successSubtle, foreground: colors.successSubtleForeground };
     case 'info':
       return { background: colors.infoSubtle, foreground: colors.infoSubtleForeground };
-    case 'neutral':
     default:
       return { background: colors.backgroundSecondary, foreground: colors.textSecondary };
   }

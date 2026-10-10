@@ -106,7 +106,7 @@ describe('an option that is present and undefined', () => {
     // the centre is NaN on both axes, and the engine refuses it by name. This
     // is the exact sentence the error boundary showed a user.
     const zoom = engineZoom(14.2, engineDefaults({ maxZoom: undefined }));
-    const offset = 1 / Math.pow(2, zoom);
+    const offset = 1 / 2 ** zoom;
     expect(() => new LngLat(offset, offset)).toThrow('Invalid LngLat object: (NaN, NaN)');
   });
 });

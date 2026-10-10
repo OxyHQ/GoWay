@@ -35,7 +35,7 @@ describe('placeLabelsForScene', () => {
       { ...target.location, altitudeMeters: anchor.altitudeMeters },
       anchor,
     );
-    enu.forEach((value, index) => expect(value).toBeCloseTo(expected[index], 6));
+    for (const [index, value] of enu.entries()) expect(value).toBeCloseTo(expected[index], 6);
   });
 
   test('uses the localized display name, nearest first, capped and de-duplicated', () => {

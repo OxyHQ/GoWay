@@ -1611,9 +1611,15 @@ export const CAPABILITY_KEYS = Object.keys(CAPABILITY_DEFINITIONS) as unknown as
   ...CapabilityKey[],
 ];
 
+/** `Object.hasOwn`, which is ES2022: these contracts ship in the ES2020 SDK bundle. */
+function hasOwnKey(object: object, key: string): boolean {
+  // biome-ignore lint/suspicious/noPrototypeBuiltins: the contracts ship in the ES2020 SDK bundle, and Object.hasOwn is ES2022.
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
 /** Whether a string is a registered capability key. */
 export function isCapabilityKey(value: string): value is CapabilityKey {
-  return Object.prototype.hasOwnProperty.call(CAPABILITY_DEFINITIONS, value);
+  return hasOwnKey(CAPABILITY_DEFINITIONS, value);
 }
 
 /** The definition of a key, or `undefined` for a key this build does not know. */
@@ -1809,10 +1815,7 @@ export function capabilityFilterOf(raw: string): CapabilityFilter | undefined {
 
   const text = raw.slice(separator + 1);
   const spec: CapabilityValueSpec = CAPABILITY_DEFINITIONS[key].value;
-  if (
-    (spec.kind === 'enum' || spec.kind === 'enum_set') &&
-    Object.prototype.hasOwnProperty.call(spec.values, text)
-  ) {
+  if ((spec.kind === 'enum' || spec.kind === 'enum_set') && hasOwnKey(spec.values, text)) {
     return { key, value: text };
   }
   if (spec.kind === 'price_level' && /^[1-4]$/.test(text)) return { key, value: Number(text) };

@@ -426,7 +426,7 @@ export async function registerAsset(
       .digest('hex');
     if (input.idempotencyKey) {
       await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(${session.id + ':' + input.idempotencyKey}, 1))`,
+        sql`select pg_advisory_xact_lock(hashtextextended(${`${session.id}:${input.idempotencyKey}`}, 1))`,
       );
       const [prior] = await tx
         .select({ ...ASSET_COLUMNS, fingerprint: captureAssets.requestFingerprint })

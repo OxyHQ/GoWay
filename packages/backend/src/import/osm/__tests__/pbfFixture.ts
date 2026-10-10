@@ -143,7 +143,7 @@ function way(element: FixtureWay, strings: StringTable): number[] {
     ),
     ...packedField(
       3,
-      keys.map((key) => strings.index((element.tags ?? {})[key] as string)),
+      keys.map((key) => strings.index(element.tags?.[key] as string)),
     ),
     ...packedField(8, deltas(element.refs)),
   ];
@@ -160,7 +160,7 @@ function relation(element: FixtureRelation, strings: StringTable): number[] {
     ),
     ...packedField(
       3,
-      keys.map((key) => strings.index((element.tags ?? {})[key] as string)),
+      keys.map((key) => strings.index(element.tags?.[key] as string)),
     ),
     // roles_sid: one empty role per member.
     ...packedField(

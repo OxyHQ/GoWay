@@ -135,7 +135,7 @@ export function stepCoach(
     };
   }
 
-  const decay = Math.pow(0.5, gap / config.referenceHalfLifeMs);
+  const decay = 0.5 ** (gap / config.referenceHalfLifeMs);
   // Judge against the reference BEFORE this sample raises it, or a single
   // sharp frame would never be compared with anything but itself.
   const judgedAgainst = state.reference * decay;

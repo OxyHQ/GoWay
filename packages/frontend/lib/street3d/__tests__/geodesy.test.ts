@@ -14,7 +14,9 @@ import {
 
 const close = (actual: readonly number[], expected: readonly number[], digits = 6) => {
   expect(actual.length).toBe(expected.length);
-  actual.forEach((value, index) => expect(value).toBeCloseTo(expected[index], digits));
+  for (const [index, value] of actual.entries()) {
+    expect(value).toBeCloseTo(expected[index], digits);
+  }
 };
 
 describe('geodeticToEcef', () => {

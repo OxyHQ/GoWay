@@ -117,7 +117,6 @@ function locationNoticeFor(
       return "This page isn't on a secure connection, so the browser won't share location. Open GoWay at https://goway.to.";
     case 'timeout':
       return 'Finding you took too long. Tap again to try once more.';
-    case 'unavailable':
     default:
       return "Your device couldn't get a location fix. You can still search and browse the map.";
   }

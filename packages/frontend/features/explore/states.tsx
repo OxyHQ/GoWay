@@ -181,8 +181,6 @@ export function FailureState({
           testID="state-no-answer"
         />
       );
-    case 'malformed':
-    case 'unknown':
     default:
       return (
         <PanelState

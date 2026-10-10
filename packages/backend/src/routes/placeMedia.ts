@@ -42,6 +42,7 @@ import {
   placeMediaInputSchema,
   placeMediaOrderInputSchema,
   placePathSchema,
+  type PlaceMedia,
   type PlaceMediaKind,
 } from '@goway/contracts';
 import {
@@ -164,7 +165,7 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
         author: revisionAuthor(caller, 'api'),
         assertedVerification: assertableVerification(standing),
       };
-      let item;
+      let item: PlaceMedia | null;
       try {
         item = await addPlaceMedia(
           db,
@@ -285,7 +286,7 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
       const db = getDb();
       assertPublished(await findPlaceLifecycle(db, placeId));
       const item = await findLivePlaceMedia(db, placeId, mediaId);
-      if (!item || item.state !== 'visible')
+      if (item?.state !== 'visible')
         throw new ApiError('not_found', 'This place has no gallery item with that id.');
       const { report, created } = await createPlaceReport(
         db,

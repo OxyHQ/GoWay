@@ -516,6 +516,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 
   // --- Interaction toggles ------------------------------------------------
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `ready` is the trigger; the map lives in a ref, so a fresh map must get its toggles re-applied.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;

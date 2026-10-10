@@ -28,7 +28,7 @@ export function formatAddress(address: StructuredAddress | undefined): string | 
     address.locality ?? null,
     address.city ?? null,
     address.postalCode ?? null,
-  ].filter((part): part is string => Boolean(part && part.trim()));
+  ].filter((part): part is string => Boolean(part?.trim()));
   return parts.length > 0 ? parts.join(', ') : null;
 }
 
