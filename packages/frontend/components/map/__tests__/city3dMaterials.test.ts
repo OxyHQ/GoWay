@@ -301,10 +301,9 @@ describe('the sky path: the approved look under the sky’s physical light', () 
   test('night: blue-grey massing a step above the ground, not the sky’s saturated blue', () => {
     const l = inputs(-30, 'dark');
     const night = CITY_MATERIALS.night;
-    const albedo = night.low.map((c, i) => c) as unknown as Rgb;
     const ground = luma(hexRgb(CITY_GROUND_PALETTES.dark.land));
     for (const n of [ROOF, LIT, SHADE]) {
-      const c = face(night, n, l, albedo);
+      const c = face(night, n, l, night.low);
       expect(luma(c)).toBeGreaterThan(ground);
       expect(c[2]).toBeGreaterThan(c[0]); // blue
       expect(chroma(c)).toBeLessThan(0.35); // not the raw sky
