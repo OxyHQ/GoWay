@@ -21,7 +21,7 @@ import type {
   TerrainSpecification,
 } from '@maplibre/maplibre-gl-style-spec';
 
-import { type MapAppearance, TERRAIN_ATTRIBUTION_LINK } from '../provider';
+import { type MapAppearance, TERRAIN_SOURCE_LINK } from '../provider';
 import { GLOBE_PROJECTION, GLOBE_SPACE_BASE, isReliefId, RELIEF_ID_PREFIX } from '../reliefFlag';
 
 export { GLOBE_PROJECTION };
@@ -77,7 +77,7 @@ export function reliefDemSource(tiles: string): RasterDEMSourceSpecification {
     type: 'raster-dem',
     tiles: [tiles],
     ...RELIEF_DEM,
-    attribution: `<a href="${TERRAIN_ATTRIBUTION_LINK.href}" target="_blank">${TERRAIN_ATTRIBUTION_LINK.label}</a>`,
+    attribution: `<a href="${TERRAIN_SOURCE_LINK.href}" target="_blank">${TERRAIN_SOURCE_LINK.label}</a>`,
   };
 }
 
@@ -105,12 +105,19 @@ const HILLSHADE_COLOURS: Record<
  * Only the properties MapLibre Native also implements (a scalar direction, no
  * `hillshade-method`), because `MapCanvas.native.tsx` draws this same layer.
  */
+/** Below this the globe draws no hillshade, so no DEM is downloaded for it. */
+export const HILLSHADE_MIN_ZOOM = 3;
+
 export function hillshadeLayer(appearance: MapAppearance): HillshadeLayerSpecification {
   const colours = HILLSHADE_COLOURS[appearance];
   return {
     id: HILLSHADE_LAYER_ID,
     type: 'hillshade',
     source: RELIEF_SOURCE_IDS.hillshade,
+    // Not on the whole-globe zooms: there the shading is a few pixels of
+    // texture and cost ~0.9 MB of DEM per view (measured, 11 tiles at z1.6);
+    // MapLibre fetches a source's tiles only while a layer using it is shown.
+    minzoom: HILLSHADE_MIN_ZOOM,
     maxzoom: 17,
     paint: {
       'hillshade-exaggeration': [

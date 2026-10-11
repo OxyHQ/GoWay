@@ -1,6 +1,7 @@
 import { matchLanguageTag, normalizeLanguageTag } from '@goway.to/sdk';
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
+import { CREDITS_EN, CREDITS_ES } from './messages/credits';
 import { PRODUCTS_EN, PRODUCTS_ES } from './messages/products';
 import { STREET3D_EN, STREET3D_ES } from './messages/street3d';
 
@@ -22,6 +23,7 @@ const en: Messages = {
   'map.resetNorth': 'Reset to north',
   ...STREET3D_EN,
   ...PRODUCTS_EN,
+  ...CREDITS_EN,
 };
 
 const es: Messages = {
@@ -34,6 +36,7 @@ const es: Messages = {
   'map.resetNorth': 'Orientar al norte',
   ...STREET3D_ES,
   ...PRODUCTS_ES,
+  ...CREDITS_ES,
 };
 
 const locales: Record<string, Messages> = { en, es };

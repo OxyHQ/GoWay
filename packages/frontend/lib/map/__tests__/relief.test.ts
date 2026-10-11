@@ -67,6 +67,10 @@ describe('style fragments', () => {
     expect(Object.keys(hillshadeLayer('dark').paint ?? {})).not.toContain('hillshade-method');
   });
 
+  test('no hillshade (and so no DEM download) at whole-globe zooms', () => {
+    expect(hillshadeLayer('light').minzoom).toBe(3);
+  });
+
   test('true elevation: no exaggeration', () => {
     expect(RELIEF_TERRAIN.exaggeration).toBe(1);
   });
@@ -160,7 +164,7 @@ describe('the elevation credit and the tiles', () => {
     expect(relief.links.slice(0, plain.links.length)).toEqual([...plain.links]);
     expect(relief.links.at(-1)).toEqual({
       label: '© Mapterhorn',
-      href: 'https://mapterhorn.com/attribution',
+      href: 'https://goway.to/attribution#elevation',
     });
   });
 
