@@ -76,6 +76,13 @@ Each part is cut from the extract with `osmium extract --strategy=smart` and a
 as `<region>~<i>of<n>`. A region rebuilt in a different number of parts
 replaces all of its old parts in the manifest.
 
+**Measured on Portugal in two parts**: the density pass 9 s, the cut at
+−8.44° (the Azores and Madeira with the west coast, the interior on its own);
+peaks of 2.6 / 2.9 GB and 1.6 / 3.6 GB (buildings / roads) against the whole
+region's 4.0 / 5.8 GB — and the two parts' archives are **tile-for-tile
+identical** to the whole region's: 49,254 of 49,254 building tiles, 100,718 of
+100,718 road tiles, none owned twice.
+
 ### Regions
 
 `map:city-plan` walks Geofabrik's index and writes the catalogue:
@@ -280,8 +287,11 @@ served. In headless Chromium: Lisbon's Baixa and Porto's Ribeira (dark) drawn
 from the Portugal archive (gabled tile roofs, storey rhythm, OSM trees, the
 simulated traffic on the road archive), and Valença with Tui across the Minho —
 Portugal from the city tiles, Spain (not built) from the basemap, the Spanish
-road tiles 404 — with no console errors. The parts path ran on Portugal in
-two parts (below).
+road tiles 404 — with no console errors. The workflow's own build and assemble steps (extracted
+from the YAML and run unchanged but for `/mnt`) built Kiribati — which crosses
+the antimeridian — and the Seychelles, and assembled a three-region manifest;
+served the same way, Kiribati answers on both sides of 180° (Tarawa,
+Kiritimati) and Betio draws from its archive.
 
 ```bash
 # Locally, any region of the catalogue:
@@ -310,7 +320,7 @@ Nothing below has been done. In order:
 4. **Serve it**: uncomment `MAP_CITY_MANIFEST = "city/manifest.json"` in
    `packages/frontend/wrangler.toml` and merge (the frontend deploy ships it).
    Check `https://goway.to/map/city/coverage.json`, a Lisbon tile
-   (`/map/city/15/15531/12556.pbf`), `/map/city/manifest.json` and a
+   (`/map/city/15/15533/12556.pbf`), `/map/city/manifest.json` and a
    `/map/city/data/…` receipt.
 5. **ODbL**: add the manifest's URL (`/map/city/manifest.json`, which lists
    every archive and receipt) to `/attribution` beside the OpenStreetMap

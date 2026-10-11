@@ -247,12 +247,12 @@ jobs:
           set -euo pipefail
           entries="$PWD/entries-download/entries"
           previous=""
-          [ -f previous.json ] && previous="--previous=$PWD/previous.json"
+          [ -f "$PWD/previous.json" ] && previous="--previous=$PWD/previous.json"
           bun run --cwd packages/frontend map:city-manifest \
             --entries="$entries" $previous --out="$PWD/manifest.json" --retired="$PWD/retired.txt"
           echo "### City manifest $STAMP" >> "$GITHUB_STEP_SUMMARY"
           echo "Retired (still in R2; delete after the new manifest has been live a while):" >> "$GITHUB_STEP_SUMMARY"
-          sed 's/^/    /' retired.txt >> "$GITHUB_STEP_SUMMARY"
+          sed 's/^/    /' "$PWD/retired.txt" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
         with:
