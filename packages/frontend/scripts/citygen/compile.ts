@@ -220,21 +220,37 @@ function ringArea(ring: Ring): number {
   return sum / 2;
 }
 
-/** A point that is inside the polygon: the outer's centroid when it is inside, else a vertex midpoint. */
-function representativePoint(outer: Ring): [number, number] {
+/**
+ * A point that is inside the polygon: the outer's centroid when it is inside,
+ * else a vertex midpoint.
+ *
+ * The centroid is taken RELATIVE TO THE FIRST VERTEX. Absolute mercator
+ * coordinates are ~0.5 while a building spans ~1e-7 of them, so the shoelace
+ * sums cancel catastrophically: the first version's centroid was off by
+ * kilometres, failed the inside test, and every building silently fell back
+ * to the midpoint of its first edge — a point ON the boundary, which is what
+ * let a bounding box cut an outline whose middle was well inside it.
+ */
+export function representativePoint(outer: Ring): [number, number] {
+  const ox = outer[0];
+  const oy = outer[1];
   let a = 0;
   let cx = 0;
   let cy = 0;
   const n = outer.length / 2;
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
-    const cross = outer[i * 2] * outer[j * 2 + 1] - outer[j * 2] * outer[i * 2 + 1];
+    const x1 = outer[i * 2] - ox;
+    const y1 = outer[i * 2 + 1] - oy;
+    const x2 = outer[j * 2] - ox;
+    const y2 = outer[j * 2 + 1] - oy;
+    const cross = x1 * y2 - x2 * y1;
     a += cross;
-    cx += (outer[i * 2] + outer[j * 2]) * cross;
-    cy += (outer[i * 2 + 1] + outer[j * 2 + 1]) * cross;
+    cx += (x1 + x2) * cross;
+    cy += (y1 + y2) * cross;
   }
   if (a !== 0) {
-    const point: [number, number] = [cx / (3 * a), cy / (3 * a)];
+    const point: [number, number] = [ox + cx / (3 * a), oy + cy / (3 * a)];
     if (insideRing(outer, point[0], point[1])) return point;
   }
   // Concave footprint whose centroid falls outside: nudge from an edge midpoint inward.
@@ -455,14 +471,30 @@ export function compile(options: CompileOptions): CompileResult {
   }
   lap('geometry');
 
+  // ── Which buildings are emitted ─────────────────────────────────────────
+  const box = options.bbox
+    ? {
+        x0: mercX(options.bbox[0]),
+        x1: mercX(options.bbox[2]),
+        y0: mercY(options.bbox[3]),
+        y1: mercY(options.bbox[1]),
+      }
+    : null;
+  const emitted = (building: Building): boolean => {
+    const [px, py] = building.point;
+    return !box || (px >= box.x0 && px <= box.x1 && py >= box.y0 && py <= box.y1);
+  };
+
   // ── Outlines with parts ─────────────────────────────────────────────────
   // A grid of parts' representative points, in cells of ~150 m (z18 at the
-  // equator is 152 m), so each outline tests only the parts near it.
+  // equator is 152 m), so each outline tests only the parts near it. Only
+  // parts that will be EMITTED go in: an outline replaced by a part that the
+  // bounding box then drops would leave neither on the map.
   const CELL = 2 ** 18;
   const grid = new Map<number, Building[]>();
   const cellKey = (x: number, y: number) => Math.floor(x * CELL) * CELL + Math.floor(y * CELL);
   for (const building of buildings) {
-    if (building.kind !== 'part') continue;
+    if (building.kind !== 'part' || !emitted(building)) continue;
     const key = cellKey(building.point[0], building.point[1]);
     const cell = grid.get(key);
     if (cell) cell.push(building);
@@ -518,18 +550,10 @@ export function compile(options: CompileOptions): CompileResult {
   };
   const tiles = new Map<string, CityTileFeature[]>();
   const span = 2 ** options.zoom;
-  const box = options.bbox
-    ? {
-        x0: mercX(options.bbox[0]),
-        x1: mercX(options.bbox[2]),
-        y0: mercY(options.bbox[3]),
-        y1: mercY(options.bbox[1]),
-      }
-    : null;
 
   for (const building of buildings) {
+    if (!emitted(building)) continue;
     const [px, py] = building.point;
-    if (box && (px < box.x0 || px > box.x1 || py < box.y0 || py > box.y1)) continue;
     if (building.kind === 'building' && hasParts(building)) {
       coverage.outlinesDroppedForParts++;
       continue;

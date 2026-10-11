@@ -148,6 +148,23 @@ describe('roofPlanes', () => {
     expect(roofHeightAt(planes, 10, 5 + u * 5)).toBeCloseTo(H * Math.sqrt(1 - u * u), 0);
   });
 
+  test('round: the barrel meets the eaves at the edge, and rises continuously to the crown', () => {
+    const planes = roofPlanes('round', frame, H);
+    // Both eave edges (t = ±W) are at the eaves — no step for the walls to climb.
+    expect(roofHeightAt(planes, 10, 0)).toBeCloseTo(0, 6);
+    expect(roofHeightAt(planes, 10, 10)).toBeCloseTo(0, 6);
+    // Sampled across the width: monotone up to the crown, no jump, symmetric.
+    const samples: number[] = [];
+    for (let k = 0; k <= 200; k++) samples.push(roofHeightAt(planes, 10, (k / 200) * 10));
+    for (let k = 1; k <= 100; k++) expect(samples[k]).toBeGreaterThanOrEqual(samples[k - 1] - 1e-9);
+    for (let k = 1; k < samples.length; k++) {
+      // A circle is vertical at its edge, so the last facet is steep: bound the
+      // step per 5 cm sample at a tenth of the roof, which no gap would meet.
+      expect(Math.abs(samples[k] - samples[k - 1])).toBeLessThan(0.1 * H);
+      expect(samples[k]).toBeCloseTo(samples[200 - k], 6);
+    }
+  });
+
   test('every planar shape is the roof everywhere over its footprint, between 0 and H', () => {
     for (const shape of ROOF_SHAPES) {
       if (!PLANAR_ROOF_SHAPES.has(shape)) {
@@ -184,8 +201,9 @@ describe('edgeBreaks', () => {
   test('only the LOWEST planes bend the wall', () => {
     const planes = roofPlanes('round', frame, 4);
     const breaks = edgeBreaks([20, 0], [20, 10], planes);
-    // One bend per facet edge, symmetric about the middle.
-    expect(breaks.length).toBe(10);
+    // One bend per facet edge (11 tangents + 2 edge chords = 13 facets),
+    // symmetric about the middle.
+    expect(breaks.length).toBe(12);
     breaks.forEach((t, i) => {
       expect(t).toBeCloseTo(1 - breaks[breaks.length - 1 - i], 6);
     });

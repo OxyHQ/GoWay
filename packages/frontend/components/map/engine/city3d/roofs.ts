@@ -280,6 +280,13 @@ export function roofPlanes(shape: RoofShape, frame: RoofFrame, height: number): 
         planes.push(p(0, -slope, value));
         if (u > 0) planes.push(p(0, slope, value));
       }
+      // The last facet: the chord from the outermost tangent point down to the
+      // eaves at t = ±W. Without it the barrel ended at the last tangent plane,
+      // which is still 0.12 × H high at the edge — a step the walls climbed.
+      // Steeper than every tangent, so the roof stays concave.
+      const last = ROUND_TANGENTS[ROUND_TANGENTS.length - 1];
+      const edgeSlope = (H * Math.sqrt(1 - last * last)) / ((1 - last) * W);
+      planes.push(p(0, -edgeSlope, edgeSlope * W), p(0, edgeSlope, edgeSlope * W));
       return planes;
     }
     default:

@@ -424,7 +424,7 @@ Properties are recorded facts, normalised, plus the two resolved heights:
 `part`. The feature id is Planetiler's `osmId × 10 + 2|3`, so a city building
 joins to OSM exactly as a basemap label does. Junk is dropped, not coerced
 (`height=yes`, `~12`, `12;15`, `building:levels=2.5`, `roof:shape=pitched` is
-read as gabled, `light_grey` as `#d3d3d3`) — 574 unreadable values refused across
+read as gabled, `light_grey` as `#d3d3d3`) — 571 unreadable values refused across
 Catalonia, every one counted by key in the receipt.
 
 **Addressing: one zoom, whole buildings.** Tiles exist at **z15** only (the
@@ -437,9 +437,11 @@ clip lines. An outline with `building:part`s is replaced by its parts (Simple
 | Zoom | Tiles | Archive | Densest tile (raw / gzip) | Buildings in it |
 | --- | ---: | ---: | ---: | ---: |
 | z14 | 78 | 5.60 MB | 919 kB / 460 kB | 21,043 |
-| **z15** | **281** | **6.17 MB** | **354 kB / 192 kB** | **7,934** |
+| **z15** | **280** | **6.16 MB** | **356 kB / 192 kB** | **7,969** |
 | z16 | 922 | 6.87 MB | 116 kB / 67 kB | 2,578 |
 
+(z14 and z16 were measured before the representative-point fix below, which
+moved a few hundred buildings between tiles; the z15 row is after it.)
 z14's densest tile meshes to ~60 MB of buffers in one worker job; z16 quadruples
 the request count for the same ground. z15 answers the open question below.
 
@@ -449,11 +451,15 @@ On the build machine (one core of 32, other jobs running), Bun 1.4.2:
 
 | Input | Output | Time | Archive | Features |
 | --- | --- | ---: | ---: | ---: |
-| Catalonia extract (271 MB, 2026-10-08) | Barcelona bbox | 11.9 s | 6.17 MB, 281 tiles | 246,088 (186,747 parts) |
-| same | all of Catalonia | 15.3 s | 31.5 MB, 24,168 tiles | 1,267,153 |
-| New York State extract (497 MB, 2026-10-09) | Manhattan bbox | 44.9 s | 3.42 MB, 166 tiles | 122,773 |
+| Catalonia extract (271 MB, 2026-10-08) | Barcelona bbox | 11.9 s | 6.16 MB, 280 tiles | 245,868 (186,751 parts) |
+| same | all of Catalonia | 15.3 s | 31.6 MB, 24,181 tiles | 1,267,017 |
+| New York State extract (497 MB, 2026-10-09) | Manhattan bbox | 35.3 s | 3.42 MB, 166 tiles | 122,942 |
 
-Where the time goes (Catalonia): ways+relations 3.3 s, member ways 1.7 s,
+Times are the quietest runs; reruns under a load average of 30–50 took up to
+1.7× as long. A building's tile is the one holding its area centroid (relative
+to its first vertex: computed on raw mercator coordinates the shoelace sums
+cancel at building scale, and the first version silently fell back to a
+boundary point for every building). Where the time goes (Catalonia): ways+relations 3.3 s, member ways 1.7 s,
 nodes 3.7 s, geometry 1.2 s, tags+tiling 2.2 s, encode+gzip 3.0 s. Each archive
 is written with a receipt (`*.pmtiles.receipt.json`: extract, replication
 timestamp, timings, coverage, rejected values) and verified by reopening it
@@ -476,17 +482,17 @@ Share of compiled features (outlines + parts) carrying each key, after parsing:
 | | Barcelona | Catalonia | Manhattan | World (taginfo) |
 | --- | ---: | ---: | ---: | ---: |
 | `height` | 0.33% | 0.64% | **97.7%** | ≤ 3.9% |
-| `building:levels` | **75.6%** | 56.6% | 7.7% | ~6.1% |
+| `building:levels` | **75.5%** | 56.6% | 7.8% | ~6.1% |
 | `roof:shape` (non-flat) | 0.50% (0.26%) | 0.59% (0.46%) | 10.8% (0.98%) | ~1.4% |
 | `building:colour` | 0.14% | 0.19% | 10.4% | ~0.2% |
-| `roof:colour` | 0.19% | 0.32% | 4.4% | — |
-| `building:material` | 0.12% | 0.10% | 5.8% | — |
+| `roof:colour` | 0.19% | 0.32% | 4.3% | — |
+| `building:material` | 0.11% | 0.10% | 5.9% | — |
 | `roof:material` | 0.15% | 0.29% | 9.5% | — |
 
-The two cities are opposites, and both are imports: Barcelona's 186,747
+The two cities are opposites, and both are imports: Barcelona's 186,751
 `building:part`s with floor counts are the Spanish Catastro's, Manhattan's
 heights are NYC's building footprints. So Barcelona gets window rows on three
-quarters of its walls and Manhattan on few; Manhattan gets true heights and
+quarters of its features and Manhattan on few; Manhattan gets true heights and
 Barcelona levels × 3.66 m. Roof shapes are rare in both (639 shaped roofs in
 Barcelona, cathedral and Sagrada Família included). The honest renderer shows
 exactly that difference.
@@ -509,7 +515,7 @@ exactly that difference.
   walls (see Honesty). It fades out where a storey is a few pixels tall.
 - The flat-roof bevel and the baked occlusion are the prototype's, reused.
 
-Per tile, measured in Bun on the densest Barcelona tile (7,934 buildings):
+Per tile, measured in Bun on the densest Barcelona tile (7,934 buildings, as compiled before the centroid fix):
 decode 7–20 ms, mesh 120–300 ms depending on load, 600,536 vertices, 334,748
 triangles, 21.4 MB of buffers (29 B a vertex with the colour and rhythm
 attributes). In headless Chromium (SwiftShader) worker jobs took 40–250 ms,
@@ -621,7 +627,7 @@ are estimates; the runtime numbers are measured unless marked.
 
 Procedural facades are deliberately not a phase. Phase 2 draws the one kind
 the honesty rule allows — a storey rhythm where `building:levels` is recorded
-— and it turned out to be common where an import put it there (75.6% of
+— and it turned out to be common where an import put it there (75.5% of
 Barcelona's features, from the Catastro). Anything richer waits for Phase 4.
 
 ## Open questions

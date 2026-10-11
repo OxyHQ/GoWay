@@ -19,7 +19,7 @@ import { PbfWriter } from 'pbf';
 import { decodeCityTile } from '../../components/map/engine/city3d/osmTiles';
 import { CITY_TILE_EXTENT, CITY_TILE_ZOOM } from '../../lib/map/cityTiles';
 import { PMTiles, zxyToTileId } from '../../worker/pmtiles.js';
-import { assembleRings, compile } from '../citygen/compile';
+import { assembleRings, compile, representativePoint } from '../citygen/compile';
 import {
   encodeCityTile,
   encodePolygons,
@@ -277,6 +277,44 @@ describe('compile', () => {
       ],
     });
     expect([...result.tiles.values()].flat().map((f) => f.id)).toEqual([102]);
+  });
+  test('an outline is replaced only by parts that are emitted: its only part outside the bbox keeps it', () => {
+    // The outline's point (15, 75 m) is inside; its part's point (10, 70 m) is not.
+    const result = compile({
+      pbf: pbfPath,
+      zoom: CITY_TILE_ZOOM,
+      bbox: [
+        ORIGIN.lon + 12 * M_LON,
+        ORIGIN.lat + 60 * M_LAT,
+        ORIGIN.lon + 25 * M_LON,
+        ORIGIN.lat + 90 * M_LAT,
+      ],
+    });
+    expect([...result.tiles.values()].flat().map((f) => f.id)).toEqual([302]);
+    expect(result.coverage.outlinesDroppedForParts).toBe(0);
+  });
+});
+
+describe('representativePoint', () => {
+  test('is the centroid at real mercator magnitudes, not a boundary fallback', () => {
+    // A 20 m × 10 m footprint in Barcelona, as the compiler holds it.
+    const x0 = (ORIGIN.lon + 180) / 360;
+    const phi = (ORIGIN.lat * Math.PI) / 180;
+    const y0 = (1 - Math.log(Math.tan(Math.PI / 4 + phi / 2)) / Math.PI) / 2;
+    const metre = 1 / (40075016.7 * Math.cos(phi));
+    const ring = Float64Array.from([
+      x0,
+      y0,
+      x0 + 20 * metre,
+      y0,
+      x0 + 20 * metre,
+      y0 - 10 * metre,
+      x0,
+      y0 - 10 * metre,
+    ]);
+    const [x, y] = representativePoint(ring);
+    expect((x - x0) / metre).toBeCloseTo(10, 3);
+    expect((y0 - y) / metre).toBeCloseTo(5, 3);
   });
 });
 
