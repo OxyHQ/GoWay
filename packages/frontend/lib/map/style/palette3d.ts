@@ -237,6 +237,17 @@ export interface CityMaterial {
    * (brick a little darker, glass a little lighter) and almost none of its hue.
    */
   tagSaturation: number;
+  /**
+   * The response to the CITY SKY's light (the sky-lit path only; the classic
+   * path uses {@link CityMaterial.sky}/`ground`/`sun` above instead). The sky
+   * hands physical, exposed irradiance — a warm sun, a blue sky, a dim wall —
+   * and the clay answers it as the approved look: the hemisphere fill × a gain
+   * with only some of the sky light's hue (`skyFillChroma`, 0 grey … 1 all),
+   * and the sun × a gain. The sun keeps its colour, so golden hour is golden.
+   */
+  skyFillGain: number;
+  skyFillChroma: number;
+  skySunGain: number;
   /** Window openings: how strongly they read on a lit facade (0 = invisible). */
   windowStrength: number;
   /** The glass colour of an unlit opening. */
@@ -283,6 +294,9 @@ const DAY: CityMaterial = {
   tintHue: 0.025,
   tagBlend: 0.35,
   tagSaturation: 0.12,
+  skyFillGain: 1.6,
+  skyFillChroma: 0.4,
+  skySunGain: 0.65,
   windowStrength: 0.1,
   glass: hex('#9aa6b8'),
   windowGlow: [0, 0, 0],
@@ -318,6 +332,9 @@ const NIGHT: CityMaterial = {
   tintHue: 0.02,
   tagBlend: 0.3,
   tagSaturation: 0.12,
+  skyFillGain: 2.0,
+  skyFillChroma: 0.25,
+  skySunGain: 0.65,
   windowStrength: 0.75,
   glass: hex('#2b3352'),
   windowGlow: [1.0, 0.78, 0.4],

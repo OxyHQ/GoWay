@@ -1286,7 +1286,7 @@ applies them with `setPaintProperty` and puts every value back on detach. A
 style without them (`openfreemap`, a URL override) keeps its ground. Cost:
 +13.9 KB raw, **+0.8 KB gzip** per style document; no JavaScript.
 
-**Material** (`CITY_MATERIALS`, blended field by field by `nightFactor`):
+**Material** (`CITY_MATERIALS`, blended field by field on the GPU by the engine's night factor):
 
 | | Day | Night |
 | --- | --- | --- |
@@ -1300,6 +1300,7 @@ style without them (`openfreemap`, a URL override) keeps its ground. Cost:
 | Bevel highlight | 0.12 × sky | 0.06 × sky |
 | Per-building tint | ±6% lightness, ±2.5% warm↔cool | ±4%, ±2% |
 | Tagged colour kept | 35% of the classic temper, 12% of its chroma | 30%, 12% |
+| Sky path: fill gain / fill chroma / sun gain | 1.6 / 40% / 0.65 | 2.0 / 25% / 0.65 |
 | Window openings | 10% (faint) | 75%, dark glass `#2b3352` |
 | Lit windows | — | 36%, warm `(1.0, 0.78, 0.40)` ↔ cooler `(0.9, 0.9, 0.82)`, 72–100% brightness |
 
@@ -1327,36 +1328,55 @@ separate Metro caches, `--clear`:
 imports it for types only, so nothing is shared between the two lazy chunks
 (`engine3dChunk.test.ts` stays green).
 
-### The lighting model
+### The lighting model: one response, the sky's light
 
-`materials.ts`, in sRGB like the rest of the map:
+Ownership (lead decision): **the sky owns the light inputs** — sun direction,
+colour and intensity, sky and bounce irradiance, the shadow map, haze, what the
+scene emits (street glow, `floodlit=yes`), the night factor — and **the art
+direction owns the material response**: how a surface turns those inputs into
+colour. They compose in ONE shader. `materials.ts` holds the response once:
 
 ```
-fill    = mix(groundBounce, sky, n.z/2 + 1/2)            hemisphere
-wrap    = clamp((n·L + w) / (1 + w), 0, 1)               soft terminator
-colour  = albedo · tint · (fill + sun · wrap)
-          · contactAO(h)  · mix(1, cornerAO, k)  · gradient(h/H)   (contact, gradient: walls only)
-          + edge · chamfer(n.z) · sky                     the 45° bevel catches light
+wrap    = clamp((n·L + w) / (1 + w), 0, 1)                       soft terminator
+fill    = mix(bounce, skyUp, n.z/2 + 1/2)                        hemisphere
+colour  = albedo · tint · (sun · wrap · shadow + fill)
+          · contactAO(h) · mix(1, cornerAO, k) · gradient(h/H)   (contact, gradient: walls only)
+          + albedo · emitted  +  edge · chamfer(n.z) · fill       the 45° bevel catches light
 ```
+
+- **Under the city sky** (`?citysky=1`) this is `DETAILED_SKY_MATERIAL_GLSL`,
+  the `cityMaterial(CitySurface, CityLight)` the sky's shading path calls
+  through `CityEngineOptions.sky.material`, in the sky's linear light, with its
+  real sun, soft shadow, sky, bounce and emitted light; gamma and haze stay the
+  sky's. The sky's light is physical — a warm sun, a blue sky, a dim vertical
+  wall — so the clay answers it with three palette fields: `skyFillGain`
+  (1.6 day, 2.0 night), `skyFillChroma` (how much of the sky light's hue the
+  matte surface shows: 40% day, 25% night) and `skySunGain` (0.65). The sun
+  keeps its colour, so golden hour is golden. Pinned against the sky's own
+  `computeSkyState` at sun 50°, 8° and night (`city3dMaterials.test.ts`).
+- **Without it**, the classic shaders' `#ifdef GOWAY_DETAILED` branch
+  (`gowayClassic`) lights the same parameters in sRGB from the map's own light,
+  with the palette's hemisphere colours and sun standing in for the sky's.
 
 Why this shape and not MapLibre's: MapLibre floors an unlit face at
 `1 − intensity` of its colour and multiplies, which on a pale palette is a
 white lid on a grey box. Here no face is lit by the sun alone — a wall facing
 away keeps the whole sky fill — so the shaded side is ~20% under the lit one
-and cooler (blue sky, warm sun): clay, not cardboard. The ground bounce is
-brighter than the sky on purpose: the ground is near-white, and it is what
-puts a roof a step under the lit walls, as Apple's are. The light DIRECTION is
-still the real sun's (`city3dLight.ts`); only the response changed.
+and cooler (blue sky, warm sun): clay, not cardboard.
+
+The surface colour is shared by both paths too: `osmBase` (`osmShaders.ts`)
+applies the tag clamp and the per-building tint under the define, and leaves
+the openings to the material.
 
 ### Night
 
-- **`nightFactor`** (0 day … 1 night) blends every material field on the CPU;
-  the shader sees one state. Default: the appearance (dark is night).
-  `City3dHandle.setNightFactor(n | null)` is the input for the time-of-day
-  controller (`feat/city-sky` — it exposes no factor yet; this is the
-  placeholder with the agreed name and meaning, to unify on rebase), and
-  `nightFactorForSunAltitude` maps the sun to it (day above the horizon, night
-  past civil twilight). `?cityNight=<0..1>` pins it in development.
+- **One night factor, the engine's.** Every material field has a day and a
+  night value, blended ON THE GPU by `uNightFactor` — the uniform every city
+  material shares (`CityEngine.setNightFactor`), fed by
+  `lib/map/landmarks/night.ts` (the dark map is full night) or, under the city
+  sky, by its time of day. The day ramp travels in the shared `uLow`/`uTall`/…
+  uniforms and night darkens it by `night.low / day.low`. Nothing in the art
+  direction keeps a night factor of its own (the earlier placeholder is gone).
 - **Windows glow only where they are drawn**, i.e. where `building:levels` is
   recorded (the storey rhythm, `facades.ts`) — never on a wall without a
   recorded count, never on a party wall. Which windows are lit, their warmth
@@ -1365,8 +1385,8 @@ still the real sun's (`city3dLight.ts`); only the response changed.
   about occupancy or anything else in the world.** Far away, where a storey is
   too small to draw, a facade fades to its average glow instead of shimmering.
 - **Not here, on purpose**: the night sky, the street-level warm light on the
-  walls, `floodlit=yes` uplighting and landmark glow belong to the sky and
-  landmark phases.
+  walls, `floodlit=yes` uplighting and landmark glow are the sky's and the
+  landmarks' (they arrive as `emitted` and as the landmark models).
 
 ### Side by side
 
@@ -1390,18 +1410,19 @@ with moonlit tops, the warm irregular windows.
 
 **Still short of Apple:**
 
-- **No cast shadows and no atmosphere** in this layer — the largest single
-  difference by day. Owned by the sky phase (`feat/city-sky`).
-- **No contact shadow on the ground** around a footprint (Apple's buildings sit
-  in a soft dark halo); the ground is MapLibre's, and drawing it needs a ground
-  skirt in the mesher or the sky phase's shadow map.
+- **Shadows and atmosphere come only with the city sky**: without `?citysky=1`
+  there are no cast shadows and no haze. With it, the sky's soft shadow map and
+  haze reach the clay through the same response.
+- **No soft contact halo on the ground** around a footprint (Apple's buildings
+  sit in one); the sky's shadow map draws sun shadows, not ambient occlusion.
 - **Silhouettes are chamfered, not rounded.** The bevel is 0.7 m; a wider
   rounded profile is a mesher change (`MESH`) for after the LOD work lands.
 - **Manhattan at night is mostly unlit**: 7.8% of its features record
   `building:levels`, so most towers have no windows to glow — the honesty rule
   working as intended. A municipal floor count (PLUTO, Phase 4) fixes it.
-- **No trees, no landmark models, no road markings** — other phases; Apple's
-  dense old towns read as softer partly because trees break them up.
+- **Facades are flat walls with a window grid.** Apple's near views (Rockefeller
+  Center) carry piers, recessed windows, cornices and a ground-floor band;
+  procedural facade relief driven by recorded levels is the follow-up.
 
 ## Phased plan
 

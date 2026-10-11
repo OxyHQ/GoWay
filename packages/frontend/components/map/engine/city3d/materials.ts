@@ -33,6 +33,11 @@
  *     occl    = contact(h) · mix(1, cornerAO, k) · gradient(h/H)   (contact, gradient: walls only)
  *     colour  = A · (sun · wrap · shadow + fill) · occl  +  edge · chamfer(n.z) · sky  +  A · emitted
  *
+ * On the sky path `fill` and `sun` are the sky's, answered through the
+ * palette's `skyFillGain`/`skyFillChroma`/`skySunGain` (the clay's response to
+ * a physically blue sky and a dim wall); on the classic path they are the
+ * palette's own hemisphere colours and sun.
+ *
  * No face is lit by the sun alone, so a wall facing away keeps the whole
  * sky fill — a shade under the lit one and cooler, never black: clay, not
  * cardboard. `chamfer` is 1 on the mesher's 45° roof bevel.
@@ -86,6 +91,9 @@ const FLOAT_FIELDS = {
   TintHue: 'tintHue',
   TagBlend: 'tagBlend',
   TagSaturation: 'tagSaturation',
+  SkyFillGain: 'skyFillGain',
+  SkyFillChroma: 'skyFillChroma',
+  SkySunGain: 'skySunGain',
   WindowStrength: 'windowStrength',
   WindowLitShare: 'windowLitShare',
 } as const satisfies Record<string, keyof CityMaterial>;
@@ -240,10 +248,13 @@ vec3 cityMaterial(CitySurface s, CityLight l) {
   GowayMat m = gowayMat();
   vec3 n = s.normal;
   vec3 albedo = s.albedo * gowayLinear(m.albedoScale);
+  // The sky's hemisphere, answered with some of its hue and a gain (palette3d.ts).
   vec3 fill = mix(l.skyDown, l.skyUp, 0.5 + 0.5 * n.z);
+  fill = mix(vec3(dot(fill, vec3(0.2126, 0.7152, 0.0722))), fill, m.skyFillChroma) * m.skyFillGain;
   float occl = gowayOcclusion(m, n, s.heightAboveGround, s.buildingHeight, s.cornerAo);
-  vec3 light = (l.sun * gowayWrap(m, n, l.sunDir) * l.sunVisibility + fill) * occl;
-  vec3 lit = albedo * (light + l.emitted) + m.edge * gowayChamfer(n) * l.skyUp;
+  vec3 sun = l.sun * m.skySunGain * gowayWrap(m, n, l.sunDir) * l.sunVisibility;
+  vec3 light = (sun + fill) * occl;
+  vec3 lit = albedo * (light + l.emitted) + m.edge * gowayChamfer(n) * fill;
   lit = gowayWindows(
     m, lit, light,
     gowayLinear(m.glass), gowayLinear(m.windowGlow), gowayLinear(m.windowGlowCool),
@@ -371,4 +382,50 @@ export function windowGlowAt(
     (i) =>
       (material.windowGlow[i] + (material.windowGlowCool[i] - material.windowGlow[i]) * y * y) * k,
   ) as [number, number, number];
+}
+
+/** The sky's light inputs (`skyShaders.ts` → `CityLight`), linear. */
+export interface SkyLightInputs {
+  sunDir: Vec3;
+  sun: Vec3;
+  sunVisibility: number;
+  skyUp: Vec3;
+  skyDown: Vec3;
+  emitted: Vec3;
+}
+
+/**
+ * `cityMaterial` (the sky path) for an untagged, window-less surface, in
+ * linear light before the sky's gamma — the facade terms aside, line for
+ * line. `albedo` is sRGB, as the ramp uniforms are.
+ */
+export function skyMaterialResponse(
+  material: CityMaterial,
+  albedo: Rgb,
+  n: Vec3,
+  h: number,
+  buildingH: number,
+  cornerAo: number,
+  l: SkyLightInputs,
+): [number, number, number] {
+  const lin = albedo.map((c) => Math.max(c, 0) ** 2.2);
+  const up = 0.5 + 0.5 * n[2];
+  const raw = [0, 1, 2].map((i) => l.skyDown[i] + (l.skyUp[i] - l.skyDown[i]) * up);
+  const grey = 0.2126 * raw[0] + 0.7152 * raw[1] + 0.0722 * raw[2];
+  const fill = raw.map((c) => (grey + (c - grey) * material.skyFillChroma) * material.skyFillGain);
+  const len = Math.hypot(...l.sunDir) || 1;
+  const ndl = (n[0] * l.sunDir[0] + n[1] * l.sunDir[1] + n[2] * l.sunDir[2]) / len;
+  const wrap = Math.max(0, Math.min(1, (ndl + material.wrap) / (1 + material.wrap)));
+  const wall = 1 - smoothstep(0.3, 0.6, Math.abs(n[2]));
+  const contact = 1 - material.aoGround * (1 - smoothstep(0, material.aoReachM, h)) * wall;
+  const corner = 1 + (cornerAo - 1) * material.aoCorner;
+  const grad =
+    1 - material.heightGradient * (1 - Math.max(0, Math.min(1, h / Math.max(buildingH, 3)))) * wall;
+  const occl = contact * corner * grad;
+  const chamfer = smoothstep(0.35, 0.6, n[2]) * (1 - smoothstep(0.85, 0.97, n[2]));
+  return [0, 1, 2].map((i) => {
+    const light = (l.sun[i] * material.skySunGain * wrap * l.sunVisibility + fill[i]) * occl;
+    const x = lin[i] * (light + l.emitted[i]) + material.edge * chamfer * fill[i];
+    return x < 0.8 ? x : 0.8 + 0.2 * (1 - Math.exp(-(x - 0.8) / 0.2));
+  }) as [number, number, number];
 }

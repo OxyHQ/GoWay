@@ -17,9 +17,11 @@ import {
   materialRamp,
   materialUniformValues,
   pcgHash,
+  skyMaterialResponse,
   windowGlowAt,
   windowIsLit,
 } from '@/components/map/engine/city3d/materials';
+import { computeSkyState } from '@/components/map/engine/city3d/atmosphere';
 import { buildingSeed, meshOsmBuildings } from '@/components/map/engine/city3d/osmMesher';
 import type { OsmBuilding } from '@/components/map/engine/city3d/osmTiles';
 import { OSM_FRAGMENT_SHADER, TAG_TEMPER } from '@/components/map/engine/city3d/osmShaders';
@@ -298,5 +300,65 @@ describe('tagged colours in the detailed look', () => {
 
   test('osmBase applies the clamp only in the detailed look', () => {
     expect(OSM_FRAGMENT_SHADER).toContain('gm.tagSaturation');
+  });
+});
+
+describe('the sky path: the approved look under the sky’s physical light', () => {
+  // The sky's own light for a sun at `altitude` (atmosphere.ts), as the shader gets it.
+  const inputs = (altitude: number, appearance: 'light' | 'dark', azimuthDeg = 135) => {
+    const state = computeSkyState(altitude, appearance);
+    const alt = (Math.max(altitude, 0) * Math.PI) / 180;
+    const az = (azimuthDeg * Math.PI) / 180;
+    return {
+      sunDir: [Math.sin(az) * Math.cos(alt), Math.cos(az) * Math.cos(alt), Math.sin(alt)] as const,
+      sun: state.sunColor,
+      sunVisibility: 1,
+      skyUp: state.skyAmbient,
+      skyDown: state.groundBounce,
+      emitted: [0, 0, 0] as const,
+    };
+  };
+  const az = (135 * Math.PI) / 180;
+  const LIT = [Math.sin(az), Math.cos(az), 0] as const;
+  const SHADE = [-Math.sin(az), -Math.cos(az), 0] as const;
+  const srgb = (c: number[]) => c.map((x) => Math.min(1, x) ** (1 / 2.2));
+  const face = (
+    material: typeof CITY_MATERIALS.day,
+    n: readonly [number, number, number],
+    l: ReturnType<typeof inputs>,
+    albedo = material.low,
+  ) => srgb(skyMaterialResponse(material, albedo, n, 20, 30, 1, l));
+
+  test('day (sun 50°): a white maquette — lit wall near-white, shade softer and cooler, never black', () => {
+    const l = inputs(49.8, 'light');
+    const lit = face(CITY_MATERIALS.day, LIT, l);
+    const shade = face(CITY_MATERIALS.day, SHADE, l);
+    expect(luma(lit)).toBeGreaterThan(0.84);
+    expect(luma(shade)).toBeGreaterThan(0.68);
+    expect(luma(shade) / luma(lit)).toBeLessThan(0.93);
+    expect(shade[2] / shade[0]).toBeGreaterThan(lit[2] / lit[0]);
+    // The clay answers the blue sky with only a hint of its hue.
+    expect(chroma(shade)).toBeLessThan(0.08);
+  });
+
+  test('golden hour (sun 8°): the sunny wall turns warm, the shade stays cool', () => {
+    const l = inputs(8, 'light');
+    const lit = face(CITY_MATERIALS.day, LIT, l);
+    const shade = face(CITY_MATERIALS.day, SHADE, l);
+    expect(lit[0] - lit[2]).toBeGreaterThan(0.05);
+    expect(shade[2]).toBeGreaterThanOrEqual(shade[0]);
+  });
+
+  test('night: blue-grey massing a step above the ground, not the sky’s saturated blue', () => {
+    const l = inputs(-30, 'dark');
+    const night = CITY_MATERIALS.night;
+    const albedo = night.low.map((c, i) => c) as unknown as Rgb;
+    const ground = luma(hexRgb(CITY_GROUND_PALETTES.dark.land));
+    for (const n of [ROOF, LIT, SHADE]) {
+      const c = face(night, n, l, albedo);
+      expect(luma(c)).toBeGreaterThan(ground);
+      expect(c[2]).toBeGreaterThan(c[0]); // blue
+      expect(chroma(c)).toBeLessThan(0.35); // not the raw sky
+    }
   });
 });
