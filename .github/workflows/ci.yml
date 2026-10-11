@@ -244,12 +244,12 @@ jobs:
 
   # The 3D city's VISIBILITY gate (docs/MAP_NATIVE_3D.md, "The visibility
   # gate"): the real app, exported, in headless Chromium on SwiftShader, over a
-  # committed synthetic city with terrain held back 8 s. It asserts that what
-  # the engine counts as drawn is on the screen. Every other 3D city gate runs
-  # without a GPU and could not see trees and buildings buried under the terrain
-  # (#152): the engine counted all of them as drawn. Nothing comes from the
-  # network, and software GL is enough because the assertions are coverage, not
-  # frame time.
+  # committed synthetic city, with terrain held back until the city has drawn.
+  # It asserts that what the engine counts as drawn is on the screen. Every
+  # other 3D city gate runs without a GPU and could not see trees and
+  # buildings buried under the terrain (#152): the engine counted all of them
+  # as drawn. Nothing comes from the network, and software GL is enough
+  # because the assertions are coverage, not frame time.
   city3d:
     name: 3D city visibility
     runs-on: ubuntu-latest

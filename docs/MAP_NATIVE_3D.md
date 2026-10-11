@@ -347,14 +347,25 @@ Nothing comes from the network:
   without the owner's data. The gate's own server serves them, because the
   tiles are fetched inside Web Workers and Playwright's routes do not see
   those requests.
-- **Terrain**: a synthetic Terrarium tile at a constant 50 m, **held back
-  8 s** (`GATE_TERRAIN_DELAY_MS`). Every city tile is drawn before it can be
-  grounded: the order that broke `main`, forced.
+- **Terrain**: a synthetic Terrarium tile at a constant 50 m. MapLibre's 3D
+  terrain comes on only with the tilt (`lib/map/style/relief.ts` →
+  `terrainWanted`), so the order that broke `main` is forced in three steps,
+  each waiting for the engine to settle rather than for a fixed time (a fixed
+  delay expires while a slow runner is still loading):
+  1. Open flat at z19: the city tiles are drawn with no terrain at all.
+  2. Tilt to 60°: the terrain switches on, its elevation **held back**, and
+     the tilted view's tiles are drawn ungrounded too.
+  3. Release the elevation (2 s after the city settles,
+     `GATE_TERRAIN_DELAY_MS`), and wait until MapLibre reads more than 40 m
+     under the camera. A run where the terrain never lifts the map fails
+     rather than passing on a flat map.
 - **Quality**: `?quality=high`. On SwiftShader the profile would resolve to
   low, which draws no 3D terrain, so nothing would ever be lifted and the
   gate would pass on the broken code (it did, until this was added).
-- **Fixed inputs**: local noon; camera opened flat at z19 and tilted with six
-  keyboard steps; city life, live data, landmarks and the flyover off.
+- **Fixed inputs**: local noon; the tilt in six eased 10° steps to absolute
+  pitches, each waited out (`moveend`), so a slow runner lands on the same
+  camera (the keyboard's relative steps land short when frames are slower
+  than the ease); city life, live data, landmarks and the flyover off.
 
 Per sky (on and off) it asserts:
 
@@ -367,21 +378,22 @@ Per sky (on and off) it asserts:
 
 The assertions are coverage, not frame time, so software GL is enough and
 the result does not depend on the runner. Locally the export takes about
-20 s and the gate 3–6 minutes.
+20 s and the gate about 2 minutes on 32 cores.
 
-| Share of the map (synthetic city, noon) | without #152's re-grounding | `main` |
+| Share of the map (synthetic city, noon) | without #152's re-grounding, 3 runs | `main` |
 | --- | ---: | ---: |
-| Trees counted as drawn, sky on / off | 6,902 / 9,198 | 9,198 / 9,198 |
-| Tree canopy, sky on / off (0% with trees off) | **0 / 0%** | 14.8–15.8 / 15.4–15.8% |
-| Walls and windows, sky on / off (0.03% with the city off) | 72.6 / 7.5% | 72.6 / 20.2–21.0% |
-| Verdict | **FAIL** (trees) | PASS |
+| Tree canopy, sky on (0% with trees off) | **0, 0**, 15.8% | 15.8% |
+| Tree canopy, sky off | **0, 0, 0%** | 15.8% |
+| Walls and windows, sky on (0.03% with the city off) | 72.6% | 72.6% |
+| Walls and windows, sky off | **0.03, 0.03**, 21.0% | 21.0% |
+| Verdict | **FAIL, FAIL, FAIL** | PASS |
 
-Without the fix, the buildings without the sky still clear their threshold
-(7.5% against 2%): the official LOD2 surfaces and the walls drawn before the
-terrain arrived keep some of the frame dark. The trees are what fail it, and
-they fail under both skies. On failure the screenshots
-(`{sky,nosky}-{trees,notrees,nocity}.png`) are uploaded as the
-`city3d-visible` artifact.
+Without the fix, the trees without the sky are buried in every run, and the
+rest in most: with the sky on, one run in three drew its trees anyway. What
+re-creates a mesh's render objects (and so, by chance, its program) depends
+on the frame's timing; the no-sky trees are the gate's deterministic catch.
+On failure the screenshots (`{sky,nosky}-{trees,notrees,nocity}.png`) are
+uploaded as the `city3d-visible` artifact.
 
 ## The base map
 

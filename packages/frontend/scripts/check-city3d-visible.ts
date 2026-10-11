@@ -3,7 +3,7 @@
  * gate"): what the engine says it drew must be on the screen.
  *
  *   EXPO_PUBLIC_MAP_CITY3D=1 EXPO_PUBLIC_MAP_CITY_TILES=1 EXPO_PUBLIC_MAP_CITY_SKY=1 \
- *     bunx expo export --platform web --dev --output-dir /tmp/city3d-gate
+ *     bun run --cwd packages/frontend export:web --dev --output-dir /tmp/city3d-gate
  *   bun run --cwd packages/frontend check:city3d-visible --dist=/tmp/city3d-gate
  *
  * Born of a regression the GPU-free gates could not see (main @432fd6a): on 3D
@@ -23,16 +23,20 @@
  *    Served by the gate's own server, not by a browser route: the tiles are
  *    fetched inside Web Workers (MapLibre's, the mesh workers), which
  *    Playwright's routes do not see.
- *  - **Terrain**: a synthetic Terrarium tile at a constant 50 m, **held back
- *    8 s**, so every city tile is drawn before it can be grounded: the order
- *    that broke main, forced instead of left to the network.
+ *  - **Terrain**: a synthetic Terrarium tile at a constant 50 m. MapLibre's
+ *    terrain comes on with the tilt, so: open flat (tiles drawn with no
+ *    terrain), tilt (terrain on, its elevation HELD, tiles drawn ungrounded),
+ *    then release it once the city has settled and wait until MapLibre reads
+ *    over 40 m under the camera. The order that broke main, forced on a runner
+ *    of any speed (each step waits for the engine, not for a fixed time).
  *  - **Basemap**: the fixture's OpenMapTiles buildings; GoWay's committed
  *    glyphs and sprite (`public/map`). Every other request is refused.
  *  - **Quality**: the high preset (`?quality=high`). SwiftShader alone would
  *    resolve to low, which draws no 3D terrain: nothing would be grounded.
  *  - **Clock**: local noon (the sky's light, the crowns' green).
- *  - **Camera**: opened flat at z19 over the city, then tilted with MapLibre's
- *    keyboard handler — fixed steps, so every run lands on the same camera.
+ *  - **Camera**: opened flat at z19 over the city, then tilted to 60° in six
+ *    eased 10° steps to ABSOLUTE pitches, each waited out: the keyboard's
+ *    relative steps land short when frames are slower than the ease.
  *  - **Moving things off** (simulated traffic, live data, landmarks, flyover):
  *    they differ between page loads.
  *
@@ -44,13 +48,13 @@
  *    than the noon basemap (walls, windows) is at least 2% and 4× the same view
  *    with the 3D city off.
  *
- * Without #152's re-grounding it fails: canopy 0% under both skies, with
- * 6,902 and 9,198 trees counted as drawn. Measured numbers: the doc.
+ * Without #152's re-grounding it fails (three runs of three; the no-sky trees
+ * are buried every time). Measured numbers: the doc.
  */
 import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 import { extname, join, resolve } from 'node:path';
-import { type Browser, chromium, type Route } from 'playwright-core';
+import { type Browser, chromium, type Page, type Route } from 'playwright-core';
 
 import { CITY_COVERAGE_PATH } from '../lib/map/cityTiles';
 import {
@@ -68,8 +72,13 @@ function arg(name: string, fallback = ''): string {
 const VIEWPORT = { width: 1280, height: 800 };
 /** The map, clear of the side panel and the time scrubber. */
 const CLIP = { x: 410, y: 70, width: 860, height: 580 };
-const TERRAIN_DELAY_MS = Number(process.env.GATE_TERRAIN_DELAY_MS ?? 8000);
+/** How long the elevation is held back AFTER the tilted city has settled. */
+const TERRAIN_DELAY_MS = Number(process.env.GATE_TERRAIN_DELAY_MS ?? 2000);
+/** How long a view may take to settle, and a screenshot to get its frame. */
+const SETTLE_TIMEOUT_MS = Number(process.env.GATE_SETTLE_TIMEOUT_MS ?? 240_000);
 const TERRAIN_M = 50;
+/** The camera's pitch once tilted, degrees. */
+const TILT = 60;
 const NOON = new Date('2026-06-21T12:00:00+02:00');
 /** Moving things off, as stored choices: they differ between page loads. */
 const STILL = { cityLife: false, live: false, landmarks: false, flyover: false };
@@ -218,7 +227,12 @@ function fixtureResponse(path: string): Response | null {
 }
 
 /** What the page asks of anyone else (main-thread requests: style parts, terrain). */
-async function answer(route: Route, origin: string, basemap: 'buildings' | 'empty'): Promise<void> {
+async function answer(
+  route: Route,
+  origin: string,
+  basemap: 'buildings' | 'empty',
+  terrain: Promise<void>,
+): Promise<void> {
   const url = new URL(route.request().url());
   const path = url.pathname;
   if (url.origin === origin) {
@@ -234,7 +248,7 @@ async function answer(route: Route, origin: string, basemap: 'buildings' | 'empt
     return;
   }
   if (path.includes('/map/terrain/')) {
-    await new Promise((done) => setTimeout(done, TERRAIN_DELAY_MS));
+    await terrain;
     await route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from(TERRAIN_PNG) });
     return;
   }
@@ -261,6 +275,51 @@ interface View {
   triangles: number;
 }
 
+/** The few members of the development build's MapLibre map the gate uses. */
+interface ReliefMap {
+  getTerrain(): unknown;
+  areTilesLoaded(): boolean;
+  isMoving(): boolean;
+  getCenter(): unknown;
+  queryTerrainElevation(at: unknown): number | null;
+  jumpTo(options: { pitch: number }): void;
+  easeTo(options: { pitch: number; duration: number }): void;
+  once(event: 'moveend', listener: () => void): void;
+}
+
+/** In the page (an init script defines it): the development build's map. */
+declare function reliefMap(): ReliefMap | undefined;
+
+/** Whether `test` (run in the page) came true within the settle timeout. */
+async function until(page: Page, test: () => boolean): Promise<boolean> {
+  const by = Date.now() + SETTLE_TIMEOUT_MS;
+  while (Date.now() < by) {
+    if (await page.evaluate(test)) return true;
+    await page.waitForTimeout(500);
+  }
+  return false;
+}
+
+/**
+ * What the engine says it drew, once every tile it wants is loaded and none is
+ * pending; `null` if that never happens. A slow runner (two cores of
+ * SwiftShader) settles in minutes, not seconds.
+ */
+async function settled(page: Page): Promise<{ trees: number; triangles: number } | null> {
+  const by = Date.now() + SETTLE_TIMEOUT_MS;
+  while (Date.now() < by) {
+    const stats = await page.evaluate(() => {
+      const s = (globalThis as { __gowayCity3d?: Record<string, number> }).__gowayCity3d;
+      return s && s.tilesWanted > 0 && s.tilesPending === 0 && s.tilesLoaded === s.tilesWanted
+        ? { trees: s.trees, triangles: s.triangles }
+        : null;
+    });
+    if (stats) return stats;
+    await page.waitForTimeout(500);
+  }
+  return null;
+}
+
 async function view(
   browser: Browser,
   origin: string,
@@ -271,8 +330,13 @@ async function view(
   /** `empty`: no basemap buildings either — the reference for a map with no 3D at all. */
   basemap: 'buildings' | 'empty' = 'buildings',
 ): Promise<View> {
+  const started = Date.now();
   const context = await browser.newContext({ viewport: VIEWPORT });
-  await context.route('**/*', (route) => answer(route, origin, basemap));
+  let releaseTerrain = () => {};
+  const terrain = new Promise<void>((done) => {
+    releaseTerrain = done;
+  });
+  await context.route('**/*', (route) => answer(route, origin, basemap, terrain));
   const page = await context.newPage();
   if (DEBUG) {
     page.on('console', (m) => {
@@ -288,6 +352,22 @@ async function view(
     });
   }
   await page.clock.setFixedTime(NOON);
+  // The map the relief layer attached to, published by a development build.
+  await page.addInitScript(() => {
+    const scope = globalThis as {
+      reliefMap?: () => ReliefMap | undefined;
+      __gowayReliefMap?: ReliefMap & { setPixelRatio?: (ratio: number) => void };
+    };
+    scope.reliefMap = () => scope.__gowayReliefMap;
+    // The pixel ratio pinned: dynamic resolution would change it with the
+    // runner's frame times, and with it the pixels the shares are counted on.
+    const pin = setInterval(() => {
+      const map = scope.__gowayReliefMap;
+      if (!map) return;
+      map.setPixelRatio = () => {};
+      clearInterval(pin);
+    }, 20);
+  });
   await page.addInitScript(
     (stored) =>
       localStorage.setItem(
@@ -305,25 +385,51 @@ async function view(
     waitUntil: 'load',
     timeout: 180_000,
   });
-  // Flat first, as a person opens the map: the city tiles arrive and draw
-  // while the terrain is still held back.
-  await page.waitForTimeout(TERRAIN_DELAY_MS + 6000);
-  await page.focus('.maplibregl-canvas');
-  for (let i = 0; i < 6; i++) {
-    await page.keyboard.press('Shift+ArrowUp');
-    await page.waitForTimeout(400);
+  // Flat first, as a person opens the map, while the terrain is held back:
+  // the city tiles arrive and are drawn.
+  const city = choices.city3d !== false;
+  if (!(await until(page, () => reliefMap() !== undefined))) {
+    throw new Error(`${name}: the map never came up`);
   }
-  let stats: { trees?: number; triangles?: number } | null = null;
-  for (let i = 0; i < 120; i++) {
-    stats = await page.evaluate(() => {
-      const s = (globalThis as { __gowayCity3d?: Record<string, number> }).__gowayCity3d;
-      return s && s.tilesWanted > 0 && s.tilesPending === 0 && s.tilesLoaded === s.tilesWanted
-        ? { trees: s.trees, triangles: s.triangles }
-        : null;
-    });
-    if (stats) break;
-    await page.waitForTimeout(500);
+  if (city) await settled(page);
+  else await page.waitForTimeout(3000);
+  // Then tilted: MapLibre's 3D terrain comes on with the tilt
+  // (`lib/map/style/relief.ts` → `terrainWanted`), and its elevation is still
+  // held back, so the tilted view's tiles are drawn ungrounded too. Eased
+  // steps as a person tilts, but to ABSOLUTE pitches and each waited out: the
+  // keyboard's relative steps land short when frames are slower than the
+  // ease, and the camera would depend on the runner.
+  for (let pitch = 10; pitch <= TILT; pitch += 10) {
+    await page.evaluate(
+      (to) =>
+        new Promise<void>((done) => {
+          const map = reliefMap();
+          if (!map) return done();
+          map.once('moveend', () => done());
+          map.easeTo({ pitch: to, duration: 300 });
+        }),
+      pitch,
+    );
   }
+  if (city) await settled(page);
+  if (!(await until(page, () => Boolean(reliefMap()?.getTerrain())))) {
+    throw new Error(`${name}: 3D terrain never came on: the gate would test nothing`);
+  }
+  // Only now does the elevation come: every tile was drawn before it could be
+  // grounded, the order that broke main, on a runner of any speed.
+  await page.waitForTimeout(TERRAIN_DELAY_MS);
+  releaseTerrain();
+  // The elevation is under the city: MapLibre's terrain reads the released
+  // tile (over 40 of its 50 m), so a run on a flat map cannot pass.
+  const lifted = await until(page, () => {
+    const map = reliefMap();
+    const at = map?.queryTerrainElevation(map.getCenter()) ?? 0;
+    return Boolean(map?.areTilesLoaded() && !map.isMoving() && at > 40);
+  });
+  if (!lifted)
+    throw new Error(`${name}: the terrain never lifted the map: the gate would test nothing`);
+  const stats = city ? await settled(page) : null;
+  const settledS = Math.round((Date.now() - started) / 1000);
   // Fades, and the terrain's own refinement.
   await page.waitForTimeout(6000);
   // A development build shows the perf HUD over the map; it is an overlay, not
@@ -344,8 +450,17 @@ async function view(
     }));
     console.error(`[probe] ${JSON.stringify(probe)}`);
   }
-  const png = await page.screenshot({ clip: CLIP, path: join(outDir, `${name}.png`) });
+  // A screenshot waits for a fresh frame, and on two software-GL cores a frame
+  // with the sky's passes takes seconds.
+  const png = await page.screenshot({
+    clip: CLIP,
+    path: join(outDir, `${name}.png`),
+    timeout: SETTLE_TIMEOUT_MS,
+  });
   await context.close();
+  console.error(
+    `${name}: ${city ? (stats ? `settled at ${settledS}s` : 'NOT settled') : 'no city'}, shot at ${Math.round((Date.now() - started) / 1000)}s`,
+  );
   return { png, trees: stats?.trees ?? 0, triangles: stats?.triangles ?? 0 };
 }
 
