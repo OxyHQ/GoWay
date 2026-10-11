@@ -57,7 +57,8 @@
  * every map with no prop to turn it off — the embed included.
  */
 import { memo, useCallback } from 'react';
-import { Linking, Pressable, View } from 'react-native';
+import { Linking, Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { localizedLabel } from '@goway.to/sdk';
 import { Text } from '@oxy.so/bloom/typography';
 import { useBottomEdgeInset } from '@oxy.so/bloom/layout';
@@ -68,6 +69,7 @@ import { useTranslation } from '@/lib/i18n';
 import { CREDIT_LABELS } from '@/lib/map/creditLabels';
 
 import { type MapAttributionLink, resolveMapAttribution } from '@/lib/map/provider';
+import { type MapChromeLift, useMapChromeLift } from './chromeLift';
 import { MAP_BRAND_CLEARANCE } from './MapBrand';
 import { useMapRelief } from './reliefFlags';
 
@@ -100,6 +102,8 @@ function MapAttributionComponent({
   const attribution = resolveMapAttribution({ terrain: relief.terrain });
   const links = extra.length > 0 ? [...attribution.links, ...extra] : attribution.links;
   const bottomEdge = useBottomEdgeInset();
+  // Above a sheet's LIVE top edge where the screen provides one (phones).
+  const chromeLift = useMapChromeLift();
 
   const open = useCallback((href: string) => {
     void Linking.openURL(href).catch(() => {
@@ -108,9 +112,8 @@ function MapAttributionComponent({
   }, []);
 
   return (
-    <View
-      pointerEvents="box-none"
-      className="absolute right-space-8 items-end"
+    <CreditBox
+      lift={chromeLift}
       style={{
         // A claim already folds in the safe area of the surface holding the
         // edge, so the plain gap is added to it rather than the safe-area-aware
@@ -154,7 +157,60 @@ function MapAttributionComponent({
           <RiInformationLine width={18} height={18} fill={theme.colors.textSecondary} />
         </Pressable>
       </View>
-    </View>
+    </CreditBox>
+  );
+}
+
+/**
+ * The positioning box: laid out against Bloom's bottom edge, and — when the
+ * screen hands down a live lift — riding the sheet's current top edge on the
+ * UI thread. Absent a lift it is the plain box it always was.
+ */
+function CreditBox({
+  lift,
+  style,
+  children,
+}: {
+  lift: MapChromeLift | null;
+  style: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+}) {
+  if (!lift) {
+    return (
+      <View pointerEvents="box-none" className="absolute right-space-8 items-end" style={style}>
+        {children}
+      </View>
+    );
+  }
+  return (
+    <LiftedCreditBox lift={lift} style={style}>
+      {children}
+    </LiftedCreditBox>
+  );
+}
+
+function LiftedCreditBox({
+  lift,
+  style,
+  children,
+}: {
+  lift: MapChromeLift;
+  style: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+}) {
+  const { lift: rise, opacity } = lift;
+  const animated = useAnimatedStyle(
+    () => ({ transform: [{ translateY: -rise.value }], opacity: opacity.value }),
+    [rise, opacity],
+  );
+  return (
+    <Animated.View
+      pointerEvents="box-none"
+      className="absolute right-space-8 items-end"
+      style={[style, animated]}
+    >
+      {children}
+    </Animated.View>
   );
 }
 

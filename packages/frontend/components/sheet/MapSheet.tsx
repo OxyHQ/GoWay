@@ -91,6 +91,13 @@ export interface MapSheetProps {
    */
   animatedProgress?: SharedValue<number>;
   /**
+   * UI-thread mirror of how tall the sheet is ON SCREEN right now, in px from
+   * the window's bottom edge (safe area included) — its live top edge, drag
+   * and spring included. For chrome that must stay ABOVE the sheet, not merely
+   * above its resting claim (`ExploreScreen`'s controls and the map's credit).
+   */
+  animatedHeight?: SharedValue<number>;
+  /**
    * Gate the body pan on the inner scroller's offset (default `true`). `false`
    * makes the whole body an unconditional drag surface — right only for a sheet
    * whose content never scrolls.
@@ -138,6 +145,7 @@ export function MapSheet({
   snap,
   onSnapChange,
   animatedProgress,
+  animatedHeight,
   manualActivation = true,
   header,
   children,
@@ -188,14 +196,17 @@ export function MapSheet({
    * dividing by it would make every frame `NaN` — which propagates into the
    * consumer's `useAnimatedStyle` and silently stops the map re-centring.
    */
+  const fullHeight = geometry.full;
   useAnimatedReaction(
     () => translateY.value,
     (value) => {
+      // eslint-disable-next-line react-hooks/immutability -- Reanimated SharedValue write, never during render; the React Compiler rule does not model SharedValue mutation.
+      if (animatedHeight) animatedHeight.value = Math.max(0, fullHeight - value);
       if (!animatedProgress) return;
       // eslint-disable-next-line react-hooks/immutability -- Reanimated SharedValue write, never during render; the React Compiler rule does not model SharedValue mutation.
       animatedProgress.value = maxOffset > 0 ? clamp(1 - value / maxOffset, 0, 1) : 0;
     },
-    [maxOffset, animatedProgress],
+    [maxOffset, animatedProgress, animatedHeight, fullHeight],
   );
 
   // The last detent the SHEET settled on, so the controlled-prop effect below

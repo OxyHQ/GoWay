@@ -207,6 +207,11 @@ function moveSourceOf(event: unknown): MapMoveSource {
   return marked?.gowayProgrammatic === true ? 'programmatic' : 'user';
 }
 
+/** A camera move a pointer, wheel, key or touch caused (MapLibre attaches it). */
+function isGestureMove(event: unknown): boolean {
+  return (event as { originalEvent?: unknown } | null | undefined)?.originalEvent != null;
+}
+
 function isTransientMove(event: unknown): boolean {
   return (event as { gowayTransient?: unknown } | null | undefined)?.gowayTransient === true;
 }
@@ -482,8 +487,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     };
 
     const handleMove = (event: unknown) => {
-      // The reader moving the map folds the credit; the app moving it does not.
-      if (moveSourceOf(event) === 'user') noteCreditInteraction();
+      // The reader moving the map folds the credit; nothing else does. Only a
+      // move carrying the input event that caused it is a gesture: MapLibre
+      // also moves the camera itself (padding, resize, terrain), unmarked.
+      if (isGestureMove(event)) noteCreditInteraction();
       const now = Date.now();
       if (now - lastMoveEmit.current < MOVE_THROTTLE_MS) return;
       lastMoveEmit.current = now;

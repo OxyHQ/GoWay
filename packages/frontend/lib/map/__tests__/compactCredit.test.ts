@@ -75,10 +75,10 @@ describe('wired on every map', () => {
     });
   }
 
-  test('the web fork folds only on a user-sourced move', () => {
-    expect(read('components/map/MapCanvas.web.tsx')).toContain(
-      "if (moveSourceOf(event) === 'user') noteCreditInteraction();",
-    );
+  test('the web fork folds only on a gesture (a move carrying its input event)', () => {
+    const web = read('components/map/MapCanvas.web.tsx');
+    expect(web).toContain('if (isGestureMove(event)) noteCreditInteraction();');
+    expect(web).toContain('?.originalEvent != null');
   });
 
   test('no MapCanvas prop can switch the credit off', () => {

@@ -35,7 +35,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowDimensions, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@oxy.so/bloom/button';
 import { Fab } from '@oxy.so/bloom/fab';
@@ -47,6 +51,7 @@ import { RiFocus3Line } from '@oxy.so/bloom/icons/RiFocus3Line';
 
 import { BrandedChromeProvider } from '@/components/brand';
 import { MAP_CHIP_SLOT_ID } from '@/components/map/chipSlot';
+import { type MapChromeLift, MapChromeLiftContext } from '@/components/map/chromeLift';
 import {
   MapCanvas,
   type GeoBounds,
@@ -63,6 +68,7 @@ import { MAP_SHEET_HALF_RATIO, MapSheet, type MapSheetSnap } from '@/components/
 import { SidePanel } from '@/components/sheet/SidePanel';
 import { PANEL_WIDTH, useLayoutMode } from '@/lib/useLayoutMode';
 import { useAuthGate } from '@/lib/authGate';
+import { chromeLift } from '@/lib/map/chromeLift';
 import { useMapFeature } from '@/lib/map/useMapFeatures';
 import { useTranslation } from '@/lib/i18n';
 import type { LocationErrorReason } from '@/lib/map/useUserLocation';
@@ -90,8 +96,6 @@ const TILTED_EPSILON = 5;
 const CONTROLS_COLUMN_WIDTH = 72;
 /** Wait for the 3D → 2D transition before framing the scene's bounds. */
 const RETURN_FIT_DELAY_MS = 250;
-/** How far the floating controls lift as the sheet is dragged open. */
-const CHROME_LIFT_PX = 28;
 
 /**
  * Breathing room between fitted content and the edge of the FREE canvas, in px.
@@ -356,6 +360,8 @@ export default function ExploreScreen({
   const [followingLocation, setFollowingLocation] = useState(false);
 
   const sheetProgress = useSharedValue(0);
+  // The sheet's live on-screen height (`MapSheet`'s `animatedHeight`).
+  const sheetHeight = useSharedValue(0);
 
   const topEdge = useTopEdgeInset();
   const bottomEdge = useBottomEdgeInset();
@@ -453,15 +459,29 @@ export default function ExploreScreen({
   );
 
   /**
-   * Lift and fade the floating controls with the sheet, on the UI thread.
-   *
-   * In panel mode `sheetProgress` is never written, so this resolves to the
-   * identity transform and costs nothing.
+   * Keep the bottom chrome — "My location" and the map's data credit — above
+   * the sheet's CURRENT top edge, on the UI thread (`lib/map/chromeLift.ts`).
+   * They are laid out against the sheet's resting claim on the bottom edge;
+   * this lifts them the rest of the way, so at `half` the credit is visible
+   * from the first frame and while dragging they ride the sheet, then fade as
+   * it takes the screen. In panel mode nothing writes `sheetHeight` and there
+   * is no provider, so the chrome sits where it always did.
    */
-  const chromeStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -sheetProgress.value * CHROME_LIFT_PX }],
-    opacity: 1 - sheetProgress.value * 0.85,
-  }));
+  const { height: windowHeight } = useWindowDimensions();
+  const lift = useDerivedValue(
+    () => chromeLift({ sheetHeight: sheetHeight.value, claimed: bottomEdge, windowHeight }),
+    [sheetHeight, bottomEdge, windowHeight],
+  );
+  const liftPx = useDerivedValue(() => lift.value.lift, [lift]);
+  const liftOpacity = useDerivedValue(() => lift.value.opacity, [lift]);
+  const chromeLiftValue = useMemo<MapChromeLift>(
+    () => ({ lift: liftPx, opacity: liftOpacity }),
+    [liftPx, liftOpacity],
+  );
+  const chromeStyle = useAnimatedStyle(
+    () => ({ transform: [{ translateY: -liftPx.value }], opacity: liftOpacity.value }),
+    [liftPx, liftOpacity],
+  );
 
   const header = <ExploreHeader explore={explore} />;
   const body = (
@@ -479,217 +499,226 @@ export default function ExploreScreen({
     // route would otherwise have to remember. Never in `app/_layout.tsx` — that
     // also owns `app/frame.tsx`, which is the case the badge exists for.
     <BrandedChromeProvider>
-      <View className="flex-1 bg-background">
-        <MapCanvas
-          ref={mapRef}
-          initialViewport={initialViewport ?? undefined}
-          markers={markers}
-          renderMarker={renderMarker}
-          overlays={overlays}
-          onMarkerPress={handleMarkerPress}
-          onReady={handleMapReady}
-          onPress={handleMapPress}
-          // What the basemap is already labelling, so GoWay does not draw a
-          // second chip over it. See `lib/goway/basemapLabels.ts`.
-          onLabelsChange={explore.onLabelsChange}
-          showUserLocation={followingLocation}
-          onViewportChange={handleViewportChange}
-          onError={setMapError}
-          models={flyoverModels}
-          testID="goway-map"
-        />
+      <MapChromeLiftContext.Provider
+        value={layout === 'sheet' && !immersive ? chromeLiftValue : null}
+      >
+        <View className="flex-1 bg-background">
+          <MapCanvas
+            ref={mapRef}
+            initialViewport={initialViewport ?? undefined}
+            markers={markers}
+            renderMarker={renderMarker}
+            overlays={overlays}
+            onMarkerPress={handleMarkerPress}
+            onReady={handleMapReady}
+            onPress={handleMapPress}
+            // What the basemap is already labelling, so GoWay does not draw a
+            // second chip over it. See `lib/goway/basemapLabels.ts`.
+            onLabelsChange={explore.onLabelsChange}
+            showUserLocation={followingLocation}
+            onViewportChange={handleViewportChange}
+            onError={setMapError}
+            models={flyoverModels}
+            testID="goway-map"
+          />
 
-        <MapTopBar />
+          <MapTopBar />
 
-        {/* "Search this area" is Bloom's own control, and it arms itself from the
+          {/* "Search this area" is Bloom's own control, and it arms itself from the
           `source`/`isFinal` signal on the viewport event rather than from every
           camera frame — a camera the APP moved must never offer to re-run the
           search that moved it. It is hidden while the canvas is degraded: there
           is no visible area to search. */}
-        {explore.areaMoved && !mapError && !directions.active && !immersive ? (
-          <View
-            pointerEvents="box-none"
-            className="absolute left-0 right-0 items-center"
-            style={{ top: areaTop }}
-          >
-            <MapSearchAreaButton
-              variant="button"
-              label="Search this area"
-              onPress={explore.searchThisArea}
-              testID="search-this-area"
-            />
-          </View>
-        ) : null}
+          {explore.areaMoved && !mapError && !directions.active && !immersive ? (
+            <View
+              pointerEvents="box-none"
+              className="absolute left-0 right-0 items-center"
+              style={{ top: areaTop }}
+            >
+              <MapSearchAreaButton
+                variant="button"
+                label="Search this area"
+                onPress={explore.searchThisArea}
+                testID="search-this-area"
+              />
+            </View>
+          ) : null}
 
-        {/* Street 3D: an area in view needs more photos. A suggestion, never a
+          {/* Street 3D: an area in view needs more photos. A suggestion, never a
           wall — it yields to "Search this area" and to the directions picker,
           and contributing is auth-gated at the moment it is asked for. */}
-        {street3d.wantingCapture.length > 0 &&
-        !explore.areaMoved &&
-        !mapError &&
-        !directions.active &&
-        !immersive ? (
-          <View
-            pointerEvents="box-none"
-            className="absolute left-0 right-0 items-center px-space-16"
-            style={{ top: areaTop }}
-          >
-            <View className="flex-row items-center gap-space-8 rounded-radius-max bg-card py-space-4 pl-space-12 pr-space-4 shadow-m">
-              <Text className="text-bodySmall text-foreground" numberOfLines={2}>
-                {t('street3d.layer.contributeHint')}
-              </Text>
-              <Button size="xs" onPress={() => gate.run(() => router.push('/contribute'))}>
-                {t('street3d.contribute.cta')}
-              </Button>
+          {street3d.wantingCapture.length > 0 &&
+          !explore.areaMoved &&
+          !mapError &&
+          !directions.active &&
+          !immersive ? (
+            <View
+              pointerEvents="box-none"
+              className="absolute left-0 right-0 items-center px-space-16"
+              style={{ top: areaTop }}
+            >
+              <View className="flex-row items-center gap-space-8 rounded-radius-max bg-card py-space-4 pl-space-12 pr-space-4 shadow-m">
+                <Text className="text-bodySmall text-foreground" numberOfLines={2}>
+                  {t('street3d.layer.contributeHint')}
+                </Text>
+                <Button size="xs" onPress={() => gate.run(() => router.push('/contribute'))}>
+                  {t('street3d.contribute.cta')}
+                </Button>
+              </View>
             </View>
-          </View>
-        ) : null}
+          ) : null}
 
-        {/* Choosing a stop on the map is a MODE, and a mode with no visible state
+          {/* Choosing a stop on the map is a MODE, and a mode with no visible state
           is a map that mysteriously starts answering taps differently. The
           notice is an `alert` so it is announced, and it names the field it is
           about. */}
-        {directions.picking != null && !mapError ? (
-          <View
-            pointerEvents="none"
-            accessibilityRole="alert"
-            className="absolute left-0 right-0 items-center px-space-16"
-            style={{ top: areaTop }}
-          >
-            <View className="rounded-radius-max bg-card px-space-16 py-space-8 shadow-m">
-              <Text className="text-bodySmall text-foreground">
-                {`Tap the map to set the ${slotName(directions.picking, directions.stops.length).toLowerCase()}`}
-              </Text>
+          {directions.picking != null && !mapError ? (
+            <View
+              pointerEvents="none"
+              accessibilityRole="alert"
+              className="absolute left-0 right-0 items-center px-space-16"
+              style={{ top: areaTop }}
+            >
+              <View className="rounded-radius-max bg-card px-space-16 py-space-8 shadow-m">
+                <Text className="text-bodySmall text-foreground">
+                  {`Tap the map to set the ${slotName(directions.picking, directions.stops.length).toLowerCase()}`}
+                </Text>
+              </View>
             </View>
-          </View>
-        ) : null}
+          ) : null}
 
-        {landmarks && tourId && !mapError ? (
-          <Suspense fallback={null}>
-            <LandmarkOverlay
-              mapRef={mapRef}
-              top={areaTop}
-              startId={tourId}
-              onClose={() => setTourId(null)}
-              subscribeUserMove={subscribeUserMove}
-            />
-          </Suspense>
-        ) : null}
+          {landmarks && tourId && !mapError ? (
+            <Suspense fallback={null}>
+              <LandmarkOverlay
+                mapRef={mapRef}
+                top={areaTop}
+                startId={tourId}
+                onClose={() => setTourId(null)}
+                subscribeUserMove={subscribeUserMove}
+              />
+            </Suspense>
+          ) : null}
 
-        {/* The top-right stack, under the account button: ONE column, so its
+          {/* The top-right stack, under the account button: ONE column, so its
           items never overlap — the settings button (where Apple Maps parks its
           map options, a corner no sheet or panel covers in either layout),
           the "Landmarks" pill, and last the slot the map's own chips mount
           into (the "Simulated traffic" label, `components/map/chipSlot.ts`).
           A new chip (Live) goes here too. The slot is never hidden: the label
           must show whenever the simulation draws, a tour included. */}
-        <View
-          pointerEvents="box-none"
-          className="absolute items-end gap-space-8"
-          style={{ top: areaTop, right: sideGap }}
-          testID="map-top-right-stack"
-        >
-          {immersive ? null : (
-            <MapSettingsButton tilted={pitch >= TILTED_EPSILON} onTiltChange={handleTiltChange} />
-          )}
-          {landmarks && !mapError && !immersive && !directions.active ? (
+          <View
+            pointerEvents="box-none"
+            className="absolute items-end gap-space-8"
+            style={{ top: areaTop, right: sideGap }}
+            testID="map-top-right-stack"
+          >
+            {immersive ? null : (
+              <MapSettingsButton tilted={pitch >= TILTED_EPSILON} onTiltChange={handleTiltChange} />
+            )}
+            {landmarks && !mapError && !immersive && !directions.active ? (
+              <Suspense fallback={null}>
+                <LandmarksPillEntry centre={settledCentre} onOpen={setTourId} />
+              </Suspense>
+            ) : null}
+            <View nativeID={MAP_CHIP_SLOT_ID} pointerEvents="none" className="items-end" />
+          </View>
+
+          {flyover && directions.active && directions.route && !mapError ? (
             <Suspense fallback={null}>
-              <LandmarksPillEntry centre={settledCentre} onOpen={setTourId} />
+              <RouteFlyover
+                route={directions.route}
+                mapRef={mapRef}
+                top={areaTop}
+                onActiveChange={setFlying}
+                onModelsChange={setFlyoverModels}
+              />
             </Suspense>
           ) : null}
-          <View nativeID={MAP_CHIP_SLOT_ID} pointerEvents="none" className="items-end" />
-        </View>
 
-        {flyover && directions.active && directions.route && !mapError ? (
-          <Suspense fallback={null}>
-            <RouteFlyover
-              route={directions.route}
-              mapRef={mapRef}
-              top={areaTop}
-              onActiveChange={setFlying}
-              onModelsChange={setFlyoverModels}
-            />
-          </Suspense>
-        ) : null}
-
-        {immersive ? null : (
-          <Animated.View
-            pointerEvents="box-none"
-            style={[
-              {
-                position: 'absolute',
-                bottom: controlsBottom,
-                right: sideGap,
-                alignItems: 'flex-end',
-                gap: 12,
-              },
-              layout === 'sheet' ? chromeStyle : null,
-            ]}
-          >
-            {Math.abs(bearing) > BEARING_EPSILON ? (
+          {immersive ? null : (
+            <Animated.View
+              pointerEvents="box-none"
+              style={[
+                {
+                  position: 'absolute',
+                  bottom: controlsBottom,
+                  right: sideGap,
+                  alignItems: 'flex-end',
+                  gap: 12,
+                },
+                layout === 'sheet' ? chromeStyle : null,
+              ]}
+            >
+              {Math.abs(bearing) > BEARING_EPSILON ? (
+                <Fab
+                  size="xs"
+                  icon={RiCompass3Line}
+                  iconSize={20}
+                  accessibilityLabel={t('map.resetNorth')}
+                  onPress={handleResetNorth}
+                  appearance="subtle"
+                  tone="neutral"
+                />
+              ) : null}
               <Fab
-                size="xs"
-                icon={RiCompass3Line}
-                iconSize={20}
-                accessibilityLabel={t('map.resetNorth')}
-                onPress={handleResetNorth}
+                icon={RiFocus3Line}
+                iconSize={22}
+                accessibilityLabel={t('map.myLocation')}
+                accessibilityHint={t('map.myLocationHint')}
+                disabled={location.isLocating}
+                onPress={() => void handleLocate()}
                 appearance="subtle"
                 tone="neutral"
               />
-            ) : null}
-            <Fab
-              icon={RiFocus3Line}
-              iconSize={22}
-              accessibilityLabel={t('map.myLocation')}
-              accessibilityHint={t('map.myLocationHint')}
-              disabled={location.isLocating}
-              onPress={() => void handleLocate()}
-              appearance="subtle"
-              tone="neutral"
-            />
-          </Animated.View>
-        )}
+            </Animated.View>
+          )}
 
-        {/* A declined permission is a normal outcome, not an error screen: the
+          {/* A declined permission is a normal outcome, not an error screen: the
           map stays fully usable without it, so this says what happened and gets
           out of the way. Every reason gets its own sentence — the control looks
           equally dead when the page is http:// or the device cannot fix, and
           neither of those is the user's doing. */}
-        {locationNotice && !immersive ? (
-          <View
-            pointerEvents="none"
-            accessibilityRole="alert"
-            className="absolute items-start"
-            style={{
-              bottom: controlsBottom,
-              left: layout === 'panel' ? undefined : windowEdgeGap(insets.left, 0),
-              right: sideGap + CONTROLS_COLUMN_WIDTH,
-            }}
-          >
-            <View className="rounded-radius-12 bg-card px-space-12 py-space-8 shadow-s">
-              <Text className="text-bodySmall text-muted-foreground">{locationNotice}</Text>
-            </View>
-          </View>
-        ) : null}
+          {locationNotice && !immersive ? (
+            <Animated.View
+              pointerEvents="none"
+              accessibilityRole="alert"
+              className="absolute items-start"
+              style={[
+                {
+                  bottom: controlsBottom,
+                  left: layout === 'panel' ? undefined : windowEdgeGap(insets.left, 0),
+                  right: sideGap + CONTROLS_COLUMN_WIDTH,
+                },
+                // Beside "My location", so it rides the sheet with it.
+                layout === 'sheet' ? chromeStyle : null,
+              ]}
+            >
+              <View className="rounded-radius-12 bg-card px-space-12 py-space-8 shadow-s">
+                <Text className="text-bodySmall text-muted-foreground">{locationNotice}</Text>
+              </View>
+            </Animated.View>
+          ) : null}
 
-        {immersive ? null : layout === 'panel' ? (
-          <SidePanel header={header} accessibilityLabel="Places" testID="explore-panel">
-            {body}
-          </SidePanel>
-        ) : (
-          <MapSheet
-            snap={snap}
-            onSnapChange={setSnap}
-            animatedProgress={sheetProgress}
-            manualActivation
-            header={header}
-            accessibilityLabel="Places"
-            testID="explore-sheet"
-          >
-            {body}
-          </MapSheet>
-        )}
-      </View>
+          {immersive ? null : layout === 'panel' ? (
+            <SidePanel header={header} accessibilityLabel="Places" testID="explore-panel">
+              {body}
+            </SidePanel>
+          ) : (
+            <MapSheet
+              snap={snap}
+              onSnapChange={setSnap}
+              animatedProgress={sheetProgress}
+              animatedHeight={sheetHeight}
+              manualActivation
+              header={header}
+              accessibilityLabel="Places"
+              testID="explore-sheet"
+            >
+              {body}
+            </MapSheet>
+          )}
+        </View>
+      </MapChromeLiftContext.Provider>
     </BrandedChromeProvider>
   );
 }
