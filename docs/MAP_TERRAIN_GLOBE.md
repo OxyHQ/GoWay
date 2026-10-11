@@ -105,9 +105,14 @@ exist.
 MapLibre's `globe` projection: a sphere ("vertical perspective") to z11, easing
 into mercator by z12 — before any street-level layer has to know (the 3D
 buildings start at z15.5, and `cityEngine.ts` reads the mercator matrix it
-always has). Set at `style.load`, which fires before the first frame, and the
-chunk carrying it is requested when `MapCanvas.web.tsx` is evaluated, long
-before any style arrives, so the world is never seen flat first.
+always has). It is IN the style document from its first load: with the flag
+on, `MapCanvas.web.tsx` builds the map without a style and hands it the URL
+through `setStyle` with a `transformStyle` that adds `projection: globe`
+(`mapStyleLoading` in `lib/map/reliefFlag.ts`), and the container starts on
+the deep-space gradient. So the first frame is a globe on space whenever the
+relief chunk (stars, glow, sky, hillshade, terrain) arrives — verified by
+holding that chunk back 25 s. With the flag off the constructor is exactly
+what it was.
 
 **Space** is the map container's own CSS background — MapLibre clears to
 transparent and draws nothing around the globe: a deep blue-black radial
@@ -229,13 +234,12 @@ What reaches first paint is the flag check, the credit's extra branch and the
 error filter. Measured with `expo export --platform web`, flags off, against
 `main`:
 
-| Chunk | `main` (3eda89b) | This change | |
+| Chunk | `main` (921fb76) | This change | |
 | --- | ---: | ---: | --- |
-| `entry` (first paint) | 6,953,223 B | 6,955,355 B (+2,132 B; +628 B gz) | flags, the gate and its `import()` stub, the credit, the Worker path and vendor constants, the error filter |
+| `entry` (first paint) | 6,959,903 B | 6,962,712 B (+2,809 B; +872 B gz) | flags, the gate and its `import()` stub, the globe's style hand-off, the credit, the Worker path and vendor constants, the error filter |
 | `__common` (first paint) | 78,516 B | 78,516 B | identical once module ids are normalised |
-| `reliefLayer` (lazy) | — | 6,179 B (2,666 B gz) | never requested with the flags off |
-| `lazyChunk` (three.js, lazy) | 3,498,341 B | 3,502,555 B (+4,214 B) | the city engine's grounding |
-| `city3dLayer`, `meshWorker` (lazy) | 6,776 B, 40,934 B | 7,336 B, 41,365 B | the terrain bridge; the polygon ranges |
+| `reliefLayer` (lazy) | — | 6,121 B (2,624 B gz) | never requested with the flags off |
+| `lazyChunk` (three.js, lazy) | 3,576,552 B | 3,581,212 B (+4,660 B) | the city engine's grounding |
 
 The style documents are byte-identical (`map:style:check`): the fragments are
 added at runtime, never generated into them.
