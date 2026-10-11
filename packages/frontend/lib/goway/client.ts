@@ -30,14 +30,18 @@
  * running. Set `EXPO_PUBLIC_GOWAY_FIXTURES=0` in `packages/frontend/.env` to
  * develop against the real API, which is what the deployed bundle does.
  *
- * ## The fixture route is a STRAIGHT LINE, and the app says so
+ * ## Directions are NEVER a fixture
  *
- * `mockTransport.ts` answers `POST /routes` with the crow's path between the
- * stops at 1.25×, because a fake polyline along real streets would be a worse
- * lie than an obvious one. It is still a lie, so {@link USING_FIXTURES} is
- * exported and `DirectionsPanel` prints a line under any route drawn from it.
- * A developer must never mistake the fixture for the engine — that confusion
- * is what shipped a straight line to production.
+ * The fixture layer answers places, search, geocoding and Street 3D. It does
+ * not answer `POST /routes`: that request leaves for the real API at
+ * `EXPO_PUBLIC_API_URL` as it would with fixtures off (a fixture place, whose
+ * id the API has never heard of, travels as its point), and the route on the
+ * map is the engine's. With the default `https://api.goway.to` that is
+ * GoWay's own Valhalla; a local backend routes with whatever its
+ * `ROUTING_VALHALLA_URL` names (`packages/backend/.env.example`), and with none
+ * the planner says it cannot work out the route. There is no third answer. The
+ * fixture this replaced drew the crow's path at 1.25× and labelled it, and a
+ * labelled lie still reads as "routing is broken" to everyone who uses it.
  *
  * ## The locale is set ONCE, here
  *

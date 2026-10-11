@@ -273,6 +273,29 @@ describe('the request it sends', () => {
     expect(body.directions_options).toEqual({ units: 'kilometers', language: 'ca-ES' });
   });
 
+  it('costs every travel mode with its own model, and echoes the mode it was asked for', async () => {
+    // The owner's report was "walking, cycling and driving all give me the same
+    // straight line". The line was the fixture layer's, but the other half of
+    // it is a real failure this adapter could have: three buttons, one costing.
+    const expected = { drive: 'auto', walk: 'pedestrian', bike: 'bicycle' } as const;
+    for (const [mode, costing] of Object.entries(expected) as [keyof typeof expected, string][]) {
+      let seenBody = '';
+      const spy: FetchLike = (_url, init) => {
+        seenBody = String(init.body);
+        return Promise.resolve(
+          new Response(JSON.stringify({ trip: valhallaTrip() }), { status: 200 }),
+        );
+      };
+      const [route] = await provider(spy).route({
+        locations: [ORIGIN, DESTINATION],
+        mode,
+        alternatives: false,
+      });
+      expect((JSON.parse(seenBody) as { costing: string }).costing).toBe(costing);
+      expect(route?.mode).toBe(mode);
+    }
+  });
+
   it('asks for no alternatives unless the caller wants them', async () => {
     let seenBody = '';
     const spy: FetchLike = (_url, init) => {

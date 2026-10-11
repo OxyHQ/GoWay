@@ -35,7 +35,6 @@ import { RiWalkLine } from '@oxy.so/bloom/icons/RiWalkLine';
 
 import type { GeoBounds } from '@/components/map';
 import type { GeoCoordinate, Place } from '@goway.to/sdk';
-import { USING_FIXTURES } from '@/lib/goway/client';
 import { formatDistance, formatDuration } from '@/lib/goway/format';
 
 import { LocationFailureState } from '../explore/states';
@@ -450,19 +449,6 @@ function RouteBody({ directions, testID }: { directions: DirectionsController; t
           {origin?.source === 'map' ? (
             <Text className="text-caption text-muted-foreground">
               Measured from a point on the map, not from your location.
-            </Text>
-          ) : null}
-          {/* The same rule, applied to the app's own scaffolding. A fixture
-              build answers `POST /routes` with the straight line between the
-              stops (see `lib/goway/mockTransport.ts`), and a straight line
-              rendered under a distance and an ETA is exactly the defect this
-              feature was fixed for. The deployed site does not take this
-              branch — `EXPO_PUBLIC_GOWAY_FIXTURES` is `0` there — so this
-              sentence exists to stop a DEVELOPER mistaking the scaffolding for
-              the engine, which is how it reached production the first time. */}
-          {USING_FIXTURES ? (
-            <Text className="text-caption text-muted-foreground" testID="route-fixture-notice">
-              Sample data: this is the straight line between your stops, not a real route.
             </Text>
           ) : null}
         </View>

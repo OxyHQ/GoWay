@@ -17,6 +17,8 @@ import {
   GoWayNotFoundError,
   iterateGoWayPages,
   type GoWayClient,
+  type GoWayFetch,
+  type GoWayFetchInit,
 } from '@goway.to/sdk';
 
 import { classifyGoWayError } from '@/lib/goway/errors';
@@ -216,16 +218,109 @@ describe('search and geocoding answer SearchResults', () => {
   });
 });
 
-describe('directions', () => {
-  test('a multi-stop route parses, one leg per pair of stops', async () => {
-    const [first, second, third] = FIXTURE_PLACES;
-    const response = await fixtureClient().routes.directions({
-      origin: { coordinate: first.location },
-      waypoints: [{ placeId: second.id }],
-      destination: { coordinate: third.location },
-      mode: 'walk',
+describe('directions are never a fixture', () => {
+  /**
+   * A route is computed, so the fixture layer must hand `POST /routes` to the
+   * network untouched — it once answered with the crow's path at 1.25×, and
+   * the app drew it as the way there. `network` stands in for the platform
+   * `fetch` and records what reached it.
+   */
+  function recordingNetwork() {
+    const seen: { url: string; init: GoWayFetchInit }[] = [];
+    const network: GoWayFetch = async (url, init) => {
+      seen.push({ url, init });
+      return {
+        status: 200,
+        headers: {
+          get: (name: string) =>
+            name.toLowerCase() === 'content-type' ? 'application/json' : null,
+        },
+        text: async () => JSON.stringify({ routes: [] }),
+      };
+    };
+    return { seen, network };
+  }
+
+  test.each(['walk', 'bike', 'drive'] as const)(
+    'a %s route goes to the API with its mode, exactly as without fixtures',
+    async (mode) => {
+      const { seen, network } = recordingNetwork();
+      const client = createGoWayClient({
+        apiBaseUrl: API,
+        locale: 'es',
+        fetch: createFixtureFetch({}, network),
+      });
+      const [first, second, third] = FIXTURE_PLACES;
+      const request = {
+        origin: { coordinate: first.location },
+        waypoints: [{ placeId: second.id }],
+        destination: { coordinate: third.location },
+        mode,
+      };
+      const response = await client.routes.directions(request);
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0]?.url).toBe(`${API}/api/v1/routes`);
+      expect(seen[0]?.init.method).toBe('POST');
+      // A fixture place id means nothing to the API, so it travels as the
+      // place's point — what the API itself would route to.
+      expect(JSON.parse(seen[0]?.init.body ?? '{}')).toEqual({
+        ...request,
+        waypoints: [{ coordinate: second.location }],
+        locale: 'es',
+      });
+      // Whatever the API said is what the app gets; nothing was drawn for it.
+      expect(response).toEqual({ routes: [] });
+    },
+  );
+
+  test('a place id the fixtures do not own travels untouched, for the API to answer', async () => {
+    const { seen, network } = recordingNetwork();
+    const client = createGoWayClient({ apiBaseUrl: API, fetch: createFixtureFetch({}, network) });
+    await client.routes.directions({
+      origin: { coordinate: PLAÇA_CATALUNYA, name: 'Here' },
+      destination: { placeId: 'gw_not_a_fixture', name: 'There' },
+      mode: 'bike',
     });
-    expect(response.routes[0]?.legs).toHaveLength(2);
+    expect(JSON.parse(seen[0]?.init.body ?? '{}')).toEqual({
+      origin: { coordinate: PLAÇA_CATALUNYA, name: 'Here' },
+      destination: { placeId: 'gw_not_a_fixture', name: 'There' },
+      mode: 'bike',
+    });
+  });
+
+  test('a routes fault answers in place of the network, as an outage and never as a line', async () => {
+    const { seen, network } = recordingNetwork();
+    const client = createGoWayClient({
+      apiBaseUrl: API,
+      fetch: createFixtureFetch({ routes: 'unavailable' }, network),
+    });
+    const error = await failureOf(
+      client.routes.directions({
+        origin: { coordinate: PLAÇA_CATALUNYA },
+        destination: { coordinate: FIXTURE_PLACES[0].location },
+        mode: 'walk',
+      }),
+    );
+    expect(seen).toHaveLength(0);
+    expect(classifyGoWayError(error)).toEqual({ kind: 'unavailable', retryable: true });
+  });
+
+  test('an unreachable API reads as offline, with no route at all', async () => {
+    const client = createGoWayClient({
+      apiBaseUrl: API,
+      fetch: createFixtureFetch({}, async () => {
+        throw new TypeError('Failed to fetch');
+      }),
+    });
+    const error = await failureOf(
+      client.routes.directions({
+        origin: { coordinate: PLAÇA_CATALUNYA },
+        destination: { coordinate: FIXTURE_PLACES[0].location },
+        mode: 'drive',
+      }),
+    );
+    expect(classifyGoWayError(error).kind).toBe('offline');
   });
 });
 

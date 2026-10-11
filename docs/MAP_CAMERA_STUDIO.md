@@ -68,10 +68,10 @@ While flying, `ExploreScreen` hides its sheet or panel and the floating
 controls; the transport bar claims the bottom edge, so the mark and the credit
 rise above it.
 
-**Fixtures fly straight lines.** `mockTransport.ts` answers `POST /routes`
-with the crow's path, so a fixture flyover passes through city blocks and the
-vehicle is (correctly) hidden inside buildings for most of it. Add a stop for
-a turn. Real Valhalla routes run along streets.
+**A flyover flies the engine's route, fixtures or not.** `mockTransport.ts`
+never answers `POST /routes` — it goes to the API at `EXPO_PUBLIC_API_URL` — so
+the path always runs along streets. With no routing engine behind that API
+there is no route, and so no "Fly the route".
 
 ## Camera Studio
 
