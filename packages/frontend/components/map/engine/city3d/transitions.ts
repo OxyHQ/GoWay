@@ -23,6 +23,13 @@
 export const FADE_MS = 280;
 
 /**
+ * Where a building mesh carries its tile's fade (`TileEntry.fade`) for the TSL
+ * materials (`tsl/buildingMaterial.ts`), which are shared by every tile and so
+ * read the fade per object.
+ */
+export const FADE_USERDATA_KEY = 'fade';
+
+/**
  * One mesh to draw this frame, and the window of the screen-door noise it
  * keeps: pixels whose noise is in `[from, to)`. `[0, 1)` is fully drawn.
  */

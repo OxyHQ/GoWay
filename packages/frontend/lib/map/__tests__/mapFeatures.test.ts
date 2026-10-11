@@ -121,6 +121,7 @@ describe('the registry', () => {
       ['city3d', false],
       ['citySky', false],
       ['detailedCity', false],
+      ['cityTsl', false],
       ['cityTiles', false],
       ['city3dTrees', false],
       ['city3dTreeFill', false],

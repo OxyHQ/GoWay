@@ -1,6 +1,6 @@
 /**
  * One GoWay city tile, meshed and drawn by three.js's `WebGPURenderer` with
- * the TSL building material — the native-3D phase 1 prototype
+ * the TSL building material (`buildingMaterial.ts`) — the native-3D phase 1 prototype
  * (`docs/MAP_NATIVE_3D.md`). The SAME module runs in a browser (WebGL2 or
  * WebGPU) and in the native apps (`react-native-webgpu`: Dawn on Metal or
  * Vulkan); the host passes only what differs between them — the canvas, the
@@ -26,6 +26,7 @@ import {
   PerspectiveCamera,
   Scene,
   Color,
+  Vector3,
   WebGPURenderer,
 } from 'three/webgpu';
 
@@ -38,7 +39,7 @@ import { hexToRgb } from '../colour';
 import { type PackedMesh, quantizedModelMatrix } from '../packing';
 import { type TileId, tileSizeMetres } from '../tileMath';
 import { meshCityTile } from '../tileMeshing';
-import { createOsmBuildingMaterial } from './osmBuildingMaterial';
+import { createBuildingMaterials, createBuildingUniforms } from './buildingMaterial';
 
 export interface CityTileViewOptions {
   /** A DOM canvas, or `react-native-webgpu`'s canvas (`context.canvas`). */
@@ -127,22 +128,27 @@ export async function createCityTileView(options: CityTileViewOptions): Promise<
   const meshMs = options.now() - meshStarted;
 
   const ramp = buildingHeightRamp(palette);
-  const { material } = createOsmBuildingMaterial(
-    {
-      low: hexToRgb(ramp.low),
-      tall: hexToRgb(ramp.tall),
-      veryTall: hexToRgb(ramp.veryTall),
-      tallM: ramp.tallM,
-      veryTallM: ramp.veryTallM,
-    },
-    // The style's static light (the running map aims it from the sun instead).
-    cityLightFromSpec(BUILDINGS_LIGHT[options.appearance], 0),
-  );
+  // The style's static light (the running map aims it from the sun instead).
+  const light = cityLightFromSpec(BUILDINGS_LIGHT[options.appearance], 0);
+  const v = (rgb: readonly number[]) => ({ value: new Vector3(rgb[0], rgb[1], rgb[2]) });
+  const uniforms = createBuildingUniforms({
+    uLow: v(hexToRgb(ramp.low)),
+    uTall: v(hexToRgb(ramp.tall)),
+    uVeryTall: v(hexToRgb(ramp.veryTall)),
+    uTallM: { value: ramp.tallM },
+    uVeryTallM: { value: ramp.veryTallM },
+    uLightPosition: v(light.position),
+    uLightIntensity: { value: light.intensity },
+    uLightColor: v(light.color),
+    uOpacity: { value: 1 },
+    uGrounded: { value: 0 },
+  });
   // `cityMeshes.ts` → SIDE: the stored units mirror y once. In the map that is
   // cancelled by MapLibre's own mirror and the outward faces are FRONT; here
   // the camera is plain ENU, so the one mirror stands and they are BACK
   // (rendered both ways: FrontSide draws roofless shells).
-  material.side = BackSide;
+  const materials = createBuildingMaterials(uniforms, BackSide);
+  const material = materials.get('goway', false);
 
   const scene = new Scene();
   const city = new Group();
@@ -206,7 +212,7 @@ export async function createCityTileView(options: CityTileViewOptions): Promise<
     },
     dispose() {
       for (const child of city.children) (child as Mesh).geometry.dispose();
-      material.dispose();
+      materials.dispose();
       renderer.dispose();
     },
   };

@@ -293,6 +293,12 @@ export interface AttachCity3dOptions {
    * Defaults to `false`.
    */
   detailed?: boolean;
+  /**
+   * Draw the buildings through the TSL material and three's `WebGPURenderer`
+   * (`docs/MAP_NATIVE_3D.md` → Phase 2): the registry's `cityTsl`. Ignored
+   * with `sky` (and so with `detailed`, which brings one). Defaults to `false`.
+   */
+  tslBuildings?: boolean;
   /** A model was drawn, or fell back to its marker. */
   onModelStatus?: (id: string, status: ModelStatus) => void;
   /**
@@ -581,6 +587,9 @@ export async function attachCity3d(
       sky: sky ? { appearance: options.appearance } : undefined,
       // The detailed response; the night seam blends its day and night.
       material: detailed ? cityMaterials() : undefined,
+      // Not with the sky (nor `detailed`, which brings one): the sky's building
+      // material is not ported yet.
+      tslBuildings: options.tslBuildings === true && !sky,
     });
     engine.setNightFactor(night);
     updateSun();
