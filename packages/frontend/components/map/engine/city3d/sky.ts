@@ -115,6 +115,8 @@ export interface CitySkyStats {
   cameraHeightM: number;
   /** The shadow strength the last frame drew with (0: no shadow map in force). */
   shadowStrength: number;
+  /** The ground plane's elevation the last frame used, metres (`CitySkyView.groundM`). */
+  groundM: number;
 }
 
 export interface CitySky {
@@ -335,6 +337,7 @@ export function createCitySky(options: {
     shadowTexelM: 0,
     cameraHeightM: 0,
     shadowStrength: 0,
+    groundM: 0,
   };
 
   const applyState = (next: SkyState) => {
@@ -454,6 +457,7 @@ export function createCitySky(options: {
 
       shared.uCamera.value.set(...rays.camera);
       shared.uGroundZ.value = view.groundM;
+      stats.groundM = view.groundM;
       stats.cameraHeightM = rays.camera[2];
       rays.corners.forEach((corner, i) => {
         passUniforms.uCorners.value[i].set(...corner);

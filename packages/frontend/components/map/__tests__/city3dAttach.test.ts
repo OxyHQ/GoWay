@@ -191,3 +191,22 @@ describe('city3d passes (GoWay Live’s 3D shapes)', () => {
     expect(disposed).toBe(2);
   });
 });
+
+describe('MapLibre’s own sky under the city sky', () => {
+  test('its terrain fog is switched off, so the basemap is not hazed twice', async () => {
+    // Owner preview, Madrid (review of #125): MapLibre's ground fog, coloured
+    // by the city sky's pale horizon, fogged the draped basemap on top of the
+    // city sky's own haze. The adapter hands MapLibre `fog-ground-blend: 1`
+    // (no ground fog) with the colours, and restores the previous sky on detach.
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const adapter = readFileSync(join(import.meta.dir, '..', 'city3dLayer.web.ts'), 'utf8');
+    const call = adapter.slice(
+      adapter.indexOf('map.setSky({'),
+      adapter.indexOf('});', adapter.indexOf('map.setSky({')),
+    );
+    expect(call).toContain("'fog-color': colours.fog");
+    expect(call).toMatch(/'fog-ground-blend': 1\b/);
+    expect(adapter).toContain('map.setSky(previousHostSky ?? {})');
+  });
+});

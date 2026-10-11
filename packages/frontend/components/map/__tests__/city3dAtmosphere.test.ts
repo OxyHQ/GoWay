@@ -10,6 +10,7 @@ import {
   adaptedBrightness,
   computeSkyState,
   HAZE,
+  HAZE_CLEAR_M,
   hazeTransmittance,
   hostSkyColours,
   luminance,
@@ -52,7 +53,7 @@ describe('aerial perspective', () => {
     expect(hazeTransmittance(500, -0.5, 0)).toEqual([1, 1, 1]);
     let previous: Rgb = [1, 1, 1];
     // A ray falling 1 in 100 from 500 m: it meets the ground at 50 km.
-    for (const d of [100, 500, 2000, 10_000, 50_000]) {
+    for (const d of [HAZE_CLEAR_M + 100, 2500, 10_000, 30_000, 50_000]) {
       const t = hazeTransmittance(500, -0.01, d);
       for (let c = 0; c < 3; c++) expect(t[c]).toBeLessThan(previous[c]);
       expect(t[2]).toBeLessThan(t[0]);
@@ -60,24 +61,40 @@ describe('aerial perspective', () => {
     }
   });
 
-  test('the closed form is the integral of the exponential atmosphere', () => {
-    // Riemann sum of the same densities along the same ray.
+  test('the closed form is the integral of the exponential atmosphere, from the clear field on', () => {
+    // Riemann sum of the same densities along the same ray, past HAZE_CLEAR_M.
     const h0 = 300;
-    const dz = -0.2;
-    const d = 1500;
+    const dz = -0.05;
+    const d = 5000;
     const steps = 20_000;
     let rayleigh = 0;
     let mie = 0;
+    const span = d - HAZE_CLEAR_M;
     for (let i = 0; i < steps; i++) {
-      const h = h0 + ((i + 0.5) / steps) * d * dz;
-      rayleigh += Math.exp(-h / HAZE.rayleighScaleHeightM) * (d / steps);
-      mie += Math.exp(-h / HAZE.mieScaleHeightM) * (d / steps);
+      const h = h0 + (HAZE_CLEAR_M + ((i + 0.5) / steps) * span) * dz;
+      rayleigh += Math.exp(-h / HAZE.rayleighScaleHeightM) * (span / steps);
+      mie += Math.exp(-h / HAZE.mieScaleHeightM) * (span / steps);
     }
     const t = hazeTransmittance(h0, dz, d);
     for (let c = 0; c < 3; c++) {
       const expected = Math.exp(-(HAZE.rayleigh[c] * rayleigh + HAZE.mie * mie));
       expect(Math.abs(t[c] - expected)).toBeLessThan(1e-6);
     }
+  });
+
+  test('the near and mid field are clear: a street-level view is not veiled', () => {
+    // Owner preview, Madrid Gran Vía (review of #125): a 45° view from ~630 m
+    // over 1–1.5 km of street was hazed enough, on a pastel palette, to read
+    // as a veil. Within HAZE_CLEAR_M there is no haze at all, and the first
+    // kilometre past it costs only a few per cent.
+    expect(HAZE_CLEAR_M).toBeGreaterThanOrEqual(1000);
+    expect(hazeTransmittance(630, -0.7, HAZE_CLEAR_M)).toEqual([1, 1, 1]);
+    const beyond = hazeTransmittance(630, -0.3, HAZE_CLEAR_M + 1000);
+    for (const t of beyond) expect(t).toBeGreaterThan(0.9);
+    // …while the horizon still fades into the sky.
+    const horizon = hazeTransmittance(200, -0.002, 100_000);
+    expect(horizon[2]).toBeLessThan(0.1);
+    expect(Math.max(...horizon)).toBeLessThan(0.35);
   });
 
   test('stable for a horizontal ray', () => {
@@ -118,6 +135,16 @@ describe('the sky', () => {
     expect(low[0]).toBeGreaterThan(low[1]);
     expect(low[1]).toBeGreaterThan(low[2]);
     expect(low[2] / low[0]).toBeLessThan(noon[2] / noon[0] / 3);
+  });
+
+  test('by day the shade is only a little cooler than the light, not a blue-grey veil', () => {
+    // Owner preview, Madrid (review of #125): the sky term alone made the
+    // shade and the basemap's shadows cold blue-grey on the pastel palette.
+    for (const altitude of [42, 16, 5]) {
+      const a = computeSkyState(altitude, 'light').skyAmbient;
+      expect(a[2] / a[0]).toBeLessThan(1.35);
+      expect(a[2]).toBeGreaterThanOrEqual(a[0]);
+    }
   });
 
   test('night: no sun, no shadows, a deep blue-violet sky, a blue ambient that is never black', () => {

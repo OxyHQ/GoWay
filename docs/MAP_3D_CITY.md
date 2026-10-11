@@ -989,8 +989,33 @@ reddens at sunset — and a handful of named constants bend it toward that look:
 eye adaptation (`BRIGHTNESS_CURVE`), partial white balance
 (`CHROMATIC_ADAPTATION`), light that bounces round streets (`ENV_BOUNCE`),
 shadows that never go black (`SHADOW_OPACITY`), the real air for haze
-(`AERIAL_DISTANCE_SCALE = 1`) and a stylised night sky. Each is commented
+(`AERIAL_DISTANCE_SCALE = 1`) past a clear near field (`HAZE_CLEAR_M`), a
+daytime ambient that keeps little of the sky's blue (`DAY_AMBIENT_SATURATION`)
+and a stylised night sky. Each is commented
 where it is defined (`engine/city3d/atmosphere.ts`) with what it does and why.
+
+### Crisp near, hazy far (owner preview, Madrid Gran Vía)
+
+The first cut looked washed out on a tilted street-level view (Gran Vía at
+18:09, sun 16°, terrain on): the whole city pale, as if veiled. Three causes,
+three changes, each with a test (`city3dAtmosphere.test.ts`,
+`city3dAttach.test.ts`):
+
+- **The basemap was hazed twice.** MapLibre's own terrain fog
+  (`fog-ground-blend`, from the relief prototype's sky) fogs the draped
+  basemap by depth, and the city sky had coloured that fog with its own pale
+  horizon — on top of the city sky's haze. While the city sky draws,
+  MapLibre's ground fog is off (`fog-ground-blend: 1`); its sky and horizon
+  colours still follow this sky, and the previous sky returns on detach.
+- **Haze started at the camera.** Real air dims 1–3 km of street a few per
+  cent, which on a pale pastel palette reads as a veil. Aerial perspective
+  now starts at `HAZE_CLEAR_M` (1.5 km) and is unchanged past it, so a
+  street-level view is crisp and horizon views still fade into the sky.
+- **The shade was cold blue-grey.** The sky term alone lit the shade and the
+  basemap's shadows. By day the ambient keeps only 40% of its colour
+  (`DAY_AMBIENT_SATURATION`, back to full through twilight: the night stays
+  blue), and less street bounce (`ENV_BOUNCE` 0.4 → 0.28) with slightly deeper
+  shadows (`SHADOW_OPACITY` 0.7 → 0.78) gives the city its form back.
 
 ### Night: the seam, the palette, the lights
 
