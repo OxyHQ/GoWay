@@ -101,6 +101,7 @@ import {
   type MapOverlay,
   type ResolvedMapViewport,
 } from './types';
+import { useSunLight } from './useSunLight';
 
 /**
  * Where MapLibre's tile worker is served from, on this origin.
@@ -185,6 +186,24 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const styleUrl = useMemo(() => resolveMapStyleUrl(resolvedAppearance), [resolvedAppearance]);
   const gestures = resolveInteraction(interaction);
   const accent = theme.colors.primary;
+
+  // The buildings' light, aimed from the sun over the viewport centre;
+  // `settle` is stable, so the engine effect below can call it without being
+  // re-run. See `useSunLight.ts`.
+  //
+  // The engine id is exactly the engine effect's own dependencies — a new
+  // `styleUrl` (an appearance change) or `reloadKey` (a retry) builds a new
+  // `maplibregl.Map` at `initialViewport`, wherever the user had panned to —
+  // and the start is the same expression that effect builds it at. Without
+  // the id the hook kept the OLD engine's settled centre: the constructor's
+  // own `jumpTo` fires `moveend` inside `new Map()`, before the listener
+  // below exists, so nothing else ever reports the new camera.
+  const sunLight = useSunLight(
+    resolvedAppearance,
+    `${styleUrl}#${reloadKey}`,
+    isDrawableCoordinate(initialViewport) ? initialViewport : DEFAULT_VIEWPORT,
+  );
+  const settleSunLight = sunLight.settle;
 
   // Callbacks are read through refs inside the engine's own listeners so that
   // re-creating the map is driven ONLY by the style/reload key — a new inline
@@ -311,6 +330,15 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     const handleMoveEnd = (event: unknown) => {
       lastMoveEmit.current = 0;
       emitViewport(true, moveSourceOf(event));
+      // The settled camera is when the sun is re-read for the new centre —
+      // never `move`, which is every frame. Separate from `emitViewport`, which
+      // returns early for a caller with no `onViewportChange` (the embed), and
+      // which must not decide whether the buildings are lit. `getCenter` builds
+      // a `LngLat` and can throw on a broken transform, hence the wrapper.
+      runEngineCommand('getCenter', () => {
+        const centre = map.getCenter();
+        settleSunLight({ latitude: centre.lat, longitude: centre.lng });
+      });
     };
 
     /**
@@ -512,7 +540,24 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     };
     // `initialViewport` is initial by contract — re-reading it here would make
     // a parent's inline object literal reset the camera on every render.
-  }, [styleUrl, reloadKey, emitError]);
+  }, [styleUrl, reloadKey, emitError, settleSunLight]);
+
+  // --- Buildings light ----------------------------------------------------
+
+  // Lay the sun light over the style document's static `light`. `ready` is in
+  // the dependencies because a style swap builds a NEW map whose document
+  // brings the static light back, and `setLight` before `load` throws
+  // ("Style is not done loading"), so it waits for the flag `handleLoad` sets.
+  // `useSunLight` only produces a new object when the light really changed, so
+  // this runs on a settle or a clock tick that moved the sun a whole degree —
+  // never per frame. maplibre-gl also diffs the light itself and eases the
+  // change over its default 300 ms transition.
+  useEffect(() => {
+    const map = mapRef.current;
+    const light = sunLight.light;
+    if (!map || !ready || !light) return;
+    runEngineCommand('setLight', () => map.setLight(light));
+  }, [sunLight.light, ready]);
 
   // --- Interaction toggles ------------------------------------------------
 

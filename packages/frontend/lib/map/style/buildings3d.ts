@@ -75,6 +75,7 @@ import type {
 } from '@maplibre/maplibre-gl-style-spec';
 
 import type { MapAppearance } from '../provider';
+import type { SunPosition } from '../sun';
 import type { CartographyPalette } from './palette';
 import { OPENMAPTILES_SOURCE_LAYERS } from './schema';
 
@@ -132,11 +133,168 @@ export const BUILDING_3D_LAYER_ID = 'building-3d';
  * It is a property of the STYLE DOCUMENT, not of a layer, which is why
  * `index.ts` applies it and why these live next to the layer they light rather
  * than in the document builder.
+ *
+ * ## This is now the FALLBACK, not what a running map shows
+ *
+ * Both map adapters replace it at runtime with {@link sunLitBuildingsLight} —
+ * the same intensity, aimed from where the sun really is over the viewport.
+ * It stays in the style document because a style is also read by things that
+ * run none of GoWay's code (a cached document, a bug report, a third-party
+ * MapLibre pointed at `goway.to/map/goway-light.json`), and because it is what
+ * the first frames show before the adapter has applied anything. Everything
+ * said above about intensity is inherited by the sun light unchanged; only
+ * the direction moves.
  */
 export const BUILDINGS_LIGHT: Record<MapAppearance, LightSpecification> = {
   light: { anchor: 'viewport', position: [1.15, 210, 30], color: '#ffffff', intensity: 0.2 },
   dark: { anchor: 'viewport', position: [1.15, 210, 30], color: '#ffffff', intensity: 0.45 },
 };
+
+/**
+ * The light's distance term, MapLibre's default and the static light's.
+ *
+ * It is NOT normalised away by the renderer: `fill-extrusion`'s shader takes
+ * `dot(normal, lightPosition)` with the Cartesian position at this radius, so
+ * 1.15 is a 15% gain on every face's directional term (clamped at 1). Every
+ * number in the note on {@link sunLitBuildingsLight} is computed with it.
+ */
+const LIGHT_RADIUS = 1.15;
+
+/**
+ * The polar angle (0° = straight down from overhead) a sun at the ZENITH is
+ * drawn at. The static light's own 30°, which is the one polar angle that was
+ * measured legible on rendered frames.
+ */
+const POLAR_HIGH_SUN_DEG = 30;
+
+/**
+ * The polar angle a sun ON THE HORIZON is drawn at — the most raking the light
+ * is ever allowed to get. See {@link sunLitBuildingsLight} for the arithmetic.
+ */
+const POLAR_LOW_SUN_DEG = 50;
+
+/**
+ * How far below the horizon the light keeps easing, in degrees: civil
+ * twilight, the conventional point at which the sky stops lighting anything.
+ */
+const TWILIGHT_DEPTH_DEG = 6;
+
+/**
+ * The buildings' light, aimed from the real sun.
+ *
+ * `sun` is where the sun is over the centre of the viewport
+ * (`lib/map/sun.ts`); `appearance` is the user's THEME. They are separate
+ * inputs on purpose — see "Night is not dark mode" below.
+ *
+ * ## What is literal and what is shaped
+ *
+ * **The azimuth is literal.** Under `anchor: 'map'` MapLibre measures it
+ * clockwise from true north, which is exactly the compass bearing `sunPosition`
+ * returns, so the lit side of every block is the side the sun is actually on.
+ * That is the whole feature, and it is also the reason for the anchor: under
+ * `viewport` the lit side would be a fact about the screen and would turn with
+ * the camera, so a rotated map would light the street's shady side. Under
+ * `map` it is a fact about the city — rotate the map and the sunny side of the
+ * street stays the sunny side.
+ *
+ * **The elevation is shaped, because the literal one wrecks legibility at both
+ * ends.** The shader (read off maplibre-gl 6.10's `fill-extrusion` program)
+ * gives each face a directional term `d = clamp(dot(normal, light), 0, 1)` and
+ * multiplies the colour by `mix(1 − intensity, max(1 − luminance + intensity,
+ * 1), d)`: `d = 0` is the unlit floor, `d = 1` full light. With
+ * {@link LIGHT_RADIUS}, a roof gets `d = 1.15·cos(polar)` and the wall facing
+ * the sun `1.15·sin(polar)`; every other wall gets less, and the walls facing
+ * away get 0.
+ *
+ *  - **A literal high sun flattens the walls.** At polar 0° (overhead, which is
+ *    every noon in the tropics) no wall gets any light: all four sides sit at
+ *    the floor, identical, and a corner stops reading as a corner — the
+ *    cardboard look the module header exists to fix. So the zenith is drawn at
+ *    {@link POLAR_HIGH_SUN_DEG}, the static light's measured 30°, where the
+ *    sunny wall still gets `d = 0.58` against 0 for the shady ones.
+ *  - **A literal low sun darkens the roofs.** At polar 90° (on the horizon)
+ *    the roof gets `d = 0`, and at pitch 0 — where the app opens and where
+ *    most people stay — the roof IS the building. A city of floor-dark lids is
+ *    a dimmer map at every sunrise. So the horizon is drawn at
+ *    {@link POLAR_LOW_SUN_DEG}: roof `d = 0.74`, sunny wall `d = 0.88`, a
+ *    visibly raking light with the walls brighter than at noon. Through the
+ *    formula above with today's `building` tokens, the roof keeps **95%** of
+ *    its noon brightness in light (`#f7eed9`, intensity 0.2) and **87%** in
+ *    dark (`#4c4f74`, intensity 0.45 — the fragile appearance, see
+ *    {@link BUILDINGS_LIGHT}). At 60° dark would keep 78%, which is the
+ *    "dimmer map" again. Those are COMPUTED from the shader, not sampled off
+ *    rendered frames the way the intensities were, and the angle is a named
+ *    constant precisely so that a pixel measurement can move it.
+ *
+ * Between the two, the polar angle is a straight line in altitude, not a clamp:
+ * a clamp would make every sun above some height look identical, and the whole
+ * of a mid-latitude winter look like sunrise. Shaped linearly, Barcelona at
+ * midsummer noon (72°) is drawn at 34° and at midwinter noon (26°) at 44°, so
+ * the season and the hour both still show.
+ *
+ * ## Night
+ *
+ * There is no sun to be faithful to, so the light does the two things that
+ * cost nothing in legibility and introduce no jump:
+ *
+ *  - **The azimuth keeps following the sun below the horizon.** Sunset in the
+ *    west, round through north at midnight (in the northern hemisphere), up in
+ *    the east at dawn: one smooth circle a day, with nothing to snap at dusk
+ *    or at dawn. Freezing it at the sunset bearing would mean a 180° swing at
+ *    sunrise; switching to the static viewport light would change the anchor,
+ *    and with it whether rotating the map moves the shading.
+ *  - **The polar angle eases back to the tuned 30° through civil twilight**
+ *    ({@link TWILIGHT_DEPTH_DEG}). The horizon value is the most compromised
+ *    look the light has; the night city goes back to the measured one, only
+ *    rotated. Continuous at both ends: 50° at the horizon, 30° at −6°.
+ *
+ * Polar night and midnight sun need no case of their own: the sun's altitude
+ * already says which of the two regimes applies, minute by minute.
+ *
+ * ## Night is not dark mode
+ *
+ * `appearance` is the user's theme and decides only the intensity, exactly as
+ * it does for the static light, because intensity is a property of the
+ * PALETTE — it is the number that makes a shaded wall distinguishable from a
+ * roof on that particular set of colours. Coupling it to the hour would mean
+ * a light-theme map at 23:00 rendering walls at a ratio measured to be fog on
+ * that palette, or a dark-theme map at noon with white lids on black walls.
+ * Nor does night dim anything: the user already chose how dark their map is,
+ * and a second, clock-driven darkness on top of the theme is a night mode
+ * nobody asked for.
+ *
+ * For the same reason the colour stays white. A warm low sun is a lovely idea
+ * and a multiplicative tint over a palette that was matched against measured
+ * captures — every building would drift off its token at every dawn.
+ */
+export function sunLitBuildingsLight(
+  appearance: MapAppearance,
+  sun: SunPosition,
+): LightSpecification {
+  return {
+    anchor: 'map',
+    position: [
+      LIGHT_RADIUS,
+      // Whole degrees: a degree of light is below what anyone can see on a
+      // wall, and an integer is a value two samples can be compared on, which
+      // is what keeps the adapters from re-applying an unchanged light.
+      Math.round(sun.azimuthDeg) % 360,
+      Math.round(sunPolarDeg(sun.altitudeDeg)),
+    ],
+    color: '#ffffff',
+    intensity: BUILDINGS_LIGHT[appearance].intensity,
+  };
+}
+
+/** The shaped polar angle for a sun at `altitudeDeg`. See {@link sunLitBuildingsLight}. */
+export function sunPolarDeg(altitudeDeg: number): number {
+  if (altitudeDeg >= 0) {
+    const height = Math.min(altitudeDeg, 90) / 90;
+    return POLAR_LOW_SUN_DEG - height * (POLAR_LOW_SUN_DEG - POLAR_HIGH_SUN_DEG);
+  }
+  const depth = Math.min(-altitudeDeg, TWILIGHT_DEPTH_DEG) / TWILIGHT_DEPTH_DEG;
+  return POLAR_LOW_SUN_DEG - depth * (POLAR_LOW_SUN_DEG - POLAR_HIGH_SUN_DEG);
+}
 
 /**
  * Where volumes start and where they are fully there.
