@@ -611,6 +611,11 @@ export async function attachCity3d(
           'sky-color': colours.sky,
           'horizon-color': colours.horizon,
           'fog-color': colours.fog,
+          // MapLibre's own terrain fog OFF while the city sky draws: the
+          // city sky's haze covers the ground (and the terrain under it), so
+          // both at once hazed the basemap twice — a pale veil over the whole
+          // view (owner preview, Madrid, review of #125). 1 = no ground fog.
+          'fog-ground-blend': 1,
         });
       } catch {
         // A style not loaded yet: the next sun change tries again.

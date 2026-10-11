@@ -126,6 +126,18 @@ export const URBAN_AEROSOL = 1.6;
  */
 export const AERIAL_DISTANCE_SCALE = 1;
 
+/**
+ * The haze's clear near field, metres: aerial perspective starts this far
+ * from the camera and builds from there (the air in front of it is taken as
+ * clear). The art direction is crisp, saturated near and mid field with haze
+ * only toward the horizon; a street-level map view spans 1–3 km, which real
+ * air already dims a few per cent — on a pale pastel palette that read as a
+ * veil over the whole city (owner preview, Madrid Gran Vía, review of #125).
+ * Past this the physics is unchanged, so horizon views still fade into the
+ * sky exactly as before.
+ */
+export const HAZE_CLEAR_M = 1500;
+
 /** The sky table: angle from the sun's azimuth (0…π) across, elevation (0…π/2) down. */
 export const SKY_LUT_WIDTH = 48;
 export const SKY_LUT_HEIGHT = 32;
@@ -227,10 +239,12 @@ const GROUND_ALBEDO = 0.18;
  * of the horizontal illuminance. Streets are canyons of lit walls; without
  * this a shadow on a sunny day is the sky alone, about a tenth of the light,
  * which reads as a black hole on a map. The art direction (a matte clay
- * maquette, soft and low in contrast) wants more than a photograph would
- * show: with this a shadow keeps about half the light.
+ * maquette, soft) wants more than a photograph would show — but not so much
+ * that the city goes flat: 0.4 left form only in the walls, and with the cool
+ * sky term read as a pale veil (owner preview, Madrid, review of #125). At
+ * 0.28 a shadow keeps a little under half the light and still reads as shape.
  */
-const ENV_BOUNCE = 0.4;
+const ENV_BOUNCE = 0.28;
 
 const PRIMARY_STEPS = 20;
 
@@ -239,7 +253,7 @@ const PRIMARY_STEPS = 20;
  * Below 1 on purpose — the maquette look keeps shadows as soft, light shapes
  * that say where the sun is, never black slots in the street grid.
  */
-export const SHADOW_OPACITY = 0.7;
+export const SHADOW_OPACITY = 0.78;
 
 /**
  * The night sky, as display sRGB: a deep blue-violet, lighter at the horizon.
@@ -515,8 +529,12 @@ function columnDensity(h0: number, dz: number, d: number, H: number): number {
  * ground, with unit direction z-component `dirZ`, over `distanceM`.
  */
 export function hazeTransmittance(cameraHeightM: number, dirZ: number, distanceM: number): Rgb {
-  const r = columnDensity(cameraHeightM, dirZ, distanceM, HAZE.rayleighScaleHeightM);
-  const m = columnDensity(cameraHeightM, dirZ, distanceM, HAZE.mieScaleHeightM);
+  // The column from where the haze starts ({@link HAZE_CLEAR_M}) to the target.
+  const clear = Math.min(Math.max(0, distanceM), HAZE_CLEAR_M);
+  const from = cameraHeightM + dirZ * clear;
+  const rest = Math.max(0, distanceM - clear);
+  const r = columnDensity(from, dirZ, rest, HAZE.rayleighScaleHeightM);
+  const m = columnDensity(from, dirZ, rest, HAZE.mieScaleHeightM);
   return [
     Math.exp(-(HAZE.rayleigh[0] * r + HAZE.mie * m)),
     Math.exp(-(HAZE.rayleigh[1] * r + HAZE.mie * m)),
@@ -596,6 +614,23 @@ function whiteBalance(illuminant: Rgb, altitudeDeg: number): Rgb {
   const k =
     L / luminance([illuminant[0] * gains[0], illuminant[1] * gains[1], illuminant[2] * gains[2]]);
   return gains.map((g) => g * k) as Rgb;
+}
+
+/**
+ * How much of its colour the daytime ambient keeps (1: all of it). The shade
+ * of a sunny street is lit by the sky AND by every warm wall round it; the
+ * sky term alone painted the pastel city's shade and the basemap's shadows a
+ * cold blue-grey, which on a light palette reads as a veil (owner preview,
+ * Madrid, review of #125). The Apple-like look wants shade that is only a
+ * little cooler than light. Fades back to full colour through twilight: the
+ * night's blue ambient is the night's look.
+ */
+const DAY_AMBIENT_SATURATION = 0.4;
+
+/** `c` with its saturation scaled by `amount` about its luminance (luminance kept). */
+function desaturate(c: Rgb, amount: number): Rgb {
+  const L = luminance(c);
+  return c.map((v) => L + (v - L) * amount) as Rgb;
 }
 
 /** Rec. 709 luminance. */
@@ -747,10 +782,17 @@ export function computeSkyState(altitudeDeg: number, appearance: SkyAppearance):
   const sunRaw = irradiance.sun.map((v, c) => v * exposure * balance[c]) as Rgb;
   const sunScale = Math.min(1, MAX_SUN / Math.max(1e-9, ...sunRaw));
   const sunColor = sunRaw.map((v) => v * sunScale) as Rgb;
-  const skyAmbient = [0, 1, 2].map((c) => (sky[c] + env[c]) * exposure * balance[c]) as Rgb;
-  const groundBounce = [0, 1, 2].map(
-    (c) => (GROUND_ALBEDO * horizontal[c] + env[c]) * exposure * balance[c],
-  ) as Rgb;
+  // By day the ambient keeps only part of the sky's blue (DAY_AMBIENT_SATURATION).
+  const ambientSaturation =
+    DAY_AMBIENT_SATURATION + (1 - DAY_AMBIENT_SATURATION) * skyNightness(altitudeDeg);
+  const skyAmbient = desaturate(
+    [0, 1, 2].map((c) => (sky[c] + env[c]) * exposure * balance[c]) as Rgb,
+    ambientSaturation,
+  );
+  const groundBounce = desaturate(
+    [0, 1, 2].map((c) => (GROUND_ALBEDO * horizontal[c] + env[c]) * exposure * balance[c]) as Rgb,
+    ambientSaturation,
+  );
 
   // The sky's display colour: as if the sky were a white surface lit by
   // πL·gain, under the sky's own (less adaptive) exposure, then tone-mapped

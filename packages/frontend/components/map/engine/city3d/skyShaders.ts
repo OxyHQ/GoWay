@@ -28,7 +28,7 @@
  *    haze, per fragment.
  *  - **The shadow casters**: depth only.
  */
-import { ATMOSPHERE, FLOODLIGHT, HAZE, STREET_GLOW_HEIGHT_M } from './atmosphere';
+import { ATMOSPHERE, FLOODLIGHT, HAZE, HAZE_CLEAR_M, STREET_GLOW_HEIGHT_M } from './atmosphere';
 import { AO } from './occlusion';
 import { OSM_BASE_GLSL } from './osmShaders';
 import { Z_UNITS_PER_METRE } from './packing';
@@ -64,8 +64,12 @@ float columnDensity(float h0, float dz, float d, float H) {
 }
 
 vec3 hazeTransmittance(float h0, float dz, float d) {
-  float r = columnDensity(h0, dz, d, HAZE_RAYLEIGH_H);
-  float m = columnDensity(h0, dz, d, HAZE_MIE_H);
+  // Clear near field (atmosphere.ts → HAZE_CLEAR_M): the haze starts there.
+  float clear = min(max(d, 0.0), ${glslFloat(HAZE_CLEAR_M)});
+  float from = h0 + dz * clear;
+  float rest = max(d - clear, 0.0);
+  float r = columnDensity(from, dz, rest, HAZE_RAYLEIGH_H);
+  float m = columnDensity(from, dz, rest, HAZE_MIE_H);
   return exp(-(HAZE_RAYLEIGH * r + HAZE_MIE * m));
 }
 
