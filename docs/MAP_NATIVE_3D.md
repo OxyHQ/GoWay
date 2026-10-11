@@ -377,8 +377,9 @@ Per sky (on and off) it asserts:
   extrusions cannot stand in for the city.
 
 The assertions are coverage, not frame time, so software GL is enough and
-the result does not depend on the runner. Locally the export takes about
-20 s and the gate about 2 minutes on 32 cores.
+the result does not depend on the runner: CI's two cores measured the same
+shares as 32 local ones, to the hundredth. The export takes about 20 s; the
+gate about 2 minutes on 32 cores and 13 on CI's two.
 
 | Share of the map (synthetic city, noon) | without #152's re-grounding, 3 runs | `main` |
 | --- | ---: | ---: |

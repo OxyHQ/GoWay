@@ -253,7 +253,8 @@ jobs:
   city3d:
     name: 3D city visibility
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Measured: 16 minutes, 13 of them the gate on two cores of SwiftShader.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
