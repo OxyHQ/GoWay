@@ -86,6 +86,7 @@ import {
   type MapMarker,
   type ResolvedMapViewport,
 } from './types';
+import { useSunLight } from './useSunLight';
 
 /** Zoom used when a "fit" has nothing with area to fit — see `isDegenerateBounds`. */
 const DEGENERATE_FIT_ZOOM = 15;
@@ -138,6 +139,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // then appends on top, which is what native did before GoWay owned a style.
   const overlayAnchor = useMemo(() => resolveMapAnchors().beforeLabels, []);
   const gestures = resolveInteraction(interaction);
+
+  // The buildings' light, aimed from the sun over the viewport centre — the
+  // same hook, triggers and dedupe as the web fork. Seeded with the opening
+  // camera so the first render already carries it. See `useSunLight.ts`.
+  const sunLight = useSunLight(resolvedAppearance, start);
 
   /**
    * The location dot is drawn only against a permission that is ALREADY
@@ -478,6 +484,15 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         // OpenFreeMap style carries no `attribution` for the engine to show.
         attribution={false}
         logo={false}
+        // MapLibre Native has no imperative `setLight`; v11 takes the style's
+        // light as a PROP on `<Map>` (typed `LightSpecification`). Verified in
+        // the installed 11.4.1 source, not assumed: both platforms re-apply it
+        // when the prop changes AND after every `onDidFinishLoadingStyle`, so a
+        // style swap or a retry gets it back without anything here. iOS
+        // replaces the whole light, Android sets only the keys given — GoWay
+        // always gives all four, so they agree. `undefined` (a style GoWay does
+        // not own) leaves the document's light untouched.
+        light={sunLight.light ?? undefined}
         compass={gestures.rotate}
         compassPosition={{ top: 8, right: 8 }}
         onPress={handlePress}
@@ -488,6 +503,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           // re-reading — see `reportLabels`.
           const [longitude, latitude] = event.nativeEvent.center;
           reportLabels({ latitude, longitude });
+          // And when the sun is re-read for the new centre: once per settle,
+          // never on `onRegionIsChanging`. Unconditional, unlike the label
+          // report — the embed passes no callbacks and is lit all the same.
+          sunLight.settle({ latitude, longitude });
         }}
         onDidFinishLoadingStyle={handleStyleLoaded}
         onDidFailLoadingMap={handleStyleFailed}

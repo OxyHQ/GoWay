@@ -511,6 +511,27 @@ export function resolveMapAnchors(): MapSourceIds['anchors'] {
 }
 
 /**
+ * Is the loaded style document GoWay's own — and so one whose `light` GoWay may
+ * replace at runtime?
+ *
+ * The sun-driven buildings light (`lib/map/sunLight.ts`) re-aims a light whose
+ * INTENSITY was measured against GoWay's palettes. Under the `openfreemap`
+ * escape hatch, or an `EXPO_PUBLIC_MAP_STYLE_URL_*` override, the document is
+ * somebody else's, with its own extrusions and its own idea of a light, and
+ * re-lighting it with GoWay's numbers would restyle a fallback whose whole job
+ * is to be the upstream map unchanged.
+ *
+ * Answered from the label anchor rather than from the source id, because the
+ * anchor is already exactly this promise: {@link getMapSource} clears it on any
+ * style override, so it is present only when the document at the URL is the
+ * one `lib/map/style/` generated. Native cannot read the loaded style back to
+ * ask it, so the promise is the only signal both adapters share.
+ */
+export function resolveOwnsStyleDocument(): boolean {
+  return resolveMapAnchors().beforeLabels === GOWAY_LABEL_ANCHOR_LAYER_ID;
+}
+
+/**
  * Namespace for every source/layer GoWay adds on top of the basemap.
  *
  * Prefixing is not cosmetic: MapLibre keys sources and layers in one flat
