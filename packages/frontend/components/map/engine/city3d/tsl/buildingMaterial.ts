@@ -3,8 +3,9 @@
  * definition that three compiles to GLSL for WebGL2 on the web and to WGSL for
  * WebGPU — Dawn on Metal or Vulkan — on native (`docs/MAP_NATIVE_3D.md`).
  *
- * It is `shaders.ts` (OpenMapTiles buildings) and `osmShaders.ts` (GoWay city
- * tiles) term for term: the height ramp, for city tiles the tempered tagged
+ * It is the GLSL it replaced (`shaders.ts` for OpenMapTiles buildings,
+ * `osmShaders.ts` for GoWay city tiles; deleted in phase 2, step 2, except
+ * the `osmBase` the city sky still reads) term for term: the height ramp, for city tiles the tempered tagged
  * colour and the recorded storeys' openings, MapLibre's `fill-extrusion`
  * directional light, the baked ground and corner occlusion, the terrain lift
  * and the level-of-detail dither — over the same packed vertex lanes
@@ -31,53 +32,47 @@
  * The uniforms are the ENGINE'S own `{ value }` objects, read each render
  * ({@link createBuildingUniforms}): the light, palette, opacity and terrain
  * switch the engine already updates drive this material too, with no second
- * copy to keep in step.
+ * copy to keep in step. What it shares with the trees — light, output,
+ * terrain lift, dither — is `common.ts`.
  *
  * Not ported yet: the city-sky variant (`skyShaders.ts`).
  */
-import {
-  CustomBlending,
-  MeshBasicNodeMaterial,
-  type Node,
-  OneFactor,
-  OneMinusSrcAlphaFactor,
-  type Side,
-  type Vector3,
-} from 'three/webgpu';
+import { MeshBasicNodeMaterial, type Side, type Vector3 } from 'three/webgpu';
 import {
   abs,
   attribute,
   clamp,
-  Discard,
-  dot,
   float,
   floor,
-  Fn,
   fract,
   fwidth,
   max,
   mix,
   normalize,
-  screenCoordinate,
   select,
   smoothstep,
-  uniform,
   varying,
   vec2,
   vec3,
-  vec4,
 } from 'three/tsl';
 
 import { AO } from '../occlusion';
 import { TAG_TEMPER } from '../osmShaders';
 import { Z_UNITS_PER_METRE } from '../packing';
 import type { CityTileFormat } from '../protocol';
-import { FADE_USERDATA_KEY } from '../transitions';
-
-/** A uniform the engine owns and updates in place (three's `IUniform` shape). */
-export interface UniformRef<T> {
-  value: T;
-}
+import {
+  bindFloat,
+  bindVec3,
+  dithered,
+  extrusionLit,
+  type Float,
+  luma,
+  mapBlending,
+  premultiplied,
+  terrainLift,
+  type UniformRef,
+  type Vec3,
+} from './common';
 
 /** The engine's building uniforms, by the names the GLSL materials use. */
 export interface BuildingUniformRefs {
@@ -91,23 +86,6 @@ export interface BuildingUniformRefs {
   uLightColor: UniformRef<Vector3>;
   uOpacity: UniformRef<number>;
   uGrounded: UniformRef<number>;
-}
-
-/** One tile entry's fade (`transitions.ts`): the dither keeps noise in `[from, to)`. */
-export interface BuildingFadeRefs {
-  uFadeFrom: UniformRef<number>;
-  uFadeTo: UniformRef<number>;
-}
-
-type Float = Node<'float'>;
-type Vec3 = Node<'vec3'>;
-
-function bindFloat(ref: UniformRef<number>) {
-  return uniform(ref.value).onRenderUpdate(() => ref.value);
-}
-
-function bindVec3(ref: UniformRef<Vector3>) {
-  return uniform(ref.value).onRenderUpdate(() => ref.value);
 }
 
 /**
@@ -131,30 +109,11 @@ export function createBuildingUniforms(refs: BuildingUniformRefs) {
 
 export type BuildingUniforms = ReturnType<typeof createBuildingUniforms>;
 
-const luma = (c: Vec3): Float => dot(c, vec3(0.2126, 0.7152, 0.0722));
-
 /** A soft box: 1 inside `[lo, hi]`, 0 outside, anti-aliased over `w`. */
 const band = (x: Float, lo: number, hi: number, w: Float): Float =>
   smoothstep(w.negate().add(lo), w.add(lo), x).mul(
     float(1).sub(smoothstep(w.negate().add(hi), w.add(hi), x)),
   );
-
-/**
- * The terrain lift (`terrainGround.ts`), in stored units: read only where the
- * geometry carries it — a mesh gains its `ground` lane the first time it is
- * placed on terrain — and only while the engine says the map has terrain.
- */
-const groundLift = (grounded: Float) =>
-  Fn((builder) =>
-    builder.geometry?.hasAttribute('ground') === true
-      ? select(grounded.greaterThan(0.5), attribute('ground', 'float').mul(Z_UNITS_PER_METRE), 0)
-      : float(0),
-  )();
-
-/** The fade a mesh carries, or "keep everything" when it carries none. */
-function fadeOf(object: { userData: Record<string, unknown> } | null): BuildingFadeRefs | null {
-  return (object?.userData[FADE_USERDATA_KEY] as BuildingFadeRefs | undefined) ?? null;
-}
 
 export interface BuildingMaterials {
   /** The shared material for a tile format, settled or dithered (built on first use). */
@@ -169,11 +128,11 @@ export interface BuildingMaterials {
 export function createBuildingMaterials(u: BuildingUniforms, side: Side): BuildingMaterials {
   const built = new Map<string, MeshBasicNodeMaterial>();
   return {
-    get(format, dithered) {
-      const key = `${format}:${dithered}`;
+    get(format, isDithered) {
+      const key = `${format}:${isDithered}`;
       let material = built.get(key);
       if (!material) {
-        material = buildMaterial(format, u, side, dithered);
+        material = buildMaterial(format, u, side, isDithered);
         built.set(key, material);
       }
       return material;
@@ -189,7 +148,7 @@ function buildMaterial(
   format: CityTileFormat,
   u: BuildingUniforms,
   side: Side,
-  dithered: boolean,
+  isDithered: boolean,
 ): MeshBasicNodeMaterial {
   // --- Vertex: unpack the compact lanes (packing.ts) -----------------------
   // x, y in tile units, z in 1/32 m, w the shade word (tone × 256 + corner AO);
@@ -213,50 +172,21 @@ function buildMaterial(
     ),
   );
   const base = format === 'goway' ? cityTileSurface(u, ramped, n, vHeightAboveGround) : ramped;
-
-  // extrusionDirectional() — MapLibre's fill-extrusion lighting (occlusion.ts).
-  const d = clamp(dot(n, u.uLightPosition), 0, 1);
-  const directional = mix(
-    float(1).sub(u.uLightIntensity),
-    max(float(1).sub(luma(base)).add(u.uLightIntensity), 1),
-    d,
-  );
+  // groundOcclusion() × cornerOcclusion, where MapLibre puts its gradient.
   const ground = float(AO.groundMin).add(
     float(1 - AO.groundMin).mul(smoothstep(0, AO.groundReachM, vHeightAboveGround)),
   );
-  const lit = clamp(
-    base.add(0.03).mul(directional.mul(ground).mul(vCornerAo)).mul(u.uLightColor),
-    mix(vec3(0), vec3(0.3), vec3(1).sub(u.uLightColor)),
-    vec3(1),
+  const color = premultiplied(extrusionLit(base, n, ground.mul(vCornerAo), u), u.uOpacity);
+
+  const material = mapBlending(new MeshBasicNodeMaterial());
+  // The lift is metres; stored z is 1/32 m, scaled back by the model matrix.
+  material.positionNode = vec3(
+    position.xy,
+    position.z.add(terrainLift('ground', u.uGrounded, Z_UNITS_PER_METRE)),
   );
-  // MapLibre blends custom layers as premultiplied alpha.
-  const color = vec4(lit.mul(u.uOpacity), u.uOpacity);
-
-  const material = new MeshBasicNodeMaterial();
-  material.positionNode = vec3(position.xy, position.z.add(groundLift(u.uGrounded)));
-  material.colorNode = dithered ? ditheredColor(color) : color;
+  material.colorNode = isDithered ? dithered(color) : color;
   material.side = side;
-  material.blending = CustomBlending;
-  material.blendSrc = OneFactor;
-  material.blendDst = OneMinusSrcAlphaFactor;
-  material.transparent = false;
   return material;
-}
-
-/**
- * The fade's screen door (transitions.ts → DITHER_GLSL): interleaved gradient
- * noise on the fragment's pixel, kept inside the mesh's own `[from, to)`.
- */
-function ditheredColor(color: Node<'vec4'>): Node<'vec4'> {
-  const fadeFrom = uniform(0).onObjectUpdate(({ object }) => fadeOf(object)?.uFadeFrom.value ?? 0);
-  const fadeTo = uniform(1).onObjectUpdate(({ object }) => fadeOf(object)?.uFadeTo.value ?? 1);
-  return Fn(() => {
-    const noise = fract(
-      fract(dot(screenCoordinate.xy, vec2(0.06711056, 0.00583715))).mul(52.9829189),
-    );
-    Discard(noise.lessThan(fadeFrom).or(noise.greaterThanEqual(fadeTo)));
-    return color;
-  })();
 }
 
 /**

@@ -79,11 +79,14 @@ const ENGINES = [
   'components/map/engine/city3d/gltf.ts',
   // The shared model library (`docs/MODEL_LIBRARY.md`), loaded by city life and the live pass.
   'components/map/engine/vehicles/library.ts',
-  // three's WebGPU build (docs/MAP_NATIVE_3D.md): the TSL building material
-  // and its pass, reached only by the city engine (below); and the phase 1
-  // tile view, reached by no app module (only `scripts/` and the native harness).
+  // three's WebGPU build (docs/MAP_NATIVE_3D.md): the TSL materials, what
+  // they share and the pass that draws them, reached only by the city engine
+  // (below); and the phase 1 tile view, reached by no app module (only
+  // `scripts/` and the native harness).
   'components/map/engine/city3d/tsl/buildingMaterial.ts',
-  'components/map/engine/city3d/tsl/buildingPass.ts',
+  'components/map/engine/city3d/tsl/common.ts',
+  'components/map/engine/city3d/tsl/treeMaterial.ts',
+  'components/map/engine/city3d/tsl/tslPass.ts',
   'components/map/engine/city3d/tsl/cityTileView.ts',
 ];
 /** The TSL modules' folder, and the only app modules allowed to reach into it. */

@@ -7,7 +7,8 @@
  * Gràcia, hundreds of metres under it in Andorra. This module works out, per
  * building, how far up to lift it, so that it sits where MapLibre draws the
  * ground. Pure: no renderer, no map engine; `cityEngine.ts` uploads the result
- * as one float per vertex and the vertex shader adds it (`shaders.ts`).
+ * as one float per vertex and the material adds it (`tsl/common.ts` →
+ * `terrainLift`; with the sky, `skyShaders.ts`).
  *
  * ## What is sampled, and why a grid
  *

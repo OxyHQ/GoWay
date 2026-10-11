@@ -30,6 +30,11 @@ import {
   vertexGround,
 } from '@/components/map/engine/city3d/terrainGround';
 import { tileSizeMetres } from '@/components/map/engine/city3d/tileMath';
+import {
+  createBuildingMaterials,
+  createBuildingUniforms,
+} from '@/components/map/engine/city3d/tsl/buildingMaterial';
+import { createTreeMaterials } from '@/components/map/engine/city3d/tsl/treeMaterial';
 import { packTrees } from '@/components/map/engine/city3d/trees';
 
 const TILE = { z: 14, x: 8290, y: 6119 };
@@ -57,14 +62,39 @@ for (let i = 0; i < 60; i++) {
     FEATURES.push(block(20 + i * 66, 20 + j * 66, 40, 10 + ((i + j) % 9) * 5));
 }
 
+// The engine's own path: no sky, so the buildings and trees take the TSL
+// pass's shared materials (`tsl/tslPass.ts`), built here without a GPU.
+const v = () => ({ value: new THREE.Vector3() });
+const n = (value: number) => ({ value });
+const light = {
+  uLightPosition: v(),
+  uLightIntensity: n(0.5),
+  uLightColor: v(),
+  uOpacity: n(1),
+  uGrounded: n(0),
+};
 const context = () => ({
   scene: new THREE.Scene(),
   buildingUniforms: {},
-  buildingShaders: {
-    openmaptiles: { vertexShader: '', fragmentShader: '' },
-    goway: { vertexShader: '', fragmentShader: '' },
+  buildingShaders: null,
+  tsl: {
+    scene: new THREE.Scene(),
+    buildings: createBuildingMaterials(
+      createBuildingUniforms({
+        ...light,
+        uLow: v(),
+        uTall: v(),
+        uVeryTall: v(),
+        uTallM: n(60),
+        uVeryTallM: n(180),
+      }),
+      THREE.FrontSide,
+    ),
+    trees: createTreeMaterials(
+      { ...light, uCrown: v(), uConifer: v(), uTrunk: v(), uTreeMinHeight: n(0) },
+      THREE.BackSide,
+    ),
   },
-  treeUniforms: {},
 });
 
 describe('grounding a packed entry', () => {

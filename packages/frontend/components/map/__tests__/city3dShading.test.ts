@@ -18,7 +18,7 @@ import {
   luminance,
   smoothstep,
 } from '@/components/map/engine/city3d/occlusion';
-import { CITY_FRAGMENT_SHADER, glslFloat } from '@/components/map/engine/city3d/shaders';
+import { glslFloat } from '@/components/map/engine/city3d/shaders';
 
 describe('ground occlusion', () => {
   test('darkest at the ground, none above the reach, monotonic between', () => {
@@ -102,18 +102,5 @@ describe('shader source', () => {
     expect(glslFloat(0.62)).toBe('0.62');
     expect(glslFloat(7)).toBe('7.0');
     expect(() => glslFloat(Number.NaN)).toThrow();
-  });
-
-  test('the fragment shader is MapLibre’s extrusion formula plus the tested occlusion', () => {
-    expect(CITY_FRAGMENT_SHADER).toContain(
-      'mix(1.0 - uLightIntensity, max(1.0 - luminance + uLightIntensity, 1.0), d)',
-    );
-    expect(CITY_FRAGMENT_SHADER).toContain('(base + 0.03) * directional * uLightColor');
-  });
-
-  test('the fragment shader carries the tested ground-occlusion constants', () => {
-    expect(CITY_FRAGMENT_SHADER).toContain(glslFloat(AO.groundMin));
-    expect(CITY_FRAGMENT_SHADER).toContain(`smoothstep(0.0, ${glslFloat(AO.groundReachM)}`);
-    expect(CITY_FRAGMENT_SHADER).not.toContain('${');
   });
 });

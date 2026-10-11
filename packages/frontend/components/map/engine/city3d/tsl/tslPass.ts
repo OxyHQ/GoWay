@@ -1,9 +1,11 @@
 /**
- * The buildings drawn by three's `WebGPURenderer` — its WebGL2 backend — in
- * MapLibre's OWN context, frame and depth buffer: phase 2, step 1 of
- * `docs/MAP_NATIVE_3D.md`. On the web the engine's other passes still draw
- * with `WebGLRenderer`; each moves here as its material is ported, and on
- * native the same pass runs on WebGPU (Dawn).
+ * The city engine's TSL pass: three's `WebGPURenderer` — its WebGL2 backend
+ * on the web — drawing in MapLibre's OWN context, frame and depth buffer
+ * (`docs/MAP_NATIVE_3D.md` → Phase 2). It draws every material already ported
+ * to TSL: the trees always, the buildings whenever the city sky is off (the
+ * sky's building material is still GLSL). What is not ported yet still draws
+ * with `WebGLRenderer` in the same frame; on native this pass is the renderer,
+ * on WebGPU (Dawn).
  *
  * What makes it share MapLibre's frame rather than draw beside it:
  *
@@ -37,12 +39,15 @@ import {
   createBuildingMaterials,
   createBuildingUniforms,
 } from './buildingMaterial';
+import { createTreeMaterials, type TreeMaterials, type TreeUniformRefs } from './treeMaterial';
 
-export interface BuildingPass {
-  /** Where the engine adds the building meshes it builds with TSL materials. */
+export interface TslPass {
+  /** Where the engine adds the meshes it builds with TSL materials. */
   scene: Scene;
   /** The shared building materials (`buildingMaterial.ts`), on the engine's uniforms. */
-  materials: BuildingMaterials;
+  buildings: BuildingMaterials;
+  /** The shared tree materials (`treeMaterial.ts`), on the engine's uniforms. */
+  trees: TreeMaterials;
   /** `false` until the renderer's backend is up (it initialises asynchronously). */
   readonly ready: boolean;
   /** Draw the scene into the map's frame with `camera` (MapLibre's projection). */
@@ -85,15 +90,16 @@ interface ResettableBackend {
   resetState?: () => void;
 }
 
-export function createBuildingPass(options: {
+export function createTslPass(options: {
   gl: WebGL2RenderingContext;
   canvas: HTMLCanvasElement;
-  uniforms: BuildingUniformRefs;
-  /** Which faces to keep (`cityMeshes.ts` → SIDE). */
-  side: Side;
-  /** Called once the renderer is ready, so the host draws a frame with buildings. */
+  buildingUniforms: BuildingUniformRefs;
+  treeUniforms: TreeUniformRefs;
+  /** Which faces each keeps (`cityMeshes.ts` → SIDE). */
+  side: { buildings: Side; trees: Side };
+  /** Called once the renderer is ready, so the host draws a frame with the city. */
   onReady: () => void;
-}): BuildingPass {
+}): TslPass {
   const canvas = hostCanvasView(options.canvas);
   const renderer = new WebGPURenderer({
     canvas: canvas as unknown as HTMLCanvasElement,
@@ -120,15 +126,20 @@ export function createBuildingPass(options: {
       options.onReady();
     },
     () => {
-      // A backend that cannot start draws no buildings; the GLSL path is the default.
+      // A backend that cannot start draws nothing; the map underneath is unaffected.
     },
   );
 
-  const materials = createBuildingMaterials(createBuildingUniforms(options.uniforms), options.side);
+  const buildings = createBuildingMaterials(
+    createBuildingUniforms(options.buildingUniforms),
+    options.side.buildings,
+  );
+  const trees = createTreeMaterials(options.treeUniforms, options.side.trees);
 
   return {
     scene,
-    materials,
+    buildings,
+    trees,
     get ready() {
       return ready;
     },
@@ -146,7 +157,8 @@ export function createBuildingPass(options: {
     },
     dispose() {
       disposed = true;
-      materials.dispose();
+      buildings.dispose();
+      trees.dispose();
       renderer.dispose();
     },
   };

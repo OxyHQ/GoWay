@@ -1,6 +1,6 @@
 /**
  * GLSL for the city layer's sky, haze and shadows (GLSL ES 3.00 strings,
- * `RawShaderMaterial` + `GLSL3`, as `shaders.ts`).
+ * `RawShaderMaterial` + `GLSL3`).
  *
  * Generated from the constants in `atmosphere.ts` and `occlusion.ts` rather
  * than restating them, so the haze the tests pin (`hazeTransmittance`) is the

@@ -177,21 +177,6 @@ export const MAP_FEATURES = [
       queryOverride('detailedCity', enabled, { development, search }),
   },
   {
-    id: 'cityTsl',
-    section: 'map',
-    tier: 'labs',
-    defaultOn: false,
-    build: process.env.EXPO_PUBLIC_MAP_CITY_TSL,
-    // The buildings' renderer, so it needs the buildings (`docs/MAP_NATIVE_3D.md`).
-    requires: ['city3d'],
-    platforms: WEB,
-    // A measurement of the next renderer, not a feature anyone should meet yet.
-    offer: 'development',
-    // Off without the 3D city by `requires`; `?cityTsl=1` in a development build.
-    request: (enabled, { development, search }) =>
-      queryOverride('cityTsl', enabled, { development, search }),
-  },
-  {
     id: 'cityTiles',
     section: 'layers',
     tier: 'labs',

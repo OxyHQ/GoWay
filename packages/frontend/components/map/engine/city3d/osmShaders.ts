@@ -1,10 +1,12 @@
 /**
- * The building shader for GoWay's OSM city tiles (the second source mode).
+ * GoWay city tiles' building surface for the materials that are still GLSL:
+ * the city sky's (`skyShaders.ts`), and with it the detailed look. Without the
+ * sky the buildings are TSL (`tsl/buildingMaterial.ts`), which reads the same
+ * {@link TAG_TEMPER} — one temper, two shading languages until the sky is
+ * ported (`docs/MAP_NATIVE_3D.md` → Phase 2).
  *
- * It is `shaders.ts` — MapLibre's `fill-extrusion` light, the height ramp,
- * the baked ground and corner occlusion, the zoom fade — with exactly two
- * additions, both driven by data the mesher put in the vertices
- * (`osmMesher.ts`):
+ * The surface is the palette's height ramp plus, from data the mesher put in
+ * the vertices (`osmMesher.ts`):
  *
  *  1. **Surface colour.** `color.rgb` is a tagged `building:colour` /
  *     `roof:colour`, or a material's typical colour; `color.a` is how much of
@@ -21,16 +23,9 @@
  *     each storey of each wall gets a row of identical openings, one per bay;
  *     nowhere else. They fade out as a storey shrinks below a few pixels, so a
  *     distant facade is a plain wall rather than a moiré.
- *
- * Uniform names and meanings are shared with `shaders.ts`, so the engine
- * drives both materials from one uniform set.
  */
 import { DETAILED_DEFINE, MATERIAL_GLSL } from './materials';
-import { AO } from './occlusion';
-import { Z_UNITS_PER_METRE } from './packing';
 import { glslFloat } from './shaders';
-import { DITHER_DISCARD_GLSL, DITHER_GLSL } from './transitions';
-
 /** How a tagged colour is tempered into the palette; see the module header. */
 export const TAG_TEMPER = {
   /** How much of the colour's saturation is kept. */
@@ -107,91 +102,5 @@ vec3 osmBase(vec3 n) {
   }
 #endif
   return base;
-}
-`;
-
-export const OSM_VERTEX_SHADER = `
-precision highp float;
-
-uniform mat4 modelViewMatrix;
-uniform mat4 projectionMatrix;
-
-// The compact format (packing.ts), as for the OpenMapTiles buildings: x, y in
-// tile units, z in 1/32 m, w the shade word (tone × 256 + corner occlusion);
-// the model matrix turns the units back into metres.
-in vec4 position;
-in vec4 normal;
-// On 3D terrain: how far this vertex's building is lifted, in metres
-// (terrainGround.ts). Read only while uGrounded is set; without terrain the
-// attribute may not even be bound.
-in float ground;
-uniform float uGrounded;
-in vec4 color;
-in vec4 facade;
-
-out vec3 vNormal;
-out float vCornerAo;
-out float vHeightAboveGround;
-out float vBuildingHeight;
-out vec4 vColor;
-out vec4 vFacade;
-
-void main() {
-  vNormal = normal.xyz;
-  float tone = floor(position.w / 256.0);
-  vCornerAo = (position.w - tone * 256.0) / 255.0;
-  vHeightAboveGround = position.z * ${glslFloat(1 / Z_UNITS_PER_METRE)};
-  vBuildingHeight = tone;
-  vColor = color;
-  vFacade = facade;
-  // The lift is metres; stored z is 1/32 m, scaled back by the model matrix.
-  float lift = uGrounded > 0.5 ? ground * ${glslFloat(Z_UNITS_PER_METRE)} : 0.0;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position.xy, position.z + lift, 1.0);
-}
-`;
-
-export const OSM_FRAGMENT_SHADER = `
-precision highp float;
-
-uniform vec3 uLow;
-uniform vec3 uTall;
-uniform vec3 uVeryTall;
-uniform float uTallM;
-uniform float uVeryTallM;
-uniform vec3 uLightPosition;
-uniform float uLightIntensity;
-uniform vec3 uLightColor;
-uniform float uOpacity;
-
-in vec3 vNormal;
-in float vCornerAo;
-in float vHeightAboveGround;
-in float vBuildingHeight;
-in vec4 vColor;
-in vec4 vFacade;
-
-out vec4 fragColor;
-
-${OSM_BASE_GLSL}
-// Level-of-detail and fade-in cross-fades (transitions.ts).
-${DITHER_GLSL}
-void main() {
-  ${DITHER_DISCARD_GLSL}
-  vec3 n = normalize(vNormal);
-  vec3 base = osmBase(n);
-
-  // extrusionDirectional() — MapLibre's fill-extrusion lighting (shaders.ts).
-  float d = clamp(dot(n, uLightPosition), 0.0, 1.0);
-  float directional = mix(1.0 - uLightIntensity, max(1.0 - luma(base) + uLightIntensity, 1.0), d);
-  float ground = ${glslFloat(AO.groundMin)}
-    + ${glslFloat(1 - AO.groundMin)} * smoothstep(0.0, ${glslFloat(AO.groundReachM)}, vHeightAboveGround);
-  directional *= ground * vCornerAo;
-
-  vec3 lit = clamp(
-    (base + 0.03) * directional * uLightColor,
-    mix(vec3(0.0), vec3(0.3), vec3(1.0) - uLightColor),
-    vec3(1.0)
-  );
-  fragColor = vec4(lit * uOpacity, uOpacity);
 }
 `;

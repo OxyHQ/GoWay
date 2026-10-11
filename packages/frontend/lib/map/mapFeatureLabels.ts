@@ -175,37 +175,6 @@ export const MAP_FEATURE_LABELS: Readonly<Record<MapFeatureId, MapFeatureLabels>
       'zh-Hans': '为 3D 城市绘制真实的天空、雾霭和太阳阴影，并可用滑块选择时间。',
     },
   },
-  cityTsl: {
-    name: {
-      en: 'New 3D renderer (preview)',
-      ar: 'عارض ثلاثي الأبعاد جديد (معاينة)',
-      bn: 'নতুন ত্রিমাত্রিক রেন্ডারার (প্রিভিউ)',
-      ca: 'Nou renderitzador 3D (prova)',
-      de: 'Neuer 3D-Renderer (Vorschau)',
-      es: 'Nuevo renderizador 3D (vista previa)',
-      fr: 'Nouveau moteur de rendu 3D (aperçu)',
-      hi: 'नया 3D रेंडरर (पूर्वावलोकन)',
-      ja: '新しい 3D レンダラー（プレビュー）',
-      'pt-BR': 'Novo renderizador 3D (prévia)',
-      ru: 'Новый 3D-рендерер (предпросмотр)',
-      'zh-Hans': '新 3D 渲染器（预览）',
-    },
-    description: {
-      en: 'Draws the 3D buildings with the renderer the mobile apps will share. Not with the sky.',
-      ar: 'يرسم المباني ثلاثية الأبعاد بالعارض الذي ستتشاركه تطبيقات الجوال. لا يعمل مع السماء.',
-      bn: 'মোবাইল অ্যাপগুলো যে রেন্ডারার ভাগ করবে, তা দিয়ে ত্রিমাত্রিক ভবন আঁকে। আকাশের সঙ্গে নয়।',
-      ca: 'Dibuixa els edificis en 3D amb el renderitzador que compartiran les apps mòbils. No amb el cel.',
-      de: 'Zeichnet die 3D-Gebäude mit dem Renderer, den die Mobil-Apps teilen werden. Nicht mit dem Himmel.',
-      es: 'Dibuja los edificios en 3D con el renderizador que compartirán las apps móviles. No con el cielo.',
-      fr: 'Dessine les bâtiments en 3D avec le moteur que partageront les apps mobiles. Pas avec le ciel.',
-      hi: '3D इमारतें उस रेंडरर से बनाता है जिसे मोबाइल ऐप साझा करेंगे। आसमान के साथ नहीं।',
-      ja: 'モバイルアプリと共有する予定のレンダラーで 3D の建物を描きます。空とは併用できません。',
-      'pt-BR':
-        'Desenha os prédios em 3D com o renderizador que os apps móveis vão compartilhar. Não com o céu.',
-      ru: 'Рисует 3D-здания рендерером, общим с мобильными приложениями. Не вместе с небом.',
-      'zh-Hans': '用移动应用将共用的渲染器绘制 3D 建筑。不与天空同时使用。',
-    },
-  },
   cityTiles: {
     name: {
       en: 'GoWay building data',

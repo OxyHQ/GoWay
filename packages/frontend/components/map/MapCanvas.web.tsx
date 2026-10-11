@@ -254,8 +254,6 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const citySky = useMapFeature('citySky');
   // The art-directed look (`docs/MAP_3D_CITY.md` → Art direction).
   const detailedCity = useMapFeature('detailedCity');
-  // Phase 2 of docs/MAP_NATIVE_3D.md: the buildings through TSL + WebGPURenderer.
-  const cityTsl = useMapFeature('cityTsl');
   const relief = useMapRelief();
   /**
    * What the last engine was built for, and where its camera was when it went.
@@ -997,7 +995,6 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               cityLife,
               landmarks,
               detailed: detailedCity,
-              tslBuildings: cityTsl,
               onModelStatus: (id, status) =>
                 setModelsDrawn((current) => {
                   if ((status === 'drawn') === current.has(id)) return current;
@@ -1063,7 +1060,6 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     landmarks,
     citySky,
     detailedCity,
-    cityTsl,
   ]);
 
   // Hand the models to the engine whenever either changes.
