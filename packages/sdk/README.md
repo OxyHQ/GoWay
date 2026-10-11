@@ -589,3 +589,28 @@ return 412; finalization verifies the already-stored object's checksum and size.
 first. `captures.remove(id)` withdraws the contribution and resolves with
 nothing; shared bytes are queued for deletion after their upload intents expire
 when no valid contribution still references them.
+
+
+### Editing individual opening weekdays
+
+After the matching API is deployed, use the explicit weekday patch instead of
+reading and resending a stale full-week schedule:
+
+```ts
+await client.places.update(placeId, {
+  openingHoursDays: [
+    { day: 1, intervals: [{ opens: '20:00', closes: '02:00' }] },
+    { day: 6, intervals: [] },
+  ],
+});
+```
+
+Day `0` is Sunday. Each interval belongs to its opening day, including overnight
+and `00:00–00:00` (24-hour) intervals. Unmentioned days remain unchanged under the
+server's row lock; simultaneous replacements of the same day follow commit
+order. Empty intervals explicitly close a day. Do not combine this field with
+`openingHours`. Unknown schedules (missing, or no intervals, with or without `raw`)
+require all seven days explicitly; a partial edit returns `GoWayConflictError`
+without changing the schedule. The final week permits at most 64 intervals.
+This is not available in published SDK 0.3.0; upgrade only after the server and
+the SDK release carrying this contract are available.
