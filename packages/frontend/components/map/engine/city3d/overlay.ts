@@ -12,7 +12,7 @@ import type { IUniform, Scene } from 'three';
 
 import type { CityView } from './cityEngine';
 import type { CityLight } from './occlusion';
-import type { GroundSampler } from './terrainGround';
+import type { Ground } from './terrainGround';
 import type { MercatorPoint } from './tileMath';
 
 export interface CityOverlayFrame {
@@ -31,11 +31,11 @@ export interface CityOverlay {
   /** The map's light, whenever the buildings' changes. */
   setLight(light: CityLight): void;
   /**
-   * The terrain, as the buildings get it (`terrainGround.ts`): metres above
-   * sea level at a point, or `null` on a flat map. An overlay stands its
-   * objects on it.
+   * The terrain, as the buildings get it (`terrainGround.ts` → `Ground`): its
+   * sampler and the SAME per-tile grids the buildings stand on (one cache,
+   * shared), or `null` on a flat map. An overlay stands its objects on it.
    */
-  setGround(sample: GroundSampler | null): void;
+  setGround(ground: Ground | null): void;
   /**
    * City sky only, once, before the first frame: the sky's live light
    * inputs, for an overlay that wants more than `setLight` gives it — the

@@ -22,7 +22,6 @@ import {
 
 const FORCED = qualityFromSearch(
   typeof window !== 'undefined' && window.location ? window.location.search : '',
-  typeof __DEV__ !== 'undefined' && __DEV__,
 );
 
 function resolve(

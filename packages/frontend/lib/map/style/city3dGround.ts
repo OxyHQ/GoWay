@@ -24,6 +24,7 @@
  * Build-time only: this module imports `layers.ts` (the whole layer list),
  * which no app bundle should carry.
  */
+import { parseHexColour } from '../colour';
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec';
 
 import type { MapAppearance } from '../provider';
@@ -48,11 +49,8 @@ function zoomStops(value: unknown): ZoomStops | null {
 }
 
 /** `#rrggbb` → channels, or `null` for any other colour notation. */
-function parseHex(value: unknown): [number, number, number] | null {
-  if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/i.test(value)) return null;
-  const n = Number.parseInt(value.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
+const parseHex = (value: unknown) =>
+  typeof value === 'string' && value.length === 7 ? parseHexColour(value) : null;
 
 /**
  * A colour expression's value at `zoom`: a colour, or a LINEAR zoom

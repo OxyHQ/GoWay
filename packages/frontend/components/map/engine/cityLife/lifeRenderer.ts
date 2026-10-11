@@ -34,7 +34,7 @@ import * as THREE from 'three';
 import type { AnimationClock } from '../../perf/animationClock';
 import type { CityLight } from '../city3d/occlusion';
 import type { CityOverlay, CityOverlayFrame } from '../city3d/overlay';
-import { GROUND, type GroundSampler, gridAt, groundGrid } from '../city3d/terrainGround';
+import { GROUND, type Ground, gridAt } from '../city3d/terrainGround';
 import { metresPerPixel } from '../city3d/lod';
 import {
   centeredProjection,
@@ -434,32 +434,29 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
 
   // ── Terrain: each agent stands on the ground the buildings and trees do ──
   //
-  // The grid buildings and trees read (`terrainGround.ts` → `groundGrid`: the
-  // drawn terrain, sampled per tile), so an agent agrees with the kerb beside
-  // it. Cars and people read it on z15 tiles, the city tiles' own, bilinearly.
-  let sampler: GroundSampler | null = null;
-  const grids = new Map<string, Float32Array>();
-  let groundOrigin = '';
-  /** Fresh grids built per upload at most; the rest wait (and read the raw sample meanwhile). */
+  // The engine's ONE ground (`terrainGround.ts` → `Ground`): the grids the
+  // buildings and trees stand on — the same cache, so a z15 city tile's grid is
+  // sampled once for both — read bilinearly, so an agent agrees with the kerb
+  // beside it.
+  let ground: Ground | null = null;
+  /** Grids not yet sampled that one upload may sample; the rest read the raw sampler meanwhile. */
   const GRIDS_PER_UPLOAD = 4;
   let gridBudget = 0;
-  const groundAt = (origin: { x: number; y: number }, x: number, y: number): number => {
-    if (!sampler) return 0;
-    const tileM = 4096 * simFrame(origin.x, origin.y).metresPerUnit;
+  const groundAt = (
+    origin: { x: number; y: number },
+    tileM: number,
+    x: number,
+    y: number,
+  ): number => {
+    if (!ground) return 0;
     const fx = origin.x + x / tileM;
     const fy = origin.y - y / tileM;
-    const tx = Math.floor(fx);
-    const ty = Math.floor(fy);
-    const key = `${tx}/${ty}`;
-    let grid = grids.get(key);
-    if (!grid && gridBudget > 0) {
-      gridBudget--;
-      grid = groundGrid({ z: 15, x: tx, y: ty }, sampler);
-      grids.set(key, grid);
+    const tile = { z: 15, x: Math.floor(fx), y: Math.floor(fy) };
+    if (ground.hasGrid(tile) || gridBudget-- > 0) {
+      return gridAt(ground.grid(tile), GROUND.grid, fx - tile.x, fy - tile.y);
     }
-    if (grid) return gridAt(grid, GROUND.grid, fx - tx, fy - ty);
     const n = 2 ** 15;
-    const value = sampler((fx / n) * 360 - 180, latFromMercatorY(fy / n));
+    const value = ground.sample((fx / n) * 360 - 180, latFromMercatorY(fy / n));
     return Number.isFinite(value) ? value : 0;
   };
   const groundFor = (batch: Batch, curr: Float32Array, origin: { x: number; y: number }) => {
@@ -471,11 +468,13 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       batch.ground.setUsage(THREE.DynamicDrawUsage);
       for (const geometry of batch.geometries) geometry.setAttribute('aGround', batch.ground);
     }
-    if (!sampler) {
+    if (!ground) {
       if (values[0] !== 0 || values[count - 1] !== 0) values.fill(0);
     } else {
+      // Metres per z15 tile at the origin: once per batch, not per agent.
+      const tileM = 4096 * simFrame(origin.x, origin.y).metresPerUnit;
       for (let i = 0; i < count; i++) {
-        values[i] = curr[i * 4 + 3] > 0 ? groundAt(origin, curr[i * 4], curr[i * 4 + 1]) : 0;
+        values[i] = curr[i * 4 + 3] > 0 ? groundAt(origin, tileM, curr[i * 4], curr[i * 4 + 1]) : 0;
       }
     }
     batch.ground.needsUpdate = true;
@@ -572,13 +571,8 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       }
       if (!uploaded || uploaded.a !== a || uploaded.b !== b) {
         uploaded = { a, b };
-        const originKey = `${b.origin.x}/${b.origin.y}`;
         // The DEM sharpens as its tiles load: re-sample now and then.
         // New terrain arrives through `setGround`, which drops the grids.
-        if (originKey !== groundOrigin) {
-          grids.clear();
-          groundOrigin = originKey;
-        }
         gridBudget = GRIDS_PER_UPLOAD;
         for (const model of CAR_MODELS) {
           const [from, to] = b.ranges[model];
@@ -622,8 +616,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     },
 
     setGround(next) {
-      sampler = next;
-      grids.clear();
+      ground = next;
       uploaded = null;
     },
 

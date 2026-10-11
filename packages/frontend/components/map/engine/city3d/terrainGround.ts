@@ -116,6 +116,45 @@ export function groundGrid(tile: TileId, sample: GroundSampler): Float32Array {
   return sampleGroundGrid(tile, GROUND.grid, sample);
 }
 
+/**
+ * The drawn ground for everything that stands on it — buildings, trees, city
+ * life, live vehicles, models: the sampler, and each tile's grid sampled ONCE
+ * per terrain and kept (least recently used past `maxTiles`). Before this the
+ * buildings' grounder and city life each sampled and cached the same z15
+ * grids, and the live layer asked MapLibre per point
+ * (`docs/MAP_PERFORMANCE.md` → duplication).
+ */
+export interface Ground {
+  /** Metres as drawn at a point (`map.terrain`'s DEM, ~0.5 µs a call). */
+  readonly sample: GroundSampler;
+  /** A tile's grid ({@link groundGrid}), sampled on first use. */
+  grid(tile: TileId): Float32Array;
+  /** Whether {@link Ground.grid} would answer without sampling. */
+  hasGrid(tile: TileId): boolean;
+}
+
+export function createGround(sample: GroundSampler, maxTiles = 256): Ground {
+  const grids = new Map<string, Float32Array>();
+  const key = (tile: TileId) => `${tile.z}/${tile.x}/${tile.y}`;
+  return {
+    sample,
+    grid(tile) {
+      const k = key(tile);
+      let grid = grids.get(k);
+      if (grid) {
+        // Most recently used last.
+        grids.delete(k);
+      } else {
+        grid = groundGrid(tile, sample);
+        if (grids.size >= maxTiles) grids.delete(grids.keys().next().value as string);
+      }
+      grids.set(k, grid);
+      return grid;
+    },
+    hasGrid: (tile) => grids.has(key(tile)),
+  };
+}
+
 /** Bilinear read of a {@link sampleGroundGrid} grid at `u` east, `v` south, both 0–1. */
 export function gridAt(grid: Float32Array, size: number, u: number, v: number): number {
   const x = Math.max(0, Math.min(1, u)) * (size - 1);
@@ -265,7 +304,7 @@ interface TileState {
  * grid of samples per tile and no upload.
  */
 export class TileGrounder {
-  private sampler: GroundSampler | null = null;
+  private source: Ground | null = null;
   private version = 0;
   private readonly tiles = new Map<string, TileState>();
   private stats: GroundStats = {
@@ -282,14 +321,14 @@ export class TileGrounder {
   ) {}
 
   /** `null`: no terrain, buildings stand at `z = 0`. */
-  setSampler(sampler: GroundSampler | null): void {
-    this.sampler = sampler;
+  setGround(ground: Ground | null): void {
+    this.source = ground;
     this.version++;
     this.stats.refreshes++;
   }
 
   get active(): boolean {
-    return this.sampler !== null;
+    return this.source !== null;
   }
 
   /** Grounded against the CURRENT terrain. */
@@ -309,10 +348,10 @@ export class TileGrounder {
 
   /** Ground one tile against the current sampler. `null` with no sampler. */
   ground(key: string, tile: GroundTile): GroundResult | null {
-    const sample = this.sampler;
-    if (!sample) return null;
+    const ground = this.source;
+    if (!ground) return null;
     const started = this.now();
-    const grid = groundGrid(tile.tile, sample);
+    const grid = ground.grid(tile.tile);
     const sampled = this.now();
     const placed = polygonGround(grid, GROUND.grid, tile.tileSizeM, tile.polygonBoxes);
     const previous = this.tiles.get(key);

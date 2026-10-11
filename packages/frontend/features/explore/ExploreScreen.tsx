@@ -332,8 +332,13 @@ export default function ExploreScreen({
     [explore, street3d],
   );
 
-  const [bearing, setBearing] = useState(0);
-  const [pitch, setPitch] = useState(0);
+  // Only what the chrome shows: whether the map is turned (the compass) and
+  // tilted (Settings' 2D/3D). Booleans, not angles: a camera move reports at
+  // 10 Hz, and storing the angle re-rendered this whole screen on every report
+  // of an orbit (measured: ~11% of the main thread on a throttled laptop,
+  // `docs/MAP_PERFORMANCE.md`). React skips a set to the same value.
+  const [rotated, setRotated] = useState(false);
+  const [tilted, setTilted] = useState(false);
   const flyover = useMapFeature('flyover');
   const landmarks = useMapFeature('landmarks');
   const live = useMapFeature('live');
@@ -387,8 +392,8 @@ export default function ExploreScreen({
 
   const handleViewportChange = useCallback(
     (change: MapViewportChange) => {
-      setBearing(change.viewport.bearing);
-      setPitch(change.viewport.pitch);
+      setRotated(Math.abs(change.viewport.bearing) > BEARING_EPSILON);
+      setTilted(change.viewport.pitch >= TILTED_EPSILON);
       if (change.source === 'user') for (const listener of userMoveListeners.current) listener();
       if (change.isFinal) {
         setSettledCentre({
@@ -629,7 +634,7 @@ export default function ExploreScreen({
             testID="map-top-right-stack"
           >
             {immersive ? null : (
-              <MapSettingsButton tilted={pitch >= TILTED_EPSILON} onTiltChange={handleTiltChange} />
+              <MapSettingsButton tilted={tilted} onTiltChange={handleTiltChange} />
             )}
             {landmarks && !mapError && !immersive && !directions.active ? (
               <Suspense fallback={null}>
@@ -670,7 +675,7 @@ export default function ExploreScreen({
                 layout === 'sheet' ? chromeStyle : null,
               ]}
             >
-              {Math.abs(bearing) > BEARING_EPSILON ? (
+              {rotated ? (
                 <Fab
                   size="xs"
                   icon={RiCompass3Line}

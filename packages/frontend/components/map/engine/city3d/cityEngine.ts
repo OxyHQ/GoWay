@@ -74,7 +74,7 @@ import type { QualityProfile } from '@/lib/map/quality/profile';
 import type { AnimationClock } from '../../perf/animationClock';
 import { cityQuality } from '../quality';
 
-import { hexToRgb } from './colour';
+import { hexToRgb } from '@/lib/map/colour';
 import { createGpuTimer } from './gpuTimer';
 import { hiddenFeatureIds, tilesAround } from './landmarkTiles';
 import {
@@ -98,7 +98,13 @@ import {
   tileKey,
 } from './tileMath';
 import type { CityOverlay } from './overlay';
-import { type GroundSampler, type GroundStats, TileGrounder } from './terrainGround';
+import {
+  createGround,
+  type Ground,
+  type GroundSampler,
+  type GroundStats,
+  TileGrounder,
+} from './terrainGround';
 import { incompleteRetryMs, TileCache, TileScheduler } from './tileScheduler';
 import { assignSources, type SourcedTile } from './sources';
 import { Transitions } from './transitions';
@@ -167,7 +173,7 @@ export interface CityEngineOptions {
    * Absent (tests, a host without one): animated models repaint as before.
    */
   clock?: AnimationClock;
-  /** `?perf=1` / development: names this frame's parts for the HUD (`perf/mapRuntime.web.ts`). */
+  /** `?perf=1`: names this frame's parts for the HUD (`perf/mapRuntime.web.ts`). */
   probe?: FrameProbe;
   /**
    * The engine's clock, ms (default `performance.now`): frame pacing, upload
@@ -320,6 +326,8 @@ export interface CityEngine {
   readonly nightFactor: { readonly value: number };
   /** Draw the models — from their own layer, above the overlays (`city3dLayer.web.ts`). */
   renderModels(view: CityView): void;
+  /** The drawn ground everything stands on (`setGround`), or `null` on a flat map. */
+  readonly ground: Ground | null;
   /** Draw a pass with this engine's renderer. Not faded with the buildings: a pass owns its own visibility. */
   renderPass(pass: CityPass, view: CityView): void;
   /** The map's light, re-applied whenever `building-3d`'s would change (the sun). */
@@ -569,6 +577,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   );
   const grounder = new TileGrounder(now, options.onGroundStats);
   let groundSampler: GroundSampler | null = null;
+  let ground: Ground | null = null;
   // The lifts seen on this terrain, for the selection's culling range.
   let liftRange: { min: number; max: number } | null = null;
 
@@ -755,6 +764,11 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     });
     options.requestRepaint();
   };
+
+  /** Entries lifted for the first time last frame: this frame draws (uploads) them. */
+  let awaitingFirstDraw = new Set<string>();
+  /** Entries drawn at least once: their meshes are on the GPU. */
+  const drawnEntries = new WeakSet<TileEntry>();
 
   /** Hand queued meshes to the GPU, nearest first, within this frame's budget. */
   const admit = (now: number) => {
@@ -970,9 +984,21 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
     // On terrain: lift stale entries, nearest first, a few per frame. An
     // entry never grounded would be drawn at sea level — inside the hill —
-    // so it waits for its first lift.
+    // so it waits for its first lift. Its first draw is also when its mesh
+    // goes to the GPU, and the lift and that upload are the two largest
+    // pieces of a tile's arrival: one frame holding both was the engine's
+    // share of the laptop's slowest frames (`docs/MAP_PERFORMANCE.md` → the
+    // laptop's main thread). So they alternate: an entry lifted before it was
+    // ever drawn is first drawn the frame after, and that frame lifts
+    // nothing. An entry already drawn (flat, before the terrain came) has its
+    // mesh on the GPU: it is drawn as soon as it is lifted, as before.
     const grounded = grounder.active;
-    if (grounded) {
+    const firstGrounded = new Set<string>();
+    const uploading = awaitingFirstDraw;
+    awaitingFirstDraw = firstGrounded;
+    if (grounded && uploading.size > 0) {
+      options.requestRepaint();
+    } else if (grounded) {
       let budget = GROUND_TILES_PER_FRAME;
       for (const tile of selected) {
         const entry = bestFor(tile);
@@ -980,6 +1006,9 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         if (budget-- <= 0) {
           options.requestRepaint();
           break;
+        }
+        if (!grounder.hasGround(entry.key) && !drawnEntries.has(entry)) {
+          firstGrounded.add(entry.key);
         }
         const result = grounder.ground(entry.key, groundTileFor(entry, tile));
         if (result) {
@@ -1011,11 +1040,12 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       )[0];
       for (const { value: entry, from, to } of draws) {
         if (!entry.placement) continue;
-        if (grounded && !grounder.hasGround(entry.key)) continue;
+        if (grounded && (!grounder.hasGround(entry.key) || firstGrounded.has(entry.key))) continue;
         placeEntry(entry, entry.placement, center);
         setEntryTreeDetail(entry, shapes, r(entry) < nearTreesWithin);
         setEntryFade(entry, from, to);
         setEntryVisible(entry, true);
+        drawnEntries.add(entry);
         for (const source of entrySources.get(entry) ?? []) sources.add(source);
         casting.push({
           key: entry.key,
@@ -1034,6 +1064,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         }
       }
     }
+    if (firstGrounded.size > 0) options.requestRepaint();
     const projection = centeredProjection(view.mercatorToClip, center);
     camera.projectionMatrix.fromArray(projection);
     camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
@@ -1144,6 +1175,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       }
     },
 
+    get ground() {
+      return ground;
+    },
+
     renderModels(view) {
       if (disposed || !models.active) return;
       probe?.enter('models');
@@ -1159,12 +1194,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     },
 
     setGround(sample) {
-      grounder.setSampler(sample);
-      // One terrain path: buildings and trees (the ground grid), models and
-      // landmarks (the same sampler, read at their anchor) and city life
-      // (the same ground grid: `overlay.ts`) all stand on the drawn terrain.
+      // One terrain path and ONE cache of it (`terrainGround.ts` → `Ground`):
+      // buildings and trees (the grids), city life (the same grids), models,
+      // landmarks and live vehicles (the same sampler, at their anchor).
+      ground = sample ? createGround(sample) : null;
+      grounder.setGround(ground);
       models.setGround(sample);
-      for (const overlay of overlays) overlay.setGround(sample);
+      for (const overlay of overlays) overlay.setGround(ground);
       landmarks.setGround(sample);
       groundSampler = sample;
       liftRange = null;

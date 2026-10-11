@@ -67,6 +67,7 @@
  *    that; it is a property of the tiles, and it is why these volumes read as
  *    blocks in Barcelona and as individual towers in Manhattan.
  */
+import { parseHexColour } from '../colour';
 import type {
   ExpressionSpecification,
   FillExtrusionLayerSpecification,
@@ -339,11 +340,7 @@ const VERY_TALL_M = 180;
  * would have to be kept in step by hand.
  */
 function mix(a: string, b: string, amount: number): string {
-  const parse = (hex: string): [number, number, number] => [
-    Number.parseInt(hex.slice(1, 3), 16),
-    Number.parseInt(hex.slice(3, 5), 16),
-    Number.parseInt(hex.slice(5, 7), 16),
-  ];
+  const parse = (hex: string): [number, number, number] => parseHexColour(hex) ?? [0, 0, 0];
   const [ar, ag, ab] = parse(a);
   const [br, bg, bb] = parse(b);
   const channel = (x: number, y: number): string =>

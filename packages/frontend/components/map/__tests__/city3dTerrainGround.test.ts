@@ -15,6 +15,7 @@ import {
 import { meshOsmBuildings } from '@/components/map/engine/city3d/osmMesher';
 import { buildingFromProperties } from '@/components/map/engine/city3d/osmTiles';
 import {
+  createGround,
   GROUND,
   type GroundTile,
   gridAt,
@@ -41,6 +42,9 @@ function tileRect(x0: number, y0: number, x1: number, y1: number): Point2[] {
 function building(rings: Point2[][], height = 20, base = 0): BuildingFeature {
   return { rings, properties: { render_height: height, render_min_height: base } };
 }
+
+/** A sampler as the engine hands it over: with its grid cache. */
+const groundOf = (sample: Parameters<typeof createGround>[0]) => createGround(sample);
 
 describe('sampleGroundGrid', () => {
   test('row-major from the north-west corner, at the tile edges', () => {
@@ -207,13 +211,13 @@ describe('TileGrounder', () => {
     const grounder = new TileGrounder();
     expect(grounder.active).toBe(false);
     expect(grounder.ground('a', groundTile)).toBeNull();
-    grounder.setSampler(() => 50);
+    grounder.setGround(groundOf(() => 50));
     expect(grounder.isCurrent('a')).toBe(false);
     const first = grounder.ground('a', groundTile);
     expect(first?.changed).toBe(true);
     expect(first?.max).toBeCloseTo(50, 4);
     expect(grounder.isCurrent('a')).toBe(true);
-    grounder.setSampler(() => 50);
+    grounder.setGround(groundOf(() => 50));
     expect(grounder.isCurrent('a')).toBe(false);
     expect(grounder.hasGround('a')).toBe(true);
   });
@@ -221,14 +225,14 @@ describe('TileGrounder', () => {
   test('a refresh that moves nothing is not re-uploaded; one that does, is — in place', () => {
     const grounder = new TileGrounder();
     let height = 300;
-    grounder.setSampler(() => height);
+    grounder.setGround(groundOf(() => height));
     const first = grounder.ground('a', groundTile);
-    grounder.setSampler(() => height + GROUND.epsilonM / 2);
+    grounder.setGround(groundOf(() => height + GROUND.epsilonM / 2));
     const same = grounder.ground('a', groundTile);
     expect(same?.changed).toBe(false);
     expect(same?.values).toBe(first?.values);
     height = 310;
-    grounder.setSampler(() => height);
+    grounder.setGround(groundOf(() => height));
     const moved = grounder.ground('a', groundTile);
     expect(moved?.changed).toBe(true);
     expect(moved?.values).toBe(first?.values);
@@ -247,25 +251,64 @@ describe('TileGrounder', () => {
       centre + ((sink - GROUND.sinkMarginM) / halfWidthLng) * (lng - centreLng);
 
     const grounder = new TileGrounder();
-    grounder.setSampler(ground(300, 5));
+    grounder.setGround(groundOf(ground(300, 5)));
     const before = grounder.ground('a', groundTile);
     expect(before?.max).toBeCloseTo(300, 2);
     expect(before?.min).toBeCloseTo(295, 2);
 
     // Centre −0.2 m, sink +0.2 m: each within epsilon, the foot 0.4 m lower.
-    grounder.setSampler(ground(299.8, 5.2));
+    grounder.setGround(groundOf(ground(299.8, 5.2)));
     const after = grounder.ground('a', groundTile);
     expect(after?.changed).toBe(true);
     expect(after?.min).toBeCloseTo(294.6, 2);
 
     // Centre and sink up together by 0.2: the foot does not move, the roof
     // by 0.2 — within epsilon, so nothing is uploaded.
-    grounder.setSampler(ground(300, 5.4));
+    grounder.setGround(groundOf(ground(300, 5.4)));
     expect(grounder.ground('a', groundTile)?.changed).toBe(false);
   });
 
   test('largestChange', () => {
     expect(largestChange(Float32Array.from([1, 2]), Float32Array.from([1, 5]))).toBe(3);
     expect(largestChange(Float32Array.from([1]), Float32Array.from([1, 5]))).toBe(Infinity);
+  });
+});
+
+describe('one ground for everything standing on it', () => {
+  test('a tile is sampled once, whoever asks: the grounder and city life share it', () => {
+    let calls = 0;
+    const ground = createGround(() => {
+      calls++;
+      return 40;
+    });
+    const tile = { z: 15, x: 16580, y: 12238 };
+    expect(ground.hasGrid(tile)).toBe(false);
+    const grounder = new TileGrounder();
+    grounder.setGround(ground);
+    grounder.ground('15/16580/12238@0', {
+      tile,
+      tileSizeM: 917,
+      polygonBoxes: new Float32Array(0),
+    });
+    const sampled = calls;
+    expect(sampled).toBe(GROUND.grid * GROUND.grid);
+    // City life's read of the same tile: no new samples.
+    expect(ground.hasGrid(tile)).toBe(true);
+    expect(ground.grid(tile)[0]).toBe(40);
+    expect(calls).toBe(sampled);
+  });
+
+  test('the cache keeps the most recently used tiles', () => {
+    const ground = createGround(() => 0, 2);
+    const a = { z: 15, x: 1, y: 1 };
+    const b = { z: 15, x: 2, y: 1 };
+    const c = { z: 15, x: 3, y: 1 };
+    ground.grid(a);
+    ground.grid(b);
+    ground.grid(a);
+    ground.grid(c);
+    expect(ground.hasGrid(a)).toBe(true);
+    expect(ground.hasGrid(b)).toBe(false);
+    expect(ground.hasGrid(c)).toBe(true);
   });
 });

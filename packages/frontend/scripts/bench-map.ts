@@ -61,6 +61,13 @@ export const DEVICES: Record<string, Device> = {
     cpuThrottle: 4,
     note: '1366×768 @2x, CPU ÷4 (integrated-GPU laptop CPU class)',
   },
+  'laptop-2x': {
+    viewport: { width: 1366, height: 768 },
+    deviceScaleFactor: 2,
+    mobile: false,
+    cpuThrottle: 2,
+    note: '1366×768 @2x, CPU ÷2 (an i5-1135G7 / M1 against this i9-14900K, single-thread)',
+  },
   pixel6a: {
     viewport: { width: 412, height: 915 },
     deviceScaleFactor: 2.75,
@@ -190,7 +197,13 @@ export const SCENES: Scene[] = [
  * Installed in every page before any of its scripts. Self-contained: it gets
  * the counter's source and nothing else.
  */
-function pageProbe(args: { counterSource: string; stateSource: string; at: string | null }) {
+function pageProbe(args: {
+  counterSource: string;
+  stateSource: string;
+  at: string | null;
+  tier: string | null;
+  counters: boolean;
+}) {
   const w = window as unknown as Record<string, unknown>;
   if (args.at) {
     // The sky reads the device clock: move it, keep it running.
@@ -206,6 +219,31 @@ function pageProbe(args: { counterSource: string; stateSource: string; at: strin
       }
     }
     w.Date = ShiftedDate;
+  }
+  // After the clock is moved: the record's date must not be in the scene's future.
+  if (args.tier) {
+    // A production build ignores `?quality=`: store a GPU record for THIS
+    // renderer at the tier asked for, as the map's own benchmark would, so
+    // Auto resolves it (`lib/map/quality/gpuTier.ts`).
+    try {
+      const probe = document.createElement('canvas').getContext('webgl2');
+      const info = probe?.getExtension('WEBGL_debug_renderer_info');
+      const renderer =
+        probe && info ? String(probe.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '';
+      probe?.getExtension('WEBGL_lose_context')?.loseContext();
+      const mpx = args.tier === 'high' ? 10 : args.tier === 'medium' ? 1 : 0.1;
+      localStorage.setItem(
+        'goway.mapFeatures',
+        JSON.stringify({
+          v: 1,
+          choices: {},
+          labs: false,
+          gpu: { v: 1, renderer, megapixelsPerMs: mpx, tier: args.tier, at: Date.now() },
+        }),
+      );
+    } catch {
+      // No storage: Auto decides.
+    }
   }
   // The benchmark injects its own instrument, by source.
   const instrument = new Function(`return (${args.counterSource})`)() as (
@@ -231,7 +269,24 @@ function pageProbe(args: { counterSource: string; stateSource: string; at: strin
     const context = (getContext as (...a: unknown[]) => unknown).call(this, type, ...rest);
     if (type === 'webgl2' && context && this.classList.contains('maplibregl-canvas') && !mapGl) {
       mapGl = context as WebGL2RenderingContext;
-      instrument(mapGl, state);
+      // `--no-counters`: time frames without the per-call instrument's own
+      // cost — only draw calls are counted (a tick with none drew no frame).
+      if (args.counters) instrument(mapGl, state);
+      else {
+        const target = mapGl as unknown as Record<string, (...a: unknown[]) => unknown>;
+        for (const name of [
+          'drawElements',
+          'drawArrays',
+          'drawElementsInstanced',
+          'drawArraysInstanced',
+        ]) {
+          const original = target[name];
+          target[name] = (...a: unknown[]) => {
+            state.frame.draws++;
+            return original.apply(mapGl, a);
+          };
+        }
+      }
       timer = mapGl.getExtension('EXT_disjoint_timer_query_webgl2') as typeof timer;
     }
     return context;
@@ -242,6 +297,9 @@ function pageProbe(args: { counterSource: string; stateSource: string; at: strin
     cpu: number;
     gpu: number | null;
     gl: Record<string, number>;
+    /** The frame's callbacks: the first one's start and the last one's end (performance.now). */
+    from: number;
+    to: number;
   }
   const frames: FrameRecord[] = [];
   // Main-thread work OUTSIDE the frame callbacks (worker replies, tile
@@ -260,12 +318,14 @@ function pageProbe(args: { counterSource: string; stateSource: string; at: strin
   }
   let tick = -1;
   let cpu = 0;
+  let from = 0;
+  let to = 0;
   let query: WebGLQuery | null = null;
   const pending: Array<{ query: WebGLQuery; frame: FrameRecord }> = [];
 
   const closeTick = () => {
     if (tick < 0) return;
-    const record: FrameRecord = { t: tick, cpu, gpu: null, gl: { ...state.frame } };
+    const record: FrameRecord = { t: tick, cpu, gpu: null, gl: { ...state.frame }, from, to };
     for (const key of Object.keys(state.frame)) state.frame[key] = 0;
     if (mapGl && timer && query) {
       mapGl.endQuery(timer.TIME_ELAPSED_EXT);
@@ -293,20 +353,34 @@ function pageProbe(args: { counterSource: string; stateSource: string; at: strin
         closeTick();
         pollQueries();
         tick = t;
+        from = 0;
         if (mapGl && timer && !query && pending.length < 8) {
           query = mapGl.createQuery();
           if (query) mapGl.beginQuery(timer.TIME_ELAPSED_EXT, query);
         }
       }
       const started = performance.now();
+      if (from === 0) from = started;
       try {
         callback(t);
       } finally {
-        cpu += performance.now() - started;
+        to = performance.now();
+        cpu += to - started;
       }
     });
 
   w.__bench = {
+    /**
+     * Busy for a few ms under a name the profile can find: where its first
+     * sample lands gives the profile's clock against performance.now().
+     */
+    marker: function __benchClockMarker() {
+      const at = performance.now();
+      while (performance.now() - at < 6) {
+        // spin
+      }
+      return at;
+    },
     reset() {
       closeTick();
       frames.length = 0;
@@ -343,7 +417,8 @@ function sceneUrl(base: string, scene: Scene, quality: string | null): string {
     pitch: String(scene.camera.pitch),
     bearing: String(scene.camera.bearing),
     ...scene.flags,
-    perf: '1',
+    // The HUD counts every GL call; a timing run (`--no-counters`) leaves it off.
+    ...(process.argv.includes('--no-counters') ? {} : { perf: '1' }),
   });
   if (quality) params.set('quality', quality);
   return `${base}/?${params}`;
@@ -372,8 +447,11 @@ async function settle(page: Page, scene: Scene, timeoutMs = 90_000): Promise<str
           : null,
       };
     });
-    const cityQuiet = status.city === null ? scene.camera.zoom < 15 : status.city.pending === 0;
-    const lifeReady = !scene.life || (status.agents ?? 0) > 0;
+    // A production build publishes no engine statistics: there, 25 s of loading.
+    const blind = status.city === null && Date.now() - started > 25_000;
+    const cityQuiet =
+      status.city === null ? scene.camera.zoom < 15 || blind : status.city.pending === 0;
+    const lifeReady = !scene.life || (status.agents ?? 0) > 0 || blind;
     if (cityQuiet && lifeReady) {
       if (quietSince === 0) quietSince = Date.now();
       if (Date.now() - quietSince > 2500) return notes;
@@ -426,6 +504,8 @@ interface FrameRecord {
   cpu: number;
   gpu: number | null;
   gl: Record<string, number>;
+  from: number;
+  to: number;
 }
 
 function report(frames: FrameRecord[], durationMs: number) {
@@ -471,20 +551,65 @@ async function benchScene(
     counterSource: instrumentWebGl2.toString(),
     stateSource: createGlCounterState.toString(),
     at: scene.at ?? null,
+    tier: arg('tier', '') || null,
+    counters: !process.argv.includes('--no-counters'),
   });
   const cdp = await context.newCDPSession(page);
+  // Profiling: every script's URL and source map, by id — lazy chunks can be
+  // evaluated without a URL of their own, but never without a script id.
+  const scripts = new Map<string, { url: string; sourceMapURL: string }>();
+  if (process.argv.includes('--profile')) {
+    cdp.on(
+      'Debugger.scriptParsed',
+      (event: { scriptId: string; url: string; sourceMapURL?: string }) => {
+        scripts.set(event.scriptId, { url: event.url, sourceMapURL: event.sourceMapURL ?? '' });
+      },
+    );
+    await cdp.send('Debugger.enable');
+  }
   await page.goto(sceneUrl(base, scene, quality), { waitUntil: 'load', timeout: 120_000 });
   await page.waitForSelector('canvas.maplibregl-canvas', { timeout: 60_000 });
   // Load at full speed; throttle only what is measured.
   const notes = await settle(page, scene);
+  // `--setup=<js>`: an experiment's change, evaluated once loaded (e.g. hide a
+  // layer through the dev build's `__gowayReliefMap`), then a moment to settle.
+  const setup = arg('setup', '');
+  if (setup) {
+    await page.evaluate(setup);
+    await page.waitForTimeout(3000);
+  }
   if (device.cpuThrottle > 1)
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: device.cpuThrottle });
   await page.evaluate(() =>
     (globalThis as unknown as { __bench: { reset(): void } }).__bench.reset(),
   );
+  const profiling = process.argv.includes('--profile');
+  if (profiling) {
+    await cdp.send('Profiler.enable');
+    await cdp.send('Profiler.setSamplingInterval', { interval: 500 });
+    await cdp.send('Profiler.start');
+  }
+  const markedAt = profiling
+    ? await page.evaluate(() =>
+        (globalThis as unknown as { __bench: { marker(): number } }).__bench.marker(),
+      )
+    : 0;
+  // The engine's grounding count before the path (development builds publish
+  // it), so the result says how many tiles were lifted DURING it.
+  const groundBefore = await page.evaluate(
+    () =>
+      (
+        globalThis as unknown as {
+          __gowayCity3dGround?: { tilesGrounded: number; tilesUploaded: number };
+        }
+      ).__gowayCity3dGround ?? null,
+  );
   const started = Date.now();
   await runPath(page, scene.path, scene.durationMs, device.viewport);
   const elapsed = Date.now() - started;
+  const cpuProfile = profiling
+    ? ((await cdp.send('Profiler.stop')) as { profile: CpuProfile }).profile
+    : null;
   const taken = await page.evaluate(
     () =>
       (globalThis as unknown as { __bench: { take(): unknown } }).__bench.take() as {
@@ -494,6 +619,9 @@ async function benchScene(
       },
   );
   const frames = taken.frames;
+  const profile = cpuProfile
+    ? await attribute(cpuProfile, elapsed, scripts, base, { frames, markedAt })
+    : null;
   if (device.cpuThrottle > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   const after = await page.evaluate(() => {
     const g = globalThis as unknown as Record<string, unknown> & {
@@ -517,6 +645,7 @@ async function benchScene(
     errors,
     ...report(frames, elapsed),
     ...(process.argv.includes('--raw') ? { raw: frames } : {}),
+    ...(profile ? { profile } : {}),
     // Share of the measured time the main thread spent in long tasks (> 50 ms).
     longTasks: {
       count: taken.longTasks,
@@ -524,6 +653,226 @@ async function benchScene(
       share: Number((taken.longTaskMs / elapsed).toFixed(2)),
     },
     ...after,
+    groundDuringPath:
+      groundBefore && after.ground
+        ? {
+            grounded:
+              (after.ground as { tilesGrounded: number }).tilesGrounded -
+              groundBefore.tilesGrounded,
+            uploaded:
+              (after.ground as { tilesUploaded: number }).tilesUploaded -
+              groundBefore.tilesUploaded,
+          }
+        : null,
+  };
+}
+
+interface CpuProfile {
+  nodes: Array<{
+    id: number;
+    children?: number[];
+    callFrame: {
+      functionName: string;
+      scriptId: string;
+      url: string;
+      lineNumber: number;
+      columnNumber: number;
+    };
+  }>;
+  samples: number[];
+  timeDeltas: number[];
+  startTime: number;
+}
+
+/**
+ * Which part of the app a sampled frame's code belongs to, by its source URL
+ * (the dev server serves modules by path; a production bundle by chunk name,
+ * so there the split is by function name only).
+ */
+export function subsystemOf(source: string, functionName: string): string {
+  if (functionName === '(garbage collector)') return 'gc';
+  if (functionName === '(idle)') return 'idle';
+  if (functionName === '(program)' || functionName === '(root)') return 'browser';
+  if (/maplibre-gl/.test(source)) return 'maplibre';
+  if (/node_modules\/three\//.test(source)) return 'three';
+  if (/engine\/city3d|city3dLayer|city3dGround|engine\/quality/.test(source)) return 'city engine';
+  if (/engine\/cityLife/.test(source)) return 'city life';
+  if (/engine\/live3d|liveLayer|features\/live|lib\/live/.test(source)) return 'live';
+  if (/components\/map\/perf/.test(source)) return 'perf runtime';
+  if (
+    /react-dom|react-native-web|node_modules\/react\/|scheduler|reanimated|nativewind|react-native-css/.test(
+      source,
+    )
+  ) {
+    return 'react';
+  }
+  if (/node_modules\//.test(source)) return 'other libraries';
+  if (source === '') return 'unmapped';
+  return 'app';
+}
+
+/** Source maps of the served scripts, so a sample is attributed to its source file. */
+async function sourceMapper(
+  scripts: Map<string, { url: string; sourceMapURL: string }>,
+  base: string,
+) {
+  const { TraceMap, originalPositionFor } = await import('@jridgewell/trace-mapping');
+  const maps = new Map<string, InstanceType<typeof TraceMap> | null>();
+  const mapUrl = (scriptId: string, url: string) => {
+    const script = scripts.get(scriptId);
+    const named = script?.sourceMapURL;
+    if (named)
+      return named.startsWith('data:') || /^https?:/.test(named)
+        ? named
+        : new URL(named, script?.url || base).href;
+    const at = url || script?.url || '';
+    if (!at.startsWith('http')) return '';
+    // The dev server's `x.bundle?…` → `x.map?…`; an export's `x.js` → `x.js.map`.
+    return /\.js(\?|$)/.test(at)
+      ? at.replace(/\.js(\?|$)/, '.js.map$1')
+      : at.replace(/\.bundle(\?|$)/, '.map$1');
+  };
+  const mapFor = async (key: string) => {
+    if (!key) return null;
+    if (!maps.has(key)) {
+      try {
+        const text = key.startsWith('data:')
+          ? Buffer.from(
+              key.slice(key.indexOf(',') + 1),
+              key.includes(';base64') ? 'base64' : 'utf8',
+            ).toString()
+          : await (await fetch(key)).text();
+        maps.set(key, new TraceMap(text));
+      } catch {
+        maps.set(key, null);
+      }
+    }
+    return maps.get(key) ?? null;
+  };
+  return async (scriptId: string, url: string, line: number, column: number) => {
+    const map = await mapFor(mapUrl(scriptId, url));
+    const fallback = url || scripts.get(scriptId)?.url || '';
+    if (!map) return fallback;
+    return originalPositionFor(map, { line: line + 1, column }).source ?? fallback;
+  };
+}
+
+/**
+ * Self time per subsystem (ms, and share of the measured wall time), and the
+ * top functions — over the whole path and over its slowest frames alone. A
+ * native function (a WebGL call: no URL) is charged to the nearest caller
+ * that has one, so `bufferSubData` counts against whoever uploaded.
+ */
+async function attribute(
+  profile: CpuProfile,
+  elapsedMs: number,
+  scripts: Map<string, { url: string; sourceMapURL: string }>,
+  base: string,
+  timing: { frames: FrameRecord[]; markedAt: number },
+) {
+  const nodes = new Map(profile.nodes.map((n) => [n.id, n]));
+  const parent = new Map<number, number>();
+  for (const node of profile.nodes)
+    for (const child of node.children ?? []) parent.set(child, node.id);
+  const locate = await sourceMapper(scripts, base);
+  const owner = new Map<number, { subsystem: string; label: string }>();
+  const ownerOf = async (id: number) => {
+    const cached = owner.get(id);
+    if (cached) return cached;
+    const self = nodes.get(id);
+    let at: number | undefined = id;
+    let frame = self?.callFrame;
+    // A native function (a WebGL call) has script id 0: charge its caller.
+    while (
+      frame &&
+      frame.scriptId === '0' &&
+      !frame.functionName.startsWith('(') &&
+      at !== undefined
+    ) {
+      at = parent.get(at);
+      frame = at === undefined ? undefined : nodes.get(at)?.callFrame;
+    }
+    const fn = self?.callFrame.functionName ?? '';
+    const source =
+      frame && frame.scriptId !== '0'
+        ? await locate(frame.scriptId, frame.url, frame.lineNumber, frame.columnNumber)
+        : '';
+    const result = {
+      subsystem: subsystemOf(source, frame?.functionName.startsWith('(') ? frame.functionName : fn),
+      label: `${fn || '(anonymous)'} ${source.split('/').slice(-2).join('/')}`,
+    };
+    owner.set(id, result);
+    return result;
+  };
+  const bySubsystem = new Map<string, number>();
+  const byFunction = new Map<string, number>();
+  // The same split for the SLOW frames alone — those at or over the path's
+  // p95 of main-thread time, what a p95 is made of: the samples inside their
+  // callbacks, placed on the page's clock by the marker's first sample.
+  const slowBySubsystem = new Map<string, number>();
+  const slowByFunction = new Map<string, number>();
+  const cpus = timing.frames.map((f) => f.cpu).sort((a, b) => a - b);
+  const threshold = cpus[Math.floor(cpus.length * 0.95)] ?? Number.POSITIVE_INFINITY;
+  const slow = timing.frames.filter((f) => f.cpu >= threshold && f.from > 0);
+  const times: number[] = [];
+  let clock = profile.startTime;
+  for (let i = 0; i < profile.samples.length; i++) {
+    clock += profile.timeDeltas[i] ?? 0;
+    times.push(clock / 1000);
+  }
+  const markerSample = profile.samples.findIndex(
+    (id) => nodes.get(id)?.callFrame.functionName === '__benchClockMarker',
+  );
+  const offset = markerSample < 0 ? null : times[markerSample] - timing.markedAt;
+  const add = (map: Map<string, number>, key: string, ms: number) =>
+    map.set(key, (map.get(key) ?? 0) + ms);
+  let next = 0;
+  for (let i = 0; i < profile.samples.length; i++) {
+    const ms = (profile.timeDeltas[i] ?? 0) / 1000;
+    const { subsystem, label } = await ownerOf(profile.samples[i]);
+    add(bySubsystem, subsystem, ms);
+    if (subsystem === 'idle') continue;
+    const key = `${subsystem} · ${label}`;
+    add(byFunction, key, ms);
+    if (offset === null) continue;
+    const at = times[i] - offset;
+    while (next < slow.length && slow[next].to < at) next++;
+    if (next < slow.length && at >= slow[next].from) {
+      add(slowBySubsystem, subsystem, ms);
+      add(slowByFunction, key, ms);
+    }
+  }
+  const round = (v: number) => Number(v.toFixed(1));
+  const table = (map: Map<string, number>, total: number) =>
+    Object.fromEntries(
+      [...map.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => [k, { ms: round(v), share: Number((v / total).toFixed(3)) }]),
+    );
+  const ranked = (map: Map<string, number>) =>
+    [...map.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 40)
+      .map(([k, v]) => `${round(v)} ms  ${k}`);
+  const slowMs = [...slowBySubsystem.values()].reduce((sum, v) => sum + v, 0);
+  return {
+    subsystems: table(bySubsystem, elapsedMs),
+    top: ranked(byFunction),
+    slowFrames:
+      offset === null
+        ? null
+        : {
+            count: slow.length,
+            thresholdMs: round(threshold),
+            // Per slow frame, by subsystem: sampled self time inside its callbacks.
+            perFrameMs: Object.fromEntries(
+              [...slowBySubsystem.entries()]
+                .sort((a, b) => b[1] - a[1])
+                .map(([k, v]) => [k, round(v / Math.max(1, slow.length))]),
+            ),
+            subsystems: table(slowBySubsystem, slowMs || 1),
+            top: ranked(slowByFunction),
+          },
   };
 }
 

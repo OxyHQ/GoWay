@@ -68,6 +68,7 @@
  *    meter: the read surface is public. Adding a key would be adding a way for
  *    the embed to stop working.
  */
+import { MERCATOR_MAX_LATITUDE } from './geo';
 import type { GeoBounds, GeoCoordinate, MapViewport } from '@/components/map/types';
 import { DEFAULT_VIEWPORT } from '@/components/map/types';
 
@@ -84,7 +85,7 @@ import { DEFAULT_VIEWPORT } from '@/components/map/types';
 export const MAX_MARKERS = 20;
 
 /** Web Mercator's conventional truncation. Beyond it the projection diverges. */
-const MAX_LATITUDE = 85.051129;
+const MAX_LATITUDE = MERCATOR_MAX_LATITUDE;
 
 /** What MapLibre accepts. Past 85° the horizon is behind the camera. */
 const MAX_PITCH = 85;

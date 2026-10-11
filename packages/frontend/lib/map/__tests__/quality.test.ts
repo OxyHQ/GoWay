@@ -94,10 +94,11 @@ describe('resolveQuality', () => {
     expect(parsePerformanceMode(undefined)).toBe('auto');
   });
 
-  test('?quality= forces a preset in development builds only', () => {
-    expect(qualityFromSearch('?quality=low', true)).toBe('low');
-    expect(qualityFromSearch('?quality=low', false)).toBeNull();
-    expect(qualityFromSearch('?quality=ultra', true)).toBeNull();
+  test('?quality= forces a known preset, in any build', () => {
+    expect(qualityFromSearch('?quality=low')).toBe('low');
+    expect(qualityFromSearch('?perf=1&quality=high')).toBe('high');
+    expect(qualityFromSearch('?quality=ultra')).toBeNull();
+    expect(qualityFromSearch('')).toBeNull();
   });
 });
 

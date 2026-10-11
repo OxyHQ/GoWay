@@ -261,6 +261,7 @@ describe('attachLive', () => {
     const added: string[] = [];
     let removed = 0;
     handle.setCity({
+      ground: () => null,
       setLight: () => {},
       setModels: () => {},
       moveModel: () => {},

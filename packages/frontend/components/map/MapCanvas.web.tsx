@@ -169,14 +169,13 @@ if (INITIAL_RELIEF.globe || INITIAL_RELIEF.terrain) loadReliefChunk();
 const NO_CREDITS: readonly MapAttributionLink[] = [];
 
 /**
- * The perf HUD (`perf/mapRuntime.web.ts`): every development build, and any
- * build with `?perf=1` — it only SHOWS numbers, so a link cannot change how
- * the map draws for anyone.
+ * The perf HUD (`perf/mapRuntime.web.ts`): only when asked for, with
+ * `?perf=1`, in any build — never by default, development included (it covers
+ * the map, and its GL counters cost main-thread time). It only SHOWS numbers,
+ * so a link cannot change how the map draws for anyone.
  */
 const PERF_HUD =
-  __DEV__ ||
-  (typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).get('perf') === '1');
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('perf') === '1';
 
 /**
  * The time-of-day scrubber is its own lazy chunk: rendered only while the
@@ -521,6 +520,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               flags: relief,
               appearance: resolvedAppearance,
               terrain3d: qualityRef.current.relief.terrain3d,
+              terrainTextureScale: qualityRef.current.relief.terrainTextureScale,
             });
             reliefRef.current = reliefHandle;
           }
@@ -1174,6 +1174,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     });
     runtime?.handle?.setQuality(quality);
     reliefRef.current?.setTerrain3d(quality.relief.terrain3d);
+    reliefRef.current?.setTerrainTextureScale(quality.relief.terrainTextureScale);
   }, [quality, runtime]);
 
   // Hand the models to the engine whenever either changes.

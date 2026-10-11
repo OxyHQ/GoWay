@@ -64,16 +64,47 @@ export interface AttachReliefOptions {
    * 3D terrain on. Defaults to `true`.
    */
   terrain3d?: boolean;
+  /**
+   * The quality profile's `relief.terrainTextureScale`: MapLibre's terrain
+   * render-to-texture side as a multiple of its terrain tile (its own default
+   * is 2). Defaults to 2.
+   */
+  terrainTextureScale?: number;
 }
 
 export interface ReliefHandle {
   /** The quality profile changed: allow or forbid 3D terrain, live. */
   setTerrain3d(allowed: boolean): void;
+  /** The quality profile changed: the terrain textures' scale, live (the terrain is re-made). */
+  setTerrainTextureScale(scale: number): void;
   /** Stop listening and give the container its background back. Idempotent. */
   detach(): void;
 }
 
 const NOT_LOADED = 'Style is not done loading';
+
+/**
+ * Size MapLibre's terrain textures — the 2D layers it caches per terrain tile —
+ * at `scale` × the terrain tile (its own default is 2). `Terrain.qualityFactor`
+ * is MapLibre's documented knob for exactly this, but it is read once, when
+ * `setTerrain` makes the terrain's render-to-texture, so the size computed
+ * there is set too. Both are guarded: on a MapLibre without them nothing
+ * changes (the default size), and `reliefTextureScale.test.ts` pins the
+ * installed version's code.
+ */
+export function applyTextureScale(map: MapLibreMap, scale: number): void {
+  const internal = map as unknown as {
+    terrain?: { qualityFactor?: number; tileManager?: { tileSize?: number } } | null;
+    painter?: { renderToTexture?: { rttSize?: number } };
+  };
+  const terrain = internal.terrain;
+  const tileSize = terrain?.tileManager?.tileSize;
+  const rtt = internal.painter?.renderToTexture;
+  if (!terrain || typeof terrain.qualityFactor !== 'number' || !tileSize || !rtt) return;
+  if (typeof rtt.rttSize !== 'number') return;
+  terrain.qualityFactor = scale;
+  rtt.rttSize = tileSize * scale;
+}
 
 /**
  * Lay the relief over `map` — now if its style has loaded, else on
@@ -87,6 +118,7 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
   let detached = false;
   let terrainReady = false;
   let terrain3d = options.terrain3d !== false;
+  let textureScale = options.terrainTextureScale ?? 2;
 
   // Space is the container's own background: MapLibre clears to transparent
   // and draws nothing around the globe, so this is what shows there — with
@@ -129,6 +161,7 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
     if (wanted === on) return;
     try {
       map.setTerrain(wanted ? RELIEF_TERRAIN : null);
+      if (wanted) applyTextureScale(map, textureScale);
     } catch (cause) {
       reportMapDefect('relief:terrain', `relief: terrain not toggled (${String(cause)}).`);
     }
@@ -206,6 +239,20 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
       if (terrain3d === allowed) return;
       terrain3d = allowed;
       syncTerrain();
+    },
+    setTerrainTextureScale(scale) {
+      if (textureScale === scale) return;
+      textureScale = scale;
+      // The texture side is fixed when the terrain is made: re-make it.
+      if (!detached && map.getTerrain() !== null) {
+        try {
+          map.setTerrain(null);
+          map.setTerrain(RELIEF_TERRAIN);
+          applyTextureScale(map, textureScale);
+        } catch (cause) {
+          reportMapDefect('relief:terrain', `relief: terrain not re-made (${String(cause)}).`);
+        }
+      }
     },
     detach() {
       if (detached) return;

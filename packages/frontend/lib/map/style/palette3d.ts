@@ -38,6 +38,7 @@
  * variant that the 3D city switches on. Labels keep their palette colours
  * and their contrast is re-checked against the variant's ground in the tests.
  */
+import { hexToRgb } from '../colour';
 import type { MapAppearance } from '../provider';
 import { type CartographyPalette, DARK_PALETTE, LIGHT_PALETTE } from './palette';
 
@@ -254,10 +255,7 @@ export interface CityMaterial {
   windowLitShare: number;
 }
 
-const hex = (value: string): Rgb => {
-  const n = Number.parseInt(value.slice(1, 7), 16);
-  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
-};
+const hex = (value: string): Rgb => hexToRgb(value);
 
 /**
  * Daylight clay. The albedo is a near-white warm grey that goes slightly

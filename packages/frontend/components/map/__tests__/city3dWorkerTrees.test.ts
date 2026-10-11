@@ -15,6 +15,7 @@ import { describe, expect, test } from 'bun:test';
 import { PbfWriter } from 'pbf';
 
 import {
+  createGround,
   GROUND,
   gridAt,
   groundGrid,
@@ -193,7 +194,7 @@ describe('the ground is the drawn terrain', () => {
     const grid = groundGrid(tile, sampler);
     expect(gridAt(grid, size, 0.5, 0.5)).toBeCloseTo(37, 5);
     const grounder = new TileGrounder();
-    grounder.setSampler(sampler);
+    grounder.setGround(createGround(sampler));
     const result = grounder.ground('k', {
       tile,
       tileSizeM: 1835,

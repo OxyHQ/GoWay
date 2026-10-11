@@ -44,6 +44,7 @@ import {
   type LngLatBox,
   mercatorPerMetre,
   mercatorXFromLng,
+  mercatorYFromLat,
   type ViewTile,
   tileKey,
 } from './tileMath';
@@ -330,11 +331,7 @@ export function selectLodTiles(
   const ey = eye.y * n;
   const minX = Math.max(Math.floor((mercatorXFromLng(west) + shift) * n), Math.floor(ex - reach));
   const maxX = Math.min(Math.floor((mercatorXFromLng(east) + shift) * n), Math.floor(ex + reach));
-  const yOf = (lat: number) => {
-    const clamped = Math.max(-85.051129, Math.min(85.051129, lat));
-    const phi = (clamped * Math.PI) / 180;
-    return (0.5 - Math.log(Math.tan(Math.PI / 4 + phi / 2)) / (2 * Math.PI)) * n;
-  };
+  const yOf = (lat: number) => mercatorYFromLat(lat) * n;
   const minY = Math.max(0, Math.floor(yOf(view.bounds.north)), Math.floor(ey - reach));
   const maxY = Math.min(n - 1, Math.floor(yOf(view.bounds.south)), Math.floor(ey + reach));
 

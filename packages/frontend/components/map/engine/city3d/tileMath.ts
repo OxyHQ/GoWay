@@ -37,22 +37,25 @@
  * MapLibre uses for its own tiles.
  */
 
-/**
- * The Earth's circumference as MAPLIBRE measures it — `2π × 6,371,008.8 m`,
- * the mean radius, not WGS 84's equatorial 6,378,137 m.
- *
- * Only heights depend on this: a mesh is built in metres from tile units and
- * turned back into mercator with the same factor, so the horizontal scale
- * cancels whatever the radius. Height does not cancel, and MapLibre converts a
- * `fill-extrusion` height with this radius (`mercatorZfromAltitude`). Using
- * the equatorial one made every building 0.11% taller than the extrusion it
- * replaces — caught by `city3dTileMath.test.ts`, which compares against
- * MapLibre's own `MercatorCoordinate`.
- */
-export const EARTH_CIRCUMFERENCE_M = 2 * Math.PI * 6371008.8;
+// The Earth's circumference as MAPLIBRE measures it — `2π × 6,371,008.8 m`,
+// the mean radius, not WGS 84's equatorial 6,378,137 m — and the projection's
+// arithmetic are `lib/map/geo.ts`'s, the one copy (re-exported here under the
+// engine's names). Only heights depend on the radius: a mesh is built in
+// metres from tile units and turned back into mercator with the same factor,
+// so the horizontal scale cancels whatever the radius. Height does not
+// cancel, and MapLibre converts a `fill-extrusion` height with this radius
+// (`mercatorZfromAltitude`). Using the equatorial one made every building
+// 0.11% taller than the extrusion it replaces — caught by
+// `city3dTileMath.test.ts`, which compares against MapLibre's own
+// `MercatorCoordinate`.
+import {
+  EARTH_CIRCUMFERENCE_M,
+  latitudeFromMercatorY as latFromMercatorY,
+  mercatorX as mercatorXFromLng,
+  mercatorY as mercatorYFromLat,
+} from '@/lib/map/geo';
 
-/** Web Mercator's latitude limit; tiles stop here. */
-const MAX_LATITUDE = 85.051129;
+export { EARTH_CIRCUMFERENCE_M, latFromMercatorY, mercatorXFromLng, mercatorYFromLat };
 
 /** A vector tile address. `x`/`y` are the XYZ scheme (row 0 is the north). */
 export interface TileId {
@@ -78,24 +81,6 @@ export interface LngLatBox {
 /** A stable cache key for a tile. */
 export function tileKey(tile: TileId): string {
   return `${tile.z}/${tile.x}/${tile.y}`;
-}
-
-/** Longitude (degrees) → mercator x in `[0, 1]`. */
-export function mercatorXFromLng(lng: number): number {
-  return (180 + lng) / 360;
-}
-
-/** Latitude (degrees) → mercator y in `[0, 1]`, north at 0. Clamped to the projection's limit. */
-export function mercatorYFromLat(lat: number): number {
-  const clamped = Math.max(-MAX_LATITUDE, Math.min(MAX_LATITUDE, lat));
-  const phi = (clamped * Math.PI) / 180;
-  return (180 - (180 / Math.PI) * Math.log(Math.tan(Math.PI / 4 + phi / 2))) / 360;
-}
-
-/** Mercator y in `[0, 1]` → latitude in degrees. */
-export function latFromMercatorY(y: number): number {
-  const y2 = 180 - y * 360;
-  return (360 / Math.PI) * Math.atan(Math.exp((y2 * Math.PI) / 180)) - 90;
 }
 
 /** The tile's north-west corner in mercator. */

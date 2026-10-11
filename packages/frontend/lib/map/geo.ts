@@ -7,13 +7,46 @@
  */
 import type { GeoBounds, GeoCoordinate } from '@/components/map/types';
 
-/** Equatorial circumference of the WGS84 ellipsoid, in metres. */
-const EARTH_CIRCUMFERENCE_M = 40_075_016.686;
+// ── Web Mercator: the ONE copy of its arithmetic ─────────────────────────
+//
+// Here because this module is already in the first-paint bundle: the city-3D
+// engine (`engine/city3d/tileMath.ts`), the camera paths (`lib/map/camera/plane.ts`),
+// the simulation's worker and the live layer all read these, and a module two
+// lazy chunks import would be hoisted into `__common` (`engine3d/lazyChunk.ts`).
+// Each of them used to keep its own copy (`docs/MAP_PERFORMANCE.md` →
+// duplication).
 
-/** Web Mercator tile size the MapLibre zoom scale is defined against. */
-const TILE_SIZE_PX = 512;
+/** MapLibre's Earth: `2π × 6,371,008.8 m`, the circumference its zoom scale is defined by. */
+export const EARTH_CIRCUMFERENCE_M = 2 * Math.PI * 6371008.8;
+
+/** Web Mercator's latitude limit, degrees: past it the projection is truncated. */
+export const MERCATOR_MAX_LATITUDE = 85.051129;
+
+/** Web Mercator tile size the MapLibre zoom scale is defined against (world px at zoom 0). */
+export const WORLD_TILE_SIZE = 512;
 
 const DEG = Math.PI / 180;
+
+/** Longitude (degrees) → mercator x in `[0, 1]`. */
+export function mercatorX(longitude: number): number {
+  return (180 + longitude) / 360;
+}
+
+/** Latitude (degrees) → mercator y in `[0, 1]`, north at 0; clamped to the projection's limit. */
+export function mercatorY(latitude: number): number {
+  const clamped = Math.max(-MERCATOR_MAX_LATITUDE, Math.min(MERCATOR_MAX_LATITUDE, latitude));
+  return (180 - (180 / Math.PI) * Math.log(Math.tan(Math.PI / 4 + (clamped * DEG) / 2))) / 360;
+}
+
+/** Mercator x in `[0, 1]` → longitude, degrees. */
+export function longitudeFromMercatorX(x: number): number {
+  return x * 360 - 180;
+}
+
+/** Mercator y in `[0, 1]` → latitude, degrees. */
+export function latitudeFromMercatorY(y: number): number {
+  return (360 / Math.PI) * Math.atan(Math.exp((180 - y * 360) * DEG)) - 90;
+}
 
 /** Reject NaN/Infinity and out-of-range values before they reach an engine. */
 export function isValidCoordinate(value: unknown): value is GeoCoordinate {
@@ -39,7 +72,7 @@ export function isValidCoordinate(value: unknown): value is GeoCoordinate {
  * being re-derived at each call site.
  */
 export function metersPerPixel(latitude: number, zoom: number): number {
-  return (EARTH_CIRCUMFERENCE_M * Math.cos(latitude * DEG)) / (TILE_SIZE_PX * 2 ** zoom);
+  return (EARTH_CIRCUMFERENCE_M * Math.cos(latitude * DEG)) / (WORLD_TILE_SIZE * 2 ** zoom);
 }
 
 /** Screen pixels spanned by a ground distance at a latitude and zoom. */
@@ -119,17 +152,9 @@ export function distanceMeters(a: GeoCoordinate, b: GeoCoordinate): number {
  * because Mercator sends the poles to infinity.
  */
 export function projectToPixels(coordinate: GeoCoordinate, zoom: number): { x: number; y: number } {
-  const worldSize = TILE_SIZE_PX * 2 ** zoom;
-  const latitude = Math.max(
-    -MERCATOR_MAX_LATITUDE,
-    Math.min(MERCATOR_MAX_LATITUDE, coordinate.latitude),
-  );
-  const sin = Math.sin(latitude * DEG);
+  const worldSize = WORLD_TILE_SIZE * 2 ** zoom;
   return {
-    x: worldSize * (coordinate.longitude / 360 + 0.5),
-    y: worldSize * (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)),
+    x: worldSize * mercatorX(coordinate.longitude),
+    y: worldSize * mercatorY(coordinate.latitude),
   };
 }
-
-/** The latitude at which Web Mercator is conventionally truncated. */
-const MERCATOR_MAX_LATITUDE = 85.051129;

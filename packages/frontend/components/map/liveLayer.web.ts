@@ -39,6 +39,7 @@
 import type { AnimationClock } from './perf/animationClock';
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 
+import { metersPerPixel } from '@/lib/map/geo';
 import { GOWAY_BASEMAP_SOURCE_ID, GOWAY_LAYER_PREFIX } from '@/lib/map/provider';
 import { FONT_STACKS, OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
 
@@ -126,8 +127,7 @@ const SCALED_GLYPH_PX: Partial<Record<MapLiveGlyph['shape'], number>> = { train:
  * survey. Doubles with every zoom (the expression is exponential, base 2).
  */
 export function scaleAtZoom13(lengthMeters: number, glyphPx: number): number {
-  const metresPerPixel = (40_075_016 * Math.cos((41 * Math.PI) / 180)) / (512 * 2 ** 13);
-  return lengthMeters / metresPerPixel / glyphPx;
+  return lengthMeters / metersPerPixel(41, 13) / glyphPx;
 }
 
 /**
@@ -680,11 +680,9 @@ export function attachLive(
           models: layer.models ?? {},
           // A train in a tunnel stays a flat glyph: never a model on the street.
           points: () => surfacePoints(sampleNow(), underground),
-          // With 3D terrain on, the ground is the elevation MapLibre draws.
-          groundAt: () =>
-            map.getTerrain()
-              ? (longitude, latitude) => map.queryTerrainElevation([longitude, latitude]) ?? 0
-              : null,
+          // With 3D terrain on, the city's own ground (the elevation MapLibre
+          // draws, from the engine's one sampler); `null` on a flat map.
+          groundAt: () => next.ground(),
           requestRepaint: () => map.triggerRepaint(),
         });
         removePass = next.addPass(pass);

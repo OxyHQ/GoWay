@@ -11,6 +11,7 @@
  * compiler drops a bad tag: a building with a nonsense roof is drawn with a
  * flat one, not with the nonsense.
  */
+import { hexToPacked } from '@/lib/map/colour';
 import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 
@@ -98,10 +99,7 @@ function count(value: unknown): number | undefined {
     : undefined;
 }
 
-function colour(value: unknown): number | undefined {
-  if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/i.test(value)) return undefined;
-  return Number.parseInt(value.slice(1), 16);
-}
+const colour = hexToPacked;
 
 function member<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
   return typeof value === 'string' && (allowed as readonly string[]).includes(value)

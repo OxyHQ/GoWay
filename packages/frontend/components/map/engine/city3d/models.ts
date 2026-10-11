@@ -389,6 +389,12 @@ export interface ModelLayerOptions {
   pageOrigin: string | null;
 }
 
+/** Whether a model matrix is unchanged (`modelMatrix` is float64 arithmetic: exact equality). */
+function sameMatrix(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
+  for (let i = 0; i < 16; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 export function createModelLayer(options: ModelLayerOptions): ModelLayer {
   const scene = new THREE.Scene();
   const camera = new THREE.Camera();
@@ -468,6 +474,14 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
     if (asset.animations[0]) {
       mixer = new THREE.AnimationMixer(body);
       mixer.clipAction(asset.animations[0]).play();
+    } else {
+      // A still model's nodes never move inside it: compose their local
+      // matrices once, so a frame re-derives only what the root moved
+      // (`docs/MAP_PERFORMANCE.md` → hotspots: landmarks).
+      body.updateMatrixWorld(true);
+      body.traverse((node) => {
+        node.matrixAutoUpdate = false;
+      });
     }
     return {
       spec,
@@ -602,6 +616,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       lastFrame = now;
       let animating = false;
       const corner = new THREE.Vector3();
+      const clipCorner = new THREE.Vector4();
       for (const instance of instances.values()) {
         const { spec } = instance;
         const inWindow = view.zoom >= spec.minZoom && view.zoom <= spec.maxZoom;
@@ -640,8 +655,13 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
             scale = Math.max(scale, spec.sizing.heightPx / (height * perMetre));
           }
         }
-        instance.root.matrix.copy(modelMatrix(spec.placement, center, scale, groundM));
-        instance.root.matrixWorldNeedsUpdate = true;
+        // Only a moved model's subtree is re-derived (an orbit about the centre
+        // moves none of them).
+        const placed = modelMatrix(spec.placement, center, scale, groundM);
+        if (!sameMatrix(instance.root.matrix.elements, placed.elements)) {
+          instance.root.matrix.copy(placed);
+          instance.root.matrixWorldNeedsUpdate = true;
+        }
         instance.root.visible = true;
         if (instance.mixer) {
           instance.mixer.update(delta);
@@ -658,7 +678,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
         for (let i = 0; i < 8; i++) {
           corner.set(i & 1 ? max.x : min.x, i & 2 ? max.y : min.y, i & 4 ? max.z : min.z);
           corner.applyMatrix4(instance.root.matrix);
-          const clip = new THREE.Vector4(corner.x, corner.y, corner.z, 1).applyMatrix4(matrix);
+          const clip = clipCorner.set(corner.x, corner.y, corner.z, 1).applyMatrix4(matrix);
           if (clip.w <= 0) {
             behind = true;
             break;
@@ -671,7 +691,8 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
           bottom = Math.max(bottom, y);
         }
         instance.rect = behind ? null : { left, top, right, bottom };
-        const a = new THREE.Vector4(0, 0, 0, 1)
+        const a = clipCorner
+          .set(0, 0, 0, 1)
           .applyMatrix4(instance.root.matrix)
           .applyMatrix4(matrix);
         instance.anchor =
@@ -680,7 +701,8 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
             : null;
         report(instance, 'drawn');
       }
-      scene.updateMatrixWorld(true);
+      // Not forced: only subtrees flagged above (and animated ones) are re-derived.
+      scene.updateMatrixWorld();
       renderer.render(scene, camera);
       if (options.animation) options.animation.setAnimating(animating);
       else if (animating) options.requestRepaint();

@@ -166,6 +166,14 @@ light stays the buildings'.
   1,200 m summit moves ~40 m on screen, and the relief then grows with the
   pitch instead of popping in. Exaggeration 1: the mountains are as tall as
   they are.
+- **The terrain textures' size is the quality profile's**
+  (`relief.terrainTextureScale`, `reliefLayer.web.ts` → `applyTextureScale`):
+  MapLibre caches the 2D layers per terrain tile at 2× its 1,024 px tile
+  (2,048², ~22 MB each, mipmapped); the low preset makes them 1× — a quarter
+  of the memory, roads and fills draped at half the resolution, labels
+  untouched. Terrain stays on at every preset: without it MapLibre redraws
+  every 2D layer per tile on every frame (`docs/MAP_PERFORMANCE.md` → the
+  presets).
 - **Two `raster-dem` sources** over the same tiles, one per use, as MapLibre
   asks; the second fetch is a browser-cache hit.
 - **Sky and fog** for the tilted horizon, per appearance.
