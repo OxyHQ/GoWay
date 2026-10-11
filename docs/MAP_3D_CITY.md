@@ -544,6 +544,9 @@ Database** of OpenStreetMap. What that obliges, concretely:
 Merging a municipal dataset adds its licence and its credit to
 `MapAttribution` *while its data is drawn*, and each one needs a
 licence-compatibility review before it is merged with ODbL data, not after.
+The reviews, the verdicts (Barcelona's own model is not legally clear; the
+Spanish Catastro and New York City's model are) and the merges themselves are
+in [`MAP_3D_SOURCES.md`](./MAP_3D_SOURCES.md).
 
 **Honesty: procedural detail is styling, never fact.** GoWay already refused
 fabricated places on the public map; the same rule governs buildings:
@@ -561,7 +564,8 @@ fabricated places on the public map; the same rule governs buildings:
   another building stands against is blind, and where it rises above its
   neighbour (Barcelona's *medianeras*) it is blind in reality too. The columns
   are an even division of each facade into ~3.2 m bays: styling, stated as such.
-- Roof shapes only from `roof:shape` (or LOD2 data); everything else is flat.
+- Roof shapes only from `roof:shape` or a licensed official model's measured
+  roofs ([`MAP_3D_SOURCES.md`](./MAP_3D_SOURCES.md)); everything else is flat.
   Where the shape is tagged and its height is not, the pitch is a default
   (30°, or `roof:angle`) and the tile says so (`roof_height_source=default`).
 - Colour comes from the cartographic palette's height ramp (shared with
@@ -1214,13 +1218,15 @@ are estimates; the runtime numbers are measured unless marked.
 | **1. Ship A on web** | ~~Far-field LOD, per-tile fade-in, worker pool~~ (done: §4 "LOD and loading", with budgets; trees: §8), WebGL context-loss handling, device gating via `deviceProfile`-style checks (GPU memory: Barcelona's visible set is ~60 MB), MapLibre sky/fog matched in-shader, tap-through to the basemap preserved, a perf budget on mid-range Android Chrome | ~2–3 weeks. No infra. Opt-in users download the ~1.1 MB gz lazy chunk |
 | **2. GoWay 3D tiles (B)** | Compiler beside the Planetiler build: per-building footprints and parts, OSM levels/roof shapes where tagged; client second source mode with roofs, tempered colours and recorded storeys; archive in R2 behind the Worker; the same tiles as native's per-building extrusion source | **Compiler + client built, off by default** ([Phase 2](#phase-2-goway-city-tiles)): Barcelona 11.9 s / 6.2 MB, Catalonia 15.3 s / 31.5 MB. Remaining: sharded planet build (~2 h compute, ~18–20 GB extrapolated), R2 + Worker route, ODbL publication, far levels for the city tiles (they draw every visible tile at full detail today, §4); pre-meshing and neighbour AO only if measured necessary |
 | **3. Atmosphere** | Sky, haze over basemap and buildings, sun shadows, time-of-day scrubber | **Built, off by default** ([Phase 3](#phase-3-sky-atmosphere-shadows-and-time-of-day)). Remaining: real-GPU frame budget, device gating, terrain-aware ground passes |
-| **4. Municipal data** | One dataset at a time (PLUTO, PLATEAU, 3DBAG, Catastro…): licence review, adapter in the compiler, credit while drawn, LOD2 roofs where present | ~1 week each + legal review |
+| **4. Municipal data** | One dataset at a time (PLUTO, PLATEAU, 3DBAG, Catastro…): licence review, adapter in the compiler, credit while drawn, LOD2 roofs where present | **Started** ([`MAP_3D_SOURCES.md`](./MAP_3D_SOURCES.md)): survey and verdicts; CityGML/CityJSON readers, conflation and a `building_lod2` tile layer; Spain's Catastro storeys merged for every municipality an area covers (official > OSM tags > 5 m, `height_source`; Barcelona 18.1 MB against 7.0 MB, Madrid 8.6 against 1.9); New York City's 3D model merged (Manhattan 8.8 MB against 3.6 MB). Next: 3DBAG (needs RD New), German states, PLATEAU |
 | **5. Native** | (a) Extrude B's per-building layer in the existing native style — days. (b) A native custom layer — months, decided by benchmarks | (a) days, (b) months |
 
 Procedural facades are deliberately not a phase. Phase 2 draws the one kind
 the honesty rule allows — a storey rhythm where `building:levels` is recorded
 — and it turned out to be common where an import put it there (75.5% of
-Barcelona's features, from the Catastro). Anything richer waits for Phase 4.
+Barcelona's features, from the Catastro). Anything richer waits for Phase 4
+— which, where a model is merged, draws the OSM match's recorded storeys on
+the model's measured shape and nothing more ([`MAP_3D_SOURCES.md`](./MAP_3D_SOURCES.md)).
 
 ## Open questions
 

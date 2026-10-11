@@ -62,6 +62,11 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   rather than read from the basemap, the lane graph, IDM car-following and
   junction reservations, signals and crossings, the budget, GPU interpolation,
   and the honesty rule — always labelled, never read.
+- [`MAP_3D_SOURCES.md`](MAP_3D_SOURCES.md) — official building datasets
+  (Spain, Barcelona, New York, and a world survey): licence verdicts against
+  ODbL city tiles, how the Spanish Catastro's storeys replace the 5 m default
+  (`height_source`), and how New York City's LOD1.5/LOD2 model is conflated
+  with OSM, encoded, drawn and credited.
 - [`PLACE_NAMES.md`](PLACE_NAMES.md) — how a place is named in more than one
   language, why `places.name` stayed, and what that means for duplicate
   detection, search, the SDK contract and the OpenStreetMap re-import.
