@@ -36,6 +36,8 @@
  *
  * Pure arithmetic, tested in `__tests__/city3dLod.test.ts`.
  */
+import { QUALITY_PRESETS } from '@/lib/map/quality/profile';
+
 import {
   EARTH_CIRCUMFERENCE_M,
   latFromMercatorY,
@@ -75,14 +77,18 @@ export interface LodPolicy {
 }
 
 /**
- * The engine's policy. Budgets measured against them are in
- * `docs/MAP_3D_CITY.md` → "Budgets".
+ * The engine's policy at the HIGH quality preset. The three budget fields
+ * (`maxFullTiles`, `maxTiles`, `pixelTolerance`) are the quality profile's
+ * (`lib/map/quality/profile.ts`), never restated here; the engine takes the
+ * active preset's through `engine/quality.ts` → `cityQuality`. Budgets
+ * measured against them: `docs/MAP_3D_CITY.md` → "Budgets",
+ * `docs/MAP_PERFORMANCE.md`.
  */
 export const LOD_POLICY: LodPolicy = {
-  maxFullTiles: 6,
-  maxTiles: 48,
+  maxFullTiles: QUALITY_PRESETS.high.city.maxFullTiles,
+  maxTiles: QUALITY_PRESETS.high.city.maxTiles,
   levelErrorM: [1.5, 6],
-  pixelTolerance: 1,
+  pixelTolerance: QUALITY_PRESETS.high.city.pixelTolerance,
   minFullWithin: 1,
   minSimpleWithin: 2,
   drawWithin: 12,

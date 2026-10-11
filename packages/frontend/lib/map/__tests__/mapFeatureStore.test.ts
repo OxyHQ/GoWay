@@ -169,7 +169,7 @@ describe('native: storage answers later', () => {
     expect(instance.getSnapshot().features.on('terrain')).toBe(true);
     let heard = 0;
     instance.subscribe(() => heard++);
-    answer(serializePreferences({ choices: { terrain: false }, labs: true }));
+    answer(serializePreferences({ ...NO_PREFERENCES, choices: { terrain: false }, labs: true }));
     await settle();
     expect(instance.getSnapshot().hydrated).toBe(true);
     expect(instance.getSnapshot().features.on('terrain')).toBe(false);
@@ -188,7 +188,13 @@ describe('native: storage answers later', () => {
     });
     instance.setChoice('city3d', true);
     expect(saved).toHaveLength(0);
-    answer(serializePreferences({ choices: { city3d: false, flyover: true }, labs: false }));
+    answer(
+      serializePreferences({
+        ...NO_PREFERENCES,
+        choices: { city3d: false, flyover: true },
+        labs: false,
+      }),
+    );
     await settle();
     const { features } = instance.getSnapshot();
     expect(features.on('city3d')).toBe(true);
@@ -215,7 +221,7 @@ describe('Labs', () => {
   });
 
   test('`?labs=0` hides it again', () => {
-    const stored = serializePreferences({ choices: {}, labs: true });
+    const stored = serializePreferences({ ...NO_PREFERENCES, choices: {}, labs: true });
     const { instance } = store(memoryStorage(stored).storage, { search: '?labs=0' });
     expect(instance.getSnapshot().labs).toBe(false);
   });
@@ -243,7 +249,88 @@ describe('parsePreferences', () => {
       choices: { city3d: true, globe: 'no', teleport: true },
       labs: 'yes',
     });
-    expect(parsePreferences(raw, IDS)).toEqual({ choices: { city3d: true }, labs: false });
+    expect(parsePreferences(raw, IDS)).toEqual({
+      choices: { city3d: true },
+      labs: false,
+      performance: 'auto',
+      gpu: null,
+    });
     expect(parsePreferences(null, IDS)).toBe(NO_PREFERENCES);
+  });
+
+  test('reads the performance choice leniently: anything unknown is auto', () => {
+    const read = (performance: unknown) =>
+      parsePreferences(JSON.stringify({ v: 1, choices: {}, performance }), IDS).performance;
+    expect(read('battery')).toBe('battery');
+    expect(read('high')).toBe('high');
+    expect(read('ultra')).toBe('auto');
+    expect(read(3)).toBe('auto');
+  });
+
+  test('keeps a GPU record for 30 days, and refuses a malformed one', () => {
+    const now = Date.parse('2026-10-11T12:00:00Z');
+    const record = {
+      v: 1,
+      renderer: 'ANGLE (Intel, Iris Xe)',
+      megapixelsPerMs: 1.2,
+      tier: 'medium',
+      at: now - 1000,
+    };
+    const read = (gpu: unknown, at = now) =>
+      parsePreferences(JSON.stringify({ v: 1, choices: {}, gpu }), IDS, at).gpu;
+    expect(read(record)?.tier).toBe('medium');
+    expect(read(record, now + 31 * 24 * 3600 * 1000)).toBeNull();
+    expect(read({ ...record, v: 2 })).toBeNull();
+    expect(read({ ...record, renderer: 7 })).toBeNull();
+    expect(read({ ...record, tier: 'ultra' })?.tier).toBeNull();
+  });
+});
+
+describe('performance', () => {
+  test('a choice is saved and read back; auto is not stored', () => {
+    const first = memoryStorage();
+    const { instance } = store(first.storage);
+    expect(instance.getSnapshot().performance).toBe('auto');
+    instance.setPerformance('battery');
+    expect(instance.getSnapshot().performance).toBe('battery');
+    const saved = first.saved.at(-1) ?? '';
+    expect(JSON.parse(saved).performance).toBe('battery');
+    const next = memoryStorage(saved);
+    const second = store(next.storage).instance;
+    expect(second.getSnapshot().performance).toBe('battery');
+    second.setPerformance('auto');
+    expect('performance' in JSON.parse(next.saved.at(-1) ?? '{}')).toBe(false);
+  });
+
+  test('the GPU record persists beside the choices, and does not disturb them', () => {
+    const first = memoryStorage();
+    const { instance } = store(first.storage);
+    instance.setChoice('city3d', true);
+    instance.setGpuRecord({
+      v: 1,
+      renderer: 'r',
+      megapixelsPerMs: 2,
+      tier: 'medium',
+      at: Date.now(),
+    });
+    const saved = JSON.parse(first.saved.at(-1) ?? '{}');
+    expect(saved.gpu.tier).toBe('medium');
+    expect(saved.choices.city3d).toBe(true);
+  });
+
+  test('a choice made before native storage answers wins over the stored one', async () => {
+    let answer: (value: string | null) => void = () => {};
+    const storage: MapFeatureStorage = {
+      load: () =>
+        new Promise<string | null>((resolve) => {
+          answer = resolve;
+        }),
+      save: () => {},
+    };
+    const { instance } = store(storage);
+    instance.setPerformance('high');
+    answer(JSON.stringify({ v: 1, choices: {}, performance: 'battery' }));
+    await settle();
+    expect(instance.getSnapshot().performance).toBe('high');
   });
 });

@@ -13,29 +13,9 @@
  *  - Nothing in the feature reaches three.js, MapLibre or an engine.
  */
 import { describe, expect, test } from 'bun:test';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { SOURCE_FILES } from './sourceScan';
 
-const ROOT = join(import.meta.dir, '..', '..');
-const SCANNED = ['app', 'components', 'features', 'lib'];
-
-function sources(dir: string): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) {
-      if (name !== '__tests__' && name !== 'node_modules') out.push(...sources(path));
-    } else if (/\.(ts|tsx)$/.test(name)) {
-      out.push(path);
-    }
-  }
-  return out;
-}
-
-const files = SCANNED.flatMap((dir) => sources(join(ROOT, dir))).map((path) => ({
-  path: relative(ROOT, path),
-  text: readFileSync(path, 'utf8'),
-}));
+const files = SOURCE_FILES;
 
 function staticImports(text: string): string[] {
   const out: string[] = [];

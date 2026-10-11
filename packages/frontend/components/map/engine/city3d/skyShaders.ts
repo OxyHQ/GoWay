@@ -38,13 +38,29 @@ import { DITHER_DISCARD_GLSL, DITHER_GLSL } from './transitions';
 
 const vec3 = (v: readonly number[]) => `vec3(${v.map(glslFloat).join(', ')})`;
 
-/** Shared: the haze (mirror of `hazeTransmittance`), the sky table, the shadow lookup. */
-const COMMON = `
+/**
+ * PCF taps per shadowed fragment at the high quality preset; the profile
+ * picks 12, 8, 4 or none (`lib/map/quality/profile.ts` → `sky.shadowTaps`,
+ * `shadowMapSize: 0`).
+ */
+export const DEFAULT_SHADOW_TAPS = 12;
+
+/**
+ * Shared: the haze (mirror of `hazeTransmittance`), the sky table, the shadow
+ * lookup. `shadowTaps` 0 compiles no shadow sampler at all: `sunVisibility`
+ * is 1, and no shadow map need exist.
+ */
+function skyCommon(shadowTaps: number): string {
+  const taps = Math.max(0, Math.min(12, Math.round(shadowTaps)));
+  return `
+#define SHADOW_TAPS ${taps}
 const float PI = 3.141592653589793;
 
 uniform sampler2D uSkyLut;
 uniform float uSunAzimuth;
+#if SHADOW_TAPS > 0
 uniform highp sampler2DShadow uShadowMap;
+#endif
 uniform float uShadowStrength;
 uniform vec2 uShadowTexel;
 uniform float uShadowBias;
@@ -86,22 +102,26 @@ vec3 skyColor(vec3 dir) {
   return texture(uSkyLut, vec2(delta / PI, sqrt(el / (0.5 * PI)))).rgb;
 }
 
+#if SHADOW_TAPS > 0
 // Interleaved gradient noise (Jimenez 2014): rotates the PCF kernel per pixel
-// so 12 taps read as a smooth penumbra rather than 12 stacked copies.
+// so the taps read as a smooth penumbra rather than stacked copies.
 float gradientNoise(vec2 p) {
   return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
 }
 
+// Ordered so any prefix is spread: the first 4 are one per quadrant, the
+// first 8 add the four between them (fewer taps on lower quality presets).
 const vec2 POISSON[12] = vec2[](
-  vec2(-0.326, -0.406), vec2(-0.840, -0.074), vec2(-0.696, 0.457),
-  vec2(-0.203, 0.621), vec2(0.962, -0.195), vec2(0.473, -0.480),
-  vec2(0.519, 0.767), vec2(0.185, -0.893), vec2(0.507, 0.064),
-  vec2(0.896, 0.412), vec2(-0.322, -0.933), vec2(-0.792, -0.598)
+  vec2(-0.326, -0.406), vec2(-0.696, 0.457), vec2(0.962, -0.195), vec2(0.519, 0.767),
+  vec2(-0.840, -0.074), vec2(0.185, -0.893), vec2(-0.203, 0.621), vec2(0.896, 0.412),
+  vec2(0.473, -0.480), vec2(0.507, 0.064), vec2(-0.322, -0.933), vec2(-0.792, -0.598)
 );
+#endif
 
 // 1 lit … 0 in shadow, already weighted by uShadowStrength and faded out at
 // the shadow box's rim. clip: the shadow matrix applied to a position.
 float sunVisibility(vec4 clip) {
+#if SHADOW_TAPS > 0
   if (uShadowStrength <= 0.0) return 1.0;
   vec3 p = clip.xyz * 0.5 + 0.5;
   vec2 rim = min(p.xy, 1.0 - p.xy);
@@ -110,23 +130,28 @@ float sunVisibility(vec4 clip) {
   float angle = 6.2831853 * gradientNoise(gl_FragCoord.xy);
   mat2 spin = mat2(cos(angle), sin(angle), -sin(angle), cos(angle));
   float lit = 0.0;
-  for (int i = 0; i < 12; i++) {
+  for (int i = 0; i < SHADOW_TAPS; i++) {
     // Three texels: a wide, soft penumbra — the maquette look, and it hides
     // the texel grid at street-level zooms.
     vec2 offset = spin * POISSON[i] * uShadowTexel * 3.0;
     lit += texture(uShadowMap, vec3(p.xy + offset, p.z - uShadowBias));
   }
-  lit /= 12.0;
+  lit /= float(SHADOW_TAPS);
   return mix(1.0, lit, inside * uShadowStrength);
+#else
+  return 1.0;
+#endif
 }
 `;
+}
 
 /**
  * For an overlay's own fragment shader (`overlay.ts` → `CityOverlaySky`):
  * the sky's shared functions and every light uniform they and a material
  * need. Prepend it after `precision`.
  */
-export const SKY_OVERLAY_GLSL = `${COMMON}
+export function skyOverlayGlsl(shadowTaps = DEFAULT_SHADOW_TAPS): string {
+  return `${skyCommon(shadowTaps)}
 uniform vec3 uCamera;
 uniform vec3 uSunDir;
 uniform vec3 uSunColor;
@@ -136,6 +161,7 @@ uniform mat4 uShadowMatrix;
 uniform float uMetresPerMercator;
 uniform float uNightFactor;
 `;
+}
 
 export const SKY_PASS_VERTEX_SHADER = `
 precision highp float;
@@ -153,11 +179,14 @@ void main() {
 `;
 
 /** `pass`: which of the blends this program feeds (see the header). */
-export function skyPassFragmentShader(pass: 'fill' | 'multiply' | 'add'): string {
+export function skyPassFragmentShader(
+  pass: 'fill' | 'multiply' | 'add',
+  shadowTaps = DEFAULT_SHADOW_TAPS,
+): string {
   return `
 precision highp float;
 #define ${pass.toUpperCase()}
-${COMMON}
+${skyCommon(shadowTaps)}
 
 uniform vec3 uCamera;
 uniform mat4 uShadowEnu;
@@ -186,7 +215,8 @@ void main() {
 
 #ifdef MULTIPLY
   vec3 ground = uCamera + dir * d;
-  float visible = sunVisibility(uShadowEnu * vec4(ground.xy, uGroundZ, 1.0));
+  // Above the horizon the factor is 0 whatever the shadow: skip the taps.
+  float visible = skyness < 1.0 ? sunVisibility(uShadowEnu * vec4(ground.xy, uGroundZ, 1.0)) : 1.0;
   vec3 light = uSunColor * max(uSunDir.z, 0.0) * visible + uSkyAmbient;
   vec3 factor = mix(pow(light, vec3(${glslFloat(1 / 2.2)})) * T, vec3(0.0), skyness);
   fragColor = vec4(mix(vec3(1.0), factor, uEffect), 1.0);
@@ -340,11 +370,12 @@ vec3 cityMaterial(CitySurface s, CityLight l) {
 export function skyCityFragmentShader(
   format: CityTileFormat | undefined,
   material: string = DEFAULT_CITY_MATERIAL_GLSL,
+  shadowTaps = DEFAULT_SHADOW_TAPS,
 ): string {
   const osm = format === 'goway';
   return `
 precision highp float;
-${COMMON}
+${skyCommon(shadowTaps)}
 
 uniform vec3 uLow;
 uniform vec3 uTall;

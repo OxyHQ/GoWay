@@ -60,6 +60,12 @@ export interface TileEntry {
   triangles: number;
   treeCount: number;
   treeTriangles: number;
+  /**
+   * Whether the trees draw their near shapes. A level-0 tile's trees switch
+   * to the far shapes by distance (`setEntryTreeDetail`); a level-1 tile's
+   * are always far.
+   */
+  treesNear: boolean;
   /** The CPU side kept for placing it on terrain (`groundTileFor`). */
   packed: PackedMesh | null;
   instances: TreeInstances | null;
@@ -227,6 +233,7 @@ export function createTileEntry(
     triangles: 0,
     treeCount: 0,
     treeTriangles: 0,
+    treesNear: lod === 0,
     packed: mesh,
     instances: lod < 2 ? instances : null,
   };
@@ -286,11 +293,11 @@ export function createTileEntry(
     const forLevel = lod === 0 ? shapes.near : shapes.far;
     let from = 0;
     const ranges = instances.ranges.map((count, i) => {
-      const range = { shape: forLevel[i], from, count };
+      const range = { shape: forLevel[i], index: i, from, count };
       from += count;
       return range;
     });
-    for (const { shape, from, count } of ranges) {
+    for (const { shape, index, from, count } of ranges) {
       if (count === 0) continue;
       const geometry = new THREE.InstancedBufferGeometry();
       geometry.setAttribute('position', shape.position);
@@ -306,10 +313,13 @@ export function createTileEntry(
       );
       geometry.instanceCount = count;
       const trees = hide(new THREE.Mesh(geometry, material));
-      // Which instances it draws, for its terrain lifts (`applyGround`); and
-      // what the shared material reads per mesh.
+      // Which instances it draws (its terrain lifts, `applyGround`), as which
+      // shape (its level of detail, `setEntryTreeDetail`), and what the shared
+      // material reads per mesh.
       trees.userData = {
         from,
+        shape: index,
+        count,
         [TREE_UNIT_USERDATA_KEY]: instances.unitM,
         [FADE_USERDATA_KEY]: fade,
       };
@@ -375,6 +385,31 @@ function entryMaterials(entry: TileEntry): Set<THREE.RawShaderMaterial> {
     if (mesh.material instanceof THREE.RawShaderMaterial) materials.add(mesh.material);
   }
   return materials;
+}
+
+/**
+ * Draw a level-0 tile's trees with their near or far shapes: the same
+ * instances, the unit tree's buffers swapped (only when it changes; three
+ * rebinds the vertex array once). A far canopy is 20 triangles to the near
+ * one's 98, and beyond the distance where buildings would lose their bevels
+ * the difference is under a pixel (`docs/MAP_PERFORMANCE.md` → hotspots).
+ */
+export function setEntryTreeDetail(entry: TileEntry, shapes: TreeShapes, near: boolean): void {
+  if (entry.lod !== 0 || entry.treesNear === near) return;
+  entry.treesNear = near;
+  const set = near ? shapes.near : shapes.far;
+  let triangles = 0;
+  for (const mesh of entry.trees) {
+    const { shape: index, count } = mesh.userData as { shape: number; count: number };
+    const shape = set[index];
+    const geometry = mesh.geometry;
+    geometry.setAttribute('position', shape.position);
+    geometry.setAttribute('normal', shape.normal);
+    geometry.setAttribute('part', shape.part);
+    geometry.setIndex(shape.index);
+    triangles += count * shape.triangles;
+  }
+  entry.treeTriangles = triangles;
 }
 
 export function setEntryVisible(entry: TileEntry, visible: boolean): void {

@@ -17,6 +17,8 @@ import {
   FrameSchedule,
   runsSkyOffscreenPass,
 } from '@/components/map/engine/city3d/frameSelection';
+import { castsInto, shadowFrame } from '@/components/map/engine/city3d/shadows';
+import { mercatorXFromLng, mercatorYFromLat } from '@/components/map/engine/city3d/tileMath';
 
 const FADE = { start: 15.5, end: 16.5 };
 
@@ -71,8 +73,8 @@ describe('FrameSchedule', () => {
 
 describe('castersKey', () => {
   const tiles = [
-    { key: '14/8290/6119', wrap: 0, groundRevision: 0 },
-    { key: '14/8291/6119', wrap: 0, groundRevision: 0 },
+    { key: '14/8290/6119', tile: { z: 14, x: 8290, y: 6119 }, wrap: 0, groundRevision: 0 },
+    { key: '14/8291/6119', tile: { z: 14, x: 8291, y: 6119 }, wrap: 0, groundRevision: 0 },
   ];
 
   test('changes with a tile’s terrain lift, and with terrain switching on or off', () => {
@@ -87,5 +89,41 @@ describe('castersKey', () => {
     const base = castersKey(tiles, 0);
     expect(castersKey(tiles.slice(0, 1), 0)).not.toBe(base);
     expect(castersKey([{ ...tiles[0], wrap: 1 }, tiles[1]], 0)).not.toBe(base);
+  });
+
+  test('is a set: the same tiles in another order are the same key', () => {
+    // The engine lists tiles nearest first, and an orbit reorders them every
+    // frame; an ordered key redrew the shadow map on every frame of an orbit
+    // (measured: docs/MAP_PERFORMANCE.md → hotspots).
+    expect(castersKey([tiles[1], tiles[0]], 0)).toBe(castersKey(tiles, 0));
+  });
+});
+
+describe('castsInto', () => {
+  // Barcelona, the sun high in the south-west; a 1 km box round the centre.
+  const center = { lng: 2.164, lat: 41.3925 };
+  const frame = shadowFrame({
+    sun: { azimuthDeg: 220, altitudeDeg: 45 },
+    center,
+    radiusM: 1000,
+  });
+  if (!frame) throw new Error('no shadow frame for a sun at 45°');
+  const z15 = (lng: number, lat: number) => {
+    const n = 2 ** 15;
+    return {
+      z: 15,
+      x: Math.floor(mercatorXFromLng(lng) * n),
+      y: Math.floor(mercatorYFromLat(lat) * n),
+    };
+  };
+
+  test('the tile under the centre casts; one 10 km away does not', () => {
+    expect(castsInto(frame, z15(center.lng, center.lat), 0, 0)).toBe(true);
+    expect(castsInto(frame, z15(center.lng + 0.12, center.lat), 0, 0)).toBe(false);
+    expect(castsInto(frame, z15(center.lng, center.lat + 0.09), 0, 0)).toBe(false);
+  });
+
+  test('another world copy of the centre tile does not', () => {
+    expect(castsInto(frame, z15(center.lng, center.lat), 1, 0)).toBe(false);
   });
 });

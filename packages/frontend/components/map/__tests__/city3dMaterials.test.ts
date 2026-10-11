@@ -64,7 +64,8 @@ describe('the GLSL', () => {
     for (const format of ['openmaptiles', 'goway'] as const) {
       const shader = skyCityFragmentShader(format, DETAILED_SKY_MATERIAL_GLSL);
       expect(shader).not.toContain('${');
-      const opens = shader.match(/#if(n)?def /g)?.length ?? 0;
+      // Every conditional: `#ifdef`, `#ifndef` and `#if` (the shadow taps).
+      const opens = shader.match(/#if(?:n?def)?\s/g)?.length ?? 0;
       expect(shader.match(/#endif/g)?.length ?? 0).toBe(opens);
       expect(shader).toContain('vec3 cityMaterial(CitySurface s, CityLight l)');
     }

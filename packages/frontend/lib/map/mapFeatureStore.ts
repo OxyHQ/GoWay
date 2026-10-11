@@ -10,7 +10,10 @@
  * ## What is stored, and where
  *
  * One small JSON document under {@link MAP_FEATURES_STORAGE_KEY}: which
- * features the person turned on or off, and whether Labs is revealed. Nothing
+ * features the person turned on or off, whether Labs is revealed, the
+ * Performance choice (`lib/map/quality/profile.ts`) and what the device's GPU
+ * measured (`lib/map/quality/gpuTier.ts`), so the next visit resolves its
+ * quality before the first frame. Nothing
  * is sent anywhere — no request carries it, and no server learns it. On the
  * web it is `localStorage`, read synchronously, so the very first frame
  * already honours a choice (a globe switched off never flashes on). On native
@@ -30,6 +33,8 @@ import {
   type ResolvedMapFeatures,
   resolveMapFeatures,
 } from './mapFeatures';
+import { type GpuTierRecord, parseGpuRecord } from './quality/gpuTier';
+import { type PerformanceMode, parsePerformanceMode } from './quality/profile';
 
 export const MAP_FEATURES_STORAGE_KEY = 'goway.mapFeatures';
 
@@ -45,9 +50,18 @@ export interface MapFeaturePreferences {
   choices: Readonly<Record<string, boolean>>;
   /** Whether the panel shows its Labs section. */
   labs: boolean;
+  /** Settings → Performance. */
+  performance: PerformanceMode;
+  /** What this device's GPU measured, or `null` before it has been. */
+  gpu: GpuTierRecord | null;
 }
 
-export const NO_PREFERENCES: MapFeaturePreferences = { choices: {}, labs: false };
+export const NO_PREFERENCES: MapFeaturePreferences = {
+  choices: {},
+  labs: false,
+  performance: 'auto',
+  gpu: null,
+};
 
 /**
  * Read a stored document. Anything unexpected — not JSON, a different shape, a
@@ -56,6 +70,7 @@ export const NO_PREFERENCES: MapFeaturePreferences = { choices: {}, labs: false 
 export function parsePreferences(
   raw: string | null,
   knownIds: ReadonlySet<string>,
+  now: number = Date.now(),
 ): MapFeaturePreferences {
   if (!raw) return NO_PREFERENCES;
   let parsed: unknown;
@@ -65,7 +80,13 @@ export function parsePreferences(
     return NO_PREFERENCES;
   }
   if (typeof parsed !== 'object' || parsed === null) return NO_PREFERENCES;
-  const document = parsed as { v?: unknown; choices?: unknown; labs?: unknown };
+  const document = parsed as {
+    v?: unknown;
+    choices?: unknown;
+    labs?: unknown;
+    performance?: unknown;
+    gpu?: unknown;
+  };
   if (document.v !== 1) return NO_PREFERENCES;
   const choices: Record<string, boolean> = {};
   if (typeof document.choices === 'object' && document.choices !== null) {
@@ -73,11 +94,23 @@ export function parsePreferences(
       if (knownIds.has(id) && typeof value === 'boolean') choices[id] = value;
     }
   }
-  return { choices, labs: document.labs === true };
+  return {
+    choices,
+    labs: document.labs === true,
+    performance: parsePerformanceMode(document.performance),
+    gpu: parseGpuRecord(document.gpu, now),
+  };
 }
 
 export function serializePreferences(preferences: MapFeaturePreferences): string {
-  return JSON.stringify({ v: 1, choices: preferences.choices, labs: preferences.labs });
+  return JSON.stringify({
+    v: 1,
+    choices: preferences.choices,
+    labs: preferences.labs,
+    // The default is not stored, so a later change of default reaches the person.
+    ...(preferences.performance === 'auto' ? {} : { performance: preferences.performance }),
+    ...(preferences.gpu ? { gpu: preferences.gpu } : {}),
+  });
 }
 
 /**
@@ -96,6 +129,10 @@ export interface MapFeatureSnapshot {
   features: ResolvedMapFeatures;
   /** Whether the panel shows Labs. */
   labs: boolean;
+  /** Settings → Performance. */
+  performance: PerformanceMode;
+  /** What this device's GPU measured, or `null`. */
+  gpu: GpuTierRecord | null;
   /** Whether the stored choices have been read (always `true` on web). */
   hydrated: boolean;
 }
@@ -108,6 +145,10 @@ export interface MapFeatureStore {
   /** Forget the choice for a feature, back to the build's answer. */
   clearChoice(id: string): void;
   setLabs(visible: boolean): void;
+  /** Settings → Performance. */
+  setPerformance(mode: PerformanceMode): void;
+  /** Remember what this device's GPU measured (`lib/map/quality/gpuTier.ts`). */
+  setGpuRecord(record: GpuTierRecord): void;
 }
 
 export interface CreateMapFeatureStoreOptions {
@@ -143,6 +184,8 @@ export function createMapFeatureStore(options: CreateMapFeatureStoreOptions): Ma
   // wins over the document, which is older than the change.
   const changedEarly = new Map<string, boolean | null>();
   let labsChangedEarly: boolean | null = null;
+  let performanceChangedEarly: PerformanceMode | null = null;
+  let gpuChangedEarly: GpuTierRecord | null = null;
   let hydrated = false;
   const listeners = new Set<() => void>();
 
@@ -155,6 +198,8 @@ export function createMapFeatureStore(options: CreateMapFeatureStoreOptions): Ma
       search,
     }),
     labs: preferences.labs,
+    performance: preferences.performance,
+    gpu: preferences.gpu,
     hydrated,
   });
   let snapshot = resolve();
@@ -183,10 +228,18 @@ export function createMapFeatureStore(options: CreateMapFeatureStoreOptions): Ma
       else choices[id] = value;
     }
     const labs = labsChangedEarly ?? labsRequested ?? stored.labs;
+    const performance = performanceChangedEarly ?? stored.performance;
+    const gpu = gpuChangedEarly ?? stored.gpu;
     hydrated = true;
     // Persist only when the page itself changed something (`?labs=`, or a
     // toggle before the document arrived); a plain read writes nothing.
-    commit({ choices, labs }, labs !== stored.labs || changedEarly.size > 0);
+    commit(
+      { choices, labs, performance, gpu },
+      labs !== stored.labs ||
+        changedEarly.size > 0 ||
+        performanceChangedEarly !== null ||
+        gpuChangedEarly !== null,
+    );
   };
 
   let loaded: string | null | Promise<string | null>;
@@ -232,6 +285,15 @@ export function createMapFeatureStore(options: CreateMapFeatureStoreOptions): Ma
       if (!hydrated) labsChangedEarly = visible;
       if (visible === preferences.labs) return;
       commit({ ...preferences, labs: visible }, hydrated);
+    },
+    setPerformance(mode) {
+      if (!hydrated) performanceChangedEarly = mode;
+      if (mode === preferences.performance) return;
+      commit({ ...preferences, performance: mode }, hydrated);
+    },
+    setGpuRecord(record) {
+      if (!hydrated) gpuChangedEarly = record;
+      commit({ ...preferences, gpu: record }, hydrated);
     },
   };
 }

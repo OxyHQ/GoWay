@@ -97,7 +97,10 @@ page with nothing to list leaves the rail.
 
 - **Map**: the view, 2D / 3D — the camera, not a feature: 3D tilts to 60°
   where the map already is, 2D levels it, and it follows a gesture tilt — then
-  Globe and Terrain, and Sky & time of day once Labs is revealed.
+  Globe and Terrain, **Performance** (Auto, Battery saver or High quality: a
+  three-way choice kept in the same store, `setPerformance`, which picks the
+  map's quality profile — [`MAP_PERFORMANCE.md`](./MAP_PERFORMANCE.md); it
+  applies live), and Sky & time of day once Labs is revealed.
 - **Layers**, once Labs is revealed: 3D city, city tiles (and the official
   building data they carry), trees and woods fill, landmarks, simulated
   traffic, live data (development builds, until goway.to's backend serves it), and the flyover with "Open Camera
@@ -158,8 +161,11 @@ The store notifies; components read it through `useMapFeature(id)`:
 ## Privacy
 
 Preferences stay on the device: one JSON document, `goway.mapFeatures`
-(`{v:1, choices, labs}`), in `localStorage` on the web and AsyncStorage on
-native. No request carries it and no server learns it. Storage is a
+(`{v:1, choices, labs, performance?, gpu?}`), in `localStorage` on the web and
+AsyncStorage on native. `gpu` is what this device's GPU measured (its
+renderer string, a benchmark score and the tier they give, re-measured after
+30 days or on a new GPU), so a later visit picks its quality before the first
+frame (`MAP_PERFORMANCE.md`). No request carries it and no server learns it. Storage is a
 convenience: if it throws, rejects or holds garbage, the map draws the build's
 defaults; if a save fails, the choice still applies to the session. A choice
 equal to what the build would decide anyway is forgotten rather than stored, so

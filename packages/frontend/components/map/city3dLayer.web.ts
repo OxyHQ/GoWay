@@ -76,6 +76,7 @@ import {
 } from '@/lib/map/style/buildings3d';
 import { CARTOGRAPHY_PALETTES } from '@/lib/map/style/palette';
 import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
+import type { QualityProfile } from '@/lib/map/quality/profile';
 import { sunPosition } from '@/lib/map/sun';
 
 import { followTerrain } from './city3dGround.web';
@@ -90,6 +91,7 @@ import type {
   CityEngine,
   CityEngineStats,
   CityPass,
+  FrameProbe,
   LandmarkSpec,
 } from './engine/city3d/cityEngine';
 import type { ModelSpec, ModelStatus } from './engine/city3d/models';
@@ -98,6 +100,7 @@ import type { CityOverlay } from './engine/city3d/overlay';
 import type { GroundStats } from './engine/city3d/terrainGround';
 import type { CityLifeStats } from './engine/cityLife/lifeRenderer';
 import { type CityLifeChip, mountCityLifeChip } from './cityLifeChip.web';
+import type { AnimationClock } from './perf/animationClock';
 import { reportMapDefect } from './shared';
 
 /**
@@ -175,12 +178,6 @@ export async function fetchCityCoverage(
   }
 }
 
-/**
- * The simulation's budget: agents drawn at most, at full density (z17+). The
- * numbers are measured in `docs/MAP_CITY_LIFE.md` → Performance.
- */
-const CITY_LIFE_BUDGET = { cars: 1200, people: 1200 };
-
 /** One fixed seed: the same view opens on the same simulated city. */
 const CITY_LIFE_SEED = 20261011;
 
@@ -196,8 +193,6 @@ export const CITY3D_LAYER_ID = `${GOWAY_LAYER_PREFIX}city3d`;
  */
 const LANDMARK_RADIUS_M = 3_000;
 const LANDMARK_DROP_M = 4_000;
-/** At most this many landmarks are in the scene at once (the model layer allows 20 assets). */
-const MAX_LANDMARKS = 8;
 /** Below this zoom no landmark is loaded (the buildings appear from 15.5). */
 const LANDMARK_MIN_ZOOM = 14;
 
@@ -215,13 +210,15 @@ export function landmarksForView(
     centre: { latitude: number; longitude: number },
     radius: number,
   ) => PreparedLandmark[],
+  /** At most this many in the scene at once: the quality profile's `landmarks.max`. */
+  max: number,
 ): PreparedLandmark[] {
   if (view.zoom < LANDMARK_MIN_ZOOM) return [];
   const centre = { latitude: view.center.lat, longitude: view.center.lng };
   const close = new Set(near(all, centre, LANDMARK_RADIUS_M).map((l) => l.entry.id));
   return near(all, centre, LANDMARK_DROP_M)
     .filter((l) => held.has(l.entry.id) || close.has(l.entry.id))
-    .slice(0, MAX_LANDMARKS);
+    .slice(0, max);
 }
 
 /** The models' custom layer (same engine; see `modelsLayer` below). */
@@ -293,6 +290,19 @@ export interface AttachCity3dOptions {
    * Defaults to `false`.
    */
   detailed?: boolean;
+  /**
+   * The map's quality profile (`lib/map/quality/profile.ts`): the engine's
+   * budgets, the simulation's agents, the landmarks held. A new tier is a
+   * new attach (`MapCanvas.web.tsx`).
+   */
+  quality: QualityProfile;
+  /**
+   * The map's one animation clock (`perf/animationClock.ts`): city life and
+   * animated models tick through it, never on a timer of their own.
+   */
+  clock: AnimationClock;
+  /** `?perf=1` / development: the HUD's frame probe (`perf/mapRuntime.web.ts`). */
+  probe?: FrameProbe | null;
   /** A model was drawn, or fell back to its marker. */
   onModelStatus?: (id: string, status: ModelStatus) => void;
   /**
@@ -448,7 +458,13 @@ export async function attachCity3d(
   }
   const updateLandmarks = (view: { zoom: number; center: { lat: number; lng: number } }) => {
     if (!engine || !landmarkModule || landmarkList.length === 0) return;
-    const next = landmarksForView(landmarkList, heldLandmarks, view, landmarkModule.landmarksNear);
+    const next = landmarksForView(
+      landmarkList,
+      heldLandmarks,
+      view,
+      landmarkModule.landmarksNear,
+      options.quality.landmarks.max,
+    );
     const same =
       next.length === heldLandmarks.size && next.every((l) => heldLandmarks.has(l.entry.id));
     if (same) return;
@@ -538,9 +554,11 @@ export async function attachCity3d(
                 sourceLayer: OPENMAPTILES_SOURCE_LAYERS.transportation,
               }
             : undefined,
-          budget: CITY_LIFE_BUDGET,
+          // The simulation's budget at full density (z17+): the quality
+          // profile's (`docs/MAP_CITY_LIFE.md` → Performance).
+          budget: { cars: options.quality.life.cars, people: options.quality.life.people },
           seed: CITY_LIFE_SEED,
-          requestRepaint: () => host.triggerRepaint(),
+          clock: options.clock,
           onActiveChange: (active) => label.setVisible(active),
           onLabel: (content) => label.setContent(content),
           onStats: __DEV__ ? publishLifeStats : undefined,
@@ -569,6 +587,9 @@ export async function attachCity3d(
       light: applied,
       fade: BUILDINGS_3D_FADE,
       requestRepaint: () => host.triggerRepaint(),
+      quality: options.quality,
+      clock: options.clock,
+      probe: options.probe ?? undefined,
       onStats: __DEV__ ? publishStats : undefined,
       onGroundStats: __DEV__ ? publishGroundStats : undefined,
       buildings,

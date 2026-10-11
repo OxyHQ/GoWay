@@ -70,18 +70,18 @@ describe('landmarksForView', () => {
   const view = { zoom: 16, center: { lat: 41.4, lng: 2.1744 } };
 
   test('picks up landmarks within 3 km, nearest first', () => {
-    expect(landmarksForView(all, new Set(), view, landmarksNear).map((l) => l.entry.id)).toEqual([
-      'near',
-    ]);
+    expect(landmarksForView(all, new Set(), view, landmarksNear, 8).map((l) => l.entry.id)).toEqual(
+      ['near'],
+    );
   });
 
   test('keeps a held landmark out to 4 km (no churn along the edge)', () => {
     expect(
-      landmarksForView(all, new Set(['edge']), view, landmarksNear).map((l) => l.entry.id),
+      landmarksForView(all, new Set(['edge']), view, landmarksNear, 8).map((l) => l.entry.id),
     ).toEqual(['near', 'edge']);
   });
 
   test('none below zoom 14', () => {
-    expect(landmarksForView(all, new Set(), { ...view, zoom: 13 }, landmarksNear)).toEqual([]);
+    expect(landmarksForView(all, new Set(), { ...view, zoom: 13 }, landmarksNear, 8)).toEqual([]);
   });
 });

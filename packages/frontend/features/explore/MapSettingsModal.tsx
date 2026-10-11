@@ -60,6 +60,7 @@ import { MAP_FEATURE_LABELS, MAP_SETTINGS_COPY } from '@/lib/map/mapFeatureLabel
 import type { MapFeatureId, MapFeatureState } from '@/lib/map/mapFeatures';
 import { type MapSettingsPageId, mapSettingsLayout } from '@/lib/map/mapSettingsPages';
 import { MAP_SETTINGS_TRIGGER_LABEL } from '@/lib/map/mapSettingsTriggerLabel';
+import type { PerformanceMode } from '@/lib/map/quality/profile';
 import { mapFeatureStore, useMapFeatures } from '@/lib/map/useMapFeatures';
 
 export interface MapSettingsModalProps {
@@ -75,6 +76,13 @@ export interface MapSettingsModalProps {
 
 type ViewMode = '2d' | '3d';
 type Say = (labels: Labels) => string;
+
+/** Settings → Map → Performance (`lib/map/quality/profile.ts`, `docs/MAP_PERFORMANCE.md`). */
+const PERFORMANCE_CHOICES = [
+  ['auto', 'performanceAuto'],
+  ['battery', 'performanceBattery'],
+  ['high', 'performanceHigh'],
+] as const satisfies readonly (readonly [PerformanceMode, keyof typeof MAP_SETTINGS_COPY])[];
 
 /** The theme modes GoWay offers: Bloom's, less `adaptive` (no seed to adapt to). */
 const THEME_MODES = [
@@ -186,7 +194,7 @@ export function MapSettingsModal({
   const { locale } = useTranslation();
   const router = useRouter();
   const { mode, setMode } = useBloomTheme();
-  const { features, labs } = useMapFeatures();
+  const { features, labs, performance } = useMapFeatures();
   const landmarks = useLandmarkModels();
   const liveSources = useLiveSources(features.on('live'));
   const say = useCallback<Say>((labels) => localizedLabel(labels, locale), [locale]);
@@ -238,6 +246,35 @@ export function MapSettingsModal({
             <FeatureRow key={state.id} state={state} say={say} />
           ))}
         </SettingsCard>
+        <SettingsSection description={say(MAP_SETTINGS_COPY.performanceHint)}>
+          <SettingsCard>
+            <SettingsRow
+              label={say(MAP_SETTINGS_COPY.performance)}
+              testID="map-settings-performance-row"
+            >
+              <SegmentedControl<PerformanceMode>
+                type="radio"
+                size="sm"
+                label={say(MAP_SETTINGS_COPY.performance)}
+                value={performance}
+                onValueChange={(mode) => mapFeatureStore.setPerformance(mode)}
+                testID="map-settings-performance"
+              >
+                {PERFORMANCE_CHOICES.map(([value, key]) => (
+                  <SegmentedControlItem
+                    key={value}
+                    value={value}
+                    testID={`map-settings-performance-${value}`}
+                  >
+                    <SegmentedControlItemText>
+                      {say(MAP_SETTINGS_COPY[key])}
+                    </SegmentedControlItemText>
+                  </SegmentedControlItem>
+                ))}
+              </SegmentedControl>
+            </SettingsRow>
+          </SettingsCard>
+        </SettingsSection>
       </View>
     ),
     layers: (

@@ -266,7 +266,7 @@ The default namespace keeps its Oxy auth; a test proves both.
 | State and motion (pure, tested) | `features/live/liveStore.ts`, `motion.ts` |
 | Panel and copy | `features/live/LivePanel.tsx`, `format.ts`, `messages.ts` (en/es), `kinds.ts` (data colours) |
 | Map seam | `MapCanvasProps.live` (`MapLiveLayer`, a pull interface: no React render per frame), `MapAttribution` `extra` credits |
-| MapLibre adapter | `components/map/liveLayer.web.ts` — one GeoJSON source, a symbol layer with canvas-drawn glyphs (directional and still variants), a selection ring, frame loop throttled by zoom, picking |
+| MapLibre adapter | `components/map/liveLayer.web.ts` — one GeoJSON source, a symbol layer with canvas-drawn glyphs (directional and still variants), a selection ring, picking; moving things are re-set on the map's ONE animation clock (`perf/animationClock.ts`, at the quality profile's rate, paused when hidden or idle) and at most every 50–250 ms by zoom, and at most the profile's `live.maxEntities` are drawn, nearest first (`docs/MAP_PERFORMANCE.md`) |
 | 3D | `components/map/engine/live3d/livePass.ts` (three.js, instanced meshes, stalks) as a **pass of the city engine** (`CityEngine.renderPass`, `City3dHandle.addPass`): one renderer, one scene stratum, MapLibre's depth buffer — "One engine, one scene" (`MAP_3D_CITY.md`). `anchorMath.ts` places a shape at its real altitude, pinned against MapLibre's `MercatorCoordinate` |
 
 **Motion, honestly.** Ages are measured on the server's clock (every message
