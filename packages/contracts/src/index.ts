@@ -34,6 +34,7 @@ export * from './revision';
 export * from './moderation';
 export * from './capture';
 export * from './street3d';
+export * from './model';
 export * from './search';
 export * from './directions';
 export * from './health';
