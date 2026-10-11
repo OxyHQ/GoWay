@@ -75,6 +75,8 @@ import {
   type MapAppearance,
 } from '../lib/map/provider';
 import { buildGowayMapStyle } from '../lib/map/style';
+import { applyGroundOverrides } from '../lib/map/style/city3dGround';
+import { CITY3D_GROUND_METADATA_KEY, type GroundOverride } from '../lib/map/style/palette3d';
 import { GOWAY_STYLE_LAYER_ID_LIST } from '../lib/map/style/layers';
 import {
   AVAILABLE_FONTS,
@@ -623,6 +625,34 @@ async function checkOnline(problems: string[]): Promise<void> {
   }
 }
 
+/**
+ * The detailed 3D city's ground (`metadata['goway:city3d-ground']`, see
+ * `lib/map/style/city3dGround.ts`): present, aimed only at layers that exist,
+ * and — applied — still a style MapLibre's own validator accepts. The
+ * overrides only ever run in a browser, so this is the one place they meet
+ * the spec before a user does.
+ */
+function checkCity3dGround(
+  appearance: MapAppearance,
+  style: StyleSpecification,
+  problems: string[],
+): void {
+  const where = (message: string): string => `[${appearance}] city3d ground: ${message}`;
+  const overrides = (style.metadata as Record<string, unknown> | undefined)?.[
+    CITY3D_GROUND_METADATA_KEY
+  ] as GroundOverride[] | undefined;
+  if (!Array.isArray(overrides) || overrides.length === 0) {
+    problems.push(where('no overrides in the style metadata'));
+    return;
+  }
+  const ids = new Set(style.layers.map((layer) => layer.id));
+  for (const o of overrides) {
+    if (!ids.has(o.layer)) problems.push(where(`override for missing layer "${o.layer}"`));
+  }
+  const overridden = { ...style, layers: applyGroundOverrides(style.layers, overrides) };
+  for (const error of validateStyleMin(overridden)) problems.push(where(error.message));
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -643,6 +673,7 @@ async function main(): Promise<void> {
     checkFilterSafety(appearance, built[appearance], problems);
   }
   checkPair(built.light, built.dark, problems);
+  for (const appearance of APPEARANCES) checkCity3dGround(appearance, built[appearance], problems);
   if (online) await checkOnline(problems);
 
   const tileJson = `${JSON.stringify(buildTileJson(), null, 2)}\n`;

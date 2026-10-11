@@ -32,8 +32,10 @@ import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec';
 
 import type { MapAppearance } from '../provider';
 import { BUILDINGS_LIGHT } from './buildings3d';
+import { buildCity3dGroundOverrides } from './city3dGround';
 import { buildLayers, GOWAY_STYLE_LAYER_ID_LIST, LABEL_ANCHOR_LAYER_ID } from './layers';
 import { CARTOGRAPHY_PALETTES } from './palette';
+import { CITY3D_GROUND_METADATA_KEY } from './palette3d';
 
 export { LABEL_ANCHOR_LAYER_ID, GOWAY_STYLE_LAYER_IDS, GOWAY_STYLE_LAYER_ID_LIST } from './layers';
 export { CARTOGRAPHY_PALETTES, DARK_PALETTE, LIGHT_PALETTE } from './palette';
@@ -99,6 +101,10 @@ export function buildGowayMapStyle(
       'goway:anchor:beforeLabels': LABEL_ANCHOR_LAYER_ID,
       'goway:layers': GOWAY_STYLE_LAYER_ID_LIST,
       'goway:generator': 'packages/frontend/scripts/build-map-style.ts',
+      // The ground the detailed 3D city switches this document to: paint
+      // overrides generated from `palette3d.ts` (`city3dGround.ts`), applied
+      // and undone at runtime by the city-3D adapter only. Inert otherwise.
+      [CITY3D_GROUND_METADATA_KEY]: buildCity3dGroundOverrides(appearance, endpoints.sourceId),
     },
     // The document-level light. It shades nothing but `building-3d`, and it is
     // here rather than in `buildings3d.ts` only because MapLibre puts `light`

@@ -43,6 +43,8 @@
  */
 import * as THREE from 'three';
 
+import type { CityMaterial } from '@/lib/map/style/palette3d';
+
 import {
   applyGround,
   createTileEntry,
@@ -67,6 +69,12 @@ import {
 import type { CityCoverageArea } from '@/lib/map/cityTiles';
 
 import { hiddenFeatureIds, tilesAround } from './landmarkTiles';
+import {
+  DETAILED_DEFINE,
+  DETAILED_SKY_MATERIAL_GLSL,
+  materialRamp,
+  materialUniformValues,
+} from './materials';
 import type { CitySun, HostSkyColours, SkyAppearance } from './atmosphere';
 import { castersKey, type DrawnTile, FrameSchedule, runsSkyOffscreenPass } from './frameSelection';
 import { createModelLayer, type ModelSpec, type ModelStatus } from './models';
@@ -177,6 +185,15 @@ export interface CityEngineOptions {
      */
     material?: string;
   };
+  /**
+   * The detailed look (`materials.ts`, the `detailedCity` map feature): the material's
+   * day and night, blended on the GPU by the night seam (`setNightFactor`).
+   * With {@link CityEngineOptions.sky} — its one shading path — every building
+   * is drawn in the sky's light through this response (`sky.material`), and
+   * its day ramp replaces {@link CityEngineOptions.palette}'s. Without a sky,
+   * or absent: the look is unchanged.
+   */
+  material?: { day: CityMaterial; night: CityMaterial };
 }
 
 /**
@@ -403,10 +420,14 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   };
   // City sky: its shaders and light inputs replace the buildings' own — one
   // shading path (`skyShaders.ts`).
+  // The detailed look is a response to the sky's light: its one shading path
+  // (`materials.ts`). Without a sky there is nothing for it to answer.
+  const detailed = options.sky ? options.material : undefined;
   const sky: CitySky | null = options.sky
     ? createCitySky({
         appearance: options.sky.appearance,
-        material: options.sky.material,
+        // The art direction's response, when the detailed look is on.
+        material: options.sky.material ?? (detailed ? DETAILED_SKY_MATERIAL_GLSL : undefined),
         baseUniforms: light,
         requestRepaint: () => options.requestRepaint(),
       })
@@ -421,6 +442,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     uVeryTall: { value: new THREE.Vector3() },
     uTallM: { value: 60 },
     uVeryTallM: { value: 180 },
+    // The detailed material's uniforms (day and night), only when it is on.
+    ...(detailed ? materialSlots(detailed) : {}),
   };
   const treeUniforms = {
     ...light,
@@ -436,6 +459,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const context = {
     scene,
     buildingUniforms,
+    // The detailed look: every building material compiles its response.
+    buildingDefines: (detailed ? { [DETAILED_DEFINE]: '' } : {}) as Record<string, string>,
     buildingShaders: sky?.buildingShaders ?? {
       openmaptiles: { vertexShader: CITY_VERTEX_SHADER, fragmentShader: CITY_FRAGMENT_SHADER },
       goway: { vertexShader: OSM_VERTEX_SHADER, fragmentShader: OSM_FRAGMENT_SHADER },
@@ -1149,6 +1174,27 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   };
 
   engine.setPalette(options.palette);
+  if (detailed) {
+    // The detailed look's DAY ramp; night darkens it on the GPU (`uMatAlbedoScale`).
+    const ramp = materialRamp(detailed.day);
+    buildingUniforms.uLow.value.fromArray(ramp.low);
+    buildingUniforms.uTall.value.fromArray(ramp.tall);
+    buildingUniforms.uVeryTall.value.fromArray(ramp.veryTall);
+    buildingUniforms.uTallM.value = ramp.tallM;
+    buildingUniforms.uVeryTallM.value = ramp.veryTallM;
+  }
   engine.setLight(options.light);
   return engine;
+}
+
+/** three uniform slots for every uniform the detailed material declares. */
+function materialSlots(material: {
+  day: CityMaterial;
+  night: CityMaterial;
+}): Record<string, { value: number | THREE.Vector3 }> {
+  const slots: Record<string, { value: number | THREE.Vector3 }> = {};
+  for (const [name, value] of Object.entries(materialUniformValues(material))) {
+    slots[name] = { value: Array.isArray(value) ? new THREE.Vector3().fromArray(value) : value };
+  }
+  return slots;
 }

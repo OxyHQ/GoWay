@@ -80,6 +80,7 @@ import { sunPosition } from '@/lib/map/sun';
 
 import { followTerrain } from './city3dGround.web';
 import { cityLightFromSpec, sameCityLight } from './city3dLight';
+import { applyCityGround, cityMaterials } from './city3dStyle';
 import { treeColours } from './city3dTrees';
 // Type-only on purpose: the engine chunk imports these modules at runtime, and
 // a module two lazy chunks share is hoisted into the first-paint `__common`
@@ -284,6 +285,14 @@ export interface AttachCity3dOptions {
    * `cityTiles`. Defaults to `false`.
    */
   landmarks?: boolean;
+  /**
+   * Draw the city in the art-directed look (`engine/city3d/materials.ts`,
+   * `docs/MAP_3D_CITY.md` → Art direction): the registry's `detailedCity`.
+   * It is drawn in the city sky's light, so it brings a live-clock sky when
+   * {@link AttachCity3dOptions.sky} is absent. Ignored without `buildings`.
+   * Defaults to `false`.
+   */
+  detailed?: boolean;
   /** A model was drawn, or fell back to its marker. */
   onModelStatus?: (id: string, status: ModelStatus) => void;
   /**
@@ -404,6 +413,8 @@ export async function attachCity3d(
 
   const cartography = CARTOGRAPHY_PALETTES[options.appearance];
   const trees = treeColours(cartography);
+  // The art-directed look (the registry's `detailedCity`).
+  const detailed = buildings && options.detailed === true;
   const palette = {
     ...buildingHeightRamp(cartography),
     treeCrown: trees.crown,
@@ -475,7 +486,10 @@ export async function attachCity3d(
   // Models handed over before MapLibre called `onAdd`.
   let queuedModels: readonly ModelSpec[] | null = null;
   let unfollowTerrain: (() => void) | null = null;
-  const sky = buildings ? (options.sky ?? null) : null;
+  // The detailed look is drawn in the city sky's light — its one shading path
+  // (`engine/city3d/materials.ts`) — so it brings a live-clock sky when the
+  // page asked for none (the `citySky` feature adds the time-of-day scrubber).
+  const sky = buildings ? (options.sky ?? (detailed ? { at: null } : null)) : null;
   let skyAt = sky?.at ?? null;
   let reportedSun = '';
   // MapLibre's own `sky` (drawn behind everything, and its fog blended into
@@ -565,6 +579,8 @@ export async function attachCity3d(
       overlays,
       onLandmarkStatus,
       sky: sky ? { appearance: options.appearance } : undefined,
+      // The detailed response; the night seam blends its day and night.
+      material: detailed ? cityMaterials() : undefined,
     });
     engine.setNightFactor(night);
     updateSun();
@@ -714,6 +730,9 @@ export async function attachCity3d(
     map.addLayer(layer, BUILDING_3D_LAYER_ID);
     map.setLayoutProperty(BUILDING_3D_LAYER_ID, 'visibility', 'none');
   }
+  // The detailed look's ground: the style's own generated overrides, undone on
+  // detach. Only with the city drawn: models alone do not restyle the map.
+  const restoreGround = buildings && detailed ? applyCityGround(map) : null;
   // The models' layer joins the style only once there is a model to draw, so
   // the city alone changes the style exactly as it always did.
   const ensureModelsLayer = () => {
@@ -807,6 +826,7 @@ export async function attachCity3d(
       detached = true;
       if (clock) clearInterval(clock);
       for (const id of [...passes.keys()]) removePass(id);
+      restoreGround?.();
       // The map may already be gone (an appearance change tears it down before
       // this cleanup runs); then there is nothing left to restore.
       try {
