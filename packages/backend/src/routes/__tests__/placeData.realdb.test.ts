@@ -37,6 +37,7 @@ import { createCategoriesRouter } from '../categories';
 import { createPlacesRouter } from '../places';
 import { SEEDED_CATEGORIES } from '../../__tests__/categoryFixtures';
 import { apiAuthor, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
+import { defined } from '../../__tests__/defined';
 
 const CONTRIBUTOR: PlaceActor = {
   author: apiAuthor('user-contributor'),
@@ -448,12 +449,12 @@ describe('hours exceptions', () => {
 
   it('lets each tier rewrite only its own exception', async () => {
     const list = await call<PlaceHoursExceptionPage>(`/places/${claimed.id}/hours-exceptions`);
-    const business = list.body.items.find(
-      (exception) => exception.verification === 'business_asserted',
-    )!;
-    const community = list.body.items.find(
-      (exception) => exception.verification === 'community_reported',
-    )!;
+    const business = defined(
+      list.body.items.find((exception) => exception.verification === 'business_asserted'),
+    );
+    const community = defined(
+      list.body.items.find((exception) => exception.verification === 'community_reported'),
+    );
 
     const intrusion = await call<ErrorBody>(
       `/places/${claimed.id}/hours-exceptions/${business.id}`,
@@ -483,12 +484,12 @@ describe('hours exceptions', () => {
 
   it('lets only the claimant withdraw, and only the business tier', async () => {
     const list = await call<PlaceHoursExceptionPage>(`/places/${claimed.id}/hours-exceptions`);
-    const business = list.body.items.find(
-      (exception) => exception.verification === 'business_asserted',
-    )!;
-    const community = list.body.items.find(
-      (exception) => exception.verification === 'community_reported',
-    )!;
+    const business = defined(
+      list.body.items.find((exception) => exception.verification === 'business_asserted'),
+    );
+    const community = defined(
+      list.body.items.find((exception) => exception.verification === 'community_reported'),
+    );
 
     expect(
       (await call(`/places/${claimed.id}/hours-exceptions/${community.id}`, as('user-x', 'DELETE')))

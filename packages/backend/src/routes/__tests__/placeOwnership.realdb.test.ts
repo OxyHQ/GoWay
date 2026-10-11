@@ -17,6 +17,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import type { Place, PlaceClaim, PlaceClaimPage } from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -34,6 +35,7 @@ import {
 } from '../../__tests__/httpHarness';
 import { apiAuthor, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createPlacesRouter } from '../places';
+import { defined } from '../../__tests__/defined';
 
 const CONTRIBUTOR: PlaceActor = {
   author: apiAuthor('person-contributor'),
@@ -65,7 +67,7 @@ let vacant: Place;
 
 /** The revisions a place holds, oldest first, straight from the table. */
 async function revisionsOf(placeId: string) {
-  return suite!.client<
+  return requireSuite(suite).client<
     { action: string; oxy_account_id: string; operated_by_oxy_user_id: string | null }[]
   >`
     SELECT action, oxy_account_id, operated_by_oxy_user_id FROM place_revisions
@@ -74,10 +76,14 @@ async function revisionsOf(placeId: string) {
 }
 
 async function nameOf(placeId: string): Promise<string> {
-  const [row] = await suite!.client<
-    { name: string }[]
-  >`SELECT name FROM places WHERE id = ${placeId}`;
-  return row!.name;
+  const row = defined(
+    (
+      await requireSuite(suite).client<
+        { name: string }[]
+      >`SELECT name FROM places WHERE id = ${placeId}`
+    )[0],
+  );
+  return row.name;
 }
 
 beforeAll(async () => {

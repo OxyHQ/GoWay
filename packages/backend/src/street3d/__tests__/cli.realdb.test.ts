@@ -7,6 +7,7 @@ import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { resolve } from 'node:path';
 import {
+  requireSuite,
   createSuiteDatabase,
   destroySuiteDatabase,
   SUITE_SETUP_TIMEOUT_MS,
@@ -28,7 +29,7 @@ async function cli(script: string, args: string[]) {
     Object.entries(process.env).filter(([name]) => !name.startsWith('STREET3D_')),
   );
   const child = Bun.spawn([process.execPath, resolve(__dirname, '..', script), ...args], {
-    env: { ...env, DATABASE_URL: suite!.databaseUrl },
+    env: { ...env, DATABASE_URL: requireSuite(suite).databaseUrl },
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -42,7 +43,7 @@ async function cli(script: string, args: string[]) {
 
 describe('street3d CLIs', () => {
   it('reports status for the asserted database and refuses any other', async () => {
-    const target = new URL(suite!.databaseUrl).pathname.slice(1);
+    const target = new URL(requireSuite(suite).databaseUrl).pathname.slice(1);
     const status = await cli('runAdmin.ts', ['status', `--target-database=${target}`]);
     expect(status.exitCode).toBe(0);
     expect(JSON.parse(status.stdout)).toMatchObject({
@@ -56,7 +57,7 @@ describe('street3d CLIs', () => {
     ]);
     expect(wrong.exitCode).toBe(1);
     expect(wrong.stdout).toBe('');
-    expect(wrong.stderr).not.toContain(suite!.databaseUrl);
+    expect(wrong.stderr).not.toContain(requireSuite(suite).databaseUrl);
 
     const missing = await cli('runAdmin.ts', [
       'disable-version',
@@ -68,7 +69,7 @@ describe('street3d CLIs', () => {
   });
 
   it('runs a tick only when the pipeline is configured', async () => {
-    const target = new URL(suite!.databaseUrl).pathname.slice(1);
+    const target = new URL(requireSuite(suite).databaseUrl).pathname.slice(1);
     const result = await cli('runTick.ts', [`--target-database=${target}`]);
     expect(result.exitCode).toBe(1);
     expect(JSON.parse(result.stdout)).toEqual({ skipped: 'street3d_pipeline_not_configured' });

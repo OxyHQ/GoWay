@@ -26,12 +26,14 @@ import {
   type PlaceActor,
 } from '../places/placesRepository';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
   type SuiteDatabase,
 } from './testDatabase';
 import { apiAuthor } from '../../__tests__/placesFixtures';
+import { defined } from '../../__tests__/defined';
 
 const ACTOR: PlaceActor = {
   author: apiAuthor('user-1'),
@@ -60,7 +62,7 @@ afterAll(async () => {
 
 /** The open duplicate candidates naming a place, either side of the pair. */
 async function candidatesFor(placeId: string): Promise<{ other: string; reason: string }[]> {
-  const rows = await suite!.client<
+  const rows = await requireSuite(suite).client<
     { place_id: string; candidate_place_id: string; reason: string }[]
   >`
     SELECT place_id, candidate_place_id, reason FROM places_duplicate_candidates
@@ -75,7 +77,7 @@ async function candidatesFor(placeId: string): Promise<{ other: string; reason: 
 describe('source linking', () => {
   it('is deterministic: a source id resolves to the one place it is bound to', async () => {
     const place = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Bar Pinotxo',
         location: CATALUNYA,
@@ -84,7 +86,10 @@ describe('source linking', () => {
       ACTOR,
     );
     expect(
-      await findPlaceIdBySourceRef(suite!.db, { source: 'openstreetmap', sourceId: 'node/1' }),
+      await findPlaceIdBySourceRef(requireSuite(suite).db, {
+        source: 'openstreetmap',
+        sourceId: 'node/1',
+      }),
     ).toBe(place.id);
     // Provenance is published, with the freshness that makes it usable.
     expect(place.sources).toHaveLength(1);
@@ -96,7 +101,7 @@ describe('source linking', () => {
     // Without this, one OSM node becomes two GoWay places, two deep links and
     // two capability sets — and nothing anywhere reports it.
     const error = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Bar Pinotxo (again)',
         location: CATALUNYA,
@@ -115,17 +120,19 @@ describe('source linking', () => {
     // the shape where the match is already spoken for. Both places survive; the
     // collision becomes a review item rather than a silent merge.
     const goWayCreated = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Pinotxo', location: CATALUNYA_NEARBY },
       ACTOR,
     );
-    const owner = await findPlaceIdBySourceRef(suite!.db, {
-      source: 'openstreetmap',
-      sourceId: 'node/1',
-    });
+    const owner = defined(
+      await findPlaceIdBySourceRef(requireSuite(suite).db, {
+        source: 'openstreetmap',
+        sourceId: 'node/1',
+      }),
+    );
 
     const error = await updatePlace(
-      suite!.db,
+      requireSuite(suite).db,
       goWayCreated.id,
       { sources: [{ source: 'openstreetmap', sourceId: 'node/1' }] },
       ACTOR,
@@ -136,16 +143,16 @@ describe('source linking', () => {
     expect(isApiError(error) && error.code).toBe('conflict');
 
     // Both places still exist, unmerged.
-    expect(await findPlaceById(suite!.db, goWayCreated.id)).not.toBeNull();
-    expect(await findPlaceById(suite!.db, owner!)).not.toBeNull();
+    expect(await findPlaceById(requireSuite(suite).db, goWayCreated.id)).not.toBeNull();
+    expect(await findPlaceById(requireSuite(suite).db, owner)).not.toBeNull();
 
     const candidates = await candidatesFor(goWayCreated.id);
-    expect(candidates).toContainEqual({ other: owner!, reason: 'shared_source_id' });
+    expect(candidates).toContainEqual({ other: owner, reason: 'shared_source_id' });
   });
 
   it('moves observed_at FORWARD only, so replaying an old export cannot age a record', async () => {
     const place = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Quimet & Quimet',
         location: GRACIA,
@@ -153,23 +160,23 @@ describe('source linking', () => {
       },
       ACTOR,
     );
-    const fresh = await findPlaceById(suite!.db, place.id);
-    const freshObservedAt = fresh!.sources[0]!.observedAt!;
+    const fresh = defined(await findPlaceById(requireSuite(suite).db, place.id));
+    const freshObservedAt = defined(defined(fresh.sources[0]).observedAt);
 
     // Rewind the stored observation, then re-link: `greatest()` must keep the
     // NEWER of the two, which is the one the second link just supplied.
-    await suite!.client`
+    await requireSuite(suite).client`
       UPDATE places_sources SET observed_at = now() - interval '2 years' WHERE place_id = ${place.id}
     `;
     await updatePlace(
-      suite!.db,
+      requireSuite(suite).db,
       place.id,
       { sources: [{ source: 'openstreetmap', sourceId: 'node/2' }] },
       ACTOR,
     );
 
-    const relinked = await findPlaceById(suite!.db, place.id);
-    expect(Date.parse(relinked!.sources[0]!.observedAt!)).toBeGreaterThan(
+    const relinked = defined(await findPlaceById(requireSuite(suite).db, place.id));
+    expect(Date.parse(defined(defined(relinked.sources[0]).observedAt))).toBeGreaterThan(
       Date.parse(freshObservedAt) - 1000,
     );
   });
@@ -178,7 +185,7 @@ describe('source linking', () => {
     // Provenance is not a field a later writer owns. An update carrying one
     // source must not be read as "these are now the only sources".
     const place = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Els Quatre Gats',
         location: GRACIA,
@@ -186,21 +193,23 @@ describe('source linking', () => {
       },
       ACTOR,
     );
-    const updated = await updatePlace(suite!.db, place.id, { name: 'Els 4 Gats' }, ACTOR);
-    expect(updated!.name).toBe('Els 4 Gats');
-    expect(updated!.sources.map((source) => source.sourceId)).toEqual(['node/3']);
+    const updated = defined(
+      await updatePlace(requireSuite(suite).db, place.id, { name: 'Els 4 Gats' }, ACTOR),
+    );
+    expect(updated.name).toBe('Els 4 Gats');
+    expect(updated.sources.map((source) => source.sourceId)).toEqual(['node/3']);
   });
 });
 
 describe('duplicate detection', () => {
   it('flags an identical name at ten metres — and does NOT merge it', async () => {
     const first = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Forn Baluard', location: CATALUNYA },
       ACTOR,
     );
     const second = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Forn Baluard', location: CATALUNYA_NEARBY },
       ACTOR,
     );
@@ -213,15 +222,19 @@ describe('duplicate detection', () => {
 
     // Both are still readable, with their own ids. A merge would have made one
     // of these deep links dead.
-    expect((await findPlaceById(suite!.db, first.id))?.name).toBe('Forn Baluard');
-    expect((await findPlaceById(suite!.db, second.id))?.name).toBe('Forn Baluard');
+    expect((await findPlaceById(requireSuite(suite).db, first.id))?.name).toBe('Forn Baluard');
+    expect((await findPlaceById(requireSuite(suite).db, second.id))?.name).toBe('Forn Baluard');
   });
 
   it('does NOT flag an identical name two kilometres away — a chain is not a duplicate', async () => {
     // The assertion that makes the previous one mean something. A matcher keyed
     // on the name alone would flag every branch of every chain, and a reviewer
     // facing thousands of false positives stops reviewing.
-    const branch = await createPlace(suite!.db, { name: 'Forn Baluard', location: GRACIA }, ACTOR);
+    const branch = await createPlace(
+      requireSuite(suite).db,
+      { name: 'Forn Baluard', location: GRACIA },
+      ACTOR,
+    );
     expect(await candidatesFor(branch.id)).toEqual([]);
   });
 
@@ -229,7 +242,7 @@ describe('duplicate detection', () => {
     // Proximity alone is not evidence either: a shopping centre is hundreds of
     // distinct places inside 75 m.
     const kiosk = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Kiosk Rambla', location: CATALUNYA },
       ACTOR,
     );
@@ -240,7 +253,7 @@ describe('duplicate detection', () => {
 describe('capability provenance', () => {
   it('records a community report and an external-source fact as separate, distinguishable rows', async () => {
     const place = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Colmado Quílez',
         location: GRACIA,
@@ -275,7 +288,7 @@ describe('capability provenance', () => {
     // on the strength of the merchant's own say-so is the failure being
     // prevented.
     const place = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Bodega Sepúlveda',
         location: GRACIA,
@@ -287,7 +300,7 @@ describe('capability provenance', () => {
     );
     expect(place.capabilities[0]?.verification).toBe('business_asserted');
 
-    const rows = await suite!.client<{ verification: string }[]>`
+    const rows = await requireSuite(suite).client<{ verification: string }[]>`
       SELECT verification FROM places_capabilities WHERE place_id = ${place.id}
     `;
     expect(rows.every((row) => row.verification !== 'oxy_verified')).toBe(true);
@@ -297,7 +310,7 @@ describe('capability provenance', () => {
     // "A historic community report must be distinguishable from a verified
     // current fact." Both rows survive, each with its own tier and date.
     const place = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Granja Petitbo',
         location: GRACIA,
@@ -305,16 +318,16 @@ describe('capability provenance', () => {
       },
       ACTOR,
     );
-    await suite!.client`
+    await requireSuite(suite).client`
       UPDATE places_capabilities SET observed_at = now() - interval '2 years' WHERE place_id = ${place.id}
     `;
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO places_capabilities (id, place_id, namespace, capability, value, verification)
       VALUES (${`${place.id}-verified`}, ${place.id}, 'payments.faircoin', 'accepted', 'true'::jsonb, 'oxy_verified')
     `;
 
-    const read = await findPlaceById(suite!.db, place.id);
-    const faircoin = read!.capabilities.filter(
+    const read = defined(await findPlaceById(requireSuite(suite).db, place.id));
+    const faircoin = read.capabilities.filter(
       (capability) => capability.key === 'payments.faircoin.accepted',
     );
     expect(faircoin).toHaveLength(2);
@@ -322,7 +335,9 @@ describe('capability provenance', () => {
     // verified answer without knowing the ranking.
     expect(faircoin[0]?.verification).toBe('oxy_verified');
     expect(faircoin[1]?.verification).toBe('community_reported');
-    expect(Date.parse(faircoin[1]!.observedAt)).toBeLessThan(Date.parse(faircoin[0]!.observedAt));
+    expect(Date.parse(defined(faircoin[1]).observedAt)).toBeLessThan(
+      Date.parse(defined(faircoin[0]).observedAt),
+    );
   });
 });
 
@@ -333,73 +348,79 @@ describe('business identity', () => {
     // chain is an Oxy organization claiming each location as its `brand`, and
     // a franchise is what you get when each location also has an operator.
     const first = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Cafè Cadena Uno', location: CATALUNYA },
       ACTOR,
     );
     const second = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Cafè Cadena Dos', location: GRACIA },
       ACTOR,
     );
     const unrelated = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Independent', location: GRACIA },
       ACTOR,
     );
 
-    await createClaim(suite!.db, {
+    await createClaim(requireSuite(suite).db, {
       placeId: first.id,
       oxyAccountId: 'acct-franchisee-a',
       role: 'operator',
       state: 'approved',
     });
-    await createClaim(suite!.db, {
+    await createClaim(requireSuite(suite).db, {
       placeId: second.id,
       oxyAccountId: 'acct-franchisee-b',
       role: 'operator',
       state: 'approved',
     });
     // The chain's organization holds a claim on both, in a different role, at once.
-    await createClaim(suite!.db, {
+    await createClaim(requireSuite(suite).db, {
       placeId: first.id,
       oxyAccountId: 'org-cadena',
       role: 'brand',
       state: 'approved',
     });
-    await createClaim(suite!.db, {
+    await createClaim(requireSuite(suite).db, {
       placeId: second.id,
       oxyAccountId: 'org-cadena',
       role: 'brand',
       state: 'approved',
     });
 
-    const byBrand = await findClaimedPlaceIds(suite!.db, 'org-cadena');
+    const byBrand = await findClaimedPlaceIds(requireSuite(suite).db, 'org-cadena');
     expect(byBrand.sort()).toEqual([first.id, second.id].sort());
     expect(byBrand).not.toContain(unrelated.id);
 
     // One operator sees only their own location, which is the authorization
     // question `PATCH /places/:id` asks.
-    expect(await findClaimedPlaceIds(suite!.db, 'acct-franchisee-b')).toEqual([second.id]);
+    expect(await findClaimedPlaceIds(requireSuite(suite).db, 'acct-franchisee-b')).toEqual([
+      second.id,
+    ]);
   });
 
   it('does not count a PENDING claim as a relationship', async () => {
     // A claim is a request to be recognised. A schema that could not say so
     // would grant control at the moment somebody asked for it.
-    const place = await createPlace(suite!.db, { name: 'Pending Bar', location: GRACIA }, ACTOR);
-    await createClaim(suite!.db, {
+    const place = await createPlace(
+      requireSuite(suite).db,
+      { name: 'Pending Bar', location: GRACIA },
+      ACTOR,
+    );
+    await createClaim(requireSuite(suite).db, {
       placeId: place.id,
       oxyAccountId: 'acct-hopeful',
       role: 'owner',
     });
-    expect(await findClaimedPlaceIds(suite!.db, 'acct-hopeful')).toEqual([]);
+    expect(await findClaimedPlaceIds(requireSuite(suite).db, 'acct-hopeful')).toEqual([]);
   });
 });
 
 describe('names and the re-import', () => {
   it('lets a GoWay correction and the source spelling of one language coexist', async () => {
     const place = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Museu Picasso',
         location: GRACIA,
@@ -409,102 +430,118 @@ describe('names and the re-import', () => {
     );
 
     // The importer speaks for OpenStreetMap; the create above spoke for GoWay.
-    await applyPlaceNames(suite!.db, place.id, 'openstreetmap', [
+    await applyPlaceNames(requireSuite(suite).db, place.id, 'openstreetmap', [
       { language: 'es', name: 'Museo Picaso' },
       { language: 'en', name: 'Picasso Museum' },
     ]);
 
-    const read = await findPlaceById(suite!.db, place.id, null, 'es');
+    const read = defined(await findPlaceById(requireSuite(suite).db, place.id, null, 'es'));
     // Both rows survive — nothing was overwritten...
     expect(
-      read!
-        .names!.filter((name) => name.language === 'es')
+      defined(read.names)
+        .filter((name) => name.language === 'es')
         .map((name) => name.source)
         .sort(),
     ).toEqual(['goway', 'openstreetmap']);
     // ...and the read prefers GoWay's.
-    expect(read!.localizedName).toEqual({ language: 'es', name: 'Museo Picasso', source: 'goway' });
+    expect(read.localizedName).toEqual({ language: 'es', name: 'Museo Picasso', source: 'goway' });
     // The default name never moves with the locale.
-    expect(read!.name).toBe('Museu Picasso');
+    expect(read.name).toBe('Museu Picasso');
   });
 
   it("refreshes a source's own row in place rather than adding a second", async () => {
     const place = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Sagrada Família', location: GRACIA },
       ACTOR,
     );
-    await applyPlaceNames(suite!.db, place.id, 'openstreetmap', [
+    await applyPlaceNames(requireSuite(suite).db, place.id, 'openstreetmap', [
       { language: 'en', name: 'Holy Family' },
     ]);
-    await applyPlaceNames(suite!.db, place.id, 'openstreetmap', [
+    await applyPlaceNames(requireSuite(suite).db, place.id, 'openstreetmap', [
       { language: 'en', name: 'Sagrada Familia Basilica' },
     ]);
 
-    const read = await findPlaceById(suite!.db, place.id, null, 'en');
-    expect(read!.names!.filter((name) => name.language === 'en')).toHaveLength(1);
-    expect(read!.localizedName?.name).toBe('Sagrada Familia Basilica');
+    const read = defined(await findPlaceById(requireSuite(suite).db, place.id, null, 'en'));
+    expect(defined(read.names).filter((name) => name.language === 'en')).toHaveLength(1);
+    expect(read.localizedName?.name).toBe('Sagrada Familia Basilica');
   });
 
   it('refuses to move a name BACKWARD in time, so replaying an old export is a no-op', async () => {
     // The guard that makes a re-import idempotent in both directions. Without
     // it, a stale planet file replayed after a fresh one silently reverts every
     // name it touches.
-    const place = await createPlace(suite!.db, { name: 'Park Güell', location: GRACIA }, ACTOR);
+    const place = await createPlace(
+      requireSuite(suite).db,
+      { name: 'Park Güell', location: GRACIA },
+      ACTOR,
+    );
     const now = new Date();
     const lastYear = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
 
     await applyPlaceNames(
-      suite!.db,
+      requireSuite(suite).db,
       place.id,
       'openstreetmap',
       [{ language: 'en', name: 'Park Guell' }],
       now,
     );
     await applyPlaceNames(
-      suite!.db,
+      requireSuite(suite).db,
       place.id,
       'openstreetmap',
       [{ language: 'en', name: 'STALE' }],
       lastYear,
     );
 
-    const read = await findPlaceById(suite!.db, place.id, null, 'en');
-    expect(read!.localizedName?.name).toBe('Park Guell');
+    const read = defined(await findPlaceById(requireSuite(suite).db, place.id, null, 'en'));
+    expect(read.localizedName?.name).toBe('Park Guell');
   });
 
   it('never deletes a language an import simply did not mention', async () => {
     // Provenance is not a field a later writer owns, and an import can be
     // partial. Withdrawing a name is a moderation act, not a side effect.
-    const place = await createPlace(suite!.db, { name: 'Casa Batlló', location: GRACIA }, ACTOR);
-    await applyPlaceNames(suite!.db, place.id, 'openstreetmap', [
+    const place = await createPlace(
+      requireSuite(suite).db,
+      { name: 'Casa Batlló', location: GRACIA },
+      ACTOR,
+    );
+    await applyPlaceNames(requireSuite(suite).db, place.id, 'openstreetmap', [
       { language: 'en', name: 'Batllo House' },
       { language: 'fr', name: 'Maison Batlló' },
     ]);
-    await applyPlaceNames(suite!.db, place.id, 'openstreetmap', [
+    await applyPlaceNames(requireSuite(suite).db, place.id, 'openstreetmap', [
       { language: 'en', name: 'Batllo House' },
     ]);
 
-    const read = await findPlaceById(suite!.db, place.id);
-    expect(read!.names!.map((name) => name.language).sort()).toEqual(['en', 'fr']);
+    const read = defined(await findPlaceById(requireSuite(suite).db, place.id));
+    expect(
+      defined(read.names)
+        .map((name) => name.language)
+        .sort(),
+    ).toEqual(['en', 'fr']);
   });
 
   it('skips a name:* key that is not a language instead of failing the element', async () => {
-    const place = await createPlace(suite!.db, { name: 'Torre Agbar', location: GRACIA }, ACTOR);
-    await applyPlaceNames(suite!.db, place.id, 'openstreetmap', [
+    const place = await createPlace(
+      requireSuite(suite).db,
+      { name: 'Torre Agbar', location: GRACIA },
+      ACTOR,
+    );
+    await applyPlaceNames(requireSuite(suite).db, place.id, 'openstreetmap', [
       { language: 'etymology', name: 'Aigües de Barcelona' },
       { language: 'ES', name: 'Torre Agbar' },
     ]);
 
-    const read = await findPlaceById(suite!.db, place.id);
+    const read = defined(await findPlaceById(requireSuite(suite).db, place.id));
     // The junk key is gone and the non-canonical one was canonicalized rather
     // than stored as a second spelling of Spanish.
-    expect(read!.names!.map((name) => name.language)).toEqual(['es']);
+    expect(defined(read.names).map((name) => name.language)).toEqual(['es']);
   });
 
   it('publishes the full name set on a detail read and NOT on a viewport read', async () => {
     const place = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Palau de la Música',
         location: CATALUNYA,
@@ -513,11 +550,11 @@ describe('names and the re-import', () => {
       ACTOR,
     );
 
-    const detail = await findPlaceById(suite!.db, place.id);
-    expect(detail!.names).toHaveLength(1);
+    const detail = defined(await findPlaceById(requireSuite(suite).db, place.id));
+    expect(detail.names).toHaveLength(1);
 
     const [listed] = (
-      await findPlacesInBounds(suite!.db, {
+      await findPlacesInBounds(requireSuite(suite).db, {
         west: 2.16,
         south: 41.38,
         east: 2.18,
@@ -529,7 +566,7 @@ describe('names and the re-import', () => {
     // 200 pins times every language is a payload nothing renders: a viewport
     // read resolves ONE name and publishes no set.
     expect(listed).not.toHaveProperty('names');
-    expect(listed!.localizedName?.name).toBe('Palace of Music');
+    expect(defined(listed).localizedName?.name).toBe('Palace of Music');
   });
 });
 
@@ -539,7 +576,7 @@ describe('cross-language duplicate detection', () => {
     // one museum, they are not equal as DEFAULT names, and before
     // `places_names` nothing in the database could see the claim.
     const first = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Museu Frederic',
         location: CATALUNYA,
@@ -548,7 +585,7 @@ describe('cross-language duplicate detection', () => {
       ACTOR,
     );
     const second = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Museo Federico', location: CATALUNYA_NEARBY },
       ACTOR,
     );
@@ -562,7 +599,7 @@ describe('cross-language duplicate detection', () => {
     });
     // And nothing merged, as ever.
     expect(second.id).not.toBe(first.id);
-    expect((await findPlaceById(suite!.db, first.id))?.name).toBe('Museu Frederic');
+    expect((await findPlaceById(requireSuite(suite).db, first.id))?.name).toBe('Museu Frederic');
   });
 
   it('does not flag a translated name two kilometres away', async () => {
@@ -570,7 +607,7 @@ describe('cross-language duplicate detection', () => {
     // languages — "Farmacia", "Pharmacie", "Pharmacy" — so the proximity bound
     // matters more here, not less.
     const near = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Farmàcia Nova',
         location: CATALUNYA,
@@ -578,7 +615,11 @@ describe('cross-language duplicate detection', () => {
       },
       ACTOR,
     );
-    const far = await createPlace(suite!.db, { name: 'Farmacia Nueva', location: GRACIA }, ACTOR);
+    const far = await createPlace(
+      requireSuite(suite).db,
+      { name: 'Farmacia Nueva', location: GRACIA },
+      ACTOR,
+    );
     expect(await candidatesFor(far.id)).toEqual([]);
     expect(await candidatesFor(near.id)).toEqual([]);
   });
@@ -587,7 +628,7 @@ describe('cross-language duplicate detection', () => {
     // One pair, one row, one reason — and the reason names the rule that is
     // actually true of it.
     const first = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Forn Turull',
         location: CATALUNYA,
@@ -596,7 +637,7 @@ describe('cross-language duplicate detection', () => {
       ACTOR,
     );
     const second = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Forn Turull', location: CATALUNYA_NEARBY },
       ACTOR,
     );

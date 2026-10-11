@@ -16,7 +16,7 @@ import {
   type PlaceHoursException,
 } from '../src/index';
 import { PLACE, page } from './fixtures';
-import { fakeFetch, rejection } from './helpers';
+import { defined, fakeFetch, rejection } from './helpers';
 
 /**
  * The richer place data as the SDK carries it: the category taxonomy it READS
@@ -83,7 +83,7 @@ const CATEGORY_LIST: Category[] = [
 ];
 
 const MODERATION_CATEGORY: ModerationCategory = {
-  ...CATEGORY_LIST[1]!,
+  ...defined(CATEGORY_LIST[1]),
   position: 10,
   osmTags: ['amenity=cafe', 'shop=coffee'],
   createdAt: '2026-10-01T00:00:00.000Z',

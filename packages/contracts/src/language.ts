@@ -72,7 +72,7 @@ export function normalizeLanguageTag(tag: string | null | undefined): string | u
   // the language — `zh-Hant`, never `zh-GB-Hant`.
   const script = rest[index];
   if (script !== undefined && /^[A-Za-z]{4}$/.test(script)) {
-    canonical.push(script[0]!.toUpperCase() + script.slice(1).toLowerCase());
+    canonical.push(script.charAt(0).toUpperCase() + script.slice(1).toLowerCase());
     index += 1;
   }
 

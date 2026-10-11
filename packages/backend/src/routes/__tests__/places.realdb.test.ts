@@ -36,6 +36,7 @@ import {
 import { places } from '../../db/schema';
 import { createPlace, createClaim, type PlaceActor } from '../../db/places/placesRepository';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -314,11 +315,14 @@ describe('GET /places/{placeId}', () => {
     // persisted id learns the place was retired rather than that its id was
     // always wrong. And a withdrawn place is not quietly editable.
     const removed = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Withdrawn', location: CATALUNYA },
       CONTRIBUTOR,
     );
-    await suite!.db.update(places).set({ status: 'removed' }).where(eq(places.id, removed.id));
+    await requireSuite(suite)
+      .db.update(places)
+      .set({ status: 'removed' })
+      .where(eq(places.id, removed.id));
 
     const read = await call<ErrorBody>(`/places/${removed.id}`);
     expect(read.status).toBe(410);

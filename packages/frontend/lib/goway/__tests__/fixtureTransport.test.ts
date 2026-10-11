@@ -30,6 +30,7 @@ import {
   setFixtureFaults,
   type FixtureFaults,
 } from '@/lib/goway/mockTransport';
+import { defined } from '../../__tests__/defined';
 
 const API = 'https://api.goway.to';
 const BARCELONA = { west: 2.1, south: 41.35, east: 2.22, north: 41.42 };
@@ -312,8 +313,8 @@ describe('galleries and reviews', () => {
   });
 
   test('a withdrawn place answers its gallery with gone', async () => {
-    const [withdrawn] = [...FIXTURE_WITHDRAWN_PLACE_IDS];
-    expect(await failureOf(fixtureClient().places.media.list(withdrawn!))).toBeInstanceOf(
+    const withdrawn = defined([...FIXTURE_WITHDRAWN_PLACE_IDS][0]);
+    expect(await failureOf(fixtureClient().places.media.list(withdrawn))).toBeInstanceOf(
       GoWayGoneError,
     );
   });

@@ -97,7 +97,7 @@ async function main(): Promise<void> {
   const inter = coverageByRange(
     base.getVariation({ wght: GLYPH_FONTSTACKS[0].wght, opsz: OPTICAL_SIZE }),
   );
-  const ranges = [...inter.keys()].sort((a, b) => a - b);
+  const ranges = [...inter.entries()].sort(([a], [b]) => a - b);
   const upstreamStacks = [...new Set(Object.values(UPSTREAM_FONTSTACK))];
 
   const coverage: FallbackCoverage = {
@@ -116,7 +116,7 @@ async function main(): Promise<void> {
     const stack: FallbackStack = { ascender: 0, ranges: {} };
     let ascender: number | undefined;
 
-    for (const start of ranges) {
+    for (const [start, interCodePoints] of ranges) {
       const range = `${start}-${start + 255}`;
       const glyphs = await fetchRange(stackName, range);
       if (!glyphs) continue;
@@ -128,7 +128,7 @@ async function main(): Promise<void> {
 
       // Only the holes travel. A copy of upstream's whole range would be
       // megabytes of bytes GoWay already has a better glyph for.
-      const covered = new Set(inter.get(start)!);
+      const covered = new Set(interCodePoints);
       const fill = glyphs.filter((glyph) => !covered.has(glyph.id) && isRenderable(glyph.id));
       if (fill.length === 0) continue;
 

@@ -179,7 +179,7 @@ function content(
 ): GoWayFetchResponse | null {
   const match = /^\/places\/([^/]+)\/(media|reviews|reviews\/mine)$/.exec(path);
   if (!match) return null;
-  const placeId = decodeURIComponent(match[1]!);
+  const placeId = decodeURIComponent(match[1] ?? ''); // `[^/]+` always captures
   if (FIXTURE_WITHDRAWN_PLACE_IDS.has(placeId))
     return fail('gone', `Place ${placeId} has been withdrawn`);
   if (!FIXTURE_PLACES_BY_ID.has(placeId)) return fail('not_found', `No place with id ${placeId}`);

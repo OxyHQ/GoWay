@@ -336,9 +336,9 @@ function planRanges(base: FontkitFont, fallback: LoadedFallback, problems: strin
 
   const plan: RangePlan = { published: [], proxied: [], fill: new Map() };
 
-  for (const start of [...coverage.keys()].sort((a, b) => a - b)) {
+  for (const [start, codePoints] of [...coverage.entries()].sort(([a], [b]) => a - b)) {
     const range = `${start}-${start + 255}`;
-    const covered = new Set(coverage.get(start)!);
+    const covered = new Set(codePoints);
 
     const holes = new Set<number>();
     let unmeasured: string | undefined;
@@ -589,7 +589,8 @@ async function checkAgainstReference(problems: string[]): Promise<void> {
 }
 
 function inspect(base: FontkitFont, spec: string): void {
-  const codePoint = spec.length === 1 ? spec.codePointAt(0)! : Number.parseInt(spec, 10);
+  const codePoint =
+    spec.length === 1 ? (spec.codePointAt(0) ?? Number.NaN) : Number.parseInt(spec, 10);
   if (!Number.isFinite(codePoint))
     throw new Error(`--inspect wants a character or a code point, got "${spec}"`);
 

@@ -45,6 +45,7 @@ import {
   rebaseTop,
   type FallbackCoverage,
 } from '@/scripts/mapgen/fallback';
+import { defined } from '../../lib/__tests__/defined';
 
 const FRONTEND_ROOT = resolve(dirname(import.meta.dir), '..');
 const FONTS_DIR = join(FRONTEND_ROOT, 'public', 'map', 'fonts');
@@ -67,7 +68,7 @@ async function maplibreParser(): Promise<(data: Uint8Array) => ParsedGlyph[]> {
     'maplibre-gl no longer exports parseGlyphPbf from its shared bundle',
   ).not.toBeNull();
   const module = (await import(bundle)) as Record<string, unknown>;
-  const parse = module[alias![1]];
+  const parse = module[defined(alias)[1]];
   expect(typeof parse).toBe('function');
   return parse as (data: Uint8Array) => ParsedGlyph[];
 }
@@ -127,7 +128,7 @@ describe('the committed glyph tree', () => {
       const holes = holesFor(stack, file.range, ids);
       expect(holes, `${file.range} was never measured against ${upstream}`).toBeDefined();
       expect(
-        [...holes!].map((codePoint) => codePoint.toString(16)),
+        [...defined(holes)].map((codePoint) => codePoint.toString(16)),
         `${file.stack}/${file.range} is published with holes — the Worker cannot fall back on a range whose file exists`,
       ).toEqual([]);
     }
@@ -182,10 +183,10 @@ describe('the committed glyph tree', () => {
     for (const glyph of pack) {
       const merged = published.get(glyph.id);
       expect(merged, `U+${glyph.id.toString(16)} was not merged in`).toBeDefined();
-      expect(merged!.top).toBe(glyph.top + shift);
+      expect(defined(merged).top).toBe(glyph.top + shift);
       // Nothing else about a glyph depends on the baseline.
-      expect(merged!.advance).toBe(glyph.advance);
-      expect(merged!.width).toBe(glyph.width);
+      expect(defined(merged).advance).toBe(glyph.advance);
+      expect(defined(merged).width).toBe(glyph.width);
     }
   });
 });
@@ -195,13 +196,15 @@ describe('the gate itself', () => {
     // A gate that cannot fail is a comment. This is the 599-byte Thai file's
     // shape, rebuilt from a range that is currently whole: drop one code point
     // and the measurement has to notice.
-    const file = files.find((one) => one.stack === 'Inter Regular' && one.range === '256-511')!;
+    const file = defined(
+      files.find((one) => one.stack === 'Inter Regular' && one.range === '256-511'),
+    );
     const glyphs = decodeGlyphs(file.bytes).flatMap((one) => one.glyphs);
     const dropped = glyphs[10].id;
 
     const kept = new Set(glyphs.filter((glyph) => glyph.id !== dropped).map((glyph) => glyph.id));
     const stack = coverage.stacks[UPSTREAM_FONTSTACK['Inter Regular']];
-    expect([...holesFor(stack, '256-511', kept)!]).toEqual([dropped]);
+    expect([...defined(holesFor(stack, '256-511', kept))]).toEqual([dropped]);
 
     // And the truncated file is still perfectly valid protobuf, which is the
     // whole problem: nothing downstream of here would have objected.
@@ -225,12 +228,16 @@ describe('the gate itself', () => {
     const latin = decodeRuns(coverage.stacks['Noto Sans Regular'].ranges['0-255']);
     expect(latin.has(0x00ad)).toBe(true);
     const published = new Set(
-      decodeGlyphs(files.find((f) => f.stack === 'Inter Regular' && f.range === '0-255')!.bytes)
+      decodeGlyphs(
+        defined(files.find((f) => f.stack === 'Inter Regular' && f.range === '0-255')).bytes,
+      )
         .flatMap((one) => one.glyphs)
         .map((glyph) => glyph.id),
     );
     expect(published.has(0x00ad)).toBe(false);
-    expect([...holesFor(coverage.stacks['Noto Sans Regular'], '0-255', published)!]).toEqual([]);
+    expect([
+      ...defined(holesFor(coverage.stacks['Noto Sans Regular'], '0-255', published)),
+    ]).toEqual([]);
   });
 
   test('an unmeasured range is a hole, not an absence of one', () => {

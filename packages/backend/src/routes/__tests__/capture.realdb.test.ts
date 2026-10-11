@@ -57,6 +57,7 @@ import { sweepExpiredCaptures } from '../../capture/cleanup';
 import { summarizeCaptureStorage } from '../../db/capture/captureRepository';
 import { getDb } from '../../db/postgres';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -66,6 +67,7 @@ import { ApiError } from '../../http/apiError';
 import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import type { CaptureObjectStore, UploadTargetRequest } from '../../storage/objectStore';
 import { createCaptureRouter, currentUploadPolicy } from '../capture';
+import { defined } from '../../__tests__/defined';
 
 /** Barcelona, Plaça de Catalunya. */
 const CATALUNYA = { latitude: 41.387, longitude: 2.17 };
@@ -418,7 +420,7 @@ describe('deduplication', () => {
       `/captures/sessions/${ownerSession.id}/assets`,
       json('user-e', photoBody('deleting')),
     );
-    await suite!.client`
+    await requireSuite(suite).client`
       UPDATE capture_media_objects SET storage_state = 'deleting' WHERE content_hash = ${hash('deleting')}
     `;
     const session = await openSession('user-e');
@@ -427,7 +429,7 @@ describe('deduplication', () => {
       json('user-e', photoBody('deleting')),
     );
     expect(status).toBe(409);
-    const [row] = await suite!.client<{ storage_state: string }[]>`
+    const [row] = await requireSuite(suite).client<{ storage_state: string }[]>`
       SELECT storage_state FROM capture_media_objects WHERE content_hash = ${hash('deleting')}
     `;
     expect(row?.storage_state).toBe('deleting');
@@ -765,7 +767,7 @@ describe('safe retries and contributor withdrawal', () => {
       `/captures/sessions/${session.id}/assets`,
       json(user, photoBody(user)),
     );
-    const target = store.targets.at(-1)!;
+    const target = defined(store.targets.at(-1));
     store.stored.set(target.key, target.byteSize);
     store.checksumOverrides.set(target.key, hash('wrong bytes'));
     const response = await call(
@@ -790,7 +792,7 @@ describe('safe retries and contributor withdrawal', () => {
       `/captures/sessions/${sa.id}/assets`,
       json(a, input),
     );
-    const target = store.targets.at(-1)!;
+    const target = defined(store.targets.at(-1));
     store.stored.set(target.key, target.byteSize);
     expect(
       (await call(`/captures/assets/${first.body.asset.id}/finalize`, json(a, {}))).status,
@@ -813,11 +815,15 @@ describe('safe retries and contributor withdrawal', () => {
       expect(withdrawn.body.reconstructionEligible).toBe(false);
     }
     const db = getDb();
-    const [object] = await db
-      .select()
-      .from(captureMediaObjects)
-      .where(eq(captureMediaObjects.objectKey, target.key));
-    expect(object!.deletionRequestedAt).toBeNull();
+    const object = defined(
+      (
+        await db
+          .select()
+          .from(captureMediaObjects)
+          .where(eq(captureMediaObjects.objectKey, target.key))
+      )[0],
+    );
+    expect(object.deletionRequestedAt).toBeNull();
     expect((await call(`/captures/sessions/${sa.id}/assets`, json(a, input))).status).toBe(409);
     expect(
       (await call<CaptureAsset>(`/captures/assets/${second.body.asset.id}`, asUser(b))).body.state,
@@ -829,21 +835,18 @@ describe('safe retries and contributor withdrawal', () => {
     await db
       .update(captureMediaObjects)
       .set({ uploadIntentExpiresAt: new Date(Date.now() - 1000) })
-      .where(eq(captureMediaObjects.id, object!.id));
+      .where(eq(captureMediaObjects.id, object.id));
     await sweepExpiredCaptures(db, store);
     expect(store.deleted.filter((key) => key === target.key)).toHaveLength(1);
-    const [deleted] = await db
-      .select()
-      .from(captureMediaObjects)
-      .where(eq(captureMediaObjects.id, object!.id));
-    expect(deleted!.deletionReason).toBe('contributor_request');
+    const deleted = defined(
+      (await db.select().from(captureMediaObjects).where(eq(captureMediaObjects.id, object.id)))[0],
+    );
+    expect(deleted.deletionReason).toBe('contributor_request');
     expect(
       await db
         .select()
         .from(captureAssets)
-        .where(
-          and(eq(captureAssets.mediaObjectId, object!.id), eq(captureAssets.state, 'deleted')),
-        ),
+        .where(and(eq(captureAssets.mediaObjectId, object.id), eq(captureAssets.state, 'deleted'))),
     ).toHaveLength(2);
   });
 });

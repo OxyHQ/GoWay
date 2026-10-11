@@ -30,6 +30,7 @@ import {
   street3dScenes,
 } from '../../db/schema';
 import {
+  requireSuite,
   createSuiteDatabase,
   destroySuiteDatabase,
   SUITE_SETUP_TIMEOUT_MS,
@@ -38,6 +39,7 @@ import {
 import { ApiError } from '../../http/apiError';
 import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import { createStreet3dRouter } from '../street3d';
+import { defined } from '../../__tests__/defined';
 
 let suite: SuiteDatabase | null = null;
 const servers: Server[] = [];
@@ -77,112 +79,124 @@ const ASSET_KEY = `scenes/s/v1/${'c'.repeat(64)}.spz`;
 async function scene(
   state: 'published' | 'failed_quality' | 'disabled' = 'published',
 ): Promise<string> {
-  const db = suite!.db;
-  const [created] = await db
-    .insert(street3dScenes)
-    .values({
-      anchorLatitude: 48.8684,
-      // biome-ignore lint/suspicious/noApproximativeNumericConstant: a longitude in Paris, not ln 10.
-      anchorLongitude: 2.302,
-      radiusMeters: 90,
-      state: 'candidate',
-      lastAllocatedVersion: 1,
-    })
-    .returning({ id: street3dScenes.id });
-  const sceneId = created!.id;
-  const [job] = await db
-    .insert(street3dJobs)
-    .values({
-      kind: 'scene_reconstruct',
-      sceneId,
-      sceneVersion: 1,
-      profile: 'draft',
-      state: 'completed',
-      maxAttempts: 4,
-      finishedAt: new Date(),
-      inputManifestKey: 'jobs/x/input.json',
-      inputManifestSha256: 'a'.repeat(64),
-      outputPrefix: 'jobs/x/',
-    })
-    .returning({ id: street3dJobs.id });
-  const [version] = await db
-    .insert(street3dSceneVersions)
-    .values({
-      sceneId,
-      version: 1,
-      jobId: job!.id,
-      state,
-      profile: 'draft',
-      boundsWest: 2.3008,
-      boundsSouth: 48.8678,
-      boundsEast: 2.3032,
-      boundsNorth: 48.869,
-      footprint: {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [2.3008, 48.8678],
-            [2.3032, 48.8678],
-            [2.3032, 48.869],
-            [2.3008, 48.8678],
+  const db = requireSuite(suite).db;
+  const created = defined(
+    (
+      await db
+        .insert(street3dScenes)
+        .values({
+          anchorLatitude: 48.8684,
+          // biome-ignore lint/suspicious/noApproximativeNumericConstant: a longitude in Paris, not ln 10.
+          anchorLongitude: 2.302,
+          radiusMeters: 90,
+          state: 'candidate',
+          lastAllocatedVersion: 1,
+        })
+        .returning({ id: street3dScenes.id })
+    )[0],
+  );
+  const sceneId = created.id;
+  const job = defined(
+    (
+      await db
+        .insert(street3dJobs)
+        .values({
+          kind: 'scene_reconstruct',
+          sceneId,
+          sceneVersion: 1,
+          profile: 'draft',
+          state: 'completed',
+          maxAttempts: 4,
+          finishedAt: new Date(),
+          inputManifestKey: 'jobs/x/input.json',
+          inputManifestSha256: 'a'.repeat(64),
+          outputPrefix: 'jobs/x/',
+        })
+        .returning({ id: street3dJobs.id })
+    )[0],
+  );
+  const version = defined(
+    (
+      await db
+        .insert(street3dSceneVersions)
+        .values({
+          sceneId,
+          version: 1,
+          jobId: job.id,
+          state,
+          profile: 'draft',
+          boundsWest: 2.3008,
+          boundsSouth: 48.8678,
+          boundsEast: 2.3032,
+          boundsNorth: 48.869,
+          footprint: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [2.3008, 48.8678],
+                [2.3032, 48.8678],
+                [2.3032, 48.869],
+                [2.3008, 48.8678],
+              ],
+            ],
+          },
+          worldTransform: {
+            // biome-ignore lint/suspicious/noApproximativeNumericConstant: a longitude in Paris, not ln 10.
+            anchor: { latitude: 48.8684, longitude: 2.302, altitudeMeters: 0 },
+            frame: 'enu',
+            enuFromScene: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+          },
+          initialView: { position: [0, 0, 1.6], target: [0, 10, 1.6] },
+          navigation: {
+            viewpoints: [
+              { position: [0, 0, 1.6], forward: [0, 1, 0] },
+              { position: [0, 2.5, 1.6], forward: [0, 1, 0] },
+            ],
+            fieldOfView: { horizontalDegrees: 66, verticalDegrees: 50 },
+          },
+          assets: [
+            {
+              role: 'splat',
+              format: 'spz',
+              url: `https://cdn.example.test/${ASSET_KEY}`,
+              key: ASSET_KEY,
+              byteSize: 10,
+              sha256: 'c'.repeat(64),
+              gaussians: 5,
+            },
+            {
+              role: 'poster',
+              format: 'jpeg',
+              url: 'https://cdn.example.test/poster.jpg',
+              key: 'scenes/s/v1/p.jpg',
+              byteSize: 3,
+              sha256: 'd'.repeat(64),
+            },
           ],
-        ],
-      },
-      worldTransform: {
-        // biome-ignore lint/suspicious/noApproximativeNumericConstant: a longitude in Paris, not ln 10.
-        anchor: { latitude: 48.8684, longitude: 2.302, altitudeMeters: 0 },
-        frame: 'enu',
-        enuFromScene: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-      },
-      initialView: { position: [0, 0, 1.6], target: [0, 10, 1.6] },
-      navigation: {
-        viewpoints: [
-          { position: [0, 0, 1.6], forward: [0, 1, 0] },
-          { position: [0, 2.5, 1.6], forward: [0, 1, 0] },
-        ],
-        fieldOfView: { horizontalDegrees: 66, verticalDegrees: 50 },
-      },
-      assets: [
-        {
-          role: 'splat',
-          format: 'spz',
-          url: `https://cdn.example.test/${ASSET_KEY}`,
-          key: ASSET_KEY,
-          byteSize: 10,
-          sha256: 'c'.repeat(64),
-          gaussians: 5,
-        },
-        {
-          role: 'poster',
-          format: 'jpeg',
-          url: 'https://cdn.example.test/poster.jpg',
-          key: 'scenes/s/v1/p.jpg',
-          byteSize: 3,
-          sha256: 'd'.repeat(64),
-        },
-      ],
-      quality: {
-        profile: 'draft',
-        registrationRatio: 1,
-        alignmentResidualMeters: 1.4,
-        heldOutPsnr: 21,
-        placement: 'precise',
-      },
-      metrics: { gpuSeconds: 1 },
-      provenance: { pipelineVersion: 'p/1', components: {} },
-      observedFrom: new Date('2026-09-01T00:00:00Z'),
-      observedTo: new Date('2026-09-02T00:00:00Z'),
-      privacyPipelineVersions: ['goway-privacy/1'],
-      attributions: ['Imagery © Example, CC BY-SA 4.0'],
-      resultSha256: 'b'.repeat(64),
-      ...(state === 'published' ? { publishedAt: new Date() } : {}),
-      ...(state === 'disabled' ? { disabledAt: new Date(), disabledReason: 'test' } : {}),
-    })
-    .returning({ id: street3dSceneVersions.id });
+          quality: {
+            profile: 'draft',
+            registrationRatio: 1,
+            alignmentResidualMeters: 1.4,
+            heldOutPsnr: 21,
+            placement: 'precise',
+          },
+          metrics: { gpuSeconds: 1 },
+          provenance: { pipelineVersion: 'p/1', components: {} },
+          observedFrom: new Date('2026-09-01T00:00:00Z'),
+          observedTo: new Date('2026-09-02T00:00:00Z'),
+          privacyPipelineVersions: ['goway-privacy/1'],
+          attributions: ['Imagery © Example, CC BY-SA 4.0'],
+          resultSha256: 'b'.repeat(64),
+          ...(state === 'published' ? { publishedAt: new Date() } : {}),
+          ...(state === 'disabled' ? { disabledAt: new Date(), disabledReason: 'test' } : {}),
+        })
+        .returning({ id: street3dSceneVersions.id })
+    )[0],
+  );
   if (state === 'published') {
     await db
       .update(street3dScenes)
-      .set({ currentVersionId: version!.id, state: 'published' })
+      .set({ currentVersionId: version.id, state: 'published' })
       .where(eq(street3dScenes.id, sceneId));
   }
   return sceneId;
@@ -200,7 +214,7 @@ afterAll(async () => {
   await destroySuiteDatabase(suite);
 });
 beforeEach(async () => {
-  await suite!.db.execute(
+  await requireSuite(suite).db.execute(
     sql`truncate table ${street3dCoverageAreas}, ${street3dSceneReports}, ${street3dSceneVersions}, ${street3dJobs}, ${street3dScenes} cascade`,
   );
 });
@@ -225,20 +239,22 @@ describe('coverage', () => {
   it('returns served scenes and coarse areas, and caps the box', async () => {
     const sceneId = await scene();
     await scene('failed_quality');
-    await suite!.db.insert(street3dCoverageAreas).values({
-      cell: 'u09wh2h',
-      publicId: 'area-0123456789abcdef0123',
-      state: 'at_risk',
-      centerLatitude: 48.8684,
-      centerLongitude: 2.3017,
-      boundsWest: 2.301,
-      boundsSouth: 48.8677,
-      boundsEast: 2.3024,
-      boundsNorth: 48.8691,
-      contributionCount: 7,
-      atRiskUntil: new Date('2026-10-20T00:00:00Z'),
-      sceneId,
-    });
+    await requireSuite(suite)
+      .db.insert(street3dCoverageAreas)
+      .values({
+        cell: 'u09wh2h',
+        publicId: 'area-0123456789abcdef0123',
+        state: 'at_risk',
+        centerLatitude: 48.8684,
+        centerLongitude: 2.3017,
+        boundsWest: 2.301,
+        boundsSouth: 48.8677,
+        boundsEast: 2.3024,
+        boundsNorth: 48.8691,
+        contributionCount: 7,
+        atRiskUntil: new Date('2026-10-20T00:00:00Z'),
+        sceneId,
+      });
     const response = await fetch(`${on}/street3d/coverage?${box}`);
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('public, max-age=60');

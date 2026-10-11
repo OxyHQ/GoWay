@@ -1,6 +1,7 @@
 import { API_OPERATIONS, GOWAY_API_BASE_PATH, type ApiOperation } from '@goway/contracts';
 import { describe, expect, it } from 'vitest';
 import { createGoWayClient, DEFAULT_GOWAY_API_BASE_URL, type GoWayFetch } from '../src/index';
+import { defined } from './helpers';
 
 /**
  * The SDK covers the WHOLE route registry, and nothing outside it.
@@ -44,7 +45,7 @@ function expectedKey(operation: ApiOperation): string {
 async function callEverything(): Promise<Set<string>> {
   const issued = new Set<string>();
   const fetch: GoWayFetch = async (url, init) => {
-    const path = url.slice(DEFAULT_GOWAY_API_BASE_URL.length).split('?')[0]!;
+    const path = defined(url.slice(DEFAULT_GOWAY_API_BASE_URL.length).split('?')[0]);
     issued.add(operationKey(init.method, path));
     // Every call is recorded before its answer is parsed; an empty answer is
     // enough, and the parse failures it causes elsewhere are not under test.

@@ -64,6 +64,7 @@ import {
   stopFromResult,
 } from '@/features/directions/stops';
 import { stubCategoryIcons } from '@/lib/goway/__tests__/stubCategoryIcons';
+import { defined } from '../../../lib/__tests__/defined';
 
 /**
  * `lib/goway/markers.ts` is pure clustering arithmetic, but its neighbours
@@ -266,9 +267,8 @@ describe('producer — stops (features/directions/stops.ts)', () => {
   });
 
   test('still builds one from a real point', () => {
-    const stop = stopFromDevice({ latitude: 41.3874, longitude: 2.1686 });
-    expect(stop).not.toBeNull();
-    expect(() => draw(stop!.coordinate)).not.toThrow();
+    const stop = defined(stopFromDevice({ latitude: 41.3874, longitude: 2.1686 }));
+    expect(() => draw(stop.coordinate)).not.toThrow();
   });
 });
 

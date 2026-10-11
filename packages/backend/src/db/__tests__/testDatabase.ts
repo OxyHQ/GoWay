@@ -213,6 +213,18 @@ export async function migrateSuiteDatabase(
   });
 }
 
+/**
+ * The suite's database, once `beforeAll` has created it.
+ *
+ * Suites hold the handle in a `let suite: SuiteDatabase | null` that `beforeAll`
+ * fills and `afterAll` clears. Reading it through this, rather than `suite!`,
+ * turns a setup that never ran or already failed into an error that says so.
+ */
+export function requireSuite(suite: SuiteDatabase | null): SuiteDatabase {
+  if (!suite) throw new Error('The suite database is not set up: beforeAll failed or has not run.');
+  return suite;
+}
+
 /** Close the handle and drop the database. Safe to call after a failed setup. */
 export async function destroySuiteDatabase(suite: SuiteDatabase | null): Promise<void> {
   if (!suite) return;

@@ -37,6 +37,7 @@ import {
 import type { MapLabelFeature } from '@/components/map/types';
 import { TAP_LAYER_IDS, LABEL_LAYER_IDS } from '@/lib/map/tapLayers';
 import { GOWAY_STYLE_LAYER_ID_LIST } from '@/lib/map/style/layers';
+import { defined } from '../../../lib/__tests__/defined';
 
 const TAP = { latitude: 41.3851, longitude: 2.1734 };
 const AT = { x: 100, y: 100 };
@@ -193,10 +194,9 @@ describe('a street is anchored where you pointed at it, not at a vertex', () => 
       [TAP.latitude + 0.01, TAP.longitude - 0.5],
       [TAP.latitude + 0.01, TAP.longitude + 0.5],
     ]);
-    const anchor = anchorFor(avenue, TAP);
-    expect(anchor).not.toBeNull();
-    expect(anchor!.longitude).toBeCloseTo(TAP.longitude, 4);
-    expect(anchor!.latitude).toBeCloseTo(TAP.latitude + 0.01, 6);
+    const anchor = defined(anchorFor(avenue, TAP));
+    expect(anchor.longitude).toBeCloseTo(TAP.longitude, 4);
+    expect(anchor.latitude).toBeCloseTo(TAP.latitude + 0.01, 6);
   });
 
   test('a tap beyond the end of a street clamps to the end, not past it', () => {
@@ -204,8 +204,8 @@ describe('a street is anchored where you pointed at it, not at a vertex', () => 
       [TAP.latitude, TAP.longitude + 0.01],
       [TAP.latitude, TAP.longitude + 0.02],
     ]);
-    const anchor = anchorFor(stub, TAP);
-    expect(anchor!.longitude).toBeCloseTo(TAP.longitude + 0.01, 6);
+    const anchor = defined(anchorFor(stub, TAP));
+    expect(anchor.longitude).toBeCloseTo(TAP.longitude + 0.01, 6);
   });
 
   test('the anchored street reports a real position, not the tap', () => {

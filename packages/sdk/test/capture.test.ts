@@ -7,7 +7,7 @@ import {
   type CaptureAssetInput,
 } from '../src/index';
 import { page } from './fixtures';
-import { fakeFetch, queryOf, rejection } from './helpers';
+import { defined, fakeFetch, queryOf, rejection } from './helpers';
 
 const time = '2026-10-01T00:00:00.000Z';
 const evidence = {
@@ -84,7 +84,7 @@ describe('contribution client boundary', () => {
     const ticket = await captures.register('session 1', input);
     expect(calls).toHaveLength(1);
     expect(calls[0]?.url).toContain('/captures/sessions/session%201/assets');
-    expect(JSON.parse(calls[0]!.init.body!)).toEqual(input);
+    expect(JSON.parse(defined(defined(calls[0]).init.body))).toEqual(input);
     expect(ticket.upload?.headers['if-none-match']).toBe('*');
     expect(calls[0]?.url).not.toContain('storage.invalid');
   });
@@ -121,10 +121,10 @@ describe('contribution client boundary', () => {
   it('pages sessions and assets with the contract default limit', async () => {
     const sessions = client(200, page([session], 'older_1'));
     const first = await sessions.captures.sessions();
-    expect(queryOf(sessions.calls[0]!.url)).toBe(`limit=${DEFAULT_CAPTURE_LIST_LIMIT}`);
+    expect(queryOf(defined(sessions.calls[0]).url)).toBe(`limit=${DEFAULT_CAPTURE_LIST_LIMIT}`);
     expect(first.nextCursor).toBe('older_1');
     await sessions.captures.sessions({ cursor: 'older_1', limit: 10 });
-    expect(queryOf(sessions.calls[1]!.url)).toBe('cursor=older_1&limit=10');
+    expect(queryOf(defined(sessions.calls[1]).url)).toBe('cursor=older_1&limit=10');
 
     const assets = client(200, page([asset]));
     const listed = await assets.captures.assets('session-1', { limit: 100 });
@@ -187,7 +187,7 @@ describe('contribution client boundary', () => {
       location: [{ origin: 'user_placed', coordinate: { latitude: 41, longitude: 2 } }],
     };
     await captures.register('s', input);
-    expect(JSON.parse(calls[0]!.init.body!).projection).toBe('equirectangular');
+    expect(JSON.parse(defined(defined(calls[0]).init.body)).projection).toBe('equirectangular');
     await expect(
       captures.register('s', { ...input, projection: 'fisheye' } as unknown as CaptureAssetInput),
     ).rejects.toBeInstanceOf(GoWayValidationError);

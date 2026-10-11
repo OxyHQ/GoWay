@@ -317,7 +317,9 @@ function buildSheet(paths: Map<string, string>, pixelRatio: number): Sheet {
 
   const index: Record<string, SpriteEntry> = {};
   for (const box of packed.boxes) {
-    const field = renderIcon(paths.get(box.name)!, pixelRatio);
+    const path = paths.get(box.name);
+    if (path === undefined) throw new Error(`${box.name}: packed, but there is no path to draw`);
+    const field = renderIcon(path, pixelRatio);
     if (field.length !== cell * cell) {
       throw new Error(`${box.name}: rendered ${field.length} bytes, expected ${cell * cell}`);
     }

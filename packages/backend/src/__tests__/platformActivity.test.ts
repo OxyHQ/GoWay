@@ -19,6 +19,7 @@ import {
   type PlatformActivity,
   type PlatformActivityDeps,
 } from '../platformActivity';
+import { defined } from './defined';
 
 function fakeTraffic(): { traffic: PlatformActivity; installs: () => number } {
   let installs = 0;
@@ -96,7 +97,7 @@ describe('createApp with an activity observer', () => {
 
   async function listen(activity?: RequestHandler): Promise<string> {
     server = createApp({ activity }).listen(0);
-    await new Promise<void>((resolve) => server!.once('listening', () => resolve()));
+    await new Promise<void>((resolve) => defined(server).once('listening', () => resolve()));
     const { port } = server.address() as AddressInfo;
     return `http://127.0.0.1:${String(port)}`;
   }

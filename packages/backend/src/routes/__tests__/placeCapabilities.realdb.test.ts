@@ -24,6 +24,7 @@ import type { AddressInfo } from 'node:net';
 import type { Place, PlaceCapability, PlaceClaim, PlaceWithDistancePage } from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -102,7 +103,7 @@ function tierOf(place: Place, key: string, verification: string): PlaceCapabilit
 
 /** Rows as the DATABASE holds them — the check that no response merely hid something. */
 async function storedTiers(placeId: string, key: string): Promise<string[]> {
-  const rows = await suite!.client<{ verification: string }[]>`
+  const rows = await requireSuite(suite).client<{ verification: string }[]>`
     SELECT verification FROM places_capabilities
     WHERE place_id = ${placeId} AND namespace || '.' || capability = ${key}
     ORDER BY verification
@@ -260,7 +261,7 @@ describe('PUT /places/{placeId}/capabilities/{key}', () => {
       method: 'PUT',
       ...asUser('user-passerby', json({ value: true })),
     });
-    await suite!.client`
+    await requireSuite(suite).client`
       UPDATE places_capabilities SET observed_at = ${TWO_YEARS_AGO.toISOString()}::timestamptz
       WHERE place_id = ${claimed.id} AND verification = 'community_reported'
     `;
@@ -347,7 +348,7 @@ describe('PUT /places/{placeId}/capabilities/{key}', () => {
     // FairCoin merchant. The strongest tier now decides, and its value has to
     // hold.
     const shop = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       {
         name: 'Deixa FairCoin',
         location: CATALUNYA,
@@ -355,7 +356,7 @@ describe('PUT /places/{placeId}/capabilities/{key}', () => {
       },
       CONTRIBUTOR,
     );
-    await createClaim(suite!.db, {
+    await createClaim(requireSuite(suite).db, {
       placeId: shop.id,
       oxyAccountId: 'user-shop',
       role: 'owner',
@@ -532,7 +533,7 @@ describe('DELETE /places/{placeId}/capabilities/{key}', () => {
     });
     expect(stranger.status).toBe(403);
 
-    await createClaim(suite!.db, {
+    await createClaim(requireSuite(suite).db, {
       placeId: verified.id,
       oxyAccountId: 'user-verified-owner',
       role: 'owner',
@@ -563,7 +564,7 @@ describe('the oxy_verified tier, across everything this suite did', () => {
     // The whole-database check, after every escalation attempt above. The only
     // `oxy_verified` row in this database is the one SQL inserted in setup: no
     // sequence of requests in this file created a second.
-    const rows = await suite!.client<{ id: string }[]>`
+    const rows = await requireSuite(suite).client<{ id: string }[]>`
       SELECT id FROM places_capabilities WHERE verification = 'oxy_verified'
     `;
     expect(rows.map((row) => row.id)).toEqual(['cap-oxy-verified']);
@@ -587,7 +588,7 @@ describe('claims as the escalation route', () => {
     // state parameter, so the claim lands pending and the assertion stays a
     // community report.
     const target = await createPlace(
-      suite!.db,
+      requireSuite(suite).db,
       { name: 'Bar Autoaprovat', location: CATALUNYA },
       CONTRIBUTOR,
     );
@@ -607,7 +608,7 @@ describe('claims as the escalation route', () => {
       'community_reported',
     ]);
 
-    const rows = await suite!.client<{ state: string }[]>`
+    const rows = await requireSuite(suite).client<{ state: string }[]>`
       SELECT state FROM places_claims WHERE place_id = ${target.id}
     `;
     expect(rows.map((row) => row.state)).toEqual(['pending']);

@@ -29,6 +29,7 @@ import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { statementFailure } from './statementFailure';
 import {
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   createSuiteDatabase,
   destroySuiteDatabase,
@@ -59,7 +60,7 @@ async function seedPlace(
   name: string,
   at: { latitude: number; longitude: number },
 ): Promise<void> {
-  await suite!.client`
+  await requireSuite(suite).client`
     INSERT INTO places (id, name, latitude, longitude)
     VALUES (${id}, ${name}, ${at.latitude}, ${at.longitude})
   `;
@@ -81,7 +82,7 @@ afterAll(async () => {
 
 describe('the generated geography point', () => {
   it('stores (longitude, latitude) in the order PostGIS reads it, proven by a real distance', async () => {
-    const [row] = await suite!.client<{ meters: number }[]>`
+    const [row] = await requireSuite(suite).client<{ meters: number }[]>`
       SELECT ST_Distance(
         (SELECT geo FROM places WHERE id = 'place-madrid'),
         (SELECT geo FROM places WHERE id = 'place-barcelona')
@@ -97,7 +98,7 @@ describe('the generated geography point', () => {
     // it, so a `(Point,4326)` typmod never reaches the DDL. The typmod would
     // only constrain writes and this column is GENERATED — nothing writes it —
     // so the claim it would have made is asserted HERE, against a real row.
-    const [row] = await suite!.client<{ type: string; srid: number }[]>`
+    const [row] = await requireSuite(suite).client<{ type: string; srid: number }[]>`
       SELECT ST_GeometryType(geo::geometry) AS type, ST_SRID(geo) AS srid
       FROM places WHERE id = 'place-madrid'
     `;
@@ -111,33 +112,33 @@ describe('the generated geography point', () => {
     // where both are writable has two representations of one fact that can
     // disagree, and the disagreement is invisible.
     const message = await statementFailure(
-      () => suite!.client`UPDATE places SET geo = NULL WHERE id = 'place-madrid'`,
+      () => requireSuite(suite).client`UPDATE places SET geo = NULL WHERE id = 'place-madrid'`,
     );
     expect(message).toMatch(/can only be updated to DEFAULT/);
   });
 
   it('follows its ordinates rather than keeping a stale copy', async () => {
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO places (id, name, latitude, longitude) VALUES ('place-moved', 'Moved', 40.4168, -3.7038)
     `;
-    await suite!.client`
+    await requireSuite(suite).client`
       UPDATE places SET latitude = ${BARCELONA.latitude}, longitude = ${BARCELONA.longitude}
       WHERE id = 'place-moved'
     `;
-    const [row] = await suite!.client<{ meters: number }[]>`
+    const [row] = await requireSuite(suite).client<{ meters: number }[]>`
       SELECT ST_Distance(
         (SELECT geo FROM places WHERE id = 'place-moved'),
         (SELECT geo FROM places WHERE id = 'place-barcelona')
       ) AS meters
     `;
     expect(row?.meters).toBeLessThan(1);
-    await suite!.client`DELETE FROM places WHERE id = 'place-moved'`;
+    await requireSuite(suite).client`DELETE FROM places WHERE id = 'place-moved'`;
   });
 });
 
 describe('the radius predicate', () => {
   it('orders nearest-first, finely enough to separate two cities 3 km apart in distance', async () => {
-    const rows = await suite!.client<{ id: string; meters: number }[]>`
+    const rows = await requireSuite(suite).client<{ id: string; meters: number }[]>`
       SELECT id,
              ST_Distance(geo, ST_SetSRID(ST_MakePoint(${MADRID.longitude}, ${MADRID.latitude}), 4326)::geography) AS meters
       FROM places
@@ -156,7 +157,7 @@ describe('the radius predicate', () => {
   });
 
   it('EXCLUDES places outside the radius rather than merely ranking them last', async () => {
-    const rows = await suite!.client<{ id: string }[]>`
+    const rows = await requireSuite(suite).client<{ id: string }[]>`
       SELECT id FROM places
       WHERE ST_DWithin(geo, ST_SetSRID(ST_MakePoint(${MADRID.longitude}, ${MADRID.latitude}), 4326)::geography, 100000)
     `;
@@ -169,14 +170,14 @@ describe('the radius predicate', () => {
     // predicate at all — on a three-row table it would otherwise always prefer
     // a scan, and the test would prove nothing either way.
     const plan = async (predicate: string): Promise<string> => {
-      const rows = await suite!.client.unsafe<{ 'QUERY PLAN': string }[]>(
+      const rows = await requireSuite(suite).client.unsafe<{ 'QUERY PLAN': string }[]>(
         `EXPLAIN (COSTS OFF) SELECT id FROM places WHERE ${predicate}`,
       );
       return rows.map((row) => row['QUERY PLAN']).join('\n');
     };
     const point = `ST_SetSRID(ST_MakePoint(${MADRID.longitude}, ${MADRID.latitude}), 4326)::geography`;
 
-    await suite!.client.unsafe('SET enable_seqscan = off');
+    await requireSuite(suite).client.unsafe('SET enable_seqscan = off');
     try {
       expect(await plan(`ST_DWithin(geo, ${point}, 1000)`)).toContain('places_geo_gist');
       // The whole reason `ST_Distance` is never the radius predicate in this
@@ -192,7 +193,7 @@ describe('the radius predicate', () => {
         ),
       ).toContain('places_geo_gist');
     } finally {
-      await suite!.client.unsafe('RESET enable_seqscan');
+      await requireSuite(suite).client.unsafe('RESET enable_seqscan');
     }
   });
 });
@@ -202,13 +203,13 @@ describe('the bounding-box predicate', () => {
     // A box over Catalonia. With the arguments transposed this is a valid
     // envelope somewhere in the Indian Ocean and returns nothing, which is why
     // the negative control below matters as much as the positive one.
-    const inside = await suite!.client<{ id: string }[]>`
+    const inside = await requireSuite(suite).client<{ id: string }[]>`
       SELECT id FROM places
       WHERE ST_Intersects(geo, ST_MakeEnvelope(1.0, 41.0, 3.0, 42.0, 4326)::geography)
     `;
     expect(inside.map((row) => row.id)).toEqual(['place-barcelona']);
 
-    const transposed = await suite!.client<{ id: string }[]>`
+    const transposed = await requireSuite(suite).client<{ id: string }[]>`
       SELECT id FROM places
       WHERE ST_Intersects(geo, ST_MakeEnvelope(41.0, 1.0, 42.0, 3.0, 4326)::geography)
     `;
@@ -219,10 +220,10 @@ describe('the bounding-box predicate', () => {
     // `170 → -170` is the 20° Pacific strip. Without the `::geography` cast
     // this same query returns everything EXCEPT that strip — silently, and with
     // Madrid, Barcelona and Lisbon in the answer.
-    await suite!.client`
+    await requireSuite(suite).client`
       INSERT INTO places (id, name, latitude, longitude) VALUES ('place-fiji', 'Suva', -18.1416, 178.4419)
     `;
-    const wrapped = await suite!.client<{ id: string }[]>`
+    const wrapped = await requireSuite(suite).client<{ id: string }[]>`
       SELECT id FROM places
       WHERE ST_Intersects(geo, ST_MakeEnvelope(170.0, -25.0, -170.0, -10.0, 4326)::geography)
     `;
