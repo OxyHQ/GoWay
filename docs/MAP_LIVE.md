@@ -361,6 +361,36 @@ only labelled as an estimate everywhere (`adapters/arrivalEstimates.ts`):
 Measured on 2026-10-11 at ~15:15 UTC: 246 subway trains and 244 AMB buses
 estimated, from 8 + 1 feeds.
 
+## Underground
+
+Reported trains run in tunnels too — Madrid's Cercanías under Sol, Barcelona's
+Rodalies under the Eixample and La Sagrera. A model standing on the street
+above a tunnel is as wrong as a subway train on it, so a train in a tunnel is
+**never drawn in 3D**: its flat glyph stays, dimmed to
+`UNDERGROUND_ICON_OPACITY` (0.55) at every zoom — below the street, not on it.
+
+Which track is underground is OpenStreetMap's, read from the basemap the map
+already draws (`components/map/railTunnels.ts`, `liveLayer.web.ts`): every
+railway in OpenMapTiles' `transportation` layer (`class` `rail` or `transit`)
+with `brunnel=tunnel` or a negative `layer`. The railway NEAREST the train
+(within 35 m of its on-track position) decides, so a surface line beside a
+tunnel portal wins where the train is on it. The basemap carries tunnels in
+its z13–14 tiles; where none is loaded the train keeps its last verdict
+(unknown at first: drawn as on the surface). GTFS says nothing about it:
+Renfe's, AMB's, the MTA subway's and LIRR's static files have no
+`levels.txt` (checked 2026-10-11), and Renfe's `stops.txt` carries only a name,
+a position and wheelchair access — so OSM is the source. Buses are not classified (road tunnels are short and rare on
+their routes).
+
+**Glyph and model.** With the 3D city on, from z15 a train's, bus's or ship's
+model REPLACES its glyph (blended over z14–15): a flat to-scale symbol over a
+3D street reads as a second vehicle floating above it, which is what was seen
+at Sol. Farther out, where a model is a few pixels, the glyph stays. The
+train glyph is 1:8 (a 100 m train ~12 m wide at street zoom), a bus 1:3.4.
+The models themselves are real size — one unit is one metre, pinned per fleet
+in `fleets.test.ts`, and the anchor's metre in `liveAnchor.test.ts` against
+MapLibre's `MercatorCoordinate` at Madrid's latitude.
+
 ## Vehicles (`features/live/fleets.ts`)
 
 A **registry**, so a new operator or fleet is a line of data: each fleet is a

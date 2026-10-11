@@ -6,7 +6,7 @@
  *
  * Reached ONLY through `import('./liveLayer.web')` in `MapCanvas.web.tsx`,
  * and only when the canvas is given a `live` layer — which `ExploreScreen`
- * gives only when `lib/map/liveFlag.ts` says so. Like `city3dLayer.web.ts` its
+ * gives only while the registry's `live` is on. Like `city3dLayer.web.ts` its
  * `maplibre-gl` import is TYPE-ONLY: it operates on the map `MapCanvas`
  * created and passes in. The 3D pass loads through the one three.js chunk
  * (`components/engine3d/lazyChunk.ts`); this file imports the engine folders
@@ -27,16 +27,25 @@
  * continental zoom a moving aircraft crosses a pixel every few seconds — and
  * only while {@link MapLiveLayer.animating} says something moves. Otherwise
  * the loop sleeps until the layer notifies. A hidden tab draws nothing.
+ *
+ * ## Underground
+ *
+ * A train in a tunnel is not drawn standing on the street. Which railway is
+ * below ground is the basemap's own OpenStreetMap data (`brunnel=tunnel`,
+ * negative `layer`; `railTunnels.ts`): the nearest railway to each train
+ * decides. An underground train gets no 3D model, and its flat glyph is
+ * dimmed — below the street, not on it (`docs/MAP_LIVE.md` → Underground).
  */
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 
-import { GOWAY_LAYER_PREFIX } from '@/lib/map/provider';
-import { FONT_STACKS } from '@/lib/map/style/schema';
+import { GOWAY_BASEMAP_SOURCE_ID, GOWAY_LAYER_PREFIX } from '@/lib/map/provider';
+import { FONT_STACKS, OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
 
 import type { City3dHandle } from './city3dLayer.web';
 // Type-only, as in `city3dLayer.web.ts`: the engine chunk imports these at
 // runtime, and a module two lazy chunks share is hoisted into `__common`.
 import type { LivePass } from './engine/live3d/livePass';
+import { RailIndex, type RailFeature, railLinesOf } from './railTunnels';
 import { reportMapDefect } from './shared';
 import type { MapLiveGlyph, MapLiveLayer, MapLivePoint } from './types';
 
@@ -46,6 +55,8 @@ export const LIVE_RING_LAYER_ID = `${GOWAY_LAYER_PREFIX}live-ring`;
 
 /** The tap radius around a glyph, in CSS pixels. */
 const PICK_PAD_PX = 14;
+/** An underground train's flat glyph: dimmed, below the street. */
+export const UNDERGROUND_ICON_OPACITY = 0.55;
 /** Glyph bitmaps are drawn at this many device pixels per CSS pixel. */
 const GLYPH_PIXEL_RATIO = 2;
 const GLYPH_CSS_PX = 26;
@@ -107,10 +118,47 @@ export function scaleAtZoom13(lengthMeters: number, glyphPx: number): number {
   return lengthMeters / metresPerPixel / glyphPx;
 }
 
+/**
+ * How much of a glyph shows. With the 3D pass drawing a vehicle, the model IS
+ * the vehicle: from street zooms ({@link MODEL_REPLACES_GLYPH_ZOOM}) a
+ * train's, bus's or ship's glyph gives way to it entirely — a flat, to-scale
+ * symbol over a 3D street reads as a second vehicle floating over it — and an
+ * airborne aircraft's becomes its faint ground shadow. Farther out, where a
+ * model is a few pixels, the glyph stays. An underground train has no model;
+ * its glyph is dimmed at every zoom.
+ */
+function iconFactor(
+  point: MapLivePoint,
+  options: { threeD: boolean; underground?: ReadonlySet<string> },
+  airborne: boolean,
+  range: 'near' | 'far',
+): number {
+  if (options.underground?.has(point.id)) return UNDERGROUND_ICON_OPACITY;
+  if (!options.threeD) return 1;
+  if (airborne) return 0.4;
+  return range === 'near' && point.model ? 0 : 1;
+}
+
+/** What the 3D pass draws: every point but the trains in a tunnel. Exported for the tests. */
+export function surfacePoints(
+  points: readonly MapLivePoint[],
+  underground: ReadonlySet<string>,
+): readonly MapLivePoint[] {
+  return underground.size === 0 ? points : points.filter((point) => !underground.has(point.id));
+}
+
+/** From this zoom a 3D model replaces its vehicle's glyph (blended over one zoom level). */
+export const MODEL_REPLACES_GLYPH_ZOOM = 15;
+
 /** The GeoJSON the source is set to. Exported for the tests. */
 export function featureCollection(
   points: readonly MapLivePoint[],
-  options: { glyphs: Readonly<Record<string, MapLiveGlyph>>; threeD: boolean },
+  options: {
+    glyphs: Readonly<Record<string, MapLiveGlyph>>;
+    threeD: boolean;
+    /** Ids of trains on underground track: flat and dimmed, never a 3D model. */
+    underground?: ReadonlySet<string>;
+  },
 ): GeoJSON.FeatureCollection<GeoJSON.Point> {
   const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
   for (const point of points) {
@@ -129,12 +177,14 @@ export function featureCollection(
         id: point.id,
         icon: imageName(point.glyph, directional, point.tint, point.approximate, point.estimated),
         heading: directional ? point.heading : 0,
-        // With the 3D pass drawing a vehicle, its glyph steps back: an
-        // airborne aircraft's becomes its shadow, a train's or bus's a faint
-        // footprint under its model.
-        opacity:
-          Math.max(0, Math.min(1, point.opacity)) *
-          (options.threeD && (airborne || glyphPx) ? 0.4 : 1),
+        // The label's opacity: freshness alone.
+        opacity: Math.max(0, Math.min(1, point.opacity)),
+        // The glyph's, near and far: a model only replaces it where the
+        // model is big enough to see (`icon-opacity` blends them by zoom).
+        iconNear:
+          Math.max(0, Math.min(1, point.opacity)) * iconFactor(point, options, airborne, 'near'),
+        iconFar:
+          Math.max(0, Math.min(1, point.opacity)) * iconFactor(point, options, airborne, 'far'),
         label: point.label ?? '',
         selected: point.selected === true,
         // Trains and buses grow to their real length at street zooms.
@@ -226,7 +276,9 @@ function glyphImage(glyph: MapLiveGlyph, variant: GlyphVariant): ImageData | nul
   const scaled = SCALED_GLYPH_PX[glyph.shape];
   if (scaled && directional) {
     // A long silhouette: `scaled` CSS px long, a quarter of that wide (trains), more for buses.
-    const width = (glyph.shape === 'train' ? 18 : 18) * GLYPH_PIXEL_RATIO;
+    // Narrow enough to read as a train or a bus at its real length (a five-car
+    // train is ~100 m long and 3 m wide; a glyph 1:8 still shows its line colour).
+    const width = (glyph.shape === 'train' ? 12 : 14) * GLYPH_PIXEL_RATIO;
     const height = scaled * GLYPH_PIXEL_RATIO;
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -428,7 +480,15 @@ export function attachLive(
       'text-allow-overlap': false,
     },
     paint: {
-      'icon-opacity': ['get', 'opacity'],
+      'icon-opacity': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        MODEL_REPLACES_GLYPH_ZOOM - 1,
+        ['get', 'iconFar'],
+        MODEL_REPLACES_GLYPH_ZOOM,
+        ['get', 'iconNear'],
+      ],
       'text-opacity': ['get', 'opacity'],
       'text-color': ink,
       'text-halo-color': halo,
@@ -441,6 +501,47 @@ export function attachLive(
   let detached = false;
   let points: readonly MapLivePoint[] = [];
   let pointsAt = 0;
+
+  // ── Underground: the basemap's railways, re-read as its tiles load ───────
+  let rails: RailIndex | null = null;
+  let railsTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Each train's last verdict, kept where the loaded tiles say nothing. */
+  const verdicts = new Map<string, boolean>();
+  let underground: ReadonlySet<string> = new Set();
+  const readRails = () => {
+    railsTimer = null;
+    if (detached) return;
+    try {
+      const features = map.querySourceFeatures(GOWAY_BASEMAP_SOURCE_ID, {
+        sourceLayer: OPENMAPTILES_SOURCE_LAYERS.transportation,
+        filter: ['in', ['get', 'class'], ['literal', ['rail', 'transit']]],
+      }) as unknown as RailFeature[];
+      rails = new RailIndex(railLinesOf(features));
+    } catch {
+      // No basemap source (a style swap in flight): keep what we had.
+    }
+    lastPush = 0;
+    wake();
+  };
+  const onSourceData = (event: { sourceId?: string; isSourceLoaded?: boolean }) => {
+    if (event.sourceId !== GOWAY_BASEMAP_SOURCE_ID || !event.isSourceLoaded) return;
+    if (railsTimer === null) railsTimer = setTimeout(readRails, 250);
+  };
+  /** The trains on underground track now; a verdict sticks until a railway says otherwise. */
+  const undergroundOf = (sampled: readonly MapLivePoint[]): ReadonlySet<string> => {
+    const out = new Set<string>();
+    for (const point of sampled) {
+      if (layer.glyphs[point.glyph]?.shape !== 'train') continue;
+      const verdict = rails?.underground(point.coordinate.latitude, point.coordinate.longitude);
+      if (verdict !== null && verdict !== undefined) verdicts.set(point.id, verdict);
+      if (verdicts.get(point.id)) out.add(point.id);
+    }
+    if (verdicts.size > 4 * sampled.length + 256) {
+      const live = new Set(sampled.map((point) => point.id));
+      for (const id of verdicts.keys()) if (!live.has(id)) verdicts.delete(id);
+    }
+    return out;
+  };
 
   const sampleNow = (): readonly MapLivePoint[] => {
     const now = Date.now();
@@ -467,7 +568,8 @@ export function attachLive(
         estimated: point.estimated,
       });
     }
-    source.setData(featureCollection(points, { glyphs: layer.glyphs, threeD }));
+    underground = undergroundOf(points);
+    source.setData(featureCollection(points, { glyphs: layer.glyphs, threeD, underground }));
     lastPush = Date.now();
   };
 
@@ -510,6 +612,8 @@ export function attachLive(
     wake();
   };
   map.on('moveend', reportViewport);
+  map.on('sourcedata', onSourceData);
+  readRails();
   // Development only: where the drawn points are on screen, so a console (or a
   // headless browser) can find and tap one. Never in a production build.
   if (typeof __DEV__ !== 'undefined' && __DEV__) {
@@ -517,7 +621,14 @@ export function attachLive(
       onScreen: () =>
         sampleNow().map((point) => {
           const at = map.project([point.coordinate.longitude, point.coordinate.latitude]);
-          return { id: point.id, glyph: point.glyph, x: at.x, y: at.y, altitude: point.altitude };
+          return {
+            id: point.id,
+            glyph: point.glyph,
+            x: at.x,
+            y: at.y,
+            altitude: point.altitude,
+            underground: underground.has(point.id),
+          };
         }),
       pick: (x: number, y: number) => handle.pick({ x, y }),
     };
@@ -550,7 +661,8 @@ export function attachLive(
         const pass: LivePass = createLivePass({
           glyphs: layer.glyphs,
           models: layer.models ?? {},
-          points: sampleNow,
+          // A train in a tunnel stays a flat glyph: never a model on the street.
+          points: () => surfacePoints(sampleNow(), underground),
           // With 3D terrain on, the ground is the elevation MapLibre draws.
           groundAt: () =>
             map.getTerrain()
@@ -621,6 +733,8 @@ export function attachLive(
       removePass?.();
       removePass = null;
       map.off('moveend', reportViewport);
+      map.off('sourcedata', onSourceData);
+      if (railsTimer !== null) clearTimeout(railsTimer);
       if (typeof __DEV__ !== 'undefined' && __DEV__)
         delete (globalThis as { __gowayLive?: unknown }).__gowayLive;
       if (typeof document !== 'undefined')

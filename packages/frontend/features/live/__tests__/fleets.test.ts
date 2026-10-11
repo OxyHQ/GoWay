@@ -99,21 +99,29 @@ describe('the fleet registry', () => {
     expect(painted).toBeGreaterThan(0);
   });
 
-  test('models are built nose towards +y, on the ground, at their real size', () => {
-    const model = FLEETS['mta-bus'];
-    const geometry = build(model, 'near');
-    let minY = 0;
-    let maxY = 0;
-    let minZ = 9;
-    let maxZ = 0;
-    for (let i = 0; i < geometry.positions.length; i += 3) {
-      minY = Math.min(minY, geometry.positions[i + 1] ?? 0);
-      maxY = Math.max(maxY, geometry.positions[i + 1] ?? 0);
-      minZ = Math.min(minZ, geometry.positions[i + 2] ?? 9);
-      maxZ = Math.max(maxZ, geometry.positions[i + 2] ?? 0);
+  test('every ground vehicle is built nose towards +y, on the ground, at its real size', () => {
+    // The 3D pass draws trains and buses at scale 1 (`livePass.ts`), and the
+    // anchor turns a metre into mercator with MapLibre's own factor at the
+    // vehicle's latitude (`liveAnchor.test.ts`, Madrid): so a car's bounds ARE
+    // its size — one unit, one metre.
+    for (const [key, model] of Object.entries(FLEETS)) {
+      if (model.form === 'aircraft' || model.form === 'vessel') continue;
+      const { positions } = build(model, 'near');
+      const min = [Infinity, Infinity, Infinity];
+      const max = [-Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < positions.length; i += 3) {
+        for (let axis = 0; axis < 3; axis++) {
+          min[axis] = Math.min(min[axis] as number, positions[i + axis] as number);
+          max[axis] = Math.max(max[axis] as number, positions[i + axis] as number);
+        }
+      }
+      const size = (axis: number) => (max[axis] as number) - (min[axis] as number);
+      const near = (actual: number, expected: number) => Math.abs(actual / expected - 1) <= 0.06;
+      // Its length runs along y, its width along x, up is z from the ground.
+      expect({ key, length: near(size(1), model.carLength) }).toEqual({ key, length: true });
+      expect({ key, width: near(size(0), model.width) }).toEqual({ key, width: true });
+      expect({ key, height: near(max[2] as number, model.height) }).toEqual({ key, height: true });
+      expect({ key, grounded: (min[2] as number) >= -0.01 }).toEqual({ key, grounded: true });
     }
-    expect(maxY - minY).toBeCloseTo(model.carLength, 0); // its length runs along y
-    expect(maxZ).toBeCloseTo(model.height, 0);
-    expect(minZ).toBeGreaterThanOrEqual(-0.01);
   });
 });
