@@ -33,7 +33,7 @@
  * where it is free.
  */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useWindowDimensions, View } from 'react-native';
+import { Platform, useWindowDimensions, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -52,6 +52,7 @@ import {
   type MapApi,
   type MapCanvasError,
   type MapFitOptions,
+  type MapLiveLayer,
   type MapMarker,
   type MapModel,
   type MapPressEvent,
@@ -67,6 +68,7 @@ import { isCity3dRequested } from '@/lib/map/city3dFlag';
 import { isFlyoverRequested } from '@/lib/map/flyoverFlag';
 import { isLandmarksRequested } from '@/lib/map/landmarksFlag';
 import { useTranslation } from '@/lib/i18n';
+import { isLiveRequested, MAP_LIVE_ENABLED } from '@/lib/map/liveFlag';
 import type { LocationErrorReason } from '@/lib/map/useUserLocation';
 
 import { slotName } from '@/features/directions/stops';
@@ -81,6 +83,23 @@ import { useExplore } from './useExplore';
 
 /** Zoom the camera settles at when the user asks to be found. */
 const MY_LOCATION_ZOOM = 15;
+
+/**
+ * GoWay Live (`docs/MAP_LIVE.md`): real aircraft, transit, bike share and
+ * ships over the map. Off unless `lib/map/liveFlag.ts` says this page asked
+ * for it, and web only — the native canvas does not draw a live layer yet.
+ * With it off, `LiveHost` is `null` and its chunk (the socket client, the
+ * live protocol, the panel) is never requested.
+ */
+const LiveHost =
+  Platform.OS === 'web' &&
+  isLiveRequested({
+    enabled: MAP_LIVE_ENABLED,
+    development: __DEV__,
+    search: typeof window !== 'undefined' ? (window.location?.search ?? '') : '',
+  })
+    ? lazy(() => import('@/features/live/LiveHost'))
+    : null;
 /** Below this the compass is effectively north and the reset control is noise. */
 const BEARING_EPSILON = 1;
 /** Horizontal room the location notice leaves for the controls column. */
@@ -354,6 +373,8 @@ export default function ExploreScreen({
   );
   // While the flyover flies or the tour tours, the map is the whole screen.
   const immersive = flying || tourId !== null;
+  // Set by `LiveHost` once it has a layer to draw; always `null` with live off.
+  const [liveLayer, setLiveLayer] = useState<MapLiveLayer | null>(null);
   // Only ever armed by pressing "My location" or asking for directions. The
   // canvas refuses to draw the dot without a granted permission anyway; not
   // arming it until then keeps the two rules independent of each other.
@@ -481,6 +502,7 @@ export default function ExploreScreen({
           markers={markers}
           renderMarker={renderMarker}
           overlays={overlays}
+          live={liveLayer}
           onMarkerPress={handleMarkerPress}
           onReady={handleMapReady}
           onPress={handleMapPress}
@@ -495,6 +517,17 @@ export default function ExploreScreen({
         />
 
         <MapTopBar />
+
+        {LiveHost ? (
+          <Suspense fallback={null}>
+            <LiveHost
+              onLayer={setLiveLayer}
+              top={areaTop}
+              right={sideGap}
+              compact={layout === 'sheet'}
+            />
+          </Suspense>
+        ) : null}
 
         {/* "Search this area" is Bloom's own control, and it arms itself from the
           `source`/`isFinal` signal on the viewport event rather than from every

@@ -99,6 +99,7 @@ import {
   streetSceneReportSchema,
   structuredGeocodeQuerySchema,
   TRAVEL_MODES,
+  liveSourcePageSchema,
 } from './contract';
 import type {
   AccountClaimListQuery,
@@ -179,6 +180,7 @@ import type {
   RouteResponse,
   SearchQuery,
   SearchResults,
+  LiveSourcePage,
   StreetCoverage,
   StreetCoverageQuery,
   StreetSceneManifest,
@@ -762,6 +764,20 @@ export interface GoWayCapturesApi {
   remove(assetId: string, options?: GoWayRequestOptions): Promise<void>;
 }
 
+/**
+ * GoWay Live: real-time feeds GoWay re-serves (aircraft, transit, bike share,
+ * ships).
+ *
+ * `sources` is the HTTP half — which feeds this deployment carries, under what
+ * licence and credit, and how fresh each is. The positions themselves stream
+ * over Socket.IO; `@goway.to/sdk/live` has the protocol (namespace, events,
+ * room tiles and message parsers). A deployment with live switched off
+ * answers `sources` with `GoWayUnavailableError`.
+ */
+export interface GoWayLiveApi {
+  sources(options?: GoWayRequestOptions): Promise<LiveSourcePage>;
+}
+
 export interface GoWayClient {
   readonly places: GoWayPlacesApi;
   readonly categories: GoWayCategoriesApi;
@@ -772,6 +788,7 @@ export interface GoWayClient {
   readonly routes: GoWayRoutesApi;
   readonly captures: GoWayCapturesApi;
   readonly street3d: GoWayStreet3dApi;
+  readonly live: GoWayLiveApi;
   readonly links: GoWayLinks;
 }
 
@@ -1970,6 +1987,15 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
       ),
   });
 
+  const live: GoWayLiveApi = Object.freeze({
+    sources: async (callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        { method: 'GET', path: '/live/sources', signal: callOptions.signal },
+        liveSourcePageSchema,
+      ),
+  });
+
   return Object.freeze({
     places,
     categories,
@@ -1980,6 +2006,7 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     routes,
     captures,
     street3d,
+    live,
     links: createLinks(webBaseUrl),
   });
 }

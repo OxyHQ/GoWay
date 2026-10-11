@@ -57,6 +57,11 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   rather than read from the basemap, the lane graph, IDM car-following and
   junction reservations, signals and crossings, the budget, GPU interpolation,
   and the honesty rule — always labelled, never read.
+- [`MAP_LIVE.md`](MAP_LIVE.md) — GoWay Live: real aircraft, transit,
+  bike-share and ships from open real-time feeds — which sources, under which
+  licences (and which were rejected), the adapter/hub/socket architecture,
+  honest motion and staleness, rate limits, cost, and what production needs.
+  Off by default.
 - [`PLACE_NAMES.md`](PLACE_NAMES.md) — how a place is named in more than one
   language, why `places.name` stayed, and what that means for duplicate
   detection, search, the SDK contract and the OpenStreetMap re-import.

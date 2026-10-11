@@ -73,6 +73,8 @@ const ENGINES = [
   'components/map/engine/cityLife/lifeRenderer.ts',
   // How models (and landmarks) are lit by day and night, imported only by `models.ts`.
   'components/map/engine/city3d/modelLook.ts',
+  // GoWay Live's 3D shapes: a pass the city engine draws (`docs/MAP_LIVE.md`).
+  'components/map/engine/live3d/livePass.ts',
 ];
 const CHUNK = 'components/engine3d/lazyChunk.ts';
 /**
@@ -123,7 +125,8 @@ describe('the three.js chunk', () => {
       .filter((f) => f.path !== CHUNK)
       .filter(
         (f) =>
-          runtimeImports(f.text, /(sparkEngine|city3d\/cityEngine|cityLife\/lifeRenderer)$/)
+          runtimeImports(f.text, /(sparkEngine|city3d\/cityEngine|cityLife\/lifeRenderer|live3d\/livePass)$/,
+          )
             .length > 0,
       )
       .map((f) => f.path);
@@ -158,6 +161,12 @@ describe('the three.js chunk', () => {
     expect(runtimeImports(adapter?.text ?? '', /engine\/(city3d|cityLife)\//)).toEqual([]);
   });
 
+  test('the live adapter imports the engine folders type-only', () => {
+    const adapter = files.find((f) => f.path === 'components/map/liveLayer.web.ts');
+    expect(adapter).toBeDefined();
+    expect(runtimeImports(adapter?.text ?? '', /engine\/(city3d|live3d)\//)).toEqual([]);
+  });
+
   test('lazyChunk.ts is only ever imported dynamically', () => {
     const statics = files.filter((f) =>
       /^\s*import\s+(?!type\b)[^;]*?from\s+['"][^'"]*engine3d\/lazyChunk['"]/m.test(f.text),
@@ -169,6 +178,7 @@ describe('the three.js chunk', () => {
       .filter((f) => /import\(\s*['"][^'"]*engine3d\/lazyChunk['"]\s*\)/.test(f.text));
     expect(dynamics.map((f) => f.path).sort()).toEqual([
       'components/map/city3dLayer.web.ts',
+      'components/map/liveLayer.web.ts',
       'components/street3d/SceneViewer.web.tsx',
     ]);
   });

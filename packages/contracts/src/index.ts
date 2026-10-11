@@ -37,6 +37,8 @@ export * from './street3d';
 export * from './model';
 export * from './search';
 export * from './directions';
+export * from './live-source';
+export * from './live';
 export * from './health';
 export * from './json-schema';
 export * from './base-path';

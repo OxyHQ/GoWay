@@ -222,6 +222,19 @@ export interface CityEngineStats {
   nightFactor: number;
 }
 
+/**
+ * Another feature's objects, drawn with THIS engine's renderer in a style
+ * layer of their own (`city3dLayer.web.ts → addPass`) — one renderer, one
+ * depth buffer, as "One engine, one scene" in `docs/MAP_3D_CITY.md` asks.
+ * GoWay Live's 3D shapes are one (`engine/live3d/livePass.ts`).
+ */
+export interface CityPass {
+  readonly id: string;
+  /** Draw with `renderer` (its GL state already reset) for this frame's camera. */
+  render(renderer: THREE.WebGLRenderer, view: CityView): void;
+  dispose(): void;
+}
+
 export interface CityEngine {
   /** The host's offscreen pass, before its framebuffer is bound (city sky: the shadow map). */
   prerender(view: CityView): void;
@@ -244,6 +257,8 @@ export interface CityEngine {
   readonly nightFactor: { readonly value: number };
   /** Draw the models — from their own layer, above the overlays (`city3dLayer.web.ts`). */
   renderModels(view: CityView): void;
+  /** Draw a pass with this engine's renderer. Not faded with the buildings: a pass owns its own visibility. */
+  renderPass(pass: CityPass, view: CityView): void;
   /** The map's light, re-applied whenever `building-3d`'s would change (the sun). */
   setLight(light: CityLight): void;
   setPalette(palette: CityPalette): void;
@@ -997,6 +1012,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     renderModels(view) {
       if (disposed) return;
       drawModels(view);
+    },
+
+    renderPass(pass, view) {
+      if (disposed) return;
+      // The same reset as `render`: the map changed GL state since three last looked.
+      renderer.resetState();
+      pass.render(renderer, view);
     },
 
     setGround(sample) {

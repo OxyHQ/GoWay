@@ -67,7 +67,8 @@ export type ApiTag =
   | 'Search'
   | 'Directions'
   | 'Captures'
-  | 'Street 3D';
+  | 'Street 3D'
+  | 'Live';
 
 export interface ApiOperation {
   readonly operationId: string;
@@ -1001,6 +1002,18 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     body: 'StreetSceneReportInput',
     responses: { 201: 'StreetSceneReport', 200: 'StreetSceneReport' },
     errors: [...WRITE_ERRORS, 'not_found'],
+  },
+  // ── Live ──────────────────────────────────────────────────────────────────
+  {
+    operationId: 'listLiveSources',
+    method: 'get',
+    path: '/live/sources',
+    tag: 'Live',
+    summary:
+      'The real-time feeds this deployment re-serves, with their licence, credit and freshness. Positions themselves travel over Socket.IO (`/live`).',
+    auth: 'public',
+    responses: { 200: 'LiveSourcePage' },
+    errors: ['service_unavailable'],
   },
 ];
 

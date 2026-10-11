@@ -135,6 +135,7 @@ async function callEverything(): Promise<Set<string>> {
     goway.street3d.coverage(box),
     goway.street3d.scene('scene1'),
     goway.street3d.report('scene1', { reason: 'privacy' }),
+    goway.live.sources(),
   ];
   await Promise.allSettled(calls);
   return issued;

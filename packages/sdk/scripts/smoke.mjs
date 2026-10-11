@@ -88,6 +88,10 @@ const EXPECTED_FILES = [
   'package/dist/index.d.cts',
   'package/dist/index.d.ts',
   'package/dist/index.js',
+  'package/dist/live.cjs',
+  'package/dist/live.d.cts',
+  'package/dist/live.d.ts',
+  'package/dist/live.js',
   'package/package.json',
 ];
 
@@ -173,7 +177,16 @@ async function main() {
 
   try {
     // ── Stage and pack ────────────────────────────────────────────────────────
-    for (const file of ['index.js', 'index.cjs', 'index.d.ts', 'index.d.cts']) {
+    for (const file of [
+      'index.js',
+      'index.cjs',
+      'index.d.ts',
+      'index.d.cts',
+      'live.js',
+      'live.cjs',
+      'live.d.ts',
+      'live.d.cts',
+    ]) {
       await stat(join(root, 'dist', file)).catch(() =>
         fail(`dist/${file} is missing — run the build first`),
       );
@@ -311,6 +324,14 @@ async function main() {
     );
     run(process.execPath, ['program.cjs'], consumer, 'node CJS require');
     pass('node CJS require: page parse, iterate, validation, deep link');
+
+    // The second entry point, `@goway.to/sdk/live`, through the package's own
+    // `exports` map in both module systems.
+    await writeFile(join(consumer, 'live.mjs'), CONSUMER_LIVE_ESM);
+    await writeFile(join(consumer, 'live.cjs'), CONSUMER_LIVE_CJS);
+    run(process.execPath, ['live.mjs'], consumer, 'node ESM import of /live');
+    run(process.execPath, ['live.cjs'], consumer, 'node CJS require of /live');
+    pass('@goway.to/sdk/live: ESM and CJS resolve, parse a snapshot, refuse junk');
 
     // ── 4. Bun ────────────────────────────────────────────────────────────────
     run('bun', ['program.mjs'], consumer, 'bun import');
@@ -498,6 +519,31 @@ const CONSUMER_CJS = `${SHARED_PROGRAM}
 const sdk = require('@goway.to/sdk');
 exercise(sdk).catch((error) => { console.error(error); process.exit(1); });
 `;
+
+const LIVE_PROGRAM = `
+const snapshot = {
+  tile: '7/64/47',
+  kind: 'aircraft',
+  at: '2026-10-11T12:00:00.000Z',
+  entities: [{
+    kind: 'aircraft', id: 'adsb-lol:34535a', sourceId: 'adsb-lol',
+    position: { latitude: 41.29, longitude: 0.04 }, headingDegrees: 98.8, speedMetersPerSecond: 259.2,
+    observedAt: '2026-10-11T11:59:59.000Z', icao24: '34535a', callsign: 'VLG12PY', registration: null,
+    typeCode: 'A321', altitudeMeters: 9251, altitudeReference: 'geometric', verticalRateMetersPerSecond: -7.3,
+    onGround: false,
+  }],
+};
+if (live.LIVE_SOCKET_NAMESPACE !== '/live') throw new Error('namespace');
+if (live.parseLiveSnapshot(snapshot)?.entities.length !== 1) throw new Error('snapshot did not parse');
+if (live.parseLiveSnapshot({ nonsense: true }) !== null) throw new Error('junk parsed');
+if (live.liveTileOf({ latitude: 41.39, longitude: 2.17 }) !== '7/64/47') throw new Error('tile');
+`;
+
+const CONSUMER_LIVE_ESM = `import * as live from '@goway.to/sdk/live';
+${LIVE_PROGRAM}`;
+
+const CONSUMER_LIVE_CJS = `const live = require('@goway.to/sdk/live');
+${LIVE_PROGRAM}`;
 
 const BUNDLE_ENTRY = `
 import { createGoWayClient } from '@goway.to/sdk';

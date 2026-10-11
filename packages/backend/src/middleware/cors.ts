@@ -249,6 +249,11 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
     path: '/street3d/scenes/:sceneId',
     because: 'one published Street 3D scene manifest; a viewer embed with no account',
   },
+  {
+    method: 'GET',
+    path: '/live/sources',
+    because: "the live layer's feeds, their licences and freshness; the same for every caller",
+  },
 ];
 
 /**

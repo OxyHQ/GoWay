@@ -1,0 +1,258 @@
+/**
+ * Every real-time feed GoWay knows how to re-serve, with its terms.
+ *
+ * A source is listed here only after its licence was read and found to allow
+ * what GoWay does with it: normalise it and re-serve it, publicly, to every
+ * browser viewing the map, from a service that may be commercial. The
+ * evidence for each — licence, the decisive sentence of its terms, rate
+ * limits, conditions, and the feeds that were REJECTED and why — is
+ * `docs/MAP_LIVE.md` → Sources. Adding a source means adding it there first.
+ *
+ * Being listed is not being on: a deployment turns each one on by id in
+ * `LIVE_SOURCES` (`config/live.ts`), and several carry conditions production
+ * must meet first (`docs/MAP_LIVE.md` → What production needs).
+ *
+ * `attribution` is the credit the licence asks for; the client shows it
+ * whenever that source's data is drawn (`MapAttribution`). Where a licence
+ * forbids using the operator's marks (Citi Bike's), the credit and the name
+ * are generic.
+ */
+
+import type { GeoBoundingBox } from '@goway/contracts';
+import { createDigitrafficAdapter } from './adapters/digitraffic';
+import { createGbfsAdapter } from './adapters/gbfs';
+import { createGeotrenAdapter } from './adapters/geotren';
+import { createGtfsRealtimeAdapter } from './adapters/gtfsRealtime';
+import { createReadsbAdapter } from './adapters/readsb';
+import type { LiveSourceDefinition } from './types';
+
+/** Spain, mainland and Balearics: Renfe's Cercanías/Rodalies networks. */
+const SPAIN: GeoBoundingBox = { west: -9.6, south: 35.8, east: 4.6, north: 44.0 };
+/** Catalonia: FGC's lines. */
+const CATALONIA: GeoBoundingBox = { west: 0.1, south: 40.5, east: 3.4, north: 42.9 };
+/** New York City and its bike-share service area (Jersey City, Hoboken). */
+const NEW_YORK_CITY: GeoBoundingBox = { west: -74.3, south: 40.45, east: -73.65, north: 40.95 };
+/** The MTA's railroads: Long Island to the Hudson Valley and Connecticut. */
+const NEW_YORK_REGION: GeoBoundingBox = { west: -74.5, south: 40.4, east: -71.8, north: 41.9 };
+/** The Baltic Sea and the Gulf of Finland, where Finland's AIS network hears ships. */
+const BALTIC: GeoBoundingBox = { west: 9.0, south: 53.0, east: 31.0, north: 66.5 };
+
+const CC_BY_4: LiveSourceDefinition['licence'] = {
+  label: 'CC BY 4.0',
+  href: 'https://creativecommons.org/licenses/by/4.0/',
+};
+const MTA_TERMS: LiveSourceDefinition['licence'] = {
+  label: 'MTA data feed terms',
+  href: 'https://www.mta.info/developers/terms-and-conditions',
+};
+
+/** Renfe's `vehicle.label` is `<line>-<train>[-PLATF.(n)]`: the line is the first part. */
+function renfeLine(label: string | undefined): string | null {
+  const line = label?.split('-')[0]?.trim();
+  return line && /^[A-Z][A-Z0-9]{0,5}$/i.test(line) ? line : null;
+}
+
+/** Renfe's train number, without the line and the platform suffix. */
+function renfeTrain(label: string | undefined): string | null {
+  const train = label?.split('-')[1]?.trim();
+  return train && /^\d{2,6}$/.test(train) ? train : null;
+}
+
+/** Bus Time's vehicle ids are `<agency>_<fleet number>`: riders read the number. */
+function mtaBusNumber(vehicleId: string | undefined): string | null {
+  const number = vehicleId?.split('_').pop()?.trim();
+  return number && /^\d{1,6}$/.test(number) ? number : null;
+}
+
+export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
+  {
+    id: 'adsb-lol',
+    kind: 'aircraft',
+    name: 'Aircraft — adsb.lol',
+    attribution: { label: '© adsb.lol contributors', href: 'https://adsb.lol' },
+    licence: { label: 'ODbL 1.0', href: 'https://opendatacommons.org/licenses/odbl/1-0/' },
+    coverage: null,
+    defaultUrl: 'https://api.adsb.lol',
+    requiresKey: false,
+    // Per poll at most `LIVE_MAX_REGIONS_PER_POLL` circles, one request each,
+    // sequentially, stopping at the first 429. The aggregator's limit is
+    // "dynamic"; measured from one IP on 2026-10-11, polling every 10 s drew a
+    // 429 about once a minute, so this is kept at 15 s.
+    pollIntervalSeconds: 15,
+    partialPolls: true,
+    staleAfterSeconds: 45,
+    dropAfterSeconds: 120,
+    create: (settings) => createReadsbAdapter('adsb-lol', settings),
+  },
+  {
+    id: 'renfe-cercanias',
+    kind: 'transit',
+    name: 'Trains — Renfe Cercanías and Rodalies',
+    attribution: { label: 'Origen de los datos: Renfe Operadora', href: 'https://data.renfe.com' },
+    licence: CC_BY_4,
+    coverage: SPAIN,
+    defaultUrl: 'https://gtfsrt.renfe.com/vehicle_positions.pb',
+    requiresKey: false,
+    // Renfe republishes every 20 s.
+    pollIntervalSeconds: 20,
+    staleAfterSeconds: 120,
+    dropAfterSeconds: 600,
+    create: (settings) =>
+      createGtfsRealtimeAdapter(
+        {
+          sourceId: 'renfe-cercanias',
+          operator: 'Renfe',
+          coverage: SPAIN,
+          defaultMode: 'rail',
+          lineOf: (vehicle) => renfeLine(vehicle.vehicleLabel),
+          labelOf: (vehicle) => renfeTrain(vehicle.vehicleLabel),
+        },
+        settings,
+      ),
+  },
+  {
+    id: 'fgc-geotren',
+    kind: 'transit',
+    name: 'Trains — FGC (Catalonia)',
+    attribution: {
+      label: 'Ferrocarrils de la Generalitat de Catalunya',
+      href: 'https://dadesobertes.fgc.cat',
+    },
+    licence: CC_BY_4,
+    coverage: CATALONIA,
+    defaultUrl: 'https://dadesobertes.fgc.cat',
+    requiresKey: false,
+    // Two calls per poll against a 5,000-a-day quota; FGC republishes about once a minute.
+    pollIntervalSeconds: 60,
+    staleAfterSeconds: 180,
+    dropAfterSeconds: 600,
+    create: (settings) =>
+      createGeotrenAdapter(
+        { sourceId: 'fgc-geotren', operator: 'FGC', coverage: CATALONIA },
+        settings,
+      ),
+  },
+  {
+    id: 'mta-bus',
+    kind: 'transit',
+    name: 'Buses — MTA Bus Time (New York)',
+    attribution: { label: 'Data: MTA', href: 'https://bustime.mta.info' },
+    licence: MTA_TERMS,
+    coverage: NEW_YORK_CITY,
+    defaultUrl: 'https://gtfsrt.prod.obanyc.com/vehiclePositions',
+    // Documented as required, answered without one when this was written: a
+    // configured key is always sent, and production registers one.
+    requiresKey: false,
+    pollIntervalSeconds: 15,
+    staleAfterSeconds: 120,
+    dropAfterSeconds: 600,
+    create: (settings) =>
+      createGtfsRealtimeAdapter(
+        {
+          sourceId: 'mta-bus',
+          operator: 'MTA',
+          coverage: NEW_YORK_CITY,
+          defaultMode: 'bus',
+          labelOf: (vehicle) => mtaBusNumber(vehicle.vehicleId),
+          keyQueryParameter: 'key',
+        },
+        settings,
+      ),
+  },
+  {
+    id: 'mta-lirr',
+    kind: 'transit',
+    name: 'Trains — Long Island Rail Road',
+    attribution: { label: 'Data: MTA', href: 'https://www.mta.info/developers' },
+    licence: MTA_TERMS,
+    coverage: NEW_YORK_REGION,
+    defaultUrl: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr',
+    requiresKey: false,
+    pollIntervalSeconds: 20,
+    staleAfterSeconds: 180,
+    dropAfterSeconds: 600,
+    create: (settings) =>
+      createGtfsRealtimeAdapter(
+        { sourceId: 'mta-lirr', operator: 'LIRR', coverage: NEW_YORK_REGION, defaultMode: 'rail' },
+        settings,
+      ),
+  },
+  {
+    id: 'mta-mnr',
+    kind: 'transit',
+    name: 'Trains — Metro-North Railroad',
+    attribution: { label: 'Data: MTA', href: 'https://www.mta.info/developers' },
+    licence: MTA_TERMS,
+    coverage: NEW_YORK_REGION,
+    defaultUrl: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/mnr%2Fgtfs-mnr',
+    requiresKey: false,
+    pollIntervalSeconds: 20,
+    staleAfterSeconds: 180,
+    dropAfterSeconds: 600,
+    create: (settings) =>
+      createGtfsRealtimeAdapter(
+        {
+          sourceId: 'mta-mnr',
+          operator: 'Metro-North',
+          coverage: NEW_YORK_REGION,
+          defaultMode: 'rail',
+        },
+        settings,
+      ),
+  },
+  {
+    id: 'nyc-bikeshare',
+    kind: 'bikeshare',
+    // The licence forbids using the operator's marks: a generic name, by design.
+    name: 'Bike share — New York',
+    attribution: {
+      label: 'NYC bike share data',
+      href: 'https://citibikenyc.com/data-sharing-policy',
+    },
+    licence: {
+      label: 'Bikeshare Data License Agreement',
+      href: 'https://citibikenyc.com/data-sharing-policy',
+    },
+    coverage: NEW_YORK_CITY,
+    defaultUrl: 'https://gbfs.citibikenyc.com/gbfs/2.3/gbfs.json',
+    requiresKey: false,
+    // GBFS `ttl` is 60 s.
+    pollIntervalSeconds: 60,
+    staleAfterSeconds: 30 * 60,
+    dropAfterSeconds: 24 * 3600,
+    create: (settings) =>
+      createGbfsAdapter(
+        { sourceId: 'nyc-bikeshare', operator: 'NYC bike share', coverage: NEW_YORK_CITY },
+        settings,
+      ),
+  },
+  {
+    id: 'digitraffic-ais',
+    kind: 'vessel',
+    name: 'Ships — Digitraffic AIS (Finland)',
+    attribution: {
+      label: 'Source: Fintraffic / digitraffic.fi, CC 4.0 BY',
+      href: 'https://www.digitraffic.fi/en/',
+    },
+    licence: CC_BY_4,
+    coverage: BALTIC,
+    defaultUrl: 'https://meri.digitraffic.fi',
+    requiresKey: false,
+    // Responses are cached for 60 s upstream; 30 s keeps moving ships smooth
+    // without asking for the same snapshot four times.
+    pollIntervalSeconds: 30,
+    staleAfterSeconds: 6 * 60,
+    dropAfterSeconds: 15 * 60,
+    create: (settings) =>
+      createDigitrafficAdapter(
+        { sourceId: 'digitraffic-ais', coverage: BALTIC, windowSeconds: 15 * 60 },
+        settings,
+      ),
+  },
+];
+
+export const LIVE_SOURCE_IDS: readonly string[] = LIVE_SOURCES.map((source) => source.id);
+
+export function liveSourceDefinition(id: string): LiveSourceDefinition | undefined {
+  return LIVE_SOURCES.find((source) => source.id === id);
+}

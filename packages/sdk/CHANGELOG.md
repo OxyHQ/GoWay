@@ -24,6 +24,18 @@ taxonomy.
   `parseModelPlacement(input)`, which answers a drawable placement or `null`
   and never throws. No route serves models yet; the asset descriptor and the
   catalogue are phase 2.
+- **GoWay Live.** `live.sources()` (`GET /live/sources`) lists the real-time
+  feeds a deployment re-serves — aircraft, transit, bike share, ships — with
+  each one's licence, credit, coverage, status and freshness bounds
+  (`LiveSource`); a deployment without live answers `GoWayUnavailableError`.
+  The socket protocol is a new entry point, **`@goway.to/sdk/live`**: the
+  namespace and event names, the room-tile arithmetic (`liveTilesFor`,
+  `liveTileOf`, `liveTileBounds`), `liveSubscription()` and a parser per
+  message (`parseLiveSnapshot`, `parseLiveDelta`, `parseLiveSources`,
+  `parseLiveSubscriptionState`, each returning `null` for a payload that does
+  not match). Bring your own `socket.io-client`; the package still has one
+  dependency. Every entity states its source and the instant the source
+  observed it — show both.
 - `places.update(id, { openingHoursDays })` replaces only explicitly named
   opening weekdays atomically; exported `OpeningHoursDayPatch` describes each
   replacement. Empty day intervals close that day. Unknown schedules require
