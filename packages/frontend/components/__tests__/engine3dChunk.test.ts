@@ -75,6 +75,10 @@ const ENGINES = [
   'components/map/engine/city3d/modelLook.ts',
   // GoWay Live's 3D shapes: a pass the city engine draws (`docs/MAP_LIVE.md`).
   'components/map/engine/live3d/livePass.ts',
+  // The glTF loader with the meshopt decoder, shared by the model layer and the library.
+  'components/map/engine/city3d/gltf.ts',
+  // The shared model library (`docs/MODEL_LIBRARY.md`), loaded by city life and the live pass.
+  'components/map/engine/vehicles/library.ts',
 ];
 const CHUNK = 'components/engine3d/lazyChunk.ts';
 /**

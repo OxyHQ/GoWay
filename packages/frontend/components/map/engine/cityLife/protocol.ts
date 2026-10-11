@@ -8,7 +8,7 @@ import type { LngLatBox } from '../city3d/tileMath';
 import type { HealStats } from './omtRoads';
 import type { CoveredTiles } from './realCoverage';
 import type { SimBudget, SimStats } from './sim/simulation';
-import type { CarModel } from './sim/traffic';
+import type { CarModel, PersonModel } from './sim/fleet';
 
 export type SimWorkerRequest =
   | {
@@ -52,8 +52,10 @@ export interface SimFrameMessage {
   /** Car slot ranges per model, `[start, end)`. */
   ranges: Record<CarModel, [number, number]>;
   people: Float32Array;
-  /** Per person: clothes sRGB, and a byte the shader picks skin and gait from. */
+  /** Per person: three unused bytes and the animation's phase. */
   peopleStyle: Uint8Array;
+  /** Person slot ranges per model, `[start, end)`. */
+  peopleRanges: Record<PersonModel, [number, number]>;
 }
 
 export interface SimStatsMessage {

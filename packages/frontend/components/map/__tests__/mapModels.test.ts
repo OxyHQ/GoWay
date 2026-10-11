@@ -123,8 +123,10 @@ describe('model frames', () => {
 describe('model URLs', () => {
   test('HTTPS, this page, or loopback; nothing else', () => {
     expect(isAllowedModelUrl('https://cdn.example/car.glb', 'https://goway.to')).toBe(true);
-    expect(isAllowedModelUrl('/models/goway-car.glb', 'https://goway.to')).toBe(true);
-    expect(isAllowedModelUrl('/models/goway-car.glb', 'http://localhost:8081')).toBe(true);
+    expect(isAllowedModelUrl('/models/library/vehicle.sedan.glb', 'https://goway.to')).toBe(true);
+    expect(isAllowedModelUrl('/models/library/vehicle.sedan.glb', 'http://localhost:8081')).toBe(
+      true,
+    );
     expect(isAllowedModelUrl('http://127.0.0.1:9000/a.glb', null)).toBe(true);
     expect(isAllowedModelUrl('http://cdn.example/car.glb', 'https://goway.to')).toBe(false);
     expect(isAllowedModelUrl('data:model/gltf-binary;base64,AAAA', 'https://goway.to')).toBe(false);
@@ -149,7 +151,7 @@ describe('the NaN gate and the fallback marker', () => {
       model('pole', { latitude: 91, longitude: 2 }),
     ]);
     expect(drawn.map((d) => d.model.id)).toEqual(['ok']);
-    expect(drawn[0].url).toBe('/models/goway-car.glb');
+    expect(drawn[0].url).toBe('/models/library/vehicle.sedan.glb');
     expect(drawn[0].placement.scale).toBe(1);
   });
 

@@ -18,8 +18,9 @@ export interface CatalogueEntry {
 }
 
 export const MODEL_CATALOGUE_FIXTURE: Readonly<Record<string, CatalogueEntry>> = {
-  // Built by `scripts/build-flyover-model.ts`; GoWay's own work, CC0-1.0.
-  'vehicle.car': { url: '/models/goway-car.glb', license: 'CC0-1.0' },
+  // The model library's saloon (`docs/MODEL_LIBRARY.md`): Kenney Car Kit, CC0-1.0.
+  // The model layer draws a library file's `near` level only.
+  'vehicle.car': { url: '/models/library/vehicle.sedan.glb', license: 'CC0-1.0' },
 };
 
 /** The URL a model's asset resolves to, or `null` for an unknown key. */

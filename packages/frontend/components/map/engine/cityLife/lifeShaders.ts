@@ -9,8 +9,9 @@
  *
  * ## Level of detail, decided per instance on the GPU
  *
- * Every model is drawn twice — a near mesh (~250–800 triangles) and a far one
- * (≤ 100) — over the SAME instance buffers. Each instance's anchor is
+ * Every model is drawn twice — its library near level (≤ 800 triangles for a
+ * car, 600 for a person) and its far level (≤ 150) — over the SAME instance
+ * buffers. Each instance's anchor is
  * projected and its on-screen size estimated: the centre's pixels per metre
  * (`uPxPerM`) scaled by depth (clip `w` against the centre's, which is
  * `projectionMatrix[3][3]` because the frame is centre-relative). Under
@@ -19,17 +20,22 @@
  *
  * ## The look
  *
- * Matte maquette: a gentle hemisphere fill (sky above, warm ground bounce
- * below) under the map's own sun (`CityLight`, the same as the buildings),
- * soft pastel paint, tinted glass, and — drawn by {@link SHADOW_VERTEX_SHADER}
- * — a soft contact-shadow blob under every vehicle and person, so they sit on
- * the street instead of floating over it.
+ * The shared model library's vehicles and people (`../vehicles/`), read with
+ * its GLSL (`vehicles/glsl.ts`): the kits' fixed colours, the body in the
+ * simulation's soft pastel paint. Matte maquette lighting — a gentle
+ * hemisphere fill (sky above, warm ground bounce below) under the map's own
+ * sun (`CityLight`, the same as the buildings) — and, drawn by
+ * {@link SHADOW_VERTEX_SHADER}, a soft contact-shadow blob under every
+ * vehicle and person, so they sit on the street instead of floating over it.
  *
- * People's legs swing with the distance they moved between the two states (a
- * person waiting at a kerb stands still). On 3D terrain each agent stands on
- * the ground the buildings and trees do (`aGround`).
+ * People walk by vertex animation: their library frames in a texture
+ * (`createAnimationTexture`), read per vertex by `gl_VertexID`, blended from
+ * the idle clip to the walk as the distance they moved between the two
+ * states grows — so a person waiting at a kerb idles — each at their own
+ * phase. On 3D terrain each agent stands on the ground the buildings and
+ * trees do (`aGround`).
  */
-import { PART } from './agentModels';
+import { LIBRARY_GLSL } from '../vehicles/glsl';
 
 const f = (n: number) => (Number.isInteger(n) ? `${n}.0` : String(n));
 
@@ -87,75 +93,60 @@ Placed place() {
 
 export const LIFE_VERTEX_SHADER = `
 precision highp float;
+precision highp sampler2D;
 
 uniform float uTime;
 uniform float uStep;
 uniform float uIsPerson;
 uniform float uIsTaxi;
 uniform vec3 uTaxiDoors;
+/** A taxi's door panels: the band of its flanks between these heights, m. */
+uniform vec2 uDoorBand;
 /** Cars: a style length of 1 is this many metres; the model is uModelLength long. */
 uniform float uMaxLength;
 uniform float uModelLength;
+/** People, near level: the frames, and the clips as (first, count, fps). */
+uniform sampler2D uFrames;
+uniform float uAnimated;
+uniform vec3 uMoveClip;
+uniform vec3 uIdleClip;
 
 in vec3 position;
 in vec3 normal;
-in float part;
+in vec3 color;
+in float paint;
 ${PLACE}
+${LIBRARY_GLSL}
 
 out vec3 vNormal;
 out vec3 vColor;
 out float vGloss;
 
-vec3 skinTone(float pick) {
-  if (pick < 0.2) return vec3(0.96, 0.84, 0.74);
-  if (pick < 0.4) return vec3(0.89, 0.73, 0.60);
-  if (pick < 0.6) return vec3(0.76, 0.57, 0.42);
-  if (pick < 0.8) return vec3(0.55, 0.39, 0.28);
-  return vec3(0.38, 0.27, 0.20);
-}
-
 void main() {
   Placed p = place();
-  vec3 local = position;
-  vec3 n = normal;
-  vec3 paint = aStyle.rgb;
-  vGloss = 0.0;
-  if (uIsPerson > 0.5) {
+  vec3 g = position;
+  if (uAnimated > 0.5) {
+    // Walking (or wheeling) at the pace they move between the two states;
+    // a person waiting at a kerb idles. Each has their own phase.
     float speed = p.fresh ? 0.0 : distance(aPrev.xy, aCurr.xy) / uStep;
-    float gait = clamp(speed / 1.3, 0.0, 1.0);
-    float phase = aStyle.a * 6.2831;
-    if (part > ${f(PART.legLeft - 0.5)} && part < ${f(PART.legRight + 0.5)}) {
-      float side = part < ${f(PART.legLeft + 0.5)} ? 1.0 : -1.0;
-      float swing = side * sin(uTime * 2.0 * PI * 1.7 + phase) * 0.42 * gait;
-      // Rotate about the hip (x forward, z up).
-      vec2 xz = vec2(local.x, local.z - 0.88);
-      float c = cos(swing);
-      float s = sin(swing);
-      local.x = c * xz.x + s * xz.y;
-      local.z = -s * xz.x + c * xz.y + 0.88;
-    }
-    local.z += abs(sin(uTime * PI * 1.7 + phase)) * 0.03 * gait;
-    if (part > ${f(PART.skin - 0.5)} && part < ${f(PART.skin + 0.5)}) vColor = skinTone(fract(aStyle.a * 7.31));
-    else if (part > ${f(PART.clothes - 0.5)}) vColor = paint;
-    else vColor = mix(vec3(0.24, 0.26, 0.32), paint, 0.3);
-  } else {
+    float gait = smoothstep(0.15, 0.6, speed);
+    float t = uTime + aStyle.a * 10.0;
+    vec3 move = libraryPose(uFrames, uMoveClip, t * clamp(speed / 1.3, 0.75, 1.25));
+    vec3 idle = libraryPose(uFrames, uIdleClip, t);
+    g = mix(idle, move, gait);
+  }
+  vec3 local = libraryFrame(g);
+  vec3 n = libraryFrame(normal);
+  vec3 tint = aStyle.rgb;
+  vGloss = paint;
+  if (uIsPerson < 0.5) {
     local.x *= (aStyle.a * uMaxLength) / uModelLength;
-    if (part < ${f(PART.paint + 0.5)}) {
-      vColor = paint;
-      // A taxi's doors: the flanks between the sills and the waist.
-      if (uIsTaxi > 0.5 && abs(n.y) > 0.55 && local.z > 0.38 && local.z < 0.86) vColor = uTaxiDoors;
-      vGloss = 1.0;
-    } else if (part < ${f(PART.glass + 0.5)}) {
-      vColor = mix(paint, vec3(0.30, 0.38, 0.46), 0.82);
-      vGloss = 2.0;
-    } else if (part < ${f(PART.tyre + 0.5)}) {
-      vColor = vec3(0.17, 0.17, 0.19);
-    } else if (part > ${f(PART.sign - 0.5)} && part < ${f(PART.sign + 0.5)}) {
-      vColor = vec3(0.98, 0.96, 0.86);
-    } else {
-      vColor = paint * 0.62;
+    // A taxi's doors: the flanks between the sills and the waist.
+    if (uIsTaxi > 0.5 && paint > 0.5 && abs(n.y) > 0.55 && local.z > uDoorBand.x && local.z < uDoorBand.y) {
+      tint = uTaxiDoors;
     }
   }
+  vColor = libraryColour(color, paint, tint);
   local *= p.scale;
 
   float c = cos(p.heading);
@@ -189,9 +180,8 @@ void main() {
   vec3 ground = vec3(0.78, 0.74, 0.70);
   vec3 fill = mix(ground, sky, n.z * 0.5 + 0.5);
   vec3 lit = vColor * (fill * (0.5 + 0.2 * (1.0 - uLightIntensity)) + uLightColor * direct * 0.55);
-  // Glass and paint catch a little sky at grazing angles.
-  if (vGloss > 1.5) lit += vec3(0.10, 0.12, 0.15) * max(n.z, 0.0);
-  else if (vGloss > 0.5) lit += vec3(0.04) * pow(max(n.z, 0.0), 4.0);
+  // Paint catches a little sky at grazing angles.
+  if (vGloss > 0.5) lit += vec3(0.04) * pow(max(n.z, 0.0), 4.0);
   fragColor = vec4(clamp(lit, 0.0, 1.0), 1.0);
 }
 `;

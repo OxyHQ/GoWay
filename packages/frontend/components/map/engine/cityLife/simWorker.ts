@@ -350,6 +350,7 @@ function post(): void {
       inView: sim.simulatedInView(),
       people: snapshot.people,
       peopleStyle: snapshot.peopleStyle,
+      peopleRanges: sim.people.ranges,
     },
     [
       snapshot.cars.buffer as ArrayBuffer,

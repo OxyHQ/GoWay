@@ -72,6 +72,9 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   ODbL city tiles, how the Spanish Catastro's storeys replace the 5 m default
   (`height_source`), and how New York City's LOD1.5/LOD2 model is conflated
   with OSM, encoded, drawn and credited.
+- [`MODEL_LIBRARY.md`](MODEL_LIBRARY.md) — the one set of 3D vehicles,
+  vessels and people (Kenney CC0 kits + GoWay's own bus and airliner): the
+  build, the asset profile, and the runtime API city life and GoWay Live share.
 - [`MAP_LIVE.md`](MAP_LIVE.md) — GoWay Live: real aircraft, transit,
   bike-share and ships from open real-time feeds — which sources, under which
   licences (and which were rejected), the adapter/hub/socket architecture,

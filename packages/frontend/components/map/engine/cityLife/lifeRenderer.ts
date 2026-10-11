@@ -38,7 +38,12 @@ import {
   multiplyMat4,
   tileModelMatrix,
 } from '../city3d/tileMath';
-import { type ModelGeometry, person, shadowQuad, VEHICLE_MODELS } from './agentModels';
+import {
+  createAnimationTexture,
+  type LibraryLod,
+  type LibraryModel,
+  loadModelLibrary,
+} from '../vehicles/library';
 import {
   LIFE_FRAGMENT_SHADER,
   LOD_MIN_PX,
@@ -55,9 +60,15 @@ import type {
   SimWorkerRequest,
   SimWorkerResponse,
 } from './protocol';
+import {
+  CAR_MODEL_SPECS,
+  CAR_MODELS,
+  type CarModel,
+  PERSON_MODELS,
+  type PersonModel,
+} from './sim/fleet';
 import { simFrame } from './sim/network';
 import type { SimBudget } from './sim/simulation';
-import { CAR_MODEL_SPECS, CAR_MODELS, type CarModel } from './sim/traffic';
 
 /** How far behind real time the city is drawn, ms (two simulation steps). */
 const DELAY_MS = 100;
@@ -90,12 +101,24 @@ export interface CityLifeStats extends Omit<SimStatsMessage, 'type'> {
   triangles: { near: number; far: number; shadow: number };
 }
 
-function geometryFor(model: ModelGeometry): THREE.InstancedBufferGeometry {
+/** An instanced view of a library level: its attributes, shared, never copied. */
+function geometryFor(lod: LibraryLod): THREE.InstancedBufferGeometry {
   const geometry = new THREE.InstancedBufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(model.positions, 3));
-  geometry.setAttribute('normal', new THREE.BufferAttribute(model.normals, 3));
-  geometry.setAttribute('part', new THREE.BufferAttribute(model.parts, 1));
-  geometry.setIndex(new THREE.BufferAttribute(model.indices, 1));
+  for (const name of ['position', 'normal', 'color', 'paint']) {
+    geometry.setAttribute(name, lod.geometry.getAttribute(name));
+  }
+  geometry.setIndex(lod.geometry.getIndex());
+  return geometry;
+}
+
+/** The unit quad the contact shadow is drawn on, ±1 in x and y. */
+function shadowQuad(): THREE.InstancedBufferGeometry {
+  const geometry = new THREE.InstancedBufferGeometry();
+  geometry.setAttribute(
+    'position',
+    new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]), 3),
+  );
+  geometry.setIndex([0, 1, 2, 0, 2, 3]);
   return geometry;
 }
 
@@ -108,6 +131,10 @@ function geometryFor(model: ModelGeometry): THREE.InstancedBufferGeometry {
 interface Batch {
   geometries: THREE.InstancedBufferGeometry[];
   materials: THREE.RawShaderMaterial[];
+  /** A person's frames (`createAnimationTexture`), owned by the batch. */
+  frames: THREE.DataTexture | null;
+  /** The model's size for the detail test, m. */
+  nearSize: number;
   prev: THREE.InstancedBufferAttribute;
   curr: THREE.InstancedBufferAttribute;
   style: THREE.InstancedBufferAttribute;
@@ -132,23 +159,36 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
   group.matrixWorldAutoUpdate = false;
   group.visible = false;
 
-  const quad = shadowQuad();
-  const makeBatch = (
-    lods: { near: ModelGeometry; far: ModelGeometry },
-    kind: { person: boolean; taxi: boolean; maxLength: number },
-  ): Batch => {
+  const makeBatch = (model: LibraryModel, kind: { taxi: boolean; maxLength: number }): Batch => {
+    const isPerson = model.entry.kind === 'person';
+    const [width, height, length] = model.entry.size;
     const empty = () => new THREE.InstancedBufferAttribute(new Float32Array(4), 4);
     const prev = empty();
     const curr = empty();
     const style = new THREE.InstancedBufferAttribute(new Uint8Array(4), 4, true);
     const ground = new THREE.InstancedBufferAttribute(new Float32Array(1), 1);
     for (const attribute of [prev, curr, style, ground]) attribute.setUsage(THREE.DynamicDrawUsage);
+    const nearSize = isPerson ? 2.6 : length;
+    const frames = model.animation ? createAnimationTexture(model.animation) : null;
+    const clips = model.entry.clips;
     const perModel = {
-      uIsPerson: { value: kind.person ? 1 : 0 },
+      uIsPerson: { value: isPerson ? 1 : 0 },
       uIsTaxi: { value: kind.taxi ? 1 : 0 },
+      // The kit taxi's door panels, between its sills and its waist.
+      uDoorBand: { value: new THREE.Vector2(height * 0.15, height * 0.6) },
       uMaxLength: { value: kind.maxLength },
-      uModelLength: { value: lods.near.length },
-      uNearSize: { value: kind.person ? 2.6 : lods.near.length },
+      uModelLength: { value: length },
+      uNearSize: { value: nearSize },
+      uMoveClip: {
+        value: clips
+          ? new THREE.Vector3(clips.move.first, clips.move.count, clips.move.fps)
+          : new THREE.Vector3(0, 1, 1),
+      },
+      uIdleClip: {
+        value: clips
+          ? new THREE.Vector3(clips.idle.first, clips.idle.count, clips.idle.fps)
+          : new THREE.Vector3(0, 1, 1),
+      },
     };
     const geometries: THREE.InstancedBufferGeometry[] = [];
     const materials: THREE.RawShaderMaterial[] = [];
@@ -172,18 +212,27 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       geometries.push(geometry);
       materials.push(material);
     };
-    for (const [lod, model] of [
-      [0, lods.near],
-      [1, lods.far],
+    for (const [lod, level] of [
+      [0, model.near],
+      [1, model.far],
     ] as const) {
       add(
-        geometryFor(model),
+        geometryFor(level),
         new THREE.RawShaderMaterial({
           glslVersion: THREE.GLSL3,
           vertexShader: LIFE_VERTEX_SHADER,
           fragmentShader: LIFE_FRAGMENT_SHADER,
-          uniforms: { ...shared, ...light, ...perModel, uLod: { value: lod } },
-          // The mirrored model matrix: see `agentModels.ts` and `cityEngine.ts`.
+          uniforms: {
+            ...shared,
+            ...light,
+            ...perModel,
+            uLod: { value: lod },
+            // Only the near level carries the frames' vertex order.
+            uAnimated: { value: lod === 0 && frames ? 1 : 0 },
+            uFrames: { value: lod === 0 ? frames : null },
+          },
+          // The engine's model matrix is mirrored, so three calls the library's
+          // outward faces back faces — as with the buildings (`cityEngine.ts`).
           side: THREE.BackSide,
           blending: THREE.CustomBlending,
           blendSrc: THREE.OneFactor,
@@ -195,11 +244,8 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     }
     // The contact shadow, after the opaque city (three draws transparent
     // last), depth-tested so a building in front hides it.
-    const shadowGeometry = new THREE.InstancedBufferGeometry();
-    shadowGeometry.setAttribute('position', new THREE.BufferAttribute(quad.positions, 3));
-    shadowGeometry.setIndex(new THREE.BufferAttribute(quad.indices, 1));
     add(
-      shadowGeometry,
+      shadowQuad(),
       new THREE.RawShaderMaterial({
         glslVersion: THREE.GLSL3,
         vertexShader: SHADOW_VERTEX_SHADER,
@@ -208,8 +254,12 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
           ...shared,
           ...perModel,
           uLod: { value: 2 },
-          uHalfSize: { value: new THREE.Vector2(lods.near.halfLength, lods.near.halfWidth) },
-          uShadowStrength: { value: kind.person ? 0.3 : 0.42 },
+          uHalfSize: {
+            value: isPerson
+              ? new THREE.Vector2(0.45, 0.45)
+              : new THREE.Vector2(length / 2, width / 2),
+          },
+          uShadowStrength: { value: isPerson ? 0.3 : 0.42 },
         },
         side: THREE.DoubleSide,
         blending: THREE.CustomBlending,
@@ -220,22 +270,55 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       }),
       -1,
     );
-    return { geometries, materials, prev, curr, style, ground };
+    return { geometries, materials, frames, nearSize, prev, curr, style, ground };
   };
 
-  const carBatches = Object.fromEntries(
-    CAR_MODELS.map((model) => [
-      model,
-      makeBatch(
-        { near: VEHICLE_MODELS[model]('near'), far: VEHICLE_MODELS[model]('far') },
-        { person: false, taxi: model === 'taxi', maxLength: CAR_MODEL_SPECS[model].length[1] },
-      ),
-    ]),
-  ) as Record<CarModel, Batch>;
-  const peopleBatch = makeBatch(
-    { near: person('near'), far: person('far') },
-    { person: true, taxi: false, maxLength: 1 },
-  );
+  /** Filled once the library has loaded; until then nothing is drawn. */
+  let carBatches: Record<CarModel, Batch> | null = null;
+  let peopleBatches: Record<PersonModel, Batch> | null = null;
+  const libraryModels: LibraryModel[] = [];
+  loadModelLibrary({
+    keys: [
+      ...CAR_MODELS.map((model) => `vehicle.${model}`),
+      ...PERSON_MODELS.map((model) => `person.${model}`),
+    ],
+  })
+    .then((library) => {
+      if (disposed) {
+        for (const model of library.values()) {
+          model.near.geometry.dispose();
+          model.far.geometry.dispose();
+        }
+        return;
+      }
+      const get = (key: string) => {
+        const model = library.get(key) as LibraryModel;
+        libraryModels.push(model);
+        return model;
+      };
+      carBatches = Object.fromEntries(
+        CAR_MODELS.map((model) => [
+          model,
+          makeBatch(get(`vehicle.${model}`), {
+            taxi: model === 'taxi',
+            maxLength: CAR_MODEL_SPECS[model].length[1],
+          }),
+        ]),
+      ) as Record<CarModel, Batch>;
+      peopleBatches = Object.fromEntries(
+        PERSON_MODELS.map((model) => [
+          model,
+          makeBatch(get(`person.${model}`), { taxi: false, maxLength: 1 }),
+        ]),
+      ) as Record<PersonModel, Batch>;
+      uploaded = null;
+      schedule();
+      options.requestRepaint();
+    })
+    .catch((error: unknown) => {
+      // Without its models city life draws nothing — and so claims nothing.
+      if (!disposed) console.warn('city life: the model library did not load', error);
+    });
 
   // ── The worker ──
   const worker = new Worker(new URL('./simWorker', import.meta.url));
@@ -306,17 +389,15 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
         out.shadow += 2;
       }
     };
+    if (!carBatches || !peopleBatches) return out;
     for (const name of CAR_MODELS) {
       const [from, to] = frame.ranges[name];
-      tally(
-        frame.cars,
-        from,
-        to,
-        carBatches[name],
-        carBatches[name].materials[0].uniforms.uNearSize.value as number,
-      );
+      tally(frame.cars, from, to, carBatches[name], carBatches[name].nearSize);
     }
-    tally(frame.people, 0, frame.people.length / 4, peopleBatch, 2.6);
+    for (const name of PERSON_MODELS) {
+      const [from, to] = frame.peopleRanges[name];
+      tally(frame.people, from, to, peopleBatches[name], peopleBatches[name].nearSize);
+    }
     return out;
   };
 
@@ -477,8 +558,9 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
           bounds: view.bounds,
         });
       }
-      setActive(on && frames.length > 0);
-      if (!on || frames.length === 0) return;
+      const ready = carBatches !== null && peopleBatches !== null;
+      setActive(on && ready && frames.length > 0);
+      if (!on || !carBatches || !peopleBatches || frames.length === 0) return;
 
       // The two states around "now − DELAY".
       const renderTime = performance.timeOrigin + performance.now() - DELAY_MS;
@@ -519,8 +601,11 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
           upload(carBatches[model], a.cars, b.cars, b.carStyle, from, to);
           groundFor(carBatches[model], b.cars.subarray(from * 4, to * 4), b.origin);
         }
-        upload(peopleBatch, a.people, b.people, b.peopleStyle, 0, b.people.length / 4);
-        groundFor(peopleBatch, b.people, b.origin);
+        for (const model of PERSON_MODELS) {
+          const [from, to] = b.peopleRanges[model];
+          upload(peopleBatches[model], a.people, b.people, b.peopleStyle, from, to);
+          groundFor(peopleBatches[model], b.people.subarray(from * 4, to * 4), b.origin);
+        }
       }
       const span = b.time - a.time;
       shared.uAlpha.value = span > 0 ? Math.max(0, Math.min(1, (renderTime - a.time) / span)) : 1;
@@ -580,9 +665,17 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       }
       if (active) options.onActiveChange(false);
       group.removeFromParent();
-      for (const batch of [...Object.values(carBatches), peopleBatch]) {
+      for (const batch of [
+        ...Object.values(carBatches ?? {}),
+        ...Object.values(peopleBatches ?? {}),
+      ] as Batch[]) {
         for (const geometry of batch.geometries) geometry.dispose();
         for (const material of batch.materials) material.dispose();
+        batch.frames?.dispose();
+      }
+      for (const model of libraryModels) {
+        model.near.geometry.dispose();
+        model.far.geometry.dispose();
       }
     },
   };

@@ -30,8 +30,8 @@
  * All of it is SIMULATION: plausible motion on the real street network, never
  * a statement about real traffic.
  */
-import type { RealClass } from '../realCoverage';
 import { type Network, type Path, phaseGreen } from './network';
+import { CAR_MODEL_SPECS, CAR_MODELS, type CarModel, slotRanges } from './fleet';
 import type { Rng } from './rng';
 
 /** IDM parameters. Textbook urban values (Treiber & Kesting, *Traffic Flow Dynamics*, tab. 11.2). */
@@ -83,27 +83,6 @@ export function idmAcceleration(v: number, v0: number, gap: number, leadV: numbe
   return Math.max(-IDM.maxBrake, IDM.a * (free - (desired / gap) ** 2));
 }
 
-/** The vehicle kinds the renderer draws, in slot order. */
-export const CAR_MODELS = ['hatchback', 'sedan', 'taxi', 'van', 'bus'] as const;
-export type CarModel = (typeof CAR_MODELS)[number];
-
-/**
- * The real vehicle class a simulated model stands in for, where a real feed
- * can carry that class (`realCoverage.ts`). Cars, vans and taxis have no open
- * real source: they stay simulated everywhere.
- */
-export const REAL_CLASS_OF_MODEL: Partial<Record<CarModel, RealClass>> = { bus: 'bus' };
-
-/** Share of the car budget per model, and their length range in metres. */
-export const CAR_MODEL_SPECS: Record<CarModel, { share: number; length: [number, number] }> = {
-  hatchback: { share: 0.4, length: [3.8, 4.2] },
-  sedan: { share: 0.37, length: [4.4, 4.9] },
-  // Only where a city's taxis wear a statutory livery (`liveries.ts`).
-  taxi: { share: 0.06, length: [4.5, 4.7] },
-  van: { share: 0.12, length: [5.0, 5.6] },
-  bus: { share: 0.05, length: [11.0, 12.0] },
-};
-
 /** Structure-of-arrays state for every car slot. */
 export class Cars {
   readonly capacity: number;
@@ -134,16 +113,7 @@ export class Cars {
 
   constructor(capacity: number) {
     this.capacity = capacity;
-    let start = 0;
-    const ranges = {} as Record<CarModel, [number, number]>;
-    CAR_MODELS.forEach((model, i) => {
-      const end =
-        i === CAR_MODELS.length - 1
-          ? capacity
-          : start + Math.round(capacity * CAR_MODEL_SPECS[model].share);
-      ranges[model] = [start, end];
-      start = end;
-    });
+    const ranges = slotRanges(CAR_MODELS, (model) => CAR_MODEL_SPECS[model].share, capacity);
     this.ranges = ranges;
     this.alive = new Uint8Array(capacity);
     this.model = new Uint8Array(capacity);

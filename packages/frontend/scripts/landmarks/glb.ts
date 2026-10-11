@@ -15,7 +15,7 @@
  *    quantised data), decoded in the browser by three's `MeshoptDecoder`.
  *  - **Is deterministic**: same source, same bytes, so
  *    `bun scripts/build-landmarks.ts --check` can hold the committed GLBs to
- *    their generator, as `build-flyover-model.ts --check` does for the car.
+ *    their generator.
  *
  * Night lighting rides in material `extras` (`goway.night`, `goway.uplight`),
  * read by the model layer at runtime (`components/map/engine/city3d/models.ts`
@@ -59,13 +59,15 @@ export interface Uplight {
   strength: number;
 }
 
+/** One sRGB channel (0–1) → linear light, as glTF factors and `COLOR_0` want. */
+export function linearChannel(s: number): number {
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+}
+
 /** sRGB hex → linear-light RGB, as glTF factors want. */
 export function linear(hex: string): [number, number, number] {
   const value = Number.parseInt(hex.slice(1), 16);
-  const channel = (c: number) => {
-    const s = c / 255;
-    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-  };
+  const channel = (c: number) => linearChannel(c / 255);
   const round = (x: number) => Math.round(x * 10000) / 10000;
   return [
     round(channel((value >> 16) & 255)),
@@ -86,19 +88,57 @@ export async function writeLandmarkGlb(
   materials: Readonly<Record<string, LandmarkMaterial>>,
   meta: { id: string; source: string; licence: string; uplight?: Uplight },
 ): Promise<GlbStats> {
-  const merged = builder.merged();
+  return writeModelGlb([{ name: meta.id, builder }], materials, {
+    ...meta,
+    generator: `GoWay scripts/build-landmarks.ts (${meta.source})`,
+    extras: { landmark: meta.id, source: meta.source, licence: meta.licence },
+  });
+}
+
+/** One level of detail: its node and mesh name, and its geometry per material. */
+export interface ModelLod {
+  name: string;
+  builder: Builder;
+}
+
+/**
+ * The general writer behind {@link writeLandmarkGlb}, also used by the model
+ * library (`scripts/build-model-library.ts`): one node and mesh per level of
+ * detail, all quantised with ONE scale (so the LODs line up exactly), and per
+ * primitive whatever the geometry carries beyond position and normal —
+ * `color` (written as `COLOR_0`, unsigned bytes) and morph targets (the
+ * library's baked animation frames, written as quantised `POSITION`
+ * targets). With one LOD and neither, the bytes are exactly the landmark
+ * writer's.
+ */
+export async function writeModelGlb(
+  lods: readonly ModelLod[],
+  materials: Readonly<Record<string, LandmarkMaterial>>,
+  meta: {
+    id: string;
+    source: string;
+    licence: string;
+    uplight?: Uplight;
+    generator: string;
+    /** Written as the scene's `extras.goway`. */
+    extras: Record<string, unknown>;
+  },
+): Promise<GlbStats> {
+  const merged = lods.map((lod) => ({ name: lod.name, geometries: lod.builder.merged() }));
   // Bounds of everything, for one uniform quantisation scale.
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
-  for (const g of merged.values()) {
-    g.computeBoundingBox();
-    const box = g.boundingBox as THREE.Box3;
-    min[0] = Math.min(min[0], box.min.x);
-    min[1] = Math.min(min[1], box.min.y);
-    min[2] = Math.min(min[2], box.min.z);
-    max[0] = Math.max(max[0], box.max.x);
-    max[1] = Math.max(max[1], box.max.y);
-    max[2] = Math.max(max[2], box.max.z);
+  for (const lod of merged) {
+    for (const g of lod.geometries.values()) {
+      g.computeBoundingBox();
+      const box = g.boundingBox as THREE.Box3;
+      min[0] = Math.min(min[0], box.min.x);
+      min[1] = Math.min(min[1], box.min.y);
+      min[2] = Math.min(min[2], box.min.z);
+      max[0] = Math.max(max[0], box.max.x);
+      max[1] = Math.max(max[1], box.max.y);
+      max[2] = Math.max(max[2], box.max.z);
+    }
   }
   const centre: [number, number, number] = [
     (min[0] + max[0]) / 2,
@@ -113,92 +153,131 @@ export async function writeLandmarkGlb(
     .createExtension(EXTMeshoptCompression)
     .setRequired(true)
     .setEncoderOptions({ method: EXTMeshoptCompression.EncoderMethod.QUANTIZE });
-  doc.getRoot().getAsset().generator = `GoWay scripts/build-landmarks.ts (${meta.source})`;
+  doc.getRoot().getAsset().generator = meta.generator;
   doc.getRoot().getAsset().copyright = `${meta.licence} GoWay`;
   const buffer = doc.createBuffer();
-  const mesh = doc.createMesh(meta.id);
   let triangles = 0;
+  const quantise = (array: ArrayLike<number>, offset: (c: number) => number) => {
+    const out = new Int16Array(array.length);
+    for (let i = 0; i < array.length; i++) {
+      const p = (array[i] - offset(i % 3)) / half;
+      out[i] = Math.round(Math.max(-1, Math.min(1, p)) * 32767);
+    }
+    return out;
+  };
 
   const gltfMaterials = new Map<string, Material>();
-  for (const [name, geometry] of merged) {
-    const spec = materials[name];
-    if (!spec) throw new Error(`material "${name}" has no spec`);
-    let material = gltfMaterials.get(name);
-    if (!material) {
-      const [r, g, b] = linear(spec.color);
-      material = doc
-        .createMaterial(name)
-        .setBaseColorFactor([r, g, b, spec.opacity ?? 1])
-        .setMetallicFactor(spec.metallic ?? 0)
-        .setRoughnessFactor(spec.roughness ?? 0.85)
-        .setDoubleSided(spec.doubleSided ?? false)
-        .setAlphaMode(spec.opacity !== undefined && spec.opacity < 1 ? 'BLEND' : 'OPAQUE');
-      const goway: Record<string, unknown> = {};
-      if (spec.night) {
-        goway.night = { color: linear(spec.night.color), strength: spec.night.strength };
+  const scene = doc.createScene(meta.id);
+  for (const lod of merged) {
+    const mesh = doc.createMesh(lod.name);
+    for (const [name, geometry] of lod.geometries) {
+      const spec = materials[name];
+      if (!spec) throw new Error(`material "${name}" has no spec`);
+      let material = gltfMaterials.get(name);
+      if (!material) {
+        const [r, g, b] = linear(spec.color);
+        material = doc
+          .createMaterial(name)
+          .setBaseColorFactor([r, g, b, spec.opacity ?? 1])
+          .setMetallicFactor(spec.metallic ?? 0)
+          .setRoughnessFactor(spec.roughness ?? 0.85)
+          .setDoubleSided(spec.doubleSided ?? false)
+          .setAlphaMode(spec.opacity !== undefined && spec.opacity < 1 ? 'BLEND' : 'OPAQUE');
+        const goway: Record<string, unknown> = {};
+        if (spec.night) {
+          goway.night = { color: linear(spec.night.color), strength: spec.night.strength };
+        }
+        if (spec.uplight && meta.uplight) {
+          goway.uplight = {
+            color: linear(meta.uplight.color),
+            reach: meta.uplight.reach,
+            strength: meta.uplight.strength,
+          };
+        }
+        if (spec.decal ?? Boolean(spec.night)) goway.decal = true;
+        if (Object.keys(goway).length > 0) material.setExtras({ goway });
+        gltfMaterials.set(name, material);
       }
-      if (spec.uplight && meta.uplight) {
-        goway.uplight = {
-          color: linear(meta.uplight.color),
-          reach: meta.uplight.reach,
-          strength: meta.uplight.strength,
-        };
-      }
-      if (spec.decal ?? Boolean(spec.night)) goway.decal = true;
-      if (Object.keys(goway).length > 0) material.setExtras({ goway });
-      gltfMaterials.set(name, material);
-    }
 
-    const position = geometry.attributes.position.array as Float32Array;
-    const normal = geometry.attributes.normal.array as Float32Array;
-    const count = position.length / 3;
-    // Plain VEC3 arrays: the writer interleaves a primitive's attributes and
-    // pads each vertex to 4-byte alignment, as KHR_mesh_quantization requires.
-    const qPosition = new Int16Array(count * 3);
-    const qNormal = new Int8Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      for (let c = 0; c < 3; c++) {
-        const p = (position[i * 3 + c] - centre[c]) / half;
-        qPosition[i * 3 + c] = Math.round(Math.max(-1, Math.min(1, p)) * 32767);
-        qNormal[i * 3 + c] = Math.round(Math.max(-1, Math.min(1, normal[i * 3 + c])) * 127);
+      const position = geometry.attributes.position.array as Float32Array;
+      const normal = geometry.attributes.normal.array as Float32Array;
+      const count = position.length / 3;
+      // Plain VEC3 arrays: the writer interleaves a primitive's attributes and
+      // pads each vertex to 4-byte alignment, as KHR_mesh_quantization requires.
+      const qPosition = quantise(position, (c) => centre[c]);
+      const qNormal = new Int8Array(count * 3);
+      for (let i = 0; i < count * 3; i++) {
+        qNormal[i] = Math.round(Math.max(-1, Math.min(1, normal[i])) * 127);
       }
-    }
-    const indexSource = geometry.index?.array ?? Uint32Array.from({ length: count }, (_, i) => i);
-    const indices = count < 65536 ? Uint16Array.from(indexSource) : Uint32Array.from(indexSource);
-    triangles += indices.length / 3;
+      const indexSource = geometry.index?.array ?? Uint32Array.from({ length: count }, (_, i) => i);
+      const indices = count < 65536 ? Uint16Array.from(indexSource) : Uint32Array.from(indexSource);
+      triangles += indices.length / 3;
 
-    const primitive = doc
-      .createPrimitive()
-      .setMaterial(material)
-      .setIndices(doc.createAccessor().setArray(indices).setType('SCALAR').setBuffer(buffer))
-      .setAttribute(
-        'POSITION',
-        doc
-          .createAccessor()
-          .setArray(qPosition)
-          .setType('VEC3')
-          .setNormalized(true)
-          .setBuffer(buffer),
-      )
-      .setAttribute(
-        'NORMAL',
-        doc
-          .createAccessor()
-          .setArray(qNormal)
-          .setType('VEC3')
-          .setNormalized(true)
-          .setBuffer(buffer),
-      );
-    mesh.addPrimitive(primitive);
+      const primitive = doc
+        .createPrimitive()
+        .setMaterial(material)
+        .setIndices(doc.createAccessor().setArray(indices).setType('SCALAR').setBuffer(buffer))
+        .setAttribute(
+          'POSITION',
+          doc
+            .createAccessor()
+            .setArray(qPosition)
+            .setType('VEC3')
+            .setNormalized(true)
+            .setBuffer(buffer),
+        )
+        .setAttribute(
+          'NORMAL',
+          doc
+            .createAccessor()
+            .setArray(qNormal)
+            .setType('VEC3')
+            .setNormalized(true)
+            .setBuffer(buffer),
+        );
+      const color = geometry.attributes.color;
+      if (color) {
+        const bytes = new Uint8Array(count * 4);
+        for (let i = 0; i < count; i++) {
+          for (let c = 0; c < 3; c++) {
+            bytes[i * 4 + c] = Math.round(Math.max(0, Math.min(1, color.getComponent(i, c))) * 255);
+          }
+          bytes[i * 4 + 3] = 255;
+        }
+        primitive.setAttribute(
+          'COLOR_0',
+          doc
+            .createAccessor()
+            .setArray(bytes)
+            .setType('VEC4')
+            .setNormalized(true)
+            .setBuffer(buffer),
+        );
+      }
+      // Morph targets are deltas from the base pose, quantised on the same grid.
+      for (const target of geometry.morphAttributes.position ?? []) {
+        primitive.addTarget(
+          doc.createPrimitiveTarget().setAttribute(
+            'POSITION',
+            doc
+              .createAccessor()
+              .setArray(quantise(target.array as Float32Array, () => 0))
+              .setType('VEC3')
+              .setNormalized(true)
+              .setBuffer(buffer),
+          ),
+        );
+      }
+      mesh.addPrimitive(primitive);
+    }
+    const node = doc
+      .createNode(lod.name)
+      .setMesh(mesh)
+      .setTranslation(centre)
+      .setScale([half, half, half]);
+    scene.addChild(node);
   }
-
-  const node = doc
-    .createNode(meta.id)
-    .setMesh(mesh)
-    .setTranslation(centre)
-    .setScale([half, half, half]);
-  const scene = doc.createScene(meta.id).addChild(node);
-  scene.setExtras({ goway: { landmark: meta.id, source: meta.source, licence: meta.licence } });
+  scene.setExtras({ goway: meta.extras });
   doc.getRoot().setDefaultScene(scene);
 
   await MeshoptEncoder.ready;

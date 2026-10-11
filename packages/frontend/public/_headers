@@ -139,7 +139,7 @@
 # but which tells nobody else what it is). Literal paths, not content-hashed:
 # cached like the brand files. Same-origin today, so no CORS pair; the served
 # catalogue (phase 2) moves to the CDN with its own.
-/models/goway-car.glb
+/models/library/*
   Content-Type: model/gltf-binary
   Cache-Control: public, max-age=3600, must-revalidate
 

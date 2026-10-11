@@ -44,11 +44,10 @@
  * reported as `fallback` — drawn by `MapCanvas` as its marker instead.
  */
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import type { ModelPlacement } from '@goway.to/sdk';
 
+import { createGltfLoader } from './gltf';
 import {
   applyNight,
   createModelEnvironment,
@@ -397,8 +396,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
   // Built on the first frame (it needs the renderer); `undefined`: not yet.
   let environment: THREE.Texture | null | undefined;
 
-  // `EXT_meshopt_compression` is in the asset profile (docs/SDK_MAP_MODELS.md).
-  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+  const loader = createGltfLoader();
   const assets = new Map<string, Promise<Asset>>();
   const instances = new Map<string, Instance>();
   const pending = new Map<string, { spec: ModelSpec }>();
@@ -430,6 +428,13 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       const gltf = await new Promise<GLTF>((resolve, reject) =>
         loader.parse(buffer, '', resolve, reject),
       );
+      // A model-library file (`docs/MODEL_LIBRARY.md`) carries a `far` level
+      // beside its `near` one; this layer has no level of detail, so near only.
+      const levels = gltf.scene.children.map((child) => child.name);
+      if (levels.includes('near') && levels.includes('far')) {
+        const far = gltf.scene.children.find((child) => child.name === 'far');
+        if (far) gltf.scene.remove(far);
+      }
       const triangles = countTriangles(gltf.scene);
       if (triangles > MAX_MODEL_TRIANGLES) throw new Error('model over the triangle budget');
       const bounds = new THREE.Box3().setFromObject(gltf.scene);

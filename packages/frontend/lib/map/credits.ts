@@ -60,6 +60,18 @@ const BUILDING_DATA_LINKS: readonly CreditLink[] = [
   { label: 'NYC 3D Building Model (modified)', href: 'https://data.cityofnewyork.us/d/tnru-abg2' },
 ];
 
+/**
+ * The 3D vehicles, vessels and people the map draws (the model library,
+ * `lib/map/modelLibrary.ts`): Kenney's kits, CC0 — no credit is owed, and it
+ * is given anyway. Every asset's source is in the library's manifest.
+ */
+const MODEL_LINKS: readonly CreditLink[] = [
+  { label: 'Kenney — Car Kit', href: 'https://kenney.nl/assets/car-kit' },
+  { label: 'Kenney — Train Kit', href: 'https://kenney.nl/assets/train-kit' },
+  { label: 'Kenney — Watercraft Kit', href: 'https://kenney.nl/assets/watercraft-kit' },
+  { label: 'Kenney — Mini Characters', href: 'https://kenney.nl/assets/mini-characters' },
+];
+
 export interface CreditLink {
   label: string;
   href: string;
@@ -67,7 +79,7 @@ export interface CreditLink {
 
 export interface CreditSection {
   /** Stable anchor (`/attribution#elevation`) and the i18n key suffix. */
-  id: 'basemap' | 'elevation' | 'buildings';
+  id: 'basemap' | 'elevation' | 'buildings' | 'models';
   links: readonly CreditLink[];
   /** Licence notices, verbatim. */
   notices: readonly string[];
@@ -89,4 +101,5 @@ export const CREDIT_SECTIONS: readonly CreditSection[] = [
     links: BUILDING_DATA_LINKS,
     notices: [BUILDING_DATA_NOTICES.catastro, BUILDING_DATA_NOTICES.nyc],
   },
+  { id: 'models', links: MODEL_LINKS, notices: [] },
 ];
