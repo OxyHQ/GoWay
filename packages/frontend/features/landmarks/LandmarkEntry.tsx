@@ -34,21 +34,23 @@ export function nearestLandmark(
   return best?.landmark ?? null;
 }
 
+/**
+ * The pill, IN FLOW: the screen places it in its top-right stack, under the
+ * layers button, so it never lands on another chip.
+ */
 export function LandmarksPill({
   landmarks,
   centre,
-  top,
   onOpen,
 }: {
   landmarks: readonly PreparedLandmark[];
   centre: { latitude: number; longitude: number } | null;
-  top: number;
   onOpen: (id: string) => void;
 }) {
   const nearest = nearestLandmark(landmarks, centre);
   if (!nearest) return null;
   return (
-    <View pointerEvents="box-none" className="absolute right-space-16" style={{ top }}>
+    <View pointerEvents="box-none">
       <Button
         size="sm"
         leadingIcon={RiBuilding2Line}
@@ -62,6 +64,17 @@ export function LandmarksPill({
       </Button>
     </View>
   );
+}
+
+/** {@link LandmarksPill} with the registry loaded — what `ExploreScreen` stacks. */
+export function LandmarksPillEntry({
+  centre,
+  onOpen,
+}: {
+  centre: { latitude: number; longitude: number } | null;
+  onOpen: (id: string) => void;
+}) {
+  return <LandmarksPill landmarks={useLandmarks()} centre={centre} onOpen={onOpen} />;
 }
 
 export function LandmarkPlaceAction({

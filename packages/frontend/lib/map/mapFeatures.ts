@@ -39,6 +39,7 @@ import { isCity3dTreeFillRequested, isCity3dTreesRequested } from './city3dTrees
 import { isCityLifeRequested } from './cityLifeFlag';
 import { isCityTilesRequested } from './cityTilesFlag';
 import { isFlyoverRequested } from './flyoverFlag';
+import { isLandmarksRequested } from './landmarksFlag';
 import { resolveReliefFlags } from './reliefFlag';
 
 /** `stable` shows in the panel for everyone; `labs` only once Labs is revealed. */
@@ -186,6 +187,23 @@ export const MAP_FEATURES = [
         development,
         search,
       }),
+  },
+  {
+    id: 'landmarks',
+    tier: 'labs',
+    defaultOn: false,
+    build: process.env.EXPO_PUBLIC_MAP_LANDMARKS,
+    // The tour and its entry need the city engine; the models themselves
+    // draw only over GoWay city tiles (they replace per-building OSM ids),
+    // which the city layer checks on its own.
+    requires: ['city3d'],
+    platforms: WEB,
+    // Without city tiles — not served on goway.to yet — the models draw
+    // nowhere (`docs/MAP_LANDMARKS.md` → Needs city tiles), so the switch is
+    // offered where they can be seen.
+    offer: 'development',
+    request: (enabled, { development, search }) =>
+      isLandmarksRequested({ enabled, development, search }),
   },
   {
     id: 'flyover',

@@ -46,6 +46,7 @@ import { RiCompass3Line } from '@oxy.so/bloom/icons/RiCompass3Line';
 import { RiFocus3Line } from '@oxy.so/bloom/icons/RiFocus3Line';
 
 import { BrandedChromeProvider } from '@/components/brand';
+import { MAP_CHIP_SLOT_ID } from '@/components/map/chipSlot';
 import {
   MapCanvas,
   type GeoBounds,
@@ -215,28 +216,20 @@ const RouteFlyover = lazy(() =>
 const NO_MODELS: readonly MapModel[] = [];
 
 /**
- * The 3D landmarks' tour (`docs/MAP_LANDMARKS.md`): decided once per page
- * load — the landmarks flag AND the city-3D flag, since landmarks are drawn
- * only by the city engine — and loaded only through
- * `features/landmarks/lazy.ts`, so with either off this screen gains two
- * constants and two `import()` stubs and nothing else.
+ * The 3D landmarks' tour (`docs/MAP_LANDMARKS.md`), loaded only through
+ * `features/landmarks/lazy.ts`: with the feature off this screen gains three
+ * `import()` stubs and nothing else. Whether it is on is the map-feature
+ * registry's `landmarks` (which needs the 3D city), read live below, so the
+ * "Landmarks" pill and "Landmark tour" come and go with the Labs switch.
  */
-const LANDMARKS =
-  isLandmarksRequested({
-    enabled: MAP_LANDMARKS_ENABLED,
-    development: __DEV__,
-    search: typeof window !== 'undefined' ? window.location.search : '',
-  }) &&
-  isCity3dRequested({
-    enabled: MAP_CITY3D_ENABLED,
-    development: __DEV__,
-    search: typeof window !== 'undefined' ? window.location.search : '',
-  });
 const LandmarkOverlay = lazy(() =>
   import('@/features/landmarks/lazy').then((chunk) => ({ default: chunk.LandmarkOverlay })),
 );
 const LandmarkPlaceAction = lazy(() =>
   import('@/features/landmarks/lazy').then((chunk) => ({ default: chunk.LandmarkPlaceAction })),
+);
+const LandmarksPillEntry = lazy(() =>
+  import('@/features/landmarks/lazy').then((chunk) => ({ default: chunk.LandmarksPillEntry })),
 );
 
 export default function ExploreScreen({
@@ -298,13 +291,12 @@ export default function ExploreScreen({
 
   const handleMapReady = useCallback(() => {
     mapReady.current = true;
-    // The pill needs a centre before the first move settles.
-    if (LANDMARKS) {
-      void mapRef.current?.getViewport().then((viewport) => {
-        if (viewport)
-          setSettledCentre({ latitude: viewport.latitude, longitude: viewport.longitude });
-      });
-    }
+    // The landmarks pill needs a centre before the first move settles (and
+    // may be switched on later, so the centre is always kept).
+    void mapRef.current?.getViewport().then((viewport) => {
+      if (viewport)
+        setSettledCentre({ latitude: viewport.latitude, longitude: viewport.longitude });
+    });
     street3d.onMapReady();
     setTimeout(applyPendingFit, RETURN_FIT_DELAY_MS);
   }, [applyPendingFit, street3d]);
@@ -329,6 +321,7 @@ export default function ExploreScreen({
   const [bearing, setBearing] = useState(0);
   const [pitch, setPitch] = useState(0);
   const flyover = useMapFeature('flyover');
+  const landmarks = useMapFeature('landmarks');
   const [mapError, setMapError] = useState<MapCanvasError | null>(null);
   // While the flyover flies, the sheet, the panel and the floating controls
   // step aside; the vehicle is a model on the canvas.
@@ -337,7 +330,9 @@ export default function ExploreScreen({
   // The landmark tour: which landmark it is on (`null`: not touring), the
   // settled view centre for the "Landmarks" pill, and who to tell when the
   // user moves the map (the tour pauses).
-  const [tourId, setTourId] = useState<string | null>(null);
+  const [requestedTourId, setTourId] = useState<string | null>(null);
+  // Switching landmarks off in the layers panel ends a tour in progress.
+  const tourId = landmarks ? requestedTourId : null;
   const userMoveListeners = useRef(new Set<() => void>());
   const subscribeUserMove = useCallback((listener: () => void) => {
     userMoveListeners.current.add(listener);
@@ -373,14 +368,12 @@ export default function ExploreScreen({
     (change: MapViewportChange) => {
       setBearing(change.viewport.bearing);
       setPitch(change.viewport.pitch);
-      if (landmarks) {
-        if (change.source === 'user') for (const listener of userMoveListeners.current) listener();
-        if (change.isFinal) {
-          setSettledCentre({
-            latitude: change.viewport.latitude,
-            longitude: change.viewport.longitude,
-          });
-        }
+      if (change.source === 'user') for (const listener of userMoveListeners.current) listener();
+      if (change.isFinal) {
+        setSettledCentre({
+          latitude: change.viewport.latitude,
+          longitude: change.viewport.longitude,
+        });
       }
       explore.onViewportChange(change);
       street3d.onViewportChange(change);
@@ -474,7 +467,7 @@ export default function ExploreScreen({
   const body = (
     <ExploreBody
       explore={explore}
-      renderPlaceActions={LANDMARKS ? renderPlaceActions : undefined}
+      renderPlaceActions={landmarks ? renderPlaceActions : undefined}
     />
   );
 
@@ -571,33 +564,41 @@ export default function ExploreScreen({
           </View>
         ) : null}
 
-        {landmarks && !mapError ? (
+        {landmarks && tourId && !mapError ? (
           <Suspense fallback={null}>
             <LandmarkOverlay
               mapRef={mapRef}
               top={areaTop}
-              centre={settledCentre}
               startId={tourId}
-              showPill={!flying && !directions.active}
-              onStart={setTourId}
               onClose={() => setTourId(null)}
               subscribeUserMove={subscribeUserMove}
             />
           </Suspense>
         ) : null}
 
-        {/* The layers button: top right, under the account button, as Apple Maps
-          parks its map options — the one corner no sheet, panel or notice of
-          this screen ever covers, in either layout. */}
-        {flying ? null : (
-          <View
-            pointerEvents="box-none"
-            className="absolute"
-            style={{ top: areaTop, right: sideGap }}
-          >
+        {/* The top-right stack, under the account button: ONE column, so its
+          items never overlap — the layers button (where Apple Maps parks its
+          map options, a corner no sheet or panel covers in either layout),
+          the "Landmarks" pill, and last the slot the map's own chips mount
+          into (the "Simulated traffic" label, `components/map/chipSlot.ts`).
+          A new chip (Live) goes here too. The slot is never hidden: the label
+          must show whenever the simulation draws, a tour included. */}
+        <View
+          pointerEvents="box-none"
+          className="absolute items-end gap-space-8"
+          style={{ top: areaTop, right: sideGap }}
+          testID="map-top-right-stack"
+        >
+          {immersive ? null : (
             <MapLayersButton tilted={pitch >= TILTED_EPSILON} onTiltChange={handleTiltChange} />
-          </View>
-        )}
+          )}
+          {landmarks && !mapError && !immersive && !directions.active ? (
+            <Suspense fallback={null}>
+              <LandmarksPillEntry centre={settledCentre} onOpen={setTourId} />
+            </Suspense>
+          ) : null}
+          <View nativeID={MAP_CHIP_SLOT_ID} pointerEvents="none" className="items-end" />
+        </View>
 
         {flyover && directions.active && directions.route && !mapError ? (
           <Suspense fallback={null}>

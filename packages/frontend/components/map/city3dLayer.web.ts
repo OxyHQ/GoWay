@@ -49,7 +49,6 @@
 import type { LightSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type { CustomLayerInterface, Map as MapLibreMap, VectorTileSource } from 'maplibre-gl';
 
-import { MAP_LANDMARKS_ENABLED } from '@/lib/config';
 import {
   CITY_COVERAGE_PATH,
   CITY_TILE_LAYER,
@@ -62,7 +61,6 @@ import {
 import { CITY_ROAD_TILE_PATH } from '@/lib/map/cityRoads';
 import type { PreparedLandmark } from '@/lib/map/landmarks/load';
 import { nightFactor } from '@/lib/map/landmarks/night';
-import { isLandmarksRequested } from '@/lib/map/landmarksFlag';
 import {
   getMapSource,
   GOWAY_LAYER_PREFIX,
@@ -254,6 +252,12 @@ export interface AttachCity3dOptions {
    * `cityTiles`. Defaults to `false`.
    */
   cityLife?: boolean;
+  /**
+   * Draw the hand-crafted landmarks in place of their buildings
+   * (`docs/MAP_LANDMARKS.md`): the registry's `landmarks`. Ignored without
+   * `cityTiles`. Defaults to `false`.
+   */
+  landmarks?: boolean;
   /** A model was drawn, or fell back to its marker. */
   onModelStatus?: (id: string, status: ModelStatus) => void;
   /**
@@ -361,13 +365,8 @@ export async function attachCity3d(
   const fillWoods = standTrees && options.treeFill === true;
 
   // Landmarks replace per-building OSM ids, so they need the city tiles.
-  const landmarksOn =
-    cityTiles &&
-    isLandmarksRequested({
-      enabled: MAP_LANDMARKS_ENABLED,
-      development: typeof __DEV__ !== 'undefined' && __DEV__,
-      search: typeof window !== 'undefined' ? window.location.search : '',
-    });
+  // The registry's `landmarks`, handed in.
+  const landmarksOn = cityTiles && options.landmarks === true;
   let landmarkModule: typeof import('@/lib/map/landmarks/load') | null = null;
   let landmarkList: readonly PreparedLandmark[] = [];
   const heldLandmarks = new Set<string>();

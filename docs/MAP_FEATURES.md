@@ -1,7 +1,8 @@
 # Map features: the registry and the layers panel
 
 GoWay's map has optional features: the globe, terrain, the 3D city and its
-trees, GoWay's own city tiles, the simulated city life, the route flyover. Each one used to be a
+trees, GoWay's own city tiles, the simulated city life, the landmarks, the
+route flyover. Each one used to be a
 build-time `EXPO_PUBLIC_MAP_*` flag plus a development-only `?param=1`, so the
 only way to see a feature on goway.to was a rebuild. They are now entries in
 ONE registry, and a person turns them on or off from the map itself, in a
@@ -33,7 +34,7 @@ That answer is handed to the feature's own flag module where the build boolean
 used to go, so a development build's `?city3d=1`, `?globe=0` and the rest work
 exactly as before. Last, a feature is off while anything it `requires` is off
 (the trees and the city tiles need the 3D city; the woods fill needs the trees;
-city life needs the city tiles).
+city life needs the city tiles; the landmarks need the 3D city).
 
 With no stored choice, every feature answers exactly what its flag answered
 before the registry: `mapFeatures.test.ts` checks every feature against the old
@@ -52,18 +53,28 @@ now kills the trees, as a padded `0` always killed the globe and terrain.
 | `city3dTrees` | labs | on, with the city | web | `EXPO_PUBLIC_MAP_CITY3D_TREES` | `?city3dTrees=0` | live (re-attach) |
 | `city3dTreeFill` | labs | off | web | `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL` | `?city3dTreeFill=1` | live (re-attach) |
 | `cityLife` | labs | off | web, **development builds only** | `EXPO_PUBLIC_MAP_CITY_LIFE` | `?cityLife=1` | live (re-attach) |
+| `landmarks` | labs | off | web, **development builds only** (needs `city3d`; models draw only over city tiles) | `EXPO_PUBLIC_MAP_LANDMARKS` | `?landmarks=1` | live (re-attach; the pill and "Landmark tour" come and go, a running tour ends) |
 | `flyover` | labs | off | web, native | `EXPO_PUBLIC_MAP_FLYOVER` | `?flyover=1` | live ("Fly the route", `/studio`) |
 
 No production default changed: globe and terrain stay on (#128), everything
-else is off until somebody turns it on. City tiles and city life are offered in
-the panel only in a development build, because nothing serves their archives on
-goway.to yet and ODbL wants each archive and its receipt published first
+else is off until somebody turns it on. City tiles, city life and the landmarks
+(whose models draw only over city tiles) are offered in the panel only in a
+development build, because nothing serves those archives on goway.to yet and ODbL wants each archive and its receipt published first
 (`MAP_3D_CITY.md` and `MAP_CITY_LIFE.md` → Hosting).
 
 ## The layers panel
 
 A button at the top right of the map, under the account button — the one corner
 that neither the sheet, the side panel nor any notice covers, in either layout.
+
+It is the first item of the explore screen's **top-right stack**: ONE column
+(`items-end`, 8 px apart) under the account button holding, in order, the
+layers button, the "Landmarks" pill, and a slot (`components/map/chipSlot.ts`)
+the map's own DOM chips mount into — the "Simulated traffic" label. Nothing
+there is absolutely positioned on its own, so nothing overlaps on desktop or
+phone; a new chip (Live) is one more item in the stack. The slot is never
+hidden (the simulated label must show whenever the simulation draws, a tour
+included); a map with no slot — the embed — keeps the label at its own spot.
 Bloom's `Popover`: a panel beside the button on the web, a bottom sheet on
 native. Inside:
 
@@ -91,7 +102,7 @@ experimental renderer on for somebody else.
 The store notifies; components read it through `useMapFeature(id)`:
 
 - `MapCanvas.web.tsx`: the city layer's effect depends on `city3d`,
-  `cityTiles`, `city3dTrees`, `city3dTreeFill`, `cityLife`, so a toggle detaches the old
+  `cityTiles`, `city3dTrees`, `city3dTreeFill`, `cityLife`, `landmarks`, so a toggle detaches the old
   layer (giving `building-3d` back) and attaches a new one — no reload. A
   `globe`/`terrain` toggle rebuilds the MapLibre engine, because the globe is
   part of how the style is loaded; the new engine starts at the camera the old
@@ -140,7 +151,8 @@ in `lib/config.ts`, and no `process.env.EXPO_PUBLIC_MAP_*` read of its own):
    the dependencies of the effect that attaches it, so a toggle applies live.
    Hand the answer to a lazy adapter as an option rather than letting the
    adapter read a flag (`city3dLayer.web.ts` takes `cityTiles`, `trees`,
-   `treeFill`, `cityLife`). If it truly cannot apply live, make it part of what rebuilds the
+   `treeFill`, `cityLife`, `landmarks`); anything it shows at the top right
+   goes in the top-right stack, never at its own absolute position. If it truly cannot apply live, make it part of what rebuilds the
    engine, as `globe` is.
 
 Then add its row to the table above and to `.env.example`, and extend the

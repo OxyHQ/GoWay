@@ -7,7 +7,9 @@
  * knows when the simulation draws (`onActiveChange`), so tying the label to
  * that callback — not to a flag a screen could read differently — is what
  * makes "agents visible ⇒ label visible" hold by construction. It sits at the
- * top right under the account button, clear of the top bar's own controls,
+ * top right under the account button — inside the screen's top-right stack
+ * when the screen offers one (`chipSlot.ts`), so it flows below the layers
+ * button and the other chips instead of on top of them — clear of the top bar's own controls,
  * the mark (bottom-left) and the data credit (bottom-right), and of any bottom
  * sheet that would cover a bottom edge; it is never interactive chrome: no
  * button, nothing to dismiss.
@@ -17,6 +19,8 @@
 import { matchLanguageTag } from '@goway.to/sdk';
 
 import { deviceLocale } from '@/lib/i18n';
+
+import { MAP_CHIP_SLOT_ID } from './chipSlot';
 
 /** The label's copy, per locale. Every locale carries every key (`__tests__/cityLifeChip.test.ts`). */
 export const CITY_LIFE_MESSAGES = {
@@ -50,11 +54,20 @@ export function mountCityLifeChip(container: HTMLElement): CityLifeChip {
   chip.title = messages.detail;
   chip.dataset.gowayCityLife = 'simulated';
   chip.textContent = messages.label;
+  // In the screen's stack it flows; with no stack (the embed) it is placed.
+  const slot = document.getElementById(MAP_CHIP_SLOT_ID);
+  Object.assign(
+    chip.style,
+    slot
+      ? ({ position: 'relative', alignSelf: 'flex-end' } satisfies Partial<CSSStyleDeclaration>)
+      : ({
+          position: 'absolute',
+          top: '72px',
+          right: '16px',
+          zIndex: '2',
+        } satisfies Partial<CSSStyleDeclaration>),
+  );
   Object.assign(chip.style, {
-    position: 'absolute',
-    top: '72px',
-    right: '16px',
-    zIndex: '2',
     padding: '4px 10px',
     borderRadius: '999px',
     font: '600 12px/16px system-ui, -apple-system, "Segoe UI", sans-serif',
@@ -67,7 +80,7 @@ export function mountCityLifeChip(container: HTMLElement): CityLifeChip {
     pointerEvents: 'none',
     display: 'none',
   } satisfies Partial<CSSStyleDeclaration>);
-  container.appendChild(chip);
+  (slot ?? container).appendChild(chip);
   return {
     setVisible(visible) {
       chip.style.display = visible ? 'block' : 'none';

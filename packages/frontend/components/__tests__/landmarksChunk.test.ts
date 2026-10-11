@@ -85,9 +85,13 @@ describe('the landmarks chunks', () => {
       );
     expect(dynamics.map((f) => f.path)).toEqual(['features/explore/ExploreScreen.tsx']);
     for (const f of dynamics) {
-      expect(
-        dynamicImports(f.text).filter((spec) => spec.startsWith('@/features/landmarks/')),
-      ).toEqual(['@/features/landmarks/lazy', '@/features/landmarks/lazy']);
+      // The tour overlay, the place action and the pill (which sits in the
+      // screen's top-right stack): every one through lazy.ts.
+      const specs = dynamicImports(f.text).filter((spec) =>
+        spec.startsWith('@/features/landmarks/'),
+      );
+      expect(specs.length).toBeGreaterThan(0);
+      expect(new Set(specs)).toEqual(new Set(['@/features/landmarks/lazy']));
     }
   });
 

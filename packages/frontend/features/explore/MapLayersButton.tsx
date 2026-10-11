@@ -29,6 +29,9 @@ const MapLayersPanel = lazy(() =>
   import('./MapLayersPanel').then((chunk) => ({ default: chunk.MapLayersPanel })),
 );
 
+/** Overrides the trigger wrapper's own `alignSelf: 'flex-start'`. */
+const TRIGGER_STYLE = { alignSelf: 'flex-end' } as const;
+
 /** The panel's width on the web, where it floats beside the button. */
 const PANEL_WIDTH = 320;
 
@@ -54,7 +57,9 @@ export function MapLayersButton({ tilted, onTiltChange }: MapLayersButtonProps) 
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+      {/* `flex-end`: the trigger's own wrapper aligns to the start, which in
+          the screen's right-aligned stack would leave the button adrift. */}
+      <PopoverTrigger asChild style={TRIGGER_STYLE}>
         <Fab
           size="sm"
           icon={RiStackLine}

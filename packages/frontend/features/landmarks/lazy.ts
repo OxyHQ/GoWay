@@ -4,5 +4,5 @@
  * (`components/__tests__/landmarksChunk.test.ts`). With the landmarks flag
  * off, `ExploreScreen` never evaluates that `import()`.
  */
-export { LandmarkPlaceAction } from './LandmarkEntry';
+export { LandmarkPlaceAction, LandmarksPillEntry } from './LandmarkEntry';
 export { LandmarkOverlay } from './LandmarkOverlay';

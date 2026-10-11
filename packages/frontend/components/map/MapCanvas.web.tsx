@@ -250,6 +250,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const trees = useMapFeature('city3dTrees');
   const treeFill = useMapFeature('city3dTreeFill');
   const cityLife = useMapFeature('cityLife');
+  const landmarks = useMapFeature('landmarks');
   const relief = useMapRelief();
   /**
    * What the last engine was built for, and where its camera was when it went.
@@ -944,6 +945,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               trees,
               treeFill,
               cityLife,
+              landmarks,
               onModelStatus: (id, status) =>
                 setModelsDrawn((current) => {
                   if ((status === 'drawn') === current.has(id)) return current;
@@ -990,10 +992,22 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       if (city3dRef.current === handle) city3dRef.current = null;
       setCity3dHandle((current) => (current === handle ? null : current));
       setModelsDrawn((current) => (current.size === 0 ? current : new Set()));
+      // A detached layer draws no landmark, so it owes no landmark credit.
+      setLandmarkCredits(NO_CREDITS);
       handle?.detach();
       if (CITY_SKY) setSkyActive(false);
     };
-  }, [ready, resolvedAppearance, needsEngine, city3d, cityTiles, trees, treeFill, cityLife]);
+  }, [
+    ready,
+    resolvedAppearance,
+    needsEngine,
+    city3d,
+    cityTiles,
+    trees,
+    treeFill,
+    cityLife,
+    landmarks,
+  ]);
 
   // Hand the models to the engine whenever either changes.
   useEffect(() => {

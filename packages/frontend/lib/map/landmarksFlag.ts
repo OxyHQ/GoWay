@@ -4,8 +4,9 @@
  *
  * The same two unequal ways in as the city-3D prototype (`city3dFlag.ts`):
  *
- *  - `EXPO_PUBLIC_MAP_LANDMARKS=1` (`MAP_LANDMARKS_ENABLED` in
- *    `lib/config.ts`): a BUILD decision. No production deployment sets it.
+ *  - `enabled`: the map-feature registry's answer (`mapFeatures.ts`,
+ *    `docs/MAP_FEATURES.md`) — the build's `EXPO_PUBLIC_MAP_LANDMARKS` (no
+ *    production deployment sets it), then the person's choice in Labs.
  *  - `?landmarks=1` on the URL: a per-tab switch honoured ONLY in a
  *    development build (`__DEV__`), so a goway.to link cannot switch an
  *    experimental renderer on for somebody else.
@@ -16,7 +17,7 @@
  * is a test (`__tests__/landmarksFlag.test.ts`), not a comment.
  */
 export function isLandmarksRequested(input: {
-  /** `MAP_LANDMARKS_ENABLED`. */
+  /** The registry's answer for `landmarks`. */
   enabled: boolean;
   /** `__DEV__`. */
   development: boolean;

@@ -11,6 +11,7 @@ import { isCity3dRequested } from '@/lib/map/city3dFlag';
 import { isCity3dTreeFillRequested, isCity3dTreesRequested } from '@/lib/map/city3dTreesFlag';
 import { isCityLifeRequested } from '@/lib/map/cityLifeFlag';
 import { isCityTilesRequested } from '@/lib/map/cityTilesFlag';
+import { isLandmarksRequested } from '@/lib/map/landmarksFlag';
 import { isFlyoverRequested } from '@/lib/map/flyoverFlag';
 import {
   MAP_FEATURES,
@@ -92,6 +93,9 @@ function legacy(builds: Builds, development: boolean, search: string) {
     city3dTreeFill:
       city3dTrees &&
       isCity3dTreeFillRequested({ enabled: onBuild(builds.city3dTreeFill), development, search }),
+    // As `ExploreScreen` decided it: the landmarks flag AND the 3D city.
+    landmarks:
+      city3d && isLandmarksRequested({ enabled: onBuild(builds.landmarks), development, search }),
     flyover: isFlyoverRequested({ enabled: onBuild(builds.flyover), development, search }),
   };
 }
@@ -116,6 +120,7 @@ describe('the registry', () => {
       ['city3dTrees', false],
       ['city3dTreeFill', false],
       ['cityLife', false],
+      ['landmarks', false],
       ['flyover', false],
     ]);
     // Nothing new is on by default: every Labs feature starts off. (The trees
@@ -163,6 +168,8 @@ describe('with no stored choice, every flag answers what it did before', () => {
     '?city3dTreeFill=true',
     '?city3d=1&cityTiles=1&cityLife=1',
     '?cityLife=1',
+    '?landmarks=1',
+    '?city3d=1&landmarks=true',
   ];
   for (const development of [false, true]) {
     test(`${development ? 'development' : 'production'} build`, () => {
@@ -282,8 +289,8 @@ describe('what the panel offers', () => {
     expect(resolve().get('city3d').available).toBe(true);
   });
 
-  test('city tiles and city life only in a development build (nothing serves them yet)', () => {
-    for (const id of ['cityTiles', 'cityLife']) {
+  test('city tiles, city life and landmarks only in a development build (no tiles served yet)', () => {
+    for (const id of ['cityTiles', 'cityLife', 'landmarks']) {
       expect(resolve().get(id).available).toBe(false);
       expect(resolve({ development: true }).get(id).available).toBe(true);
     }
