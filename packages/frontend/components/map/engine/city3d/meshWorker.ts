@@ -23,7 +23,9 @@
  * `docs/MAP_3D_CITY.md` → "Phase 2".
  */
 import { decodeBuildings } from './decode';
-import { meshBuildings } from './mesher';
+import { meshBuildings, type TileMesh } from './mesher';
+import { meshOsmBuildings } from './osmMesher';
+import { decodeCityTile } from './osmTiles';
 import type { MeshWorkerRequest, MeshWorkerResponse } from './protocol';
 import { tileSizeMetres } from './tileMath';
 
@@ -55,19 +57,17 @@ async function mesh(request: Extract<MeshWorkerRequest, { type: 'mesh' }>): Prom
     const bytes = await response.arrayBuffer();
 
     const started = performance.now();
-    const decoded = decodeBuildings(bytes, request.sourceLayer);
-    const result = decoded
-      ? meshBuildings(decoded.features, {
-          extent: decoded.extent,
-          tileSizeMetres: tileSizeMetres(request.tile),
-        })
-      : null;
+    const result =
+      request.format === 'goway' ? meshCityTile(bytes, request) : meshOpenMapTiles(bytes, request);
     const meshMs = performance.now() - started;
 
     // Transfer, not copy: a dense tile is tens of megabytes of buffers.
-    const transfer: Transferable[] = result
-      ? [result.positions.buffer, result.normals.buffer, result.shade.buffer, result.indices.buffer]
-      : [];
+    const transfer: Transferable[] = [];
+    if (result) {
+      for (const value of Object.values(result)) {
+        if (ArrayBuffer.isView(value)) transfer.push(value.buffer as ArrayBuffer);
+      }
+    }
     scope.postMessage({ type: 'mesh', id: request.id, mesh: result, meshMs }, transfer);
   } catch (cause) {
     // A cancelled request is the engine changing its mind; it wants no reply.
@@ -80,6 +80,29 @@ async function mesh(request: Extract<MeshWorkerRequest, { type: 'mesh' }>): Prom
   } finally {
     inflight.delete(request.id);
   }
+}
+
+type MeshRequest = Extract<MeshWorkerRequest, { type: 'mesh' }>;
+
+function meshOpenMapTiles(bytes: ArrayBuffer, request: MeshRequest): TileMesh | null {
+  const decoded = decodeBuildings(bytes, request.sourceLayer);
+  return decoded
+    ? meshBuildings(decoded.features, {
+        extent: decoded.extent,
+        tileSizeMetres: tileSizeMetres(request.tile),
+      })
+    : null;
+}
+
+/** GoWay city tiles: per-building, with roofs, colours and recorded storeys. */
+function meshCityTile(bytes: ArrayBuffer, request: MeshRequest): TileMesh | null {
+  const decoded = decodeCityTile(bytes);
+  return decoded
+    ? meshOsmBuildings(decoded.buildings, {
+        extent: decoded.extent,
+        tileSizeMetres: tileSizeMetres(request.tile),
+      })
+    : null;
 }
 
 scope.onmessage = (event) => {
