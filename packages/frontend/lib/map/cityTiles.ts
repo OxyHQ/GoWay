@@ -128,6 +128,14 @@ export const CITY_PROPS = {
    * Honesty, "Heights").
    */
   heightSource: 'height_source',
+  /**
+   * `true` when the building ITSELF records that it is lit at night:
+   * `floodlit=yes` or an affirmative `lit=*` on the building way or relation
+   * (`citygen/tags.ts` → `parseLitAtNight`). Absent otherwise. The city sky
+   * draws a warm uplight on such a building at night — styling (the light's
+   * look, colour and fall-off) on a recorded fact (that it is lit).
+   */
+  floodlit: 'floodlit',
 } as const;
 
 /** Recorded height sources a tile may name (`CITY_PROPS.heightSource`). */

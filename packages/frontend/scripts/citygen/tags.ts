@@ -279,6 +279,51 @@ export function defaultRoofHeight(shape: RoofShape, span: RoofSpan, angleDeg?: n
 /** The normalised, resolved properties one feature carries into a tile. */
 export type CityFeatureProperties = Record<string, string | number | boolean>;
 
+/**
+ * The keys {@link parseLitAtNight} reads. The compiler keeps only the keys it
+ * is told to (`compile.ts` → `KEPT_KEYS`) and must keep these: the first
+ * Barcelona build without them reported "lit at night 0" for a tag it had
+ * dropped on read.
+ */
+export const LIT_KEYS = ['floodlit', 'lit'] as const;
+
+/** `lit=*` values that say the feature is lit at night (taginfo, 2026-10). */
+const LIT_AFFIRMATIVE = new Set([
+  'yes',
+  'automatic',
+  '24/7',
+  'dusk-dawn',
+  'sunset-sunrise',
+  'limited',
+  'interval',
+]);
+
+/**
+ * Whether the building itself records that it is lit at night.
+ *
+ * Measured on taginfo (2026-10-11), which is why both keys are read:
+ * `floodlit` — the obvious key — is on THREE objects worldwide (all sports
+ * pitches) and `building:floodlit` on none, so on its own it would light
+ * nothing. `lit` is the established key (15.5 M objects, 94% highways), and
+ * on a building — 33 k of them, plus 391 `building:part`s — it says the same
+ * thing: this is lit at night. Accepted: `floodlit` = `yes`/`1`/`true`, and
+ * `lit` = one of {@link LIT_AFFIRMATIVE} or a time range (`18:00-05:30`,
+ * `sunset-00:00,…`), which is lit for at least part of the night. `lit=no`,
+ * `disused` and anything unrecognised are not.
+ *
+ * `light_source=floodlight` (6.9 k, nearly all NODES — the lamps) is not
+ * read: attributing a lamp to the building it points at is a spatial guess,
+ * not a tag.
+ */
+export function parseLitAtNight(tags: Tags): boolean {
+  const floodlit = tags.floodlit?.trim().toLowerCase();
+  if (floodlit === 'yes' || floodlit === '1' || floodlit === 'true') return true;
+  const lit = tags.lit?.trim().toLowerCase();
+  if (!lit) return false;
+  if (LIT_AFFIRMATIVE.has(lit)) return true;
+  return /\b\d{1,2}:\d{2}\s*-|\b(sunset|dusk)\b/.test(lit);
+}
+
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
 /**
@@ -387,5 +432,6 @@ export function resolveProperties(
   const roofMaterial = parseRoofMaterial(tags['roof:material']);
   if (roofMaterial) props[CITY_PROPS.roofMaterial] = roofMaterial;
   if (kind === 'part') props[CITY_PROPS.part] = true;
+  if (parseLitAtNight(tags)) props[CITY_PROPS.floodlit] = true;
   return props;
 }

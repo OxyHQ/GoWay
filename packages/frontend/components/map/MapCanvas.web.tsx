@@ -31,6 +31,8 @@
  */
 import {
   forwardRef,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -52,9 +54,10 @@ import * as Location from 'expo-location';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
-import { MAP_CITY3D_ENABLED } from '@/lib/config';
+import { MAP_CITY3D_ENABLED, MAP_CITY_SKY_ENABLED } from '@/lib/config';
 import { isCity3dRequested } from '@/lib/map/city3dFlag';
 import { isReliefId, mapStyleLoading } from '@/lib/map/reliefFlag';
+import { isCitySkyRequested, maxPitchFor } from '@/lib/map/citySkyFlag';
 import {
   type MapAttributionLink,
   overlayLayerId,
@@ -159,6 +162,23 @@ RELIEF_CHUNK?.catch(() => {});
 
 const NO_CREDITS: readonly MapAttributionLink[] = [];
 
+/**
+ * Whether the city layer also draws the sky, haze, sun shadows and the
+ * time-of-day scrubber. Needs `CITY3D`; see `lib/map/citySkyFlag.ts`.
+ */
+const CITY_SKY = isCitySkyRequested({
+  city3d: CITY3D,
+  enabled: MAP_CITY_SKY_ENABLED,
+  development: __DEV__,
+  search: typeof window !== 'undefined' ? window.location.search : '',
+});
+
+/**
+ * The scrubber is its own lazy chunk, created only when the flag is on: with
+ * it off, the `import()` below is never evaluated and nothing is downloaded.
+ */
+const TimeOfDayScrubber = CITY_SKY ? lazy(() => import('./TimeOfDayScrubber.web')) : null;
+
 const DEGENERATE_FIT_ZOOM = 15;
 const DEFAULT_FIT_PADDING = 48;
 const DEFAULT_CAMERA_DURATION_MS = 500;
@@ -227,6 +247,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const lastMoveEmit = useRef(0);
 
   const [ready, setReady] = useState(false);
+  // City sky: whether the layer that draws it is attached (the scrubber and
+  // the higher pitch ceiling exist only then). See the city-3D section below.
+  const [skyActive, setSkyActive] = useState(false);
   const [error, setError] = useState<MapCanvasError | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   // Portal targets, mirrored into state so React re-renders the marker bodies
@@ -716,8 +739,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     // show from z15.5, but a gesture that silently stops working when you zoom
     // out is a worse surprise than a tilted view of flat ground.
     toggle(map.touchPitch, gestures.pitch);
-    map.setMaxPitch(gestures.pitch ? 60 : 0);
-  }, [gestures.pan, gestures.zoom, gestures.rotate, gestures.pitch, ready]);
+    //
+    // With the city sky drawn the ceiling is higher, so the horizon can be
+    // seen (`maxPitchFor`); this effect is the only place it is set, so a
+    // change of `interaction` keeps it, and detaching the sky restores 60°.
+    map.setMaxPitch(maxPitchFor({ pitchAllowed: gestures.pitch, skyActive }));
+  }, [gestures.pan, gestures.zoom, gestures.rotate, gestures.pitch, ready, skyActive]);
 
   // --- Markers ------------------------------------------------------------
 
@@ -822,6 +849,17 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // Credits owed for the landmark models on screen (`docs/MAP_LANDMARKS.md`).
   const [landmarkCredits, setLandmarkCredits] = useState<readonly MapAttributionLink[]>(NO_CREDITS);
   const city3dLightRef = useRef(sunLight.light);
+
+  // City sky: the instant the layer is lit for (`null`: now), whether the
+  // layer that draws it is actually attached (the scrubber shows only then),
+  // and the sun's altitude over the centre for the scrubber's caption.
+  const [skyAt, setSkyAt] = useState<Date | null>(null);
+  const [sunAltitude, setSunAltitude] = useState<number | null>(null);
+  const skyAtRef = useRef(skyAt);
+  useEffect(() => {
+    skyAtRef.current = skyAt;
+    city3dRef.current?.setTime(skyAt);
+  }, [skyAt]);
   useEffect(() => {
     city3dLightRef.current = sunLight.light;
     city3dRef.current?.setLight(sunLight.light);
@@ -862,6 +900,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
                 }),
               onLandmarkCredits: (links) =>
                 setLandmarkCredits(links.length === 0 ? NO_CREDITS : links),
+              sky: CITY_SKY
+                ? {
+                    at: skyAtRef.current,
+                    onSun: (sun) => setSunAltitude(sun.altitudeDeg),
+                  }
+                : undefined,
             }),
       )
       .then((attached) => {
@@ -876,6 +920,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         setCity3dHandle(attached);
         // The light may have moved while the chunks downloaded.
         attached?.setLight(city3dLightRef.current);
+        attached?.setTime(skyAtRef.current);
+        if (CITY_SKY) setSkyActive(attached !== null);
       })
       .catch((cause: unknown) => {
         // The shipped buildings are untouched until the layer is in, so a
@@ -891,6 +937,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       setCity3dHandle((current) => (current === handle ? null : current));
       setModelsDrawn((current) => (current.size === 0 ? current : new Set()));
       handle?.detach();
+      if (CITY_SKY) setSkyActive(false);
     };
   }, [ready, resolvedAppearance, needsEngine]);
 
@@ -1260,6 +1307,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           somebody else's page. See MapBrand.tsx. */}
       <MapBrand />
       <MapAttribution extra={landmarkCredits} />
+
+      {TimeOfDayScrubber && skyActive ? (
+        <Suspense fallback={null}>
+          <TimeOfDayScrubber value={skyAt} onChange={setSkyAt} sunAltitudeDeg={sunAltitude} />
+        </Suspense>
+      ) : null}
 
       {error ? <MapErrorState error={error} onRetry={retry} /> : null}
     </View>

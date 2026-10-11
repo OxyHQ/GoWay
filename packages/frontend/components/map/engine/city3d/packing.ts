@@ -12,6 +12,7 @@
  * | index      | `uint16`    |        2 B | per chunk of ≤ 65,535 vertices            |
  * | `color`    | `uint8 ×4`  |        4 B | GoWay city tiles only, as `osmMesher` set it |
  * | `facade`   | `uint16 ×4` |        8 B | GoWay city tiles only, as `osmMesher` set it |
+ * | `flags`    | `uint8 ×1`  |        1 B | GoWay city tiles only: per-building night flags (`VERTEX_FLAG_*`) |
  *
  * against float32 positions (12 B), `int8 ×3` normals (3 B), `uint8 ×2` shade
  * (2 B) and `uint32` indices (4 B) before. Measured on the dense Barcelona tile
@@ -68,6 +69,8 @@ export interface PackedChunk {
    */
   color?: Uint8Array;
   facade?: Uint16Array;
+  /** GoWay city tiles only: per-building flags (`osmMesher.ts` → `VERTEX_FLAG_*`). */
+  flags?: Uint8Array;
   /**
    * Where this chunk's vertices come from, in the mesh's vertex order (what
    * `polygonStarts` indexes): vertex `i` is source vertex `sourceStart + i`,
@@ -79,7 +82,11 @@ export interface PackedChunk {
 }
 
 /** A float mesh, with the GoWay city tiles' extra lanes when it has them (`OsmTileMesh`). */
-export type SourceMesh = TileMesh & { colors?: Uint8Array; facade?: Uint16Array };
+export type SourceMesh = TileMesh & {
+  colors?: Uint8Array;
+  facade?: Uint16Array;
+  flags?: Uint8Array;
+};
 
 function chunkBytes(chunk: PackedChunk): number {
   return (
@@ -87,7 +94,8 @@ function chunkBytes(chunk: PackedChunk): number {
     chunk.normal.byteLength +
     chunk.index.byteLength +
     (chunk.color?.byteLength ?? 0) +
-    (chunk.facade?.byteLength ?? 0)
+    (chunk.facade?.byteLength ?? 0) +
+    (chunk.flags?.byteLength ?? 0)
   );
 }
 
@@ -132,6 +140,7 @@ export function packedTransferables(mesh: PackedMesh): ArrayBuffer[] {
     );
     if (chunk.color) out.push(chunk.color.buffer as ArrayBuffer);
     if (chunk.facade) out.push(chunk.facade.buffer as ArrayBuffer);
+    if (chunk.flags) out.push(chunk.flags.buffer as ArrayBuffer);
     if (chunk.sourceIds) out.push(chunk.sourceIds.buffer as ArrayBuffer);
   }
   out.push(
@@ -369,12 +378,13 @@ function copyVertices(
   idOf: (i: number) => number,
   bounds: { min: [number, number, number]; max: [number, number, number] },
 ): Omit<PackedChunk, 'index' | 'sourceStart' | 'sourceIds'> {
-  const { positions, normals, shade, colors, facade } = mesh;
+  const { positions, normals, shade, colors, facade, flags } = mesh;
   const inverseUnit = 1 / unitM;
   const position = new Uint16Array(count * 4);
   const normal = new Int8Array(count * 4);
   const color = colors ? new Uint8Array(count * 4) : undefined;
   const lanes = facade ? new Uint16Array(count * 4) : undefined;
+  const flagLane = flags ? new Uint8Array(count) : undefined;
   const { min, max } = bounds;
   for (let i = 0; i < count; i++) {
     const v = idOf(i);
@@ -402,6 +412,7 @@ function copyVertices(
       lanes[q + 2] = facade[v * 4 + 2];
       lanes[q + 3] = facade[v * 4 + 3];
     }
+    if (flagLane && flags) flagLane[i] = flags[v];
     if (x < min[0]) min[0] = x;
     if (y < min[1]) min[1] = y;
     if (z < min[2]) min[2] = z;
@@ -409,7 +420,13 @@ function copyVertices(
     if (y > max[1]) max[1] = y;
     if (z > max[2]) max[2] = z;
   }
-  return { position, normal, ...(color ? { color } : {}), ...(lanes ? { facade: lanes } : {}) };
+  return {
+    position,
+    normal,
+    ...(color ? { color } : {}),
+    ...(lanes ? { facade: lanes } : {}),
+    ...(flagLane ? { flags: flagLane } : {}),
+  };
 }
 
 function finishPacked(

@@ -276,7 +276,7 @@ async function build(args: Args): Promise<string> {
     `  per tile     p50 ${percentile(featureCounts, 50)}, p95 ${percentile(featureCounts, 95)}`,
   );
   console.log(
-    `  coverage     height ${pct(c.withHeight, c.features)}% · levels ${pct(c.withLevels, c.features)}% · roof:shape ${pct(c.withRoofShape, c.features)}% (non-flat ${pct(c.withRoofShapeNonFlat, c.features)}%) · colour ${pct(c.withColour, c.features)}% · roof:colour ${pct(c.withRoofColour, c.features)}% · material ${pct(c.withMaterial, c.features)}% · roof:material ${pct(c.withRoofMaterial, c.features)}%`,
+    `  coverage     height ${pct(c.withHeight, c.features)}% · levels ${pct(c.withLevels, c.features)}% · roof:shape ${pct(c.withRoofShape, c.features)}% (non-flat ${pct(c.withRoofShapeNonFlat, c.features)}%) · colour ${pct(c.withColour, c.features)}% · roof:colour ${pct(c.withRoofColour, c.features)}% · material ${pct(c.withMaterial, c.features)}% · roof:material ${pct(c.withRoofMaterial, c.features)}% · lit at night ${c.withFloodlit}`,
   );
   console.log(`  roof shapes  ${JSON.stringify(c.roofShapes)}`);
   console.log(`  roof height  ${JSON.stringify(c.roofHeightSources)}`);

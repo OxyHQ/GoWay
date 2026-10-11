@@ -10,9 +10,10 @@
  *
  * So this reads the source tree and pins the shape that prevents it:
  *
- *  - only the two engine modules — and `cityMeshes.ts`, which the city engine
- *    alone imports — load `three` or `@sparkjsdev/spark` at runtime
- *    (`import type` is erased and allowed anywhere);
+ *  - only the two engine modules — and their parts (`cityMeshes.ts`, the
+ *    sky's `sky.ts`), which only the city engine reaches — load `three` or
+ *    `@sparkjsdev/spark` at runtime (`import type` is erased and allowed
+ *    anywhere);
  *  - nothing reaches either engine except `engine3d/lazyChunk.ts`, and the
  *    MapLibre adapter imports the city engine's folder for types only;
  *  - `lazyChunk.ts` is only ever imported dynamically.
@@ -74,16 +75,24 @@ const ENGINES = [
   'components/map/engine/city3d/modelLook.ts',
 ];
 const CHUNK = 'components/engine3d/lazyChunk.ts';
+/**
+ * three.js modules that are part of an engine, not engines of their own: they
+ * may import `three`, but only their engine may reach them, so they are in the
+ * same lazy chunk by construction.
+ */
+const ENGINE_PARTS: Record<string, string> = {
+  'components/map/engine/city3d/sky.ts': 'components/map/engine/city3d/cityEngine.ts',
+};
 
 describe('the three.js chunk', () => {
   test('the scan sees the engines (a vacuity check)', () => {
-    for (const engine of [...ENGINES, CHUNK])
+    for (const engine of [...ENGINES, CHUNK, ...Object.keys(ENGINE_PARTS)])
       expect(files.some((f) => f.path === engine)).toBe(true);
   });
 
   test('only the engines import three.js or Spark at runtime', () => {
     const offenders = files
-      .filter((f) => !ENGINES.includes(f.path))
+      .filter((f) => !ENGINES.includes(f.path) && !(f.path in ENGINE_PARTS))
       .filter((f) => runtimeImports(f.text, /^(three|@sparkjsdev\/spark)(\/|$)/).length > 0)
       .map((f) => f.path);
     expect(offenders).toEqual([]);
@@ -96,6 +105,17 @@ describe('the three.js chunk', () => {
       .filter((f) => f.path.startsWith('components/map/engine/'))
       .map((f) => f.path);
     expect(offenders).toEqual([]);
+  });
+
+  test('an engine part is reached only by its engine', () => {
+    for (const [part, engine] of Object.entries(ENGINE_PARTS)) {
+      const name = part.split('/').pop()?.replace(/\.ts$/, '') ?? part;
+      const reachers = files
+        .filter((f) => f.path !== part)
+        .filter((f) => runtimeImports(f.text, new RegExp(`/${name}$`)).length > 0)
+        .map((f) => f.path);
+      expect(reachers).toEqual([engine]);
+    }
   });
 
   test('only lazyChunk.ts reaches the engines at runtime', () => {
