@@ -9,12 +9,17 @@
  * uniforms as the GLSL one, so one uniform set drives both renderers.
  */
 import { describe, expect, test } from 'bun:test';
+import { BackSide, FrontSide, Vector3 } from 'three/webgpu';
 
 import { MATERIAL_GLSL } from '@/components/map/engine/city3d/materials';
 import { OSM_FRAGMENT_SHADER, OSM_VERTEX_SHADER } from '@/components/map/engine/city3d/osmShaders';
 import { tileSizeMetres } from '@/components/map/engine/city3d/tileMath';
 import { meshCityTile } from '@/components/map/engine/city3d/tileMeshing';
-import { createOsmBuildingMaterial } from '@/components/map/engine/city3d/tsl/osmBuildingMaterial';
+import {
+  createBuildingMaterials,
+  createBuildingUniforms,
+} from '@/components/map/engine/city3d/tsl/buildingMaterial';
+import { CITY_FRAGMENT_SHADER, CITY_VERTEX_SHADER } from '@/components/map/engine/city3d/shaders';
 import { encodeCityTile, type TilePoint } from '@/scripts/citygen/mvtEncode';
 
 const TILE = { z: 15, x: 16580, y: 12236 };
@@ -79,40 +84,66 @@ describe('tile meshing, shared by the web worker and the native host', () => {
 });
 
 describe('the TSL building material', () => {
-  const ramp = {
-    low: [0.9, 0.9, 0.85],
-    tall: [0.8, 0.8, 0.75],
-    veryTall: [0.7, 0.7, 0.65],
-    tallM: 60,
-    veryTallM: 180,
-  } as const;
-  const light = { position: [0.5, 0.5, 1] as const, intensity: 0.2, color: [1, 1, 1] as const };
+  const refs = () => ({
+    uLow: { value: new Vector3(0.9, 0.9, 0.85) },
+    uTall: { value: new Vector3(0.8, 0.8, 0.75) },
+    uVeryTall: { value: new Vector3(0.7, 0.7, 0.65) },
+    uTallM: { value: 60 },
+    uVeryTallM: { value: 180 },
+    uLightPosition: { value: new Vector3(0.5, 0.5, 1) },
+    uLightIntensity: { value: 0.2 },
+    uLightColor: { value: new Vector3(1, 1, 1) },
+    uOpacity: { value: 1 },
+    uGrounded: { value: 0 },
+  });
+  const fade = () => ({ uFadeFrom: { value: 0 }, uFadeTo: { value: 1 } });
 
-  test('reads every uniform the GLSL material declares, except the ones not ported yet', () => {
-    const { uniforms } = createOsmBuildingMaterial(ramp, light);
+  test('reads exactly the uniforms the plain GLSL building materials declare', () => {
     const declared = new Set(
-      [...`${OSM_VERTEX_SHADER}${OSM_FRAGMENT_SHADER}`.matchAll(/uniform \w+ (u\w+);/g)].map(
-        (m) => m[1],
-      ),
+      [
+        ...`${CITY_VERTEX_SHADER}${CITY_FRAGMENT_SHADER}${OSM_VERTEX_SHADER}${OSM_FRAGMENT_SHADER}`.matchAll(
+          /uniform \w+ (u\w+);/g,
+        ),
+      ].map((m) => m[1]),
     );
-    // Phase 2 (`docs/MAP_NATIVE_3D.md`): the terrain lift and the LOD dither;
-    // and the detailed look's material (`materials.ts`), which is drawn only
-    // in the city sky's light, so it is ported with the sky.
-    const notYet = new Set([
-      'uGrounded',
-      'uFadeFrom',
-      'uFadeTo',
-      ...[...MATERIAL_GLSL.matchAll(/uniform \w+ (u\w+);/g)].map((m) => m[1]),
-    ]);
-    const expected = [...declared].filter((name) => !notYet.has(name)).sort();
-    expect(Object.keys(uniforms).sort()).toEqual(expected);
+    // The detailed look's material (`materials.ts`) is drawn only in the city
+    // sky's light, so it is ported with the sky.
+    const material = new Set([...MATERIAL_GLSL.matchAll(/uniform \w+ (u\w+);/g)].map((m) => m[1]));
+    const read = [...Object.keys(createBuildingUniforms(refs())), ...Object.keys(fade())];
+    expect(read.sort()).toEqual([...declared].filter((name) => !material.has(name)).sort());
   });
 
-  test('builds a position and a colour node over the packed lanes', () => {
-    const { material, uniforms } = createOsmBuildingMaterial(ramp, light);
-    expect(material.positionNode).toBeTruthy();
-    expect(material.colorNode).toBeTruthy();
-    expect(uniforms.uLightIntensity.value).toBe(0.2);
-    expect(uniforms.uLow.value.toArray()).toEqual([0.9, 0.9, 0.85]);
+  test("the engine's uniform objects drive the nodes: one source of truth", () => {
+    const engine = refs();
+    const uniforms = createBuildingUniforms(engine);
+    engine.uLightIntensity.value = 0.45;
+    engine.uLightPosition.value.set(0, 0, 1.15);
+    uniforms.uLightIntensity.update({} as never);
+    uniforms.uLightPosition.update({} as never);
+    expect(uniforms.uLightIntensity.value).toBe(0.45);
+    expect(uniforms.uLightPosition.value.toArray()).toEqual([0, 0, 1.15]);
+  });
+
+  test('one shared material per format and variant, built once', () => {
+    const materials = createBuildingMaterials(createBuildingUniforms(refs()), FrontSide);
+    const settled = materials.get('goway', false);
+    expect(materials.get('goway', false)).toBe(settled);
+    const dithered = materials.get('goway', true);
+    expect(dithered).not.toBe(settled);
+    expect(dithered.colorNode).not.toBe(settled.colorNode);
+    expect(materials.get('openmaptiles', false)).not.toBe(settled);
+  });
+
+  test('both formats build, on the side asked for, blended as MapLibre blends custom layers', () => {
+    const materials = createBuildingMaterials(createBuildingUniforms(refs()), BackSide);
+    for (const format of ['openmaptiles', 'goway'] as const) {
+      for (const dithered of [false, true]) {
+        const material = materials.get(format, dithered);
+        expect(material.positionNode).toBeTruthy();
+        expect(material.colorNode).toBeTruthy();
+        expect(material.side).toBe(BackSide);
+        expect(material.transparent).toBe(false);
+      }
+    }
   });
 });

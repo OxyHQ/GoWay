@@ -52,6 +52,7 @@ now kills the trees, as a padded `0` always killed the globe and terrain.
 | `city3d` | labs | off | web | `EXPO_PUBLIC_MAP_CITY3D` | `?city3d=1` | live (attach/detach) |
 | `citySky` | labs | off | web (needs `city3d`) | `EXPO_PUBLIC_MAP_CITY_SKY` | `?citysky=1` | live (re-attach; the time-of-day scrubber shows only while it draws) |
 | `detailedCity` | labs | off | web (needs `city3d`; brings its own live-clock sky without `citySky`) | `EXPO_PUBLIC_MAP_DETAILED_CITY` | `?detailedCity=1` | live (re-attach) |
+| `cityTsl` | labs | off | web, **development builds only** (needs `city3d`; not with `citySky` or `detailedCity`) | `EXPO_PUBLIC_MAP_CITY_TSL` | `?cityTsl=1` | live (re-attach). The buildings through TSL + `WebGPURenderer`: `MAP_NATIVE_3D.md` → Phase 2 |
 | `cityTiles` | labs | off | web, **development builds only** | `EXPO_PUBLIC_MAP_CITY_TILES` | `?cityTiles=1` | live (re-attach). Official building data merged into the archive (Catastro storeys, NYC 3D model, `MAP_3D_SOURCES.md`) rides on it: no switch of its own |
 | `city3dTrees` | labs | on, with the city | web | `EXPO_PUBLIC_MAP_CITY3D_TREES` | `?city3dTrees=0` | live (re-attach) |
 | `city3dTreeFill` | labs | off | web | `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL` | `?city3dTreeFill=1` | live (re-attach) |

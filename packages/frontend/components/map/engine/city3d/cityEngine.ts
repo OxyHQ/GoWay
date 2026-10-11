@@ -46,6 +46,7 @@ import * as THREE from 'three';
 import type { CityMaterial } from '@/lib/map/style/palette3d';
 
 import {
+  BUILDING_SIDE,
   applyGround,
   createTileEntry,
   createTreeShapes,
@@ -69,6 +70,7 @@ import {
 import type { CityCoverageArea } from '@/lib/map/cityTiles';
 
 import { hexToRgb } from './colour';
+import { createGpuTimer } from './gpuTimer';
 import { hiddenFeatureIds, tilesAround } from './landmarkTiles';
 import {
   DETAILED_DEFINE,
@@ -97,6 +99,7 @@ import { type GroundSampler, type GroundStats, TileGrounder } from './terrainGro
 import { incompleteRetryMs, TileCache, TileScheduler } from './tileScheduler';
 import { assignSources, type SourcedTile } from './sources';
 import { Transitions } from './transitions';
+import { type BuildingPass, createBuildingPass } from './tsl/buildingPass';
 import { treeMinHeightM } from './treeShaders';
 import type { TreeSourceLayers } from './treeSources';
 import { poolSize, WorkerPool } from './workerPool';
@@ -177,6 +180,19 @@ export interface CityEngineOptions {
    * {@link CityEngineOptions.light}. Present: the buildings, trees and
    * overlays are lit by the sun given to {@link CityEngine.setSun} instead.
    */
+  /**
+   * Draw the buildings with the TSL material through three's
+   * `WebGPURenderer` (WebGL2 backend) in this same context — phase 2, step 1
+   * of `docs/MAP_NATIVE_3D.md`, behind the registry's `cityTsl`. Ignored with
+   * `sky` (its building material is not ported yet). Defaults to `false`.
+   *
+   * Imported statically, so three's WebGPU build is in the engine's lazy
+   * chunk whether or not this is on: a separate `import()` would share
+   * three's core with that chunk, and Expo hoists a module two async chunks
+   * share into the first-paint `__common` chunk (measured: 27.5 → 135.8 KB
+   * gzip for every visitor). The doc has the numbers.
+   */
+  tslBuildings?: boolean;
   sky?: {
     appearance: SkyAppearance;
     /**
@@ -237,6 +253,12 @@ export interface CityEngineStats {
   lastTreeMs: number;
   /** This thread's time in `render()` (selection, scheduling, three's draw calls), smoothed. */
   frameCpuMs: number;
+  /** …of which the city's own draw calls (buildings, trees, overlays), smoothed. */
+  drawCpuMs: number;
+  /** GPU time of those draws, smoothed; absent where the browser cannot time it. */
+  drawGpuMs?: number;
+  /** Which renderer drew the buildings: `glsl` (`WebGLRenderer`) or `tsl` (`tsl/buildingPass.ts`). */
+  buildingPath: 'glsl' | 'tsl';
   /** Meshes waiting for the per-frame upload budget. */
   uploadsQueued: number;
   workers: number;
@@ -441,6 +463,21 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     // The detailed material's uniforms (day and night), only when it is on.
     ...(detailed ? materialSlots(detailed) : {}),
   };
+  // Phase 2, step 1 (`docs/MAP_NATIVE_3D.md`): the buildings through TSL and
+  // `WebGPURenderer`, in this same context, bound to these same uniforms.
+  const buildingPass: BuildingPass | null =
+    options.tslBuildings && !sky
+      ? createBuildingPass({
+          gl: options.gl,
+          canvas: options.canvas,
+          uniforms: buildingUniforms,
+          side: BUILDING_SIDE,
+          onReady: () => options.requestRepaint(),
+        })
+      : null;
+  // Development only: the GPU cost of the city's draws, for comparing paths.
+  const gpuTimer = options.onStats ? createGpuTimer(options.gl) : null;
+  let drawCpuMs = 0;
   const treeUniforms = {
     ...light,
     uCrown: { value: new THREE.Vector3(0.3, 0.5, 0.3) },
@@ -462,6 +499,9 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       goway: { vertexShader: OSM_VERTEX_SHADER, fragmentShader: OSM_FRAGMENT_SHADER },
     },
     treeUniforms,
+    tslBuildings: buildingPass
+      ? { scene: buildingPass.scene, materials: buildingPass.materials }
+      : null,
   };
   // Where the city tiles draw instead of the basemap's buildings (`sources.ts`).
   const city = options.city
@@ -623,6 +663,9 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       lastMeshMs,
       lastTreeMs,
       frameCpuMs,
+      drawCpuMs,
+      ...(gpuTimer?.ms != null ? { drawGpuMs: gpuTimer.ms } : {}),
+      buildingPath: buildingPass ? 'tsl' : 'glsl',
       uploadsQueued: arrivals.length,
       workers: pool.size,
       errors,
@@ -1017,7 +1060,17 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       // buildings or not.
       sky?.drawBackground(renderer, frameOf.skyView);
       if (frameOf.opacity > 0) {
+        const drawStarted = performance.now();
+        gpuTimer?.begin();
+        if (buildingPass) {
+          buildingPass.draw(camera);
+          // The TSL pass changed GL state behind this renderer's back.
+          renderer.resetState();
+        }
         renderer.render(scene, camera);
+        gpuTimer?.end();
+        const drawn = performance.now() - drawStarted;
+        drawCpuMs = drawCpuMs === 0 ? drawn : drawCpuMs * 0.9 + drawn * 0.1;
         if (landmarks.active) {
           renderer.resetState();
           landmarks.render(renderer, view, {
@@ -1159,6 +1212,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       retryTimers.clear();
       transitions.clear();
       cache.clear();
+      buildingPass?.dispose();
+      gpuTimer?.dispose();
       shapes.dispose();
       requests.clear();
       arrivals.length = 0;

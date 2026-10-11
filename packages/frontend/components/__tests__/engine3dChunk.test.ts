@@ -79,13 +79,19 @@ const ENGINES = [
   'components/map/engine/city3d/gltf.ts',
   // The shared model library (`docs/MODEL_LIBRARY.md`), loaded by city life and the live pass.
   'components/map/engine/vehicles/library.ts',
-  // The native-3D phase 1 prototype (three's WebGPU build, docs/MAP_NATIVE_3D.md):
-  // reached by no app module yet, only by `scripts/` and the native harness.
+  // three's WebGPU build (docs/MAP_NATIVE_3D.md): the TSL building material
+  // and its pass, reached only by the city engine (below); and the phase 1
+  // tile view, reached by no app module (only `scripts/` and the native harness).
+  'components/map/engine/city3d/tsl/buildingMaterial.ts',
+  'components/map/engine/city3d/tsl/buildingPass.ts',
   'components/map/engine/city3d/tsl/cityTileView.ts',
-  'components/map/engine/city3d/tsl/osmBuildingMaterial.ts',
 ];
-/** The TSL prototype's folder: until a phase wires it in, no app module may reach it. */
-const TSL_PROTOTYPE = 'components/map/engine/city3d/tsl/';
+/** The TSL modules' folder, and the only app modules allowed to reach into it. */
+const TSL = 'components/map/engine/city3d/tsl/';
+const TSL_REACHERS = [
+  'components/map/engine/city3d/cityEngine.ts',
+  'components/map/engine/city3d/cityMeshes.ts',
+];
 const CHUNK = 'components/engine3d/lazyChunk.ts';
 /**
  * three.js modules that are part of an engine, not engines of their own: they
@@ -110,12 +116,16 @@ describe('the three.js chunk', () => {
     expect(offenders).toEqual([]);
   });
 
-  test('no app module reaches the TSL prototype at runtime', () => {
+  test('only the city engine reaches the TSL modules at runtime', () => {
     const offenders = files
-      .filter((f) => !f.path.startsWith(TSL_PROTOTYPE))
-      .filter((f) => runtimeImports(f.text, /city3d\/tsl\//).length > 0)
+      .filter((f) => !f.path.startsWith(TSL) && !TSL_REACHERS.includes(f.path))
+      .filter((f) => runtimeImports(f.text, /(city3d\/tsl\/|^\.\/tsl\/)/).length > 0)
       .map((f) => f.path);
     expect(offenders).toEqual([]);
+    const tileView = files
+      .filter((f) => runtimeImports(f.text, /cityTileView$/).length > 0)
+      .map((f) => f.path);
+    expect(tileView).toEqual([]);
   });
 
   test('only the city engine reaches the model layer at runtime', () => {
