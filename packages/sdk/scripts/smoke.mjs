@@ -10,8 +10,10 @@
  *   node scripts/smoke.mjs              # pack into a temp dir, test, clean up
  *   node scripts/smoke.mjs --out <dir>  # also keep the tested tarball in <dir>
  *
- * `--out` is how a publish workflow releases EXACTLY the tarball this script
- * tested, rather than re-packing afterwards. That matters more than it sounds:
+ * `--out` is how a release publishes EXACTLY the tarball this script tested,
+ * rather than re-packing afterwards. Releases are published by hand from a
+ * clean checkout of the merged commit, never from CI:
+ * `npm publish ./<dir>/<tarball> --access public`. That matters more than it sounds:
  * `@oxyhq/services@30.0.0` shipped with `lib/` empty and 26 of its 33 `exports`
  * targets pointing at files that did not exist, because `npm publish <tarball>`
  * runs ZERO lifecycle scripts — no `prepublishOnly`, no `prepare`, no build.
