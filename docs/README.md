@@ -17,6 +17,10 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
 - [`STREET3D_LIFECYCLE.md`](STREET3D_LIFECYCLE.md) — capture expiry, cleanup
   operations, crash recovery and the remaining Street 3D release gates.
 - [`SDK_VISION.md`](SDK_VISION.md) — what `@goway.to/sdk` is for, and who for.
+- [`SDK_MAP_MODELS.md`](SDK_MAP_MODELS.md) — proposal: 3D models anchored at
+  coordinates on GoWay's map (a provider-neutral `MapModel`, GLB only, a
+  three.js layer inside MapLibre on web, native still open), what was taken
+  from munim-maps and what was refused.
 - [`CONTRIBUTING_SCOPE.md`](CONTRIBUTING_SCOPE.md) — what the first release
   prioritizes, and what is deliberately deferred.
 - [`BUSINESS_OWNERSHIP.md`](BUSINESS_OWNERSHIP.md) — a business is an Oxy

@@ -8,7 +8,7 @@ This follows the same product-owned package convention as `@syra.fm/sdk` and `@c
 
 Core areas:
 
-- Map rendering primitives
+- Map rendering primitives (not shipped yet; 3D models are proposed in [`SDK_MAP_MODELS.md`](SDK_MAP_MODELS.md))
 - Markers and annotations
 - Camera / viewport control
 - Places search, nearby queries and place details
