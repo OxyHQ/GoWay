@@ -305,4 +305,9 @@ assert the database and the migration ledger first, print aggregate JSON only
   requested. A blocked capture can never re-enter a manifest.
 - Contributor withdrawal (`DELETE /captures/assets/:id`) cancels open jobs and
   deletes derivatives; a published version that used it stays until a rebuild
-  replaces it (moderation is the path for immediate removal).
+  replaces it (moderation is the path for immediate removal). Withdrawal and
+  `block-capture` lock the capture's own jobs BEFORE they read its derivatives
+  (`retractCaptureFromStreet3d`): a privacy completion writes derivatives while
+  holding its job, so the retraction waits for it and then requests removal of
+  what it wrote, instead of missing frames committed a moment earlier. The
+  locks follow one order everywhere: job, media object, asset, motion track.

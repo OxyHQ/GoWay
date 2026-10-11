@@ -848,6 +848,50 @@ describe('withdrawal and moderation', () => {
     ).toBe(true);
     expect(JSON.stringify(status)).not.toMatch(/captures\/|derived\/|jobs\//);
   });
+
+  it('requests removal of the derivatives a privacy completion commits while a withdrawal waits', async () => {
+    const capture = await contribute();
+    await run();
+    const [{ envelope }] = await worker.take();
+    const job = envelope as CapturePrivacyJob;
+    const completed = await worker.completePrivacy(job, { frames: 3 });
+    if (completed.type !== 'completed') throw new Error('expected a completed event');
+    const result = capturePrivacyResultSchema.parse(services.jobStore.json(completed.result.key));
+    const client = requireSuite(suite).client;
+    const waitingOnLocks = async () =>
+      (
+        await client<{ waiting: number }[]>`
+          select count(*)::int as waiting from pg_stat_activity
+          where datname = current_database() and wait_event_type = 'Lock'`
+      )[0]?.waiting ?? 0;
+
+    // The completion holds its job (as `events.ts` does) while the contributor
+    // withdraws; the withdrawal must wait for it, then see what it wrote.
+    let withdrawal: Promise<unknown> | null = null;
+    const completion = db().transaction(async (tx) => {
+      const locked = defined(await lockJob(tx, job.jobId));
+      withdrawal = withdrawCaptureAsset(db(), capture.assetId, capture.owner);
+      for (let i = 0; i < 200 && (await waitingOnLocks()) === 0; i += 1)
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(await waitingOnLocks()).toBeGreaterThan(0);
+      return applyPrivacyResult(tx, locked, result, completed.result, new Date());
+    });
+    const [applied] = await Promise.all([completion, completion.then(() => withdrawal)]);
+    expect(applied).toBe('passed');
+
+    const derivatives = await db()
+      .select()
+      .from(captureDerivatives)
+      .where(eq(captureDerivatives.assetId, capture.assetId));
+    expect(derivatives).toHaveLength(3);
+    expect(
+      derivatives.map((row) => [row.deletionRequestedAt !== null, row.deletionRequestedReason]),
+    ).toEqual([
+      [true, 'contributor_request'],
+      [true, 'contributor_request'],
+      [true, 'contributor_request'],
+    ]);
+  });
 });
 
 describe('coverage and rescue', () => {
