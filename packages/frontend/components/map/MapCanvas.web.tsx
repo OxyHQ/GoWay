@@ -51,6 +51,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import * as Location from 'expo-location';
 import { useTheme } from '@oxy.so/bloom/theme';
 
+import { MAP_CITY3D_ENABLED } from '@/lib/config';
+import { isCity3dRequested } from '@/lib/map/city3dFlag';
 import {
   overlayLayerId,
   overlaySourceId,
@@ -59,6 +61,7 @@ import {
 } from '@/lib/map/provider';
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
 
+import type { City3dHandle } from './city3dLayer.web';
 import { applyDragAxes } from './dragAxes';
 import { DefaultMapMarker } from './DefaultMapMarker';
 import {
@@ -119,6 +122,17 @@ const WORKER_URL = `/vendor/maplibre-gl/${maplibregl.getVersion()}/maplibre-gl-w
 if (typeof window !== 'undefined') {
   maplibregl.setWorkerUrl(new URL(WORKER_URL, window.location.origin).href);
 }
+
+/**
+ * Whether this page draws buildings with the city-3D prototype instead of the
+ * style's `building-3d` extrusion. Decided once per page load; see
+ * `lib/map/city3dFlag.ts` and `docs/MAP_3D_CITY.md`.
+ */
+const CITY3D = isCity3dRequested({
+  enabled: MAP_CITY3D_ENABLED,
+  development: __DEV__,
+  search: typeof window !== 'undefined' ? window.location.search : '',
+});
 
 const DEGENERATE_FIT_ZOOM = 15;
 const DEFAULT_FIT_PADDING = 48;
@@ -673,6 +687,64 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       }
     };
   }, [overlays, accent, ready]);
+
+  // --- City 3D (prototype, off unless asked for) ---------------------------
+
+  // The attached layer, and the light it must follow: the SAME `sunLight.light`
+  // the effect above hands `building-3d` (including `null`, "the style's own
+  // light"), so the two renderers can never be lit differently. A rebuilt
+  // engine restarts the sun tracker (`useSunLight`) and re-attaches the layer
+  // below, which then starts from the restarted light in this ref.
+  const city3dRef = useRef<City3dHandle | null>(null);
+  const city3dLightRef = useRef(sunLight.light);
+  useEffect(() => {
+    city3dLightRef.current = sunLight.light;
+    city3dRef.current?.setLight(sunLight.light);
+  }, [sunLight.light]);
+
+  // With the flag off this effect returns on its first line and the dynamic
+  // `import()` below is never evaluated, so the engine chunk (three.js and the
+  // mesh worker) is never requested and the style is never touched. With it
+  // on, `city3dLayer.web.ts` swaps `building-3d` for the custom layer and
+  // `detach` swaps it back — on unmount, and before an appearance change
+  // rebuilds the map.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!CITY3D || !map || !ready) return;
+    let handle: City3dHandle | null = null;
+    let cancelled = false;
+    import('./city3dLayer.web')
+      .then(({ attachCity3d }) =>
+        cancelled
+          ? null
+          : attachCity3d(map, { appearance: resolvedAppearance, light: city3dLightRef.current }),
+      )
+      .then((attached) => {
+        // Unmounted (or the appearance changed) while the chunks downloaded:
+        // undo at once rather than leave a layer on a map nobody owns.
+        if (cancelled) {
+          attached?.detach();
+          return;
+        }
+        handle = attached;
+        city3dRef.current = attached;
+        // The light may have moved while the chunks downloaded.
+        attached?.setLight(city3dLightRef.current);
+      })
+      .catch((cause: unknown) => {
+        // The shipped buildings are untouched until the layer is in, so a
+        // failure here costs the prototype and nothing else.
+        reportMapDefect(
+          'city3d:load',
+          `city3d: not attached (${String(cause)}); building-3d kept.`,
+        );
+      });
+    return () => {
+      cancelled = true;
+      if (city3dRef.current === handle) city3dRef.current = null;
+      handle?.detach();
+    };
+  }, [ready, resolvedAppearance]);
 
   // --- User location ------------------------------------------------------
 

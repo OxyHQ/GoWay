@@ -3,7 +3,10 @@
  *
  * The engine (`engine/sparkEngine.ts`, three.js + Spark) is loaded with a
  * dynamic `import()` on mount, so its multi-megabyte chunk is paid for only
- * by someone who actually opens a 3D view. Until it has drawn, the screen's
+ * by someone who actually opens a 3D view. It is reached through
+ * `components/engine3d/lazyChunk.ts`, the one async boundary every three.js
+ * consumer shares, so that three.js is never hoisted into the first-paint
+ * `__common` chunk (see that file). Until it has drawn, the screen's
  * poster is what the user sees (see `features/street3d/Street3dScreen.tsx`).
  *
  * Device capability is judged BEFORE the engine is fetched: a device without
@@ -140,7 +143,7 @@ function SceneViewerComponent({
     const up: Vec3 = sceneUp(manifest.worldTransform.enuFromScene) ?? [0, 1, 0];
 
     report('loading');
-    import('./engine/sparkEngine')
+    import('@/components/engine3d/lazyChunk')
       .then(({ createSceneEngine }) => {
         if (cancelled) return;
         const engine = createSceneEngine({

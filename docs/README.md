@@ -35,6 +35,10 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
 - [`LABEL_TRANSLATIONS.md`](LABEL_TRANSLATIONS.md) — the twelve label
   languages, how a locale is matched to one, how to add a language, and where
   each translation stands on review.
+- [`MAP_3D_CITY.md`](MAP_3D_CITY.md) — 3D buildings beyond `fill-extrusion`:
+  a three.js layer inside MapLibre, meshing the current tiles now and compiling
+  GoWay 3D tiles next, what native gets, the ODbL and honesty rules, the phased
+  plan, and the off-by-default web prototype.
 - [`PLACE_NAMES.md`](PLACE_NAMES.md) — how a place is named in more than one
   language, why `places.name` stayed, and what that means for duplicate
   detection, search, the SDK contract and the OpenStreetMap re-import.

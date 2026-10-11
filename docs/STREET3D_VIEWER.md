@@ -13,7 +13,7 @@ public contract is `packages/shared-types/src/street3d.ts`.
 | API | `features/street3d/client.ts` | `@goway.to/sdk`'s `street3d` namespace: reads on the app's `gowayClient` (fixture transport included), `report` on the Oxy linked client. |
 | Map layer | `features/street3d/useStreet3dLayer.tsx`, `coverageStyle.ts` | Footprints (`fill` + `line`), area dots (`circle`, one overlay per state), a poster chip per scene, the "contribute here" hint. |
 | Viewer seam | `components/street3d/` | Provider-neutral `SceneViewer`. Feature code never imports `three` or `@sparkjsdev/spark`. |
-| Web engine | `components/street3d/engine/sparkEngine.ts` | three.js + Spark, loaded by dynamic `import()` into its own chunk (~3.5 MB); nobody who never opens a scene downloads it. |
+| Web engine | `components/street3d/engine/sparkEngine.ts` | three.js + Spark, loaded by dynamic `import()` of `components/engine3d/lazyChunk.ts` — the ONE chunk every three.js consumer shares, so three.js never lands in the first-paint `__common` chunk (~3.5 MB, shared with the city-3D prototype engine); nobody who never opens a scene downloads it. |
 | Native | `components/street3d/SceneViewer.native.tsx` | A WebView on `<EXPO_PUBLIC_WEB_ORIGIN>/street3d/<id>?embed=1`. |
 | Screen | `features/street3d/Street3dScreen.tsx`, `app/street3d/[sceneId].tsx` | Chrome, poster, credits, report, place labels, the 2D ⇄ 3D handoff. |
 | Contribution status | `features/contribute/status.ts`, `ContributionStatusCard.tsx` | The truthful per-capture state, source expiry, and the at-risk hint. |

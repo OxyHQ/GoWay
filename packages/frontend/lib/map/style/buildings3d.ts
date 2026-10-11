@@ -308,6 +308,14 @@ const FADE_IN_START = 15.5;
 const FADE_IN_END = 16.5;
 
 /**
+ * The fade as one value, for the city-3D prototype
+ * (`components/map/engine/city3d/`), which replaces this layer when it is on
+ * and must grow in over exactly the same zooms — otherwise switching the flag
+ * would change WHEN buildings appear as well as how they look.
+ */
+export const BUILDINGS_3D_FADE = { start: FADE_IN_START, end: FADE_IN_END } as const;
+
+/**
  * The shortest prism this layer will draw, in metres.
  *
  * Not cosmetic. A zero-height extrusion degenerates into a roof polygon lying
@@ -343,6 +351,37 @@ function mix(a: string, b: string, amount: number): string {
       .toString(16)
       .padStart(2, '0');
   return `#${channel(ar, br)}${channel(ag, bg)}${channel(ab, bb)}`;
+}
+
+/**
+ * The height ramp: the colour at the ground, at {@link TALL_M} and at
+ * {@link VERY_TALL_M}, for one appearance.
+ *
+ * Taller buildings step AWAY from the ground tone rather than toward a fixed
+ * grey, which is why this is derived from the palette's own two building
+ * tokens instead of new ones. In light the outline token is darker than the
+ * fill, in dark it is lighter, so the same ramp reads as "a tower has more
+ * presence than a shop" in both appearances without either being
+ * special-cased — and without touching `palette.ts`, which is being rewritten
+ * against measured Apple captures in parallel.
+ *
+ * Exported so the city-3D prototype colours its meshes with the very same
+ * ramp: the two renderers may disagree about shading, never about colour.
+ */
+export function buildingHeightRamp(palette: CartographyPalette): {
+  low: string;
+  tall: string;
+  veryTall: string;
+  tallM: number;
+  veryTallM: number;
+} {
+  return {
+    low: palette.building,
+    tall: mix(palette.building, palette.buildingOutline, 0.35),
+    veryTall: mix(palette.building, palette.buildingOutline, 0.6),
+    tallM: TALL_M,
+    veryTallM: VERY_TALL_M,
+  };
 }
 
 /**
@@ -412,16 +451,8 @@ export function buildBuildings3dLayer(
   palette: CartographyPalette,
   source: string,
 ): FillExtrusionLayerSpecification {
-  // Taller buildings step AWAY from the ground tone rather than toward a fixed
-  // grey, which is why this is derived from the palette's own two building
-  // tokens instead of new ones. In light the outline token is darker than the
-  // fill, in dark it is lighter, so the same expression reads as "a tower has
-  // more presence than a shop" in both appearances without either being
-  // special-cased — and without touching `palette.ts`, which is being rewritten
-  // against measured Apple captures in parallel.
-  const low = palette.building;
-  const tall = mix(palette.building, palette.buildingOutline, 0.35);
-  const veryTall = mix(palette.building, palette.buildingOutline, 0.6);
+  // See `buildingHeightRamp` for why the ramp is derived from the palette.
+  const { low, tall, veryTall } = buildingHeightRamp(palette);
 
   return {
     id: BUILDING_3D_LAYER_ID,

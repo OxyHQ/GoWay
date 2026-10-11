@@ -66,3 +66,15 @@ export const STREET3D_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_STREE
  * splat decoder runs in a blob worker).
  */
 export const STREET3D_ASSET_ORIGIN = origin(process.env.EXPO_PUBLIC_STREET3D_ASSET_ORIGIN);
+
+/**
+ * Whether the city-3D PROTOTYPE replaces the map's `fill-extrusion` buildings
+ * with bevelled, occlusion-shaded meshes (web only; `docs/MAP_3D_CITY.md`).
+ *
+ * Off unless `EXPO_PUBLIC_MAP_CITY3D` is `1`/`true`, and no production
+ * deployment sets it. A development build can also turn it on per tab with
+ * `?city3d=1` (`lib/map/city3dFlag.ts`); a production build ignores that.
+ * When off, nothing about the map changes: the engine is a separate chunk that
+ * is never requested and `building-3d` draws as it always has.
+ */
+export const MAP_CITY3D_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_MAP_CITY3D ?? '');
