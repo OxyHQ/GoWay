@@ -156,6 +156,9 @@ export const MAP_FEATURES = [
     platforms: WEB,
     // Not hosted on goway.to yet, and ODbL wants the archive and its receipt
     // published before anyone is served them (`docs/MAP_3D_CITY.md` → Hosting).
+    // The official building data merged into an archive (the Catastro's
+    // storeys, NYC's 3D model; `docs/MAP_3D_SOURCES.md`) has no switch of its
+    // own: it is part of the tiles this switch draws, credited while drawn.
     offer: 'development',
     request: (enabled, { development, search, on }) =>
       isCityTilesRequested({ city3d: on('city3d'), enabled, development, search }),

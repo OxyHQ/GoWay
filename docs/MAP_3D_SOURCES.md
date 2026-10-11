@@ -389,6 +389,12 @@ Carrer de Mallorca block has its official height.
   of the rules, not of each building: a 1960s block with 2.7 m storeys or a
   modernista building with 4 m ones will be off by a metre or more over six
   storeys. Other countries keep 3.66 m until their rules are tabled.
+- **No switch of its own.** Official building data is part of the city
+  tiles it was compiled into, so it rides on the `cityTiles` feature
+  (`lib/map/mapFeatures.ts`, `MAP_FEATURES.md`): on wherever an archive with
+  it is drawn, credited while drawn. Settings → About lists it under
+  "3D buildings: official data" from the same `lib/map/credits.ts`, labelled
+  in all twelve languages.
 - **Attribution page.** `goway.to/attribution` (`lib/map/credits.ts`) has a
   "3D buildings: official data" section with both sources' links and notices
   (the Catastro named as author and owner, "not cadastral cartography"; NYC's

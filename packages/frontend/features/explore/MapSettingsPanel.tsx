@@ -34,7 +34,7 @@ import { type ThemeMode, useBloomTheme } from '@oxy.so/bloom/theme';
 import { Text } from '@oxy.so/bloom/typography';
 
 import { formatMessage, useTranslation } from '@/lib/i18n';
-import { CREDIT_SECTIONS, type CreditLink } from '@/lib/map/credits';
+import { CREDIT_SECTIONS, type CreditLink, type CreditSection } from '@/lib/map/credits';
 import type { PreparedLandmark } from '@/lib/map/landmarks/load';
 import { MAP_FEATURE_LABELS, MAP_SETTINGS_COPY } from '@/lib/map/mapFeatureLabels';
 import type { MapFeatureId, MapFeatureState } from '@/lib/map/mapFeatures';
@@ -215,12 +215,8 @@ export function MapSettingsPanel({ tilted, onTiltChange, onClose }: MapSettingsP
         {CREDIT_SECTIONS.map((section) => (
           <CreditBlock
             key={section.id}
-            heading={say(
-              section.id === 'basemap'
-                ? MAP_SETTINGS_COPY.creditsBasemap
-                : MAP_SETTINGS_COPY.creditsElevation,
-            )}
-            body={section.id === 'basemap' ? say(MAP_SETTINGS_COPY.creditsBasemapBody) : null}
+            heading={say(CREDIT_HEADINGS[section.id])}
+            body={bodyOf(section.id, say)}
             links={section.links}
             notices={section.notices}
           />
@@ -253,6 +249,24 @@ export function MapSettingsPanel({ tilted, onTiltChange, onClose }: MapSettingsP
     </View>
   );
 }
+
+/** Each credit section's heading, and its one-line body where it has one. */
+const CREDIT_HEADINGS = {
+  basemap: MAP_SETTINGS_COPY.creditsBasemap,
+  elevation: MAP_SETTINGS_COPY.creditsElevation,
+  buildings: MAP_SETTINGS_COPY.creditsBuildings,
+} satisfies Record<CreditSection['id'], unknown>;
+
+function bodyOf(id: CreditSection['id'], say: Say): string | null {
+  const body = CREDIT_BODIES[id];
+  return body ? say(body) : null;
+}
+
+const CREDIT_BODIES: Record<CreditSection['id'], Parameters<Say>[0] | null> = {
+  basemap: MAP_SETTINGS_COPY.creditsBasemapBody,
+  elevation: null,
+  buildings: MAP_SETTINGS_COPY.creditsBuildingsBody,
+};
 
 function CreditBlock({
   heading,
