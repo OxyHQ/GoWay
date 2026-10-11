@@ -61,7 +61,7 @@ const BUILDING_DATA_LINKS: readonly CreditLink[] = [
 ];
 
 /**
- * The 3D vehicles, vessels and people the map draws (the model library,
+ * The 3D vehicles and vessels the map draws (the model library,
  * `lib/map/modelLibrary.ts`): Kenney's kits, CC0 — no credit is owed, and it
  * is given anyway. Every asset's source is in the library's manifest.
  */
@@ -69,7 +69,6 @@ const MODEL_LINKS: readonly CreditLink[] = [
   { label: 'Kenney — Car Kit', href: 'https://kenney.nl/assets/car-kit' },
   { label: 'Kenney — Train Kit', href: 'https://kenney.nl/assets/train-kit' },
   { label: 'Kenney — Watercraft Kit', href: 'https://kenney.nl/assets/watercraft-kit' },
-  { label: 'Kenney — Mini Characters', href: 'https://kenney.nl/assets/mini-characters' },
 ];
 
 export interface CreditLink {

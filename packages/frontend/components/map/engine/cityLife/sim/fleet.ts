@@ -1,11 +1,10 @@
 /**
- * Which models of the shared library (`lib/map/modelLibrary.ts`) the
+ * Which vehicles of the shared library (`lib/map/modelLibrary.ts`) the
  * simulation fields, how many of each, and how big. The renderer draws each
  * as `${namespace}.${model}` from the library; the simulation only ever sees
  * the names and the slot ranges.
  *
- * Every agent pool (cars, people) is split into one contiguous slot range per
- * model, so the renderer uploads and draws a model's instances as one
+ * The car pool is split into one contiguous slot range per model, so the renderer uploads and draws a model's instances as one
  * sub-array — no per-frame sorting.
  */
 import type { RealClass } from '../realCoverage';
@@ -37,37 +36,6 @@ export const CAR_MODEL_SPECS: Record<CarModel, { share: number; length: [number,
  * taxis have no open real source: they stay simulated everywhere.
  */
 export const REAL_CLASS_OF_MODEL: Partial<Record<CarModel, RealClass>> = { bus: 'bus' };
-
-/** The people, in slot order; drawn as `person.<model>`. */
-export const PERSON_MODELS = [
-  'female-b',
-  'female-c',
-  'female-d',
-  'female-f',
-  'male-a',
-  'male-b',
-  'male-d',
-  'male-f',
-  'wheelchair',
-] as const;
-export type PersonModel = (typeof PERSON_MODELS)[number];
-
-/** Share of the people budget per model, and walking (or wheeling) pace, m/s. */
-export const PERSON_MODEL_SPECS: Record<PersonModel, { share: number; speed: [number, number] }> = {
-  'female-b': { share: 0.12, speed: [1.05, 1.6] },
-  'female-c': { share: 0.12, speed: [1.05, 1.6] },
-  'female-d': { share: 0.12, speed: [1.05, 1.6] },
-  'female-f': { share: 0.12, speed: [1.05, 1.6] },
-  'male-a': { share: 0.12, speed: [1.05, 1.6] },
-  'male-b': { share: 0.12, speed: [1.05, 1.6] },
-  'male-d': { share: 0.12, speed: [1.05, 1.6] },
-  'male-f': { share: 0.12, speed: [1.05, 1.6] },
-  // Wheelchair users never take steps (`pedestrians.ts` → `chooseEdge`).
-  wheelchair: { share: 0.04, speed: [0.9, 1.3] },
-};
-
-/** Slot index of the wheelchair users' model, for the step-free routing (`pedestrians.ts`). */
-export const WHEELCHAIR = PERSON_MODELS.indexOf('wheelchair');
 
 /** Split `capacity` slots into one `[start, end)` range per model by share; the last takes the rest. */
 export function slotRanges<M extends string>(

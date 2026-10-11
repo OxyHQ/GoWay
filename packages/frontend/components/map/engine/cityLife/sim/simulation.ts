@@ -37,10 +37,7 @@ import {
   CAR_MODELS,
   REAL_CLASS_OF_MODEL,
   type CarModel,
-  PERSON_MODEL_SPECS,
-  PERSON_MODELS,
   pickModel,
-  WHEELCHAIR,
 } from './fleet';
 import {
   Cars,
@@ -56,7 +53,15 @@ import {
   STUCK_S,
   type TrafficContext,
 } from './traffic';
-import { LATERAL_M, People, PERSON_STATE, placePerson, stepPeople } from './pedestrians';
+import {
+  LATERAL_M,
+  People,
+  PERSON_STATE,
+  pickClothes,
+  placePerson,
+  stepPeople,
+  WALK_SPEED,
+} from './pedestrians';
 
 /** Simulated seconds per step. */
 export const STEP_S = 0.05;
@@ -550,23 +555,18 @@ export class CitySimulation {
   private spawnPerson(view: SimView, anywhere: boolean): boolean {
     const network = this.network as Network;
     const { people, rng } = this;
-    // A model by share, then a free slot of it.
-    const model = pickModel(rng, PERSON_MODELS, (m) => PERSON_MODEL_SPECS[m].share);
-    const [from, to] = people.ranges[model];
     let slot = -1;
-    for (let i = from; i < to; i++) {
+    for (let i = 0; i < people.capacity; i++) {
       if (!people.alive[i]) {
         slot = i;
         break;
       }
     }
     if (slot < 0) return false;
-    const spec = PERSON_MODEL_SPECS[model];
     for (let attempt = 0; attempt < 8; attempt++) {
       const edgeId = this.sample(this.spawnEdges, this.spawnEdgeCum);
       if (edgeId < 0) return false;
       const edge = network.pedEdges[edgeId];
-      if (edge.steps && people.model[slot] === WHEELCHAIR) continue;
       const s = rng.range(0, edge.length);
       pointAt(edge, s, this.scratch);
       if (!anywhere && attempt < 6 && this.inView(view, this.scratch.x, this.scratch.y)) continue;
@@ -574,15 +574,16 @@ export class CitySimulation {
       people.edge[slot] = edgeId;
       people.s[slot] = s;
       people.dir[slot] = rng.next() < 0.5 ? 1 : -1;
-      people.speed[slot] = rng.range(spec.speed[0], spec.speed[1]);
+      people.speed[slot] = rng.range(WALK_SPEED[0], WALK_SPEED[1]);
       people.lateral[slot] = rng.range(0.25, LATERAL_M);
       people.state[slot] = PERSON_STATE.walking;
       people.nextEdge[slot] = -1;
       people.wait[slot] = 0;
       people.age[slot] = anywhere ? FADE_S : 0;
       people.leaving[slot] = -1;
-      // The animation's phase, so a crowd does not walk in step.
-      people.style.set([0, 0, 0, rng.int(256)], slot * 4);
+      // Clothes, and the walking phase, so a crowd does not walk in step.
+      const [r, g, b] = pickClothes(rng);
+      people.style.set([r, g, b, rng.int(256)], slot * 4);
       placePerson(network, people, slot, this.scratch);
       people.x[slot] = this.scratch.x;
       people.y[slot] = this.scratch.y;

@@ -1,5 +1,5 @@
 /**
- * The model library: GoWay's ONE set of generic vehicles, vessels and people,
+ * The model library: GoWay's ONE set of generic vehicles and vessels,
  * shared by everything that draws them — the city-life simulation
  * (`components/map/engine/cityLife/`) and the live layer — so there is never
  * a second, parallel model set. Design note: `docs/MODEL_LIBRARY.md`.
@@ -18,9 +18,7 @@
  *  - Two nodes, `near` and `far`, sharing one quantisation grid.
  *  - Materials: `paint` is the body colour a consumer tints (white in the
  *    file); `body` carries fixed colours as `COLOR_0` vertex colours (glass,
- *    trim, tyres, lamps, clothes, skin). No textures, no lettering, no logos.
- *  - People (`kind: 'person'`) carry their animation as morph targets on the
- *    `near` node: frames of each clip in `clips`, deltas from the base pose.
+ *    trim, tyres, lamps). No textures, no lettering, no logos.
  */
 import { z } from 'zod';
 
@@ -40,33 +38,26 @@ export const MODEL_KINDS = [
   'metro',
   'vessel',
   'aircraft',
-  'person',
 ] as const;
 export type ModelKind = (typeof MODEL_KINDS)[number];
 
-/** Triangle budgets per level of detail, by kind (enforced by the build and the tests). */
+/**
+ * Triangle budgets per level of detail, by kind (enforced by the build and
+ * the tests). A near level is the kit's body as drawn plus low-poly wheels —
+ * never a decimated body — so the near budgets are what the kits' bodies
+ * need; a far level is three boxes.
+ */
 export const MODEL_BUDGETS: Record<ModelKind, { near: number; far: number }> = {
-  car: { near: 800, far: 150 },
-  van: { near: 800, far: 150 },
-  truck: { near: 800, far: 150 },
+  car: { near: 1100, far: 150 },
+  van: { near: 1100, far: 150 },
+  truck: { near: 1100, far: 150 },
   bus: { near: 800, far: 150 },
-  tram: { near: 1200, far: 150 },
-  train: { near: 1200, far: 150 },
-  metro: { near: 1200, far: 150 },
-  vessel: { near: 1200, far: 150 },
+  tram: { near: 1300, far: 150 },
+  train: { near: 1300, far: 150 },
+  metro: { near: 1300, far: 150 },
+  vessel: { near: 1800, far: 150 },
   aircraft: { near: 800, far: 150 },
-  person: { near: 600, far: 80 },
 };
-
-const clipSchema = z.object({
-  /** First morph-target frame of the clip. */
-  first: z.number().int().min(0),
-  /** Frames in the loop. */
-  count: z.number().int().min(1),
-  /** Frames per second of the loop. */
-  fps: z.number().positive(),
-});
-export type ModelClip = z.infer<typeof clipSchema>;
 
 const entrySchema = z
   .object({
@@ -80,8 +71,6 @@ const entrySchema = z
     triangles: z.object({ near: z.number().int().positive(), far: z.number().int().positive() }),
     /** Width (x), height (y), length (z), metres, as built. */
     size: z.tuple([z.number().positive(), z.number().positive(), z.number().positive()]),
-    /** People only: `move` (walking, or pushing a wheelchair) and `idle` loops. */
-    clips: z.object({ move: clipSchema, idle: clipSchema }).optional(),
     licence: assetLicenceSchema,
   })
   .superRefine((entry, ctx) => {
@@ -92,13 +81,6 @@ const entrySchema = z
     }
     if (entry.triangles.far > budget.far) {
       ctx.addIssue({ code: 'custom', path: ['triangles', 'far'], message: `over ${budget.far}` });
-    }
-    if ((entry.kind === 'person') !== Boolean(entry.clips)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['clips'],
-        message: 'people, and only people, have clips',
-      });
     }
   });
 export type ModelLibraryEntry = z.infer<typeof entrySchema>;

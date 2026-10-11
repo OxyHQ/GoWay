@@ -426,8 +426,8 @@ axis to the fleet's real length, width and height; the fleet's
 `livery.stripe`), everything else keeps the library's colours. Light is baked
 into vertex colours, one `InstancedMesh` per fleet and detail. Budgets,
 pinned by `fleets.test.ts` (≤ 1,500 triangles near, ≤ 200 far): an EMU car
-1,130 / 150, a bus 540 / 60, a double-decker 596 / 84, an aircraft 320 / 136,
-a ship 1,060 / 138. Below z14.5 every car is drawn in its far form. The pass
+522 / 36, a bus 540 / 60, a double-decker 596 / 84, an aircraft 320 / 136,
+a ship 1,060 / 36. Below z14.5 every car is drawn in its far form. The pass
 draws nothing until the library has loaded.
 
 The registry is the interface — operator/fleet → a model (`form`, with its

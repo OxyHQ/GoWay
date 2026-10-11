@@ -16,16 +16,12 @@
  * People do not avoid each other; at pavement densities and a person's size
  * on the map, the lateral offset is what keeps them from visibly overlapping.
  */
-import {
-  PERSON_MODEL_SPECS,
-  PERSON_MODELS,
-  type PersonModel,
-  slotRanges,
-  WHEELCHAIR,
-} from './fleet';
 import { type Network, type PedEdge, phaseGreen } from './network';
 import type { Rng } from './rng';
 import type { TrafficContext } from './traffic';
+
+/** Walking pace range, m/s. */
+export const WALK_SPEED: [number, number] = [1.05, 1.6];
 
 /** How far each side of an edge's centre line people keep, m. */
 const LATERAL_M = 0.9;
@@ -55,11 +51,7 @@ export class People {
   readonly transferLength: Float32Array;
   readonly age: Float32Array;
   readonly leaving: Float32Array;
-  /** Which library model each slot draws (`models.ts`), fixed per slot. */
-  readonly model: Uint8Array;
-  /** Slot ranges per model: `[start, end)`. */
-  readonly ranges: Record<PersonModel, [number, number]>;
-  /** Three free bytes and the animation phase (`lifeShaders.ts`). */
+  /** Clothes sRGB and the walking phase (`lifeShaders.ts`). */
   readonly style: Uint8Array;
   readonly x: Float32Array;
   readonly y: Float32Array;
@@ -82,17 +74,29 @@ export class People {
     this.transferLength = new Float32Array(capacity);
     this.age = new Float32Array(capacity);
     this.leaving = new Float32Array(capacity).fill(-1);
-    this.ranges = slotRanges(PERSON_MODELS, (model) => PERSON_MODEL_SPECS[model].share, capacity);
-    this.model = new Uint8Array(capacity);
-    for (const [i, model] of PERSON_MODELS.entries()) {
-      const [a, b] = this.ranges[model];
-      this.model.fill(i, a, b);
-    }
     this.style = new Uint8Array(capacity * 4);
     this.x = new Float32Array(capacity);
     this.y = new Float32Array(capacity);
     this.h = new Float32Array(capacity);
   }
+}
+
+/** Muted clothing colours. */
+const CLOTHES: readonly [number, number, number][] = [
+  [72, 80, 96],
+  [52, 56, 64],
+  [120, 132, 150],
+  [168, 96, 88],
+  [92, 118, 104],
+  [200, 186, 160],
+  [146, 128, 168],
+  [214, 214, 210],
+  [176, 140, 96],
+  [96, 112, 148],
+];
+
+export function pickClothes(rng: Rng): [number, number, number] {
+  return CLOTHES[rng.int(CLOTHES.length)];
 }
 
 /** Where an edge is entered from `node`: its start when it begins there, else its end. */
@@ -126,20 +130,11 @@ export function mayCross(
   return true;
 }
 
-/**
- * Choose the next edge from `node`, not the one just walked unless it is the
- * only one. `stepFree`: never steps (a wheelchair user turns back instead).
- */
-export function chooseEdge(
-  network: Network,
-  node: number,
-  from: number,
-  rng: Rng,
-  stepFree = false,
-): number {
+/** Choose the next edge from `node`, not the one just walked unless it is the only one. */
+export function chooseEdge(network: Network, node: number, from: number, rng: Rng): number {
   const around = network.pedAdjacency[node] ?? [];
   if (around.length === 0) return -1;
-  const options = around.filter((e) => e !== from && !(stepFree && network.pedEdges[e].steps));
+  const options = around.filter((e) => e !== from);
   if (options.length === 0) return from;
   return options[rng.int(options.length)];
 }
@@ -216,7 +211,7 @@ export function stepPeople(ctx: PedestrianContext, dt: number): void {
     // The end of the edge: pick the next.
     const node = people.dir[p] === 1 ? edge.b : edge.a;
     leaveEdge(p);
-    const nextId = chooseEdge(network, node, edge.id, rng, people.model[p] === WHEELCHAIR);
+    const nextId = chooseEdge(network, node, edge.id, rng);
     if (nextId < 0) {
       people.dir[p] = -people.dir[p] as 1 | -1;
       people.s[p] = people.dir[p] === 1 ? 0 : edge.length;

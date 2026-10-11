@@ -189,8 +189,6 @@ export interface PedEdge extends Polyline {
   /** The crossing it is part of, or −1. */
   crossing: number;
   hidden: boolean;
-  /** `highway=steps`: never taken by a wheelchair user. */
-  steps: boolean;
 }
 
 export interface NetworkNode {
@@ -1049,7 +1047,6 @@ export function buildNetwork(input: NetworkInput): Network {
     b: number,
     points: [number, number][],
     hidden: boolean,
-    steps = false,
   ): PedEdge => {
     const edge: PedEdge = {
       ...polyline(points),
@@ -1058,7 +1055,6 @@ export function buildNetwork(input: NetworkInput): Network {
       b,
       crossing: -1,
       hidden,
-      steps,
     };
     pedEdges.push(edge);
     pedAdjacency[a].push(edge.id);
@@ -1069,7 +1065,7 @@ export function buildNetwork(input: NetworkInput): Network {
   const crossingEdges: { edge: PedEdge; node: number }[] = [];
   for (const { a, b, points, piece } of footPieces) {
     if (points.length < 2) continue;
-    const edge = addPedEdge(a, b, points, piece.tunnel, piece.highway === 'steps');
+    const edge = addPedEdge(a, b, points, piece.tunnel);
     if (piece.footway === 'crossing') {
       const roadEnd = nodes[a].carDegree > 0 ? a : nodes[b].carDegree > 0 ? b : -1;
       if (roadEnd >= 0) crossingEdges.push({ edge, node: roadEnd });

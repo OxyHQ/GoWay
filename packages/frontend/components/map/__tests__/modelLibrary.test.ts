@@ -13,23 +13,44 @@ import { beforeAll, describe, expect, test } from 'bun:test';
 import { MODEL_CATALOGUE_FIXTURE } from '@/lib/map/modelCatalogue';
 import { MODEL_BUDGETS, MODEL_LIBRARY_PATH, parseModelLibrary } from '@/lib/map/modelLibrary';
 
+import { PERSON_HIP_M, PERSON_PART, person } from '../engine/cityLife/people';
 import { taxiLiveryAt } from '../engine/cityLife/sim/liveries';
-import {
-  CAR_MODEL_SPECS,
-  CAR_MODELS,
-  PERSON_MODEL_SPECS,
-  PERSON_MODELS,
-  slotRanges,
-  WHEELCHAIR,
-} from '../engine/cityLife/sim/fleet';
-import type { Network } from '../engine/cityLife/sim/network';
-import { chooseEdge } from '../engine/cityLife/sim/pedestrians';
-import { createRng } from '../engine/cityLife/sim/rng';
+import { CAR_MODEL_SPECS, CAR_MODELS, slotRanges } from '../engine/cityLife/sim/fleet';
 import { LIVE_LIBRARY_KEYS } from '../engine/live3d/liveModels';
 import type { LibraryModel } from '../engine/vehicles/library';
+import type * as THREE from 'three';
 import { LIBRARY_DIR, readLibrary, readManifest } from './libraryFromDisk';
 
 const manifest = readManifest();
+
+/**
+ * Of a level's edges (corners matched by position), the share no face shares
+ * the other way round — a hole's rim — and the share two faces wind the same
+ * way — a fold or a flipped face.
+ */
+function edgeHealth(geometry: THREE.BufferGeometry): { open: number; doubled: number } {
+  const position = geometry.getAttribute('position');
+  const index = geometry.getIndex();
+  if (!index) throw new Error('not indexed');
+  const at = (i: number) =>
+    [position.getX(i), position.getY(i), position.getZ(i)].map((v) => v.toFixed(3)).join(',');
+  const edges = new Map<string, number>();
+  for (let t = 0; t < index.count; t += 3) {
+    const corners = [at(index.getX(t)), at(index.getX(t + 1)), at(index.getX(t + 2))];
+    for (let k = 0; k < 3; k++) {
+      const edge = `${corners[k]}|${corners[(k + 1) % 3]}`;
+      edges.set(edge, (edges.get(edge) ?? 0) + 1);
+    }
+  }
+  let open = 0;
+  let doubled = 0;
+  for (const [edge, count] of edges) {
+    const [a, b] = edge.split('|');
+    if (count === 1 && !edges.has(`${b}|${a}`)) open++;
+    if (count > 1) doubled++;
+  }
+  return { open: open / edges.size, doubled: doubled / edges.size };
+}
 let library: Map<string, LibraryModel>;
 beforeAll(async () => {
   library = await readLibrary();
@@ -62,14 +83,10 @@ describe('the manifest', () => {
     }
   });
 
-  test('the schema refuses a model over its budget, and clips on a vehicle', () => {
+  test('the schema refuses a model over its budget', () => {
     const sedan = manifest.models.find((m) => m.key === 'vehicle.sedan');
     expect(() =>
-      parseModelLibrary({ version: 1, models: [{ ...sedan, triangles: { near: 801, far: 10 } }] }),
-    ).toThrow();
-    const walker = manifest.models.find((m) => m.kind === 'person');
-    expect(() =>
-      parseModelLibrary({ version: 1, models: [{ ...sedan, clips: walker?.clips }] }),
+      parseModelLibrary({ version: 1, models: [{ ...sedan, triangles: { near: 1101, far: 10 } }] }),
     ).toThrow();
   });
 });
@@ -104,46 +121,38 @@ describe('every model', () => {
     }
   });
 
-  test('people carry their frames, vehicles none', () => {
+  test('cars, buses and aircraft have a tintable body', () => {
     for (const [key, model] of library) {
-      if (model.entry.kind !== 'person') {
-        expect({ key, animation: model.animation }).toEqual({ key, animation: undefined });
-        continue;
-      }
-      const clips = model.entry.clips;
-      const animation = model.animation;
-      expect(clips && animation).toBeTruthy();
-      if (!clips || !animation) continue;
-      expect(animation.vertexCount).toBe(model.near.geometry.getAttribute('position').count);
-      expect(animation.frameCount).toBe(clips.move.count + clips.idle.count);
-      expect(animation.positions.length).toBe(animation.frameCount * animation.vertexCount * 3);
-      // The walk moves the body: its frames are not all one pose.
-      const frame = (f: number) =>
-        animation.positions.subarray(
-          f * animation.vertexCount * 3,
-          (f + 1) * animation.vertexCount * 3,
-        );
-      let moved = 0;
-      const a = frame(clips.move.first);
-      const b = frame(clips.move.first + Math.floor(clips.move.count / 2));
-      for (let i = 0; i < a.length; i++) moved = Math.max(moved, Math.abs(a[i] - b[i]));
-      expect({ key, moves: moved > 0.05 }).toEqual({ key, moves: true });
-    }
-  });
-
-  test('a vehicle has a tintable body; a person none', () => {
-    for (const [key, model] of library) {
+      if (!['car', 'bus', 'aircraft'].includes(model.entry.kind)) continue;
       const painted = (model.near.geometry.getAttribute('paint').array as Float32Array).some(
         (v) => v > 0,
       );
-      if (model.entry.kind === 'person') expect({ key, painted }).toEqual({ key, painted: false });
-      else if (
-        model.entry.kind === 'car' ||
-        model.entry.kind === 'bus' ||
-        model.entry.kind === 'aircraft'
-      ) {
-        expect({ key, painted }).toEqual({ key, painted: true });
-      }
+      expect({ key, painted }).toEqual({ key, painted: true });
+    }
+  });
+
+  /**
+   * The surface is whole: every edge of a road vehicle's near level is shared
+   * with a face wound the other way (a closed, consistently wound skin), but
+   * for the few the kit itself leaves open (and the hub discs): ≤ 2.3% today.
+   * The first library squeezed each 2,000-triangle kit car into 800 with a
+   * permissive simplifier — it spent the budget on the wheels, tore the body
+   * (7.2–9.6% of its edges open) and the cars looked broken.
+   */
+  test('a road vehicle’s near level is a whole surface, not a torn one', () => {
+    for (const [key, model] of library) {
+      if (!['car', 'van', 'truck', 'bus'].includes(model.entry.kind)) continue;
+      const { open, doubled } = edgeHealth(model.near.geometry);
+      expect({ key, open: open < 0.03 }).toEqual({ key, open: true });
+      expect({ key, doubled: doubled < 0.01 }).toEqual({ key, doubled: true });
+    }
+  });
+
+  test('every far level is closed boxes', () => {
+    for (const [key, model] of library) {
+      if (model.entry.kind === 'bus' || model.entry.kind === 'aircraft') continue;
+      const { open, doubled } = edgeHealth(model.far.geometry);
+      expect({ key, open, doubled }).toEqual({ key, open: 0, doubled: 0 });
     }
   });
 });
@@ -181,66 +190,39 @@ describe('one library for everything that draws vehicles', () => {
   test('city life and the live layer draw only library models', () => {
     const keys = new Set(manifest.models.map((m) => m.key));
     for (const model of CAR_MODELS) expect(keys.has(`vehicle.${model}`)).toBe(true);
-    for (const model of PERSON_MODELS) expect(keys.has(`person.${model}`)).toBe(true);
     for (const key of LIVE_LIBRARY_KEYS) expect(keys.has(key)).toBe(true);
-  });
-
-  test('the people include wheelchair users', () => {
-    expect(PERSON_MODEL_SPECS.wheelchair.share).toBeGreaterThan(0);
-    expect(PERSON_MODELS[WHEELCHAIR]).toBe('wheelchair');
   });
 });
 
 describe('slots', () => {
-  test('per-model ranges tile the pool exactly, by share', () => {
+  test('per-model car ranges tile the pool exactly, by share', () => {
     for (const capacity of [1, 7, 40, 600]) {
-      const cars = slotRanges(CAR_MODELS, (m) => CAR_MODEL_SPECS[m].share, capacity);
-      const people = slotRanges(PERSON_MODELS, (m) => PERSON_MODEL_SPECS[m].share, capacity);
-      for (const [models, ranges] of [
-        [CAR_MODELS, cars],
-        [PERSON_MODELS, people],
-      ] as const) {
-        let at = 0;
-        for (const model of models) {
-          const [from, to] = (ranges as Record<string, [number, number]>)[model];
-          expect(from).toBe(at);
-          expect(to).toBeGreaterThanOrEqual(from);
-          at = to;
-        }
-        expect(at).toBe(capacity);
+      const ranges = slotRanges(CAR_MODELS, (m) => CAR_MODEL_SPECS[m].share, capacity);
+      let at = 0;
+      for (const model of CAR_MODELS) {
+        const [from, to] = ranges[model];
+        expect(from).toBe(at);
+        expect(to).toBeGreaterThanOrEqual(from);
+        at = to;
       }
+      expect(at).toBe(capacity);
     }
-    const big = slotRanges(PERSON_MODELS, (m) => PERSON_MODEL_SPECS[m].share, 1000);
-    expect(big.wheelchair[1] - big.wheelchair[0]).toBe(40);
   });
 });
 
-describe('step-free routing', () => {
-  // Node 0 joins a footway (edge 0, walked), a flight of steps (1) and a ramp (2).
-  const edge = (id: number, steps: boolean) => ({ id, a: 0, b: id + 1, steps }) as never;
-  const network = {
-    pedEdges: [edge(0, false), edge(1, true), edge(2, false)],
-    pedAdjacency: [[0, 1, 2]],
-  } as unknown as Network;
-
-  test('a wheelchair user never takes steps; a walker sometimes does', () => {
-    const rng = createRng(7);
-    const wheeled = new Set<number>();
-    const walked = new Set<number>();
-    for (let i = 0; i < 200; i++) {
-      wheeled.add(chooseEdge(network, 0, 0, rng, true));
-      walked.add(chooseEdge(network, 0, 0, rng));
+describe('people', () => {
+  test('city life’s own rounded walkers: two legs that swing, a body, a head', () => {
+    const near = person('near');
+    const parts = new Set(near.parts);
+    for (const part of Object.values(PERSON_PART)) expect(parts.has(part)).toBe(true);
+    expect(near.indices.length / 3).toBeLessThanOrEqual(300);
+    expect(person('far').indices.length / 3).toBeLessThanOrEqual(50);
+    // The legs hang from the hip they swing about.
+    for (let i = 0; i < near.parts.length; i++) {
+      if (near.parts[i] === PERSON_PART.legLeft || near.parts[i] === PERSON_PART.legRight) {
+        expect(near.positions[i * 3 + 2]).toBeLessThanOrEqual(PERSON_HIP_M + 0.05);
+      }
     }
-    expect([...wheeled]).toEqual([2]);
-    expect(walked.has(1)).toBe(true);
-  });
-
-  test('with only steps ahead, a wheelchair user turns back', () => {
-    const deadEnd = {
-      pedEdges: [edge(0, false), edge(1, true)],
-      pedAdjacency: [[0, 1]],
-    } as unknown as Network;
-    expect(chooseEdge(deadEnd, 0, 0, createRng(1), true)).toBe(0);
   });
 });
 

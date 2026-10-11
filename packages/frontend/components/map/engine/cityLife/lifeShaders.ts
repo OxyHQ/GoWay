@@ -9,9 +9,9 @@
  *
  * ## Level of detail, decided per instance on the GPU
  *
- * Every model is drawn twice — its library near level (≤ 800 triangles for a
- * car, 600 for a person) and its far level (≤ 150) — over the SAME instance
- * buffers. Each instance's anchor is
+ * Every model is drawn twice — its near level (a library car's kit body,
+ * ~900–1,050 triangles; a person 252) and its far level (36) — over the SAME
+ * instance buffers. Each instance's anchor is
  * projected and its on-screen size estimated: the centre's pixels per metre
  * (`uPxPerM`) scaled by depth (clip `w` against the centre's, which is
  * `projectionMatrix[3][3]` because the frame is centre-relative). Under
@@ -20,22 +20,22 @@
  *
  * ## The look
  *
- * The shared model library's vehicles and people (`../vehicles/`), read with
- * its GLSL (`vehicles/glsl.ts`): the kits' fixed colours, the body in the
- * simulation's soft pastel paint. Matte maquette lighting — a gentle
+ * The shared model library's vehicles (`../vehicles/`), read with its GLSL
+ * (`vehicles/glsl.ts`): the kits' fixed colours, the body in the
+ * simulation's soft pastel paint; and city life's own rounded people
+ * (`people.ts`). Matte maquette lighting — a gentle
  * hemisphere fill (sky above, warm ground bounce below) under the map's own
  * sun (`CityLight`, the same as the buildings) — and, drawn by
  * {@link SHADOW_VERTEX_SHADER}, a soft contact-shadow blob under every
  * vehicle and person, so they sit on the street instead of floating over it.
  *
- * People walk by vertex animation: their library frames in a texture
- * (`createAnimationTexture`), read per vertex by `gl_VertexID`, blended from
- * the idle clip to the walk as the distance they moved between the two
- * states grows — so a person waiting at a kerb idles — each at their own
- * phase. On 3D terrain each agent stands on the ground the buildings and
+ * People's legs swing about the hip with the distance they moved between the
+ * two states, at their own phase; a person waiting at a kerb stands, swaying
+ * slightly. On 3D terrain each agent stands on the ground the buildings and
  * trees do (`aGround`).
  */
 import { LIBRARY_GLSL } from '../vehicles/glsl';
+import { PERSON_HIP_M, PERSON_PART } from './people';
 
 const f = (n: number) => (Number.isInteger(n) ? `${n}.0` : String(n));
 
@@ -93,7 +93,6 @@ Placed place() {
 
 export const LIFE_VERTEX_SHADER = `
 precision highp float;
-precision highp sampler2D;
 
 uniform float uTime;
 uniform float uStep;
@@ -105,16 +104,14 @@ uniform vec2 uDoorBand;
 /** Cars: a style length of 1 is this many metres; the model is uModelLength long. */
 uniform float uMaxLength;
 uniform float uModelLength;
-/** People, near level: the frames, and the clips as (first, count, fps). */
-uniform sampler2D uFrames;
-uniform float uAnimated;
-uniform vec3 uMoveClip;
-uniform vec3 uIdleClip;
 
 in vec3 position;
 in vec3 normal;
+/** Vehicles (the model library): vertex colour and the tintable body. */
 in vec3 color;
 in float paint;
+/** People (people.ts): what each vertex is. */
+in float part;
 ${PLACE}
 ${LIBRARY_GLSL}
 
@@ -122,31 +119,61 @@ out vec3 vNormal;
 out vec3 vColor;
 out float vGloss;
 
+vec3 skinTone(float pick) {
+  if (pick < 0.2) return vec3(0.96, 0.84, 0.74);
+  if (pick < 0.4) return vec3(0.89, 0.73, 0.60);
+  if (pick < 0.6) return vec3(0.76, 0.57, 0.42);
+  if (pick < 0.8) return vec3(0.55, 0.39, 0.28);
+  return vec3(0.38, 0.27, 0.20);
+}
+
 void main() {
   Placed p = place();
-  vec3 g = position;
-  if (uAnimated > 0.5) {
-    // Walking (or wheeling) at the pace they move between the two states;
-    // a person waiting at a kerb idles. Each has their own phase.
+  vec3 local;
+  vec3 n;
+  vGloss = 0.0;
+  if (uIsPerson > 0.5) {
+    local = position;
+    n = normal;
+    // Legs swing with the pace moved between the two states; someone waiting
+    // at a kerb stands, swaying a little. Each person has their own phase.
     float speed = p.fresh ? 0.0 : distance(aPrev.xy, aCurr.xy) / uStep;
-    float gait = smoothstep(0.15, 0.6, speed);
-    float t = uTime + aStyle.a * 10.0;
-    vec3 move = libraryPose(uFrames, uMoveClip, t * clamp(speed / 1.3, 0.75, 1.25));
-    vec3 idle = libraryPose(uFrames, uIdleClip, t);
-    g = mix(idle, move, gait);
-  }
-  vec3 local = libraryFrame(g);
-  vec3 n = libraryFrame(normal);
-  vec3 tint = aStyle.rgb;
-  vGloss = paint;
-  if (uIsPerson < 0.5) {
-    local.x *= (aStyle.a * uMaxLength) / uModelLength;
+    float gait = clamp(speed / 1.3, 0.0, 1.0);
+    float phase = aStyle.a * 6.2831;
+    if (part > ${f(PERSON_PART.legLeft - 0.5)} && part < ${f(PERSON_PART.legRight + 0.5)}) {
+      float side = part < ${f(PERSON_PART.legLeft + 0.5)} ? 1.0 : -1.0;
+      float swing = side * sin(uTime * 2.0 * PI * 1.7 + phase) * 0.42 * gait;
+      // Rotate about the hip (x forward, z up).
+      vec2 xz = vec2(local.x, local.z - ${f(PERSON_HIP_M)});
+      float c = cos(swing);
+      float s = sin(swing);
+      local.x = c * xz.x + s * xz.y;
+      local.z = -s * xz.x + c * xz.y + ${f(PERSON_HIP_M)};
+    } else {
+      // Idle: the upper body shifts its weight, slowly, only while standing.
+      float sway = sin(uTime * 1.1 + phase) * 0.035 * (1.0 - gait);
+      local.y += sway * max(local.z - ${f(PERSON_HIP_M)}, 0.0);
+    }
+    local.z += abs(sin(uTime * PI * 1.7 + phase)) * 0.03 * gait;
+    vec3 clothes = aStyle.rgb;
+    if (part > ${f(PERSON_PART.skin - 0.5)} && part < ${f(PERSON_PART.skin + 0.5)}) vColor = skinTone(fract(aStyle.a * 7.31));
+    else if (part > ${f(PERSON_PART.clothes - 0.5)}) vColor = clothes;
+    else vColor = mix(vec3(0.24, 0.26, 0.32), clothes, 0.3);
+  } else {
+    local = libraryFrame(position);
+    n = libraryFrame(normal);
+    // Stretched along its length to the car's: a normal scales by the inverse.
+    float stretch = (aStyle.a * uMaxLength) / uModelLength;
+    local.x *= stretch;
+    n = normalize(vec3(n.x / stretch, n.y, n.z));
+    vec3 tint = aStyle.rgb;
     // A taxi's doors: the flanks between the sills and the waist.
     if (uIsTaxi > 0.5 && paint > 0.5 && abs(n.y) > 0.55 && local.z > uDoorBand.x && local.z < uDoorBand.y) {
       tint = uTaxiDoors;
     }
+    vColor = libraryColour(color, paint, tint);
+    vGloss = paint;
   }
-  vColor = libraryColour(color, paint, tint);
   local *= p.scale;
 
   float c = cos(p.heading);

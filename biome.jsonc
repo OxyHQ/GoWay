@@ -21,6 +21,9 @@
       // GENERATED landmark registry layout and GLBs; `landmarks:check` compares
       // the committed bytes against `scripts/build-landmarks.ts`.
       "!packages/frontend/public/landmarks",
+      // GENERATED model library (`scripts/build-model-library.ts`): its
+      // manifest is written as the build writes it, validated by its schema.
+      "!packages/frontend/public/models/library",
       // Glyph coverage fixture read by `map:glyphs:check`.
       "!packages/frontend/scripts/mapgen/fixtures",
       // The logo exactly as it was delivered, kept for provenance and imported by
