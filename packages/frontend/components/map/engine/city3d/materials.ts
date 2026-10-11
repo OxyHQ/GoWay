@@ -172,7 +172,7 @@ GowayWindow gowayWindow(vec4 facade, vec4 color, float h, vec3 n) {
   GowayWindow w;
   w.open = 0.0;
   w.far = 0.0;
-  w.cell = uvec3(0u, 0u, uint(color.r * 255.0) + 256u * uint(color.g * 255.0));
+  w.cell = uvec3(0u, 0u, uint(color.r * 255.0 + 0.5) + 256u * uint(color.g * 255.0 + 0.5));
   if (facade.w > 0.5 && abs(n.z) < 0.3) {
     float storey = facade.z / 100.0;
     float level = (h - facade.y / 10.0) / storey;

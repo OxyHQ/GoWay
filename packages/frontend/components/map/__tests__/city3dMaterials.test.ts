@@ -144,6 +144,16 @@ describe('windows', () => {
     expect(median).toBeGreaterThan(1.6); // most stay warm
   });
 
+  test('a window’s building seed is ROUNDED from the interpolated colour, never truncated', () => {
+    // vColor arrives interpolated: 37/255 can read as 36.9999 on one pixel and
+    // 37.0001 on the next. Truncated, one window got two seeds — two draws of
+    // lit/unlit — and rendered as speckle (seen at night in Eixample).
+    expect(MATERIAL_GLSL).toContain(
+      'uint(color.r * 255.0 + 0.5) + 256u * uint(color.g * 255.0 + 0.5)',
+    );
+    expect(MATERIAL_GLSL).not.toMatch(/uint\(color\.[rg] \* 255\.0\)/);
+  });
+
   test('none are lit by day', () => {
     let lit = 0;
     for (let i = 0; i < 2000; i++) if (windowIsLit(CITY_MATERIALS.day, i, i % 13, i % 7)) lit++;
