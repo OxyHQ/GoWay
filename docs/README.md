@@ -43,6 +43,11 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   Studio (off by default): the chase camera, centripetal path smoothing,
   per-gesture undo/redo, the versioned tour link, video export with the mark
   and the credit composited, and the flyover's vehicle as phase 1 of 3D models.
+- [`MAP_LANDMARKS.md`](MAP_LANDMARKS.md) — hand-crafted 3D landmarks (off by
+  default): the reviewed registry and why it is data, not a table; the
+  licence policy; procedural modelling and the GLB profile; replacing OSM
+  buildings only while a model is drawn; night lighting; the landmark tour;
+  how to add a landmark.
 - [`MAP_TERRAIN_GLOBE.md`](MAP_TERRAIN_GLOBE.md) — the globe
   (space, a glow fitted to the limb), hillshade and 3D terrain: why Mapterhorn
   and why through GoWay's Worker, what self-hosting the DEM costs, how the 3D

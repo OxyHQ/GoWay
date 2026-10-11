@@ -214,6 +214,15 @@ export interface MapCameraOptions {
    * ordinary `moveTo` to settle it.
    */
   transient?: boolean;
+  /**
+   * The camera's vertical field of view, degrees (10–60; the map's default is
+   * 36.87). A narrow lens flattens perspective and stands the camera farther
+   * back at the same zoom — the landmark tour's maquette look, which also
+   * keeps a 400 m tower in frame (`docs/MAP_LANDMARKS.md`). It stays until
+   * changed again. Web only: MapLibre Native exposes no field of view, so the
+   * native canvas ignores it.
+   */
+  fieldOfView?: number;
 }
 
 /**

@@ -56,6 +56,7 @@ import { MAP_CITY3D_ENABLED } from '@/lib/config';
 import { isCity3dRequested } from '@/lib/map/city3dFlag';
 import { isReliefId, mapStyleLoading } from '@/lib/map/reliefFlag';
 import {
+  type MapAttributionLink,
   overlayLayerId,
   overlaySourceId,
   resolveMapAnchors,
@@ -155,6 +156,8 @@ const RELIEF_CHUNK = MAP_RELIEF.globe || MAP_RELIEF.terrain ? import('./reliefLa
 // Handled where it is used; this only keeps a failed download from also
 // surfacing as an unhandled rejection before any map exists.
 RELIEF_CHUNK?.catch(() => {});
+
+const NO_CREDITS: readonly MapAttributionLink[] = [];
 
 const DEGENERATE_FIT_ZOOM = 15;
 const DEFAULT_FIT_PADDING = 48;
@@ -816,6 +819,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const city3dRef = useRef<City3dHandle | null>(null);
   // Mirrors the ref, so the models effect below re-runs once a layer attaches.
   const [city3dHandle, setCity3dHandle] = useState<City3dHandle | null>(null);
+  // Credits owed for the landmark models on screen (`docs/MAP_LANDMARKS.md`).
+  const [landmarkCredits, setLandmarkCredits] = useState<readonly MapAttributionLink[]>(NO_CREDITS);
   const city3dLightRef = useRef(sunLight.light);
   useEffect(() => {
     city3dLightRef.current = sunLight.light;
@@ -855,6 +860,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
                   else next.delete(id);
                   return next;
                 }),
+              onLandmarkCredits: (links) =>
+                setLandmarkCredits(links.length === 0 ? NO_CREDITS : links),
             }),
       )
       .then((attached) => {
@@ -1014,6 +1021,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           bearing: asFinite(options?.bearing) ?? asFinite(viewport?.bearing) ?? map.getBearing(),
           pitch: asFinite(options?.pitch) ?? asFinite(viewport?.pitch) ?? map.getPitch(),
         };
+        // A narrower lens for a landmark tour (and back); range-checked so a
+        // bad value leaves the lens alone rather than inverting the camera.
+        const fov = asFinite(options?.fieldOfView);
+        if (fov !== undefined && fov >= 10 && fov <= 60 && fov !== map.getVerticalFieldOfView()) {
+          runEngineCommand('setVerticalFieldOfView', () => map.setVerticalFieldOfView(fov, marker));
+        }
         if (duration <= 0) {
           runEngineCommand('jumpTo', () => map.jumpTo(camera, marker));
           return;
@@ -1246,7 +1259,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           credit must be on every map GoWay draws, including the embed in
           somebody else's page. See MapBrand.tsx. */}
       <MapBrand />
-      <MapAttribution />
+      <MapAttribution extra={landmarkCredits} />
 
       {error ? <MapErrorState error={error} onRetry={retry} /> : null}
     </View>

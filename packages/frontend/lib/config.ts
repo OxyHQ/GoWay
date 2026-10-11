@@ -112,3 +112,17 @@ export const MAP_GLOBE_ENABLED = enabledUnlessKilled(process.env.EXPO_PUBLIC_MAP
  * `?terrain=0` per tab, which a production build ignores.
  */
 export const MAP_TERRAIN_ENABLED = enabledUnlessKilled(process.env.EXPO_PUBLIC_MAP_TERRAIN);
+
+/**
+ * Whether hand-crafted 3D LANDMARKS replace their buildings in the city-3D
+ * scene, with the landmark tour (`docs/MAP_LANDMARKS.md`; web only).
+ *
+ * Off unless `EXPO_PUBLIC_MAP_LANDMARKS` is `1`/`true`, and no production
+ * deployment sets it. A development build can also turn it on per tab with
+ * `?landmarks=1` (`lib/map/landmarksFlag.ts`); a production build ignores
+ * that. It takes effect only where the city-3D engine draws GoWay city tiles
+ * (the landmarks replace per-building OSM ids), so it is inert without them.
+ */
+export const MAP_LANDMARKS_ENABLED = /^(1|true)$/i.test(
+  process.env.EXPO_PUBLIC_MAP_LANDMARKS ?? '',
+);

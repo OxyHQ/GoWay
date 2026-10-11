@@ -46,8 +46,17 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import type { ModelPlacement } from '@goway.to/sdk';
 
+import {
+  applyNight,
+  createModelEnvironment,
+  createModelLights,
+  environmentIntensity,
+  type NightUniform,
+  prepareNight,
+} from './modelLook';
 import type { CityLight } from './occlusion';
 import type { GroundSampler } from './terrainGround';
 import {
@@ -94,6 +103,11 @@ export interface ModelLayer {
   /** Move one model without re-sending the set (a vehicle, every frame). */
   setPlacement(id: string, placement: ModelPlacement): void;
   setLight(light: CityLight): void;
+  /**
+   * How much of night it is, 0 (day) … 1: dims and blues the sun and the sky
+   * light and turns on what each asset says glows (`modelLook.ts`).
+   */
+  setNightFactor(nightFactor: number): void;
   /** Draw. The caller has reset three's GL state. */
   render(
     renderer: THREE.WebGLRenderer,
@@ -132,6 +146,8 @@ interface Instance {
   /** Bounds of the asset, cached for sizing and picking. */
   bounds: THREE.Box3;
   mixer: THREE.AnimationMixer | null;
+  /** Materials that glow at night (`modelLook.ts`). */
+  glowing: THREE.Material[];
   status: ModelStatus;
   /** Screen rectangle of the last frame, CSS px; `null` when not drawn. */
   rect: { left: number; top: number; right: number; bottom: number } | null;
@@ -203,6 +219,17 @@ export function modelProjection(view: ModelView): { matrix: THREE.Matrix4; cente
   const center = { x: mercatorXFromLng(view.center.lng), y: mercatorYFromLat(view.center.lat) };
   const projection = new THREE.Matrix4().fromArray(centeredProjection(view.mercatorToClip, center));
   return { matrix: projection.multiply(new THREE.Matrix4().makeScale(1, -1, 1)), center };
+}
+
+/**
+ * The eye of a perspective view-projection: the world point every clip-space
+ * ray starts from, `P⁻¹ · (0, 0, 1, 0)` dehomogenised. Exported for the test.
+ */
+export function eyeOf(viewProjection: THREE.Matrix4): THREE.Vector3 {
+  const e = new THREE.Vector4(0, 0, 1, 0).applyMatrix4(viewProjection.clone().invert());
+  return Math.abs(e.w) > 0
+    ? new THREE.Vector3(e.x / e.w, e.y / e.w, e.z / e.w)
+    : new THREE.Vector3();
 }
 
 function countTriangles(object: THREE.Object3D): number {
@@ -358,14 +385,20 @@ export interface ModelLayerOptions {
 export function createModelLayer(options: ModelLayerOptions): ModelLayer {
   const scene = new THREE.Scene();
   const camera = new THREE.Camera();
-  const hemisphere = new THREE.HemisphereLight(0xffffff, 0x8a8f99, 1.6);
-  // Hemisphere "up" is the world's +z here (mercator, y north, z up).
-  hemisphere.position.set(0, 0, 1);
-  const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-  sun.position.set(0.3, -0.5, 0.8);
-  scene.add(hemisphere, sun, sun.target);
+  // A hemisphere whose "up" is the world's +z here (mercator, y north, z up), and the sun.
+  const lights = createModelLights();
+  scene.add(lights.hemisphere, lights.sun, lights.sun.target);
+  let light: CityLight | null = null;
+  const night: NightUniform = { value: 0 };
+  const relight = () => {
+    if (light) lights.update({ ...light, night: night.value });
+    scene.environmentIntensity = environmentIntensity(night.value);
+  };
+  // Built on the first frame (it needs the renderer); `undefined`: not yet.
+  let environment: THREE.Texture | null | undefined;
 
-  const loader = new GLTFLoader();
+  // `EXT_meshopt_compression` is in the asset profile (docs/SDK_MAP_MODELS.md).
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const assets = new Map<string, Promise<Asset>>();
   const instances = new Map<string, Instance>();
   const pending = new Map<string, { spec: ModelSpec }>();
@@ -411,6 +444,8 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
     const body = instanceBody(asset.scene);
     if (spec.tint) applyTint(body, spec.tint);
     setDepthTest(body, spec.occlusion !== 'none');
+    const glowing = prepareNight(body, night);
+    applyNight(glowing, night.value);
     root.add(body);
     root.matrixAutoUpdate = false;
     root.visible = false;
@@ -426,6 +461,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       root,
       bounds: asset.bounds.clone(),
       mixer,
+      glowing,
       status: 'fallback',
       rect: null,
       anchor: null,
@@ -513,22 +549,39 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       options.requestRepaint();
     },
 
-    setLight(light) {
+    setLight(next) {
       // ENU toward the light; this world is y-north too, so it carries over.
-      const [x, y, z] = light.position;
-      sun.position.set(x, y, Math.max(0.05, z));
-      sun.color.setRGB(...light.color);
-      // MapLibre's intensity darkens unlit faces; keep the same feel: a dim
-      // sky lets the sun do more of the shaping.
-      hemisphere.intensity = 1.2 + (1 - light.intensity) * 0.8;
+      light = next;
+      relight();
+      options.requestRepaint();
+    },
+
+    setNightFactor(factor) {
+      const value = Math.max(0, Math.min(1, Number.isFinite(factor) ? factor : 0));
+      if (value === night.value) return;
+      night.value = value;
+      for (const instance of instances.values()) applyNight(instance.glowing, value);
+      relight();
       options.requestRepaint();
     },
 
     render(renderer, view, canvas) {
       if (disposed || instances.size === 0) return;
       const { matrix, center } = modelProjection(view);
-      camera.projectionMatrix.copy(matrix);
-      camera.projectionMatrixInverse.copy(matrix).invert();
+      // The host hands one view-projection; split it so the camera stands
+      // where the eye really is. three shades in VIEW space, and with an
+      // identity view the "eye" was the map's centre on the ground: every
+      // view vector pointed down at it, the Fresnel term saw grazing angles
+      // everywhere, and smooth materials (glass, steel) rendered near-black.
+      if (environment === undefined) {
+        environment = createModelEnvironment(renderer);
+        scene.environment = environment;
+      }
+      const eye = eyeOf(matrix);
+      camera.position.copy(eye);
+      camera.updateMatrixWorld(true);
+      camera.projectionMatrix.copy(matrix).multiply(camera.matrixWorld);
+      camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
       lastProjection = matrix;
 
       const now = performance.now();
@@ -659,6 +712,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       if (disposed) return;
       disposed = true;
       for (const id of [...instances.keys()]) remove(id);
+      environment?.dispose();
       pending.clear();
       // Geometries and materials of loaded assets.
       for (const promise of assets.values()) {

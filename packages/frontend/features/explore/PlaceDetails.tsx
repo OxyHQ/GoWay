@@ -19,7 +19,7 @@
  * its reviews with the business's replies — each a section that is absent when
  * there is nothing in it.
  */
-import { useCallback, useState } from 'react';
+import { type ReactNode, useCallback, useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
 import { placeDisplayName } from '@goway.to/sdk';
 import type { Place } from '@goway.to/sdk';
@@ -69,10 +69,12 @@ export interface PlaceDetailsProps {
    * could only ever answer one question.
    */
   onDirections: () => void;
+  /** More actions after Directions and Save (the landmark tour, when the flag is on). */
+  actions?: ReactNode;
   testID?: string;
 }
 
-export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps) {
+export function PlaceDetails({ place, onDirections, actions, testID }: PlaceDetailsProps) {
   const theme = useTheme();
   const gate = useAuthGate();
 
@@ -181,6 +183,7 @@ export function PlaceDetails({ place, onDirections, testID }: PlaceDetailsProps)
         >
           Save
         </Button>
+        {actions}
       </View>
 
       {hasDetail ? <Divider /> : null}

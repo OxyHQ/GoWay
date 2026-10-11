@@ -151,6 +151,15 @@ jobs:
         # or label fails it as surely as changed geometry does.
         run: bun run --cwd packages/frontend brand:check
 
+      - name: Validate the landmark models
+        # `public/landmarks/*.glb` are GENERATED from the procedural sources in
+        # `scripts/landmarks/models/`, and `registry.json` records each one's
+        # bytes, SHA-256, triangles and licence (docs/MAP_LANDMARKS.md). A
+        # source edited without rebuilding ships a model that is not what the
+        # code says, and a budget or licence field that no longer holds; the
+        # check rebuilds everything in memory and compares bytes.
+        run: bun run --cwd packages/frontend landmarks:check
+
       - name: Test the frontend's pure modules
         # These suites EXISTED before this step did and nothing ran them —
         # `bun run test` covered the backend and the SDK only, so
