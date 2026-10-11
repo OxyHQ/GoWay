@@ -74,6 +74,15 @@ module.exports = {
         // the badge was designed — see `components/map/MapBrand.tsx`.
         backgroundColor: '#ffffff',
       },
+      // `expo-sensors` declares ACTIVITY_RECOGNITION in its own library
+      // manifest (Android's "Physical activity"), and Gradle merges it into
+      // the app whether or not anything uses it. Only its Pedometer and the
+      // DeviceMotion permission calls read it; GoWay uses neither — the guided
+      // capture subscribes to DeviceMotion, which needs no permission (see
+      // `features/contribute/guided/motionSensor.ts`). Blocking it writes a
+      // `tools:node="remove"` entry the manifest merger honours; guarded by
+      // `__tests__/nativePermissions.test.ts`.
+      blockedPermissions: ['android.permission.ACTIVITY_RECOGNITION'],
     },
     web: {
       bundler: 'metro',
@@ -122,6 +131,22 @@ module.exports = {
           // GoWay has no background-location feature and must not ask for one.
           isIosBackgroundLocationEnabled: false,
           isAndroidBackgroundLocationEnabled: false,
+        },
+      ],
+      // `expo-sensors` is applied automatically even when unlisted, and then
+      // writes Expo's generic `NSMotionUsageDescription`. Listing it replaces
+      // that text with GoWay's own. The key stays even though GoWay never
+      // triggers the Motion & Fitness prompt: Core Motion's device motion,
+      // which the guided capture reads, asks for nothing, but the prebuilt
+      // `ExpoSensors` binary still links the pedometer and altimeter, so App
+      // Store Connect can reject an upload that has no purpose string, and
+      // `DeviceMotion.getPermissionsAsync()` aborts the app when the string is
+      // missing. So `motionPermission: false` is never the answer here.
+      [
+        'expo-sensors',
+        {
+          motionPermission:
+            'GoWay reads which way your phone is tilted while you record a street capture. It does not count your steps or track your activity.',
         },
       ],
       // Shared Oxy native config: the iOS keychain group, expo-build-properties

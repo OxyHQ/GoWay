@@ -248,27 +248,36 @@ in that state.
   pictures under the `portrait` label and get no gravity (the shape check).
 - **Library photos and system-camera shots carry none.** The app is not
   running its own code at the shutter; see the follow-ups.
-- **`expo-sensors` brings native declarations GoWay does not use.** Its
-  auto-applied config plugin adds `NSMotionUsageDescription` to the iOS
-  `Info.plist` (pedometer; no prompt unless requested, and it never is) and its
-  Android manifest declares `ACTIVITY_RECOGNITION` (a runtime permission that
-  is never requested, but is listed). Removing them is native config, so it
-  belongs in `@oxy.so/app-preset`, not in `app.config.js`: blocking
-  `android.permission.ACTIVITY_RECOGNITION` and passing the `expo-sensors`
-  plugin `motionPermission: false` for apps that read DeviceMotion only.
+- **`expo-sensors` brings native declarations GoWay does not use**, handled
+  in `packages/frontend/app.config.js` because they follow from GoWay's own
+  dependency and features, not from anything every Oxy app shares:
+  - Android: the library manifest (`android/src/main/AndroidManifest.xml`, and
+    the prebuilt `expo.modules.sensors-57.0.3.aar` Gradle actually merges)
+    declares `ACTIVITY_RECOGNITION` for the Pedometer. `android.blockedPermissions`
+    removes it; measured with `processDebugMainManifest` on a scratch prebuild,
+    the merged manifest lost that permission and nothing else. Guarded by
+    `packages/frontend/__tests__/nativePermissions.test.ts`.
+  - iOS: the plugin is auto-applied even when unlisted and writes a generic
+    `NSMotionUsageDescription`. The key is KEPT with GoWay's own wording, not
+    removed with `motionPermission: false`: device motion asks for nothing, but
+    the precompiled `ExpoSensors` binary (the SDK 57 default) still links
+    `CMPedometer`/`CMAltimeter`, so an upload without the string risks
+    `ITMS-90683`, and that binary's `getPermissionsAsync()` calls `RCTFatal`
+    when the key is missing (`EXPO_DISABLE_MOTION_PERMISSION` only reaches a
+    source build). No prompt is ever shown: GoWay calls no motion permission
+    API.
 
 ## Follow-ups
 
-1. **Preset:** the two declarations above, in `@oxy.so/app-preset`.
-2. **Gravity in the mapper.** Once real captures report residuals of a few
+1. **Gravity in the mapper.** Once real captures report residuals of a few
    degrees, write `PosePrior.gravity` into the database before
    `global_mapping` and set `rotation_averaging.use_gravity` (with
    `use_stratified`, since library media has none), solving again without it
    when registration drops. The synthetic test above is the regression guard.
-3. **Upright frames.** An Android recording held sideways is stored sideways.
+2. **Upright frames.** An Android recording held sideways is stored sideways.
    `compute_rot90_from_gravity` says how to turn each keyframe upright before
    detection and matching; that is a privacy-job change.
-4. **In-app stills.** Shooting photos through `CameraView.takePictureAsync`
+3. **In-app stills.** Shooting photos through `CameraView.takePictureAsync`
    instead of the system camera would give each photo its gravity at `t = 0`
    through exactly this path.
 
