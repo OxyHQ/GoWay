@@ -164,6 +164,18 @@ export type JobEnvelope = z.infer<typeof jobEnvelopeSchema>;
 
 // ── Input manifest (backend → S3 jobs/<jobId>/input.json) ──────────────────
 
+/**
+ * Gravity as the capturing phone measured it at a frame's instant: a unit
+ * vector pointing DOWN in the frame's camera axes (x right, y down, z
+ * forward). See `street3d/motion.ts`.
+ */
+const measuredGravity = z
+  .tuple([z.number(), z.number(), z.number()])
+  .refine(
+    (vector) => vector.every(Number.isFinite) && Math.abs(Math.hypot(...vector) - 1) <= 0.01,
+    'must be a finite unit vector',
+  );
+
 export const manifestFrameSchema = z.object({
   frameId: z.string().min(1),
   captureAssetId: z.string().min(1),
@@ -191,6 +203,8 @@ export const manifestFrameSchema = z.object({
   }),
   camera: z.object({ focalLength35mm: z.number().positive().optional() }).optional(),
   panorama: panoramaViewSchema.optional(),
+  /** Absent for a frame without a measurement, and from every manifest before motion priors. */
+  gravity: measuredGravity.optional(),
 });
 export type ManifestFrame = z.infer<typeof manifestFrameSchema>;
 
@@ -286,6 +300,8 @@ export const privacyFrameSchema = z.object({
   detections: z.record(z.string(), nonNegativeInt).optional(),
   maskedFraction: z.number().min(0).max(1).optional(),
   sharpness: z.number().nonnegative().optional(),
+  /** A video keyframe's offset into the recording; absent for a photo. */
+  timestampSeconds: z.number().nonnegative().optional(),
   panorama: panoramaViewSchema.optional(),
 });
 export type PrivacyFrame = z.infer<typeof privacyFrameSchema>;
@@ -401,6 +417,11 @@ export const sceneReconstructResultSchema = z.object({
       inputBytesDownloaded: z.number().nonnegative().optional(),
       cacheHitRatio: z.number().min(0).max(1).optional(),
       outputBytes: z.number().nonnegative().optional(),
+      /** Registered frames that carried a measured gravity, and how many leveled the scene. */
+      gravityFrames: nonNegativeInt.optional(),
+      gravityLeveledFrames: nonNegativeInt.optional(),
+      /** Median angle between the measurements and the placed scene's down, degrees. */
+      medianGravityResidualDegrees: z.number().min(0).max(180).optional(),
     })
     .catchall(finiteNumber),
   gates: z.object({ passed: z.boolean(), failures: z.array(z.string().max(200)) }),

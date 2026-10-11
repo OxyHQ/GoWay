@@ -29,6 +29,7 @@ def test_every_fixture_is_covered():
         "job.capture_privacy.equirectangular.json",
         "job.scene_reconstruct.json",
         "scene_input_manifest.json",
+        "scene_input_manifest.pre-gravity.json",
         "result.capture_privacy.json",
         "result.capture_privacy.equirectangular.json",
         "result.scene_reconstruct.json",
@@ -69,6 +70,30 @@ def test_panorama_views_carry_their_parent_and_yaw():
         CapturePrivacyResult.model_validate(load("result.capture_privacy.json") | {"projection": "equirectangular"})
 
 
+def test_frames_may_carry_measured_gravity_and_older_manifests_still_parse():
+    manifest = SceneInputManifest.model_validate(load("scene_input_manifest.json"))
+    carried = {f.frameId: f.gravity for f in manifest.frames if f.gravity is not None}
+    assert carried == {"f-01": (0.0346, 0.9919, 0.1219)}
+    # A backend that predates motion priors writes no gravity at all; same schemaVersion.
+    legacy = SceneInputManifest.model_validate(load("scene_input_manifest.pre-gravity.json"))
+    assert legacy.schemaVersion == manifest.schemaVersion == 1
+    assert all(f.gravity is None for f in legacy.frames) and len(legacy.frames) == len(manifest.frames)
+    for bad in ([0.0, 0.5, 0.0], [0.0, 1.0], [0.0, 1.0, 0.0, 0.0], [float("nan"), 1.0, 0.0]):
+        raw = load("scene_input_manifest.json")
+        raw["frames"][0]["gravity"] = bad
+        with pytest.raises(ValidationError):
+            SceneInputManifest.model_validate(raw)
+
+
+def test_gravity_metrics_are_optional_in_a_result():
+    result = SceneReconstructResult.model_validate(load("result.scene_reconstruct.json"))
+    assert (result.metrics.gravityFrames, result.metrics.gravityLeveledFrames) == (1, 0)
+    raw = load("result.scene_reconstruct.json")
+    for key in ("gravityFrames", "gravityLeveledFrames", "medianGravityResidualDegrees"):
+        del raw["metrics"][key]
+    assert SceneReconstructResult.model_validate(raw).metrics.gravityFrames is None
+
+
 def test_unknown_job_type_is_refused():
     raw = load("job.capture_privacy.json") | {"jobType": "mine_bitcoin"}
     with pytest.raises(ValueError):
@@ -84,6 +109,7 @@ def test_job_keys_cannot_escape_the_bucket_prefixes():
 
 def test_manifest_and_results_and_events():
     SceneInputManifest.model_validate(load("scene_input_manifest.json"))
+    SceneInputManifest.model_validate(load("scene_input_manifest.pre-gravity.json"))
     CapturePrivacyResult.model_validate(load("result.capture_privacy.json"))
     SceneReconstructResult.model_validate(load("result.scene_reconstruct.json"))
     for name in ("event.heartbeat.json", "event.completed.json", "event.failed.json"):

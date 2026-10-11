@@ -26,6 +26,14 @@ centre and differ by a known yaw, so they are paired and solved as a rig:
 
 Feature extraction honours the privacy masks: no keypoint is detected on a
 masked person or vehicle.
+
+A frame may carry the phone's own measurement of gravity at the instant it
+was taken (``SfmFrame.gravity``, docs/STREET3D_MOTION_PRIORS.md). It is not fed
+to the mapper: pycolmap 4.2.1 accepts it (``PosePrior.gravity`` with
+``rotation_averaging.use_gravity``), but on synthetic scenes it changed nothing
+when right and collapsed registration when wrong. It is used where it is
+unambiguous — deciding which way is up when the solved model is placed on the
+map (``georeference``).
 """
 
 from __future__ import annotations
@@ -79,6 +87,9 @@ class SfmFrame:
     focal35: float | None
     rig: RigView | None = None
     heading: float | None = None  # prior compass heading of the view, when known
+    # Measured gravity at the frame's instant: a unit vector pointing DOWN in the
+    # frame's camera axes (x right, y down, z forward), from the phone's sensors.
+    gravity: tuple[float, float, float] | None = None
 
 
 def frame_image_name(group: str, frame_id: str, width: int, height: int, rig: RigView | None) -> str:
@@ -426,6 +437,77 @@ class Georeference:
     inliers: int
     median_residual_m: float
     p90_residual_m: float
+    # Which way up the model was placed: "gravity" (the phones' sensors) or
+    # "cameras" (the mean camera up, the fallback).
+    level_source: str = "cameras"
+    # Registered frames that carried a gravity measurement.
+    gravity_frames: int = 0
+    # Median angle between each measured gravity and the placed model's down,
+    # degrees; None without measurements. Diagnostic, never a gate.
+    gravity_residual_deg: float | None = None
+
+
+# Gravity leveling (docs/STREET3D_MOTION_PRIORS.md). A measurement agreeing with
+# the consensus within GRAVITY_INLIER_DEG counts; the consensus is used only
+# with MIN_GRAVITY_FRAMES measurements of which MIN_GRAVITY_INLIER_RATIO agree,
+# and only when it lies within MAX_LEVEL_DISAGREEMENT_DEG of the cameras' own up.
+# Phones pitch and roll by tens of degrees, so that bound is wide; what it
+# refuses is a measurement in the wrong axes (a 90° or 180° error), which would
+# otherwise lay the street on its side or upside down.
+GRAVITY_INLIER_DEG = 10.0
+MIN_GRAVITY_FRAMES = 3
+MIN_GRAVITY_INLIER_RATIO = 0.6
+MAX_LEVEL_DISAGREEMENT_DEG = 45.0
+
+
+@dataclass
+class Level:
+    """Which way is down in a solved model, and how it was decided."""
+
+    down: np.ndarray  # unit vector, model coordinates
+    source: str  # "gravity" | "cameras"
+    gravity_frames: int
+    gravity_residual_deg: float | None
+
+
+def _angle_deg(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Angles between unit vectors, row-wise for 2D input."""
+    return np.degrees(np.arccos(np.clip(np.sum(a * b, axis=-1), -1.0, 1.0)))
+
+
+def _unit(v: np.ndarray) -> np.ndarray:
+    return v / np.linalg.norm(v)
+
+
+def level(camera_downs: np.ndarray, gravity_downs: np.ndarray) -> Level:
+    """Decide the model's down direction.
+
+    ``camera_downs`` is each registered camera's image "down" axis in model
+    coordinates; their mean is the historical estimate, which assumes the
+    cameras were held level and is off by the cameras' mean pitch and roll.
+    ``gravity_downs`` is each measured gravity rotated into model coordinates
+    by its camera's solved rotation; where enough of them agree, they ARE the
+    down direction, however the phone was held.
+    """
+    cameras = _unit(np.mean(camera_downs, axis=0))
+    n = len(gravity_downs)
+    if n == 0:
+        return Level(cameras, "cameras", 0, None)
+    consensus = _unit(np.mean(gravity_downs, axis=0)) if np.linalg.norm(np.mean(gravity_downs, axis=0)) > 1e-9 else cameras
+    inliers = np.zeros(n, dtype=bool)
+    for _ in range(5):
+        inliers = _angle_deg(gravity_downs, consensus) <= GRAVITY_INLIER_DEG
+        if not inliers.any():
+            break
+        consensus = _unit(np.mean(gravity_downs[inliers], axis=0))
+    trusted = (
+        n >= MIN_GRAVITY_FRAMES
+        and inliers.sum() >= MIN_GRAVITY_INLIER_RATIO * n
+        and float(_angle_deg(consensus, cameras)) <= MAX_LEVEL_DISAGREEMENT_DEG
+    )
+    down = consensus if trusted else cameras
+    residual = float(np.median(_angle_deg(gravity_downs, down)))
+    return Level(down, "gravity" if trusted else "cameras", n, residual)
 
 
 def _rotation_between(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -457,9 +539,11 @@ def georeference(result: SfmResult, frames: list[SfmFrame], *, max_error_m: floa
 
     Street captures are close to collinear, which leaves a 3D fit to GPS
     points free to roll the street about its own axis. So the vertical comes
-    from the cameras instead: phones and vehicle cameras are held roughly
-    upright, and the mean of their "up" directions is the scene's up. With up
-    fixed, the remaining unknowns are a 2D similarity (scale, heading,
+    from the cameras instead: from the gravity the phones measured while
+    shooting, where the frames carry it and it agrees with itself (``level``),
+    otherwise from the assumption that phones and vehicle cameras are held
+    roughly upright, the mean of their "up" directions being the scene's up.
+    With up fixed, the remaining unknowns are a 2D similarity (scale, heading,
     offset), fitted robustly to the horizontal GPS priors with RANSAC. Phone
     altitude is too noisy to use; cameras are set near +2 m instead.
 
@@ -471,13 +555,16 @@ def georeference(result: SfmResult, frames: list[SfmFrame], *, max_error_m: floa
     # One position per camera centre: the views of a panorama share theirs, so
     # they count once — eight views of one place are not eight GPS agreements.
     stations: dict[str, tuple[list[np.ndarray], list[float]]] = {}
-    ups = []
+    downs = []
+    gravities = []
     for img in model.images.values():
         if not img.has_pose:
             continue
         f = by_name[img.name]
         rot = img.cam_from_world().rotation.matrix()
-        ups.append(-rot.T @ np.array([0.0, 1.0, 0.0]))
+        downs.append(rot.T @ np.array([0.0, 1.0, 0.0]))
+        if f.gravity is not None:
+            gravities.append(rot.T @ _unit(np.asarray(f.gravity, dtype=float)))
         key = f"rig:{f.rig.panorama}" if f.rig is not None else f"frame:{f.frame_id}"
         stations.setdefault(key, ([], [f.east, f.north]))[0].append(img.projection_center())
     centers = [np.mean(members, axis=0) for members, _ in stations.values()]
@@ -485,8 +572,14 @@ def georeference(result: SfmResult, frames: list[SfmFrame], *, max_error_m: floa
     if len(centers) < 3:
         raise SfmError("georeference_failed", "fewer than three solved cameras")
     centers_np, targets_np = np.array(centers), np.array(targets)
-    level = _rotation_between(np.mean(ups, axis=0), np.array([0.0, 0.0, 1.0]))
-    horizontal = (centers_np @ level.T)[:, :2]
+    vertical = level(np.array(downs), np.array(gravities).reshape(-1, 3))
+    if vertical.gravity_frames:
+        log.info(
+            "leveled by %s: %d frames carry gravity, median residual %.1f°",
+            vertical.source, vertical.gravity_frames, vertical.gravity_residual_deg,
+        )
+    level_rotation = _rotation_between(-vertical.down, np.array([0.0, 0.0, 1.0]))
+    horizontal = (centers_np @ level_rotation.T)[:, :2]
 
     rng = np.random.default_rng(seed)
     best: np.ndarray | None = None
@@ -507,7 +600,7 @@ def georeference(result: SfmResult, frames: list[SfmFrame], *, max_error_m: floa
 
     rot3 = np.eye(3)
     rot3[:2, :2] = r
-    rotation = rot3 @ level
+    rotation = rot3 @ level_rotation
     heights = (centers_np @ rotation.T)[:, 2] * s
     translation = np.array([t[0], t[1], 2.0 - float(np.median(heights))])
     model.transform(pycolmap.Sim3d(s, pycolmap.Rotation3d(rotation), translation))
@@ -515,4 +608,7 @@ def georeference(result: SfmResult, frames: list[SfmFrame], *, max_error_m: floa
         inliers=int((residuals <= max_error_m).sum()),
         median_residual_m=float(np.median(residuals)),
         p90_residual_m=float(np.percentile(residuals, 90)),
+        level_source=vertical.source,
+        gravity_frames=vertical.gravity_frames,
+        gravity_residual_deg=vertical.gravity_residual_deg,
     )

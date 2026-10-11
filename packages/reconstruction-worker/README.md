@@ -74,7 +74,8 @@ to AWS.
 2. **`scene_reconstruct`**: fetch the backend's input manifest and the listed
    derivatives (through the content cache), solve cameras with bounded matching
    (the views of one panorama as a rig),
-   georeference with a robust fit, seed the Gaussians with a dense point cloud
+   georeference with a robust fit (levelled by the phones' measured gravity
+   where the frames carry it, `docs/STREET3D_MOTION_PRIORS.md`), seed the Gaussians with a dense point cloud
    fused from pose-conditioned multi-view depth (`recon/dense.py`; only depth
    that neighbouring frames confirm, and it falls back to the sparse points on
    any failure), train Gaussians within the profile's budget,

@@ -32,7 +32,10 @@
     "wallSeconds": 980.0,
     "inputBytesDownloaded": 15233211,
     "cacheHitRatio": 0.5,
-    "outputBytes": 21003322
+    "outputBytes": 21003322,
+    "gravityFrames": 1,
+    "gravityLeveledFrames": 0,
+    "medianGravityResidualDegrees": 6.8
   },
   "gates": { "passed": true, "failures": [] },
   "assets": [
