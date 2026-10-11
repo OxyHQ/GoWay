@@ -109,8 +109,8 @@ number:
   Until this was found, the city engine timed its own draws in development
   builds. Its `endQuery` closed the runtime's query at the city's last draw,
   so the HUD, the benchmark and dynamic resolution read a frame cut short
-  there. Measured on the Eixample orbit (desktop): GPU p50 4.4–4.7 ms cut
-  short, 5.8–6.4 ms whole; p95 24–26 ms against 51–62 ms. The benchmark
+  there. Measured on the Eixample orbit (desktop): GPU p50 4.5–4.7 ms cut
+  short, 5.7–5.9 ms whole; p95 26–30 ms against 52–53 ms. The benchmark
   numbers above were taken on development builds, so their GPU column is
   the short one. Production builds never had the engine's timer. To compare
   one layer, benchmark the scene with that layer on and off.
