@@ -19,6 +19,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
 import type { CityEngine, CityView } from '@/components/map/engine/city3d/cityEngine';
 import { createCityEngine } from '@/components/map/engine/city3d/cityEngine';
+import type { GroundSampler } from '@/components/map/engine/city3d/terrainGround';
 import {
   createGlCounterState,
   type GlFrameCounts,
@@ -73,6 +74,8 @@ interface Measured {
   shadowRedraws: number;
   /** GPU bytes held once loaded — every buffer, texture and renderbuffer the engine made (the shadow map included). */
   gpuBytes: number;
+  /** Per loading frame: tiles lifted onto the terrain and bytes uploaded (on terrain only). */
+  loadFrames: Array<{ lifted: number; uploadBytes: number }>;
 }
 
 function view(step: Scene['path'][number]): CityView {
@@ -118,13 +121,18 @@ async function settle(
   return false;
 }
 
-async function measure(scene: Scene, tier: QualityTier): Promise<Measured> {
+async function measure(
+  scene: Scene,
+  tier: QualityTier,
+  ground: GroundSampler | null = null,
+): Promise<Measured> {
   const { gl, canvas } = createFakeWebGl2(WIDTH, HEIGHT);
   const counters = createGlCounterState();
   instrumentWebGl2(gl, counters);
   let pending = 1;
   // The engine runs on a virtual clock: the same counts every run.
   const clock = { ms: 0 };
+  let lifted = 0;
   const engine = createCityEngine({
     gl,
     canvas: canvas as unknown as HTMLCanvasElement,
@@ -159,13 +167,19 @@ async function measure(scene: Scene, tier: QualityTier): Promise<Measured> {
       if (process.env.GATE_DEBUG) console.log(JSON.stringify(s));
       pending = s.tilesPending + s.uploadsQueued;
     },
+    onGroundStats: (s) => {
+      lifted = s.tilesGrounded;
+    },
   });
   try {
     // A midsummer afternoon: shadows on.
     engine.setSun({ azimuthDeg: 240, altitudeDeg: 40 });
+    if (ground) engine.setGround(ground);
     const first = view(scene.path[0]);
     let loadUploadBytes = 0;
     let maxFrameUploadBytes = 0;
+    const loadFrames: Measured['loadFrames'] = [];
+    let liftedBefore = lifted;
     const loaded = await settle(
       engine,
       first,
@@ -174,6 +188,13 @@ async function measure(scene: Scene, tier: QualityTier): Promise<Measured> {
       () => {
         loadUploadBytes += counters.frame.uploadBytes;
         maxFrameUploadBytes = Math.max(maxFrameUploadBytes, counters.frame.uploadBytes);
+        if (ground) {
+          loadFrames.push({
+            lifted: lifted - liftedBefore,
+            uploadBytes: counters.frame.uploadBytes,
+          });
+          liftedBefore = lifted;
+        }
         resetGlFrame(counters.frame);
       },
     );
@@ -214,6 +235,7 @@ async function measure(scene: Scene, tier: QualityTier): Promise<Measured> {
       gpuBytes: Math.round(
         counters.memory.buffers + counters.memory.textures + counters.memory.renderbuffers,
       ),
+      loadFrames,
     };
   } finally {
     engine.dispose();
@@ -221,7 +243,7 @@ async function measure(scene: Scene, tier: QualityTier): Promise<Measured> {
 }
 
 /** What a scene may cost at a preset (the path's worst frame, and its load). */
-type Budget = Omit<Measured, 'uploadBytes' | 'maxFrameUploadBytes'>;
+type Budget = Omit<Measured, 'uploadBytes' | 'maxFrameUploadBytes' | 'loadFrames'>;
 
 /**
  * The budgets, per scene and preset: the counts measured on this branch
@@ -351,6 +373,20 @@ describe('frame budget gate', () => {
       expect(low.offscreenPasses).toBe(0);
     }
   });
+
+  test('on terrain, no frame both lifts a tile and uploads one (the two largest pieces of an arrival)', async () => {
+    // A hillside under the synthetic city: every tile is lifted before it is drawn.
+    const hill: GroundSampler = (lng, lat) =>
+      120 + 3000 * (lng - SYNTHETIC_CENTRE.lng) + 2000 * (lat - SYNTHETIC_CENTRE.lat);
+    const measured = await measure(SCENES[0], 'medium', hill);
+    const lifting = measured.loadFrames.filter((f) => f.lifted > 0);
+    // Vacuity: tiles were lifted, and uploaded.
+    expect(lifting.length).toBeGreaterThan(2);
+    expect(measured.loadFrames.some((f) => f.uploadBytes > 0)).toBe(true);
+    // A lifting frame uploads at most a few uniforms (bytes), never a mesh (MBs).
+    for (const frame of lifting) expect(frame.uploadBytes).toBeLessThan(1024);
+    expect(measured.draws).toBeGreaterThan(0);
+  }, 120_000);
 
   test('the counts are deterministic (the same scene twice, the same frame)', async () => {
     const [a, b] = [await measure(SCENES[0], 'high'), await measure(SCENES[0], 'high')];

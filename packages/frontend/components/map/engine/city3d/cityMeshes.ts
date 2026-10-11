@@ -481,27 +481,46 @@ export function groundTileFor(entry: TileEntry, tile: TileId): GroundTile {
       let max = -Infinity;
       let at = 0;
       const starts = packed?.polygonStarts ?? new Uint32Array(0);
+      const footZ = GROUND.footM * Z_UNITS_PER_METRE;
       for (const chunk of chunks) {
-        const count = chunk.position.length / 4;
-        let unit = -1;
-        for (let i = 0; i < count; i++) {
-          // Chunks keep the mesh's vertex order (`packing.ts`), the one
-          // `polygonStarts` indexes.
-          const s = at + i;
-          // Mostly the same unit as the last vertex, or the next one.
-          if (unit < 0 || s < starts[unit] || (unit + 1 < starts.length && s >= starts[unit + 1])) {
-            unit = unitOf(starts, s);
-          }
+        // Chunks keep the mesh's vertex order (`packing.ts`), the one
+        // `polygonStarts` indexes: walk it a unit's run of vertices at a
+        // time, so a vertex costs one comparison and one store — this is the
+        // engine's largest single piece of main-thread work when a tile
+        // arrives on terrain (`docs/MAP_PERFORMANCE.md` → hotspots).
+        const position = chunk.position;
+        const count = position.length / 4;
+        let unit = unitOf(starts, at);
+        let i = 0;
+        while (i < count) {
+          const next = unit + 1 < starts.length ? Math.min(count, starts[unit + 1] - at) : count;
           if (unit < 0) {
-            values[at + i] = 0;
-            continue;
+            values.fill(0, at + i, at + next);
+          } else {
+            const top = placed.anchor[unit];
+            const foot = top - placed.sink[unit];
+            let feet = false;
+            let tops = false;
+            for (let k = i; k < next; k++) {
+              if (position[k * 4 + 2] <= footZ) {
+                values[at + k] = foot;
+                feet = true;
+              } else {
+                values[at + k] = top;
+                tops = true;
+              }
+            }
+            if (feet) {
+              if (foot < min) min = foot;
+              if (foot > max) max = foot;
+            }
+            if (tops) {
+              if (top < min) min = top;
+              if (top > max) max = top;
+            }
           }
-          const top = placed.anchor[unit];
-          const foot = top - placed.sink[unit];
-          const lift = chunk.position[i * 4 + 2] <= GROUND.footM * Z_UNITS_PER_METRE ? foot : top;
-          values[at + i] = lift;
-          if (lift < min) min = lift;
-          if (lift > max) max = lift;
+          i = next;
+          unit++;
         }
         at += count;
       }

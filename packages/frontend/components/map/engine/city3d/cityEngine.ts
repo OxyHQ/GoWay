@@ -173,7 +173,7 @@ export interface CityEngineOptions {
    * Absent (tests, a host without one): animated models repaint as before.
    */
   clock?: AnimationClock;
-  /** `?perf=1` / development: names this frame's parts for the HUD (`perf/mapRuntime.web.ts`). */
+  /** `?perf=1`: names this frame's parts for the HUD (`perf/mapRuntime.web.ts`). */
   probe?: FrameProbe;
   /**
    * The engine's clock, ms (default `performance.now`): frame pacing, upload
@@ -765,6 +765,9 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     options.requestRepaint();
   };
 
+  /** Entries lifted for the first time last frame: this frame draws (uploads) them. */
+  let awaitingFirstDraw = new Set<string>();
+
   /** Hand queued meshes to the GPU, nearest first, within this frame's budget. */
   const admit = (now: number) => {
     if (arrivals.length === 0) return;
@@ -979,9 +982,19 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
     // On terrain: lift stale entries, nearest first, a few per frame. An
     // entry never grounded would be drawn at sea level — inside the hill —
-    // so it waits for its first lift.
+    // so it waits for its first lift. Its first draw is also when its mesh
+    // goes to the GPU, and the lift and that upload are the two largest
+    // pieces of a tile's arrival: one frame holding both was the engine's
+    // share of the laptop's slowest frames (`docs/MAP_PERFORMANCE.md` → the
+    // laptop's main thread). So they alternate: a newly lifted entry is first
+    // drawn the frame after, and that frame lifts nothing.
     const grounded = grounder.active;
-    if (grounded) {
+    const firstGrounded = new Set<string>();
+    const uploading = awaitingFirstDraw;
+    awaitingFirstDraw = firstGrounded;
+    if (grounded && uploading.size > 0) {
+      options.requestRepaint();
+    } else if (grounded) {
       let budget = GROUND_TILES_PER_FRAME;
       for (const tile of selected) {
         const entry = bestFor(tile);
@@ -990,6 +1003,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
           options.requestRepaint();
           break;
         }
+        if (!grounder.hasGround(entry.key)) firstGrounded.add(entry.key);
         const result = grounder.ground(entry.key, groundTileFor(entry, tile));
         if (result) {
           applyGround(entry, result);
@@ -1020,7 +1034,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       )[0];
       for (const { value: entry, from, to } of draws) {
         if (!entry.placement) continue;
-        if (grounded && !grounder.hasGround(entry.key)) continue;
+        if (grounded && (!grounder.hasGround(entry.key) || firstGrounded.has(entry.key))) continue;
         placeEntry(entry, entry.placement, center);
         setEntryTreeDetail(entry, shapes, r(entry) < nearTreesWithin);
         setEntryFade(entry, from, to);
@@ -1043,6 +1057,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         }
       }
     }
+    if (firstGrounded.size > 0) options.requestRepaint();
     const projection = centeredProjection(view.mercatorToClip, center);
     camera.projectionMatrix.fromArray(projection);
     camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
