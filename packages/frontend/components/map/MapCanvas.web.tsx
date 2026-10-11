@@ -54,7 +54,7 @@ import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
 import { MAP_CITY3D_ENABLED } from '@/lib/config';
 import { isCity3dRequested } from '@/lib/map/city3dFlag';
-import { isReliefId } from '@/lib/map/reliefFlag';
+import { isReliefId, mapStyleLoading } from '@/lib/map/reliefFlag';
 import {
   overlayLayerId,
   overlaySourceId,
@@ -329,11 +329,16 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       );
     }
 
+    // With the globe flag on, the style goes in through `setStyle` with the
+    // globe projection folded into the document, so the first frame is
+    // already a globe; off, this is the constructor it always was.
+    const styleLoading = mapStyleLoading(styleUrl, MAP_RELIEF.globe);
+    if (styleLoading.background !== null) container.style.background = styleLoading.background;
     let map: maplibregl.Map;
     try {
       map = new maplibregl.Map({
         container,
-        style: styleUrl,
+        ...styleLoading.construct,
         center: toLngLat(start),
         zoom: asFinite(start.zoom) ?? DEFAULT_VIEWPORT.zoom,
         bearing: asFinite(start.bearing) ?? 0,
@@ -344,6 +349,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         // satisfied and is not.
         attributionControl: false,
       });
+      if (styleLoading.deferred) {
+        map.setStyle(styleLoading.deferred.url, {
+          transformStyle: styleLoading.deferred.transformStyle,
+        });
+      }
     } catch (cause) {
       emitError({ reason: 'runtime', message: String(cause) });
       return;

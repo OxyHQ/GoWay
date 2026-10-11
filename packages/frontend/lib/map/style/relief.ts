@@ -16,14 +16,15 @@
  */
 import type {
   HillshadeLayerSpecification,
-  ProjectionSpecification,
   RasterDEMSourceSpecification,
   SkySpecification,
   TerrainSpecification,
 } from '@maplibre/maplibre-gl-style-spec';
 
 import { type MapAppearance, TERRAIN_ATTRIBUTION_LINK } from '../provider';
-import { isReliefId, RELIEF_ID_PREFIX } from '../reliefFlag';
+import { GLOBE_PROJECTION, GLOBE_SPACE_BASE, isReliefId, RELIEF_ID_PREFIX } from '../reliefFlag';
+
+export { GLOBE_PROJECTION };
 
 /**
  * Two sources over the SAME tiles: one feeds the hillshade, one the terrain.
@@ -168,13 +169,6 @@ export function terrainWanted(pitch: number, terrainOn: boolean): boolean {
 }
 
 /**
- * MapLibre's `globe`: a sphere ("vertical perspective") to z11, easing into
- * mercator by z12 — before any street-level layer (the 3D buildings start at
- * z15.5) has to know a globe exists.
- */
-export const GLOBE_PROJECTION: ProjectionSpecification = { type: 'globe' };
-
-/**
  * The sky, per appearance: the gradient a tilted camera sees at the horizon
  * and the fog that softens far terrain into it.
  *
@@ -218,8 +212,7 @@ export function reliefSky(appearance: MapAppearance): SkySpecification {
  * The stars are a fixed, seeded pattern of CSS radial gradients: no image to
  * fetch, no canvas, nothing per frame, and the same sky on every load.
  */
-export const SPACE_BASE =
-  'radial-gradient(ellipse at 50% 45%, #0e1d3a 0%, #070e1f 55%, #02050c 100%)';
+export const SPACE_BASE = GLOBE_SPACE_BASE;
 
 /** A deterministic star field: `count` points as CSS radial gradients. */
 export function starfield(count: number, seed = 0x9e3779b9): string {
