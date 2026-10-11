@@ -73,15 +73,21 @@ export async function retractCaptureFromStreet3d(
   reason: RetractionReason,
   now: Date,
 ): Promise<{ versionIds: string[]; sceneIds: string[]; cancelledJobs: number }> {
+  const cancelReason = reason === 'moderation' ? 'source_blocked' : 'source_withdrawn';
+  // The capture's own (privacy) jobs FIRST, and only then its derivatives. A
+  // privacy completion inserts derivatives while holding its job lock, so
+  // locking that job here waits for it to commit; reading the derivatives
+  // before would miss the ones it is about to add, and they would be left
+  // without a removal request until they expired.
+  const ownJobs = await cancelOpenJobs(tx, eq(street3dJobs.assetId, assetId), cancelReason, now);
   const derivatives = await tx
     .select({ id: captureDerivatives.id })
     .from(captureDerivatives)
     .where(eq(captureDerivatives.assetId, assetId));
   const derivativeIds = derivatives.map((row) => row.id);
 
-  const cancelReason = reason === 'moderation' ? 'source_blocked' : 'source_withdrawn';
   const cancelled = [
-    ...(await cancelOpenJobs(tx, eq(street3dJobs.assetId, assetId), cancelReason, now)),
+    ...ownJobs,
     ...(derivativeIds.length
       ? await cancelOpenJobs(
           tx,

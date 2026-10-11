@@ -175,7 +175,7 @@ privacy worker ──PrivacyFrame.timestampSeconds──▶ backend applyPrivacy
   `capture_motion_tracks` holds the track as parallel `double precision[]`
   columns (equal lengths, bounded by CHECK). It is deleted when the privacy
   result consumes it, when the contributor withdraws or moderation blocks the
-  capture (`retractCaptureFromStreet3d`), and in the transaction that commits
+  capture (`discardMotionTrack`, last in both), and in the transaction that commits
   the raw object's deletion for any reason (`claimCaptureCleanup`). Every
   transaction that deletes a track takes its locks in one order — job, media
   object, asset, track — so a withdrawal overlapping a privacy completion
