@@ -91,6 +91,9 @@ const MY_LOCATION_ZOOM = 15;
  * With it off, `LiveHost` is `null` and its chunk (the socket client, the
  * live protocol, the panel) is never requested.
  */
+/** Room for the "Landmarks" pill (`features/landmarks/LandmarkEntry.tsx`) above the live panel. */
+const LIVE_BELOW_LANDMARKS_PX = 48;
+
 const LiveHost =
   Platform.OS === 'web' &&
   isLiveRequested({
@@ -522,7 +525,8 @@ export default function ExploreScreen({
           <Suspense fallback={null}>
             <LiveHost
               onLayer={setLiveLayer}
-              top={areaTop}
+              // Below the "Landmarks" pill when that shares the corner.
+              top={LANDMARKS ? areaTop + LIVE_BELOW_LANDMARKS_PX : areaTop}
               right={sideGap}
               compact={layout === 'sheet'}
             />
