@@ -31,9 +31,9 @@
  * other. Two things follow that are worth stating, because the obvious
  * alternatives are both wrong:
  *
- *  - The credit was MOVED, not shrunk, folded into the logo or dropped. It is
- *    an OSM/OpenMapTiles licence obligation and it is still a full-size,
- *    tappable line of links at the same distance from the edge as before.
+ *  - The credit was MOVED, not folded into the logo or dropped. It is an
+ *    OSM/OpenMapTiles licence obligation and it is a full-size, tappable line
+ *    of links whenever it is spelled out.
  *  - It is not free to sit wherever is left over. A wrapped credit on a narrow
  *    phone would run straight under the mark, so this reads
  *    {@link MAP_BRAND_CLEARANCE} and starts after it — the same pattern as the
@@ -43,11 +43,29 @@
  * The positioning box spans that clearance to the right edge and the plate is
  * a child of it, so the card hugs the text instead of stretching across the
  * map.
+ *
+ * ## Compact, as the OSMF guidelines allow
+ *
+ * The OSMF Attribution Guidelines
+ * (https://osmfoundation.org/wiki/Licence/Attribution_Guidelines) accept a
+ * credit that is visible when the map loads and then collapses — after a few
+ * seconds or once the reader interacts — into a control that shows it again.
+ * That is this component's two states, driven by `MapCanvas` through
+ * `useCompactCredit` (`lib/map/compactCredit.ts` holds the rule and its test):
+ * spelled out, with an ⓘ at the end to fold it; or just the ⓘ, in the same
+ * corner, which opens it. The links stay links. `MapCanvas` renders it on
+ * every map with no prop to turn it off — the embed included.
  */
 import { memo, useCallback } from 'react';
 import { Linking, Pressable, View } from 'react-native';
+import { localizedLabel } from '@goway.to/sdk';
 import { Text } from '@oxy.so/bloom/typography';
 import { useBottomEdgeInset } from '@oxy.so/bloom/layout';
+import { RiInformationLine } from '@oxy.so/bloom/icons/RiInformationLine';
+import { useTheme } from '@oxy.so/bloom/theme';
+
+import { useTranslation } from '@/lib/i18n';
+import { CREDIT_LABELS } from '@/lib/map/creditLabels';
 
 import { type MapAttributionLink, resolveMapAttribution } from '@/lib/map/provider';
 import { MAP_BRAND_CLEARANCE } from './MapBrand';
@@ -63,7 +81,19 @@ const NO_EXTRA: readonly MapAttributionLink[] = [];
  *   landmark model's author (`docs/MAP_LANDMARKS.md`). Passed by `MapCanvas`
  *   alone, from what its engine reports drawn; never by feature code.
  */
-function MapAttributionComponent({ extra = NO_EXTRA }: { extra?: readonly MapAttributionLink[] }) {
+function MapAttributionComponent({
+  extra = NO_EXTRA,
+  expanded,
+  onToggle,
+}: {
+  extra?: readonly MapAttributionLink[];
+  /** Spelled out, or folded into the ⓘ (`useCompactCredit`). */
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const { locale } = useTranslation();
+  const theme = useTheme();
+  const toggleLabel = localizedLabel(expanded ? CREDIT_LABELS.hide : CREDIT_LABELS.show, locale);
   // The elevation credit rides along whenever the relief prototype draws
   // terrain or a hillshade (`docs/MAP_TERRAIN_GLOBE.md`).
   const relief = useMapRelief();
@@ -90,21 +120,39 @@ function MapAttributionComponent({ extra = NO_EXTRA }: { extra?: readonly MapAtt
         left: MAP_BRAND_CLEARANCE,
       }}
     >
-      <View className="flex-row flex-wrap items-center justify-end gap-space-4 rounded-radius-8 bg-card/80 px-space-8 py-space-2">
-        {attribution.prefix ? (
-          <Text className="text-caption text-muted-foreground">{attribution.prefix}</Text>
+      <View
+        className="flex-row flex-wrap items-center justify-end gap-space-4 rounded-radius-8 bg-card/80 px-space-8 py-space-2"
+        testID="map-credit"
+      >
+        {expanded ? (
+          <>
+            {attribution.prefix ? (
+              <Text className="text-caption text-muted-foreground">{attribution.prefix}</Text>
+            ) : null}
+            {links.map((link) => (
+              <Pressable
+                key={`${link.label}|${link.href}`}
+                accessibilityRole="link"
+                accessibilityLabel={link.label}
+                onPress={() => open(link.href)}
+                hitSlop={6}
+              >
+                <Text className="text-caption text-muted-foreground underline">{link.label}</Text>
+              </Pressable>
+            ))}
+          </>
         ) : null}
-        {links.map((link) => (
-          <Pressable
-            key={link.href}
-            accessibilityRole="link"
-            accessibilityLabel={link.label}
-            onPress={() => open(link.href)}
-            hitSlop={6}
-          >
-            <Text className="text-caption text-muted-foreground underline">{link.label}</Text>
-          </Pressable>
-        ))}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={toggleLabel}
+          accessibilityState={{ expanded }}
+          onPress={onToggle}
+          hitSlop={10}
+          className="items-center justify-center rounded-radius-max active:opacity-70"
+          testID="map-credit-toggle"
+        >
+          <RiInformationLine width={16} height={16} fill={theme.colors.textSecondary} />
+        </Pressable>
       </View>
     </View>
   );

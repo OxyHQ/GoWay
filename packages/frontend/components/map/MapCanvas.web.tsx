@@ -118,6 +118,7 @@ import {
   type MapViewport,
   type ResolvedMapViewport,
 } from './types';
+import { useCompactCredit } from './useCompactCredit';
 import { useSunLight } from './useSunLight';
 
 /**
@@ -271,6 +272,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // City sky: whether the layer that draws it is attached (the scrubber and
   // the higher pitch ceiling exist only then). See the city-3D section below.
   const [skyActive, setSkyActive] = useState(false);
+  // The data credit: spelled out once the map has loaded, folded into its ⓘ
+  // after five seconds or at the reader's first pan, zoom or tap
+  // (`lib/map/compactCredit.ts`). Always rendered; nothing can switch it off.
+  const credit = useCompactCredit(ready);
+  const noteCreditInteraction = credit.noteInteraction;
   const [error, setError] = useState<MapCanvasError | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   // Portal targets, mirrored into state so React re-renders the marker bodies
@@ -476,6 +482,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     };
 
     const handleMove = (event: unknown) => {
+      // The reader moving the map folds the credit; the app moving it does not.
+      if (moveSourceOf(event) === 'user') noteCreditInteraction();
       const now = Date.now();
       if (now - lastMoveEmit.current < MOVE_THROTTLE_MS) return;
       lastMoveEmit.current = now;
@@ -530,6 +538,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     };
 
     const handleClick = (event: MapLayerMouseEvent) => {
+      noteCreditInteraction();
       const press = handlers.current.onPress;
       if (!press && !handlers.current.onModelPress) return;
 
@@ -728,7 +737,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     };
     // `initialViewport` is initial by contract — re-reading it here would make
     // a parent's inline object literal reset the camera on every render.
-  }, [styleUrl, reloadKey, relief, emitError, settleSunLight]);
+  }, [styleUrl, reloadKey, relief, emitError, settleSunLight, noteCreditInteraction]);
 
   // --- Buildings light ----------------------------------------------------
 
@@ -1374,7 +1383,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           credit must be on every map GoWay draws, including the embed in
           somebody else's page. See MapBrand.tsx. */}
       <MapBrand />
-      <MapAttribution extra={landmarkCredits} />
+      <MapAttribution extra={landmarkCredits} expanded={credit.expanded} onToggle={credit.toggle} />
 
       {TimeOfDayScrubber && skyActive ? (
         <Suspense fallback={null}>
