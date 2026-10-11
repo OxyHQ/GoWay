@@ -17,6 +17,7 @@ the CI gate that keeps a change from blowing the budget.
 | The instrument (draws, triangles, passes, uploads, GPU memory) | `components/map/perf/glCounters.ts` — the HUD, the benchmark and the gate all use it |
 | The benchmark | `packages/frontend/scripts/bench-map.ts` (`bun run bench:map`) |
 | The CI gate | `components/map/__tests__/frameBudget.test.ts` (+ `fixtures/`) |
+| The visibility gate (the 3D city is on the screen, terrain on; CI job `city3d`) | `packages/frontend/scripts/check-city3d-visible.ts` ([`MAP_NATIVE_3D.md`](./MAP_NATIVE_3D.md) → The visibility gate) |
 | Tests | `lib/map/__tests__/quality.test.ts`, `components/map/__tests__/perfRuntime.test.ts`, `components/__tests__/perfChunk.test.ts`, `reliefAttach.test.ts`, `city3dFrame.test.ts` |
 
 ## Measuring

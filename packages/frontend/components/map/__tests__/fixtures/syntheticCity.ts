@@ -21,6 +21,7 @@ import {
   type TilePolygon,
 } from '@/scripts/citygen/mvtEncode';
 import { CITY_TILE_EXTENT, type CityTileTree } from '@/lib/map/cityTiles';
+import { CITY_LOD2_PROPS, CITY_OFFICIAL_PROPS, CITY_TILE_LOD2_LAYER } from '@/lib/map/cityOfficial';
 import {
   mercatorPerMetre,
   mercatorXFromLng,
@@ -203,8 +204,25 @@ function polygon(
   };
 }
 
-/** A z15 GoWay city tile: every building whose centroid is in it, whole; and its street trees. */
-export function cityTile(z: number, x: number, y: number): Uint8Array {
+/**
+ * The blocks the `official` option gives official 3D data: the nine around
+ * the centre, as an imported city district would be (`docs/MAP_3D_SOURCES.md`).
+ */
+const OFFICIAL_BLOCKS = 1;
+
+/**
+ * A z15 GoWay city tile: every building whose centroid is in it, whole; and
+ * its street trees. With `official`, the central blocks' buildings are also
+ * drawn from official LOD2 surfaces (`building_lod2`, flat roofs at the same
+ * heights) and their OSM features marked `drawn_by` — the shape of a tile
+ * the compiler merged Catastro data into (`lod2Tiles.ts`).
+ */
+export function cityTile(
+  z: number,
+  x: number,
+  y: number,
+  options: { official?: boolean } = {},
+): Uint8Array {
   const box = tileBox(z, x, y);
   const inTile = (m: Metres) => {
     const X = originX + m[0] * k;
@@ -212,8 +230,16 @@ export function cityTile(z: number, x: number, y: number): Uint8Array {
     return X >= box.minX && X < box.maxX && Y >= box.minY && Y < box.maxY;
   };
   const features: CityTileFeature[] = [];
+  const surfaces: Array<{
+    id: number;
+    type: 3;
+    geometry: number[];
+    properties: Record<string, string | number>;
+  }> = [];
   const trees: CityTileTree[] = [];
   for (const [i, j] of blocksIn(box.minX, box.minY, box.maxX, box.maxY)) {
+    const official =
+      options.official === true && Math.abs(i) <= OFFICIAL_BLOCKS && Math.abs(j) <= OFFICIAL_BLOCKS;
     for (const building of blockBuildings(i, j)) {
       if (!inTile(centroid(building.ring))) continue;
       features.push({
@@ -223,9 +249,24 @@ export function cityTile(z: number, x: number, y: number): Uint8Array {
           render_height: building.height,
           render_min_height: 0,
           levels: building.levels,
-          height_source: 'osm',
+          height_source: official ? 'lod2' : 'osm',
+          ...(official ? { [CITY_OFFICIAL_PROPS.drawnBy]: 'es-catastro' } : {}),
         },
       });
+      if (official) {
+        surfaces.push({
+          id: building.id,
+          type: 3,
+          geometry: encodePolygons([polygon(box, building.ring)]),
+          properties: {
+            [CITY_LOD2_PROPS.source]: 'es-catastro',
+            [CITY_LOD2_PROPS.sourceId]: String(building.id),
+            [CITY_LOD2_PROPS.osmId]: building.id,
+            [CITY_LOD2_PROPS.levels]: building.levels,
+            render_height: building.height,
+          },
+        });
+      }
     }
     // Street trees along the block's north and west kerbs, 4 m out.
     const [x0, y0] = blockOrigin(i, j);
@@ -244,11 +285,19 @@ export function cityTile(z: number, x: number, y: number): Uint8Array {
       }
     }
   }
-  const buildings = encodeCityTile(features);
-  const treeBytes = encodeTreeLayer(trees);
-  const out = new Uint8Array(buildings.length + treeBytes.length);
-  out.set(buildings, 0);
-  out.set(treeBytes, buildings.length);
+  const layers = [
+    encodeCityTile(features),
+    encodeTreeLayer(trees),
+    ...(surfaces.length > 0
+      ? [encodeTileLayers([{ name: CITY_TILE_LOD2_LAYER, features: surfaces }])]
+      : []),
+  ];
+  const out = new Uint8Array(layers.reduce((sum, layer) => sum + layer.length, 0));
+  let at = 0;
+  for (const layer of layers) {
+    out.set(layer, at);
+    at += layer.length;
+  }
   return out;
 }
 

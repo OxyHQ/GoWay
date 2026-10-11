@@ -18,6 +18,9 @@ import {
   createBuildingUniforms,
 } from '@/components/map/engine/city3d/tsl/buildingMaterial';
 import { encodeCityTile, type TilePoint } from '@/scripts/citygen/mvtEncode';
+import { decodeLod2Tile } from '@/components/map/engine/city3d/lod2Tiles';
+import { cityTile, SYNTHETIC_CENTRE } from './fixtures/syntheticCity';
+import { mercatorXFromLng, mercatorYFromLat } from '@/components/map/engine/city3d/tileMath';
 
 const TILE = { z: 15, x: 16580, y: 12236 };
 
@@ -72,6 +75,30 @@ describe('tile meshing, shared by the web worker and the native host', () => {
     for (const lane of [chunk.position, chunk.normal, chunk.color, chunk.facade]) {
       expect((lane.BYTES_PER_ELEMENT * 4) % 4).toBe(0);
     }
+  });
+
+  test('the visibility gate’s official fixture meshes through the LOD2 path', () => {
+    // The tile under the synthetic city's centre (`check-city3d-visible.ts`).
+    const n = 2 ** 15;
+    const tile = {
+      z: 15,
+      x: Math.floor(mercatorXFromLng(SYNTHETIC_CENTRE.lng) * n),
+      y: Math.floor(mercatorYFromLat(SYNTHETIC_CENTRE.lat) * n),
+    };
+    const plain = cityTile(tile.z, tile.x, tile.y);
+    const official = cityTile(tile.z, tile.x, tile.y, { official: true });
+    expect(decodeLod2Tile(plain)).toHaveLength(0);
+    expect(decodeLod2Tile(official).length).toBeGreaterThan(0);
+    const meshed = meshCityTile(
+      official.buffer.slice(
+        official.byteOffset,
+        official.byteOffset + official.byteLength,
+      ) as ArrayBuffer,
+      tileSizeMetres(tile),
+      undefined,
+    );
+    expect(meshed.sources).toEqual(['es-catastro']);
+    expect(meshed.mesh?.triangles ?? 0).toBeGreaterThan(0);
   });
 
   test('an empty tile is nothing to draw, not an error', () => {
