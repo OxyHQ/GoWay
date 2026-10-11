@@ -28,7 +28,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
-import { type Labels, localizedLabel } from '@goway.to/sdk';
+import { type Labels, type LiveSource, localizedLabel } from '@goway.to/sdk';
 import { Button } from '@oxy.so/bloom/button';
 import { RiFlaskLine } from '@oxy.so/bloom/icons/RiFlaskLine';
 import { RiInformationLine } from '@oxy.so/bloom/icons/RiInformationLine';
@@ -146,6 +146,34 @@ function useLandmarkModels(): readonly PreparedLandmark[] {
   return models;
 }
 
+/**
+ * GoWay Live's feeds — each one's credit and licence — while live is on; the
+ * same list `GET /live/sources` serves (`docs/MAP_LIVE.md`). Empty when off or
+ * when the backend has no live layer.
+ */
+function useLiveSources(on: boolean): readonly LiveSource[] {
+  const [sources, setSources] = useState<readonly LiveSource[]>([]);
+  useEffect(() => {
+    if (!on) return;
+    let current = true;
+    void import('@/lib/live/client')
+      .then(({ liveApiClient }) => liveApiClient.live.sources())
+      .then((page) => {
+        if (current) setSources(page.items);
+      })
+      .catch(() => {
+        // No live layer on this backend: nothing to credit.
+      });
+    return () => {
+      current = false;
+    };
+  }, [on]);
+  // Off, nothing is credited — whatever an earlier fetch returned.
+  return on ? sources : NO_LIVE_SOURCES;
+}
+
+const NO_LIVE_SOURCES: readonly LiveSource[] = [];
+
 export function MapSettingsModal({
   open,
   onClose,
@@ -158,6 +186,7 @@ export function MapSettingsModal({
   const { mode, setMode } = useBloomTheme();
   const { features, labs } = useMapFeatures();
   const landmarks = useLandmarkModels();
+  const liveSources = useLiveSources(features.on('live'));
   const say = useCallback<Say>((labels) => localizedLabel(labels, locale), [locale]);
   const layout = mapSettingsLayout(features, labs);
 
@@ -340,6 +369,34 @@ export function MapSettingsModal({
             </Button>
           </SettingsRow>
         </SettingsCard>
+
+        {liveSources.length > 0 ? (
+          <SettingsSection
+            label={say(MAP_SETTINGS_COPY.liveSources)}
+            testID="map-settings-live-sources"
+          >
+            <SettingsCard>
+              {liveSources.map((source) => (
+                <SettingsRow key={source.id} label={source.name}>
+                  <View className="flex-row flex-wrap justify-end">
+                    {[source.attribution, source.licence].map((link) => (
+                      <Button
+                        key={link.href}
+                        size="sm"
+                        appearance="plain"
+                        tone="neutral"
+                        accessibilityRole="link"
+                        onPress={() => openLink(link.href)}
+                      >
+                        {link.label}
+                      </Button>
+                    ))}
+                  </View>
+                </SettingsRow>
+              ))}
+            </SettingsCard>
+          </SettingsSection>
+        ) : null}
 
         {landmarks.length > 0 ? (
           <SettingsSection label={say(MAP_SETTINGS_COPY.landmarkModels)}>

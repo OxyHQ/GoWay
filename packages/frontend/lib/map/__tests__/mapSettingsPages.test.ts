@@ -44,7 +44,7 @@ describe('the settings pages', () => {
     expect(pages).toEqual(['map', 'layers', 'labs', 'general', 'about']);
     expect(ids(features.map)).toEqual(['globe', 'terrain', 'citySky']);
     // City tiles, simulated traffic and landmarks have nothing to draw over in
-    // production; live data has no layer yet.
+    // production, and goway.to's backend serves no live data yet.
     expect(ids(features.layers)).toEqual(['city3d', 'city3dTrees', 'city3dTreeFill', 'flyover']);
   });
 
@@ -57,6 +57,7 @@ describe('the settings pages', () => {
       'city3dTreeFill',
       'cityLife',
       'landmarks',
+      'live',
       'flyover',
     ]);
   });

@@ -202,16 +202,26 @@ Then add its row to the table above and to `.env.example`, and extend the
 
 ## What it costs at first paint
 
-`expo export --platform web`, no map variables set, `--clear`, `origin/main`
-(`1175833`) against this branch:
+`expo export --platform web`, no map variables set, `--clear`. The registry,
+store, settings button and compact credit (#134) cost the entry +4,942 B gz,
+measured then. Moving from the generic `Dialog` to Bloom's `SettingsModal`,
+`origin/main` (`1ae5d19`) against `feat/settings-modal`:
 
-| Chunk | `main` | This branch | |
+| Chunk | before | `SettingsModal` | |
 | --- | ---: | ---: | --- |
-| `entry` (first paint) | 6,971,234 B (1,751,355 gz) | 6,987,632 B (1,756,297 gz) | +16,398 B, **+4,942 B gz** (+0.3%): registry, store, hooks, the settings button and its name in 12 languages, the compact credit and its ⓘ, the city flags' pure rules |
-| `__common` (first paint) | 81,624 B | 81,624 B | identical size |
-| `MapSettingsPanel` (lazy, on first open) | — | 59,147 B (17,328 gz) | the dialog body, Bloom's settings list, and all its copy |
+| `entry` (first paint) | 6,998,112 B (1,759,379 gz) | 6,998,104 B (1,759,376 gz) | unchanged |
+| `__common` (first paint) | 81,785 B (22,838 gz) | 97,839 B (27,523 gz) | **+4,685 B gz**: Bloom's `Select`, hoisted (below) |
+| lazy, on the gear's first press | `MapSettingsPanel` 71,456 B (20,269 gz) | `MapSettingsModal` 243,718 B (69,921 gz) | the modal shell and every page Bloom's barrel links |
 
-Bloom's `Dialog` was already in the entry (Oxy's own dialogs use it). Measured by A/B build, never by
+`@oxy.so/bloom/settings-modal` is Bloom 6.2.1's only entry to `SettingsModal`,
+and that barrel also links the Storage, Tools and Plan pages. Storage uses
+Bloom's `Select`, and so does Oxy's lazily loaded `EditProfileFieldScreen`.
+A module shared by two `import()`-ed chunks is hoisted into `__common`, which
+is unconditional at first paint (`~/Oxy/docs/build-and-runtime-traps.md` →
+Metro web chunking). The fix belongs in Bloom: a lean entry for the modal
+shell alone, as `settings-modal/rows` is for the rows. An app-side resolver
+alias would be config copied out of `@oxy.so/app-preset`, which AGENTS.md
+forbids. Measured by A/B build, never by
 per-source attribution (`~/Oxy/docs/build-and-runtime-traps.md`).
 
 ## Limits

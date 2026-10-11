@@ -142,7 +142,7 @@ describe('the live chunk', () => {
       .map((f) => f.path)
       .sort();
     expect(dynamics).toEqual([
-      'features/explore/MapSettingsPanel.tsx',
+      'features/explore/MapSettingsModal.tsx',
       'features/live/shapeCache.ts',
     ]);
   });
