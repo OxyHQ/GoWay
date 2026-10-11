@@ -2,8 +2,12 @@
  * The map's settings: Bloom's `SettingsModal` — a rail of pages beside the
  * open page on a wide window, the section list and then the page on a phone,
  * native included through Bloom's own modal portal. Loaded on the first press
- * of the gear (`MapSettingsButton.tsx`): the modal links Bloom's whole settings
- * shell, which the first paint must not carry.
+ * of the gear (`MapSettingsButton.tsx`): the modal links Bloom's settings
+ * shell, which the first paint must not carry. It imports the shell's lean
+ * entry (`@oxy.so/bloom/settings-modal/modal`), never the `settings-modal`
+ * barrel: the barrel also links Bloom's Storage page and with it `Select`,
+ * which Oxy's own lazy screens share, so Metro hoists it into the first-paint
+ * `__common` chunk (`docs/MAP_FEATURES.md`).
  *
  * The pages and what they list come from the map-feature registry
  * (`lib/map/mapSettingsPages.ts`), never from a list kept here:
@@ -48,7 +52,7 @@ import {
   SettingsRow,
   SettingsSection,
   SettingsValueField,
-} from '@oxy.so/bloom/settings-modal';
+} from '@oxy.so/bloom/settings-modal/modal';
 import { Switch } from '@oxy.so/bloom/switch';
 import { type ThemeMode, useBloomTheme } from '@oxy.so/bloom/theme';
 import { Text } from '@oxy.so/bloom/typography';
