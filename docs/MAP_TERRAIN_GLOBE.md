@@ -114,8 +114,9 @@ public, signed-out and reachable from every map, the embed included.
 smoothed to 30 m, so a dense city's "ground" sits some metres above the
 streets. Everything drawn on the terrain (roads, buildings) is lifted
 consistently, so nothing floats relative to anything else; the absolute height
-is what is off. The national bare-earth models above z12 fix this where they
-exist.
+is what is off. Where a national bare-earth model exists it fixes this at z12
+already, not only above it: measured in Barcelona, Madrid and Manhattan, the
+z12 tiles show no buildings at all ("The ground is the drawn terrain" below).
 
 ## The globe
 
@@ -196,18 +197,37 @@ layer lifts each building (`terrainGround.ts`):
   sampler cache); every building then reads the grid bilinearly, so the cost
   does not grow with the building count (Barcelona: ~15,500 polygons per
   tile).
-- **The ground is the surface model, opened.** Mapterhorn's terrain is
-  Copernicus GLO-30, a SURFACE model: over a dense city it records roofs and
-  canopy, not the street. Read straight off it, Eixample's street trees stood
-  at roof height and buildings were lifted by their neighbours' roofs (owner
-  report on #126). So the grid is now 65 × 65 (≈29 m cells at z14), sampled
-  4 cells past each edge, and OPENED — a minimum then a maximum filter over a
-  5-cell (≈145 m) window — then cropped to the tile (`groundGrid`,
-  `openGrid`): every bump narrower than the window (a building, a block) goes,
-  a planar slope is reproduced exactly, and buildings and trees read the one
-  grid, so they share one ground. Wider structures survive it. Cost: 5,329
-  samples a tile instead of 1,089 — about 5× the ~1 ms above, **not
-  re-measured** — still one tile per frame.
+- **The ground is the drawn terrain.** #126 opened the sampled grid (a
+  minimum then a maximum filter over ~145 m, on a 65 × 65 grid sampled past
+  the tile's edge) on the premise that the terrain is GLO-30, a surface model
+  recording roofs, and that this stood Eixample's street trees on rooftops.
+  Measured since (the flat-block investigation, `MAP_3D_CITY.md` → Honesty,
+  "Heights"), both premises fail where GoWay draws 3D cities:
+  - **Mapterhorn's z12 tiles are bare earth there.** Decoded from the tiles
+    the map draws: no Empire State Building or One Vanderbilt in Manhattan, no
+    Cuatro Torres or Torre de Madrid, no Torre Glòries, and over the Eixample
+    the surface and the opened ground differ by 0.1 m (32.0 against 31.9 at
+    Passeig de Gràcia / Mallorca). The national models (IGN, USGS 3DEP) feed
+    the z12 tiles too, not only the finer zooms; raw GLO-30 over the same
+    block reads 34–58 m.
+  - **The opening removed real hills.** On bare earth the only bumps narrower
+    than its window are knolls: on 5.2% of Barcelona's z15 cells it moved the
+    ground by more than 2 m, the most at Carmel, Turó de la Rovira and
+    Collserola's foothills (up to 17 m) — burying the buildings on them in
+    the hillside MapLibre draws — plus a few metres at the Sagrada Família,
+    the one building the bare-earth model kept.
+  - **It did not move the trees.** At the owner's Eixample camera the view
+    looks the same with and without it; the in-building drop removes 5 of the
+    7,506 trees there. Rooftop trees did not reproduce on the commit before
+    the fix either (`f8006c3`, two Eixample cameras), so the remaining
+    candidate for the original report is the procedural fill of parks and
+    gardens, which is now off by default and limited to mapped woods.
+  So the opening is gone: buildings, trees, models and city life stand on the
+  terrain as drawn (`groundGrid`), the grid is back to 33 × 33 (1,089 samples
+  a tile instead of 5,329), and `city3dWorkerTrees.test.ts` pins a building on
+  a 100 m knoll standing on it. Where the terrain IS GLO-30 (no national
+  model), roads and labels drape over its roofs and canopy too; standing on
+  the same surface keeps things together, and better terrain is the fix there.
 - **How a building is placed.** MapLibre's own rule for `fill-extrusion`: the
   whole building at the ground under its centre, so roofs stay flat as in the
   data. Its fixed 10 m base sink is replaced by a measured one — the drop from

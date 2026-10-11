@@ -45,14 +45,8 @@ import { latFromMercatorY, type TileId } from './tileMath';
 export type GroundSampler = (lng: number, lat: number) => number;
 
 export const GROUND = {
-  /** Samples per tile side. 65 → cells of 1/64 of a tile: ~29 m at z14 in Barcelona. */
-  grid: 65,
-  /**
-   * The ground is the sampled surface OPENED (minimum then maximum filter)
-   * over a window of `2·radius + 1` cells — ~145 m at z14 in Barcelona; see
-   * {@link openGrid} for why.
-   */
-  openRadius: 2,
+  /** Samples per tile side. 33 → cells of 1/32 of a tile: ~57 m at z14, ~29 m at z15 in Barcelona. */
+  grid: 33,
   /** The least any building's foot is sunk below its centre's ground. */
   minSinkM: 2,
   /** Added to the measured centre-to-lowest-corner drop. */
@@ -103,76 +97,22 @@ export function sampleGroundGrid(tile: TileId, size: number, sample: GroundSampl
 }
 
 /**
- * The GROUND under a sampled surface: a morphological opening of the grid —
- * the minimum over a `(2·radius + 1)²` window, then the maximum of that over
- * the same window.
+ * The ground of a tile, as buildings, trees, models and city life stand on it:
+ * the DRAWN terrain itself, sampled on the {@link GROUND.grid} grid.
  *
- * Why: the terrain GoWay draws comes from a SURFACE model (Copernicus GLO-30
- * on Mapterhorn records the tops of buildings and canopy, not the bare
- * ground), so a sample that lands on a block reads its roof. Placing things on
- * those samples stood Eixample's street trees at roof height and lifted
- * buildings by their neighbours' roofs (owner report). An opening removes
- * every bump narrower than its window — a building, a block, a stand of trees
- * — and reproduces any planar slope exactly (a plain minimum would sink a
- * slope's every point by `radius` cells' worth of fall), so hills keep their
- * shape. Buildings and trees both read this grid, so they share one ground.
- * Wider structures (a stadium roof) survive it; at ~145 m that is rare in the
- * dense cities where the surface model differs from the ground at all.
- */
-export function openGrid(grid: Float32Array, size: number, radius: number): Float32Array {
-  if (radius <= 0) return grid;
-  const pass = (input: Float32Array, pick: (a: number, b: number) => number, rows: boolean) => {
-    const out = new Float32Array(input.length);
-    for (let j = 0; j < size; j++) {
-      for (let i = 0; i < size; i++) {
-        let value = input[j * size + i];
-        for (let d = -radius; d <= radius; d++) {
-          const ii = rows ? i + d : i;
-          const jj = rows ? j : j + d;
-          if (ii < 0 || jj < 0 || ii >= size || jj >= size) continue;
-          value = pick(value, input[jj * size + ii]);
-        }
-        out[j * size + i] = value;
-      }
-    }
-    return out;
-  };
-  // A square window is separable: rows then columns, for each filter.
-  const eroded = pass(pass(grid, Math.min, true), Math.min, false);
-  return pass(pass(eroded, Math.max, true), Math.max, false);
-}
-
-/**
- * The ground grid of a tile: the surface sampled on the tile's grid AND
- * twice {@link GROUND.openRadius} cells beyond each edge (the minimum filter
- * needs `radius`, the maximum filter after it `radius` more), opened, then
- * cropped to the tile — so the opening's window is never clipped inside the
- * tile, where a block touching its edge would otherwise keep its roof.
+ * Not de-noised. #126 opened it (a minimum then maximum filter, ~145 m) on the
+ * premise that the terrain is Copernicus GLO-30, a surface model that records
+ * roofs. Measured since (`docs/MAP_TERRAIN_GLOBE.md` → "The ground is the
+ * drawn terrain"): in Barcelona, Madrid and Manhattan Mapterhorn's z12 tiles
+ * are the national BARE-EARTH models — no Empire State, no Cuatro Torres, no
+ * Eixample — so the opening removed nothing there but real hilltops, and
+ * buried the buildings on Carmel's and Collserola's knolls up to 17 m into the
+ * hillside MapLibre draws. Where the terrain is GLO-30 (no national model),
+ * the roads and labels drape over the same bumps; standing on what is drawn
+ * keeps everything on one surface.
  */
 export function groundGrid(tile: TileId, sample: GroundSampler): Float32Array {
-  const size = GROUND.grid;
-  const margin = 2 * GROUND.openRadius;
-  const wide = size + 2 * margin;
-  const n = 2 ** tile.z;
-  const step = 1 / (size - 1);
-  const grid = new Float32Array(wide * wide);
-  for (let j = 0; j < wide; j++) {
-    const lat = latFromMercatorY((tile.y + (j - margin) * step) / n);
-    for (let i = 0; i < wide; i++) {
-      const lng = ((tile.x + (i - margin) * step) / n) * 360 - 180;
-      const elevation = sample(lng, lat);
-      grid[j * wide + i] = Number.isFinite(elevation) ? elevation : 0;
-    }
-  }
-  const opened = openGrid(grid, wide, GROUND.openRadius);
-  const out = new Float32Array(size * size);
-  for (let j = 0; j < size; j++) {
-    out.set(
-      opened.subarray((j + margin) * wide + margin, (j + margin) * wide + margin + size),
-      j * size,
-    );
-  }
-  return out;
+  return sampleGroundGrid(tile, GROUND.grid, sample);
 }
 
 /** Bilinear read of a {@link sampleGroundGrid} grid at `u` east, `v` south, both 0–1. */

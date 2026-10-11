@@ -13,7 +13,9 @@ import { ATTRIBUTION_LINKS, TERRAIN_SOURCE_LINK } from './provider';
 
 /**
  * Copernicus DEM licence (the "COPERNICUS full, free and open license" for
- * GLO-30), Article 6. Mapterhorn's z0–12 tiles ARE GLO-30, resampled and
+ * GLO-30), Article 6. Mapterhorn's z0–12 tiles are GLO-30 wherever no finer
+ * national model exists (where one does, it feeds z12 too: measured in
+ * Barcelona, Madrid and Manhattan, `docs/MAP_TERRAIN_GLOBE.md`), resampled and
  * re-encoded — "adapted or modified" — so 6(b) applies; 6(c) applies to anyone
  * communicating it to the public, modified or not; 6(d) forbids implying
  * endorsement. Source: the licence PDF Mapterhorn links for `glo30`

@@ -4,9 +4,9 @@
  *
  *  - no tree (mapped or fill) stands inside a building footprint;
  *  - the fill is off unless asked for, and then only in mapped woods;
- *  - the ground is the OPENED surface model, so a tree beside a tall block
- *    stands at street level, not at the block's roof, and shares its ground
- *    with the buildings;
+ *  - trees stand on the same ground as the buildings: the drawn terrain
+ *    (in these cities a bare-earth model, measured — so not "de-noised", which
+ *    only buried buildings on real knolls);
  *  - a fill whose basemap tile failed to fetch is marked incomplete (PR #126
  *    review) and retried on a schedule.
  */
@@ -18,7 +18,6 @@ import {
   GROUND,
   gridAt,
   groundGrid,
-  openGrid,
   sampleGroundGrid,
   TileGrounder,
 } from '@/components/map/engine/city3d/terrainGround';
@@ -172,58 +171,37 @@ describe('treesFor', () => {
   });
 });
 
-describe('the ground is the opened surface', () => {
+describe('the ground is the drawn terrain', () => {
   const size = GROUND.grid;
+  const tile = { z: 14, x: 8290, y: 6119 };
+  const n = 2 ** 14;
+  const uOf = (lng: number) => ((lng + 180) / 360) * n - tile.x;
 
-  test('a planar slope is kept exactly (away from the edge)', () => {
-    const grid = new Float32Array(size * size).map(
-      (_, k) => 3 * (k % size) + 2 * Math.floor(k / size),
-    );
-    const opened = openGrid(grid, size, GROUND.openRadius);
-    for (let j = 0; j < size - GROUND.openRadius; j++) {
-      for (let i = 0; i < size - GROUND.openRadius; i++) {
-        expect(opened[j * size + i]).toBe(grid[j * size + i]);
-      }
-    }
+  test('exactly the terrain sampled on the grid: nothing filtered away', () => {
+    const sampler = (lng: number, lat: number) => 20 + 300 * (lng - 2.16) + 90 * (lat - 41.38);
+    expect([...groundGrid(tile, sampler)]).toEqual([...sampleGroundGrid(tile, size, sampler)]);
   });
 
-  test('buildings in the surface model are removed — up to the tile’s edge; their street is the ground', () => {
-    const tile = { z: 14, x: 8290, y: 6119 };
-    const n = 2 ** 14;
-    // Ground at 12 m with blocks of 40 m roofs ~3 cells wide (narrower than the window).
+  test('a building on a knoll narrower than a block stands on the knoll, not buried in it', () => {
+    // A 17 m knoll ~100 m across (Carmel, Collserola) on 20 m ground. The
+    // opening #126 added cut it off, sinking whatever stood on it into the
+    // hillside MapLibre draws.
     const sampler = (lng: number) => {
-      const u = ((lng + 180) / 360) * n - tile.x;
-      return (((u * 12) % 1) + 1) % 1 < 0.6 ? 40 : 12;
-    };
-    const ground = groundGrid(tile, sampler);
-    expect(Math.max(...ground)).toBe(12);
-    // Without the margin, the clipped window at the edge keeps a roof.
-    const clipped = openGrid(sampleGroundGrid(tile, size, sampler), size, GROUND.openRadius);
-    expect(Math.max(...clipped)).toBe(40);
-  });
-
-  test('a street tree beside a tall block stands at street level, like the block itself', () => {
-    const tile = { z: 14, x: 8290, y: 6119 };
-    const n = 2 ** 14;
-    // A ~100 m-wide block of 45 m roofs in the middle of the tile, on 20 m ground.
-    const sampler = (lng: number) => {
-      const u = ((lng + 180) / 360) * n - tile.x;
-      return u > 0.46 && u < 0.51 ? 65 : 20;
+      const u = uOf(lng);
+      return u > 0.47 && u < 0.53 ? 37 : 20;
     };
     const grid = groundGrid(tile, sampler);
-    // A tree right beside the block, and the block's own centre.
-    expect(gridAt(grid, size, 0.53, 0.5)).toBeCloseTo(20, 5);
-    expect(gridAt(grid, size, 0.485, 0.5)).toBeCloseTo(20, 5);
-    // The grounder itself places a building there on the same ground.
+    expect(gridAt(grid, size, 0.5, 0.5)).toBeCloseTo(37, 5);
     const grounder = new TileGrounder();
     grounder.setSampler(sampler);
     const result = grounder.ground('k', {
       tile,
       tileSizeM: 1835,
-      positions: new Float32Array([900, -900, 0, 900, -900, 45]),
+      positions: new Float32Array([917, -917, 0, 917, -917, 12]),
       polygonStarts: new Uint32Array([0]),
-      polygonBoxes: new Float32Array([850, -950, 950, -850]),
+      polygonBoxes: new Float32Array([907, -927, 927, -907]),
     });
-    expect(result?.values[1]).toBeCloseTo(20, 5);
+    // Its roof on the knoll (37 m, less a little interpolation at the cell edge), not 20 m.
+    expect(result?.values[1]).toBeGreaterThan(36);
   });
 });

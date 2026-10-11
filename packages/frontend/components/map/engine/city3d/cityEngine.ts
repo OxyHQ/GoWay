@@ -865,8 +865,9 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
     setGround(sample) {
       grounder.setSampler(sample);
-      // The models stand on the same drawn ground as the buildings, and so
-      // does city life (on the same opened grid: `overlay.ts`).
+      // One terrain path: buildings and trees (the ground grid), models and
+      // landmarks (the same sampler, read at their anchor) and city life
+      // (the same ground grid: `overlay.ts`) all stand on the drawn terrain.
       models.setGround(sample);
       for (const overlay of overlays) overlay.setGround(sample);
       landmarks.setGround(sample);
