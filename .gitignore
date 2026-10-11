@@ -40,3 +40,6 @@ yarn-error.*
 # redistribute, and worthless to a future reader once the hexes they produced
 # are recorded in `lib/map/style/palette.ts` with their provenance.
 .apple-maps-reference/
+
+# Screenshots of the 3D city visibility gate (check:city3d-visible).
+.city3d-visible/

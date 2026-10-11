@@ -32,6 +32,7 @@
     "map:city-region": "bun scripts/build-city-region.ts",
     "map:city-manifest": "bun scripts/build-city-manifest.ts",
     "bench:map": "bun scripts/bench-map.ts",
+    "check:city3d-visible": "bun scripts/check-city3d-visible.ts",
     "landmarks": "bun scripts/build-landmarks.ts",
     "landmarks:check": "bun scripts/build-landmarks.ts --check",
     "typecheck": "tsc --noEmit"

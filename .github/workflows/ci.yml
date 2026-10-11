@@ -242,6 +242,53 @@ jobs:
       - name: Verify the Dockerfile copies every workspace manifest
         run: bun run check:dockerfile
 
+  # The 3D city's VISIBILITY gate (docs/MAP_NATIVE_3D.md, "The visibility
+  # gate"): the real app, exported, in headless Chromium on SwiftShader, over a
+  # committed synthetic city with terrain held back 8 s. It asserts that what
+  # the engine counts as drawn is on the screen. Every other 3D city gate runs
+  # without a GPU and could not see trees and buildings buried under the terrain
+  # (#152): the engine counted all of them as drawn. Nothing comes from the
+  # network, and software GL is enough because the assertions are coverage, not
+  # frame time.
+  city3d:
+    name: 3D city visibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - name: Install exact dependency graph
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Build the contracts
+        run: bun run build:contracts
+      - name: Build the SDK
+        run: bun run build:sdk
+      - name: Install Chromium for playwright-core
+        run: bunx playwright-core install --with-deps chromium
+      # A DEVELOPMENT export: only a dev build publishes what the engine drew
+      # (`__gowayCity3d`), which is what makes a blank screen fail rather than
+      # pass as "nothing to draw".
+      - name: Export the web app (development build)
+        working-directory: packages/frontend
+        env:
+          EXPO_PUBLIC_MAP_CITY3D: '1'
+          EXPO_PUBLIC_MAP_CITY_TILES: '1'
+          EXPO_PUBLIC_MAP_CITY_SKY: '1'
+        run: bun run export:web --dev --output-dir "$RUNNER_TEMP/city3d-gate"
+      - name: Trees and buildings are on the screen, sky on and off
+        run: >-
+          bun run --cwd packages/frontend check:city3d-visible
+          --dist="$RUNNER_TEMP/city3d-gate" --out="$RUNNER_TEMP/city3d-visible"
+      - name: Keep the screenshots of a failed run
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: city3d-visible
+          path: ${{ runner.temp }}/city3d-visible
+          retention-days: 14
+
   worker:
     name: Reconstruction worker
     runs-on: ubuntu-latest
@@ -378,7 +425,7 @@ jobs:
   # required check reporting `skipped` — is never satisfied.
   ci-complete:
     name: CI complete
-    needs: [quality, gates, lockfile, test]
+    needs: [quality, gates, city3d, lockfile, test]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -394,7 +441,7 @@ jobs:
           #
           # Every name is listed here AND in `needs:` above. A job missing from
           # NEEDS_JSON fails: unknown is not good news.
-          expected="quality gates lockfile test"
+          expected="quality gates city3d lockfile test"
           verdict=0
           for job in $expected; do
             result=$(printf '%s' "$NEEDS_JSON" | jq -r --arg j "$job" '.[$j].result // "MISSING"')
@@ -426,7 +473,7 @@ jobs:
   # reusable workflow. The budget lives on the called workflow's own job.
   deploy:
     name: Deploy
-    needs: [quality, gates, worker, lockfile, test]
+    needs: [quality, gates, city3d, worker, lockfile, test]
     # GATED ON A REPOSITORY VARIABLE, because the AWS side does not exist yet.
     #
     # `deploy-aws.yml` assumes an IAM role `oxy-goway-github-deploy`, an ECR
@@ -476,7 +523,7 @@ jobs:
   # token from `secrets`, not to AWS over OIDC, so it needs no `id-token`.
   deploy-frontend:
     name: Deploy frontend
-    needs: [quality, gates, lockfile, test]
+    needs: [quality, gates, city3d, lockfile, test]
     if: >-
       ${{ vars.OXY_1519_ROLLOUT_HOLD != 'true' && (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     permissions:

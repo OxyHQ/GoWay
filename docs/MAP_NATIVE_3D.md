@@ -312,19 +312,76 @@ geometry and rebuilds the ones that now read a lift. In-place re-grounding
 - `city3dGroundPacked.test.ts`: grounding a tile for the first time moves
   every variant's version, in-place re-grounding does not. It fails without
   the fix.
-- A visibility check in the A/B harness, run in the owner's configuration:
-  - Inputs: city tiles with the Catastro and NYC official data, terrain from
-    `goway.to`, sky on and off.
-  - **Terrain tiles held back 8 s**, so every tile is drawn before it can be
-    grounded: the race is forced, not left to the network.
-  - Camera: open flat at z19, then tilt with the keyboard, at local noon.
-  - It fails if the trees' canopy does not show, or if the buildings do not
-    darken the frame past the flat map.
+- A visibility check in the A/B harness, run in the owner's configuration
+  (Catastro and NYC official data, terrain from `goway.to`, sky on and off,
+  terrain held back 8 s). It is now committed and in CI as
+  [the visibility gate](#the-visibility-gate). Its first, uncommitted run:
 
 | Share of the map (Passeig de Gràcia, noon) | `main` @`432fd6a` | fixed |
 | --- | ---: | ---: |
 | Tree canopy, sky on / off (0% with trees off) | **0 / 0%** | 17.9 / 17.9% |
 | Building walls and windows, sky on / off (0.23% with the city off) | 21.1 / **0.23%** | 21.1 / 10.2% |
+
+## The visibility gate
+
+`packages/frontend/scripts/check-city3d-visible.ts` (`check:city3d-visible`)
+is the committed form of the check above. It is CI's `3D city visibility` job
+(`.github/workflows/ci.yml` → `city3d`), required by `CI complete` and by both
+deploys. **Every port PR runs it**, and its description reports the numbers.
+The GPU-free gates (meshing, frame budget, `city3dGroundPacked`) cannot see
+this regression: they counted every buried tree as drawn.
+
+```sh
+EXPO_PUBLIC_MAP_CITY3D=1 EXPO_PUBLIC_MAP_CITY_TILES=1 EXPO_PUBLIC_MAP_CITY_SKY=1 \
+  bun run --cwd packages/frontend export:web --dev --output-dir /tmp/city3d-gate
+bun run --cwd packages/frontend check:city3d-visible --dist=/tmp/city3d-gate [--out=dir] [--debug]
+```
+
+It runs the real app, from a development export (only a dev build publishes
+`__gowayCity3d`, what the engine drew), in headless Chromium on SwiftShader.
+Nothing comes from the network:
+
+- **City tiles**: the synthetic city (`__tests__/fixtures/syntheticCity.ts`,
+  `cityTile(…, { official: true })`), with official LOD2 surfaces on its
+  central blocks: OSM plus a Catastro-shaped model, the owner's configuration
+  without the owner's data. The gate's own server serves them, because the
+  tiles are fetched inside Web Workers and Playwright's routes do not see
+  those requests.
+- **Terrain**: a synthetic Terrarium tile at a constant 50 m, **held back
+  8 s** (`GATE_TERRAIN_DELAY_MS`). Every city tile is drawn before it can be
+  grounded: the order that broke `main`, forced.
+- **Quality**: `?quality=high`. On SwiftShader the profile would resolve to
+  low, which draws no 3D terrain, so nothing would ever be lifted and the
+  gate would pass on the broken code (it did, until this was added).
+- **Fixed inputs**: local noon; camera opened flat at z19 and tilted with six
+  keyboard steps; city life, live data, landmarks and the flyover off.
+
+Per sky (on and off) it asserts:
+
+- **Trees**: the engine drew trees, and the canopy-green share of the map is
+  at least 1% and 3× the same view with trees off.
+- **Buildings**: the engine drew triangles, and the share of the map darker
+  than the noon basemap (walls, windows) is at least 2% and 4× the same view
+  with the 3D city off. That reference has no basemap buildings, so MapLibre's
+  extrusions cannot stand in for the city.
+
+The assertions are coverage, not frame time, so software GL is enough and
+the result does not depend on the runner. Locally the export takes about
+20 s and the gate 3–6 minutes.
+
+| Share of the map (synthetic city, noon) | without #152's re-grounding | `main` |
+| --- | ---: | ---: |
+| Trees counted as drawn, sky on / off | 6,902 / 9,198 | 9,198 / 9,198 |
+| Tree canopy, sky on / off (0% with trees off) | **0 / 0%** | 14.8–15.8 / 15.4–15.8% |
+| Walls and windows, sky on / off (0.03% with the city off) | 72.6 / 7.5% | 72.6 / 20.2–21.0% |
+| Verdict | **FAIL** (trees) | PASS |
+
+Without the fix, the buildings without the sky still clear their threshold
+(7.5% against 2%): the official LOD2 surfaces and the walls drawn before the
+terrain arrived keep some of the frame dark. The trees are what fail it, and
+they fail under both skies. On failure the screenshots
+(`{sky,nosky}-{trees,notrees,nocity}.png`) are uploaded as the
+`city3d-visible` artifact.
 
 ## The base map
 
@@ -403,8 +460,8 @@ GoWay today.
 
 ## Quality profile
 
-The engine reads every budget from the shared `QualityProfile` being built on
-`feat/map-perf` (`lib/map/quality/profile.ts`: tiers, draw/cache bytes, tile
+The engine reads every budget from the shared `QualityProfile`
+(`lib/map/quality/profile.ts`: tiers, draw/cache bytes, tile
 counts, shadow map size, agents, animation clock). Nothing here adds a second
 budget. On native, `resolveQuality` is fed by the native host's own device
 detection (device class, memory) and the same Settings → Performance choice;

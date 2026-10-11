@@ -1,0 +1,454 @@
+/**
+ * THE 3D CITY'S VISIBILITY GATE (`docs/MAP_NATIVE_3D.md` → "The visibility
+ * gate"): what the engine says it drew must be on the screen.
+ *
+ *   EXPO_PUBLIC_MAP_CITY3D=1 EXPO_PUBLIC_MAP_CITY_TILES=1 EXPO_PUBLIC_MAP_CITY_SKY=1 \
+ *     bunx expo export --platform web --dev --output-dir /tmp/city3d-gate
+ *   bun run --cwd packages/frontend check:city3d-visible --dist=/tmp/city3d-gate
+ *
+ * Born of a regression the GPU-free gates could not see (main @432fd6a): on 3D
+ * terrain, every mesh the TSL pass drew before its tile was grounded stood at
+ * z = 0, under the terrain — no trees on Passeig de Gràcia, no buildings without
+ * the city sky — while the engine counted every one of them as drawn.
+ *
+ * ## What it runs, and why it is deterministic
+ *
+ * The real app — an `expo export --dev` build (a development build: the engine
+ * publishes what it drew) that the gate serves itself — in headless Chromium
+ * on SwiftShader, with NOTHING from the network:
+ *
+ *  - **City tiles** (`/map/city/…`): the synthetic city (`__tests__/fixtures/
+ *    syntheticCity.ts`) with official LOD2 data on its central blocks — the
+ *    owner's configuration (OSM city tiles + Catastro), made up and committed.
+ *    Served by the gate's own server, not by a browser route: the tiles are
+ *    fetched inside Web Workers (MapLibre's, the mesh workers), which
+ *    Playwright's routes do not see.
+ *  - **Terrain**: a synthetic Terrarium tile at a constant 50 m, **held back
+ *    8 s**, so every city tile is drawn before it can be grounded: the order
+ *    that broke main, forced instead of left to the network.
+ *  - **Basemap**: the fixture's OpenMapTiles buildings; GoWay's committed
+ *    glyphs and sprite (`public/map`). Every other request is refused.
+ *  - **Quality**: the high preset (`?quality=high`). SwiftShader alone would
+ *    resolve to low, which draws no 3D terrain: nothing would be grounded.
+ *  - **Clock**: local noon (the sky's light, the crowns' green).
+ *  - **Camera**: opened flat at z19 over the city, then tilted with MapLibre's
+ *    keyboard handler — fixed steps, so every run lands on the same camera.
+ *  - **Moving things off** (simulated traffic, live data, landmarks, flyover):
+ *    they differ between page loads.
+ *
+ * ## What it asserts, per sky (on and off)
+ *
+ *  - **Trees**: the engine drew trees, and the map's canopy-green share is at
+ *    least 1% and 3× the same view with trees off.
+ *  - **Buildings**: the engine drew buildings, and the share of the map darker
+ *    than the noon basemap (walls, windows) is at least 2% and 4× the same view
+ *    with the 3D city off.
+ *
+ * Without #152's re-grounding it fails: canopy 0% under both skies, with
+ * 6,902 and 9,198 trees counted as drawn. Measured numbers: the doc.
+ */
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { deflateSync } from 'node:zlib';
+import { extname, join, resolve } from 'node:path';
+import { type Browser, chromium, type Route } from 'playwright-core';
+
+import { CITY_COVERAGE_PATH } from '../lib/map/cityTiles';
+import {
+  cityTile,
+  openMapTilesTile,
+  SYNTHETIC_CENTRE,
+  syntheticCoverage,
+} from '../components/map/__tests__/fixtures/syntheticCity';
+
+function arg(name: string, fallback = ''): string {
+  const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
+  return hit ? hit.slice(name.length + 3) : fallback;
+}
+
+const VIEWPORT = { width: 1280, height: 800 };
+/** The map, clear of the side panel and the time scrubber. */
+const CLIP = { x: 410, y: 70, width: 860, height: 580 };
+const TERRAIN_DELAY_MS = Number(process.env.GATE_TERRAIN_DELAY_MS ?? 8000);
+const TERRAIN_M = 50;
+const NOON = new Date('2026-06-21T12:00:00+02:00');
+/** Moving things off, as stored choices: they differ between page loads. */
+const STILL = { cityLife: false, live: false, landmarks: false, flyover: false };
+/**
+ * The two skies. A development build honours the registry's query flags
+ * (`lib/map/mapFeatures.ts`), so the export needs no build variables.
+ */
+const SKIES = {
+  sky: { flags: 'city3d=1&cityTiles=1&citysky=1', choices: STILL },
+  nosky: {
+    flags: 'city3d=1&cityTiles=1',
+    choices: { ...STILL, citySky: false, detailedCity: false },
+  },
+} as const;
+const PUBLIC_MAP = resolve(import.meta.dir, '../public/map');
+/** `--debug`: log the page's errors, the refused requests, and stop after one view. */
+const DEBUG = process.argv.includes('--debug');
+
+// --- Synthetic terrain: one Terrarium PNG at TERRAIN_M ----------------------
+
+function crc32(bytes: Uint8Array): number {
+  let c = ~0;
+  for (const byte of bytes) {
+    c ^= byte;
+    for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1;
+  }
+  return ~c >>> 0;
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+  const out = new Uint8Array(12 + data.length);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, data.length);
+  out.set(new TextEncoder().encode(type), 4);
+  out.set(data, 8);
+  view.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+  return out;
+}
+
+/** A solid RGB PNG: Terrarium height = R·256 + G + B/256 − 32768. */
+function terrariumTile(metres: number, size = 512): Uint8Array {
+  const v = metres + 32768;
+  const rgb = [Math.floor(v / 256), Math.floor(v) % 256, Math.round((v % 1) * 256)];
+  const raw = new Uint8Array(size * (size * 3 + 1));
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) raw.set(rgb, y * (size * 3 + 1) + 1 + x * 3);
+  }
+  const header = new Uint8Array(13);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, size);
+  view.setUint32(4, size);
+  header.set([8, 2, 0, 0, 0], 8);
+  const parts = [
+    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', deflateSync(raw)),
+    pngChunk('IEND', new Uint8Array(0)),
+  ];
+  const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
+  return out;
+}
+const TERRAIN_PNG = terrariumTile(TERRAIN_M);
+
+// --- The app: a dev server, or an `expo export --dev` output served here ----
+
+const TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript',
+  // MapLibre's worker is a module: a module script of any other type is refused.
+  '.mjs': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ttf': 'font/ttf',
+  '.woff2': 'font/woff2',
+  '.pbf': 'application/x-protobuf',
+  '.wasm': 'application/wasm',
+};
+
+function serveDist(dir: string) {
+  const root = resolve(dir);
+  const file = (path: string) => {
+    const full = join(root, decodeURIComponent(path));
+    return full.startsWith(root) && existsSync(full) && statSync(full).isFile() ? full : null;
+  };
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    websocket: { message() {} },
+    fetch(request, server) {
+      const { pathname } = new URL(request.url);
+      // A development build's runtime opens these and reloads the page while
+      // they fail: accept them and say nothing.
+      if ((pathname === '/hot' || pathname === '/message') && server.upgrade(request)) {
+        return undefined;
+      }
+      if (DEBUG)
+        console.error(`[server] ${pathname.replace(/\/\d+\/\d+\/\d+\.pbf$/, '/{z}/{x}/{y}.pbf')}`);
+      const fixture = fixtureResponse(pathname);
+      if (fixture) return fixture;
+      const hit = file(pathname) ?? file(`${pathname}.html`) ?? join(root, 'index.html');
+      return new Response(Bun.file(hit), {
+        headers: { 'content-type': TYPES[extname(hit)] ?? 'application/octet-stream' },
+      });
+    },
+  });
+  return { origin: `http://127.0.0.1:${server.port}`, stop: () => server.stop(true) };
+}
+
+// --- The network, replaced ---------------------------------------------------
+
+const TILE = /\/(\d+)\/(\d+)\/(\d+)\.pbf$/;
+
+function pbf(bytes: Uint8Array): Response {
+  return bytes.length === 0
+    ? new Response(null, { status: 204 })
+    : new Response(new Blob([bytes as Uint8Array<ArrayBuffer>]), {
+        headers: { 'content-type': 'application/x-protobuf' },
+      });
+}
+
+/** The fixture's own paths, answered by the gate's server (workers fetch them). */
+function fixtureResponse(path: string): Response | null {
+  if (path === CITY_COVERAGE_PATH) {
+    return Response.json({ archives: [{ coverage: syntheticCoverage()[0] }] });
+  }
+  const tile = TILE.exec(path);
+  if (path.startsWith('/map/city/') && tile) {
+    const [z, x, y] = tile.slice(1).map(Number);
+    return pbf(cityTile(z, x, y, { official: true }));
+  }
+  if (path.startsWith('/map/city-roads/') || path.startsWith('/__gate/empty/')) {
+    return new Response(null, { status: 204 });
+  }
+  if (path.startsWith('/__gate/omt/') && tile) {
+    const [z, x, y] = tile.slice(1).map(Number);
+    return pbf(openMapTilesTile(z, x, y));
+  }
+  return null;
+}
+
+/** What the page asks of anyone else (main-thread requests: style parts, terrain). */
+async function answer(route: Route, origin: string, basemap: 'buildings' | 'empty'): Promise<void> {
+  const url = new URL(route.request().url());
+  const path = url.pathname;
+  if (url.origin === origin) {
+    await route.continue();
+    return;
+  }
+  if (path.endsWith('/map/tiles.json')) {
+    const tileJson = JSON.parse(readFileSync(join(PUBLIC_MAP, 'tiles.json'), 'utf8'));
+    tileJson.tiles = [
+      `${origin}/__gate/${basemap === 'buildings' ? 'omt' : 'empty'}/{z}/{x}/{y}.pbf`,
+    ];
+    await route.fulfill({ json: tileJson });
+    return;
+  }
+  if (path.includes('/map/terrain/')) {
+    await new Promise((done) => setTimeout(done, TERRAIN_DELAY_MS));
+    await route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from(TERRAIN_PNG) });
+    return;
+  }
+  for (const prefix of ['/map/fonts/', '/map/sprites/']) {
+    if (!path.startsWith(prefix)) continue;
+    const local = join(PUBLIC_MAP, decodeURIComponent(path.slice('/map/'.length)));
+    if (existsSync(local)) {
+      await route.fulfill({ status: 200, body: readFileSync(local) });
+      return;
+    }
+    await route.fulfill({ status: 404 });
+    return;
+  }
+  // Nothing else may reach the network: the gate must mean the same everywhere.
+  if (DEBUG) console.error(`refused ${url.href}`);
+  await route.abort();
+}
+
+// --- One view -------------------------------------------------------------------
+
+interface View {
+  png: Buffer;
+  trees: number;
+  triangles: number;
+}
+
+async function view(
+  browser: Browser,
+  origin: string,
+  flags: string,
+  choices: Record<string, boolean>,
+  outDir: string,
+  name: string,
+  /** `empty`: no basemap buildings either — the reference for a map with no 3D at all. */
+  basemap: 'buildings' | 'empty' = 'buildings',
+): Promise<View> {
+  const context = await browser.newContext({ viewport: VIEWPORT });
+  await context.route('**/*', (route) => answer(route, origin, basemap));
+  const page = await context.newPage();
+  if (DEBUG) {
+    page.on('console', (m) => {
+      if (m.type() === 'error' || m.type() === 'warning')
+        console.error(`[page ${m.type()}] ${m.text().slice(0, 300)}`);
+    });
+    page.on('pageerror', (e) => console.error(`[pageerror] ${String(e).slice(0, 400)}`));
+    page.on('requestfailed', (r) =>
+      console.error(`[failed] ${r.url().slice(0, 160)} ${r.failure()?.errorText}`),
+    );
+    page.on('response', (r) => {
+      if (!r.url().includes('/_expo/')) console.error(`[${r.status()}] ${r.url().slice(0, 160)}`);
+    });
+  }
+  await page.clock.setFixedTime(NOON);
+  await page.addInitScript(
+    (stored) =>
+      localStorage.setItem(
+        'goway.mapFeatures',
+        JSON.stringify({ v: 1, choices: stored, labs: true }),
+      ),
+    choices,
+  );
+  const { lat, lng } = SYNTHETIC_CENTRE;
+  // `quality=high`: SwiftShader resolves to the low preset, which draws no 3D
+  // terrain — and then nothing is ever grounded and the gate tests nothing. A
+  // real desktop GPU (the owner's) is high.
+  const query = `lat=${lat}&lng=${lng}&zoom=19&quality=high${flags ? `&${flags}` : ''}`;
+  await page.goto(`${origin}/?${query}`, {
+    waitUntil: 'load',
+    timeout: 180_000,
+  });
+  // Flat first, as a person opens the map: the city tiles arrive and draw
+  // while the terrain is still held back.
+  await page.waitForTimeout(TERRAIN_DELAY_MS + 6000);
+  await page.focus('.maplibregl-canvas');
+  for (let i = 0; i < 6; i++) {
+    await page.keyboard.press('Shift+ArrowUp');
+    await page.waitForTimeout(400);
+  }
+  let stats: { trees?: number; triangles?: number } | null = null;
+  for (let i = 0; i < 120; i++) {
+    stats = await page.evaluate(() => {
+      const s = (globalThis as { __gowayCity3d?: Record<string, number> }).__gowayCity3d;
+      return s && s.tilesWanted > 0 && s.tilesPending === 0 && s.tilesLoaded === s.tilesWanted
+        ? { trees: s.trees, triangles: s.triangles }
+        : null;
+    });
+    if (stats) break;
+    await page.waitForTimeout(500);
+  }
+  // Fades, and the terrain's own refinement.
+  await page.waitForTimeout(6000);
+  // A development build shows the perf HUD over the map; it is an overlay, not
+  // the map, and would count as dark pixels.
+  await page.addStyleTag({ content: '[data-goway-perf-hud] { display: none !important; }' });
+  if (DEBUG) {
+    await page.screenshot({ path: join(outDir, `${name}-full.png`) });
+    const probe = await page.evaluate(async () => ({
+      canvases: document.querySelectorAll('.maplibregl-canvas').length,
+      tile: await fetch('/__gate/omt/14/8290/6119.pbf').then((r) => r.status),
+      city3d: Boolean((globalThis as { __gowayCity3d?: unknown }).__gowayCity3d),
+      ground: (globalThis as { __gowayCity3dGround?: unknown }).__gowayCity3dGround ?? null,
+      resources: performance
+        .getEntriesByType('resource')
+        .map((e) => e.name.replace(location.origin, ''))
+        .filter((n) => !n.includes('/_expo/static/css'))
+        .slice(0, 40),
+    }));
+    console.error(`[probe] ${JSON.stringify(probe)}`);
+  }
+  const png = await page.screenshot({ clip: CLIP, path: join(outDir, `${name}.png`) });
+  await context.close();
+  return { png, trees: stats?.trees ?? 0, triangles: stats?.triangles ?? 0 };
+}
+
+/** Share of `png`'s pixels that `test` accepts, in %. */
+async function share(browser: Browser, png: Buffer, kind: 'canopy' | 'dark'): Promise<number> {
+  const page = await browser.newPage();
+  const value = await page.evaluate(
+    async ([data, which]) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${data}`;
+      await img.decode();
+      const canvas = new OffscreenCanvas(img.width, img.height);
+      const g = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+      g.drawImage(img, 0, 0);
+      const px = g.getImageData(0, 0, img.width, img.height).data;
+      let n = 0;
+      for (let i = 0; i < px.length; i += 4) {
+        const [r, gr, b] = [px[i], px[i + 1], px[i + 2]];
+        // Canopy: green over red and blue. Dark: below the noon basemap.
+        if (which === 'canopy' ? gr > r + 12 && gr > b + 6 : Math.max(r, gr, b) < 170) n++;
+      }
+      return (100 * n) / (px.length / 4);
+    },
+    [png.toString('base64'), kind] as const,
+  );
+  await page.close();
+  return Number(value.toFixed(2));
+}
+
+// --- Run -------------------------------------------------------------------------
+
+const outDir = resolve(arg('out', '.city3d-visible'));
+mkdirSync(outDir, { recursive: true });
+const dist = arg('dist');
+if (!dist) throw new Error('--dist=<an `expo export --platform web --dev` output> is required');
+const served = serveDist(dist);
+const origin = served.origin;
+
+const browser = await chromium.launch({
+  headless: true,
+  args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+});
+const results: Record<string, Record<string, number>> = {};
+const failures: string[] = [];
+try {
+  for (const [label, { flags, choices }] of Object.entries(SKIES)) {
+    const withTrees = await view(browser, origin, flags, choices, outDir, `${label}-trees`);
+    if (DEBUG) {
+      console.error(
+        JSON.stringify({ label, trees: withTrees.trees, triangles: withTrees.triangles }),
+      );
+      break;
+    }
+    const noTrees = await view(
+      browser,
+      origin,
+      `${flags}&city3dTrees=0`,
+      choices,
+      outDir,
+      `${label}-notrees`,
+    );
+    const noCity = await view(
+      browser,
+      origin,
+      flags.replace('city3d=1&cityTiles=1', ''),
+      // A stored choice outranks a build default (`mapFeatures.ts`), so the
+      // reference is right whatever the export was built with.
+      { ...choices, city3d: false },
+      outDir,
+      `${label}-nocity`,
+      // Without the 3D city MapLibre extrudes the basemap's buildings itself;
+      // the reference is a map with no buildings standing at all.
+      'empty',
+    );
+    const r = {
+      trees: withTrees.trees,
+      triangles: noTrees.triangles,
+      canopyPct: await share(browser, withTrees.png, 'canopy'),
+      canopyPctWithoutTrees: await share(browser, noTrees.png, 'canopy'),
+      darkPct: await share(browser, noTrees.png, 'dark'),
+      darkPctWithoutCity: await share(browser, noCity.png, 'dark'),
+    };
+    results[label] = r;
+    if (r.trees === 0)
+      failures.push(`${label}: the engine drew no trees (the fixture is not reaching it)`);
+    else if (r.canopyPct < Math.max(1, 3 * r.canopyPctWithoutTrees))
+      failures.push(
+        `${label}: ${r.trees} trees drawn, canopy ${r.canopyPct}% (${r.canopyPctWithoutTrees}% without trees)`,
+      );
+    if (r.triangles === 0)
+      failures.push(`${label}: the engine drew no buildings (the fixture is not reaching it)`);
+    else if (r.darkPct < Math.max(2, 4 * r.darkPctWithoutCity))
+      failures.push(
+        `${label}: ${r.triangles} building triangles drawn, ${r.darkPct}% of the map dark (${r.darkPctWithoutCity}% without the 3D city)`,
+      );
+  }
+} finally {
+  await browser.close();
+  served.stop();
+}
+console.log(JSON.stringify({ results, screenshots: outDir }, null, 2));
+if (failures.length > 0) {
+  console.error(`city3d visibility gate FAILED:\n  ${failures.join('\n  ')}`);
+  process.exit(1);
+}
+console.error('city3d visibility gate: PASS');
