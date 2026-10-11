@@ -15,6 +15,7 @@ import * as THREE from 'three';
 
 import type { Lod } from './lod';
 import { type PackedMesh, quantizedModelMatrix, Z_UNITS_PER_METRE } from './packing';
+import { measuredHeight } from './measuredHeight';
 import { GROUND, type GroundResult, type GroundTile, gridAt } from './terrainGround';
 import { type TileId, tileSizeMetres } from './tileMath';
 import { type MercatorPoint, tileModelMatrix, type ViewTile } from './tileMath';
@@ -55,6 +56,11 @@ export interface TileEntry {
   /** The CPU side kept for placing it on terrain (`groundTileFor`). */
   packed: PackedMesh | null;
   instances: TreeInstances | null;
+  /**
+   * Buildings standing at a height measured from the surface model at its
+   * last grounding (`measuredHeight.ts`) — the runtime `height_source=dsm`.
+   */
+  measured: number;
 }
 
 /** What the engine shares with every entry it builds. */
@@ -208,6 +214,7 @@ export function createTileEntry(
     treeTriangles: 0,
     packed: mesh,
     instances: lod < 2 ? instances : null,
+    measured: 0,
   };
 
   if (mesh) {
@@ -391,7 +398,7 @@ export function groundTileFor(entry: TileEntry, tile: TileId): GroundTile {
     tile,
     tileSizeM,
     polygonBoxes: packed?.polygonBoxes ?? new Float32Array(0),
-    lift(placed, grid, out) {
+    lift(placed, grid, out, surface) {
       const chunks = packed?.chunks ?? [];
       let total = instances?.count ?? 0;
       for (const chunk of chunks) total += chunk.position.length / 4;
@@ -400,6 +407,11 @@ export function groundTileFor(entry: TileEntry, tile: TileId): GroundTile {
       let max = -Infinity;
       let at = 0;
       const starts = packed?.polygonStarts ?? new Uint32Array(0);
+      // Buildings nothing records the height of, stood at their measured
+      // height where the surface model has one (`measuredHeight.ts`).
+      const measured =
+        packed && surface ? measuredTops(packed, placed.anchor, surface, tileSizeM) : null;
+      entry.measured = measured?.count ?? 0;
       for (const chunk of chunks) {
         const count = chunk.position.length / 4;
         let unit = -1;
@@ -415,7 +427,11 @@ export function groundTileFor(entry: TileEntry, tile: TileId): GroundTile {
           }
           const top = placed.anchor[unit];
           const foot = top - placed.sink[unit];
-          const lift = chunk.position[i * 4 + 2] <= GROUND.footM * Z_UNITS_PER_METRE ? foot : top;
+          const z = chunk.position[i * 4 + 2];
+          const stretch = measured ? measured.stretch[unit] : 0;
+          // Above the foot, a measured building rises in proportion to the
+          // vertex's height, so its roof reaches the measurement.
+          const lift = z <= GROUND.footM * Z_UNITS_PER_METRE ? foot : top + stretch * z;
           values[at + i] = lift;
           if (lift < min) min = lift;
           if (lift > max) max = lift;
@@ -439,6 +455,61 @@ export function groundTileFor(entry: TileEntry, tile: TileId): GroundTile {
       return { values, min, max };
     },
   };
+}
+
+/**
+ * Per unit, the lift per stored z unit (1/32 m) that raises a measurable
+ * building's roof from its stored top to its measured height (0 for every
+ * other unit), and how many were measured. A unit's stored top is the
+ * highest z of its vertices.
+ */
+export function measuredTops(
+  packed: PackedMesh,
+  anchor: Float32Array,
+  surface: Float32Array,
+  tileSizeM: number,
+): { stretch: Float32Array; count: number } {
+  const units = packed.polygonStarts.length;
+  const stretch = new Float32Array(units);
+  const measurable = packed.polygonMeasurable;
+  let any = false;
+  for (let p = 0; p < units; p++) {
+    if (measurable[p]) {
+      any = true;
+      break;
+    }
+  }
+  if (!any) return { stretch, count: 0 };
+  const tops = new Uint16Array(units);
+  const starts = packed.polygonStarts;
+  for (const chunk of packed.chunks) {
+    const count = chunk.position.length / 4;
+    let unit = -1;
+    for (let i = 0; i < count; i++) {
+      const s = chunk.sourceIds ? chunk.sourceIds[i] : chunk.sourceStart + i;
+      if (unit < 0 || s < starts[unit] || (unit + 1 < starts.length && s >= starts[unit + 1])) {
+        unit = unitOf(starts, s);
+      }
+      if (unit < 0 || !measurable[unit]) continue;
+      const z = chunk.position[i * 4 + 2];
+      if (z > tops[unit]) tops[unit] = z;
+    }
+  }
+  let count = 0;
+  for (let p = 0; p < units; p++) {
+    if (!measurable[p] || tops[p] <= GROUND.footM * Z_UNITS_PER_METRE) continue;
+    const height = measuredHeight(
+      packed.polygonBoxes.subarray(p * 4, p * 4 + 4),
+      anchor[p],
+      surface,
+      tileSizeM,
+    );
+    const storedM = tops[p] / Z_UNITS_PER_METRE;
+    if (height === null || height <= storedM) continue;
+    stretch[p] = (height - storedM) / tops[p];
+    count++;
+  }
+  return { stretch, count };
 }
 
 /**

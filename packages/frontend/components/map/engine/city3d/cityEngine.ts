@@ -172,6 +172,12 @@ export interface CityEngineStats {
   /** Trees (instances) and their triangles drawn last frame. */
   trees: number;
   treeTriangles: number;
+  /**
+   * Buildings drawn last frame at a height MEASURED from the terrain's
+   * surface model, nothing recording theirs (`measuredHeight.ts`): the
+   * runtime `height_source=dsm`.
+   */
+  measured: number;
   /** GPU bytes held by the tile cache. */
   gpuBytes: number;
   /** Worker time for the last tile: decode + mesh, and tree placement. */
@@ -378,7 +384,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   let lastFrameAt = 0;
   let lastStatsAt = 0;
   let lastSignature = '';
-  let drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
+  let drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0, measured: 0 };
   // Measured full-detail cost per canonical tile, and a running mean of it.
   const measured = new Map<string, TileCost>();
   let meanFull: TileCost = UNKNOWN_FULL;
@@ -740,7 +746,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       }
 
       for (const entry of cache.values()) setEntryVisible(entry, false);
-      drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
+      drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0, measured: 0 };
       if (opacity > 0) {
         // Nearest first, so the tree budget spends itself on the near tiles.
         const rank = new Map<string, number>();
@@ -755,6 +761,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
           setEntryVisible(entry, true);
           drawn.triangles += entry.triangles;
           drawn.vertices += entry.vertices;
+          if (grounded) drawn.measured += entry.measured;
           if (entry.trees.length > 0 && drawn.trees + entry.treeCount > TREE_BUDGET) {
             // Past the budget a farther tile shows its buildings only.
             for (const mesh of entry.trees) mesh.visible = false;

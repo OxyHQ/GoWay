@@ -130,6 +130,12 @@ export interface TileMesh {
   polygonStarts: Uint32Array;
   /** Each unit's footprint box in local metres: `minX, minY, maxX, maxY`. */
   polygonBoxes: Float32Array;
+  /**
+   * Per unit, 1 when nothing records its height (the 5 m default stands in),
+   * so a surface-model measurement may replace it (`measuredHeight.ts`).
+   * Absent: none may.
+   */
+  polygonMeasurable?: Uint8Array;
 }
 
 // ---------------------------------------------------------------------------
@@ -426,6 +432,7 @@ class MeshBuilder {
   private indexCount = 0;
   private readonly polygonStarts: number[] = [];
   private readonly polygonBoxes: number[] = [];
+  private readonly polygonMeasurable: number[] = [];
   readonly min: [number, number, number] = [Infinity, Infinity, Infinity];
   readonly max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
 
@@ -483,7 +490,7 @@ class MeshBuilder {
   }
 
   /** Record a polygon that drew, from its first vertex, with its footprint's box. */
-  polygon(start: number, footprint: readonly Point2[]): void {
+  polygon(start: number, footprint: readonly Point2[], measurable = false): void {
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
@@ -496,6 +503,7 @@ class MeshBuilder {
     }
     this.polygonStarts.push(start);
     this.polygonBoxes.push(minX, minY, maxX, maxY);
+    this.polygonMeasurable.push(measurable ? 1 : 0);
   }
 
   finish(polygons: number): TileMesh | null {
@@ -509,6 +517,7 @@ class MeshBuilder {
       polygons,
       polygonStarts: Uint32Array.from(this.polygonStarts),
       polygonBoxes: Float32Array.from(this.polygonBoxes),
+      polygonMeasurable: Uint8Array.from(this.polygonMeasurable),
     };
   }
 }
@@ -640,6 +649,22 @@ function meshPolygon(
 }
 
 /**
+ * Whether an OpenMapTiles feature's height is the schema's DEFAULT rather than
+ * recorded: OpenMapTiles writes `render_height` 5 (and no base) for a building
+ * with neither `height` nor `building:levels`, and no recorded value says so
+ * more precisely — a building TAGGED 5 m reads the same, which is rare enough
+ * that measuring it changes little (`measuredHeight.ts`).
+ */
+export function heightUnrecorded(properties: BuildingFeature['properties']): boolean {
+  const height = finite(properties.render_height);
+  const base = finite(properties.render_min_height) ?? 0;
+  return (height === undefined || height === UNRECORDED_HEIGHT_M) && base === 0;
+}
+
+/** The height OpenMapTiles gives a building nothing records the height of. */
+export const UNRECORDED_HEIGHT_M = 5;
+
+/**
  * Mesh every building of one tile. `null` when the tile has nothing to draw.
  */
 export function meshBuildings(
@@ -657,7 +682,7 @@ export function meshBuildings(
       const start = builder.vertices;
       if (meshPolygon(builder, polygon, span.base, span.top, tone)) {
         polygons++;
-        builder.polygon(start, polygon[0].points);
+        builder.polygon(start, polygon[0].points, heightUnrecorded(feature.properties));
       }
     }
   }

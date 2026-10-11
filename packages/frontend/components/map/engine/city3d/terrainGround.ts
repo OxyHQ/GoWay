@@ -84,6 +84,8 @@ export interface GroundTile {
     placed: PolygonGround,
     grid: Float32Array,
     out?: Float32Array,
+    /** The un-opened surface the ground came from (`groundGrids`), for measuring heights. */
+    surface?: Float32Array,
   ) => { values: Float32Array; min: number; max: number };
 }
 
@@ -150,6 +152,19 @@ export function openGrid(grid: Float32Array, size: number, radius: number): Floa
  * tile, where a block touching its edge would otherwise keep its roof.
  */
 export function groundGrid(tile: TileId, sample: GroundSampler): Float32Array {
+  return groundGrids(tile, sample).ground;
+}
+
+/**
+ * {@link groundGrid}, and the SURFACE it was opened from (cropped the same
+ * way): the drawn terrain itself — roofs and canopy included, since the model
+ * is a surface model — which `measuredHeight.ts` reads to measure buildings
+ * whose height nothing records.
+ */
+export function groundGrids(
+  tile: TileId,
+  sample: GroundSampler,
+): { ground: Float32Array; surface: Float32Array } {
   const size = GROUND.grid;
   const margin = 2 * GROUND.openRadius;
   const wide = size + 2 * margin;
@@ -165,14 +180,17 @@ export function groundGrid(tile: TileId, sample: GroundSampler): Float32Array {
     }
   }
   const opened = openGrid(grid, wide, GROUND.openRadius);
-  const out = new Float32Array(size * size);
-  for (let j = 0; j < size; j++) {
-    out.set(
-      opened.subarray((j + margin) * wide + margin, (j + margin) * wide + margin + size),
-      j * size,
-    );
-  }
-  return out;
+  const crop = (from: Float32Array) => {
+    const out = new Float32Array(size * size);
+    for (let j = 0; j < size; j++) {
+      out.set(
+        from.subarray((j + margin) * wide + margin, (j + margin) * wide + margin + size),
+        j * size,
+      );
+    }
+    return out;
+  };
+  return { ground: crop(opened), surface: crop(grid) };
 }
 
 /** Bilinear read of a {@link sampleGroundGrid} grid at `u` east, `v` south, both 0–1. */
@@ -311,6 +329,8 @@ interface TileState {
   sink: Float32Array;
   /** The sampled grid, kept when the tile lifts itself (it may lift more than polygons). */
   grid?: Float32Array;
+  /** …and the surface it was opened from (measured heights move with it). */
+  surface?: Float32Array;
   result: GroundResult;
 }
 
@@ -371,7 +391,7 @@ export class TileGrounder {
     const sample = this.sampler;
     if (!sample) return null;
     const started = this.now();
-    const grid = groundGrid(tile.tile, sample);
+    const { ground: grid, surface } = groundGrids(tile.tile, sample);
     const sampled = this.now();
     const placed = polygonGround(grid, GROUND.grid, tile.tileSizeM, tile.polygonBoxes);
     const previous = this.tiles.get(key);
@@ -387,13 +407,16 @@ export class TileGrounder {
       largestChange(previous.anchor, placed.anchor) <= GROUND.epsilonM &&
       largestFootChange(previous, placed) <= GROUND.epsilonM &&
       (!tile.lift ||
-        (previous.grid !== undefined && largestChange(previous.grid, grid) <= GROUND.epsilonM))
+        (previous.grid !== undefined &&
+          largestChange(previous.grid, grid) <= GROUND.epsilonM &&
+          previous.surface !== undefined &&
+          largestChange(previous.surface, surface) <= GROUND.epsilonM))
     ) {
       result = { ...previous.result, changed: false };
       this.tiles.set(key, { ...previous, version: this.version, result });
     } else {
       const lifted = tile.lift
-        ? tile.lift(placed, grid, previous?.result.values)
+        ? tile.lift(placed, grid, previous?.result.values, surface)
         : vertexGround(
             tile.positions ?? new Float32Array(0),
             tile.polygonStarts ?? new Uint32Array(0),
@@ -404,7 +427,7 @@ export class TileGrounder {
       this.tiles.set(key, {
         version: this.version,
         ...placed,
-        ...(tile.lift ? { grid } : {}),
+        ...(tile.lift ? { grid, surface } : {}),
         result,
       });
       this.stats.tilesUploaded++;
