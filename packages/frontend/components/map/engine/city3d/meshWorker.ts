@@ -11,7 +11,7 @@
  * everything it imports into a SEALED, self-contained chunk and rewrites the
  * call to load it. Nothing here is ever in the main bundle, and nothing from
  * the main bundle is in here — which is why this file imports only the pure
- * modules (`decode`, `mesher`, `lodMesher`, `packing`, `trees`, `tileMath`…)
+ * modules (`tileMeshing`, `packing`, `trees`, `tileMath`…)
  * and never the engine or three.js.
  *
  * ## Why the worker fetches the tile itself
@@ -26,21 +26,12 @@
  * Compiling GoWay's own 3D tiles removes the duplication altogether; see
  * `docs/MAP_3D_CITY.md` → "Phase 2".
  */
-import { CITY_TILE_EXTENT } from '@/lib/map/cityTiles';
-
-import { decodeBuildings } from './decode';
-import { concatTileMeshes, meshLod2Surfaces } from './lod2Mesher';
-import { decodeLod2Tile } from './lod2Tiles';
-import { meshBuildingsLod } from './lodMesher';
-import { meshBuildings } from './mesher';
-import { meshOsmBuildings } from './osmMesher';
-import { decodeCityTile } from './osmTiles';
-import { withoutHidden } from './landmarkTiles';
-import { type PackedMesh, packedTransferables, packMesh } from './packing';
+import { packedTransferables } from './packing';
 import type { MeshWorkerRequest, MeshWorkerResponse } from './protocol';
 import { tileSizeMetres } from './tileMath';
+import { meshCityTile, meshOpenMapTiles } from './tileMeshing';
 import { packTrees } from './trees';
-import { type Footprint, treesFor } from './workerTrees';
+import { treesFor } from './workerTrees';
 
 /**
  * The slice of `DedicatedWorkerGlobalScope` this file uses. The frontend's
@@ -170,73 +161,6 @@ async function mesh(request: Extract<MeshWorkerRequest, { type: 'mesh' }>): Prom
   } finally {
     inflight.delete(request.id);
   }
-}
-
-type MeshRequest = Extract<MeshWorkerRequest, { type: 'mesh' }>;
-
-/** A mesh, the footprints trees must not stand in, and the official datasets it draws. */
-interface Meshed {
-  mesh: PackedMesh | null;
-  footprints: { list: readonly Footprint[]; extent: number };
-  sources: string[];
-}
-
-/** OpenMapTiles' `building` layer, at the level of detail asked for. */
-function meshOpenMapTiles(bytes: ArrayBuffer, request: MeshRequest, size: number): Meshed {
-  const decoded = decodeBuildings(bytes, request.sourceLayer);
-  if (!decoded) return { mesh: null, footprints: { list: [], extent: 4096 }, sources: [] };
-  const footprints = { list: decoded.features, extent: decoded.extent };
-  const options = { extent: decoded.extent, tileSizeMetres: size };
-  if (request.lod !== 0) {
-    return {
-      mesh: meshBuildingsLod(decoded.features, options, request.lod),
-      footprints,
-      sources: [],
-    };
-  }
-  const full = meshBuildings(decoded.features, options);
-  return { mesh: full ? packMesh(full, size) : null, footprints, sources: [] };
-}
-
-/**
- * GoWay city tiles: per-building, with roofs, colours and recorded storeys.
- * Full detail only (`osmMesher.ts` has no far levels yet); packed with its
- * colour and facade lanes.
- */
-function meshCityTile(
-  bytes: ArrayBuffer,
-  size: number,
-  hidden: readonly number[] | undefined,
-): Meshed {
-  const decoded = decodeCityTile(bytes);
-  // Where the compiler merged official building data: its surfaces, in place
-  // of the OSM buildings it covers (`drawn_by`), in the same mesh.
-  const surfaces = decodeLod2Tile(bytes);
-  const extent = decoded?.extent ?? CITY_TILE_EXTENT;
-  // A drawn landmark's buildings are not meshed (`landmarkTiles.ts`) — nor the
-  // official surfaces standing in for them; their footprints still keep the
-  // trees off the ground the landmark stands on.
-  const footprints = { list: decoded?.buildings ?? [], extent };
-  const options = { extent, tileSizeMetres: size };
-  const buildings = withoutHidden(
-    surfaces.length > 0
-      ? (decoded?.buildings ?? []).filter((b) => !b.drawnBy)
-      : (decoded?.buildings ?? []),
-    hidden,
-  );
-  const hiddenIds = new Set(hidden ?? []);
-  const shown =
-    hiddenIds.size > 0
-      ? surfaces.filter((s) => s.osmId === undefined || !hiddenIds.has(s.osmId))
-      : surfaces;
-  const osm = buildings.length > 0 ? meshOsmBuildings(buildings, options) : null;
-  const lod2 = shown.length > 0 ? meshLod2Surfaces(shown, options, decoded?.buildings) : null;
-  const mesh = concatTileMeshes(osm, lod2);
-  return {
-    mesh: mesh ? packMesh(mesh, size) : null,
-    footprints,
-    sources: lod2 ? [...new Set(shown.map((s) => s.source))] : [],
-  };
 }
 
 scope.onmessage = (event) => {

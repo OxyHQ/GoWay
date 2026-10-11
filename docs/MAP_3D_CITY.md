@@ -355,23 +355,13 @@ shadows, and is tuned to a pastel maquette look rather than photorealism.
 
 ### 7. Native
 
-`@maplibre/maplibre-react-native` exposes **no custom-layer API**: MapLibre
-Native's custom layers are C++ and platform code, and the React Native wrapper
-does not surface them. So, honestly:
-
-- **Native keeps `fill-extrusion`** — the shipped look — for the foreseeable
-  future. The prototype is web-only and `MapCanvas.native.tsx` is untouched.
-- **Native still benefits from B.** A GoWay tile layer with *per-building*
-  footprints and heights (not unioned) can feed the native extrusion directly:
-  individual buildings instead of whole blocks, which is the largest single
-  visual difference on native.
-- A native custom layer (an Expo module wrapping MapLibre Native's custom layer
-  per platform, or a future MapLibre Native plugin-layer API) is the only route
-  to bevels on native; it is months, not weeks, and should be chosen by device
-  benchmarks, exactly as Street 3D's native renderer is (`STREET3D_VIEWER.md` →
-  Native strategy).
-- A WebView 3D mode (Street 3D's approach) is possible for a dedicated
-  "city view" screen, never for the main map.
+Superseded by [`MAP_NATIVE_3D.md`](./MAP_NATIVE_3D.md). The native apps get
+this engine itself, not a second one. It moves to three.js's
+`WebGPURenderer` with TSL materials, and native draws it through
+`react-native-webgpu` (Dawn on Metal or Vulkan). MapLibre Native can host
+neither three.js on iOS (Metal only) nor terrain or globe on any platform.
+The phase 1 prototype draws one city tile from one shared module on WebGL2,
+browser WebGPU and Android Dawn, measured there.
 
 ### 8. Trees: the trees OpenStreetMap records
 
@@ -734,11 +724,11 @@ Each city tile is a **Mapbox Vector Tile v2** with one `building` layer and
 GoWay's own properties, in a **PMTiles v3** archive — the container the
 basemap already lives in, read by the same `worker/pmtiles.js`.
 
-- **Native can use it unchanged.** Phase 5(a) wants a per-building,
-  non-unioned vector source for MapLibre Native's `fill-extrusion`; this is
-  one. `render_height`/`render_min_height` keep OpenMapTiles' names and
-  meaning, so `building-3d`'s expressions apply as they are, and `colour` is a
-  CSS string.
+- **Native reads it with the same code.** The native apps run this engine
+  ([`MAP_NATIVE_3D.md`](./MAP_NATIVE_3D.md)), so the same decoder and mesher
+  read these tiles there (`tileMeshing.ts`). `render_height`/`render_min_height`
+  keep OpenMapTiles' names and meaning, so `building-3d`'s expressions also
+  apply to them as they are, and `colour` is a CSS string.
 - **The worker already reads it.** `pbf` + `@mapbox/vector-tile` decode both
   sources; the second mode adds no dependency.
 - **What a custom binary would have bought is pre-meshed geometry**, which is
@@ -1236,7 +1226,7 @@ result.
 - **Globe**: none below z12 (see Zooms).
 - **One shadow box**: buildings past ~1.4 km from the centre (high pitch) have
   no shadow; the shadows fade out at the box's rim.
-- **Native**: none — the same custom-layer limit as the rest of this note.
+- **Native**: not yet. The route is [`MAP_NATIVE_3D.md`](./MAP_NATIVE_3D.md).
 - **Floodlights** only on the GoWay city tiles (the OpenMapTiles meshes carry
   no tags), only with the sky on, and only where `lit`/`floodlit` is tagged —
   which is rare (above). Curated landmarks are the landmarks work's.
@@ -1452,10 +1442,10 @@ are estimates; the runtime numbers are measured unless marked.
 | --- | --- | --- |
 | **0. Prototype** (this change) | Custom layer, worker mesher over existing tiles, bevels, baked AO, lit by the same sun light as `building-3d`; off by default | Done. Users: +1.1 KB entry, nothing else with the flag off |
 | **1. Ship A on web** | ~~Far-field LOD, per-tile fade-in, worker pool~~ (done: §4 "LOD and loading", with budgets; trees: §8), WebGL context-loss handling, device gating via `deviceProfile`-style checks (GPU memory: Barcelona's visible set is ~60 MB), MapLibre sky/fog matched in-shader, tap-through to the basemap preserved, a perf budget on mid-range Android Chrome | ~2–3 weeks. No infra. Opt-in users download the ~1.1 MB gz lazy chunk |
-| **2. GoWay 3D tiles (B)** | Compiler beside the Planetiler build: per-building footprints and parts, OSM levels/roof shapes where tagged; client second source mode with roofs, tempered colours and recorded storeys; archive in R2 behind the Worker; the same tiles as native's per-building extrusion source | **Compiler + client built, off by default** ([Phase 2](#phase-2-goway-city-tiles)): Barcelona 11.9 s / 6.2 MB, Catalonia 15.3 s / 31.5 MB. Remaining: sharded planet build (~2 h compute, ~18–20 GB extrapolated), R2 + Worker route, ODbL publication, far levels for the city tiles (they draw every visible tile at full detail today, §4); pre-meshing and neighbour AO only if measured necessary |
+| **2. GoWay 3D tiles (B)** | Compiler beside the Planetiler build: per-building footprints and parts, OSM levels/roof shapes where tagged; client second source mode with roofs, tempered colours and recorded storeys; archive in R2 behind the Worker; the same tiles on native, through the same engine | **Compiler + client built, off by default** ([Phase 2](#phase-2-goway-city-tiles)): Barcelona 11.9 s / 6.2 MB, Catalonia 15.3 s / 31.5 MB. Remaining: sharded planet build (~2 h compute, ~18–20 GB extrapolated), R2 + Worker route, ODbL publication, far levels for the city tiles (they draw every visible tile at full detail today, §4); pre-meshing and neighbour AO only if measured necessary |
 | **3. Atmosphere** | Sky, haze over basemap and buildings, sun shadows, time-of-day scrubber | **Built, off by default** ([Phase 3](#phase-3-sky-atmosphere-shadows-and-time-of-day)). Remaining: real-GPU frame budget, device gating, terrain-aware ground passes |
 | **4. Municipal data** | One dataset at a time (PLUTO, PLATEAU, 3DBAG, Catastro…): licence review, adapter in the compiler, credit while drawn, LOD2 roofs where present | **Started** ([`MAP_3D_SOURCES.md`](./MAP_3D_SOURCES.md)): survey and verdicts; CityGML/CityJSON readers, conflation and a `building_lod2` tile layer; Spain's Catastro storeys merged for every municipality an area covers (official > OSM tags > 5 m, `height_source`; Barcelona 18.1 MB against 7.0 MB, Madrid 8.6 against 1.9); New York City's 3D model merged (Manhattan 8.8 MB against 3.6 MB). Next: 3DBAG (needs RD New), German states, PLATEAU |
-| **5. Native** | (a) Extrude B's per-building layer in the existing native style — days. (b) A native custom layer — months, decided by benchmarks | (a) days, (b) months |
+| **5. Native** | The same engine on `WebGPURenderer` + TSL, drawn by `react-native-webgpu`, with GoWay's engine drawing the base map: [`MAP_NATIVE_3D.md`](./MAP_NATIVE_3D.md) → Phased plan | Phase 1 prototype built; the rest is that note's plan |
 
 Procedural facades are deliberately not a phase. Phase 2 draws the one kind
 the honesty rule allows — a storey rhythm where `building:levels` is recorded

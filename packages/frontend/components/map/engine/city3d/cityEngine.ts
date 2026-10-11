@@ -68,6 +68,7 @@ import {
 } from './lod';
 import type { CityCoverageArea } from '@/lib/map/cityTiles';
 
+import { hexToRgb } from './colour';
 import { hiddenFeatureIds, tilesAround } from './landmarkTiles';
 import {
   DETAILED_DEFINE,
@@ -358,12 +359,7 @@ const LEVEL_RATIO = [1, 0.46, 0.25] as const;
 const UNKNOWN_FULL: TileCost = { bytes: 6 * 1024 * 1024, vertices: 400_000 };
 
 function hexToVector(hex: string): THREE.Vector3 {
-  const value = Number.parseInt(hex.slice(1, 7), 16);
-  return new THREE.Vector3(
-    ((value >> 16) & 255) / 255,
-    ((value >> 8) & 255) / 255,
-    (value & 255) / 255,
-  );
+  return new THREE.Vector3(...hexToRgb(hex));
 }
 
 function expandTemplate(template: string, tile: TileId): string {

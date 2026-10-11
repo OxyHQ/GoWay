@@ -79,7 +79,13 @@ const ENGINES = [
   'components/map/engine/city3d/gltf.ts',
   // The shared model library (`docs/MODEL_LIBRARY.md`), loaded by city life and the live pass.
   'components/map/engine/vehicles/library.ts',
+  // The native-3D phase 1 prototype (three's WebGPU build, docs/MAP_NATIVE_3D.md):
+  // reached by no app module yet, only by `scripts/` and the native harness.
+  'components/map/engine/city3d/tsl/cityTileView.ts',
+  'components/map/engine/city3d/tsl/osmBuildingMaterial.ts',
 ];
+/** The TSL prototype's folder: until a phase wires it in, no app module may reach it. */
+const TSL_PROTOTYPE = 'components/map/engine/city3d/tsl/';
 const CHUNK = 'components/engine3d/lazyChunk.ts';
 /**
  * three.js modules that are part of an engine, not engines of their own: they
@@ -100,6 +106,14 @@ describe('the three.js chunk', () => {
     const offenders = files
       .filter((f) => !ENGINES.includes(f.path) && !(f.path in ENGINE_PARTS))
       .filter((f) => runtimeImports(f.text, /^(three|@sparkjsdev\/spark)(\/|$)/).length > 0)
+      .map((f) => f.path);
+    expect(offenders).toEqual([]);
+  });
+
+  test('no app module reaches the TSL prototype at runtime', () => {
+    const offenders = files
+      .filter((f) => !f.path.startsWith(TSL_PROTOTYPE))
+      .filter((f) => runtimeImports(f.text, /city3d\/tsl\//).length > 0)
       .map((f) => f.path);
     expect(offenders).toEqual([]);
   });

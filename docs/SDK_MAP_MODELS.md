@@ -354,6 +354,10 @@ renderer-shaped.
 
 ### Native: no good option yet, stated plainly
 
+> Decided since: [`MAP_NATIVE_3D.md`](MAP_NATIVE_3D.md). Models draw on native
+> through the same engine on `react-native-webgpu`, not through any of the
+> three options below.
+
 `maplibre-react-native` 11.4 can't host custom drawing, so every native option
 costs something:
 
