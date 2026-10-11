@@ -492,6 +492,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
     setGround(sample) {
       grounder.setSampler(sample);
+      // The models stand on the same drawn ground as the buildings.
+      models.setGround(sample);
       uniforms.uGrounded.value = sample ? 1 : 0;
       // Culling bounds follow: without terrain every mesh is back at `z = 0`;
       // with it, each keeps its last lift until re-grounded.

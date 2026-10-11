@@ -48,6 +48,20 @@ describe('model frames', () => {
     expect(origin.z).toBe(0);
   });
 
+  test('on 3D terrain the anchor stands on the drawn ground, its altitude above that', () => {
+    // MapLibre puts a custom layer's z at absolute elevation once terrain is
+    // on; a model left at z = 0 would be inside the hill (Barcelona's Sagrada
+    // Família stands ~60 m up).
+    const k = mercatorPerMetre(SAGRADA.latitude);
+    const grounded = new THREE.Vector3(0, 0, 0).applyMatrix4(
+      modelMatrix(placement(0, { altitude: { meters: 5, reference: 'ground' } }), center, 1, 60),
+    );
+    expect(grounded.z / k).toBeCloseTo(65, 6);
+    // Flat map: the ground argument defaults to 0, so nothing else moved.
+    const flat = new THREE.Vector3(0, 0, 0).applyMatrix4(modelMatrix(placement(), center, 1));
+    expect(flat.z).toBe(0);
+  });
+
   test('front (+Z) faces the heading; up (+Y) is up; one metre is one metre', () => {
     const k = mercatorPerMetre(SAGRADA.latitude);
     const front = (heading: number) => {

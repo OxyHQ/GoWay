@@ -49,6 +49,7 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { ModelPlacement } from '@goway.to/sdk';
 
 import type { CityLight } from './occlusion';
+import type { GroundSampler } from './terrainGround';
 import {
   centeredProjection,
   type MercatorPoint,
@@ -106,6 +107,13 @@ export interface ModelLayer {
    * px — for the alignment check against the host's own projection.
    */
   anchors(): Array<{ id: string; lng: number; lat: number; x: number; y: number }>;
+  /**
+   * The drawn ground (`terrainGround.ts`), or `null` on a flat map. A
+   * placement's altitude is metres above the DRAWN ground (`@goway.to/sdk` →
+   * `ModelPlacement`), so on 3D terrain each model stands on the hill under
+   * it rather than at sea level inside it.
+   */
+  setGround(sample: GroundSampler | null): void;
   /** Whether anything could draw (lets the engine skip the pass). */
   readonly active: boolean;
   dispose(): void;
@@ -167,6 +175,8 @@ export function modelMatrix(
   placement: ModelPlacement,
   center: MercatorPoint,
   scale: number,
+  /** The drawn ground under the model, in metres (0 on a flat map). */
+  groundM = 0,
 ): THREE.Matrix4 {
   const { latitude, longitude } = placement.position;
   const k = mercatorPerMetre(latitude);
@@ -181,7 +191,7 @@ export function modelMatrix(
     .multiply(new THREE.Matrix4().makeRotationX(pitch * DEG))
     .multiply(new THREE.Matrix4().makeRotationY(roll * DEG));
   return new THREE.Matrix4()
-    .makeTranslation(dx, -dy, placement.altitude.meters * k)
+    .makeTranslation(dx, -dy, (placement.altitude.meters + groundM) * k)
     .multiply(new THREE.Matrix4().makeScale(k, k, k))
     .multiply(rotation)
     .multiply(GLTF_TO_ENU)
@@ -362,6 +372,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
   let lastFrame = 0;
   let disposed = false;
   let lastProjection: THREE.Matrix4 | null = null;
+  let ground: GroundSampler | null = null;
 
   const report = (instance: Instance, status: ModelStatus) => {
     if (instance.status === status) return;
@@ -534,11 +545,16 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
           report(instance, 'fallback');
           continue;
         }
+        // One read of the drawn ground per model per frame (~0.5 µs): a
+        // vehicle moving every frame stays on the road as the road climbs.
+        const groundM = ground
+          ? ground(spec.placement.position.longitude, spec.placement.position.latitude)
+          : 0;
         let scale = spec.placement.scale;
         if (spec.sizing.mode === 'screen') {
           // Pixels per metre at the anchor, measured through this frame's own
           // projection, so a pitched camera sizes a far model correctly.
-          const unit = modelMatrix(spec.placement, center, 1);
+          const unit = modelMatrix(spec.placement, center, 1, groundM);
           const origin = new THREE.Vector3(0, 0, 0).applyMatrix4(unit).applyMatrix4(matrix);
           const east = new THREE.Vector3(-1, 0, 0).applyMatrix4(unit).applyMatrix4(matrix);
           const north = new THREE.Vector3(0, 0, 1).applyMatrix4(unit).applyMatrix4(matrix);
@@ -558,7 +574,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
             scale = Math.max(scale, spec.sizing.heightPx / (height * perMetre));
           }
         }
-        instance.root.matrix.copy(modelMatrix(spec.placement, center, scale));
+        instance.root.matrix.copy(modelMatrix(spec.placement, center, scale, groundM));
         instance.root.matrixWorldNeedsUpdate = true;
         instance.root.visible = true;
         if (instance.mixer) {
@@ -622,6 +638,11 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
         }
       }
       return best?.id ?? null;
+    },
+
+    setGround(sample) {
+      ground = sample;
+      options.requestRepaint();
     },
 
     anchors() {
