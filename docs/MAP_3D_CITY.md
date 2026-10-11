@@ -257,6 +257,11 @@ engine (`engine/city3d/models.ts`), drawn by the same renderer from a second
 custom layer above GoWay's overlays — see
 [`MAP_CAMERA_STUDIO.md`](./MAP_CAMERA_STUDIO.md) → "Two layers, one renderer".
 
+The city-life simulation ([`MAP_CITY_LIFE.md`](./MAP_CITY_LIFE.md)) is the
+second such guest: simulated cars and people are an OVERLAY of this engine
+(`engine/city3d/overlay.ts`) — the same scene, camera, light and terrain as the
+buildings, one instanced draw per vehicle model — never a renderer of their own.
+
 ## Obligations
 
 **MapLibre and OpenFreeMap stay replaceable adapters.** The engine never imports
@@ -616,6 +621,10 @@ engine folder type-only).
 - **Pre-meshing and neighbour AO** in the compiler, if client meshing ever
   shows up on mid-range devices.
 - **Planet**: shard, measure one continent, then the planet.
+- **Roads**: the same extract also compiles a road archive on the same z15 grid
+  (`scripts/build-city-roads.ts`, kept OUT of the building tiles: +72% gzip
+  measured) for the city-life simulation — see
+  [`MAP_CITY_LIFE.md`](./MAP_CITY_LIFE.md).
 
 ## Phased plan
 

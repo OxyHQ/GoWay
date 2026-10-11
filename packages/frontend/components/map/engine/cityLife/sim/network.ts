@@ -683,16 +683,39 @@ export function buildNetwork(input: NetworkInput): Network {
       else linksAt.set(n, [i]);
     }
   });
+  /** The heading a link leaves `node` along, measured ~8 m out (past any kink at the node). */
+  const departure = (link: Link, node: number): number => {
+    const points = link.a === node ? link.points : link.points.slice().reverse();
+    const [x0, y0] = points[0];
+    let k = 1;
+    while (k < points.length - 1 && Math.hypot(points[k][0] - x0, points[k][1] - y0) < 8) k++;
+    return Math.atan2(points[k][1] - y0, points[k][0] - x0);
+  };
+  /**
+   * How far a link's lanes stop short of a junction: until they clear every
+   * other road meeting there. Two roads leaving a node at angle θ are
+   * `2·d·sin(θ/2)` apart at distance d, so their lanes stop overlapping at
+   * `d = (w₁ + w₂) / (2·sin(θ/2))` — a few metres at a crossroads, tens of
+   * metres where a slip road peels off at a shallow angle, which is where
+   * lanes drawn at their real offsets would otherwise run through each other.
+   */
   const setback = (node: number, link: Link): number => {
     const around = linksAt.get(node) ?? [];
     const degree = nodes[node].carDegree;
     if (degree <= 1) return 0;
-    if (degree === 2) return Math.min(3, link.line.length * 0.3);
-    let widest = 0;
-    for (const other of around) {
-      if (links[other] !== link) widest = Math.max(widest, links[other].halfWidth);
+    const own = departure(link, node);
+    // At least a few metres everywhere: where a chain closes on itself or
+    // bends at a node, the two lane ends need room for a curve between them.
+    let needed = 3;
+    for (const index of around) {
+      const other = links[index];
+      if (other === link) continue;
+      const theta = Math.abs(wrapAngle(departure(other, node) - own));
+      const apart = 2 * Math.sin(Math.max(theta, 0.15) / 2);
+      needed = Math.max(needed, (link.halfWidth + other.halfWidth + 1) / apart);
     }
-    return Math.min(Math.max(widest + 1.5, 3), 14, link.line.length * 0.42);
+    const cap = degree === 2 ? 3 : 40;
+    return Math.min(needed, cap, link.line.length * 0.42);
   };
 
   // ── Lanes ──
