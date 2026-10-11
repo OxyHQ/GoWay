@@ -4,7 +4,8 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { COPERNICUS_NOTICES, CREDIT_SECTIONS } from '@/lib/map/credits';
+import { CITY_LOD2_SOURCES } from '@/lib/map/cityOfficial';
+import { BUILDING_DATA_NOTICES, COPERNICUS_NOTICES, CREDIT_SECTIONS } from '@/lib/map/credits';
 import { resolveMapAttribution, TERRAIN_SOURCE_LINK } from '@/lib/map/provider';
 
 import { CREDITS_EN, CREDITS_ES } from '../credits';
@@ -32,6 +33,18 @@ describe('the attribution page', () => {
       'The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30.',
     );
     expect(elevation?.notices).toContain(COPERNICUS_NOTICES.endorsement);
+  });
+
+  test('the buildings section credits every official source the city tiles may draw', () => {
+    const buildings = CREDIT_SECTIONS.find((section) => section.id === 'buildings');
+    // The same links the map shows while each source is drawn.
+    expect(buildings?.links).toEqual(expect.arrayContaining(Object.values(CITY_LOD2_SOURCES)));
+    expect(buildings?.links).toHaveLength(Object.keys(CITY_LOD2_SOURCES).length);
+    // The Catastro: named as author and owner, and never called cadastral cartography.
+    expect(buildings?.notices).toContain(BUILDING_DATA_NOTICES.catastro);
+    expect(BUILDING_DATA_NOTICES.catastro).toContain('author and owner of the information');
+    expect(BUILDING_DATA_NOTICES.catastro).toContain('not cadastral cartography');
+    expect(buildings?.notices).toContain(BUILDING_DATA_NOTICES.nyc);
   });
 
   test("the map's elevation credit leads to this page's elevation section", () => {

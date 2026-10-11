@@ -14,6 +14,9 @@ export const CREDITS_EN: Record<string, string> = {
   'credits.elevation.heading': 'Elevation: relief and 3D terrain',
   'credits.elevation.body':
     "Terrain tiles from Mapterhorn, which merges open elevation models from many providers; its attribution page lists every one with its licence. Outside the areas covered by finer national models, GoWay's elevation is the Copernicus GLO-30 digital elevation model.",
+  'credits.buildings.heading': '3D buildings: official data',
+  'credits.buildings.body':
+    "Where the 3D city layer shows them, building heights and shapes come from official records merged with OpenStreetMap: in Spain, the storeys of every building part recorded by the Dirección General del Catastro; in New York City, the city's 3-D Building Model. Each is credited on the map while it is drawn.",
   'credits.notices': 'Licence notices',
   'credits.back': 'Back to the map',
 };
@@ -28,6 +31,9 @@ export const CREDITS_ES: Record<string, string> = {
   'credits.elevation.heading': 'Elevación: relieve y terreno 3D',
   'credits.elevation.body':
     'Teselas de terreno de Mapterhorn, que combina modelos de elevación abiertos de muchos proveedores; su página de atribución los enumera todos con su licencia. Fuera de las zonas cubiertas por modelos nacionales más detallados, la elevación de GoWay es el modelo digital de elevación Copernicus GLO-30.',
+  'credits.buildings.heading': 'Edificios en 3D: datos oficiales',
+  'credits.buildings.body':
+    'Donde la capa de ciudad en 3D los muestra, las alturas y formas de los edificios proceden de registros oficiales combinados con OpenStreetMap: en España, las plantas de cada parte de edificio registradas por la Dirección General del Catastro; en Nueva York, el modelo 3D de edificios de la ciudad. Cada fuente se acredita en el mapa mientras se dibuja.',
   'credits.notices': 'Avisos de licencia',
   'credits.back': 'Volver al mapa',
 };
