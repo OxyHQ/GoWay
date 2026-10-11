@@ -21,6 +21,7 @@
 
 import type { LiveEntity, LiveTransitVehicle } from '@goway/contracts';
 import { accept, getJson, instant, position, record, text } from '../normalise';
+import type { MatchHint } from '../staticGtfs';
 import {
   type LiveAdapter,
   type LiveAdapterSettings,
@@ -70,6 +71,10 @@ export function normaliseGeotrenTrain(
     // rather than shown as a cryptic headsign.
     headsign: null,
     vehicleLabel: text(train.ut, 40),
+    lineColor: null,
+    lineTextColor: null,
+    track: null,
+    trackStatus: 'unknown',
   }) as LiveTransitVehicle | null;
 }
 
@@ -97,13 +102,22 @@ export function createGeotrenAdapter(
       const results = Array.isArray(body?.results) ? body.results : null;
       if (!results) return { entities: [], rejected: 1 };
       const entities: LiveEntity[] = [];
+      // Geotren's ids are FGC's GTFS trip ids (33 of 38 matched, 2026-10-11);
+      // the line covers the rest.
+      const hints = new Map<string, MatchHint>();
       let rejected = 0;
       for (const raw of results) {
         const train = normaliseGeotrenTrain(options, raw, observedAt);
-        if (train) entities.push(train);
-        else rejected++;
+        if (train) {
+          entities.push(train);
+          const tripId = text(record(raw)?.id, 80);
+          hints.set(train.id, {
+            ...(tripId ? { tripId } : {}),
+            ...(train.line ? { route: train.line } : {}),
+          });
+        } else rejected++;
       }
-      return { entities, rejected };
+      return { entities, rejected, hints };
     },
   };
 }

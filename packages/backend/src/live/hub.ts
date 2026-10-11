@@ -35,11 +35,20 @@ import {
   type LiveDelta,
   type LiveEntity,
   type LiveKind,
+  type LiveShape,
   type LiveSnapshot,
   type LiveSource,
   type LiveSourceStatus,
   liveTileBounds,
 } from '@goway/contracts';
+import { getBytes } from './normalise';
+import {
+  loadStaticGtfs,
+  type MatchHint,
+  matchTrack,
+  type PreviousMatch,
+  type StaticGtfs,
+} from './staticGtfs';
 import { contains, type IndexChange, LiveTileIndex, roomKey } from './tileIndex';
 import {
   type LiveAdapter,
@@ -91,7 +100,21 @@ interface SourceState {
   /** When it last had demand; `null` while it has demand now. */
   idleSince: number | null;
   everActive: boolean;
+  /** The operator's static GTFS, when the definition names one (`staticGtfs.ts`). */
+  gtfs: StaticGtfs | null;
+  gtfsLoading: Promise<void> | null;
+  /** When the next load may start (a refresh, or a retry after failure). */
+  gtfsDueAt: number;
+  gtfsFailures: number;
+  /** Each vehicle's last match, to keep it on its direction's shape. */
+  matches: Map<string, PreviousMatch>;
+  settings: LiveAdapterSettings;
 }
+
+/** Static GTFS is re-read this often while a source is watched. */
+export const STATIC_GTFS_REFRESH_MS = 24 * 3600_000;
+/** The largest static GTFS download (Renfe Cercanías' zip is ~14 MB). */
+export const MAX_STATIC_GTFS_BYTES = 120 * 1024 * 1024;
 
 interface Room {
   tile: string;
@@ -125,6 +148,12 @@ export class LiveHub {
       failures: 0,
       idleSince: null,
       everActive: false,
+      gtfs: null,
+      gtfsLoading: null,
+      gtfsDueAt: 0,
+      gtfsFailures: 0,
+      matches: new Map(),
+      settings,
     }));
   }
 
@@ -265,6 +294,9 @@ export class LiveHub {
       }
       state.idleSince = null;
       state.everActive = true;
+      if (state.definition.staticGtfs && !state.gtfsLoading && now >= state.gtfsDueAt) {
+        started.push(this.loadStatic(state));
+      }
       if (state.inFlight || now < state.nextDueAt) continue;
       started.push(this.poll(state, demand));
     }
@@ -288,7 +320,7 @@ export class LiveHub {
           state.nextDueAt =
             startedAt +
             Math.max(state.definition.pollIntervalSeconds, result.backoffSeconds ?? 0) * 1000;
-          this.apply(state, result.entities);
+          this.apply(state, this.enrich(state, result.entities, result.hints));
         },
         (error: unknown) => {
           if (this.stopped) return;
@@ -323,6 +355,102 @@ export class LiveHub {
     return run;
   }
 
+  /** Fetch (or refresh) a source's static GTFS; a failure retries with backoff and never stops the feed. */
+  private loadStatic(state: SourceState): Promise<void> {
+    const location = state.definition.staticGtfs;
+    if (!location) return Promise.resolve();
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 120_000);
+    const read = (url: string) =>
+      getBytes(
+        this.options.fetch,
+        url,
+        abort.signal,
+        { 'user-agent': state.settings.userAgent },
+        MAX_STATIC_GTFS_BYTES,
+      );
+    const run = loadStaticGtfs(location, read)
+      .then(
+        (gtfs) => {
+          state.gtfs = gtfs;
+          state.gtfsFailures = 0;
+          state.gtfsDueAt = this.now() + STATIC_GTFS_REFRESH_MS;
+          this.options.logger?.info(
+            { source: state.definition.id, shapes: gtfs.shapes.size, trips: gtfs.trips.size },
+            'Live source static GTFS loaded',
+          );
+        },
+        (error: unknown) => {
+          state.gtfsFailures++;
+          state.gtfsDueAt =
+            this.now() + Math.min(STATIC_GTFS_REFRESH_MS, 60_000 * 2 ** state.gtfsFailures);
+          this.options.logger?.warn(
+            { source: state.definition.id, reason: redact(describe(error), state.secrets) },
+            'Live source static GTFS failed to load',
+          );
+        },
+      )
+      .finally(() => {
+        clearTimeout(timer);
+        state.gtfsLoading = null;
+      });
+    state.gtfsLoading = run;
+    return run;
+  }
+
+  /** Line colours and track matches from the static GTFS; the reported position is never changed. */
+  private enrich(
+    state: SourceState,
+    entities: readonly LiveEntity[],
+    hints: Map<string, MatchHint> | undefined,
+  ): LiveEntity[] {
+    const gtfs = state.gtfs;
+    if (!gtfs) return [...entities];
+    return entities.map((entity) => {
+      if (entity.kind !== 'transit') return entity;
+      const match = matchTrack(
+        gtfs,
+        hints?.get(entity.id) ?? {},
+        entity.position,
+        state.matches.get(entity.id) ?? null,
+      );
+      if (match.track)
+        state.matches.set(entity.id, {
+          shapeId: match.track.shapeId,
+          along: match.track.alongMeters,
+        });
+      else state.matches.delete(entity.id);
+      return {
+        ...entity,
+        line: entity.line ?? match.route?.shortName ?? match.route?.longName?.slice(0, 32) ?? null,
+        lineColor: match.route?.color ?? null,
+        lineTextColor: match.route?.textColor ?? null,
+        track: match.track,
+        trackStatus: match.trackStatus,
+      };
+    });
+  }
+
+  /** One of a source's static shapes, as the operator published it; `null` when unknown. */
+  shape(sourceId: string, shapeId: string): LiveShape | null {
+    const state = this.states.find((candidate) => candidate.definition.id === sourceId);
+    const shape = state?.gtfs?.shapes.get(shapeId);
+    if (!shape) return null;
+    const coordinates: [number, number][] = [];
+    const alongMeters: number[] = [];
+    for (let i = 0; i < shape.lat.length; i++) {
+      coordinates.push([round6(shape.lon[i] as number), round6(shape.lat[i] as number)]);
+      alongMeters.push(Math.round((shape.along[i] as number) * 10) / 10);
+    }
+    return {
+      sourceId,
+      id: shapeId,
+      coordinates,
+      alongMeters,
+      lengthMeters: Math.round(shape.length * 10) / 10,
+    };
+  }
+
   /** Apply one poll's answer and publish what changed. */
   private apply(state: SourceState, entities: readonly LiveEntity[]): void {
     const { definition } = state;
@@ -341,6 +469,7 @@ export class LiveHub {
       for (const id of this.index.idsOfSource(definition.id)) {
         if (!seen.has(id)) changes.push(...this.index.remove(id));
       }
+      for (const id of state.matches.keys()) if (!seen.has(id)) state.matches.delete(id);
     }
     this.flush(changes);
   }
@@ -363,6 +492,7 @@ export class LiveHub {
   }
 
   private release(state: SourceState): void {
+    state.matches.clear();
     state.everActive = false;
     state.idleSince = null;
     state.lastSuccessAt = null;
@@ -429,6 +559,10 @@ export class LiveHub {
   ): boolean {
     return definition.coverage === null || contains(definition.coverage, point);
   }
+}
+
+function round6(value: number): number {
+  return Math.round(value * 1e6) / 1e6;
 }
 
 function parseRoom(key: string): Room {

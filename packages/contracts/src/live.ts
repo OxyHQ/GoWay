@@ -34,7 +34,7 @@
 
 import { z } from 'zod';
 import { type GeoBoundingBox, geoBoundingBoxSchema, geoCoordinateSchema } from './geo';
-import { LIVE_KINDS, liveKindSchema, liveSourceIdSchema } from './live-source';
+import { LIVE_KINDS, liveKindSchema, liveShapeIdSchema, liveSourceIdSchema } from './live-source';
 import { instantSchema } from './time';
 
 // ---------------------------------------------------------------------------
@@ -65,6 +65,9 @@ export const liveEntityIdSchema = z.string().min(3).max(160);
 // ---------------------------------------------------------------------------
 // Entities
 // ---------------------------------------------------------------------------
+
+/** `#RRGGBB`. */
+const hexColorSchema = z.string().regex(/^#[0-9A-F]{6}$/, 'must be #RRGGBB');
 
 /** Degrees clockwise from true north, `[0, 360)`. */
 const headingSchema = z.number().min(0).lt(360);
@@ -122,6 +125,32 @@ export const liveTransitVehicleSchema = z.object({
   headsign: feedText(80).nullable(),
   /** The vehicle's own label or number, when the feed publishes one. */
   vehicleLabel: feedText(40).nullable(),
+  /** The line's colour, `#RRGGBB`, from the operator's static GTFS. */
+  lineColor: hexColorSchema.nullable(),
+  /** Text drawn on {@link lineColor}, `#RRGGBB`. */
+  lineTextColor: hexColorSchema.nullable(),
+  /**
+   * Where this report lies on the operator's OWN published shape
+   * (`shapes.txt`) — a display aid, not a correction: `position` stays
+   * exactly as reported. Present only within the snap tolerance
+   * (`GET /live/sources/{sourceId}/shapes/{shapeId}` serves the shape).
+   */
+  track: z
+    .object({
+      shapeId: liveShapeIdSchema,
+      /** Metres along the shape to the point nearest the report. */
+      alongMeters: z.number().min(0),
+      /** Metres from the report to that point. */
+      offsetMeters: z.number().min(0),
+    })
+    .nullable(),
+  /**
+   * `on_track`: `track` is set. `off_track`: the operator publishes shapes
+   * and this report is farther than the tolerance from all of them — draw
+   * it where reported, marked approximate, and never move it along a path.
+   * `unknown`: no shape is known for it.
+   */
+  trackStatus: z.enum(['on_track', 'off_track', 'unknown']),
 });
 export type LiveTransitVehicle = z.infer<typeof liveTransitVehicleSchema>;
 

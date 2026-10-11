@@ -41,6 +41,10 @@ const train = {
   line: 'R2N',
   headsign: null,
   vehicleLabel: '28436',
+  lineColor: '#D0DF00',
+  lineTextColor: '#FFFFFF',
+  track: { shapeId: '51_R2N', alongMeters: 1200.5, offsetMeters: 0.1 },
+  trackStatus: 'on_track',
 };
 
 describe('goway.live.sources', () => {
@@ -57,6 +61,26 @@ describe('goway.live.sources', () => {
     });
     const error = await rejection(createGoWayClient({ fetch }).live.sources());
     expect(error).toBeInstanceOf(GoWayUnavailableError);
+  });
+});
+
+describe('goway.live.shape', () => {
+  it('reads an operator shape by source and id', async () => {
+    const { fetch, calls } = fakeFetch(200, {
+      sourceId: 'renfe-cercanias',
+      id: '51_R2N',
+      coordinates: [
+        [2.1, 41.3],
+        [2.2, 41.4],
+      ],
+      alongMeters: [0, 13_500],
+      lengthMeters: 13_500,
+    });
+    const shape = await createGoWayClient({ fetch }).live.shape('renfe-cercanias', '51_R2N');
+    expect(shape.lengthMeters).toBe(13_500);
+    expect(calls[0]?.url).toBe(
+      'https://api.goway.to/api/v1/live/sources/renfe-cercanias/shapes/51_R2N',
+    );
   });
 });
 

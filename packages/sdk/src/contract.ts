@@ -392,6 +392,7 @@ export type {
   LiveLink,
   LiveSnapshot,
   LiveSource,
+  LiveShape,
   LiveSourcePage,
   LiveSourceStatus,
   LiveSubscription,
@@ -529,6 +530,8 @@ export {
   streetSceneManifestSchema,
   streetSceneReportSchema,
   liveSourcePageSchema,
+  liveShapeSchema,
+  liveShapePathSchema,
   // The live protocol's messages (`src/live.ts`)
   liveDeltaSchema,
   liveSnapshotSchema,

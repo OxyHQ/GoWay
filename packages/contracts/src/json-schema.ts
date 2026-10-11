@@ -111,7 +111,7 @@ import {
   liveSubscriptionSchema,
   liveSubscriptionStateSchema,
 } from './live';
-import { liveSourcePageSchema, liveSourceSchema } from './live-source';
+import { liveShapeSchema, liveSourcePageSchema, liveSourceSchema } from './live-source';
 import { searchResultSchema, searchResultsSchema } from './search';
 import {
   streetCoverageSchema,
@@ -217,6 +217,7 @@ export const CONTRACT_SCHEMA_NAMES = [
   'LiveSubscriptionState',
   'LiveSnapshot',
   'LiveDelta',
+  'LiveShape',
 ] as const;
 
 export type ContractSchemaName = (typeof CONTRACT_SCHEMA_NAMES)[number];
@@ -319,6 +320,7 @@ export const CONTRACT_SCHEMAS: Readonly<Record<ContractSchemaName, ContractSchem
   LiveSubscriptionState: response(liveSubscriptionStateSchema),
   LiveSnapshot: response(liveSnapshotSchema),
   LiveDelta: response(liveDeltaSchema),
+  LiveShape: response(liveShapeSchema),
 };
 
 /** JSON Schema draft 2020-12 — the dialect OpenAPI 3.1 speaks. */

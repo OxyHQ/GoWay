@@ -154,6 +154,7 @@ export const EXPECTED_OPERATIONS = [
   { method: 'post', path: '/street3d/scenes/{sceneId}/reports', body: true, auth: true },
   // GoWay Live: the feeds' credits, licences and freshness (positions are on Socket.IO).
   { method: 'get', path: '/live/sources', body: false, auth: false },
+  { method: 'get', path: '/live/sources/{sourceId}/shapes/{shapeId}', body: false, auth: false },
 ];
 
 /** A layer that examines nothing must fail, not pass. */

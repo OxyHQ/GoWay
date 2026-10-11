@@ -96,6 +96,7 @@ export async function getBytes(
   url: string,
   signal: AbortSignal,
   headers: Record<string, string>,
+  maxBytes: number = MAX_UPSTREAM_BYTES,
 ): Promise<Uint8Array> {
   const response = await fetch(url, { signal, headers });
   if (response.status < 200 || response.status >= 300) {
@@ -107,11 +108,11 @@ export async function getBytes(
     );
   }
   const length = Number.parseInt(response.headers.get('content-length') ?? '', 10);
-  if (Number.isFinite(length) && length > MAX_UPSTREAM_BYTES) {
+  if (Number.isFinite(length) && length > maxBytes) {
     throw new LiveUpstreamError(`upstream body too large (${length} bytes)`);
   }
   const body = new Uint8Array(await response.arrayBuffer());
-  if (body.byteLength > MAX_UPSTREAM_BYTES) {
+  if (body.byteLength > maxBytes) {
     throw new LiveUpstreamError(`upstream body too large (${body.byteLength} bytes)`);
   }
   return body;

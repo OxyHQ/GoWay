@@ -26,6 +26,8 @@ const PATH_VALUES: Readonly<Record<string, string>> = {
   mediaId: 'm1',
   reviewId: 'v1',
   language: 'es',
+  sourceId: 'renfe-cercanias',
+  shapeId: '51_R2N',
 };
 
 function operationKey(method: string, path: string): string {
@@ -136,6 +138,7 @@ async function callEverything(): Promise<Set<string>> {
     goway.street3d.scene('scene1'),
     goway.street3d.report('scene1', { reason: 'privacy' }),
     goway.live.sources(),
+    goway.live.shape('renfe-cercanias', '51_R2N'),
   ];
   await Promise.allSettled(calls);
   return issued;

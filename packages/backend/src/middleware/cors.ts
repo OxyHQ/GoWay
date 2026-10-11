@@ -254,6 +254,11 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
     path: '/live/sources',
     because: "the live layer's feeds, their licences and freshness; the same for every caller",
   },
+  {
+    method: 'GET',
+    path: '/live/sources/:sourceId/shapes/:shapeId',
+    because: "an operator's published route shape the live layer draws vehicles along",
+  },
 ];
 
 /**

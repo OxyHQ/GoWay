@@ -8598,6 +8598,99 @@
           }
         }
       }
+    },
+    "/live/sources/{sourceId}/shapes/{shapeId}": {
+      "get": {
+        "operationId": "getLiveShape",
+        "summary": "One of an operator's published route shapes (GTFS `shapes.txt`), which live vehicles' `track` refers to.",
+        "tags": [
+          "Live"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "sourceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+            }
+          },
+          {
+            "name": "shapeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveShape"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found: `not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -12926,6 +13019,66 @@
                     "type": "null"
                   }
                 ]
+              },
+              "lineColor": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^#[0-9A-F]{6}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lineTextColor": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^#[0-9A-F]{6}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "track": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "shapeId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      "alongMeters": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "offsetMeters": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "shapeId",
+                      "alongMeters",
+                      "offsetMeters"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "trackStatus": {
+                "type": "string",
+                "enum": [
+                  "on_track",
+                  "off_track",
+                  "unknown"
+                ]
               }
             },
             "required": [
@@ -12940,7 +13093,11 @@
               "operator",
               "line",
               "headsign",
-              "vehicleLabel"
+              "vehicleLabel",
+              "lineColor",
+              "lineTextColor",
+              "track",
+              "trackStatus"
             ]
           },
           {
@@ -13302,6 +13459,61 @@
           "at",
           "upserts",
           "removes"
+        ]
+      },
+      "LiveShape": {
+        "type": "object",
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "coordinates": {
+            "minItems": 2,
+            "type": "array",
+            "items": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number",
+                  "minimum": -180,
+                  "maximum": 180
+                },
+                {
+                  "type": "number",
+                  "minimum": -90,
+                  "maximum": 90
+                }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "alongMeters": {
+            "minItems": 2,
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "lengthMeters": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "sourceId",
+          "id",
+          "coordinates",
+          "alongMeters",
+          "lengthMeters"
         ]
       },
       "PlaceCreateInput": {

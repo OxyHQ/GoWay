@@ -19,6 +19,7 @@
  */
 
 import type { GeoBoundingBox, LiveEntity, LiveKind, LiveLink } from '@goway/contracts';
+import type { MatchHint, StaticGtfsLocation } from './staticGtfs';
 
 /** What a poll may use. Injected, so every adapter is tested without a network. */
 export interface LiveFetchContext {
@@ -54,6 +55,11 @@ export interface LivePollResult {
    * had answered): wait at least this long before the next poll.
    */
   backoffSeconds?: number;
+  /**
+   * Per entity id, what the feed said that a static GTFS can join on (the
+   * trip, the route). Internal: never re-served.
+   */
+  hints?: Map<string, MatchHint>;
 }
 
 export interface LiveAdapter {
@@ -91,6 +97,12 @@ export interface LiveSourceDefinition {
   partialPolls?: boolean;
   staleAfterSeconds: number;
   dropAfterSeconds: number;
+  /**
+   * The operator's static GTFS, for line colours and for drawing vehicles on
+   * their published shapes (`staticGtfs.ts`). Loaded when the source is first
+   * watched, refreshed daily. Must be under the same licence as the feed.
+   */
+  staticGtfs?: StaticGtfsLocation;
   create(settings: LiveAdapterSettings): LiveAdapter;
 }
 

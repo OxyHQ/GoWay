@@ -88,3 +88,29 @@ export const liveSourcePageSchema = z.object({
   nextCursor: cursorSchema.nullable(),
 });
 export type LiveSourcePage = z.infer<typeof liveSourcePageSchema>;
+
+/** A shape id from an operator's static GTFS. Opaque. */
+export const liveShapeIdSchema = z.string().min(1).max(120);
+
+/**
+ * `GET /live/sources/{sourceId}/shapes/{shapeId}` — one of an operator's
+ * published route shapes, as the operator published it: positions
+ * `[longitude, latitude]` in order of travel, and the running length.
+ */
+export const liveShapeSchema = z.object({
+  sourceId: liveSourceIdSchema,
+  id: liveShapeIdSchema,
+  coordinates: z
+    .array(z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)]))
+    .min(2),
+  /** Metres along the shape at each position; same length as `coordinates`. */
+  alongMeters: z.array(z.number().min(0)).min(2),
+  lengthMeters: z.number().min(0),
+});
+export type LiveShape = z.infer<typeof liveShapeSchema>;
+
+/** `{sourceId}/{shapeId}` */
+export const liveShapePathSchema = z.object({
+  sourceId: liveSourceIdSchema,
+  shapeId: liveShapeIdSchema,
+});

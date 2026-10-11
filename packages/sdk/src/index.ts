@@ -421,6 +421,7 @@ export type {
   LiveEntity,
   LiveKind,
   LiveLink,
+  LiveShape,
   LiveSource,
   LiveSourcePage,
   LiveSourceStatus,

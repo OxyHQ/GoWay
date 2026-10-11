@@ -28,6 +28,7 @@ import type {
 } from '@goway/contracts';
 import { decodeGtfsRealtime, type GtfsVehiclePosition } from '../protobuf';
 import { accept, getBytes, heading, instant, position, text, within } from '../normalise';
+import type { MatchHint } from '../staticGtfs';
 import type { LiveAdapter, LiveAdapterSettings, LiveFetchContext, LivePollResult } from '../types';
 
 export interface GtfsRealtimeOptions {
@@ -75,6 +76,11 @@ export function normaliseGtfsVehicle(
     line: line === null ? null : text(line, 32),
     headsign: null,
     vehicleLabel: text(options.labelOf?.(vehicle) ?? vehicle.vehicleLabel, 40),
+    // Filled from the operator's static GTFS by the hub (`staticGtfs.ts`).
+    lineColor: null,
+    lineTextColor: null,
+    track: null,
+    trackStatus: 'unknown',
   }) as LiveTransitVehicle | null;
 }
 
@@ -90,6 +96,7 @@ export function normaliseGtfsFeed(
 ): LivePollResult {
   const feed = decodeGtfsRealtime(bytes);
   const byId = new Map<string, LiveEntity>();
+  const hints = new Map<string, MatchHint>();
   let rejected = 0;
   for (const vehicle of feed.vehicles) {
     const entity = normaliseGtfsVehicle(options, vehicle, feed.headerTimestamp, nowMs);
@@ -98,9 +105,17 @@ export function normaliseGtfsFeed(
       continue;
     }
     const previous = byId.get(entity.id);
-    if (!previous || previous.observedAt < entity.observedAt) byId.set(entity.id, entity);
+    if (!previous || previous.observedAt < entity.observedAt) {
+      byId.set(entity.id, entity);
+      const route =
+        vehicle.routeId ?? (entity.kind === 'transit' ? (entity.line ?? undefined) : undefined);
+      hints.set(entity.id, {
+        ...(vehicle.tripId ? { tripId: vehicle.tripId } : {}),
+        ...(route ? { route } : {}),
+      });
+    }
   }
-  return { entities: [...byId.values()], rejected };
+  return { entities: [...byId.values()], rejected, hints };
 }
 
 export function createGtfsRealtimeAdapter(

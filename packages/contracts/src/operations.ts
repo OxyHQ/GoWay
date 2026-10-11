@@ -42,6 +42,7 @@ import {
   searchParametersSchema,
   structuredGeocodeQuerySchema,
 } from './search';
+import { liveShapePathSchema } from './live-source';
 import { streetCoverageQuerySchema } from './street3d';
 
 /**
@@ -1014,6 +1015,18 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     auth: 'public',
     responses: { 200: 'LiveSourcePage' },
     errors: ['service_unavailable'],
+  },
+  {
+    operationId: 'getLiveShape',
+    method: 'get',
+    path: '/live/sources/{sourceId}/shapes/{shapeId}',
+    tag: 'Live',
+    summary:
+      "One of an operator's published route shapes (GTFS `shapes.txt`), which live vehicles' `track` refers to.",
+    auth: 'public',
+    pathParameters: liveShapePathSchema,
+    responses: { 200: 'LiveShape' },
+    errors: ['bad_request', 'not_found', 'service_unavailable'],
   },
 ];
 

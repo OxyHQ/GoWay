@@ -99,6 +99,8 @@ import {
   streetSceneReportSchema,
   structuredGeocodeQuerySchema,
   TRAVEL_MODES,
+  liveShapePathSchema,
+  liveShapeSchema,
   liveSourcePageSchema,
 } from './contract';
 import type {
@@ -180,6 +182,7 @@ import type {
   RouteResponse,
   SearchQuery,
   SearchResults,
+  LiveShape,
   LiveSourcePage,
   StreetCoverage,
   StreetCoverageQuery,
@@ -776,6 +779,11 @@ export interface GoWayCapturesApi {
  */
 export interface GoWayLiveApi {
   sources(options?: GoWayRequestOptions): Promise<LiveSourcePage>;
+  /**
+   * One of an operator's published route shapes — what a transit vehicle's
+   * `track.shapeId` refers to, for drawing it along its line. Cacheable.
+   */
+  shape(sourceId: string, shapeId: string, options?: GoWayRequestOptions): Promise<LiveShape>;
 }
 
 export interface GoWayClient {
@@ -1994,6 +2002,18 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         { method: 'GET', path: '/live/sources', signal: callOptions.signal },
         liveSourcePageSchema,
       ),
+    shape: async (sourceId: string, shapeId: string, callOptions: GoWayRequestOptions = {}) => {
+      const path = validInput(liveShapePathSchema, { sourceId, shapeId }, 'path');
+      return request(
+        config,
+        {
+          method: 'GET',
+          path: `/live/sources/${pathSegment(path.sourceId, 'sourceId')}/shapes/${pathSegment(path.shapeId, 'shapeId')}`,
+          signal: callOptions.signal,
+        },
+        liveShapeSchema,
+      );
+    },
   });
 
   return Object.freeze({

@@ -83,6 +83,7 @@ export type {
   LiveEntity,
   LiveKind,
   LiveLink,
+  LiveShape,
   LiveSnapshot,
   LiveSource,
   LiveSourcePage,

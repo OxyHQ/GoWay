@@ -38,10 +38,23 @@ function bus(id: string, latitude: number, longitude: number, observedAt: number
     line: 'M1',
     headsign: null,
     vehicleLabel: null,
+    lineColor: null,
+    lineTextColor: null,
+    track: null,
+    trackStatus: 'unknown',
   };
 }
 
 const BARCELONA = { latitude: 41.39, longitude: 2.17 };
+
+/** A one-line static GTFS through Barcelona, served by the harness's fetch. */
+const STATIC_FILES: Record<string, string> = {
+  'https://gtfs.example/routes.txt':
+    'route_id,route_short_name,route_color,route_text_color\nR2N,R2N,D0DF00,FFFFFF\n',
+  'https://gtfs.example/trips.txt': 'route_id,service_id,trip_id,shape_id\nR2N,s,T1,line\n',
+  'https://gtfs.example/shapes.txt':
+    'shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\nline,41.39,2.16,1\nline,41.39,2.18,2\n',
+};
 const BARCELONA_TILE = liveTileOf(BARCELONA);
 const NEW_YORK_TILE = liveTileOf({ latitude: 40.75, longitude: -73.98 });
 
@@ -156,8 +169,15 @@ function harness(overrides: Partial<LiveSourceDefinition> = {}): Harness {
         },
       },
     ],
-    fetch: async () => {
-      throw new Error('the adapter is faked');
+    // Only the static GTFS goes through this fetch; the adapter is faked.
+    fetch: async (url) => {
+      const body = STATIC_FILES[url];
+      if (body === undefined) throw new Error('the adapter is faked');
+      return {
+        status: 200,
+        headers: { get: () => null },
+        arrayBuffer: async () => new TextEncoder().encode(body).buffer as ArrayBuffer,
+      };
     },
     now: () => clock.now,
     random: () => 0.5,
@@ -353,6 +373,51 @@ describe('the hub', () => {
     const text = JSON.stringify(h.logs);
     for (const leak of [BARCELONA_TILE, '41.39', 'viewer']) expect(text).not.toContain(leak);
     h.hub.stop();
+  });
+
+  it('puts vehicles on their static shape, keeps the reported position, and serves the shape', async () => {
+    const h = harness({
+      staticGtfs: {
+        routes: 'https://gtfs.example/routes.txt',
+        trips: 'https://gtfs.example/trips.txt',
+        shapes: 'https://gtfs.example/shapes.txt',
+      },
+    });
+    h.hub.watch('a', [{ tile: BARCELONA_TILE, kind: 'transit' }]);
+    const on = bus('on', 41.3901, 2.17, T0);
+    const off = bus('off', 41.395, 2.17, T0); // ~555 m off the line
+    h.answer.next = async () => ({
+      entities: [on, off],
+      rejected: 0,
+      hints: new Map([
+        ['test-bus:on', { tripId: 'T1' }],
+        ['test-bus:off', { tripId: 'T1' }],
+      ]),
+    });
+    await h.hub.tick(); // loads the GTFS and polls in the same tick
+    h.clock.now += 10_000;
+    await h.hub.tick();
+    const entities = h.hub.snapshot(BARCELONA_TILE, 'transit').entities;
+    const placed = entities.find((entity) => entity.id === 'test-bus:on');
+    expect(placed).toMatchObject({
+      lineColor: '#D0DF00',
+      trackStatus: 'on_track',
+      position: on.position,
+    });
+    if (placed?.kind !== 'transit') throw new Error('not transit');
+    expect(placed.track?.shapeId).toBe('line');
+    expect(placed.track?.offsetMeters).toBeLessThan(15);
+    expect(entities.find((entity) => entity.id === 'test-bus:off')).toMatchObject({
+      track: null,
+      trackStatus: 'off_track',
+    });
+    const shape = h.hub.shape('test-bus', 'line');
+    expect(shape?.coordinates).toEqual([
+      [2.16, 41.39],
+      [2.18, 41.39],
+    ]);
+    expect(shape?.lengthMeters).toBeGreaterThan(1600);
+    expect(h.hub.shape('test-bus', 'nope')).toBeNull();
   });
 
   it('counts room watchers, so one viewer leaving keeps the room for another', async () => {

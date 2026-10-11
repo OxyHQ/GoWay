@@ -97,6 +97,10 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     pollIntervalSeconds: 20,
     staleAfterSeconds: 120,
     dropAfterSeconds: 600,
+    // The same open-data portal and licence (CC BY 4.0, `horarios-cercanias`):
+    // line colours, and the shapes trains are drawn along. Realtime trip ids
+    // are its `trips.txt` ids (215 of 215 matched, 2026-10-11).
+    staticGtfs: { zip: 'https://ssl.renfe.com/ftransit/Fichero_CER_FOMENTO/fomento_transit.zip' },
     create: (settings) =>
       createGtfsRealtimeAdapter(
         {
@@ -126,6 +130,15 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     pollIntervalSeconds: 60,
     staleAfterSeconds: 180,
     dropAfterSeconds: 600,
+    // FGC's GTFS on the same portal (CC BY 4.0), as separate files.
+    staticGtfs: {
+      routes:
+        'https://dadesobertes.fgc.cat/api/explore/v2.1/catalog/datasets/gtfs_zip/files/92c45d9df99624d7e05e9ade35ba0ce8',
+      trips:
+        'https://dadesobertes.fgc.cat/api/explore/v2.1/catalog/datasets/gtfs_zip/files/7831854a320cbf4ea5b6b327cd4581af',
+      shapes:
+        'https://dadesobertes.fgc.cat/api/explore/v2.1/catalog/datasets/gtfs_zip/files/fab955344340f299bfeaacaf424537c5',
+    },
     create: (settings) =>
       createGeotrenAdapter(
         { sourceId: 'fgc-geotren', operator: 'FGC', coverage: CATALONIA },
@@ -146,6 +159,13 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     pollIntervalSeconds: 15,
     staleAfterSeconds: 120,
     dropAfterSeconds: 600,
+    // The MTA's own static GTFS (same terms), one zip per borough plus MTA
+    // Bus Company; shapes per trip, or per route for trips not listed.
+    staticGtfs: {
+      zips: ['m', 'b', 'bx', 'q', 'si', 'busco'].map(
+        (part) => `https://rrgtfsfeeds.s3.amazonaws.com/gtfs_${part}.zip`,
+      ),
+    },
     create: (settings) =>
       createGtfsRealtimeAdapter(
         {
@@ -171,6 +191,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     pollIntervalSeconds: 20,
     staleAfterSeconds: 180,
     dropAfterSeconds: 600,
+    staticGtfs: { zip: 'https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip' },
     create: (settings) =>
       createGtfsRealtimeAdapter(
         { sourceId: 'mta-lirr', operator: 'LIRR', coverage: NEW_YORK_REGION, defaultMode: 'rail' },
@@ -189,6 +210,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     pollIntervalSeconds: 20,
     staleAfterSeconds: 180,
     dropAfterSeconds: 600,
+    staticGtfs: { zip: 'https://rrgtfsfeeds.s3.amazonaws.com/gtfsmnr.zip' },
     create: (settings) =>
       createGtfsRealtimeAdapter(
         {
