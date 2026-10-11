@@ -73,6 +73,15 @@ const OFFICIAL: { source: string; include: string[]; exclude: string[] }[] = [
   { source: 'nyc-3dbm', include: ['north-america/us/new-york'], exclude: [] },
 ];
 
+/**
+ * Regions built in more parts than their extract needs, by id. The planner
+ * sizes by extract bytes alone; a region that merges official data
+ * (`OFFICIAL` above) also holds its official buildings, ~4 GB of RAM per GB of
+ * GML (`docs/MAP_CITY_PLANET.md` → "Official data"). Raise a region here
+ * when a dry run with `official: true` shows it does not fit, and re-plan.
+ */
+const MIN_PARTS: Record<string, number> = {};
+
 interface IndexFeature {
   properties: { id: string; parent?: string; name: string; urls: { pbf: string } };
   geometry: { type: string; coordinates: unknown } | null;
@@ -346,7 +355,7 @@ async function main(): Promise<void> {
       id: node.id,
       name: node.name,
       pbfBytes: sizes[node.id],
-      parts,
+      parts: Math.max(parts, MIN_PARTS[node.id] ?? 1),
       official: officialFor(node.id),
     }))
     .sort((a, b) => a.id.localeCompare(b.id));

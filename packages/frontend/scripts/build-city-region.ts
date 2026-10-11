@@ -32,13 +32,15 @@
  * one released is never counted against the next; the receipt records each
  * process's peak as the operating system measured it.
  *
- * ## Official data (the hook)
+ * ## Official data
  *
- * Regions listed with `official` sources in the catalogue (Spain's Catastro,
- * NYC's 3D Building Model) are merged by the compiler's `--lod2` option when
- * that option exists (`feat/city-lod2`, PR #135) and the prepared files are
- * passed with `--official=<source>:<file>[,<file>…]`. Without either, the
- * region is built from OpenStreetMap alone and the entry says so
+ * Regions the catalogue lists with `official` sources (Spain's Catastro,
+ * NYC's 3D Building Model; `docs/MAP_3D_SOURCES.md`) merge them through the
+ * compiler's `--lod2` when the files are passed with
+ * `--official=<source>:<file|dir>[,…]` — fetched by the caller like the
+ * extract (the workflow's `official` input; `docs/MAP_CITY_PLANET.md`). A
+ * source the catalogue does not list for the region is refused. Without
+ * them the region is built from OpenStreetMap alone and the entry says so
  * (`official: []`), so a later run with the data replaces it cleanly.
  */
 import { createHash } from 'node:crypto';
@@ -293,19 +295,19 @@ async function buildRegion(args: Args): Promise<RegionEntry[]> {
 
   const official: string[] = [];
   const lod2Args: string[] = [];
-  if (region.official.length > 0) {
-    const compiler = readFileSync(join(FRONTEND_ROOT, 'scripts', 'build-city-tiles.ts'), 'utf8');
-    const supported = compiler.includes("flag === 'lod2'");
-    for (const source of region.official) {
-      const given = args.official.find((value) => value.startsWith(`${source}:`));
-      if (supported && given) {
-        lod2Args.push(`--lod2=${given}`);
-        official.push(source);
-      } else {
-        console.log(
-          `· official data hook: ${source} is declared for ${region.id} but ${supported ? 'no prepared files were passed (--official)' : 'this compiler has no --lod2 (feat/city-lod2, PR #135)'}; building from OpenStreetMap alone`,
-        );
-      }
+  for (const value of args.official) {
+    const source = value.slice(0, value.indexOf(':'));
+    if (!region.official.includes(source)) {
+      throw new Error(`${source} is not an official source the catalogue lists for ${region.id}`);
+    }
+    lod2Args.push(`--lod2=${value}`);
+    official.push(source);
+  }
+  for (const source of region.official) {
+    if (!official.includes(source)) {
+      console.log(
+        `· official data: ${source} covers ${region.id} but none was passed (--official); building from OpenStreetMap alone`,
+      );
     }
   }
 

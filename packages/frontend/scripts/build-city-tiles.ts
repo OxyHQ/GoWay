@@ -20,7 +20,7 @@
  * bun run --cwd packages/frontend map:city-tiles --pbf=<file> --ownership=<region.ownership.json>
  * ```
  *
- * `--lod2=<source>:<file>[,<file>…]` (repeatable) reads a dataset listed in
+ * `--lod2=<source>:<file|dir>[,…]` (repeatable; a directory means the dataset files in it) reads a dataset listed in
  * `citygen/lod2/sources.ts` — CityGML or CityJSON — keeps its roof surfaces,
  * conflates them with the OSM buildings (`citygen/lod2/conflate.ts`) and writes
  * them as a second tile layer; `docs/MAP_3D_SOURCES.md` says which datasets
@@ -55,6 +55,7 @@
  * archive's own metadata carries the attribution, and `docs/MAP_3D_CITY.md` →
  * Obligations says what serving it requires.
  */
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { stat, writeFile } from 'node:fs/promises';
 import { mkdir, open } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -227,10 +228,21 @@ function parseArgs(argv: string[]): Args {
     else if (flag === 'lod2' && value) {
       const colon = value.indexOf(':');
       const source = value.slice(0, colon);
+      // A directory stands for the dataset files in it, sorted: a whole
+      // region's Catastro is thousands of municipalities, more than one
+      // command-line argument can hold (`build-city-region.ts`).
       const files = value
         .slice(colon + 1)
         .split(',')
-        .filter(Boolean);
+        .filter(Boolean)
+        .flatMap((path) =>
+          existsSync(path) && statSync(path).isDirectory()
+            ? readdirSync(path)
+                .filter((name) => /\.(gml|xml|json|jsonl)$/i.test(name))
+                .sort()
+                .map((name) => join(path, name))
+            : [path],
+        );
       if (colon <= 0 || !isLod2Source(source) || files.length === 0) {
         throw new Error(
           `--lod2=<source>:<file>[,<file>…] with a source from ${Object.keys(LOD2_SOURCES).join(', ')}`,

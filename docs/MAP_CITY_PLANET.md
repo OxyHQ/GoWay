@@ -244,6 +244,8 @@ schedule is written and commented out):
   On: archives and receipts uploaded under dated keys (an existing key fails
   the job), then the manifest — the dated copy first, the live one last.
 - `keep_archives`: keep a dry run's archives as artifacts for 3 days.
+- `official` (default **off**): fetch and merge the official 3D data the
+  catalogue lists for a region ([below](#official-data)).
 
 Jobs: `plan` (the matrix, no install), `build` (≤ 20 at a time, `fail-fast:
 false`; entries are kept only after every upload of the job succeeded, so the
@@ -261,18 +263,31 @@ re-plan with its memory — or from one planet file cut by `osmium extract
 (today regions are as consistent as Geofabrik's daily extracts, which share a
 replication timestamp per day).
 
-### Official data (the hook)
+### Official data
 
-The catalogue tags regions with the official 3D datasets `feat/city-lod2`
-(PR #135, open) defines: `es-catastro` for Spain's communities except País
-Vasco and Navarra (foral cadastres) and the Canary Islands; `nyc-3dbm` for the
-New York state extract. The region builder passes `--official=<source>:<files>`
-to the compiler's `--lod2` **when the compiler has it and the files are
-given**; otherwise it logs the hook and builds from OpenStreetMap alone, and
-the entry's `official` says which was merged. What remains once #135 merges: a
-fetch step per source in the workflow (the Catastro's per-municipality zips —
-`map:catastro-list` — and NYC's GML) before the build step, and each source's
-credit while drawn, which #135 already does.
+The catalogue tags regions with the official 3D datasets
+[`MAP_3D_SOURCES.md`](./MAP_3D_SOURCES.md) merges (`feat/city-lod2`, #135):
+`es-catastro` for Spain's communities except País Vasco and Navarra (foral
+cadastres) and the Canary Islands; `nyc-3dbm` for the New York state extract.
+With the workflow's `official` input on, the build step fetches them like the
+extract — the Catastro's municipality zips for the region's box
+(`map:catastro-list`), NYC's `DA_WISE_GML.zip` — and the region builder passes
+them to the compiler's `--lod2` (a directory stands for its files: Castilla y
+León's 2,248 municipalities would not fit one argument). Official surfaces that
+fall in tiles the region does not own are dropped like everything else; the
+entry's `official` names what was merged, and each source's credit is drawn
+while its tiles are (#135).
+
+**Measured on La Rioja** (the workflow step itself, run locally): 220
+municipalities, 53 MB of zips, 702 MB of GML; 116,205 cadastral buildings,
+21,360 OSM buildings that had no height given one; the building compile
+20.1 s and **3.0 GB** peak against ~0.2 GB for OpenStreetMap alone. That is
+~4 GB of RAM per GB of GML inside the build's box, so **`official` is off by
+default**: a large community (Catalonia, Andalucía, Madrid) would not fit a
+16 GB runner whole. Before turning it on, dry-run one large community with
+`official: true` and give the regions that do not fit more parts (`MIN_PARTS`
+in `plan-city-regions.ts`, then re-plan; each part reads only the official
+buildings inside its rectangle) — the planner sizes by extract bytes alone.
 
 ## Dry run (done)
 
@@ -330,11 +345,14 @@ Nothing below has been done. In order:
    `lib/map/mapFeatures.ts`; change to `'always'` when the 3D city is ready for
    Labs users. Until then only development builds and builds with
    `EXPO_PUBLIC_MAP_CITY_TILES=1` ask for the tiles.
-7. **The world**: dispatch `regions: all`, `publish: true` (~1 h). Then, if
+7. **Official data** (optional, before or after 8): dry-run `regions:
+   europe/spain/madrid` and `europe/spain/cataluna` with `official: true`;
+   raise `MIN_PARTS` for any that does not fit; then publish them with it.
+8. **The world**: dispatch `regions: all`, `publish: true` (~1 h). Then, if
    wanted, uncomment the monthly schedule — a scheduled run has no inputs, so
    make it publish deliberately (e.g. `publish: ${{ github.event_name ==
    'schedule' || inputs.publish }}`).
-8. **Housekeeping**: after a new manifest has been live a while, delete the
+9. **Housekeeping**: after a new manifest has been live a while, delete the
    keys its run listed as retired. Rollback is copying a
    `city/manifests/<stamp>.json` over `city/manifest.json` (≤ 6 minutes to
    reach every colo) or commenting out `MAP_CITY_MANIFEST` and deploying.

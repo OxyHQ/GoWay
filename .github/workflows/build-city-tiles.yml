@@ -51,6 +51,12 @@ on:
         description: Dry run only — keep the built archives as workflow artifacts for 3 days
         type: boolean
         default: false
+      official:
+        description: >-
+          Merge official 3D building data where the catalogue lists it (Spain's Catastro, NYC's
+          3D model) — off until one region of each has been measured on this runner
+        type: boolean
+        default: false
   # Monthly, the 5th, after the basemap's planet and the routing tiles (the
   # 3rd). COMMENTED OUT until the owner approves a published run
   # (docs/MAP_CITY_PLANET.md → "Approval"); a schedule has no inputs, so it
@@ -127,6 +133,7 @@ jobs:
           REGIONS: ${{ matrix.batch.regions }}
           STAMP: ${{ needs.plan.outputs.stamp }}
           OUT: /mnt/city/out
+          OFFICIAL: ${{ inputs.official && 'yes' || 'no' }}
         run: |
           set -euo pipefail
           for region in $REGIONS; do
@@ -140,14 +147,43 @@ jobs:
             # The md5 file names the file by its published name; check the bytes.
             [ "$(md5sum < "$dl.osm.pbf" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$dl.osm.pbf.md5")" ] \
               || { echo "::error::$region: the extract does not match its md5"; exit 1; }
-            # Official 3D data (Catastro, NYC 3DBM) is merged by the compiler's
-            # --lod2 once feat/city-lod2 (PR #135) is merged AND a fetch step
-            # passes --official=<source>:<files> here; until then the region
-            # builder logs the hook and builds from OpenStreetMap alone.
+            # Official 3D building data (docs/MAP_3D_SOURCES.md), only where
+            # the catalogue lists a source for this region and only when asked.
+            # Fetched like the extract — the compiler never fetches anything.
+            official=()
+            if [ "$OFFICIAL" = yes ]; then
+              sources=$(jq -r --arg id "$region" '.regions[] | select(.id == $id) | .official[]' \
+                packages/frontend/scripts/citygen/regions.json)
+              for source in $sources; do
+                odir="/mnt/city/official/$region/$source"
+                mkdir -p "$odir"
+                case "$source" in
+                  es-catastro)
+                    # Every municipality whose box meets the region's polygon's box;
+                    # the build keeps only what lands in the tiles the region owns.
+                    box=$(awk 'NF == 2 && $1 ~ /^-?[0-9.Ee+-]+$/ { x = $1 + 0; y = $2 + 0;
+                      if (!n++) { w = e = x; s = nn = y }
+                      if (x < w) w = x; if (x > e) e = x; if (y < s) s = y; if (y > nn) nn = y }
+                      END { printf "%f,%f,%f,%f", w, s, e, nn }' "$dl.poly")
+                    bun run --cwd packages/frontend map:catastro-list --bbox="$box" > "$odir/urls.txt"
+                    (cd "$odir" && xargs -n1 -P4 curl -fsSLO --retry 3 -A "$USER_AGENT" < urls.txt \
+                      && for z in *.zip; do unzip -oq "$z" '*.buildingpart.gml' && rm "$z"; done)
+                    ;;
+                  nyc-3dbm)
+                    curl -fsSL --retry 3 -A "$USER_AGENT" -o "$odir/DA_WISE_GML.zip" \
+                      https://s-media.nyc.gov/agencies/oti/DA_WISE_GML.zip
+                    (cd "$odir" && unzip -oqj DA_WISE_GML.zip '*_3D_Buildings_Merged.gml' && rm DA_WISE_GML.zip)
+                    ;;
+                  *) echo "::error::$region: no fetch step for official source $source"; exit 1 ;;
+                esac
+                echo "$source: $(find "$odir" -name '*.gml' | wc -l) files, $(du -sh "$odir" | cut -f1)"
+                official+=("--official=$source:$odir")
+              done
+            fi
             bun run --cwd packages/frontend map:city-region \
               --region="$region" --pbf="$dl.osm.pbf" --poly="$dl.poly" \
-              --stamp="$STAMP" --out="$OUT" --osmium=osmium
-            rm -f "$dl.osm.pbf"
+              --stamp="$STAMP" --out="$OUT" --osmium=osmium "${official[@]}"
+            rm -rf "$dl.osm.pbf" "/mnt/city/official/$region"
             echo "::endgroup::"
           done
           du -sh "$OUT"
