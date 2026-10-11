@@ -69,10 +69,11 @@ import {
   type QueriedLabel,
 } from './labels';
 import { MapAttribution } from './MapAttribution';
+import { useCompactCredit } from './useCompactCredit';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
 import { drawableModels, modelFallbackMarker, modelIdOfMarker } from './models';
-import { MAP_RELIEF } from './reliefFlags';
+import { useMapRelief } from './reliefFlags';
 import {
   asFinite,
   describeNumbers,
@@ -132,6 +133,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   ref,
 ) {
   const theme = useTheme();
+  // The data credit (`lib/map/compactCredit.ts`): spelled out once the style
+  // has loaded, folded after five seconds or at the reader's first pan, zoom
+  // or tap. Always rendered; nothing can switch it off.
+  const [styleLoaded, setStyleLoaded] = useState(false);
+  const credit = useCompactCredit(styleLoaded);
+  const noteCreditInteraction = credit.noteInteraction;
   const mapRef = useRef<MapRef>(null);
   const cameraRef = useRef<CameraRef>(null);
 
@@ -180,10 +187,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // The relief prototype's hillshade, under `water` — only on GoWay's own style,
   // which promises that layer (`docs/MAP_TERRAIN_GLOBE.md`). The rest of the
   // relief (globe, 3D terrain, sky) has no API in maplibre-react-native 11.4.
+  // A toggle in the settings dialog adds or removes it live.
+  const { terrain } = useMapRelief();
   const hillshade = useMemo(
-    () =>
-      MAP_RELIEF.terrain && resolveOwnsStyleDocument() ? hillshadeLayer(resolvedAppearance) : null,
-    [resolvedAppearance],
+    () => (terrain && resolveOwnsStyleDocument() ? hillshadeLayer(resolvedAppearance) : null),
+    [terrain, resolvedAppearance],
   );
   const gestures = resolveInteraction(interaction);
 
@@ -380,6 +388,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 
   const emitViewport = useCallback(
     (event: NativeSyntheticEvent<ViewStateChangeEvent>, isFinal: boolean) => {
+      // The reader moving the map folds the credit; the app moving it does not.
+      if (event.nativeEvent.userInteraction) noteCreditInteraction();
       if (!onViewportChange) return;
       const { center, zoom, bearing, pitch, bounds, userInteraction } = event.nativeEvent;
       const [west, south, east, north] = bounds;
@@ -398,7 +408,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         isFinal,
       });
     },
-    [onViewportChange],
+    [onViewportChange, noteCreditInteraction],
   );
 
   /**
@@ -418,6 +428,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
    */
   const handlePress = useCallback(
     (event: NativeSyntheticEvent<PressEvent>) => {
+      noteCreditInteraction();
       const press = onPress;
       if (!press) return;
       const coordinate = fromLngLat(event.nativeEvent.lngLat);
@@ -485,7 +496,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           press({ coordinate });
         });
     },
-    [onPress],
+    [onPress, noteCreditInteraction],
   );
 
   /**
@@ -515,6 +526,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   );
 
   const handleStyleLoaded = useCallback(() => {
+    setStyleLoaded(true);
     setError(null);
     onReady?.();
   }, [onReady]);
@@ -706,7 +718,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           credit must be on every map GoWay draws, including the embed in
           somebody else's page. See MapBrand.tsx. */}
       <MapBrand />
-      <MapAttribution />
+      <MapAttribution expanded={credit.expanded} onToggle={credit.toggle} />
 
       {error ? <MapErrorState error={error} onRetry={retry} /> : null}
     </View>

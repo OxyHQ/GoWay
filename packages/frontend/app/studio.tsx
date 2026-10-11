@@ -4,7 +4,7 @@
  * See `docs/MAP_CAMERA_STUDIO.md`.
  *
  * Thin on purpose, because expo-router puts every route file in the entry
- * bundle: this file is the flag check and one `lazy()`. The screen and
+ * bundle: this file is the feature check and one `lazy()`. The screen and
  * everything it uses load from `features/flyover/lazy.ts` only when the flag
  * is on, so with it off a visitor downloads nothing of the Studio.
  *
@@ -15,14 +15,7 @@
 import { lazy, Suspense } from 'react';
 import { Redirect, useLocalSearchParams } from 'expo-router';
 
-import { MAP_FLYOVER_ENABLED } from '@/lib/config';
-import { isFlyoverRequested } from '@/lib/map/flyoverFlag';
-
-const FLYOVER = isFlyoverRequested({
-  enabled: MAP_FLYOVER_ENABLED,
-  development: __DEV__,
-  search: typeof window !== 'undefined' ? window.location.search : '',
-});
+import { useMapFeatures } from '@/lib/map/useMapFeatures';
 
 const StudioScreen = lazy(() =>
   import('@/features/flyover/lazy').then((chunk) => ({ default: chunk.StudioScreen })),
@@ -30,7 +23,13 @@ const StudioScreen = lazy(() =>
 
 export default function StudioRoute() {
   const params = useLocalSearchParams<{ lat?: string; lng?: string; zoom?: string }>();
-  if (!FLYOVER) {
+  // The map-feature registry's `flyover` (`lib/map/mapFeatures.ts`): the
+  // build, the person's choice in the settings dialog's Labs, and `?flyover=1` in
+  // development. Native reads the stored choice asynchronously, so this waits
+  // for it rather than redirecting somebody who did turn the Studio on.
+  const { features, hydrated } = useMapFeatures();
+  if (!hydrated) return null;
+  if (!features.on('flyover')) {
     const { lat, lng, zoom } = params;
     return (
       <Redirect

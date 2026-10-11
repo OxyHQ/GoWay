@@ -5,7 +5,9 @@
  * The same two ways in as `city3dFlag.ts`, deliberately unequal, plus one
  * precondition:
  *
- *  - `EXPO_PUBLIC_MAP_CITY_SKY=1` (`MAP_CITY_SKY_ENABLED` in `lib/config.ts`):
+ *  - `enabled`, the map-feature registry's answer (`mapFeatures.ts`): the
+ *    build's `EXPO_PUBLIC_MAP_CITY_SKY=1`, then the person's choice in the
+ *    settings dialog's Labs. The variable alone:
  *    a BUILD decision. No production deployment sets it.
  *  - `?citysky=1` on the URL: a per-tab switch, honoured ONLY in a development
  *    build (`__DEV__`), so a link cannot switch it on for somebody on goway.to.
@@ -19,7 +21,7 @@
 export function isCitySkyRequested(input: {
   /** `isCity3dRequested(…)` for this page. */
   city3d: boolean;
-  /** `MAP_CITY_SKY_ENABLED`. */
+  /** The registry's answer for `citySky`. */
   enabled: boolean;
   /** `__DEV__`. */
   development: boolean;

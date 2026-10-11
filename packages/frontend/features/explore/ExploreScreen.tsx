@@ -35,7 +35,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowDimensions, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@oxy.so/bloom/button';
 import { Fab } from '@oxy.so/bloom/fab';
@@ -46,7 +50,10 @@ import { RiCompass3Line } from '@oxy.so/bloom/icons/RiCompass3Line';
 import { RiFocus3Line } from '@oxy.so/bloom/icons/RiFocus3Line';
 
 import { BrandedChromeProvider } from '@/components/brand';
+import { MAP_CHIP_SLOT_ID } from '@/components/map/chipSlot';
+import { type MapChromeLift, MapChromeLiftContext } from '@/components/map/chromeLift';
 import {
+  MAP_CREDIT_CLEARANCE,
   MapCanvas,
   type GeoBounds,
   type MapApi,
@@ -62,10 +69,8 @@ import { MAP_SHEET_HALF_RATIO, MapSheet, type MapSheetSnap } from '@/components/
 import { SidePanel } from '@/components/sheet/SidePanel';
 import { PANEL_WIDTH, useLayoutMode } from '@/lib/useLayoutMode';
 import { useAuthGate } from '@/lib/authGate';
-import { MAP_CITY3D_ENABLED, MAP_FLYOVER_ENABLED, MAP_LANDMARKS_ENABLED } from '@/lib/config';
-import { isCity3dRequested } from '@/lib/map/city3dFlag';
-import { isFlyoverRequested } from '@/lib/map/flyoverFlag';
-import { isLandmarksRequested } from '@/lib/map/landmarksFlag';
+import { chromeLift } from '@/lib/map/chromeLift';
+import { useMapFeature } from '@/lib/map/useMapFeatures';
 import { useTranslation } from '@/lib/i18n';
 import type { LocationErrorReason } from '@/lib/map/useUserLocation';
 
@@ -76,6 +81,7 @@ import { useStreet3dLayer } from '@/features/street3d/useStreet3dLayer';
 import { ExploreBody, ExploreHeader, type RenderPlaceActions } from './ExploreContent';
 import { ExploreMarker } from './ExploreMarker';
 import { clampFitPadding } from './mapPadding';
+import { MapSettingsButton } from './MapSettingsButton';
 import { MapTopBar } from './MapTopBar';
 import { useExplore } from './useExplore';
 
@@ -83,12 +89,14 @@ import { useExplore } from './useExplore';
 const MY_LOCATION_ZOOM = 15;
 /** Below this the compass is effectively north and the reset control is noise. */
 const BEARING_EPSILON = 1;
+/** The settings dialog's "3D": the steepest tilt the shipped map allows. */
+const TILTED_PITCH = 60;
+/** At or above this the camera reads as 3D in the settings dialog. */
+const TILTED_EPSILON = 5;
 /** Horizontal room the location notice leaves for the controls column. */
 const CONTROLS_COLUMN_WIDTH = 72;
 /** Wait for the 3D → 2D transition before framing the scene's bounds. */
 const RETURN_FIT_DELAY_MS = 250;
-/** How far the floating controls lift as the sheet is dragged open. */
-const CHROME_LIFT_PX = 28;
 
 /**
  * Breathing room between fitted content and the edge of the FREE canvas, in px.
@@ -201,43 +209,32 @@ export interface ExploreScreenProps {
 }
 
 /**
- * The route flyover (`docs/MAP_CAMERA_STUDIO.md`): decided once per page load,
- * and loaded only through `features/flyover/lazy.ts`, so with the flag off
- * this screen gains a constant and an `import()` stub and nothing else.
+ * The route flyover (`docs/MAP_CAMERA_STUDIO.md`), loaded only through
+ * `features/flyover/lazy.ts`: with the feature off this screen gains an
+ * `import()` stub and nothing else. Whether it is on is the map-feature
+ * registry's `flyover`, read live below, so turning it on in the settings dialog
+ * offers "Fly the route" at once.
  */
-const FLYOVER = isFlyoverRequested({
-  enabled: MAP_FLYOVER_ENABLED,
-  development: __DEV__,
-  search: typeof window !== 'undefined' ? window.location.search : '',
-});
 const RouteFlyover = lazy(() =>
   import('@/features/flyover/lazy').then((chunk) => ({ default: chunk.RouteFlyover })),
 );
 const NO_MODELS: readonly MapModel[] = [];
 
 /**
- * The 3D landmarks' tour (`docs/MAP_LANDMARKS.md`): decided once per page
- * load — the landmarks flag AND the city-3D flag, since landmarks are drawn
- * only by the city engine — and loaded only through
- * `features/landmarks/lazy.ts`, so with either off this screen gains two
- * constants and two `import()` stubs and nothing else.
+ * The 3D landmarks' tour (`docs/MAP_LANDMARKS.md`), loaded only through
+ * `features/landmarks/lazy.ts`: with the feature off this screen gains three
+ * `import()` stubs and nothing else. Whether it is on is the map-feature
+ * registry's `landmarks` (which needs the 3D city), read live below, so the
+ * "Landmarks" pill and "Landmark tour" come and go with the Labs switch.
  */
-const LANDMARKS =
-  isLandmarksRequested({
-    enabled: MAP_LANDMARKS_ENABLED,
-    development: __DEV__,
-    search: typeof window !== 'undefined' ? window.location.search : '',
-  }) &&
-  isCity3dRequested({
-    enabled: MAP_CITY3D_ENABLED,
-    development: __DEV__,
-    search: typeof window !== 'undefined' ? window.location.search : '',
-  });
 const LandmarkOverlay = lazy(() =>
   import('@/features/landmarks/lazy').then((chunk) => ({ default: chunk.LandmarkOverlay })),
 );
 const LandmarkPlaceAction = lazy(() =>
   import('@/features/landmarks/lazy').then((chunk) => ({ default: chunk.LandmarkPlaceAction })),
+);
+const LandmarksPillEntry = lazy(() =>
+  import('@/features/landmarks/lazy').then((chunk) => ({ default: chunk.LandmarksPillEntry })),
 );
 
 export default function ExploreScreen({
@@ -299,13 +296,12 @@ export default function ExploreScreen({
 
   const handleMapReady = useCallback(() => {
     mapReady.current = true;
-    // The pill needs a centre before the first move settles.
-    if (LANDMARKS) {
-      void mapRef.current?.getViewport().then((viewport) => {
-        if (viewport)
-          setSettledCentre({ latitude: viewport.latitude, longitude: viewport.longitude });
-      });
-    }
+    // The landmarks pill needs a centre before the first move settles (and
+    // may be switched on later, so the centre is always kept).
+    void mapRef.current?.getViewport().then((viewport) => {
+      if (viewport)
+        setSettledCentre({ latitude: viewport.latitude, longitude: viewport.longitude });
+    });
     street3d.onMapReady();
     setTimeout(applyPendingFit, RETURN_FIT_DELAY_MS);
   }, [applyPendingFit, street3d]);
@@ -328,6 +324,9 @@ export default function ExploreScreen({
   );
 
   const [bearing, setBearing] = useState(0);
+  const [pitch, setPitch] = useState(0);
+  const flyover = useMapFeature('flyover');
+  const landmarks = useMapFeature('landmarks');
   const [mapError, setMapError] = useState<MapCanvasError | null>(null);
   // While the flyover flies, the sheet, the panel and the floating controls
   // step aside; the vehicle is a model on the canvas.
@@ -336,7 +335,9 @@ export default function ExploreScreen({
   // The landmark tour: which landmark it is on (`null`: not touring), the
   // settled view centre for the "Landmarks" pill, and who to tell when the
   // user moves the map (the tour pauses).
-  const [tourId, setTourId] = useState<string | null>(null);
+  const [requestedTourId, setTourId] = useState<string | null>(null);
+  // Switching landmarks off in the settings dialog ends a tour in progress.
+  const tourId = landmarks ? requestedTourId : null;
   const userMoveListeners = useRef(new Set<() => void>());
   const subscribeUserMove = useCallback((listener: () => void) => {
     userMoveListeners.current.add(listener);
@@ -360,25 +361,28 @@ export default function ExploreScreen({
   const [followingLocation, setFollowingLocation] = useState(false);
 
   const sheetProgress = useSharedValue(0);
+  // The sheet's live on-screen height (`MapSheet`'s `animatedHeight`).
+  const sheetHeight = useSharedValue(0);
 
   const topEdge = useTopEdgeInset();
   const bottomEdge = useBottomEdgeInset();
   const bottomGap = windowEdgeGap(insets.bottom);
   const sideGap = windowEdgeGap(insets.right, 0);
-  const controlsBottom = bottomEdge > 0 ? bottomEdge + windowEdgeGap(0) : bottomGap;
+  // Above the map's credit, which owns the bottom-right corner (`MapAttribution`).
+  const controlsBottom =
+    (bottomEdge > 0 ? bottomEdge + windowEdgeGap(0) : bottomGap) + MAP_CREDIT_CLEARANCE;
   const areaTop = topEdge > 0 ? topEdge + windowEdgeGap(0) : windowEdgeGap(insets.top);
 
   const handleViewportChange = useCallback(
     (change: MapViewportChange) => {
       setBearing(change.viewport.bearing);
-      if (LANDMARKS) {
-        if (change.source === 'user') for (const listener of userMoveListeners.current) listener();
-        if (change.isFinal) {
-          setSettledCentre({
-            latitude: change.viewport.latitude,
-            longitude: change.viewport.longitude,
-          });
-        }
+      setPitch(change.viewport.pitch);
+      if (change.source === 'user') for (const listener of userMoveListeners.current) listener();
+      if (change.isFinal) {
+        setSettledCentre({
+          latitude: change.viewport.latitude,
+          longitude: change.viewport.longitude,
+        });
       }
       explore.onViewportChange(change);
       street3d.onViewportChange(change);
@@ -397,6 +401,16 @@ export default function ExploreScreen({
 
   const handleResetNorth = useCallback(() => {
     mapRef.current?.resetNorth();
+  }, []);
+
+  /** The settings dialog's 2D/3D: tilt or level the camera where it already is. */
+  const handleTiltChange = useCallback((tilted: boolean) => {
+    const map = mapRef.current;
+    if (!map) return;
+    void map.getViewport().then((viewport) => {
+      if (!viewport) return;
+      map.moveTo(viewport, { pitch: tilted ? TILTED_PITCH : 0 });
+    });
   }, []);
 
   /**
@@ -448,21 +462,35 @@ export default function ExploreScreen({
   );
 
   /**
-   * Lift and fade the floating controls with the sheet, on the UI thread.
-   *
-   * In panel mode `sheetProgress` is never written, so this resolves to the
-   * identity transform and costs nothing.
+   * Keep the bottom chrome — "My location" and the map's data credit — above
+   * the sheet's CURRENT top edge, on the UI thread (`lib/map/chromeLift.ts`).
+   * They are laid out against the sheet's resting claim on the bottom edge;
+   * this lifts them the rest of the way, so at `half` the credit is visible
+   * from the first frame and while dragging they ride the sheet, then fade as
+   * it takes the screen. In panel mode nothing writes `sheetHeight` and there
+   * is no provider, so the chrome sits where it always did.
    */
-  const chromeStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -sheetProgress.value * CHROME_LIFT_PX }],
-    opacity: 1 - sheetProgress.value * 0.85,
-  }));
+  const { height: windowHeight } = useWindowDimensions();
+  const lift = useDerivedValue(
+    () => chromeLift({ sheetHeight: sheetHeight.value, claimed: bottomEdge, windowHeight }),
+    [sheetHeight, bottomEdge, windowHeight],
+  );
+  const liftPx = useDerivedValue(() => lift.value.lift, [lift]);
+  const liftOpacity = useDerivedValue(() => lift.value.opacity, [lift]);
+  const chromeLiftValue = useMemo<MapChromeLift>(
+    () => ({ lift: liftPx, opacity: liftOpacity, rightClearance: sideGap + CONTROLS_COLUMN_WIDTH }),
+    [liftPx, liftOpacity, sideGap],
+  );
+  const chromeStyle = useAnimatedStyle(
+    () => ({ transform: [{ translateY: -liftPx.value }], opacity: liftOpacity.value }),
+    [liftPx, liftOpacity],
+  );
 
   const header = <ExploreHeader explore={explore} />;
   const body = (
     <ExploreBody
       explore={explore}
-      renderPlaceActions={LANDMARKS ? renderPlaceActions : undefined}
+      renderPlaceActions={landmarks ? renderPlaceActions : undefined}
     />
   );
 
@@ -474,196 +502,226 @@ export default function ExploreScreen({
     // route would otherwise have to remember. Never in `app/_layout.tsx` — that
     // also owns `app/frame.tsx`, which is the case the badge exists for.
     <BrandedChromeProvider>
-      <View className="flex-1 bg-background">
-        <MapCanvas
-          ref={mapRef}
-          initialViewport={initialViewport ?? undefined}
-          markers={markers}
-          renderMarker={renderMarker}
-          overlays={overlays}
-          onMarkerPress={handleMarkerPress}
-          onReady={handleMapReady}
-          onPress={handleMapPress}
-          // What the basemap is already labelling, so GoWay does not draw a
-          // second chip over it. See `lib/goway/basemapLabels.ts`.
-          onLabelsChange={explore.onLabelsChange}
-          showUserLocation={followingLocation}
-          onViewportChange={handleViewportChange}
-          onError={setMapError}
-          models={flyoverModels}
-          testID="goway-map"
-        />
+      <MapChromeLiftContext.Provider
+        value={layout === 'sheet' && !immersive ? chromeLiftValue : null}
+      >
+        <View className="flex-1 bg-background">
+          <MapCanvas
+            ref={mapRef}
+            initialViewport={initialViewport ?? undefined}
+            markers={markers}
+            renderMarker={renderMarker}
+            overlays={overlays}
+            onMarkerPress={handleMarkerPress}
+            onReady={handleMapReady}
+            onPress={handleMapPress}
+            // What the basemap is already labelling, so GoWay does not draw a
+            // second chip over it. See `lib/goway/basemapLabels.ts`.
+            onLabelsChange={explore.onLabelsChange}
+            showUserLocation={followingLocation}
+            onViewportChange={handleViewportChange}
+            onError={setMapError}
+            models={flyoverModels}
+            testID="goway-map"
+          />
 
-        <MapTopBar />
+          <MapTopBar />
 
-        {/* "Search this area" is Bloom's own control, and it arms itself from the
+          {/* "Search this area" is Bloom's own control, and it arms itself from the
           `source`/`isFinal` signal on the viewport event rather than from every
           camera frame — a camera the APP moved must never offer to re-run the
           search that moved it. It is hidden while the canvas is degraded: there
           is no visible area to search. */}
-        {explore.areaMoved && !mapError && !directions.active && !immersive ? (
-          <View
-            pointerEvents="box-none"
-            className="absolute left-0 right-0 items-center"
-            style={{ top: areaTop }}
-          >
-            <MapSearchAreaButton
-              variant="button"
-              label="Search this area"
-              onPress={explore.searchThisArea}
-              testID="search-this-area"
-            />
-          </View>
-        ) : null}
+          {explore.areaMoved && !mapError && !directions.active && !immersive ? (
+            <View
+              pointerEvents="box-none"
+              className="absolute left-0 right-0 items-center"
+              style={{ top: areaTop }}
+            >
+              <MapSearchAreaButton
+                variant="button"
+                label="Search this area"
+                onPress={explore.searchThisArea}
+                testID="search-this-area"
+              />
+            </View>
+          ) : null}
 
-        {/* Street 3D: an area in view needs more photos. A suggestion, never a
+          {/* Street 3D: an area in view needs more photos. A suggestion, never a
           wall — it yields to "Search this area" and to the directions picker,
           and contributing is auth-gated at the moment it is asked for. */}
-        {street3d.wantingCapture.length > 0 &&
-        !explore.areaMoved &&
-        !mapError &&
-        !directions.active &&
-        !immersive ? (
-          <View
-            pointerEvents="box-none"
-            className="absolute left-0 right-0 items-center px-space-16"
-            style={{ top: areaTop }}
-          >
-            <View className="flex-row items-center gap-space-8 rounded-radius-max bg-card py-space-4 pl-space-12 pr-space-4 shadow-m">
-              <Text className="text-bodySmall text-foreground" numberOfLines={2}>
-                {t('street3d.layer.contributeHint')}
-              </Text>
-              <Button size="xs" onPress={() => gate.run(() => router.push('/contribute'))}>
-                {t('street3d.contribute.cta')}
-              </Button>
+          {street3d.wantingCapture.length > 0 &&
+          !explore.areaMoved &&
+          !mapError &&
+          !directions.active &&
+          !immersive ? (
+            <View
+              pointerEvents="box-none"
+              className="absolute left-0 right-0 items-center px-space-16"
+              style={{ top: areaTop }}
+            >
+              <View className="flex-row items-center gap-space-8 rounded-radius-max bg-card py-space-4 pl-space-12 pr-space-4 shadow-m">
+                <Text className="text-bodySmall text-foreground" numberOfLines={2}>
+                  {t('street3d.layer.contributeHint')}
+                </Text>
+                <Button size="xs" onPress={() => gate.run(() => router.push('/contribute'))}>
+                  {t('street3d.contribute.cta')}
+                </Button>
+              </View>
             </View>
-          </View>
-        ) : null}
+          ) : null}
 
-        {/* Choosing a stop on the map is a MODE, and a mode with no visible state
+          {/* Choosing a stop on the map is a MODE, and a mode with no visible state
           is a map that mysteriously starts answering taps differently. The
           notice is an `alert` so it is announced, and it names the field it is
           about. */}
-        {directions.picking != null && !mapError ? (
-          <View
-            pointerEvents="none"
-            accessibilityRole="alert"
-            className="absolute left-0 right-0 items-center px-space-16"
-            style={{ top: areaTop }}
-          >
-            <View className="rounded-radius-max bg-card px-space-16 py-space-8 shadow-m">
-              <Text className="text-bodySmall text-foreground">
-                {`Tap the map to set the ${slotName(directions.picking, directions.stops.length).toLowerCase()}`}
-              </Text>
+          {directions.picking != null && !mapError ? (
+            <View
+              pointerEvents="none"
+              accessibilityRole="alert"
+              className="absolute left-0 right-0 items-center px-space-16"
+              style={{ top: areaTop }}
+            >
+              <View className="rounded-radius-max bg-card px-space-16 py-space-8 shadow-m">
+                <Text className="text-bodySmall text-foreground">
+                  {`Tap the map to set the ${slotName(directions.picking, directions.stops.length).toLowerCase()}`}
+                </Text>
+              </View>
             </View>
-          </View>
-        ) : null}
+          ) : null}
 
-        {LANDMARKS && !mapError ? (
-          <Suspense fallback={null}>
-            <LandmarkOverlay
-              mapRef={mapRef}
-              top={areaTop}
-              centre={settledCentre}
-              startId={tourId}
-              showPill={!flying && !directions.active}
-              onStart={setTourId}
-              onClose={() => setTourId(null)}
-              subscribeUserMove={subscribeUserMove}
-            />
-          </Suspense>
-        ) : null}
+          {landmarks && tourId && !mapError ? (
+            <Suspense fallback={null}>
+              <LandmarkOverlay
+                mapRef={mapRef}
+                top={areaTop}
+                startId={tourId}
+                onClose={() => setTourId(null)}
+                subscribeUserMove={subscribeUserMove}
+              />
+            </Suspense>
+          ) : null}
 
-        {FLYOVER && directions.active && directions.route && !mapError ? (
-          <Suspense fallback={null}>
-            <RouteFlyover
-              route={directions.route}
-              mapRef={mapRef}
-              top={areaTop}
-              onActiveChange={setFlying}
-              onModelsChange={setFlyoverModels}
-            />
-          </Suspense>
-        ) : null}
-
-        {immersive ? null : (
-          <Animated.View
+          {/* The top-right stack, under the account button: ONE column, so its
+          items never overlap — the settings button (where Apple Maps parks its
+          map options, a corner no sheet or panel covers in either layout),
+          the "Landmarks" pill, and last the slot the map's own chips mount
+          into (the "Simulated traffic" label, `components/map/chipSlot.ts`).
+          A new chip (Live) goes here too. The slot is never hidden: the label
+          must show whenever the simulation draws, a tour included. */}
+          <View
             pointerEvents="box-none"
-            style={[
-              {
-                position: 'absolute',
-                bottom: controlsBottom,
-                right: sideGap,
-                alignItems: 'flex-end',
-                gap: 12,
-              },
-              layout === 'sheet' ? chromeStyle : null,
-            ]}
+            className="absolute items-end gap-space-8"
+            style={{ top: areaTop, right: sideGap }}
+            testID="map-top-right-stack"
           >
-            {Math.abs(bearing) > BEARING_EPSILON ? (
+            {immersive ? null : (
+              <MapSettingsButton tilted={pitch >= TILTED_EPSILON} onTiltChange={handleTiltChange} />
+            )}
+            {landmarks && !mapError && !immersive && !directions.active ? (
+              <Suspense fallback={null}>
+                <LandmarksPillEntry centre={settledCentre} onOpen={setTourId} />
+              </Suspense>
+            ) : null}
+            <View nativeID={MAP_CHIP_SLOT_ID} pointerEvents="none" className="items-end" />
+          </View>
+
+          {flyover && directions.active && directions.route && !mapError ? (
+            <Suspense fallback={null}>
+              <RouteFlyover
+                route={directions.route}
+                mapRef={mapRef}
+                top={areaTop}
+                onActiveChange={setFlying}
+                onModelsChange={setFlyoverModels}
+              />
+            </Suspense>
+          ) : null}
+
+          {immersive ? null : (
+            <Animated.View
+              pointerEvents="box-none"
+              style={[
+                {
+                  position: 'absolute',
+                  bottom: controlsBottom,
+                  right: sideGap,
+                  alignItems: 'flex-end',
+                  gap: 12,
+                },
+                layout === 'sheet' ? chromeStyle : null,
+              ]}
+            >
+              {Math.abs(bearing) > BEARING_EPSILON ? (
+                <Fab
+                  size="xs"
+                  icon={RiCompass3Line}
+                  iconSize={20}
+                  accessibilityLabel={t('map.resetNorth')}
+                  onPress={handleResetNorth}
+                  appearance="subtle"
+                  tone="neutral"
+                />
+              ) : null}
               <Fab
-                size="xs"
-                icon={RiCompass3Line}
-                iconSize={20}
-                accessibilityLabel={t('map.resetNorth')}
-                onPress={handleResetNorth}
+                icon={RiFocus3Line}
+                iconSize={22}
+                accessibilityLabel={t('map.myLocation')}
+                accessibilityHint={t('map.myLocationHint')}
+                disabled={location.isLocating}
+                onPress={() => void handleLocate()}
                 appearance="subtle"
                 tone="neutral"
               />
-            ) : null}
-            <Fab
-              icon={RiFocus3Line}
-              iconSize={22}
-              accessibilityLabel={t('map.myLocation')}
-              accessibilityHint={t('map.myLocationHint')}
-              disabled={location.isLocating}
-              onPress={() => void handleLocate()}
-              appearance="subtle"
-              tone="neutral"
-            />
-          </Animated.View>
-        )}
+            </Animated.View>
+          )}
 
-        {/* A declined permission is a normal outcome, not an error screen: the
+          {/* A declined permission is a normal outcome, not an error screen: the
           map stays fully usable without it, so this says what happened and gets
           out of the way. Every reason gets its own sentence — the control looks
           equally dead when the page is http:// or the device cannot fix, and
           neither of those is the user's doing. */}
-        {locationNotice && !immersive ? (
-          <View
-            pointerEvents="none"
-            accessibilityRole="alert"
-            className="absolute items-start"
-            style={{
-              bottom: controlsBottom,
-              left: layout === 'panel' ? undefined : windowEdgeGap(insets.left, 0),
-              right: sideGap + CONTROLS_COLUMN_WIDTH,
-            }}
-          >
-            <View className="rounded-radius-12 bg-card px-space-12 py-space-8 shadow-s">
-              <Text className="text-bodySmall text-muted-foreground">{locationNotice}</Text>
-            </View>
-          </View>
-        ) : null}
+          {locationNotice && !immersive ? (
+            <Animated.View
+              pointerEvents="none"
+              accessibilityRole="alert"
+              className="absolute items-start"
+              style={[
+                {
+                  bottom: controlsBottom,
+                  left: layout === 'panel' ? undefined : windowEdgeGap(insets.left, 0),
+                  right: sideGap + CONTROLS_COLUMN_WIDTH,
+                },
+                // Beside "My location", so it rides the sheet with it.
+                layout === 'sheet' ? chromeStyle : null,
+              ]}
+            >
+              <View className="rounded-radius-12 bg-card px-space-12 py-space-8 shadow-s">
+                <Text className="text-bodySmall text-muted-foreground">{locationNotice}</Text>
+              </View>
+            </Animated.View>
+          ) : null}
 
-        {immersive ? null : layout === 'panel' ? (
-          <SidePanel header={header} accessibilityLabel="Places" testID="explore-panel">
-            {body}
-          </SidePanel>
-        ) : (
-          <MapSheet
-            snap={snap}
-            onSnapChange={setSnap}
-            animatedProgress={sheetProgress}
-            manualActivation
-            header={header}
-            accessibilityLabel="Places"
-            testID="explore-sheet"
-          >
-            {body}
-          </MapSheet>
-        )}
-      </View>
+          {immersive ? null : layout === 'panel' ? (
+            <SidePanel header={header} accessibilityLabel="Places" testID="explore-panel">
+              {body}
+            </SidePanel>
+          ) : (
+            <MapSheet
+              snap={snap}
+              onSnapChange={setSnap}
+              animatedProgress={sheetProgress}
+              animatedHeight={sheetHeight}
+              manualActivation
+              header={header}
+              accessibilityLabel="Places"
+              testID="explore-sheet"
+            >
+              {body}
+            </MapSheet>
+          )}
+        </View>
+      </MapChromeLiftContext.Provider>
     </BrandedChromeProvider>
   );
 }

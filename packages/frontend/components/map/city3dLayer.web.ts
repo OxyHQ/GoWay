@@ -4,7 +4,8 @@
  * engine in `engine/city3d/`.
  *
  * Reached ONLY through `import('./city3dLayer.web')` in `MapCanvas.web.tsx`,
- * and only when `isCity3dRequested` says so; it in turn loads the engine (and
+ * and only when the map-feature registry's `city3d` says so (or a caller has
+ * models to draw); it in turn loads the engine (and
  * three.js) through `components/engine3d/lazyChunk.ts`, the one async boundary
  * all three.js consumers share. With the flag off neither chunk is requested,
  * and the style, the layer list and the first-paint bundles are what they were
@@ -48,13 +49,6 @@
 import type { LightSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type { CustomLayerInterface, Map as MapLibreMap, VectorTileSource } from 'maplibre-gl';
 
-import { MAP_LANDMARKS_ENABLED } from '@/lib/config';
-import {
-  isCity3dTreeFillRequested,
-  isCity3dTreesRequested,
-  MAP_CITY3D_TREE_FILL_ENABLED,
-  MAP_CITY3D_TREES_ENABLED,
-} from '@/lib/map/city3dTreesFlag';
 import {
   CITY_COVERAGE_PATH,
   CITY_TILE_LAYER,
@@ -64,12 +58,9 @@ import {
   type CityCoverageBox,
   parseCityCoverage,
 } from '@/lib/map/cityTiles';
-import { isCityLifeRequested, MAP_CITY_LIFE_ENABLED } from '@/lib/map/cityLifeFlag';
 import { CITY_ROAD_TILE_PATH } from '@/lib/map/cityRoads';
-import { isCityTilesRequested, MAP_CITY_TILES_ENABLED } from '@/lib/map/cityTilesFlag';
 import type { PreparedLandmark } from '@/lib/map/landmarks/load';
 import { nightFactor } from '@/lib/map/landmarks/night';
-import { isLandmarksRequested } from '@/lib/map/landmarksFlag';
 import {
   getMapSource,
   GOWAY_LAYER_PREFIX,
@@ -238,6 +229,35 @@ export interface AttachCity3dOptions {
    * shared depth buffer. Defaults to `true`.
    */
   buildings?: boolean;
+  /**
+   * Read the buildings from GoWay's own city tiles (`docs/MAP_3D_CITY.md` →
+   * Phase 2) rather than the basemap's `building` layer: the map-feature
+   * registry's `cityTiles` answer, which `MapCanvas.web.tsx` reads live and
+   * re-attaches on. Ignored without `buildings`. Defaults to `false`.
+   */
+  cityTiles?: boolean;
+  /**
+   * Stand the trees OpenStreetMap records (`engine/city3d/trees.ts`): the
+   * registry's `city3dTrees` answer. Defaults to `false`.
+   */
+  trees?: boolean;
+  /**
+   * Also fill mapped woods with illustrative trees: the registry's
+   * `city3dTreeFill`. Ignored without `trees`. Defaults to `false`.
+   */
+  treeFill?: boolean;
+  /**
+   * Draw the city-life SIMULATION on the city tiles' road graph
+   * (`docs/MAP_CITY_LIFE.md`): the registry's `cityLife`. Ignored without
+   * `cityTiles`. Defaults to `false`.
+   */
+  cityLife?: boolean;
+  /**
+   * Draw the hand-crafted landmarks in place of their buildings
+   * (`docs/MAP_LANDMARKS.md`): the registry's `landmarks`. Ignored without
+   * `cityTiles`. Defaults to `false`.
+   */
+  landmarks?: boolean;
   /** A model was drawn, or fell back to its marker. */
   onModelStatus?: (id: string, status: ModelStatus) => void;
   /**
@@ -312,27 +332,11 @@ export async function attachCity3d(
   const { createCityEngine, createCityLife } = await import('@/components/engine3d/lazyChunk');
   // City tiles replace the BUILDINGS' source; a models-only engine (the city
   // flag off) draws no buildings, so it never asks.
-  const cityTiles =
-    buildings &&
-    isCityTilesRequested({
-      city3d: true,
-      enabled: MAP_CITY_TILES_ENABLED,
-      // `typeof`: the bun tests that attach to a fake map run without the global.
-      development: typeof __DEV__ !== 'undefined' && __DEV__,
-      search: typeof window !== 'undefined' ? window.location.search : '',
-    });
+  const cityTiles = buildings && options.cityTiles === true;
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   // The simulation drives on the road archive compiled beside the city tiles,
-  // so it needs both flags above it (`lib/map/cityLifeFlag.ts`).
-  const cityLife =
-    cityTiles &&
-    isCityLifeRequested({
-      city3d: true,
-      cityTiles,
-      enabled: MAP_CITY_LIFE_ENABLED,
-      development: typeof __DEV__ !== 'undefined' && __DEV__,
-      search: typeof window !== 'undefined' ? window.location.search : '',
-    });
+  // so it needs both above it: the registry's `cityLife`, handed in.
+  const cityLife = cityTiles && options.cityLife === true;
   const coverage = cityTiles ? await fetchCityCoverage(origin) : [];
   if (cityTiles && coverage.length === 0) {
     reportMapDefect(
@@ -355,28 +359,14 @@ export async function attachCity3d(
     treeConifer: trees.conifer,
     treeTrunk: trees.trunk,
   };
-  // Stylised trees in mapped woods and parks (`engine/city3d/trees.ts`).
-  const standTrees = isCity3dTreesRequested({
-    enabled: MAP_CITY3D_TREES_ENABLED,
-    // `typeof`: the attach tests run without the bundler's `__DEV__`.
-    development: typeof __DEV__ !== 'undefined' && __DEV__,
-    search: typeof window === 'undefined' ? '' : window.location.search,
-  });
-  // The styling fill of mapped woods: off unless asked for.
-  const fillWoods = isCity3dTreeFillRequested({
-    enabled: MAP_CITY3D_TREE_FILL_ENABLED,
-    development: typeof __DEV__ !== 'undefined' && __DEV__,
-    search: typeof window === 'undefined' ? '' : window.location.search,
-  });
+  // Stylised trees in mapped woods and parks (`engine/city3d/trees.ts`), and
+  // the styling fill of mapped woods: the registry's answers, handed in.
+  const standTrees = options.trees === true;
+  const fillWoods = standTrees && options.treeFill === true;
 
   // Landmarks replace per-building OSM ids, so they need the city tiles.
-  const landmarksOn =
-    cityTiles &&
-    isLandmarksRequested({
-      enabled: MAP_LANDMARKS_ENABLED,
-      development: typeof __DEV__ !== 'undefined' && __DEV__,
-      search: typeof window !== 'undefined' ? window.location.search : '',
-    });
+  // The registry's `landmarks`, handed in.
+  const landmarksOn = cityTiles && options.landmarks === true;
   let landmarkModule: typeof import('@/lib/map/landmarks/load') | null = null;
   let landmarkList: readonly PreparedLandmark[] = [];
   const heldLandmarks = new Set<string>();

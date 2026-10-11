@@ -31,9 +31,9 @@
  * other. Two things follow that are worth stating, because the obvious
  * alternatives are both wrong:
  *
- *  - The credit was MOVED, not shrunk, folded into the logo or dropped. It is
- *    an OSM/OpenMapTiles licence obligation and it is still a full-size,
- *    tappable line of links at the same distance from the edge as before.
+ *  - The credit was MOVED, not folded into the logo or dropped. It is an
+ *    OSM/OpenMapTiles licence obligation and it is a full-size, tappable line
+ *    of links whenever it is spelled out.
  *  - It is not free to sit wherever is left over. A wrapped credit on a narrow
  *    phone would run straight under the mark, so this reads
  *    {@link MAP_BRAND_CLEARANCE} and starts after it — the same pattern as the
@@ -43,18 +43,46 @@
  * The positioning box spans that clearance to the right edge and the plate is
  * a child of it, so the card hugs the text instead of stretching across the
  * map.
+ *
+ * ## Compact, as the OSMF guidelines allow
+ *
+ * The OSMF Attribution Guidelines
+ * (https://osmfoundation.org/wiki/Licence/Attribution_Guidelines) accept a
+ * credit that is visible when the map loads and then collapses — after a few
+ * seconds or once the reader interacts — into a control that shows it again.
+ * That is this component's two states, driven by `MapCanvas` through
+ * `useCompactCredit` (`lib/map/compactCredit.ts` holds the rule and its test):
+ * spelled out, with an ⓘ at the end to fold it; or just the ⓘ, in the same
+ * corner, which opens it. The links stay links. `MapCanvas` renders it on
+ * every map with no prop to turn it off — the embed included.
  */
 import { memo, useCallback } from 'react';
-import { Linking, Pressable, View } from 'react-native';
+import { Linking, Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { localizedLabel } from '@goway.to/sdk';
 import { Text } from '@oxy.so/bloom/typography';
 import { useBottomEdgeInset } from '@oxy.so/bloom/layout';
+import { RiInformationLine } from '@oxy.so/bloom/icons/RiInformationLine';
+import { useTheme } from '@oxy.so/bloom/theme';
+
+import { useTranslation } from '@/lib/i18n';
+import { CREDIT_LABELS } from '@/lib/map/creditLabels';
 
 import { type MapAttributionLink, resolveMapAttribution } from '@/lib/map/provider';
+import { type MapChromeLift, useMapChromeLift } from './chromeLift';
 import { MAP_BRAND_CLEARANCE } from './MapBrand';
-import { MAP_RELIEF } from './reliefFlags';
+import { useMapRelief } from './reliefFlags';
 
 /** Breathing room between the credit and whatever is below it. */
 const ATTRIBUTION_GAP = 4;
+
+/**
+ * How much of the bottom-right the credit occupies above the bottom edge: its
+ * gap, one caption line on its plate, and room to breathe. Bottom-right chrome
+ * a screen floats there ("My location") starts above it, so the two never
+ * overlap — exported for the same reason `MAP_BRAND_CLEARANCE` is.
+ */
+export const MAP_CREDIT_CLEARANCE = 36;
 
 const NO_EXTRA: readonly MapAttributionLink[] = [];
 
@@ -63,12 +91,27 @@ const NO_EXTRA: readonly MapAttributionLink[] = [];
  *   landmark model's author (`docs/MAP_LANDMARKS.md`). Passed by `MapCanvas`
  *   alone, from what its engine reports drawn; never by feature code.
  */
-function MapAttributionComponent({ extra = NO_EXTRA }: { extra?: readonly MapAttributionLink[] }) {
+function MapAttributionComponent({
+  extra = NO_EXTRA,
+  expanded,
+  onToggle,
+}: {
+  extra?: readonly MapAttributionLink[];
+  /** Spelled out, or folded into the ⓘ (`useCompactCredit`). */
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const { locale } = useTranslation();
+  const theme = useTheme();
+  const toggleLabel = localizedLabel(expanded ? CREDIT_LABELS.hide : CREDIT_LABELS.show, locale);
   // The elevation credit rides along whenever the relief prototype draws
   // terrain or a hillshade (`docs/MAP_TERRAIN_GLOBE.md`).
-  const attribution = resolveMapAttribution({ terrain: MAP_RELIEF.terrain });
+  const relief = useMapRelief();
+  const attribution = resolveMapAttribution({ terrain: relief.terrain });
   const links = extra.length > 0 ? [...attribution.links, ...extra] : attribution.links;
   const bottomEdge = useBottomEdgeInset();
+  // Above a sheet's LIVE top edge where the screen provides one (phones).
+  const chromeLift = useMapChromeLift();
 
   const open = useCallback((href: string) => {
     void Linking.openURL(href).catch(() => {
@@ -77,9 +120,8 @@ function MapAttributionComponent({ extra = NO_EXTRA }: { extra?: readonly MapAtt
   }, []);
 
   return (
-    <View
-      pointerEvents="box-none"
-      className="absolute right-space-8 items-end"
+    <CreditBox
+      lift={chromeLift}
       style={{
         // A claim already folds in the safe area of the surface holding the
         // edge, so the plain gap is added to it rather than the safe-area-aware
@@ -89,23 +131,94 @@ function MapAttributionComponent({ extra = NO_EXTRA }: { extra?: readonly MapAtt
         left: MAP_BRAND_CLEARANCE,
       }}
     >
-      <View className="flex-row flex-wrap items-center justify-end gap-space-4 rounded-radius-8 bg-card/80 px-space-8 py-space-2">
-        {attribution.prefix ? (
-          <Text className="text-caption text-muted-foreground">{attribution.prefix}</Text>
+      <View
+        className="flex-row flex-wrap items-center justify-end gap-space-4 rounded-radius-8 bg-card/80 px-space-8 py-space-2"
+        testID="map-credit"
+      >
+        {expanded ? (
+          <>
+            {attribution.prefix ? (
+              <Text className="text-caption text-muted-foreground">{attribution.prefix}</Text>
+            ) : null}
+            {links.map((link) => (
+              <Pressable
+                key={`${link.label}|${link.href}`}
+                accessibilityRole="link"
+                accessibilityLabel={link.label}
+                onPress={() => open(link.href)}
+                hitSlop={6}
+              >
+                <Text className="text-caption text-muted-foreground underline">{link.label}</Text>
+              </Pressable>
+            ))}
+          </>
         ) : null}
-        {links.map((link) => (
-          <Pressable
-            key={link.href}
-            accessibilityRole="link"
-            accessibilityLabel={link.label}
-            onPress={() => open(link.href)}
-            hitSlop={6}
-          >
-            <Text className="text-caption text-muted-foreground underline">{link.label}</Text>
-          </Pressable>
-        ))}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={toggleLabel}
+          aria-expanded={expanded}
+          onPress={onToggle}
+          hitSlop={10}
+          className="items-center justify-center rounded-radius-max active:opacity-70"
+          testID="map-credit-toggle"
+        >
+          <RiInformationLine width={18} height={18} fill={theme.colors.textSecondary} />
+        </Pressable>
       </View>
-    </View>
+    </CreditBox>
+  );
+}
+
+/**
+ * The positioning box: laid out against Bloom's bottom edge, and — when the
+ * screen hands down a live lift — riding the sheet's current top edge on the
+ * UI thread. Absent a lift it is the plain box it always was.
+ */
+function CreditBox({
+  lift,
+  style,
+  children,
+}: {
+  lift: MapChromeLift | null;
+  style: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+}) {
+  if (!lift) {
+    return (
+      <View pointerEvents="box-none" className="absolute right-space-8 items-end" style={style}>
+        {children}
+      </View>
+    );
+  }
+  return (
+    <LiftedCreditBox lift={lift} style={style}>
+      {children}
+    </LiftedCreditBox>
+  );
+}
+
+function LiftedCreditBox({
+  lift,
+  style,
+  children,
+}: {
+  lift: MapChromeLift;
+  style: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+}) {
+  const { lift: rise, opacity } = lift;
+  const animated = useAnimatedStyle(
+    () => ({ transform: [{ translateY: -rise.value }], opacity: opacity.value }),
+    [rise, opacity],
+  );
+  return (
+    <Animated.View
+      pointerEvents="box-none"
+      className="absolute right-space-8 items-end"
+      style={[style, animated]}
+    >
+      {children}
+    </Animated.View>
   );
 }
 

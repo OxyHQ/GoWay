@@ -3,8 +3,9 @@
  *
  * The same two unequal ways in as the city-3D prototype (`city3dFlag.ts`):
  *
- *  - `EXPO_PUBLIC_MAP_FLYOVER=1` (`MAP_FLYOVER_ENABLED` in `lib/config.ts`): a
- *    BUILD decision. No production deployment sets it.
+ *  - `enabled`: the map-feature registry's answer (`mapFeatures.ts`) — the
+ *    build's `EXPO_PUBLIC_MAP_FLYOVER`, then the person's own choice in the
+ *    settings dialog's Labs section. No production deployment sets the variable.
  *  - `?flyover=1` on the URL: a per-tab switch honoured ONLY in a development
  *    build (`__DEV__`), so a goway.to link cannot switch an experimental
  *    feature on for somebody else.
@@ -13,7 +14,7 @@
  * a test (`__tests__/flyoverFlag.test.ts`), not a comment.
  */
 export function isFlyoverRequested(input: {
-  /** `MAP_FLYOVER_ENABLED`. */
+  /** The registry's answer for `flyover` (`mapFeatures.ts`): build, then the person's choice. */
   enabled: boolean;
   /** `__DEV__`. */
   development: boolean;
