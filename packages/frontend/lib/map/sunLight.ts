@@ -117,6 +117,100 @@ export function nextBuildingsLight(
   return sameLight(previous, continuous) ? previous : continuous;
 }
 
+// ---------------------------------------------------------------------------
+// The tracker: which centre the light is computed over, across engine rebuilds
+// ---------------------------------------------------------------------------
+
+/**
+ * What `useSunLight` remembers between renders. Pure data, so every transition
+ * below is testable without a renderer.
+ *
+ * `engine` is the identity of the map engine the centre was observed on. It
+ * exists because of a defect that shipped in the first version of this hook:
+ * the centre was remembered for the whole life of the component, but the
+ * ENGINE is not that long-lived. The web adapter builds a new `maplibregl.Map`
+ * on every appearance change and every retry, and builds it at
+ * `initialViewport` — not where the user had panned to. Nothing told the hook:
+ * maplibre-gl 6.10's constructor applies its starting camera with a `jumpTo`
+ * that fires `moveend` SYNCHRONOUSLY, inside `new Map()`, before the adapter
+ * has attached its `moveend` listener. So the new map showed Barcelona while
+ * its buildings were lit for Sydney, the last settled centre, until the user
+ * moved or the five-minute clock fired — which still read Sydney.
+ *
+ * The rule is therefore: a centre is only ever valid for the engine it was
+ * read from. A new engine starts the tracker over at the camera that engine
+ * was BUILT at.
+ */
+export interface SunLightState {
+  /** Identity of the engine `centre` belongs to. Opaque; compared with `===`. */
+  engine: string;
+  /** The last settled camera centre on that engine, or its starting one. */
+  centre: GeoCoordinate;
+  /** The light for `centre`, as last computed. */
+  light: LightSpecification;
+}
+
+/** Everything that can move the light, as the adapters report it. */
+export type SunLightEvent =
+  /**
+   * "This render is drawing on engine `engine`, which was built at `start`."
+   * Sent on every render that might have changed either; an unchanged engine
+   * is a recompute for the current appearance and nothing else.
+   */
+  | { type: 'engine'; engine: string; start: GeoCoordinate }
+  /** The camera came to rest at `centre`. */
+  | { type: 'settle'; centre: GeoCoordinate }
+  /** The slow clock: same centre, new instant. */
+  | { type: 'tick' };
+
+/** The tracker for a freshly mounted map. */
+export function initialSunLight(
+  appearance: MapAppearance,
+  engine: string,
+  start: GeoCoordinate,
+  now: Date,
+): SunLightState {
+  const centre = { latitude: start.latitude, longitude: start.longitude };
+  return { engine, centre, light: buildingsLightAt(appearance, centre, now) };
+}
+
+/**
+ * The tracker after `event`, for `appearance` at `now`.
+ *
+ * Returns `state` ITSELF when nothing a consumer can see changed, so the hook
+ * can hand the result straight to `setState` and let React bail out — the same
+ * contract as {@link nextBuildingsLight}, which it uses for the light.
+ *
+ * An undrawable centre (`settle` or `engine`) is ignored rather than adopted:
+ * the adapters only report the engine's own camera, but nothing crosses this
+ * seam unchecked, and keeping the last good centre beats dropping to the
+ * fallback light.
+ */
+export function advanceSunLight(
+  state: SunLightState,
+  event: SunLightEvent,
+  appearance: MapAppearance,
+  now: Date,
+): SunLightState {
+  let engine = state.engine;
+  let centre = state.centre;
+  if (event.type === 'engine' && event.engine !== state.engine) {
+    // A new engine: whatever was settled on the old one describes a camera
+    // that no longer exists. Restart at the one this engine was built at.
+    engine = event.engine;
+    if (isDrawableCoordinate(event.start)) {
+      centre = { latitude: event.start.latitude, longitude: event.start.longitude };
+    }
+  } else if (event.type === 'settle' && isDrawableCoordinate(event.centre)) {
+    centre = { latitude: event.centre.latitude, longitude: event.centre.longitude };
+  }
+  const light = nextBuildingsLight(state.light, buildingsLightAt(appearance, centre, now));
+  const sameCentre =
+    centre.latitude === state.centre.latitude && centre.longitude === state.centre.longitude;
+  if (engine === state.engine && sameCentre && light === state.light) return state;
+  return { engine, centre: sameCentre ? state.centre : centre, light };
+}
+
 /** Field-by-field equality over the four properties GoWay ever sets. */
 export function sameLight(a: LightSpecification, b: LightSpecification): boolean {
   if (a.anchor !== b.anchor || a.color !== b.color || a.intensity !== b.intensity) return false;

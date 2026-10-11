@@ -20,7 +20,13 @@ import { validateStyleMin } from '@maplibre/maplibre-gl-style-spec';
 import type { LightSpecification } from '@maplibre/maplibre-gl-style-spec';
 
 import { BUILDINGS_LIGHT, sunLitBuildingsLight, sunPolarDeg } from '@/lib/map/style/buildings3d';
-import { buildingsLightAt, nextBuildingsLight, sameLight } from '@/lib/map/sunLight';
+import {
+  advanceSunLight,
+  buildingsLightAt,
+  initialSunLight,
+  nextBuildingsLight,
+  sameLight,
+} from '@/lib/map/sunLight';
 
 const BARCELONA = { latitude: 41.3874, longitude: 2.1686 };
 const SYDNEY = { latitude: -33.8688, longitude: 151.2093 };
@@ -187,6 +193,96 @@ describe('nextBuildingsLight', () => {
     expect(sameLight(at(10), at(11))).toBe(false);
     expect(sameLight(at(10), at(10, 80))).toBe(false);
     expect(sameLight(at(10), { ...at(10), intensity: 0.45 })).toBe(false);
+  });
+});
+
+describe('advanceSunLight: which centre the light is computed over', () => {
+  // A summer afternoon in Barcelona is a winter night in Sydney: the two
+  // lights point in very different directions, so lighting one city with the
+  // other's sun is not a rounding error (asserted below, so the test cannot
+  // pass vacuously).
+  const NOW = new Date('2024-06-20T15:00:00Z');
+  const LATER = new Date('2024-06-20T15:05:00Z');
+
+  test("PR #117 review: a rebuilt engine is lit for ITS camera, not the old engine's", () => {
+    // Open in Barcelona on the light-appearance engine, pan to Sydney.
+    let state = initialSunLight('light', 'light#0', BARCELONA, NOW);
+    state = advanceSunLight(state, { type: 'settle', centre: SYDNEY }, 'light', NOW);
+    expect(state.light).toEqual(buildingsLightAt('light', SYDNEY, NOW));
+    expect(
+      sameLight(buildingsLightAt('dark', SYDNEY, NOW), buildingsLightAt('dark', BARCELONA, NOW)),
+    ).toBe(false);
+
+    // Switch to dark. The web adapter builds a NEW engine at `initialViewport`
+    // — Barcelona — and that engine never reports its starting camera, because
+    // maplibre-gl fires that `moveend` inside its constructor.
+    state = advanceSunLight(
+      state,
+      { type: 'engine', engine: 'dark#0', start: BARCELONA },
+      'dark',
+      NOW,
+    );
+    expect(state.centre).toEqual(BARCELONA);
+    expect(position(state.light).slice(0, 3)).toEqual(
+      position(buildingsLightAt('dark', BARCELONA, NOW)),
+    );
+    expect(state.light.intensity).toBe(BUILDINGS_LIGHT.dark.intensity);
+
+    // And the slow clock keeps reading Barcelona, not Sydney.
+    state = advanceSunLight(state, { type: 'tick' }, 'dark', LATER);
+    expect(state.centre).toEqual(BARCELONA);
+    expect(sameLight(state.light, buildingsLightAt('dark', BARCELONA, LATER))).toBe(true);
+  });
+
+  test('a retry (same appearance, new engine) restarts at the starting camera too', () => {
+    let state = initialSunLight('light', 'light#0', BARCELONA, NOW);
+    state = advanceSunLight(state, { type: 'settle', centre: SYDNEY }, 'light', NOW);
+    state = advanceSunLight(
+      state,
+      { type: 'engine', engine: 'light#1', start: BARCELONA },
+      'light',
+      NOW,
+    );
+    expect(state.centre).toEqual(BARCELONA);
+    expect(state.engine).toBe('light#1');
+  });
+
+  test('the SAME engine keeps its settled centre — a theme change on native, a re-render', () => {
+    let state = initialSunLight('light', '0', BARCELONA, NOW);
+    state = advanceSunLight(state, { type: 'settle', centre: SYDNEY }, 'light', NOW);
+    // Native keeps one engine across an appearance change: the camera is
+    // still over Sydney, so the light must be too, at the new intensity.
+    state = advanceSunLight(state, { type: 'engine', engine: '0', start: BARCELONA }, 'dark', NOW);
+    expect(state.centre).toEqual(SYDNEY);
+    expect(state.light).toEqual(buildingsLightAt('dark', SYDNEY, NOW));
+  });
+
+  test('nothing changed: the SAME state object, so React bails out', () => {
+    const state = initialSunLight('light', 'light#0', BARCELONA, NOW);
+    expect(
+      advanceSunLight(state, { type: 'engine', engine: 'light#0', start: SYDNEY }, 'light', NOW),
+    ).toBe(state);
+    expect(advanceSunLight(state, { type: 'settle', centre: BARCELONA }, 'light', NOW)).toBe(state);
+    expect(advanceSunLight(state, { type: 'tick' }, 'light', NOW)).toBe(state);
+  });
+
+  test('an undrawable centre is ignored, keeping the last good one', () => {
+    let state = initialSunLight('light', 'e', SYDNEY, NOW);
+    state = advanceSunLight(
+      state,
+      { type: 'settle', centre: { latitude: Number.NaN, longitude: 2 } },
+      'light',
+      NOW,
+    );
+    expect(state.centre).toEqual(SYDNEY);
+    state = advanceSunLight(
+      state,
+      { type: 'engine', engine: 'f', start: { latitude: 120, longitude: 0 } },
+      'light',
+      NOW,
+    );
+    expect(state.centre).toEqual(SYDNEY);
+    expect(state.engine).toBe('f');
   });
 });
 

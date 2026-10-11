@@ -143,7 +143,16 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // The buildings' light, aimed from the sun over the viewport centre — the
   // same hook, triggers and dedupe as the web fork. Seeded with the opening
   // camera so the first render already carries it. See `useSunLight.ts`.
-  const sunLight = useSunLight(resolvedAppearance, start);
+  //
+  // The engine id is `reloadKey` alone, because that is the only thing that
+  // remounts `<Map>` here: a retry, which brings the camera back to `start`.
+  // An appearance change does NOT rebuild the native engine — `mapStyle` is a
+  // prop on the same view and the camera survives it — so it must not reset
+  // the centre either. Whether MapLibre Native reports the remounted camera
+  // through `onRegionDidChange` is up to each platform SDK (Android's
+  // camera-idle listener, iOS's `regionDidChange`); the id makes the reset
+  // not depend on it.
+  const sunLight = useSunLight(resolvedAppearance, String(reloadKey), start);
 
   /**
    * The location dot is drawn only against a permission that is ALREADY

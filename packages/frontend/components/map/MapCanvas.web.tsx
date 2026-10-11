@@ -187,11 +187,20 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const gestures = resolveInteraction(interaction);
   const accent = theme.colors.primary;
 
-  // The buildings' light, aimed from the sun over the viewport centre. Seeded
-  // with the camera the map opens on; `settle` is stable, so the engine effect
-  // below can call it without being re-run. See `useSunLight.ts`.
+  // The buildings' light, aimed from the sun over the viewport centre;
+  // `settle` is stable, so the engine effect below can call it without being
+  // re-run. See `useSunLight.ts`.
+  //
+  // The engine id is exactly the engine effect's own dependencies — a new
+  // `styleUrl` (an appearance change) or `reloadKey` (a retry) builds a new
+  // `maplibregl.Map` at `initialViewport`, wherever the user had panned to —
+  // and the start is the same expression that effect builds it at. Without
+  // the id the hook kept the OLD engine's settled centre: the constructor's
+  // own `jumpTo` fires `moveend` inside `new Map()`, before the listener
+  // below exists, so nothing else ever reports the new camera.
   const sunLight = useSunLight(
     resolvedAppearance,
+    `${styleUrl}#${reloadKey}`,
     isDrawableCoordinate(initialViewport) ? initialViewport : DEFAULT_VIEWPORT,
   );
   const settleSunLight = sunLight.settle;
