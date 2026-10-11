@@ -321,9 +321,11 @@ triangles. Measured in one session, alternating builds, with terrain on:
 - **Interleaving alone costs GPU here.** A control build kept the
   interleaved buffer but read only the first variant. It still cost 0.6–0.9
   ms more, so the stride by itself costs GPU on this path.
-- **Pixels:** with the instances kept in `main`'s order, 5.0k of 2.07 M
-  pixels differ from `main`. Two runs of `main` differ by 3.4k (the HUD is
-  included in both counts).
+- **Pixels:** 5.0k of 2.07 M pixels differ from `main`. Two runs of `main`
+  differ by 3.4k (the HUD is included in both counts).
+
+(These GPU numbers are the frame up to the city's last draw: the timer that
+cut it there is fixed separately, and both columns were cut alike.)
 
 What would get the variants into one draw without the bandwidth: pull only
 the instance's own variant from a small data texture by vertex index
