@@ -50,7 +50,7 @@
     "check:openapi": "bun ./scripts/check-openapi-fresh.mjs",
     "check:contracts": "bun ./scripts/check-contract-json-schemas.mjs",
     "openapi": "bun ./scripts/write-openapi.mjs",
-    "test:gates": "bun ./scripts/test-check-migration-phases.mjs && bun ./scripts/test-check-migration-params.mjs && bun ./scripts/test-check-openapi-fresh.mjs && bun ./scripts/test-check-contract-json-schemas.mjs",
+    "test:gates": "bun ./scripts/test-check-routing.mjs && bun ./scripts/test-check-migration-phases.mjs && bun ./scripts/test-check-migration-params.mjs && bun ./scripts/test-check-openapi-fresh.mjs && bun ./scripts/test-check-contract-json-schemas.mjs",
     "test:gates:lockfile": "bun ./scripts/test-check-lockfile-sync.mjs",
     "test:sdk": "bun run --cwd packages/sdk test",
     "smoke:sdk": "bun run --cwd packages/sdk smoke",

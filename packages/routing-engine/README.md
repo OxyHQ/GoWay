@@ -102,11 +102,41 @@ a map that quietly ages.
 
 ## Running it locally
 
+On an arm64 machine, the image as built:
+
 ```bash
-docker run --rm -p 8002:8002 oxy/goway-routing:latest
-# then, in packages/backend/.env
+docker run --rm -p 127.0.0.1:8002:8002 oxy/goway-routing:latest
+```
+
+**The published image is arm64-only** (Fargate is Graviton), so on an x86
+laptop it exits at once with a platform warning. The tiles are
+architecture-independent, though, so lift `/data` out of the image and serve
+it with the amd64 variant of the SAME pinned upstream engine the Dockerfile
+builds on:
+
+```bash
+ECR=237343248947.dkr.ecr.us-west-2.amazonaws.com
+aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $ECR
+docker pull $ECR/oxy/goway-routing:latest
+mkdir -p ~/.cache/goway-routing
+cid=$(docker create --platform linux/arm64 $ECR/oxy/goway-routing:latest)
+docker cp "$cid:/data/." ~/.cache/goway-routing/ && docker rm "$cid"
+
+docker run -d --rm --name goway-routing --platform linux/amd64 \
+  -v ~/.cache/goway-routing:/data:ro -p 127.0.0.1:8002:8002 \
+  ghcr.io/valhalla/valhalla@sha256:c9c1f9e6d9bb46484b667346960d4c7e6bc0cd375f95cffedcda8567c7b9706e \
+  valhalla_service /data/valhalla.json 1
+```
+
+Either way, then, in `packages/backend/.env`:
+
+```bash
 ROUTING_VALHALLA_URL=http://127.0.0.1:8002/route
 ```
+
+and `GOWAY_API_URL=http://127.0.0.1:3000 bun run check:routing` proves the
+local backend routes drive, walk and bike exactly as production does. The
+digest above must stay the Dockerfile's `FROM`.
 
 ## What it costs
 

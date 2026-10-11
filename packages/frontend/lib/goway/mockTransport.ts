@@ -24,6 +24,13 @@
  * Latency and cancellation, because the search box's debounce-and-cancel
  * behaviour is not observable without them, and the fault modes issue #7
  * requires intentional states for (`EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS`).
+ *
+ * ## What it deliberately does NOT answer: directions
+ *
+ * `POST /routes` goes to the real API at `EXPO_PUBLIC_API_URL` (see
+ * {@link createFixtureFetch}); only a fixture place id is swapped for its point
+ * on the way. A route is a computation over the road network, and the only
+ * "fixture" of one is a line drawn where there is no road.
  */
 import {
   API_ERROR_STATUS,
@@ -625,112 +632,6 @@ function reverseGeocode(params: Map<string, string>): SearchResults {
 }
 
 /**
- * A straight-line "route", through every stop in order.
- *
- * Deliberately crude, and labelled as such: real routing is the backend's job
- * (Valhalla, issue #6) and this exists so the directions FLOW has something
- * shaped like a route to work against. A fake polyline along real streets would
- * be a worse lie than an obvious one.
- *
- * It does honour the things the planner depends on, because a fixture that does
- * not is a fixture that hides bugs:
- *
- *  - **`waypoints` are visited in the order given.** That is the contract's own
- *    promise, and the whole meaning of reordering a stop.
- *  - **One leg per pair of consecutive stops**, each with its own maneuvers,
- *    so a multi-stop itinerary produces the multi-leg response the panel heads
- *    with "To <stop>".
- *  - **`geometryIndex` is an index into the ROUTE's geometry**, not the leg's,
- *    matching what the contract documents — which is what the step highlight
- *    slices with.
- *  - **A `placeId` resolves through the place table**, so passing a place ID
- *    rather than a coordinate is exercised end to end.
- */
-function directions(body: unknown) {
-  interface FixtureRouteLocation {
-    coordinate?: { latitude: number; longitude: number };
-    placeId?: string;
-    name?: string;
-  }
-  const request = body as {
-    origin?: FixtureRouteLocation;
-    destination?: FixtureRouteLocation;
-    waypoints?: FixtureRouteLocation[];
-    mode?: string;
-  };
-
-  const resolve = (end: FixtureRouteLocation | undefined) => {
-    if (end?.coordinate) return { point: end.coordinate, name: end.name };
-    if (end?.placeId) {
-      const place = FIXTURE_PLACES_BY_ID.get(end.placeId);
-      return place ? { point: place.location, name: end.name ?? place.name } : undefined;
-    }
-    return undefined;
-  };
-
-  const stops = [request.origin, ...(request.waypoints ?? []), request.destination].map(resolve);
-  // "No route exists" is a normal answer for this domain, not a failure — and
-  // an unresolvable stop is exactly how a caller gets one.
-  if (stops.length < 2 || stops.some((stop) => stop === undefined)) return { routes: [] };
-  const resolved = stops as Array<{
-    point: { latitude: number; longitude: number };
-    name?: string;
-  }>;
-
-  const mode = request.mode === 'drive' || request.mode === 'bike' ? request.mode : 'walk';
-  const speed = mode === 'drive' ? 8.3 : mode === 'bike' ? 4.2 : 1.35;
-
-  const legs = resolved.slice(0, -1).map((from, index) => {
-    const to = resolved[index + 1];
-    // 1.25× the straight line: a road is never the crow's path, and rounding a
-    // fixture UP keeps it from reading as suspiciously exact.
-    const metres = Math.round(distanceMeters(from.point, to.point) * 1.25);
-    const seconds = Math.round(metres / speed);
-    const last = index === resolved.length - 2;
-    return {
-      distanceMeters: metres,
-      durationSeconds: seconds,
-      maneuvers: [
-        {
-          type: index === 0 ? 'depart' : 'continue',
-          instruction: to.name ? `Head toward ${to.name}` : 'Head toward the next stop',
-          distanceMeters: metres,
-          durationSeconds: seconds,
-          coordinate: from.point,
-          geometryIndex: index,
-        },
-        {
-          type: 'arrive',
-          instruction: last
-            ? `You have arrived${to.name ? ` at ${to.name}` : ''}`
-            : `Stop at ${to.name ?? 'your next stop'}`,
-          distanceMeters: 0,
-          durationSeconds: 0,
-          coordinate: to.point,
-          geometryIndex: index + 1,
-        },
-      ],
-    };
-  });
-
-  return {
-    routes: [
-      {
-        id: `fixture-${mode}-${legs.length}`,
-        mode,
-        distanceMeters: legs.reduce((total, leg) => total + leg.distanceMeters, 0),
-        durationSeconds: legs.reduce((total, leg) => total + leg.durationSeconds, 0),
-        geometry: {
-          type: 'LineString',
-          coordinates: resolved.map(({ point }) => [point.longitude, point.latitude]),
-        },
-        legs,
-      },
-    ],
-  };
-}
-
-/**
  * `GET /categories`, as the API answers it: the whole list in one page, each
  * `label` resolved for `locale` by the same matcher the server uses, every
  * language still in `labels`.
@@ -757,7 +658,6 @@ const FIXTURE_ROUTES: ReadonlySet<string> = new Set([
   '/geocode',
   '/geocode/reverse',
   '/geocode/structured',
-  '/routes',
 ]);
 
 function familyOf(path: string): FixtureFault {
@@ -769,12 +669,63 @@ function familyOf(path: string): FixtureFault {
 }
 
 /**
+ * A directions body with every FIXTURE place id replaced by that place's point.
+ *
+ * Fixture ids exist only in this file, so the real API answers `not_found` for
+ * one — and every place on a fixture map is a fixture place. Turning a place id
+ * into the point to route to is exactly what the API does for its own places
+ * (`resolvePoint` in `packages/backend/src/routes/directions.ts`), so the
+ * engine is asked the question it would be asked for a real place there. An id
+ * this file does not own travels untouched, and the API answers for it.
+ */
+function resolveFixturePlaces(body: string | undefined): string | undefined {
+  if (body === undefined) return undefined;
+  type Location = { placeId?: unknown; [field: string]: unknown };
+  const request = JSON.parse(body) as {
+    origin?: Location;
+    destination?: Location;
+    waypoints?: Location[];
+  };
+  const resolve = (location: Location | undefined): Location | undefined => {
+    const place =
+      typeof location?.placeId === 'string'
+        ? FIXTURE_PLACES_BY_ID.get(location.placeId)
+        : undefined;
+    if (location === undefined || place === undefined) return location;
+    const { placeId: _owned, ...rest } = location;
+    return { ...rest, coordinate: place.location };
+  };
+  return JSON.stringify({
+    ...request,
+    origin: resolve(request.origin),
+    destination: resolve(request.destination),
+    ...(request.waypoints ? { waypoints: request.waypoints.map(resolve) } : {}),
+  });
+}
+
+/** The platform's own `fetch`: where a request no fixture may answer goes. */
+const platformFetch: GoWayFetch = (url, init) => fetch(url, init);
+
+/**
  * Build the fixture-backed `fetch`.
  *
  * `initialFaults` seeds the fault table so a caller can construct a client that
  * is degraded from the first request (which is how the env var works).
+ *
+ * `network` is where `POST /routes` goes: same URL (the client's
+ * `EXPO_PUBLIC_API_URL`), same headers, and the same body except that a
+ * fixture place id becomes its point (`resolveFixturePlaces`). A route is COMPUTED, and
+ * there is no honest fixture of a computation: the one this replaced drew the
+ * crow's path between the stops and called it a route, which is the defect
+ * `scripts/check-routing.mjs` exists for. So routing under fixtures is exactly
+ * routing without them, and when that API has no engine the planner shows its
+ * "can't work out this route" state — never a line. Only an opted-in
+ * `routes` fault (`EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS`) answers in its place.
  */
-export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetch {
+export function createFixtureFetch(
+  initialFaults: FixtureFaults = {},
+  network: GoWayFetch = platformFetch,
+): GoWayFetch {
   setFixtureFaults(initialFaults);
   resetContent();
 
@@ -784,8 +735,10 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
   ): Promise<GoWayFetchResponse> {
     const { path, params } = splitUrl(url);
     const family = familyOf(path);
+    // The network brings its own latency; inventing more would only hide it.
+    const computed = family === 'routes';
 
-    await fixtureLatency(init.signal);
+    if (!computed) await fixtureLatency(init.signal);
 
     const fault = faults[family];
     // A network fault must look like a network fault: the SDK turns a THROWN
@@ -802,6 +755,8 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
           : 'service_unavailable';
       return fail(code, `${family} is temporarily unavailable`);
     }
+
+    if (computed) return network(url, { ...init, body: resolveFixturePlaces(init.body) });
 
     const cursor = params.get('cursor');
     if (cursor !== undefined && !FIXTURE_CURSOR.test(cursor)) {
@@ -849,11 +804,11 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
     const served = content(path, params, init);
     if (served) return served;
 
-    // Every other fixture route is a read except directions, which is a POST.
+    // Every other fixture route is a read.
     const placeId = /^\/places\/([^/]+)$/.exec(path)?.[1];
     if (placeId === undefined && !FIXTURE_ROUTES.has(path))
       return fail('unknown_route', `No route for ${path}`);
-    if (init.method !== (path === '/routes' ? 'POST' : 'GET')) {
+    if (init.method !== 'GET') {
       return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
     }
 
@@ -871,13 +826,11 @@ export function createFixtureFetch(initialFaults: FixtureFaults = {}): GoWayFetc
     }
     if (path === '/search' || path === '/geocode') return respond(200, search(params));
     if (path === '/geocode/reverse') return respond(200, reverseGeocode(params));
-    if (path === '/geocode/structured') {
-      return respond(200, {
-        items: [],
-        nextCursor: null,
-        providers: ['nominatim'],
-      } satisfies SearchResults);
-    }
-    return respond(200, directions(init.body ? JSON.parse(init.body) : undefined));
+    // `/geocode/structured`, the last of FIXTURE_ROUTES.
+    return respond(200, {
+      items: [],
+      nextCursor: null,
+      providers: ['nominatim'],
+    } satisfies SearchResults);
   };
 }

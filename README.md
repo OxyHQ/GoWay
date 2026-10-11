@@ -37,6 +37,28 @@ somebody else's database and migrates it.
 `rds_superuser` has to run it once before GoWay's migration role can migrate;
 `packages/backend/README.md` explains why `IF NOT EXISTS` hides that.
 
+### Directions in development
+
+A route is never a fixture. With fixtures on, places, search and geocoding are
+answered locally, but `POST /routes` goes to the API at `EXPO_PUBLIC_API_URL`
+exactly as it does with fixtures off (a fixture place is sent as its point,
+because the API has never heard of its id). So the line on the map is always an
+engine's, and where there is no engine the planner says "GoWay can't work out
+this route right now" and draws nothing.
+
+| `EXPO_PUBLIC_API_URL` | Who routes |
+| --- | --- |
+| unset / `https://api.goway.to` | GoWay's production Valhalla. Works from `localhost` signed out; signed in, the browser sends a bearer, which only the origins in production's `CORS_APP_ORIGINS` may, and the request is refused. |
+| a local backend | Whatever its `ROUTING_VALHALLA_URL` names. Unset, every route answers `service_unavailable`. |
+
+A local backend routes with **GoWay's own engine** run locally — the same tiles
+production serves (`packages/routing-engine/README.md` → "Running it locally"),
+then `ROUTING_VALHALLA_URL=http://127.0.0.1:8002/route` in
+`packages/backend/.env`. The public community instance in `.env.example` is a
+documented fallback for one developer within its fair-use policy, never more.
+`bun run check:routing` with `GOWAY_API_URL=http://127.0.0.1:<port>` proves a
+local backend routes every mode.
+
 ### Checks
 
 ```bash
@@ -46,9 +68,9 @@ bun run lint:fix         # apply Biome's safe fixes and formatting
 bun run format           # Biome formatter only
 bun run test             # bun test
 bun run check:migrations # deploy-phase markers + no $1 placeholders in generated SQL
-bun run check:routing    # api.goway.to returns a REAL Barcelona->Madrid route, not a straight line
+bun run check:routing    # api.goway.to returns REAL drive, walk and bike routes (Barcelona, Madrid), never a straight line
 bun run check:lockfile   # bun.lock matches the manifests it describes
-bun run test:gates       # proves the migration, OpenAPI and JSON Schema gates can fail
+bun run test:gates       # proves the routing, migration, OpenAPI and JSON Schema gates can fail
 bun run check:openapi    # packages/contracts/openapi.json is complete and fresh
 bun run check:contracts  # every named contract schema converts to JSON Schema
 bun run openapi          # regenerate openapi.json after a contract change
@@ -71,7 +93,8 @@ that passes CI. The build is an `expo export --platform web` of
 `EXPO_PUBLIC_GOWAY_FIXTURES: '0'`, so goway.to talks to `api.goway.to`: real
 search, real geocoding, and real turn-by-turn routing from GoWay's own Valhalla
 (`packages/routing-engine`). `packages/frontend/lib/goway/client.ts` still
-DEFAULTS fixtures on, so `bun run dev:frontend` works against nothing.
+DEFAULTS fixtures on, so `bun run dev:frontend` works with no backend running —
+for everything except directions, which are never a fixture (below).
 
 One thing is knowingly empty: **GoWay Places has no rows in production**, so
 `/places/bounds` answers an empty page and the GoWay-owned pin layer is blank until it is

@@ -135,9 +135,12 @@ jobs:
       # another, and that is the thing that was broken: `POST /routes` answered
       # `service_unavailable` in production for as long as it existed, and the
       # web app drew the crow's path instead. `scripts/check-routing.mjs` asks
-      # api.goway.to for Barcelona → Madrid, signed out, and fails unless the
-      # answer is LONGER than the 505 km great circle, carries hundreds of
-      # coordinates and names real roads. A straight line cannot satisfy it.
+      # api.goway.to, signed out, for drive, walk and bike routes in Barcelona
+      # and Madrid (and Barcelona → Madrid), and fails unless each one follows
+      # roads — longer than the great circle, many short segments, turns, named
+      # streets — and is the mode it claims: a walk that takes walkways or
+      # stairs, a ride on cycleways, a drive that obeys one-way streets. A
+      # straight line cannot satisfy any of it.
       - name: Verify the canonical browser can reach contribution endpoints
         run: python3 .github/scripts/check-browser-cors.py
 
