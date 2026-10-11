@@ -1412,7 +1412,6 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 
 const EMPTY_LABELS: readonly MapLabelFeature[] = [];
 
-
 function sameCredits(a: readonly MapCreditLink[], b: readonly MapCreditLink[]): boolean {
   return (
     a.length === b.length &&
