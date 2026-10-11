@@ -1,32 +1,28 @@
 # Globe, terrain and hillshade
 
 A world that is a **globe** when you zoom out, **real relief** when you look at
-mountains, and 3D buildings that **stand on the ground** when both meet. A
-working web prototype, **off by default**, plus a native hillshade. Companion to
+mountains, and 3D buildings that **stand on the ground** when both meet. **On by
+default** on web, production included, with a native hillshade. Companion to
 [`MAP_3D_CITY.md`](./MAP_3D_CITY.md), whose three.js building layer this
 places on the terrain.
 
-## Turning it on
+## On by default, and how to turn it off
 
-| | Build flag (any build) | Per tab (development builds only) |
+| | Kill switch (any build) | Per tab (development builds only) |
 | --- | --- | --- |
-| Globe, space, glow | `EXPO_PUBLIC_MAP_GLOBE=1` | `?globe=1` |
-| Hillshade + 3D terrain | `EXPO_PUBLIC_MAP_TERRAIN=1` | `?terrain=1` |
+| Globe, space, glow | `EXPO_PUBLIC_MAP_GLOBE=0` | `?globe=0` (or `=1`) |
+| Hillshade + 3D terrain | `EXPO_PUBLIC_MAP_TERRAIN=0` | `?terrain=0` (or `=1`) |
 
-No production deployment sets either flag, and a production build ignores the
-query parameters (`lib/map/reliefFlag.ts`, pinned by `reliefFlag.test.ts`), so
-no goway.to link can switch an experimental renderer on for anyone else. They
-combine with `?city3d=1`.
+Both are on with no environment at all — which is how the production build
+(`.github/workflows/deploy-frontend.yml`) is made: it sets neither variable.
+Only an explicit `0`/`false` kills one (`enabledUnlessKilled`), so an empty or
+mistyped value cannot switch relief off by accident. A production build ignores
+the query parameters both ways (`lib/map/reliefFlag.ts`, pinned by
+`reliefFlag.test.ts`), so no goway.to link changes anyone else's renderer.
 
 The elevation tiles come from GoWay's own Worker route,
-`https://goway.to/map/terrain/{z}/{x}/{y}.webp`. Until that route is deployed,
-a development session points straight at the upstream instead:
-
-```sh
-EXPO_PUBLIC_MAP_TERRAIN_TILES='https://tiles.mapterhorn.com/{z}/{x}/{y}.webp' \
-  bun run --cwd packages/frontend web
-# then open /?lat=41.595&lng=1.81&zoom=13&pitch=60&globe=1&terrain=1
-```
+`https://goway.to/map/terrain/{z}/{x}/{y}.webp` (live since #124).
+`EXPO_PUBLIC_MAP_TERRAIN_TILES` overrides the template for a preview.
 
 | Piece | Where |
 | --- | --- |
@@ -37,7 +33,8 @@ EXPO_PUBLIC_MAP_TERRAIN_TILES='https://tiles.mapterhorn.com/{z}/{x}/{y}.webp' \
 | Web adapter (lazy chunk) | `components/map/reliefLayer.web.ts`, loaded by `MapCanvas.web.tsx` |
 | Buildings on terrain | `components/map/engine/city3d/terrainGround.ts` (pure), `components/map/city3dGround.web.ts` (MapLibre side) |
 | Native hillshade | `components/map/MapCanvas.native.tsx` |
-| Credit | `components/map/MapAttribution.tsx` |
+| Credit | `components/map/MapAttribution.tsx`; the page it links to, `app/attribution.tsx` (`features/credits/`, notices in `lib/map/credits.ts`) |
+| Models on terrain | `components/map/engine/city3d/models.ts` (`setGround`) |
 
 ## The DEM
 
@@ -59,12 +56,25 @@ MapLibre's **demotiles** terrain (one demo tile around Innsbruck, not for
 production); MapTiler / Mapbox / Esri terrain (API keys, proprietary terms —
 not open).
 
-**Why through the Worker, even for the prototype.** GoWay's rule is that the
-browser only ever talks to goway.to (`provider.ts` → `GOWAY_MAP_PATHS`).
-Hot-linking Mapterhorn would send every viewer's IP and viewport to a third
-party that logs them, with no policy saying the traffic is welcome. The Worker
-route keeps both on Cloudflare's side and caches each tile at the edge for a
-week, so most requests never reach Mapterhorn at all.
+**Why through the Worker.** GoWay's rule is that the browser only ever talks
+to goway.to (`provider.ts` → `GOWAY_MAP_PATHS`). Hot-linking Mapterhorn would
+send every viewer's IP and viewport to a third party that logs them, with no
+policy saying the traffic is welcome. Through the Worker, Mapterhorn sees
+Cloudflare, and Cloudflare's cache answers almost everything. Measured against
+the deployed route (2026-10-11): a tile nobody had asked for took 0.52–0.68 s
+and came back without `cf-cache-status`; the same tile a second later was
+`cf-cache-status: HIT` in ~0.15 s, `cache-control: public, max-age=604800`,
+CORS `*`. So the upstream sees each tile about once per Cloudflare location per
+week.
+
+**Is the proxy safe for full production traffic?** For launch-scale traffic,
+yes: the cache absorbs repeat views, Mapterhorn's endpoint is itself served from
+Cloudflare with a week's `max-age`, and the Worker refuses anything past z12 or
+outside the world before fetching. What it is not is a contract: Mapterhorn
+publishes no usage policy, so GoWay's relief depends on a volunteer service's
+goodwill, and each colo's first view of a tile still reaches it. The R2 archive
+below removes both and is the **follow-up to do before traffic grows**, not a
+nice-to-have.
 
 **Production path** (`MAP_TERRAIN_ARCHIVE`): upload Mapterhorn's
 `planet.pmtiles` to the `MAP_TILES` bucket under a dated key and set the var;
@@ -82,16 +92,23 @@ is complete everywhere and over-zoomed (≈15 m/px at Barcelona's latitude from
 finer national models where they exist needs a coverage-aware choice of zoom
 (Mapterhorn publishes a `coverage-index.pmtiles`); not in this change.
 
-**Credit.** `© Mapterhorn` → <https://mapterhorn.com/attribution> (which names
-every source, Copernicus included), appended to the data credit by
-`resolveMapAttribution({ terrain })` whenever the terrain flag is on — on web
-and native, because `MapAttribution` and both canvases read the same
-`MAP_RELIEF`. **Before production:** Copernicus requires, for data derived
-from GLO-30, the notice *"produced using Copernicus WorldDEM-30 © DLR e.V.
-2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under
-COPERNICUS by the European Union and ESA; all rights reserved"* and a
-liability disclaimer on a legal page. GoWay has no legal page yet; that is a
-release gate, not a prototype one.
+**Credit, and the Copernicus notices.** Every map frame carries `© Mapterhorn`
+in the data credit while relief is drawn (now always), on web and native. It
+links to GoWay's own **`https://goway.to/attribution#elevation`**, not straight
+to Mapterhorn: the Copernicus DEM licence (Article 6) requires, wherever
+GLO-30-derived data is shown to the public, the source notice *"produced using
+Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH
+2014-2018 provided under COPERNICUS by the European Union and ESA; all rights
+reserved"* (6b, for modified data — Mapterhorn's tiles are resampled and
+re-encoded), the liability sentence *"The organisations in charge of the
+Copernicus programme by law or by delegation do not incur any liability for any
+use of the Copernicus WorldDEM-30"* (6c), and no implied endorsement (6d).
+Mapterhorn's attribution page names its sources but carries neither notice, and
+GoWay had no legal page. So GoWay's attribution page (`app/attribution.tsx`)
+shows the basemap credits, `© Mapterhorn` linking on to Mapterhorn's full list,
+and the three notices verbatim from `lib/map/credits.ts` — quoted from the
+licence PDF Mapterhorn links for `glo30`, never translated or reworded. It is
+public, signed-out and reachable from every map, the embed included.
 
 **Caveat: GLO-30 is a surface model.** It includes trees and buildings,
 smoothed to 30 m, so a dense city's "ground" sits some metres above the
@@ -136,7 +153,7 @@ light stays the buildings'.
 
 ## Hillshade and 3D terrain
 
-- **Hillshade** at every zoom to z17, strongest across the regional zooms
+- **Hillshade** from z3 to z17, strongest across the regional zooms
   (exaggeration 0.32 → 0.42 at z6 → 0 by z16.5), directly **under `water`**:
   above every land fill, so forests are shaded by their mountains, below water,
   roads, buildings and labels, which stay flat and legible. Cool blue-grey
@@ -210,6 +227,12 @@ layer lifts each building (`terrainGround.ts`):
   of one building on a steep slope can step by the slope between their
   centres. Both want the parent's footprint in the tile; neither is fixed here.
 
+**3D models** (`models.ts`, SDK_MAP_MODELS) stand on the same ground: a
+placement's altitude is metres above the *drawn* ground (`ModelPlacement`), so
+with terrain on each model reads the ground under its anchor every frame
+(~0.5 µs, from the same sampler the buildings use) — a vehicle on a flyover
+climbs with the road instead of driving through the hill.
+
 The shipped **`fill-extrusion`** buildings need nothing: MapLibre lifts them
 itself (centroid + 10 m sink) — confirmed in Barcelona with terrain on, where
 they and the city layer stand on the same ground.
@@ -223,48 +246,72 @@ and nothing in its Android or iOS sources sets one. So:
 - **Globe, 3D terrain, sky: web only**, until the wrapper exposes them.
 - **Hillshade: native too.** `RasterDEMSource` (with `encoding: 'terrarium'`)
   and a `hillshade` layer exist in 11.4, so `MapCanvas.native.tsx` draws the
-  same `hillshadeLayer()` under `water` when `EXPO_PUBLIC_MAP_TERRAIN=1`.
+  same `hillshadeLayer()` under `water` — on by default like the web, killed by
+  `EXPO_PUBLIC_MAP_TERRAIN=0`. Its style-spec `paint` reaches native through
+  the wrapper's own kebab→camel conversion (`nativeHillshade.test.ts`).
   Type-checked; **not yet verified on a device**.
 
-## What the flags cost when off
+## What it costs
 
-The relief adapter is one lazy chunk requested only when a flag is on; the
-style fragments load with it (pinned by `components/__tests__/reliefChunk.test.ts`).
-What reaches first paint is the flag check, the credit's extra branch and the
-error filter. Measured with `expo export --platform web`, flags off, against
-`main`:
+**Bundle** (`expo export --platform web`, no environment, against `main` 28d10da
+where relief was off unless asked):
 
-| Chunk | `main` (921fb76) | This change | |
+| Chunk | `main` | This change | |
 | --- | ---: | ---: | --- |
-| `entry` (first paint) | 6,959,903 B | 6,962,712 B (+2,809 B; +872 B gz) | flags, the gate and its `import()` stub, the globe's style hand-off, the credit, the Worker path and vendor constants, the error filter |
-| `__common` (first paint) | 78,516 B | 78,516 B | identical once module ids are normalised |
-| `reliefLayer` (lazy) | — | 6,121 B (2,624 B gz) | never requested with the flags off |
-| `lazyChunk` (three.js, lazy) | 3,576,552 B | 3,581,212 B (+4,660 B) | the city engine's grounding |
+| `entry` (first paint) | 6,962,712 B | 6,968,598 B (+5,886 B; +2,072 B gz) | the attribution page and its words, the default-on parsing |
+| `__common` (first paint) | 78,516 B | 78,516 B | identical |
+| `reliefLayer` (lazy, **now fetched on every load**) | 6,121 B | 6,212 B (2,636 B gz) | requested when `MapCanvas.web.tsx` evaluates |
+| `lazyChunk` (three.js, lazy) | 3,581,212 B | 3,581,359 B | the models' ground |
 
 The style documents are byte-identical (`map:style:check`): the fragments are
-added at runtime, never generated into them.
+added at runtime, never generated into them. The chunk-boundary rules still
+hold (`components/__tests__/reliefChunk.test.ts`).
 
-Verified in the running app with the flags off: no request for the relief
-chunk or any elevation tile, the container's background untouched, and no
-dev hook installed.
+**Network: the DEM is the real cost.** Unique bytes per view, measured on the
+production export served locally against goway.to's tiles:
+
+| View | Elevation (DEM) | Vector tiles |
+| --- | ---: | ---: |
+| Default open, desktop 1280×800 | 6 tiles, 275 KB | 6 tiles, 314 KB |
+| Default open, phone 390×844 | 4 tiles, 264 KB | 4 tiles, 291 KB |
+| Globe z1.2–1.6 | **0** (was 906 KB) | 723 KB |
+| Pyrenees z7, desktop | 9 tiles, ~1.2 MB | 175 KB |
+| Montserrat z13 tilted, phone | 12 tiles, 1.67 MB | 544 KB |
+
+The hillshade starts at **z3** (`HILLSHADE_MIN_ZOOM`): on the whole-globe zooms
+its shading was a few pixels of texture for ~0.9 MB of DEM per view, and
+MapLibre fetches a source's tiles only while a layer using it is shown. A DEM
+tile is a 512 px WebP of 50–155 KB, so a mountain view roughly doubles or
+triples the bytes of the same view flat; on a metered mobile connection that is
+the cost to watch. Levers if it bites: a lighter encoding for the hillshade
+(e.g. a 256 px variant), a later hillshade start, or `Save-Data` gating.
+
+**First frame.** With no environment the production build opens on a globe on
+deep space from the first frame (the projection is in the style document as it
+loads); stars and glow follow with the 2.6 KB relief chunk.
 
 ## Performance
 
 Measured in headless Chromium on **SwiftShader** (CPU rendering), so only the
-ratios mean anything, and they overstate fill-rate costs a GPU absorbs: frame
-time while panning, median — Montserrat z13 pitched: terrain off 117 ms, on
-83 ms (noise; same order); globe z2: 50 ms flat, 67 ms globe; Barcelona city
-layer z16.3: 117 ms, 233 ms with terrain (the render-to-texture pass plus the
-custom layer drawn into the 3D pass). A device benchmark on mid-range Android
-Chrome is still owed before any of this ships, as for the city layer.
+ratios mean anything, and they overstate fill-rate costs a GPU absorbs. Frame
+time while panning, relief on vs killed (`?globe=0&terrain=0`), development
+build, two runs each, order alternated: Montserrat z13 pitched — median 83–100
+ms on vs 100 ms off, p90 250–333 vs 217 ms; Barcelona z12 flat — median 150 vs
+150 ms, p90 300 vs 267 ms; globe z2 — median 67 ms either way. A **cold**
+mountain view is the expensive moment: the first run, while the DEM was still
+arriving, measured a 450 ms median against 83 ms killed — the hillshade and
+terrain re-render as each tile lands. Earlier: Barcelona with the city layer
+and terrain was ~2× the city layer alone (render-to-texture). A device
+benchmark on mid-range Android Chrome is still owed; on a weak phone GPU the
+tilted terrain view is the one most likely to drop frames.
 
 ## Next
 
-1. Deploy the Worker route, then upload `planet.pmtiles` and set
-   `MAP_TERRAIN_ARCHIVE`.
-2. The Copernicus notice and disclaimer on a legal page.
-3. Coverage-aware maxzoom for the national models (sharper Montserrat, a bare-
+1. Upload `planet.pmtiles` and set `MAP_TERRAIN_ARCHIVE` — before traffic grows
+   (see "Is the proxy safe").
+2. Coverage-aware maxzoom for the national models (sharper Montserrat, a bare-
    earth Barcelona).
-4. Device benchmarks; then decide whether terrain should follow the city
-   layer's device gating.
-5. Native globe and terrain when maplibre-react-native exposes them.
+3. Device benchmarks; then decide whether tilted terrain should follow the city
+   layer's device gating on weak GPUs, and whether `Save-Data` should drop the
+   hillshade.
+4. Native globe and terrain when maplibre-react-native exposes them.
