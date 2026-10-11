@@ -32,7 +32,7 @@
 import { closeSync, openSync } from 'node:fs';
 
 import { roofFrame } from '../../components/map/engine/city3d/roofs';
-import { CITY_TILE_EXTENT } from '../../lib/map/cityTiles';
+import { CITY_TILE_EXTENT, type CityTileTree } from '../../lib/map/cityTiles';
 import type { CityTileFeature, TilePoint, TilePolygon } from './mvtEncode';
 import {
   type BlobRef,
@@ -51,6 +51,7 @@ import {
   resolveProperties,
   type Tags,
 } from './tags';
+import { TREE_KEYS, treeProperties } from './treeTags';
 
 /** The tags a city tile can use. Everything else is dropped on read. */
 const KEPT_KEYS = new Set([
@@ -111,10 +112,22 @@ export interface Coverage {
 export interface CompileResult {
   header: OsmHeader;
   tiles: Map<string, CityTileFeature[]>;
+  /** `natural=tree` nodes, by the same `z/x/y` key (`CITY_TREE_LAYER`). */
+  trees: Map<string, CityTileTree[]>;
+  treeCoverage: TreeCoverage;
   coverage: Coverage;
   timings: Record<string, number>;
   problems: { unclosedWays: number; missingNodes: number; failedRelations: number };
   nodesKept: number;
+}
+
+/** What the extract records about its trees. */
+export interface TreeCoverage {
+  trees: number;
+  withCrown: number;
+  crowns: Record<string, number>;
+  withHeight: number;
+  withCrownDiameter: number;
 }
 
 interface StoredWay {
@@ -352,9 +365,33 @@ export function compile(options: CompileOptions): CompileResult {
   const nodeX = new Float64Array(unique).fill(Number.NaN);
   const nodeY = new Float64Array(unique).fill(Number.NaN);
   let hint = 0;
+  // Trees ride along on the node pass: `natural=tree` is a tagged node.
+  const treeNodes: { id: number; x: number; y: number; tags: Tags }[] = [];
   for (const blob of nodeBlobs) {
+    let strings: string[] = [];
+    let naturalKey = -1;
+    let treeValue = -1;
     readBlock(readBlob(fd, blob), {
       wantNodes: true,
+      onStrings(table) {
+        strings = table;
+        naturalKey = table.indexOf('natural');
+        treeValue = table.indexOf('tree');
+      },
+      onTaggedNode(id, lon, lat, keys, vals) {
+        if (naturalKey < 0 || treeValue < 0) return;
+        for (let i = 0; i < keys.length; i++) {
+          if (keys[i] === naturalKey && vals[i] === treeValue) {
+            const tags: Record<string, string> = {};
+            for (let k = 0; k < keys.length; k++) {
+              const key = strings[keys[k]];
+              if (TREE_KEYS.has(key)) tags[key] = strings[vals[k]];
+            }
+            treeNodes.push({ id, x: mercX(lon), y: mercY(lat), tags });
+            return;
+          }
+        }
+      },
       onNode(id, lon, lat) {
         // Extracts are sorted by id, so the next needed id is usually at the hint.
         if (hint < unique && nodeIds[hint] === id) {
@@ -610,7 +647,41 @@ export function compile(options: CompileOptions): CompileResult {
   for (const list of tiles.values()) list.sort((a, b) => a.id - b.id);
   lap('tags+tiles');
 
-  return { header, tiles, coverage, timings, problems, nodesKept: unique };
+  // ── Trees ───────────────────────────────────────────────────────────────
+  const trees = new Map<string, CityTileTree[]>();
+  const treeCoverage: TreeCoverage = {
+    trees: 0,
+    withCrown: 0,
+    crowns: {},
+    withHeight: 0,
+    withCrownDiameter: 0,
+  };
+  for (const node of treeNodes) {
+    if (box && (node.x < box.x0 || node.x > box.x1 || node.y < box.y0 || node.y > box.y1)) continue;
+    const properties = treeProperties(node.tags);
+    treeCoverage.trees++;
+    if (properties.crown) {
+      treeCoverage.withCrown++;
+      treeCoverage.crowns[properties.crown] = (treeCoverage.crowns[properties.crown] ?? 0) + 1;
+    }
+    if (properties.height !== undefined) treeCoverage.withHeight++;
+    if (properties.crown_diameter !== undefined) treeCoverage.withCrownDiameter++;
+    const tx = Math.min(span - 1, Math.floor(node.x * span));
+    const ty = Math.min(span - 1, Math.floor(node.y * span));
+    const key = `${options.zoom}/${tx}/${ty}`;
+    const tree: CityTileTree = {
+      id: node.id,
+      point: [(node.x * span - tx) * CITY_TILE_EXTENT, (node.y * span - ty) * CITY_TILE_EXTENT],
+      properties,
+    };
+    const list = trees.get(key);
+    if (list) list.push(tree);
+    else trees.set(key, [tree]);
+  }
+  for (const list of trees.values()) list.sort((a, b) => a.id - b.id);
+  lap('trees');
+
+  return { header, tiles, trees, treeCoverage, coverage, timings, problems, nodesKept: unique };
 }
 
 function count(

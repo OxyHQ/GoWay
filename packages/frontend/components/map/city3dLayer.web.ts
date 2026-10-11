@@ -48,7 +48,13 @@
 import type { LightSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type { CustomLayerInterface, Map as MapLibreMap, VectorTileSource } from 'maplibre-gl';
 
-import { CITY_TILE_LAYER, CITY_TILE_PATH, CITY_TILE_ZOOM } from '@/lib/map/cityTiles';
+import { isCity3dTreesRequested, MAP_CITY3D_TREES_ENABLED } from '@/lib/map/city3dTreesFlag';
+import {
+  CITY_TILE_LAYER,
+  CITY_TILE_PATH,
+  CITY_TILE_ZOOM,
+  CITY_TREE_LAYER,
+} from '@/lib/map/cityTiles';
 import { isCityTilesRequested, MAP_CITY_TILES_ENABLED } from '@/lib/map/cityTilesFlag';
 import {
   getMapSource,
@@ -66,6 +72,7 @@ import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
 
 import { followTerrain } from './city3dGround.web';
 import { cityLightFromSpec, sameCityLight } from './city3dLight';
+import { treeColours } from './city3dTrees';
 // Type-only on purpose: the engine chunk imports these modules at runtime, and
 // a module two lazy chunks share is hoisted into the first-paint `__common`
 // chunk (see `engine3d/lazyChunk.ts`; `components/__tests__/engine3dChunk.test.ts`).
@@ -210,7 +217,21 @@ export async function attachCity3d(
     typeof window !== 'undefined' ? window.location.origin : '',
   );
 
-  const palette = buildingHeightRamp(CARTOGRAPHY_PALETTES[options.appearance]);
+  const cartography = CARTOGRAPHY_PALETTES[options.appearance];
+  const trees = treeColours(cartography);
+  const palette = {
+    ...buildingHeightRamp(cartography),
+    treeCrown: trees.crown,
+    treeConifer: trees.conifer,
+    treeTrunk: trees.trunk,
+  };
+  // Stylised trees in mapped woods and parks (`engine/city3d/trees.ts`).
+  const standTrees = isCity3dTreesRequested({
+    enabled: MAP_CITY3D_TREES_ENABLED,
+    // `typeof`: the attach tests run without the bundler's `__DEV__`.
+    development: typeof __DEV__ !== 'undefined' && __DEV__,
+    search: typeof window === 'undefined' ? '' : window.location.search,
+  });
   let lightSpec = options.light;
   let applied: CityLight | null = null;
   let engine: CityEngine | null = null;
@@ -243,6 +264,29 @@ export async function attachCity3d(
       gl: gl as WebGL2RenderingContext,
       canvas: host.getCanvas(),
       ...citySource,
+      // The fill reads OpenMapTiles' landcover: from the basemap tile itself,
+      // or — when the buildings come from GoWay city tiles, which carry the
+      // trees OSM records but no landcover — from the basemap's tiles too.
+      trees: standTrees
+        ? {
+            sourceLayers: {
+              landcover: OPENMAPTILES_SOURCE_LAYERS.landcover,
+              landuse: OPENMAPTILES_SOURCE_LAYERS.landuse,
+              water: OPENMAPTILES_SOURCE_LAYERS.water,
+              transportation: OPENMAPTILES_SOURCE_LAYERS.transportation,
+              building: OPENMAPTILES_SOURCE_LAYERS.building,
+            },
+            ...(citySource.tileFormat === 'goway'
+              ? {
+                  fill: {
+                    tileUrlTemplate: template,
+                    tileZoom: source?.maxzoom ?? 14,
+                    mappedLayer: CITY_TREE_LAYER,
+                  },
+                }
+              : {}),
+          }
+        : null,
       palette,
       light: applied,
       fade: BUILDINGS_3D_FADE,

@@ -10,8 +10,9 @@
  *
  * So this reads the source tree and pins the shape that prevents it:
  *
- *  - only the two engine modules import `three` or `@sparkjsdev/spark` at
- *    runtime (`import type` is erased and allowed anywhere);
+ *  - only the two engine modules — and `cityMeshes.ts`, which the city engine
+ *    alone imports — load `three` or `@sparkjsdev/spark` at runtime
+ *    (`import type` is erased and allowed anywhere);
  *  - nothing reaches either engine except `engine3d/lazyChunk.ts`, and the
  *    MapLibre adapter imports the city engine's folder for types only;
  *  - `lazyChunk.ts` is only ever imported dynamically.
@@ -64,6 +65,8 @@ const ENGINES = [
   // The model layer is part of the city engine (one scene, one renderer —
   // docs/SDK_MAP_MODELS.md), imported only by `cityEngine.ts`.
   'components/map/engine/city3d/models.ts',
+  // The city engine's GPU-side tile entries; reached only from cityEngine.ts.
+  'components/map/engine/city3d/cityMeshes.ts',
 ];
 const CHUNK = 'components/engine3d/lazyChunk.ts';
 
@@ -96,6 +99,25 @@ describe('the three.js chunk', () => {
       .filter((f) => runtimeImports(f.text, /(sparkEngine|city3d\/cityEngine)$/).length > 0)
       .map((f) => f.path);
     expect(offenders).toEqual([]);
+  });
+
+  test('only the city engine reaches cityMeshes.ts at runtime', () => {
+    // It imports three, so anything else importing it would put three (and
+    // it) into a second chunk, and both into `__common`.
+    const importers = files
+      .filter((f) => runtimeImports(f.text, /(^|\/)cityMeshes$/).length > 0)
+      .map((f) => f.path);
+    expect(importers).toEqual(['components/map/engine/city3d/cityEngine.ts']);
+  });
+
+  test('the trees flag is reached only from the lazy adapter', () => {
+    // It reads an env var at module scope; imported from anything on the
+    // first-paint path it would put code in the entry chunk with the
+    // prototype off (measured: +292 B when it lived in lib/config.ts).
+    const importers = files
+      .filter((f) => runtimeImports(f.text, /lib\/map\/city3dTreesFlag$/).length > 0)
+      .map((f) => f.path);
+    expect(importers).toEqual(['components/map/city3dLayer.web.ts']);
   });
 
   test('the MapLibre adapter imports the city engine folder type-only', () => {

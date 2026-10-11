@@ -26,7 +26,9 @@
  * drives both materials from one uniform set.
  */
 import { AO } from './occlusion';
+import { Z_UNITS_PER_METRE } from './packing';
 import { glslFloat } from './shaders';
+import { DITHER_DISCARD_GLSL, DITHER_GLSL } from './transitions';
 
 /** How a tagged colour is tempered into the palette; see the module header. */
 export const TAG_TEMPER = {
@@ -44,15 +46,18 @@ precision highp float;
 uniform mat4 modelViewMatrix;
 uniform mat4 projectionMatrix;
 
-in vec3 position;
-in vec3 normal;
-in vec2 shade;
-in vec4 color;
-in vec4 facade;
-// On 3D terrain: the building's lift in metres (terrainGround.ts), read only
-// while uGrounded is set — see shaders.ts.
+// The compact format (packing.ts), as for the OpenMapTiles buildings: x, y in
+// tile units, z in 1/32 m, w the shade word (tone × 256 + corner occlusion);
+// the model matrix turns the units back into metres.
+in vec4 position;
+in vec4 normal;
+// On 3D terrain: how far this vertex's building is lifted, in metres
+// (terrainGround.ts). Read only while uGrounded is set; without terrain the
+// attribute may not even be bound.
 in float ground;
 uniform float uGrounded;
+in vec4 color;
+in vec4 facade;
 
 out vec3 vNormal;
 out float vCornerAo;
@@ -62,13 +67,15 @@ out vec4 vColor;
 out vec4 vFacade;
 
 void main() {
-  vNormal = normal;
-  vCornerAo = shade.x;
-  vHeightAboveGround = position.z;
-  vBuildingHeight = shade.y * 255.0;
+  vNormal = normal.xyz;
+  float tone = floor(position.w / 256.0);
+  vCornerAo = (position.w - tone * 256.0) / 255.0;
+  vHeightAboveGround = position.z * ${glslFloat(1 / Z_UNITS_PER_METRE)};
+  vBuildingHeight = tone;
   vColor = color;
   vFacade = facade;
-  float lift = uGrounded > 0.5 ? ground : 0.0;
+  // The lift is metres; stored z is 1/32 m, scaled back by the model matrix.
+  float lift = uGrounded > 0.5 ? ground * ${glslFloat(Z_UNITS_PER_METRE)} : 0.0;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position.xy, position.z + lift, 1.0);
 }
 `;
@@ -102,7 +109,10 @@ float band(float x, float lo, float hi, float w) {
   return smoothstep(lo - w, lo + w, x) * (1.0 - smoothstep(hi - w, hi + w, x));
 }
 
+// Level-of-detail and fade-in cross-fades (transitions.ts).
+${DITHER_GLSL}
 void main() {
+  ${DITHER_DISCARD_GLSL}
   vec3 n = normalize(vNormal);
 
   vec3 ramp = vBuildingHeight < uTallM

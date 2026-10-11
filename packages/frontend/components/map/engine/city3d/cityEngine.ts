@@ -2,7 +2,8 @@
  * The city-3D engine: three.js drawing GoWay's buildings INTO the map's own
  * WebGL context, with the map's own camera.
  *
- * This is the only module of the feature that imports `three`, and it is only
+ * This and `cityMeshes.ts` (which only this module imports) are the modules of
+ * the feature that import `three`, and they are only
  * ever reached through `components/engine3d/lazyChunk.ts` — dynamically
  * imported by `components/map/city3dLayer.web.ts`, itself dynamically imported
  * by `MapCanvas.web.tsx` when the flag is on. So nobody with the flag off
@@ -23,33 +24,51 @@
  *
  * ## What happens per frame
  *
- *  1. Pick the tiles near the view (`tilesForView`) at the source's max zoom
- *     (14 — GoWay's tiles are over-zoomed beyond it, so one mesh per z14 tile
- *     serves every zoom the layer draws at).
- *  2. Ask the worker for any that are missing; cancel any no longer wanted.
- *  3. Place every loaded mesh with a centre-relative model matrix and draw
- *     (`tileMath.ts` explains why centre-relative: float32 precision).
+ *  1. Pick EVERY tile the camera sees, at the source's max zoom (14 — the
+ *     only zoom whose buildings carry heights), each at a level of detail
+ *     for its distance, within the draw budgets (`lod.ts`).
+ *  2. Ask the worker pool for any (tile, level) that is missing — nearest
+ *     first, a bounded number in flight; cancel any no longer wanted.
+ *  3. Admit arrived meshes to the GPU within a per-frame upload budget, so
+ *     three dense tiles landing together do not stall one frame.
+ *  4. Draw each tile at its level, or — while that level loads — at whatever
+ *     level of it is cached, so tilting or panning never opens a hole; swaps
+ *     are screen-door cross-fades (`transitions.ts`). Placement is a
+ *     centre-relative model matrix (`tileMath.ts`: float32 precision) with
+ *     the compact vertex format's units folded in (`packing.ts`).
  *
  * Nothing is meshed on this thread. A dense Barcelona tile is ~1.1 M vertices
- * and ~165 ms of meshing (measured, see `docs/MAP_3D_CITY.md`); on the main
- * thread that is ten dropped frames per tile.
+ * and ~165 ms of meshing at full detail (measured, see `docs/MAP_3D_CITY.md`);
+ * on the main thread that is ten dropped frames per tile.
  */
 import * as THREE from 'three';
 
-import type { TileMesh } from './mesher';
+import {
+  applyGround,
+  createTileEntry,
+  createTreeShapes,
+  disposeEntry,
+  groundTileFor,
+  placeEntry,
+  setEntryFade,
+  setEntryVisible,
+  type TileEntry,
+} from './cityMeshes';
+import {
+  type DrawBudget,
+  fitBudget,
+  LOD_POLICY,
+  type Lod,
+  type LodTile,
+  lodKey,
+  selectLodTiles,
+  type TileCost,
+} from './lod';
 import { createModelLayer, type ModelSpec, type ModelStatus } from './models';
 import type { CityLight } from './occlusion';
-import type { OsmTileMesh } from './osmMesher';
 import { OSM_FRAGMENT_SHADER, OSM_VERTEX_SHADER } from './osmShaders';
 import type { CityTileFormat, MeshWorkerRequest, MeshWorkerResponse } from './protocol';
 import { CITY_FRAGMENT_SHADER, CITY_VERTEX_SHADER } from './shaders';
-import {
-  type GroundResult,
-  type GroundSampler,
-  type GroundStats,
-  type GroundTile,
-  TileGrounder,
-} from './terrainGround';
 import {
   centeredProjection,
   type LngLatBox,
@@ -57,20 +76,25 @@ import {
   mercatorYFromLat,
   type TileId,
   tileKey,
-  tileModelMatrix,
-  tileSizeMetres,
-  tilesForView,
-  type ViewTile,
 } from './tileMath';
+import { type GroundSampler, type GroundStats, TileGrounder } from './terrainGround';
 import { TileCache, TileScheduler } from './tileScheduler';
+import { Transitions } from './transitions';
+import { treeMinHeightM } from './treeShaders';
+import type { TreeSourceLayers } from './treeSources';
+import { poolSize, WorkerPool } from './workerPool';
 
-/** The palette's building height ramp (`buildingHeightRamp` in `buildings3d.ts`). */
+/** The palette's building height ramp (`buildingHeightRamp` in `buildings3d.ts`), plus trees. */
 export interface CityPalette {
   low: string;
   tall: string;
   veryTall: string;
   tallM: number;
   veryTallM: number;
+  /** Tree crowns and trunks, derived from the palette's park colour (`city3dTrees.ts`). */
+  treeCrown?: string;
+  treeConifer?: string;
+  treeTrunk?: string;
 }
 
 export interface CityEngineOptions {
@@ -83,8 +107,21 @@ export interface CityEngineOptions {
   sourceLayer: string;
   /** What the tiles are; absent: OpenMapTiles. GoWay city tiles get the OSM mesher and shader. */
   tileFormat?: CityTileFormat;
-  /** How many of the nearest tiles to draw; absent: {@link MAX_TILES}. */
+  /**
+   * Most tiles drawn; absent: `LOD_POLICY.maxTiles`. GoWay city tiles, which
+   * have one level only, are all drawn at it (see `selectFor`).
+   */
   maxTiles?: number;
+  /**
+   * Trees (`trees.ts`): the styling fill of mapped woods and parks from
+   * OpenMapTiles' layers, and with GoWay city tiles the trees OSM records.
+   * `fill` is the OpenMapTiles source the fill reads when the buildings come
+   * from GoWay city tiles. `null`: no trees.
+   */
+  trees?: {
+    sourceLayers: TreeSourceLayers;
+    fill?: { tileUrlTemplate: string; tileZoom: number; mappedLayer: string };
+  } | null;
   palette: CityPalette;
   /** The map's light, converted (`components/map/city3dLight.ts`); see `CityLight`. */
   light: CityLight;
@@ -116,17 +153,34 @@ export interface CityView {
 }
 
 export interface CityEngineStats {
+  /** Tiles selected for the view (any level). */
   tilesWanted: number;
+  /** …of which cached at the level selected. */
   tilesLoaded: number;
   tilesPending: number;
+  /** Selected tiles per level: `[full, simple, coarse]`. */
+  tilesByLod: [number, number, number];
+  /** Building triangles and vertices drawn last frame. */
   triangles: number;
+  vertices: number;
+  /** Trees (instances) and their triangles drawn last frame. */
+  trees: number;
+  treeTriangles: number;
+  /** GPU bytes held by the tile cache. */
   gpuBytes: number;
+  /** Worker time for the last tile: decode + mesh, and tree placement. */
   lastMeshMs: number;
+  lastTreeMs: number;
+  /** This thread's time in `render()` (selection, scheduling, three's draw calls), smoothed. */
+  frameCpuMs: number;
+  /** Meshes waiting for the per-frame upload budget. */
+  uploadsQueued: number;
+  workers: number;
   errors: number;
 }
 
 export interface CityEngine {
-  /** Draw the buildings. */
+  /** Draw the buildings and trees. */
   render(view: CityView): void;
   /** Draw the models — from their own layer, above the overlays (`city3dLayer.web.ts`). */
   renderModels(view: CityView): void;
@@ -141,9 +195,9 @@ export interface CityEngine {
   /** Each drawn model's anchor on screen in the last frame (development checks). */
   modelAnchors(): ReturnType<ReturnType<typeof createModelLayer>['anchors']>;
   /**
-   * The terrain the buildings stand on, as a sampler of the drawn ground, or
-   * `null` for none. Call again whenever the terrain changes (a DEM tile
-   * arrived); every tile is then re-grounded, a few per frame.
+   * The terrain the buildings and trees stand on, as a sampler of the drawn
+   * ground, or `null` for none. Call again whenever the terrain changes (a DEM
+   * tile arrived); every tile is then re-grounded, a few per frame.
    */
   setGround(sample: GroundSampler | null): void;
   dispose(): void;
@@ -152,28 +206,54 @@ export interface CityEngine {
 /** Tiles re-grounded per frame: each is a 1,089-sample grid plus a pass over its vertices. */
 const GROUND_TILES_PER_FRAME = 1;
 
-/** What a tile mesh keeps to be placed on terrain later. */
-interface GroundUserData extends GroundTile {
-  key: string;
-  bounds: { min: [number, number, number]; max: [number, number, number] };
-}
-
-/** The nearest tiles drawn. A z14 tile is ~1.8–2.4 km, so 6 covers any view the layer draws at. */
-const MAX_TILES = 6;
-
 /**
- * GPU budget for cached tile meshes. A dense Barcelona tile is ~26 MB of
- * buffers and a Manhattan one ~6 MB (measured); 192 MB keeps the visible set
- * plus a little panning slack without becoming the page's biggest allocation.
+ * GPU budget for cached tile meshes: what is drawn ({@link DRAW_BUDGET}) plus
+ * panning slack and the coarser levels kept for fallback.
  */
 const MAX_CACHED_BYTES = 192 * 1024 * 1024;
 
 /**
  * Entry budget, which is what bounds EMPTY tiles (sea, fields): they weigh
  * nothing against {@link MAX_CACHED_BYTES} but are cached so a revisit does
- * not fetch them again (see `tileScheduler.ts`).
+ * not fetch them again (see `tileScheduler.ts`). Every (tile, level) is one
+ * entry, and up to 48 tiles are drawn.
  */
-const MAX_CACHED_TILES = 64;
+const MAX_CACHED_TILES = 160;
+
+/**
+ * What one frame may draw (`docs/MAP_3D_CITY.md` → "Budgets"). Measured
+ * before this budget, Barcelona's six nearest full-detail tiles were 136 MB
+ * and 6.6 M vertices and still left the far half of a tilted view flat.
+ */
+export const DRAW_BUDGET: DrawBudget = { bytes: 128 * 1024 * 1024, vertices: 8_000_000 };
+
+/**
+ * Tree instances drawn per frame, nearest tiles first (`docs/MAP_3D_CITY.md`
+ * → "Budgets"); a tile past it draws its buildings without trees.
+ */
+export const TREE_BUDGET = 40_000;
+
+/** Bytes of new meshes handed to the GPU per frame (at least one mesh always goes). */
+const UPLOAD_BYTES_PER_FRAME = 12 * 1024 * 1024;
+
+/**
+ * While the map is animating, a frame slower than this admits one mesh only;
+ * a gap longer than {@link IDLE_GAP_MS} is the map at rest, not a slow frame.
+ */
+const SLOW_FRAME_MS = 50;
+const IDLE_GAP_MS = 500;
+
+/** Requests in flight per worker: enough to overlap fetch and mesh, few enough to cancel. */
+const MAX_IN_FLIGHT_PER_WORKER = 2;
+
+/**
+ * Size of a level relative to full detail, for a tile not yet measured at
+ * it: means over the five measured tiles in `docs/MAP_3D_CITY.md`.
+ */
+const LEVEL_RATIO = [1, 0.46, 0.25] as const;
+
+/** Full-detail size assumed for a tile nothing is known about yet. */
+const UNKNOWN_FULL: TileCost = { bytes: 6 * 1024 * 1024, vertices: 400_000 };
 
 function hexToVector(hex: string): THREE.Vector3 {
   const value = Number.parseInt(hex.slice(1, 7), 16);
@@ -191,25 +271,28 @@ function expandTemplate(template: string, tile: TileId): string {
     .replace('{y}', String(tile.y));
 }
 
-function toGeometry(mesh: TileMesh): THREE.BufferGeometry {
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
-  geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normals, 3, true));
-  geometry.setAttribute('shade', new THREE.BufferAttribute(mesh.shade, 2, true));
-  geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
-  // The OSM city tiles' surface colour and storey rhythm (`osmMesher.ts`).
-  if ('colors' in mesh && 'facade' in mesh) {
-    const osm = mesh as OsmTileMesh;
-    geometry.setAttribute('color', new THREE.BufferAttribute(osm.colors, 4, true));
-    geometry.setAttribute('facade', new THREE.BufferAttribute(osm.facade, 4, false));
-  }
-  // From the worker's bounds, so three never walks a million vertices on this
-  // thread to compute them itself.
-  const min = new THREE.Vector3(...mesh.bounds.min);
-  const max = new THREE.Vector3(...mesh.bounds.max);
-  geometry.boundingBox = new THREE.Box3(min, max);
-  geometry.boundingSphere = geometry.boundingBox.getBoundingSphere(new THREE.Sphere());
-  return geometry;
+/** The fill's source tile for a city tile: its ancestor at the fill source's zoom. */
+function treeFill(
+  tile: TileId,
+  fill: { tileUrlTemplate: string; tileZoom: number; mappedLayer: string },
+): { url: string; tile: TileId; mappedLayer: string } {
+  const shift = Math.max(0, tile.z - fill.tileZoom);
+  const parent = { z: tile.z - shift, x: tile.x >> shift, y: tile.y >> shift };
+  return {
+    url: expandTemplate(fill.tileUrlTemplate, parent),
+    tile: parent,
+    mappedLayer: fill.mappedLayer,
+  };
+}
+
+/** A (tile, level) the engine requests. */
+type LodRequest = TileId & { lod: Lod };
+
+/** A worker reply waiting for the upload budget. */
+interface Arrival {
+  key: string;
+  lod: Lod;
+  reply: Extract<MeshWorkerResponse, { type: 'mesh' }>;
 }
 
 export function createCityEngine(options: CityEngineOptions): CityEngine {
@@ -220,61 +303,96 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const scene = new THREE.Scene();
   const camera = new THREE.Camera();
 
-  const uniforms = {
+  const light = {
+    uLightPosition: { value: new THREE.Vector3(0, 0, 1) },
+    uLightIntensity: { value: 0.5 },
+    uLightColor: { value: new THREE.Vector3(1, 1, 1) },
+    uOpacity: { value: 1 },
+    // On 3D terrain: read the per-vertex lift (`terrainGround.ts`).
+    uGrounded: { value: 0 },
+  };
+  const buildingUniforms = {
+    ...light,
     uLow: { value: new THREE.Vector3() },
     uTall: { value: new THREE.Vector3() },
     uVeryTall: { value: new THREE.Vector3() },
     uTallM: { value: 60 },
     uVeryTallM: { value: 180 },
-    uLightPosition: { value: new THREE.Vector3(0, 0, 1) },
-    uLightIntensity: { value: 0.5 },
-    uLightColor: { value: new THREE.Vector3(1, 1, 1) },
-    uOpacity: { value: 1 },
-    uGrounded: { value: 0 },
   };
-
-  const material = new THREE.RawShaderMaterial({
-    glslVersion: THREE.GLSL3,
-    vertexShader: options.tileFormat === 'goway' ? OSM_VERTEX_SHADER : CITY_VERTEX_SHADER,
-    fragmentShader: options.tileFormat === 'goway' ? OSM_FRAGMENT_SHADER : CITY_FRAGMENT_SHADER,
-    uniforms,
-    // Every model matrix mirrors y (local ENU is y-north, mercator y-south —
-    // see `tileModelMatrix`), and three, seeing a negative determinant, swaps
-    // which winding it calls front. The mirror is undone by MapLibre's own
-    // projection, which three cannot see; so the faces three now calls BACK
-    // are the outward ones. Verified by rendering the same Barcelona frame
-    // both ways: `FrontSide` draws hollow boxes (inner faces only, no roofs);
-    // `BackSide` draws the buildings.
-    side: THREE.BackSide,
-    // Premultiplied, as MapLibre composites custom layers.
-    blending: THREE.CustomBlending,
-    blendSrc: THREE.OneFactor,
-    blendDst: THREE.OneMinusSrcAlphaFactor,
-    transparent: false,
-  });
+  const treeUniforms = {
+    ...light,
+    uCrown: { value: new THREE.Vector3(0.3, 0.5, 0.3) },
+    uConifer: { value: new THREE.Vector3(0.2, 0.4, 0.3) },
+    uTreeMinHeight: { value: 0 },
+    uTrunk: { value: new THREE.Vector3(0.3, 0.3, 0.25) },
+  };
+  // Every material is a `RawShaderMaterial` with these shaders and its own
+  // fade pair, built per tile entry (`cityMeshes.ts`, which also explains
+  // which faces each keeps: the model matrices mirror y, and three swaps its
+  // notion of "front" with the determinant).
+  const context = {
+    scene,
+    buildingUniforms,
+    buildingShaders:
+      options.tileFormat === 'goway'
+        ? { vertexShader: OSM_VERTEX_SHADER, fragmentShader: OSM_FRAGMENT_SHADER }
+        : { vertexShader: CITY_VERTEX_SHADER, fragmentShader: CITY_FRAGMENT_SHADER },
+    treeUniforms,
+  };
+  // GoWay city tiles are meshed at full detail only (`osmMesher.ts` has no
+  // far levels yet): every visible tile is level 0, and the budget drops the
+  // farthest instead of coarsening them.
+  const singleLevel = options.tileFormat === 'goway';
+  const policy = {
+    ...LOD_POLICY,
+    maxTiles: options.maxTiles ?? LOD_POLICY.maxTiles,
+    ...(singleLevel ? { maxFullTiles: options.maxTiles ?? LOD_POLICY.maxTiles } : {}),
+  };
+  const shapes = createTreeShapes();
+  const transitions = new Transitions<TileEntry>();
 
   // `null` entries are empty tiles (sea, fields): cached so they are not
   // fetched again on every revisit.
-  const grounder = new TileGrounder(() => performance.now(), options.onGroundStats);
-  const cache = new TileCache<THREE.Mesh>(MAX_CACHED_BYTES, MAX_CACHED_TILES, (mesh) => {
-    scene.remove(mesh);
-    mesh.geometry.dispose();
-    grounder.forget((mesh.userData as GroundUserData).key);
+  const cache = new TileCache<TileEntry>(MAX_CACHED_BYTES, MAX_CACHED_TILES, (entry) => {
+    transitions.drop(entry);
+    disposeEntry(entry, scene);
+    grounder.forget(entry.key);
   });
-  const scheduler = new TileScheduler();
-  const requests = new Map<number, TileId>();
+  const scheduler = new TileScheduler<LodRequest>((t) => lodKey(tileKey(t), t.lod));
+  const requests = new Map<number, LodRequest>();
   const retryTimers = new Set<ReturnType<typeof setTimeout>>();
+  const arrivals: Arrival[] = [];
+  const previousLods = new Map<string, Lod>();
+  let selected: LodTile[] = [];
   let nextRequestId = 1;
-  let wantedTiles: ViewTile[] = [];
   let frame = 0;
   let disposed = false;
   let lastMeshMs = 0;
+  let lastTreeMs = 0;
   let errors = 0;
+  let frameCpuMs = 0;
+  let lastFrameAt = 0;
+  let lastStatsAt = 0;
+  let lastSignature = '';
+  let drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
+  // Measured full-detail cost per canonical tile, and a running mean of it.
+  const measured = new Map<string, TileCost>();
+  let meanFull: TileCost = UNKNOWN_FULL;
 
   const buildings = options.buildings !== false;
-  // No buildings, no worker: a models-only engine never fetches a tile.
-  const worker = buildings ? new Worker(new URL('./meshWorker', import.meta.url)) : null;
-  const send = (message: MeshWorkerRequest) => worker?.postMessage(message);
+  // No buildings, no workers: a models-only engine never fetches a tile.
+  const pool = new WorkerPool<MeshWorkerRequest & { id: number }, MeshWorkerResponse>(
+    () => new Worker(new URL('./meshWorker', import.meta.url)),
+    buildings
+      ? poolSize(typeof navigator === 'undefined' ? undefined : navigator.hardwareConcurrency)
+      : 0,
+    (reply) => onReply(reply),
+    () => {
+      errors++;
+      reportStats(true);
+    },
+  );
+  const grounder = new TileGrounder(() => performance.now(), options.onGroundStats);
 
   const models = createModelLayer({
     requestRepaint: options.requestRepaint,
@@ -293,187 +411,285 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     });
   };
 
-  const reportStats = () => {
+  const reportStats = (force = false) => {
     if (!options.onStats) return;
-    let triangles = 0;
-    for (const mesh of cache.values()) triangles += (mesh.geometry.index?.count ?? 0) / 3;
-    const gpuBytes = cache.bytes;
-    const wantedKeys = scheduler.wantedKeys;
+    const now = performance.now();
+    const byLod: [number, number, number] = [0, 0, 0];
+    let loaded = 0;
+    for (const tile of selected) {
+      byLod[tile.lod]++;
+      if (cache.has(lodKey(tileKey(tile), tile.lod))) loaded++;
+    }
+    // Counts that changed are reported at once; timings at most 4× a second.
+    const signature = `${byLod.join()}|${loaded}|${scheduler.pendingCount}|${arrivals.length}|${errors}`;
+    if (!force && signature === lastSignature && now - lastStatsAt < 250) return;
+    lastSignature = signature;
+    lastStatsAt = now;
     options.onStats({
-      tilesWanted: wantedKeys.length,
-      tilesLoaded: wantedKeys.filter((key) => cache.has(key)).length,
-      tilesPending: scheduler.pendingCount,
-      triangles,
-      gpuBytes,
+      tilesWanted: selected.length,
+      tilesLoaded: loaded,
+      tilesPending: scheduler.pendingCount + arrivals.length,
+      tilesByLod: byLod,
+      ...drawn,
+      gpuBytes: cache.bytes,
       lastMeshMs,
+      lastTreeMs,
+      frameCpuMs,
+      uploadsQueued: arrivals.length,
+      workers: pool.size,
       errors,
     });
   };
 
-  if (worker)
-    worker.onmessage = (event: MessageEvent<MeshWorkerResponse>) => {
-      if (disposed) return;
-      const reply = event.data;
-      const tile = requests.get(reply.id);
-      requests.delete(reply.id);
-      if (!tile) return;
-      const key = tileKey(tile);
+  /** A tile's cost at a level: measured, else scaled from what is known. */
+  const costOf = (tile: TileId, lod: Lod): TileCost => {
+    const entry = cache.get(lodKey(tileKey(tile), lod));
+    if (entry) return { bytes: entry.bytes, vertices: entry.vertices };
+    if (entry === null) return { bytes: 0, vertices: 0 };
+    const full = measured.get(tileKey(tile)) ?? meanFull;
+    const ratio = singleLevel ? 1 : LEVEL_RATIO[lod];
+    return { bytes: full.bytes * ratio, vertices: full.vertices * ratio };
+  };
 
-      if (reply.type === 'error') {
-        // One bad tile costs that tile; the rest of the city keeps drawing. It
-        // is retried with a bounded backoff (`tileScheduler.ts`) EVEN IF THE
-        // VIEW NEVER CHANGES — the timer asks for a frame, and that frame's
-        // `plan` re-requests it — because `building-3d`, which would otherwise
-        // have drawn it, is hidden.
-        const delay = scheduler.failed(tile, reply.id, performance.now());
-        if (delay === null) return;
-        errors++;
-        const timer = setTimeout(() => {
-          retryTimers.delete(timer);
-          if (!disposed) options.requestRepaint();
-        }, delay);
-        retryTimers.add(timer);
-        reportStats();
-        return;
-      }
-      if (!scheduler.succeeded(tile, reply.id)) return;
-      lastMeshMs = reply.meshMs;
-      const wanted = new Set(scheduler.wantedKeys);
-      if (!reply.mesh) {
-        // Remembered, so a revisit does not fetch an empty tile again.
-        cache.put(key, null, 0, frame, wanted);
-      } else {
-        const mesh = new THREE.Mesh(toGeometry(reply.mesh), material);
-        // The engine writes `matrixWorld` itself every frame (centre-relative);
-        // three must not recompute it from position/rotation/scale.
-        mesh.matrixAutoUpdate = false;
-        mesh.matrixWorldAutoUpdate = false;
-        mesh.visible = false;
-        mesh.userData = {
-          key,
-          tile,
-          tileSizeM: tileSizeMetres(tile),
-          positions: reply.mesh.positions,
-          polygonStarts: reply.mesh.polygonStarts,
-          polygonBoxes: reply.mesh.polygonBoxes,
-          bounds: reply.mesh.bounds,
-        } satisfies GroundUserData;
-        scene.add(mesh);
-        let bytes = 0;
-        for (const value of Object.values(reply.mesh)) {
-          if (ArrayBuffer.isView(value)) bytes += value.byteLength;
-        }
-        cache.put(key, mesh, bytes, frame, wanted);
-      }
-      reportStats();
-      options.requestRepaint();
+  const remember = (key: string, lod: Lod, entry: TileEntry | null) => {
+    // Every measurement is turned into a full-detail figure for this tile.
+    const cost = entry
+      ? { bytes: entry.bytes, vertices: entry.vertices }
+      : { bytes: 0, vertices: 0 };
+    const full = {
+      bytes: cost.bytes / LEVEL_RATIO[lod],
+      vertices: cost.vertices / LEVEL_RATIO[lod],
     };
-  if (worker)
-    worker.onerror = () => {
+    measured.set(key, full);
+    meanFull = {
+      bytes: meanFull.bytes * 0.8 + full.bytes * 0.2,
+      vertices: meanFull.vertices * 0.8 + full.vertices * 0.2,
+    };
+  };
+
+  const protectedKeys = (): Set<string> => {
+    const keys = new Set(scheduler.wantedKeys);
+    for (const entry of transitions.inUse()) keys.add(entry.key);
+    return keys;
+  };
+
+  const onReply = (reply: MeshWorkerResponse) => {
+    if (disposed) return;
+    const request = requests.get(reply.id);
+    requests.delete(reply.id);
+    if (!request) return;
+
+    if (reply.type === 'error') {
+      // One bad tile costs that tile; the rest of the city keeps drawing. It
+      // is retried with a bounded backoff (`tileScheduler.ts`) EVEN IF THE
+      // VIEW NEVER CHANGES — the timer asks for a frame, and that frame's
+      // `plan` re-requests it — because `building-3d`, which would otherwise
+      // have drawn it, is hidden.
+      const delay = scheduler.failed(request, reply.id, performance.now());
+      if (delay === null) return;
       errors++;
-      reportStats();
-    };
+      const timer = setTimeout(() => {
+        retryTimers.delete(timer);
+        if (!disposed) options.requestRepaint();
+      }, delay);
+      retryTimers.add(timer);
+      reportStats(true);
+      return;
+    }
+    if (!scheduler.succeeded(request, reply.id)) return;
+    lastMeshMs = reply.meshMs;
+    lastTreeMs = reply.treeMs;
+    // GPU work waits for the upload budget (`admit`); the bookkeeping is done.
+    arrivals.push({ key: lodKey(tileKey(request), request.lod), lod: request.lod, reply });
+    options.requestRepaint();
+  };
 
-  const updateWanted = (view: CityView) => {
-    wantedTiles =
-      view.zoom >= options.fade.start
-        ? tilesForView(view.bounds, view.center, options.tileZoom, options.maxTiles ?? MAX_TILES)
-        : [];
+  /** Hand queued meshes to the GPU, nearest first, within this frame's budget. */
+  const admit = (now: number) => {
+    if (arrivals.length === 0) return;
+    const rank = new Map<string, number>();
+    for (const tile of selected) rank.set(lodKey(tileKey(tile), tile.lod), tile.r);
+    arrivals.sort((a, b) => (rank.get(a.key) ?? 1e9) - (rank.get(b.key) ?? 1e9));
+    // A long gap since the last frame is the map at rest, not a slow frame.
+    const gap = now - lastFrameAt;
+    const slow = lastFrameAt > 0 && gap > SLOW_FRAME_MS && gap < IDLE_GAP_MS;
+    let budget = slow ? 0 : UPLOAD_BYTES_PER_FRAME;
+    let admitted = 0;
+    const wanted = protectedKeys();
+    while (arrivals.length > 0) {
+      const next = arrivals[0];
+      const bytes = (next.reply.mesh?.bytes ?? 0) + (next.reply.trees?.data.byteLength ?? 0);
+      if (admitted > 0 && bytes > budget) break;
+      arrivals.shift();
+      admitted++;
+      budget -= bytes;
+      const entry = createTileEntry(
+        context,
+        shapes,
+        next.key,
+        next.lod,
+        next.reply.mesh,
+        next.reply.trees,
+      );
+      remember(next.key.slice(0, next.key.indexOf('@')), next.lod, entry);
+      cache.put(next.key, entry, entry?.bytes ?? 0, frame, wanted);
+    }
+    if (arrivals.length > 0) options.requestRepaint();
+    reportStats(true);
+  };
+
+  const updateWanted = (view: CityView, now: number) => {
+    if (!buildings || view.zoom < options.fade.start) {
+      selected = [];
+    } else {
+      const chosen = selectLodTiles(view, options.tileZoom, policy, previousLods);
+      const fitted = fitBudget(chosen, costOf, DRAW_BUDGET);
+      // One level: the budget's coarsening costs nothing there, so all it
+      // can do is drop the farthest; what is kept is drawn at level 0.
+      selected = singleLevel ? fitted.map((tile) => ({ ...tile, lod: 0 as Lod })) : fitted;
+    }
+    previousLods.clear();
+    for (const tile of selected) previousLods.set(tileKey(tile), tile.lod);
+
     // Every frame, not only when the wanted set changes: a failed tile's
     // retry comes due on a frame where nothing else did.
-    const plan = scheduler.plan(wantedTiles, performance.now(), (key) => cache.has(key));
+    const wanted: LodRequest[] = selected.map((t) => ({ z: t.z, x: t.x, y: t.y, lod: t.lod }));
+    // A reply waiting for the upload budget is neither pending nor cached;
+    // it must not be requested again.
+    const arrived = new Set(arrivals.map((arrival) => arrival.key));
+    const plan = scheduler.plan(wanted, now, (key) => cache.has(key) || arrived.has(key));
     for (const id of plan.cancel) {
-      send({ type: 'cancel', id });
+      pool.cancel(id, { type: 'cancel', id });
       requests.delete(id);
     }
-    for (const wanted of plan.request) {
-      // Fetch the canonical tile; `wrap` only says where it is drawn.
-      const tile: TileId = { z: wanted.z, x: wanted.x, y: wanted.y };
+    const room = pool.size * MAX_IN_FLIGHT_PER_WORKER - pool.inFlight;
+    for (const request of plan.request.slice(0, Math.max(0, room))) {
       const id = nextRequestId++;
-      requests.set(id, tile);
-      scheduler.started(tile, id);
-      send({
-        type: 'mesh',
-        id,
-        tile,
-        url: expandTemplate(options.tileUrlTemplate, tile),
-        sourceLayer: options.sourceLayer,
-        format: options.tileFormat,
-      });
+      requests.set(id, request);
+      scheduler.started(request, id);
+      const tile: TileId = { z: request.z, x: request.x, y: request.y };
+      pool.send(
+        {
+          type: 'mesh',
+          id,
+          tile,
+          url: expandTemplate(options.tileUrlTemplate, tile),
+          sourceLayer: options.sourceLayer,
+          format: options.tileFormat,
+          lod: request.lod,
+          trees: options.trees && request.lod < 2 ? options.trees.sourceLayers : null,
+          ...(options.trees?.fill && request.lod < 2
+            ? { treeFill: treeFill(tile, options.trees.fill) }
+            : {}),
+        },
+        tileKey(tile),
+      );
     }
-    if (plan.cancel.length > 0 || plan.request.length > 0) reportStats();
+    if (plan.cancel.length > 0 || plan.request.length > 0) reportStats(true);
   };
 
-  /** Culling bounds: the mesh's own, lifted by its ground (or not, without terrain). */
-  const setBounds = (mesh: THREE.Mesh, ground: GroundResult | null) => {
-    const { bounds } = mesh.userData as GroundUserData;
-    const geometry = mesh.geometry;
-    geometry.boundingBox?.min.set(bounds.min[0], bounds.min[1], bounds.min[2] + (ground?.min ?? 0));
-    geometry.boundingBox?.max.set(bounds.max[0], bounds.max[1], bounds.max[2] + (ground?.max ?? 0));
-    if (geometry.boundingBox && geometry.boundingSphere) {
-      geometry.boundingBox.getBoundingSphere(geometry.boundingSphere);
-    }
-  };
-
-  /** Re-ground stale wanted tiles, nearest first, a few per frame. */
-  const groundWanted = () => {
-    let budget = GROUND_TILES_PER_FRAME;
-    for (const tile of wantedTiles) {
-      const key = tileKey(tile);
-      const mesh = cache.get(key);
-      if (!mesh || grounder.isCurrent(key)) continue;
-      if (budget-- <= 0) {
-        options.requestRepaint();
-        return;
+  /** What a selected tile shows now: its level, or any cached level of it. */
+  const bestFor = (tile: LodTile): TileEntry | null | undefined => {
+    const key = tileKey(tile);
+    const exact = cache.get(lodKey(key, tile.lod));
+    if (exact !== undefined) return exact;
+    // Nearest level first, finer before coarser at the same distance.
+    for (const delta of [1, 2]) {
+      for (const lod of [tile.lod - delta, tile.lod + delta]) {
+        if (lod < 0 || lod > 2) continue;
+        const other = cache.get(lodKey(key, lod as Lod));
+        if (other) return other;
       }
-      const result = grounder.ground(key, mesh.userData as GroundUserData);
-      if (!result) continue;
-      const attribute = mesh.geometry.getAttribute('ground');
-      if (attribute && attribute.array === result.values) {
-        if (result.changed) attribute.needsUpdate = true;
-      } else {
-        mesh.geometry.setAttribute('ground', new THREE.BufferAttribute(result.values, 1));
-      }
-      setBounds(mesh, result);
     }
+    return undefined;
   };
 
   const engine: CityEngine = {
     render(view) {
       if (disposed || !buildings) return;
+      const started = performance.now();
       frame++;
-      updateWanted(view);
+      updateWanted(view, started);
+      admit(started);
+      lastFrameAt = started;
 
       const span = options.fade.end - options.fade.start;
       const opacity = Math.max(0, Math.min(1, (view.zoom - options.fade.start) / span));
-      if (opacity <= 0) return;
-      uniforms.uOpacity.value = opacity;
+      light.uOpacity.value = opacity;
+      treeUniforms.uTreeMinHeight.value = treeMinHeightM(view.zoom);
 
       const center = { x: mercatorXFromLng(view.center.lng), y: mercatorYFromLat(view.center.lat) };
-      camera.projectionMatrix.fromArray(centeredProjection(view.mercatorToClip, center));
-      camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
-
-      const grounded = grounder.active;
-      if (grounded) groundWanted();
-
-      for (const mesh of cache.values()) mesh.visible = false;
-      for (const tile of wantedTiles) {
+      transitions.begin();
+      for (const tile of selected) {
+        const best = bestFor(tile);
+        // `undefined`: nothing cached yet — keep whatever the slot shows.
         const key = tileKey(tile);
-        cache.touch(key, frame);
-        const mesh = cache.get(key);
-        if (!mesh) continue;
-        // On terrain, a tile never grounded would be drawn at sea level —
-        // inside the hill — so it waits a frame for its lift.
-        mesh.visible = !grounded || grounder.hasGround(key);
-        // In the world copy the camera sees it in (`wrap`, antimeridian).
-        mesh.matrixWorld.fromArray(tileModelMatrix(tile, center));
+        transitions.show(key, best === undefined ? transitions.shown(key) : best, started);
+        if (best) {
+          cache.touch(best.key, frame);
+          best.placement = tile;
+        }
+        // A slot still fading out an older level keeps that one placed too.
+        const showing = transitions.shown(key);
+        if (showing) showing.placement = tile;
+      }
+      const { draws, active } = transitions.draws(started);
+
+      // On terrain: lift stale entries, nearest first, a few per frame. An
+      // entry never grounded would be drawn at sea level — inside the hill —
+      // so it waits for its first lift.
+      const grounded = grounder.active;
+      if (grounded) {
+        let budget = GROUND_TILES_PER_FRAME;
+        for (const tile of selected) {
+          const entry = bestFor(tile);
+          if (!entry || grounder.isCurrent(entry.key)) continue;
+          if (budget-- <= 0) {
+            options.requestRepaint();
+            break;
+          }
+          const result = grounder.ground(entry.key, groundTileFor(entry, tile));
+          if (result) applyGround(entry, result);
+        }
       }
 
-      // three caches GL state it believes it set; the map changed all of it
-      // since the last frame. MapLibre in turn marks its own state dirty after
-      // a custom layer returns, so nothing needs restoring on the way out.
-      renderer.resetState();
-      renderer.render(scene, camera);
+      for (const entry of cache.values()) setEntryVisible(entry, false);
+      drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
+      if (opacity > 0) {
+        // Nearest first, so the tree budget spends itself on the near tiles.
+        const rank = new Map<string, number>();
+        for (const tile of selected) rank.set(tileKey(tile), tile.r);
+        const r = (entry: TileEntry) => rank.get(entry.key.slice(0, entry.key.indexOf('@'))) ?? 1e9;
+        draws.sort((a, b) => r(a.value) - r(b.value));
+        for (const { value: entry, fade, out } of draws) {
+          if (!entry.placement) continue;
+          if (grounded && !grounder.hasGround(entry.key)) continue;
+          placeEntry(entry, entry.placement, center);
+          setEntryFade(entry, fade, out);
+          setEntryVisible(entry, true);
+          drawn.triangles += entry.triangles;
+          drawn.vertices += entry.vertices;
+          if (entry.trees.length > 0 && drawn.trees + entry.treeCount > TREE_BUDGET) {
+            // Past the budget a farther tile shows its buildings only.
+            for (const mesh of entry.trees) mesh.visible = false;
+          } else {
+            drawn.trees += entry.treeCount;
+            drawn.treeTriangles += entry.treeTriangles;
+          }
+        }
+        camera.projectionMatrix.fromArray(centeredProjection(view.mercatorToClip, center));
+        camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+        // three caches GL state it believes it set; the map changed all of it
+        // since the last frame. MapLibre in turn marks its own state dirty
+        // after a custom layer returns, so nothing needs restoring after.
+        renderer.resetState();
+        renderer.render(scene, camera);
+      }
+      if (active) options.requestRepaint();
+
+      const cpu = performance.now() - started;
+      frameCpuMs = frameCpuMs === 0 ? cpu : frameCpuMs * 0.9 + cpu * 0.1;
+      reportStats();
     },
 
     renderModels(view) {
@@ -481,34 +697,16 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       drawModels(view);
     },
 
-    setLight(light) {
-      // Not normalised: the radial term is MapLibre's gain (see `CityLight`).
-      uniforms.uLightPosition.value.set(...light.position);
-      uniforms.uLightIntensity.value = light.intensity;
-      uniforms.uLightColor.value.set(...light.color);
-      models.setLight(light);
-      options.requestRepaint();
-    },
-
     setGround(sample) {
       grounder.setSampler(sample);
       // The models stand on the same drawn ground as the buildings.
       models.setGround(sample);
-      uniforms.uGrounded.value = sample ? 1 : 0;
+      light.uGrounded.value = sample ? 1 : 0;
       // Culling bounds follow: without terrain every mesh is back at `z = 0`;
       // with it, each keeps its last lift until re-grounded.
-      for (const mesh of cache.values()) {
-        setBounds(mesh, sample ? grounder.resultFor((mesh.userData as GroundUserData).key) : null);
+      for (const entry of cache.values()) {
+        applyGround(entry, sample ? grounder.resultFor(entry.key) : null);
       }
-      options.requestRepaint();
-    },
-
-    setPalette(palette) {
-      uniforms.uLow.value.copy(hexToVector(palette.low));
-      uniforms.uTall.value.copy(hexToVector(palette.tall));
-      uniforms.uVeryTall.value.copy(hexToVector(palette.veryTall));
-      uniforms.uTallM.value = palette.tallM;
-      uniforms.uVeryTallM.value = palette.veryTallM;
       options.requestRepaint();
     },
 
@@ -528,17 +726,40 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       return models.anchors();
     },
 
+    setLight(next) {
+      // Not normalised: the radial term is MapLibre's gain (see `CityLight`).
+      light.uLightPosition.value.set(...next.position);
+      light.uLightIntensity.value = next.intensity;
+      light.uLightColor.value.set(...next.color);
+      models.setLight(next);
+      options.requestRepaint();
+    },
+
+    setPalette(palette) {
+      buildingUniforms.uLow.value.copy(hexToVector(palette.low));
+      buildingUniforms.uTall.value.copy(hexToVector(palette.tall));
+      buildingUniforms.uVeryTall.value.copy(hexToVector(palette.veryTall));
+      buildingUniforms.uTallM.value = palette.tallM;
+      buildingUniforms.uVeryTallM.value = palette.veryTallM;
+      if (palette.treeCrown) treeUniforms.uCrown.value.copy(hexToVector(palette.treeCrown));
+      if (palette.treeTrunk) treeUniforms.uTrunk.value.copy(hexToVector(palette.treeTrunk));
+      if (palette.treeConifer) treeUniforms.uConifer.value.copy(hexToVector(palette.treeConifer));
+      options.requestRepaint();
+    },
+
     dispose() {
       if (disposed) return;
       disposed = true;
-      worker?.terminate();
+      pool.terminate();
       models.dispose();
+      grounder.clear();
       for (const timer of retryTimers) clearTimeout(timer);
       retryTimers.clear();
+      transitions.clear();
       cache.clear();
-      grounder.clear();
+      shapes.dispose();
       requests.clear();
-      material.dispose();
+      arrivals.length = 0;
       // `dispose()` frees three's own bookkeeping. NOT `forceContextLoss()`,
       // which `sparkEngine` uses on its own canvas: this context is the MAP's,
       // and losing it would blank the basemap.

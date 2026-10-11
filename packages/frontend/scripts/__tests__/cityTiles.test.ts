@@ -17,12 +17,14 @@ import { deflateSync, gunzipSync, gzipSync } from 'node:zlib';
 import { PbfWriter } from 'pbf';
 
 import { decodeCityTile } from '../../components/map/engine/city3d/osmTiles';
-import { CITY_TILE_EXTENT, CITY_TILE_ZOOM } from '../../lib/map/cityTiles';
+import { decodeMappedTrees } from '../../components/map/engine/city3d/treeSources';
+import { CITY_TILE_EXTENT, CITY_TILE_ZOOM, CITY_TREE_LAYER } from '../../lib/map/cityTiles';
 import { PMTiles, zxyToTileId } from '../../worker/pmtiles.js';
 import { assembleRings, compile, representativePoint } from '../citygen/compile';
 import {
   encodeCityTile,
   encodePolygons,
+  encodeTreeLayer,
   quantizeRing,
   type TilePoint,
   tileRingArea,
@@ -36,7 +38,7 @@ const M_LAT = 1 / 111_000;
 const M_LON = 1 / 83_500;
 const ORIGIN = { lat: 41.392, lon: 2.164 };
 
-type Node = { id: number; lat: number; lon: number };
+type Node = { id: number; lat: number; lon: number; tags?: Record<string, string> };
 type Way = { id: number; refs: number[]; tags: Record<string, string> };
 type Relation = {
   id: number;
@@ -73,6 +75,14 @@ function writePbf(nodes: Node[], ways: Way[], relations: Relation[]): Uint8Array
     vals: Object.values(tags).map(index),
   });
   // Resolve every string before writing the table.
+  const sortedNodes = [...nodes].sort((a, b) => a.id - b.id);
+  // DenseNodes keys_vals: per node its (key, value) pairs, then a 0.
+  const keysVals = sortedNodes.some((n) => n.tags)
+    ? sortedNodes.flatMap((n) => {
+        const t = tagIdx(n.tags ?? {});
+        return [...t.keys.flatMap((k, i) => [k, t.vals[i]]), 0];
+      })
+    : [];
   const wayTags = ways.map((w) => tagIdx(w.tags));
   const relTags = relations.map((r) => tagIdx(r.tags));
   const relRoles = relations.map((r) => r.members.map((m) => index(m.role)));
@@ -95,6 +105,7 @@ function writePbf(nodes: Node[], ways: Way[], relations: Relation[]): Uint8Array
           dense.writePackedSVarint(1, delta(sorted.map((n) => n.id)));
           dense.writePackedSVarint(8, delta(sorted.map((n) => Math.round(n.lat * 1e7))));
           dense.writePackedSVarint(9, delta(sorted.map((n) => Math.round(n.lon * 1e7))));
+          if (keysVals.length > 0) dense.writePackedVarint(10, keysVals);
         },
         null,
       );
@@ -179,7 +190,35 @@ const blockInner = rect(210, 75, 15, 10, 10);
 const outline = rect(300, 0, 60, 30, 30);
 const part = rect(310, 5, 65, 10, 10);
 const unclosed = rect(400, 0, 120, 10, 10);
-const NODES = [...house, ...blockOuter, ...blockInner, ...outline, ...part, ...unclosed];
+// Trees: a recorded palm with a height, a needleleaved conifer, one with
+// nothing but `natural=tree`, and a node that is not a tree.
+const TREES: Node[] = [
+  {
+    id: 500,
+    lat: ORIGIN.lat + 30 * M_LAT,
+    lon: ORIGIN.lon + 30 * M_LON,
+    tags: { natural: 'tree', genus: 'Phoenix', height: '9 m' },
+  },
+  {
+    id: 501,
+    lat: ORIGIN.lat + 32 * M_LAT,
+    lon: ORIGIN.lon + 30 * M_LON,
+    tags: { natural: 'tree', leaf_type: 'needleleaved', diameter_crown: '4' },
+  },
+  {
+    id: 502,
+    lat: ORIGIN.lat + 34 * M_LAT,
+    lon: ORIGIN.lon + 30 * M_LON,
+    tags: { natural: 'tree' },
+  },
+  {
+    id: 503,
+    lat: ORIGIN.lat + 36 * M_LAT,
+    lon: ORIGIN.lon + 30 * M_LON,
+    tags: { amenity: 'bench' },
+  },
+];
+const NODES = [...house, ...blockOuter, ...blockInner, ...outline, ...part, ...unclosed, ...TREES];
 const ids = (nodes: Node[]) => nodes.map((n) => n.id);
 const WAYS: Way[] = [
   {
@@ -292,6 +331,43 @@ describe('compile', () => {
     });
     expect([...result.tiles.values()].flat().map((f) => f.id)).toEqual([302]);
     expect(result.coverage.outlinesDroppedForParts).toBe(0);
+  });
+});
+
+describe('trees', () => {
+  test('natural=tree nodes become the tree layer, with only what they record', () => {
+    const result = compile({ pbf: pbfPath, zoom: CITY_TILE_ZOOM });
+    const trees = [...result.trees.values()].flat();
+    expect(trees.map((t) => t.id)).toEqual([500, 501, 502]);
+    expect(trees.find((t) => t.id === 500)?.properties).toEqual({ crown: 'palm', height: 9 });
+    expect(trees.find((t) => t.id === 501)?.properties).toEqual({
+      crown: 'conifer',
+      crown_diameter: 4,
+    });
+    expect(trees.find((t) => t.id === 502)?.properties).toEqual({});
+    expect(result.treeCoverage).toMatchObject({ trees: 3, withCrown: 2, withHeight: 1 });
+    // The buildings are untouched by the trees riding the node pass.
+    expect(
+      [...result.tiles.values()]
+        .flat()
+        .map((f) => f.id)
+        .sort((a, b) => a - b),
+    ).toEqual([102, 203, 312]);
+  });
+
+  test('the tree layer appended to a building tile decodes alongside it', () => {
+    const result = compile({ pbf: pbfPath, zoom: CITY_TILE_ZOOM });
+    const [key, trees] = [...result.trees.entries()][0];
+    const buildings = encodeCityTile(result.tiles.get(key) ?? []);
+    const layer = encodeTreeLayer(trees);
+    const bytes = new Uint8Array(buildings.length + layer.length);
+    bytes.set(buildings);
+    bytes.set(layer, buildings.length);
+    const decoded = decodeMappedTrees(bytes, CITY_TREE_LAYER);
+    expect(decoded.trees.map((t) => t.id)).toEqual([500, 501, 502]);
+    expect(decoded.trees[0]).toMatchObject({ crown: 'palm', heightM: 9 });
+    expect(decoded.trees[0].x).toBeCloseTo(trees[0].point[0], -0.5);
+    if (buildings.length > 0) expect(decodeCityTile(bytes)?.buildings.length).toBeGreaterThan(0);
   });
 });
 

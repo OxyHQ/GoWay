@@ -186,6 +186,41 @@ export const ROOF_MATERIALS = [
 
 export type RoofMaterial = (typeof ROOF_MATERIALS)[number];
 
+/**
+ * The second source-layer: trees OpenStreetMap records (`natural=tree`), as
+ * points. Like the buildings, every property is a RECORDED fact and absent
+ * when OSM does not record it; the client draws an unknown crown as broadleaf
+ * and an unknown height at a typical size, and says so (`docs/MAP_3D_CITY.md`
+ * → "Trees").
+ */
+export const CITY_TREE_LAYER = 'tree';
+
+/** Crown forms the client can draw. */
+export const TREE_CROWNS = ['broadleaf', 'conifer', 'palm'] as const;
+
+export type TreeCrown = (typeof TREE_CROWNS)[number];
+
+/** The tree properties, by name. All optional. */
+export const CITY_TREE_PROPS = {
+  /**
+   * {@link TREE_CROWNS}: from `leaf_type` (`needleleaved` → conifer,
+   * `broadleaved` → broadleaf) or a recognised `genus` / `species` / `taxon`.
+   */
+  crown: 'crown',
+  /** `height`, parsed, metres. */
+  height: 'height',
+  /** `diameter_crown`, parsed, metres. */
+  crownDiameter: 'crown_diameter',
+} as const;
+
+/** One tree as the compiler writes it: a point in tile units and its properties. */
+export interface CityTileTree {
+  /** The OSM node id: the tree's own stable seed (turn, variant). */
+  id: number;
+  point: [number, number];
+  properties: { crown?: TreeCrown; height?: number; crown_diameter?: number };
+}
+
 /** The `{z}/{x}/{y}` template expanded for one tile. */
 export function cityTileUrl(template: string, z: number, x: number, y: number): string {
   return template.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));

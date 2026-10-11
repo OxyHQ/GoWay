@@ -110,6 +110,12 @@ export interface BlockVisitor {
   /** `true` to receive this block's nodes; they cost the most to decode. */
   wantNodes?: boolean;
   onNode?: (id: number, lon: number, lat: number) => void;
+  /**
+   * Nodes WITH tags (a tree, a bench…), keys and values as string-table
+   * indices. Independent of {@link BlockVisitor.wantNodes}: asking for tagged
+   * nodes decodes the tag stream, never the untagged majority's callbacks.
+   */
+  onTaggedNode?: (id: number, lon: number, lat: number, keys: number[], vals: number[]) => void;
   onWay?: (id: number, keys: number[], vals: number[], refs: number[]) => void;
   onRelation?: (
     id: number,
@@ -142,6 +148,7 @@ const rolesScratch: number[] = [];
 const idsScratch: number[] = [];
 const latsScratch: number[] = [];
 const lonsScratch: number[] = [];
+const keyValsScratch: number[] = [];
 
 function readPacked(pbf: PbfReader, header: number, out: number[], signed: boolean): void {
   out.length = 0;
@@ -161,7 +168,10 @@ export function readBlock(bytes: Uint8Array, visitor: BlockVisitor): BlockConten
   let lonOffset = 0;
   // A node-only pass never looks at tags; decoding thousands of strings per
   // block for it would be most of its cost.
-  const wantStrings = Boolean(visitor.onStrings || visitor.onWay || visitor.onRelation);
+  const wantStrings = Boolean(
+    visitor.onStrings || visitor.onWay || visitor.onRelation || visitor.onTaggedNode,
+  );
+  const wantNodes = Boolean((visitor.wantNodes && visitor.onNode) || visitor.onTaggedNode);
   pbf.readFields((tag, _out: null, reader) => {
     if (tag === 1 && !wantStrings) {
       reader.pos = reader.readVarint() + reader.pos;
@@ -200,7 +210,7 @@ export function readBlock(bytes: Uint8Array, visitor: BlockVisitor): BlockConten
       (tag, _out: null, reader) => {
         if (tag === 2) {
           contents.nodes = true;
-          if (!visitor.wantNodes || !visitor.onNode) {
+          if (!wantNodes) {
             reader.pos = reader.readVarint() + reader.pos;
             return;
           }
@@ -208,22 +218,44 @@ export function readBlock(bytes: Uint8Array, visitor: BlockVisitor): BlockConten
           idsScratch.length = 0;
           latsScratch.length = 0;
           lonsScratch.length = 0;
+          keyValsScratch.length = 0;
           while (reader.pos < groupEnd) {
             const header = reader.readVarint();
             const field = header >> 3;
             if (field === 1) readPacked(reader, header, idsScratch, true);
             else if (field === 8) readPacked(reader, header, latsScratch, true);
             else if (field === 9) readPacked(reader, header, lonsScratch, true);
-            else reader.skip(header);
+            else if (field === 10 && visitor.onTaggedNode) {
+              readPacked(reader, header, keyValsScratch, false);
+            } else reader.skip(header);
           }
           let id = 0;
           let lat = 0;
           let lon = 0;
+          // keys_vals: per node, (key, value) pairs then a 0; empty when no node has tags.
+          let kv = 0;
           for (let i = 0; i < idsScratch.length; i++) {
             id += idsScratch[i];
             lat += latsScratch[i];
             lon += lonsScratch[i];
-            visitor.onNode(id, lonBase + scale * lon, latBase + scale * lat);
+            if (visitor.wantNodes && visitor.onNode) {
+              visitor.onNode(id, lonBase + scale * lon, latBase + scale * lat);
+            }
+            if (visitor.onTaggedNode && kv < keyValsScratch.length) {
+              if (keyValsScratch[kv] === 0) {
+                kv++;
+                continue;
+              }
+              const keys: number[] = [];
+              const vals: number[] = [];
+              while (kv < keyValsScratch.length && keyValsScratch[kv] !== 0) {
+                keys.push(keyValsScratch[kv]);
+                vals.push(keyValsScratch[kv + 1]);
+                kv += 2;
+              }
+              kv++;
+              visitor.onTaggedNode(id, lonBase + scale * lon, latBase + scale * lat, keys, vals);
+            }
           }
         } else if (tag === 1) {
           contents.nodes = true;
@@ -231,16 +263,23 @@ export function readBlock(bytes: Uint8Array, visitor: BlockVisitor): BlockConten
           let id = 0;
           let lat = 0;
           let lon = 0;
+          const keys: number[] = [];
+          const vals: number[] = [];
           while (reader.pos < nodeEnd) {
             const header = reader.readVarint();
             const field = header >> 3;
             if (field === 1) id = reader.readSVarint();
+            else if (field === 2 && visitor.onTaggedNode) readPacked(reader, header, keys, false);
+            else if (field === 3 && visitor.onTaggedNode) readPacked(reader, header, vals, false);
             else if (field === 8) lat = reader.readSVarint();
             else if (field === 9) lon = reader.readSVarint();
             else reader.skip(header);
           }
           if (visitor.wantNodes && visitor.onNode) {
             visitor.onNode(id, lonBase + scale * lon, latBase + scale * lat);
+          }
+          if (visitor.onTaggedNode && keys.length > 0) {
+            visitor.onTaggedNode(id, lonBase + scale * lon, latBase + scale * lat, keys, vals);
           }
         } else if (tag === 3) {
           contents.ways = true;

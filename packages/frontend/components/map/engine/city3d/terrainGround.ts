@@ -63,11 +63,22 @@ export interface GroundTile {
   /** The tile's side in metres (`tileSizeMetres`). */
   tileSizeM: number;
   /** Local ENU positions, 3 per vertex (the mesh's own). */
-  positions: Float32Array;
+  positions?: Float32Array;
   /** First vertex of each polygon; its vertices run to the next one's. */
-  polygonStarts: Uint32Array;
+  polygonStarts?: Uint32Array;
   /** Each polygon's footprint box in local metres: `minX, minY, maxX, maxY`. */
   polygonBoxes: Float32Array;
+  /**
+   * Instead of `positions` + `polygonStarts`: lift the tile's vertices (and
+   * anything else standing on it) yourself, from the placed polygons and the
+   * sampled grid — what a mesh in the compact vertex format does
+   * (`cityMeshes.ts` → `groundTileFor`). `out` is the last result's buffer.
+   */
+  lift?: (
+    placed: PolygonGround,
+    grid: Float32Array,
+    out?: Float32Array,
+  ) => { values: Float32Array; min: number; max: number };
 }
 
 /** Sample the ground over a tile, row-major from its north-west corner. */
@@ -219,6 +230,8 @@ interface TileState {
   version: number;
   anchor: Float32Array;
   sink: Float32Array;
+  /** The sampled grid, kept when the tile lifts itself (it may lift more than polygons). */
+  grid?: Float32Array;
   result: GroundResult;
 }
 
@@ -288,22 +301,33 @@ export class TileGrounder {
     // the foot (`anchor − sink`) — not their parts: a centre and a sink that
     // each move by less than epsilon in opposite directions move the foot by
     // up to twice it (PR #124 review).
+    // A tile that lifts itself may stand more than its polygons on the
+    // ground (trees), so the grid itself must also have held still.
     if (
       previous &&
       largestChange(previous.anchor, placed.anchor) <= GROUND.epsilonM &&
-      largestFootChange(previous, placed) <= GROUND.epsilonM
+      largestFootChange(previous, placed) <= GROUND.epsilonM &&
+      (!tile.lift ||
+        (previous.grid !== undefined && largestChange(previous.grid, grid) <= GROUND.epsilonM))
     ) {
       result = { ...previous.result, changed: false };
       this.tiles.set(key, { ...previous, version: this.version, result });
     } else {
-      const lifted = vertexGround(
-        tile.positions,
-        tile.polygonStarts,
-        placed,
-        previous?.result.values,
-      );
+      const lifted = tile.lift
+        ? tile.lift(placed, grid, previous?.result.values)
+        : vertexGround(
+            tile.positions ?? new Float32Array(0),
+            tile.polygonStarts ?? new Uint32Array(0),
+            placed,
+            previous?.result.values,
+          );
       result = { ...lifted, changed: true };
-      this.tiles.set(key, { version: this.version, ...placed, result });
+      this.tiles.set(key, {
+        version: this.version,
+        ...placed,
+        ...(tile.lift ? { grid } : {}),
+        result,
+      });
       this.stats.tilesUploaded++;
     }
     this.stats.tilesGrounded++;
