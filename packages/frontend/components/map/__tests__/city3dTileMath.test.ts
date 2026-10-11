@@ -152,6 +152,7 @@ describe('tilesForView', () => {
       z: 14,
       x: Math.floor(mercatorXFromLng(center.lng) * n),
       y: Math.floor(mercatorYFromLat(center.lat) * n),
+      wrap: 0,
     });
   });
 
@@ -164,7 +165,7 @@ describe('tilesForView', () => {
     expect(all.slice(0, 6)).toEqual(tiles);
   });
 
-  test('clamps to the world rather than wrapping', () => {
+  test('a whole-world view lists each canonical tile once', () => {
     const tiles = tilesForView(
       { west: -200, south: -89, east: 200, north: 89 },
       { lng: 0, lat: 0 },
@@ -176,5 +177,68 @@ describe('tilesForView', () => {
       expect(tile.x).toBeGreaterThanOrEqual(0);
       expect(tile.x).toBeLessThan(2);
     }
+  });
+
+  // PR #119 review: the first version CLAMPED x, so a view straddling the
+  // antimeridian never loaded the tiles east of it.
+  describe('across the antimeridian', () => {
+    const n = 2 ** 14;
+    const lat = -17.6; // Taveuni, Fiji, where the line runs over land
+    const keysOf = (tiles: { x: number; wrap: number }[]) =>
+      tiles.map((t) => `${t.x}@${t.wrap}`).sort();
+
+    test('unwrapped bounds load both sides, the east side one world over', () => {
+      const tiles = tilesForView(
+        { west: 179.97, south: lat - 0.02, east: 180.03, north: lat + 0.02 },
+        { lng: 180, lat },
+        14,
+        6,
+      );
+      const xs = new Set(tiles.map((t) => `${t.x}@${t.wrap}`));
+      expect(xs.has(`${n - 1}@0`)).toBe(true);
+      expect(xs.has('0@1')).toBe(true);
+      for (const tile of tiles) expect(tile.x).toBeLessThan(n);
+    });
+
+    test('wrapped bounds (east < west) and a centre in another world copy agree', () => {
+      const unwrapped = tilesForView(
+        { west: 179.97, south: lat - 0.02, east: 180.03, north: lat + 0.02 },
+        { lng: 180, lat },
+        14,
+        6,
+      );
+      const wrappedBounds = tilesForView(
+        { west: 179.97, south: lat - 0.02, east: -179.97, north: lat + 0.02 },
+        { lng: -180, lat },
+        14,
+        6,
+      );
+      expect(keysOf(wrappedBounds)).toEqual(keysOf(unwrapped));
+    });
+
+    test('the two sides meet edge to edge when placed', () => {
+      const center = { x: 1, y: mercatorYFromLat(lat) };
+      const west = { z: 14, x: n - 1, y: 9000, wrap: 0 };
+      const east = { z: 14, x: 0, y: 9000, wrap: 1 };
+      const size = tileSizeMetres(west);
+      // East edge of the last tile …
+      const westEdge = tileModelMatrix(west, center)[0] * size + tileModelMatrix(west, center)[12];
+      // … is the west edge of tile 0 drawn one world east.
+      const eastEdge = tileModelMatrix(east, center)[12];
+      expect(eastEdge).toBeCloseTo(westEdge, 12);
+      expect(eastEdge).toBeCloseTo(0, 12);
+    });
+
+    test('a huge box is walked only near the centre', () => {
+      const started = performance.now();
+      const tiles = tilesForView(
+        { west: -179, south: -80, east: 179, north: 80 },
+        { lng: 2, lat: 41 },
+        14,
+        6,
+      );
+      expect(tiles).toHaveLength(6);
+      expect(performance.now() - started).toBeLessThan(50);
+    });
   });
 });

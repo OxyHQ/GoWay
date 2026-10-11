@@ -49,7 +49,9 @@ import {
   tileKey,
   tileModelMatrix,
   tilesForView,
+  type ViewTile,
 } from './tileMath';
+import { TileCache, TileScheduler } from './tileScheduler';
 
 /** The palette's building height ramp (`buildingHeightRamp` in `buildings3d.ts`). */
 export interface CityPalette {
@@ -116,13 +118,12 @@ const MAX_TILES = 6;
  */
 const MAX_CACHED_BYTES = 192 * 1024 * 1024;
 
-interface CachedTile {
-  tile: TileId;
-  mesh: THREE.Mesh;
-  bytes: number;
-  triangles: number;
-  lastUsed: number;
-}
+/**
+ * Entry budget, which is what bounds EMPTY tiles (sea, fields): they weigh
+ * nothing against {@link MAX_CACHED_BYTES} but are cached so a revisit does
+ * not fetch them again (see `tileScheduler.ts`).
+ */
+const MAX_CACHED_TILES = 64;
 
 function hexToVector(hex: string): THREE.Vector3 {
   const value = Number.parseInt(hex.slice(1, 7), 16);
@@ -195,11 +196,17 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     transparent: false,
   });
 
-  const cache = new Map<string, CachedTile>();
-  const pending = new Map<string, number>();
+  // `null` entries are empty tiles (sea, fields): cached so they are not
+  // fetched again on every revisit.
+  const cache = new TileCache<THREE.Mesh>(MAX_CACHED_BYTES, MAX_CACHED_TILES, (mesh) => {
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+  });
+  const scheduler = new TileScheduler();
   const requests = new Map<number, TileId>();
+  const retryTimers = new Set<ReturnType<typeof setTimeout>>();
   let nextRequestId = 1;
-  let wantedKeys: string[] = [];
+  let wantedTiles: ViewTile[] = [];
   let frame = 0;
   let disposed = false;
   let lastMeshMs = 0;
@@ -211,37 +218,18 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const reportStats = () => {
     if (!options.onStats) return;
     let triangles = 0;
-    let gpuBytes = 0;
-    for (const entry of cache.values()) {
-      triangles += entry.triangles;
-      gpuBytes += entry.bytes;
-    }
+    for (const mesh of cache.values()) triangles += (mesh.geometry.index?.count ?? 0) / 3;
+    const gpuBytes = cache.bytes;
+    const wantedKeys = scheduler.wantedKeys;
     options.onStats({
       tilesWanted: wantedKeys.length,
       tilesLoaded: wantedKeys.filter((key) => cache.has(key)).length,
-      tilesPending: pending.size,
+      tilesPending: scheduler.pendingCount,
       triangles,
       gpuBytes,
       lastMeshMs,
       errors,
     });
-  };
-
-  const evict = () => {
-    let total = 0;
-    for (const entry of cache.values()) total += entry.bytes;
-    if (total <= MAX_CACHED_BYTES) return;
-    const wanted = new Set(wantedKeys);
-    const candidates = [...cache.entries()]
-      .filter(([key]) => !wanted.has(key))
-      .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
-    for (const [key, entry] of candidates) {
-      if (total <= MAX_CACHED_BYTES) break;
-      scene.remove(entry.mesh);
-      entry.mesh.geometry.dispose();
-      cache.delete(key);
-      total -= entry.bytes;
-    }
   };
 
   worker.onmessage = (event: MessageEvent<MeshWorkerResponse>) => {
@@ -251,17 +239,31 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     requests.delete(reply.id);
     if (!tile) return;
     const key = tileKey(tile);
-    if (pending.get(key) === reply.id) pending.delete(key);
 
     if (reply.type === 'error') {
-      // One bad tile costs that tile. It is retried the next time it is wanted
-      // after the view changes, and the rest of the city keeps drawing.
+      // One bad tile costs that tile; the rest of the city keeps drawing. It
+      // is retried with a bounded backoff (`tileScheduler.ts`) EVEN IF THE
+      // VIEW NEVER CHANGES — the timer asks for a frame, and that frame's
+      // `plan` re-requests it — because `building-3d`, which would otherwise
+      // have drawn it, is hidden.
+      const delay = scheduler.failed(tile, reply.id, performance.now());
+      if (delay === null) return;
       errors++;
+      const timer = setTimeout(() => {
+        retryTimers.delete(timer);
+        if (!disposed) options.requestRepaint();
+      }, delay);
+      retryTimers.add(timer);
       reportStats();
       return;
     }
+    if (!scheduler.succeeded(tile, reply.id)) return;
     lastMeshMs = reply.meshMs;
-    if (reply.mesh) {
+    const wanted = new Set(scheduler.wantedKeys);
+    if (!reply.mesh) {
+      // Remembered, so a revisit does not fetch an empty tile again.
+      cache.put(key, null, 0, frame, wanted);
+    } else {
       const mesh = new THREE.Mesh(toGeometry(reply.mesh), material);
       // The engine writes `matrixWorld` itself every frame (centre-relative);
       // three must not recompute it from position/rotation/scale.
@@ -274,14 +276,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         reply.mesh.normals.byteLength +
         reply.mesh.shade.byteLength +
         reply.mesh.indices.byteLength;
-      cache.set(key, {
-        tile,
-        mesh,
-        bytes,
-        triangles: reply.mesh.indices.length / 3,
-        lastUsed: frame,
-      });
-      evict();
+      cache.put(key, mesh, bytes, frame, wanted);
     }
     reportStats();
     options.requestRepaint();
@@ -292,27 +287,23 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   };
 
   const updateWanted = (view: CityView) => {
-    const tiles =
+    wantedTiles =
       view.zoom >= options.fade.start
         ? tilesForView(view.bounds, view.center, options.tileZoom, MAX_TILES)
         : [];
-    const keys = tiles.map(tileKey);
-    if (keys.join('|') === wantedKeys.join('|')) return;
-    wantedKeys = keys;
-    const wanted = new Set(keys);
-
-    for (const [key, id] of pending) {
-      if (wanted.has(key)) continue;
+    // Every frame, not only when the wanted set changes: a failed tile's
+    // retry comes due on a frame where nothing else did.
+    const plan = scheduler.plan(wantedTiles, performance.now(), (key) => cache.has(key));
+    for (const id of plan.cancel) {
       send({ type: 'cancel', id });
       requests.delete(id);
-      pending.delete(key);
     }
-    for (const tile of tiles) {
-      const key = tileKey(tile);
-      if (cache.has(key) || pending.has(key)) continue;
+    for (const wanted of plan.request) {
+      // Fetch the canonical tile; `wrap` only says where it is drawn.
+      const tile: TileId = { z: wanted.z, x: wanted.x, y: wanted.y };
       const id = nextRequestId++;
       requests.set(id, tile);
-      pending.set(key, id);
+      scheduler.started(tile, id);
       send({
         type: 'mesh',
         id,
@@ -321,7 +312,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         sourceLayer: options.sourceLayer,
       });
     }
-    reportStats();
+    if (plan.cancel.length > 0 || plan.request.length > 0) reportStats();
   };
 
   const engine: CityEngine = {
@@ -339,13 +330,15 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       camera.projectionMatrix.fromArray(centeredProjection(view.mercatorToClip, center));
       camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
 
-      const wanted = new Set(wantedKeys);
-      for (const [key, entry] of cache) {
-        const visible = wanted.has(key);
-        entry.mesh.visible = visible;
-        if (!visible) continue;
-        entry.lastUsed = frame;
-        entry.mesh.matrixWorld.fromArray(tileModelMatrix(entry.tile, center));
+      for (const mesh of cache.values()) mesh.visible = false;
+      for (const tile of wantedTiles) {
+        const key = tileKey(tile);
+        cache.touch(key, frame);
+        const mesh = cache.get(key);
+        if (!mesh) continue;
+        mesh.visible = true;
+        // In the world copy the camera sees it in (`wrap`, antimeridian).
+        mesh.matrixWorld.fromArray(tileModelMatrix(tile, center));
       }
 
       // three caches GL state it believes it set; the map changed all of it
@@ -376,12 +369,9 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       if (disposed) return;
       disposed = true;
       worker.terminate();
-      for (const entry of cache.values()) {
-        scene.remove(entry.mesh);
-        entry.mesh.geometry.dispose();
-      }
+      for (const timer of retryTimers) clearTimeout(timer);
+      retryTimers.clear();
       cache.clear();
-      pending.clear();
       requests.clear();
       material.dispose();
       // `dispose()` frees three's own bookkeeping. NOT `forceContextLoss()`,

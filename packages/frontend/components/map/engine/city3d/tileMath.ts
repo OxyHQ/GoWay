@@ -134,7 +134,8 @@ export function tileSizeMetres(tile: TileId): number {
 
 /**
  * Column-major 4×4 taking a tile's LOCAL METRES (ENU, see the header) to
- * mercator RELATIVE TO `center`.
+ * mercator RELATIVE TO `center`, in the world copy `tile.wrap` (0 when absent;
+ * see {@link ViewTile}).
  *
  * `x` scales by `k` (mercator per metre) and moves by the origin's offset from
  * the centre; `y` scales by `-k`, because local `y` is north and mercator `y`
@@ -145,8 +146,10 @@ export function tileSizeMetres(tile: TileId): number {
  * MapLibre's left-handed one), and the engine accounts for it when it picks
  * which triangle faces to cull.
  */
-export function tileModelMatrix(tile: TileId, center: MercatorPoint): number[] {
+export function tileModelMatrix(tile: TileId & { wrap?: number }, center: MercatorPoint): number[] {
   const origin = tileOrigin(tile);
+  // A tile drawn in another world copy sits whole worlds (mercator units) away.
+  origin.x += tile.wrap ?? 0;
   const k = mercatorPerMetre(tileCenterLatitude(tile));
   // biome-ignore format: a 4×4 matrix reads as four columns.
   return [
@@ -193,44 +196,83 @@ export function centeredProjection(
 }
 
 /**
+ * A tile in view: the canonical tile to FETCH (`x` in `[0, 2^z)`) plus the
+ * world copy it is drawn in. `wrap` is how many whole worlds east (+) or west
+ * (−) of the canonical one the camera sees it: a view straddling the
+ * antimeridian sees tile x = 0 one world east of tile x = 2^z − 1.
+ */
+export interface ViewTile extends TileId {
+  wrap: number;
+}
+
+/**
  * The tiles to keep loaded for a view, nearest first.
  *
  * "Load near view" — the default both reference projects (Valdrada, Procedural
  * Tokyo) chose — rather than "load the viewport". A pitched camera's viewport
  * runs to the horizon, which at z16 and 60° is kilometres of tiles nobody can
- * see as buildings. So the candidates are the tiles the visible box touches,
- * ordered by distance from the centre and cut at `maxTiles`. The far field is
- * simply not drawn by this prototype; a real LOD would draw it coarsely (see
- * `docs/MAP_3D_CITY.md`).
+ * see as buildings. So the candidates are the tiles the visible box touches
+ * within a few tiles of the centre, ordered by distance from the centre and
+ * cut at `maxTiles`. The far field is simply not drawn by this prototype; a
+ * real LOD would draw it coarsely (see `docs/MAP_3D_CITY.md`).
  *
- * Longitude is clamped rather than wrapped: world copies are out of scope for a
- * prototype that only renders from z15.5.
+ * ## Across the antimeridian
+ *
+ * MapLibre reports a view that straddles ±180° with UNWRAPPED bounds (e.g.
+ * west 179.9, east 180.2). The first version clamped x into the canonical
+ * world, so the tiles east of the line were never loaded (PR #119 review).
+ * Now x runs unwrapped, each tile is fetched as its canonical `x mod 2^z` and
+ * drawn with its world offset (`wrap`, see {@link tileModelMatrix}). Bounds
+ * given the other way round (east < west) are read as crossing the line, and
+ * the centre is moved into the bounds' own world copy before distances are
+ * measured. One canonical tile is drawn once — in the nearest copy — since a
+ * mesh has one placement; two copies of the same tile cannot both be near the
+ * camera at the zooms this layer draws.
  */
 export function tilesForView(
   bounds: LngLatBox,
   center: { lng: number; lat: number },
   zoom: number,
   maxTiles: number,
-): TileId[] {
+): ViewTile[] {
   const n = 2 ** zoom;
-  const clampIndex = (value: number) => Math.max(0, Math.min(n - 1, Math.floor(value)));
-  const minX = clampIndex(mercatorXFromLng(bounds.west) * n);
-  const maxX = clampIndex(mercatorXFromLng(bounds.east) * n);
-  const minY = clampIndex(mercatorYFromLat(bounds.north) * n);
-  const maxY = clampIndex(mercatorYFromLat(bounds.south) * n);
-  const cx = mercatorXFromLng(center.lng) * n;
+  const west = bounds.west;
+  const east = bounds.east < bounds.west ? bounds.east + 360 : bounds.east;
+  const mid = (west + east) / 2;
+  const lng = center.lng + 360 * Math.round((mid - center.lng) / 360);
+  const cx = mercatorXFromLng(lng) * n;
   const cy = mercatorYFromLat(center.lat) * n;
 
-  const tiles: { tile: TileId; distance: number }[] = [];
+  // Never walk further from the centre than the nearest `maxTiles` can reach:
+  // a pitched or zoomed-out view's box can span thousands of tiles.
+  const reach = Math.ceil(Math.sqrt(Math.max(1, maxTiles))) + 1;
+  const clampY = (value: number) => Math.max(0, Math.min(n - 1, Math.floor(value)));
+  const minX = Math.max(Math.floor(mercatorXFromLng(west) * n), Math.floor(cx) - reach);
+  const maxX = Math.min(Math.floor(mercatorXFromLng(east) * n), Math.floor(cx) + reach);
+  const minY = Math.max(clampY(mercatorYFromLat(bounds.north) * n), Math.floor(cy) - reach);
+  const maxY = Math.min(clampY(mercatorYFromLat(bounds.south) * n), Math.floor(cy) + reach);
+
+  const nearest = new Map<string, { tile: ViewTile; distance: number }>();
   for (let x = minX; x <= maxX; x++) {
     for (let y = minY; y <= maxY; y++) {
       // Distance from the centre to the tile's nearest point, in tiles: the
       // tile the camera stands in is 0, whatever corner it is near.
       const dx = Math.max(x - cx, 0, cx - (x + 1));
       const dy = Math.max(y - cy, 0, cy - (y + 1));
-      tiles.push({ tile: { z: zoom, x, y }, distance: Math.hypot(dx, dy) });
+      const distance = Math.hypot(dx, dy);
+      const tile: ViewTile = { z: zoom, x: ((x % n) + n) % n, y, wrap: Math.floor(x / n) };
+      const key = tileKey(tile);
+      const seen = nearest.get(key);
+      if (!seen || distance < seen.distance) nearest.set(key, { tile, distance });
     }
   }
-  tiles.sort((a, b) => a.distance - b.distance || a.tile.y - b.tile.y || a.tile.x - b.tile.x);
+  const tiles = [...nearest.values()];
+  tiles.sort(
+    (a, b) =>
+      a.distance - b.distance ||
+      a.tile.y - b.tile.y ||
+      a.tile.wrap - b.tile.wrap ||
+      a.tile.x - b.tile.x,
+  );
   return tiles.slice(0, Math.max(0, maxTiles)).map((entry) => entry.tile);
 }

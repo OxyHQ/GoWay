@@ -154,7 +154,16 @@ worker fetches, decodes and meshes, and hands the typed arrays back as
   camera it is the only sane choice: the viewport runs to the horizon. The
   prototype draws the nearest **6** z14 tiles (the source's max zoom; GoWay's
   tiles are over-zoomed above it, so one mesh per tile serves every zoom) and
-  keeps a **192 MB** GPU budget, evicting least-recently-used tiles.
+  keeps a **192 MB** GPU budget and a 64-tile entry budget, evicting
+  least-recently-used tiles. Tiles with no buildings (sea, fields, a 204/404)
+  are cached as empty entries, so a revisit does not fetch them again; the
+  entry budget is what bounds them. A failed tile is retried even while the
+  view stands still — `building-3d` is hidden, so nothing else would draw it —
+  with backoff (1, 2, 4, 8 s, then a 5-minute cooldown: at most five requests
+  per cooldown for a tile that never loads). A view straddling the
+  antimeridian loads both sides, each tile fetched as its canonical `x` and
+  drawn in the world copy the camera sees it in. All of this is
+  `tileScheduler.ts` and `tilesForView`, tested without WebGL.
 - **Far field.** The prototype draws nothing beyond the near ring, so at high
   pitch the flat footprints show past it. Production needs a coarse far LOD:
   in B, a pre-built low-detail level per tile; in A, plain prisms without
@@ -292,11 +301,11 @@ with `?city3d=1`, which a production build ignores (`lib/map/city3dFlag.ts`).
 | --- | --- |
 | Flag | `lib/config.ts` (`MAP_CITY3D_ENABLED`), `lib/map/city3dFlag.ts` |
 | Gate | one effect in `components/map/MapCanvas.web.tsx` |
-| MapLibre adapter | `components/map/city3dLayer.web.ts` — adds `goway:city3d` before `building-3d`, hides `building-3d`, restores it on detach |
+| MapLibre adapter | `components/map/city3dLayer.web.ts` — adds `goway:city3d` before `building-3d`, hides `building-3d`, restores it on detach; on a style with no `building-3d` (the `openfreemap` escape hatch, a style-URL override) it declines and leaves the style untouched, rather than guessing an anchor in a document GoWay does not own |
 | Light | `components/map/city3dLight.ts` — the `building-3d` light (`useSunLight`'s, fed by `MapCanvas.web.tsx`) as the engine's `CityLight` |
 | Engine (three.js) | `components/map/engine/city3d/cityEngine.ts` |
 | Worker | `components/map/engine/city3d/meshWorker.ts` (`new Worker(new URL(…, import.meta.url))`, which Expo bundles as a sealed chunk) |
-| Pure parts (tested) | `tileMath.ts`, `mesher.ts`, `occlusion.ts`, `shaders.ts`, `decode.ts` |
+| Pure parts (tested) | `tileMath.ts`, `mesher.ts`, `occlusion.ts`, `shaders.ts`, `decode.ts`, `tileScheduler.ts` |
 | Chunk boundary | `components/engine3d/lazyChunk.ts` |
 
 Two things it does that are easy to get wrong:

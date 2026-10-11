@@ -29,6 +29,21 @@
  * Nothing else changes: the flat `building` fill keeps drawing underneath at
  * every zoom (the meshes occlude it, as the extrusions did), and the mark and
  * the data credit stay where `MapCanvas` renders them, outside the GL canvas.
+ *
+ * ## A style without `building-3d`: decline, do not guess
+ *
+ * The layer REPLACES `building-3d`, and `building-3d` is also its anchor. A
+ * style without one — the `openfreemap` escape hatch, or an
+ * `EXPO_PUBLIC_MAP_STYLE_URL_*` override (`lib/map/provider.ts` →
+ * `getMapSource`) — is a document GoWay does not own, which chose not to
+ * extrude buildings, and whose label stratum this code has never seen
+ * (`provider.ts` drops the `beforeLabels` anchor for an override for exactly
+ * that reason). The first version appended the meshes on top of such a style
+ * — above every label (PR #119 review). Guessing an anchor ("the first symbol
+ * layer") would put 3D buildings into a style that did not ask for them; so
+ * the prototype declines, with one console line, and the style stays exactly
+ * as it was. The check runs BEFORE the engine chunk is fetched, so declining
+ * costs no download either.
  */
 import type { LightSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type { CustomLayerInterface, Map as MapLibreMap, VectorTileSource } from 'maplibre-gl';
@@ -76,9 +91,9 @@ export interface City3dHandle {
 }
 
 /**
- * Put the city-3D layer on a LOADED map. `null` (with one console warning)
- * when the style has no vector source to read buildings from — the map is
- * left untouched.
+ * Put the city-3D layer on a LOADED map. `null` (with one console warning,
+ * and the map untouched) when the style has no `building-3d` to replace or no
+ * vector source to read buildings from.
  *
  * Async because the engine chunk is fetched here, BEFORE anything touches the
  * map: if that download fails, `building-3d` was never hidden.
@@ -87,6 +102,13 @@ export async function attachCity3d(
   map: MapLibreMap,
   options: AttachCity3dOptions,
 ): Promise<City3dHandle | null> {
+  if (!map.getLayer(BUILDING_3D_LAYER_ID)) {
+    reportMapDefect(
+      'city3d:no-extrusion',
+      `city3d: the style has no "${BUILDING_3D_LAYER_ID}" layer to replace; not attached.`,
+    );
+    return null;
+  }
   const source = map.getSource<VectorTileSource>(getMapSource().ids.basemap);
   const template = source?.tiles?.[0];
   if (!source || !template) {
@@ -156,13 +178,13 @@ export async function attachCity3d(
     },
   };
 
-  const hasExtrusion = Boolean(map.getLayer(BUILDING_3D_LAYER_ID));
-  const previousVisibility = hasExtrusion
-    ? map.getLayoutProperty(BUILDING_3D_LAYER_ID, 'visibility')
-    : undefined;
+  // Checked again: the chunk download above yielded, and the style may have
+  // been swapped meanwhile.
+  if (!map.getLayer(BUILDING_3D_LAYER_ID)) return null;
+  const previousVisibility = map.getLayoutProperty(BUILDING_3D_LAYER_ID, 'visibility');
 
-  map.addLayer(layer, hasExtrusion ? BUILDING_3D_LAYER_ID : undefined);
-  if (hasExtrusion) map.setLayoutProperty(BUILDING_3D_LAYER_ID, 'visibility', 'none');
+  map.addLayer(layer, BUILDING_3D_LAYER_ID);
+  map.setLayoutProperty(BUILDING_3D_LAYER_ID, 'visibility', 'none');
 
   let detached = false;
   return {
@@ -178,7 +200,7 @@ export async function attachCity3d(
       // this cleanup runs); then there is nothing left to restore.
       try {
         if (map.getLayer(CITY3D_LAYER_ID)) map.removeLayer(CITY3D_LAYER_ID);
-        if (hasExtrusion && map.getLayer(BUILDING_3D_LAYER_ID)) {
+        if (map.getLayer(BUILDING_3D_LAYER_ID)) {
           map.setLayoutProperty(
             BUILDING_3D_LAYER_ID,
             'visibility',
