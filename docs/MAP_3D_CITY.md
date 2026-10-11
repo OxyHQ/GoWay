@@ -198,7 +198,9 @@ tile the camera sees**, each at the level of detail its distance affords
 - **Compact vertices.** Every level is uploaded in the format §2 proposes for
   GoWay's own tiles (`packing.ts`): `uint16` positions in tile units with height
   in 1/32 m and the shade word in the fourth lane (8 B), `int8` normals (4 B),
-  `uint16` indices in chunks of ≤ 65,535 vertices. The model matrix undoes the
+  one draw per tile, with `uint16` indices up to 65,536 vertices and `uint32`
+  past them ([`MAP_NATIVE_3D.md`](./MAP_NATIVE_3D.md) → Phase 2, step 3;
+  originally chunks of ≤ 65,535 vertices). The model matrix undoes the
   quantisation, so the vertex shader is unchanged in cost. Barcelona's
   full-detail tile: 26.2 MB → 17.0 MB with the same vertices and triangles.
 - **Where the city tiles cover the ground** (`sources.ts`): with `?cityTiles=1`
@@ -848,7 +850,8 @@ from 4 OpenMapTiles tiles (100 MB). The layer draws up to 16 z15 tiles
 (`CITY_TILES_MAX`): with §4's selection, every one the camera sees, nearest
 first, all at full detail (the city tiles have no far level yet), in the
 compact vertex format with the colour and rhythm lanes carried alongside
-(`packing.ts`: 29 → 24 B a vertex with them, and 16-bit indices), and over budget the
+(`packing.ts`: 29 → 24 B a vertex with them; indices 16-bit up to 65,536
+vertices, 32-bit past them, one draw per tile), and over budget the
 farthest are dropped.
 
 Verified in headless Chromium on `expo start --web` with both archives served

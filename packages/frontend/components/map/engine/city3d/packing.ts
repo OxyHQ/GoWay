@@ -9,7 +9,7 @@
  * | ---------- | ----------- | ---------: | ----------------------------------------- |
  * | `position` | `uint16 ×4` |        8 B | x, y in tile units; z in 1/32 m; w shade  |
  * | `normal`   | `int8 ×4`   |        4 B | unit normal ×127, padded to 4 bytes       |
- * | index      | `uint16`    |        2 B | per chunk of ≤ 65,535 vertices            |
+ * | index      | `uint16`/`uint32` | 2/4 B | 16-bit while a tile has ≤ 65,536 vertices |
  * | `color`    | `uint8 ×4`  |        4 B | GoWay city tiles only, as `osmMesher` set it |
  * | `facade`   | `uint16 ×4` |        8 B | GoWay city tiles only, as `osmMesher` set it |
  * | `flags`    | `uint8 ×1`  |        1 B | GoWay city tiles only: per-building night flags (`VERTEX_FLAG_*`) |
@@ -36,18 +36,32 @@
  * matrix that already contains the unit sizes, so the vertex shader is the
  * same three multiplications it always was.
  *
- * ## Chunks
+ * ## One draw per tile
  *
- * A dense tile has more than 65,535 vertices, and WebGL2 has no base-vertex
- * draw, so a tile is split into chunks that each fit 16-bit indices. Chunks
- * are cut at polygon boundaries where possible; a polygon that would not fit
- * the current chunk starts the next one. Barcelona's full-detail tile is 17
- * chunks, i.e. 17 draw calls — negligible beside the 616 k triangles.
+ * A tile's mesh is ONE chunk — one draw call — with 16-bit indices while it
+ * has at most 65,536 vertices and 32-bit indices past that (WebGL2 and WebGPU
+ * both draw them natively). It used to be split into chunks of ≤ 65,535
+ * vertices so every index fit in 16 bits; that cost nothing to `WebGLRenderer`
+ * but about 10 µs of CPU a draw to three's `WebGPURenderer`, which the TSL
+ * materials draw with (`docs/MAP_NATIVE_3D.md` → Phase 2, step 3: measured
+ * before and after). The dense tile's indices grow by 2 bytes each; the
+ * duplicated vertices the cuts copied are gone.
  */
 import type { TileMesh } from './mesher';
 
-/** The largest vertex count a chunk may hold (16-bit indices). */
-export const MAX_CHUNK_VERTICES = 65_535;
+/** The most vertices a 16-bit index can address; past it a tile's indices are 32-bit. */
+const MAX_UINT16_VERTICES = 65_536;
+
+/** A mesh's triangles in the narrowest index type its vertex count allows. */
+function indexFor(
+  values: ArrayLike<number>,
+  length: number,
+  vertices: number,
+): Uint16Array | Uint32Array {
+  const index = vertices <= MAX_UINT16_VERTICES ? new Uint16Array(length) : new Uint32Array(length);
+  for (let i = 0; i < length; i++) index[i] = values[i];
+  return index;
+}
 
 /** Units per metre of the stored `z`. */
 export const Z_UNITS_PER_METRE = 32;
@@ -55,14 +69,14 @@ export const Z_UNITS_PER_METRE = 32;
 /** Highest storable height, in metres. */
 export const MAX_HEIGHT_M = 65_535 / Z_UNITS_PER_METRE;
 
-/** One draw call's worth of a tile mesh. */
+/** A tile mesh's buffers: one draw call (see "One draw per tile" above). */
 export interface PackedChunk {
   /** `uint16 ×4` per vertex: x, y (tile units, y southward), z (1/32 m), shade. */
   position: Uint16Array;
   /** `int8 ×4` per vertex: unit normal ×127, w unused. */
   normal: Int8Array;
-  /** Triangles into this chunk's vertices. */
-  index: Uint16Array;
+  /** Triangles into this chunk's vertices: 16-bit while they fit, else 32-bit. */
+  index: Uint16Array | Uint32Array;
   /**
    * GoWay city tiles only (`osmMesher.ts`), carried through unchanged:
    * `[r, g, b, weight]` and `[bays×256, base dm, storey cm, count]` per vertex.
@@ -71,14 +85,6 @@ export interface PackedChunk {
   facade?: Uint16Array;
   /** GoWay city tiles only: per-building flags (`osmMesher.ts` → `VERTEX_FLAG_*`). */
   flags?: Uint8Array;
-  /**
-   * Where this chunk's vertices come from, in the mesh's vertex order (what
-   * `polygonStarts` indexes): vertex `i` is source vertex `sourceStart + i`,
-   * or `sourceIds[i]` when the chunk was repacked out of order. Kept on the
-   * CPU only, for placing buildings on terrain (`terrainGround.ts`).
-   */
-  sourceStart: number;
-  sourceIds?: Uint32Array;
 }
 
 /** A float mesh, with the GoWay city tiles' extra lanes when it has them (`OsmTileMesh`). */
@@ -141,7 +147,6 @@ export function packedTransferables(mesh: PackedMesh): ArrayBuffer[] {
     if (chunk.color) out.push(chunk.color.buffer as ArrayBuffer);
     if (chunk.facade) out.push(chunk.facade.buffer as ArrayBuffer);
     if (chunk.flags) out.push(chunk.flags.buffer as ArrayBuffer);
-    if (chunk.sourceIds) out.push(chunk.sourceIds.buffer as ArrayBuffer);
   }
   out.push(
     mesh.polygonStarts.buffer as ArrayBuffer,
@@ -186,18 +191,16 @@ export function quantizedModelMatrix(
 const clampUnit = (value: number) => Math.max(0, Math.min(65_535, Math.round(value)));
 
 /**
- * Appends quantised vertices and triangles chunk by chunk. Used directly by
- * the far-field mesher, and by {@link packMesh} to repack a full-detail mesh.
+ * Appends quantised vertices and triangles into one chunk. Used directly by
+ * the far-field mesher; vertices are kept in the order written, which is the
+ * order `polygonStarts` indexes.
  */
 export class PackedBuilder {
-  private readonly chunks: PackedChunk[] = [];
   private position = new Uint16Array(4 * 4096);
   private normal = new Int8Array(4 * 4096);
-  private index = new Uint16Array(6 * 4096);
+  private index = new Uint32Array(6 * 4096);
   private vertexCount = 0;
   private indexCount = 0;
-  private totalVertices = 0;
-  private totalTriangles = 0;
   private readonly polygonStarts: number[] = [];
   private readonly polygonBoxes: number[] = [];
   private readonly polygonHeightDefault: number[] = [];
@@ -209,8 +212,8 @@ export class PackedBuilder {
     this.inverseUnit = 1 / unitM;
   }
 
-  /** Vertices in the chunk being filled. */
-  get chunkVertices(): number {
+  /** Vertices written so far: the index the next vertex gets. */
+  get vertices(): number {
     return this.vertexCount;
   }
 
@@ -219,26 +222,12 @@ export class PackedBuilder {
    * run from here to the next unit's start, and stand on its footprint's box.
    */
   beginPolygon(box: readonly [number, number, number, number], heightDefault = false): void {
-    this.polygonStarts.push(this.totalVertices + this.vertexCount);
+    this.polygonStarts.push(this.vertexCount);
     this.polygonBoxes.push(...box);
     this.polygonHeightDefault.push(heightDefault ? 1 : 0);
   }
 
-  /**
-   * Make room for `count` more vertices in ONE chunk, closing the current
-   * chunk if they would not fit. A request larger than a whole chunk is the
-   * caller's to split (it gets `false`).
-   */
-  reserve(count: number): boolean {
-    if (count > MAX_CHUNK_VERTICES) return false;
-    if (this.vertexCount + count > MAX_CHUNK_VERTICES) this.closeChunk();
-    return true;
-  }
-
-  /**
-   * One vertex in local ENU metres (`y <= 0`). Returns its index WITHIN the
-   * current chunk. The caller must have {@link reserve}d room.
-   */
+  /** One vertex in local ENU metres (`y <= 0`). Returns its index. */
   vertex(
     x: number,
     y: number,
@@ -249,7 +238,10 @@ export class PackedBuilder {
     ao: number,
     tone: number,
   ): number {
-    this.ensureVertexRoom();
+    if ((this.vertexCount + 1) * 4 > this.position.length) {
+      this.position = grow(this.position);
+      this.normal = grow(this.normal);
+    }
     const v = this.vertexCount++;
     const p = v * 4;
     const qx = clampUnit(x * this.inverseUnit);
@@ -271,7 +263,6 @@ export class PackedBuilder {
     this.index[this.indexCount++] = a;
     this.index[this.indexCount++] = b;
     this.index[this.indexCount++] = c;
-    this.totalTriangles++;
   }
 
   /** A quad from two bottom and two top vertices, counter-clockwise seen from its front. */
@@ -280,54 +271,26 @@ export class PackedBuilder {
     this.triangle(b0, t1, t0);
   }
 
-  /** Close the chunk being filled (no-op when it is empty). */
-  closeChunk(): void {
-    if (this.vertexCount === 0) return;
-    if (this.indexCount > 0) {
-      this.chunks.push({
-        position: this.position.slice(0, this.vertexCount * 4),
-        normal: this.normal.slice(0, this.vertexCount * 4),
-        index: this.index.slice(0, this.indexCount),
-        sourceStart: this.totalVertices,
-      });
-    }
-    // Vertices of a chunk with no triangles still count, so polygon starts
-    // (taken from this running total) stay aligned with `sourceStart`.
-    this.totalVertices += this.vertexCount;
-    this.vertexCount = 0;
-    this.indexCount = 0;
-  }
-
   finish(polygons: number): PackedMesh | null {
-    this.closeChunk();
-    if (this.chunks.length === 0) return null;
-    let bytes = 0;
-    for (const chunk of this.chunks) bytes += chunkBytes(chunk);
-    let vertices = 0;
-    for (const chunk of this.chunks) vertices += chunk.position.length / 4;
+    if (this.vertexCount === 0 || this.indexCount === 0) return null;
+    const chunk: PackedChunk = {
+      position: this.position.slice(0, this.vertexCount * 4),
+      normal: this.normal.slice(0, this.vertexCount * 4),
+      index: indexFor(this.index, this.indexCount, this.vertexCount),
+    };
     return {
-      chunks: this.chunks,
+      chunks: [chunk],
       unitM: this.unitM,
       originM: [0, 0],
-      vertices,
-      triangles: this.totalTriangles,
-      bytes,
+      vertices: this.vertexCount,
+      triangles: this.indexCount / 3,
+      bytes: chunkBytes(chunk),
       bounds: { min: [...this.min], max: [...this.max] },
       polygons,
       polygonStarts: Uint32Array.from(this.polygonStarts),
       polygonBoxes: Float32Array.from(this.polygonBoxes),
       polygonHeightDefault: Uint8Array.from(this.polygonHeightDefault),
     };
-  }
-
-  private ensureVertexRoom(): void {
-    if (this.vertexCount >= MAX_CHUNK_VERTICES) {
-      throw new Error('PackedBuilder: chunk full; reserve() before writing vertices');
-    }
-    if ((this.vertexCount + 1) * 4 > this.position.length) {
-      this.position = grow(this.position);
-      this.normal = grow(this.normal);
-    }
   }
 
   private trackBounds(x: number, y: number, z: number): void {
@@ -340,7 +303,7 @@ export class PackedBuilder {
   }
 }
 
-function grow<T extends Uint16Array | Int8Array>(array: T): T {
+function grow<T extends Uint16Array | Uint32Array | Int8Array>(array: T): T {
   const next = new (array.constructor as new (length: number) => T)(array.length * 2);
   next.set(array);
   return next;
@@ -363,33 +326,22 @@ export function frameFor(
   return { unitM: span / 65_535, originM: [originX, originY] };
 }
 
-/** How far below a cut a new range starts; see {@link packMesh}. */
-const CHUNK_BACKTRACK = 256;
-
-/**
- * Copy source vertices `ids` (or the range `[start, start + count)`) into one
- * chunk's buffers, and grow `bounds` over them.
- */
+/** Copy a float mesh's vertices into the compact lanes, and its bounds in stored units. */
 function copyVertices(
   mesh: SourceMesh,
   unitM: number,
   originM: readonly [number, number],
-  count: number,
-  idOf: (i: number) => number,
-  bounds: { min: [number, number, number]; max: [number, number, number] },
-): Omit<PackedChunk, 'index' | 'sourceStart' | 'sourceIds'> {
+): { chunk: Omit<PackedChunk, 'index'>; bounds: PackedMesh['bounds'] } {
   const { positions, normals, shade, colors, facade, flags } = mesh;
+  const count = positions.length / 3;
   const inverseUnit = 1 / unitM;
   const position = new Uint16Array(count * 4);
   const normal = new Int8Array(count * 4);
-  const color = colors ? new Uint8Array(count * 4) : undefined;
-  const lanes = facade ? new Uint16Array(count * 4) : undefined;
-  const flagLane = flags ? new Uint8Array(count) : undefined;
-  const { min, max } = bounds;
-  for (let i = 0; i < count; i++) {
-    const v = idOf(i);
+  const min: [number, number, number] = [65_535, 65_535, 65_535];
+  const max: [number, number, number] = [0, 0, 0];
+  for (let v = 0; v < count; v++) {
     const p = v * 3;
-    const q = i * 4;
+    const q = v * 4;
     const x = clampUnit((positions[p] - originM[0]) * inverseUnit);
     const y = clampUnit((originM[1] - positions[p + 1]) * inverseUnit);
     const z = clampUnit(positions[p + 2] * Z_UNITS_PER_METRE);
@@ -400,19 +352,6 @@ function copyVertices(
     normal[q] = normals[p];
     normal[q + 1] = normals[p + 1];
     normal[q + 2] = normals[p + 2];
-    if (color && colors) {
-      color[q] = colors[v * 4];
-      color[q + 1] = colors[v * 4 + 1];
-      color[q + 2] = colors[v * 4 + 2];
-      color[q + 3] = colors[v * 4 + 3];
-    }
-    if (lanes && facade) {
-      lanes[q] = facade[v * 4];
-      lanes[q + 1] = facade[v * 4 + 1];
-      lanes[q + 2] = facade[v * 4 + 2];
-      lanes[q + 3] = facade[v * 4 + 3];
-    }
-    if (flagLane && flags) flagLane[i] = flags[v];
     if (x < min[0]) min[0] = x;
     if (y < min[1]) min[1] = y;
     if (z < min[2]) min[2] = z;
@@ -421,34 +360,38 @@ function copyVertices(
     if (z > max[2]) max[2] = z;
   }
   return {
-    position,
-    normal,
-    ...(color ? { color } : {}),
-    ...(lanes ? { facade: lanes } : {}),
-    ...(flagLane ? { flags: flagLane } : {}),
+    chunk: {
+      position,
+      normal,
+      // The city tiles' lanes are already per vertex, in vertex order.
+      ...(colors ? { color: colors.slice(0, count * 4) } : {}),
+      ...(facade ? { facade: facade.slice(0, count * 4) } : {}),
+      ...(flags ? { flags: flags.slice(0, count) } : {}),
+    },
+    bounds: { min, max },
   };
 }
 
-function finishPacked(
-  mesh: TileMesh,
-  unitM: number,
-  originM: [number, number],
-  chunks: PackedChunk[],
-  bounds: PackedMesh['bounds'],
-): PackedMesh {
-  let vertices = 0;
-  let bytes = 0;
-  for (const chunk of chunks) {
-    vertices += chunk.position.length / 4;
-    bytes += chunkBytes(chunk);
-  }
+/**
+ * Repack a full-detail float mesh (`mesher.ts`, or `osmMesher.ts` with its
+ * colour and facade lanes) into the compact format: one chunk, its vertices
+ * in the mesh's order (what `polygonStarts` indexes).
+ */
+export function packMesh(mesh: SourceMesh, tileSizeMetres: number): PackedMesh {
+  const { unitM, originM } = frameFor(mesh, tileSizeMetres);
+  const { chunk: lanes, bounds } = copyVertices(mesh, unitM, originM);
+  const vertices = lanes.position.length / 4;
+  const chunk: PackedChunk = {
+    ...lanes,
+    index: indexFor(mesh.indices, mesh.indices.length, vertices),
+  };
   return {
-    chunks,
+    chunks: [chunk],
     unitM,
     originM,
     vertices,
     triangles: mesh.indices.length / 3,
-    bytes,
+    bytes: chunkBytes(chunk),
     bounds,
     polygons: mesh.polygons,
     polygonStarts: mesh.polygonStarts.slice(),
@@ -456,111 +399,4 @@ function finishPacked(
     polygonHeightDefault:
       mesh.polygonHeightDefault?.slice() ?? new Uint8Array(mesh.polygonStarts.length),
   };
-}
-
-/**
- * Repack a full-detail float mesh (`mesher.ts`, or `osmMesher.ts` with its
- * colour and facade lanes) into chunks of the compact format.
- *
- * The mesher emits each polygon's vertices and then the triangles that use
- * them, so the LOWEST index a triangle references barely moves backward along
- * the index buffer. That makes the fast path a range copy: a chunk is the
- * source vertex range its triangles touch, copied in one tight loop, its
- * indices offset by the range start. When the next triangle would reach past
- * {@link MAX_CHUNK_VERTICES} from the start, the chunk is closed and the next
- * starts a small margin below that triangle's lowest vertex (a polygon
- * straddling the cut has its shared vertices copied twice). A mesh that steps
- * back further than the margin falls back to {@link packMeshGeneral}.
- */
-export function packMesh(mesh: SourceMesh, tileSizeMetres: number): PackedMesh {
-  const { unitM, originM } = frameFor(mesh, tileSizeMetres);
-  const { indices } = mesh;
-  const ranges: { start: number; end: number; firstIndex: number; lastIndex: number }[] = [];
-  let start = 0;
-  let maxSeen = -1;
-  let firstIndex = 0;
-  for (let t = 0; t < indices.length; t += 3) {
-    const a = indices[t];
-    const b = indices[t + 1];
-    const c = indices[t + 2];
-    const lo = Math.min(a, b, c);
-    const hi = Math.max(a, b, c);
-    if (lo < start) return packMeshGeneral(mesh, tileSizeMetres);
-    if (hi - start >= MAX_CHUNK_VERTICES && maxSeen >= 0) {
-      ranges.push({ start, end: maxSeen + 1, firstIndex, lastIndex: t });
-      // A wall's quad reaches back one column and a polygon's later
-      // triangles a little further, so the new range starts a margin below
-      // this triangle (a few vertices copied twice, never a fallback).
-      start = Math.max(0, lo - CHUNK_BACKTRACK);
-      maxSeen = -1;
-      firstIndex = t;
-    }
-    if (hi - start >= MAX_CHUNK_VERTICES) return packMeshGeneral(mesh, tileSizeMetres);
-    if (hi > maxSeen) maxSeen = hi;
-  }
-  if (maxSeen >= 0) ranges.push({ start, end: maxSeen + 1, firstIndex, lastIndex: indices.length });
-
-  const bounds: PackedMesh['bounds'] = { min: [65_535, 65_535, 65_535], max: [0, 0, 0] };
-  const chunks = ranges.map((range) => {
-    const vertices = copyVertices(
-      mesh,
-      unitM,
-      originM,
-      range.end - range.start,
-      (i) => range.start + i,
-      bounds,
-    );
-    const index = new Uint16Array(range.lastIndex - range.firstIndex);
-    for (let i = range.firstIndex, j = 0; i < range.lastIndex; i++, j++) {
-      index[j] = indices[i] - range.start;
-    }
-    return { ...vertices, index, sourceStart: range.start };
-  });
-  return finishPacked(mesh, unitM, originM, chunks, bounds);
-}
-
-/**
- * The general repack: walks the triangles and gives each vertex a slot in the
- * current chunk the first time a triangle there uses it, closing the chunk
- * when the next triangle would not fit. Any index order works.
- */
-export function packMeshGeneral(mesh: SourceMesh, tileSizeMetres: number): PackedMesh {
-  const { unitM, originM } = frameFor(mesh, tileSizeMetres);
-  const { indices } = mesh;
-  const vertexCount = mesh.positions.length / 3;
-  // Per source vertex: the chunk it was given a slot in, and the slot.
-  const generation = new Int32Array(vertexCount).fill(-1);
-  const slot = new Int32Array(vertexCount);
-  const bounds: PackedMesh['bounds'] = { min: [65_535, 65_535, 65_535], max: [0, 0, 0] };
-  const chunks: PackedChunk[] = [];
-  let ids: number[] = [];
-  let index: number[] = [];
-  const close = () => {
-    if (index.length === 0) return;
-    const chosen = ids;
-    chunks.push({
-      ...copyVertices(mesh, unitM, originM, chosen.length, (i) => chosen[i], bounds),
-      index: Uint16Array.from(index),
-      sourceStart: 0,
-      sourceIds: Uint32Array.from(chosen),
-    });
-    ids = [];
-    index = [];
-  };
-  const place = (v: number) => {
-    if (generation[v] !== chunks.length) {
-      generation[v] = chunks.length;
-      slot[v] = ids.length;
-      ids.push(v);
-    }
-    index.push(slot[v]);
-  };
-  for (let t = 0; t < indices.length; t += 3) {
-    const tri = [indices[t], indices[t + 1], indices[t + 2]];
-    const needed = new Set(tri.filter((v) => generation[v] !== chunks.length)).size;
-    if (ids.length + needed > MAX_CHUNK_VERTICES) close();
-    for (const v of tri) place(v);
-  }
-  close();
-  return finishPacked(mesh, unitM, originM, chunks, bounds);
 }

@@ -20,10 +20,8 @@ import {
   type TileMesh,
 } from '@/components/map/engine/city3d/mesher';
 import {
-  MAX_CHUNK_VERTICES,
   type PackedMesh,
   packMesh,
-  packMeshGeneral,
   quantizedModelMatrix,
   unitMetres,
   Z_UNITS_PER_METRE,
@@ -279,15 +277,14 @@ describe('the packed format', () => {
       polygonStarts: new Uint32Array([0]),
       polygonBoxes: new Float32Array([-30, -50, 40, 20]),
     };
-    for (const packed of [packMesh(mesh, size), packMeshGeneral(mesh, size)]) {
-      expect(packed.originM).toEqual([-30, 20]);
-      const decoded = packed.chunks[0];
-      for (let i = 0; i < decoded.position.length / 4; i++) {
-        const source = decoded.sourceIds ? decoded.sourceIds[i] : decoded.sourceStart + i;
-        const [x, y] = decodeVertex(packed, 0, i);
-        expect(Math.abs(x - positions[source * 3])).toBeLessThanOrEqual(packed.unitM);
-        expect(Math.abs(y - positions[source * 3 + 1])).toBeLessThanOrEqual(packed.unitM);
-      }
+    const packed = packMesh(mesh, size);
+    expect(packed.originM).toEqual([-30, 20]);
+    const decoded = packed.chunks[0];
+    // One chunk, in the mesh's own vertex order.
+    for (let i = 0; i < decoded.position.length / 4; i++) {
+      const [x, y] = decodeVertex(packed, 0, i);
+      expect(Math.abs(x - positions[i * 3])).toBeLessThanOrEqual(packed.unitM);
+      expect(Math.abs(y - positions[i * 3 + 1])).toBeLessThanOrEqual(packed.unitM);
     }
   });
 
@@ -327,25 +324,29 @@ describe('the packed format', () => {
     return meshBuildings(features, OPTIONS) as TileMesh;
   }
 
-  test('a mesh past 65,535 vertices is split into chunks that each fit 16-bit indices', () => {
+  test('a mesh past 65,536 vertices is ONE draw, with 32-bit indices (one draw per tile)', () => {
     const mesh = bigMesh();
-    expect(mesh.positions.length / 3).toBeGreaterThan(MAX_CHUNK_VERTICES * 2);
-    for (const packed of [packMesh(mesh, 4096), packMeshGeneral(mesh, 4096)]) {
-      expect(packed.chunks.length).toBeGreaterThan(2);
-      let triangles = 0;
-      for (const chunk of packed.chunks) {
-        const vertices = chunk.position.length / 4;
-        expect(vertices).toBeLessThanOrEqual(MAX_CHUNK_VERTICES);
-        let max = 0;
-        for (const index of chunk.index) max = Math.max(max, index);
-        expect(max).toBeLessThan(vertices);
-        triangles += chunk.index.length / 3;
-      }
-      expect(triangles).toBe(mesh.indices.length / 3);
-    }
+    expect(mesh.positions.length / 3).toBeGreaterThan(65_536 * 2);
+    const packed = packMesh(mesh, 4096);
+    expect(packed.chunks).toHaveLength(1);
+    const [chunk] = packed.chunks;
+    expect(chunk.index).toBeInstanceOf(Uint32Array);
+    expect(chunk.position.length / 4).toBe(mesh.positions.length / 3);
+    expect(Array.from(chunk.index)).toEqual(Array.from(mesh.indices));
+    expect(packed.triangles).toBe(mesh.indices.length / 3);
   });
 
-  test('GoWay city tiles’ colour and facade lanes travel with their vertex, in both repacks', () => {
+  test('a mesh within 65,536 vertices keeps 16-bit indices', () => {
+    const mesh = meshBuildings([block], OPTIONS) as TileMesh;
+    const packed = packMesh(mesh, OPTIONS.tileSizeMetres);
+    expect(packed.chunks).toHaveLength(1);
+    expect(packed.chunks[0].index).toBeInstanceOf(Uint16Array);
+    const far = meshBuildingsLod([block], OPTIONS, 1);
+    expect(far?.chunks).toHaveLength(1);
+    expect(far?.chunks[0].index).toBeInstanceOf(Uint16Array);
+  });
+
+  test('GoWay city tiles’ colour and facade lanes travel with their vertex', () => {
     const mesh = bigMesh();
     const n = mesh.positions.length / 3;
     // Each source vertex's lanes spell its own index, so a packed vertex can
@@ -357,15 +358,12 @@ describe('the packed format', () => {
       facade.set([v & 65_535, v >>> 16, 3, 4], v * 4);
     }
     const unit = unitMetres(4096);
-    for (const packed of [
-      packMesh({ ...mesh, colors, facade }, 4096),
-      packMeshGeneral({ ...mesh, colors, facade }, 4096),
-    ]) {
+    for (const packed of [packMesh({ ...mesh, colors, facade }, 4096)]) {
       let vertices = 0;
       for (const chunk of packed.chunks) {
         const count = chunk.position.length / 4;
         vertices += count;
-        // Every seventh vertex: enough to cross every chunk seam, cheap enough to run.
+        // Every seventh vertex: enough to cover the mesh, cheap enough to run.
         for (let i = 0; i < count; i += 7) {
           const c = chunk.color as Uint8Array;
           const f = chunk.facade as Uint16Array;
@@ -380,7 +378,7 @@ describe('the packed format', () => {
           expect(chunk.position[i * 4 + 3]).toBe(mesh.shade[v * 2 + 1] * 256 + mesh.shade[v * 2]);
         }
       }
-      expect(vertices).toBeGreaterThan(MAX_CHUNK_VERTICES * 2);
+      expect(vertices).toBeGreaterThan(65_536 * 2);
       const lanes = packed.chunks.reduce(
         (sum, chunk) => sum + (chunk.color?.byteLength ?? 0) + (chunk.facade?.byteLength ?? 0),
         0,
@@ -397,7 +395,9 @@ describe('the packed format', () => {
       mesh.shade.byteLength +
       mesh.indices.byteLength;
     const after = packMesh(mesh, 4096).bytes;
-    expect(after / before).toBeLessThan(0.7);
+    // Past 65,536 vertices the indices stay 32-bit (one draw per tile), so
+    // the saving is the vertex lanes': 12 B a vertex against 17 B.
+    expect(after / before).toBeLessThan(0.8);
   });
 });
 

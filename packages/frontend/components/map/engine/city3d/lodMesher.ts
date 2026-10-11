@@ -119,7 +119,6 @@ function meshPrism(
       // Outward = right of the direction of travel (solid on the left).
       const nx = dy / length;
       const ny = -dx / length;
-      builder.reserve(4);
       const b0 = builder.vertex(a[0], a[1], base, nx, ny, 0, 1, tone);
       const b1 = builder.vertex(b[0], b[1], base, nx, ny, 0, 1, tone);
       const t1 = builder.vertex(b[0], b[1], top, nx, ny, 0, 1, tone);
@@ -143,27 +142,14 @@ function meshPrism(
       (flat[b * 2 + 1] - flat[a * 2 + 1]) * (flat[c * 2] - flat[a * 2]) >=
     0;
 
-  if (builder.reserve(count)) {
-    const first = builder.chunkVertices;
-    for (let i = 0; i < count; i++) {
-      builder.vertex(flat[i * 2], flat[i * 2 + 1], top, 0, 0, 1, 1, tone);
-    }
-    for (let t = 0; t < triangles.length; t += 3) {
-      const [a, b, c] = [triangles[t], triangles[t + 1], triangles[t + 2]];
-      if (upward(a, b, c)) builder.triangle(first + a, first + b, first + c);
-      else builder.triangle(first + a, first + c, first + b);
-    }
-    return;
+  const first = builder.vertices;
+  for (let i = 0; i < count; i++) {
+    builder.vertex(flat[i * 2], flat[i * 2 + 1], top, 0, 0, 1, 1, tone);
   }
-  // A roof with more points than a chunk holds: one triangle at a time.
   for (let t = 0; t < triangles.length; t += 3) {
-    let [a, b, c] = [triangles[t], triangles[t + 1], triangles[t + 2]];
-    if (!upward(a, b, c)) [b, c] = [c, b];
-    builder.reserve(3);
-    const va = builder.vertex(flat[a * 2], flat[a * 2 + 1], top, 0, 0, 1, 1, tone);
-    const vb = builder.vertex(flat[b * 2], flat[b * 2 + 1], top, 0, 0, 1, 1, tone);
-    const vc = builder.vertex(flat[c * 2], flat[c * 2 + 1], top, 0, 0, 1, 1, tone);
-    builder.triangle(va, vb, vc);
+    const [a, b, c] = [triangles[t], triangles[t + 1], triangles[t + 2]];
+    if (upward(a, b, c)) builder.triangle(first + a, first + b, first + c);
+    else builder.triangle(first + a, first + c, first + b);
   }
 }
 
