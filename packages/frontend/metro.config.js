@@ -11,4 +11,9 @@ require('./scripts/vendor-maplibre-worker').vendorMaplibreWorker();
 
 // No `sharedTypesPackage`: the app reaches GoWay's contracts only through the
 // built `@goway.to/sdk`, never the private `@goway/contracts` package directly.
-module.exports = createOxyMetroConfig(__dirname);
+// Development only, and only with `GOWAY_CITY_TILES_ARCHIVE` set: serve a
+// locally compiled city-tile archive at `/map/city/*` (see the file). Unset —
+// every export and CI run — the preset's config is returned untouched.
+const { withDevCityTiles } = require('./scripts/dev-city-tiles');
+
+module.exports = withDevCityTiles(createOxyMetroConfig(__dirname));

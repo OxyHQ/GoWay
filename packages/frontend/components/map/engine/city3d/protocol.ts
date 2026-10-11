@@ -7,6 +7,13 @@
 import type { TileMesh } from './mesher';
 import type { TileId } from './tileMath';
 
+/**
+ * Which tiles a source serves: OpenMapTiles' `building` layer (the
+ * prototype's source, and the fallback) or GoWay's per-building city tiles
+ * (`lib/map/cityTiles.ts`, meshed by `osmMesher.ts`).
+ */
+export type CityTileFormat = 'openmaptiles' | 'goway';
+
 export type MeshWorkerRequest =
   | {
       type: 'mesh';
@@ -17,6 +24,8 @@ export type MeshWorkerRequest =
       url: string;
       /** OpenMapTiles' building source-layer name. */
       sourceLayer: string;
+      /** Absent: `openmaptiles`. */
+      format?: CityTileFormat;
     }
   | { type: 'cancel'; id: number };
 

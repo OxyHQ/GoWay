@@ -38,7 +38,9 @@ import * as THREE from 'three';
 
 import type { TileMesh } from './mesher';
 import type { CityLight } from './occlusion';
-import type { MeshWorkerRequest, MeshWorkerResponse } from './protocol';
+import type { OsmTileMesh } from './osmMesher';
+import { OSM_FRAGMENT_SHADER, OSM_VERTEX_SHADER } from './osmShaders';
+import type { CityTileFormat, MeshWorkerRequest, MeshWorkerResponse } from './protocol';
 import { CITY_FRAGMENT_SHADER, CITY_VERTEX_SHADER } from './shaders';
 import {
   centeredProjection,
@@ -70,6 +72,10 @@ export interface CityEngineOptions {
   /** The source's max zoom: tiles are fetched at this zoom only. */
   tileZoom: number;
   sourceLayer: string;
+  /** What the tiles are; absent: OpenMapTiles. GoWay city tiles get the OSM mesher and shader. */
+  tileFormat?: CityTileFormat;
+  /** How many of the nearest tiles to draw; absent: {@link MAX_TILES}. */
+  maxTiles?: number;
   palette: CityPalette;
   /** The map's light, converted (`components/map/city3dLight.ts`); see `CityLight`. */
   light: CityLight;
@@ -147,6 +153,12 @@ function toGeometry(mesh: TileMesh): THREE.BufferGeometry {
   geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normals, 3, true));
   geometry.setAttribute('shade', new THREE.BufferAttribute(mesh.shade, 2, true));
   geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
+  // The OSM city tiles' surface colour and storey rhythm (`osmMesher.ts`).
+  if ('colors' in mesh && 'facade' in mesh) {
+    const osm = mesh as OsmTileMesh;
+    geometry.setAttribute('color', new THREE.BufferAttribute(osm.colors, 4, true));
+    geometry.setAttribute('facade', new THREE.BufferAttribute(osm.facade, 4, false));
+  }
   // From the worker's bounds, so three never walks a million vertices on this
   // thread to compute them itself.
   const min = new THREE.Vector3(...mesh.bounds.min);
@@ -178,8 +190,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
   const material = new THREE.RawShaderMaterial({
     glslVersion: THREE.GLSL3,
-    vertexShader: CITY_VERTEX_SHADER,
-    fragmentShader: CITY_FRAGMENT_SHADER,
+    vertexShader: options.tileFormat === 'goway' ? OSM_VERTEX_SHADER : CITY_VERTEX_SHADER,
+    fragmentShader: options.tileFormat === 'goway' ? OSM_FRAGMENT_SHADER : CITY_FRAGMENT_SHADER,
     uniforms,
     // Every model matrix mirrors y (local ENU is y-north, mercator y-south —
     // see `tileModelMatrix`), and three, seeing a negative determinant, swaps
@@ -271,11 +283,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       mesh.matrixWorldAutoUpdate = false;
       mesh.visible = false;
       scene.add(mesh);
-      const bytes =
-        reply.mesh.positions.byteLength +
-        reply.mesh.normals.byteLength +
-        reply.mesh.shade.byteLength +
-        reply.mesh.indices.byteLength;
+      let bytes = 0;
+      for (const value of Object.values(reply.mesh)) {
+        if (ArrayBuffer.isView(value)) bytes += value.byteLength;
+      }
       cache.put(key, mesh, bytes, frame, wanted);
     }
     reportStats();
@@ -289,7 +300,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const updateWanted = (view: CityView) => {
     wantedTiles =
       view.zoom >= options.fade.start
-        ? tilesForView(view.bounds, view.center, options.tileZoom, MAX_TILES)
+        ? tilesForView(view.bounds, view.center, options.tileZoom, options.maxTiles ?? MAX_TILES)
         : [];
     // Every frame, not only when the wanted set changes: a failed tile's
     // retry comes due on a frame where nothing else did.
@@ -310,6 +321,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         tile,
         url: expandTemplate(options.tileUrlTemplate, tile),
         sourceLayer: options.sourceLayer,
+        format: options.tileFormat,
       });
     }
     if (plan.cancel.length > 0 || plan.request.length > 0) reportStats();

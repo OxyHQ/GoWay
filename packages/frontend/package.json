@@ -25,6 +25,7 @@
     "map:tiles": "bun scripts/build-map-tiles.ts",
     "map:tiles:verify": "bun scripts/build-map-tiles.ts --verify",
     "map:tiles:upload": "bun scripts/build-map-tiles.ts --upload",
+    "map:city-tiles": "bun scripts/build-city-tiles.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

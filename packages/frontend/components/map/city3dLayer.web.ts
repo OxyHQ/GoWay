@@ -48,6 +48,8 @@
 import type { LightSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type { CustomLayerInterface, Map as MapLibreMap, VectorTileSource } from 'maplibre-gl';
 
+import { CITY_TILE_LAYER, CITY_TILE_PATH, CITY_TILE_ZOOM } from '@/lib/map/cityTiles';
+import { isCityTilesRequested, MAP_CITY_TILES_ENABLED } from '@/lib/map/cityTilesFlag';
 import { getMapSource, GOWAY_LAYER_PREFIX, type MapAppearance } from '@/lib/map/provider';
 import {
   BUILDING_3D_LAYER_ID,
@@ -64,6 +66,41 @@ import { cityLightFromSpec, sameCityLight } from './city3dLight';
 import type { CityEngine, CityEngineStats } from './engine/city3d/cityEngine';
 import type { CityLight } from './engine/city3d/occlusion';
 import { reportMapDefect } from './shared';
+
+/**
+ * GoWay's per-building city tiles are drawn from more, smaller tiles than the
+ * z14 basemap: 16 z15 tiles is ~3.7 km square around the camera (4 z14
+ * tiles' worth), and a dense one is ~20 MB of buffers (measured: Eixample,
+ * 7,934 buildings, 600k vertices).
+ */
+const CITY_TILES_MAX = 16;
+
+/**
+ * Which tiles to mesh: GoWay's city tiles when this page asked for them
+ * (`lib/map/cityTilesFlag.ts`), else the basemap's own `building` layer.
+ * Exported for the tests.
+ */
+export function citySourceFor(
+  basemap: { template: string; maxzoom: number },
+  cityTiles: boolean,
+  origin: string,
+) {
+  if (!cityTiles) {
+    return {
+      tileUrlTemplate: basemap.template,
+      tileZoom: basemap.maxzoom,
+      sourceLayer: OPENMAPTILES_SOURCE_LAYERS.building,
+      tileFormat: 'openmaptiles' as const,
+    };
+  }
+  return {
+    tileUrlTemplate: `${origin}${CITY_TILE_PATH}`,
+    tileZoom: CITY_TILE_ZOOM,
+    sourceLayer: CITY_TILE_LAYER,
+    tileFormat: 'goway' as const,
+    maxTiles: CITY_TILES_MAX,
+  };
+}
 
 /** The custom layer's id, in GoWay's own namespace. */
 export const CITY3D_LAYER_ID = `${GOWAY_LAYER_PREFIX}city3d`;
@@ -116,6 +153,19 @@ export async function attachCity3d(
     return null;
   }
   const { createCityEngine } = await import('@/components/engine3d/lazyChunk');
+  // The adapter only loads with the city-3D flag on, so that half is `true` here.
+  const cityTiles = isCityTilesRequested({
+    city3d: true,
+    enabled: MAP_CITY_TILES_ENABLED,
+    // `typeof`: the bun tests that attach to a fake map run without the global.
+    development: typeof __DEV__ !== 'undefined' && __DEV__,
+    search: typeof window !== 'undefined' ? window.location.search : '',
+  });
+  const citySource = citySourceFor(
+    { template, maxzoom: source.maxzoom },
+    cityTiles,
+    typeof window !== 'undefined' ? window.location.origin : '',
+  );
 
   const palette = buildingHeightRamp(CARTOGRAPHY_PALETTES[options.appearance]);
   let lightSpec = options.light;
@@ -139,9 +189,7 @@ export async function attachCity3d(
       engine = createCityEngine({
         gl: gl as WebGL2RenderingContext,
         canvas: host.getCanvas(),
-        tileUrlTemplate: template,
-        tileZoom: source.maxzoom,
-        sourceLayer: OPENMAPTILES_SOURCE_LAYERS.building,
+        ...citySource,
         palette,
         light: applied,
         fade: BUILDINGS_3D_FADE,

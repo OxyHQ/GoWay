@@ -1,0 +1,393 @@
+/**
+ * Compile an OpenStreetMap extract into GoWay's per-building 3D city tiles.
+ *
+ * ```bash
+ * # Barcelona, from the Catalonia extract the basemap build also reads.
+ * bun run --cwd packages/frontend map:city-tiles --pbf=<cataluna.osm.pbf> --area=barcelona
+ *
+ * # The whole extract, for timing and size (no --area / --bbox).
+ * bun run --cwd packages/frontend map:city-tiles --pbf=<file> --out=.tiles/city-cataluna.pmtiles
+ *
+ * # Re-check a finished archive with the readers that will serve and draw it.
+ * bun run --cwd packages/frontend map:city-tiles --verify --archive=<path>
+ * ```
+ *
+ * Then point the dev server at it and open the map with the flags on:
+ *
+ * ```bash
+ * GOWAY_CITY_TILES_ARCHIVE=$PWD/packages/frontend/.tiles/city-barcelona.pmtiles \
+ *   bun run --cwd packages/frontend web -- --port 8105
+ * # http://localhost:8105/?city3d=1&cityTiles=1
+ * ```
+ *
+ * ## Why a GoWay program and not Planetiler
+ *
+ * The basemap is Planetiler (`build-map-tiles.ts`) because GoWay speaks an
+ * existing schema there. These tiles are a schema of GoWay's own
+ * (`lib/map/cityTiles.ts`) with two rules Planetiler is built around the
+ * opposite of: a building is never clipped (it goes whole to one tile), and
+ * an outline with `building:part`s is replaced by its parts. Both are a few
+ * lines here; in a Planetiler profile both fight the engine. The cost is
+ * scale — this holds the needed nodes in memory, so the planet is compiled in
+ * shards (see `citygen/compile.ts` and the doc). Everything the two builds
+ * share is shared: the extract (`~/osm-data`, the same Geofabrik files), the
+ * archive format (PMTiles v3, read by `worker/pmtiles.js`), the `.tiles/`
+ * output directory and the receipt beside it.
+ *
+ * ## Licence
+ *
+ * The archive is a Derivative Database of OpenStreetMap under the ODbL: the
+ * receipt records the extract and replication stamp it came from, the
+ * archive's own metadata carries the attribution, and `docs/MAP_3D_CITY.md` →
+ * Obligations says what serving it requires.
+ */
+import { stat, writeFile } from 'node:fs/promises';
+import { mkdir, open } from 'node:fs/promises';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
+
+import { decodeCityTile } from '../components/map/engine/city3d/osmTiles';
+import {
+  CITY_TILE_EXTENT,
+  CITY_TILE_LAYER,
+  CITY_TILE_SCHEMA_VERSION,
+  CITY_TILE_ZOOM,
+  CITY_PROPS,
+} from '../lib/map/cityTiles';
+import { COMPRESSION, PMTiles, TILE_TYPE } from '../worker/pmtiles.js';
+import { compile } from './citygen/compile';
+import { encodeCityTile } from './citygen/mvtEncode';
+import { writePmtiles } from './citygen/pmtilesWriter';
+
+const FRONTEND_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const BUILD_DIR = join(FRONTEND_ROOT, '.tiles');
+
+/**
+ * Named areas: a bounding box over a building's representative point, and the
+ * Geofabrik extract that contains it (the file is passed with `--pbf`; it is
+ * never fetched by this script, so the compiler never runs on bytes nobody
+ * chose).
+ */
+const AREAS: Record<string, { bbox: [number, number, number, number]; extract: string }> = {
+  barcelona: {
+    bbox: [2.052, 41.317, 2.228, 41.468],
+    extract: 'https://download.geofabrik.de/europe/spain/cataluna-latest.osm.pbf',
+  },
+  manhattan: {
+    bbox: [-74.03, 40.698, -73.906, 40.882],
+    extract: 'https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf',
+  },
+};
+
+/**
+ * Buildings the verifier must find, by tile feature id (`osmId × 10 + 2|3`)
+ * at a point inside them, with the roof OSM records: the landmarks the doc's
+ * screenshots look at. A build that loses one of them — a parts rule gone
+ * wrong, a roof parser that stopped reading — fails here rather than in a
+ * screenshot nobody takes.
+ */
+const EXPECTED: Record<
+  string,
+  { id: number; name: string; lon: number; lat: number; roof?: string }[]
+> = {
+  barcelona: [
+    {
+      id: 359084982 * 10 + 2,
+      name: 'Sagrada Família, a tower (way/359084982)',
+      lon: 2.17435,
+      lat: 41.40363,
+      roof: 'pyramidal',
+    },
+    {
+      id: 305857559 * 10 + 2,
+      name: 'Catedral de Barcelona, a roof part (way/305857559)',
+      lon: 2.17619,
+      lat: 41.38387,
+      roof: 'hipped',
+    },
+  ],
+};
+
+interface Args {
+  pbf?: string;
+  out?: string;
+  area?: string;
+  bbox?: [number, number, number, number];
+  zoom: number;
+  verify: boolean;
+  archive?: string;
+}
+
+function parseArgs(argv: string[]): Args {
+  const args: Args = { zoom: CITY_TILE_ZOOM, verify: false };
+  for (const raw of argv) {
+    const [flag, value] = raw.startsWith('--') ? raw.slice(2).split('=', 2) : [raw, undefined];
+    if (flag === 'pbf' && value) args.pbf = value;
+    else if (flag === 'out' && value) args.out = value;
+    else if (flag === 'archive' && value) args.archive = value;
+    else if (flag === 'area' && value) args.area = value;
+    else if (flag === 'zoom' && value) args.zoom = Number(value);
+    else if (flag === 'verify') args.verify = true;
+    else if (flag === 'bbox' && value) {
+      const parts = value.split(',').map(Number);
+      if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) {
+        throw new Error('--bbox=west,south,east,north');
+      }
+      args.bbox = parts as [number, number, number, number];
+    }
+  }
+  return args;
+}
+
+const tileXY = (lon: number, lat: number, z: number) => {
+  const n = 2 ** z;
+  const phi = (lat * Math.PI) / 180;
+  return {
+    x: Math.floor(((lon + 180) / 360) * n),
+    y: Math.floor(((1 - Math.log(Math.tan(phi) + 1 / Math.cos(phi)) / Math.PI) / 2) * n),
+  };
+};
+
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
+}
+
+const pct = (part: number, whole: number) =>
+  whole === 0 ? '0' : ((100 * part) / whole).toFixed(part / whole < 0.01 ? 2 : 1);
+
+async function build(args: Args): Promise<string> {
+  if (!args.pbf) throw new Error('--pbf=<extract.osm.pbf> is required to build');
+  const area = args.area ? AREAS[args.area] : undefined;
+  if (args.area && !area) {
+    throw new Error(`unknown --area=${args.area}; known: ${Object.keys(AREAS).join(', ')}`);
+  }
+  const bbox = args.bbox ?? area?.bbox;
+  const name = args.area ?? basename(args.pbf).replace(/\.osm\.pbf$/, '');
+  const out = args.out ?? join(BUILD_DIR, `city-${name}-z${args.zoom}.pmtiles`);
+  await mkdir(dirname(out), { recursive: true });
+
+  console.log(`· compiling ${args.pbf}${bbox ? ` within ${bbox.join(',')}` : ''} at z${args.zoom}`);
+  const started = performance.now();
+  const result = compile({
+    pbf: args.pbf,
+    zoom: args.zoom,
+    bbox,
+    log: (line) => console.log(line),
+  });
+
+  const encodeStarted = performance.now();
+  const tiles: { z: number; x: number; y: number; bytes: Uint8Array }[] = [];
+  const rawSizes: number[] = [];
+  const gzSizes: number[] = [];
+  const featureCounts: number[] = [];
+  let rawTotal = 0;
+  let largest = { key: '', bytes: 0, features: 0 };
+  for (const [key, features] of result.tiles) {
+    const raw = encodeCityTile(features);
+    if (raw.length === 0) continue;
+    const gz = new Uint8Array(gzipSync(raw, { level: 9 }));
+    const [z, x, y] = key.split('/').map(Number);
+    tiles.push({ z, x, y, bytes: gz });
+    rawSizes.push(raw.length);
+    gzSizes.push(gz.length);
+    featureCounts.push(features.length);
+    rawTotal += raw.length;
+    if (raw.length > largest.bytes) largest = { key, bytes: raw.length, features: features.length };
+  }
+  const encodeMs = performance.now() - encodeStarted;
+
+  let west = 180;
+  let south = 90;
+  let east = -180;
+  let north = -90;
+  for (const { x, y, z } of tiles) {
+    const n = 2 ** z;
+    const lon0 = (x / n) * 360 - 180;
+    const lon1 = ((x + 1) / n) * 360 - 180;
+    const lat0 = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n))) * 180) / Math.PI;
+    const lat1 = (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180) / Math.PI;
+    west = Math.min(west, lon0);
+    east = Math.max(east, lon1);
+    south = Math.min(south, lat0);
+    north = Math.max(north, lat1);
+  }
+
+  const metadata = {
+    name: `GoWay city tiles — ${name}`,
+    format: 'pbf',
+    type: 'overlay',
+    attribution:
+      '<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>',
+    license: 'ODbL-1.0 — a Derivative Database of OpenStreetMap',
+    vector_layers: [
+      {
+        id: CITY_TILE_LAYER,
+        minzoom: args.zoom,
+        maxzoom: args.zoom,
+        fields: Object.fromEntries(Object.values(CITY_PROPS).map((key) => [key, 'see schema'])),
+      },
+    ],
+    'goway:schema': CITY_TILE_SCHEMA_VERSION,
+    'goway:extent': CITY_TILE_EXTENT,
+    'goway:source': basename(args.pbf),
+    'goway:replication': result.header,
+  };
+  const archive = writePmtiles(tiles, {
+    minZoom: args.zoom,
+    maxZoom: args.zoom,
+    bounds: [west, south, east, north],
+    center: [(west + east) / 2, (south + north) / 2, args.zoom],
+    metadata,
+  });
+  await writeFile(out, archive);
+  const totalMs = performance.now() - started;
+
+  const c = result.coverage;
+  rawSizes.sort((a, b) => a - b);
+  gzSizes.sort((a, b) => a - b);
+  featureCounts.sort((a, b) => a - b);
+  console.log(`  encode       ${(encodeMs / 1000).toFixed(1)} s`);
+  console.log(`\n${out}`);
+  console.log(`  total        ${(totalMs / 1000).toFixed(1)} s`);
+  console.log(`  archive      ${(archive.length / 1e6).toFixed(2)} MB (${tiles.length} tiles)`);
+  console.log(
+    `  tile raw     p50 ${(percentile(rawSizes, 50) / 1e3).toFixed(0)} kB, p95 ${(percentile(rawSizes, 95) / 1e3).toFixed(0)} kB, max ${(largest.bytes / 1e3).toFixed(0)} kB (${largest.key}, ${largest.features} buildings)`,
+  );
+  console.log(
+    `  tile gzip    p50 ${(percentile(gzSizes, 50) / 1e3).toFixed(0)} kB, p95 ${(percentile(gzSizes, 95) / 1e3).toFixed(0)} kB, max ${(gzSizes[gzSizes.length - 1] / 1e3).toFixed(0)} kB`,
+  );
+  console.log(
+    `  features     ${c.features} (${c.outlines} outlines, ${c.parts} parts; ${c.outlinesDroppedForParts} outlines replaced by their parts)`,
+  );
+  console.log(
+    `  per tile     p50 ${percentile(featureCounts, 50)}, p95 ${percentile(featureCounts, 95)}`,
+  );
+  console.log(
+    `  coverage     height ${pct(c.withHeight, c.features)}% · levels ${pct(c.withLevels, c.features)}% · roof:shape ${pct(c.withRoofShape, c.features)}% (non-flat ${pct(c.withRoofShapeNonFlat, c.features)}%) · colour ${pct(c.withColour, c.features)}% · roof:colour ${pct(c.withRoofColour, c.features)}% · material ${pct(c.withMaterial, c.features)}% · roof:material ${pct(c.withRoofMaterial, c.features)}%`,
+  );
+  console.log(`  roof shapes  ${JSON.stringify(c.roofShapes)}`);
+  console.log(`  roof height  ${JSON.stringify(c.roofHeightSources)}`);
+  console.log(`  rejected     ${JSON.stringify(c.rejected)}`);
+  console.log(`  problems     ${JSON.stringify(result.problems)}; nodes kept ${result.nodesKept}`);
+
+  await writeFile(
+    `${out}.receipt.json`,
+    `${JSON.stringify(
+      {
+        archive: out,
+        bytes: archive.length,
+        source: { file: basename(args.pbf), extract: area?.extract, ...result.header },
+        bbox,
+        zoom: args.zoom,
+        schema: CITY_TILE_SCHEMA_VERSION,
+        seconds: Math.round(totalMs / 100) / 10,
+        timingsMs: { ...result.timings, encode: Math.round(encodeMs) },
+        tiles: tiles.length,
+        rawBytes: rawTotal,
+        tileRawBytes: {
+          p50: percentile(rawSizes, 50),
+          p95: percentile(rawSizes, 95),
+          max: largest.bytes,
+          maxTile: largest.key,
+        },
+        tileGzipBytes: { p50: percentile(gzSizes, 50), p95: percentile(gzSizes, 95) },
+        coverage: c,
+        problems: result.problems,
+        builtAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  return out;
+}
+
+/** Open the archive with the Worker's reader and decode tiles with the client's decoder. */
+async function verify(path: string, area?: string): Promise<string[]> {
+  const problems: string[] = [];
+  const handle = await open(path, 'r');
+  const archive = new PMTiles({
+    async read(offset: number, length: number) {
+      const buffer = Buffer.alloc(length);
+      const { bytesRead } = await handle.read(buffer, 0, length, offset);
+      return new Uint8Array(buffer.subarray(0, bytesRead));
+    },
+  });
+  const header = await archive.header();
+  const metadata = (await archive.metadata()) as Record<string, unknown>;
+  if (header.tileType !== TILE_TYPE.MVT) problems.push(`tile type ${header.tileType}, not MVT`);
+  if (header.tileCompression !== COMPRESSION.GZIP) problems.push('tiles are not gzipped');
+  if (header.minZoom !== header.maxZoom) problems.push('expected a single zoom');
+  if (metadata['goway:schema'] !== CITY_TILE_SCHEMA_VERSION) {
+    problems.push(
+      `schema ${String(metadata['goway:schema'])}, expected ${CITY_TILE_SCHEMA_VERSION}`,
+    );
+  }
+  const z = header.maxZoom;
+  const [w, s, e, n] = header.bounds as number[];
+  const centre = tileXY((w + e) / 2, (s + n) / 2, z);
+  let opened = 0;
+  let buildings = 0;
+  const wanted = new Map((EXPECTED[area ?? ''] ?? []).map((item) => [item.id, item]));
+  const found = new Set<number>();
+  for (const item of wanted.values()) {
+    const at = tileXY(item.lon, item.lat, z);
+    const tile = await archive.getTile(z, at.x, at.y);
+    const building = tile
+      ? decodeCityTile(Bun.gunzipSync(tile.bytes))?.buildings.find((b) => b.id === item.id)
+      : undefined;
+    if (!building) continue;
+    found.add(item.id);
+    if (item.roof && building.roof?.shape !== item.roof) {
+      problems.push(`${item.name}: roof ${building.roof?.shape ?? 'flat'}, expected ${item.roof}`);
+    }
+  }
+  for (let dx = -3; dx <= 3; dx++) {
+    for (let dy = -3; dy <= 3; dy++) {
+      const tile = await archive.getTile(z, centre.x + dx, centre.y + dy);
+      if (!tile) continue;
+      opened++;
+      const decoded = decodeCityTile(Bun.gunzipSync(tile.bytes));
+      if (!decoded) {
+        problems.push(
+          `tile ${z}/${centre.x + dx}/${centre.y + dy} has no ${CITY_TILE_LAYER} layer`,
+        );
+        continue;
+      }
+      if (decoded.extent !== CITY_TILE_EXTENT) problems.push(`extent ${decoded.extent}`);
+      for (const building of decoded.buildings) {
+        buildings++;
+        if (!(building.top > building.base)) problems.push(`building ${building.id}: top <= base`);
+      }
+    }
+  }
+  if (opened === 0) problems.push('no tile around the archive centre');
+  for (const [id, item] of wanted) {
+    if (!found.has(id)) problems.push(`${item.name} (${id}) is not in its tile`);
+  }
+  await handle.close();
+  const { size } = await stat(path);
+  console.log(
+    `\n  verify       ${opened} tiles, ${buildings} buildings decoded; ${(size / 1e6).toFixed(2)} MB`,
+  );
+  return problems;
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+  const path = args.verify ? args.archive : await build(args);
+  if (!path) throw new Error('--verify needs --archive=<path>');
+  const problems = await verify(path, args.area);
+  if (problems.length > 0) {
+    for (const problem of problems) console.error(`  ✗ ${problem}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log('  ✓ verified');
+}
+
+if (import.meta.main) {
+  await main();
+}
