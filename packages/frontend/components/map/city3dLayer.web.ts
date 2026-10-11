@@ -30,6 +30,7 @@
  * every zoom (the meshes occlude it, as the extrusions did), and the mark and
  * the data credit stay where `MapCanvas` renders them, outside the GL canvas.
  */
+import type { LightSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type { CustomLayerInterface, Map as MapLibreMap, VectorTileSource } from 'maplibre-gl';
 
 import { getMapSource, GOWAY_LAYER_PREFIX, type MapAppearance } from '@/lib/map/provider';
@@ -41,11 +42,11 @@ import {
 import { CARTOGRAPHY_PALETTES } from '@/lib/map/style/palette';
 import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
 
+import { cityLightFromSpec, sameCityLight } from './city3dLight';
+// Type-only on purpose: the engine chunk imports these modules at runtime, and
+// a module two lazy chunks share is hoisted into the first-paint `__common`
+// chunk (see `engine3d/lazyChunk.ts`; `components/__tests__/engine3dChunk.test.ts`).
 import type { CityEngine, CityEngineStats } from './engine/city3d/cityEngine';
-// Type-only on purpose: the engine chunk imports `occlusion.ts` at runtime,
-// and a module two lazy chunks share is hoisted into the first-paint
-// `__common` chunk (see `engine3d/lazyChunk.ts`). The defaults it holds are
-// applied inside the engine instead.
 import type { CityLight } from './engine/city3d/occlusion';
 import { reportMapDefect } from './shared';
 
@@ -55,15 +56,21 @@ export const CITY3D_LAYER_ID = `${GOWAY_LAYER_PREFIX}city3d`;
 export interface AttachCity3dOptions {
   appearance: MapAppearance;
   /**
-   * The light. Defaults to `DEFAULT_CITY_LIGHT`. This is where a real
-   * sun (`lib/map/sun.ts`, on another branch) is meant to arrive — see
-   * `CityLight` in `engine/city3d/occlusion.ts`.
+   * The light `MapCanvas.web.tsx` gives `building-3d`: `useSunLight`'s sun
+   * light, or `null` when GoWay leaves the style document's own light alone
+   * (`resolveOwnsStyleDocument`) — in which case this follows `map.getLight()`,
+   * exactly as the extrusion does.
    */
-  light?: CityLight;
+  light: LightSpecification | null;
 }
 
 export interface City3dHandle {
-  setLight(light: CityLight): void;
+  /**
+   * Hand over the light `building-3d` was just given (same value, same
+   * moment — `MapCanvas.web.tsx` calls both from one effect's state). `null`
+   * means "the style's own light".
+   */
+  setLight(light: LightSpecification | null): void;
   /** Remove the layer, free the engine, and show `building-3d` again. Idempotent. */
   detach(): void;
 }
@@ -89,8 +96,15 @@ export async function attachCity3d(
   const { createCityEngine } = await import('@/components/engine3d/lazyChunk');
 
   const palette = buildingHeightRamp(CARTOGRAPHY_PALETTES[options.appearance]);
-  let light = options.light;
+  let lightSpec = options.light;
+  let applied: CityLight | null = null;
   let engine: CityEngine | null = null;
+
+  // The light as MapLibre would apply it to `building-3d` this frame: the
+  // given spec (or the style's own), at the current bearing — which matters
+  // only for a `viewport`-anchored light, i.e. the static fallback.
+  const currentLight = (): CityLight =>
+    cityLightFromSpec(lightSpec ?? map.getLight(), map.getBearing());
 
   const layer: CustomLayerInterface = {
     id: CITY3D_LAYER_ID,
@@ -99,6 +113,7 @@ export async function attachCity3d(
     // occlude each other correctly.
     renderingMode: '3d',
     onAdd(host, gl) {
+      applied = currentLight();
       engine = createCityEngine({
         gl: gl as WebGL2RenderingContext,
         canvas: host.getCanvas(),
@@ -106,14 +121,22 @@ export async function attachCity3d(
         tileZoom: source.maxzoom,
         sourceLayer: OPENMAPTILES_SOURCE_LAYERS.building,
         palette,
-        appearance: options.appearance,
-        light,
+        light: applied,
         fade: BUILDINGS_3D_FADE,
         requestRepaint: () => host.triggerRepaint(),
         onStats: __DEV__ ? publishStats : undefined,
       });
+      if (__DEV__) publishLight(lightSpec ?? map.getLight(), applied);
     },
     render(_gl, args) {
+      // Re-derived every frame (a few multiplications), handed over only when
+      // it changed: a new sun light, or a rotation under a viewport light.
+      const light = currentLight();
+      if (engine && !sameCityLight(applied, light)) {
+        applied = light;
+        engine.setLight(light);
+        if (__DEV__) publishLight(lightSpec ?? map.getLight(), light);
+      }
       const bounds = map.getBounds();
       engine?.render({
         mercatorToClip: args.defaultProjectionData.mainMatrix,
@@ -144,8 +167,9 @@ export async function attachCity3d(
   let detached = false;
   return {
     setLight(next) {
-      light = next;
-      engine?.setLight(next);
+      lightSpec = next;
+      // Picked up by the next frame's `currentLight()`.
+      map.triggerRepaint();
     },
     detach() {
       if (detached) return;
@@ -177,4 +201,13 @@ export async function attachCity3d(
  */
 function publishStats(stats: CityEngineStats): void {
   (globalThis as { __gowayCity3d?: CityEngineStats }).__gowayCity3d = stats;
+}
+
+/**
+ * Development only: the light in force and what the engine was given for it,
+ * on `globalThis.__gowayCity3dLight`, so "is the city lit by the same sun as
+ * `building-3d`" can be checked in a running page.
+ */
+function publishLight(spec: unknown, light: CityLight): void {
+  (globalThis as { __gowayCity3dLight?: unknown }).__gowayCity3dLight = { spec, light };
 }

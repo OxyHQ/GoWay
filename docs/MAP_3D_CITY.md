@@ -3,9 +3,10 @@
 What GoWay's 3D buildings should become, how to get there, and what it costs.
 Includes a working **web-only prototype, off by default**, that proves the
 rendering path (`components/map/engine/city3d/`). Coordinate-anchored 3D models
-in the SDK are designed in parallel in [`SDK_MAP_MODELS.md`](./SDK_MAP_MODELS.md);
-the three.js engine here is meant to be **shared** with that work, not duplicated
-(see [One engine, one scene](#one-engine-one-scene)).
+in the SDK are designed in [`SDK_MAP_MODELS.md`](./SDK_MAP_MODELS.md); the
+three.js engine here is meant to be **shared** with that work, not duplicated
+(see [One engine, one scene](#one-engine-one-scene)), and its model layer loads
+through the same lazy chunk (`components/engine3d/lazyChunk.ts`).
 
 ## Where GoWay is today
 
@@ -179,10 +180,17 @@ What `fill-extrusion` cannot do and the prototype does:
   concave corners (inside corners of Ls and courtyards darken by up to 38%,
   fading over 3 m, with an extra vertex column at that reach so the gradient
   does not smear across a whole facade).
-- **A map-anchored light**, unlike the extrusion's viewport-anchored one: a sun
-  does not rotate with the camera. The light is a uniform behind
-  `CityLight`/`setLight` — **the seam for the real sun** (`lib/map/sun.ts`,
-  being written on another branch and deliberately not imported here).
+- **The map's own light, lit MapLibre's way.** The city layer follows exactly
+  the `light` `MapCanvas.web.tsx` gives `building-3d`: the real sun from
+  `useSunLight` (`lib/map/sun.ts`, `lib/map/sunLight.ts` — map-anchored, recomputed
+  on settle and every five minutes, restarted when the engine is rebuilt), or the
+  style's own light when GoWay does not own the style. `components/map/city3dLight.ts`
+  converts it into ENU, and the shader is MapLibre's `fill-extrusion` lighting
+  formula, so the two renderers agree on every face's light — pinned by a test
+  against a re-implementation of MapLibre's own light and normal conventions —
+  and differ only in the bevel and the baked occlusion (which takes the place of
+  MapLibre's vertical gradient). The light is a uniform: a moving sun costs one
+  `setLight` and no re-meshing.
 
 Not done, and why: screen-space AO (n8ao) and full-frame post-processing need
 the whole frame's depth and normals, and inside MapLibre the frame is
@@ -285,6 +293,7 @@ with `?city3d=1`, which a production build ignores (`lib/map/city3dFlag.ts`).
 | Flag | `lib/config.ts` (`MAP_CITY3D_ENABLED`), `lib/map/city3dFlag.ts` |
 | Gate | one effect in `components/map/MapCanvas.web.tsx` |
 | MapLibre adapter | `components/map/city3dLayer.web.ts` — adds `goway:city3d` before `building-3d`, hides `building-3d`, restores it on detach |
+| Light | `components/map/city3dLight.ts` — the `building-3d` light (`useSunLight`'s, fed by `MapCanvas.web.tsx`) as the engine's `CityLight` |
 | Engine (three.js) | `components/map/engine/city3d/cityEngine.ts` |
 | Worker | `components/map/engine/city3d/meshWorker.ts` (`new Worker(new URL(…, import.meta.url))`, which Expo bundles as a sealed chunk) |
 | Pure parts (tested) | `tileMath.ts`, `mesher.ts`, `occlusion.ts`, `shaders.ts`, `decode.ts` |
@@ -333,8 +342,8 @@ are estimates; the runtime numbers are measured unless marked.
 
 | Phase | What | Cost |
 | --- | --- | --- |
-| **0. Prototype** (this change) | Custom layer, worker mesher over existing tiles, bevels, baked AO, light seam; off by default | Done. Users: +1.1 KB entry, nothing else with the flag off |
-| **1. Ship A on web** | Far-field LOD, per-tile fade-in, 2-worker pool, WebGL context-loss handling, device gating via `deviceProfile`-style checks (GPU memory: Barcelona's visible set is ~60 MB), real sun via `setLight`, MapLibre sky/fog matched in-shader, tap-through to the basemap preserved, a perf budget on mid-range Android Chrome | ~2–3 weeks. No infra. Opt-in users download the ~1.1 MB gz lazy chunk |
+| **0. Prototype** (this change) | Custom layer, worker mesher over existing tiles, bevels, baked AO, lit by the same sun light as `building-3d`; off by default | Done. Users: +1.1 KB entry, nothing else with the flag off |
+| **1. Ship A on web** | Far-field LOD, per-tile fade-in, 2-worker pool, WebGL context-loss handling, device gating via `deviceProfile`-style checks (GPU memory: Barcelona's visible set is ~60 MB), MapLibre sky/fog matched in-shader, tap-through to the basemap preserved, a perf budget on mid-range Android Chrome | ~2–3 weeks. No infra. Opt-in users download the ~1.1 MB gz lazy chunk |
 | **2. GoWay 3D tiles (B)** | Compiler beside the Planetiler build: per-building footprints and parts, OSM levels/roof shapes where tagged, pre-meshed + neighbour AO + LODs, quantised; archive in R2 behind the Worker; a per-building vector layer for native extrusion | ~4–6 weeks. Planet compile time and archive size **unmeasured** — measure on one country first; R2 storage is cheap and egress free, the build machine is the real cost |
 | **3. Atmosphere** | Staged as in §6: sky/fog, in-shader aerial perspective, sun-tinted ambient | ~1–2 weeks |
 | **4. Municipal data** | One dataset at a time (PLUTO, PLATEAU, 3DBAG, Catastro…): licence review, adapter in the compiler, credit while drawn, LOD2 roofs where present | ~1 week each + legal review |

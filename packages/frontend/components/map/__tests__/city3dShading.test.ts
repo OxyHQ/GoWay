@@ -11,13 +11,12 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   AO,
-  CITY_SHADING,
+  type CityLight,
   cornerOcclusion,
-  DEFAULT_CITY_LIGHT,
+  extrusionDirectional,
   groundOcclusion,
-  lightFromSunAngles,
+  luminance,
   smoothstep,
-  surfaceBrightness,
 } from '@/components/map/engine/city3d/occlusion';
 import { CITY_FRAGMENT_SHADER, glslFloat } from '@/components/map/engine/city3d/shaders';
 
@@ -51,38 +50,49 @@ describe('corner occlusion', () => {
   });
 });
 
-describe('light', () => {
-  test('azimuth is a compass bearing; altitude lifts it', () => {
-    const east = lightFromSunAngles(90, 0).direction;
-    expect(east[0]).toBeCloseTo(1, 12);
-    expect(east[1]).toBeCloseTo(0, 12);
-    expect(east[2]).toBeCloseTo(0, 12);
-    const overhead = lightFromSunAngles(123, 90).direction;
-    expect(overhead[2]).toBeCloseTo(1, 12);
-    const below = lightFromSunAngles(0, -20).direction;
-    expect(below[2]).toBe(0);
+describe('extrusion lighting (MapLibre’s formula)', () => {
+  // GoWay's light-mode sun light at a mid-morning sun: map-anchored, radial
+  // 1.15, south-east, polar 40°.
+  const p = 40 * (Math.PI / 180);
+  const a = 135 * (Math.PI / 180);
+  const light: CityLight = {
+    position: [
+      1.15 * Math.sin(a) * Math.sin(p),
+      1.15 * Math.cos(a) * Math.sin(p),
+      1.15 * Math.cos(p),
+    ],
+    intensity: 0.2,
+    color: [1, 1, 1],
+  };
+  const pale = luminance([0.97, 0.93, 0.85]);
+
+  test('a face turned away sits at the floor, 1 − intensity', () => {
+    expect(extrusionDirectional([-Math.SQRT1_2, Math.SQRT1_2, 0], light, pale)).toBeCloseTo(
+      0.8,
+      12,
+    );
   });
 
-  test('is a unit vector, and the default sun is in the south-west', () => {
-    const [x, y, z] = DEFAULT_CITY_LIGHT.direction;
-    expect(Math.hypot(x, y, z)).toBeCloseTo(1, 12);
-    expect(x).toBeLessThan(0);
-    expect(y).toBeLessThan(0);
-    expect(z).toBeGreaterThan(0);
-  });
-
-  test('roofs read brightest, lit walls next, shaded walls darkest — in both appearances', () => {
-    for (const shading of Object.values(CITY_SHADING)) {
-      const roof = surfaceBrightness([0, 0, 1], DEFAULT_CITY_LIGHT, shading);
-      const lit = surfaceBrightness([-Math.SQRT1_2, -Math.SQRT1_2, 0], DEFAULT_CITY_LIGHT, shading);
-      const shaded = surfaceBrightness(
-        [Math.SQRT1_2, Math.SQRT1_2, 0],
-        DEFAULT_CITY_LIGHT,
-        shading,
-      );
-      expect(roof).toBeGreaterThan(lit);
-      expect(lit).toBeGreaterThan(shaded);
+  test('roofs and sun-facing walls are lit, shaded walls are not — in both appearances', () => {
+    for (const intensity of [0.2, 0.45]) {
+      const lit = { ...light, intensity };
+      const roof = extrusionDirectional([0, 0, 1], lit, pale);
+      const sunny = extrusionDirectional([Math.SQRT1_2, -Math.SQRT1_2, 0], lit, pale);
+      const shady = extrusionDirectional([-Math.SQRT1_2, Math.SQRT1_2, 0], lit, pale);
+      expect(roof).toBeGreaterThan(shady);
+      expect(sunny).toBeGreaterThan(shady);
+      expect(shady).toBeCloseTo(1 - intensity, 12);
     }
+  });
+
+  test('a dark colour may be lit above 1, as MapLibre lets it be', () => {
+    const dark = luminance([0.3, 0.31, 0.45]);
+    expect(extrusionDirectional([0, 0, 1], { ...light, intensity: 0.45 }, dark)).toBeGreaterThan(1);
+  });
+
+  test('luminance is Rec. 709', () => {
+    expect(luminance([1, 1, 1])).toBeCloseTo(1, 12);
+    expect(luminance([0, 1, 0])).toBeCloseTo(0.7152, 12);
   });
 });
 
@@ -92,6 +102,13 @@ describe('shader source', () => {
     expect(glslFloat(0.62)).toBe('0.62');
     expect(glslFloat(7)).toBe('7.0');
     expect(() => glslFloat(Number.NaN)).toThrow();
+  });
+
+  test('the fragment shader is MapLibre’s extrusion formula plus the tested occlusion', () => {
+    expect(CITY_FRAGMENT_SHADER).toContain(
+      'mix(1.0 - uLightIntensity, max(1.0 - luminance + uLightIntensity, 1.0), d)',
+    );
+    expect(CITY_FRAGMENT_SHADER).toContain('(base + 0.03) * directional * uLightColor');
   });
 
   test('the fragment shader carries the tested ground-occlusion constants', () => {

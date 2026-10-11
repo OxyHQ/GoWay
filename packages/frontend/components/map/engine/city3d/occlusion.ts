@@ -33,7 +33,7 @@
  *
  * Every function here is pure and mirrored by GLSL in `shaders.ts`, which
  * interpolates these same constants into its source, so the tested number and
- * the drawn number cannot drift apart.
+ * the drawn number cannot drift apart. The light itself is MapLibre's, below.
  */
 
 /** A direction in local ENU: x east, y north, z up. */
@@ -92,85 +92,64 @@ export function cornerOcclusion(cornerConcavity: number, distanceM: number): num
 }
 
 // ---------------------------------------------------------------------------
-// Light — THE seam for the sun
+// Light — MapLibre's extrusion lighting, fed by the sun
 // ---------------------------------------------------------------------------
 
 /**
- * The light the buildings are shaded by.
+ * The light the buildings are shaded by, in the units MapLibre's
+ * `fill-extrusion` shader uses — so the city meshes and the `building-3d`
+ * extrusion they replace are lit by the same light, the same way.
  *
- * **This is the seam a real sun plugs into.** A separate branch adds
- * `lib/map/sun.ts` (the sun's actual position for a place and time); this
- * prototype deliberately does not import it. Whoever wires the two together
- * converts that module's azimuth/altitude with {@link lightFromSunAngles} and
- * calls `setLight` on the engine handle — nothing else here changes, because
- * the light is a uniform and never baked into a mesh.
- *
- * The light is anchored to the MAP, not the viewport (the opposite of the
- * `fill-extrusion` layer's `anchor: 'viewport'`): a sun does not rotate with
- * the camera, and once there is a real one the shading has to agree with it.
+ * It arrives from the MapLibre adapter (`components/map/city3dLight.ts` →
+ * `cityLightFromSpec`), which converts the very `light` specification
+ * `MapCanvas.web.tsx` hands `map.setLight()`: the real sun from
+ * `useSunLight` (`lib/map/sunLight.ts`), or the style's own light when GoWay
+ * does not own the style. It is a uniform, never baked into a mesh, so a sun
+ * that moves costs one `setLight` and no re-meshing.
  */
 export interface CityLight {
-  /** Unit vector in ENU pointing TOWARD the light. */
-  direction: Vec3;
+  /**
+   * ENU (x east, y north, z up), pointing TOWARD the light, with MapLibre's
+   * radial term as its length (1.15 for GoWay's lights — a gain, not a unit
+   * vector; MapLibre does not normalise it either).
+   */
+  position: Vec3;
+  /** MapLibre's `intensity`: how dark an unlit face gets (`1 − intensity`). */
+  intensity: number;
+  /** MapLibre's light `color`, sRGB channels in 0–1. White for GoWay. */
+  color: Vec3;
+}
+
+/** Rec. 709 luma, as MapLibre's extrusion shader weighs a colour. */
+export function luminance([r, g, b]: Vec3): number {
+  return r * 0.2126 + g * 0.7152 + b * 0.0722;
 }
 
 /**
- * A light from a compass azimuth and an altitude, both in degrees.
+ * MapLibre's `fill-extrusion` `directional` term for a face with outward unit
+ * normal `normal`, base colour luminance `baseLuminance`, under `light`:
  *
- * `azimuthDeg` is a compass bearing: 0 north, 90 east, clockwise. (SunCalc and
- * some other sources measure from the SOUTH; convert before calling.)
- * `altitudeDeg` is the angle above the horizon. Below the horizon is clamped
- * to it — there is no "night" shading in the prototype.
- */
-export function lightFromSunAngles(azimuthDeg: number, altitudeDeg: number): CityLight {
-  const az = (azimuthDeg * Math.PI) / 180;
-  const alt = (Math.max(0, Math.min(90, altitudeDeg)) * Math.PI) / 180;
-  return {
-    direction: [Math.sin(az) * Math.cos(alt), Math.cos(az) * Math.cos(alt), Math.sin(alt)],
-  };
-}
-
-/**
- * The light used until a real sun is wired in: a mid-afternoon sun in the
- * south-west, 45° up. South-west rather than MapLibre's viewport-anchored
- * default so that south- and west-facing walls read lit and north- and
- * east-facing ones shaded, which is what anyone in the northern hemisphere
- * expects of a city in the afternoon.
- */
-export const DEFAULT_CITY_LIGHT: CityLight = lightFromSunAngles(225, 45);
-
-/**
- * How much of a wall's brightness is ambient and how much is the light.
+ *     d = clamp(dot(normal, light.position), 0, 1)
+ *     mix(1 − intensity, max(1 − luminance + intensity, 1), d)
  *
- * Per appearance for the same reason `BUILDINGS_LIGHT` is per appearance in
- * `buildings3d.ts`: shading is multiplicative, and a fixed ratio of a near-
- * black colour is almost no difference at all, so the dark map needs more of
- * its brightness to come from the directional term to keep a corner legible.
+ * read off maplibre-gl 6.10's shader. The colour is then `(base + 0.03) ×
+ * directional × lightColour`, clamped — see `shaders.ts`, which is this
+ * function in GLSL. What MapLibre multiplies on top (its vertical gradient)
+ * the city layer replaces with {@link groundOcclusion}; that and the bevel are
+ * the ONLY differences between the two renderers.
  */
-export interface CityShading {
-  ambient: number;
-  diffuse: number;
-}
-
-export const CITY_SHADING: Record<'light' | 'dark', CityShading> = {
-  light: { ambient: 0.8, diffuse: 0.26 },
-  dark: { ambient: 0.62, diffuse: 0.55 },
-};
-
-/**
- * Brightness of a surface with unit normal `normal`, before occlusion.
- *
- * A hemisphere ambient (a surface facing the sky gets all of it, a vertical
- * wall about three quarters, an overhang's underside half) plus Lambert. The
- * shader in `shaders.ts` is this function, line for line.
- */
-export function surfaceBrightness(normal: Vec3, light: CityLight, shading: CityShading): number {
-  const sky = 0.5 + 0.5 * normal[2];
-  const lambert = Math.max(
+export function extrusionDirectional(
+  normal: Vec3,
+  light: CityLight,
+  baseLuminance: number,
+): number {
+  const d = Math.max(
     0,
-    normal[0] * light.direction[0] +
-      normal[1] * light.direction[1] +
-      normal[2] * light.direction[2],
+    Math.min(
+      1,
+      normal[0] * light.position[0] + normal[1] * light.position[1] + normal[2] * light.position[2],
+    ),
   );
-  return shading.ambient * (0.5 + 0.5 * sky) + shading.diffuse * lambert;
+  const lit = Math.max(1 - baseLuminance + light.intensity, 1);
+  return 1 - light.intensity + (lit - (1 - light.intensity)) * d;
 }

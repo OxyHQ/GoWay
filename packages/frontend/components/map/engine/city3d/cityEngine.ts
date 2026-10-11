@@ -37,7 +37,7 @@
 import * as THREE from 'three';
 
 import type { TileMesh } from './mesher';
-import { CITY_SHADING, type CityLight, DEFAULT_CITY_LIGHT } from './occlusion';
+import type { CityLight } from './occlusion';
 import type { MeshWorkerRequest, MeshWorkerResponse } from './protocol';
 import { CITY_FRAGMENT_SHADER, CITY_VERTEX_SHADER } from './shaders';
 import {
@@ -69,10 +69,8 @@ export interface CityEngineOptions {
   tileZoom: number;
   sourceLayer: string;
   palette: CityPalette;
-  /** Picks the shading split (`CITY_SHADING`); the palette is passed separately. */
-  appearance: 'light' | 'dark';
-  /** Defaults to `DEFAULT_CITY_LIGHT` — the sun seam, see `CityLight`. */
-  light?: CityLight;
+  /** The map's light, converted (`components/map/city3dLight.ts`); see `CityLight`. */
+  light: CityLight;
   /** The zoom fade, shared with the `fill-extrusion` layer this replaces. */
   fade: { start: number; end: number };
   /** Ask the host for another frame (new geometry arrived). */
@@ -102,9 +100,9 @@ export interface CityEngineStats {
 
 export interface CityEngine {
   render(view: CityView): void;
-  /** THE sun seam: see `CityLight` in `occlusion.ts`. */
+  /** The map's light, re-applied whenever `building-3d`'s would change (the sun). */
   setLight(light: CityLight): void;
-  setPalette(palette: CityPalette, appearance: 'light' | 'dark'): void;
+  setPalette(palette: CityPalette): void;
   dispose(): void;
 }
 
@@ -171,9 +169,9 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     uVeryTall: { value: new THREE.Vector3() },
     uTallM: { value: 60 },
     uVeryTallM: { value: 180 },
-    uLightDirection: { value: new THREE.Vector3(0, 0, 1) },
-    uAmbient: { value: 0.8 },
-    uDiffuse: { value: 0.3 },
+    uLightPosition: { value: new THREE.Vector3(0, 0, 1) },
+    uLightIntensity: { value: 0.5 },
+    uLightColor: { value: new THREE.Vector3(1, 1, 1) },
     uOpacity: { value: 1 },
   };
 
@@ -358,19 +356,19 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     },
 
     setLight(light) {
-      uniforms.uLightDirection.value.set(...light.direction).normalize();
+      // Not normalised: the radial term is MapLibre's gain (see `CityLight`).
+      uniforms.uLightPosition.value.set(...light.position);
+      uniforms.uLightIntensity.value = light.intensity;
+      uniforms.uLightColor.value.set(...light.color);
       options.requestRepaint();
     },
 
-    setPalette(palette, appearance) {
-      const shading = CITY_SHADING[appearance];
+    setPalette(palette) {
       uniforms.uLow.value.copy(hexToVector(palette.low));
       uniforms.uTall.value.copy(hexToVector(palette.tall));
       uniforms.uVeryTall.value.copy(hexToVector(palette.veryTall));
       uniforms.uTallM.value = palette.tallM;
       uniforms.uVeryTallM.value = palette.veryTallM;
-      uniforms.uAmbient.value = shading.ambient;
-      uniforms.uDiffuse.value = shading.diffuse;
       options.requestRepaint();
     },
 
@@ -393,7 +391,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     },
   };
 
-  engine.setPalette(options.palette, options.appearance);
-  engine.setLight(options.light ?? DEFAULT_CITY_LIGHT);
+  engine.setPalette(options.palette);
+  engine.setLight(options.light);
   return engine;
 }

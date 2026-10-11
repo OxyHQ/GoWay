@@ -3,9 +3,17 @@
  *
  * Kept out of `cityEngine.ts` so it imports no renderer, and generated from
  * the constants in `occlusion.ts` rather than restating them: the fragment
- * shader below is `surfaceBrightness × groundOcclusion × cornerOcclusion` from
- * that module, line for line, so the numbers the tests pin are the numbers the
- * GPU draws.
+ * shader below is `extrusionDirectional × groundOcclusion × cornerOcclusion`
+ * from that module, line for line, so the numbers the tests pin are the
+ * numbers the GPU draws.
+ *
+ * The lighting is MapLibre's own `fill-extrusion` formula (maplibre-gl 6.10),
+ * fed the same `light` the map is (`components/map/city3dLight.ts`): the base
+ * colour plus MapLibre's 0.03 ambient, times `directional`, times the light
+ * colour, clamped per channel exactly as MapLibre clamps it. Where MapLibre
+ * multiplies its vertical gradient into `directional`, this multiplies the
+ * baked occlusion. So the two renderers agree on every face's light and differ
+ * only in what the city layer adds: the bevel and the occlusion.
  *
  * The material is a three.js `RawShaderMaterial` with `glslVersion: GLSL3`, so
  * three prepends only `#version 300 es`; everything else — precision, the
@@ -62,10 +70,10 @@ uniform vec3 uVeryTall;
 uniform float uTallM;
 uniform float uVeryTallM;
 
-// The light (occlusion.ts → CityLight) and the appearance's shading split.
-uniform vec3 uLightDirection;
-uniform float uAmbient;
-uniform float uDiffuse;
+// The map's light (occlusion.ts → CityLight), in MapLibre's units.
+uniform vec3 uLightPosition;
+uniform float uLightIntensity;
+uniform vec3 uLightColor;
 
 // The zoom fade, shared with the fill-extrusion layer this replaces.
 uniform float uOpacity;
@@ -84,16 +92,21 @@ void main() {
     ? mix(uLow, uTall, vBuildingHeight / uTallM)
     : mix(uTall, uVeryTall, clamp((vBuildingHeight - uTallM) / (uVeryTallM - uTallM), 0.0, 1.0));
 
-  // surfaceBrightness()
-  float sky = 0.5 + 0.5 * n.z;
-  float lambert = max(dot(n, uLightDirection), 0.0);
-  float brightness = uAmbient * (0.5 + 0.5 * sky) + uDiffuse * lambert;
+  // extrusionDirectional() — MapLibre's fill-extrusion lighting.
+  float luminance = dot(base, vec3(0.2126, 0.7152, 0.0722));
+  float d = clamp(dot(n, uLightPosition), 0.0, 1.0);
+  float directional = mix(1.0 - uLightIntensity, max(1.0 - luminance + uLightIntensity, 1.0), d);
 
-  // groundOcclusion()
+  // groundOcclusion() × cornerOcclusion, where MapLibre puts its gradient.
   float ground = ${glslFloat(AO.groundMin)}
     + ${glslFloat(1 - AO.groundMin)} * smoothstep(0.0, ${glslFloat(AO.groundReachM)}, vHeightAboveGround);
+  directional *= ground * vCornerAo;
 
-  vec3 color = base * brightness * ground * vCornerAo;
+  vec3 color = clamp(
+    (base + 0.03) * directional * uLightColor,
+    mix(vec3(0.0), vec3(0.3), vec3(1.0) - uLightColor),
+    vec3(1.0)
+  );
 
   // MapLibre blends custom layers as premultiplied alpha.
   fragColor = vec4(color * uOpacity, uOpacity);
