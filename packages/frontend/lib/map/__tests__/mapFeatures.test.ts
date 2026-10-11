@@ -87,12 +87,6 @@ function legacy(builds: Builds, development: boolean, search: string) {
     }),
     cityLife: isCityLifeRequested({
       city3d,
-      cityTiles: isCityTilesRequested({
-        city3d,
-        enabled: onBuild(builds.cityTiles),
-        development,
-        search,
-      }),
       enabled: onBuild(builds.cityLife),
       development,
       search,
@@ -193,7 +187,6 @@ describe('with no stored choice, every flag answers what it did before', () => {
           // A feature that needs the city is checked with the city built in.
           const builds = {
             ...(id === 'city3d' ? {} : { city3d: '1' }),
-            ...(id === 'cityLife' ? { cityTiles: '1' } : {}),
             [id]: value,
           };
           for (const search of searches) {

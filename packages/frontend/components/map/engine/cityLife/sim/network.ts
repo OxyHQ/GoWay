@@ -416,7 +416,12 @@ const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 // ── Build ────────────────────────────────────────────────────────────────
 
 export interface NetworkInput {
-  tiles: readonly { x: number; y: number; data: DecodedRoadTile }[];
+  /**
+   * `source`: where a tile's roads came from (the archive, the basemap). An
+   * edge between tiles of different sources is a seam — their geometry does
+   * not meet — so it counts as a cut, where cars leave rather than turn round.
+   */
+  tiles: readonly { x: number; y: number; data: DecodedRoadTile; source?: string }[];
   frame: SimFrame;
   drivingSide: DrivingSide;
   seed: number;
@@ -488,23 +493,21 @@ export function buildNetwork(input: NetworkInput): Network {
   };
   const findNode = (gx: number, gy: number) => nodeIndex.get(keyOf(gx, gy)) ?? -1;
 
-  const loadedTiles = new Set(input.tiles.map((t) => `${t.x}/${t.y}`));
+  const loadedTiles = new Map<string, string>(
+    input.tiles.map((t) => [`${t.x}/${t.y}`, t.source ?? '']),
+  );
+  const joined = (a: string, b: string) =>
+    loadedTiles.has(a) && loadedTiles.has(b) && loadedTiles.get(a) === loadedTiles.get(b);
   // A node on the outer edge of the loaded tiles is where the network was CUT,
   // not a dead end: a car reaching it leaves rather than turning round.
   const onCutEdge = (node: NetworkNode): boolean => {
     const { gx, gy } = node;
     const tx = Math.floor(gx / EXTENT);
     const ty = Math.floor(gy / EXTENT);
-    if (
-      gx % EXTENT === 0 &&
-      !(loadedTiles.has(`${tx - 1}/${ty}`) && loadedTiles.has(`${tx}/${ty}`))
-    ) {
+    if (gx % EXTENT === 0 && !joined(`${tx - 1}/${ty}`, `${tx}/${ty}`)) {
       return true;
     }
-    if (
-      gy % EXTENT === 0 &&
-      !(loadedTiles.has(`${tx}/${ty - 1}`) && loadedTiles.has(`${tx}/${ty}`))
-    ) {
+    if (gy % EXTENT === 0 && !joined(`${tx}/${ty - 1}`, `${tx}/${ty}`)) {
       return true;
     }
     return false;

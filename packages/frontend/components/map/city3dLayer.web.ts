@@ -384,9 +384,10 @@ export async function attachCity3d(
   // flag off) draws no buildings, so it never asks.
   const cityTiles = buildings && options.cityTiles === true;
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  // The simulation drives on the road archive compiled beside the city tiles,
-  // so it needs both above it: the registry's `cityLife`, handed in.
-  const cityLife = cityTiles && options.cityLife === true;
+  // The simulation drives on the compiled road archive where there is one and
+  // on the basemap's roads, healed, everywhere else: the registry's `cityLife`,
+  // handed in, needs no city tiles.
+  const cityLife = buildings && options.cityLife === true;
   const coverage = cityTiles ? await fetchCityCoverage(origin) : [];
   if (cityTiles && coverage.length === 0) {
     reportMapDefect(
@@ -515,6 +516,14 @@ export async function attachCity3d(
       overlays.push(
         createCityLife({
           roadTileTemplate: `${origin}${CITY_ROAD_TILE_PATH}`,
+          // Worldwide: where no road archive tile exists, the basemap's own roads.
+          basemapRoads: template
+            ? {
+                template,
+                zoom: Math.min(source?.maxzoom ?? 14, 15),
+                sourceLayer: OPENMAPTILES_SOURCE_LAYERS.transportation,
+              }
+            : undefined,
           budget: CITY_LIFE_BUDGET,
           seed: CITY_LIFE_SEED,
           requestRepaint: () => host.triggerRepaint(),

@@ -13,7 +13,13 @@
  */
 import { open } from 'node:fs/promises';
 
-import { decodeRoadTile } from '../components/map/engine/cityLife/roadTiles';
+import {
+  decodeOmtRoads,
+  healRoads,
+  type OmtLine,
+  piecesForTiles,
+} from '../components/map/engine/cityLife/omtRoads';
+import { type DecodedRoadTile, decodeRoadTile } from '../components/map/engine/cityLife/roadTiles';
 import { drivingSideAt } from '../components/map/engine/cityLife/sim/drivingSide';
 import { buildNetwork, simFrame } from '../components/map/engine/cityLife/sim/network';
 import {
@@ -31,21 +37,16 @@ const args = Object.fromEntries(
   }),
 );
 const archivePath = args.archive;
-if (!archivePath) throw new Error('--archive=<roads.pmtiles>');
+// `--basemap=<{z}/{x}/{y} template>`: heal the basemap's roads instead (worldwide).
+const basemapTemplate = args.basemap;
+if (!archivePath && !basemapTemplate) {
+  throw new Error('--archive=<roads.pmtiles> or --basemap=<https://…/{z}/{x}/{y}.pbf>');
+}
 const lat = Number(args.lat ?? 41.3925);
 const lng = Number(args.lng ?? 2.164);
 const zoom = Number(args.zoom ?? 17);
 const seconds = Number(args.seconds ?? 120);
 const budget = { cars: Number(args.cars ?? 1500), people: Number(args.people ?? 1500) };
-
-const handle = await open(archivePath, 'r');
-const archive = new PMTiles({
-  async read(offset: number, length: number) {
-    const buffer = Buffer.alloc(length);
-    const { bytesRead } = await handle.read(buffer, 0, length, offset);
-    return new Uint8Array(buffer.subarray(0, bytesRead));
-  },
-});
 
 const z = CITY_TILE_ZOOM;
 const n = 2 ** z;
@@ -58,19 +59,64 @@ const tileMetres = 4096 * frame.metresPerUnit;
 const r = activeRadius(zoom);
 const reach = Math.ceil((r + 300) / tileMetres);
 
-const tiles = [];
+const tiles: { x: number; y: number; data: DecodedRoadTile }[] = [];
 let decodeMs = 0;
-for (let dx = -reach; dx <= reach; dx++) {
-  for (let dy = -reach; dy <= reach; dy++) {
-    const tile = await archive.getTile(z, origin.x + dx, origin.y + dy);
-    if (!tile) continue;
+if (archivePath) {
+  const handle = await open(archivePath, 'r');
+  const archive = new PMTiles({
+    async read(offset: number, length: number) {
+      const buffer = Buffer.alloc(length);
+      const { bytesRead } = await handle.read(buffer, 0, length, offset);
+      return new Uint8Array(buffer.subarray(0, bytesRead));
+    },
+  });
+  for (let dx = -reach; dx <= reach; dx++) {
+    for (let dy = -reach; dy <= reach; dy++) {
+      const tile = await archive.getTile(z, origin.x + dx, origin.y + dy);
+      if (!tile) continue;
+      const t0 = performance.now();
+      const data = decodeRoadTile(Bun.gunzipSync(tile.bytes), {
+        x: origin.x + dx,
+        y: origin.y + dy,
+      });
+      decodeMs += performance.now() - t0;
+      tiles.push({ x: origin.x + dx, y: origin.y + dy, data });
+    }
+  }
+  await handle.close();
+} else if (basemapTemplate) {
+  // The basemap's z14 tiles over the same z15 neighbourhood, healed.
+  const keep = new Set<string>();
+  const parents = new Set<string>();
+  for (let dx = -reach; dx <= reach; dx++) {
+    for (let dy = -reach; dy <= reach; dy++) {
+      keep.add(`${origin.x + dx}/${origin.y + dy}`);
+      parents.add(`${(origin.x + dx) >> 1}/${(origin.y + dy) >> 1}`);
+    }
+  }
+  const lines: OmtLine[] = [];
+  for (const parent of parents) {
+    const [px, py] = parent.split('/').map(Number);
+    const url = basemapTemplate
+      .replace('{z}', '14')
+      .replace('{x}', String(px))
+      .replace('{y}', String(py));
+    const response = await fetch(url);
+    if (!response.ok) continue;
+    const bytes = new Uint8Array(await response.arrayBuffer());
     const t0 = performance.now();
-    const data = decodeRoadTile(Bun.gunzipSync(tile.bytes), { x: origin.x + dx, y: origin.y + dy });
+    lines.push(...decodeOmtRoads(bytes, { z: 14, x: px, y: py }, 'transportation'));
     decodeMs += performance.now() - t0;
-    tiles.push({ x: origin.x + dx, y: origin.y + dy, data });
+  }
+  const t0 = performance.now();
+  const result = healRoads(lines, frame.metresPerUnit);
+  const byTile = piecesForTiles(result, keep);
+  console.log(`heal ${(performance.now() - t0).toFixed(0)} ms`, result.stats);
+  for (const key of keep) {
+    const [x, y] = key.split('/').map(Number);
+    tiles.push({ x, y, data: byTile.get(key) ?? { pieces: [], nodes: [], restrictions: [] } });
   }
 }
-await handle.close();
 
 const network = buildNetwork({ tiles, frame, drivingSide: drivingSideAt(lng, lat), seed: 7 });
 console.log(`tiles ${tiles.length} (decode ${decodeMs.toFixed(0)} ms), radius ${r} m`);
