@@ -39,6 +39,9 @@ export const LIVE_GLYPHS: Readonly<Record<string, MapLiveGlyph>> = {
   bikeshare: { shape: 'station', color: LIVE_KIND_COLORS.bikeshare },
   'bikeshare-empty': { shape: 'station', color: '#a8a29e' },
   vessel: { shape: 'boat', color: LIVE_KIND_COLORS.vessel },
+  // Trains and buses: a to-scale silhouette in the line's colour (`tint`).
+  train: { shape: 'train', color: TRANSIT_MODE_COLORS.rail as string },
+  bus: { shape: 'bus', color: TRANSIT_MODE_COLORS.bus as string },
   ...Object.fromEntries(
     Object.entries(TRANSIT_MODE_COLORS).map(([mode, color]) => [
       `transit-${mode}`,
@@ -52,7 +55,7 @@ export function glyphOf(entity: LiveEntity): string {
     case 'aircraft':
       return entity.onGround ? 'aircraft-ground' : 'aircraft';
     case 'transit':
-      return `transit-${entity.mode}`;
+      return entity.mode === 'bus' ? 'bus' : 'train';
     case 'bikeshare':
       return entity.renting && entity.bikesAvailable > 0 ? 'bikeshare' : 'bikeshare-empty';
     case 'vessel':
@@ -61,6 +64,12 @@ export function glyphOf(entity: LiveEntity): string {
 }
 
 /** The short text beside a glyph: a line, a bike count; nothing for aircraft and ships. */
+/** The colour a transit glyph is drawn in: its line's, else its mode's. */
+export function tintOf(entity: LiveEntity): string | undefined {
+  if (entity.kind !== 'transit') return undefined;
+  return entity.lineColor ?? TRANSIT_MODE_COLORS[entity.mode];
+}
+
 export function labelOf(entity: LiveEntity): string | undefined {
   switch (entity.kind) {
     case 'transit':

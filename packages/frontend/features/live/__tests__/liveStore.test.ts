@@ -16,7 +16,8 @@ import {
   positionAt,
   velocityOf,
 } from '../motion';
-import { BLEND_MS, LiveStore } from '../liveStore';
+import { BLEND_MS, LiveStore, type ShapeSource } from '../liveStore';
+import { consistAlong, consistStraight, pointAlong, type TrackShape } from '../track';
 
 const T0 = Date.parse('2026-10-11T12:00:00Z');
 const ALL = new Set(['aircraft', 'transit', 'bikeshare', 'vessel'] as const);
@@ -59,7 +60,14 @@ function aircraft(overrides: Partial<Extract<LiveEntity, { kind: 'aircraft' }>> 
   };
 }
 
-function train(id: string, latitude: number, longitude: number, at: number): LiveEntity {
+function train(
+  id: string,
+  latitude: number,
+  longitude: number,
+  at: number,
+  track: { shapeId: string; alongMeters: number } | null = null,
+  trackStatus: 'on_track' | 'off_track' | 'unknown' = track ? 'on_track' : 'unknown',
+): LiveEntity {
   return {
     kind: 'transit',
     id: `renfe-cercanias:${id}`,
@@ -73,6 +81,10 @@ function train(id: string, latitude: number, longitude: number, at: number): Liv
     line: 'R2N',
     headsign: null,
     vehicleLabel: null,
+    lineColor: '#D0DF00',
+    lineTextColor: '#FFFFFF',
+    track: track ? { ...track, offsetMeters: 0 } : null,
+    trackStatus,
   };
 }
 
@@ -170,27 +182,19 @@ describe('LiveStore', () => {
     expect(store.size).toBe(0);
   });
 
-  test('never predicts a thing with no speed: it walks between its real fixes', () => {
+  test('a train off any known track stays exactly where reported, marked approximate', () => {
     let now = T0;
     const store = new LiveStore(() => now);
-    store.applySnapshot(message([train('1', 41.3, 2.1, T0)]));
-    now = T0 + 5000;
-    expect(store.sample(ALL)[0]?.moving).toBe(false);
-    expect(store.sample(ALL)[0]?.latitude).toBe(41.3);
-    // The next real fix, 20 s later and ~111 m north.
-    store.applySnapshot(message([train('1', 41.301, 2.1, T0 + 20_000)], T0 + 20_000));
-    now += 10_000; // half the 20 s between the two fixes
-    const halfway = store.sample(ALL)[0];
-    expect(halfway?.moving).toBe(true);
-    expect(halfway?.latitude).toBeCloseTo(41.3005, 5);
-    expect(halfway?.heading).toBeCloseTo(0, 0); // north: the course between the fixes
+    store.applySnapshot(message([train('1', 41.3, 2.1, T0, null, 'off_track')]));
+    store.applySnapshot(
+      message([train('1', 41.301, 2.1, T0 + 20_000, null, 'off_track')], T0 + 20_000),
+    );
     now += 10_000;
-    const arrived = store.sample(ALL)[0];
-    expect(arrived?.latitude).toBeCloseTo(41.301, 6);
-    // ...and stops there: nothing past the latest real fix.
-    now += 15_000;
-    expect(store.sample(ALL)[0]?.latitude).toBeCloseTo(41.301, 6);
-    expect(store.sample(ALL)[0]?.moving).toBe(false);
+    const sample = store.sample(ALL)[0];
+    // No straight line between the two reports: that path was never published.
+    expect(sample?.latitude).toBe(41.301);
+    expect(sample?.moving).toBe(false);
+    expect(sample?.approximate).toBe(true);
   });
 
   test('a snapshot is authoritative for its room; a remove only removes from its own room', () => {
@@ -270,5 +274,121 @@ describe('LiveStore', () => {
         settled ?? { latitude: 0, longitude: 0 },
       ).east,
     ).toBeCloseTo(180, 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Along a published track
+// ---------------------------------------------------------------------------
+
+/** A shape: a line `[lon, lat]` with its running length (equirectangular, as the server measures). */
+function shapeOf(points: [number, number][]): TrackShape {
+  const along = [0];
+  for (let i = 1; i < points.length; i++) {
+    const [x0, y0] = points[i - 1] as [number, number];
+    const [x1, y1] = points[i] as [number, number];
+    const dx = (x1 - x0) * Math.cos((((y0 + y1) / 2) * Math.PI) / 180) * 111_195;
+    const dy = (y1 - y0) * 111_195;
+    along.push((along[i - 1] as number) + Math.hypot(dx, dy));
+  }
+  return { coordinates: points, alongMeters: along, lengthMeters: along.at(-1) as number };
+}
+
+// An L: ~834 m east, then ~1112 m north. A straight line between a point on
+// each leg cuts the corner; the track does not.
+const ELL = shapeOf([
+  [2.1, 41.4],
+  [2.11, 41.4],
+  [2.11, 41.41],
+]);
+// A branch: the same trunk east, then a second branch turning SOUTH.
+const BRANCH = shapeOf([
+  [2.1, 41.4],
+  [2.11, 41.4],
+  [2.11, 41.39],
+]);
+const SHAPES: ShapeSource = {
+  get: (_source, id) => ({ ell: ELL, branch: BRANCH })[id as 'ell' | 'branch'],
+};
+
+describe('the track', () => {
+  test('reads position and heading at a distance, clamped to the line', () => {
+    expect(pointAlong(ELL, 0)).toMatchObject({ latitude: 41.4, longitude: 2.1 });
+    expect(pointAlong(ELL, 417).heading).toBeCloseTo(90, 0); // east
+    expect(pointAlong(ELL, 1000).heading).toBeCloseTo(0, 0); // north, after the corner
+    expect(pointAlong(ELL, 99_999)).toMatchObject({ latitude: 41.41, longitude: 2.11 });
+  });
+
+  test('lays a consist along the curve, each car on the line and turned to it', () => {
+    // A 3-car train centred on the corner.
+    const cars = consistAlong(ELL, 834, 3, 20, 1);
+    expect(cars[0]?.heading).toBeCloseTo(0, 0); // the leading car is round the corner
+    expect(cars[2]?.heading).toBeCloseTo(90, 0); // the last is still on the east leg
+    expect(cars[2]?.latitude).toBeCloseTo(41.4, 6);
+    // Off a track, the same cars in a straight line along the heading.
+    const straight = consistStraight({ latitude: 41.4, longitude: 2.1 }, 90, 3, 20, 1);
+    expect(straight.every((car) => Math.abs(car.latitude - 41.4) < 1e-9)).toBe(true);
+    expect(straight[0]?.longitude).toBeGreaterThan(straight[2]?.longitude ?? 0);
+  });
+
+  test('walks a train ALONG its track between fixes — round the corner, never across it', () => {
+    let now = T0;
+    const store = new LiveStore(() => now, SHAPES);
+    store.applySnapshot(
+      message([train('1', 41.4, 2.105, T0, { shapeId: 'ell', alongMeters: 417 })]),
+    );
+    expect(store.sample(ALL)[0]).toMatchObject({ approximate: false, moving: false });
+    // The next fix is on the north leg, 1,300 m along, 30 s later.
+    store.applySnapshot(
+      message(
+        [train('1', 41.4042, 2.11, T0 + 30_000, { shapeId: 'ell', alongMeters: 1300 })],
+        T0 + 30_000,
+      ),
+    );
+    now += 15_000; // half the walk
+    const half = store.sample(ALL)[0];
+    expect(half?.onTrack?.along).toBeCloseTo(858.5, 0);
+    // On the line at that distance: just past the corner, on the north leg —
+    // where a straight line between the fixes would be ~200 m inside the L.
+    expect(half?.longitude).toBeCloseTo(2.11, 6);
+    expect(half?.heading).toBeCloseTo(0, 0);
+    now += 15_000;
+    expect(store.sample(ALL)[0]?.onTrack?.along).toBeCloseTo(1300, 3);
+    now += 20_000;
+    expect(store.sample(ALL)[0]?.onTrack?.along).toBeCloseTo(1300, 3); // and stops at the fix
+  });
+
+  test('follows its own branch at a junction', () => {
+    let now = T0;
+    const store = new LiveStore(() => now, SHAPES);
+    store.applySnapshot(
+      message([train('1', 41.4, 2.105, T0, { shapeId: 'branch', alongMeters: 417 })]),
+    );
+    store.applySnapshot(
+      message(
+        [train('1', 41.396, 2.11, T0 + 30_000, { shapeId: 'branch', alongMeters: 1280 })],
+        T0 + 30_000,
+      ),
+    );
+    now += 25_000;
+    const sample = store.sample(ALL)[0];
+    expect(sample?.latitude).toBeLessThan(41.4); // south, on its branch
+    expect(sample?.heading).toBeCloseTo(180, 0);
+  });
+
+  test('a new shape is a jump, not a walk', () => {
+    let now = T0;
+    const store = new LiveStore(() => now, SHAPES);
+    store.applySnapshot(
+      message([train('1', 41.4, 2.105, T0, { shapeId: 'ell', alongMeters: 417 })]),
+    );
+    store.applySnapshot(
+      message(
+        [train('1', 41.396, 2.11, T0 + 30_000, { shapeId: 'branch', alongMeters: 1280 })],
+        T0 + 30_000,
+      ),
+    );
+    now += 1;
+    expect(store.sample(ALL)[0]?.onTrack?.along).toBeCloseTo(1280, 3);
   });
 });

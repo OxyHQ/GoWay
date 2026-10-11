@@ -33,6 +33,7 @@ import {
   type Velocity,
   velocityOf,
 } from './motion';
+import { pointAlong, type TrackShape } from './track';
 
 /** How long a correction (a new fix landing away from the prediction) is eased over. */
 export const BLEND_MS = 900;
@@ -67,6 +68,18 @@ interface Tracked {
   lastDrawn: { latitude: number; longitude: number } | null;
   /** The freshness it was last drawn at: going stale eases it back to its fix. */
   lastFreshness: Freshness | null;
+  /** On a published track: the shape, and the distance along it at the fix. */
+  track: { sourceId: string; shapeId: string; along: number } | null;
+  /** Walking along the track: from this distance, since `blendStart`, over `blendMs`. */
+  walkFrom: number | null;
+  /** The distance along last drawn. */
+  lastAlong: number | null;
+}
+
+/** Where a vehicle's operator publishes the shape it runs along. */
+export interface ShapeSource {
+  /** The shape, when loaded; `undefined` asks for it to be loaded. */
+  get(sourceId: string, shapeId: string): TrackShape | undefined;
 }
 
 export interface LiveSample {
@@ -79,6 +92,14 @@ export interface LiveSample {
   /** Seconds since the source observed it, on the server's clock. */
   ageSeconds: number;
   moving: boolean;
+  /** Drawn along its operator's published track: the shape and the distance along it. */
+  onTrack: { shape: TrackShape; along: number } | null;
+  /**
+   * A transit vehicle NOT on a known track (farther from every published
+   * shape than the tolerance, or none known): drawn exactly where reported,
+   * never moved along a path, and marked approximate.
+   */
+  approximate: boolean;
 }
 
 function roomOf(tile: string, kind: LiveKind): string {
@@ -91,7 +112,10 @@ export class LiveStore {
   /** server clock − client clock, in ms. */
   private offset = 0;
 
-  constructor(private readonly clientNow: () => number = Date.now) {}
+  constructor(
+    private readonly clientNow: () => number = Date.now,
+    private readonly shapes: ShapeSource | null = null,
+  ) {}
 
   get size(): number {
     return this.tracked.size;
@@ -198,7 +222,25 @@ export class LiveStore {
       existing && !velocity
         ? Math.min(MAX_INTERPOLATION_MS, Math.max(BLEND_MS, at - existing.fix.at))
         : BLEND_MS;
+    const track =
+      entity.kind === 'transit' && entity.track
+        ? {
+            sourceId: entity.sourceId,
+            shapeId: entity.track.shapeId,
+            along: entity.track.alongMeters,
+          }
+        : null;
+    // Along the same track, the walk starts where it was last drawn ON it.
+    const sameTrack =
+      track !== null &&
+      existing?.track?.shapeId === track.shapeId &&
+      existing.track.sourceId === track.sourceId &&
+      existing.lastAlong !== null;
     this.tracked.set(entity.id, {
+      track,
+      walkFrom:
+        moved && sameTrack ? existing.lastAlong : moved ? null : (existing?.walkFrom ?? null),
+      lastAlong: sameTrack ? (existing?.lastAlong ?? null) : null,
       entity,
       room,
       fix,
@@ -233,12 +275,68 @@ export class LiveStore {
     }
     item.lastFreshness = freshness;
     const bound = extrapolationBoundSeconds(item.entity.kind, stale);
+    const elapsed = clientNow - item.blendStart;
+    const base = {
+      entity: item.entity,
+      freshness,
+      opacity: opacityOf(freshness),
+      ageSeconds,
+    };
+
+    // ── On a published track: one number, the distance along it ────────────
+    const shape = item.track
+      ? this.shapes?.get(item.track.sourceId, item.track.shapeId)
+      : undefined;
+    if (item.track && shape) {
+      // A reported speed moves it forward along the line, briefly; nothing else predicts.
+      const ahead =
+        freshness === 'fresh' && item.velocity && item.entity.speedMetersPerSecond !== null
+          ? item.entity.speedMetersPerSecond *
+            Math.max(0, Math.min((serverNow - item.fix.at) / 1000, bound))
+          : 0;
+      const target = Math.min(shape.lengthMeters, item.track.along + ahead);
+      const walking = item.walkFrom !== null && elapsed < item.blendMs;
+      const along = walking
+        ? (item.walkFrom as number) +
+          (target - (item.walkFrom as number)) * Math.max(0, elapsed / item.blendMs)
+        : target;
+      item.lastAlong = along;
+      const point = pointAlong(shape, along);
+      item.lastDrawn = { latitude: point.latitude, longitude: point.longitude };
+      return {
+        ...base,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        heading: point.heading,
+        moving: walking || ahead > 0,
+        onTrack: { shape, along },
+        approximate: false,
+      };
+    }
+
+    // ── Transit off any known track: exactly where reported, never walked ──
+    if (item.entity.kind === 'transit') {
+      item.lastDrawn = { latitude: item.fix.latitude, longitude: item.fix.longitude };
+      return {
+        ...base,
+        latitude: item.fix.latitude,
+        longitude: item.fix.longitude,
+        heading: item.entity.headingDegrees ?? item.derivedHeading,
+        moving: false,
+        onTrack: null,
+        // On track but its shape still loading is not "approximate"; the
+        // operator just has not been heard from yet.
+        approximate: item.entity.trackStatus !== 'on_track',
+      };
+    }
+
+    // ── Aircraft and ships: bounded dead reckoning, eased corrections ──────
     const target = positionAt(item.fix, item.velocity, serverNow, bound, freshness);
     const drawn = item.blendFrom
       ? blend(
           item.blendFrom,
           target,
-          clientNow - item.blendStart,
+          elapsed,
           item.blendMs,
           item.blendMs > BLEND_MS ? 'linear' : 'out',
         )
@@ -246,14 +344,13 @@ export class LiveStore {
     item.lastDrawn = drawn;
     const moving = freshness === 'fresh' && item.velocity !== null && ageSeconds < bound;
     return {
-      entity: item.entity,
+      ...base,
       latitude: drawn.latitude,
       longitude: drawn.longitude,
       heading: item.entity.headingDegrees ?? item.derivedHeading,
-      freshness,
-      opacity: opacityOf(freshness),
-      ageSeconds,
-      moving: moving || (item.blendFrom !== null && clientNow - item.blendStart < item.blendMs),
+      moving: moving || (item.blendFrom !== null && elapsed < item.blendMs),
+      onTrack: null,
+      approximate: false,
     };
   }
 

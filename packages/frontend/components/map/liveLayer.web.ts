@@ -75,8 +75,34 @@ export function frameIntervalMs(zoom: number): number {
   return 250;
 }
 
-export function imageName(glyph: string, directional: boolean): string {
-  return `${GOWAY_LAYER_PREFIX}live:${glyph}:${directional ? 'dir' : 'still'}`;
+export interface GlyphVariant {
+  glyph: string;
+  directional: boolean;
+  /** The colour it is drawn in, when not the glyph's own (a line colour). */
+  tint?: string;
+  approximate?: boolean;
+}
+
+export function imageName(
+  glyph: string,
+  directional: boolean,
+  tint?: string,
+  approximate?: boolean,
+): string {
+  return `${GOWAY_LAYER_PREFIX}live:${glyph}:${directional ? 'dir' : 'still'}${tint ? `:${tint}` : ''}${approximate ? ':approx' : ''}`;
+}
+
+/** Glyph length in CSS pixels at `icon-size` 1, for the shapes drawn to scale. */
+const SCALED_GLYPH_PX: Partial<Record<MapLiveGlyph['shape'], number>> = { train: 96, bus: 48 };
+
+/**
+ * `icon-size` that makes a glyph its real length at zoom 13: CSS pixels per
+ * metre at z13 on 512-px tiles, at ~41° (Barcelona, New York) — scale, not
+ * survey. Doubles with every zoom (the expression is exponential, base 2).
+ */
+export function scaleAtZoom13(lengthMeters: number, glyphPx: number): number {
+  const metresPerPixel = (40_075_016 * Math.cos((41 * Math.PI) / 180)) / (512 * 2 ** 13);
+  return lengthMeters / metresPerPixel / glyphPx;
 }
 
 /** The GeoJSON the source is set to. Exported for the tests. */
@@ -91,19 +117,27 @@ export function featureCollection(
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
     const directional = point.heading !== null && Number.isFinite(point.heading);
     const airborne = point.altitude !== null && point.altitude > 30;
+    const shape = options.glyphs[point.glyph]?.shape;
+    const glyphPx = shape ? SCALED_GLYPH_PX[shape] : undefined;
     features.push({
       type: 'Feature',
       id: point.id,
       geometry: { type: 'Point', coordinates: [longitude, latitude] },
       properties: {
         id: point.id,
-        icon: imageName(point.glyph, directional),
+        icon: imageName(point.glyph, directional, point.tint, point.approximate),
         heading: directional ? point.heading : 0,
-        // With the 3D pass drawing an airborne aircraft at its altitude, its
-        // glyph on the ground becomes its shadow: the track it flies over.
-        opacity: Math.max(0, Math.min(1, point.opacity)) * (options.threeD && airborne ? 0.4 : 1),
+        // With the 3D pass drawing a vehicle, its glyph steps back: an
+        // airborne aircraft's becomes its shadow, a train's or bus's a faint
+        // footprint under its model.
+        opacity:
+          Math.max(0, Math.min(1, point.opacity)) *
+          (options.threeD && (airborne || glyphPx) ? 0.4 : 1),
         label: point.label ?? '',
         selected: point.selected === true,
+        // Trains and buses grow to their real length at street zooms.
+        min: glyphPx ? (glyphPx === 96 ? 0.42 : 0.6) : 0.8,
+        k13: glyphPx && point.length && directional ? scaleAtZoom13(point.length, glyphPx) : 0,
       },
     });
   }
@@ -169,8 +203,60 @@ function drawDisc(ctx: Ctx, s: number, radius: number): void {
 }
 
 /** One glyph bitmap, or `null` where there is no 2D canvas (tests, SSR). */
-function glyphImage(glyph: MapLiveGlyph, directional: boolean): ImageData | null {
+/** A train (or bus) seen from above, nose up: a long rounded body, a darker roof line, a pointed cab. */
+function drawVehicleBody(ctx: Ctx, w: number, h: number, nose: number): void {
+  const r = w * 0.42;
+  ctx.beginPath();
+  ctx.moveTo(w / 2, 1.5);
+  ctx.quadraticCurveTo(w - 2, 1.5 + nose * 0.4, w - 2, nose);
+  ctx.lineTo(w - 2, h - r);
+  ctx.quadraticCurveTo(w - 2, h - 2, w / 2, h - 2);
+  ctx.quadraticCurveTo(2, h - 2, 2, h - r);
+  ctx.lineTo(2, nose);
+  ctx.quadraticCurveTo(2, 1.5 + nose * 0.4, w / 2, 1.5);
+  ctx.closePath();
+}
+
+function glyphImage(glyph: MapLiveGlyph, variant: GlyphVariant): ImageData | null {
   if (typeof document === 'undefined') return null;
+  const { directional } = variant;
+  const color = variant.tint ?? glyph.color;
+  const scaled = SCALED_GLYPH_PX[glyph.shape];
+  if (scaled && directional) {
+    // A long silhouette: `scaled` CSS px long, a quarter of that wide (trains), more for buses.
+    const width = (glyph.shape === 'train' ? 18 : 18) * GLYPH_PIXEL_RATIO;
+    const height = scaled * GLYPH_PIXEL_RATIO;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    drawVehicleBody(ctx, width, height, width * 0.9);
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 2.6 * GLYPH_PIXEL_RATIO;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+    if (variant.approximate) {
+      // Approximate: a pale body with a dashed outline in its colour.
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fill();
+      ctx.setLineDash([3 * GLYPH_PIXEL_RATIO, 2.5 * GLYPH_PIXEL_RATIO]);
+      ctx.lineWidth = 1.6 * GLYPH_PIXEL_RATIO;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      ctx.fillStyle = color;
+      ctx.fill();
+      // The roof line and the cab windscreen, in white: front and back read at a glance.
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillRect(width * 0.3, width * 0.95, width * 0.4, height - width * 1.6);
+      ctx.beginPath();
+      ctx.ellipse(width / 2, width * 0.55, width * 0.24, width * 0.16, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return ctx.getImageData(0, 0, width, height);
+  }
   const size = GLYPH_CSS_PX * GLYPH_PIXEL_RATIO;
   const canvas = document.createElement('canvas');
   canvas.width = size;
@@ -179,6 +265,10 @@ function glyphImage(glyph: MapLiveGlyph, directional: boolean): ImageData | null
   if (!ctx) return null;
   const u = size / 26;
   switch (glyph.shape) {
+    case 'train':
+    case 'bus':
+      drawDisc(ctx, size, 7 * u);
+      break;
     case 'aircraft':
       if (directional) drawAircraft(ctx, size);
       else drawDisc(ctx, size, 5.5 * u);
@@ -201,9 +291,24 @@ function glyphImage(glyph: MapLiveGlyph, directional: boolean): ImageData | null
   ctx.lineWidth = 2.4 * u;
   ctx.strokeStyle = '#ffffff';
   ctx.stroke();
-  ctx.fillStyle = glyph.color;
+  if (variant.approximate) {
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fill();
+    ctx.setLineDash([3 * u, 2.4 * u]);
+    ctx.lineWidth = 1.6 * u;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    return ctx.getImageData(0, 0, size, size);
+  }
+  ctx.fillStyle = color;
   ctx.fill();
-  if (glyph.shape === 'vehicle' || glyph.shape === 'station') {
+  if (
+    glyph.shape === 'vehicle' ||
+    glyph.shape === 'station' ||
+    glyph.shape === 'train' ||
+    glyph.shape === 'bus'
+  ) {
     // A small white centre: reads as a stop/vehicle marker at any size.
     ctx.beginPath();
     ctx.arc(size / 2, size / 2, 2.1 * u, 0, Math.PI * 2);
@@ -222,16 +327,20 @@ export function attachLive(
   layer: MapLiveLayer,
   options: { appearance: 'light' | 'dark' },
 ): LiveLayerHandle {
-  const images: string[] = [];
-  for (const [name, glyph] of Object.entries(layer.glyphs)) {
-    for (const directional of [true, false]) {
-      const id = imageName(name, directional);
-      if (map.hasImage(id)) continue;
-      const image = glyphImage(glyph, directional);
-      if (!image) continue;
-      map.addImage(id, image, { pixelRatio: GLYPH_PIXEL_RATIO });
-      images.push(id);
-    }
+  const images = new Set<string>();
+  /** Draw a glyph variant the first time something needs it (line colours are open-ended). */
+  const ensureImage = (variant: GlyphVariant) => {
+    const id = imageName(variant.glyph, variant.directional, variant.tint, variant.approximate);
+    if (images.has(id) || map.hasImage(id)) return;
+    const glyph = layer.glyphs[variant.glyph];
+    if (!glyph) return;
+    const image = glyphImage(glyph, variant);
+    if (!image) return;
+    map.addImage(id, image, { pixelRatio: GLYPH_PIXEL_RATIO });
+    images.add(id);
+  };
+  for (const name of Object.keys(layer.glyphs)) {
+    for (const directional of [true, false]) ensureImage({ glyph: name, directional });
   }
 
   let threeD = false;
@@ -267,7 +376,21 @@ export function attachLive(
       'icon-rotation-alignment': 'map',
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.55, 11, 0.8, 15, 1],
+      // Glyphs keep a legible minimum; trains and buses (`k13`) grow to their
+      // real length from z13, doubling with each zoom like the map does.
+      'icon-size': [
+        'interpolate',
+        ['exponential', 2],
+        ['zoom'],
+        6,
+        ['*', ['get', 'min'], 0.68],
+        11,
+        ['get', 'min'],
+        13,
+        ['max', ['get', 'min'], ['get', 'k13']],
+        20,
+        ['max', ['get', 'min'], ['*', ['get', 'k13'], 128]],
+      ],
       'text-field': ['step', ['zoom'], '', 12, ['get', 'label']],
       'text-font': [...FONT_STACKS.semibold],
       'text-size': 11,
@@ -305,7 +428,17 @@ export function attachLive(
     if (detached) return;
     const source = map.getSource<GeoJSONSource>(LIVE_SOURCE_ID);
     if (!source) return;
-    source.setData(featureCollection(sampleNow(), { glyphs: layer.glyphs, threeD }));
+    const points = sampleNow();
+    for (const point of points) {
+      if (!point.tint && !point.approximate) continue;
+      ensureImage({
+        glyph: point.glyph,
+        directional: point.heading !== null && Number.isFinite(point.heading),
+        tint: point.tint,
+        approximate: point.approximate,
+      });
+    }
+    source.setData(featureCollection(points, { glyphs: layer.glyphs, threeD }));
     lastPush = Date.now();
   };
 
@@ -387,6 +520,7 @@ export function attachLive(
         if (detached || city !== next) return;
         const pass: LivePass = createLivePass({
           glyphs: layer.glyphs,
+          models: layer.models ?? {},
           points: sampleNow,
           // With 3D terrain on, the ground is the elevation MapLibre draws.
           groundAt: () =>
@@ -468,6 +602,7 @@ export function attachLive(
           if (map.getLayer(id)) map.removeLayer(id);
         if (map.getSource(LIVE_SOURCE_ID)) map.removeSource(LIVE_SOURCE_ID);
         for (const id of images) if (map.hasImage(id)) map.removeImage(id);
+        images.clear();
       } catch {
         // A removed map throws on style access; the layers went with it.
       }

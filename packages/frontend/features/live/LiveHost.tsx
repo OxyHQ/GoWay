@@ -17,10 +17,13 @@ import type { LiveKind } from '@goway.to/sdk/live';
 import type { MapCreditLink, MapLiveLayer, MapLivePoint } from '@/components/map';
 import { API_URL } from '@/lib/config';
 
-import { glyphOf, LIVE_GLYPHS, LIVE_KIND_ORDER, labelOf } from './kinds';
+import { FLEETS } from './fleets';
+import { LIVE_GLYPHS, LIVE_KIND_ORDER } from './kinds';
 import { createLiveClient, type LiveClient, type LiveClientState } from './liveClient';
 import { LivePanel } from './LivePanel';
 import { LiveStore } from './liveStore';
+import { pointOf } from './points';
+import { ShapeCache } from './shapeCache';
 
 type Box = { west: number; south: number; east: number; north: number };
 
@@ -57,7 +60,18 @@ const HEARTBEAT_MS = 1000;
 const BIKESHARE_MIN_ZOOM = 15;
 
 export default function LiveHost({ onLayer, top, right, compact = false }: LiveHostProps) {
-  const store = useMemo(() => new LiveStore(), []);
+  const listeners = useRef(new Set<() => void>());
+  // A shape arriving moves its vehicles onto the track: wake the canvas.
+  const store = useMemo(
+    () =>
+      new LiveStore(
+        Date.now,
+        new ShapeCache(API_URL, () => {
+          for (const listener of listeners.current) listener();
+        }),
+      ),
+    [],
+  );
   const [kinds, setKinds] = useState<ReadonlySet<LiveKind>>(() => new Set(LIVE_KIND_ORDER));
   const [selected, setSelected] = useState<string | null>(null);
   const [clientState, setClientState] = useState<LiveClientState>({
@@ -70,7 +84,6 @@ export default function LiveHost({ onLayer, top, right, compact = false }: LiveH
   kindsRef.current = kinds;
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
-  const listeners = useRef(new Set<() => void>());
   const clientRef = useRef<LiveClient | null>(null);
   const creditsRef = useRef<readonly MapCreditLink[]>([]);
   const drawnSourcesRef = useRef<ReadonlySet<string>>(new Set());
@@ -106,6 +119,7 @@ export default function LiveHost({ onLayer, top, right, compact = false }: LiveH
   const layer = useMemo<MapLiveLayer>(
     () => ({
       glyphs: LIVE_GLYPHS,
+      models: FLEETS,
       sample(now: number): MapLivePoint[] {
         const zoom = zoomRef.current;
         const drawn = new Set<string>();
@@ -120,16 +134,7 @@ export default function LiveHost({ onLayer, top, right, compact = false }: LiveH
           if (entity.kind === 'bikeshare' && zoom < BIKESHARE_MIN_ZOOM) continue;
           drawn.add(entity.sourceId);
           if (sample.moving) moving = true;
-          points.push({
-            id: entity.id,
-            glyph: glyphOf(entity),
-            coordinate: { latitude: sample.latitude, longitude: sample.longitude },
-            heading: entity.kind === 'bikeshare' ? null : sample.heading,
-            altitude: entity.kind === 'aircraft' && !entity.onGround ? entity.altitudeMeters : null,
-            opacity: sample.opacity,
-            label: labelOf(entity),
-            selected: entity.id === selectedRef.current,
-          });
+          points.push(pointOf(sample, selectedRef.current));
         }
         movingRef.current = moving;
         drawnSourcesRef.current = drawn;

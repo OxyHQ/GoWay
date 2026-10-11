@@ -31,6 +31,7 @@ export type {
   MapCreditLink,
   MapLiveGlyph,
   MapLiveLayer,
+  MapLiveModel,
   MapLivePoint,
   MapMarker,
   MapModel,

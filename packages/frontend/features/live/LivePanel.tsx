@@ -143,6 +143,15 @@ function Details({
           ? `${t('live.detail.age', { age: formatAge(sample.ageSeconds) })} · ${t('live.detail.stale')}`
           : t('live.detail.age', { age: formatAge(sample.ageSeconds) })}
       </Text>
+      {sample.entity.kind === 'transit' ? (
+        <Text className="text-caption text-muted-foreground" testID="live-details-track">
+          {sample.approximate
+            ? t('live.detail.approximate')
+            : sample.onTrack
+              ? t('live.detail.onTrack')
+              : ''}
+        </Text>
+      ) : null}
       {source ? (
         <View className="flex-row flex-wrap items-center gap-space-4">
           <Text className="text-caption text-muted-foreground">{`${t('live.detail.source')}:`}</Text>

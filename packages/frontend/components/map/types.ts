@@ -145,8 +145,27 @@ export interface MapCreditLink {
 
 /** How a live glyph is drawn: a shape and a CSS colour, chosen by the feature that owns the data. */
 export interface MapLiveGlyph {
-  shape: 'aircraft' | 'arrow' | 'vehicle' | 'boat' | 'station';
+  shape: 'aircraft' | 'arrow' | 'vehicle' | 'boat' | 'station' | 'train' | 'bus';
   color: string;
+}
+
+/**
+ * A simplified 3D vehicle: a generic FORM, its proportions, and a livery as
+ * flat colour bands — never a logo, wordmark or emblem. Feature data
+ * (`features/live/fleets.ts`), drawn by the 3D pass.
+ */
+export interface MapLiveModel {
+  form: 'emu' | 'bus' | 'double-deck' | 'coach' | 'aircraft' | 'vessel';
+  /** Cars in the consist (an articulated bus is two). */
+  cars: number;
+  /** Metres, each car. */
+  carLength: number;
+  /** Metres between cars. */
+  gap: number;
+  width: number;
+  height: number;
+  /** `#RRGGBB` bands, bottom to top. */
+  livery: { lower: string; stripe: string; body: string; window: string; roof: string };
 }
 
 /**
@@ -170,6 +189,16 @@ export interface MapLivePoint {
   /** Short text beside the glyph — a line, a bike count. */
   label?: string;
   selected?: boolean;
+  /** Colours the glyph instead of its own colour — a line's colour. */
+  tint?: string;
+  /** Real length in metres, for glyphs drawn to scale at street zooms (trains, buses). */
+  length?: number;
+  /** A key of {@link MapLiveLayer.models}, for the 3D shape. */
+  model?: string;
+  /** Where each car of a consist is, leading car first; absent: one body at {@link coordinate}. */
+  parts?: readonly { coordinate: GeoCoordinate; heading: number }[];
+  /** Not on a known track: drawn as reported, styled as approximate. */
+  approximate?: boolean;
 }
 
 /**
@@ -183,6 +212,8 @@ export interface MapLivePoint {
  */
 export interface MapLiveLayer {
   glyphs: Readonly<Record<string, MapLiveGlyph>>;
+  /** The 3D vehicle models points may name; absent, the 3D pass draws generic shapes. */
+  models?: Readonly<Record<string, MapLiveModel>>;
   /** Everything to draw at `now` (`Date.now()` milliseconds). */
   sample(now: number): readonly MapLivePoint[];
   /** Whether anything is moving or fading: the canvas keeps drawing frames while so. */

@@ -173,7 +173,9 @@ describe('projection and matching', () => {
     const first = matchTrack(gtfs, { route: 'R2N' }, at, null);
     expect(first.trackStatus).toBe('on_track');
     // It was on `west` at 1200 m along and is now at ~1250: forward on west — kept.
-    const westAt = project(gtfs.shapes.get('west')!, at.latitude, at.longitude).along;
+    const west = gtfs.shapes.get('west');
+    if (!west) throw new Error('fixture shape missing');
+    const westAt = project(west, at.latitude, at.longitude).along;
     const kept = matchTrack(gtfs, { route: 'R2N' }, at, { shapeId: 'west', along: westAt - 50 });
     expect(kept.track?.shapeId).toBe('west');
     // It was on `west` FURTHER along than now: that is backwards on west, so it is going east.

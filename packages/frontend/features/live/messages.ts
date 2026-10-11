@@ -34,6 +34,11 @@ export const LIVE_EN: Record<string, string> = {
   'live.detail.close': 'Close',
   'live.detail.age': 'Position {age} old',
   'live.detail.stale': 'Stale: the source has not reported a newer position.',
+  'live.detail.onTrack':
+    'Drawn on its line as published by the operator; moves along it between reports.',
+  'live.detail.approximate':
+    'Approximate: not on a published track. Shown where reported, not animated.',
+  'live.detail.estimated': 'Estimated from arrival predictions, not a GPS position.',
   'live.detail.source': 'Source',
   'live.detail.licence': 'Licence',
   'live.detail.altitude': 'Altitude',
@@ -87,6 +92,12 @@ export const LIVE_ES: Record<string, string> = {
   'live.detail.close': 'Cerrar',
   'live.detail.age': 'Posición de hace {age}',
   'live.detail.stale': 'Desactualizado: la fuente no ha enviado una posición más reciente.',
+  'live.detail.onTrack':
+    'Dibujado sobre su línea tal como la publica el operador; avanza por ella entre informes.',
+  'live.detail.approximate':
+    'Aproximado: fuera de una vía publicada. Se muestra donde se informó, sin animar.',
+  'live.detail.estimated':
+    'Estimado a partir de las previsiones de llegada, no es una posición GPS.',
   'live.detail.source': 'Fuente',
   'live.detail.licence': 'Licencia',
   'live.detail.altitude': 'Altitud',
