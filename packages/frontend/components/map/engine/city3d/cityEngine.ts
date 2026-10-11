@@ -767,6 +767,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
   /** Entries lifted for the first time last frame: this frame draws (uploads) them. */
   let awaitingFirstDraw = new Set<string>();
+  /** Entries drawn at least once: their meshes are on the GPU. */
+  const drawnEntries = new WeakSet<TileEntry>();
 
   /** Hand queued meshes to the GPU, nearest first, within this frame's budget. */
   const admit = (now: number) => {
@@ -986,8 +988,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     // goes to the GPU, and the lift and that upload are the two largest
     // pieces of a tile's arrival: one frame holding both was the engine's
     // share of the laptop's slowest frames (`docs/MAP_PERFORMANCE.md` → the
-    // laptop's main thread). So they alternate: a newly lifted entry is first
-    // drawn the frame after, and that frame lifts nothing.
+    // laptop's main thread). So they alternate: an entry lifted before it was
+    // ever drawn is first drawn the frame after, and that frame lifts
+    // nothing. An entry already drawn (flat, before the terrain came) has its
+    // mesh on the GPU: it is drawn as soon as it is lifted, as before.
     const grounded = grounder.active;
     const firstGrounded = new Set<string>();
     const uploading = awaitingFirstDraw;
@@ -1003,7 +1007,9 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
           options.requestRepaint();
           break;
         }
-        if (!grounder.hasGround(entry.key)) firstGrounded.add(entry.key);
+        if (!grounder.hasGround(entry.key) && !drawnEntries.has(entry)) {
+          firstGrounded.add(entry.key);
+        }
         const result = grounder.ground(entry.key, groundTileFor(entry, tile));
         if (result) {
           applyGround(entry, result);
@@ -1039,6 +1045,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         setEntryTreeDetail(entry, shapes, r(entry) < nearTreesWithin);
         setEntryFade(entry, from, to);
         setEntryVisible(entry, true);
+        drawnEntries.add(entry);
         for (const source of entrySources.get(entry) ?? []) sources.add(source);
         casting.push({
           key: entry.key,

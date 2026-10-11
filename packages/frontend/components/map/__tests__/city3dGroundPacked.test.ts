@@ -198,7 +198,7 @@ describe('grounding a packed entry', () => {
     ];
     const before = materials.map((m) => m.version);
     const grounder = new TileGrounder();
-    grounder.setSampler(hill);
+    grounder.setGround(groundOf(hill));
     applyGround(entry, grounder.ground('g@0', groundTileFor(entry, TILE)));
     expect(entry.buildings[0].geometry.getAttribute('ground')).toBeDefined();
     expect(entry.trees[0].geometry.getAttribute('aGround')).toBeDefined();
@@ -207,7 +207,7 @@ describe('grounding a packed entry', () => {
 
     // Re-grounding in place changes values, not the layout: no rebuild.
     const settled = materials.map((m) => m.version);
-    grounder.setSampler((lng, lat) => hill(lng, lat) + 30);
+    grounder.setGround(groundOf((lng, lat) => hill(lng, lat) + 30));
     applyGround(entry, grounder.ground('g@0', groundTileFor(entry, TILE)));
     expect(materials.map((m) => m.version)).toEqual(settled);
   });

@@ -125,6 +125,8 @@ async function measure(
   scene: Scene,
   tier: QualityTier,
   ground: GroundSampler | null = null,
+  /** Called once loaded, with the engine and a frame function: an extra check of the run. */
+  afterLoad?: (engine: CityEngine, frame: () => GlFrameCounts) => void,
 ): Promise<Measured> {
   const { gl, canvas } = createFakeWebGl2(WIDTH, HEIGHT);
   const counters = createGlCounterState();
@@ -199,6 +201,13 @@ async function measure(
       },
     );
     expect(loaded, `${scene.id}/${tier} loaded`).toBe(true);
+    afterLoad?.(engine, () => {
+      clock.ms += FRAME_MS;
+      resetGlFrame(counters.frame);
+      engine.prerender(first);
+      engine.render(first);
+      return { ...counters.frame };
+    });
     // Settle the path's own tiles too (an orbit reveals more), then measure it.
     for (const step of scene.path) await settle(engine, view(step), () => ({ pending }), clock);
     // A second at rest on the first view: anything deferred (the shadow map's
@@ -386,6 +395,21 @@ describe('frame budget gate', () => {
     // A lifting frame uploads at most a few uniforms (bytes), never a mesh (MBs).
     for (const frame of lifting) expect(frame.uploadBytes).toBeLessThan(1024);
     expect(measured.draws).toBeGreaterThan(0);
+  }, 120_000);
+
+  test('terrain arriving under a city already drawn does not hold its tiles back a frame', async () => {
+    // Loaded flat, as when the map is tilted after the city was drawn: each
+    // tile's mesh is on the GPU already, so it is drawn the frame it is lifted.
+    const hill: GroundSampler = () => 140;
+    let lifted: GlFrameCounts | null = null;
+    await measure(SCENES[0], 'medium', null, (engine, frame) => {
+      engine.setGround(hill);
+      lifted = frame();
+    });
+    // Vacuity: a frame was drawn. A tile is thousands of triangles; the
+    // frame's other passes are a few.
+    expect(lifted).not.toBeNull();
+    expect((lifted as GlFrameCounts | null)?.triangles ?? 0).toBeGreaterThan(1000);
   }, 120_000);
 
   test('the counts are deterministic (the same scene twice, the same frame)', async () => {

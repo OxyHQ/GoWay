@@ -439,11 +439,15 @@ makes MapLibre draw everything else again.
    engine's share of a slow frame 6.7 → 2.7 ms.
 2. **A tile's lift and its first upload never share a frame.** A tile on
    terrain is drawn only once lifted, and its first draw is when its mesh goes
-   to the GPU; one frame did both. Now a newly lifted tile is first drawn the
-   next frame and that frame lifts nothing (`cityEngine.ts` →
-   `awaitingFirstDraw`). Gated: `frameBudget.test.ts` → "on terrain, no frame
-   both lifts a tile and uploads one" (reverting it fails the gate with a
-   1.2 MB upload in a lifting frame).
+   to the GPU; one frame did both. Now a tile lifted before it was ever drawn
+   is first drawn the next frame, and that frame lifts nothing
+   (`cityEngine.ts` → `awaitingFirstDraw`); a tile already drawn flat (the
+   city was on screen before the map tilted and the terrain came) has its mesh
+   on the GPU and is drawn the frame it is lifted, as before. Gated:
+   `frameBudget.test.ts` → "on terrain, no frame both lifts a tile and uploads
+   one" (reverting it fails with a 1.2 MB upload in a lifting frame) and
+   "terrain arriving under a city already drawn does not hold its tiles back a
+   frame" (holding them back fails it: 6 triangles drawn).
 3. **The HUD only on `?perf=1`**, development builds included.
 4. Still landmark models compose their node matrices once instead of every
    frame (only a moved model's subtree is re-derived); not separable from the
@@ -465,7 +469,10 @@ At ÷2 the Eixample orbit's p95 is now within 16.7 ms in every interleaved
 run; in uncontended runs the still street at z18 with traffic reads 9.5–10.3
 and Eixample at night 15.6.
 Runs taken while other work loaded this machine read 3–7 ms higher at p95 in
-every scene alike — compare interleaved runs only.
+every scene alike — compare interleaved runs only. (These runs predate #152,
+merged since, which rebuilds the TSL materials when a mesh first gains its
+lift; re-measured after the rebase only on a loaded machine, where #151 and
+this branch read alike.)
 
 ### What is left, and why
 
