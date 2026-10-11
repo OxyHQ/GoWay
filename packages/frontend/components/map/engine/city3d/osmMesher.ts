@@ -95,7 +95,8 @@ type Facade4 = readonly [number, number, number, number];
 const NO_FACADE: Facade4 = [0, 0, 0, 0];
 const UP = [0, 0, 1] as const;
 
-class Builder {
+/** Growable buffers for an {@link OsmTileMesh}; `lod2Mesher.ts` builds into one too. */
+export class Builder {
   positions = new Float32Array(3 * 8192);
   normals = new Int8Array(3 * 8192);
   shade = new Uint8Array(2 * 8192);

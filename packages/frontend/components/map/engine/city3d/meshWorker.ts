@@ -26,7 +26,11 @@
  * Compiling GoWay's own 3D tiles removes the duplication altogether; see
  * `docs/MAP_3D_CITY.md` → "Phase 2".
  */
+import { CITY_TILE_EXTENT } from '@/lib/map/cityTiles';
+
 import { decodeBuildings } from './decode';
+import { concatTileMeshes, meshLod2Surfaces } from './lod2Mesher';
+import { decodeLod2Tile } from './lod2Tiles';
 import { meshBuildingsLod } from './lodMesher';
 import { meshBuildings } from './mesher';
 import { meshOsmBuildings } from './osmMesher';
@@ -117,10 +121,13 @@ async function mesh(request: Extract<MeshWorkerRequest, { type: 'mesh' }>): Prom
 
     const started = performance.now();
     const size = tileSizeMetres(request.tile);
-    const { mesh: result, footprints } =
-      request.format === 'goway'
-        ? meshCityTile(bytes, size, request.hidden)
-        : meshOpenMapTiles(bytes, request, size);
+    const {
+      mesh: result,
+      footprints,
+      sources,
+    } = request.format === 'goway'
+      ? meshCityTile(bytes, size, request.hidden)
+      : meshOpenMapTiles(bytes, request, size);
     const meshed = performance.now();
     const gathered = request.trees
       ? await treesFor(request, bytes, size, footprints, (url) => tileBytes(url, controller.signal))
@@ -144,6 +151,7 @@ async function mesh(request: Extract<MeshWorkerRequest, { type: 'mesh' }>): Prom
         meshMs: meshed - started,
         treeMs,
         treesComplete: gathered.complete,
+        ...(sources.length > 0 ? { sources } : {}),
       },
       transfer,
     );
@@ -166,23 +174,28 @@ async function mesh(request: Extract<MeshWorkerRequest, { type: 'mesh' }>): Prom
 
 type MeshRequest = Extract<MeshWorkerRequest, { type: 'mesh' }>;
 
-/** A mesh, and the footprints trees must not stand in. */
+/** A mesh, the footprints trees must not stand in, and the official datasets it draws. */
 interface Meshed {
   mesh: PackedMesh | null;
   footprints: { list: readonly Footprint[]; extent: number };
+  sources: string[];
 }
 
 /** OpenMapTiles' `building` layer, at the level of detail asked for. */
 function meshOpenMapTiles(bytes: ArrayBuffer, request: MeshRequest, size: number): Meshed {
   const decoded = decodeBuildings(bytes, request.sourceLayer);
-  if (!decoded) return { mesh: null, footprints: { list: [], extent: 4096 } };
+  if (!decoded) return { mesh: null, footprints: { list: [], extent: 4096 }, sources: [] };
   const footprints = { list: decoded.features, extent: decoded.extent };
   const options = { extent: decoded.extent, tileSizeMetres: size };
   if (request.lod !== 0) {
-    return { mesh: meshBuildingsLod(decoded.features, options, request.lod), footprints };
+    return {
+      mesh: meshBuildingsLod(decoded.features, options, request.lod),
+      footprints,
+      sources: [],
+    };
   }
   const full = meshBuildings(decoded.features, options);
-  return { mesh: full ? packMesh(full, size) : null, footprints };
+  return { mesh: full ? packMesh(full, size) : null, footprints, sources: [] };
 }
 
 /**
@@ -196,16 +209,34 @@ function meshCityTile(
   hidden: readonly number[] | undefined,
 ): Meshed {
   const decoded = decodeCityTile(bytes);
-  if (!decoded) return { mesh: null, footprints: { list: [], extent: 4096 } };
-  const footprints = { list: decoded.buildings, extent: decoded.extent };
-  // A drawn landmark's buildings are not meshed (`landmarkTiles.ts`); their
-  // footprints still keep the trees off the ground the landmark stands on.
-  const buildings = withoutHidden(decoded.buildings, hidden);
-  const mesh =
-    buildings.length > 0
-      ? meshOsmBuildings(buildings, { extent: decoded.extent, tileSizeMetres: size })
-      : null;
-  return { mesh: mesh ? packMesh(mesh, size) : null, footprints };
+  // Where the compiler merged official building data: its surfaces, in place
+  // of the OSM buildings it covers (`drawn_by`), in the same mesh.
+  const surfaces = decodeLod2Tile(bytes);
+  const extent = decoded?.extent ?? CITY_TILE_EXTENT;
+  // A drawn landmark's buildings are not meshed (`landmarkTiles.ts`) — nor the
+  // official surfaces standing in for them; their footprints still keep the
+  // trees off the ground the landmark stands on.
+  const footprints = { list: decoded?.buildings ?? [], extent };
+  const options = { extent, tileSizeMetres: size };
+  const buildings = withoutHidden(
+    surfaces.length > 0
+      ? (decoded?.buildings ?? []).filter((b) => !b.drawnBy)
+      : (decoded?.buildings ?? []),
+    hidden,
+  );
+  const hiddenIds = new Set(hidden ?? []);
+  const shown =
+    hiddenIds.size > 0
+      ? surfaces.filter((s) => s.osmId === undefined || !hiddenIds.has(s.osmId))
+      : surfaces;
+  const osm = buildings.length > 0 ? meshOsmBuildings(buildings, options) : null;
+  const lod2 = shown.length > 0 ? meshLod2Surfaces(shown, options, decoded?.buildings) : null;
+  const mesh = concatTileMeshes(osm, lod2);
+  return {
+    mesh: mesh ? packMesh(mesh, size) : null,
+    footprints,
+    sources: lod2 ? [...new Set(shown.map((s) => s.source))] : [],
+  };
 }
 
 scope.onmessage = (event) => {

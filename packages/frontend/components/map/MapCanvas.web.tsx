@@ -915,6 +915,16 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     skyAtRef.current = skyAt;
     city3dRef.current?.setTime(skyAt);
   }, [skyAt]);
+  // Credits the city layer owes while it draws an official 3D model.
+  const [city3dCredits, setCity3dCredits] = useState<readonly MapAttributionLink[]>(NO_CREDITS);
+  // Everything the 3D layer owes while it draws: landmark authors, official building data.
+  const credits = useMemo(
+    () =>
+      landmarkCredits.length === 0 && city3dCredits.length === 0
+        ? NO_CREDITS
+        : [...landmarkCredits, ...city3dCredits],
+    [landmarkCredits, city3dCredits],
+  );
   useEffect(() => {
     city3dLightRef.current = sunLight.light;
     city3dRef.current?.setLight(sunLight.light);
@@ -970,6 +980,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
                     onSun: (sun) => setSunAltitude(sun.altitudeDeg),
                   }
                 : undefined,
+              onCredits: (links) => setCity3dCredits(links.length === 0 ? NO_CREDITS : links),
             }),
       )
       .then((attached) => {
@@ -1004,6 +1015,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       setLandmarkCredits(NO_CREDITS);
       handle?.detach();
       setSkyActive(false);
+      setCity3dCredits(NO_CREDITS);
     };
   }, [
     ready,
@@ -1379,11 +1391,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         );
       })}
 
-      {/* Both are unconditional and neither takes a prop: the brand and the
-          credit must be on every map GoWay draws, including the embed in
-          somebody else's page. See MapBrand.tsx. */}
+      {/* Both are unconditional and nothing can turn either off: the brand
+          and the credit must be on every map GoWay draws, including the embed
+          in somebody else's page. See MapBrand.tsx. `extra` only ADDS the
+          credits of data the city-3D layer is drawing right now. */}
       <MapBrand />
-      <MapAttribution extra={landmarkCredits} expanded={credit.expanded} onToggle={credit.toggle} />
+      <MapAttribution extra={credits} expanded={credit.expanded} onToggle={credit.toggle} />
 
       {citySky && skyActive ? (
         <Suspense fallback={null}>

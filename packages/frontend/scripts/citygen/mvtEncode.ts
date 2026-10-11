@@ -222,18 +222,30 @@ function writeLayer(pbf: PbfWriter, name: string, features: readonly EncodedFeat
 }
 
 /** Encode the tile. Features whose geometry vanished on quantisation are omitted. */
-export function encodeCityTile(features: readonly CityTileFeature[]): Uint8Array {
+export function encodeCityTile(
+  features: readonly CityTileFeature[],
+  /** Polygon layers written after `building` — the LOD2 roofs (`lib/map/cityTiles.ts`). */
+  extraLayers: readonly { name: string; features: readonly PolygonFeature[] }[] = [],
+): Uint8Array {
+  const polygons = (list: readonly PolygonFeature[]): EncodedFeature[] =>
+    list.map((feature) => ({
+      // 0 writes no id: a roof surface is not an OSM element.
+      id: feature.id ?? 0,
+      type: 3,
+      geometry: encodePolygons(feature.polygons),
+      properties: feature.properties,
+    }));
   return encodeTileLayers([
-    {
-      name: CITY_TILE_LAYER,
-      features: features.map((feature) => ({
-        id: feature.id,
-        type: 3,
-        geometry: encodePolygons(feature.polygons),
-        properties: feature.properties,
-      })),
-    },
+    { name: CITY_TILE_LAYER, features: polygons(features) },
+    ...extraLayers.map((layer) => ({ name: layer.name, features: polygons(layer.features) })),
   ]);
+}
+
+/** A polygon feature of any layer; `id` absent writes none. */
+export interface PolygonFeature {
+  id?: number;
+  polygons: readonly TilePolygon[];
+  properties: Record<string, Value>;
 }
 
 /**

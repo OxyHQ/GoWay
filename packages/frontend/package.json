@@ -26,6 +26,7 @@
     "map:tiles:verify": "bun scripts/build-map-tiles.ts --verify",
     "map:tiles:upload": "bun scripts/build-map-tiles.ts --upload",
     "map:city-tiles": "bun scripts/build-city-tiles.ts",
+    "map:catastro-list": "bun scripts/catastro-municipalities.ts",
     "map:city-roads": "bun scripts/build-city-roads.ts",
     "landmarks": "bun scripts/build-landmarks.ts",
     "landmarks:check": "bun scripts/build-landmarks.ts --check",

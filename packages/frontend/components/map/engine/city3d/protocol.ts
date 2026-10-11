@@ -73,6 +73,12 @@ export type MeshWorkerResponse =
        * absent); the engine draws this and asks again later.
        */
       treesComplete: boolean;
+      /**
+       * Official 3D datasets (`CITY_LOD2_SOURCES` ids) whose surfaces are in
+       * this mesh, so the map can credit each exactly while it is drawn.
+       * Absent: none.
+       */
+      sources?: string[];
     }
   | { type: 'error'; id: number; message: string }
   /** A cancel took effect: the request will not be answered (`workerPool.ts`). */

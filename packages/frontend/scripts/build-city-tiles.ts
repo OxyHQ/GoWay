@@ -10,7 +10,17 @@
  *
  * # Re-check a finished archive with the readers that will serve and draw it.
  * bun run --cwd packages/frontend map:city-tiles --verify --archive=<path>
+ *
+ * # Merge an official 3D building model (LOD2 roofs) — files named, never fetched.
+ * bun run --cwd packages/frontend map:city-tiles --pbf=<new-york.osm.pbf> --area=manhattan \
+ *   --lod2=nyc-3dbm:<DA12_3D_Buildings_Merged.gml>,<DA13_3D_Buildings_Merged.gml>
  * ```
+ *
+ * `--lod2=<source>:<file>[,<file>…]` (repeatable) reads a dataset listed in
+ * `citygen/lod2/sources.ts` — CityGML or CityJSON — keeps its roof surfaces,
+ * conflates them with the OSM buildings (`citygen/lod2/conflate.ts`) and writes
+ * them as a second tile layer; `docs/MAP_3D_SOURCES.md` says which datasets
+ * are licensed for this and what each obliges.
  *
  * Then point the dev server at it and open the map with the flags on:
  *
@@ -48,6 +58,7 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
 import { decodeCityTile } from '../components/map/engine/city3d/osmTiles';
+import { decodeLod2Tile } from '../components/map/engine/city3d/lod2Tiles';
 import {
   CITY_TILE_EXTENT,
   CITY_TILE_LAYER,
@@ -56,8 +67,13 @@ import {
   CITY_TILE_ZOOM,
   CITY_PROPS,
 } from '../lib/map/cityTiles';
+import { CITY_LOD2_PROPS, CITY_LOD2_SOURCES, CITY_TILE_LOD2_LAYER } from '../lib/map/cityOfficial';
 import { COMPRESSION, PMTiles, TILE_TYPE } from '../worker/pmtiles.js';
 import { compile } from './citygen/compile';
+import { type ConflateStats, conflate, type Lod2TileFeature } from './citygen/lod2/conflate';
+import { type IngestedFile, ingest } from './citygen/lod2/ingest';
+import type { PrepareStats } from './citygen/lod2/prepare';
+import { isLod2Source, LOD2_SOURCES } from './citygen/lod2/sources';
 import { encodeCityTile, encodeTreeLayer } from './citygen/mvtEncode';
 import { writePmtiles } from './citygen/pmtilesWriter';
 
@@ -78,6 +94,11 @@ export const AREAS: Record<string, { bbox: [number, number, number, number]; ext
   manhattan: {
     bbox: [-74.03, 40.698, -73.906, 40.882],
     extract: 'https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf',
+  },
+  madrid: {
+    // Inside the M-30, with Chamberí, Salamanca, Retiro and Arganzuela.
+    bbox: [-3.735, 40.385, -3.655, 40.46],
+    extract: 'https://download.geofabrik.de/europe/spain/madrid-latest.osm.pbf',
   },
 };
 
@@ -110,6 +131,56 @@ const EXPECTED: Record<
   ],
 };
 
+/**
+ * Buildings of an official 3D model the verifier must find in the
+ * `building_lod2` layer, by the dataset's own id, at a point inside them, with
+ * a floor on their measured height: a conflation rule that starts discarding
+ * landmarks fails the build, not a screenshot.
+ */
+const EXPECTED_LOD2: Record<
+  string,
+  { sourceId: string; name: string; lon: number; lat: number; minTop: number }[]
+> = {
+  manhattan: [
+    {
+      sourceId: '1015862',
+      name: 'Empire State Building (BIN 1015862)',
+      lon: -73.98566,
+      lat: 40.74844,
+      minTop: 350,
+    },
+  ],
+};
+
+/**
+ * OSM buildings that record no height and must get one from an official
+ * dataset when that dataset is merged: the flat Carrer de Mallorca block the
+ * owner reported (5 m boxes beside 25 m neighbours).
+ */
+const EXPECTED_HEIGHTS: Record<
+  string,
+  { id: number; name: string; lon: number; lat: number; source: string; minTop: number }[]
+> = {
+  barcelona: [
+    {
+      id: 249405068 * 10 + 2,
+      name: 'Carrer de Mallorca block (way/249405068)',
+      lon: 2.161,
+      lat: 41.3935,
+      source: 'es-catastro',
+      minTop: 15,
+    },
+    {
+      id: 249408232 * 10 + 2,
+      name: 'Carrer de Mallorca block (way/249408232)',
+      lon: 2.161,
+      lat: 41.3935,
+      source: 'es-catastro',
+      minTop: 15,
+    },
+  ],
+};
+
 interface Args {
   pbf?: string;
   out?: string;
@@ -118,10 +189,11 @@ interface Args {
   zoom: number;
   verify: boolean;
   archive?: string;
+  lod2: { source: string; files: string[] }[];
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { zoom: CITY_TILE_ZOOM, verify: false };
+  const args: Args = { zoom: CITY_TILE_ZOOM, verify: false, lod2: [] };
   for (const raw of argv) {
     const [flag, value] = raw.startsWith('--') ? raw.slice(2).split('=', 2) : [raw, undefined];
     if (flag === 'pbf' && value) args.pbf = value;
@@ -130,7 +202,20 @@ function parseArgs(argv: string[]): Args {
     else if (flag === 'area' && value) args.area = value;
     else if (flag === 'zoom' && value) args.zoom = Number(value);
     else if (flag === 'verify') args.verify = true;
-    else if (flag === 'bbox' && value) {
+    else if (flag === 'lod2' && value) {
+      const colon = value.indexOf(':');
+      const source = value.slice(0, colon);
+      const files = value
+        .slice(colon + 1)
+        .split(',')
+        .filter(Boolean);
+      if (colon <= 0 || !isLod2Source(source) || files.length === 0) {
+        throw new Error(
+          `--lod2=<source>:<file>[,<file>…] with a source from ${Object.keys(LOD2_SOURCES).join(', ')}`,
+        );
+      }
+      args.lod2.push({ source, files });
+    } else if (flag === 'bbox' && value) {
       const parts = value.split(',').map(Number);
       if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) {
         throw new Error('--bbox=west,south,east,north');
@@ -178,6 +263,50 @@ async function build(args: Args): Promise<string> {
     log: (line) => console.log(line),
   });
 
+  // ── Official 3D models: read, conflate with OSM, second layer ──────────
+  const lod2Tiles = new Map<string, Lod2TileFeature[]>();
+  const lod2Receipts: {
+    source: string;
+    files: IngestedFile[];
+    crs: string[];
+    prepare: PrepareStats;
+    outsideArea: number;
+    conflate: ConflateStats;
+    timingsMs: { read: number; conflate: number };
+  }[] = [];
+  for (const input of args.lod2) {
+    if (!isLod2Source(input.source)) continue;
+    const info = LOD2_SOURCES[input.source];
+    const readStarted = performance.now();
+    const ingested = ingest(info, input.files, bbox, (line) => console.log(line));
+    const readMs = performance.now() - readStarted;
+    const conflateStarted = performance.now();
+    const merged = conflate(result.tiles, ingested.buildings, {
+      source: input.source,
+      zoom: args.zoom,
+      policy: info.policy,
+    });
+    const conflateMs = performance.now() - conflateStarted;
+    for (const [key, features] of merged.tiles) {
+      const list = lod2Tiles.get(key);
+      if (list) list.push(...features);
+      else lod2Tiles.set(key, features);
+    }
+    lod2Receipts.push({
+      source: input.source,
+      files: ingested.files,
+      crs: ingested.crs,
+      prepare: ingested.prepare,
+      outsideArea: ingested.outside,
+      conflate: merged.stats,
+      timingsMs: { read: Math.round(readMs), conflate: Math.round(conflateMs) },
+    });
+    const c = merged.stats;
+    console.log(
+      `  lod2         ${input.source}: ${ingested.prepare.kept} buildings prepared (${ingested.outside} outside the area), ${c.drawn} drawn, ${c.unconfirmed} not in OSM, ${c.stale} stale, ${c.osmRicher} where OSM's 3D is richer; ${c.osmDrawnByModel} of ${c.osmFeatures} OSM features drawn by it, ${c.osmHeightsSet} given its height (${c.osmHeightsFromDefault} had none), ${c.osmLevelsRemodelled} OSM storey counts re-heighted, ${c.osmConflicts} in height conflict; ${c.roofFeatures} roof surfaces (${c.slopedRoofFeatures} sloped); read ${(readMs / 1000).toFixed(1)} s, conflate ${(conflateMs / 1000).toFixed(1)} s`,
+    );
+  }
+
   const encodeStarted = performance.now();
   const tiles: { z: number; x: number; y: number; bytes: Uint8Array }[] = [];
   const rawSizes: number[] = [];
@@ -185,10 +314,19 @@ async function build(args: Args): Promise<string> {
   const featureCounts: number[] = [];
   let rawTotal = 0;
   let largest = { key: '', bytes: 0, features: 0 };
-  for (const key of new Set([...result.tiles.keys(), ...result.trees.keys()])) {
+  const keys = new Set([...result.tiles.keys(), ...result.trees.keys(), ...lod2Tiles.keys()]);
+  for (const key of keys) {
     const features = result.tiles.get(key) ?? [];
-    const buildingLayer = encodeCityTile(features);
-    // The `tree` layer appended: one tile, two layers (`encodeTreeLayer`).
+    const surfaces = (lod2Tiles.get(key) ?? []).sort((a, b) =>
+      String(a.properties[CITY_LOD2_PROPS.sourceId]).localeCompare(
+        String(b.properties[CITY_LOD2_PROPS.sourceId]),
+      ),
+    );
+    const buildingLayer = encodeCityTile(
+      features,
+      surfaces.length > 0 ? [{ name: CITY_TILE_LOD2_LAYER, features: surfaces }] : [],
+    );
+    // The `tree` layer appended: one tile, more layers (`encodeTreeLayer`).
     const treeLayer = encodeTreeLayer(result.trees.get(key) ?? []);
     const raw = new Uint8Array(buildingLayer.length + treeLayer.length);
     raw.set(buildingLayer);
@@ -199,9 +337,11 @@ async function build(args: Args): Promise<string> {
     tiles.push({ z, x, y, bytes: gz });
     rawSizes.push(raw.length);
     gzSizes.push(gz.length);
-    featureCounts.push(features.length);
+    featureCounts.push(features.length + surfaces.length);
     rawTotal += raw.length;
-    if (raw.length > largest.bytes) largest = { key, bytes: raw.length, features: features.length };
+    if (raw.length > largest.bytes) {
+      largest = { key, bytes: raw.length, features: features.length + surfaces.length };
+    }
   }
   const encodeMs = performance.now() - encodeStarted;
 
@@ -221,13 +361,22 @@ async function build(args: Args): Promise<string> {
     north = Math.max(north, lat1);
   }
 
+  const lod2Used = lod2Receipts.filter((r) => r.conflate.roofFeatures > 0);
   const metadata = {
     name: `GoWay city tiles — ${name}`,
     format: 'pbf',
     type: 'overlay',
-    attribution:
+    attribution: [
       '<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>',
-    license: 'ODbL-1.0 — a Derivative Database of OpenStreetMap',
+      ...lod2Used.map((r) => {
+        const credit = CITY_LOD2_SOURCES[r.source as keyof typeof CITY_LOD2_SOURCES];
+        return `<a href="${credit.href}" target="_blank">${credit.label}</a>`;
+      }),
+    ].join(' '),
+    license:
+      lod2Used.length > 0
+        ? `ODbL-1.0 — a Derivative Database of OpenStreetMap, containing ${lod2Used.map((r) => LOD2_SOURCES[r.source as keyof typeof LOD2_SOURCES].name).join(', ')} (see goway:lod2)`
+        : 'ODbL-1.0 — a Derivative Database of OpenStreetMap',
     vector_layers: [
       {
         id: CITY_TILE_LAYER,
@@ -235,6 +384,21 @@ async function build(args: Args): Promise<string> {
         maxzoom: args.zoom,
         fields: Object.fromEntries(Object.values(CITY_PROPS).map((key) => [key, 'see schema'])),
       },
+      ...(lod2Used.length > 0
+        ? [
+            {
+              id: CITY_TILE_LOD2_LAYER,
+              minzoom: args.zoom,
+              maxzoom: args.zoom,
+              fields: Object.fromEntries(
+                [...Object.values(CITY_LOD2_PROPS), CITY_PROPS.renderHeight].map((key) => [
+                  key,
+                  'see schema',
+                ]),
+              ),
+            },
+          ]
+        : []),
     ],
     // The area every building of which is in the archive: the compile box, or
     // the tiles' extent for a whole extract. Clients draw city tiles only
@@ -244,6 +408,19 @@ async function build(args: Args): Promise<string> {
     'goway:extent': CITY_TILE_EXTENT,
     'goway:source': basename(args.pbf),
     'goway:replication': result.header,
+    'goway:lod2': lod2Used.map((r) => {
+      const info = LOD2_SOURCES[r.source as keyof typeof LOD2_SOURCES];
+      return {
+        id: info.id,
+        name: info.name,
+        publisher: info.publisher,
+        url: info.url,
+        licence: info.licence,
+        attribution: info.attribution,
+        referenceDate: info.referenceDate,
+        files: r.files.map((f) => ({ file: f.file, sha256: f.sha256 })),
+      };
+    }),
   };
   const archive = writePmtiles(tiles, {
     minZoom: args.zoom,
@@ -310,6 +487,7 @@ async function build(args: Args): Promise<string> {
         tileGzipBytes: { p50: percentile(gzSizes, 50), p95: percentile(gzSizes, 95) },
         coverage: c,
         treeCoverage: result.treeCoverage,
+        lod2: lod2Receipts,
         problems: result.problems,
         builtAt: new Date().toISOString(),
       },
@@ -346,6 +524,7 @@ async function verify(path: string, area?: string): Promise<string[]> {
   const centre = tileXY((w + e) / 2, (s + n) / 2, z);
   let opened = 0;
   let buildings = 0;
+  let surfaces = 0;
   const wanted = new Map((EXPECTED[area ?? ''] ?? []).map((item) => [item.id, item]));
   const found = new Set<number>();
   for (const item of wanted.values()) {
@@ -377,16 +556,50 @@ async function verify(path: string, area?: string): Promise<string[]> {
         buildings++;
         if (!(building.top > building.base)) problems.push(`building ${building.id}: top <= base`);
       }
+      surfaces += decodeLod2Tile(Bun.gunzipSync(tile.bytes)).length;
     }
   }
   if (opened === 0) problems.push('no tile around the archive centre');
   for (const [id, item] of wanted) {
     if (!found.has(id)) problems.push(`${item.name} (${id}) is not in its tile`);
   }
+  const lod2Sources = (metadata['goway:lod2'] as { id: string }[] | undefined) ?? [];
+  for (const item of EXPECTED_HEIGHTS[area ?? ''] ?? []) {
+    if (!lod2Sources.some((s) => s.id === item.source)) continue;
+    let found: { top: number; source?: unknown } | null = null;
+    const at = tileXY(item.lon, item.lat, z);
+    for (let dx = -1; dx <= 1 && !found; dx++) {
+      for (let dy = -1; dy <= 1 && !found; dy++) {
+        const tile = await archive.getTile(z, at.x + dx, at.y + dy);
+        if (!tile) continue;
+        const building = decodeCityTile(Bun.gunzipSync(tile.bytes))?.buildings.find(
+          (b) => b.id === item.id,
+        );
+        if (building) found = { top: building.top, source: building.heightSource };
+      }
+    }
+    if (!found) problems.push(`${item.name}: not in the archive`);
+    else if (found.top < item.minTop || found.source === undefined) {
+      problems.push(
+        `${item.name}: ${found.top} m from ${String(found.source ?? 'nothing')}, expected ≥ ${item.minTop} m from an official source`,
+      );
+    }
+  }
+  for (const item of lod2Sources.length > 0 ? (EXPECTED_LOD2[area ?? ''] ?? []) : []) {
+    const at = tileXY(item.lon, item.lat, z);
+    const tile = await archive.getTile(z, at.x, at.y);
+    const mine = tile
+      ? decodeLod2Tile(Bun.gunzipSync(tile.bytes)).filter((s) => s.sourceId === item.sourceId)
+      : [];
+    const top = Math.max(0, ...mine.map((s) => s.top));
+    if (mine.length === 0) problems.push(`${item.name}: no LOD2 surfaces in its tile`);
+    else if (top < item.minTop)
+      problems.push(`${item.name}: LOD2 top ${top.toFixed(0)} m < ${item.minTop} m`);
+  }
   await handle.close();
   const { size } = await stat(path);
   console.log(
-    `\n  verify       ${opened} tiles, ${buildings} buildings decoded; ${(size / 1e6).toFixed(2)} MB`,
+    `\n  verify       ${opened} tiles, ${buildings} buildings and ${surfaces} LOD2 surfaces decoded; ${(size / 1e6).toFixed(2)} MB`,
   );
   return problems;
 }

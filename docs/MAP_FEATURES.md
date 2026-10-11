@@ -51,7 +51,7 @@ now kills the trees, as a padded `0` always killed the globe and terrain.
 | `terrain` | stable | **on** | web, native (hillshade only) | `EXPO_PUBLIC_MAP_TERRAIN` | `?terrain=0/1` | web: redraws at the same camera; native: live |
 | `city3d` | labs | off | web | `EXPO_PUBLIC_MAP_CITY3D` | `?city3d=1` | live (attach/detach) |
 | `citySky` | labs | off | web (needs `city3d`) | `EXPO_PUBLIC_MAP_CITY_SKY` | `?citysky=1` | live (re-attach; the time-of-day scrubber shows only while it draws) |
-| `cityTiles` | labs | off | web, **development builds only** | `EXPO_PUBLIC_MAP_CITY_TILES` | `?cityTiles=1` | live (re-attach) |
+| `cityTiles` | labs | off | web, **development builds only** | `EXPO_PUBLIC_MAP_CITY_TILES` | `?cityTiles=1` | live (re-attach). Official building data merged into the archive (Catastro storeys, NYC 3D model, `MAP_3D_SOURCES.md`) rides on it: no switch of its own |
 | `city3dTrees` | labs | on, with the city | web | `EXPO_PUBLIC_MAP_CITY3D_TREES` | `?city3dTrees=0` | live (re-attach) |
 | `city3dTreeFill` | labs | off | web | `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL` | `?city3dTreeFill=1` | live (re-attach) |
 | `cityLife` | labs | off | web, **development builds only** | `EXPO_PUBLIC_MAP_CITY_LIFE` | `?cityLife=1` | live (re-attach) |

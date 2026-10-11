@@ -55,6 +55,16 @@
  * not record it; nothing here is a guess dressed as data. In particular
  * `levels` is present only where `building:levels` was tagged, which is what
  * lets the client draw window rows only where floors are real.
+ *
+ * ## Official 3D models, beside OSM
+ *
+ * Where the compiler merged a licence-reviewed official building model
+ * (`docs/MAP_3D_SOURCES.md`), its measured roof surfaces are a second layer,
+ * `CITY_TILE_LOD2_LAYER` (`lib/map/cityOfficial.ts`), and the OSM buildings it draws instead are
+ * marked {@link CITY_PROPS.drawnBy} — kept whole, never rewritten. A model
+ * building goes whole to the tile of the OSM feature it matched best, so the
+ * feature it replaces is always beside it. Which datasets may appear, and the
+ * credit each one requires while drawn, is `CITY_LOD2_SOURCES` (`lib/map/cityOfficial.ts`).
  */
 
 /** The zoom every city tile is cut at. See the module header and the doc for why 15. */
@@ -66,8 +76,12 @@ export const CITY_TILE_EXTENT = 4096;
 /** The single source-layer every city tile carries. */
 export const CITY_TILE_LAYER = 'building';
 
-/** Bumped when a property changes meaning; written into the archive's metadata. */
-export const CITY_TILE_SCHEMA_VERSION = 1;
+/**
+ * Bumped when a property changes meaning; written into the archive's metadata.
+ * 2: official building data — `height_source` here, the `building_lod2` layer
+ * and `drawn_by` / `official_levels` in `lib/map/cityOfficial.ts`.
+ */
+export const CITY_TILE_SCHEMA_VERSION = 2;
 
 /**
  * Where a browser fetches city tiles, relative to the page's own origin.
@@ -123,9 +137,12 @@ export const CITY_PROPS = {
   /**
    * Where the building's HEIGHT comes from, when it is recorded at all:
    * {@link HEIGHT_SOURCES}. Absent: nothing records it and the top is the
-   * 5 m default. Precedence, highest first: official 3D data (`lod2`) >
-   * OpenStreetMap tags (`osm`) > the 5 m default (`docs/MAP_3D_CITY.md` →
-   * Honesty, "Heights").
+   * 5 m default. Precedence, highest first: official data — a 3D model
+   * (`lod2`) or the cadastre's storeys (`cadastre`, `docs/MAP_3D_SOURCES.md`)
+   * > OpenStreetMap tags (`osm`) > the 5 m default (`docs/MAP_3D_CITY.md` →
+   * Honesty, "Heights"). Where official data set it, OSM's own `height` and
+   * `levels` stay as tagged beside it; only the RESOLVED height moved
+   * (`scripts/citygen/lod2/conflate.ts`).
    */
   heightSource: 'height_source',
   /**
@@ -138,8 +155,11 @@ export const CITY_PROPS = {
   floodlit: 'floodlit',
 } as const;
 
-/** Recorded height sources a tile may name (`CITY_PROPS.heightSource`). */
-export const HEIGHT_SOURCES = ['lod2', 'osm'] as const;
+/**
+ * Recorded height sources a tile may name (`CITY_PROPS.heightSource`): `osm`
+ * from the tags (`tags.ts`), `lod2` and `cadastre` from official data.
+ */
+export const HEIGHT_SOURCES = ['lod2', 'cadastre', 'osm'] as const;
 
 export type HeightSource = (typeof HEIGHT_SOURCES)[number];
 
