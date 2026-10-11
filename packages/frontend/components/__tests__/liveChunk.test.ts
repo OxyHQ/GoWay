@@ -129,8 +129,11 @@ describe('the live chunk', () => {
     );
   });
 
-  test('the flag module imports nothing', () => {
-    const flag = files.find((f) => f.path === 'lib/map/liveFlag.ts');
-    expect(staticImports(flag?.text ?? '')).toEqual([]);
+  test('the flag module and the coverage channel import nothing', () => {
+    for (const path of ['lib/map/liveFlag.ts', 'lib/live/coverage.ts']) {
+      const file = files.find((f) => f.path === path);
+      expect(file).toBeDefined();
+      expect(staticImports(file?.text ?? '')).toEqual([]);
+    }
   });
 });

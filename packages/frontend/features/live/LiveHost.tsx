@@ -23,6 +23,8 @@ import { createLiveClient, type LiveClient, type LiveClientState } from './liveC
 import { LivePanel } from './LivePanel';
 import { LiveStore } from './liveStore';
 import { pointOf } from './points';
+import { coverageKindOf, coverageOf } from './coverageOf';
+import { clearLiveCoverage, type LiveCoverageKind, publishLiveCoverage } from '@/lib/live/coverage';
 import { ShapeCache } from './shapeCache';
 
 type Box = { west: number; south: number; east: number; north: number };
@@ -89,6 +91,8 @@ export default function LiveHost({ onLayer, top, right, compact = false }: LiveH
   const drawnSourcesRef = useRef<ReadonlySet<string>>(new Set());
   const movingRef = useRef(false);
   const zoomRef = useRef(0);
+  /** The kinds of vehicle each source has been seen sending (for the coverage channel). */
+  const modesRef = useRef(new Map<string, Set<LiveCoverageKind>>());
   /** The visible box, padded: only what is near the screen is sampled and drawn. */
   const viewRef = useRef<{ west: number; south: number; east: number; north: number } | null>(null);
 
@@ -133,6 +137,14 @@ export default function LiveHost({ onLayer, top, right, compact = false }: LiveH
           // A city has thousands of docks: stations appear where a street does.
           if (entity.kind === 'bikeshare' && zoom < BIKESHARE_MIN_ZOOM) continue;
           drawn.add(entity.sourceId);
+          if (entity.kind === 'transit') {
+            const kind = coverageKindOf(entity.mode);
+            if (kind) {
+              const modes = modesRef.current.get(entity.sourceId) ?? new Set<LiveCoverageKind>();
+              modes.add(kind);
+              modesRef.current.set(entity.sourceId, modes);
+            }
+          }
           if (sample.moving) moving = true;
           points.push(pointOf(sample, selectedRef.current));
         }
@@ -191,9 +203,20 @@ export default function LiveHost({ onLayer, top, right, compact = false }: LiveH
     const timer = setInterval(() => {
       setHeartbeat((beat) => beat + 1);
       refreshCredits();
+      // Tell other features where real transit is drawn (`lib/live/coverage.ts`).
+      publishLiveCoverage(
+        coverageOf(
+          kindsRef.current.has('transit') ? store.sources() : [],
+          modesRef.current,
+          viewRef.current,
+        ),
+      );
       notify();
     }, HEARTBEAT_MS);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      clearLiveCoverage();
+    };
   }, [notify, refreshCredits]);
 
   const toggleKind = useCallback((kind: LiveKind) => {
