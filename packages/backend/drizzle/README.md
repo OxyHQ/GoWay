@@ -255,3 +255,21 @@ RAM): the phase took 61–77 ms, probing reads and writes saw at most 14 ms and
 5.07 s and a read arriving meanwhile queued up to 5.0 s — the bound
 `lock_timeout` sets. Both re-ran in under 100 ms once the holder ended.
 Production's row count does not change any of this: nothing here reads a row.
+
+## `0018_goway_capture_motion`
+
+Gravity from the contributor's phone (`docs/STREET3D_MOTION_PRIORS.md`): the
+new `capture_motion_tracks` (one row per capture that has a track, parallel
+`double precision[]` columns whose lengths a CHECK keeps equal and bounded) and
+three nullable `capture_derivatives.gravity_*` columns with an all-or-none,
+unit-length CHECK. `pre`: the previous image never reads or writes either, and
+the new one needs both before it accepts a `motion` or applies a privacy
+result.
+
+Locks: `CREATE TABLE` and its foreign key touch only the new table (the FK
+takes SHARE ROW EXCLUSIVE on `capture_assets` for a moment, no scan of it);
+the three `ADD COLUMN`s are catalogue-only; the CHECK on `capture_derivatives`
+takes ACCESS EXCLUSIVE and validates every row, all of them NULL in the new
+columns. That table is temporary keyframe metadata, small next to `places`,
+so it is validated in place rather than `NOT VALID`, as `0014`'s panorama
+CHECK was.

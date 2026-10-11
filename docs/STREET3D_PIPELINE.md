@@ -145,6 +145,17 @@ duration, width), and `CAPTURE_EQUIRECTANGULAR_ENABLED` switches acceptance off.
   applied the solve continues on pairing alone. Georeferencing counts one
   position per panorama, not eight.
 
+### Motion priors
+
+A guided recording carries the phone's measured gravity (`motion`, device
+axes, timed from the start of the recording). The backend keeps the track only
+until the privacy result arrives, then stores one gravity per keyframe in the
+keyframe's camera axes (`capture_derivatives.gravity_*`) and hands it to the
+solve as the manifest's optional `gravity`. The worker levels the placed scene
+by it where enough frames agree, instead of assuming the phones were held
+level. Design, measurements and limits:
+[`STREET3D_MOTION_PRIORS.md`](./STREET3D_MOTION_PRIORS.md).
+
 ## Scheduling and the capture graph
 
 - Captures cluster around scene anchors by `ST_DWithin` on the asset anchors, not
