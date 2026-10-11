@@ -132,6 +132,17 @@
   Cross-Origin-Resource-Policy: cross-origin
   Cache-Control: public, max-age=3600, must-revalidate
 
+# 3D models of the stubbed model catalogue (`lib/map/modelCatalogue.ts`;
+# `docs/SDK_MAP_MODELS.md` phase 1). The asset is fetched by the map's model
+# layer, so it needs the glTF binary type (the static-assets default for an
+# unknown `.glb` is `application/octet-stream`, which three's loader accepts
+# but which tells nobody else what it is). Literal paths, not content-hashed:
+# cached like the brand files. Same-origin today, so no CORS pair; the served
+# catalogue (phase 2) moves to the CDN with its own.
+/models/goway-car.glb
+  Content-Type: model/gltf-binary
+  Cache-Control: public, max-age=3600, must-revalidate
+
 # Street 3D scene assets (splats, posters) are NOT served from here: they live
 # on the scene CDN, configured at build time by EXPO_PUBLIC_STREET3D_ASSET_ORIGIN,
 # and that origin must answer them with `Access-Control-Allow-Origin` (splats

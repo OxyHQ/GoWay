@@ -50,6 +50,7 @@ import type {
 import 'maplibre-gl/dist/maplibre-gl.css';
 import * as Location from 'expo-location';
 import { useTheme } from '@oxy.so/bloom/theme';
+import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
 import { MAP_CITY3D_ENABLED } from '@/lib/config';
 import { isCity3dRequested } from '@/lib/map/city3dFlag';
@@ -75,6 +76,12 @@ import {
 import { MapAttribution } from './MapAttribution';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
+import {
+  drawableModels,
+  MODEL_MARKER_PREFIX,
+  modelFallbackMarker,
+  modelIdOfMarker,
+} from './models';
 import {
   asFinite,
   describeNumbers,
@@ -151,9 +158,19 @@ const MOVE_THROTTLE_MS = 100;
  */
 const PROGRAMMATIC = { gowayProgrammatic: true } as const;
 
+/**
+ * One frame of a caller-driven animation (`MapCameraOptions.transient`): a
+ * programmatic move whose `moveend` is not a settled camera.
+ */
+const PROGRAMMATIC_TRANSIENT = { gowayProgrammatic: true, gowayTransient: true } as const;
+
 function moveSourceOf(event: unknown): MapMoveSource {
   const marked = event as { gowayProgrammatic?: unknown } | null | undefined;
   return marked?.gowayProgrammatic === true ? 'programmatic' : 'user';
+}
+
+function isTransientMove(event: unknown): boolean {
+  return (event as { gowayTransient?: unknown } | null | undefined)?.gowayTransient === true;
 }
 
 interface MarkerSlot {
@@ -174,6 +191,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     onViewportChange,
     onPress,
     onMarkerPress,
+    models,
+    onModelPress,
     onLabelsChange,
     onReady,
     onError,
@@ -222,8 +241,32 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // Callbacks are read through refs inside the engine's own listeners so that
   // re-creating the map is driven ONLY by the style/reload key — a new inline
   // `onPress` from a parent render must not tear down and rebuild the canvas.
-  const handlers = useRef({ onViewportChange, onPress, onLabelsChange, onReady, onError });
-  handlers.current = { onViewportChange, onPress, onLabelsChange, onReady, onError };
+  const handlers = useRef({
+    onViewportChange,
+    onPress,
+    onLabelsChange,
+    onReady,
+    onError,
+    onModelPress,
+  });
+  handlers.current = { onViewportChange, onPress, onLabelsChange, onReady, onError, onModelPress };
+
+  // --- Models (SDK_MAP_MODELS phase 1) --------------------------------------
+  //
+  // Parsed through the contract's NaN gate; drawn in 3D by the city engine's
+  // model layer when it is attached, and as their fallback markers wherever
+  // they are not drawn (see `models.ts`). `moveModel` overrides last until the
+  // `models` prop changes.
+  const drawnModels = useMemo(() => drawableModels(models), [models]);
+  const modelsRef = useRef(drawnModels);
+  modelsRef.current = drawnModels;
+  const modelOverrides = useRef(new globalThis.Map<string, ModelPlacement>());
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new `models` prop is exactly when overrides expire
+  useEffect(() => {
+    modelOverrides.current.clear();
+  }, [models]);
+  const [modelsDrawn, setModelsDrawn] = useState<ReadonlySet<string>>(() => new Set());
+  const wantsModelEngine = drawnModels.some((entry) => entry.url !== null);
 
   /**
    * Which style layers a tap and a viewport read are queried against, derived
@@ -342,6 +385,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     };
 
     const handleMoveEnd = (event: unknown) => {
+      // A frame of a caller-driven animation is not a settled camera: `move`
+      // already reported it (throttled), and the sun is re-read when the
+      // animation's closing, ordinary `moveTo` settles.
+      if (isTransientMove(event)) return;
       lastMoveEmit.current = 0;
       emitViewport(true, moveSourceOf(event));
       // The settled camera is when the sun is re-read for the new centre —
@@ -386,12 +433,22 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 
     const handleClick = (event: MapLayerMouseEvent) => {
       const press = handlers.current.onPress;
-      if (!press) return;
+      if (!press && !handlers.current.onModelPress) return;
 
       // Hit priority, step 1: a GoWay marker wins outright, and `onPress` does
       // not fire underneath it. `onMarkerPress` has already run via the
       // marker's own Bloom `Pressable`.
       if (pressedOwnMarker(event.originalEvent?.target ?? null)) return;
+
+      // Step 1½: a 3D model, by its screen bounds (`engine/city3d/models.ts`).
+      const pickedModel = city3dRef.current?.pickModel(event.point);
+      if (pickedModel) {
+        const entry = modelsRef.current.find((candidate) => candidate.model.id === pickedModel);
+        if (entry) {
+          handlers.current.onModelPress?.(entry.model);
+          return;
+        }
+      }
 
       const coordinate = { latitude: event.lngLat.lat, longitude: event.lngLat.lng };
       // The engine cannot hand us a non-finite lngLat today, but everything
@@ -408,7 +465,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       // Step 2: the basemap's own label, if the tap landed inside the pad.
       const label = labelAt(map, event.point, coordinate, queryLayers.current.tap);
       // Step 3: bare map — `label` is simply absent.
-      press({ coordinate, ...(label ? { label } : {}) });
+      press?.({ coordinate, ...(label ? { label } : {}) });
     };
 
     /**
@@ -617,6 +674,23 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 
   // --- Markers ------------------------------------------------------------
 
+  // The caller's markers plus a fallback marker for every model not drawn in
+  // 3D right now (loading, failed, outside its zoom window, no engine).
+  const allMarkers = useMemo(() => {
+    const fallbacks: MapMarker[] = [];
+    for (const { model, placement, url } of drawnModels) {
+      if (url !== null && modelsDrawn.has(model.id)) continue;
+      const override = modelOverrides.current.get(model.id);
+      fallbacks.push(
+        modelFallbackMarker(
+          model,
+          override ? { ...placement, position: override.position } : placement,
+        ),
+      );
+    }
+    return fallbacks.length === 0 ? markers : [...(markers ?? []), ...fallbacks];
+  }, [markers, drawnModels, modelsDrawn]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
@@ -625,7 +699,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     // marker also has its slot torn down below (it is not in `seen`), so a pin
     // whose coordinate goes bad disappears rather than freezing at its last
     // good position.
-    const next = drawableMarkers(markers);
+    const next = drawableMarkers(allMarkers);
     const seen = new Set<string>();
     let changed = false;
 
@@ -654,7 +728,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     }
 
     if (changed) setSlots([...markerSlots.current.values()]);
-  }, [markers, ready]);
+  }, [allMarkers, ready]);
 
   // --- Overlays -----------------------------------------------------------
 
@@ -696,6 +770,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // engine restarts the sun tracker (`useSunLight`) and re-attaches the layer
   // below, which then starts from the restarted light in this ref.
   const city3dRef = useRef<City3dHandle | null>(null);
+  // Mirrors the ref, so the models effect below re-runs once a layer attaches.
+  const [city3dHandle, setCity3dHandle] = useState<City3dHandle | null>(null);
   const city3dLightRef = useRef(sunLight.light);
   useEffect(() => {
     city3dLightRef.current = sunLight.light;
@@ -708,16 +784,34 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // on, `city3dLayer.web.ts` swaps `building-3d` for the custom layer and
   // `detach` swaps it back — on unmount, and before an appearance change
   // rebuilds the map.
+  //
+  // The same engine also hosts `models` (SDK_MAP_MODELS phase 1): with the
+  // flag off but models to draw, it attaches with `buildings: false` — no
+  // tiles, `building-3d` untouched — so a map has at most ONE three.js layer.
+  // With neither, nothing is requested.
+  const needsEngine = CITY3D || wantsModelEngine;
   useEffect(() => {
     const map = mapRef.current;
-    if (!CITY3D || !map || !ready) return;
+    if (!needsEngine || !map || !ready) return;
     let handle: City3dHandle | null = null;
     let cancelled = false;
     import('./city3dLayer.web')
       .then(({ attachCity3d }) =>
         cancelled
           ? null
-          : attachCity3d(map, { appearance: resolvedAppearance, light: city3dLightRef.current }),
+          : attachCity3d(map, {
+              appearance: resolvedAppearance,
+              light: city3dLightRef.current,
+              buildings: CITY3D,
+              onModelStatus: (id, status) =>
+                setModelsDrawn((current) => {
+                  if ((status === 'drawn') === current.has(id)) return current;
+                  const next = new Set(current);
+                  if (status === 'drawn') next.add(id);
+                  else next.delete(id);
+                  return next;
+                }),
+            }),
       )
       .then((attached) => {
         // Unmounted (or the appearance changed) while the chunks downloaded:
@@ -728,6 +822,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         }
         handle = attached;
         city3dRef.current = attached;
+        setCity3dHandle(attached);
         // The light may have moved while the chunks downloaded.
         attached?.setLight(city3dLightRef.current);
       })
@@ -742,9 +837,34 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     return () => {
       cancelled = true;
       if (city3dRef.current === handle) city3dRef.current = null;
+      setCity3dHandle((current) => (current === handle ? null : current));
+      setModelsDrawn((current) => (current.size === 0 ? current : new Set()));
       handle?.detach();
     };
-  }, [ready, resolvedAppearance]);
+  }, [ready, resolvedAppearance, needsEngine]);
+
+  // Hand the models to the engine whenever either changes.
+  useEffect(() => {
+    if (!city3dHandle) return;
+    city3dHandle.setModels(
+      drawnModels.flatMap(({ model, placement, url }) =>
+        url === null
+          ? []
+          : [
+              {
+                id: model.id,
+                url,
+                placement: modelOverrides.current.get(model.id) ?? placement,
+                sizing: model.sizing ?? { mode: 'world' as const },
+                minZoom: asFinite(model.minZoom) ?? 0,
+                maxZoom: asFinite(model.maxZoom) ?? 24,
+                occlusion: model.occlusion ?? 'buildings',
+                ...(model.tint ? { tint: model.tint } : {}),
+              },
+            ],
+      ),
+    );
+  }, [city3dHandle, drawnModels]);
 
   // --- User location ------------------------------------------------------
 
@@ -843,6 +963,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         // back to where the camera already is keeps the move partial rather
         // than fatal.
         const duration = asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS;
+        const marker = options?.transient ? PROGRAMMATIC_TRANSIENT : PROGRAMMATIC;
         const camera = {
           center: toLngLat(coordinate),
           zoom: asFinite(options?.zoom) ?? asFinite(viewport?.zoom) ?? map.getZoom(),
@@ -850,10 +971,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           pitch: asFinite(options?.pitch) ?? asFinite(viewport?.pitch) ?? map.getPitch(),
         };
         if (duration <= 0) {
-          runEngineCommand('jumpTo', () => map.jumpTo(camera, PROGRAMMATIC));
+          runEngineCommand('jumpTo', () => map.jumpTo(camera, marker));
           return;
         }
-        runEngineCommand('easeTo', () => map.easeTo({ ...camera, duration }, PROGRAMMATIC));
+        runEngineCommand('easeTo', () => map.easeTo({ ...camera, duration }, marker));
       },
       fitBounds(bounds, options) {
         const map = mapRef.current;
@@ -990,6 +1111,36 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           north: bounds.getNorth(),
         };
       },
+      moveModel(id, input) {
+        const placement = parseModelPlacement(input);
+        if (!placement) {
+          reportMapDefect(
+            `moveModel:${id}`,
+            `Ignored moveModel("${id}"): the placement does not parse.`,
+          );
+          return;
+        }
+        modelOverrides.current.set(id, placement);
+        city3dRef.current?.moveModel(id, placement);
+        // The fallback marker, if that is what is showing, moves too — without
+        // a React render per frame.
+        markerSlots.current
+          .get(`${MODEL_MARKER_PREFIX}${id}`)
+          ?.marker.setLngLat(toLngLat(placement.position));
+      },
+      captureFrames(draw) {
+        const map = mapRef.current;
+        if (!map) return () => {};
+        // `render` fires right after MapLibre drew the frame, in the same task,
+        // which is the one moment a WebGL canvas without a preserved drawing
+        // buffer can still be read.
+        const onRender = () => draw({ canvas: map.getCanvas() });
+        map.on('render', onRender);
+        map.triggerRepaint();
+        return () => {
+          map.off('render', onRender);
+        };
+      },
     }),
     [],
   );
@@ -1006,9 +1157,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // viewport is the kind of cost that only shows up on a slow device.
   const markersById = useMemo(() => {
     const index = new globalThis.Map<string, MapMarker>();
-    for (const marker of markers ?? []) index.set(marker.id, marker);
+    for (const marker of allMarkers ?? []) index.set(marker.id, marker);
     return index;
-  }, [markers]);
+  }, [allMarkers]);
 
   // --- Render -------------------------------------------------------------
 
@@ -1022,6 +1173,20 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       {slots.map((slot) => {
         const marker = markersById.get(slot.id);
         if (!marker) return null;
+        // A model's stand-in is the canvas's own marker, never the caller's
+        // `renderMarker`, and pressing it is pressing the model.
+        const modelId = modelIdOfMarker(slot.id);
+        if (modelId !== null) {
+          const entry = drawnModels.find((candidate) => candidate.model.id === modelId);
+          return createPortal(
+            <DefaultMapMarker
+              marker={marker}
+              onPress={() => (entry ? onModelPress?.(entry.model) : undefined)}
+            />,
+            slot.element,
+            slot.id,
+          );
+        }
         return createPortal(
           renderMarker ? (
             renderMarker(marker)

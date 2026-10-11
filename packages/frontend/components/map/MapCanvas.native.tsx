@@ -41,6 +41,7 @@ import {
 } from '@maplibre/maplibre-react-native';
 import * as Location from 'expo-location';
 import { useTheme } from '@oxy.so/bloom/theme';
+import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
 import { resolveMapAnchors, resolveMapStyleUrl } from '@/lib/map/provider';
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
@@ -58,6 +59,7 @@ import {
 import { MapAttribution } from './MapAttribution';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
+import { drawableModels, modelFallbackMarker, modelIdOfMarker } from './models';
 import {
   asFinite,
   describeNumbers,
@@ -106,6 +108,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     onViewportChange,
     onPress,
     onMarkerPress,
+    models,
+    onModelPress,
     onLabelsChange,
     onReady,
     onError,
@@ -117,6 +121,28 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const theme = useTheme();
   const mapRef = useRef<MapRef>(null);
   const cameraRef = useRef<CameraRef>(null);
+
+  // Models (SDK_MAP_MODELS phase 1): native has no custom-layer API, so every
+  // model is its fallback marker here — the same truthful pin the web fork
+  // draws wherever it cannot draw the model. `moveModel` moves that marker.
+  const drawnModels = useMemo(() => drawableModels(models), [models]);
+  const [modelOverrides, setModelOverrides] = useState<ReadonlyMap<string, ModelPlacement>>(
+    () => new globalThis.Map(),
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new `models` prop is exactly when overrides expire
+  useEffect(() => {
+    setModelOverrides(new globalThis.Map());
+  }, [models]);
+  const allMarkers = useMemo(() => {
+    if (drawnModels.length === 0) return markers;
+    const fallbacks = drawnModels.map(({ model, placement }) =>
+      modelFallbackMarker(model, modelOverrides.get(model.id) ?? placement),
+    );
+    return [...(markers ?? []), ...fallbacks];
+  }, [markers, drawnModels, modelOverrides]);
+  // A frame of a caller-driven animation is not a settled camera (see
+  // `MapCameraOptions.transient`); set by `moveTo`, read by `onRegionDidChange`.
+  const transientMove = useRef(false);
 
   const [error, setError] = useState<MapCanvasError | null>(null);
   // Remounting the engine is the only reliable retry MapLibre Native offers:
@@ -202,6 +228,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         // Same rule as web: `undefined` means "leave this axis alone", which is
         // what a NaN was silently NOT doing. See `shared.ts` -> `asFinite`.
         const duration = asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS;
+        transientMove.current = options?.transient === true;
         const stop = {
           center: toLngLat(coordinate),
           zoom: asFinite(options?.zoom) ?? asFinite(viewport?.zoom),
@@ -310,6 +337,17 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         } catch {
           return null;
         }
+      },
+      moveModel(id, input) {
+        const placement = parseModelPlacement(input);
+        if (!placement) {
+          reportMapDefect(
+            `moveModel:${id}`,
+            `Ignored moveModel("${id}"): the placement does not parse.`,
+          );
+          return;
+        }
+        setModelOverrides((current) => new globalThis.Map(current).set(id, placement));
       },
     }),
     [],
@@ -507,6 +545,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         onPress={handlePress}
         onRegionIsChanging={(event) => emitViewport(event, false)}
         onRegionDidChange={(event) => {
+          if (transientMove.current) {
+            // One frame of a flyover: in progress, not settled.
+            emitViewport(event, false);
+            return;
+          }
           emitViewport(event, true);
           // The settled frame is also when the basemap's labels are worth
           // re-reading — see `reportLabels`.
@@ -593,23 +636,36 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 
         {/* Undrawable pins are dropped rather than handed to the engine — see
             `shared.ts` → `isDrawableCoordinate`. Identical to the web fork. */}
-        {drawableMarkers(markers).map((marker: MapMarker) => (
-          <Marker
-            key={marker.id}
-            id={marker.id}
-            lngLat={toLngLat(marker.coordinate)}
-            anchor="bottom"
-            selected={marker.selected}
-          >
-            <View>
-              {renderMarker ? (
-                renderMarker(marker)
-              ) : (
-                <DefaultMapMarker marker={marker} onPress={() => onMarkerPress?.(marker)} />
-              )}
-            </View>
-          </Marker>
-        ))}
+        {drawableMarkers(allMarkers).map((marker: MapMarker) => {
+          const modelId = modelIdOfMarker(marker.id);
+          const model =
+            modelId === null
+              ? undefined
+              : drawnModels.find((entry) => entry.model.id === modelId)?.model;
+          return (
+            <Marker
+              key={marker.id}
+              id={marker.id}
+              lngLat={toLngLat(marker.coordinate)}
+              anchor="bottom"
+              selected={marker.selected}
+            >
+              <View>
+                {modelId !== null ? (
+                  // A model's stand-in: the canvas's own marker, pressing it presses the model.
+                  <DefaultMapMarker
+                    marker={marker}
+                    onPress={() => (model ? onModelPress?.(model) : undefined)}
+                  />
+                ) : renderMarker ? (
+                  renderMarker(marker)
+                ) : (
+                  <DefaultMapMarker marker={marker} onPress={() => onMarkerPress?.(marker)} />
+                )}
+              </View>
+            </Marker>
+          );
+        })}
       </MapLibreMap>
 
       {/* Both are unconditional and neither takes a prop: the brand and the

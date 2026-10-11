@@ -18,6 +18,7 @@
  */
 import type { ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
+import type { ModelPlacementInput } from '@goway.to/sdk';
 
 import type { MapAppearance } from '@/lib/map/provider';
 
@@ -205,6 +206,58 @@ export interface MapCameraOptions {
   pitch?: number;
   /** Animation duration in ms. `0` jumps. */
   duration?: number;
+  /**
+   * One frame of an animation the CALLER is driving (a flyover, a tour): the
+   * move is reported as an in-progress programmatic move, never as a settled
+   * camera, so nothing that reacts to "the camera stopped here" (the sun light,
+   * a search commit) runs sixty times a second. End the animation with one
+   * ordinary `moveTo` to settle it.
+   */
+  transient?: boolean;
+}
+
+/**
+ * A glTF model anchored at a coordinate — phase 1 of `docs/SDK_MAP_MODELS.md`.
+ *
+ * Drawn in 3D on the web fork (inside the map's one three.js scene, occluded
+ * by buildings through the shared depth buffer) and as its `fallback` marker
+ * everywhere it is not: the native fork, outside the zoom window, while the
+ * asset loads, and when it fails or is over budget. A model is never
+ * information only the GPU has.
+ */
+export interface MapModel {
+  id: string;
+  /** The contract's placement (`@goway.to/sdk` → `ModelPlacementInput`), checked by `parseModelPlacement`. */
+  placement: ModelPlacementInput;
+  /**
+   * Phase 1: a GLB the caller hosts (HTTPS, or this page's origin), or a
+   * catalogue key resolved from the app's fixture catalogue
+   * (`lib/map/modelCatalogue.ts`; the served catalogue is phase 2).
+   */
+  asset: { kind: 'url'; url: string } | { kind: 'catalogue'; key: string };
+  /** `world` (default): true metres. `screen`: at least `heightPx` tall at any zoom. */
+  sizing?: { mode: 'world' } | { mode: 'screen'; heightPx: number };
+  /** Outside this zoom window the fallback marker is drawn instead. */
+  minZoom?: number;
+  maxZoom?: number;
+  /** `buildings` (default) hides it behind extrusions; `none` always draws it. */
+  occlusion?: 'buildings' | 'none';
+  /** CSS colour applied to the asset's materials named `paint…`. */
+  tint?: string;
+  accessibilityLabel: string;
+  /** What the marker that stands in for it looks like. */
+  fallback?: Pick<MapMarker, 'kind' | 'label'>;
+}
+
+/**
+ * One drawn frame of the map, for capturing (web only).
+ *
+ * `canvas` holds the frame's pixels only for the duration of the callback:
+ * the engine does not keep its drawing buffer, so a caller copies it (a
+ * `drawImage`) inside the call or not at all.
+ */
+export interface MapFrame {
+  canvas: HTMLCanvasElement;
 }
 
 export interface MapFitOptions {
@@ -238,6 +291,19 @@ export interface MapApi {
   getViewport(): Promise<ResolvedMapViewport | null>;
   /** Current visible box, or `null` before the map is ready. */
   getBounds(): Promise<GeoBounds | null>;
+  /**
+   * Move one of the canvas's {@link MapModel}s without re-rendering the
+   * `models` prop — a vehicle driving a route, every frame. The override
+   * holds until the `models` prop changes. A placement that does not parse is
+   * ignored, like an undrawable `moveTo`.
+   */
+  moveModel(id: string, placement: ModelPlacementInput): void;
+  /**
+   * Web only: call `draw` with every frame the engine draws, synchronously
+   * after drawing it, until the returned function is called. Absent where the
+   * engine's frames cannot be read (native).
+   */
+  captureFrames?(draw: (frame: MapFrame) => void): () => void;
 }
 
 /**
@@ -324,6 +390,14 @@ export interface MapCanvasProps {
    */
   onPress?: (event: MapPressEvent) => void;
   onMarkerPress?: (marker: MapMarker) => void;
+  /** 3D models anchored at coordinates (see {@link MapModel}). */
+  models?: readonly MapModel[];
+  /**
+   * A tap on a model (or on its fallback marker). Hit priority: marker, then
+   * model, then basemap label, then bare map; a model is hit by its screen
+   * bounds, because a 3 m car on a phone has to be forgiving.
+   */
+  onModelPress?: (model: MapModel) => void;
   /**
    * The basemap labels currently PLACED in the viewport, on each settled frame.
    *

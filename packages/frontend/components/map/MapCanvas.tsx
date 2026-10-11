@@ -33,6 +33,7 @@ const UNSUPPORTED_API: MapApi = {
   resetNorth: () => {},
   getViewport: async () => null,
   getBounds: async () => null,
+  moveModel: () => {},
 };
 
 export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(

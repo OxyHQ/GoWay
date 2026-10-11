@@ -37,6 +37,7 @@
 import * as THREE from 'three';
 
 import type { TileMesh } from './mesher';
+import { createModelLayer, type ModelSpec, type ModelStatus } from './models';
 import type { CityLight } from './occlusion';
 import type { OsmTileMesh } from './osmMesher';
 import { OSM_FRAGMENT_SHADER, OSM_VERTEX_SHADER } from './osmShaders';
@@ -85,6 +86,14 @@ export interface CityEngineOptions {
   requestRepaint: () => void;
   /** Development statistics, called whenever they change. */
   onStats?: (stats: CityEngineStats) => void;
+  /**
+   * `false`: draw no buildings (no worker, no tile requests) — the engine is
+   * hosting coordinate-anchored models alone, over the style's own
+   * `fill-extrusion`. Defaults to `true`.
+   */
+  buildings?: boolean;
+  /** A model became drawn, or fell back to its marker (`models.ts`). */
+  onModelStatus?: (id: string, status: ModelStatus) => void;
 }
 
 /** What the host knows about its camera this frame. */
@@ -107,10 +116,20 @@ export interface CityEngineStats {
 }
 
 export interface CityEngine {
+  /** Draw the buildings. */
   render(view: CityView): void;
+  /** Draw the models — from their own layer, above the overlays (`city3dLayer.web.ts`). */
+  renderModels(view: CityView): void;
   /** The map's light, re-applied whenever `building-3d`'s would change (the sun). */
   setLight(light: CityLight): void;
   setPalette(palette: CityPalette): void;
+  /** Coordinate-anchored models in the same scene (`models.ts`, SDK_MAP_MODELS phase 1). */
+  setModels(specs: readonly ModelSpec[]): void;
+  setModelPlacement(id: string, placement: ModelSpec['placement']): void;
+  /** The model under a CSS-pixel point of the last frame, or `null`. */
+  pickModel(point: { x: number; y: number }): string | null;
+  /** Each drawn model's anchor on screen in the last frame (development checks). */
+  modelAnchors(): ReturnType<ReturnType<typeof createModelLayer>['anchors']>;
   dispose(): void;
 }
 
@@ -224,8 +243,27 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   let lastMeshMs = 0;
   let errors = 0;
 
-  const worker = new Worker(new URL('./meshWorker', import.meta.url));
-  const send = (message: MeshWorkerRequest) => worker.postMessage(message);
+  const buildings = options.buildings !== false;
+  // No buildings, no worker: a models-only engine never fetches a tile.
+  const worker = buildings ? new Worker(new URL('./meshWorker', import.meta.url)) : null;
+  const send = (message: MeshWorkerRequest) => worker?.postMessage(message);
+
+  const models = createModelLayer({
+    requestRepaint: options.requestRepaint,
+    onStatus: (id, status) => options.onModelStatus?.(id, status),
+    pageOrigin: typeof location !== 'undefined' ? location.origin : null,
+  });
+  // Models are drawn in their own pass (their own layer in the style), with
+  // their own camera (see `models.ts` → Frames) but the same renderer and the
+  // same depth buffer.
+  const drawModels = (view: CityView) => {
+    if (!models.active) return;
+    renderer.resetState();
+    models.render(renderer, view, {
+      width: options.canvas.clientWidth,
+      height: options.canvas.clientHeight,
+    });
+  };
 
   const reportStats = () => {
     if (!options.onStats) return;
@@ -244,58 +282,60 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     });
   };
 
-  worker.onmessage = (event: MessageEvent<MeshWorkerResponse>) => {
-    if (disposed) return;
-    const reply = event.data;
-    const tile = requests.get(reply.id);
-    requests.delete(reply.id);
-    if (!tile) return;
-    const key = tileKey(tile);
+  if (worker)
+    worker.onmessage = (event: MessageEvent<MeshWorkerResponse>) => {
+      if (disposed) return;
+      const reply = event.data;
+      const tile = requests.get(reply.id);
+      requests.delete(reply.id);
+      if (!tile) return;
+      const key = tileKey(tile);
 
-    if (reply.type === 'error') {
-      // One bad tile costs that tile; the rest of the city keeps drawing. It
-      // is retried with a bounded backoff (`tileScheduler.ts`) EVEN IF THE
-      // VIEW NEVER CHANGES — the timer asks for a frame, and that frame's
-      // `plan` re-requests it — because `building-3d`, which would otherwise
-      // have drawn it, is hidden.
-      const delay = scheduler.failed(tile, reply.id, performance.now());
-      if (delay === null) return;
-      errors++;
-      const timer = setTimeout(() => {
-        retryTimers.delete(timer);
-        if (!disposed) options.requestRepaint();
-      }, delay);
-      retryTimers.add(timer);
-      reportStats();
-      return;
-    }
-    if (!scheduler.succeeded(tile, reply.id)) return;
-    lastMeshMs = reply.meshMs;
-    const wanted = new Set(scheduler.wantedKeys);
-    if (!reply.mesh) {
-      // Remembered, so a revisit does not fetch an empty tile again.
-      cache.put(key, null, 0, frame, wanted);
-    } else {
-      const mesh = new THREE.Mesh(toGeometry(reply.mesh), material);
-      // The engine writes `matrixWorld` itself every frame (centre-relative);
-      // three must not recompute it from position/rotation/scale.
-      mesh.matrixAutoUpdate = false;
-      mesh.matrixWorldAutoUpdate = false;
-      mesh.visible = false;
-      scene.add(mesh);
-      let bytes = 0;
-      for (const value of Object.values(reply.mesh)) {
-        if (ArrayBuffer.isView(value)) bytes += value.byteLength;
+      if (reply.type === 'error') {
+        // One bad tile costs that tile; the rest of the city keeps drawing. It
+        // is retried with a bounded backoff (`tileScheduler.ts`) EVEN IF THE
+        // VIEW NEVER CHANGES — the timer asks for a frame, and that frame's
+        // `plan` re-requests it — because `building-3d`, which would otherwise
+        // have drawn it, is hidden.
+        const delay = scheduler.failed(tile, reply.id, performance.now());
+        if (delay === null) return;
+        errors++;
+        const timer = setTimeout(() => {
+          retryTimers.delete(timer);
+          if (!disposed) options.requestRepaint();
+        }, delay);
+        retryTimers.add(timer);
+        reportStats();
+        return;
       }
-      cache.put(key, mesh, bytes, frame, wanted);
-    }
-    reportStats();
-    options.requestRepaint();
-  };
-  worker.onerror = () => {
-    errors++;
-    reportStats();
-  };
+      if (!scheduler.succeeded(tile, reply.id)) return;
+      lastMeshMs = reply.meshMs;
+      const wanted = new Set(scheduler.wantedKeys);
+      if (!reply.mesh) {
+        // Remembered, so a revisit does not fetch an empty tile again.
+        cache.put(key, null, 0, frame, wanted);
+      } else {
+        const mesh = new THREE.Mesh(toGeometry(reply.mesh), material);
+        // The engine writes `matrixWorld` itself every frame (centre-relative);
+        // three must not recompute it from position/rotation/scale.
+        mesh.matrixAutoUpdate = false;
+        mesh.matrixWorldAutoUpdate = false;
+        mesh.visible = false;
+        scene.add(mesh);
+        let bytes = 0;
+        for (const value of Object.values(reply.mesh)) {
+          if (ArrayBuffer.isView(value)) bytes += value.byteLength;
+        }
+        cache.put(key, mesh, bytes, frame, wanted);
+      }
+      reportStats();
+      options.requestRepaint();
+    };
+  if (worker)
+    worker.onerror = () => {
+      errors++;
+      reportStats();
+    };
 
   const updateWanted = (view: CityView) => {
     wantedTiles =
@@ -329,7 +369,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
   const engine: CityEngine = {
     render(view) {
-      if (disposed) return;
+      if (disposed || !buildings) return;
       frame++;
       updateWanted(view);
 
@@ -360,11 +400,17 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       renderer.render(scene, camera);
     },
 
+    renderModels(view) {
+      if (disposed) return;
+      drawModels(view);
+    },
+
     setLight(light) {
       // Not normalised: the radial term is MapLibre's gain (see `CityLight`).
       uniforms.uLightPosition.value.set(...light.position);
       uniforms.uLightIntensity.value = light.intensity;
       uniforms.uLightColor.value.set(...light.color);
+      models.setLight(light);
       options.requestRepaint();
     },
 
@@ -377,10 +423,27 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       options.requestRepaint();
     },
 
+    setModels(specs) {
+      models.setModels(specs);
+    },
+
+    setModelPlacement(id, placement) {
+      models.setPlacement(id, placement);
+    },
+
+    pickModel(point) {
+      return models.pick(point);
+    },
+
+    modelAnchors() {
+      return models.anchors();
+    },
+
     dispose() {
       if (disposed) return;
       disposed = true;
-      worker.terminate();
+      worker?.terminate();
+      models.dispose();
       for (const timer of retryTimers) clearTimeout(timer);
       retryTimers.clear();
       cache.clear();
