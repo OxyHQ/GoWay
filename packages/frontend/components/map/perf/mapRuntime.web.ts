@@ -102,9 +102,48 @@ export function attachMapRuntime(map: MapLibreMap, options: MapRuntimeOptions): 
     targetMs: quality.render.targetFrameMs,
     now: () => performance.now(),
   });
+  // A new pixel ratio resizes the canvas, and a resize during a gesture
+  // drops it — measured: with a ratio change mid-drag the map stopped
+  // following the pointer, and followed it again with the change held back.
+  // So a change waits until no pointer is down, nothing has been touched for
+  // QUIET_MS and the camera is at rest; the latest one wins.
+  const QUIET_MS = 400;
+  let wantedRatio: number | null = null;
+  let pointerDown = false;
+  let lastInput = 0;
+  const container = map.getContainer();
+  const onInput = () => {
+    lastInput = performance.now();
+  };
+  const onDown = () => {
+    pointerDown = true;
+    onInput();
+  };
+  const onUp = () => {
+    pointerDown = false;
+    onInput();
+  };
+  for (const type of ['pointermove', 'wheel', 'touchmove', 'keydown'] as const) {
+    container.addEventListener(type, onInput, { passive: true, capture: true });
+  }
+  container.addEventListener('pointerdown', onDown, { passive: true, capture: true });
+  window.addEventListener('pointerup', onUp, { passive: true, capture: true });
+  window.addEventListener('pointercancel', onUp, { passive: true, capture: true });
+  const settleRatio = () => {
+    if (disposed || wantedRatio === null) return;
+    if (pointerDown || performance.now() - lastInput < QUIET_MS || map.isMoving()) {
+      setTimeout(settleRatio, QUIET_MS / 2);
+      return;
+    }
+    const ratio = wantedRatio;
+    wantedRatio = null;
+    if (Math.abs(map.getPixelRatio() - ratio) >= 0.01) map.setPixelRatio(ratio);
+  };
   const applyRatio = (ratio: number) => {
-    if (Math.abs(map.getPixelRatio() - ratio) < 0.01) return;
-    map.setPixelRatio(ratio);
+    const waiting = wantedRatio !== null;
+    wantedRatio = ratio;
+    // Never inside MapLibre's own frame either: a resize there re-enters it.
+    if (!waiting) setTimeout(settleRatio, 0);
   };
   applyRatio(baseRatio());
 
@@ -216,8 +255,7 @@ export function attachMapRuntime(map: MapLibreMap, options: MapRuntimeOptions): 
             intervalMs: continuous ? gap : null,
             costMs: timer && gpuLast !== undefined ? Math.max(frameCpu, gpuLast) : null,
           });
-          // Never inside MapLibre's own frame: a resize there re-enters it.
-          if (next !== null) setTimeout(() => !disposed && applyRatio(drs.ratio), 0);
+          if (next !== null) applyRatio(next);
         }
       }
     };
@@ -356,6 +394,12 @@ export function attachMapRuntime(map: MapLibreMap, options: MapRuntimeOptions): 
       if (disposed) return;
       disposed = true;
       if (typeof originalRender === 'function') internal._render = originalRender;
+      for (const type of ['pointermove', 'wheel', 'touchmove', 'keydown'] as const) {
+        container.removeEventListener(type, onInput, { capture: true });
+      }
+      container.removeEventListener('pointerdown', onDown, { capture: true });
+      window.removeEventListener('pointerup', onUp, { capture: true });
+      window.removeEventListener('pointercancel', onUp, { capture: true });
       if (hudTimer) clearInterval(hudTimer);
       hud?.remove();
       hud = null;
