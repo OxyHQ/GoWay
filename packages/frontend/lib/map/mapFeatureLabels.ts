@@ -113,6 +113,37 @@ export const MAP_FEATURE_LABELS: Readonly<Record<MapFeatureId, MapFeatureLabels>
       'zh-Hans': '以带柔和阴影的精细 3D 模型显示建筑。',
     },
   },
+  detailedCity: {
+    name: {
+      en: 'Detailed city look',
+      ar: 'مظهر المدينة المفصّل',
+      bn: 'বিস্তারিত শহরের রূপ',
+      ca: 'Aspecte detallat de la ciutat',
+      de: 'Detaillierte Stadtansicht',
+      es: 'Aspecto detallado de la ciudad',
+      fr: 'Ville en rendu détaillé',
+      hi: 'शहर का विस्तृत रूप',
+      ja: '精細な街並み',
+      'pt-BR': 'Visual detalhado da cidade',
+      ru: 'Детальный вид города',
+      'zh-Hans': '精细城市外观',
+    },
+    description: {
+      en: 'Soft clay-like buildings in the light of the hour, calmer streets and parks, and warm windows at night.',
+      ar: 'مبانٍ ناعمة كالصلصال في ضوء الساعة، وشوارع وحدائق أهدأ، ونوافذ دافئة ليلًا.',
+      bn: 'সময়ের আলোয় নরম মাটির মতো ভবন, শান্ত রাস্তা ও পার্ক, আর রাতে উষ্ণ জানালা।',
+      ca: "Edificis suaus com d'argila a la llum de l'hora, carrers i parcs més serens i finestres càlides de nit.",
+      de: 'Weiche, tonartige Gebäude im Licht der Stunde, ruhigere Straßen und Parks und warme Fenster bei Nacht.',
+      es: 'Edificios suaves como de arcilla a la luz de la hora, calles y parques más serenos y ventanas cálidas de noche.',
+      fr: 'Des bâtiments doux comme de l’argile, éclairés par l’heure, des rues et des parcs plus calmes et des fenêtres chaleureuses la nuit.',
+      hi: 'समय की रोशनी में मिट्टी जैसी कोमल इमारतें, शांत सड़कें और पार्क, और रात में गर्म रोशनी वाली खिड़कियाँ।',
+      ja: '時刻の光に照らされた粘土のようにやわらかな建物、落ち着いた街路と公園、夜には温かな窓明かり。',
+      'pt-BR':
+        'Prédios suaves como argila na luz da hora, ruas e parques mais calmos e janelas acolhedoras à noite.',
+      ru: 'Мягкие, словно из глины, здания в свете текущего часа, спокойные улицы и парки и тёплые окна ночью.',
+      'zh-Hans': '在当下光线中如黏土般柔和的建筑，更宁静的街道与公园，夜晚透出温暖的窗光。',
+    },
+  },
   citySky: {
     name: {
       en: 'Sky and time of day',

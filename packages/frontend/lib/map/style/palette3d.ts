@@ -1,5 +1,5 @@
 /**
- * The DETAILED 3D city's palette — the art direction behind `?cityStyle=detailed`.
+ * The DETAILED 3D city's palette — the art direction of the `detailedCity` map feature.
  *
  * Two halves, both read only when the 3D city is on:
  *

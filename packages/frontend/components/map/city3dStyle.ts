@@ -1,6 +1,6 @@
 /**
- * The adapter's half of the detailed city look (`?cityStyle=detailed`):
- * which look this page asked for, the material's data, and the 3D-mode ground.
+ * The adapter's half of the detailed city look (the `detailedCity` map
+ * feature): the material's data, and the 3D-mode ground.
  *
  * Imported only by `city3dLayer.web.ts`, which is itself lazy, so none of it
  * reaches the first-paint bundle. It must not import the engine folder at
@@ -15,23 +15,12 @@
  * them — `openfreemap`, an override URL — keeps its ground. Every property is
  * restored on detach to exactly what it was.
  */
-import { type CityStyle, cityStyleRequested, MAP_CITY_STYLE_BUILD } from '@/lib/map/cityStyleFlag';
 import {
   CITY_MATERIALS,
   CITY3D_GROUND_METADATA_KEY,
   type CityMaterial,
   type GroundOverride,
 } from '@/lib/map/style/palette3d';
-
-/** Which look this page asked for (the adapter only loads with the city-3D flag on). */
-export function resolveCityStyle(): CityStyle {
-  return cityStyleRequested({
-    city3d: true,
-    build: MAP_CITY_STYLE_BUILD,
-    development: typeof __DEV__ !== 'undefined' && __DEV__,
-    search: typeof window !== 'undefined' ? window.location.search : '',
-  });
-}
 
 /**
  * The detailed material's day and night, as plain data for the engine. How

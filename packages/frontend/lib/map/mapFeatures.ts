@@ -162,6 +162,19 @@ export const MAP_FEATURES = [
       isCitySkyRequested({ city3d: on('city3d'), enabled, development, search }),
   },
   {
+    id: 'detailedCity',
+    tier: 'labs',
+    defaultOn: false,
+    build: process.env.EXPO_PUBLIC_MAP_DETAILED_CITY,
+    // The art-directed look of the city layer (`docs/MAP_3D_CITY.md` → Art
+    // direction): clay buildings in the sky's light, a 3D-mode ground, warm
+    // windows at night. It brings its own live-clock sky when `citySky` is off.
+    requires: ['city3d'],
+    platforms: WEB,
+    request: (enabled, { development, search }) =>
+      queryOverride('detailedCity', enabled, { development, search }),
+  },
+  {
     id: 'cityTiles',
     section: 'layers',
     tier: 'labs',

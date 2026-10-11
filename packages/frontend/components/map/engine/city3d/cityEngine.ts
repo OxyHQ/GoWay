@@ -186,7 +186,7 @@ export interface CityEngineOptions {
     material?: string;
   };
   /**
-   * The detailed look (`materials.ts`, `?cityStyle=detailed`): the material's
+   * The detailed look (`materials.ts`, the `detailedCity` map feature): the material's
    * day and night, blended on the GPU by the night seam (`setNightFactor`).
    * With {@link CityEngineOptions.sky} — its one shading path — every building
    * is drawn in the sky's light through this response (`sky.material`), and
@@ -459,7 +459,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const context = {
     scene,
     buildingUniforms,
-    // `?cityStyle=detailed`: every building material compiles the detailed response.
+    // The detailed look: every building material compiles its response.
     buildingDefines: (detailed ? { [DETAILED_DEFINE]: '' } : {}) as Record<string, string>,
     buildingShaders: sky?.buildingShaders ?? {
       openmaptiles: { vertexShader: CITY_VERTEX_SHADER, fragmentShader: CITY_FRAGMENT_SHADER },

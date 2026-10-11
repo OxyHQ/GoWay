@@ -80,7 +80,7 @@ import { sunPosition } from '@/lib/map/sun';
 
 import { followTerrain } from './city3dGround.web';
 import { cityLightFromSpec, sameCityLight } from './city3dLight';
-import { applyCityGround, cityMaterials, resolveCityStyle } from './city3dStyle';
+import { applyCityGround, cityMaterials } from './city3dStyle';
 import { treeColours } from './city3dTrees';
 // Type-only on purpose: the engine chunk imports these modules at runtime, and
 // a module two lazy chunks share is hoisted into the first-paint `__common`
@@ -285,6 +285,14 @@ export interface AttachCity3dOptions {
    * `cityTiles`. Defaults to `false`.
    */
   landmarks?: boolean;
+  /**
+   * Draw the city in the art-directed look (`engine/city3d/materials.ts`,
+   * `docs/MAP_3D_CITY.md` → Art direction): the registry's `detailedCity`.
+   * It is drawn in the city sky's light, so it brings a live-clock sky when
+   * {@link AttachCity3dOptions.sky} is absent. Ignored without `buildings`.
+   * Defaults to `false`.
+   */
+  detailed?: boolean;
   /** A model was drawn, or fell back to its marker. */
   onModelStatus?: (id: string, status: ModelStatus) => void;
   /**
@@ -404,8 +412,8 @@ export async function attachCity3d(
 
   const cartography = CARTOGRAPHY_PALETTES[options.appearance];
   const trees = treeColours(cartography);
-  // `?cityStyle=detailed` (`lib/map/cityStyleFlag.ts`): the art-directed look.
-  const detailed = resolveCityStyle() === 'detailed';
+  // The art-directed look (the registry's `detailedCity`).
+  const detailed = buildings && options.detailed === true;
   const palette = {
     ...buildingHeightRamp(cartography),
     treeCrown: trees.crown,
@@ -479,7 +487,7 @@ export async function attachCity3d(
   let unfollowTerrain: (() => void) | null = null;
   // The detailed look is drawn in the city sky's light — its one shading path
   // (`engine/city3d/materials.ts`) — so it brings a live-clock sky when the
-  // page asked for none (`?citysky=1` adds the time-of-day scrubber).
+  // page asked for none (the `citySky` feature adds the time-of-day scrubber).
   const sky = buildings ? (options.sky ?? (detailed ? { at: null } : null)) : null;
   let skyAt = sky?.at ?? null;
   let reportedSun = '';

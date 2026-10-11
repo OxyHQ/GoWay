@@ -1,6 +1,6 @@
 /**
  * The DETAILED city material: matte clay by day, moonlit blue-grey with warm
- * windows by night. Behind `?cityStyle=detailed` (`lib/map/cityStyleFlag.ts`);
+ * windows by night. The `detailedCity` map feature (`lib/map/mapFeatures.ts`);
  * with it off, every shader draws exactly what it did before.
  *
  * ## One shading path

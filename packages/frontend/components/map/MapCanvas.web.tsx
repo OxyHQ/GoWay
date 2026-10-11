@@ -252,6 +252,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const landmarks = useMapFeature('landmarks');
   // The sky, haze, sun shadows and time-of-day scrubber (`citySkyFlag.ts`).
   const citySky = useMapFeature('citySky');
+  // The art-directed look (`docs/MAP_3D_CITY.md` → Art direction).
+  const detailedCity = useMapFeature('detailedCity');
   const relief = useMapRelief();
   /**
    * What the last engine was built for, and where its camera was when it went.
@@ -992,6 +994,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               treeFill,
               cityLife,
               landmarks,
+              detailed: detailedCity,
               onModelStatus: (id, status) =>
                 setModelsDrawn((current) => {
                   if ((status === 'drawn') === current.has(id)) return current;
@@ -1056,6 +1059,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     cityLife,
     landmarks,
     citySky,
+    detailedCity,
   ]);
 
   // Hand the models to the engine whenever either changes.

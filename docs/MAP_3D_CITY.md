@@ -1219,21 +1219,21 @@ result.
 ## Art direction: the detailed city look
 
 **Target: Apple Maps' "Detailed City Experience", by look, never by asset or
-data.** Behind its own sub-flag, off everywhere by default:
-`?cityStyle=detailed` (development builds; `classic` forces today's look) or
-`EXPO_PUBLIC_MAP_CITY_STYLE=detailed` (a build decision no deployment makes),
-always on top of the city-3D flag (`lib/map/cityStyleFlag.ts`). With it off,
-the city layer draws exactly what it drew before, so the two can be compared
-side by side at the same camera.
+data.** It is one optional map feature, `detailedCity` (`lib/map/mapFeatures.ts`;
+Labs in the settings dialog, `?detailedCity=1` per tab in a development build,
+`EXPO_PUBLIC_MAP_DETAILED_CITY` as the build's say), off by default and needing
+`city3d`. With it off, the city layer draws exactly what it drew before, so the
+two can be compared side by side at the same camera.
 
 | Piece | Where |
 | --- | --- |
+| Feature entry | `lib/map/mapFeatures.ts` (`detailedCity`), labels in `mapFeatureLabels.ts` |
 | Palette: the 3D ground, the material (day, night) | `lib/map/style/palette3d.ts` |
 | The ground as paint overrides, generated | `lib/map/style/city3dGround.ts` → style `metadata['goway:city3d-ground']` (`scripts/build-map-style.ts`) |
 | Material response (the sky's `cityMaterial`) + uniforms + JS mirror | `components/map/engine/city3d/materials.ts`; the surface colour under `#ifdef GOWAY_DETAILED` in `osmShaders.ts` → `osmBase` |
 | Per-building seed | `osmMesher.ts` → `buildingSeed` (an untagged surface's unused rgb) |
-| Adapter half (flag, night factor, ground apply/undo) | `components/map/city3dStyle.ts`, wired in `city3dLayer.web.ts` |
-| Tests | `lib/map/__tests__/palette3d.test.ts`, `cityStyleFlag.test.ts`, `components/map/__tests__/city3dMaterials.test.ts`, `city3dStyle.test.ts` |
+| Adapter half (material data, ground apply/undo) | `components/map/city3dStyle.ts`, wired in `city3dLayer.web.ts` (`detailed`) |
+| Tests | `lib/map/__tests__/palette3d.test.ts`, `components/map/__tests__/city3dMaterials.test.ts`, `city3dStyle.test.ts` |
 
 ### What the references show
 
