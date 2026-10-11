@@ -40,6 +40,7 @@ import type { TileMesh } from './mesher';
 import { createModelLayer, type ModelSpec, type ModelStatus } from './models';
 import type { CityLight } from './occlusion';
 import type { OsmTileMesh } from './osmMesher';
+import type { CityOverlay } from './overlay';
 import { OSM_FRAGMENT_SHADER, OSM_VERTEX_SHADER } from './osmShaders';
 import type { CityTileFormat, MeshWorkerRequest, MeshWorkerResponse } from './protocol';
 import { CITY_FRAGMENT_SHADER, CITY_VERTEX_SHADER } from './shaders';
@@ -104,6 +105,8 @@ export interface CityEngineOptions {
   buildings?: boolean;
   /** A model became drawn, or fell back to its marker (`models.ts`). */
   onModelStatus?: (id: string, status: ModelStatus) => void;
+  /** Drawn in the same scene, camera, light and ground (`overlay.ts`): the city-life simulation. */
+  overlays?: CityOverlay[];
 }
 
 /** What the host knows about its camera this frame. */
@@ -219,6 +222,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
   const scene = new THREE.Scene();
   const camera = new THREE.Camera();
+  const overlays = options.overlays ?? [];
+  for (const overlay of overlays) overlay.attach(scene);
 
   const uniforms = {
     uLow: { value: new THREE.Vector3() },
@@ -446,10 +451,11 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
       const span = options.fade.end - options.fade.start;
       const opacity = Math.max(0, Math.min(1, (view.zoom - options.fade.start) / span));
+      const center = { x: mercatorXFromLng(view.center.lng), y: mercatorYFromLat(view.center.lat) };
+      for (const overlay of overlays) overlay.update({ view, center, opacity });
       if (opacity <= 0) return;
       uniforms.uOpacity.value = opacity;
 
-      const center = { x: mercatorXFromLng(view.center.lng), y: mercatorYFromLat(view.center.lat) };
       camera.projectionMatrix.fromArray(centeredProjection(view.mercatorToClip, center));
       camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
 
@@ -487,11 +493,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       uniforms.uLightIntensity.value = light.intensity;
       uniforms.uLightColor.value.set(...light.color);
       models.setLight(light);
+      for (const overlay of overlays) overlay.setLight(light);
       options.requestRepaint();
     },
 
     setGround(sample) {
       grounder.setSampler(sample);
+      for (const overlay of overlays) overlay.setGround(sample);
       uniforms.uGrounded.value = sample ? 1 : 0;
       // Culling bounds follow: without terrain every mesh is back at `z = 0`;
       // with it, each keeps its last lift until re-grounded.
@@ -531,6 +539,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       disposed = true;
       worker?.terminate();
       models.dispose();
+      for (const overlay of overlays) overlay.dispose();
       for (const timer of retryTimers) clearTimeout(timer);
       retryTimers.clear();
       cache.clear();

@@ -1,6 +1,7 @@
 /**
  * Encode one city tile as a Mapbox Vector Tile v2 with a single `building`
- * layer (`lib/map/cityTiles.ts` says why MVT and what the properties mean).
+ * layer (`lib/map/cityTiles.ts` says why MVT and what the properties mean),
+ * or any layers given as command streams (the road tiles, `citygen/roads.ts`).
  *
  * The geometry rules a reader depends on, enforced here rather than trusted
  * from the input:
@@ -99,17 +100,64 @@ export function encodePolygons(polygons: readonly TilePolygon[]): number[] {
 
 type Value = string | number | boolean;
 
-/** Encode the tile. Features whose geometry vanished on quantisation are omitted. */
-export function encodeCityTile(features: readonly CityTileFeature[]): Uint8Array {
+/** One feature of any layer, its geometry already a command stream. */
+export interface EncodedFeature {
+  id: number;
+  /** MVT geometry type: 1 point, 2 line, 3 polygon. */
+  type: 1 | 2 | 3;
+  geometry: number[];
+  properties: Record<string, Value>;
+}
+
+/** A layer of any kind (the road layers, `lib/map/cityRoads.ts`, are written this way). */
+export interface EncodedLayer {
+  name: string;
+  features: EncodedFeature[];
+}
+
+/**
+ * The command stream for lines. Points are rounded, repeats dropped, and a
+ * line left with fewer than two points is omitted. Empty when none survived.
+ */
+export function encodeLines(lines: readonly (readonly TilePoint[])[]): number[] {
+  const out: number[] = [];
+  let cx = 0;
+  let cy = 0;
+  for (const line of lines) {
+    const points: TilePoint[] = [];
+    for (const [x, y] of line) {
+      const point: TilePoint = [Math.round(x), Math.round(y)];
+      const last = points[points.length - 1];
+      if (!last || last[0] !== point[0] || last[1] !== point[1]) points.push(point);
+    }
+    if (points.length < 2) continue;
+    out.push(command(1, 1), zigzag(points[0][0] - cx), zigzag(points[0][1] - cy));
+    cx = points[0][0];
+    cy = points[0][1];
+    out.push(command(2, points.length - 1));
+    for (let i = 1; i < points.length; i++) {
+      out.push(zigzag(points[i][0] - cx), zigzag(points[i][1] - cy));
+      cx = points[i][0];
+      cy = points[i][1];
+    }
+  }
+  return out;
+}
+
+/** The command stream for one point. */
+export function encodePoint([x, y]: TilePoint): number[] {
+  return [command(1, 1), zigzag(Math.round(x)), zigzag(Math.round(y))];
+}
+
+function writeLayer(pbf: PbfWriter, name: string, features: readonly EncodedFeature[]): void {
   const keys: string[] = [];
   const keyIndex = new Map<string, number>();
   const values: Value[] = [];
   const valueIndex = new Map<string, number>();
-  const encoded: { id: number; tags: number[]; geometry: number[] }[] = [];
+  const encoded: { id: number; type: number; tags: number[]; geometry: number[] }[] = [];
 
   for (const feature of features) {
-    const geometry = encodePolygons(feature.polygons);
-    if (geometry.length === 0) continue;
+    if (feature.geometry.length === 0) continue;
     const tags: number[] = [];
     for (const [key, value] of Object.entries(feature.properties)) {
       let k = keyIndex.get(key);
@@ -127,23 +175,23 @@ export function encodeCityTile(features: readonly CityTileFeature[]): Uint8Array
       }
       tags.push(k, v);
     }
-    encoded.push({ id: feature.id, tags, geometry });
+    encoded.push({ id: feature.id, type: feature.type, tags, geometry: feature.geometry });
   }
+  if (encoded.length === 0) return;
 
-  const pbf = new PbfWriter();
-  if (encoded.length === 0) return pbf.finish();
   pbf.writeMessage(
     3,
     (_: null, layer) => {
       layer.writeVarintField(15, 2);
-      layer.writeStringField(1, CITY_TILE_LAYER);
+      layer.writeStringField(1, name);
       for (const feature of encoded) {
         layer.writeMessage(
           2,
           (_unused: null, out) => {
-            out.writeVarintField(1, feature.id);
+            // Optional in MVT; 0 means "no id" (road pieces carry one only when a restriction names it).
+            if (feature.id !== 0) out.writeVarintField(1, feature.id);
             out.writePackedVarint(2, feature.tags);
-            out.writeVarintField(3, 3);
+            out.writeVarintField(3, feature.type);
             out.writePackedVarint(4, feature.geometry);
           },
           null,
@@ -166,5 +214,29 @@ export function encodeCityTile(features: readonly CityTileFeature[]): Uint8Array
     },
     null,
   );
+}
+
+/** Encode the tile. Features whose geometry vanished on quantisation are omitted. */
+export function encodeCityTile(features: readonly CityTileFeature[]): Uint8Array {
+  return encodeTileLayers([
+    {
+      name: CITY_TILE_LAYER,
+      features: features.map((feature) => ({
+        id: feature.id,
+        type: 3,
+        geometry: encodePolygons(feature.polygons),
+        properties: feature.properties,
+      })),
+    },
+  ]);
+}
+
+/**
+ * Encode layers in order. A layer left with no features is omitted, and a
+ * tile with nothing at all is zero bytes.
+ */
+export function encodeTileLayers(layers: readonly EncodedLayer[]): Uint8Array {
+  const pbf = new PbfWriter();
+  for (const layer of layers) writeLayer(pbf, layer.name, layer.features);
   return pbf.finish();
 }

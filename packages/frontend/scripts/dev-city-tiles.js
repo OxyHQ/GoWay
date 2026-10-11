@@ -24,7 +24,10 @@
 const { open } = require('node:fs/promises');
 const path = require('node:path');
 
-const TILE_PATH = /^\/map\/city\/(\d{1,2})\/(\d{1,9})\/(\d{1,9})\.pbf$/;
+// `/map/city/…` answers from building archives, `/map/city-roads/…` from road
+// archives (`scripts/build-city-roads.ts`); an archive says which it is in its
+// `goway:kind` metadata, and one without the key is a building archive.
+const TILE_PATH = /^\/map\/(city|city-roads)\/(\d{1,2})\/(\d{1,9})\/(\d{1,9})\.pbf$/;
 
 function withDevCityTiles(config) {
   const archivePath = process.env.GOWAY_CITY_TILES_ARCHIVE;
@@ -39,13 +42,16 @@ function withDevCityTiles(config) {
         return Promise.all(
           paths.map(async (file) => {
             const handle = await open(file, 'r');
-            return new PMTiles({
+            const archive = new PMTiles({
               async read(offset, length) {
                 const buffer = Buffer.alloc(length);
                 const { bytesRead } = await handle.read(buffer, 0, length, offset);
                 return new Uint8Array(buffer.subarray(0, bytesRead));
               },
             });
+            const metadata = await archive.metadata().catch(() => ({}));
+            const kind = metadata?.['goway:kind'] === 'roads' ? 'city-roads' : 'city';
+            return { archive, kind };
           }),
         );
       })();
@@ -53,16 +59,17 @@ function withDevCityTiles(config) {
     return archivesPromise;
   };
 
-  const tileAt = async (z, x, y) => {
-    for (const archive of await archives()) {
-      const tile = await archive.getTile(z, x, y);
+  const tileAt = async (kind, z, x, y) => {
+    for (const entry of await archives()) {
+      if (entry.kind !== kind) continue;
+      const tile = await entry.archive.getTile(z, x, y);
       if (tile) return tile;
     }
     return null;
   };
 
   const previous = config.server?.enhanceMiddleware;
-  console.log(`· city tiles: serving /map/city/{z}/{x}/{y}.pbf from ${paths.join(', ')}`);
+  console.log(`· city tiles: serving /map/city{,-roads}/{z}/{x}/{y}.pbf from ${paths.join(', ')}`);
   return {
     ...config,
     server: {
@@ -72,8 +79,8 @@ function withDevCityTiles(config) {
         return (request, response, next) => {
           const match = TILE_PATH.exec((request.url || '').split('?')[0]);
           if (!match) return inner(request, response, next);
-          const [z, x, y] = match.slice(1).map(Number);
-          tileAt(z, x, y)
+          const [z, x, y] = match.slice(2).map(Number);
+          tileAt(match[1], z, x, y)
             .then((tile) => {
               const headers = {
                 'access-control-allow-origin': '*',

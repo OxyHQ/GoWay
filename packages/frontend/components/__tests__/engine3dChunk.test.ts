@@ -64,6 +64,9 @@ const ENGINES = [
   // The model layer is part of the city engine (one scene, one renderer —
   // docs/SDK_MAP_MODELS.md), imported only by `cityEngine.ts`.
   'components/map/engine/city3d/models.ts',
+  // The city-life renderer is an overlay of the same engine (`overlay.ts`),
+  // reached only through `lazyChunk.ts`.
+  'components/map/engine/cityLife/lifeRenderer.ts',
 ];
 const CHUNK = 'components/engine3d/lazyChunk.ts';
 
@@ -93,7 +96,11 @@ describe('the three.js chunk', () => {
   test('only lazyChunk.ts reaches the engines at runtime', () => {
     const offenders = files
       .filter((f) => f.path !== CHUNK)
-      .filter((f) => runtimeImports(f.text, /(sparkEngine|city3d\/cityEngine)$/).length > 0)
+      .filter(
+        (f) =>
+          runtimeImports(f.text, /(sparkEngine|city3d\/cityEngine|cityLife\/lifeRenderer)$/)
+            .length > 0,
+      )
       .map((f) => f.path);
     expect(offenders).toEqual([]);
   });
@@ -104,7 +111,7 @@ describe('the three.js chunk', () => {
     // was, until the adapter stopped importing its defaults.
     const adapter = files.find((f) => f.path === 'components/map/city3dLayer.web.ts');
     expect(adapter).toBeDefined();
-    expect(runtimeImports(adapter?.text ?? '', /engine\/city3d\//)).toEqual([]);
+    expect(runtimeImports(adapter?.text ?? '', /engine\/(city3d|cityLife)\//)).toEqual([]);
   });
 
   test('lazyChunk.ts is only ever imported dynamically', () => {

@@ -48,6 +48,8 @@
 import type { LightSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type { CustomLayerInterface, Map as MapLibreMap, VectorTileSource } from 'maplibre-gl';
 
+import { isCityLifeRequested, MAP_CITY_LIFE_ENABLED } from '@/lib/map/cityLifeFlag';
+import { CITY_ROAD_TILE_PATH } from '@/lib/map/cityRoads';
 import { CITY_TILE_LAYER, CITY_TILE_PATH, CITY_TILE_ZOOM } from '@/lib/map/cityTiles';
 import { isCityTilesRequested, MAP_CITY_TILES_ENABLED } from '@/lib/map/cityTilesFlag';
 import {
@@ -72,7 +74,10 @@ import { cityLightFromSpec, sameCityLight } from './city3dLight';
 import type { CityEngine, CityEngineStats } from './engine/city3d/cityEngine';
 import type { ModelSpec, ModelStatus } from './engine/city3d/models';
 import type { CityLight } from './engine/city3d/occlusion';
+import type { CityOverlay } from './engine/city3d/overlay';
 import type { GroundStats } from './engine/city3d/terrainGround';
+import type { CityLifeStats } from './engine/cityLife/lifeRenderer';
+import { type CityLifeChip, mountCityLifeChip } from './cityLifeChip.web';
 import { reportMapDefect } from './shared';
 
 /**
@@ -109,6 +114,15 @@ export function citySourceFor(
     maxTiles: CITY_TILES_MAX,
   };
 }
+
+/**
+ * The simulation's budget: agents drawn at most, at full density (z17+). The
+ * numbers are measured in `docs/MAP_CITY_LIFE.md` → Performance.
+ */
+const CITY_LIFE_BUDGET = { cars: 1200, people: 1200 };
+
+/** One fixed seed: the same view opens on the same simulated city. */
+const CITY_LIFE_SEED = 20261011;
 
 /** The custom layer's id, in GoWay's own namespace. */
 export const CITY3D_LAYER_ID = `${GOWAY_LAYER_PREFIX}city3d`;
@@ -192,7 +206,7 @@ export async function attachCity3d(
     reportMapDefect('city3d:source', 'city3d: the style has no tiled vector source; not attached.');
     return null;
   }
-  const { createCityEngine } = await import('@/components/engine3d/lazyChunk');
+  const { createCityEngine, createCityLife } = await import('@/components/engine3d/lazyChunk');
   // City tiles replace the BUILDINGS' source; a models-only engine (the city
   // flag off) draws no buildings, so it never asks.
   const cityTiles =
@@ -201,6 +215,17 @@ export async function attachCity3d(
       city3d: true,
       enabled: MAP_CITY_TILES_ENABLED,
       // `typeof`: the bun tests that attach to a fake map run without the global.
+      development: typeof __DEV__ !== 'undefined' && __DEV__,
+      search: typeof window !== 'undefined' ? window.location.search : '',
+    });
+  // The simulation drives on the city tiles' road archive, so it needs both
+  // flags above it (`lib/map/cityLifeFlag.ts`).
+  const cityLife =
+    cityTiles &&
+    isCityLifeRequested({
+      city3d: true,
+      cityTiles,
+      enabled: MAP_CITY_LIFE_ENABLED,
       development: typeof __DEV__ !== 'undefined' && __DEV__,
       search: typeof window !== 'undefined' ? window.location.search : '',
     });
@@ -217,6 +242,7 @@ export async function attachCity3d(
   // Models handed over before MapLibre called `onAdd`.
   let queuedModels: readonly ModelSpec[] | null = null;
   let unfollowTerrain: (() => void) | null = null;
+  let chip: CityLifeChip | null = null;
 
   // The light as MapLibre would apply it to `building-3d` this frame: the
   // given spec (or the style's own), at the current bearing — which matters
@@ -234,11 +260,29 @@ export async function attachCity3d(
     unfollowTerrain = null;
     engine?.dispose();
     engine = null;
+    chip?.remove();
+    chip = null;
   };
   const ensureEngine = (host: MapLibreMap, gl: WebGLRenderingContext | WebGL2RenderingContext) => {
     liveLayers++;
     if (engine) return engine;
     applied = currentLight();
+    const overlays: CityOverlay[] = [];
+    if (cityLife) {
+      // Labelled for exactly as long as anything simulated is drawn.
+      const label = mountCityLifeChip(host.getContainer());
+      chip = label;
+      overlays.push(
+        createCityLife({
+          roadTileTemplate: `${typeof window !== 'undefined' ? window.location.origin : ''}${CITY_ROAD_TILE_PATH}`,
+          budget: CITY_LIFE_BUDGET,
+          seed: CITY_LIFE_SEED,
+          requestRepaint: () => host.triggerRepaint(),
+          onActiveChange: (active) => label.setVisible(active),
+          onStats: __DEV__ ? publishLifeStats : undefined,
+        }),
+      );
+    }
     engine = createCityEngine({
       gl: gl as WebGL2RenderingContext,
       canvas: host.getCanvas(),
@@ -251,6 +295,7 @@ export async function attachCity3d(
       onGroundStats: __DEV__ ? publishGroundStats : undefined,
       buildings,
       onModelStatus: options.onModelStatus,
+      overlays,
     });
     if (queuedModels) engine.setModels(queuedModels);
     // On 3D terrain the buildings stand on the drawn ground, not at sea level.
@@ -380,6 +425,8 @@ export async function attachCity3d(
       unfollowTerrain = null;
       engine?.dispose();
       engine = null;
+      chip?.remove();
+      chip = null;
     },
   };
 }
@@ -405,6 +452,14 @@ function publishModelAlignment(map: MapLibreMap, engine: CityEngine): void {
       error: Math.hypot(p.x - a.x, p.y - a.y),
     };
   });
+}
+
+/**
+ * Development only: the city-life simulation's numbers on
+ * `globalThis.__gowayCityLife` (agents, targets, step time, network size).
+ */
+function publishLifeStats(stats: CityLifeStats): void {
+  (globalThis as { __gowayCityLife?: CityLifeStats }).__gowayCityLife = stats;
 }
 
 /**

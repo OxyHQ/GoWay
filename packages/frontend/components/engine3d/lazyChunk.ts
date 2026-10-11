@@ -26,3 +26,4 @@
  */
 export { createSceneEngine } from '../street3d/engine/sparkEngine';
 export { createCityEngine } from '../map/engine/city3d/cityEngine';
+export { createCityLife } from '../map/engine/cityLife/lifeRenderer';
