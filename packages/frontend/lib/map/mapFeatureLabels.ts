@@ -203,6 +203,38 @@ export const MAP_FEATURE_LABELS: Readonly<Record<MapFeatureId, MapFeatureLabels>
       'zh-Hans': '在已标注的林地中绘制示意性树木，而非逐棵标注的树木。',
     },
   },
+  cityLife: {
+    // Simulated, and saying so wherever it is named (AGENTS.md;
+    // `docs/MAP_CITY_LIFE.md` → Honesty).
+    name: {
+      en: 'Simulated city life',
+      ar: 'حياة المدينة المحاكاة',
+      bn: 'সিমুলেটেড নগরজীবন',
+      ca: 'Vida urbana simulada',
+      de: 'Simuliertes Stadtleben',
+      es: 'Vida urbana simulada',
+      fr: 'Vie urbaine simulée',
+      hi: 'सिम्युलेटेड शहरी जीवन',
+      ja: 'シミュレーションの街の動き',
+      'pt-BR': 'Vida urbana simulada',
+      ru: 'Симуляция городской жизни',
+      'zh-Hans': '模拟城市生活',
+    },
+    description: {
+      en: 'Simulated cars and people on the real streets. Not real traffic.',
+      ar: 'سيارات وأشخاص محاكون في الشوارع الحقيقية. ليست حركة مرور حقيقية.',
+      bn: 'আসল রাস্তায় সিমুলেটেড গাড়ি ও মানুষ। এটি প্রকৃত যানজট নয়।',
+      ca: 'Cotxes i persones simulats als carrers reals. No és trànsit real.',
+      de: 'Simulierte Autos und Menschen auf den echten Straßen. Kein echter Verkehr.',
+      es: 'Coches y personas simulados en las calles reales. No es tráfico real.',
+      fr: "Voitures et piétons simulés dans les vraies rues. Ce n'est pas le trafic réel.",
+      hi: 'असली सड़कों पर सिम्युलेटेड कारें और लोग। यह असली ट्रैफ़िक नहीं है।',
+      ja: '実際の道路を走る、シミュレーションの車や人。実際の交通状況ではありません。',
+      'pt-BR': 'Carros e pessoas simulados nas ruas reais. Não é trânsito real.',
+      ru: 'Смоделированные машины и люди на настоящих улицах. Это не реальный трафик.',
+      'zh-Hans': '真实街道上的模拟车辆和行人，并非真实交通。',
+    },
+  },
   flyover: {
     name: {
       en: 'Route flyover',

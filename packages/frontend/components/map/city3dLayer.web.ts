@@ -59,7 +59,6 @@ import {
   type CityCoverageBox,
   parseCityCoverage,
 } from '@/lib/map/cityTiles';
-import { isCityLifeRequested, MAP_CITY_LIFE_ENABLED } from '@/lib/map/cityLifeFlag';
 import { CITY_ROAD_TILE_PATH } from '@/lib/map/cityRoads';
 import type { PreparedLandmark } from '@/lib/map/landmarks/load';
 import { nightFactor } from '@/lib/map/landmarks/night';
@@ -249,6 +248,12 @@ export interface AttachCity3dOptions {
    * `city3dTreeFill`. Ignored without `trees`. Defaults to `false`.
    */
   treeFill?: boolean;
+  /**
+   * Draw the city-life SIMULATION on the city tiles' road graph
+   * (`docs/MAP_CITY_LIFE.md`): the registry's `cityLife`. Ignored without
+   * `cityTiles`. Defaults to `false`.
+   */
+  cityLife?: boolean;
   /** A model was drawn, or fell back to its marker. */
   onModelStatus?: (id: string, status: ModelStatus) => void;
   /**
@@ -326,16 +331,8 @@ export async function attachCity3d(
   const cityTiles = buildings && options.cityTiles === true;
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   // The simulation drives on the road archive compiled beside the city tiles,
-  // so it needs both flags above it (`lib/map/cityLifeFlag.ts`).
-  const cityLife =
-    cityTiles &&
-    isCityLifeRequested({
-      city3d: true,
-      cityTiles,
-      enabled: MAP_CITY_LIFE_ENABLED,
-      development: typeof __DEV__ !== 'undefined' && __DEV__,
-      search: typeof window !== 'undefined' ? window.location.search : '',
-    });
+  // so it needs both above it: the registry's `cityLife`, handed in.
+  const cityLife = cityTiles && options.cityLife === true;
   const coverage = cityTiles ? await fetchCityCoverage(origin) : [];
   if (cityTiles && coverage.length === 0) {
     reportMapDefect(

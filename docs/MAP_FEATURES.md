@@ -1,7 +1,7 @@
 # Map features: the registry and the layers panel
 
 GoWay's map has optional features: the globe, terrain, the 3D city and its
-trees, GoWay's own city tiles, the route flyover. Each one used to be a
+trees, GoWay's own city tiles, the simulated city life, the route flyover. Each one used to be a
 build-time `EXPO_PUBLIC_MAP_*` flag plus a development-only `?param=1`, so the
 only way to see a feature on goway.to was a rebuild. They are now entries in
 ONE registry, and a person turns them on or off from the map itself, in a
@@ -32,7 +32,8 @@ For each feature, in registry order (a dependency comes first):
 That answer is handed to the feature's own flag module where the build boolean
 used to go, so a development build's `?city3d=1`, `?globe=0` and the rest work
 exactly as before. Last, a feature is off while anything it `requires` is off
-(the trees and the city tiles need the 3D city; the woods fill needs the trees).
+(the trees and the city tiles need the 3D city; the woods fill needs the trees;
+city life needs the city tiles).
 
 With no stored choice, every feature answers exactly what its flag answered
 before the registry: `mapFeatures.test.ts` checks every feature against the old
@@ -50,12 +51,14 @@ now kills the trees, as a padded `0` always killed the globe and terrain.
 | `cityTiles` | labs | off | web, **development builds only** | `EXPO_PUBLIC_MAP_CITY_TILES` | `?cityTiles=1` | live (re-attach) |
 | `city3dTrees` | labs | on, with the city | web | `EXPO_PUBLIC_MAP_CITY3D_TREES` | `?city3dTrees=0` | live (re-attach) |
 | `city3dTreeFill` | labs | off | web | `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL` | `?city3dTreeFill=1` | live (re-attach) |
+| `cityLife` | labs | off | web, **development builds only** | `EXPO_PUBLIC_MAP_CITY_LIFE` | `?cityLife=1` | live (re-attach) |
 | `flyover` | labs | off | web, native | `EXPO_PUBLIC_MAP_FLYOVER` | `?flyover=1` | live ("Fly the route", `/studio`) |
 
 No production default changed: globe and terrain stay on (#128), everything
-else is off until somebody turns it on. City tiles are offered in the panel only
-in a development build, because nothing serves them on goway.to yet and ODbL
-wants the archive and its receipt published first (`MAP_3D_CITY.md` → Hosting).
+else is off until somebody turns it on. City tiles and city life are offered in
+the panel only in a development build, because nothing serves their archives on
+goway.to yet and ODbL wants each archive and its receipt published first
+(`MAP_3D_CITY.md` and `MAP_CITY_LIFE.md` → Hosting).
 
 ## The layers panel
 
@@ -88,7 +91,7 @@ experimental renderer on for somebody else.
 The store notifies; components read it through `useMapFeature(id)`:
 
 - `MapCanvas.web.tsx`: the city layer's effect depends on `city3d`,
-  `cityTiles`, `city3dTrees`, `city3dTreeFill`, so a toggle detaches the old
+  `cityTiles`, `city3dTrees`, `city3dTreeFill`, `cityLife`, so a toggle detaches the old
   layer (giving `building-3d` back) and attaches a new one — no reload. A
   `globe`/`terrain` toggle rebuilds the MapLibre engine, because the globe is
   part of how the style is loaded; the new engine starts at the camera the old
@@ -137,7 +140,7 @@ in `lib/config.ts`, and no `process.env.EXPO_PUBLIC_MAP_*` read of its own):
    the dependencies of the effect that attaches it, so a toggle applies live.
    Hand the answer to a lazy adapter as an option rather than letting the
    adapter read a flag (`city3dLayer.web.ts` takes `cityTiles`, `trees`,
-   `treeFill`). If it truly cannot apply live, make it part of what rebuilds the
+   `treeFill`, `cityLife`). If it truly cannot apply live, make it part of what rebuilds the
    engine, as `globe` is.
 
 Then add its row to the table above and to `.env.example`, and extend the
@@ -146,13 +149,13 @@ Then add its row to the table above and to `.env.example`, and extend the
 ## What it costs at first paint
 
 `expo export --platform web`, no map variables set, `--clear`, `origin/main`
-(`09ee48b`) against this branch:
+(`5c0ab43`) against this branch:
 
 | Chunk | `main` | This branch | |
 | --- | ---: | ---: | --- |
-| `entry` (first paint) | 6,968,598 B (1,750,634 gz) | 6,979,938 B (1,754,330 gz) | +11,340 B, **+3,696 B gz** (+0.2%): registry, store, hooks, button, its name in 12 languages, the trees flag (now decided at first paint) |
+| `entry` (first paint) | 6,968,598 B (1,750,645 gz) | 6,980,562 B (1,754,371 gz) | +11,964 B, **+3,726 B gz** (+0.2%): registry, store, hooks, button, its name in 12 languages, and the city flags' pure rules (now decided at first paint) |
 | `__common` (first paint) | 81,624 B | 81,624 B | identical size |
-| `MapLayersPanel` (lazy, on first open) | — | 32,700 B (10,336 gz) | the panel body and all its copy |
+| `MapLayersPanel` (lazy, on first open) | — | 35,760 B (11,103 gz) | the panel body and all its copy |
 
 Bloom's `Popover` was already in the entry. Measured by A/B build, never by
 per-source attribution (`~/Oxy/docs/build-and-runtime-traps.md`).

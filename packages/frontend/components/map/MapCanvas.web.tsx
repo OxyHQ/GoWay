@@ -249,6 +249,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const cityTiles = useMapFeature('cityTiles');
   const trees = useMapFeature('city3dTrees');
   const treeFill = useMapFeature('city3dTreeFill');
+  const cityLife = useMapFeature('cityLife');
   const relief = useMapRelief();
   /**
    * What the last engine was built for, and where its camera was when it went.
@@ -942,6 +943,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               cityTiles,
               trees,
               treeFill,
+              cityLife,
               onModelStatus: (id, status) =>
                 setModelsDrawn((current) => {
                   if ((status === 'drawn') === current.has(id)) return current;
@@ -991,7 +993,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       handle?.detach();
       if (CITY_SKY) setSkyActive(false);
     };
-  }, [ready, resolvedAppearance, needsEngine, city3d, cityTiles, trees, treeFill]);
+  }, [ready, resolvedAppearance, needsEngine, city3d, cityTiles, trees, treeFill, cityLife]);
 
   // Hand the models to the engine whenever either changes.
   useEffect(() => {

@@ -36,6 +36,7 @@
  */
 import { isCity3dRequested } from './city3dFlag';
 import { isCity3dTreeFillRequested, isCity3dTreesRequested } from './city3dTreesFlag';
+import { isCityLifeRequested } from './cityLifeFlag';
 import { isCityTilesRequested } from './cityTilesFlag';
 import { isFlyoverRequested } from './flyoverFlag';
 import { resolveReliefFlags } from './reliefFlag';
@@ -165,6 +166,26 @@ export const MAP_FEATURES = [
     platforms: WEB,
     request: (enabled, { development, search }) =>
       isCity3dTreeFillRequested({ enabled, development, search }),
+  },
+  {
+    id: 'cityLife',
+    tier: 'labs',
+    defaultOn: false,
+    build: process.env.EXPO_PUBLIC_MAP_CITY_LIFE,
+    // It drives on the road archive compiled beside the city tiles.
+    requires: ['cityTiles'],
+    platforms: WEB,
+    // Nothing serves the road tiles on goway.to yet (`docs/MAP_CITY_LIFE.md` →
+    // Hosting), as for the city tiles it needs.
+    offer: 'development',
+    request: (enabled, { development, search, on }) =>
+      isCityLifeRequested({
+        city3d: on('city3d'),
+        cityTiles: on('cityTiles'),
+        enabled,
+        development,
+        search,
+      }),
   },
   {
     id: 'flyover',

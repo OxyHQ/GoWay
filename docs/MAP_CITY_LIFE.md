@@ -24,6 +24,10 @@ Three flags, each a refinement of the one before, all off in production:
 
 `lib/map/cityLifeFlag.ts` requires both of the others: the simulation is drawn
 by the city-3D engine and drives on road tiles compiled beside the city tiles.
+All three are entries in the map-feature registry ([`MAP_FEATURES.md`](./MAP_FEATURES.md)),
+so in a development build they can also be switched in the layers panel's Labs
+(`?labs=1`); city tiles and city life are offered there only in development
+builds until the archives are served.
 
 ```bash
 # 1. Compile the road archive (same extract, same z15 grid as the buildings).
@@ -304,8 +308,10 @@ the `main` it is rebased on (28d10da), separate Metro caches, `--clear`:
 | `lazyChunk` (lazy, three.js) | 3,581,212 B (1,141,608 gz) | 3,613,553 B (1,153,578 gz) | renderer, shaders, models: +12 kB gz |
 | `simWorker` (sealed worker) | — | 67,609 B (23,270 gz) | the whole simulation; started only with city life on |
 
-Nothing new reaches first paint: the flag is read only by the lazy adapter
-(`cityLifeFlag.ts`, like `cityTilesFlag.ts`), the renderer and its worker load
+Nothing new reached first paint: the flag was read only by the lazy adapter
+(`cityLifeFlag.ts`, like `cityTilesFlag.ts`; since the map-feature registry it
+is decided there, at first paint, and handed to the adapter — `MAP_FEATURES.md`
+measures the registry), the renderer and its worker load
 only through `components/engine3d/lazyChunk.ts`, and
 `components/__tests__/engine3dChunk.test.ts` pins that.
 

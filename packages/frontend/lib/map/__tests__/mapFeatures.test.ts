@@ -9,6 +9,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { isCity3dRequested } from '@/lib/map/city3dFlag';
 import { isCity3dTreeFillRequested, isCity3dTreesRequested } from '@/lib/map/city3dTreesFlag';
+import { isCityLifeRequested } from '@/lib/map/cityLifeFlag';
 import { isCityTilesRequested } from '@/lib/map/cityTilesFlag';
 import { isFlyoverRequested } from '@/lib/map/flyoverFlag';
 import {
@@ -75,6 +76,18 @@ function legacy(builds: Builds, development: boolean, search: string) {
       development,
       search,
     }),
+    cityLife: isCityLifeRequested({
+      city3d,
+      cityTiles: isCityTilesRequested({
+        city3d,
+        enabled: onBuild(builds.cityTiles),
+        development,
+        search,
+      }),
+      enabled: onBuild(builds.cityLife),
+      development,
+      search,
+    }),
     city3dTrees,
     city3dTreeFill:
       city3dTrees &&
@@ -102,6 +115,7 @@ describe('the registry', () => {
       ['cityTiles', false],
       ['city3dTrees', false],
       ['city3dTreeFill', false],
+      ['cityLife', false],
       ['flyover', false],
     ]);
     // Nothing new is on by default: every Labs feature starts off. (The trees
@@ -147,13 +161,19 @@ describe('with no stored choice, every flag answers what it did before', () => {
     '?city3d=1&city3dTrees=0',
     '?city3d=1&city3dTreeFill=1',
     '?city3dTreeFill=true',
+    '?city3d=1&cityTiles=1&cityLife=1',
+    '?cityLife=1',
   ];
   for (const development of [false, true]) {
     test(`${development ? 'development' : 'production'} build`, () => {
       for (const value of values) {
         for (const id of MAP_FEATURES.map((feature) => feature.id)) {
           // A feature that needs the city is checked with the city built in.
-          const builds = { [id]: value, ...(id === 'city3d' ? {} : { city3d: '1' }) };
+          const builds = {
+            ...(id === 'city3d' ? {} : { city3d: '1' }),
+            ...(id === 'cityLife' ? { cityTiles: '1' } : {}),
+            [id]: value,
+          };
           for (const search of searches) {
             const now = resolve({ builds, development, search });
             const before = legacy(builds, development, search);
@@ -262,9 +282,11 @@ describe('what the panel offers', () => {
     expect(resolve().get('city3d').available).toBe(true);
   });
 
-  test('city tiles only in a development build (nothing serves them on goway.to yet)', () => {
-    expect(resolve().get('cityTiles').available).toBe(false);
-    expect(resolve({ development: true }).get('cityTiles').available).toBe(true);
+  test('city tiles and city life only in a development build (nothing serves them yet)', () => {
+    for (const id of ['cityTiles', 'cityLife']) {
+      expect(resolve().get(id).available).toBe(false);
+      expect(resolve({ development: true }).get(id).available).toBe(true);
+    }
   });
 });
 
