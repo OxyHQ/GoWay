@@ -45,6 +45,11 @@ in vec3 position;
 in vec3 normal;
 // x: corner occlusion (0–1); y: the building's height in metres / 255.
 in vec2 shade;
+// On 3D terrain: how far this vertex's building is lifted, in metres
+// (terrainGround.ts). Read only while uGrounded is set; without terrain the
+// attribute may not even be bound.
+in float ground;
+uniform float uGrounded;
 
 out vec3 vNormal;
 out float vCornerAo;
@@ -56,7 +61,8 @@ void main() {
   vCornerAo = shade.x;
   vHeightAboveGround = position.z;
   vBuildingHeight = shade.y * 255.0;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  float lift = uGrounded > 0.5 ? ground : 0.0;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position.xy, position.z + lift, 1.0);
 }
 `;
 

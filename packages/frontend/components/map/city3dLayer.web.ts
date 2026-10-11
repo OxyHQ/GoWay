@@ -64,6 +64,7 @@ import {
 import { CARTOGRAPHY_PALETTES } from '@/lib/map/style/palette';
 import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
 
+import { followTerrain } from './city3dGround.web';
 import { cityLightFromSpec, sameCityLight } from './city3dLight';
 // Type-only on purpose: the engine chunk imports these modules at runtime, and
 // a module two lazy chunks share is hoisted into the first-paint `__common`
@@ -71,6 +72,7 @@ import { cityLightFromSpec, sameCityLight } from './city3dLight';
 import type { CityEngine, CityEngineStats } from './engine/city3d/cityEngine';
 import type { ModelSpec, ModelStatus } from './engine/city3d/models';
 import type { CityLight } from './engine/city3d/occlusion';
+import type { GroundStats } from './engine/city3d/terrainGround';
 import { reportMapDefect } from './shared';
 
 /**
@@ -214,6 +216,7 @@ export async function attachCity3d(
   let engine: CityEngine | null = null;
   // Models handed over before MapLibre called `onAdd`.
   let queuedModels: readonly ModelSpec[] | null = null;
+  let unfollowTerrain: (() => void) | null = null;
 
   // The light as MapLibre would apply it to `building-3d` this frame: the
   // given spec (or the style's own), at the current bearing — which matters
@@ -227,6 +230,8 @@ export async function attachCity3d(
   const releaseEngine = () => {
     liveLayers--;
     if (liveLayers > 0) return;
+    unfollowTerrain?.();
+    unfollowTerrain = null;
     engine?.dispose();
     engine = null;
   };
@@ -243,10 +248,13 @@ export async function attachCity3d(
       fade: BUILDINGS_3D_FADE,
       requestRepaint: () => host.triggerRepaint(),
       onStats: __DEV__ ? publishStats : undefined,
+      onGroundStats: __DEV__ ? publishGroundStats : undefined,
       buildings,
       onModelStatus: options.onModelStatus,
     });
     if (queuedModels) engine.setModels(queuedModels);
+    // On 3D terrain the buildings stand on the drawn ground, not at sea level.
+    unfollowTerrain = followTerrain(map, engine);
     if (__DEV__) publishLight(lightSpec ?? map.getLight(), applied);
     return engine;
   };
@@ -368,6 +376,8 @@ export async function attachCity3d(
       } catch {
         // A removed map throws on style access; the layer went with it.
       }
+      unfollowTerrain?.();
+      unfollowTerrain = null;
       engine?.dispose();
       engine = null;
     },
@@ -404,6 +414,14 @@ function publishModelAlignment(map: MapLibreMap, engine: CityEngine): void {
  */
 function publishStats(stats: CityEngineStats): void {
   (globalThis as { __gowayCity3d?: CityEngineStats }).__gowayCity3d = stats;
+}
+
+/**
+ * Development only: how placing the buildings on terrain is going, on
+ * `globalThis.__gowayCity3dGround` (tiles grounded, sampling and placing time).
+ */
+function publishGroundStats(stats: GroundStats): void {
+  (globalThis as { __gowayCity3dGround?: GroundStats }).__gowayCity3dGround = stats;
 }
 
 /**

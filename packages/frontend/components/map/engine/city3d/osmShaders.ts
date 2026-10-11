@@ -49,6 +49,10 @@ in vec3 normal;
 in vec2 shade;
 in vec4 color;
 in vec4 facade;
+// On 3D terrain: the building's lift in metres (terrainGround.ts), read only
+// while uGrounded is set — see shaders.ts.
+in float ground;
+uniform float uGrounded;
 
 out vec3 vNormal;
 out float vCornerAo;
@@ -64,7 +68,8 @@ void main() {
   vBuildingHeight = shade.y * 255.0;
   vColor = color;
   vFacade = facade;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  float lift = uGrounded > 0.5 ? ground : 0.0;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position.xy, position.z + lift, 1.0);
 }
 `;
 
