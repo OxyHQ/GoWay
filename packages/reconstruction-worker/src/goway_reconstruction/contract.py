@@ -12,9 +12,10 @@ the worker writes are built from these models, so they are always complete.
 
 from __future__ import annotations
 
+import math
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SCHEMA_VERSION = 1
 
@@ -168,6 +169,18 @@ class InputFrame(_Input):
     prior: Prior
     camera: FrameCamera | None = None
     panorama: FramePanorama | None = None
+    # Gravity the contributor's phone measured at this frame's instant: a unit
+    # vector pointing DOWN in the frame's camera axes (x right, y down, z
+    # forward). Absent from a backend that predates motion priors, and for any
+    # frame without a measurement (docs/STREET3D_MOTION_PRIORS.md).
+    gravity: tuple[float, float, float] | None = None
+
+    @field_validator("gravity")
+    @classmethod
+    def _gravity_is_a_direction(cls, value: tuple[float, float, float] | None) -> tuple[float, float, float] | None:
+        if value is not None and not (all(math.isfinite(c) for c in value) and abs(math.hypot(*value) - 1.0) <= 0.01):
+            raise ValueError("gravity must be a finite unit vector")
+        return value
 
 
 class Budgets(_Input):
@@ -317,6 +330,12 @@ class SceneMetrics(_Output):
     inputBytesDownloaded: int
     cacheHitRatio: float
     outputBytes: int
+    # Present only when registered frames carried a measured gravity: how many,
+    # how many leveled the scene (0 when the cameras' own up was used instead)
+    # and the median angle between the measurements and the placed scene's down.
+    gravityFrames: int | None = Field(default=None, ge=0)
+    gravityLeveledFrames: int | None = Field(default=None, ge=0)
+    medianGravityResidualDegrees: float | None = Field(default=None, ge=0, le=180)
 
 
 class GateResult(_Output):

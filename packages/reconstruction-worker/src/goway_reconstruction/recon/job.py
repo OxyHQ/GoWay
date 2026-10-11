@@ -47,6 +47,7 @@ from ..contract import (
     FrameCounts,
     GateResult,
     InitialView,
+    InputFrame,
     OutputAsset,
     Provenance,
     SceneInputManifest,
@@ -152,6 +153,16 @@ def _smoke_test(original: np.ndarray, data: bytes, view: View, sh_degree: int, d
     return -10 * math.log10(max(mse, 1e-10))
 
 
+def sfm_frame(f: InputFrame, name: str, rig: RigView | None, anchor: tuple[float, float]) -> SfmFrame:
+    """The solver's view of one manifest frame: its priors in metres around the anchor."""
+    east, north, _ = geodetic_to_enu(f.prior.latitude, f.prior.longitude, 0.0, *anchor, 0.0)
+    focal = f.camera.focalLength35mm if f.camera else None
+    return SfmFrame(
+        f.frameId, f.sequenceGroup, f.sequenceIndex, name, f.width, f.height, east, north, 0.0, focal,
+        rig=rig, heading=f.prior.headingDegrees, gravity=f.gravity,
+    )
+
+
 def run(
     job: SceneReconstructJob,
     ctx: JobContext,
@@ -195,14 +206,7 @@ def run(
             _fetch(aws, cache, f.maskKey, f.maskSha256, masks / f"{name}.png")
         except Exception as error:  # noqa: BLE001
             raise JobFailure("corrupt_input", "a derivative is missing or altered") from error
-        east, north, _ = geodetic_to_enu(f.prior.latitude, f.prior.longitude, 0.0, *anchor, 0.0)
-        focal = f.camera.focalLength35mm if f.camera else None
-        frames.append(
-            SfmFrame(
-                f.frameId, f.sequenceGroup, f.sequenceIndex, name, f.width, f.height, east, north, 0.0, focal,
-                rig=rig, heading=f.prior.headingDegrees,
-            )
-        )
+        frames.append(sfm_frame(f, name, rig, anchor))
         by_id[f.frameId] = f
 
     resume = work / "resume"
@@ -236,6 +240,7 @@ def run(
             "reprojection": solved.mean_reprojection_error,
             "points": solved.sparse_points,
             "georef": [geo.inliers, geo.median_residual_m, geo.p90_residual_m],
+            "gravity": [geo.gravity_frames, geo.gravity_frames if geo.level_source == "gravity" else 0, geo.gravity_residual_deg],
         }
         aligned_dir.mkdir(parents=True, exist_ok=True)
         model.write(str(aligned_dir))
@@ -249,6 +254,8 @@ def run(
     if meta["reprojection"] > gates.maxMeanReprojectionErrorPx:
         failures.append("reprojection_error")
     inliers, median_residual, _p90 = meta["georef"]
+    # A checkpoint written before motion priors existed has no gravity entry.
+    gravity_frames, gravity_leveled, gravity_residual = meta.get("gravity", [0, 0, None])
     if inliers < gates.minGeoreferenceInliers:
         raise JobFailure("georeference_failed", "too few cameras agree with their position priors")
     if failures:
@@ -358,6 +365,15 @@ def run(
             inputBytesDownloaded=aws.bytes_downloaded,
             cacheHitRatio=round(cache.hit_ratio, 4),
             outputBytes=sum(a.byteSize for a in assets),
+            **(
+                {
+                    "gravityFrames": gravity_frames,
+                    "gravityLeveledFrames": gravity_leveled,
+                    "medianGravityResidualDegrees": round(gravity_residual, 2),
+                }
+                if gravity_frames and gravity_residual is not None
+                else {}
+            ),
         ),
         gates=GateResult(passed=True, failures=[]),
         assets=assets,

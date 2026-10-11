@@ -18,6 +18,11 @@
  * Its config plugin needs nothing from the app: Expo applies `expo-camera`'s
  * plugin automatically when the package is installed, which declares the
  * camera permission. Recording is muted, so the microphone is never asked for.
+ *
+ * While it records, the phone's gravity is sampled (`motionSensor.ts`) and
+ * travels with the recording as its `motion`, so the reconstruction knows
+ * which way was down. That asks for no permission; it starts at Start and
+ * stops with the recorder.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
@@ -25,6 +30,8 @@ import { Camera, CameraView, type CameraOrientation } from 'expo-camera';
 import { File } from 'expo-file-system';
 import { useTranslation } from '@/lib/i18n';
 import { GuidedOverlay, type GuidedPhase } from './GuidedOverlay';
+import { recordingOrientation } from './motion';
+import { startMotionCapture, type MotionCapture } from './motionSensor';
 import { lockNoticeKeys, lockReport, nativeRecording, recordingBudget } from './recording';
 import type { GuidedCaptureProps } from './types';
 import { useGuidedSession } from './useGuidedSession';
@@ -89,6 +96,8 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
   const recordingActive = useRef(false);
   /** The camera a recording was started on, for stopping it from cleanup. */
   const recorderView = useRef<CameraView | null>(null);
+  /** Gravity sampled for the recording in progress. */
+  const motion = useRef<MotionCapture | null>(null);
 
   function fail(key: string) {
     setError(t(key));
@@ -120,6 +129,7 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
         discard.current = true;
         recorderView.current?.stopRecording();
       }
+      motion.current?.stop();
     };
   }, [accepted, t]);
 
@@ -134,6 +144,9 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
     session.start();
     setPhase('recording');
     onStart();
+    // The recorder takes the orientation the camera last reported; the samples' clock starts here.
+    const sampling = startMotionCapture(recordingOrientation(Platform.OS, orientation));
+    motion.current = sampling;
     try {
       const result = await view.recordAsync({
         maxDuration: budget.maxSeconds,
@@ -142,6 +155,7 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
         ...(Platform.OS === 'ios' ? { codec: 'avc1' as const } : {}),
       });
       const seconds = session.elapsedNow();
+      const track = sampling.stop();
       recordingActive.current = false;
       session.stop();
       if (discard.current) {
@@ -166,8 +180,10 @@ export function GuidedCapture({ policy, onStart, onRecorded, onCancel }: GuidedC
         capturedAt: startedAt.toISOString(),
         // The recorder ends by itself only at a limit (or when the camera is taken away).
         stoppedAtLimit: !userStopped.current,
+        ...(track ? { motion: track } : {}),
       });
     } catch {
+      sampling.stop();
       recordingActive.current = false;
       session.stop();
       if (!discard.current) fail('contribute.guided.error.recording');

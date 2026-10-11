@@ -21,11 +21,12 @@
  */
 
 import { and, asc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
-import type { CaptureProjection } from '@goway/contracts';
+import type { CaptureMediaKind, CaptureProjection } from '@goway/contracts';
 import { qualified, uuidv7 } from '@oxy.so/db';
 import { addDays } from '../../capture/retention';
 import { captureConfig } from '../../config/capture';
 import { street3dConfig } from '../../config/street3d';
+import { framesGravity, type MotionTrack } from '../../street3d/motion';
 import type { CapturePrivacyJob, CapturePrivacyResult } from '../../street3d/workerContract';
 import { WORKER_CONTRACT_SCHEMA_VERSION } from '../../street3d/workerContract';
 import type { Database, Transaction } from '../postgres';
@@ -33,6 +34,7 @@ import {
   captureAssets,
   captureDerivatives,
   captureMediaObjects,
+  captureMotionTracks,
   street3dCaptureBlocks,
   street3dJobs,
 } from '../schema';
@@ -348,6 +350,17 @@ export async function applyPrivacyResult(
 
   if (result.verdict === 'passed') {
     const expiresAt = addDays(now, captureConfig.retentionDays.privacy_safe_proxy);
+    // The motion track's one use: a measured gravity per frame. Consumed here,
+    // so it outlives neither this result nor the raw media it came with.
+    const [track] = await tx
+      .delete(captureMotionTracks)
+      .where(eq(captureMotionTracks.assetId, assetId))
+      .returning();
+    const gravity = framesGravity(
+      track as MotionTrack | undefined,
+      result.frames,
+      asset.mediaKind as CaptureMediaKind,
+    );
     const removal = withdrawn
       ? {
           deletionRequestedAt: now,
@@ -358,7 +371,7 @@ export async function applyPrivacyResult(
     await tx
       .insert(captureDerivatives)
       .values(
-        result.frames.map((frame) => ({
+        result.frames.map((frame, index) => ({
           assetId,
           jobId: job.id,
           frameIndex: frame.frameIndex,
@@ -376,6 +389,13 @@ export async function applyPrivacyResult(
                 panoramaIndex: frame.panorama.index,
                 panoramaYawDegrees: frame.panorama.yawDegrees,
                 panoramaFovDegrees: frame.panorama.horizontalFovDegrees,
+              }
+            : {}),
+          ...(gravity[index]
+            ? {
+                gravityX: gravity[index][0],
+                gravityY: gravity[index][1],
+                gravityZ: gravity[index][2],
               }
             : {}),
           expiresAt,

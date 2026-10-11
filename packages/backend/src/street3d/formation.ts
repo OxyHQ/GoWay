@@ -167,6 +167,9 @@ export function manifestFrames(jobId: string, frames: readonly EligibleFrame[]):
         : frame.focalLength35mm !== null
           ? { camera: { focalLength35mm: frame.focalLength35mm } }
           : {}),
+      ...(frame.gravityX !== null && frame.gravityY !== null && frame.gravityZ !== null
+        ? { gravity: [frame.gravityX, frame.gravityY, frame.gravityZ] as [number, number, number] }
+        : {}),
     };
   });
 }

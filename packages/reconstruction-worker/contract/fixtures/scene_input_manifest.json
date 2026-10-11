@@ -21,7 +21,8 @@
       "sequenceIndex": 0,
       "capturedAt": "2024-06-26T09:12:03.000Z",
       "prior": { "latitude": 48.86842, "longitude": 2.30199, "altitudeMeters": 52.1, "accuracyMeters": 4.5, "headingDegrees": 271.0 },
-      "camera": { "focalLength35mm": 26 }
+      "camera": { "focalLength35mm": 26 },
+      "gravity": [0.0346, 0.9919, 0.1219]
     },
     {
       "frameId": "f-02",

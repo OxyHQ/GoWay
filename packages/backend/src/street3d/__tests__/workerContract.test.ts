@@ -28,6 +28,7 @@ function schemaFor(file: string): z.ZodType {
   if (file.startsWith('result.capture_privacy.')) return capturePrivacyResultSchema;
   if (file === 'result.scene_reconstruct.json') return sceneReconstructResultSchema;
   if (file === 'scene_input_manifest.json') return sceneInputManifestSchema;
+  if (file === 'scene_input_manifest.pre-gravity.json') return sceneInputManifestSchema;
   throw new Error(`No backend parser is registered for fixture ${file}`);
 }
 
@@ -51,6 +52,42 @@ describe('worker contract fixtures', () => {
       expect(result.success).toBe(true);
     });
   }
+
+  it('carries measured gravity per frame, and still reads a manifest written before it', () => {
+    const current = sceneInputManifestSchema.parse(fixture('scene_input_manifest.json'));
+    const legacy = sceneInputManifestSchema.parse(fixture('scene_input_manifest.pre-gravity.json'));
+    expect(
+      current.frames.flatMap((frame) => (frame.gravity ? [[frame.frameId, frame.gravity]] : [])),
+    ).toEqual([['f-01', [0.0346, 0.9919, 0.1219]]]);
+    expect(legacy.schemaVersion).toBe(current.schemaVersion);
+    expect(legacy.frames.every((frame) => frame.gravity === undefined)).toBe(true);
+    expect(legacy.frames.map((frame) => frame.frameId)).toEqual(
+      current.frames.map((frame) => frame.frameId),
+    );
+    for (const bad of [
+      [0, 0.5, 0],
+      [0, 1],
+      [0, 1, 0, 0],
+      [Number.NaN, 1, 0],
+    ]) {
+      const raw = fixture('scene_input_manifest.json') as { frames: Record<string, unknown>[] };
+      (raw.frames[0] as Record<string, unknown>).gravity = bad;
+      expect(sceneInputManifestSchema.safeParse(raw).success).toBe(false);
+    }
+  });
+
+  it('reads the gravity metrics of a result, which an older worker omits', () => {
+    const result = sceneReconstructResultSchema.parse(fixture('result.scene_reconstruct.json'));
+    expect(result.metrics.gravityFrames).toBe(1);
+    expect(result.metrics.gravityLeveledFrames).toBe(0);
+    const raw = fixture('result.scene_reconstruct.json') as { metrics: Record<string, unknown> };
+    delete raw.metrics.gravityFrames;
+    delete raw.metrics.gravityLeveledFrames;
+    delete raw.metrics.medianGravityResidualDegrees;
+    expect(sceneReconstructResultSchema.safeParse(raw).success).toBe(true);
+    raw.metrics.medianGravityResidualDegrees = -1;
+    expect(sceneReconstructResultSchema.safeParse(raw).success).toBe(false);
+  });
 
   it('fails closed on a pass without frames or with surviving metadata', () => {
     const passed = fixture('result.capture_privacy.json');

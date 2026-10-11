@@ -13,6 +13,7 @@ import { useOxy } from '@oxy.so/services';
 import type {
   CaptureAsset,
   CaptureAssetInput,
+  CaptureMotionInput,
   CaptureSession,
   CaptureUploadPolicy,
   CaptureUploadTicket,
@@ -45,7 +46,11 @@ export function ContributeScreen() {
   const [source, setSource] = useState<CaptureSession['source']>('library');
   const [guided, setGuided] = useState(false);
   /** What a guided recording knows that a picked file's metadata would otherwise carry. */
-  const [capture, setCapture] = useState<{ capturedAt: string; frameRate?: number } | null>(null);
+  const [capture, setCapture] = useState<{
+    capturedAt: string;
+    frameRate?: number;
+    motion?: CaptureMotionInput;
+  } | null>(null);
   const [consent, setConsent] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -233,6 +238,7 @@ export function ContributeScreen() {
       setCapture({
         capturedAt: recording.capturedAt,
         ...(recording.frameRate ? { frameRate: recording.frameRate } : {}),
+        ...(recording.motion ? { motion: recording.motion } : {}),
       });
       const time = formatClock(seconds);
       const summary =
@@ -319,6 +325,10 @@ export function ContributeScreen() {
             location: [location],
             ...(media.projection === 'equirectangular' ? { projection: media.projection } : {}),
             ...(capture ? { capturedAt: capture.capturedAt } : {}),
+            // The phone that recorded a 360° file is not the camera that took it.
+            ...(capture?.motion && media.projection !== 'equirectangular'
+              ? { motion: capture.motion }
+              : {}),
             camera: {
               ...(media.asset.width > 0 ? { widthPixels: media.asset.width } : {}),
               ...(media.asset.height > 0 ? { heightPixels: media.asset.height } : {}),

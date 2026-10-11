@@ -71,6 +71,10 @@ export interface EligibleFrame {
   panoramaIndex: number | null;
   panoramaYawDegrees: number | null;
   panoramaFovDegrees: number | null;
+  /** Measured gravity in the frame's camera axes; see `capture_derivatives.gravity_*`. */
+  gravityX: number | null;
+  gravityY: number | null;
+  gravityZ: number | null;
   geoCell: string;
   assetState: string;
 }
@@ -122,6 +126,9 @@ export async function loadEligibleFrames(
       panoramaIndex: captureDerivatives.panoramaIndex,
       panoramaYawDegrees: captureDerivatives.panoramaYawDegrees,
       panoramaFovDegrees: captureDerivatives.panoramaFovDegrees,
+      gravityX: captureDerivatives.gravityX,
+      gravityY: captureDerivatives.gravityY,
+      gravityZ: captureDerivatives.gravityZ,
       geoCell: sql<string>`${captureAssets.geoCell}`,
       assetState: captureAssets.state,
     })

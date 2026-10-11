@@ -18,6 +18,7 @@ import { constraintNameOf } from '@oxy.so/db';
 import { createCaptureSession, registerAsset } from '../capture/captureRepository';
 import {
   captureDerivatives,
+  captureMotionTracks,
   captureSessions,
   street3dCaptureEdges,
   street3dJobs,
@@ -201,6 +202,53 @@ describe('derivatives are temporary and never raw', () => {
           .values(derivative({ frameIndex: 14, ...view, panoramaIndex: -1 })),
       ),
     ).toContain('capture_derivatives_panorama_check');
+  });
+});
+
+describe('motion priors', () => {
+  it("stores a frame's gravity whole and of unit length, or not at all", async () => {
+    const db = requireSuite(suite).db;
+    const level = { gravityX: 0, gravityY: 1, gravityZ: 0 };
+    await db.insert(captureDerivatives).values(derivative({ frameIndex: 20, ...level }));
+    await db.insert(captureDerivatives).values(derivative({ frameIndex: 21 }));
+    for (const [frameIndex, gravity] of [
+      [22, { gravityX: 0, gravityY: 1 }],
+      [23, { gravityX: 0, gravityY: 0.5, gravityZ: 0 }],
+      [24, { gravityX: 0, gravityY: 2, gravityZ: 0 }],
+    ] as const) {
+      expect(
+        await refusedBy(() =>
+          db.insert(captureDerivatives).values(derivative({ frameIndex, ...gravity })),
+        ),
+      ).toContain('capture_derivatives_gravity_check');
+    }
+  });
+
+  it("keeps a motion track's columns the same length, bounded, in a known orientation", async () => {
+    const db = requireSuite(suite).db;
+    const track = {
+      assetId,
+      orientation: 'portrait',
+      sampleSeconds: [0, 0.25],
+      gravityX: [0, 0],
+      gravityY: [-1, -1],
+      gravityZ: [0, 0],
+    };
+    const refusals: [Partial<typeof track>, string][] = [
+      [{ gravityZ: [0] }, 'capture_motion_tracks_samples_check'],
+      [
+        { sampleSeconds: [], gravityX: [], gravityY: [], gravityZ: [] },
+        'capture_motion_tracks_samples_check',
+      ],
+      [{ orientation: 'sideways' }, 'capture_motion_tracks_orientation_check'],
+    ];
+    for (const [bad, constraint] of refusals) {
+      expect(
+        await refusedBy(() => db.insert(captureMotionTracks).values({ ...track, ...bad })),
+      ).toContain(constraint);
+    }
+    await db.insert(captureMotionTracks).values(track);
+    await db.delete(captureMotionTracks);
   });
 });
 

@@ -29,6 +29,7 @@ import { createHash } from 'node:crypto';
 import type {
   CaptureAsset,
   CaptureCameraMetadata,
+  CaptureMotionInput,
   CaptureLocationEvidence,
   CaptureMediaKind,
   CaptureProjection,
@@ -42,12 +43,13 @@ import { extendedExpiry, planOriginalRetention, uploadIntentExpiry } from '../..
 import { ApiError } from '../../http/apiError';
 import type { Paged, TimeWindow } from '../../http/cursor';
 import { logger } from '../../utils/logger';
-import { retractCaptureFromStreet3d } from '../street3d/moderation';
+import { discardMotionTrack, retractCaptureFromStreet3d } from '../street3d/moderation';
 import type { Database, DatabaseOrTransaction } from '../postgres';
 import {
   captureAssets,
   captureLocationEvidence,
   captureMediaObjects,
+  captureMotionTracks,
   captureSessions,
 } from '../schema';
 import {
@@ -95,6 +97,8 @@ export interface RegisterAssetInput {
   /** Every position the client claims. Recorded verbatim with witness `client`. */
   evidence: readonly CaptureLocationEvidence[];
   camera?: CaptureCameraMetadata;
+  /** Gravity the capturing phone measured, kept until the privacy result consumes it. */
+  motion?: CaptureMotionInput;
 }
 
 /** What `registerAsset` produced, and whether bytes still have to be sent. */
@@ -603,6 +607,18 @@ export async function registerAsset(
       );
     }
 
+    if (input.motion) {
+      const samples = input.motion.samples;
+      await tx.insert(captureMotionTracks).values({
+        assetId: assetRow.id,
+        orientation: input.motion.orientation,
+        sampleSeconds: samples.map((sample) => sample.t),
+        gravityX: samples.map((sample) => sample.gravity[0]),
+        gravityY: samples.map((sample) => sample.gravity[1]),
+        gravityZ: samples.map((sample) => sample.gravity[2]),
+      });
+    }
+
     noteEvidenceDisagreement(assetRow.id, input.evidence);
 
     return {
@@ -751,6 +767,8 @@ export async function withdrawCaptureAsset(
       .set({ state: 'deleted', privacyState: 'blocked', privacyCompletedAt: now, updatedAt: now })
       .where(eq(captureAssets.id, assetId))
       .returning(ASSET_COLUMNS);
+    // Last: job → media object → asset → track (see `discardMotionTrack`).
+    await discardMotionTrack(tx, assetId);
     const [remaining] = await tx
       .select({ count: count() })
       .from(captureAssets)

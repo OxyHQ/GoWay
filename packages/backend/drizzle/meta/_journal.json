@@ -127,6 +127,13 @@
       "when": 1791191618170,
       "tag": "0017_goway_drop_category_check",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791709893986,
+      "tag": "0018_goway_capture_motion",
+      "breakpoints": true
     }
   ]
 }

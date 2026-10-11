@@ -20,6 +20,8 @@
 
 import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import postgres from 'postgres';
 import { SEEDED_CATEGORIES } from '../../__tests__/categoryFixtures';
 import {
@@ -30,6 +32,7 @@ import {
   type SuiteDatabase,
 } from './testDatabase';
 import { defined } from '../../__tests__/defined';
+import { MIGRATIONS_FOLDER } from '../migrationsFolder';
 
 /** The label languages the seed carries for every category, `en` first. */
 const SEEDED_LANGUAGES = [
@@ -329,7 +332,12 @@ describe('the deploy onto the places-platform release', () => {
       const [pending] = await old<
         { applied: number }[]
       >`SELECT count(*)::int AS applied FROM drizzle.__drizzle_migrations`;
-      expect(pending?.applied).toBe(18);
+      // Everything after 0013 is `pre`, so one pre phase applies the rest of the journal.
+      const journal = JSON.parse(
+        readFileSync(join(MIGRATIONS_FOLDER, 'meta', '_journal.json'), 'utf8'),
+      ) as { entries: unknown[] };
+      expect(journal.entries.length).toBeGreaterThanOrEqual(18);
+      expect(pending?.applied).toBe(journal.entries.length);
     } finally {
       await old.end({ timeout: 5 });
     }
