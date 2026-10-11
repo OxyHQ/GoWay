@@ -43,7 +43,7 @@ import { extendedExpiry, planOriginalRetention, uploadIntentExpiry } from '../..
 import { ApiError } from '../../http/apiError';
 import type { Paged, TimeWindow } from '../../http/cursor';
 import { logger } from '../../utils/logger';
-import { retractCaptureFromStreet3d } from '../street3d/moderation';
+import { discardMotionTrack, retractCaptureFromStreet3d } from '../street3d/moderation';
 import type { Database, DatabaseOrTransaction } from '../postgres';
 import {
   captureAssets,
@@ -767,6 +767,8 @@ export async function withdrawCaptureAsset(
       .set({ state: 'deleted', privacyState: 'blocked', privacyCompletedAt: now, updatedAt: now })
       .where(eq(captureAssets.id, assetId))
       .returning(ASSET_COLUMNS);
+    // Last: job → media object → asset → track (see `discardMotionTrack`).
+    await discardMotionTrack(tx, assetId);
     const [remaining] = await tx
       .select({ count: count() })
       .from(captureAssets)

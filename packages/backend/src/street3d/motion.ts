@@ -26,7 +26,7 @@
  * `docs/STREET3D_MOTION_PRIORS.md`.
  */
 
-import type { CaptureMotionOrientation } from '@goway/contracts';
+import type { CaptureMediaKind, CaptureMotionOrientation } from '@goway/contracts';
 
 export type Vector3 = readonly [number, number, number];
 
@@ -129,7 +129,7 @@ export function gravityAt(track: MotionTrack, t: number): Vector3 | null {
 export interface DerivedFrame {
   width: number;
   height: number;
-  /** Seconds into a video; absent for a photo, which is the instant `t = 0`. */
+  /** Seconds into a video. A photo is the instant `t = 0` whatever this says. */
   timestampSeconds?: number | undefined;
 }
 
@@ -139,10 +139,15 @@ export interface DerivedFrame {
  * All or nothing per CAPTURE on the shape check: one capture has one
  * orientation, so a frame whose shape contradicts it says the whole track is
  * in axes this function would get wrong.
+ *
+ * A photo is the instant `t = 0`. A video keyframe is its own
+ * `timestampSeconds` and nothing else: a keyframe the result reports without
+ * one gets no gravity, never the recording's first sample.
  */
 export function framesGravity(
   track: MotionTrack | null | undefined,
   frames: readonly DerivedFrame[],
+  mediaKind: CaptureMediaKind,
 ): (Vector3 | null)[] {
   if (!track) return frames.map(() => null);
   if (
@@ -152,7 +157,9 @@ export function framesGravity(
   )
     return frames.map(() => null);
   return frames.map((frame) => {
-    const device = gravityAt(track, frame.timestampSeconds ?? 0);
+    const t = mediaKind === 'photo' ? 0 : frame.timestampSeconds;
+    if (t === undefined) return null;
+    const device = gravityAt(track, t);
     return device ? unit(deviceToCamera(device, track.orientation)) : null;
   });
 }

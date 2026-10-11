@@ -38,6 +38,8 @@ import {
   street3dScenes,
 } from '../../db/schema';
 import { findCoverage, findPublishedManifest } from '../../db/street3d/public';
+import { lockJob } from '../../db/street3d/jobs';
+import { applyPrivacyResult } from '../../db/street3d/privacy';
 import { loadEligibleFrames } from '../../db/street3d/scenes';
 import {
   requireSuite,
@@ -55,6 +57,7 @@ import {
 } from '../admin';
 import { tick, type TickSummary } from '../scheduler';
 import {
+  capturePrivacyResultSchema,
   sceneInputManifestSchema,
   type CapturePrivacyJob,
   type SceneInputManifest,
@@ -981,6 +984,43 @@ describe('motion priors', () => {
     await run();
     expect(await tracks(recorded.assetId)).toHaveLength(1); // the next attempt needs it
     await withdrawCaptureAsset(db(), recorded.assetId, recorded.owner);
+    expect(await tracks(recorded.assetId)).toHaveLength(0);
+  });
+
+  it('lets a withdrawal and a privacy completion overlap without deadlocking on the track', async () => {
+    const recorded = await contribute({ motion: pitched(5) });
+    await run();
+    const [{ envelope }] = await worker.take();
+    const job = envelope as CapturePrivacyJob;
+    const completed = await worker.completePrivacy(job, {
+      frames: 2,
+      keyframes: portraitKeyframes,
+    });
+    if (completed.type !== 'completed') throw new Error('expected a completed event');
+    const result = capturePrivacyResultSchema.parse(services.jobStore.json(completed.result.key));
+    const client = requireSuite(suite).client;
+    const waitingOnLocks = async () =>
+      (
+        await client<{ waiting: number }[]>`
+          select count(*)::int as waiting from pg_stat_activity
+          where datname = current_database() and wait_event_type = 'Lock'`
+      )[0]?.waiting ?? 0;
+
+    // The completion takes the job lock as `events.ts` does, then — while it
+    // holds it — the contributor withdraws, which must wait for that job.
+    let withdrawal: Promise<unknown> | null = null;
+    const completion = db().transaction(async (tx) => {
+      const locked = defined(await lockJob(tx, job.jobId));
+      withdrawal = withdrawCaptureAsset(db(), recorded.assetId, recorded.owner);
+      for (let i = 0; i < 200 && (await waitingOnLocks()) === 0; i += 1)
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(await waitingOnLocks()).toBeGreaterThan(0);
+      return applyPrivacyResult(tx, locked, result, completed.result, new Date());
+    });
+    // Postgres breaks a deadlock by aborting one side (40P01); both must succeed.
+    const [applied, withdrawn] = await Promise.all([completion, completion.then(() => withdrawal)]);
+    expect(applied).toBe('passed');
+    expect(withdrawn).toMatchObject({ id: recorded.assetId, state: 'deleted' });
     expect(await tracks(recorded.assetId)).toHaveLength(0);
   });
 

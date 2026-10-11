@@ -21,7 +21,7 @@
  */
 
 import { and, asc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
-import type { CaptureProjection } from '@goway/contracts';
+import type { CaptureMediaKind, CaptureProjection } from '@goway/contracts';
 import { qualified, uuidv7 } from '@oxy.so/db';
 import { addDays } from '../../capture/retention';
 import { captureConfig } from '../../config/capture';
@@ -356,7 +356,11 @@ export async function applyPrivacyResult(
       .delete(captureMotionTracks)
       .where(eq(captureMotionTracks.assetId, assetId))
       .returning();
-    const gravity = framesGravity(track as MotionTrack | undefined, result.frames);
+    const gravity = framesGravity(
+      track as MotionTrack | undefined,
+      result.frames,
+      asset.mediaKind as CaptureMediaKind,
+    );
     const removal = withdrawn
       ? {
           deletionRequestedAt: now,

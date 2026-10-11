@@ -53,14 +53,26 @@ export type RetractionReason = 'contributor_request' | 'moderation';
  * that inverted that order could deadlock against an event being applied. Returns
  * the versions that registered it (published or superseded).
  */
+/**
+ * Delete a capture's motion track: nothing will be derived from it again.
+ *
+ * Call it LAST, holding the capture's media object and asset locks. The lock
+ * order every transaction touching a track follows is job → media object →
+ * asset → track: `applyPrivacyResult` consumes the track in that order, and a
+ * withdrawal or block that took the track first and then waited for the job
+ * would deadlock against it (`captureCleanupRepository` holds the media
+ * object, then deletes tracks).
+ */
+export async function discardMotionTrack(tx: Transaction, assetId: string): Promise<void> {
+  await tx.delete(captureMotionTracks).where(eq(captureMotionTracks.assetId, assetId));
+}
+
 export async function retractCaptureFromStreet3d(
   tx: Transaction,
   assetId: string,
   reason: RetractionReason,
   now: Date,
 ): Promise<{ versionIds: string[]; sceneIds: string[]; cancelledJobs: number }> {
-  // Nothing will be derived from a withdrawn or blocked capture again.
-  await tx.delete(captureMotionTracks).where(eq(captureMotionTracks.assetId, assetId));
   const derivatives = await tx
     .select({ id: captureDerivatives.id })
     .from(captureDerivatives)
@@ -308,6 +320,7 @@ export async function blockCapture(
       .where(eq(captureAssets.id, assetId))
       .for('update');
     if (!media || !asset) return null;
+    await discardMotionTrack(tx, assetId);
 
     await tx
       .insert(street3dCaptureBlocks)

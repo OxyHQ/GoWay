@@ -176,11 +176,14 @@ privacy worker ──PrivacyFrame.timestampSeconds──▶ backend applyPrivacy
   columns (equal lengths, bounded by CHECK). It is deleted when the privacy
   result consumes it, when the contributor withdraws or moderation blocks the
   capture (`retractCaptureFromStreet3d`), and in the transaction that commits
-  the raw object's deletion for any reason (`claimCaptureCleanup`). A failed
+  the raw object's deletion for any reason (`claimCaptureCleanup`). Every
+  transaction that deletes a track takes its locks in one order — job, media
+  object, asset, track — so a withdrawal overlapping a privacy completion
+  waits instead of deadlocking. A failed
   privacy attempt keeps it for the next one.
 - **Per frame** (`backend/src/street3d/motion.ts`). For each derivative, the
   track is interpolated at the keyframe's `timestampSeconds` (a photo is
-  `t = 0`), nothing across a gap of more than 2 s or more than 1 s past either
+  `t = 0`; a video keyframe reported without one gets none), nothing across a gap of more than 2 s or more than 1 s past either
   end, then rotated from device axes into the picture's camera axes by the
   recording orientation. A capture whose frames are the wrong shape for its
   orientation (a portrait track with landscape frames) gets no gravity at all:

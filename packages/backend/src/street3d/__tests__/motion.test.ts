@@ -103,11 +103,21 @@ describe('gravity per privacy-safe frame', () => {
 
   it('reads each keyframe at its own timestamp, and a photo at the instant it was taken', () => {
     const [video, photo] = [
-      framesGravity(portrait, [{ width: 1080, height: 1920, timestampSeconds: 1 }]),
-      framesGravity(portrait, [{ width: 1080, height: 1920 }]),
+      framesGravity(portrait, [{ width: 1080, height: 1920, timestampSeconds: 1 }], 'video'),
+      framesGravity(portrait, [{ width: 1080, height: 1920 }], 'photo'),
     ];
     close(video[0], [0, Math.cos(degrees(30)), Math.sin(degrees(30))]);
     close(photo[0], [0, 1, 0]);
+  });
+
+  it('gives a video keyframe without a timestamp nothing, not the first sample', () => {
+    const frames = [
+      { width: 1080, height: 1920 },
+      { width: 1080, height: 1920, timestampSeconds: 1 },
+    ];
+    const [untimed, timed] = framesGravity(portrait, frames, 'video');
+    expect(untimed).toBeNull();
+    close(timed, [0, Math.cos(degrees(30)), Math.sin(degrees(30))]);
   });
 
   it('drops the whole capture when a frame is the wrong shape for its orientation', () => {
@@ -115,16 +125,16 @@ describe('gravity per privacy-safe frame', () => {
       { width: 1080, height: 1920, timestampSeconds: 0 },
       { width: 1920, height: 1080, timestampSeconds: 1 },
     ];
-    expect(framesGravity(portrait, frames)).toEqual([null, null]);
+    expect(framesGravity(portrait, frames, 'video')).toEqual([null, null]);
     const landscape = track('landscapeLeft', [[0, [-1, 0, 0]]]);
     close(
-      framesGravity(landscape, [{ width: 1920, height: 1080, timestampSeconds: 0 }])[0],
+      framesGravity(landscape, [{ width: 1920, height: 1080, timestampSeconds: 0 }], 'video')[0],
       [0, 1, 0],
     );
-    expect(framesGravity(landscape, [{ width: 1080, height: 1920 }])).toEqual([null]);
+    expect(framesGravity(landscape, [{ width: 1080, height: 1920 }], 'photo')).toEqual([null]);
   });
 
   it('is empty without a track', () => {
-    expect(framesGravity(null, [{ width: 10, height: 10 }])).toEqual([null]);
+    expect(framesGravity(null, [{ width: 10, height: 10 }], 'photo')).toEqual([null]);
   });
 });
