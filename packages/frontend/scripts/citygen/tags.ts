@@ -19,6 +19,8 @@
  * roof is carved out of a tagged `height` but stacked on top of levels.
  */
 import {
+  type BuildingEra,
+  type BuildingUse,
   CITY_PROPS,
   METRES_PER_LEVEL,
   ROOF_MATERIALS,
@@ -315,6 +317,113 @@ const LIT_AFFIRMATIVE = new Set([
  * read: attributing a lamp to the building it points at is a spatial guess,
  * not a tag.
  */
+/**
+ * `building=*` values by the class the facade styling reads
+ * (`CITY_PROPS.use`). Anything not listed — `yes` above all, 70%+ of the
+ * world's buildings — is no class: the styling's neutral default, never a guess.
+ */
+const BUILDING_USE_OF: Readonly<Record<string, BuildingUse>> = {
+  ...Object.fromEntries(
+    [
+      'residential',
+      'apartments',
+      'house',
+      'detached',
+      'semidetached_house',
+      'terrace',
+      'dormitory',
+      'bungalow',
+      'cabin',
+      'farm',
+      'houseboat',
+      'static_caravan',
+    ].map((v) => [v, 'residential' as const]),
+  ),
+  ...Object.fromEntries(
+    ['commercial', 'office', 'retail', 'hotel', 'supermarket', 'kiosk', 'bank', 'mall'].map((v) => [
+      v,
+      'commercial' as const,
+    ]),
+  ),
+  ...Object.fromEntries(
+    [
+      'civic',
+      'public',
+      'government',
+      'townhall',
+      'courthouse',
+      'school',
+      'university',
+      'college',
+      'kindergarten',
+      'hospital',
+      'fire_station',
+      'museum',
+      'library',
+      'train_station',
+      'transportation',
+      'stadium',
+      'sports_hall',
+      'grandstand',
+      'pavilion',
+    ].map((v) => [v, 'civic' as const]),
+  ),
+  ...Object.fromEntries(
+    [
+      'church',
+      'cathedral',
+      'chapel',
+      'basilica',
+      'mosque',
+      'temple',
+      'synagogue',
+      'shrine',
+      'monastery',
+      'religious',
+    ].map((v) => [v, 'religious' as const]),
+  ),
+  ...Object.fromEntries(
+    [
+      'industrial',
+      'warehouse',
+      'factory',
+      'manufacture',
+      'garage',
+      'garages',
+      'shed',
+      'service',
+      'hangar',
+      'storage_tank',
+      'barn',
+      'greenhouse',
+      'carport',
+      'parking',
+      'silo',
+    ].map((v) => [v, 'industrial' as const]),
+  ),
+};
+
+/** The class a `building=*` value records, if it records one (`CITY_PROPS.use`). */
+export function parseBuildingUse(value: string | undefined): BuildingUse | undefined {
+  return value === undefined ? undefined : BUILDING_USE_OF[value.trim().toLowerCase()];
+}
+
+/**
+ * `start_date` → a coarse era (`CITY_PROPS.era`). Only a leading year is read
+ * (`1931`, `1931-05-01`, `~1931`, `1930..1932` take the first); a century
+ * (`C19`), a decade (`1930s`) or anything without a 4-digit year is refused
+ * rather than guessed.
+ */
+export function parseBuildingEra(value: string | undefined): BuildingEra | undefined {
+  const match = value?.trim().match(/^(?:~|before |after )?(\d{4})(?:$|[-.\s])/);
+  if (!match) return undefined;
+  const year = Number(match[1]);
+  if (year < 1000 || year > 2100) return undefined;
+  if (year < 1900) return 'historic';
+  if (year < 1945) return 'early_modern';
+  return 'modern';
+}
+
 export function parseLitAtNight(tags: Tags): boolean {
   const floodlit = tags.floodlit?.trim().toLowerCase();
   if (floodlit === 'yes' || floodlit === '1' || floodlit === 'true') return true;
@@ -433,5 +542,9 @@ export function resolveProperties(
   if (roofMaterial) props[CITY_PROPS.roofMaterial] = roofMaterial;
   if (kind === 'part') props[CITY_PROPS.part] = true;
   if (parseLitAtNight(tags)) props[CITY_PROPS.floodlit] = true;
+  const use = parseBuildingUse(tags.building);
+  if (use) props[CITY_PROPS.use] = use;
+  const era = parseBuildingEra(tags.start_date);
+  if (era) props[CITY_PROPS.era] = era;
   return props;
 }

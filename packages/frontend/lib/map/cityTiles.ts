@@ -153,7 +153,42 @@ export const CITY_PROPS = {
    * look, colour and fall-off) on a recorded fact (that it is lit).
    */
   floodlit: 'floodlit',
+  /**
+   * What the building is FOR, from `building=*` (a part inherits its outline's):
+   * {@link BUILDING_USES}. Absent for `building=yes` and anything unlisted. Read
+   * only to vary the facade's styling (`materials.ts` → facade relief), never
+   * drawn as a fact: no signage, names or storefronts come from it.
+   */
+  use: 'use',
+  /**
+   * When it was built, as a coarse era from `start_date` (a part inherits its
+   * outline's): {@link BUILDING_ERAS}. Absent when not tagged or not a year.
+   * Styling only, as {@link CITY_PROPS.use}.
+   */
+  era: 'era',
 } as const;
+
+/**
+ * Building classes a tile may name (`CITY_PROPS.use`), in a FIXED order: the
+ * client packs the index into a vertex byte (`osmMesher.ts`), so append only.
+ */
+export const BUILDING_USES = [
+  'residential',
+  'commercial',
+  'civic',
+  'religious',
+  'industrial',
+] as const;
+
+export type BuildingUse = (typeof BUILDING_USES)[number];
+
+/**
+ * Construction eras a tile may name (`CITY_PROPS.era`), in a FIXED order (as
+ * {@link BUILDING_USES}): before 1900, 1900–1944, 1945 on.
+ */
+export const BUILDING_ERAS = ['historic', 'early_modern', 'modern'] as const;
+
+export type BuildingEra = (typeof BUILDING_ERAS)[number];
 
 /**
  * Recorded height sources a tile may name (`CITY_PROPS.heightSource`): `osm`
