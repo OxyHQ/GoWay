@@ -2,8 +2,8 @@
  * The detailed 3D city's palette (`lib/map/style/palette3d.ts`) and the ground
  * overrides generated from it (`city3dGround.ts`).
  *
- * What a number can be pinned for is pinned here: the day/night blend, the
- * night factor helpers, label contrast on the new ground, and that the ground
+ * What a number can be pinned for is pinned here: the day and night ends of
+ * the material, label contrast on the new ground, and that the ground
  * overrides are cross-fades that change only colours. Whether it LOOKS like
  * the reference is a rendering question, answered by the side-by-sides
  * recorded in `docs/MAP_3D_CITY.md` → Art direction.
@@ -12,14 +12,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { buildLayers } from '@/lib/map/style/layers';
 import { CARTOGRAPHY_PALETTES } from '@/lib/map/style/palette';
-import {
-  CITY_GROUND_FADE,
-  CITY_GROUND_PALETTES,
-  CITY_MATERIALS,
-  CITY_ROAD_TIERS,
-  cityMaterialAt,
-  clampNightFactor,
-} from '@/lib/map/style/palette3d';
+import { CITY_GROUND_FADE, CITY_GROUND_PALETTES, CITY_MATERIALS } from '@/lib/map/style/palette3d';
 import {
   applyGroundOverrides,
   buildCity3dGroundOverrides,
@@ -40,30 +33,7 @@ const contrast = (a: string, b: string): number => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
-describe('the material blend', () => {
-  test('0 is day and 1 is night, exactly', () => {
-    expect(cityMaterialAt(0)).toEqual(CITY_MATERIALS.day);
-    expect(cityMaterialAt(1)).toEqual(CITY_MATERIALS.night);
-  });
-
-  test('halfway is the midpoint of every field', () => {
-    const mid = cityMaterialAt(0.5);
-    expect(mid.wrap).toBeCloseTo((CITY_MATERIALS.day.wrap + CITY_MATERIALS.night.wrap) / 2, 12);
-    for (let i = 0; i < 3; i++) {
-      expect(mid.low[i]).toBeCloseTo(
-        (CITY_MATERIALS.day.low[i] + CITY_MATERIALS.night.low[i]) / 2,
-        12,
-      );
-      expect(mid.windowGlow[i]).toBeCloseTo(CITY_MATERIALS.night.windowGlow[i] / 2, 12);
-    }
-  });
-
-  test('out-of-range and non-finite factors clamp', () => {
-    expect(cityMaterialAt(-3)).toEqual(CITY_MATERIALS.day);
-    expect(cityMaterialAt(7)).toEqual(CITY_MATERIALS.night);
-    expect(clampNightFactor(Number.NaN)).toBe(0);
-  });
-
+describe('the material’s two ends', () => {
   test('day has no emissive light; night has warm windows', () => {
     const { day, night } = CITY_MATERIALS;
     expect(day.windowGlow).toEqual([0, 0, 0]);
@@ -100,7 +70,7 @@ describe('the 3D city ground', () => {
   test('street labels clear 4.5:1 on every street fill (light: asphalt; dark: brighter than before)', () => {
     for (const appearance of ['light', 'dark'] as const) {
       const palette = CITY_GROUND_PALETTES[appearance];
-      for (const tier of CITY_ROAD_TIERS) {
+      for (const tier of Object.keys(palette.roads) as (keyof typeof palette.roads)[]) {
         if (
           ['motorway', 'motorwayLink', 'trunk', 'trunkLink', 'track', 'path', 'tunnel'].includes(
             tier,

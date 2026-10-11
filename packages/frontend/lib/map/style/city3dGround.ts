@@ -32,8 +32,6 @@ import { buildLayers } from './layers';
 import { CARTOGRAPHY_PALETTES } from './palette';
 import { CITY_GROUND_FADE, CITY_GROUND_PALETTES, type GroundOverride } from './palette3d';
 
-export { CITY3D_GROUND_METADATA_KEY, type GroundOverride } from './palette3d';
-
 /** A zoom-only interpolate with literal stops: `['interpolate', type, ['zoom'], z, v, …]`. */
 type ZoomStops = { type: unknown; stops: [number, unknown][] };
 

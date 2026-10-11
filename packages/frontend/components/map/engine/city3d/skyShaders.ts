@@ -302,15 +302,23 @@ void main() {
  *
  * The material function is a GLSL chunk ({@link DEFAULT_CITY_MATERIAL_GLSL}
  * unless one is passed in, `CityEngineOptions.sky.material`); it may declare
- * its own uniforms and helpers. Gamma, haze and opacity are applied after it,
+ * its own uniforms and helpers, and may call `rolloff(x)` (declared for it).
+ * Gamma, haze and opacity are applied after it,
  * here, so the haze stays the sky's and identical on every material.
  */
-export const DEFAULT_CITY_MATERIAL_GLSL = `
-// Highlights roll off above 0.8 instead of clipping: a wall facing a low sun.
+/**
+ * Highlights roll off above 0.8 instead of clipping (a wall facing a low sun).
+ * Declared by the shader for EVERY material response (`rolloff(x)`), so each
+ * one ends the same way and none restates it.
+ */
+const ROLLOFF_GLSL = `
 vec3 rolloff(vec3 x) {
   vec3 soft = 0.8 + 0.2 * (1.0 - exp(-(x - 0.8) / 0.2));
   return mix(x, soft, step(0.8, x));
 }
+`;
+
+export const DEFAULT_CITY_MATERIAL_GLSL = `
 
 // The default response: matte clay — sun × shadow (a little occluded), a
 // hemisphere of sky and bounce (occluded), and what the scene emits.
@@ -388,6 +396,7 @@ struct CityLight {
   float nightFactor;
 };
 
+${ROLLOFF_GLSL}
 ${material}
 
 void main() {

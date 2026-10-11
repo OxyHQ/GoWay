@@ -1230,7 +1230,7 @@ side by side at the same camera.
 | --- | --- |
 | Palette: the 3D ground, the material (day, night) | `lib/map/style/palette3d.ts` |
 | The ground as paint overrides, generated | `lib/map/style/city3dGround.ts` → style `metadata['goway:city3d-ground']` (`scripts/build-map-style.ts`) |
-| Material GLSL + uniforms + JS mirror | `components/map/engine/city3d/materials.ts`, spliced into `shaders.ts` / `osmShaders.ts` under `#ifdef GOWAY_DETAILED` |
+| Material response (the sky's `cityMaterial`) + uniforms + JS mirror | `components/map/engine/city3d/materials.ts`; the surface colour under `#ifdef GOWAY_DETAILED` in `osmShaders.ts` → `osmBase` |
 | Per-building seed | `osmMesher.ts` → `buildingSeed` (an untagged surface's unused rgb) |
 | Adapter half (flag, night factor, ground apply/undo) | `components/map/city3dStyle.ts`, wired in `city3dLayer.web.ts` |
 | Tests | `lib/map/__tests__/palette3d.test.ts`, `cityStyleFlag.test.ts`, `components/map/__tests__/city3dMaterials.test.ts`, `city3dStyle.test.ts` |
@@ -1291,8 +1291,6 @@ style without them (`openfreemap`, a URL override) keeps its ground. Cost:
 | | Day | Night |
 | --- | --- | --- |
 | Albedo (low → very tall) | `#dedcd7` → `#d5d6d8` (towers cooler, greyer) | `#566586` → `#5e6d90` |
-| Sky fill / ground bounce | `(0.79, 0.80, 0.825)` / `(0.985, 0.97, 0.94)` | `(0.95, 0.97, 1.04)` / `(0.62, 0.63, 0.70)` |
-| Sun (moon) | warm white × 0.30 | cool × 0.30 |
 | Wrap | 0.55 | 0.50 |
 | Contact AO at the foot / reach | 28% / 10 m | 30% / 10 m |
 | Corner AO kept | 80% | 80% |
@@ -1300,7 +1298,7 @@ style without them (`openfreemap`, a URL override) keeps its ground. Cost:
 | Bevel highlight | 0.12 × sky | 0.06 × sky |
 | Per-building tint | ±6% lightness, ±2.5% warm↔cool | ±4%, ±2% |
 | Tagged colour kept | 35% of the classic temper, 12% of its chroma | 30%, 12% |
-| Sky path: fill gain / fill chroma / sun gain | 1.6 / 40% / 0.65 | 2.0 / 25% / 0.65 |
+| Response to the sky: fill gain / fill chroma / sun gain | 1.6 / 40% / 0.65 | 2.0 / 25% / 0.65 |
 | Window openings | 10% (faint) | 75%, dark glass `#2b3352` |
 | Lit windows | — | 36%, warm `(1.0, 0.78, 0.40)` ↔ cooler `(0.9, 0.9, 0.82)`, 72–100% brightness |
 
@@ -1344,19 +1342,18 @@ colour  = albedo · tint · (sun · wrap · shadow + fill)
           + albedo · emitted  +  edge · chamfer(n.z) · fill       the 45° bevel catches light
 ```
 
-- **Under the city sky** (`?citysky=1`) this is `DETAILED_SKY_MATERIAL_GLSL`,
-  the `cityMaterial(CitySurface, CityLight)` the sky's shading path calls
-  through `CityEngineOptions.sky.material`, in the sky's linear light, with its
-  real sun, soft shadow, sky, bounce and emitted light; gamma and haze stay the
-  sky's. The sky's light is physical — a warm sun, a blue sky, a dim vertical
-  wall — so the clay answers it with three palette fields: `skyFillGain`
-  (1.6 day, 2.0 night), `skyFillChroma` (how much of the sky light's hue the
-  matte surface shows: 40% day, 25% night) and `skySunGain` (0.65). The sun
-  keeps its colour, so golden hour is golden. Pinned against the sky's own
-  `computeSkyState` at sun 50°, 8° and night (`city3dMaterials.test.ts`).
-- **Without it**, the classic shaders' `#ifdef GOWAY_DETAILED` branch
-  (`gowayClassic`) lights the same parameters in sRGB from the map's own light,
-  with the palette's hemisphere colours and sun standing in for the sky's.
+It is `DETAILED_SKY_MATERIAL_GLSL`, the `cityMaterial(CitySurface,
+CityLight)` the sky's shading path calls through `CityEngineOptions.sky.material`,
+in the sky's linear light, with its real sun, soft shadow, sky, bounce and
+emitted light; roll-off, gamma and haze stay the sky's. **There is no second
+path**: the detailed look is always drawn in the city sky's light, and the map
+adapter gives it a live-clock sky when the page asked for none (`?citysky=1`
+adds the time-of-day scrubber). The sky's light is physical — a warm sun, a
+blue sky, a dim vertical wall — so the clay answers it with three palette
+fields: `skyFillGain` (1.6 day, 2.0 night), `skyFillChroma` (how much of the
+sky light's hue the matte surface shows: 40% day, 25% night) and `skySunGain`
+(0.65). The sun keeps its colour, so golden hour is golden. Pinned against the
+sky's own `computeSkyState` at sun 50°, 8° and night (`city3dMaterials.test.ts`).
 
 Why this shape and not MapLibre's: MapLibre floors an unlit face at
 `1 − intensity` of its colour and multiplies, which on a pale palette is a
@@ -1410,9 +1407,6 @@ with moonlit tops, the warm irregular windows.
 
 **Still short of Apple:**
 
-- **Shadows and atmosphere come only with the city sky**: without `?citysky=1`
-  there are no cast shadows and no haze. With it, the sky's soft shadow map and
-  haze reach the clay through the same response.
 - **No soft contact halo on the ground** around a footprint (Apple's buildings
   sit in one); the sky's shadow map draws sun shadows, not ambient occlusion.
 - **Silhouettes are chamfered, not rounded.** The bevel is 0.7 m; a wider

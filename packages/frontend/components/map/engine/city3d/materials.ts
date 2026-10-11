@@ -3,44 +3,36 @@
  * windows by night. Behind `?cityStyle=detailed` (`lib/map/cityStyleFlag.ts`);
  * with it off, every shader draws exactly what it did before.
  *
- * ## One material, two light sources
+ * ## One shading path
  *
  * Ownership (lead decision): the SKY owns the light inputs — the sun's
  * direction and colour, the sky and bounce irradiance, the shadow map, the
  * haze, what the scene emits, the night factor — and the ART DIRECTION owns
- * the material response, how a surface turns those inputs into colour. So
- * the response lives here once, in two forms that read the same parameters:
- *
- *  - **With the city sky** (`?citySky=1`): {@link DETAILED_SKY_MATERIAL_GLSL}
- *    is the `cityMaterial(CitySurface, CityLight)` the sky's one shading path
- *    calls (`skyShaders.ts` → the contract), in the sky's linear light, with
- *    its sun, soft shadow, sky and bounce. Gamma and haze stay the sky's.
- *  - **Without it**, the classic fragment shaders' `#ifdef GOWAY_DETAILED`
- *    branches light the same parameters in sRGB from the map's own light,
- *    with the palette's own hemisphere colours standing in for the sky's.
- *
- * Both compile with the {@link DETAILED_DEFINE}, which the engine sets on
- * every building material; the surface colour (`osmBase` in `osmShaders.ts`:
- * the height ramp, the tag clamp, the per-building tint) is shared too.
+ * the material response: how a surface turns those inputs into colour. The
+ * response is {@link DETAILED_SKY_MATERIAL_GLSL}, the
+ * `cityMaterial(CitySurface, CityLight)` the sky's one shading path calls
+ * (`skyShaders.ts` → the contract), in the sky's linear light. There is no
+ * second path: the detailed look always lights its buildings with the city
+ * sky (the map adapter gives it a live-clock sky when none was asked for).
+ * The surface colour it starts from (`osmBase` in `osmShaders.ts`: the height
+ * ramp, the tag clamp, the per-building tint) is the sky's own, under the
+ * {@link DETAILED_DEFINE} the engine sets on every building material.
  *
  * ## The response
  *
  * For a surface with albedo `A`, normal `n`, height `h` on a building of
- * height `H`, and the toward-sun direction `L`:
+ * height `H`, and the toward-sun direction `L`, with the sky's light:
  *
- *     wrap    = clamp((n·L + w) / (1 + w), 0, 1)      the terminator is soft
- *     fill    = mix(bounce, sky, n.z/2 + 1/2)          hemisphere
- *     occl    = contact(h) · mix(1, cornerAO, k) · gradient(h/H)   (contact, gradient: walls only)
- *     colour  = A · (sun · wrap · shadow + fill) · occl  +  edge · chamfer(n.z) · sky  +  A · emitted
- *
- * On the sky path `fill` and `sun` are the sky's, answered through the
- * palette's `skyFillGain`/`skyFillChroma`/`skySunGain` (the clay's response to
- * a physically blue sky and a dim wall); on the classic path they are the
- * palette's own hemisphere colours and sun.
+ *     wrap    = clamp((n·L + w) / (1 + w), 0, 1)                    the terminator is soft
+ *     fill    = mix(grey(f), f, chroma) · gain,  f = mix(bounce, skyUp, n.z/2 + 1/2)
+ *     occl    = contact(h) · mix(1, cornerAO, k) · gradient(h/H)    (contact, gradient: walls only)
+ *     colour  = rolloff(A · ((sun · sunGain · wrap · shadow + fill) · occl + emitted) + edge · chamfer(n.z) · fill)
  *
  * No face is lit by the sun alone, so a wall facing away keeps the whole
- * sky fill — a shade under the lit one and cooler, never black: clay, not
- * cardboard. `chamfer` is 1 on the mesher's 45° roof bevel.
+ * fill — a shade under the lit one and cooler, never black: clay, not
+ * cardboard. The gains and the chroma are the clay's answer to a physically
+ * blue sky and a dim vertical wall; the sun keeps its colour, so golden hour
+ * is golden. `chamfer` is 1 on the mesher's 45° roof bevel.
  *
  * ## Night
  *
@@ -59,9 +51,11 @@
  * foot of the walls (street glow, `floodlit=yes`) is the sky's `emitted`.
  *
  * Every number lives in `palette3d.ts`; the pure functions below mirror the
- * sRGB form so the tests can pin it (`__tests__/city3dMaterials.test.ts`).
+ * GLSL so the tests can pin it (`__tests__/city3dMaterials.test.ts`).
  */
 import type { CityMaterial, Rgb } from '@/lib/map/style/palette3d';
+
+import { smoothstep } from './occlusion';
 
 /** The preprocessor define that switches every building shader to this material. */
 export const DETAILED_DEFINE = 'GOWAY_DETAILED';
@@ -71,9 +65,6 @@ export const OPENING_AREA = (0.76 - 0.24) * (0.82 - 0.3);
 
 /** Fields uploaded as `vec3` uniforms, by uniform stem. */
 const RGB_FIELDS = {
-  Sky: 'sky',
-  Ground: 'ground',
-  Sun: 'sun',
   Glass: 'glass',
   WindowGlow: 'windowGlow',
   WindowGlowCool: 'windowGlowCool',
@@ -198,13 +189,16 @@ GowayWindow gowayWindow(vec4 facade, vec4 color, float h, vec3 n) {
   return w;
 }
 
-// Glass and glow over a lit colour. glass/glow are in the caller's space
-// (sRGB classic, linear sky), as is light.
-vec3 gowayWindows(GowayMat m, vec3 lit, vec3 light, vec3 glass, vec3 glow, vec3 glowCool, GowayWindow w) {
-  lit = mix(lit, glass * light, w.open * m.windowStrength);
+// The palette's sRGB colours in the sky's linear light.
+vec3 gowayLinear(vec3 c) { return pow(max(c, vec3(0.0)), vec3(2.2)); }
+
+// Glass and glow over a lit colour (linear, as is light).
+vec3 gowayWindows(GowayMat m, vec3 lit, vec3 light, GowayWindow w) {
+  lit = mix(lit, gowayLinear(m.glass) * light, w.open * m.windowStrength);
   vec3 h = gowayHash3(w.cell);
   float on = step(1.0 - m.windowLitShare, h.x);
-  lit += mix(glow, glowCool, h.y * h.y) * (0.72 + 0.28 * h.z) * on * w.open;
+  vec3 glow = gowayLinear(m.windowGlow);
+  lit += mix(glow, gowayLinear(m.windowGlowCool), h.y * h.y) * (0.72 + 0.28 * h.z) * on * w.open;
   lit += glow * (m.windowLitShare * ${(OPENING_AREA * 0.8 * 0.86).toFixed(4)}) * w.far;
   return lit;
 }
@@ -213,37 +207,12 @@ vec3 gowayWindows(GowayMat m, vec3 lit, vec3 light, vec3 glass, vec3 glow, vec3 
 `;
 
 /**
- * The classic (no-sky) form, in sRGB from the map's light: `base` already
- * through `osmBase` (or the ramp), lit by the palette's hemisphere and sun.
- * Spliced into `shaders.ts` / `osmShaders.ts` under the define.
- */
-export const CLASSIC_DETAILED_GLSL = `
-#ifdef ${DETAILED_DEFINE}
-vec3 gowayClassic(vec3 base, vec3 n, float h, float buildingH, float cornerAo, vec3 toSun, vec4 facade, vec4 color) {
-  GowayMat m = gowayMat();
-  vec3 albedo = base * m.albedoScale;
-  vec3 fill = mix(m.ground, m.sky, n.z * 0.5 + 0.5);
-  vec3 light = (fill + m.sun * gowayWrap(m, n, toSun)) * gowayOcclusion(m, n, h, buildingH, cornerAo);
-  vec3 lit = albedo * light + m.edge * gowayChamfer(n) * m.sky;
-  return gowayWindows(m, lit, light, m.glass, m.windowGlow, m.windowGlowCool, gowayWindow(facade, color, h, n));
-}
-#endif
-`;
-
-/**
- * The sky's material response (`CityEngineOptions.sky.material`): the same
- * parameters in the sky's linear light. The palette's colours are sRGB, so
- * they are linearised here; the sky gamma-encodes and hazes the result.
+ * The material response (`CityEngineOptions.sky.material`), in the sky's
+ * linear light. The palette's colours are sRGB, so they are linearised here;
+ * the sky rolls off, gamma-encodes and hazes the result.
  */
 export const DETAILED_SKY_MATERIAL_GLSL = `${MATERIAL_GLSL}
 #ifdef ${DETAILED_DEFINE}
-// Highlights roll off above 0.8 instead of clipping (as the sky's default).
-vec3 gowayRolloff(vec3 x) {
-  vec3 soft = 0.8 + 0.2 * (1.0 - exp(-(x - 0.8) / 0.2));
-  return mix(x, soft, step(0.8, x));
-}
-vec3 gowayLinear(vec3 c) { return pow(max(c, vec3(0.0)), vec3(2.2)); }
-
 vec3 cityMaterial(CitySurface s, CityLight l) {
   GowayMat m = gowayMat();
   vec3 n = s.normal;
@@ -255,12 +224,8 @@ vec3 cityMaterial(CitySurface s, CityLight l) {
   vec3 sun = l.sun * m.skySunGain * gowayWrap(m, n, l.sunDir) * l.sunVisibility;
   vec3 light = (sun + fill) * occl;
   vec3 lit = albedo * (light + l.emitted) + m.edge * gowayChamfer(n) * fill;
-  lit = gowayWindows(
-    m, lit, light,
-    gowayLinear(m.glass), gowayLinear(m.windowGlow), gowayLinear(m.windowGlowCool),
-    gowayWindow(s.facade, s.color, s.heightAboveGround, n)
-  );
-  return gowayRolloff(lit);
+  lit = gowayWindows(m, lit, light, gowayWindow(s.facade, s.color, s.heightAboveGround, n));
+  return rolloff(lit);
 }
 #endif
 `;
@@ -310,11 +275,6 @@ export function materialRamp(material: CityMaterial) {
 
 type Vec3 = readonly [number, number, number];
 
-const smoothstep = (e0: number, e1: number, x: number): number => {
-  const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
-  return t * t * (3 - 2 * t);
-};
-
 /** `gowayHash3(...)`, bit for bit: three values in [0, 1]. */
 export function pcgHash3(x: number, y: number, z: number): [number, number, number] {
   let a = (Math.imul(x >>> 0, 1664525) + 1013904223) >>> 0;
@@ -335,32 +295,6 @@ export function pcgHash3(x: number, y: number, z: number): [number, number, numb
 /** `gowayHash3(...).x`: whether-lit's draw. */
 export function pcgHash(x: number, y: number, z: number): number {
   return pcgHash3(x, y, z)[0];
-}
-
-/** `gowayLight`, per channel. */
-export function materialLight(
-  material: CityMaterial,
-  n: Vec3,
-  h: number,
-  buildingH: number,
-  cornerAo: number,
-  toLight: Vec3,
-): [number, number, number] {
-  const len = Math.hypot(...toLight) || 1;
-  const ndl = (n[0] * toLight[0] + n[1] * toLight[1] + n[2] * toLight[2]) / len;
-  const wrap = Math.max(0, Math.min(1, (ndl + material.wrap) / (1 + material.wrap)));
-  const up = n[2] * 0.5 + 0.5;
-  const wall = 1 - smoothstep(0.3, 0.6, Math.abs(n[2]));
-  const contact = 1 - material.aoGround * (1 - smoothstep(0, material.aoReachM, h)) * wall;
-  const corner = 1 + (cornerAo - 1) * material.aoCorner;
-  const grad =
-    1 - material.heightGradient * (1 - Math.max(0, Math.min(1, h / Math.max(buildingH, 3)))) * wall;
-  const k = contact * corner * grad;
-  return [0, 1, 2].map(
-    (i) =>
-      (material.ground[i] + (material.sky[i] - material.ground[i]) * up + material.sun[i] * wrap) *
-      k,
-  ) as [number, number, number];
 }
 
 /** Whether the window at (building seed, bay, storey) is lit under `material`. */
@@ -426,6 +360,7 @@ export function skyMaterialResponse(
   return [0, 1, 2].map((i) => {
     const light = (l.sun[i] * material.skySunGain * wrap * l.sunVisibility + fill[i]) * occl;
     const x = lin[i] * (light + l.emitted[i]) + material.edge * chamfer * fill[i];
+    // The sky's `rolloff`.
     return x < 0.8 ? x : 0.8 + 0.2 * (1 - Math.exp(-(x - 0.8) / 0.2));
   }) as [number, number, number];
 }

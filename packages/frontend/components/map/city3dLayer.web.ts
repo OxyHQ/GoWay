@@ -477,7 +477,10 @@ export async function attachCity3d(
   // Models handed over before MapLibre called `onAdd`.
   let queuedModels: readonly ModelSpec[] | null = null;
   let unfollowTerrain: (() => void) | null = null;
-  const sky = buildings ? (options.sky ?? null) : null;
+  // The detailed look is drawn in the city sky's light — its one shading path
+  // (`engine/city3d/materials.ts`) — so it brings a live-clock sky when the
+  // page asked for none (`?citysky=1` adds the time-of-day scrubber).
+  const sky = buildings ? (options.sky ?? (detailed ? { at: null } : null)) : null;
   let skyAt = sky?.at ?? null;
   let reportedSun = '';
   // MapLibre's own `sky` (drawn behind everything, and its fog blended into

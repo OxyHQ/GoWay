@@ -25,7 +25,7 @@
  * Uniform names and meanings are shared with `shaders.ts`, so the engine
  * drives both materials from one uniform set.
  */
-import { CLASSIC_DETAILED_GLSL, DETAILED_DEFINE, MATERIAL_GLSL } from './materials';
+import { DETAILED_DEFINE, MATERIAL_GLSL } from './materials';
 import { AO } from './occlusion';
 import { Z_UNITS_PER_METRE } from './packing';
 import { glslFloat } from './shaders';
@@ -162,8 +162,6 @@ uniform vec3 uLightPosition;
 uniform float uLightIntensity;
 uniform vec3 uLightColor;
 uniform float uOpacity;
-// The engine's night seam (CityEngine.setNightFactor): the detailed look's day/night blend.
-uniform float uNightFactor;
 
 in vec3 vNormal;
 in float vCornerAo;
@@ -175,17 +173,12 @@ in vec4 vFacade;
 out vec4 fragColor;
 
 ${OSM_BASE_GLSL}
-${CLASSIC_DETAILED_GLSL}
 // Level-of-detail and fade-in cross-fades (transitions.ts).
 ${DITHER_GLSL}
 void main() {
   ${DITHER_DISCARD_GLSL}
   vec3 n = normalize(vNormal);
   vec3 base = osmBase(n);
-#ifdef ${DETAILED_DEFINE}
-  vec3 detailed = gowayClassic(base, n, vHeightAboveGround, vBuildingHeight, vCornerAo, uLightPosition, vFacade, vColor);
-  fragColor = vec4(clamp(detailed, 0.0, 1.0) * uOpacity, uOpacity);
-#else
 
   // extrusionDirectional() — MapLibre's fill-extrusion lighting (shaders.ts).
   float d = clamp(dot(n, uLightPosition), 0.0, 1.0);
@@ -200,6 +193,5 @@ void main() {
     vec3(1.0)
   );
   fragColor = vec4(lit * uOpacity, uOpacity);
-#endif
 }
 `;

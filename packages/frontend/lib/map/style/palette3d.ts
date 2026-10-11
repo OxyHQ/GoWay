@@ -8,9 +8,9 @@
  *     (`city3dGround.ts` turns it into paint overrides, generated into the
  *     style documents by `scripts/build-map-style.ts`).
  *  2. **The buildings' material** ({@link CITY_MATERIALS}): albedo, the
- *     hemisphere and sun light, occlusion, edge highlight and the night window
- *     glow, for day and for night, blended by a `nightFactor`
- *     ({@link cityMaterialAt}). The shader that reads it is
+ *     response to the city sky's light, occlusion, edge highlight and the
+ *     night window glow, for day and for night, blended on the GPU by the
+ *     engine's one night factor. The shader that reads it is
  *     `components/map/engine/city3d/materials.ts`.
  *
  * ## The target
@@ -39,7 +39,7 @@
  * and their contrast is re-checked against the variant's ground in the tests.
  */
 import type { MapAppearance } from '../provider';
-import { type CartographyPalette, DARK_PALETTE, LIGHT_PALETTE, type RoadTier } from './palette';
+import { type CartographyPalette, DARK_PALETTE, LIGHT_PALETTE } from './palette';
 
 // ---------------------------------------------------------------------------
 // 1. The ground
@@ -188,9 +188,6 @@ export interface GroundOverride {
   value: unknown;
 }
 
-/** Every road tier, for the tests' contrast sweep. */
-export const CITY_ROAD_TIERS = Object.keys(LIGHT_GROUND.roads) as RoadTier[];
-
 // ---------------------------------------------------------------------------
 // 2. The buildings' material
 // ---------------------------------------------------------------------------
@@ -210,11 +207,6 @@ export interface CityMaterial {
   veryTall: Rgb;
   tallM: number;
   veryTallM: number;
-  /** Hemisphere fill: the light from straight up and from straight down (bounce). */
-  sky: Rgb;
-  ground: Rgb;
-  /** The sun's (or the moon's) colour × strength. */
-  sun: Rgb;
   /** Wrap lighting: how far past the terminator the sun still reaches (0 = Lambert). */
   wrap: number;
   /** Contact occlusion at the foot of a wall (1 − brightness there) and its reach in metres. */
@@ -238,8 +230,8 @@ export interface CityMaterial {
    */
   tagSaturation: number;
   /**
-   * The response to the CITY SKY's light (the sky-lit path only; the classic
-   * path uses {@link CityMaterial.sky}/`ground`/`sun` above instead). The sky
+   * The response to the CITY SKY's light, which is the only light the
+   * detailed look is drawn in (`materials.ts`). The sky
    * hands physical, exposed irradiance — a warm sun, a blue sky, a dim wall —
    * and the clay answers it as the approved look: the hemisphere fill × a gain
    * with only some of the sky light's hue (`skyFillChroma`, 0 grey … 1 all),
@@ -266,14 +258,13 @@ const hex = (value: string): Rgb => {
   const n = Number.parseInt(value.slice(1, 7), 16);
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 };
-const scale = (c: Rgb, k: number): Rgb => [c[0] * k, c[1] * k, c[2] * k];
 
 /**
  * Daylight clay. The albedo is a near-white warm grey that goes slightly
  * cooler and greyer with height (towers read as glass and steel, not as a
- * lighter cream); the fill is a cool sky over a warm bounce, the sun a warm
- * white, so a shaded wall is ~10% darker and a shade cooler than a lit one —
- * never black. Windows are barely there: Apple shows clean massing by day.
+ * lighter cream); under the sky's light a shaded wall lands ~20% under a lit
+ * one and a shade cooler — never black. Windows are barely there: Apple shows
+ * clean massing by day.
  */
 const DAY: CityMaterial = {
   low: hex('#dedcd7'),
@@ -281,9 +272,6 @@ const DAY: CityMaterial = {
   veryTall: hex('#d5d6d8'),
   tallM: 60,
   veryTallM: 180,
-  sky: [0.79, 0.8, 0.825],
-  ground: [0.985, 0.97, 0.94],
-  sun: scale([1, 0.975, 0.93], 0.3),
   wrap: 0.55,
   aoGround: 0.28,
   aoReachM: 10,
@@ -306,8 +294,8 @@ const DAY: CityMaterial = {
 
 /**
  * Moonlit night. Blue-grey buildings a step LIGHTER than the slate ground
- * (Apple's night city reads as massing, not as silhouettes), lit mostly by a
- * blue-violet sky fill, a weak cool moon, and warm windows. Window lighting is
+ * (Apple's night city reads as massing, not as silhouettes), lit mostly by
+ * the sky's night fill, with warm windows. Window lighting is
  * a deterministic per-window hash at {@link CityMaterial.windowLitShare}:
  * stylistic variation, never a claim about who is home (see the doc). The
  * warm light at the FOOT of the walls (street lighting, `floodlit=yes`
@@ -319,9 +307,6 @@ const NIGHT: CityMaterial = {
   veryTall: hex('#5e6d90'),
   tallM: 60,
   veryTallM: 180,
-  sky: [0.95, 0.97, 1.04],
-  ground: [0.62, 0.63, 0.7],
-  sun: scale([0.8, 0.86, 1], 0.3),
   wrap: 0.5,
   aoGround: 0.3,
   aoReachM: 10,
@@ -343,31 +328,3 @@ const NIGHT: CityMaterial = {
 };
 
 export const CITY_MATERIALS = { day: DAY, night: NIGHT } as const;
-
-// Exact at both ends (a + (b − a)·1 is not b in floating point).
-const lerp = (a: number, b: number, t: number): number => a * (1 - t) + b * t;
-const lerp3 = (a: Rgb, b: Rgb, t: number): Rgb => [
-  lerp(a[0], b[0], t),
-  lerp(a[1], b[1], t),
-  lerp(a[2], b[2], t),
-];
-
-/** Clamp a night factor into [0, 1]; anything non-finite is day. */
-export function clampNightFactor(value: number): number {
-  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
-}
-
-/**
- * The material at `nightFactor` (0 = day, 1 = night), every field blended
- * linearly. Done on the CPU once per change, so the shader reads one state.
- */
-export function cityMaterialAt(nightFactor: number): CityMaterial {
-  const t = clampNightFactor(nightFactor);
-  const out = {} as Record<keyof CityMaterial, number | Rgb>;
-  for (const key of Object.keys(DAY) as (keyof CityMaterial)[]) {
-    const a = DAY[key];
-    const b = NIGHT[key];
-    out[key] = typeof a === 'number' ? lerp(a, b as number, t) : lerp3(a, b as Rgb, t);
-  }
-  return out as unknown as CityMaterial;
-}

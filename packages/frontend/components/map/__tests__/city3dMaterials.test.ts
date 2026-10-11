@@ -13,7 +13,6 @@ import {
   DETAILED_DEFINE,
   DETAILED_SKY_MATERIAL_GLSL,
   MATERIAL_GLSL,
-  materialLight,
   materialRamp,
   materialUniformValues,
   pcgHash,
@@ -26,6 +25,7 @@ import { buildingSeed, meshOsmBuildings } from '@/components/map/engine/city3d/o
 import type { OsmBuilding } from '@/components/map/engine/city3d/osmTiles';
 import { OSM_FRAGMENT_SHADER, TAG_TEMPER } from '@/components/map/engine/city3d/osmShaders';
 import { CITY_FRAGMENT_SHADER } from '@/components/map/engine/city3d/shaders';
+import { skyCityFragmentShader } from '@/components/map/engine/city3d/skyShaders';
 import { CITY_GROUND_PALETTES, CITY_MATERIALS, type Rgb } from '@/lib/map/style/palette3d';
 
 const luma = (c: readonly number[]) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
@@ -34,22 +34,7 @@ const hexRgb = (hex: string): Rgb => {
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 };
 
-// GoWay's shaped sun light at a mid-morning sun: polar 40°, from the south-east.
-const polar = (40 * Math.PI) / 180;
-const azimuth = (135 * Math.PI) / 180;
-const SUN: [number, number, number] = [
-  1.15 * Math.sin(azimuth) * Math.sin(polar),
-  1.15 * Math.cos(azimuth) * Math.sin(polar),
-  1.15 * Math.cos(polar),
-];
 const ROOF = [0, 0, 1] as const;
-const LIT_WALL = [Math.sin(azimuth), Math.cos(azimuth), 0] as const;
-const SHADED_WALL = [-Math.sin(azimuth), -Math.cos(azimuth), 0] as const;
-
-function shade(material: typeof CITY_MATERIALS.day, n: readonly [number, number, number], h = 20) {
-  const light = materialLight(material, n, h, 30, 1, SUN);
-  return light.map((k, i) => material.low[i] * k);
-}
 
 describe('the GLSL', () => {
   const values = materialUniformValues(CITY_MATERIALS);
@@ -74,20 +59,19 @@ describe('the GLSL', () => {
     expect(values.uMatAlbedoScale).toEqual([1, 1, 1]);
   });
 
-  test('is behind the define and include-guarded; both classic shaders branch cleanly', () => {
+  test('is behind the define and include-guarded, and the sky’s shaders are its one path', () => {
     expect(MATERIAL_GLSL.trim().startsWith(`#ifdef ${DETAILED_DEFINE}`)).toBe(true);
     expect(MATERIAL_GLSL).toContain('#ifndef GOWAY_MATERIAL_DECLS');
-    for (const shader of [CITY_FRAGMENT_SHADER, OSM_FRAGMENT_SHADER]) {
-      expect(shader).toContain(MATERIAL_GLSL);
+    for (const format of ['openmaptiles', 'goway'] as const) {
+      const shader = skyCityFragmentShader(format, DETAILED_SKY_MATERIAL_GLSL);
       expect(shader).not.toContain('${');
       const opens = shader.match(/#if(n)?def /g)?.length ?? 0;
-      const ends = shader.match(/#endif/g)?.length ?? 0;
-      expect(opens).toBe(ends);
-      expect(shader).toContain('uniform float uNightFactor;');
-      expect(shader).toContain('vec3 detailed = gowayClassic(');
-      // The classic lighting is still there, in the #else.
-      expect(shader).toContain('(base + 0.03) * directional * uLightColor');
+      expect(shader.match(/#endif/g)?.length ?? 0).toBe(opens);
+      expect(shader).toContain('vec3 cityMaterial(CitySurface s, CityLight l)');
     }
+    // No second path: the map-lit shaders carry no detailed lighting.
+    expect(CITY_FRAGMENT_SHADER).not.toContain(DETAILED_DEFINE);
+    expect(OSM_FRAGMENT_SHADER).not.toContain('cityMaterial(');
   });
 
   test('the sky material is the contract’s cityMaterial, over the same declarations', () => {
@@ -113,51 +97,6 @@ describe('the GLSL', () => {
 
   test('the engine ramp is the day one', () => {
     expect(materialRamp(CITY_MATERIALS.day).low).toEqual(CITY_MATERIALS.day.low);
-  });
-});
-
-describe('the lighting model (JS mirror)', () => {
-  test('day: the shaded wall is softer, never black — 75–95% of the lit wall', () => {
-    const lit = luma(shade(CITY_MATERIALS.day, LIT_WALL));
-    const shaded = luma(shade(CITY_MATERIALS.day, SHADED_WALL));
-    expect(shaded / lit).toBeGreaterThan(0.75);
-    expect(shaded / lit).toBeLessThan(0.95);
-  });
-
-  test('day: the shaded wall is a shade cooler than the lit one (blue sky, warm sun)', () => {
-    const lit = shade(CITY_MATERIALS.day, LIT_WALL);
-    const shaded = shade(CITY_MATERIALS.day, SHADED_WALL);
-    expect(shaded[2] / shaded[0]).toBeGreaterThan(lit[2] / lit[0]);
-  });
-
-  test('day: roofs sit below pure white and a step under the near-white ground', () => {
-    const roof = luma(shade(CITY_MATERIALS.day, ROOF, 30));
-    expect(roof).toBeLessThan(luma(hexRgb(CITY_GROUND_PALETTES.light.land)));
-    expect(roof).toBeGreaterThan(0.75);
-  });
-
-  test('night: every face is lighter than the ground it stands on', () => {
-    const ground = luma(hexRgb(CITY_GROUND_PALETTES.dark.land));
-    for (const n of [ROOF, LIT_WALL, SHADED_WALL]) {
-      expect(luma(shade(CITY_MATERIALS.night, n))).toBeGreaterThan(ground);
-    }
-  });
-
-  test('contact occlusion darkens the foot of a wall, never a low roof', () => {
-    const m = CITY_MATERIALS.day;
-    const foot = luma(materialLight(m, SHADED_WALL, 0, 30, 1, SUN));
-    const high = luma(materialLight(m, SHADED_WALL, 25, 30, 1, SUN));
-    expect(foot).toBeLessThan(high * (1 - m.aoGround * 0.9));
-    const lowRoof = materialLight(m, ROOF, 3, 3, 1, SUN);
-    const highRoof = materialLight(m, ROOF, 60, 60, 1, SUN);
-    expect(lowRoof).toEqual(highRoof);
-  });
-
-  test('a baked inside corner darkens by its occlusion times aoCorner', () => {
-    const m = CITY_MATERIALS.day;
-    const open = luma(materialLight(m, LIT_WALL, 20, 30, 1, SUN));
-    const corner = luma(materialLight(m, LIT_WALL, 20, 30, 0.62, SUN));
-    expect(corner / open).toBeCloseTo(1 - 0.38 * m.aoCorner, 6);
   });
 });
 
@@ -360,5 +299,22 @@ describe('the sky path: the approved look under the sky’s physical light', () 
       expect(c[2]).toBeGreaterThan(c[0]); // blue
       expect(chroma(c)).toBeLessThan(0.35); // not the raw sky
     }
+  });
+
+  test('contact occlusion darkens the foot of a wall, never a low roof', () => {
+    const l = inputs(49.8, 'light');
+    const m = CITY_MATERIALS.day;
+    const at = (n: readonly [number, number, number], h: number, H: number) =>
+      luma(skyMaterialResponse(m, m.low, n, h, H, 1, l));
+    expect(at(SHADE, 0, 30)).toBeLessThan(at(SHADE, 25, 30) * (1 - m.aoGround * 0.9));
+    expect(at(ROOF, 3, 3)).toBeCloseTo(at(ROOF, 60, 60), 12);
+  });
+
+  test('a baked inside corner darkens by its occlusion times aoCorner', () => {
+    const l = { ...inputs(49.8, 'light'), sunVisibility: 0 }; // fill only: linear in occlusion
+    const m = CITY_MATERIALS.day;
+    const open = luma(skyMaterialResponse(m, m.low, LIT, 20, 30, 1, l));
+    const corner = luma(skyMaterialResponse(m, m.low, LIT, 20, 30, 0.62, l));
+    expect(corner / open).toBeCloseTo(1 - 0.38 * m.aoCorner, 2);
   });
 });

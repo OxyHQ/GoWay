@@ -188,10 +188,10 @@ export interface CityEngineOptions {
   /**
    * The detailed look (`materials.ts`, `?cityStyle=detailed`): the material's
    * day and night, blended on the GPU by the night seam (`setNightFactor`).
-   * Present: every building material compiles the detailed response — the
-   * sky's `cityMaterial` under the city sky, the classic shaders' branch
-   * without it — and its day ramp replaces {@link CityEngineOptions.palette}'s.
-   * Absent: the classic look, unchanged.
+   * With {@link CityEngineOptions.sky} — its one shading path — every building
+   * is drawn in the sky's light through this response (`sky.material`), and
+   * its day ramp replaces {@link CityEngineOptions.palette}'s. Without a sky,
+   * or absent: the look is unchanged.
    */
   material?: { day: CityMaterial; night: CityMaterial };
 }
@@ -420,12 +420,14 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   };
   // City sky: its shaders and light inputs replace the buildings' own — one
   // shading path (`skyShaders.ts`).
+  // The detailed look is a response to the sky's light: its one shading path
+  // (`materials.ts`). Without a sky there is nothing for it to answer.
+  const detailed = options.sky ? options.material : undefined;
   const sky: CitySky | null = options.sky
     ? createCitySky({
         appearance: options.sky.appearance,
         // The art direction's response, when the detailed look is on.
-        material:
-          options.sky.material ?? (options.material ? DETAILED_SKY_MATERIAL_GLSL : undefined),
+        material: options.sky.material ?? (detailed ? DETAILED_SKY_MATERIAL_GLSL : undefined),
         baseUniforms: light,
         requestRepaint: () => options.requestRepaint(),
       })
@@ -441,7 +443,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     uTallM: { value: 60 },
     uVeryTallM: { value: 180 },
     // The detailed material's uniforms (day and night), only when it is on.
-    ...(options.material ? materialSlots(options.material) : {}),
+    ...(detailed ? materialSlots(detailed) : {}),
   };
   const treeUniforms = {
     ...light,
@@ -458,7 +460,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     scene,
     buildingUniforms,
     // `?cityStyle=detailed`: every building material compiles the detailed response.
-    buildingDefines: (options.material ? { [DETAILED_DEFINE]: '' } : {}) as Record<string, string>,
+    buildingDefines: (detailed ? { [DETAILED_DEFINE]: '' } : {}) as Record<string, string>,
     buildingShaders: sky?.buildingShaders ?? {
       openmaptiles: { vertexShader: CITY_VERTEX_SHADER, fragmentShader: CITY_FRAGMENT_SHADER },
       goway: { vertexShader: OSM_VERTEX_SHADER, fragmentShader: OSM_FRAGMENT_SHADER },
@@ -1172,9 +1174,9 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   };
 
   engine.setPalette(options.palette);
-  if (options.material) {
+  if (detailed) {
     // The detailed look's DAY ramp; night darkens it on the GPU (`uMatAlbedoScale`).
-    const ramp = materialRamp(options.material.day);
+    const ramp = materialRamp(detailed.day);
     buildingUniforms.uLow.value.fromArray(ramp.low);
     buildingUniforms.uTall.value.fromArray(ramp.tall);
     buildingUniforms.uVeryTall.value.fromArray(ramp.veryTall);

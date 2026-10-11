@@ -26,7 +26,6 @@
  * atmosphere phase's job, and doing it for the buildings alone would make
  * them the one thing on the map that does not match its neighbours.
  */
-import { CLASSIC_DETAILED_GLSL, DETAILED_DEFINE, MATERIAL_GLSL } from './materials';
 import { AO } from './occlusion';
 import { Z_UNITS_PER_METRE } from './packing';
 import { DITHER_DISCARD_GLSL, DITHER_GLSL } from './transitions';
@@ -91,9 +90,6 @@ uniform vec3 uLightColor;
 // The zoom fade, shared with the fill-extrusion layer this replaces.
 uniform float uOpacity;
 
-// The engine's night seam (CityEngine.setNightFactor): the detailed look's day/night blend.
-uniform float uNightFactor;
-
 in vec3 vNormal;
 in float vCornerAo;
 in float vHeightAboveGround;
@@ -103,8 +99,6 @@ out vec4 fragColor;
 
 // Level-of-detail and fade-in cross-fades (transitions.ts).
 ${DITHER_GLSL}
-${MATERIAL_GLSL}
-${CLASSIC_DETAILED_GLSL}
 void main() {
   ${DITHER_DISCARD_GLSL}
   vec3 n = normalize(vNormal);
@@ -113,13 +107,6 @@ void main() {
     ? mix(uLow, uTall, vBuildingHeight / uTallM)
     : mix(uTall, uVeryTall, clamp((vBuildingHeight - uTallM) / (uVeryTallM - uTallM), 0.0, 1.0));
 
-#ifdef ${DETAILED_DEFINE}
-  // The detailed material (materials.ts). OpenMapTiles unions a block into
-  // one feature, so there is no per-building tint and no window here
-  // (an all-zero facade draws none).
-  vec3 detailed = gowayClassic(base, n, vHeightAboveGround, vBuildingHeight, vCornerAo, uLightPosition, vec4(0.0), vec4(0.0));
-  fragColor = vec4(clamp(detailed, 0.0, 1.0) * uOpacity, uOpacity);
-#else
   // extrusionDirectional() — MapLibre's fill-extrusion lighting.
   float luminance = dot(base, vec3(0.2126, 0.7152, 0.0722));
   float d = clamp(dot(n, uLightPosition), 0.0, 1.0);
@@ -138,6 +125,5 @@ void main() {
 
   // MapLibre blends custom layers as premultiplied alpha.
   fragColor = vec4(color * uOpacity, uOpacity);
-#endif
 }
 `;
