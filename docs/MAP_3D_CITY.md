@@ -1299,7 +1299,7 @@ style without them (`openfreemap`, a URL override) keeps its ground. Cost:
 | Wall gradient (base → top) | 7% | 12% |
 | Bevel highlight | 0.12 × sky | 0.06 × sky |
 | Per-building tint | ±6% lightness, ±2.5% warm↔cool | ±4%, ±2% |
-| Tagged colour kept | 35% of the classic temper | 30% |
+| Tagged colour kept | 35% of the classic temper, 12% of its chroma | 30%, 12% |
 | Window openings | 10% (faint) | 75%, dark glass `#2b3352` |
 | Lit windows | — | 36%, warm `(1.0, 0.78, 0.40)` ↔ cooler `(0.9, 0.9, 0.82)`, 72–100% brightness |
 
@@ -1377,6 +1377,12 @@ and dark: Eixample (41.3925, 2.164, z17, pitch 60), Sagrada Família, Barri
 Gòtic, Lower Manhattan. Composites against the references were judged by eye,
 honestly:
 
+**Tagged colours** (`building:colour`, materials) are clamped to a lightness
+hint in this look: the first renders tinted Lower Manhattan towers pink and
+green, against Apple's uniform massing. `tagSaturation` keeps 12% of a tempered
+tag's chroma — under 1.5% channel spread for a pure red, pinned by a test —
+while a tagged black building still reads a step darker.
+
 **Close:** the day maquette (white-grey massing, soft cool shade, no black
 sides, roofs under the ground, faint bevel lines), the 3D ground (asphalt
 streets with white kerbs, saturated parks), the night palette's blue massing
@@ -1396,8 +1402,6 @@ with moonlit tops, the warm irregular windows.
   working as intended. A municipal floor count (PLUTO, Phase 4) fixes it.
 - **No trees, no landmark models, no road markings** — other phases; Apple's
   dense old towns read as softer partly because trees break them up.
-- **Tagged colours** still tint a few Manhattan towers (green, pink) more than
-  Apple's uniform white; `tagBlend` is the knob.
 
 ## Phased plan
 
