@@ -95,7 +95,7 @@ it — and **inside iOS Safari's memory**, which kills a tab at roughly
 | Main thread per frame | ≤ 10 ms: MapLibre ≤ 5, city engine ≤ 2, city life + live ≤ 1 | ≤ 20 ms (a phone CPU is 4–5× slower): MapLibre ≤ 10, engine ≤ 4, life + live ≤ 2 |
 | Pixels | ≤ 2× (dynamic resolution down to 1×) | ≤ 2× (a 3× phone draws 2.25× fewer pixels); down to 1× |
 | Full-screen passes | 3 sky passes, shadowed ground (8 taps) | 3 sky passes, no shadow taps |
-| Draw calls | ≤ 400 (ours ≤ 250) | ≤ 250 (ours ≤ 150) |
+| Draw calls | ≤ 400 (ours ≤ 250) | ≤ 450 — measured 424 in the Eixample at low, most of them MapLibre's 2D layers redrawn per tile without terrain textures (ours ≤ 150) |
 | Triangles | ≤ 3 M (buildings ≤ 4 M vertices ≈ 2.2 M triangles, trees ≤ 16,000) | ≤ 1.5 M (buildings ≤ 2 M vertices ≈ 1.1 M, trees ≤ 6,000) |
 | Shadow map | 1024², 8-tap PCF; redrawn only when the sun, the box or the casters change (≤ 4 Hz while moving) | none |
 | Uploads | ≤ 8 MiB a frame | ≤ 4 MiB a frame |
@@ -132,6 +132,16 @@ holds are under [The CI gate](#the-ci-gate).
 
 High is exactly what the engine drew before this profile existed, so a
 capable machine loses nothing.
+
+**Low has no 3D terrain, on purpose, and it costs draw calls.** Measured on
+the phone profile, Eixample tilted: with 3D terrain MapLibre held **478 MB**
+of textures (its terrain render-to-texture tiles, 2048² and mipmapped, one per
+visible terrain tile), against **11 MB** without — on a device whose browser
+kills the tab at about 1–1.5 GB. The price: without terrain MapLibre draws its
+2D layers per tile on every frame instead of caching them in those textures,
+~230 more draw calls a frame there (264 → 490). Memory is the hard limit (a
+killed tab), draw calls the soft one, so low keeps the hillshade and the globe
+and drops the terrain mesh; Settings → High quality brings it back.
 
 ### Who gets which
 
@@ -175,6 +185,13 @@ measured frames cost under 60% of the target; without a GPU timer, where a
 60 Hz screen hides headroom, it probes one step up after 4 s calm and backs the
 next probe off ×2 (to a minute) whenever one had to be undone. The flat map
 alone keeps its own ratio, so a 2D map's labels never go soft.
+
+A new ratio resizes the canvas, and **a resize during a gesture drops it** —
+measured on the phone profile: with a ratio change mid-drag the map stopped
+following the pointer (the camera moved 0.001° instead of 0.008°), and
+followed it again with the change held back. So a change is applied only with
+no pointer down, 400 ms after the last input, with the camera at rest, and
+never inside MapLibre's own frame.
 
 ### Render on demand and the battery rule
 
@@ -233,7 +250,102 @@ triangles in `city.drawVertices`, or add a `city.markings` knob).
 
 ## Hotspots, measured and fixed
 
-‹TBD: before/after tables›
+Measured with `bench:map`, every scene with every 3D feature on (detailed
+look, sky, trees, city tiles, city life, landmarks, globe, terrain), `main`
+(`432fd6a`) against this branch on it, one after the other on the same
+machine, 2026-10-11. **GPU: the RTX 5090 through WSL's D3D12 translation
+(real, recorded per scene); laptop and phone: emulated viewport, pixel ratio,
+touch and CPU (×4), never their GPU** — see [Measuring](#measuring). The
+laptop runs this branch at the medium preset and the phone at the low one
+(what Auto picks on an Iris Xe and on an Adreno or a 3× iPhone); the desktop
+at Auto, which is high on this GPU. "Frames/s" is frames the map DREW over the
+scene — on a camera path it is bounded by how fast this environment delivers
+input, and on the still scenes it is the render-on-demand measure (lower is
+better there). Main-thread and GPU milliseconds are per drawn frame (the GPU
+timer measures from a frame's first command to its last, so under the ×4 CPU
+throttle it includes the GPU waiting for the CPU). Shadow redraws are the
+engine's count over the whole scene, load included.
+
+#### Desktop, 1920×1080 @1× — before: main, after: this branch (Auto → high)
+| scene | frames/s | main thread ms p50/p95 | GPU ms p50/p95 | draws | triangles | offscreen passes/frame | shadow redraws | GPU MB (est.) | JS heap MB |
+|---|---|---|---|---|---|---|---|---|---|
+| eixample | 19.9 → 23.1 | 7.2/14.3 → 6.3/11.2 | 5.1/32.2 → 4.5/24.9 | 392 → 391 | 7.59 M → 7.37 M | 1.5 → 1.5 | 54 → 23 | 1304 → 1305 | 415 → 150 |
+| manhattan | 25.8 → 24.4 | 5.9/11.4 → 5.8/14.9 | 5.3/19.0 → 5.3/14.5 | 292 → 293 | 3.43 M → 3.43 M | 1.3 → 1.3 | 60 → 28 | 957 → 954 | 307 → 159 |
+| montserrat | 57.3 → 56.6 | 3.0/5.4 → 3.1/5.5 | 9.9/18.5 → 7.3/17.7 | 103 → 103 | 0.92 M → 0.92 M | 0.6 → 0.6 | 0 → 0 | 657 → 657 | 242 → 141 |
+| terrain-still | no frames | | | | | | | | |
+| globe | 33.1 → 31.9 | 3.4/6.6 → 3.5/6.7 | 6.8/31.2 → 8.1/34.8 | 336 → 336 | 0.48 M → 0.48 M | 0.1 → 0.1 | 0 → 0 | 342 → 345 | 441 → 133 |
+| traffic | 20.5 → 30 | 7.0/11.6 → 7.4/12.0 | 7.4/16.4 → 10.8/16.6 | 315 → 315 | 4.43 M → 4.43 M | 0.0 → 0.0 | 16 → 8 | 799 → 799 | 228 → 141 |
+| idle | 20.2 → 29.2 | 8.1/13.0 → 8.8/13.7 | 7.8/10.7 → 3.4/14.0 | 351 → 351 | 4.58 M → 4.58 M | 0.0 → 0.0 | 19 → 11 | 916 → 916 | 307 → 159 |
+| night | 19.5 → 20.5 | 7.0/14.5 → 6.9/15.3 | 4.7/37.6 → 4.4/32.6 | 385 → 383 | 6.98 M → 6.94 M | 1.5 → 1.5 | 0 → 0 | 1184 → 1184 | 415 → 150 |
+
+#### Laptop, 1366×768 @2×, CPU ÷4 — before: main, after: this branch (quality medium)
+| scene | frames/s | main thread ms p50/p95 | GPU ms p50/p95 | draws | triangles | offscreen passes/frame | shadow redraws | GPU MB (est.) | JS heap MB |
+|---|---|---|---|---|---|---|---|---|---|
+| eixample | 22.7 → 26.1 | 27.0/43.0 → 26.1/45.8 | 3.0/17.4 → 3.0/17.7 | 311 → 259 | 5.71 M → 4.11 M | 0.8 → 0.9 | 98 → 69 | 919 → 799 | 527 → 125 |
+| manhattan | 26.8 → 32.3 | 21.6/36.5 → 21.0/36.2 | 3.2/6.4 → 2.7/6.2 | 210 → 201 | 2.67 M → 1.91 M | 0.7 → 0.7 | 103 → 63 | 676 → 616 | 228 → 159 |
+| montserrat | 54.6 → 52.3 | 9.3/16.5 → 10.3/17.7 | 14.2/24.9 → 14.5/27.5 | 77 → 77 | 0.61 M → 0.61 M | 0.2 → 0.2 | 0 → 0 | 588 → 575 | 228 → 169 |
+| terrain-still | — → 0.4 | — → 21.5/42.5 | — → 19.2/28.9 | — → 67 | — → 0.54 M | — → 0.0 | — → 0 | — → 566 | — → 141 |
+| globe | 39.1 → 40.3 | 11.7/20.9 → 11.8/21.9 | 4.7/30.7 → 3.7/22.5 | 257 → 257 | 0.30 M → 0.30 M | 0.0 → 0.0 | 0 → 0 | 136 → 107 | 257 → 117 |
+| traffic | 19.8 → 27.3 | 28.7/36.9 → 27.1/37.6 | 15.6/21.3 → 11.7/18.9 | 257 → 234 | 4.09 M → 3.44 M | 0.0 → 0.0 | 16 → 6 | 529 → 478 | 290 → 141 |
+| idle | 20 → 27.6 | 26.0/36.3 → 27.0/36.1 | 6.9/20.5 → 11.2/18.8 | 273 → 250 | 4.23 M → 3.57 M | 0.0 → 0.0 | 19 → 10 | 645 → 593 | 307 → 125 |
+| night | 21.9 → 23.5 | 28.6/43.1 → 27.4/49.2 | 2.9/13.9 → 2.7/14.0 | 327 → 271 | 5.75 M → 4.14 M | 0.7 → 0.9 | 0 → 0 | 942 → 844 | 391 → 125 |
+
+#### Phone (iPhone 12 class), 390×844 @3×, touch, CPU ÷4 — before: main, after: this branch (quality low)
+| scene | frames/s | main thread ms p50/p95 | GPU ms p50/p95 | draws | triangles | offscreen passes/frame | shadow redraws | GPU MB (est.) | JS heap MB |
+|---|---|---|---|---|---|---|---|---|---|
+| eixample | 27.7 → 43.9 | 19.7/31.3 → 13.6/23.7 | 2.5/9.2 → 3.8/5.0 | 214 → 424 | 4.32 M → 1.82 M | 0.4 → 0.0 | 32 → 0 | 658 → 85 | 415 → 133 |
+| manhattan | 44.3 → 46.1 | 12.5/21.7 → 11.2/15.3 | 1.9/3.4 → 1.7/1.9 | 137 → 378 | 2.38 M → 0.57 M | 0.3 → 0.0 | 35 → 0 | 411 → 34 | 179 → 125 |
+| montserrat | 55.6 → 45.6 | 8.1/14.7 → 10.1/13.9 | 14.6/24.7 → 2.5/5.9 | 51 → 415 | 0.61 M → 0.23 M | 0.3 → 0.0 | 0 → 0 | 571 → 34 | 215 → 141 |
+| terrain-still | no frames | | | | | | | | |
+| globe | 58.8 → 57.6 | 7.1/11.6 → 9.4/15.5 | 15.2/19.7 → 12.8/19.2 | 102 → 100 | 0.09 M → 0.09 M | 0.0 → 0.0 | 0 → 0 | 69 → 26 | 215 → 141 |
+| traffic | 20.2 → 20 | 19.6/21.6 → 20.3/29.4 | 6.0/14.5 → 5.4/24.1 | 204 → 311 | 3.95 M → 2.29 M | 0.0 → 0.0 | 16 → 0 | 396 → 85 | 290 → 125 |
+| idle | 20 → 9.3 | 20.3/28.0 → 14.7/23.1 | 6.2/15.4 → 5.3/16.2 | 209 → 282 | 4.02 M → 2.31 M | 0.0 → 0.0 | 19 → 0 | 453 → 86 | 242 → 125 |
+| night | 28.6 → 51.6 | 18.5/33.4 → 12.2/17.0 | 2.3/10.1 → 3.4/4.1 | 222 → 391 | 4.18 M → 1.91 M | 0.4 → 0.0 | 0 → 0 | 519 → 77 | 441 → 133 |
+
+What each change bought, from those numbers and the gate:
+
+1. **The shadow map was redrawn on most frames of any camera motion.** Its
+   cache key listed the drawn tiles in draw order (nearest first, which an
+   orbit reorders every frame) and every drawn tile, also those far outside
+   the shadow box. Now the key is the SET of tiles that can cast into the box
+   (`shadows.ts` → `castsInto`), and a change of casters alone redraws at most
+   every 250 ms while the camera moves (`SHADOW_CASTER_REDRAW_MS`), catching up
+   when it rests. Desktop: Eixample 54 → 23 redraws, Lower Manhattan 60 → 28 (laptop at medium: 98 → 69, 103 → 63, a 1024² map); a main-thread p95 of 14.3 → 11.2 ms and a GPU p95 of 32 → 25 ms on the Eixample orbit. In the CI gate's 12-frame orbit
+   (medium and high), the old rule's redraws are a mutation that fails it.
+2. **City life redrew the whole map at 30 Hz for as long as agents were on
+   screen, and an animated model on every animation frame, forever.** Both now
+   tick on the one clock and stop with it: the `idle` scene (30 s untouched,
+   traffic on screen) on the phone profile at low draws 9.3 frames a
+   second averaged over the scene, and none after its 20 s pause; on main it
+   draws ~20 a second for as long as the tab is open. GoWay Live's 60 Hz frame
+   loop joined the same clock.
+3. **No preset existed: a phone drew what a desktop GPU draws.** The phone
+   profile at low: GPU memory (estimated) 658 → 85 MB in the Eixample and 411 → 34 MB in Manhattan, triangles 4.32 M → 1.82 M and 2.38 M → 0.57 M, no shadow map and no shadow redraws (32 → 0), main thread p95 31 → 24 ms. Draw calls go UP (214 → 424): that is MapLibre drawing its 2D layers without the terrain textures (the trade-off above).
+4. **Trees kept their 98-triangle near shape at any distance on city tiles**
+   (they have no far level): now a level-0 tile's trees switch to the
+   20-triangle far shape past the full-detail distance (`setEntryTreeDetail`);
+   alone, −19% triangles in the gate's medium orbit (1.85 M → 1.50 M).
+5. **Twelve shadow taps on every pixel of the full-screen ground pass, sky
+   included.** The pass now skips the taps above the horizon, and the taps are
+   a preset knob (12 / 8 / none).
+6. **A 3× phone drew 3× its CSS pixels** (1170 × 2532 for the iPhone 12
+   profile): the clamp makes it 2×, and dynamic resolution lowers it further
+   while the 3D city is over budget.
+7. **The laptop at medium**: triangles 5.71 M → 4.11 M (Eixample) and 2.67 M → 1.91 M (Manhattan), draws 311 → 259, GPU memory (estimated) 919 → 799 MB, a 1024² shadow map with 8 taps.
+
+## What it costs at first paint
+
+`expo export --platform web --clear`, no map variables, `main` (`432fd6a`)
+against this branch:
+
+| Chunk | `main` | This branch | |
+| --- | ---: | ---: | --- |
+| `entry` (first paint) | 6,999,319 B (1,759,794 gz) | 7,008,808 B (1,763,403 gz) | +9,489 B, **+3,609 B gz** (+0.2%): the profile and its resolution, the GPU record in the store, the clock, the map's wiring |
+| `__common` (first paint) | 100,520 B | 100,520 B | identical |
+| `mapRuntime` (lazy, after the map loads) | — | 16,820 B (6,903 gz) | dynamic resolution, GPU tier and benchmark, the HUD and its counters |
+| `MapSettingsModal` (lazy, on first open) | 250,458 B | 258,951 B | the Performance row and its twelve-language copy |
+
+`components/__tests__/perfChunk.test.ts` pins the boundary.
 
 ## The CI gate
 
@@ -299,8 +411,15 @@ fixed where it was on a path this change touched:
   GPUs' published throughput and the measured per-frame counts, and the first
   real-device run should re-check them (`bench:map` against a deployed build
   on the device, or the HUD with `?perf=1`).
-- The benchmark's thresholds for the GPU tier (`BENCHMARK_MPX_PER_MS`) were
-  calibrated on two points only (‹TBD›).
+- The benchmark's thresholds for the GPU tier (`BENCHMARK_MPX_PER_MS`: medium
+  ≥ 0.6, high ≥ 3 Mpx/ms) rest on two measured points — the RTX 5090 through
+  WSL: 12.6–15.7 Mpx/ms (24–28 ms of benchmark once warm; 226 ms the first
+  time, compiling); SwiftShader: 0.03 (stopped after one pass) — and on
+  published throughput for the laptop and phone GPUs between them. The first
+  real Iris Xe, M1, Adreno and A14 runs should move them.
+- The JS heap (Chrome's `performance.memory`) reads 2–3× lower on this branch
+  in every scene (e.g. Eixample 415 → 150 MB); it is GC-timed and quantised,
+  and the cause is not attributed — read it as observed, not as a win.
 - Native (`MapCanvas.native.tsx`) does not read the profile yet; the profile is
   platform-neutral so it can.
 - Fill rate is not gated: a new full-screen pass, more PCF taps or a heavier
