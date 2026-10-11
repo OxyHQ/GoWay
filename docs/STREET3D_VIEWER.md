@@ -4,7 +4,7 @@ Part of [#14](https://github.com/OxyHQ/GoWay/issues/14) and
 [#15](https://github.com/OxyHQ/GoWay/issues/15): how published scenes reach a
 user on the map and in the viewer, and what contributors are told. The
 reconstruction side is in [`STREET3D_PIPELINE.md`](./STREET3D_PIPELINE.md); the
-public contract is `packages/shared-types/src/street3d.ts`.
+public contract is `packages/contracts/src/street3d.ts`.
 
 ## Layers
 
