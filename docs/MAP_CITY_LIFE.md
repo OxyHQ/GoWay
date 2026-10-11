@@ -334,7 +334,8 @@ shrinks as real coverage grows.
 - **Per class.** The classes a real feed can carry are buses, trams, trains,
   metro and ferries (`realCoverage.ts` → `REAL_CLASSES`). The live layer
   reports, per class, the z12 tiles where it has active, FRESH real vehicles
-  (`features/live/coverage.ts` → `subscribeLiveCoverage`, PR #132). In those
+  from a source carrying the WHOLE network of that kind (`lib/live/coverage.ts`
+  → `subscribeLiveCoverage`; a feed of only some operators never counts). In those
   tiles the simulation spawns none of that class, and any simulated vehicle of
   that class already there — or driving into one — fades out. Today the
   simulation's only such class is the bus (`REAL_CLASS_OF_MODEL`); trams,
@@ -346,12 +347,13 @@ shrinks as real coverage grows.
 - **Live layer off ⇒ no coverage.** When the reader turns the live layer off,
   it reports nothing, and the simulation fills everything as before — the
   label then says only "Simulated: …".
-- **Wiring.** `attachCity3d`'s `subscribeLiveCoverage` option is the one
-  injection point: the renderer forwards the fresh tiles to the simulation
-  worker (`{ type: 'coverage' }`) and reads the classes live in view for the
-  label. Until the live layer's API merges, nothing passes it (no coverage);
-  development builds expose `__gowayCityLifeCoverage({ bus: ['x/y', …] })` so
-  the policy can be checked end to end. Tests: `cityLifeRealFirst.test.ts`.
+- **Wiring.** The renderer subscribes to the live layer's channel
+  (`lib/live/coverage.ts`, which imports nothing, so reading it loads nothing
+  of GoWay Live), forwards the fresh tiles to the simulation worker
+  (`{ type: 'coverage' }`) and reads the classes live in view for the label.
+  Kinds, zoom and tile key are the channel's own (`LIVE_COVERAGE_KINDS`,
+  `LIVE_COVERAGE_ZOOM`, `liveCoverageTileOf`). Tests:
+  `cityLifeRealFirst.test.ts`.
 
 ## Performance
 

@@ -852,18 +852,6 @@ function publishModelAlignment(map: MapLibreMap, engine: CityEngine): void {
   });
 }
 
-    for (const [kind, tiles] of Object.entries(kinds) as [RealClass, string[]][]) {
-      coverage.kinds[kind] = { tiles: new Set(tiles), fresh: true };
-    }
-    callback(coverage);
-  };
-  (globalThis as { __gowayCityLifeCoverage?: typeof set }).__gowayCityLifeCoverage = set;
-  callback({ kinds: {} });
-  return () => {
-    delete (globalThis as { __gowayCityLifeCoverage?: typeof set }).__gowayCityLifeCoverage;
-  };
-};
-
 /**
  * Development only: the city-life simulation's numbers on
  * `globalThis.__gowayCityLife` (agents, targets, step time, network size).

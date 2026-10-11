@@ -27,7 +27,6 @@ import {
   liveCoverageTileOf,
 } from '@/lib/live/coverage';
 
-
 /** The vehicle classes a real feed can cover: the live layer's coverage kinds. */
 export const REAL_CLASSES = LIVE_COVERAGE_KINDS;
 export type RealClass = LiveCoverageKind;

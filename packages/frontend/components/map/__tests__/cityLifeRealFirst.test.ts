@@ -96,7 +96,7 @@ function coverageOf(
         kind,
         { tiles: new Set(kinds[kind]?.tiles ?? []), fresh: kinds[kind]?.fresh ?? false },
       ]),
-    ) as LiveCoverage['kinds'],
+    ) as unknown as LiveCoverage['kinds'],
   };
 }
 
