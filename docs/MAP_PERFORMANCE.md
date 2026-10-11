@@ -104,6 +104,16 @@ number:
 - **A GPU timer measures from the frame's first command to its last.** Under
   CPU throttling the GPU waits for the CPU between commands, so "GPU ms" there
   includes those waits.
+- **One GPU timer per frame.** WebGL 2 allows one `TIME_ELAPSED` query at a
+  time, and the runtime's spans the whole frame. Nothing else may open one.
+  Until this was found, the city engine timed its own draws in development
+  builds. Its `endQuery` closed the runtime's query at the city's last draw,
+  so the HUD, the benchmark and dynamic resolution read a frame cut short
+  there. Measured on the Eixample orbit (desktop): GPU p50 4.4–4.7 ms cut
+  short, 5.8–6.4 ms whole; p95 24–26 ms against 51–62 ms. The benchmark
+  numbers above were taken on development builds, so their GPU column is
+  the short one. Production builds never had the engine's timer. To compare
+  one layer, benchmark the scene with that layer on and off.
 - **Two Chromiums on the D3D12 driver at once fall back to SwiftShader.**
   Measured (a calibration run beside a benchmark read SwiftShader). Run one
   benchmark at a time and check the recorded renderer.

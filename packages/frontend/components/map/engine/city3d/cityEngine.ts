@@ -75,7 +75,6 @@ import type { AnimationClock } from '../../perf/animationClock';
 import { cityQuality } from '../quality';
 
 import { hexToRgb } from '@/lib/map/colour';
-import { createGpuTimer } from './gpuTimer';
 import { hiddenFeatureIds, tilesAround } from './landmarkTiles';
 import {
   DETAILED_DEFINE,
@@ -278,8 +277,6 @@ export interface CityEngineStats {
   frameCpuMs: number;
   /** …of which the city's own draw calls (buildings, trees, overlays), smoothed. */
   drawCpuMs: number;
-  /** GPU time of those draws, smoothed; absent where the browser cannot time it. */
-  drawGpuMs?: number;
   /** Which renderer drew the buildings: `tsl` (`tsl/tslPass.ts`), or `glsl` with the city sky. */
   buildingPath: 'glsl' | 'tsl';
   /** Meshes waiting for the per-frame upload budget. */
@@ -483,8 +480,6 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     // The detailed material's uniforms (day and night), only when it is on.
     ...(detailed ? materialSlots(detailed) : {}),
   };
-  // Development only: the GPU cost of the city's draws, for comparing paths.
-  const gpuTimer = options.onStats ? createGpuTimer(options.gl) : null;
   let drawCpuMs = 0;
   const treeUniforms = {
     ...light,
@@ -682,7 +677,6 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       lastTreeMs,
       frameCpuMs,
       drawCpuMs,
-      ...(gpuTimer?.ms != null ? { drawGpuMs: gpuTimer.ms } : {}),
       buildingPath: sky ? 'glsl' : 'tsl',
       uploadsQueued: arrivals.length,
       workers: pool.size,
@@ -1124,12 +1118,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       }
       if (frameOf.opacity > 0) {
         const drawStarted = performance.now();
-        gpuTimer?.begin();
         tslPass.draw(camera);
         // The TSL pass changed GL state behind this renderer's back.
         renderer.resetState();
         renderer.render(scene, camera);
-        gpuTimer?.end();
         const drawn = performance.now() - drawStarted;
         drawCpuMs = drawCpuMs === 0 ? drawn : drawCpuMs * 0.9 + drawn * 0.1;
         if (landmarks.active) {
@@ -1284,7 +1276,6 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       transitions.clear();
       cache.clear();
       tslPass.dispose();
-      gpuTimer?.dispose();
       shapes.dispose();
       requests.clear();
       arrivals.length = 0;

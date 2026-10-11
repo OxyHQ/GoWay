@@ -150,7 +150,7 @@ not ported yet.
 | Both building formats in TSL: ramp, tagged colour, storeys, light, occlusion, **terrain lift**, **LOD dither** | `tsl/buildingMaterial.ts` |
 | The pass: `WebGPURenderer` on MapLibre's context, no offscreen target, a read-only view of MapLibre's canvas, backend state reset per frame | `tsl/tslPass.ts` (was `buildingPass.ts`) |
 | Tile entries get the shared TSL materials and carry their fade per mesh | `cityMeshes.ts` |
-| The engine draws the pass, then `WebGLRenderer` for the rest; dev-only draw CPU/GPU stats | `cityEngine.ts`, `gpuTimer.ts` |
+| The engine draws the pass, then `WebGLRenderer` for the rest; dev-only draw CPU stats (GPU time: the perf runtime's, `MAP_PERFORMANCE.md`) | `cityEngine.ts` |
 
 How it shares MapLibre's frame:
 - **One context, so one framebuffer and one depth buffer.**
