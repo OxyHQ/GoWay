@@ -25,6 +25,7 @@ import {
   WALL_MATERIALS,
   type WallMaterial,
 } from '@/lib/map/cityTiles';
+import { CITY_OFFICIAL_PROPS } from '@/lib/map/cityOfficial';
 
 import type { Point2 } from './mesher';
 
@@ -61,6 +62,13 @@ export interface OsmBuilding {
   roofMaterial?: RoofMaterial;
   /** Recorded as lit at night (`floodlit` / `lit`, `CITY_PROPS.floodlit`). */
   floodlit?: boolean;
+  /**
+   * An official 3D model draws this building instead (`drawn_by`, a source
+   * id): the worker skips it and meshes that source's roofs (`lod2Mesher.ts`).
+   */
+  drawnBy?: string;
+  /** Who set `top` when an official dataset did (`height_source`: `lod2` or `cadastre`). */
+  heightSource?: string;
 }
 
 export interface DecodedCityTile {
@@ -103,7 +111,9 @@ export function buildingFromProperties(
   const top = metres(properties[CITY_PROPS.renderHeight], false) ?? UNKNOWN_HEIGHT_M;
   let base = metres(properties[CITY_PROPS.renderMinHeight], true) ?? 0;
   if (base >= top) base = 0;
-  const levels = count(properties[CITY_PROPS.levels]);
+  // The cadastre's storey count, when it set the height, before OSM's tag.
+  const levels =
+    count(properties[CITY_OFFICIAL_PROPS.officialLevels]) ?? count(properties[CITY_PROPS.levels]);
   const heightRecorded =
     typeof properties[CITY_PROPS.heightSource] === 'string' ||
     metres(properties[CITY_PROPS.height], false) !== undefined ||
@@ -135,6 +145,10 @@ export function buildingFromProperties(
   const roofMaterial = member(properties[CITY_PROPS.roofMaterial], ROOF_MATERIALS);
   if (roofMaterial) building.roofMaterial = roofMaterial;
   if (properties[CITY_PROPS.floodlit] === true) building.floodlit = true;
+  const drawnBy = properties[CITY_OFFICIAL_PROPS.drawnBy];
+  if (typeof drawnBy === 'string' && drawnBy) building.drawnBy = drawnBy;
+  const heightSource = properties[CITY_PROPS.heightSource];
+  if (heightSource === 'lod2' || heightSource === 'cadastre') building.heightSource = heightSource;
   return building;
 }
 
