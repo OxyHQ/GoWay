@@ -409,10 +409,10 @@ tree where none is mapped).
    whose point falls inside a footprint of its tile's own buildings is dropped
    (a courtyard is a hole, so a courtyard tree stays). Buildings of a
    neighbouring tile spilling over the edge are not consulted.
-3. **On the ground, not on the roofs**: on 3D terrain the trees stand on the
-   same opened ground as the buildings (`MAP_TERRAIN_GLOBE.md` → "How a
-   building is placed"): the terrain is a surface model, and a tree read
-   straight off it stood at the height of the next roof.
+3. **On the same ground as the buildings**: on 3D terrain the trees read the
+   grid the buildings stand on — the terrain as drawn (`MAP_TERRAIN_GLOBE.md`
+   → "The ground is the drawn terrain", which also records why #126's
+   de-noising of it was removed: in these cities the terrain is bare earth).
 4. **The styling fill — off unless asked for** (`?city3dTreeFill=1` in
    development, `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL=1` for a build;
    `trees.ts`): the 3D equivalent of the tree pattern a paper map prints over
@@ -567,8 +567,39 @@ fabricated places on the public map; the same rule governs buildings:
   rather than the patchwork `buildings3d.ts` refused raw `colour` for — the
   first untempered render of Lower Manhattan proved that point with a black
   tower and a yellow roof.
-- Unknown heights keep the 3 m floor `fill-extrusion` uses; they are not
-  "corrected" to look like a city.
+- **Heights: recorded, or the default — never guessed.** Precedence, highest
+  first: **official 3D data** (`height_source=lod2`, the LOD2 work: Catastro
+  in Spain) > **OSM tags** (`height`, `building:levels`; `height_source=osm`)
+  > **the 5 m default** OpenMapTiles also uses (no `height_source`). The
+  compiler writes the source (`tags.ts`); the client keeps, per drawn unit,
+  whether its height is the default (`TileMesh.polygonHeightDefault`, from
+  `height_source` on the city tiles and from OpenMapTiles' `render_height` 5
+  on the ground), so what draws it can tell a default from a fact. A default
+  is not "corrected" to look like a city.
+
+  *Measured ≠ invented — and why nothing is measured.* A height measured from
+  a surface model would be data, not a guess, and was tried for the default
+  buildings (the flat block at Passeig de Gràcia / Mallorca: OSM ways
+  249405068 and 249408232, `building=apartments` and nothing else). It does
+  not work with the data available, so do not retry it without new data:
+  - **At runtime, from the terrain the map draws:** Mapterhorn's z12 tiles are
+    the national BARE-EARTH models in Barcelona, Madrid and Manhattan (no
+    Empire State, no Cuatro Torres, no Eixample; `MAP_TERRAIN_GLOBE.md` → "The
+    ground is the drawn terrain"). There is nothing to measure: in the
+    Eixample tile 15/16580/12238 a median-of-nine nDSM measured 1 of 996
+    default buildings.
+  - **At compile time, from raw Copernicus GLO-30:** it does see the city,
+    but too coarsely. Median of nine samples per footprint minus the
+    bare-earth ground, against the 215 buildings of the same tile whose height
+    OSM records: median error **−10.8 m**, 18% within 5 m, 47% within 10 m
+    (the maximum of the nine: −9.1 m, 20% within 5 m). Its 30 m cells average
+    streets and courtyards into every block, and an isolated tower vanishes
+    (Torre Glòries reads nothing). The flat block would rise to 7.6 and
+    8.2 m, not ~25.
+
+  A per-country LiDAR surface model (Spain's IGN MDS05 against MDT05) would be
+  accurate enough; official building data (Catastro's floors above ground) is
+  simpler and is the LOD2 work's.
 
 ## The prototype
 
@@ -690,7 +721,8 @@ Properties are recorded facts, normalised, plus the two resolved heights:
 `roof_shape` (13 Simple 3D Buildings shapes), `roof_height` +
 `roof_height_source` (`tag`/`levels`/`angle`/`default`), `roof_direction`,
 `roof_orientation`, `colour`, `roof_colour`, `material`, `roof_material`,
-`part`. The feature id is Planetiler's `osmId × 10 + 2|3`, so a city building
+`part`, and `height_source` (`osm` where `height` or `building:levels` is
+tagged; absent where the 5 m default stands — see Honesty, "Heights"). The feature id is Planetiler's `osmId × 10 + 2|3`, so a city building
 joins to OSM exactly as a basemap label does. Junk is dropped, not coerced
 (`height=yes`, `~12`, `12;15`, `building:levels=2.5`, `roof:shape=pitched` is
 read as gabled, `light_grey` as `#d3d3d3`) — 571 unreadable values refused across

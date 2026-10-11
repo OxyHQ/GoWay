@@ -120,7 +120,20 @@ export const CITY_PROPS = {
   roofMaterial: 'roof_material',
   /** `true` for a `building:part`. */
   part: 'part',
+  /**
+   * Where the building's HEIGHT comes from, when it is recorded at all:
+   * {@link HEIGHT_SOURCES}. Absent: nothing records it and the top is the
+   * 5 m default. Precedence, highest first: official 3D data (`lod2`) >
+   * OpenStreetMap tags (`osm`) > the 5 m default (`docs/MAP_3D_CITY.md` →
+   * Honesty, "Heights").
+   */
+  heightSource: 'height_source',
 } as const;
+
+/** Recorded height sources a tile may name (`CITY_PROPS.heightSource`). */
+export const HEIGHT_SOURCES = ['lod2', 'osm'] as const;
+
+export type HeightSource = (typeof HEIGHT_SOURCES)[number];
 
 /**
  * Roof shapes the client can build, by their OSM name (Simple 3D Buildings).

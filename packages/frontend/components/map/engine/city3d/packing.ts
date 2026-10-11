@@ -117,6 +117,8 @@ export interface PackedMesh {
   polygonStarts: Uint32Array;
   /** Each unit's footprint box in local metres: `minX, minY, maxX, maxY`. */
   polygonBoxes: Float32Array;
+  /** Per unit, 1 when its height is the 5 m default (`TileMesh.polygonHeightDefault`). */
+  polygonHeightDefault: Uint8Array;
 }
 
 /** The buffers a packed mesh transfers (no copy) out of the worker. */
@@ -132,7 +134,11 @@ export function packedTransferables(mesh: PackedMesh): ArrayBuffer[] {
     if (chunk.facade) out.push(chunk.facade.buffer as ArrayBuffer);
     if (chunk.sourceIds) out.push(chunk.sourceIds.buffer as ArrayBuffer);
   }
-  out.push(mesh.polygonStarts.buffer as ArrayBuffer, mesh.polygonBoxes.buffer as ArrayBuffer);
+  out.push(
+    mesh.polygonStarts.buffer as ArrayBuffer,
+    mesh.polygonBoxes.buffer as ArrayBuffer,
+    mesh.polygonHeightDefault.buffer as ArrayBuffer,
+  );
   return out;
 }
 
@@ -185,6 +191,7 @@ export class PackedBuilder {
   private totalTriangles = 0;
   private readonly polygonStarts: number[] = [];
   private readonly polygonBoxes: number[] = [];
+  private readonly polygonHeightDefault: number[] = [];
   private readonly min: [number, number, number] = [65_535, 65_535, 65_535];
   private readonly max: [number, number, number] = [0, 0, 0];
   private readonly inverseUnit: number;
@@ -202,9 +209,10 @@ export class PackedBuilder {
    * Start a unit placed on terrain (one polygon of a far level): its vertices
    * run from here to the next unit's start, and stand on its footprint's box.
    */
-  beginPolygon(box: readonly [number, number, number, number]): void {
+  beginPolygon(box: readonly [number, number, number, number], heightDefault = false): void {
     this.polygonStarts.push(this.totalVertices + this.vertexCount);
     this.polygonBoxes.push(...box);
+    this.polygonHeightDefault.push(heightDefault ? 1 : 0);
   }
 
   /**
@@ -299,6 +307,7 @@ export class PackedBuilder {
       polygons,
       polygonStarts: Uint32Array.from(this.polygonStarts),
       polygonBoxes: Float32Array.from(this.polygonBoxes),
+      polygonHeightDefault: Uint8Array.from(this.polygonHeightDefault),
     };
   }
 
@@ -427,6 +436,8 @@ function finishPacked(
     polygons: mesh.polygons,
     polygonStarts: mesh.polygonStarts.slice(),
     polygonBoxes: mesh.polygonBoxes.slice(),
+    polygonHeightDefault:
+      mesh.polygonHeightDefault?.slice() ?? new Uint8Array(mesh.polygonStarts.length),
   };
 }
 
