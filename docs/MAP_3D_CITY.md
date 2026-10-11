@@ -252,6 +252,11 @@ the precision problem. The engine's per-tile placement
 general "anchor + metres" transform a model needs; the SDK work should add model
 objects to this scene rather than build a second one.
 
+Phase 1 of the SDK models now does exactly that: models are a group in this
+engine (`engine/city3d/models.ts`), drawn by the same renderer from a second
+custom layer above GoWay's overlays — see
+[`MAP_CAMERA_STUDIO.md`](./MAP_CAMERA_STUDIO.md) → "Two layers, one renderer".
+
 ## Obligations
 
 **MapLibre and OpenFreeMap stay replaceable adapters.** The engine never imports

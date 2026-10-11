@@ -11,7 +11,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { attachCity3d, CITY3D_LAYER_ID } from '@/components/map/city3dLayer.web';
+import { attachCity3d, CITY3D_LAYER_ID, MODELS_LAYER_ID } from '@/components/map/city3dLayer.web';
 import { BUILDING_3D_LAYER_ID, BUILDINGS_LIGHT } from '@/lib/map/style/buildings3d';
 
 type Call = [string, ...unknown[]];
@@ -39,6 +39,9 @@ function fakeMap(layers: string[]) {
       calls.push(['removeLayer', id]);
       order.splice(order.indexOf(id), 1);
     },
+    getStyle: () => ({
+      layers: order.map((id) => ({ id, type: id.startsWith('label') ? 'symbol' : 'fill' })),
+    }),
     getLight: () => BUILDINGS_LIGHT.light,
     getBearing: () => 0,
     triggerRepaint: () => {},
@@ -75,5 +78,58 @@ describe('attachCity3d', () => {
     handle?.detach();
     expect(map.order).toEqual(['background', 'building', BUILDING_3D_LAYER_ID, 'label-road']);
     expect(map.visibility.get(BUILDING_3D_LAYER_ID)).toBe('visible');
+  });
+
+  test('models (SDK_MAP_MODELS phase 1): their own layer, above the overlays and below the labels', async () => {
+    const map = fakeMap(['background', 'building', BUILDING_3D_LAYER_ID, 'overlay', 'label-road']);
+    const handle = await attachCity3d(asMap(map), {
+      appearance: 'light',
+      light: null,
+      buildings: false,
+    });
+    expect(handle).not.toBeNull();
+    // Models only: the extrusion keeps drawing, nothing is added until a model is.
+    expect(map.order).toEqual([
+      'background',
+      'building',
+      BUILDING_3D_LAYER_ID,
+      'overlay',
+      'label-road',
+    ]);
+    expect(map.visibility.get(BUILDING_3D_LAYER_ID)).toBeUndefined();
+
+    handle?.setModels([
+      {
+        id: 'car',
+        url: 'https://models.example/car.glb',
+        placement: {
+          position: { latitude: 41.39, longitude: 2.17 },
+          altitude: { meters: 0, reference: 'ground' },
+          orientation: { heading: 0, pitch: 0, roll: 0 },
+          scale: 1,
+        },
+        sizing: { mode: 'world' },
+        minZoom: 0,
+        maxZoom: 24,
+        occlusion: 'buildings',
+      },
+    ]);
+    expect(map.order).toEqual([
+      'background',
+      'building',
+      BUILDING_3D_LAYER_ID,
+      'overlay',
+      MODELS_LAYER_ID,
+      'label-road',
+    ]);
+
+    handle?.detach();
+    expect(map.order).toEqual([
+      'background',
+      'building',
+      BUILDING_3D_LAYER_ID,
+      'overlay',
+      'label-road',
+    ]);
   });
 });

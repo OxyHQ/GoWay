@@ -61,6 +61,9 @@ function runtimeImports(text: string, module: RegExp): string[] {
 const ENGINES = [
   'components/street3d/engine/sparkEngine.ts',
   'components/map/engine/city3d/cityEngine.ts',
+  // The model layer is part of the city engine (one scene, one renderer —
+  // docs/SDK_MAP_MODELS.md), imported only by `cityEngine.ts`.
+  'components/map/engine/city3d/models.ts',
 ];
 const CHUNK = 'components/engine3d/lazyChunk.ts';
 
@@ -74,6 +77,15 @@ describe('the three.js chunk', () => {
     const offenders = files
       .filter((f) => !ENGINES.includes(f.path))
       .filter((f) => runtimeImports(f.text, /^(three|@sparkjsdev\/spark)(\/|$)/).length > 0)
+      .map((f) => f.path);
+    expect(offenders).toEqual([]);
+  });
+
+  test('only the city engine reaches the model layer at runtime', () => {
+    const offenders = files
+      .filter((f) => f.path !== 'components/map/engine/city3d/cityEngine.ts')
+      .filter((f) => runtimeImports(f.text, /city3d\/models$|^\.\/models$/).length > 0)
+      .filter((f) => f.path.startsWith('components/map/engine/'))
       .map((f) => f.path);
     expect(offenders).toEqual([]);
   });

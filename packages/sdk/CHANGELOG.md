@@ -17,6 +17,13 @@ taxonomy.
 
 ### Added
 
+- 3D model placement, phase 1 of `docs/SDK_MAP_MODELS.md`: the
+  `ModelPlacement`/`ModelPlacementInput` types (position, `'ground'` altitude,
+  heading/pitch/roll, scale; latitude within Web Mercator's ±85.0511°,
+  `MAX_MODEL_LATITUDE`), `MODEL_ALTITUDE_REFERENCES` and the limits, and
+  `parseModelPlacement(input)`, which answers a drawable placement or `null`
+  and never throws. No route serves models yet; the asset descriptor and the
+  catalogue are phase 2.
 - `places.update(id, { openingHoursDays })` replaces only explicitly named
   opening weekdays atomically; exported `OpeningHoursDayPatch` describes each
   replacement. Empty day intervals close that day. Unknown schedules require

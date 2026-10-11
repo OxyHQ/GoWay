@@ -48,7 +48,7 @@ import { getMapSource } from './provider';
  * `atan(sinh(π))` in degrees. Past it the projection runs to infinity, and an
  * engine handed 90 produces either a throw or a camera nobody asked for.
  */
-const MERCATOR_LATITUDE_LIMIT = 85.051129;
+export const MERCATOR_LATITUDE_LIMIT = 85.051129;
 
 /** Query parameters as a router hands them over: string, repeated, or absent. */
 export type ViewportParamSource = Readonly<Record<string, string | string[] | undefined>>;

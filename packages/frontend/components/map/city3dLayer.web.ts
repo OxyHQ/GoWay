@@ -50,7 +50,12 @@ import type { CustomLayerInterface, Map as MapLibreMap, VectorTileSource } from 
 
 import { CITY_TILE_LAYER, CITY_TILE_PATH, CITY_TILE_ZOOM } from '@/lib/map/cityTiles';
 import { isCityTilesRequested, MAP_CITY_TILES_ENABLED } from '@/lib/map/cityTilesFlag';
-import { getMapSource, GOWAY_LAYER_PREFIX, type MapAppearance } from '@/lib/map/provider';
+import {
+  getMapSource,
+  GOWAY_LAYER_PREFIX,
+  type MapAppearance,
+  resolveMapAnchors,
+} from '@/lib/map/provider';
 import {
   BUILDING_3D_LAYER_ID,
   BUILDINGS_3D_FADE,
@@ -64,6 +69,7 @@ import { cityLightFromSpec, sameCityLight } from './city3dLight';
 // a module two lazy chunks share is hoisted into the first-paint `__common`
 // chunk (see `engine3d/lazyChunk.ts`; `components/__tests__/engine3dChunk.test.ts`).
 import type { CityEngine, CityEngineStats } from './engine/city3d/cityEngine';
+import type { ModelSpec, ModelStatus } from './engine/city3d/models';
 import type { CityLight } from './engine/city3d/occlusion';
 import { reportMapDefect } from './shared';
 
@@ -105,6 +111,22 @@ export function citySourceFor(
 /** The custom layer's id, in GoWay's own namespace. */
 export const CITY3D_LAYER_ID = `${GOWAY_LAYER_PREFIX}city3d`;
 
+/** The models' custom layer (same engine; see `modelsLayer` below). */
+export const MODELS_LAYER_ID = `${GOWAY_LAYER_PREFIX}models`;
+
+/**
+ * Where the models' layer goes: right AFTER the overlay anchor, so every GoWay
+ * overlay (inserted before the anchor) stays under it and every label over
+ * it; on a style with no anchor promise, before its first label; else on top.
+ */
+function modelsLayerBefore(map: MapLibreMap): string | undefined {
+  const layers = map.getStyle()?.layers ?? [];
+  const anchor = resolveMapAnchors().beforeLabels;
+  const at = anchor ? layers.findIndex((l) => l.id === anchor) : -1;
+  if (at >= 0) return layers[at + 1]?.id;
+  return layers.find((l) => l.type === 'symbol')?.id;
+}
+
 export interface AttachCity3dOptions {
   appearance: MapAppearance;
   /**
@@ -114,6 +136,15 @@ export interface AttachCity3dOptions {
    * exactly as the extrusion does.
    */
   light: LightSpecification | null;
+  /**
+   * Draw the city's buildings. `false` attaches the same engine to host
+   * coordinate-anchored models only (`MapCanvasProps.models`) while the
+   * style's own `building-3d` keeps drawing — and occluding them through the
+   * shared depth buffer. Defaults to `true`.
+   */
+  buildings?: boolean;
+  /** A model was drawn, or fell back to its marker. */
+  onModelStatus?: (id: string, status: ModelStatus) => void;
 }
 
 export interface City3dHandle {
@@ -123,6 +154,12 @@ export interface City3dHandle {
    * means "the style's own light".
    */
   setLight(light: LightSpecification | null): void;
+  /** The models in the scene (`engine/city3d/models.ts`). */
+  setModels(specs: readonly ModelSpec[]): void;
+  /** Move one model, for a frame of an animation. */
+  moveModel(id: string, placement: ModelSpec['placement']): void;
+  /** The model drawn under a CSS-pixel point, or `null`. */
+  pickModel(point: { x: number; y: number }): string | null;
   /** Remove the layer, free the engine, and show `building-3d` again. Idempotent. */
   detach(): void;
 }
@@ -146,23 +183,27 @@ export async function attachCity3d(
     );
     return null;
   }
+  const buildings = options.buildings !== false;
   const source = map.getSource<VectorTileSource>(getMapSource().ids.basemap);
-  const template = source?.tiles?.[0];
-  if (!source || !template) {
+  const template = source?.tiles?.[0] ?? '';
+  if (buildings && (!source || !template)) {
     reportMapDefect('city3d:source', 'city3d: the style has no tiled vector source; not attached.');
     return null;
   }
   const { createCityEngine } = await import('@/components/engine3d/lazyChunk');
-  // The adapter only loads with the city-3D flag on, so that half is `true` here.
-  const cityTiles = isCityTilesRequested({
-    city3d: true,
-    enabled: MAP_CITY_TILES_ENABLED,
-    // `typeof`: the bun tests that attach to a fake map run without the global.
-    development: typeof __DEV__ !== 'undefined' && __DEV__,
-    search: typeof window !== 'undefined' ? window.location.search : '',
-  });
+  // City tiles replace the BUILDINGS' source; a models-only engine (the city
+  // flag off) draws no buildings, so it never asks.
+  const cityTiles =
+    buildings &&
+    isCityTilesRequested({
+      city3d: true,
+      enabled: MAP_CITY_TILES_ENABLED,
+      // `typeof`: the bun tests that attach to a fake map run without the global.
+      development: typeof __DEV__ !== 'undefined' && __DEV__,
+      search: typeof window !== 'undefined' ? window.location.search : '',
+    });
   const citySource = citySourceFor(
-    { template, maxzoom: source.maxzoom },
+    { template, maxzoom: source?.maxzoom ?? 14 },
     cityTiles,
     typeof window !== 'undefined' ? window.location.origin : '',
   );
@@ -171,12 +212,68 @@ export async function attachCity3d(
   let lightSpec = options.light;
   let applied: CityLight | null = null;
   let engine: CityEngine | null = null;
+  // Models handed over before MapLibre called `onAdd`.
+  let queuedModels: readonly ModelSpec[] | null = null;
 
   // The light as MapLibre would apply it to `building-3d` this frame: the
   // given spec (or the style's own), at the current bearing — which matters
   // only for a `viewport`-anchored light, i.e. the static fallback.
   const currentLight = (): CityLight =>
     cityLightFromSpec(lightSpec ?? map.getLight(), map.getBearing());
+
+  // ONE engine for both layers below: one renderer, one scene, one light. It
+  // is freed when the last of them leaves the map (a style swap, `remove()`).
+  let liveLayers = 0;
+  const releaseEngine = () => {
+    liveLayers--;
+    if (liveLayers > 0) return;
+    engine?.dispose();
+    engine = null;
+  };
+  const ensureEngine = (host: MapLibreMap, gl: WebGLRenderingContext | WebGL2RenderingContext) => {
+    liveLayers++;
+    if (engine) return engine;
+    applied = currentLight();
+    engine = createCityEngine({
+      gl: gl as WebGL2RenderingContext,
+      canvas: host.getCanvas(),
+      ...citySource,
+      palette,
+      light: applied,
+      fade: BUILDINGS_3D_FADE,
+      requestRepaint: () => host.triggerRepaint(),
+      onStats: __DEV__ ? publishStats : undefined,
+      buildings,
+      onModelStatus: options.onModelStatus,
+    });
+    if (queuedModels) engine.setModels(queuedModels);
+    if (__DEV__) publishLight(lightSpec ?? map.getLight(), applied);
+    return engine;
+  };
+
+  // The view MapLibre hands this frame, with the light re-derived (a few
+  // multiplications) and handed over only when it changed: a new sun light,
+  // or a rotation under a viewport light.
+  const frameView = (args: { defaultProjectionData: { mainMatrix: ArrayLike<number> } }) => {
+    const light = currentLight();
+    if (engine && !sameCityLight(applied, light)) {
+      applied = light;
+      engine.setLight(light);
+      if (__DEV__) publishLight(lightSpec ?? map.getLight(), light);
+    }
+    const bounds = map.getBounds();
+    return {
+      mercatorToClip: args.defaultProjectionData.mainMatrix,
+      zoom: map.getZoom(),
+      center: map.getCenter(),
+      bounds: {
+        west: bounds.getWest(),
+        south: bounds.getSouth(),
+        east: bounds.getEast(),
+        north: bounds.getNorth(),
+      },
+    };
+  };
 
   const layer: CustomLayerInterface = {
     id: CITY3D_LAYER_ID,
@@ -185,45 +282,38 @@ export async function attachCity3d(
     // occlude each other correctly.
     renderingMode: '3d',
     onAdd(host, gl) {
-      applied = currentLight();
-      engine = createCityEngine({
-        gl: gl as WebGL2RenderingContext,
-        canvas: host.getCanvas(),
-        ...citySource,
-        palette,
-        light: applied,
-        fade: BUILDINGS_3D_FADE,
-        requestRepaint: () => host.triggerRepaint(),
-        onStats: __DEV__ ? publishStats : undefined,
-      });
-      if (__DEV__) publishLight(lightSpec ?? map.getLight(), applied);
+      ensureEngine(host, gl);
     },
     render(_gl, args) {
-      // Re-derived every frame (a few multiplications), handed over only when
-      // it changed: a new sun light, or a rotation under a viewport light.
-      const light = currentLight();
-      if (engine && !sameCityLight(applied, light)) {
-        applied = light;
-        engine.setLight(light);
-        if (__DEV__) publishLight(lightSpec ?? map.getLight(), light);
-      }
-      const bounds = map.getBounds();
-      engine?.render({
-        mercatorToClip: args.defaultProjectionData.mainMatrix,
-        zoom: map.getZoom(),
-        center: map.getCenter(),
-        bounds: {
-          west: bounds.getWest(),
-          south: bounds.getSouth(),
-          east: bounds.getEast(),
-          north: bounds.getNorth(),
-        },
-      });
+      engine?.render(frameView(args));
     },
-    onRemove() {
-      engine?.dispose();
-      engine = null;
+    onRemove: releaseEngine,
+  };
+
+  /**
+   * The models' layer: the SAME engine, drawn at a different depth of the
+   * style. Buildings belong under the route line (a route is drawn over the
+   * city, as every map does); a vehicle ON the route must not be painted over
+   * by it. So the models are a second custom layer, directly after the
+   * overlay anchor — above every GoWay overlay, below every label — still
+   * `'3d'`, so they depth-test against the buildings already in the depth
+   * buffer and are hidden behind them. Two layers, one renderer and one
+   * scene: none of the costs `docs/MAP_3D_CITY.md` → "One engine, one scene"
+   * rejects (state resets twice, two precision fixes, two lights).
+   */
+  const modelsLayer: CustomLayerInterface = {
+    id: MODELS_LAYER_ID,
+    type: 'custom',
+    renderingMode: '3d',
+    onAdd(host, gl) {
+      ensureEngine(host, gl);
     },
+    render(_gl, args) {
+      const view = frameView(args);
+      if (__DEV__ && engine) publishModelAlignment(map, engine);
+      engine?.renderModels(view);
+    },
+    onRemove: releaseEngine,
   };
 
   // Checked again: the chunk download above yielded, and the style may have
@@ -231,8 +321,16 @@ export async function attachCity3d(
   if (!map.getLayer(BUILDING_3D_LAYER_ID)) return null;
   const previousVisibility = map.getLayoutProperty(BUILDING_3D_LAYER_ID, 'visibility');
 
-  map.addLayer(layer, BUILDING_3D_LAYER_ID);
-  map.setLayoutProperty(BUILDING_3D_LAYER_ID, 'visibility', 'none');
+  if (buildings) {
+    map.addLayer(layer, BUILDING_3D_LAYER_ID);
+    map.setLayoutProperty(BUILDING_3D_LAYER_ID, 'visibility', 'none');
+  }
+  // The models' layer joins the style only once there is a model to draw, so
+  // the city alone changes the style exactly as it always did.
+  const ensureModelsLayer = () => {
+    if (map.getLayer(MODELS_LAYER_ID)) return;
+    map.addLayer(modelsLayer, modelsLayerBefore(map));
+  };
 
   let detached = false;
   return {
@@ -241,12 +339,24 @@ export async function attachCity3d(
       // Picked up by the next frame's `currentLight()`.
       map.triggerRepaint();
     },
+    setModels(specs) {
+      queuedModels = specs;
+      if (specs.length > 0 && !detached) ensureModelsLayer();
+      engine?.setModels(specs);
+    },
+    moveModel(id, placement) {
+      engine?.setModelPlacement(id, placement);
+    },
+    pickModel(point) {
+      return engine?.pickModel(point) ?? null;
+    },
     detach() {
       if (detached) return;
       detached = true;
       // The map may already be gone (an appearance change tears it down before
       // this cleanup runs); then there is nothing left to restore.
       try {
+        if (map.getLayer(MODELS_LAYER_ID)) map.removeLayer(MODELS_LAYER_ID);
         if (map.getLayer(CITY3D_LAYER_ID)) map.removeLayer(CITY3D_LAYER_ID);
         if (map.getLayer(BUILDING_3D_LAYER_ID)) {
           map.setLayoutProperty(
@@ -262,6 +372,29 @@ export async function attachCity3d(
       engine = null;
     },
   };
+}
+
+/**
+ * Development only: each drawn model's anchor where the ENGINE put it beside
+ * where MapLibre's own `project` puts the same coordinate, on
+ * `globalThis.__gowayModelAlignment` — the alignment check of
+ * `docs/SDK_MAP_MODELS.md` phase 1 ("a model's ground point against
+ * `map.project` within 1 px"), readable by a headless browser at any camera.
+ * Reads the PREVIOUS frame's anchors against the current camera, so it is
+ * only meaningful once the camera has settled (as the check does).
+ */
+function publishModelAlignment(map: MapLibreMap, engine: CityEngine): void {
+  const anchors = engine.modelAnchors();
+  if (anchors.length === 0) return;
+  (globalThis as { __gowayModelAlignment?: unknown }).__gowayModelAlignment = anchors.map((a) => {
+    const p = map.project([a.lng, a.lat]);
+    return {
+      id: a.id,
+      engine: { x: a.x, y: a.y },
+      map: { x: p.x, y: p.y },
+      error: Math.hypot(p.x - a.x, p.y - a.y),
+    };
+  });
 }
 
 /**

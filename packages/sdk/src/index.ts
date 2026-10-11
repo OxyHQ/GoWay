@@ -206,6 +206,13 @@ export {
   TRAVEL_MODES,
   MANEUVER_TYPES,
   MAX_WAYPOINTS,
+  // 3D models on the map (docs/SDK_MAP_MODELS.md, phase 1)
+  MODEL_ALTITUDE_REFERENCES,
+  MIN_MODEL_ALTITUDE_METERS,
+  MAX_MODEL_ALTITUDE_METERS,
+  MAX_MODEL_LATITUDE,
+  MAX_MODEL_SCALE,
+  parseModelPlacement,
   // Geography, language, paging
   boundingBoxWidth,
   toGeoCoordinate,
@@ -445,4 +452,8 @@ export type {
   RouteRequest,
   RouteResponse,
   TravelMode,
+  // 3D models on the map
+  ModelAltitudeReference,
+  ModelPlacement,
+  ModelPlacementInput,
 } from './contract';
