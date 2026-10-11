@@ -74,7 +74,7 @@ import type { QualityProfile } from '@/lib/map/quality/profile';
 import type { AnimationClock } from '../../perf/animationClock';
 import { cityQuality } from '../quality';
 
-import { hexToRgb } from './colour';
+import { hexToRgb } from '@/lib/map/colour';
 import { createGpuTimer } from './gpuTimer';
 import { hiddenFeatureIds, tilesAround } from './landmarkTiles';
 import {
@@ -98,7 +98,13 @@ import {
   tileKey,
 } from './tileMath';
 import type { CityOverlay } from './overlay';
-import { type GroundSampler, type GroundStats, TileGrounder } from './terrainGround';
+import {
+  createGround,
+  type Ground,
+  type GroundSampler,
+  type GroundStats,
+  TileGrounder,
+} from './terrainGround';
 import { incompleteRetryMs, TileCache, TileScheduler } from './tileScheduler';
 import { assignSources, type SourcedTile } from './sources';
 import { Transitions } from './transitions';
@@ -320,6 +326,8 @@ export interface CityEngine {
   readonly nightFactor: { readonly value: number };
   /** Draw the models — from their own layer, above the overlays (`city3dLayer.web.ts`). */
   renderModels(view: CityView): void;
+  /** The drawn ground everything stands on (`setGround`), or `null` on a flat map. */
+  readonly ground: Ground | null;
   /** Draw a pass with this engine's renderer. Not faded with the buildings: a pass owns its own visibility. */
   renderPass(pass: CityPass, view: CityView): void;
   /** The map's light, re-applied whenever `building-3d`'s would change (the sun). */
@@ -569,6 +577,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   );
   const grounder = new TileGrounder(now, options.onGroundStats);
   let groundSampler: GroundSampler | null = null;
+  let ground: Ground | null = null;
   // The lifts seen on this terrain, for the selection's culling range.
   let liftRange: { min: number; max: number } | null = null;
 
@@ -1144,6 +1153,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       }
     },
 
+    get ground() {
+      return ground;
+    },
+
     renderModels(view) {
       if (disposed || !models.active) return;
       probe?.enter('models');
@@ -1159,12 +1172,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     },
 
     setGround(sample) {
-      grounder.setSampler(sample);
-      // One terrain path: buildings and trees (the ground grid), models and
-      // landmarks (the same sampler, read at their anchor) and city life
-      // (the same ground grid: `overlay.ts`) all stand on the drawn terrain.
+      // One terrain path and ONE cache of it (`terrainGround.ts` → `Ground`):
+      // buildings and trees (the grids), city life (the same grids), models,
+      // landmarks and live vehicles (the same sampler, at their anchor).
+      ground = sample ? createGround(sample) : null;
+      grounder.setGround(ground);
       models.setGround(sample);
-      for (const overlay of overlays) overlay.setGround(sample);
+      for (const overlay of overlays) overlay.setGround(ground);
       landmarks.setGround(sample);
       groundSampler = sample;
       liftRange = null;

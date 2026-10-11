@@ -40,6 +40,7 @@
  *  6. **Footways.** Walkable pieces as they are, plus a virtual sidewalk on
  *     each side of a road whose `sidewalk` tag says there is one.
  */
+import { EARTH_CIRCUMFERENCE_M, latitudeFromMercatorY } from '@/lib/map/geo';
 import type { DecodedRoadTile, RoadPiece } from '../roadTiles';
 import type { DrivingSide } from './drivingSide';
 import { createRng } from './rng';
@@ -94,11 +95,9 @@ export interface SimFrame {
 /** The frame for an origin tile: metres per tile unit at its middle latitude. */
 export function simFrame(originX: number, originY: number): SimFrame {
   const n = 2 ** ZOOM;
-  const y = 180 - ((originY + 0.5) / n) * 360;
-  const lat = (360 / Math.PI) * Math.atan(Math.exp((y * Math.PI) / 180)) - 90;
-  const circumference = 2 * Math.PI * 6371008.8;
+  const lat = latitudeFromMercatorY((originY + 0.5) / n);
   // mercatorPerMetre(lat) = 1 / (C cos lat); one unit is 1/(n·EXTENT) mercator.
-  const metresPerUnit = (circumference * Math.cos((lat * Math.PI) / 180)) / (n * EXTENT);
+  const metresPerUnit = (EARTH_CIRCUMFERENCE_M * Math.cos((lat * Math.PI) / 180)) / (n * EXTENT);
   return { originX, originY, metresPerUnit };
 }
 

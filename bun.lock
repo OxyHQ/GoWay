@@ -114,6 +114,7 @@
       "devDependencies": {
         "@gltf-transform/core": "4.5.0",
         "@gltf-transform/extensions": "4.5.0",
+        "@jridgewell/trace-mapping": "0.3.31",
         "@tailwindcss/postcss": "4.3.2",
         "@types/react": "^19.2.17",
         "@types/react-dom": "^19.2.3",

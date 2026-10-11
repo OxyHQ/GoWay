@@ -368,6 +368,13 @@ export interface City3dHandle {
    * caller (`liveLayer.web.ts`).
    */
   addPass(pass: CityPass): () => void;
+  /**
+   * The drawn ground the city stands on, as a sampler (`terrainGround.ts` →
+   * `Ground`), or `null` on a flat map: for a pass that stands its objects on
+   * the same terrain (GoWay Live's vehicles), without asking MapLibre per
+   * point (`queryTerrainElevation` re-derives covering tiles per call).
+   */
+  ground(): ((longitude: number, latitude: number) => number) | null;
   /** Remove the layer, free the engine, and show `building-3d` again. Idempotent. */
   detach(): void;
 }
@@ -787,6 +794,9 @@ export async function attachCity3d(
     pass.dispose();
   };
   return {
+    ground() {
+      return engine?.ground?.sample ?? null;
+    },
     addPass(pass) {
       const id = `${GOWAY_LAYER_PREFIX}${pass.id}`;
       removePass(id);

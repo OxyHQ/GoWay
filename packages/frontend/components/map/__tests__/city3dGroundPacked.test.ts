@@ -23,6 +23,7 @@ import {
 } from '@/components/map/engine/city3d/mesher';
 import { packMesh } from '@/components/map/engine/city3d/packing';
 import {
+  createGround,
   GROUND,
   gridAt,
   polygonGround,
@@ -98,6 +99,9 @@ const context = () => ({
   },
 });
 
+/** A sampler as the engine hands it over: with its grid cache. */
+const groundOf = (sample: Parameters<typeof createGround>[0]) => createGround(sample);
+
 describe('grounding a packed entry', () => {
   test('lifts every vertex exactly as vertexGround lifts the float mesh (32-bit, one chunk)', () => {
     const mesh = meshBuildings(FEATURES, OPTIONS) as TileMesh;
@@ -123,7 +127,7 @@ describe('grounding a packed entry', () => {
     expect(packed?.polygonStarts.length).toBe(50);
     const entry = createTileEntry(context(), createTreeShapes(), 'k@1', 1, packed, null);
     const grounder = new TileGrounder();
-    grounder.setSampler(hill);
+    grounder.setGround(groundOf(hill));
     const result = grounder.ground('k@1', groundTileFor(entry as NonNullable<typeof entry>, TILE));
     const chunk = packed?.chunks[0];
     if (!chunk || !result) throw new Error('no chunk');
@@ -164,12 +168,12 @@ describe('grounding a packed entry', () => {
     const trees = packTrees([{ x: 100, y: 200, seed: 0.1, kind: 0, heightM: 10 }], SIZE);
     const entry = createTileEntry(context(), createTreeShapes(), 't@0', 0, null, trees);
     const grounder = new TileGrounder();
-    grounder.setSampler(hill);
+    grounder.setGround(groundOf(hill));
     // Copied: the grounder rewrites its buffer in place.
     const first = grounder
       .ground('t@0', groundTileFor(entry as NonNullable<typeof entry>, TILE))
       ?.values.slice();
-    grounder.setSampler((lng, lat) => hill(lng, lat) + 30);
+    grounder.setGround(groundOf((lng, lat) => hill(lng, lat) + 30));
     const second = grounder.ground('t@0', groundTileFor(entry as NonNullable<typeof entry>, TILE));
     expect(second?.changed).toBe(true);
     expect((second?.values[0] ?? 0) - (first?.[0] ?? 0)).toBeCloseTo(30, 3);

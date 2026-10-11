@@ -7,7 +7,7 @@
  */
 import type { MapViewport } from '@/components/map/types';
 
-import { distanceMeters } from '../geo';
+import { distanceMeters, EARTH_CIRCUMFERENCE_M } from '../geo';
 
 /** What the tour needs to know of a landmark (a registry entry's subset). */
 export interface TourStop {
@@ -37,7 +37,7 @@ export const DEFAULT_FIELD_OF_VIEW = 36.87;
 /** MapLibre's default `maxPitch`, which the canvas keeps. */
 export const MAX_TOUR_PITCH = 60;
 // The sphere `distanceMeters` measures on (`lib/map/geo.ts`), so the two agree.
-const EARTH_RADIUS_M = 40_075_016.686 / (2 * Math.PI);
+const EARTH_RADIUS_M = EARTH_CIRCUMFERENCE_M / (2 * Math.PI);
 const DEG = Math.PI / 180;
 
 /**

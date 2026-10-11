@@ -10,54 +10,41 @@
  * across a 100 km route it is a few per cent, which only changes how fast the
  * camera seems to travel, never where it goes.
  *
- * Pure arithmetic with no renderer. Deliberately NOT shared with
- * `components/map/engine/city3d/tileMath.ts`: that module lives in the
- * three.js chunk, and a module two lazy chunks import is hoisted into the
- * first-paint `__common` chunk (`components/engine3d/lazyChunk.ts`). The
- * formulas are the same Web Mercator, pinned by `__tests__/cameraPlane.test.ts`.
+ * Pure arithmetic with no renderer. The projection itself is `lib/map/geo.ts`'s
+ * — the one copy, in the first-paint bundle, so this lazy chunk and the
+ * three.js one share it without it being hoisted into `__common`
+ * (`components/engine3d/lazyChunk.ts`); the formulas are pinned by
+ * `__tests__/cameraPlane.test.ts`.
  */
 import type { GeoCoordinate } from '@/components/map/types';
 
-/** MapLibre's Earth: `2π × 6,371,008.8 m` (see `tileMath.ts` → `EARTH_CIRCUMFERENCE_M`). */
-export const EARTH_CIRCUMFERENCE_M = 2 * Math.PI * 6371008.8;
+import {
+  EARTH_CIRCUMFERENCE_M,
+  latitudeFromMercatorY,
+  longitudeFromMercatorX,
+  MERCATOR_MAX_LATITUDE as MERCATOR_LATITUDE_LIMIT,
+  mercatorX,
+  mercatorY,
+  metersPerPixel as metresPerPixel,
+  WORLD_TILE_SIZE,
+} from '../geo';
 
-/** Web Mercator's latitude limit. */
-export const MERCATOR_LATITUDE_LIMIT = 85.051129;
-
-/** MapLibre's tile size: world width in px at zoom 0, on web and native alike. */
-export const WORLD_TILE_SIZE = 512;
+export {
+  EARTH_CIRCUMFERENCE_M,
+  latitudeFromMercatorY,
+  longitudeFromMercatorX,
+  MERCATOR_LATITUDE_LIMIT,
+  mercatorX,
+  mercatorY,
+  metresPerPixel,
+  WORLD_TILE_SIZE,
+};
 
 export interface PlanePoint {
   /** Metres east of the origin. */
   x: number;
   /** Metres NORTH of the origin. */
   y: number;
-}
-
-export function mercatorX(longitude: number): number {
-  return (180 + longitude) / 360;
-}
-
-export function mercatorY(latitude: number): number {
-  const clamped = Math.max(-MERCATOR_LATITUDE_LIMIT, Math.min(MERCATOR_LATITUDE_LIMIT, latitude));
-  const phi = (clamped * Math.PI) / 180;
-  return (180 - (180 / Math.PI) * Math.log(Math.tan(Math.PI / 4 + phi / 2))) / 360;
-}
-
-export function longitudeFromMercatorX(x: number): number {
-  return x * 360 - 180;
-}
-
-export function latitudeFromMercatorY(y: number): number {
-  const y2 = 180 - y * 360;
-  return (360 / Math.PI) * Math.atan(Math.exp((y2 * Math.PI) / 180)) - 90;
-}
-
-/** Ground metres per screen pixel at a latitude and zoom (MapLibre's 512 px world). */
-export function metresPerPixel(latitude: number, zoom: number): number {
-  return (
-    (EARTH_CIRCUMFERENCE_M * Math.cos((latitude * Math.PI) / 180)) / (WORLD_TILE_SIZE * 2 ** zoom)
-  );
 }
 
 /** A metric plane anchored at one coordinate. */

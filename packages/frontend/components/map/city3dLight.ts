@@ -31,6 +31,7 @@
  * Pure and imported ONLY by the MapLibre adapter (`city3dLayer.web.ts`), so it
  * lives in that lazy chunk; the engine sees the finished `CityLight`.
  */
+import { hexToRgb } from '@/lib/map/colour';
 import type { CityLight } from './engine/city3d/occlusion';
 
 /**
@@ -66,16 +67,6 @@ function literalPosition(value: unknown): readonly [number, number, number] {
   return DEFAULT_POSITION;
 }
 
-/** `#rgb` / `#rrggbb` → sRGB channels in 0–1; anything else is white, MapLibre's default. */
-function literalColor(value: unknown): [number, number, number] {
-  if (typeof value !== 'string') return [1, 1, 1];
-  const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(value);
-  const long = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(value);
-  const parts = short ? short.slice(1).map((h) => h + h) : long ? long.slice(1) : null;
-  if (!parts) return [1, 1, 1];
-  return parts.map((h) => Number.parseInt(h, 16) / 255) as [number, number, number];
-}
-
 /**
  * The engine's light for a MapLibre `light` specification, at the camera's
  * current bearing (which only matters under `anchor: 'viewport'` — the static
@@ -105,7 +96,8 @@ export function cityLightFromSpec(
       radial * Math.cos(p),
     ],
     intensity,
-    color: literalColor(spec?.color),
+    // `#rgb` / `#rrggbb`; anything else is white, MapLibre's default.
+    color: hexToRgb(spec?.color),
   };
 }
 

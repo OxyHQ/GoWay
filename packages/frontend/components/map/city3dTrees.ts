@@ -15,15 +15,13 @@
  * it at runtime, and the engine folder is type-only to the adapter (see
  * `components/__tests__/engine3dChunk.test.ts`).
  */
+import { hexToRgb } from '@/lib/map/colour';
 import type { CartographyPalette } from '@/lib/map/style/palette';
 
 type Hsl = [number, number, number];
 
 function hexToHsl(hex: string): Hsl {
-  const value = Number.parseInt(hex.slice(1, 7), 16);
-  const r = ((value >> 16) & 255) / 255;
-  const g = ((value >> 8) & 255) / 255;
-  const b = (value & 255) / 255;
+  const [r, g, b] = hexToRgb(hex);
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   const l = (max + min) / 2;

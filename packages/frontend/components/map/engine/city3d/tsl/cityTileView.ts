@@ -35,7 +35,7 @@ import { BUILDINGS_LIGHT, buildingHeightRamp } from '@/lib/map/style/buildings3d
 import { CARTOGRAPHY_PALETTES } from '@/lib/map/style/palette';
 import { cityLightFromSpec } from '@/components/map/city3dLight';
 
-import { hexToRgb } from '../colour';
+import { hexToRgb } from '@/lib/map/colour';
 import { type PackedMesh, quantizedModelMatrix } from '../packing';
 import { type TileId, tileSizeMetres } from '../tileMath';
 import { meshCityTile } from '../tileMeshing';

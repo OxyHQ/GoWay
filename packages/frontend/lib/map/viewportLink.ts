@@ -38,6 +38,7 @@
  * advertised range, since a zoom past `maxZoom` is a legible intention ("as
  * close as you can") rather than an error.
  */
+import { MERCATOR_MAX_LATITUDE as MERCATOR_LATITUDE_LIMIT } from './geo';
 import type { MapViewport } from '@/components/map/types';
 
 import { getMapSource } from './provider';
@@ -48,7 +49,7 @@ import { getMapSource } from './provider';
  * `atan(sinh(π))` in degrees. Past it the projection runs to infinity, and an
  * engine handed 90 produces either a throw or a camera nobody asked for.
  */
-export const MERCATOR_LATITUDE_LIMIT = 85.051129;
+export { MERCATOR_LATITUDE_LIMIT };
 
 /** Query parameters as a router hands them over: string, repeated, or absent. */
 export type ViewportParamSource = Readonly<Record<string, string | string[] | undefined>>;

@@ -14,6 +14,7 @@
  * Built nose towards +y, z up, origin on the ground at the centre: the frame
  * `anchorMath.ts` places shapes in.
  */
+import { hexToRgb } from '@/lib/map/colour';
 import type { MapLiveModel } from '../../types';
 import type { LibraryModel } from '../vehicles/library';
 
@@ -45,11 +46,6 @@ export function liveLibraryKey(form: MapLiveModel['form']): string {
   return FORM_KEYS[form];
 }
 
-function hex(value: string): [number, number, number] {
-  const n = Number.parseInt(value.slice(1, 7), 16);
-  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
-}
-
 const srgb = (linear: number) =>
   linear <= 0.0031308 ? linear * 12.92 : 1.055 * linear ** (1 / 2.4) - 0.055;
 
@@ -71,8 +67,8 @@ export function buildLiveModel(
   const paint = level.geometry.getAttribute('paint');
   const index = level.geometry.getIndex();
   if (!index) throw new Error(`${source.entry.key}: not indexed`);
-  const body = hex(model.livery.body);
-  const accent = hex(model.livery.stripe);
+  const body = hexToRgb(model.livery.body);
+  const accent = hexToRgb(model.livery.stripe);
   const n = position.count;
   const positions = new Float32Array(n * 3);
   const normals = new Float32Array(n * 3);

@@ -680,11 +680,9 @@ export function attachLive(
           models: layer.models ?? {},
           // A train in a tunnel stays a flat glyph: never a model on the street.
           points: () => surfacePoints(sampleNow(), underground),
-          // With 3D terrain on, the ground is the elevation MapLibre draws.
-          groundAt: () =>
-            map.getTerrain()
-              ? (longitude, latitude) => map.queryTerrainElevation([longitude, latitude]) ?? 0
-              : null,
+          // With 3D terrain on, the city's own ground (the elevation MapLibre
+          // draws, from the engine's one sampler); `null` on a flat map.
+          groundAt: () => next.ground(),
           requestRepaint: () => map.triggerRepaint(),
         });
         removePass = next.addPass(pass);
