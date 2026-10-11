@@ -318,7 +318,10 @@ export function jsonSchemaOptions(direction: ContractSchemaDirection) {
   return {
     target: JSON_SCHEMA_TARGET,
     io: jsonSchemaIo(direction),
-    override: (context: { zodSchema: z.core.$ZodTypes; jsonSchema: z.core.JSONSchema.BaseSchema }) => {
+    override: (context: {
+      zodSchema: z.core.$ZodTypes;
+      jsonSchema: z.core.JSONSchema.BaseSchema;
+    }) => {
       const definition = context.zodSchema._zod.def;
       if (definition.type === 'object' && definition.catchall === undefined) {
         delete context.jsonSchema.additionalProperties;

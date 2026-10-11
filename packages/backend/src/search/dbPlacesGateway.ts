@@ -48,7 +48,9 @@ export function createPlacesGateway(options: PlacesGatewayOptions = {}): PlacesG
 
       const db = getDb();
       const results = await Promise.all(
-        [...unique.entries()].map(async ([key, ref]) => [key, await findPlaceIdBySourceRef(db, ref)] as const),
+        [...unique.entries()].map(
+          async ([key, ref]) => [key, await findPlaceIdBySourceRef(db, ref)] as const,
+        ),
       );
       for (const [key, placeId] of results) {
         if (placeId !== null) resolved.set(key, placeId);

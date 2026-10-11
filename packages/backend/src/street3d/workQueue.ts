@@ -92,7 +92,11 @@ export function createSqsWorkQueue(options: SqsWorkQueueOptions): WorkQueue {
   const now = options.now ?? (() => new Date());
   const endpoint = `${new URL(options.endpoint ?? options.queueUrl).origin}/`;
 
-  async function call<T>(action: string, payload: Record<string, unknown>, timeoutMs = 30_000): Promise<T> {
+  async function call<T>(
+    action: string,
+    payload: Record<string, unknown>,
+    timeoutMs = 30_000,
+  ): Promise<T> {
     const body = JSON.stringify({ QueueUrl: options.queueUrl, ...payload });
     const headers = signRequest({
       method: 'POST',
@@ -118,7 +122,8 @@ export function createSqsWorkQueue(options: SqsWorkQueueOptions): WorkQueue {
       let errorType: string | undefined;
       try {
         const parsed = JSON.parse(text) as { __type?: unknown };
-        if (typeof parsed.__type === 'string') errorType = parsed.__type.split('#').pop()?.slice(0, 80);
+        if (typeof parsed.__type === 'string')
+          errorType = parsed.__type.split('#').pop()?.slice(0, 80);
       } catch {
         // Not JSON; the status alone is reported.
       }
@@ -137,7 +142,9 @@ export function createSqsWorkQueue(options: SqsWorkQueueOptions): WorkQueue {
       );
       const result = await call<{ MessageId?: string; MD5OfMessageBody?: string }>('SendMessage', {
         MessageBody: body,
-        ...(Object.keys(messageAttributes).length > 0 ? { MessageAttributes: messageAttributes } : {}),
+        ...(Object.keys(messageAttributes).length > 0
+          ? { MessageAttributes: messageAttributes }
+          : {}),
       });
       // The queue's own digest of what it stored. A mismatch is a body that was
       // altered or truncated between here and the queue; refusing it lets the
@@ -161,7 +168,8 @@ export function createSqsWorkQueue(options: SqsWorkQueueOptions): WorkQueue {
         (waitSeconds + 15) * 1000,
       );
       return (result.Messages ?? []).flatMap((message): QueueMessage[] => {
-        if (!message.MessageId || !message.ReceiptHandle || typeof message.Body !== 'string') return [];
+        if (!message.MessageId || !message.ReceiptHandle || typeof message.Body !== 'string')
+          return [];
         const attributes: Record<string, string> = {};
         for (const [name, value] of Object.entries(message.MessageAttributes ?? {})) {
           if (typeof value.StringValue === 'string') attributes[name] = value.StringValue;
@@ -184,7 +192,8 @@ export function createSqsWorkQueue(options: SqsWorkQueueOptions): WorkQueue {
       } catch (error) {
         // An expired receipt means the message is already back in the queue or
         // gone; either way there is nothing left for this receipt to delete.
-        if (error instanceof QueueRequestError && error.errorType === 'ReceiptHandleIsInvalid') return;
+        if (error instanceof QueueRequestError && error.errorType === 'ReceiptHandleIsInvalid')
+          return;
         throw error;
       }
     },

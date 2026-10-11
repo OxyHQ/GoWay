@@ -29,7 +29,8 @@ export interface GoWayPageLike<T> {
 export async function* iterateGoWayPages<T>(
   fetchPage: (cursor: string | undefined) => Promise<GoWayPageLike<T>>,
 ): AsyncGenerator<T, void, undefined> {
-  if (typeof fetchPage !== 'function') throw new TypeError('iterateGoWayPages needs a function that fetches one page');
+  if (typeof fetchPage !== 'function')
+    throw new TypeError('iterateGoWayPages needs a function that fetches one page');
   const issued = new Set<string>();
   let cursor: string | undefined;
   for (;;) {
@@ -38,7 +39,9 @@ export async function* iterateGoWayPages<T>(
     const next: unknown = page.nextCursor;
     if (next === null) return;
     if (typeof next !== 'string' || next === '') {
-      throw new GoWayResponseError('GoWay returned a page whose nextCursor is neither a cursor nor null');
+      throw new GoWayResponseError(
+        'GoWay returned a page whose nextCursor is neither a cursor nor null',
+      );
     }
     if (issued.has(next)) {
       throw new GoWayResponseError('GoWay repeated a page cursor; following it would never end');

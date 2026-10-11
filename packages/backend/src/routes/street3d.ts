@@ -24,7 +24,13 @@
  * Coverage areas are cell centres with banded counts.
  */
 
-import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from 'express';
 import { street3dConfig, type Street3dConfig } from '../config/street3d';
 import { getDb } from '../db/postgres';
 import { createSceneReport, findCoverage, findPublishedManifest } from '../db/street3d/public';
@@ -66,18 +72,25 @@ export function createStreet3dRouter(dependencies: Street3dRouterDependencies): 
     '/street3d/coverage',
     route(async (request, response) => {
       if (!settings.viewingEnabled) {
-        throw new ApiError('service_unavailable', 'Street 3D is not available on this GoWay deployment.');
+        throw new ApiError(
+          'service_unavailable',
+          'Street 3D is not available on this GoWay deployment.',
+        );
       }
       const box = parseQuery(streetCoverageQuerySchema, request.query);
       // The cap is this deployment's, so it is checked here rather than in the
       // contract: a continent-sized box is a scan the row limit would truncate
       // arbitrarily, which reads as missing coverage rather than a refused query.
       if (!coverageBoxWithin(box, settings.coverageMaxSpanDegrees)) {
-        throw new ApiError('validation_failed', 'The box is larger than this deployment serves coverage for.', {
-          field: 'east',
-          issue: 'too_big',
-          maximumSpanDegrees: settings.coverageMaxSpanDegrees,
-        });
+        throw new ApiError(
+          'validation_failed',
+          'The box is larger than this deployment serves coverage for.',
+          {
+            field: 'east',
+            issue: 'too_big',
+            maximumSpanDegrees: settings.coverageMaxSpanDegrees,
+          },
+        );
       }
       response.setHeader('Cache-Control', COVERAGE_CACHE_CONTROL);
       response.json(await findCoverage(getDb(), box));
@@ -88,7 +101,9 @@ export function createStreet3dRouter(dependencies: Street3dRouterDependencies): 
     '/street3d/scenes/:sceneId',
     route(async (request, response) => {
       const sceneId = sceneIdParam(request);
-      const manifest = settings.viewingEnabled ? await findPublishedManifest(getDb(), sceneId) : null;
+      const manifest = settings.viewingEnabled
+        ? await findPublishedManifest(getDb(), sceneId)
+        : null;
       if (!manifest) throw new ApiError('not_found', 'No published Street 3D scene has that id.');
       response.setHeader('Cache-Control', MANIFEST_CACHE_CONTROL);
       response.json(manifest);

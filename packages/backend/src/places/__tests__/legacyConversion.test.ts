@@ -41,7 +41,9 @@ describe('the conversion plan read from the migrations', () => {
     expect(sources).toEndWith(
       `WHERE ("source_data" IS NOT NULL AND "source_data" -> 'v' IS NULL) AND "id" > $1 AND "id" <= $2`,
     );
-    expect(rangedUpdate(plan.steps.categories)).toMatch(/\nWHERE \(CASE[\s\S]*END\) AND "id" > \$1 AND "id" <= \$2$/);
+    expect(rangedUpdate(plan.steps.categories)).toMatch(
+      /\nWHERE \(CASE[\s\S]*END\) AND "id" > \$1 AND "id" <= \$2$/,
+    );
     expect(rangedCount('places', 'x OR y')).toBe(
       `SELECT count(*)::int AS "rows" FROM "places" WHERE (x OR y) AND "id" > $1 AND "id" <= $2`,
     );
@@ -59,13 +61,27 @@ describe('the conversion plan read from the migrations', () => {
       update('places_sources', 'SET "source_data" = y\nWHERE true'),
       update('places', 'SET "timezone" = z\nWHERE true'),
     ];
-    expect(() => parseConversionMigration(valid.join('\n--> statement-breakpoint\n'))).not.toThrow();
-    expect(() => parseConversionMigration(valid.slice(0, 2).join('\n--> statement-breakpoint\n'))).toThrow(/no "timezone"/);
     expect(() =>
-      parseConversionMigration([...valid, update('places', 'SET "categories" = w\nWHERE false')].join('\n--> statement-breakpoint\n')),
+      parseConversionMigration(valid.join('\n--> statement-breakpoint\n')),
+    ).not.toThrow();
+    expect(() =>
+      parseConversionMigration(valid.slice(0, 2).join('\n--> statement-breakpoint\n')),
+    ).toThrow(/no "timezone"/);
+    expect(() =>
+      parseConversionMigration(
+        [...valid, update('places', 'SET "categories" = w\nWHERE false')].join(
+          '\n--> statement-breakpoint\n',
+        ),
+      ),
     ).toThrow(/two "categories"/);
-    expect(() => parseConversionMigration(update('places', 'SET "categories" = x WHERE true'))).toThrow(/line-initial WHERE/);
-    expect(() => parseConversionMigration(update('places_names', 'SET "name" = x\nWHERE true'))).toThrow(/does not batch/);
-    expect(() => parseTaxonomyCheck('ALTER TABLE "places" ADD CONSTRAINT "other" CHECK (true);')).toThrow(/does not add/);
+    expect(() =>
+      parseConversionMigration(update('places', 'SET "categories" = x WHERE true')),
+    ).toThrow(/line-initial WHERE/);
+    expect(() =>
+      parseConversionMigration(update('places_names', 'SET "name" = x\nWHERE true')),
+    ).toThrow(/does not batch/);
+    expect(() =>
+      parseTaxonomyCheck('ALTER TABLE "places" ADD CONSTRAINT "other" CHECK (true);'),
+    ).toThrow(/does not add/);
   });
 });

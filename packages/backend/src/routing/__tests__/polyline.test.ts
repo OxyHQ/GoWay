@@ -75,7 +75,9 @@ describe('decodePolyline', () => {
     // renders as a coordinate that is off in the sixth decimal place for every
     // point after the first. Six equal steps must land exactly.
     const stepped = decodePolyline('_c`|@_c`|@?o}@?o}@?o}@?o}@?o}@?o}@', 6);
-    expect(stepped.map((position) => position[0])).toEqual([1, 1.001, 1.002, 1.003, 1.004, 1.005, 1.006]);
+    expect(stepped.map((position) => position[0])).toEqual([
+      1, 1.001, 1.002, 1.003, 1.004, 1.005, 1.006,
+    ]);
   });
 
   it('refuses a shape that ends in the middle of a pair', () => {

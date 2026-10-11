@@ -28,8 +28,8 @@
  * installed dependency, reproduced by `bun install` + any Metro run, and
  * committing it would mean a stale worker could outlive a version bump.
  */
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 
 /** Files the worker needs, relative to `maplibre-gl/dist/`. */
 const WORKER_FILES = ['maplibre-gl-worker.mjs', 'maplibre-gl-shared.mjs'];
@@ -73,5 +73,7 @@ function vendorMaplibreWorker() {
 module.exports = { vendorMaplibreWorker, WORKER_FILES };
 
 if (require.main === module) {
-  console.log(`maplibre-gl worker vendored to ${path.relative(process.cwd(), vendorMaplibreWorker())}`);
+  console.log(
+    `maplibre-gl worker vendored to ${path.relative(process.cwd(), vendorMaplibreWorker())}`,
+  );
 }

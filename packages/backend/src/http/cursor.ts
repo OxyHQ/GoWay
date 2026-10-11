@@ -82,7 +82,10 @@ export function cursorFingerprint(kind: CursorKind, filters: CursorFilters): str
     .filter((entry): entry is [string, Exclude<FilterValue, undefined>] => entry[1] !== undefined)
     .map(([name, value]) => [name, Array.isArray(value) ? [...value].sort() : value] as const)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return createHash('sha256').update(JSON.stringify([kind, entries])).digest('base64url').slice(0, 22);
+  return createHash('sha256')
+    .update(JSON.stringify([kind, entries]))
+    .digest('base64url')
+    .slice(0, 22);
 }
 
 const payloadSchema = z
@@ -126,10 +129,14 @@ export function decodeCursor<P>(
   position: z.ZodType<P>,
 ): P | undefined {
   if (raw === undefined) return undefined;
-  const refused = new ApiError('bad_request', 'The cursor is not one this list issued for these filters.', {
-    field: 'cursor',
-    issue: 'foreign_cursor',
-  });
+  const refused = new ApiError(
+    'bad_request',
+    'The cursor is not one this list issued for these filters.',
+    {
+      field: 'cursor',
+      issue: 'foreign_cursor',
+    },
+  );
   let decoded: unknown;
   try {
     decoded = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
@@ -137,7 +144,11 @@ export function decodeCursor<P>(
     throw refused;
   }
   const payload = payloadSchema.safeParse(decoded);
-  if (!payload.success || payload.data.k !== binding.kind || payload.data.f !== binding.fingerprint) {
+  if (
+    !payload.success ||
+    payload.data.k !== binding.kind ||
+    payload.data.f !== binding.fingerprint
+  ) {
     throw refused;
   }
   const parsed = position.safeParse(payload.data.p);
@@ -161,7 +172,8 @@ export function pageOf<Row, Item>(
   const last = served[served.length - 1];
   return {
     items: served.map(toItem),
-    nextCursor: rows.length > limit && last !== undefined ? encodeCursor(binding, positionOf(last)) : null,
+    nextCursor:
+      rows.length > limit && last !== undefined ? encodeCursor(binding, positionOf(last)) : null,
   };
 }
 
@@ -196,11 +208,24 @@ export interface Paged<T> {
 }
 
 /** `limit + 1` rows from a request's limit and cursor, so the page can tell whether the list continues. */
-export function timeWindowOf(query: { limit: number; cursor?: string | undefined }, binding: CursorBinding): TimeWindow {
+export function timeWindowOf(
+  query: { limit: number; cursor?: string | undefined },
+  binding: CursorBinding,
+): TimeWindow {
   return { limit: query.limit + 1, after: decodeCursor(query.cursor, binding, timeKeysetSchema) };
 }
 
 /** The page of {@link Paged} rows. */
-export function timePageOf<T>(rows: readonly Paged<T>[], limit: number, binding: CursorBinding): { items: T[]; nextCursor: string | null } {
-  return pageOf(rows, limit, binding, (row) => row.position, (row) => row.item);
+export function timePageOf<T>(
+  rows: readonly Paged<T>[],
+  limit: number,
+  binding: CursorBinding,
+): { items: T[]; nextCursor: string | null } {
+  return pageOf(
+    rows,
+    limit,
+    binding,
+    (row) => row.position,
+    (row) => row.item,
+  );
 }

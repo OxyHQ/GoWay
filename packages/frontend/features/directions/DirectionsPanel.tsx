@@ -274,7 +274,10 @@ function RouteFailure({
 
   if (kind === 'unsupportedMode') {
     return (
-      <Text className="px-space-16 text-bodySmall text-muted-foreground" testID="route-unsupported-mode">
+      <Text
+        className="px-space-16 text-bodySmall text-muted-foreground"
+        testID="route-unsupported-mode"
+      >
         {`GoWay can't give ${modeLabel} directions here yet. Try another travel mode.`}
       </Text>
     );
@@ -293,8 +296,8 @@ function RouteFailure({
     <View className="gap-space-8 px-space-16" testID="route-unavailable">
       <Text className="text-bodySmall text-foreground">{reason}</Text>
       <Text className="text-caption text-muted-foreground">
-        Nothing is drawn on the map, because a straight line between your stops would not be the
-        way there.
+        Nothing is drawn on the map, because a straight line between your stops would not be the way
+        there.
       </Text>
       <View className="flex-row">
         <Button appearance="outline" tone="neutral" size="sm" onPress={onRetry}>
@@ -398,9 +401,7 @@ function RouteBody({ directions, testID }: { directions: DirectionsController; t
 
       {/* Waiting for a permission and waiting for a router are different waits,
           and they are said differently. */}
-      {directions.locationBusy ? (
-        <Wait>Finding your location…</Wait>
-      ) : null}
+      {directions.locationBusy ? <Wait>Finding your location…</Wait> : null}
       {directions.routeBusy ? <Wait>Working out the route…</Wait> : null}
 
       {/* An itinerary with a hole in it is not a failure; it is a form that is

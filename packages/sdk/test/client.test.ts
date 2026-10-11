@@ -12,7 +12,14 @@ import {
   type PlaceCreateInput,
 } from '../src/index';
 import { fakeFetch, queryOf, rejection } from './helpers';
-import { CLAIM, page, PLACE, PLACE_WITH_DISTANCE, ROUTE_RESPONSE, SEARCH_RESULTS } from './fixtures';
+import {
+  CLAIM,
+  page,
+  PLACE,
+  PLACE_WITH_DISTANCE,
+  ROUTE_RESPONSE,
+  SEARCH_RESULTS,
+} from './fixtures';
 
 function clientFor(body: unknown, status = 200) {
   const { fetch, calls } = fakeFetch(status, body);
@@ -26,7 +33,9 @@ function sentBody(calls: { init: { body?: string } }[], index = 0): Record<strin
 describe('createGoWayClient options', () => {
   it('rejects a bad base URL, locale, timeout and header before any request', () => {
     expect(() => createGoWayClient({ apiBaseUrl: 'api.goway.to' })).toThrow(TypeError);
-    expect(() => createGoWayClient({ apiBaseUrl: 'https://api.goway.to/v1?x=1' })).toThrow(TypeError);
+    expect(() => createGoWayClient({ apiBaseUrl: 'https://api.goway.to/v1?x=1' })).toThrow(
+      TypeError,
+    );
     expect(() => createGoWayClient({ webBaseUrl: 'javascript:alert(1)' })).toThrow(TypeError);
     expect(() => createGoWayClient({ locale: 'not a locale' })).toThrow(TypeError);
     expect(() => createGoWayClient({ timeoutMs: 0 })).toThrow(TypeError);
@@ -36,7 +45,9 @@ describe('createGoWayClient options', () => {
   });
 
   it('refuses to let a caller set the SDK-owned headers', () => {
-    expect(() => createGoWayClient({ headers: { Authorization: 'Bearer leaked' } })).toThrow(/SDK owns it/);
+    expect(() => createGoWayClient({ headers: { Authorization: 'Bearer leaked' } })).toThrow(
+      /SDK owns it/,
+    );
     expect(() => createGoWayClient({ headers: { accept: 'text/html' } })).toThrow(/SDK owns it/);
     expect(() => createGoWayClient({ headers: { 'bad header': 'x' } })).toThrow(TypeError);
     expect(() => createGoWayClient({ headers: { 'X-Trace-Id': 'abc' } })).not.toThrow();
@@ -97,12 +108,20 @@ describe('query serialisation', () => {
   it('sends the contract default limit and omits absent parameters', async () => {
     const { client, calls } = clientFor(page([]));
     await client.places.nearby({ latitude: 0, longitude: 0, radiusMeters: 100, capabilities: [] });
-    expect(queryOf(calls[0]?.url ?? '')).toBe(`latitude=0&limit=${DEFAULT_PLACE_LIST_LIMIT}&longitude=0&radiusMeters=100`);
+    expect(queryOf(calls[0]?.url ?? '')).toBe(
+      `latitude=0&limit=${DEFAULT_PLACE_LIST_LIMIT}&longitude=0&radiusMeters=100`,
+    );
   });
 
   it('passes a cursor back verbatim', async () => {
     const { client, calls } = clientFor(page([]));
-    await client.places.inBounds({ west: 0, south: 0, east: 1, north: 1, cursor: 'opaque_Cursor-1' });
+    await client.places.inBounds({
+      west: 0,
+      south: 0,
+      east: 1,
+      north: 1,
+      cursor: 'opaque_Cursor-1',
+    });
     expect(queryOf(calls[0]?.url ?? '')).toContain('cursor=opaque_Cursor-1');
   });
 
@@ -118,7 +137,9 @@ describe('query serialisation', () => {
 describe('client-side validation with the contract schemas', () => {
   it('refuses before sending anything, naming the field but never the value', async () => {
     const { client, calls } = clientFor(page([]));
-    const error = await rejection(client.places.nearby({ latitude: 91.25, longitude: 2, radiusMeters: 10 }));
+    const error = await rejection(
+      client.places.nearby({ latitude: 91.25, longitude: 2, radiusMeters: 10 }),
+    );
     expect(error).toBeInstanceOf(GoWayValidationError);
     expect(error.status).toBeNull();
     expect(error.code).toBe('validation_failed');
@@ -137,13 +158,15 @@ describe('client-side validation with the contract schemas', () => {
   it('holds limits and radii to the contract maxima', async () => {
     const { client } = clientFor(page([]));
     const box = { west: 0, south: 0, east: 1, north: 1 };
-    await expect(client.places.inBounds({ ...box, limit: MAX_PLACE_LIST_LIMIT + 1 })).rejects.toBeInstanceOf(
+    await expect(
+      client.places.inBounds({ ...box, limit: MAX_PLACE_LIST_LIMIT + 1 }),
+    ).rejects.toBeInstanceOf(GoWayValidationError);
+    await expect(
+      client.places.nearby({ latitude: 0, longitude: 0, radiusMeters: 50_001 }),
+    ).rejects.toBeInstanceOf(GoWayValidationError);
+    await expect(client.search.query({ query: 'x', limit: 51 })).rejects.toBeInstanceOf(
       GoWayValidationError,
     );
-    await expect(client.places.nearby({ latitude: 0, longitude: 0, radiusMeters: 50_001 })).rejects.toBeInstanceOf(
-      GoWayValidationError,
-    );
-    await expect(client.search.query({ query: 'x', limit: 51 })).rejects.toBeInstanceOf(GoWayValidationError);
   });
 
   it('refuses a capability key that is not a lower-case namespaced key', async () => {
@@ -159,12 +182,12 @@ describe('client-side validation with the contract schemas', () => {
     const { client, calls } = clientFor(page([PLACE]));
     await client.places.inBounds({ west: 179, south: -17, east: -179, north: -16 });
     expect(calls[0]?.url).toContain('/api/v1/places/bounds?');
-    await expect(client.places.inBounds({ west: 0, south: 10, east: 1, north: 5 })).rejects.toBeInstanceOf(
-      GoWayValidationError,
-    );
-    await expect(client.places.inBounds({ west: 0, south: 0, east: 120, north: 1 })).rejects.toBeInstanceOf(
-      GoWayValidationError,
-    );
+    await expect(
+      client.places.inBounds({ west: 0, south: 10, east: 1, north: 5 }),
+    ).rejects.toBeInstanceOf(GoWayValidationError);
+    await expect(
+      client.places.inBounds({ west: 0, south: 0, east: 120, north: 1 }),
+    ).rejects.toBeInstanceOf(GoWayValidationError);
   });
 
   it('refuses a null query as a validation error, not a TypeError', async () => {
@@ -185,7 +208,12 @@ describe('place writes', () => {
       name: '  New café ',
       location: { latitude: 41, longitude: 2 },
       capabilities: [
-        { namespace: 'payments.faircoin', capability: 'accepted', value: true, verification: 'oxy_verified' },
+        {
+          namespace: 'payments.faircoin',
+          capability: 'accepted',
+          value: true,
+          verification: 'oxy_verified',
+        },
       ],
       id: 'gw_forged',
       verification: { state: 'oxy_verified' },
@@ -222,7 +250,9 @@ describe('place writes', () => {
 
   it('refuses a status no caller may write', async () => {
     const { client, calls } = clientFor(PLACE);
-    const error = await rejection(client.places.update('gw_place_01H8', { status: 'removed' } as never));
+    const error = await rejection(
+      client.places.update('gw_place_01H8', { status: 'removed' } as never),
+    );
     expect(error).toBeInstanceOf(GoWayValidationError);
     expect(error.message).toContain('input.status');
     expect(calls).toHaveLength(0);
@@ -241,23 +271,32 @@ describe('place writes', () => {
 
   it('refuses an update that changes nothing', async () => {
     const { client } = clientFor(PLACE);
-    await expect(client.places.update('gw_place_01H8', {})).rejects.toBeInstanceOf(GoWayValidationError);
+    await expect(client.places.update('gw_place_01H8', {})).rejects.toBeInstanceOf(
+      GoWayValidationError,
+    );
   });
 });
 
 describe('capabilities and claims', () => {
   it('asserts one capability with PUT and gets the place back', async () => {
     const { client, calls } = clientFor(PLACE);
-    const place = await client.places.capabilities.put('gw_place_01H8', 'payments.faircoin.accepted', {
-      value: true,
-      source: { source: 'openstreetmap', sourceId: 'node/1' },
-      verification: 'oxy_verified',
-    } as never);
+    const place = await client.places.capabilities.put(
+      'gw_place_01H8',
+      'payments.faircoin.accepted',
+      {
+        value: true,
+        source: { source: 'openstreetmap', sourceId: 'node/1' },
+        verification: 'oxy_verified',
+      } as never,
+    );
     expect(calls[0]?.init.method).toBe('PUT');
     expect(calls[0]?.url).toBe(
       `${DEFAULT_GOWAY_API_BASE_URL}/api/v1/places/gw_place_01H8/capabilities/payments.faircoin.accepted`,
     );
-    expect(sentBody(calls)).toEqual({ value: true, source: { source: 'openstreetmap', sourceId: 'node/1' } });
+    expect(sentBody(calls)).toEqual({
+      value: true,
+      source: { source: 'openstreetmap', sourceId: 'node/1' },
+    });
     expect(place.id).toBe('gw_place_01H8');
   });
 
@@ -265,27 +304,36 @@ describe('capabilities and claims', () => {
     const { client, calls } = clientFor(PLACE);
     // The casts are the point: an untyped caller can still send these.
     await expect(
-      client.places.capabilities.put('gw_place_01H8', 'Payments.FairCoin' as CapabilityKey, { value: true }),
+      client.places.capabilities.put('gw_place_01H8', 'Payments.FairCoin' as CapabilityKey, {
+        value: true,
+      }),
     ).rejects.toBeInstanceOf(GoWayValidationError);
     await expect(
       client.places.capabilities.delete('gw_place_01H8', 'faircoin' as CapabilityKey),
     ).rejects.toBeInstanceOf(GoWayValidationError);
     await expect(
-      client.places.capabilities.put('gw_place_01H8', 'payments.faircoin.rate' as CapabilityKey, { value: 1 }),
+      client.places.capabilities.put('gw_place_01H8', 'payments.faircoin.rate' as CapabilityKey, {
+        value: 1,
+      }),
     ).rejects.toBeInstanceOf(GoWayValidationError);
     expect(calls).toHaveLength(0);
   });
 
   it('withdraws a capability with DELETE and resolves with nothing on 204', async () => {
     const { client, calls } = clientFor('', 204);
-    await expect(client.places.capabilities.delete('gw_place_01H8', 'payments.faircoin.accepted')).resolves.toBeUndefined();
+    await expect(
+      client.places.capabilities.delete('gw_place_01H8', 'payments.faircoin.accepted'),
+    ).resolves.toBeUndefined();
     expect(calls[0]?.init.method).toBe('DELETE');
     expect(calls[0]?.init.body).toBeUndefined();
   });
 
   it('creates a claim and never sends a state the caller named', async () => {
     const { client, calls } = clientFor(CLAIM, 201);
-    const claim = await client.places.claims.create('gw_place_01H8', { role: 'owner', state: 'approved' } as never);
+    const claim = await client.places.claims.create('gw_place_01H8', {
+      role: 'owner',
+      state: 'approved',
+    } as never);
     expect(calls[0]?.url).toContain('/api/v1/places/gw_place_01H8/claims');
     expect(sentBody(calls)).toEqual({ role: 'owner' });
     expect(claim.placeId).toBe('gw_place_01H8');
@@ -294,7 +342,10 @@ describe('capabilities and claims', () => {
 
   it('files a claim for an organization the caller names', async () => {
     const { client, calls } = clientFor({ ...CLAIM, oxyAccountId: 'org_cafe' }, 201);
-    const claim = await client.places.claims.create('gw_place_01H8', { role: 'brand', oxyAccountId: ' org_cafe ' });
+    const claim = await client.places.claims.create('gw_place_01H8', {
+      role: 'brand',
+      oxyAccountId: ' org_cafe ',
+    });
     expect(sentBody(calls)).toEqual({ role: 'brand', oxyAccountId: 'org_cafe' });
     expect(claim.oxyAccountId).toBe('org_cafe');
   });
@@ -311,25 +362,39 @@ describe('capabilities and claims', () => {
       placeId: 'gw_place_01H8',
       action: 'place_updated',
       source: 'api',
-      changes: [{ field: 'name', before: 'Old', after: 'New' }, { field: 'address.postalCode', after: '08012' }],
+      changes: [
+        { field: 'name', before: 'Old', after: 'New' },
+        { field: 'address.postalCode', after: '08012' },
+      ],
       createdAt: '2026-10-04T10:00:00.000Z',
       oxyAccountId: 'org_secret',
     };
     const { client, calls } = clientFor(page([revision], 'next_1'));
     const history = await client.places.revisions('gw_place_01H8', { limit: 10 });
-    expect(calls[0]?.url).toBe(`${DEFAULT_GOWAY_API_BASE_URL}/api/v1/places/gw_place_01H8/revisions?limit=10`);
+    expect(calls[0]?.url).toBe(
+      `${DEFAULT_GOWAY_API_BASE_URL}/api/v1/places/gw_place_01H8/revisions?limit=10`,
+    );
     expect(history.items[0]?.changes).toEqual(revision.changes);
     // A field the public contract does not name never reaches the caller.
     expect(history.items[0]).not.toHaveProperty('oxyAccountId');
   });
 
   it('reports a place, and refuses a reason outside the set before sending', async () => {
-    const report = { id: 'rep_1', placeId: 'gw_place_01H8', reason: 'spam', createdAt: '2026-10-04T10:00:00.000Z' };
+    const report = {
+      id: 'rep_1',
+      placeId: 'gw_place_01H8',
+      reason: 'spam',
+      createdAt: '2026-10-04T10:00:00.000Z',
+    };
     const { client, calls } = clientFor(report, 201);
-    expect(await client.places.report('gw_place_01H8', { reason: 'spam', note: ' fake tickets ' })).toEqual(report);
+    expect(
+      await client.places.report('gw_place_01H8', { reason: 'spam', note: ' fake tickets ' }),
+    ).toEqual(report);
     expect(sentBody(calls)).toEqual({ reason: 'spam', note: 'fake tickets' });
 
-    const refused = await rejection(client.places.report('gw_place_01H8', { reason: 'boring' } as never));
+    const refused = await rejection(
+      client.places.report('gw_place_01H8', { reason: 'boring' } as never),
+    );
     expect(refused).toBeInstanceOf(GoWayValidationError);
     expect(calls).toHaveLength(1);
   });
@@ -340,7 +405,9 @@ describe('capabilities and claims', () => {
     const onPlace = await client.places.claims.list('gw_place_01H8', { limit: 10 });
     const mine = await client.claims.list({ cursor: 'next_1' });
     expect(queryOf(calls[0]?.url ?? '')).toBe('limit=10');
-    expect(calls[1]?.url).toBe(`${DEFAULT_GOWAY_API_BASE_URL}/api/v1/claims?cursor=next_1&limit=50`);
+    expect(calls[1]?.url).toBe(
+      `${DEFAULT_GOWAY_API_BASE_URL}/api/v1/claims?cursor=next_1&limit=50`,
+    );
     expect(onPlace.items[0]?.decidedAt).toBe('2026-10-02T00:00:00.000Z');
     expect(mine.nextCursor).toBe('next_1');
   });
@@ -383,7 +450,12 @@ describe('access tokens', () => {
   it('passes an error thrown by the getter straight through', async () => {
     const boom = new Error('sign-in expired');
     const { fetch } = fakeFetch(200, PLACE);
-    const client = createGoWayClient({ fetch, getAccessToken: () => { throw boom; } });
+    const client = createGoWayClient({
+      fetch,
+      getAccessToken: () => {
+        throw boom;
+      },
+    });
     await expect(client.places.get('a')).rejects.toBe(boom);
   });
 });
@@ -429,7 +501,9 @@ describe('namespaces', () => {
     const structured = clientFor(SEARCH_RESULTS);
     await structured.client.geocode.structured({ city: 'Barcelona', countryCode: 'es' });
     expect(queryOf(structured.calls[0]?.url ?? '')).toBe('city=Barcelona&countryCode=ES');
-    await expect(structured.client.geocode.structured({})).rejects.toBeInstanceOf(GoWayValidationError);
+    await expect(structured.client.geocode.structured({})).rejects.toBeInstanceOf(
+      GoWayValidationError,
+    );
 
     const routes = clientFor(ROUTE_RESPONSE);
     const answer = await routes.client.routes.directions({
@@ -456,9 +530,9 @@ describe('namespaces', () => {
     expect(error).toBeInstanceOf(GoWayValidationError);
     expect(error.message).toContain('routeRequest.mode');
     const waypoints = Array.from({ length: MAX_WAYPOINTS + 1 }, () => ({ placeId: 'w' }));
-    await expect(client.routes.directions({ ...ends, waypoints, mode: 'walk' })).rejects.toBeInstanceOf(
-      GoWayValidationError,
-    );
+    await expect(
+      client.routes.directions({ ...ends, waypoints, mode: 'walk' }),
+    ).rejects.toBeInstanceOf(GoWayValidationError);
     expect(calls).toHaveLength(0);
   });
 
@@ -498,7 +572,9 @@ describe('namespaces', () => {
   it('refuses a locale that is not a language tag, on a place read too', async () => {
     const { fetch } = fakeFetch(200, PLACE);
     const client = createGoWayClient({ fetch });
-    await expect(client.places.get('p', { locale: '???' })).rejects.toBeInstanceOf(GoWayValidationError);
+    await expect(client.places.get('p', { locale: '???' })).rejects.toBeInstanceOf(
+      GoWayValidationError,
+    );
   });
 });
 
@@ -508,7 +584,9 @@ describe('links', () => {
     expect(client.links.place('gw_place_01H8')).toBe('https://goway.to/place/gw_place_01H8');
     expect(client.links.place({ id: 'gw place/1' })).toBe('https://goway.to/place/gw%20place%2F1');
     // A search result carries the reconciled GoWay id under `placeId`.
-    expect(client.links.place({ placeId: 'gw_2', id: 'photon:node/1' })).toBe('https://goway.to/place/gw_2');
+    expect(client.links.place({ placeId: 'gw_2', id: 'photon:node/1' })).toBe(
+      'https://goway.to/place/gw_2',
+    );
     expect(() => client.links.place('')).toThrow(GoWayValidationError);
   });
 
@@ -518,7 +596,11 @@ describe('links', () => {
     expect(client.links.map({ latitude: 41.38, longitude: 2.16, zoom: 14 })).toBe(
       'https://staging.goway.to/?lat=41.38&lng=2.16&zoom=14',
     );
-    expect(() => client.links.map({ latitude: 91, longitude: 0, zoom: 1 })).toThrow(GoWayValidationError);
-    expect(() => client.links.map({ latitude: 0, longitude: 0, zoom: Number.NaN })).toThrow(GoWayValidationError);
+    expect(() => client.links.map({ latitude: 91, longitude: 0, zoom: 1 })).toThrow(
+      GoWayValidationError,
+    );
+    expect(() => client.links.map({ latitude: 0, longitude: 0, zoom: Number.NaN })).toThrow(
+      GoWayValidationError,
+    );
   });
 });

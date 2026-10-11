@@ -100,9 +100,13 @@ afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
-async function errorCodeOf(path: string): Promise<{ status: number; code: string; field?: unknown }> {
+async function errorCodeOf(
+  path: string,
+): Promise<{ status: number; code: string; field?: unknown }> {
   const response = await fetch(`${origin}${path}`);
-  const body = (await response.json()) as { error: { code: string; details?: { field?: unknown } } };
+  const body = (await response.json()) as {
+    error: { code: string; details?: { field?: unknown } };
+  };
   return { status: response.status, code: body.error.code, field: body.error.details?.field };
 }
 
@@ -129,7 +133,9 @@ describe('GET /api/v1/search', () => {
   });
 
   it('refuses a category filter naming a key that is not a category', async () => {
-    expect(await errorCodeOf('/api/v1/search?q=museum&categories=food.cafe,food.space_diner')).toMatchObject({
+    expect(
+      await errorCodeOf('/api/v1/search?q=museum&categories=food.cafe,food.space_diner'),
+    ).toMatchObject({
       status: 422,
       code: 'validation_failed',
       field: 'categories.1',
@@ -138,7 +144,12 @@ describe('GET /api/v1/search', () => {
 
   it('reads a viewport from the bare west/south/east/north the SDK sends', async () => {
     await fetch(`${origin}/api/v1/search?q=museum&west=2.0&south=41.3&east=2.2&north=41.5`);
-    expect(recorded.search.at(-1)?.viewport).toEqual({ west: 2, south: 41.3, east: 2.2, north: 41.5 });
+    expect(recorded.search.at(-1)?.viewport).toEqual({
+      west: 2,
+      south: 41.3,
+      east: 2.2,
+      north: 41.5,
+    });
   });
 
   it('refuses a parameter the contract does not declare, and a repeated one, as bad_request', async () => {
@@ -178,7 +189,9 @@ describe('GET /api/v1/search', () => {
       source: 'photon',
     });
     nextWindow = { ...EMPTY_WINDOW, results: [result('a'), result('b')], hasMore: true };
-    const first = (await (await fetch(`${origin}/api/v1/search?q=cafe&limit=2`)).json()) as SearchResults;
+    const first = (await (
+      await fetch(`${origin}/api/v1/search?q=cafe&limit=2`)
+    ).json()) as SearchResults;
     nextWindow = EMPTY_WINDOW;
     expect(first.nextCursor).toEqual(expect.any(String));
 
@@ -197,12 +210,21 @@ describe('GET /api/v1/search', () => {
       code: 'bad_request',
       field: 'cursor',
     });
-    expect(await errorCodeOf(`/api/v1/geocode?q=cafe&cursor=${cursor}`)).toMatchObject({ status: 400 });
+    expect(await errorCodeOf(`/api/v1/geocode?q=cafe&cursor=${cursor}`)).toMatchObject({
+      status: 400,
+    });
   });
 
   it('refuses a missing query as validation_failed, not a 500', async () => {
-    expect(await errorCodeOf('/api/v1/search')).toMatchObject({ status: 422, code: 'validation_failed', field: 'q' });
-    expect(await errorCodeOf('/api/v1/search?q=%20%20')).toMatchObject({ status: 422, code: 'validation_failed' });
+    expect(await errorCodeOf('/api/v1/search')).toMatchObject({
+      status: 422,
+      code: 'validation_failed',
+      field: 'q',
+    });
+    expect(await errorCodeOf('/api/v1/search?q=%20%20')).toMatchObject({
+      status: 422,
+      code: 'validation_failed',
+    });
   });
 
   it('refuses a half-specified bias rather than silently ignoring it', async () => {
@@ -219,7 +241,9 @@ describe('GET /api/v1/search', () => {
   });
 
   it('refuses a coordinate that is not on Earth and a box with south above north', async () => {
-    expect(await errorCodeOf('/api/v1/search?q=cafe&latitude=120&longitude=2')).toMatchObject({ status: 422 });
+    expect(await errorCodeOf('/api/v1/search?q=cafe&latitude=120&longitude=2')).toMatchObject({
+      status: 422,
+    });
     expect(await errorCodeOf('/api/v1/search?q=a&west=2&south=42&east=3&north=41')).toMatchObject({
       status: 422,
       field: 'south',
@@ -243,7 +267,9 @@ describe('GET /api/v1/search', () => {
     nextFailure = null;
 
     expect(response.status).toBe(503);
-    expect(((await response.json()) as { error: { code: string } }).error.code).toBe('provider_unavailable');
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      'provider_unavailable',
+    );
   });
 });
 
@@ -254,7 +280,9 @@ describe('GET /api/v1/geocode', () => {
   });
 
   it('reverse-geocodes from a coordinate', async () => {
-    await fetch(`${origin}/api/v1/geocode/reverse?latitude=41.4036&longitude=2.1744&radiusMeters=120&limit=2`);
+    await fetch(
+      `${origin}/api/v1/geocode/reverse?latitude=41.4036&longitude=2.1744&radiusMeters=120&limit=2`,
+    );
     expect(recorded.reverse.at(-1)).toEqual({
       coordinate: { latitude: 41.4036, longitude: 2.1744 },
       limit: 2,
@@ -264,7 +292,10 @@ describe('GET /api/v1/geocode', () => {
   });
 
   it('refuses a reverse lookup with no coordinate, and an impossible radius', async () => {
-    expect(await errorCodeOf('/api/v1/geocode/reverse')).toMatchObject({ status: 422, field: 'latitude' });
+    expect(await errorCodeOf('/api/v1/geocode/reverse')).toMatchObject({
+      status: 422,
+      field: 'latitude',
+    });
     expect(
       await errorCodeOf('/api/v1/geocode/reverse?latitude=41&longitude=2&radiusMeters=0'),
     ).toMatchObject({ status: 422, field: 'radiusMeters' });

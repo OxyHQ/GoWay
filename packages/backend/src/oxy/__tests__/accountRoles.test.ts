@@ -78,7 +78,9 @@ describe('roleIn', () => {
   it('fails CLOSED with service_unavailable when Oxy cannot answer', async () => {
     oxy.mode = 'down';
     const roles = createAccountRoleResolver({ oxyApiUrl: oxy.url });
-    expect(await refusal(roles.roleIn(personal('person-ana'), 'org-cafe'))).toBe('service_unavailable');
+    expect(await refusal(roles.roleIn(personal('person-ana'), 'org-cafe'))).toBe(
+      'service_unavailable',
+    );
   });
 
   it('fails closed when Oxy is not there at all', async () => {
@@ -88,7 +90,9 @@ describe('roleIn', () => {
     const gone = await startFakeOxy();
     await gone.close();
     const roles = createAccountRoleResolver({ oxyApiUrl: gone.url });
-    expect(await refusal(roles.roleIn(personal('person-ana'), 'org-cafe'))).toBe('service_unavailable');
+    expect(await refusal(roles.roleIn(personal('person-ana'), 'org-cafe'))).toBe(
+      'service_unavailable',
+    );
   });
 
   it('answers a session Oxy refuses with unauthorized', async () => {
@@ -125,7 +129,11 @@ describe('the cache', () => {
 
   it('does not cache a session whose person Oxy did not report', async () => {
     const roles = createAccountRoleResolver({ oxyApiUrl: oxy.url });
-    const unknown: OxyCaller = { oxyAccountId: 'person-ana', operatedByOxyUserId: null, accessToken: tokenFor('person-ana') };
+    const unknown: OxyCaller = {
+      oxyAccountId: 'person-ana',
+      operatedByOxyUserId: null,
+      accessToken: tokenFor('person-ana'),
+    };
     await roles.roleIn(unknown, 'org-cafe');
     await roles.roleIn(unknown, 'org-cafe');
     expect(oxy.requests).toHaveLength(2);
@@ -134,7 +142,9 @@ describe('the cache', () => {
   it('never caches a failure', async () => {
     const roles = createAccountRoleResolver({ oxyApiUrl: oxy.url });
     oxy.mode = 'down';
-    expect(await refusal(roles.roleIn(personal('person-ana'), 'org-cafe'))).toBe('service_unavailable');
+    expect(await refusal(roles.roleIn(personal('person-ana'), 'org-cafe'))).toBe(
+      'service_unavailable',
+    );
     oxy.mode = 'ok';
     expect(await roles.roleIn(personal('person-ana'), 'org-cafe')).toBe('editor');
   });

@@ -135,13 +135,23 @@ describe('the category taxonomy', () => {
   it('refuses a malformed category key before sending, and leaves membership to the server', async () => {
     const { client, calls } = clientFor(page([]));
     const error = await rejection(
-      client.places.nearby({ latitude: 0, longitude: 0, radiusMeters: 10, categories: ['Food Cafe'] }),
+      client.places.nearby({
+        latitude: 0,
+        longitude: 0,
+        radiusMeters: 10,
+        categories: ['Food Cafe'],
+      }),
     );
     expect(error).toBeInstanceOf(GoWayValidationError);
     expect(calls).toHaveLength(0);
 
     // Well-formed but unknown to this build: only the server knows the taxonomy.
-    await client.places.nearby({ latitude: 0, longitude: 0, radiusMeters: 10, categories: ['food.space_diner'] });
+    await client.places.nearby({
+      latitude: 0,
+      longitude: 0,
+      radiusMeters: 10,
+      categories: ['food.space_diner'],
+    });
     expect(calls).toHaveLength(1);
   });
 });
@@ -180,7 +190,11 @@ describe('category moderation', () => {
     expect(noEnglish).toBeInstanceOf(GoWayValidationError);
 
     const twice = await rejection(
-      client.moderation.createCategory({ key: 'food.tea', icon: 'cafe', labels: { en: 'Tea', es: 'Té', ES: 'Té' } }),
+      client.moderation.createCategory({
+        key: 'food.tea',
+        icon: 'cafe',
+        labels: { en: 'Tea', es: 'Té', ES: 'Té' },
+      }),
     );
     expect(twice).toBeInstanceOf(GoWayValidationError);
     expect(calls).toHaveLength(1);
@@ -201,12 +215,16 @@ describe('category moderation', () => {
     const { client, calls } = clientFor(MODERATION_CATEGORY);
     await client.moderation.setCategoryLabel('food.cafe', 'pt_br', { label: 'Cafeteria' });
     expect(calls[0]?.init.method).toBe('PUT');
-    expect(calls[0]?.url).toBe('https://api.goway.to/api/v1/moderation/categories/food.cafe/labels/pt-BR');
+    expect(calls[0]?.url).toBe(
+      'https://api.goway.to/api/v1/moderation/categories/food.cafe/labels/pt-BR',
+    );
 
     const removed = clientFor('', 204);
     await removed.client.moderation.removeCategoryLabel('food.cafe', 'pt_br');
     expect(removed.calls[0]?.init.method).toBe('DELETE');
-    expect(removed.calls[0]?.url).toBe('https://api.goway.to/api/v1/moderation/categories/food.cafe/labels/pt-BR');
+    expect(removed.calls[0]?.url).toBe(
+      'https://api.goway.to/api/v1/moderation/categories/food.cafe/labels/pt-BR',
+    );
   });
 });
 
@@ -216,9 +234,11 @@ describe('typed capabilities', () => {
     expect(capabilityValueLabel('food.cuisine', 'italian', 'es')).toBe('Italiana');
   });
 
-  it("refuses a value of the wrong kind for the key, and normalizes one of the right kind, before sending", async () => {
+  it('refuses a value of the wrong kind for the key, and normalizes one of the right kind, before sending', async () => {
     const { client, calls } = clientFor(PLACE);
-    const wrong = await rejection(client.places.capabilities.put('p1', 'amenities.wifi', { value: 'yes' }));
+    const wrong = await rejection(
+      client.places.capabilities.put('p1', 'amenities.wifi', { value: 'yes' }),
+    );
     expect(wrong).toBeInstanceOf(GoWayValidationError);
     expect(calls).toHaveLength(0);
 
@@ -228,7 +248,9 @@ describe('typed capabilities', () => {
 
   it('holds an Oxy verification to the same registry entry before sending', async () => {
     const { client, calls } = clientFor(PLACE);
-    const wrong = await rejection(client.moderation.verifyCapability('p1', 'accessibility.wheelchair', { value: 'sometimes' }));
+    const wrong = await rejection(
+      client.moderation.verifyCapability('p1', 'accessibility.wheelchair', { value: 'sometimes' }),
+    );
     expect(wrong).toBeInstanceOf(GoWayValidationError);
     expect(calls).toHaveLength(0);
 
@@ -239,17 +261,32 @@ describe('typed capabilities', () => {
 
   it('filters by a value only where the key has values to filter by', async () => {
     const { client, calls } = clientFor(page([]));
-    await client.places.nearby({ latitude: 0, longitude: 0, radiusMeters: 10, capabilities: ['food.cuisine:italian'] });
+    await client.places.nearby({
+      latitude: 0,
+      longitude: 0,
+      radiusMeters: 10,
+      capabilities: ['food.cuisine:italian'],
+    });
     expect(calls[0]?.url).toContain('capabilities=food.cuisine%3Aitalian');
 
     for (const filter of ['food.cuisine:martian', 'amenities.wifi:yes', 'payments.faircoin.rate']) {
-      const error = await rejection(client.places.nearby({ latitude: 0, longitude: 0, radiusMeters: 10, capabilities: [filter] }));
+      const error = await rejection(
+        client.places.nearby({
+          latitude: 0,
+          longitude: 0,
+          radiusMeters: 10,
+          capabilities: [filter],
+        }),
+      );
       expect(error).toBeInstanceOf(GoWayValidationError);
     }
   });
 
   it('decides "has it" by the strongest assertion, enum absences included', () => {
-    const assertion = (value: PlaceCapability['value'], verification: PlaceCapability['verification']): PlaceCapability => ({
+    const assertion = (
+      value: PlaceCapability['value'],
+      verification: PlaceCapability['verification'],
+    ): PlaceCapability => ({
       namespace: 'accessibility',
       capability: 'wheelchair',
       key: 'accessibility.wheelchair',
@@ -257,7 +294,9 @@ describe('typed capabilities', () => {
       verification,
       observedAt: '2026-01-01T00:00:00.000Z',
     });
-    const place = { capabilities: [assertion('yes', 'community_reported'), assertion('no', 'business_asserted')] };
+    const place = {
+      capabilities: [assertion('yes', 'community_reported'), assertion('no', 'business_asserted')],
+    };
     expect(placeHasCapability(place, 'accessibility.wheelchair')).toBe(false);
     expect(placeMatchesCapabilityFilter(place, 'accessibility.wheelchair:no')).toBe(true);
     expect(placeMatchesCapabilityFilter(place, 'accessibility.wheelchair:yes')).toBe(false);
@@ -267,7 +306,10 @@ describe('typed capabilities', () => {
 describe('hours exceptions', () => {
   it('creates, rewrites, lists and withdraws through the contract', async () => {
     const { client, calls } = clientFor(EXCEPTION, 201);
-    const created = await client.places.hoursExceptions.create('gw_place_01H8', { startsOn: '2026-10-05', closed: true });
+    const created = await client.places.hoursExceptions.create('gw_place_01H8', {
+      startsOn: '2026-10-05',
+      closed: true,
+    });
     expect(created).toEqual(EXCEPTION);
     expect(calls[0]?.init.method).toBe('POST');
     expect(calls[0]?.url).toBe('https://api.goway.to/api/v1/places/gw_place_01H8/hours-exceptions');
@@ -292,7 +334,9 @@ describe('openingStatusAt', () => {
   const MONDAY_NOON = new Date('2026-10-05T10:30:00Z');
 
   it('is open, and says when it closes in the place’s own clock', () => {
-    expect(openingStatusAt({ openingHours: WEEKDAYS, timezone: 'Europe/Madrid' }, MONDAY_NOON)).toEqual({
+    expect(
+      openingStatusAt({ openingHours: WEEKDAYS, timezone: 'Europe/Madrid' }, MONDAY_NOON),
+    ).toEqual({
       state: 'open',
       localDate: '2026-10-05',
       nextChange: { at: '2026-10-05T18:00:00.000Z', localDate: '2026-10-05', localTime: '20:00' },
@@ -300,19 +344,38 @@ describe('openingStatusAt', () => {
   });
 
   it('is closed after hours, and says when it opens next', () => {
-    const status = openingStatusAt({ openingHours: WEEKDAYS, timezone: 'Europe/Madrid' }, new Date('2026-10-09T19:00:00Z'));
-    expect(status).toMatchObject({ state: 'closed', nextChange: { localDate: '2026-10-12', localTime: '09:00' } });
+    const status = openingStatusAt(
+      { openingHours: WEEKDAYS, timezone: 'Europe/Madrid' },
+      new Date('2026-10-09T19:00:00Z'),
+    );
+    expect(status).toMatchObject({
+      state: 'closed',
+      nextChange: { localDate: '2026-10-12', localTime: '09:00' },
+    });
   });
 
   it('reads a night that crosses midnight, and 24/7 as open with no change', () => {
     const bar: OpeningHours = { intervals: [{ day: 5, opens: '22:00', closes: '02:30' }] };
     // Saturday 01:00 in Madrid is still Friday night.
-    expect(openingStatusAt({ openingHours: bar, timezone: 'Europe/Madrid' }, new Date('2026-10-09T23:00:00Z'))).toMatchObject({
+    expect(
+      openingStatusAt(
+        { openingHours: bar, timezone: 'Europe/Madrid' },
+        new Date('2026-10-09T23:00:00Z'),
+      ),
+    ).toMatchObject({
       state: 'open',
       nextChange: { localTime: '02:30' },
     });
-    const always: OpeningHours = { intervals: ([0, 1, 2, 3, 4, 5, 6] as const).map((day) => ({ day, opens: '00:00', closes: '00:00' })) };
-    expect(openingStatusAt({ openingHours: always, timezone: 'Europe/Madrid' }, MONDAY_NOON)).toEqual({
+    const always: OpeningHours = {
+      intervals: ([0, 1, 2, 3, 4, 5, 6] as const).map((day) => ({
+        day,
+        opens: '00:00',
+        closes: '00:00',
+      })),
+    };
+    expect(
+      openingStatusAt({ openingHours: always, timezone: 'Europe/Madrid' }, MONDAY_NOON),
+    ).toEqual({
       state: 'open',
       localDate: '2026-10-05',
     });
@@ -328,16 +391,28 @@ describe('openingStatusAt', () => {
       observedAt: '2026-10-04T00:00:00.000Z',
     };
     const status = openingStatusAt(
-      { openingHours: WEEKDAYS, timezone: 'Europe/Madrid', hoursExceptions: [community, EXCEPTION] },
+      {
+        openingHours: WEEKDAYS,
+        timezone: 'Europe/Madrid',
+        hoursExceptions: [community, EXCEPTION],
+      },
       MONDAY_NOON,
     );
-    expect(status).toMatchObject({ state: 'closed', exception: { id: 'e1' }, nextChange: { localDate: '2026-10-06' } });
+    expect(status).toMatchObject({
+      state: 'closed',
+      exception: { id: 'e1' },
+      nextChange: { localDate: '2026-10-06' },
+    });
   });
 
   it('answers unknown without a zone, without a schedule, or for a zone this runtime cannot read', () => {
     expect(openingStatusAt({ openingHours: WEEKDAYS }, MONDAY_NOON)).toEqual({ state: 'unknown' });
-    expect(openingStatusAt({ timezone: 'Europe/Madrid' }, MONDAY_NOON)).toEqual({ state: 'unknown' });
-    expect(openingStatusAt({ openingHours: WEEKDAYS, timezone: 'Mars/Olympus' }, MONDAY_NOON)).toEqual({ state: 'unknown' });
+    expect(openingStatusAt({ timezone: 'Europe/Madrid' }, MONDAY_NOON)).toEqual({
+      state: 'unknown',
+    });
+    expect(
+      openingStatusAt({ openingHours: WEEKDAYS, timezone: 'Mars/Olympus' }, MONDAY_NOON),
+    ).toEqual({ state: 'unknown' });
   });
 
   it('reads a published place as it comes', async () => {

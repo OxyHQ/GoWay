@@ -47,7 +47,10 @@ describe('BoundedCache', () => {
   });
 
   it('is off when either bound is zero', () => {
-    for (const options of [{ maxEntries: 0, ttlMs: 60_000 }, { maxEntries: 10, ttlMs: 0 }]) {
+    for (const options of [
+      { maxEntries: 0, ttlMs: 60_000 },
+      { maxEntries: 10, ttlMs: 0 },
+    ]) {
       const cache = new BoundedCache<string>(options);
       cache.set('a', '1');
       expect(cache.enabled).toBe(false);

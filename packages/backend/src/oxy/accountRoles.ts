@@ -102,7 +102,9 @@ function translate(error: unknown): null {
   );
 }
 
-export function createAccountRoleResolver(options: AccountRoleResolverOptions): AccountRoleResolver {
+export function createAccountRoleResolver(
+  options: AccountRoleResolverOptions,
+): AccountRoleResolver {
   const ttlMs = options.ttlMs ?? DEFAULT_ROLE_TTL_MS;
   const now = options.now ?? Date.now;
   const answers = new Map<string, { role: AccountRole | null; expiresAt: number }>();
@@ -132,7 +134,10 @@ export function createAccountRoleResolver(options: AccountRoleResolverOptions): 
         // this unidentified request act for an organization" is no.
         throw new ApiError('unauthorized', 'This request requires an Oxy session.');
       }
-      const key = caller.operatedByOxyUserId === null ? null : `${caller.operatedByOxyUserId}\u0000${oxyAccountId}`;
+      const key =
+        caller.operatedByOxyUserId === null
+          ? null
+          : `${caller.operatedByOxyUserId}\u0000${oxyAccountId}`;
       if (key !== null) {
         const cached = answers.get(key);
         if (cached && cached.expiresAt > now()) return cached.role;

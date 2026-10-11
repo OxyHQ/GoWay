@@ -32,7 +32,9 @@ describe('the backend entrypoint', () => {
     const source = readFileSync(entry, 'utf8');
     const exportStatements = source
       .split('\n')
-      .filter((line) => /^\s*export\s+(?!type\b)/.test(line) || /^\s*module\.exports\s*=/.test(line));
+      .filter(
+        (line) => /^\s*export\s+(?!type\b)/.test(line) || /^\s*module\.exports\s*=/.test(line),
+      );
 
     expect(exportStatements).toEqual([]);
   });

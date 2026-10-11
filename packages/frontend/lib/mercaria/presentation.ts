@@ -5,7 +5,11 @@
  * stock reads — are tested without a renderer.
  */
 import { placeHasCapability, type Place } from '@goway.to/sdk';
-import type { MercariaLocationAvailability, MercariaLocationProduct, MercariaMoney } from '@mercaria.co/sdk';
+import type {
+  MercariaLocationAvailability,
+  MercariaLocationProduct,
+  MercariaMoney,
+} from '@mercaria.co/sdk';
 
 import { deviceLocale, type MessageValues } from '@/lib/i18n';
 
@@ -51,7 +55,9 @@ export const AVAILABILITY_MESSAGES: Readonly<Record<MercariaLocationAvailability
 };
 
 /** How loudly each availability is badged — redundant emphasis over the words above. */
-export const AVAILABILITY_TONES: Readonly<Record<MercariaLocationAvailability, 'success' | 'warning' | 'default'>> = {
+export const AVAILABILITY_TONES: Readonly<
+  Record<MercariaLocationAvailability, 'success' | 'warning' | 'default'>
+> = {
   in_stock: 'success',
   low_stock: 'warning',
   out_of_stock: 'default',
@@ -68,7 +74,11 @@ const DAY_MS = 24 * HOUR_MS;
  * worth something inside the shop's own confirmation interval, and "today"
  * would hide the difference between this morning and a minute ago.
  */
-export function stockConfirmedAge(confirmedAt: string, t: Translate, now: number = Date.now()): string {
+export function stockConfirmedAge(
+  confirmedAt: string,
+  t: Translate,
+  now: number = Date.now(),
+): string {
   const elapsed = Math.max(0, now - Date.parse(confirmedAt));
   if (elapsed < MINUTE_MS) return t('products.confirmed.now');
   const [unit, count] =
@@ -103,11 +113,17 @@ export function presentStock(
   t: Translate,
   now: number = Date.now(),
 ): StockPresentation {
-  const disclosed = item.exactQuantity !== undefined && item.availability !== 'out_of_stock' ? item.exactQuantity : null;
+  const disclosed =
+    item.exactQuantity !== undefined && item.availability !== 'out_of_stock'
+      ? item.exactQuantity
+      : null;
   return {
     label: t(AVAILABILITY_MESSAGES[item.availability]),
     tone: AVAILABILITY_TONES[item.availability],
-    quantity: disclosed === null ? null : t(pluralKey('products.quantity', disclosed), { count: disclosed }),
+    quantity:
+      disclosed === null
+        ? null
+        : t(pluralKey('products.quantity', disclosed), { count: disclosed }),
     confirmed: stockConfirmedAge(item.stockConfirmedAt, t, now),
   };
 }
@@ -139,7 +155,13 @@ export function spokenProduct(
   locale: string = deviceLocale(),
 ): string {
   const stock = presentStock(item, t, now);
-  return [item.product.title, formatMercariaPrice(item.product.price, locale), stock.label, stock.quantity, stock.confirmed]
+  return [
+    item.product.title,
+    formatMercariaPrice(item.product.price, locale),
+    stock.label,
+    stock.quantity,
+    stock.confirmed,
+  ]
     .filter(Boolean)
     .join(', ');
 }

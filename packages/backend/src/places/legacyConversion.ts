@@ -88,7 +88,9 @@ function classify(table: string, head: string): ConversionStepName {
   if (table === 'places_sources' && /SET\s+"source_data"/.test(head)) return 'sources';
   if (table === 'places' && /SET\s+"categories"/.test(head)) return 'categories';
   if (table === 'places' && /"timezone"\s*=/.test(head)) return 'timezone';
-  throw new Error(`An UPDATE of "${table}" in ${CONVERSION_MIGRATION_TAG} is not one of the known conversions.`);
+  throw new Error(
+    `An UPDATE of "${table}" in ${CONVERSION_MIGRATION_TAG} is not one of the known conversions.`,
+  );
 }
 
 /**
@@ -98,7 +100,9 @@ function classify(table: string, head: string): ConversionStepName {
  * without a line-initial WHERE, a missing step — rather than converting part of
  * the data and reporting success.
  */
-export function parseConversionMigration(sqlText: string): Omit<LegacyConversionPlan, 'taxonomyCheck'> {
+export function parseConversionMigration(
+  sqlText: string,
+): Omit<LegacyConversionPlan, 'taxonomyCheck'> {
   const setup: string[] = [];
   const steps: Partial<Record<ConversionStepName, ConversionStep>> = {};
 
@@ -110,10 +114,15 @@ export function parseConversionMigration(sqlText: string): Omit<LegacyConversion
     }
     const table = update[1] as string;
     if (table !== 'places' && table !== 'places_sources') {
-      throw new Error(`${CONVERSION_MIGRATION_TAG} updates "${table}", which this command does not batch.`);
+      throw new Error(
+        `${CONVERSION_MIGRATION_TAG} updates "${table}", which this command does not batch.`,
+      );
     }
     const where = statement.lastIndexOf('\nWHERE ');
-    if (where < 0) throw new Error(`An UPDATE of "${table}" in ${CONVERSION_MIGRATION_TAG} has no line-initial WHERE.`);
+    if (where < 0)
+      throw new Error(
+        `An UPDATE of "${table}" in ${CONVERSION_MIGRATION_TAG} has no line-initial WHERE.`,
+      );
     const head = statement.slice(0, where);
     const predicate = statement
       .slice(where + '\nWHERE '.length)
@@ -134,7 +143,8 @@ export function parseConversionMigration(sqlText: string): Omit<LegacyConversion
 export function parseTaxonomyCheck(sqlText: string): string {
   const marker = `ADD CONSTRAINT "${TAXONOMY_CONSTRAINT}" CHECK (`;
   const start = sqlText.indexOf(marker);
-  if (start < 0) throw new Error(`${TAXONOMY_MIGRATION_TAG} does not add "${TAXONOMY_CONSTRAINT}".`);
+  if (start < 0)
+    throw new Error(`${TAXONOMY_MIGRATION_TAG} does not add "${TAXONOMY_CONSTRAINT}".`);
   let depth = 1;
   let quoted = false;
   const from = start + marker.length;
@@ -319,7 +329,12 @@ async function runStep(
         : rangedUpdate(step);
   return runIdBatches(
     session,
-    { name, table: step?.table ?? 'places', statement, counts: step === null || options.dryRun === true },
+    {
+      name,
+      table: step?.table ?? 'places',
+      statement,
+      counts: step === null || options.dryRun === true,
+    },
     options,
   );
 }
@@ -356,7 +371,10 @@ export async function runIdBatches(
 
   for (;;) {
     const [batch] = await withRetries(attempts, () =>
-      session.unsafe<{ rows: number; upper: string | null }[]>(nextBatch(job.table), [after, options.batchSize]),
+      session.unsafe<{ rows: number; upper: string | null }[]>(nextBatch(job.table), [
+        after,
+        options.batchSize,
+      ]),
     );
     if (!batch || batch.rows === 0 || batch.upper === null) break;
     const upper = batch.upper;
@@ -439,7 +457,9 @@ export async function convertLegacyPlaceData(
  * ACCESS EXCLUSIVE lock an ordinary ADD CONSTRAINT holds for the whole scan,
  * inside the migrator's single transaction.
  */
-export async function validateTaxonomyConstraint(session: postgres.Sql): Promise<{ alreadyValid: boolean; seconds: number }> {
+export async function validateTaxonomyConstraint(
+  session: postgres.Sql,
+): Promise<{ alreadyValid: boolean; seconds: number }> {
   const [constraint] = await session.unsafe<{ valid: boolean }[]>(
     `SELECT convalidated AS "valid" FROM pg_constraint WHERE conrelid = to_regclass('places') AND conname = $1`,
     [TAXONOMY_CONSTRAINT],

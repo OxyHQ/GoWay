@@ -37,7 +37,9 @@ import { CLAIM_ROLE_SPEAKS_FOR_BUSINESS } from './capabilityAuthority';
  * compile on the upgrade that brings it, until somebody decides what it may do
  * here — rather than inheriting nothing, or everything, by omission.
  */
-export const ACCOUNT_ROLE_AUTHORITY: Readonly<Record<AccountRole, { acts: boolean; files: boolean }>> = {
+export const ACCOUNT_ROLE_AUTHORITY: Readonly<
+  Record<AccountRole, { acts: boolean; files: boolean }>
+> = {
   owner: { acts: true, files: true },
   admin: { acts: true, files: true },
   editor: { acts: true, files: false },
@@ -106,14 +108,19 @@ export async function standingOn(
 ): Promise<PlaceStanding> {
   if (claims.length === 0) return { claimed: false, callerRoles: [] };
 
-  const direct = claims.filter((claim) => claim.oxyAccountId === caller.oxyAccountId).map((claim) => claim.role);
-  if (direct.some((role) => CLAIM_ROLE_SPEAKS_FOR_BUSINESS[role])) return { claimed: true, callerRoles: direct };
+  const direct = claims
+    .filter((claim) => claim.oxyAccountId === caller.oxyAccountId)
+    .map((claim) => claim.role);
+  if (direct.some((role) => CLAIM_ROLE_SPEAKS_FOR_BUSINESS[role]))
+    return { claimed: true, callerRoles: direct };
 
   const callerRoles = [...direct];
   for (const account of [...new Set(claims.map((claim) => claim.oxyAccountId))]) {
     if (account === caller.oxyAccountId) continue;
     if (await mayActFor(caller, account, roles)) {
-      callerRoles.push(...claims.filter((claim) => claim.oxyAccountId === account).map((claim) => claim.role));
+      callerRoles.push(
+        ...claims.filter((claim) => claim.oxyAccountId === account).map((claim) => claim.role),
+      );
     }
   }
   return { claimed: true, callerRoles };
@@ -136,7 +143,9 @@ export async function affiliatedWithAny(
   roles: AccountRoleResolver,
 ): Promise<boolean> {
   const accounts = [...new Set(oxyAccountIds)];
-  const self = new Set([caller.oxyAccountId, caller.operatedByOxyUserId].filter((id): id is string => id !== null));
+  const self = new Set(
+    [caller.oxyAccountId, caller.operatedByOxyUserId].filter((id): id is string => id !== null),
+  );
   if (accounts.some((account) => self.has(account))) return true;
   for (const account of accounts) {
     if ((await roles.roleIn(caller, account)) !== null) return true;

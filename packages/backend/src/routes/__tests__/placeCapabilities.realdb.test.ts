@@ -75,7 +75,10 @@ interface Fetched<T> {
 async function call<T>(path: string, init: RequestInit = {}): Promise<Fetched<T>> {
   const response = await fetch(`${origin}/api/v1${path}`, init);
   // A 204 has no body to parse; the status is the whole answer.
-  return { status: response.status, body: (response.status === 204 ? undefined : await response.json()) as T };
+  return {
+    status: response.status,
+    body: (response.status === 204 ? undefined : await response.json()) as T,
+  };
 }
 
 function asUser(user: string, init: RequestInit = {}): RequestInit {
@@ -121,7 +124,15 @@ beforeAll(async () => {
 
   const app = express();
   app.use(express.json());
-  app.use('/api/v1', createPlacesRouter({ optionalAuth, requireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }));
+  app.use(
+    '/api/v1',
+    createPlacesRouter({
+      optionalAuth,
+      requireAuth,
+      accountRoles: NO_MEMBERSHIPS,
+      reportRateLimit: NO_RATE_LIMIT,
+    }),
+  );
   app.use(unknownRouteHandler);
   app.use(errorHandler);
 
@@ -132,7 +143,11 @@ beforeAll(async () => {
   open = await createPlace(suite.db, { name: 'Bar Obert', location: CATALUNYA }, CONTRIBUTOR);
   claimed = await createPlace(suite.db, { name: 'Forn Reclamat', location: GRACIA }, CONTRIBUTOR);
   pending = await createPlace(suite.db, { name: 'Colmado Pendent', location: GRACIA }, CONTRIBUTOR);
-  verified = await createPlace(suite.db, { name: 'Botiga Verificada', location: GRACIA }, CONTRIBUTOR);
+  verified = await createPlace(
+    suite.db,
+    { name: 'Botiga Verificada', location: GRACIA },
+    CONTRIBUTOR,
+  );
 
   await createClaim(suite.db, {
     placeId: claimed.id,
@@ -287,8 +302,9 @@ describe('PUT /places/{placeId}/capabilities/{key}', () => {
 
     expect(assertionsOf(second.body, FAIRCOIN)).toHaveLength(1);
     expect(tierOf(second.body, FAIRCOIN, 'community_reported')?.value).toBe(false);
-    expect(Date.parse(tierOf(second.body, FAIRCOIN, 'community_reported')?.observedAt ?? '')).
-      toBeGreaterThanOrEqual(Date.parse(observedFirst ?? ''));
+    expect(
+      Date.parse(tierOf(second.body, FAIRCOIN, 'community_reported')?.observedAt ?? ''),
+    ).toBeGreaterThanOrEqual(Date.parse(observedFirst ?? ''));
   });
 
   it('moves updatedAt for a capability-only write', async () => {
@@ -339,7 +355,12 @@ describe('PUT /places/{placeId}/capabilities/{key}', () => {
       },
       CONTRIBUTOR,
     );
-    await createClaim(suite!.db, { placeId: shop.id, oxyAccountId: 'user-shop', role: 'owner', state: 'approved' });
+    await createClaim(suite!.db, {
+      placeId: shop.id,
+      oxyAccountId: 'user-shop',
+      role: 'owner',
+      state: 'approved',
+    });
     const merchants = async () =>
       (
         await call<PlaceWithDistancePage>(
@@ -356,7 +377,10 @@ describe('PUT /places/{placeId}/capabilities/{key}', () => {
     });
     // The community's `true` is still published — nothing is destroyed — but
     // it is outranked, and the place is no longer a FairCoin merchant.
-    expect(await storedTiers(shop.id, FAIRCOIN)).toEqual(['business_asserted', 'community_reported']);
+    expect(await storedTiers(shop.id, FAIRCOIN)).toEqual([
+      'business_asserted',
+      'community_reported',
+    ]);
     expect(await merchants()).not.toContain(shop.id);
 
     await call<Place>(`/places/${shop.id}/capabilities/${FAIRCOIN}`, {
@@ -410,10 +434,13 @@ describe('PUT /places/{placeId}/capabilities/{key}', () => {
 
     // Refused at the edge rather than landing as a second, differently-cased
     // row beside the real one.
-    const cased = await call<ErrorBody>(`/places/${open.id}/capabilities/Payments.FairCoin.Accepted`, {
-      method: 'PUT',
-      ...asUser('user-passerby', json({ value: true })),
-    });
+    const cased = await call<ErrorBody>(
+      `/places/${open.id}/capabilities/Payments.FairCoin.Accepted`,
+      {
+        method: 'PUT',
+        ...asUser('user-passerby', json({ value: true })),
+      },
+    );
     expect(cased.status).toBe(400);
   });
 
@@ -451,10 +478,13 @@ describe('PUT /places/{placeId}/capabilities/{key}', () => {
   });
 
   it('answers an unknown place with not_found', async () => {
-    const { status, body } = await call<ErrorBody>(`/places/does-not-exist/capabilities/${FAIRCOIN}`, {
-      method: 'PUT',
-      ...asUser('user-passerby', json({ value: true })),
-    });
+    const { status, body } = await call<ErrorBody>(
+      `/places/does-not-exist/capabilities/${FAIRCOIN}`,
+      {
+        method: 'PUT',
+        ...asUser('user-passerby', json({ value: true })),
+      },
+    );
     expect(status).toBe(404);
     expect(body.error.code).toBe('not_found');
   });

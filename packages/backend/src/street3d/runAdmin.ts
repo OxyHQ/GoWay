@@ -35,8 +35,16 @@ const USAGE =
   'Usage: street3d:admin <status|disable-version|enable-version|rebuild-scene|block-capture|cancel-job|requeue-job> ' +
   '[id] --target-database=<name> [--reason <text>] [--profile draft|standard]';
 
-async function run(command: string, id: string | undefined, values: { reason?: string; profile?: string }) {
-  const deps: AdminDeps = { db: getDb(), services: createConfiguredStreet3dServices(), config: street3dConfig };
+async function run(
+  command: string,
+  id: string | undefined,
+  values: { reason?: string; profile?: string },
+) {
+  const deps: AdminDeps = {
+    db: getDb(),
+    services: createConfiguredStreet3dServices(),
+    config: street3dConfig,
+  };
   const need = (what: string): string => {
     if (!id) throw new Error(`${command} needs a ${what}.`);
     return id;
@@ -109,9 +117,10 @@ async function main() {
 
 main().catch((error: unknown) => {
   // Usage errors are ours and safe to print; anything else may carry secrets.
-  const message = error instanceof Error && /needs|Usage|--profile|required/.test(error.message)
-    ? error.message
-    : 'Street 3D admin command failed. Check its arguments, database and AWS configuration.';
+  const message =
+    error instanceof Error && /needs|Usage|--profile|required/.test(error.message)
+      ? error.message
+      : 'Street 3D admin command failed. Check its arguments, database and AWS configuration.';
   console.error(message);
   process.exitCode = 1;
 });

@@ -9,5 +9,7 @@
 import { GoWayApiError, GoWayNotFoundError } from '@goway.to/sdk';
 
 export function isStreet3dEndpointMissing(error: unknown): boolean {
-  return error instanceof GoWayApiError && !(error instanceof GoWayNotFoundError) && error.status === 404;
+  return (
+    error instanceof GoWayApiError && !(error instanceof GoWayNotFoundError) && error.status === 404
+  );
 }

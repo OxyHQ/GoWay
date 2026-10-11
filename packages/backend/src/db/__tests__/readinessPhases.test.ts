@@ -20,11 +20,21 @@ const PHASES = new Map([
 
 describe('onlyPostPhasePending', () => {
   it('is ready while only post migrations wait for the post phase', () => {
-    expect(onlyPostPhasePending([{ tag: '0011_goway_place_data_conversion' }, { tag: '0012_goway_drop_claim_brand' }], PHASES)).toBe(true);
+    expect(
+      onlyPostPhasePending(
+        [{ tag: '0011_goway_place_data_conversion' }, { tag: '0012_goway_drop_claim_brand' }],
+        PHASES,
+      ),
+    ).toBe(true);
   });
 
   it('is not ready while a pre migration is pending', () => {
-    expect(onlyPostPhasePending([{ tag: '0010_goway_claim_retier' }, { tag: '0011_goway_place_data_conversion' }], PHASES)).toBe(false);
+    expect(
+      onlyPostPhasePending(
+        [{ tag: '0010_goway_claim_retier' }, { tag: '0011_goway_place_data_conversion' }],
+        PHASES,
+      ),
+    ).toBe(false);
   });
 
   it('is not ready for a migration with no readable phase', () => {

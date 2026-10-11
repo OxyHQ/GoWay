@@ -58,8 +58,13 @@ describe('the imported set against the basemap', () => {
   test('every class the style groups and colours is reachable from a tag', () => {
     const layers = readFileSync(join(STYLE_DIRECTORY, 'layers.ts'), 'utf8');
     const grouped = new Set(
-      [...layers.matchAll(/\['(?:foodDrink|shopping|outdoors|transit|lodging|health|civic|culture|worship|vehicle)', \[([^\]]*)\]\]/g)]
-        .flatMap((match) => [...(match[1] ?? '').matchAll(/'([a-z0-9_]+)'/g)].map((entry) => entry[1] as string)),
+      [
+        ...layers.matchAll(
+          /\['(?:foodDrink|shopping|outdoors|transit|lodging|health|civic|culture|worship|vehicle)', \[([^\]]*)\]\]/g,
+        ),
+      ].flatMap((match) =>
+        [...(match[1] ?? '').matchAll(/'([a-z0-9_]+)'/g)].map((entry) => entry[1] as string),
+      ),
     );
     expect(grouped.size).toBeGreaterThan(50);
 
@@ -215,7 +220,11 @@ describe('classifyPoi', () => {
     // place, which is the property that keeps the import a superset of the
     // basemap as OpenMapTiles widens its own whitelist.
     const kind = classifyPoi(tags({ amenity: 'mobility_hub' }));
-    expect(kind).toEqual({ mappingKey: 'amenity', subclass: 'mobility_hub', className: 'mobility_hub' });
+    expect(kind).toEqual({
+      mappingKey: 'amenity',
+      subclass: 'mobility_hub',
+      className: 'mobility_hub',
+    });
   });
 
   test('a restaurant that is also an attraction is a restaurant', () => {
@@ -238,28 +247,37 @@ describe('classifyPoi', () => {
 describe('osmCategories', () => {
   test('files an element under the taxonomy key its qualifying tag maps to', () => {
     expect(osmCategories(tags({ amenity: 'cafe' }), SEEDED_CATALOG)).toEqual(['food.cafe']);
-    expect(osmCategories(tags({ shop: 'supermarket' }), SEEDED_CATALOG)).toEqual(['shop.supermarket']);
+    expect(osmCategories(tags({ shop: 'supermarket' }), SEEDED_CATALOG)).toEqual([
+      'shop.supermarket',
+    ]);
     expect(osmCategories(tags({ shop: 'books' }), SEEDED_CATALOG)).toEqual(['shop.books']);
-    expect(osmCategories(tags({ railway: 'station' }), SEEDED_CATALOG)).toEqual(['transport.rail_station']);
+    expect(osmCategories(tags({ railway: 'station' }), SEEDED_CATALOG)).toEqual([
+      'transport.rail_station',
+    ]);
     // `station` under `aerialway` is a cable car, not a train.
-    expect(osmCategories(tags({ aerialway: 'station' }), SEEDED_CATALOG)).toEqual(['transport.aerialway']);
+    expect(osmCategories(tags({ aerialway: 'station' }), SEEDED_CATALOG)).toEqual([
+      'transport.aerialway',
+    ]);
   });
 
   test('falls back to the key-wide category for a value the taxonomy has not named', () => {
     expect(osmCategories(tags({ shop: 'pottery' }), SEEDED_CATALOG)).toEqual(['shop']);
     expect(osmCategories(tags({ amenity: 'mobility_hub' }), SEEDED_CATALOG)).toEqual(['services']);
-    expect(osmCategories(tags({ historic: 'wayside_cross' }), SEEDED_CATALOG)).toEqual(['culture.historic']);
-  });
-
-  test('is most specific first, by the same precedence that classifies the element', () => {
-    expect(osmCategories(tags({ amenity: 'restaurant', tourism: 'attraction' }), SEEDED_CATALOG)).toEqual([
-      'food.restaurant',
-      'culture.attraction',
+    expect(osmCategories(tags({ historic: 'wayside_cross' }), SEEDED_CATALOG)).toEqual([
+      'culture.historic',
     ]);
   });
 
+  test('is most specific first, by the same precedence that classifies the element', () => {
+    expect(
+      osmCategories(tags({ amenity: 'restaurant', tourism: 'attraction' }), SEEDED_CATALOG),
+    ).toEqual(['food.restaurant', 'culture.attraction']);
+  });
+
   test('drops a key that is an ancestor of another, which a parent filter already matches', () => {
-    expect(osmCategories(tags({ leisure: 'pitch', sport: 'soccer' }), SEEDED_CATALOG)).toEqual(['sport.pitch']);
+    expect(osmCategories(tags({ leisure: 'pitch', sport: 'soccer' }), SEEDED_CATALOG)).toEqual([
+      'sport.pitch',
+    ]);
   });
 
   test('every element the import admits gets at least one category, from the seeded taxonomy', () => {
@@ -271,7 +289,11 @@ describe('osmCategories', () => {
       for (const value of probes) {
         if (classifyPoi(tags({ [key]: value })) === null) continue;
         const category = SEEDED_CATALOG.osmCategoryOf(key, value);
-        expect({ key, value, category: category !== undefined && SEEDED_CATALOG.taxonomy.of(category) !== undefined }).toEqual({
+        expect({
+          key,
+          value,
+          category: category !== undefined && SEEDED_CATALOG.taxonomy.of(category) !== undefined,
+        }).toEqual({
           key,
           value,
           category: true,
@@ -279,7 +301,10 @@ describe('osmCategories', () => {
       }
     }
     for (const [element] of REPRESENTATIVE_TAGS) {
-      expect({ element, categories: osmCategories(tags(element), SEEDED_CATALOG).length > 0 }).toEqual({ element, categories: true });
+      expect({
+        element,
+        categories: osmCategories(tags(element), SEEDED_CATALOG).length > 0,
+      }).toEqual({ element, categories: true });
     }
   });
 });
@@ -300,7 +325,8 @@ describe('isMappableOsmTag', () => {
 
   test('admits every tag the seed maps', () => {
     for (const { key, osmTags } of SEEDED_CATEGORIES) {
-      for (const tag of osmTags) expect({ key, tag, mappable: isMappableOsmTag(tag) }).toEqual({ key, tag, mappable: true });
+      for (const tag of osmTags)
+        expect({ key, tag, mappable: isMappableOsmTag(tag) }).toEqual({ key, tag, mappable: true });
     }
   });
 });

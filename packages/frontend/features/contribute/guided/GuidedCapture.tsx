@@ -19,10 +19,21 @@ export function GuidedCapture({ policy, onCancel }: GuidedCaptureProps) {
   const { t } = useTranslation();
   const session = useGuidedSession();
   const budget = useMemo(() => recordingBudget(policy.video), [policy.video]);
-  return <View className="flex-1 bg-background">
-    <GuidedOverlay phase="error" session={session} budget={budget} portrait={false} notices={[]}
-      error={t('contribute.guided.error.camera')} onStart={() => {}} onStop={() => {}} onCancel={onCancel} />
-  </View>;
+  return (
+    <View className="flex-1 bg-background">
+      <GuidedOverlay
+        phase="error"
+        session={session}
+        budget={budget}
+        portrait={false}
+        notices={[]}
+        error={t('contribute.guided.error.camera')}
+        onStart={() => {}}
+        onStop={() => {}}
+        onCancel={onCancel}
+      />
+    </View>
+  );
 }
 
 export type { GuidedCaptureProps, GuidedRecording } from './types';

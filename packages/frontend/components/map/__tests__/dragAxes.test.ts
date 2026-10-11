@@ -99,7 +99,7 @@ describe('desktop drag axes', () => {
     expect([off.rotate.enabled, off.pitch.enabled]).toEqual([false, false]);
   });
 
-  test('roll is nobody\'s axis here and stays off', () => {
+  test("roll is nobody's axis here and stays off", () => {
     // `rollEnabled` is false on the maps this app builds, so the facade never
     // enables it; reaching past the facade must not start.
     const { handler, roll } = realDragRotate();

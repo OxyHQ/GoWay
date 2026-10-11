@@ -196,13 +196,13 @@ export default function FrameRoute() {
     placeResolved: placeCoordinate !== null,
     canvasReady: readyCount > 0,
   });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: coordinates are compared by value; depending on the object identity would re-centre the map continuously
   useEffect(() => {
     if (!centreOnPlace || !placeCoordinate) return;
     mapRef.current?.moveTo(placeCoordinate, { zoom: parsed.zoom ?? 16, duration: 0 });
     // Coordinates are compared by value: the object identity changes on every
     // render of a successful query, and depending on it would re-centre the
     // map continuously and make it impossible to pan.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     readyCount,
     centreOnPlace,

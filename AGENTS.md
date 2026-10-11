@@ -4,6 +4,8 @@ Oxy's open map and geographic platform: the consumer app at `goway.to`, the publ
 
 Always **bun**; commit `bun.lock` with its `package.json`.
 
+Biome (root `biome.jsonc`) lints and formats every package: `bun run lint`, `bun run lint:fix`. ESLint survives only in `packages/frontend/eslint.config.js`, for rules Biome lacks; never add ESLint or Prettier elsewhere.
+
 ## Oxy SDK (do not deviate)
 
 - ONE `OxyProvider` from `@oxy.so/services` (web + native) with the registered `clientId` (`EXPO_PUBLIC_OXY_CLIENT_ID`); sign-in is the in-app `OxyAccountDialog`, never a redirect to an IdP.

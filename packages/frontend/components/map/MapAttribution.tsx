@@ -80,9 +80,7 @@ function MapAttributionComponent() {
     >
       <View className="flex-row flex-wrap items-center justify-end gap-space-4 rounded-radius-8 bg-card/80 px-space-8 py-space-2">
         {attribution.prefix ? (
-          <Text className="text-caption text-muted-foreground">
-            {attribution.prefix}
-          </Text>
+          <Text className="text-caption text-muted-foreground">{attribution.prefix}</Text>
         ) : null}
         {attribution.links.map((link) => (
           <Pressable
@@ -92,9 +90,7 @@ function MapAttributionComponent() {
             onPress={() => open(link.href)}
             hitSlop={6}
           >
-            <Text className="text-caption text-muted-foreground underline">
-              {link.label}
-            </Text>
+            <Text className="text-caption text-muted-foreground underline">{link.label}</Text>
           </Pressable>
         ))}
       </View>

@@ -21,7 +21,13 @@
 import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { and, eq } from 'drizzle-orm';
-import type { CategoryPage, ModerationCategory, ModerationCategoryPage, Place, PlaceWithDistancePage } from '@goway/contracts';
+import type {
+  CategoryPage,
+  ModerationCategory,
+  ModerationCategoryPage,
+  Place,
+  PlaceWithDistancePage,
+} from '@goway/contracts';
 import {
   catalogOf,
   categoryCatalog,
@@ -40,7 +46,14 @@ import { osmCategories } from '../../import/osm/poiTags';
 import { toImportedPlace } from '../../import/osm/placeRecord';
 import { emptyWriteStats, writePlaceBatch } from '../../import/osm/writePlaces';
 import { createRequireOperator } from '../../middleware/operator';
-import { fakeOptionalAuth, fakeRequireAuth, serve, session, type ErrorBody, type TestApi } from '../../__tests__/httpHarness';
+import {
+  fakeOptionalAuth,
+  fakeRequireAuth,
+  serve,
+  session,
+  type ErrorBody,
+  type TestApi,
+} from '../../__tests__/httpHarness';
 import { NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createCategoriesRouter } from '../categories';
 import { createModerationRouter } from '../moderation';
@@ -58,8 +71,16 @@ beforeAll(async () => {
   suite = await createSuiteDatabase();
   api = await serve(
     createCategoriesRouter(),
-    createPlacesRouter({ optionalAuth: fakeOptionalAuth, requireAuth: fakeRequireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }),
-    createModerationRouter({ requireAuth: fakeRequireAuth, requireOperator: createRequireOperator(['person-mod']) }),
+    createPlacesRouter({
+      optionalAuth: fakeOptionalAuth,
+      requireAuth: fakeRequireAuth,
+      accountRoles: NO_MEMBERSHIPS,
+      reportRateLimit: NO_RATE_LIMIT,
+    }),
+    createModerationRouter({
+      requireAuth: fakeRequireAuth,
+      requireOperator: createRequireOperator(['person-mod']),
+    }),
   );
 }, SUITE_SETUP_TIMEOUT_MS);
 
@@ -70,26 +91,42 @@ afterAll(async () => {
 });
 
 async function publicCategory(key: string, locale?: string) {
-  const { body } = await api.call<CategoryPage>('GET', `/categories${locale ? `?locale=${locale}` : ''}`);
+  const { body } = await api.call<CategoryPage>(
+    'GET',
+    `/categories${locale ? `?locale=${locale}` : ''}`,
+  );
   return body.items.find((category) => category.key === key);
 }
 
 async function events(key: string) {
   return suite!.db
-    .select({ action: placeCategoryEvents.action, changes: placeCategoryEvents.changes, by: placeCategoryEvents.operatedByOxyUserId })
+    .select({
+      action: placeCategoryEvents.action,
+      changes: placeCategoryEvents.changes,
+      by: placeCategoryEvents.operatedByOxyUserId,
+    })
     .from(placeCategoryEvents)
     .where(eq(placeCategoryEvents.categoryKey, key))
     .orderBy(placeCategoryEvents.createdAt, placeCategoryEvents.id);
 }
 
-async function createPlace(categories: string[], name = 'Sitio de prueba'): Promise<{ status: number; body: Place & ErrorBody }> {
+async function createPlace(
+  categories: string[],
+  name = 'Sitio de prueba',
+): Promise<{ status: number; body: Place & ErrorBody }> {
   return api.call('POST', '/places', CONTRIBUTOR, { name, location: LAVAPIES, categories });
 }
 
 describe('moderation', () => {
   it('lists every category with its position and mapping, for an operator only', async () => {
-    expect((await api.call<ErrorBody>('GET', '/moderation/categories', CONTRIBUTOR)).status).toBe(403);
-    const { status, body } = await api.call<ModerationCategoryPage>('GET', '/moderation/categories?locale=es', OPERATOR);
+    expect((await api.call<ErrorBody>('GET', '/moderation/categories', CONTRIBUTOR)).status).toBe(
+      403,
+    );
+    const { status, body } = await api.call<ModerationCategoryPage>(
+      'GET',
+      '/moderation/categories?locale=es',
+      OPERATOR,
+    );
     expect(status).toBe(200);
     expect(body.items.find((category) => category.key === 'food.cafe')).toMatchObject({
       label: 'Cafetería',
@@ -100,20 +137,52 @@ describe('moderation', () => {
 
   it('refuses a write from anybody off the operator list', async () => {
     const input = { key: 'shop.kites', icon: 'shop', labels: { en: 'Kites' } };
-    expect((await api.call<ErrorBody>('POST', '/moderation/categories', {}, input)).status).toBe(401);
-    expect((await api.call<ErrorBody>('POST', '/moderation/categories', CONTRIBUTOR, input)).status).toBe(403);
-    expect((await api.call<ErrorBody>('PATCH', '/moderation/categories/food.cafe', CONTRIBUTOR, { icon: 'bar' })).status).toBe(403);
-    expect((await api.call<ErrorBody>('PUT', '/moderation/categories/food.cafe/labels/it', CONTRIBUTOR, { label: 'Caffè' })).status).toBe(403);
-    expect((await api.call<ErrorBody>('DELETE', '/moderation/categories/food.cafe/labels/es', CONTRIBUTOR)).status).toBe(403);
+    expect((await api.call<ErrorBody>('POST', '/moderation/categories', {}, input)).status).toBe(
+      401,
+    );
+    expect(
+      (await api.call<ErrorBody>('POST', '/moderation/categories', CONTRIBUTOR, input)).status,
+    ).toBe(403);
+    expect(
+      (
+        await api.call<ErrorBody>('PATCH', '/moderation/categories/food.cafe', CONTRIBUTOR, {
+          icon: 'bar',
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await api.call<ErrorBody>(
+          'PUT',
+          '/moderation/categories/food.cafe/labels/it',
+          CONTRIBUTOR,
+          { label: 'Caffè' },
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await api.call<ErrorBody>(
+          'DELETE',
+          '/moderation/categories/food.cafe/labels/es',
+          CONTRIBUTOR,
+        )
+      ).status,
+    ).toBe(403);
   });
 
   it('creates a category after its last sibling, records it, and serves it at once', async () => {
-    const { status, body } = await api.call<ModerationCategory>('POST', '/moderation/categories', OPERATOR, {
-      key: 'food.churreria',
-      icon: 'cafe',
-      osmTags: ['shop=churros', 'shop=churros'],
-      labels: { en: 'Churros', ES: 'Churrería', pt_br: 'Churraria' },
-    });
+    const { status, body } = await api.call<ModerationCategory>(
+      'POST',
+      '/moderation/categories',
+      OPERATOR,
+      {
+        key: 'food.churreria',
+        icon: 'cafe',
+        osmTags: ['shop=churros', 'shop=churros'],
+        labels: { en: 'Churros', ES: 'Churrería', pt_br: 'Churraria' },
+      },
+    );
     expect(status).toBe(201);
     expect(body).toMatchObject({
       key: 'food.churreria',
@@ -132,34 +201,79 @@ describe('moderation', () => {
 
   it('refuses a taken key, a missing or deprecated parent, a taken tag and a tag the import never reads', async () => {
     const create = (input: Record<string, unknown>) =>
-      api.call<ErrorBody>('POST', '/moderation/categories', OPERATOR, { icon: 'shop', labels: { en: 'X' }, ...input });
+      api.call<ErrorBody>('POST', '/moderation/categories', OPERATOR, {
+        icon: 'shop',
+        labels: { en: 'X' },
+        ...input,
+      });
     expect((await create({ key: 'food.cafe' })).body.error.code).toBe('conflict');
     const orphan = await create({ key: 'kites.box' });
     expect([orphan.status, orphan.body.error.details?.field]).toEqual([422, 'key']);
     const tag = await create({ key: 'shop.coffee', osmTags: ['shop=coffee'] });
-    expect([tag.body.error.code, tag.body.error.details?.category]).toEqual(['conflict', 'food.cafe']);
+    expect([tag.body.error.code, tag.body.error.details?.category]).toEqual([
+      'conflict',
+      'food.cafe',
+    ]);
     const unread = await create({ key: 'shop.pizza', osmTags: ['cuisine=pizza'] });
     expect([unread.status, unread.body.error.details?.field]).toEqual([422, 'osmTags.0']);
     expect((await create({ key: 'shop.nolabel', labels: { es: 'Sin inglés' } })).status).toBe(400);
   });
 
   it('changes a glyph and a mapping, sets and removes labels, and never removes English', async () => {
-    const patched = await api.call<ModerationCategory>('PATCH', '/moderation/categories/food.churreria', OPERATOR, {
+    const patched = await api.call<ModerationCategory>(
+      'PATCH',
+      '/moderation/categories/food.churreria',
+      OPERATOR,
+      {
+        icon: 'bakery',
+        osmTags: ['shop=churros', 'shop=porras'],
+      },
+    );
+    expect(patched.body).toMatchObject({
       icon: 'bakery',
       osmTags: ['shop=churros', 'shop=porras'],
     });
-    expect(patched.body).toMatchObject({ icon: 'bakery', osmTags: ['shop=churros', 'shop=porras'] });
 
-    const labelled = await api.call<ModerationCategory>('PUT', '/moderation/categories/food.churreria/labels/ca', OPERATOR, {
-      label: ' Xurreria ',
-    });
+    const labelled = await api.call<ModerationCategory>(
+      'PUT',
+      '/moderation/categories/food.churreria/labels/ca',
+      OPERATOR,
+      {
+        label: ' Xurreria ',
+      },
+    );
     expect(labelled.body.labels.ca).toBe('Xurreria');
     expect(await publicCategory('food.churreria', 'ca-ES')).toMatchObject({ label: 'Xurreria' });
 
-    expect((await api.call('DELETE', '/moderation/categories/food.churreria/labels/ca', OPERATOR)).status).toBe(204);
-    expect((await api.call<ErrorBody>('DELETE', '/moderation/categories/food.churreria/labels/ca', OPERATOR)).status).toBe(404);
-    expect((await api.call<ErrorBody>('DELETE', '/moderation/categories/food.churreria/labels/en', OPERATOR)).status).toBe(409);
-    expect((await api.call<ErrorBody>('PATCH', '/moderation/categories/food.unknown', OPERATOR, { icon: 'bar' })).status).toBe(404);
+    expect(
+      (await api.call('DELETE', '/moderation/categories/food.churreria/labels/ca', OPERATOR))
+        .status,
+    ).toBe(204);
+    expect(
+      (
+        await api.call<ErrorBody>(
+          'DELETE',
+          '/moderation/categories/food.churreria/labels/ca',
+          OPERATOR,
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await api.call<ErrorBody>(
+          'DELETE',
+          '/moderation/categories/food.churreria/labels/en',
+          OPERATOR,
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await api.call<ErrorBody>('PATCH', '/moderation/categories/food.unknown', OPERATOR, {
+          icon: 'bar',
+        })
+      ).status,
+    ).toBe(404);
 
     expect((await events('food.churreria')).map((event) => event.action)).toEqual([
       'created',
@@ -170,17 +284,59 @@ describe('moderation', () => {
   });
 
   it('deprecates a category only once nothing active is below it, and reactivates one only under an active parent', async () => {
-    await api.call('POST', '/moderation/categories', OPERATOR, { key: 'food.churreria.madrid', icon: 'cafe', labels: { en: 'Madrid churros' } });
-    expect((await api.call<ErrorBody>('PATCH', '/moderation/categories/food.churreria', OPERATOR, { status: 'deprecated' })).status).toBe(409);
-    expect((await api.call('PATCH', '/moderation/categories/food.churreria.madrid', OPERATOR, { status: 'deprecated' })).status).toBe(200);
-    expect((await api.call('PATCH', '/moderation/categories/food.churreria', OPERATOR, { status: 'deprecated' })).status).toBe(200);
-    expect((await api.call<ErrorBody>('PATCH', '/moderation/categories/food.churreria.madrid', OPERATOR, { status: 'active' })).status).toBe(409);
+    await api.call('POST', '/moderation/categories', OPERATOR, {
+      key: 'food.churreria.madrid',
+      icon: 'cafe',
+      labels: { en: 'Madrid churros' },
+    });
     expect(
-      (await api.call<ErrorBody>('POST', '/moderation/categories', OPERATOR, { key: 'food.churreria.sevilla', icon: 'cafe', labels: { en: 'S' } }))
-        .status,
+      (
+        await api.call<ErrorBody>('PATCH', '/moderation/categories/food.churreria', OPERATOR, {
+          status: 'deprecated',
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await api.call('PATCH', '/moderation/categories/food.churreria.madrid', OPERATOR, {
+          status: 'deprecated',
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await api.call('PATCH', '/moderation/categories/food.churreria', OPERATOR, {
+          status: 'deprecated',
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await api.call<ErrorBody>(
+          'PATCH',
+          '/moderation/categories/food.churreria.madrid',
+          OPERATOR,
+          { status: 'active' },
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await api.call<ErrorBody>('POST', '/moderation/categories', OPERATOR, {
+          key: 'food.churreria.sevilla',
+          icon: 'cafe',
+          labels: { en: 'S' },
+        })
+      ).status,
     ).toBe(409);
     // Back to active for the suites below.
-    expect((await api.call('PATCH', '/moderation/categories/food.churreria', OPERATOR, { status: 'active' })).status).toBe(200);
+    expect(
+      (
+        await api.call('PATCH', '/moderation/categories/food.churreria', OPERATOR, {
+          status: 'active',
+        })
+      ).status,
+    ).toBe(200);
   });
 });
 
@@ -188,37 +344,53 @@ describe('places and categories', () => {
   it('expands a filter through the database tree, new categories included', async () => {
     const made = await createPlace(['food.churreria'], 'Chocolatería San Ginés');
     expect(made.status).toBe(201);
-    const { body } = await api.call<PlaceWithDistancePage>('GET', `/places/nearby?${NEAR_LAVAPIES}&categories=food`);
+    const { body } = await api.call<PlaceWithDistancePage>(
+      'GET',
+      `/places/nearby?${NEAR_LAVAPIES}&categories=food`,
+    );
     expect(body.items.map((place) => place.id)).toContain(made.body.id);
-    const unknown = await api.call<ErrorBody>('GET', `/places/nearby?${NEAR_LAVAPIES}&categories=food,food.space_diner`);
+    const unknown = await api.call<ErrorBody>(
+      'GET',
+      `/places/nearby?${NEAR_LAVAPIES}&categories=food,food.space_diner`,
+    );
     expect([unknown.status, unknown.body.error.details?.field]).toEqual([422, 'categories.1']);
   });
 
   it('refuses a deprecated key on a new place, keeps it on a place that carries it, and still filters by it', async () => {
     const carrier = await createPlace(['food.churreria'], 'Churrería Vieja');
-    await api.call('PATCH', '/moderation/categories/food.churreria', OPERATOR, { status: 'deprecated' });
+    await api.call('PATCH', '/moderation/categories/food.churreria', OPERATOR, {
+      status: 'deprecated',
+    });
 
     const refused = await createPlace(['food.churreria']);
-    expect([refused.status, refused.body.error.details?.field, refused.body.error.details?.issue]).toEqual([
-      422,
-      'categories.0',
-      'deprecated_category',
-    ]);
+    expect([
+      refused.status,
+      refused.body.error.details?.field,
+      refused.body.error.details?.issue,
+    ]).toEqual([422, 'categories.0', 'deprecated_category']);
     const kept = await api.call<Place>('PATCH', `/places/${carrier.body.id}`, CONTRIBUTOR, {
       categories: ['food.churreria', 'food.cafe'],
     });
     expect([kept.status, kept.body.categories]).toEqual([200, ['food.churreria', 'food.cafe']]);
 
-    const { body } = await api.call<PlaceWithDistancePage>('GET', `/places/nearby?${NEAR_LAVAPIES}&categories=food.churreria`);
+    const { body } = await api.call<PlaceWithDistancePage>(
+      'GET',
+      `/places/nearby?${NEAR_LAVAPIES}&categories=food.churreria`,
+    );
     expect(body.items.map((place) => place.id)).toContain(carrier.body.id);
-    await api.call('PATCH', '/moderation/categories/food.churreria', OPERATOR, { status: 'active' });
+    await api.call('PATCH', '/moderation/categories/food.churreria', OPERATOR, {
+      status: 'active',
+    });
   });
 
   it('answers a write a stale catalog let through with the database’s refusal, as the same 422', async () => {
     // Prime this process's catalog, then deprecate the way ANOTHER process
     // would: in the database, without touching this one's catalog.
     await categoryCatalog(suite!.db);
-    await suite!.db.update(placeCategories).set({ status: 'deprecated' }).where(eq(placeCategories.key, 'food.ice_cream'));
+    await suite!.db
+      .update(placeCategories)
+      .set({ status: 'deprecated' })
+      .where(eq(placeCategories.key, 'food.ice_cream'));
 
     const stale = await createPlace(['food.ice_cream']);
     expect([stale.status, stale.body.error.code, stale.body.error.details?.issue]).toEqual([
@@ -227,8 +399,13 @@ describe('places and categories', () => {
       'inactive_category',
     ]);
     categoryCatalogs.invalidate(suite!.db);
-    expect((await createPlace(['food.ice_cream'])).body.error.details?.issue).toBe('deprecated_category');
-    await suite!.db.update(placeCategories).set({ status: 'active' }).where(eq(placeCategories.key, 'food.ice_cream'));
+    expect((await createPlace(['food.ice_cream'])).body.error.details?.issue).toBe(
+      'deprecated_category',
+    );
+    await suite!.db
+      .update(placeCategories)
+      .set({ status: 'active' })
+      .where(eq(placeCategories.key, 'food.ice_cream'));
     categoryCatalogs.invalidate(suite!.db);
   });
 });
@@ -244,7 +421,12 @@ describe('the catalog', () => {
     await suite!.db
       .update(placeCategoryLabels)
       .set({ label: 'ATM' })
-      .where(and(eq(placeCategoryLabels.categoryKey, 'finance.atm'), eq(placeCategoryLabels.language, 'en')));
+      .where(
+        and(
+          eq(placeCategoryLabels.categoryKey, 'finance.atm'),
+          eq(placeCategoryLabels.language, 'en'),
+        ),
+      );
     now = 999;
     expect(await label()).toBe('Cash machine');
     now = 1_000;
@@ -268,14 +450,25 @@ describe('the OpenStreetMap import', () => {
     expect(osmCategories(tags({ shop: 'churros' }), mapping)).toEqual(['food.churreria']);
 
     // Deprecated: the `shop=*` fallback files it instead.
-    await api.call('PATCH', '/moderation/categories/food.churreria', OPERATOR, { status: 'deprecated' });
+    await api.call('PATCH', '/moderation/categories/food.churreria', OPERATOR, {
+      status: 'deprecated',
+    });
     const deprecated = await categoryCatalog(suite!.db);
     expect(osmCategories(tags({ shop: 'churros' }), deprecated)).toEqual(['shop']);
-    await api.call('PATCH', '/moderation/categories/food.churreria', OPERATOR, { status: 'active' });
+    await api.call('PATCH', '/moderation/categories/food.churreria', OPERATOR, {
+      status: 'active',
+    });
 
     // And the write lands through the trigger.
     const fresh = await categoryCatalog(suite!.db);
-    const element = toImportedPlace('node', 991_001, 40.4087, -3.7015, tags({ shop: 'churros', name: 'Churros Pepe' }), fresh);
+    const element = toImportedPlace(
+      'node',
+      991_001,
+      40.4087,
+      -3.7015,
+      tags({ shop: 'churros', name: 'Churros Pepe' }),
+      fresh,
+    );
     expect(element?.columns.categories).toEqual(['food.churreria']);
     const stats = emptyWriteStats();
     await writePlaceBatch(suite!.db, [element!], new Date(), stats);

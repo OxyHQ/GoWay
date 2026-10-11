@@ -146,12 +146,13 @@ const ECOSYSTEM_KEYS: ReadonlySet<string> = new Set<CapabilityKey>([
  * The strings are deliberately concrete about WHO said it. "Verified" alone is
  * the word that lets a community report pass for an audited fact.
  */
-const PROVENANCE: Readonly<Record<CapabilityVerification, { text: string; tone: CapabilityTone }>> = {
-  community_reported: { text: 'Reported by the community', tone: 'neutral' },
-  external_source: { text: 'From an external source', tone: 'neutral' },
-  business_asserted: { text: 'Stated by the business', tone: 'info' },
-  oxy_verified: { text: 'Verified by Oxy', tone: 'verified' },
-};
+const PROVENANCE: Readonly<Record<CapabilityVerification, { text: string; tone: CapabilityTone }>> =
+  {
+    community_reported: { text: 'Reported by the community', tone: 'neutral' },
+    external_source: { text: 'From an external source', tone: 'neutral' },
+    business_asserted: { text: 'Stated by the business', tone: 'info' },
+    oxy_verified: { text: 'Verified by Oxy', tone: 'verified' },
+  };
 
 /** Past this age a claim is presented as historic rather than current. */
 const STALE_AFTER_DAYS = 365;
@@ -174,7 +175,10 @@ function describeAge(observedAt: string, now: number): { text: string; stale: bo
   if (days < 30) return { text: `Checked ${days} days ago`, stale: false };
   if (days < 365) {
     const months = Math.max(1, Math.round(days / 30));
-    return { text: `Checked ${months} month${months === 1 ? '' : 's'} ago`, stale: days > STALE_AFTER_DAYS };
+    return {
+      text: `Checked ${months} month${months === 1 ? '' : 's'} ago`,
+      stale: days > STALE_AFTER_DAYS,
+    };
   }
   const years = Math.max(1, Math.floor(days / 365));
   return { text: `Last checked over ${years} year${years === 1 ? '' : 's'} ago`, stale: true };
@@ -182,7 +186,10 @@ function describeAge(observedAt: string, now: number): { text: string; stale: bo
 
 /** A URL without its scheme and trailing slash — what a person reads. */
 function readableLink(url: string): string {
-  return url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '');
+  return url
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .replace(/\/$/, '');
 }
 
 /**
@@ -199,11 +206,18 @@ function describeValue(
   const { value } = capability;
   switch (capabilityValueKind(capability.key)) {
     case 'enum':
-      return { label: typeof value === 'string' ? capabilityValueLabel(capability.key, value, locale) : label, value: null, href: null };
+      return {
+        label:
+          typeof value === 'string' ? capabilityValueLabel(capability.key, value, locale) : label,
+        value: null,
+        href: null,
+      };
     case 'enum_set':
       return {
         label,
-        value: Array.isArray(value) ? value.map((member) => capabilityValueLabel(capability.key, member, locale)).join(', ') : null,
+        value: Array.isArray(value)
+          ? value.map((member) => capabilityValueLabel(capability.key, member, locale)).join(', ')
+          : null,
         href: null,
       };
     case 'integer':
@@ -211,14 +225,24 @@ function describeValue(
     case 'price_level':
       return {
         label,
-        value: typeof value === 'number' ? `${'●'.repeat(value)}${'○'.repeat(Math.max(0, 4 - value))}` : null,
+        value:
+          typeof value === 'number'
+            ? `${'●'.repeat(value)}${'○'.repeat(Math.max(0, 4 - value))}`
+            : null,
         href: null,
       };
     case 'url':
-      return typeof value === 'string' ? { label, value: readableLink(value), href: value } : { label, value: null, href: null };
+      return typeof value === 'string'
+        ? { label, value: readableLink(value), href: value }
+        : { label, value: null, href: null };
     case 'text':
       // An opaque reference (a Mercaria location id) is not something to read.
-      return { label, value: capabilityGroupOf(capability.key) === 'brand' && typeof value === 'string' ? value : null, href: null };
+      return {
+        label,
+        value:
+          capabilityGroupOf(capability.key) === 'brand' && typeof value === 'string' ? value : null,
+        href: null,
+      };
     default:
       return { label, value: null, href: null };
   }
@@ -245,7 +269,9 @@ export function presentCapability(
   return {
     key: capability.key,
     ...describeValue(capability, locale),
-    icon: ICON_BY_KEY[capability.key as CapabilityKey] ?? (group ? ICON_BY_GROUP[group] : RiMapPin2Line),
+    icon:
+      ICON_BY_KEY[capability.key as CapabilityKey] ??
+      (group ? ICON_BY_GROUP[group] : RiMapPin2Line),
     provenance: provenance.text,
     freshness: age?.text ?? null,
     stale,
@@ -275,7 +301,10 @@ export function visibleCapabilities(capabilities: readonly PlaceCapability[]): P
   const keys = [...new Set(capabilities.map((capability) => capability.key))];
   return keys
     .map((key) => strongestCapability({ capabilities }, key))
-    .filter((capability): capability is PlaceCapability => capability !== undefined && capabilityHolds(capability.key, capability.value))
+    .filter(
+      (capability): capability is PlaceCapability =>
+        capability !== undefined && capabilityHolds(capability.key, capability.value),
+    )
     .sort((a, b) => {
       const byVerification = TIER_ORDER[a.verification] - TIER_ORDER[b.verification];
       if (byVerification !== 0) return byVerification;
@@ -285,7 +314,9 @@ export function visibleCapabilities(capabilities: readonly PlaceCapability[]): P
 
 /** The visible capabilities that are Oxy-ecosystem facts — what a pin or a row badges. */
 export function ecosystemCapabilities(capabilities: readonly PlaceCapability[]): PlaceCapability[] {
-  return visibleCapabilities(capabilities).filter((capability) => ECOSYSTEM_KEYS.has(capability.key));
+  return visibleCapabilities(capabilities).filter((capability) =>
+    ECOSYSTEM_KEYS.has(capability.key),
+  );
 }
 
 /** The heading for keys this build does not know, in every label language. */
@@ -325,7 +356,10 @@ export function groupedCapabilities(
     .filter((group) => byGroup.has(group))
     .map((group) => ({
       group,
-      label: group === 'other' ? localizedLabel(OTHER_GROUP_LABELS, locale) : capabilityGroupLabel(group, locale),
+      label:
+        group === 'other'
+          ? localizedLabel(OTHER_GROUP_LABELS, locale)
+          : capabilityGroupLabel(group, locale),
       items: byGroup.get(group) ?? [],
     }));
 }

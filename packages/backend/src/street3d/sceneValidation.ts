@@ -62,7 +62,10 @@ export function assertSceneResultMatches(job: JobRow, result: SceneReconstructRe
     result.profile !== job.profile ||
     result.inputManifestSha256 !== job.inputManifestSha256
   ) {
-    throw new ResultRejected('result_mismatch', 'The reconstruction result names a different job, scene, version or manifest.');
+    throw new ResultRejected(
+      'result_mismatch',
+      'The reconstruction result names a different job, scene, version or manifest.',
+    );
   }
   const inputs = new Set(job.inputDerivativeIds ?? []);
   const registered = result.frames.registeredFrameIds;
@@ -72,14 +75,23 @@ export function assertSceneResultMatches(job: JobRow, result: SceneReconstructRe
     result.frames.registered !== registered.length ||
     registered.length > inputs.size
   ) {
-    throw new ResultRejected('result_mismatch', 'The reconstruction result registers frames its manifest did not list.');
+    throw new ResultRejected(
+      'result_mismatch',
+      'The reconstruction result registers frames its manifest did not list.',
+    );
   }
   if (result.edges.some((edge) => !inputs.has(edge.a) || !inputs.has(edge.b))) {
-    throw new ResultRejected('result_mismatch', 'The reconstruction result reports edges between unknown frames.');
+    throw new ResultRejected(
+      'result_mismatch',
+      'The reconstruction result reports edges between unknown frames.',
+    );
   }
   for (const asset of result.assets) {
     if (!asset.key.startsWith(job.outputPrefix)) {
-      throw new ResultRejected('result_mismatch', 'A reconstruction asset lies outside its job output prefix.');
+      throw new ResultRejected(
+        'result_mismatch',
+        'A reconstruction asset lies outside its job output prefix.',
+      );
     }
   }
 }
@@ -87,35 +99,52 @@ export function assertSceneResultMatches(job: JobRow, result: SceneReconstructRe
 /** Gate, budget and asset-shape failures, by the backend's own thresholds. */
 export function qualityFailures(result: SceneReconstructResult, config: Street3dConfig): string[] {
   const failures: string[] = [];
-  if (!result.gates.passed) failures.push(...(result.gates.failures.length ? result.gates.failures : ['worker_gates_failed']));
+  if (!result.gates.passed)
+    failures.push(
+      ...(result.gates.failures.length ? result.gates.failures : ['worker_gates_failed']),
+    );
   const gates = config.gates;
   const metrics = result.metrics;
   if (result.frames.registered < gates.minRegisteredFrames) failures.push('registered_frames');
   if (metrics.registrationRatio < gates.minRegistrationRatio) failures.push('registration_ratio');
-  if (metrics.meanReprojectionErrorPx > gates.maxMeanReprojectionErrorPx) failures.push('reprojection_error');
-  if (metrics.georeferenceInliers < gates.minGeoreferenceInliers) failures.push('georeference_inliers');
-  if (metrics.medianGeoreferenceResidualMeters > gates.maxMedianGeoreferenceResidualMeters) failures.push('georeference_residual');
+  if (metrics.meanReprojectionErrorPx > gates.maxMeanReprojectionErrorPx)
+    failures.push('reprojection_error');
+  if (metrics.georeferenceInliers < gates.minGeoreferenceInliers)
+    failures.push('georeference_inliers');
+  if (metrics.medianGeoreferenceResidualMeters > gates.maxMedianGeoreferenceResidualMeters)
+    failures.push('georeference_residual');
   if (metrics.heldOutPsnr < gates.minHeldOutPsnr) failures.push('held_out_psnr');
 
   const budget = config.budgets[result.profile as StreetSceneProfile];
   const roles = result.assets.map((asset) => asset.role);
   for (const required of ['splat', 'poster'] as const) {
-    if (roles.filter((role) => role === required).length !== 1) failures.push(`asset_${required}_missing`);
+    if (roles.filter((role) => role === required).length !== 1)
+      failures.push(`asset_${required}_missing`);
   }
-  if (roles.filter((role) => role === 'splat_preview').length > 1) failures.push('asset_splat_preview_duplicated');
+  if (roles.filter((role) => role === 'splat_preview').length > 1)
+    failures.push('asset_splat_preview_duplicated');
   for (const asset of result.assets) {
-    if (asset.format !== ROLE_FORMAT[asset.role] || asset.contentType !== FORMAT_CONTENT_TYPE[asset.format]) {
+    if (
+      asset.format !== ROLE_FORMAT[asset.role] ||
+      asset.contentType !== FORMAT_CONTENT_TYPE[asset.format]
+    ) {
       failures.push(`asset_${asset.role}_format`);
     }
-    if (asset.role !== 'poster' && asset.byteSize > budget.maxAssetBytes) failures.push(`asset_${asset.role}_bytes`);
-    if (asset.gaussians !== undefined && asset.gaussians > budget.maxGaussians) failures.push(`asset_${asset.role}_gaussians`);
+    if (asset.role !== 'poster' && asset.byteSize > budget.maxAssetBytes)
+      failures.push(`asset_${asset.role}_bytes`);
+    if (asset.gaussians !== undefined && asset.gaussians > budget.maxGaussians)
+      failures.push(`asset_${asset.role}_gaussians`);
   }
-  if (metrics.gaussians !== undefined && metrics.gaussians > budget.maxGaussians) failures.push('gaussians');
+  if (metrics.gaussians !== undefined && metrics.gaussians > budget.maxGaussians)
+    failures.push('gaussians');
   return [...new Set(failures)].map((failure) => failure.slice(0, 120));
 }
 
 /** The published quality block. `approximate` placement must not be shown as exact. */
-export function publishedQuality(result: SceneReconstructResult, config: Street3dConfig): StreetSceneQuality {
+export function publishedQuality(
+  result: SceneReconstructResult,
+  config: Street3dConfig,
+): StreetSceneQuality {
   const residual = result.metrics.medianGeoreferenceResidualMeters;
   return {
     profile: result.profile as StreetSceneProfile,
@@ -158,23 +187,47 @@ export async function evaluateSceneResult(
         .from(captureDerivatives)
         .where(inArray(captureDerivatives.id, registered))
     : [];
-  const attributions = await attributionsFor(deps.db, [...new Set(derivativeAssets.map((row) => row.assetId))]);
+  const attributions = await attributionsFor(deps.db, [
+    ...new Set(derivativeAssets.map((row) => row.assetId)),
+  ]);
   const quality = publishedQuality(result, deps.config);
 
   if (failures.length > 0) {
-    return { kind: 'failed_quality', result, reference, assets: [], quality, gateFailures: failures, attributions, privacyPipelineVersions: versions };
+    return {
+      kind: 'failed_quality',
+      result,
+      reference,
+      assets: [],
+      quality,
+      gateFailures: failures,
+      attributions,
+      privacyPipelineVersions: versions,
+    };
   }
 
   for (const asset of result.assets) {
     const stat = await deps.jobStore.head(asset.key);
-    if (!stat || stat.byteSize !== asset.byteSize || (stat.checksumSha256 !== undefined && stat.checksumSha256 !== asset.sha256)) {
-      throw new ResultRejected('asset_mismatch', 'A reconstruction asset is missing or does not match its reported size or digest.');
+    if (
+      !stat ||
+      stat.byteSize !== asset.byteSize ||
+      (stat.checksumSha256 !== undefined && stat.checksumSha256 !== asset.sha256)
+    ) {
+      throw new ResultRejected(
+        'asset_mismatch',
+        'A reconstruction asset is missing or does not match its reported size or digest.',
+      );
     }
   }
 
   const assets: (StreetSceneAsset & { key: string })[] = [];
   for (const asset of result.assets) {
-    const key = sceneAssetKey(deps.config.sceneKeyPrefix, job.sceneId as string, job.sceneVersion as number, asset.sha256, asset.format);
+    const key = sceneAssetKey(
+      deps.config.sceneKeyPrefix,
+      job.sceneId as string,
+      job.sceneVersion as number,
+      asset.sha256,
+      asset.format,
+    );
     await deps.sceneStore.copyFromStaging({
       sourceKey: asset.key,
       destinationKey: key,
@@ -192,5 +245,14 @@ export async function evaluateSceneResult(
       ...(asset.gaussians !== undefined ? { gaussians: asset.gaussians } : {}),
     });
   }
-  return { kind: 'published', result, reference, assets, quality, gateFailures: [], attributions, privacyPipelineVersions: versions };
+  return {
+    kind: 'published',
+    result,
+    reference,
+    assets,
+    quality,
+    gateFailures: [],
+    attributions,
+    privacyPipelineVersions: versions,
+  };
 }

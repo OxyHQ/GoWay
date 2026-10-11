@@ -34,7 +34,13 @@ import { WEB_ORIGIN } from '@/lib/config';
 import { embedUrl, isOnOrigin, parseBridgeMessage } from './bridge';
 import type { SceneViewerProps } from './types';
 
-function SceneViewerComponent({ manifest, onLabelPress, onPhaseChange, style, testID }: SceneViewerProps) {
+function SceneViewerComponent({
+  manifest,
+  onLabelPress,
+  onPhaseChange,
+  style,
+  testID,
+}: SceneViewerProps) {
   const source = useMemo(() => ({ uri: embedUrl(WEB_ORIGIN, manifest.id) }), [manifest.id]);
 
   const onMessage = useCallback(
@@ -48,7 +54,8 @@ function SceneViewerComponent({ manifest, onLabelPress, onPhaseChange, style, te
   );
 
   const onShouldStartLoadWithRequest = useCallback(
-    (request: { url: string }) => isOnOrigin(request.url, WEB_ORIGIN) || request.url === 'about:blank',
+    (request: { url: string }) =>
+      isOnOrigin(request.url, WEB_ORIGIN) || request.url === 'about:blank',
     [],
   );
 

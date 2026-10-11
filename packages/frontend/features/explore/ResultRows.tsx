@@ -20,7 +20,11 @@ import { useTheme } from '@oxy.so/bloom/theme';
 import { RiMapPin2Line } from '@oxy.so/bloom/icons/RiMapPin2Line';
 import { RiVerifiedBadgeLine } from '@oxy.so/bloom/icons/RiVerifiedBadgeLine';
 
-import { capabilitySummary, ecosystemCapabilities, presentCapability } from '@/lib/goway/capabilities';
+import {
+  capabilitySummary,
+  ecosystemCapabilities,
+  presentCapability,
+} from '@/lib/goway/capabilities';
 import { resolveCategory } from '@/lib/goway/categories';
 import { formatAddress, formatDistance, formatPlaceSubtitle } from '@/lib/goway/format';
 import { openingSummary } from '@/lib/goway/hours';
@@ -51,7 +55,8 @@ export function PlaceRow({ place, selected = false, onPress, testID }: PlaceRowP
   const distance = 'distanceMeters' in place ? formatDistance(place.distanceMeters) : null;
   const opening = openingSummary(place);
   const capabilities = ecosystemCapabilities(place.capabilities);
-  const oxyVerified = place.verification.state === 'oxy_verified' || place.verification.state === 'owner_verified';
+  const oxyVerified =
+    place.verification.state === 'oxy_verified' || place.verification.state === 'owner_verified';
 
   // The accessible name carries everything the visual tags carry, in words, so
   // colour and iconography are never the only channel.
@@ -80,7 +85,11 @@ export function PlaceRow({ place, selected = false, onPress, testID }: PlaceRowP
           <Icon width={18} height={18} fill={theme.colors.textSecondary} />
         </View>
       }
-      trailing={distance ? <Text className="text-caption text-muted-foreground">{distance}</Text> : undefined}
+      trailing={
+        distance ? (
+          <Text className="text-caption text-muted-foreground">{distance}</Text>
+        ) : undefined
+      }
     >
       <View className="flex-1 gap-space-2">
         <View className="flex-row items-center gap-space-4">
@@ -99,13 +108,19 @@ export function PlaceRow({ place, selected = false, onPress, testID }: PlaceRowP
         ) : null}
 
         {/* Status words, not status colours. The tint is redundant emphasis. */}
-        {(place.status === 'closed' || opening || capabilities.length > 0) ? (
+        {place.status === 'closed' || opening || capabilities.length > 0 ? (
           <View className="flex-row flex-wrap items-center gap-space-8">
             {place.status === 'closed' ? (
               <Tag color={theme.colors.errorSubtleForeground}>Permanently closed</Tag>
             ) : null}
             {place.status !== 'closed' && opening ? (
-              <Tag color={opening.state === 'open' ? theme.colors.successSubtleForeground : theme.colors.textSecondary}>
+              <Tag
+                color={
+                  opening.state === 'open'
+                    ? theme.colors.successSubtleForeground
+                    : theme.colors.textSecondary
+                }
+              >
                 {opening.text}
               </Tag>
             ) : null}
@@ -135,7 +150,12 @@ export interface SearchResultRowProps {
  * it renders as one — the richer row is not a different screen, just more
  * facts about the same point.
  */
-export function SearchResultRow({ result, selected = false, onPress, testID }: SearchResultRowProps) {
+export function SearchResultRow({
+  result,
+  selected = false,
+  onPress,
+  testID,
+}: SearchResultRowProps) {
   const theme = useTheme();
 
   if (result.place) {
@@ -151,7 +171,9 @@ export function SearchResultRow({ result, selected = false, onPress, testID }: S
       onPress={onPress}
       title={result.displayName}
       subtitle={where ?? undefined}
-      accessibilityLabel={[result.displayName, KIND_WORDS[result.kind], where].filter(Boolean).join(', ')}
+      accessibilityLabel={[result.displayName, KIND_WORDS[result.kind], where]
+        .filter(Boolean)
+        .join(', ')}
       testID={testID}
       leading={
         <View className="h-9 w-9 items-center justify-center rounded-radius-max bg-muted">
@@ -173,6 +195,8 @@ const KIND_WORDS: Record<SearchResult['kind'], string> = {
 };
 
 function contextLine(result: SearchResult): string | null {
-  const parts = [result.context?.city, result.context?.region, result.context?.country].filter(Boolean);
+  const parts = [result.context?.city, result.context?.region, result.context?.country].filter(
+    Boolean,
+  );
   return parts.length > 0 ? parts.join(', ') : null;
 }

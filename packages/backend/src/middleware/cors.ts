@@ -172,7 +172,11 @@ interface PublicRoute {
  *   - `GET /health`, `GET /ready` — operational probes, not an API.
  */
 export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
-  { method: 'GET', path: '/openapi.json', because: 'the API description; integrators and doc tools fetch it from anywhere' },
+  {
+    method: 'GET',
+    path: '/openapi.json',
+    because: 'the API description; integrators and doc tools fetch it from anywhere',
+  },
   { method: 'GET', path: '/places/nearby', because: 'proximity search, signed out' },
   { method: 'GET', path: '/places/bounds', because: 'viewport search, signed out' },
   {
@@ -188,7 +192,8 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
   {
     method: 'GET',
     path: '/places/:placeId/revisions',
-    because: "a place's public history: what changed and when, never who, the same for every caller",
+    because:
+      "a place's public history: what changed and when, never who, the same for every caller",
   },
   {
     method: 'GET',
@@ -198,14 +203,19 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
   {
     method: 'GET',
     path: '/places/:placeId/media',
-    because: "a public place's gallery: Oxy file ids a client renders from Oxy's CDN, never who added them",
+    because:
+      "a public place's gallery: Oxy file ids a client renders from Oxy's CDN, never who added them",
   },
   {
     method: 'GET',
     path: '/places/:placeId/reviews',
     because: "a public place's published reviews, the same for every caller",
   },
-  { method: 'GET', path: '/categories', because: 'the category taxonomy every client labels places with' },
+  {
+    method: 'GET',
+    path: '/categories',
+    because: 'the category taxonomy every client labels places with',
+  },
   { method: 'GET', path: '/search', because: 'the search box, signed out' },
   { method: 'GET', path: '/geocode', because: 'forward geocoding, signed out' },
   { method: 'GET', path: '/geocode/reverse', because: 'reverse geocoding, signed out' },
@@ -229,7 +239,11 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
      */
     because: 'directions: a read whose arguments do not fit in a query string',
   },
-  { method: 'GET', path: '/street3d/coverage', because: 'Street 3D coverage on the map, signed out' },
+  {
+    method: 'GET',
+    path: '/street3d/coverage',
+    because: 'Street 3D coverage on the map, signed out',
+  },
   {
     method: 'GET',
     path: '/street3d/scenes/:sceneId',

@@ -33,7 +33,12 @@
  *   an identity. The OSM element reference is.
  */
 
-import type { GeoBoundingBox, SearchResult, SearchResultKind, StructuredAddress } from '@goway/contracts';
+import type {
+  GeoBoundingBox,
+  SearchResult,
+  SearchResultKind,
+  StructuredAddress,
+} from '@goway/contracts';
 import type { NominatimConfig } from '../config/search';
 import {
   asObject,
@@ -86,12 +91,22 @@ const LOCALITY_TYPES = new Set([
 ]);
 
 /** `place` types that name a first-level (or near) subdivision. */
-const REGION_TYPES = new Set(['state', 'region', 'province', 'county', 'district', 'state_district']);
+const REGION_TYPES = new Set([
+  'state',
+  'region',
+  'province',
+  'county',
+  'district',
+  'state_district',
+]);
 
 /** `highway` values that are a destination rather than a road. */
 const HIGHWAY_POI_TYPES = new Set(['bus_stop', 'services', 'rest_area', 'elevator', 'platform']);
 
-function nominatimKind(record: Record<string, unknown>, address: StructuredAddress | undefined): SearchResultKind {
+function nominatimKind(
+  record: Record<string, unknown>,
+  address: StructuredAddress | undefined,
+): SearchResultKind {
   // jsonv2 renamed `class` to `category`; both spellings are in the wild
   // depending on which `format` a deployment defaults to.
   const category = text(record.category ?? record.class)?.toLowerCase();
@@ -123,7 +138,8 @@ function nominatimBoundingBox(value: unknown): GeoBoundingBox | undefined {
   const north = latitude(value[1]);
   const west = longitude(value[2]);
   const east = longitude(value[3]);
-  if (south === undefined || north === undefined || west === undefined || east === undefined) return undefined;
+  if (south === undefined || north === undefined || west === undefined || east === undefined)
+    return undefined;
   if (south > north) return undefined;
   return { west, south, east, north };
 }
@@ -137,7 +153,11 @@ function nominatimAddress(record: Record<string, unknown>): StructuredAddress | 
   put(
     address,
     'city',
-    text(parts.city) ?? text(parts.town) ?? text(parts.village) ?? text(parts.municipality) ?? text(parts.hamlet),
+    text(parts.city) ??
+      text(parts.town) ??
+      text(parts.village) ??
+      text(parts.municipality) ??
+      text(parts.hamlet),
   );
   put(address, 'region', text(parts.state) ?? text(parts.province) ?? text(parts.region));
   put(address, 'postalCode', text(parts.postcode));
@@ -160,7 +180,13 @@ function toCandidate(value: unknown): ProviderCandidate | undefined {
   const address = nominatimAddress(record);
   const displayName =
     text(record.display_name) ??
-    composeDisplayName([text(record.name), address?.street, address?.city, address?.region, address?.country]);
+    composeDisplayName([
+      text(record.name),
+      address?.street,
+      address?.city,
+      address?.region,
+      address?.country,
+    ]);
   if (displayName === '') return undefined;
 
   const sourceId = osmSourceId(record.osm_type, record.osm_id);
@@ -271,7 +297,9 @@ export function createNominatimProvider(options: NominatimProviderOptions): Sear
       // Nominatim's `street` parameter is documented as "housenumber and
       // streetname", so the two are joined for it and kept apart everywhere
       // else. Mixing `q` with these is refused by Nominatim outright.
-      const street = [request.houseNumber, request.street].filter((part) => part !== undefined).join(' ');
+      const street = [request.houseNumber, request.street]
+        .filter((part) => part !== undefined)
+        .join(' ');
       return call(
         '/search',
         [

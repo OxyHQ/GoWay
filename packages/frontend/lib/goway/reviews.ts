@@ -49,7 +49,9 @@ export function ratingSummary(rating: PlaceRating): string {
 
 /** What a review says, as one spoken sentence. */
 export function spokenReview(review: PlaceReview, author: string): string {
-  return [`${author} rated it ${review.rating} out of 5`, review.title, review.body].filter(Boolean).join('. ');
+  return [`${author} rated it ${review.rating} out of 5`, review.title, review.body]
+    .filter(Boolean)
+    .join('. ');
 }
 
 /**

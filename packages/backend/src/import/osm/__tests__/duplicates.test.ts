@@ -38,7 +38,10 @@ describe('pairsWithin', () => {
   });
 
   test('reports each pair once', () => {
-    const pairs = pairsWithin([north('a', 0), north('b', 10), north('c', 20)], DUPLICATE_PROXIMITY_METERS);
+    const pairs = pairsWithin(
+      [north('a', 0), north('b', 10), north('c', 20)],
+      DUPLICATE_PROXIMITY_METERS,
+    );
     expect(pairs.sort()).toEqual([
       ['a', 'b'],
       ['a', 'c'],

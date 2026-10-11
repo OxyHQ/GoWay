@@ -87,6 +87,7 @@ function GowayLogoComponent({
         // Index keys: the array is a fixed, ordered drawing, never reordered
         // and never filtered by anything but `part`. Draw order is the artwork
         // (see `artwork.ts`), so a key that survived a reorder would be a bug.
+        // biome-ignore lint/suspicious/noArrayIndexKey: a fixed, never-reordered drawing (see above).
         <Path key={`${path.part}-${path.layer}-${index}`} fill={GOWAY_INK[path.ink]} d={path.d} />
       ))}
     </Svg>

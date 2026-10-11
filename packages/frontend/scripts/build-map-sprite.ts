@@ -107,7 +107,17 @@ import { parseSvgPath } from './mapgen/svg-path';
 
 const FRONTEND_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const ICON_DIR = join(FRONTEND_ROOT, '..', '..', 'node_modules', '@oxy.so', 'bloom', 'src', 'icons', 'remix');
+const ICON_DIR = join(
+  FRONTEND_ROOT,
+  '..',
+  '..',
+  'node_modules',
+  '@oxy.so',
+  'bloom',
+  'src',
+  'icons',
+  'remix',
+);
 const OUTPUT_DIR = join(FRONTEND_ROOT, 'public', 'map', 'sprites');
 
 /** Remix icons are authored on a 24-unit grid; so is Bloom's `<Svg viewBox>`. */
@@ -162,7 +172,11 @@ const ICONS: readonly IconSpec[] = [
   { name: 'goway-park', component: 'RiTreeLine', note: 'category: leisure.park' },
   { name: 'goway-museum', component: 'RiPaletteLine', note: 'category: culture.museum' },
   { name: 'goway-hospital', component: 'RiHospitalLine', note: 'category: health.hospital' },
-  { name: 'goway-transit-station', component: 'RiSubwayLine', note: 'category: transport.rail_station' },
+  {
+    name: 'goway-transit-station',
+    component: 'RiSubwayLine',
+    note: 'category: transport.rail_station',
+  },
   { name: 'goway-civic', component: 'RiCommunityLine', note: 'category: civic' },
   { name: 'goway-hotel', component: 'RiHotelLine', note: 'category: lodging.hotel' },
   { name: 'goway-restaurant', component: 'RiRestaurantLine', note: 'category: food.restaurant' },
@@ -173,7 +187,11 @@ const ICONS: readonly IconSpec[] = [
   { name: 'goway-pharmacy', component: 'RiCapsuleFill', note: 'category: health.pharmacy' },
   { name: 'goway-bank', component: 'RiBankLine', note: 'category: finance.bank' },
   { name: 'goway-coworking', component: 'RiBriefcase4Line', note: 'category: office.coworking' },
-  { name: 'goway-bicycle-rental', component: 'RiBikeLine', note: 'category: transport.bicycle_rental' },
+  {
+    name: 'goway-bicycle-rental',
+    component: 'RiBikeLine',
+    note: 'category: transport.bicycle_rental',
+  },
   { name: 'goway-bakery', component: 'RiCake2Line', note: 'category: food.bakery' },
   { name: 'goway-bookshop', component: 'RiBookOpenLine', note: 'category: shop.books' },
   { name: 'goway-shop', component: 'RiStore2Line', note: 'category: shop' },
@@ -181,7 +199,11 @@ const ICONS: readonly IconSpec[] = [
   // The ecosystem capabilities lib/goway/capabilities.ts knows by name.
   { name: 'goway-coins', component: 'RiCoinsLine', note: 'capability: payments.faircoin.accepted' },
   { name: 'goway-home', component: 'RiHome5Line', note: 'capability: housing.homiio.listings' },
-  { name: 'goway-verified', component: 'RiVerifiedBadgeFill', note: 'capability: oxy_verified provenance' },
+  {
+    name: 'goway-verified',
+    component: 'RiVerifiedBadgeFill',
+    note: 'capability: oxy_verified provenance',
+  },
 
   // Marks a map needs whatever its data says.
   { name: 'goway-pin', component: 'RiMapPin2Fill', note: 'mark: the selected place' },
@@ -318,7 +340,8 @@ function buildSheet(paths: Map<string, string>, pixelRatio: number): Sheet {
 
   for (const [alias, target] of Object.entries(ALIASES)) {
     const entry = index[target];
-    if (!entry) throw new Error(`alias "${alias}" points at "${target}", which is not in the sprite`);
+    if (!entry)
+      throw new Error(`alias "${alias}" points at "${target}", which is not in the sprite`);
     index[alias] = { ...entry };
   }
 
@@ -355,20 +378,28 @@ function verifySheets(sheets: Sheet[], problems: string[]): void {
     const label = sheet.pixelRatio === 1 ? 'goway' : `goway@${sheet.pixelRatio}x`;
     const decoded = decodePng(sheet.png);
     if (decoded.width !== sheet.image.width || decoded.height !== sheet.image.height) {
-      problems.push(`${label}.png decodes to ${decoded.width}x${decoded.height}, encoded ${sheet.image.width}x${sheet.image.height}`);
+      problems.push(
+        `${label}.png decodes to ${decoded.width}x${decoded.height}, encoded ${sheet.image.width}x${sheet.image.height}`,
+      );
       continue;
     }
     let mismatches = 0;
     for (let i = 0; i < decoded.data.length; i += 1) {
       if (decoded.data[i] !== sheet.image.data[i]) mismatches += 1;
     }
-    if (mismatches > 0) problems.push(`${label}.png does not round-trip: ${mismatches} byte(s) differ`);
+    if (mismatches > 0)
+      problems.push(`${label}.png does not round-trip: ${mismatches} byte(s) differ`);
 
     for (const [name, entry] of Object.entries(sheet.index)) {
       if (entry.pixelRatio !== sheet.pixelRatio) {
         problems.push(`${label}: "${name}" declares pixelRatio ${entry.pixelRatio}`);
       }
-      if (entry.x < 0 || entry.y < 0 || entry.x + entry.width > decoded.width || entry.y + entry.height > decoded.height) {
+      if (
+        entry.x < 0 ||
+        entry.y < 0 ||
+        entry.x + entry.width > decoded.width ||
+        entry.y + entry.height > decoded.height
+      ) {
         problems.push(`${label}: "${name}" rectangle falls outside the atlas`);
         continue;
       }
@@ -380,7 +411,10 @@ function verifySheets(sheets: Sheet[], problems: string[]): void {
           if (alpha > 191) ink += 1;
         }
       }
-      if (ink === 0) problems.push(`${label}: "${name}" rectangle contains no ink — the index and the atlas disagree`);
+      if (ink === 0)
+        problems.push(
+          `${label}: "${name}" rectangle contains no ink — the index and the atlas disagree`,
+        );
     }
   }
 
@@ -398,7 +432,12 @@ function verifySheets(sheets: Sheet[], problems: string[]): void {
       for (const name of Object.keys(one.index)) {
         const a = one.index[name];
         const b = two.index[name];
-        if (b.x !== a.x * 2 || b.y !== a.y * 2 || b.width !== a.width * 2 || b.height !== a.height * 2) {
+        if (
+          b.x !== a.x * 2 ||
+          b.y !== a.y * 2 ||
+          b.width !== a.width * 2 ||
+          b.height !== a.height * 2
+        ) {
           problems.push(`@2x "${name}" is not exactly twice its @1x rectangle`);
         }
       }
@@ -485,7 +524,9 @@ async function main(): Promise<void> {
         `${formatBytes(sheet.png.length)}`,
     );
   }
-  console.log(`map sprite: ${checkOnly ? 'OK — ' : ''}${tree.size} files, ${formatBytes(totalBytes)} total`);
+  console.log(
+    `map sprite: ${checkOnly ? 'OK — ' : ''}${tree.size} files, ${formatBytes(totalBytes)} total`,
+  );
 }
 
 await main();

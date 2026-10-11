@@ -12,7 +12,10 @@ describe('closed contribution pilot', () => {
   });
 
   test('a list admits only its members', () => {
-    const config = parseCaptureConfig({ ...store, CAPTURE_PILOT_OXY_USER_IDS: ' user-a , user-b ,' });
+    const config = parseCaptureConfig({
+      ...store,
+      CAPTURE_PILOT_OXY_USER_IDS: ' user-a , user-b ,',
+    });
     expect(config.pilotOxyUserIds).toEqual(['user-a', 'user-b']);
     expect(mayContribute(config, 'user-a')).toBe(true);
     expect(mayContribute(config, 'user-c')).toBe(false);
@@ -25,7 +28,9 @@ describe('closed contribution pilot', () => {
   });
 
   test('refuses an id that is not an id', () => {
-    expect(() => parseCaptureConfig({ ...store, CAPTURE_PILOT_OXY_USER_IDS: 'user a;drop' })).toThrow();
+    expect(() =>
+      parseCaptureConfig({ ...store, CAPTURE_PILOT_OXY_USER_IDS: 'user a;drop' }),
+    ).toThrow();
   });
 });
 
@@ -38,10 +43,18 @@ describe('360° media', () => {
   });
 
   test('can be switched off and bounded by configuration', () => {
-    const config = parseCaptureConfig({ ...store, CAPTURE_EQUIRECTANGULAR_ENABLED: 'false', CAPTURE_MAX_EQUIRECTANGULAR_VIDEO_DURATION_SECONDS: '90' });
+    const config = parseCaptureConfig({
+      ...store,
+      CAPTURE_EQUIRECTANGULAR_ENABLED: 'false',
+      CAPTURE_MAX_EQUIRECTANGULAR_VIDEO_DURATION_SECONDS: '90',
+    });
     expect(config.equirectangularEnabled).toBe(false);
     expect(config.maxEquirectangularVideoDurationSeconds).toBe(90);
-    expect(parseCaptureConfig({ ...store, CAPTURE_EQUIRECTANGULAR_ENABLED: '' }).equirectangularEnabled).toBe(true);
-    expect(() => parseCaptureConfig({ ...store, CAPTURE_EQUIRECTANGULAR_ENABLED: 'perhaps' })).toThrow();
+    expect(
+      parseCaptureConfig({ ...store, CAPTURE_EQUIRECTANGULAR_ENABLED: '' }).equirectangularEnabled,
+    ).toBe(true);
+    expect(() =>
+      parseCaptureConfig({ ...store, CAPTURE_EQUIRECTANGULAR_ENABLED: 'perhaps' }),
+    ).toThrow();
   });
 });

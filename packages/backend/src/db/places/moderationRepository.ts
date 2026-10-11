@@ -102,13 +102,18 @@ async function lockPlace(tx: DatabaseOrTransaction, placeId: string) {
   return row ? { ...row, status: row.status as PlaceStatus } : null;
 }
 
-function lifecycleOf(row: { status: PlaceStatus; mergedIntoPlaceId: string | null }): PlaceLifecycle {
+function lifecycleOf(row: {
+  status: PlaceStatus;
+  mergedIntoPlaceId: string | null;
+}): PlaceLifecycle {
   return { status: row.status, mergedIntoPlaceId: row.mergedIntoPlaceId };
 }
 
 /** A `(createdAt, id)` keyset over a queue, oldest first. */
 function createdWindow(createdAt: PgColumn, id: PgColumn, window: TimeWindow): SQL | undefined {
-  return window.after ? sql`(${createdAt}, ${id}) > (${window.after[0]}::timestamptz, ${window.after[1]})` : undefined;
+  return window.after
+    ? sql`(${createdAt}, ${id}) > (${window.after[0]}::timestamptz, ${window.after[1]})`
+    : undefined;
 }
 
 // ── Reports ─────────────────────────────────────────────────────────────────
@@ -181,7 +186,14 @@ export async function createPlaceReport(
   const reviewId = 'reviewId' in subject ? subject.reviewId : null;
   const [inserted] = await db
     .insert(placeReports)
-    .values({ placeId, reporterOxyUserId, mediaId, reviewId, reason: input.reason, note: input.note ?? null })
+    .values({
+      placeId,
+      reporterOxyUserId,
+      mediaId,
+      reviewId,
+      reason: input.reason,
+      note: input.note ?? null,
+    })
     .onConflictDoNothing()
     .returning(REPORT_COLUMNS);
   if (inserted) return { report: toPlaceReport(inserted), created: true };
@@ -235,10 +247,16 @@ export async function resolvePlaceReport(
   author: RevisionAuthor,
 ): Promise<ModerationPlaceReport | null> {
   return db.transaction(async (tx) => {
-    const [open] = await tx.select(REPORT_COLUMNS).from(placeReports).where(eq(placeReports.id, reportId)).for('update');
+    const [open] = await tx
+      .select(REPORT_COLUMNS)
+      .from(placeReports)
+      .where(eq(placeReports.id, reportId))
+      .for('update');
     if (!open) return null;
     if (open.resolvedAt !== null) {
-      throw new ApiError('conflict', 'This report is already resolved.', { resolution: open.resolution });
+      throw new ApiError('conflict', 'This report is already resolved.', {
+        resolution: open.resolution,
+      });
     }
     const [resolved] = await tx
       .update(placeReports)
@@ -285,14 +303,23 @@ export async function decideClaim(
   return db.transaction(async (tx) => {
     // The place first, then the claim — the order a merge takes them in, so an
     // approval and a merge of the same place queue rather than deadlock.
-    const [target] = await tx.select({ placeId: placesClaims.placeId }).from(placesClaims).where(eq(placesClaims.id, claimId));
+    const [target] = await tx
+      .select({ placeId: placesClaims.placeId })
+      .from(placesClaims)
+      .where(eq(placesClaims.id, claimId));
     if (!target) return null;
     await lockPlace(tx, target.placeId);
-    const [claim] = await tx.select(CLAIM_COLUMNS).from(placesClaims).where(eq(placesClaims.id, claimId)).for('update');
+    const [claim] = await tx
+      .select(CLAIM_COLUMNS)
+      .from(placesClaims)
+      .where(eq(placesClaims.id, claimId))
+      .for('update');
     if (!claim) return null;
     const from: PlaceClaimState = CLAIM_DECISION_FROM[state];
     if (claim.state !== from) {
-      throw new ApiError('conflict', `Only a ${from} claim can be ${state}.`, { state: claim.state });
+      throw new ApiError('conflict', `Only a ${from} claim can be ${state}.`, {
+        state: claim.state,
+      });
     }
 
     const [decided] = await tx
@@ -302,12 +329,18 @@ export async function decideClaim(
       .returning(CLAIM_COLUMNS);
     if (!decided) return null;
 
-    const snapshot = (row: typeof claim): RevisionValue => ({ oxyAccountId: row.oxyAccountId, role: row.role, state: row.state });
+    const snapshot = (row: typeof claim): RevisionValue => ({
+      oxyAccountId: row.oxyAccountId,
+      role: row.role,
+      state: row.state,
+    });
     await recordRevision(tx, {
       placeId: decided.placeId,
       action: `claim_${state}`,
       author,
-      changes: [{ field: claimField(decided.id), before: snapshot(claim), after: snapshot(decided) }],
+      changes: [
+        { field: claimField(decided.id), before: snapshot(claim), after: snapshot(decided) },
+      ],
     });
     if (state === 'approved') await retierClaimantStatements(tx, decided);
     return toClaim(decided);
@@ -370,10 +403,18 @@ async function retierClaimantStatements(tx: DatabaseOrTransaction, claim: ClaimR
   if (!place) return;
 
   const [capabilities, exceptions] = await Promise.all([
-    tx.select(CAPABILITY_COLUMNS).from(placesCapabilities).where(eq(placesCapabilities.placeId, claim.placeId)),
-    tx.select(HOURS_EXCEPTION_COLUMNS).from(placeHoursExceptions).where(eq(placeHoursExceptions.placeId, claim.placeId)),
+    tx
+      .select(CAPABILITY_COLUMNS)
+      .from(placesCapabilities)
+      .where(eq(placesCapabilities.placeId, claim.placeId)),
+    tx
+      .select(HOURS_EXCEPTION_COLUMNS)
+      .from(placeHoursExceptions)
+      .where(eq(placeHoursExceptions.placeId, claim.placeId)),
   ]);
-  const communityCapabilities = capabilities.filter((row) => row.verification === 'community_reported');
+  const communityCapabilities = capabilities.filter(
+    (row) => row.verification === 'community_reported',
+  );
   const communityExceptions = exceptions.filter((row) => row.verification === 'community_reported');
   if (communityCapabilities.length === 0 && communityExceptions.length === 0) return;
 
@@ -387,12 +428,18 @@ async function retierClaimantStatements(tx: DatabaseOrTransaction, claim: ClaimR
       changes: placeRevisions.changes,
     })
     .from(placeRevisions)
-    .where(and(eq(placeRevisions.placeId, claim.placeId), gte(placeRevisions.createdAt, claim.claimedAt)))
+    .where(
+      and(
+        eq(placeRevisions.placeId, claim.placeId),
+        gte(placeRevisions.createdAt, claim.claimedAt),
+      ),
+    )
     .orderBy(desc(placeRevisions.createdAt), desc(placeRevisions.id));
 
   const filing = revisions.find(
     (revision) =>
-      revision.action === 'claim_requested' && revision.changes.some((change) => change.field === claimField(claim.id)),
+      revision.action === 'claim_requested' &&
+      revision.changes.some((change) => change.field === claimField(claim.id)),
   );
   const filer = filing ? (filing.operatedByOxyUserId ?? filing.oxyAccountId) : null;
   const speaksForClaimant = (author: StatementAuthor): boolean =>
@@ -403,7 +450,10 @@ async function retierClaimantStatements(tx: DatabaseOrTransaction, claim: ClaimR
   for (const revision of revisions) {
     for (const change of revision.changes) {
       if (lastWriter.has(change.field) || !touchesCommunityTier(change)) continue;
-      lastWriter.set(change.field, { oxyAccountId: revision.oxyAccountId, operatedByOxyUserId: revision.operatedByOxyUserId });
+      lastWriter.set(change.field, {
+        oxyAccountId: revision.oxyAccountId,
+        operatedByOxyUserId: revision.operatedByOxyUserId,
+      });
     }
   }
 
@@ -411,7 +461,9 @@ async function retierClaimantStatements(tx: DatabaseOrTransaction, claim: ClaimR
     capabilities.filter((row) => row.verification === 'business_asserted').map((row) => row.key),
   );
   const businessDates = new Set(
-    exceptions.filter((row) => row.verification === 'business_asserted').map((row) => `${row.startsOn}/${row.endsOn}`),
+    exceptions
+      .filter((row) => row.verification === 'business_asserted')
+      .map((row) => `${row.startsOn}/${row.endsOn}`),
   );
   const now = new Date();
   let retiered = false;
@@ -419,7 +471,8 @@ async function retierClaimantStatements(tx: DatabaseOrTransaction, claim: ClaimR
   for (const row of communityCapabilities) {
     const field = capabilityField(row.key ?? `${row.namespace}.${row.capability}`);
     const asserter = lastWriter.get(field);
-    if (asserter === undefined || !speaksForClaimant(asserter) || businessKeys.has(row.key)) continue;
+    if (asserter === undefined || !speaksForClaimant(asserter) || businessKeys.has(row.key))
+      continue;
     const [moved] = await tx
       .update(placesCapabilities)
       .set({ verification: 'business_asserted', updatedAt: now })
@@ -438,7 +491,11 @@ async function retierClaimantStatements(tx: DatabaseOrTransaction, claim: ClaimR
   for (const row of communityExceptions) {
     const field = hoursExceptionField(row.id);
     const asserter = lastWriter.get(field);
-    if (asserter === undefined || !speaksForClaimant(asserter) || businessDates.has(`${row.startsOn}/${row.endsOn}`)) {
+    if (
+      asserter === undefined ||
+      !speaksForClaimant(asserter) ||
+      businessDates.has(`${row.startsOn}/${row.endsOn}`)
+    ) {
       continue;
     }
     const [moved] = await tx
@@ -452,7 +509,9 @@ async function retierClaimantStatements(tx: DatabaseOrTransaction, claim: ClaimR
       placeId: claim.placeId,
       action: 'hours_exception_retiered',
       author: { ...asserter, source: 'moderation' },
-      changes: [{ field, before: hoursExceptionSnapshot(row), after: hoursExceptionSnapshot(moved) }],
+      changes: [
+        { field, before: hoursExceptionSnapshot(row), after: hoursExceptionSnapshot(moved) },
+      ],
     });
   }
 
@@ -462,8 +521,12 @@ async function retierClaimantStatements(tx: DatabaseOrTransaction, claim: ClaimR
 /** Whether a recorded change wrote a statement's community-tier row, on either side. */
 function touchesCommunityTier(change: PlaceRevisionChange): boolean {
   const tierOf = (value: RevisionValue | undefined): unknown =>
-    value !== null && typeof value === 'object' && !Array.isArray(value) ? value.verification : undefined;
-  return tierOf(change.before) === 'community_reported' || tierOf(change.after) === 'community_reported';
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? value.verification
+      : undefined;
+  return (
+    tierOf(change.before) === 'community_reported' || tierOf(change.after) === 'community_reported'
+  );
 }
 
 // ── Places ──────────────────────────────────────────────────────────────────
@@ -481,7 +544,10 @@ function touchesCommunityTier(change: PlaceRevisionChange): boolean {
 export async function moderatePlace(
   db: Database,
   placeId: string,
-  input: { status?: ModeratedPlaceStatus | undefined; verificationState?: PlaceVerificationState | undefined },
+  input: {
+    status?: ModeratedPlaceStatus | undefined;
+    verificationState?: PlaceVerificationState | undefined;
+  },
   author: RevisionAuthor,
 ): Promise<PlaceLifecycle | null> {
   return db.transaction(async (tx) => {
@@ -490,7 +556,11 @@ export async function moderatePlace(
     if (before.status === 'merged') throw unpublishedPlace(lifecycleOf(before));
 
     const now = new Date();
-    const values: { status?: PlaceStatus; verificationState?: PlaceVerificationState; verifiedAt?: Date | null } = {};
+    const values: {
+      status?: PlaceStatus;
+      verificationState?: PlaceVerificationState;
+      verifiedAt?: Date | null;
+    } = {};
     if (input.status !== undefined) values.status = input.status;
     if (input.verificationState !== undefined) {
       values.verificationState = input.verificationState;
@@ -508,7 +578,10 @@ export async function moderatePlace(
       });
     if (!after) return null;
 
-    const verification = (row: { verificationState: string; verifiedAt: Date | null }): RevisionValue =>
+    const verification = (row: {
+      verificationState: string;
+      verifiedAt: Date | null;
+    }): RevisionValue =>
       row.verifiedAt === null
         ? { state: row.verificationState }
         : { state: row.verificationState, verifiedAt: row.verifiedAt.toISOString() };
@@ -548,7 +621,11 @@ export async function verifyPlaceCapability(
       eq(placesCapabilities.capability, key.capability),
       eq(placesCapabilities.verification, 'oxy_verified'),
     );
-    const [before] = await tx.select(CAPABILITY_COLUMNS).from(placesCapabilities).where(atTier).limit(1);
+    const [before] = await tx
+      .select(CAPABILITY_COLUMNS)
+      .from(placesCapabilities)
+      .where(atTier)
+      .limit(1);
     const now = new Date();
     const [after] = await tx
       .insert(placesCapabilities)
@@ -570,7 +647,12 @@ export async function verifyPlaceCapability(
       before ? capabilitySnapshot(before) : undefined,
       after ? capabilitySnapshot(after) : undefined,
     );
-    await recordRevision(tx, { placeId, action: 'capability_asserted', author, changes: change ? [change] : [] });
+    await recordRevision(tx, {
+      placeId,
+      action: 'capability_asserted',
+      author,
+      changes: change ? [change] : [],
+    });
     return true;
   });
 }
@@ -660,7 +742,11 @@ export async function listDuplicateCandidates(
  * locked; a concurrent importer write that lands a colliding row in between is
  * a unique violation that rolls the whole merge back, never a half-merge.
  */
-function movable<T extends { id: string }>(absorbed: readonly T[], survivor: readonly T[], keyOf: (row: T) => string): T[] {
+function movable<T extends { id: string }>(
+  absorbed: readonly T[],
+  survivor: readonly T[],
+  keyOf: (row: T) => string,
+): T[] {
   const held = new Set(survivor.map(keyOf));
   return absorbed.filter((row) => !held.has(keyOf(row)));
 }
@@ -709,17 +795,45 @@ async function mergePlaces(
     .set({ placeId: survivorId, updatedAt: now })
     .where(eq(placesSources.placeId, absorbedId))
     .returning({ source: placesSources.source, sourceId: placesSources.sourceId });
-  received.push(...sources.map((ref) => ({ field: 'sources', after: { source: ref.source, sourceId: ref.sourceId } })));
+  received.push(
+    ...sources.map((ref) => ({
+      field: 'sources',
+      after: { source: ref.source, sourceId: ref.sourceId },
+    })),
+  );
 
-  const nameColumns = { id: placesNames.id, placeId: placesNames.placeId, language: placesNames.language, source: placesNames.source, name: placesNames.name };
+  const nameColumns = {
+    id: placesNames.id,
+    placeId: placesNames.placeId,
+    language: placesNames.language,
+    source: placesNames.source,
+    name: placesNames.name,
+  };
   const [absorbedNames, survivorNames] = await Promise.all([
     tx.select(nameColumns).from(placesNames).where(eq(placesNames.placeId, absorbedId)),
     tx.select(nameColumns).from(placesNames).where(eq(placesNames.placeId, survivorId)),
   ]);
-  const names = movable(absorbedNames, survivorNames, (row) => `${row.language}\u0000${row.source}`);
+  const names = movable(
+    absorbedNames,
+    survivorNames,
+    (row) => `${row.language}\u0000${row.source}`,
+  );
   if (names.length > 0) {
-    await tx.update(placesNames).set({ placeId: survivorId, updatedAt: now }).where(inArray(placesNames.id, names.map((row) => row.id)));
-    received.push(...names.map((row) => ({ field: nameField(row.language), after: { name: row.name, source: row.source } })));
+    await tx
+      .update(placesNames)
+      .set({ placeId: survivorId, updatedAt: now })
+      .where(
+        inArray(
+          placesNames.id,
+          names.map((row) => row.id),
+        ),
+      );
+    received.push(
+      ...names.map((row) => ({
+        field: nameField(row.language),
+        after: { name: row.name, source: row.source },
+      })),
+    );
   }
 
   const descriptionColumns = {
@@ -729,15 +843,30 @@ async function mergePlaces(
     description: placesDescriptions.description,
   };
   const [absorbedDescriptions, survivorDescriptions] = await Promise.all([
-    tx.select(descriptionColumns).from(placesDescriptions).where(eq(placesDescriptions.placeId, absorbedId)),
-    tx.select(descriptionColumns).from(placesDescriptions).where(eq(placesDescriptions.placeId, survivorId)),
+    tx
+      .select(descriptionColumns)
+      .from(placesDescriptions)
+      .where(eq(placesDescriptions.placeId, absorbedId)),
+    tx
+      .select(descriptionColumns)
+      .from(placesDescriptions)
+      .where(eq(placesDescriptions.placeId, survivorId)),
   ]);
-  const descriptions = movable(absorbedDescriptions, survivorDescriptions, (row) => `${row.language}\u0000${row.source}`);
+  const descriptions = movable(
+    absorbedDescriptions,
+    survivorDescriptions,
+    (row) => `${row.language}\u0000${row.source}`,
+  );
   if (descriptions.length > 0) {
     await tx
       .update(placesDescriptions)
       .set({ placeId: survivorId, updatedAt: now })
-      .where(inArray(placesDescriptions.id, descriptions.map((row) => row.id)));
+      .where(
+        inArray(
+          placesDescriptions.id,
+          descriptions.map((row) => row.id),
+        ),
+      );
     received.push(
       ...descriptions.map((row) => ({
         field: descriptionField(row.language),
@@ -747,23 +876,49 @@ async function mergePlaces(
   }
 
   const [absorbedCapabilities, survivorCapabilities] = await Promise.all([
-    tx.select(CAPABILITY_COLUMNS).from(placesCapabilities).where(eq(placesCapabilities.placeId, absorbedId)),
-    tx.select(CAPABILITY_COLUMNS).from(placesCapabilities).where(eq(placesCapabilities.placeId, survivorId)),
+    tx
+      .select(CAPABILITY_COLUMNS)
+      .from(placesCapabilities)
+      .where(eq(placesCapabilities.placeId, absorbedId)),
+    tx
+      .select(CAPABILITY_COLUMNS)
+      .from(placesCapabilities)
+      .where(eq(placesCapabilities.placeId, survivorId)),
   ]);
-  const capabilities = movable(absorbedCapabilities, survivorCapabilities, (row) => `${row.key ?? ''}\u0000${row.verification}`);
+  const capabilities = movable(
+    absorbedCapabilities,
+    survivorCapabilities,
+    (row) => `${row.key ?? ''}\u0000${row.verification}`,
+  );
   if (capabilities.length > 0) {
     await tx
       .update(placesCapabilities)
       .set({ placeId: survivorId, updatedAt: now })
-      .where(inArray(placesCapabilities.id, capabilities.map((row) => row.id)));
-    received.push(...capabilities.map((row) => ({ field: capabilityField(row.key ?? `${row.namespace}.${row.capability}`), after: capabilitySnapshot(row) })));
+      .where(
+        inArray(
+          placesCapabilities.id,
+          capabilities.map((row) => row.id),
+        ),
+      );
+    received.push(
+      ...capabilities.map((row) => ({
+        field: capabilityField(row.key ?? `${row.namespace}.${row.capability}`),
+        after: capabilitySnapshot(row),
+      })),
+    );
   }
 
   // Hours exceptions are claims at a tier, keyed like a capability: the same
   // dates at the same tier on the survivor win, everything else moves.
   const [absorbedExceptions, survivorExceptions] = await Promise.all([
-    tx.select(HOURS_EXCEPTION_COLUMNS).from(placeHoursExceptions).where(eq(placeHoursExceptions.placeId, absorbedId)),
-    tx.select(HOURS_EXCEPTION_COLUMNS).from(placeHoursExceptions).where(eq(placeHoursExceptions.placeId, survivorId)),
+    tx
+      .select(HOURS_EXCEPTION_COLUMNS)
+      .from(placeHoursExceptions)
+      .where(eq(placeHoursExceptions.placeId, absorbedId)),
+    tx
+      .select(HOURS_EXCEPTION_COLUMNS)
+      .from(placeHoursExceptions)
+      .where(eq(placeHoursExceptions.placeId, survivorId)),
   ]);
   const exceptions = movable(
     absorbedExceptions,
@@ -774,17 +929,39 @@ async function mergePlaces(
     await tx
       .update(placeHoursExceptions)
       .set({ placeId: survivorId, updatedAt: now })
-      .where(inArray(placeHoursExceptions.id, exceptions.map((row) => row.id)));
-    received.push(...exceptions.map((row) => ({ field: hoursExceptionField(row.id), after: hoursExceptionSnapshot(row) })));
+      .where(
+        inArray(
+          placeHoursExceptions.id,
+          exceptions.map((row) => row.id),
+        ),
+      );
+    received.push(
+      ...exceptions.map((row) => ({
+        field: hoursExceptionField(row.id),
+        after: hoursExceptionSnapshot(row),
+      })),
+    );
   }
 
   const [absorbedClaims, survivorClaims] = await Promise.all([
     tx.select(CLAIM_COLUMNS).from(placesClaims).where(eq(placesClaims.placeId, absorbedId)),
     tx.select(CLAIM_COLUMNS).from(placesClaims).where(eq(placesClaims.placeId, survivorId)),
   ]);
-  const claims = movable(absorbedClaims, survivorClaims, (row) => `${row.oxyAccountId}\u0000${row.role}`);
+  const claims = movable(
+    absorbedClaims,
+    survivorClaims,
+    (row) => `${row.oxyAccountId}\u0000${row.role}`,
+  );
   if (claims.length > 0) {
-    await tx.update(placesClaims).set({ placeId: survivorId, updatedAt: now }).where(inArray(placesClaims.id, claims.map((row) => row.id)));
+    await tx
+      .update(placesClaims)
+      .set({ placeId: survivorId, updatedAt: now })
+      .where(
+        inArray(
+          placesClaims.id,
+          claims.map((row) => row.id),
+        ),
+      );
   }
 
   // The gallery moves wherever the survivor does not already show the same
@@ -808,7 +985,10 @@ async function mergePlaces(
     });
   }
 
-  await tx.update(places).set({ status: 'merged', mergedIntoPlaceId: survivorId, updatedAt: now }).where(eq(places.id, absorbedId));
+  await tx
+    .update(places)
+    .set({ status: 'merged', mergedIntoPlaceId: survivorId, updatedAt: now })
+    .where(eq(places.id, absorbedId));
   await recordRevision(tx, {
     placeId: absorbedId,
     action: 'place_merged',
@@ -820,7 +1000,12 @@ async function mergePlaces(
   });
 
   await tx.update(places).set({ updatedAt: now }).where(eq(places.id, survivorId));
-  await recordRevision(tx, { placeId: survivorId, action: 'place_absorbed', author, changes: received });
+  await recordRevision(tx, {
+    placeId: survivorId,
+    action: 'place_absorbed',
+    author,
+    changes: received,
+  });
 }
 
 /**
@@ -847,7 +1032,9 @@ export async function resolveDuplicateCandidate(
       .for('update');
     if (!candidate) return null;
     if (candidate.state !== 'open') {
-      throw new ApiError('conflict', 'This duplicate candidate is already decided.', { state: candidate.state });
+      throw new ApiError('conflict', 'This duplicate candidate is already decided.', {
+        state: candidate.state,
+      });
     }
     // Canonical order (`placeId < candidatePlaceId`), which is the id order both places are locked in.
     const pair = [candidate.placeId, candidate.candidatePlaceId] as const;
@@ -855,18 +1042,28 @@ export async function resolveDuplicateCandidate(
     let state: DuplicateCandidateState;
     if (input.decision === 'merge') {
       if (!(pair as readonly string[]).includes(input.survivorPlaceId)) {
-        throw new ApiError('validation_failed', 'The survivor must be one of the two places in the candidate.', {
-          field: 'survivorPlaceId',
-          issue: 'not_in_pair',
-        });
+        throw new ApiError(
+          'validation_failed',
+          'The survivor must be one of the two places in the candidate.',
+          {
+            field: 'survivorPlaceId',
+            issue: 'not_in_pair',
+          },
+        );
       }
       const [low, high] = [await lockPlace(tx, pair[0]), await lockPlace(tx, pair[1])];
       const [survivor, absorbed] = input.survivorPlaceId === pair[0] ? [low, high] : [high, low];
       if (!survivor || !absorbed || survivor.status === 'merged' || absorbed.status === 'merged') {
-        throw new ApiError('conflict', 'One of the two places has already been merged. Reject this candidate instead.');
+        throw new ApiError(
+          'conflict',
+          'One of the two places has already been merged. Reject this candidate instead.',
+        );
       }
       if (survivor.status === 'removed') {
-        throw new ApiError('conflict', 'The survivor was removed from GoWay; restore it or merge the other way.');
+        throw new ApiError(
+          'conflict',
+          'The survivor was removed from GoWay; restore it or merge the other way.',
+        );
       }
       await mergePlaces(tx, survivor.id, absorbed.id, absorbed.status, author);
       state = 'confirmed';
@@ -890,7 +1087,12 @@ export async function resolveDuplicateCandidate(
 
     const [decided] = await tx
       .update(placesDuplicateCandidates)
-      .set({ state, decidedAt: new Date(), decidedByOxyUserId: deciderOf(author), updatedAt: new Date() })
+      .set({
+        state,
+        decidedAt: new Date(),
+        decidedByOxyUserId: deciderOf(author),
+        updatedAt: new Date(),
+      })
       .where(eq(placesDuplicateCandidates.id, candidateId))
       .returning(CANDIDATE_COLUMNS);
     return decided ? toCandidate(decided) : null;

@@ -52,14 +52,25 @@ export const AREA_STATES_WANTING_CAPTURE: ReadonlySet<StreetCoverageAreaState> =
   'needs_more_capture',
 ]);
 
-export type CoverageColors = Pick<ThemeColors, (typeof AREA_STATE_COLOR)[StreetCoverageAreaState] | 'primary' | 'textSecondary'>;
+export type CoverageColors = Pick<
+  ThemeColors,
+  (typeof AREA_STATE_COLOR)[StreetCoverageAreaState] | 'primary' | 'textSecondary'
+>;
 
 export function shouldFetchCoverage(zoom: number | null | undefined): boolean {
   return typeof zoom === 'number' && Number.isFinite(zoom) && zoom >= STREET3D_MIN_ZOOM;
 }
 
-function point(longitude: number, latitude: number, properties: Record<string, unknown>): GeoJSON.Feature {
-  return { type: 'Feature', properties, geometry: { type: 'Point', coordinates: [longitude, latitude] } };
+function point(
+  longitude: number,
+  latitude: number,
+  properties: Record<string, unknown>,
+): GeoJSON.Feature {
+  return {
+    type: 'Feature',
+    properties,
+    geometry: { type: 'Point', coordinates: [longitude, latitude] },
+  };
 }
 
 function collection(features: GeoJSON.Feature[]): GeoJSON.FeatureCollection {
@@ -96,8 +107,18 @@ export function coverageOverlays(coverage: StreetCoverage, colors: CoverageColor
     const color = placement === 'precise' ? colors.primary : colors.textSecondary;
     const data = footprints(scenes);
     overlays.push(
-      { id: `street3d-scenes-${placement}-fill`, kind: 'fill', data, paint: { color, opacity: placement === 'precise' ? 0.14 : 0.08 } },
-      { id: `street3d-scenes-${placement}-line`, kind: 'line', data, paint: { color, width: placement === 'precise' ? 2 : 1, opacity: 0.9 } },
+      {
+        id: `street3d-scenes-${placement}-fill`,
+        kind: 'fill',
+        data,
+        paint: { color, opacity: placement === 'precise' ? 0.14 : 0.08 },
+      },
+      {
+        id: `street3d-scenes-${placement}-line`,
+        kind: 'line',
+        data,
+        paint: { color, width: placement === 'precise' ? 2 : 1, opacity: 0.9 },
+      },
     );
   }
 
@@ -112,8 +133,16 @@ export function coverageOverlays(coverage: StreetCoverage, colors: CoverageColor
     overlays.push({
       id: `street3d-areas-${state}`,
       kind: 'circle',
-      data: collection(inState.map((entry) => point(entry.center.longitude, entry.center.latitude, { areaId: entry.id }))),
-      paint: { color: colors[AREA_STATE_COLOR[state]], radius: state === 'at_risk' ? 9 : 7, opacity: 0.85 },
+      data: collection(
+        inState.map((entry) =>
+          point(entry.center.longitude, entry.center.latitude, { areaId: entry.id }),
+        ),
+      ),
+      paint: {
+        color: colors[AREA_STATE_COLOR[state]],
+        radius: state === 'at_risk' ? 9 : 7,
+        opacity: 0.85,
+      },
     });
   }
 
@@ -152,10 +181,14 @@ export function areaContaining(
   return containing.find((entry) => entry.state === 'at_risk') ?? containing[0] ?? null;
 }
 
-function within(bounds: GeoBounds, { latitude, longitude }: { latitude: number; longitude: number }): boolean {
-  const inLongitude = bounds.west <= bounds.east
-    ? longitude >= bounds.west && longitude <= bounds.east
-    : longitude >= bounds.west || longitude <= bounds.east;
+function within(
+  bounds: GeoBounds,
+  { latitude, longitude }: { latitude: number; longitude: number },
+): boolean {
+  const inLongitude =
+    bounds.west <= bounds.east
+      ? longitude >= bounds.west && longitude <= bounds.east
+      : longitude >= bounds.west || longitude <= bounds.east;
   return inLongitude && latitude >= bounds.south && latitude <= bounds.north;
 }
 
@@ -165,7 +198,10 @@ function within(bounds: GeoBounds, { latitude, longitude }: { latitude: number; 
  * `radiusMeters` is converted with the local metres-per-degree, so the box is
  * square on the ground rather than in degrees.
  */
-export function boxAround(coordinate: { latitude: number; longitude: number }, radiusMeters: number): GeoBounds {
+export function boxAround(
+  coordinate: { latitude: number; longitude: number },
+  radiusMeters: number,
+): GeoBounds {
   const dLat = radiusMeters / 111_320;
   const cos = Math.max(0.01, Math.cos((coordinate.latitude * Math.PI) / 180));
   const dLon = radiusMeters / (111_320 * cos);

@@ -49,7 +49,11 @@ export function revisionAuthor(
   caller: { readonly oxyAccountId: string; readonly operatedByOxyUserId: string | null },
   source: PlaceRevisionSource,
 ): RevisionAuthor {
-  return { oxyAccountId: caller.oxyAccountId, operatedByOxyUserId: caller.operatedByOxyUserId, source };
+  return {
+    oxyAccountId: caller.oxyAccountId,
+    operatedByOxyUserId: caller.operatedByOxyUserId,
+    source,
+  };
 }
 
 /** One side of a diff: published field paths to their values, `undefined` meaning "no value". */
@@ -57,11 +61,17 @@ export type FieldValues = Readonly<Record<string, RevisionValue | undefined>>;
 
 /** A JSON value with object keys sorted, so `jsonb`'s own key order never reads as a change. */
 function canonical(value: RevisionValue | undefined): string {
-  return JSON.stringify(value, (_key, inner: unknown) =>
-    inner !== null && typeof inner === 'object' && !Array.isArray(inner)
-      ? Object.fromEntries(Object.entries(inner as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
-      : inner,
-  ) ?? 'undefined';
+  return (
+    JSON.stringify(value, (_key, inner: unknown) =>
+      inner !== null && typeof inner === 'object' && !Array.isArray(inner)
+        ? Object.fromEntries(
+            Object.entries(inner as Record<string, unknown>).sort(([a], [b]) =>
+              a < b ? -1 : a > b ? 1 : 0,
+            ),
+          )
+        : inner,
+    ) ?? 'undefined'
+  );
 }
 
 /** One change from a before and an after, or `null` when they are the same value. */
@@ -177,8 +187,18 @@ export function mediaField(mediaId: string): string {
  * image an operator hid or its contributor withdrew, for as long as Oxy
  * serves it.
  */
-export function mediaSnapshot(row: { kind: string; position: number; verification: string; state: string }): RevisionValue {
-  return { kind: row.kind, position: row.position, verification: row.verification, state: row.state };
+export function mediaSnapshot(row: {
+  kind: string;
+  position: number;
+  verification: string;
+  state: string;
+}): RevisionValue {
+  return {
+    kind: row.kind,
+    position: row.position,
+    verification: row.verification,
+    state: row.state,
+  };
 }
 
 /** The field a review is recorded under. Reviews are moderation-visible only. */
@@ -217,7 +237,11 @@ export function capabilitySnapshot(row: {
   verification: string;
   observedAt: Date;
 }): RevisionValue {
-  return { value: row.value, verification: row.verification, observedAt: row.observedAt.toISOString() };
+  return {
+    value: row.value,
+    verification: row.verification,
+    observedAt: row.observedAt.toISOString(),
+  };
 }
 
 /** The field an hours exception is recorded under: one exception, by id. */
@@ -330,7 +354,13 @@ export async function listPlaceRevisions(
   const rows = await db
     .select(REVISION_COLUMNS)
     .from(placeRevisions)
-    .where(and(eq(placeRevisions.placeId, placeId), inArray(placeRevisions.action, [...actions]), revisionWindow(window)))
+    .where(
+      and(
+        eq(placeRevisions.placeId, placeId),
+        inArray(placeRevisions.action, [...actions]),
+        revisionWindow(window),
+      ),
+    )
     .orderBy(desc(placeRevisions.createdAt), desc(placeRevisions.id))
     .limit(window.limit);
 

@@ -62,7 +62,10 @@ async function maplibreParser(): Promise<(data: Uint8Array) => ParsedGlyph[]> {
   const bundle = require.resolve('maplibre-gl/dist/maplibre-gl-shared-dev.mjs');
   const source = await readFile(bundle, 'utf8');
   const alias = /\bparseGlyphPbf as (\w+)\b/.exec(source);
-  expect(alias, 'maplibre-gl no longer exports parseGlyphPbf from its shared bundle').not.toBeNull();
+  expect(
+    alias,
+    'maplibre-gl no longer exports parseGlyphPbf from its shared bundle',
+  ).not.toBeNull();
   const module = (await import(bundle)) as Record<string, unknown>;
   const parse = module[alias![1]];
   expect(typeof parse).toBe('function');
@@ -148,7 +151,9 @@ describe('the committed glyph tree', () => {
     // U+0E00–U+0E7F is Thai. Inter has one code point in that range and
     // upstream has 153, so the file has to be ABSENT for the proxy to run.
     expect(files.some((file) => file.range === '3584-3839')).toBe(false);
-    expect(decodeRuns(coverage.stacks['Noto Sans Regular'].ranges['3584-3839']).size).toBeGreaterThan(100);
+    expect(
+      decodeRuns(coverage.stacks['Noto Sans Regular'].ranges['3584-3839']).size,
+    ).toBeGreaterThan(100);
 
     // And the ranges Inter really does own are still served from goway.to.
     for (const range of ['0-255', '256-511', '1024-1279', '8192-8447']) {
@@ -156,7 +161,7 @@ describe('the committed glyph tree', () => {
     }
   });
 
-  test('the merged glyphs sit on Inter\'s baseline, not Noto\'s', async () => {
+  test("the merged glyphs sit on Inter's baseline, not Noto's", async () => {
     // `top` is measured DOWN FROM THE ASCENDER, which is 26px for Noto at
     // 24ppem and 24px for Inter. Copied across unchanged, a filled glyph would
     // sit 2px low — 8% of the em — inside a word set in Inter.
@@ -167,9 +172,7 @@ describe('the committed glyph tree', () => {
     expect(pack.length).toBeGreaterThan(0);
 
     const published = new Map(
-      decodeGlyphs(
-        new Uint8Array(await readFile(join(FONTS_DIR, 'Inter Regular', '256-511.pbf'))),
-      )
+      decodeGlyphs(new Uint8Array(await readFile(join(FONTS_DIR, 'Inter Regular', '256-511.pbf'))))
         .flatMap((one) => one.glyphs)
         .map((glyph) => [glyph.id, glyph]),
     );
@@ -233,7 +236,9 @@ describe('the gate itself', () => {
   test('an unmeasured range is a hole, not an absence of one', () => {
     // The distinction the build turns on: `undefined` means "cannot promise
     // anything about this range", which must NOT be read as "no holes".
-    expect(holesFor(coverage.stacks['Noto Sans Regular'], '1114112-1114367', new Set())).toBeUndefined();
+    expect(
+      holesFor(coverage.stacks['Noto Sans Regular'], '1114112-1114367', new Set()),
+    ).toBeUndefined();
   });
 
   test('rebaseTop is a pure shift and nothing else', () => {

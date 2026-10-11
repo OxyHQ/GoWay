@@ -29,7 +29,13 @@ function journal(tags) {
     {
       version: '7',
       dialect: 'postgresql',
-      entries: tags.map((tag, idx) => ({ idx, version: '7', when: 1 + idx, tag, breakpoints: true })),
+      entries: tags.map((tag, idx) => ({
+        idx,
+        version: '7',
+        when: 1 + idx,
+        tag,
+        breakpoints: true,
+      })),
     },
     null,
     2,
@@ -77,7 +83,9 @@ async function expectVerdict(name, files, meta, expectedExit, expectedFragment) 
     return;
   }
   if (!output.includes(expectedFragment)) {
-    failures.push(`${name}: output does not contain ${JSON.stringify(expectedFragment)}.\n${output}`);
+    failures.push(
+      `${name}: output does not contain ${JSON.stringify(expectedFragment)}.\n${output}`,
+    );
   }
 }
 

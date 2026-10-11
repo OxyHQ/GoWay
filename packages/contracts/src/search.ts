@@ -23,7 +23,13 @@
  */
 
 import { z } from 'zod';
-import { boundingBoxWidth, geoBoundingBoxSchema, geoCoordinateSchema, latitudeSchema, longitudeSchema } from './geo';
+import {
+  boundingBoxWidth,
+  geoBoundingBoxSchema,
+  geoCoordinateSchema,
+  latitudeSchema,
+  longitudeSchema,
+} from './geo';
 import type { GeoBoundingBox, GeoCoordinate } from './geo';
 import { capabilityFilterSchema } from './capability-registry';
 import { categoryKeySchema } from './category';
@@ -38,7 +44,15 @@ import {
 } from './place';
 
 /** What kind of thing a search result denotes. */
-export const SEARCH_RESULT_KINDS = ['place', 'address', 'street', 'locality', 'region', 'country', 'poi'] as const;
+export const SEARCH_RESULT_KINDS = [
+  'place',
+  'address',
+  'street',
+  'locality',
+  'region',
+  'country',
+  'poi',
+] as const;
 export type SearchResultKind = (typeof SEARCH_RESULT_KINDS)[number];
 
 /** Where a search candidate came from. Open-ended: a new provider is not a contract change. */
@@ -161,13 +175,18 @@ export const searchParametersSchema = z
       [query.west, query.south, query.east, query.north].every((value) => value !== undefined),
     { message: 'a viewport needs west, south, east and north', path: ['west'] },
   )
-  .refine((query) => query.south === undefined || query.north === undefined || query.south <= query.north, {
-    message: 'south must not be north of north',
-    path: ['south'],
-  })
+  .refine(
+    (query) => query.south === undefined || query.north === undefined || query.south <= query.north,
+    {
+      message: 'south must not be north of north',
+      path: ['south'],
+    },
+  )
   .refine(
     (query) =>
-      query.south === undefined || query.north === undefined || query.north - query.south <= MAX_BOUNDS_SPAN_DEGREES,
+      query.south === undefined ||
+      query.north === undefined ||
+      query.north - query.south <= MAX_BOUNDS_SPAN_DEGREES,
     { message: 'the viewport is too tall', path: ['north'] },
   )
   .refine(
@@ -185,7 +204,10 @@ export type SearchParameters = z.input<typeof searchParametersSchema>;
  * Exactly one biasing strategy applies at a time, strongest first: `near` beats
  * `viewport`, and neither is a filter — both only re-rank.
  */
-export type SearchQuery = Omit<SearchParameters, 'q' | 'latitude' | 'longitude' | 'west' | 'south' | 'east' | 'north'> & {
+export type SearchQuery = Omit<
+  SearchParameters,
+  'q' | 'latitude' | 'longitude' | 'west' | 'south' | 'east' | 'north'
+> & {
   query: string;
   /** Bias results toward this coordinate. */
   near?: GeoCoordinate;
@@ -200,7 +222,9 @@ export function searchParametersOf(query: SearchQuery): SearchParameters {
     ...rest,
     q: text,
     ...(near ? { latitude: near.latitude, longitude: near.longitude } : {}),
-    ...(viewport ? { west: viewport.west, south: viewport.south, east: viewport.east, north: viewport.north } : {}),
+    ...(viewport
+      ? { west: viewport.west, south: viewport.south, east: viewport.east, north: viewport.north }
+      : {}),
   };
 }
 
@@ -220,7 +244,14 @@ export type ReverseGeocodeQuery = z.input<typeof reverseGeocodeQuerySchema>;
 const addressPartSchema = z.string().trim().min(1).max(256).optional();
 
 /** The fields a structured lookup may name. */
-export const STRUCTURED_GEOCODE_FIELDS = ['street', 'houseNumber', 'city', 'region', 'postalCode', 'countryCode'] as const;
+export const STRUCTURED_GEOCODE_FIELDS = [
+  'street',
+  'houseNumber',
+  'city',
+  'region',
+  'postalCode',
+  'countryCode',
+] as const;
 
 /** `GET /geocode/structured` — an address lookup with the parts already separated. */
 export const structuredGeocodeQuerySchema = z

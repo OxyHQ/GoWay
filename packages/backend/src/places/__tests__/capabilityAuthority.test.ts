@@ -56,7 +56,10 @@ describe('assertableVerification', () => {
   it('never returns a tier the caller could not have earned', () => {
     // The set the function can return is the `actor`-origin set, and nothing
     // else. `oxy_verified` and `external_source` are not in it.
-    expect([...ASSERTABLE_VERIFICATIONS].sort()).toEqual(['business_asserted', 'community_reported']);
+    expect([...ASSERTABLE_VERIFICATIONS].sort()).toEqual([
+      'business_asserted',
+      'community_reported',
+    ]);
     expect(ASSERTABLE_VERIFICATIONS).not.toContain('oxy_verified' as AssertableVerification);
   });
 });

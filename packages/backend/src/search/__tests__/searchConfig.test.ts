@@ -29,10 +29,9 @@ describe('parseSearchConfig', () => {
   });
 
   it('reads an ordered, de-duplicated provider list', () => {
-    expect(parseSearchConfig({ SEARCH_PROVIDERS: 'nominatim, photon ,nominatim' }).providers).toEqual([
-      'nominatim',
-      'photon',
-    ]);
+    expect(
+      parseSearchConfig({ SEARCH_PROVIDERS: 'nominatim, photon ,nominatim' }).providers,
+    ).toEqual(['nominatim', 'photon']);
   });
 
   it('refuses a provider it has no adapter for', () => {
@@ -40,20 +39,30 @@ describe('parseSearchConfig', () => {
   });
 
   it('treats an empty value as unset so the default applies', () => {
-    const config = parseSearchConfig({ SEARCH_PROVIDERS: '', SEARCH_TIMEOUT_MS: '', SEARCH_PHOTON_BASE_URL: '' });
+    const config = parseSearchConfig({
+      SEARCH_PROVIDERS: '',
+      SEARCH_TIMEOUT_MS: '',
+      SEARCH_PHOTON_BASE_URL: '',
+    });
     expect(config.providers).toEqual(['photon']);
     expect(config.timeoutMs).toBe(4_000);
     expect(config.photon.baseUrl).toBe('https://photon.komoot.io');
   });
 
   it('accepts a self-hosted instance behind a path and trims the trailing slash', () => {
-    const config = parseSearchConfig({ SEARCH_PHOTON_BASE_URL: 'https://maps.example.com/photon/' });
+    const config = parseSearchConfig({
+      SEARCH_PHOTON_BASE_URL: 'https://maps.example.com/photon/',
+    });
     expect(config.photon.baseUrl).toBe('https://maps.example.com/photon');
   });
 
   it('refuses a base URL carrying credentials, a query or a fragment', () => {
-    expect(() => parseSearchConfig({ SEARCH_PHOTON_BASE_URL: 'https://user:pass@maps.example.com' })).toThrow();
-    expect(() => parseSearchConfig({ SEARCH_PHOTON_BASE_URL: 'https://maps.example.com?key=abc' })).toThrow();
+    expect(() =>
+      parseSearchConfig({ SEARCH_PHOTON_BASE_URL: 'https://user:pass@maps.example.com' }),
+    ).toThrow();
+    expect(() =>
+      parseSearchConfig({ SEARCH_PHOTON_BASE_URL: 'https://maps.example.com?key=abc' }),
+    ).toThrow();
     expect(() => parseSearchConfig({ SEARCH_PHOTON_BASE_URL: 'ftp://maps.example.com' })).toThrow();
   });
 
@@ -69,8 +78,13 @@ describe('parseSearchConfig', () => {
   });
 
   it('reads the Photon language whitelist', () => {
-    expect(parseSearchConfig({ SEARCH_PHOTON_LANGUAGES: 'en,es' }).photon.languages).toEqual(['en', 'es']);
-    expect(() => parseSearchConfig({ SEARCH_PHOTON_LANGUAGES: 'english' })).toThrow(/photonLanguages/);
+    expect(parseSearchConfig({ SEARCH_PHOTON_LANGUAGES: 'en,es' }).photon.languages).toEqual([
+      'en',
+      'es',
+    ]);
+    expect(() => parseSearchConfig({ SEARCH_PHOTON_LANGUAGES: 'english' })).toThrow(
+      /photonLanguages/,
+    );
   });
 
   it('carries the Nominatim contact address the usage policy asks for', () => {
@@ -83,7 +97,10 @@ describe('parseSearchConfig', () => {
   });
 
   it('allows the cache to be switched off', () => {
-    const config = parseSearchConfig({ SEARCH_CACHE_TTL_SECONDS: '0', SEARCH_CACHE_MAX_ENTRIES: '0' });
+    const config = parseSearchConfig({
+      SEARCH_CACHE_TTL_SECONDS: '0',
+      SEARCH_CACHE_MAX_ENTRIES: '0',
+    });
     expect(config.cacheTtlSeconds).toBe(0);
     expect(config.cacheMaxEntries).toBe(0);
   });

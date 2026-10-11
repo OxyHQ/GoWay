@@ -17,7 +17,15 @@
  * React children at a coordinate, so GoWay's markers ARE Bloom's markers on
  * native, identical to web.
  */
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { View, type NativeSyntheticEvent } from 'react-native';
 import {
   Camera,
@@ -118,7 +126,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // view is a truthful starting frame. Identical to the web fork.
   const start = isDrawableCoordinate(initialViewport) ? initialViewport : DEFAULT_VIEWPORT;
   if (start !== initialViewport) {
-    reportMapDefect('viewport:initial', 'initialViewport is not drawable; opened on the default camera.');
+    reportMapDefect(
+      'viewport:initial',
+      'initialViewport is not drawable; opened on the default camera.',
+    );
   }
 
   const resolvedAppearance = appearance ?? (theme.isDark ? 'dark' : 'light');
@@ -166,7 +177,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         // Same rule as the web fork — see `shared.ts` → `isDrawableCoordinate`.
         // The engine differs; the contract the two forks present does not.
         if (!isDrawableCoordinate(coordinate)) {
-          reportMapDefect('moveTo', `Ignored moveTo: target is not drawable (${describeNumbers(coordinate)}).`);
+          reportMapDefect(
+            'moveTo',
+            `Ignored moveTo: target is not drawable (${describeNumbers(coordinate)}).`,
+          );
           return;
         }
         const viewport = isViewport(target) ? target : undefined;
@@ -191,7 +205,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         // Before `isDegenerateBounds`, which answers `false` for a NaN box
         // because every comparison against NaN is false.
         if (!isDrawableBounds(bounds)) {
-          reportMapDefect('fitBounds', `Ignored fitBounds: box is not drawable (${describeNumbers(bounds)}).`);
+          reportMapDefect(
+            'fitBounds',
+            `Ignored fitBounds: box is not drawable (${describeNumbers(bounds)}).`,
+          );
           return;
         }
         const fitPadding = resolvePadding(options?.padding, DEFAULT_FIT_PADDING);
@@ -331,7 +348,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       if (!press) return;
       const coordinate = fromLngLat(event.nativeEvent.lngLat);
       if (!isDrawableCoordinate(coordinate)) {
-        reportMapDefect('press:coordinate', 'Ignored a map press: the engine reported a non-drawable coordinate.');
+        reportMapDefect(
+          'press:coordinate',
+          'Ignored a map press: the engine reported a non-drawable coordinate.',
+        );
         return;
       }
       const map = mapRef.current;
@@ -379,8 +399,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               }
             }),
           );
-          const label = pickLabelFeature(labels, { x, y }, (target) =>
-            projected.get(pointKey(target)) ?? null,
+          const label = pickLabelFeature(
+            labels,
+            { x, y },
+            (target) => projected.get(pointKey(target)) ?? null,
           );
           press({ coordinate, ...(label ? { label } : {}) });
         })

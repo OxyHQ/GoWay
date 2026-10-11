@@ -17,13 +17,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import {
-  GOWAY_INK,
-  GOWAY_MARK,
-  GOWAY_PATHS,
-  GOWAY_WORDMARK,
-  aspectRatio,
-} from '../artwork';
+import { GOWAY_INK, GOWAY_MARK, GOWAY_PATHS, GOWAY_WORDMARK, aspectRatio } from '../artwork';
 
 const GLOBAL_CSS = join(import.meta.dir, '..', '..', '..', 'global.css');
 

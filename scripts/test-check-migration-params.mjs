@@ -55,7 +55,9 @@ async function expectVerdict(name, files, expectedExit, expectedFragment) {
     return;
   }
   if (!output.includes(expectedFragment)) {
-    failures.push(`${name}: output does not contain ${JSON.stringify(expectedFragment)}.\n${output}`);
+    failures.push(
+      `${name}: output does not contain ${JSON.stringify(expectedFragment)}.\n${output}`,
+    );
   }
 }
 
@@ -85,8 +87,10 @@ await expectVerdict(
 await expectVerdict(
   'placeholder-in-second-file',
   {
-    '0000_clean.sql': '-- oxy:deploy-phase=pre\nCREATE TABLE "a" ("id" text PRIMARY KEY NOT NULL);\n',
-    '0001_dirty.sql': '-- oxy:deploy-phase=pre\nALTER TABLE "a" ADD CONSTRAINT "c" CHECK ("id" <> $2);\n',
+    '0000_clean.sql':
+      '-- oxy:deploy-phase=pre\nCREATE TABLE "a" ("id" text PRIMARY KEY NOT NULL);\n',
+    '0001_dirty.sql':
+      '-- oxy:deploy-phase=pre\nALTER TABLE "a" ADD CONSTRAINT "c" CHECK ("id" <> $2);\n',
   },
   1,
   '0001_dirty.sql',
@@ -131,7 +135,9 @@ const missingRoot = await mkdtemp(fixturePrefix);
 created.push(missingRoot);
 const missing = run(missingRoot);
 if (missing.exitCode !== 1 || !missing.output.includes('cannot be listed')) {
-  failures.push(`missing-drizzle-folder: expected a refusal, got exit ${missing.exitCode}.\n${missing.output}`);
+  failures.push(
+    `missing-drizzle-folder: expected a refusal, got exit ${missing.exitCode}.\n${missing.output}`,
+  );
 }
 
 // ── Must PASS ──────────────────────────────────────────────────────────────

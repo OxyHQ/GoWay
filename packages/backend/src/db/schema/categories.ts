@@ -40,7 +40,16 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { check, foreignKey, index, integer, jsonb, pgTable, primaryKey, text } from 'drizzle-orm/pg-core';
+import {
+  check,
+  foreignKey,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+} from 'drizzle-orm/pg-core';
 import { createdAt, generatedId, updatedAt } from '@oxy.so/db';
 import {
   CATEGORY_ICONS,
@@ -84,9 +93,11 @@ export const placeCategories = pgTable(
      * the snapshot (`~/Oxy/docs/postgres-and-drizzle.md`). `restrict`: a
      * parent with children is never deleted out from under them.
      */
-    foreignKey({ name: 'place_categories_parent_fk', columns: [table.parentKey], foreignColumns: [table.key] }).onDelete(
-      'restrict',
-    ),
+    foreignKey({
+      name: 'place_categories_parent_fk',
+      columns: [table.parentKey],
+      foreignColumns: [table.key],
+    }).onDelete('restrict'),
     check(
       'place_categories_key_check',
       sql`${table.key} ~ '${sql.raw(CATEGORY_KEY_SQL_PATTERN)}' and char_length(${table.key}) <= ${sql.raw(String(MAX_CATEGORY_KEY_LENGTH))}`,
@@ -124,8 +135,14 @@ export const placeCategoryLabels = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
-    primaryKey({ name: 'place_category_labels_pkey', columns: [table.categoryKey, table.language] }),
-    check('place_category_labels_language_check', sql`${table.language} ~ '${sql.raw(LANGUAGE_TAG_SQL_PATTERN)}'`),
+    primaryKey({
+      name: 'place_category_labels_pkey',
+      columns: [table.categoryKey, table.language],
+    }),
+    check(
+      'place_category_labels_language_check',
+      sql`${table.language} ~ '${sql.raw(LANGUAGE_TAG_SQL_PATTERN)}'`,
+    ),
     /**
      * Trimmed, non-empty, NFC and bounded: one label is one string, so `Café`
      * composed and `Café` decomposed are never two spellings of one label.
@@ -155,7 +172,10 @@ export const placeCategoryOsmTags = pgTable(
     createdAt: createdAt(),
   },
   (table) => [
-    check('place_category_osm_tags_tag_check', sql`${table.tag} ~ '${sql.raw(OSM_TAG_SQL_PATTERN)}'`),
+    check(
+      'place_category_osm_tags_tag_check',
+      sql`${table.tag} ~ '${sql.raw(OSM_TAG_SQL_PATTERN)}'`,
+    ),
     index('place_category_osm_tags_category_idx').on(table.categoryKey),
   ],
 );
@@ -188,7 +208,14 @@ export const placeCategoryEvents = pgTable(
   },
   (table) => [
     closedSet('place_category_events_action_check', table.action, CATEGORY_EVENT_ACTIONS),
-    check('place_category_events_changes_array_check', sql`jsonb_typeof(${table.changes}) = 'array'`),
-    index('place_category_events_category_created_idx').on(table.categoryKey, table.createdAt, table.id),
+    check(
+      'place_category_events_changes_array_check',
+      sql`jsonb_typeof(${table.changes}) = 'array'`,
+    ),
+    index('place_category_events_category_created_idx').on(
+      table.categoryKey,
+      table.createdAt,
+      table.id,
+    ),
   ],
 );

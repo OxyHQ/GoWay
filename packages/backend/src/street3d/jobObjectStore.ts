@@ -102,7 +102,8 @@ export function createS3JobObjectStore(options: S3JobObjectStoreOptions): JobObj
         throw new Error(`An object exceeded the ${maxBytes}-byte read ceiling.`);
       }
       const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.byteLength > maxBytes) throw new Error(`An object exceeded the ${maxBytes}-byte read ceiling.`);
+      if (bytes.byteLength > maxBytes)
+        throw new Error(`An object exceeded the ${maxBytes}-byte read ceiling.`);
       return bytes;
     },
 
@@ -148,7 +149,8 @@ export function createS3JobObjectStore(options: S3JobObjectStoreOptions): JobObj
         });
         if (!response.ok) await failure(response, 'a LIST');
         const xml = await response.text();
-        for (const match of xml.matchAll(/<Key>([^<]+)<\/Key>/g)) keys.push(decodeXml(match[1] as string));
+        for (const match of xml.matchAll(/<Key>([^<]+)<\/Key>/g))
+          keys.push(decodeXml(match[1] as string));
         token = /<IsTruncated>true<\/IsTruncated>/.test(xml)
           ? (/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/.exec(xml)?.[1] ?? undefined)
           : undefined;

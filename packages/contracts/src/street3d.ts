@@ -251,7 +251,10 @@ export type StreetCoverage = z.infer<typeof streetCoverageSchema>;
  */
 export const streetCoverageQuerySchema = geoBoundingBoxSchema
   .strict()
-  .refine((box) => box.south <= box.north, { message: 'south must not be north of north', path: ['south'] });
+  .refine((box) => box.south <= box.north, {
+    message: 'south must not be north of north',
+    path: ['south'],
+  });
 export type StreetCoverageQuery = z.input<typeof streetCoverageQuerySchema>;
 
 /** Whether a coverage box fits inside a span cap, in degrees on either axis. */
@@ -260,7 +263,12 @@ export function coverageBoxWithin(box: StreetCoverageQuery, maxSpanDegrees: numb
 }
 
 /** Why a scene is being reported. */
-export const STREET_SCENE_REPORT_REASONS = ['privacy', 'inappropriate', 'inaccurate', 'other'] as const;
+export const STREET_SCENE_REPORT_REASONS = [
+  'privacy',
+  'inappropriate',
+  'inaccurate',
+  'other',
+] as const;
 export type StreetSceneReportReason = (typeof STREET_SCENE_REPORT_REASONS)[number];
 
 /** The body of `POST /street3d/scenes/{sceneId}/reports`. */

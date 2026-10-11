@@ -33,7 +33,13 @@ import { CategoryShortcuts } from './CategoryShortcuts';
 import { PlaceDetails } from './PlaceDetails';
 import { PlaceRow, SearchResultRow } from './ResultRows';
 import { SearchField } from './SearchField';
-import { FailureState, NoResultsState, NothingHereState, PanelState, ZoomForMoreState } from './states';
+import {
+  FailureState,
+  NoResultsState,
+  NothingHereState,
+  PanelState,
+  ZoomForMoreState,
+} from './states';
 import type { ExploreController } from './useExplore';
 import { RiMapPin2Line } from '@oxy.so/bloom/icons/RiMapPin2Line';
 
@@ -112,13 +118,17 @@ function BrowseBody({ explore }: { explore: ExploreController }) {
   }, [center, places]);
 
   if (explore.placesFailure) {
-    return <FailureState kind={explore.placesFailure} what="places here" onRetry={explore.retryPlaces} />;
+    return (
+      <FailureState kind={explore.placesFailure} what="places here" onRetry={explore.retryPlaces} />
+    );
   }
   if (explore.placesBusy && places.length === 0) return <RowSkeletons />;
   // The action is offered only when it would DO something: re-committing the
   // same box produces the same query key and therefore no request at all.
   if (places.length === 0) {
-    return <NothingHereState onSearchArea={explore.areaMoved ? explore.searchThisArea : undefined} />;
+    return (
+      <NothingHereState onSearchArea={explore.areaMoved ? explore.searchThisArea : undefined} />
+    );
   }
 
   return (
@@ -195,8 +205,9 @@ function SelectionBody({ explore }: { explore: ExploreController }) {
       <View className="gap-space-8 px-space-16 pb-space-16">
         <Text className="text-sectionTitle text-foreground">{result.displayName}</Text>
         <Text className="text-bodySmall text-muted-foreground">
-          {[result.context?.city, result.context?.region, result.context?.country].filter(Boolean).join(', ') ||
-            'Area'}
+          {[result.context?.city, result.context?.region, result.context?.country]
+            .filter(Boolean)
+            .join(', ') || 'Area'}
         </Text>
         <View className="flex-row">
           <Button
@@ -228,7 +239,11 @@ function SelectionBody({ explore }: { explore: ExploreController }) {
     return explore.selectedPlaceBusy ? (
       <DetailSkeleton />
     ) : (
-      <PanelState icon={RiMapPin2Line} title="This place isn't available" testID="state-place-missing" />
+      <PanelState
+        icon={RiMapPin2Line}
+        title="This place isn't available"
+        testID="state-place-missing"
+      />
     );
   }
 

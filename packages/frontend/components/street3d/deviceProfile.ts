@@ -43,15 +43,22 @@ export const MAX_PIXEL_RATIO = 1.5;
 export const PREVIEW_PIXEL_RATIO = 1;
 
 export function assessDevice(signals: DeviceSignals): DeviceAssessment {
-  const dpr = Number.isFinite(signals.devicePixelRatio) && signals.devicePixelRatio > 0 ? signals.devicePixelRatio : 1;
+  const dpr =
+    Number.isFinite(signals.devicePixelRatio) && signals.devicePixelRatio > 0
+      ? signals.devicePixelRatio
+      : 1;
   if (!signals.webgl2) return { tier: 'unsupported', pixelRatio: 1, reasons: ['no WebGL2'] };
 
   const reasons: string[] = [];
-  if (signals.deviceMemoryGb !== undefined && signals.deviceMemoryGb <= 2) reasons.push(`deviceMemory ${signals.deviceMemoryGb} GB`);
-  if (signals.hardwareConcurrency !== undefined && signals.hardwareConcurrency <= 2) reasons.push(`${signals.hardwareConcurrency} cores`);
+  if (signals.deviceMemoryGb !== undefined && signals.deviceMemoryGb <= 2)
+    reasons.push(`deviceMemory ${signals.deviceMemoryGb} GB`);
+  if (signals.hardwareConcurrency !== undefined && signals.hardwareConcurrency <= 2)
+    reasons.push(`${signals.hardwareConcurrency} cores`);
   if (signals.saveData) reasons.push('save-data');
-  if (signals.effectiveType && SLOW_CONNECTIONS.has(signals.effectiveType)) reasons.push(`connection ${signals.effectiveType}`);
-  if (signals.maxTextureSize !== undefined && signals.maxTextureSize < 4096) reasons.push(`max texture ${signals.maxTextureSize}`);
+  if (signals.effectiveType && SLOW_CONNECTIONS.has(signals.effectiveType))
+    reasons.push(`connection ${signals.effectiveType}`);
+  if (signals.maxTextureSize !== undefined && signals.maxTextureSize < 4096)
+    reasons.push(`max texture ${signals.maxTextureSize}`);
   // A decoded splat is several times its compressed size; past ~1/40th of
   // reported memory for the COMPRESSED file, the full scene does not fit
   // comfortably beside the browser itself.
@@ -63,6 +70,7 @@ export function assessDevice(signals: DeviceSignals): DeviceAssessment {
     reasons.push('splat too large for reported memory');
   }
 
-  if (reasons.length > 0) return { tier: 'preview', pixelRatio: Math.min(dpr, PREVIEW_PIXEL_RATIO), reasons };
+  if (reasons.length > 0)
+    return { tier: 'preview', pixelRatio: Math.min(dpr, PREVIEW_PIXEL_RATIO), reasons };
   return { tier: 'full', pixelRatio: Math.min(dpr, MAX_PIXEL_RATIO), reasons };
 }

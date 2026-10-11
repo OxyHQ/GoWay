@@ -209,7 +209,12 @@ const PLACE_LABELS: Labels = {
 function generic(locale: string): CategoryPresentation {
   // An unknown category is drawn at the "local detail" tier rather than hidden:
   // GoWay adding a category server-side must not silently empty the map.
-  return { key: 'place', label: localizedLabel(PLACE_LABELS, locale), icon: RiMapPin2Line, minZoom: 14 };
+  return {
+    key: 'place',
+    label: localizedLabel(PLACE_LABELS, locale),
+    icon: RiMapPin2Line,
+    minZoom: 14,
+  };
 }
 
 /**

@@ -26,7 +26,11 @@ const COLORS = new Proxy({}, { get: (_, key) => `role:${String(key)}` }) as Cove
  * developer may have pointed at a local scene — with both placements, every
  * area state, and one area that improves a visible scene.
  */
-function scene(id: string, placement: 'precise' | 'approximate', longitude: number): StreetSceneSummary {
+function scene(
+  id: string,
+  placement: 'precise' | 'approximate',
+  longitude: number,
+): StreetSceneSummary {
   const box = { west: longitude - 0.001, south: 41.38, east: longitude + 0.001, north: 41.382 };
   return {
     id,
@@ -35,14 +39,27 @@ function scene(id: string, placement: 'precise' | 'approximate', longitude: numb
     bounds: box,
     footprint: {
       type: 'Polygon',
-      coordinates: [[[box.west, box.south], [box.east, box.south], [box.east, box.north], [box.west, box.north], [box.west, box.south]]],
+      coordinates: [
+        [
+          [box.west, box.south],
+          [box.east, box.south],
+          [box.east, box.north],
+          [box.west, box.north],
+          [box.west, box.south],
+        ],
+      ],
     },
     placement,
     publishedAt: '2026-09-01T00:00:00.000Z',
   };
 }
 
-function area(id: string, state: StreetCoverageArea['state'], longitude: number, extra: Partial<StreetCoverageArea> = {}): StreetCoverageArea {
+function area(
+  id: string,
+  state: StreetCoverageArea['state'],
+  longitude: number,
+  extra: Partial<StreetCoverageArea> = {},
+): StreetCoverageArea {
   return {
     id,
     state,
@@ -57,7 +74,12 @@ const COVERAGE: StreetCoverage = {
   scenes: [scene('s-precise', 'precise', 2.17), scene('s-approx', 'approximate', 2.18)],
   areas: [
     ...STREET_COVERAGE_AREA_STATES.map((state, index) =>
-      area(`a-${state}`, state, 2.16 + index * 0.002, state === 'at_risk' ? { atRiskUntil: '2026-10-20T00:00:00.000Z' } : {}),
+      area(
+        `a-${state}`,
+        state,
+        2.16 + index * 0.002,
+        state === 'at_risk' ? { atRiskUntil: '2026-10-20T00:00:00.000Z' } : {},
+      ),
     ),
     area('a-improving', 'partial', 2.17, { sceneId: 's-precise' }),
   ],
@@ -91,8 +113,9 @@ describe('coverageOverlays', () => {
     expect(byId.get('street3d-scenes-precise-fill')?.kind).toBe('fill');
     expect(byId.get('street3d-scenes-precise-line')?.paint?.color).toBe('role:primary');
     expect(byId.get('street3d-scenes-approximate-line')?.paint?.color).toBe('role:textSecondary');
-    expect(byId.get('street3d-scenes-approximate-line')?.paint?.width ?? 0)
-      .toBeLessThan(byId.get('street3d-scenes-precise-line')?.paint?.width ?? 0);
+    expect(byId.get('street3d-scenes-approximate-line')?.paint?.width ?? 0).toBeLessThan(
+      byId.get('street3d-scenes-precise-line')?.paint?.width ?? 0,
+    );
   });
 
   test('an area that improves a visible scene is not drawn twice', () => {
@@ -101,7 +124,9 @@ describe('coverageOverlays', () => {
     expect(improving).toBeDefined();
     const overlays = coverageOverlays(coverage, COLORS);
     const ids = overlays.flatMap((overlay) =>
-      (overlay.data as GeoJSON.FeatureCollection).features.map((feature) => feature.properties?.areaId),
+      (overlay.data as GeoJSON.FeatureCollection).features.map(
+        (feature) => feature.properties?.areaId,
+      ),
     );
     expect(ids).not.toContain(improving?.id);
   });
@@ -157,10 +182,7 @@ describe('areas and points', () => {
     expect(found?.id).toBe(atRisk!.id);
     expect(areaContaining(coverage.areas, { latitude: 0, longitude: 0 })).toBeNull();
 
-    const overlapping = [
-      { ...atRisk!, id: 'p', state: 'partial' as const },
-      atRisk!,
-    ];
+    const overlapping = [{ ...atRisk!, id: 'p', state: 'partial' as const }, atRisk!];
     expect(areaContaining(overlapping, atRisk!.center)?.id).toBe(atRisk!.id);
   });
 

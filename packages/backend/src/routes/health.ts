@@ -49,14 +49,18 @@ healthRouter.get('/health', async (_request, response) => {
  */
 healthRouter.get('/ready', async (_request, response) => {
   if (!(await checkPostgresHealth())) {
-    response.status(503).json({ status: 'not-ready', reason: 'database-unreachable' } satisfies ReadinessResponse);
+    response
+      .status(503)
+      .json({ status: 'not-ready', reason: 'database-unreachable' } satisfies ReadinessResponse);
     return;
   }
   try {
     await assertMigrationsCurrent();
   } catch (error) {
     logger.warn({ err: error }, 'Not ready — migrations are not current');
-    response.status(503).json({ status: 'not-ready', reason: 'migrations-pending' } satisfies ReadinessResponse);
+    response
+      .status(503)
+      .json({ status: 'not-ready', reason: 'migrations-pending' } satisfies ReadinessResponse);
     return;
   }
   response.json({ status: 'ready' } satisfies ReadinessResponse);

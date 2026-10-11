@@ -159,8 +159,19 @@ describe('capabilities', () => {
     const place = toPlace(row(), {
       sources: [],
       capabilities: [
-        capability({ id: 'a', namespace: 'payments.faircoin', capability: 'accepted', key: 'payments.faircoin.accepted' }),
-        capability({ id: 'b', namespace: 'commerce.mercaria', capability: 'store', key: 'commerce.mercaria.store', value: 's-1' }),
+        capability({
+          id: 'a',
+          namespace: 'payments.faircoin',
+          capability: 'accepted',
+          key: 'payments.faircoin.accepted',
+        }),
+        capability({
+          id: 'b',
+          namespace: 'commerce.mercaria',
+          capability: 'store',
+          key: 'commerce.mercaria.store',
+          value: 's-1',
+        }),
       ],
     });
     expect(place.capabilities.map((entry) => entry.key)).toEqual([
@@ -174,7 +185,14 @@ describe('capabilities', () => {
       sources: [SOURCE],
       capabilities: [
         capability({ id: 'a' }),
-        capability({ id: 'b', capability: 'rate', key: 'payments.faircoin.rate', value: 1.02, verification: 'external_source', placeSourceId: 'src-1' }),
+        capability({
+          id: 'b',
+          capability: 'rate',
+          key: 'payments.faircoin.rate',
+          value: 1.02,
+          verification: 'external_source',
+          placeSourceId: 'src-1',
+        }),
       ],
     });
     const [accepted, rate] = place.capabilities;
@@ -191,7 +209,13 @@ describe('capabilities', () => {
 
 describe('sources', () => {
   it('publishes the freshest observation first', () => {
-    const stale = { ...SOURCE, id: 'src-2', source: 'wikidata', sourceId: 'Q1', observedAt: new Date('2020-01-01T00:00:00.000Z') };
+    const stale = {
+      ...SOURCE,
+      id: 'src-2',
+      source: 'wikidata',
+      sourceId: 'Q1',
+      observedAt: new Date('2020-01-01T00:00:00.000Z'),
+    };
     const place = toPlace(row(), { sources: [stale, SOURCE], capabilities: [] });
     expect(place.sources.map((source) => source.source)).toEqual(['openstreetmap', 'wikidata']);
   });
@@ -218,7 +242,11 @@ describe('names', () => {
     // The whole reason `localizedName` is a second field. If `name` moved with
     // the request, one cached `Place` would mean different things to different
     // holders of it — and `@goway.to/sdk@0.1.0` consumers read `name`.
-    const place = toPlace(row(), { sources: [], capabilities: [], names: NAMES }, { publishAll: true, locale: 'es' });
+    const place = toPlace(
+      row(),
+      { sources: [], capabilities: [], names: NAMES },
+      { publishAll: true, locale: 'es' },
+    );
     expect(place.name).toBe('Bar Pinotxo');
     expect(place.localizedName?.name).toBe('Museo Picasso');
   });
@@ -229,31 +257,50 @@ describe('names', () => {
     const list = toPlace(row(), { sources: [], capabilities: [], names: NAMES });
     expect(list).not.toHaveProperty('names');
 
-    const detail = toPlace(row(), { sources: [], capabilities: [], names: [] }, { publishAll: true });
+    const detail = toPlace(
+      row(),
+      { sources: [], capabilities: [], names: [] },
+      { publishAll: true },
+    );
     expect(detail.names).toEqual([]);
   });
 
   it('resolves without publishing the set, which is what a viewport read does', () => {
-    const place = toPlace(row(), { sources: [], capabilities: [], names: NAMES }, { publishAll: false, locale: 'en' });
+    const place = toPlace(
+      row(),
+      { sources: [], capabilities: [], names: NAMES },
+      { publishAll: false, locale: 'en' },
+    );
     expect(place).not.toHaveProperty('names');
-    expect(place.localizedName).toEqual({ language: 'en', name: 'Picasso Museum', source: 'openstreetmap' });
+    expect(place.localizedName).toEqual({
+      language: 'en',
+      name: 'Picasso Museum',
+      source: 'openstreetmap',
+    });
   });
 
   it('omits `localizedName` when the place has no name in that language', () => {
     // Not an empty string and not some other language: absent, so
     // `placeDisplayName` publishes the default and the client renders the name
     // on the shopfront.
-    const place = toPlace(row(), { sources: [], capabilities: [], names: NAMES }, { publishAll: true, locale: 'ja' });
+    const place = toPlace(
+      row(),
+      { sources: [], capabilities: [], names: NAMES },
+      { publishAll: true, locale: 'ja' },
+    );
     expect(place).not.toHaveProperty('localizedName');
   });
 
-  it('publishes GoWay\'s correction above the source spelling of the same language', () => {
+  it("publishes GoWay's correction above the source spelling of the same language", () => {
     const place = toPlace(
       row(),
       {
         sources: [],
         capabilities: [],
-        names: [nameRow({ name: 'Museo Picaso' }), nameRow({ name: 'Museo Picasso', source: 'goway' })],
+        names: [
+          nameRow({ name: 'Museo Picaso' }),
+          nameRow({ name: 'Museo Picasso', source: 'goway' }),
+        ],
       },
       { publishAll: true, locale: 'es' },
     );

@@ -31,7 +31,20 @@ import {
 } from './testDatabase';
 
 /** The label languages the seed carries for every category, `en` first. */
-const SEEDED_LANGUAGES = ['en', 'ar', 'bn', 'ca', 'de', 'es', 'fr', 'hi', 'ja', 'pt-BR', 'ru', 'zh-Hans'];
+const SEEDED_LANGUAGES = [
+  'en',
+  'ar',
+  'bn',
+  'ca',
+  'de',
+  'es',
+  'fr',
+  'hi',
+  'ja',
+  'pt-BR',
+  'ru',
+  'zh-Hans',
+];
 
 let suite: SuiteDatabase | null = null;
 let sql: postgres.Sql;
@@ -48,10 +61,15 @@ afterAll(async () => {
 });
 
 /** The error a statement raised, or `null` when it succeeded. */
-async function refusal(statement: Promise<unknown>): Promise<{ constraint?: string; code?: string } | null> {
+async function refusal(
+  statement: Promise<unknown>,
+): Promise<{ constraint?: string; code?: string } | null> {
   return statement.then(
     () => null,
-    (error: { constraint_name?: string; code?: string }) => ({ constraint: error.constraint_name, code: error.code }),
+    (error: { constraint_name?: string; code?: string }) => ({
+      constraint: error.constraint_name,
+      code: error.code,
+    }),
   );
 }
 
@@ -69,17 +87,23 @@ function insertPlace(categories: (string | null)[]) {
 
 describe('the seed', () => {
   it('is the 0.3.0 taxonomy, entry for entry, in all twelve label languages', async () => {
-    const categories = await sql<{ key: string; parent_key: string | null; icon: string; position: number; status: string }[]>`
+    const categories = await sql<
+      { key: string; parent_key: string | null; icon: string; position: number; status: string }[]
+    >`
       SELECT key, parent_key, icon, position, status FROM place_categories
     `;
     const labels = await sql<{ category_key: string; language: string; label: string }[]>`
       SELECT category_key, language, label FROM place_category_labels
     `;
-    const tags = await sql<{ category_key: string; tag: string }[]>`SELECT category_key, tag FROM place_category_osm_tags`;
+    const tags = await sql<
+      { category_key: string; tag: string }[]
+    >`SELECT category_key, tag FROM place_category_osm_tags`;
 
     const ordinal = new Map<string | null, number>();
     const expected = SEEDED_CATEGORIES.map((entry) => {
-      const parent = entry.key.includes('.') ? entry.key.slice(0, entry.key.lastIndexOf('.')) : null;
+      const parent = entry.key.includes('.')
+        ? entry.key.slice(0, entry.key.lastIndexOf('.'))
+        : null;
       const position = ordinal.get(parent) ?? 0;
       ordinal.set(parent, position + 1);
       return {
@@ -101,15 +125,24 @@ describe('the seed', () => {
           icon: row.icon,
           position: row.position,
           status: row.status,
-          labels: Object.fromEntries(labels.filter((label) => label.category_key === row.key).map((label) => [label.language, label.label])),
-          osmTags: tags.filter((tag) => tag.category_key === row.key).map((tag) => tag.tag).sort(),
+          labels: Object.fromEntries(
+            labels
+              .filter((label) => label.category_key === row.key)
+              .map((label) => [label.language, label.label]),
+          ),
+          osmTags: tags
+            .filter((tag) => tag.category_key === row.key)
+            .map((tag) => tag.tag)
+            .sort(),
         },
       ]),
     );
 
     expect(categories.length).toBe(148);
     expect(labels.length).toBe(148 * SEEDED_LANGUAGES.length);
-    expect(tags.length).toBe(SEEDED_CATEGORIES.reduce((total, entry) => total + entry.osmTags.length, 0));
+    expect(tags.length).toBe(
+      SEEDED_CATEGORIES.reduce((total, entry) => total + entry.osmTags.length, 0),
+    );
     for (const entry of expected) expect(actual.get(entry.key)).toEqual(entry);
   });
 
@@ -157,20 +190,31 @@ describe('places.categories', () => {
     await sql`UPDATE places SET categories = ARRAY['food.automat', 'food.cafe'] WHERE id = ${carrier!.id}`;
     await sql`UPDATE place_categories SET status = 'deprecated' WHERE key = 'food.automat'`;
 
-    const [read] = await sql<{ categories: string[] }[]>`SELECT categories FROM places WHERE id = ${carrier!.id}`;
+    const [read] = await sql<
+      { categories: string[] }[]
+    >`SELECT categories FROM places WHERE id = ${carrier!.id}`;
     expect(read?.categories).toEqual(['food.automat', 'food.cafe']);
-    expect(await refusal(sql`UPDATE places SET name = 'Renamed' WHERE id = ${carrier!.id}`)).toBeNull();
     expect(
-      await refusal(sql`UPDATE places SET categories = ARRAY['food.automat', 'food.bakery'] WHERE id = ${carrier!.id}`),
+      await refusal(sql`UPDATE places SET name = 'Renamed' WHERE id = ${carrier!.id}`),
     ).toBeNull();
-    expect(await refusal(sql`UPDATE places SET categories = ARRAY['food.automat'] WHERE id = ${other!.id}`)).toEqual({
+    expect(
+      await refusal(
+        sql`UPDATE places SET categories = ARRAY['food.automat', 'food.bakery'] WHERE id = ${carrier!.id}`,
+      ),
+    ).toBeNull();
+    expect(
+      await refusal(
+        sql`UPDATE places SET categories = ARRAY['food.automat'] WHERE id = ${other!.id}`,
+      ),
+    ).toEqual({
       constraint: 'places_categories_taxonomy_guard',
       code: '23514',
     });
   });
 
   it('is enforced by the trigger alone: the static CHECK is gone', async () => {
-    const [check] = await sql`SELECT 1 FROM pg_constraint WHERE conname = 'places_categories_taxonomy_check'`;
+    const [check] =
+      await sql`SELECT 1 FROM pg_constraint WHERE conname = 'places_categories_taxonomy_check'`;
     expect(check).toBeUndefined();
   });
 });
@@ -181,35 +225,56 @@ describe('the taxonomy tables', () => {
       await tx`INSERT INTO place_categories (key, parent_key, icon) VALUES ('shop.kites', 'shop', 'shop')`;
       await tx`INSERT INTO place_category_labels (category_key, language, label) VALUES ('shop.kites', 'es', 'Cometas')`;
     });
-    expect(await refusal(created)).toEqual({ constraint: 'place_categories_english_label', code: '23514' });
+    expect(await refusal(created)).toEqual({
+      constraint: 'place_categories_english_label',
+      code: '23514',
+    });
   });
 
   it('refuses removing or moving an English label', async () => {
-    expect(await refusal(sql`DELETE FROM place_category_labels WHERE category_key = 'food.cafe' AND language = 'en'`)).toEqual({
+    expect(
+      await refusal(
+        sql`DELETE FROM place_category_labels WHERE category_key = 'food.cafe' AND language = 'en'`,
+      ),
+    ).toEqual({
       constraint: 'place_categories_english_label',
       code: '23514',
     });
     expect(
-      await refusal(sql`UPDATE place_category_labels SET language = 'en-GB' WHERE category_key = 'food.cafe' AND language = 'en'`),
+      await refusal(
+        sql`UPDATE place_category_labels SET language = 'en-GB' WHERE category_key = 'food.cafe' AND language = 'en'`,
+      ),
     ).toEqual({ constraint: 'place_categories_english_label', code: '23514' });
   });
 
   it('refuses a parent that is not the key minus its last segment, and a malformed key', async () => {
-    expect(await refusal(sql`INSERT INTO place_categories (key, parent_key, icon) VALUES ('shop.kites', 'food', 'shop')`)).toEqual({
+    expect(
+      await refusal(
+        sql`INSERT INTO place_categories (key, parent_key, icon) VALUES ('shop.kites', 'food', 'shop')`,
+      ),
+    ).toEqual({
       constraint: 'place_categories_parent_check',
       code: '23514',
     });
-    expect(await refusal(sql`INSERT INTO place_categories (key, icon) VALUES ('Shop', 'shop')`)).toMatchObject({
+    expect(
+      await refusal(sql`INSERT INTO place_categories (key, icon) VALUES ('Shop', 'shop')`),
+    ).toMatchObject({
       code: '23514',
     });
-    expect(await refusal(sql`INSERT INTO place_categories (key, parent_key, icon) VALUES ('kites.box', 'kites', 'shop')`)).toMatchObject({
+    expect(
+      await refusal(
+        sql`INSERT INTO place_categories (key, parent_key, icon) VALUES ('kites.box', 'kites', 'shop')`,
+      ),
+    ).toMatchObject({
       code: '23503',
     });
   });
 
   it('never renames a key, and never deletes one a place carries', async () => {
     await insertPlace(['food.cafe']);
-    expect(await refusal(sql`UPDATE place_categories SET key = 'food.coffee' WHERE key = 'food.cafe'`)).toEqual({
+    expect(
+      await refusal(sql`UPDATE place_categories SET key = 'food.coffee' WHERE key = 'food.cafe'`),
+    ).toEqual({
       constraint: 'place_categories_key_immutable',
       code: '23001',
     });
@@ -227,7 +292,9 @@ describe('the taxonomy tables', () => {
 
   it('files one OpenStreetMap tag under one category', async () => {
     expect(
-      await refusal(sql`INSERT INTO place_category_osm_tags (tag, category_key) VALUES ('amenity=cafe', 'food.bar')`),
+      await refusal(
+        sql`INSERT INTO place_category_osm_tags (tag, category_key) VALUES ('amenity=cafe', 'food.bar')`,
+      ),
     ).toMatchObject({ code: '23505' });
   });
 });
@@ -258,7 +325,9 @@ describe('the deploy onto the places-platform release', () => {
                (SELECT count(*)::int FROM pg_constraint WHERE conname = 'places_categories_taxonomy_check') AS check
       `;
       expect(counts).toEqual({ places: 50, categories: 148, check: 0 });
-      const [pending] = await old<{ applied: number }[]>`SELECT count(*)::int AS applied FROM drizzle.__drizzle_migrations`;
+      const [pending] = await old<
+        { applied: number }[]
+      >`SELECT count(*)::int AS applied FROM drizzle.__drizzle_migrations`;
       expect(pending?.applied).toBe(18);
     } finally {
       await old.end({ timeout: 5 });

@@ -91,7 +91,9 @@ export function serializeQuery(query: Readonly<Record<string, QueryValue>>): str
     if (Array.isArray(value)) {
       const members = [...new Set(value as readonly string[])].sort();
       if (members.length === 0) continue;
-      parts.push(`${encodeURIComponent(key)}=${members.map((member) => encodeURIComponent(member)).join(',')}`);
+      parts.push(
+        `${encodeURIComponent(key)}=${members.map((member) => encodeURIComponent(member)).join(',')}`,
+      );
       continue;
     }
     parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
@@ -108,11 +110,16 @@ export function serializeQuery(query: Readonly<Record<string, QueryValue>>): str
  * it is a property of URLs rather than of ids.
  */
 export function pathSegment(id: string, what: string): string {
-  if (id === '.' || id === '..') throw new GoWayValidationError(`path.${what}: must not be a dot segment`);
+  if (id === '.' || id === '..')
+    throw new GoWayValidationError(`path.${what}: must not be a dot segment`);
   return encodeURIComponent(id);
 }
 
-export function buildUrl(apiBaseUrl: string, path: string, query: Readonly<Record<string, QueryValue>>): string {
+export function buildUrl(
+  apiBaseUrl: string,
+  path: string,
+  query: Readonly<Record<string, QueryValue>>,
+): string {
   const serialized = serializeQuery(query);
   return `${apiBaseUrl}${GOWAY_API_BASE_PATH}${path}${serialized === '' ? '' : `?${serialized}`}`;
 }
@@ -123,7 +130,7 @@ const MAX_SERVER_MESSAGE_LENGTH = 200;
 /** A server message made safe to put in an error: a string, one line, bounded. */
 function safeServerMessage(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  // eslint-disable-next-line no-control-regex
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: strips control characters from a server message on purpose
   const flattened = value.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
   if (flattened === '') return null;
   return flattened.length > MAX_SERVER_MESSAGE_LENGTH
@@ -147,7 +154,10 @@ const DELTA_SECONDS = /^\d+$/;
  * or HTTP-date), then `RateLimit-Reset`, then the `reset=` member of a combined
  * `RateLimit` header. `null` when none is present and parseable.
  */
-export function parseRetryAfterSeconds(headers: GoWayHeadersLike | undefined, now = Date.now()): number | null {
+export function parseRetryAfterSeconds(
+  headers: GoWayHeadersLike | undefined,
+  now = Date.now(),
+): number | null {
   const retryAfter = readHeader(headers, 'retry-after');
   if (retryAfter) {
     if (DELTA_SECONDS.test(retryAfter)) return Number(retryAfter);
@@ -207,17 +217,24 @@ export function errorForResponse(
     return apiError(envelope.code, message, { status, details, retryAfterSeconds });
   }
 
-  if (status === 400 || status === 422) return new GoWayValidationError(message, { status, code: 'bad_request' });
+  if (status === 400 || status === 422)
+    return new GoWayValidationError(message, { status, code: 'bad_request' });
   if (status === 401) return new GoWayUnauthorizedError(message, { status });
   if (status === 403) return new GoWayForbiddenError(message, { status });
   if (status === 429) {
-    return new GoWayRateLimitError(message, { status, retryAfterSeconds: parseRetryAfterSeconds(headers) });
+    return new GoWayRateLimitError(message, {
+      status,
+      retryAfterSeconds: parseRetryAfterSeconds(headers),
+    });
   }
   if (status === 404 || status === 410) {
-    return new GoWayApiError(`GoWay API responded with HTTP ${status} without a GoWay error body`, { status });
+    return new GoWayApiError(`GoWay API responded with HTTP ${status} without a GoWay error body`, {
+      status,
+    });
   }
   if (status === 408) return new GoWayApiError(message, { status, retryable: true });
-  if (status >= 500 && status !== 501 && status !== 505) return new GoWayUnavailableError(message, { status });
+  if (status >= 500 && status !== 501 && status !== 505)
+    return new GoWayUnavailableError(message, { status });
   return new GoWayApiError(message, { status });
 }
 
@@ -243,7 +260,10 @@ export function interpretResponse<T>(
   if (schema === null) return undefined;
 
   if (body === undefined) {
-    throw new GoWayResponseError(`GoWay returned HTTP ${status} with an empty or unparseable body`, { status });
+    throw new GoWayResponseError(
+      `GoWay returned HTTP ${status} with an empty or unparseable body`,
+      { status },
+    );
   }
   return validResponse(schema, body, status);
 }
@@ -260,8 +280,16 @@ type Cancellation = 'aborted' | 'timeout';
  * outlive either. The signal is also passed to `fetch` so a real one releases
  * the connection.
  */
-export async function request<T>(config: TransportConfig, spec: RequestSpec, schema: z.ZodType<T>): Promise<T>;
-export async function request(config: TransportConfig, spec: RequestSpec, schema: null): Promise<void>;
+export async function request<T>(
+  config: TransportConfig,
+  spec: RequestSpec,
+  schema: z.ZodType<T>,
+): Promise<T>;
+export async function request(
+  config: TransportConfig,
+  spec: RequestSpec,
+  schema: null,
+): Promise<void>;
 export async function request<T>(
   config: TransportConfig,
   spec: RequestSpec,

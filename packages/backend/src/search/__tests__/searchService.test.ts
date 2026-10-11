@@ -82,8 +82,15 @@ const FAIRCOIN: PlaceCapability = {
   observedAt: '2026-06-01T00:00:00.000Z',
 };
 
-function service(providers: SearchProvider[], overrides: Partial<typeof CONFIG> = {}): SearchService {
-  return createSearchService({ providers, categories: seeded, config: { ...CONFIG, ...overrides } });
+function service(
+  providers: SearchProvider[],
+  overrides: Partial<typeof CONFIG> = {},
+): SearchService {
+  return createSearchService({
+    providers,
+    categories: seeded,
+    config: { ...CONFIG, ...overrides },
+  });
 }
 
 const QUERY = { query: 'cafe', limit: 10, offset: 0 };
@@ -92,7 +99,9 @@ describe('degradation', () => {
   it('answers with a short list and names the degraded provider', async () => {
     const failing = stub('photon', { forward: new UpstreamError('photon', 'timeout') });
     const working = stub('nominatim', {
-      forward: [candidate({ source: 'nominatim', name: 'Cafè Sagrada', latitude: 41.4, longitude: 2.17 })],
+      forward: [
+        candidate({ source: 'nominatim', name: 'Cafè Sagrada', latitude: 41.4, longitude: 2.17 }),
+      ],
     });
 
     const results = await service([failing, working]).forward(QUERY, { gateway: fakeGateway() });
@@ -107,19 +116,26 @@ describe('degradation', () => {
 
   it('fails only when nothing at all answered', async () => {
     const service_ = service([stub('photon', { forward: new UpstreamError('photon', 'timeout') })]);
-    const error = await service_.forward(QUERY, { gateway: fakeGateway() }).catch((raised: unknown) => raised);
+    const error = await service_
+      .forward(QUERY, { gateway: fakeGateway() })
+      .catch((raised: unknown) => raised);
 
     expect(isApiError(error)).toBe(true);
     expect(isApiError(error) ? error.code : null).toBe('provider_unavailable');
   });
 
   it('reports a rate limit in preference to a generic outage', async () => {
-    const limited = new UpstreamError('nominatim', 'rate_limited', { status: 429, retryAfterSeconds: 11 });
+    const limited = new UpstreamError('nominatim', 'rate_limited', {
+      status: 429,
+      retryAfterSeconds: 11,
+    });
     const service_ = service([
       stub('photon', { forward: new UpstreamError('photon', 'network') }),
       stub('nominatim', { forward: limited }),
     ]);
-    const error = await service_.forward(QUERY, { gateway: fakeGateway() }).catch((raised: unknown) => raised);
+    const error = await service_
+      .forward(QUERY, { gateway: fakeGateway() })
+      .catch((raised: unknown) => raised);
 
     // Only one of the two failures carries an actionable retry delay.
     expect(isApiError(error) ? error.code : null).toBe('rate_limited');
@@ -128,7 +144,15 @@ describe('degradation', () => {
 
   it('treats GoWay Places as one more provider when the database is down', async () => {
     const provider = stub('photon', {
-      forward: [candidate({ source: 'photon', name: 'Cafè', latitude: 41.4, longitude: 2.17, osmId: 'node/1' })],
+      forward: [
+        candidate({
+          source: 'photon',
+          name: 'Cafè',
+          latitude: 41.4,
+          longitude: 2.17,
+          osmId: 'node/1',
+        }),
+      ],
     });
     const results = await service([provider]).search(
       { ...QUERY, near: { latitude: 41.4, longitude: 2.17 } },
@@ -148,11 +172,21 @@ describe('GoWay Places enrichment', () => {
     const place = buildPlace({
       id: 'p1',
       name: 'Cafè Sagrada',
-      sources: [{ source: 'openstreetmap', sourceId: 'node/1', observedAt: '2026-05-01T00:00:00.000Z' }],
+      sources: [
+        { source: 'openstreetmap', sourceId: 'node/1', observedAt: '2026-05-01T00:00:00.000Z' },
+      ],
       capabilities: [FAIRCOIN],
     });
     const provider = stub('photon', {
-      forward: [candidate({ source: 'photon', name: 'Cafè Sagrada', latitude: 41.4, longitude: 2.17, osmId: 'node/1' })],
+      forward: [
+        candidate({
+          source: 'photon',
+          name: 'Cafè Sagrada',
+          latitude: 41.4,
+          longitude: 2.17,
+          osmId: 'node/1',
+        }),
+      ],
     });
 
     const results = await service([provider]).forward(QUERY, {
@@ -175,12 +209,26 @@ describe('GoWay Places enrichment', () => {
     const place = buildPlace({ id: 'p1', name: 'Cafè Sagrada' });
     const nearby: PlaceWithDistance[] = [{ ...place, distanceMeters: 12 }];
     const provider = stub('photon', {
-      forward: [candidate({ source: 'photon', name: 'Cafè Sagrada', latitude: 41.4036, longitude: 2.1744, osmId: 'node/1' })],
+      forward: [
+        candidate({
+          source: 'photon',
+          name: 'Cafè Sagrada',
+          latitude: 41.4036,
+          longitude: 2.1744,
+          osmId: 'node/1',
+        }),
+      ],
     });
 
     const results = await service([provider]).search(
       { ...QUERY, near: { latitude: 41.4036, longitude: 2.1744 } },
-      { gateway: fakeGateway({ bindings: { 'openstreetmap:node/1': 'p1' }, places: [place], nearby }) },
+      {
+        gateway: fakeGateway({
+          bindings: { 'openstreetmap:node/1': 'p1' },
+          places: [place],
+          nearby,
+        }),
+      },
     );
 
     expect(results.results).toHaveLength(1);
@@ -191,10 +239,26 @@ describe('GoWay Places enrichment', () => {
   it('groups the same OSM element reported by two geocoders', async () => {
     const results = await service([
       stub('photon', {
-        forward: [candidate({ source: 'photon', name: 'Berlin', latitude: 52.5, longitude: 13.4, osmId: 'node/240109189' })],
+        forward: [
+          candidate({
+            source: 'photon',
+            name: 'Berlin',
+            latitude: 52.5,
+            longitude: 13.4,
+            osmId: 'node/240109189',
+          }),
+        ],
       }),
       stub('nominatim', {
-        forward: [candidate({ source: 'nominatim', name: 'Berlin, Deutschland', latitude: 52.5, longitude: 13.4, osmId: 'node/240109189' })],
+        forward: [
+          candidate({
+            source: 'nominatim',
+            name: 'Berlin, Deutschland',
+            latitude: 52.5,
+            longitude: 13.4,
+            osmId: 'node/240109189',
+          }),
+        ],
       }),
     ]).forward({ query: 'berlin', limit: 10, offset: 0 }, { gateway: fakeGateway() });
 
@@ -208,14 +272,29 @@ describe('GoWay Places enrichment', () => {
   it('never groups two records on their names alone', async () => {
     const provider = stub('photon', {
       forward: [
-        candidate({ source: 'photon', name: 'Farmacia', latitude: 41.4036, longitude: 2.1744, osmId: 'node/1' }),
+        candidate({
+          source: 'photon',
+          name: 'Farmacia',
+          latitude: 41.4036,
+          longitude: 2.1744,
+          osmId: 'node/1',
+        }),
         // The same name, fifty metres away — in Spain that is two pharmacies,
         // and merging them would collapse two real businesses into one record.
-        candidate({ source: 'photon', name: 'Farmacia', latitude: 41.4041, longitude: 2.1744, osmId: 'node/2' }),
+        candidate({
+          source: 'photon',
+          name: 'Farmacia',
+          latitude: 41.4041,
+          longitude: 2.1744,
+          osmId: 'node/2',
+        }),
       ],
     });
 
-    const results = await service([provider]).forward({ query: 'farmacia', limit: 10, offset: 0 }, { gateway: fakeGateway() });
+    const results = await service([provider]).forward(
+      { query: 'farmacia', limit: 10, offset: 0 },
+      { gateway: fakeGateway() },
+    );
     expect(results.results).toHaveLength(2);
   });
 
@@ -223,14 +302,31 @@ describe('GoWay Places enrichment', () => {
     const withCapability = buildPlace({ id: 'p1', capabilities: [FAIRCOIN] });
     const provider = stub('photon', {
       forward: [
-        candidate({ source: 'photon', name: 'Accepts FairCoin', latitude: 41.4, longitude: 2.17, osmId: 'node/1' }),
-        candidate({ source: 'photon', name: 'Unknown to GoWay', latitude: 41.41, longitude: 2.17, osmId: 'node/2' }),
+        candidate({
+          source: 'photon',
+          name: 'Accepts FairCoin',
+          latitude: 41.4,
+          longitude: 2.17,
+          osmId: 'node/1',
+        }),
+        candidate({
+          source: 'photon',
+          name: 'Unknown to GoWay',
+          latitude: 41.41,
+          longitude: 2.17,
+          osmId: 'node/2',
+        }),
       ],
     });
 
     const results = await service([provider]).forward(
       { ...QUERY, capabilities: ['payments.faircoin.accepted'] },
-      { gateway: fakeGateway({ bindings: { 'openstreetmap:node/1': 'p1' }, places: [withCapability] }) },
+      {
+        gateway: fakeGateway({
+          bindings: { 'openstreetmap:node/1': 'p1' },
+          places: [withCapability],
+        }),
+      },
     );
 
     expect(results.results).toHaveLength(1);
@@ -249,7 +345,15 @@ describe('GoWay Places enrichment', () => {
       ],
     });
     const provider = stub('photon', {
-      forward: [candidate({ source: 'photon', name: 'Stopped', latitude: 41.4, longitude: 2.17, osmId: 'node/1' })],
+      forward: [
+        candidate({
+          source: 'photon',
+          name: 'Stopped',
+          latitude: 41.4,
+          longitude: 2.17,
+          osmId: 'node/1',
+        }),
+      ],
     });
 
     const results = await service([provider]).forward(
@@ -265,9 +369,20 @@ describe('GoWay Places enrichment', () => {
     // dropped the locale on its way through, and every reconciled result lost
     // its `localizedName`.
     const provider = stub('photon', {
-      forward: [candidate({ source: 'photon', name: 'Museu', latitude: 41.4, longitude: 2.17, osmId: 'node/1' })],
+      forward: [
+        candidate({
+          source: 'photon',
+          name: 'Museu',
+          latitude: 41.4,
+          longitude: 2.17,
+          osmId: 'node/1',
+        }),
+      ],
     });
-    const gateway = fakeGateway({ bindings: { 'openstreetmap:node/1': 'p1' }, places: [buildPlace({ id: 'p1' })] });
+    const gateway = fakeGateway({
+      bindings: { 'openstreetmap:node/1': 'p1' },
+      places: [buildPlace({ id: 'p1' })],
+    });
     await service([provider]).forward({ ...QUERY, locale: 'es' }, { gateway });
 
     expect(gateway.placeLocales).toEqual(['es']);
@@ -277,14 +392,29 @@ describe('GoWay Places enrichment', () => {
     const names = ['A', 'B', 'C', 'D', 'E'];
     const provider = stub('photon', {
       forward: names.map((name, index) =>
-        candidate({ source: 'photon', name, latitude: 41.4, longitude: 2.17, osmId: `node/${String(index)}` }),
+        candidate({
+          source: 'photon',
+          name,
+          latitude: 41.4,
+          longitude: 2.17,
+          osmId: `node/${String(index)}`,
+        }),
       ),
     });
     const subject = service([provider]);
 
-    const first = await subject.forward({ query: 'x', limit: 2, offset: 0 }, { gateway: fakeGateway() });
-    const second = await subject.forward({ query: 'x', limit: 2, offset: 2 }, { gateway: fakeGateway() });
-    const last = await subject.forward({ query: 'x', limit: 2, offset: 4 }, { gateway: fakeGateway() });
+    const first = await subject.forward(
+      { query: 'x', limit: 2, offset: 0 },
+      { gateway: fakeGateway() },
+    );
+    const second = await subject.forward(
+      { query: 'x', limit: 2, offset: 2 },
+      { gateway: fakeGateway() },
+    );
+    const last = await subject.forward(
+      { query: 'x', limit: 2, offset: 4 },
+      { gateway: fakeGateway() },
+    );
 
     expect(first.results.map((result) => result.displayName)).toEqual(['A', 'B']);
     expect(first.hasMore).toBe(true);
@@ -296,8 +426,20 @@ describe('GoWay Places enrichment', () => {
   it('resolves every source reference in one round trip', async () => {
     const provider = stub('photon', {
       forward: [
-        candidate({ source: 'photon', name: 'A', latitude: 41.4, longitude: 2.17, osmId: 'node/1' }),
-        candidate({ source: 'photon', name: 'B', latitude: 41.5, longitude: 2.17, osmId: 'node/2' }),
+        candidate({
+          source: 'photon',
+          name: 'A',
+          latitude: 41.4,
+          longitude: 2.17,
+          osmId: 'node/1',
+        }),
+        candidate({
+          source: 'photon',
+          name: 'B',
+          latitude: 41.5,
+          longitude: 2.17,
+          osmId: 'node/2',
+        }),
       ],
     });
     const gateway = fakeGateway();
@@ -312,8 +454,20 @@ describe('biasing', () => {
   it('re-ranks toward a coordinate without filtering anything out', async () => {
     const provider = stub('photon', {
       forward: [
-        candidate({ source: 'photon', name: 'Far', latitude: 52.5, longitude: 13.4, osmId: 'node/1' }),
-        candidate({ source: 'photon', name: 'Near', latitude: 41.4036, longitude: 2.1744, osmId: 'node/2' }),
+        candidate({
+          source: 'photon',
+          name: 'Far',
+          latitude: 52.5,
+          longitude: 13.4,
+          osmId: 'node/1',
+        }),
+        candidate({
+          source: 'photon',
+          name: 'Near',
+          latitude: 41.4036,
+          longitude: 2.1744,
+          osmId: 'node/2',
+        }),
       ],
     });
 
@@ -330,8 +484,20 @@ describe('biasing', () => {
   it('leaves the provider order alone when there is nothing to bias toward', async () => {
     const provider = stub('photon', {
       forward: [
-        candidate({ source: 'photon', name: 'First', latitude: 52.5, longitude: 13.4, osmId: 'node/1' }),
-        candidate({ source: 'photon', name: 'Second', latitude: 41.4, longitude: 2.17, osmId: 'node/2' }),
+        candidate({
+          source: 'photon',
+          name: 'First',
+          latitude: 52.5,
+          longitude: 13.4,
+          osmId: 'node/1',
+        }),
+        candidate({
+          source: 'photon',
+          name: 'Second',
+          latitude: 41.4,
+          longitude: 2.17,
+          osmId: 'node/2',
+        }),
       ],
     });
     const results = await service([provider]).forward(QUERY, { gateway: fakeGateway() });
@@ -342,11 +508,27 @@ describe('biasing', () => {
 describe('endpoint modes', () => {
   it('keeps a provider that forbids autocomplete out of the interactive search', async () => {
     const interactive = stub('photon', {
-      forward: [candidate({ source: 'photon', name: 'A', latitude: 41.4, longitude: 2.17, osmId: 'node/1' })],
+      forward: [
+        candidate({
+          source: 'photon',
+          name: 'A',
+          latitude: 41.4,
+          longitude: 2.17,
+          osmId: 'node/1',
+        }),
+      ],
     });
     const explicitOnly = stub('nominatim', {
       allowsInteractiveSearch: false,
-      forward: [candidate({ source: 'nominatim', name: 'B', latitude: 41.5, longitude: 2.17, osmId: 'node/2' })],
+      forward: [
+        candidate({
+          source: 'nominatim',
+          name: 'B',
+          latitude: 41.5,
+          longitude: 2.17,
+          osmId: 'node/2',
+        }),
+      ],
     });
     const subject = service([interactive, explicitOnly]);
 
@@ -361,7 +543,16 @@ describe('endpoint modes', () => {
   it('blends GoWay places into a reverse lookup', async () => {
     const place = buildPlace({ id: 'p1', name: 'Cafè Sagrada' });
     const provider = stub('photon', {
-      reverse: [candidate({ source: 'photon', name: 'Carrer de Mallorca', latitude: 41.4036, longitude: 2.1744, osmId: 'node/9', kind: 'street' })],
+      reverse: [
+        candidate({
+          source: 'photon',
+          name: 'Carrer de Mallorca',
+          latitude: 41.4036,
+          longitude: 2.1744,
+          osmId: 'node/9',
+          kind: 'street',
+        }),
+      ],
     });
 
     const results = await service([provider]).reverse(
@@ -376,7 +567,16 @@ describe('endpoint modes', () => {
   it('skips a provider with no structured endpoint rather than degrading it', async () => {
     const unsupported = stub('nominatim', { structured: 'unsupported' });
     const supported = stub('photon', {
-      structured: [candidate({ source: 'photon', name: '401 Carrer de Mallorca', latitude: 41.4, longitude: 2.17, osmId: 'node/1', kind: 'address' })],
+      structured: [
+        candidate({
+          source: 'photon',
+          name: '401 Carrer de Mallorca',
+          latitude: 41.4,
+          longitude: 2.17,
+          osmId: 'node/1',
+          kind: 'address',
+        }),
+      ],
     });
 
     const results = await service([unsupported, supported]).structured(
@@ -398,7 +598,15 @@ describe('caching', () => {
       onForward: () => {
         calls += 1;
       },
-      forward: [candidate({ source: 'photon', name: 'Berlin', latitude: 52.5, longitude: 13.4, osmId: 'node/1' })],
+      forward: [
+        candidate({
+          source: 'photon',
+          name: 'Berlin',
+          latitude: 52.5,
+          longitude: 13.4,
+          osmId: 'node/1',
+        }),
+      ],
     });
     const subject = service([provider]);
 
@@ -417,7 +625,12 @@ describe('caching', () => {
       forward: [],
     });
     const subject = service([provider]);
-    const query = { query: 'berlin', limit: 10, offset: 0, near: { latitude: 52.5, longitude: 13.4 } };
+    const query = {
+      query: 'berlin',
+      limit: 10,
+      offset: 0,
+      near: { latitude: 52.5, longitude: 13.4 },
+    };
 
     await subject.forward(query, { gateway: fakeGateway() });
     await subject.forward(query, { gateway: fakeGateway() });
@@ -449,11 +662,17 @@ describe('caching', () => {
 
 describe('placeMatchesText', () => {
   it('folds diacritics so "cafe" finds "Café"', () => {
-    expect(placeMatchesText(buildPlace({ name: 'Café Sagrada' }), 'cafe', SEEDED_CATALOG)).toBe(true);
+    expect(placeMatchesText(buildPlace({ name: 'Café Sagrada' }), 'cafe', SEEDED_CATALOG)).toBe(
+      true,
+    );
   });
 
   it('matches on a category, by its label in every label language, and on the street', () => {
-    const place = buildPlace({ name: 'Nothing Relevant', categories: ['food.bakery'], address: { street: 'Gran Via' } });
+    const place = buildPlace({
+      name: 'Nothing Relevant',
+      categories: ['food.bakery'],
+      address: { street: 'Gran Via' },
+    });
     expect(placeMatchesText(place, 'bakery', SEEDED_CATALOG)).toBe(true);
     expect(placeMatchesText(place, 'panadería', SEEDED_CATALOG)).toBe(true);
     // A key is not a word anybody types.
@@ -470,7 +689,9 @@ describe('category filters the geocoders cannot express', () => {
       onForward: () => {
         seen.forwards += 1;
       },
-      forward: [candidate({ source: 'photon', name: 'Unrelated Hotel', latitude: 41.4, longitude: 2.17 })],
+      forward: [
+        candidate({ source: 'photon', name: 'Unrelated Hotel', latitude: 41.4, longitude: 2.17 }),
+      ],
     });
     return { seen, provider };
   };
@@ -480,11 +701,24 @@ describe('category filters the geocoders cannot express', () => {
     // A moderator's new category, mapped to no OSM tag.
     const catalog = catalogOf([
       ...seededCategories(),
-      { ...seededCategories()[0]!, key: 'food.supper_club', parent: 'food', osmTags: [], position: 9_999 },
+      {
+        ...seededCategories()[0]!,
+        key: 'food.supper_club',
+        parent: 'food',
+        osmTags: [],
+        position: 9_999,
+      },
     ]);
-    const subject = createSearchService({ providers: [provider], categories: async () => catalog, config: CONFIG });
+    const subject = createSearchService({
+      providers: [provider],
+      categories: async () => catalog,
+      config: CONFIG,
+    });
 
-    const results = await subject.forward({ ...QUERY, categories: ['food.supper_club'] }, { gateway: fakeGateway() });
+    const results = await subject.forward(
+      { ...QUERY, categories: ['food.supper_club'] },
+      { gateway: fakeGateway() },
+    );
 
     expect(seen.forwards).toBe(0);
     expect(results.results.map((item) => item.displayName)).not.toContain('Unrelated Hotel');
@@ -505,7 +739,10 @@ describe('category filters the geocoders cannot express', () => {
 
   it('still asks the geocoders when the category maps to OSM tags', async () => {
     const { seen, provider } = counting();
-    await service([provider]).forward({ ...QUERY, categories: ['food.cafe'] }, { gateway: fakeGateway() });
+    await service([provider]).forward(
+      { ...QUERY, categories: ['food.cafe'] },
+      { gateway: fakeGateway() },
+    );
     expect(seen.forwards).toBe(1);
   });
 });

@@ -94,7 +94,11 @@ describe('what is corrected rather than refused', () => {
     const params = Object.fromEntries(
       // `Object.fromEntries` over URLSearchParams keeps the LAST; the router
       // hands repeats over as an array, which is the shape that matters here.
-      [['lat', ['41.3874', '0']], ['lng', ['2.1686', '0']], ['zoom', ['14', '3']]],
+      [
+        ['lat', ['41.3874', '0']],
+        ['lng', ['2.1686', '0']],
+        ['zoom', ['14', '3']],
+      ],
     ) as Record<string, string[]>;
     expect(parseViewportFromParams(params)).toEqual({
       latitude: 41.3874,
@@ -117,10 +121,18 @@ describe('what is corrected rather than refused', () => {
   });
 
   test('bearing wraps and pitch clamps to the engines’ own ceiling', () => {
-    expect(parseViewportFromParams({ lat: '41.3', lng: '2.1', zoom: '12', bearing: '450' })?.bearing).toBe(90);
-    expect(parseViewportFromParams({ lat: '41.3', lng: '2.1', zoom: '12', bearing: '-90' })?.bearing).toBe(270);
-    expect(parseViewportFromParams({ lat: '41.3', lng: '2.1', zoom: '12', pitch: '85' })?.pitch).toBe(60);
-    expect(parseViewportFromParams({ lat: '41.3', lng: '2.1', zoom: '12', pitch: '-10' })?.pitch).toBe(0);
+    expect(
+      parseViewportFromParams({ lat: '41.3', lng: '2.1', zoom: '12', bearing: '450' })?.bearing,
+    ).toBe(90);
+    expect(
+      parseViewportFromParams({ lat: '41.3', lng: '2.1', zoom: '12', bearing: '-90' })?.bearing,
+    ).toBe(270);
+    expect(
+      parseViewportFromParams({ lat: '41.3', lng: '2.1', zoom: '12', pitch: '85' })?.pitch,
+    ).toBe(60);
+    expect(
+      parseViewportFromParams({ lat: '41.3', lng: '2.1', zoom: '12', pitch: '-10' })?.pitch,
+    ).toBe(0);
   });
 
   test('an unreadable bearing drops the bearing, not the frame', () => {

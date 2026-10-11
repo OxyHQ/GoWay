@@ -70,7 +70,9 @@ function status(
   };
 }
 
-export function contributionStatus(asset: Pick<CaptureAsset, 'state' | 'privacy'>): ContributionStatus {
+export function contributionStatus(
+  asset: Pick<CaptureAsset, 'state' | 'privacy'>,
+): ContributionStatus {
   const privacy = asset.privacy?.state ?? 'pending';
   const passed = privacy === 'passed';
 
@@ -98,7 +100,10 @@ export function contributionStatus(asset: Pick<CaptureAsset, 'state' | 'privacy'
     case 'integrated':
       return status('integrated', 'success', { privacyPassed: passed });
     case 'reconstruction_candidate':
-      return status('reconstructionCandidate', 'progress', { privacyPassed: passed, canStillHelp: true });
+      return status('reconstructionCandidate', 'progress', {
+        privacyPassed: passed,
+        canStillHelp: true,
+      });
     case 'waiting_for_overlap':
       return status('waitingForOverlap', 'progress', { privacyPassed: passed, canStillHelp: true });
     default:
@@ -106,7 +111,8 @@ export function contributionStatus(asset: Pick<CaptureAsset, 'state' | 'privacy'
   }
 
   // uploaded / validating / accepted: the privacy gate is the real state.
-  if (privacy === 'in_progress') return status('privacyProcessing', 'progress', { canStillHelp: true });
+  if (privacy === 'in_progress')
+    return status('privacyProcessing', 'progress', { canStillHelp: true });
   if (privacy === 'pending') {
     return asset.state === 'validating'
       ? status('checking', 'progress', { canStillHelp: true })
@@ -123,10 +129,13 @@ export function sourceExpiry(
   asset: Pick<CaptureAsset, 'state' | 'media'>,
   now: number = Date.now(),
 ): { expiresAt: string; protectedUntil?: string } | null {
-  if (asset.state === 'deleted' || asset.state === 'expired' || asset.state === 'abandoned') return null;
+  if (asset.state === 'deleted' || asset.state === 'expired' || asset.state === 'abandoned')
+    return null;
   const lifecycle = asset.media?.lifecycle;
   if (!lifecycle || lifecycle.deletedAt) return null;
   const protectedUntil =
-    lifecycle.protectedUntil && Date.parse(lifecycle.protectedUntil) > now ? lifecycle.protectedUntil : undefined;
+    lifecycle.protectedUntil && Date.parse(lifecycle.protectedUntil) > now
+      ? lifecycle.protectedUntil
+      : undefined;
   return { expiresAt: lifecycle.expiresAt, ...(protectedUntil ? { protectedUntil } : {}) };
 }

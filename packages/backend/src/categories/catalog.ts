@@ -91,7 +91,9 @@ export function catalogOf(categories: readonly ModerationCategory[]): CategoryCa
       else byTag.set(tag, category.key);
     }
   }
-  const expand = (keys: readonly string[]) => [...new Set(keys.flatMap((key) => taxonomy.descendants(key)))];
+  const expand = (keys: readonly string[]) => [
+    ...new Set(keys.flatMap((key) => taxonomy.descendants(key))),
+  ];
   return {
     taxonomy,
     page: (locale) => ({
@@ -106,7 +108,10 @@ export function catalogOf(categories: readonly ModerationCategory[]): CategoryCa
       nextCursor: null,
     }),
     moderationPage: (locale) => ({
-      items: categories.map((category) => ({ ...category, label: localizedLabel(category.labels, locale) })),
+      items: categories.map((category) => ({
+        ...category,
+        label: localizedLabel(category.labels, locale),
+      })),
       nextCursor: null,
     }),
     osmCategoryOf: (key, value) => byTag.get(`${key}=${value}`) ?? byKey.get(key),
@@ -156,7 +161,9 @@ export function createCategoryCatalogCache(options: {
 }
 
 /** The process's cache. */
-export const categoryCatalogs: CategoryCatalogCache = createCategoryCatalogCache({ ttlMs: CATEGORY_CATALOG_TTL_MS });
+export const categoryCatalogs: CategoryCatalogCache = createCategoryCatalogCache({
+  ttlMs: CATEGORY_CATALOG_TTL_MS,
+});
 
 /** The taxonomy as this process currently holds it. */
 export function categoryCatalog(db: DatabaseOrTransaction): Promise<CategoryCatalog> {
@@ -170,14 +177,22 @@ export function categoryCatalog(db: DatabaseOrTransaction): Promise<CategoryCata
  * `validation_failed` naming `field.N`. A deprecated key is a category: places
  * still carry it, and asking for them is a fair question.
  */
-export function assertCategoryFilter(catalog: CategoryCatalog, keys: readonly string[], field: string): void {
+export function assertCategoryFilter(
+  catalog: CategoryCatalog,
+  keys: readonly string[],
+  field: string,
+): void {
   keys.forEach((key, index) => {
     if (catalog.taxonomy.of(key) === undefined) {
-      throw new ApiError('validation_failed', `The request is not acceptable: ${field}.${index} is not a category.`, {
-        field: `${field}.${index}`,
-        issue: 'unknown_category',
-        issueCount: 1,
-      });
+      throw new ApiError(
+        'validation_failed',
+        `The request is not acceptable: ${field}.${index} is not a category.`,
+        {
+          field: `${field}.${index}`,
+          issue: 'unknown_category',
+          issueCount: 1,
+        },
+      );
     }
   });
 }

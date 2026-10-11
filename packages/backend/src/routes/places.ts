@@ -61,7 +61,13 @@
  * internal column as an API field.
  */
 
-import { Router, type RequestHandler, type Request, type Response, type NextFunction } from 'express';
+import {
+  Router,
+  type RequestHandler,
+  type Request,
+  type Response,
+  type NextFunction,
+} from 'express';
 import { z } from 'zod';
 import {
   accountClaimListQuerySchema,
@@ -192,14 +198,23 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
     route(async (request, response) => {
       const { cursor, limit, ...query } = parseQuery(nearbyPlacesQuerySchema, request.query);
       const db = getDb();
-      if (query.categories) assertCategoryFilter(await categoryCatalog(db), query.categories, 'categories');
+      if (query.categories)
+        assertCategoryFilter(await categoryCatalog(db), query.categories, 'categories');
       const binding = cursorBinding('places-nearby', query);
       const rows = await findPlacesNearby(db, {
         ...query,
         limit: limit + 1,
         after: decodeCursor(cursor, binding, nearbyKeysetSchema),
       });
-      response.json(pageOf(rows, limit, binding, (place) => [place.distanceMeters, place.id], (place) => place));
+      response.json(
+        pageOf(
+          rows,
+          limit,
+          binding,
+          (place) => [place.distanceMeters, place.id],
+          (place) => place,
+        ),
+      );
     }),
   );
 
@@ -210,14 +225,23 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
     route(async (request, response) => {
       const { cursor, limit, ...query } = parseQuery(placesInBoundsQuerySchema, request.query);
       const db = getDb();
-      if (query.categories) assertCategoryFilter(await categoryCatalog(db), query.categories, 'categories');
+      if (query.categories)
+        assertCategoryFilter(await categoryCatalog(db), query.categories, 'categories');
       const binding = cursorBinding('places-bounds', query);
       const rows = await findPlacesInBounds(db, {
         ...query,
         limit: limit + 1,
         after: decodeCursor(cursor, binding, boundsKeysetSchema),
       });
-      response.json(pageOf(rows, limit, binding, (place) => place.id, (place) => place));
+      response.json(
+        pageOf(
+          rows,
+          limit,
+          binding,
+          (place) => place.id,
+          (place) => place,
+        ),
+      );
     }),
   );
 
@@ -348,7 +372,10 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       assertPublished(lifecycle);
       const standing = await standingOn(approvedClaims, caller, accountRoles);
       if (standing.claimed && standing.callerRoles.length === 0) {
-        throw new ApiError('forbidden', 'This place is claimed; only an approved claimant may edit it.');
+        throw new ApiError(
+          'forbidden',
+          'This place is claimed; only an approved claimant may edit it.',
+        );
       }
 
       const actor: PlaceActor = {
@@ -464,7 +491,9 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
       assertPublished(lifecycle);
 
-      const verification = withdrawableVerification(await standingOn(approvedClaims, caller, accountRoles));
+      const verification = withdrawableVerification(
+        await standingOn(approvedClaims, caller, accountRoles),
+      );
       if (verification === null) {
         throw new ApiError(
           'forbidden',
@@ -509,7 +538,12 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       const binding = cursorBinding('place-revisions', { placeId });
       const db = getDb();
       assertPublished(await findPlaceLifecycle(db, placeId));
-      const revisions = await listPlaceRevisions(db, placeId, 'public', timeWindowOf(query, binding));
+      const revisions = await listPlaceRevisions(
+        db,
+        placeId,
+        'public',
+        timeWindowOf(query, binding),
+      );
       response.json(timePageOf(revisions, query.limit, binding));
     }),
   );
@@ -572,7 +606,15 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
         limit: query.limit + 1,
         after: decodeCursor(query.cursor, binding, hoursExceptionKeysetSchema),
       });
-      response.json(pageOf(rows, query.limit, binding, (row) => [row.startsOn, row.id], (row) => row));
+      response.json(
+        pageOf(
+          rows,
+          query.limit,
+          binding,
+          (row) => [row.startsOn, row.id],
+          (row) => row,
+        ),
+      );
     }),
   );
 
@@ -630,7 +672,9 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       const existing = await findHoursException(db, placeId, exceptionId);
       if (!existing) throw new ApiError('not_found', 'This place has no exception with that id.');
 
-      const verification = assertableVerification(await standingOn(approvedClaims, caller, accountRoles));
+      const verification = assertableVerification(
+        await standingOn(approvedClaims, caller, accountRoles),
+      );
       if (existing.verification !== verification) {
         throw new ApiError(
           'forbidden',
@@ -668,7 +712,9 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
       assertPublished(lifecycle);
 
-      const verification = withdrawableVerification(await standingOn(approvedClaims, caller, accountRoles));
+      const verification = withdrawableVerification(
+        await standingOn(approvedClaims, caller, accountRoles),
+      );
       if (verification === null) {
         throw new ApiError(
           'forbidden',
@@ -683,7 +729,10 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
         revisionAuthor(caller, 'api'),
       );
       if (!withdrawn) {
-        throw new ApiError('not_found', 'This place carries no business-asserted exception with that id.');
+        throw new ApiError(
+          'not_found',
+          'This place carries no business-asserted exception with that id.',
+        );
       }
       response.status(204).end();
     }),
@@ -721,10 +770,17 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       // is a 404 rather than the 500 a foreign-key violation would produce.
       assertPublished(await findPlaceLifecycle(db, placeId));
       if (!(await mayFileFor(caller, oxyAccountId, accountRoles))) {
-        throw new ApiError('forbidden', 'Only an owner or admin of that Oxy account may claim a place in its name.');
+        throw new ApiError(
+          'forbidden',
+          'Only an owner or admin of that Oxy account may claim a place in its name.',
+        );
       }
 
-      const claim = await requestClaim(db, { placeId, oxyAccountId, role: input.role }, revisionAuthor(caller, 'api'));
+      const claim = await requestClaim(
+        db,
+        { placeId, oxyAccountId, role: input.role },
+        revisionAuthor(caller, 'api'),
+      );
       response.status(201).json(claim);
     }),
   );
@@ -758,7 +814,10 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       // a stranger that an id they guessed is real.
       assertPublished(lifecycle);
       if (!(await mayActForAny(caller, claimantAccountIds, accountRoles))) {
-        throw new ApiError('forbidden', 'Claim details are visible only to an account that holds a claim on this place.');
+        throw new ApiError(
+          'forbidden',
+          'Claim details are visible only to an account that holds a claim on this place.',
+        );
       }
       response.json(timePageOf(claims, query.limit, binding));
     }),
@@ -780,16 +839,32 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
     '/claims',
     requireAuth,
     route(async (request, response) => {
-      const { oxyAccountId: requested, placeId, ...query } = parseQuery(accountClaimListQuerySchema, request.query);
+      const {
+        oxyAccountId: requested,
+        placeId,
+        ...query
+      } = parseQuery(accountClaimListQuerySchema, request.query);
       const caller = requiredOxyCaller(request);
       const oxyAccountId = requested ?? caller.oxyAccountId;
       if (!(await mayActFor(caller, oxyAccountId, accountRoles))) {
-        throw new ApiError('forbidden', 'You may list the claims of your own account or of one you act for.');
+        throw new ApiError(
+          'forbidden',
+          'You may list the claims of your own account or of one you act for.',
+        );
       }
       // Both accounts are in the binding, so a cursor minted for one session is
       // refused under another rather than resuming somebody else's list.
-      const binding = cursorBinding('account-claims', { oxyAccountId, placeId, session: caller.oxyAccountId });
-      const claims = await findAccountClaims(getDb(), oxyAccountId, placeId, timeWindowOf(query, binding));
+      const binding = cursorBinding('account-claims', {
+        oxyAccountId,
+        placeId,
+        session: caller.oxyAccountId,
+      });
+      const claims = await findAccountClaims(
+        getDb(),
+        oxyAccountId,
+        placeId,
+        timeWindowOf(query, binding),
+      );
       response.json(timePageOf(claims, query.limit, binding));
     }),
   );

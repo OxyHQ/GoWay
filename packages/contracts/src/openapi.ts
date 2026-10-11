@@ -165,7 +165,8 @@ export function buildOpenApiDocument(): JsonObject {
     info: {
       title: 'GoWay API',
       version: GOWAY_API_VERSION,
-      summary: "Oxy's open map platform: Places, capability filters, search, geocoding, routing and Street 3D.",
+      summary:
+        "Oxy's open map platform: Places, capability filters, search, geocoding, routing and Street 3D.",
       description:
         'Generated from `packages/contracts` — the zod schemas the API validates with and `@goway.to/sdk` parses with. ' +
         'Success bodies are the contract value with no envelope; every error is `{ "error": { "code", "message", "details"? } }`; ' +

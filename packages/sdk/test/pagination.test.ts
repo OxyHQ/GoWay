@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createGoWayClient, GoWayResponseError, iterateGoWayPages, type GoWayFetch } from '../src/index';
+import {
+  createGoWayClient,
+  GoWayResponseError,
+  iterateGoWayPages,
+  type GoWayFetch,
+} from '../src/index';
 import { page, PLACE_WITH_DISTANCE } from './fixtures';
 import { queryOf } from './helpers';
 
@@ -30,9 +35,16 @@ describe('iterateGoWayPages', () => {
       page([]),
     ]);
     const goway = createGoWayClient({ fetch });
-    const query = { latitude: 41.38, longitude: 2.16, radiusMeters: 500, capabilities: ['payments.faircoin.accepted'] };
+    const query = {
+      latitude: 41.38,
+      longitude: 2.16,
+      radiusMeters: 500,
+      capabilities: ['payments.faircoin.accepted'],
+    };
 
-    const places = await collect(iterateGoWayPages((cursor) => goway.places.nearby({ ...query, cursor })));
+    const places = await collect(
+      iterateGoWayPages((cursor) => goway.places.nearby({ ...query, cursor })),
+    );
 
     expect(places.map((place) => place.id)).toEqual(['gw_place_01H8', 'gw_place_2', 'gw_place_3']);
     expect(urls).toHaveLength(3);
@@ -47,7 +59,9 @@ describe('iterateGoWayPages', () => {
     const seen: number[] = [];
     let calls = 0;
     const walk = async () => {
-      for await (const item of iterateGoWayPages(async () => pages[calls++]! as { items: number[]; nextCursor: string })) {
+      for await (const item of iterateGoWayPages(
+        async () => pages[calls++]! as { items: number[]; nextCursor: string },
+      )) {
         seen.push(item);
       }
     };
@@ -57,7 +71,10 @@ describe('iterateGoWayPages', () => {
   });
 
   it('throws on a cursor that is neither a string nor null', async () => {
-    const walk = iterateGoWayPages(async () => ({ items: [], nextCursor: undefined as unknown as null }));
+    const walk = iterateGoWayPages(async () => ({
+      items: [],
+      nextCursor: undefined as unknown as null,
+    }));
     await expect(collect(walk)).rejects.toBeInstanceOf(GoWayResponseError);
   });
 

@@ -23,7 +23,11 @@ import type {
   PlaceRevisionPage,
 } from '@goway/contracts';
 import { addPlaceMedia } from '../../db/places/mediaRepository';
-import { createPlace, recordDuplicateCandidate, type PlaceActor } from '../../db/places/placesRepository';
+import {
+  createPlace,
+  recordDuplicateCandidate,
+  type PlaceActor,
+} from '../../db/places/placesRepository';
 import { putReview } from '../../db/places/reviewsRepository';
 import {
   SUITE_SETUP_TIMEOUT_MS,
@@ -32,14 +36,24 @@ import {
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
 import { createRequireOperator } from '../../middleware/operator';
-import { fakeOptionalAuth, fakeRequireAuth, serve, session, type ErrorBody, type TestApi } from '../../__tests__/httpHarness';
+import {
+  fakeOptionalAuth,
+  fakeRequireAuth,
+  serve,
+  session,
+  type ErrorBody,
+  type TestApi,
+} from '../../__tests__/httpHarness';
 import { apiAuthor, NO_FILES, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createModerationRouter } from '../moderation';
 import { createPlaceMediaRouter } from '../placeMedia';
 import { createPlaceReviewsRouter } from '../placeReviews';
 import { createPlacesRouter } from '../places';
 
-const CONTRIBUTOR: PlaceActor = { author: apiAuthor('person-contributor'), assertedVerification: 'community_reported' };
+const CONTRIBUTOR: PlaceActor = {
+  author: apiAuthor('person-contributor'),
+  assertedVerification: 'community_reported',
+};
 const GRACIA = { latitude: 41.3979, longitude: 2.1598 };
 const OPERATOR = session('person-mod');
 
@@ -69,7 +83,10 @@ beforeAll(async () => {
       reportRateLimit: NO_RATE_LIMIT,
       contributionRateLimit: NO_RATE_LIMIT,
     }),
-    createModerationRouter({ requireAuth: fakeRequireAuth, requireOperator: createRequireOperator(['person-mod']) }),
+    createModerationRouter({
+      requireAuth: fakeRequireAuth,
+      requireOperator: createRequireOperator(['person-mod']),
+    }),
   );
 }, SUITE_SETUP_TIMEOUT_MS);
 
@@ -85,7 +102,11 @@ describe('descriptions', () => {
   beforeAll(async () => {
     place = await createPlace(
       suite!.db,
-      { name: 'Museu del Barri', location: GRACIA, description: 'Un museu petit i ple de records.' },
+      {
+        name: 'Museu del Barri',
+        location: GRACIA,
+        description: 'Un museu petit i ple de records.',
+      },
       CONTRIBUTOR,
     );
   });
@@ -97,16 +118,24 @@ describe('descriptions', () => {
   });
 
   it('writes translations as GoWay rows and resolves one for a locale', async () => {
-    const { status } = await api.call<Place>('PATCH', `/places/${place.id}`, session('person-ana'), {
-      descriptions: [
-        { language: 'ES', description: 'Un museo pequeño y lleno de recuerdos.' },
-        { language: 'en', description: 'A small museum full of memories.' },
-      ],
-    });
+    const { status } = await api.call<Place>(
+      'PATCH',
+      `/places/${place.id}`,
+      session('person-ana'),
+      {
+        descriptions: [
+          { language: 'ES', description: 'Un museo pequeño y lleno de recuerdos.' },
+          { language: 'en', description: 'A small museum full of memories.' },
+        ],
+      },
+    );
     expect(status).toBe(200);
 
     const { body } = await api.call<Place>('GET', `/places/${place.id}?locale=es-MX`);
-    expect(body.descriptions?.map((entry) => `${entry.language}:${entry.source}`)).toEqual(['en:goway', 'es:goway']);
+    expect(body.descriptions?.map((entry) => `${entry.language}:${entry.source}`)).toEqual([
+      'en:goway',
+      'es:goway',
+    ]);
     expect(body.localizedDescription).toEqual({
       language: 'es',
       description: 'Un museo pequeño y lleno de recuerdos.',
@@ -123,7 +152,10 @@ describe('descriptions', () => {
     });
     const { body } = await api.call<PlaceRevisionPage>('GET', `/places/${place.id}/revisions`);
     const [latest] = body.items;
-    expect(latest?.changes).toContainEqual({ field: 'description', before: 'Un museu petit i ple de records.' });
+    expect(latest?.changes).toContainEqual({
+      field: 'description',
+      before: 'Un museu petit i ple de records.',
+    });
     expect(latest?.changes).toContainEqual({
       field: 'descriptions.en',
       before: { description: 'A small museum full of memories.', source: 'goway' },
@@ -134,7 +166,10 @@ describe('descriptions', () => {
   });
 
   it('keeps descriptions off list reads', async () => {
-    const { body } = await api.call<PlacePage>('GET', '/places/bounds?west=2.15&south=41.39&east=2.17&north=41.40&locale=es');
+    const { body } = await api.call<PlacePage>(
+      'GET',
+      '/places/bounds?west=2.15&south=41.39&east=2.17&north=41.40&locale=es',
+    );
     const listed = body.items.find((entry) => entry.id === place.id);
     expect(listed).toBeDefined();
     expect(listed?.descriptions).toBeUndefined();
@@ -142,9 +177,14 @@ describe('descriptions', () => {
   });
 
   it('refuses a description past the limit', async () => {
-    const { status, body } = await api.call<ErrorBody>('PATCH', `/places/${place.id}`, session('person-ana'), {
-      description: 'x'.repeat(2001),
-    });
+    const { status, body } = await api.call<ErrorBody>(
+      'PATCH',
+      `/places/${place.id}`,
+      session('person-ana'),
+      {
+        description: 'x'.repeat(2001),
+      },
+    );
     expect(status).toBe(422);
     expect(body.error.details?.field).toBe('description');
   });
@@ -156,30 +196,64 @@ describe('a merge moves descriptions, the gallery and reviews', () => {
   let survivorLogoMediaId: string;
 
   /** A review written at a known moment, so "the newer one" is decided by data, not by timing. */
-  async function review(placeId: string, author: string, rating: number, at: string): Promise<void> {
+  async function review(
+    placeId: string,
+    author: string,
+    rating: number,
+    at: string,
+  ): Promise<void> {
     const written = await putReview(suite!.db, placeId, author, { rating }, apiAuthor(author));
-    await suite!.client`UPDATE place_reviews SET created_at = ${at}::timestamptz WHERE id = ${written!.review.id}`;
+    await suite!
+      .client`UPDATE place_reviews SET created_at = ${at}::timestamptz WHERE id = ${written!.review.id}`;
   }
 
   async function galleryOf(placeId: string) {
-    return suite!.client<{ id: string; oxy_file_id: string; oxy_link_place_id: string; position: number }[]>`
+    return suite!.client<
+      { id: string; oxy_file_id: string; oxy_link_place_id: string; position: number }[]
+    >`
       SELECT id, oxy_file_id, oxy_link_place_id, position FROM place_media
       WHERE place_id = ${placeId} AND state <> 'removed' ORDER BY position, id
     `;
   }
 
   beforeAll(async () => {
-    survivor = await createPlace(suite!.db, { name: 'Can Pere', location: GRACIA, description: 'La casa de sempre.' }, CONTRIBUTOR);
-    absorbed = await createPlace(
+    survivor = await createPlace(
       suite!.db,
-      { name: 'Ca n’Pere', location: GRACIA, descriptions: [{ language: 'es', description: 'La casa de siempre.' }] },
+      { name: 'Can Pere', location: GRACIA, description: 'La casa de sempre.' },
       CONTRIBUTOR,
     );
-    const actor = (person: string): PlaceActor => ({ author: apiAuthor(person), assertedVerification: 'community_reported' });
-    const logo = await addPlaceMedia(suite!.db, survivor.id, { fileId: 'file-shared', kind: 'logo' }, actor('person-s'));
+    absorbed = await createPlace(
+      suite!.db,
+      {
+        name: 'Ca n’Pere',
+        location: GRACIA,
+        descriptions: [{ language: 'es', description: 'La casa de siempre.' }],
+      },
+      CONTRIBUTOR,
+    );
+    const actor = (person: string): PlaceActor => ({
+      author: apiAuthor(person),
+      assertedVerification: 'community_reported',
+    });
+    const logo = await addPlaceMedia(
+      suite!.db,
+      survivor.id,
+      { fileId: 'file-shared', kind: 'logo' },
+      actor('person-s'),
+    );
     survivorLogoMediaId = logo!.id;
-    await addPlaceMedia(suite!.db, absorbed.id, { fileId: 'file-shared', kind: 'logo' }, actor('person-a'));
-    await addPlaceMedia(suite!.db, absorbed.id, { fileId: 'file-only-absorbed', kind: 'photo' }, actor('person-a'));
+    await addPlaceMedia(
+      suite!.db,
+      absorbed.id,
+      { fileId: 'file-shared', kind: 'logo' },
+      actor('person-a'),
+    );
+    await addPlaceMedia(
+      suite!.db,
+      absorbed.id,
+      { fileId: 'file-only-absorbed', kind: 'photo' },
+      actor('person-a'),
+    );
 
     // person-both reviewed each place; the absorbed one is NEWER and wins.
     await review(survivor.id, 'person-both', 2, '2026-01-01T10:00:00Z');
@@ -190,12 +264,23 @@ describe('a merge moves descriptions, the gallery and reviews', () => {
     await review(absorbed.id, 'person-only-absorbed', 3, '2026-02-15T10:00:00Z');
 
     await recordDuplicateCandidate(suite!.db, survivor.id, absorbed.id, 'manual_report');
-    const { body } = await api.call<DuplicateCandidatePage>('GET', '/moderation/duplicates', OPERATOR);
-    const candidate = body.items.find((entry) => [entry.placeId, entry.candidatePlaceId].includes(absorbed.id))!;
-    const merged = await api.call('POST', `/moderation/duplicates/${candidate.id}/resolution`, OPERATOR, {
-      decision: 'merge',
-      survivorPlaceId: survivor.id,
-    });
+    const { body } = await api.call<DuplicateCandidatePage>(
+      'GET',
+      '/moderation/duplicates',
+      OPERATOR,
+    );
+    const candidate = body.items.find((entry) =>
+      [entry.placeId, entry.candidatePlaceId].includes(absorbed.id),
+    )!;
+    const merged = await api.call(
+      'POST',
+      `/moderation/duplicates/${candidate.id}/resolution`,
+      OPERATOR,
+      {
+        decision: 'merge',
+        survivorPlaceId: survivor.id,
+      },
+    );
     expect(merged.status).toBe(200);
   });
 
@@ -209,12 +294,20 @@ describe('a merge moves descriptions, the gallery and reviews', () => {
     expect((await galleryOf(absorbed.id)).map((item) => item.oxy_file_id)).toEqual(['file-shared']);
   });
 
-  it('moves every review, keeps the newer of one person\'s two published, and hides the older', async () => {
+  it("moves every review, keeps the newer of one person's two published, and hides the older", async () => {
     const { body } = await api.call<PlaceReviewPage>('GET', `/places/${survivor.id}/reviews`);
-    const byAuthor = new Map(body.items.map((entry: PlaceReview) => [entry.authorOxyUserId, entry.rating]));
-    expect(Object.fromEntries(byAuthor)).toEqual({ 'person-both': 5, 'person-older-there': 4, 'person-only-absorbed': 3 });
+    const byAuthor = new Map(
+      body.items.map((entry: PlaceReview) => [entry.authorOxyUserId, entry.rating]),
+    );
+    expect(Object.fromEntries(byAuthor)).toEqual({
+      'person-both': 5,
+      'person-older-there': 4,
+      'person-only-absorbed': 3,
+    });
 
-    const hidden = await suite!.client<{ author_oxy_user_id: string; rating: number; place_id: string }[]>`
+    const hidden = await suite!.client<
+      { author_oxy_user_id: string; rating: number; place_id: string }[]
+    >`
       SELECT author_oxy_user_id, rating, place_id FROM place_reviews WHERE status = 'hidden' ORDER BY author_oxy_user_id
     `;
     expect([...hidden]).toEqual([
@@ -235,7 +328,9 @@ describe('a merge moves descriptions, the gallery and reviews', () => {
   it("moves descriptions the survivor lacks, and never rewrites the survivor's own", async () => {
     const { body } = await api.call<Place>('GET', `/places/${survivor.id}`);
     expect(body.description).toBe('La casa de sempre.');
-    expect(body.descriptions).toEqual([{ language: 'es', description: 'La casa de siempre.', source: 'goway' }]);
+    expect(body.descriptions).toEqual([
+      { language: 'es', description: 'La casa de siempre.', source: 'goway' },
+    ]);
   });
 
   it('lists the moved gallery in the public place_absorbed revision, and no review', async () => {

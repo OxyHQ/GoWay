@@ -86,15 +86,22 @@ export async function checkTree(root: string, tree: EmitTree, problems: string[]
   }
 
   const describe = (paths: string[]): string =>
-    paths.length <= 3 ? paths.join(', ') : `${paths.slice(0, 3).join(', ')} and ${paths.length - 3} more`;
+    paths.length <= 3
+      ? paths.join(', ')
+      : `${paths.slice(0, 3).join(', ')} and ${paths.length - 3} more`;
 
-  if (missing.length > 0) problems.push(`${root}: ${missing.length} generated file(s) missing — ${describe(missing)}`);
+  if (missing.length > 0)
+    problems.push(`${root}: ${missing.length} generated file(s) missing — ${describe(missing)}`);
   if (differing.length > 0) {
-    problems.push(`${root}: ${differing.length} file(s) differ from what the generator produces — ${describe(differing)}`);
+    problems.push(
+      `${root}: ${differing.length} file(s) differ from what the generator produces — ${describe(differing)}`,
+    );
   }
   if (onDisk.size > 0) {
     const stale = [...onDisk].sort();
-    problems.push(`${root}: ${stale.length} file(s) are committed but no longer generated — ${describe(stale)}`);
+    problems.push(
+      `${root}: ${stale.length} file(s) are committed but no longer generated — ${describe(stale)}`,
+    );
   }
 }
 

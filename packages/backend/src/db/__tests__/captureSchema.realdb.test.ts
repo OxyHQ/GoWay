@@ -28,7 +28,12 @@
 import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { statementFailure } from './statementFailure';
-import { SUITE_SETUP_TIMEOUT_MS, createSuiteDatabase, destroySuiteDatabase, type SuiteDatabase } from './testDatabase';
+import {
+  SUITE_SETUP_TIMEOUT_MS,
+  createSuiteDatabase,
+  destroySuiteDatabase,
+  type SuiteDatabase,
+} from './testDatabase';
 
 let suite: SuiteDatabase | null = null;
 
@@ -144,7 +149,9 @@ describe('no raw media is permanent by accident', () => {
 
   it('bounds retention extensions to a countable number', async () => {
     const message = await statementFailure(
-      () => suite!.client`UPDATE capture_media_objects SET retention_extension_count = 4 WHERE id = 'obj-1'`,
+      () =>
+        suite!
+          .client`UPDATE capture_media_objects SET retention_extension_count = 4 WHERE id = 'obj-1'`,
     );
     expect(message).toContain('capture_objects_extension_count_check');
   });
@@ -154,7 +161,9 @@ describe('no raw media is permanent by accident', () => {
     // a published scene inheriting a raw upload's expiry, which is precisely the
     // confusion #10 spends a section warning about.
     const message = await statementFailure(
-      () => suite!.client`UPDATE capture_media_objects SET retention_class = 'published_splat' WHERE id = 'obj-1'`,
+      () =>
+        suite!
+          .client`UPDATE capture_media_objects SET retention_class = 'published_splat' WHERE id = 'obj-1'`,
     );
     expect(message).toContain('capture_objects_retention_class_check');
   });
@@ -244,7 +253,9 @@ describe('deduplication', () => {
 
 describe('the privacy gate fails closed', () => {
   it('starts shut: a fresh capture is not a reconstruction input', async () => {
-    const [row] = await suite!.client<{ privacy_state: string; reconstruction_eligible: boolean }[]>`
+    const [row] = await suite!.client<
+      { privacy_state: string; reconstruction_eligible: boolean }[]
+    >`
       SELECT privacy_state, reconstruction_eligible FROM capture_assets WHERE id = 'asset-1'
     `;
     expect(row?.privacy_state).toBe('pending');
@@ -253,7 +264,9 @@ describe('the privacy gate fails closed', () => {
 
   it('refuses to let an asset ENTER a reconstruction state while the gate is shut', async () => {
     const message = await statementFailure(
-      () => suite!.client`UPDATE capture_assets SET state = 'reconstruction_candidate' WHERE id = 'asset-1'`,
+      () =>
+        suite!
+          .client`UPDATE capture_assets SET state = 'reconstruction_candidate' WHERE id = 'asset-1'`,
     );
     expect(message).toContain('capture_assets_privacy_gate_check');
   });
@@ -274,7 +287,9 @@ describe('the privacy gate fails closed', () => {
     // no repair script can mark unreviewed pixels usable" a property of the
     // database rather than a rule people follow.
     const message = await statementFailure(
-      () => suite!.client`UPDATE capture_assets SET reconstruction_eligible = true WHERE id = 'asset-1'`,
+      () =>
+        suite!
+          .client`UPDATE capture_assets SET reconstruction_eligible = true WHERE id = 'asset-1'`,
     );
     expect(message).toMatch(/can only be updated to DEFAULT|generated column/i);
   });
@@ -468,6 +483,9 @@ describe('what the schema refuses to be confused about', () => {
       WHERE table_schema = 'public' AND table_name LIKE 'capture_%' AND column_name = 'oxy_user_id'
       ORDER BY table_name
     `;
-    expect(contributorColumns.map((row) => row.table_name)).toEqual(['capture_assets', 'capture_sessions']);
+    expect(contributorColumns.map((row) => row.table_name)).toEqual([
+      'capture_assets',
+      'capture_sessions',
+    ]);
   });
 });

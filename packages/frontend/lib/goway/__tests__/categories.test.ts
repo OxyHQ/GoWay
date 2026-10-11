@@ -18,9 +18,22 @@ const { categoryShortcuts, isVisibleAtZoom, resolveCategory, shortcutCategories 
   '@/lib/goway/categories'
 );
 
-function category(key: string, icon: string, en: string, es: string, status: Category['status'] = 'active'): Category {
+function category(
+  key: string,
+  icon: string,
+  en: string,
+  es: string,
+  status: Category['status'] = 'active',
+): Category {
   const separator = key.lastIndexOf('.');
-  return { key, parent: separator < 0 ? null : key.slice(0, separator), icon, status, label: en, labels: { en, es } };
+  return {
+    key,
+    parent: separator < 0 ? null : key.slice(0, separator),
+    icon,
+    status,
+    label: en,
+    labels: { en, es },
+  };
 }
 
 const TAXONOMY = categoryTaxonomy([
@@ -44,7 +57,9 @@ describe('resolveCategory', () => {
   });
 
   test('the first key the taxonomy holds wins, and an unknown key is skipped', () => {
-    expect(resolveCategory(['food.unheard_of', 'leisure.park'], TAXONOMY, 'en').key).toBe('leisure.park');
+    expect(resolveCategory(['food.unheard_of', 'leisure.park'], TAXONOMY, 'en').key).toBe(
+      'leisure.park',
+    );
   });
 
   test('a place with no known key, or no taxonomy yet, is the generic pin', () => {
@@ -71,10 +86,12 @@ describe('categoryShortcuts', () => {
   test('one chip per active root the taxonomy holds, labelled by it', () => {
     const shortcuts = categoryShortcuts(TAXONOMY, 'es');
     // `shop` is deprecated, and lodging, culture and transport are not in this list.
-    expect(shortcuts.map((shortcut) => [shortcut.id, shortcut.label, shortcut.categories])).toEqual([
-      ['eat', 'Comida y bebida', ['food']],
-      ['outdoors', 'Ocio', ['leisure']],
-    ]);
+    expect(shortcuts.map((shortcut) => [shortcut.id, shortcut.label, shortcut.categories])).toEqual(
+      [
+        ['eat', 'Comida y bebida', ['food']],
+        ['outdoors', 'Ocio', ['leisure']],
+      ],
+    );
   });
 
   test('no chips before the taxonomy arrives', () => {

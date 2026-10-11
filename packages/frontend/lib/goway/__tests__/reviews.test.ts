@@ -5,7 +5,14 @@ import { describe, expect, test } from 'bun:test';
 import type { PlaceMedia, PlaceReview } from '@goway.to/sdk';
 import type { User } from '@oxy.so/core';
 
-import { mediaCredit, ratingSummary, reviewAge, reviewerName, spokenReview, stripItems } from '@/lib/goway/reviews';
+import {
+  mediaCredit,
+  ratingSummary,
+  reviewAge,
+  reviewerName,
+  spokenReview,
+  stripItems,
+} from '@/lib/goway/reviews';
 
 const NOW = Date.parse('2026-10-04T12:00:00Z');
 const DAY = 86_400_000;
@@ -25,7 +32,9 @@ function media(overrides: Partial<PlaceMedia>): PlaceMedia {
 
 describe('reviewerName', () => {
   test('is the Oxy display name, else the handle, else somebody', () => {
-    expect(reviewerName({ username: 'ana', name: { displayName: ' Ana Puig ' } } as unknown as User)).toBe('Ana Puig');
+    expect(
+      reviewerName({ username: 'ana', name: { displayName: ' Ana Puig ' } } as unknown as User),
+    ).toBe('Ana Puig');
     expect(reviewerName({ username: 'ana', name: {} } as unknown as User)).toBe('@ana');
     expect(reviewerName(undefined)).toBe('A GoWay user');
   });
@@ -55,13 +64,15 @@ describe('the summary', () => {
 
 describe('the strip', () => {
   test('leaves the logo to the header', () => {
-    expect(stripItems([media({ id: 'a', kind: 'logo' }), media({ id: 'b' })]).map((item) => item.id)).toEqual(['b']);
+    expect(
+      stripItems([media({ id: 'a', kind: 'logo' }), media({ id: 'b' })]).map((item) => item.id),
+    ).toEqual(['b']);
   });
 
   test("credits an imported image, and not a contributor's own", () => {
-    expect(mediaCredit(media({ attribution: 'Wikimedia Commons contributor', license: 'CC BY-SA 4.0' }))).toBe(
-      'Wikimedia Commons contributor · CC BY-SA 4.0',
-    );
+    expect(
+      mediaCredit(media({ attribution: 'Wikimedia Commons contributor', license: 'CC BY-SA 4.0' })),
+    ).toBe('Wikimedia Commons contributor · CC BY-SA 4.0');
     expect(mediaCredit(media({}))).toBeNull();
   });
 });

@@ -7,14 +7,16 @@
  * then listen" stays visible in exactly one place.
  *
  * Middleware order below is load-bearing:
- *   helmet → CORS → body parser → health → API router → unknownRoute → errorHandler
+ *   activity → helmet → CORS → body parser → health → API router → unknownRoute → errorHandler
+ * The Oxy ecosystem activity observer comes FIRST so every response is counted,
+ * including the ones CORS, the rate limiter or the 404 handler answer.
  * CORS before the body parser so a rejected cross-origin preflight never gets a
  * body parsed for it, and the two terminal handlers LAST because Express matches
  * in registration order — an `unknownRouteHandler` mounted before a router would
  * answer 404 for every route that router defines.
  */
 
-import express, { type Express, Router } from 'express';
+import express, { type Express, type RequestHandler, Router } from 'express';
 import helmet from 'helmet';
 import { config } from './config';
 import { errorHandler, unknownRouteHandler } from './http/errorHandler';
@@ -45,7 +47,15 @@ import { createConfiguredObjectStore } from './storage';
 /** The largest request body any GoWay route accepts. */
 const JSON_BODY_LIMIT = '1mb';
 
-export function createApp(): Express {
+export interface CreateAppOptions {
+  /**
+   * The Oxy ecosystem traffic observer (`./platformActivity`). Passed in by
+   * `server.ts` rather than imported, so an app a test builds publishes nothing.
+   */
+  activity?: RequestHandler;
+}
+
+export function createApp(options: CreateAppOptions = {}): Express {
   const app = express();
 
   app.disable('x-powered-by');
@@ -53,6 +63,8 @@ export function createApp(): Express {
   // permissive value would let a client forge its own client address, which is
   // the value the rate limiter keys on for unauthenticated callers.
   app.set('trust proxy', 1);
+
+  if (options.activity) app.use(options.activity);
 
   app.use(helmet());
 
@@ -122,9 +134,18 @@ export function createApp(): Express {
    * the bytes.
    */
   v1.use(
-    createPlaceMediaRouter({ optionalAuth, requireAuth, accountRoles, placeFiles, reportRateLimit, contributionRateLimit }),
+    createPlaceMediaRouter({
+      optionalAuth,
+      requireAuth,
+      accountRoles,
+      placeFiles,
+      reportRateLimit,
+      contributionRateLimit,
+    }),
   );
-  v1.use(createPlaceReviewsRouter({ requireAuth, accountRoles, reportRateLimit, contributionRateLimit }));
+  v1.use(
+    createPlaceReviewsRouter({ requireAuth, accountRoles, reportRateLimit, contributionRateLimit }),
+  );
   /**
    * Moderation: claim decisions, Oxy verification, duplicate merges and the
    * report queue — every route behind `requireAuth` and the operator allow-list
@@ -143,7 +164,9 @@ export function createApp(): Express {
    * an AWS account — the alternative is a router that can only be tested with
    * real credentials, which in practice means it is not tested.
    */
-  v1.use(createCaptureRouter({ optionalAuth, requireAuth, objectStore: createConfiguredObjectStore() }));
+  v1.use(
+    createCaptureRouter({ optionalAuth, requireAuth, objectStore: createConfiguredObjectStore() }),
+  );
   /**
    * Street 3D viewing (#14/#15): coverage and published scene manifests,
    * signed out, plus authenticated reports. Inert — 503/404 — unless

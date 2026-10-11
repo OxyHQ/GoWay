@@ -138,7 +138,9 @@ export interface SuiteDatabase {
  * adds a `pre` migration, which the runner rightly refuses to queue behind
  * that release's still-pending `post` ones.
  */
-export async function createSuiteDatabase(options: { run?: MigrationRun; throughTag?: string } = {}): Promise<SuiteDatabase> {
+export async function createSuiteDatabase(
+  options: { run?: MigrationRun; throughTag?: string } = {},
+): Promise<SuiteDatabase> {
   if (!ADMIN_URL) {
     throw new Error(
       'No database URL for the real-database suites. These tests do not skip: a ' +
@@ -178,20 +180,27 @@ const releaseFolders = new Map<string, string>();
 function migrationsFolderThrough(tag: string): string {
   const cached = releaseFolders.get(tag);
   if (cached) return cached;
-  const journal = JSON.parse(readFileSync(join(MIGRATIONS_FOLDER, 'meta', '_journal.json'), 'utf8')) as { entries: { tag: string }[] };
+  const journal = JSON.parse(
+    readFileSync(join(MIGRATIONS_FOLDER, 'meta', '_journal.json'), 'utf8'),
+  ) as { entries: { tag: string }[] };
   const end = journal.entries.findIndex((entry) => entry.tag === tag);
   if (end === -1) throw new Error(`No migration ${tag} in the journal.`);
   const folder = mkdtempSync(join(tmpdir(), 'goway-migrations-'));
   mkdirSync(join(folder, 'meta'));
   const entries = journal.entries.slice(0, end + 1);
   writeFileSync(join(folder, 'meta', '_journal.json'), JSON.stringify({ ...journal, entries }));
-  for (const entry of entries) copyFileSync(join(MIGRATIONS_FOLDER, `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`));
+  for (const entry of entries)
+    copyFileSync(join(MIGRATIONS_FOLDER, `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`));
   releaseFolders.set(tag, folder);
   return folder;
 }
 
 /** Apply one phase of the migrations to a suite database, as the deploy does. */
-export async function migrateSuiteDatabase(databaseUrl: string, run: MigrationRun, throughTag?: string): Promise<void> {
+export async function migrateSuiteDatabase(
+  databaseUrl: string,
+  run: MigrationRun,
+  throughTag?: string,
+): Promise<void> {
   await runMigrations({
     databaseUrl,
     migrationsFolder: throughTag ? migrationsFolderThrough(throughTag) : MIGRATIONS_FOLDER,

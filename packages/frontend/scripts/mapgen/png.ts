@@ -101,7 +101,12 @@ function paeth(a: number, b: number, c: number): number {
  * filtering against the encoded bytes instead is the classic PNG encoder bug
  * that produces a file which decodes to noise in the second row onward.
  */
-function filterScanline(row: Uint8Array, previous: Uint8Array | null, out: Uint8Array, outOffset: number): void {
+function filterScanline(
+  row: Uint8Array,
+  previous: Uint8Array | null,
+  out: Uint8Array,
+  outOffset: number,
+): void {
   const bpp = CHANNELS;
   const length = row.length;
   const candidates = new Uint8Array(5 * length);
@@ -162,7 +167,12 @@ export function encodePng(image: RgbaImage): Uint8Array {
 
   const idat = new Uint8Array(deflateSync(raw, { level: 9 }));
 
-  const parts = [PNG_SIGNATURE, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', new Uint8Array(0))];
+  const parts = [
+    PNG_SIGNATURE,
+    chunk('IHDR', ihdr),
+    chunk('IDAT', idat),
+    chunk('IEND', new Uint8Array(0)),
+  ];
   const total = parts.reduce((sum, part) => sum + part.length, 0);
   const png = new Uint8Array(total);
   let at = 0;

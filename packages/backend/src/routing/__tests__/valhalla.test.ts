@@ -238,7 +238,9 @@ describe('the request it sends', () => {
     const spy: FetchLike = (url, init) => {
       seenUrl = url;
       seenInit = init;
-      return Promise.resolve(new Response(JSON.stringify({ trip: valhallaTrip() }), { status: 200 }));
+      return Promise.resolve(
+        new Response(JSON.stringify({ trip: valhallaTrip() }), { status: 200 }),
+      );
     };
 
     await provider(spy, { apiKey: 'secret-key' }).route({
@@ -275,9 +277,15 @@ describe('the request it sends', () => {
     let seenBody = '';
     const spy: FetchLike = (_url, init) => {
       seenBody = String(init.body);
-      return Promise.resolve(new Response(JSON.stringify({ trip: valhallaTrip() }), { status: 200 }));
+      return Promise.resolve(
+        new Response(JSON.stringify({ trip: valhallaTrip() }), { status: 200 }),
+      );
     };
-    await provider(spy).route({ locations: [ORIGIN, DESTINATION], mode: 'walk', alternatives: false });
+    await provider(spy).route({
+      locations: [ORIGIN, DESTINATION],
+      mode: 'walk',
+      alternatives: false,
+    });
     const body = JSON.parse(seenBody) as Record<string, unknown>;
     expect(body.alternates).toBeUndefined();
     expect(body.costing).toBe('pedestrian');

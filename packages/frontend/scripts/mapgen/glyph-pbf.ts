@@ -73,12 +73,16 @@ export function assertGlyphConsistent(glyph: MapGlyph, where: string): void {
   const blank = glyph.width === 0 && glyph.height === 0;
   if (blank) {
     if (glyph.bitmap !== undefined) {
-      throw new Error(`${where}: blank glyph ${glyph.id} carries a bitmap; whitespace must omit it entirely`);
+      throw new Error(
+        `${where}: blank glyph ${glyph.id} carries a bitmap; whitespace must omit it entirely`,
+      );
     }
     return;
   }
   if (glyph.bitmap === undefined) {
-    throw new Error(`${where}: glyph ${glyph.id} is ${glyph.width}x${glyph.height} but carries no bitmap`);
+    throw new Error(
+      `${where}: glyph ${glyph.id} is ${glyph.width}x${glyph.height} but carries no bitmap`,
+    );
   }
   const expected = (glyph.width + 2 * GLYPH_PBF_BORDER) * (glyph.height + 2 * GLYPH_PBF_BORDER);
   if (glyph.bitmap.length !== expected) {

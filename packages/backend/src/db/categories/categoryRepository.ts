@@ -38,7 +38,12 @@ import {
 import { ApiError } from '../../http/apiError';
 import { changesBetween, type FieldValues, type RevisionAuthor } from '../places/revisions';
 import type { Database, DatabaseOrTransaction } from '../postgres';
-import { placeCategories, placeCategoryEvents, placeCategoryLabels, placeCategoryOsmTags } from '../schema';
+import {
+  placeCategories,
+  placeCategoryEvents,
+  placeCategoryLabels,
+  placeCategoryOsmTags,
+} from '../schema';
 import type { CategoryEventAction } from '../schema/valueSets';
 
 export type CategoryCreate = z.output<typeof categoryCreateInputSchema>;
@@ -84,7 +89,8 @@ type CategoryRow = {
 function toCategory(row: CategoryRow): ModerationCategory {
   // English is required by a constraint trigger, so a row without one is a
   // database that skipped its migrations: fail loudly rather than label blankly.
-  if (row.labels?.en === undefined) throw new Error(`place category ${row.key} has no English label`);
+  if (row.labels?.en === undefined)
+    throw new Error(`place category ${row.key} has no English label`);
   return {
     key: row.key,
     parent: row.parentKey,
@@ -109,7 +115,8 @@ export async function loadCategories(db: DatabaseOrTransaction): Promise<Moderat
     .from(placeCategories)
     .orderBy(asc(placeCategories.position), asc(placeCategories.key));
   const childrenOf = new Map<string | null, CategoryRow[]>();
-  for (const row of rows) childrenOf.set(row.parentKey, [...(childrenOf.get(row.parentKey) ?? []), row]);
+  for (const row of rows)
+    childrenOf.set(row.parentKey, [...(childrenOf.get(row.parentKey) ?? []), row]);
   const ordered: ModerationCategory[] = [];
   const visit = (parent: string | null) => {
     for (const row of childrenOf.get(parent) ?? []) {
@@ -122,8 +129,14 @@ export async function loadCategories(db: DatabaseOrTransaction): Promise<Moderat
 }
 
 /** One category as a moderator reads it, or `undefined`. */
-async function loadCategory(db: DatabaseOrTransaction, key: string): Promise<ModerationCategory | undefined> {
-  const [row] = await db.select(CATEGORY_COLUMNS).from(placeCategories).where(eq(placeCategories.key, key));
+async function loadCategory(
+  db: DatabaseOrTransaction,
+  key: string,
+): Promise<ModerationCategory | undefined> {
+  const [row] = await db
+    .select(CATEGORY_COLUMNS)
+    .from(placeCategories)
+    .where(eq(placeCategories.key, key));
   return row && toCategory(row);
 }
 
@@ -158,13 +171,19 @@ function fieldValues(category: {
     status: category.status,
     osmTags: [...category.osmTags].sort(),
   };
-  for (const [language, label] of Object.entries(category.labels ?? {})) values[`labels.${language}`] = label;
+  for (const [language, label] of Object.entries(category.labels ?? {}))
+    values[`labels.${language}`] = label;
   return values;
 }
 
 async function recordEvent(
   tx: DatabaseOrTransaction,
-  event: { categoryKey: string; action: CategoryEventAction; author: RevisionAuthor; changes: readonly PlaceRevisionChange[] },
+  event: {
+    categoryKey: string;
+    action: CategoryEventAction;
+    author: RevisionAuthor;
+    changes: readonly PlaceRevisionChange[];
+  },
 ): Promise<void> {
   await tx.insert(placeCategoryEvents).values({
     categoryKey: event.categoryKey,
@@ -180,12 +199,18 @@ async function recordEvent(
  * write's locks; the tag's primary key is what makes it hold against a write
  * committing in between ({@link claimedTagConflict}).
  */
-async function assertTagsUnclaimed(tx: DatabaseOrTransaction, key: string, tags: readonly string[]): Promise<void> {
+async function assertTagsUnclaimed(
+  tx: DatabaseOrTransaction,
+  key: string,
+  tags: readonly string[],
+): Promise<void> {
   if (tags.length === 0) return;
   const [claimed] = await tx
     .select({ tag: placeCategoryOsmTags.tag, categoryKey: placeCategoryOsmTags.categoryKey })
     .from(placeCategoryOsmTags)
-    .where(and(inArray(placeCategoryOsmTags.tag, [...tags]), ne(placeCategoryOsmTags.categoryKey, key)))
+    .where(
+      and(inArray(placeCategoryOsmTags.tag, [...tags]), ne(placeCategoryOsmTags.categoryKey, key)),
+    )
     .limit(1);
   if (claimed) {
     throw new ApiError('conflict', 'That OpenStreetMap tag already files under another category.', {
@@ -219,28 +244,44 @@ export async function createCategory(
       if (parentKey !== null) {
         const parent = await lockCategory(tx, parentKey, 'share');
         if (!parent) {
-          throw new ApiError('validation_failed', 'The request body is not acceptable: key names no parent category.', {
-            field: 'key',
-            issue: 'unknown_parent',
-            issueCount: 1,
-          });
+          throw new ApiError(
+            'validation_failed',
+            'The request body is not acceptable: key names no parent category.',
+            {
+              field: 'key',
+              issue: 'unknown_parent',
+              issueCount: 1,
+            },
+          );
         }
         if (parent.status !== 'active') {
-          throw new ApiError('conflict', 'A category cannot be added under a deprecated one.', { parent: parentKey });
+          throw new ApiError('conflict', 'A category cannot be added under a deprecated one.', {
+            parent: parentKey,
+          });
         }
       }
       if (await lockCategory(tx, input.key, 'share')) {
-        throw new ApiError('conflict', 'A category with that key already exists.', { key: input.key });
+        throw new ApiError('conflict', 'A category with that key already exists.', {
+          key: input.key,
+        });
       }
       await assertTagsUnclaimed(tx, input.key, input.osmTags);
 
       const position = input.position ?? (await nextSiblingPosition(tx, parentKey));
-      await tx.insert(placeCategories).values({ key: input.key, parentKey, icon: input.icon, position });
       await tx
-        .insert(placeCategoryLabels)
-        .values(Object.entries(input.labels).map(([language, label]) => ({ categoryKey: input.key, language, label })));
+        .insert(placeCategories)
+        .values({ key: input.key, parentKey, icon: input.icon, position });
+      await tx.insert(placeCategoryLabels).values(
+        Object.entries(input.labels).map(([language, label]) => ({
+          categoryKey: input.key,
+          language,
+          label,
+        })),
+      );
       if (input.osmTags.length > 0) {
-        await tx.insert(placeCategoryOsmTags).values(input.osmTags.map((tag) => ({ tag, categoryKey: input.key })));
+        await tx
+          .insert(placeCategoryOsmTags)
+          .values(input.osmTags.map((tag) => ({ tag, categoryKey: input.key })));
       }
 
       const created = await loadCategory(tx, input.key);
@@ -259,12 +300,21 @@ export async function createCategory(
 }
 
 /** After the last of a parent's children, or 0 for the first. */
-async function nextSiblingPosition(tx: DatabaseOrTransaction, parentKey: string | null): Promise<number> {
+async function nextSiblingPosition(
+  tx: DatabaseOrTransaction,
+  parentKey: string | null,
+): Promise<number> {
   const [last] = await tx
     .select({ position: max(placeCategories.position) })
     .from(placeCategories)
-    .where(parentKey === null ? sql`${placeCategories.parentKey} is null` : eq(placeCategories.parentKey, parentKey));
-  return last?.position === null || last?.position === undefined ? 0 : last.position + POSITION_STEP;
+    .where(
+      parentKey === null
+        ? sql`${placeCategories.parentKey} is null`
+        : eq(placeCategories.parentKey, parentKey),
+    );
+  return last?.position === null || last?.position === undefined
+    ? 0
+    : last.position + POSITION_STEP;
 }
 
 /**
@@ -292,15 +342,21 @@ export async function updateCategory(
           .where(and(eq(placeCategories.parentKey, key), eq(placeCategories.status, 'active')))
           .limit(1);
         if (child) {
-          throw new ApiError('conflict', 'Deprecate every active category below this one first.', { child: child.key });
+          throw new ApiError('conflict', 'Deprecate every active category below this one first.', {
+            child: child.key,
+          });
         }
       }
       if (input.status === 'active' && before.parent !== null) {
         const parent = await lockCategory(tx, before.parent, 'share');
         if (parent?.status !== 'active') {
-          throw new ApiError('conflict', 'A category under a deprecated one cannot be reactivated.', {
-            parent: before.parent,
-          });
+          throw new ApiError(
+            'conflict',
+            'A category under a deprecated one cannot be reactivated.',
+            {
+              parent: before.parent,
+            },
+          );
         }
       }
 
@@ -317,7 +373,9 @@ export async function updateCategory(
         await assertTagsUnclaimed(tx, key, input.osmTags);
         await tx.delete(placeCategoryOsmTags).where(eq(placeCategoryOsmTags.categoryKey, key));
         if (input.osmTags.length > 0) {
-          await tx.insert(placeCategoryOsmTags).values(input.osmTags.map((tag) => ({ tag, categoryKey: key })));
+          await tx
+            .insert(placeCategoryOsmTags)
+            .values(input.osmTags.map((tag) => ({ tag, categoryKey: key })));
         }
       }
 
@@ -327,7 +385,10 @@ export async function updateCategory(
         categoryKey: key,
         action: 'updated',
         author,
-        changes: changesBetween(fieldValues({ ...before, labels: {} }), fieldValues({ ...after, labels: {} })),
+        changes: changesBetween(
+          fieldValues({ ...before, labels: {} }),
+          fieldValues({ ...after, labels: {} }),
+        ),
       });
       return after;
     });
@@ -349,7 +410,9 @@ export async function setCategoryLabel(
     const [previous] = await tx
       .select({ label: placeCategoryLabels.label })
       .from(placeCategoryLabels)
-      .where(and(eq(placeCategoryLabels.categoryKey, key), eq(placeCategoryLabels.language, language)));
+      .where(
+        and(eq(placeCategoryLabels.categoryKey, key), eq(placeCategoryLabels.language, language)),
+      );
     await tx
       .insert(placeCategoryLabels)
       .values({ categoryKey: key, language, label })
@@ -357,12 +420,18 @@ export async function setCategoryLabel(
         target: [placeCategoryLabels.categoryKey, placeCategoryLabels.language],
         set: { label, updatedAt: new Date() },
       });
-    await tx.update(placeCategories).set({ updatedAt: new Date() }).where(eq(placeCategories.key, key));
+    await tx
+      .update(placeCategories)
+      .set({ updatedAt: new Date() })
+      .where(eq(placeCategories.key, key));
     await recordEvent(tx, {
       categoryKey: key,
       action: 'label_set',
       author,
-      changes: changesBetween({ [`labels.${language}`]: previous?.label }, { [`labels.${language}`]: label }),
+      changes: changesBetween(
+        { [`labels.${language}`]: previous?.label },
+        { [`labels.${language}`]: label },
+      ),
     });
     return (await loadCategory(tx, key)) ?? null;
   });
@@ -380,16 +449,24 @@ export async function removeCategoryLabel(
   author: RevisionAuthor,
 ): Promise<boolean | null> {
   if (language === 'en') {
-    throw new ApiError('conflict', 'English is every category\'s fallback label and cannot be removed.');
+    throw new ApiError(
+      'conflict',
+      "English is every category's fallback label and cannot be removed.",
+    );
   }
   return db.transaction(async (tx) => {
     if (!(await lockCategory(tx, key, 'update'))) return null;
     const [removed] = await tx
       .delete(placeCategoryLabels)
-      .where(and(eq(placeCategoryLabels.categoryKey, key), eq(placeCategoryLabels.language, language)))
+      .where(
+        and(eq(placeCategoryLabels.categoryKey, key), eq(placeCategoryLabels.language, language)),
+      )
       .returning({ label: placeCategoryLabels.label });
     if (!removed) return false;
-    await tx.update(placeCategories).set({ updatedAt: new Date() }).where(eq(placeCategories.key, key));
+    await tx
+      .update(placeCategories)
+      .set({ updatedAt: new Date() })
+      .where(eq(placeCategories.key, key));
     await recordEvent(tx, {
       categoryKey: key,
       action: 'label_removed',

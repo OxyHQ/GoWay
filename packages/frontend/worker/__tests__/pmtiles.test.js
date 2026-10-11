@@ -246,7 +246,9 @@ describe('the header', () => {
   test('names the problem when the bytes are not an archive', () => {
     // The realistic failure: a misconfigured bucket answering with an error
     // page. This must not surface as a varint RangeError forty bytes later.
-    const html = new TextEncoder().encode('<!doctype html><html><body>404</body></html>'.padEnd(200));
+    const html = new TextEncoder().encode(
+      '<!doctype html><html><body>404</body></html>'.padEnd(200),
+    );
     expect(() => readHeader(html)).toThrow(/not a PMTiles archive/);
   });
 
@@ -272,10 +274,14 @@ describe('directories', () => {
     // the fixture writer deliberately never emits it.
     const bytes = new Uint8Array([
       2, // two entries
-      5, 1, // tile ids 5 and 6
-      1, 1, // run lengths
-      10, 20, // lengths
-      101, 0, // offsets: 100, then "contiguous"
+      5,
+      1, // tile ids 5 and 6
+      1,
+      1, // run lengths
+      10,
+      20, // lengths
+      101,
+      0, // offsets: 100, then "contiguous"
     ]);
     const entries = decodeDirectory(bytes);
     expect(entries).toEqual([
@@ -448,7 +454,8 @@ describe('what the entry module exports', () => {
     // passes because workerd sees an object; a number or a string does not.
     for (const [name, value] of Object.entries(workerModule)) {
       if (name === 'default') continue;
-      const acceptable = typeof value === 'function' || (value !== null && typeof value === 'object');
+      const acceptable =
+        typeof value === 'function' || (value !== null && typeof value === 'object');
       expect({ name, acceptable }).toEqual({ name, acceptable: true });
     }
   });

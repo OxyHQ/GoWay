@@ -222,7 +222,10 @@ export async function assertMigrationsCurrent(): Promise<void> {
 }
 
 /** Whether every pending migration is one the post phase applies after rollout. */
-export function onlyPostPhasePending(pending: readonly { tag: string }[], phases = PHASES): boolean {
+export function onlyPostPhasePending(
+  pending: readonly { tag: string }[],
+  phases = PHASES,
+): boolean {
   return pending.every((entry) => phases.get(entry.tag) === 'post');
 }
 

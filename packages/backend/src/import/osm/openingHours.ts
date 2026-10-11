@@ -108,7 +108,10 @@ function rangesOf(selector: string): { opens: string; closes: string }[] {
  * names public holidays, which the week does not carry.
  */
 function ruleOf(rule: string): { days: Day[]; ranges: { opens: string; closes: string }[] } | null {
-  const match = /^((?:[A-Za-z]{2}(?:-[A-Za-z]{2})?)(?:\s*,\s*[A-Za-z]{2}(?:-[A-Za-z]{2})?)*)?\s*(.*)$/.exec(rule);
+  const match =
+    /^((?:[A-Za-z]{2}(?:-[A-Za-z]{2})?)(?:\s*,\s*[A-Za-z]{2}(?:-[A-Za-z]{2})?)*)?\s*(.*)$/.exec(
+      rule,
+    );
   if (!match) throw new Unreadable(rule);
   const selector = match[1]?.replace(/\s+/g, '');
   const rest = (match[2] ?? '').trim();

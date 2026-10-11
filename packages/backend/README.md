@@ -2,7 +2,7 @@
 
 The GoWay API: Places persistence, provider adapters and the realtime surface.
 Express 5 on Bun in development, compiled to CommonJS and run on Bun in the
-container. PostgreSQL + PostGIS is the only store — there is no MongoDB, no
+container. PostgreSQL + PostGIS is the only store — there is no second database, no
 cache-as-database and no in-memory fallback, so a process that cannot reach
 Postgres does not start.
 
@@ -401,7 +401,7 @@ bun run test
 | `bun run build` | `tsc` → `dist/` (CommonJS; the image runs this output) |
 | `bun run start` | run the compiled server |
 | `bun run typecheck` | the emitting program AND `tsconfig.tools.json` (see below) |
-| `bun run lint` | eslint over every source file, `dist/` excluded |
+| `bun run lint` (repo root) | Biome over the whole repository (`biome.jsonc`); this package has no linter of its own |
 | `bun run test` | `bun test` |
 | `bun run db:generate` | diff `src/db/schema/` and WRITE a migration |
 | `bun run db:migrate --target-database=<name>` | APPLY migrations |

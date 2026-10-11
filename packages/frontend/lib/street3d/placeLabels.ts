@@ -76,13 +76,21 @@ export function placeLabelsForScene(
     if (seen.has(place.id)) continue;
     const { latitude, longitude } = place.location;
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
-    const enu = geodeticToEnu({ latitude, longitude, altitudeMeters: anchor.altitudeMeters + height }, origin);
+    const enu = geodeticToEnu(
+      { latitude, longitude, altitudeMeters: anchor.altitudeMeters + height },
+      origin,
+    );
     const distanceMeters = Math.hypot(enu[0], enu[1]);
     if (distanceMeters > maxDistance) continue;
     const name = placeDisplayName(place).trim();
     if (!name) continue;
     seen.add(place.id);
-    labels.push({ id: place.id, name, position: transformPoint(sceneFromEnu, enu), distanceMeters });
+    labels.push({
+      id: place.id,
+      name,
+      position: transformPoint(sceneFromEnu, enu),
+      distanceMeters,
+    });
   }
 
   labels.sort((a, b) => a.distanceMeters - b.distanceMeters || a.id.localeCompare(b.id));

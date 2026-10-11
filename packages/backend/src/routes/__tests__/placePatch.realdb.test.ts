@@ -18,11 +18,21 @@ import {
   destroySuiteDatabase,
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
-import { fakeOptionalAuth, fakeRequireAuth, serve, session, type ErrorBody, type TestApi } from '../../__tests__/httpHarness';
+import {
+  fakeOptionalAuth,
+  fakeRequireAuth,
+  serve,
+  session,
+  type ErrorBody,
+  type TestApi,
+} from '../../__tests__/httpHarness';
 import { apiAuthor, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createPlacesRouter } from '../places';
 
-const CONTRIBUTOR: PlaceActor = { author: apiAuthor('person-contributor'), assertedVerification: 'community_reported' };
+const CONTRIBUTOR: PlaceActor = {
+  author: apiAuthor('person-contributor'),
+  assertedVerification: 'community_reported',
+};
 const EDITOR = session('person-editor');
 
 let suite: SuiteDatabase | null = null;
@@ -31,7 +41,12 @@ let api: TestApi;
 beforeAll(async () => {
   suite = await createSuiteDatabase();
   api = await serve(
-    createPlacesRouter({ optionalAuth: fakeOptionalAuth, requireAuth: fakeRequireAuth, accountRoles: NO_MEMBERSHIPS, reportRateLimit: NO_RATE_LIMIT }),
+    createPlacesRouter({
+      optionalAuth: fakeOptionalAuth,
+      requireAuth: fakeRequireAuth,
+      accountRoles: NO_MEMBERSHIPS,
+      reportRateLimit: NO_RATE_LIMIT,
+    }),
   );
 }, SUITE_SETUP_TIMEOUT_MS);
 
@@ -49,8 +64,17 @@ async function fullPlace(name: string): Promise<Place> {
       name,
       location: { latitude: 41.3917, longitude: 2.1649 },
       geometry: { type: 'Point', coordinates: [2.1649, 41.3917] },
-      address: { street: 'Carrer de Mallorca', houseNumber: '401', city: 'Barcelona', countryCode: 'ES' },
-      contact: { phone: '+34 930 000 000', email: 'hola@example.org', website: 'https://example.org' },
+      address: {
+        street: 'Carrer de Mallorca',
+        houseNumber: '401',
+        city: 'Barcelona',
+        countryCode: 'ES',
+      },
+      contact: {
+        phone: '+34 930 000 000',
+        email: 'hola@example.org',
+        website: 'https://example.org',
+      },
       openingHours: { intervals: [{ day: 1, opens: '09:00', closes: '14:00' }] },
       description: 'Una botiga.',
     },
@@ -70,7 +94,9 @@ async function latestRevision(placeId: string): Promise<ModerationPlaceRevision>
 describe('PATCH /places/{placeId} as a merge patch', () => {
   it('leaves the contact parts it does not name, and clears the one it names null', async () => {
     const place = await fullPlace('Botiga del Contacte');
-    const { status, body } = await patch(place.id, { contact: { phone: null, website: 'https://example.org/nou' } });
+    const { status, body } = await patch(place.id, {
+      contact: { phone: null, website: 'https://example.org/nou' },
+    });
     expect(status).toBe(200);
     expect(body.contact).toEqual({ email: 'hola@example.org', website: 'https://example.org/nou' });
 
@@ -85,7 +111,11 @@ describe('PATCH /places/{placeId} as a merge patch', () => {
   it('clears one address part, or the whole address with null', async () => {
     const place = await fullPlace("Botiga de l'Adreça");
     const part = await patch(place.id, { address: { houseNumber: null } });
-    expect(part.body.address).toEqual({ street: 'Carrer de Mallorca', city: 'Barcelona', countryCode: 'ES' });
+    expect(part.body.address).toEqual({
+      street: 'Carrer de Mallorca',
+      city: 'Barcelona',
+      countryCode: 'ES',
+    });
 
     const whole = await patch(place.id, { address: null });
     expect(whole.status).toBe(200);
@@ -116,7 +146,9 @@ describe('PATCH /places/{placeId} as a merge patch', () => {
     expect(body.timezone).toBe('Europe/Madrid');
 
     const cleared = (await latestRevision(place.id)).changes;
-    expect(cleared.every((change) => change.before !== undefined && change.after === undefined)).toBe(true);
+    expect(
+      cleared.every((change) => change.before !== undefined && change.after === undefined),
+    ).toBe(true);
     expect(cleared.map((change) => change.field).sort()).toEqual([
       'contact.email',
       'contact.phone',
@@ -131,7 +163,12 @@ describe('PATCH /places/{placeId} as a merge patch', () => {
     const place = await fullPlace('Botiga Sencera');
     // A wrong type is malformed (400); `status` is a closed set, and null is
     // simply not one of its values (422).
-    for (const [field, expected] of [['name', 400], ['location', 400], ['categories', 400], ['status', 422]] as const) {
+    for (const [field, expected] of [
+      ['name', 400],
+      ['location', 400],
+      ['categories', 400],
+      ['status', 422],
+    ] as const) {
       const { status, body } = await patch(place.id, { [field]: null });
       expect(status).toBe(expected);
       expect(body.error.details?.field).toBe(field);

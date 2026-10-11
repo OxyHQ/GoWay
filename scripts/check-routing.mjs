@@ -50,8 +50,7 @@ function greatCircleMeters(a, b) {
   const dLon = toRad(b.longitude - a.longitude);
   const lat1 = toRad(a.latitude);
   const lat2 = toRad(b.latitude);
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
@@ -78,12 +77,18 @@ try {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
     // No Authorization. Routing is public; see the module docs.
-    body: JSON.stringify({ origin: { coordinate: ORIGIN }, destination: { coordinate: DESTINATION }, mode: 'drive' }),
+    body: JSON.stringify({
+      origin: { coordinate: ORIGIN },
+      destination: { coordinate: DESTINATION },
+      mode: 'drive',
+    }),
     signal: controller.signal,
   });
   body = await response.json();
 } catch (error) {
-  console.error(`✗ ${API} did not answer: ${error instanceof Error ? error.message : String(error)}`);
+  console.error(
+    `✗ ${API} did not answer: ${error instanceof Error ? error.message : String(error)}`,
+  );
   process.exit(1);
 } finally {
   clearTimeout(timer);
@@ -93,7 +98,9 @@ if (response.status !== 200) {
   const code = body?.error?.code ?? '(no code)';
   console.error(`✗ HTTP ${response.status} ${code}: ${body?.error?.message ?? ''}`);
   if (code === 'service_unavailable') {
-    console.error('  ROUTING_VALHALLA_URL is unset on this deployment — there is no routing engine.');
+    console.error(
+      '  ROUTING_VALHALLA_URL is unset on this deployment — there is no routing engine.',
+    );
   }
   process.exit(1);
 }
@@ -123,24 +130,41 @@ check(
   coordinates.length >= 200,
   `the geometry has ${coordinates.length} coordinates; a 600 km road has hundreds and a straight line has two`,
 );
-check(maneuvers.length >= 5, `the route has ${maneuvers.length} maneuvers; a real drive turns more than that`);
-check(named.length >= 3, `only ${named.length} maneuvers name a road; the engine is not reading street names`);
-check(route.durationSeconds > 3 * 3600, `${(route.durationSeconds / 3600).toFixed(1)} h is not a plausible time for this drive`);
+check(
+  maneuvers.length >= 5,
+  `the route has ${maneuvers.length} maneuvers; a real drive turns more than that`,
+);
+check(
+  named.length >= 3,
+  `only ${named.length} maneuvers name a road; the engine is not reading street names`,
+);
+check(
+  route.durationSeconds > 3 * 3600,
+  `${(route.durationSeconds / 3600).toFixed(1)} h is not a plausible time for this drive`,
+);
 check(route.mode === 'drive', `the route came back as mode "${route.mode}"`);
 
 // Every point must be in Iberia. A route that leaves the box is a decoding bug
 // — a mis-signed polyline puts the whole line in the wrong hemisphere, and it
 // still renders as a confident blue line somewhere.
-const outside = coordinates.filter(
-  ([lon, lat]) => lon < -10 || lon > 5 || lat < 35 || lat > 44,
+const outside = coordinates.filter(([lon, lat]) => lon < -10 || lon > 5 || lat < 35 || lat > 44);
+check(
+  outside.length === 0,
+  `${outside.length} coordinates fall outside Iberia, e.g. ${JSON.stringify(outside[0])}`,
 );
-check(outside.length === 0, `${outside.length} coordinates fall outside Iberia, e.g. ${JSON.stringify(outside[0])}`);
 
-console.log(`  distance     ${km(route.distanceMeters)}  (${(route.distanceMeters / CROW).toFixed(2)}× the great circle)`);
+console.log(
+  `  distance     ${km(route.distanceMeters)}  (${(route.distanceMeters / CROW).toFixed(2)}× the great circle)`,
+);
 console.log(`  duration     ${(route.durationSeconds / 3600).toFixed(1)} h`);
 console.log(`  geometry     ${coordinates.length} coordinates`);
 console.log(`  maneuvers    ${maneuvers.length}, ${named.length} naming a road`);
-console.log(`  first roads  ${named.slice(0, 4).map((m) => m.streetName).join(', ')}`);
+console.log(
+  `  first roads  ${named
+    .slice(0, 4)
+    .map((m) => m.streetName)
+    .join(', ')}`,
+);
 console.log();
 
 if (failures.length > 0) {
@@ -148,4 +172,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('✓ GoWay returned a real route: it follows roads, it turns, and it is longer than the crow flies.');
+console.log(
+  '✓ GoWay returned a real route: it follows roads, it turns, and it is longer than the crow flies.',
+);

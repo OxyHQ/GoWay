@@ -63,7 +63,9 @@ describe('the conversion', () => {
   });
 
   async function convert(legacy: string[]): Promise<string[]> {
-    const [row] = await session<{ keys: string[] }[]>`SELECT pg_temp.goway_category_keys(${legacy}::text[]) AS keys`;
+    const [row] = await session<
+      { keys: string[] }[]
+    >`SELECT pg_temp.goway_category_keys(${legacy}::text[]) AS keys`;
     return row?.keys ?? [];
   }
 
@@ -91,7 +93,10 @@ describe('the conversion', () => {
       WHERE pg_temp.goway_category_keys(ARRAY[key]) IS DISTINCT FROM ARRAY[key]
     `;
     expect([...moved]).toEqual([]);
-    expect(await convert(['food.cafe', 'culture.attraction'])).toEqual(['food.cafe', 'culture.attraction']);
+    expect(await convert(['food.cafe', 'culture.attraction'])).toEqual([
+      'food.cafe',
+      'culture.attraction',
+    ]);
   });
 
   it('answers "already converted" exactly as the function would, on every shape', async () => {
@@ -125,10 +130,15 @@ describe('the conversion', () => {
   });
 
   it('wraps a version-1 statement as version 2, its categories converted the same way', async () => {
-    const [row] = await session.unsafe<{ data: unknown }[]>(`SELECT pg_temp.goway_source_data_v2($1::text::jsonb) AS data`, [
-      JSON.stringify({ name: 'Bar Pepe', categories: ['bar', 'food_drink'] }),
-    ]);
-    expect(row?.data).toEqual({ v: 2, tags: {}, normalized: { name: 'Bar Pepe', categories: ['food.bar'] } });
+    const [row] = await session.unsafe<{ data: unknown }[]>(
+      `SELECT pg_temp.goway_source_data_v2($1::text::jsonb) AS data`,
+      [JSON.stringify({ name: 'Bar Pepe', categories: ['bar', 'food_drink'] })],
+    );
+    expect(row?.data).toEqual({
+      v: 2,
+      tags: {},
+      normalized: { name: 'Bar Pepe', categories: ['food.bar'] },
+    });
   });
 });
 
@@ -184,7 +194,8 @@ describe('the batched converter and the migration', () => {
   async function rows(suite: SuiteDatabase) {
     const sql = sessionFor(suite);
     try {
-      const places = await sql`SELECT id, categories, timezone, opening_hours FROM places ORDER BY id`;
+      const places =
+        await sql`SELECT id, categories, timezone, opening_hours FROM places ORDER BY id`;
       const sources = await sql`SELECT id, source_data FROM places_sources ORDER BY id`;
       return { places: [...places], sources: [...sources] };
     } finally {
@@ -235,11 +246,21 @@ describe('the batched converter and the migration', () => {
       const again = await convertLegacyPlaceData(sql, plan, { ...options, dryRun: true });
       const rerun = await convertLegacyPlaceData(sql, plan, options);
 
-      const matched = (summaries: typeof done) => Object.fromEntries(summaries.map((s) => [s.step, s.matched]));
-      expect(matched(done)).toEqual({ categories: expect.any(Number), sources: expect.any(Number), timezone: 69 });
+      const matched = (summaries: typeof done) =>
+        Object.fromEntries(summaries.map((s) => [s.step, s.matched]));
+      expect(matched(done)).toEqual({
+        categories: expect.any(Number),
+        sources: expect.any(Number),
+        timezone: 69,
+      });
       expect(matched(counted)).toEqual({ ...matched(done), 'taxonomy-check': expect.any(Number) });
       expect(matched(counted)['taxonomy-check']).toBeGreaterThan(0);
-      expect(matched(again)).toEqual({ categories: 0, 'taxonomy-check': 0, sources: 0, timezone: 0 });
+      expect(matched(again)).toEqual({
+        categories: 0,
+        'taxonomy-check': 0,
+        sources: 0,
+        timezone: 0,
+      });
       expect(matched(rerun)).toEqual({ categories: 0, sources: 0, timezone: 0 });
       expect(done.every((s) => s.examined === 240 && s.batches === Math.ceil(240 / 7))).toBe(true);
     } finally {
@@ -272,21 +293,26 @@ describe('the batched converter and the migration', () => {
     expect(await rows(converted!)).toEqual(await rows(migratedOnly!));
     // Spot-check the result is the conversion, not two identical no-ops.
     const { places } = await rows(converted!);
-    expect(places.find((p) => p.id === 'place-0007')).toMatchObject({ categories: ['transport.rail_station'], timezone: 'Europe/Madrid' });
+    expect(places.find((p) => p.id === 'place-0007')).toMatchObject({
+      categories: ['transport.rail_station'],
+      timezone: 'Europe/Madrid',
+    });
   });
 
   it('validates the CHECK the post phase added NOT VALID, without rewriting anything', async () => {
     const sql = sessionFor(converted!);
     try {
-      const [before] = await sql`SELECT convalidated FROM pg_constraint WHERE conname = ${TAXONOMY_CONSTRAINT}`;
+      const [before] =
+        await sql`SELECT convalidated FROM pg_constraint WHERE conname = ${TAXONOMY_CONSTRAINT}`;
       expect(before?.convalidated).toBe(false);
       expect((await validateTaxonomyConstraint(sql)).alreadyValid).toBe(false);
       expect((await validateTaxonomyConstraint(sql)).alreadyValid).toBe(true);
       // NOT VALID never meant unchecked: a new legacy key is refused at once.
-      const refused = await sql`UPDATE places SET categories = ARRAY['cafe'] WHERE id = 'place-0001'`.then(
-        () => null,
-        (error: unknown) => error,
-      );
+      const refused =
+        await sql`UPDATE places SET categories = ARRAY['cafe'] WHERE id = 'place-0001'`.then(
+          () => null,
+          (error: unknown) => error,
+        );
       expect(String(refused)).toContain(TAXONOMY_CONSTRAINT);
     } finally {
       await sql.end({ timeout: 5 });

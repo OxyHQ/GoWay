@@ -77,7 +77,9 @@ function parseJournalTags() {
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    fail(`${JOURNAL_PATH} is not readable JSON (${error.message}); the gate cannot see any migration.`);
+    fail(
+      `${JOURNAL_PATH} is not readable JSON (${error.message}); the gate cannot see any migration.`,
+    );
     return null;
   }
 
@@ -90,7 +92,9 @@ function parseJournalTags() {
   const tags = [];
   for (const [index, entry] of entries.entries()) {
     if (typeof entry?.tag !== 'string' || entry.tag.length === 0) {
-      fail(`${JOURNAL_PATH} entry ${index} has no string \`tag\`, so its migration cannot be located.`);
+      fail(
+        `${JOURNAL_PATH} entry ${index} has no string \`tag\`, so its migration cannot be located.`,
+      );
       continue;
     }
     tags.push(entry.tag);
@@ -106,7 +110,9 @@ function migrationFilesOnDisk() {
       .map((name) => name.slice(0, -'.sql'.length))
       .sort();
   } catch (error) {
-    fail(`${DRIZZLE_FOLDER} cannot be listed (${error.message}), so the journal cannot be reconciled with it.`);
+    fail(
+      `${DRIZZLE_FOLDER} cannot be listed (${error.message}), so the journal cannot be reconciled with it.`,
+    );
     return null;
   }
 }
@@ -163,7 +169,7 @@ const postCount = [...phases.values()].filter((phase) => phase === 'post').lengt
 if (tags.length === 0) {
   console.log(
     'Migration deploy phases are sound: the journal is present, parses, and is EMPTY — and no orphan ' +
-      '.sql sits in drizzle/ waiting for nothing to apply it. GoWay\'s first migration arrives with the ' +
+      ".sql sits in drizzle/ waiting for nothing to apply it. GoWay's first migration arrives with the " +
       'Places schema.',
   );
 } else {

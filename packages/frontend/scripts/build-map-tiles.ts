@@ -93,7 +93,10 @@ import {
   OSM_ID_MULTIPLIER,
   type VectorTileLayer,
 } from './mapgen/mvt';
-import { OPENMAPTILES_SOURCE_LAYER_NAMES, OPENMAPTILES_SOURCE_LAYERS } from '../lib/map/style/schema';
+import {
+  OPENMAPTILES_SOURCE_LAYER_NAMES,
+  OPENMAPTILES_SOURCE_LAYERS,
+} from '../lib/map/style/schema';
 
 const FRONTEND_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -326,7 +329,18 @@ async function fetchOnce(url: string, destination: string, label: string): Promi
     try {
       await run(
         'curl',
-        ['-fsSL', '-C', '-', '--speed-time', '60', '--speed-limit', '200000', '-o', destination, url],
+        [
+          '-fsSL',
+          '-C',
+          '-',
+          '--speed-time',
+          '60',
+          '--speed-limit',
+          '200000',
+          '-o',
+          destination,
+          url,
+        ],
         `curl ${label}`,
       );
     } catch (error) {
@@ -485,14 +499,18 @@ export async function verify(archivePath: string, area: string): Promise<Verific
 
   // 1. The container. A wrong tile type or compression is a map that fetches
   //    and never draws, and the Worker's `content-encoding` depends on it.
-  if (header.tileType !== TILE_TYPE.MVT) problems.push(`tile type is ${header.tileType}, expected MVT`);
+  if (header.tileType !== TILE_TYPE.MVT)
+    problems.push(`tile type is ${header.tileType}, expected MVT`);
   if (header.tileCompression !== COMPRESSION.GZIP) {
     problems.push(`tile compression is ${header.tileCompression}, expected gzip`);
   }
   if (header.minZoom !== 0) problems.push(`minzoom is ${header.minZoom}, expected 0`);
-  if (header.maxZoom !== MAX_ZOOM) problems.push(`maxzoom is ${header.maxZoom}, expected ${MAX_ZOOM}`);
+  if (header.maxZoom !== MAX_ZOOM)
+    problems.push(`maxzoom is ${header.maxZoom}, expected ${MAX_ZOOM}`);
   if (!header.clustered) {
-    problems.push('archive is not clustered; leaf directories will not describe contiguous regions');
+    problems.push(
+      'archive is not clustered; leaf directories will not describe contiguous regions',
+    );
   }
 
   // 2. Schema reality, the other way round from `build-map-style.ts`. That
@@ -507,9 +525,9 @@ export async function verify(archivePath: string, area: string): Promise<Verific
   //    is a broken build. The SURPLUS direction is asserted for both, because
   //    a layer nobody recorded is a layer the style will never draw whatever
   //    the extract is.
-  const vectorLayers = (
-    (metadata.vector_layers as { id: string }[] | undefined) ?? []
-  ).map((layer) => layer.id);
+  const vectorLayers = ((metadata.vector_layers as { id: string }[] | undefined) ?? []).map(
+    (layer) => layer.id,
+  );
   const worldCovering = header.bounds[0] <= -179 && header.bounds[2] >= 179;
   const missing = OPENMAPTILES_SOURCE_LAYER_NAMES.filter((name) => !vectorLayers.includes(name));
   for (const name of missing) {
@@ -519,7 +537,9 @@ export async function verify(archivePath: string, area: string): Promise<Verific
   }
   for (const name of vectorLayers) {
     if (!OPENMAPTILES_SOURCE_LAYER_NAMES.includes(name)) {
-      problems.push(`the archive carries an unrecorded layer "${name}"; schema.ts has not been told`);
+      problems.push(
+        `the archive carries an unrecorded layer "${name}"; schema.ts has not been told`,
+      );
     }
   }
 
@@ -537,7 +557,10 @@ export async function verify(archivePath: string, area: string): Promise<Verific
   for (let z = 0; z < MAX_ZOOM; z += 1) coordinates.push(tileFor(sample.lat, sample.lon, z));
 
   const classes = new Map<string, Set<string>>();
-  const joins = (EXPECTED_JOINS[area] ?? []).map((join) => ({ ...join, found: null as string | null }));
+  const joins = (EXPECTED_JOINS[area] ?? []).map((join) => ({
+    ...join,
+    found: null as string | null,
+  }));
   const wanted = new Map(joins.map((join) => [join.osm, join]));
 
   let tilesOpened = 0;
@@ -562,7 +585,8 @@ export async function verify(archivePath: string, area: string): Promise<Verific
     }
 
     for (const layer of layers) {
-      if (layer.version !== 2) problems.push(`layer "${layer.name}" is MVT v${layer.version}, expected 2`);
+      if (layer.version !== 2)
+        problems.push(`layer "${layer.name}" is MVT v${layer.version}, expected 2`);
       if (!classes.has(layer.name)) classes.set(layer.name, new Set());
       for (const feature of layer.features) {
         features += 1;
@@ -692,7 +716,9 @@ async function upload(archivePath: string, key: string): Promise<void> {
     'aws s3 cp',
   );
   console.log(`· uploaded to s3://${bucket}/${key}`);
-  console.log(`· now set MAP_TILE_ARCHIVE = "${key}" in packages/frontend/wrangler.toml and deploy`);
+  console.log(
+    `· now set MAP_TILE_ARCHIVE = "${key}" in packages/frontend/wrangler.toml and deploy`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -719,13 +745,15 @@ function summarise(report: VerificationReport): void {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
-  const archivePath = args.archive ?? (args.verify || args.upload ? undefined : await build(args.area, args.force));
+  const archivePath =
+    args.archive ?? (args.verify || args.upload ? undefined : await build(args.area, args.force));
   if (!archivePath) {
     throw new Error('--verify and --upload need --archive=<path>');
   }
 
   if (args.upload) {
-    if (!args.key) throw new Error('--upload needs --key=<object key>, e.g. basemap/planet-20260920.pmtiles');
+    if (!args.key)
+      throw new Error('--upload needs --key=<object key>, e.g. basemap/planet-20260920.pmtiles');
     const report = await verify(archivePath, args.area);
     summarise(report);
     if (report.problems.length > 0) {
@@ -762,7 +790,9 @@ async function main(): Promise<void> {
   if (report.problems.length > 0) {
     console.error('');
     for (const problem of report.problems) console.error(`  ✗ ${problem}`);
-    console.error(`\n${report.problems.length} problem(s). This archive must not replace the live one.`);
+    console.error(
+      `\n${report.problems.length} problem(s). This archive must not replace the live one.`,
+    );
     process.exitCode = 1;
     return;
   }

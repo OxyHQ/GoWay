@@ -73,7 +73,9 @@ export interface FormationDeps {
  * yaw away from the capture's own heading, so one panorama covers every
  * sector — which is the point of capturing one.
  */
-export function frameHeading(frame: Pick<EligibleFrame, 'headingDegrees' | 'panoramaYawDegrees'>): number | null {
+export function frameHeading(
+  frame: Pick<EligibleFrame, 'headingDegrees' | 'panoramaYawDegrees'>,
+): number | null {
   if (frame.headingDegrees === null) return null;
   return (((frame.headingDegrees + (frame.panoramaYawDegrees ?? 0)) % 360) + 360) % 360;
 }
@@ -88,7 +90,10 @@ function sectorsOf(frames: readonly EligibleFrame[]): Set<number> {
 }
 
 /** Whether a frame set could be reconstructed at all. See this module's header. */
-export function isReconstructable(frames: readonly EligibleFrame[], config: Street3dConfig): boolean {
+export function isReconstructable(
+  frames: readonly EligibleFrame[],
+  config: Street3dConfig,
+): boolean {
   if (frames.length < config.minEligibleFrames) return false;
   const withHeading = frames.filter((frame) => frame.headingDegrees !== null).length;
   return withHeading === 0 || sectorsOf(frames).size >= config.minHeadingSectors;
@@ -131,7 +136,9 @@ export function manifestFrames(jobId: string, frames: readonly EligibleFrame[]):
       captureAssetId: frame.assetId,
       imageKey: frame.imageKey,
       imageSha256: frame.imageSha256,
-      ...(frame.maskKey && frame.maskSha256 ? { maskKey: frame.maskKey, maskSha256: frame.maskSha256 } : {}),
+      ...(frame.maskKey && frame.maskSha256
+        ? { maskKey: frame.maskKey, maskSha256: frame.maskSha256 }
+        : {}),
       width: frame.width,
       height: frame.height,
       privacyPipelineVersion: frame.privacyPipelineVersion,
@@ -145,7 +152,9 @@ export function manifestFrames(jobId: string, frames: readonly EligibleFrame[]):
         ...(frame.accuracyMeters !== null ? { accuracyMeters: frame.accuracyMeters } : {}),
         ...(heading !== null ? { headingDegrees: heading } : {}),
       },
-      ...(frame.panoramaIndex !== null && frame.panoramaYawDegrees !== null && frame.panoramaFovDegrees !== null
+      ...(frame.panoramaIndex !== null &&
+      frame.panoramaYawDegrees !== null &&
+      frame.panoramaFovDegrees !== null
         ? {
             // A view's intrinsics are its field of view; a 360° camera's own
             // focal length describes a lens the view was never taken through.
@@ -172,7 +181,11 @@ async function seedNewScenes(
   frames: readonly EligibleFrame[],
   assignment: Map<string, string>,
 ): Promise<number> {
-  const unassigned = [...new Set(frames.filter((frame) => !assignment.has(frame.assetId)).map((frame) => frame.assetId))];
+  const unassigned = [
+    ...new Set(
+      frames.filter((frame) => !assignment.has(frame.assetId)).map((frame) => frame.assetId),
+    ),
+  ];
   if (unassigned.length < 2) return 0;
   const pairs = await neighbourPairs(deps.db, unassigned, deps.config.clusterRadiusMeters);
   const neighbours = new Map<string, Set<string>>();
@@ -200,7 +213,11 @@ async function seedNewScenes(
       latitude += position.get(id)?.latitude ?? 0;
       longitude += position.get(id)?.longitude ?? 0;
     }
-    const sceneId = await createScene(deps.db, { latitude: latitude / members.length, longitude: longitude / members.length }, deps.now);
+    const sceneId = await createScene(
+      deps.db,
+      { latitude: latitude / members.length, longitude: longitude / members.length },
+      deps.now,
+    );
     for (const id of members) {
       used.add(id);
       assignment.set(id, sceneId);
@@ -227,22 +244,37 @@ export async function formScenes(deps: FormationDeps): Promise<FormationResult> 
   }
 
   const scenes = await loadScenes(deps.db, [...byScene.keys()]);
-  const open = await openSceneJobs(deps.db, scenes.map((scene) => scene.id));
+  const open = await openSceneJobs(
+    deps.db,
+    scenes.map((scene) => scene.id),
+  );
   let jobsQueued = 0;
   let jobsSuperseded = 0;
 
   for (const scene of scenes) {
     const sceneFrames = byScene.get(scene.id) ?? [];
-    await updateSceneCounters(deps.db, scene.id, sceneFrames.length, sectorsOf(sceneFrames).size, deps.now);
+    await updateSceneCounters(
+      deps.db,
+      scene.id,
+      sceneFrames.length,
+      sectorsOf(sceneFrames).size,
+      deps.now,
+    );
     if (scene.state === 'disabled' || !isReconstructable(sceneFrames, deps.config)) continue;
 
     const fingerprint = inputFingerprint(sceneFrames.map((frame) => frame.imageSha256));
     const openJob = open.get(scene.id);
     if (openJob) {
-      const waiting = openJob.startedAt === null && (openJob.state === 'queued' || openJob.state === 'retry_wait');
+      const waiting =
+        openJob.startedAt === null &&
+        (openJob.state === 'queued' || openJob.state === 'retry_wait');
       const previous = new Set(openJob.inputDerivativeIds ?? []);
       const grown = sceneFrames.filter((frame) => !previous.has(frame.derivativeId)).length;
-      if (waiting && grown >= deps.config.supersedeMinNewFrames && fingerprint !== openJob.inputFingerprint) {
+      if (
+        waiting &&
+        grown >= deps.config.supersedeMinNewFrames &&
+        fingerprint !== openJob.inputFingerprint
+      ) {
         if (await queueSceneJob(deps, scene, sceneFrames, fingerprint, openJob)) {
           jobsQueued += 1;
           jobsSuperseded += 1;
@@ -253,7 +285,8 @@ export async function formScenes(deps: FormationDeps): Promise<FormationResult> 
 
     // An explicit rebuild request (operator, withdrawal, moderation) is the one
     // thing allowed to re-queue an identical input set — e.g. at another profile.
-    if (fingerprint === scene.lastQueuedInputFingerprint && scene.rebuildRequestedAt === null) continue;
+    if (fingerprint === scene.lastQueuedInputFingerprint && scene.rebuildRequestedAt === null)
+      continue;
     const previous = await lastSceneJob(deps.db, scene.id);
     const due =
       previous === null ||
@@ -282,7 +315,8 @@ async function queueSceneJob(
   supersede?: JobRow,
 ): Promise<boolean> {
   const { jobId, version } = nextSceneJobIdentity(scene);
-  const profile: StreetSceneProfile = (scene.rebuildProfile as StreetSceneProfile | null) ?? deps.config.defaultProfile;
+  const profile: StreetSceneProfile =
+    (scene.rebuildProfile as StreetSceneProfile | null) ?? deps.config.defaultProfile;
   const manifest: SceneInputManifest = {
     schemaVersion: WORKER_CONTRACT_SCHEMA_VERSION,
     jobId,

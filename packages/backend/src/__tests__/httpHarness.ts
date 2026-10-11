@@ -25,9 +25,12 @@ function resolveSession(request: express.Request): boolean {
   const actor = request.header('x-test-actor') ?? user;
   request.userId = user;
   request.accessToken = tokenFor(actor);
-  request.oxyActor = { schemaVersion: 1, effectiveAccountId: user, actorAccountId: actor, delegated: actor !== user } as NonNullable<
-    express.Request['oxyActor']
-  >;
+  request.oxyActor = {
+    schemaVersion: 1,
+    effectiveAccountId: user,
+    actorAccountId: actor,
+    delegated: actor !== user,
+  } as NonNullable<express.Request['oxyActor']>;
   return true;
 }
 
@@ -49,7 +52,9 @@ export function session(user: string, actor: string = user): Record<string, stri
   return { 'x-test-user': user, 'x-test-actor': actor };
 }
 
-export type ErrorBody = { error: { code: string; message: string; details?: Record<string, unknown> } };
+export type ErrorBody = {
+  error: { code: string; message: string; details?: Record<string, unknown> };
+};
 
 export interface Fetched<T> {
   status: number;
@@ -58,7 +63,12 @@ export interface Fetched<T> {
 
 export interface TestApi {
   /** `method path` under `/api/v1`, as `headers`, with an optional JSON body. */
-  call<T>(method: string, path: string, headers?: Record<string, string>, body?: unknown): Promise<Fetched<T>>;
+  call<T>(
+    method: string,
+    path: string,
+    headers?: Record<string, string>,
+    body?: unknown,
+  ): Promise<Fetched<T>>;
   close(): Promise<void>;
 }
 
@@ -75,13 +85,21 @@ export async function serve(...routers: Router[]): Promise<TestApi> {
   const origin = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
 
   return {
-    async call<T>(method: string, path: string, headers: Record<string, string> = {}, body?: unknown) {
+    async call<T>(
+      method: string,
+      path: string,
+      headers: Record<string, string> = {},
+      body?: unknown,
+    ) {
       const response = await fetch(`${origin}/api/v1${path}`, {
         method,
         headers: body === undefined ? headers : { ...headers, 'content-type': 'application/json' },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
-      return { status: response.status, body: (response.status === 204 ? undefined : await response.json()) as T };
+      return {
+        status: response.status,
+        body: (response.status === 204 ? undefined : await response.json()) as T,
+      };
     },
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };

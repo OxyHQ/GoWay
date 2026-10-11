@@ -56,8 +56,14 @@ export type SearchProviderId = (typeof SEARCH_PROVIDER_IDS)[number];
 const emptyAsUndefined = (value: unknown): unknown =>
   typeof value === 'string' && value.trim().length === 0 ? undefined : value;
 
-const integerFromEnv = (fallback: number, { minimum, maximum }: { minimum: number; maximum: number }) =>
-  z.preprocess(emptyAsUndefined, z.coerce.number().int().min(minimum).max(maximum).default(fallback));
+const integerFromEnv = (
+  fallback: number,
+  { minimum, maximum }: { minimum: number; maximum: number },
+) =>
+  z.preprocess(
+    emptyAsUndefined,
+    z.coerce.number().int().min(minimum).max(maximum).default(fallback),
+  );
 
 /**
  * An http(s) base URL for an upstream API.
@@ -112,7 +118,10 @@ const DEFAULT_PROVIDERS = ['photon'] as const;
  * represents a group of duplicates, and which failure is reported when every
  * provider fails.
  */
-const providerList = tokenList<SearchProviderId>(z.array(z.enum(SEARCH_PROVIDER_IDS)).min(1), DEFAULT_PROVIDERS);
+const providerList = tokenList<SearchProviderId>(
+  z.array(z.enum(SEARCH_PROVIDER_IDS)).min(1),
+  DEFAULT_PROVIDERS,
+);
 
 /**
  * The languages the configured Photon instance can localize into.

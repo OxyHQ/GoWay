@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { CAPTURE_ASSET_STATES, CAPTURE_PRIVACY_STATES, STREET_SCENE_REPORT_REASONS } from '@goway.to/sdk';
+import {
+  CAPTURE_ASSET_STATES,
+  CAPTURE_PRIVACY_STATES,
+  STREET_SCENE_REPORT_REASONS,
+} from '@goway.to/sdk';
 
 import { contributionStatus } from '@/features/contribute/status';
 
@@ -13,7 +17,10 @@ describe('Street 3D messages', () => {
   test('placeholders match across locales', () => {
     const placeholders = (text: string) => (text.match(/\{\w+\}/g) ?? []).sort();
     for (const [key, english] of Object.entries(STREET3D_EN)) {
-      expect({ key, placeholders: placeholders(STREET3D_ES[key]) }).toEqual({ key, placeholders: placeholders(english) });
+      expect({ key, placeholders: placeholders(STREET3D_ES[key]) }).toEqual({
+        key,
+        placeholders: placeholders(english),
+      });
     }
   });
 

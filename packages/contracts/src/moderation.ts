@@ -145,7 +145,11 @@ export type PlaceReportResolutionInput = z.input<typeof placeReportResolutionInp
  * `approved` one. Every other transition is a `conflict`: a rejected claim is
  * re-requested, not re-decided, so its history stays legible.
  */
-export const CLAIM_DECISION_STATES = ['approved', 'rejected', 'revoked'] as const satisfies readonly PlaceClaimState[];
+export const CLAIM_DECISION_STATES = [
+  'approved',
+  'rejected',
+  'revoked',
+] as const satisfies readonly PlaceClaimState[];
 export type ClaimDecisionState = (typeof CLAIM_DECISION_STATES)[number];
 
 /** The state a claim must be in for each decision. Total, so a new decision cannot skip its precondition. */
@@ -202,7 +206,9 @@ export type ModerationPlaceUpdateInput = z.input<typeof moderationPlaceUpdateInp
  * value is held to that entry ({@link moderationCapabilityInputSchemaFor}), so
  * an operator cannot verify a value the registry would refuse from anybody.
  */
-export const moderationCapabilityInputSchema = z.object({ value: capabilityValueInputSchema }).strict();
+export const moderationCapabilityInputSchema = z
+  .object({ value: capabilityValueInputSchema })
+  .strict();
 export type ModerationCapabilityInput = z.input<typeof moderationCapabilityInputSchema>;
 
 /** The same body, held to one key's registry entry: what the API applies once the path has named the key. */

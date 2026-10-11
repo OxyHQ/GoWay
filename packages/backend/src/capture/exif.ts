@@ -39,7 +39,6 @@ import {
 } from '@goway/contracts';
 import type { z } from 'zod';
 
-
 /** The normalized result, or `null` when the tags do not describe a position. */
 export interface NormalizedExifGps {
   coordinate: GeoCoordinate;

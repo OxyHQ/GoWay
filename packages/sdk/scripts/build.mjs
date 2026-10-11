@@ -77,7 +77,8 @@ const contractIsSideEffectFree = {
   setup(build) {
     build.onResolve({ filter: /.*/ }, async (args) => {
       if (args.pluginData === 'resolving') return undefined;
-      const fromContract = args.path === '@goway/contracts' || args.importer.includes('/contracts/');
+      const fromContract =
+        args.path === '@goway/contracts' || args.importer.includes('/contracts/');
       if (!fromContract || isExternal(args.path)) return undefined;
       const resolved = await build.resolve(args.path, {
         importer: args.importer,
@@ -141,7 +142,13 @@ await copyFile(join(dist, 'index.d.ts'), join(dist, 'index.d.cts'));
  * removed; the last one is the declaration's own JSDoc and stays.
  */
 function dropOrphanedDocblocks(code) {
-  const source = ts.createSourceFile('index.d.ts', code, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+  const source = ts.createSourceFile(
+    'index.d.ts',
+    code,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.TS,
+  );
   const removals = [];
   for (const statement of source.statements) {
     const ranges = ts.getLeadingCommentRanges(code, statement.pos) ?? [];

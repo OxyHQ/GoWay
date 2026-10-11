@@ -344,18 +344,33 @@ export const captureMediaObjects = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
-    closedSet('capture_objects_storage_state_check', table.storageState, CAPTURE_OBJECT_STORAGE_STATES),
+    closedSet(
+      'capture_objects_storage_state_check',
+      table.storageState,
+      CAPTURE_OBJECT_STORAGE_STATES,
+    ),
     /**
      * The class set is the CAPTURE subset, not the whole retention vocabulary.
      * A `published_splat` in this table would be a published scene inheriting a
      * raw upload's expiry — the precise confusion #10 spends a section warning
      * about — so it is not merely unlikely here, it is unrepresentable.
      */
-    closedSet('capture_objects_retention_class_check', table.retentionClass, CAPTURE_RETENTION_CLASSES),
+    closedSet(
+      'capture_objects_retention_class_check',
+      table.retentionClass,
+      CAPTURE_RETENTION_CLASSES,
+    ),
     closedSet('capture_objects_retention_reason_check', table.retentionReason, RETENTION_REASONS),
     closedSet('capture_objects_deletion_reason_check', table.deletionReason, DELETION_REASONS),
-    closedSet('capture_objects_deletion_requested_reason_check', table.deletionRequestedReason, DELETION_REASONS),
-    check('capture_objects_deletion_request_check', sql`(${table.deletionRequestedAt} is null) = (${table.deletionRequestedReason} is null)`),
+    closedSet(
+      'capture_objects_deletion_requested_reason_check',
+      table.deletionRequestedReason,
+      DELETION_REASONS,
+    ),
+    check(
+      'capture_objects_deletion_request_check',
+      sql`(${table.deletionRequestedAt} is null) = (${table.deletionRequestedReason} is null)`,
+    ),
 
     check('capture_objects_content_hash_check', sql`${table.contentHash} ~ '^[0-9a-f]{64}$'`),
     check('capture_objects_object_key_check', sql`btrim(${table.objectKey}) <> ''`),
@@ -374,7 +389,10 @@ export const captureMediaObjects = pgTable(
      * the past of its own creation is an arithmetic slip; an expiry past the
      * backstop is a bug wearing a policy's clothes. Neither can be stored.
      */
-    check('capture_objects_expiry_after_creation_check', sql`${table.expiresAt} > ${table.createdAt}`),
+    check(
+      'capture_objects_expiry_after_creation_check',
+      sql`${table.expiresAt} > ${table.createdAt}`,
+    ),
     check(
       'capture_objects_expiry_ceiling_check',
       // The columns are interpolated as drizzle Columns so their SQL names come
@@ -446,9 +464,7 @@ export const captureMediaObjects = pgTable(
      * tombstone is never a candidate and there will eventually be far more
      * tombstones than live objects.
      */
-    index('capture_objects_expiry_idx')
-      .on(table.expiresAt)
-      .where(sql`${table.deletedAt} is null`),
+    index('capture_objects_expiry_idx').on(table.expiresAt).where(sql`${table.deletedAt} is null`),
     /** Orphan detection: expected objects whose upload window has run out. */
     index('capture_objects_orphan_idx')
       .on(table.uploadIntentExpiresAt)
@@ -602,7 +618,11 @@ export const captureAssets = pgTable(
     closedSet('capture_assets_source_check', table.source, CAPTURE_SOURCES),
     closedSet('capture_assets_state_check', table.state, CAPTURE_ASSET_STATES),
     closedSet('capture_assets_anchor_origin_check', table.anchorOrigin, CAPTURE_LOCATION_ORIGINS),
-    closedSet('capture_assets_anchor_witness_check', table.anchorWitness, CAPTURE_LOCATION_WITNESSES),
+    closedSet(
+      'capture_assets_anchor_witness_check',
+      table.anchorWitness,
+      CAPTURE_LOCATION_WITNESSES,
+    ),
     closedSet('capture_assets_privacy_state_check', table.privacyState, CAPTURE_PRIVACY_STATES),
 
     /**
@@ -612,7 +632,10 @@ export const captureAssets = pgTable(
      * on Earth, and every query still returns rows.
      */
     check('capture_assets_latitude_range_check', sql`${table.anchorLatitude} between -90 and 90`),
-    check('capture_assets_longitude_range_check', sql`${table.anchorLongitude} between -180 and 180`),
+    check(
+      'capture_assets_longitude_range_check',
+      sql`${table.anchorLongitude} between -180 and 180`,
+    ),
     check(
       'capture_assets_accuracy_check',
       sql`${table.anchorAccuracyMeters} is null or ${table.anchorAccuracyMeters} >= 0`,
@@ -814,7 +837,11 @@ export const captureStorageBudgets = pgTable(
   },
   (table) => [
     closedSet('capture_budgets_scope_check', table.scope, CAPTURE_BUDGET_SCOPES),
-    closedSet('capture_budgets_retention_class_check', table.retentionClass, CAPTURE_RETENTION_CLASSES),
+    closedSet(
+      'capture_budgets_retention_class_check',
+      table.retentionClass,
+      CAPTURE_RETENTION_CLASSES,
+    ),
     check('capture_budgets_byte_ceiling_check', sql`${table.byteCeiling} > 0`),
     /** The global budget names nothing; every other scope must name something. */
     check(

@@ -47,7 +47,8 @@ function parseSteps(value: string | undefined): MoveStepName[] {
 
 function integer(value: string, flag: string, minimum: number): number {
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < minimum) throw new Error(`${flag} must be an integer >= ${minimum}.`);
+  if (!Number.isInteger(parsed) || parsed < minimum)
+    throw new Error(`${flag} must be an integer >= ${minimum}.`);
   return parsed;
 }
 
@@ -62,7 +63,10 @@ function progressReporter(): (progress: ConversionProgress) => void {
     const now = Date.now();
     if (now - last < PROGRESS_INTERVAL_MS) return;
     last = now;
-    logger.info({ ...progress, resume: `--step=${progress.step} --from=${progress.lastId}` }, 'Moving places');
+    logger.info(
+      { ...progress, resume: `--step=${progress.step} --from=${progress.lastId}` },
+      'Moving places',
+    );
   };
 }
 
@@ -99,7 +103,10 @@ async function main(): Promise<void> {
     await assertMigrationTarget(session, target);
     await prepareBatchSession(session, 'goway-categories-move', options);
     logger.info(options, 'Starting the category move');
-    const summaries = await moveCategoryPlaces(session, { ...options, onProgress: progressReporter() });
+    const summaries = await moveCategoryPlaces(session, {
+      ...options,
+      onProgress: progressReporter(),
+    });
     for (const summary of summaries) logger.info(summary, options.dryRun ? 'Would move' : 'Moved');
     console.log(JSON.stringify({ dryRun: options.dryRun, summaries }));
   } finally {

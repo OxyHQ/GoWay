@@ -31,9 +31,16 @@ function SceneChipComponent({ summary, accessibilityLabel, onPress }: SceneChipP
       accessibilityLabel={accessibilityLabel}
       className="flex-row items-center gap-space-4 rounded-radius-max bg-card py-space-2 pl-space-2 pr-space-8 shadow-m active:opacity-80"
     >
-      <View className="items-center justify-center overflow-hidden rounded-radius-max bg-muted" style={{ width: THUMB, height: THUMB }}>
+      <View
+        className="items-center justify-center overflow-hidden rounded-radius-max bg-muted"
+        style={{ width: THUMB, height: THUMB }}
+      >
         {summary?.posterUrl ? (
-          <Image source={{ uri: summary.posterUrl }} style={{ width: THUMB, height: THUMB }} contentFit="cover" />
+          <Image
+            source={{ uri: summary.posterUrl }}
+            style={{ width: THUMB, height: THUMB }}
+            contentFit="cover"
+          />
         ) : (
           <RiBox3Line width={18} height={18} fill={theme.colors.textSecondary} />
         )}

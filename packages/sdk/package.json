@@ -67,7 +67,6 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "clean": "rm -rf dist",
-    "lint": "eslint src test scripts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
     "smoke": "node scripts/smoke.mjs",
@@ -77,12 +76,8 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
     "@goway/contracts": "workspace:*",
-    "@typescript-eslint/eslint-plugin": "^8.46.0",
-    "@typescript-eslint/parser": "^8.46.0",
     "esbuild": "^0.25.12",
-    "eslint": "^9.39.5",
     "rollup": "^4.59.0",
     "rollup-plugin-dts": "~6.4.1",
     "typescript": "^5.9.3",

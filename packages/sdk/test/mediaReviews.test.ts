@@ -47,21 +47,34 @@ describe('the gallery', () => {
     const { client, calls } = clientFor(page([MEDIA]));
     const listed = await client.places.media.list('gw_place_01H8', { kinds: ['photo', 'menu'] });
     expect(listed.items[0]?.fileId).toBe('oxy-file-1');
-    expect(calls[0]?.url.split('?')[0]).toBe('https://api.goway.to/api/v1/places/gw_place_01H8/media');
+    expect(calls[0]?.url.split('?')[0]).toBe(
+      'https://api.goway.to/api/v1/places/gw_place_01H8/media',
+    );
     expect(new URLSearchParams(queryOf(calls[0]!.url)).get('kinds')).toBe('menu,photo');
   });
 
   it('adds an Oxy file id, and nothing the caller may not choose', async () => {
     const { client, calls } = clientFor(MEDIA, 201);
-    await client.places.media.add('gw_place_01H8', { fileId: 'oxy-file-1', kind: 'photo', caption: '  La plaça  ' });
+    await client.places.media.add('gw_place_01H8', {
+      fileId: 'oxy-file-1',
+      kind: 'photo',
+      caption: '  La plaça  ',
+    });
     expect(calls[0]?.init.method).toBe('POST');
-    expect(JSON.parse(calls[0]!.init.body!)).toEqual({ fileId: 'oxy-file-1', kind: 'photo', caption: 'La plaça' });
+    expect(JSON.parse(calls[0]!.init.body!)).toEqual({
+      fileId: 'oxy-file-1',
+      kind: 'photo',
+      caption: 'La plaça',
+    });
   });
 
   it('refuses a kind outside the closed set before sending', async () => {
     const { client, calls } = clientFor(MEDIA, 201);
     const error = await rejection(
-      client.places.media.add('gw_place_01H8', { fileId: 'f', kind: 'selfie' as unknown as 'photo' }),
+      client.places.media.add('gw_place_01H8', {
+        fileId: 'f',
+        kind: 'selfie' as unknown as 'photo',
+      }),
     );
     expect(error).toBeInstanceOf(GoWayValidationError);
     expect(calls).toHaveLength(0);
@@ -69,7 +82,9 @@ describe('the gallery', () => {
 
   it('refuses a reorder naming one item twice before sending', async () => {
     const { client, calls } = clientFor(null, 204);
-    const error = await rejection(client.places.media.reorder('gw_place_01H8', { mediaIds: ['m1', 'm1'] }));
+    const error = await rejection(
+      client.places.media.reorder('gw_place_01H8', { mediaIds: ['m1', 'm1'] }),
+    );
     expect(error).toBeInstanceOf(GoWayValidationError);
     expect(calls).toHaveLength(0);
   });
@@ -95,7 +110,9 @@ describe('reviews', () => {
   it('refuses a rating outside 1–5 before sending', async () => {
     const { client, calls } = clientFor(REVIEW);
     for (const rating of [0, 6, 4.5]) {
-      expect(await rejection(client.places.reviews.put('gw_place_01H8', { rating }))).toBeInstanceOf(GoWayValidationError);
+      expect(
+        await rejection(client.places.reviews.put('gw_place_01H8', { rating })),
+      ).toBeInstanceOf(GoWayValidationError);
     }
     expect(calls).toHaveLength(0);
   });
@@ -106,15 +123,28 @@ describe('reviews', () => {
     expect(calls[0]?.url).toBe('https://api.goway.to/api/v1/places/gw_place_01H8/reviews/v1/reply');
 
     const bad = clientFor({ ...REVIEW, rating: 9 });
-    expect(await rejection(bad.client.places.reviews.reply('gw_place_01H8', 'v1', { body: 'x' }))).toBeInstanceOf(GoWayResponseError);
+    expect(
+      await rejection(bad.client.places.reviews.reply('gw_place_01H8', 'v1', { body: 'x' })),
+    ).toBeInstanceOf(GoWayResponseError);
   });
 
   it('reports a review with a content reason only', async () => {
-    const { client, calls } = clientFor({ id: 'r1', placeId: 'gw_place_01H8', reviewId: 'v1', reason: 'spam', createdAt: '2026-10-01T00:00:00.000Z' }, 201);
+    const { client, calls } = clientFor(
+      {
+        id: 'r1',
+        placeId: 'gw_place_01H8',
+        reviewId: 'v1',
+        reason: 'spam',
+        createdAt: '2026-10-01T00:00:00.000Z',
+      },
+      201,
+    );
     const report = await client.places.reviews.report('gw_place_01H8', 'v1', { reason: 'spam' });
     expect(report.reviewId).toBe('v1');
     const error = await rejection(
-      client.places.reviews.report('gw_place_01H8', 'v1', { reason: 'wrong_location' as unknown as 'spam' }),
+      client.places.reviews.report('gw_place_01H8', 'v1', {
+        reason: 'wrong_location' as unknown as 'spam',
+      }),
     );
     expect(error).toBeInstanceOf(GoWayValidationError);
     expect(calls).toHaveLength(1);
@@ -140,7 +170,13 @@ describe('the place profile', () => {
 
   it('sets a logo by its Oxy file and withdraws a description with null', async () => {
     const { client, calls } = clientFor(PLACE);
-    await client.places.update('gw_place_01H8', { logoFileId: 'oxy-logo', descriptions: [{ language: 'EN', description: null }] });
-    expect(JSON.parse(calls[0]!.init.body!)).toEqual({ logoFileId: 'oxy-logo', descriptions: [{ language: 'en', description: null }] });
+    await client.places.update('gw_place_01H8', {
+      logoFileId: 'oxy-logo',
+      descriptions: [{ language: 'EN', description: null }],
+    });
+    expect(JSON.parse(calls[0]!.init.body!)).toEqual({
+      logoFileId: 'oxy-logo',
+      descriptions: [{ language: 'en', description: null }],
+    });
   });
 });

@@ -117,7 +117,11 @@ async function callEverything(): Promise<Set<string>> {
     goway.geocode.forward({ query: 'x' }),
     goway.geocode.reverse({ latitude: 0, longitude: 0 }),
     goway.geocode.structured({ city: 'x' }),
-    goway.routes.directions({ origin: { placeId: 'a' }, destination: { placeId: 'b' }, mode: 'walk' }),
+    goway.routes.directions({
+      origin: { placeId: 'a' },
+      destination: { placeId: 'b' },
+      mode: 'walk',
+    }),
     goway.captures.policy(),
     goway.captures.sessions(),
     goway.captures.createSession({ source: 'camera', consentVersion: 'v1' }),

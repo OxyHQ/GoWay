@@ -36,7 +36,15 @@ import {
   street3dCaptureBlocks,
   street3dJobs,
 } from '../schema';
-import { failPrivacyGate, isTerminal, lockJob, privacyAttempts, refreshInputProtection, ResultRejected, type JobRow } from './jobs';
+import {
+  failPrivacyGate,
+  isTerminal,
+  lockJob,
+  privacyAttempts,
+  refreshInputProtection,
+  ResultRejected,
+  type JobRow,
+} from './jobs';
 
 /** Where a privacy job's outputs go. Under `derived/`, keyed by capture and job. */
 export function privacyOutputPrefix(assetId: string, jobId: string): string {
@@ -47,7 +55,11 @@ export function privacyOutputPrefix(assetId: string, jobId: string): string {
  * Captures that need a privacy pass: finalized bytes, a shut gate that has not
  * failed too often, and no open privacy job.
  */
-export async function findPrivacyCandidates(db: Database, now: Date, limit: number): Promise<string[]> {
+export async function findPrivacyCandidates(
+  db: Database,
+  now: Date,
+  limit: number,
+): Promise<string[]> {
   const soonest = new Date(now.getTime() + street3dConfig.inputProtectionHours * 3600_000);
   const rows = await db
     .select({ id: captureAssets.id })
@@ -89,7 +101,11 @@ export type PrivacyEnqueueOutcome = 'queued' | 'skipped' | 'blocked';
  * are refused here — the identical photo uploaded again does not get a second
  * chance at a manifest.
  */
-export async function enqueuePrivacyJob(db: Database, assetId: string, now: Date): Promise<PrivacyEnqueueOutcome> {
+export async function enqueuePrivacyJob(
+  db: Database,
+  assetId: string,
+  now: Date,
+): Promise<PrivacyEnqueueOutcome> {
   return db.transaction(async (tx) => {
     const [link] = await tx
       .select({ mediaObjectId: captureAssets.mediaObjectId })
@@ -102,7 +118,11 @@ export async function enqueuePrivacyJob(db: Database, assetId: string, now: Date
       .where(eq(captureMediaObjects.id, link.mediaObjectId))
       .for('update', { skipLocked: true });
     if (!media) return 'skipped';
-    const [asset] = await tx.select().from(captureAssets).where(eq(captureAssets.id, assetId)).for('update');
+    const [asset] = await tx
+      .select()
+      .from(captureAssets)
+      .where(eq(captureAssets.id, assetId))
+      .for('update');
     if (
       !asset ||
       !['uploaded', 'accepted', 'validating'].includes(asset.state) ||
@@ -117,12 +137,22 @@ export async function enqueuePrivacyJob(db: Database, assetId: string, now: Date
     const [block] = await tx
       .select({ id: street3dCaptureBlocks.id })
       .from(street3dCaptureBlocks)
-      .where(or(eq(street3dCaptureBlocks.captureAssetId, assetId), eq(street3dCaptureBlocks.contentHash, media.contentHash)))
+      .where(
+        or(
+          eq(street3dCaptureBlocks.captureAssetId, assetId),
+          eq(street3dCaptureBlocks.contentHash, media.contentHash),
+        ),
+      )
       .limit(1);
     if (block) {
       await tx
         .update(captureAssets)
-        .set({ privacyState: 'blocked', privacyCompletedAt: now, state: 'rejected', updatedAt: now })
+        .set({
+          privacyState: 'blocked',
+          privacyCompletedAt: now,
+          state: 'rejected',
+          updatedAt: now,
+        })
         .where(eq(captureAssets.id, assetId));
       return 'blocked';
     }
@@ -149,7 +179,12 @@ export async function enqueuePrivacyJob(db: Database, assetId: string, now: Date
 
     await tx
       .update(captureAssets)
-      .set({ privacyState: 'in_progress', privacyCompletedAt: null, state: 'validating', updatedAt: now })
+      .set({
+        privacyState: 'in_progress',
+        privacyCompletedAt: null,
+        state: 'validating',
+        updatedAt: now,
+      })
       .where(eq(captureAssets.id, assetId));
     const [job] = await tx.select().from(street3dJobs).where(eq(street3dJobs.id, jobId));
     if (job) await refreshInputProtection(tx, job, now);
@@ -158,7 +193,11 @@ export async function enqueuePrivacyJob(db: Database, assetId: string, now: Date
 }
 
 /** The SQS envelope for a privacy job, rebuilt from the database at send time. */
-export async function privacyEnvelope(db: Database | Transaction, job: JobRow, issuedAt: Date): Promise<CapturePrivacyJob | null> {
+export async function privacyEnvelope(
+  db: Database | Transaction,
+  job: JobRow,
+  issuedAt: Date,
+): Promise<CapturePrivacyJob | null> {
   if (!job.assetId) return null;
   const [row] = await db
     .select({
@@ -200,12 +239,18 @@ export async function privacyEnvelope(db: Database | Transaction, job: JobRow, i
 /** Every key the worker reported must sit under the job's own output prefix. */
 export function assertPrivacyResultMatches(job: JobRow, result: CapturePrivacyResult): void {
   if (result.jobId !== job.id || result.assetId !== job.assetId) {
-    throw new ResultRejected('result_mismatch', 'The privacy result names a different job or capture.');
+    throw new ResultRejected(
+      'result_mismatch',
+      'The privacy result names a different job or capture.',
+    );
   }
   for (const frame of result.frames) {
     for (const key of [frame.imageKey, frame.maskKey]) {
       if (key !== undefined && !key.startsWith(job.outputPrefix)) {
-        throw new ResultRejected('result_mismatch', 'A privacy frame lies outside its job output prefix.');
+        throw new ResultRejected(
+          'result_mismatch',
+          'A privacy frame lies outside its job output prefix.',
+        );
       }
     }
     if ((frame.maskKey === undefined) !== (frame.maskSha256 === undefined)) {
@@ -240,11 +285,30 @@ export async function applyPrivacyResult(
   assertPrivacyResultMatches(job, result);
   const assetId = job.assetId as string;
 
-  const [link] = await tx.select({ mediaObjectId: captureAssets.mediaObjectId }).from(captureAssets).where(eq(captureAssets.id, assetId));
-  if (!link) throw new ResultRejected('result_mismatch', 'The privacy job names a capture that does not exist.');
-  const [media] = await tx.select().from(captureMediaObjects).where(eq(captureMediaObjects.id, link.mediaObjectId)).for('update');
-  const [asset] = await tx.select().from(captureAssets).where(eq(captureAssets.id, assetId)).for('update');
-  if (!media || !asset) throw new ResultRejected('result_mismatch', 'The privacy job names a capture that does not exist.');
+  const [link] = await tx
+    .select({ mediaObjectId: captureAssets.mediaObjectId })
+    .from(captureAssets)
+    .where(eq(captureAssets.id, assetId));
+  if (!link)
+    throw new ResultRejected(
+      'result_mismatch',
+      'The privacy job names a capture that does not exist.',
+    );
+  const [media] = await tx
+    .select()
+    .from(captureMediaObjects)
+    .where(eq(captureMediaObjects.id, link.mediaObjectId))
+    .for('update');
+  const [asset] = await tx
+    .select()
+    .from(captureAssets)
+    .where(eq(captureAssets.id, assetId))
+    .for('update');
+  if (!media || !asset)
+    throw new ResultRejected(
+      'result_mismatch',
+      'The privacy job names a capture that does not exist.',
+    );
   // Fail closed on the projection. A worker that predates 360° captures
   // ignores the declaration and reports one flat image: that is not a privacy
   // pass for a panorama, and the next attempt would do the same.
@@ -259,9 +323,15 @@ export async function applyPrivacyResult(
   const [block] = await tx
     .select({ id: street3dCaptureBlocks.id })
     .from(street3dCaptureBlocks)
-    .where(or(eq(street3dCaptureBlocks.captureAssetId, assetId), eq(street3dCaptureBlocks.contentHash, media.contentHash)))
+    .where(
+      or(
+        eq(street3dCaptureBlocks.captureAssetId, assetId),
+        eq(street3dCaptureBlocks.contentHash, media.contentHash),
+      ),
+    )
     .limit(1);
-  const withdrawn = asset.state === 'deleted' || asset.privacyState === 'blocked' || block !== undefined;
+  const withdrawn =
+    asset.state === 'deleted' || asset.privacyState === 'blocked' || block !== undefined;
 
   await tx
     .update(street3dJobs)
@@ -279,7 +349,11 @@ export async function applyPrivacyResult(
   if (result.verdict === 'passed') {
     const expiresAt = addDays(now, captureConfig.retentionDays.privacy_safe_proxy);
     const removal = withdrawn
-      ? { deletionRequestedAt: now, deletionRequestedReason: asset.state === 'deleted' && !block ? 'contributor_request' : 'moderation' }
+      ? {
+          deletionRequestedAt: now,
+          deletionRequestedReason:
+            asset.state === 'deleted' && !block ? 'contributor_request' : 'moderation',
+        }
       : {};
     await tx
       .insert(captureDerivatives)
@@ -343,7 +417,11 @@ export async function applyPrivacyResult(
   return withdrawn ? 'withdrawn' : 'failed';
 }
 
-async function releaseProtectionIfIdle(tx: Transaction, mediaObjectId: string, now: Date): Promise<void> {
+async function releaseProtectionIfIdle(
+  tx: Transaction,
+  mediaObjectId: string,
+  now: Date,
+): Promise<void> {
   const open = await tx
     .select({ id: street3dJobs.id })
     .from(street3dJobs)

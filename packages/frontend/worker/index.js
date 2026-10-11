@@ -69,7 +69,7 @@
  *      product code, and the paths this file answers.
  */
 
-import { PMTiles, contentEncodingFor, decompress } from './pmtiles.js';
+import { PMTiles, decompress } from './pmtiles.js';
 
 /**
  * How long the edge may keep a vector tile.
@@ -427,7 +427,10 @@ async function proxyTile(z, x, y, request, env, ctx) {
     return new Response(
       'Neither an R2 tile archive (MAP_TILES + MAP_TILE_ARCHIVE) nor MAP_TILE_UPSTREAM is ' +
         'configured for this deployment.',
-      { status: 503, headers: { ...publicHeaders(0), 'content-type': 'text/plain; charset=utf-8' } },
+      {
+        status: 503,
+        headers: { ...publicHeaders(0), 'content-type': 'text/plain; charset=utf-8' },
+      },
     );
   }
 
@@ -572,4 +575,12 @@ export default {
 // map, produced by a constant exported for a unit test. The regexes and the
 // fontstack table below are objects and are therefore fine; numbers and
 // strings are not. `worker/__tests__/pmtiles.test.js` asserts this.
-export { GLYPH_PATH, TILE_PATH, UPSTREAM_FONTSTACK, archiveSource, publicHeaders, serveGlyphs, serveTile };
+export {
+  GLYPH_PATH,
+  TILE_PATH,
+  UPSTREAM_FONTSTACK,
+  archiveSource,
+  publicHeaders,
+  serveGlyphs,
+  serveTile,
+};

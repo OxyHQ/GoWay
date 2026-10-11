@@ -16,7 +16,20 @@ import { openingStatusAt, type OpeningStatus, type Place, type TimeRange } from 
 /** The app's chrome is English; Monday first, as a week is read in Europe. */
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+const MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
 
 function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
@@ -35,7 +48,9 @@ function shortDate(date: string): string {
 /** `10:00–14:00, 17:00–20:00`; a whole day reads as such. */
 function rangesText(ranges: readonly TimeRange[]): string {
   return ranges
-    .map((range) => (range.opens === range.closes ? 'Open 24 hours' : `${range.opens}–${range.closes}`))
+    .map((range) =>
+      range.opens === range.closes ? 'Open 24 hours' : `${range.opens}–${range.closes}`,
+    )
     .join(', ');
 }
 
@@ -58,7 +73,10 @@ export interface OpeningSummary {
 }
 
 /** The one line a place card or a result row shows, or `null` when GoWay cannot say. */
-export function openingSummary(place: Pick<Place, 'openingHours' | 'timezone' | 'hoursExceptions'>, now: Date = new Date()): OpeningSummary | null {
+export function openingSummary(
+  place: Pick<Place, 'openingHours' | 'timezone' | 'hoursExceptions'>,
+  now: Date = new Date(),
+): OpeningSummary | null {
   const status = openingStatusAt(place, now);
   if (status.state === 'unknown') return null;
   const when = whenText(status);

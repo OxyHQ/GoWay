@@ -39,7 +39,13 @@
  * a capability reaches `oxy_verified`, or two places become one.
  */
 
-import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from 'express';
 import {
   capabilityPathSchema,
   categoryCreateInputSchema,
@@ -78,7 +84,11 @@ import {
   updateCategory,
 } from '../db/categories/categoryRepository';
 import { listModerationMedia, moderatePlaceMedia } from '../db/places/mediaRepository';
-import { listModerationReviews, moderateReview, withdrawReply } from '../db/places/reviewsRepository';
+import {
+  listModerationReviews,
+  moderateReview,
+  withdrawReply,
+} from '../db/places/reviewsRepository';
 import {
   decideClaim,
   listDuplicateCandidates,
@@ -89,7 +99,11 @@ import {
   verifyPlaceCapability,
   withdrawVerifiedCapability,
 } from '../db/places/moderationRepository';
-import { findClaimsInState, findPlaceById, findPlaceLifecycle } from '../db/places/placesRepository';
+import {
+  findClaimsInState,
+  findPlaceById,
+  findPlaceLifecycle,
+} from '../db/places/placesRepository';
 import { listPlaceRevisions, revisionAuthor } from '../db/places/revisions';
 import { getDb } from '../db/postgres';
 import { ApiError } from '../http/apiError';
@@ -193,7 +207,15 @@ export function createModerationRouter(dependencies: ModerationRouterDependencie
       const input = parseBody(moderationCapabilityInputSchema, request.body);
       const value = parseValue(capabilityValueSchemaFor(key), input.value, 'value');
       const db = getDb();
-      if (!(await verifyPlaceCapability(db, placeId, splitCapabilityKey(key), value, operator(request)))) {
+      if (
+        !(await verifyPlaceCapability(
+          db,
+          placeId,
+          splitCapabilityKey(key),
+          value,
+          operator(request),
+        ))
+      ) {
         throw new ApiError('not_found', 'No place has that id.');
       }
       const place = await findPlaceById(db, placeId);
@@ -207,9 +229,18 @@ export function createModerationRouter(dependencies: ModerationRouterDependencie
     ...operatorOnly,
     route(async (request, response) => {
       const { placeId, key } = parsePath(capabilityPathSchema, request.params);
-      const withdrawn = await withdrawVerifiedCapability(getDb(), placeId, splitCapabilityKey(key), operator(request));
+      const withdrawn = await withdrawVerifiedCapability(
+        getDb(),
+        placeId,
+        splitCapabilityKey(key),
+        operator(request),
+      );
       if (withdrawn === null) throw new ApiError('not_found', 'No place has that id.');
-      if (!withdrawn) throw new ApiError('not_found', 'This place carries no oxy_verified assertion of that capability.');
+      if (!withdrawn)
+        throw new ApiError(
+          'not_found',
+          'This place carries no oxy_verified assertion of that capability.',
+        );
       response.status(204).end();
     }),
   );
@@ -227,8 +258,14 @@ export function createModerationRouter(dependencies: ModerationRouterDependencie
       const query = parseQuery(revisionListQuerySchema, request.query);
       const binding = cursorBinding('moderation-revisions', { placeId });
       const db = getDb();
-      if ((await findPlaceLifecycle(db, placeId)) === null) throw new ApiError('not_found', 'No place has that id.');
-      const revisions = await listPlaceRevisions(db, placeId, 'moderation', timeWindowOf(query, binding));
+      if ((await findPlaceLifecycle(db, placeId)) === null)
+        throw new ApiError('not_found', 'No place has that id.');
+      const revisions = await listPlaceRevisions(
+        db,
+        placeId,
+        'moderation',
+        timeWindowOf(query, binding),
+      );
       response.json(timePageOf(revisions, query.limit, binding));
     }),
   );
@@ -248,7 +285,8 @@ export function createModerationRouter(dependencies: ModerationRouterDependencie
       const { placeId } = parsePath(placePathSchema, request.params);
       const { state, ...query } = parseQuery(moderationMediaListQuerySchema, request.query);
       const db = getDb();
-      if ((await findPlaceLifecycle(db, placeId)) === null) throw new ApiError('not_found', 'No place has that id.');
+      if ((await findPlaceLifecycle(db, placeId)) === null)
+        throw new ApiError('not_found', 'No place has that id.');
       const binding = cursorBinding('moderation-media', { placeId, state });
       const items = await listModerationMedia(db, placeId, state, timeWindowOf(query, binding));
       response.json(timePageOf(items, query.limit, binding));
@@ -276,9 +314,15 @@ export function createModerationRouter(dependencies: ModerationRouterDependencie
       const { placeId } = parsePath(placePathSchema, request.params);
       const { status, ...query } = parseQuery(moderationReviewListQuerySchema, request.query);
       const db = getDb();
-      if ((await findPlaceLifecycle(db, placeId)) === null) throw new ApiError('not_found', 'No place has that id.');
+      if ((await findPlaceLifecycle(db, placeId)) === null)
+        throw new ApiError('not_found', 'No place has that id.');
       const binding = cursorBinding('moderation-reviews', { placeId, status });
-      const reviews = await listModerationReviews(db, placeId, status, timeWindowOf(query, binding));
+      const reviews = await listModerationReviews(
+        db,
+        placeId,
+        status,
+        timeWindowOf(query, binding),
+      );
       response.json(timePageOf(reviews, query.limit, binding));
     }),
   );
@@ -317,7 +361,11 @@ export function createModerationRouter(dependencies: ModerationRouterDependencie
     route(async (request, response) => {
       const { state, ...query } = parseQuery(duplicateListQuerySchema, request.query);
       const binding = cursorBinding('moderation-duplicates', { state });
-      const candidates = await listDuplicateCandidates(getDb(), state, timeWindowOf(query, binding));
+      const candidates = await listDuplicateCandidates(
+        getDb(),
+        state,
+        timeWindowOf(query, binding),
+      );
       response.json(timePageOf(candidates, query.limit, binding));
     }),
   );
@@ -329,7 +377,12 @@ export function createModerationRouter(dependencies: ModerationRouterDependencie
     route(async (request, response) => {
       const { candidateId } = parsePath(duplicatePathSchema, request.params);
       const input = parseBody(duplicateResolutionInputSchema, request.body);
-      const candidate = await resolveDuplicateCandidate(getDb(), candidateId, input, operator(request));
+      const candidate = await resolveDuplicateCandidate(
+        getDb(),
+        candidateId,
+        input,
+        operator(request),
+      );
       if (!candidate) throw new ApiError('not_found', 'No duplicate candidate has that id.');
       response.json(candidate);
     }),

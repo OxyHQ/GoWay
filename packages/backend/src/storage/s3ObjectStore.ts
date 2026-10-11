@@ -90,7 +90,11 @@ export function createS3ObjectStore(options: S3ObjectStoreOptions): CaptureObjec
     // S3-compatible stores expect — and virtual-hosted-style against AWS.
     if (options.endpoint) {
       const url = new URL(options.endpoint);
-      return { protocol: url.protocol, host: url.host, path: `/${options.bucket}/${encodeKey(key)}` };
+      return {
+        protocol: url.protocol,
+        host: url.host,
+        path: `/${options.bucket}/${encodeKey(key)}`,
+      };
     }
     return {
       protocol: 'https:',
@@ -142,7 +146,11 @@ export function createS3ObjectStore(options: S3ObjectStoreOptions): CaptureObjec
     async statObject(key: string): Promise<StoredObjectStat | null> {
       const headers = { 'x-amz-checksum-mode': 'ENABLED' };
       const url = await signed('HEAD', key, 60, headers);
-      const response = await fetchImpl(url, { method: 'HEAD', headers, signal: AbortSignal.timeout(30_000) });
+      const response = await fetchImpl(url, {
+        method: 'HEAD',
+        headers,
+        signal: AbortSignal.timeout(30_000),
+      });
       if (response.status === 404) return null;
       if (!response.ok) {
         throw new Error(`The object store answered ${response.status} for a HEAD.`);
@@ -165,7 +173,10 @@ export function createS3ObjectStore(options: S3ObjectStoreOptions): CaptureObjec
 
     async deleteObject(key: string): Promise<void> {
       const url = await signed('DELETE', key, 60);
-      const response = await fetchImpl(url, { method: 'DELETE', signal: AbortSignal.timeout(30_000) });
+      const response = await fetchImpl(url, {
+        method: 'DELETE',
+        signal: AbortSignal.timeout(30_000),
+      });
       // A marker hides a versioned object but retains its pixels. Never report
       // that as successful erasure. Temporary captures require an unversioned
       // bucket; version purging needs a separate adapter before enabling it.

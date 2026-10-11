@@ -8,7 +8,10 @@ async function source(asset: ImagePickerAsset): Promise<Blob> {
   if (!response.ok) throw new MediaError('contribute.error.unavailableFile');
   return response.blob();
 }
-export async function selectMedia(asset: ImagePickerAsset, policy: CaptureUploadPolicy): Promise<SelectedMedia> {
+export async function selectMedia(
+  asset: ImagePickerAsset,
+  policy: CaptureUploadPolicy,
+): Promise<SelectedMedia> {
   return describeMedia(asset, (await source(asset)).size, policy);
 }
 export async function hashMedia(media: SelectedMedia, signal: AbortSignal): Promise<string> {
@@ -21,10 +24,23 @@ export async function hashMedia(media: SelectedMedia, signal: AbortSignal): Prom
   }
   return hashChunks(chunks(), signal);
 }
-export async function uploadMedia(media: SelectedMedia, upload: CaptureUploadIntent, signal: AbortSignal): Promise<void> {
-  const headers = Object.fromEntries(Object.entries(upload.headers).filter(([name]) => name.toLowerCase() !== 'content-length'));
+export async function uploadMedia(
+  media: SelectedMedia,
+  upload: CaptureUploadIntent,
+  signal: AbortSignal,
+): Promise<void> {
+  const headers = Object.fromEntries(
+    Object.entries(upload.headers).filter(([name]) => name.toLowerCase() !== 'content-length'),
+  );
   // The browser supplies Content-Length from the Blob; scripts cannot set it.
-  const response = await fetch(upload.url, { method: 'PUT', headers, body: await source(media.asset), signal, credentials: 'omit', redirect: 'error' });
+  const response = await fetch(upload.url, {
+    method: 'PUT',
+    headers,
+    body: await source(media.asset),
+    signal,
+    credentials: 'omit',
+    redirect: 'error',
+  });
   // A retry can find its immutable object already stored. Finalize verifies its checksum.
   if (!response.ok && response.status !== 412) throw new MediaError('contribute.error.upload');
 }

@@ -129,7 +129,9 @@ export function encodeRuns(codePoints: Iterable<number>): string {
   let previous = -2;
   const flush = () => {
     if (start < 0) return;
-    runs.push(start === previous ? start.toString(16) : `${start.toString(16)}-${previous.toString(16)}`);
+    runs.push(
+      start === previous ? start.toString(16) : `${start.toString(16)}-${previous.toString(16)}`,
+    );
   };
   for (const codePoint of sorted) {
     if (codePoint === previous) continue;
@@ -207,7 +209,10 @@ export async function loadFallback(root: string): Promise<LoadedFallback> {
     for (const file of files) {
       if (!file.endsWith('.pbf')) continue;
       const decoded = decodeGlyphs(new Uint8Array(await readFile(join(stackDir, file))));
-      glyphs.set(`${stack}/${file.slice(0, -'.pbf'.length)}`, decoded.flatMap((one) => one.glyphs));
+      glyphs.set(
+        `${stack}/${file.slice(0, -'.pbf'.length)}`,
+        decoded.flatMap((one) => one.glyphs),
+      );
     }
   }
 

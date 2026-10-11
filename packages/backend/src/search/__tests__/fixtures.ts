@@ -22,7 +22,9 @@ export interface FetchRecorder {
 }
 
 /** A `fetch` double that answers each call from `handler`. */
-export function recordingFetch(handler: (url: string, call: number) => Response | Promise<Response>): FetchRecorder {
+export function recordingFetch(
+  handler: (url: string, call: number) => Response | Promise<Response>,
+): FetchRecorder {
   const urls: string[] = [];
   const inits: (RequestInit | undefined)[] = [];
   const fetch: FetchLike = async (input, init) => {

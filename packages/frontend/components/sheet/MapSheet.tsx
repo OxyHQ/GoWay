@@ -369,7 +369,8 @@ export function MapSheet({
     (event: AccessibilityActionEvent) => {
       const index = MAP_SHEET_SNAPS.indexOf(snap);
       const delta = event.nativeEvent.actionName === 'increment' ? 1 : -1;
-      const next = MAP_SHEET_SNAPS[Math.max(0, Math.min(MAP_SHEET_SNAPS.length - 1, index + delta))];
+      const next =
+        MAP_SHEET_SNAPS[Math.max(0, Math.min(MAP_SHEET_SNAPS.length - 1, index + delta))];
       if (next && next !== snap) moveTo(next);
     },
     [moveTo, snap],

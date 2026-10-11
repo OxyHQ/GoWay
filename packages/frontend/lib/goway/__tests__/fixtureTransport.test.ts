@@ -20,8 +20,16 @@ import {
 } from '@goway.to/sdk';
 
 import { classifyGoWayError } from '@/lib/goway/errors';
-import { FIXTURE_CATEGORIES, FIXTURE_PLACES, FIXTURE_WITHDRAWN_PLACE_IDS } from '@/lib/goway/fixtures';
-import { createFixtureFetch, setFixtureFaults, type FixtureFaults } from '@/lib/goway/mockTransport';
+import {
+  FIXTURE_CATEGORIES,
+  FIXTURE_PLACES,
+  FIXTURE_WITHDRAWN_PLACE_IDS,
+} from '@/lib/goway/fixtures';
+import {
+  createFixtureFetch,
+  setFixtureFaults,
+  type FixtureFaults,
+} from '@/lib/goway/mockTransport';
 
 const API = 'https://api.goway.to';
 const BARCELONA = { west: 2.1, south: 41.35, east: 2.22, north: 41.42 };
@@ -80,15 +88,23 @@ describe('lists are pages', () => {
   test('a category root matches every category below it, as the API expands it', async () => {
     const food = await fixtureClient().places.inBounds({ ...BARCELONA, categories: ['food'] });
     expect(food.items.length).toBeGreaterThan(3);
-    expect(food.items.every((place) => place.categories.some((key) => key.startsWith('food.')))).toBe(true);
+    expect(
+      food.items.every((place) => place.categories.some((key) => key.startsWith('food.'))),
+    ).toBe(true);
   });
 
   test('a capability value filter goes through the strongest assertion', async () => {
     const client = fixtureClient();
-    const seafood = await client.places.inBounds({ ...BARCELONA, capabilities: ['food.cuisine:seafood'] });
+    const seafood = await client.places.inBounds({
+      ...BARCELONA,
+      capabilities: ['food.cuisine:seafood'],
+    });
     expect(seafood.items.map((place) => place.id)).toEqual(['gw_restaurant_can_sole']);
     // Can Solé's business says `no`, over a community `yes`.
-    const accessible = await client.places.inBounds({ ...BARCELONA, capabilities: ['accessibility.wheelchair'] });
+    const accessible = await client.places.inBounds({
+      ...BARCELONA,
+      capabilities: ['accessibility.wheelchair'],
+    });
     expect(accessible.items.map((place) => place.id)).not.toContain('gw_restaurant_can_sole');
     expect(accessible.items.map((place) => place.id)).toContain('gw_museu_picasso');
   });
@@ -97,14 +113,18 @@ describe('lists are pages', () => {
     const client = fixtureClient();
     const listed = await client.places.inBounds(BARCELONA);
     expect(listed.items.every((place) => Array.isArray(place.hoursExceptions))).toBe(true);
-    expect(listed.items.find((place) => place.id === 'gw_museu_picasso')?.hoursExceptions).toHaveLength(2);
+    expect(
+      listed.items.find((place) => place.id === 'gw_museu_picasso')?.hoursExceptions,
+    ).toHaveLength(2);
     const museum = await client.places.get('gw_museu_picasso');
     expect(museum.hoursExceptions).toHaveLength(2);
     expect(museum.timezone).toBe('Europe/Madrid');
   });
 
   test('a cursor the list never issued is refused, not served as page one', async () => {
-    const error = await failureOf(fixtureClient().places.inBounds({ ...BARCELONA, cursor: 'forged' }));
+    const error = await failureOf(
+      fixtureClient().places.inBounds({ ...BARCELONA, cursor: 'forged' }),
+    );
     expect(error).toMatchObject({ status: API_ERROR_STATUS.bad_request, code: 'bad_request' });
   });
 });
@@ -113,11 +133,17 @@ describe('the category taxonomy', () => {
   test('is one page, labelled for the locale asked for, every language kept', async () => {
     const page = await fixtureClient().categories.list({ locale: 'es-MX' });
     expect(page.nextCursor).toBeNull();
-    expect(page.items.map((category) => category.key)).toEqual(FIXTURE_CATEGORIES.map((category) => category.key));
+    expect(page.items.map((category) => category.key)).toEqual(
+      FIXTURE_CATEGORIES.map((category) => category.key),
+    );
     const cafe = page.items.find((category) => category.key === 'food.cafe');
     expect(cafe?.label).toBe('Cafetería');
     expect(cafe?.labels).toEqual({ en: 'Café', es: 'Cafetería' });
-    expect((await fixtureClient().categories.list()).items.find((category) => category.key === 'food.cafe')?.label).toBe('Café');
+    expect(
+      (await fixtureClient().categories.list()).items.find(
+        (category) => category.key === 'food.cafe',
+      )?.label,
+    ).toBe('Café');
   });
 
   test('holds every key a fixture place carries, and every parent of one', async () => {
@@ -133,7 +159,9 @@ describe('the category taxonomy', () => {
   test('a root filter expands to the categories below it, as the API does', async () => {
     const page = await fixtureClient().places.inBounds({ ...BARCELONA, categories: ['food'] });
     expect(page.items.length).toBeGreaterThan(0);
-    expect(page.items.every((place) => place.categories.some((key) => key.startsWith('food.')))).toBe(true);
+    expect(
+      page.items.every((place) => place.categories.some((key) => key.startsWith('food.'))),
+    ).toBe(true);
   });
 });
 
@@ -175,7 +203,11 @@ describe('search and geocoding answer SearchResults', () => {
   test('forward, reverse and structured geocoding all parse', async () => {
     const client = fixtureClient();
     const forward = await client.geocode.forward({ query: 'gràcia' });
-    const reverse = await client.geocode.reverse({ ...FIXTURE_PLACES[0].location, radiusMeters: 50, limit: 1 });
+    const reverse = await client.geocode.reverse({
+      ...FIXTURE_PLACES[0].location,
+      radiusMeters: 50,
+      limit: 1,
+    });
     const structured = await client.geocode.structured({ city: 'Barcelona' });
     expect(forward.items.length).toBeGreaterThan(0);
     expect(reverse.items).toHaveLength(1);
@@ -198,12 +230,16 @@ describe('directions', () => {
 
 describe('failures arrive as the contract envelope', () => {
   test('an unavailable family is a 503 the app reads as unavailable', async () => {
-    const error = await failureOf(fixtureClient({ places: 'unavailable' }).places.inBounds(BARCELONA));
+    const error = await failureOf(
+      fixtureClient({ places: 'unavailable' }).places.inBounds(BARCELONA),
+    );
     expect(classifyGoWayError(error)).toEqual({ kind: 'unavailable', retryable: true });
   });
 
   test('a dropped connection reads as offline', async () => {
-    const error = await failureOf(fixtureClient({ search: 'network' }).search.query({ query: 'carrer' }));
+    const error = await failureOf(
+      fixtureClient({ search: 'network' }).search.query({ query: 'carrer' }),
+    );
     expect(classifyGoWayError(error).kind).toBe('offline');
   });
 
@@ -226,8 +262,12 @@ describe('galleries and reviews', () => {
     expect(gallery.items.length).toBeGreaterThan(0);
     const reviews = await client.places.reviews.list('gw_mercat_boqueria');
     const place = await client.places.get('gw_mercat_boqueria');
-    const average = reviews.items.reduce((total, review) => total + review.rating, 0) / reviews.items.length;
-    expect(place.rating).toEqual({ average: Math.round(average * 10) / 10, count: reviews.items.length });
+    const average =
+      reviews.items.reduce((total, review) => total + review.rating, 0) / reviews.items.length;
+    expect(place.rating).toEqual({
+      average: Math.round(average * 10) / 10,
+      count: reviews.items.length,
+    });
     expect(place.logoFileId).toBe(gallery.items.find((item) => item.kind === 'logo')?.fileId);
   });
 
@@ -245,24 +285,36 @@ describe('galleries and reviews', () => {
     const place = await client.places.get('gw_mercat_boqueria');
     expect(place.localizedDescription?.language).toBe('es');
     expect(place.description).toBeDefined();
-    const listed = (await client.places.inBounds(BARCELONA)).items.find((entry) => entry.id === 'gw_mercat_boqueria');
+    const listed = (await client.places.inBounds(BARCELONA)).items.find(
+      (entry) => entry.id === 'gw_mercat_boqueria',
+    );
     expect(listed?.description).toBeUndefined();
     expect(listed?.descriptions).toBeUndefined();
   });
 
   test('your review is written, read back, counted, and withdrawn', async () => {
     const client = fixtureClient();
-    expect(await failureOf(client.places.reviews.mine('gw_parc_ciutadella'))).toBeInstanceOf(GoWayNotFoundError);
-    const written = await client.places.reviews.put('gw_parc_ciutadella', { rating: 4, body: 'Lovely on Sundays.' });
+    expect(await failureOf(client.places.reviews.mine('gw_parc_ciutadella'))).toBeInstanceOf(
+      GoWayNotFoundError,
+    );
+    const written = await client.places.reviews.put('gw_parc_ciutadella', {
+      rating: 4,
+      body: 'Lovely on Sundays.',
+    });
     expect(written.status).toBe('published');
     expect((await client.places.reviews.mine('gw_parc_ciutadella')).rating).toBe(4);
-    expect((await client.places.get('gw_parc_ciutadella')).rating).toEqual({ average: 4, count: 1 });
+    expect((await client.places.get('gw_parc_ciutadella')).rating).toEqual({
+      average: 4,
+      count: 1,
+    });
     await client.places.reviews.delete('gw_parc_ciutadella');
     expect((await client.places.get('gw_parc_ciutadella')).rating).toBeUndefined();
   });
 
   test('a withdrawn place answers its gallery with gone', async () => {
     const [withdrawn] = [...FIXTURE_WITHDRAWN_PLACE_IDS];
-    expect(await failureOf(fixtureClient().places.media.list(withdrawn!))).toBeInstanceOf(GoWayGoneError);
+    expect(await failureOf(fixtureClient().places.media.list(withdrawn!))).toBeInstanceOf(
+      GoWayGoneError,
+    );
   });
 });

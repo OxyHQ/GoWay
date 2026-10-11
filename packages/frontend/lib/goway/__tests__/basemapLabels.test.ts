@@ -28,7 +28,15 @@ function north(from: { latitude: number; longitude: number }, meters: number) {
 }
 
 function label(name: string, overrides: Partial<MapLabelFeature> = {}): MapLabelFeature {
-  return { id: `poi:${name}`, name, kind: 'poi', coordinate: AT, anchored: true, category: 'bar', ...overrides };
+  return {
+    id: `poi:${name}`,
+    name,
+    kind: 'poi',
+    coordinate: AT,
+    anchored: true,
+    category: 'bar',
+    ...overrides,
+  };
 }
 
 function place(name: string, overrides: Partial<Place> = {}): Place {
@@ -58,7 +66,11 @@ function result(name: string, embedded?: Place, coordinate = AT): SearchResult {
   } as SearchResult;
 }
 
-function marker(id: string, text: string | undefined, overrides: Partial<MapMarker> = {}): MapMarker {
+function marker(
+  id: string,
+  text: string | undefined,
+  overrides: Partial<MapMarker> = {},
+): MapMarker {
   return {
     id,
     coordinate: AT,
@@ -82,7 +94,9 @@ describe('resolving a tapped label — an inference, within stated bounds', () =
     // GoWay's own search decided these candidates answer to the tapped text.
     // A second string rule in the client would compete with the backend's.
     const different = place('Mercat de Sant Josep');
-    expect(reconcileLabel(label('Mercat de la Boqueria'), [result('x', different)])).toBe(different);
+    expect(reconcileLabel(label('Mercat de la Boqueria'), [result('x', different)])).toBe(
+      different,
+    );
   });
 
   test('the nearest reconciled candidate wins', () => {
@@ -111,7 +125,9 @@ describe('resolving a tapped label — an inference, within stated bounds', () =
     // street network. Asking would only invite a wrong match.
     const anything = place('Carrer de Montcada');
     for (const kind of ['road', 'water', 'area'] as const) {
-      expect(reconcileLabel(label('Carrer de Montcada', { kind }), [result('x', anything)])).toBeNull();
+      expect(
+        reconcileLabel(label('Carrer de Montcada', { kind }), [result('x', anything)]),
+      ).toBeNull();
     }
   });
 });
@@ -169,7 +185,9 @@ describe('de-confliction — no marker is ever removed', () => {
 
   test('the SELECTION keeps its name: it is the map answering what you just did', () => {
     const markers = [marker('p1', 'Bar Marsella', { selected: true })];
-    expect(declutterMarkerLabels({ markers, labels: [label('Bar Marsella')], zoom: 16 })).toBe(markers);
+    expect(declutterMarkerLabels({ markers, labels: [label('Bar Marsella')], zoom: 16 })).toBe(
+      markers,
+    );
   });
 
   test('a cluster keeps its text, because a count duplicates nothing', () => {
@@ -182,7 +200,9 @@ describe('de-confliction — no marker is ever removed', () => {
     expect(declutterMarkerLabels({ markers, labels: [], zoom: 16 })).toBe(markers);
     expect(declutterMarkerLabels({ markers: [], labels: [label('x')], zoom: 16 })).toEqual([]);
     // A NaN zoom is the seam's recurring hazard; here it means "do nothing".
-    expect(declutterMarkerLabels({ markers, labels: [label('x')], zoom: Number.NaN })).toBe(markers);
+    expect(declutterMarkerLabels({ markers, labels: [label('x')], zoom: Number.NaN })).toBe(
+      markers,
+    );
   });
 
   test('the radius is about the size of the two pieces of text it separates', () => {
@@ -204,10 +224,12 @@ describe('de-confliction — no marker is ever removed', () => {
 
 describe('describing a label without inventing a category', () => {
   test('a POI gets the tiles own token, tidied into words', () => {
-    expect(describeLabel(label('x', { category: 'hospital', subcategory: 'clinic' }))).toBe('Clinic');
-    expect(describeLabel(label('x', { category: 'place_of_worship', subcategory: undefined }))).toBe(
-      'Place of worship',
+    expect(describeLabel(label('x', { category: 'hospital', subcategory: 'clinic' }))).toBe(
+      'Clinic',
     );
+    expect(
+      describeLabel(label('x', { category: 'place_of_worship', subcategory: undefined })),
+    ).toBe('Place of worship');
   });
 
   test('a road gets the word a person uses, not the network tier', () => {
@@ -224,7 +246,9 @@ describe('describing a label without inventing a category', () => {
   });
 
   test('water always says what it is, even when the tiles are silent', () => {
-    expect(describeLabel(label('Mediterrani', { kind: 'water', category: undefined }))).toBe('Water');
+    expect(describeLabel(label('Mediterrani', { kind: 'water', category: undefined }))).toBe(
+      'Water',
+    );
     expect(describeLabel(label('Besòs', { kind: 'water', category: 'river' }))).toBe('River');
   });
 

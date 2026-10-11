@@ -7,7 +7,11 @@
  * `details.mergedInto` — and a consumer needs one code path to follow it.
  */
 
-import { GONE_MERGED_INTO_DETAIL, PUBLISHED_PLACE_STATUSES, type PlaceStatus } from '@goway/contracts';
+import {
+  GONE_MERGED_INTO_DETAIL,
+  PUBLISHED_PLACE_STATUSES,
+  type PlaceStatus,
+} from '@goway/contracts';
 import type { PlaceLifecycle } from '../db/places/placesRepository';
 import { ApiError } from '../http/apiError';
 
@@ -18,7 +22,9 @@ export function isPublishedStatus(status: PlaceStatus): boolean {
 
 /** The place a MERGED one now lives at — the one hop every `410` names — or `undefined`. */
 export function mergedIntoOf(lifecycle: PlaceLifecycle): string | undefined {
-  return lifecycle.status === 'merged' && lifecycle.mergedIntoPlaceId !== null ? lifecycle.mergedIntoPlaceId : undefined;
+  return lifecycle.status === 'merged' && lifecycle.mergedIntoPlaceId !== null
+    ? lifecycle.mergedIntoPlaceId
+    : undefined;
 }
 
 /**
@@ -40,6 +46,8 @@ export function unpublishedPlace(lifecycle: PlaceLifecycle | null): ApiError {
 }
 
 /** Refuse anything but a published place. */
-export function assertPublished(lifecycle: PlaceLifecycle | null): asserts lifecycle is PlaceLifecycle {
+export function assertPublished(
+  lifecycle: PlaceLifecycle | null,
+): asserts lifecycle is PlaceLifecycle {
   if (lifecycle === null || !isPublishedStatus(lifecycle.status)) throw unpublishedPlace(lifecycle);
 }

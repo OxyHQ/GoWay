@@ -35,12 +35,19 @@ export const PLACE_LOCATIONS_LIMIT = 50;
  * Asked only when the place carries the store capability; see
  * `placeOffersMercariaStore` for why that is a hint and not the answer.
  */
-export function usePlaceMercariaLocations(place: Place): UseQueryResult<MercariaPage<MercariaLocation>> {
+export function usePlaceMercariaLocations(
+  place: Place,
+): UseQueryResult<MercariaPage<MercariaLocation>> {
   return useQuery({
     queryKey: ['mercaria', 'locations', 'place', place.id],
     enabled: placeOffersMercariaStore(place),
     retry: shouldRetryMercaria,
-    queryFn: async ({ signal }) => mercariaClient.locations.list({ goWayPlaceId: place.id, limit: PLACE_LOCATIONS_LIMIT, signal }),
+    queryFn: async ({ signal }) =>
+      mercariaClient.locations.list({
+        goWayPlaceId: place.id,
+        limit: PLACE_LOCATIONS_LIMIT,
+        signal,
+      }),
   });
 }
 
@@ -57,7 +64,11 @@ export function useMercariaLocationProducts(
       queryKey: ['mercaria', 'location', location.ref.id, 'products'],
       retry: shouldRetryMercaria,
       queryFn: async ({ signal }: { signal: AbortSignal }) =>
-        mercariaClient.locations.products(location.ref, { inStock: true, limit: STORE_STRIP_LIMIT, signal }),
+        mercariaClient.locations.products(location.ref, {
+          inStock: true,
+          limit: STORE_STRIP_LIMIT,
+          signal,
+        }),
     })),
   });
 }

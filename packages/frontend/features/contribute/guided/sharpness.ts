@@ -25,7 +25,8 @@ export interface FrameSignals {
 /** Rec. 601 luma of an RGBA buffer (`ImageData.data` layout). Alpha is ignored. */
 export function toLuma(rgba: ArrayLike<number>, width: number, height: number): Float32Array {
   const pixels = width * height;
-  if (rgba.length < pixels * 4) throw new RangeError('The RGBA buffer is smaller than width × height.');
+  if (rgba.length < pixels * 4)
+    throw new RangeError('The RGBA buffer is smaller than width × height.');
   const luma = new Float32Array(pixels);
   for (let i = 0, p = 0; i < pixels; i += 1, p += 4) {
     luma[i] = 0.299 * rgba[p] + 0.587 * rgba[p + 1] + 0.114 * rgba[p + 2];
@@ -80,14 +81,30 @@ export function frameSignals(rgba: ArrayLike<number>, width: number, height: num
  * when the camera is pointed correctly; the sky and the pavement are at the
  * edges and would only dilute the score.
  */
-export function centreCrop(frameWidth: number, frameHeight: number, fraction = 0.5): { x: number; y: number; width: number; height: number } {
+export function centreCrop(
+  frameWidth: number,
+  frameHeight: number,
+  fraction = 0.5,
+): { x: number; y: number; width: number; height: number } {
   const width = Math.max(1, Math.round(frameWidth * fraction));
   const height = Math.max(1, Math.round(frameHeight * fraction));
-  return { x: Math.round((frameWidth - width) / 2), y: Math.round((frameHeight - height) / 2), width, height };
+  return {
+    x: Math.round((frameWidth - width) / 2),
+    y: Math.round((frameHeight - height) / 2),
+    width,
+    height,
+  };
 }
 
 /** Sample dimensions for a crop: `maxWidth` wide (or less), same aspect ratio. */
-export function sampleSize(cropWidth: number, cropHeight: number, maxWidth = 320): { width: number; height: number } {
+export function sampleSize(
+  cropWidth: number,
+  cropHeight: number,
+  maxWidth = 320,
+): { width: number; height: number } {
   const scale = Math.min(1, maxWidth / Math.max(1, cropWidth));
-  return { width: Math.max(3, Math.round(cropWidth * scale)), height: Math.max(3, Math.round(cropHeight * scale)) };
+  return {
+    width: Math.max(3, Math.round(cropWidth * scale)),
+    height: Math.max(3, Math.round(cropHeight * scale)),
+  };
 }

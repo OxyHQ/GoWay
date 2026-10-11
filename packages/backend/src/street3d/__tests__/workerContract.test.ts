@@ -36,7 +36,9 @@ function fixture(file: string): Record<string, unknown> {
 }
 
 describe('worker contract fixtures', () => {
-  const files = readdirSync(FIXTURES).filter((file) => file.endsWith('.json')).sort();
+  const files = readdirSync(FIXTURES)
+    .filter((file) => file.endsWith('.json'))
+    .sort();
 
   it('finds the fixture directory', () => {
     expect(files.length).toBeGreaterThanOrEqual(8);
@@ -53,14 +55,24 @@ describe('worker contract fixtures', () => {
   it('fails closed on a pass without frames or with surviving metadata', () => {
     const passed = fixture('result.capture_privacy.json');
     expect(capturePrivacyResultSchema.safeParse({ ...passed, frames: [] }).success).toBe(false);
-    expect(capturePrivacyResultSchema.safeParse({ ...passed, metadataStripped: false }).success).toBe(false);
-    expect(capturePrivacyResultSchema.safeParse({ ...passed, verdict: 'failed', frames: [] }).success).toBe(true);
+    expect(
+      capturePrivacyResultSchema.safeParse({ ...passed, metadataStripped: false }).success,
+    ).toBe(false);
+    expect(
+      capturePrivacyResultSchema.safeParse({ ...passed, verdict: 'failed', frames: [] }).success,
+    ).toBe(true);
   });
 
   it('refuses unknown failure classes, stages and schema versions', () => {
     const failed = fixture('event.failed.json');
-    expect(workerEventSchema.safeParse({ ...failed, failure: { code: 'gpu_on_fire', retryable: true } }).success).toBe(false);
-    expect(workerEventSchema.safeParse({ ...fixture('event.heartbeat.json'), stage: 'dreaming' }).success).toBe(false);
+    expect(
+      workerEventSchema.safeParse({ ...failed, failure: { code: 'gpu_on_fire', retryable: true } })
+        .success,
+    ).toBe(false);
+    expect(
+      workerEventSchema.safeParse({ ...fixture('event.heartbeat.json'), stage: 'dreaming' })
+        .success,
+    ).toBe(false);
     expect(workerEventSchema.safeParse({ ...failed, schemaVersion: 2 }).success).toBe(false);
     expect(workerEventSchema.safeParse({ ...failed, type: 'exploded' }).success).toBe(false);
   });
@@ -70,24 +82,58 @@ describe('worker contract fixtures', () => {
     const older = { ...result, viewpoints: undefined, captureFieldOfView: undefined };
     expect(sceneReconstructResultSchema.safeParse(older).success).toBe(true);
     const viewpoint = { position: [0, 0, 1.6], forward: [0, 1, 0] };
-    expect(sceneReconstructResultSchema.safeParse({ ...result, viewpoints: Array(2000).fill(viewpoint) }).success).toBe(true);
-    expect(sceneReconstructResultSchema.safeParse({ ...result, viewpoints: Array(2001).fill(viewpoint) }).success).toBe(false);
-    expect(sceneReconstructResultSchema.safeParse({ ...result, viewpoints: [{ ...viewpoint, position: [0, 0] }] }).success).toBe(false);
-    expect(sceneReconstructResultSchema.safeParse({ ...result, viewpoints: [{ ...viewpoint, forward: [0, Infinity, 0] }] }).success).toBe(false);
-    expect(sceneReconstructResultSchema.safeParse({ ...result, captureFieldOfView: { horizontalDegrees: 180, verticalDegrees: 50 } }).success).toBe(false);
-    expect(sceneReconstructResultSchema.safeParse({ ...result, captureFieldOfView: { horizontalDegrees: 66, verticalDegrees: 0.5 } }).success).toBe(false);
+    expect(
+      sceneReconstructResultSchema.safeParse({ ...result, viewpoints: Array(2000).fill(viewpoint) })
+        .success,
+    ).toBe(true);
+    expect(
+      sceneReconstructResultSchema.safeParse({ ...result, viewpoints: Array(2001).fill(viewpoint) })
+        .success,
+    ).toBe(false);
+    expect(
+      sceneReconstructResultSchema.safeParse({
+        ...result,
+        viewpoints: [{ ...viewpoint, position: [0, 0] }],
+      }).success,
+    ).toBe(false);
+    expect(
+      sceneReconstructResultSchema.safeParse({
+        ...result,
+        viewpoints: [{ ...viewpoint, forward: [0, Infinity, 0] }],
+      }).success,
+    ).toBe(false);
+    expect(
+      sceneReconstructResultSchema.safeParse({
+        ...result,
+        captureFieldOfView: { horizontalDegrees: 180, verticalDegrees: 50 },
+      }).success,
+    ).toBe(false);
+    expect(
+      sceneReconstructResultSchema.safeParse({
+        ...result,
+        captureFieldOfView: { horizontalDegrees: 66, verticalDegrees: 0.5 },
+      }).success,
+    ).toBe(false);
   });
 
   it('refuses keys that escape their prefix', () => {
     const job = fixture('job.capture_privacy.json');
-    expect(jobEnvelopeSchema.safeParse({ ...job, outputPrefix: '../captures/' }).success).toBe(false);
-    expect(jobEnvelopeSchema.safeParse({ ...job, outputPrefix: '/derived/x/' }).success).toBe(false);
+    expect(jobEnvelopeSchema.safeParse({ ...job, outputPrefix: '../captures/' }).success).toBe(
+      false,
+    );
+    expect(jobEnvelopeSchema.safeParse({ ...job, outputPrefix: '/derived/x/' }).success).toBe(
+      false,
+    );
   });
 
   it('carries the declared projection, perspective when a party predates it', () => {
     const job = fixture('job.capture_privacy.json');
-    const equirectangular = jobEnvelopeSchema.parse(fixture('job.capture_privacy.equirectangular.json'));
-    expect(equirectangular.jobType === 'capture_privacy' && equirectangular.projection).toBe('equirectangular');
+    const equirectangular = jobEnvelopeSchema.parse(
+      fixture('job.capture_privacy.equirectangular.json'),
+    );
+    expect(equirectangular.jobType === 'capture_privacy' && equirectangular.projection).toBe(
+      'equirectangular',
+    );
     const older = jobEnvelopeSchema.parse({ ...job, projection: undefined });
     expect(older.jobType === 'capture_privacy' && older.projection).toBe('perspective');
     expect(jobEnvelopeSchema.safeParse({ ...job, projection: 'fisheye' }).success).toBe(false);
@@ -99,13 +145,22 @@ describe('worker contract fixtures', () => {
     expect(parsed.projection).toBe('equirectangular');
     expect(parsed.frames.map((frame) => frame.panorama?.yawDegrees)).toEqual([0, 45, 0]);
     // Views reported under a perspective verdict, or a panorama reported as flat frames: refused.
-    expect(capturePrivacyResultSchema.safeParse({ ...views, projection: 'perspective' }).success).toBe(false);
+    expect(
+      capturePrivacyResultSchema.safeParse({ ...views, projection: 'perspective' }).success,
+    ).toBe(false);
     const flat = fixture('result.capture_privacy.json');
-    expect(capturePrivacyResultSchema.safeParse({ ...flat, projection: 'equirectangular' }).success).toBe(false);
+    expect(
+      capturePrivacyResultSchema.safeParse({ ...flat, projection: 'equirectangular' }).success,
+    ).toBe(false);
     // A result from a worker that predates projections reads as perspective.
-    expect(capturePrivacyResultSchema.parse({ ...flat, projection: undefined }).projection).toBe('perspective');
+    expect(capturePrivacyResultSchema.parse({ ...flat, projection: undefined }).projection).toBe(
+      'perspective',
+    );
     const frames = views.frames as Record<string, unknown>[];
-    const badYaw = { ...views, frames: [{ ...frames[0], panorama: { index: 0, yawDegrees: 360, horizontalFovDegrees: 90 } }] };
+    const badYaw = {
+      ...views,
+      frames: [{ ...frames[0], panorama: { index: 0, yawDegrees: 360, horizontalFovDegrees: 90 } }],
+    };
     expect(capturePrivacyResultSchema.safeParse(badYaw).success).toBe(false);
   });
 });

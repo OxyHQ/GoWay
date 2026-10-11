@@ -139,7 +139,11 @@ export function parsePath<S extends z.ZodObject>(schema: S, params: unknown): z.
  * schema refuses is a value this endpoint will not accept, not a malformed
  * request. `field` names the path from `prefix`.
  */
-export function parseValue<S extends z.ZodType>(schema: S, value: unknown, prefix: string): z.output<S> {
+export function parseValue<S extends z.ZodType>(
+  schema: S,
+  value: unknown,
+  prefix: string,
+): z.output<S> {
   const result = schema.safeParse(value);
   if (result.success) return result.data;
   const [first] = result.error.issues;

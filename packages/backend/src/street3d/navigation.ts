@@ -67,7 +67,11 @@ export function decimateViewpoints(
 
   const kept: StreetSceneViewpoint[] = [];
   for (const candidate of rounded) {
-    if (kept.every((other) => distance(other.position, candidate.position) >= MIN_VIEWPOINT_SPACING_METERS)) {
+    if (
+      kept.every(
+        (other) => distance(other.position, candidate.position) >= MIN_VIEWPOINT_SPACING_METERS,
+      )
+    ) {
       kept.push(candidate);
     }
   }
@@ -84,7 +88,9 @@ export function decimateViewpoints(
 /** The navigation a result publishes, or `null` when the worker reported none. */
 export function publishedNavigation(result: SceneReconstructResult): StreetSceneNavigation | null {
   if (!result.viewpoints && !result.captureFieldOfView) return null;
-  const navigation: StreetSceneNavigation = { viewpoints: decimateViewpoints(result.viewpoints ?? []) };
+  const navigation: StreetSceneNavigation = {
+    viewpoints: decimateViewpoints(result.viewpoints ?? []),
+  };
   if (result.captureFieldOfView) {
     navigation.fieldOfView = {
       horizontalDegrees: round(result.captureFieldOfView.horizontalDegrees, 1),

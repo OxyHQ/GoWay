@@ -112,7 +112,12 @@ const DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_WIDTH_PIXELS = 7_680;
  * out would make "contribute a photo from your library" fail for most iOS
  * contributors on their first try.
  */
-const DEFAULT_PHOTO_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/heic', 'image/heif'] as const;
+const DEFAULT_PHOTO_CONTENT_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/heic',
+  'image/heif',
+] as const;
 const DEFAULT_VIDEO_CONTENT_TYPES = ['video/mp4', 'video/quicktime'] as const;
 
 /**
@@ -184,11 +189,18 @@ const schema = z.object({
    */
   keyPrefix: z.preprocess(
     emptyAsUndefined,
-    z.string().trim().regex(/^[a-z0-9][a-z0-9/_-]*$/, 'must be a simple key prefix').default('captures'),
+    z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9][a-z0-9/_-]*$/, 'must be a simple key prefix')
+      .default('captures'),
   ),
   uploadIntentTtlSeconds: positiveInteger(DEFAULT_UPLOAD_INTENT_TTL_SECONDS, 3600),
 
-  consentVersion: z.preprocess(emptyAsUndefined, z.string().trim().min(1).default(DEFAULT_CONSENT_VERSION)),
+  consentVersion: z.preprocess(
+    emptyAsUndefined,
+    z.string().trim().min(1).default(DEFAULT_CONSENT_VERSION),
+  ),
 
   maxPhotoBytes: positiveInteger(DEFAULT_MAX_PHOTO_BYTES, 1024 * 1024 * 1024),
   maxVideoBytes: positiveInteger(DEFAULT_MAX_VIDEO_BYTES, 8 * 1024 * 1024 * 1024),
@@ -211,11 +223,26 @@ const schema = z.object({
     if (['0', 'false', 'no', 'off'].includes(text)) return false;
     return normalized;
   }, z.boolean().default(true)),
-  maxEquirectangularPhotoBytes: positiveInteger(DEFAULT_MAX_EQUIRECTANGULAR_PHOTO_BYTES, 1024 * 1024 * 1024),
-  maxEquirectangularPhotoWidthPixels: positiveInteger(DEFAULT_MAX_EQUIRECTANGULAR_PHOTO_WIDTH_PIXELS, 16_384),
-  maxEquirectangularVideoBytes: positiveInteger(DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_BYTES, 8 * 1024 * 1024 * 1024),
-  maxEquirectangularVideoDurationSeconds: positiveInteger(DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_DURATION_SECONDS, 3600),
-  maxEquirectangularVideoWidthPixels: positiveInteger(DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_WIDTH_PIXELS, 16_384),
+  maxEquirectangularPhotoBytes: positiveInteger(
+    DEFAULT_MAX_EQUIRECTANGULAR_PHOTO_BYTES,
+    1024 * 1024 * 1024,
+  ),
+  maxEquirectangularPhotoWidthPixels: positiveInteger(
+    DEFAULT_MAX_EQUIRECTANGULAR_PHOTO_WIDTH_PIXELS,
+    16_384,
+  ),
+  maxEquirectangularVideoBytes: positiveInteger(
+    DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_BYTES,
+    8 * 1024 * 1024 * 1024,
+  ),
+  maxEquirectangularVideoDurationSeconds: positiveInteger(
+    DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_DURATION_SECONDS,
+    3600,
+  ),
+  maxEquirectangularVideoWidthPixels: positiveInteger(
+    DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_WIDTH_PIXELS,
+    16_384,
+  ),
 
   rawPhotoRetentionDays: retentionDays(DEFAULT_RETENTION_DAYS.raw_photo),
   rawVideoRetentionDays: retentionDays(DEFAULT_RETENTION_DAYS.raw_video),
@@ -265,7 +292,8 @@ export function parseCaptureConfig(source: EnvironmentSource = process.env): Cap
     maxEquirectangularPhotoBytes: source.CAPTURE_MAX_EQUIRECTANGULAR_PHOTO_BYTES,
     maxEquirectangularPhotoWidthPixels: source.CAPTURE_MAX_EQUIRECTANGULAR_PHOTO_WIDTH_PIXELS,
     maxEquirectangularVideoBytes: source.CAPTURE_MAX_EQUIRECTANGULAR_VIDEO_BYTES,
-    maxEquirectangularVideoDurationSeconds: source.CAPTURE_MAX_EQUIRECTANGULAR_VIDEO_DURATION_SECONDS,
+    maxEquirectangularVideoDurationSeconds:
+      source.CAPTURE_MAX_EQUIRECTANGULAR_VIDEO_DURATION_SECONDS,
     maxEquirectangularVideoWidthPixels: source.CAPTURE_MAX_EQUIRECTANGULAR_VIDEO_WIDTH_PIXELS,
     rawPhotoRetentionDays: source.CAPTURE_RETENTION_DAYS_RAW_PHOTO,
     rawVideoRetentionDays: source.CAPTURE_RETENTION_DAYS_RAW_VIDEO,

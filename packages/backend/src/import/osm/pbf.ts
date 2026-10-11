@@ -110,14 +110,18 @@ export async function* readBlobs(
       if (head.bytesRead < 4) break;
       const headerLength = lengthBuffer.readUInt32BE(0);
       if (headerLength === 0 || headerLength > MAX_HEADER_BYTES) {
-        throw new Error(`Blob header length ${headerLength} at offset ${position} is not plausible.`);
+        throw new Error(
+          `Blob header length ${headerLength} at offset ${position} is not plausible.`,
+        );
       }
 
       const headerBuffer = Buffer.allocUnsafe(headerLength);
       await handle.read(headerBuffer, 0, headerLength, position + 4);
       const { type, dataLength } = decodeBlobHeader(headerBuffer);
       if (dataLength > MAX_BLOB_BYTES) {
-        throw new Error(`Blob payload length ${dataLength} at offset ${position} is not plausible.`);
+        throw new Error(
+          `Blob payload length ${dataLength} at offset ${position} is not plausible.`,
+        );
       }
 
       const dataOffset = position + 4 + headerLength;
@@ -217,7 +221,13 @@ export interface BlockStrings {
  */
 export interface BlockVisitor {
   onStrings?: (strings: BlockStrings) => void;
-  onNode?: (id: number, latitude: number, longitude: number, keys: number[], vals: number[]) => void;
+  onNode?: (
+    id: number,
+    latitude: number,
+    longitude: number,
+    keys: number[],
+    vals: number[],
+  ) => void;
   onWay?: (id: number, keys: number[], vals: number[], refs: number[]) => void;
   onRelation?: (
     id: number,
@@ -435,7 +445,13 @@ function readDenseNodes(
       tag += 1;
     }
 
-    visitor.onNode(id, latBase + scale * latitude, lonBase + scale * longitude, scratchKeys, scratchVals);
+    visitor.onNode(
+      id,
+      latBase + scale * latitude,
+      lonBase + scale * longitude,
+      scratchKeys,
+      scratchVals,
+    );
   }
 }
 
@@ -476,7 +492,13 @@ function readNode(
     }
   }
 
-  visitor.onNode(id, latBase + scale * latitude, lonBase + scale * longitude, scratchKeys, scratchVals);
+  visitor.onNode(
+    id,
+    latBase + scale * latitude,
+    lonBase + scale * longitude,
+    scratchKeys,
+    scratchVals,
+  );
 }
 
 /** A `Way`: tags, and node references delta-encoded. */

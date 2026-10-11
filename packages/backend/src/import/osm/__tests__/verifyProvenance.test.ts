@@ -43,8 +43,9 @@ const MUSEU_PICASSO = { name: 'Museu Picasso', 'name:es': 'Museo Picasso', touri
 
 describe('verifyProvenance', () => {
   test('catches issue #58: an id that resolves to the wrong building', async () => {
-    const report = await verifyProvenance([place('way/34633854', 'Museu Picasso')], async () =>
-      EMPIRE_STATE,
+    const report = await verifyProvenance(
+      [place('way/34633854', 'Museu Picasso')],
+      async () => EMPIRE_STATE,
     );
     expect(report.nameDiffers).toBe(1);
     expect(report.checked[0]?.actual).toBe('Empire State Building');
@@ -52,8 +53,9 @@ describe('verifyProvenance', () => {
   });
 
   test('passes when the element really is the one that was meant', async () => {
-    const report = await verifyProvenance([place('way/188938001', 'Museu Picasso')], async () =>
-      MUSEU_PICASSO,
+    const report = await verifyProvenance(
+      [place('way/188938001', 'Museu Picasso')],
+      async () => MUSEU_PICASSO,
     );
     expect(report.matched).toBe(1);
     expect(provenanceHolds(report)).toBe(true);

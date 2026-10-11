@@ -29,7 +29,13 @@ import { assertWritableVerification } from '../../places/capabilityAuthority';
 import type { Database, DatabaseOrTransaction } from '../postgres';
 import { placeMedia, places } from '../schema';
 import type { PlaceActor } from './placesRepository';
-import { changeOf, mediaField, mediaSnapshot, recordRevision, type RevisionAuthor } from './revisions';
+import {
+  changeOf,
+  mediaField,
+  mediaSnapshot,
+  recordRevision,
+  type RevisionAuthor,
+} from './revisions';
 
 export const MEDIA_COLUMNS = {
   id: placeMedia.id,
@@ -89,7 +95,11 @@ async function lockPlace(tx: DatabaseOrTransaction, placeId: string) {
     .update(places)
     .set({ updatedAt: new Date() })
     .where(eq(places.id, placeId))
-    .returning({ id: places.id, logoMediaId: places.logoMediaId, coverMediaId: places.coverMediaId });
+    .returning({
+      id: places.id,
+      logoMediaId: places.logoMediaId,
+      coverMediaId: places.coverMediaId,
+    });
   return row ?? null;
 }
 
@@ -177,11 +187,17 @@ export async function addPlaceMedia(
       const [existing] = await tx
         .select({ id: placeMedia.id })
         .from(placeMedia)
-        .where(and(eq(placeMedia.placeId, placeId), eq(placeMedia.oxyFileId, item.fileId), ne(placeMedia.state, 'removed')))
+        .where(
+          and(
+            eq(placeMedia.placeId, placeId),
+            eq(placeMedia.oxyFileId, item.fileId),
+            ne(placeMedia.state, 'removed'),
+          ),
+        )
         .limit(1);
       throw new ApiError(
         'conflict',
-        'That file is already in this place\'s gallery.',
+        "That file is already in this place's gallery.",
         existing ? { mediaId: existing.id } : undefined,
       );
     }
@@ -205,7 +221,13 @@ export async function findLivePlaceMedia(
   const [row] = await db
     .select(MEDIA_COLUMNS)
     .from(placeMedia)
-    .where(and(eq(placeMedia.placeId, placeId), eq(placeMedia.id, mediaId), ne(placeMedia.state, 'removed')))
+    .where(
+      and(
+        eq(placeMedia.placeId, placeId),
+        eq(placeMedia.id, mediaId),
+        ne(placeMedia.state, 'removed'),
+      ),
+    )
     .limit(1);
   return row;
 }
@@ -228,7 +250,13 @@ export async function removePlaceMedia(
     const [before] = await tx
       .select(MEDIA_COLUMNS)
       .from(placeMedia)
-      .where(and(eq(placeMedia.placeId, placeId), eq(placeMedia.id, mediaId), ne(placeMedia.state, 'removed')))
+      .where(
+        and(
+          eq(placeMedia.placeId, placeId),
+          eq(placeMedia.id, mediaId),
+          ne(placeMedia.state, 'removed'),
+        ),
+      )
       .for('update');
     if (!before) return null;
 
@@ -274,14 +302,21 @@ export async function reorderPlaceMedia(
     const byId = new Map(visible.map((row) => [row.id, row]));
     const unknown = mediaIds.findIndex((id) => !byId.has(id));
     if (unknown !== -1) {
-      throw new ApiError('validation_failed', 'Every item named must be a visible item of this place.', {
-        field: `mediaIds.${String(unknown)}`,
-        issue: 'not_in_gallery',
-      });
+      throw new ApiError(
+        'validation_failed',
+        'Every item named must be a visible item of this place.',
+        {
+          field: `mediaIds.${String(unknown)}`,
+          issue: 'not_in_gallery',
+        },
+      );
     }
 
     const named = new Set(mediaIds);
-    const order = [...mediaIds.map((id) => byId.get(id)!), ...visible.filter((row) => !named.has(row.id))];
+    const order = [
+      ...mediaIds.map((id) => byId.get(id)!),
+      ...visible.filter((row) => !named.has(row.id)),
+    ];
     // The visible items take the positions the visible items already held, in
     // the new order — so a hidden item's position is never taken, and a
     // restored item reappears where it was.
@@ -290,8 +325,15 @@ export async function reorderPlaceMedia(
     for (const [index, row] of order.entries()) {
       const position = slots[index]!;
       if (row.position === position) continue;
-      await tx.update(placeMedia).set({ position, updatedAt: new Date() }).where(eq(placeMedia.id, row.id));
-      const change = changeOf(mediaField(row.id), mediaSnapshot(row), mediaSnapshot({ ...row, position }));
+      await tx
+        .update(placeMedia)
+        .set({ position, updatedAt: new Date() })
+        .where(eq(placeMedia.id, row.id));
+      const change = changeOf(
+        mediaField(row.id),
+        mediaSnapshot(row),
+        mediaSnapshot({ ...row, position }),
+      );
       if (change) changes.push(change);
     }
     await recordRevision(tx, { placeId, action: 'media_reordered', author, changes });
@@ -306,7 +348,11 @@ export type MediaKeyset = readonly [position: number, mediaId: string];
 export async function listPlaceMedia(
   db: DatabaseOrTransaction,
   placeId: string,
-  window: { kinds?: readonly PlaceMediaKind[] | undefined; limit: number; after?: MediaKeyset | undefined },
+  window: {
+    kinds?: readonly PlaceMediaKind[] | undefined;
+    limit: number;
+    after?: MediaKeyset | undefined;
+  },
 ): Promise<PlaceMedia[]> {
   const rows = await db
     .select(MEDIA_COLUMNS)
@@ -315,8 +361,12 @@ export async function listPlaceMedia(
       and(
         eq(placeMedia.placeId, placeId),
         eq(placeMedia.state, 'visible'),
-        window.kinds && window.kinds.length > 0 ? inArray(placeMedia.kind, [...window.kinds]) : undefined,
-        window.after ? sql`(${placeMedia.position}, ${placeMedia.id}) > (${window.after[0]}::int, ${window.after[1]})` : undefined,
+        window.kinds && window.kinds.length > 0
+          ? inArray(placeMedia.kind, [...window.kinds])
+          : undefined,
+        window.after
+          ? sql`(${placeMedia.position}, ${placeMedia.id}) > (${window.after[0]}::int, ${window.after[1]})`
+          : undefined,
       ),
     )
     .orderBy(asc(placeMedia.position), asc(placeMedia.id))
@@ -326,7 +376,10 @@ export async function listPlaceMedia(
 
 // ── Moderation ──────────────────────────────────────────────────────────────
 
-const MODERATION_MEDIA_COLUMNS = { ...MEDIA_COLUMNS, positionAt: sql<string>`${placeMedia.createdAt}::text` } as const;
+const MODERATION_MEDIA_COLUMNS = {
+  ...MEDIA_COLUMNS,
+  positionAt: sql<string>`${placeMedia.createdAt}::text`,
+} as const;
 
 function createdWindow(window: TimeWindow): SQL | undefined {
   return window.after
@@ -344,10 +397,19 @@ export async function listModerationMedia(
   const rows = await db
     .select(MODERATION_MEDIA_COLUMNS)
     .from(placeMedia)
-    .where(and(eq(placeMedia.placeId, placeId), state ? eq(placeMedia.state, state) : undefined, createdWindow(window)))
+    .where(
+      and(
+        eq(placeMedia.placeId, placeId),
+        state ? eq(placeMedia.state, state) : undefined,
+        createdWindow(window),
+      ),
+    )
     .orderBy(asc(placeMedia.createdAt), asc(placeMedia.id))
     .limit(window.limit);
-  return rows.map(({ positionAt, ...row }) => ({ item: toModerationMedia(row), position: [positionAt, row.id] }));
+  return rows.map(({ positionAt, ...row }) => ({
+    item: toModerationMedia(row),
+    position: [positionAt, row.id],
+  }));
 }
 
 const MODERATION_ACTION: Readonly<Record<ModeratedPlaceMediaState, PlaceRevisionAction>> = {
@@ -378,7 +440,11 @@ export async function moderatePlaceMedia(
       .for('update');
     if (!before) return null;
     if (before.state === 'removed') {
-      throw new ApiError('conflict', 'This item was withdrawn by its contributor or the business.', { state: before.state });
+      throw new ApiError(
+        'conflict',
+        'This item was withdrawn by its contributor or the business.',
+        { state: before.state },
+      );
     }
     if (before.state === state) {
       throw new ApiError('conflict', `This item is already ${state}.`, { state: before.state });
@@ -439,7 +505,10 @@ export async function moveMediaToSurvivor(
   const now = new Date();
   const changes: PlaceRevisionChange[] = [];
   for (const row of moving) {
-    await tx.update(placeMedia).set({ placeId: survivorId, position, updatedAt: now }).where(eq(placeMedia.id, row.id));
+    await tx
+      .update(placeMedia)
+      .set({ placeId: survivorId, position, updatedAt: now })
+      .where(eq(placeMedia.id, row.id));
     changes.push({ field: mediaField(row.id), after: mediaSnapshot({ ...row, position }) });
     position += 1;
   }

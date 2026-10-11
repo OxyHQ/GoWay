@@ -32,7 +32,9 @@ import { cursorSchema, limitSchema, pageSchema } from './pagination';
 import { instantSchema } from './time';
 
 /** A local 24-hour wall-clock time, `HH:mm`. */
-export const clockTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'must be a local 24-hour time, HH:mm');
+export const clockTimeSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'must be a local 24-hour time, HH:mm');
 
 /**
  * An opening span within one day, local wall-clock.
@@ -80,14 +82,23 @@ export const openingHoursDayPatchSchema = z.object({
 export type OpeningHoursDayPatch = z.infer<typeof openingHoursDayPatchSchema>;
 
 /** Atomic weekday replacements, never an inferred full-week schedule. */
-export const openingHoursDaysPatchSchema = z.array(openingHoursDayPatchSchema).min(1).max(7)
+export const openingHoursDaysPatchSchema = z
+  .array(openingHoursDayPatchSchema)
+  .min(1)
+  .max(7)
   .refine((days) => new Set(days.map(({ day }) => day)).size === days.length, {
     message: 'each weekday may be replaced only once',
   })
-  .refine((days) => days.reduce((count, day) => count + day.intervals.length, 0) <= MAX_WEEKLY_HOURS_INTERVALS, {
-    message: 'a weekly schedule carries at most 64 intervals',
-  })
-  .describe('Atomic replacements of unique opening weekdays (0 Sunday to 6 Saturday). Empty intervals close a day. Omitted days remain unchanged. Mutually exclusive with openingHours. Unknown schedules require all seven days, otherwise conflict. The resulting week may contain at most 64 intervals.');
+  .refine(
+    (days) =>
+      days.reduce((count, day) => count + day.intervals.length, 0) <= MAX_WEEKLY_HOURS_INTERVALS,
+    {
+      message: 'a weekly schedule carries at most 64 intervals',
+    },
+  )
+  .describe(
+    'Atomic replacements of unique opening weekdays (0 Sunday to 6 Saturday). Empty intervals close a day. Omitted days remain unchanged. Mutually exclusive with openingHours. Unknown schedules require all seven days, otherwise conflict. The resulting week may contain at most 64 intervals.',
+  );
 
 /** An IANA timezone name as a response publishes it: `Europe/Madrid`. */
 export const timezoneSchema = z.string().min(1).max(64);
@@ -164,14 +175,23 @@ export const placeHoursExceptionInputSchema = z
     message: 'endsOn must not be before startsOn',
     path: ['endsOn'],
   })
-  .refine((input) => input.endsOn === undefined || daysBetween(input.startsOn, input.endsOn) < MAX_HOURS_EXCEPTION_DAYS, {
-    message: `an exception spans at most ${MAX_HOURS_EXCEPTION_DAYS} days`,
-    path: ['endsOn'],
-  })
-  .refine((input) => (input.closed ? (input.intervals ?? []).length === 0 : (input.intervals ?? []).length > 0), {
-    message: 'a closed exception has no intervals, and an open one needs them',
-    path: ['intervals'],
-  });
+  .refine(
+    (input) =>
+      input.endsOn === undefined ||
+      daysBetween(input.startsOn, input.endsOn) < MAX_HOURS_EXCEPTION_DAYS,
+    {
+      message: `an exception spans at most ${MAX_HOURS_EXCEPTION_DAYS} days`,
+      path: ['endsOn'],
+    },
+  )
+  .refine(
+    (input) =>
+      input.closed ? (input.intervals ?? []).length === 0 : (input.intervals ?? []).length > 0,
+    {
+      message: 'a closed exception has no intervals, and an open one needs them',
+      path: ['intervals'],
+    },
+  );
 export type PlaceHoursExceptionInput = z.input<typeof placeHoursExceptionInputSchema>;
 
 /** The most exceptions one page returns. */
@@ -257,8 +277,15 @@ function localClock(timezone: string, now: Date): { date: string; minute: number
       minute: '2-digit',
       hourCycle: 'h23',
     }).formatToParts(now);
-    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((entry) => entry.type === type)?.value;
-    const [year, month, day, hour, minute] = [part('year'), part('month'), part('day'), part('hour'), part('minute')];
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((entry) => entry.type === type)?.value;
+    const [year, month, day, hour, minute] = [
+      part('year'),
+      part('month'),
+      part('day'),
+      part('hour'),
+      part('minute'),
+    ];
     if (!year || !month || !day || !hour || !minute) return null;
     return { date: `${year}-${month}-${day}`, minute: (Number(hour) % 24) * 60 + Number(minute) };
   } catch {
@@ -270,14 +297,18 @@ function localClock(timezone: string, now: Date): { date: string; minute: number
  * The exception that decides a date: strongest verification tier first, then
  * the freshest — the same ranking a capability's strongest assertion uses.
  */
-function exceptionOn(date: string, exceptions: readonly PlaceHoursException[]): PlaceHoursException | undefined {
+function exceptionOn(
+  date: string,
+  exceptions: readonly PlaceHoursException[],
+): PlaceHoursException | undefined {
   let decisive: PlaceHoursException | undefined;
   for (const exception of exceptions) {
     if (exception.startsOn > date || exception.endsOn < date) continue;
     if (
       decisive === undefined ||
       tierOf(exception.verification) > tierOf(decisive.verification) ||
-      (exception.verification === decisive.verification && Date.parse(exception.observedAt) > Date.parse(decisive.observedAt))
+      (exception.verification === decisive.verification &&
+        Date.parse(exception.observedAt) > Date.parse(decisive.observedAt))
     ) {
       decisive = exception;
     }
@@ -344,7 +375,10 @@ export function openingStatusAt(facts: OpeningFacts, now: Date = new Date()): Op
     for (const range of ranges) {
       const opens = minutesOf(range.opens);
       const closes = minutesOf(range.closes);
-      spans.push({ start: base + opens, end: base + (closes > opens ? closes : closes + MINUTES_PER_DAY) });
+      spans.push({
+        start: base + opens,
+        end: base + (closes > opens ? closes : closes + MINUTES_PER_DAY),
+      });
     }
   }
 
@@ -371,7 +405,9 @@ export function openingStatusAt(facts: OpeningFacts, now: Date = new Date()): Op
   const status: OpeningStatus = current
     ? { state: 'open', localDate: clock.date }
     : { state: 'closed', localDate: clock.date };
-  const next = current ? change(current.end) : change(merged.find((span) => span.start > clock.minute)?.start ?? horizon);
+  const next = current
+    ? change(current.end)
+    : change(merged.find((span) => span.start > clock.minute)?.start ?? horizon);
   if (next) status.nextChange = next;
   if (todayException) status.exception = todayException;
   return status;

@@ -24,7 +24,11 @@ const MAX_EDGE_PX = 2048;
  * library picker needs none, and the re-encoded file carries none.
  */
 export async function pickPlacePhoto(): Promise<PickedImage | null> {
-  const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1, exif: false });
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['images'],
+    quality: 1,
+    exif: false,
+  });
   const asset = result.canceled ? undefined : result.assets[0];
   if (!asset) return null;
 

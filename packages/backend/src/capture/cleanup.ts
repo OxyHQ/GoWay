@@ -160,7 +160,8 @@ export async function sweepExpiredCaptures(
       // A privacy job's frames become derivative rows, which own those bytes.
       // A privacy job that produced none (failed, cancelled, withdrawn) leaves
       // orphans under its `derived/` prefix; those go with the job.
-      if (job.kind === 'capture_privacy' && !(await jobHasDerivatives(db, job.id))) prefixes.push(job.outputPrefix);
+      if (job.kind === 'capture_privacy' && !(await jobHasDerivatives(db, job.id)))
+        prefixes.push(job.outputPrefix);
       for (const prefix of prefixes) {
         for (const key of await jobStore.list(prefix, 1000)) {
           await jobStore.delete(key);

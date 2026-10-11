@@ -13,7 +13,10 @@ import { createPhotonProvider, photonOsmTags } from '../photonProvider';
 import type { PhotonConfig } from '../../config/search';
 import { jsonResponse, paramsOf, recordingFetch } from './fixtures';
 
-const CONFIG: PhotonConfig = { baseUrl: 'https://photon.example', languages: ['de', 'en', 'fr', 'it'] };
+const CONFIG: PhotonConfig = {
+  baseUrl: 'https://photon.example',
+  languages: ['de', 'en', 'fr', 'it'],
+};
 
 /** `GET /api?q=berlin` against photon.komoot.io, trimmed to one feature. */
 const BERLIN = {
@@ -71,7 +74,12 @@ function provider(handler: (url: string) => Response) {
   const recorder = recordingFetch(handler);
   return {
     recorder,
-    photon: createPhotonProvider({ config: CONFIG, fetch: recorder.fetch, timeoutMs: 1_000, attempts: 1 }),
+    photon: createPhotonProvider({
+      config: CONFIG,
+      fetch: recorder.fetch,
+      timeoutMs: 1_000,
+      attempts: 1,
+    }),
   };
 }
 
@@ -147,7 +155,9 @@ describe('the Photon adapter', () => {
   });
 
   it('biases a viewport to its centre and never sends a bbox', async () => {
-    const { photon, recorder } = provider(() => jsonResponse({ type: 'FeatureCollection', features: [] }));
+    const { photon, recorder } = provider(() =>
+      jsonResponse({ type: 'FeatureCollection', features: [] }),
+    );
     await photon.forward({
       query: 'museum',
       limit: 5,
@@ -162,7 +172,9 @@ describe('the Photon adapter', () => {
   });
 
   it('prefers an explicit `near` over the viewport', async () => {
-    const { photon, recorder } = provider(() => jsonResponse({ type: 'FeatureCollection', features: [] }));
+    const { photon, recorder } = provider(() =>
+      jsonResponse({ type: 'FeatureCollection', features: [] }),
+    );
     await photon.forward({
       query: 'museum',
       limit: 5,
@@ -176,7 +188,9 @@ describe('the Photon adapter', () => {
   });
 
   it('sends `lang` only for a language the instance was built with', async () => {
-    const { photon, recorder } = provider(() => jsonResponse({ type: 'FeatureCollection', features: [] }));
+    const { photon, recorder } = provider(() =>
+      jsonResponse({ type: 'FeatureCollection', features: [] }),
+    );
     await photon.forward({ query: 'a', limit: 1, locale: 'fr-CA' });
     await photon.forward({ query: 'a', limit: 1, locale: 'es-ES' });
 
@@ -186,8 +200,14 @@ describe('the Photon adapter', () => {
   });
 
   it('forwards the OpenStreetMap tags a category search maps to, as Photon spells them', async () => {
-    const { photon, recorder } = provider(() => jsonResponse({ type: 'FeatureCollection', features: [] }));
-    await photon.forward({ query: 'coffee', limit: 5, osmTags: SEEDED_CATALOG.osmTagsUnder(['food.cafe']) });
+    const { photon, recorder } = provider(() =>
+      jsonResponse({ type: 'FeatureCollection', features: [] }),
+    );
+    await photon.forward({
+      query: 'coffee',
+      limit: 5,
+      osmTags: SEEDED_CATALOG.osmTagsUnder(['food.cafe']),
+    });
 
     const tags = paramsOf(recorder.urls[0] ?? '').getAll('osm_tag');
     expect(tags).toEqual(['amenity:cafe', 'shop:coffee', 'shop:tea']);
@@ -205,8 +225,14 @@ describe('the Photon adapter', () => {
   });
 
   it('converts the reverse radius from metres to kilometres', async () => {
-    const { photon, recorder } = provider(() => jsonResponse({ type: 'FeatureCollection', features: [] }));
-    await photon.reverse({ coordinate: { latitude: 41.4, longitude: 2.17 }, limit: 3, radiusMeters: 500 });
+    const { photon, recorder } = provider(() =>
+      jsonResponse({ type: 'FeatureCollection', features: [] }),
+    );
+    await photon.reverse({
+      coordinate: { latitude: 41.4, longitude: 2.17 },
+      limit: 3,
+      radiusMeters: 500,
+    });
 
     const params = paramsOf(recorder.urls[0] ?? '');
     // Photon's `radius` is in KILOMETRES. Passing 500 would search 500 km.
@@ -215,7 +241,9 @@ describe('the Photon adapter', () => {
   });
 
   it('sends the structured parameters Photon names', async () => {
-    const { photon, recorder } = provider(() => jsonResponse({ type: 'FeatureCollection', features: [] }));
+    const { photon, recorder } = provider(() =>
+      jsonResponse({ type: 'FeatureCollection', features: [] }),
+    );
     await photon.structured?.({
       street: 'Carrer de Mallorca',
       houseNumber: '401',
@@ -237,7 +265,11 @@ describe('the Photon adapter', () => {
       jsonResponse({
         type: 'FeatureCollection',
         features: [
-          { type: 'Feature', geometry: { type: 'Point', coordinates: [999, 999] }, properties: { name: 'Nowhere' } },
+          {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [999, 999] },
+            properties: { name: 'Nowhere' },
+          },
           ...BERLIN.features,
         ],
       }),

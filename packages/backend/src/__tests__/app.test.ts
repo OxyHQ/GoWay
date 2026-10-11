@@ -166,15 +166,21 @@ describe('the route registry', () => {
     // 503 with no database — it must not be that.
     const unrouted: string[] = [];
     for (const operation of API_OPERATIONS) {
-      const path = operation.path.replace(/\{([A-Za-z]+)\}/g, (_match, name: string) => SAMPLE_PATH_VALUES[name] ?? 'x');
+      const path = operation.path.replace(
+        /\{([A-Za-z]+)\}/g,
+        (_match, name: string) => SAMPLE_PATH_VALUES[name] ?? 'x',
+      );
       const response = await fetch(`${origin}${GOWAY_API_BASE_PATH}${path}`, {
         method: operation.method.toUpperCase(),
         ...(operation.method === 'get' || operation.method === 'delete'
           ? {}
           : { headers: { 'content-type': 'application/json' }, body: '{}' }),
       });
-      const body = (await response.json().catch(() => null)) as { error?: { code?: string } } | null;
-      if (body?.error?.code === 'unknown_route') unrouted.push(`${operation.method.toUpperCase()} ${operation.path}`);
+      const body = (await response.json().catch(() => null)) as {
+        error?: { code?: string };
+      } | null;
+      if (body?.error?.code === 'unknown_route')
+        unrouted.push(`${operation.method.toUpperCase()} ${operation.path}`);
     }
     expect(unrouted).toEqual([]);
     expect(API_OPERATIONS.length).toBeGreaterThan(20);

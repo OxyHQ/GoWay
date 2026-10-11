@@ -403,9 +403,7 @@ export function toPlace(
       .map((capability) =>
         toCapability(
           capability,
-          capability.placeSourceId === null
-            ? undefined
-            : sourcesById.get(capability.placeSourceId),
+          capability.placeSourceId === null ? undefined : sourcesById.get(capability.placeSourceId),
         ),
       ),
     createdAt: row.createdAt.toISOString(),
@@ -424,12 +422,15 @@ export function toPlace(
   if (children.claims !== undefined) place.claims = children.claims.map(toClaim);
   if (children.descriptions !== undefined) {
     put(place, 'description', optionalText(row.description));
-    place.descriptions = [...children.descriptions].sort(comparePublishedNames).map(toPlaceDescription);
+    place.descriptions = [...children.descriptions]
+      .sort(comparePublishedNames)
+      .map(toPlaceDescription);
     const localizedDescription = resolveLocalizedName(children.descriptions, nameView.locale);
     if (localizedDescription) place.localizedDescription = toPlaceDescription(localizedDescription);
   }
   if (row.logoMediaId !== null) put(place, 'logoFileId', children.mediaFiles?.get(row.logoMediaId));
-  if (row.coverMediaId !== null) put(place, 'coverFileId', children.mediaFiles?.get(row.coverMediaId));
+  if (row.coverMediaId !== null)
+    put(place, 'coverFileId', children.mediaFiles?.get(row.coverMediaId));
   put(place, 'rating', children.rating);
 
   const names = children.names ?? [];

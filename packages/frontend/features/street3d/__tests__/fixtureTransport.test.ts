@@ -46,20 +46,28 @@ describe('SDK street3d against the fixture transport', () => {
     for (const id of FIXTURE_SCENES.keys()) {
       const manifest = await client().scene(id);
       expect(manifest.worldTransform.enuFromScene).toHaveLength(16);
-      expect(manifest.assets.map((asset) => asset.role).sort()).toEqual(['poster', 'splat', 'splat_preview']);
+      expect(manifest.assets.map((asset) => asset.role).sort()).toEqual([
+        'poster',
+        'splat',
+        'splat_preview',
+      ]);
       expect(manifest.attributions.length).toBeGreaterThan(0);
     }
   });
 
   test('an unknown scene is GoWay saying not found — not a missing endpoint', async () => {
-    const error = await client().scene('nope').catch((e: unknown) => e);
+    const error = await client()
+      .scene('nope')
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(GoWayNotFoundError);
     expect(classifyGoWayError(error).kind).toBe('notFound');
     expect(isStreet3dEndpointMissing(error)).toBe(false);
   });
 
   test('a report needs a session, and goes through with one', async () => {
-    const anonymous = await client().report(scene.id, { reason: 'privacy' }).catch((e: unknown) => e);
+    const anonymous = await client()
+      .report(scene.id, { reason: 'privacy' })
+      .catch((e: unknown) => e);
     expect(anonymous).toBeInstanceOf(GoWayUnauthorizedError);
 
     const report = await client('token').report(scene.id, { reason: 'inaccurate', note: 'offset' });
@@ -68,7 +76,9 @@ describe('SDK street3d against the fixture transport', () => {
   });
 
   test('the street3d fault family drives the "hide silently" path', async () => {
-    const error = await client(null, createFixtureFetch({ street3d: 'unavailable' })).coverage(scene.bounds).catch((e: unknown) => e);
+    const error = await client(null, createFixtureFetch({ street3d: 'unavailable' }))
+      .coverage(scene.bounds)
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(GoWayUnavailableError);
     // Restore the shared fault table for the other suites.
     createFixtureFetch();
@@ -86,13 +96,18 @@ describe('SDK street3d against the fixture transport', () => {
 
 describe('isStreet3dEndpointMissing', () => {
   test('a bare 404 (no GoWay body) means the deployment has no Street 3D routes', async () => {
-    const error = await client(null, canned(404, '<html>')).coverage(scene.bounds).catch((e: unknown) => e);
+    const error = await client(null, canned(404, '<html>'))
+      .coverage(scene.bounds)
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(GoWayApiError);
     expect(isStreet3dEndpointMissing(error)).toBe(true);
   });
 
   test('a 503 is not a missing endpoint', async () => {
-    const error = await client(null, canned(503, '{"error":{"code":"service_unavailable","message":"off"}}'))
+    const error = await client(
+      null,
+      canned(503, '{"error":{"code":"service_unavailable","message":"off"}}'),
+    )
       .coverage(scene.bounds)
       .catch((e: unknown) => e);
     expect(isStreet3dEndpointMissing(error)).toBe(false);

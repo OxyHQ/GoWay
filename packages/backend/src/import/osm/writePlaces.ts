@@ -47,9 +47,21 @@ import type { PgColumn } from 'drizzle-orm/pg-core';
 import { qualified, sqlColumnName, uuidv7 } from '@oxy.so/db';
 import { splitCapabilityKey, type CapabilityValue } from '@goway/contracts';
 import type { Database } from '../../db/postgres';
-import { places, placesCapabilities, placesNames, placesSources, type PlaceSourceData } from '../../db/schema';
+import {
+  places,
+  placesCapabilities,
+  placesNames,
+  placesSources,
+  type PlaceSourceData,
+} from '../../db/schema';
 import { assertWritableVerification } from '../../places/capabilityAuthority';
-import { IMPORTED_COLUMNS, previousColumns, sameJson, type ImportedColumn, type ImportedColumns } from './fields';
+import {
+  IMPORTED_COLUMNS,
+  previousColumns,
+  sameJson,
+  type ImportedColumn,
+  type ImportedColumns,
+} from './fields';
 import { mergePlaceColumns } from './merge';
 import { sourceDataOf, type ImportedPlace } from './placeRecord';
 
@@ -136,7 +148,9 @@ function inParameterChunks<T>(rows: readonly T[], columnsPerRow: number): T[][] 
 }
 
 /** The importable columns as a drizzle selection — read back for the merge, from the one field table. */
-const IMPORTED_SELECTION = Object.fromEntries(IMPORTED_COLUMNS.map((column) => [column, places[column]])) as {
+const IMPORTED_SELECTION = Object.fromEntries(
+  IMPORTED_COLUMNS.map((column) => [column, places[column]]),
+) as {
   [K in ImportedColumn]: (typeof places)[K];
 };
 
@@ -161,14 +175,19 @@ function previousOf(sourceData: PlaceSourceData | null): {
   const capabilities = normalized.capabilities;
   return {
     columns: previousColumns(normalized),
-    capabilities: capabilities !== null && typeof capabilities === 'object' ? (capabilities as Record<string, unknown>) : {},
+    capabilities:
+      capabilities !== null && typeof capabilities === 'object'
+        ? (capabilities as Record<string, unknown>)
+        : {},
   };
 }
 
 /** Whether an element's capabilities differ from what the last run recorded. */
 function capabilitiesChanged(previous: Record<string, unknown>, place: ImportedPlace): boolean {
   if (Object.keys(previous).length !== place.capabilities.length) return true;
-  return place.capabilities.some((capability) => !sameJson(previous[capability.key], capability.value));
+  return place.capabilities.some(
+    (capability) => !sameJson(previous[capability.key], capability.value),
+  );
 }
 
 /**
@@ -197,7 +216,9 @@ export async function writePlaceBatch(
     .where(and(eq(placesSources.source, OSM_SOURCE), inArray(placesSources.sourceId, sourceIds)));
 
   const placeIdBySourceId = new Map(linked.map((row) => [row.sourceId, row.placeId]));
-  const previousBySourceId = new Map(linked.map((row) => [row.sourceId, previousOf(row.sourceData)]));
+  const previousBySourceId = new Map(
+    linked.map((row) => [row.sourceId, previousOf(row.sourceData)]),
+  );
 
   const current = new Map<string, ImportedColumns>();
   if (linked.length > 0) {

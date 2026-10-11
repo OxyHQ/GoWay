@@ -16,7 +16,9 @@ const MONDAY_NOON = new Date('2026-10-05T10:30:00Z');
 
 describe('openingSummary', () => {
   test('says open and when it closes, in the place’s clock', () => {
-    expect(openingSummary({ openingHours: WEEKDAYS, timezone: 'Europe/Madrid' }, MONDAY_NOON)).toEqual({
+    expect(
+      openingSummary({ openingHours: WEEKDAYS, timezone: 'Europe/Madrid' }, MONDAY_NOON),
+    ).toEqual({
       state: 'open',
       text: 'Open · closes 20:00',
       spoken: 'Open now, closes 20:00',
@@ -25,9 +27,9 @@ describe('openingSummary', () => {
 
   test('names the day of the next opening when it is not today', () => {
     const friday = new Date('2026-10-09T19:00:00Z');
-    expect(openingSummary({ openingHours: WEEKDAYS, timezone: 'Europe/Madrid' }, friday)?.text).toBe(
-      'Closed · opens Mon 09:00',
-    );
+    expect(
+      openingSummary({ openingHours: WEEKDAYS, timezone: 'Europe/Madrid' }, friday)?.text,
+    ).toBe('Closed · opens Mon 09:00');
   });
 
   test('lets a closure say why', () => {
@@ -62,7 +64,9 @@ describe('openingSummary', () => {
 
 describe('the week and its exceptions', () => {
   test('reads Monday first, closed days included', () => {
-    expect(weeklySchedule({ openingHours: WEEKDAYS })?.map((row) => `${row.day} ${row.text}`)).toEqual([
+    expect(
+      weeklySchedule({ openingHours: WEEKDAYS })?.map((row) => `${row.day} ${row.text}`),
+    ).toEqual([
       'Mon 09:00–20:00',
       'Tue 09:00–20:00',
       'Wed 09:00–20:00',

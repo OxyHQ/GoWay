@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { blurryFraction, coachWarnings, initialCoach, stepCoach, type CoachState, type CoachWarning } from './coach';
+import {
+  blurryFraction,
+  coachWarnings,
+  initialCoach,
+  stepCoach,
+  type CoachState,
+  type CoachWarning,
+} from './coach';
 import { advancePlan, startPlan, stepSeconds, type PlanState } from './plan';
 import type { FrameSignals } from './sharpness';
 
@@ -16,7 +23,9 @@ export function useGuidedSession() {
   const [t, setT] = useState(0);
   const startedAt = useRef<number | null>(null);
   const coachRef = useRef(coach);
-  useEffect(() => { coachRef.current = coach; }, [coach]);
+  useEffect(() => {
+    coachRef.current = coach;
+  }, [coach]);
 
   useEffect(() => {
     if (!plan) return;
@@ -32,10 +41,19 @@ export function useGuidedSession() {
     setPlan(startPlan(at));
   }, []);
   const stop = useCallback(() => setPlan(null), []);
-  const next = useCallback(() => setPlan((current) => (current ? advancePlan(current, now()) : current)), []);
-  const sample = useCallback((signals: FrameSignals) => setCoach((current) => stepCoach(current, { t: now(), ...signals })), []);
+  const next = useCallback(
+    () => setPlan((current) => (current ? advancePlan(current, now()) : current)),
+    [],
+  );
+  const sample = useCallback(
+    (signals: FrameSignals) => setCoach((current) => stepCoach(current, { t: now(), ...signals })),
+    [],
+  );
   /** Seconds since Start, read at call time rather than at the last tick. */
-  const elapsedNow = useCallback(() => (startedAt.current === null ? 0 : (now() - startedAt.current) / 1000), []);
+  const elapsedNow = useCallback(
+    () => (startedAt.current === null ? 0 : (now() - startedAt.current) / 1000),
+    [],
+  );
   const summary = useCallback(() => ({ blurryFraction: blurryFraction(coachRef.current) }), []);
 
   const warnings: CoachWarning[] = plan ? coachWarnings(coach, t) : [];
@@ -44,7 +62,12 @@ export function useGuidedSession() {
     warnings,
     elapsedSeconds: plan ? Math.max(0, (t - plan.startedAt[0]) / 1000) : 0,
     stepSeconds: plan ? stepSeconds(plan, t) : 0,
-    start, stop, next, sample, elapsedNow, summary,
+    start,
+    stop,
+    next,
+    sample,
+    elapsedNow,
+    summary,
   };
 }
 
