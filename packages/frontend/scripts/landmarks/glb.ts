@@ -105,11 +105,9 @@ export interface ModelLod {
  * The general writer behind {@link writeLandmarkGlb}, also used by the model
  * library (`scripts/build-model-library.ts`): one node and mesh per level of
  * detail, all quantised with ONE scale (so the LODs line up exactly), and per
- * primitive whatever the geometry carries beyond position and normal —
- * `color` (written as `COLOR_0`, unsigned bytes) and morph targets (the
- * library's baked animation frames, written as quantised `POSITION`
- * targets). With one LOD and neither, the bytes are exactly the landmark
- * writer's.
+ * primitive a `color` attribute where the geometry has one (written as
+ * `COLOR_0`, unsigned bytes). With one LOD and no colours, the bytes are
+ * exactly the landmark writer's.
  */
 export async function writeModelGlb(
   lods: readonly ModelLod[],
@@ -252,20 +250,6 @@ export async function writeModelGlb(
             .setType('VEC4')
             .setNormalized(true)
             .setBuffer(buffer),
-        );
-      }
-      // Morph targets are deltas from the base pose, quantised on the same grid.
-      for (const target of geometry.morphAttributes.position ?? []) {
-        primitive.addTarget(
-          doc.createPrimitiveTarget().setAttribute(
-            'POSITION',
-            doc
-              .createAccessor()
-              .setArray(quantise(target.array as Float32Array, () => 0))
-              .setType('VEC3')
-              .setNormalized(true)
-              .setBuffer(buffer),
-          ),
         );
       }
       mesh.addPrimitive(primitive);

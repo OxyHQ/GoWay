@@ -264,29 +264,29 @@ overlapping.
   occlude cars behind them; on 3D terrain agents stand on the SAME ground
   the buildings and trees do — `terrainGround.ts`'s ground grid (the drawn
   terrain, sampled), per z15 tile, read bilinearly.
-- **The shared model library** (`engine/vehicles/`, `MODEL_LIBRARY.md`):
-  the same models GoWay Live draws, so there is one fleet. Cars are Kenney's
-  Car Kit (hatchback, saloon, SUV, van, delivery truck and — only where a
-  city's taxis wear a statutory livery — taxi), the bus is GoWay's own in
-  the kits' style, and the people are Kenney's Mini Characters: eight
-  walkers and a wheelchair user (4% of people, who never take
-  `highway=steps` — `pedestrians.ts → chooseEdge`). The kits' toy
+- **Vehicles from the shared model library** (`engine/vehicles/`,
+  `MODEL_LIBRARY.md`): the same models GoWay Live draws, so there is one
+  fleet. Cars are Kenney's Car Kit (hatchback, saloon, SUV, van, delivery
+  truck and — only where a city's taxis wear a statutory livery — taxi), the
+  bus is GoWay's own in the kits' style. Each near level is the kit's body as
+  drawn (wheels redrawn low-poly), never a decimated one. The kits' toy
   proportions are stretched along each car's length to its simulated one
-  (`sim/fleet.ts`). The body wears the simulation's soft pastel paint,
-  shaded by the kit's own ramp; glass, trim, tyres, clothes and skin are the
-  library's fixed colours. No textures, badges or lettering.
-- **People walk by vertex animation**: each person model's baked walk (8
-  frames) and idle (4 frames) are a float texture, read per vertex by
-  `gl_VertexID` (`vehicles/glsl.ts → libraryPose`), blended from idle to walk
-  as the distance moved between the two states grows — so someone waiting at
-  a kerb idles — at the walker's own pace and phase.
-- **Two levels of detail per model, chosen on the GPU**: the library's near
-  levels (≤ 800 triangles a car, 540 the bus, 600 a person) and far levels
-  (≤ 150; a person 48: four boxes, since a decimated character shatters).
-  Each instance's on-screen size is estimated in the vertex shader (the
-  centre's CSS pixels per metre scaled by depth); under 22 px, or off screen,
-  it draws far. Both meshes read the same instance buffers. Nothing is drawn
-  until the library has loaded (1.1 MB, once).
+  (`sim/fleet.ts`), its normals corrected for the stretch. The body wears the
+  simulation's soft pastel paint, shaded by the kit's own ramp; windows, trim,
+  tyres and lamps are the kit's colours. No textures, badges or lettering.
+- **People are city life's own** (`people.ts`): soft rounded walkers — two
+  legs, a capsule body, a round head, each a superellipsoid with smooth
+  normals — in muted clothes and one of five skin tones per person. Their
+  legs swing about the hip with the distance walked between two states, at
+  each walker's own phase; someone waiting at a kerb stands, swaying a
+  little.
+- **Two levels of detail per model, chosen on the GPU**: near levels (a car
+  896–1,054 triangles, the bus 540, a person 252) and far levels (36: three
+  boxes in the body's colours; a person 36). Each instance's on-screen size
+  is estimated in the vertex shader (the centre's CSS pixels per metre scaled
+  by depth); under 22 px, or off screen, it draws far. Both meshes read the
+  same instance buffers. No car is drawn until the library has loaded
+  (0.4 MB, once).
 - **Matte light and a contact shadow**: wrapped diffuse from the map's own sun
   plus a hemisphere fill (cool sky, warm street bounce), and a soft
   superellipse shadow blob (2 triangles, blended, depth-tested) under every

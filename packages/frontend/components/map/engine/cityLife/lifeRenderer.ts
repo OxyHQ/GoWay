@@ -38,12 +38,7 @@ import {
   multiplyMat4,
   tileModelMatrix,
 } from '../city3d/tileMath';
-import {
-  createAnimationTexture,
-  type LibraryLod,
-  type LibraryModel,
-  loadModelLibrary,
-} from '../vehicles/library';
+import { type LibraryLod, type LibraryModel, loadModelLibrary } from '../vehicles/library';
 import {
   LIFE_FRAGMENT_SHADER,
   LOD_MIN_PX,
@@ -60,13 +55,8 @@ import type {
   SimWorkerRequest,
   SimWorkerResponse,
 } from './protocol';
-import {
-  CAR_MODEL_SPECS,
-  CAR_MODELS,
-  type CarModel,
-  PERSON_MODELS,
-  type PersonModel,
-} from './sim/fleet';
+import { type PersonGeometry, person } from './people';
+import { CAR_MODEL_SPECS, CAR_MODELS, type CarModel } from './sim/fleet';
 import { simFrame } from './sim/network';
 import type { SimBudget } from './sim/simulation';
 
@@ -111,6 +101,16 @@ function geometryFor(lod: LibraryLod): THREE.InstancedBufferGeometry {
   return geometry;
 }
 
+/** An instanced view of a person level (`people.ts`). */
+function personGeometryFor(model: PersonGeometry): THREE.InstancedBufferGeometry {
+  const geometry = new THREE.InstancedBufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(model.positions, 3));
+  geometry.setAttribute('normal', new THREE.BufferAttribute(model.normals, 3));
+  geometry.setAttribute('part', new THREE.BufferAttribute(model.parts, 1));
+  geometry.setIndex(new THREE.BufferAttribute(model.indices, 1));
+  return geometry;
+}
+
 /** The unit quad the contact shadow is drawn on, ±1 in x and y. */
 function shadowQuad(): THREE.InstancedBufferGeometry {
   const geometry = new THREE.InstancedBufferGeometry();
@@ -131,8 +131,6 @@ function shadowQuad(): THREE.InstancedBufferGeometry {
 interface Batch {
   geometries: THREE.InstancedBufferGeometry[];
   materials: THREE.RawShaderMaterial[];
-  /** A person's frames (`createAnimationTexture`), owned by the batch. */
-  frames: THREE.DataTexture | null;
   /** The model's size for the detail test, m. */
   nearSize: number;
   prev: THREE.InstancedBufferAttribute;
@@ -159,9 +157,21 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
   group.matrixWorldAutoUpdate = false;
   group.visible = false;
 
-  const makeBatch = (model: LibraryModel, kind: { taxi: boolean; maxLength: number }): Batch => {
-    const isPerson = model.entry.kind === 'person';
-    const [width, height, length] = model.entry.size;
+  /**
+   * One model's batch: its two levels (`near`, `far`), what it is, and its
+   * size — width, height, length, metres (a vehicle's as the library built
+   * it; a person's nominal).
+   */
+  const makeBatch = (model: {
+    near: THREE.InstancedBufferGeometry;
+    far: THREE.InstancedBufferGeometry;
+    person: boolean;
+    taxi: boolean;
+    maxLength: number;
+    size: readonly [number, number, number];
+  }): Batch => {
+    const isPerson = model.person;
+    const [width, height, length] = model.size;
     const empty = () => new THREE.InstancedBufferAttribute(new Float32Array(4), 4);
     const prev = empty();
     const curr = empty();
@@ -169,26 +179,14 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     const ground = new THREE.InstancedBufferAttribute(new Float32Array(1), 1);
     for (const attribute of [prev, curr, style, ground]) attribute.setUsage(THREE.DynamicDrawUsage);
     const nearSize = isPerson ? 2.6 : length;
-    const frames = model.animation ? createAnimationTexture(model.animation) : null;
-    const clips = model.entry.clips;
     const perModel = {
       uIsPerson: { value: isPerson ? 1 : 0 },
-      uIsTaxi: { value: kind.taxi ? 1 : 0 },
+      uIsTaxi: { value: model.taxi ? 1 : 0 },
       // The kit taxi's door panels, between its sills and its waist.
       uDoorBand: { value: new THREE.Vector2(height * 0.15, height * 0.6) },
-      uMaxLength: { value: kind.maxLength },
+      uMaxLength: { value: model.maxLength },
       uModelLength: { value: length },
       uNearSize: { value: nearSize },
-      uMoveClip: {
-        value: clips
-          ? new THREE.Vector3(clips.move.first, clips.move.count, clips.move.fps)
-          : new THREE.Vector3(0, 1, 1),
-      },
-      uIdleClip: {
-        value: clips
-          ? new THREE.Vector3(clips.idle.first, clips.idle.count, clips.idle.fps)
-          : new THREE.Vector3(0, 1, 1),
-      },
     };
     const geometries: THREE.InstancedBufferGeometry[] = [];
     const materials: THREE.RawShaderMaterial[] = [];
@@ -217,7 +215,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       [1, model.far],
     ] as const) {
       add(
-        geometryFor(level),
+        level,
         new THREE.RawShaderMaterial({
           glslVersion: THREE.GLSL3,
           vertexShader: LIFE_VERTEX_SHADER,
@@ -227,11 +225,8 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
             ...light,
             ...perModel,
             uLod: { value: lod },
-            // Only the near level carries the frames' vertex order.
-            uAnimated: { value: lod === 0 && frames ? 1 : 0 },
-            uFrames: { value: lod === 0 ? frames : null },
           },
-          // The engine's model matrix is mirrored, so three calls the library's
+          // The engine's model matrix is mirrored, so three calls the models'
           // outward faces back faces — as with the buildings (`cityEngine.ts`).
           side: THREE.BackSide,
           blending: THREE.CustomBlending,
@@ -270,19 +265,22 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       }),
       -1,
     );
-    return { geometries, materials, frames, nearSize, prev, curr, style, ground };
+    return { geometries, materials, nearSize, prev, curr, style, ground };
   };
 
+  // People are city life's own (`people.ts`); vehicles come from the library.
+  const peopleBatch = makeBatch({
+    near: personGeometryFor(person('near')),
+    far: personGeometryFor(person('far')),
+    person: true,
+    taxi: false,
+    maxLength: 1,
+    size: [0.4, 1.72, 0.3],
+  });
   /** Filled once the library has loaded; until then nothing is drawn. */
   let carBatches: Record<CarModel, Batch> | null = null;
-  let peopleBatches: Record<PersonModel, Batch> | null = null;
   const libraryModels: LibraryModel[] = [];
-  loadModelLibrary({
-    keys: [
-      ...CAR_MODELS.map((model) => `vehicle.${model}`),
-      ...PERSON_MODELS.map((model) => `person.${model}`),
-    ],
-  })
+  loadModelLibrary({ keys: CAR_MODELS.map((model) => `vehicle.${model}`) })
     .then((library) => {
       if (disposed) {
         for (const model of library.values()) {
@@ -291,26 +289,23 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
         }
         return;
       }
-      const get = (key: string) => {
-        const model = library.get(key) as LibraryModel;
-        libraryModels.push(model);
-        return model;
-      };
       carBatches = Object.fromEntries(
-        CAR_MODELS.map((model) => [
-          model,
-          makeBatch(get(`vehicle.${model}`), {
-            taxi: model === 'taxi',
-            maxLength: CAR_MODEL_SPECS[model].length[1],
-          }),
-        ]),
+        CAR_MODELS.map((name) => {
+          const model = library.get(`vehicle.${name}`) as LibraryModel;
+          libraryModels.push(model);
+          return [
+            name,
+            makeBatch({
+              near: geometryFor(model.near),
+              far: geometryFor(model.far),
+              person: false,
+              taxi: name === 'taxi',
+              maxLength: CAR_MODEL_SPECS[name].length[1],
+              size: model.entry.size,
+            }),
+          ];
+        }),
       ) as Record<CarModel, Batch>;
-      peopleBatches = Object.fromEntries(
-        PERSON_MODELS.map((model) => [
-          model,
-          makeBatch(get(`person.${model}`), { taxi: false, maxLength: 1 }),
-        ]),
-      ) as Record<PersonModel, Batch>;
       uploaded = null;
       schedule();
       options.requestRepaint();
@@ -389,15 +384,12 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
         out.shadow += 2;
       }
     };
-    if (!carBatches || !peopleBatches) return out;
+    if (!carBatches) return out;
     for (const name of CAR_MODELS) {
       const [from, to] = frame.ranges[name];
       tally(frame.cars, from, to, carBatches[name], carBatches[name].nearSize);
     }
-    for (const name of PERSON_MODELS) {
-      const [from, to] = frame.peopleRanges[name];
-      tally(frame.people, from, to, peopleBatches[name], peopleBatches[name].nearSize);
-    }
+    tally(frame.people, 0, frame.people.length / 4, peopleBatch, peopleBatch.nearSize);
     return out;
   };
 
@@ -558,9 +550,9 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
           bounds: view.bounds,
         });
       }
-      const ready = carBatches !== null && peopleBatches !== null;
+      const ready = carBatches !== null;
       setActive(on && ready && frames.length > 0);
-      if (!on || !carBatches || !peopleBatches || frames.length === 0) return;
+      if (!on || !carBatches || frames.length === 0) return;
 
       // The two states around "now − DELAY".
       const renderTime = performance.timeOrigin + performance.now() - DELAY_MS;
@@ -601,11 +593,8 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
           upload(carBatches[model], a.cars, b.cars, b.carStyle, from, to);
           groundFor(carBatches[model], b.cars.subarray(from * 4, to * 4), b.origin);
         }
-        for (const model of PERSON_MODELS) {
-          const [from, to] = b.peopleRanges[model];
-          upload(peopleBatches[model], a.people, b.people, b.peopleStyle, from, to);
-          groundFor(peopleBatches[model], b.people.subarray(from * 4, to * 4), b.origin);
-        }
+        upload(peopleBatch, a.people, b.people, b.peopleStyle, 0, b.people.length / 4);
+        groundFor(peopleBatch, b.people, b.origin);
       }
       const span = b.time - a.time;
       shared.uAlpha.value = span > 0 ? Math.max(0, Math.min(1, (renderTime - a.time) / span)) : 1;
@@ -665,13 +654,9 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       }
       if (active) options.onActiveChange(false);
       group.removeFromParent();
-      for (const batch of [
-        ...Object.values(carBatches ?? {}),
-        ...Object.values(peopleBatches ?? {}),
-      ] as Batch[]) {
+      for (const batch of [...Object.values(carBatches ?? {}), peopleBatch] as Batch[]) {
         for (const geometry of batch.geometries) geometry.dispose();
         for (const material of batch.materials) material.dispose();
-        batch.frames?.dispose();
       }
       for (const model of libraryModels) {
         model.near.geometry.dispose();

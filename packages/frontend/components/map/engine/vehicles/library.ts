@@ -1,6 +1,6 @@
 /**
- * The model library at runtime: GoWay's one set of vehicles, vessels and
- * people (`lib/map/modelLibrary.ts`, built by `scripts/build-model-library.ts`)
+ * The model library at runtime: GoWay's one set of vehicles and vessels
+ * (`lib/map/modelLibrary.ts`, built by `scripts/build-model-library.ts`)
  * loaded into plain three.js geometry that any instanced renderer can draw —
  * city life (`cityLife/lifeRenderer.ts`) and the live layer alike, so neither
  * keeps a model set of its own. Design note: `docs/MODEL_LIBRARY.md`.
@@ -12,14 +12,9 @@
  *    +X the model's left, origin on the ground at the footprint's centre).
  *    `vehicles/glsl.ts` → `LIBRARY_FRAME` turns it into a map's x-forward,
  *    y-left, z-up frame in the shader, so the arrays are never copied.
- *  - `color` — linear vertex colour (glass, trim, tyres, clothes, skin); on
+ *  - `color` — linear vertex colour (windows, trim, tyres, lamps); on
  *    the tintable paint, a grey: the shade the paint is multiplied by.
  *  - `paint` — 1 on the tintable body, 0 elsewhere.
- *
- * A person also carries its animation ({@link LibraryAnimation}): every
- * baked frame of its `move` and `idle` clips as absolute positions of the
- * near level's vertices, for a vertex-animation texture
- * ({@link createAnimationTexture}) the shader reads by `gl_VertexID`.
  *
  * Reached only through the three.js chunk (`components/engine3d/lazyChunk.ts`).
  */
@@ -40,20 +35,10 @@ export interface LibraryLod {
   triangles: number;
 }
 
-export interface LibraryAnimation {
-  /** Vertices per frame (the near level's). */
-  vertexCount: number;
-  /** Frames, all clips back to back (the manifest's `clips` index into them). */
-  frameCount: number;
-  /** `frameCount × vertexCount` xyz, glTF frame, metres. */
-  positions: Float32Array;
-}
-
 export interface LibraryModel {
   entry: ModelLibraryEntry;
   near: LibraryLod;
   far: LibraryLod;
-  animation?: LibraryAnimation;
 }
 
 export interface LoadModelLibraryOptions {
@@ -118,30 +103,18 @@ function readModel(entry: ModelLibraryEntry, scene: THREE.Object3D): LibraryMode
   };
   const near = lod('near');
   const far = lod('far');
-  const model: LibraryModel = {
+  return {
     entry,
     near: { geometry: near.geometry, triangles: near.triangles },
     far: { geometry: far.geometry, triangles: far.triangles },
   };
-  if (entry.clips) {
-    const { move, idle } = entry.clips;
-    const frameCount = Math.max(move.first + move.count, idle.first + idle.count);
-    if (near.frames.length < frameCount) {
-      throw new Error(`${entry.key}: ${near.frames.length} frames, clips need ${frameCount}`);
-    }
-    const vertexCount = near.geometry.attributes.position.count;
-    const positions = new Float32Array(frameCount * vertexCount * 3);
-    for (let f = 0; f < frameCount; f++) positions.set(near.frames[f], f * vertexCount * 3);
-    model.animation = { vertexCount, frameCount, positions };
-  }
-  return model;
 }
 
-/** Every mesh under `node`, merged; morph targets turned into absolute frames. */
+/** Every mesh under `node`, merged into one geometry. */
 function mergeLod(
   key: string,
   node: THREE.Object3D,
-): { geometry: THREE.BufferGeometry; triangles: number; frames: Float32Array[] } {
+): { geometry: THREE.BufferGeometry; triangles: number } {
   const meshes: THREE.Mesh[] = [];
   node.traverse((object) => {
     if ((object as THREE.Mesh).isMesh) meshes.push(object as THREE.Mesh);
@@ -149,24 +122,18 @@ function mergeLod(
   if (meshes.length === 0) throw new Error(`${key}: "${node.name}" has no mesh`);
   let vertices = 0;
   let indices = 0;
-  let targets = -1;
   for (const mesh of meshes) {
     const geometry = mesh.geometry;
     vertices += geometry.attributes.position.count;
     indices += geometry.index ? geometry.index.count : geometry.attributes.position.count;
-    const count = geometry.morphAttributes.position?.length ?? 0;
-    if (targets >= 0 && count !== targets) throw new Error(`${key}: primitives disagree on frames`);
-    targets = count;
   }
   const position = new Float32Array(vertices * 3);
   const normal = new Float32Array(vertices * 3);
   const color = new Float32Array(vertices * 3);
   const paint = new Float32Array(vertices);
   const index = vertices < 65536 ? new Uint16Array(indices) : new Uint32Array(indices);
-  const frames = Array.from({ length: Math.max(targets, 0) }, () => new Float32Array(vertices * 3));
   const v = new THREE.Vector3();
   const normalMatrix = new THREE.Matrix3();
-  const linear = new THREE.Matrix3();
   let base = 0;
   let at = 0;
   for (const mesh of meshes) {
@@ -177,8 +144,6 @@ function mergeLod(
     const n = geometry.attributes.normal;
     const c = geometry.attributes.color;
     normalMatrix.getNormalMatrix(mesh.matrixWorld);
-    linear.setFromMatrix4(mesh.matrixWorld);
-    const relative = geometry.morphTargetsRelative;
     for (let i = 0; i < p.count; i++) {
       const o = (base + i) * 3;
       v.fromBufferAttribute(p, i).applyMatrix4(mesh.matrixWorld);
@@ -194,21 +159,6 @@ function mergeLod(
       // On paint the vertex colour is the kit's shade of it (white when flat).
       for (let k = 0; k < 3; k++) color[o + k] = c ? c.getComponent(i, k) : 1;
       paint[base + i] = isPaint ? 1 : 0;
-      (geometry.morphAttributes.position ?? []).forEach((target, f) => {
-        v.fromBufferAttribute(target, i);
-        if (relative) {
-          // A delta: scaled like the base, never moved.
-          v.applyMatrix3(linear);
-          frames[f][o] = position[o] + v.x;
-          frames[f][o + 1] = position[o + 1] + v.y;
-          frames[f][o + 2] = position[o + 2] + v.z;
-        } else {
-          v.applyMatrix4(mesh.matrixWorld);
-          frames[f][o] = v.x;
-          frames[f][o + 1] = v.y;
-          frames[f][o + 2] = v.z;
-        }
-      });
     }
     const source = geometry.index;
     const count = source ? source.count : p.count;
@@ -222,32 +172,5 @@ function mergeLod(
   geometry.setAttribute('paint', new THREE.BufferAttribute(paint, 1));
   geometry.setIndex(new THREE.BufferAttribute(index, 1));
   for (const mesh of meshes) mesh.geometry.dispose();
-  return { geometry, triangles: indices / 3, frames };
-}
-
-/**
- * A person's frames as a vertex-animation texture: one row per frame, one
- * texel per vertex (xyz, glTF frame), read with `texelFetch` by `gl_VertexID`.
- */
-export function createAnimationTexture(animation: LibraryAnimation): THREE.DataTexture {
-  const { vertexCount, frameCount, positions } = animation;
-  const data = new Float32Array(vertexCount * frameCount * 4);
-  for (let i = 0; i < vertexCount * frameCount; i++) {
-    data[i * 4] = positions[i * 3];
-    data[i * 4 + 1] = positions[i * 3 + 1];
-    data[i * 4 + 2] = positions[i * 3 + 2];
-    data[i * 4 + 3] = 1;
-  }
-  const texture = new THREE.DataTexture(
-    data,
-    vertexCount,
-    frameCount,
-    THREE.RGBAFormat,
-    THREE.FloatType,
-  );
-  texture.minFilter = THREE.NearestFilter;
-  texture.magFilter = THREE.NearestFilter;
-  texture.generateMipmaps = false;
-  texture.needsUpdate = true;
-  return texture;
+  return { geometry, triangles: indices / 3 };
 }

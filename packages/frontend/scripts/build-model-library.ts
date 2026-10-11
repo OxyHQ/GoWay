@@ -1,13 +1,13 @@
 /**
  * Builds the model library (`lib/map/modelLibrary.ts`, `docs/MODEL_LIBRARY.md`):
- * GoWay's one set of generic vehicles, vessels and people, used by the
- * city-life simulation and the live layer alike.
+ * GoWay's one set of generic vehicles and vessels, used by the city-life
+ * simulation and the live layer alike.
  *
  *   bun scripts/build-model-library.ts --kits=<dir>
  *
- * `<dir>` holds the four Kenney kits as downloaded from kenney.nl and
- * unzipped, one folder each: `car-kit/`, `train-kit/`, `watercraft-kit/`,
- * `mini-characters/` (each with its `License.txt` and `Models/GLB format/`).
+ * `<dir>` holds the three Kenney kits as downloaded from kenney.nl and
+ * unzipped, one folder each: `car-kit/`, `train-kit/`, `watercraft-kit/`
+ * (each with its `License.txt` and `Models/GLB format/`).
  * The kits are never committed; the GLBs built from them are, with every
  * asset's licence and provenance in `public/models/library/manifest.json`.
  *
@@ -15,15 +15,19 @@
  *
  *  - reads the kit's GLB (`library/kenney.ts`) — or, for the bus no kit has,
  *    builds it in the kits' style with the landmark kit (`library/bus.ts`);
- *  - scales it uniformly to its class's real width (vehicles), length
- *    (vessels) or height (people), front to +Z, standing on y = 0;
+ *  - scales it uniformly to its class's real width (vehicles) or length
+ *    (vessels), front to +Z, standing on y = 0;
  *  - recolours it to the maquette palette: the body's main colour becomes the
- *    tintable `paint` material, glass becomes one dark tinted glass, every
- *    other colour is tempered (desaturated, lifted) into fixed vertex colours;
- *  - decimates it with meshoptimizer to the kind's budgets (`MODEL_BUDGETS`),
- *    a `near` level and a wheel-less `far` level;
- *  - for a person, bakes the kit's `walk` and `idle` clips (or the wheelchair
- *    push and sit) into morph-target frames on the `near` level;
+ *    tintable `paint` material, the windows are deepened so they read against
+ *    pastel paint, every other colour is tempered — desaturated, lifted —
+ *    into fixed vertex colours;
+ *  - keeps the BODY exactly as the kit drew it for the `near` level — never
+ *    decimated: a simplifier squeezing a 2,000-triangle car into 800 spends
+ *    the budget on the wheels (two-thirds of a kit car's triangles) and
+ *    crushes the body, its windows and its silhouette — and redraws the
+ *    wheels low-poly in the kit's own colours ({@link lowPolyWheels});
+ *  - builds the `far` level as three boxes in the body's colours
+ *    ({@link bandedFar}), never a torn simplification;
  *  - writes the GLB with the landmarks' writer (`landmarks/glb.ts` →
  *    `writeModelGlb`: quantised, meshopt-compressed, deterministic).
  *
@@ -35,8 +39,6 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MeshoptSimplifier } from 'meshoptimizer';
-
 import type { AssetLicence } from '../lib/map/assetLicence';
 import {
   MODEL_BUDGETS,
@@ -45,10 +47,10 @@ import {
   parseModelLibrary,
 } from '../lib/map/modelLibrary';
 import { linearChannel, writeModelGlb } from './landmarks/glb';
-import { Builder, box, THREE } from './landmarks/kit';
+import { Builder, box, cylinder, THREE } from './landmarks/kit';
 import { aircraftLods } from './library/aircraft';
 import { busLods } from './library/bus';
-import { type KenneyMesh, readKenney, readPalette } from './library/kenney';
+import { type KenneyMesh, meshNodeNames, readKenney, readPalette } from './library/kenney';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'public', MODEL_LIBRARY_PATH);
@@ -79,12 +81,6 @@ const KITS: Record<string, Kit> = {
     version: '2.1',
     url: 'https://kenney.nl/assets/watercraft-kit',
   },
-  people: {
-    folder: 'mini-characters',
-    name: 'Mini Characters',
-    version: '1.0',
-    url: 'https://kenney.nl/assets/mini-characters',
-  },
 };
 
 interface Entry {
@@ -94,8 +90,8 @@ interface Entry {
   file?: string;
   /** Uniform scale target: `width`, `length` or `height`, metres. */
   fit: { width?: number; length?: number; height?: number };
-  /** People: the clips, and a prop (the wheelchair). */
-  person?: { move: string; idle: string; attach?: string };
+  /** How the kit model's `wheel*` nodes are redrawn: as wheels (a car's) or as a bogie block (a train's). */
+  wheels?: 'wheel' | 'bogie';
   /** A model no kit has, built here in the kits' style: its levels and the file that draws it. */
   procedural?: { build: () => { near: Builder; far: Builder }; source: string };
 }
@@ -108,12 +104,48 @@ const CATALOGUE: Entry[] = [
     kit: 'car',
     file: 'hatchback-sports',
     fit: { width: 1.78 },
+    wheels: 'wheel',
   },
-  { key: 'vehicle.sedan', kind: 'car', kit: 'car', file: 'sedan', fit: { width: 1.82 } },
-  { key: 'vehicle.suv', kind: 'car', kit: 'car', file: 'suv', fit: { width: 1.9 } },
-  { key: 'vehicle.taxi', kind: 'car', kit: 'car', file: 'taxi', fit: { width: 1.82 } },
-  { key: 'vehicle.van', kind: 'van', kit: 'car', file: 'van', fit: { width: 2.0 } },
-  { key: 'vehicle.truck', kind: 'truck', kit: 'car', file: 'delivery', fit: { width: 2.3 } },
+  {
+    key: 'vehicle.sedan',
+    kind: 'car',
+    kit: 'car',
+    file: 'sedan',
+    fit: { width: 1.82 },
+    wheels: 'wheel',
+  },
+  {
+    key: 'vehicle.suv',
+    kind: 'car',
+    kit: 'car',
+    file: 'suv',
+    fit: { width: 1.9 },
+    wheels: 'wheel',
+  },
+  {
+    key: 'vehicle.taxi',
+    kind: 'car',
+    kit: 'car',
+    file: 'taxi',
+    fit: { width: 1.82 },
+    wheels: 'wheel',
+  },
+  {
+    key: 'vehicle.van',
+    kind: 'van',
+    kit: 'car',
+    file: 'van',
+    fit: { width: 2.0 },
+    wheels: 'wheel',
+  },
+  {
+    key: 'vehicle.truck',
+    kind: 'truck',
+    kit: 'car',
+    file: 'delivery',
+    fit: { width: 2.3 },
+    wheels: 'wheel',
+  },
   {
     key: 'vehicle.bus',
     kind: 'bus',
@@ -138,6 +170,7 @@ const CATALOGUE: Entry[] = [
     kit: 'train',
     file: 'train-tram-modern',
     fit: { width: 2.4 },
+    wheels: 'bogie',
   },
   {
     key: 'tram.classic',
@@ -145,6 +178,7 @@ const CATALOGUE: Entry[] = [
     kit: 'train',
     file: 'train-tram-classic',
     fit: { width: 2.3 },
+    wheels: 'bogie',
   },
   {
     key: 'train.commuter',
@@ -152,6 +186,7 @@ const CATALOGUE: Entry[] = [
     kit: 'train',
     file: 'train-electric-city-a',
     fit: { width: 2.9 },
+    wheels: 'bogie',
   },
   {
     key: 'train.double',
@@ -159,6 +194,7 @@ const CATALOGUE: Entry[] = [
     kit: 'train',
     file: 'train-electric-double-a',
     fit: { width: 2.9 },
+    wheels: 'bogie',
   },
   {
     key: 'metro.car',
@@ -166,8 +202,15 @@ const CATALOGUE: Entry[] = [
     kit: 'train',
     file: 'train-electric-subway-a',
     fit: { width: 2.8 },
+    wheels: 'bogie',
   },
-  { key: 'vessel.ferry', kind: 'vessel', kit: 'water', file: 'ship-small', fit: { length: 45 } },
+  {
+    key: 'vessel.tallship',
+    kind: 'vessel',
+    kit: 'water',
+    file: 'ship-small',
+    fit: { length: 45 },
+  },
   { key: 'vessel.cargo', kind: 'vessel', kit: 'water', file: 'ship-cargo-a', fit: { length: 120 } },
   {
     key: 'vessel.liner',
@@ -198,28 +241,7 @@ const CATALOGUE: Entry[] = [
     file: 'boat-speed-a',
     fit: { length: 7 },
   },
-  ...['female-b', 'female-c', 'female-d', 'female-f', 'male-a', 'male-b', 'male-d', 'male-f'].map(
-    (name): Entry => ({
-      key: `person.${name}`,
-      kind: 'person',
-      kit: 'people',
-      file: `character-${name}`,
-      fit: { height: 1.7 },
-      person: { move: 'walk', idle: 'idle' },
-    }),
-  ),
-  {
-    key: 'person.wheelchair',
-    kind: 'person',
-    kit: 'people',
-    file: 'character-male-e',
-    fit: { height: 1.7 },
-    person: { move: 'wheelchair-move-forward', idle: 'wheelchair-sit', attach: 'wheelchair' },
-  },
 ];
-
-/** Glass, as the maquette draws it: one dark tint, so windows read as a band. */
-const GLASS: [number, number, number] = [0.24, 0.29, 0.36];
 
 const lum = ([r, g, b]: readonly number[]) => 0.299 * r + 0.587 * g + 0.114 * b;
 const sat = (c: readonly number[]) => Math.max(...c) - Math.min(...c);
@@ -230,43 +252,30 @@ function temper(c: readonly number[]): [number, number, number] {
   return c.map((v) => Math.min(1, (v * 0.6 + l * 0.4) * 0.88 + 0.1)) as [number, number, number];
 }
 
+/** A window: the kit's tint, darkened towards slate. */
+function deepen(c: readonly number[]): [number, number, number] {
+  return c.map((v, k) => v * 0.42 + [0.05, 0.08, 0.13][k]) as [number, number, number];
+}
+
 const key3 = (c: readonly number[]) => c.map((v) => Math.round(v * 255)).join(',');
 
 interface Prepared {
   positions: Float32Array;
   colors: Float32Array;
   indices: Uint32Array;
-  frames: Float32Array[];
 }
 
-/**
- * Uniform fit: scaled so `scaleBy` meets the class's real size, then the
- * model (`mesh`, which may hold more — a wheelchair) stands on y = 0,
- * centred on its footprint.
- */
-function fitTransform(
-  mesh: KenneyMesh,
-  fit: Entry['fit'],
-  scaleBy: KenneyMesh = mesh,
-): (array: Float32Array) => Float32Array {
-  const bounds = (m: KenneyMesh) => {
-    const min = [Infinity, Infinity, Infinity];
-    const max = [-Infinity, -Infinity, -Infinity];
-    for (let i = 0; i < m.positions.length; i += 3) {
-      for (let k = 0; k < 3; k++) {
-        min[k] = Math.min(min[k], m.positions[i + k]);
-        max[k] = Math.max(max[k], m.positions[i + k]);
-      }
+/** Uniform fit: scaled to the class's real size, standing on y = 0, centred on its footprint. */
+function fitTransform(mesh: KenneyMesh, fit: Entry['fit']): (array: Float32Array) => Float32Array {
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < mesh.positions.length; i += 3) {
+    for (let k = 0; k < 3; k++) {
+      min[k] = Math.min(min[k], mesh.positions[i + k]);
+      max[k] = Math.max(max[k], mesh.positions[i + k]);
     }
-    return { min, max };
-  };
-  const sized = bounds(scaleBy);
-  const scale = fit.width
-    ? fit.width / (sized.max[0] - sized.min[0])
-    : fit.length
-      ? fit.length / (sized.max[2] - sized.min[2])
-      : (fit.height ?? 1) / (sized.max[1] - sized.min[1]);
-  const { min, max } = bounds(mesh);
+  }
+  const scale = fit.width ? fit.width / (max[0] - min[0]) : (fit.length ?? 1) / (max[2] - min[2]);
   const cx = (min[0] + max[0]) / 2;
   const cz = (min[2] + max[2]) / 2;
   return (array) => {
@@ -280,93 +289,150 @@ function fitTransform(
   };
 }
 
-/** Horizontal bands of a person's far level, bottom up, as fractions of the height. */
-const PERSON_FAR_BANDS = [0, 0.18, 0.4, 0.62, 1];
+/** A wheel's tyre and hub colours, from the kit's own wheel: its darkest and lightest. */
+function wheelColours(mesh: KenneyMesh): { tyre: number[]; hub: number[] } {
+  let tyre = [0.2, 0.2, 0.22];
+  let hub = [0.6, 0.62, 0.68];
+  let dark = Infinity;
+  let light = -Infinity;
+  for (let i = 0; i < mesh.colors.length; i += 3) {
+    const c = Array.from(mesh.colors.subarray(i, i + 3));
+    if (lum(c) < dark) [dark, tyre] = [lum(c), c];
+    if (lum(c) > light) [light, hub] = [lum(c), c];
+  }
+  return { tyre: temper(tyre), hub: temper(hub) };
+}
+
+function coloured(geometry: THREE.BufferGeometry, srgb: readonly number[]): THREE.BufferGeometry {
+  const g = geometry.index ? geometry.toNonIndexed() : geometry;
+  const linear = srgb.map(linearChannel);
+  const colours = new Float32Array(g.attributes.position.count * 3);
+  for (let i = 0; i < g.attributes.position.count; i++) colours.set(linear, i * 3);
+  g.setAttribute('color', new THREE.BufferAttribute(colours, 3));
+  return g;
+}
 
 /**
- * A person's far level: decimating a character to a few dozen triangles
- * shatters it, so it is drawn as a stack of boxes instead — per height band,
- * the 10th–90th percentile of the band's footprint, in the colour most of
- * the band's faces wear. Four boxes, 48 triangles, the same silhouette at
- * the dozen pixels a far person covers.
+ * The kit's wheels, redrawn low-poly where they stand (its `wheel*` nodes,
+ * already fitted): a car wheel as a ten-sided tyre with an eight-sided hub
+ * on its outer face, a train's bogie as one block — in the kit wheel's own
+ * tyre and hub colours. A kit car wheel is ~330 triangles; this one is 48.
  */
-function personFar(mesh: Prepared): Builder {
-  const builder = new Builder(new Set(['body']));
+function lowPolyWheels(wheels: KenneyMesh[], kind: 'wheel' | 'bogie', builder: Builder): void {
+  for (const wheel of wheels) {
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < wheel.positions.length; i += 3) {
+      for (let k = 0; k < 3; k++) {
+        min[k] = Math.min(min[k], wheel.positions[i + k]);
+        max[k] = Math.max(max[k], wheel.positions[i + k]);
+      }
+    }
+    if (!Number.isFinite(min[0])) continue;
+    const { tyre, hub } = wheelColours(wheel);
+    if (kind === 'bogie') {
+      builder.add(
+        'body',
+        coloured(box(min as [number, number, number], max as [number, number, number]), tyre),
+      );
+      continue;
+    }
+    const radius = (max[1] - min[1]) / 2;
+    const cy = (min[1] + max[1]) / 2;
+    const cz = (min[2] + max[2]) / 2;
+    // The kit's cylinder stands along y; a wheel's axle is x.
+    const tyreGeometry = cylinder(radius, radius, min[0], max[0], 10);
+    tyreGeometry.rotateZ(-Math.PI / 2);
+    tyreGeometry.translate(0, cy, cz);
+    builder.add('body', coloured(tyreGeometry, tyre));
+    // The hub, on the side facing out (away from the car's centre line).
+    const out = Math.sign(min[0] + max[0]) || 1;
+    const face = out > 0 ? max[0] : min[0];
+    // A disc just proud of the tyre's face, facing out.
+    const hubGeometry = new THREE.CircleGeometry(radius * 0.55, 8);
+    hubGeometry.rotateY((out * Math.PI) / 2);
+    hubGeometry.translate(face + out * 0.01, cy, cz);
+    builder.add('body', coloured(hubGeometry, hub));
+  }
+}
+
+/** Horizontal bands of a far level, bottom up, as fractions of the model's height. */
+const FAR_BANDS = [0, 0.3, 0.62, 1];
+
+/**
+ * A far level: the body as a stack of boxes, one per height band — the 10th
+ * to 90th percentile of the band's footprint, in the colour most of the
+ * band's UPWARD faces wear (what a tilted map camera sees: a car's roof, not
+ * its sills), tintable where that colour is the paint. Twelve triangles a
+ * band. Simplifying a kit body this far either tears it (holes, flipped
+ * faces: the first library's broken cars) or stops at ~700 triangles; a
+ * far vehicle is under 22 px long, where three boxes and the body read the
+ * same.
+ */
+function bandedFar(mesh: Prepared, paint: Paint | null): Builder {
+  const builder = new Builder(new Set(['paint', 'body']));
   let height = 0;
   for (let i = 1; i < mesh.positions.length; i += 3) height = Math.max(height, mesh.positions[i]);
   const percentile = (values: number[], p: number) => {
-    const sorted = [...values].sort((a, b) => a - b);
+    const sorted = [...values].sort((x, y) => x - y);
     return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] ?? 0;
   };
-  for (let b = 0; b + 1 < PERSON_FAR_BANDS.length; b++) {
-    const y0 = PERSON_FAR_BANDS[b] * height;
-    const y1 = PERSON_FAR_BANDS[b + 1] * height;
+  const p = (v: number) => [
+    mesh.positions[v * 3],
+    mesh.positions[v * 3 + 1],
+    mesh.positions[v * 3 + 2],
+  ];
+  for (let band = 0; band + 1 < FAR_BANDS.length; band++) {
+    const y0 = FAR_BANDS[band] * height;
+    const y1 = FAR_BANDS[band + 1] * height;
     const xs: number[] = [];
     const zs: number[] = [];
-    for (let i = 0; i < mesh.positions.length; i += 3) {
-      const y = mesh.positions[i + 1];
-      if (y < y0 || y > y1) continue;
-      xs.push(mesh.positions[i]);
-      zs.push(mesh.positions[i + 2]);
-    }
-    if (xs.length === 0) continue;
-    // The top band shows its crown (hair, a hat) from above, not a chair's handles.
-    const top = b + 2 === PERSON_FAR_BANDS.length;
-    const vote0 = top ? y1 - (y1 - y0) * 0.3 : y0;
-    const votes = new Map<string, { n: number; colour: number[] }>();
+    const votes = new Map<string, { area: number; colour: number[] }>();
     for (let t = 0; t < mesh.indices.length; t += 3) {
-      const tri = [mesh.indices[t], mesh.indices[t + 1], mesh.indices[t + 2]];
-      const cy = tri.reduce((sum, v) => sum + mesh.positions[v * 3 + 1], 0) / 3;
-      if (cy < vote0 || cy > y1) continue;
-      const colour = Array.from(mesh.colors.subarray(tri[0] * 3, tri[0] * 3 + 3));
-      const vote = votes.get(key3(colour)) ?? { n: 0, colour };
-      vote.n++;
+      const [a, b, c] = [p(mesh.indices[t]), p(mesh.indices[t + 1]), p(mesh.indices[t + 2])];
+      const cy = (a[1] + b[1] + c[1]) / 3;
+      if (cy < y0 || cy > y1) continue;
+      for (const q of [a, b, c]) {
+        xs.push(q[0]);
+        zs.push(q[2]);
+      }
+      const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+      const w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+      const n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+      const area = Math.hypot(n[0], n[1], n[2]) / 2;
+      // Upward faces count most; walls a little, so a band with no top still votes.
+      const weight = area * (n[1] > 0 ? 0.2 + n[1] / (2 * area || 1) : 0.2);
+      const colour = Array.from(mesh.colors.subarray(mesh.indices[t] * 3, mesh.indices[t] * 3 + 3));
+      const vote = votes.get(key3(colour)) ?? { area: 0, colour };
+      vote.area += weight;
       votes.set(key3(colour), vote);
     }
-    const colour = [...votes.values()].sort((p, q) => q.n - p.n)[0]?.colour ?? [0.5, 0.5, 0.5];
+    if (xs.length === 0) continue;
+    const colour = [...votes.values()].sort((m, n) => n.area - m.area)[0]?.colour ?? [
+      0.5, 0.5, 0.5,
+    ];
+    const isPaint = paint?.keys.has(key3(colour)) ?? false;
     const g = box(
-      [percentile(xs, 0.1), y0, percentile(zs, 0.1)],
-      [percentile(xs, 0.9), y1, percentile(zs, 0.9)],
+      [percentile(xs, 0.1), y0, percentile(zs, 0.05)],
+      [percentile(xs, 0.9), y1, percentile(zs, 0.95)],
     );
-    const flat = g.index ? g.toNonIndexed() : g;
-    const linear = colour.map(linearChannel);
-    const colours = new Float32Array(flat.attributes.position.count * 3);
-    for (let i = 0; i < flat.attributes.position.count; i++) colours.set(linear, i * 3);
-    flat.setAttribute('color', new THREE.BufferAttribute(colours, 3));
-    builder.add('body', flat);
+    builder.add(isPaint ? 'paint' : 'body', coloured(g, isPaint ? [1, 1, 1] : colour));
   }
   return builder;
 }
 
-/** Decimate to `target` triangles, colours as an attribute so their borders survive. */
-function decimate(input: Prepared, target: number): Prepared {
-  const remap = MeshoptSimplifier.generatePositionRemap(input.positions, 3);
-  const welded = Uint32Array.from(input.indices, (i) => remap[i]);
-  if (welded.length / 3 <= target) return { ...input, indices: welded };
-  const [indices] = MeshoptSimplifier.simplifyWithAttributes(
-    welded,
-    input.positions,
-    3,
-    input.colors,
-    3,
-    [2, 2, 2],
-    null,
-    target * 3,
-    0.5,
-    ['Permissive', 'Prune'],
-  );
-  return { ...input, indices };
-}
-
-/** The decimated triangles as library geometry: `paint` and `body`, flat colour per face. */
-function toBuilder(mesh: Prepared, paint: Paint | null): Builder {
-  const builder = new Builder(new Set(['paint', 'body']));
+/** Triangles as library geometry, into `builder`: `paint` and `body`, flat colour per face. */
+function toBuilder(
+  mesh: Prepared,
+  paint: Paint | null,
+  builder = new Builder(new Set(['paint', 'body'])),
+): Builder {
   const buckets = { paint: [] as number[], body: [] as number[] };
   const colours = { paint: [] as number[], body: [] as number[] };
   for (let t = 0; t < mesh.indices.length; t += 3) {
     const tri = [mesh.indices[t], mesh.indices[t + 1], mesh.indices[t + 2]];
-    // The face's colour: the most common of its corners' (a decimated face can
-    // straddle a colour border; it takes the side most of it lies on).
+    // Paint or not: what most of the face's corners are (a face can straddle
+    // a colour border).
     const counts = new Map<string, { n: number; colour: number[] }>();
     for (const v of tri) {
       const colour = Array.from(mesh.colors.subarray(v * 3, v * 3 + 3));
@@ -374,13 +440,17 @@ function toBuilder(mesh: Prepared, paint: Paint | null): Builder {
       vote.n++;
       counts.set(key3(colour), vote);
     }
-    const [winner, { colour }] = [...counts].sort((a, b) => b[1].n - a[1].n)[0];
+    const [winner] = [...counts].sort((a, b) => b[1].n - a[1].n)[0];
     const isPaint = paint?.keys.has(winner) ?? false;
-    for (const v of tri) (isPaint ? buckets.paint : buckets.body).push(v);
-    // A paint face carries its ramp shade as a grey the tint is multiplied by.
-    const shade = paint ? Math.max(0.55, Math.min(1, lum(colour) / paint.reference)) : 1;
-    const linear = (isPaint ? [shade, shade, shade] : colour).map(linearChannel);
-    for (let i = 0; i < 3; i++) colours[isPaint ? 'paint' : 'body'].push(...linear);
+    for (const v of tri) {
+      (isPaint ? buckets.paint : buckets.body).push(v);
+      // Each corner keeps its own colour, so the kit's gradients survive; on
+      // paint, as the grey shade the tint is multiplied by.
+      const colour = Array.from(mesh.colors.subarray(v * 3, v * 3 + 3));
+      const shade = paint ? Math.max(0.55, Math.min(1, lum(colour) / paint.reference)) : 1;
+      const linear = (isPaint ? [shade, shade, shade] : colour).map(linearChannel);
+      colours[isPaint ? 'paint' : 'body'].push(...linear);
+    }
   }
   const geometryOf = (vertices: number[], colour: number[]) => {
     const g = new THREE.BufferGeometry();
@@ -390,16 +460,6 @@ function toBuilder(mesh: Prepared, paint: Paint | null): Builder {
     });
     g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     g.setAttribute('color', new THREE.BufferAttribute(Float32Array.from(colour), 3));
-    if (mesh.frames.length > 0) {
-      g.morphAttributes.position = mesh.frames.map((frame) => {
-        const deltas = new Float32Array(vertices.length * 3);
-        vertices.forEach((v, i) => {
-          for (let k = 0; k < 3; k++)
-            deltas[i * 3 + k] = frame[v * 3 + k] - mesh.positions[v * 3 + k];
-        });
-        return new THREE.BufferAttribute(deltas, 3);
-      });
-    }
     return g;
   };
   if (buckets.paint.length > 0) builder.add('paint', geometryOf(buckets.paint, colours.paint));
@@ -427,20 +487,15 @@ interface Paint {
  * Recolour per the module header. The kits shade with palette RAMPS (one hue
  * at several lightnesses), so the body's paint is a whole ramp: every
  * saturated colour within {@link PAINT_HUE_DEG} of the most common saturated
- * hue. Glass is the kits' light, blue-tinted greys above the waist (the same
- * greys lower down are hubcaps, and the kits' neutral whites are bodywork).
+ * hue. The windows (light sky-blues) are deepened corner by corner;
+ * every other colour is tempered. Never one flat glass colour per face: that
+ * misread a white cab as glass and split windscreens in two.
  */
 const PAINT_HUE_DEG = 22;
-function recolour(mesh: KenneyMesh, kind: ModelKind): Paint | null {
-  let minY = Infinity;
-  let maxY = -Infinity;
-  for (let i = 1; i < mesh.positions.length; i += 3) {
-    minY = Math.min(minY, mesh.positions[i]);
-    maxY = Math.max(maxY, mesh.positions[i]);
-  }
+function recolour(mesh: KenneyMesh): Paint | null {
   const colourAt = (i: number) => Array.from(mesh.colors.subarray(i, i + 3));
   let paint: Paint | null = null;
-  if (kind !== 'person') {
+  {
     const bins = new Map<number, number>();
     for (let i = 0; i < mesh.colors.length; i += 3) {
       const c = colourAt(i);
@@ -468,27 +523,23 @@ function recolour(mesh: KenneyMesh, kind: ModelKind): Paint | null {
   for (let i = 0; i < mesh.colors.length; i += 3) {
     const c = colourAt(i);
     if (paint?.keys.has(key3(c))) continue;
-    const height = (mesh.positions[i + 1] - minY) / Math.max(maxY - minY, 1e-6);
-    const glass = kind !== 'person' && lum(c) > 0.68 && c[2] - c[0] > 0.1 && height > 0.4;
-    mesh.colors.set(glass ? GLASS : temper(c), i);
+    // The kits' windows are light sky-blues; against pastel paint they vanish,
+    // so they are deepened — per corner, so a windscreen's gradient to white
+    // survives as a highlight. The kits' lavender whites (a delivery truck's
+    // cab: red and green equal) are bodywork and stay.
+    const window = lum(c) > 0.6 && c[2] - c[0] > 0.1 && c[1] - c[0] > 0.04;
+    mesh.colors.set(window ? deepen(c) : temper(c), i);
   }
   return paint;
 }
 
 async function build(kitsDir: string): Promise<void> {
-  await MeshoptSimplifier.ready;
   await mkdir(OUT, { recursive: true });
   const palettes = new Map<string, Awaited<ReturnType<typeof readPalette>>>();
   const models = [];
   for (const entry of CATALOGUE) {
     const budget = MODEL_BUDGETS[entry.kind];
     let lods: { near: Builder; far: Builder };
-    let clips:
-      | {
-          move: { first: number; count: number; fps: number };
-          idle: { first: number; count: number; fps: number };
-        }
-      | undefined;
     let licence: AssetLicence;
     if (entry.procedural) {
       lods = entry.procedural.build();
@@ -516,58 +567,31 @@ async function build(kitsDir: string): Promise<void> {
         palettes.set(kit.folder, palette);
       }
       const file = join(glbDir, `${entry.file}.glb`);
-      const person = entry.person;
-      const near = await readKenney(file, palette, {
-        clips: person
-          ? [
-              { name: person.move, frames: 8 },
-              { name: person.idle, frames: 4 },
-            ]
-          : undefined,
-        attach: person?.attach ? join(glbDir, `${person.attach}.glb`) : undefined,
-      });
-      // A vehicle's far level: no wheels (a person's is built from its near level).
-      const far = person ? null : await readKenney(file, palette, { skipNodes: /wheel/i });
-      // People: fit by the STANDING character, so a wheelchair user is to scale.
-      const fitSource = person?.attach
-        ? await readKenney(file, palette, { clips: [{ name: 'idle', frames: 1 }] })
-        : near;
-      const place = fitTransform(near, entry.fit, fitSource);
-      const paint = recolour(near, entry.kind);
-      if (far) recolour(far, entry.kind);
-      const frames = (near.clips ?? []).flatMap((clip) => clip.frames.map(place));
-      const nearPrepared = decimate(
-        { positions: place(near.positions), colors: near.colors, indices: near.indices, frames },
-        budget.near,
-      );
-      lods = {
-        near: toBuilder(nearPrepared, paint),
-        far: far
-          ? toBuilder(
-              decimate(
-                {
-                  positions: place(far.positions),
-                  colors: far.colors,
-                  indices: far.indices,
-                  frames: [],
-                },
-                budget.far,
-              ),
-              paint,
-            )
-          : personFar(nearPrepared),
+      const wheelNodes = entry.wheels
+        ? (await meshNodeNames(file)).filter((name) => /wheel/i.test(name))
+        : [];
+      // Fitted on the whole model (its wheels are what it stands on).
+      const place = fitTransform(await readKenney(file, palette), entry.fit);
+      const body = await readKenney(file, palette, { nodes: (name) => !/wheel/i.test(name) });
+      const paint = recolour(body);
+      const prepared = {
+        positions: place(body.positions),
+        colors: body.colors,
+        indices: body.indices,
       };
-      if (near.clips) {
-        const [move, idle] = near.clips;
-        clips = {
-          move: { first: 0, count: move.frames.length, fps: Math.round(move.fps * 100) / 100 },
-          idle: {
-            first: move.frames.length,
-            count: idle.frames.length,
-            fps: Math.round(idle.fps * 100) / 100,
-          },
-        };
+      const near = toBuilder(prepared, paint);
+      if (entry.wheels) {
+        const wheels = [];
+        for (const name of wheelNodes) {
+          const wheel = await readKenney(file, palette, { nodes: (node) => node === name });
+          wheels.push({ ...wheel, positions: place(wheel.positions) });
+        }
+        lowPolyWheels(wheels, entry.wheels, near);
       }
+      if (near.triangles() > budget.near) {
+        throw new Error(`${entry.key}: ${near.triangles()} near triangles, over ${budget.near}`);
+      }
+      lods = { near, far: bandedFar(prepared, paint) };
       licence = {
         spdx: 'CC0-1.0' as const,
         method: 'third-party' as const,
@@ -576,7 +600,7 @@ async function build(kitsDir: string): Promise<void> {
         credit: null,
         derivedFrom: [],
         verifiedAt: VERIFIED,
-        notes: `${kit.name} ${kit.version}, \`${entry.file}.glb\`${entry.person?.attach ? ` with \`${entry.person.attach}.glb\`` : ''}; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts.`,
+        notes: `${kit.name} ${kit.version}, \`${entry.file}.glb\`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts.`,
       };
     }
     const fileName = `${entry.key}.glb`;
@@ -609,7 +633,6 @@ async function build(kitsDir: string): Promise<void> {
       size: [0, 1, 2].map(
         (k) => Math.round((stats.bounds.max[k] - stats.bounds.min[k]) * 100) / 100,
       ) as [number, number, number],
-      ...(clips ? { clips } : {}),
       licence,
     });
     console.log(
@@ -624,7 +647,6 @@ async function build(kitsDir: string): Promise<void> {
 
 const kits = process.argv.find((a) => a.startsWith('--kits='))?.slice('--kits='.length);
 if (import.meta.main) {
-  if (!kits)
-    throw new Error('--kits=<dir with car-kit/, train-kit/, watercraft-kit/, mini-characters/>');
+  if (!kits) throw new Error('--kits=<dir with car-kit/, train-kit/, watercraft-kit/>');
   await build(kits);
 }

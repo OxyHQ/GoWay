@@ -1,9 +1,11 @@
 # The model library
 
-GoWay draws ONE set of 3D vehicles, vessels and people. City life's simulated
-traffic (`MAP_CITY_LIFE.md`) and GoWay Live's real vehicles (`MAP_LIVE.md`)
-both draw from it; there is no second, parallel model set, and a new consumer
-reads this library rather than building shapes of its own.
+GoWay draws ONE set of 3D vehicles and vessels. City life's simulated traffic
+(`MAP_CITY_LIFE.md`), GoWay Live's real vehicles (`MAP_LIVE.md`) and the SDK
+catalogue's `vehicle.car` all draw from it; there is no second, parallel
+model set, and a new consumer reads this library rather than building shapes
+of its own. (City life's simulated PEOPLE are its own rounded walkers,
+`cityLife/people.ts` — nothing else draws people.)
 
 | Piece | Where |
 | --- | --- |
@@ -19,22 +21,21 @@ reads this library rather than building shapes of its own.
 
 | Key | Kind | From | Near / far triangles |
 | --- | --- | --- | --- |
-| `vehicle.hatchback`, `.sedan`, `.suv`, `.taxi` | car | Kenney Car Kit 3.1 | ≤ 800 / ≤ 150 |
-| `vehicle.van`, `vehicle.truck` | van, truck | Kenney Car Kit 3.1 | ≤ 800 / ≤ 150 |
+| `vehicle.hatchback`, `.sedan`, `.suv`, `.taxi` | car | Kenney Car Kit 3.1 | 896–1,054 / 36 |
+| `vehicle.van`, `vehicle.truck` | van, truck | Kenney Car Kit 3.1 | 946, 956 / 36 |
 | `vehicle.bus`, `vehicle.bus-double` | bus | GoWay (`scripts/library/bus.ts`) | 540 / 60, 596 / 84 |
-| `tram.modern`, `tram.classic` | tram | Kenney Train Kit 1.1 | ≤ 1,200 / ≤ 150 |
-| `train.commuter`, `train.double` | train | Kenney Train Kit 1.1 | ≤ 1,200 / ≤ 150 |
-| `metro.car` | metro | Kenney Train Kit 1.1 | ≤ 1,200 / ≤ 150 |
-| `vessel.ferry`, `.cargo`, `.liner`, `.tug`, `.fishing`, `.sailboat`, `.motorboat` | vessel | Kenney Watercraft Kit 2.1 | ≤ 1,200 / ≤ 150 |
+| `tram.modern`, `tram.classic` | tram | Kenney Train Kit 1.1 | 890, 1,040 / 36 |
+| `train.commuter`, `train.double` | train | Kenney Train Kit 1.1 | 522, 837 / 36 |
+| `metro.car` | metro | Kenney Train Kit 1.1 | 936 / 36 |
+| `vessel.tallship`, `.cargo`, `.liner`, `.tug`, `.fishing`, `.sailboat`, `.motorboat` | vessel | Kenney Watercraft Kit 2.1 | 156–1,750 / 36 |
 | `aircraft.airliner` | aircraft | GoWay (`scripts/library/aircraft.ts`) | 320 / 136 |
-| `person.female-b`, `-c`, `-d`, `-f`, `person.male-a`, `-b`, `-d`, `-f`, `person.wheelchair` | person | Kenney Mini Characters 1.0 | ≤ 600 / 48 |
 
 The budgets are `MODEL_BUDGETS`, enforced by the schema: the build, the tests
-and the app all refuse a model over them. About 1.1 MB in all.
+and the app all refuse a model over them. About 0.4 MB in all.
 
 Left out on purpose: police, ambulance, fire engine and every other emergency
 or branded vehicle (an emergency vehicle on a simulated street claims an
-emergency that is not happening), karts, and the police character.
+emergency that is not happening) and karts.
 
 ## Licences
 
@@ -47,9 +48,9 @@ landmarks' licence record (`assetLicenceSchema`: SPDX id, method, author,
 source, verification date, notes), its byte size and SHA-256, and
 `public/models/LICENSE.md` lists the set.
 
-The kits are never committed. To rebuild, download the four kits from
+The kits are never committed. To rebuild, download the three kits from
 kenney.nl, unzip each into its own folder (`car-kit/`, `train-kit/`,
-`watercraft-kit/`, `mini-characters/`) and run:
+`watercraft-kit/`) and run:
 
 ```sh
 cd packages/frontend
@@ -61,29 +62,34 @@ bun scripts/build-model-library.ts --kits=<that folder>
 Per model (`build-model-library.ts`):
 
 1. **Read** the kit's GLB as data (`scripts/library/kenney.ts`, gltf-transform:
-   positions, indices, UVs, skins, animation samplers — nothing executed). The
-   kits colour by UV into one palette texture (`colormap.png`, decoded by the
-   map scripts' own `decodePng`); each vertex takes its palette colour.
-2. **Bake** a character's clips (walk and idle; the wheelchair user's push and
-   sit) by skinning on the CPU: 8 walk frames and 4 idle frames.
-3. **Fit** uniformly: vehicles to a real width, vessels to a real length,
-   people to 1.7 m standing (the wheelchair user is scaled by the standing
-   character, so the chair is to scale). Front +Z, standing on y = 0.
-4. **Recolour** into the maquette palette. The kits shade with palette RAMPS,
+   node transforms, positions, indices, UVs — nothing executed). The kits
+   colour by UV into one palette texture (`colormap.png`, decoded by the map
+   scripts' own `decodePng`); each vertex takes its palette colour.
+2. **Fit** uniformly: vehicles to a real width, vessels to a real length.
+   Front +Z, standing on y = 0.
+3. **Recolour** into the maquette palette. The kits shade with palette RAMPS,
    so the body's paint is the whole ramp of the most common saturated hue:
-   it becomes the tintable `paint` material, each face keeping its shade as a
-   grey the tint is multiplied by. Glass is one dark tint (the kits' light,
-   blue-tinted greys above the waist). Everything else is tempered: a little
-   desaturated, a little lifted.
-5. **Decimate** with meshoptimizer (`simplifyWithAttributes`, colour as an
-   attribute so colour borders survive) to the near budget; a vehicle's far
-   level is the wheel-less model decimated to the far budget. A person's far
-   level is four boxes (legs, torso, face, crown) in the colours most of each
-   band wears: a character decimated to a few dozen triangles shatters.
+   it becomes the tintable `paint` material, each corner keeping its shade as
+   a grey the tint is multiplied by (so the kits' gradients survive).
+   Everything else — the kits' own light windows included — is tempered: a
+   little desaturated, a little lifted.
+4. **Near level: the kit's body exactly as drawn**, never decimated, and its
+   wheels redrawn low-poly where they stand (a ten-sided tyre and a hub disc
+   in the kit wheel's own colours; a train's bogie as one block). A kit car is
+   ~2,000 triangles, two-thirds of them wheels: the first library squeezed it
+   into 800 with a permissive simplifier, which spent the budget on the wheels
+   and tore the body — holes, crushed windows, a faceted silhouette (7–10% of
+   a near car's edges open; `modelLibrary.test.ts` now holds a road vehicle
+   under 3%).
+5. **Far level: three boxes**, one per height band (chassis, body, cabin or
+   superstructure), each the band's footprint in the colour its upward faces
+   wear. A far vehicle is under 22 px long; a torn simplification there showed
+   holes as soon as it was nearer than intended, and a safe one stops at ~700
+   triangles.
 6. **Write** with the landmarks' writer (`scripts/landmarks/glb.ts →
    writeModelGlb`): `near` and `far` nodes on one quantisation grid,
    `KHR_mesh_quantization` + `EXT_meshopt_compression`, `COLOR_0` vertex
-   colours, a person's frames as morph targets on `near`.
+   colours.
 
 ## The asset profile (what a consumer may rely on)
 
@@ -94,8 +100,6 @@ Per model (`build-model-library.ts`):
 - Two levels of detail, `near` and `far`.
 - `paint` (0/1): the tintable body. `color`: linear vertex colour; on paint,
   the kit's shade (a grey) to multiply the tint by.
-- People only: `clips.move` and `clips.idle` (first frame, frame count,
-  frames per second) into the frames.
 - No textures, no lettering, no logos, no liveries but the paint you give it.
 
 ## Runtime API (`components/map/engine/vehicles/`)
@@ -106,10 +110,8 @@ Inside the three.js chunk only (`components/engine3d/lazyChunk.ts`).
 import {
   loadModelLibrary,       // (options?) => Promise<Map<key, LibraryModel>>
   parseLibraryModel,      // (entry, bytes) => Promise<LibraryModel>
-  createAnimationTexture, // (animation) => THREE.DataTexture
-  type LibraryModel,      // { entry, near: LibraryLod, far: LibraryLod, animation? }
+  type LibraryModel,      // { entry, near: LibraryLod, far: LibraryLod }
   type LibraryLod,        // { geometry: THREE.BufferGeometry, triangles }
-  type LibraryAnimation,  // { vertexCount, frameCount, positions: Float32Array }
 } from '../vehicles/library';
 import { LIBRARY_GLSL } from '../vehicles/glsl';
 ```
@@ -120,16 +122,14 @@ import { LIBRARY_GLSL } from '../vehicles/glsl';
   every primitive of a level into ONE indexed `BufferGeometry` (one draw per
   level) with `position`, `normal` (float, glTF frame, metres), `color` and
   `paint`. The caller owns the geometries and disposes them.
-- `createAnimationTexture(model.animation)`: a person's frames as an RGBA32F
-  texture, one row per frame, one texel per near vertex.
 - `LIBRARY_GLSL` (GLSL ES 3.00): `libraryFrame(g)` turns the glTF frame into
   a map's x-forward, y-left, z-up frame (a cyclic swap: winding preserved);
-  `libraryColour(color, paint, tintSrgb)`; `libraryPose(frames, clip, t)`
-  reads a clip at time `t` by `gl_VertexID`, blending frames.
+  `libraryColour(color, paint, tintSrgb)`.
 
 City life (`cityLife/lifeRenderer.ts`, `lifeShaders.ts`) draws each model as
 an instanced near/far pair over shared instance buffers with the library's
-GLSL. GoWay Live (`live3d/liveModels.ts → buildLiveModel(model, detail,
+GLSL, stretching a car along its length to its simulated one (normals
+corrected for the stretch). GoWay Live (`live3d/liveModels.ts → buildLiveModel(model, detail,
 source)`) maps each live form to a library key (`LIVE_LIBRARY_KEYS`),
 stretches it per axis to the fleet's real dimensions and bakes the fleet's
 livery into vertex colours.

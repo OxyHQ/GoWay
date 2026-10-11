@@ -5,13 +5,17 @@
       "key": "vehicle.hatchback",
       "kind": "car",
       "file": "vehicle.hatchback.glb",
-      "bytes": 26532,
-      "sha256": "f6f27c9263ba21aa0df5a708777dbfde322e4f2d10376848c137657cb46a569e",
+      "bytes": 18988,
+      "sha256": "91a22f098ee2eb062ab43e2ed1c914f0b0d9d613c0d2557ed5d8b10402917c73",
       "triangles": {
-        "near": 800,
-        "far": 149
+        "near": 952,
+        "far": 36
       },
-      "size": [1.78, 1.49, 3.9],
+      "size": [
+        1.78,
+        1.51,
+        3.9
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -20,20 +24,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Car Kit 3.1, `hatchback-sports.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Car Kit 3.1, `hatchback-sports.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "vehicle.sedan",
       "kind": "car",
       "file": "vehicle.sedan.glb",
-      "bytes": 27260,
-      "sha256": "cbf5d5908488138065045a893a09f08de531ac652d4609728a91209af7c88bc3",
+      "bytes": 17832,
+      "sha256": "4a12f1f1969881bd6f274528fe11f5bf392dc2c08c2ef822bc4d712bc1e32728",
       "triangles": {
-        "near": 800,
-        "far": 150
+        "near": 896,
+        "far": 36
       },
-      "size": [1.82, 1.58, 3.09],
+      "size": [
+        1.82,
+        1.58,
+        3.09
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -42,20 +50,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Car Kit 3.1, `sedan.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Car Kit 3.1, `sedan.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "vehicle.suv",
       "kind": "car",
       "file": "vehicle.suv.glb",
-      "bytes": 25900,
-      "sha256": "0b90e9389ddf38ecb078bdfc86619bfec31bc4a3fb3250111083c1c56c92d8ca",
+      "bytes": 19388,
+      "sha256": "2105de767747e8a0b25361a967cd7966727ac4a9140c946489a1016cd58c2b8e",
       "triangles": {
-        "near": 799,
-        "far": 150
+        "near": 1054,
+        "far": 36
       },
-      "size": [1.9, 1.63, 3.42],
+      "size": [
+        1.9,
+        1.65,
+        3.58
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -64,20 +76,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Car Kit 3.1, `suv.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Car Kit 3.1, `suv.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "vehicle.taxi",
       "kind": "car",
       "file": "vehicle.taxi.glb",
-      "bytes": 27008,
-      "sha256": "1fc63dee42b45e4a779fa3c84920f616b36c9a004669410d482feb8a13cce276",
+      "bytes": 18404,
+      "sha256": "c658e96c46957061d3fee4f69c1220e4db0b6cca62d8a3b66b770afa240d7307",
       "triangles": {
-        "near": 800,
-        "far": 150
+        "near": 936,
+        "far": 36
       },
-      "size": [1.82, 1.81, 3.34],
+      "size": [
+        1.82,
+        1.82,
+        3.34
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -86,20 +102,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Car Kit 3.1, `taxi.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Car Kit 3.1, `taxi.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "vehicle.van",
       "kind": "van",
       "file": "vehicle.van.glb",
-      "bytes": 27712,
-      "sha256": "fc1627ca8935a3b7b7db68f1ae4e2491919212866ca7943884a65765e32463c5",
+      "bytes": 18576,
+      "sha256": "1c8a1c2e4e68ff7f0d0e8dd26c500ba3aa8544d3bd6a17154c1012ed198bca57",
       "triangles": {
-        "near": 799,
-        "far": 150
+        "near": 946,
+        "far": 36
       },
-      "size": [2, 1.79, 3.67],
+      "size": [
+        2,
+        1.8,
+        3.67
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -108,20 +128,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Car Kit 3.1, `van.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Car Kit 3.1, `van.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "vehicle.truck",
       "kind": "truck",
       "file": "vehicle.truck.glb",
-      "bytes": 26596,
-      "sha256": "f65a269d7d5997673631607d9ab3a37cc77de7fbf53369f7a39e305e07bea526",
+      "bytes": 18720,
+      "sha256": "2ae0e2b9f34621987119eab371ef07e0a04b91c678c744f8f947a284a528942a",
       "triangles": {
-        "near": 800,
-        "far": 149
+        "near": 956,
+        "far": 36
       },
-      "size": [2.3, 2.53, 4.98],
+      "size": [
+        2.3,
+        2.53,
+        4.98
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -130,7 +154,7 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Car Kit 3.1, `delivery.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Car Kit 3.1, `delivery.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
@@ -143,7 +167,11 @@
         "near": 540,
         "far": 60
       },
-      "size": [2.69, 3.12, 12.03],
+      "size": [
+        2.69,
+        3.12,
+        12.03
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "procedural",
@@ -165,7 +193,11 @@
         "near": 596,
         "far": 84
       },
-      "size": [2.69, 4.32, 12.03],
+      "size": [
+        2.69,
+        4.32,
+        12.03
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "procedural",
@@ -187,7 +219,11 @@
         "near": 320,
         "far": 136
       },
-      "size": [35.8, 11.8, 37.6],
+      "size": [
+        35.8,
+        11.8,
+        37.6
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "procedural",
@@ -203,13 +239,17 @@
       "key": "tram.modern",
       "kind": "tram",
       "file": "tram.modern.glb",
-      "bytes": 33736,
-      "sha256": "1080e63a171472888eb7237827aa9da7d4d7d627632c26d422d2fed23684fe47",
+      "bytes": 19764,
+      "sha256": "5d4cf9cb4c774150b5d46073e566c5a03955436ddb8fcbdfb2573d0007f9b801",
       "triangles": {
-        "near": 1200,
-        "far": 150
+        "near": 890,
+        "far": 36
       },
-      "size": [2.4, 4.9, 5.72],
+      "size": [
+        2.4,
+        4.9,
+        5.72
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -218,20 +258,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Train Kit 1.1, `train-tram-modern.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Train Kit 1.1, `train-tram-modern.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "tram.classic",
       "kind": "tram",
       "file": "tram.classic.glb",
-      "bytes": 31928,
-      "sha256": "489a35504cd3dea0f360c029509a1ecc4b21b82c0404a51118d4be33ed143955",
+      "bytes": 23076,
+      "sha256": "b7cf67aab607d2d24ec2ba4080c18927e058260ad2cb430e8b277bbd707147c3",
       "triangles": {
-        "near": 1200,
-        "far": 148
+        "near": 1040,
+        "far": 36
       },
-      "size": [2.3, 4.64, 4.81],
+      "size": [
+        2.3,
+        4.64,
+        4.81
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -240,20 +284,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Train Kit 1.1, `train-tram-classic.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Train Kit 1.1, `train-tram-classic.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "train.commuter",
       "kind": "train",
       "file": "train.commuter.glb",
-      "bytes": 31592,
-      "sha256": "3290a639e9a96dbd5e4da554c1a907c01b7ceebc7eae80d68191ea97232f309c",
+      "bytes": 14452,
+      "sha256": "b3808b67c3534564112be7f7c07850d4137b3929753efcffc5b43e409ef9b614",
       "triangles": {
-        "near": 1130,
-        "far": 150
+        "near": 522,
+        "far": 36
       },
-      "size": [2.9, 4.44, 6.33],
+      "size": [
+        2.9,
+        4.44,
+        6.33
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -262,20 +310,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Train Kit 1.1, `train-electric-city-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Train Kit 1.1, `train-electric-city-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "train.double",
       "kind": "train",
       "file": "train.double.glb",
-      "bytes": 34396,
-      "sha256": "9f6c1d633fd3a29bbbaf6032b0ac6a595189575503e0a297b5f5c388046cdddf",
+      "bytes": 20384,
+      "sha256": "59a2f5dc870b37dc1bcdace3091fc500934d2e6cec1c795e8271f219fc18ebf6",
       "triangles": {
-        "near": 1200,
-        "far": 116
+        "near": 837,
+        "far": 36
       },
-      "size": [2.9, 4.34, 5.64],
+      "size": [
+        2.9,
+        4.34,
+        5.64
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -284,20 +336,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Train Kit 1.1, `train-electric-double-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Train Kit 1.1, `train-electric-double-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "metro.car",
       "kind": "metro",
       "file": "metro.car.glb",
-      "bytes": 33904,
-      "sha256": "e93d479aea7f77ac4030fc69ab07b47363234373bed0938a3eab9d1ad1dc2b90",
+      "bytes": 20288,
+      "sha256": "717ef5a99ad9787804c52b60f049f92df480e2e7219fd4c575532eaaf2e12701",
       "triangles": {
-        "near": 1200,
-        "far": 150
+        "near": 936,
+        "far": 36
       },
-      "size": [2.8, 3.26, 5.39],
+      "size": [
+        2.8,
+        3.26,
+        5.39
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -306,20 +362,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Train Kit 1.1, `train-electric-subway-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Train Kit 1.1, `train-electric-subway-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
-      "key": "vessel.ferry",
+      "key": "vessel.tallship",
       "kind": "vessel",
-      "file": "vessel.ferry.glb",
-      "bytes": 32340,
-      "sha256": "0f8520dc4d2ce141815bbb5c6f25a8131df836787421192c7b4a38b01315df1f",
+      "file": "vessel.tallship.glb",
+      "bytes": 32368,
+      "sha256": "249d09dd27048cc86a8db73f9a13608f16681b0c37abedd3ea62c8a46aae81bf",
       "triangles": {
-        "near": 1199,
-        "far": 145
+        "near": 1723,
+        "far": 36
       },
-      "size": [20.38, 42.3, 45],
+      "size": [
+        20.38,
+        42.3,
+        45
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -328,20 +388,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Watercraft Kit 2.1, `ship-small.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Watercraft Kit 2.1, `ship-small.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "vessel.cargo",
       "kind": "vessel",
       "file": "vessel.cargo.glb",
-      "bytes": 28024,
-      "sha256": "0d1dda074014f759ee9c2c293d2aa5b4818a31924162932072050342e77aad77",
+      "bytes": 23028,
+      "sha256": "f6a297c5c90c60cdc23a0e3bea7d0d7164891ecbdbebaf1503df44f2a5851c72",
       "triangles": {
         "near": 1060,
-        "far": 138
+        "far": 36
       },
-      "size": [44.56, 38.45, 120],
+      "size": [
+        44.56,
+        38.45,
+        120
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -350,20 +414,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Watercraft Kit 2.1, `ship-cargo-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Watercraft Kit 2.1, `ship-cargo-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "vessel.liner",
       "kind": "vessel",
       "file": "vessel.liner.glb",
-      "bytes": 32588,
-      "sha256": "3a9a022a2ccc6239f9e3d5c43aa55cfa56290d5596ee7a603d8cad822d5252d5",
+      "bytes": 33372,
+      "sha256": "45d1a0d2055bf16cc5064b7024f622d99c4ec3c36b8c8524974d43b4f3fef672",
       "triangles": {
-        "near": 1200,
-        "far": 133
+        "near": 1750,
+        "far": 36
       },
-      "size": [46.97, 88.16, 150],
+      "size": [
+        46.97,
+        88.16,
+        150
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -372,20 +440,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Watercraft Kit 2.1, `ship-ocean-liner-small.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Watercraft Kit 2.1, `ship-ocean-liner-small.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "vessel.tug",
       "kind": "vessel",
       "file": "vessel.tug.glb",
-      "bytes": 18344,
-      "sha256": "96254df62c9c76ef4ea32b8be905b8fdd2d2ccc86ad28ec1b228dca7689e94e8",
+      "bytes": 14044,
+      "sha256": "70f567dc6d2c19cde859040c1ba4e6e0f075c73cc4b3fefa9005767d4d35376a",
       "triangles": {
         "near": 471,
-        "far": 150
+        "far": 36
       },
-      "size": [12.86, 16.12, 25],
+      "size": [
+        12.86,
+        16.12,
+        25
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -394,20 +466,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Watercraft Kit 2.1, `boat-tug-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Watercraft Kit 2.1, `boat-tug-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "vessel.fishing",
       "kind": "vessel",
       "file": "vessel.fishing.glb",
-      "bytes": 14304,
-      "sha256": "6681c85737c155b473cc65782f431c41570263a345d6753ae52dc4d9fad6ecff",
+      "bytes": 10960,
+      "sha256": "2bbb5fa24ee68f2a64d08b049b080526a5a8c17421fb6ee9543dc74c648d19e2",
       "triangles": {
         "near": 237,
-        "far": 149
+        "far": 36
       },
-      "size": [5.53, 8.06, 12],
+      "size": [
+        5.53,
+        8.06,
+        12
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -416,20 +492,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Watercraft Kit 2.1, `boat-fishing-small.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Watercraft Kit 2.1, `boat-fishing-small.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "vessel.sailboat",
       "kind": "vessel",
       "file": "vessel.sailboat.glb",
-      "bytes": 17308,
-      "sha256": "63a99f10be5ed976f86ba07397aaca848203417ee82b0a46842c30ac4bda709c",
+      "bytes": 13188,
+      "sha256": "c22e6f9e003886d472df8ce7e3ef4322bc627f9831cf5ee1b6cae1ae8692a19a",
       "triangles": {
         "near": 386,
-        "far": 150
+        "far": 36
       },
-      "size": [4.73, 12.57, 10],
+      "size": [
+        4.73,
+        12.57,
+        10
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -438,20 +518,24 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Watercraft Kit 2.1, `boat-sail-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Watercraft Kit 2.1, `boat-sail-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     },
     {
       "key": "vessel.motorboat",
       "kind": "vessel",
       "file": "vessel.motorboat.glb",
-      "bytes": 13088,
-      "sha256": "7fbe9de1e27820ae71979828425bcca623ef23c0afa15770ac939ffaf81d91b2",
+      "bytes": 9776,
+      "sha256": "c005ce0402150710b9dc1c56da4163f546ba7ff77b64f77cea7a670a102f1747",
       "triangles": {
         "near": 156,
-        "far": 150
+        "far": 36
       },
-      "size": [3.71, 3.12, 7],
+      "size": [
+        3.71,
+        3.12,
+        7
+      ],
       "licence": {
         "spdx": "CC0-1.0",
         "method": "third-party",
@@ -460,313 +544,7 @@
         "credit": null,
         "derivedFrom": [],
         "verifiedAt": "2026-10-11",
-        "notes": "Watercraft Kit 2.1, `boat-speed-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
-      }
-    },
-    {
-      "key": "person.female-b",
-      "kind": "person",
-      "file": "person.female-b.glb",
-      "bytes": 72860,
-      "sha256": "2c796ad713adbf6e64c7ebde6e03da5b0badfcaf7c14397ec7ba43e5ff4c7e4a",
-      "triangles": {
-        "near": 599,
-        "far": 48
-      },
-      "size": [1.56, 1.78, 0.98],
-      "clips": {
-        "move": {
-          "first": 0,
-          "count": 8,
-          "fps": 12
-        },
-        "idle": {
-          "first": 8,
-          "count": 4,
-          "fps": 3
-        }
-      },
-      "licence": {
-        "spdx": "CC0-1.0",
-        "method": "third-party",
-        "author": "Kenney (www.kenney.nl)",
-        "source": "https://kenney.nl/assets/mini-characters",
-        "credit": null,
-        "derivedFrom": [],
-        "verifiedAt": "2026-10-11",
-        "notes": "Mini Characters 1.0, `character-female-b.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
-      }
-    },
-    {
-      "key": "person.female-c",
-      "kind": "person",
-      "file": "person.female-c.glb",
-      "bytes": 72436,
-      "sha256": "14e616b0923d50babd0d306fabc5eb103bfa779d60e941bb46158a34e88f28a7",
-      "triangles": {
-        "near": 600,
-        "far": 48
-      },
-      "size": [1.46, 1.77, 1.09],
-      "clips": {
-        "move": {
-          "first": 0,
-          "count": 8,
-          "fps": 12
-        },
-        "idle": {
-          "first": 8,
-          "count": 4,
-          "fps": 3
-        }
-      },
-      "licence": {
-        "spdx": "CC0-1.0",
-        "method": "third-party",
-        "author": "Kenney (www.kenney.nl)",
-        "source": "https://kenney.nl/assets/mini-characters",
-        "credit": null,
-        "derivedFrom": [],
-        "verifiedAt": "2026-10-11",
-        "notes": "Mini Characters 1.0, `character-female-c.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
-      }
-    },
-    {
-      "key": "person.female-d",
-      "kind": "person",
-      "file": "person.female-d.glb",
-      "bytes": 74772,
-      "sha256": "be7b086c85c5a1070c1784226ab7387ef1e03293f28a9a3c78178efabb273b81",
-      "triangles": {
-        "near": 599,
-        "far": 48
-      },
-      "size": [1.46, 1.77, 1.09],
-      "clips": {
-        "move": {
-          "first": 0,
-          "count": 8,
-          "fps": 12
-        },
-        "idle": {
-          "first": 8,
-          "count": 4,
-          "fps": 3
-        }
-      },
-      "licence": {
-        "spdx": "CC0-1.0",
-        "method": "third-party",
-        "author": "Kenney (www.kenney.nl)",
-        "source": "https://kenney.nl/assets/mini-characters",
-        "credit": null,
-        "derivedFrom": [],
-        "verifiedAt": "2026-10-11",
-        "notes": "Mini Characters 1.0, `character-female-d.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
-      }
-    },
-    {
-      "key": "person.female-f",
-      "kind": "person",
-      "file": "person.female-f.glb",
-      "bytes": 74428,
-      "sha256": "71761f2bbd1b6a03cc3e4a56c8eb2f85b39bd6826930b63ec2c6a5bb46c1b2e6",
-      "triangles": {
-        "near": 599,
-        "far": 48
-      },
-      "size": [1.68, 1.78, 1.12],
-      "clips": {
-        "move": {
-          "first": 0,
-          "count": 8,
-          "fps": 12
-        },
-        "idle": {
-          "first": 8,
-          "count": 4,
-          "fps": 3
-        }
-      },
-      "licence": {
-        "spdx": "CC0-1.0",
-        "method": "third-party",
-        "author": "Kenney (www.kenney.nl)",
-        "source": "https://kenney.nl/assets/mini-characters",
-        "credit": null,
-        "derivedFrom": [],
-        "verifiedAt": "2026-10-11",
-        "notes": "Mini Characters 1.0, `character-female-f.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
-      }
-    },
-    {
-      "key": "person.male-a",
-      "kind": "person",
-      "file": "person.male-a.glb",
-      "bytes": 71396,
-      "sha256": "494523fa57b9e9fd08d7423b20c753e2c6a2e8e400480f8c1dd70708c777dd83",
-      "triangles": {
-        "near": 600,
-        "far": 48
-      },
-      "size": [1.68, 1.78, 0.95],
-      "clips": {
-        "move": {
-          "first": 0,
-          "count": 8,
-          "fps": 12
-        },
-        "idle": {
-          "first": 8,
-          "count": 4,
-          "fps": 3
-        }
-      },
-      "licence": {
-        "spdx": "CC0-1.0",
-        "method": "third-party",
-        "author": "Kenney (www.kenney.nl)",
-        "source": "https://kenney.nl/assets/mini-characters",
-        "credit": null,
-        "derivedFrom": [],
-        "verifiedAt": "2026-10-11",
-        "notes": "Mini Characters 1.0, `character-male-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
-      }
-    },
-    {
-      "key": "person.male-b",
-      "kind": "person",
-      "file": "person.male-b.glb",
-      "bytes": 73028,
-      "sha256": "7667132a8b7af0f2b17e7e59bf1a77383191d855b778f934e501c51722cb4f0d",
-      "triangles": {
-        "near": 600,
-        "far": 48
-      },
-      "size": [1.71, 1.79, 1.01],
-      "clips": {
-        "move": {
-          "first": 0,
-          "count": 8,
-          "fps": 12
-        },
-        "idle": {
-          "first": 8,
-          "count": 4,
-          "fps": 3
-        }
-      },
-      "licence": {
-        "spdx": "CC0-1.0",
-        "method": "third-party",
-        "author": "Kenney (www.kenney.nl)",
-        "source": "https://kenney.nl/assets/mini-characters",
-        "credit": null,
-        "derivedFrom": [],
-        "verifiedAt": "2026-10-11",
-        "notes": "Mini Characters 1.0, `character-male-b.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
-      }
-    },
-    {
-      "key": "person.male-d",
-      "kind": "person",
-      "file": "person.male-d.glb",
-      "bytes": 73472,
-      "sha256": "92d542a010cc1e00c67d75708bc6eb61e2b36646f22ef52bc17d1e7a38c23de4",
-      "triangles": {
-        "near": 600,
-        "far": 48
-      },
-      "size": [1.56, 1.78, 0.87],
-      "clips": {
-        "move": {
-          "first": 0,
-          "count": 8,
-          "fps": 12
-        },
-        "idle": {
-          "first": 8,
-          "count": 4,
-          "fps": 3
-        }
-      },
-      "licence": {
-        "spdx": "CC0-1.0",
-        "method": "third-party",
-        "author": "Kenney (www.kenney.nl)",
-        "source": "https://kenney.nl/assets/mini-characters",
-        "credit": null,
-        "derivedFrom": [],
-        "verifiedAt": "2026-10-11",
-        "notes": "Mini Characters 1.0, `character-male-d.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
-      }
-    },
-    {
-      "key": "person.male-f",
-      "kind": "person",
-      "file": "person.male-f.glb",
-      "bytes": 72760,
-      "sha256": "cd88c878ce5439a2aeb8d0ae575b838c03746700ecb0318bbcf36922939d4830",
-      "triangles": {
-        "near": 599,
-        "far": 48
-      },
-      "size": [1.68, 1.78, 0.94],
-      "clips": {
-        "move": {
-          "first": 0,
-          "count": 8,
-          "fps": 12
-        },
-        "idle": {
-          "first": 8,
-          "count": 4,
-          "fps": 3
-        }
-      },
-      "licence": {
-        "spdx": "CC0-1.0",
-        "method": "third-party",
-        "author": "Kenney (www.kenney.nl)",
-        "source": "https://kenney.nl/assets/mini-characters",
-        "credit": null,
-        "derivedFrom": [],
-        "verifiedAt": "2026-10-11",
-        "notes": "Mini Characters 1.0, `character-male-f.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
-      }
-    },
-    {
-      "key": "person.wheelchair",
-      "kind": "person",
-      "file": "person.wheelchair.glb",
-      "bytes": 43668,
-      "sha256": "d3ddc3a3314837c050cce1373f28e606fb90169cd54adaa3e69d99e98cb8d755",
-      "triangles": {
-        "near": 600,
-        "far": 48
-      },
-      "size": [1.82, 1.8, 1.51],
-      "clips": {
-        "move": {
-          "first": 0,
-          "count": 8,
-          "fps": 16
-        },
-        "idle": {
-          "first": 8,
-          "count": 4,
-          "fps": 24
-        }
-      },
-      "licence": {
-        "spdx": "CC0-1.0",
-        "method": "third-party",
-        "author": "Kenney (www.kenney.nl)",
-        "source": "https://kenney.nl/assets/mini-characters",
-        "credit": null,
-        "derivedFrom": [],
-        "verifiedAt": "2026-10-11",
-        "notes": "Mini Characters 1.0, `character-male-e.glb` with `wheelchair.glb`; CC0 per the kit’s License.txt and its page. Recoloured, decimated and rescaled by scripts/build-model-library.ts."
+        "notes": "Watercraft Kit 2.1, `boat-speed-a.glb`; CC0 per the kit’s License.txt and its page. Recoloured and rescaled, wheels redrawn low-poly and a simplified far level added by scripts/build-model-library.ts."
       }
     }
   ]
