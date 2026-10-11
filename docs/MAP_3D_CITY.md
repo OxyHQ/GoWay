@@ -344,6 +344,7 @@ with `?city3d=1`, which a production build ignores (`lib/map/city3dFlag.ts`).
 | Worker | `components/map/engine/city3d/meshWorker.ts` (`new Worker(new URL(…, import.meta.url))`, which Expo bundles as a sealed chunk) |
 | Pure parts (tested) | `tileMath.ts`, `mesher.ts`, `occlusion.ts`, `shaders.ts`, `decode.ts`, `tileScheduler.ts` |
 | Chunk boundary | `components/engine3d/lazyChunk.ts` |
+| On 3D terrain | `engine/city3d/terrainGround.ts` (pure) and `components/map/city3dGround.web.ts` — each building lifted to the drawn ground; see [`MAP_TERRAIN_GLOBE.md`](./MAP_TERRAIN_GLOBE.md) → "Buildings on terrain" |
 
 Two things it does that are easy to get wrong:
 

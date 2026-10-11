@@ -43,6 +43,10 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   Studio (off by default): the chase camera, centripetal path smoothing,
   per-gesture undo/redo, the versioned tour link, video export with the mark
   and the credit composited, and the flyover's vehicle as phase 1 of 3D models.
+- [`MAP_TERRAIN_GLOBE.md`](MAP_TERRAIN_GLOBE.md) — the off-by-default globe
+  (space, a glow fitted to the limb), hillshade and 3D terrain: why Mapterhorn
+  and why through GoWay's Worker, what self-hosting the DEM costs, how the 3D
+  buildings stand on the terrain, and what native can and cannot draw.
 - [`PLACE_NAMES.md`](PLACE_NAMES.md) — how a place is named in more than one
   language, why `places.name` stayed, and what that means for duplicate
   detection, search, the SDK contract and the OpenStreetMap re-import.
