@@ -634,7 +634,7 @@ with `?city3d=1`, which a production build ignores (`lib/map/city3dFlag.ts`).
 
 | Piece | Where |
 | --- | --- |
-| Flag | The map-feature registry (`lib/map/mapFeatures.ts`, [`MAP_FEATURES.md`](./MAP_FEATURES.md)): `city3d`, `city3dTrees`, `city3dTreeFill`, switchable in the settings dialog's Labs; their rules stay in `lib/map/city3dFlag.ts` (`?city3d=1` in development) and `lib/map/city3dTreesFlag.ts` (`?city3dTrees=0`, `?city3dTreeFill=1`). The adapter is handed the answers |
+| Flag | The map-feature registry (`lib/map/mapFeatures.ts`, [`MAP_FEATURES.md`](./MAP_FEATURES.md)): `city3d`, `city3dTrees`, `city3dTreeFill`, switchable in the settings modal's Labs; their rules stay in `lib/map/city3dFlag.ts` (`?city3d=1` in development) and `lib/map/city3dTreesFlag.ts` (`?city3dTrees=0`, `?city3dTreeFill=1`). The adapter is handed the answers |
 | Gate | one effect in `components/map/MapCanvas.web.tsx` |
 | MapLibre adapter | `components/map/city3dLayer.web.ts` — adds `goway:city3d` before `building-3d`, hides `building-3d`, restores it on detach; on a style with no `building-3d` (the `openfreemap` escape hatch, a style-URL override) it declines and leaves the style untouched, rather than guessing an anchor in a document GoWay does not own |
 | Light | `components/map/city3dLight.ts` — the `building-3d` light (`useSunLight`'s, fed by `MapCanvas.web.tsx`) as the engine's `CityLight` |
@@ -700,7 +700,7 @@ The trees' own flag first lived in `lib/config.ts`, which is on the first-paint
 path: +292 B in `entry` with the prototype off. It moved to
 `lib/map/city3dTreesFlag.ts`, imported only by the lazy adapter, and
 `engine3dChunk.test.ts` pinned that. Since the map-feature registry
-(`MAP_FEATURES.md`) the trees are switched live from the settings dialog, so they
+(`MAP_FEATURES.md`) the trees are switched live from the settings modal, so they
 are decided at first paint after all: the flag module is pure and reached only
 from `lib/map/mapFeatures.ts`, which `engine3dChunk.test.ts` now pins instead;
 the registry's whole first-paint cost is measured in `MAP_FEATURES.md`.
@@ -722,7 +722,7 @@ fallback.
 | Client mesh | `osmMesher.ts`, `roofs.ts`, `facades.ts` |
 | Client shader | `osmShaders.ts` |
 | Engine/worker seam | `protocol.ts` (`format`), `meshWorker.ts` (one branch, packed like the rest), `cityEngine.ts` (`tileFormat`, `maxTiles`), `cityMeshes.ts` + `packing.ts` (the two extra attributes) |
-| Flag | The registry's `cityTiles` (`lib/map/mapFeatures.ts`; `EXPO_PUBLIC_MAP_CITY_TILES`; offered in the settings dialog only in a development build) over `lib/map/cityTilesFlag.ts` (`?cityTiles=1` in development; requires the city-3D flag) |
+| Flag | The registry's `cityTiles` (`lib/map/mapFeatures.ts`; `EXPO_PUBLIC_MAP_CITY_TILES`; offered in the settings modal only in a development build) over `lib/map/cityTilesFlag.ts` (`?cityTiles=1` in development; requires the city-3D flag) |
 | Adapter | `city3dLayer.web.ts` → `citySourceFor` |
 | Dev route | `scripts/dev-city-tiles.js`, wired in `metro.config.js`, only with `GOWAY_CITY_TILES_ARCHIVE` set |
 | Tests | `scripts/__tests__/cityTags.test.ts`, `scripts/__tests__/cityTiles.test.ts` (a synthetic PBF through the whole compiler; MVT against the client decoder; PMTiles against `worker/pmtiles.js`), `components/map/__tests__/city3dRoofs.test.ts`, `city3dOsmMesher.test.ts`, `city3dCitySource.test.ts`, `lib/map/__tests__/cityTilesFlag.test.ts` |
@@ -973,7 +973,7 @@ engine folder type-only).
 (a build decision; no deployment sets it) or `?citysky=1` in a development build,
 and only together with the city layer (`?city3d=1&citysky=1`):
 `lib/map/citySkyFlag.ts`. It is the map-feature registry's `citySky`, so a
-person can also switch it on in the settings dialog's Labs
+person can also switch it on in the settings modal's Labs
 ([`MAP_FEATURES.md`](./MAP_FEATURES.md)); the scrubber rides above a phone's
 sheet with the credit and keeps clear of "My location". Without the city layer the answer is `false`, not
 half a feature.

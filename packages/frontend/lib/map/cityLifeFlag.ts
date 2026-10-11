@@ -14,7 +14,7 @@
  *
  * Since the map-feature registry (`mapFeatures.ts`, `docs/MAP_FEATURES.md`)
  * the build switch is read there and `enabled` is the registry's answer (the
- * kill switch, then the person's choice in the settings dialog's Labs — offered
+ * kill switch, then the person's choice in the settings modal's Labs — offered
  * only in a development build while nothing serves the road tiles); the
  * adapter is handed the result.
  */

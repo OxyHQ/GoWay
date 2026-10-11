@@ -24,7 +24,7 @@ const StudioScreen = lazy(() =>
 export default function StudioRoute() {
   const params = useLocalSearchParams<{ lat?: string; lng?: string; zoom?: string }>();
   // The map-feature registry's `flyover` (`lib/map/mapFeatures.ts`): the
-  // build, the person's choice in the settings dialog's Labs, and `?flyover=1` in
+  // build, the person's choice in the settings modal's Labs, and `?flyover=1` in
   // development. Native reads the stored choice asynchronously, so this waits
   // for it rather than redirecting somebody who did turn the Studio on.
   const { features, hydrated } = useMapFeatures();

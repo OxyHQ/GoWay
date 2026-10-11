@@ -187,7 +187,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // The relief prototype's hillshade, under `water` — only on GoWay's own style,
   // which promises that layer (`docs/MAP_TERRAIN_GLOBE.md`). The rest of the
   // relief (globe, 3D terrain, sky) has no API in maplibre-react-native 11.4.
-  // A toggle in the settings dialog adds or removes it live.
+  // A toggle in the settings modal adds or removes it live.
   const { terrain } = useMapRelief();
   const hillshade = useMemo(
     () => (terrain && resolveOwnsStyleDocument() ? hillshadeLayer(resolvedAppearance) : null),

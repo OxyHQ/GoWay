@@ -7,7 +7,7 @@
  * `mapFeatureLabels.ts` (keyed by the same id, every `LABEL_LANGUAGES`
  * language, and the type refuses an entry without them); they live apart only
  * so the first-paint bundle carries the decisions and not the copy, which only
- * the settings dialog reads.
+ * the settings modal reads.
  *
  * ## How the answer is decided
  *
@@ -16,7 +16,7 @@
  *  1. **The build's kill switch.** Its `EXPO_PUBLIC_MAP_*` variable set to
  *     `0`/`false`: the build does not carry it. Off, and absent from the panel;
  *     no stored choice can bring it back.
- *  2. **The person's own choice**, made in the settings dialog and kept on this
+ *  2. **The person's own choice**, made in the settings modal and kept on this
  *     device only (`mapFeatureStore.ts`).
  *  3. **The build's default.** The variable set to `1`/`true` turns a feature
  *     on by default for that build — what it always did — but no longer past a
@@ -47,6 +47,9 @@ import { resolveReliefFlags } from './reliefFlag';
 /** `stable` shows in the panel for everyone; `labs` only once Labs is revealed. */
 export type MapFeatureTier = 'stable' | 'labs';
 
+/** The settings modal's page a feature is listed on. */
+export type MapFeatureSection = 'map' | 'layers';
+
 /** `Platform.OS`, narrowed to the platforms GoWay ships. */
 export type MapPlatform = 'web' | 'ios' | 'android';
 
@@ -75,6 +78,12 @@ export interface MapFeatureDefinition {
   build: string | undefined;
   /** Features (earlier in the registry) that must be on for this one to be. */
   requires: readonly string[];
+  /**
+   * Which page of the settings modal it lives on: `map` (how the map itself
+   * is drawn) or `layers` (what is drawn on it). A `labs` feature still shows
+   * there only once Labs is revealed (`lib/map/mapSettingsPages.ts`).
+   */
+  section: MapFeatureSection;
   /** Where it draws anything at all. Elsewhere it is not offered in the panel. */
   platforms: readonly MapPlatform[];
   /**
@@ -106,6 +115,7 @@ const EVERYWHERE: readonly MapPlatform[] = ['web', 'ios', 'android'];
 export const MAP_FEATURES = [
   {
     id: 'globe',
+    section: 'map',
     tier: 'stable',
     defaultOn: true,
     build: process.env.EXPO_PUBLIC_MAP_GLOBE,
@@ -117,6 +127,7 @@ export const MAP_FEATURES = [
   },
   {
     id: 'terrain',
+    section: 'map',
     tier: 'stable',
     defaultOn: true,
     build: process.env.EXPO_PUBLIC_MAP_TERRAIN,
@@ -129,6 +140,7 @@ export const MAP_FEATURES = [
   },
   {
     id: 'city3d',
+    section: 'layers',
     tier: 'labs',
     defaultOn: false,
     build: process.env.EXPO_PUBLIC_MAP_CITY3D,
@@ -139,6 +151,7 @@ export const MAP_FEATURES = [
   },
   {
     id: 'citySky',
+    section: 'map',
     tier: 'labs',
     defaultOn: false,
     build: process.env.EXPO_PUBLIC_MAP_CITY_SKY,
@@ -150,6 +163,7 @@ export const MAP_FEATURES = [
   },
   {
     id: 'cityTiles',
+    section: 'layers',
     tier: 'labs',
     defaultOn: false,
     build: process.env.EXPO_PUBLIC_MAP_CITY_TILES,
@@ -168,6 +182,7 @@ export const MAP_FEATURES = [
   },
   {
     id: 'city3dTrees',
+    section: 'layers',
     tier: 'labs',
     // They come with the 3D city: on whenever it is, unless switched off.
     defaultOn: true,
@@ -179,6 +194,7 @@ export const MAP_FEATURES = [
   },
   {
     id: 'city3dTreeFill',
+    section: 'layers',
     tier: 'labs',
     // Owner decision: by default, trees only where OpenStreetMap maps one.
     defaultOn: false,
@@ -190,6 +206,7 @@ export const MAP_FEATURES = [
   },
   {
     id: 'cityLife',
+    section: 'layers',
     tier: 'labs',
     defaultOn: false,
     build: process.env.EXPO_PUBLIC_MAP_CITY_LIFE,
@@ -210,6 +227,7 @@ export const MAP_FEATURES = [
   },
   {
     id: 'landmarks',
+    section: 'layers',
     tier: 'labs',
     defaultOn: false,
     build: process.env.EXPO_PUBLIC_MAP_LANDMARKS,
@@ -227,6 +245,7 @@ export const MAP_FEATURES = [
   },
   {
     id: 'live',
+    section: 'layers',
     tier: 'labs',
     defaultOn: false,
     build: process.env.EXPO_PUBLIC_MAP_LIVE,
@@ -241,6 +260,7 @@ export const MAP_FEATURES = [
   },
   {
     id: 'flyover',
+    section: 'layers',
     tier: 'labs',
     defaultOn: false,
     build: process.env.EXPO_PUBLIC_MAP_FLYOVER,
@@ -301,6 +321,7 @@ export type MapFeatureSource =
 export interface MapFeatureState {
   id: string;
   tier: MapFeatureTier;
+  section: MapFeatureSection;
   /** THE answer: whether the feature draws on this page. */
   on: boolean;
   /** Whether the panel offers it: the build carries it and this platform draws it. */
@@ -370,6 +391,7 @@ export function resolveMapFeatures(input: ResolveMapFeaturesInput): ResolvedMapF
     byId.set(feature.id, {
       id: feature.id,
       tier: feature.tier,
+      section: feature.section,
       on: requested && blockedBy.length === 0,
       available:
         !killed &&

@@ -1,5 +1,5 @@
 /**
- * Every word the settings dialog says exists in every `LABEL_LANGUAGES` language
+ * Every word the settings modal says exists in every `LABEL_LANGUAGES` language
  * (AGENTS.md), with the label hygiene the capability registry is held to, and
  * every registered feature has its name and description.
  */

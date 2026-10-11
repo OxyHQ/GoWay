@@ -110,8 +110,8 @@ describe('the landmarks chunks', () => {
       .sort();
     expect(dynamics).toEqual([
       'components/map/city3dLayer.web.ts',
-      // The settings dialog's About lists every landmark model's licence.
-      'features/explore/MapSettingsPanel.tsx',
+      // The settings modal's About lists every landmark model's licence.
+      'features/explore/MapSettingsModal.tsx',
       'features/landmarks/useLandmarks.ts',
     ]);
   });

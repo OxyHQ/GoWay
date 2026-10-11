@@ -1,7 +1,7 @@
 /**
  * The relief features this page draws — globe and terrain — as the map-feature
  * registry decides them (`lib/map/mapFeatures.ts`: the build's kill switch,
- * the person's choice in the settings dialog, the default, and in a development
+ * the person's choice in the settings modal, the default, and in a development
  * build the URL, `lib/map/reliefFlag.ts`). Read by both `MapCanvas` forks and
  * by `MapAttribution`, so the map and its credit can never disagree about
  * whether elevation data is on screen — and both follow a toggle live.

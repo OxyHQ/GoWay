@@ -1,35 +1,32 @@
 /**
  * The map's settings button — a gear at the top of the screen's top-right
- * stack — and the Bloom `Dialog` it opens (a side sheet on a wide window, a
- * bottom sheet on a phone and on native): the map view, the map's layers,
- * the app's general settings and the About section with every credit
- * (`MapSettingsPanel.tsx`, `docs/MAP_FEATURES.md`).
+ * stack — and Bloom's `SettingsModal` it opens (`MapSettingsModal.tsx`,
+ * `docs/MAP_FEATURES.md`): a rail of pages on a wide window, the section list
+ * and then the page on a phone, native included.
  *
- * The dialog's BODY and its copy in every label language load on first open,
- * so the first paint carries the button and its name and nothing else.
+ * The modal links Bloom's whole settings shell, so it is its own lazy chunk,
+ * requested on the first press: the first paint carries the button and its
+ * name and nothing else. Once loaded it stays mounted, so closing and opening
+ * again animates as Bloom's modal does.
  *
- * Labs (the experimental layers) is hidden until asked for: `?labs=1` on any
+ * Labs (the experimental features) is hidden until asked for: `?labs=1` on any
  * goway.to address, once (remembered on this device; `?labs=0` forgets), or by
- * pressing and holding this button. Revealing Labs switches nothing on.
+ * pressing and holding this button — which opens the modal on the Labs page.
+ * Revealing Labs switches nothing on.
  */
 import { lazy, Suspense, useCallback, useState } from 'react';
-import { View } from 'react-native';
 import { localizedLabel } from '@goway.to/sdk';
-import { Dialog } from '@oxy.so/bloom/dialog';
 import { Fab } from '@oxy.so/bloom/fab';
-import { Loading } from '@oxy.so/bloom/loading';
 import { RiSettings3Line } from '@oxy.so/bloom/icons/RiSettings3Line';
 
 import { useTranslation } from '@/lib/i18n';
-import { mapFeatureStore } from '@/lib/map/useMapFeatures';
+import type { MapSettingsPageId } from '@/lib/map/mapSettingsPages';
 import { MAP_SETTINGS_TRIGGER_LABEL } from '@/lib/map/mapSettingsTriggerLabel';
+import { mapFeatureStore } from '@/lib/map/useMapFeatures';
 
-const MapSettingsPanel = lazy(() =>
-  import('./MapSettingsPanel').then((chunk) => ({ default: chunk.MapSettingsPanel })),
+const MapSettingsModal = lazy(() =>
+  import('./MapSettingsModal').then((chunk) => ({ default: chunk.MapSettingsModal })),
 );
-
-/** A side sheet from a tablet up, a bottom sheet below that. */
-const PLACEMENT = { base: 'bottom', md: 'right' } as const;
 
 export interface MapSettingsButtonProps {
   /** Whether the camera is tilted — the 2D/3D control's value. */
@@ -41,14 +38,23 @@ export interface MapSettingsButtonProps {
 export function MapSettingsButton({ tilted, onTiltChange }: MapSettingsButtonProps) {
   const { locale } = useTranslation();
   const [open, setOpen] = useState(false);
+  // Requested on the first press, then kept: the chunk is never fetched for
+  // somebody who never opens settings.
+  const [loaded, setLoaded] = useState(false);
+  const [initialPage, setInitialPage] = useState<MapSettingsPageId | undefined>(undefined);
   const label = localizedLabel(MAP_SETTINGS_TRIGGER_LABEL, locale);
 
-  // The hidden way in to Labs: hold the button. It opens the dialog too, so
-  // the section that just appeared is in front of the person who asked.
-  const revealLabs = useCallback(() => {
-    mapFeatureStore.setLabs(true);
+  const show = useCallback((page?: MapSettingsPageId) => {
+    setInitialPage(page);
+    setLoaded(true);
     setOpen(true);
   }, []);
+  // The hidden way in to Labs: hold the button. It opens the modal on the
+  // Labs page, so the section that just appeared is in front of the person.
+  const revealLabs = useCallback(() => {
+    mapFeatureStore.setLabs(true);
+    show('labs');
+  }, [show]);
   const close = useCallback(() => setOpen(false), []);
 
   return (
@@ -59,32 +65,24 @@ export function MapSettingsButton({ tilted, onTiltChange }: MapSettingsButtonPro
         iconSize={22}
         accessibilityLabel={label}
         aria-expanded={open}
-        onPress={() => setOpen(true)}
+        aria-haspopup="dialog"
+        onPress={() => show()}
         onLongPress={revealLabs}
         appearance="subtle"
         tone="neutral"
         testID="map-settings"
       />
-      <Dialog
-        open={open}
-        onClose={close}
-        title={label}
-        placement={PLACEMENT}
-        scrollable
-        testID="map-settings-dialog"
-      >
-        {open ? (
-          <Suspense
-            fallback={
-              <View className="items-center justify-center py-space-24">
-                <Loading size="sm" />
-              </View>
-            }
-          >
-            <MapSettingsPanel tilted={tilted} onTiltChange={onTiltChange} onClose={close} />
-          </Suspense>
-        ) : null}
-      </Dialog>
+      {loaded ? (
+        <Suspense fallback={null}>
+          <MapSettingsModal
+            open={open}
+            onClose={close}
+            initialPage={initialPage}
+            tilted={tilted}
+            onTiltChange={onTiltChange}
+          />
+        </Suspense>
+      ) : null}
     </>
   );
 }

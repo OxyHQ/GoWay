@@ -6,7 +6,7 @@
  * Pure, and reached only from the map-feature registry (`mapFeatures.ts`,
  * `docs/MAP_FEATURES.md`), which reads the build variables and hands these
  * functions its answer as `enabled` — the build's kill switch, then the
- * person's choice in the settings dialog's Labs, then the default. The adapter
+ * person's choice in the settings modal's Labs, then the default. The adapter
  * (`components/map/city3dLayer.web.ts`) is given the result; it no longer
  * reads a flag (`components/__tests__/engine3dChunk.test.ts` pins both).
  *
