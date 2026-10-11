@@ -7,6 +7,7 @@ import { listPlaceRevisions } from '../../db/places/revisions';
 import {
   createSuiteDatabase,
   destroySuiteDatabase,
+  requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
@@ -20,6 +21,7 @@ import {
   type ErrorBody,
   type TestApi,
 } from '../../__tests__/httpHarness';
+import { defined } from '../../__tests__/defined';
 import { apiAuthor, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
 import { createPlacesRouter } from '../places';
 
@@ -62,7 +64,7 @@ beforeEach(() => {
 });
 async function place(hours: OpeningHours | undefined = ORIGINAL) {
   return createPlace(
-    suite!.db,
+    requireSuite(suite).db,
     { name: 'Atomic hours', location: { latitude: 41.39, longitude: 2.16 }, openingHours: hours },
     ACTOR,
   );
@@ -74,7 +76,11 @@ const day = (day: number, opens = '09:00', closes = '17:00') => ({
 const patch = (id: string, body: unknown, person = 'contributor') =>
   api.call<Place & ErrorBody>('PATCH', `/places/${id}`, session(person), body);
 const read = async (id: string) => (await api.call<Place>('GET', `/places/${id}`)).body;
-const revisions = (id: string) => listPlaceRevisions(suite!.db, id, 'moderation', { limit: 20 });
+/** The first change an edit's revision recorded, or a thrown error naming the gap. */
+const firstChange = <T>(edit: { item: { changes: readonly T[] } } | undefined): T =>
+  defined(defined(edit, 'a place_updated revision').item.changes[0], 'a recorded change');
+const revisions = (id: string) =>
+  listPlaceRevisions(requireSuite(suite).db, id, 'moderation', { limit: 20 });
 
 describe('weekday replacement under the place row lock', () => {
   it('preserves opening-day overnight/24h intervals and explicitly closes only the named day', async () => {
@@ -107,7 +113,7 @@ describe('weekday replacement under the place row lock', () => {
     );
     const edits = (await revisions(p.id)).filter(({ item }) => item.action === 'place_updated');
     expect(edits).toHaveLength(2);
-    expect(edits[0]!.item.changes[0]!.before).toEqual(edits[1]!.item.changes[0]!.after);
+    expect(firstChange(edits[0]).before).toEqual(firstChange(edits[1]).after);
   });
 
   it('concurrent edits of the same weekday replace the whole day in lock order', async () => {
@@ -126,10 +132,10 @@ describe('weekday replacement under the place row lock', () => {
     expect(result.map(({ status }) => status)).toEqual([200, 200]);
     const final = (await read(p.id)).openingHours;
     const edits = (await revisions(p.id)).filter(({ item }) => item.action === 'place_updated');
-    expect(edits[0]!.item.changes[0]!.after).toEqual(final);
-    expect(edits[0]!.item.changes[0]!.before).toEqual(edits[1]!.item.changes[0]!.after);
+    expect(firstChange(edits[0]).after).toEqual(final);
+    expect(firstChange(edits[0]).before).toEqual(firstChange(edits[1]).after);
     expect(patches.map((p) => p.intervals.map((i) => ({ ...i, day: 1 })))).toContainEqual(
-      final!.intervals.filter((i) => i.day === 1),
+      defined(final).intervals.filter((i) => i.day === 1),
     );
   });
 
@@ -178,7 +184,7 @@ describe('weekday replacement under the place row lock', () => {
 
   it('uses claimed-business authority and fails closed for absent credentials, denied roles and Oxy outages', async () => {
     const p = await place();
-    await createClaim(suite!.db, {
+    await createClaim(requireSuite(suite).db, {
       placeId: p.id,
       oxyAccountId: 'hours-business',
       role: 'owner',
