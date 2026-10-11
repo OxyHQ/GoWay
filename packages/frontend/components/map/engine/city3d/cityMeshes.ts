@@ -530,6 +530,12 @@ export function groundTileFor(entry: TileEntry, tile: TileId): GroundTile {
  * grounder rewrote the buffer in place. Culling bounds follow the lift.
  */
 export function applyGround(entry: TileEntry, result: GroundResult | null): void {
+  // Whether a TSL mesh read no lift until now: its programs must be rebuilt
+  // to read one (`BuildingMaterials.invalidate`). Measured on main: without
+  // this, every tile drawn before it was grounded stayed at z = 0, under the
+  // terrain — no trees on Passeig de Gràcia, and no buildings without the sky.
+  let gainedBuildingLift = false;
+  let gainedTreeLift = false;
   let at = 0;
   for (const mesh of entry.buildings) {
     const geometry = mesh.geometry;
@@ -544,6 +550,7 @@ export function applyGround(entry: TileEntry, result: GroundResult | null): void
       ) {
         if (result.changed) attribute.needsUpdate = true;
       } else {
+        if (!attribute) gainedBuildingLift = true;
         geometry.setAttribute('ground', new THREE.BufferAttribute(slice, 1));
       }
     }
@@ -556,6 +563,7 @@ export function applyGround(entry: TileEntry, result: GroundResult | null): void
     }
     at += count;
   }
+  if (gainedBuildingLift && entry.tsl.buildings) entry.tsl.pass.buildings.invalidate();
   if (!result || !entry.instances) return;
   let from = 0;
   entry.instances.ranges.forEach((count) => {
@@ -576,7 +584,9 @@ export function applyGround(entry: TileEntry, result: GroundResult | null): void
     ) {
       if (result.changed) attribute.needsUpdate = true;
     } else {
+      if (!attribute) gainedTreeLift = true;
       geometry.setAttribute('aGround', new THREE.InstancedBufferAttribute(slice, 1));
     }
   });
+  if (gainedTreeLift) entry.tsl.pass.trees.invalidate();
 }

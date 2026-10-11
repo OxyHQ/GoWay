@@ -9,6 +9,7 @@ import { describe, expect, test } from 'bun:test';
 import * as THREE from 'three';
 
 import {
+  applyGround,
   createTileEntry,
   createTreeShapes,
   groundTileFor,
@@ -172,5 +173,38 @@ describe('grounding a packed entry', () => {
     const second = grounder.ground('t@0', groundTileFor(entry as NonNullable<typeof entry>, TILE));
     expect(second?.changed).toBe(true);
     expect((second?.values[0] ?? 0) - (first?.[0] ?? 0)).toBeCloseTo(30, 3);
+  });
+
+  test('a tile drawn before it was grounded gets programs that read its lift (TSL materials rebuilt)', () => {
+    // Regression (main @432fd6a): the TSL materials read the lift only where
+    // the geometry carries it, and three rebuilds a drawn mesh's program only
+    // when its material's version moves. A tile drawn before grounding kept a
+    // program with no lift: every tree on Passeig de Gràcia stood at z = 0,
+    // under the terrain.
+    const mesh = meshBuildings(FEATURES.slice(0, 20), OPTIONS) as TileMesh;
+    const trees = packTrees([{ x: 100, y: 200, seed: 0.1, kind: 0, heightM: 10 }], SIZE);
+    const ctx = context();
+    const entry = createTileEntry(ctx, createTreeShapes(), 'g@0', 0, packMesh(mesh, SIZE), trees);
+    if (!entry) throw new Error('no entry');
+    const materials = [
+      ctx.tsl.buildings.get('openmaptiles', false),
+      ctx.tsl.buildings.get('openmaptiles', true),
+      ctx.tsl.trees.get(false),
+      ctx.tsl.trees.get(true),
+    ];
+    const before = materials.map((m) => m.version);
+    const grounder = new TileGrounder();
+    grounder.setSampler(hill);
+    applyGround(entry, grounder.ground('g@0', groundTileFor(entry, TILE)));
+    expect(entry.buildings[0].geometry.getAttribute('ground')).toBeDefined();
+    expect(entry.trees[0].geometry.getAttribute('aGround')).toBeDefined();
+    // Every variant, the dithered ones included: a fading tile swaps to them.
+    for (const [i, m] of materials.entries()) expect(m.version).toBeGreaterThan(before[i]);
+
+    // Re-grounding in place changes values, not the layout: no rebuild.
+    const settled = materials.map((m) => m.version);
+    grounder.setSampler((lng, lat) => hill(lng, lat) + 30);
+    applyGround(entry, grounder.ground('g@0', groundTileFor(entry, TILE)));
+    expect(materials.map((m) => m.version)).toEqual(settled);
   });
 });

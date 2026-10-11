@@ -177,7 +177,7 @@ and 1,309,323 triangles on the phone viewport (412×915 @2.625), 2,154,551 at
 
 | | GLSL (`WebGLRenderer`) | TSL (`WebGPURenderer`, WebGL2) |
 | --- | ---: | ---: |
-| Pixels, settled frame (phone, map area) | — | **identical** (mean difference 0; also on Park Güell's slope, terrain lift on, both building formats in view) |
+| Pixels, settled frame (phone, map area) | — | **identical** (mean difference 0; also on Park Güell's slope with both building formats in view — but see [the terrain correction](#correction-the-terrain-lift-was-not-measured)) |
 | Pixels, 1080p | — | 0.86% differ by > 8/255 without trees; 0.01% with trees |
 | Draw CPU p50 / p95, phone | 0.31–0.36 / 1.5–3.0 ms | 0.86–0.93 / 3.2–4.9 ms |
 | Draw CPU p50, 1080p | 0.34 ms | 0.88 ms |
@@ -283,6 +283,48 @@ Next, one material at a time, each deleting its GLSL twin:
 street markings (once `feat/street-detail` merges), landmarks/models, city
 life, live 3D, and the sky and shadow passes (which retire the last building
 GLSL).
+
+## Correction: the terrain lift was not measured
+
+Steps 1–3 reported the TSL materials pixel-identical "on Park Güell's slope,
+terrain lift on". **They were not.** The development environment those
+measurements ran in drew no 3D terrain (no `EXPO_PUBLIC_MAP_TERRAIN_TILES`),
+so nothing was ever lifted, on either path. With terrain, `main` after
+steps 2–3 (`432fd6a`) drew **no trees, and no buildings without the city
+sky**: everything the TSL pass drew stood at z = 0, under the terrain
+(Passeig de Gràcia, the owner's preview).
+
+**Cause.** The TSL materials read a mesh's lift (`ground`, `aGround`) only
+where its geometry carries it (`tsl/common.ts` → `terrainLift`). A tile is
+often drawn before it is grounded: terrain tiles arrive after the city tiles.
+Its program was then built with no lift, and three rebuilds a drawn mesh's
+program only when its MATERIAL's version moves. A geometry gaining an
+attribute is not enough. The GLSL path never had this: a GLSL program reads
+an unbound attribute as 0 and the bound one once it exists.
+
+**Fix.** `applyGround` (`cityMeshes.ts`) invalidates the shared TSL materials
+(`invalidate()`, every built variant) whenever a TSL mesh gains its lift for
+the first time. three then re-checks each drawn mesh's program against its
+geometry and rebuilds the ones that now read a lift. In-place re-grounding
+(new values, same layout) does not invalidate.
+
+**How it is checked now.**
+- `city3dGroundPacked.test.ts`: grounding a tile for the first time moves
+  every variant's version, in-place re-grounding does not. It fails without
+  the fix.
+- A visibility check in the A/B harness, run in the owner's configuration:
+  - Inputs: city tiles with the Catastro and NYC official data, terrain from
+    `goway.to`, sky on and off.
+  - **Terrain tiles held back 8 s**, so every tile is drawn before it can be
+    grounded: the race is forced, not left to the network.
+  - Camera: open flat at z19, then tilt with the keyboard, at local noon.
+  - It fails if the trees' canopy does not show, or if the buildings do not
+    darken the frame past the flat map.
+
+| Share of the map (Passeig de Gràcia, noon) | `main` @`432fd6a` | fixed |
+| --- | ---: | ---: |
+| Tree canopy, sky on / off (0% with trees off) | **0 / 0%** | 17.9 / 17.9% |
+| Building walls and windows, sky on / off (0.23% with the city off) | 21.1 / **0.23%** | 21.1 / 10.2% |
 
 ## The base map
 

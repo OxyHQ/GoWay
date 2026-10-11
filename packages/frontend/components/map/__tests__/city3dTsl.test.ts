@@ -93,7 +93,6 @@ describe('the TSL building material', () => {
     uOpacity: { value: 1 },
     uGrounded: { value: 0 },
   });
-  const fade = () => ({ uFadeFrom: { value: 0 }, uFadeTo: { value: 1 } });
 
   test("the engine's uniform objects drive the nodes: one source of truth", () => {
     const engine = refs();

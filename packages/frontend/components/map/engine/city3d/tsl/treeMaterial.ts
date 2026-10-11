@@ -82,6 +82,15 @@ export interface TreeUniformRefs {
 export interface TreeMaterials {
   /** The shared tree material, settled or dithered (built on first use). */
   get(dithered: boolean): MeshBasicNodeMaterial;
+  /**
+   * Rebuild every variant's programs on their next draw: a mesh's geometry
+   * gained an attribute the material reads only where present (the terrain
+   * lift, `common.ts` → `terrainLift`). three re-checks a drawn mesh's program
+   * only when its material's version moves, so without this a mesh drawn
+   * before its tile was grounded keeps a program with no lift — and stands
+   * at z = 0, under the terrain.
+   */
+  invalidate(): void;
   dispose(): void;
 }
 
@@ -106,6 +115,9 @@ export function createTreeMaterials(refs: TreeUniformRefs, side: Side): TreeMate
         built.set(isDithered, material);
       }
       return material;
+    },
+    invalidate() {
+      for (const material of built.values()) material.needsUpdate = true;
     },
     dispose() {
       for (const material of built.values()) material.dispose();
