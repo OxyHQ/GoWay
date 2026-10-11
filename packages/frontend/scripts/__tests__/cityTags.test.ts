@@ -175,6 +175,25 @@ describe('resolveProperties', () => {
     expect(roofed.roof_height_source).toBe('tag');
   });
 
+  test('a recorded height or storey count is said to be from OSM; the 5 m default is not', () => {
+    expect(resolveProperties({ building: 'yes' }, 'building', span).height_source).toBeUndefined();
+    expect(
+      resolveProperties({ building: 'yes', height: '20' }, 'building', span).height_source,
+    ).toBe('osm');
+    expect(
+      resolveProperties({ building: 'yes', 'building:levels': '6' }, 'building', span)
+        .height_source,
+    ).toBe('osm');
+    // A roof alone records no height: the block under it is still the default.
+    expect(
+      resolveProperties(
+        { building: 'yes', 'roof:shape': 'gabled', 'roof:height': '3' },
+        'building',
+        span,
+      ).height_source,
+    ).toBeUndefined();
+  });
+
   test('a tagged height is the top of the roof; the roof is carved out of it', () => {
     const props = resolveProperties(
       { building: 'yes', height: '12', 'roof:shape': 'hipped', 'roof:levels': '1' },

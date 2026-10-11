@@ -34,6 +34,7 @@ import earcut from 'earcut';
 import {
   type BuildingFeature,
   buildingSpan,
+  heightUnrecorded,
   MESH,
   type MeshTileOptions,
   polygonsOf,
@@ -203,7 +204,7 @@ export function meshBuildingsLod(
     const rawHeight = finite(feature.properties.render_height) ?? 0;
     const tone = Math.round(Math.max(0, Math.min(MESH.toneMaxM, rawHeight)));
     for (const polygon of lodPolygons(feature, options, detail, span.top)) {
-      builder.beginPolygon(boxOf(polygon[0].points));
+      builder.beginPolygon(boxOf(polygon[0].points), heightUnrecorded(feature.properties));
       meshPrism(builder, polygon, span.base, span.top, tone);
       polygons++;
     }

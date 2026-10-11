@@ -360,6 +360,8 @@ export function resolveProperties(
   props[CITY_PROPS.renderHeight] = round1(top);
   props[CITY_PROPS.renderMinHeight] = round1(base);
   if (height !== undefined) props[CITY_PROPS.height] = round1(height);
+  // Recorded by OSM; official data (`lod2`) is the only source above it.
+  if (height !== undefined || levels !== undefined) props[CITY_PROPS.heightSource] = 'osm';
   if (levels !== undefined) props[CITY_PROPS.levels] = levels;
   if (minLevel !== undefined) props[CITY_PROPS.minLevel] = minLevel;
   if (shape) {

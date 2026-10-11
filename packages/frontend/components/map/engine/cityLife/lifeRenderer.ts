@@ -349,10 +349,9 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
 
   // ── Terrain: each agent stands on the ground the buildings and trees do ──
   //
-  // Not the raw sampler: the drawn terrain is a SURFACE model that reads roof
-  // tops, so `terrainGround.ts` opens it (`groundGrid`) into the ground under
-  // the blocks, per tile, and buildings and trees read that grid. Cars and
-  // people read the same grid — z15 tiles, the city tiles' own — bilinearly.
+  // The grid buildings and trees read (`terrainGround.ts` → `groundGrid`: the
+  // drawn terrain, sampled per tile), so an agent agrees with the kerb beside
+  // it. Cars and people read it on z15 tiles, the city tiles' own, bilinearly.
   let sampler: GroundSampler | null = null;
   const grids = new Map<string, Float32Array>();
   let groundOrigin = '';

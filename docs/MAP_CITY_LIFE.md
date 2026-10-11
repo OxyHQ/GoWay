@@ -199,8 +199,8 @@ overlapping.
   scene, camera, depth buffer, light and terrain as the buildings — one
   renderer, as `MAP_3D_CITY.md` → "One engine, one scene" requires. Buildings
   occlude cars behind them; on 3D terrain agents stand on the SAME ground
-  the buildings and trees do — `terrainGround.ts`'s opened grid (the surface
-  model with roofs and canopy removed), per z15 tile, read bilinearly.
+  the buildings and trees do — `terrainGround.ts`'s ground grid (the drawn
+  terrain, sampled), per z15 tile, read bilinearly.
 - **Soft maquette vehicles** (`agentModels.ts`): hatchback, saloon, van, bus
   and — only where a city's taxis wear a statutory livery — taxi. Every body,
   cabin and band is a superellipsoid (a box with every edge and corner

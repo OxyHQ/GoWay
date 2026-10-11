@@ -39,6 +39,12 @@ export interface OsmBuilding {
   base: number;
   /** Recorded storeys (`building:levels`); absent means "not recorded", never 0. */
   levels?: number;
+  /**
+   * Whether anything records the building's height (`height_source`, or a
+   * `height` / `levels` an older tile carries). `false`: the top is the 5 m
+   * default. Absent is treated as recorded.
+   */
+  heightRecorded?: boolean;
   minLevel?: number;
   roof?: {
     shape: RoofShape;
@@ -95,9 +101,13 @@ export function buildingFromProperties(
   const top = metres(properties[CITY_PROPS.renderHeight], false) ?? UNKNOWN_HEIGHT_M;
   let base = metres(properties[CITY_PROPS.renderMinHeight], true) ?? 0;
   if (base >= top) base = 0;
-  const building: OsmBuilding = { id, rings, top, base };
-
   const levels = count(properties[CITY_PROPS.levels]);
+  const heightRecorded =
+    typeof properties[CITY_PROPS.heightSource] === 'string' ||
+    metres(properties[CITY_PROPS.height], false) !== undefined ||
+    levels !== undefined;
+  const building: OsmBuilding = { id, rings, top, base, heightRecorded };
+
   if (levels !== undefined) building.levels = levels;
   const minLevel = count(properties[CITY_PROPS.minLevel]);
   if (minLevel !== undefined) building.minLevel = minLevel;

@@ -96,6 +96,7 @@ class Builder {
   indexCount = 0;
   private readonly unitStarts: number[] = [];
   private readonly unitBoxes: number[] = [];
+  private readonly unitHeightDefault: number[] = [];
   readonly min: [number, number, number] = [Infinity, Infinity, Infinity];
   readonly max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
 
@@ -171,10 +172,15 @@ class Builder {
    * Record one building's vertices, from `start` to here, as one unit placed on
    * terrain (`terrainGround.ts`), with its footprint's box in local metres.
    */
-  building(start: number, box: readonly [number, number, number, number]): void {
+  building(
+    start: number,
+    box: readonly [number, number, number, number],
+    heightDefault = false,
+  ): void {
     if (this.vertexCount <= start) return;
     this.unitStarts.push(start);
     this.unitBoxes.push(...box);
+    this.unitHeightDefault.push(heightDefault ? 1 : 0);
   }
 
   finish(polygons: number): OsmTileMesh | null {
@@ -190,6 +196,7 @@ class Builder {
       polygons,
       polygonStarts: Uint32Array.from(this.unitStarts),
       polygonBoxes: Float32Array.from(this.unitBoxes),
+      polygonHeightDefault: Uint8Array.from(this.unitHeightDefault),
     };
   }
 }
@@ -663,7 +670,12 @@ export function meshOsmBuildings(
     polygons += meshOsmBuilding(builder, building, scale, i, partyWalls);
     // A whole building (all its polygons) stands on ONE ground, so a
     // multipolygon's pieces stay level with each other on a slope.
-    builder.building(start, footprintBox(building.rings, scale));
+    // Whether its height is the 5 m default rather than recorded.
+    builder.building(
+      start,
+      footprintBox(building.rings, scale),
+      building.heightRecorded === false && building.base === 0,
+    );
   });
   return builder.finish(polygons);
 }
