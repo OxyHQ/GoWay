@@ -70,7 +70,7 @@ const BUILD_DIR = join(FRONTEND_ROOT, '.tiles');
  * never fetched by this script, so the compiler never runs on bytes nobody
  * chose).
  */
-const AREAS: Record<string, { bbox: [number, number, number, number]; extract: string }> = {
+export const AREAS: Record<string, { bbox: [number, number, number, number]; extract: string }> = {
   barcelona: {
     bbox: [2.052, 41.317, 2.228, 41.468],
     extract: 'https://download.geofabrik.de/europe/spain/cataluna-latest.osm.pbf',
