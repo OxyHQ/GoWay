@@ -4,7 +4,8 @@
  * engine in `engine/city3d/`.
  *
  * Reached ONLY through `import('./city3dLayer.web')` in `MapCanvas.web.tsx`,
- * and only when `isCity3dRequested` says so; it in turn loads the engine (and
+ * and only when the map-feature registry's `city3d` says so (or a caller has
+ * models to draw); it in turn loads the engine (and
  * three.js) through `components/engine3d/lazyChunk.ts`, the one async boundary
  * all three.js consumers share. With the flag off neither chunk is requested,
  * and the style, the layer list and the first-paint bundles are what they were
@@ -66,7 +67,6 @@ import {
 } from '@/lib/map/cityTiles';
 import { isCityLifeRequested, MAP_CITY_LIFE_ENABLED } from '@/lib/map/cityLifeFlag';
 import { CITY_ROAD_TILE_PATH } from '@/lib/map/cityRoads';
-import { isCityTilesRequested, MAP_CITY_TILES_ENABLED } from '@/lib/map/cityTilesFlag';
 import type { PreparedLandmark } from '@/lib/map/landmarks/load';
 import { nightFactor } from '@/lib/map/landmarks/night';
 import { isLandmarksRequested } from '@/lib/map/landmarksFlag';
@@ -238,6 +238,13 @@ export interface AttachCity3dOptions {
    * shared depth buffer. Defaults to `true`.
    */
   buildings?: boolean;
+  /**
+   * Read the buildings from GoWay's own city tiles (`docs/MAP_3D_CITY.md` →
+   * Phase 2) rather than the basemap's `building` layer: the map-feature
+   * registry's `cityTiles` answer, which `MapCanvas.web.tsx` reads live and
+   * re-attaches on. Ignored without `buildings`. Defaults to `false`.
+   */
+  cityTiles?: boolean;
   /** A model was drawn, or fell back to its marker. */
   onModelStatus?: (id: string, status: ModelStatus) => void;
   /**
@@ -312,15 +319,7 @@ export async function attachCity3d(
   const { createCityEngine, createCityLife } = await import('@/components/engine3d/lazyChunk');
   // City tiles replace the BUILDINGS' source; a models-only engine (the city
   // flag off) draws no buildings, so it never asks.
-  const cityTiles =
-    buildings &&
-    isCityTilesRequested({
-      city3d: true,
-      enabled: MAP_CITY_TILES_ENABLED,
-      // `typeof`: the bun tests that attach to a fake map run without the global.
-      development: typeof __DEV__ !== 'undefined' && __DEV__,
-      search: typeof window !== 'undefined' ? window.location.search : '',
-    });
+  const cityTiles = buildings && options.cityTiles === true;
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   // The simulation drives on the road archive compiled beside the city tiles,
   // so it needs both flags above it (`lib/map/cityLifeFlag.ts`).

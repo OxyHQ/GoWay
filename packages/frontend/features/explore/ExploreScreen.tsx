@@ -62,10 +62,7 @@ import { MAP_SHEET_HALF_RATIO, MapSheet, type MapSheetSnap } from '@/components/
 import { SidePanel } from '@/components/sheet/SidePanel';
 import { PANEL_WIDTH, useLayoutMode } from '@/lib/useLayoutMode';
 import { useAuthGate } from '@/lib/authGate';
-import { MAP_CITY3D_ENABLED, MAP_FLYOVER_ENABLED, MAP_LANDMARKS_ENABLED } from '@/lib/config';
-import { isCity3dRequested } from '@/lib/map/city3dFlag';
-import { isFlyoverRequested } from '@/lib/map/flyoverFlag';
-import { isLandmarksRequested } from '@/lib/map/landmarksFlag';
+import { useMapFeature } from '@/lib/map/useMapFeatures';
 import { useTranslation } from '@/lib/i18n';
 import type { LocationErrorReason } from '@/lib/map/useUserLocation';
 
@@ -76,6 +73,7 @@ import { useStreet3dLayer } from '@/features/street3d/useStreet3dLayer';
 import { ExploreBody, ExploreHeader, type RenderPlaceActions } from './ExploreContent';
 import { ExploreMarker } from './ExploreMarker';
 import { clampFitPadding } from './mapPadding';
+import { MapLayersButton } from './MapLayersButton';
 import { MapTopBar } from './MapTopBar';
 import { useExplore } from './useExplore';
 
@@ -83,6 +81,10 @@ import { useExplore } from './useExplore';
 const MY_LOCATION_ZOOM = 15;
 /** Below this the compass is effectively north and the reset control is noise. */
 const BEARING_EPSILON = 1;
+/** The layers panel's "3D": the steepest tilt the shipped map allows. */
+const TILTED_PITCH = 60;
+/** At or above this the camera reads as 3D in the layers panel. */
+const TILTED_EPSILON = 5;
 /** Horizontal room the location notice leaves for the controls column. */
 const CONTROLS_COLUMN_WIDTH = 72;
 /** Wait for the 3D → 2D transition before framing the scene's bounds. */
@@ -201,15 +203,12 @@ export interface ExploreScreenProps {
 }
 
 /**
- * The route flyover (`docs/MAP_CAMERA_STUDIO.md`): decided once per page load,
- * and loaded only through `features/flyover/lazy.ts`, so with the flag off
- * this screen gains a constant and an `import()` stub and nothing else.
+ * The route flyover (`docs/MAP_CAMERA_STUDIO.md`), loaded only through
+ * `features/flyover/lazy.ts`: with the feature off this screen gains an
+ * `import()` stub and nothing else. Whether it is on is the map-feature
+ * registry's `flyover`, read live below, so turning it on in the layers panel
+ * offers "Fly the route" at once.
  */
-const FLYOVER = isFlyoverRequested({
-  enabled: MAP_FLYOVER_ENABLED,
-  development: __DEV__,
-  search: typeof window !== 'undefined' ? window.location.search : '',
-});
 const RouteFlyover = lazy(() =>
   import('@/features/flyover/lazy').then((chunk) => ({ default: chunk.RouteFlyover })),
 );
@@ -328,6 +327,8 @@ export default function ExploreScreen({
   );
 
   const [bearing, setBearing] = useState(0);
+  const [pitch, setPitch] = useState(0);
+  const flyover = useMapFeature('flyover');
   const [mapError, setMapError] = useState<MapCanvasError | null>(null);
   // While the flyover flies, the sheet, the panel and the floating controls
   // step aside; the vehicle is a model on the canvas.
@@ -371,7 +372,8 @@ export default function ExploreScreen({
   const handleViewportChange = useCallback(
     (change: MapViewportChange) => {
       setBearing(change.viewport.bearing);
-      if (LANDMARKS) {
+      setPitch(change.viewport.pitch);
+      if (landmarks) {
         if (change.source === 'user') for (const listener of userMoveListeners.current) listener();
         if (change.isFinal) {
           setSettledCentre({
@@ -397,6 +399,16 @@ export default function ExploreScreen({
 
   const handleResetNorth = useCallback(() => {
     mapRef.current?.resetNorth();
+  }, []);
+
+  /** The layers panel's 2D/3D: tilt or level the camera where it already is. */
+  const handleTiltChange = useCallback((tilted: boolean) => {
+    const map = mapRef.current;
+    if (!map) return;
+    void map.getViewport().then((viewport) => {
+      if (!viewport) return;
+      map.moveTo(viewport, { pitch: tilted ? TILTED_PITCH : 0 });
+    });
   }, []);
 
   /**
@@ -559,7 +571,7 @@ export default function ExploreScreen({
           </View>
         ) : null}
 
-        {LANDMARKS && !mapError ? (
+        {landmarks && !mapError ? (
           <Suspense fallback={null}>
             <LandmarkOverlay
               mapRef={mapRef}
@@ -574,7 +586,7 @@ export default function ExploreScreen({
           </Suspense>
         ) : null}
 
-        {FLYOVER && directions.active && directions.route && !mapError ? (
+        {flyover && directions.active && directions.route && !mapError ? (
           <Suspense fallback={null}>
             <RouteFlyover
               route={directions.route}
@@ -611,6 +623,7 @@ export default function ExploreScreen({
                 tone="neutral"
               />
             ) : null}
+            <MapLayersButton tilted={pitch >= TILTED_EPSILON} onTiltChange={handleTiltChange} />
             <Fab
               icon={RiFocus3Line}
               iconSize={22}

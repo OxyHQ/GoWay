@@ -1,7 +1,6 @@
 /** Runtime configuration, read from `EXPO_PUBLIC_*` env vars (see `.env.example`). */
 import { DEFAULT_GOWAY_WEB_BASE_URL } from '@goway.to/sdk';
 import { DEFAULT_MERCARIA_API_BASE_URL } from '@mercaria.co/sdk';
-import { enabledUnlessKilled } from './map/reliefFlag';
 
 /** Backend API base URL. */
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://api.goway.to';
@@ -68,74 +67,10 @@ export const STREET3D_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_STREE
  */
 export const STREET3D_ASSET_ORIGIN = origin(process.env.EXPO_PUBLIC_STREET3D_ASSET_ORIGIN);
 
-/**
- * Whether the city-3D PROTOTYPE replaces the map's `fill-extrusion` buildings
- * with bevelled, occlusion-shaded meshes (web only; `docs/MAP_3D_CITY.md`).
- *
- * Off unless `EXPO_PUBLIC_MAP_CITY3D` is `1`/`true`, and no production
- * deployment sets it. A development build can also turn it on per tab with
- * `?city3d=1` (`lib/map/city3dFlag.ts`); a production build ignores that.
- * When off, nothing about the map changes: the engine is a separate chunk that
- * is never requested and `building-3d` draws as it always has.
+/*
+ * The map's optional features — the 3D city, city tiles, the globe, terrain,
+ * the route flyover — are NOT here: each is an entry in the map-feature
+ * registry (`lib/map/mapFeatures.ts`), which reads its `EXPO_PUBLIC_MAP_*`
+ * build switch there and combines it with the person's choice in the layers
+ * panel. See `docs/MAP_FEATURES.md`.
  */
-export const MAP_CITY3D_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_MAP_CITY3D ?? '');
-
-/**
- * Whether the route flyover and Camera Studio are on (`docs/MAP_CAMERA_STUDIO.md`).
- *
- * Off unless `EXPO_PUBLIC_MAP_FLYOVER` is `1`/`true`, and no production
- * deployment sets it. A development build can also turn it on per tab with
- * `?flyover=1` (`lib/map/flyoverFlag.ts`); a production build ignores that.
- * When off, the directions planner shows no "Fly the route", `/studio`
- * redirects to the map, and the feature's chunk is never requested.
- */
-export const MAP_FLYOVER_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_MAP_FLYOVER ?? '');
-
-/**
- * Whether the map draws the world as a GLOBE at low zoom (MapLibre's `globe`
- * projection, easing into mercator by z12) with a space backdrop and a glow
- * (web only; `docs/MAP_TERRAIN_GLOBE.md`).
- *
- * ON by default, production included. `EXPO_PUBLIC_MAP_GLOBE=0` (or `false`)
- * is the build-time kill switch; a development build also honours `?globe=0`
- * per tab (`lib/map/reliefFlag.ts`), which a production build ignores.
- */
-export const MAP_GLOBE_ENABLED = enabledUnlessKilled(process.env.EXPO_PUBLIC_MAP_GLOBE);
-
-/**
- * Whether the map draws real relief: a hillshade, and 3D terrain once the
- * camera is tilted, from GoWay's DEM tiles (`docs/MAP_TERRAIN_GLOBE.md`).
- * Native draws the hillshade only (its MapLibre has no terrain API).
- *
- * ON by default, production included. `EXPO_PUBLIC_MAP_TERRAIN=0` (or `false`)
- * is the build-time kill switch; a development build also honours
- * `?terrain=0` per tab, which a production build ignores.
- */
-export const MAP_TERRAIN_ENABLED = enabledUnlessKilled(process.env.EXPO_PUBLIC_MAP_TERRAIN);
-
-/**
- * Whether hand-crafted 3D LANDMARKS replace their buildings in the city-3D
- * scene, with the landmark tour (`docs/MAP_LANDMARKS.md`; web only).
- *
- * Off unless `EXPO_PUBLIC_MAP_LANDMARKS` is `1`/`true`, and no production
- * deployment sets it. A development build can also turn it on per tab with
- * `?landmarks=1` (`lib/map/landmarksFlag.ts`); a production build ignores
- * that. It takes effect only where the city-3D engine draws GoWay city tiles
- * (the landmarks replace per-building OSM ids), so it is inert without them.
- */
-export const MAP_LANDMARKS_ENABLED = /^(1|true)$/i.test(
-  process.env.EXPO_PUBLIC_MAP_LANDMARKS ?? '',
-);
-
-/**
- * Whether the city-3D layer also draws a physically based sky, distance haze
- * over the basemap and the buildings, real sun shadows, and a time-of-day
- * scrubber (web only; `docs/MAP_3D_CITY.md` → "Phase 3: sky, atmosphere,
- * shadows and time of day").
- *
- * Off unless `EXPO_PUBLIC_MAP_CITY_SKY` is `1`/`true`, and it needs the
- * city-3D layer itself (`MAP_CITY3D_ENABLED` or `?city3d=1`): the sky is part
- * of that layer. A development build can turn it on per tab with
- * `?citysky=1` (`lib/map/citySkyFlag.ts`); a production build ignores that.
- */
-export const MAP_CITY_SKY_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_MAP_CITY_SKY ?? '');

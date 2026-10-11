@@ -3,9 +3,10 @@
  *
  * Two ways in, deliberately unequal:
  *
- *  - `EXPO_PUBLIC_MAP_CITY3D=1` (`MAP_CITY3D_ENABLED` in `lib/config.ts`): a
- *    BUILD decision. Every page of that build gets it. No production deployment
- *    sets it.
+ *  - `enabled`: the map-feature registry's answer (`mapFeatures.ts`) — the
+ *    build's `EXPO_PUBLIC_MAP_CITY3D` (`0` kills it, `1` makes it the build's
+ *    default; no production deployment sets it), then the person's own
+ *    choice in the layers panel's Labs section.
  *  - `?city3d=1` on the URL: a per-tab switch for looking at the prototype
  *    beside the shipped map without rebuilding — honoured ONLY in a
  *    development build (`__DEV__`), so a link cannot turn an experimental
@@ -15,7 +16,7 @@
  * string" rule is a test rather than a comment (`__tests__/city3dFlag.test.ts`).
  */
 export function isCity3dRequested(input: {
-  /** `MAP_CITY3D_ENABLED`. */
+  /** The registry's answer for `city3d` (`mapFeatures.ts`): build, then the person's choice. */
   enabled: boolean;
   /** `__DEV__`. */
   development: boolean;

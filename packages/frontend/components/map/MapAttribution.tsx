@@ -51,7 +51,7 @@ import { useBottomEdgeInset } from '@oxy.so/bloom/layout';
 
 import { type MapAttributionLink, resolveMapAttribution } from '@/lib/map/provider';
 import { MAP_BRAND_CLEARANCE } from './MapBrand';
-import { MAP_RELIEF } from './reliefFlags';
+import { useMapRelief } from './reliefFlags';
 
 /** Breathing room between the credit and whatever is below it. */
 const ATTRIBUTION_GAP = 4;
@@ -66,7 +66,8 @@ const NO_EXTRA: readonly MapAttributionLink[] = [];
 function MapAttributionComponent({ extra = NO_EXTRA }: { extra?: readonly MapAttributionLink[] }) {
   // The elevation credit rides along whenever the relief prototype draws
   // terrain or a hillshade (`docs/MAP_TERRAIN_GLOBE.md`).
-  const attribution = resolveMapAttribution({ terrain: MAP_RELIEF.terrain });
+  const relief = useMapRelief();
+  const attribution = resolveMapAttribution({ terrain: relief.terrain });
   const links = extra.length > 0 ? [...attribution.links, ...extra] : attribution.links;
   const bottomEdge = useBottomEdgeInset();
 

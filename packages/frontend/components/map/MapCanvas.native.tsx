@@ -72,7 +72,7 @@ import { MapAttribution } from './MapAttribution';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
 import { drawableModels, modelFallbackMarker, modelIdOfMarker } from './models';
-import { MAP_RELIEF } from './reliefFlags';
+import { useMapRelief } from './reliefFlags';
 import {
   asFinite,
   describeNumbers,
@@ -180,10 +180,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // The relief prototype's hillshade, under `water` — only on GoWay's own style,
   // which promises that layer (`docs/MAP_TERRAIN_GLOBE.md`). The rest of the
   // relief (globe, 3D terrain, sky) has no API in maplibre-react-native 11.4.
+  // A toggle in the layers panel adds or removes it live.
+  const { terrain } = useMapRelief();
   const hillshade = useMemo(
-    () =>
-      MAP_RELIEF.terrain && resolveOwnsStyleDocument() ? hillshadeLayer(resolvedAppearance) : null,
-    [resolvedAppearance],
+    () => (terrain && resolveOwnsStyleDocument() ? hillshadeLayer(resolvedAppearance) : null),
+    [terrain, resolvedAppearance],
   );
   const gestures = resolveInteraction(interaction);
 

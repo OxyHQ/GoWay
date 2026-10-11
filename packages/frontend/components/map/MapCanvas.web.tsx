@@ -54,9 +54,8 @@ import * as Location from 'expo-location';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
-import { MAP_CITY3D_ENABLED, MAP_CITY_SKY_ENABLED } from '@/lib/config';
-import { isCity3dRequested } from '@/lib/map/city3dFlag';
 import { isReliefId, mapStyleLoading } from '@/lib/map/reliefFlag';
+import { useMapFeature } from '@/lib/map/useMapFeatures';
 import { isCitySkyRequested, maxPitchFor } from '@/lib/map/citySkyFlag';
 import {
   type MapAttributionLink,
@@ -81,7 +80,7 @@ import {
 import { MapAttribution } from './MapAttribution';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
-import { MAP_RELIEF } from './reliefFlags';
+import { initialMapRelief, useMapRelief } from './reliefFlags';
 import type { ReliefHandle } from './reliefLayer.web';
 import {
   drawableModels,
@@ -116,6 +115,7 @@ import {
   type MapMarker,
   type MapMoveSource,
   type MapOverlay,
+  type MapViewport,
   type ResolvedMapViewport,
 } from './types';
 import { useSunLight } from './useSunLight';
@@ -138,27 +138,26 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * Whether this page draws buildings with the city-3D prototype instead of the
- * style's `building-3d` extrusion. Decided once per page load; see
- * `lib/map/city3dFlag.ts` and `docs/MAP_3D_CITY.md`.
+ * The relief chunk (globe, sky, hillshade, terrain), requested once and then
+ * shared. See `lib/map/reliefFlag.ts` and `docs/MAP_TERRAIN_GLOBE.md`.
  */
-const CITY3D = isCity3dRequested({
-  enabled: MAP_CITY3D_ENABLED,
-  development: __DEV__,
-  search: typeof window !== 'undefined' ? window.location.search : '',
-});
+let reliefChunk: Promise<typeof import('./reliefLayer.web')> | null = null;
+function loadReliefChunk(): Promise<typeof import('./reliefLayer.web')> {
+  if (!reliefChunk) {
+    reliefChunk = import('./reliefLayer.web');
+    // Handled where it is used; this only keeps a failed download from also
+    // surfacing as an unhandled rejection before any map exists.
+    reliefChunk.catch(() => {});
+  }
+  return reliefChunk;
+}
 
-/**
- * The relief prototype's chunk (globe, sky, hillshade, terrain), requested at
- * module evaluation when this page asked for either — long before any style
- * document arrives, so the globe is in place before the first frame rather
- * than replacing a flat one. `null`, and never requested, with both flags off.
- * See `lib/map/reliefFlag.ts` and `docs/MAP_TERRAIN_GLOBE.md`.
- */
-const RELIEF_CHUNK = MAP_RELIEF.globe || MAP_RELIEF.terrain ? import('./reliefLayer.web') : null;
-// Handled where it is used; this only keeps a failed download from also
-// surfacing as an unhandled rejection before any map exists.
-RELIEF_CHUNK?.catch(() => {});
+// Requested at module evaluation when this page draws either — long before any
+// style document arrives, so the globe is in place before the first frame
+// rather than replacing a flat one. Never requested while both are off; turned
+// on later from the layers panel, it is requested then.
+const INITIAL_RELIEF = initialMapRelief();
+if (INITIAL_RELIEF.globe || INITIAL_RELIEF.terrain) loadReliefChunk();
 
 const NO_CREDITS: readonly MapAttributionLink[] = [];
 
@@ -242,6 +241,24 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const theme = useTheme();
   const hostRef = useRef<View | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+
+  // The optional features (`lib/map/mapFeatures.ts`), live: a toggle in the
+  // layers panel re-renders this, and the effects below attach, detach or
+  // rebuild accordingly.
+  const city3d = useMapFeature('city3d');
+  const cityTiles = useMapFeature('cityTiles');
+  const relief = useMapRelief();
+  /**
+   * What the last engine was built for, and where its camera was when it went.
+   * A rebuild for a RELIEF toggle (same style, same retry) starts where the
+   * person was looking; an appearance change or a retry still starts at
+   * `initialViewport`, as before — `useSunLight` is keyed on exactly those two.
+   */
+  const lastEngine = useRef<{
+    styleUrl: string;
+    reloadKey: number;
+    camera: MapViewport | null;
+  } | null>(null);
   const markerSlots = useRef<Map<string, MarkerSlot>>(new Map());
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
   const lastMoveEmit = useRef(0);
@@ -344,11 +361,19 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     const container = hostRef.current as unknown as HTMLDivElement | null;
     if (!container) return;
 
+    // A relief toggle rebuilds the engine (the globe is part of how the style
+    // is loaded); it must not also move the camera.
+    const previous = lastEngine.current;
+    const resume =
+      previous?.styleUrl === styleUrl && previous.reloadKey === reloadKey ? previous.camera : null;
+    const containerBackground = container.style.background;
+
     // A camera the engine cannot build is not a reason to have no map: the
     // world view is a truthful starting frame, and whoever passed the bad one
     // is named in the console rather than in an error boundary.
-    const start = isDrawableCoordinate(initialViewport) ? initialViewport : DEFAULT_VIEWPORT;
-    if (start !== initialViewport) {
+    const start =
+      resume ?? (isDrawableCoordinate(initialViewport) ? initialViewport : DEFAULT_VIEWPORT);
+    if (!resume && start !== initialViewport) {
       reportMapDefect(
         'viewport:initial',
         'initialViewport is not drawable; opened on the default camera.',
@@ -358,7 +383,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     // With the globe flag on, the style goes in through `setStyle` with the
     // globe projection folded into the document, so the first frame is
     // already a globe; off, this is the constructor it always was.
-    const styleLoading = mapStyleLoading(styleUrl, MAP_RELIEF.globe);
+    const styleLoading = mapStyleLoading(styleUrl, relief.globe);
     if (styleLoading.background !== null) container.style.background = styleLoading.background;
     let map: maplibregl.Map;
     try {
@@ -390,15 +415,19 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     // Relief (globe, sky, hillshade, terrain), off unless asked for. Attached
     // per map, before its style loads; `resolvedAppearance` is read here
     // because a change of it is a change of `styleUrl`, which rebuilds the map.
-    let relief: ReliefHandle | null = null;
+    let reliefHandle: ReliefHandle | null = null;
     let reliefCancelled = false;
-    RELIEF_CHUNK?.then(({ attachRelief }) => {
-      if (!reliefCancelled) {
-        relief = attachRelief(map, { flags: MAP_RELIEF, appearance: resolvedAppearance });
-      }
-    }).catch((cause: unknown) => {
-      reportMapDefect('relief:load', `relief: not attached (${String(cause)}); flat map kept.`);
-    });
+    if (relief.globe || relief.terrain) {
+      loadReliefChunk()
+        .then(({ attachRelief }) => {
+          if (!reliefCancelled) {
+            reliefHandle = attachRelief(map, { flags: relief, appearance: resolvedAppearance });
+          }
+        })
+        .catch((cause: unknown) => {
+          reportMapDefect('relief:load', `relief: not attached (${String(cause)}); flat map kept.`);
+        });
+    }
 
     // Captured for the cleanup below: the ref's identity is stable for the
     // component's life, but ESLint cannot know that, and copying it is free.
@@ -675,13 +704,27 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       userMarkerRef.current = null;
       setReady(false);
       reliefCancelled = true;
-      relief?.detach();
+      reliefHandle?.detach();
+      let camera: MapViewport | null = null;
+      runEngineCommand('getCenter', () => {
+        const centre = map.getCenter();
+        camera = {
+          latitude: centre.lat,
+          longitude: centre.lng,
+          zoom: map.getZoom(),
+          bearing: map.getBearing(),
+          pitch: map.getPitch(),
+        };
+      });
+      lastEngine.current = { styleUrl, reloadKey, camera };
       map.remove();
+      // The globe's space backdrop belongs to the engine that drew a globe.
+      container.style.background = containerBackground;
       mapRef.current = null;
     };
     // `initialViewport` is initial by contract — re-reading it here would make
     // a parent's inline object literal reset the camera on every render.
-  }, [styleUrl, reloadKey, emitError, settleSunLight]);
+  }, [styleUrl, reloadKey, relief, emitError, settleSunLight]);
 
   // --- Buildings light ----------------------------------------------------
 
@@ -865,6 +908,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     city3dRef.current?.setLight(sunLight.light);
   }, [sunLight.light]);
 
+  // A toggle of `city3d` or `cityTiles` in the layers panel re-runs this
+  // effect: the old layer detaches (giving `building-3d` back) and, if still
+  // wanted, a new one attaches — live, without rebuilding the map.
+  //
   // With the flag off this effect returns on its first line and the dynamic
   // `import()` below is never evaluated, so the engine chunk (three.js and the
   // mesh worker) is never requested and the style is never touched. With it
@@ -876,7 +923,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // flag off but models to draw, it attaches with `buildings: false` — no
   // tiles, `building-3d` untouched — so a map has at most ONE three.js layer.
   // With neither, nothing is requested.
-  const needsEngine = CITY3D || wantsModelEngine;
+  const needsEngine = city3d || wantsModelEngine;
   useEffect(() => {
     const map = mapRef.current;
     if (!needsEngine || !map || !ready) return;
@@ -889,7 +936,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           : attachCity3d(map, {
               appearance: resolvedAppearance,
               light: city3dLightRef.current,
-              buildings: CITY3D,
+              buildings: city3d,
+              cityTiles,
               onModelStatus: (id, status) =>
                 setModelsDrawn((current) => {
                   if ((status === 'drawn') === current.has(id)) return current;
@@ -939,7 +987,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       handle?.detach();
       if (CITY_SKY) setSkyActive(false);
     };
-  }, [ready, resolvedAppearance, needsEngine]);
+  }, [ready, resolvedAppearance, needsEngine, city3d, cityTiles]);
 
   // Hand the models to the engine whenever either changes.
   useEffect(() => {

@@ -2,8 +2,10 @@
  * Whether this page draws the globe, and terrain — both ON by default, with
  * two ways to turn either off, deliberately unequal (`docs/MAP_TERRAIN_GLOBE.md`):
  *
- *  - `EXPO_PUBLIC_MAP_GLOBE=0` / `EXPO_PUBLIC_MAP_TERRAIN=0` (`lib/config.ts`):
- *    a BUILD decision, the kill switch. Every page of that build loses it.
+ *  - `EXPO_PUBLIC_MAP_GLOBE=0` / `EXPO_PUBLIC_MAP_TERRAIN=0`, read by the
+ *    map-feature registry (`mapFeatures.ts`): a BUILD decision, the kill
+ *    switch. Every page of that build loses it. Short of that, the person can
+ *    switch either off in the layers panel, on this device.
  *  - `?globe=0` / `?terrain=0` (or `=1` to turn a killed one back on) on the
  *    URL: a per-tab switch for comparing beside the flat map without
  *    rebuilding — honoured ONLY in a development build (`__DEV__`), so a link
@@ -39,7 +41,7 @@ export function enabledUnlessKilled(value: string | undefined): boolean {
 export type ReliefFeature = 'globe' | 'terrain';
 
 export interface ReliefFlagInput {
-  /** `MAP_GLOBE_ENABLED` / `MAP_TERRAIN_ENABLED` from `lib/config.ts` (on unless killed). */
+  /** The registry's answers for `globe` / `terrain` (`mapFeatures.ts`; on unless killed or switched off). */
   enabled: Readonly<Record<ReliefFeature, boolean>>;
   /** `__DEV__`. */
   development: boolean;
