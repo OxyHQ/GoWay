@@ -1385,6 +1385,68 @@ the openings to the material.
   walls, `floodlit=yes` uplighting and landmark glow are the sky's and the
   landmarks' (they arrive as `emitted` and as the landmark models).
 
+### Facades
+
+Apple's near views (Rockefeller Center at night, the owner's `nav1`/`nav2`)
+read as architecture, not boxes: piers between window columns, windows set back
+in frames, cornices and setback ledges, a distinct ground floor. The detailed
+look draws the same vocabulary as **relief on the recorded storey rhythm**,
+inside its one material response (`materials.ts` → `gowayFacade`), and only up
+close.
+
+**Data, and the honesty line.** Nothing is drawn that the data does not
+support:
+
+- The grid is the RECORDED storey rhythm (`facades.ts`): `building:levels`,
+  or the Catastro's official storey count where the official-data tiles set it
+  (`official_levels`, which the decoder already prefers). No count, no grid, no
+  relief: a plain wall.
+- The STYLE varies by two recorded facts the compiler now keeps
+  (`lib/map/cityTiles.ts`): `use`, a class from `building=*` (`residential`,
+  `commercial`, `civic`, `religious`, `industrial`; `yes` and anything unlisted
+  is none), and `era`, a bucket from `start_date` (before 1900, 1900–1944,
+  1945 on; only a leading 4-digit year is read). A `building:part` inherits
+  both from its outline (Barcelona is drawn entirely as Catastro parts). They
+  ride in the per-vertex flag byte (`osmMesher.ts` → `buildingFlagsOf`: bit 0
+  floodlit, bits 1–3 class, bits 4–5 era).
+- The style is a TYPE, never a survey: an office gets piers because offices
+  of that kind tend to have them, not because this one is known to. No
+  signage, names, storefronts or doors come from any of it.
+
+Coverage in the rebuilt archives (2026-10 extracts): Barcelona 86% of
+features carry a class (mostly inherited) and 1.2% an era; Manhattan 18% and
+6.6%. **Rockefeller Center itself records no storeys in OSM**, so its towers
+stay plain walls: the relief shows on its neighbours that do (a 6th Avenue
+block), not on the complex `nav1` shows.
+
+**What is drawn** (per-class numbers in `FACADE_STYLES`, generated into the
+GLSL; era nudges them):
+
+| Element | How |
+| --- | --- |
+| Window grid | One opening per bay × recorded storey; size per class (offices wide and tall, civic and religious narrow and tall, industrial high strips) |
+| Recess + frame | The opening sits 6–18 cm back: shaded, most under its head; a thin lighter frame around it |
+| Piers | Commercial, civic and religious walls (and anything 1900–1944) raise 16–26 cm piers between window columns |
+| Cornice | The top 0.3–0.6 m of every part's recorded storeys projects 20–40 cm (heavier before 1900, lighter after 1945) — every setback is a part, so every setback gets its ledge |
+| Ground floor | On three storeys or more: a taller first-floor opening, a slightly darker plinth, and a string course over it |
+
+The relief is a height field over the wall whose slope is computed
+ANALYTICALLY from its smoothstep profiles, bending the normal the sky's light
+sees (occlusion still classifies by the wall's own), plus a recess shade and
+an albedo factor.
+
+**Budget.** No geometry, no textures, no new attributes beyond two spare bits
+of an existing byte. In the shader: one `fwidth` per building fragment, then
+`if (detail <= 0.0) return` (the window grid, gone once a storey is under
+~5 px) and `if (near <= 0.0) return` (the relief, full from ~30 px a storey,
+gone by ~14 px). Because the slope is analytic — no `dFdx`/`dFdy`, which must
+run in uniform control flow — roofs, far walls, far LOD tiles and walls with no
+recorded storeys pay one `fwidth` and a branch; only near walls with a storey
+rhythm pay the ~40 ALU of the relief. Frame time could not be measured
+meaningfully on SwiftShader (GPU work completes asynchronously: rAF intervals
+and `gl.finish()` showed no difference either way); a real-GPU measurement
+belongs with the device budget in Phase 1.
+
 ### Side by side
 
 Rendered in headless Chromium (SwiftShader) on `expo start --web`, the

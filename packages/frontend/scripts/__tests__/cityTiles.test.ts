@@ -230,7 +230,11 @@ const WAYS: Way[] = [
   { id: 21, refs: [200, 201, 202], tags: {} },
   { id: 22, refs: [200, 203, 202], tags: {} },
   { id: 23, refs: [...ids(blockInner), blockInner[0].id], tags: {} },
-  { id: 30, refs: [...ids(outline), outline[0].id], tags: { building: 'yes', height: '20' } },
+  {
+    id: 30,
+    refs: [...ids(outline), outline[0].id],
+    tags: { building: 'office', height: '20', start_date: '1931-05-01' },
+  },
   {
     id: 31,
     refs: [...ids(part), part[0].id],
@@ -289,6 +293,21 @@ describe('compile', () => {
 
     const red = features.find((f) => f.id === 312);
     expect(red?.properties).toMatchObject({ part: true, colour: '#ff0000', render_height: 30 });
+  });
+
+  test('a part inherits its outline’s class and era; buildings carry their own', () => {
+    const result = compile({ pbf: pbfPath, zoom: CITY_TILE_ZOOM });
+    const features = [...result.tiles.values()].flat();
+    // The part records shape only; `building=office` + `start_date=1931` are the outline's.
+    expect(features.find((f) => f.id === 312)?.properties).toMatchObject({
+      use: 'commercial',
+      era: 'early_modern',
+    });
+    expect(features.find((f) => f.id === 102)?.properties.use).toBe('residential'); // house
+    expect(features.find((f) => f.id === 203)?.properties.use).toBe('residential'); // apartments
+    expect(features.find((f) => f.id === 102)?.properties.era).toBeUndefined();
+    expect(result.coverage.withUse).toBe(3);
+    expect(result.coverage.withEra).toBe(1);
   });
 
   test('each building goes whole to the tile holding its representative point', () => {

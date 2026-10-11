@@ -19,6 +19,8 @@ import {
   parseRoofMaterial,
   parseRoofShape,
   parseWallMaterial,
+  parseBuildingEra,
+  parseBuildingUse,
   resolveProperties,
 } from '../citygen/tags';
 
@@ -295,5 +297,39 @@ describe('defaultRoofHeight', () => {
     expect(defaultRoofHeight('gabled', span, 45)).toBeCloseTo(4, 6);
     expect(defaultRoofHeight('dome', span)).toBe(4);
     expect(defaultRoofHeight('flat', span)).toBe(0);
+  });
+});
+
+describe('facade styling vocabulary', () => {
+  test('building=* → a class, and `yes` (or anything unlisted) → none', () => {
+    expect(parseBuildingUse('apartments')).toBe('residential');
+    expect(parseBuildingUse(' Office ')).toBe('commercial');
+    expect(parseBuildingUse('school')).toBe('civic');
+    expect(parseBuildingUse('cathedral')).toBe('religious');
+    expect(parseBuildingUse('warehouse')).toBe('industrial');
+    expect(parseBuildingUse('yes')).toBeUndefined();
+    expect(parseBuildingUse('ruins')).toBeUndefined();
+    expect(parseBuildingUse(undefined)).toBeUndefined();
+  });
+
+  test('start_date → an era from a leading year only', () => {
+    expect(parseBuildingEra('1882')).toBe('historic');
+    expect(parseBuildingEra('1931-05-01')).toBe('early_modern');
+    expect(parseBuildingEra('~1960')).toBe('modern');
+    expect(parseBuildingEra('1930..1932')).toBe('early_modern');
+    expect(parseBuildingEra('before 1899')).toBe('historic');
+    for (const refused of ['C19', '1930s', 'late 19th century', '31', '19311', '', undefined]) {
+      expect(parseBuildingEra(refused)).toBeUndefined();
+    }
+  });
+
+  test('resolveProperties writes them when tagged', () => {
+    const props = resolveProperties(
+      { building: 'church', start_date: '1450' },
+      'building',
+      undefined,
+    );
+    expect(props).toMatchObject({ use: 'religious', era: 'historic' });
+    expect(resolveProperties({ building: 'yes' }, 'building', undefined).use).toBeUndefined();
   });
 });

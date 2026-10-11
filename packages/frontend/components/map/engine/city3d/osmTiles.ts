@@ -15,6 +15,10 @@ import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 
 import {
+  BUILDING_ERAS,
+  BUILDING_USES,
+  type BuildingEra,
+  type BuildingUse,
   CITY_PROPS,
   CITY_TILE_LAYER,
   ROOF_MATERIALS,
@@ -62,6 +66,9 @@ export interface OsmBuilding {
   roofMaterial?: RoofMaterial;
   /** Recorded as lit at night (`floodlit` / `lit`, `CITY_PROPS.floodlit`). */
   floodlit?: boolean;
+  /** Building class and era for the facade styling (`CITY_PROPS.use`/`era`); absent: unknown. */
+  use?: BuildingUse;
+  era?: BuildingEra;
   /**
    * An official 3D model draws this building instead (`drawn_by`, a source
    * id): the worker skips it and meshes that source's roofs (`lod2Mesher.ts`).
@@ -145,6 +152,10 @@ export function buildingFromProperties(
   const roofMaterial = member(properties[CITY_PROPS.roofMaterial], ROOF_MATERIALS);
   if (roofMaterial) building.roofMaterial = roofMaterial;
   if (properties[CITY_PROPS.floodlit] === true) building.floodlit = true;
+  const use = member(properties[CITY_PROPS.use], BUILDING_USES);
+  if (use) building.use = use;
+  const era = member(properties[CITY_PROPS.era], BUILDING_ERAS);
+  if (era) building.era = era;
   const drawnBy = properties[CITY_OFFICIAL_PROPS.drawnBy];
   if (typeof drawnBy === 'string' && drawnBy) building.drawnBy = drawnBy;
   const heightSource = properties[CITY_PROPS.heightSource];

@@ -32,7 +32,13 @@
 import { closeSync, openSync } from 'node:fs';
 
 import { roofFrame } from '../../components/map/engine/city3d/roofs';
-import { CITY_TILE_EXTENT, type CityTileTree } from '../../lib/map/cityTiles';
+import {
+  type BuildingEra,
+  type BuildingUse,
+  CITY_PROPS,
+  CITY_TILE_EXTENT,
+  type CityTileTree,
+} from '../../lib/map/cityTiles';
 import type { CityTileFeature, TilePoint, TilePolygon } from './mvtEncode';
 import { collectGarbage, rssMb } from './memory';
 import {
@@ -50,6 +56,8 @@ import {
   parseDirection,
   parseOrientation,
   LIT_KEYS,
+  parseBuildingEra,
+  parseBuildingUse,
   resolveProperties,
   type Tags,
 } from './tags';
@@ -77,6 +85,8 @@ export const KEPT_KEYS: ReadonlySet<string> = new Set([
   'roof:colour',
   'building:material',
   'roof:material',
+  // The facade styling's era (`CITY_PROPS.era`).
+  'start_date',
 ]);
 
 const EARTH_CIRCUMFERENCE_M = 2 * Math.PI * 6371008.8;
@@ -116,6 +126,9 @@ export interface Coverage {
   withRoofMaterial: number;
   /** Buildings and parts that record being lit at night (`floodlit`, `lit`). */
   withFloodlit: number;
+  /** Features with a building class / an era for the facade styling (own or inherited). */
+  withUse: number;
+  withEra: number;
   /** Values present but unreadable, by key: the junk the parser refused. */
   rejected: Record<string, number>;
   roofShapes: Record<string, number>;
@@ -608,7 +621,9 @@ export function compile(options: CompileOptions): CompileResult {
     if (cell) cell.push(building);
     else grid.set(key, [building]);
   }
-  const hasParts = (building: Building): boolean => {
+  /** The emitted parts inside an outline (just the first, with `first`). */
+  const partsInside = (building: Building, first: boolean): Building[] => {
+    const found: Building[] = [];
     for (const { outer, holes } of building.polygons) {
       let minX = Infinity;
       let minY = Infinity;
@@ -626,14 +641,33 @@ export function compile(options: CompileOptions): CompileResult {
             const [px, py] = part.point;
             if (px < minX || px > maxX || py < minY || py > maxY) continue;
             if (insideRing(outer, px, py) && !holes.some((hole) => insideRing(hole, px, py))) {
-              return true;
+              found.push(part);
+              if (first) return found;
             }
           }
         }
       }
     }
-    return false;
+    return found;
   };
+  const hasParts = (building: Building): boolean => partsInside(building, true).length > 0;
+
+  // ── What parts inherit from their outline ───────────────────────────────
+  // A `building:part` records shape, not purpose: the class and the era are
+  // the outline's (`building=*`, `start_date`), so its parts carry them for
+  // the facade styling. A part's own tags win. Barcelona's buildings are
+  // drawn entirely as Catastro parts; without this none would have a class.
+  const inherited = new Map<Building, { use?: BuildingUse; era?: BuildingEra }>();
+  for (const building of buildings) {
+    if (building.kind !== 'building' || !emitted(building)) continue;
+    const use = parseBuildingUse(building.tags.building);
+    const era = parseBuildingEra(building.tags.start_date);
+    if (!use && !era) continue;
+    for (const part of partsInside(building, false)) {
+      const prior = inherited.get(part);
+      inherited.set(part, { use: prior?.use ?? use, era: prior?.era ?? era });
+    }
+  }
 
   // ── Tiles ───────────────────────────────────────────────────────────────
   const coverage: Coverage = {
@@ -654,6 +688,8 @@ export function compile(options: CompileOptions): CompileResult {
     withMaterial: 0,
     withRoofMaterial: 0,
     withFloodlit: 0,
+    withUse: 0,
+    withEra: 0,
     rejected: {},
     roofShapes: {},
   };
@@ -691,6 +727,13 @@ export function compile(options: CompileOptions): CompileResult {
       building.kind,
       frame ? { halfWidth: frame.halfWidth, halfLength: frame.halfLength } : undefined,
     );
+    const fromOutline = building.kind === 'part' ? inherited.get(building) : undefined;
+    if (fromOutline?.use && properties[CITY_PROPS.use] === undefined) {
+      properties[CITY_PROPS.use] = fromOutline.use;
+    }
+    if (fromOutline?.era && properties[CITY_PROPS.era] === undefined) {
+      properties[CITY_PROPS.era] = fromOutline.era;
+    }
     count(coverage, tags, properties, building.kind);
 
     const tx = Math.min(span - 1, Math.floor(px * span));
@@ -769,6 +812,8 @@ function count(
   check('building:material', 'material', 'withMaterial');
   check('roof:material', 'roof_material', 'withRoofMaterial');
   if (props.floodlit === true) coverage.withFloodlit++;
+  if (props.use !== undefined) coverage.withUse++;
+  if (props.era !== undefined) coverage.withEra++;
   if (tags['roof:shape'] !== undefined) {
     const shape = props.roof_shape;
     if (shape === undefined) {

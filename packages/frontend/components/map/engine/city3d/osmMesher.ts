@@ -35,6 +35,8 @@
  */
 import earcut from 'earcut';
 
+import { BUILDING_ERAS, BUILDING_USES } from '@/lib/map/cityTiles';
+
 import {
   bayCount,
   facadeFor,
@@ -89,6 +91,25 @@ export interface OsmTileMesh extends TileMesh {
 
 /** {@link OsmTileMesh.flags}: the building records being lit at night (`CITY_PROPS.floodlit`). */
 export const VERTEX_FLAG_FLOODLIT = 1;
+
+/**
+ * {@link OsmTileMesh.flags} bits 1–3: the building class (`CITY_PROPS.use`) as
+ * `BUILDING_USES` index + 1, 0 = unknown. Read by the facade styling only.
+ */
+export const VERTEX_USE_SHIFT = 1;
+/** Bits 4–5: the era (`CITY_PROPS.era`) as `BUILDING_ERAS` index + 1, 0 = unknown. */
+export const VERTEX_ERA_SHIFT = 4;
+
+/** A building's flag byte: floodlit, class, era. */
+export function buildingFlagsOf(building: Pick<OsmBuilding, 'floodlit' | 'use' | 'era'>): number {
+  const use = building.use ? BUILDING_USES.indexOf(building.use) + 1 : 0;
+  const era = building.era ? BUILDING_ERAS.indexOf(building.era) + 1 : 0;
+  return (
+    (building.floodlit ? VERTEX_FLAG_FLOODLIT : 0) |
+    (use << VERTEX_USE_SHIFT) |
+    (era << VERTEX_ERA_SHIFT)
+  );
+}
 
 type Rgba = readonly [number, number, number, number];
 type Facade4 = readonly [number, number, number, number];
@@ -715,7 +736,7 @@ export function meshOsmBuildings(
   });
   buildings.forEach((building, i) => {
     const start = builder.vertexCount;
-    builder.buildingFlags = building.floodlit ? VERTEX_FLAG_FLOODLIT : 0;
+    builder.buildingFlags = buildingFlagsOf(building);
     polygons += meshOsmBuilding(builder, building, scale, i, partyWalls);
     // A whole building (all its polygons) stands on ONE ground, so a
     // multipolygon's pieces stay level with each other on a slope.
