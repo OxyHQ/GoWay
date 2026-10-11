@@ -78,3 +78,14 @@ export const STREET3D_ASSET_ORIGIN = origin(process.env.EXPO_PUBLIC_STREET3D_ASS
  * is never requested and `building-3d` draws as it always has.
  */
 export const MAP_CITY3D_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_MAP_CITY3D ?? '');
+
+/**
+ * Whether the route flyover and Camera Studio are on (`docs/MAP_CAMERA_STUDIO.md`).
+ *
+ * Off unless `EXPO_PUBLIC_MAP_FLYOVER` is `1`/`true`, and no production
+ * deployment sets it. A development build can also turn it on per tab with
+ * `?flyover=1` (`lib/map/flyoverFlag.ts`); a production build ignores that.
+ * When off, the directions planner shows no "Fly the route", `/studio`
+ * redirects to the map, and the feature's chunk is never requested.
+ */
+export const MAP_FLYOVER_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_MAP_FLYOVER ?? '');

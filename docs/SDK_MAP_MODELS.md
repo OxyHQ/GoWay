@@ -1,6 +1,8 @@
 # 3D models on the map
 
-*Design note, not built. It proposes what `@goway.to/sdk` and GoWay's map
+*Design note. **Phase 1 (web) is built**, off by default, behind the flyover
+flag — see [Phase 1 status](#phase-1-status) and
+[`MAP_CAMERA_STUDIO.md`](./MAP_CAMERA_STUDIO.md). It proposes what `@goway.to/sdk` and GoWay's map
 surface should offer for 3D models anchored at real coordinates. The map seam it
 extends is `packages/frontend/components/map/` (`types.ts`, `shared.ts`, the two
 `MapCanvas` forks); the wire primitives it builds on are
@@ -19,7 +21,7 @@ reasons are given in [Not adopted](#not-adopted-and-why).
 
 ## What exists today
 
-Verified against `main` (`55614bc`). Nothing in this note is built.
+Verified against `main` (`55614bc`), before phase 1 (see [Phase 1 status](#phase-1-status) for what has since been built).
 
 | Piece | State |
 | --- | --- |
@@ -461,6 +463,21 @@ copy that pattern.
    validation question above.
 5. **Terrain.** Add a GoWay-hosted DEM, `raster-dem` in the style, and the
    `'sea'` and `'ellipsoid'` references.
+
+## Phase 1 status
+
+Built for the route flyover's vehicle ([`MAP_CAMERA_STUDIO.md`](./MAP_CAMERA_STUDIO.md)),
+web only, off unless `EXPO_PUBLIC_MAP_FLYOVER` (or `?flyover=1` in development):
+
+| Item | State |
+| --- | --- |
+| `modelPlacementSchema`, `MODEL_ALTITUDE_REFERENCES`, `parseModelPlacement` | In `packages/contracts/src/model.ts`, exported by the SDK. No asset schema (phase 2). |
+| `models`, `onModelPress` on `MapCanvasProps`; `MapApi.moveModel` | Both forks. Native draws every model as its fallback marker. |
+| Assets | `url` (HTTPS, this origin, or loopback) and `catalogue` keys from a stub (`lib/map/modelCatalogue.ts`, one model: `vehicle.car`). `served` is phase 2. |
+| `'ground'` altitude, heading/pitch/roll, `sizing`, zoom window, `occlusion`, `tint`, fallback | Built. |
+| Budgets | File size, triangles, distinct assets, instances enforced; `lite` files and the `deviceProfile` gate are not. |
+| Engine | The city engine's scene, in a second custom layer on the same renderer above GoWay's overlays — see `MAP_CAMERA_STUDIO.md` → "Two layers, one renderer" for why, and the one deviation from "one scene". |
+| Gates | NaN gate and frame tests (`components/map/__tests__/mapModels.test.ts`); alignment checked in a running build via `__gowayModelAlignment` (≤ 1e-8 px on settled frames) and against the host matrix in a unit test; bundle: three.js still loads only through `lazyChunk.ts` (`engine3dChunk.test.ts`), a map with no models requests none of it. |
 
 ## Open questions
 

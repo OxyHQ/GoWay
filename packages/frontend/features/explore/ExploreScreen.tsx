@@ -32,7 +32,7 @@
  * `moveTo` instead — spatial continuity where it is correct, lock-step motion
  * where it is free.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowDimensions, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
@@ -53,6 +53,7 @@ import {
   type MapCanvasError,
   type MapFitOptions,
   type MapMarker,
+  type MapModel,
   type MapPressEvent,
   type MapViewport,
   type MapViewportChange,
@@ -61,6 +62,8 @@ import { MAP_SHEET_HALF_RATIO, MapSheet, type MapSheetSnap } from '@/components/
 import { SidePanel } from '@/components/sheet/SidePanel';
 import { PANEL_WIDTH, useLayoutMode } from '@/lib/useLayoutMode';
 import { useAuthGate } from '@/lib/authGate';
+import { MAP_FLYOVER_ENABLED } from '@/lib/config';
+import { isFlyoverRequested } from '@/lib/map/flyoverFlag';
 import { useTranslation } from '@/lib/i18n';
 import type { LocationErrorReason } from '@/lib/map/useUserLocation';
 
@@ -195,6 +198,21 @@ export interface ExploreScreenProps {
   initialViewport?: MapViewport | null;
 }
 
+/**
+ * The route flyover (`docs/MAP_CAMERA_STUDIO.md`): decided once per page load,
+ * and loaded only through `features/flyover/lazy.ts`, so with the flag off
+ * this screen gains a constant and an `import()` stub and nothing else.
+ */
+const FLYOVER = isFlyoverRequested({
+  enabled: MAP_FLYOVER_ENABLED,
+  development: __DEV__,
+  search: typeof window !== 'undefined' ? window.location.search : '',
+});
+const RouteFlyover = lazy(() =>
+  import('@/features/flyover/lazy').then((chunk) => ({ default: chunk.RouteFlyover })),
+);
+const NO_MODELS: readonly MapModel[] = [];
+
 export default function ExploreScreen({
   initialPlaceId = null,
   initialViewport = null,
@@ -271,6 +289,10 @@ export default function ExploreScreen({
 
   const [bearing, setBearing] = useState(0);
   const [mapError, setMapError] = useState<MapCanvasError | null>(null);
+  // While the flyover flies, the sheet, the panel and the floating controls
+  // step aside; the vehicle is a model on the canvas.
+  const [flying, setFlying] = useState(false);
+  const [flyoverModels, setFlyoverModels] = useState<readonly MapModel[]>(NO_MODELS);
   // Only ever armed by pressing "My location" or asking for directions. The
   // canvas refuses to draw the dot without a granted permission anyway; not
   // arming it until then keeps the two rules independent of each other.
@@ -393,6 +415,7 @@ export default function ExploreScreen({
           showUserLocation={followingLocation}
           onViewportChange={handleViewportChange}
           onError={setMapError}
+          models={flyoverModels}
           testID="goway-map"
         />
 
@@ -460,48 +483,62 @@ export default function ExploreScreen({
           </View>
         ) : null}
 
-        <Animated.View
-          pointerEvents="box-none"
-          style={[
-            {
-              position: 'absolute',
-              bottom: controlsBottom,
-              right: sideGap,
-              alignItems: 'flex-end',
-              gap: 12,
-            },
-            layout === 'sheet' ? chromeStyle : null,
-          ]}
-        >
-          {Math.abs(bearing) > BEARING_EPSILON ? (
+        {FLYOVER && directions.active && directions.route && !mapError ? (
+          <Suspense fallback={null}>
+            <RouteFlyover
+              route={directions.route}
+              mapRef={mapRef}
+              top={areaTop}
+              onActiveChange={setFlying}
+              onModelsChange={setFlyoverModels}
+            />
+          </Suspense>
+        ) : null}
+
+        {flying ? null : (
+          <Animated.View
+            pointerEvents="box-none"
+            style={[
+              {
+                position: 'absolute',
+                bottom: controlsBottom,
+                right: sideGap,
+                alignItems: 'flex-end',
+                gap: 12,
+              },
+              layout === 'sheet' ? chromeStyle : null,
+            ]}
+          >
+            {Math.abs(bearing) > BEARING_EPSILON ? (
+              <Fab
+                size="xs"
+                icon={RiCompass3Line}
+                iconSize={20}
+                accessibilityLabel={t('map.resetNorth')}
+                onPress={handleResetNorth}
+                appearance="subtle"
+                tone="neutral"
+              />
+            ) : null}
             <Fab
-              size="xs"
-              icon={RiCompass3Line}
-              iconSize={20}
-              accessibilityLabel={t('map.resetNorth')}
-              onPress={handleResetNorth}
+              icon={RiFocus3Line}
+              iconSize={22}
+              accessibilityLabel={t('map.myLocation')}
+              accessibilityHint={t('map.myLocationHint')}
+              disabled={location.isLocating}
+              onPress={() => void handleLocate()}
               appearance="subtle"
               tone="neutral"
             />
-          ) : null}
-          <Fab
-            icon={RiFocus3Line}
-            iconSize={22}
-            accessibilityLabel={t('map.myLocation')}
-            accessibilityHint={t('map.myLocationHint')}
-            disabled={location.isLocating}
-            onPress={() => void handleLocate()}
-            appearance="subtle"
-            tone="neutral"
-          />
-        </Animated.View>
+          </Animated.View>
+        )}
 
         {/* A declined permission is a normal outcome, not an error screen: the
           map stays fully usable without it, so this says what happened and gets
           out of the way. Every reason gets its own sentence — the control looks
           equally dead when the page is http:// or the device cannot fix, and
           neither of those is the user's doing. */}
-        {locationNotice ? (
+        {locationNotice && !flying ? (
           <View
             pointerEvents="none"
             accessibilityRole="alert"
@@ -518,7 +555,7 @@ export default function ExploreScreen({
           </View>
         ) : null}
 
-        {layout === 'panel' ? (
+        {flying ? null : layout === 'panel' ? (
           <SidePanel header={header} accessibilityLabel="Places" testID="explore-panel">
             {body}
           </SidePanel>

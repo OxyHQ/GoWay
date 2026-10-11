@@ -17,7 +17,7 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
 - [`STREET3D_LIFECYCLE.md`](STREET3D_LIFECYCLE.md) — capture expiry, cleanup
   operations, crash recovery and the remaining Street 3D release gates.
 - [`SDK_VISION.md`](SDK_VISION.md) — what `@goway.to/sdk` is for, and who for.
-- [`SDK_MAP_MODELS.md`](SDK_MAP_MODELS.md) — proposal: 3D models anchored at
+- [`SDK_MAP_MODELS.md`](SDK_MAP_MODELS.md) — 3D models anchored at
   coordinates on GoWay's map (a provider-neutral `MapModel`, GLB only, a
   three.js layer inside MapLibre on web, native still open), what was taken
   from munim-maps and what was refused.
@@ -39,6 +39,10 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   a three.js layer inside MapLibre, meshing the current tiles now and compiling
   GoWay 3D tiles next, what native gets, the ODbL and honesty rules, the phased
   plan, and the off-by-default web prototype.
+- [`MAP_CAMERA_STUDIO.md`](MAP_CAMERA_STUDIO.md) — the route flyover and Camera
+  Studio (off by default): the chase camera, centripetal path smoothing,
+  per-gesture undo/redo, the versioned tour link, video export with the mark
+  and the credit composited, and the flyover's vehicle as phase 1 of 3D models.
 - [`PLACE_NAMES.md`](PLACE_NAMES.md) — how a place is named in more than one
   language, why `places.name` stayed, and what that means for duplicate
   detection, search, the SDK contract and the OpenStreetMap re-import.
