@@ -244,8 +244,42 @@ GPU time is unchanged (same shaders). The CPU cost is three's per-draw
 overhead measured in step 1, now paid by every 3D-city frame: the next step
 removes most of it.
 
-Next: one draw per tile (32-bit indices instead of 16-bit chunks), measured
-before and after. Then one material at a time, each deleting its GLSL twin:
+## Phase 2, step 3: one draw per tile
+
+`WebGPURenderer` pays its CPU per draw, so a tile's buildings are now **one
+draw**. `packing.ts` emits a single chunk per mesh with 16-bit indices up to
+65,536 vertices and 32-bit indices past them, where it used to cut dense
+tiles into 16-bit chunks of ≤ 65,535 vertices (seven draws for the dense
+Barcelona tile). The chunk machinery went with it: `packMeshGeneral`, the
+builder's `reserve`, `sourceStart`/`sourceIds` and the LOD mesher's
+split-a-roof fallback.
+
+### Measured: before and after, one session
+
+The same tool, scene and session, three alternating runs each (phone
+viewport, Barcelona city tiles, 1.31 M building triangles, 8 tiles):
+
+| Engine frame CPU p50 | `main` (GLSL) | step 2 (TSL, chunked) | step 3 (TSL, one draw per tile) |
+| --- | ---: | ---: | ---: |
+| Buildings only | 0.47–0.51 ms | 0.78–0.84 ms | **0.54–0.56 ms** |
+| Buildings + trees | 0.62–0.67 ms | 0.99–1.09 ms | **0.78–0.87 ms** |
+
+- **Draw CPU, buildings only:** 0.61–0.64 → 0.37–0.38 ms (−40%). The TSL
+  buildings now cost what the GLSL ones did, within about 0.05 ms.
+- **GPU time** is unchanged, and the pixels are identical to both `main`
+  and step 2.
+- **GPU memory:** the tile cache holds 66.4 → 74.1 MB for the same view
+  (+11.6%). The dense tiles' indices are 4 bytes instead of 2. The budgets
+  (`lod.ts`) count it, so at the edge of a budget a tile drops sooner.
+- **What remains with trees (~+0.2 ms)** is the trees' draws: one per tree
+  shape per tile. One instanced draw per tile, with the shapes in one buffer,
+  is the next measurable step of the same kind.
+
+Absolute numbers move with the host's load between sessions: step 2 measured
+1.40 ms in its own session against 0.99–1.09 ms here. Compare columns from
+the same table.
+
+Next, one material at a time, each deleting its GLSL twin:
 street markings (once `feat/street-detail` merges), landmarks/models, city
 life, live 3D, and the sky and shadow passes (which retire the last building
 GLSL).
@@ -313,11 +347,10 @@ GoWay today.
   and cancellation, and decoding off-thread. The web's browser cache and Web
   Workers do this for free today.
 - **three's per-draw CPU cost.** `WebGPURenderer` spends about 10 µs more
-  CPU per draw than `WebGLRenderer` on its WebGL2 backend (step 1: +0.55 ms a
-  frame at the same ~56 draws). That is likely 2–3 ms on a mid-range phone.
-  Remedy, measured as its own step: one draw per tile (32-bit indices,
-  which WebGL2 and WebGPU both have) instead of the 16-bit chunks `packing.ts`
-  cuts today.
+  CPU per draw than `WebGLRenderer` on its WebGL2 backend (step 1). One draw
+  per tile (step 3) brought the buildings back to parity. The trees still
+  draw once per shape per tile (~+0.2 ms here). Every port keeps draws few;
+  that is now a rule of the engine, not an optimisation.
 - **three's WebGPU path is younger than its WebGL one.** `react-native-webgpu`
   documents a renderer leak across remounts in r184. Pin and test three
   upgrades.

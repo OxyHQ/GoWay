@@ -450,7 +450,9 @@ export function groundTileFor(entry: TileEntry, tile: TileId): GroundTile {
         const count = chunk.position.length / 4;
         let unit = -1;
         for (let i = 0; i < count; i++) {
-          const s = chunk.sourceIds ? chunk.sourceIds[i] : chunk.sourceStart + i;
+          // Chunks keep the mesh's vertex order (`packing.ts`), the one
+          // `polygonStarts` indexes.
+          const s = at + i;
           // Mostly the same unit as the last vertex, or the next one.
           if (unit < 0 || s < starts[unit] || (unit + 1 < starts.length && s >= starts[unit + 1])) {
             unit = unitOf(starts, s);

@@ -98,10 +98,10 @@ const context = () => ({
 });
 
 describe('grounding a packed entry', () => {
-  test('lifts every vertex exactly as vertexGround lifts the float mesh, across chunks', () => {
+  test('lifts every vertex exactly as vertexGround lifts the float mesh (32-bit, one chunk)', () => {
     const mesh = meshBuildings(FEATURES, OPTIONS) as TileMesh;
     const packed = packMesh(mesh, SIZE);
-    expect(packed.chunks.length).toBeGreaterThan(1);
+    expect(packed.chunks[0].index).toBeInstanceOf(Uint32Array);
     const entry = createTileEntry(context(), createTreeShapes(), 'k@0', 0, packed, null);
     const grid = sampleGroundGrid(TILE, GROUND.grid, hill);
     const placed = polygonGround(grid, GROUND.grid, SIZE, mesh.polygonBoxes);
@@ -110,7 +110,7 @@ describe('grounding a packed entry', () => {
     let at = 0;
     for (const chunk of packed.chunks) {
       for (let i = 0; i < chunk.position.length / 4; i++) {
-        expect(lifted?.values[at + i]).toBe(reference[chunk.sourceStart + i]);
+        expect(lifted?.values[at + i]).toBe(reference[at + i]);
       }
       at += chunk.position.length / 4;
     }
