@@ -7,7 +7,7 @@ import {
   type PlaceReview,
 } from '../src/index';
 import { PLACE, page } from './fixtures';
-import { fakeFetch, queryOf, rejection } from './helpers';
+import { defined, fakeFetch, queryOf, rejection } from './helpers';
 
 /**
  * A place's gallery, reviews and profile as the SDK carries them: the calls,
@@ -50,7 +50,7 @@ describe('the gallery', () => {
     expect(calls[0]?.url.split('?')[0]).toBe(
       'https://api.goway.to/api/v1/places/gw_place_01H8/media',
     );
-    expect(new URLSearchParams(queryOf(calls[0]!.url)).get('kinds')).toBe('menu,photo');
+    expect(new URLSearchParams(queryOf(defined(calls[0]).url)).get('kinds')).toBe('menu,photo');
   });
 
   it('adds an Oxy file id, and nothing the caller may not choose', async () => {
@@ -61,7 +61,7 @@ describe('the gallery', () => {
       caption: '  La plaça  ',
     });
     expect(calls[0]?.init.method).toBe('POST');
-    expect(JSON.parse(calls[0]!.init.body!)).toEqual({
+    expect(JSON.parse(defined(defined(calls[0]).init.body))).toEqual({
       fileId: 'oxy-file-1',
       kind: 'photo',
       caption: 'La plaça',
@@ -95,7 +95,7 @@ describe('reviews', () => {
     const { client, calls } = clientFor(page([REVIEW]));
     const listed = await client.places.reviews.list('gw_place_01H8', { sort: 'highest' });
     expect(listed.items[0]?.reply?.body).toBe('Gràcies!');
-    expect(new URLSearchParams(queryOf(calls[0]!.url)).get('sort')).toBe('highest');
+    expect(new URLSearchParams(queryOf(defined(calls[0]).url)).get('sort')).toBe('highest');
   });
 
   it('writes your review with PUT on mine, normalizing the locale', async () => {
@@ -104,7 +104,7 @@ describe('reviews', () => {
     expect(written.status).toBe('published');
     expect(calls[0]?.init.method).toBe('PUT');
     expect(calls[0]?.url).toBe('https://api.goway.to/api/v1/places/gw_place_01H8/reviews/mine');
-    expect(JSON.parse(calls[0]!.init.body!)).toEqual({ rating: 4, locale: 'ca' });
+    expect(JSON.parse(defined(defined(calls[0]).init.body))).toEqual({ rating: 4, locale: 'ca' });
   });
 
   it('refuses a rating outside 1–5 before sending', async () => {
@@ -174,7 +174,7 @@ describe('the place profile', () => {
       logoFileId: 'oxy-logo',
       descriptions: [{ language: 'EN', description: null }],
     });
-    expect(JSON.parse(calls[0]!.init.body!)).toEqual({
+    expect(JSON.parse(defined(defined(calls[0]).init.body))).toEqual({
       logoFileId: 'oxy-logo',
       descriptions: [{ language: 'en', description: null }],
     });

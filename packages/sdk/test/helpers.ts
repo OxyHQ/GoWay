@@ -75,3 +75,15 @@ export async function rejection(promise: Promise<unknown>): Promise<GoWayError> 
   }
   throw new Error('expected the call to reject, but it resolved');
 }
+
+/**
+ * The value, or a thrown error naming what was missing: a checked stand-in for
+ * a non-null assertion (`value!`), which only silences the type checker and
+ * lets an absent value fail later, somewhere less legible.
+ */
+export function defined<T>(value: T | null | undefined, what = 'a value'): T {
+  if (value === null || value === undefined) {
+    throw new Error(`Expected ${what}, got ${value === null ? 'null' : 'undefined'}.`);
+  }
+  return value;
+}

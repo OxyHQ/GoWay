@@ -5,7 +5,7 @@ import {
   GoWayResponseError,
   GoWayValidationError,
 } from '../src/index';
-import { fakeFetch, queryOf, rejection } from './helpers';
+import { defined, fakeFetch, queryOf, rejection } from './helpers';
 
 const time = '2026-10-04T10:00:00.000Z';
 const digest = 'c'.repeat(64);
@@ -97,7 +97,7 @@ describe('street3d client', () => {
       north: 48.87,
     });
     expect(calls[0]?.url).toContain('/api/v1/street3d/coverage?');
-    expect(queryOf(calls[0]!.url)).toBe('east=2.31&north=48.87&south=48.86&west=2.3');
+    expect(queryOf(defined(calls[0]).url)).toBe('east=2.31&north=48.87&south=48.86&west=2.3');
     expect(calls[0]?.init.headers).not.toHaveProperty('authorization');
     expect(result).toEqual(coverage);
   });
@@ -141,7 +141,10 @@ describe('street3d client', () => {
     const sent = await client.street3d.report('scene-1', { reason: 'privacy', note: '  a face ' });
     expect(sent).toEqual(report);
     expect(calls[0]?.init.method).toBe('POST');
-    expect(JSON.parse(calls[0]!.init.body!)).toEqual({ reason: 'privacy', note: 'a face' });
+    expect(JSON.parse(defined(defined(calls[0]).init.body))).toEqual({
+      reason: 'privacy',
+      note: 'a face',
+    });
     expect(
       await rejection(client.street3d.report('scene-1', { reason: 'spam' } as never)),
     ).toBeInstanceOf(GoWayValidationError);
@@ -185,13 +188,15 @@ describe('street3d responses', () => {
     });
     expect(JSON.stringify(parsed)).not.toContain('private');
     expect(JSON.stringify(parsed)).not.toContain('gpuSeconds');
-    const area = (
-      await coverageFrom({
-        ...coverage,
-        areas: [{ ...coverage.areas[0], cell: 'u09wh2h', count: 7 }],
-      })
-    ).areas[0];
-    expect(Object.keys(area!).sort()).toEqual([
+    const area = defined(
+      (
+        await coverageFrom({
+          ...coverage,
+          areas: [{ ...coverage.areas[0], cell: 'u09wh2h', count: 7 }],
+        })
+      ).areas[0],
+    );
+    expect(Object.keys(area).sort()).toEqual([
       'atRiskUntil',
       'bounds',
       'center',

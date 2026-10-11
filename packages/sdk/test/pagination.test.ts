@@ -6,7 +6,7 @@ import {
   type GoWayFetch,
 } from '../src/index';
 import { page, PLACE_WITH_DISTANCE } from './fixtures';
-import { queryOf } from './helpers';
+import { defined, queryOf } from './helpers';
 
 async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   const items: T[] = [];
@@ -48,9 +48,9 @@ describe('iterateGoWayPages', () => {
 
     expect(places.map((place) => place.id)).toEqual(['gw_place_01H8', 'gw_place_2', 'gw_place_3']);
     expect(urls).toHaveLength(3);
-    expect(queryOf(urls[0]!)).not.toContain('cursor=');
-    expect(queryOf(urls[1]!)).toContain('cursor=cursor_1');
-    expect(queryOf(urls[2]!)).toContain('cursor=cursor_2');
+    expect(queryOf(defined(urls[0]))).not.toContain('cursor=');
+    expect(queryOf(defined(urls[1]))).toContain('cursor=cursor_1');
+    expect(queryOf(defined(urls[2]))).toContain('cursor=cursor_2');
     for (const url of urls) expect(url).toContain('capabilities=payments.faircoin.accepted');
   });
 
@@ -60,7 +60,7 @@ describe('iterateGoWayPages', () => {
     let calls = 0;
     const walk = async () => {
       for await (const item of iterateGoWayPages(
-        async () => pages[calls++]! as { items: number[]; nextCursor: string },
+        async () => defined(pages[calls++]) as { items: number[]; nextCursor: string },
       )) {
         seen.push(item);
       }

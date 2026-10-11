@@ -123,8 +123,10 @@ export async function writeTree(root: string, tree: EmitTree): Promise<EmitResul
 
   let totalBytes = 0;
   // Sorted so the log is stable and diffable between runs.
-  for (const path of [...tree.keys()].sort()) {
-    const bytes = tree.get(path)!;
+  // (`<` is the default sort's order: UTF-16 code units.)
+  for (const [path, bytes] of [...tree.entries()].sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  )) {
     const target = join(root, path);
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, bytes);

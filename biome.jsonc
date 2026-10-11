@@ -64,46 +64,47 @@
       // an untrusted body and a typed value"), `no-control-regex`,
       // `react-hooks/rules-of-hooks` (frontend).
       //
-      // Every rule set to "warn" below is a recommended Biome rule that fires on
-      // code that ESLint passed. It is a BASELINE, not a decision: each is a
-      // tightening follow-up (counts in the adoption PR).
+      // The rules below were a warn-level baseline when Biome was adopted (715
+      // warnings). Every one was cleared or given a reasoned single-line
+      // suppression, and each is raised to error so a new violation fails
+      // `biome ci` instead of adding a warning nobody reads.
       "a11y": {
-        "noSvgWithoutTitle": "warn",
-        "useFocusableInteractive": "warn",
-        "useKeyWithClickEvents": "warn",
-        "useSemanticElements": "warn"
+        "noSvgWithoutTitle": "error",
+        "useFocusableInteractive": "error",
+        "useKeyWithClickEvents": "error",
+        "useSemanticElements": "error"
       },
       "complexity": {
-        "noThisInStatic": "warn",
-        "noUselessLoneBlockStatements": "warn",
-        "noUselessStringRaw": "warn",
-        "noUselessSwitchCase": "warn",
-        "useOptionalChain": "warn"
+        "noThisInStatic": "error",
+        "noUselessLoneBlockStatements": "error",
+        "noUselessStringRaw": "error",
+        "noUselessSwitchCase": "error",
+        "useOptionalChain": "error"
       },
       "correctness": {
-        "noUnusedImports": "warn",
-        "useExhaustiveDependencies": "warn",
+        "noUnusedImports": "error",
+        "useExhaustiveDependencies": "error",
         "useHookAtTopLevel": "error"
       },
       "style": {
-        "noNonNullAssertion": "warn",
-        "useExponentiationOperator": "warn",
-        "useImportType": "warn",
-        "useNodejsImportProtocol": "warn",
-        "useTemplate": "warn"
+        "noNonNullAssertion": "error",
+        "useExponentiationOperator": "error",
+        "useImportType": "error",
+        "useNodejsImportProtocol": "error",
+        "useTemplate": "error"
       },
       "suspicious": {
-        "noApproximativeNumericConstant": "warn",
-        "noArrayIndexKey": "warn",
-        "noAssignInExpressions": "warn",
+        "noApproximativeNumericConstant": "error",
+        "noArrayIndexKey": "error",
+        "noAssignInExpressions": "error",
         "noControlCharactersInRegex": "error",
         "noExplicitAny": "error",
-        "noImplicitAnyLet": "warn",
-        "noPrototypeBuiltins": "warn",
+        "noImplicitAnyLet": "error",
+        "noPrototypeBuiltins": "error",
         "noShadowRestrictedNames": "error",
-        "noTemplateCurlyInString": "warn",
-        "noThenProperty": "warn",
-        "useIterableCallbackReturn": "warn"
+        "noTemplateCurlyInString": "error",
+        "noThenProperty": "error",
+        "useIterableCallbackReturn": "error"
       }
     }
   },

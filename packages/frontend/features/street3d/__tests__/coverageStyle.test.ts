@@ -17,6 +17,7 @@ import {
   shouldFetchCoverage,
   type CoverageColors,
 } from '../coverageStyle';
+import { defined } from '../../../lib/__tests__/defined';
 
 /** Every role resolves to its own name, so a test can see which role was used. */
 const COLORS = new Proxy({}, { get: (_, key) => `role:${String(key)}` }) as CoverageColors;
@@ -176,14 +177,13 @@ describe('areas and points', () => {
   });
 
   test('areaContaining finds the cell around a point and prefers at_risk', () => {
-    const atRisk = coverage.areas.find((entry) => entry.state === 'at_risk');
-    expect(atRisk).toBeDefined();
-    const found = areaContaining(coverage.areas, atRisk!.center);
-    expect(found?.id).toBe(atRisk!.id);
+    const atRisk = defined(coverage.areas.find((entry) => entry.state === 'at_risk'));
+    const found = areaContaining(coverage.areas, atRisk.center);
+    expect(found?.id).toBe(atRisk.id);
     expect(areaContaining(coverage.areas, { latitude: 0, longitude: 0 })).toBeNull();
 
-    const overlapping = [{ ...atRisk!, id: 'p', state: 'partial' as const }, atRisk!];
-    expect(areaContaining(overlapping, atRisk!.center)?.id).toBe(atRisk!.id);
+    const overlapping = [{ ...atRisk, id: 'p', state: 'partial' as const }, atRisk];
+    expect(areaContaining(overlapping, atRisk.center)?.id).toBe(atRisk.id);
   });
 
   test('boxAround is square on the ground', () => {

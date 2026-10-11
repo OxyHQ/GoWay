@@ -14,7 +14,7 @@ import {
   ROUTE_RESPONSE,
   SEARCH_RESULTS,
 } from './fixtures';
-import { fakeFetch, rejection } from './helpers';
+import { defined, fakeFetch, rejection } from './helpers';
 
 /**
  * Responses are parsed by the CONTRACT's own schemas: these tests hold the SDK
@@ -103,7 +103,7 @@ describe('place responses', () => {
   it('refuse a capability with no provenance, and one whose key disagrees with its parts', async () => {
     const [capability] = PLACE.capabilities as Record<string, unknown>[];
     expect(
-      await placeError({ ...PLACE, capabilities: [without(capability!, 'verification')] }),
+      await placeError({ ...PLACE, capabilities: [without(defined(capability), 'verification')] }),
     ).toBeInstanceOf(GoWayResponseError);
     const mismatched = { ...capability, key: 'payments.faircoin.refused' };
     const error = await placeError({ ...PLACE, capabilities: [mismatched] });
