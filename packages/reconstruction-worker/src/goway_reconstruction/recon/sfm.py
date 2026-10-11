@@ -458,6 +458,7 @@ GRAVITY_INLIER_DEG = 10.0
 MIN_GRAVITY_FRAMES = 3
 MIN_GRAVITY_INLIER_RATIO = 0.6
 MAX_LEVEL_DISAGREEMENT_DEG = 45.0
+GRAVITY_SEED_CANDIDATES = 200
 
 
 @dataclass
@@ -493,7 +494,14 @@ def level(camera_downs: np.ndarray, gravity_downs: np.ndarray) -> Level:
     n = len(gravity_downs)
     if n == 0:
         return Level(cameras, "cameras", 0, None)
-    consensus = _unit(np.mean(gravity_downs, axis=0)) if np.linalg.norm(np.mean(gravity_downs, axis=0)) > 1e-9 else cameras
+    # Seed from the measurements themselves, not their mean: a minority far
+    # off (two of five perpendicular) drags the mean outside the majority's
+    # 10° and would leave no inliers at all. The measured direction that the
+    # most others agree with wins (at most GRAVITY_SEED_CANDIDATES, evenly
+    # spread, so a scene of thousands of frames stays linear), then refines.
+    seeds = gravity_downs[np.unique(np.linspace(0, n - 1, min(n, GRAVITY_SEED_CANDIDATES)).round().astype(int))]
+    support = (seeds @ gravity_downs.T >= math.cos(math.radians(GRAVITY_INLIER_DEG))).sum(axis=1)
+    consensus = seeds[int(np.argmax(support))]
     inliers = np.zeros(n, dtype=bool)
     for _ in range(5):
         inliers = _angle_deg(gravity_downs, consensus) <= GRAVITY_INLIER_DEG

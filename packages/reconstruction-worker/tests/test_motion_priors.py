@@ -137,6 +137,19 @@ def test_a_minority_of_bad_measurements_does_not_move_the_level():
     assert math.degrees(math.acos(decided.down @ true_down)) < 1.0
 
 
+def test_a_coherent_majority_wins_even_when_the_minority_drags_the_mean_away():
+    # Three agree; two are perpendicular. Their mean is ~34° from the three,
+    # outside the 10° inlier bound, so seeding from the mean found no inliers.
+    true_down = np.array([0.0, 0.0, -1.0])
+    measured = np.array([true_down, true_down, true_down, [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    decided = level(np.array([true_down] * 5), measured)
+    assert decided.source == "gravity" and decided.gravity_frames == 5
+    assert math.degrees(math.acos(np.clip(decided.down @ true_down, -1, 1))) < 1e-6
+    # Seeding is bounded: thousands of measurements use a spread of candidates.
+    many = np.array([true_down] * 3000 + [[1.0, 0.0, 0.0]] * 1000)
+    assert level(np.array([true_down] * 10), many).source == "gravity"
+
+
 def test_too_few_or_disagreeing_measurements_fall_back_to_the_cameras():
     true_down = np.array([0.0, 0.0, -1.0])
     cameras = np.array([true_down] * 10)
