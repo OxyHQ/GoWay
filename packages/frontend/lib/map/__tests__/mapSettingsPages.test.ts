@@ -42,7 +42,7 @@ describe('the settings pages', () => {
   test('Labs revealed (production): sky on Map, the layers on Layers, and a Labs page', () => {
     const { pages, features } = layout({ labs: true });
     expect(pages).toEqual(['map', 'layers', 'labs', 'general', 'about']);
-    expect(ids(features.map)).toEqual(['globe', 'terrain', 'citySky']);
+    expect(ids(features.map)).toEqual(['globe', 'terrain', 'citySky', 'detailedCity']);
     // City tiles, simulated traffic and landmarks have nothing to draw over in
     // production, and goway.to's backend serves no live data yet.
     expect(ids(features.layers)).toEqual(['city3d', 'city3dTrees', 'city3dTreeFill', 'flyover']);

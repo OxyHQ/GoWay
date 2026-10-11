@@ -163,6 +163,8 @@ export const MAP_FEATURES = [
   },
   {
     id: 'detailedCity',
+    // How the map itself is drawn, beside the sky.
+    section: 'map',
     tier: 'labs',
     defaultOn: false,
     build: process.env.EXPO_PUBLIC_MAP_DETAILED_CITY,
