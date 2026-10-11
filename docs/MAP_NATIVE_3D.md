@@ -138,21 +138,19 @@ emulator with `-gpu swiftshader_indirect`.
 
 ## Phase 2, step 1: buildings through `WebGPURenderer` inside MapLibre
 
-**Built, behind the registry's `cityTsl` (Labs, development builds only, off
-by default; `?cityTsl=1` in a development build).** With it on, the 3D
-city's buildings are drawn by three's `WebGPURenderer` on its WebGL2 backend,
-with the TSL material, in MapLibre GL JS's own context. Trees, overlays,
-models and landmarks stay on `WebGLRenderer` in the same frame. Off, nothing
-changes. With the city sky the engine keeps the GLSL path, because the sky's
-building material is not ported yet.
+**Built and measured behind a registry flag (`cityTsl`, since removed: step 2
+made it the only path).** The 3D city's buildings are drawn by three's
+`WebGPURenderer` on its WebGL2 backend, with the TSL material, in MapLibre GL
+JS's own context. What is not ported yet stays on `WebGLRenderer` in the same
+frame. With the city sky the buildings keep the sky's GLSL material, which is
+not ported yet.
 
 | Piece | Where |
 | --- | --- |
 | Both building formats in TSL: ramp, tagged colour, storeys, light, occlusion, **terrain lift**, **LOD dither** | `tsl/buildingMaterial.ts` |
-| The pass: `WebGPURenderer` on MapLibre's context, no offscreen target, a read-only view of MapLibre's canvas, backend state reset per frame | `tsl/buildingPass.ts` |
+| The pass: `WebGPURenderer` on MapLibre's context, no offscreen target, a read-only view of MapLibre's canvas, backend state reset per frame | `tsl/tslPass.ts` (was `buildingPass.ts`) |
 | Tile entries get the shared TSL materials and carry their fade per mesh | `cityMeshes.ts` |
 | The engine draws the pass, then `WebGLRenderer` for the rest; dev-only draw CPU/GPU stats | `cityEngine.ts`, `gpuTimer.ts` |
-| Registry entry, labels in 12 languages, flag module | `lib/map/mapFeatures.ts`, `mapFeatureLabels.ts`, `cityTslFlag.ts` |
 
 How it shares MapLibre's frame:
 - **One context, so one framebuffer and one depth buffer.**
@@ -201,24 +199,56 @@ and 1,309,323 triangles on the phone viewport (412×915 @2.625), 2,154,551 at
   [Risks](#risks) lists one draw per tile as its own step.
 - **Bundle** (`expo export --platform web`, gzip): first paint unchanged
   (`__common` byte-identical, entry +87 B for the registry entry). The lazy
-  3D chunk is +210 KB, because three's WebGPU build is in it whether or not
-  `cityTsl` is on. Only people who turn on the 3D city (Labs) download it.
+  3D chunk is +210 KB, because three's WebGPU build is in it. Only people
+  who turn on the 3D city (Labs) download it.
   Loading it with a separate `import()` was tried and refused: Expo hoists a
   module that two async chunks share into the first-paint `__common` chunk,
   and three's core went there (27.5 → 135.8 KB gzip for every visitor). The
   extra goes when the last GLSL material does and `WebGLRenderer` leaves the
   chunk.
 
-The buildings' GLSL (`shaders.ts`, `osmShaders.ts`) is deleted when the TSL
-path becomes the default. That needs the sky's building material in TSL first,
-since the sky shades the buildings. Until then `cityTsl` is the A/B, not a
-second copy anyone ships.
+## Phase 2, step 2: trees, and TSL is the only path
 
-Next, one material at a time, each deleting its GLSL twin as it lands: trees,
-then street markings (once `feat/street-detail` merges), landmarks/models,
-city life, live 3D, and the sky and shadow passes (which unlock `cityTsl`
-with the sky). Each step is A/B-measured the same way: same scene, same
-pixels, draw CPU and GPU.
+**The decision (owner): flip per material, and delete each GLSL twin in the
+same change.** No material exists twice; the 3D city is Labs. So:
+
+- **The TSL pass always runs** (`tsl/tslPass.ts`). It draws the **trees**
+  always and the **buildings** whenever the city sky is off. With the sky the
+  buildings stay the sky's GLSL material, drawn by `WebGLRenderer` right after
+  the pass, into the same depth buffer.
+- **Deleted:** `treeShaders.ts`, the plain building shaders
+  (`CITY_*_SHADER`, `OSM_VERTEX/FRAGMENT_SHADER`) and the `cityTsl` flag.
+  `OSM_BASE_GLSL`, `TAG_TEMPER` and `glslFloat` stay, because only the sky
+  path (and the detailed look, which needs the sky) reads them now.
+- **`tsl/treeMaterial.ts`** ports the instanced trees: placement, yaw, width,
+  lean and tint from the instance's four numbers; the canopy occlusion; the
+  contact shadow; the zoom threshold; the terrain lift (`aGround`). One
+  material (plus its dithered variant) serves every tile; a tile's unit and
+  fade are read per mesh.
+- **`tsl/common.ts`** holds what buildings and trees share: MapLibre's
+  extrusion light, the premultiplied output, the terrain lift, the per-object
+  dither and the uniform binding. Everything is written once.
+
+### Measured against `main`
+
+Same tool and scene as step 1 (phone viewport, Barcelona city tiles, 1.31 M
+building triangles), `main` (all GLSL) against this step:
+
+| Scene | Pixels vs `main` | Engine frame CPU p50, `main` → step 2 |
+| --- | --- | ---: |
+| Buildings + trees, no sky (all TSL) | **identical** | 0.80 → 1.40 ms |
+| Buildings only, no sky (all TSL) | **identical** | 0.61 → 1.14 ms |
+| City sky on (trees TSL, buildings the sky's GLSL) | identical (0.002% > 8/255, the sun's clock moving between runs) | 1.80 → 1.53 ms (within run-to-run noise) |
+
+GPU time is unchanged (same shaders). The CPU cost is three's per-draw
+overhead measured in step 1, now paid by every 3D-city frame: the next step
+removes most of it.
+
+Next: one draw per tile (32-bit indices instead of 16-bit chunks), measured
+before and after. Then one material at a time, each deleting its GLSL twin:
+street markings (once `feat/street-detail` merges), landmarks/models, city
+life, live 3D, and the sky and shadow passes (which retire the last building
+GLSL).
 
 ## The base map
 
@@ -250,7 +280,7 @@ Estimates are one engineer who knows the codebase, and they are estimates.
 | Phase | What | Parity after it | Estimate |
 | --- | --- | --- | --- |
 | **1. Prototype** (this change) | Shared meshing; TSL building material; one tile on WebGL2, browser WebGPU and Android Dawn; measured | Web unchanged; native unchanged | Done |
-| **2. The engine on `WebGPURenderer`, web first** | ~~First prove `WebGPURenderer` with the WebGL backend inside MapLibre's custom layer (external context, shared depth, `resetState`)~~ (done: [step 1](#phase-2-step-1-buildings-through-webgpurenderer-inside-maplibre), the buildings behind `cityTsl`). Then port every material to TSL: OpenMapTiles buildings, trees, sky/atmosphere/shadow passes, city life, live vehicles, landmarks (`modelLook`), street markings, terrain lift and LOD dither. Delete the GLSL as each lands: one copy at every step | Web identical (same pixels, same budgets); native unchanged | 4–6 weeks |
+| **2. The engine on `WebGPURenderer`, web first** | ~~First prove `WebGPURenderer` with the WebGL backend inside MapLibre's custom layer (external context, shared depth, `resetState`)~~ (done: [step 1](#phase-2-step-1-buildings-through-webgpurenderer-inside-maplibre); trees and the flip: [step 2](#phase-2-step-2-trees-and-tsl-is-the-only-path)). Then port every material to TSL: OpenMapTiles buildings, trees, sky/atmosphere/shadow passes, city life, live vehicles, landmarks (`modelLook`), street markings, terrain lift and LOD dither. Delete the GLSL as each lands: one copy at every step | Web identical (same pixels, same budgets); native unchanged | 4–6 weeks |
 | **3. The engine draws the base map** (web, behind a flag) | Vector-tile fill and line tessellation in the workers; style expressions via `maplibre-gl-style-spec`; terrain from GoWay's DEM and the globe; SDF labels from GoWay's glyphs, with line placement, collision and fading; one camera and gesture controller; the `MapCanvas` contract (markers, overlays, label taps, `onViewportChange`) on the new renderer | Web with the flag = web today; MapLibre still the default | **4–6 months.** Labels are the long pole (6–10 weeks of it) |
 | **4. Native host** | `MapCanvas.native.tsx` on `react-native-webgpu`. Off-thread meshing and decoding (worklet runtimes); a native tile cache; gestures on the UI thread (Gesture Handler + Reanimated feeding the shared camera). The config plugin goes in `@oxy.so/app-preset`, never the app. MapLibre Native removed. Device gate on a mid-range Android (Adreno 6xx) and an A14-class iPhone | **Native = web**, every feature | 4–6 weeks + device benchmarks |
 | **5. Web switches** | The new renderer becomes the web default after the same gate on mid-range Android Chrome; `maplibre-gl` removed | One renderer everywhere | 2–4 weeks |

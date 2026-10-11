@@ -7,7 +7,7 @@
  * trunk ("lollipop") for broadleaf trees, a two-tier cone for conifers, matte,
  * each standing on a faint contact shadow that grounds it on the map. A unit
  * tree is 1 tall, standing on the origin; the vertex shader scales it by each
- * tree's height and turns it by its seed (`treeShaders.ts`).
+ * tree's height and turns it by its seed (`tsl/treeMaterial.ts`).
  *
  * | shape                     | canopy                             | trunk         | shadow | triangles |
  * | ------------------------- | ---------------------------------- | ------------- | ------ | --------: |

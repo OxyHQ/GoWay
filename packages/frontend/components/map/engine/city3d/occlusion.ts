@@ -31,7 +31,8 @@
  * Procedural Tokyo does), and both belong to a later phase in
  * `docs/MAP_3D_CITY.md`.
  *
- * Every function here is pure and mirrored by GLSL in `shaders.ts`, which
+ * Every function here is pure and mirrored by the materials — TSL in
+ * `tsl/common.ts` (`extrusionLit`), GLSL in the sky's `skyShaders.ts` — which
  * interpolates these same constants into its source, so the tested number and
  * the drawn number cannot drift apart. The light itself is MapLibre's, below.
  */
@@ -133,7 +134,7 @@ export function luminance([r, g, b]: Vec3): number {
  *     mix(1 − intensity, max(1 − luminance + intensity, 1), d)
  *
  * read off maplibre-gl 6.10's shader. The colour is then `(base + 0.03) ×
- * directional × lightColour`, clamped — see `shaders.ts`, which is this
+ * directional × lightColour`, clamped — see `tsl/common.ts` → `extrusionLit`, which is this
  * function in GLSL. What MapLibre multiplies on top (its vertical gradient)
  * the city layer replaces with {@link groundOcclusion}; that and the bevel are
  * the ONLY differences between the two renderers.

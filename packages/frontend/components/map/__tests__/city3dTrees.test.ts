@@ -8,6 +8,7 @@
  * does, rather than trusting a fixture made by the code under test.
  */
 import { describe, expect, test } from 'bun:test';
+import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PbfWriter } from 'pbf';
@@ -25,10 +26,9 @@ import {
   nearTreeShape,
 } from '@/components/map/engine/city3d/treeGeometry';
 import {
-  TREE_FRAGMENT_SHADER,
-  TREE_VERTEX_SHADER,
+  createTreeMaterials,
   treeMinHeightM,
-} from '@/components/map/engine/city3d/treeShaders';
+} from '@/components/map/engine/city3d/tsl/treeMaterial';
 import { decodeTreeSources } from '@/components/map/engine/city3d/treeSources';
 import {
   KIND_CONIFER,
@@ -506,14 +506,31 @@ describe('tree shapes and shader', () => {
     }
   });
 
-  test('trees are lit by MapLibre’s formula, like the buildings, and fade like them', () => {
-    expect(TREE_FRAGMENT_SHADER).toContain(
-      'mix(1.0 - uLightIntensity, max(1.0 - luminance + uLightIntensity, 1.0), d)',
+  test('one shared tree material and its dithered variant, as the buildings have (TSL)', () => {
+    const v = () => ({ value: new THREE.Vector3() });
+    const materials = createTreeMaterials(
+      {
+        uCrown: v(),
+        uConifer: v(),
+        uTrunk: v(),
+        uTreeMinHeight: { value: 0 },
+        uLightPosition: v(),
+        uLightIntensity: { value: 0.5 },
+        uLightColor: v(),
+        uOpacity: { value: 1 },
+        uGrounded: { value: 0 },
+      },
+      THREE.BackSide,
     );
-    expect(TREE_FRAGMENT_SHADER).toContain('ditherDiscard()');
-    expect(TREE_VERTEX_SHADER).toContain('in vec4 aTree;');
-    expect(TREE_VERTEX_SHADER).toContain('uTreeMinHeight');
-    expect(TREE_FRAGMENT_SHADER + TREE_VERTEX_SHADER).not.toContain('${');
+    const settled = materials.get(false);
+    expect(materials.get(false)).toBe(settled);
+    const dithered = materials.get(true);
+    expect(dithered).not.toBe(settled);
+    expect(dithered.colorNode).not.toBe(settled.colorNode);
+    for (const material of [settled, dithered]) {
+      expect(material.positionNode).toBeTruthy();
+      expect(material.side).toBe(THREE.BackSide);
+    }
   });
 
   test('zoomed out the tallest trees show first; from zoom 18 all of them', () => {

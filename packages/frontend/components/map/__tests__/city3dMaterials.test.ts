@@ -23,8 +23,7 @@ import {
 import { computeSkyState } from '@/components/map/engine/city3d/atmosphere';
 import { buildingSeed, meshOsmBuildings } from '@/components/map/engine/city3d/osmMesher';
 import type { OsmBuilding } from '@/components/map/engine/city3d/osmTiles';
-import { OSM_FRAGMENT_SHADER, TAG_TEMPER } from '@/components/map/engine/city3d/osmShaders';
-import { CITY_FRAGMENT_SHADER } from '@/components/map/engine/city3d/shaders';
+import { OSM_BASE_GLSL, TAG_TEMPER } from '@/components/map/engine/city3d/osmShaders';
 import { skyCityFragmentShader } from '@/components/map/engine/city3d/skyShaders';
 import { CITY_GROUND_PALETTES, CITY_MATERIALS, type Rgb } from '@/lib/map/style/palette3d';
 
@@ -69,9 +68,8 @@ describe('the GLSL', () => {
       expect(shader.match(/#endif/g)?.length ?? 0).toBe(opens);
       expect(shader).toContain('vec3 cityMaterial(CitySurface s, CityLight l)');
     }
-    // No second path: the map-lit shaders carry no detailed lighting.
-    expect(CITY_FRAGMENT_SHADER).not.toContain(DETAILED_DEFINE);
-    expect(OSM_FRAGMENT_SHADER).not.toContain('cityMaterial(');
+    // No second path: the map-lit buildings are TSL (`tsl/buildingMaterial.ts`),
+    // which has no detailed lighting; only the sky's shaders reach it.
   });
 
   test('the sky material is the contract’s cityMaterial, over the same declarations', () => {
@@ -248,7 +246,11 @@ describe('tagged colours in the detailed look', () => {
   });
 
   test('osmBase applies the clamp only in the detailed look', () => {
-    expect(OSM_FRAGMENT_SHADER).toContain('gm.tagSaturation');
+    const detailed = OSM_BASE_GLSL.slice(
+      OSM_BASE_GLSL.indexOf(`#ifdef ${DETAILED_DEFINE}`),
+      OSM_BASE_GLSL.lastIndexOf('#else'),
+    );
+    expect(detailed).toContain('gm.tagSaturation');
   });
 });
 

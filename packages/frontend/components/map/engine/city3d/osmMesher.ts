@@ -19,7 +19,7 @@
  *    pyramid or to flat — never to an invented different building.
  *  - **Two more vertex attributes.** `colors` (RGB + a blend weight, see
  *    `facades.ts`) and `facade` (the storey rhythm, see below), which the OSM
- *    shader (`osmShaders.ts`) reads.
+ *    materials (`tsl/buildingMaterial.ts`; with the sky, `osmShaders.ts`) read.
  *
  * ## The `facade` attribute
  *

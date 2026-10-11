@@ -11,15 +11,12 @@
 import { describe, expect, test } from 'bun:test';
 import { BackSide, FrontSide, Vector3 } from 'three/webgpu';
 
-import { MATERIAL_GLSL } from '@/components/map/engine/city3d/materials';
-import { OSM_FRAGMENT_SHADER, OSM_VERTEX_SHADER } from '@/components/map/engine/city3d/osmShaders';
 import { tileSizeMetres } from '@/components/map/engine/city3d/tileMath';
 import { meshCityTile } from '@/components/map/engine/city3d/tileMeshing';
 import {
   createBuildingMaterials,
   createBuildingUniforms,
 } from '@/components/map/engine/city3d/tsl/buildingMaterial';
-import { CITY_FRAGMENT_SHADER, CITY_VERTEX_SHADER } from '@/components/map/engine/city3d/shaders';
 import { encodeCityTile, type TilePoint } from '@/scripts/citygen/mvtEncode';
 
 const TILE = { z: 15, x: 16580, y: 12236 };
@@ -97,21 +94,6 @@ describe('the TSL building material', () => {
     uGrounded: { value: 0 },
   });
   const fade = () => ({ uFadeFrom: { value: 0 }, uFadeTo: { value: 1 } });
-
-  test('reads exactly the uniforms the plain GLSL building materials declare', () => {
-    const declared = new Set(
-      [
-        ...`${CITY_VERTEX_SHADER}${CITY_FRAGMENT_SHADER}${OSM_VERTEX_SHADER}${OSM_FRAGMENT_SHADER}`.matchAll(
-          /uniform \w+ (u\w+);/g,
-        ),
-      ].map((m) => m[1]),
-    );
-    // The detailed look's material (`materials.ts`) is drawn only in the city
-    // sky's light, so it is ported with the sky.
-    const material = new Set([...MATERIAL_GLSL.matchAll(/uniform \w+ (u\w+);/g)].map((m) => m[1]));
-    const read = [...Object.keys(createBuildingUniforms(refs())), ...Object.keys(fade())];
-    expect(read.sort()).toEqual([...declared].filter((name) => !material.has(name)).sort());
-  });
 
   test("the engine's uniform objects drive the nodes: one source of truth", () => {
     const engine = refs();

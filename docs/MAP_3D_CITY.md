@@ -245,7 +245,7 @@ a loaded 32-core machine and vary ±30% run to run; the sizes are exact.
 | Upload per frame | 12 MiB (1 mesh after a > 50 ms frame) | `UPLOAD_BYTES_PER_FRAME` | |
 | Requests in flight | 2 per worker, ≤ 3 workers | `MAX_IN_FLIGHT_PER_WORKER`, `poolSize` | |
 | Worker time per tile | level 0 ≤ 200 ms, levels 1–2 ≤ 60 ms, trees ≤ 50 ms (Bun, dense tiles) | — | table above |
-| Trees | ≤ 24,000 per tile, ≤ 40,000 drawn per frame (nearest tiles first); ≤ 98 triangles near, ≤ 30 far; shorter than `treeMinHeightM(zoom)` not drawn | `TREES.maxPerTile`, `TREE_BUDGET`, `treeGeometry.ts`, `treeShaders.ts` | Central Park: 18,233 trees, 1.28 M triangles; Barcelona at 80°: 20,523 |
+| Trees | ≤ 24,000 per tile, ≤ 40,000 drawn per frame (nearest tiles first); ≤ 98 triangles near, ≤ 30 far; shorter than `treeMinHeightM(zoom)` not drawn | `TREES.maxPerTile`, `TREE_BUDGET`, `treeGeometry.ts`, `tsl/treeMaterial.ts` | Central Park: 18,233 trees, 1.28 M triangles; Barcelona at 80°: 20,523 |
 | Main-thread time in `render()` | ≤ 2 ms steady (selection, scheduling, three's draw calls) | `frameCpuMs` dev stat | 1.0–1.3 ms steady in Barcelona at 60° and 80°; frames that upload new meshes cost more, which is what the upload budget bounds |
 
 When the drawn set would exceed `DRAW_BUDGET`, `fitBudget` coarsens it from
@@ -434,7 +434,7 @@ tree where none is mapped).
    little (palms more), the canopy rides it.
 4. **Zoomed out, the tallest first**: trees shorter than `treeMinHeightM(zoom)`
    — 10 m at zoom 15.5, 0 from zoom 18 — shrink away over 3 m rather than pop
-   (`treeShaders.ts`), which is also what keeps a whole-city view affordable.
+   (`tsl/treeMaterial.ts`), which is also what keeps a whole-city view affordable.
 5. **Colour** (`components/map/city3dTrees.ts`): canopies are the palette's PARK
    colour desaturated to a matte sage, a step darker than the ground on the
    light map and lighter on the dark one; conifers cooler and deeper; palms a
@@ -631,7 +631,7 @@ with `?city3d=1`, which a production build ignores (`lib/map/city3dFlag.ts`).
 | Tree colours | `components/map/city3dTrees.ts` — crown and trunk from the palette's park colour |
 | Engine (three.js) | `components/map/engine/city3d/cityEngine.ts` (selection, scheduling, upload budget, fades), `cityMeshes.ts` (a tile's GPU entry: building chunks + instanced trees) |
 | Worker | `components/map/engine/city3d/meshWorker.ts` (`new Worker(new URL(…, import.meta.url))`, which Expo bundles as a sealed chunk), run as a pool by `workerPool.ts` |
-| Pure parts (tested) | `tileMath.ts`, `mesher.ts`, `occlusion.ts`, `shaders.ts`, `decode.ts`, `tileScheduler.ts`; far field: `lod.ts`, `lodMesher.ts`, `simplify.ts`, `packing.ts`, `transitions.ts`; trees: `trees.ts`, `treeSources.ts`, `treeGeometry.ts`, `treeShaders.ts` |
+| Pure parts (tested) | `tileMath.ts`, `mesher.ts`, `occlusion.ts`, `shaders.ts`, `decode.ts`, `tileScheduler.ts`; far field: `lod.ts`, `lodMesher.ts`, `simplify.ts`, `packing.ts`, `transitions.ts`; trees: `trees.ts`, `treeSources.ts`, `treeGeometry.ts`; materials: `tsl/` ([`MAP_NATIVE_3D.md`](./MAP_NATIVE_3D.md)) |
 | Chunk boundary | `components/engine3d/lazyChunk.ts` |
 | On 3D terrain | `engine/city3d/terrainGround.ts` (pure) and `components/map/city3dGround.web.ts` — each building lifted to the drawn ground; see [`MAP_TERRAIN_GLOBE.md`](./MAP_TERRAIN_GLOBE.md) → "Buildings on terrain" |
 
@@ -710,7 +710,7 @@ fallback.
 | Compiler internals | `scripts/citygen/` — `osmPbf.ts` (reader, relation roles included), `compile.ts` (passes, assembly, parts, tiling), `tags.ts` (+ `cssColours.ts`), `mvtEncode.ts`, `pmtilesWriter.ts` |
 | Client decode | `components/map/engine/city3d/osmTiles.ts` |
 | Client mesh | `osmMesher.ts`, `roofs.ts`, `facades.ts` |
-| Client shader | `osmShaders.ts` |
+| Client material | `tsl/buildingMaterial.ts` (with the city sky: `osmShaders.ts` → `osmBase`, `skyShaders.ts`) |
 | Engine/worker seam | `protocol.ts` (`format`), `meshWorker.ts` (one branch, packed like the rest), `cityEngine.ts` (`tileFormat`, `maxTiles`), `cityMeshes.ts` + `packing.ts` (the two extra attributes) |
 | Flag | The registry's `cityTiles` (`lib/map/mapFeatures.ts`; `EXPO_PUBLIC_MAP_CITY_TILES`; offered in the settings modal only in a development build) over `lib/map/cityTilesFlag.ts` (`?cityTiles=1` in development; requires the city-3D flag) |
 | Adapter | `city3dLayer.web.ts` → `citySourceFor` |
