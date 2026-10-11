@@ -14,12 +14,15 @@ import {
   LIVE_ICON_LAYER_ID,
   LIVE_RING_LAYER_ID,
   LIVE_SOURCE_ID,
+  surfacePoints,
+  UNDERGROUND_ICON_OPACITY,
 } from '@/components/map/liveLayer.web';
 import type { MapLiveLayer, MapLivePoint } from '@/components/map/types';
 
 const GLYPHS = {
   aircraft: { shape: 'aircraft', color: '#7c3aed' },
   'transit-rail': { shape: 'vehicle', color: '#0f766e' },
+  train: { shape: 'train', color: '#0f766e' },
 } as const;
 
 function point(overrides: Partial<MapLivePoint> = {}): MapLivePoint {
@@ -53,6 +56,8 @@ describe('featureCollection', () => {
       icon: imageName('aircraft', true),
       heading: 90,
       opacity: 1,
+      iconNear: 1,
+      iconFar: 1,
     });
     expect(features[1]?.properties).toMatchObject({
       icon: imageName('transit-rail', false),
@@ -72,7 +77,51 @@ describe('featureCollection', () => {
       { glyphs: GLYPHS, threeD: true },
     );
     expect(features).toHaveLength(1);
-    expect(features[0]?.properties?.opacity).toBeCloseTo(0.4, 6);
+    expect(features[0]?.properties?.iconNear).toBeCloseTo(0.4, 6);
+    expect(features[0]?.properties?.iconFar).toBeCloseTo(0.4, 6);
+    // Its label is never dimmed for being in 3D.
+    expect(features[0]?.properties?.opacity).toBe(1);
+  });
+
+  test('in 3D a train’s model replaces its glyph up close; an estimate (no model) keeps it', () => {
+    const train = point({
+      id: 'renfe:1',
+      glyph: 'train',
+      altitude: null,
+      model: 'cercanias-civia',
+      length: 100,
+    });
+    const estimate = point({ id: 'mta:1', glyph: 'train', altitude: null, estimated: true });
+    const { features } = featureCollection([train, estimate], { glyphs: GLYPHS, threeD: true });
+    expect(features[0]?.properties).toMatchObject({ iconNear: 0, iconFar: 1, opacity: 1 });
+    expect(features[1]?.properties).toMatchObject({ iconNear: 1, iconFar: 1 });
+  });
+
+  test('a train in a tunnel is a dimmed flat glyph at every zoom, and never a 3D model', () => {
+    const train = point({
+      id: 'renfe:sol',
+      glyph: 'train',
+      altitude: null,
+      model: 'cercanias-civia',
+    });
+    const other = point({
+      id: 'renfe:surface',
+      glyph: 'train',
+      altitude: null,
+      model: 'cercanias-civia',
+    });
+    const underground = new Set(['renfe:sol']);
+    const { features } = featureCollection([train, other], {
+      glyphs: GLYPHS,
+      threeD: true,
+      underground,
+    });
+    expect(features[0]?.properties).toMatchObject({
+      iconNear: UNDERGROUND_ICON_OPACITY,
+      iconFar: UNDERGROUND_ICON_OPACITY,
+    });
+    expect(surfacePoints([train, other], underground).map((p) => p.id)).toEqual(['renfe:surface']);
+    expect(surfacePoints([train, other], new Set())).toHaveLength(2);
   });
 
   test('throttles frames by zoom', () => {
@@ -124,6 +173,9 @@ function fakeMap() {
     ],
     // A projection that is the identity on these test coordinates.
     project: ([x, y]: [number, number]) => ({ x, y }),
+    // The basemap's railways: one tunnel along 41.3°N.
+    rails: [] as unknown[],
+    querySourceFeatures: (): unknown[] => map.rails,
   };
   return map;
 }
@@ -162,6 +214,36 @@ describe('attachLive', () => {
     expect(map.layers).toEqual(['background', 'label-place']);
     expect(map.sources.size).toBe(0);
     expect(handle.pick({ x: 10, y: 10 })).toBeNull();
+  });
+
+  test('classifies a train on a basemap tunnel as underground', async () => {
+    const map = fakeMap();
+    map.rails = [
+      {
+        properties: { class: 'rail', brunnel: 'tunnel' },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [2.0, 41.3],
+            [2.2, 41.3],
+          ],
+        },
+      },
+    ];
+    const train = point({ id: 'renfe:1', glyph: 'train', altitude: null, model: 'civia' });
+    const away = point({
+      id: 'renfe:2',
+      glyph: 'train',
+      altitude: null,
+      model: 'civia',
+      coordinate: { latitude: 41.35, longitude: 2.1 },
+    });
+    const { layer } = fakeLayer([train, away]);
+    const handle = attachLive(map as never, layer, { appearance: 'light' });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    const data = map.sources.get(LIVE_SOURCE_ID)?.data as GeoJSON.FeatureCollection;
+    expect(data.features.map((f) => f.properties?.iconFar)).toEqual([UNDERGROUND_ICON_OPACITY, 1]);
+    handle.detach();
   });
 
   test('gives the city engine a 3D pass, and takes it back', async () => {

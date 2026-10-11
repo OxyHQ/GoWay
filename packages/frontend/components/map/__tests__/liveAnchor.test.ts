@@ -81,3 +81,24 @@ describe('display size', () => {
     expect(displayScale(38, 10, 41, 30)).toBeGreaterThan(10); // ~115 m/px: floored
   });
 });
+
+describe('size at Madrid', () => {
+  test('a 100 m consist spans 100 m of MapLibre’s mercator at 40.42°N', () => {
+    // Puerta del Sol: where the owner saw an over-sized train.
+    const latitude = 40.4169;
+    const centre = MercatorCoordinate.fromLngLat({ lng: -3.7035, lat: latitude });
+    const m = anchorMatrix(
+      { longitude: -3.7035, latitude, altitude: 0, heading: 90, scale: 1 },
+      centre,
+    );
+    const [x0] = apply(m, [0, -50, 0]);
+    const [x1] = apply(m, [0, 50, 0]);
+    expect(
+      (x1 - x0) /
+        MercatorCoordinate.fromLngLat({
+          lng: -3.7035,
+          lat: latitude,
+        }).meterInMercatorCoordinateUnits(),
+    ).toBeCloseTo(100, 6);
+  });
+});
