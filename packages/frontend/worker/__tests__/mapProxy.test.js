@@ -27,11 +27,14 @@ import { readFile } from 'node:fs/promises';
 
 import worker, {
   GLYPH_PATH,
+  TERRAIN_PATH,
   TILE_PATH,
   UPSTREAM_FONTSTACK,
   serveGlyphs,
+  serveTerrain,
   serveTile,
 } from '../index.js';
+import { MAPTERHORN_ENDPOINTS } from '../../lib/map/provider.ts';
 import {
   UPSTREAM_FONTSTACK as BUILD_UPSTREAM_FONTSTACK,
   UPSTREAM_GLYPH_TEMPLATE,
@@ -375,5 +378,81 @@ describe('the tile body reaches the browser as plain MVT', () => {
     expect(body).not.toContain("headers.set('content-encoding'");
     // And the stored bytes must not be what goes out.
     expect(body).not.toMatch(/new Response\(tile\.bytes/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Elevation tiles (the relief prototype, docs/MAP_TERRAIN_GLOBE.md)
+// ---------------------------------------------------------------------------
+
+describe('serveTerrain, proxied', () => {
+  const TERRAIN = 'https://tiles.mapterhorn.com/{z}/{x}/{y}.webp';
+  const terrainEnv = { MAP_TERRAIN_UPSTREAM: TERRAIN };
+  const request = (path, method = 'GET') => new Request(`https://goway.to${path}`, { method });
+  const serve = (path, e = terrainEnv) => {
+    const r = request(path);
+    return serveTerrain(new URL(r.url), r, e, ctx);
+  };
+
+  test('the path regex admits a WebP coordinate and nothing else', () => {
+    expect(TERRAIN_PATH.test('/map/terrain/12/2069/1525.webp')).toBe(true);
+    for (const path of [
+      '/map/terrain/12/2069/1525.png',
+      '/map/terrain/12/2069/../1525.webp',
+      '/map/terrain/12/2069.webp',
+      '/map/terrain/a/b/c.webp',
+    ]) {
+      expect(TERRAIN_PATH.test(path)).toBe(false);
+    }
+  });
+
+  test('fetches the upstream tile and answers it as ours', async () => {
+    upstream.set(
+      'https://tiles.mapterhorn.com/12/2069/1525.webp',
+      () =>
+        new Response('webp', {
+          headers: {
+            'content-type': 'image/webp',
+            'set-cookie': 'a=b',
+            server: 'x',
+            'cache-control': 'no-store',
+          },
+        }),
+    );
+    const response = await serve('/map/terrain/12/2069/1525.webp');
+    expect(fetched).toEqual(['https://tiles.mapterhorn.com/12/2069/1525.webp']);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/webp');
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('cache-control')).toBe('public, max-age=604800');
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(response.headers.get('server')).toBeNull();
+  });
+
+  test('refuses a zoom past z12 and a coordinate outside the world, without asking upstream', async () => {
+    expect((await serve('/map/terrain/13/0/0.webp')).status).toBe(404);
+    expect((await serve('/map/terrain/2/4/0.webp')).status).toBe(404);
+    expect(fetched).toEqual([]);
+  });
+
+  test('answers 503 rather than inventing an upstream', async () => {
+    const response = await serve('/map/terrain/1/0/0.webp', {});
+    expect(response.status).toBe(503);
+    expect(fetched).toEqual([]);
+  });
+
+  test('the entry point routes /map/terrain/ to it', async () => {
+    upstream.set('https://tiles.mapterhorn.com/0/0/0.webp', () => new Response('webp'));
+    const response = await worker.fetch(request('/map/terrain/0/0/0.webp'), { ...terrainEnv }, ctx);
+    expect(response.status).toBe(200);
+    expect(fetched).toEqual(['https://tiles.mapterhorn.com/0/0/0.webp']);
+  });
+
+  test('wrangler.toml proxies the upstream provider.ts names, and lets the Worker run first', async () => {
+    const wrangler = await Bun.file(new URL('../../wrangler.toml', import.meta.url)).text();
+    expect(/MAP_TERRAIN_UPSTREAM\s*=\s*"([^"]+)"/.exec(wrangler)?.[1]).toBe(
+      MAPTERHORN_ENDPOINTS.tiles,
+    );
+    expect(/run_worker_first\s*=\s*\[[^\]]*"\/map\/terrain\/\*"/.test(wrangler)).toBe(true);
   });
 });

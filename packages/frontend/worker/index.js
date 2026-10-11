@@ -7,7 +7,7 @@
  * case well: GoWay's web build is public, so there is nothing for a Worker to
  * gate, and "a script that exists only to forward to `env.ASSETS` is a runtime
  * failure mode bought for nothing". That argument still holds for every path
- * this file does not claim, which is why `run_worker_first` names exactly two
+ * this file does not claim, which is why `run_worker_first` names exactly three
  * prefixes and everything else still reaches the asset pipeline without
  * executing a line of this.
  *
@@ -119,6 +119,25 @@ const TILEJSON_TTL_SECONDS = 3600;
 
 /** `/map/tiles/{z}/{x}/{y}.pbf`, and nothing that merely resembles it. */
 const TILE_PATH = /^\/map\/tiles\/(\d{1,2})\/(\d{1,9})\/(\d{1,9})\.pbf$/;
+
+/** `/map/terrain/{z}/{x}/{y}.webp` — the relief prototype's elevation tiles. */
+const TERRAIN_PATH = /^\/map\/terrain\/(\d{1,2})\/(\d{1,9})\/(\d{1,9})\.webp$/;
+
+/**
+ * How long the edge and the browser may keep an elevation tile: a week. A DEM
+ * is as close to immutable as map data gets, the archive key versions it like
+ * the vector tiles, and Mapterhorn itself serves its tiles for a week.
+ */
+const TERRAIN_EDGE_TTL_SECONDS = 604800;
+
+/**
+ * The deepest elevation zoom GoWay serves. Mapterhorn is complete to z12
+ * (Copernicus GLO-30) and patchy above it, and its `planet.pmtiles` is z0–12;
+ * the client's source says `maxzoom: 12` and over-zooms from there
+ * (`lib/map/style/relief.ts`), so a deeper request is a bug and answered as
+ * a miss before anything is fetched.
+ */
+const MAX_TERRAIN_ZOOM = 12;
 
 /** `/map/fonts/{fontstack}/{start}-{end}.pbf`. */
 const GLYPH_PATH = /^\/map\/fonts\/([^/]{1,64})\/(\d{1,7})-(\d{1,7})\.pbf$/;
@@ -484,6 +503,100 @@ async function serveTile(url, request, env, ctx) {
 }
 
 /**
+ * `/map/terrain/{z}/{x}/{y}.webp` — elevation tiles for the relief prototype
+ * (`docs/MAP_TERRAIN_GLOBE.md`).
+ *
+ * The same two backends as the vector tiles, in the same order, for the same
+ * reasons. An R2 archive when one is configured (`MAP_TERRAIN_ARCHIVE` in the
+ * `MAP_TILES` bucket — Mapterhorn's own `planet.pmtiles`, z0–12, 356 GB),
+ * because then no viewer's request leaves Cloudflare. Otherwise a proxy of
+ * `MAP_TERRAIN_UPSTREAM`, Mapterhorn's public endpoint: it publishes no usage
+ * policy and logs every caller's IP, referrer and user agent, so the browser
+ * must not talk to it directly — through here it sees Cloudflare, and the
+ * edge cache answers most requests without asking at all.
+ *
+ * A WebP is already compressed, and PMTiles stores it with tile compression
+ * `none`, so the archive bytes are the body. A tile the source does not have
+ * (open ocean has no z12 tile in Mapterhorn) is a 404, which MapLibre draws as
+ * flat ground.
+ */
+async function serveTerrain(url, request, env, ctx) {
+  const match = TERRAIN_PATH.exec(url.pathname);
+  if (!match) return notFound('Not an elevation tile path.');
+
+  const z = Number(match[1]);
+  const x = Number(match[2]);
+  const y = Number(match[3]);
+  if (!Number.isInteger(z) || z > MAX_TERRAIN_ZOOM)
+    return notFound('Zoom outside the elevation tiles.');
+  const span = 2 ** z;
+  if (x >= span || y >= span) return notFound('Tile coordinate outside the world at that zoom.');
+
+  if (env.MAP_TILES && env.MAP_TERRAIN_ARCHIVE) {
+    return serveTerrainFromArchive(z, x, y, request, env, ctx);
+  }
+
+  const upstream = env.MAP_TERRAIN_UPSTREAM;
+  if (!upstream?.includes('{z}')) {
+    return new Response(
+      'Neither an R2 elevation archive (MAP_TILES + MAP_TERRAIN_ARCHIVE) nor MAP_TERRAIN_UPSTREAM ' +
+        'is configured for this deployment.',
+      {
+        status: 503,
+        headers: { ...publicHeaders(0), 'content-type': 'text/plain; charset=utf-8' },
+      },
+    );
+  }
+  const target = upstream
+    .replace('{z}', String(z))
+    .replace('{x}', String(x))
+    .replace('{y}', String(y));
+  const response = await fetch(target, {
+    method: request.method === 'HEAD' ? 'HEAD' : 'GET',
+    cf: { cacheEverything: true, cacheTtl: TERRAIN_EDGE_TTL_SECONDS },
+  });
+  return reissue(response, TERRAIN_EDGE_TTL_SECONDS);
+}
+
+/** `/map/terrain/{z}/{x}/{y}.webp`, out of an elevation archive in R2. */
+async function serveTerrainFromArchive(z, x, y, request, env, ctx) {
+  const cache = caches.default;
+  const key = env.MAP_TERRAIN_ARCHIVE;
+  const cacheKey = new Request(
+    `https://goway.internal/map/terrain/${encodeURIComponent(key)}/${z}/${x}/${y}.webp`,
+  );
+  const hit = await cache.match(cacheKey);
+  if (hit) {
+    return request.method === 'HEAD'
+      ? new Response(null, { status: hit.status, headers: hit.headers })
+      : hit;
+  }
+
+  let tile;
+  try {
+    tile = await new PMTiles(archiveSource(env.MAP_TILES, key, ctx)).getTile(z, x, y);
+  } catch (error) {
+    return new Response(`The elevation archive could not be read: ${error.message}`, {
+      status: 502,
+      headers: { ...publicHeaders(0), 'content-type': 'text/plain; charset=utf-8' },
+    });
+  }
+
+  const headers = new Headers(publicHeaders(TERRAIN_EDGE_TTL_SECONDS));
+  if (!tile) {
+    const miss = new Response(null, { status: 404, headers });
+    ctx.waitUntil(cache.put(cacheKey, miss.clone()));
+    return miss;
+  }
+  headers.set('content-type', 'image/webp');
+  const body = await decompress(tile.bytes, tile.compression);
+  headers.set('content-length', String(body.length));
+  const response = new Response(body, { headers });
+  ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  return request.method === 'HEAD' ? new Response(null, { headers }) : response;
+}
+
+/**
  * `/map/fonts/{fontstack}/{range}.pbf`.
  *
  * Assets first, upstream second. The ranges Inter covers are committed under
@@ -538,7 +651,7 @@ async function serveGlyphs(url, request, env) {
 
 export default {
   /**
-   * Only the two prefixes named by `run_worker_first` ever arrive here; every
+   * Only the prefixes named by `run_worker_first` ever arrive here; every
    * other request is answered by the asset pipeline without this Worker
    * running. The `env.ASSETS.fetch` at the bottom is therefore a safety net
    * for a misconfiguration rather than the normal path, and it is what keeps a
@@ -557,6 +670,7 @@ export default {
 
     if (url.pathname.startsWith('/map/tiles/')) return serveTile(url, request, env, ctx);
     if (url.pathname.startsWith('/map/fonts/')) return serveGlyphs(url, request, env);
+    if (url.pathname.startsWith('/map/terrain/')) return serveTerrain(url, request, env, ctx);
 
     return env.ASSETS.fetch(request);
   },
@@ -577,10 +691,12 @@ export default {
 // strings are not. `worker/__tests__/pmtiles.test.js` asserts this.
 export {
   GLYPH_PATH,
+  TERRAIN_PATH,
   TILE_PATH,
   UPSTREAM_FONTSTACK,
   archiveSource,
   publicHeaders,
   serveGlyphs,
+  serveTerrain,
   serveTile,
 };

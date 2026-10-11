@@ -35,10 +35,10 @@ main = "./worker/index.js"
 # it, and the remaining shape is a proxy with edge caching. A proxy is code.
 #
 # `run_worker_first` below is what keeps the old argument true anyway. It names
-# two prefixes; every other request is answered by the asset pipeline without
+# three prefixes; every other request is answered by the asset pipeline without
 # this Worker executing a line, so the failure mode the old comment warned
-# about is bought only for `/map/tiles/*` and `/map/fonts/*` and not for the
-# app. The `env.ASSETS.fetch` at the bottom of `worker/index.js` is a safety
+# about is bought only for `/map/tiles/*`, `/map/fonts/*` and `/map/terrain/*`,
+# not for the app. The `env.ASSETS.fetch` at the bottom of `worker/index.js` is a safety
 # net for a misconfiguration here, not the normal path.
 #
 # Consequence worth knowing before someone goes looking: the SPA fallback below
@@ -91,7 +91,7 @@ not_found_handling = "single-page-application"
 # undefined property, which is a 500 on every request the Worker touches.
 binding = "ASSETS"
 
-# The Worker runs BEFORE the asset lookup for these two prefixes only.
+# The Worker runs BEFORE the asset lookup for these three prefixes only.
 #
 # `/map/tiles/*` has no asset to find; the Worker is the only thing that can
 # answer it. `/map/fonts/*` DOES have assets — the Inter ranges GoWay
@@ -109,7 +109,12 @@ binding = "ASSETS"
 #
 # Everything else — the app shell, the JS chunks, the style documents, the
 # sprite — is untouched by the Worker and keeps being served exactly as before.
-run_worker_first = ["/map/tiles/*", "/map/fonts/*"]
+#
+# `/map/terrain/*` is the relief prototype's elevation tiles
+# (`docs/MAP_TERRAIN_GLOBE.md`): no asset, like the vector tiles. Nothing
+# requests it while the globe/terrain flags are off, which is everywhere in
+# production today.
+run_worker_first = ["/map/tiles/*", "/map/fonts/*", "/map/terrain/*"]
 
 # GoWay's OWN tiles: one PMTiles archive in R2, read by byte range.
 #
@@ -169,10 +174,19 @@ bucket_name = "goway-map-tiles"
 # it names the current date-stamped planet build, old builds are deleted, and
 # resolving it at request time (cached for an hour) is what stops a deployment
 # serving 404s from the day the next planet lands.
+#
+# `MAP_TERRAIN_UPSTREAM` is the relief prototype's elevation tiles, proxied so
+# that no viewer's browser talks to Mapterhorn (whose endpoint logs callers'
+# IPs and publishes no usage policy). It must equal `MAPTERHORN_ENDPOINTS.tiles`
+# in `lib/map/provider.ts`. Setting `MAP_TERRAIN_ARCHIVE` to the key of
+# Mapterhorn's `planet.pmtiles` uploaded into `MAP_TILES` (z0–12, 356 GB,
+# ~$5.3/month on R2) serves them from GoWay's own bucket instead — the
+# production path; see `docs/MAP_TERRAIN_GLOBE.md` → "The DEM".
 [vars]
 MAP_TILE_ARCHIVE = "planet/20260921.pmtiles"
 MAP_TILE_UPSTREAM = "https://tiles.openfreemap.org/planet"
 MAP_GLYPH_UPSTREAM = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf"
+MAP_TERRAIN_UPSTREAM = "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
 
 # The only name this deployment answers to, and the reason `workers_dev` is
 # off. `goway.to` is the zone apex: Cloudflare writes and manages the record

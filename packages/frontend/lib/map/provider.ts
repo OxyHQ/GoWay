@@ -239,6 +239,14 @@ export const GOWAY_MAP_PATHS = {
   glyphs: '/map/fonts/{fontstack}/{range}.pbf',
   /** Base URL of GoWay's SDF sprite; MapLibre appends `.json`/`.png`/`@2x`. */
   sprite: '/map/sprites/goway',
+  /**
+   * Elevation (DEM) tiles for the relief prototype — Terrarium-encoded WebP,
+   * 512 px, z0–12. The Worker serves them from an R2 archive when one is
+   * configured and proxies {@link MAPTERHORN_ENDPOINTS} otherwise; see
+   * `docs/MAP_TERRAIN_GLOBE.md`. Not in any style document: only the relief
+   * prototype adds it, at runtime.
+   */
+  terrain: '/map/terrain/{z}/{x}/{y}.webp',
 } as const;
 
 /**
@@ -261,6 +269,37 @@ export const GOWAY_MAP_PATHS = {
 export const ATTRIBUTION_HTML =
   '<a href="https://www.openmaptiles.org/" target="_blank">&copy; OpenMapTiles</a> ' +
   '<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>';
+
+/**
+ * The UPSTREAM elevation tiles. **No browser ever fetches these URLs** — the
+ * same rule, and the same reason, as {@link OPENFREEMAP_ENDPOINTS}.
+ *
+ * Mapterhorn (https://mapterhorn.com) publishes open terrain tiles: Copernicus
+ * GLO-30 worldwide to z12, finer national models above it where they exist,
+ * Terrarium-encoded WebP, every source under an attribution-only or public
+ * domain licence, commercial use included. Its public endpoint carries no
+ * usage policy GoWay could rely on and logs every caller's IP, referrer and
+ * user agent for 30 days, so the browser does not talk to it: the Worker reads
+ * `MAP_TERRAIN_UPSTREAM` (`wrangler.toml`, which must agree with this value)
+ * only while no R2 archive is configured, and the production path is
+ * Mapterhorn's own `planet.pmtiles` (z0–12, 356 GB) in GoWay's bucket. See
+ * `docs/MAP_TERRAIN_GLOBE.md` → "The DEM".
+ */
+export const MAPTERHORN_ENDPOINTS = {
+  tiles: 'https://tiles.mapterhorn.com/{z}/{x}/{y}.webp',
+} as const;
+
+/**
+ * The elevation credit, shown in `MapAttribution` while relief is drawn.
+ *
+ * One link, to Mapterhorn's attribution page, which names each of the 151
+ * sources it merges (Copernicus GLO-30 among them) — the form Mapterhorn
+ * itself recommends when a view spans many sources.
+ */
+export const TERRAIN_ATTRIBUTION_LINK: MapAttributionLink = {
+  label: '© Mapterhorn',
+  href: 'https://mapterhorn.com/attribution',
+};
 
 const ATTRIBUTION: MapAttribution = {
   links: [
@@ -494,9 +533,28 @@ export function resolveMapStyleUrl(appearance: MapAppearance): string {
   return absoluteStyleUrl(getMapSource().styleUrl[appearance]);
 }
 
-/** The attribution GoWay must display for the active source. */
-export function resolveMapAttribution(): MapAttribution {
-  return getMapSource().attribution;
+/**
+ * The attribution GoWay must display for the active source — plus the
+ * elevation credit while the relief prototype draws terrain or a hillshade.
+ */
+export function resolveMapAttribution(options?: { terrain?: boolean }): MapAttribution {
+  const base = getMapSource().attribution;
+  if (!options?.terrain) return base;
+  return { ...base, links: [...base.links, TERRAIN_ATTRIBUTION_LINK] };
+}
+
+/**
+ * The `{z}/{x}/{y}` template of the elevation tiles the relief prototype draws.
+ *
+ * GoWay's own Worker route by default — absolute, like the tiles inside the
+ * style documents, so a native build and `expo start --web` read the same
+ * production path. `EXPO_PUBLIC_MAP_TERRAIN_TILES` overrides it (a preview,
+ * or a development session before the Worker route is deployed).
+ */
+export function resolveTerrainTileUrl(): string {
+  const configured = process.env.EXPO_PUBLIC_MAP_TERRAIN_TILES;
+  if (configured) return configured;
+  return `${GOWAY_ORIGIN}${GOWAY_MAP_PATHS.terrain}`;
 }
 
 /**

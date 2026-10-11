@@ -89,3 +89,25 @@ export const MAP_CITY3D_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_MAP
  * redirects to the map, and the feature's chunk is never requested.
  */
 export const MAP_FLYOVER_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_MAP_FLYOVER ?? '');
+
+/**
+ * Whether the map draws the world as a GLOBE at low zoom (MapLibre's `globe`
+ * projection, easing into mercator by z12) with a space backdrop and an
+ * atmosphere (web only; `docs/MAP_TERRAIN_GLOBE.md`).
+ *
+ * Off unless `EXPO_PUBLIC_MAP_GLOBE` is `1`/`true`; no production deployment
+ * sets it. A development build also honours `?globe=1` per tab
+ * (`lib/map/reliefFlag.ts`); a production build ignores that.
+ */
+export const MAP_GLOBE_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_MAP_GLOBE ?? '');
+
+/**
+ * Whether the map draws real relief: a hillshade at mid zooms and 3D terrain
+ * once the camera is tilted, from GoWay's DEM tiles (`docs/MAP_TERRAIN_GLOBE.md`).
+ * Native draws the hillshade only (its MapLibre has no terrain API).
+ *
+ * Off unless `EXPO_PUBLIC_MAP_TERRAIN` is `1`/`true`; no production deployment
+ * sets it. A development build also honours `?terrain=1` per tab; a production
+ * build ignores that.
+ */
+export const MAP_TERRAIN_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_MAP_TERRAIN ?? '');
