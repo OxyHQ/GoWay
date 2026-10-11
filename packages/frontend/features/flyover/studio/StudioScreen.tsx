@@ -60,7 +60,7 @@ import {
 } from '@/components/map';
 import { unprojectTopDown } from '@/lib/map/camera/plane';
 import { type TourAim, MAX_TOUR_KEYFRAMES } from '@/lib/map/camera/tour';
-import { parseTourFromParams, tourLink } from '@/lib/map/tourLink';
+import { parseTourFromParams, studioTabPath, tourLink } from '@/lib/map/tourLink';
 import { parseViewportFromParams } from '@/lib/map/viewportLink';
 
 import { PlayerBar } from '../PlayerBar';
@@ -155,15 +155,29 @@ export function StudioScreen() {
     setPreviewing(false);
   }, [pause]);
 
+  // The running export's cancel switch. Closing the player while recording
+  // routes here instead of a bare pause: a paused playback never reaches the
+  // end the recording waits for (PR #123 review).
+  const exportAbort = useRef<AbortController | null>(null);
+  const cancelExport = useCallback(() => {
+    exportAbort.current?.abort();
+    pause();
+  }, [pause]);
+  // Leaving the Studio mid-recording cancels it too.
+  useEffect(() => () => exportAbort.current?.abort(), []);
+
   const exportClip = useCallback(async () => {
     const map = mapRef.current;
     if (!map || !compiled) return;
+    const controller = new AbortController();
+    exportAbort.current = controller;
     setExporting(true);
     setPreviewing(true);
     setNotice('Recording… the video plays in real time.');
     try {
       const blob = await exportVideo({
         map,
+        signal: controller.signal,
         colours: { plate: theme.colors.background, text: theme.colors.textSecondary },
         play: () =>
           new Promise<void>((resolve) => {
@@ -180,8 +194,14 @@ export function StudioScreen() {
           type: blob.type,
         };
     } catch (cause) {
-      setNotice(`Could not record the video: ${String(cause)}`);
+      setNotice(
+        (cause as { name?: string } | null)?.name === 'AbortError'
+          ? 'Recording cancelled.'
+          : `Could not record the video: ${String(cause)}`,
+      );
     } finally {
+      ended.current = null;
+      if (exportAbort.current === controller) exportAbort.current = null;
       setExporting(false);
       setPreviewing(false);
     }
@@ -287,11 +307,9 @@ export function StudioScreen() {
         setNotice(url);
       }
       // Keep the address bar in step, so a reload reopens this tour.
-      window.history.replaceState(
-        null,
-        '',
-        new URL(url).search ? `/studio${new URL(url).search}` : '/studio',
-      );
+      // The tab keeps its development switches (`?flyover=1`); the shared
+      // link does not carry them.
+      window.history.replaceState(null, '', studioTabPath(url, window.location.search));
     } else {
       await Share.share({ message: url, url });
     }
@@ -700,8 +718,8 @@ export function StudioScreen() {
                 ? 'Reduced motion: stepping through the keyframes'
                 : undefined
           }
-          onClose={stopPreview}
-          closeLabel="Stop the preview"
+          onClose={exporting ? cancelExport : stopPreview}
+          closeLabel={exporting ? 'Cancel the recording' : 'Stop the preview'}
           testID="studio-player"
         />
       ) : (

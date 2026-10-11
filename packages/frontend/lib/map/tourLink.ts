@@ -289,3 +289,29 @@ export function parseTourFromParams(source: ViewportParamSource): Tour | null {
   const value = Array.isArray(raw) ? raw[0] : raw;
   return typeof value === 'string' ? decodeTour(value) : null;
 }
+
+/**
+ * Development feature switches a tab can be opened with (`?flyover=1` and the
+ * 3D ones). A production build ignores them; a development build needs them
+ * to keep showing what the tab was opened to show.
+ */
+const DEV_SWITCHES = ['flyover', 'city3d', 'cityTiles'] as const;
+
+/**
+ * The path to put in the tab's address bar after sharing `link`: the link's
+ * own query, plus whichever development switches the tab already carried.
+ *
+ * Writing the bare link dropped `?flyover=1`, so reloading a development tab
+ * redirected away from the Studio (PR #123 review). The SHARED link stays
+ * bare — the switches are this tab's business, never the recipient's.
+ */
+export function studioTabPath(link: string, currentSearch: string): string {
+  const params = new URL(link).searchParams;
+  const current = new URLSearchParams(currentSearch);
+  for (const key of DEV_SWITCHES) {
+    const value = current.get(key);
+    if (value !== null) params.set(key, value);
+  }
+  const query = params.toString();
+  return query ? `/studio?${query}` : '/studio';
+}

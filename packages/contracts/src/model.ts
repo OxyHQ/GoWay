@@ -29,7 +29,7 @@
 
 import { z } from 'zod';
 
-import { geoCoordinateSchema } from './geo';
+import { longitudeSchema } from './geo';
 
 /** Only `'ground'` until GoWay has a DEM (see the header). */
 export const MODEL_ALTITUDE_REFERENCES = ['ground'] as const;
@@ -39,12 +39,26 @@ export type ModelAltitudeReference = (typeof MODEL_ALTITUDE_REFERENCES)[number];
 export const MIN_MODEL_ALTITUDE_METERS = -500;
 export const MAX_MODEL_ALTITUDE_METERS = 10_000;
 
+/**
+ * The widest latitude Web Mercator can draw (`atan(sinh(π))`). A model past it
+ * cannot stand where it says: the renderer would clamp its anchor to the edge
+ * of the map while sizing it at the real latitude (PR #123 review). The same
+ * bound the tour link and the viewport link use.
+ */
+export const MAX_MODEL_LATITUDE = 85.051129;
+
 /** Largest uniform scale. An asset is authored in metres; 1000× is a city block from a brick. */
 export const MAX_MODEL_SCALE = 1_000;
 
 export const modelPlacementSchema = z.object({
-  /** The model's origin. GoWay's object spelling, never a positional pair. */
-  position: geoCoordinateSchema,
+  /**
+   * The model's origin. GoWay's object spelling, never a positional pair, and
+   * within the latitudes the map can draw.
+   */
+  position: z.object({
+    latitude: z.number().min(-MAX_MODEL_LATITUDE).max(MAX_MODEL_LATITUDE),
+    longitude: longitudeSchema,
+  }),
   altitude: z
     .object({
       meters: z.number().min(MIN_MODEL_ALTITUDE_METERS).max(MAX_MODEL_ALTITUDE_METERS),

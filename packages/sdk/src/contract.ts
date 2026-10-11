@@ -148,6 +148,7 @@ export {
   MODEL_ALTITUDE_REFERENCES,
   MIN_MODEL_ALTITUDE_METERS,
   MAX_MODEL_ALTITUDE_METERS,
+  MAX_MODEL_LATITUDE,
   MAX_MODEL_SCALE,
   parseModelPlacement,
   // Geography, language, paging

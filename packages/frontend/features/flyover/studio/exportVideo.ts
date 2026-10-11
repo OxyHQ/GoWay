@@ -25,7 +25,7 @@
  * as the device renders it; a tile still loading is a tile still loading in
  * the video too (play the tour once first to warm the cache).
  */
-import { GOWAY_INK, GOWAY_WORDMARK } from '@/components/brand';
+import { GOWAY_INK, GOWAY_WORDMARK } from '@/components/brand/artwork';
 import type { MapApi } from '@/components/map';
 import { MAP_BRAND_WIDTH } from '@/components/map';
 import { resolveMapAttribution } from '@/lib/map/provider';
@@ -126,6 +126,8 @@ export interface ExportVideoOptions {
   /** Longest edge of the video, device px. */
   maxEdge?: number;
   frameRate?: number;
+  /** Cancels the export: it rejects with an `AbortError` and releases everything. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -156,29 +158,49 @@ export async function exportVideo(options: ExportVideoOptions): Promise<Blob> {
     drawMapCorners(ctx, canvas.width, canvas.height, scale, options.colours);
   });
 
+  // Cancellation (the player closed mid-recording, the screen unmounted): the
+  // playback a caller pauses never reaches its end, so without this the
+  // export would wait forever with the recorder, the stream and the frame
+  // listener all still running (PR #123 review). An abort rejects with an
+  // AbortError, and the `finally` below releases all three either way.
+  const signal = options.signal;
+  const aborted = new Promise<never>((_, reject) => {
+    const fail = () => reject(new DOMException('The video export was cancelled.', 'AbortError'));
+    if (signal?.aborted) fail();
+    else signal?.addEventListener('abort', fail, { once: true });
+  });
+  aborted.catch(() => {});
+  const orAbort = <T>(work: Promise<T>) => Promise.race([work, aborted]);
+
+  let stream: MediaStream | null = null;
+  let recorder: MediaRecorder | null = null;
   try {
     // One frame first, so the stream starts with a sized, branded canvas.
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const stream = canvas.captureStream(options.frameRate ?? 30);
+    await orAbort(
+      new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
+    stream = canvas.captureStream(options.frameRate ?? 30);
     const mimeType = pickMimeType();
-    const recorder = new MediaRecorder(stream, {
+    recorder = new MediaRecorder(stream, {
       ...(mimeType ? { mimeType } : {}),
       videoBitsPerSecond: 8_000_000,
     });
+    const active = recorder;
     const chunks: Blob[] = [];
-    recorder.ondataavailable = (event) => {
+    active.ondataavailable = (event) => {
       if (event.data.size > 0) chunks.push(event.data);
     };
     const stopped = new Promise<void>((resolve) => {
-      recorder.onstop = () => resolve();
+      active.onstop = () => resolve();
     });
-    recorder.start(250);
-    await options.play();
-    recorder.stop();
+    active.start(250);
+    await orAbort(options.play());
+    active.stop();
     await stopped;
-    for (const track of stream.getTracks()) track.stop();
     return new Blob(chunks, { type: mimeType ?? 'video/webm' });
   } finally {
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+    for (const track of stream?.getTracks() ?? []) track.stop();
     stop();
   }
 }

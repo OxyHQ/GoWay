@@ -236,15 +236,55 @@ function applyTint(root: THREE.Object3D, tint: string): void {
   root.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!mesh.isMesh) return;
+    // The instance's materials are already its own (`instanceBody`).
     const recolour = (material: THREE.Material) => {
       if (!/^paint/i.test(material.name)) return material;
-      const copy = material.clone() as THREE.MeshStandardMaterial;
-      if (copy.color) copy.color.copy(colour);
-      return copy;
+      const paint = material as THREE.MeshStandardMaterial;
+      if (paint.color) paint.color.copy(colour);
+      return material;
     };
     mesh.material = Array.isArray(mesh.material)
       ? mesh.material.map(recolour)
       : recolour(mesh.material);
+  });
+}
+
+/**
+ * One instance's copy of an asset: shared geometry, but MATERIALS OF ITS OWN.
+ *
+ * `Object3D.clone` shares materials, and both occlusion (`depthTest`) and tint
+ * are material state — so on a shared material the last instance configured
+ * decided for every other instance of the same GLB (PR #123 review). Each
+ * material is cloned once per instance (keeping sharing WITHIN the instance)
+ * and freed with it ({@link disposeInstanceBody}); geometry stays shared and
+ * is freed with the asset.
+ */
+function instanceBody(source: THREE.Object3D): THREE.Object3D {
+  const body = source.clone(true);
+  const copies = new Map<THREE.Material, THREE.Material>();
+  const own = (material: THREE.Material) => {
+    let copy = copies.get(material);
+    if (!copy) {
+      copy = material.clone();
+      copies.set(material, copy);
+    }
+    return copy;
+  };
+  body.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(own) : own(mesh.material);
+  });
+  return body;
+}
+
+function disposeInstanceBody(body: THREE.Object3D): void {
+  body.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      material.dispose();
+    }
   });
 }
 
@@ -261,6 +301,41 @@ function setDepthTest(root: THREE.Object3D, depthTest: boolean): void {
     // bounding sphere in metres under a 1e-8 scale is not worth trusting).
     mesh.frustumCulled = false;
   });
+}
+
+/**
+ * A response body, read with a running byte cap: the read is cancelled the
+ * moment it passes `cap`. A `Content-Length` is a claim — absent on chunked
+ * responses, and free to understate — so the budget is enforced on the bytes
+ * that actually arrive rather than after buffering all of them (PR #123
+ * review).
+ */
+export async function readCapped(response: Response, cap: number): Promise<ArrayBuffer> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > cap) throw new Error('model file over budget');
+    return buffer;
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > cap) {
+      await reader.cancel().catch(() => {});
+      throw new Error('model file over budget');
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out.buffer;
 }
 
 export interface ModelLayerOptions {
@@ -307,8 +382,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       if (!response.ok) throw new Error(`model ${response.status}`);
       const declared = Number(response.headers.get('content-length') ?? '0');
       if (declared > MAX_MODEL_FILE_BYTES) throw new Error('model file over budget');
-      const buffer = await response.arrayBuffer();
-      if (buffer.byteLength > MAX_MODEL_FILE_BYTES) throw new Error('model file over budget');
+      const buffer = await readCapped(response, MAX_MODEL_FILE_BYTES);
       const gltf = await new Promise<GLTF>((resolve, reject) =>
         loader.parse(buffer, '', resolve, reject),
       );
@@ -323,7 +397,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
 
   const instantiate = (spec: ModelSpec, asset: Asset): Instance => {
     const root = new THREE.Group();
-    const body = asset.scene.clone(true);
+    const body = instanceBody(asset.scene);
     if (spec.tint) applyTint(body, spec.tint);
     setDepthTest(body, spec.occlusion !== 'none');
     root.add(body);
@@ -352,7 +426,12 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
     if (!instance) return;
     scene.remove(instance.root);
     instance.mixer?.stopAllAction();
+    disposeInstanceBody(instance.root);
     instances.delete(id);
+    // Whoever was told "drawn" must hear it is not any more: the canvas keeps
+    // a set of drawn ids, and an id re-added later would otherwise start out
+    // with no marker while its asset loads (PR #123 review).
+    if (!disposed && instance.status === 'drawn') options.onStatus(id, 'fallback');
   };
 
   const layer: ModelLayer = {
@@ -361,15 +440,18 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
     },
 
     setModels(specs) {
-      const wanted = new Set(specs.map((s) => s.id));
+      // Only the first MAX_MODEL_INSTANCES are drawn. An id past the cap is
+      // dropped like an absent one — including one that WAS drawn before a
+      // reorder pushed it past (PR #123 review) — and stays its marker.
+      const drawable = specs.slice(0, MAX_MODEL_INSTANCES);
+      const wanted = new Set(drawable.map((s) => s.id));
       for (const id of [...instances.keys()]) if (!wanted.has(id)) remove(id);
       for (const id of [...pending.keys()]) if (!wanted.has(id)) pending.delete(id);
+      for (const spec of specs.slice(MAX_MODEL_INSTANCES)) {
+        if (!wanted.has(spec.id)) options.onStatus(spec.id, 'fallback');
+      }
 
-      specs.forEach((spec, index) => {
-        if (index >= MAX_MODEL_INSTANCES) {
-          options.onStatus(spec.id, 'fallback');
-          return;
-        }
+      drawable.forEach((spec) => {
         const existing = instances.get(spec.id);
         if (
           existing &&
@@ -403,7 +485,8 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
             if (disposed || pending.get(spec.id) !== entry) return;
             pending.delete(spec.id);
             // A failed load costs that model: its marker stays.
-            if (__DEV__) console.warn(`[goway/map] model "${spec.id}" not drawn: ${String(cause)}`);
+            if (typeof __DEV__ !== 'undefined' && __DEV__)
+              console.warn(`[goway/map] model "${spec.id}" not drawn: ${String(cause)}`);
             options.onStatus(spec.id, 'fallback');
           },
         );

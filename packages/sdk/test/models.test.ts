@@ -50,6 +50,10 @@ describe('parseModelPlacement', () => {
       { position: { latitude: Number.NaN, longitude: 2 } },
       { position: { latitude: 41, longitude: Number.POSITIVE_INFINITY } },
       { position: { latitude: 91, longitude: 2 } },
+      // Past Web Mercator's limit: the map cannot draw it where it says, so
+      // the renderer would clamp the anchor but size it at the real latitude.
+      { position: { latitude: 85.06, longitude: 2 } },
+      { position: { latitude: -89, longitude: 2 } },
       { position: SAGRADA, orientation: { heading: 360 } },
       { position: SAGRADA, orientation: { heading: Number.NaN } },
       { position: SAGRADA, orientation: { pitch: 91 } },
@@ -65,6 +69,11 @@ describe('parseModelPlacement', () => {
       { position: [2.1744, 41.4036] },
     ];
     for (const input of bad) expect(parseModelPlacement(input)).toBeNull();
+  });
+
+  it('accepts the whole drawable latitude range', () => {
+    expect(parseModelPlacement({ position: { latitude: 85.05, longitude: 179.9 } })).not.toBeNull();
+    expect(parseModelPlacement({ position: { latitude: -85.05, longitude: -180 } })).not.toBeNull();
   });
 
   it('has exactly one altitude reference until there is a DEM', () => {

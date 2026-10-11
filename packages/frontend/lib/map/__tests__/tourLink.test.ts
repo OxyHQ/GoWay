@@ -6,7 +6,13 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { Tour } from '@/lib/map/camera/tour';
-import { decodeTour, encodeTour, parseTourFromParams, tourLink } from '@/lib/map/tourLink';
+import {
+  decodeTour,
+  encodeTour,
+  parseTourFromParams,
+  studioTabPath,
+  tourLink,
+} from '@/lib/map/tourLink';
 
 const TOUR: Tour = {
   speed: 1.5,
@@ -130,5 +136,28 @@ describe('malformed input', () => {
     expect(parseTourFromParams({})).toBeNull();
     expect(parseTourFromParams({ tour: undefined })).toBeNull();
     expect(parseTourFromParams({ tour: [] })).toBeNull();
+  });
+});
+
+describe('the in-tab address after sharing', () => {
+  // PR #123 review: sharing replaced the tab's URL with the bare link, which
+  // dropped the development `?flyover=1` switch, so a reload of a dev build
+  // (flag off in its environment) redirected away from the Studio.
+  const link = tourLink(TOUR, 'https://goway.to');
+
+  test('keeps the development feature switches the tab was opened with', () => {
+    const path = studioTabPath(link, '?flyover=1&city3d=1&cityTiles=1&tour=old&lat=1');
+    const url = new URL(path, 'http://localhost:8104');
+    expect(url.pathname).toBe('/studio');
+    expect(url.searchParams.get('flyover')).toBe('1');
+    expect(url.searchParams.get('city3d')).toBe('1');
+    expect(url.searchParams.get('cityTiles')).toBe('1');
+    // ... and the tour is the NEW one, once.
+    expect(url.searchParams.getAll('tour')).toEqual([encodeTour(TOUR)]);
+    expect(url.searchParams.get('lat')).toBe('41.40363');
+  });
+
+  test('adds nothing when the tab had no switches', () => {
+    expect(studioTabPath(link, '')).toBe(`/studio${new URL(link).search}`);
   });
 });

@@ -29,7 +29,7 @@ chunk is never requested.
 | Camera Studio: keyframes, aim, sliders, undo/redo, preview, share | Yes | Yes (share uses the system share sheet); **not run on a device** |
 | Studio: draw a path | Yes | Yes (responder events + the top-down projection); **not run on a device** |
 | Video export | WebM via `MediaRecorder`, mark and credit composited | No |
-| With the city-3D prototype on | Buildings are meshes; the vehicle shares their scene | — |
+| With the city-3D prototype on | Buildings are meshes (OpenMapTiles, or GoWay city tiles with `?cityTiles=1`); the vehicle shares their scene | — |
 
 ## The route flyover
 
@@ -141,6 +141,11 @@ alone would be a map GoWay drew without either, and the ODbL credit gone the
 moment the file left the page. The export's mark never stands down for
 `BrandedChromeProvider`: a video has no chrome around it.
 
+Cancellable: closing the player while recording aborts the export (an
+`AbortSignal`; leaving the Studio does too), and the recorder, the stream's
+tracks and the frame listener are released whether it finished, failed or was
+cancelled — a paused playback never reaches the end a recording waits for.
+
 Limits: real-time capture records what the device renders (a slow device gets
 a lower frame rate, a tile still loading is still loading); Chrome's WebM has
 no duration in its header, so some players cannot seek it until remuxed.
@@ -155,10 +160,16 @@ no duration in its header, so some players cannot seek it until remuxed.
   `occlusion`, `tint` (materials named `paint…`), `accessibilityLabel`,
   `fallback`. Nothing names MapLibre or three.
 - **Contract.** `packages/contracts/src/model.ts`: `modelPlacementSchema`,
-  `MODEL_ALTITUDE_REFERENCES = ['ground']`, limits, and
+  `MODEL_ALTITUDE_REFERENCES = ['ground']`, limits (latitude within Web
+  Mercator's ±85.0511°, which the renderer can draw), and
   `parseModelPlacement`, exported by the SDK (types, values and the parser —
   not the schema, per the SDK's rule). The asset descriptor and catalogue are
   phase 2 and not added. No route, so no OpenAPI change.
+- **Per-instance materials.** Instances of one GLB share geometry but each
+  owns its materials, since occlusion and tint are material state; they are
+  freed with the instance. A removed or replaced model reports `fallback`, so
+  an id re-added later shows its marker while it loads; an id pushed past the
+  300-instance cap by a reorder is removed and becomes its marker.
 - **NaN gate and fallback.** Every placement is parsed by
   `parseModelPlacement`; a bad one costs that model (`components/map/models.ts`).
   Wherever a model is not drawn in 3D — native, outside its zoom window, while
@@ -184,8 +195,9 @@ no duration in its header, so some players cannot seek it until remuxed.
 - **Frames.** glTF metres, +Y up, front +Z, origin at the base centre;
   heading clockwise from north, then pitch (nose up), then roll, in ENU —
   pinned by `components/map/__tests__/mapModels.test.ts`.
-- **Budgets enforced.** ≤ 2 MB per file (checked against `content-length`
-  and again after download), ≤ 50k triangles, ≤ 20 distinct assets, ≤ 300
+- **Budgets enforced.** ≤ 2 MB per file (refused on a declared
+  `content-length`, and the body is streamed with a running cap and cancelled
+  the moment it passes it — a header can be missing or lie), ≤ 50k triangles, ≤ 20 distinct assets, ≤ 300
   instances; URLs HTTPS, this page's origin, or loopback; fetched without
   credentials. The first glTF clip loops, repainting only while it animates.
 - **Alignment.** The unit test checks the anchor projected through the models'
