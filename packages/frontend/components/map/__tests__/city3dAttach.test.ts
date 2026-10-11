@@ -166,3 +166,28 @@ describe('attachCity3d', () => {
     expect(map.order).toEqual(['background', 'building', BUILDING_3D_LAYER_ID, 'label-road']);
   });
 });
+
+describe('city3d passes (GoWay Live’s 3D shapes)', () => {
+  test('a pass goes directly above the buildings, and leaves with them', async () => {
+    const map = fakeMap(['background', 'building', BUILDING_3D_LAYER_ID, 'label-road']);
+    const handle = await attachCity3d(asMap(map), { appearance: 'light', light: null });
+    let disposed = 0;
+    const remove = handle?.addPass({ id: 'live3d', render: () => {}, dispose: () => disposed++ });
+    expect(map.order).toEqual([
+      'background',
+      'building',
+      CITY3D_LAYER_ID,
+      'goway:live3d',
+      BUILDING_3D_LAYER_ID,
+      'label-road',
+    ]);
+    remove?.();
+    expect(map.order).not.toContain('goway:live3d');
+    expect(disposed).toBe(1);
+
+    handle?.addPass({ id: 'live3d', render: () => {}, dispose: () => disposed++ });
+    handle?.detach();
+    expect(map.order).toEqual(['background', 'building', BUILDING_3D_LAYER_ID, 'label-road']);
+    expect(disposed).toBe(2);
+  });
+});

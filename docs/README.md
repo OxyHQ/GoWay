@@ -67,6 +67,11 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   ODbL city tiles, how the Spanish Catastro's storeys replace the 5 m default
   (`height_source`), and how New York City's LOD1.5/LOD2 model is conflated
   with OSM, encoded, drawn and credited.
+- [`MAP_LIVE.md`](MAP_LIVE.md) — GoWay Live: real aircraft, transit,
+  bike-share and ships from open real-time feeds — which sources, under which
+  licences (and which were rejected), the adapter/hub/socket architecture,
+  honest motion and staleness, rate limits, cost, and what production needs.
+  Off by default.
 - [`PLACE_NAMES.md`](PLACE_NAMES.md) — how a place is named in more than one
   language, why `places.name` stayed, and what that means for duplicate
   detection, search, the SDK contract and the OpenStreetMap re-import.

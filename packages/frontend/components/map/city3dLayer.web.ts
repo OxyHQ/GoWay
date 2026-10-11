@@ -85,7 +85,12 @@ import { treeColours } from './city3dTrees';
 // a module two lazy chunks share is hoisted into the first-paint `__common`
 // chunk (see `engine3d/lazyChunk.ts`; `components/__tests__/engine3dChunk.test.ts`).
 import type { CitySun } from './engine/city3d/atmosphere';
-import type { CityEngine, CityEngineStats, LandmarkSpec } from './engine/city3d/cityEngine';
+import type {
+  CityEngine,
+  CityEngineStats,
+  CityPass,
+  LandmarkSpec,
+} from './engine/city3d/cityEngine';
 import type { ModelSpec, ModelStatus } from './engine/city3d/models';
 import type { CityLight } from './engine/city3d/occlusion';
 import type { CityOverlay } from './engine/city3d/overlay';
@@ -317,6 +322,13 @@ export interface City3dHandle {
   setNightFactor(nightFactor: number): void;
   /** City-sky only: light the city for `at`, or for the live clock with `null`. */
   setTime(at: Date | null): void;
+  /**
+   * Draw another feature's objects with this engine's renderer, in a custom
+   * layer of their own directly above the buildings (below every label).
+   * Returns the remover, which also disposes the pass. GoWay Live is the one
+   * caller (`liveLayer.web.ts`).
+   */
+  addPass(pass: CityPass): () => void;
   /** Remove the layer, free the engine, and show `building-3d` again. Idempotent. */
   detach(): void;
 }
@@ -687,7 +699,48 @@ export async function attachCity3d(
     : null;
 
   let detached = false;
+  const passes = new Map<string, CityPass>();
+  const removePass = (id: string) => {
+    const pass = passes.get(id);
+    if (!pass) return;
+    passes.delete(id);
+    try {
+      if (map.getLayer(id)) map.removeLayer(id);
+    } catch {
+      // The map is gone; the layer went with it.
+    }
+    pass.dispose();
+  };
   return {
+    addPass(pass) {
+      const id = `${GOWAY_LAYER_PREFIX}${pass.id}`;
+      removePass(id);
+      if (detached || !map.getLayer(BUILDING_3D_LAYER_ID)) {
+        pass.dispose();
+        return () => {};
+      }
+      passes.set(id, pass);
+      map.addLayer(
+        {
+          id,
+          type: 'custom',
+          renderingMode: '3d',
+          // A pass holds the engine like the city's own layers do: it may be
+          // the first of them added, and the engine lives while any is in.
+          onAdd(host, gl) {
+            ensureEngine(host, gl);
+          },
+          render(_gl, args) {
+            engine?.renderPass(pass, frameView(args));
+          },
+          onRemove: releaseEngine,
+        },
+        // Directly above the city layer: `building-3d` is hidden, and its slot
+        // is the buildings' stratum, below the labels.
+        BUILDING_3D_LAYER_ID,
+      );
+      return () => removePass(id);
+    },
     setLight(next) {
       lightSpec = next;
       // Picked up by the next frame's `currentLight()`.
@@ -718,6 +771,7 @@ export async function attachCity3d(
       if (detached) return;
       detached = true;
       if (clock) clearInterval(clock);
+      for (const id of [...passes.keys()]) removePass(id);
       // The map may already be gone (an appearance change tears it down before
       // this cleanup runs); then there is nothing left to restore.
       try {

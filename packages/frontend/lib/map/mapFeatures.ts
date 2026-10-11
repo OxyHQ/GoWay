@@ -41,6 +41,7 @@ import { isCityLifeRequested } from './cityLifeFlag';
 import { isCityTilesRequested } from './cityTilesFlag';
 import { isFlyoverRequested } from './flyoverFlag';
 import { isLandmarksRequested } from './landmarksFlag';
+import { isLiveRequested } from './liveFlag';
 import { resolveReliefFlags } from './reliefFlag';
 
 /** `stable` shows in the panel for everyone; `labs` only once Labs is revealed. */
@@ -229,11 +230,12 @@ export const MAP_FEATURES = [
     build: process.env.EXPO_PUBLIC_MAP_LIVE,
     requires: [],
     platforms: WEB,
-    // GoWay Live (#132) draws it; until that lands nothing does. When it does:
-    // delete this line, and point `request` at `isLiveRequested` (the same rule).
-    offer: 'never',
+    // GoWay Live needs a backend with `LIVE_ENABLED` and its feeds' licence
+    // follow-ups done; goway.to has neither yet (`docs/MAP_LIVE.md` → What
+    // production needs), so the switch is offered where a backend can serve it.
+    offer: 'development',
     request: (enabled, { development, search }) =>
-      queryOverride('live', enabled, { development, search }),
+      isLiveRequested({ enabled, development, search }),
   },
   {
     id: 'flyover',

@@ -22,7 +22,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
-import { type Labels, localizedLabel } from '@goway.to/sdk';
+import { type Labels, type LiveSource, localizedLabel } from '@goway.to/sdk';
 import {
   SegmentedControl,
   SegmentedControlItem,
@@ -91,12 +91,41 @@ function useLandmarkModels(): readonly PreparedLandmark[] {
   return models;
 }
 
+/**
+ * GoWay Live's feeds — each one's credit and licence — while live is on; the
+ * same list `GET /live/sources` serves (`docs/MAP_LIVE.md`). Empty when off or
+ * when the backend has no live layer.
+ */
+function useLiveSources(on: boolean): readonly LiveSource[] {
+  const [sources, setSources] = useState<readonly LiveSource[]>([]);
+  useEffect(() => {
+    if (!on) {
+      setSources([]);
+      return;
+    }
+    let current = true;
+    void import('@/lib/live/client')
+      .then(({ liveApiClient }) => liveApiClient.live.sources())
+      .then((page) => {
+        if (current) setSources(page.items);
+      })
+      .catch(() => {
+        // No live layer on this backend: nothing to credit.
+      });
+    return () => {
+      current = false;
+    };
+  }, [on]);
+  return sources;
+}
+
 export function MapSettingsPanel({ tilted, onTiltChange, onClose }: MapSettingsPanelProps) {
   const { locale } = useTranslation();
   const router = useRouter();
   const { mode, setMode } = useBloomTheme();
   const { features, labs } = useMapFeatures();
   const landmarks = useLandmarkModels();
+  const liveSources = useLiveSources(features.on('live'));
   const say = useCallback<Say>((labels) => localizedLabel(labels, locale), [locale]);
 
   const offered = features.list.filter((state) => state.available);
@@ -228,6 +257,20 @@ export function MapSettingsPanel({ tilted, onTiltChange, onClose }: MapSettingsP
           onPress={() => navigate('/attribution')}
         />
       </SettingsListGroup>
+
+      {liveSources.length > 0 ? (
+        <SettingsListGroup title={say(MAP_SETTINGS_COPY.liveSources)}>
+          {liveSources.map((source) => (
+            <CreditBlock
+              key={source.id}
+              heading={source.name}
+              body={null}
+              links={[source.attribution, source.licence]}
+              notices={[]}
+            />
+          ))}
+        </SettingsListGroup>
+      ) : null}
 
       {landmarks.length > 0 ? (
         <SettingsListGroup title={say(MAP_SETTINGS_COPY.landmarkModels)}>

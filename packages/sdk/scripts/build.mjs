@@ -2,14 +2,20 @@
 /**
  * Build `@goway.to/sdk` into `dist/`.
  *
- * Output — four files, one per module format:
+ * Output — four files per entry point, one per module format:
  *
- *   dist/index.js     ESM   (`import`, `react-native`, `default`)
- *   dist/index.cjs    CJS   (`require`) — GoWay's own backend is CommonJS
- *   dist/index.d.ts   declarations for the ESM entry
- *   dist/index.d.cts  the same declarations for the CJS entry, so TypeScript
- *                     under `node16`/`nodenext` does not see ESM types
- *                     masquerading as CJS
+ *   dist/<entry>.js     ESM   (`import`, `react-native`, `default`)
+ *   dist/<entry>.cjs    CJS   (`require`) — GoWay's own backend is CommonJS
+ *   dist/<entry>.d.ts   declarations for the ESM entry
+ *   dist/<entry>.d.cts  the same declarations for the CJS entry, so TypeScript
+ *                       under `node16`/`nodenext` does not see ESM types
+ *                       masquerading as CJS
+ *
+ * Two entries: `index` (`@goway.to/sdk`, the HTTP client) and `live`
+ * (`@goway.to/sdk/live`, the GoWay Live socket protocol). Each is bundled ON
+ * ITS OWN — no shared chunk — so loading one never loads the other: the live
+ * schemas stay out of every HTTP-only consumer, GoWay's own first paint
+ * included, and a contract module both reach is simply inlined twice.
  *
  * ## Why esbuild + rollup-plugin-dts, and not tsc or tsup
  *
@@ -58,7 +64,7 @@ import ts from 'typescript';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
-const entry = join(root, 'src', 'index.ts');
+const ENTRIES = ['index', 'live'];
 const tsconfig = join(root, 'tsconfig.json');
 
 /** The runtime dependency, kept out of both bundles: `zod` and any subpath of it. */
@@ -93,7 +99,6 @@ const contractIsSideEffectFree = {
 };
 
 const shared = {
-  entryPoints: [entry],
   bundle: true,
   platform: 'neutral',
   target: 'es2020',
@@ -108,28 +113,41 @@ const shared = {
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 
-await esbuild.build({ ...shared, format: 'esm', outfile: join(dist, 'index.js') });
-await esbuild.build({ ...shared, format: 'cjs', outfile: join(dist, 'index.cjs') });
+for (const name of ENTRIES) {
+  const entry = join(root, 'src', `${name}.ts`);
+  await esbuild.build({
+    ...shared,
+    entryPoints: [entry],
+    format: 'esm',
+    outfile: join(dist, `${name}.js`),
+  });
+  await esbuild.build({
+    ...shared,
+    entryPoints: [entry],
+    format: 'cjs',
+    outfile: join(dist, `${name}.cjs`),
+  });
 
-const bundle = await rollup({
-  input: entry,
-  // `respectExternal` makes the plugin inline declarations from node_modules
-  // too, so zod must be named external here as well or its types are copied in.
-  external: isExternal,
-  plugins: [dts({ respectExternal: true, tsconfig })],
-  onwarn(warning, warn) {
-    // A circular re-export inside the contract package is harmless for
-    // declarations and would otherwise print on every build.
-    if (warning.code === 'CIRCULAR_DEPENDENCY') return;
-    warn(warning);
-  },
-});
-const { output } = await bundle.generate({ format: 'es' });
-await bundle.close();
-const declarations = output.find((chunk) => chunk.type === 'chunk');
-if (!declarations) throw new Error('rollup-plugin-dts produced no declaration chunk');
-await writeFile(join(dist, 'index.d.ts'), dropOrphanedDocblocks(declarations.code));
-await copyFile(join(dist, 'index.d.ts'), join(dist, 'index.d.cts'));
+  const bundle = await rollup({
+    input: entry,
+    // `respectExternal` makes the plugin inline declarations from node_modules
+    // too, so zod must be named external here as well or its types are copied in.
+    external: isExternal,
+    plugins: [dts({ respectExternal: true, tsconfig })],
+    onwarn(warning, warn) {
+      // A circular re-export inside the contract package is harmless for
+      // declarations and would otherwise print on every build.
+      if (warning.code === 'CIRCULAR_DEPENDENCY') return;
+      warn(warning);
+    },
+  });
+  const { output } = await bundle.generate({ format: 'es' });
+  await bundle.close();
+  const declarations = output.find((chunk) => chunk.type === 'chunk');
+  if (!declarations) throw new Error(`rollup-plugin-dts produced no declaration chunk for ${name}`);
+  await writeFile(join(dist, `${name}.d.ts`), dropOrphanedDocblocks(declarations.code));
+  await copyFile(join(dist, `${name}.d.ts`), join(dist, `${name}.d.cts`));
+}
 
 /**
  * Keep only the comment that DOCUMENTS each top-level declaration.
@@ -161,4 +179,4 @@ function dropOrphanedDocblocks(code) {
   return result;
 }
 
-console.log('built dist/index.js, dist/index.cjs, dist/index.d.ts, dist/index.d.cts');
+console.log(`built ${ENTRIES.map((name) => `dist/${name}.{js,cjs,d.ts,d.cts}`).join(', ')}`);

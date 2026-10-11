@@ -17,6 +17,7 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server as SocketIOServer, type Socket } from 'socket.io';
 import { config } from './config';
+import type { LiveService } from './live';
 import { oxyClient } from './middleware/auth';
 
 type AuthedSocket = Socket & { user?: { id: string } };
@@ -24,6 +25,12 @@ type AuthedSocket = Socket & { user?: { id: string } };
 export interface RealtimeOptions {
   /** Count the connection in Oxy's ecosystem activity (`./platformActivity`). */
   observeSocket?: (socket: Socket) => void;
+  /**
+   * The live layer: attaches the `/live` namespace — PUBLIC, unlike the
+   * default namespace below; `live/socket.ts` says why that is not a hole in
+   * the rule above. Absent, no `/live` namespace exists.
+   */
+  live?: LiveService | null;
 }
 
 /** Attach the realtime surface. Returns the server so shutdown can close it. */
@@ -41,6 +48,7 @@ export function attachRealtime(
     },
   });
 
+  // The default namespace only: `io.use` is `io.of('/').use`.
   io.use(oxyClient.middleware.socket());
   io.on('connection', (socket: AuthedSocket) => {
     const userId = socket.user?.id;
@@ -52,6 +60,8 @@ export function attachRealtime(
     socket.join(`user:${userId}`);
     socket.on('disconnect', () => socket.leave(`user:${userId}`));
   });
+
+  options.live?.attach(io);
 
   return io;
 }

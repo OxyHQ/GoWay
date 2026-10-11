@@ -31,6 +31,8 @@ const SAMPLE_PATH_VALUES: Readonly<Record<string, string>> = {
   sceneId: 'scene-1',
   sessionId: 'session-1',
   assetId: 'asset-1',
+  sourceId: 'renfe-cercanias',
+  shapeId: '51_R2N',
 };
 
 let server: Server;

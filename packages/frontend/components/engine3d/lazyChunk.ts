@@ -21,9 +21,14 @@
  * dedicated "three runtime" chunk both engines share is the cleaner end
  * state, and `docs/MAP_3D_CITY.md` records it.
  *
+ * GoWay Live's 3D pass (`map/engine/live3d/livePass.ts`) is drawn BY the city
+ * engine's renderer, so it rides in this chunk too.
+ *
  * `components/__tests__/engine3dChunk.test.ts` fails if anything else starts
  * importing `three` or reaching either engine directly.
  */
 export { createSceneEngine } from '../street3d/engine/sparkEngine';
 export { createCityEngine } from '../map/engine/city3d/cityEngine';
 export { createCityLife } from '../map/engine/cityLife/lifeRenderer';
+// GoWay Live's 3D shapes: a pass of the city engine, so the same chunk.
+export { createLivePass } from '../map/engine/live3d/livePass';

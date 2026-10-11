@@ -59,6 +59,7 @@ import {
   type MapApi,
   type MapCanvasError,
   type MapFitOptions,
+  type MapLiveLayer,
   type MapMarker,
   type MapModel,
   type MapPressEvent,
@@ -87,6 +88,7 @@ import { useExplore } from './useExplore';
 
 /** Zoom the camera settles at when the user asks to be found. */
 const MY_LOCATION_ZOOM = 15;
+
 /** Below this the compass is effectively north and the reset control is noise. */
 const BEARING_EPSILON = 1;
 /** The settings dialog's "3D": the steepest tilt the shipped map allows. */
@@ -215,6 +217,13 @@ export interface ExploreScreenProps {
  * registry's `flyover`, read live below, so turning it on in the settings dialog
  * offers "Fly the route" at once.
  */
+/**
+ * GoWay Live (`docs/MAP_LIVE.md`): real aircraft, transit, bike share and
+ * ships over the map, while the registry's `live` is on (web only). Off, its
+ * chunk (the socket client, the live protocol, the panel) is never requested.
+ */
+const LiveHost = lazy(() => import('@/features/live/LiveHost'));
+
 const RouteFlyover = lazy(() =>
   import('@/features/flyover/lazy').then((chunk) => ({ default: chunk.RouteFlyover })),
 );
@@ -327,6 +336,7 @@ export default function ExploreScreen({
   const [pitch, setPitch] = useState(0);
   const flyover = useMapFeature('flyover');
   const landmarks = useMapFeature('landmarks');
+  const live = useMapFeature('live');
   const [mapError, setMapError] = useState<MapCanvasError | null>(null);
   // While the flyover flies, the sheet, the panel and the floating controls
   // step aside; the vehicle is a model on the canvas.
@@ -355,6 +365,8 @@ export default function ExploreScreen({
   );
   // While the flyover flies or the tour tours, the map is the whole screen.
   const immersive = flying || tourId !== null;
+  // Set by `LiveHost` once it has a layer to draw; always `null` with live off.
+  const [liveLayer, setLiveLayer] = useState<MapLiveLayer | null>(null);
   // Only ever armed by pressing "My location" or asking for directions. The
   // canvas refuses to draw the dot without a granted permission anyway; not
   // arming it until then keeps the two rules independent of each other.
@@ -522,6 +534,7 @@ export default function ExploreScreen({
             onViewportChange={handleViewportChange}
             onError={setMapError}
             models={flyoverModels}
+            live={live ? liveLayer : null}
             testID="goway-map"
           />
 
@@ -607,7 +620,7 @@ export default function ExploreScreen({
           map options, a corner no sheet or panel covers in either layout),
           the "Landmarks" pill, and last the slot the map's own chips mount
           into (the "Simulated traffic" label, `components/map/chipSlot.ts`).
-          A new chip (Live) goes here too. The slot is never hidden: the label
+          GoWay Live's panel sits above that slot. The slot is never hidden: the label
           must show whenever the simulation draws, a tour included. */}
           <View
             pointerEvents="box-none"
@@ -621,6 +634,11 @@ export default function ExploreScreen({
             {landmarks && !mapError && !immersive && !directions.active ? (
               <Suspense fallback={null}>
                 <LandmarksPillEntry centre={settledCentre} onOpen={setTourId} />
+              </Suspense>
+            ) : null}
+            {live && !mapError ? (
+              <Suspense fallback={null}>
+                <LiveHost onLayer={setLiveLayer} compact={layout === 'sheet'} />
               </Suspense>
             ) : null}
             <View nativeID={MAP_CHIP_SLOT_ID} pointerEvents="none" className="items-end" />

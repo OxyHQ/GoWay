@@ -67,6 +67,7 @@ import {
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
 
 import type { City3dHandle } from './city3dLayer.web';
+import type { LiveLayerHandle } from './liveLayer.web';
 import { applyDragAxes } from './dragAxes';
 import { DefaultMapMarker } from './DefaultMapMarker';
 import {
@@ -111,6 +112,7 @@ import {
   type MapApi,
   type MapCanvasError,
   type MapCanvasProps,
+  type MapCreditLink,
   type MapLabelFeature,
   type MapMarker,
   type MapMoveSource,
@@ -219,6 +221,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     markers,
     renderMarker,
     overlays,
+    live,
     showUserLocation = false,
     interaction,
     onViewportChange,
@@ -313,8 +316,20 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     onReady,
     onError,
     onModelPress,
+    live,
   });
-  handlers.current = { onViewportChange, onPress, onLabelsChange, onReady, onError, onModelPress };
+  handlers.current = {
+    onViewportChange,
+    onPress,
+    onLabelsChange,
+    onReady,
+    onError,
+    onModelPress,
+    live,
+  };
+  // The attached live adapter (`liveLayer.web.ts`), read by the click and
+  // hover handlers below; `null` while there is no live layer.
+  const liveHandleRef = useRef<LiveLayerHandle | null>(null);
 
   // --- Models (SDK_MAP_MODELS phase 1) --------------------------------------
   //
@@ -538,9 +553,6 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 
     const handleClick = (event: MapLayerMouseEvent) => {
       noteCreditInteraction();
-      const press = handlers.current.onPress;
-      if (!press && !handlers.current.onModelPress) return;
-
       // Hit priority, step 1: a GoWay marker wins outright, and `onPress` does
       // not fire underneath it. `onMarkerPress` has already run via the
       // marker's own Bloom `Pressable`.
@@ -555,6 +567,18 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           return;
         }
       }
+
+      // Step 1¾: a live point (GoWay Live) is selected, and the tap is
+      // consumed; a tap anywhere else clears the selection and carries on.
+      const live = handlers.current.live;
+      if (live) {
+        const liveId = liveHandleRef.current?.pick(event.point) ?? null;
+        live.select(liveId);
+        if (liveId) return;
+      }
+
+      const press = handlers.current.onPress;
+      if (!press) return;
 
       const coordinate = { latitude: event.lngLat.lat, longitude: event.lngLat.lng };
       // The engine cannot hand us a non-finite lngLat today, but everything
@@ -598,8 +622,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       const canvas = map.getCanvas();
       const coordinate = { latitude: event.lngLat.lat, longitude: event.lngLat.lng };
       const over =
-        isDrawableCoordinate(coordinate) &&
-        labelAt(map, event.point, coordinate, queryLayers.current.tap) !== null;
+        (liveHandleRef.current?.pick(event.point) ?? null) !== null ||
+        (isDrawableCoordinate(coordinate) &&
+          labelAt(map, event.point, coordinate, queryLayers.current.tap) !== null);
       const wanted = over ? 'pointer' : '';
       if (canvas.style.cursor !== wanted) canvas.style.cursor = wanted;
     };
@@ -917,13 +942,16 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   }, [skyAt]);
   // Credits the city layer owes while it draws an official 3D model.
   const [city3dCredits, setCity3dCredits] = useState<readonly MapAttributionLink[]>(NO_CREDITS);
-  // Everything the 3D layer owes while it draws: landmark authors, official building data.
+  // Credits for the GoWay Live data on screen (set by the live effect below).
+  const [liveCredits, setLiveCredits] = useState<readonly MapCreditLink[]>(NO_CREDITS);
+  // Everything owed while it is drawn: landmark authors, official building
+  // data, live feeds.
   const credits = useMemo(
     () =>
-      landmarkCredits.length === 0 && city3dCredits.length === 0
+      landmarkCredits.length === 0 && city3dCredits.length === 0 && liveCredits.length === 0
         ? NO_CREDITS
-        : [...landmarkCredits, ...city3dCredits],
-    [landmarkCredits, city3dCredits],
+        : [...landmarkCredits, ...city3dCredits, ...liveCredits],
+    [landmarkCredits, city3dCredits, liveCredits],
   );
   useEffect(() => {
     city3dLightRef.current = sunLight.light;
@@ -1052,6 +1080,55 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       ),
     );
   }, [city3dHandle, drawnModels]);
+
+  // --- Live (GoWay Live, off unless the screen passes a layer) ------------
+
+  // Absent `live` — every screen unless the registry's `live` is on —
+  // this returns on its first line and `liveLayer.web.ts` is never requested.
+  const [liveHandle, setLiveHandle] = useState<LiveLayerHandle | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!live || !map || !ready) return;
+    let attached: LiveLayerHandle | null = null;
+    let cancelled = false;
+    import('./liveLayer.web')
+      .then(({ attachLive }) => {
+        if (cancelled) return;
+        attached = attachLive(map, live, { appearance: resolvedAppearance });
+        liveHandleRef.current = attached;
+        setLiveHandle(attached);
+      })
+      .catch((cause: unknown) => {
+        reportMapDefect('live:load', `live: layer not attached (${String(cause)}).`);
+      });
+    return () => {
+      cancelled = true;
+      if (liveHandleRef.current === attached) liveHandleRef.current = null;
+      setLiveHandle(null);
+      attached?.detach();
+    };
+  }, [live, ready, resolvedAppearance]);
+
+  // The live layer's 3D pass follows the city engine — the city-3D one, not a
+  // models-only engine the flyover may have attached: on when both are.
+  useEffect(() => {
+    liveHandle?.setCity(city3d ? city3dHandle : null);
+  }, [liveHandle, city3dHandle, city3d]);
+
+  // Credits for the live data on screen, beside the basemap's own (`credits` above).
+  useEffect(() => {
+    if (!live) {
+      setLiveCredits(NO_CREDITS);
+      return;
+    }
+    const update = () =>
+      setLiveCredits((current) => {
+        const next = live.credits();
+        return sameCredits(current, next) ? current : next;
+      });
+    update();
+    return live.subscribe(update);
+  }, [live]);
 
   // --- User location ------------------------------------------------------
 
@@ -1414,6 +1491,13 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 // ---------------------------------------------------------------------------
 
 const EMPTY_LABELS: readonly MapLabelFeature[] = [];
+
+function sameCredits(a: readonly MapCreditLink[], b: readonly MapCreditLink[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((link, index) => link.label === b[index]?.label && link.href === b[index]?.href)
+  );
+}
 
 /**
  * The tap and label-read layer sets, from the style that loaded.

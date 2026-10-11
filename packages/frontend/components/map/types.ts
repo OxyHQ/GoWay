@@ -134,6 +134,106 @@ export interface MapOverlay {
 }
 
 /**
+ * A credit line the canvas renders beside the basemap's own (`MapAttribution`).
+ * A layer that draws somebody else's data hands its credits over this way, so
+ * the credit is on screen exactly while the data is.
+ */
+export interface MapCreditLink {
+  label: string;
+  href: string;
+}
+
+/** How a live glyph is drawn: a shape and a CSS colour, chosen by the feature that owns the data. */
+export interface MapLiveGlyph {
+  shape: 'aircraft' | 'arrow' | 'vehicle' | 'boat' | 'station' | 'train' | 'bus';
+  color: string;
+}
+
+/**
+ * A simplified 3D vehicle: a generic FORM, its proportions, and a livery as
+ * flat colour bands — never a logo, wordmark or emblem. Feature data
+ * (`features/live/fleets.ts`), drawn by the 3D pass.
+ */
+export interface MapLiveModel {
+  form: 'emu' | 'bus' | 'double-deck' | 'coach' | 'aircraft' | 'vessel';
+  /** Cars in the consist (an articulated bus is two). */
+  cars: number;
+  /** Metres, each car. */
+  carLength: number;
+  /** Metres between cars. */
+  gap: number;
+  width: number;
+  height: number;
+  /** `#RRGGBB` bands, bottom to top. */
+  livery: { lower: string; stripe: string; body: string; window: string; roof: string };
+}
+
+/**
+ * One real thing on the map at one instant, as the live layer wants it drawn.
+ *
+ * Provider-neutral and renderer-neutral: the feature (`features/live`) decides
+ * where a thing is NOW (its own interpolation, within its source's bounds) and
+ * how fresh it is; the canvas only draws.
+ */
+export interface MapLivePoint {
+  id: string;
+  /** A key of {@link MapLiveLayer.glyphs}. */
+  glyph: string;
+  coordinate: GeoCoordinate;
+  /** Degrees clockwise from north; `null` draws the glyph unrotated. */
+  heading: number | null;
+  /** Metres above sea level, for a 3D renderer; `null` on the ground. */
+  altitude: number | null;
+  /** 0–1: freshness, as the feature judges it. */
+  opacity: number;
+  /** Short text beside the glyph — a line, a bike count. */
+  label?: string;
+  selected?: boolean;
+  /** Colours the glyph instead of its own colour — a line's colour. */
+  tint?: string;
+  /** Real length in metres, for glyphs drawn to scale at street zooms (trains, buses). */
+  length?: number;
+  /** A key of {@link MapLiveLayer.models}, for the 3D shape. */
+  model?: string;
+  /** Where each car of a consist is, leading car first; absent: one body at {@link coordinate}. */
+  parts?: readonly { coordinate: GeoCoordinate; heading: number }[];
+  /** Not on a known track: drawn as reported, styled as approximate. */
+  approximate?: boolean;
+  /**
+   * Not a reported position at all: estimated (from arrival predictions).
+   * Drawn in its own hollow style, and never in 3D.
+   */
+  estimated?: boolean;
+}
+
+/**
+ * Real, moving things drawn over the map (the GoWay Live layer).
+ *
+ * A PULL interface rather than props: positions change every frame, and a
+ * React render per frame would re-render the whole screen. The canvas samples
+ * {@link MapLiveLayer.sample} on its own clock while {@link MapLiveLayer.animating}
+ * says something moves, and sleeps until {@link MapLiveLayer.subscribe} wakes
+ * it otherwise.
+ */
+export interface MapLiveLayer {
+  glyphs: Readonly<Record<string, MapLiveGlyph>>;
+  /** The 3D vehicle models points may name; absent, the 3D pass draws generic shapes. */
+  models?: Readonly<Record<string, MapLiveModel>>;
+  /** Everything to draw at `now` (`Date.now()` milliseconds). */
+  sample(now: number): readonly MapLivePoint[];
+  /** Whether anything is moving or fading: the canvas keeps drawing frames while so. */
+  animating(): boolean;
+  /** Something changed (data, selection, credits). Returns the unsubscribe. */
+  subscribe(listener: () => void): () => void;
+  /** The visible area settled — what the feature should be receiving. */
+  setViewport(view: { bounds: GeoBounds; zoom: number }): void;
+  /** A live point was tapped, or `null` for a tap elsewhere. */
+  select(id: string | null): void;
+  /** The credits for what is drawn now. */
+  credits(): readonly MapCreditLink[];
+}
+
+/**
  * What kind of named thing the BASEMAP is labelling.
  *
  * Four values, because four is what the product acts on differently:
@@ -369,6 +469,15 @@ export interface MapCanvasProps {
    */
   renderMarker?: (marker: MapMarker) => ReactNode;
   overlays?: readonly MapOverlay[];
+  /**
+   * Real things moving on the map (GoWay Live), or `null`/absent for none.
+   * Web only today: the native canvas ignores it (`docs/MAP_LIVE.md`).
+   *
+   * Hit priority: a live point sits between GoWay markers and basemap labels —
+   * a tap on one calls {@link MapLiveLayer.select} and `onPress` does not
+   * fire; a tap anywhere else selects nothing and proceeds as usual.
+   */
+  live?: MapLiveLayer | null;
   /**
    * Draw the blue user-location dot.
    *

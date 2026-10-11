@@ -56,7 +56,7 @@ now kills the trees, as a padded `0` always killed the globe and terrain.
 | `city3dTreeFill` | labs | off | web | `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL` | `?city3dTreeFill=1` | live (re-attach) |
 | `cityLife` | labs | off | web, **development builds only** | `EXPO_PUBLIC_MAP_CITY_LIFE` | `?cityLife=1` | live (re-attach) |
 | `landmarks` | labs | off | web, **development builds only** (needs `city3d`; models draw only over city tiles) | `EXPO_PUBLIC_MAP_LANDMARKS` | `?landmarks=1` | live (re-attach; the pill and "Landmark tour" come and go, a running tour ends) |
-| `live` | labs | off | web; **offered nowhere until #132 lands** (`offer: 'never'`) | `EXPO_PUBLIC_MAP_LIVE` | `?live=1` | — |
+| `live` | labs | off | web, **development builds only** (needs a backend with `LIVE_ENABLED`; `docs/MAP_LIVE.md`) | `EXPO_PUBLIC_MAP_LIVE` | `?live=1` | live (mount/unmount: the panel in the top-right stack, the layer, its credits and the coverage channel come and go) |
 | `flyover` | labs | off | web, native | `EXPO_PUBLIC_MAP_FLYOVER` | `?flyover=1` | live ("Fly the route", `/studio`) |
 
 No production default changed: globe and terrain stay on (#128), everything
@@ -89,7 +89,7 @@ token. Its sections:
   the `stable` features (Globe, Terrain).
 - **Layers · Labs**, once revealed: the `labs` features this build carries
   and this platform draws (3D city, its tiles, trees and woods fill,
-  sky and time of day, simulated traffic, landmarks, live data once #132 lands, the flyover), each
+  sky and time of day, simulated traffic, landmarks, live data, the flyover), each
   with a one-line description and the note that they may be slow; "Open
   Camera Studio" while the flyover is on; "Hide Labs".
 - **General**: what GoWay already lets a person set — the theme (light, dark,
@@ -100,8 +100,8 @@ token. Its sections:
   `lib/map/credits.ts` with its links and its licence notices verbatim, and
   "All credits and licence notices" → `/attribution`; **Landmark models** —
   each model's licence (SPDX), author and source link; and the privacy note
-  that map settings stay on the device. (Live feeds' licences join here with
-  #132.)
+  that map settings stay on the device; **Live data sources** — while live is
+  on, each feed's credit and licence (`GET /live/sources`).
 
 A feature whose dependency is off shows a disabled switch and "Needs “3D
 city”"; one a development query parameter is forcing shows "Set by this page's
