@@ -61,6 +61,13 @@ export const DEVICES: Record<string, Device> = {
     cpuThrottle: 4,
     note: '1366×768 @2x, CPU ÷4 (integrated-GPU laptop CPU class)',
   },
+  'laptop-2x': {
+    viewport: { width: 1366, height: 768 },
+    deviceScaleFactor: 2,
+    mobile: false,
+    cpuThrottle: 2,
+    note: '1366×768 @2x, CPU ÷2 (an i5-1135G7 / M1 against this i9-14900K, single-thread)',
+  },
   pixel6a: {
     viewport: { width: 412, height: 915 },
     deviceScaleFactor: 2.75,
@@ -290,6 +297,9 @@ function pageProbe(args: {
     cpu: number;
     gpu: number | null;
     gl: Record<string, number>;
+    /** The frame's callbacks: the first one's start and the last one's end (performance.now). */
+    from: number;
+    to: number;
   }
   const frames: FrameRecord[] = [];
   // Main-thread work OUTSIDE the frame callbacks (worker replies, tile
@@ -308,12 +318,14 @@ function pageProbe(args: {
   }
   let tick = -1;
   let cpu = 0;
+  let from = 0;
+  let to = 0;
   let query: WebGLQuery | null = null;
   const pending: Array<{ query: WebGLQuery; frame: FrameRecord }> = [];
 
   const closeTick = () => {
     if (tick < 0) return;
-    const record: FrameRecord = { t: tick, cpu, gpu: null, gl: { ...state.frame } };
+    const record: FrameRecord = { t: tick, cpu, gpu: null, gl: { ...state.frame }, from, to };
     for (const key of Object.keys(state.frame)) state.frame[key] = 0;
     if (mapGl && timer && query) {
       mapGl.endQuery(timer.TIME_ELAPSED_EXT);
@@ -341,20 +353,34 @@ function pageProbe(args: {
         closeTick();
         pollQueries();
         tick = t;
+        from = 0;
         if (mapGl && timer && !query && pending.length < 8) {
           query = mapGl.createQuery();
           if (query) mapGl.beginQuery(timer.TIME_ELAPSED_EXT, query);
         }
       }
       const started = performance.now();
+      if (from === 0) from = started;
       try {
         callback(t);
       } finally {
-        cpu += performance.now() - started;
+        to = performance.now();
+        cpu += to - started;
       }
     });
 
   w.__bench = {
+    /**
+     * Busy for a few ms under a name the profile can find: where its first
+     * sample lands gives the profile's clock against performance.now().
+     */
+    marker: function __benchClockMarker() {
+      const at = performance.now();
+      while (performance.now() - at < 6) {
+        // spin
+      }
+      return at;
+    },
     reset() {
       closeTick();
       frames.length = 0;
@@ -391,7 +417,8 @@ function sceneUrl(base: string, scene: Scene, quality: string | null): string {
     pitch: String(scene.camera.pitch),
     bearing: String(scene.camera.bearing),
     ...scene.flags,
-    perf: '1',
+    // The HUD counts every GL call; a timing run (`--no-counters`) leaves it off.
+    ...(process.argv.includes('--no-counters') ? {} : { perf: '1' }),
   });
   if (quality) params.set('quality', quality);
   return `${base}/?${params}`;
@@ -477,6 +504,8 @@ interface FrameRecord {
   cpu: number;
   gpu: number | null;
   gl: Record<string, number>;
+  from: number;
+  to: number;
 }
 
 function report(frames: FrameRecord[], durationMs: number) {
@@ -560,16 +589,26 @@ async function benchScene(
     await cdp.send('Profiler.setSamplingInterval', { interval: 500 });
     await cdp.send('Profiler.start');
   }
+  const markedAt = profiling
+    ? await page.evaluate(() =>
+        (globalThis as unknown as { __bench: { marker(): number } }).__bench.marker(),
+      )
+    : 0;
+  // The engine's grounding count before the path (development builds publish
+  // it), so the result says how many tiles were lifted DURING it.
+  const groundBefore = await page.evaluate(
+    () =>
+      (
+        globalThis as unknown as {
+          __gowayCity3dGround?: { tilesGrounded: number; tilesUploaded: number };
+        }
+      ).__gowayCity3dGround ?? null,
+  );
   const started = Date.now();
   await runPath(page, scene.path, scene.durationMs, device.viewport);
   const elapsed = Date.now() - started;
-  const profile = profiling
-    ? await attribute(
-        ((await cdp.send('Profiler.stop')) as { profile: CpuProfile }).profile,
-        elapsed,
-        scripts,
-        base,
-      )
+  const cpuProfile = profiling
+    ? ((await cdp.send('Profiler.stop')) as { profile: CpuProfile }).profile
     : null;
   const taken = await page.evaluate(
     () =>
@@ -580,6 +619,9 @@ async function benchScene(
       },
   );
   const frames = taken.frames;
+  const profile = cpuProfile
+    ? await attribute(cpuProfile, elapsed, scripts, base, { frames, markedAt })
+    : null;
   if (device.cpuThrottle > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   const after = await page.evaluate(() => {
     const g = globalThis as unknown as Record<string, unknown> & {
@@ -611,6 +653,17 @@ async function benchScene(
       share: Number((taken.longTaskMs / elapsed).toFixed(2)),
     },
     ...after,
+    groundDuringPath:
+      groundBefore && after.ground
+        ? {
+            grounded:
+              (after.ground as { tilesGrounded: number }).tilesGrounded -
+              groundBefore.tilesGrounded,
+            uploaded:
+              (after.ground as { tilesUploaded: number }).tilesUploaded -
+              groundBefore.tilesUploaded,
+          }
+        : null,
   };
 }
 
@@ -628,6 +681,7 @@ interface CpuProfile {
   }>;
   samples: number[];
   timeDeltas: number[];
+  startTime: number;
 }
 
 /**
@@ -705,15 +759,16 @@ async function sourceMapper(
 
 /**
  * Self time per subsystem (ms, and share of the measured wall time), and the
- * top functions. A native function (a WebGL call: no URL) is charged to the
- * nearest caller that has one, so `bufferSubData` counts against whoever
- * uploaded.
+ * top functions — over the whole path and over its slowest frames alone. A
+ * native function (a WebGL call: no URL) is charged to the nearest caller
+ * that has one, so `bufferSubData` counts against whoever uploaded.
  */
 async function attribute(
   profile: CpuProfile,
   elapsedMs: number,
   scripts: Map<string, { url: string; sourceMapURL: string }>,
   base: string,
+  timing: { frames: FrameRecord[]; markedAt: number },
 ) {
   const nodes = new Map(profile.nodes.map((n) => [n.id, n]));
   const parent = new Map<number, number>();
@@ -751,25 +806,73 @@ async function attribute(
   };
   const bySubsystem = new Map<string, number>();
   const byFunction = new Map<string, number>();
+  // The same split for the SLOW frames alone — those at or over the path's
+  // p95 of main-thread time, what a p95 is made of: the samples inside their
+  // callbacks, placed on the page's clock by the marker's first sample.
+  const slowBySubsystem = new Map<string, number>();
+  const slowByFunction = new Map<string, number>();
+  const cpus = timing.frames.map((f) => f.cpu).sort((a, b) => a - b);
+  const threshold = cpus[Math.floor(cpus.length * 0.95)] ?? Number.POSITIVE_INFINITY;
+  const slow = timing.frames.filter((f) => f.cpu >= threshold && f.from > 0);
+  const times: number[] = [];
+  let clock = profile.startTime;
+  for (let i = 0; i < profile.samples.length; i++) {
+    clock += profile.timeDeltas[i] ?? 0;
+    times.push(clock / 1000);
+  }
+  const markerSample = profile.samples.findIndex(
+    (id) => nodes.get(id)?.callFrame.functionName === '__benchClockMarker',
+  );
+  const offset = markerSample < 0 ? null : times[markerSample] - timing.markedAt;
+  const add = (map: Map<string, number>, key: string, ms: number) =>
+    map.set(key, (map.get(key) ?? 0) + ms);
+  let next = 0;
   for (let i = 0; i < profile.samples.length; i++) {
     const ms = (profile.timeDeltas[i] ?? 0) / 1000;
     const { subsystem, label } = await ownerOf(profile.samples[i]);
-    bySubsystem.set(subsystem, (bySubsystem.get(subsystem) ?? 0) + ms);
+    add(bySubsystem, subsystem, ms);
     if (subsystem === 'idle') continue;
     const key = `${subsystem} · ${label}`;
-    byFunction.set(key, (byFunction.get(key) ?? 0) + ms);
+    add(byFunction, key, ms);
+    if (offset === null) continue;
+    const at = times[i] - offset;
+    while (next < slow.length && slow[next].to < at) next++;
+    if (next < slow.length && at >= slow[next].from) {
+      add(slowBySubsystem, subsystem, ms);
+      add(slowByFunction, key, ms);
+    }
   }
   const round = (v: number) => Number(v.toFixed(1));
-  return {
-    subsystems: Object.fromEntries(
-      [...bySubsystem.entries()]
+  const table = (map: Map<string, number>, total: number) =>
+    Object.fromEntries(
+      [...map.entries()]
         .sort((a, b) => b[1] - a[1])
-        .map(([k, v]) => [k, { ms: round(v), share: Number((v / elapsedMs).toFixed(3)) }]),
-    ),
-    top: [...byFunction.entries()]
+        .map(([k, v]) => [k, { ms: round(v), share: Number((v / total).toFixed(3)) }]),
+    );
+  const ranked = (map: Map<string, number>) =>
+    [...map.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 40)
-      .map(([k, v]) => `${round(v)} ms  ${k}`),
+      .map(([k, v]) => `${round(v)} ms  ${k}`);
+  const slowMs = [...slowBySubsystem.values()].reduce((sum, v) => sum + v, 0);
+  return {
+    subsystems: table(bySubsystem, elapsedMs),
+    top: ranked(byFunction),
+    slowFrames:
+      offset === null
+        ? null
+        : {
+            count: slow.length,
+            thresholdMs: round(threshold),
+            // Per slow frame, by subsystem: sampled self time inside its callbacks.
+            perFrameMs: Object.fromEntries(
+              [...slowBySubsystem.entries()]
+                .sort((a, b) => b[1] - a[1])
+                .map(([k, v]) => [k, round(v / Math.max(1, slow.length))]),
+            ),
+            subsystems: table(slowBySubsystem, slowMs || 1),
+            top: ranked(slowByFunction),
+          },
   };
 }
 

@@ -23,7 +23,9 @@ the CI gate that keeps a change from blowing the budget.
 
 ### The HUD
 
-Any development build, or `?perf=1` on any build (it only shows numbers):
+`?perf=1`, on any build — never by default, development builds included (it
+covers part of the map, and its GL counters cost main-thread time; it only
+shows numbers):
 a panel at the bottom right with the preset and why it was chosen, the
 renderer (so you know whether you are looking at a real GPU), FPS, frame time
 p50/p95, main-thread time p50/p95 and per part of the frame (MapLibre, the
@@ -37,12 +39,38 @@ numbers are on `globalThis.__gowayPerf`.
 ### The benchmark
 
 ```bash
-# The dev server, with the city and road archives (docs/MAP_CITY_LIFE.md → Turning it on):
-GOWAY_CITY_TILES_ARCHIVE=… bunx expo start --web --port 8117
-bun run --cwd packages/frontend bench:map --url=http://localhost:8117 \
-  [--device=desktop|laptop|pixel6a|iphone12] [--quality=low|medium|high] \
-  [--scenes=eixample,manhattan,montserrat,globe,traffic,idle,night] [--gpu=real|software] [--out=bench.json]
+# Time a PRODUCTION export — what users run (the dev server's numbers are not:
+# see below). Every 3D feature compiled in, with source maps for --profile:
+cd packages/frontend
+EXPO_PUBLIC_MAP_CITY3D=1 EXPO_PUBLIC_MAP_CITY_TILES=1 EXPO_PUBLIC_MAP_CITY_SKY=1 \
+EXPO_PUBLIC_MAP_DETAILED_CITY=1 EXPO_PUBLIC_MAP_CITY_LIFE=1 EXPO_PUBLIC_MAP_LANDMARKS=1 \
+  bunx expo export --platform web --source-maps --output-dir dist-bench
+# Serve it with the city and road archives (docs/MAP_CITY_LIFE.md → Turning it on):
+GOWAY_CITY_TILES_ARCHIVE=… bun scripts/serve-map-build.ts --dir=dist-bench --port=8119
+bun run bench:map --url=http://localhost:8119 \
+  [--device=desktop|laptop|laptop-2x|pixel6a|iphone12] [--quality=low|medium|high] \
+  [--scenes=eixample,manhattan,montserrat,globe,traffic,idle,night] [--gpu=real|software] \
+  [--no-counters] [--profile] [--tier=low|medium|high] [--out=bench.json]
 ```
+
+- `--no-counters` for timing: no HUD and no GL counters (they cost the main
+  thread ~2 ms a frame at ×4); frames and draw calls are still counted.
+- `--profile`: a CPU profile of the path, source-mapped and split by
+  subsystem (MapLibre, three.js, the city engine, city life, live, React, GC,
+  the browser), over the whole path and over its **slow frames** alone —
+  those at or over its p95 of main-thread time, so you see what a p95 is made
+  of, per frame.
+- `--quality=` forces a preset (`?quality=`); `--tier=` instead stores a GPU
+  record of that tier and lets Auto resolve, as a real visit would (and works
+  on a build older than `?quality=` in production).
+- `laptop-2x` is the laptop at CPU ÷2 — see "How slow is ÷4" below.
+
+**Three traps, all measured.** The dev server is not the product: React in
+development mode and, before `?perf=1` was needed, the HUD's GL counters put
+the Eixample orbit's main-thread p95 at 43–46 ms on the laptop profile where a
+production export measures 30–41 ms. Metro run with `CI=true` (as agents run
+it) does not reload: an edit is invisible until the server restarts — check
+the served bundle. And two benchmarks at once share the GPU path (below).
 
 Fixed camera paths, every 3D feature on (city, city tiles, sky, trees, city
 life, landmarks, globe, terrain), driven by real input (drag, ctrl-drag,
@@ -95,12 +123,12 @@ it — and **inside iOS Safari's memory**, which kills a tab at roughly
 | Main thread per frame | ≤ 10 ms: MapLibre ≤ 5, city engine ≤ 2, city life + live ≤ 1 | ≤ 20 ms (a phone CPU is 4–5× slower): MapLibre ≤ 10, engine ≤ 4, life + live ≤ 2 |
 | Pixels | ≤ 2× (dynamic resolution down to 1×) | ≤ 2× (a 3× phone draws 2.25× fewer pixels); down to 1× |
 | Full-screen passes | 3 sky passes, shadowed ground (8 taps) | 3 sky passes, no shadow taps |
-| Draw calls | ≤ 400 (ours ≤ 250) | ≤ 450 — measured 424 in the Eixample at low, most of them MapLibre's 2D layers redrawn per tile without terrain textures (ours ≤ 150) |
+| Draw calls | ≤ 400 (ours ≤ 250) | ≤ 250 — measured 149 in the Eixample at low (ours ≤ 150) |
 | Triangles | ≤ 3 M (buildings ≤ 4 M vertices ≈ 2.2 M triangles, trees ≤ 16,000) | ≤ 1.5 M (buildings ≤ 2 M vertices ≈ 1.1 M, trees ≤ 6,000) |
 | Shadow map | 1024², 8-tap PCF; redrawn only when the sun, the box or the casters change (≤ 4 Hz while moving) | none |
 | Uploads | ≤ 8 MiB a frame | ≤ 4 MiB a frame |
 | Workers | ≤ 2 mesh workers, ≤ 60 ms a tile (levels 1–2), ≤ 200 ms (level 0), off the main thread | 1 mesh worker |
-| GPU memory (ours) | tile cache ≤ 128 MiB, shadow map 5 MiB | tile cache ≤ 80 MiB, no shadow map, no 3D terrain (≈ 200 MiB of MapLibre's terrain textures, measured) |
+| GPU memory (ours) | tile cache ≤ 128 MiB, shadow map 5 MiB | tile cache ≤ 80 MiB, no shadow map, terrain textures at 1× (95–153 MB measured, against 478 MB at MapLibre's 2×) |
 | JS heap | ≤ 300 MB | ≤ 200 MB |
 | Animation | 30 Hz, paused after 45 s untouched or when hidden | 20 Hz, paused after 20 s or when hidden |
 
@@ -127,21 +155,39 @@ holds are under [The CI gate](#the-ci-gate).
 | City life (cars + people) | 300 + 300 | 700 + 700 | 1,200 + 1,200 |
 | Live entities | 500 | 2,000 | 5,000 |
 | Landmarks held | 2 | 4 | 8 |
-| 3D terrain | off (hillshade and globe stay) | on | on |
+| 3D terrain (textures: the 2D layers MapLibre caches per terrain tile) | on, textures 1× the terrain tile (1,024²) | on, 2× (2,048², MapLibre's own) | on, 2× |
 | Animation clock | 20 Hz, idle pause 20 s (battery: 15 Hz, 10 s) | 30 Hz, 45 s | 30 Hz, 120 s |
 
 High is exactly what the engine drew before this profile existed, so a
 capable machine loses nothing.
 
-**Low has no 3D terrain, on purpose, and it costs draw calls.** Measured on
-the phone profile, Eixample tilted: with 3D terrain MapLibre held **478 MB**
-of textures (its terrain render-to-texture tiles, 2048² and mipmapped, one per
-visible terrain tile), against **11 MB** without — on a device whose browser
-kills the tab at about 1–1.5 GB. The price: without terrain MapLibre draws its
-2D layers per tile on every frame instead of caching them in those textures,
-~230 more draw calls a frame there (264 → 490). Memory is the hard limit (a
-killed tab), draw calls the soft one, so low keeps the hillshade and the globe
-and drops the terrain mesh; Settings → High quality brings it back.
+**Low keeps 3D terrain, with lighter textures.** With 3D terrain MapLibre
+draws the 2D layers (fills, roads, hillshade) once per terrain tile into a
+texture and re-uses it while the camera moves; without it, it draws every 2D
+layer per tile on every frame. Those textures are 2× the 1,024 px terrain
+tile by default — 2,048², ~22 MB each with mipmaps, one per visible terrain
+tile: **478 MB** in the Eixample on the phone profile, on a browser that kills
+the tab at about 1–1.5 GB. The first answer (#151) turned terrain off at low:
+11 MB of textures, but twice the draw calls and MapLibre's work per frame.
+Now low keeps the terrain and makes its textures 1× (`relief.terrainTextureScale`,
+`reliefLayer.web.ts` → `applyTextureScale`; MapLibre's `Terrain.qualityFactor`,
+pinned by `reliefTextureScale.test.ts`): a quarter of the memory per texture,
+roads and fills draped at half the resolution, labels unaffected — they are
+drawn after, not into the textures. Measured on the phone profile at low,
+production build, terrain off (#151) → 1× terrain:
+
+| scene | draw calls p50 | GPU MB (est.) — of it textures | main thread ms p50 / p95 |
+| --- | --- | --- | --- |
+| eixample | 423 → **149** | 82 → 223 — 9 → 131 | 11.8 / 15.6 → 11.5 / 17.4 |
+| manhattan | 383 → **127** | 29 → 119 — 15 → 95 | 11.1 / 15.9 → 10.5 / 16.1 |
+| montserrat | 419 → **54** | 19 → 166 — 16 → 153 | 9.1 / 20.8 → 8.9 / 15.5 |
+
+Fewer draw calls than `main` drew with full textures (214 in the Eixample,
+the table under [Hotspots](#hotspots-measured-and-fixed)), for a third of
+`main`'s GPU memory there (658 MB) — under a quarter of the
+tab's ceiling. The main thread is a wash on this host (MapLibre's per-tile
+redraw is cheap JS and dear GPU work: the saving is the phone GPU's, which
+this machine cannot measure).
 
 ### Who gets which
 
@@ -171,8 +217,11 @@ different renderer (a fallback) is discarded. The result is stored with the
 map's preferences (`gpu`: renderer, score, tier, date), so later visits pick
 their tier before the first frame; a new GPU or 30 days re-measure.
 
-`?quality=low|medium|high` forces a preset in a development build (the
-benchmark's switch); a production build ignores it.
+`?quality=low|medium|high` forces a preset in any build, for that tab only
+(nothing is stored): the switch of the benchmark and of screenshot harnesses,
+whose headless SwiftShader Chromium Auto otherwise sends to low. It can make a
+weak device draw more than it should — only the tab that asked, and no link
+the app produces carries it.
 
 ### Dynamic resolution
 
@@ -237,7 +286,8 @@ clock), `city` (draw, cache, tiles, LOD tolerance, upload, workers, trees — th
 city engine), `sky` (shadow map size, PCF taps — the sky), `life` (agents —
 city life), `live` (entities — the live layer: drawn at most, nearest the
 centre first, `liveLayer.web.ts` → `nearestLivePoints`), `landmarks` (models
-held — the adapter), `relief` (3D terrain — the relief adapter, live).
+held — the adapter), `relief` (3D terrain and its textures' scale — the
+relief adapter, live).
 
 Who animates through the clock today: city life (`'cityLife'`, its worker
 paused with the clock), GoWay Live (`'live'`: its source is re-set in the
@@ -252,8 +302,9 @@ triangles in `city.drawVertices`, or add a `city.markings` knob).
 
 Measured with `bench:map`, every scene with every 3D feature on (detailed
 look, sky, trees, city tiles, city life, landmarks, globe, terrain), `main`
-(`432fd6a`) against this branch on it, one after the other on the same
-machine, 2026-10-11. **GPU: the RTX 5090 through WSL's D3D12 translation
+(`432fd6a`) against #151 on it, one after the other on the same machine,
+2026-10-11, **on the development server** — read them as relative (the next
+section re-measures the laptop on production exports, and why it matters). **GPU: the RTX 5090 through WSL's D3D12 translation
 (real, recorded per scene); laptop and phone: emulated viewport, pixel ratio,
 touch and CPU (×4), never their GPU** — see [Measuring](#measuring). The
 laptop runs this branch at the medium preset and the phone at the low one
@@ -320,7 +371,7 @@ What each change bought, from those numbers and the gate:
    draws ~20 a second for as long as the tab is open. GoWay Live's 60 Hz frame
    loop joined the same clock.
 3. **No preset existed: a phone drew what a desktop GPU draws.** The phone
-   profile at low: GPU memory (estimated) 658 → 85 MB in the Eixample and 411 → 34 MB in Manhattan, triangles 4.32 M → 1.82 M and 2.38 M → 0.57 M, no shadow map and no shadow redraws (32 → 0), main thread p95 31 → 24 ms. Draw calls go UP (214 → 424): that is MapLibre drawing its 2D layers without the terrain textures (the trade-off above).
+   profile at low: GPU memory (estimated) 658 → 85 MB in the Eixample and 411 → 34 MB in Manhattan, triangles 4.32 M → 1.82 M and 2.38 M → 0.57 M, no shadow map and no shadow redraws (32 → 0), main thread p95 31 → 24 ms. Draw calls went UP (214 → 424): MapLibre drawing its 2D layers without the terrain textures — since replaced by lighter terrain textures (149 draws; [the presets](#the-presets)).
 4. **Trees kept their 98-triangle near shape at any distance on city tiles**
    (they have no far level): now a level-0 tile's trees switch to the
    20-triangle far shape past the full-detail distance (`setEntryTreeDetail`);
@@ -332,6 +383,124 @@ What each change bought, from those numbers and the gate:
    profile): the clamp makes it 2×, and dynamic resolution lowers it further
    while the 3D city is over budget.
 7. **The laptop at medium**: triangles 5.71 M → 4.11 M (Eixample) and 2.67 M → 1.91 M (Manhattan), draws 311 → 259, GPU memory (estimated) 919 → 799 MB, a 1024² shadow map with 8 taps.
+
+## The laptop's main thread at medium, attributed
+
+The laptop profile at the medium preset was the one over budget in #151:
+main-thread p95 43–46 ms on the Eixample orbit at CPU ÷4, against 16.7 ms.
+Re-measured here on **production exports** (`serve-map-build.ts`;
+`--no-counters` for timing, `--profile` for attribution), `#151` (`eb6383a`)
+against this branch, 2026-10-12, same machine, real GPU recorded per scene.
+
+**First finding: most of that 43–46 ms was the measurement.** The same scene
+on a production export of the same code: p95 30–31 ms (two runs). The dev
+server ran React in development mode and the HUD's GL counters on every frame
+(~2 ms a frame at ÷4, attributed); the HUD now needs `?perf=1` everywhere.
+
+### Where a frame goes
+
+Self time per drawn frame, by subsystem — production export, Eixample orbit,
+medium, this branch. Native WebGL calls are charged to their caller; "browser"
+is the renderer's own native work (command submission, compositing, style
+and layout), not attributable to a script.
+
+| subsystem | CPU ÷4: ms / frame | CPU ÷2: ms / frame |
+| --- | ---: | ---: |
+| MapLibre (its own JavaScript) | **17.3** | **8.7** |
+| three.js (the renderer, for every GoWay 3D layer) | 6.6 | 3.5 |
+| browser (native) | 3.8 | 2.3 |
+| city engine (selection, LOD, ground, shadows' bookkeeping) | 1.9 | 0.9 |
+| React | 0.7 | 0.4 |
+| garbage collection | 0.5 | 0.3 |
+| city life | 0.3 | 0.15 |
+| perf runtime (dynamic resolution, frame statistics; no HUD) | 0.2 | 0.1 |
+| live | 0.0 | 0.0 |
+| **main thread p50 / p95 of the path** | 25.1 / 41.6 | 11.3 / 22.0 |
+
+(The profiler's own overhead inflates a profiled run; the timing tables below
+are unprofiled.) MapLibre's per-frame cost is flat — no function above 0.8 ms
+of a ÷4 frame: symbol work (the per-frame label vertex updates behind its
+`bufferSubData`, `updateBucketOpacities`, the cross-tile symbol index), its
+draw calls (`draw`, `bindVertexArray`, `useProgram`, uniforms), terrain
+(`_getDEMTileMatrix`, `getSourceTile`, `calculatePosMatrix`) and its camera
+(`_calcMatrices`). On the still street at z18, redrawn only because city life
+moves, MapLibre is still 12.5 ms of a ÷4 frame: a custom layer that animates
+makes MapLibre draw everything else again.
+
+### What was cut
+
+1. **The terrain lift, 3.5× cheaper.** Lifting a tile onto the terrain
+   (`cityMeshes.ts` → `groundTileFor().lift`) looked up each vertex's building
+   on every vertex; it now walks each building's run of vertices once — one
+   comparison and one store per vertex, the same output
+   (`city3dGroundPacked.test.ts` compares every vertex). An 810,000-vertex tile:
+   2.81–2.95 → 0.80–1.05 ms on the host unthrottled, 4× that at ÷4. In the
+   orbit's slow frames at ÷2: the lift 135 → 34 ms over the path, the city
+   engine's share of a slow frame 6.7 → 2.7 ms.
+2. **A tile's lift and its first upload never share a frame.** A tile on
+   terrain is drawn only once lifted, and its first draw is when its mesh goes
+   to the GPU; one frame did both. Now a newly lifted tile is first drawn the
+   next frame and that frame lifts nothing (`cityEngine.ts` →
+   `awaitingFirstDraw`). Gated: `frameBudget.test.ts` → "on terrain, no frame
+   both lifts a tile and uploads one" (reverting it fails the gate with a
+   1.2 MB upload in a lifting frame).
+3. **The HUD only on `?perf=1`**, development builds included.
+4. Still landmark models compose their node matrices once instead of every
+   frame (only a moved model's subtree is re-derived); not separable from the
+   noise in the timings, kept because it removes work.
+
+Interleaved runs (#151, this branch, alternating, three each) — production,
+medium, main-thread ms:
+
+| CPU | scene | p50 | p95 |
+| --- | --- | --- | --- |
+| ÷2 | eixample | 10.0 / 9.6 / 10.1 → 9.9 / 10.3 / 9.9 | 16.7 / 16.7 / 17.1 → **15.0 / 16.5 / 15.5** |
+| ÷2 | manhattan | 7.9 / 7.4 / 7.8 → 7.5 / 8.0 / 7.5 | 12.5 / 12.1 / 12.5 → 12.2 / 12.8 / 12.5 |
+| ÷4 (ABBA, the machine loaded) | eixample | 22.6 / 20.6 / 19.5 / 18.7 → 19.2 / 23.6 / 21.8 / 22.9 | 37.5 / 37.4 / 39.5 / 36.6 → 30.6 / 38.8 / 36.5 / 36.2 |
+
+At ÷4 the difference is inside the spread of either build: the cuts are
+milliseconds of a 17 ms MapLibre frame and of its rarer slow frames (below).
+
+At ÷2 the Eixample orbit's p95 is now within 16.7 ms in every interleaved
+run; in uncontended runs the still street at z18 with traffic reads 9.5–10.3
+and Eixample at night 15.6.
+Runs taken while other work loaded this machine read 3–7 ms higher at p95 in
+every scene alike — compare interleaved runs only.
+
+### What is left, and why
+
+**At CPU ÷4 the budget cannot be met by GoWay's code.** MapLibre's own
+JavaScript is 17 ms of the mean frame on this path — more than the whole
+16.7 ms budget — before the browser's 3.8 ms and before a single GoWay layer
+draws; with every GoWay subsystem at zero a ÷4 frame would still take
+17–21 ms (MapLibre, and the browser's native work, part of which is ours). The levers that reach it are product decisions, not hotspots: hiding
+the basemap's labels while tilted saves 2–4 ms of a ÷4 frame (measured on the
+dev server, every symbol layer hidden: draw calls 262 → 165); dropping the terrain costs more
+than it saves (MapLibre then redraws every 2D layer per tile: 25–28 ms of
+MapLibre, ~840 draws). Neither is taken here.
+
+**÷4 is not a laptop.** CDP throttling divides THIS machine's CPU (an
+i9-14900K). By published Geekbench 6 single-core scores, roughly: an Intel
+i5-1135G7 (Iris Xe) is about half of it, an Apple M1 about three quarters, an
+A14 (iPhone 12) about two thirds, a Pixel 6a's Tensor about a third to a
+half. So ÷2 models the integrated-GPU laptops of the medium preset, ÷4 a CPU
+slower than any of them; the phone profiles at ÷4 are about right for a
+Pixel 6a and pessimistic for an iPhone 12. Hence the `laptop-2x` profile;
+the budget table's main-thread lines are for the real devices.
+
+**At ÷2 the remaining slow frames are arrivals, not steady work.** The
+frames at or over the path's p95 (`--profile` → `slowFrames`), per frame:
+MapLibre 12–17 ms (its symbol placement commits every ~300 ms of motion:
+`updateBucketOpacities`, `updateLayerOpacities` and their `bufferSubData`),
+three.js 10–17 ms — **mesh uploads** (`bufferData`: a z15 tile's full-detail
+level is several MB, handed over in the frame it is first drawn) and, the
+first time a material variant is drawn in a session, **shader linking**
+(three reads the link status synchronously: `getProgramInfoLog`, up to
+~200 ms over a path) — and the city engine 2.7 ms. Next steps, in order:
+compile the engine's material variants ahead of first use
+(`renderer.compileAsync` while loading), and hand a full-detail tile to the
+GPU in chunks over several frames. How much of `bufferData`'s cost is WSL's
+D3D12 translation is not measurable on this machine.
 
 ## What it costs at first paint
 
@@ -398,13 +567,16 @@ fixed where it was on a path this change touched:
 | Mercator y → latitude written out again; pixels-per-metre written out again | `lifeRenderer.ts` (beside `tileMath.latFromMercatorY`, `lod.metresPerPixel`) | **Fixed** |
 | The source scanner of the chunk tests, five copies | `components/__tests__/*` | **Fixed**: `sourceScan.ts` |
 | The LOD tests' MapLibre camera, now also the gate's | `city3dLod.test.ts` | **Fixed**: `fixtures/mapCamera.ts` |
-| Two ground samplers: city life keeps its own per-z15 grid cache beside the engine's `TileGrounder` (same sampler, same grid, sampled twice) | `lifeRenderer.ts` `groundAt`, `terrainGround.ts` | Not fixed: share the grounder's grids through `CityOverlay.setGround` |
-| Mercator y → latitude, two more copies | `cityLife/sim/network.ts`, `lib/map/camera/plane.ts` | Not fixed (not on these paths) |
-| Hex colour → RGB, four copies | `cityEngine.ts` (`hexToVector`), `city3dTrees.ts`, `city3dLight.ts`, `lib/map/style/buildings3d.ts` | Not fixed |
+| Two ground samplers: city life kept its own per-z15 grid cache beside the engine's `TileGrounder` (same sampler, same grid, sampled twice); live vehicles asked MapLibre's `queryTerrainElevation` per vehicle | `lifeRenderer.ts`, `terrainGround.ts`, `live3d` | **Fixed**: one `Ground` (`terrainGround.ts` → `createGround`, an LRU of grids) made by the engine's `setGround` and handed to the grounder, every overlay (`CityOverlay.setGround`) and the live pass (`City3dHandle.ground()`); `city3dTerrainGround.test.ts` proves a tile is sampled once whoever asks |
+| Web Mercator written out in seven more places (`tileMath`, `camera/plane`, `cityLife/sim/network`, `lod`, `viewportLink`, `embed`, `landmarks/tour`), with two different Earth radii | `lib/map/**`, `engine/**` | **Fixed**: `lib/map/geo.ts` is the one (`mercatorX/Y`, their inverses, `metersPerPixel`, the mean Earth radius); the rest import or re-export it. One deliberate exception: `lib/live/coverage.ts`, which `liveChunk.test.ts` requires to import nothing |
+| Hex colour → RGB, four copies (and a fifth, `engine/city3d/colour.ts`) | `cityEngine.ts`, `city3dTrees.ts`, `city3dLight.ts`, `tsl/cityTileView.ts`, `osmTiles.ts`, `live3d/liveModels.ts`, `style/*` | **Fixed**: `lib/map/colour.ts` (`parseHexColour`, `hexToRgb`, `hexToPacked`), `colour.test.ts` |
 | The GPU LOD test of city life replayed on the CPU for its statistics | `lifeRenderer.ts` `countTriangles` | Deliberate (development statistics), noted |
 
 ## Limits
 
+- **CPU throttling divides this machine's CPU**, not a laptop's or a
+  phone's: ÷4 is slower than every target laptop, ÷2 close to an Iris Xe or
+  M1 laptop (see "÷4 is not a laptop" above).
 - **No phone and no laptop was measured.** Every GPU number is an RTX 5090
   behind WSL's D3D12 translation; laptops and phones are emulated in viewport,
   pixel ratio, touch and CPU only. The budgets above are derived from those
