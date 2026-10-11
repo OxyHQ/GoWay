@@ -13,6 +13,7 @@ import { isCitySkyRequested } from '@/lib/map/citySkyFlag';
 import { isCityLifeRequested } from '@/lib/map/cityLifeFlag';
 import { isCityTilesRequested } from '@/lib/map/cityTilesFlag';
 import { isLandmarksRequested } from '@/lib/map/landmarksFlag';
+import { isLiveRequested } from '@/lib/map/liveFlag';
 import { isFlyoverRequested } from '@/lib/map/flyoverFlag';
 import {
   MAP_FEATURES,
@@ -103,13 +104,7 @@ function legacy(builds: Builds, development: boolean, search: string) {
     // As `ExploreScreen` decided it: the landmarks flag AND the 3D city.
     landmarks:
       city3d && isLandmarksRequested({ enabled: onBuild(builds.landmarks), development, search }),
-    // #132's `isLiveRequested`, verbatim.
-    live: ((input: { enabled: boolean; development: boolean; search: string }) => {
-      if (input.enabled) return true;
-      if (!input.development) return false;
-      const value = new URLSearchParams(input.search).get('live');
-      return value === '1' || value === 'true';
-    })({ enabled: onBuild(builds.live), development, search }),
+    live: isLiveRequested({ enabled: onBuild(builds.live), development, search }),
     flyover: isFlyoverRequested({ enabled: onBuild(builds.flyover), development, search }),
   };
 }
@@ -299,10 +294,9 @@ describe('dependencies', () => {
 });
 
 describe('what the panel offers', () => {
-  test('live is registered but offered nowhere until its layer lands (#132)', () => {
-    for (const development of [false, true]) {
-      expect(resolve({ development }).get('live').available).toBe(false);
-    }
+  test('live is offered in development builds only, where a live backend can serve it', () => {
+    expect(resolve({ development: false }).get('live').available).toBe(false);
+    expect(resolve({ development: true }).get('live').available).toBe(true);
   });
 
   test('per platform', () => {

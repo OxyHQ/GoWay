@@ -23,6 +23,7 @@ import { errorHandler, unknownRouteHandler } from './http/errorHandler';
 import {
   accountRoles,
   apiRateLimit,
+  liveShapeRateLimit,
   contributionRateLimit,
   optionalAuth,
   placeFiles,
@@ -31,9 +32,11 @@ import {
   requireOperator,
 } from './middleware/auth';
 import { createGoWayCors } from './middleware/cors';
+import type { LiveService } from './live';
 import { healthRouter } from './routes/health';
 import { createCaptureRouter } from './routes/capture';
 import { createCategoriesRouter } from './routes/categories';
+import { createLiveRouter } from './routes/live';
 import { createModerationRouter } from './routes/moderation';
 import { createOpenApiRouter } from './routes/openapi';
 import { createPlaceMediaRouter } from './routes/placeMedia';
@@ -53,6 +56,12 @@ export interface CreateAppOptions {
    * `server.ts` rather than imported, so an app a test builds publishes nothing.
    */
   activity?: RequestHandler;
+  /**
+   * The live layer (`src/live`), built and started by `server.ts` when
+   * `LIVE_ENABLED` is set. Absent, `GET /live/sources` answers
+   * `service_unavailable` and nothing else changes.
+   */
+  live?: LiveService | null;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
@@ -174,6 +183,11 @@ export function createApp(options: CreateAppOptions = {}): Express {
    * bucket or external worker is on the request path.
    */
   v1.use(createStreet3dRouter({ requireAuth, reportRateLimit }));
+  /**
+   * GoWay Live: the feeds' credits, licences and freshness. Public, and inert
+   * (503) unless `server.ts` built a live service. Positions are on Socket.IO.
+   */
+  v1.use(createLiveRouter(options.live ?? null, liveShapeRateLimit));
   api.use('/v1', v1);
 
   app.use('/api', api);

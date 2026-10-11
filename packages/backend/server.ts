@@ -29,6 +29,8 @@ import { createApp } from './src/app';
 import { config } from './src/config';
 import { closePostgres, connectPostgres } from './src/db/postgres';
 import { attachRealtime } from './src/realtime';
+import { liveConfig } from './src/config/live';
+import { createLiveService } from './src/live';
 import { startPlatformActivity } from './src/platformActivity';
 import { street3dConfig } from './src/config/street3d';
 import { getDb } from './src/db/postgres';
@@ -50,10 +52,14 @@ let serving = false;
 // Not started outside ECS — see src/platformActivity.ts. Without a workload
 // identity `activity` is undefined and every observer below is skipped.
 const activity = startPlatformActivity(() => serving);
-const app = createApp({ activity: activity?.observeHttp });
+// GoWay Live: `null` unless LIVE_ENABLED and at least one source is configured.
+// Built here, started after listen, never a readiness dependency.
+const live = createLiveService({ config: liveConfig, logger: createLogger('live') });
+const app = createApp({ activity: activity?.observeHttp, live });
 const server = http.createServer(app);
 const io = attachRealtime(server, {
   observeSocket: activity ? (socket) => void activity.observeSocket(socket) : undefined,
+  live,
 });
 
 let stopStreet3d: (() => void) | null = null;
@@ -85,6 +91,7 @@ function shutdown(signal: string): void {
   serving = false;
   logger.info({ signal }, 'Shutting down');
   stopStreet3d?.();
+  live?.stop();
 
   // A drain that never finishes is worse than an abrupt exit: the orchestrator
   // SIGKILLs the task after its own grace period and the shutdown path is never
@@ -122,6 +129,7 @@ async function boot(): Promise<void> {
       'GoWay backend listening',
     );
     startStreet3d();
+    live?.start();
   });
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));

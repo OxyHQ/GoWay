@@ -88,8 +88,9 @@ const NO_EXTRA: readonly MapAttributionLink[] = [];
 
 /**
  * @param extra - credits owed only while something is drawn — a CC BY
- *   landmark model's author (`docs/MAP_LANDMARKS.md`). Passed by `MapCanvas`
- *   alone, from what its engine reports drawn; never by feature code.
+ *   landmark model's author (`docs/MAP_LANDMARKS.md`), a GoWay Live feed
+ *   (`MapLiveLayer.credits`, `docs/MAP_LIVE.md`). Passed by `MapCanvas`
+ *   alone, from what is drawn; never by feature code.
  */
 function MapAttributionComponent({
   extra = NO_EXTRA,

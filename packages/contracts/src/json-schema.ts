@@ -104,6 +104,14 @@ import {
   placeRevisionSchema,
   revisionValueSchema,
 } from './revision';
+import {
+  liveDeltaSchema,
+  liveEntitySchema,
+  liveSnapshotSchema,
+  liveSubscriptionSchema,
+  liveSubscriptionStateSchema,
+} from './live';
+import { liveShapeSchema, liveSourcePageSchema, liveSourceSchema } from './live-source';
 import { searchResultSchema, searchResultsSchema } from './search';
 import {
   streetCoverageSchema,
@@ -202,6 +210,14 @@ export const CONTRACT_SCHEMA_NAMES = [
   'StreetSceneManifest',
   'StreetSceneReport',
   'StreetSceneReportInput',
+  'LiveSource',
+  'LiveSourcePage',
+  'LiveEntity',
+  'LiveSubscription',
+  'LiveSubscriptionState',
+  'LiveSnapshot',
+  'LiveDelta',
+  'LiveShape',
 ] as const;
 
 export type ContractSchemaName = (typeof CONTRACT_SCHEMA_NAMES)[number];
@@ -295,6 +311,16 @@ export const CONTRACT_SCHEMAS: Readonly<Record<ContractSchemaName, ContractSchem
   StreetSceneManifest: response(streetSceneManifestSchema),
   StreetSceneReport: response(streetSceneReportSchema),
   StreetSceneReportInput: request(streetSceneReportInputSchema),
+  LiveSource: response(liveSourceSchema),
+  LiveSourcePage: response(liveSourcePageSchema),
+  // The Socket.IO messages, published by name so an integrator speaking the
+  // live protocol without the SDK has the same schemas the server sends with.
+  LiveEntity: response(liveEntitySchema),
+  LiveSubscription: request(liveSubscriptionSchema),
+  LiveSubscriptionState: response(liveSubscriptionStateSchema),
+  LiveSnapshot: response(liveSnapshotSchema),
+  LiveDelta: response(liveDeltaSchema),
+  LiveShape: response(liveShapeSchema),
 };
 
 /** JSON Schema draft 2020-12 — the dialect OpenAPI 3.1 speaks. */

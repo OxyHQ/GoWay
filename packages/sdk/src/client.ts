@@ -99,6 +99,9 @@ import {
   streetSceneReportSchema,
   structuredGeocodeQuerySchema,
   TRAVEL_MODES,
+  liveShapePathSchema,
+  liveShapeSchema,
+  liveSourcePageSchema,
 } from './contract';
 import type {
   AccountClaimListQuery,
@@ -179,6 +182,8 @@ import type {
   RouteResponse,
   SearchQuery,
   SearchResults,
+  LiveShape,
+  LiveSourcePage,
   StreetCoverage,
   StreetCoverageQuery,
   StreetSceneManifest,
@@ -762,6 +767,25 @@ export interface GoWayCapturesApi {
   remove(assetId: string, options?: GoWayRequestOptions): Promise<void>;
 }
 
+/**
+ * GoWay Live: real-time feeds GoWay re-serves (aircraft, transit, bike share,
+ * ships).
+ *
+ * `sources` is the HTTP half — which feeds this deployment carries, under what
+ * licence and credit, and how fresh each is. The positions themselves stream
+ * over Socket.IO; `@goway.to/sdk/live` has the protocol (namespace, events,
+ * room tiles and message parsers). A deployment with live switched off
+ * answers `sources` with `GoWayUnavailableError`.
+ */
+export interface GoWayLiveApi {
+  sources(options?: GoWayRequestOptions): Promise<LiveSourcePage>;
+  /**
+   * One of an operator's published route shapes — what a transit vehicle's
+   * `track.shapeId` refers to, for drawing it along its line. Cacheable.
+   */
+  shape(sourceId: string, shapeId: string, options?: GoWayRequestOptions): Promise<LiveShape>;
+}
+
 export interface GoWayClient {
   readonly places: GoWayPlacesApi;
   readonly categories: GoWayCategoriesApi;
@@ -772,6 +796,7 @@ export interface GoWayClient {
   readonly routes: GoWayRoutesApi;
   readonly captures: GoWayCapturesApi;
   readonly street3d: GoWayStreet3dApi;
+  readonly live: GoWayLiveApi;
   readonly links: GoWayLinks;
 }
 
@@ -1970,6 +1995,27 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
       ),
   });
 
+  const live: GoWayLiveApi = Object.freeze({
+    sources: async (callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        { method: 'GET', path: '/live/sources', signal: callOptions.signal },
+        liveSourcePageSchema,
+      ),
+    shape: async (sourceId: string, shapeId: string, callOptions: GoWayRequestOptions = {}) => {
+      const path = validInput(liveShapePathSchema, { sourceId, shapeId }, 'path');
+      return request(
+        config,
+        {
+          method: 'GET',
+          path: `/live/sources/${pathSegment(path.sourceId, 'sourceId')}/shapes/${pathSegment(path.shapeId, 'shapeId')}`,
+          signal: callOptions.signal,
+        },
+        liveShapeSchema,
+      );
+    },
+  });
+
   return Object.freeze({
     places,
     categories,
@@ -1980,6 +2026,7 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     routes,
     captures,
     street3d,
+    live,
     links: createLinks(webBaseUrl),
   });
 }

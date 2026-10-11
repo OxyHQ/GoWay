@@ -44,6 +44,9 @@
     },
     {
       "name": "Street 3D"
+    },
+    {
+      "name": "Live"
     }
   ],
   "paths": {
@@ -8543,6 +8546,151 @@
           }
         }
       }
+    },
+    "/live/sources": {
+      "get": {
+        "operationId": "listLiveSources",
+        "summary": "The real-time feeds this deployment re-serves, with their licence, credit and freshness. Positions themselves travel over Socket.IO (`/live`).",
+        "tags": [
+          "Live"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveSourcePage"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/live/sources/{sourceId}/shapes/{shapeId}": {
+      "get": {
+        "operationId": "getLiveShape",
+        "summary": "One of an operator's published route shapes (GTFS `shapes.txt`), which live vehicles' `track` refers to.",
+        "tags": [
+          "Live"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "sourceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+            }
+          },
+          {
+            "name": "shapeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveShape"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found: `not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -12468,6 +12616,922 @@
           "createdAt"
         ]
       },
+      "LiveSource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "aircraft",
+              "transit",
+              "bikeshare",
+              "vessel"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "attribution": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "href": {
+                "type": "string",
+                "pattern": "^https:\\/\\/"
+              }
+            },
+            "required": [
+              "label",
+              "href"
+            ]
+          },
+          "licence": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "href": {
+                "type": "string",
+                "pattern": "^https:\\/\\/"
+              }
+            },
+            "required": [
+              "label",
+              "href"
+            ]
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeoBoundingBox"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "network",
+              "partial"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "starting",
+              "live",
+              "stale",
+              "unavailable"
+            ]
+          },
+          "lastUpdatedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pollIntervalSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3600
+          },
+          "staleAfterSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400
+          },
+          "dropAfterSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 172800
+          },
+          "entityCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "attribution",
+          "licence",
+          "coverage",
+          "completeness",
+          "status",
+          "lastUpdatedAt",
+          "pollIntervalSeconds",
+          "staleAfterSeconds",
+          "dropAfterSeconds",
+          "entityCount"
+        ]
+      },
+      "LiveSourcePage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LiveSource"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^[A-Za-z0-9_-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "LiveEntity": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 160
+              },
+              "sourceId": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+              },
+              "position": {
+                "$ref": "#/components/schemas/GeoCoordinate"
+              },
+              "headingDegrees": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "exclusiveMaximum": 360
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "speedMetersPerSecond": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "observedAt": {
+                "type": "string",
+                "minLength": 1,
+                "format": "date-time"
+              },
+              "kind": {
+                "type": "string",
+                "const": "aircraft"
+              },
+              "icao24": {
+                "type": "string",
+                "pattern": "^~?[0-9a-f]{6}$"
+              },
+              "callsign": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "registration": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "typeCode": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "altitudeMeters": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": -500,
+                    "maximum": 30000
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "altitudeReference": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "geometric",
+                      "barometric"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "verticalRateMetersPerSecond": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": -200,
+                    "maximum": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "onGround": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "sourceId",
+              "position",
+              "headingDegrees",
+              "speedMetersPerSecond",
+              "observedAt",
+              "kind",
+              "icao24",
+              "callsign",
+              "registration",
+              "typeCode",
+              "altitudeMeters",
+              "altitudeReference",
+              "verticalRateMetersPerSecond",
+              "onGround"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 160
+              },
+              "sourceId": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+              },
+              "position": {
+                "$ref": "#/components/schemas/GeoCoordinate"
+              },
+              "headingDegrees": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "exclusiveMaximum": 360
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "speedMetersPerSecond": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "observedAt": {
+                "type": "string",
+                "minLength": 1,
+                "format": "date-time"
+              },
+              "kind": {
+                "type": "string",
+                "const": "transit"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "bus",
+                  "tram",
+                  "subway",
+                  "rail",
+                  "ferry",
+                  "cable",
+                  "other"
+                ]
+              },
+              "operator": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "line": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "headsign": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "vehicleLabel": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lineColor": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^#[0-9A-F]{6}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lineTextColor": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^#[0-9A-F]{6}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "track": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "shapeId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      "alongMeters": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "offsetMeters": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "shapeId",
+                      "alongMeters",
+                      "offsetMeters"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "trackStatus": {
+                "type": "string",
+                "enum": [
+                  "on_track",
+                  "off_track",
+                  "unknown"
+                ]
+              },
+              "positionBasis": {
+                "type": "string",
+                "enum": [
+                  "reported",
+                  "estimated"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "sourceId",
+              "position",
+              "headingDegrees",
+              "speedMetersPerSecond",
+              "observedAt",
+              "kind",
+              "mode",
+              "operator",
+              "line",
+              "headsign",
+              "vehicleLabel",
+              "lineColor",
+              "lineTextColor",
+              "track",
+              "trackStatus",
+              "positionBasis"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 160
+              },
+              "sourceId": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+              },
+              "position": {
+                "$ref": "#/components/schemas/GeoCoordinate"
+              },
+              "headingDegrees": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "exclusiveMaximum": 360
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "speedMetersPerSecond": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "observedAt": {
+                "type": "string",
+                "minLength": 1,
+                "format": "date-time"
+              },
+              "kind": {
+                "type": "string",
+                "const": "bikeshare"
+              },
+              "operator": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "bikesAvailable": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
+              },
+              "ebikesAvailable": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "docksAvailable": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "capacity": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "renting": {
+                "type": "boolean"
+              },
+              "returning": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "sourceId",
+              "position",
+              "headingDegrees",
+              "speedMetersPerSecond",
+              "observedAt",
+              "kind",
+              "operator",
+              "name",
+              "bikesAvailable",
+              "ebikesAvailable",
+              "docksAvailable",
+              "capacity",
+              "renting",
+              "returning"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 160
+              },
+              "sourceId": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+              },
+              "position": {
+                "$ref": "#/components/schemas/GeoCoordinate"
+              },
+              "headingDegrees": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "exclusiveMaximum": 360
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "speedMetersPerSecond": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "observedAt": {
+                "type": "string",
+                "minLength": 1,
+                "format": "date-time"
+              },
+              "kind": {
+                "type": "string",
+                "const": "vessel"
+              },
+              "mmsi": {
+                "type": "string",
+                "pattern": "^\\d{9}$"
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "navigationalStatus": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "destination": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "sourceId",
+              "position",
+              "headingDegrees",
+              "speedMetersPerSecond",
+              "observedAt",
+              "kind",
+              "mmsi",
+              "name",
+              "navigationalStatus",
+              "destination"
+            ]
+          }
+        ]
+      },
+      "LiveSubscriptionState": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "too_wide",
+              "rate_limited",
+              "invalid"
+            ]
+          },
+          "tiles": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^7\\/\\d{1,3}\\/\\d{1,3}$"
+            }
+          },
+          "kinds": {
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "aircraft",
+                "transit",
+                "bikeshare",
+                "vessel"
+              ]
+            }
+          },
+          "retryAfterSeconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "state",
+          "tiles",
+          "kinds",
+          "retryAfterSeconds"
+        ]
+      },
+      "LiveSnapshot": {
+        "type": "object",
+        "properties": {
+          "tile": {
+            "type": "string",
+            "pattern": "^7\\/\\d{1,3}\\/\\d{1,3}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "aircraft",
+              "transit",
+              "bikeshare",
+              "vessel"
+            ]
+          },
+          "at": {
+            "type": "string",
+            "minLength": 1,
+            "format": "date-time"
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LiveEntity"
+            }
+          }
+        },
+        "required": [
+          "tile",
+          "kind",
+          "at",
+          "entities"
+        ]
+      },
+      "LiveDelta": {
+        "type": "object",
+        "properties": {
+          "tile": {
+            "type": "string",
+            "pattern": "^7\\/\\d{1,3}\\/\\d{1,3}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "aircraft",
+              "transit",
+              "bikeshare",
+              "vessel"
+            ]
+          },
+          "at": {
+            "type": "string",
+            "minLength": 1,
+            "format": "date-time"
+          },
+          "upserts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LiveEntity"
+            }
+          },
+          "removes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 160
+            }
+          }
+        },
+        "required": [
+          "tile",
+          "kind",
+          "at",
+          "upserts",
+          "removes"
+        ]
+      },
+      "LiveShape": {
+        "type": "object",
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "coordinates": {
+            "minItems": 2,
+            "type": "array",
+            "items": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number",
+                  "minimum": -180,
+                  "maximum": 180
+                },
+                {
+                  "type": "number",
+                  "minimum": -90,
+                  "maximum": 90
+                }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "alongMeters": {
+            "minItems": 2,
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "lengthMeters": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "sourceId",
+          "id",
+          "coordinates",
+          "alongMeters",
+          "lengthMeters"
+        ]
+      },
       "PlaceCreateInput": {
         "type": "object",
         "properties": {
@@ -14879,6 +15943,58 @@
         },
         "required": [
           "reason"
+        ],
+        "additionalProperties": false
+      },
+      "LiveSubscription": {
+        "type": "object",
+        "properties": {
+          "west": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "south": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "east": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "north": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "zoom": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 24
+          },
+          "kinds": {
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "aircraft",
+                "transit",
+                "bikeshare",
+                "vessel"
+              ]
+            }
+          }
+        },
+        "required": [
+          "west",
+          "south",
+          "east",
+          "north",
+          "zoom",
+          "kinds"
         ],
         "additionalProperties": false
       }

@@ -49,6 +49,24 @@
         "default": "./dist/index.js"
       }
     },
+    "./live": {
+      "react-native": {
+        "types": "./dist/live.d.ts",
+        "default": "./dist/live.js"
+      },
+      "import": {
+        "types": "./dist/live.d.ts",
+        "default": "./dist/live.js"
+      },
+      "require": {
+        "types": "./dist/live.d.cts",
+        "default": "./dist/live.cjs"
+      },
+      "default": {
+        "types": "./dist/live.d.ts",
+        "default": "./dist/live.js"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [
