@@ -14,12 +14,11 @@
  * binary tile. GoWay does not need to, and there are three reasons to prefer
  * MVT v2 with a custom layer:
  *
- *  1. **Native can draw it with no code.** `docs/MAP_3D_CITY.md` → "Native":
- *     MapLibre Native has no custom layer, so native's route to per-building
- *     3D is a `fill-extrusion` over a vector source that is NOT unioned. These
- *     tiles are exactly that source — `render_height`/`render_min_height` keep
- *     OpenMapTiles' names and meaning so the existing `building-3d` expressions
- *     apply unchanged, and `colour` is a CSS string MapLibre can read.
+ *  1. **Any MapLibre can read it, and so can every GoWay host.**
+ *     `render_height`/`render_min_height` keep OpenMapTiles' names and meaning
+ *     so the existing `building-3d` expressions apply unchanged, `colour` is a
+ *     CSS string, and the native apps decode it with the same code as the web
+ *     (`tileMeshing.ts`; `docs/MAP_NATIVE_3D.md`).
  *  2. **The reader already ships.** The web worker decodes OpenMapTiles with
  *     `pbf` + `@mapbox/vector-tile`; the same two packages decode these, so the
  *     second source mode costs the worker bundle no new dependency.

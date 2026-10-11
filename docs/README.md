@@ -39,6 +39,10 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   a three.js layer inside MapLibre, meshing the current tiles now and compiling
   GoWay 3D tiles next, what native gets, the ODbL and honesty rules, the phased
   plan, and the off-by-default web prototype.
+- [`MAP_NATIVE_3D.md`](MAP_NATIVE_3D.md) — how the native apps get the whole
+  3D map from the same engine: three.js `WebGPURenderer` with TSL materials,
+  `react-native-webgpu` on native, GoWay's engine drawing the base map on both
+  platforms; the evidence, the measured phase 1 prototype and the phased plan.
 - [`MAP_CAMERA_STUDIO.md`](MAP_CAMERA_STUDIO.md) — the route flyover and Camera
   Studio (off by default): the chase camera, centripetal path smoothing,
   per-gesture undo/redo, the versioned tour link, video export with the mark
