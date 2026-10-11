@@ -8,7 +8,7 @@
  *  - **GPU tier**: the renderer string, read from the map's own context, and
  *    once per device the warm-up benchmark (`gpuBenchmark.web.ts`) when the 3D
  *    city first attaches, handed to the map-feature store to keep.
- *  - **The perf HUD** (development builds, or `?perf=1` in any build): FPS,
+ *  - **The perf HUD** (`?perf=1`, any build; never by default): FPS,
  *    frame time, main-thread time per part of the frame, GPU time where the
  *    browser has a timer, draw calls, triangles, uploads, passes, GPU memory
  *    (estimated) and the JS heap — the same counters the benchmark and the CI
@@ -47,7 +47,7 @@ import { rendererOf, runGpuBenchmark } from './gpuBenchmark.web';
 export interface MapRuntimeOptions {
   quality: QualityProfile;
   clock: AnimationClock;
-  /** Show the HUD and count every GL call (development, `?perf=1`). */
+  /** Show the HUD and count every GL call (`?perf=1`). */
   hud: boolean;
   /** What the store holds for this device's GPU (`mapFeatureStore`), or `null`. */
   gpuRecord: GpuTierRecord | null;

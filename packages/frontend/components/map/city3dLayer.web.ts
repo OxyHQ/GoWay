@@ -301,7 +301,7 @@ export interface AttachCity3dOptions {
    * animated models tick through it, never on a timer of their own.
    */
   clock: AnimationClock;
-  /** `?perf=1` / development: the HUD's frame probe (`perf/mapRuntime.web.ts`). */
+  /** `?perf=1`: the HUD's frame probe (`perf/mapRuntime.web.ts`). */
   probe?: FrameProbe | null;
   /** A model was drawn, or fell back to its marker. */
   onModelStatus?: (id: string, status: ModelStatus) => void;

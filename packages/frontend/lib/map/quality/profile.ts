@@ -101,10 +101,21 @@ export interface QualityProfile {
     /**
      * 3D terrain while the camera is tilted (`docs/MAP_TERRAIN_GLOBE.md`).
      * `false` keeps the hillshade and the globe and skips MapLibre's terrain
-     * mesh and its render-to-texture tiles — ~180–200 MB of 2048² textures
-     * on a tilted mountain view, measured, whatever the pixel ratio.
+     * mesh — but then MapLibre redraws every 2D layer per tile on every frame
+     * instead of caching them in its terrain textures: measured, twice the
+     * draw calls and twice MapLibre's main-thread time. So every preset keeps
+     * it; the knob is for a device that cannot.
      */
     terrain3d: boolean;
+    /**
+     * The side of MapLibre's terrain textures (the 2D layers cached per
+     * terrain tile), as a multiple of the terrain tile's 1,024 px: 2 is
+     * MapLibre's own (2,048², ~22 MB each, mipmapped — 478 MB on a tilted
+     * city on the phone profile), 1 is a quarter of the memory at half the
+     * resolution of the roads and fills draped on the terrain (labels are not
+     * in them).
+     */
+    terrainTextureScale: 1 | 2;
   };
 }
 
@@ -143,7 +154,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     life: { cars: 300, people: 300 },
     live: { maxEntities: 500 },
     landmarks: { max: 2 },
-    relief: { terrain3d: false },
+    relief: { terrain3d: true, terrainTextureScale: 1 },
   },
   medium: {
     tier: 'medium',
@@ -170,7 +181,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     life: { cars: 700, people: 700 },
     live: { maxEntities: 2_000 },
     landmarks: { max: 4 },
-    relief: { terrain3d: true },
+    relief: { terrain3d: true, terrainTextureScale: 2 },
   },
   high: {
     tier: 'high',
@@ -197,7 +208,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     life: { cars: 1200, people: 1200 },
     live: { maxEntities: 5_000 },
     landmarks: { max: 8 },
-    relief: { terrain3d: true },
+    relief: { terrain3d: true, terrainTextureScale: 2 },
   },
 };
 
@@ -269,9 +280,13 @@ export function parsePerformanceMode(value: unknown): PerformanceMode {
   return PERFORMANCE_MODES.includes(value as PerformanceMode) ? (value as PerformanceMode) : 'auto';
 }
 
-/** A forced preset from the page's address (`?quality=`), development builds only. */
-export function qualityFromSearch(search: string, development: boolean): QualityTier | null {
-  if (!development) return null;
+/**
+ * A forced preset from the page's address (`?quality=low|medium|high`), in any
+ * build, for this tab only (never stored): how the benchmark and screenshot
+ * harnesses draw a chosen preset whatever GPU they run on — a headless
+ * SwiftShader Chromium otherwise gets Auto's low.
+ */
+export function qualityFromSearch(search: string): QualityTier | null {
   const value = new URLSearchParams(search).get('quality');
   return value === 'low' || value === 'medium' || value === 'high' ? value : null;
 }
