@@ -34,7 +34,7 @@ import type { CityOverlay, CityOverlayFrame } from '../city3d/overlay';
 import type { GroundSampler } from '../city3d/terrainGround';
 import { latFromMercatorY, tileModelMatrix } from '../city3d/tileMath';
 import { LIFE_FRAGMENT_SHADER, LIFE_VERTEX_SHADER } from './lifeShaders';
-import { type ModelGeometry, personModel, VEHICLE_MODELS } from './models';
+import { type ModelGeometry, personModel, VEHICLE_MODELS } from './agentModels';
 import type {
   SimFrameMessage,
   SimStatsMessage,
@@ -129,7 +129,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
         uMaxLength: { value: maxLength },
         uModelLength: { value: model.length },
       },
-      // The mirrored model matrix: see `models.ts` and `cityEngine.ts`.
+      // The mirrored model matrix: see `agentModels.ts` and `cityEngine.ts`.
       side: THREE.BackSide,
       blending: THREE.CustomBlending,
       blendSrc: THREE.OneFactor,

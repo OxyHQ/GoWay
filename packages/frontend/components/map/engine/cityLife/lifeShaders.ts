@@ -14,7 +14,7 @@
  * sun as the buildings), plus a sky term, so cars and people sit in the same
  * light as the city around them.
  */
-import { PART } from './models';
+import { PART } from './agentModels';
 
 const f = (n: number) => (Number.isInteger(n) ? `${n}.0` : String(n));
 
