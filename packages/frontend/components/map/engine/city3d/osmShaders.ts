@@ -25,6 +25,7 @@
  * Uniform names and meanings are shared with `shaders.ts`, so the engine
  * drives both materials from one uniform set.
  */
+import { CLASSIC_DETAILED_GLSL, DETAILED_DEFINE, MATERIAL_GLSL } from './materials';
 import { AO } from './occlusion';
 import { Z_UNITS_PER_METRE } from './packing';
 import { glslFloat } from './shaders';
@@ -49,6 +50,7 @@ export const TAG_TEMPER = {
  */
 export const OSM_BASE_GLSL = `
 float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+${MATERIAL_GLSL}
 
 // A soft box: 1 inside [lo, hi], 0 outside, anti-aliased over w.
 float band(float x, float lo, float hi, float w) {
@@ -72,6 +74,20 @@ vec3 osmBase(vec3 n) {
   float keep = ${glslFloat(TAG_TEMPER.lightness)} * (1.0 - 0.5 * dark);
   float targetLuma = mix(luma(ramp), luma(tagged), keep);
   tagged = clamp(tagged + vec3(targetLuma - luma(tagged)), 0.0, 1.0);
+#ifdef ${DETAILED_DEFINE}
+  // The detailed look (materials.ts): the tag clamped to a lightness hint (most
+  // of its chroma gone), and a per-building tint. An untagged surface carries
+  // the building's seed in its unused rgb (osmMesher.ts -> withSeed); a tagged
+  // one varies by its own colour. Openings are the material's, not drawn here.
+  GowayMat gm = gowayMat();
+  bool seeded = vColor.a < 0.002;
+  vec3 base = gowayTint(
+    gm,
+    mix(ramp, mix(vec3(luma(tagged)), tagged, gm.tagSaturation), vColor.a * ${glslFloat(TAG_TEMPER.blend)} * gm.tagBlend),
+    seeded ? vColor.r : fract(luma(vColor.rgb) * 7.0),
+    seeded ? vColor.g : fract(vColor.b * 5.0)
+  );
+#else
   vec3 base = mix(ramp, tagged, vColor.a * ${glslFloat(TAG_TEMPER.blend)});
 
   // 2. Openings, one row per RECORDED storey (vFacade.w), on walls only.
@@ -89,6 +105,7 @@ vec3 osmBase(vec3 n) {
       base = mix(base, mix(base * 0.6, glass, 0.55), opening * detail * 0.7);
     }
   }
+#endif
   return base;
 }
 `;
@@ -145,6 +162,8 @@ uniform vec3 uLightPosition;
 uniform float uLightIntensity;
 uniform vec3 uLightColor;
 uniform float uOpacity;
+// The engine's night seam (CityEngine.setNightFactor): the detailed look's day/night blend.
+uniform float uNightFactor;
 
 in vec3 vNormal;
 in float vCornerAo;
@@ -156,12 +175,17 @@ in vec4 vFacade;
 out vec4 fragColor;
 
 ${OSM_BASE_GLSL}
+${CLASSIC_DETAILED_GLSL}
 // Level-of-detail and fade-in cross-fades (transitions.ts).
 ${DITHER_GLSL}
 void main() {
   ${DITHER_DISCARD_GLSL}
   vec3 n = normalize(vNormal);
   vec3 base = osmBase(n);
+#ifdef ${DETAILED_DEFINE}
+  vec3 detailed = gowayClassic(base, n, vHeightAboveGround, vBuildingHeight, vCornerAo, uLightPosition, vFacade, vColor);
+  fragColor = vec4(clamp(detailed, 0.0, 1.0) * uOpacity, uOpacity);
+#else
 
   // extrusionDirectional() — MapLibre's fill-extrusion lighting (shaders.ts).
   float d = clamp(dot(n, uLightPosition), 0.0, 1.0);
@@ -176,5 +200,6 @@ void main() {
     vec3(1.0)
   );
   fragColor = vec4(lit * uOpacity, uOpacity);
+#endif
 }
 `;

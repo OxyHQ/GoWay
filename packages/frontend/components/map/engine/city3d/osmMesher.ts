@@ -574,6 +574,30 @@ function revolutionRoof(
   }
 }
 
+/**
+ * A building's variation seed, two bytes from its feature id (a 32-bit
+ * murmur-style finaliser over both halves of an id that can exceed 2^32).
+ */
+export function buildingSeed(id: number): [number, number] {
+  const lo = id >>> 0;
+  const hi = Math.floor(id / 4294967296) >>> 0;
+  let h = Math.imul(lo ^ Math.imul(hi, 0x9e3779b1), 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return [h & 255, (h >>> 8) & 255];
+}
+
+/**
+ * An untagged surface's unused rgb carries the building's seed, which the
+ * detailed material (`materials.ts`) reads for its per-building tint and
+ * window pattern. Weight 0 still means "the palette's ramp" to every shader,
+ * so the classic look ignores it. A tagged colour is returned untouched.
+ */
+function withSeed(color: Rgba, seed: readonly [number, number]): Rgba {
+  return color[3] === 0 ? [seed[0], seed[1], 0, 0] : color;
+}
+
 /** Mesh one building into `builder`; returns how many polygons drew. */
 function meshOsmBuilding(
   builder: Builder,
@@ -585,13 +609,20 @@ function meshOsmBuilding(
   const base = building.base;
   const top = Math.max(building.top, base + 0.5, base === 0 ? MESH.minHeightM : 0);
   const tone = Math.round(Math.max(0, Math.min(MESH.toneMaxM, building.top)));
-  const wallColor = surfaceColour(
-    building.colour,
-    building.material ? WALL_MATERIAL_COLOURS[building.material] : undefined,
+  const seed = buildingSeed(building.id);
+  const wallColor = withSeed(
+    surfaceColour(
+      building.colour,
+      building.material ? WALL_MATERIAL_COLOURS[building.material] : undefined,
+    ),
+    seed,
   );
-  const roofColor = surfaceColour(
-    building.roofColour,
-    building.roofMaterial ? ROOF_MATERIAL_COLOURS[building.roofMaterial] : undefined,
+  const roofColor = withSeed(
+    surfaceColour(
+      building.roofColour,
+      building.roofMaterial ? ROOF_MATERIAL_COLOURS[building.roofMaterial] : undefined,
+    ),
+    seed,
   );
   const roof = building.roof;
   const roofHeight = roof ? Math.min(roof.height, top - base) : 0;

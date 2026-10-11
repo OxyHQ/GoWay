@@ -80,6 +80,7 @@ import { sunPosition } from '@/lib/map/sun';
 
 import { followTerrain } from './city3dGround.web';
 import { cityLightFromSpec, sameCityLight } from './city3dLight';
+import { applyCityGround, cityMaterials, resolveCityStyle } from './city3dStyle';
 import { treeColours } from './city3dTrees';
 // Type-only on purpose: the engine chunk imports these modules at runtime, and
 // a module two lazy chunks share is hoisted into the first-paint `__common`
@@ -403,6 +404,8 @@ export async function attachCity3d(
 
   const cartography = CARTOGRAPHY_PALETTES[options.appearance];
   const trees = treeColours(cartography);
+  // `?cityStyle=detailed` (`lib/map/cityStyleFlag.ts`): the art-directed look.
+  const detailed = resolveCityStyle() === 'detailed';
   const palette = {
     ...buildingHeightRamp(cartography),
     treeCrown: trees.crown,
@@ -555,6 +558,8 @@ export async function attachCity3d(
       overlays,
       onLandmarkStatus,
       sky: sky ? { appearance: options.appearance } : undefined,
+      // The detailed response; the night seam blends its day and night.
+      material: detailed ? cityMaterials() : undefined,
     });
     engine.setNightFactor(night);
     updateSun();
@@ -699,6 +704,9 @@ export async function attachCity3d(
     map.addLayer(layer, BUILDING_3D_LAYER_ID);
     map.setLayoutProperty(BUILDING_3D_LAYER_ID, 'visibility', 'none');
   }
+  // The detailed look's ground: the style's own generated overrides, undone on
+  // detach. Only with the city drawn: models alone do not restyle the map.
+  const restoreGround = buildings && detailed ? applyCityGround(map) : null;
   // The models' layer joins the style only once there is a model to draw, so
   // the city alone changes the style exactly as it always did.
   const ensureModelsLayer = () => {
@@ -792,6 +800,7 @@ export async function attachCity3d(
       detached = true;
       if (clock) clearInterval(clock);
       for (const id of [...passes.keys()]) removePass(id);
+      restoreGround?.();
       // The map may already be gone (an appearance change tears it down before
       // this cleanup runs); then there is nothing left to restore.
       try {

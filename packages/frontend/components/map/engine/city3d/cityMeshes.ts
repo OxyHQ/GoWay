@@ -63,6 +63,8 @@ export interface EntryContext {
   scene: THREE.Scene;
   /** The building material's uniforms (light, palette, zoom fade). */
   buildingUniforms: Record<string, THREE.IUniform>;
+  /** Preprocessor defines every building material compiles with (the detailed look's). */
+  buildingDefines?: Record<string, string>;
   /** The building shaders by source: OpenMapTiles buildings, GoWay city tiles (`osmShaders.ts`). */
   buildingShaders: Record<CityTileFormat, { vertexShader: string; fragmentShader: string }>;
   /** The tree material's shared uniforms (light, tree colours, zoom fade). */
@@ -93,12 +95,15 @@ function materialFor(
   fragmentShader: string,
   uniforms: Record<string, THREE.IUniform>,
   side: THREE.Side,
+  defines: Record<string, string> = {},
 ): THREE.RawShaderMaterial {
   return new THREE.RawShaderMaterial({
     glslVersion: THREE.GLSL3,
     vertexShader,
     fragmentShader,
     uniforms,
+    // A copy: the dither toggle (`setEntryFade`) rewrites it per material.
+    defines: { ...defines },
     side,
     blending: THREE.CustomBlending,
     blendSrc: THREE.OneFactor,
@@ -217,6 +222,7 @@ export function createTileEntry(
       context.buildingShaders[format].fragmentShader,
       { ...context.buildingUniforms, ...fade },
       SIDE.buildings,
+      context.buildingDefines,
     );
     // Bounds from the worker, in stored units: three never walks the vertices.
     const box = new THREE.Box3(

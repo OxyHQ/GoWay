@@ -1216,6 +1216,189 @@ result.
   no tags), only with the sky on, and only where `lit`/`floodlit` is tagged —
   which is rare (above). Curated landmarks are the landmarks work's.
 
+## Art direction: the detailed city look
+
+**Target: Apple Maps' "Detailed City Experience", by look, never by asset or
+data.** Behind its own sub-flag, off everywhere by default:
+`?cityStyle=detailed` (development builds; `classic` forces today's look) or
+`EXPO_PUBLIC_MAP_CITY_STYLE=detailed` (a build decision no deployment makes),
+always on top of the city-3D flag (`lib/map/cityStyleFlag.ts`). With it off,
+the city layer draws exactly what it drew before, so the two can be compared
+side by side at the same camera.
+
+| Piece | Where |
+| --- | --- |
+| Palette: the 3D ground, the material (day, night) | `lib/map/style/palette3d.ts` |
+| The ground as paint overrides, generated | `lib/map/style/city3dGround.ts` → style `metadata['goway:city3d-ground']` (`scripts/build-map-style.ts`) |
+| Material GLSL + uniforms + JS mirror | `components/map/engine/city3d/materials.ts`, spliced into `shaders.ts` / `osmShaders.ts` under `#ifdef GOWAY_DETAILED` |
+| Per-building seed | `osmMesher.ts` → `buildingSeed` (an untagged surface's unused rgb) |
+| Adapter half (flag, night factor, ground apply/undo) | `components/map/city3dStyle.ts`, wired in `city3dLayer.web.ts` |
+| Tests | `lib/map/__tests__/palette3d.test.ts`, `cityStyleFlag.test.ts`, `components/map/__tests__/city3dMaterials.test.ts`, `city3dStyle.test.ts` |
+
+### What the references show
+
+Apple's images are not committed. They are Apple's newsroom set for iOS 15
+(San Francisco's Ferry Building by day, London's Royal Albert Hall at night,
+London wide by day, the Castro at night) and the landmark screenshots in the
+owner's brief (Statue of Liberty at night; Toronto City Hall, the Biosphère and
+the Wynn at night; Apple Michigan Avenue, Steve Jobs Theater and Apple Fifth
+Avenue by day). Read side by side with GoWay's renders, they agree on:
+
+- **Day is a white maquette.** Buildings a near-white warm grey; the sunny
+  wall `≈#ecebe8`, the shaded one `≈#c9c8c6` — darker, a shade cooler, never
+  black; roofs a step under the lit walls and under the ground. Massing, not
+  detail: windows are barely there.
+- **The streets carry the plan.** Near-white ground and plazas, pale grey
+  asphalt with white kerbs (the inverse of the 2D map's white streets on
+  cream), saturated light-green parks, vivid light-blue water.
+- **Night is blue, not dark.** Slate blue-violet ground, deep teal parks,
+  blue-grey buildings a step LIGHTER than the ground, lit from a moonlit sky
+  (the tops brightest, the shaded sides darkest), warm windows scattered
+  irregularly with dark glass between.
+
+### The palette
+
+**Ground** (`CITY_GROUND_PALETTES`, the 2D palette with these replaced; it
+cross-fades in over z14.5 → 15.5 so the region map stays the 2D cartography
+and the buildings, fading in from 15.5, arrive on their own ground):
+
+| | Light | Dark |
+| --- | --- | --- |
+| land / built-up | `#f1f0ec` / `#eeede8` (no cream) | `#3d4a66` / `#434c6c` |
+| park / pitch | `#acdd8c` / `#b4e298` | `#17685c` / `#1a7062` |
+| water | the 2D `#8ddbf6` (already Apple's) | the 2D `#1c347a` |
+| street fill (primary → local) | `#c6c9cd` → `#d5d7da`, asphalt | `#303a52` → `#333d55` |
+| street casing (the kerb) | `#fbfbfa` — lighter than the ground | `#53607e` → `#4d5a78` |
+| street label / park label | `#515554` / `#15652d` | 2D `#f2f5f9` / `#8df6c7` |
+
+The two label inks are the 2D ones walked down (light) or up (dark) their own
+lightness axis until they clear **4.5:1** again on the new streets and parks —
+the method `palette.ts` uses for POI type, pinned in `palette3d.test.ts`.
+
+**Ground mechanics.** The overrides are not a list anyone keeps:
+`city3dGround.ts` runs the style's own `buildLayers` with both palettes and
+turns every paint colour that differs into a zoom cross-fade (a colour, or the
+palette's low-zoom ramps, evaluated at the fade exactly as MapLibre
+interpolates them; anything else fails the build). `map:style` writes them
+into each style document's `metadata`, `map:style:check` drift-checks them and
+validates the overridden style with MapLibre's validator, and the adapter
+applies them with `setPaintProperty` and puts every value back on detach. A
+style without them (`openfreemap`, a URL override) keeps its ground. Cost:
++13.9 KB raw, **+0.8 KB gzip** per style document; no JavaScript.
+
+**Material** (`CITY_MATERIALS`, blended field by field by `nightFactor`):
+
+| | Day | Night |
+| --- | --- | --- |
+| Albedo (low → very tall) | `#dedcd7` → `#d5d6d8` (towers cooler, greyer) | `#566586` → `#5e6d90` |
+| Sky fill / ground bounce | `(0.79, 0.80, 0.825)` / `(0.985, 0.97, 0.94)` | `(0.95, 0.97, 1.04)` / `(0.62, 0.63, 0.70)` |
+| Sun (moon) | warm white × 0.30 | cool × 0.30 |
+| Wrap | 0.55 | 0.50 |
+| Contact AO at the foot / reach | 28% / 10 m | 30% / 10 m |
+| Corner AO kept | 80% | 80% |
+| Wall gradient (base → top) | 7% | 12% |
+| Bevel highlight | 0.12 × sky | 0.06 × sky |
+| Per-building tint | ±6% lightness, ±2.5% warm↔cool | ±4%, ±2% |
+| Tagged colour kept | 35% of the classic temper | 30% |
+| Window openings | 10% (faint) | 75%, dark glass `#2b3352` |
+| Lit windows | — | 36%, warm `(1.0, 0.78, 0.40)` ↔ cooler `(0.9, 0.9, 0.82)`, 72–100% brightness |
+
+Through the face values that come out (sun at 40° from the zenith, the JS
+mirror): day roof `#e8e7e4`, lit wall `#f2efe6`, shaded wall `#c0beb9`; night
+roof `#6378ad`, lit wall `#50618d`, shaded wall `#414e70` — every night face
+above the `#3d4a66` ground, which a test pins.
+
+### What the flag costs when off
+
+`expo export --platform web`, no flags set, the change against the `main` it
+was written on (`fdeaf2f`, before the globe/terrain and model merges),
+separate Metro caches, `--clear`:
+
+| Chunk | Base | Detailed look | |
+| --- | ---: | ---: | --- |
+| `entry` (first paint) | 6,953,223 B | 6,953,223 B | identical once chunk hashes are normalised |
+| `__common` (first paint) | 78,516 B | 78,516 B | identical once module ids are normalised |
+| `city3dLayer` (lazy) | 3,895 B gz | 5,756 B gz | flag, palette, ground apply/undo |
+| `lazyChunk` (lazy, three.js) | 1,118,763 B gz | 1,121,154 B gz | the material GLSL |
+| `meshWorker` (sealed) | 20,495 B gz | 20,605 B gz | the building seed |
+| style documents (every map) | — | +13.9 KB raw, +0.8 KB gz each | the generated ground overrides, inert unless applied |
+
+`palette3d.ts` is imported at runtime only by the lazy adapter; the engine
+imports it for types only, so nothing is shared between the two lazy chunks
+(`engine3dChunk.test.ts` stays green).
+
+### The lighting model
+
+`materials.ts`, in sRGB like the rest of the map:
+
+```
+fill    = mix(groundBounce, sky, n.z/2 + 1/2)            hemisphere
+wrap    = clamp((n·L + w) / (1 + w), 0, 1)               soft terminator
+colour  = albedo · tint · (fill + sun · wrap)
+          · contactAO(h)  · mix(1, cornerAO, k)  · gradient(h/H)   (contact, gradient: walls only)
+          + edge · chamfer(n.z) · sky                     the 45° bevel catches light
+```
+
+Why this shape and not MapLibre's: MapLibre floors an unlit face at
+`1 − intensity` of its colour and multiplies, which on a pale palette is a
+white lid on a grey box. Here no face is lit by the sun alone — a wall facing
+away keeps the whole sky fill — so the shaded side is ~20% under the lit one
+and cooler (blue sky, warm sun): clay, not cardboard. The ground bounce is
+brighter than the sky on purpose: the ground is near-white, and it is what
+puts a roof a step under the lit walls, as Apple's are. The light DIRECTION is
+still the real sun's (`city3dLight.ts`); only the response changed.
+
+### Night
+
+- **`nightFactor`** (0 day … 1 night) blends every material field on the CPU;
+  the shader sees one state. Default: the appearance (dark is night).
+  `City3dHandle.setNightFactor(n | null)` is the input for the time-of-day
+  controller (`feat/city-sky` — it exposes no factor yet; this is the
+  placeholder with the agreed name and meaning, to unify on rebase), and
+  `nightFactorForSunAltitude` maps the sun to it (day above the horizon, night
+  past civil twilight). `?cityNight=<0..1>` pins it in development.
+- **Windows glow only where they are drawn**, i.e. where `building:levels` is
+  recorded (the storey rhythm, `facades.ts`) — never on a wall without a
+  recorded count, never on a party wall. Which windows are lit, their warmth
+  and their brightness come from a deterministic integer hash of (bay,
+  storey, building seed): **styling, stable frame to frame, and not a claim
+  about occupancy or anything else in the world.** Far away, where a storey is
+  too small to draw, a facade fades to its average glow instead of shimmering.
+- **Not here, on purpose**: the night sky, the street-level warm light on the
+  walls, `floodlit=yes` uplighting and landmark glow belong to the sky and
+  landmark phases.
+
+### Side by side
+
+Rendered in headless Chromium (SwiftShader) on `expo start --web`, the
+`/frame` route, city tiles (Catalonia + Manhattan z15), clock pinned to
+2026-06-21 (Barcelona 11:00, New York 11:00), classic against detailed, light
+and dark: Eixample (41.3925, 2.164, z17, pitch 60), Sagrada Família, Barri
+Gòtic, Lower Manhattan. Composites against the references were judged by eye,
+honestly:
+
+**Close:** the day maquette (white-grey massing, soft cool shade, no black
+sides, roofs under the ground, faint bevel lines), the 3D ground (asphalt
+streets with white kerbs, saturated parks), the night palette's blue massing
+with moonlit tops, the warm irregular windows.
+
+**Still short of Apple:**
+
+- **No cast shadows and no atmosphere** in this layer — the largest single
+  difference by day. Owned by the sky phase (`feat/city-sky`).
+- **No contact shadow on the ground** around a footprint (Apple's buildings sit
+  in a soft dark halo); the ground is MapLibre's, and drawing it needs a ground
+  skirt in the mesher or the sky phase's shadow map.
+- **Silhouettes are chamfered, not rounded.** The bevel is 0.7 m; a wider
+  rounded profile is a mesher change (`MESH`) for after the LOD work lands.
+- **Manhattan at night is mostly unlit**: 7.8% of its features record
+  `building:levels`, so most towers have no windows to glow — the honesty rule
+  working as intended. A municipal floor count (PLUTO, Phase 4) fixes it.
+- **No trees, no landmark models, no road markings** — other phases; Apple's
+  dense old towns read as softer partly because trees break them up.
+- **Tagged colours** still tint a few Manhattan towers (green, pink) more than
+  Apple's uniform white; `tagBlend` is the knob.
+
 ## Phased plan
 
 Estimates are engineering time for one person familiar with the codebase, and
