@@ -188,9 +188,15 @@ layer lifts each building (`terrainGround.ts`):
 - **Rejected:** decoding the DEM in the mesh worker (a different, finer
   surface than the one drawn — buildings would float or sink against it);
   sampling MapLibre's DEM textures in the shader (internal API).
-- **Known limit:** a building cut by a tile edge is two pieces, each placed by
+- **Both meshers.** Over OpenMapTiles each polygon is one unit; over GoWay's
+  city tiles (`osmMesher.ts`) each OSM building is, so a pitched roof, a dome or
+  a multipolygon is lifted in one piece and stays level with itself. Unit-tested
+  for both; the city-tile path was not run against served tiles in this change.
+- **Known limits.** A building cut by a tile edge is two pieces, each placed by
   its own centre; on a slope their roofs can differ by the slope across the
-  seam. Compiled 3D tiles (`MAP_3D_CITY.md`, Phase 2) remove the cut.
+  seam. In the city tiles a `building:part` is its own building, so the parts
+  of one building on a steep slope can step by the slope between their
+  centres. Both want the parent's footprint in the tile; neither is fixed here.
 
 The shipped **`fill-extrusion`** buildings need nothing: MapLibre lifts them
 itself (centroid + 10 m sink) — confirmed in Barcelona with terrain on, where
