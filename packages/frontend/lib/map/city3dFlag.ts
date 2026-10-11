@@ -6,7 +6,7 @@
  *  - `enabled`: the map-feature registry's answer (`mapFeatures.ts`) — the
  *    build's `EXPO_PUBLIC_MAP_CITY3D` (`0` kills it, `1` makes it the build's
  *    default; no production deployment sets it), then the person's own
- *    choice in the settings dialog's Labs section.
+ *    choice in the settings modal's Labs section.
  *  - `?city3d=1` on the URL: a per-tab switch for looking at the prototype
  *    beside the shipped map without rebuilding — honoured ONLY in a
  *    development build (`__DEV__`), so a link cannot turn an experimental

@@ -1,12 +1,12 @@
 /**
- * Every word the settings dialog says, in every `LABEL_LANGUAGES` language: each
+ * Every word the settings modal says, in every `LABEL_LANGUAGES` language: each
  * registered feature's name and one-line description, and the panel's own
  * copy. Read only through `localizedLabel` with the reader's whole locale
  * (AGENTS.md; `docs/LABEL_TRANSLATIONS.md`).
  *
  * Kept out of `mapFeatures.ts` on purpose: the registry is in the first-paint
  * bundle, because the map reads its answers before it draws; this file is
- * imported only by the settings dialog's body, which loads when the panel first
+ * imported only by the settings modal's body, which loads when the panel first
  * opens. The record is keyed by `MapFeatureId`, so registering a feature
  * without its labels does not compile.
  *
@@ -359,8 +359,64 @@ export const MAP_FEATURE_LABELS: Readonly<Record<MapFeatureId, MapFeatureLabels>
   },
 };
 
-/** The settings dialog's own copy. `{feature}` is a feature's localized name. */
+/** The settings modal's own copy. `{feature}` is a feature's localized name. */
 export const MAP_SETTINGS_COPY = {
+  open: {
+    en: 'Open',
+    ar: 'فتح',
+    bn: 'খুলুন',
+    ca: 'Obre',
+    de: 'Öffnen',
+    es: 'Abrir',
+    fr: 'Ouvrir',
+    hi: 'खोलें',
+    ja: '開く',
+    'pt-BR': 'Abrir',
+    ru: 'Открыть',
+    'zh-Hans': '打开',
+  },
+  close: {
+    en: 'Close',
+    ar: 'إغلاق',
+    bn: 'বন্ধ করুন',
+    ca: 'Tanca',
+    de: 'Schließen',
+    es: 'Cerrar',
+    fr: 'Fermer',
+    hi: 'बंद करें',
+    ja: '閉じる',
+    'pt-BR': 'Fechar',
+    ru: 'Закрыть',
+    'zh-Hans': '关闭',
+  },
+  back: {
+    en: 'Back',
+    ar: 'رجوع',
+    bn: 'ফিরে যান',
+    ca: 'Enrere',
+    de: 'Zurück',
+    es: 'Atrás',
+    fr: 'Retour',
+    hi: 'वापस',
+    ja: '戻る',
+    'pt-BR': 'Voltar',
+    ru: 'Назад',
+    'zh-Hans': '返回',
+  },
+  sections: {
+    en: 'Settings sections',
+    ar: 'أقسام الإعدادات',
+    bn: 'সেটিংসের বিভাগ',
+    ca: 'Seccions de la configuració',
+    de: 'Einstellungsbereiche',
+    es: 'Secciones de ajustes',
+    fr: 'Sections des réglages',
+    hi: 'सेटिंग्स के अनुभाग',
+    ja: '設定のセクション',
+    'pt-BR': 'Seções das configurações',
+    ru: 'Разделы настроек',
+    'zh-Hans': '设置分区',
+  },
   settings: {
     en: 'Settings',
     ar: 'الإعدادات',

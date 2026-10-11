@@ -5,7 +5,7 @@
  *  - `EXPO_PUBLIC_MAP_GLOBE=0` / `EXPO_PUBLIC_MAP_TERRAIN=0`, read by the
  *    map-feature registry (`mapFeatures.ts`): a BUILD decision, the kill
  *    switch. Every page of that build loses it. Short of that, the person can
- *    switch either off in the settings dialog, on this device.
+ *    switch either off in the settings modal, on this device.
  *  - `?globe=0` / `?terrain=0` (or `=1` to turn a killed one back on) on the
  *    URL: a per-tab switch for comparing beside the flat map without
  *    rebuilding — honoured ONLY in a development build (`__DEV__`), so a link

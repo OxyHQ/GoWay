@@ -145,6 +145,7 @@ describe('the registry', () => {
         features: [
           {
             id: 'a',
+            section: 'layers',
             tier: 'labs',
             defaultOn: true,
             build: undefined,
@@ -272,6 +273,7 @@ describe('dependencies', () => {
     const features: MapFeatureDefinition[] = [
       {
         id: 'base',
+        section: 'layers',
         tier: 'labs',
         defaultOn: false,
         build: undefined,
@@ -280,6 +282,7 @@ describe('dependencies', () => {
       },
       {
         id: 'leaf',
+        section: 'layers',
         tier: 'labs',
         defaultOn: true,
         build: undefined,

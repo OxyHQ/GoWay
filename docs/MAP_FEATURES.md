@@ -1,4 +1,4 @@
-# Map features: the registry, the settings dialog and the credit
+# Map features: the registry, the settings modal and the credit
 
 GoWay's map has optional features: the globe, terrain, the 3D city and its
 trees, GoWay's own city tiles, the simulated city life, the landmarks, the
@@ -6,7 +6,7 @@ route flyover. Each one used to be a
 build-time `EXPO_PUBLIC_MAP_*` flag plus a development-only `?param=1`, so the
 only way to see a feature on goway.to was a rebuild. They are now entries in
 ONE registry, and a person turns them on or off from the map itself, in a
-settings dialog modelled on Apple Maps' map options.
+settings modal — Bloom's `SettingsModal` — reached from a gear on the map.
 
 | Piece | Where |
 | --- | --- |
@@ -15,7 +15,7 @@ settings dialog modelled on Apple Maps' map options.
 | Per-device store: choices, Labs, hydration | `lib/map/mapFeatureStore.ts`; the app's one instance and hooks in `lib/map/useMapFeatures.ts` |
 | Storage | `lib/map/mapFeatureStorage.web.ts` (`localStorage`, synchronous) and `mapFeatureStorage.ts` (AsyncStorage, native) |
 | Each feature's own rule (dev query parameters) | `city3dFlag.ts`, `city3dTreesFlag.ts`, `cityTilesFlag.ts`, `flyoverFlag.ts`, `reliefFlag.ts` — unchanged |
-| The settings dialog | `features/explore/MapSettingsButton.tsx` (first paint) and `MapSettingsPanel.tsx` (loaded on first open) |
+| The settings modal | `features/explore/MapSettingsButton.tsx` (first paint), `MapSettingsModal.tsx` (loaded on first press), its pages from `lib/map/mapSettingsPages.ts` |
 | The compact data credit | `lib/map/compactCredit.ts` (the rule), `components/map/useCompactCredit.ts`, `components/map/MapAttribution.tsx` |
 | Tests | `lib/map/__tests__/mapFeatures.test.ts`, `mapFeatureStore.test.ts`, `mapFeatureLabels.test.ts` |
 
@@ -65,7 +65,7 @@ else is off until somebody turns it on. City tiles, city life and the landmarks
 development build, because nothing serves those archives on goway.to yet and ODbL wants each archive and its receipt published first
 (`MAP_3D_CITY.md` and `MAP_CITY_LIFE.md` → Hosting).
 
-## The settings dialog
+## The settings modal
 
 A gear at the top right of the map, under the account button — the one corner
 that neither the sheet, the side panel nor any notice covers, in either layout.
@@ -79,38 +79,49 @@ phone; a new chip (Live) is one more item in the stack. The slot is never
 hidden (the simulated label must show whenever the simulation draws, a tour
 included); a map with no slot — the embed — keeps the label at its own spot.
 
-The button opens Bloom's `Dialog` — a side sheet from a tablet up, a bottom
-sheet below that and on native — built from Bloom's `SettingsListGroup`,
-`SettingsListItem`, `SegmentedControl` and `Switch`, so every colour is a theme
-token. Its sections:
+The button opens Bloom's `SettingsModal` (`@oxy.so/bloom/settings-modal`): a
+rail of pages beside the open page on a wide window (871×614, the rail
+narrowing on a tablet), and on a phone the section list first, then the page
+pushed over it with a back control — native included, through Bloom's own
+modal portal. Its pages are `SettingsSection`s of `SettingsCard`s of
+`SettingsRow`s with Bloom's `Switch` and `SegmentedControl`, so every colour
+is a theme token. The modal is its own lazy chunk, requested on the gear's
+first press.
+
+The rail and what each page lists come from the registry
+(`lib/map/mapSettingsPages.ts`, tested): each entry names its page
+(`section: 'map' | 'layers'`); a feature is listed where the build carries it
+and this platform draws it; a `labs` feature only once Labs is revealed; and a
+page with nothing to list leaves the rail.
 
 - **Map**: the view, 2D / 3D — the camera, not a feature: 3D tilts to 60°
-  where the map already is, 2D levels it, and it follows a gesture tilt — and
-  the `stable` features (Globe, Terrain).
-- **Layers · Labs**, once revealed: the `labs` features this build carries
-  and this platform draws (3D city, its tiles, trees and woods fill,
-  sky and time of day, simulated traffic, landmarks, live data, the flyover), each
-  with a one-line description and the note that they may be slow; "Open
-  Camera Studio" while the flyover is on; "Hide Labs".
+  where the map already is, 2D levels it, and it follows a gesture tilt — then
+  Globe and Terrain, and Sky & time of day once Labs is revealed.
+- **Layers**, once Labs is revealed: 3D city, city tiles (and the official
+  building data they carry), trees and woods fill, landmarks, simulated
+  traffic, live data (development builds, until goway.to's backend serves it), and the flyover with "Open Camera
+  Studio" while it is on — each with what it shows, under the note that they
+  may be slow.
+- **Labs**, only once revealed: what Labs is, and "Hide Labs".
 - **General**: what GoWay already lets a person set — the theme (light, dark,
   system: Bloom's own mode, persisted by `BloomProvider` under `goway.theme`)
   — and the language, which follows the device and is shown, not offered.
   GoWay has no unit setting, so none is invented.
-- **About**: version and build; **Map data and credits** — every source from
-  `lib/map/credits.ts` with its links and its licence notices verbatim, and
-  "All credits and licence notices" → `/attribution`; **Landmark models** —
-  each model's licence (SPDX), author and source link; and the privacy note
-  that map settings stay on the device; **Live data sources** — while live is
-  on, each feed's credit and licence (`GET /live/sources`).
+- **About**: version and build, with the privacy note that map settings stay
+  on the device; every source from `lib/map/credits.ts` with its links and its
+  licence notices verbatim; "All credits and licence notices" → `/attribution`;
+  each landmark model's licence (SPDX), author and source link; and, while
+  live is on, each live feed's credit and licence (`GET /live/sources`).
 
 A feature whose dependency is off shows a disabled switch and "Needs “3D
 city”"; one a development query parameter is forcing shows "Set by this page's
 address". Switches are named for screen readers, the button announces its
-expanded state, and Escape closes the dialog.
+expanded state, and Escape (or Android back) closes the modal — on a phone,
+back first returns to the section list.
 
 **Revealing Labs** is deliberately not an `.env` decision: `?labs=1` on any
 goway.to address once (remembered on the device; `?labs=0` forgets), or press
-and hold the settings button. It works in production — it only SHOWS switches,
+and hold the settings button, which opens the modal on the Labs page. It works in production — it only SHOWS switches,
 every Labs feature still starts off, so a shared link can never switch an
 experimental renderer on for somebody else.
 
@@ -162,7 +173,7 @@ in `lib/config.ts`, and no `process.env.EXPO_PUBLIC_MAP_*` read of its own):
    needs, with the variable read as a literal:
 
    ```ts
-   { id: 'citySky', tier: 'labs', defaultOn: false, build: process.env.EXPO_PUBLIC_MAP_CITY_SKY,
+   { id: 'citySky', section: 'map', tier: 'labs', defaultOn: false, build: process.env.EXPO_PUBLIC_MAP_CITY_SKY,
      requires: ['city3d'], platforms: WEB,
      request: (enabled, { development, search, on }) =>
        isCitySkyRequested({ city3d: on('city3d'), enabled, development, search }) },
@@ -172,7 +183,8 @@ in `lib/config.ts`, and no `process.env.EXPO_PUBLIC_MAP_*` read of its own):
    answer as `enabled` — that keeps your dev query parameter. A value-valued
    switch (`?cityStyle=detailed`) maps to a boolean the same way:
    `request: (enabled, c) => cityStyleRequested({ ..., build: enabled ? 'detailed' : 'classic' }) === 'detailed'`.
-   Add `offer: 'development'` if production cannot serve it yet.
+   `section` puts it on the settings modal's Map or Layers page. Add
+   `offer: 'development'` if production cannot serve it yet.
 2. **Its labels in `MAP_FEATURE_LABELS`** (`lib/map/mapFeatureLabels.ts`): a
    name and a one-line description in all twelve languages. `tsc` refuses the
    registry entry until they exist; `mapFeatureLabels.test.ts` checks every
@@ -190,16 +202,26 @@ Then add its row to the table above and to `.env.example`, and extend the
 
 ## What it costs at first paint
 
-`expo export --platform web`, no map variables set, `--clear`, `origin/main`
-(`1175833`) against this branch:
+`expo export --platform web`, no map variables set, `--clear`. The registry,
+store, settings button and compact credit (#134) cost the entry +4,942 B gz,
+measured then. Moving from the generic `Dialog` to Bloom's `SettingsModal`,
+`origin/main` (`1ae5d19`) against `feat/settings-modal`:
 
-| Chunk | `main` | This branch | |
+| Chunk | before | `SettingsModal` | |
 | --- | ---: | ---: | --- |
-| `entry` (first paint) | 6,971,234 B (1,751,355 gz) | 6,987,632 B (1,756,297 gz) | +16,398 B, **+4,942 B gz** (+0.3%): registry, store, hooks, the settings button and its name in 12 languages, the compact credit and its ⓘ, the city flags' pure rules |
-| `__common` (first paint) | 81,624 B | 81,624 B | identical size |
-| `MapSettingsPanel` (lazy, on first open) | — | 59,147 B (17,328 gz) | the dialog body, Bloom's settings list, and all its copy |
+| `entry` (first paint) | 6,998,112 B (1,759,379 gz) | 6,998,104 B (1,759,376 gz) | unchanged |
+| `__common` (first paint) | 81,785 B (22,838 gz) | 97,839 B (27,523 gz) | **+4,685 B gz**: Bloom's `Select`, hoisted (below) |
+| lazy, on the gear's first press | `MapSettingsPanel` 71,456 B (20,269 gz) | `MapSettingsModal` 243,718 B (69,921 gz) | the modal shell and every page Bloom's barrel links |
 
-Bloom's `Dialog` was already in the entry (Oxy's own dialogs use it). Measured by A/B build, never by
+`@oxy.so/bloom/settings-modal` is Bloom 6.2.1's only entry to `SettingsModal`,
+and that barrel also links the Storage, Tools and Plan pages. Storage uses
+Bloom's `Select`, and so does Oxy's lazily loaded `EditProfileFieldScreen`.
+A module shared by two `import()`-ed chunks is hoisted into `__common`, which
+is unconditional at first paint (`~/Oxy/docs/build-and-runtime-traps.md` →
+Metro web chunking). The fix belongs in Bloom: a lean entry for the modal
+shell alone, as `settings-modal/rows` is for the rows. An app-side resolver
+alias would be config copied out of `@oxy.so/app-preset`, which AGENTS.md
+forbids. Measured by A/B build, never by
 per-source attribution (`~/Oxy/docs/build-and-runtime-traps.md`).
 
 ## Limits

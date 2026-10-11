@@ -91,9 +91,9 @@ const MY_LOCATION_ZOOM = 15;
 
 /** Below this the compass is effectively north and the reset control is noise. */
 const BEARING_EPSILON = 1;
-/** The settings dialog's "3D": the steepest tilt the shipped map allows. */
+/** The settings modal's "3D": the steepest tilt the shipped map allows. */
 const TILTED_PITCH = 60;
-/** At or above this the camera reads as 3D in the settings dialog. */
+/** At or above this the camera reads as 3D in the settings modal. */
 const TILTED_EPSILON = 5;
 /** Horizontal room the location notice leaves for the controls column. */
 const CONTROLS_COLUMN_WIDTH = 72;
@@ -214,7 +214,7 @@ export interface ExploreScreenProps {
  * The route flyover (`docs/MAP_CAMERA_STUDIO.md`), loaded only through
  * `features/flyover/lazy.ts`: with the feature off this screen gains an
  * `import()` stub and nothing else. Whether it is on is the map-feature
- * registry's `flyover`, read live below, so turning it on in the settings dialog
+ * registry's `flyover`, read live below, so turning it on in the settings modal
  * offers "Fly the route" at once.
  */
 /**
@@ -346,7 +346,7 @@ export default function ExploreScreen({
   // settled view centre for the "Landmarks" pill, and who to tell when the
   // user moves the map (the tour pauses).
   const [requestedTourId, setTourId] = useState<string | null>(null);
-  // Switching landmarks off in the settings dialog ends a tour in progress.
+  // Switching landmarks off in the settings modal ends a tour in progress.
   const tourId = landmarks ? requestedTourId : null;
   const userMoveListeners = useRef(new Set<() => void>());
   const subscribeUserMove = useCallback((listener: () => void) => {
@@ -415,7 +415,7 @@ export default function ExploreScreen({
     mapRef.current?.resetNorth();
   }, []);
 
-  /** The settings dialog's 2D/3D: tilt or level the camera where it already is. */
+  /** The settings modal's 2D/3D: tilt or level the camera where it already is. */
   const handleTiltChange = useCallback((tilted: boolean) => {
     const map = mapRef.current;
     if (!map) return;

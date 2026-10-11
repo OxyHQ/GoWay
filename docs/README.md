@@ -44,7 +44,7 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   per-gesture undo/redo, the versioned tour link, video export with the mark
   and the credit composited, and the flyover's vehicle as phase 1 of 3D models.
 - [`MAP_FEATURES.md`](MAP_FEATURES.md) — the map-feature registry, the
-  in-app settings dialog (map, Labs layers, general, About with every credit)
+  in-app settings modal (map, Labs layers, general, About with every credit)
   and the OSMF-compact data credit: how each optional feature's on/off is decided (kill
   switch, the person's choice on the device, defaults), Labs, what applies
   live, and the three-step recipe for registering a new feature.
