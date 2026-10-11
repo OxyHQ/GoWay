@@ -34,8 +34,13 @@ export type MeshWorkerRequest =
        * only level 0 (`osmMesher.ts`); the engine never asks them for more.
        */
       lod: Lod;
-      /** Also place trees, from these source-layers (`trees.ts`); `null`: not wanted. */
+      /**
+       * Trees (`workerTrees.ts`): the ones OSM records, from a city tile; with
+       * these source-layers for the optional fill. `null`: no trees.
+       */
       trees: TreeSourceLayers | null;
+      /** Also stand the styling fill in mapped woods (off unless asked; `trees.ts`). */
+      treeFillWoods?: boolean;
       /**
        * GoWay city tiles only: the OpenMapTiles tile whose landcover the
        * styling fill reads (the z14 parent of this z15 tile), and the city
@@ -57,5 +62,12 @@ export type MeshWorkerResponse =
       meshMs: number;
       /** Time spent placing trees. */
       treeMs: number;
+      /**
+       * `false`: a source the trees needed could not be fetched (not merely
+       * absent); the engine draws this and asks again later.
+       */
+      treesComplete: boolean;
     }
-  | { type: 'error'; id: number; message: string };
+  | { type: 'error'; id: number; message: string }
+  /** A cancel took effect: the request will not be answered (`workerPool.ts`). */
+  | { type: 'cancelled'; id: number };

@@ -67,13 +67,14 @@ function decodeVertex(mesh: PackedMesh, chunk: number, v: number): [number, numb
     // biome-ignore format: identity.
     [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
     mesh.unitM,
+    mesh.originM,
   );
   const p = mesh.chunks[chunk].position;
   const [x, y, z] = [p[v * 4], p[v * 4 + 1], p[v * 4 + 2]];
   return [
-    m[0] * x + m[4] * y + m[8] * z,
-    m[1] * x + m[5] * y + m[9] * z,
-    m[2] * x + m[6] * y + m[10] * z,
+    m[0] * x + m[4] * y + m[8] * z + m[12],
+    m[1] * x + m[5] * y + m[9] * z + m[13],
+    m[2] * x + m[6] * y + m[10] * z + m[14],
   ];
 }
 
@@ -254,6 +255,47 @@ describe('the packed format', () => {
       }
     });
     expect(packed.triangles).toBe(mesh.indices.length / 3);
+  });
+
+  test('a whole building crossing the tile edge keeps its shape on both sides (city tiles)', () => {
+    // GoWay city tiles keep each building whole in its centre's tile, so its
+    // coordinates run past the square: here 30 m west of it and 20 m north.
+    const size = 1000;
+    const corners = [
+      [-30, 10],
+      [40, 10],
+      [40, -50],
+      [-30, -50],
+      [5, 20],
+    ];
+    const positions = new Float32Array(corners.flatMap(([x, y]) => [x, y, 12]));
+    const mesh: TileMesh = {
+      positions,
+      normals: new Int8Array(positions.length),
+      shade: new Uint8Array((positions.length / 3) * 2),
+      indices: new Uint32Array([0, 1, 2, 0, 2, 3, 0, 4, 1]),
+      bounds: { min: [-30, -50, 12], max: [40, 20, 12] },
+      polygons: 1,
+      polygonStarts: new Uint32Array([0]),
+      polygonBoxes: new Float32Array([-30, -50, 40, 20]),
+    };
+    for (const packed of [packMesh(mesh, size), packMeshGeneral(mesh, size)]) {
+      expect(packed.originM).toEqual([-30, 20]);
+      const decoded = packed.chunks[0];
+      for (let i = 0; i < decoded.position.length / 4; i++) {
+        const source = decoded.sourceIds ? decoded.sourceIds[i] : decoded.sourceStart + i;
+        const [x, y] = decodeVertex(packed, 0, i);
+        expect(Math.abs(x - positions[source * 3])).toBeLessThanOrEqual(packed.unitM);
+        expect(Math.abs(y - positions[source * 3 + 1])).toBeLessThanOrEqual(packed.unitM);
+      }
+    }
+  });
+
+  test('inside its tile a mesh keeps the tile’s frame', () => {
+    const mesh = meshBuildings([block], OPTIONS) as TileMesh;
+    const packed = packMesh(mesh, OPTIONS.tileSizeMetres);
+    expect(packed.originM).toEqual([0, 0]);
+    expect(packed.unitM).toBe(unitMetres(OPTIONS.tileSizeMetres));
   });
 
   test('the quantised model matrix is the tile matrix times the unit scale', () => {

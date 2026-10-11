@@ -221,6 +221,64 @@ export interface CityTileTree {
   properties: { crown?: TreeCrown; height?: number; crown_diameter?: number };
 }
 
+/**
+ * Where a browser asks WHICH AREAS the city tiles cover, relative to the
+ * page's origin: `{ "archives": [{ "coverage": [west, south, east, north] }] }`.
+ *
+ * Needed because a missing city tile and an EMPTY one look the same — the
+ * archive stores no tile where no building stands, and the route answers 204
+ * for both — yet they mean opposite things: inside the compiled area a 204 is
+ * sea or fields, outside it nothing was compiled and the basemap's buildings
+ * must be drawn instead. Development serves it from the archives
+ * (`scripts/dev-city-tiles.js`); hosting must serve it beside the tiles.
+ */
+export const CITY_COVERAGE_PATH = '/map/city/coverage.json';
+
+/** The archive metadata key holding the area the compiler covered (the compile box). */
+export const CITY_COVERAGE_METADATA_KEY = 'goway:coverage';
+
+/** An area in degrees: `[west, south, east, north]`. */
+export type CityCoverageBox = readonly [number, number, number, number];
+
+/**
+ * The coverage document → its boxes. Anything malformed is dropped, so a
+ * broken answer covers less (falls back to the basemap), never more.
+ */
+export function parseCityCoverage(json: unknown): CityCoverageBox[] {
+  const archives = (json as { archives?: unknown })?.archives;
+  if (!Array.isArray(archives)) return [];
+  const boxes: CityCoverageBox[] = [];
+  for (const archive of archives) {
+    const box = (archive as { coverage?: unknown })?.coverage;
+    if (!Array.isArray(box) || box.length !== 4) continue;
+    const [west, south, east, north] = box;
+    if (![west, south, east, north].every((v) => typeof v === 'number' && Number.isFinite(v)))
+      continue;
+    if (!(west < east && south < north)) continue;
+    boxes.push([west, south, east, north]);
+  }
+  return boxes;
+}
+
+/**
+ * Whether one tile lies WHOLLY inside some covered box. Only such a tile may
+ * be drawn from city tiles: one straddling the edge is drawn whole from the
+ * basemap, so the two sources never draw the same ground twice or leave a
+ * gap between them.
+ */
+export function tileCovered(
+  tile: { z: number; x: number; y: number },
+  boxes: readonly CityCoverageBox[],
+): boolean {
+  const n = 2 ** tile.z;
+  const west = (tile.x / n) * 360 - 180;
+  const east = ((tile.x + 1) / n) * 360 - 180;
+  const latOf = (y: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180) / Math.PI;
+  const north = latOf(tile.y);
+  const south = latOf(tile.y + 1);
+  return boxes.some(([w, s, e, nn]) => west >= w && east <= e && south >= s && north <= nn);
+}
+
 /** The `{z}/{x}/{y}` template expanded for one tile. */
 export function cityTileUrl(template: string, z: number, x: number, y: number): string {
   return template.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));

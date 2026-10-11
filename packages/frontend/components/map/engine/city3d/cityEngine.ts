@@ -64,6 +64,8 @@ import {
   selectLodTiles,
   type TileCost,
 } from './lod';
+import type { CityCoverageBox } from '@/lib/map/cityTiles';
+
 import { createModelLayer, type ModelSpec, type ModelStatus } from './models';
 import type { CityLight } from './occlusion';
 import { OSM_FRAGMENT_SHADER, OSM_VERTEX_SHADER } from './osmShaders';
@@ -78,7 +80,8 @@ import {
   tileKey,
 } from './tileMath';
 import { type GroundSampler, type GroundStats, TileGrounder } from './terrainGround';
-import { TileCache, TileScheduler } from './tileScheduler';
+import { incompleteRetryMs, TileCache, TileScheduler } from './tileScheduler';
+import { assignSources, type SourcedTile } from './sources';
 import { Transitions } from './transitions';
 import { treeMinHeightM } from './treeShaders';
 import type { TreeSourceLayers } from './treeSources';
@@ -105,23 +108,26 @@ export interface CityEngineOptions {
   /** The source's max zoom: tiles are fetched at this zoom only. */
   tileZoom: number;
   sourceLayer: string;
-  /** What the tiles are; absent: OpenMapTiles. GoWay city tiles get the OSM mesher and shader. */
-  tileFormat?: CityTileFormat;
   /**
-   * Most tiles drawn; absent: `LOD_POLICY.maxTiles`. GoWay city tiles, which
-   * have one level only, are all drawn at it (see `selectFor`).
+   * GoWay's per-building city tiles, drawn INSTEAD of the OpenMapTiles
+   * buildings above wherever `coverage` says they were compiled — per tile,
+   * by `sources.ts`; everywhere else the OpenMapTiles path draws. Absent: the
+   * OpenMapTiles buildings everywhere.
    */
-  maxTiles?: number;
-  /**
-   * Trees (`trees.ts`): the styling fill of mapped woods and parks from
-   * OpenMapTiles' layers, and with GoWay city tiles the trees OSM records.
-   * `fill` is the OpenMapTiles source the fill reads when the buildings come
-   * from GoWay city tiles. `null`: no trees.
-   */
-  trees?: {
-    sourceLayers: TreeSourceLayers;
-    fill?: { tileUrlTemplate: string; tileZoom: number; mappedLayer: string };
+  city?: {
+    tileUrlTemplate: string;
+    tileZoom: number;
+    sourceLayer: string;
+    /** The city tiles' layer of trees OSM records (`CITY_TREE_LAYER`). */
+    treeLayer: string;
+    coverage: readonly CityCoverageBox[];
   } | null;
+  /**
+   * Trees (`workerTrees.ts`): on city tiles the trees OSM records; with
+   * `fillWoods`, also the styling fill of mapped woods from OpenMapTiles'
+   * layers (off by default). `null`: no trees.
+   */
+  trees?: { sourceLayers: TreeSourceLayers; fillWoods?: boolean } | null;
   palette: CityPalette;
   /** The map's light, converted (`components/map/city3dLight.ts`); see `CityLight`. */
   light: CityLight;
@@ -285,13 +291,14 @@ function treeFill(
   };
 }
 
-/** A (tile, level) the engine requests. */
-type LodRequest = TileId & { lod: Lod };
+/** A (tile, level) the engine requests, and from which source. */
+type LodRequest = TileId & { lod: Lod; format: CityTileFormat };
 
 /** A worker reply waiting for the upload budget. */
 interface Arrival {
   key: string;
   lod: Lod;
+  format: CityTileFormat;
   reply: Extract<MeshWorkerResponse, { type: 'mesh' }>;
 }
 
@@ -333,21 +340,16 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const context = {
     scene,
     buildingUniforms,
-    buildingShaders:
-      options.tileFormat === 'goway'
-        ? { vertexShader: OSM_VERTEX_SHADER, fragmentShader: OSM_FRAGMENT_SHADER }
-        : { vertexShader: CITY_VERTEX_SHADER, fragmentShader: CITY_FRAGMENT_SHADER },
+    buildingShaders: {
+      openmaptiles: { vertexShader: CITY_VERTEX_SHADER, fragmentShader: CITY_FRAGMENT_SHADER },
+      goway: { vertexShader: OSM_VERTEX_SHADER, fragmentShader: OSM_FRAGMENT_SHADER },
+    },
     treeUniforms,
   };
-  // GoWay city tiles are meshed at full detail only (`osmMesher.ts` has no
-  // far levels yet): every visible tile is level 0, and the budget drops the
-  // farthest instead of coarsening them.
-  const singleLevel = options.tileFormat === 'goway';
-  const policy = {
-    ...LOD_POLICY,
-    maxTiles: options.maxTiles ?? LOD_POLICY.maxTiles,
-    ...(singleLevel ? { maxFullTiles: options.maxTiles ?? LOD_POLICY.maxTiles } : {}),
-  };
+  // Where the city tiles draw instead of the basemap's buildings (`sources.ts`).
+  const city = options.city
+    ? { tileZoom: options.city.tileZoom, coverage: options.city.coverage }
+    : null;
   const shapes = createTreeShapes();
   const transitions = new Transitions<TileEntry>();
 
@@ -362,8 +364,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const requests = new Map<number, LodRequest>();
   const retryTimers = new Set<ReturnType<typeof setTimeout>>();
   const arrivals: Arrival[] = [];
+  // Tiles drawn from an incomplete answer, and when to ask for them again.
+  const incomplete = new Map<string, { attempts: number; retryAt: number }>();
   const previousLods = new Map<string, Lod>();
-  let selected: LodTile[] = [];
+  let selected: SourcedTile[] = [];
   let nextRequestId = 1;
   let frame = 0;
   let disposed = false;
@@ -387,12 +391,30 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       ? poolSize(typeof navigator === 'undefined' ? undefined : navigator.hardwareConcurrency)
       : 0,
     (reply) => onReply(reply),
-    () => {
-      errors++;
-      reportStats(true);
-    },
+    // A worker died with this request: retried like any failed tile.
+    (id, message) => onReply({ type: 'error', id, message }),
   );
   const grounder = new TileGrounder(() => performance.now(), options.onGroundStats);
+  let groundSampler: GroundSampler | null = null;
+  // The lifts seen on this terrain, for the selection's culling range.
+  let liftRange: { min: number; max: number } | null = null;
+
+  /**
+   * On terrain, the ground the view's tiles stand on, conservatively: the
+   * centre's ground ±300 m, widened by every lift already applied (±50 m);
+   * before any tile is lifted, the centre ±1,500 m.
+   */
+  const terrainFor = (view: CityView) => {
+    if (!groundSampler) return undefined;
+    const sampled = groundSampler(view.center.lng, view.center.lat);
+    const centreM = Number.isFinite(sampled) ? sampled : 0;
+    if (!liftRange) return { centreM, minM: centreM - 1500, maxM: centreM + 1500 };
+    return {
+      centreM,
+      minM: Math.min(centreM - 300, liftRange.min - 50),
+      maxM: Math.max(centreM + 300, liftRange.max + 50),
+    };
+  };
 
   const models = createModelLayer({
     requestRepaint: options.requestRepaint,
@@ -447,8 +469,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     if (entry) return { bytes: entry.bytes, vertices: entry.vertices };
     if (entry === null) return { bytes: 0, vertices: 0 };
     const full = measured.get(tileKey(tile)) ?? meanFull;
-    const ratio = singleLevel ? 1 : LEVEL_RATIO[lod];
-    return { bytes: full.bytes * ratio, vertices: full.vertices * ratio };
+    return { bytes: full.bytes * LEVEL_RATIO[lod], vertices: full.vertices * LEVEL_RATIO[lod] };
   };
 
   const remember = (key: string, lod: Lod, entry: TileEntry | null) => {
@@ -479,6 +500,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     requests.delete(reply.id);
     if (!request) return;
 
+    if (reply.type === 'cancelled') return;
     if (reply.type === 'error') {
       // One bad tile costs that tile; the rest of the city keeps drawing. It
       // is retried with a bounded backoff (`tileScheduler.ts`) EVEN IF THE
@@ -500,7 +522,12 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     lastMeshMs = reply.meshMs;
     lastTreeMs = reply.treeMs;
     // GPU work waits for the upload budget (`admit`); the bookkeeping is done.
-    arrivals.push({ key: lodKey(tileKey(request), request.lod), lod: request.lod, reply });
+    arrivals.push({
+      key: lodKey(tileKey(request), request.lod),
+      lod: request.lod,
+      format: request.format,
+      reply,
+    });
     options.requestRepaint();
   };
 
@@ -530,8 +557,24 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         next.lod,
         next.reply.mesh,
         next.reply.trees,
+        next.format,
       );
       remember(next.key.slice(0, next.key.indexOf('@')), next.lod, entry);
+      if (next.reply.treesComplete === false) {
+        const attempts = (incomplete.get(next.key)?.attempts ?? 0) + 1;
+        const delay = incompleteRetryMs(attempts);
+        if (delay === null) incomplete.delete(next.key);
+        else {
+          incomplete.set(next.key, { attempts, retryAt: now + delay });
+          const timer = setTimeout(() => {
+            retryTimers.delete(timer);
+            if (!disposed) options.requestRepaint();
+          }, delay);
+          retryTimers.add(timer);
+        }
+      } else {
+        incomplete.delete(next.key);
+      }
       cache.put(next.key, entry, entry?.bytes ?? 0, frame, wanted);
     }
     if (arrivals.length > 0) options.requestRepaint();
@@ -542,22 +585,42 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     if (!buildings || view.zoom < options.fade.start) {
       selected = [];
     } else {
-      const chosen = selectLodTiles(view, options.tileZoom, policy, previousLods);
+      const chosen = selectLodTiles(
+        { ...view, terrain: terrainFor(view) },
+        options.tileZoom,
+        LOD_POLICY,
+        previousLods,
+      );
       const fitted = fitBudget(chosen, costOf, DRAW_BUDGET);
-      // One level: the budget's coarsening costs nothing there, so all it
-      // can do is drop the farthest; what is kept is drawn at level 0.
-      selected = singleLevel ? fitted.map((tile) => ({ ...tile, lod: 0 as Lod })) : fitted;
+      previousLods.clear();
+      for (const tile of fitted) previousLods.set(tileKey(tile), tile.lod);
+      // City tiles where they cover the ground, the basemap elsewhere.
+      selected = assignSources(fitted, city);
     }
-    previousLods.clear();
-    for (const tile of selected) previousLods.set(tileKey(tile), tile.lod);
+    if (selected.length === 0) previousLods.clear();
 
     // Every frame, not only when the wanted set changes: a failed tile's
     // retry comes due on a frame where nothing else did.
-    const wanted: LodRequest[] = selected.map((t) => ({ z: t.z, x: t.x, y: t.y, lod: t.lod }));
+    const wanted: LodRequest[] = selected.map((t) => ({
+      z: t.z,
+      x: t.x,
+      y: t.y,
+      lod: t.lod,
+      format: t.format,
+    }));
     // A reply waiting for the upload budget is neither pending nor cached;
     // it must not be requested again.
     const arrived = new Set(arrivals.map((arrival) => arrival.key));
-    const plan = scheduler.plan(wanted, now, (key) => cache.has(key) || arrived.has(key));
+    // An incomplete tile whose retry is due counts as not cached: asked again.
+    const due = (key: string) => {
+      const retry = incomplete.get(key);
+      return retry !== undefined && now >= retry.retryAt;
+    };
+    const plan = scheduler.plan(
+      wanted,
+      now,
+      (key) => (cache.has(key) && !due(key)) || arrived.has(key),
+    );
     for (const id of plan.cancel) {
       pool.cancel(id, { type: 'cancel', id });
       requests.delete(id);
@@ -573,14 +636,31 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
           type: 'mesh',
           id,
           tile,
-          url: expandTemplate(options.tileUrlTemplate, tile),
-          sourceLayer: options.sourceLayer,
-          format: options.tileFormat,
+          ...(request.format === 'goway' && options.city
+            ? {
+                url: expandTemplate(options.city.tileUrlTemplate, tile),
+                sourceLayer: options.city.sourceLayer,
+                format: 'goway' as const,
+                // The fill reads the basemap's landcover: the city tiles
+                // carry buildings and the trees OSM records, no landcover.
+                ...(options.trees
+                  ? {
+                      treeFill: treeFill(tile, {
+                        tileUrlTemplate: options.tileUrlTemplate,
+                        tileZoom: options.tileZoom,
+                        mappedLayer: options.city.treeLayer,
+                      }),
+                    }
+                  : {}),
+              }
+            : {
+                url: expandTemplate(options.tileUrlTemplate, tile),
+                sourceLayer: options.sourceLayer,
+                format: 'openmaptiles' as const,
+              }),
           lod: request.lod,
           trees: options.trees && request.lod < 2 ? options.trees.sourceLayers : null,
-          ...(options.trees?.fill && request.lod < 2
-            ? { treeFill: treeFill(tile, options.trees.fill) }
-            : {}),
+          treeFillWoods: options.trees?.fillWoods === true,
         },
         tileKey(tile),
       );
@@ -649,7 +729,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
             break;
           }
           const result = grounder.ground(entry.key, groundTileFor(entry, tile));
-          if (result) applyGround(entry, result);
+          if (result) {
+            applyGround(entry, result);
+            liftRange = {
+              min: Math.min(liftRange?.min ?? result.min, result.min),
+              max: Math.max(liftRange?.max ?? result.max, result.max),
+            };
+          }
         }
       }
 
@@ -661,11 +747,11 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         for (const tile of selected) rank.set(tileKey(tile), tile.r);
         const r = (entry: TileEntry) => rank.get(entry.key.slice(0, entry.key.indexOf('@'))) ?? 1e9;
         draws.sort((a, b) => r(a.value) - r(b.value));
-        for (const { value: entry, fade, out } of draws) {
+        for (const { value: entry, from, to } of draws) {
           if (!entry.placement) continue;
           if (grounded && !grounder.hasGround(entry.key)) continue;
           placeEntry(entry, entry.placement, center);
-          setEntryFade(entry, fade, out);
+          setEntryFade(entry, from, to);
           setEntryVisible(entry, true);
           drawn.triangles += entry.triangles;
           drawn.vertices += entry.vertices;
@@ -701,6 +787,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       grounder.setSampler(sample);
       // The models stand on the same drawn ground as the buildings.
       models.setGround(sample);
+      groundSampler = sample;
+      liftRange = null;
       light.uGrounded.value = sample ? 1 : 0;
       // Culling bounds follow: without terrain every mesh is back at `z = 0`;
       // with it, each keeps its last lift until re-grounded.

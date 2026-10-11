@@ -30,6 +30,7 @@ import {
   latFromMercatorY,
   mercatorXFromLng,
   mercatorYFromLat,
+  mercatorPerMetre,
   multiplyMat4,
   tileKey,
 } from '@/components/map/engine/city3d/tileMath';
@@ -86,6 +87,8 @@ interface Camera {
   bearing?: number;
   width?: number;
   height?: number;
+  /** The ground's elevation under the camera, metres (3D terrain). */
+  groundM?: number;
 }
 
 /** The camera's matrix, bounds and centre, as the engine's `CityView` carries them. */
@@ -97,13 +100,14 @@ function camera(c: Camera) {
   const focal = 0.5 / Math.tan(FOV / 2);
   // The eye is one focal length (in pixels) from the centre; in mercator units:
   const distance = (focal * height) / (512 * 2 ** c.zoom);
-  const centre: V3 = [mercatorXFromLng(c.lng), mercatorYFromLat(c.lat), 0];
+  const groundZ = (c.groundM ?? 0) * mercatorPerMetre(c.lat);
+  const centre: V3 = [mercatorXFromLng(c.lng), mercatorYFromLat(c.lat), groundZ];
   // Mercator y grows south: "north" is -y. Bearing turns clockwise from north.
   const north: V3 = [Math.sin(bearing), -Math.cos(bearing), 0];
   const eye: V3 = [
     centre[0] - north[0] * distance * Math.sin(pitch),
     centre[1] - north[1] * distance * Math.sin(pitch),
-    distance * Math.cos(pitch),
+    groundZ + distance * Math.cos(pitch),
   ];
   // Far plane just past the top of the screen, or the horizon, as MapLibre does.
   const topAngle = pitch + FOV / 2;
@@ -131,7 +135,7 @@ function camera(c: Camera) {
   ]) {
     const a = unproject(sx, sy, -1);
     const b = unproject(sx, sy, 1);
-    const t = b[2] < 0 ? a[2] / (a[2] - b[2]) : 1;
+    const t = b[2] < groundZ ? (a[2] - groundZ) / (a[2] - b[2]) : 1;
     xs.push(a[0] + (b[0] - a[0]) * t);
     ys.push(a[1] + (b[1] - a[1]) * t);
   }
@@ -351,6 +355,28 @@ describe('selectLodTiles', () => {
     expect(west?.wrap).toBe(0);
   });
 
+  test('on terrain, a city on a high plateau is still seen (its boxes stand on the ground)', () => {
+    // 2,000 m up; MapLibre's far plane ends just past the ground, so a box at
+    // sea level is beyond it.
+    const view = camera({ ...BARCELONA, zoom: 16, pitch: 50, groundM: 2000 });
+    const seaLevel = selectLodTiles(view, 14);
+    const terrain = selectLodTiles(
+      { ...view, terrain: { centreM: 2000, minM: 1700, maxM: 2300 } },
+      14,
+    );
+    const centre = tileKey({
+      z: 14,
+      x: Math.floor(mercatorXFromLng(BARCELONA.lng) * 2 ** 14),
+      y: Math.floor(mercatorYFromLat(BARCELONA.lat) * 2 ** 14),
+    });
+    expect(seaLevel.map(tileKey)).not.toContain(centre);
+    expect(terrain.map(tileKey)).toContain(centre);
+    // Distances are to the ground the camera looks at, so the tile under the
+    // centre is about one camera distance away.
+    const under = terrain.find((t) => tileKey(t) === centre);
+    expect(under?.r).toBeLessThan(1.05);
+  });
+
   test('a level held by hysteresis is the one passed in', () => {
     const view = camera({ ...BARCELONA, zoom: 16, pitch: 60 });
     const first = selectLodTiles(view, 14);
@@ -405,25 +431,36 @@ describe('fitBudget', () => {
 });
 
 describe('Transitions', () => {
+  /** How much of the screen a frame's draws cover, by noise window (union). */
+  const covered = (draws: { from: number; to: number }[]) => {
+    const steps = 1000;
+    let hit = 0;
+    for (let i = 0; i < steps; i++) {
+      const noise = (i + 0.5) / steps;
+      if (draws.some((d) => noise >= d.from && noise < d.to)) hit++;
+    }
+    return hit / steps;
+  };
+  /** No pixel kept by two meshes at once. */
+  const disjoint = (draws: { from: number; to: number }[]) =>
+    draws.every((a, i) => draws.every((b, j) => i === j || a.to <= b.from || b.to <= a.from));
+
   test('a new slot fades in over FADE_MS', () => {
     const t = new Transitions<string>();
     t.begin();
     t.show('a', 'mesh', 0);
-    expect(t.draws(0).draws).toEqual([{ value: 'mesh', fade: 0, out: false }]);
+    expect(t.draws(0).draws).toEqual([{ value: 'mesh', from: 0, to: 0 }]);
     t.begin();
     t.show('a', 'mesh', FADE_MS / 2);
     const half = t.draws(FADE_MS / 2);
-    expect(half.draws[0].fade).toBeCloseTo(0.5, 10);
+    expect(half.draws[0].to).toBeCloseTo(0.5, 10);
     expect(half.active).toBe(true);
     t.begin();
     t.show('a', 'mesh', FADE_MS);
-    expect(t.draws(FADE_MS)).toEqual({
-      draws: [{ value: 'mesh', fade: 1, out: false }],
-      active: false,
-    });
+    expect(t.draws(FADE_MS)).toEqual({ draws: [{ value: 'mesh', from: 0, to: 1 }], active: false });
   });
 
-  test('a level swap is complementary: the old mesh keeps exactly the pixels the new one leaves', () => {
+  test('a level swap is complementary: every pixel drawn exactly once, all the way', () => {
     const t = new Transitions<string>();
     t.begin();
     t.show('a', 'coarse', 0);
@@ -431,25 +468,52 @@ describe('Transitions', () => {
     t.begin();
     t.show('a', 'coarse', FADE_MS * 2);
     t.draws(FADE_MS * 2);
-    t.begin();
-    t.show('a', 'fine', 1000);
     for (const now of [1000, 1000 + FADE_MS / 3, 1000 + (2 * FADE_MS) / 3]) {
       t.begin();
       t.show('a', 'fine', now);
       const { draws } = t.draws(now);
-      const incoming = draws.find((d) => d.value === 'fine');
-      const outgoing = draws.find((d) => d.value === 'coarse');
-      expect(incoming?.out).toBe(false);
-      expect(outgoing?.out).toBe(true);
-      // Same threshold, opposite sides of it: every pixel drawn exactly once.
-      expect(outgoing?.fade).toBe(incoming?.fade);
+      expect(draws.map((d) => d.value).sort()).toEqual(['coarse', 'fine']);
+      expect(disjoint(draws)).toBe(true);
+      expect(covered(draws)).toBeCloseTo(1, 2);
     }
     t.begin();
     t.show('a', 'fine', 1000 + FADE_MS);
-    expect(t.draws(1000 + FADE_MS).draws).toEqual([{ value: 'fine', fade: 1, out: false }]);
+    expect(t.draws(1000 + FADE_MS).draws).toEqual([{ value: 'fine', from: 0, to: 1 }]);
   });
 
-  test('a slot no longer shown fades out and is forgotten', () => {
+  test('retargeted mid-fade, the leaving mesh keeps the coverage it had — no jump to opaque', () => {
+    const t = new Transitions<string>();
+    t.begin();
+    t.show('a', 'first', 0);
+    t.draws(0);
+    // 40% in, the target changes.
+    const at = FADE_MS * 0.4;
+    t.begin();
+    t.show('a', 'first', at);
+    const before = covered(t.draws(at).draws);
+    expect(before).toBeCloseTo(0.4, 2);
+    t.begin();
+    t.show('a', 'second', at);
+    const after = t.draws(at).draws;
+    expect(covered(after)).toBeCloseTo(before, 2);
+    expect(disjoint(after)).toBe(true);
+    // Coverage only grows from there, and the swap completes.
+    let last = before;
+    for (const now of [at + FADE_MS * 0.2, at + FADE_MS * 0.6, at + FADE_MS * 0.9]) {
+      t.begin();
+      t.show('a', 'second', now);
+      const draws = t.draws(now).draws;
+      const c = covered(draws);
+      expect(c).toBeGreaterThanOrEqual(last - 1e-9);
+      expect(disjoint(draws)).toBe(true);
+      last = c;
+    }
+    t.begin();
+    t.show('a', 'second', at + FADE_MS);
+    expect(t.draws(at + FADE_MS).draws).toEqual([{ value: 'second', from: 0, to: 1 }]);
+  });
+
+  test('a slot no longer shown dissolves from where it is and is forgotten', () => {
     const t = new Transitions<string>();
     t.begin();
     t.show('a', 'mesh', 0);
@@ -459,8 +523,11 @@ describe('Transitions', () => {
     t.draws(FADE_MS);
     t.begin(); // 'a' not shown this frame
     const leaving = t.draws(FADE_MS * 1.5);
-    expect(leaving.draws).toEqual([{ value: 'mesh', fade: 0, out: true }]);
+    expect(leaving.draws).toEqual([{ value: 'mesh', from: 0, to: 1 }]);
     expect([...t.inUse()]).toEqual(['mesh']);
+    t.begin();
+    const half = t.draws(FADE_MS * 2);
+    expect(half.draws[0].to).toBeCloseTo(0.5, 10);
     t.begin();
     const later = t.draws(FADE_MS * 3);
     expect(later.draws).toEqual([]);

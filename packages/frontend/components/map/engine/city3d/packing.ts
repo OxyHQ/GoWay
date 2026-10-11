@@ -94,8 +94,17 @@ function chunkBytes(chunk: PackedChunk): number {
 /** A finished, compact tile mesh, ready to transfer out of the worker. */
 export interface PackedMesh {
   chunks: PackedChunk[];
-  /** Metres per x/y unit (the tile's side / 65,535). */
+  /** Metres per x/y unit (the tile's side / 65,535, or the mesh's span when larger). */
   unitM: number;
+  /**
+   * Local ENU metres of stored `(0, 0)`. `[0, 0]` (the tile's north-west
+   * corner) for meshes clipped to their tile; a GoWay city tile keeps each
+   * building WHOLE in the tile of its centre, so its coordinates run past the
+   * tile on any side, and its origin and unit are taken from the mesh's own
+   * extent — clamping them to the tile square collapsed every building that
+   * crossed an edge (PR #126 review).
+   */
+  originM: [number, number];
   vertices: number;
   triangles: number;
   /** Total buffer bytes, what the GPU will hold. */
@@ -134,17 +143,24 @@ export function unitMetres(tileSizeMetres: number): number {
 
 /**
  * `model × Q`, where `Q` turns stored units back into local ENU metres:
- * `x·unitM`, `-y·unitM` (stored southward), `z / 32`. Column-major, float64.
+ * `origin.x + x·unitM`, `origin.y − y·unitM` (stored southward), `z / 32`.
+ * Column-major, float64.
  *
  * `model` is {@link tileModelMatrix}'s metres → centre-relative mercator.
  */
-export function quantizedModelMatrix(model: ArrayLike<number>, unitM: number): number[] {
+export function quantizedModelMatrix(
+  model: ArrayLike<number>,
+  unitM: number,
+  originM: readonly [number, number] = [0, 0],
+): number[] {
   const sx = unitM;
   const sy = -unitM;
   const sz = 1 / Z_UNITS_PER_METRE;
-  // Q is diagonal, so model × Q scales model's first three columns.
+  // Q is diagonal plus a translation to the origin, so model × Q scales
+  // model's first three columns and moves its fourth by model × origin.
   const out = Array.from(model);
   for (let row = 0; row < 4; row++) {
+    out[12 + row] = model[row] * originM[0] + model[4 + row] * originM[1] + model[12 + row];
     out[row] *= sx;
     out[4 + row] *= sy;
     out[8 + row] *= sz;
@@ -275,6 +291,7 @@ export class PackedBuilder {
     return {
       chunks: this.chunks,
       unitM: this.unitM,
+      originM: [0, 0],
       vertices,
       triangles: this.totalTriangles,
       bytes,
@@ -311,6 +328,23 @@ function grow<T extends Uint16Array | Int8Array>(array: T): T {
   return next;
 }
 
+/**
+ * The stored frame for a float mesh: the tile's own (origin at its north-west
+ * corner, 65,535 units across it) when the mesh stays inside the tile, else
+ * stretched to the mesh's extent so nothing is clamped (whole buildings of
+ * GoWay city tiles). Exported for the tests.
+ */
+export function frameFor(
+  mesh: TileMesh,
+  tileSizeMetres: number,
+): { unitM: number; originM: [number, number] } {
+  const { min, max } = mesh.bounds;
+  const originX = Math.min(0, min[0]);
+  const originY = Math.max(0, max[1]);
+  const span = Math.max(tileSizeMetres, max[0] - originX, originY - min[1]);
+  return { unitM: span / 65_535, originM: [originX, originY] };
+}
+
 /** How far below a cut a new range starts; see {@link packMesh}. */
 const CHUNK_BACKTRACK = 256;
 
@@ -321,6 +355,7 @@ const CHUNK_BACKTRACK = 256;
 function copyVertices(
   mesh: SourceMesh,
   unitM: number,
+  originM: readonly [number, number],
   count: number,
   idOf: (i: number) => number,
   bounds: { min: [number, number, number]; max: [number, number, number] },
@@ -336,8 +371,8 @@ function copyVertices(
     const v = idOf(i);
     const p = v * 3;
     const q = i * 4;
-    const x = clampUnit(positions[p] * inverseUnit);
-    const y = clampUnit(-positions[p + 1] * inverseUnit);
+    const x = clampUnit((positions[p] - originM[0]) * inverseUnit);
+    const y = clampUnit((originM[1] - positions[p + 1]) * inverseUnit);
     const z = clampUnit(positions[p + 2] * Z_UNITS_PER_METRE);
     position[q] = x;
     position[q + 1] = y;
@@ -371,6 +406,7 @@ function copyVertices(
 function finishPacked(
   mesh: TileMesh,
   unitM: number,
+  originM: [number, number],
   chunks: PackedChunk[],
   bounds: PackedMesh['bounds'],
 ): PackedMesh {
@@ -383,6 +419,7 @@ function finishPacked(
   return {
     chunks,
     unitM,
+    originM,
     vertices,
     triangles: mesh.indices.length / 3,
     bytes,
@@ -408,7 +445,7 @@ function finishPacked(
  * back further than the margin falls back to {@link packMeshGeneral}.
  */
 export function packMesh(mesh: SourceMesh, tileSizeMetres: number): PackedMesh {
-  const unitM = unitMetres(tileSizeMetres);
+  const { unitM, originM } = frameFor(mesh, tileSizeMetres);
   const { indices } = mesh;
   const ranges: { start: number; end: number; firstIndex: number; lastIndex: number }[] = [];
   let start = 0;
@@ -440,6 +477,7 @@ export function packMesh(mesh: SourceMesh, tileSizeMetres: number): PackedMesh {
     const vertices = copyVertices(
       mesh,
       unitM,
+      originM,
       range.end - range.start,
       (i) => range.start + i,
       bounds,
@@ -450,7 +488,7 @@ export function packMesh(mesh: SourceMesh, tileSizeMetres: number): PackedMesh {
     }
     return { ...vertices, index, sourceStart: range.start };
   });
-  return finishPacked(mesh, unitM, chunks, bounds);
+  return finishPacked(mesh, unitM, originM, chunks, bounds);
 }
 
 /**
@@ -459,7 +497,7 @@ export function packMesh(mesh: SourceMesh, tileSizeMetres: number): PackedMesh {
  * when the next triangle would not fit. Any index order works.
  */
 export function packMeshGeneral(mesh: SourceMesh, tileSizeMetres: number): PackedMesh {
-  const unitM = unitMetres(tileSizeMetres);
+  const { unitM, originM } = frameFor(mesh, tileSizeMetres);
   const { indices } = mesh;
   const vertexCount = mesh.positions.length / 3;
   // Per source vertex: the chunk it was given a slot in, and the slot.
@@ -473,7 +511,7 @@ export function packMeshGeneral(mesh: SourceMesh, tileSizeMetres: number): Packe
     if (index.length === 0) return;
     const chosen = ids;
     chunks.push({
-      ...copyVertices(mesh, unitM, chosen.length, (i) => chosen[i], bounds),
+      ...copyVertices(mesh, unitM, originM, chosen.length, (i) => chosen[i], bounds),
       index: Uint16Array.from(index),
       sourceStart: 0,
       sourceIds: Uint32Array.from(chosen),
@@ -496,5 +534,5 @@ export function packMeshGeneral(mesh: SourceMesh, tileSizeMetres: number): Packe
     for (const v of tri) place(v);
   }
   close();
-  return finishPacked(mesh, unitM, chunks, bounds);
+  return finishPacked(mesh, unitM, originM, chunks, bounds);
 }

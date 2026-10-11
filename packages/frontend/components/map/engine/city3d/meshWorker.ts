@@ -34,8 +34,8 @@ import { decodeCityTile } from './osmTiles';
 import { type PackedMesh, packedTransferables, packMesh } from './packing';
 import type { MeshWorkerRequest, MeshWorkerResponse } from './protocol';
 import { tileSizeMetres } from './tileMath';
-import { decodeMappedTrees, decodeTreeSources } from './treeSources';
-import { mappedTreePoints, packTrees, standTrees, type TreePoint } from './trees';
+import { packTrees } from './trees';
+import { type Footprint, treesFor } from './workerTrees';
 
 /**
  * The slice of `DedicatedWorkerGlobalScope` this file uses. The frontend's
@@ -87,6 +87,11 @@ async function tileBytes(url: string, signal: AbortSignal): Promise<ArrayBuffer 
   return bytes;
 }
 
+/** Tell the pool a cancel took effect. */
+function acknowledge(id: number): void {
+  scope.postMessage({ type: 'cancelled', id });
+}
+
 async function mesh(request: Extract<MeshWorkerRequest, { type: 'mesh' }>): Promise<void> {
   const controller = new AbortController();
   inflight.set(request.id, controller);
@@ -100,34 +105,54 @@ async function mesh(request: Extract<MeshWorkerRequest, { type: 'mesh' }>): Prom
         trees: null,
         meshMs: 0,
         treeMs: 0,
+        treesComplete: true,
       });
       return;
     }
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted) {
+      acknowledge(request.id);
+      return;
+    }
 
     const started = performance.now();
     const size = tileSizeMetres(request.tile);
-    const result =
+    const { mesh: result, footprints } =
       request.format === 'goway'
         ? meshCityTile(bytes, size)
         : meshOpenMapTiles(bytes, request, size);
     const meshed = performance.now();
-    const trees = request.trees
-      ? packTrees(await treesFor(request, bytes, size, controller.signal), size)
-      : null;
+    const gathered = request.trees
+      ? await treesFor(request, bytes, size, footprints, (url) => tileBytes(url, controller.signal))
+      : { points: [], complete: true };
+    const trees = packTrees(gathered.points, size);
     const treeMs = performance.now() - meshed;
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted) {
+      acknowledge(request.id);
+      return;
+    }
 
     // Transfer, not copy: a dense tile is tens of megabytes of buffers.
     const transfer: Transferable[] = result ? packedTransferables(result) : [];
     if (trees) transfer.push(trees.data.buffer as ArrayBuffer);
     scope.postMessage(
-      { type: 'mesh', id: request.id, mesh: result, trees, meshMs: meshed - started, treeMs },
+      {
+        type: 'mesh',
+        id: request.id,
+        mesh: result,
+        trees,
+        meshMs: meshed - started,
+        treeMs,
+        treesComplete: gathered.complete,
+      },
       transfer,
     );
   } catch (cause) {
-    // A cancelled request is the engine changing its mind; it wants no reply.
-    if (controller.signal.aborted) return;
+    // A cancelled request is the engine changing its mind: it wants no
+    // result, only to know the slot is free (`workerPool.ts`).
+    if (controller.signal.aborted) {
+      acknowledge(request.id);
+      return;
+    }
     scope.postMessage({
       type: 'error',
       id: request.id,
@@ -140,61 +165,23 @@ async function mesh(request: Extract<MeshWorkerRequest, { type: 'mesh' }>): Prom
 
 type MeshRequest = Extract<MeshWorkerRequest, { type: 'mesh' }>;
 
-/**
- * A tile's trees: the ones OpenStreetMap records (GoWay city tiles only), and
- * the styling fill of mapped woods and parks (`trees.ts`), kept clear of them.
- * For a city tile the fill reads the OpenMapTiles parent's landcover, inside
- * this tile's quarter of it, and comes back in this tile's frame.
- */
-async function treesFor(
-  request: MeshRequest,
-  bytes: ArrayBuffer,
-  size: number,
-  signal: AbortSignal,
-): Promise<TreePoint[]> {
-  const layers = request.trees;
-  if (!layers) return [];
-  const fill = request.treeFill;
-  if (!fill) {
-    const sources = decodeTreeSources(bytes, layers);
-    return sources ? standTrees(sources, request.tile, size) : [];
-  }
-  const mapped = decodeMappedTrees(bytes, fill.mappedLayer);
-  const points = mappedTreePoints(mapped.trees, mapped.extent, size);
-  const parentBytes = await tileBytes(fill.url, signal).catch(() => null);
-  const sources = parentBytes ? decodeTreeSources(parentBytes, layers) : null;
-  if (!sources) return points;
-  // This tile's quarter of the parent, in the parent's tile units.
-  const scale = 2 ** (request.tile.z - fill.tile.z);
-  const qx = request.tile.x - fill.tile.x * scale;
-  const qy = request.tile.y - fill.tile.y * scale;
-  const span = sources.extent / scale;
-  const window = { x0: qx * span, y0: qy * span, x1: (qx + 1) * span, y1: (qy + 1) * span };
-  const toParent = sources.extent / scale / mapped.extent;
-  const parentSize = tileSizeMetres(fill.tile);
-  const filled = standTrees(sources, fill.tile, parentSize, {
-    window,
-    mapped: mapped.trees.map((t) => [window.x0 + t.x * toParent, window.y0 + t.y * toParent]),
-  });
-  // Back into this tile's frame (metres from its north-west corner).
-  const offset = parentSize / scale;
-  for (const tree of filled)
-    points.push({ ...tree, x: tree.x - qx * offset, y: tree.y - qy * offset });
-  return points;
+/** A mesh, and the footprints trees must not stand in. */
+interface Meshed {
+  mesh: PackedMesh | null;
+  footprints: { list: readonly Footprint[]; extent: number };
 }
 
 /** OpenMapTiles' `building` layer, at the level of detail asked for. */
-function meshOpenMapTiles(
-  bytes: ArrayBuffer,
-  request: MeshRequest,
-  size: number,
-): PackedMesh | null {
+function meshOpenMapTiles(bytes: ArrayBuffer, request: MeshRequest, size: number): Meshed {
   const decoded = decodeBuildings(bytes, request.sourceLayer);
-  if (!decoded) return null;
+  if (!decoded) return { mesh: null, footprints: { list: [], extent: 4096 } };
+  const footprints = { list: decoded.features, extent: decoded.extent };
   const options = { extent: decoded.extent, tileSizeMetres: size };
-  if (request.lod !== 0) return meshBuildingsLod(decoded.features, options, request.lod);
+  if (request.lod !== 0) {
+    return { mesh: meshBuildingsLod(decoded.features, options, request.lod), footprints };
+  }
   const full = meshBuildings(decoded.features, options);
-  return full ? packMesh(full, size) : null;
+  return { mesh: full ? packMesh(full, size) : null, footprints };
 }
 
 /**
@@ -202,14 +189,15 @@ function meshOpenMapTiles(
  * Full detail only (`osmMesher.ts` has no far levels yet); packed with its
  * colour and facade lanes.
  */
-function meshCityTile(bytes: ArrayBuffer, size: number): PackedMesh | null {
+function meshCityTile(bytes: ArrayBuffer, size: number): Meshed {
   const decoded = decodeCityTile(bytes);
-  if (!decoded) return null;
+  if (!decoded) return { mesh: null, footprints: { list: [], extent: 4096 } };
+  const footprints = { list: decoded.buildings, extent: decoded.extent };
   const mesh = meshOsmBuildings(decoded.buildings, {
     extent: decoded.extent,
     tileSizeMetres: size,
   });
-  return mesh ? packMesh(mesh, size) : null;
+  return { mesh: mesh ? packMesh(mesh, size) : null, footprints };
 }
 
 scope.onmessage = (event) => {

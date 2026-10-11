@@ -60,7 +60,10 @@ for (let i = 0; i < 60; i++) {
 const context = () => ({
   scene: new THREE.Scene(),
   buildingUniforms: {},
-  buildingShaders: { vertexShader: '', fragmentShader: '' },
+  buildingShaders: {
+    openmaptiles: { vertexShader: '', fragmentShader: '' },
+    goway: { vertexShader: '', fragmentShader: '' },
+  },
   treeUniforms: {},
 });
 

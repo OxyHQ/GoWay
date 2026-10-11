@@ -196,6 +196,18 @@ layer lifts each building (`terrainGround.ts`):
   sampler cache); every building then reads the grid bilinearly, so the cost
   does not grow with the building count (Barcelona: ~15,500 polygons per
   tile).
+- **The ground is the surface model, opened.** Mapterhorn's terrain is
+  Copernicus GLO-30, a SURFACE model: over a dense city it records roofs and
+  canopy, not the street. Read straight off it, Eixample's street trees stood
+  at roof height and buildings were lifted by their neighbours' roofs (owner
+  report on #126). So the grid is now 65 × 65 (≈29 m cells at z14), sampled
+  4 cells past each edge, and OPENED — a minimum then a maximum filter over a
+  5-cell (≈145 m) window — then cropped to the tile (`groundGrid`,
+  `openGrid`): every bump narrower than the window (a building, a block) goes,
+  a planar slope is reproduced exactly, and buildings and trees read the one
+  grid, so they share one ground. Wider structures survive it. Cost: 5,329
+  samples a tile instead of 1,089 — about 5× the ~1 ms above, **not
+  re-measured** — still one tile per frame.
 - **How a building is placed.** MapLibre's own rule for `fill-extrusion`: the
   whole building at the ground under its centre, so roofs stay flat as in the
   data. Its fixed 10 m base sink is replaced by a measured one — the drop from

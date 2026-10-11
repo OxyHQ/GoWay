@@ -51,6 +51,7 @@ import { decodeCityTile } from '../components/map/engine/city3d/osmTiles';
 import {
   CITY_TILE_EXTENT,
   CITY_TILE_LAYER,
+  CITY_COVERAGE_METADATA_KEY,
   CITY_TILE_SCHEMA_VERSION,
   CITY_TILE_ZOOM,
   CITY_PROPS,
@@ -235,6 +236,10 @@ async function build(args: Args): Promise<string> {
         fields: Object.fromEntries(Object.values(CITY_PROPS).map((key) => [key, 'see schema'])),
       },
     ],
+    // The area every building of which is in the archive: the compile box, or
+    // the tiles' extent for a whole extract. Clients draw city tiles only
+    // inside it (`lib/map/cityTiles.ts` → `CITY_COVERAGE_PATH`).
+    [CITY_COVERAGE_METADATA_KEY]: bbox ?? [west, south, east, north],
     'goway:schema': CITY_TILE_SCHEMA_VERSION,
     'goway:extent': CITY_TILE_EXTENT,
     'goway:source': basename(args.pbf),

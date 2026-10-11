@@ -1,27 +1,17 @@
 /**
- * Where the city-3D layer stands trees: styling over mapped areas, NEVER a
- * claim that a tree is there.
+ * The styling fill of mapped WOODS — off unless asked for — and the packing
+ * of every tree (mapped or fill) for the GPU.
  *
- * ## What the data has (measured, see `docs/MAP_3D_CITY.md` → "Trees")
- *
- * GoWay's OpenMapTiles-schema tiles carry **no individual trees**: there is no
- * `natural=tree` point in any layer (`poi` has parks and gardens as POIs, not
- * trees), and no tree rows (`natural=tree_row`). What they do carry is AREAS:
- * `landcover` `class=wood` (`subclass` wood / forest) and `class=grass` with
- * `subclass` park, garden, grass, meadow…; `landuse` pitches and playgrounds;
- * `water`; paths in `transportation`.
- *
- * So the trees here are a FILL of the areas mapped as wood or park — like the
- * tree pattern a paper map prints over a forest. They are placed by a seeded
- * jitter, kept off everything mapped as something else (water, buildings,
- * pitches, open lawns, paths), and drawn as uniform stylised symbols. No tree
- * stands for a mapped tree, none is placed outside a mapped wood or park, and
- * their number, size and position are not data. That is the honesty rule in
- * `docs/MAP_3D_CITY.md` ("procedural detail is styling, never fact"), and it is
- * why the layer can be switched off on its own (`lib/map/city3dFlag.ts`).
- *
- * When GoWay's own 3D tiles (Phase 2) carry `natural=tree` points, those are
- * drawn as what they are, and this fill steps aside where they exist.
+ * GoWay's basemap tiles carry no individual trees; GoWay's city tiles carry
+ * the `natural=tree` points OSM records (`workerTrees.ts`, drawn by default).
+ * This fill is the 3D equivalent of the tree pattern a paper map prints over
+ * a forest: switched on only with `?city3dTreeFill=1` (development) or
+ * `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL=1`, it stands trees in areas mapped as
+ * wood (`landcover` `class=wood`) and NEVER in a park or garden (owner review:
+ * "trees at random everywhere"), clear of everything mapped as something else
+ * and of mapped trees. None of it is data; see `docs/MAP_3D_CITY.md` →
+ * "Trees". The park and lawn classes are still rasterised: they decide
+ * nothing now but keep the raster's precedence rules in one place.
  *
  * ## How
  *
@@ -46,10 +36,8 @@ export const TREES = {
   cellM: 2,
   /** Lattice step, metres: the densest spacing (wood). */
   spacingM: 7,
-  /** Mean spacing per class, metres: the share of lattice points kept. */
+  /** Mean spacing in a wood, metres: the share of lattice points kept. */
   woodSpacingM: 7,
-  parkSpacingM: 10,
-  lawnSpacingM: 20,
   /** Most trees one tile stands (`docs/MAP_3D_CITY.md` → "Budgets"). */
   maxPerTile: 24_000,
   /** Heights, metres (styling, not data). */
@@ -62,7 +50,6 @@ export const TREES = {
    * this is a mix for the eye, not a census of species.
    */
   coniferShareWood: 0.3,
-  coniferShareParks: 0.12,
   /** How far the fill keeps from a tree OpenStreetMap records, metres. */
   mappedClearanceM: 9,
 } as const;
@@ -447,12 +434,9 @@ export function standTrees(
     );
   }
   const step = TREES.spacingM * unitsPerMetre;
-  const keep = [
-    0,
-    (TREES.spacingM / TREES.lawnSpacingM) ** 2,
-    (TREES.spacingM / TREES.parkSpacingM) ** 2,
-    (TREES.spacingM / TREES.woodSpacingM) ** 2,
-  ];
+  // Woods only. Parks and lawns get no fill: a park's trees are what OSM
+  // maps there, or none (owner report: "árboles al tuntún por todos lados").
+  const keep = [0, 0, 0, (TREES.spacingM / TREES.woodSpacingM) ** 2];
   const clearance = grid.cell;
 
   // Lattice cells are anchored to the TILE, not the raster box, so a tile's
@@ -493,8 +477,7 @@ export function standTrees(
     // species and size.
     const bits = Math.floor(tree.seed * 4_294_967_296);
     const conifer =
-      hash32(bits ^ 0x9e3779b9) / 4_294_967_296 <
-      (tree.wood ? TREES.coniferShareWood : TREES.coniferShareParks);
+      hash32(bits ^ 0x9e3779b9) / 4_294_967_296 < (tree.wood ? TREES.coniferShareWood : 0);
     const range = conifer
       ? TREES.coniferHeightM
       : tree.wood

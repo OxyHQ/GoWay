@@ -253,3 +253,12 @@ export class TileCache<T> {
     this.entries.clear();
   }
 }
+
+/**
+ * When to ask again for a tile that arrived INCOMPLETE (its trees' basemap
+ * tile could not be fetched; `workerTrees.ts`): 2 s, 8 s, 30 s after the
+ * 1st, 2nd and 3rd such answer, then never — the tile keeps what it has.
+ */
+export function incompleteRetryMs(attempts: number): number | null {
+  return [2_000, 8_000, 30_000][attempts - 1] ?? null;
+}

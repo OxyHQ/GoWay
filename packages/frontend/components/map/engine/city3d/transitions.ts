@@ -22,20 +22,25 @@
 /** How long a fade takes. */
 export const FADE_MS = 280;
 
-/** One mesh to draw this frame. `out`: keep `noise >= fade` instead of `< fade`. */
+/**
+ * One mesh to draw this frame, and the window of the screen-door noise it
+ * keeps: pixels whose noise is in `[from, to)`. `[0, 1)` is fully drawn.
+ */
 export interface FadeDraw<T> {
   value: T;
-  fade: number;
-  out: boolean;
+  from: number;
+  to: number;
 }
 
 interface Slot<T> {
-  /** What the slot is showing (or fading in). */
+  /** What the slot is showing (or fading in): window `[0, progress)`. */
   shown: T | null;
   shownSince: number;
-  /** What it is fading out, until the shown one has fully faded in. */
+  /** What it is fading out: window `[progress, cap)`, or shrinking on its own. */
   leaving: T | null;
   leavingSince: number;
+  /** How much of the screen the leaving mesh covered when it began to leave. */
+  leavingCap: number;
   /** The frame it was last updated in; slots not updated fade out. */
   touched: number;
 }
@@ -45,6 +50,10 @@ const progress = (now: number, since: number) => Math.max(0, Math.min(1, (now - 
 /**
  * Per-key fade state. Call {@link show} for every slot the frame wants, then
  * {@link draws} once; slots that were not shown this frame fade out.
+ *
+ * Coverage never jumps: a mesh retargeted while still fading in leaves from
+ * the coverage it had reached (`leavingCap`), not from fully drawn — the first
+ * version made it opaque again for the length of a fade (PR #126 review).
  */
 export class Transitions<T> {
   private readonly slots = new Map<string, Slot<T>>();
@@ -60,21 +69,42 @@ export class Transitions<T> {
     let slot = this.slots.get(key);
     if (!slot) {
       if (value === null) return;
-      slot = { shown: value, shownSince: now, leaving: null, leavingSince: now, touched: 0 };
+      slot = {
+        shown: value,
+        shownSince: now,
+        leaving: null,
+        leavingSince: now,
+        leavingCap: 0,
+        touched: 0,
+      };
       this.slots.set(key, slot);
     }
     slot.touched = this.frame;
     this.retarget(slot, value, now);
   }
 
+  /** How much of the screen a slot covers now (its shown and leaving windows). */
+  private coverage(slot: Slot<T>, now: number): number {
+    const f = slot.shown === null ? 0 : progress(now, slot.shownSince);
+    if (slot.leaving === null) return f;
+    if (slot.shown !== null) return Math.max(f, slot.leavingCap);
+    return slot.leavingCap * (1 - progress(now, slot.leavingSince));
+  }
+
   private retarget(slot: Slot<T>, value: T | null, now: number): void {
     if (slot.shown === value) return;
-    // Whatever was shown starts leaving now; if it was itself still fading
-    // in, it leaves from where it got to rather than from fully drawn.
-    const shownProgress = slot.shown === null ? 1 : progress(now, slot.shownSince);
-    if (slot.shown !== null && shownProgress > 0) {
+    // What was shown leaves from the coverage the slot has NOW — nothing
+    // appears or vanishes at the moment of the swap.
+    const covered = this.coverage(slot, now);
+    if (slot.shown !== null && covered > 0) {
       slot.leaving = slot.shown;
-      slot.leavingSince = now - (1 - shownProgress) * FADE_MS;
+      slot.leavingCap = covered;
+      slot.leavingSince = now;
+    } else if (slot.leaving !== null && value !== null) {
+      // Nothing shown, something still dissolving: it now dissolves into the
+      // newcomer instead, from where it is.
+      slot.leavingCap = covered;
+      slot.leavingSince = now;
     }
     slot.shown = value;
     slot.shownSince = now;
@@ -91,17 +121,20 @@ export class Transitions<T> {
       if (slot.touched !== this.frame) this.retarget(slot, null, now);
       const f = progress(now, slot.shownSince);
       if (slot.shown !== null) {
-        draws.push({ value: slot.shown, fade: f, out: false });
+        draws.push({ value: slot.shown, from: 0, to: f });
         if (f < 1) active = true;
       }
       if (slot.leaving !== null) {
-        // Complementary to the incoming mesh while there is one; on its own,
-        // it dissolves over its own clock.
-        const g = slot.shown !== null ? f : progress(now, slot.leavingSince);
-        if (g >= 1) {
+        // Beside an incoming mesh: the pixels it has not taken yet, up to
+        // what the leaving one covered. On its own: shrinking to nothing.
+        const window =
+          slot.shown !== null
+            ? { from: f, to: slot.leavingCap }
+            : { from: 0, to: slot.leavingCap * (1 - progress(now, slot.leavingSince)) };
+        if (window.to <= window.from) {
           slot.leaving = null;
         } else {
-          draws.push({ value: slot.leaving, fade: g, out: true });
+          draws.push({ value: slot.leaving, ...window });
           active = true;
         }
       }
@@ -138,8 +171,8 @@ export class Transitions<T> {
 }
 
 /**
- * The screen-door test, as GLSL: `uFade` is the progress, `uFadeOut` 1 for the
- * outgoing mesh. Interleaved gradient noise (Jimenez 2014) has no visible
+ * The screen-door test, as GLSL: a mesh keeps the pixels whose noise lies in
+ * `[uFadeFrom, uFadeTo)` ({@link FadeDraw}). Interleaved gradient noise (Jimenez 2014) has no visible
  * grid at any fade and costs four multiplies.
  *
  * Compiled in only under `#define DITHER`, which the engine sets on a tile's
@@ -151,12 +184,12 @@ export class Transitions<T> {
  */
 export const DITHER_GLSL = `
 #ifdef DITHER
-uniform float uFade;
-uniform float uFadeOut;
+uniform float uFadeFrom;
+uniform float uFadeTo;
 
 bool ditherDiscard() {
   float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-  return (noise < uFade) == (uFadeOut > 0.5);
+  return noise < uFadeFrom || noise >= uFadeTo;
 }
 #endif
 `;

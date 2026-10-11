@@ -38,3 +38,26 @@ export function isCity3dTreesRequested(input: {
   const value = new URLSearchParams(input.search).get('city3dTrees');
   return value !== '0' && value !== 'false';
 }
+
+/** `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL` is `1`/`true`. */
+export const MAP_CITY3D_TREE_FILL_ENABLED = /^(1|true)$/i.test(
+  process.env.EXPO_PUBLIC_MAP_CITY3D_TREE_FILL ?? '',
+);
+
+/**
+ * Whether the trees include the STYLING fill of mapped woods
+ * (`components/map/engine/city3d/trees.ts`) — off unless a build says
+ * `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL=1` or a DEVELOPMENT tab `?city3dTreeFill=1`.
+ * By default the layer draws only the trees OpenStreetMap records (owner
+ * decision: no trees where none are mapped).
+ */
+export function isCity3dTreeFillRequested(input: {
+  enabled: boolean;
+  development: boolean;
+  search: string;
+}): boolean {
+  if (input.enabled) return true;
+  if (!input.development) return false;
+  const value = new URLSearchParams(input.search).get('city3dTreeFill');
+  return value === '1' || value === 'true';
+}

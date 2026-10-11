@@ -128,6 +128,15 @@ export interface LodView {
   /** The host's zoom and centre, for the screen scale ({@link metresPerPixel}). */
   zoom: number;
   center: { lat: number };
+  /**
+   * On 3D terrain: the ground under the screen centre, and a conservative
+   * range of the ground the tiles stand on, metres as drawn. The host's matrix
+   * then places `z` at absolute elevation, so the ground is NOT at `z = 0`:
+   * distances are measured to the centre's ground, and each tile's culling box
+   * spans the range plus the tallest building — a city on a 1,500 m plateau
+   * otherwise culled itself against a box at sea level (PR #126 review).
+   */
+  terrain?: { centreM: number; minM: number; maxM: number };
 }
 
 /** A point in mercator space, `z` conformal (up). */
@@ -202,10 +211,14 @@ export function eyeFromProjection(mercatorToClip: ArrayLike<number>): MercatorPo
 }
 
 /**
- * Where the ray through the screen centre meets the ground (`z = 0`), or
- * `null` when it does not (looking at or above the horizon).
+ * Where the ray through the screen centre meets the ground (`z = groundZ`,
+ * mercator units; 0 without terrain), or `null` when it does not (looking at
+ * or above the horizon).
  */
-export function groundUnderCentre(mercatorToClip: ArrayLike<number>): MercatorPoint3 | null {
+export function groundUnderCentre(
+  mercatorToClip: ArrayLike<number>,
+  groundZ = 0,
+): MercatorPoint3 | null {
   const inverse = invertMat4(mercatorToClip);
   if (!inverse) return null;
   const near = transform(inverse, 0, 0, -1, 1);
@@ -214,9 +227,9 @@ export function groundUnderCentre(mercatorToClip: ArrayLike<number>): MercatorPo
   const b = { x: far[0] / far[3], y: far[1] / far[3], z: far[2] / far[3] };
   const dz = b.z - a.z;
   if (Math.abs(dz) < 1e-30) return null;
-  const t = -a.z / dz;
+  const t = (groundZ - a.z) / dz;
   if (t < 0) return null;
-  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: 0 };
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: groundZ };
 }
 
 /** The six clip planes `[a, b, c, d]` (inside: `a·x + b·y + c·z + d >= 0`). */
@@ -287,11 +300,14 @@ export function selectLodTiles(
   previous?: ReadonlyMap<string, Lod>,
 ): LodTile[] {
   const eye = eyeFromProjection(view.mercatorToClip);
-  if (!eye || eye.z <= 0) return [];
-  const ground = groundUnderCentre(view.mercatorToClip);
+  const toZ = mercatorPerMetre(view.center.lat);
+  const groundZ = (view.terrain?.centreM ?? 0) * toZ;
+  if (!eye || eye.z <= groundZ) return [];
+  const ground = groundUnderCentre(view.mercatorToClip, groundZ);
   // Looking at the horizon there is no ground under the centre: measure from
   // the eye's height instead (the distance it would be looking straight down).
-  const unit = ground ? Math.hypot(eye.x - ground.x, eye.y - ground.y, eye.z - ground.z) : eye.z;
+  const height = eye.z - groundZ;
+  const unit = ground ? Math.hypot(eye.x - ground.x, eye.y - ground.y, eye.z - ground.z) : height;
   if (!(unit > 0)) return [];
 
   const limits = lodThresholds(policy, metresPerPixel(view.zoom, view.center.lat));
@@ -324,11 +340,13 @@ export function selectLodTiles(
       const x1 = (x + 1) / n;
       const y1 = (y + 1) / n;
       const lat = latFromMercatorY((y + 0.5) / n);
-      const height = policy.boxHeightM * mercatorPerMetre(lat);
-      if (boxOutsideFrustum(planes, [x0, y0, 0], [x1, y1, height])) continue;
+      const perMetre = mercatorPerMetre(lat);
+      const bottom = (view.terrain?.minM ?? 0) * perMetre;
+      const top = ((view.terrain?.maxM ?? 0) + policy.boxHeightM) * perMetre;
+      if (boxOutsideFrustum(planes, [x0, y0, bottom], [x1, y1, top])) continue;
       const dx = Math.max(x0 - eye.x, 0, eye.x - x1);
       const dy = Math.max(y0 - eye.y, 0, eye.y - y1);
-      const r = Math.hypot(dx, dy, eye.z) / unit;
+      const r = Math.hypot(dx, dy, height) / unit;
       if (r >= limits[2] * (1 + policy.hysteresis)) continue;
       const tile: ViewTile = { z: tileZoom, x: ((x % n) + n) % n, y, wrap: Math.floor(x / n) };
       candidates.push({ tile, r, key: tileKey(tile) });

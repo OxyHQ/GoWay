@@ -45,39 +45,81 @@ export function pickWorker(loads: readonly number[], key: string): number {
 
 export interface PoolMessage {
   id: number;
+  type?: string;
 }
 
+/**
+ * Routes requests to workers, cancels them, and survives a worker dying.
+ *
+ * Two rules the first version broke (PR #126 review):
+ *
+ *  - **A cancelled request keeps its slot until its worker says so.** The
+ *    worker acknowledges a cancel (`{ type: 'cancelled' }`) or, if the reply
+ *    was already on its way, replies; only then is the slot free. Freeing it
+ *    at once let new work queue behind work the worker was still doing, and
+ *    a late reply to a cancelled request is discarded, never handed on.
+ *  - **A worker that dies fails its requests and is replaced.** Its in-flight
+ *    requests are reported failed (the engine retries them with backoff) —
+ *    otherwise they stayed pending forever and their tiles never drew.
+ */
 export class WorkerPool<Request extends PoolMessage, Response extends PoolMessage> {
   private readonly workers: Worker[];
   private readonly loads: number[];
   private readonly owner = new Map<number, number>();
+  private readonly cancelled = new Set<number>();
 
   constructor(
-    factory: () => Worker,
+    private readonly factory: () => Worker,
     size: number,
-    onMessage: (response: Response) => void,
-    onError: () => void,
+    private readonly onMessage: (response: Response) => void,
+    /** A request lost to a worker that died; the engine treats it as an error. */
+    private readonly onFailed: (id: number, message: string) => void,
   ) {
     // 0 is allowed: an engine drawing no buildings starts no worker.
-    this.workers = Array.from({ length: Math.max(0, size) }, factory);
+    this.workers = Array.from({ length: Math.max(0, size) }, () => factory());
     this.loads = this.workers.map(() => 0);
     this.workers.forEach((worker, index) => {
-      worker.onmessage = (event: MessageEvent<Response>) => {
-        if (this.owner.get(event.data.id) === index) {
-          this.owner.delete(event.data.id);
-          this.loads[index] = Math.max(0, this.loads[index] - 1);
-        }
-        onMessage(event.data);
-      };
-      worker.onerror = onError;
+      this.attach(worker, index);
     });
+  }
+
+  private attach(worker: Worker, index: number): void {
+    worker.onmessage = (event: MessageEvent<Response>) => {
+      if (this.workers[index] !== worker) return;
+      const { id, type } = event.data;
+      if (this.owner.get(id) !== index) return;
+      this.owner.delete(id);
+      this.loads[index] = Math.max(0, this.loads[index] - 1);
+      if (this.cancelled.delete(id) || type === 'cancelled') return;
+      this.onMessage(event.data);
+    };
+    worker.onerror = (event: ErrorEvent) => {
+      if (this.workers[index] !== worker) return;
+      event.preventDefault?.();
+      this.replace(index, event.message || 'mesh worker failed');
+    };
+  }
+
+  /** Fail every request the worker at `index` held, and start a new one. */
+  private replace(index: number, message: string): void {
+    const lost: number[] = [];
+    for (const [id, owner] of this.owner) if (owner === index) lost.push(id);
+    for (const id of lost) {
+      this.owner.delete(id);
+      if (!this.cancelled.delete(id)) this.onFailed(id, message);
+    }
+    this.loads[index] = 0;
+    this.workers[index].terminate();
+    const fresh = this.factory();
+    this.workers[index] = fresh;
+    this.attach(fresh, index);
   }
 
   get size(): number {
     return this.workers.length;
   }
 
-  /** Requests sent and not yet answered or cancelled. */
+  /** Requests sent and not yet answered — cancelled ones included, until acknowledged. */
   get inFlight(): number {
     return this.owner.size;
   }
@@ -89,17 +131,17 @@ export class WorkerPool<Request extends PoolMessage, Response extends PoolMessag
     this.workers[index].postMessage(request);
   }
 
-  /** Cancel `id` on the worker that has it; `message` is the cancel request. */
+  /** Ask the worker holding `id` to drop it; the slot frees when it answers. */
   cancel(id: number, message: unknown): void {
     const index = this.owner.get(id);
-    if (index === undefined) return;
-    this.owner.delete(id);
-    this.loads[index] = Math.max(0, this.loads[index] - 1);
+    if (index === undefined || this.cancelled.has(id)) return;
+    this.cancelled.add(id);
     this.workers[index].postMessage(message);
   }
 
   terminate(): void {
     for (const worker of this.workers) worker.terminate();
     this.owner.clear();
+    this.cancelled.clear();
   }
 }

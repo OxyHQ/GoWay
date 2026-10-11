@@ -201,6 +201,18 @@ tile the camera sees**, each at the level of detail its distance affords
   `uint16` indices in chunks of ≤ 65,535 vertices. The model matrix undoes the
   quantisation, so the vertex shader is unchanged in cost. Barcelona's
   full-detail tile: 26.2 MB → 17.0 MB with the same vertices and triangles.
+- **Where the city tiles cover the ground** (`sources.ts`): with `?cityTiles=1`
+  a z14 tile wholly inside an archive's compiled area, at full detail, is drawn
+  from its four z15 city tiles; every other tile — outside every archive,
+  straddling an archive's edge, or far enough for a coarser level — from the
+  OpenMapTiles buildings at its level. One source per z14 tile, so the two
+  never double-draw or leave a gap. The compiled area comes from
+  `/map/city/coverage.json` (`CITY_COVERAGE_PATH`; each archive's
+  `goway:coverage` metadata, the compile box), because a city tile's 204 means
+  "empty ground" inside it and "not compiled" outside it. Unreachable,
+  malformed or slow (4 s): no coverage, the OpenMapTiles buildings everywhere.
+  The first version had no such rule: outside Barcelona the map was flat with
+  `building-3d` hidden (owner report, Madrid).
 - **On 3D terrain** (`MAP_TERRAIN_GLOBE.md`): every level, and the trees, are
   placed on the drawn ground by `terrainGround.ts`, through the packed chunks
   (`cityMeshes.ts` → `groundTileFor`); a tile is not drawn until it is lifted.
@@ -356,7 +368,7 @@ does not surface them. So, honestly:
 - A WebView 3D mode (Street 3D's approach) is possible for a dedicated
   "city view" screen, never for the main map.
 
-### 8. Trees: mapped trees first, styling only where none are mapped
+### 8. Trees: the trees OpenStreetMap records
 
 The look is Apple Maps' "Detailed City Experience" maquette (and the analysis in
 Chee Aun's [replicating Apple Maps' 3D trees](https://cheeaun.com/blog/2021/11/replicating-3d-trees-apple-maps/)):
@@ -383,31 +395,42 @@ copied; no asset or code is (all shapes are generated in `treeGeometry.ts`).
   crown from `leaf_type`, genus/species/taxon or family; `height`;
   `diameter_crown`). Barcelona's archive grew 6.16 → 6.99 MB with them.
 
-**What is drawn.**
+**What is drawn.** By default, only trees the data records (owner decision
+after review: "trees on top of buildings, trees at random everywhere" — no
+tree where none is mapped).
 
 1. **Mapped trees** (GoWay city tiles, `?cityTiles=1`): every `natural=tree`
    point, at its position, with its crown form when recorded (else broadleaf),
    its height when recorded (else a typical size for the crown —
    `MAPPED_TREE_HEIGHT_M`, a size for the eye), turned and varied by a seed
-   from its OSM id, so it is the same tree every visit.
-2. **The styling fill** of areas mapped as wood or park, where no tree is
-   mapped (`trees.ts`) — the 3D equivalent of the tree pattern a paper map
-   prints over a forest:
-   - woods dense (one tree per ~7 m), parks and gardens ~10 m, a lawn inside a
-     park ~20 m; open grass (meadow, heath, scrub, allotments), sand, rock and
-     wetland get none, nor does a lawn outside a park;
-   - kept off everything mapped as something else — water, buildings, pitches,
-     playgrounds, tracks, a cleared strip along every path and road by class
-     (2.5 m each side of a footpath, 10 m of a primary) — and **9 m from every
-     mapped tree**, so where a park's trees are mapped the map shows those;
+   from its OSM id, so it is the same tree every visit. With the default
+   OpenMapTiles source there are no tree points, so no trees are drawn.
+2. **No tree in a building** (`workerTrees.ts`): every tree — mapped or fill —
+   whose point falls inside a footprint of its tile's own buildings is dropped
+   (a courtyard is a hole, so a courtyard tree stays). Buildings of a
+   neighbouring tile spilling over the edge are not consulted.
+3. **On the ground, not on the roofs**: on 3D terrain the trees stand on the
+   same opened ground as the buildings (`MAP_TERRAIN_GLOBE.md` → "How a
+   building is placed"): the terrain is a surface model, and a tree read
+   straight off it stood at the height of the next roof.
+4. **The styling fill — off unless asked for** (`?city3dTreeFill=1` in
+   development, `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL=1` for a build;
+   `trees.ts`): the 3D equivalent of the tree pattern a paper map prints over
+   a forest, **in mapped woods only** (`landcover` `class=wood`: wood,
+   forest), never in a park or a garden:
+   - one tree per ~7 m, kept off everything mapped as something else — water,
+     buildings, pitches, playgrounds, tracks, open grass, a cleared strip along
+     every path and road by class (2.5 m each side of a footpath, 10 m of a
+     primary) — and **9 m from every mapped tree**;
    - placed by a jittered lattice seeded by the tile and the cell (same trees
      every visit, none doubled at a seam), ≤ 24,000 per tile, thinned evenly;
-   - a styling mix of crowns: 30% conifers in woods, 12% in parks — the
-     `landcover` layer has no leaf type, so this is for the eye, not a census.
+   - a styling mix of crowns, 30% conifers — the `landcover` layer has no leaf
+     type, so this is for the eye, not a census.
    With GoWay city tiles the fill reads the OpenMapTiles parent tile's
    landcover (the city tiles carry buildings and trees only), inside the city
-   tile's quarter of it. With the default OpenMapTiles source there are no
-   mapped trees, so the fill is all there is.
+   tile's quarter of it; a parent tile that fails to FETCH (not one that is
+   absent) marks the tile incomplete and it is asked for again at 2, 8 and
+   30 s (PR #126 review — it used to be cached without its fill for good).
 3. **Shapes** (`treeGeometry.ts`): three broadleaf canopy variants (an icosphere
    pushed out by five soft lobes, not a sphere; 98 triangles with trunk and
    shadow), a two-tier cone conifer (34), a palm of seven drooping V-section
@@ -430,10 +453,10 @@ copied; no asset or code is (all shapes are generated in `treeGeometry.ts`).
    instanced draws.
 
 **Honesty.** A mapped tree is drawn where OSM records it and as what OSM
-records; its unrecorded size and its turn are styling. A fill tree stands for no
-tree: none stands outside a mapped wood or park, within 9 m of a mapped tree,
-or on anything mapped as something else, and their number, species mix, size
-and position are not data. That is the rule above — procedural detail is
+records; its unrecorded size and its turn are styling. A fill tree — only when
+the fill is switched on — stands for no tree: none stands outside a mapped
+wood, within 9 m of a mapped tree, or on anything mapped as something else,
+and their number, species mix, size and position are not data. That is the rule above — procedural detail is
 styling, never fact — applied to vegetation. The trees can be switched off on
 their own: `EXPO_PUBLIC_MAP_CITY3D_TREES=0` for a build, or `?city3dTrees=0` in
 a development tab (`lib/map/city3dTreesFlag.ts`).
@@ -806,9 +829,13 @@ basemap exactly:
    headers; add `/map/city/*` to `run_worker_first` in `wrangler.toml` — until
    then the SPA fallback answers the path with `index.html` (200), which the
    worker treats as a failed tile.
-4. **ODbL**: publish the archive's URL and its receipt (see Obligations)
+4. **Coverage**: `/map/city/coverage.json` (`CITY_COVERAGE_PATH`) answered
+   from each archive's `goway:coverage` metadata, as the dev route does — the
+   client draws city tiles only inside it and the basemap's buildings
+   elsewhere; without it, the city layer falls back to the basemap everywhere.
+5. **ODbL**: publish the archive's URL and its receipt (see Obligations)
    before the flag is turned on for anyone.
-5. **Flip** `EXPO_PUBLIC_MAP_CITY_TILES` only together with
+6. **Flip** `EXPO_PUBLIC_MAP_CITY_TILES` only together with
    `EXPO_PUBLIC_MAP_CITY3D`, after Phase 1's device gating.
 
 Cost: ~20 GB in R2 is about $0.30 a month; egress is free; the build machine

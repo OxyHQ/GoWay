@@ -48,12 +48,20 @@
 import type { LightSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type { CustomLayerInterface, Map as MapLibreMap, VectorTileSource } from 'maplibre-gl';
 
-import { isCity3dTreesRequested, MAP_CITY3D_TREES_ENABLED } from '@/lib/map/city3dTreesFlag';
 import {
+  isCity3dTreeFillRequested,
+  isCity3dTreesRequested,
+  MAP_CITY3D_TREE_FILL_ENABLED,
+  MAP_CITY3D_TREES_ENABLED,
+} from '@/lib/map/city3dTreesFlag';
+import {
+  CITY_COVERAGE_PATH,
   CITY_TILE_LAYER,
   CITY_TILE_PATH,
   CITY_TILE_ZOOM,
   CITY_TREE_LAYER,
+  type CityCoverageBox,
+  parseCityCoverage,
 } from '@/lib/map/cityTiles';
 import { isCityTilesRequested, MAP_CITY_TILES_ENABLED } from '@/lib/map/cityTilesFlag';
 import {
@@ -83,38 +91,58 @@ import type { GroundStats } from './engine/city3d/terrainGround';
 import { reportMapDefect } from './shared';
 
 /**
- * GoWay's per-building city tiles are drawn from more, smaller tiles than the
- * z14 basemap: 16 z15 tiles is ~3.7 km square around the camera (4 z14
- * tiles' worth), and a dense one is ~20 MB of buffers (measured: Eixample,
- * 7,934 buildings, 600k vertices).
- */
-const CITY_TILES_MAX = 16;
-
-/**
- * Which tiles to mesh: GoWay's city tiles when this page asked for them
- * (`lib/map/cityTilesFlag.ts`), else the basemap's own `building` layer.
+ * Which tiles to mesh: always the basemap's own `building` layer, and — when
+ * this page asked for them (`lib/map/cityTilesFlag.ts`) — GoWay's city tiles
+ * INSTEAD wherever `coverage` says they were compiled (per tile, by the
+ * engine's `sources.ts`). Outside every archive, or with no coverage at all
+ * (the route unreachable), the basemap's buildings draw: never a flat map.
  * Exported for the tests.
  */
 export function citySourceFor(
   basemap: { template: string; maxzoom: number },
   cityTiles: boolean,
   origin: string,
+  coverage: readonly CityCoverageBox[] = [],
 ) {
-  if (!cityTiles) {
-    return {
-      tileUrlTemplate: basemap.template,
-      tileZoom: basemap.maxzoom,
-      sourceLayer: OPENMAPTILES_SOURCE_LAYERS.building,
-      tileFormat: 'openmaptiles' as const,
-    };
-  }
-  return {
-    tileUrlTemplate: `${origin}${CITY_TILE_PATH}`,
-    tileZoom: CITY_TILE_ZOOM,
-    sourceLayer: CITY_TILE_LAYER,
-    tileFormat: 'goway' as const,
-    maxTiles: CITY_TILES_MAX,
+  const base = {
+    tileUrlTemplate: basemap.template,
+    tileZoom: basemap.maxzoom,
+    sourceLayer: OPENMAPTILES_SOURCE_LAYERS.building,
   };
+  if (!cityTiles) return { ...base, city: null };
+  return {
+    ...base,
+    city: {
+      tileUrlTemplate: `${origin}${CITY_TILE_PATH}`,
+      tileZoom: CITY_TILE_ZOOM,
+      sourceLayer: CITY_TILE_LAYER,
+      treeLayer: CITY_TREE_LAYER,
+      coverage,
+    },
+  };
+}
+
+/**
+ * The areas the city-tile archives cover (`CITY_COVERAGE_PATH`). Any failure
+ * — unreachable, slow, malformed — is NO coverage: the layer then draws the
+ * basemap's buildings everywhere rather than a flat map. Exported for tests.
+ */
+export async function fetchCityCoverage(
+  origin: string,
+  fetcher: (url: string, init: { signal: AbortSignal }) => Promise<Response> = fetch,
+  timeoutMs = 4000,
+): Promise<CityCoverageBox[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetcher(`${origin}${CITY_COVERAGE_PATH}`, { signal: controller.signal });
+    if (!response.ok) return [];
+    return parseCityCoverage(await response.json());
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** The custom layer's id, in GoWay's own namespace. */
@@ -211,10 +239,19 @@ export async function attachCity3d(
       development: typeof __DEV__ !== 'undefined' && __DEV__,
       search: typeof window !== 'undefined' ? window.location.search : '',
     });
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const coverage = cityTiles ? await fetchCityCoverage(origin) : [];
+  if (cityTiles && coverage.length === 0) {
+    reportMapDefect(
+      'city3d:city-coverage',
+      'city3d: the city tiles report no coverage; drawing the basemap buildings instead.',
+    );
+  }
   const citySource = citySourceFor(
     { template, maxzoom: source?.maxzoom ?? 14 },
     cityTiles,
-    typeof window !== 'undefined' ? window.location.origin : '',
+    origin,
+    coverage,
   );
 
   const cartography = CARTOGRAPHY_PALETTES[options.appearance];
@@ -229,6 +266,12 @@ export async function attachCity3d(
   const standTrees = isCity3dTreesRequested({
     enabled: MAP_CITY3D_TREES_ENABLED,
     // `typeof`: the attach tests run without the bundler's `__DEV__`.
+    development: typeof __DEV__ !== 'undefined' && __DEV__,
+    search: typeof window === 'undefined' ? '' : window.location.search,
+  });
+  // The styling fill of mapped woods: off unless asked for.
+  const fillWoods = isCity3dTreeFillRequested({
+    enabled: MAP_CITY3D_TREE_FILL_ENABLED,
     development: typeof __DEV__ !== 'undefined' && __DEV__,
     search: typeof window === 'undefined' ? '' : window.location.search,
   });
@@ -264,9 +307,8 @@ export async function attachCity3d(
       gl: gl as WebGL2RenderingContext,
       canvas: host.getCanvas(),
       ...citySource,
-      // The fill reads OpenMapTiles' landcover: from the basemap tile itself,
-      // or — when the buildings come from GoWay city tiles, which carry the
-      // trees OSM records but no landcover — from the basemap's tiles too.
+      // The fill reads OpenMapTiles' landcover; on city tiles the engine
+      // reads it from the basemap tile under them.
       trees: standTrees
         ? {
             sourceLayers: {
@@ -276,15 +318,7 @@ export async function attachCity3d(
               transportation: OPENMAPTILES_SOURCE_LAYERS.transportation,
               building: OPENMAPTILES_SOURCE_LAYERS.building,
             },
-            ...(citySource.tileFormat === 'goway'
-              ? {
-                  fill: {
-                    tileUrlTemplate: template,
-                    tileZoom: source?.maxzoom ?? 14,
-                    mappedLayer: CITY_TREE_LAYER,
-                  },
-                }
-              : {}),
+            fillWoods,
           }
         : null,
       palette,

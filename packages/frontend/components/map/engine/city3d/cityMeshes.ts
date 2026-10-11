@@ -28,6 +28,7 @@ import {
   nearTreeShape,
   type TreeShape,
 } from './treeGeometry';
+import type { CityTileFormat } from './protocol';
 import type { TreeInstances } from './trees';
 import { TREE_FRAGMENT_SHADER, TREE_VERTEX_SHADER } from './treeShaders';
 
@@ -38,10 +39,12 @@ export interface TileEntry {
   buildings: THREE.Mesh[];
   /** Instanced trees: broadleaf, then conifers (each one draw call, when present). */
   trees: THREE.Mesh[];
-  fade: { uFade: { value: number }; uFadeOut: { value: number } };
+  fade: { uFadeFrom: { value: number }; uFadeTo: { value: number } };
   /** Whether its materials carry the screen-door `discard` (see `setEntryFade`). */
   dithering: boolean;
   unitM: number;
+  /** Local metres of the buildings' stored origin (`PackedMesh.originM`). */
+  originM: [number, number];
   /** Where it was last drawn (its world copy can change as the camera pans). */
   placement: ViewTile | null;
   bytes: number;
@@ -59,7 +62,8 @@ export interface EntryContext {
   scene: THREE.Scene;
   /** The building material's uniforms (light, palette, zoom fade). */
   buildingUniforms: Record<string, THREE.IUniform>;
-  buildingShaders: { vertexShader: string; fragmentShader: string };
+  /** The building shaders by source: OpenMapTiles buildings, GoWay city tiles (`osmShaders.ts`). */
+  buildingShaders: Record<CityTileFormat, { vertexShader: string; fragmentShader: string }>;
   /** The tree material's shared uniforms (light, tree colours, zoom fade). */
   treeUniforms: Record<string, THREE.IUniform>;
 }
@@ -183,9 +187,10 @@ export function createTileEntry(
   lod: Lod,
   mesh: PackedMesh | null,
   instances: TreeInstances | null,
+  format: CityTileFormat = 'openmaptiles',
 ): TileEntry | null {
   if (!mesh && !instances) return null;
-  const fade = { uFade: { value: 1 }, uFadeOut: { value: 0 } };
+  const fade = { uFadeFrom: { value: 0 }, uFadeTo: { value: 1 } };
   const entry: TileEntry = {
     key,
     lod,
@@ -194,6 +199,7 @@ export function createTileEntry(
     fade,
     dithering: false,
     unitM: mesh?.unitM ?? instances?.unitM ?? 1,
+    originM: mesh?.originM ?? [0, 0],
     placement: null,
     bytes: 0,
     vertices: 0,
@@ -206,8 +212,8 @@ export function createTileEntry(
 
   if (mesh) {
     const material = materialFor(
-      context.buildingShaders.vertexShader,
-      context.buildingShaders.fragmentShader,
+      context.buildingShaders[format].vertexShader,
+      context.buildingShaders[format].fragmentShader,
       { ...context.buildingUniforms, ...fade },
       SIDE.buildings,
     );
@@ -292,7 +298,7 @@ export function placeEntry(entry: TileEntry, tile: ViewTile, center: MercatorPoi
   entry.placement = tile;
   const model = tileModelMatrix(tile, center);
   if (entry.buildings.length > 0) {
-    const quantized = quantizedModelMatrix(model, entry.unitM);
+    const quantized = quantizedModelMatrix(model, entry.unitM, entry.originM);
     for (const mesh of entry.buildings) mesh.matrixWorld.fromArray(quantized);
   }
   for (const mesh of entry.trees) mesh.matrixWorld.fromArray(model);
@@ -303,10 +309,10 @@ export function placeEntry(entry: TileEntry, tile: ViewTile, center: MercatorPoi
  * `discard` is compiled in only while it is fading (`DITHER`): a shader that
  * can discard loses early depth testing for every pixel it draws.
  */
-export function setEntryFade(entry: TileEntry, fade: number, out: boolean): void {
-  entry.fade.uFade.value = fade;
-  entry.fade.uFadeOut.value = out ? 1 : 0;
-  const dither = out || fade < 1;
+export function setEntryFade(entry: TileEntry, from: number, to: number): void {
+  entry.fade.uFadeFrom.value = from;
+  entry.fade.uFadeTo.value = to;
+  const dither = from > 0 || to < 1;
   if (dither === entry.dithering) return;
   entry.dithering = dither;
   for (const material of entryMaterials(entry)) {

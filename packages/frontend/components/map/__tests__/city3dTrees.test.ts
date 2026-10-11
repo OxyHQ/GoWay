@@ -138,7 +138,7 @@ describe('placeTrees', () => {
     }
   });
 
-  test('a wood is denser than a park, a park than a lawn in a park', () => {
+  test('the fill stands in woods at the configured density, and in no park or lawn', () => {
     const count = (fill: (s: TreeSources) => void) => {
       const s = empty();
       fill(s);
@@ -146,14 +146,13 @@ describe('placeTrees', () => {
     };
     const area = square(200, 200, 1200, 1200);
     const wood = count((s) => s.wood.push([area]));
-    const park = count((s) => s.park.push([area]));
-    const lawn = count((s) => {
-      s.park.push([area]);
-      s.lawn.push([area]);
-    });
-    expect(wood).toBeGreaterThan(park * 2);
-    expect(park).toBeGreaterThan(lawn * 2);
-    expect(lawn).toBeGreaterThan(0);
+    expect(count((s) => s.park.push([area]))).toBe(0);
+    expect(
+      count((s) => {
+        s.park.push([area]);
+        s.lawn.push([area]);
+      }),
+    ).toBe(0);
     // Density near the configured spacing (a 1 km² wood at 7 m ≈ 20,000 lattice cells).
     expect(wood).toBeGreaterThan((1e6 / TREES.woodSpacingM ** 2) * 0.7);
     expect(wood).toBeLessThan(1e6 / TREES.woodSpacingM ** 2);
@@ -190,7 +189,7 @@ describe('placeTrees', () => {
 
   test('the same tile always grows the same trees; another tile other trees', () => {
     const sources = empty();
-    sources.park.push([square(0, 0, 800, 800)]);
+    sources.wood.push([square(0, 0, 800, 800)]);
     const a = placeTrees(sources, TILE, SIZE);
     const b = placeTrees(sources, TILE, SIZE);
     const c = placeTrees(sources, { x: TILE.x + 1, y: TILE.y }, SIZE);
