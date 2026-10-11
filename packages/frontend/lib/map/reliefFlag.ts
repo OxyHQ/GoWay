@@ -1,14 +1,13 @@
 /**
- * Whether this page asked for the globe, or for terrain — the same two-door
- * rule as `city3dFlag.ts`, for the relief features of `docs/MAP_TERRAIN_GLOBE.md`.
+ * Whether this page draws the globe, and terrain — both ON by default, with
+ * two ways to turn either off, deliberately unequal (`docs/MAP_TERRAIN_GLOBE.md`):
  *
- *  - `EXPO_PUBLIC_MAP_GLOBE=1` / `EXPO_PUBLIC_MAP_TERRAIN=1` (`lib/config.ts`):
- *    a BUILD decision. Every page of that build gets it. No production
- *    deployment sets either.
- *  - `?globe=1` / `?terrain=1` on the URL: a per-tab switch for looking at the
- *    prototype beside the shipped map without rebuilding — honoured ONLY in a
- *    development build (`__DEV__`), so a link cannot turn an experimental
- *    renderer on for somebody using goway.to.
+ *  - `EXPO_PUBLIC_MAP_GLOBE=0` / `EXPO_PUBLIC_MAP_TERRAIN=0` (`lib/config.ts`):
+ *    a BUILD decision, the kill switch. Every page of that build loses it.
+ *  - `?globe=0` / `?terrain=0` (or `=1` to turn a killed one back on) on the
+ *    URL: a per-tab switch for comparing beside the flat map without
+ *    rebuilding — honoured ONLY in a development build (`__DEV__`), so a link
+ *    cannot change the renderer for somebody using goway.to.
  *
  * Pure, with its inputs passed in, so "production ignores the query string" is
  * a test rather than a comment (`__tests__/reliefFlag.test.ts`).
@@ -27,11 +26,20 @@ export function isReliefId(id: string | undefined): boolean {
   return typeof id === 'string' && id.startsWith(RELIEF_ID_PREFIX);
 }
 
+/**
+ * A default-ON build flag: anything but an explicit `0`/`false` (any case,
+ * surrounding space ignored) leaves it on — unset, empty and typos included,
+ * because the kill switch must be something somebody meant.
+ */
+export function enabledUnlessKilled(value: string | undefined): boolean {
+  return !/^\s*(0|false)\s*$/i.test(value ?? '');
+}
+
 /** The relief features a page can ask for. */
 export type ReliefFeature = 'globe' | 'terrain';
 
 export interface ReliefFlagInput {
-  /** `MAP_GLOBE_ENABLED` / `MAP_TERRAIN_ENABLED` from `lib/config.ts`. */
+  /** `MAP_GLOBE_ENABLED` / `MAP_TERRAIN_ENABLED` from `lib/config.ts` (on unless killed). */
   enabled: Readonly<Record<ReliefFeature, boolean>>;
   /** `__DEV__`. */
   development: boolean;
@@ -43,10 +51,12 @@ export interface ReliefFlagInput {
 export type ReliefFlags = Readonly<Record<ReliefFeature, boolean>>;
 
 function requested(input: ReliefFlagInput, feature: ReliefFeature): boolean {
-  if (input.enabled[feature]) return true;
-  if (!input.development) return false;
-  const value = new URLSearchParams(input.search).get(feature);
-  return value === '1' || value === 'true';
+  if (input.development) {
+    const value = new URLSearchParams(input.search).get(feature);
+    if (value === '0' || value === 'false') return false;
+    if (value === '1' || value === 'true') return true;
+  }
+  return input.enabled[feature];
 }
 
 export function resolveReliefFlags(input: ReliefFlagInput): ReliefFlags {
