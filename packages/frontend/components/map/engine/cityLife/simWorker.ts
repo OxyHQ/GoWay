@@ -17,6 +17,13 @@ import { CITY_TILE_ZOOM } from '@/lib/map/cityTiles';
 
 import { mercatorXFromLng, mercatorYFromLat, tileKey } from '../city3d/tileMath';
 import type { SimWorkerRequest, SimWorkerResponse } from './protocol';
+import {
+  decodeOmtRoads,
+  type HealStats,
+  healRoads,
+  type OmtLine,
+  piecesForTiles,
+} from './omtRoads';
 import { type DecodedRoadTile, decodeRoadTile } from './roadTiles';
 import { drivingSideAt } from './sim/drivingSide';
 import { taxiLiveryAt } from './sim/liveries';
@@ -50,10 +57,20 @@ let sim: CitySimulation | null = null;
 let paused = false;
 let lastView: Extract<SimWorkerRequest, { type: 'view' }> | null = null;
 
+/**
+ * Per z15 tile, where its roads come from — never both (`docs/MAP_CITY_LIFE.md`
+ * → "Worldwide"): the compiled road archive when it has the tile, else the
+ * basemap's `transportation` layer, healed (`omtRoads.ts`).
+ */
+type TileSource = 'archive' | 'basemap';
 const tiles = new Map<
   string,
-  { x: number; y: number; data: DecodedRoadTile | null; failed?: boolean }
+  { x: number; y: number; data: DecodedRoadTile | null; failed?: boolean; source: TileSource }
 >();
+/** Basemap tiles' classified road lines, by basemap tile key; `null` while loading. */
+const basemapLines = new Map<string, OmtLine[] | null>();
+let fallback: { template: string; zoom: number; sourceLayer: string } | null = null;
+let healed: { key: string; tiles: Map<string, DecodedRoadTile>; stats: HealStats } | null = null;
 const inflight = new Map<string, AbortController>();
 let wanted: { x: number; y: number }[] = [];
 let networkKey = '';
@@ -94,23 +111,88 @@ function fetchTiles(): void {
       .replace('{y}', String(tile.y));
     fetch(url, { signal: controller.signal })
       .then(async (response) => {
-        if (response.status === 204 || response.status === 404) return null;
+        // No archive tile here — not compiled (204/404), or no archive served
+        // at all (an SPA answering the path with its page): the basemap.
+        const type = response.headers.get('content-type') ?? '';
+        if (response.status === 204 || response.status === 404 || type.includes('html')) {
+          return { data: null, source: 'basemap' as const };
+        }
         if (!response.ok) throw new Error(`road tile ${url}: ${response.status}`);
-        return decodeRoadTile(await response.arrayBuffer(), tile);
+        const data = decodeRoadTile(await response.arrayBuffer(), tile);
+        return { data, source: 'archive' as const };
       })
-      .then((data) => {
-        tiles.set(key, { ...tile, data });
+      .then(({ data, source }) => {
+        tiles.set(key, { ...tile, data, source });
+        if (source === 'basemap') fetchBasemap(tile);
         scheduleRebuild();
       })
       .catch(() => {
         // A failed tile is a hole in the network, retried on the next view change.
-        if (!controller.signal.aborted) tiles.set(key, { ...tile, data: null, failed: true });
+        if (!controller.signal.aborted) {
+          tiles.set(key, { ...tile, data: null, failed: true, source: 'archive' });
+        }
       })
       .finally(() => {
         inflight.delete(key);
         fetchTiles();
       });
   }
+}
+
+/** The basemap tile over a z15 tile (the basemap's max zoom is ≤ 15). */
+function basemapTileOf(tile: { x: number; y: number }): { z: number; x: number; y: number } | null {
+  if (!fallback) return null;
+  const shift = 2 ** (CITY_TILE_ZOOM - fallback.zoom);
+  return { z: fallback.zoom, x: Math.floor(tile.x / shift), y: Math.floor(tile.y / shift) };
+}
+
+function fetchBasemap(tile: { x: number; y: number }): void {
+  const parent = basemapTileOf(tile);
+  if (!parent || !fallback) return;
+  const key = tileKey(parent);
+  if (basemapLines.has(key)) return;
+  basemapLines.set(key, null);
+  const { template: basemapTemplate, sourceLayer } = fallback;
+  const url = basemapTemplate
+    .replace('{z}', String(parent.z))
+    .replace('{x}', String(parent.x))
+    .replace('{y}', String(parent.y));
+  fetch(url)
+    .then(async (response) => {
+      if (response.status === 204 || response.status === 404) return [];
+      if (!response.ok) throw new Error(`basemap tile ${url}: ${response.status}`);
+      return decodeOmtRoads(await response.arrayBuffer(), parent, sourceLayer);
+    })
+    .then((lines) => {
+      basemapLines.set(key, lines);
+      scheduleRebuild();
+    })
+    .catch(() => basemapLines.delete(key));
+}
+
+/** The healed basemap roads for the wanted tiles that have no archive tile. */
+function basemapTiles(): { x: number; y: number; data: DecodedRoadTile; source: TileSource }[] {
+  if (!frame || !fallback) return [];
+  const children = wanted.filter(
+    (t) => tiles.get(tileKey({ z: CITY_TILE_ZOOM, ...t }))?.source === 'basemap',
+  );
+  if (children.length === 0) return [];
+  const parents = [...new Set(children.map((t) => tileKey(basemapTileOf(t) as never)))].sort();
+  // Heal only once every parent is in: a half-loaded neighbourhood heals into
+  // false dead ends at its edge.
+  if (parents.some((key) => !basemapLines.get(key))) return [];
+  const keep = new Set(children.map((t) => `${t.x}/${t.y}`));
+  const key = `${parents.join(',')}|${[...keep].sort().join(',')}`;
+  if (healed?.key !== key) {
+    const lines = parents.flatMap((p) => basemapLines.get(p) ?? []);
+    const result = healRoads(lines, frame.metresPerUnit);
+    healed = { key, tiles: piecesForTiles(result, keep), stats: result.stats };
+  }
+  return children.map((t) => ({
+    ...t,
+    data: healed?.tiles.get(`${t.x}/${t.y}`) ?? { pieces: [], nodes: [], restrictions: [] },
+    source: 'basemap' as const,
+  }));
 }
 
 function scheduleRebuild(): void {
@@ -123,10 +205,14 @@ function scheduleRebuild(): void {
 function rebuild(): void {
   rebuildTimer = null;
   if (!frame || !lastView) return;
-  const loaded = wanted
+  const archived = wanted
     .map((t) => tiles.get(tileKey({ z: CITY_TILE_ZOOM, ...t })))
-    .filter((t): t is { x: number; y: number; data: DecodedRoadTile } => Boolean(t?.data));
-  const key = loaded.map((t) => `${t.x}/${t.y}`).join(',');
+    .filter(
+      (t): t is { x: number; y: number; data: DecodedRoadTile; source: TileSource } =>
+        Boolean(t?.data) && t?.source === 'archive',
+    );
+  const loaded = [...archived, ...basemapTiles()];
+  const key = loaded.map((t) => `${t.source}:${t.x}/${t.y}`).join(',');
   if (key === networkKey) return;
   networkKey = key;
   const network = buildNetwork({
@@ -234,7 +320,11 @@ function loop(): void {
         wanted: wanted.length,
         loaded: wanted.filter((w) => tiles.get(tileKey({ z: CITY_TILE_ZOOM, ...w }))?.data).length,
         failed: [...tiles.values()].filter((w) => w.failed).length,
+        basemap: wanted.filter(
+          (w) => tiles.get(tileKey({ z: CITY_TILE_ZOOM, ...w }))?.source === 'basemap',
+        ).length,
       },
+      heal: healed?.stats ?? null,
     });
   }
   setTimeout(loop, Math.max(0, nextStep - now()));
@@ -269,6 +359,7 @@ scope.onmessage = (event) => {
   const message = event.data;
   if (message.type === 'init') {
     template = message.template;
+    fallback = message.fallback ?? null;
     seed = message.seed;
     budget = message.budget;
     loop();

@@ -210,16 +210,16 @@ export const MAP_FEATURES = [
     tier: 'labs',
     defaultOn: false,
     build: process.env.EXPO_PUBLIC_MAP_CITY_LIFE,
-    // It drives on the road archive compiled beside the city tiles.
-    requires: ['cityTiles'],
+    // Drawn by the city engine; it drives on the road archive where one exists
+    // and on the basemap's own roads, healed, everywhere else — no city tiles.
+    requires: ['city3d'],
     platforms: WEB,
-    // Nothing serves the road tiles on goway.to yet (`docs/MAP_CITY_LIFE.md` →
-    // Hosting), as for the city tiles it needs.
+    // Development only until the frame-cost budget is measured on mid-range
+    // devices (`docs/MAP_CITY_LIFE.md` → Performance).
     offer: 'development',
     request: (enabled, { development, search, on }) =>
       isCityLifeRequested({
         city3d: on('city3d'),
-        cityTiles: on('cityTiles'),
         enabled,
         development,
         search,

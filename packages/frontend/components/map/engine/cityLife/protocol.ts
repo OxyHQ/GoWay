@@ -5,6 +5,7 @@
  * Types only, so both sides import it without pulling in the other's code.
  */
 import type { LngLatBox } from '../city3d/tileMath';
+import type { HealStats } from './omtRoads';
 import type { SimBudget, SimStats } from './sim/simulation';
 import type { CarModel } from './sim/traffic';
 
@@ -15,6 +16,11 @@ export type SimWorkerRequest =
       template: string;
       seed: number;
       budget: SimBudget;
+      /**
+       * The basemap's vector tiles, healed into roads where no road archive
+       * tile exists (`omtRoads.ts`). Absent: the archive only.
+       */
+      fallback?: { template: string; zoom: number; sourceLayer: string };
     }
   | {
       type: 'view';
@@ -56,7 +62,10 @@ export interface SimStatsMessage {
     pedEdges: number;
     buildMs: number;
   } | null;
-  tiles: { wanted: number; loaded: number; failed: number };
+  /** `basemap`: wanted tiles drawn from the healed basemap (no archive tile). */
+  tiles: { wanted: number; loaded: number; failed: number; basemap: number };
+  /** The last basemap heal (`omtRoads.ts`), or `null` when every tile had an archive tile. */
+  heal: HealStats | null;
 }
 
 export type SimWorkerResponse = SimFrameMessage | SimStatsMessage;

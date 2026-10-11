@@ -22,12 +22,17 @@ Three flags, each a refinement of the one before, all off in production:
 | City tiles | `EXPO_PUBLIC_MAP_CITY_TILES=1` | `?cityTiles=1` |
 | **City life** | `EXPO_PUBLIC_MAP_CITY_LIFE=1` | `?cityLife=1` |
 
-`lib/map/cityLifeFlag.ts` requires both of the others: the simulation is drawn
-by the city-3D engine and drives on road tiles compiled beside the city tiles.
+`lib/map/cityLifeFlag.ts` requires the city-3D flag (the engine draws the
+agents). It does NOT require the city tiles: traffic runs anywhere — on the
+compiled road archive where one covers a tile, on the basemap's own roads,
+healed, everywhere else ([Worldwide](#worldwide-the-basemap-healed)). Without
+any archive, `?city3d=1&cityLife=1` shows traffic in any city:
+`…/?city3d=1&cityLife=1&lat=-23.5614&lng=-46.6559&zoom=17.8&pitch=55` (São
+Paulo, Avenida Paulista).
 All three are entries in the map-feature registry ([`MAP_FEATURES.md`](./MAP_FEATURES.md)),
 so in a development build they can also be switched in the settings modal's Labs
-(`?labs=1`); city tiles and city life are offered there only in development
-builds until the archives are served.
+(`?labs=1`); city life is offered there only in development builds until its
+frame cost is budgeted on mid-range devices.
 
 ```bash
 # 1. Compile the road archive (same extract, same z15 grid as the buildings).
@@ -102,6 +107,60 @@ on.
 Both cities are rich: Barcelona's lanes and speeds, Manhattan's sidewalks and
 crossings. A town with none of these tags still simulates — on class defaults —
 and looks emptier on its pavements, which is the honest outcome.
+
+## Worldwide: the basemap, healed
+
+Compiled road archives exist for a few cities; traffic should work in all of
+them. So **per z15 tile** the simulation worker picks one source, never both:
+
+1. the compiled road archive, when it has the tile (exact topology, lanes,
+   speeds, signals, crossings, restrictions — everything above);
+2. otherwise the **basemap's own `transportation` layer**, healed
+   (`omtRoads.ts`), from the tile MapLibre has normally already fetched.
+
+The seam between two sources is treated as a cut in the network (cars leave
+there rather than turning round), because the two geometries do not meet.
+A tile is "not in the archive" when the road route answers 204/404 or with a
+page instead of a tile (no archive served at all — production today).
+
+The healing, measured above to be needed (the basemap's lines are merged and
+simplified: 16–29% of ends land on another line's interior, 36–50% on
+nothing):
+
+- **Classify**: motorway … service become car roads (`minor` → residential,
+  `ramp` → `*_link`; parking aisles, driveways and `access=private|no`
+  dropped); `path` with a pedestrian subclass becomes a footway. Lanes and
+  speeds then come from the class (the same defaults as a missing tag), one-way
+  from the tag (implied on motorways).
+- **Clip** each basemap tile's lines to the tile (tiles overlap by a buffer).
+- **Snap** ends within 4 m into one junction, and ends within 4 m of another
+  line's interior onto it (the T-junctions).
+- **Split at crossings** at grade — never where one is a bridge or tunnel the
+  other is not. A footway crossing a car road there becomes a crossing (cars
+  yield, people wait for a gap), as on a mapped one.
+- **Split** every line at every shared vertex, so a piece's ends are the
+  graph's only nodes, as in the archive.
+- **Drop fragments**: connected pieces totalling under 120 m.
+- **Synthesise signals**, as simulation: where two major roads (trunk,
+  primary, secondary) meet, a two-phase cycle; every other junction runs on
+  first-come reservations. No real signal is claimed.
+
+People walk only where the basemap has footways; where it has none, there are
+no simulated people (no invented pavements).
+
+Measured (Bun, 25 z15 tiles around the centre, 1,200 + 1,200 budget, 60 s,
+`scripts/bench-city-life.ts --basemap=…`):
+
+| | Madrid (Gran Vía) | Paris (Opéra) | Tokyo (Shinjuku) | São Paulo (Paulista) |
+| --- | ---: | ---: | ---: | ---: |
+| Heal | 1.35 s | 1.0–2.2 s | 1.3 s | 0.5 s |
+| Lanes / connectors / synthesised signals | 8,778 / 13,581 / 149 | 6,976 / 10,561 / 144 | 23,870 / 44,620 / 121 | 4,431 / 6,589 / 79 |
+| Step p50 / p95 | 0.58 / 1.22 ms | 0.90 / 2.12 ms | 1.68 / 3.64 ms | 0.72 / 1.41 ms |
+| Cars moving / mean speed / **overlaps** | 65% / 12.5 km/h / **0** | 46% / 9.2 km/h / **0** | 52% / 10.9 km/h / **0** | 62% / 13.9 km/h / **0** |
+
+In the browser's worker, at the 4–9 tiles a z17.8–18 view loads, healing took
+260–710 ms. It runs once per change of the basemap tiles in play (a pan into
+new ones), and the agents hold still meanwhile — a known cost (see Limits).
 
 ## The simulation
 
@@ -344,6 +403,12 @@ receipt (`/map/city/data/…`) before the flag is turned on for anyone.
 - **No night**: headlights would need a night state from the sky work; none is
   assumed.
 - **Not native**: like the city-3D layer it is web only.
+- **Worldwide fallback** (`omtRoads.ts`) is lower fidelity: no recorded
+  lanes, speeds, signals, crossings or restrictions — class defaults and
+  synthesised signals instead — and its healing (0.3–2 s per neighbourhood,
+  in the worker) re-runs when a pan brings in new basemap tiles, holding the
+  agents still meanwhile. Per-tile healing with a cheap seam pass would make
+  that incremental.
 - **Next**: `turn:lanes`, bus routes from `route=bus` relations (with stops),
   speed bumps and `traffic_calming`, junction clusters joined geometrically,
   and the device perf budget above.

@@ -2,9 +2,11 @@
  * Whether the city-3D layer also draws the city-life SIMULATION — cars and
  * people moving on the real street network (`docs/MAP_CITY_LIFE.md`).
  *
- * A refinement of the city-3D and city-tiles flags, never a way around them:
- * the simulation is drawn by the city-3D engine and drives on the road tiles
- * the city-tile compiler builds, so it requires both answers explicitly.
+ * A refinement of the city-3D flag, never a way around it: the simulation is
+ * drawn by the city-3D engine, so it requires that answer explicitly. It does
+ * NOT need the city tiles: it drives on the compiled road archive where one
+ * exists and on the basemap's own roads, healed, everywhere else
+ * (`docs/MAP_CITY_LIFE.md` → "Worldwide").
  * Consulted only by the map-feature registry. Two ways
  * in, unequal exactly as `city3dFlag.ts`'s are:
  *
@@ -22,8 +24,6 @@
 export function isCityLifeRequested(input: {
   /** Whether the city-3D layer is on (`isCity3dRequested`). */
   city3d: boolean;
-  /** Whether it reads GoWay's city tiles (`isCityTilesRequested`). */
-  cityTiles: boolean;
   /** The registry's answer for `cityLife` (`mapFeatures.ts`). */
   enabled: boolean;
   /** `__DEV__`. */
@@ -31,7 +31,7 @@ export function isCityLifeRequested(input: {
   /** `window.location.search`, or `''` where there is no window. */
   search: string;
 }): boolean {
-  if (!input.city3d || !input.cityTiles) return false;
+  if (!input.city3d) return false;
   if (input.enabled) return true;
   if (!input.development) return false;
   const value = new URLSearchParams(input.search).get('cityLife');

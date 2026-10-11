@@ -68,6 +68,8 @@ const STEP_S = 0.05;
 export interface CityLifeOptions {
   /** Absolute `{z}/{x}/{y}` template of the road tiles. */
   roadTileTemplate: string;
+  /** The basemap's vector tiles, for roads where no road archive tile exists (`omtRoads.ts`). */
+  basemapRoads?: { template: string; zoom: number; sourceLayer: string };
   budget: SimBudget;
   seed: number;
   requestRepaint: () => void;
@@ -238,6 +240,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     template: options.roadTileTemplate,
     seed: options.seed,
     budget: options.budget,
+    fallback: options.basemapRoads,
   });
 
   /** The last few states, oldest first. */

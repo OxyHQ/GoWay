@@ -1,13 +1,13 @@
 /**
- * The city-life switch refines BOTH the city-3D and the city-tiles flags and
- * never stands alone, and a production build ignores the query string — the
- * rules of `city3dFlag.ts`, pinned the same way.
+ * The city-life switch refines the city-3D flag and never stands alone, and a
+ * production build ignores the query string — the rules of `city3dFlag.ts`,
+ * pinned the same way.
  */
 import { describe, expect, test } from 'bun:test';
 
 import { isCityLifeRequested } from '@/lib/map/cityLifeFlag';
 
-const base = { city3d: true, cityTiles: true, enabled: false, development: true, search: '' };
+const base = { city3d: true, enabled: false, development: true, search: '' };
 
 describe('isCityLifeRequested', () => {
   test('off unless asked for', () => {
@@ -25,9 +25,9 @@ describe('isCityLifeRequested', () => {
     expect(isCityLifeRequested({ ...base, search: '?cityLife=0' })).toBe(false);
   });
 
-  test('never without the city-3D layer or the city tiles it drives on', () => {
+  test('never without the city-3D layer; the city tiles are not required (worldwide)', () => {
     expect(isCityLifeRequested({ ...base, city3d: false, enabled: true })).toBe(false);
-    expect(isCityLifeRequested({ ...base, cityTiles: false, enabled: true })).toBe(false);
-    expect(isCityLifeRequested({ ...base, cityTiles: false, search: '?cityLife=1' })).toBe(false);
+    expect(isCityLifeRequested({ ...base, city3d: false, search: '?cityLife=1' })).toBe(false);
+    expect(isCityLifeRequested({ ...base, search: '?city3d=1&cityLife=1' })).toBe(true);
   });
 });
