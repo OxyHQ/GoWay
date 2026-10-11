@@ -275,11 +275,45 @@ export function hoursExceptionSnapshot(row: {
 }
 
 /**
+ * When a revision is recorded: the moment of the insert, and never before the
+ * place's newest revision.
+ *
+ * NOT the column's default, `now()`, which is when the TRANSACTION began. A
+ * write that waited on the place's row lock began before the write it waited
+ * for, so stamped by `now()` its revision sorted BEFORE the revision whose
+ * `after` its own `before` is — the history listed the two edits in the
+ * opposite order to the one they took effect in, and anything reading "the
+ * latest revision" (the claimant re-tier among them) read the wrong one.
+ *
+ * `clock_timestamp()` is read after the lock is held, so a write serialized
+ * behind another is stamped after it; the floor of one millisecond past the
+ * newest revision makes that strict, because both stamps can fall in the same
+ * millisecond, and a tie would then be broken by `id` — an application
+ * clock's uuidv7, which nothing serializes. The newest revision is read by a
+ * statement that starts after the lock is held, so under READ COMMITTED it
+ * sees every revision committed by whoever held the lock before.
+ *
+ * Truncated to milliseconds for the same reason the default is: a JS `Date`
+ * holds no more, and the `(createdAt, id)` cursor compares against what was
+ * read back.
+ */
+function recordedAt(placeId: string): SQL {
+  return sql`greatest(
+    date_trunc('milliseconds', clock_timestamp()),
+    (select max(${placeRevisions.createdAt}) + interval '1 millisecond'
+       from ${placeRevisions} where ${placeRevisions.placeId} = ${placeId})
+  )`;
+}
+
+/**
  * Record one write. Call it INSIDE the write's transaction, after the write.
  *
  * Exactly one revision per write, even when `changes` is empty — a write that
  * restated what was already there still happened, and "somebody confirmed
  * this" is history too.
+ *
+ * Writes serialized by a lock are listed in the order they took effect: see
+ * {@link recordedAt}.
  */
 export async function recordRevision(
   tx: DatabaseOrTransaction,
@@ -297,6 +331,7 @@ export async function recordRevision(
     oxyAccountId: revision.author.oxyAccountId,
     operatedByOxyUserId: revision.author.operatedByOxyUserId,
     changes: [...revision.changes],
+    createdAt: recordedAt(revision.placeId),
   });
 }
 

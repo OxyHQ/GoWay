@@ -419,7 +419,8 @@ async function retierClaimantStatements(tx: DatabaseOrTransaction, claim: ClaimR
   if (communityCapabilities.length === 0 && communityExceptions.length === 0) return;
 
   // Everything recorded since the claim was filed, newest first: the filing
-  // itself (same transaction, same instant) and every write after it.
+  // itself (same transaction, stamped no earlier than its `now()`) and every
+  // write after it, in the order they took effect (`recordRevision`).
   const revisions = await tx
     .select({
       action: placeRevisions.action,
