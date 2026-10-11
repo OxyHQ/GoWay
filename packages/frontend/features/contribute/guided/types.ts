@@ -1,5 +1,5 @@
 import type { ImagePickerAsset } from 'expo-image-picker';
-import type { CaptureUploadPolicy } from '@goway.to/sdk';
+import type { CaptureMotionInput, CaptureUploadPolicy } from '@goway.to/sdk';
 
 /**
  * A finished guided recording, shaped like a picked video so it goes through
@@ -14,6 +14,8 @@ export interface GuidedRecording {
   stoppedAtLimit: boolean;
   /** Share of the recording the blur warning was up, 0–1. Absent where frames cannot be sampled. */
   blurryFraction?: number;
+  /** The phone's gravity through the recording (native only); see `motionSensor.ts`. */
+  motion?: CaptureMotionInput;
 }
 
 export interface GuidedCaptureProps {

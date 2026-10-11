@@ -14784,6 +14784,66 @@
                 "maximum": 1000
               }
             }
+          },
+          "motion": {
+            "type": "object",
+            "properties": {
+              "orientation": {
+                "type": "string",
+                "enum": [
+                  "portrait",
+                  "portraitUpsideDown",
+                  "landscapeLeft",
+                  "landscapeRight"
+                ]
+              },
+              "samples": {
+                "minItems": 1,
+                "maxItems": 14400,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "t": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 86400
+                    },
+                    "gravity": {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "type": "number",
+                          "minimum": -1.01,
+                          "maximum": 1.01
+                        },
+                        {
+                          "type": "number",
+                          "minimum": -1.01,
+                          "maximum": 1.01
+                        },
+                        {
+                          "type": "number",
+                          "minimum": -1.01,
+                          "maximum": 1.01
+                        }
+                      ],
+                      "items": false,
+                      "minItems": 3,
+                      "maxItems": 3
+                    }
+                  },
+                  "required": [
+                    "t",
+                    "gravity"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "orientation",
+              "samples"
+            ]
           }
         },
         "required": [

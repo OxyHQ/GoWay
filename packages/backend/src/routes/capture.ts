@@ -486,6 +486,7 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
           ...(input.capturedAt ? { capturedAt: new Date(input.capturedAt) } : {}),
           evidence,
           ...(camera ? { camera } : {}),
+          ...(input.motion ? { motion: input.motion } : {}),
         },
         { keyPrefix: captureConfig.keyPrefix },
       );

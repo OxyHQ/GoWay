@@ -86,10 +86,12 @@ import {
   CAPTURE_LOCATION_ORIGINS,
   CAPTURE_LOCATION_WITNESSES,
   CAPTURE_MEDIA_KINDS,
+  CAPTURE_MOTION_ORIENTATIONS,
   CAPTURE_PROJECTIONS,
   CAPTURE_PRIVACY_STATES,
   CAPTURE_RETENTION_CLASSES,
   CAPTURE_SOURCES,
+  MAX_CAPTURE_MOTION_SAMPLES,
   DELETION_REASONS,
   RETENTION_REASONS,
 } from '@goway/contracts';
@@ -792,6 +794,54 @@ export const captureLocationEvidence = pgTable(
     /** Explicitly named: the derived name would exceed Postgres's 63-byte identifier limit. */
     unique('capture_evidence_assertion_key').on(table.assetId, table.origin, table.witness),
     index('capture_evidence_asset_idx').on(table.assetId),
+  ],
+);
+
+/**
+ * Which way was down while a capture was being taken, as the contributor's
+ * phone measured it: gravity in the device's axes at seconds since the
+ * capture started, and how the recorded picture was turned.
+ *
+ * It has ONE consumer — the privacy result, which turns it into one measured
+ * gravity per privacy-safe frame (`capture_derivatives.gravity_*`) — and it is
+ * deleted the moment that happens. Otherwise it lives exactly as long as the
+ * raw media it describes: the cleanup sweeper deletes it in the transaction
+ * that commits the raw object's deletion, whatever the reason (expiry,
+ * withdrawal, moderation, or a derivative superseding it).
+ *
+ * Parallel typed arrays rather than a blob, so the shape is the schema's to
+ * enforce: equal lengths, bounded, unit vectors checked by the API. It holds
+ * no position, no heading and no acceleration — gravity's DIRECTION is all a
+ * reconstruction needs from the phone's motion sensors.
+ */
+export const captureMotionTracks = pgTable(
+  'capture_motion_tracks',
+  {
+    assetId: text()
+      .primaryKey()
+      .references(() => captureAssets.id, { onDelete: 'cascade' }),
+    orientation: text().notNull(),
+    /** Seconds since the capture started, strictly increasing. */
+    sampleSeconds: doublePrecision().array().notNull(),
+    /** Gravity, a unit vector pointing down, in the device's own axes. */
+    gravityX: doublePrecision().array().notNull(),
+    gravityY: doublePrecision().array().notNull(),
+    gravityZ: doublePrecision().array().notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    closedSet(
+      'capture_motion_tracks_orientation_check',
+      table.orientation,
+      CAPTURE_MOTION_ORIENTATIONS,
+    ),
+    check(
+      'capture_motion_tracks_samples_check',
+      sql`cardinality(${table.sampleSeconds}) between 1 and ${sql.raw(String(MAX_CAPTURE_MOTION_SAMPLES))}
+          and cardinality(${table.gravityX}) = cardinality(${table.sampleSeconds})
+          and cardinality(${table.gravityY}) = cardinality(${table.sampleSeconds})
+          and cardinality(${table.gravityZ}) = cardinality(${table.sampleSeconds})`,
+    ),
   ],
 );
 

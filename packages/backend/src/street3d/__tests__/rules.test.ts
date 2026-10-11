@@ -90,6 +90,9 @@ function frame(id: string, fields: Partial<EligibleFrame> = {}): EligibleFrame {
     panoramaIndex: null,
     panoramaYawDegrees: null,
     panoramaFovDegrees: null,
+    gravityX: null,
+    gravityY: null,
+    gravityZ: null,
     geoCell: 'sp3e9bh00',
     assetState: 'waiting_for_overlap',
     ...fields,
@@ -160,6 +163,15 @@ describe('information gain', () => {
     expect(JSON.stringify(frames)).not.toContain('session-');
     expect(frames.map((entry) => entry.sequenceIndex)).toEqual([0, 1, 0]);
     expect(sequenceGroup('job-2', 'session-x')).not.toBe(groups[0]);
+  });
+
+  it("hands the solve a frame's measured gravity, and nothing for a frame without one", () => {
+    const manifest = manifestFrames('job-1', [
+      frame('1', { gravityX: 0.0346, gravityY: 0.9919, gravityZ: 0.1219 }),
+      frame('2'),
+    ]);
+    expect(manifest.map((entry) => entry.gravity)).toEqual([[0.0346, 0.9919, 0.1219], undefined]);
+    expect('gravity' in (manifest[1] as object)).toBe(false);
   });
 
   it('hands panorama views to the solve as a rig, each looking its own way', () => {

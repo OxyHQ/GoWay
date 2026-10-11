@@ -363,6 +363,15 @@ export const captureDerivatives = pgTable(
     panoramaIndex: integer(),
     panoramaYawDegrees: doublePrecision(),
     panoramaFovDegrees: doublePrecision(),
+    /**
+     * Gravity at this frame's instant, as the capturing phone measured it: a
+     * unit vector pointing down in the frame's camera axes (x right, y down,
+     * z forward). All three or none; none for a capture with no motion track.
+     * Read by the solve to tell up from down (`docs/STREET3D_MOTION_PRIORS.md`).
+     */
+    gravityX: doublePrecision(),
+    gravityY: doublePrecision(),
+    gravityZ: doublePrecision(),
 
     retentionClass: text().notNull().default('privacy_safe_proxy'),
     retentionReason: text().notNull().default('awaiting_overlap'),
@@ -413,6 +422,11 @@ export const captureDerivatives = pgTable(
       sql`(${table.panoramaIndex} is null and ${table.panoramaYawDegrees} is null and ${table.panoramaFovDegrees} is null)
           or coalesce(${table.panoramaIndex} >= 0 and ${table.panoramaYawDegrees} >= 0 and ${table.panoramaYawDegrees} < 360
               and ${table.panoramaFovDegrees} > 0 and ${table.panoramaFovDegrees} < 180, false)`,
+    ),
+    check(
+      'capture_derivatives_gravity_check',
+      sql`(${table.gravityX} is null and ${table.gravityY} is null and ${table.gravityZ} is null)
+          or coalesce(abs(sqrt(${table.gravityX} ^ 2 + ${table.gravityY} ^ 2 + ${table.gravityZ} ^ 2) - 1) <= 0.01, false)`,
     ),
     check(
       'capture_derivatives_size_check',

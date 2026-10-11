@@ -34,6 +34,7 @@ import {
   captureAssets,
   captureDerivatives,
   captureMediaObjects,
+  captureMotionTracks,
   street3dCaptureBlocks,
   street3dJobs,
   street3dSceneInputs,
@@ -58,6 +59,8 @@ export async function retractCaptureFromStreet3d(
   reason: RetractionReason,
   now: Date,
 ): Promise<{ versionIds: string[]; sceneIds: string[]; cancelledJobs: number }> {
+  // Nothing will be derived from a withdrawn or blocked capture again.
+  await tx.delete(captureMotionTracks).where(eq(captureMotionTracks.assetId, assetId));
   const derivatives = await tx
     .select({ id: captureDerivatives.id })
     .from(captureDerivatives)

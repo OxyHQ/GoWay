@@ -15,6 +15,7 @@ import '../../__tests__/testEnv';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
+import type { CaptureMotionInput } from '@goway/contracts';
 import { sweepExpiredCaptures } from '../../capture/cleanup';
 import { parseStreet3dConfig } from '../../config/street3d';
 import {
@@ -28,6 +29,7 @@ import {
   captureAssets,
   captureDerivatives,
   captureMediaObjects,
+  captureMotionTracks,
   street3dCaptureEdges,
   street3dCoverageAreas,
   street3dJobs,
@@ -105,6 +107,8 @@ async function contribute(
     attribution?: string;
     owner?: string;
     projection?: 'equirectangular';
+    /** A guided recording: a video with the phone's motion track. */
+    motion?: CaptureMotionInput;
   } = {},
 ): Promise<Contribution> {
   const owner = options.owner ?? randomUUID();
@@ -123,12 +127,13 @@ async function contribute(
     db(),
     { id: session.id, oxyUserId: owner },
     {
-      mediaKind: 'photo',
+      mediaKind: options.motion ? 'video' : 'photo',
       ...(options.projection ? { projection: options.projection } : {}),
       source: 'camera',
       contentHash,
       byteSize: 100,
-      contentType: 'image/jpeg',
+      contentType: options.motion ? 'video/mp4' : 'image/jpeg',
+      ...(options.motion ? { motion: options.motion } : {}),
       evidence: [
         {
           origin: 'device_capture',
@@ -890,6 +895,104 @@ describe('coverage and rescue', () => {
       .where(eq(captureDerivatives.assetId, second.assetId));
     expect(capped[0]).toMatchObject({ extensionCount: 3 });
     expect(defined(capped[0]).expiresAt.getTime()).toBe(soon.getTime());
+  });
+});
+
+describe('motion priors', () => {
+  /** A phone held in portrait, pitched down at the street by 10°, for three seconds. */
+  const pitched = (degrees: number): CaptureMotionInput => {
+    const radians = (degrees * Math.PI) / 180;
+    return {
+      orientation: 'portrait',
+      samples: Array.from({ length: 13 }, (_, i) => ({
+        t: i * 0.25,
+        gravity: [0, -Math.cos(radians), -Math.sin(radians)] as [number, number, number],
+      })),
+    };
+  };
+  const tracks = async (assetId: string) =>
+    db().select().from(captureMotionTracks).where(eq(captureMotionTracks.assetId, assetId));
+  const portraitKeyframes = { width: 1080, height: 1920, timestampStep: 0.5 };
+
+  it('keeps the track until the privacy pass, then hands each keyframe its gravity in camera axes', async () => {
+    const recorded = await contribute({ motion: pitched(10) });
+    const library = await contribute({ offsetMeters: 5 });
+    expect(await tracks(recorded.assetId)).toHaveLength(1);
+    expect(await tracks(library.assetId)).toHaveLength(0);
+
+    await run();
+    for (const { envelope } of await worker.take()) {
+      if (envelope.jobType !== 'capture_privacy') continue;
+      await worker.completePrivacy(envelope, { frames: 3, keyframes: portraitKeyframes });
+    }
+    await run();
+    // Consumed: the track does not outlive the result that used it.
+    expect(await tracks(recorded.assetId)).toHaveLength(0);
+    const derivatives = await db()
+      .select()
+      .from(captureDerivatives)
+      .where(eq(captureDerivatives.assetId, recorded.assetId));
+    expect(derivatives).toHaveLength(3);
+    const radians = (10 * Math.PI) / 180;
+    for (const row of derivatives) {
+      expect(defined(row.gravityX)).toBeCloseTo(0, 9);
+      expect(defined(row.gravityY)).toBeCloseTo(Math.cos(radians), 9);
+      expect(defined(row.gravityZ)).toBeCloseTo(Math.sin(radians), 9);
+    }
+
+    // ...and the scene's input manifest carries it, for those frames only.
+    const [job] = await sceneJobs();
+    const manifest = defined(job).manifest;
+    const withGravity = manifest.frames.filter((frame) => frame.gravity !== undefined);
+    expect(new Set(withGravity.map((frame) => frame.captureAssetId))).toEqual(
+      new Set([recorded.assetId]),
+    );
+    expect(withGravity).toHaveLength(3);
+    expect(defined(defined(withGravity[0]).gravity)[1]).toBeCloseTo(Math.cos(radians), 9);
+  });
+
+  it('drops the measurements, never the capture, when the keyframes contradict the orientation', async () => {
+    const recorded = await contribute({ motion: pitched(10) });
+    await run();
+    const [{ envelope }] = await worker.take();
+    // Landscape keyframes from a track that says the picture was portrait.
+    await worker.completePrivacy(envelope as CapturePrivacyJob, {
+      frames: 2,
+      keyframes: { width: 1920, height: 1080, timestampStep: 0.5 },
+    });
+    await run();
+    const derivatives = await db()
+      .select()
+      .from(captureDerivatives)
+      .where(eq(captureDerivatives.assetId, recorded.assetId));
+    expect(derivatives).toHaveLength(2);
+    expect(derivatives.every((row) => row.gravityX === null && row.gravityZ === null)).toBe(true);
+    expect(await tracks(recorded.assetId)).toHaveLength(0);
+    expect((await findOwnedAsset(db(), recorded.assetId, recorded.owner))?.privacy.state).toBe(
+      'passed',
+    );
+  });
+
+  it('keeps the track across a failed attempt, and deletes it with a withdrawal', async () => {
+    const recorded = await contribute({ motion: pitched(5) });
+    await run();
+    const [{ envelope }] = await worker.take();
+    await worker.completePrivacy(envelope as CapturePrivacyJob, { verdict: 'failed' });
+    await run();
+    expect(await tracks(recorded.assetId)).toHaveLength(1); // the next attempt needs it
+    await withdrawCaptureAsset(db(), recorded.assetId, recorded.owner);
+    expect(await tracks(recorded.assetId)).toHaveLength(0);
+  });
+
+  it('dies with the raw media it describes when that expires unprocessed', async () => {
+    const recorded = await contribute({ motion: pitched(5) });
+    const summary = await sweepExpiredCaptures(
+      db(),
+      { deleteObject: async () => undefined },
+      { now: () => new Date(Date.now() + 500 * 86_400_000) },
+    );
+    expect(summary).toMatchObject({ deleted: 1, failed: 0 });
+    expect(await tracks(recorded.assetId)).toHaveLength(0);
   });
 });
 

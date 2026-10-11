@@ -29,6 +29,7 @@ import { createHash } from 'node:crypto';
 import type {
   CaptureAsset,
   CaptureCameraMetadata,
+  CaptureMotionInput,
   CaptureLocationEvidence,
   CaptureMediaKind,
   CaptureProjection,
@@ -48,6 +49,7 @@ import {
   captureAssets,
   captureLocationEvidence,
   captureMediaObjects,
+  captureMotionTracks,
   captureSessions,
 } from '../schema';
 import {
@@ -95,6 +97,8 @@ export interface RegisterAssetInput {
   /** Every position the client claims. Recorded verbatim with witness `client`. */
   evidence: readonly CaptureLocationEvidence[];
   camera?: CaptureCameraMetadata;
+  /** Gravity the capturing phone measured, kept until the privacy result consumes it. */
+  motion?: CaptureMotionInput;
 }
 
 /** What `registerAsset` produced, and whether bytes still have to be sent. */
@@ -601,6 +605,18 @@ export async function registerAsset(
             : { observedAt: new Date(evidence.observedAt) }),
         })),
       );
+    }
+
+    if (input.motion) {
+      const samples = input.motion.samples;
+      await tx.insert(captureMotionTracks).values({
+        assetId: assetRow.id,
+        orientation: input.motion.orientation,
+        sampleSeconds: samples.map((sample) => sample.t),
+        gravityX: samples.map((sample) => sample.gravity[0]),
+        gravityY: samples.map((sample) => sample.gravity[1]),
+        gravityZ: samples.map((sample) => sample.gravity[2]),
+      });
     }
 
     noteEvidenceDisagreement(assetRow.id, input.evidence);

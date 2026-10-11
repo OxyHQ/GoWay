@@ -729,6 +729,71 @@ export const captureLocationEvidenceInputSchema = z
   );
 export type CaptureLocationEvidenceInput = z.input<typeof captureLocationEvidenceInputSchema>;
 
+// ── What the phone's motion sensors said ────────────────────────────────────
+
+/**
+ * How the recorded picture is turned relative to the device, named as
+ * `expo-camera` and `UIDeviceOrientation` name the way the phone was held:
+ * `portrait` is the device's natural orientation, `landscapeLeft` has the top
+ * of the phone pointing left. It is what turns a gravity measured in DEVICE
+ * axes into the picture's own axes, and the privacy-safe frames are cut from
+ * the picture as it is displayed.
+ */
+export const CAPTURE_MOTION_ORIENTATIONS = [
+  'portrait',
+  'portraitUpsideDown',
+  'landscapeLeft',
+  'landscapeRight',
+] as const;
+export type CaptureMotionOrientation = (typeof CAPTURE_MOTION_ORIENTATIONS)[number];
+
+/** The most motion samples one capture may carry: an hour at four a second. */
+export const MAX_CAPTURE_MOTION_SAMPLES = 14_400;
+/** How far a gravity sample may be from unit length; the device normalizes and rounds. */
+const GRAVITY_UNIT_TOLERANCE = 0.01;
+
+const gravityComponent = z.number().min(-1.01).max(1.01);
+
+/**
+ * One reading of the phone's gravity sensor fusion.
+ *
+ * `t` is seconds since the capture started (a recording's first frame; `0`
+ * for a photo). `gravity` is a unit vector pointing DOWN, in the device's own
+ * axes as iOS, Android and the W3C define them: x to the right of the screen,
+ * y to its top, z out of the screen towards the user.
+ */
+export const captureMotionSampleSchema = z.object({
+  t: z.number().min(0).max(86_400),
+  gravity: z
+    .tuple([gravityComponent, gravityComponent, gravityComponent])
+    .refine(
+      ([x, y, z]) => Math.abs(Math.hypot(x, y, z) - 1) <= GRAVITY_UNIT_TOLERANCE,
+      'gravity must be a unit vector',
+    ),
+});
+export type CaptureMotionSample = z.infer<typeof captureMotionSampleSchema>;
+
+/**
+ * Which way was down while the capture was taken, as the phone measured it.
+ *
+ * It lets the reconstruction tell up from down without trusting that the
+ * phone was held level (`docs/STREET3D_MOTION_PRIORS.md`). It is NOT a
+ * position and carries none: no coordinate, no compass heading, no
+ * acceleration, only the direction of gravity at known offsets from the
+ * capture's start. GoWay keeps it no longer than the raw media it describes,
+ * and never publishes it.
+ */
+export const captureMotionInputSchema = z
+  .object({
+    orientation: z.enum(CAPTURE_MOTION_ORIENTATIONS),
+    samples: z.array(captureMotionSampleSchema).min(1).max(MAX_CAPTURE_MOTION_SAMPLES),
+  })
+  .refine(
+    ({ samples }) => samples.every((sample, i) => i === 0 || sample.t > (samples[i - 1]?.t ?? 0)),
+    { message: 'samples must be in strictly increasing time order', path: ['samples'] },
+  );
+export type CaptureMotionInput = z.input<typeof captureMotionInputSchema>;
+
 /** Camera metadata as a client sends it, bounded. Orientation is normalized server-side. */
 export const captureCameraInputSchema = z.object({
   widthPixels: z.number().int().positive().max(1_000_000).optional(),
@@ -768,31 +833,42 @@ export const captureSessionInputSchema = z.object({
 });
 export type CaptureSessionInput = z.input<typeof captureSessionInputSchema>;
 
-export const captureAssetInputSchema = z.object({
-  /** Reuse on retries of this exact request; generate a new UUID for new media. */
-  idempotencyKey: z.uuid().optional(),
-  mediaKind: z.enum(CAPTURE_MEDIA_KINDS),
-  /**
-   * Absent means `perspective`. A claim the privacy pipeline verifies against
-   * the media before anything is derived; see {@link CAPTURE_PROJECTIONS}.
-   */
-  projection: z.enum(CAPTURE_PROJECTIONS).optional(),
-  source: z.enum(CAPTURE_SOURCES),
-  /**
-   * Hashed by the CLIENT before anything is sent. That is what makes
-   * deduplication answerable before a byte moves.
-   */
-  contentHash: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .regex(/^[0-9a-f]{64}$/, 'must be a lower-case hex SHA-256 digest'),
-  byteSize: z.number().int().positive(),
-  contentType: z.string().trim().toLowerCase().max(120),
-  capturedAt: instantSchema.optional(),
-  location: z.array(captureLocationEvidenceInputSchema).min(1).max(MAX_LOCATION_EVIDENCE),
-  camera: captureCameraInputSchema.optional(),
-});
+export const captureAssetInputSchema = z
+  .object({
+    /** Reuse on retries of this exact request; generate a new UUID for new media. */
+    idempotencyKey: z.uuid().optional(),
+    mediaKind: z.enum(CAPTURE_MEDIA_KINDS),
+    /**
+     * Absent means `perspective`. A claim the privacy pipeline verifies against
+     * the media before anything is derived; see {@link CAPTURE_PROJECTIONS}.
+     */
+    projection: z.enum(CAPTURE_PROJECTIONS).optional(),
+    source: z.enum(CAPTURE_SOURCES),
+    /**
+     * Hashed by the CLIENT before anything is sent. That is what makes
+     * deduplication answerable before a byte moves.
+     */
+    contentHash: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .regex(/^[0-9a-f]{64}$/, 'must be a lower-case hex SHA-256 digest'),
+    byteSize: z.number().int().positive(),
+    contentType: z.string().trim().toLowerCase().max(120),
+    capturedAt: instantSchema.optional(),
+    location: z.array(captureLocationEvidenceInputSchema).min(1).max(MAX_LOCATION_EVIDENCE),
+    camera: captureCameraInputSchema.optional(),
+    /**
+     * Gravity as the capturing phone measured it, when the app recorded the
+     * capture itself. Absent for library media. Never for a 360° capture: the
+     * phone that uploads one is not the camera that took it.
+     */
+    motion: captureMotionInputSchema.optional(),
+  })
+  .refine((input) => input.motion === undefined || input.projection !== 'equirectangular', {
+    message: 'a 360° capture carries no motion',
+    path: ['motion'],
+  });
 export type CaptureAssetInput = z.input<typeof captureAssetInputSchema>;
 
 /**

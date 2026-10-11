@@ -269,6 +269,8 @@ export class FakeWorker {
       attempt?: number;
       seed?: string;
       panorama?: boolean;
+      /** Video keyframes of this size, `frameIndex × timestampStep` seconds into the recording. */
+      keyframes?: { width: number; height: number; timestampStep: number };
     } = {},
   ): Promise<WorkerEvent> {
     const attempt = options.attempt ?? 1;
@@ -302,7 +304,13 @@ export class FakeWorker {
                       horizontalFovDegrees: 90,
                     },
                   }
-                : { width: 2048, height: 1536 }),
+                : options.keyframes
+                  ? {
+                      width: options.keyframes.width,
+                      height: options.keyframes.height,
+                      timestampSeconds: frameIndex * options.keyframes.timestampStep,
+                    }
+                  : { width: 2048, height: 1536 }),
             };
           })
         : [];

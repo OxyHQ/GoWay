@@ -52,7 +52,7 @@ import type {
   CaptureUploadTicket,
 } from '@goway/contracts';
 import { and, eq } from 'drizzle-orm';
-import { captureAssets, captureMediaObjects } from '../../db/schema';
+import { captureAssets, captureMediaObjects, captureMotionTracks } from '../../db/schema';
 import { sweepExpiredCaptures } from '../../capture/cleanup';
 import { summarizeCaptureStorage } from '../../db/capture/captureRepository';
 import { getDb } from '../../db/postgres';
@@ -985,5 +985,84 @@ describe('360° captures are declared, bounded and never trusted on their word',
     expect(status).toBe(201);
     expect(body.asset.projection).toBe('equirectangular');
     expect(body.asset.media.lifecycle.retentionClass).toBe('raw_video');
+  });
+});
+
+describe("the phone's motion travels as a bounded prior, never as published data", () => {
+  let session: CaptureSession;
+  const level = { t: 0, gravity: [0, -1, 0] };
+  const guided = (seed: string, motion: unknown, overrides: Record<string, unknown> = {}) =>
+    photoBody(seed, {
+      mediaKind: 'video',
+      contentType: 'video/mp4',
+      byteSize: 80_000_000,
+      source: 'guided_session',
+      camera: { durationSeconds: 3 },
+      motion,
+      ...overrides,
+    });
+  const tracks = (assetId: string) =>
+    requireSuite(suite)
+      .db.select()
+      .from(captureMotionTracks)
+      .where(eq(captureMotionTracks.assetId, assetId));
+
+  beforeAll(async () => {
+    session = await openSession('user-a');
+  });
+
+  it("stores a guided recording's gravity track beside it, and publishes none of it", async () => {
+    const motion = {
+      orientation: 'landscapeLeft',
+      samples: [level, { t: 0.25, gravity: [-0.6, -0.8, 0] }, { t: 0.5, gravity: [-1, 0, 0] }],
+    };
+    const body = guided('motion-a', motion, { idempotencyKey: randomUUID() });
+    const first = await call<CaptureUploadTicket>(
+      `/captures/sessions/${session.id}/assets`,
+      json('user-a', body),
+    );
+    expect(first.status).toBe(201);
+    expect(JSON.stringify(first.body)).not.toMatch(/motion|gravity|orientation/);
+    const [track] = await tracks(first.body.asset.id);
+    expect(track).toMatchObject({
+      orientation: 'landscapeLeft',
+      sampleSeconds: [0, 0.25, 0.5],
+      gravityX: [0, -0.6, -1],
+      gravityY: [-1, -0.8, 0],
+      gravityZ: [0, 0, 0],
+    });
+    // A retried request is the same contribution with the same single track.
+    const retried = await call<CaptureUploadTicket>(
+      `/captures/sessions/${session.id}/assets`,
+      json('user-a', body),
+    );
+    expect(retried.body.asset.id).toBe(first.body.asset.id);
+    expect(await tracks(first.body.asset.id)).toHaveLength(1);
+  });
+
+  it('refuses motion on a 360° capture, and a malformed track', async () => {
+    const motion = { orientation: 'portrait', samples: [level] };
+    const refusals = [
+      guided('motion-b', motion, {
+        projection: 'equirectangular',
+        camera: { widthPixels: 5760, heightPixels: 2880 },
+      }),
+      guided('motion-c', { orientation: 'portrait', samples: [{ t: 0, gravity: [0, -0.5, 0] }] }),
+      guided('motion-d', {
+        orientation: 'portrait',
+        samples: [{ t: 1, gravity: [0, -1, 0] }, level],
+      }),
+      guided('motion-e', { orientation: 'sideways', samples: [level] }),
+      guided('motion-f', { orientation: 'portrait', samples: [] }),
+    ];
+    for (const body of refusals) {
+      const refused = await call<ApiErrorBody>(
+        `/captures/sessions/${session.id}/assets`,
+        json('user-a', body),
+      );
+      expect(refused.status).toBe(422);
+      expect(refused.body.error.code).toBe('validation_failed');
+    }
+    expect(await requireSuite(suite).db.select().from(captureMotionTracks)).toHaveLength(1);
   });
 });

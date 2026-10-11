@@ -4,7 +4,9 @@ import {
   DEFAULT_CAPTURE_LIST_LIMIT,
   GoWayResponseError,
   GoWayValidationError,
+  MAX_CAPTURE_MOTION_SAMPLES,
   type CaptureAssetInput,
+  type CaptureMotionInput,
 } from '../src/index';
 import { page } from './fixtures';
 import { defined, fakeFetch, queryOf, rejection } from './helpers';
@@ -191,6 +193,57 @@ describe('contribution client boundary', () => {
     await expect(
       captures.register('s', { ...input, projection: 'fisheye' } as unknown as CaptureAssetInput),
     ).rejects.toBeInstanceOf(GoWayValidationError);
+  });
+
+  it("sends a guided recording's gravity track, bounded, and never with a 360° capture", async () => {
+    const { captures, calls } = client(201, { asset });
+    const input: CaptureAssetInput = {
+      mediaKind: 'video',
+      source: 'guided_session',
+      contentHash: 'a'.repeat(64),
+      byteSize: 42,
+      contentType: 'video/mp4',
+      location: [{ origin: 'device_capture', coordinate: { latitude: 41, longitude: 2 } }],
+      motion: { orientation: 'portrait', samples: [{ t: 0, gravity: [0, -1, 0] }] },
+    };
+    await captures.register('s', input);
+    expect(JSON.parse(defined(defined(calls[0]).init.body)).motion).toEqual(input.motion);
+
+    // The longest track the contract admits, at the precision the app rounds to,
+    // still fits the API's 1 MB JSON body limit with room for the rest.
+    const full: CaptureMotionInput = {
+      orientation: 'landscapeRight',
+      samples: Array.from({ length: MAX_CAPTURE_MOTION_SAMPLES }, (_, i) => ({
+        t: Number((i * 0.25 + 0.001).toFixed(3)),
+        gravity: [-0.0123, -0.9921, -0.1245],
+      })),
+    };
+    expect(JSON.stringify({ ...input, motion: full }).length).toBeLessThan(900_000);
+    await captures.register('s', { ...input, motion: full });
+
+    const refused: unknown[] = [
+      { ...input, projection: 'equirectangular' },
+      {
+        ...input,
+        motion: { ...full, samples: [...full.samples, { t: 1e4, gravity: [0, -1, 0] }] },
+      },
+      { ...input, motion: { orientation: 'portrait', samples: [{ t: 0, gravity: [0, -2, 0] }] } },
+      {
+        ...input,
+        motion: {
+          orientation: 'portrait',
+          samples: [
+            { t: 1, gravity: [0, -1, 0] },
+            { t: 1, gravity: [0, -1, 0] },
+          ],
+        },
+      },
+    ];
+    for (const body of refused)
+      await expect(captures.register('s', body as CaptureAssetInput)).rejects.toBeInstanceOf(
+        GoWayValidationError,
+      );
+    expect(calls).toHaveLength(2);
   });
 
   it('reads the 360° limits only when the deployment publishes them', async () => {

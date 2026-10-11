@@ -1,7 +1,12 @@
 import { and, asc, eq, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import type { Database } from '../postgres';
 import { qualified } from '@oxy.so/db';
-import { captureAssets, captureDerivatives, captureMediaObjects } from '../schema';
+import {
+  captureAssets,
+  captureDerivatives,
+  captureMediaObjects,
+  captureMotionTracks,
+} from '../schema';
 
 export interface CaptureCleanupOptions {
   now: Date;
@@ -69,6 +74,18 @@ export async function claimCaptureCleanup(db: Database, options: CaptureCleanupO
       .update(captureMediaObjects)
       .set({ storageState: 'deleting', updatedAt: options.now })
       .where(inArray(captureMediaObjects.id, ids));
+    // A motion track lives exactly as long as the raw media it describes.
+    await tx
+      .delete(captureMotionTracks)
+      .where(
+        inArray(
+          captureMotionTracks.assetId,
+          tx
+            .select({ id: captureAssets.id })
+            .from(captureAssets)
+            .where(inArray(captureAssets.mediaObjectId, ids)),
+        ),
+      );
     // Close reconstruction eligibility atomically with intent. Retain compact
     // provenance; published scenes have a separate lifecycle, never this table.
     // A raw original retired because its privacy-safe derivative REPLACED it is
