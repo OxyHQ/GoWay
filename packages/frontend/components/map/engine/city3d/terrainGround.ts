@@ -182,6 +182,17 @@ export function largestChange(a: Float32Array, b: Float32Array): number {
   return largest;
 }
 
+/** The largest change in a polygon's FOOT lift (`anchor − sink`) between two placements. */
+export function largestFootChange(a: PolygonGround, b: PolygonGround): number {
+  if (a.anchor.length !== b.anchor.length) return Infinity;
+  let largest = 0;
+  for (let i = 0; i < a.anchor.length; i++) {
+    const change = Math.abs(a.anchor[i] - a.sink[i] - (b.anchor[i] - b.sink[i]));
+    if (change > largest) largest = change;
+  }
+  return largest;
+}
+
 export interface GroundResult {
   /** One lift per vertex, in metres. */
   values: Float32Array;
@@ -273,10 +284,14 @@ export class TileGrounder {
     const placed = polygonGround(grid, GROUND.grid, tile.tileSizeM, tile.polygonBoxes);
     const previous = this.tiles.get(key);
     let result: GroundResult;
+    // Compare the two lifts the GPU actually draws — the roof (`anchor`) and
+    // the foot (`anchor − sink`) — not their parts: a centre and a sink that
+    // each move by less than epsilon in opposite directions move the foot by
+    // up to twice it (PR #124 review).
     if (
       previous &&
       largestChange(previous.anchor, placed.anchor) <= GROUND.epsilonM &&
-      largestChange(previous.sink, placed.sink) <= GROUND.epsilonM
+      largestFootChange(previous, placed) <= GROUND.epsilonM
     ) {
       result = { ...previous.result, changed: false };
       this.tiles.set(key, { ...previous, version: this.version, result });

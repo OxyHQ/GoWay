@@ -235,6 +235,35 @@ describe('TileGrounder', () => {
     expect(moved?.max).toBeCloseTo(310, 3);
   });
 
+  test('the FOOT is compared too: centre and sink each under epsilon can still move it 0.4 m', () => {
+    // PR #124 review. Ground linear in longitude (which bilinear reads
+    // exactly), so the box's centre and its lowest corner — hence its sink —
+    // are set by hand: sink = drop to the low corner + margin.
+    const n = 2 ** tile.z;
+    const lngAt = (u: number) => ((tile.x + u) / n) * 360 - 180;
+    const centreLng = lngAt(1050 / 4096);
+    const halfWidthLng = centreLng - lngAt(1000 / 4096);
+    const ground = (centre: number, sink: number) => (lng: number) =>
+      centre + ((sink - GROUND.sinkMarginM) / halfWidthLng) * (lng - centreLng);
+
+    const grounder = new TileGrounder();
+    grounder.setSampler(ground(300, 5));
+    const before = grounder.ground('a', groundTile);
+    expect(before?.max).toBeCloseTo(300, 2);
+    expect(before?.min).toBeCloseTo(295, 2);
+
+    // Centre −0.2 m, sink +0.2 m: each within epsilon, the foot 0.4 m lower.
+    grounder.setSampler(ground(299.8, 5.2));
+    const after = grounder.ground('a', groundTile);
+    expect(after?.changed).toBe(true);
+    expect(after?.min).toBeCloseTo(294.6, 2);
+
+    // Centre and sink up together by 0.2: the foot does not move, the roof
+    // by 0.2 — within epsilon, so nothing is uploaded.
+    grounder.setSampler(ground(300, 5.4));
+    expect(grounder.ground('a', groundTile)?.changed).toBe(false);
+  });
+
   test('largestChange', () => {
     expect(largestChange(Float32Array.from([1, 2]), Float32Array.from([1, 5]))).toBe(3);
     expect(largestChange(Float32Array.from([1]), Float32Array.from([1, 5]))).toBe(Infinity);
