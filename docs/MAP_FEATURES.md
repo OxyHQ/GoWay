@@ -198,7 +198,8 @@ Then add its row to the table above and to `.env.example`, and extend the
 | `__common` (first paint) | 81,624 B | 81,624 B | identical size |
 | `MapSettingsPanel` (lazy, on first open) | — | 59,147 B (17,328 gz) | the dialog body, Bloom's settings list, and all its copy |
 
-Bloom's `Dialog` was already in the entry (Oxy's own dialogs use it).
+Bloom's `Dialog` was already in the entry (Oxy's own dialogs use it). Measured by A/B build, never by
+per-source attribution (`~/Oxy/docs/build-and-runtime-traps.md`).
 
 ## Limits
 
