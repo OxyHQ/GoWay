@@ -272,12 +272,64 @@ viewport, Barcelona city tiles, 1.31 M building triangles, 8 tiles):
   (+11.6%). The dense tiles' indices are 4 bytes instead of 2. The budgets
   (`lod.ts`) count it, so at the edge of a budget a tile drops sooner.
 - **What remains with trees (~+0.2 ms)** is the trees' draws: one per tree
-  shape per tile. One instanced draw per tile, with the shapes in one buffer,
-  is the next measurable step of the same kind.
+  shape per tile. Fewer tree draws were tried and measured next
+  ([step 4](#phase-2-step-4-fewer-tree-draws-measured-and-not-adopted)):
+  every way of getting there costs the GPU more than it saves the CPU.
 
 Absolute numbers move with the host's load between sessions: step 2 measured
 1.40 ms in its own session against 0.99–1.09 ms here. Compare columns from
 the same table.
+
+## Phase 2, step 4: fewer tree draws, measured and not adopted
+
+A tile draws its trees in up to five instanced draws: one per shape (three
+broadleaf canopy variants, conifer, palm). Two ways to draw fewer were built
+and measured with 3D terrain on. **Neither is merged.** Both pay more GPU
+than the CPU they save, so the five draws stay.
+
+**One draw per tile: every kind's shape in one buffer.** Each instance keeps
+its own kind's vertices and collapses the rest to a point. It works, but
+every instance runs the vertex shader over all three near shapes (289
+vertices instead of 71–141) and submits all their triangles. Measured in the
+frame-budget gate's scenes (`frameBudget.test.ts`, all three presets):
+
+- Draws fall by 31–47%.
+- Triangles submitted to the GPU rise by **84–95%**.
+
+That fails the gate's triangle budget at every preset, so it was never put
+in front of a GPU.
+
+**One draw per kind: the broadleaf variants in one buffer.** The three canopy
+variants share their topology, so they can share an index buffer. Each tree
+carries its variant in two spare bits of its kind byte, and the shader picks
+its position and normal. This is at most three draws per tile, with the same
+triangles. Measured in one session, alternating builds, with terrain on:
+
+| | `main` | one draw per kind |
+| --- | ---: | ---: |
+| Frame-budget gate, draws (all scenes and presets) | 26–87 | 16–47 |
+| Eixample (15,136 trees): instanced draws per frame, p50 | 43–60 | 19 |
+| Eixample: engine frame CPU, p50 | 0.84–0.86 ms | 0.70–0.74 ms |
+| Park Güell (7,017 trees, 132 m up): engine frame CPU, p50 | 0.89–0.96 ms | 0.76–0.80 ms |
+| `bench:map` Eixample, GPU p50, city life off | 3.98–4.15 ms | **5.37–5.47 ms** |
+| The same with trees off | 4.08–4.23 ms | 4.17–4.23 ms |
+
+- **The CPU saving is 0.14 ms a frame.**
+- **The trees cost 1.3 ms more GPU** (RTX 5090 through WSL's D3D12; a phone's
+  GPU is many times slower). Every vertex now fetches all three variants'
+  positions and normals: 76 bytes instead of 28.
+- **Interleaving alone costs GPU here.** A control build kept the
+  interleaved buffer but read only the first variant. It still cost 0.6–0.9
+  ms more, so the stride by itself costs GPU on this path.
+- **Pixels:** with the instances kept in `main`'s order, 5.0k of 2.07 M
+  pixels differ from `main`. Two runs of `main` differ by 3.4k (the HUD is
+  included in both counts).
+
+What would get the variants into one draw without the bandwidth: pull only
+the instance's own variant from a small data texture by vertex index
+(`gl_VertexID`, WebGPU's `vertex_index`). It is not worth building for 0.14
+ms. The draws a tile's trees cost are already bounded by the shape count,
+not by the tree count.
 
 Next, one material at a time, each deleting its GLSL twin:
 street markings (once `feat/street-detail` merges), landmarks/models, city
