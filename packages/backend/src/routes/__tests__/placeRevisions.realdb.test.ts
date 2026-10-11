@@ -11,8 +11,11 @@
 
 import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { eq, sql } from 'drizzle-orm';
 import type { Place, PlaceRevision, PlaceRevisionPage } from '@goway/contracts';
 import { createClaim, createPlace, type PlaceActor } from '../../db/places/placesRepository';
+import { recordRevision } from '../../db/places/revisions';
+import { places } from '../../db/schema';
 import {
   requireSuite,
   SUITE_SETUP_TIMEOUT_MS,
@@ -412,5 +415,104 @@ describe('the public history', () => {
     const pointer = await api.call<ErrorBody>('GET', `/places/${merged.id}/revisions`);
     expect(pointer.status).toBe(410);
     expect(pointer.body.error.details).toEqual({ mergedInto: place.id });
+  });
+});
+
+describe('the history lists writes in the order they took effect', () => {
+  const LOCK_WAIT_MS = 20;
+
+  /**
+   * A write blocked on the place's row lock BEGAN before the write it waited
+   * for, and commits after it. Stamped by `now()` — the transaction's start —
+   * its revision sorted BEFORE that write's, so the newest-first history put
+   * the two edits the wrong way round — 12 of 500 concurrent PATCH pairs, and
+   * the intermittent `placeHoursDays` failure. Here the waiting transaction is
+   * held open between its BEGIN and its lock, so the interleaving is not left
+   * to the scheduler.
+   */
+  it('lists a write that waited for another after it, linked before to after', async () => {
+    const { db } = requireSuite(suite);
+    const place = await createPlace(db, { name: 'Ordre', location: GRACIA }, CONTRIBUTOR);
+
+    let begun = (_atMs: number) => {};
+    const began = new Promise<number>((resolve) => {
+      begun = resolve;
+    });
+    let release = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const waiting = db.transaction(async (tx) => {
+      const [start] = await tx.execute<{ ms: string }>(
+        sql`SELECT (extract(epoch FROM date_trunc('milliseconds', now())) * 1000)::bigint::text AS ms`,
+      );
+      begun(Number(defined(start).ms));
+      await released;
+      const [locked] = await tx
+        .select({ name: places.name })
+        .from(places)
+        .where(eq(places.id, place.id))
+        .for('update');
+      await tx.update(places).set({ name: 'Ordre III' }).where(eq(places.id, place.id));
+      await recordRevision(tx, {
+        placeId: place.id,
+        action: 'place_updated',
+        author: CONTRIBUTOR.author,
+        changes: [{ field: 'name', before: defined(locked).name, after: 'Ordre III' }],
+      });
+    });
+
+    const waitingBegan = await began;
+    // The other write's transaction must begin in a LATER millisecond: in the
+    // same one, the two stamps tie and the uuidv7 id happens to break it right.
+    await Bun.sleep(5);
+    const first = await api.call<Place>('PATCH', `/places/${place.id}`, session('person-ana'), {
+      name: 'Ordre II',
+    });
+    expect(first.status).toBe(200);
+    // And the waiting write records well after it: its stamp says when.
+    await Bun.sleep(LOCK_WAIT_MS);
+    release();
+    await waiting;
+
+    const items = (await history(place.id, '?limit=2')).items;
+    const patched = defined(items.find((revision) => revision.changes[0]?.after === 'Ordre II'));
+    // The case this test is about: the write that took effect SECOND began
+    // FIRST — in an earlier millisecond than the write it then followed recorded.
+    expect(waitingBegan).toBeLessThan(Date.parse(patched.createdAt));
+    const [newer, older] = items;
+    expect(defined(newer).changes).toEqual([
+      { field: 'name', before: 'Ordre II', after: 'Ordre III' },
+    ]);
+    expect(defined(older).changes).toEqual([{ field: 'name', before: 'Ordre', after: 'Ordre II' }]);
+    expect(
+      Date.parse(defined(newer).createdAt) - Date.parse(defined(older).createdAt),
+    ).toBeGreaterThanOrEqual(LOCK_WAIT_MS);
+  });
+
+  it('stamps a write after the newest revision even when the clock has not passed it', async () => {
+    const { db, client } = requireSuite(suite);
+    const place = await createPlace(db, { name: 'Rellotge', location: GRACIA }, CONTRIBUTOR);
+    // Two writes in one millisecond are the common case, and too fast to
+    // arrange: a newest revision stamped a minute ahead of the clock stands in
+    // for "the clock has not moved past it". Without the floor the next write
+    // ties or sorts under it, and only the application's uuidv7 decides.
+    const [ahead] = await client<{ ms: string }[]>`
+      UPDATE place_revisions
+         SET created_at = date_trunc('milliseconds', clock_timestamp()) + interval '1 minute'
+       WHERE place_id = ${place.id}
+       RETURNING (extract(epoch FROM created_at) * 1000)::bigint::text AS ms`;
+    await db.transaction((tx) =>
+      recordRevision(tx, {
+        placeId: place.id,
+        action: 'place_updated',
+        author: CONTRIBUTOR.author,
+        changes: [{ field: 'name', before: 'Rellotge', after: 'Rellotge II' }],
+      }),
+    );
+    const [newer, older] = (await history(place.id)).items;
+    expect(defined(newer).changes[0]?.after).toBe('Rellotge II');
+    expect(defined(older).action).toBe('place_created');
+    expect(Date.parse(defined(newer).createdAt)).toBe(Number(defined(ahead).ms) + 1);
   });
 });
