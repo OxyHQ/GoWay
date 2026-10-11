@@ -28,9 +28,15 @@ export interface AnimationTicket {
 export interface AnimationClock {
   /**
    * Join the clock. `onPausedChange` is told when the clock pauses or resumes
-   * (a simulation worker stops and starts with it).
+   * (a simulation worker stops and starts with it); `onTick`, on every tick
+   * while this member animates, just before the one repaint (a layer that
+   * updates a source rather than a uniform does its update there).
    */
-  join(name: string, onPausedChange?: (paused: boolean) => void): AnimationTicket;
+  join(
+    name: string,
+    onPausedChange?: (paused: boolean) => void,
+    onTick?: () => void,
+  ): AnimationTicket;
   /** Someone touched the map (pan, zoom, tap, key): the idle timer restarts, a paused clock resumes. */
   noteInteraction(): void;
   /** The page became hidden or visible. */
@@ -71,6 +77,7 @@ export function createAnimationClock(options: AnimationClockOptions): AnimationC
     name: string;
     animating: boolean;
     onPausedChange?: (paused: boolean) => void;
+    onTick?: () => void;
   }
   const members = new Set<Member>();
 
@@ -87,6 +94,7 @@ export function createAnimationClock(options: AnimationClockOptions): AnimationC
   const tick = () => {
     tickTimer = null;
     if (disposed || isPaused() || !anyAnimating()) return;
+    for (const m of [...members]) if (m.animating) m.onTick?.();
     options.requestFrame();
     schedule();
   };
@@ -118,6 +126,7 @@ export function createAnimationClock(options: AnimationClockOptions): AnimationC
     for (const m of [...members]) m.onPausedChange?.(paused);
     // One frame on resume, so what was frozen moves again at once.
     if (!paused && anyAnimating()) {
+      for (const m of [...members]) if (m.animating) m.onTick?.();
       options.requestFrame();
       schedule();
     }
@@ -131,8 +140,8 @@ export function createAnimationClock(options: AnimationClockOptions): AnimationC
   armIdle();
 
   return {
-    join(name, onPausedChange) {
-      const member: Member = { name, animating: false, onPausedChange };
+    join(name, onPausedChange, onTick) {
+      const member: Member = { name, animating: false, onPausedChange, onTick };
       members.add(member);
       return {
         setAnimating(on) {

@@ -1206,13 +1206,18 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const [liveHandle, setLiveHandle] = useState<LiveLayerHandle | null>(null);
   useEffect(() => {
     const map = mapRef.current;
-    if (!live || !map || !ready) return;
+    const clock = clockRef.current;
+    if (!live || !map || !ready || !clock) return;
     let attached: LiveLayerHandle | null = null;
     let cancelled = false;
     import('./liveLayer.web')
       .then(({ attachLive }) => {
         if (cancelled) return;
-        attached = attachLive(map, live, { appearance: resolvedAppearance });
+        attached = attachLive(map, live, {
+          appearance: resolvedAppearance,
+          clock,
+          maxEntities: qualityRef.current.live.maxEntities,
+        });
         liveHandleRef.current = attached;
         setLiveHandle(attached);
       })

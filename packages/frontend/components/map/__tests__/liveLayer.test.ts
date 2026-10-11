@@ -4,6 +4,7 @@
  * the style as it found it. The 3D half hands the city engine a pass and
  * takes it back.
  */
+import { createAnimationClock } from '@/components/map/perf/animationClock';
 import { describe, expect, test } from 'bun:test';
 
 import {
@@ -16,6 +17,7 @@ import {
   LIVE_SOURCE_ID,
   surfacePoints,
   UNDERGROUND_ICON_OPACITY,
+  nearestLivePoints,
 } from '@/components/map/liveLayer.web';
 import type { MapLiveLayer, MapLivePoint } from '@/components/map/types';
 
@@ -36,6 +38,12 @@ function point(overrides: Partial<MapLivePoint> = {}): MapLivePoint {
     ...overrides,
   };
 }
+
+/** The map's clock (ticking on a timer here) and the high preset's cap. */
+const LIVE_OPTIONS = {
+  clock: createAnimationClock({ hz: 30, idleMs: 0, requestFrame: () => {} }),
+  maxEntities: 5000,
+};
 
 describe('featureCollection', () => {
   test('a directional glyph rotates; a glyph with no heading is drawn still, unrotated', () => {
@@ -198,7 +206,7 @@ describe('attachLive', () => {
   test('adds its source and layers on top, reports the viewport, and detaches cleanly', async () => {
     const map = fakeMap();
     const { layer, views } = fakeLayer([point()]);
-    const handle = attachLive(map as never, layer, { appearance: 'light' });
+    const handle = attachLive(map as never, layer, { ...LIVE_OPTIONS, appearance: 'light' });
     expect(map.layers).toEqual([
       'background',
       'label-place',
@@ -239,7 +247,7 @@ describe('attachLive', () => {
       coordinate: { latitude: 41.35, longitude: 2.1 },
     });
     const { layer } = fakeLayer([train, away]);
-    const handle = attachLive(map as never, layer, { appearance: 'light' });
+    const handle = attachLive(map as never, layer, { ...LIVE_OPTIONS, appearance: 'light' });
     await new Promise((resolve) => setTimeout(resolve, 40));
     const data = map.sources.get(LIVE_SOURCE_ID)?.data as GeoJSON.FeatureCollection;
     expect(data.features.map((f) => f.properties?.iconFar)).toEqual([UNDERGROUND_ICON_OPACITY, 1]);
@@ -249,7 +257,7 @@ describe('attachLive', () => {
   test('gives the city engine a 3D pass, and takes it back', async () => {
     const map = fakeMap();
     const { layer } = fakeLayer([point()]);
-    const handle = attachLive(map as never, layer, { appearance: 'dark' });
+    const handle = attachLive(map as never, layer, { ...LIVE_OPTIONS, appearance: 'dark' });
     const added: string[] = [];
     let removed = 0;
     handle.setCity({
@@ -272,5 +280,28 @@ describe('attachLive', () => {
     handle.setCity(null);
     expect(removed).toBe(1);
     handle.detach();
+  });
+});
+
+describe('nearestLivePoints (the quality profile’s live.maxEntities)', () => {
+  const far = point({ id: 'far', coordinate: { latitude: 41.6, longitude: 2.6 } });
+  const near = point({ id: 'near', coordinate: { latitude: 41.39, longitude: 2.16 } });
+  const mid = point({ id: 'mid', coordinate: { latitude: 41.45, longitude: 2.3 } });
+  const centre = () => ({ lng: 2.164, lat: 41.3925 });
+
+  test('under the cap: the same list, the centre never read', () => {
+    const list = [far, near];
+    expect(
+      nearestLivePoints(list, 5, () => {
+        throw new Error('read');
+      }),
+    ).toBe(list);
+  });
+
+  test('over it: the nearest, nearest first', () => {
+    expect(nearestLivePoints([far, mid, near], 2, centre).map((p) => p.id)).toEqual([
+      'near',
+      'mid',
+    ]);
   });
 });

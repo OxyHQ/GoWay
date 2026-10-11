@@ -97,6 +97,7 @@ const ALL_3D = {
   city3d: '1',
   cityTiles: '1',
   citysky: '1',
+  detailedCity: '1',
   city3dTrees: '1',
   cityLife: '1',
   landmarks: '1',
@@ -131,6 +132,17 @@ export const SCENES: Scene[] = [
     flags: ALL_3D,
     path: 'pan',
     durationMs: 6000,
+    at: '2026-06-21T10:00:00Z',
+  },
+  {
+    // Render on demand: nothing moves and nothing animates at this zoom, so a
+    // still map should draw (almost) no frames at all.
+    id: 'terrain-still',
+    title: 'Montserrat terrain, untouched for 10 s',
+    camera: { lat: 41.5935, lng: 1.8376, zoom: 13.4, pitch: 70, bearing: 140 },
+    flags: ALL_3D,
+    path: 'still',
+    durationMs: 10_000,
     at: '2026-06-21T10:00:00Z',
   },
   {
@@ -376,10 +388,10 @@ async function settle(page: Page, scene: Scene, timeoutMs = 90_000): Promise<str
 
 /** Real input, paced like a hand: a step every ~16 ms. */
 async function runPath(page: Page, path: Path, durationMs: number, viewport: Device['viewport']) {
-  // Upper third: on a phone the place sheet covers the lower half, and a drag
-  // there moves the sheet, not the map.
+  // On the ground, never the sky (a drag on the sky above a tilted map moves
+  // nothing) and never the phone's place sheet (it covers the lower half).
   const cx = viewport.width / 2;
-  const cy = viewport.height * 0.3;
+  const cy = viewport.height * (viewport.width < 600 ? 0.25 : 0.62);
   const steps = Math.round(durationMs / 16);
   if (path === 'still') {
     await page.waitForTimeout(durationMs);

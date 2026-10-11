@@ -36,6 +36,7 @@
  * decides. An underground train gets no 3D model, and its flat glyph is
  * dimmed — below the street, not on it (`docs/MAP_LIVE.md` → Underground).
  */
+import type { AnimationClock } from './perf/animationClock';
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 
 import { GOWAY_BASEMAP_SOURCE_ID, GOWAY_LAYER_PREFIX } from '@/lib/map/provider';
@@ -69,15 +70,26 @@ export interface LiveLayerHandle {
   detach(): void;
 }
 
-/** `requestAnimationFrame`, or a timer where there is none (tests). */
-const requestFrame = (callback: () => void): number =>
-  typeof requestAnimationFrame === 'function'
-    ? requestAnimationFrame(callback)
-    : (setTimeout(callback, 16) as unknown as number);
-const cancelFrame = (handle: number): void => {
-  if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(handle);
-  else clearTimeout(handle);
-};
+/**
+ * At most `max` points, nearest the map centre first: the quality profile's
+ * `live.maxEntities` (`docs/MAP_PERFORMANCE.md`). Order is kept when under it.
+ * Exported for the tests.
+ */
+export function nearestLivePoints(
+  points: readonly MapLivePoint[],
+  max: number,
+  centreOf: () => { lng: number; lat: number },
+): readonly MapLivePoint[] {
+  if (points.length <= max) return points;
+  const centre = centreOf();
+  const k = Math.cos((centre.lat * Math.PI) / 180);
+  const distance = (p: MapLivePoint) => {
+    const dx = (p.coordinate.longitude - centre.lng) * k;
+    const dy = p.coordinate.latitude - centre.lat;
+    return dx * dx + dy * dy;
+  };
+  return [...points].sort((a, b) => distance(a) - distance(b)).slice(0, Math.max(0, max));
+}
 
 /** Frame interval by zoom: a pixel is ~10 km at z6 and ~10 m at z16. */
 export function frameIntervalMs(zoom: number): number {
@@ -399,7 +411,17 @@ function glyphImage(glyph: MapLiveGlyph, variant: GlyphVariant): ImageData | nul
 export function attachLive(
   map: MapLibreMap,
   layer: MapLiveLayer,
-  options: { appearance: 'light' | 'dark' },
+  options: {
+    appearance: 'light' | 'dark';
+    /**
+     * The map's one animation clock (`perf/animationClock.ts`): moving things
+     * are re-set on its ticks, at the quality profile's rate, and stop with it
+     * when the tab is hidden or the map idle.
+     */
+    clock: AnimationClock;
+    /** The quality profile's `live.maxEntities`: drawn at most, nearest first. */
+    maxEntities: number;
+  },
 ): LiveLayerHandle {
   const images = new Set<string>();
   /** Draw a glyph variant the first time something needs it (line colours are open-ended). */
@@ -496,7 +518,6 @@ export function attachLive(
     },
   });
 
-  let raf: number | null = null;
   let lastPush = 0;
   let detached = false;
   let points: readonly MapLivePoint[] = [];
@@ -547,7 +568,7 @@ export function attachLive(
     const now = Date.now();
     // The 2D push and the 3D pass both ask within one frame: one sample.
     if (now - pointsAt > 12) {
-      points = layer.sample(now);
+      points = nearestLivePoints(layer.sample(now), options.maxEntities, () => map.getCenter());
       pointsAt = now;
     }
     return points;
@@ -573,20 +594,21 @@ export function attachLive(
     lastPush = Date.now();
   };
 
+  // Re-set on the clock's ticks while anything moves (the clock repaints
+  // once per tick for every animating layer together); a data or selection
+  // change pushes at once.
   const frame = () => {
-    raf = null;
     if (detached) return;
-    if (typeof document !== 'undefined' && document.hidden) return; // `visibilitychange` resumes
-    if (Date.now() - lastPush >= frameIntervalMs(map.getZoom())) {
-      push();
-      if (threeD) map.triggerRepaint();
-    }
-    if (layer.animating()) raf = requestFrame(frame);
+    if (Date.now() - lastPush >= frameIntervalMs(map.getZoom())) push();
+    ticket.setAnimating(layer.animating());
   };
+  const ticket = options.clock.join('live', undefined, frame);
 
   const wake = () => {
     if (detached) return;
-    if (raf === null) raf = requestFrame(frame);
+    frame();
+    if (threeD) map.triggerRepaint();
+    ticket.setAnimating(layer.animating());
   };
 
   const unsubscribe = layer.subscribe(() => {
@@ -606,10 +628,6 @@ export function attachLive(
       },
       zoom: map.getZoom(),
     });
-  };
-  const onVisibility = () => {
-    lastPush = 0;
-    wake();
   };
   map.on('moveend', reportViewport);
   map.on('sourcedata', onSourceData);
@@ -633,7 +651,6 @@ export function attachLive(
       pick: (x: number, y: number) => handle.pick({ x, y }),
     };
   }
-  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
   reportViewport();
   wake();
 
@@ -727,8 +744,7 @@ export function attachLive(
     detach() {
       if (detached) return;
       detached = true;
-      if (raf !== null) cancelFrame(raf);
-      raf = null;
+      ticket.dispose();
       unsubscribe();
       removePass?.();
       removePass = null;
@@ -737,8 +753,6 @@ export function attachLive(
       if (railsTimer !== null) clearTimeout(railsTimer);
       if (typeof __DEV__ !== 'undefined' && __DEV__)
         delete (globalThis as { __gowayLive?: unknown }).__gowayLive;
-      if (typeof document !== 'undefined')
-        document.removeEventListener('visibilitychange', onVisibility);
       // The map may already be gone (a style swap tears it down first).
       try {
         for (const id of [LIVE_ICON_LAYER_ID, LIVE_RING_LAYER_ID])

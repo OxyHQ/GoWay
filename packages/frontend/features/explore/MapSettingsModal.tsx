@@ -266,7 +266,9 @@ export function MapSettingsModal({
                     value={value}
                     testID={`map-settings-performance-${value}`}
                   >
-                    <SegmentedControlItemText>{say(MAP_SETTINGS_COPY[key])}</SegmentedControlItemText>
+                    <SegmentedControlItemText>
+                      {say(MAP_SETTINGS_COPY[key])}
+                    </SegmentedControlItemText>
                   </SegmentedControlItem>
                 ))}
               </SegmentedControl>

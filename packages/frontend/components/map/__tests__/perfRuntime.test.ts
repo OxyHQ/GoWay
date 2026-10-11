@@ -116,6 +116,16 @@ describe('the animation clock', () => {
     expect(frames()).toBeGreaterThan(frozen);
   });
 
+  test('each animating member gets its tick before the one repaint; a still one does not', () => {
+    const { clock, time, frames } = make(20);
+    const ticks: string[] = [];
+    clock.join('live', undefined, () => ticks.push('live')).setAnimating(true);
+    clock.join('still', undefined, () => ticks.push('still'));
+    time.advance(1000);
+    expect(ticks.filter((t) => t === 'live').length).toBe(frames());
+    expect(ticks).not.toContain('still');
+  });
+
   test('stops asking once nothing animates any more', () => {
     const { clock, time, frames } = make();
     const ticket = clock.join('cityLife');

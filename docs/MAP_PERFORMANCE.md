@@ -218,15 +218,18 @@ The fields today, and who reads them: `render` (pixel ratio, dynamic
 resolution, target, MSAA — the runtime), `frame` (clock rate, idle pause — the
 clock), `city` (draw, cache, tiles, LOD tolerance, upload, workers, trees — the
 city engine), `sky` (shadow map size, PCF taps — the sky), `life` (agents —
-city life), `live` (entities — the live layer, #132: cap what you draw,
-nearest first), `landmarks` (models held — the adapter), `relief` (3D terrain —
-the relief adapter, live). For the work in flight: the **vehicle library**
-reads `life` for its instance counts and draws through the city life overlay's
-clock ticket (its VAT animation advances only on the clock's frames); **street
-markings** are geometry in the city tiles' budget (count their triangles in
-`city.drawVertices`, or add a `city.markings` knob); **live data** takes
-`live.maxEntities` and joins the clock as `'live'` (dead-reckoning between
-fixes is motion: animate while anything moves, stop when all are stale).
+city life), `live` (entities — the live layer: drawn at most, nearest the
+centre first, `liveLayer.web.ts` → `nearestLivePoints`), `landmarks` (models
+held — the adapter), `relief` (3D terrain — the relief adapter, live).
+
+Who animates through the clock today: city life (`'cityLife'`, its worker
+paused with the clock), GoWay Live (`'live'`: its source is re-set in the
+clock's `onTick`, at most every 50–250 ms by zoom, and it stops asking when
+nothing moves), animated models and landmarks (`'models'`, `'landmarks'`).
+For the work in flight: a **vehicle or person animation** (VAT, walk cycles)
+advances only on the frames its feature's ticket gets — never its own loop;
+**street markings** are geometry in the city tiles' budget (count their
+triangles in `city.drawVertices`, or add a `city.markings` knob).
 
 ## Hotspots, measured and fixed
 
@@ -253,7 +256,9 @@ redraws along the path, bytes uploaded while loading, GPU memory held, and that
 no loading frame uploads more than the preset's budget; that a lower preset
 is never the dearer one; and that a scene measured twice gives the same counts.
 
-The budgets are the measured counts plus 10% (redraws and passes exactly).
+The budgets are the measured counts plus 10% (redraws and passes exactly;
+25% for the bytes uploaded while loading, the one count that depends on which
+fallback levels happen to arrive first).
 Raising one is allowed and visible: change the number in the PR, with why.
 
 **It can fail** — mutations, each run against the gate and reverted:

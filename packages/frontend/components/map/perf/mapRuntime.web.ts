@@ -216,7 +216,8 @@ export function attachMapRuntime(map: MapLibreMap, options: MapRuntimeOptions): 
             intervalMs: continuous ? gap : null,
             costMs: timer && gpuLast !== undefined ? Math.max(frameCpu, gpuLast) : null,
           });
-          if (next !== null) applyRatio(next);
+          // Never inside MapLibre's own frame: a resize there re-enters it.
+          if (next !== null) setTimeout(() => !disposed && applyRatio(drs.ratio), 0);
         }
       }
     };

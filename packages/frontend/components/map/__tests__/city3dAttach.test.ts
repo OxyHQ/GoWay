@@ -180,7 +180,7 @@ describe('attachCity3d', () => {
 describe('city3d passes (GoWay Live’s 3D shapes)', () => {
   test('a pass goes directly above the buildings, and leaves with them', async () => {
     const map = fakeMap(['background', 'building', BUILDING_3D_LAYER_ID, 'label-road']);
-    const handle = await attachCity3d(asMap(map), { appearance: 'light', light: null });
+    const handle = await attachCity3d(asMap(map), { ...ENGINE, appearance: 'light', light: null });
     let disposed = 0;
     const remove = handle?.addPass({ id: 'live3d', render: () => {}, dispose: () => disposed++ });
     expect(map.order).toEqual([
