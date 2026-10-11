@@ -48,7 +48,21 @@
 import type { LightSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type { CustomLayerInterface, Map as MapLibreMap, VectorTileSource } from 'maplibre-gl';
 
-import { CITY_TILE_LAYER, CITY_TILE_PATH, CITY_TILE_ZOOM } from '@/lib/map/cityTiles';
+import {
+  isCity3dTreeFillRequested,
+  isCity3dTreesRequested,
+  MAP_CITY3D_TREE_FILL_ENABLED,
+  MAP_CITY3D_TREES_ENABLED,
+} from '@/lib/map/city3dTreesFlag';
+import {
+  CITY_COVERAGE_PATH,
+  CITY_TILE_LAYER,
+  CITY_TILE_PATH,
+  CITY_TILE_ZOOM,
+  CITY_TREE_LAYER,
+  type CityCoverageBox,
+  parseCityCoverage,
+} from '@/lib/map/cityTiles';
 import { isCityTilesRequested, MAP_CITY_TILES_ENABLED } from '@/lib/map/cityTilesFlag';
 import {
   getMapSource,
@@ -66,6 +80,7 @@ import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
 
 import { followTerrain } from './city3dGround.web';
 import { cityLightFromSpec, sameCityLight } from './city3dLight';
+import { treeColours } from './city3dTrees';
 // Type-only on purpose: the engine chunk imports these modules at runtime, and
 // a module two lazy chunks share is hoisted into the first-paint `__common`
 // chunk (see `engine3d/lazyChunk.ts`; `components/__tests__/engine3dChunk.test.ts`).
@@ -76,38 +91,58 @@ import type { GroundStats } from './engine/city3d/terrainGround';
 import { reportMapDefect } from './shared';
 
 /**
- * GoWay's per-building city tiles are drawn from more, smaller tiles than the
- * z14 basemap: 16 z15 tiles is ~3.7 km square around the camera (4 z14
- * tiles' worth), and a dense one is ~20 MB of buffers (measured: Eixample,
- * 7,934 buildings, 600k vertices).
- */
-const CITY_TILES_MAX = 16;
-
-/**
- * Which tiles to mesh: GoWay's city tiles when this page asked for them
- * (`lib/map/cityTilesFlag.ts`), else the basemap's own `building` layer.
+ * Which tiles to mesh: always the basemap's own `building` layer, and — when
+ * this page asked for them (`lib/map/cityTilesFlag.ts`) — GoWay's city tiles
+ * INSTEAD wherever `coverage` says they were compiled (per tile, by the
+ * engine's `sources.ts`). Outside every archive, or with no coverage at all
+ * (the route unreachable), the basemap's buildings draw: never a flat map.
  * Exported for the tests.
  */
 export function citySourceFor(
   basemap: { template: string; maxzoom: number },
   cityTiles: boolean,
   origin: string,
+  coverage: readonly CityCoverageBox[] = [],
 ) {
-  if (!cityTiles) {
-    return {
-      tileUrlTemplate: basemap.template,
-      tileZoom: basemap.maxzoom,
-      sourceLayer: OPENMAPTILES_SOURCE_LAYERS.building,
-      tileFormat: 'openmaptiles' as const,
-    };
-  }
-  return {
-    tileUrlTemplate: `${origin}${CITY_TILE_PATH}`,
-    tileZoom: CITY_TILE_ZOOM,
-    sourceLayer: CITY_TILE_LAYER,
-    tileFormat: 'goway' as const,
-    maxTiles: CITY_TILES_MAX,
+  const base = {
+    tileUrlTemplate: basemap.template,
+    tileZoom: basemap.maxzoom,
+    sourceLayer: OPENMAPTILES_SOURCE_LAYERS.building,
   };
+  if (!cityTiles) return { ...base, city: null };
+  return {
+    ...base,
+    city: {
+      tileUrlTemplate: `${origin}${CITY_TILE_PATH}`,
+      tileZoom: CITY_TILE_ZOOM,
+      sourceLayer: CITY_TILE_LAYER,
+      treeLayer: CITY_TREE_LAYER,
+      coverage,
+    },
+  };
+}
+
+/**
+ * The areas the city-tile archives cover (`CITY_COVERAGE_PATH`). Any failure
+ * — unreachable, slow, malformed — is NO coverage: the layer then draws the
+ * basemap's buildings everywhere rather than a flat map. Exported for tests.
+ */
+export async function fetchCityCoverage(
+  origin: string,
+  fetcher: (url: string, init: { signal: AbortSignal }) => Promise<Response> = fetch,
+  timeoutMs = 4000,
+): Promise<CityCoverageBox[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetcher(`${origin}${CITY_COVERAGE_PATH}`, { signal: controller.signal });
+    if (!response.ok) return [];
+    return parseCityCoverage(await response.json());
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** The custom layer's id, in GoWay's own namespace. */
@@ -204,13 +239,42 @@ export async function attachCity3d(
       development: typeof __DEV__ !== 'undefined' && __DEV__,
       search: typeof window !== 'undefined' ? window.location.search : '',
     });
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const coverage = cityTiles ? await fetchCityCoverage(origin) : [];
+  if (cityTiles && coverage.length === 0) {
+    reportMapDefect(
+      'city3d:city-coverage',
+      'city3d: the city tiles report no coverage; drawing the basemap buildings instead.',
+    );
+  }
   const citySource = citySourceFor(
     { template, maxzoom: source?.maxzoom ?? 14 },
     cityTiles,
-    typeof window !== 'undefined' ? window.location.origin : '',
+    origin,
+    coverage,
   );
 
-  const palette = buildingHeightRamp(CARTOGRAPHY_PALETTES[options.appearance]);
+  const cartography = CARTOGRAPHY_PALETTES[options.appearance];
+  const trees = treeColours(cartography);
+  const palette = {
+    ...buildingHeightRamp(cartography),
+    treeCrown: trees.crown,
+    treeConifer: trees.conifer,
+    treeTrunk: trees.trunk,
+  };
+  // Stylised trees in mapped woods and parks (`engine/city3d/trees.ts`).
+  const standTrees = isCity3dTreesRequested({
+    enabled: MAP_CITY3D_TREES_ENABLED,
+    // `typeof`: the attach tests run without the bundler's `__DEV__`.
+    development: typeof __DEV__ !== 'undefined' && __DEV__,
+    search: typeof window === 'undefined' ? '' : window.location.search,
+  });
+  // The styling fill of mapped woods: off unless asked for.
+  const fillWoods = isCity3dTreeFillRequested({
+    enabled: MAP_CITY3D_TREE_FILL_ENABLED,
+    development: typeof __DEV__ !== 'undefined' && __DEV__,
+    search: typeof window === 'undefined' ? '' : window.location.search,
+  });
   let lightSpec = options.light;
   let applied: CityLight | null = null;
   let engine: CityEngine | null = null;
@@ -243,6 +307,20 @@ export async function attachCity3d(
       gl: gl as WebGL2RenderingContext,
       canvas: host.getCanvas(),
       ...citySource,
+      // The fill reads OpenMapTiles' landcover; on city tiles the engine
+      // reads it from the basemap tile under them.
+      trees: standTrees
+        ? {
+            sourceLayers: {
+              landcover: OPENMAPTILES_SOURCE_LAYERS.landcover,
+              landuse: OPENMAPTILES_SOURCE_LAYERS.landuse,
+              water: OPENMAPTILES_SOURCE_LAYERS.water,
+              transportation: OPENMAPTILES_SOURCE_LAYERS.transportation,
+              building: OPENMAPTILES_SOURCE_LAYERS.building,
+            },
+            fillWoods,
+          }
+        : null,
       palette,
       light: applied,
       fade: BUILDINGS_3D_FADE,

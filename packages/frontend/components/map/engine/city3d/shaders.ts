@@ -27,6 +27,8 @@
  * them the one thing on the map that does not match its neighbours.
  */
 import { AO } from './occlusion';
+import { Z_UNITS_PER_METRE } from './packing';
+import { DITHER_DISCARD_GLSL, DITHER_GLSL } from './transitions';
 
 /** A number as a GLSL float literal (`1` → `1.0`), which GLSL ES insists on. */
 export function glslFloat(value: number): string {
@@ -41,10 +43,12 @@ precision highp float;
 uniform mat4 modelViewMatrix;
 uniform mat4 projectionMatrix;
 
-in vec3 position;
-in vec3 normal;
-// x: corner occlusion (0–1); y: the building's height in metres / 255.
-in vec2 shade;
+// The compact format (packing.ts): x, y in tile units, z in 1/32 m, and the
+// shade word (tone × 256 + corner occlusion). The model matrix turns the
+// units back into metres, so only the height and the shade are decoded here.
+in vec4 position;
+// Unit normal × 127 (int8, normalised by the attribute), w unused.
+in vec4 normal;
 // On 3D terrain: how far this vertex's building is lifted, in metres
 // (terrainGround.ts). Read only while uGrounded is set; without terrain the
 // attribute may not even be bound.
@@ -57,11 +61,13 @@ out float vHeightAboveGround;
 out float vBuildingHeight;
 
 void main() {
-  vNormal = normal;
-  vCornerAo = shade.x;
-  vHeightAboveGround = position.z;
-  vBuildingHeight = shade.y * 255.0;
-  float lift = uGrounded > 0.5 ? ground : 0.0;
+  vNormal = normal.xyz;
+  float tone = floor(position.w / 256.0);
+  vCornerAo = (position.w - tone * 256.0) / 255.0;
+  vHeightAboveGround = position.z * ${glslFloat(1 / Z_UNITS_PER_METRE)};
+  vBuildingHeight = tone;
+  // The lift is metres; stored z is 1/32 m, scaled back by the model matrix.
+  float lift = uGrounded > 0.5 ? ground * ${glslFloat(Z_UNITS_PER_METRE)} : 0.0;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position.xy, position.z + lift, 1.0);
 }
 `;
@@ -91,7 +97,10 @@ in float vBuildingHeight;
 
 out vec4 fragColor;
 
+// Level-of-detail and fade-in cross-fades (transitions.ts).
+${DITHER_GLSL}
 void main() {
+  ${DITHER_DISCARD_GLSL}
   vec3 n = normalize(vNormal);
 
   vec3 base = vBuildingHeight < uTallM

@@ -16,6 +16,9 @@
  * answers the way that Worker answers a tile: the stored gzip bytes with
  * `content-encoding: gzip`, and 204 for a tile the archive does not have. So
  * what the browser sees in development is what it will see from the edge.
+ * It also answers `/map/city/coverage.json` — which areas the archives
+ * cover — because a 204 inside them is empty ground and outside them is
+ * "not compiled", and only coverage tells them apart (`lib/map/cityTiles.ts`).
  *
  * A side addition beside the Oxy preset (like `vendor-maplibre-worker.js`),
  * not a fork of it: it wraps whatever `server.enhanceMiddleware` the preset
@@ -25,6 +28,8 @@ const { open } = require('node:fs/promises');
 const path = require('node:path');
 
 const TILE_PATH = /^\/map\/city\/(\d{1,2})\/(\d{1,9})\/(\d{1,9})\.pbf$/;
+/** `CITY_COVERAGE_PATH` in `lib/map/cityTiles.ts` (this file is plain JS for Metro). */
+const COVERAGE_PATH = '/map/city/coverage.json';
 
 function withDevCityTiles(config) {
   const archivePath = process.env.GOWAY_CITY_TILES_ARCHIVE;
@@ -70,7 +75,35 @@ function withDevCityTiles(config) {
       enhanceMiddleware(middleware, server) {
         const inner = previous ? previous(middleware, server) : middleware;
         return (request, response, next) => {
-          const match = TILE_PATH.exec((request.url || '').split('?')[0]);
+          const url = (request.url || '').split('?')[0];
+          if (url === COVERAGE_PATH) {
+            // What each archive covers: its compile box (`goway:coverage` in
+            // its metadata), else its tiles' extent from the header.
+            archives()
+              .then((list) =>
+                Promise.all(
+                  list.map(async (archive) => {
+                    const metadata = await archive.metadata().catch(() => ({}));
+                    const coverage = metadata['goway:coverage'] ?? (await archive.header()).bounds;
+                    return { coverage };
+                  }),
+                ),
+              )
+              .then((covered) => {
+                response.writeHead(200, {
+                  'access-control-allow-origin': '*',
+                  'cache-control': 'no-cache',
+                  'content-type': 'application/json',
+                });
+                response.end(JSON.stringify({ archives: covered }));
+              })
+              .catch((error) => {
+                response.writeHead(500, { 'content-type': 'text/plain' });
+                response.end(String(error));
+              });
+            return;
+          }
+          const match = TILE_PATH.exec(url);
           if (!match) return inner(request, response, next);
           const [z, x, y] = match.slice(1).map(Number);
           tileAt(z, x, y)

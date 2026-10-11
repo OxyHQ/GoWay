@@ -196,6 +196,18 @@ layer lifts each building (`terrainGround.ts`):
   sampler cache); every building then reads the grid bilinearly, so the cost
   does not grow with the building count (Barcelona: ~15,500 polygons per
   tile).
+- **The ground is the surface model, opened.** Mapterhorn's terrain is
+  Copernicus GLO-30, a SURFACE model: over a dense city it records roofs and
+  canopy, not the street. Read straight off it, Eixample's street trees stood
+  at roof height and buildings were lifted by their neighbours' roofs (owner
+  report on #126). So the grid is now 65 × 65 (≈29 m cells at z14), sampled
+  4 cells past each edge, and OPENED — a minimum then a maximum filter over a
+  5-cell (≈145 m) window — then cropped to the tile (`groundGrid`,
+  `openGrid`): every bump narrower than the window (a building, a block) goes,
+  a planar slope is reproduced exactly, and buildings and trees read the one
+  grid, so they share one ground. Wider structures survive it. Cost: 5,329
+  samples a tile instead of 1,089 — about 5× the ~1 ms above, **not
+  re-measured** — still one tile per frame.
 - **How a building is placed.** MapLibre's own rule for `fill-extrusion`: the
   whole building at the ground under its centre, so roofs stay flat as in the
   data. Its fixed 10 m base sink is replaced by a measured one — the drop from
@@ -205,7 +217,13 @@ layer lifts each building (`terrainGround.ts`):
   footprint box (`TileMesh.polygonStarts`/`polygonBoxes`: 20 bytes a polygon,
   ~1% of a dense tile's buffers); the lift is one float per vertex (+4.4 MB, or
   +17%, for a dense Barcelona tile), allocated only once terrain is on and added
-  in the vertex shader only while it is.
+  in the vertex shader only while it is. With the far-field levels and the
+  compact vertex format (`MAP_3D_CITY.md` §4) the same placement runs on the
+  packed chunks: each chunk remembers where its vertices came from, the lifts
+  are one array whose slices are the chunks' `ground` attributes, and the
+  trees of the same tile take the grid's ground under each of them
+  (`cityMeshes.ts` → `groundTileFor`; `city3dGroundPacked.test.ts` pins the
+  packed lifts equal to `vertexGround`'s).
 - **Cost of placing.** ≤ 12 ms for a dense Barcelona tile (the per-vertex
   pass), one tile per frame, nearest first. A tile never grounded is not drawn
   until it is (it would be inside the hill); culling bounds follow the lift.

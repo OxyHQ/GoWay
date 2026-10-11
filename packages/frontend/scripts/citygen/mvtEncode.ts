@@ -18,7 +18,12 @@
  */
 import { PbfWriter } from 'pbf';
 
-import { CITY_TILE_EXTENT, CITY_TILE_LAYER } from '../../lib/map/cityTiles';
+import {
+  CITY_TILE_EXTENT,
+  CITY_TILE_LAYER,
+  CITY_TREE_LAYER,
+  type CityTileTree,
+} from '../../lib/map/cityTiles';
 
 export type TilePoint = readonly [number, number];
 
@@ -144,6 +149,82 @@ export function encodeCityTile(features: readonly CityTileFeature[]): Uint8Array
             out.writeVarintField(1, feature.id);
             out.writePackedVarint(2, feature.tags);
             out.writeVarintField(3, 3);
+            out.writePackedVarint(4, feature.geometry);
+          },
+          null,
+        );
+      }
+      for (const key of keys) layer.writeStringField(3, key);
+      for (const value of values) {
+        layer.writeMessage(
+          4,
+          (_unused: null, out) => {
+            if (typeof value === 'string') out.writeStringField(1, value);
+            else if (typeof value === 'boolean') out.writeBooleanField(7, value);
+            else if (Number.isInteger(value) && value >= 0) out.writeVarintField(5, value);
+            else out.writeDoubleField(3, value);
+          },
+          null,
+        );
+      }
+      layer.writeVarintField(5, CITY_TILE_EXTENT);
+    },
+    null,
+  );
+  return pbf.finish();
+}
+
+/**
+ * Encode a tile's trees as the `tree` layer: one MVT point feature each, its
+ * id the OSM node id. Returned as bytes that may be APPENDED to
+ * {@link encodeCityTile}'s: a vector tile is a repeated `layers` field, and
+ * protobuf concatenation appends to a repeated field, so the two layers make
+ * one valid tile without re-encoding the buildings.
+ */
+export function encodeTreeLayer(trees: readonly CityTileTree[]): Uint8Array {
+  const pbf = new PbfWriter();
+  if (trees.length === 0) return pbf.finish();
+  const keys: string[] = [];
+  const keyIndex = new Map<string, number>();
+  const values: Value[] = [];
+  const valueIndex = new Map<string, number>();
+  const encoded = trees.map((tree) => {
+    const tags: number[] = [];
+    for (const [key, value] of Object.entries(tree.properties)) {
+      if (value === undefined) continue;
+      let k = keyIndex.get(key);
+      if (k === undefined) {
+        k = keys.length;
+        keys.push(key);
+        keyIndex.set(key, k);
+      }
+      const valueKey = `${typeof value}:${String(value)}`;
+      let v = valueIndex.get(valueKey);
+      if (v === undefined) {
+        v = values.length;
+        values.push(value);
+        valueIndex.set(valueKey, v);
+      }
+      tags.push(k, v);
+    }
+    const x = Math.round(tree.point[0]);
+    const y = Math.round(tree.point[1]);
+    const zigzag = (n: number) => (n << 1) ^ (n >> 31);
+    // MoveTo, one point.
+    return { id: tree.id, tags, geometry: [(1 << 3) | 1, zigzag(x), zigzag(y)] };
+  });
+  pbf.writeMessage(
+    3,
+    (_: null, layer) => {
+      layer.writeVarintField(15, 2);
+      layer.writeStringField(1, CITY_TREE_LAYER);
+      for (const feature of encoded) {
+        layer.writeMessage(
+          2,
+          (_unused: null, out) => {
+            out.writeVarintField(1, feature.id);
+            out.writePackedVarint(2, feature.tags);
+            out.writeVarintField(3, 1);
             out.writePackedVarint(4, feature.geometry);
           },
           null,

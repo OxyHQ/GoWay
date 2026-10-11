@@ -50,9 +50,9 @@ interface Failure {
   retryAt: number;
 }
 
-export interface Plan {
+export interface Plan<T extends TileId = TileId> {
   /** Tiles to request now, nearest first. */
-  request: TileId[];
+  request: T[];
   /** Request ids to cancel: in flight for tiles no longer wanted. */
   cancel: number[];
 }
@@ -60,11 +60,16 @@ export interface Plan {
 /**
  * The request bookkeeping for one engine. Request ids are the engine's (they
  * travel to the worker and back); the scheduler only remembers them.
+ *
+ * `T` is what is requested — a tile, or a tile at a level of detail — and
+ * `keyOf` names it; by default a tile is its `tileKey`.
  */
-export class TileScheduler {
+export class TileScheduler<T extends TileId = TileId> {
   private readonly pending = new Map<string, number>();
   private readonly failures = new Map<string, Failure>();
   private wanted: string[] = [];
+
+  constructor(private readonly keyOf: (tile: T) => string = tileKey) {}
 
   /** The keys last planned for, nearest first. */
   get wantedKeys(): readonly string[] {
@@ -82,8 +87,8 @@ export class TileScheduler {
    *
    * @param isCached - whether a tile (empty or not) is already in the cache.
    */
-  plan(tiles: readonly TileId[], now: number, isCached: (key: string) => boolean): Plan {
-    const keys = tiles.map(tileKey);
+  plan(tiles: readonly T[], now: number, isCached: (key: string) => boolean): Plan<T> {
+    const keys = tiles.map(this.keyOf);
     this.wanted = keys;
     const wanted = new Set(keys);
 
@@ -94,7 +99,7 @@ export class TileScheduler {
       this.pending.delete(key);
     }
 
-    const request: TileId[] = [];
+    const request: T[] = [];
     tiles.forEach((tile, i) => {
       const key = keys[i];
       if (isCached(key) || this.pending.has(key)) return;
@@ -106,16 +111,16 @@ export class TileScheduler {
   }
 
   /** A request for `tile` went out as `id`. */
-  started(tile: TileId, id: number): void {
-    this.pending.set(tileKey(tile), id);
+  started(tile: T, id: number): void {
+    this.pending.set(this.keyOf(tile), id);
   }
 
   /**
    * The worker answered `id` for `tile` with a mesh or an empty tile. Returns
    * whether the answer is still wanted (`false` for a superseded request).
    */
-  succeeded(tile: TileId, id: number): boolean {
-    const key = tileKey(tile);
+  succeeded(tile: T, id: number): boolean {
+    const key = this.keyOf(tile);
     if (this.pending.get(key) !== id) return false;
     this.pending.delete(key);
     this.failures.delete(key);
@@ -126,8 +131,8 @@ export class TileScheduler {
    * The worker reported `id` for `tile` failed. Returns the delay before it
    * may be retried, or `null` for a superseded request (nothing to retry).
    */
-  failed(tile: TileId, id: number, now: number): number | null {
-    const key = tileKey(tile);
+  failed(tile: T, id: number, now: number): number | null {
+    const key = this.keyOf(tile);
     if (this.pending.get(key) !== id) return null;
     this.pending.delete(key);
     const attempts = (this.failures.get(key)?.attempts ?? 0) + 1;
@@ -247,4 +252,13 @@ export class TileCache<T> {
     for (const entry of this.entries.values()) if (entry.value !== null) this.release(entry.value);
     this.entries.clear();
   }
+}
+
+/**
+ * When to ask again for a tile that arrived INCOMPLETE (its trees' basemap
+ * tile could not be fetched; `workerTrees.ts`): 2 s, 8 s, 30 s after the
+ * 1st, 2nd and 3rd such answer, then never — the tile keeps what it has.
+ */
+export function incompleteRetryMs(attempts: number): number | null {
+  return [2_000, 8_000, 30_000][attempts - 1] ?? null;
 }

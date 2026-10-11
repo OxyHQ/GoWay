@@ -51,13 +51,14 @@ import { decodeCityTile } from '../components/map/engine/city3d/osmTiles';
 import {
   CITY_TILE_EXTENT,
   CITY_TILE_LAYER,
+  CITY_COVERAGE_METADATA_KEY,
   CITY_TILE_SCHEMA_VERSION,
   CITY_TILE_ZOOM,
   CITY_PROPS,
 } from '../lib/map/cityTiles';
 import { COMPRESSION, PMTiles, TILE_TYPE } from '../worker/pmtiles.js';
 import { compile } from './citygen/compile';
-import { encodeCityTile } from './citygen/mvtEncode';
+import { encodeCityTile, encodeTreeLayer } from './citygen/mvtEncode';
 import { writePmtiles } from './citygen/pmtilesWriter';
 
 const FRONTEND_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -184,8 +185,14 @@ async function build(args: Args): Promise<string> {
   const featureCounts: number[] = [];
   let rawTotal = 0;
   let largest = { key: '', bytes: 0, features: 0 };
-  for (const [key, features] of result.tiles) {
-    const raw = encodeCityTile(features);
+  for (const key of new Set([...result.tiles.keys(), ...result.trees.keys()])) {
+    const features = result.tiles.get(key) ?? [];
+    const buildingLayer = encodeCityTile(features);
+    // The `tree` layer appended: one tile, two layers (`encodeTreeLayer`).
+    const treeLayer = encodeTreeLayer(result.trees.get(key) ?? []);
+    const raw = new Uint8Array(buildingLayer.length + treeLayer.length);
+    raw.set(buildingLayer);
+    raw.set(treeLayer, buildingLayer.length);
     if (raw.length === 0) continue;
     const gz = new Uint8Array(gzipSync(raw, { level: 9 }));
     const [z, x, y] = key.split('/').map(Number);
@@ -229,6 +236,10 @@ async function build(args: Args): Promise<string> {
         fields: Object.fromEntries(Object.values(CITY_PROPS).map((key) => [key, 'see schema'])),
       },
     ],
+    // The area every building of which is in the archive: the compile box, or
+    // the tiles' extent for a whole extract. Clients draw city tiles only
+    // inside it (`lib/map/cityTiles.ts` → `CITY_COVERAGE_PATH`).
+    [CITY_COVERAGE_METADATA_KEY]: bbox ?? [west, south, east, north],
     'goway:schema': CITY_TILE_SCHEMA_VERSION,
     'goway:extent': CITY_TILE_EXTENT,
     'goway:source': basename(args.pbf),
@@ -271,6 +282,10 @@ async function build(args: Args): Promise<string> {
   console.log(`  roof height  ${JSON.stringify(c.roofHeightSources)}`);
   console.log(`  rejected     ${JSON.stringify(c.rejected)}`);
   console.log(`  problems     ${JSON.stringify(result.problems)}; nodes kept ${result.nodesKept}`);
+  const t = result.treeCoverage;
+  console.log(
+    `  trees        ${t.trees} natural=tree · crown ${pct(t.withCrown, t.trees)}% ${JSON.stringify(t.crowns)} · height ${pct(t.withHeight, t.trees)}% · diameter_crown ${pct(t.withCrownDiameter, t.trees)}%`,
+  );
 
   await writeFile(
     `${out}.receipt.json`,
@@ -294,6 +309,7 @@ async function build(args: Args): Promise<string> {
         },
         tileGzipBytes: { p50: percentile(gzSizes, 50), p95: percentile(gzSizes, 95) },
         coverage: c,
+        treeCoverage: result.treeCoverage,
         problems: result.problems,
         builtAt: new Date().toISOString(),
       },
