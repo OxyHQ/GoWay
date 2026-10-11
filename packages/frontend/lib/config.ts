@@ -1,6 +1,7 @@
 /** Runtime configuration, read from `EXPO_PUBLIC_*` env vars (see `.env.example`). */
 import { DEFAULT_GOWAY_WEB_BASE_URL } from '@goway.to/sdk';
 import { DEFAULT_MERCARIA_API_BASE_URL } from '@mercaria.co/sdk';
+import { enabledUnlessKilled } from './map/reliefFlag';
 
 /** Backend API base URL. */
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://api.goway.to';
@@ -92,22 +93,22 @@ export const MAP_FLYOVER_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_MA
 
 /**
  * Whether the map draws the world as a GLOBE at low zoom (MapLibre's `globe`
- * projection, easing into mercator by z12) with a space backdrop and an
- * atmosphere (web only; `docs/MAP_TERRAIN_GLOBE.md`).
+ * projection, easing into mercator by z12) with a space backdrop and a glow
+ * (web only; `docs/MAP_TERRAIN_GLOBE.md`).
  *
- * Off unless `EXPO_PUBLIC_MAP_GLOBE` is `1`/`true`; no production deployment
- * sets it. A development build also honours `?globe=1` per tab
- * (`lib/map/reliefFlag.ts`); a production build ignores that.
+ * ON by default, production included. `EXPO_PUBLIC_MAP_GLOBE=0` (or `false`)
+ * is the build-time kill switch; a development build also honours `?globe=0`
+ * per tab (`lib/map/reliefFlag.ts`), which a production build ignores.
  */
-export const MAP_GLOBE_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_MAP_GLOBE ?? '');
+export const MAP_GLOBE_ENABLED = enabledUnlessKilled(process.env.EXPO_PUBLIC_MAP_GLOBE);
 
 /**
- * Whether the map draws real relief: a hillshade at mid zooms and 3D terrain
- * once the camera is tilted, from GoWay's DEM tiles (`docs/MAP_TERRAIN_GLOBE.md`).
+ * Whether the map draws real relief: a hillshade, and 3D terrain once the
+ * camera is tilted, from GoWay's DEM tiles (`docs/MAP_TERRAIN_GLOBE.md`).
  * Native draws the hillshade only (its MapLibre has no terrain API).
  *
- * Off unless `EXPO_PUBLIC_MAP_TERRAIN` is `1`/`true`; no production deployment
- * sets it. A development build also honours `?terrain=1` per tab; a production
- * build ignores that.
+ * ON by default, production included. `EXPO_PUBLIC_MAP_TERRAIN=0` (or `false`)
+ * is the build-time kill switch; a development build also honours
+ * `?terrain=0` per tab, which a production build ignores.
  */
-export const MAP_TERRAIN_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_MAP_TERRAIN ?? '');
+export const MAP_TERRAIN_ENABLED = enabledUnlessKilled(process.env.EXPO_PUBLIC_MAP_TERRAIN);

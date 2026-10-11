@@ -15,9 +15,9 @@
  *    `heading` about up, clockwise from north (as `MapViewport.bearing`), then
  *    `pitch` about the model's right axis (nose up is positive), then `roll`
  *    about its forward axis (right side down is positive).
- *  - `altitude` is metres above the DRAWN ground. GoWay has no DEM, so the
- *    drawn ground is the Mercator plane and `'ground'` is the only reference;
- *    `'sea'` and `'ellipsoid'` arrive with a DEM (phase 5).
+ *  - `altitude` is metres above the DRAWN ground: the 3D terrain where the web
+ *    map draws one (docs/MAP_TERRAIN_GLOBE.md), the Mercator plane elsewhere.
+ *    `'ground'` is the only reference; `'sea'` and `'ellipsoid'` are phase 5.
  *
  * ## The NaN gate
  *

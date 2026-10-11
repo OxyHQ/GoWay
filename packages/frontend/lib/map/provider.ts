@@ -290,23 +290,24 @@ export const MAPTERHORN_ENDPOINTS = {
 } as const;
 
 /**
- * The elevation credit, shown in `MapAttribution` while relief is drawn.
- *
- * One link, to Mapterhorn's attribution page, which names each of the 151
- * sources it merges (Copernicus GLO-30 among them) — the form Mapterhorn
- * itself recommends when a view spans many sources.
+ * Mapterhorn's own credit: its attribution page names each of the 151 sources
+ * it merges (Copernicus GLO-30 among them) — the form Mapterhorn recommends
+ * when a view spans many sources. Carried by the DEM sources' `attribution`
+ * and linked from GoWay's attribution page; the map's credit line links to
+ * that page instead ({@link TERRAIN_ATTRIBUTION_LINK}).
  */
-export const TERRAIN_ATTRIBUTION_LINK: MapAttributionLink = {
+export const TERRAIN_SOURCE_LINK: MapAttributionLink = {
   label: '© Mapterhorn',
   href: 'https://mapterhorn.com/attribution',
 };
 
-const ATTRIBUTION: MapAttribution = {
-  links: [
-    { label: '© OpenMapTiles', href: 'https://www.openmaptiles.org/' },
-    { label: '© OpenStreetMap', href: 'https://www.openstreetmap.org/copyright' },
-  ],
-};
+/** The basemap's credit links (OpenMapTiles, OpenStreetMap), as `MapAttribution` draws them. */
+export const ATTRIBUTION_LINKS: readonly MapAttributionLink[] = [
+  { label: '© OpenMapTiles', href: 'https://www.openmaptiles.org/' },
+  { label: '© OpenStreetMap', href: 'https://www.openstreetmap.org/copyright' },
+];
+
+const ATTRIBUTION: MapAttribution = { links: ATTRIBUTION_LINKS };
 
 /** The vector source id inside GoWay's style document. */
 export const GOWAY_BASEMAP_SOURCE_ID = 'openmaptiles';
@@ -327,6 +328,20 @@ const GOWAY_STYLE_PATHS: Record<MapAppearance, string> = {
 
 /** GoWay's canonical origin (AGENTS.md → Product boundaries). */
 const GOWAY_ORIGIN = 'https://goway.to';
+
+/**
+ * The elevation credit on every map frame while relief is drawn: "© Mapterhorn",
+ * linking to GoWay's own attribution page (`app/attribution.tsx`) rather than
+ * straight to Mapterhorn's. The Copernicus licence (Article 6) requires a
+ * notice and a liability sentence wherever GLO-30-derived data is shown to the
+ * public, and Mapterhorn's page carries neither; GoWay's page carries both,
+ * verbatim, and links on to Mapterhorn's list. Absolute and canonical, so the
+ * link is the same from the app, the native build and an embed on another site.
+ */
+export const TERRAIN_ATTRIBUTION_LINK: MapAttributionLink = {
+  label: '© Mapterhorn',
+  href: `${GOWAY_ORIGIN}/attribution#elevation`,
+};
 
 /**
  * Absolute the map paths against an origin.
