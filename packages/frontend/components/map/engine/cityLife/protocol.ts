@@ -6,6 +6,7 @@
  */
 import type { LngLatBox } from '../city3d/tileMath';
 import type { HealStats } from './omtRoads';
+import type { CoveredTiles } from './realCoverage';
 import type { SimBudget, SimStats } from './sim/simulation';
 import type { CarModel } from './sim/traffic';
 
@@ -28,6 +29,8 @@ export type SimWorkerRequest =
       zoom: number;
       bounds: LngLatBox;
     }
+  /** Real first: the z12 tiles real data owns, per class (`realCoverage.ts`). */
+  | { type: 'coverage'; tiles: CoveredTiles }
   /** Stop stepping (tab hidden, zoomed out, buildings faded) — or start again. */
   | { type: 'pause' }
   | { type: 'resume' };
@@ -44,6 +47,8 @@ export interface SimFrameMessage {
   carStyle: Uint8Array;
   /** The taxis' door colour where the city has a taxi livery (`sim/liveries.ts`), else `null`. */
   taxiDoors: [number, number, number] | null;
+  /** Simulated agents in the visible box, by what the label names. */
+  inView: { cars: number; buses: number; people: number };
   /** Car slot ranges per model, `[start, end)`. */
   ranges: Record<CarModel, [number, number]>;
   people: Float32Array;

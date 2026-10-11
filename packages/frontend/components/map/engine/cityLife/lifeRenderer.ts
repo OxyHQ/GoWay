@@ -46,6 +46,9 @@ import {
   SHADOW_FRAGMENT_SHADER,
   SHADOW_VERTEX_SHADER,
 } from './lifeShaders';
+import { getLiveCoverage, type LiveCoverage, subscribeLiveCoverage } from '@/lib/live/coverage';
+
+import { coveredTiles, liveClassesInView, type RealClass } from './realCoverage';
 import type {
   SimFrameMessage,
   SimStatsMessage,
@@ -75,6 +78,8 @@ export interface CityLifeOptions {
   requestRepaint: () => void;
   /** Called when agents start or stop being drawn: the host shows the "Simulated" label meanwhile. */
   onActiveChange: (active: boolean) => void;
+  /** What is simulated and what is live in view, whenever it changes (the label). */
+  onLabel?: (content: { simulated: ('cars' | 'buses' | 'people')[]; live: RealClass[] }) => void;
   /** Development statistics. */
   onStats?: (stats: CityLifeStats) => void;
 }
@@ -242,6 +247,20 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     budget: options.budget,
     fallback: options.basemapRoads,
   });
+
+  // Real first: forward the live layer's FRESH coverage to the simulation
+  // (`realCoverage.ts`). With the live layer off it reports nothing.
+  let coverage: LiveCoverage = getLiveCoverage();
+  let coverageKey = '';
+  const unsubscribeCoverage = subscribeLiveCoverage((next) => {
+    coverage = next;
+    const tiles = coveredTiles(next);
+    const key = JSON.stringify(tiles);
+    if (key === coverageKey) return;
+    coverageKey = key;
+    send({ type: 'coverage', tiles });
+  });
+  let labelKey = '';
 
   /** The last few states, oldest first. */
   const frames: SimFrameMessage[] = [];
@@ -473,6 +492,18 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
         }
       }
       if (a.origin.x !== b.origin.x || a.origin.y !== b.origin.y) a = b;
+      if (options.onLabel && b !== uploaded?.b) {
+        const simulated: ('cars' | 'buses' | 'people')[] = [];
+        if (b.inView.cars > 0) simulated.push('cars');
+        if (b.inView.buses > 0) simulated.push('buses');
+        if (b.inView.people > 0) simulated.push('people');
+        const live = liveClassesInView(coverage, view.bounds);
+        const key = `${simulated.join()}|${live.join()}`;
+        if (key !== labelKey) {
+          labelKey = key;
+          options.onLabel({ simulated, live });
+        }
+      }
       if (!uploaded || uploaded.a !== a || uploaded.b !== b) {
         uploaded = { a, b };
         const originKey = `${b.origin.x}/${b.origin.y}`;
@@ -543,6 +574,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       disposed = true;
       if (repaintTimer) clearTimeout(repaintTimer);
       worker.terminate();
+      unsubscribeCoverage();
       if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', onVisibility);
       }

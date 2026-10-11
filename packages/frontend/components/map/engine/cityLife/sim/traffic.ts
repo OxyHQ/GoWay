@@ -30,6 +30,7 @@
  * All of it is SIMULATION: plausible motion on the real street network, never
  * a statement about real traffic.
  */
+import type { RealClass } from '../realCoverage';
 import { type Network, type Path, phaseGreen } from './network';
 import type { Rng } from './rng';
 
@@ -85,6 +86,13 @@ export function idmAcceleration(v: number, v0: number, gap: number, leadV: numbe
 /** The vehicle kinds the renderer draws, in slot order. */
 export const CAR_MODELS = ['hatchback', 'sedan', 'taxi', 'van', 'bus'] as const;
 export type CarModel = (typeof CAR_MODELS)[number];
+
+/**
+ * The real vehicle class a simulated model stands in for, where a real feed
+ * can carry that class (`realCoverage.ts`). Cars, vans and taxis have no open
+ * real source: they stay simulated everywhere.
+ */
+export const REAL_CLASS_OF_MODEL: Partial<Record<CarModel, RealClass>> = { bus: 'bus' };
 
 /** Share of the car budget per model, and their length range in metres. */
 export const CAR_MODEL_SPECS: Record<CarModel, { share: number; length: [number, number] }> = {
