@@ -1307,20 +1307,20 @@ mirror): day roof `#e8e7e4`, lit wall `#f2efe6`, shaded wall `#c0beb9`; night
 roof `#6378ad`, lit wall `#50618d`, shaded wall `#414e70` — every night face
 above the `#3d4a66` ground, which a test pins.
 
-### What the flag costs when off
+### What the feature costs when off
 
-`expo export --platform web`, no flags set, the change against the `main` it
-was written on (`fdeaf2f`, before the globe/terrain and model merges),
-separate Metro caches, `--clear`:
+`expo export --platform web`, no features on, against `main` at `97e6d49`
+(separate Metro caches, `--clear`):
 
-| Chunk | Base | Detailed look | |
+| Chunk | `main` | With the detailed look | |
 | --- | ---: | ---: | --- |
-| `entry` (first paint) | 6,953,223 B | 6,953,223 B | identical once chunk hashes are normalised |
-| `__common` (first paint) | 78,516 B | 78,516 B | identical once module ids are normalised |
-| `city3dLayer` (lazy) | 3,895 B gz | 5,756 B gz | flag, palette, ground apply/undo |
-| `lazyChunk` (lazy, three.js) | 1,118,763 B gz | 1,121,154 B gz | the material GLSL |
-| `meshWorker` (sealed) | 20,495 B gz | 20,605 B gz | the building seed |
-| style documents (every map) | — | +13.9 KB raw, +0.8 KB gz each | the generated ground overrides, inert unless applied |
+| `entry` (first paint) | 1,757,712 B gz | 1,757,736 B gz (+24 B; +227 B raw) | the `detailedCity` registry entry — what every optional feature costs |
+| `__common` (first paint) | 81,774 B | 81,774 B | identical once module ids are normalised |
+| `MapSettingsPanel` (lazy) | 18,179 B gz | 19,190 B gz | the feature's labels, every UI language |
+| `city3dLayer` (lazy) | 7,152 B gz | 8,399 B gz | palette, ground apply/undo |
+| `lazyChunk` (lazy, three.js) | 1,194,541 B gz | 1,198,044 B gz | the material GLSL |
+| `meshWorker` (sealed) | 29,124 B gz | 29,230 B gz | the building seed |
+| style documents (every map) | — | +0.8 KB gz each | the generated ground overrides, inert unless applied |
 
 `palette3d.ts` is imported at runtime only by the lazy adapter; the engine
 imports it for types only, so nothing is shared between the two lazy chunks
