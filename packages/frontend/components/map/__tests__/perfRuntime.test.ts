@@ -4,6 +4,8 @@
  * resolution, frame statistics, and the GL counters every measurement uses.
  */
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { createAnimationClock } from '@/components/map/perf/animationClock';
 import { DynamicResolution } from '@/components/map/perf/dynamicResolution';
@@ -364,5 +366,22 @@ describe('the GL counters', () => {
     expect(instrumentWebGl2(gl, state)).toBe(false);
     gl.drawArrays(TRIANGLES, 0, 3);
     expect(state.frame.draws).toBe(1);
+  });
+});
+
+describe('one GPU timer per frame', () => {
+  test('only the perf runtime opens a TIME_ELAPSED query', () => {
+    // WebGL 2 allows one at a time, and the runtime's spans the whole frame: a
+    // second one (the city engine had one) is refused, and its `endQuery`
+    // closes the runtime's mid-frame, so every GPU number reads a frame cut
+    // short (`docs/MAP_PERFORMANCE.md` → "One GPU timer per frame").
+    const root = join(import.meta.dir, '..', '..', '..');
+    const openers = new Bun.Glob('{components,lib,features,app}/**/*.{ts,tsx}');
+    const found = [...openers.scanSync({ cwd: root })].filter(
+      (file) =>
+        !file.includes('__tests__') &&
+        readFileSync(join(root, file), 'utf8').includes('beginQuery('),
+    );
+    expect(found).toEqual(['components/map/perf/mapRuntime.web.ts']);
   });
 });
