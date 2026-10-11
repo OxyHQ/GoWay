@@ -34,6 +34,7 @@ import { closeSync, openSync } from 'node:fs';
 import { roofFrame } from '../../components/map/engine/city3d/roofs';
 import { CITY_TILE_EXTENT, type CityTileTree } from '../../lib/map/cityTiles';
 import type { CityTileFeature, TilePoint, TilePolygon } from './mvtEncode';
+import { collectGarbage, rssMb } from './memory';
 import {
   type BlobRef,
   MEMBER_WAY,
@@ -85,6 +86,13 @@ export interface CompileOptions {
   zoom: number;
   /** `[west, south, east, north]`: keep buildings whose representative point is inside. */
   bbox?: [number, number, number, number];
+  /**
+   * Keep only the tiles (at {@link CompileOptions.zoom}) this returns true for:
+   * the tiles a regional build OWNS (`ownership.ts`). A building or tree goes
+   * to the tile holding its representative point, so this decides per tile
+   * exactly as the Worker does when it picks a region's archive for one.
+   */
+  keepTile?: (x: number, y: number) => boolean;
   log?: (line: string) => void;
 }
 
@@ -274,6 +282,45 @@ export function representativePoint(outer: Ring): [number, number] {
   return [(outer[0] + outer[2]) / 2, (outer[1] + outer[3]) / 2];
 }
 
+/**
+ * A building as its tile will hold it, with the tile coordinates computed
+ * only when the encoder reads them.
+ *
+ * Materialising every footprint as `[x, y]` pairs up front cost more memory
+ * than anything else the compiler does — measured on Portugal, the tiling
+ * step alone took the process from 2.9 GB to 5.4 GB — and memory is what
+ * decides how large a region one machine can compile. The mercator rings the
+ * geometry step already made are kept instead, and each tile's points exist
+ * only while that tile is being encoded.
+ */
+class LazyTileFeature implements CityTileFeature {
+  constructor(
+    readonly id: number,
+    readonly properties: CityTileFeature['properties'],
+    private readonly rings: readonly { outer: Ring; holes: Ring[] }[],
+    private readonly tx: number,
+    private readonly ty: number,
+    private readonly span: number,
+  ) {}
+
+  get polygons(): TilePolygon[] {
+    const toTile = (ring: Ring): TilePoint[] => {
+      const out: TilePoint[] = [];
+      for (let i = 0; i < ring.length; i += 2) {
+        out.push([
+          (ring[i] * this.span - this.tx) * CITY_TILE_EXTENT,
+          (ring[i + 1] * this.span - this.ty) * CITY_TILE_EXTENT,
+        ]);
+      }
+      return out;
+    };
+    return this.rings.map(({ outer, holes }) => ({
+      outer: toTile(outer),
+      holes: holes.map(toTile),
+    }));
+  }
+}
+
 interface Building {
   id: number;
   kind: 'building' | 'part';
@@ -290,7 +337,7 @@ export function compile(options: CompileOptions): CompileResult {
     const now = performance.now();
     timings[name] = Math.round(now - started);
     started = now;
-    log(`  ${name.padEnd(12)} ${(timings[name] / 1000).toFixed(1)} s`);
+    log(`  ${name.padEnd(12)} ${(timings[name] / 1000).toFixed(1)} s · rss ${rssMb()} MB`);
   };
 
   const blobs = scanBlobs(options.pbf);
@@ -354,20 +401,24 @@ export function compile(options: CompileOptions): CompileResult {
   lap('member ways');
 
   // ── Pass 3: node positions ──────────────────────────────────────────────
-  let refCount = 0;
-  for (const way of ways.values()) refCount += way.refs.length;
-  const all = new Float64Array(refCount);
-  let at = 0;
-  for (const way of ways.values()) {
-    all.set(way.refs, at);
-    at += way.refs.length;
-  }
-  all.sort();
   let unique = 0;
-  for (let i = 0; i < all.length; i++) if (i === 0 || all[i] !== all[i - 1]) all[unique++] = all[i];
-  const nodeIds = all.subarray(0, unique);
-  const nodeX = new Float64Array(unique).fill(Number.NaN);
-  const nodeY = new Float64Array(unique).fill(Number.NaN);
+  let nodeIds: Float64Array;
+  {
+    let refCount = 0;
+    for (const way of ways.values()) refCount += way.refs.length;
+    const all = new Float64Array(refCount);
+    let at = 0;
+    for (const way of ways.values()) {
+      all.set(way.refs, at);
+      at += way.refs.length;
+    }
+    all.sort();
+    for (let i = 0; i < all.length; i++)
+      if (i === 0 || all[i] !== all[i - 1]) all[unique++] = all[i];
+    nodeIds = all.subarray(0, unique);
+  }
+  let nodeX: Float64Array = new Float64Array(unique).fill(Number.NaN);
+  let nodeY: Float64Array = new Float64Array(unique).fill(Number.NaN);
   let hint = 0;
   // Trees ride along on the node pass: `natural=tree` is a tagged node.
   const treeNodes: { id: number; x: number; y: number; tags: Tags }[] = [];
@@ -510,6 +561,15 @@ export function compile(options: CompileOptions): CompileResult {
       point: representativePoint(outer),
     });
   }
+  // Everything the passes kept is in `buildings` now. Release it before the
+  // tiling allocates, so the two never peak together: measured on Portugal
+  // (2.2 M buildings), holding both put the process at 8.5 GB.
+  ways.clear();
+  relations.length = 0;
+  nodeIds = new Float64Array(0);
+  nodeX = nodeIds;
+  nodeY = nodeIds;
+  collectGarbage();
   lap('geometry');
 
   // ── Which buildings are emitted ─────────────────────────────────────────
@@ -521,9 +581,16 @@ export function compile(options: CompileOptions): CompileResult {
         y1: mercY(options.bbox[1]),
       }
     : null;
+  const span = 2 ** options.zoom;
+  const keepTile = options.keepTile;
+  const tileKept = (px: number, py: number): boolean =>
+    !keepTile ||
+    keepTile(Math.min(span - 1, Math.floor(px * span)), Math.min(span - 1, Math.floor(py * span)));
   const emitted = (building: Building): boolean => {
     const [px, py] = building.point;
-    return !box || (px >= box.x0 && px <= box.x1 && py >= box.y0 && py <= box.y1);
+    return (
+      (!box || (px >= box.x0 && px <= box.x1 && py >= box.y0 && py <= box.y1)) && tileKept(px, py)
+    );
   };
 
   // ── Outlines with parts ─────────────────────────────────────────────────
@@ -591,7 +658,6 @@ export function compile(options: CompileOptions): CompileResult {
     roofShapes: {},
   };
   const tiles = new Map<string, CityTileFeature[]>();
-  const span = 2 ** options.zoom;
 
   for (const building of buildings) {
     if (!emitted(building)) continue;
@@ -629,27 +695,16 @@ export function compile(options: CompileOptions): CompileResult {
 
     const tx = Math.min(span - 1, Math.floor(px * span));
     const ty = Math.min(span - 1, Math.floor(py * span));
-    const toTile = (ring: Ring): TilePoint[] => {
-      const out: TilePoint[] = [];
-      for (let i = 0; i < ring.length; i += 2) {
-        out.push([
-          (ring[i] * span - tx) * CITY_TILE_EXTENT,
-          (ring[i + 1] * span - ty) * CITY_TILE_EXTENT,
-        ]);
-      }
-      return out;
-    };
-    const polygons: TilePolygon[] = building.polygons.map(({ outer, holes }) => ({
-      outer: toTile(outer),
-      holes: holes.map(toTile),
-    }));
     const key = `${options.zoom}/${tx}/${ty}`;
-    const feature: CityTileFeature = { id: building.id, polygons, properties };
+    const feature = new LazyTileFeature(building.id, properties, building.polygons, tx, ty, span);
     const list = tiles.get(key);
     if (list) list.push(feature);
     else tiles.set(key, [feature]);
   }
   for (const list of tiles.values()) list.sort((a, b) => a.id - b.id);
+  buildings.length = 0;
+  grid.clear();
+  collectGarbage();
   lap('tags+tiles');
 
   // ── Trees ───────────────────────────────────────────────────────────────
@@ -663,6 +718,7 @@ export function compile(options: CompileOptions): CompileResult {
   };
   for (const node of treeNodes) {
     if (box && (node.x < box.x0 || node.x > box.x1 || node.y < box.y0 || node.y > box.y1)) continue;
+    if (!tileKept(node.x, node.y)) continue;
     const properties = treeProperties(node.tags);
     treeCoverage.trees++;
     if (properties.crown) {

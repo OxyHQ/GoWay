@@ -55,7 +55,7 @@ import {
   CITY_TILE_PATH,
   CITY_TILE_ZOOM,
   CITY_TREE_LAYER,
-  type CityCoverageBox,
+  type CityCoverageArea,
   parseCityCoverage,
 } from '@/lib/map/cityTiles';
 import { CITY_LOD2_SOURCES } from '@/lib/map/cityOfficial';
@@ -111,7 +111,7 @@ export function citySourceFor(
   basemap: { template: string; maxzoom: number },
   cityTiles: boolean,
   origin: string,
-  coverage: readonly CityCoverageBox[] = [],
+  coverage: readonly CityCoverageArea[] = [],
 ) {
   const base = {
     tileUrlTemplate: basemap.template,
@@ -135,18 +135,38 @@ export function citySourceFor(
  * The areas the city-tile archives cover (`CITY_COVERAGE_PATH`). Any failure
  * — unreachable, slow, malformed — is NO coverage: the layer then draws the
  * basemap's buildings everywhere rather than a flat map. Exported for tests.
+ *
+ * The production document's owned-tile set is passed on ENCODED; the engine
+ * decodes it (`engine/city3d/coverageIndex.ts`), so its decoder ships in the
+ * engine's chunk only. The shape is checked here all the same, so a document
+ * that is neither form is "no coverage" and reported, not a decode error
+ * later.
  */
 export async function fetchCityCoverage(
   origin: string,
   fetcher: (url: string, init: { signal: AbortSignal }) => Promise<Response> = fetch,
   timeoutMs = 4000,
-): Promise<CityCoverageBox[]> {
+): Promise<CityCoverageArea[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetcher(`${origin}${CITY_COVERAGE_PATH}`, { signal: controller.signal });
     if (!response.ok) return [];
-    return parseCityCoverage(await response.json());
+    const document = (await response.json()) as { tiles?: unknown };
+    const tiles = document?.tiles as { maxZoom?: unknown; bits?: unknown } | null | undefined;
+    if (tiles && typeof tiles === 'object') {
+      const { maxZoom, bits } = tiles;
+      const valid =
+        typeof maxZoom === 'number' &&
+        Number.isInteger(maxZoom) &&
+        maxZoom >= 0 &&
+        maxZoom <= 24 &&
+        typeof bits === 'string' &&
+        bits.length > 0 &&
+        /^[A-Za-z0-9+/]*={0,2}$/.test(bits);
+      return valid ? [{ maxZoom, bits }] : [];
+    }
+    return parseCityCoverage(document);
   } catch {
     return [];
   } finally {

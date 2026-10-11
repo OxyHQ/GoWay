@@ -7,7 +7,7 @@
  * case well: GoWay's web build is public, so there is nothing for a Worker to
  * gate, and "a script that exists only to forward to `env.ASSETS` is a runtime
  * failure mode bought for nothing". That argument still holds for every path
- * this file does not claim, which is why `run_worker_first` names exactly three
+ * this file does not claim, which is why `run_worker_first` names only the map
  * prefixes and everything else still reaches the asset pipeline without
  * executing a line of this.
  *
@@ -69,6 +69,7 @@
  *      product code, and the paths this file answers.
  */
 
+import { serveCity } from './city.js';
 import { PMTiles, decompress } from './pmtiles.js';
 
 /**
@@ -671,6 +672,11 @@ export default {
     if (url.pathname.startsWith('/map/tiles/')) return serveTile(url, request, env, ctx);
     if (url.pathname.startsWith('/map/fonts/')) return serveGlyphs(url, request, env);
     if (url.pathname.startsWith('/map/terrain/')) return serveTerrain(url, request, env, ctx);
+    // GoWay's 3D city tiles and their road graph, per region, by manifest
+    // (`city.js`). Inert until `MAP_CITY_MANIFEST` is set.
+    if (url.pathname.startsWith('/map/city/') || url.pathname.startsWith('/map/city-roads/')) {
+      return serveCity(url, request, env, ctx);
+    }
 
     return env.ASSETS.fetch(request);
   },
@@ -696,6 +702,7 @@ export {
   UPSTREAM_FONTSTACK,
   archiveSource,
   publicHeaders,
+  serveCity,
   serveGlyphs,
   serveTerrain,
   serveTile,

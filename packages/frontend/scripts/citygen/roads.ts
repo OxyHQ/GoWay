@@ -31,6 +31,7 @@ import {
   type Sidewalk,
 } from '../../lib/map/cityRoads';
 import { CITY_TILE_EXTENT } from '../../lib/map/cityTiles';
+import { collectGarbage, rssMb } from './memory';
 import { type EncodedFeature, type EncodedLayer, encodeLines, encodePoint } from './mvtEncode';
 import { type BlobRef, MEMBER_NODE, MEMBER_WAY, readBlob, readBlock, scanBlobs } from './osmPbf';
 
@@ -257,6 +258,8 @@ export interface RoadCompileOptions {
   zoom: number;
   /** `[west, south, east, north]`: keep pieces whose first segment's midpoint is inside. */
   bbox?: [number, number, number, number];
+  /** Keep only the tiles this returns true for: a region's owned tiles (`ownership.ts`). */
+  keepTile?: (x: number, y: number) => boolean;
   log?: (line: string) => void;
 }
 
@@ -343,7 +346,7 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
     const now = performance.now();
     timings[name] = Math.round(now - started);
     started = now;
-    log(`  roads ${name.padEnd(10)} ${(timings[name] / 1000).toFixed(1)} s`);
+    log(`  roads ${name.padEnd(10)} ${(timings[name] / 1000).toFixed(1)} s · rss ${rssMb()} MB`);
   };
 
   const blobs = scanBlobs(options.pbf);
@@ -490,6 +493,7 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
     });
   }
   closeSync(fd);
+  collectGarbage();
   lap('nodes');
 
   // ── Split, tile, encode ─────────────────────────────────────────────────
@@ -505,6 +509,10 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
     : null;
   const inBox = (x: number, y: number) =>
     !box || (x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1);
+  // A regional build keeps only the tiles its region owns (`ownership.ts`).
+  // Every piece is already cut to one tile, so the decision is per tile and
+  // the neighbouring region's archive holds the rest of a road that crosses.
+  const tileKept = (tx: number, ty: number) => !options.keepTile || options.keepTile(tx, ty);
   const tiles = new Map<string, RoadTile>();
   const tileFor = (tx: number, ty: number): RoadTile => {
     const key = `${options.zoom}/${tx}/${ty}`;
@@ -555,6 +563,7 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
         for (const piece of splitAtTileEdges(global)) {
           const [p, q] = piece.points;
           if (!inBox((p[0] + q[0]) / 2, (p[1] + q[1]) / 2)) continue;
+          if (!tileKept(piece.tx, piece.ty)) continue;
           const ox = piece.tx * CITY_TILE_EXTENT;
           const oy = piece.ty * CITY_TILE_EXTENT;
           const geometry = encodeLines([piece.points.map(([x, y]) => [x - ox, y - oy] as const)]);
@@ -585,9 +594,9 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
         emittedNodes.add(index);
         const gx = nodeX[index] * unit;
         const gy = nodeY[index] * unit;
-        if (inBox(gx, gy)) {
-          const tx = Math.floor(gx / CITY_TILE_EXTENT);
-          const ty = Math.floor(gy / CITY_TILE_EXTENT);
+        const tx = Math.floor(gx / CITY_TILE_EXTENT);
+        const ty = Math.floor(gy / CITY_TILE_EXTENT);
+        if (inBox(gx, gy) && tileKept(tx, ty)) {
           tileFor(tx, ty).nodes.push({
             id: 0,
             type: 1,
@@ -618,9 +627,9 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
     if (index < 0) continue;
     const gx = nodeX[index] * unit;
     const gy = nodeY[index] * unit;
-    if (!inBox(gx, gy)) continue;
     const tx = Math.floor(gx / CITY_TILE_EXTENT);
     const ty = Math.floor(gy / CITY_TILE_EXTENT);
+    if (!inBox(gx, gy) || !tileKept(tx, ty)) continue;
     tileFor(tx, ty).restrictions.push({
       id: 0,
       type: 1,

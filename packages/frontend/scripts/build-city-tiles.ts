@@ -14,6 +14,10 @@
  * # Merge an official 3D building model (LOD2 roofs) — files named, never fetched.
  * bun run --cwd packages/frontend map:city-tiles --pbf=<new-york.osm.pbf> --area=manhattan \
  *   --lod2=nyc-3dbm:<DA12_3D_Buildings_Merged.gml>,<DA13_3D_Buildings_Merged.gml>
+ *
+ * # One region of the planet build: only the tiles the region owns
+ * # (`citygen/ownership.ts`; the region builder writes the file).
+ * bun run --cwd packages/frontend map:city-tiles --pbf=<file> --ownership=<region.ownership.json>
  * ```
  *
  * `--lod2=<source>:<file>[,<file>…]` (repeatable) reads a dataset listed in
@@ -74,6 +78,17 @@ import { type ConflateStats, conflate, type Lod2TileFeature } from './citygen/lo
 import { type IngestedFile, ingest } from './citygen/lod2/ingest';
 import type { PrepareStats } from './citygen/lod2/prepare';
 import { isLod2Source, LOD2_SOURCES } from './citygen/lod2/sources';
+import { peakRssMb } from './citygen/memory';
+import {
+  assertOwned,
+  densestTile,
+  type LoadedOwnership,
+  loadOwnership,
+  ownershipOf,
+  PROBE_METADATA_KEY,
+  probeTile,
+  regionMetadata,
+} from './citygen/regionArchive';
 import { encodeCityTile, encodeTreeLayer } from './citygen/mvtEncode';
 import { writePmtiles } from './citygen/pmtilesWriter';
 
@@ -190,6 +205,8 @@ interface Args {
   verify: boolean;
   archive?: string;
   lod2: { source: string; files: string[] }[];
+  /** A region's ownership file (`citygen/regionArchive.ts`): build only its tiles. */
+  ownership?: string;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -200,6 +217,7 @@ function parseArgs(argv: string[]): Args {
     else if (flag === 'out' && value) args.out = value;
     else if (flag === 'archive' && value) args.archive = value;
     else if (flag === 'area' && value) args.area = value;
+    else if (flag === 'ownership' && value) args.ownership = value;
     else if (flag === 'zoom' && value) args.zoom = Number(value);
     else if (flag === 'verify') args.verify = true;
     else if (flag === 'lod2' && value) {
@@ -250,8 +268,13 @@ async function build(args: Args): Promise<string> {
     throw new Error(`unknown --area=${args.area}; known: ${Object.keys(AREAS).join(', ')}`);
   }
   const bbox = args.bbox ?? area?.bbox;
-  const name = args.area ?? basename(args.pbf).replace(/\.osm\.pbf$/, '');
-  const out = args.out ?? join(BUILD_DIR, `city-${name}-z${args.zoom}.pmtiles`);
+  const owned: LoadedOwnership | null = args.ownership ? loadOwnership(args.ownership) : null;
+  if (owned && (bbox || args.zoom !== CITY_TILE_ZOOM)) {
+    throw new Error('--ownership decides the area and the zoom: drop --area/--bbox/--zoom');
+  }
+  const name = owned?.file.region ?? args.area ?? basename(args.pbf).replace(/\.osm\.pbf$/, '');
+  const out =
+    args.out ?? join(BUILD_DIR, `city-${name.replaceAll('/', '-')}-z${args.zoom}.pmtiles`);
   await mkdir(dirname(out), { recursive: true });
 
   console.log(`· compiling ${args.pbf}${bbox ? ` within ${bbox.join(',')}` : ''} at z${args.zoom}`);
@@ -260,6 +283,7 @@ async function build(args: Args): Promise<string> {
     pbf: args.pbf,
     zoom: args.zoom,
     bbox,
+    keepTile: owned?.keepTile,
     log: (line) => console.log(line),
   });
 
@@ -278,7 +302,11 @@ async function build(args: Args): Promise<string> {
     if (!isLod2Source(input.source)) continue;
     const info = LOD2_SOURCES[input.source];
     const readStarted = performance.now();
-    const ingested = ingest(info, input.files, bbox, (line) => console.log(line));
+    // A regional build reads only the official buildings within its owned
+    // tiles' box; the tiles it does not own are dropped below.
+    const ingested = ingest(info, input.files, bbox ?? owned?.file.bounds, (line) =>
+      console.log(line),
+    );
     const readMs = performance.now() - readStarted;
     const conflateStarted = performance.now();
     const merged = conflate(result.tiles, ingested.buildings, {
@@ -316,6 +344,12 @@ async function build(args: Args): Promise<string> {
   let largest = { key: '', bytes: 0, features: 0 };
   const keys = new Set([...result.tiles.keys(), ...result.trees.keys(), ...lod2Tiles.keys()]);
   for (const key of keys) {
+    // Official surfaces go to the tile of their own position, which a
+    // regional build may not own (`citygen/ownership.ts`); OSM's never do.
+    if (owned) {
+      const [, kx, ky] = key.split('/').map(Number);
+      if (!owned.keepTile(kx, ky)) continue;
+    }
     const features = result.tiles.get(key) ?? [];
     const surfaces = (lod2Tiles.get(key) ?? []).sort((a, b) =>
       String(a.properties[CITY_LOD2_PROPS.sourceId]).localeCompare(
@@ -344,6 +378,7 @@ async function build(args: Args): Promise<string> {
     }
   }
   const encodeMs = performance.now() - encodeStarted;
+  assertOwned(tiles, owned?.keepTile);
 
   let west = 180;
   let south = 90;
@@ -403,7 +438,9 @@ async function build(args: Args): Promise<string> {
     // The area every building of which is in the archive: the compile box, or
     // the tiles' extent for a whole extract. Clients draw city tiles only
     // inside it (`lib/map/cityTiles.ts` → `CITY_COVERAGE_PATH`).
-    [CITY_COVERAGE_METADATA_KEY]: bbox ?? [west, south, east, north],
+    [CITY_COVERAGE_METADATA_KEY]: owned?.file.bounds ?? bbox ?? [west, south, east, north],
+    ...(owned ? regionMetadata(owned.file) : {}),
+    [PROBE_METADATA_KEY]: densestTile(tiles),
     'goway:schema': CITY_TILE_SCHEMA_VERSION,
     'goway:extent': CITY_TILE_EXTENT,
     'goway:source': basename(args.pbf),
@@ -470,7 +507,21 @@ async function build(args: Args): Promise<string> {
       {
         archive: out,
         bytes: archive.length,
-        source: { file: basename(args.pbf), extract: area?.extract, ...result.header },
+        source: {
+          file: basename(args.pbf),
+          extract: owned?.file.extract ?? area?.extract,
+          ...result.header,
+        },
+        region: owned
+          ? {
+              id: owned.file.region,
+              name: owned.file.name,
+              polygon: owned.file.polygon,
+              part: owned.file.part,
+              ownedTiles: owned.file.tiles,
+              bounds: owned.file.bounds,
+            }
+          : undefined,
         bbox,
         zoom: args.zoom,
         schema: CITY_TILE_SCHEMA_VERSION,
@@ -489,6 +540,7 @@ async function build(args: Args): Promise<string> {
         treeCoverage: result.treeCoverage,
         lod2: lod2Receipts,
         problems: result.problems,
+        peakRssMb: peakRssMb(),
         builtAt: new Date().toISOString(),
       },
       null,
@@ -520,8 +572,8 @@ async function verify(path: string, area?: string): Promise<string[]> {
     );
   }
   const z = header.maxZoom;
-  const [w, s, e, n] = header.bounds as number[];
-  const centre = tileXY((w + e) / 2, (s + n) / 2, z);
+  const centre = probeTile(metadata, header.bounds as number[], z);
+  const owns = ownershipOf(metadata);
   let opened = 0;
   let buildings = 0;
   let surfaces = 0;
@@ -544,6 +596,11 @@ async function verify(path: string, area?: string): Promise<string[]> {
       const tile = await archive.getTile(z, centre.x + dx, centre.y + dy);
       if (!tile) continue;
       opened++;
+      if (owns && !owns(centre.x + dx, centre.y + dy)) {
+        problems.push(
+          `tile ${z}/${centre.x + dx}/${centre.y + dy} is outside the region's ownership`,
+        );
+      }
       const decoded = decodeCityTile(Bun.gunzipSync(tile.bytes));
       if (!decoded) {
         problems.push(

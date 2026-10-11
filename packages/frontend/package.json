@@ -28,6 +28,9 @@
     "map:city-tiles": "bun scripts/build-city-tiles.ts",
     "map:catastro-list": "bun scripts/catastro-municipalities.ts",
     "map:city-roads": "bun scripts/build-city-roads.ts",
+    "map:city-plan": "bun scripts/plan-city-regions.ts",
+    "map:city-region": "bun scripts/build-city-region.ts",
+    "map:city-manifest": "bun scripts/build-city-manifest.ts",
     "landmarks": "bun scripts/build-landmarks.ts",
     "landmarks:check": "bun scripts/build-landmarks.ts --check",
     "typecheck": "tsc --noEmit"
