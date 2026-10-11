@@ -959,7 +959,10 @@ engine folder type-only).
 **Off by default; web only; on top of the city layer.** `EXPO_PUBLIC_MAP_CITY_SKY=1`
 (a build decision; no deployment sets it) or `?citysky=1` in a development build,
 and only together with the city layer (`?city3d=1&citysky=1`):
-`lib/map/citySkyFlag.ts`. Without the city layer the answer is `false`, not
+`lib/map/citySkyFlag.ts`. It is the map-feature registry's `citySky`, so a
+person can also switch it on in the settings dialog's Labs
+([`MAP_FEATURES.md`](./MAP_FEATURES.md)); the scrubber rides above a phone's
+sheet with the credit and keeps clear of "My location". Without the city layer the answer is `false`, not
 half a feature.
 
 ### The look it is tuned to

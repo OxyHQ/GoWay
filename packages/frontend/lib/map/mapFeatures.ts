@@ -36,6 +36,7 @@
  */
 import { isCity3dRequested } from './city3dFlag';
 import { isCity3dTreeFillRequested, isCity3dTreesRequested } from './city3dTreesFlag';
+import { isCitySkyRequested } from './citySkyFlag';
 import { isCityLifeRequested } from './cityLifeFlag';
 import { isCityTilesRequested } from './cityTilesFlag';
 import { isFlyoverRequested } from './flyoverFlag';
@@ -134,6 +135,17 @@ export const MAP_FEATURES = [
     platforms: WEB,
     request: (enabled, { development, search }) =>
       isCity3dRequested({ enabled, development, search }),
+  },
+  {
+    id: 'citySky',
+    tier: 'labs',
+    defaultOn: false,
+    build: process.env.EXPO_PUBLIC_MAP_CITY_SKY,
+    // The sky, haze and shadows are drawn by the city layer.
+    requires: ['city3d'],
+    platforms: WEB,
+    request: (enabled, { development, search, on }) =>
+      isCitySkyRequested({ city3d: on('city3d'), enabled, development, search }),
   },
   {
     id: 'cityTiles',

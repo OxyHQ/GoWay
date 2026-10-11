@@ -1,6 +1,7 @@
 /**
  * The live lift a screen with a bottom sheet hands the map's own bottom chrome
- * — the data credit (`MapAttribution`) — so it stays above the sheet's CURRENT
+ * — the data credit (`MapAttribution`) and the time-of-day scrubber
+ * (`TimeOfDayScrubber.web.tsx`) — so it stays above the sheet's CURRENT
  * top edge rather than only above its resting claim (`lib/map/chromeLift.ts`).
  *
  * Optional by design: a map with no provider (the embed, the desktop side
@@ -16,6 +17,12 @@ export interface MapChromeLift {
   lift: SharedValue<number>;
   /** 0 … 1, on the UI thread. */
   opacity: SharedValue<number>;
+  /**
+   * px the screen keeps for its own controls at the bottom-right ("My
+   * location"), which a full-width piece of map chrome — the time-of-day
+   * scrubber — leaves free so the two never overlap.
+   */
+  rightClearance: number;
 }
 
 export const MapChromeLiftContext = createContext<MapChromeLift | null>(null);

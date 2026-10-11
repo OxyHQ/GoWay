@@ -76,6 +76,14 @@ import { useMapRelief } from './reliefFlags';
 /** Breathing room between the credit and whatever is below it. */
 const ATTRIBUTION_GAP = 4;
 
+/**
+ * How much of the bottom-right the credit occupies above the bottom edge: its
+ * gap, one caption line on its plate, and room to breathe. Bottom-right chrome
+ * a screen floats there ("My location") starts above it, so the two never
+ * overlap — exported for the same reason `MAP_BRAND_CLEARANCE` is.
+ */
+export const MAP_CREDIT_CLEARANCE = 36;
+
 const NO_EXTRA: readonly MapAttributionLink[] = [];
 
 /**

@@ -53,6 +53,7 @@ import { BrandedChromeProvider } from '@/components/brand';
 import { MAP_CHIP_SLOT_ID } from '@/components/map/chipSlot';
 import { type MapChromeLift, MapChromeLiftContext } from '@/components/map/chromeLift';
 import {
+  MAP_CREDIT_CLEARANCE,
   MapCanvas,
   type GeoBounds,
   type MapApi,
@@ -367,7 +368,9 @@ export default function ExploreScreen({
   const bottomEdge = useBottomEdgeInset();
   const bottomGap = windowEdgeGap(insets.bottom);
   const sideGap = windowEdgeGap(insets.right, 0);
-  const controlsBottom = bottomEdge > 0 ? bottomEdge + windowEdgeGap(0) : bottomGap;
+  // Above the map's credit, which owns the bottom-right corner (`MapAttribution`).
+  const controlsBottom =
+    (bottomEdge > 0 ? bottomEdge + windowEdgeGap(0) : bottomGap) + MAP_CREDIT_CLEARANCE;
   const areaTop = topEdge > 0 ? topEdge + windowEdgeGap(0) : windowEdgeGap(insets.top);
 
   const handleViewportChange = useCallback(
@@ -475,8 +478,8 @@ export default function ExploreScreen({
   const liftPx = useDerivedValue(() => lift.value.lift, [lift]);
   const liftOpacity = useDerivedValue(() => lift.value.opacity, [lift]);
   const chromeLiftValue = useMemo<MapChromeLift>(
-    () => ({ lift: liftPx, opacity: liftOpacity }),
-    [liftPx, liftOpacity],
+    () => ({ lift: liftPx, opacity: liftOpacity, rightClearance: sideGap + CONTROLS_COLUMN_WIDTH }),
+    [liftPx, liftOpacity, sideGap],
   );
   const chromeStyle = useAnimatedStyle(
     () => ({ transform: [{ translateY: -liftPx.value }], opacity: liftOpacity.value }),

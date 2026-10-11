@@ -35,7 +35,7 @@ That answer is handed to the feature's own flag module where the build boolean
 used to go, so a development build's `?city3d=1`, `?globe=0` and the rest work
 exactly as before. Last, a feature is off while anything it `requires` is off
 (the trees and the city tiles need the 3D city; the woods fill needs the trees;
-city life needs the city tiles; the landmarks need the 3D city).
+city life needs the city tiles; the landmarks and the sky need the 3D city).
 
 With no stored choice, every feature answers exactly what its flag answered
 before the registry: `mapFeatures.test.ts` checks every feature against the old
@@ -50,6 +50,7 @@ now kills the trees, as a padded `0` always killed the globe and terrain.
 | `globe` | stable | **on** | web | `EXPO_PUBLIC_MAP_GLOBE` | `?globe=0/1` | redraws the map at the same camera |
 | `terrain` | stable | **on** | web, native (hillshade only) | `EXPO_PUBLIC_MAP_TERRAIN` | `?terrain=0/1` | web: redraws at the same camera; native: live |
 | `city3d` | labs | off | web | `EXPO_PUBLIC_MAP_CITY3D` | `?city3d=1` | live (attach/detach) |
+| `citySky` | labs | off | web (needs `city3d`) | `EXPO_PUBLIC_MAP_CITY_SKY` | `?citysky=1` | live (re-attach; the time-of-day scrubber shows only while it draws) |
 | `cityTiles` | labs | off | web, **development builds only** | `EXPO_PUBLIC_MAP_CITY_TILES` | `?cityTiles=1` | live (re-attach) |
 | `city3dTrees` | labs | on, with the city | web | `EXPO_PUBLIC_MAP_CITY3D_TREES` | `?city3dTrees=0` | live (re-attach) |
 | `city3dTreeFill` | labs | off | web | `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL` | `?city3dTreeFill=1` | live (re-attach) |
@@ -88,7 +89,7 @@ token. Its sections:
   the `stable` features (Globe, Terrain).
 - **Layers · Labs**, once revealed: the `labs` features this build carries
   and this platform draws (3D city, its tiles, trees and woods fill,
-  simulated traffic, landmarks, live data once #132 lands, the flyover), each
+  sky and time of day, simulated traffic, landmarks, live data once #132 lands, the flyover), each
   with a one-line description and the note that they may be slow; "Open
   Camera Studio" while the flyover is on; "Hide Labs".
 - **General**: what GoWay already lets a person set — the theme (light, dark,

@@ -21,6 +21,7 @@ import { useTheme } from '@oxy.so/bloom/theme';
 import { Text } from '@oxy.so/bloom/typography';
 import { memo, useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { formatMessage, useTranslation } from '@/lib/i18n';
 import {
@@ -32,6 +33,8 @@ import {
   sunPhase,
 } from '@/lib/map/timeOfDay';
 import { CITY_SKY_EN, CITY_SKY_MESSAGES } from '@/lib/messages/citySky';
+
+import { useMapChromeLift } from './chromeLift';
 
 export interface TimeOfDayScrubberProps {
   /** The instant the map is lit for, or `null` for "now". */
@@ -48,6 +51,19 @@ function TimeOfDayScrubberComponent({ value, onChange, sunAltitudeDeg }: TimeOfD
   const { locale } = useTranslation();
   const theme = useTheme();
   const bottomEdge = useBottomEdgeInset();
+  // On a phone the screen hands down its sheet's live top edge and the room
+  // its own controls keep at the right (`chromeLift.ts`): the scrubber rides
+  // above the sheet with the credit and stays clear of "My location".
+  const chromeLift = useMapChromeLift();
+  const riseValue = chromeLift?.lift;
+  const fadeValue = chromeLift?.opacity;
+  const ride = useAnimatedStyle(
+    () =>
+      riseValue && fadeValue
+        ? { transform: [{ translateY: -riseValue.value }], opacity: fadeValue.value }
+        : {},
+    [riseValue, fadeValue],
+  );
 
   // The clock the slider reads "now" against; ticks once a minute so the
   // thumb follows the real time while nobody is scrubbing.
@@ -84,10 +100,17 @@ function TimeOfDayScrubberComponent({ value, onChange, sunAltitudeDeg }: TimeOfD
   const step = (days: number) => onChange(scrubbedInstant(now, minutes, dayOffset + days));
 
   return (
-    <View
+    <Animated.View
       pointerEvents="box-none"
       className="absolute left-0 right-0 items-center"
-      style={{ bottom: (bottomEdge > 0 ? bottomEdge : 0) + BOTTOM_CLEARANCE }}
+      style={[
+        {
+          bottom: (bottomEdge > 0 ? bottomEdge : 0) + BOTTOM_CLEARANCE,
+          paddingLeft: chromeLift ? 16 : 0,
+          paddingRight: chromeLift?.rightClearance ?? 0,
+        },
+        ride,
+      ]}
       testID="goway-time-of-day"
     >
       <View
@@ -155,7 +178,7 @@ function TimeOfDayScrubberComponent({ value, onChange, sunAltitudeDeg }: TimeOfD
           style={{ width: '100%', margin: 0, accentColor: 'var(--primary)', cursor: 'pointer' }}
         />
       </View>
-    </View>
+    </Animated.View>
   );
 }
 

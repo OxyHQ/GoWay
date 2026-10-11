@@ -113,6 +113,37 @@ export const MAP_FEATURE_LABELS: Readonly<Record<MapFeatureId, MapFeatureLabels>
       'zh-Hans': '以带柔和阴影的精细 3D 模型显示建筑。',
     },
   },
+  citySky: {
+    name: {
+      en: 'Sky and time of day',
+      ar: 'السماء ووقت اليوم',
+      bn: 'আকাশ ও দিনের সময়',
+      ca: 'Cel i hora del dia',
+      de: 'Himmel und Tageszeit',
+      es: 'Cielo y hora del día',
+      fr: 'Ciel et heure de la journée',
+      hi: 'आसमान और दिन का समय',
+      ja: '空と時刻',
+      'pt-BR': 'Céu e hora do dia',
+      ru: 'Небо и время суток',
+      'zh-Hans': '天空与时间',
+    },
+    description: {
+      en: 'A real sky, haze and sun shadows over the 3D city, with a slider for the hour.',
+      ar: 'سماء حقيقية وضباب وظلال للشمس فوق المدينة ثلاثية الأبعاد، مع شريط لاختيار الساعة.',
+      bn: 'ত্রিমাত্রিক শহরের উপর বাস্তব আকাশ, কুয়াশা ও সূর্যের ছায়া, সময় বাছাইয়ের স্লাইডারসহ।',
+      ca: "Un cel real, boira i ombres del sol sobre la ciutat en 3D, amb un control per triar l'hora.",
+      de: 'Echter Himmel, Dunst und Sonnenschatten über der 3D-Stadt, mit einem Regler für die Uhrzeit.',
+      es: 'Un cielo real, bruma y sombras del sol sobre la ciudad en 3D, con un control para elegir la hora.',
+      fr: "Un vrai ciel, de la brume et les ombres du soleil sur la ville en 3D, avec un curseur pour l'heure.",
+      hi: '3D शहर पर असली आसमान, धुंध और सूरज की परछाइयाँ, समय चुनने के स्लाइडर के साथ।',
+      ja: '3D 都市に本物の空、かすみ、太陽の影を描き、時刻をスライダーで選べます。',
+      'pt-BR':
+        'Um céu real, névoa e sombras do sol sobre a cidade em 3D, com um controle para a hora.',
+      ru: 'Настоящее небо, дымка и тени от солнца над 3D-городом, с ползунком времени суток.',
+      'zh-Hans': '为 3D 城市绘制真实的天空、雾霭和太阳阴影，并可用滑块选择时间。',
+    },
+  },
   cityTiles: {
     name: {
       en: 'GoWay building data',

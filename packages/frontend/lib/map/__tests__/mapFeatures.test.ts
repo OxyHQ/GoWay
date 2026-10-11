@@ -9,6 +9,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { isCity3dRequested } from '@/lib/map/city3dFlag';
 import { isCity3dTreeFillRequested, isCity3dTreesRequested } from '@/lib/map/city3dTreesFlag';
+import { isCitySkyRequested } from '@/lib/map/citySkyFlag';
 import { isCityLifeRequested } from '@/lib/map/cityLifeFlag';
 import { isCityTilesRequested } from '@/lib/map/cityTilesFlag';
 import { isLandmarksRequested } from '@/lib/map/landmarksFlag';
@@ -77,6 +78,12 @@ function legacy(builds: Builds, development: boolean, search: string) {
       development,
       search,
     }),
+    citySky: isCitySkyRequested({
+      city3d,
+      enabled: onBuild(builds.citySky),
+      development,
+      search,
+    }),
     cityLife: isCityLifeRequested({
       city3d,
       cityTiles: isCityTilesRequested({
@@ -123,6 +130,7 @@ describe('the registry', () => {
       ['globe', true],
       ['terrain', true],
       ['city3d', false],
+      ['citySky', false],
       ['cityTiles', false],
       ['city3dTrees', false],
       ['city3dTreeFill', false],
@@ -179,6 +187,8 @@ describe('with no stored choice, every flag answers what it did before', () => {
     '?landmarks=1',
     '?city3d=1&landmarks=true',
     '?live=1',
+    '?city3d=1&citysky=1',
+    '?citysky=true',
   ];
   for (const development of [false, true]) {
     test(`${development ? 'development' : 'production'} build`, () => {

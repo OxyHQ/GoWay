@@ -56,7 +56,7 @@ import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
 import { isReliefId, mapStyleLoading } from '@/lib/map/reliefFlag';
 import { useMapFeature } from '@/lib/map/useMapFeatures';
-import { isCitySkyRequested, maxPitchFor } from '@/lib/map/citySkyFlag';
+import { maxPitchFor } from '@/lib/map/citySkyFlag';
 import {
   type MapAttributionLink,
   overlayLayerId,
@@ -163,21 +163,11 @@ if (INITIAL_RELIEF.globe || INITIAL_RELIEF.terrain) loadReliefChunk();
 const NO_CREDITS: readonly MapAttributionLink[] = [];
 
 /**
- * Whether the city layer also draws the sky, haze, sun shadows and the
- * time-of-day scrubber. Needs `CITY3D`; see `lib/map/citySkyFlag.ts`.
+ * The time-of-day scrubber is its own lazy chunk: rendered only while the
+ * registry's `citySky` is on and the layer that draws the sky is attached, so
+ * with it off the `import()` below is never evaluated and nothing downloads.
  */
-const CITY_SKY = isCitySkyRequested({
-  city3d: CITY3D,
-  enabled: MAP_CITY_SKY_ENABLED,
-  development: __DEV__,
-  search: typeof window !== 'undefined' ? window.location.search : '',
-});
-
-/**
- * The scrubber is its own lazy chunk, created only when the flag is on: with
- * it off, the `import()` below is never evaluated and nothing is downloaded.
- */
-const TimeOfDayScrubber = CITY_SKY ? lazy(() => import('./TimeOfDayScrubber.web')) : null;
+const TimeOfDayScrubber = lazy(() => import('./TimeOfDayScrubber.web'));
 
 const DEGENERATE_FIT_ZOOM = 15;
 const DEFAULT_FIT_PADDING = 48;
@@ -257,6 +247,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const treeFill = useMapFeature('city3dTreeFill');
   const cityLife = useMapFeature('cityLife');
   const landmarks = useMapFeature('landmarks');
+  // The sky, haze, sun shadows and time-of-day scrubber (`citySkyFlag.ts`).
+  const citySky = useMapFeature('citySky');
   const relief = useMapRelief();
   /**
    * What the last engine was built for, and where its camera was when it went.
@@ -972,7 +964,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
                 }),
               onLandmarkCredits: (links) =>
                 setLandmarkCredits(links.length === 0 ? NO_CREDITS : links),
-              sky: CITY_SKY
+              sky: citySky
                 ? {
                     at: skyAtRef.current,
                     onSun: (sun) => setSunAltitude(sun.altitudeDeg),
@@ -993,7 +985,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         // The light may have moved while the chunks downloaded.
         attached?.setLight(city3dLightRef.current);
         attached?.setTime(skyAtRef.current);
-        if (CITY_SKY) setSkyActive(attached !== null);
+        setSkyActive(citySky && attached !== null);
       })
       .catch((cause: unknown) => {
         // The shipped buildings are untouched until the layer is in, so a
@@ -1011,7 +1003,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       // A detached layer draws no landmark, so it owes no landmark credit.
       setLandmarkCredits(NO_CREDITS);
       handle?.detach();
-      if (CITY_SKY) setSkyActive(false);
+      setSkyActive(false);
     };
   }, [
     ready,
@@ -1023,6 +1015,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     treeFill,
     cityLife,
     landmarks,
+    citySky,
   ]);
 
   // Hand the models to the engine whenever either changes.
@@ -1392,7 +1385,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       <MapBrand />
       <MapAttribution extra={landmarkCredits} expanded={credit.expanded} onToggle={credit.toggle} />
 
-      {TimeOfDayScrubber && skyActive ? (
+      {citySky && skyActive ? (
         <Suspense fallback={null}>
           <TimeOfDayScrubber value={skyAt} onChange={setSkyAt} sunAltitudeDeg={sunAltitude} />
         </Suspense>
