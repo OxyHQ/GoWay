@@ -132,7 +132,13 @@ WORKFLOWS = Path(__file__).resolve().parent.parent / 'workflows'
 # The only repo secrets a workflow may read: what CI itself spends. Runtime
 # secrets live only in SSM /oxy/goway/* (oxy-infra runbook 46); until
 # 2026-10-10 the deploy copied repo secrets into SSM on every run.
-CI_ONLY_SECRETS = {'GITHUB_TOKEN', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'NPM_TOKEN', 'ADD_TO_PROJECT_TOKEN'}
+# The two R2 access keys are CI's too: build-city-tiles.yml spends them to
+# upload archives (R2's S3 endpoint, multipart). Nothing at runtime reads
+# them — the Worker reaches the bucket through its `MAP_TILES` binding.
+CI_ONLY_SECRETS = {
+    'GITHUB_TOKEN', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'NPM_TOKEN', 'ADD_TO_PROJECT_TOKEN',
+    'GOWAY_R2_ACCESS_KEY_ID', 'GOWAY_R2_SECRET_ACCESS_KEY',
+}
 SSM_WRITE = re.compile(r'\bssm\s+(put-parameter|delete-parameters?|label-parameter-version)\b', re.I)
 SECRET_READ = re.compile(r'\bsecrets\.([A-Za-z_][A-Za-z0-9_]*)')
 
