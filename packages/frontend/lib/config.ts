@@ -126,3 +126,16 @@ export const MAP_TERRAIN_ENABLED = enabledUnlessKilled(process.env.EXPO_PUBLIC_M
 export const MAP_LANDMARKS_ENABLED = /^(1|true)$/i.test(
   process.env.EXPO_PUBLIC_MAP_LANDMARKS ?? '',
 );
+
+/**
+ * Whether the city-3D layer also draws a physically based sky, distance haze
+ * over the basemap and the buildings, real sun shadows, and a time-of-day
+ * scrubber (web only; `docs/MAP_3D_CITY.md` → "Phase 3: sky, atmosphere,
+ * shadows and time of day").
+ *
+ * Off unless `EXPO_PUBLIC_MAP_CITY_SKY` is `1`/`true`, and it needs the
+ * city-3D layer itself (`MAP_CITY3D_ENABLED` or `?city3d=1`): the sky is part
+ * of that layer. A development build can turn it on per tab with
+ * `?citysky=1` (`lib/map/citySkyFlag.ts`); a production build ignores that.
+ */
+export const MAP_CITY_SKY_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_MAP_CITY_SKY ?? '');

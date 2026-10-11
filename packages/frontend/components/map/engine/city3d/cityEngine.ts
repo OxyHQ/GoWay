@@ -67,11 +67,14 @@ import {
 import type { CityCoverageBox } from '@/lib/map/cityTiles';
 
 import { hiddenFeatureIds, tilesAround } from './landmarkTiles';
+import type { CitySun, HostSkyColours, SkyAppearance } from './atmosphere';
+import { castersKey, type DrawnTile, FrameSchedule, runsSkyOffscreenPass } from './frameSelection';
 import { createModelLayer, type ModelSpec, type ModelStatus } from './models';
 import type { CityLight } from './occlusion';
 import { OSM_FRAGMENT_SHADER, OSM_VERTEX_SHADER } from './osmShaders';
 import type { CityTileFormat, MeshWorkerRequest, MeshWorkerResponse } from './protocol';
 import { CITY_FRAGMENT_SHADER, CITY_VERTEX_SHADER } from './shaders';
+import { type CitySky, type CitySkyStats, type CitySkyView, createCitySky } from './sky';
 import {
   centeredProjection,
   type LngLatBox,
@@ -153,6 +156,21 @@ export interface CityEngineOptions {
   overlays?: CityOverlay[];
   /** A landmark model became drawn (its buildings hidden), or stopped being. */
   onLandmarkStatus?: (id: string, status: ModelStatus) => void;
+  /**
+   * Sky, haze, sun shadows and physical light (`sky.ts`), behind the city-sky
+   * flag. Absent: the engine draws exactly what it always has, lit by
+   * {@link CityEngineOptions.light}. Present: the buildings, trees and
+   * overlays are lit by the sun given to {@link CityEngine.setSun} instead.
+   */
+  sky?: {
+    appearance: SkyAppearance;
+    /**
+     * The art direction's material response for the one sky-lit shading
+     * path: GLSL defining `vec3 cityMaterial(CitySurface s, CityLight l)`
+     * (`skyShaders.ts` documents both structs). Absent: the default clay.
+     */
+    material?: string;
+  };
 }
 
 /**
@@ -199,11 +217,31 @@ export interface CityEngineStats {
   uploadsQueued: number;
   workers: number;
   errors: number;
+  sky?: CitySkyStats;
+  /** The night factor in force (`setNightFactor`, `lib/map/landmarks/night.ts`). */
+  nightFactor: number;
 }
 
 export interface CityEngine {
-  /** Draw the buildings and trees. */
+  /** The host's offscreen pass, before its framebuffer is bound (city sky: the shadow map). */
+  prerender(view: CityView): void;
+  /** Draw the buildings and trees (and, city sky, the sky and haze under them). */
   render(view: CityView): void;
+  /** The real sun over the view (city sky only; ignored otherwise). */
+  setSun(sun: CitySun): void;
+  /**
+   * City sky: the colours the host map's own `sky` should have for the sun
+   * last set (`atmosphere.ts` → `hostSkyColours`), or `null`. Plain data, for
+   * the adapter to hand MapLibre.
+   */
+  hostSkyColours(): HostSkyColours | null;
+  /**
+   * How much of a night the city is drawn as, 0…1 — what `setNightFactor`
+   * last set, as a live `{ value }`: the SAME object every city material reads
+   * as `uniform float uNightFactor`, so a material built elsewhere (window
+   * glow, an overlay) can take it as its own uniform. Read it; never write it.
+   */
+  readonly nightFactor: { readonly value: number };
   /** Draw the models — from their own layer, above the overlays (`city3dLayer.web.ts`). */
   renderModels(view: CityView): void;
   /** The map's light, re-applied whenever `building-3d`'s would change (the sun). */
@@ -339,9 +377,24 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     uOpacity: { value: 1 },
     // On 3D terrain: read the per-vertex lift (`terrainGround.ts`).
     uGrounded: { value: 0 },
+    // The night seam (`setNightFactor`): read by every night-time look.
+    uNightFactor: { value: 0 },
   };
+  // City sky: its shaders and light inputs replace the buildings' own — one
+  // shading path (`skyShaders.ts`).
+  const sky: CitySky | null = options.sky
+    ? createCitySky({
+        appearance: options.sky.appearance,
+        material: options.sky.material,
+        baseUniforms: light,
+        requestRepaint: () => options.requestRepaint(),
+      })
+    : null;
+  // Overlays (city life) get the sky's live inputs too (`overlay.ts` → `setSky`).
+  if (sky) for (const overlay of overlays) overlay.setSky?.(sky.overlayInput);
   const buildingUniforms = {
     ...light,
+    ...sky?.buildingUniforms,
     uLow: { value: new THREE.Vector3() },
     uTall: { value: new THREE.Vector3() },
     uVeryTall: { value: new THREE.Vector3() },
@@ -362,7 +415,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const context = {
     scene,
     buildingUniforms,
-    buildingShaders: {
+    buildingShaders: sky?.buildingShaders ?? {
       openmaptiles: { vertexShader: CITY_VERTEX_SHADER, fragmentShader: CITY_FRAGMENT_SHADER },
       goway: { vertexShader: OSM_VERTEX_SHADER, fragmentShader: OSM_FRAGMENT_SHADER },
     },
@@ -522,6 +575,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       uploadsQueued: arrivals.length,
       workers: pool.size,
       errors,
+      sky: sky ? { ...sky.stats } : undefined,
+      nightFactor: light.uNightFactor.value,
     });
   };
 
@@ -756,92 +811,149 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     return undefined;
   };
 
+  // City sky: the frame's selection is made by its FIRST pass — the offscreen
+  // one, before the shadow map — and reused by the main pass
+  // (`frameSelection.ts`); each tile's terrain lift has a revision the shadow
+  // map's key reads, and `groundEpoch` covers terrain switching on or off.
+  const schedule = new FrameSchedule();
+  const groundRevisions = new Map<string, number>();
+  let groundEpoch = 0;
+  interface PreparedFrame {
+    started: number;
+    opacity: number;
+    active: boolean;
+    skyView: CitySkyView;
+    casters: string;
+  }
+  let prepared: PreparedFrame | null = null;
+
+  /** Select, schedule, ground and place this frame's tiles, and set the camera. */
+  const prepare = (view: CityView): PreparedFrame => {
+    const started = performance.now();
+    frame++;
+    updateWanted(view, started);
+    admit(started);
+    lastFrameAt = started;
+
+    const span = options.fade.end - options.fade.start;
+    const opacity = Math.max(0, Math.min(1, (view.zoom - options.fade.start) / span));
+    light.uOpacity.value = opacity;
+    treeUniforms.uTreeMinHeight.value = treeMinHeightM(view.zoom);
+
+    const center = { x: mercatorXFromLng(view.center.lng), y: mercatorYFromLat(view.center.lat) };
+    for (const overlay of overlays) overlay.update({ view, center, opacity });
+    transitions.begin();
+    for (const tile of selected) {
+      const best = bestFor(tile);
+      // `undefined`: nothing cached yet — keep whatever the slot shows.
+      const key = tileKey(tile);
+      transitions.show(key, best === undefined ? transitions.shown(key) : best, started);
+      if (best) {
+        cache.touch(best.key, frame);
+        best.placement = tile;
+      }
+      // A slot still fading out an older level keeps that one placed too.
+      const showing = transitions.shown(key);
+      if (showing) showing.placement = tile;
+    }
+    const { draws, active } = transitions.draws(started);
+
+    // On terrain: lift stale entries, nearest first, a few per frame. An
+    // entry never grounded would be drawn at sea level — inside the hill —
+    // so it waits for its first lift.
+    const grounded = grounder.active;
+    if (grounded) {
+      let budget = GROUND_TILES_PER_FRAME;
+      for (const tile of selected) {
+        const entry = bestFor(tile);
+        if (!entry || grounder.isCurrent(entry.key)) continue;
+        if (budget-- <= 0) {
+          options.requestRepaint();
+          break;
+        }
+        const result = grounder.ground(entry.key, groundTileFor(entry, tile));
+        if (result) {
+          applyGround(entry, result);
+          groundRevisions.set(entry.key, (groundRevisions.get(entry.key) ?? 0) + 1);
+          liftRange = {
+            min: Math.min(liftRange?.min ?? result.min, result.min),
+            max: Math.max(liftRange?.max ?? result.max, result.max),
+          };
+        }
+      }
+    }
+
+    for (const entry of cache.values()) setEntryVisible(entry, false);
+    drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
+    const casting: DrawnTile[] = [];
+    if (opacity > 0) {
+      // Nearest first, so the tree budget spends itself on the near tiles.
+      const rank = new Map<string, number>();
+      for (const tile of selected) rank.set(tileKey(tile), tile.r);
+      const r = (entry: TileEntry) => rank.get(entry.key.slice(0, entry.key.indexOf('@'))) ?? 1e9;
+      draws.sort((a, b) => r(a.value) - r(b.value));
+      for (const { value: entry, from, to } of draws) {
+        if (!entry.placement) continue;
+        if (grounded && !grounder.hasGround(entry.key)) continue;
+        placeEntry(entry, entry.placement, center);
+        setEntryFade(entry, from, to);
+        setEntryVisible(entry, true);
+        casting.push({
+          key: entry.key,
+          wrap: entry.placement.wrap ?? 0,
+          groundRevision: groundRevisions.get(entry.key) ?? 0,
+        });
+        drawn.triangles += entry.triangles;
+        drawn.vertices += entry.vertices;
+        if (entry.trees.length > 0 && drawn.trees + entry.treeCount > TREE_BUDGET) {
+          // Past the budget a farther tile shows its buildings only.
+          for (const mesh of entry.trees) mesh.visible = false;
+        } else {
+          drawn.trees += entry.treeCount;
+          drawn.treeTriangles += entry.treeTriangles;
+        }
+      }
+    }
+    const projection = centeredProjection(view.mercatorToClip, center);
+    camera.projectionMatrix.fromArray(projection);
+    camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+    const skyView: CitySkyView = {
+      projection,
+      center,
+      centerLngLat: view.center,
+      bounds: view.bounds,
+      zoom: view.zoom,
+      opacity,
+      // On 3D terrain the drawn ground is not at sea level (`terrainFor`).
+      groundM: grounded ? (terrainFor(view)?.centreM ?? 0) : 0,
+    };
+    return { started, opacity, active, skyView, casters: castersKey(casting, groundEpoch) };
+  };
+
   const engine: CityEngine = {
+    prerender(view) {
+      if (disposed || !sky || !runsSkyOffscreenPass({ sky: true, buildings })) return;
+      if (schedule.prerender()) prepared = prepare(view);
+      if (!prepared) return;
+      // Whatever the buildings' opacity: the sky decides whether there is
+      // anything to cast, and allocates its shadow target either way. Only
+      // the buildings cast (`cityMeshes.ts` → `CASTER_LAYER`).
+      sky.prerender(renderer, scene, prepared.skyView, prepared.casters);
+    },
+
     render(view) {
       if (disposed || !buildings) return;
-      const started = performance.now();
-      frame++;
-      updateWanted(view, started);
-      admit(started);
-      lastFrameAt = started;
+      const frameOf = schedule.render() || !prepared ? prepare(view) : prepared;
+      prepared = null;
 
-      const span = options.fade.end - options.fade.start;
-      const opacity = Math.max(0, Math.min(1, (view.zoom - options.fade.start) / span));
-      light.uOpacity.value = opacity;
-      treeUniforms.uTreeMinHeight.value = treeMinHeightM(view.zoom);
-
-      const center = { x: mercatorXFromLng(view.center.lng), y: mercatorYFromLat(view.center.lat) };
-      for (const overlay of overlays) overlay.update({ view, center, opacity });
-      transitions.begin();
-      for (const tile of selected) {
-        const best = bestFor(tile);
-        // `undefined`: nothing cached yet — keep whatever the slot shows.
-        const key = tileKey(tile);
-        transitions.show(key, best === undefined ? transitions.shown(key) : best, started);
-        if (best) {
-          cache.touch(best.key, frame);
-          best.placement = tile;
-        }
-        // A slot still fading out an older level keeps that one placed too.
-        const showing = transitions.shown(key);
-        if (showing) showing.placement = tile;
-      }
-      const { draws, active } = transitions.draws(started);
-
-      // On terrain: lift stale entries, nearest first, a few per frame. An
-      // entry never grounded would be drawn at sea level — inside the hill —
-      // so it waits for its first lift.
-      const grounded = grounder.active;
-      if (grounded) {
-        let budget = GROUND_TILES_PER_FRAME;
-        for (const tile of selected) {
-          const entry = bestFor(tile);
-          if (!entry || grounder.isCurrent(entry.key)) continue;
-          if (budget-- <= 0) {
-            options.requestRepaint();
-            break;
-          }
-          const result = grounder.ground(entry.key, groundTileFor(entry, tile));
-          if (result) {
-            applyGround(entry, result);
-            liftRange = {
-              min: Math.min(liftRange?.min ?? result.min, result.min),
-              max: Math.max(liftRange?.max ?? result.max, result.max),
-            };
-          }
-        }
-      }
-
-      for (const entry of cache.values()) setEntryVisible(entry, false);
-      drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
-      if (opacity > 0) {
-        // Nearest first, so the tree budget spends itself on the near tiles.
-        const rank = new Map<string, number>();
-        for (const tile of selected) rank.set(tileKey(tile), tile.r);
-        const r = (entry: TileEntry) => rank.get(entry.key.slice(0, entry.key.indexOf('@'))) ?? 1e9;
-        draws.sort((a, b) => r(a.value) - r(b.value));
-        for (const { value: entry, from, to } of draws) {
-          if (!entry.placement) continue;
-          if (grounded && !grounder.hasGround(entry.key)) continue;
-          placeEntry(entry, entry.placement, center);
-          setEntryFade(entry, from, to);
-          setEntryVisible(entry, true);
-          drawn.triangles += entry.triangles;
-          drawn.vertices += entry.vertices;
-          if (entry.trees.length > 0 && drawn.trees + entry.treeCount > TREE_BUDGET) {
-            // Past the budget a farther tile shows its buildings only.
-            for (const mesh of entry.trees) mesh.visible = false;
-          } else {
-            drawn.trees += entry.treeCount;
-            drawn.treeTriangles += entry.treeTriangles;
-          }
-        }
-        camera.projectionMatrix.fromArray(centeredProjection(view.mercatorToClip, center));
-        camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
-        // three caches GL state it believes it set; the map changed all of it
-        // since the last frame. MapLibre in turn marks its own state dirty
-        // after a custom layer returns, so nothing needs restoring after.
-        renderer.resetState();
+      // three caches GL state it believes it set; the map changed all of it
+      // since the last frame. MapLibre in turn marks its own state dirty
+      // after a custom layer returns, so nothing needs restoring after.
+      renderer.resetState();
+      // The sky and the haze are drawn at every zoom the effect covers,
+      // buildings or not.
+      sky?.drawBackground(renderer, frameOf.skyView);
+      if (frameOf.opacity > 0) {
         renderer.render(scene, camera);
         if (landmarks.active) {
           renderer.resetState();
@@ -851,11 +963,35 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
           });
         }
       }
-      if (active) options.requestRepaint();
+      if (frameOf.active) options.requestRepaint();
 
-      const cpu = performance.now() - started;
+      const cpu = performance.now() - frameOf.started;
       frameCpuMs = frameCpuMs === 0 ? cpu : frameCpuMs * 0.9 + cpu * 0.1;
       reportStats();
+    },
+
+    nightFactor: light.uNightFactor,
+
+    hostSkyColours() {
+      return sky?.hostSky ?? null;
+    },
+
+    setSun(sun) {
+      if (!sky) return;
+      sky.setSun(sun);
+      // What the engine still lights MapLibre's way — the trees, and the
+      // overlays through their `setLight` — follows the sky.
+      const host = sky.hostLight;
+      if (host) {
+        light.uLightPosition.value.set(...host.position);
+        light.uLightColor.value.set(...host.color);
+        const overlayLight = {
+          position: host.position,
+          intensity: light.uLightIntensity.value,
+          color: host.color,
+        };
+        for (const overlay of overlays) overlay.setLight(overlayLight);
+      }
     },
 
     renderModels(view) {
@@ -873,6 +1009,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       landmarks.setGround(sample);
       groundSampler = sample;
       liftRange = null;
+      groundEpoch++;
       light.uGrounded.value = sample ? 1 : 0;
       // Culling bounds follow: without terrain every mesh is back at `z = 0`;
       // with it, each keeps its last lift until re-grounded.
@@ -899,6 +1036,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     },
 
     setNightFactor(factor) {
+      light.uNightFactor.value = factor;
       models.setNightFactor(factor);
       landmarks.setNightFactor(factor);
     },
@@ -913,11 +1051,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
     setLight(next) {
       // Not normalised: the radial term is MapLibre's gain (see `CityLight`).
-      light.uLightPosition.value.set(...next.position);
+      // Under the city sky the trees and the overlays follow the sky's light
+      // instead (`setSun`); the models and landmarks keep the map's.
+      if (!sky) light.uLightPosition.value.set(...next.position);
       light.uLightIntensity.value = next.intensity;
-      light.uLightColor.value.set(...next.color);
+      if (!sky) light.uLightColor.value.set(...next.color);
       models.setLight(next);
-      for (const overlay of overlays) overlay.setLight(next);
+      if (!sky) for (const overlay of overlays) overlay.setLight(next);
       landmarks.setLight(next);
       options.requestRepaint();
     },
@@ -940,6 +1080,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       pool.terminate();
       models.dispose();
       for (const overlay of overlays) overlay.dispose();
+      sky?.dispose();
       landmarks.dispose();
       grounder.clear();
       for (const timer of retryTimers) clearTimeout(timer);

@@ -20,10 +20,18 @@ function fakeMap(layers: string[]) {
   const calls: Call[] = [];
   const order = [...layers];
   const visibility = new Map<string, string>();
+  const added = new Map<string, Record<string, unknown>>();
+  let maxPitch = 60;
   const map = {
     calls,
     order,
     visibility,
+    added,
+    getMaxPitch: () => maxPitch,
+    setMaxPitch: (pitch: number) => {
+      calls.push(['setMaxPitch', pitch]);
+      maxPitch = pitch;
+    },
     getLayer: (id: string) => (order.includes(id) ? { id } : undefined),
     getSource: () => ({ tiles: ['https://tiles.example/{z}/{x}/{y}.pbf'], maxzoom: 14 }),
     getLayoutProperty: (id: string) => visibility.get(id),
@@ -33,6 +41,7 @@ function fakeMap(layers: string[]) {
     },
     addLayer: (layer: { id: string }, beforeId?: string) => {
       calls.push(['addLayer', layer.id, beforeId]);
+      added.set(layer.id, layer);
       order.splice(beforeId ? order.indexOf(beforeId) : order.length, 0, layer.id);
     },
     removeLayer: (id: string) => {
@@ -131,5 +140,29 @@ describe('attachCity3d', () => {
       'overlay',
       'label-road',
     ]);
+  });
+
+  test('without the sky: no offscreen pass, and the pitch ceiling is left alone', async () => {
+    const map = fakeMap(['background', 'building', BUILDING_3D_LAYER_ID, 'label-road']);
+    const handle = await attachCity3d(asMap(map), { appearance: 'light', light: null });
+    expect(map.added.get(CITY3D_LAYER_ID)?.prerender).toBeUndefined();
+    expect(map.calls.some(([name]) => name === 'setMaxPitch')).toBe(false);
+    handle?.detach();
+  });
+
+  test('with the sky: a shadow pass, and the pitch ceiling left to MapCanvas', async () => {
+    // `MapCanvas.web.tsx` owns `setMaxPitch` (`maxPitchFor`): an adapter that
+    // set it too was overridden by the next `interaction` change (review of #125).
+    const map = fakeMap(['background', 'building', BUILDING_3D_LAYER_ID, 'label-road']);
+    const handle = await attachCity3d(asMap(map), {
+      appearance: 'light',
+      light: null,
+      sky: { at: null },
+    });
+    expect(typeof map.added.get(CITY3D_LAYER_ID)?.prerender).toBe('function');
+    handle?.setTime(new Date(2026, 5, 21, 20, 50));
+    handle?.detach();
+    expect(map.calls.some(([name]) => name === 'setMaxPitch')).toBe(false);
+    expect(map.order).toEqual(['background', 'building', BUILDING_3D_LAYER_ID, 'label-road']);
   });
 });

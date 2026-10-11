@@ -59,6 +59,8 @@ export interface OsmBuilding {
   roofColour?: number;
   material?: WallMaterial;
   roofMaterial?: RoofMaterial;
+  /** Recorded as lit at night (`floodlit` / `lit`, `CITY_PROPS.floodlit`). */
+  floodlit?: boolean;
 }
 
 export interface DecodedCityTile {
@@ -132,6 +134,7 @@ export function buildingFromProperties(
   if (material) building.material = material;
   const roofMaterial = member(properties[CITY_PROPS.roofMaterial], ROOF_MATERIALS);
   if (roofMaterial) building.roofMaterial = roofMaterial;
+  if (properties[CITY_PROPS.floodlit] === true) building.floodlit = true;
   return building;
 }
 

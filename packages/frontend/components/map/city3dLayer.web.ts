@@ -84,6 +84,7 @@ import {
 } from '@/lib/map/style/buildings3d';
 import { CARTOGRAPHY_PALETTES } from '@/lib/map/style/palette';
 import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
+import { sunPosition } from '@/lib/map/sun';
 
 import { followTerrain } from './city3dGround.web';
 import { cityLightFromSpec, sameCityLight } from './city3dLight';
@@ -91,6 +92,7 @@ import { treeColours } from './city3dTrees';
 // Type-only on purpose: the engine chunk imports these modules at runtime, and
 // a module two lazy chunks share is hoisted into the first-paint `__common`
 // chunk (see `engine3d/lazyChunk.ts`; `components/__tests__/engine3dChunk.test.ts`).
+import type { CitySun } from './engine/city3d/atmosphere';
 import type { CityEngine, CityEngineStats, LandmarkSpec } from './engine/city3d/cityEngine';
 import type { ModelSpec, ModelStatus } from './engine/city3d/models';
 import type { CityLight } from './engine/city3d/occlusion';
@@ -243,6 +245,17 @@ export interface AttachCity3dOptions {
    * (`docs/MAP_LANDMARKS.md`), for `MapAttribution`; called on every change.
    */
   onLandmarkCredits?: (links: readonly MapAttributionLink[]) => void;
+  /**
+   * The city-sky phase (`lib/map/citySkyFlag.ts`): sky, haze, real sun
+   * shadows and physical light, for the instant `at` (`null`: now). Absent:
+   * the buildings are lit by {@link AttachCity3dOptions.light}, as before.
+   * Needs `buildings`: the sky is drawn by the buildings' layer.
+   */
+  sky?: {
+    at: Date | null;
+    /** Told the sun over the map centre whenever it moves by a whole degree. */
+    onSun?: (sun: CitySun) => void;
+  };
 }
 
 export interface City3dHandle {
@@ -264,6 +277,8 @@ export interface City3dHandle {
    * `nightFactor`); the sky's time of day hands its own here.
    */
   setNightFactor(nightFactor: number): void;
+  /** City-sky only: light the city for `at`, or for the live clock with `null`. */
+  setTime(at: Date | null): void;
   /** Remove the layer, free the engine, and show `building-3d` again. Idempotent. */
   detach(): void;
 }
@@ -419,6 +434,14 @@ export async function attachCity3d(
   // Models handed over before MapLibre called `onAdd`.
   let queuedModels: readonly ModelSpec[] | null = null;
   let unfollowTerrain: (() => void) | null = null;
+  const sky = buildings ? (options.sky ?? null) : null;
+  let skyAt = sky?.at ?? null;
+  let reportedSun = '';
+  // MapLibre's own `sky` (drawn behind everything, and its fog blended into
+  // distant 3D terrain) follows the city sky's colours while it is attached;
+  // whatever was there before (the relief prototype's) comes back on detach.
+  const previousHostSky = sky ? (map.getSky?.() ?? null) : null;
+  let appliedHostSky = '';
   let chip: CityLifeChip | null = null;
 
   // The light as MapLibre would apply it to `building-3d` this frame: the
@@ -488,13 +511,64 @@ export async function attachCity3d(
       onModelStatus: options.onModelStatus,
       overlays,
       onLandmarkStatus,
+      sky: sky ? { appearance: options.appearance } : undefined,
     });
     engine.setNightFactor(night);
+    updateSun();
     if (queuedModels) engine.setModels(queuedModels);
     // On 3D terrain the buildings stand on the drawn ground, not at sea level.
     unfollowTerrain = followTerrain(map, engine);
     if (__DEV__) publishLight(lightSpec ?? map.getLight(), applied);
     return engine;
+  };
+
+  // City sky: the REAL sun over the map centre at the chosen instant — not
+  // the shaped light `building-3d` gets (`sunLitBuildingsLight` caps its polar
+  // angle for legibility): a shadow's length and the sky's colour are facts
+  // about where the sun is. Rounded to a tenth of a degree, below anything
+  // the sky or a shadow can show, so a live clock does not redraw the shadow
+  // map more than every few seconds. The night factor follows it — the one
+  // place the sky hands its time of day to the models, landmarks, overlays
+  // and the city's own night looks (`setNightFactor`).
+  const updateSun = () => {
+    if (!sky || !engine) return;
+    const center = map.getCenter();
+    const sun = sunPosition(skyAt ?? new Date(), center.lat, center.lng);
+    if (!Number.isFinite(sun.azimuthDeg) || !Number.isFinite(sun.altitudeDeg)) return;
+    const rounded: CitySun = {
+      azimuthDeg: Math.round(sun.azimuthDeg * 10) / 10,
+      altitudeDeg: Math.round(sun.altitudeDeg * 10) / 10,
+    };
+    engine.setSun(rounded);
+    const nextNight = nightFactor({
+      appearance: options.appearance,
+      sunAltitudeDeg: rounded.altitudeDeg,
+    });
+    if (nextNight !== night) {
+      night = nextNight;
+      engine.setNightFactor(night);
+    }
+    const colours = engine.hostSkyColours();
+    const signature = colours ? `${colours.sky}${colours.horizon}${colours.fog}` : '';
+    if (colours && signature !== appliedHostSky) {
+      appliedHostSky = signature;
+      try {
+        map.setSky({
+          ...(previousHostSky ?? {}),
+          'sky-color': colours.sky,
+          'horizon-color': colours.horizon,
+          'fog-color': colours.fog,
+        });
+      } catch {
+        // A style not loaded yet: the next sun change tries again.
+        appliedHostSky = '';
+      }
+    }
+    const whole = `${Math.round(rounded.azimuthDeg)},${Math.round(rounded.altitudeDeg)}`;
+    if (whole !== reportedSun) {
+      reportedSun = whole;
+      sky.onSun?.(rounded);
+    }
   };
 
   // The view MapLibre hands this frame, with the light re-derived (a few
@@ -527,10 +601,19 @@ export async function attachCity3d(
     // Share the depth buffer with the map, so the meshes and anything else 3D
     // occlude each other correctly.
     renderingMode: '3d',
+    // City sky: the shadow map is drawn in MapLibre's offscreen pass, before
+    // its own framebuffer is bound (`engine/city3d/sky.ts`). Otherwise none.
+    prerender: sky
+      ? (_gl, args) => {
+          updateSun();
+          engine?.prerender(frameView(args));
+        }
+      : undefined,
     onAdd(host, gl) {
       ensureEngine(host, gl);
     },
     render(_gl, args) {
+      updateSun();
       const view = frameView(args);
       if (landmarksOn) updateLandmarks(view);
       engine?.render(view);
@@ -580,6 +663,18 @@ export async function attachCity3d(
     map.addLayer(modelsLayer, modelsLayerBefore(map));
   };
 
+  // The pitch ceiling the sky needs is NOT set here: `MapCanvas.web.tsx`'s
+  // interaction effect owns `setMaxPitch` (`maxPitchFor`), so it cannot be
+  // reset under an attached sky.
+
+  // Under the live clock nothing else asks for a frame while the map sits
+  // still; the sun moves a quarter of a degree a minute.
+  const clock = sky
+    ? setInterval(() => {
+        if (skyAt === null) map.triggerRepaint();
+      }, 30_000)
+    : null;
+
   let detached = false;
   return {
     setLight(next) {
@@ -599,15 +694,23 @@ export async function attachCity3d(
       return engine?.pickModel(point) ?? null;
     },
     setNightFactor(factor) {
+      // Under the city sky the time of day decides (`updateSun`).
+      if (sky) return;
       night = factor;
       engine?.setNightFactor(factor);
+    },
+    setTime(at) {
+      skyAt = at;
+      map.triggerRepaint();
     },
     detach() {
       if (detached) return;
       detached = true;
+      if (clock) clearInterval(clock);
       // The map may already be gone (an appearance change tears it down before
       // this cleanup runs); then there is nothing left to restore.
       try {
+        if (appliedHostSky) map.setSky(previousHostSky ?? {});
         if (map.getLayer(MODELS_LAYER_ID)) map.removeLayer(MODELS_LAYER_ID);
         if (map.getLayer(CITY3D_LAYER_ID)) map.removeLayer(CITY3D_LAYER_ID);
         if (map.getLayer(BUILDING_3D_LAYER_ID)) {

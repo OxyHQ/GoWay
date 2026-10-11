@@ -13,6 +13,7 @@
  */
 import * as THREE from 'three';
 
+import { SHADOW_CASTER_LAYER } from './frameSelection';
 import type { Lod } from './lod';
 import { type PackedMesh, quantizedModelMatrix, Z_UNITS_PER_METRE } from './packing';
 import { GROUND, type GroundResult, type GroundTile, gridAt } from './terrainGround';
@@ -232,9 +233,13 @@ export function createTileEntry(
       if (chunk.color)
         geometry.setAttribute('color', new THREE.BufferAttribute(chunk.color, 4, true));
       if (chunk.facade) geometry.setAttribute('facade', new THREE.BufferAttribute(chunk.facade, 4));
+      // Per-building night flags (`osmMesher.ts` → `VERTEX_FLAG_*`), read by the city sky.
+      if (chunk.flags) geometry.setAttribute('flags', new THREE.BufferAttribute(chunk.flags, 1));
       geometry.boundingBox = box;
       geometry.boundingSphere = sphere;
       const part = hide(new THREE.Mesh(geometry, material));
+      // Buildings cast the city sky's sun shadows (`frameSelection.ts`).
+      part.layers.enable(SHADOW_CASTER_LAYER);
       context.scene.add(part);
       entry.buildings.push(part);
     }

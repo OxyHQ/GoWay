@@ -348,6 +348,11 @@ perspective for the one layer that has depth), (3) the ambient term tinted by
 the real sun's elevation. Full-frame atmosphere stays a separate decision, made
 only if the staged version visibly falls short.
 
+**Built** ([Phase 3](#phase-3-sky-atmosphere-shadows-and-time-of-day)), and
+further than staged: MapLibre's fog never reaches a flat basemap, so the layer
+blends the light and the haze over the basemap itself, adds a sky and sun
+shadows, and is tuned to a pastel maquette look rather than photorealism.
+
 ### 7. Native
 
 `@maplibre/maplibre-react-native` exposes **no custom-layer API**: MapLibre
@@ -600,6 +605,22 @@ fabricated places on the public map; the same rule governs buildings:
   A per-country LiDAR surface model (Spain's IGN MDS05 against MDT05) would be
   accurate enough; official building data (Catastro's floors above ground) is
   simpler and is the LOD2 work's.
+- **Night lighting is styling, not data** (owner decision, 2026-10-11: "full
+  Apple style"). It makes no claim about occupancy, opening hours or what is
+  lit at any hour, and two kinds are allowed:
+  - **Window glow**, only on walls whose window rows are drawn — that is, only
+    where storeys are recorded, by the facade rule above — and never on a
+    blind or party wall. Which windows glow is a pattern, not a census.
+  - **Floodlighting** of landmarks. Drawn where the data records that a
+    building is lit at night (`floodlit` / `lit` on the building:
+    `CITY_PROPS.floodlit`, see Phase 3); a curated landmark set may add it as
+    styling of the landmark it models.
+  Both follow one input, `nightFactor` (`lib/map/landmarks/night.ts`), so the
+  city lights up together. A warm street-level glow on every wall at night is
+  the same kind of styling.
+- What stays forbidden is unchanged: **facts are never invented** — no names,
+  storefronts, signage, logos, doors or business-like detail the data does not
+  contain, by day or by night.
 
 ## The prototype
 
@@ -927,6 +948,252 @@ engine folder type-only).
   measured) for the city-life simulation — see
   [`MAP_CITY_LIFE.md`](./MAP_CITY_LIFE.md).
 
+## Phase 3: sky, atmosphere, shadows and time of day
+
+**Off by default; web only; on top of the city layer.** `EXPO_PUBLIC_MAP_CITY_SKY=1`
+(a build decision; no deployment sets it) or `?citysky=1` in a development build,
+and only together with the city layer (`?city3d=1&citysky=1`):
+`lib/map/citySkyFlag.ts`. Without the city layer the answer is `false`, not
+half a feature.
+
+### The look it is tuned to
+
+The art direction is **Apple Maps' detailed city, not a photograph**: a matte,
+pastel maquette by day (warm white and grey buildings, soft greens, light blue
+water, very soft shadows, no haze greying anything out) and, by night, a deep
+blue-violet sky over a dim blue-grey city. The physics below supplies the
+*shape* of the light — where the sun is, how long a shadow is, how the sky
+reddens at sunset — and a handful of named constants bend it toward that look:
+eye adaptation (`BRIGHTNESS_CURVE`), partial white balance
+(`CHROMATIC_ADAPTATION`), light that bounces round streets (`ENV_BOUNCE`),
+shadows that never go black (`SHADOW_OPACITY`), the real air for haze
+(`AERIAL_DISTANCE_SCALE = 1`) and a stylised night sky. Each is commented
+where it is defined (`engine/city3d/atmosphere.ts`) with what it does and why.
+
+### Night: the seam, the palette, the lights
+
+The owner's call for night is "full Apple style": lit windows and floodlit
+landmarks are allowed as **styling** (see the [honesty rule](#obligations) for
+exactly what that permits). This branch provides the input and the
+floodlights; the window glow belongs to the city art direction
+(`feat/city-art`) and landmark emissives to the landmarks work
+(`feat/landmarks`), which read the same input.
+
+**`nightFactor`** (`lib/map/landmarks/night.ts`, shared with the landmarks
+work — one function, not two) — 0 by day, 1 at night — is the one number
+every night look reads, so the whole city lights up together:
+
+- with a time of day (the sky on): 0 above −1°, 1 below −9°, smooth between —
+  the same window over which the sky turns to the stylised night;
+- the dark appearance is a night-styled map: always 1.
+
+The adapter is the one place it is set (`city3dLayer.web.ts` →
+`engine.setNightFactor`): from the appearance, or — the sky on — from the
+sun over the map centre each frame (`updateSun`), when an outside
+`setNightFactor` is ignored. Read it as the `uNightFactor` uniform every city
+material gets (one shared `{ value }` object, `cityEngine.ts` → `light`), or
+as `CityEngine.nightFactor` — that same live object, to hand to a material
+built elsewhere. Per-building inputs for night looks travel in one
+per-vertex byte, `OsmTileMesh.flags` (`osmMesher.ts`) → `PackedChunk.flags`
+(`packing.ts`) → the `flags` attribute; bit 0 is `VERTEX_FLAG_FLOODLIT`, and
+a new bit is a new constant, never a new meaning for an old one.
+
+**City life and other overlays** (`overlay.ts`) get the sky two ways: through
+`setLight`, the sun's direction and the light on an up-facing surface, as the
+trees get it — so the simulated traffic darkens and cools at night with no
+change of its own — and, optionally, through `setSky`: the live uniforms
+(sun, sky, bounce, shadow map and matrix, night factor, camera, ground) and
+the GLSL that reads them (`SKY_OVERLAY_GLSL`: `sunVisibility`,
+`hazeTransmittance`, `skyColor`), for an overlay that wants the sun's shadows
+and the haze on its own objects. Only the buildings cast into the shadow map
+(`SHADOW_CASTER_LAYER`); the instanced trees and the overlays do not.
+
+**The palette** (`atmosphere.ts`): a deep blue-violet sky (`#141658` overhead to
+`#27308c` at the horizon), a saturated blue night ambient that puts a cream
+roof at about `#4f6185` — the references' slate — and a street bounce that
+falls to a tenth at night, so walls sit darker than roofs (the value
+contrast that keeps a night city reading as 3D, and that lit elements pop
+against). Water and greens go deep blue and dark teal through the same light.
+Before/after screenshots are in the PR.
+
+**Floodlights** are drawn on buildings that **record** being lit at night,
+compiled into the city tiles as `floodlit=true` (`CITY_PROPS.floodlit`,
+`citygen/tags.ts` → `parseLitAtNight`). Which keys, measured on taginfo
+(2026-10-11):
+
+| Key | Objects | Read? |
+| --- | ---: | --- |
+| `floodlit` | 3 (all sports pitches) | yes (`yes`/`1`/`true`) — but alone it would light nothing |
+| `building:floodlit` | 0 | no — unused |
+| `lit` on a `building` / `building:part` | 32,955 / 391 | **yes**: `yes`, `24/7`, `automatic`, `dusk-dawn`, `limited`, `interval`, or a time range |
+| `light_source=floodlight` | 6,888, 99.7% nodes | no — attributing a lamp to the building it faces is a spatial guess, not a tag |
+
+On such a building at night the sky-lit material adds a warm uplight
+(`FLOODLIGHT`): brightest at the foot of the walls, fading up the facade, a
+little on the roof, scaled by `nightFactor`. The fact is the tag; the light's
+colour, fall-off and strength are styling. A warm street-level glow on every
+wall's lowest metres (`STREET_GLOW`) is styling of the same kind.
+
+### Why not takram `three-geospatial` (what Procedural Tokyo uses)
+
+Evaluated `@takram/three-atmosphere` 0.19.1 (MIT) and rejected it for this
+layer, for reasons that are about the host, not the library:
+
+- **Its aerial perspective is a post-processing effect.** `AerialPerspectiveEffect`
+  is a pmndrs `postprocessing` pass that reads the whole frame's colour and
+  depth (and normals) from an `EffectComposer`. A MapLibre custom layer draws
+  INTO MapLibre's framebuffer mid-frame; there is no composer, and the
+  basemap's colour and depth are not ours to read. Using it means rendering
+  MapLibre into a texture and compositing — owning the frame, the step §6
+  already declined.
+- **Weight.** The package is 36.9 MB unpacked; `build/shared.js` imports
+  `postprocessing` at module load even for the sky material alone; the
+  precomputed Bruneton tables it loads are 8 MB each (scattering, single Mie,
+  higher orders) unless generated on the GPU at start-up, which needs float
+  render targets.
+- **Frames.** It works in ECEF with its own sun and camera conventions; this
+  layer's camera is a mercator → clip matrix it has to read back
+  (`viewRays.ts`).
+
+What it **does** take from that work: the model (Bruneton/Hillaire Earth
+constants — Rayleigh 8 km, Mie 1.2 km with a Cornette–Shanks phase, ozone at
+25 km), and the composition `scene · T + inscatter`.
+
+Also rejected: **MapLibre's own `sky`/fog.** In maplibre-gl 6.10 `fog` is
+applied only by the terrain shader (`draw_terrain.ts`) — it never reaches a
+flat basemap — and `sky` is a two-colour gradient with no sun. (The relief
+prototype uses it for the globe at low zoom, where this layer stays out —
+below.)
+
+### How it works inside a frame MapLibre owns
+
+| Pass | When | What |
+| --- | --- | --- |
+| Shadow map | MapLibre's `prerender` (offscreen pass, before its framebuffer is bound) | The visible buildings' depth from the sun, 2048² (`sky.ts`). **Only when stale**: the sun moved (0.1°), the snapped receiver box moved, or the drawn tile set changed |
+| `FILL` | `render`, before the buildings | Only where MapLibre drew nothing (blend `src·(1−dst α)`: past its far plane the canvas is transparent): the horizon haze |
+| `MULTIPLY` | 〃 | The basemap × ground light (sun × shadow + sky, `^1/2.2`) × haze transmittance; 0 above the horizon |
+| `ADD` | 〃 | Haze in-scatter below the horizon; the sky and the sun's disc above it |
+| Buildings | 〃 | Same light, the shadow map (12-tap rotated Poisson PCF, 3 texels), same haze |
+
+Blending is the one thing a layer can do to pixels it did not draw, so the
+basemap — roads, water, land, the flat footprints — gets the same light, the
+same shadows and the same haze as the buildings, while every label, POI and
+overlay is drawn by MapLibre *after* the layer and stays exactly as legible as
+before. **The frame's order matters** (`frameSelection.ts`, review of #125): the
+tile selection — wanted tiles, terrain lifts — is made in the frame's FIRST
+pass, the offscreen one, so the shadow map is of this frame's buildings and
+not the last; the offscreen pass runs at every zoom the sky draws, buildings
+or not, because it is where the shadow target is first allocated and a
+program whose shadow sampler has none fails to draw; and the shadow map's key
+includes each drawn tile's terrain-lift revision. The camera and each pixel's view ray come from the projection matrix
+(`viewRays.ts`, float64: camera = `P⁻¹·(0,0,1,0)`, far-plane corners
+interpolated by the GPU), and a pixel below the horizon is the flat ground plane
+at that ray's hit.
+
+- **Sky** (`atmosphere.ts`): single scattering with a transmittance table and a
+  sky-tinted multiple-scattering term, ray-marched on the CPU into a 48 × 32
+  table per sun **altitude** (azimuth is a rotation the shader applies). Cached
+  per 0.2°, so panning computes nothing and a scrub computes each altitude once.
+  Hue-preserving tone map (per-channel ACES turned a hazy horizon grey-green).
+  Below −1° a stylised blue-violet night takes over by −9°.
+- **Haze**: the closed-form transmittance of an exponential atmosphere along
+  the view ray (`hazeTransmittance`, tested against a numeric integral) and the
+  sky's horizon colour in that direction, so the ground meets the sky without a
+  seam.
+- **Light**: sun irradiance through the atmosphere, sky irradiance integrated
+  from the table, light bounced round the street, an adaptation curve for
+  brightness and partial white balance for colour. A multiplier on the map's
+  own colours, `1` at reference daylight, with a pure 2.2 gamma so "multiply
+  the basemap's sRGB pixel" and "light the building's linear albedo" agree.
+  Both tile formats (OpenMapTiles and GoWay city tiles, whose colour function
+  is shared: `OSM_BASE_GLSL`) and terrain grounding are supported.
+- **Shadows** (`shadows.ts`): one orthographic map over a square receiver box
+  round the map centre — radius from the view, rounded up in √2 steps; centre
+  snapped to an eighth of it; box turned to face the sun so a low sun gets *more*
+  resolution; window snapped to whole texels in absolute light space so a
+  moved box does not shimmer. ~0.6–1.6 m texels at street zooms. The REAL sun
+  (`lib/map/sun.ts` over the map centre), not `building-3d`'s shaped light:
+  a shadow's length is a fact.
+- **MapLibre's own sky** follows this one while it is attached
+  (`hostSkyColours` → `map.setSky`, the previous sky restored on detach).
+  MapLibre draws its `sky` behind everything and blends its `fog-color` into
+  distant 3D terrain — including a second terrain draw after this layer, for
+  the draped layers above it — so another module's colours there showed as
+  a pale band over the night. The basemap passes put the ground at the drawn
+  terrain's height near the centre (`groundM`), a plane: exact on a city's
+  gentle slopes, drifting on a steep one (the buildings' own shadows stay
+  exact — they are lifted with the buildings).
+- **Zooms**: the effect fades in over z12 → z13. It is a street-scale effect,
+  and below z12 the relief prototype's globe may be easing in, under which the
+  flat-ground rays are not the drawn surface.
+- **Pitch**: the ceiling goes from 60° to 80° while the sky is attached
+  (`maxPitchFor` in `lib/map/citySkyFlag.ts`), only where tilting is allowed
+  at all, and back on detach. `MapCanvas.web.tsx`'s interaction effect is the
+  one place it is set, so an `interaction` change cannot drop a sky-lit map
+  back to 60°. At 60° a z16 view never reaches the horizon.
+
+### The time-of-day scrubber
+
+`components/map/TimeOfDayScrubber.web.tsx`, shown only while the layer is
+attached, in its own lazy chunk: an hour slider, previous/next day (±183) and
+**Now** (the default; a live clock re-reads the sun every 30 s). The device's
+clock: a whole day is still every hour of a far city's day, and the caption
+says what the sun is doing *there* (`Sun 34° up`, `Golden hour`, `Blue hour`,
+`Twilight`, `Night`, from its altitude over the map centre). Strings are in
+`lib/messages/citySky.ts` (English, Spanish), kept out of the first-paint
+tables. The arithmetic (`lib/map/timeOfDay.ts`) uses `setHours`, so a
+daylight-saving day is the platform's problem, not an hour off every label.
+
+### Measured
+
+Headless Chromium on SwiftShader (software GL — a ceiling, not a laptop GPU
+number), 1280 × 800, Barcelona z16.5 at 80°, six tiles, 3.19 M triangles:
+
+| | |
+| --- | --- |
+| Sky table for a new altitude (CPU) | 3–30 ms, typically 5–10; 0 when cached |
+| Shadow-map redraws | 6–10 while a view loads (one per arriving tile and radius step), then **0** for a still map or a pan under 1/8 of the radius |
+| One shadow redraw | 250–900 ms in SwiftShader for 3.2 M triangles: one extra depth-only pass of the visible buildings. On a GPU, a fraction of the main pass |
+| Per frame | three full-screen passes (1, 12 and 2 texture reads a pixel) and 12 shadow taps per building fragment |
+| GPU memory | 16 MB depth + 4 MB R8 for the shadow target, 6 KB sky table |
+
+Not yet measured: frame time on a real laptop and a mid-range Android GPU
+(the PCF tap count and the shadow-map size are the knobs), and the
+`expo export` budget on such a device.
+
+### What the flag costs when off
+
+Measured with `expo export --platform web --clear` against the `main` this
+branch is based on (1175833: #126, #128, #129, #130, #133 merged), flags off:
+
+| Chunk | Before | After | |
+| --- | ---: | ---: | --- |
+| `entry` (first paint) | 6,971,234 B | 6,972,644 B (+1,410 B; +343 B gz) | the flag, the gate and one `lazy()` stub |
+| `__common` (first paint) | 81,754 B | 81,644 B (−110 B) | nothing of the sky's |
+| `lazyChunk` (three.js) | 3,700,047 B | 3,736,219 B (+36,172 B; +12.3 KB gz) | the sky; requested only with the city layer on |
+| `city3dLayer` | 18,274 B | 19,334 B | only with the city layer on |
+| `TimeOfDayScrubber` | — | 7,808 B (3.4 KB gz) | only with the sky on |
+
+The first export had `__common` at **90,174 B**: the scrubber used Bloom's
+`Slider`, which another lazy route already imports, so a second lazy importer
+hoisted it to first paint (the trap in
+`~/Oxy/docs/build-and-runtime-traps.md`). The scrubber now uses the platform's
+`<input type="range">` (it is a web-only file), and the export above is the
+result.
+
+### Limits
+
+- **Terrain** (on by default since #128): the basemap's shadows and haze sit
+  on a plane at the centre's ground height, so on a steep slope they drift;
+  the buildings' shadows and haze follow the terrain exactly.
+- **Globe**: none below z12 (see Zooms).
+- **One shadow box**: buildings past ~1.4 km from the centre (high pitch) have
+  no shadow; the shadows fade out at the box's rim.
+- **Native**: none — the same custom-layer limit as the rest of this note.
+- **Floodlights** only on the GoWay city tiles (the OpenMapTiles meshes carry
+  no tags), only with the sky on, and only where `lit`/`floodlit` is tagged —
+  which is rare (above). Curated landmarks are the landmarks work's.
+
 ## Phased plan
 
 Estimates are engineering time for one person familiar with the codebase, and
@@ -937,7 +1204,7 @@ are estimates; the runtime numbers are measured unless marked.
 | **0. Prototype** (this change) | Custom layer, worker mesher over existing tiles, bevels, baked AO, lit by the same sun light as `building-3d`; off by default | Done. Users: +1.1 KB entry, nothing else with the flag off |
 | **1. Ship A on web** | ~~Far-field LOD, per-tile fade-in, worker pool~~ (done: §4 "LOD and loading", with budgets; trees: §8), WebGL context-loss handling, device gating via `deviceProfile`-style checks (GPU memory: Barcelona's visible set is ~60 MB), MapLibre sky/fog matched in-shader, tap-through to the basemap preserved, a perf budget on mid-range Android Chrome | ~2–3 weeks. No infra. Opt-in users download the ~1.1 MB gz lazy chunk |
 | **2. GoWay 3D tiles (B)** | Compiler beside the Planetiler build: per-building footprints and parts, OSM levels/roof shapes where tagged; client second source mode with roofs, tempered colours and recorded storeys; archive in R2 behind the Worker; the same tiles as native's per-building extrusion source | **Compiler + client built, off by default** ([Phase 2](#phase-2-goway-city-tiles)): Barcelona 11.9 s / 6.2 MB, Catalonia 15.3 s / 31.5 MB. Remaining: sharded planet build (~2 h compute, ~18–20 GB extrapolated), R2 + Worker route, ODbL publication, far levels for the city tiles (they draw every visible tile at full detail today, §4); pre-meshing and neighbour AO only if measured necessary |
-| **3. Atmosphere** | Staged as in §6: sky/fog, in-shader aerial perspective, sun-tinted ambient | ~1–2 weeks |
+| **3. Atmosphere** | Sky, haze over basemap and buildings, sun shadows, time-of-day scrubber | **Built, off by default** ([Phase 3](#phase-3-sky-atmosphere-shadows-and-time-of-day)). Remaining: real-GPU frame budget, device gating, terrain-aware ground passes |
 | **4. Municipal data** | One dataset at a time (PLUTO, PLATEAU, 3DBAG, Catastro…): licence review, adapter in the compiler, credit while drawn, LOD2 roofs where present | ~1 week each + legal review |
 | **5. Native** | (a) Extrude B's per-building layer in the existing native style — days. (b) A native custom layer — months, decided by benchmarks | (a) days, (b) months |
 

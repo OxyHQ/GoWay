@@ -78,7 +78,17 @@ export interface OsmTileMesh extends TileMesh {
   colors: Uint8Array;
   /** Per vertex `[bays×256, base dm, storey cm, count]`; all 0 where floors are unrecorded. */
   facade: Uint16Array;
+  /**
+   * Per vertex, one byte of per-BUILDING flags — a stable seam for the night
+   * looks (`CityEngine.setNightFactor`): bit {@link VERTEX_FLAG_FLOODLIT} = the building
+   * records being lit at night. Other bits are free; a new one is a new
+   * constant here, never a reinterpretation of an existing one.
+   */
+  flags: Uint8Array;
 }
+
+/** {@link OsmTileMesh.flags}: the building records being lit at night (`CITY_PROPS.floodlit`). */
+export const VERTEX_FLAG_FLOODLIT = 1;
 
 type Rgba = readonly [number, number, number, number];
 type Facade4 = readonly [number, number, number, number];
@@ -91,6 +101,9 @@ class Builder {
   shade = new Uint8Array(2 * 8192);
   colors = new Uint8Array(4 * 8192);
   facade = new Uint16Array(4 * 8192);
+  flags = new Uint8Array(8192);
+  /** The flags every vertex gets until the next building sets its own. */
+  buildingFlags = 0;
   indices = new Uint32Array(6 * 8192);
   vertexCount = 0;
   indexCount = 0;
@@ -111,6 +124,7 @@ class Builder {
     this.shade = twice(this.shade);
     this.colors = twice(this.colors);
     this.facade = twice(this.facade);
+    this.flags = twice(this.flags);
   }
 
   vertex(
@@ -143,6 +157,7 @@ class Builder {
     this.facade[c + 1] = facade[1];
     this.facade[c + 2] = facade[2];
     this.facade[c + 3] = facade[3];
+    this.flags[v] = this.buildingFlags;
     if (x < this.min[0]) this.min[0] = x;
     if (y < this.min[1]) this.min[1] = y;
     if (z < this.min[2]) this.min[2] = z;
@@ -191,6 +206,7 @@ class Builder {
       shade: this.shade.slice(0, this.vertexCount * 2),
       colors: this.colors.slice(0, this.vertexCount * 4),
       facade: this.facade.slice(0, this.vertexCount * 4),
+      flags: this.flags.slice(0, this.vertexCount),
       indices: this.indices.slice(0, this.indexCount),
       bounds: { min: [...this.min], max: [...this.max] },
       polygons,
@@ -667,6 +683,7 @@ export function meshOsmBuildings(
   });
   buildings.forEach((building, i) => {
     const start = builder.vertexCount;
+    builder.buildingFlags = building.floodlit ? VERTEX_FLAG_FLOODLIT : 0;
     polygons += meshOsmBuilding(builder, building, scale, i, partyWalls);
     // A whole building (all its polygons) stands on ONE ground, so a
     // multipolygon's pieces stay level with each other on a slope.

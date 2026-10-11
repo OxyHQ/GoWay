@@ -48,13 +48,15 @@ import {
   type CityFeatureProperties,
   parseDirection,
   parseOrientation,
+  LIT_KEYS,
   resolveProperties,
   type Tags,
 } from './tags';
 import { TREE_KEYS, treeProperties } from './treeTags';
 
 /** The tags a city tile can use. Everything else is dropped on read. */
-const KEPT_KEYS = new Set([
+export const KEPT_KEYS: ReadonlySet<string> = new Set([
+  ...LIT_KEYS,
   'building',
   'building:part',
   'type',
@@ -104,6 +106,8 @@ export interface Coverage {
   withRoofColour: number;
   withMaterial: number;
   withRoofMaterial: number;
+  /** Buildings and parts that record being lit at night (`floodlit`, `lit`). */
+  withFloodlit: number;
   /** Values present but unreadable, by key: the junk the parser refused. */
   rejected: Record<string, number>;
   roofShapes: Record<string, number>;
@@ -582,6 +586,7 @@ export function compile(options: CompileOptions): CompileResult {
     withRoofColour: 0,
     withMaterial: 0,
     withRoofMaterial: 0,
+    withFloodlit: 0,
     rejected: {},
     roofShapes: {},
   };
@@ -707,6 +712,7 @@ function count(
   check('roof:colour', 'roof_colour', 'withRoofColour');
   check('building:material', 'material', 'withMaterial');
   check('roof:material', 'roof_material', 'withRoofMaterial');
+  if (props.floodlit === true) coverage.withFloodlit++;
   if (tags['roof:shape'] !== undefined) {
     const shape = props.roof_shape;
     if (shape === undefined) {
