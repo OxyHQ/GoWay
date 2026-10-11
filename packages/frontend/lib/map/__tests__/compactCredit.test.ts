@@ -60,7 +60,8 @@ describe('the compact credit', () => {
 });
 
 describe('wired on every map', () => {
-  const read = (path: string) => readFileSync(join(import.meta.dir, '..', '..', '..', path), 'utf8');
+  const read = (path: string) =>
+    readFileSync(join(import.meta.dir, '..', '..', '..', path), 'utf8');
 
   for (const fork of ['components/map/MapCanvas.web.tsx', 'components/map/MapCanvas.native.tsx']) {
     test(`${fork} renders it from the credit state, unconditionally`, () => {

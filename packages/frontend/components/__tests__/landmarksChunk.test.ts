@@ -95,7 +95,7 @@ describe('the landmarks chunks', () => {
     }
   });
 
-  test('the registry reader is only ever imported dynamically, by its two users', () => {
+  test('the registry reader is only ever imported dynamically, by its three users', () => {
     const statics = files
       .filter((f) => f.path !== 'lib/map/landmarks/load.ts')
       .filter((f) =>
@@ -110,6 +110,8 @@ describe('the landmarks chunks', () => {
       .sort();
     expect(dynamics).toEqual([
       'components/map/city3dLayer.web.ts',
+      // The settings dialog's About lists every landmark model's licence.
+      'features/explore/MapSettingsPanel.tsx',
       'features/landmarks/useLandmarks.ts',
     ]);
   });

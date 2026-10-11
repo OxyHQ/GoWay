@@ -26,7 +26,7 @@ The elevation tiles come from GoWay's own Worker route,
 
 | Piece | Where |
 | --- | --- |
-| Flags | The map-feature registry's `globe` and `terrain` (`lib/map/mapFeatures.ts`, [`MAP_FEATURES.md`](./MAP_FEATURES.md)): the kill switches, then the person's choice in the layers panel; `lib/map/reliefFlag.ts` for the development query; read live through `components/map/reliefFlags.ts` (`useMapRelief`) |
+| Flags | The map-feature registry's `globe` and `terrain` (`lib/map/mapFeatures.ts`, [`MAP_FEATURES.md`](./MAP_FEATURES.md)): the kill switches, then the person's choice in the settings dialog; `lib/map/reliefFlag.ts` for the development query; read live through `components/map/reliefFlags.ts` (`useMapRelief`) |
 | Style fragments (pure, spec-validated) | `lib/map/style/relief.ts` — DEM sources, hillshade, terrain, sky, globe outline, space |
 | DEM endpoint, vendor, credit | `lib/map/provider.ts` (`GOWAY_MAP_PATHS.terrain`, `MAPTERHORN_ENDPOINTS`, `TERRAIN_ATTRIBUTION_LINK`, `resolveTerrainTileUrl`) |
 | Worker route | `worker/index.js` → `serveTerrain`; `wrangler.toml` (`run_worker_first`, `MAP_TERRAIN_UPSTREAM`, optional `MAP_TERRAIN_ARCHIVE`) |

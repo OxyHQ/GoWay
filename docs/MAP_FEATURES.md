@@ -1,4 +1,4 @@
-# Map features: the registry and the layers panel
+# Map features: the registry, the settings dialog and the credit
 
 GoWay's map has optional features: the globe, terrain, the 3D city and its
 trees, GoWay's own city tiles, the simulated city life, the landmarks, the
@@ -6,7 +6,7 @@ route flyover. Each one used to be a
 build-time `EXPO_PUBLIC_MAP_*` flag plus a development-only `?param=1`, so the
 only way to see a feature on goway.to was a rebuild. They are now entries in
 ONE registry, and a person turns them on or off from the map itself, in a
-layers panel modelled on Apple Maps' map options.
+settings dialog modelled on Apple Maps' map options.
 
 | Piece | Where |
 | --- | --- |
@@ -15,7 +15,8 @@ layers panel modelled on Apple Maps' map options.
 | Per-device store: choices, Labs, hydration | `lib/map/mapFeatureStore.ts`; the app's one instance and hooks in `lib/map/useMapFeatures.ts` |
 | Storage | `lib/map/mapFeatureStorage.web.ts` (`localStorage`, synchronous) and `mapFeatureStorage.ts` (AsyncStorage, native) |
 | Each feature's own rule (dev query parameters) | `city3dFlag.ts`, `city3dTreesFlag.ts`, `cityTilesFlag.ts`, `flyoverFlag.ts`, `reliefFlag.ts` — unchanged |
-| The panel | `features/explore/MapLayersButton.tsx` (first paint) and `MapLayersPanel.tsx` (loaded on first open) |
+| The settings dialog | `features/explore/MapSettingsButton.tsx` (first paint) and `MapSettingsPanel.tsx` (loaded on first open) |
+| The compact data credit | `lib/map/compactCredit.ts` (the rule), `components/map/useCompactCredit.ts`, `components/map/MapAttribution.tsx` |
 | Tests | `lib/map/__tests__/mapFeatures.test.ts`, `mapFeatureStore.test.ts`, `mapFeatureLabels.test.ts` |
 
 ## How a feature's answer is decided
@@ -54,6 +55,7 @@ now kills the trees, as a padded `0` always killed the globe and terrain.
 | `city3dTreeFill` | labs | off | web | `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL` | `?city3dTreeFill=1` | live (re-attach) |
 | `cityLife` | labs | off | web, **development builds only** | `EXPO_PUBLIC_MAP_CITY_LIFE` | `?cityLife=1` | live (re-attach) |
 | `landmarks` | labs | off | web, **development builds only** (needs `city3d`; models draw only over city tiles) | `EXPO_PUBLIC_MAP_LANDMARKS` | `?landmarks=1` | live (re-attach; the pill and "Landmark tour" come and go, a running tour ends) |
+| `live` | labs | off | web; **offered nowhere until #132 lands** (`offer: 'never'`) | `EXPO_PUBLIC_MAP_LIVE` | `?live=1` | — |
 | `flyover` | labs | off | web, native | `EXPO_PUBLIC_MAP_FLYOVER` | `?flyover=1` | live ("Fly the route", `/studio`) |
 
 No production default changed: globe and terrain stay on (#128), everything
@@ -62,40 +64,67 @@ else is off until somebody turns it on. City tiles, city life and the landmarks
 development build, because nothing serves those archives on goway.to yet and ODbL wants each archive and its receipt published first
 (`MAP_3D_CITY.md` and `MAP_CITY_LIFE.md` → Hosting).
 
-## The layers panel
+## The settings dialog
 
-A button at the top right of the map, under the account button — the one corner
+A gear at the top right of the map, under the account button — the one corner
 that neither the sheet, the side panel nor any notice covers, in either layout.
 
 It is the first item of the explore screen's **top-right stack**: ONE column
 (`items-end`, 8 px apart) under the account button holding, in order, the
-layers button, the "Landmarks" pill, and a slot (`components/map/chipSlot.ts`)
+settings button, the "Landmarks" pill, and a slot (`components/map/chipSlot.ts`)
 the map's own DOM chips mount into — the "Simulated traffic" label. Nothing
 there is absolutely positioned on its own, so nothing overlaps on desktop or
 phone; a new chip (Live) is one more item in the stack. The slot is never
 hidden (the simulated label must show whenever the simulation draws, a tour
 included); a map with no slot — the embed — keeps the label at its own spot.
-Bloom's `Popover`: a panel beside the button on the web, a bottom sheet on
-native. Inside:
 
-- **Map view: 2D / 3D.** The camera, not a feature: 3D tilts to 60° where the
-  map already is, so the buildings and the terrain stand up; 2D levels it. It
-  follows the map, so tilting by gesture moves the control too.
-- **Layers**: the `stable` features this build carries and this platform draws.
-- **Labs**, once revealed: the `labs` features, each with a one-line
-  description, the note that they may be slow, "Open Camera Studio" while the
-  flyover is on, and "Hide Labs".
+The button opens Bloom's `Dialog` — a side sheet from a tablet up, a bottom
+sheet below that and on native — built from Bloom's `SettingsListGroup`,
+`SettingsListItem`, `SegmentedControl` and `Switch`, so every colour is a theme
+token. Its sections:
+
+- **Map**: the view, 2D / 3D — the camera, not a feature: 3D tilts to 60°
+  where the map already is, 2D levels it, and it follows a gesture tilt — and
+  the `stable` features (Globe, Terrain).
+- **Layers · Labs**, once revealed: the `labs` features this build carries
+  and this platform draws (3D city, its tiles, trees and woods fill,
+  simulated traffic, landmarks, live data once #132 lands, the flyover), each
+  with a one-line description and the note that they may be slow; "Open
+  Camera Studio" while the flyover is on; "Hide Labs".
+- **General**: what GoWay already lets a person set — the theme (light, dark,
+  system: Bloom's own mode, persisted by `BloomProvider` under `goway.theme`)
+  — and the language, which follows the device and is shown, not offered.
+  GoWay has no unit setting, so none is invented.
+- **About**: version and build; **Map data and credits** — every source from
+  `lib/map/credits.ts` with its links and its licence notices verbatim, and
+  "All credits and licence notices" → `/attribution`; **Landmark models** —
+  each model's licence (SPDX), author and source link; and the privacy note
+  that map settings stay on the device. (Live feeds' licences join here with
+  #132.)
 
 A feature whose dependency is off shows a disabled switch and "Needs “3D
 city”"; one a development query parameter is forcing shows "Set by this page's
 address". Switches are named for screen readers, the button announces its
-expanded state, Enter opens the panel and Escape closes it.
+expanded state, and Escape closes the dialog.
 
 **Revealing Labs** is deliberately not an `.env` decision: `?labs=1` on any
 goway.to address once (remembered on the device; `?labs=0` forgets), or press
-and hold the layers button. It works in production — it only SHOWS switches,
+and hold the settings button. It works in production — it only SHOWS switches,
 every Labs feature still starts off, so a shared link can never switch an
 experimental renderer on for somebody else.
+
+## The compact data credit
+
+The credit bottom-right follows the OSMF Attribution Guidelines' compact form
+(https://osmfoundation.org/wiki/Licence/Attribution_Guidelines): spelled out,
+with its links, from the moment the map has loaded; folded into an ⓘ in the
+same corner after five seconds or at the reader's first pan, zoom, rotate or
+tap — never by a move the app made; and opened again by that ⓘ, after which the
+timer leaves it alone (going back to the map folds it again). The list stays
+dynamic: Mapterhorn while terrain is on, a landmark model's author while it is
+drawn, live feeds while their data is shown. `MapCanvas` renders it on both
+platforms and in the embed, with no prop to turn it off; the rule and its test
+are `lib/map/compactCredit.ts` and `__tests__/compactCredit.test.ts`.
 
 ### How a change reaches the map
 
@@ -161,16 +190,15 @@ Then add its row to the table above and to `.env.example`, and extend the
 ## What it costs at first paint
 
 `expo export --platform web`, no map variables set, `--clear`, `origin/main`
-(`5c0ab43`) against this branch:
+(`1175833`) against this branch:
 
 | Chunk | `main` | This branch | |
 | --- | ---: | ---: | --- |
-| `entry` (first paint) | 6,968,598 B (1,750,645 gz) | 6,980,562 B (1,754,371 gz) | +11,964 B, **+3,726 B gz** (+0.2%): registry, store, hooks, button, its name in 12 languages, and the city flags' pure rules (now decided at first paint) |
+| `entry` (first paint) | 6,971,234 B (1,751,355 gz) | 6,987,632 B (1,756,297 gz) | +16,398 B, **+4,942 B gz** (+0.3%): registry, store, hooks, the settings button and its name in 12 languages, the compact credit and its ⓘ, the city flags' pure rules |
 | `__common` (first paint) | 81,624 B | 81,624 B | identical size |
-| `MapLayersPanel` (lazy, on first open) | — | 35,760 B (11,103 gz) | the panel body and all its copy |
+| `MapSettingsPanel` (lazy, on first open) | — | 59,147 B (17,328 gz) | the dialog body, Bloom's settings list, and all its copy |
 
-Bloom's `Popover` was already in the entry. Measured by A/B build, never by
-per-source attribution (`~/Oxy/docs/build-and-runtime-traps.md`).
+Bloom's `Dialog` was already in the entry (Oxy's own dialogs use it).
 
 ## Limits
 

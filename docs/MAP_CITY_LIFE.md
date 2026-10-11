@@ -25,7 +25,7 @@ Three flags, each a refinement of the one before, all off in production:
 `lib/map/cityLifeFlag.ts` requires both of the others: the simulation is drawn
 by the city-3D engine and drives on road tiles compiled beside the city tiles.
 All three are entries in the map-feature registry ([`MAP_FEATURES.md`](./MAP_FEATURES.md)),
-so in a development build they can also be switched in the layers panel's Labs
+so in a development build they can also be switched in the settings dialog's Labs
 (`?labs=1`); city tiles and city life are offered there only in development
 builds until the archives are served.
 

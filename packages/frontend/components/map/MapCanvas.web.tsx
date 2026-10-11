@@ -156,7 +156,7 @@ function loadReliefChunk(): Promise<typeof import('./reliefLayer.web')> {
 // Requested at module evaluation when this page draws either — long before any
 // style document arrives, so the globe is in place before the first frame
 // rather than replacing a flat one. Never requested while both are off; turned
-// on later from the layers panel, it is requested then.
+// on later from the settings dialog, it is requested then.
 const INITIAL_RELIEF = initialMapRelief();
 if (INITIAL_RELIEF.globe || INITIAL_RELIEF.terrain) loadReliefChunk();
 
@@ -244,7 +244,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const mapRef = useRef<maplibregl.Map | null>(null);
 
   // The optional features (`lib/map/mapFeatures.ts`), live: a toggle in the
-  // layers panel re-renders this, and the effects below attach, detach or
+  // settings dialog re-renders this, and the effects below attach, detach or
   // rebuild accordingly.
   const city3d = useMapFeature('city3d');
   const cityTiles = useMapFeature('cityTiles');
@@ -921,7 +921,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     city3dRef.current?.setLight(sunLight.light);
   }, [sunLight.light]);
 
-  // A toggle of the city, its tiles or its trees in the layers panel re-runs this
+  // A toggle of the city, its tiles or its trees in the settings dialog re-runs this
   // effect: the old layer detaches (giving `building-3d` back) and, if still
   // wanted, a new one attaches — live, without rebuilding the map.
   //

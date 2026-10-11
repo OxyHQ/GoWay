@@ -3,7 +3,7 @@
  * it through (`docs/MAP_FEATURES.md`).
  *
  * Read `useMapFeature('<id>')` in a component — it re-renders when the answer
- * changes, which is how a toggle in the layers panel reaches the map without
+ * changes, which is how a toggle in the settings dialog reaches the map without
  * a reload. `mapFeatureOn('<id>')` is the same answer read once, for the rare
  * module-level decision (preloading a chunk before the first frame).
  */

@@ -6,7 +6,7 @@ sun by day and glowing at night, with a landmark **tour**: a full-screen
 orbit camera, the landmark's name and category as a caption, and ◀ ▶ / play
 to move between a city's landmarks. Web only, **off by default and in
 production** (`?landmarks=1` in a development build, with `?city3d=1&cityTiles=1`;
-or, in a development build, the layers panel's Labs — it is the map-feature
+or, in a development build, the settings dialog's Labs — it is the map-feature
 registry's `landmarks`, [`MAP_FEATURES.md`](./MAP_FEATURES.md)).
 
 It builds on two earlier pieces: the city-3D engine and GoWay city tiles
@@ -194,7 +194,7 @@ views and preview-class devices is the next step (`SDK_MAP_MODELS.md`'s
 
 `features/landmarks/` (one lazy chunk), entered from the "Landmarks" pill (when
 a landmark is within 6 km of the view; opens on the nearest; it sits in the
-map's top-right stack, under the layers button) or from a place
+map's top-right stack, under the settings button) or from a place
 sheet's "Landmark tour" (when the place IS a landmark, by its OSM source or
 Place ID). The camera is driven through the map seam only (`MapApi.moveTo`,
 `transient` per frame) — the feature imports neither three.js nor MapLibre:

@@ -141,7 +141,7 @@ describe('the three.js chunk', () => {
 
   test('the trees flag is reached only from the map-feature registry', () => {
     // The registry (`lib/map/mapFeatures.ts`) is on the first-paint path by
-    // design — the layers panel switches the trees live — so the flag is a
+    // design — the settings dialog switches the trees live — so the flag is a
     // few pure lines there, and reads no env var of its own: the registry
     // reads `EXPO_PUBLIC_MAP_CITY3D_TREES*` and the adapter is handed the
     // answers. Anything else importing it would be a second way to decide.

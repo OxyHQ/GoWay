@@ -10,14 +10,14 @@
  * other. Two ways in, unequal exactly as `city3dFlag.ts`'s are:
  *
  *  - `EXPO_PUBLIC_MAP_CITY_TILES=1`: a BUILD decision (now the registry's
- *    `enabled`, which the layers panel can also turn on). No production
+ *    `enabled`, which the settings dialog can also turn on). No production
  *    deployment sets it, and none should until the Worker serves the tiles
  *    (the doc's "Hosting" lists what that takes).
  *  - `?cityTiles=1`: per tab, honoured ONLY in a development build.
  *
  * Since the map-feature registry (`mapFeatures.ts`, `docs/MAP_FEATURES.md`)
  * the build switch is read THERE, and `enabled` is the registry's answer —
- * the build's kill switch, then the person's choice in the layers panel, then
+ * the build's kill switch, then the person's choice in the settings dialog, then
  * the build's default — in the place the build boolean used to be.
  */
 

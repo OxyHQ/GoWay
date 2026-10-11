@@ -145,13 +145,13 @@ function MapAttributionComponent({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={toggleLabel}
-          accessibilityState={{ expanded }}
+          aria-expanded={expanded}
           onPress={onToggle}
           hitSlop={10}
           className="items-center justify-center rounded-radius-max active:opacity-70"
           testID="map-credit-toggle"
         >
-          <RiInformationLine width={16} height={16} fill={theme.colors.textSecondary} />
+          <RiInformationLine width={18} height={18} fill={theme.colors.textSecondary} />
         </Pressable>
       </View>
     </View>

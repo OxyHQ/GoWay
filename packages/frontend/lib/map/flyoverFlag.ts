@@ -5,7 +5,7 @@
  *
  *  - `enabled`: the map-feature registry's answer (`mapFeatures.ts`) — the
  *    build's `EXPO_PUBLIC_MAP_FLYOVER`, then the person's own choice in the
- *    layers panel's Labs section. No production deployment sets the variable.
+ *    settings dialog's Labs section. No production deployment sets the variable.
  *  - `?flyover=1` on the URL: a per-tab switch honoured ONLY in a development
  *    build (`__DEV__`), so a goway.to link cannot switch an experimental
  *    feature on for somebody else.

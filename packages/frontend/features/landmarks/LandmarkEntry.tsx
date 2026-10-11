@@ -36,7 +36,7 @@ export function nearestLandmark(
 
 /**
  * The pill, IN FLOW: the screen places it in its top-right stack, under the
- * layers button, so it never lands on another chip.
+ * settings button, so it never lands on another chip.
  */
 export function LandmarksPill({
   landmarks,

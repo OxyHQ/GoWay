@@ -7,7 +7,7 @@
  * `mapFeatureLabels.ts` (keyed by the same id, every `LABEL_LANGUAGES`
  * language, and the type refuses an entry without them); they live apart only
  * so the first-paint bundle carries the decisions and not the copy, which only
- * the layers panel reads.
+ * the settings dialog reads.
  *
  * ## How the answer is decided
  *
@@ -16,7 +16,7 @@
  *  1. **The build's kill switch.** Its `EXPO_PUBLIC_MAP_*` variable set to
  *     `0`/`false`: the build does not carry it. Off, and absent from the panel;
  *     no stored choice can bring it back.
- *  2. **The person's own choice**, made in the layers panel and kept on this
+ *  2. **The person's own choice**, made in the settings dialog and kept on this
  *     device only (`mapFeatureStore.ts`).
  *  3. **The build's default.** The variable set to `1`/`true` turns a feature
  *     on by default for that build — what it always did — but no longer past a
@@ -78,9 +78,11 @@ export interface MapFeatureDefinition {
   /**
    * `development`: offered in the panel only in a development build — for a
    * feature production cannot serve yet, so nobody on goway.to can switch on
-   * something that has nothing behind it. Defaults to `always`.
+   * something that has nothing behind it. `never`: registered (its answer and
+   * labels exist) but this build has nothing that draws it yet — the branch
+   * that lands the drawing deletes the line. Defaults to `always`.
    */
-  offer?: 'always' | 'development';
+  offer?: 'always' | 'development' | 'never';
   /**
    * The feature's own flag module, given the registry's answer where it used
    * to be given the build boolean: the place a development-only query
@@ -206,6 +208,19 @@ export const MAP_FEATURES = [
       isLandmarksRequested({ enabled, development, search }),
   },
   {
+    id: 'live',
+    tier: 'labs',
+    defaultOn: false,
+    build: process.env.EXPO_PUBLIC_MAP_LIVE,
+    requires: [],
+    platforms: WEB,
+    // GoWay Live (#132) draws it; until that lands nothing does. When it does:
+    // delete this line, and point `request` at `isLiveRequested` (the same rule).
+    offer: 'never',
+    request: (enabled, { development, search }) =>
+      queryOverride('live', enabled, { development, search }),
+  },
+  {
     id: 'flyover',
     tier: 'labs',
     defaultOn: false,
@@ -220,6 +235,21 @@ export const MAP_FEATURES = [
 ] as const satisfies readonly MapFeatureDefinition[];
 
 export type MapFeatureId = (typeof MAP_FEATURES)[number]['id'];
+
+/**
+ * The flag modules' shared development rule for a default-off feature:
+ * `?<name>=1`/`true` turns it on in a development build only.
+ */
+export function queryOverride(
+  name: string,
+  enabled: boolean,
+  input: { development: boolean; search: string },
+): boolean {
+  if (enabled) return true;
+  if (!input.development) return false;
+  const value = new URLSearchParams(input.search).get(name);
+  return value === '1' || value === 'true';
+}
 
 /** What a build variable says: kill the feature, default it on, or nothing. */
 export type BuildSwitch = 'killed' | 'on' | null;
@@ -325,6 +355,7 @@ export function resolveMapFeatures(input: ResolveMapFeaturesInput): ResolvedMapF
       available:
         !killed &&
         feature.platforms.includes(input.platform) &&
+        feature.offer !== 'never' &&
         (feature.offer !== 'development' || input.development),
       choice,
       baseline: killed ? false : baseline,

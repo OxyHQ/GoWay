@@ -74,7 +74,7 @@ import { useStreet3dLayer } from '@/features/street3d/useStreet3dLayer';
 import { ExploreBody, ExploreHeader, type RenderPlaceActions } from './ExploreContent';
 import { ExploreMarker } from './ExploreMarker';
 import { clampFitPadding } from './mapPadding';
-import { MapLayersButton } from './MapLayersButton';
+import { MapSettingsButton } from './MapSettingsButton';
 import { MapTopBar } from './MapTopBar';
 import { useExplore } from './useExplore';
 
@@ -82,9 +82,9 @@ import { useExplore } from './useExplore';
 const MY_LOCATION_ZOOM = 15;
 /** Below this the compass is effectively north and the reset control is noise. */
 const BEARING_EPSILON = 1;
-/** The layers panel's "3D": the steepest tilt the shipped map allows. */
+/** The settings dialog's "3D": the steepest tilt the shipped map allows. */
 const TILTED_PITCH = 60;
-/** At or above this the camera reads as 3D in the layers panel. */
+/** At or above this the camera reads as 3D in the settings dialog. */
 const TILTED_EPSILON = 5;
 /** Horizontal room the location notice leaves for the controls column. */
 const CONTROLS_COLUMN_WIDTH = 72;
@@ -207,7 +207,7 @@ export interface ExploreScreenProps {
  * The route flyover (`docs/MAP_CAMERA_STUDIO.md`), loaded only through
  * `features/flyover/lazy.ts`: with the feature off this screen gains an
  * `import()` stub and nothing else. Whether it is on is the map-feature
- * registry's `flyover`, read live below, so turning it on in the layers panel
+ * registry's `flyover`, read live below, so turning it on in the settings dialog
  * offers "Fly the route" at once.
  */
 const RouteFlyover = lazy(() =>
@@ -331,7 +331,7 @@ export default function ExploreScreen({
   // settled view centre for the "Landmarks" pill, and who to tell when the
   // user moves the map (the tour pauses).
   const [requestedTourId, setTourId] = useState<string | null>(null);
-  // Switching landmarks off in the layers panel ends a tour in progress.
+  // Switching landmarks off in the settings dialog ends a tour in progress.
   const tourId = landmarks ? requestedTourId : null;
   const userMoveListeners = useRef(new Set<() => void>());
   const subscribeUserMove = useCallback((listener: () => void) => {
@@ -394,7 +394,7 @@ export default function ExploreScreen({
     mapRef.current?.resetNorth();
   }, []);
 
-  /** The layers panel's 2D/3D: tilt or level the camera where it already is. */
+  /** The settings dialog's 2D/3D: tilt or level the camera where it already is. */
   const handleTiltChange = useCallback((tilted: boolean) => {
     const map = mapRef.current;
     if (!map) return;
@@ -577,7 +577,7 @@ export default function ExploreScreen({
         ) : null}
 
         {/* The top-right stack, under the account button: ONE column, so its
-          items never overlap — the layers button (where Apple Maps parks its
+          items never overlap — the settings button (where Apple Maps parks its
           map options, a corner no sheet or panel covers in either layout),
           the "Landmarks" pill, and last the slot the map's own chips mount
           into (the "Simulated traffic" label, `components/map/chipSlot.ts`).
@@ -590,7 +590,7 @@ export default function ExploreScreen({
           testID="map-top-right-stack"
         >
           {immersive ? null : (
-            <MapLayersButton tilted={pitch >= TILTED_EPSILON} onTiltChange={handleTiltChange} />
+            <MapSettingsButton tilted={pitch >= TILTED_EPSILON} onTiltChange={handleTiltChange} />
           )}
           {landmarks && !mapError && !immersive && !directions.active ? (
             <Suspense fallback={null}>

@@ -13,7 +13,7 @@ a clip) and [munim-maps](https://github.com/munimtechnologies/munim-maps)
 (models anchored at coordinates, vehicles animated along paths). Neither is a
 dependency; what was taken is the shape of the tools.
 
-**Off by default.** A person turns it on in the map's layers panel, under Labs
+**Off by default.** A person turns it on in the map's settings dialog, under Labs
 (the registry's `flyover`; [`MAP_FEATURES.md`](./MAP_FEATURES.md)), and the
 panel then offers "Open Camera Studio". `EXPO_PUBLIC_MAP_FLYOVER=1` turns it on
 for a build (no production deployment sets it) and `0` removes it; a

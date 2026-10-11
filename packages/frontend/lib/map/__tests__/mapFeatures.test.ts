@@ -96,6 +96,13 @@ function legacy(builds: Builds, development: boolean, search: string) {
     // As `ExploreScreen` decided it: the landmarks flag AND the 3D city.
     landmarks:
       city3d && isLandmarksRequested({ enabled: onBuild(builds.landmarks), development, search }),
+    // #132's `isLiveRequested`, verbatim.
+    live: ((input: { enabled: boolean; development: boolean; search: string }) => {
+      if (input.enabled) return true;
+      if (!input.development) return false;
+      const value = new URLSearchParams(input.search).get('live');
+      return value === '1' || value === 'true';
+    })({ enabled: onBuild(builds.live), development, search }),
     flyover: isFlyoverRequested({ enabled: onBuild(builds.flyover), development, search }),
   };
 }
@@ -121,6 +128,7 @@ describe('the registry', () => {
       ['city3dTreeFill', false],
       ['cityLife', false],
       ['landmarks', false],
+      ['live', false],
       ['flyover', false],
     ]);
     // Nothing new is on by default: every Labs feature starts off. (The trees
@@ -170,6 +178,7 @@ describe('with no stored choice, every flag answers what it did before', () => {
     '?cityLife=1',
     '?landmarks=1',
     '?city3d=1&landmarks=true',
+    '?live=1',
   ];
   for (const development of [false, true]) {
     test(`${development ? 'development' : 'production'} build`, () => {
@@ -280,6 +289,12 @@ describe('dependencies', () => {
 });
 
 describe('what the panel offers', () => {
+  test('live is registered but offered nowhere until its layer lands (#132)', () => {
+    for (const development of [false, true]) {
+      expect(resolve({ development }).get('live').available).toBe(false);
+    }
+  });
+
   test('per platform', () => {
     const ios = resolve({ platform: 'ios' });
     expect(ios.get('globe').available).toBe(false);
