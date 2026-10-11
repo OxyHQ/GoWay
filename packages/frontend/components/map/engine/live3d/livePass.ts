@@ -24,7 +24,12 @@
 import * as THREE from 'three';
 
 import type { CityPass, CityView } from '../city3d/cityEngine';
-import { centeredProjection, mercatorXFromLng, mercatorYFromLat } from '../city3d/tileMath';
+import {
+  centeredProjection,
+  mercatorPerMetre,
+  mercatorXFromLng,
+  mercatorYFromLat,
+} from '../city3d/tileMath';
 import type { MapLiveGlyph, MapLivePoint } from '../../types';
 import { anchorMatrix, displayScale } from './anchorMath';
 
@@ -45,6 +50,12 @@ export interface LivePassOptions {
   glyphs: Readonly<Record<string, MapLiveGlyph>>;
   /** The points to draw this frame (the 2D layer's own sample). */
   points: () => readonly MapLivePoint[];
+  /**
+   * The height the map draws its ground at, in metres, or `null` on a flat
+   * map — the 3D terrain's elevation. Things on the ground stand on it; an
+   * aircraft's height above sea level is compared with it.
+   */
+  groundAt?: () => ((longitude: number, latitude: number) => number) | null;
   requestRepaint: () => void;
 }
 
@@ -184,12 +195,21 @@ export function createLivePass(options: LivePassOptions): LivePass {
 
       let stalkCount = 0;
       const stalkPositions: number[] = [];
+      const ground = options.groundAt?.() ?? null;
       for (const shape of Object.keys(byShape) as ShapeKey[]) {
         const points = byShape[shape];
         const { mesh } = batch(shape, points.length);
         mesh.count = points.length;
         points.forEach((point, index) => {
-          const altitude = shape === 'aircraft' ? Math.max(0, point.altitude ?? 0) : 0;
+          // Sea level is the reference both for the feed's altitude and for
+          // the terrain's elevation, so an aircraft is placed by its own
+          // number and only kept from sinking into a hill; everything else
+          // stands on the drawn ground.
+          const groundM = ground
+            ? ground(point.coordinate.longitude, point.coordinate.latitude)
+            : 0;
+          const altitude =
+            shape === 'aircraft' ? Math.max(groundM, point.altitude ?? groundM) : groundM;
           const scale = displayScale(
             LENGTH_M[shape],
             view.zoom,
@@ -214,7 +234,7 @@ export function createLivePass(options: LivePassOptions): LivePass {
           color.set(options.glyphs[point.glyph]?.color ?? '#6b7280');
           if (point.opacity < 1) color.lerp(grey, 0.75);
           mesh.setColorAt(index, color);
-          if (shape === 'aircraft' && altitude > 30) {
+          if (shape === 'aircraft' && altitude - groundM > 30) {
             const anchor = anchorMatrix(
               {
                 longitude: point.coordinate.longitude,
@@ -226,7 +246,15 @@ export function createLivePass(options: LivePassOptions): LivePass {
               center,
             );
             // Column 3 is the translation: the aircraft's point and its ground point.
-            stalkPositions.push(anchor[12], anchor[13], 0, anchor[12], anchor[13], anchor[14]);
+            const groundZ = groundM * mercatorPerMetre(point.coordinate.latitude);
+            stalkPositions.push(
+              anchor[12],
+              anchor[13],
+              groundZ,
+              anchor[12],
+              anchor[13],
+              anchor[14],
+            );
             stalkCount++;
           }
         });

@@ -232,8 +232,10 @@ carries `at`). Then:
 
 The 3D shapes are generic and scaled up to stay visible (aircraft ≥ 30 px,
 ships ≥ 22 px, vehicles ≥ 12 px on screen); **position, heading and altitude
-are never scaled**. Altitude is above mean sea level and the basemap is flat at
-0, which is right within metres away from terrain.
+are never scaled**. Altitude is above mean sea level, and so is the ground the
+map draws: 0 on the flat map, the elevation model's height with relief's 3D
+terrain on — right to within the model's accuracy, as long as terrain is not
+exaggerated.
 
 ## Gates
 
@@ -245,9 +247,24 @@ are never scaled**. Altitude is above mean sea level and the basemap is flat at
 
 ### What the flag costs when off
 
-Measured with `expo export --platform web`, no flags set, `origin/main` against
-this branch (separate Metro caches, `--clear`); numbers in the PR. What is
-pinned by test rather than by measurement:
+Measured with `expo export --platform web`, no flags set, `origin/main`
+(`eebef38`) against this branch (separate Metro caches, `--clear`):
+
+| Chunk | `main` | This branch | |
+| --- | ---: | ---: | --- |
+| `entry` (first paint) | 6,968,598 B (1,750,641 gz) | 6,971,464 B (1,751,362 gz) | **+2,866 B (+721 B gz)**: the SDK's HTTP contract for `live.sources()` (+825 B), the `MapCanvas` live seam — the gated `import()`, picking, credits (+984 B), `ExploreScreen`'s gate (+619 B), `liveFlag.ts` (373 B), `MapAttribution`'s `extra` (+65 B) |
+| `__common` (first paint) | 78,516 B | 78,516 B | identical |
+| `LiveHost` (lazy) | — | 33,112 B | the feature: store, client, panel, the SDK's live protocol |
+| `liveLayer` (lazy) | — | 5,828 B | the MapLibre adapter |
+| `lazyChunk` (lazy, three.js) | 3,581,359 B | 3,586,040 B | the 3D pass |
+| socket.io-client (lazy) | 53,745 B | 53,745 B | unchanged: the chunk `@oxy.so/core` already lazy-loads, now shared by `import()` |
+
+So the flag off costs ~0.7 KB gzipped of seam and contract on first paint and
+nothing else. The first export put **socket.io-client into `__common`** (+54
+KB): `@oxy.so/core` already `import()`s it, and a static import from a second
+lazy chunk made it shared. It is now `import()`ed in `liveClient.ts`. A Bloom
+icon the flyover also uses was hoisted the same way (+578 B); the toggles use
+colour dots instead. What is pinned by test rather than by measurement:
 `components/__tests__/liveChunk.test.ts` (the socket client and the live
 protocol are imported only in `features/live`; the feature is reached only by
 one `import()`; the adapter only by `import()` from `MapCanvas.web.tsx`) and

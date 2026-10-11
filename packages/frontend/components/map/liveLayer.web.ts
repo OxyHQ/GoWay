@@ -388,6 +388,11 @@ export function attachLive(
         const pass: LivePass = createLivePass({
           glyphs: layer.glyphs,
           points: sampleNow,
+          // With 3D terrain on, the ground is the elevation MapLibre draws.
+          groundAt: () =>
+            map.getTerrain()
+              ? (longitude, latitude) => map.queryTerrainElevation([longitude, latitude]) ?? 0
+              : null,
           requestRepaint: () => map.triggerRepaint(),
         });
         removePass = next.addPass(pass);
