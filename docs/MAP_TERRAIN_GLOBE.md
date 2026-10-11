@@ -205,7 +205,13 @@ layer lifts each building (`terrainGround.ts`):
   footprint box (`TileMesh.polygonStarts`/`polygonBoxes`: 20 bytes a polygon,
   ~1% of a dense tile's buffers); the lift is one float per vertex (+4.4 MB, or
   +17%, for a dense Barcelona tile), allocated only once terrain is on and added
-  in the vertex shader only while it is.
+  in the vertex shader only while it is. With the far-field levels and the
+  compact vertex format (`MAP_3D_CITY.md` §4) the same placement runs on the
+  packed chunks: each chunk remembers where its vertices came from, the lifts
+  are one array whose slices are the chunks' `ground` attributes, and the
+  trees of the same tile take the grid's ground under each of them
+  (`cityMeshes.ts` → `groundTileFor`; `city3dGroundPacked.test.ts` pins the
+  packed lifts equal to `vertexGround`'s).
 - **Cost of placing.** ≤ 12 ms for a dense Barcelona tile (the per-vertex
   pass), one tile per frame, nearest first. A tile never grounded is not drawn
   until it is (it would be inside the hill); culling bounds follow the lift.

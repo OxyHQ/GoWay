@@ -150,27 +150,143 @@ worker fetches, decodes and meshes, and hands the typed arrays back as
 
 ### 4. LOD and loading
 
-- **Load near view.** Both reference projects default to it, and for a pitched
-  camera it is the only sane choice: the viewport runs to the horizon. The
-  prototype draws the nearest **6** z14 tiles (the source's max zoom; GoWay's
-  tiles are over-zoomed above it, so one mesh per tile serves every zoom) and
-  keeps a **192 MB** GPU budget and a 64-tile entry budget, evicting
-  least-recently-used tiles. Tiles with no buildings (sea, fields, a 204/404)
-  are cached as empty entries, so a revisit does not fetch them again; the
-  entry budget is what bounds them. A failed tile is retried even while the
-  view stands still — `building-3d` is hidden, so nothing else would draw it —
-  with backoff (1, 2, 4, 8 s, then a 5-minute cooldown: at most five requests
-  per cooldown for a tile that never loads). A view straddling the
-  antimeridian loads both sides, each tile fetched as its canonical `x` and
-  drawn in the world copy the camera sees it in. All of this is
-  `tileScheduler.ts` and `tilesForView`, tested without WebGL.
-- **Far field.** The prototype draws nothing beyond the near ring, so at high
-  pitch the flat footprints show past it. Production needs a coarse far LOD:
-  in B, a pre-built low-detail level per tile; in A, plain prisms without
-  bevel or occlusion columns (roughly a third of the vertices).
+The prototype first drew the nearest **6** z14 tiles and nothing else, so a
+tilted or wide view showed flat footprints past them. It now draws **every
+tile the camera sees**, each at the level of detail its distance affords
+(`lod.ts`, `lodMesher.ts`), within explicit budgets (below).
+
+- **What is visible.** The engine recovers the eye from the host's mercator →
+  clip matrix (the point the projection sends to infinity) and the six frustum
+  planes from the same matrix, so it reads no MapLibre camera API. A z14 tile
+  is drawn when its box — the tile square from the ground to 250 m — is not
+  wholly outside the frustum; MapLibre's own far plane ends at the top of the
+  screen (or the horizon), which bounds the set. Distance `r` is measured from
+  the eye to the tile's nearest point, in units of the eye's distance to the
+  ground under the screen centre. z14 is the only zoom whose buildings carry
+  heights (a z13 `building` layer is one feature with no properties, measured),
+  so every level is meshed from the same z14 tile.
+- **Three levels.** Level 0 is the full mesh (bevel, corner occlusion). Level 1
+  is a plain prism over the footprint simplified at 1 m (Douglas–Peucker that
+  keeps tile-seam edges exact, `simplify.ts`). Level 2 simplifies at 4 m, fills
+  courtyards under 150 m² and drops buildings under 80 m² and 15 m. Each level
+  is charged a geometric error (1.5 m, 6 m) and drawn only where that error is
+  under a pixel at the view's scale (`lodThresholds`): at zoom 16 in Barcelona
+  (0.9 m/px, MapLibre's 512-px tiles) level 1 starts at `r` 1.7 and level 2 at
+  `r` 6.7. A 60° view spans `r` ≈ 0.65 → 2.5, so it is levels 0 and 1; level 2
+  is the horizon of a steeper camera (a flyover). Full detail is also floored at
+  `r` 1, so the street in front of the camera is never coarse.
+- **No popping, no holes.** A tile whose level is still loading keeps drawing
+  whatever level of it is cached; swaps (and first appearances) are a 280 ms
+  screen-door cross-fade (`transitions.ts`): the incoming mesh keeps the pixels
+  where a fixed noise is below the fade's progress, the outgoing one exactly
+  the others, so the two never both draw a pixel and never both leave one
+  empty, and depth stays correct (no alpha sorting). Hysteresis (10%) keeps a
+  camera resting on a threshold from swapping back and forth.
+- **Loading.** Requests go to a pool of up to 3 mesh workers
+  (`workerPool.ts`; cores − 1), nearest first, at most 2 in flight per worker
+  so a pan cancels cleanly. A tile returns to the worker that meshed it before
+  unless that one is busy, and each worker keeps the last 12 tiles' bytes, so a
+  tile changing level is re-meshed from memory. Replies are handed to the GPU
+  within a per-frame upload budget (12 MiB; one mesh only after a frame slower
+  than 50 ms), nearest first, so three dense tiles landing together do not stall
+  one frame. Least-recently-used meshes are evicted past the cache budgets,
+  never one that is wanted or still fading. Empty tiles are cached as empty;
+  failed tiles retry with backoff (1, 2, 4, 8 s, then a 5-minute cooldown) even
+  while the view stands still — `building-3d` is hidden, so nothing else would
+  draw them; a view straddling the antimeridian loads both sides
+  (`tileScheduler.ts`, `lod.ts`, tested without WebGL).
+- **Compact vertices.** Every level is uploaded in the format §2 proposes for
+  GoWay's own tiles (`packing.ts`): `uint16` positions in tile units with height
+  in 1/32 m and the shade word in the fourth lane (8 B), `int8` normals (4 B),
+  `uint16` indices in chunks of ≤ 65,535 vertices. The model matrix undoes the
+  quantisation, so the vertex shader is unchanged in cost. Barcelona's
+  full-detail tile: 26.2 MB → 17.0 MB with the same vertices and triangles.
+- **On 3D terrain** (`MAP_TERRAIN_GLOBE.md`): every level, and the trees, are
+  placed on the drawn ground by `terrainGround.ts`, through the packed chunks
+  (`cityMeshes.ts` → `groundTileFor`); a tile is not drawn until it is lifted.
 - **Fade.** The meshes grow in over exactly the zooms `building-3d` does
   (`BUILDINGS_3D_FADE`, 15.5 → 16.5), so switching renderers changes how
   buildings look, never *when* they appear.
+
+#### Measured per tile (worker, Bun, one core)
+
+| Tile | Level 0 | Level 1 | Level 2 |
+| --- | --- | --- | --- |
+| Barcelona 14/8290/6119 | 1,107 k v · 17.0 MB · 188 ms | 510 k v · 7.8 MB · 46 ms | 233 k v · 3.5 MB · 40 ms |
+| Ciutadella 14/8291/6119 | 892 k v · 13.7 MB · 153 ms | 397 k v · 6.1 MB · 41 ms | 171 k v · 2.6 MB · 27 ms |
+| Manhattan 14/4824/6157 | 265 k v · 4.0 MB · 39 ms | 123 k v · 1.9 MB · 11 ms | 92 k v · 1.4 MB · 9 ms |
+| Central Park 14/4825/6155 | 209 k v · 3.2 MB · 28 ms | 94 k v · 1.4 MB · 10 ms | 56 k v · 0.8 MB · 7 ms |
+| Tokyo 14/14552/6451 | 75 k v · 1.1 MB · 13 ms | 38 k v · 0.6 MB · 3 ms | 22 k v · 0.3 MB · 2 ms |
+
+Level 0 includes repacking the float mesh into the compact format (Barcelona:
+~50 ms of the 188; meshing straight into it is a follow-up). Times were taken on
+a loaded 32-core machine and vary ±30% run to run; the sizes are exact.
+
+#### Budgets
+
+| Budget | Value | Where | Measured against it |
+| --- | --- | --- | --- |
+| Building vertices drawn per frame | 8 M | `DRAW_BUDGET` (`cityEngine.ts`) | Barcelona at 80°: ≤ 7.3 M (19 tiles) |
+| GPU bytes drawn per frame | 128 MiB | `DRAW_BUDGET` | Barcelona at 80°: 107 MiB; at 60°: 69 MiB (was 130) |
+| GPU bytes cached (drawn + slack + fallbacks) | 192 MiB, 160 entries | `MAX_CACHED_BYTES`, `MAX_CACHED_TILES` | LRU, wanted and fading entries spared |
+| Tiles drawn | ≤ 48, ≤ 6 at full detail | `LOD_POLICY` | |
+| Upload per frame | 12 MiB (1 mesh after a > 50 ms frame) | `UPLOAD_BYTES_PER_FRAME` | |
+| Requests in flight | 2 per worker, ≤ 3 workers | `MAX_IN_FLIGHT_PER_WORKER`, `poolSize` | |
+| Worker time per tile | level 0 ≤ 200 ms, levels 1–2 ≤ 60 ms, trees ≤ 50 ms (Bun, dense tiles) | — | table above |
+| Trees | ≤ 24,000 per tile, ≤ 40,000 drawn per frame (nearest tiles first); ≤ 98 triangles near, ≤ 30 far; shorter than `treeMinHeightM(zoom)` not drawn | `TREES.maxPerTile`, `TREE_BUDGET`, `treeGeometry.ts`, `treeShaders.ts` | Central Park: 18,233 trees, 1.28 M triangles; Barcelona at 80°: 20,523 |
+| Main-thread time in `render()` | ≤ 2 ms steady (selection, scheduling, three's draw calls) | `frameCpuMs` dev stat | 1.0–1.3 ms steady in Barcelona at 60° and 80°; frames that upload new meshes cost more, which is what the upload budget bounds |
+
+When the drawn set would exceed `DRAW_BUDGET`, `fitBudget` coarsens it from
+the FARTHEST tile inward — down to level 2, then the next farthest — and only
+when every tile is at level 2 drops the farthest; the street in front of the
+camera is the last thing to lose detail. A tile not yet loaded is costed from
+its other levels (or the running mean) by the measured level ratios (1 : 0.46 :
+0.25).
+
+#### Before and after
+
+Same views, same harness, `main` (`3eda89b`) against this change, both served by
+`expo start --web` and captured in headless Chromium on SwiftShader at 1280×800
+(the wide view 1920×1080), tilted with Ctrl+drag; the 78–80° views raise
+`maxPitch` as a flyover camera would (GoWay's own maximum is 60°). Tile counts,
+triangles, trees and bytes are exact; "GL indices" counts every index the page
+drew in one frame, MapLibre's included. Frame time is twelve forced repaints of
+the same view, each closed by a one-pixel `readPixels`; SwiftShader rasterises
+on the CPU of a shared, loaded machine, so read those as relative and noisy
+(two runs each) — GPU frame times on real devices are **unmeasured**.
+
+| View | Tiles drawn (now: L0/L1/L2) | Building triangles | Trees (triangles) | GPU MiB | GL indices / frame | ms / frame (before: two runs) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Barcelona, z16, 60° | 6 → 5 (4/1/0) | 3.19 M → 2.61 M | 4,722 (0.34 M) | 130 → 69 | 10.7 M → 10.7 M | 520, 238 → 448 |
+| Barcelona wide (1920×1080), z16, 60° | 6 → 7 (5/2/0) | 3.19 M → 3.04 M | 9,619 (0.51 M) | 130 → 80 | 12.3 M → 13.4 M | 709, 332 → 608 |
+| Barcelona, z16, 80° | 6 → 19 (3/11/5) | 3.19 M → 3.73 M | 20,523 (0.52 M) | 130 → 107 | 11.0 M → 14.9 M | 741, 274 → 755 |
+| Lower Manhattan, z16, 60° | 4 → 4 (3/1/0) | 0.41 M → 0.29 M | 1,827 (0.13 M) | 17 → 8 | 1.9 M → 1.9 M | 252, 79 → 93 |
+| Lower Manhattan, z16.4, 78° | 6 → 13 (4/9/0) | 0.54 M → 0.87 M | 6,089 (0.24 M) | 22 → 24 | 2.7 M → 4.6 M | 191, 99 → 338 |
+| Central Park, z16.3, 60° | 6 → 4 (3/1/0) | 0.60 M → 0.43 M | 18,233 (1.28 M) | 24 → 12 | 1.8 M → 5.5 M | 58, 57 → 324 |
+| Parc de la Ciutadella, z16.6, 58° | 4 → 3 (3/0/0) | 1.24 M → 0.95 M | 3,432 (0.30 M) | 50 → 25 | 4.2 M → 4.2 M | 117, 86 → 165 |
+| Ciutadella close, z17.6, 60° | 2 → 2 (2/0/0) | 0.94 M → 0.94 M | 3,132 (0.27 M) | 38 → 25 | 3.0 M → 3.8 M | 63, 59 → 88 |
+
+What it says:
+
+- **The whole view is 3D now.** At 60° a 1280×800 view needs only about five
+  z14 tiles (MapLibre's frustum reaches ~1.7 km past the centre at zoom 16), so
+  the old six mostly covered it; tilted further, or wide, it did not — at 78–80°
+  the new engine draws 13–19 tiles to the skyline where the old one left flat
+  footprints past the sixth.
+- **Cheaper per tile.** The compact format and the far levels halve the GPU
+  memory of the same views (Barcelona 130 → 69 MiB) and cut building triangles
+  where the view allowed it, so drawing three times the area at 80° stays inside
+  the 128 MiB / 8 M-vertex budget.
+- **Trees cost what they draw.** On SwiftShader the Central Park view goes from
+  ~58 ms to ~324 ms with 18,233 maquette trees (1.28 M triangles; with the
+  first, 30-triangle trees it was ~160–210 ms, and 84 ms with
+  `?city3dTrees=0`), so most of the added time there is the trees, whose
+  canopies overlap heavily. A CPU rasteriser pays per pixel and per triangle;
+  GPU instancing of ≤ 98-triangle meshes is the cheap case on real hardware,
+  but that is **unmeasured**, which is why the trees have their own switch,
+  their own per-frame budget and the zoom height threshold.
+- **Main thread.** Steady-state time in `render()` is 1.0–1.3 ms in the densest
+  view; worker time per tile is in the table above.
 
 ### 5. Shading: bevels and baked occlusion
 
@@ -239,6 +355,97 @@ does not surface them. So, honestly:
   Native strategy).
 - A WebView 3D mode (Street 3D's approach) is possible for a dedicated
   "city view" screen, never for the main map.
+
+### 8. Trees: mapped trees first, styling only where none are mapped
+
+The look is Apple Maps' "Detailed City Experience" maquette (and the analysis in
+Chee Aun's [replicating Apple Maps' 3D trees](https://cheeaun.com/blog/2021/11/replicating-3d-trees-apple-maps/)):
+soft, matte, bumpy canopies on short trunks, simple cones for conifers, palms
+where they are palms, each tree grounded by a faint contact shadow. The look is
+copied; no asset or code is (all shapes are generated in `treeGeometry.ts`).
+
+**What the data has.**
+
+- GoWay's OpenMapTiles-schema basemap carries **no individual trees**: no
+  `natural=tree` point in any layer (decoded, z12–14, Barcelona, Manhattan,
+  Central Park, Parc de la Ciutadella, Tokyo; `poi` has parks and gardens as
+  places, never trees). What it carries is AREAS: `landcover` `class=wood`
+  (`subclass` wood, forest) and `class=grass` (`subclass` park, garden, grass,
+  meadow, heath…), `landuse` pitches and playgrounds, `water`, and paths in
+  `transportation`.
+- OpenStreetMap itself records trees as `natural=tree` nodes, and in places
+  densely: **119,302 in Barcelona's city-tile area** (Catalonia extract,
+  2026-10-11). 11.7% record a crown form we can draw — 12,169 broadleaf (`leaf_type`),
+  483 conifers, 1,337 palms (`genus` like *Phoenix* / *Washingtonia*,
+  `taxon`/`taxon:family` Arecaceae, `leaf_type=palm`) — and 0.04% a height. The
+  city-tile compiler now writes them as a `tree` layer (`lib/map/cityTiles.ts` →
+  `CITY_TREE_LAYER`; `scripts/citygen/treeTags.ts` reads only what is recorded:
+  crown from `leaf_type`, genus/species/taxon or family; `height`;
+  `diameter_crown`). Barcelona's archive grew 6.16 → 6.99 MB with them.
+
+**What is drawn.**
+
+1. **Mapped trees** (GoWay city tiles, `?cityTiles=1`): every `natural=tree`
+   point, at its position, with its crown form when recorded (else broadleaf),
+   its height when recorded (else a typical size for the crown —
+   `MAPPED_TREE_HEIGHT_M`, a size for the eye), turned and varied by a seed
+   from its OSM id, so it is the same tree every visit.
+2. **The styling fill** of areas mapped as wood or park, where no tree is
+   mapped (`trees.ts`) — the 3D equivalent of the tree pattern a paper map
+   prints over a forest:
+   - woods dense (one tree per ~7 m), parks and gardens ~10 m, a lawn inside a
+     park ~20 m; open grass (meadow, heath, scrub, allotments), sand, rock and
+     wetland get none, nor does a lawn outside a park;
+   - kept off everything mapped as something else — water, buildings, pitches,
+     playgrounds, tracks, a cleared strip along every path and road by class
+     (2.5 m each side of a footpath, 10 m of a primary) — and **9 m from every
+     mapped tree**, so where a park's trees are mapped the map shows those;
+   - placed by a jittered lattice seeded by the tile and the cell (same trees
+     every visit, none doubled at a seam), ≤ 24,000 per tile, thinned evenly;
+   - a styling mix of crowns: 30% conifers in woods, 12% in parks — the
+     `landcover` layer has no leaf type, so this is for the eye, not a census.
+   With GoWay city tiles the fill reads the OpenMapTiles parent tile's
+   landcover (the city tiles carry buildings and trees only), inside the city
+   tile's quarter of it. With the default OpenMapTiles source there are no
+   mapped trees, so the fill is all there is.
+3. **Shapes** (`treeGeometry.ts`): three broadleaf canopy variants (an icosphere
+   pushed out by five soft lobes, not a sphere; 98 triangles with trunk and
+   shadow), a two-tier cone conifer (34), a palm of seven drooping V-section
+   fronds (74); far tiles (level 1) draw a 20-triangle canopy, a 6-triangle cone
+   and a 30-triangle palm, no shadow; level 2 draws no trees. The trunk leans a
+   little (palms more), the canopy rides it.
+4. **Zoomed out, the tallest first**: trees shorter than `treeMinHeightM(zoom)`
+   — 10 m at zoom 15.5, 0 from zoom 18 — shrink away over 3 m rather than pop
+   (`treeShaders.ts`), which is also what keeps a whole-city view affordable.
+5. **Colour** (`components/map/city3dTrees.ts`): canopies are the palette's PARK
+   colour desaturated to a matte sage, a step darker than the ground on the
+   light map and lighter on the dark one; conifers cooler and deeper; palms a
+   touch warmer; trunks are the palette's BUILDING clay, darker. A few tint
+   variants per seed. Lit by MapLibre's extrusion formula under the map's light,
+   with a soft occlusion (underside darker, crown lighter).
+6. **GPU instancing**: one shared unit tree per shape, four 16-bit numbers per
+   tree (position, seed, kind + height); the vertex shader turns, sizes, leans
+   and places each one, so thousands of trees cost the CPU nothing per frame.
+   Instances are sorted by shape in the worker, so a tile is at most five
+   instanced draws.
+
+**Honesty.** A mapped tree is drawn where OSM records it and as what OSM
+records; its unrecorded size and its turn are styling. A fill tree stands for no
+tree: none stands outside a mapped wood or park, within 9 m of a mapped tree,
+or on anything mapped as something else, and their number, species mix, size
+and position are not data. That is the rule above — procedural detail is
+styling, never fact — applied to vegetation. The trees can be switched off on
+their own: `EXPO_PUBLIC_MAP_CITY3D_TREES=0` for a build, or `?city3dTrees=0` in
+a development tab (`lib/map/city3dTreesFlag.ts`).
+
+**Not done, and why.** Municipal tree inventories are far richer than OSM where
+they exist — Barcelona's *Arbrat viari* / *Arbrat zona* (every street and park
+tree, species and height class) and New York's 2015 Street Tree Census — and
+are the natural next source for the compiler's `tree` layer, merged with
+`natural=tree` by position. Each needs its licence verified (both are published
+as open data; the exact terms and attribution wording were not checked here) and
+its credit added to `MapAttribution` while drawn, as the Obligations require.
+Crown diameter is compiled but not yet used to size the canopy.
 
 ### One engine, one scene
 
@@ -336,13 +543,14 @@ with `?city3d=1`, which a production build ignores (`lib/map/city3dFlag.ts`).
 
 | Piece | Where |
 | --- | --- |
-| Flag | `lib/config.ts` (`MAP_CITY3D_ENABLED`), `lib/map/city3dFlag.ts` |
+| Flag | `lib/config.ts` (`MAP_CITY3D_ENABLED`), `lib/map/city3dFlag.ts` (`?city3d=1` in development); trees: `lib/map/city3dTreesFlag.ts` (`EXPO_PUBLIC_MAP_CITY3D_TREES`, `?city3dTrees=0` in development), imported only by the lazy adapter |
 | Gate | one effect in `components/map/MapCanvas.web.tsx` |
 | MapLibre adapter | `components/map/city3dLayer.web.ts` — adds `goway:city3d` before `building-3d`, hides `building-3d`, restores it on detach; on a style with no `building-3d` (the `openfreemap` escape hatch, a style-URL override) it declines and leaves the style untouched, rather than guessing an anchor in a document GoWay does not own |
 | Light | `components/map/city3dLight.ts` — the `building-3d` light (`useSunLight`'s, fed by `MapCanvas.web.tsx`) as the engine's `CityLight` |
-| Engine (three.js) | `components/map/engine/city3d/cityEngine.ts` |
-| Worker | `components/map/engine/city3d/meshWorker.ts` (`new Worker(new URL(…, import.meta.url))`, which Expo bundles as a sealed chunk) |
-| Pure parts (tested) | `tileMath.ts`, `mesher.ts`, `occlusion.ts`, `shaders.ts`, `decode.ts`, `tileScheduler.ts` |
+| Tree colours | `components/map/city3dTrees.ts` — crown and trunk from the palette's park colour |
+| Engine (three.js) | `components/map/engine/city3d/cityEngine.ts` (selection, scheduling, upload budget, fades), `cityMeshes.ts` (a tile's GPU entry: building chunks + instanced trees) |
+| Worker | `components/map/engine/city3d/meshWorker.ts` (`new Worker(new URL(…, import.meta.url))`, which Expo bundles as a sealed chunk), run as a pool by `workerPool.ts` |
+| Pure parts (tested) | `tileMath.ts`, `mesher.ts`, `occlusion.ts`, `shaders.ts`, `decode.ts`, `tileScheduler.ts`; far field: `lod.ts`, `lodMesher.ts`, `simplify.ts`, `packing.ts`, `transitions.ts`; trees: `trees.ts`, `treeSources.ts`, `treeGeometry.ts`, `treeShaders.ts` |
 | Chunk boundary | `components/engine3d/lazyChunk.ts` |
 | On 3D terrain | `engine/city3d/terrainGround.ts` (pure) and `components/map/city3dGround.web.ts` — each building lifted to the drawn ground; see [`MAP_TERRAIN_GLOBE.md`](./MAP_TERRAIN_GLOBE.md) → "Buildings on terrain" |
 
@@ -360,7 +568,11 @@ Verified in headless Chromium (SwiftShader) on `expo start --web`: Lower
 Manhattan, Barcelona's Eixample and Gràcia, light and dark, flag on and off; no
 console errors from the layer (the same two pre-existing errors — no Oxy client
 id, a react-native-web `accessible` attribute — appear with the flag off). The
-cull side was checked by rendering both: `FrontSide` draws hollow boxes.
+cull side was checked by rendering both: with float positions (`tileModelMatrix`,
+one mirror) `FrontSide` draws hollow boxes. The compact format's matrix stores y
+southward — a second mirror — so buildings are now `FrontSide` and trees, still
+placed in metres, `BackSide`; rendering the other way round draws hollow,
+roofless shells again (`cityMeshes.ts`).
 
 ### What the flag costs when off
 
@@ -382,6 +594,22 @@ adapter now imports the engine folder for types only.
 `components/__tests__/engine3dChunk.test.ts` pins both rules. The cost of the fix: opening either 3D feature downloads both engines.
 A dedicated shared "three runtime" chunk is the cleaner end state.
 
+The far field, compact format and trees (this note's §4 and §8), measured the
+same way against `main` at `28d10da` (city tiles, globe and terrain merged):
+
+| Chunk | `main` | With them | |
+| --- | ---: | ---: | --- |
+| `entry` | 6,962,712 B | 6,962,712 B | identical but for the build's git id and the lazy chunks' hashed paths |
+| `__common` | 78,516 B | 78,516 B | identical but for module ids |
+| `lazyChunk` | 3,581,212 B (1,141,608 gz) | 3,623,094 B (1,156,888 gz) | +42 KB, +15 KB gz: LOD, packing, fades, tree shapes and instancing |
+| `city3dLayer` | 11,162 B | 13,494 B | the trees flag and tree colours |
+| `meshWorker` | 59,195 B | 79,393 B | far-field mesher, simplification, packing, tree placement |
+
+The trees' own flag first lived in `lib/config.ts`, which is on the first-paint
+path: +292 B in `entry` with the prototype off. It moved to
+`lib/map/city3dTreesFlag.ts`, imported only by the lazy adapter, and
+`engine3dChunk.test.ts` now pins that.
+
 ## Phase 2: GoWay city tiles
 
 **Built, off by default, web only, served nowhere but a developer's machine.**
@@ -398,7 +626,7 @@ fallback.
 | Client decode | `components/map/engine/city3d/osmTiles.ts` |
 | Client mesh | `osmMesher.ts`, `roofs.ts`, `facades.ts` |
 | Client shader | `osmShaders.ts` |
-| Engine/worker seam | `protocol.ts` (`format`), `meshWorker.ts` (one branch), `cityEngine.ts` (`tileFormat`, `maxTiles`, two attributes) |
+| Engine/worker seam | `protocol.ts` (`format`), `meshWorker.ts` (one branch, packed like the rest), `cityEngine.ts` (`tileFormat`, `maxTiles`), `cityMeshes.ts` + `packing.ts` (the two extra attributes) |
 | Flag | `lib/map/cityTilesFlag.ts` (`EXPO_PUBLIC_MAP_CITY_TILES`, `?cityTiles=1` in development; requires the city-3D flag) |
 | Adapter | `city3dLayer.web.ts` → `citySourceFor` |
 | Dev route | `scripts/dev-city-tiles.js`, wired in `metro.config.js`, only with `GOWAY_CITY_TILES_ARCHIVE` set |
@@ -527,8 +755,12 @@ triangles, 21.4 MB of buffers (29 B a vertex with the colour and rhythm
 attributes). In headless Chromium (SwiftShader) worker jobs took 40–250 ms,
 against 160–470 ms for the OpenMapTiles z14 tiles over the same views; the
 Eixample view drew 1.44 M triangles from 9 city tiles (91 MB) against 2.34 M
-from 4 OpenMapTiles tiles (100 MB). The layer draws the nearest 16 z15 tiles
-(`CITY_TILES_MAX`, ~3.7 km square).
+from 4 OpenMapTiles tiles (100 MB). The layer draws up to 16 z15 tiles
+(`CITY_TILES_MAX`): with §4's selection, every one the camera sees, nearest
+first, all at full detail (the city tiles have no far level yet), in the
+compact vertex format with the colour and rhythm lanes carried alongside
+(`packing.ts`: 29 → 24 B a vertex with them, and 16-bit indices), and over budget the
+farthest are dropped.
 
 Verified in headless Chromium on `expo start --web` with both archives served
 by the dev route: Eixample, Sagrada Família, Barri Gòtic (gabled tile roofs
@@ -610,8 +842,11 @@ engine folder type-only).
 - **Party walls across tile borders** keep their rhythm (the neighbour is in
   another tile's mesh); the compiler could mark shared edges instead, which is
   also where neighbour occlusion belongs.
-- **Far-field LOD** (Phase 1) matters more here: 16 z15 tiles reach ~1.8 km.
-  A z13 prism-only level from the same compiler is the natural far field.
+- **Far levels for the city tiles.** §4 draws every visible city tile, but at
+  full detail only, so a steep view runs into the 16-tile cap and the budget
+  sooner than the OpenMapTiles path does. A z13 prism-only level from the same
+  compiler (or `lodMesher.ts` over the decoded footprints) is the natural far
+  field.
 - **Straight skeleton** for gabled/hipped roofs on non-rectangular footprints.
 - **Pre-meshing and neighbour AO** in the compiler, if client meshing ever
   shows up on mid-range devices.
@@ -625,8 +860,8 @@ are estimates; the runtime numbers are measured unless marked.
 | Phase | What | Cost |
 | --- | --- | --- |
 | **0. Prototype** (this change) | Custom layer, worker mesher over existing tiles, bevels, baked AO, lit by the same sun light as `building-3d`; off by default | Done. Users: +1.1 KB entry, nothing else with the flag off |
-| **1. Ship A on web** | Far-field LOD, per-tile fade-in, 2-worker pool, WebGL context-loss handling, device gating via `deviceProfile`-style checks (GPU memory: Barcelona's visible set is ~60 MB), MapLibre sky/fog matched in-shader, tap-through to the basemap preserved, a perf budget on mid-range Android Chrome | ~2–3 weeks. No infra. Opt-in users download the ~1.1 MB gz lazy chunk |
-| **2. GoWay 3D tiles (B)** | Compiler beside the Planetiler build: per-building footprints and parts, OSM levels/roof shapes where tagged; client second source mode with roofs, tempered colours and recorded storeys; archive in R2 behind the Worker; the same tiles as native's per-building extrusion source | **Compiler + client built, off by default** ([Phase 2](#phase-2-goway-city-tiles)): Barcelona 11.9 s / 6.2 MB, Catalonia 15.3 s / 31.5 MB. Remaining: sharded planet build (~2 h compute, ~18–20 GB extrapolated), R2 + Worker route, ODbL publication, far-field LOD; pre-meshing and neighbour AO only if measured necessary |
+| **1. Ship A on web** | ~~Far-field LOD, per-tile fade-in, worker pool~~ (done: §4 "LOD and loading", with budgets; trees: §8), WebGL context-loss handling, device gating via `deviceProfile`-style checks (GPU memory: Barcelona's visible set is ~60 MB), MapLibre sky/fog matched in-shader, tap-through to the basemap preserved, a perf budget on mid-range Android Chrome | ~2–3 weeks. No infra. Opt-in users download the ~1.1 MB gz lazy chunk |
+| **2. GoWay 3D tiles (B)** | Compiler beside the Planetiler build: per-building footprints and parts, OSM levels/roof shapes where tagged; client second source mode with roofs, tempered colours and recorded storeys; archive in R2 behind the Worker; the same tiles as native's per-building extrusion source | **Compiler + client built, off by default** ([Phase 2](#phase-2-goway-city-tiles)): Barcelona 11.9 s / 6.2 MB, Catalonia 15.3 s / 31.5 MB. Remaining: sharded planet build (~2 h compute, ~18–20 GB extrapolated), R2 + Worker route, ODbL publication, far levels for the city tiles (they draw every visible tile at full detail today, §4); pre-meshing and neighbour AO only if measured necessary |
 | **3. Atmosphere** | Staged as in §6: sky/fog, in-shader aerial perspective, sun-tinted ambient | ~1–2 weeks |
 | **4. Municipal data** | One dataset at a time (PLUTO, PLATEAU, 3DBAG, Catastro…): licence review, adapter in the compiler, credit while drawn, LOD2 roofs where present | ~1 week each + legal review |
 | **5. Native** | (a) Extrude B's per-building layer in the existing native style — days. (b) A native custom layer — months, decided by benchmarks | (a) days, (b) months |
