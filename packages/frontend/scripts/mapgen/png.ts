@@ -39,6 +39,7 @@ const PNG_SIGNATURE = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a,
 
 /** Truecolour with alpha. The only colour type this module reads or writes. */
 const COLOR_TYPE_RGBA = 6;
+const COLOR_TYPE_INDEXED = 3;
 const BIT_DEPTH_8 = 8;
 const CHANNELS = 4;
 
@@ -187,7 +188,11 @@ export function encodePng(image: RgbaImage): Uint8Array {
 // Decoding
 // ---------------------------------------------------------------------------
 
-/** Decode an 8-bit RGBA non-interlaced PNG. Anything else throws. */
+/**
+ * Decode an 8-bit non-interlaced PNG, RGBA or palette-indexed (the model
+ * library reads Kenney kits' palettes, `scripts/library/kenney.ts`), to RGBA.
+ * Anything else throws.
+ */
 export function decodePng(bytes: Uint8Array): RgbaImage {
   for (let i = 0; i < PNG_SIGNATURE.length; i += 1) {
     if (bytes[i] !== PNG_SIGNATURE[i]) throw new Error('not a PNG: signature mismatch');
@@ -197,6 +202,9 @@ export function decodePng(bytes: Uint8Array): RgbaImage {
   let at = PNG_SIGNATURE.length;
   let width = 0;
   let height = 0;
+  let indexed = false;
+  let palette: Uint8Array | null = null;
+  let alpha: Uint8Array | null = null;
   const idatParts: Uint8Array[] = [];
 
   while (at < bytes.length) {
@@ -211,8 +219,15 @@ export function decodePng(bytes: Uint8Array): RgbaImage {
       width = view.getUint32(at + 8);
       height = view.getUint32(at + 12);
       if (body[8] !== BIT_DEPTH_8) throw new Error(`bit depth ${body[8]} is not supported`);
-      if (body[9] !== COLOR_TYPE_RGBA) throw new Error(`colour type ${body[9]} is not supported`);
+      indexed = body[9] === COLOR_TYPE_INDEXED;
+      if (body[9] !== COLOR_TYPE_RGBA && !indexed) {
+        throw new Error(`colour type ${body[9]} is not supported`);
+      }
       if (body[12] !== 0) throw new Error('interlaced PNGs are not supported');
+    } else if (type === 'PLTE') {
+      palette = body;
+    } else if (type === 'tRNS') {
+      alpha = body;
     } else if (type === 'IDAT') {
       idatParts.push(body);
     } else if (type === 'IEND') {
@@ -231,7 +246,8 @@ export function decodePng(bytes: Uint8Array): RgbaImage {
   }
   const raw = new Uint8Array(inflateSync(compressed));
 
-  const stride = width * CHANNELS;
+  const bpp = indexed ? 1 : CHANNELS;
+  const stride = width * bpp;
   if (raw.length !== (stride + 1) * height) {
     throw new Error(`inflated ${raw.length} bytes, expected ${(stride + 1) * height}`);
   }
@@ -244,9 +260,9 @@ export function decodePng(bytes: Uint8Array): RgbaImage {
     const above = y > 0 ? data.subarray((y - 1) * stride, y * stride) : null;
 
     for (let i = 0; i < stride; i += 1) {
-      const left = i >= CHANNELS ? rowOut[i - CHANNELS] : 0;
+      const left = i >= bpp ? rowOut[i - bpp] : 0;
       const up = above ? above[i] : 0;
-      const upLeft = above && i >= CHANNELS ? above[i - CHANNELS] : 0;
+      const upLeft = above && i >= bpp ? above[i - bpp] : 0;
       let value: number;
       switch (filter) {
         case 0:
@@ -271,5 +287,15 @@ export function decodePng(bytes: Uint8Array): RgbaImage {
     }
   }
 
-  return { width, height, data };
+  if (!indexed) return { width, height, data };
+  if (!palette) throw new Error('indexed PNG has no PLTE');
+  const rgba = new Uint8Array(width * height * CHANNELS);
+  for (let p = 0; p < width * height; p += 1) {
+    const index = data[p];
+    rgba[p * 4] = palette[index * 3];
+    rgba[p * 4 + 1] = palette[index * 3 + 1];
+    rgba[p * 4 + 2] = palette[index * 3 + 2];
+    rgba[p * 4 + 3] = alpha && index < alpha.length ? alpha[index] : 255;
+  }
+  return { width, height, data: rgba };
 }

@@ -1,6 +1,6 @@
 /**
- * GoWay Live in 3D: each live vehicle as a small, rounded model in city
- * life's maquette style (`liveModels.ts`) — a train as its consist, every car
+ * GoWay Live in 3D: each live vehicle as a model from the shared library
+ * city life draws with too (`liveModels.ts`) — a train as its consist, every car
  * placed on the track by the feature (`MapLivePoint.parts`) so a train bends
  * round a curve car by car; an aircraft at its REAL altitude on a thin stalk
  * to the ground point it is over.
@@ -33,7 +33,8 @@ import {
 } from '../city3d/tileMath';
 import type { MapLiveGlyph, MapLiveModel, MapLivePoint } from '../../types';
 import { anchorMatrix, displayScale } from './anchorMath';
-import { buildLiveModel } from './liveModels';
+import { type LibraryModel, loadModelLibrary } from '../vehicles/library';
+import { buildLiveModel, LIVE_LIBRARY_KEYS, liveLibraryKey } from './liveModels';
 
 /** Smallest on-screen length of an aircraft, in CSS pixels. */
 const AIRCRAFT_MIN_PIXELS = 30;
@@ -65,8 +66,12 @@ interface Batch {
 }
 
 /** A model's geometry with its livery and a baked soft light. */
-function geometryOf(model: MapLiveModel, detail: 'near' | 'far'): THREE.BufferGeometry {
-  const built = buildLiveModel(model, detail);
+function geometryOf(
+  model: MapLiveModel,
+  detail: 'near' | 'far',
+  source: LibraryModel,
+): THREE.BufferGeometry {
+  const built = buildLiveModel(model, detail, source);
   const colors = new Float32Array(built.colors.length);
   const n = new THREE.Vector3();
   for (let i = 0; i < built.colors.length; i += 3) {
@@ -95,10 +100,29 @@ export function createLivePass(options: LivePassOptions): LivePass {
   const material = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
   const geometries = new Map<string, THREE.BufferGeometry>();
   const batches = new Map<string, Batch>();
+  // The shared model library (`../vehicles/`): nothing is drawn until it has loaded.
+  let library: Map<string, LibraryModel> | null = null;
+  let disposed = false;
+  loadModelLibrary({ keys: LIVE_LIBRARY_KEYS })
+    .then((loaded) => {
+      if (disposed) {
+        for (const model of loaded.values()) {
+          model.near.geometry.dispose();
+          model.far.geometry.dispose();
+        }
+        return;
+      }
+      library = loaded;
+      options.requestRepaint();
+    })
+    .catch((error: unknown) => {
+      if (!disposed) console.warn('live 3D: the model library did not load', error);
+    });
 
   const batch = (
     key: string,
     model: MapLiveModel,
+    source: LibraryModel,
     detail: 'near' | 'far',
     needed: number,
   ): Batch => {
@@ -111,7 +135,7 @@ export function createLivePass(options: LivePassOptions): LivePass {
     }
     let geometry = geometries.get(id);
     if (!geometry) {
-      geometry = geometryOf(model, detail);
+      geometry = geometryOf(model, detail, source);
       geometries.set(id, geometry);
     }
     const capacity = Math.max(INITIAL_CAPACITY, 2 ** Math.ceil(Math.log2(Math.max(1, needed))));
@@ -173,13 +197,13 @@ export function createLivePass(options: LivePassOptions): LivePass {
           const groundM = ground ? ground(longitude, latitude) : 0;
           const altitude = Math.max(groundM, point.altitude ?? groundM);
           const scale = displayScale(model.carLength, view.zoom, latitude, AIRCRAFT_MIN_PIXELS);
-          // The fuselage is centred on z = 0: lift it by its half-height so a parked one sits on its wheels.
+          // The library's airliner stands on its wheels at its origin.
           entry.items.push({
             matrix: anchorMatrix(
               {
                 longitude,
                 latitude,
-                altitude: altitude + 2.6 * scale,
+                altitude,
                 heading: point.heading ?? 0,
                 scale,
               },
@@ -227,7 +251,9 @@ export function createLivePass(options: LivePassOptions): LivePass {
 
       for (const existing of batches.values()) existing.mesh.count = 0;
       for (const [key, { model, items }] of perModel) {
-        const { mesh } = batch(key, model, detail, items.length);
+        const source = library?.get(liveLibraryKey(model.form));
+        if (!source) continue;
+        const { mesh } = batch(key, model, source, detail, items.length);
         mesh.count = items.length;
         items.forEach((item, index) => {
           matrix.fromArray(item.matrix);
@@ -259,6 +285,12 @@ export function createLivePass(options: LivePassOptions): LivePass {
       renderer.render(scene, camera);
     },
     dispose() {
+      disposed = true;
+      for (const model of library?.values() ?? []) {
+        model.near.geometry.dispose();
+        model.far.geometry.dispose();
+      }
+      library = null;
       for (const { mesh } of batches.values()) {
         scene.remove(mesh);
         mesh.dispose();

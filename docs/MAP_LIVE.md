@@ -45,7 +45,7 @@ so?).
   (their 2D glyph becomes that ground shadow); trains as their **consist, car
   by car on the track** (each car's centre on the line, its heading the
   line's there, so a train bends round a curve); buses, coaches and ships as
-  rounded models in city life's maquette style (`Vehicles` below) — all in the
+  models from the shared library city life draws with (`Vehicles` below) — all in the
   city engine's scene so buildings occlude them. **Estimated vehicles are
   never drawn in 3D** (`Estimated positions` below).
 
@@ -385,19 +385,24 @@ back to a generic train or bus:
 — they are the operators' trademarks, and none of them is data. Colours and
 proportions only; the line's colour lives on the 2D glyph and its label.
 
-The models are built by the same rounded builders as city life
-(`components/map/engine/maquette.ts`, shared so neither imports the other),
-light baked into vertex colours, one `InstancedMesh` per fleet and detail.
-Budgets, pinned by `fleets.test.ts` (≤ 1,500 triangles near, ≤ 200 far):
-an EMU car 564 near / 16 far, a bus 560, a double-decker 720, an aircraft
-660 / 96, a ship 192 / 28. Below z14.5 every car is drawn in its far form.
+The models come from the shared model library (`MODEL_LIBRARY.md`), the
+same one city life draws with — there is no live-only model set. Geometry
+comes from ONE function, `engine/live3d/liveModels.ts → buildLiveModel(model,
+detail, source)`: each form is one library model (`emu` → `train.commuter`,
+`bus`/`coach` → `vehicle.bus`, `double-deck` → `vehicle.bus-double`,
+`aircraft` → `aircraft.airliner`, `vessel` → `vessel.cargo`), stretched per
+axis to the fleet's real length, width and height; the fleet's
+`livery.body` paints the library's tintable body (an aircraft's fin wears
+`livery.stripe`), everything else keeps the library's colours. Light is baked
+into vertex colours, one `InstancedMesh` per fleet and detail. Budgets,
+pinned by `fleets.test.ts` (≤ 1,500 triangles near, ≤ 200 far): an EMU car
+1,130 / 150, a bus 540 / 60, a double-decker 596 / 84, an aircraft 320 / 136,
+a ship 1,060 / 138. Below z14.5 every car is drawn in its far form. The pass
+draws nothing until the library has loaded.
 
 The registry is the interface — operator/fleet → a model (`form`, with its
-proportions) + a livery — and geometry comes from ONE function,
-`engine/live3d/liveModels.ts → buildLiveModel(model, detail)`. When the shared
-vehicle library city life is building lands, `buildLiveModel` delegates to it
-(the shared model for the form, the fleet's livery as its colours) and nothing
-else changes: not the registry, not the pass, not the matching rules.
+proportions) + a livery; the pass and the matching rules know nothing of the
+geometry.
 
 ## Coverage for other features (`lib/live/coverage.ts`)
 

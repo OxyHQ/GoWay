@@ -48,13 +48,17 @@ export function hash01(...values: number[]): number {
   return (h >>> 0) / 4294967296;
 }
 
-/** Strip a geometry to what a landmark GLB carries: position + normal, non-indexed. */
+/**
+ * Strip a geometry to what a GLB carries: position + normal, non-indexed —
+ * plus vertex colours and position morph targets where the geometry has them
+ * (the model library's; no landmark builder makes either).
+ */
 function normalise(geometry: THREE.BufferGeometry, flat: boolean): THREE.BufferGeometry {
   let g = geometry.index ? geometry.toNonIndexed() : geometry.clone();
   for (const name of Object.keys(g.attributes)) {
-    if (name !== 'position' && name !== 'normal') g.deleteAttribute(name);
+    if (name !== 'position' && name !== 'normal' && name !== 'color') g.deleteAttribute(name);
   }
-  g.morphAttributes = {};
+  g.morphAttributes = g.morphAttributes.position ? { position: g.morphAttributes.position } : {};
   g.clearGroups();
   if (flat || !g.attributes.normal) {
     g.deleteAttribute('normal');

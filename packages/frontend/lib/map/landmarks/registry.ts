@@ -32,31 +32,21 @@
 import { parseModelPlacement } from '@goway.to/sdk';
 import { z } from 'zod';
 
+import { assetLicenceSchema, checkAssetLicence } from '../assetLicence';
+
+export {
+  type AssetLicence,
+  assetLicenceSchema,
+  LANDMARK_LICENCES,
+  LANDMARK_METHODS,
+  type LandmarkLicence,
+} from '../assetLicence';
+
 /** An OpenStreetMap element as GoWay's place sources spell it (`way/34633854`). */
 export const osmElementSchema = z.string().regex(/^(node|way|relation)\/[1-9]\d{0,14}$/);
 export type OsmElement = z.infer<typeof osmElementSchema>;
 
-/**
- * Licences a landmark asset may carry. Public redistribution with the app,
- * modification allowed, commercial use allowed — so no NC, no ND.
- */
-export const LANDMARK_LICENCES = ['CC0-1.0', 'CC-BY-4.0', 'CC-BY-3.0'] as const;
-export type LandmarkLicence = (typeof LANDMARK_LICENCES)[number];
-
-/** Licences whose terms oblige a visible credit. */
-const CREDIT_REQUIRED: ReadonlySet<LandmarkLicence> = new Set(['CC-BY-4.0', 'CC-BY-3.0']);
-
-/**
- * How the asset was made (`docs/MAP_LANDMARKS.md` → Sourcing):
- * `procedural` is GoWay's own geometry code; `osm-enriched` is GoWay's code
- * over OpenStreetMap's own recorded geometry (an ODbL Produced Work — the
- * map's "© OpenStreetMap" credit covers it); `third-party` is a licensed
- * asset from an outside author.
- */
-export const LANDMARK_METHODS = ['procedural', 'osm-enriched', 'third-party'] as const;
-
 const hexColour = z.string().regex(/^#[0-9a-f]{6}$/);
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 
 export const landmarkSchema = z
@@ -102,20 +92,7 @@ export const landmarkSchema = z
         })
         .nullable(),
     }),
-    licence: z.object({
-      spdx: z.enum(LANDMARK_LICENCES),
-      method: z.enum(LANDMARK_METHODS),
-      author: z.string().min(1),
-      /** Where the asset (or its generator) comes from: a URL or a repository path. */
-      source: z.string().min(1),
-      /** The credit the map shows while this model is drawn, or `null` when none is owed. */
-      credit: z.string().min(1).nullable(),
-      /** Data that informed the geometry (each already credited on every map). */
-      derivedFrom: z.array(z.enum(['openstreetmap'])),
-      /** When a person checked the licence at its source. */
-      verifiedAt: isoDate,
-      notes: z.string().min(1),
-    }),
+    licence: assetLicenceSchema,
     /** The orbit camera of the tour. */
     tour: z.object({
       // From where the city is fully drawn (`BUILDINGS_3D_FADE` ends at 16.5).
@@ -137,20 +114,7 @@ export const landmarkSchema = z
     if (!parseModelPlacement(landmark.placement)) {
       ctx.addIssue({ code: 'custom', path: ['placement'], message: 'not a drawable placement' });
     }
-    if (CREDIT_REQUIRED.has(landmark.licence.spdx) && !landmark.licence.credit) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['licence', 'credit'],
-        message: `${landmark.licence.spdx} requires a credit`,
-      });
-    }
-    if (landmark.licence.method === 'third-party' && !/^https:\/\//.test(landmark.licence.source)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['licence', 'source'],
-        message: 'a third-party asset names the https URL its licence was verified at',
-      });
-    }
+    checkAssetLicence(landmark.licence, ctx, ['licence']);
     if (landmark.licence.method !== 'third-party' && !landmark.model.generator) {
       ctx.addIssue({
         code: 'custom',

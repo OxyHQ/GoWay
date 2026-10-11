@@ -208,11 +208,13 @@ no duration in its header, so some players cannot seek it until remuxed.
   the engine put it beside `map.project` of its coordinate: measured during a
   Barcelona flyover in headless Chromium, the error on settled frames was
   ≤ 1e-8 px (the note's gate is 1 px).
-- **The asset.** `public/models/goway-car.glb`, built by
-  `scripts/build-flyover-model.ts` (GoWay's own work, CC0-1.0, recorded in
-  `public/models/LICENSE.md`): 28 KB, ~600 triangles, no textures, no
-  extensions, tintable paint. `__tests__/flyoverModel.test.ts` regenerates it
-  and compares bytes, and checks the frame conventions and the lite budget.
+- **The asset.** The model library's saloon,
+  `public/models/library/vehicle.sedan.glb` (`docs/MODEL_LIBRARY.md`: Kenney
+  Car Kit, CC0-1.0, recorded in the library's manifest and
+  `public/models/LICENSE.md`): 26 KB, 800 triangles drawn (the layer draws a
+  library file's `near` level only), no textures, tintable paint. The same
+  car city life simulates with; `modelLibrary.test.ts` checks the frame
+  conventions and the budget.
   The flyover tints it with the theme's accent (the route line's colour);
   colours are parsed by the browser, since themes hand over `oklch()`.
 

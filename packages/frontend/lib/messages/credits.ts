@@ -17,6 +17,9 @@ export const CREDITS_EN: Record<string, string> = {
   'credits.buildings.heading': '3D buildings: official data',
   'credits.buildings.body':
     "Where the 3D city layer shows them, building heights and shapes come from official records merged with OpenStreetMap: in Spain, the storeys of every building part recorded by the Dirección General del Catastro; in New York City, the city's 3-D Building Model. Each is credited on the map while it is drawn.",
+  'credits.models.heading': '3D vehicles and people',
+  'credits.models.body':
+    "The cars, buses, trains, trams, boats and people drawn in 3D are made from Kenney's kits (Car Kit, Train Kit, Watercraft Kit and Mini Characters), released into the public domain under CC0; the city bus, double-decker and airliner are GoWay's own, in the same style.",
   'credits.notices': 'Licence notices',
   'credits.back': 'Back to the map',
 };
@@ -34,6 +37,9 @@ export const CREDITS_ES: Record<string, string> = {
   'credits.buildings.heading': 'Edificios en 3D: datos oficiales',
   'credits.buildings.body':
     'Donde la capa de ciudad en 3D los muestra, las alturas y formas de los edificios proceden de registros oficiales combinados con OpenStreetMap: en España, las plantas de cada parte de edificio registradas por la Dirección General del Catastro; en Nueva York, el modelo 3D de edificios de la ciudad. Cada fuente se acredita en el mapa mientras se dibuja.',
+  'credits.models.heading': 'Vehículos y personas en 3D',
+  'credits.models.body':
+    'Los coches, autobuses, trenes, tranvías, barcos y personas que se dibujan en 3D proceden de los kits de Kenney (Car Kit, Train Kit, Watercraft Kit y Mini Characters), cedidos al dominio público bajo CC0; el autobús urbano, el de dos pisos y el avión son de GoWay, en el mismo estilo.',
   'credits.notices': 'Avisos de licencia',
   'credits.back': 'Volver al mapa',
 };

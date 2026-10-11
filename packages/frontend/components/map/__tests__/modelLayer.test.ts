@@ -22,7 +22,9 @@ import {
 } from '@/components/map/engine/city3d/models';
 
 const GLB = new Uint8Array(
-  readFileSync(join(import.meta.dir, '..', '..', '..', 'public', 'models', 'goway-car.glb')),
+  readFileSync(
+    join(import.meta.dir, '..', '..', '..', 'public', 'models', 'library', 'vehicle.sedan.glb'),
+  ),
 );
 const realFetch = globalThis.fetch;
 afterEach(() => {
