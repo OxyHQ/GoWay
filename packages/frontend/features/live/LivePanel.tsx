@@ -13,11 +13,7 @@ import { Linking, Pressable, View } from 'react-native';
 import { Chip } from '@oxy.so/bloom/chip';
 import { Text } from '@oxy.so/bloom/typography';
 import { useTheme } from '@oxy.so/bloom/theme';
-import { RiBikeLine } from '@oxy.so/bloom/icons/RiBikeLine';
-import { RiBusLine } from '@oxy.so/bloom/icons/RiBusLine';
 import { RiCloseLine } from '@oxy.so/bloom/icons/RiCloseLine';
-import { RiFlightTakeoffLine } from '@oxy.so/bloom/icons/RiFlightTakeoffLine';
-import { RiShip2Line } from '@oxy.so/bloom/icons/RiShip2Line';
 import type { LiveKind, LiveSource } from '@goway.to/sdk/live';
 
 import { entityDetails, formatAge, sourceFreshness } from './format';
@@ -26,12 +22,20 @@ import type { LiveClientState } from './liveClient';
 import type { LiveSample } from './liveStore';
 import { type LiveText, useLiveText } from './messages';
 
-const KIND_ICONS = {
-  aircraft: RiFlightTakeoffLine,
-  transit: RiBusLine,
-  bikeshare: RiBikeLine,
-  vessel: RiShip2Line,
-} as const;
+/**
+ * Each toggle carries its kind's map colour as a dot — the legend IS the map's
+ * palette. Deliberately not Bloom icons: an icon a second lazy chunk also uses
+ * is hoisted into the first-paint bundle (measured: the flyover's
+ * `RiFlightTakeoffLine`, +578 B with the flag off).
+ */
+function KindDot({ color }: { color: string }) {
+  return (
+    <View
+      className="rounded-radius-max"
+      style={{ width: 10, height: 10, backgroundColor: color }}
+    />
+  );
+}
 
 /** The panel's width: narrow enough to leave the map, wide enough for a source line. */
 const PANEL_WIDTH = 300;
@@ -165,7 +169,6 @@ function Details({
 
 function LivePanelComponent(props: LivePanelProps) {
   const t = useLiveText();
-  const theme = useTheme();
   const [expanded, setExpanded] = useState(props.initiallyExpanded);
   const status = statusLine(props.state, t);
   // Feeds worth a line: of a kind that is on, and being polled for this view.
@@ -206,7 +209,6 @@ function LivePanelComponent(props: LivePanelProps) {
             <View className="flex-row flex-wrap gap-space-4">
               {LIVE_KIND_ORDER.map((kind) => {
                 const on = props.kinds.has(kind);
-                const Icon = KIND_ICONS[kind];
                 return (
                   <Chip
                     key={kind}
@@ -216,11 +218,8 @@ function LivePanelComponent(props: LivePanelProps) {
                     selected={on}
                     onPress={() => props.onToggleKind(kind)}
                     startIcon={
-                      <Icon
-                        width={14}
-                        height={14}
-                        fill={on ? theme.colors.primaryForeground : LIVE_KIND_COLORS[kind]}
-                      />
+                      // The kind's colour while it is drawn; grey while it is off.
+                      <KindDot color={on ? LIVE_KIND_COLORS[kind] : '#a8a29e'} />
                     }
                     accessibilityLabel={t(`live.kind.${kind}`)}
                     testID={`live-kind-${kind}`}

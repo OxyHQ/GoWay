@@ -74,6 +74,20 @@ describe('the live chunk', () => {
       expect(files.some((f) => f.path === path)).toBe(true);
   });
 
+  test('socket.io-client is only ever import()ed — @oxy.so/core already lazy-loads it', () => {
+    // A STATIC import from a second lazy chunk would make it shared, and Expo
+    // hoists a shared module into the first-paint `__common` chunk (measured:
+    // +54 KB with the flag off, before this was an import()).
+    const statics = files
+      .filter((f) => staticImports(f.text).some((spec) => spec === 'socket.io-client'))
+      .map((f) => f.path);
+    expect(statics).toEqual([]);
+    const dynamics = files
+      .filter((f) => dynamicImports(f.text).includes('socket.io-client'))
+      .map((f) => f.path);
+    expect(dynamics).toEqual(['features/live/liveClient.ts']);
+  });
+
   test('the socket client and the live protocol are imported only inside features/live', () => {
     const offenders = files
       .filter((f) => !inFeature(f.path))

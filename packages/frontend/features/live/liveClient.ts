@@ -19,7 +19,7 @@
  * zoom and the kinds — no location, no session, no identifier.
  */
 
-import { io, type Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 import {
   LIVE_SOCKET_EVENTS,
   LIVE_SOCKET_NAMESPACE,
@@ -89,14 +89,7 @@ export function createLiveClient(options: { apiUrl: string; store: LiveStore }):
   let holdUntil = 0;
   let closed = false;
 
-  const socket: Socket = io(`${options.apiUrl}${LIVE_SOCKET_NAMESPACE}`, {
-    // WebSocket first: no long-polling requests through the API's CORS lane
-    // unless the WebSocket cannot be opened at all.
-    transports: ['websocket', 'polling'],
-    withCredentials: false,
-    reconnectionDelay: 2000,
-    reconnectionDelayMax: 30_000,
-  });
+  let socket: Socket | null = null;
 
   const send = () => {
     timer = null;
@@ -117,7 +110,7 @@ export function createLiveClient(options: { apiUrl: string; store: LiveStore }):
     sent = key;
     coverage = kinds.length === 0 || liveTilesFor(bounds) ? 'waiting' : 'too_wide';
     notify();
-    socket.emit(LIVE_SOCKET_EVENTS.subscribe, subscription);
+    socket?.emit(LIVE_SOCKET_EVENTS.subscribe, subscription);
   };
 
   const schedule = () => {
@@ -125,53 +118,74 @@ export function createLiveClient(options: { apiUrl: string; store: LiveStore }):
     timer = setTimeout(send, SUBSCRIBE_DEBOUNCE_MS);
   };
 
-  socket.on('connect', () => {
-    connection = 'connected';
-    sent = '';
-    notify();
-    schedule();
-  });
-  socket.on('disconnect', () => {
-    connection = 'offline';
-    notify();
-  });
-  socket.on('connect_error', () => {
-    connection = 'offline';
-    notify();
-  });
+  // `import()`, not a static import: `@oxy.so/core` already loads
+  // socket.io-client lazily, and a module two lazy chunks share statically is
+  // hoisted into the first-paint `__common` chunk (measured: +54 KB with the
+  // live flag off). As its own `import()` target it stays one lazy chunk.
+  void import('socket.io-client')
+    .then(({ io }) => {
+      if (closed) return;
+      const live: Socket = io(`${options.apiUrl}${LIVE_SOCKET_NAMESPACE}`, {
+        // WebSocket first: no long-polling requests through the API's CORS lane
+        // unless the WebSocket cannot be opened at all.
+        transports: ['websocket', 'polling'],
+        withCredentials: false,
+        reconnectionDelay: 2000,
+        reconnectionDelayMax: 30_000,
+      });
+      socket = live;
+      live.on('connect', () => {
+        connection = 'connected';
+        sent = '';
+        notify();
+        schedule();
+      });
+      live.on('disconnect', () => {
+        connection = 'offline';
+        notify();
+      });
+      live.on('connect_error', () => {
+        connection = 'offline';
+        notify();
+      });
 
-  socket.on(LIVE_SOCKET_EVENTS.sources, (payload: unknown) => {
-    const page = parseLiveSources(payload);
-    if (!page) return;
-    store.setSources(page.items);
-    notify();
-  });
-  socket.on(LIVE_SOCKET_EVENTS.subscription, (payload: unknown) => {
-    const state = parseLiveSubscriptionState(payload);
-    if (!state) return;
-    if (state.state === 'rate_limited') {
-      holdUntil = Date.now() + (state.retryAfterSeconds ?? 1) * 1000;
-      sent = '';
-      schedule();
-      return;
-    }
-    if (state.state === 'invalid') return;
-    store.retain(state.tiles, state.kinds);
-    coverage = state.state === 'too_wide' ? 'too_wide' : 'ok';
-    notify();
-  });
-  socket.on(LIVE_SOCKET_EVENTS.snapshot, (payload: unknown) => {
-    const snapshot = parseLiveSnapshot(payload);
-    if (!snapshot) return;
-    store.applySnapshot(snapshot);
-    notify();
-  });
-  socket.on(LIVE_SOCKET_EVENTS.delta, (payload: unknown) => {
-    const delta = parseLiveDelta(payload);
-    if (!delta) return;
-    store.applyDelta(delta);
-    notify();
-  });
+      live.on(LIVE_SOCKET_EVENTS.sources, (payload: unknown) => {
+        const page = parseLiveSources(payload);
+        if (!page) return;
+        store.setSources(page.items);
+        notify();
+      });
+      live.on(LIVE_SOCKET_EVENTS.subscription, (payload: unknown) => {
+        const state = parseLiveSubscriptionState(payload);
+        if (!state) return;
+        if (state.state === 'rate_limited') {
+          holdUntil = Date.now() + (state.retryAfterSeconds ?? 1) * 1000;
+          sent = '';
+          schedule();
+          return;
+        }
+        if (state.state === 'invalid') return;
+        store.retain(state.tiles, state.kinds);
+        coverage = state.state === 'too_wide' ? 'too_wide' : 'ok';
+        notify();
+      });
+      live.on(LIVE_SOCKET_EVENTS.snapshot, (payload: unknown) => {
+        const snapshot = parseLiveSnapshot(payload);
+        if (!snapshot) return;
+        store.applySnapshot(snapshot);
+        notify();
+      });
+      live.on(LIVE_SOCKET_EVENTS.delta, (payload: unknown) => {
+        const delta = parseLiveDelta(payload);
+        if (!delta) return;
+        store.applyDelta(delta);
+        notify();
+      });
+    })
+    .catch(() => {
+      connection = 'offline';
+      notify();
+    });
 
   return {
     setView(next) {
@@ -191,7 +205,7 @@ export function createLiveClient(options: { apiUrl: string; store: LiveStore }):
       closed = true;
       if (timer) clearTimeout(timer);
       listeners.clear();
-      socket.close();
+      socket?.close();
     },
   };
 }
