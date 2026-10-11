@@ -201,11 +201,31 @@ overlapping.
   occlude cars behind them; on 3D terrain agents stand on the SAME ground
   the buildings and trees do — `terrainGround.ts`'s opened grid (the surface
   model with roofs and canopy removed), per z15 tile, read bilinearly.
-- **One instanced draw per model**: car (60 triangles), van (70), bus (60),
-  person (40, legs that swing with the distance walked). Generic maquette forms
-  in `agentModels.ts`, flat-shaded in the map's own sun light; soft, desaturated
-  paints weighted to the whites, greys and silvers real fleets are mostly made
-  of. No third-party models, textures, badges or lettering.
+- **Soft maquette vehicles** (`agentModels.ts`): hatchback, saloon, van, bus
+  and — only where a city's taxis wear a statutory livery — taxi. Every body,
+  cabin and band is a superellipsoid (a box with every edge and corner
+  rounded, between a box and an ellipsoid), so nothing is pointed or
+  faceted: smooth averaged normals, a narrower cabin of tinted glass standing
+  on the body with a painted roof, short cylinder wheels set under it, a bus
+  with a continuous glass band round its rounded front. People are a capsule
+  body, a round head and two rounded legs that swing with the distance
+  walked. Soft pastel paints weighted to the whites, greys and silvers real
+  fleets are mostly made of. No third-party models, textures, badges or
+  lettering.
+- **Two levels of detail per model, chosen on the GPU**: near meshes are
+  592–792 triangles (a person 252), far ones ≤ 96 (a person 36). Each
+  instance's on-screen size is estimated in the vertex shader (the centre's
+  CSS pixels per metre scaled by depth); under 22 px, or off screen, it draws
+  far. Both meshes read the same instance buffers.
+- **Matte light and a contact shadow**: wrapped diffuse from the map's own sun
+  plus a hemisphere fill (cool sky, warm street bounce), and a soft
+  superellipse shadow blob (2 triangles, blended, depth-tested) under every
+  vehicle and person.
+- **Taxis** (`sim/liveries.ts`): Barcelona's black with yellow doors and New
+  York's yellow are municipal liveries, not an operator's brand, so the
+  simulation's generic taxi wears them there — about 6% of cars. Anywhere
+  else there are no taxis at all (their slots are saloons): a plausible local
+  taxi a city does not have would be invented detail.
 - **Positions are interpolated on the GPU.** The worker streams each step's
   `x, y, heading, scale` per slot as transferable buffers; the vertex shader
   places every instance between the previous and the latest step (`uAlpha`),
@@ -231,8 +251,8 @@ buildings; the same rule, stronger, governs this:
   anything outside `engine/cityLife/` other than the lazy engine chunk imports
   it.
 - **It never looks like live data**: no congestion colouring, no counts, no
-  "traffic" layer styling; generic vehicles, no liveries, no taxis or buses in
-  a real operator's colours.
+  "traffic" layer styling; generic vehicles, no operator liveries, no buses
+  in a real operator's colours; taxis only in a city's statutory taxi colours.
 - **What is real and what is not**: the streets, their directions, lane
   counts, speed limits, signals, crossings, pavements and turn restrictions are
   OpenStreetMap's. The agents, their routes, timings, signal phases and every
@@ -256,7 +276,7 @@ the loaded ones, so both are given.
 | Cars moving / mean speed / overlaps | 51% / 10.5 km/h / **0** | 56% / 11.6 km/h / **0** |
 | Cars that gave up stuck (2 min) | 54 of 1,200 | 28 of 1,200 |
 | Frame message | 48 kB per step (≈1 MB/s, transferred, not copied) | same |
-| Triangles at full budget | ≈ 120 k (cars ≤ 72 k, people ≤ 48 k) vs 0.66–1.4 M for the buildings | same |
+| Triangles drawn (counted by the renderer's dev stats, the shader's LOD test replayed on the CPU) | z17.2, 1,200 + 1,200 agents: 7 k near + 155 k far + 5 k shadow (the first, all-box fleet: ≈ 120 k); z19 Passeig de Gràcia, 206 + 166: 51 k near + 19 k far (first fleet ≈ 19 k) — vs 0.66–1.4 M for the buildings | same |
 
 The step is 2–6% of its 50 ms budget; the network build is the largest single
 cost and runs in the worker. The real cost is the **repaint**: with agents on

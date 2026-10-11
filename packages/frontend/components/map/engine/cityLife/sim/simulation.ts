@@ -26,6 +26,7 @@
  * each is snapped to the nearest path heading its way within a few metres; one
  * that has none (its road is no longer loaded) is removed.
  */
+import type { TaxiLivery } from './liveries';
 import { createRng, type Rng } from './rng';
 import { type Network, type Path, pointAt, project } from './network';
 import {
@@ -109,6 +110,8 @@ export class CitySimulation {
   readonly rng: Rng;
   network: Network | null = null;
   time = 0;
+  /** The taxis' livery where the city has one, else `null`: no taxis. */
+  taxiLivery: TaxiLivery | null = null;
   view: SimView | null = null;
   readonly stats: SimStats = {
     cars: 0,
@@ -428,7 +431,7 @@ export class CitySimulation {
     const { cars, rng } = this;
     // A model by share, then a free slot of it.
     let pick = rng.next();
-    let model: CarModel = 'car';
+    let model: CarModel = 'hatchback';
     for (const m of CAR_MODELS) {
       pick -= CAR_MODEL_SPECS[m].share;
       if (pick <= 0) {
@@ -436,6 +439,8 @@ export class CitySimulation {
         break;
       }
     }
+    // No statutory taxi livery here: no taxis (`liveries.ts`).
+    if (model === 'taxi' && !this.taxiLivery) model = 'sedan';
     const [from, to] = cars.ranges[model];
     let slot = -1;
     for (let i = from; i < to; i++) {
@@ -479,7 +484,8 @@ export class CitySimulation {
       cars.stopped[slot] = 0;
       cars.age[slot] = anywhere ? FADE_S : 0;
       cars.leaving[slot] = -1;
-      const [r, g, b] = pickPaint(rng, model);
+      const [r, g, b] =
+        model === 'taxi' && this.taxiLivery ? this.taxiLivery.body : pickPaint(rng, model);
       cars.style.set([r, g, b, Math.round((length / spec.length[1]) * 255)], slot * 4);
       cars.x[slot] = this.scratch.x;
       cars.y[slot] = this.scratch.y;
