@@ -32,9 +32,20 @@ import * as THREE from 'three';
 import type { CityLight } from '../city3d/occlusion';
 import type { CityOverlay, CityOverlayFrame } from '../city3d/overlay';
 import { GROUND, type GroundSampler, gridAt, groundGrid } from '../city3d/terrainGround';
-import { tileModelMatrix } from '../city3d/tileMath';
-import { LIFE_FRAGMENT_SHADER, LIFE_VERTEX_SHADER } from './lifeShaders';
-import { type ModelGeometry, personModel, VEHICLE_MODELS } from './agentModels';
+import {
+  centeredProjection,
+  EARTH_CIRCUMFERENCE_M,
+  multiplyMat4,
+  tileModelMatrix,
+} from '../city3d/tileMath';
+import { type ModelGeometry, person, shadowQuad, VEHICLE_MODELS } from './agentModels';
+import {
+  LIFE_FRAGMENT_SHADER,
+  LOD_MIN_PX,
+  LIFE_VERTEX_SHADER,
+  SHADOW_FRAGMENT_SHADER,
+  SHADOW_VERTEX_SHADER,
+} from './lifeShaders';
 import type {
   SimFrameMessage,
   SimStatsMessage,
@@ -68,6 +79,8 @@ export interface CityLifeOptions {
 
 export interface CityLifeStats extends Omit<SimStatsMessage, 'type'> {
   framesPerSecond: number;
+  /** Triangles drawn by city life in the last sampled frame, by level of detail. */
+  triangles: { near: number; far: number; shadow: number };
 }
 
 function geometryFor(model: ModelGeometry): THREE.InstancedBufferGeometry {
@@ -79,10 +92,15 @@ function geometryFor(model: ModelGeometry): THREE.InstancedBufferGeometry {
   return geometry;
 }
 
+/**
+ * One model's instances: the four instanced attributes, shared by THREE
+ * draws over them — the near mesh, the far mesh, and the contact shadow —
+ * so an instance is uploaded once and drawn as whichever it should be
+ * (`lifeShaders.ts` → level of detail).
+ */
 interface Batch {
-  mesh: THREE.Mesh;
-  geometry: THREE.InstancedBufferGeometry;
-  material: THREE.RawShaderMaterial;
+  geometries: THREE.InstancedBufferGeometry[];
+  materials: THREE.RawShaderMaterial[];
   prev: THREE.InstancedBufferAttribute;
   curr: THREE.InstancedBufferAttribute;
   style: THREE.InstancedBufferAttribute;
@@ -99,59 +117,118 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     uAlpha: { value: 0 },
     uTime: { value: 0 },
     uStep: { value: STEP_S },
+    uPxPerM: { value: 0 },
+    uTaxiDoors: { value: new THREE.Vector3(1, 0.8, 0.3) },
   };
   const group = new THREE.Group();
   group.matrixAutoUpdate = false;
   group.matrixWorldAutoUpdate = false;
   group.visible = false;
 
-  const makeBatch = (model: ModelGeometry, person: boolean, maxLength: number): Batch => {
-    const geometry = geometryFor(model);
+  const quad = shadowQuad();
+  const makeBatch = (
+    lods: { near: ModelGeometry; far: ModelGeometry },
+    kind: { person: boolean; taxi: boolean; maxLength: number },
+  ): Batch => {
     const empty = () => new THREE.InstancedBufferAttribute(new Float32Array(4), 4);
     const prev = empty();
     const curr = empty();
     const style = new THREE.InstancedBufferAttribute(new Uint8Array(4), 4, true);
-    for (const attribute of [prev, curr, style]) attribute.setUsage(THREE.DynamicDrawUsage);
-    geometry.setAttribute('aPrev', prev);
-    geometry.setAttribute('aCurr', curr);
-    geometry.setAttribute('aStyle', style);
     const ground = new THREE.InstancedBufferAttribute(new Float32Array(1), 1);
-    geometry.setAttribute('aGround', ground);
-    geometry.instanceCount = 0;
-    const material = new THREE.RawShaderMaterial({
-      glslVersion: THREE.GLSL3,
-      vertexShader: LIFE_VERTEX_SHADER,
-      fragmentShader: LIFE_FRAGMENT_SHADER,
-      uniforms: {
-        ...shared,
-        ...light,
-        uIsPerson: { value: person ? 1 : 0 },
-        uMaxLength: { value: maxLength },
-        uModelLength: { value: model.length },
-      },
-      // The mirrored model matrix: see `agentModels.ts` and `cityEngine.ts`.
-      side: THREE.BackSide,
-      blending: THREE.CustomBlending,
-      blendSrc: THREE.OneFactor,
-      blendDst: THREE.OneMinusSrcAlphaFactor,
-      transparent: false,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    // The engine writes the group's matrix; instances move in the shader, so
-    // three's bounds know nothing about where they are: never cull.
-    mesh.frustumCulled = false;
-    mesh.matrixAutoUpdate = false;
-    group.add(mesh);
-    return { mesh, geometry, material, prev, curr, style, ground };
+    for (const attribute of [prev, curr, style, ground]) attribute.setUsage(THREE.DynamicDrawUsage);
+    const perModel = {
+      uIsPerson: { value: kind.person ? 1 : 0 },
+      uIsTaxi: { value: kind.taxi ? 1 : 0 },
+      uMaxLength: { value: kind.maxLength },
+      uModelLength: { value: lods.near.length },
+      uNearSize: { value: kind.person ? 2.6 : lods.near.length },
+    };
+    const geometries: THREE.InstancedBufferGeometry[] = [];
+    const materials: THREE.RawShaderMaterial[] = [];
+    const add = (
+      geometry: THREE.InstancedBufferGeometry,
+      material: THREE.RawShaderMaterial,
+      renderOrder: number,
+    ) => {
+      geometry.setAttribute('aPrev', prev);
+      geometry.setAttribute('aCurr', curr);
+      geometry.setAttribute('aStyle', style);
+      geometry.setAttribute('aGround', ground);
+      geometry.instanceCount = 0;
+      const mesh = new THREE.Mesh(geometry, material);
+      // The engine writes the group's matrix; instances move in the shader,
+      // so three's bounds know nothing about where they are: never cull.
+      mesh.frustumCulled = false;
+      mesh.matrixAutoUpdate = false;
+      mesh.renderOrder = renderOrder;
+      group.add(mesh);
+      geometries.push(geometry);
+      materials.push(material);
+    };
+    for (const [lod, model] of [
+      [0, lods.near],
+      [1, lods.far],
+    ] as const) {
+      add(
+        geometryFor(model),
+        new THREE.RawShaderMaterial({
+          glslVersion: THREE.GLSL3,
+          vertexShader: LIFE_VERTEX_SHADER,
+          fragmentShader: LIFE_FRAGMENT_SHADER,
+          uniforms: { ...shared, ...light, ...perModel, uLod: { value: lod } },
+          // The mirrored model matrix: see `agentModels.ts` and `cityEngine.ts`.
+          side: THREE.BackSide,
+          blending: THREE.CustomBlending,
+          blendSrc: THREE.OneFactor,
+          blendDst: THREE.OneMinusSrcAlphaFactor,
+          transparent: false,
+        }),
+        0,
+      );
+    }
+    // The contact shadow, after the opaque city (three draws transparent
+    // last), depth-tested so a building in front hides it.
+    const shadowGeometry = new THREE.InstancedBufferGeometry();
+    shadowGeometry.setAttribute('position', new THREE.BufferAttribute(quad.positions, 3));
+    shadowGeometry.setIndex(new THREE.BufferAttribute(quad.indices, 1));
+    add(
+      shadowGeometry,
+      new THREE.RawShaderMaterial({
+        glslVersion: THREE.GLSL3,
+        vertexShader: SHADOW_VERTEX_SHADER,
+        fragmentShader: SHADOW_FRAGMENT_SHADER,
+        uniforms: {
+          ...shared,
+          ...perModel,
+          uLod: { value: 2 },
+          uHalfSize: { value: new THREE.Vector2(lods.near.halfLength, lods.near.halfWidth) },
+          uShadowStrength: { value: kind.person ? 0.3 : 0.42 },
+        },
+        side: THREE.DoubleSide,
+        blending: THREE.CustomBlending,
+        blendSrc: THREE.OneFactor,
+        blendDst: THREE.OneMinusSrcAlphaFactor,
+        transparent: true,
+        depthWrite: false,
+      }),
+      -1,
+    );
+    return { geometries, materials, prev, curr, style, ground };
   };
 
   const carBatches = Object.fromEntries(
     CAR_MODELS.map((model) => [
       model,
-      makeBatch(VEHICLE_MODELS[model](), false, CAR_MODEL_SPECS[model].length[1]),
+      makeBatch(
+        { near: VEHICLE_MODELS[model]('near'), far: VEHICLE_MODELS[model]('far') },
+        { person: false, taxi: model === 'taxi', maxLength: CAR_MODEL_SPECS[model].length[1] },
+      ),
     ]),
   ) as Record<CarModel, Batch>;
-  const peopleBatch = makeBatch(personModel(), true, 1);
+  const peopleBatch = makeBatch(
+    { near: person('near'), far: person('far') },
+    { person: true, taxi: false, maxLength: 1 },
+  );
 
   // ── The worker ──
   const worker = new Worker(new URL('./simWorker', import.meta.url));
@@ -177,13 +254,56 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
   let drawnFrames = 0;
   let fpsWindowStart = performance.now();
   let fps = 0;
+  let triangles = { near: 0, far: 0, shadow: 0 };
+  /**
+   * Development statistics: the shader's level-of-detail test replayed on the
+   * CPU for one frame a second, so the triangle cost is a number, not a guess.
+   */
+  const countTriangles = (
+    frame: SimFrameMessage,
+    projection: number[],
+    model: ArrayLike<number>,
+    pxPerM: number,
+  ) => {
+    const pm = multiplyMat4(projection, model);
+    const out = { near: 0, far: 0, shadow: 0 };
+    const tally = (states: Float32Array, from: number, to: number, batch: Batch, size: number) => {
+      const nearTris = (batch.geometries[0].index?.count ?? 0) / 3;
+      const farTris = (batch.geometries[1].index?.count ?? 0) / 3;
+      for (let i = from; i < to; i++) {
+        if (states[i * 4 + 3] <= 0) continue;
+        const x = states[i * 4];
+        const y = states[i * 4 + 1];
+        const cx = pm[0] * x + pm[4] * y + pm[12];
+        const cy = pm[1] * x + pm[5] * y + pm[13];
+        const w = pm[3] * x + pm[7] * y + pm[15];
+        const px = ((pxPerM * projection[15]) / Math.max(w, 1e-9)) * size;
+        const onScreen = w > 0 && Math.abs(cx) < w * 1.15 && Math.abs(cy) < w * 1.15;
+        if (onScreen && px >= LOD_MIN_PX) out.near += nearTris;
+        else out.far += farTris;
+        out.shadow += 2;
+      }
+    };
+    for (const name of CAR_MODELS) {
+      const [from, to] = frame.ranges[name];
+      tally(
+        frame.cars,
+        from,
+        to,
+        carBatches[name],
+        carBatches[name].materials[0].uniforms.uNearSize.value as number,
+      );
+    }
+    tally(frame.people, 0, frame.people.length / 4, peopleBatch, 2.6);
+    return out;
+  };
 
   worker.onmessage = (event: MessageEvent<SimWorkerResponse>) => {
     if (disposed) return;
     const message = event.data;
     if (message.type === 'stats') {
       const { type: _type, ...rest } = message;
-      options.onStats?.({ ...rest, framesPerSecond: fps });
+      options.onStats?.({ ...rest, framesPerSecond: fps, triangles });
       return;
     }
     frames.push(message);
@@ -266,7 +386,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       values = new Float32Array(count);
       batch.ground = new THREE.InstancedBufferAttribute(values, 1);
       batch.ground.setUsage(THREE.DynamicDrawUsage);
-      batch.geometry.setAttribute('aGround', batch.ground);
+      for (const geometry of batch.geometries) geometry.setAttribute('aGround', batch.ground);
     }
     if (!sampler) {
       if (values[0] !== 0 || values[count - 1] !== 0) values.fill(0);
@@ -298,9 +418,11 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       for (const attribute of [batch.prev, batch.curr, batch.style]) {
         attribute.setUsage(THREE.DynamicDrawUsage);
       }
-      batch.geometry.setAttribute('aPrev', batch.prev);
-      batch.geometry.setAttribute('aCurr', batch.curr);
-      batch.geometry.setAttribute('aStyle', batch.style);
+      for (const geometry of batch.geometries) {
+        geometry.setAttribute('aPrev', batch.prev);
+        geometry.setAttribute('aCurr', batch.curr);
+        geometry.setAttribute('aStyle', batch.style);
+      }
     } else {
       batch.prev.array = prev;
       batch.curr.array = curr;
@@ -309,7 +431,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       batch.curr.needsUpdate = true;
       batch.style.needsUpdate = true;
     }
-    batch.geometry.instanceCount = to - from;
+    for (const geometry of batch.geometries) geometry.instanceCount = to - from;
   };
 
   const overlay: CityOverlay = {
@@ -370,6 +492,17 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       const span = b.time - a.time;
       shared.uAlpha.value = span > 0 ? Math.max(0, Math.min(1, (renderTime - a.time) / span)) : 1;
       shared.uTime.value = (t / 1000) % 3600;
+      // CSS pixels per metre at the centre: 512-px tiles, mercator's 1/cos(lat).
+      shared.uPxPerM.value =
+        (512 * 2 ** view.zoom) /
+        (EARTH_CIRCUMFERENCE_M * Math.cos((view.center.lat * Math.PI) / 180));
+      if (b.taxiDoors) {
+        shared.uTaxiDoors.value.set(
+          b.taxiDoors[0] / 255,
+          b.taxiDoors[1] / 255,
+          b.taxiDoors[2] / 255,
+        );
+      }
 
       group.matrixWorld.fromArray(tileModelMatrix({ z: 15, x: b.origin.x, y: b.origin.y }, center));
       for (const child of group.children) child.matrixWorld.copy(group.matrixWorld);
@@ -379,6 +512,14 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
         fps = Math.round((drawnFrames * 1000) / (t - fpsWindowStart));
         drawnFrames = 0;
         fpsWindowStart = t;
+        if (options.onStats) {
+          triangles = countTriangles(
+            b,
+            centeredProjection(view.mercatorToClip, center),
+            group.matrixWorld.elements,
+            shared.uPxPerM.value,
+          );
+        }
       }
       schedule();
     },
@@ -406,8 +547,8 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       if (active) options.onActiveChange(false);
       group.removeFromParent();
       for (const batch of [...Object.values(carBatches), peopleBatch]) {
-        batch.geometry.dispose();
-        batch.material.dispose();
+        for (const geometry of batch.geometries) geometry.dispose();
+        for (const material of batch.materials) material.dispose();
       }
     },
   };

@@ -19,6 +19,7 @@ import { mercatorXFromLng, mercatorYFromLat, tileKey } from '../city3d/tileMath'
 import type { SimWorkerRequest, SimWorkerResponse } from './protocol';
 import { type DecodedRoadTile, decodeRoadTile } from './roadTiles';
 import { drivingSideAt } from './sim/drivingSide';
+import { taxiLiveryAt } from './sim/liveries';
 import { buildNetwork, type SimFrame, simFrame } from './sim/network';
 import { activeRadius, CitySimulation, type SimBudget, STEP_S } from './sim/simulation';
 
@@ -135,6 +136,7 @@ function rebuild(): void {
     seed,
   });
   if (!sim) sim = new CitySimulation(budget, seed);
+  sim.taxiLivery = taxiLiveryAt(lastView.center.lng, lastView.center.lat);
   sim.setNetwork(network);
   applyView();
 }
@@ -250,6 +252,7 @@ function post(): void {
       cars: snapshot.cars,
       carStyle: snapshot.carStyle,
       ranges: sim.cars.ranges,
+      taxiDoors: sim.taxiLivery?.doors ?? null,
       people: snapshot.people,
       peopleStyle: snapshot.peopleStyle,
     },

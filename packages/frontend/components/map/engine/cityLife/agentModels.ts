@@ -1,18 +1,35 @@
 /**
- * Low-poly vehicles and people, as plain arrays: built here, uploaded once,
- * and instanced by `lifeRenderer.ts` hundreds of times per draw call.
+ * Soft, rounded maquette vehicles and people — built here as plain arrays,
+ * uploaded once, and instanced by `lifeRenderer.ts` hundreds of times per draw.
  *
- * Every model is a handful of boxes in local metres — x FORWARD, y LEFT, z UP,
- * origin on the ground at the model's centre — with flat normals and a PART
- * per vertex that the shader colours by (paint, glass, tyres, clothes, skin,
- * legs that swing). No textures, no badges, no lettering: generic maquette
- * forms, the same art direction as the buildings. No third-party asset is
- * involved anywhere (see `docs/MAP_CITY_LIFE.md`).
+ * ## The look
  *
- * Faces wind counter-clockwise seen from OUTSIDE in this right-handed frame;
- * the engine's mirrored model matrix makes three call them back faces, which
- * is why the materials draw `BackSide` exactly as the buildings do
- * (`cityEngine.ts`).
+ * Toy cars, not CAD: every body and cabin is a SUPERELLIPSOID — the shape
+ * `|x/a|^(2/e₂) + |y/b|^(2/e₂)` lofted against `|z/c|^(2/e₁)` — whose exponents
+ * sit between a box (0) and an ellipsoid (1). At ~0.3–0.5 that is a box with
+ * every edge and corner rounded, with no point anywhere: the ends of a car are
+ * a soft rounded face, not the tapered wedge the first fleet had. The cabin is
+ * a second, narrower one standing on the body (so its tinted glass sits inset
+ * from the body's flanks), with a painted roof; wheels are short cylinders set
+ * into the body's underside. Normals are SMOOTH — each vertex the average of
+ * the faces around it — so nothing reads as faceted.
+ *
+ * Generic forms only: no third-party models, no textures, badges or lettering
+ * (`docs/MAP_CITY_LIFE.md`).
+ *
+ * ## Two levels of detail
+ *
+ * Near the camera a car is ~300–800 triangles; past it ({@link LOD} in the
+ * shader) the same instance draws a ≤150-triangle version — the same two
+ * shapes at a quarter of the subdivision, no wheels — which at that distance
+ * is a few pixels and looks the same.
+ *
+ * ## Frame
+ *
+ * Local metres, x FORWARD, y LEFT, z UP, origin on the ground at the model's
+ * centre. Faces wind counter-clockwise seen from OUTSIDE; the engine's
+ * mirrored model matrix makes three call those back faces, which is why the
+ * materials draw `BackSide`, exactly as the buildings do (`cityEngine.ts`).
  */
 
 /** What the shader colours a vertex as. */
@@ -24,6 +41,10 @@ export const PART = {
   legRight: 4,
   skin: 5,
   clothes: 6,
+  /** A taxi's roof light. */
+  sign: 7,
+  /** Underbody and bumper shadow line: a darker paint. */
+  trim: 8,
 } as const;
 
 export interface ModelGeometry {
@@ -31,11 +52,18 @@ export interface ModelGeometry {
   normals: Float32Array;
   parts: Float32Array;
   indices: Uint16Array;
-  /** Nominal length, metres (cars: what `length` scale 1 means). */
+  /** Nominal length, metres (what a car's `length` style of 1 is scaled from). */
   length: number;
+  /** Footprint half-extents for the contact shadow, metres. */
+  halfLength: number;
+  halfWidth: number;
 }
 
-type V3 = [number, number, number];
+/** Near and far versions of one model. */
+export interface ModelLods {
+  near: ModelGeometry;
+  far: ModelGeometry;
+}
 
 interface Builder {
   positions: number[];
@@ -44,131 +72,409 @@ interface Builder {
   indices: number[];
 }
 
-function quad(b: Builder, corners: [V3, V3, V3, V3], part: number): void {
-  const [a, c1, c2] = corners;
-  const ux = c1[0] - a[0];
-  const uy = c1[1] - a[1];
-  const uz = c1[2] - a[2];
-  const vx = c2[0] - a[0];
-  const vy = c2[1] - a[1];
-  const vz = c2[2] - a[2];
-  let nx = uy * vz - uz * vy;
-  let ny = uz * vx - ux * vz;
-  let nz = ux * vy - uy * vx;
-  const len = Math.hypot(nx, ny, nz) || 1;
-  nx /= len;
-  ny /= len;
-  nz /= len;
-  const base = b.positions.length / 3;
-  for (const corner of corners) {
-    b.positions.push(...corner);
-    b.normals.push(nx, ny, nz);
-    b.parts.push(part);
-  }
-  b.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+const builder = (): Builder => ({ positions: [], normals: [], parts: [], indices: [] });
+
+/** `sign(t)·|t|^e`, the superellipse's signed power. */
+const spow = (t: number, e: number) => Math.sign(t) * Math.abs(t) ** e;
+
+interface SuperellipsoidSpec {
+  /** Centre, metres. */
+  at: [number, number, number];
+  /** Half-extents: length, width, height. */
+  radii: [number, number, number];
+  /** Roundness along the height (latitude) and around the plan (longitude): 0 box … 1 ellipsoid. */
+  round: [number, number];
+  /** Segments around the plan, and from bottom to top. */
+  segments: [number, number];
+  /** Narrows the top: at the top the plan is `(1 − taper)` of the bottom's. */
+  taper?: number;
+  /** Moves the top along x by this many metres (a raked windscreen leans back: negative). */
+  lean?: number;
+  /** The part of a vertex, from its position and (smooth) normal. */
+  part: (p: [number, number, number], n: [number, number, number]) => number;
 }
 
 /**
- * A box from `x0..x1`, `y0..y1`, `z0..z1`, its top optionally inset (a
- * cabin's sloped glass). `parts`: sides, top, bottom.
+ * A superellipsoid on a latitude–longitude grid, its seam shared and its two
+ * poles single vertices, with smooth normals averaged from the final (tapered,
+ * leaned) faces.
  */
-function box(
-  b: Builder,
-  [x0, x1]: [number, number],
-  [y0, y1]: [number, number],
-  [z0, z1]: [number, number],
-  parts: { side: number; top?: number; bottom?: number },
-  inset: { front?: number; back?: number; sides?: number } = {},
-): void {
-  const tx0 = x0 + (inset.back ?? 0);
-  const tx1 = x1 - (inset.front ?? 0);
-  const ty0 = y0 + (inset.sides ?? 0);
-  const ty1 = y1 - (inset.sides ?? 0);
-  const B: V3[] = [
-    [x0, y0, z0],
-    [x1, y0, z0],
-    [x1, y1, z0],
-    [x0, y1, z0],
-  ];
-  const T: V3[] = [
-    [tx0, ty0, z1],
-    [tx1, ty0, z1],
-    [tx1, ty1, z1],
-    [tx0, ty1, z1],
-  ];
-  const side = parts.side;
-  // Counter-clockwise from outside.
-  quad(b, [B[0], B[1], T[1], T[0]], side); // right (−y)
-  quad(b, [B[1], B[2], T[2], T[1]], side); // front (+x)
-  quad(b, [B[2], B[3], T[3], T[2]], side); // left (+y)
-  quad(b, [B[3], B[0], T[0], T[3]], side); // back (−x)
-  quad(b, [T[0], T[1], T[2], T[3]], parts.top ?? side);
-  if (parts.bottom !== undefined) quad(b, [B[0], B[3], B[2], B[1]], parts.bottom);
+function superellipsoid(b: Builder, spec: SuperellipsoidSpec): void {
+  const [nu, nv] = spec.segments;
+  const [cx, cy, cz] = spec.at;
+  const [rx, ry, rz] = spec.radii;
+  const [e1, e2] = spec.round;
+  const taper = spec.taper ?? 0;
+  const lean = spec.lean ?? 0;
+  const base = b.positions.length / 3;
+  const points: [number, number, number][] = [];
+  const index = (i: number, j: number) => {
+    if (j === 0) return base;
+    if (j === nv) return base + 1 + (nv - 1) * nu;
+    return base + 1 + (j - 1) * nu + (i % nu);
+  };
+  const vertex = (u: number, v: number): [number, number, number] => {
+    const cv = spow(Math.cos(v), e1);
+    const sv = spow(Math.sin(v), e1);
+    const up = (sv + 1) / 2; // 0 at the bottom, 1 at the top
+    const shrink = 1 - taper * up;
+    return [
+      cx + rx * shrink * cv * spow(Math.cos(u), e2) + lean * up,
+      cy + ry * shrink * cv * spow(Math.sin(u), e2),
+      cz + rz * sv,
+    ];
+  };
+  points.push(vertex(0, -Math.PI / 2));
+  for (let j = 1; j < nv; j++) {
+    const v = -Math.PI / 2 + (Math.PI * j) / nv;
+    for (let i = 0; i < nu; i++) points.push(vertex((2 * Math.PI * i) / nu, v));
+  }
+  points.push(vertex(0, Math.PI / 2));
+
+  const faces: [number, number, number][] = [];
+  for (let j = 0; j < nv; j++) {
+    for (let i = 0; i < nu; i++) {
+      const a = index(i, j);
+      const bb = index(i + 1, j);
+      const c = index(i + 1, j + 1);
+      const d = index(i, j + 1);
+      // Counter-clockwise from outside: u runs anticlockwise seen from above,
+      // v runs upwards. The bottom and top rows are fans around their pole.
+      if (j === 0) faces.push([a, c, d]);
+      else if (j === nv - 1) faces.push([a, bb, c]);
+      else faces.push([a, bb, c], [a, c, d]);
+    }
+  }
+  addSmooth(b, points, faces, base, spec.part);
 }
 
-function finish(b: Builder, length: number): ModelGeometry {
+/** A short cylinder along y (a wheel): smooth tread, flat faces. */
+function wheel(
+  b: Builder,
+  at: [number, number, number],
+  radius: number,
+  width: number,
+  segments: number,
+): void {
+  const [cx, cy, cz] = at;
+  const half = width / 2;
+  // Tread: smooth normals around.
+  const tread = b.positions.length / 3;
+  for (let i = 0; i <= segments; i++) {
+    const a = (2 * Math.PI * i) / segments;
+    const x = Math.cos(a);
+    const z = Math.sin(a);
+    for (const side of [-1, 1]) {
+      b.positions.push(cx + x * radius, cy + side * half, cz + z * radius);
+      b.normals.push(x, 0, z);
+      b.parts.push(PART.tyre);
+    }
+  }
+  for (let i = 0; i < segments; i++) {
+    const k = tread + i * 2;
+    // Around +y the angle runs from x towards z: outward faces wind (k, k+2, k+3, k+1).
+    b.indices.push(k, k + 1, k + 3, k, k + 3, k + 2);
+  }
+  // Two flat faces.
+  for (const side of [-1, 1]) {
+    const centre = b.positions.length / 3;
+    b.positions.push(cx, cy + side * half, cz);
+    b.normals.push(0, side, 0);
+    b.parts.push(PART.tyre);
+    for (let i = 0; i < segments; i++) {
+      const a = (2 * Math.PI * i) / segments;
+      b.positions.push(cx + Math.cos(a) * radius, cy + side * half, cz + Math.sin(a) * radius);
+      b.normals.push(0, side, 0);
+      b.parts.push(PART.tyre);
+    }
+    for (let i = 0; i < segments; i++) {
+      const p = centre + 1 + i;
+      const q = centre + 1 + ((i + 1) % segments);
+      if (side > 0) b.indices.push(centre, q, p);
+      else b.indices.push(centre, p, q);
+    }
+  }
+}
+
+/** Append faces with per-vertex normals averaged (area-weighted) from them. */
+function addSmooth(
+  b: Builder,
+  points: [number, number, number][],
+  faces: [number, number, number][],
+  base: number,
+  partOf: SuperellipsoidSpec['part'],
+): void {
+  const normals = points.map(() => [0, 0, 0]);
+  for (const [i, j, k] of faces) {
+    const p = points[i - base];
+    const q = points[j - base];
+    const r = points[k - base];
+    const ux = q[0] - p[0];
+    const uy = q[1] - p[1];
+    const uz = q[2] - p[2];
+    const vx = r[0] - p[0];
+    const vy = r[1] - p[1];
+    const vz = r[2] - p[2];
+    const n = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+    for (const v of [i, j, k]) {
+      const acc = normals[v - base];
+      acc[0] += n[0];
+      acc[1] += n[1];
+      acc[2] += n[2];
+    }
+  }
+  points.forEach((p, index) => {
+    const n = normals[index];
+    const len = Math.hypot(n[0], n[1], n[2]) || 1;
+    const unit: [number, number, number] = [n[0] / len, n[1] / len, n[2] / len];
+    b.positions.push(...p);
+    b.normals.push(...unit);
+    b.parts.push(partOf(p, unit));
+  });
+  for (const face of faces) b.indices.push(...face);
+}
+
+function finish(b: Builder, length: number, halfLength: number, halfWidth: number): ModelGeometry {
   return {
     positions: Float32Array.from(b.positions),
     normals: Float32Array.from(b.normals),
     parts: Float32Array.from(b.parts),
     indices: Uint16Array.from(b.indices),
     length,
+    halfLength,
+    halfWidth,
   };
 }
 
-function wheels(b: Builder, axles: number[], halfWidth: number, radius: number): void {
-  for (const x of axles) {
-    for (const side of [-1, 1]) {
-      const y0 = side > 0 ? halfWidth - 0.24 : -halfWidth;
-      box(b, [x - radius, x + radius], [y0, y0 + 0.24], [0, radius * 2], { side: PART.tyre });
+interface CarShape {
+  length: number;
+  width: number;
+  /** Body: bottom and top heights. */
+  body: [number, number];
+  /** Cabin: centre x, half-length, top height. */
+  cabin: [number, number, number];
+  /** Cabin plan narrower than the body by this many metres each side. */
+  inset: number;
+  /** Wheel radius and axle positions (x). */
+  wheels: [number, number[]];
+  /** A taxi roof light. */
+  sign?: boolean;
+}
+
+const bodyPart = (z0: number) => (p: [number, number, number]) =>
+  p[2] < z0 + 0.08 ? PART.trim : PART.paint;
+
+function car(shape: CarShape, detail: 'near' | 'far'): ModelGeometry {
+  const b = builder();
+  const near = detail === 'near';
+  const halfL = shape.length / 2;
+  const halfW = shape.width / 2;
+  const [z0, z1] = shape.body;
+  superellipsoid(b, {
+    at: [0, 0, (z0 + z1) / 2],
+    radii: [halfL, halfW, (z1 - z0) / 2],
+    round: [0.42, 0.32],
+    segments: near ? [20, 10] : [8, 4],
+    part: bodyPart(z0),
+  });
+  const [cxc, chalf, ctop] = shape.cabin;
+  const cBottom = z1 - 0.12; // stands into the body: no seam
+  superellipsoid(b, {
+    at: [cxc, 0, (cBottom + ctop) / 2],
+    radii: [chalf, halfW - shape.inset, (ctop - cBottom) / 2],
+    round: [0.5, 0.42],
+    segments: near ? [16, 8] : [8, 4],
+    taper: 0.22,
+    lean: -0.1,
+    // Glass all round, the roof painted.
+    part: (_p, n) => (n[2] > 0.72 ? PART.paint : PART.glass),
+  });
+  if (shape.sign && near) {
+    superellipsoid(b, {
+      at: [cxc, 0, ctop + 0.05],
+      radii: [0.22, 0.14, 0.07],
+      round: [0.5, 0.5],
+      segments: [8, 4],
+      part: () => PART.sign,
+    });
+  }
+  if (near) {
+    const [radius, axles] = shape.wheels;
+    for (const x of axles) {
+      for (const side of [-1, 1]) {
+        wheel(b, [x, side * (halfW - 0.14), radius], radius, 0.24, 10);
+      }
     }
   }
+  return finish(b, shape.length, halfL, halfW);
 }
 
-/** A hatchback/saloon: body, a glass cabin with a painted roof, four wheels. ~4.5 m. */
-export function carModel(): ModelGeometry {
-  const b: Builder = { positions: [], normals: [], parts: [], indices: [] };
-  box(b, [-2.25, 2.25], [-0.88, 0.88], [0.3, 0.86], { side: PART.paint });
-  box(
-    b,
-    [-1.55, 1.05],
-    [-0.8, 0.8],
-    [0.86, 1.4],
-    { side: PART.glass, top: PART.paint },
-    { front: 0.55, back: 0.3, sides: 0.1 },
+/** A hatchback: short, the cabin back to the rear. */
+export const hatchback = (detail: 'near' | 'far') =>
+  car(
+    {
+      length: 4.0,
+      width: 1.76,
+      body: [0.24, 0.92],
+      cabin: [-0.35, 1.25, 1.48],
+      inset: 0.1,
+      wheels: [0.31, [-1.28, 1.26]],
+    },
+    detail,
   );
-  wheels(b, [-1.4, 1.4], 0.92, 0.32);
-  return finish(b, 4.5);
+
+/** A saloon: longer, the cabin central, a boot behind it. */
+export const sedan = (detail: 'near' | 'far') =>
+  car(
+    {
+      length: 4.6,
+      width: 1.82,
+      body: [0.24, 0.9],
+      cabin: [-0.15, 1.25, 1.44],
+      inset: 0.1,
+      wheels: [0.32, [-1.42, 1.42]],
+    },
+    detail,
+  );
+
+/** A taxi: the saloon with a roof light (its livery is paint, `sim/liveries.ts`). */
+export const taxi = (detail: 'near' | 'far') =>
+  car(
+    {
+      length: 4.6,
+      width: 1.82,
+      body: [0.24, 0.9],
+      cabin: [-0.15, 1.25, 1.44],
+      inset: 0.1,
+      wheels: [0.32, [-1.42, 1.42]],
+      sign: true,
+    },
+    detail,
+  );
+
+/** A van: a tall rounded box over a short bonnet, glass only ahead. */
+export function van(detail: 'near' | 'far'): ModelGeometry {
+  const b = builder();
+  const near = detail === 'near';
+  superellipsoid(b, {
+    at: [0, 0, 0.7],
+    radii: [2.6, 0.98, 0.42],
+    round: [0.38, 0.3],
+    segments: near ? [20, 10] : [8, 4],
+    part: bodyPart(0.28),
+  });
+  superellipsoid(b, {
+    at: [-0.35, 0, 1.45],
+    radii: [2.15, 0.95, 0.62],
+    round: [0.32, 0.28],
+    segments: near ? [18, 8] : [8, 4],
+    taper: 0.06,
+    // The windscreen: front-facing and above the bonnet.
+    part: (p, n) => (n[0] > 0.55 && p[2] > 1.15 ? PART.glass : PART.paint),
+  });
+  if (near) {
+    for (const x of [-1.75, 1.75]) {
+      for (const side of [-1, 1]) wheel(b, [x, side * 0.86, 0.34], 0.34, 0.26, 10);
+    }
+  }
+  return finish(b, 5.2, 2.6, 0.98);
 }
 
-/** A van: a tall box with a short bonnet and a window band. ~5.4 m. */
-export function vanModel(): ModelGeometry {
-  const b: Builder = { positions: [], normals: [], parts: [], indices: [] };
-  box(b, [-2.7, 1.7], [-0.98, 0.98], [0.32, 2.15], { side: PART.paint }, { front: 0.25 });
-  box(b, [1.7, 2.7], [-0.96, 0.96], [0.32, 1.05], { side: PART.paint }, { front: 0.15 });
-  box(b, [-2.5, 1.55], [-1.0, 1.0], [1.35, 1.9], { side: PART.glass, top: PART.paint });
-  wheels(b, [-1.8, 1.8], 1.0, 0.34);
-  return finish(b, 5.4);
+/**
+ * A bus: a long rounded box in three bands — painted skirt, a continuous
+ * glass band wrapping the front, a painted roof — each its own
+ * superellipsoid, so the band has crisp edges instead of a colour smeared
+ * between two rings of vertices.
+ */
+export function bus(detail: 'near' | 'far'): ModelGeometry {
+  const b = builder();
+  const near = detail === 'near';
+  const segments: [number, number] = near ? [20, 6] : [8, 2];
+  superellipsoid(b, {
+    at: [0, 0, 1.0],
+    radii: [6, 1.26, 0.7],
+    round: [0.3, 0.2],
+    segments,
+    part: (p) => (p[2] < 0.48 ? PART.trim : PART.paint),
+  });
+  superellipsoid(b, {
+    at: [0.02, 0, 2.08],
+    radii: [5.97, 1.23, 0.5],
+    round: [0.25, 0.2],
+    segments,
+    part: () => PART.glass,
+  });
+  superellipsoid(b, {
+    at: [0, 0, 2.78],
+    radii: [5.9, 1.24, 0.34],
+    round: [0.45, 0.2],
+    segments,
+    part: () => PART.paint,
+  });
+  if (near) {
+    for (const x of [-3.7, 4.0]) {
+      for (const side of [-1, 1]) wheel(b, [x, side * 1.1, 0.48], 0.48, 0.32, 10);
+    }
+  }
+  return finish(b, 12, 6, 1.26);
 }
 
-/** A bus: one long box with a continuous window band. ~12 m. */
-export function busModel(): ModelGeometry {
-  const b: Builder = { positions: [], normals: [], parts: [], indices: [] };
-  box(b, [-6, 6], [-1.25, 1.25], [0.35, 3.05], { side: PART.paint });
-  box(b, [-5.8, 5.95], [-1.27, 1.27], [1.45, 2.55], { side: PART.glass, top: PART.paint });
-  wheels(b, [-3.6, 3.9], 1.28, 0.48);
-  return finish(b, 12);
+/**
+ * A person, ~1.72 m: two rounded legs (which swing), a capsule body, a round
+ * head. Faces +x.
+ */
+export function person(detail: 'near' | 'far'): ModelGeometry {
+  const b = builder();
+  if (detail === 'far') {
+    superellipsoid(b, {
+      at: [0, 0, 0.86],
+      radii: [0.15, 0.2, 0.86],
+      round: [0.8, 0.9],
+      segments: [6, 4],
+      part: (p) => (p[2] > 1.5 ? PART.skin : PART.clothes),
+    });
+    return finish(b, 0.3, 0.2, 0.22);
+  }
+  for (const [y, part] of [
+    [0.085, PART.legLeft],
+    [-0.085, PART.legRight],
+  ] as const) {
+    superellipsoid(b, {
+      at: [0, y, 0.45],
+      radii: [0.075, 0.07, 0.46],
+      round: [0.7, 1],
+      segments: [6, 4],
+      part: () => part,
+    });
+  }
+  superellipsoid(b, {
+    at: [0, 0, 1.15],
+    radii: [0.13, 0.2, 0.33],
+    round: [0.75, 0.9],
+    segments: [10, 6],
+    part: () => PART.clothes,
+  });
+  superellipsoid(b, {
+    at: [0.01, 0, 1.6],
+    radii: [0.1, 0.09, 0.115],
+    round: [1, 1],
+    segments: [8, 6],
+    part: () => PART.skin,
+  });
+  return finish(b, 0.3, 0.2, 0.22);
 }
 
-/** A person, ~1.72 m: two legs (which swing), a torso, a head. Faces +x. */
-export function personModel(): ModelGeometry {
-  const b: Builder = { positions: [], normals: [], parts: [], indices: [] };
-  box(b, [-0.08, 0.08], [0.02, 0.15], [0, 0.86], { side: PART.legLeft });
-  box(b, [-0.08, 0.08], [-0.15, -0.02], [0, 0.86], { side: PART.legRight });
-  box(b, [-0.11, 0.11], [-0.2, 0.2], [0.84, 1.46], { side: PART.clothes }, { sides: 0.03 });
-  box(b, [-0.1, 0.1], [-0.09, 0.09], [1.48, 1.72], { side: PART.skin });
-  return finish(b, 0.3);
-}
+/** Every vehicle model, in the simulation's model order (`CAR_MODELS`). */
+export const VEHICLE_MODELS = { hatchback, sedan, taxi, van, bus } as const;
 
-/** The car models, by the simulation's model order (`CAR_MODELS`). */
-export const VEHICLE_MODELS = { car: carModel, van: vanModel, bus: busModel } as const;
+/**
+ * The contact shadow: one quad, `x, y` in `[−1, 1]`, scaled per model by its
+ * footprint and shaded as a soft radial blob in the shader.
+ */
+export function shadowQuad(): { positions: Float32Array; indices: Uint16Array } {
+  return {
+    positions: Float32Array.from([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]),
+    // Counter-clockwise seen from above, i.e. from outside.
+    indices: Uint16Array.from([0, 1, 2, 0, 2, 3]),
+  };
+}

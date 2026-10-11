@@ -83,13 +83,16 @@ export function idmAcceleration(v: number, v0: number, gap: number, leadV: numbe
 }
 
 /** The vehicle kinds the renderer draws, in slot order. */
-export const CAR_MODELS = ['car', 'van', 'bus'] as const;
+export const CAR_MODELS = ['hatchback', 'sedan', 'taxi', 'van', 'bus'] as const;
 export type CarModel = (typeof CAR_MODELS)[number];
 
 /** Share of the car budget per model, and their length range in metres. */
 export const CAR_MODEL_SPECS: Record<CarModel, { share: number; length: [number, number] }> = {
-  car: { share: 0.83, length: [3.9, 4.8] },
-  van: { share: 0.12, length: [5.0, 5.8] },
+  hatchback: { share: 0.4, length: [3.8, 4.2] },
+  sedan: { share: 0.37, length: [4.4, 4.9] },
+  // Only where a city's taxis wear a statutory livery (`liveries.ts`).
+  taxi: { share: 0.06, length: [4.5, 4.7] },
+  van: { share: 0.12, length: [5.0, 5.6] },
   bus: { share: 0.05, length: [11.0, 12.0] },
 };
 
@@ -159,26 +162,27 @@ export class Cars {
 }
 
 /**
- * Body colours: soft, desaturated maquette paints rather than a photograph's —
- * the city is a model, and the traffic says so too. Weighted towards the
- * whites, greys and silvers real fleets are mostly made of.
+ * Body colours: soft pastel maquette paints rather than a photograph's — the
+ * city is a model, and the traffic says so too. Weighted towards the whites,
+ * greys and silvers real fleets are mostly made of.
  */
 const PAINTS: readonly [number, number, number, number][] = [
-  [244, 243, 239, 5],
-  [226, 228, 230, 4],
-  [196, 200, 205, 4],
-  [150, 156, 164, 3],
-  [92, 98, 108, 2],
-  [168, 192, 214, 2],
-  [212, 168, 160, 1],
-  [178, 204, 186, 1],
-  [226, 210, 170, 1],
-  [196, 178, 214, 1],
+  [246, 244, 240, 4],
+  [222, 224, 228, 3],
+  [196, 201, 208, 3],
+  [128, 136, 148, 2],
+  [176, 200, 226, 2],
+  [184, 216, 198, 2],
+  [240, 200, 180, 2],
+  [240, 226, 176, 1],
+  [206, 192, 226, 1],
+  [232, 170, 160, 1],
+  [196, 210, 180, 1],
 ];
 const BUS_PAINTS: readonly [number, number, number][] = [
-  [232, 236, 240],
-  [204, 220, 236],
-  [236, 214, 204],
+  [236, 238, 242],
+  [196, 216, 236],
+  [236, 210, 198],
 ];
 
 export function pickPaint(rng: Rng, model: CarModel): [number, number, number] {

@@ -22,7 +22,7 @@ import {
   densityFactor,
   STEP_S,
 } from '../engine/cityLife/sim/simulation';
-import { IDM, idmAcceleration } from '../engine/cityLife/sim/traffic';
+import { holds, IDM, idmAcceleration, ROUTE_LENGTH } from '../engine/cityLife/sim/traffic';
 
 // ── Building tiles by hand ───────────────────────────────────────────────
 
@@ -462,12 +462,14 @@ describe('the traffic simulation', () => {
       (i) => sim.cars.alive[i] && sim.cars.v[i] > 1,
     );
     expect(moving.length).toBeGreaterThan(sim.stats.cars * 0.3);
-    // Every car stopped at the end of a lane is stopped BEFORE the line.
+    // Every car without the junction ahead reserved stays BEFORE the line.
     const network = sim.network as Network;
     for (let car = 0; car < sim.cars.capacity; car++) {
       if (!sim.cars.alive[car]) continue;
       const path = network.paths[sim.cars.path[car]];
-      if (path.kind === 'lane') {
+      // A car that holds the junction ahead may already nose into it.
+      const next = sim.cars.route[car * ROUTE_LENGTH + 1];
+      if (path.kind === 'lane' && !(next >= 0 && holds(sim.cars, car, next))) {
         expect(sim.cars.s[car] + sim.cars.length[car] / 2).toBeLessThanOrEqual(path.length + 0.01);
       }
     }
@@ -519,6 +521,24 @@ describe('the traffic simulation', () => {
     for (let i = 0; i < 400; i++) sim.step();
     expect(sim.stats.carTarget).toBeLessThan(before);
     expect(sim.stats.cars).toBeLessThanOrEqual(Math.ceil(sim.stats.carTarget * 1.05) + 2);
+  });
+
+  test('no taxis where the city has no taxi livery; taxis in its paint where it does', () => {
+    const plain = runSim(12, 200, { cars: 200, people: 0 });
+    const [from, to] = plain.cars.ranges.taxi;
+    for (let i = from; i < to; i++) expect(plain.cars.alive[i]).toBe(0);
+    const sim = new CitySimulation({ cars: 200, people: 0 }, 12);
+    sim.taxiLivery = { body: [40, 40, 44], doors: [238, 200, 70] };
+    sim.setNetwork(grid());
+    sim.setView(view);
+    for (let i = 0; i < 200; i++) sim.step();
+    let taxis = 0;
+    for (let i = from; i < to; i++) {
+      if (!sim.cars.alive[i]) continue;
+      taxis++;
+      expect(Array.from(sim.cars.style.subarray(i * 4, i * 4 + 3))).toEqual([40, 40, 44]);
+    }
+    expect(taxis).toBeGreaterThan(0);
   });
 
   test('deterministic: the same seed gives the same city, another seed another', () => {
