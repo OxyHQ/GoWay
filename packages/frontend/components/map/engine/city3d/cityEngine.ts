@@ -44,6 +44,13 @@ import { OSM_FRAGMENT_SHADER, OSM_VERTEX_SHADER } from './osmShaders';
 import type { CityTileFormat, MeshWorkerRequest, MeshWorkerResponse } from './protocol';
 import { CITY_FRAGMENT_SHADER, CITY_VERTEX_SHADER } from './shaders';
 import {
+  type GroundResult,
+  type GroundSampler,
+  type GroundStats,
+  type GroundTile,
+  TileGrounder,
+} from './terrainGround';
+import {
   centeredProjection,
   type LngLatBox,
   mercatorXFromLng,
@@ -51,6 +58,7 @@ import {
   type TileId,
   tileKey,
   tileModelMatrix,
+  tileSizeMetres,
   tilesForView,
   type ViewTile,
 } from './tileMath';
@@ -86,6 +94,8 @@ export interface CityEngineOptions {
   requestRepaint: () => void;
   /** Development statistics, called whenever they change. */
   onStats?: (stats: CityEngineStats) => void;
+  /** Development statistics for placing buildings on terrain (`terrainGround.ts`). */
+  onGroundStats?: (stats: GroundStats) => void;
   /**
    * `false`: draw no buildings (no worker, no tile requests) — the engine is
    * hosting coordinate-anchored models alone, over the style's own
@@ -130,7 +140,22 @@ export interface CityEngine {
   pickModel(point: { x: number; y: number }): string | null;
   /** Each drawn model's anchor on screen in the last frame (development checks). */
   modelAnchors(): ReturnType<ReturnType<typeof createModelLayer>['anchors']>;
+  /**
+   * The terrain the buildings stand on, as a sampler of the drawn ground, or
+   * `null` for none. Call again whenever the terrain changes (a DEM tile
+   * arrived); every tile is then re-grounded, a few per frame.
+   */
+  setGround(sample: GroundSampler | null): void;
   dispose(): void;
+}
+
+/** Tiles re-grounded per frame: each is a 1,089-sample grid plus a pass over its vertices. */
+const GROUND_TILES_PER_FRAME = 1;
+
+/** What a tile mesh keeps to be placed on terrain later. */
+interface GroundUserData extends GroundTile {
+  key: string;
+  bounds: { min: [number, number, number]; max: [number, number, number] };
 }
 
 /** The nearest tiles drawn. A z14 tile is ~1.8–2.4 km, so 6 covers any view the layer draws at. */
@@ -205,6 +230,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     uLightIntensity: { value: 0.5 },
     uLightColor: { value: new THREE.Vector3(1, 1, 1) },
     uOpacity: { value: 1 },
+    uGrounded: { value: 0 },
   };
 
   const material = new THREE.RawShaderMaterial({
@@ -229,9 +255,11 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
   // `null` entries are empty tiles (sea, fields): cached so they are not
   // fetched again on every revisit.
+  const grounder = new TileGrounder(() => performance.now(), options.onGroundStats);
   const cache = new TileCache<THREE.Mesh>(MAX_CACHED_BYTES, MAX_CACHED_TILES, (mesh) => {
     scene.remove(mesh);
     mesh.geometry.dispose();
+    grounder.forget((mesh.userData as GroundUserData).key);
   });
   const scheduler = new TileScheduler();
   const requests = new Map<number, TileId>();
@@ -321,6 +349,15 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         mesh.matrixAutoUpdate = false;
         mesh.matrixWorldAutoUpdate = false;
         mesh.visible = false;
+        mesh.userData = {
+          key,
+          tile,
+          tileSizeM: tileSizeMetres(tile),
+          positions: reply.mesh.positions,
+          polygonStarts: reply.mesh.polygonStarts,
+          polygonBoxes: reply.mesh.polygonBoxes,
+          bounds: reply.mesh.bounds,
+        } satisfies GroundUserData;
         scene.add(mesh);
         let bytes = 0;
         for (const value of Object.values(reply.mesh)) {
@@ -367,6 +404,40 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     if (plan.cancel.length > 0 || plan.request.length > 0) reportStats();
   };
 
+  /** Culling bounds: the mesh's own, lifted by its ground (or not, without terrain). */
+  const setBounds = (mesh: THREE.Mesh, ground: GroundResult | null) => {
+    const { bounds } = mesh.userData as GroundUserData;
+    const geometry = mesh.geometry;
+    geometry.boundingBox?.min.set(bounds.min[0], bounds.min[1], bounds.min[2] + (ground?.min ?? 0));
+    geometry.boundingBox?.max.set(bounds.max[0], bounds.max[1], bounds.max[2] + (ground?.max ?? 0));
+    if (geometry.boundingBox && geometry.boundingSphere) {
+      geometry.boundingBox.getBoundingSphere(geometry.boundingSphere);
+    }
+  };
+
+  /** Re-ground stale wanted tiles, nearest first, a few per frame. */
+  const groundWanted = () => {
+    let budget = GROUND_TILES_PER_FRAME;
+    for (const tile of wantedTiles) {
+      const key = tileKey(tile);
+      const mesh = cache.get(key);
+      if (!mesh || grounder.isCurrent(key)) continue;
+      if (budget-- <= 0) {
+        options.requestRepaint();
+        return;
+      }
+      const result = grounder.ground(key, mesh.userData as GroundUserData);
+      if (!result) continue;
+      const attribute = mesh.geometry.getAttribute('ground');
+      if (attribute && attribute.array === result.values) {
+        if (result.changed) attribute.needsUpdate = true;
+      } else {
+        mesh.geometry.setAttribute('ground', new THREE.BufferAttribute(result.values, 1));
+      }
+      setBounds(mesh, result);
+    }
+  };
+
   const engine: CityEngine = {
     render(view) {
       if (disposed || !buildings) return;
@@ -382,13 +453,18 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       camera.projectionMatrix.fromArray(centeredProjection(view.mercatorToClip, center));
       camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
 
+      const grounded = grounder.active;
+      if (grounded) groundWanted();
+
       for (const mesh of cache.values()) mesh.visible = false;
       for (const tile of wantedTiles) {
         const key = tileKey(tile);
         cache.touch(key, frame);
         const mesh = cache.get(key);
         if (!mesh) continue;
-        mesh.visible = true;
+        // On terrain, a tile never grounded would be drawn at sea level —
+        // inside the hill — so it waits a frame for its lift.
+        mesh.visible = !grounded || grounder.hasGround(key);
         // In the world copy the camera sees it in (`wrap`, antimeridian).
         mesh.matrixWorld.fromArray(tileModelMatrix(tile, center));
       }
@@ -411,6 +487,17 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       uniforms.uLightIntensity.value = light.intensity;
       uniforms.uLightColor.value.set(...light.color);
       models.setLight(light);
+      options.requestRepaint();
+    },
+
+    setGround(sample) {
+      grounder.setSampler(sample);
+      uniforms.uGrounded.value = sample ? 1 : 0;
+      // Culling bounds follow: without terrain every mesh is back at `z = 0`;
+      // with it, each keeps its last lift until re-grounded.
+      for (const mesh of cache.values()) {
+        setBounds(mesh, sample ? grounder.resultFor((mesh.userData as GroundUserData).key) : null);
+      }
       options.requestRepaint();
     },
 
@@ -447,6 +534,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       for (const timer of retryTimers) clearTimeout(timer);
       retryTimers.clear();
       cache.clear();
+      grounder.clear();
       requests.clear();
       material.dispose();
       // `dispose()` frees three's own bookkeeping. NOT `forceContextLoss()`,

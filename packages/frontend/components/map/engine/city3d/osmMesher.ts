@@ -94,6 +94,8 @@ class Builder {
   indices = new Uint32Array(6 * 8192);
   vertexCount = 0;
   indexCount = 0;
+  private readonly unitStarts: number[] = [];
+  private readonly unitBoxes: number[] = [];
   readonly min: [number, number, number] = [Infinity, Infinity, Infinity];
   readonly max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
 
@@ -165,6 +167,16 @@ class Builder {
     this.triangle(b0, t1, t0);
   }
 
+  /**
+   * Record one building's vertices, from `start` to here, as one unit placed on
+   * terrain (`terrainGround.ts`), with its footprint's box in local metres.
+   */
+  building(start: number, box: readonly [number, number, number, number]): void {
+    if (this.vertexCount <= start) return;
+    this.unitStarts.push(start);
+    this.unitBoxes.push(...box);
+  }
+
   finish(polygons: number): OsmTileMesh | null {
     if (this.indexCount === 0) return null;
     return {
@@ -176,6 +188,8 @@ class Builder {
       indices: this.indices.slice(0, this.indexCount),
       bounds: { min: [...this.min], max: [...this.max] },
       polygons,
+      polygonStarts: Uint32Array.from(this.unitStarts),
+      polygonBoxes: Float32Array.from(this.unitBoxes),
     };
   }
 }
@@ -610,6 +624,28 @@ function meshOsmBuilding(
   return drawn;
 }
 
+/** A building's box in local metres (ENU, y north): `minX, minY, maxX, maxY`. */
+function footprintBox(
+  rings: OsmBuilding['rings'],
+  scale: number,
+): [number, number, number, number] {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const ring of rings) {
+    for (const [x, y] of ring) {
+      const east = x * scale;
+      const north = -y * scale;
+      if (east < minX) minX = east;
+      if (north < minY) minY = north;
+      if (east > maxX) maxX = east;
+      if (north > maxY) maxY = north;
+    }
+  }
+  return [minX, minY, maxX, maxY];
+}
+
 /** Mesh every building of one city tile. `null` when nothing draws. */
 export function meshOsmBuildings(
   buildings: readonly OsmBuilding[],
@@ -623,7 +659,11 @@ export function meshOsmBuildings(
     partyWalls.add(building, i);
   });
   buildings.forEach((building, i) => {
+    const start = builder.vertexCount;
     polygons += meshOsmBuilding(builder, building, scale, i, partyWalls);
+    // A whole building (all its polygons) stands on ONE ground, so a
+    // multipolygon's pieces stay level with each other on a slope.
+    builder.building(start, footprintBox(building.rings, scale));
   });
   return builder.finish(polygons);
 }

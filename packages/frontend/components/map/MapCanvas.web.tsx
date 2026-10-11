@@ -54,6 +54,7 @@ import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
 import { MAP_CITY3D_ENABLED } from '@/lib/config';
 import { isCity3dRequested } from '@/lib/map/city3dFlag';
+import { isReliefId, mapStyleLoading } from '@/lib/map/reliefFlag';
 import {
   overlayLayerId,
   overlaySourceId,
@@ -76,6 +77,8 @@ import {
 import { MapAttribution } from './MapAttribution';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
+import { MAP_RELIEF } from './reliefFlags';
+import type { ReliefHandle } from './reliefLayer.web';
 import {
   drawableModels,
   MODEL_MARKER_PREFIX,
@@ -140,6 +143,18 @@ const CITY3D = isCity3dRequested({
   development: __DEV__,
   search: typeof window !== 'undefined' ? window.location.search : '',
 });
+
+/**
+ * The relief prototype's chunk (globe, sky, hillshade, terrain), requested at
+ * module evaluation when this page asked for either — long before any style
+ * document arrives, so the globe is in place before the first frame rather
+ * than replacing a flat one. `null`, and never requested, with both flags off.
+ * See `lib/map/reliefFlag.ts` and `docs/MAP_TERRAIN_GLOBE.md`.
+ */
+const RELIEF_CHUNK = MAP_RELIEF.globe || MAP_RELIEF.terrain ? import('./reliefLayer.web') : null;
+// Handled where it is used; this only keeps a failed download from also
+// surfacing as an unhandled rejection before any map exists.
+RELIEF_CHUNK?.catch(() => {});
 
 const DEGENERATE_FIT_ZOOM = 15;
 const DEFAULT_FIT_PADDING = 48;
@@ -314,11 +329,16 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       );
     }
 
+    // With the globe flag on, the style goes in through `setStyle` with the
+    // globe projection folded into the document, so the first frame is
+    // already a globe; off, this is the constructor it always was.
+    const styleLoading = mapStyleLoading(styleUrl, MAP_RELIEF.globe);
+    if (styleLoading.background !== null) container.style.background = styleLoading.background;
     let map: maplibregl.Map;
     try {
       map = new maplibregl.Map({
         container,
-        style: styleUrl,
+        ...styleLoading.construct,
         center: toLngLat(start),
         zoom: asFinite(start.zoom) ?? DEFAULT_VIEWPORT.zoom,
         bearing: asFinite(start.bearing) ?? 0,
@@ -329,12 +349,31 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         // satisfied and is not.
         attributionControl: false,
       });
+      if (styleLoading.deferred) {
+        map.setStyle(styleLoading.deferred.url, {
+          transformStyle: styleLoading.deferred.transformStyle,
+        });
+      }
     } catch (cause) {
       emitError({ reason: 'runtime', message: String(cause) });
       return;
     }
 
     mapRef.current = map;
+
+    // Relief (globe, sky, hillshade, terrain), off unless asked for. Attached
+    // per map, before its style loads; `resolvedAppearance` is read here
+    // because a change of it is a change of `styleUrl`, which rebuilds the map.
+    let relief: ReliefHandle | null = null;
+    let reliefCancelled = false;
+    RELIEF_CHUNK?.then(({ attachRelief }) => {
+      if (!reliefCancelled) {
+        relief = attachRelief(map, { flags: MAP_RELIEF, appearance: resolvedAppearance });
+      }
+    }).catch((cause: unknown) => {
+      reportMapDefect('relief:load', `relief: not attached (${String(cause)}); flat map kept.`);
+    });
+
     // Captured for the cleanup below: the ref's identity is stable for the
     // component's life, but ESLint cannot know that, and copying it is free.
     const slotRegistry = markerSlots.current;
@@ -557,6 +596,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     };
 
     const handleError = (event: maplibregl.ErrorEvent & { sourceId?: string }) => {
+      // Elevation tiles are decoration: a failed one leaves flat ground, which
+      // is still a map, and the relief layer reports it itself.
+      if (isReliefId(event.sourceId)) return;
       // A source id means a tile/source request failed; without one the style
       // document itself did not load. Both are product failures, and the user
       // gets a different sentence for each.
@@ -606,6 +648,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       userMarkerRef.current?.remove();
       userMarkerRef.current = null;
       setReady(false);
+      reliefCancelled = true;
+      relief?.detach();
       map.remove();
       mapRef.current = null;
     };

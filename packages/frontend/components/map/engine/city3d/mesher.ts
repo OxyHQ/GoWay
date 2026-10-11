@@ -122,6 +122,14 @@ export interface TileMesh {
   bounds: { min: [number, number, number]; max: [number, number, number] };
   /** How many polygons (after splitting multipolygons) produced geometry. */
   polygons: number;
+  /**
+   * The first vertex of each unit placed on terrain (`terrainGround.ts`) —
+   * here each polygon, in `osmMesher.ts` each building; a unit's vertices are
+   * contiguous and run to the next one's start.
+   */
+  polygonStarts: Uint32Array;
+  /** Each unit's footprint box in local metres: `minX, minY, maxX, maxY`. */
+  polygonBoxes: Float32Array;
 }
 
 // ---------------------------------------------------------------------------
@@ -416,6 +424,8 @@ class MeshBuilder {
   private indices = new Uint32Array(6 * 4096);
   private vertexCount = 0;
   private indexCount = 0;
+  private readonly polygonStarts: number[] = [];
+  private readonly polygonBoxes: number[] = [];
   readonly min: [number, number, number] = [Infinity, Infinity, Infinity];
   readonly max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
 
@@ -467,6 +477,27 @@ class MeshBuilder {
     this.triangle(b0, t1, t0);
   }
 
+  /** Vertices emitted so far: where the next polygon starts. */
+  get vertices(): number {
+    return this.vertexCount;
+  }
+
+  /** Record a polygon that drew, from its first vertex, with its footprint's box. */
+  polygon(start: number, footprint: readonly Point2[]): void {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const [x, y] of footprint) {
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+    this.polygonStarts.push(start);
+    this.polygonBoxes.push(minX, minY, maxX, maxY);
+  }
+
   finish(polygons: number): TileMesh | null {
     if (this.indexCount === 0) return null;
     return {
@@ -476,6 +507,8 @@ class MeshBuilder {
       indices: this.indices.slice(0, this.indexCount),
       bounds: { min: [...this.min], max: [...this.max] },
       polygons,
+      polygonStarts: Uint32Array.from(this.polygonStarts),
+      polygonBoxes: Float32Array.from(this.polygonBoxes),
     };
   }
 }
@@ -621,7 +654,11 @@ export function meshBuildings(
     const rawHeight = finite(feature.properties.render_height) ?? 0;
     const tone = Math.round(Math.max(0, Math.min(MESH.toneMaxM, rawHeight)));
     for (const polygon of polygonsOf(feature.rings, options)) {
-      if (meshPolygon(builder, polygon, span.base, span.top, tone)) polygons++;
+      const start = builder.vertices;
+      if (meshPolygon(builder, polygon, span.base, span.top, tone)) {
+        polygons++;
+        builder.polygon(start, polygon[0].points);
+      }
     }
   }
   return builder.finish(polygons);

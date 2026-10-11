@@ -33,6 +33,7 @@ import {
   Layer,
   Map as MapLibreMap,
   Marker,
+  RasterDEMSource,
   UserLocation,
   type CameraRef,
   type MapRef,
@@ -43,7 +44,18 @@ import * as Location from 'expo-location';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
-import { resolveMapAnchors, resolveMapStyleUrl } from '@/lib/map/provider';
+import {
+  resolveMapAnchors,
+  resolveMapStyleUrl,
+  resolveOwnsStyleDocument,
+  resolveTerrainTileUrl,
+} from '@/lib/map/provider';
+import {
+  HILLSHADE_BEFORE_LAYER_ID,
+  hillshadeLayer,
+  RELIEF_DEM,
+  RELIEF_SOURCE_IDS,
+} from '@/lib/map/style/relief';
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
 import { LABEL_LAYER_IDS, TAP_LAYER_IDS } from '@/lib/map/tapLayers';
 
@@ -60,6 +72,7 @@ import { MapAttribution } from './MapAttribution';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
 import { drawableModels, modelFallbackMarker, modelIdOfMarker } from './models';
+import { MAP_RELIEF } from './reliefFlags';
 import {
   asFinite,
   describeNumbers,
@@ -164,6 +177,14 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // `undefined` when the loaded style makes no anchor promise; `<Layer>`
   // then appends on top, which is what native did before GoWay owned a style.
   const overlayAnchor = useMemo(() => resolveMapAnchors().beforeLabels, []);
+  // The relief prototype's hillshade, under `water` — only on GoWay's own style,
+  // which promises that layer (`docs/MAP_TERRAIN_GLOBE.md`). The rest of the
+  // relief (globe, 3D terrain, sky) has no API in maplibre-react-native 11.4.
+  const hillshade = useMemo(
+    () =>
+      MAP_RELIEF.terrain && resolveOwnsStyleDocument() ? hillshadeLayer(resolvedAppearance) : null,
+    [resolvedAppearance],
+  );
   const gestures = resolveInteraction(interaction);
 
   // The buildings' light, aimed from the sun over the viewport centre — the
@@ -574,6 +595,19 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         />
 
         {showUserLocation && locationGranted ? <UserLocation animated /> : null}
+
+        {hillshade ? (
+          <RasterDEMSource
+            id={RELIEF_SOURCE_IDS.hillshade}
+            tiles={[resolveTerrainTileUrl()]}
+            encoding={RELIEF_DEM.encoding}
+            tileSize={RELIEF_DEM.tileSize}
+            minzoom={RELIEF_DEM.minzoom}
+            maxzoom={RELIEF_DEM.maxzoom}
+          >
+            <Layer {...hillshade} beforeId={HILLSHADE_BEFORE_LAYER_ID} />
+          </RasterDEMSource>
+        ) : null}
 
         {/*
           Overlays sit UNDER the labels, so a route line never covers a street

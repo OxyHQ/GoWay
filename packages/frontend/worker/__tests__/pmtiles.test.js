@@ -42,7 +42,7 @@ import {
   zxyToTileId,
 } from '../pmtiles.js';
 import * as workerModule from '../index.js';
-import { serveTile } from '../index.js';
+import { serveTerrain, serveTile } from '../index.js';
 
 /**
  * The zoom `worker/index.js` stops at, copied rather than imported.
@@ -492,5 +492,37 @@ describe('the rollback path', () => {
     const response = await serveTile(new URL(request.url), request, {}, ctx);
     expect(response.status).toBe(503);
     expect(await response.text()).toMatch(/MAP_TILES/);
+  });
+});
+
+describe('serving an elevation tile from R2', () => {
+  const env = (archive) => ({
+    MAP_TILES: bucketOver(archive),
+    MAP_TERRAIN_ARCHIVE: 'terrain/test.pmtiles',
+    // Present, and must NOT be used while the archive is configured.
+    MAP_TERRAIN_UPSTREAM: 'https://upstream.example/{z}/{x}/{y}.webp',
+  });
+  const terrainRequest = (z, x, y) =>
+    new Request(`https://goway.to/map/terrain/${z}/${x}/${y}.webp`);
+
+  test('answers from the archive as WebP, never asking the upstream', async () => {
+    globalThis.fetch = () => {
+      throw new Error('the upstream must not be asked');
+    };
+    const e = env(buildArchive(new Map([['12/2069/1525', TILE_BODY]])));
+    const request = terrainRequest(12, 2069, 1525);
+    const response = await serveTerrain(new URL(request.url), request, e, ctx);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/webp');
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('cache-control')).toBe('public, max-age=604800');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(TILE_BODY);
+  });
+
+  test('a tile the archive does not hold is a 404: flat ground, not an error', async () => {
+    const e = env(buildArchive(new Map([['12/2069/1525', TILE_BODY]])));
+    const request = terrainRequest(12, 2070, 1525);
+    const response = await serveTerrain(new URL(request.url), request, e, ctx);
+    expect(response.status).toBe(404);
   });
 });
