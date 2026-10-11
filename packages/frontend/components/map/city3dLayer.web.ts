@@ -58,6 +58,7 @@ import {
   type CityCoverageBox,
   parseCityCoverage,
 } from '@/lib/map/cityTiles';
+import { CITY_LOD2_SOURCES } from '@/lib/map/cityOfficial';
 import { CITY_ROAD_TILE_PATH } from '@/lib/map/cityRoads';
 import type { PreparedLandmark } from '@/lib/map/landmarks/load';
 import { nightFactor } from '@/lib/map/landmarks/night';
@@ -276,6 +277,23 @@ export interface AttachCity3dOptions {
     /** Told the sun over the map centre whenever it moves by a whole degree. */
     onSun?: (sun: CitySun) => void;
   };
+  /**
+   * The data credits the layer owes while it draws — one per official 3D
+   * dataset whose surfaces are on screen (`CITY_LOD2_SOURCES`), `[]` when
+   * none is. `MapCanvas` adds them to its credit line.
+   */
+  onCredits?: (links: readonly MapAttributionLink[]) => void;
+}
+
+/** Source ids → their credit links, unknown ids dropped. Exported for the tests. */
+export function creditsFor(sources: readonly string[]): MapAttributionLink[] {
+  const links: MapAttributionLink[] = [];
+  for (const id of sources) {
+    if (!Object.hasOwn(CITY_LOD2_SOURCES, id)) continue;
+    const { label, href } = CITY_LOD2_SOURCES[id as keyof typeof CITY_LOD2_SOURCES];
+    links.push({ label, href });
+  }
+  return links;
 }
 
 export interface City3dHandle {
@@ -499,6 +517,9 @@ export async function attachCity3d(
       onGroundStats: __DEV__ ? publishGroundStats : undefined,
       buildings,
       onModelStatus: options.onModelStatus,
+      onSources: options.onCredits
+        ? (sources) => options.onCredits?.(creditsFor(sources))
+        : undefined,
       overlays,
       onLandmarkStatus,
       sky: sky ? { appearance: options.appearance } : undefined,

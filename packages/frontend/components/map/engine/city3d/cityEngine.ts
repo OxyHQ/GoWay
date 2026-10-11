@@ -152,6 +152,12 @@ export interface CityEngineOptions {
   buildings?: boolean;
   /** A model became drawn, or fell back to its marker (`models.ts`). */
   onModelStatus?: (id: string, status: ModelStatus) => void;
+  /**
+   * The official 3D datasets (`CITY_LOD2_SOURCES` ids) whose surfaces are
+   * DRAWN — in a visible tile, past the zoom fade — called whenever that set
+   * changes, so the map credits a source exactly while it is shown.
+   */
+  onSources?: (sources: readonly string[]) => void;
   /** Drawn in the same scene, camera, light and ground (`overlay.ts`): the city-life simulation. */
   overlays?: CityOverlay[];
   /** A landmark model became drawn (its buildings hidden), or stopped being. */
@@ -449,6 +455,15 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   let lastMeshMs = 0;
   let lastTreeMs = 0;
   let errors = 0;
+  // Which official datasets each tile entry draws, and the set last reported.
+  const entrySources = new WeakMap<object, readonly string[]>();
+  let drawnSources = '';
+  const reportSources = (sources: ReadonlySet<string>) => {
+    const key = [...sources].sort().join(',');
+    if (key === drawnSources) return;
+    drawnSources = key;
+    options.onSources?.(key ? key.split(',') : []);
+  };
   let frameCpuMs = 0;
   let lastFrameAt = 0;
   let lastStatsAt = 0;
@@ -681,6 +696,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         next.reply.trees,
         next.format,
       );
+      if (entry && next.reply.sources) entrySources.set(entry, next.reply.sources);
       remember(next.key.slice(0, next.key.indexOf('@')), next.lod, entry);
       if (next.reply.treesComplete === false) {
         const attempts = (incomplete.get(next.key)?.attempts ?? 0) + 1;
@@ -824,6 +840,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     active: boolean;
     skyView: CitySkyView;
     casters: string;
+    /** Official datasets whose surfaces this frame draws (`onSources`). */
+    sources: ReadonlySet<string>;
   }
   let prepared: PreparedFrame | null = null;
 
@@ -886,6 +904,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     for (const entry of cache.values()) setEntryVisible(entry, false);
     drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
     const casting: DrawnTile[] = [];
+    const sources = new Set<string>();
     if (opacity > 0) {
       // Nearest first, so the tree budget spends itself on the near tiles.
       const rank = new Map<string, number>();
@@ -898,6 +917,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         placeEntry(entry, entry.placement, center);
         setEntryFade(entry, from, to);
         setEntryVisible(entry, true);
+        for (const source of entrySources.get(entry) ?? []) sources.add(source);
         casting.push({
           key: entry.key,
           wrap: entry.placement.wrap ?? 0,
@@ -927,7 +947,14 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       // On 3D terrain the drawn ground is not at sea level (`terrainFor`).
       groundM: grounded ? (terrainFor(view)?.centreM ?? 0) : 0,
     };
-    return { started, opacity, active, skyView, casters: castersKey(casting, groundEpoch) };
+    return {
+      started,
+      opacity,
+      active,
+      skyView,
+      casters: castersKey(casting, groundEpoch),
+      sources,
+    };
   };
 
   const engine: CityEngine = {
@@ -963,6 +990,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
           });
         }
       }
+      reportSources(frameOf.sources);
       if (frameOf.active) options.requestRepaint();
 
       const cpu = performance.now() - frameOf.started;
@@ -1077,6 +1105,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     dispose() {
       if (disposed) return;
       disposed = true;
+      reportSources(new Set());
       pool.terminate();
       models.dispose();
       for (const overlay of overlays) overlay.dispose();
