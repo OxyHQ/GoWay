@@ -125,9 +125,10 @@ describe('the three.js chunk', () => {
       .filter((f) => f.path !== CHUNK)
       .filter(
         (f) =>
-          runtimeImports(f.text, /(sparkEngine|city3d\/cityEngine|cityLife\/lifeRenderer|live3d\/livePass)$/,
-          )
-            .length > 0,
+          runtimeImports(
+            f.text,
+            /(sparkEngine|city3d\/cityEngine|cityLife\/lifeRenderer|live3d\/livePass)$/,
+          ).length > 0,
       )
       .map((f) => f.path);
     expect(offenders).toEqual([]);
