@@ -47,6 +47,11 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   Studio (off by default): the chase camera, centripetal path smoothing,
   per-gesture undo/redo, the versioned tour link, video export with the mark
   and the credit composited, and the flyover's vehicle as phase 1 of 3D models.
+- [`MAP_PERFORMANCE.md`](MAP_PERFORMANCE.md) — the map's performance
+  contract: laptop and phone budgets, the quality profile every layer reads
+  (Low/Medium/High, Settings → Performance), GPU tier detection, dynamic
+  resolution, the one animation clock (render on demand, idle pause), the perf
+  HUD (`?perf=1`), the benchmark, the hotspots fixed and the CI frame-budget gate.
 - [`MAP_FEATURES.md`](MAP_FEATURES.md) — the map-feature registry, the
   in-app settings modal (map, Labs layers, general, About with every credit)
   and the OSMF-compact data credit: how each optional feature's on/off is decided (kill

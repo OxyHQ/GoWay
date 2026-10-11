@@ -240,17 +240,23 @@ a loaded 32-core machine and vary ±30% run to run; the sizes are exact.
 
 | Budget | Value | Where | Measured against it |
 | --- | --- | --- | --- |
-| Building vertices drawn per frame | 8 M | `DRAW_BUDGET` (`cityEngine.ts`) | Barcelona at 80°: ≤ 7.3 M (19 tiles) |
-| GPU bytes drawn per frame | 128 MiB | `DRAW_BUDGET` | Barcelona at 80°: 107 MiB; at 60°: 69 MiB (was 130) |
-| GPU bytes cached (drawn + slack + fallbacks) | 192 MiB, 160 entries | `MAX_CACHED_BYTES`, `MAX_CACHED_TILES` | LRU, wanted and fading entries spared |
-| Tiles drawn | ≤ 48, ≤ 6 at full detail | `LOD_POLICY` | |
-| Upload per frame | 12 MiB (1 mesh after a > 50 ms frame) | `UPLOAD_BYTES_PER_FRAME` | |
-| Requests in flight | 2 per worker, ≤ 3 workers | `MAX_IN_FLIGHT_PER_WORKER`, `poolSize` | |
+| Building vertices drawn per frame | 8 M | the quality profile's `city.drawVertices` | Barcelona at 80°: ≤ 7.3 M (19 tiles) |
+| GPU bytes drawn per frame | 128 MiB | `city.drawBytes` | Barcelona at 80°: 107 MiB; at 60°: 69 MiB (was 130) |
+| GPU bytes cached (drawn + slack + fallbacks) | 192 MiB, 160 entries | `city.cacheBytes`, `MAX_CACHED_TILES` | LRU, wanted and fading entries spared |
+| Tiles drawn | ≤ 48, ≤ 6 at full detail | `city.maxTiles`, `city.maxFullTiles` (`LOD_POLICY` holds the rest) | |
+| Upload per frame | 12 MiB (1 mesh after a > 50 ms frame) | `city.uploadBytesPerFrame` | |
+| Requests in flight | 2 per worker, ≤ 3 workers | `MAX_IN_FLIGHT_PER_WORKER`, `city.maxWorkers` | |
 | Worker time per tile | level 0 ≤ 200 ms, levels 1–2 ≤ 60 ms, trees ≤ 50 ms (Bun, dense tiles) | — | table above |
-| Trees | ≤ 24,000 per tile, ≤ 40,000 drawn per frame (nearest tiles first); ≤ 98 triangles near, ≤ 30 far; shorter than `treeMinHeightM(zoom)` not drawn | `TREES.maxPerTile`, `TREE_BUDGET`, `treeGeometry.ts`, `tsl/treeMaterial.ts` | Central Park: 18,233 trees, 1.28 M triangles; Barcelona at 80°: 20,523 |
+| Trees | ≤ 24,000 per tile, ≤ 40,000 drawn per frame (nearest tiles first); ≤ 98 triangles near, ≤ 30 far (far past the full-detail distance, even on a level-0 tile); shorter than `treeMinHeightM(zoom)` not drawn | `TREES.maxPerTile`, `city.treeBudget`, `treeGeometry.ts`, `tsl/treeMaterial.ts` | Central Park: 18,233 trees, 1.28 M triangles; Barcelona at 80°: 20,523 |
 | Main-thread time in `render()` | ≤ 2 ms steady (selection, scheduling, three's draw calls) | `frameCpuMs` dev stat | 1.0–1.3 ms steady in Barcelona at 60° and 80°; frames that upload new meshes cost more, which is what the upload budget bounds |
 
-When the drawn set would exceed `DRAW_BUDGET`, `fitBudget` coarsens it from
+**These are the HIGH preset's numbers** ([`MAP_PERFORMANCE.md`](./MAP_PERFORMANCE.md)). Every budget in this table is the
+map's quality profile's (`lib/map/quality/profile.ts`, read through
+`engine/quality.ts`); the medium (integrated laptop) and low (phone) presets
+draw less, and `docs/MAP_PERFORMANCE.md` has all three, the device budgets
+they come from, and the CI gate that holds them.
+
+When the drawn set would exceed the draw budget, `fitBudget` coarsens it from
 the FARTHEST tile inward — down to level 2, then the next farthest — and only
 when every tile is at level 2 drops the farthest; the street in front of the
 camera is the last thing to lose detail. A tile not yet loaded is costed from
@@ -1109,11 +1115,11 @@ below.)
 
 | Pass | When | What |
 | --- | --- | --- |
-| Shadow map | MapLibre's `prerender` (offscreen pass, before its framebuffer is bound) | The visible buildings' depth from the sun, 2048² (`sky.ts`). **Only when stale**: the sun moved (0.1°), the snapped receiver box moved, or the drawn tile set changed |
+| Shadow map | MapLibre's `prerender` (offscreen pass, before its framebuffer is bound) | The visible buildings' depth from the sun, 2048² at the high preset, 1024² at medium, none at low (`sky.ts`, `MAP_PERFORMANCE.md`). **Only when stale**: the sun moved (0.1°), the snapped receiver box moved, or the SET of drawn tiles that can cast into the box changed — and that last at most every 250 ms while the camera moves (`SHADOW_CASTER_REDRAW_MS`; an orbit used to redraw it on most frames) |
 | `FILL` | `render`, before the buildings | Only where MapLibre drew nothing (blend `src·(1−dst α)`: past its far plane the canvas is transparent): the horizon haze |
 | `MULTIPLY` | 〃 | The basemap × ground light (sun × shadow + sky, `^1/2.2`) × haze transmittance; 0 above the horizon |
 | `ADD` | 〃 | Haze in-scatter below the horizon; the sky and the sun's disc above it |
-| Buildings | 〃 | Same light, the shadow map (12-tap rotated Poisson PCF, 3 texels), same haze |
+| Buildings | 〃 | Same light, the shadow map (rotated Poisson PCF over 3 texels: 12 taps at the high quality preset, 8 at medium, none at low — `MAP_PERFORMANCE.md`), same haze |
 
 Blending is the one thing a layer can do to pixels it did not draw, so the
 basemap — roads, water, land, the flat footprints — gets the same light, the

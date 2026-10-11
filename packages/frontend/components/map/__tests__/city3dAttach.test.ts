@@ -13,6 +13,14 @@ import { describe, expect, test } from 'bun:test';
 
 import { attachCity3d, CITY3D_LAYER_ID, MODELS_LAYER_ID } from '@/components/map/city3dLayer.web';
 import { BUILDING_3D_LAYER_ID, BUILDINGS_LIGHT } from '@/lib/map/style/buildings3d';
+import { createAnimationClock } from '@/components/map/perf/animationClock';
+import { QUALITY_PRESETS } from '@/lib/map/quality/profile';
+
+/** What every attach needs beyond the test's own options: a profile and the clock. */
+const ENGINE = {
+  quality: { ...QUALITY_PRESETS.high, reason: 'test' },
+  clock: createAnimationClock({ hz: 30, idleMs: 0, requestFrame: () => {} }),
+};
 
 type Call = [string, ...unknown[]];
 
@@ -65,7 +73,7 @@ const asMap = (map: ReturnType<typeof fakeMap>) =>
 describe('attachCity3d', () => {
   test('declines on a style without building-3d, and touches nothing', async () => {
     const map = fakeMap(['background', 'building', 'label-road', 'label-place']);
-    const handle = await attachCity3d(asMap(map), { appearance: 'light', light: null });
+    const handle = await attachCity3d(asMap(map), { ...ENGINE, appearance: 'light', light: null });
     expect(handle).toBeNull();
     expect(map.calls).toEqual([]);
     expect(map.order).toEqual(['background', 'building', 'label-road', 'label-place']);
@@ -73,7 +81,7 @@ describe('attachCity3d', () => {
 
   test('on GoWay’s style: directly before building-3d, below the labels, and reversible', async () => {
     const map = fakeMap(['background', 'building', BUILDING_3D_LAYER_ID, 'label-road']);
-    const handle = await attachCity3d(asMap(map), { appearance: 'light', light: null });
+    const handle = await attachCity3d(asMap(map), { ...ENGINE, appearance: 'light', light: null });
     expect(handle).not.toBeNull();
     expect(map.order).toEqual([
       'background',
@@ -92,6 +100,7 @@ describe('attachCity3d', () => {
   test('models (SDK_MAP_MODELS phase 1): their own layer, above the overlays and below the labels', async () => {
     const map = fakeMap(['background', 'building', BUILDING_3D_LAYER_ID, 'overlay', 'label-road']);
     const handle = await attachCity3d(asMap(map), {
+      ...ENGINE,
       appearance: 'light',
       light: null,
       buildings: false,
@@ -144,7 +153,7 @@ describe('attachCity3d', () => {
 
   test('without the sky: no offscreen pass, and the pitch ceiling is left alone', async () => {
     const map = fakeMap(['background', 'building', BUILDING_3D_LAYER_ID, 'label-road']);
-    const handle = await attachCity3d(asMap(map), { appearance: 'light', light: null });
+    const handle = await attachCity3d(asMap(map), { ...ENGINE, appearance: 'light', light: null });
     expect(map.added.get(CITY3D_LAYER_ID)?.prerender).toBeUndefined();
     expect(map.calls.some(([name]) => name === 'setMaxPitch')).toBe(false);
     handle?.detach();
@@ -155,6 +164,7 @@ describe('attachCity3d', () => {
     // set it too was overridden by the next `interaction` change (review of #125).
     const map = fakeMap(['background', 'building', BUILDING_3D_LAYER_ID, 'label-road']);
     const handle = await attachCity3d(asMap(map), {
+      ...ENGINE,
       appearance: 'light',
       light: null,
       sky: { at: null },

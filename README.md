@@ -217,6 +217,7 @@ The frontend uses the same Oxy application foundation as the rest of the ecosyst
 ## Core platform
 
 - **Maps** — MapLibre rendering over **GoWay's own vector tiles**: Planetiler builds one PMTiles archive from an OpenStreetMap extract, it lives in Cloudflare R2, and the Cloudflare Worker reads byte ranges out of it. No tile server, and no third-party tile origin. See `packages/frontend/README.md` → "The tiles".
+- **Map performance** — every 3D layer reads one quality profile (Low/Medium/High, chosen per device or in Settings → Performance), animates through one clock that pauses when the map is idle, and is held to frame budgets by a CI gate; `?perf=1` shows the HUD and `bun run --cwd packages/frontend bench:map` measures. See `docs/MAP_PERFORMANCE.md`.
 - **Places** — a first-class GoWay Places schema backed by PostgreSQL + PostGIS, with stable place IDs, source provenance, business relationships and extensible capabilities such as FairCoin acceptance.
 - **Search** — provider-neutral place/address search, geocoding and reverse geocoding.
 - **Routing** — provider-neutral directions and route geometry.

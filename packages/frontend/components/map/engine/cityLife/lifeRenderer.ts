@@ -19,22 +19,26 @@
  * ## Repaint
  *
  * MapLibre draws only when something asks. While agents are on screen this
- * asks for a frame at most every {@link FRAME_MS} (30 fps): the whole map is
- * redrawn each time, so this is the feature's real cost, and halving the rate
- * halves it. With the tab hidden the browser stops animation frames, and the
- * worker is paused too.
+ * animates through the map's ONE animation clock (`perf/animationClock.ts`):
+ * the whole map is redrawn on each of its ticks — at the quality profile's
+ * `frame.animationHz` (30, 20 or 15) — so this is the feature's real cost,
+ * and the clock's rate is its knob. When the clock pauses (tab hidden, or
+ * nobody has touched the map for the profile's `idlePauseMs`) the worker
+ * pauses with it and the city stands still until the next interaction.
  *
  * Every frame shown is SIMULATED; `onActiveChange` is how the host keeps the
  * "Simulated" label on screen for exactly as long as any of it is drawn.
  */
 import * as THREE from 'three';
 
+import type { AnimationClock } from '../../perf/animationClock';
 import type { CityLight } from '../city3d/occlusion';
 import type { CityOverlay, CityOverlayFrame } from '../city3d/overlay';
 import { GROUND, type GroundSampler, gridAt, groundGrid } from '../city3d/terrainGround';
+import { metresPerPixel } from '../city3d/lod';
 import {
   centeredProjection,
-  EARTH_CIRCUMFERENCE_M,
+  latFromMercatorY,
   multiplyMat4,
   tileModelMatrix,
 } from '../city3d/tileMath';
@@ -62,8 +66,6 @@ import type { SimBudget } from './sim/simulation';
 
 /** How far behind real time the city is drawn, ms (two simulation steps). */
 const DELAY_MS = 100;
-/** Fastest repaint the layer asks for while agents are visible. */
-const FRAME_MS = 33;
 /** Agents are drawn (and simulated) from this zoom up. */
 export const CITY_LIFE_MIN_ZOOM = 15.5;
 /** The simulation's step, seconds (for the shader's walking pace). */
@@ -76,7 +78,8 @@ export interface CityLifeOptions {
   basemapRoads?: { template: string; zoom: number; sourceLayer: string };
   budget: SimBudget;
   seed: number;
-  requestRepaint: () => void;
+  /** The map's animation clock: frames while agents are drawn, paused with it. */
+  clock: AnimationClock;
   /** Called when agents start or stop being drawn: the host shows the "Simulated" label meanwhile. */
   onActiveChange: (active: boolean) => void;
   /** What is simulated and what is live in view, whenever it changes (the label). */
@@ -307,8 +310,8 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
         }),
       ) as Record<CarModel, Batch>;
       uploaded = null;
-      schedule();
-      options.requestRepaint();
+      // A frame to show the models in, through the clock.
+      ticket.setAnimating(wanted);
     })
     .catch((error: unknown) => {
       // Without its models city life draws nothing — and so claims nothing.
@@ -348,13 +351,24 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
   /** Whether the last frame wanted agents drawn (zoom, fade), states or not. */
   let wanted = false;
   let paused = false;
+  /** Paused because nothing is drawn (zoomed out, faded): the worker idles. */
+  let pausedByView = false;
   let lastViewKey = '';
   let lastViewSent = 0;
-  let repaintTimer: ReturnType<typeof setTimeout> | null = null;
   let drawnFrames = 0;
   let fpsWindowStart = performance.now();
   let fps = 0;
   let triangles = { near: 0, far: 0, shadow: 0 };
+
+  /** The worker runs while agents are drawn and the clock is not paused. */
+  const syncWorker = () => {
+    const pause = pausedByView || ticket.paused;
+    if (pause === paused || disposed) return;
+    paused = pause;
+    send({ type: pause ? 'pause' : 'resume' });
+  };
+  const ticket = options.clock.join('cityLife', syncWorker);
+
   /**
    * Development statistics: the shader's level-of-detail test replayed on the
    * CPU for one frame a second, so the triangle cost is a number, not a guess.
@@ -405,15 +419,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     if (frames.length > 4) frames.shift();
     // The map draws only when asked: the first state must ask for the frame
     // that will show it.
-    schedule();
-  };
-
-  const schedule = () => {
-    if (disposed || repaintTimer || !wanted) return;
-    repaintTimer = setTimeout(() => {
-      repaintTimer = null;
-      if (!disposed && wanted) options.requestRepaint();
-    }, FRAME_MS);
+    ticket.setAnimating(wanted);
   };
 
   const setActive = (next: boolean) => {
@@ -421,26 +427,10 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     active = next;
     group.visible = next;
     options.onActiveChange(next);
-    const pause = !next;
-    if (pause !== paused) {
-      paused = pause;
-      send({ type: pause ? 'pause' : 'resume' });
-    }
-    if (next) schedule();
+    pausedByView = !next;
+    syncWorker();
+    ticket.setAnimating(next);
   };
-
-  const onVisibility = () => {
-    if (typeof document === 'undefined') return;
-    const hidden = document.visibilityState === 'hidden';
-    if (hidden && !paused) {
-      paused = true;
-      send({ type: 'pause' });
-    } else if (!hidden && paused && active) {
-      paused = false;
-      send({ type: 'resume' });
-    }
-  };
-  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
 
   // ── Terrain: each agent stands on the ground the buildings and trees do ──
   //
@@ -469,8 +459,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     }
     if (grid) return gridAt(grid, GROUND.grid, fx - tx, fy - ty);
     const n = 2 ** 15;
-    const lat = (360 / Math.PI) * Math.atan(Math.exp(Math.PI * (1 - (2 * fy) / n))) - 90;
-    const value = sampler((fx / n) * 360 - 180, lat);
+    const value = sampler((fx / n) * 360 - 180, latFromMercatorY(fy / n));
     return Number.isFinite(value) ? value : 0;
   };
   const groundFor = (batch: Batch, curr: Float32Array, origin: { x: number; y: number }) => {
@@ -552,7 +541,10 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       }
       const ready = carBatches !== null;
       setActive(on && ready && frames.length > 0);
-      if (!on || !carBatches || frames.length === 0) return;
+      if (!on || !carBatches || frames.length === 0) {
+        ticket.setAnimating(false);
+        return;
+      }
 
       // The two states around "now − DELAY".
       const renderTime = performance.timeOrigin + performance.now() - DELAY_MS;
@@ -599,10 +591,8 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       const span = b.time - a.time;
       shared.uAlpha.value = span > 0 ? Math.max(0, Math.min(1, (renderTime - a.time) / span)) : 1;
       shared.uTime.value = (t / 1000) % 3600;
-      // CSS pixels per metre at the centre: 512-px tiles, mercator's 1/cos(lat).
-      shared.uPxPerM.value =
-        (512 * 2 ** view.zoom) /
-        (EARTH_CIRCUMFERENCE_M * Math.cos((view.center.lat * Math.PI) / 180));
+      // CSS pixels per metre at the centre (the LOD's own scale, `lod.ts`).
+      shared.uPxPerM.value = 1 / metresPerPixel(view.zoom, view.center.lat);
       if (b.taxiDoors) {
         shared.uTaxiDoors.value.set(
           b.taxiDoors[0] / 255,
@@ -613,6 +603,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
 
       group.matrixWorld.fromArray(tileModelMatrix({ z: 15, x: b.origin.x, y: b.origin.y }, center));
       for (const child of group.children) child.matrixWorld.copy(group.matrixWorld);
+      ticket.setAnimating(true);
 
       drawnFrames++;
       if (t - fpsWindowStart > 1000) {
@@ -628,7 +619,6 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
           );
         }
       }
-      schedule();
     },
 
     setGround(next) {
@@ -646,12 +636,9 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     dispose() {
       if (disposed) return;
       disposed = true;
-      if (repaintTimer) clearTimeout(repaintTimer);
+      ticket.dispose();
       worker.terminate();
       unsubscribeCoverage();
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', onVisibility);
-      }
       if (active) options.onActiveChange(false);
       group.removeFromParent();
       for (const batch of [...Object.values(carBatches ?? {}), peopleBatch] as Batch[]) {

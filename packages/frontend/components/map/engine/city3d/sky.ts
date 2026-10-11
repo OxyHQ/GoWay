@@ -49,17 +49,17 @@ import {
 import {
   SHADOW_CASTER_FRAGMENT_SHADER,
   SHADOW_CASTER_VERTEX_SHADER,
-  SKY_OVERLAY_GLSL,
   SKY_PASS_VERTEX_SHADER,
   skyCityFragmentShader,
   skyCityVertexShader,
+  skyOverlayGlsl,
   skyPassFragmentShader,
 } from './skyShaders';
-import { SHADOW_CASTER_LAYER } from './frameSelection';
+import { castersKey, type DrawnTile, SHADOW_CASTER_LAYER } from './frameSelection';
 import type { CityOverlaySky } from './overlay';
 import type { CityTileFormat } from './protocol';
 import {
-  SHADOW_MAP_SIZE,
+  castsInto,
   type ShadowFrame,
   shadowFrame,
   shadowMatrixForCentre,
@@ -80,6 +80,13 @@ import { viewRays } from './viewRays';
  * layer's own MapLibre sky covers those zooms.
  */
 const EFFECT_ZOOM: readonly [number, number] = [12, 13];
+
+/**
+ * While only the set of shadow casters changes (the box and the sun do not),
+ * the shadow map is redrawn at most this often, ms; it catches up once the
+ * camera rests.
+ */
+export const SHADOW_CASTER_REDRAW_MS = 250;
 
 export interface CitySkyView {
   /** Centre-relative mercator → clip (`tileMath.centeredProjection`), float64. */
@@ -145,12 +152,15 @@ export interface CitySky {
   /** What an overlay gets (`overlay.ts` → `setSky`): live uniforms and the GLSL that reads them. */
   readonly overlayInput: CityOverlaySky;
   setSun(sun: CitySun): void;
-  /** MapLibre's offscreen pass: redraw the shadow map if it is stale. */
+  /**
+   * MapLibre's offscreen pass: redraw the shadow map if it is stale — the
+   * sun, the snapped box, or the tiles that can cast into it changed.
+   */
   prerender(
     renderer: THREE.WebGLRenderer,
     scene: THREE.Scene,
     view: CitySkyView,
-    tilesKey: string,
+    casters: { tiles: readonly DrawnTile[]; groundEpoch: number },
   ): void;
   /** Before the buildings, in the map's own framebuffer: ground light, haze, sky. */
   drawBackground(renderer: THREE.WebGLRenderer, view: CitySkyView): void;
@@ -171,6 +181,14 @@ export function createCitySky(options: {
    * CityLight)` (`skyShaders.ts` → the contract). Absent: the default clay.
    */
   material?: string;
+  /**
+   * The sun's shadows at this quality (`engine/quality.ts`): the map's side
+   * and the PCF taps, or `null` for none — then no shadow map is allocated,
+   * no shadow pass drawn, and no shader samples one.
+   */
+  shadows: { mapSize: number; taps: number } | null;
+  /** The engine's clock (`CityEngineOptions.now`): the redraw throttle reads it. */
+  now?: () => number;
   baseUniforms: CityBaseUniforms;
   /** Ask the host for a frame. */
   requestRepaint: () => void;
@@ -188,27 +206,35 @@ export function createCitySky(options: {
   lutTexture.wrapT = THREE.ClampToEdgeWrapping;
   lutTexture.generateMipmaps = false;
 
-  const depthTexture = new THREE.DepthTexture(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
-  depthTexture.type = THREE.UnsignedIntType;
-  depthTexture.compareFunction = THREE.LessEqualCompare;
-  depthTexture.magFilter = THREE.LinearFilter;
-  depthTexture.minFilter = THREE.LinearFilter;
-  // The colour attachment is never read; one byte a texel is the least three
-  // will make.
-  const shadowTarget = new THREE.WebGLRenderTarget(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, {
-    format: THREE.RedFormat,
-    type: THREE.UnsignedByteType,
-    depthBuffer: true,
-    depthTexture,
-    generateMipmaps: false,
-  });
+  const shadowSize = options.shadows?.mapSize ?? 0;
+  const shadowTaps = options.shadows ? options.shadows.taps : 0;
+  let depthTexture: THREE.DepthTexture | null = null;
+  let shadowTarget: THREE.WebGLRenderTarget | null = null;
+  if (options.shadows) {
+    depthTexture = new THREE.DepthTexture(shadowSize, shadowSize);
+    depthTexture.type = THREE.UnsignedIntType;
+    depthTexture.compareFunction = THREE.LessEqualCompare;
+    depthTexture.magFilter = THREE.LinearFilter;
+    depthTexture.minFilter = THREE.LinearFilter;
+    // The colour attachment is never read; one byte a texel is the least three
+    // will make.
+    shadowTarget = new THREE.WebGLRenderTarget(shadowSize, shadowSize, {
+      format: THREE.RedFormat,
+      type: THREE.UnsignedByteType,
+      depthBuffer: true,
+      depthTexture,
+      generateMipmaps: false,
+    });
+  }
 
   const shared = {
     uSkyLut: { value: lutTexture },
     uSunAzimuth: { value: 0 },
     uShadowMap: { value: depthTexture },
     uShadowStrength: { value: 0 },
-    uShadowTexel: { value: new THREE.Vector2(1 / SHADOW_MAP_SIZE, 1 / SHADOW_MAP_SIZE) },
+    uShadowTexel: {
+      value: new THREE.Vector2(1 / Math.max(1, shadowSize), 1 / Math.max(1, shadowSize)),
+    },
     uShadowBias: { value: 0 },
     uCamera: { value: new THREE.Vector3(0, 0, 1000) },
     uSunDir: { value: new THREE.Vector3(0, 0, 1) },
@@ -229,11 +255,11 @@ export function createCitySky(options: {
   const buildingShaders = {
     openmaptiles: {
       vertexShader: skyCityVertexShader('openmaptiles'),
-      fragmentShader: skyCityFragmentShader('openmaptiles', options.material),
+      fragmentShader: skyCityFragmentShader('openmaptiles', options.material, shadowTaps),
     },
     goway: {
       vertexShader: skyCityVertexShader('goway'),
-      fragmentShader: skyCityFragmentShader('goway', options.material),
+      fragmentShader: skyCityFragmentShader('goway', options.material, shadowTaps),
     },
   };
   let hostLight: CitySky['hostLight'] = null;
@@ -245,7 +271,7 @@ export function createCitySky(options: {
         ? { uNightFactor: options.baseUniforms.uNightFactor }
         : {}),
     },
-    glsl: SKY_OVERLAY_GLSL,
+    glsl: skyOverlayGlsl(shadowTaps),
   };
 
   const passUniforms = {
@@ -259,7 +285,7 @@ export function createCitySky(options: {
     new THREE.RawShaderMaterial({
       glslVersion: THREE.GLSL3,
       vertexShader: SKY_PASS_VERTEX_SHADER,
-      fragmentShader: skyPassFragmentShader(pass),
+      fragmentShader: skyPassFragmentShader(pass, shadowTaps),
       uniforms: passUniforms,
       depthTest: false,
       depthWrite: false,
@@ -324,7 +350,10 @@ export function createCitySky(options: {
   let sun: CitySun | null = null;
   let state: SkyState | null = null;
   let frame: ShadowFrame | null = null;
+  const clock = options.now ?? (() => performance.now());
   let renderedKey = '';
+  let lastShadowAt = Number.NEGATIVE_INFINITY;
+  let catchUp: ReturnType<typeof setTimeout> | null = null;
   let targetReady = false;
   let disposed = false;
 
@@ -392,8 +421,8 @@ export function createCitySky(options: {
       options.requestRepaint();
     },
 
-    prerender(renderer, scene, view, tilesKey) {
-      if (disposed || !sun || !state) return;
+    prerender(renderer, scene, view, casters) {
+      if (disposed || !sun || !state || !shadowTarget) return;
       if (!targetReady) {
         // Every program that DECLARES the shadow sampler fails to draw while
         // its depth texture has never been allocated with compare mode on —
@@ -410,15 +439,37 @@ export function createCitySky(options: {
               center: view.centerLngLat,
               radiusM: shadowRadiusForView(view.bounds, view.centerLngLat),
               groundM: view.groundM,
+              mapSize: shadowSize,
             })
           : null;
       if (!frame) {
         renderedKey = '';
         return;
       }
-      const key = `${frame.key}|${tilesKey}`;
+      const shadow = frame;
+      const casting = casters.tiles.filter((t) => castsInto(shadow, t.tile, t.wrap, view.groundM));
+      const castersPart = castersKey(casting, casters.groundEpoch);
+      const key = `${frame.key}|${castersPart}`;
       if (key === renderedKey) return;
-      const started = performance.now();
+      const started = clock();
+      // Same box, same sun, only the casters changed (a tile came into view
+      // or finished loading while the camera moves): redraw at most every
+      // SHADOW_CASTER_REDRAW_MS, and catch up once the wait is over. An orbit
+      // used to redraw the whole city's depth from the sun on most frames;
+      // the matrix is unchanged, so the map drawn a moment ago is exact for
+      // every building it holds (`docs/MAP_PERFORMANCE.md` → hotspots).
+      if (renderedKey.startsWith(`${frame.key}|`)) {
+        const wait = lastShadowAt + SHADOW_CASTER_REDRAW_MS - started;
+        if (wait > 0) {
+          if (!catchUp) {
+            catchUp = setTimeout(() => {
+              catchUp = null;
+              if (!disposed) options.requestRepaint();
+            }, wait);
+          }
+          return;
+        }
+      }
       shadowCamera.projectionMatrix.fromArray(shadowMatrixForCentre(frame, view.center));
       shadowCamera.projectionMatrixInverse.copy(shadowCamera.projectionMatrix).invert();
       renderer.resetState();
@@ -431,14 +482,15 @@ export function createCitySky(options: {
       scene.overrideMaterial = previous;
       renderer.setRenderTarget(null);
       renderedKey = key;
+      lastShadowAt = started;
       stats.shadowRenders++;
-      stats.lastShadowMs = performance.now() - started;
+      stats.lastShadowMs = clock() - started;
       stats.shadowTexelM = frame.texelM;
     },
 
     drawBackground(renderer, view) {
       if (disposed || !sun || !state) return;
-      if (!targetReady) {
+      if (!targetReady && shadowTarget) {
         // Belt and braces for the rule in `prerender`: a host that skipped the
         // offscreen pass must not leave every program with a shadow sampler
         // undrawable. `initRenderTarget` rebinds the framebuffer, so state is
@@ -485,9 +537,11 @@ export function createCitySky(options: {
     dispose() {
       if (disposed) return;
       disposed = true;
+      if (catchUp) clearTimeout(catchUp);
+      catchUp = null;
       lutTexture.dispose();
-      depthTexture.dispose();
-      shadowTarget.dispose();
+      depthTexture?.dispose();
+      shadowTarget?.dispose();
       for (const pass of passes) pass.material.dispose();
       quad.dispose();
       casterMaterial.dispose();

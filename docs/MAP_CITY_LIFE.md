@@ -247,7 +247,8 @@ overlapping.
   (250 m–1.8 km). Road tiles are loaded to 400 m beyond it (at most 25).
 - **Targets**: 22 cars per lane-km and 26 people per footway-km inside the
   radius, times a zoom factor (full from z17, a fifth at z15.5), capped by the
-  **budget: 1,200 cars and 1,200 people** (`city3dLayer.web.ts`).
+  **budget: 1,200 cars and 1,200 people** at the high quality preset (700 +
+  700 medium, 300 + 300 low: the profile's `life`, `docs/MAP_PERFORMANCE.md`).
 - New agents appear **outside the visible box** when there is road there, and
   fade in over 0.6 s; surplus ones leave from outside it first, fading out.
   The first fill after a network loads places everyone and runs 12 s of
@@ -302,8 +303,12 @@ overlapping.
   drawing the city 100 ms in the past so a late message slows motion instead of
   jerking it. Per frame the main thread sets one uniform.
 - **Repaint**: MapLibre draws only when asked; while agents are visible the
-  overlay asks at most every 33 ms (30 fps). Hidden tab, zoomed out or faded
-  buildings: the worker pauses.
+  overlay animates through the map's ONE animation clock
+  (`components/map/perf/animationClock.ts`), at the quality profile's rate
+  (30 Hz high and medium, 20 low, 15 in the battery saver). Hidden tab, map
+  untouched for the profile's idle time (20 s on phones, 45 s on laptops),
+  zoomed out or faded buildings: the clock pauses and the worker with it
+  (`docs/MAP_PERFORMANCE.md`).
 
 ## Honesty
 

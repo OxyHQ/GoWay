@@ -43,6 +43,7 @@
  * own origin, or loopback in development) are refused, and that model is
  * reported as `fallback` — drawn by `MapCanvas` as its marker instead.
  */
+import type { AnimationTicket } from '../../perf/animationClock';
 import * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { ModelPlacement } from '@goway.to/sdk';
@@ -376,6 +377,13 @@ export async function readCapped(response: Response, cap: number): Promise<Array
 
 export interface ModelLayerOptions {
   requestRepaint: () => void;
+  /**
+   * The map's animation clock (`perf/animationClock.ts`): an animated asset
+   * asks it for frames — at the quality profile's rate, paused when the tab is
+   * hidden or the map idle — instead of repainting every frame. Absent: it
+   * repaints every frame, as before.
+   */
+  animation?: AnimationTicket;
   onStatus: (id: string, status: ModelStatus) => void;
   /** Where relative URLs resolve and which origin counts as "this page". */
   pageOrigin: string | null;
@@ -674,7 +682,8 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       }
       scene.updateMatrixWorld(true);
       renderer.render(scene, camera);
-      if (animating) options.requestRepaint();
+      if (options.animation) options.animation.setAnimating(animating);
+      else if (animating) options.requestRepaint();
     },
 
     pick(point) {
@@ -716,6 +725,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
     dispose() {
       if (disposed) return;
       disposed = true;
+      options.animation?.dispose();
       for (const id of [...instances.keys()]) remove(id);
       environment?.dispose();
       pending.clear();

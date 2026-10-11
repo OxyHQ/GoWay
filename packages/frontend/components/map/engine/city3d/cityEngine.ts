@@ -54,20 +54,25 @@ import {
   groundTileFor,
   placeEntry,
   setEntryFade,
+  setEntryTreeDetail,
   setEntryVisible,
   type TileEntry,
 } from './cityMeshes';
 import {
-  type DrawBudget,
   fitBudget,
-  LOD_POLICY,
   type Lod,
+  lodThresholds,
+  metresPerPixel,
   type LodTile,
   lodKey,
   selectLodTiles,
   type TileCost,
 } from './lod';
 import type { CityCoverageArea } from '@/lib/map/cityTiles';
+import type { QualityProfile } from '@/lib/map/quality/profile';
+
+import type { AnimationClock } from '../../perf/animationClock';
+import { cityQuality } from '../quality';
 
 import { hexToRgb } from './colour';
 import { createGpuTimer } from './gpuTimer';
@@ -79,7 +84,7 @@ import {
   materialUniformValues,
 } from './materials';
 import type { CitySun, HostSkyColours, SkyAppearance } from './atmosphere';
-import { castersKey, type DrawnTile, FrameSchedule, runsSkyOffscreenPass } from './frameSelection';
+import { type DrawnTile, FrameSchedule, runsSkyOffscreenPass } from './frameSelection';
 import { createModelLayer, type ModelSpec, type ModelStatus } from './models';
 import type { CityLight } from './occlusion';
 import type { CityTileFormat, MeshWorkerRequest, MeshWorkerResponse } from './protocol';
@@ -100,7 +105,7 @@ import { Transitions } from './transitions';
 import { treeMinHeightM } from './tsl/treeMaterial';
 import { createTslPass } from './tsl/tslPass';
 import type { TreeSourceLayers } from './treeSources';
-import { poolSize, WorkerPool } from './workerPool';
+import { WorkerPool } from './workerPool';
 
 /** The palette's building height ramp (`buildingHeightRamp` in `buildings3d.ts`), plus trees. */
 export interface CityPalette {
@@ -150,6 +155,27 @@ export interface CityEngineOptions {
   fade: { start: number; end: number };
   /** Ask the host for another frame (new geometry arrived). */
   requestRepaint: () => void;
+  /**
+   * The map's quality profile (`lib/map/quality/profile.ts`): every budget
+   * the engine applies — draw, cache, upload, workers, trees, LOD, shadows —
+   * is read from it (`engine/quality.ts`), none is the engine's own.
+   */
+  quality: QualityProfile;
+  /**
+   * The map's one animation clock (`perf/animationClock.ts`): an animated
+   * model asks it for frames instead of repainting every frame itself.
+   * Absent (tests, a host without one): animated models repaint as before.
+   */
+  clock?: AnimationClock;
+  /** `?perf=1` / development: names this frame's parts for the HUD (`perf/mapRuntime.web.ts`). */
+  probe?: FrameProbe;
+  /**
+   * The engine's clock, ms (default `performance.now`): frame pacing, upload
+   * admission, retries and the shadow map's redraw throttle all read it, so
+   * the CI budget gate can run the engine on a virtual clock and get the same
+   * counts every run.
+   */
+  now?: () => number;
   /** Development statistics, called whenever they change. */
   onStats?: (stats: CityEngineStats) => void;
   /** Development statistics for placing buildings on terrain (`terrainGround.ts`). */
@@ -206,6 +232,12 @@ export interface CityEngineOptions {
 export interface LandmarkSpec extends ModelSpec {
   /** City-tile feature ids of the buildings the model replaces. */
   hides: readonly number[];
+}
+
+/** Brackets the parts of a frame for the perf HUD: `enter('sky')` … `leave()`. */
+export interface FrameProbe {
+  enter(section: string): void;
+  leave(): void;
 }
 
 /** What the host knows about its camera this frame. */
@@ -317,34 +349,19 @@ export interface CityEngine {
 const GROUND_TILES_PER_FRAME = 1;
 
 /**
- * GPU budget for cached tile meshes: what is drawn ({@link DRAW_BUDGET}) plus
- * panning slack and the coarser levels kept for fallback.
- */
-const MAX_CACHED_BYTES = 192 * 1024 * 1024;
-
-/**
  * Entry budget, which is what bounds EMPTY tiles (sea, fields): they weigh
- * nothing against {@link MAX_CACHED_BYTES} but are cached so a revisit does
+ * nothing against the cache's byte budget but are cached so a revisit does
  * not fetch them again (see `tileScheduler.ts`). Every (tile, level) is one
  * entry, and up to 48 tiles are drawn.
  */
 const MAX_CACHED_TILES = 160;
 
-/**
- * What one frame may draw (`docs/MAP_3D_CITY.md` → "Budgets"). Measured
- * before this budget, Barcelona's six nearest full-detail tiles were 136 MB
- * and 6.6 M vertices and still left the far half of a tilted view flat.
- */
-export const DRAW_BUDGET: DrawBudget = { bytes: 128 * 1024 * 1024, vertices: 8_000_000 };
-
-/**
- * Tree instances drawn per frame, nearest tiles first (`docs/MAP_3D_CITY.md`
- * → "Budgets"); a tile past it draws its buildings without trees.
- */
-export const TREE_BUDGET = 40_000;
-
-/** Bytes of new meshes handed to the GPU per frame (at least one mesh always goes). */
-const UPLOAD_BYTES_PER_FRAME = 12 * 1024 * 1024;
+// The draw, cache, upload and tree budgets are the quality profile's
+// (`engine/quality.ts` → `cityQuality`; `docs/MAP_PERFORMANCE.md`): what one
+// frame may draw (bytes, vertices), what the cache may hold beyond it (panning
+// slack and fallback levels), the bytes of new meshes handed to the GPU per
+// frame (at least one mesh always goes), and tree instances per frame,
+// nearest tiles first (a tile past it draws its buildings without trees).
 
 /**
  * While the map is animating, a frame slower than this admits one mesh only;
@@ -402,6 +419,14 @@ interface Arrival {
 }
 
 export function createCityEngine(options: CityEngineOptions): CityEngine {
+  const quality = cityQuality(
+    options.quality,
+    typeof navigator === 'undefined' ? undefined : navigator.hardwareConcurrency,
+  );
+  // A tree budget of 0 is no trees at all: the workers place none.
+  const trees = quality.treeBudget > 0 ? (options.trees ?? null) : null;
+  const probe = options.probe;
+  const now = options.now ?? (() => performance.now());
   const renderer = new THREE.WebGLRenderer({ canvas: options.canvas, context: options.gl });
   // The map owns the framebuffer: never clear what it has already drawn.
   renderer.autoClear = false;
@@ -431,6 +456,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         appearance: options.sky.appearance,
         // The art direction's response, when the detailed look is on.
         material: options.sky.material ?? (detailed ? DETAILED_SKY_MATERIAL_GLSL : undefined),
+        shadows: quality.shadows,
+        now,
         baseUniforms: light,
         requestRepaint: () => options.requestRepaint(),
       })
@@ -494,7 +521,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
   // `null` entries are empty tiles (sea, fields): cached so they are not
   // fetched again on every revisit.
-  const cache = new TileCache<TileEntry>(MAX_CACHED_BYTES, MAX_CACHED_TILES, (entry) => {
+  const cache = new TileCache<TileEntry>(quality.cacheBytes, MAX_CACHED_TILES, (entry) => {
     transitions.drop(entry);
     disposeEntry(entry);
     grounder.forget(entry.key);
@@ -535,14 +562,12 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   // No buildings, no workers: a models-only engine never fetches a tile.
   const pool = new WorkerPool<MeshWorkerRequest & { id: number }, MeshWorkerResponse>(
     () => new Worker(new URL('./meshWorker', import.meta.url)),
-    buildings
-      ? poolSize(typeof navigator === 'undefined' ? undefined : navigator.hardwareConcurrency)
-      : 0,
+    buildings ? quality.workers : 0,
     (reply) => onReply(reply),
     // A worker died with this request: retried like any failed tile.
     (id, message) => onReply({ type: 'error', id, message }),
   );
-  const grounder = new TileGrounder(() => performance.now(), options.onGroundStats);
+  const grounder = new TileGrounder(now, options.onGroundStats);
   let groundSampler: GroundSampler | null = null;
   // The lifts seen on this terrain, for the selection's culling range.
   let liftRange: { min: number; max: number } | null = null;
@@ -566,6 +591,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
   const models = createModelLayer({
     requestRepaint: options.requestRepaint,
+    animation: options.clock?.join('models'),
     onStatus: (id, status) => options.onModelStatus?.(id, status),
     pageOrigin: typeof location !== 'undefined' ? location.origin : null,
   });
@@ -599,6 +625,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   };
   const landmarks = createModelLayer({
     requestRepaint: options.requestRepaint,
+    animation: options.clock?.join('landmarks'),
     onStatus: (id, status) => {
       if ((status === 'drawn') === drawnLandmarks.has(id)) return;
       if (status === 'drawn') drawnLandmarks.add(id);
@@ -623,7 +650,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
   const reportStats = (force = false) => {
     if (!options.onStats) return;
-    const now = performance.now();
+    const at = now();
     const byLod: [number, number, number] = [0, 0, 0];
     let loaded = 0;
     for (const tile of selected) {
@@ -632,9 +659,9 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     }
     // Counts that changed are reported at once; timings at most 4× a second.
     const signature = `${byLod.join()}|${loaded}|${scheduler.pendingCount}|${arrivals.length}|${errors}`;
-    if (!force && signature === lastSignature && now - lastStatsAt < 250) return;
+    if (!force && signature === lastSignature && at - lastStatsAt < 250) return;
     lastSignature = signature;
-    lastStatsAt = now;
+    lastStatsAt = at;
     options.onStats({
       tilesWanted: selected.length,
       tilesLoaded: loaded,
@@ -702,7 +729,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       // VIEW NEVER CHANGES — the timer asks for a frame, and that frame's
       // `plan` re-requests it — because `building-3d`, which would otherwise
       // have drawn it, is hidden.
-      const delay = scheduler.failed(request, reply.id, performance.now());
+      const delay = scheduler.failed(request, reply.id, now());
       if (delay === null) return;
       errors++;
       const timer = setTimeout(() => {
@@ -738,7 +765,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     // A long gap since the last frame is the map at rest, not a slow frame.
     const gap = now - lastFrameAt;
     const slow = lastFrameAt > 0 && gap > SLOW_FRAME_MS && gap < IDLE_GAP_MS;
-    let budget = slow ? 0 : UPLOAD_BYTES_PER_FRAME;
+    let budget = slow ? 0 : quality.uploadBytesPerFrame;
     let admitted = 0;
     const wanted = protectedKeys();
     while (arrivals.length > 0) {
@@ -787,10 +814,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       const chosen = selectLodTiles(
         { ...view, terrain: terrainFor(view) },
         options.tileZoom,
-        LOD_POLICY,
+        quality.lod,
         previousLods,
       );
-      const fitted = fitBudget(chosen, costOf, DRAW_BUDGET);
+      const fitted = fitBudget(chosen, costOf, quality.draw);
       previousLods.clear();
       for (const tile of fitted) previousLods.set(tileKey(tile), tile.lod);
       // City tiles where they cover the ground, the basemap elsewhere.
@@ -847,7 +874,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
                 ...(hidden.length > 0 ? { hidden } : {}),
                 // The fill reads the basemap's landcover: the city tiles
                 // carry buildings and the trees OSM records, no landcover.
-                ...(options.trees
+                ...(trees
                   ? {
                       treeFill: treeFill(tile, {
                         tileUrlTemplate: options.tileUrlTemplate,
@@ -863,8 +890,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
                 format: 'openmaptiles' as const,
               }),
           lod: request.lod,
-          trees: options.trees && request.lod < 2 ? options.trees.sourceLayers : null,
-          treeFillWoods: options.trees?.fillWoods === true,
+          trees: trees && request.lod < 2 ? trees.sourceLayers : null,
+          treeFillWoods: trees?.fillWoods === true,
         },
         tileKey(tile),
       );
@@ -900,7 +927,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     opacity: number;
     active: boolean;
     skyView: CitySkyView;
-    casters: string;
+    casters: { tiles: DrawnTile[]; groundEpoch: number };
     /** Official datasets whose surfaces this frame draws (`onSources`). */
     sources: ReadonlySet<string>;
   }
@@ -908,7 +935,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
   /** Select, schedule, ground and place this frame's tiles, and set the camera. */
   const prepare = (view: CityView): PreparedFrame => {
-    const started = performance.now();
+    const started = now();
     frame++;
     updateWanted(view, started);
     admit(started);
@@ -920,7 +947,11 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     treeUniforms.uTreeMinHeight.value = treeMinHeightM(view.zoom);
 
     const center = { x: mercatorXFromLng(view.center.lng), y: mercatorYFromLat(view.center.lat) };
-    for (const overlay of overlays) overlay.update({ view, center, opacity });
+    if (overlays.length > 0) {
+      probe?.enter('life');
+      for (const overlay of overlays) overlay.update({ view, center, opacity });
+      probe?.leave();
+    }
     transitions.begin();
     for (const tile of selected) {
       const best = bestFor(tile);
@@ -972,21 +1003,29 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       for (const tile of selected) rank.set(tileKey(tile), tile.r);
       const r = (entry: TileEntry) => rank.get(entry.key.slice(0, entry.key.indexOf('@'))) ?? 1e9;
       draws.sort((a, b) => r(a.value) - r(b.value));
+      // Trees keep their near shapes only as far as buildings keep full
+      // detail; past it the far canopy is under a pixel away from the near.
+      const nearTreesWithin = lodThresholds(
+        quality.lod,
+        metresPerPixel(view.zoom, view.center.lat),
+      )[0];
       for (const { value: entry, from, to } of draws) {
         if (!entry.placement) continue;
         if (grounded && !grounder.hasGround(entry.key)) continue;
         placeEntry(entry, entry.placement, center);
+        setEntryTreeDetail(entry, shapes, r(entry) < nearTreesWithin);
         setEntryFade(entry, from, to);
         setEntryVisible(entry, true);
         for (const source of entrySources.get(entry) ?? []) sources.add(source);
         casting.push({
           key: entry.key,
+          tile: entry.placement,
           wrap: entry.placement.wrap ?? 0,
           groundRevision: groundRevisions.get(entry.key) ?? 0,
         });
         drawn.triangles += entry.triangles;
         drawn.vertices += entry.vertices;
-        if (entry.trees.length > 0 && drawn.trees + entry.treeCount > TREE_BUDGET) {
+        if (entry.trees.length > 0 && drawn.trees + entry.treeCount > quality.treeBudget) {
           // Past the budget a farther tile shows its buildings only.
           for (const mesh of entry.trees) mesh.visible = false;
         } else {
@@ -1013,7 +1052,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       opacity,
       active,
       skyView,
-      casters: castersKey(casting, groundEpoch),
+      casters: { tiles: casting, groundEpoch },
       sources,
     };
   };
@@ -1021,16 +1060,23 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const engine: CityEngine = {
     prerender(view) {
       if (disposed || !sky || !runsSkyOffscreenPass({ sky: true, buildings })) return;
-      if (schedule.prerender()) prepared = prepare(view);
+      if (schedule.prerender()) {
+        probe?.enter('city');
+        prepared = prepare(view);
+        probe?.leave();
+      }
       if (!prepared) return;
       // Whatever the buildings' opacity: the sky decides whether there is
       // anything to cast, and allocates its shadow target either way. Only
       // the buildings cast (`cityMeshes.ts` → `CASTER_LAYER`).
+      probe?.enter('shadows');
       sky.prerender(renderer, scene, prepared.skyView, prepared.casters);
+      probe?.leave();
     },
 
     render(view) {
       if (disposed || !buildings) return;
+      probe?.enter('city');
       const frameOf = schedule.render() || !prepared ? prepare(view) : prepared;
       prepared = null;
 
@@ -1040,7 +1086,11 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       renderer.resetState();
       // The sky and the haze are drawn at every zoom the effect covers,
       // buildings or not.
-      sky?.drawBackground(renderer, frameOf.skyView);
+      if (sky) {
+        probe?.enter('sky');
+        sky.drawBackground(renderer, frameOf.skyView);
+        probe?.leave();
+      }
       if (frameOf.opacity > 0) {
         const drawStarted = performance.now();
         gpuTimer?.begin();
@@ -1052,17 +1102,20 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         const drawn = performance.now() - drawStarted;
         drawCpuMs = drawCpuMs === 0 ? drawn : drawCpuMs * 0.9 + drawn * 0.1;
         if (landmarks.active) {
+          probe?.enter('landmarks');
           renderer.resetState();
           landmarks.render(renderer, view, {
             width: options.canvas.clientWidth,
             height: options.canvas.clientHeight,
           });
+          probe?.leave();
         }
       }
       reportSources(frameOf.sources);
+      probe?.leave();
       if (frameOf.active) options.requestRepaint();
 
-      const cpu = performance.now() - frameOf.started;
+      const cpu = now() - frameOf.started;
       frameCpuMs = frameCpuMs === 0 ? cpu : frameCpuMs * 0.9 + cpu * 0.1;
       reportStats();
     },
@@ -1092,8 +1145,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     },
 
     renderModels(view) {
-      if (disposed) return;
+      if (disposed || !models.active) return;
+      probe?.enter('models');
       drawModels(view);
+      probe?.leave();
     },
 
     renderPass(pass, view) {

@@ -38,11 +38,23 @@
  * is one unit across at that latitude). The sun comes in as compass azimuth
  * and altitude, and is turned into mercator by flipping its north component.
  */
-import type { CitySun } from './atmosphere';
-import { type LngLatBox, mercatorPerMetre, mercatorXFromLng, mercatorYFromLat } from './tileMath';
+import { QUALITY_PRESETS } from '@/lib/map/quality/profile';
 
-/** Shadow map side, in texels. 2048² of 24-bit depth is 16 MB. */
-export const SHADOW_MAP_SIZE = 2048;
+import type { CitySun } from './atmosphere';
+import {
+  type LngLatBox,
+  mercatorPerMetre,
+  mercatorXFromLng,
+  mercatorYFromLat,
+  type TileId,
+  tileCenterLatitude,
+} from './tileMath';
+
+/**
+ * Shadow map side, in texels, at the high quality preset (2048² of 24-bit
+ * depth is 16 MB); the active preset's is `engine/quality.ts`'s.
+ */
+export const SHADOW_MAP_SIZE: number = QUALITY_PRESETS.high.sky.shadowMapSize;
 
 /** No shadows below this sun altitude: the map would be a few texels of streak. */
 export const SHADOW_MIN_ALTITUDE_DEG = 0.5;
@@ -277,4 +289,43 @@ export function shadowMatrixForEnu(
     m[8 + row] *= k;
   }
   return m;
+}
+
+/**
+ * Whether anything in `tile` (drawn in world copy `wrap`) can cast into the
+ * shadow map of `frame`: its box — the tile square from a slope below the
+ * box's ground to the tallest caster above it — overlaps the light's window.
+ * Conservative (a box, not the buildings), and what the shadow map's cache key
+ * is made of: a tile that comes into view beyond the shadow box does not make
+ * the map stale (`frameSelection.ts` → `castersKey`).
+ */
+export function castsInto(
+  frame: ShadowFrame,
+  tile: TileId,
+  wrap: number,
+  groundM: number,
+): boolean {
+  const n = 2 ** tile.z;
+  const k = mercatorPerMetre(tileCenterLatitude(tile));
+  const xs = [tile.x / n + wrap, (tile.x + 1) / n + wrap];
+  const ys = [tile.y / n, (tile.y + 1) / n];
+  const zs = [(groundM - SHADOW_SLOPE_M) * k, (groundM + SHADOW_SLOPE_M + SHADOW_MAX_HEIGHT_M) * k];
+  const m = frame.lightFromMercator;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const x of xs) {
+    for (const y of ys) {
+      for (const z of zs) {
+        const cx = m[0] * x + m[4] * y + m[8] * z + m[12];
+        const cy = m[1] * x + m[5] * y + m[9] * z + m[13];
+        minX = Math.min(minX, cx);
+        maxX = Math.max(maxX, cx);
+        minY = Math.min(minY, cy);
+        maxY = Math.max(maxY, cy);
+      }
+    }
+  }
+  return maxX >= -1 && minX <= 1 && maxY >= -1 && minY <= 1;
 }

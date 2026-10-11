@@ -98,6 +98,25 @@ const asMap = (map: ReturnType<typeof fakeMap>) => map as unknown as Parameters<
 const GOWAY_LAYERS = ['background', 'landcover', HILLSHADE_BEFORE_LAYER_ID, 'road', 'label'];
 
 describe('attachRelief', () => {
+  test('the low quality preset keeps the hillshade and never turns 3D terrain on; live', () => {
+    const map = fakeMap({ layers: GOWAY_LAYERS, loaded: true });
+    const handle = attachRelief(asMap(map), {
+      flags: { globe: true, terrain: true },
+      appearance: 'light',
+      terrain3d: false,
+    });
+    expect(map.layers).toContain(HILLSHADE_LAYER_ID);
+    map.tilt(45);
+    expect(map.calls.some((call) => call[0] === 'setTerrain')).toBe(false);
+    // The profile changes (Settings → High quality): tilted, terrain comes on.
+    handle.setTerrain3d(true);
+    expect(map.calls.at(-1)).toEqual(['setTerrain', RELIEF_TERRAIN]);
+    // And back: it goes off at once, not at the next tilt.
+    handle.setTerrain3d(false);
+    expect(map.calls.at(-1)).toEqual(['setTerrain', null]);
+    handle.detach();
+  });
+
   test("globe and terrain on GoWay's style: the hillshade under water, terrain only when tilted", () => {
     const map = fakeMap({ layers: GOWAY_LAYERS, loaded: true });
     const handle = attachRelief(asMap(map), {

@@ -55,7 +55,9 @@ import { useTheme } from '@oxy.so/bloom/theme';
 import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
 import { isReliefId, mapStyleLoading } from '@/lib/map/reliefFlag';
-import { useMapFeature } from '@/lib/map/useMapFeatures';
+import { mapFeatureStore, useMapFeature } from '@/lib/map/useMapFeatures';
+import { clampPixelRatio } from '@/lib/map/quality/profile';
+import { useMapQuality } from '@/lib/map/quality/useMapQuality';
 import { maxPitchFor } from '@/lib/map/citySkyFlag';
 import {
   type MapAttributionLink,
@@ -83,6 +85,8 @@ import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
 import { initialMapRelief, useMapRelief } from './reliefFlags';
 import type { ReliefHandle } from './reliefLayer.web';
+import { type AnimationClock, createAnimationClock } from './perf/animationClock';
+import type { MapRuntime } from './perf/mapRuntime.web';
 import {
   drawableModels,
   MODEL_MARKER_PREFIX,
@@ -163,6 +167,16 @@ const INITIAL_RELIEF = initialMapRelief();
 if (INITIAL_RELIEF.globe || INITIAL_RELIEF.terrain) loadReliefChunk();
 
 const NO_CREDITS: readonly MapAttributionLink[] = [];
+
+/**
+ * The perf HUD (`perf/mapRuntime.web.ts`): every development build, and any
+ * build with `?perf=1` — it only SHOWS numbers, so a link cannot change how
+ * the map draws for anyone.
+ */
+const PERF_HUD =
+  __DEV__ ||
+  (typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('perf') === '1');
 
 /**
  * The time-of-day scrubber is its own lazy chunk: rendered only while the
@@ -255,6 +269,17 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // The art-directed look (`docs/MAP_3D_CITY.md` → Art direction).
   const detailedCity = useMapFeature('detailedCity');
   const relief = useMapRelief();
+  // The quality profile (`lib/map/quality/profile.ts`, `docs/MAP_PERFORMANCE.md`):
+  // Settings → Performance and this device's GPU. Its pixel-ratio clamp and
+  // MSAA are construction options (read once per map, through the ref); its
+  // clock rate is live; a new TIER re-attaches the 3D city.
+  const quality = useMapQuality();
+  const qualityRef = useRef(quality);
+  qualityRef.current = quality;
+  // One animation clock and one performance runtime per MapLibre map.
+  const clockRef = useRef<AnimationClock | null>(null);
+  const reliefRef = useRef<ReliefHandle | null>(null);
+  const [runtime, setRuntime] = useState<{ handle: MapRuntime | null } | null>(null);
   /**
    * What the last engine was built for, and where its camera was when it went.
    * A rebuild for a RELIEF toggle (same style, same retry) starts where the
@@ -418,6 +443,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         zoom: asFinite(start.zoom) ?? DEFAULT_VIEWPORT.zoom,
         bearing: asFinite(start.bearing) ?? 0,
         pitch: asFinite(start.pitch) ?? 0,
+        // The quality profile's clamp (a 3× phone draws at 2×) and MSAA, which
+        // only the high preset turns on (a construction option: it applies
+        // to the next map, never by rebuilding this one).
+        pixelRatio: clampPixelRatio(window.devicePixelRatio || 1, qualityRef.current),
+        canvasContextAttributes: { antialias: qualityRef.current.render.msaa },
         // GoWay renders its own credit (see MapAttribution): the OpenFreeMap
         // style documents carry no source `attribution`, so this control would
         // render an EMPTY box — the failure mode where the obligation looks
@@ -436,6 +466,48 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 
     mapRef.current = map;
 
+    // The ONE animation clock (`perf/animationClock.ts`): everything that moves
+    // by itself asks it for frames; it pauses when the tab is hidden or the
+    // map has been left alone for the profile's idle time.
+    const clock = createAnimationClock({
+      hz: qualityRef.current.frame.animationHz,
+      idleMs: qualityRef.current.frame.idlePauseMs,
+      requestFrame: () => map.triggerRepaint(),
+    });
+    clockRef.current = clock;
+    const noteInteraction = () => clock.noteInteraction();
+    const onVisibility = () => clock.setHidden(document.visibilityState === 'hidden');
+    const interactions = ['pointerdown', 'wheel', 'keydown', 'touchstart'] as const;
+    for (const type of interactions) {
+      container.addEventListener(type, noteInteraction, { passive: true, capture: true });
+    }
+    document.addEventListener('visibilitychange', onVisibility);
+    onVisibility();
+    // The performance runtime (pixel ratio, dynamic resolution, GPU tier, the
+    // HUD): its own small chunk, once the map has loaded.
+    let runtimeHandle: MapRuntime | null = null;
+    let runtimeCancelled = false;
+    const startRuntime = () => {
+      import('./perf/mapRuntime.web')
+        .then(({ attachMapRuntime }) => {
+          if (runtimeCancelled) return;
+          runtimeHandle = attachMapRuntime(map, {
+            quality: qualityRef.current,
+            clock,
+            hud: PERF_HUD,
+            gpuRecord: mapFeatureStore.getSnapshot().gpu,
+            onGpuRecord: (record) => mapFeatureStore.setGpuRecord(record),
+          });
+          setRuntime({ handle: runtimeHandle });
+        })
+        .catch((cause: unknown) => {
+          // The map draws without it: no dynamic resolution, no HUD.
+          reportMapDefect('perf:load', `perf runtime: not loaded (${String(cause)}).`);
+          if (!runtimeCancelled) setRuntime({ handle: null });
+        });
+    };
+    map.once('load', startRuntime);
+
     // Relief (globe, sky, hillshade, terrain), off unless asked for. Attached
     // per map, before its style loads; `resolvedAppearance` is read here
     // because a change of it is a change of `styleUrl`, which rebuilds the map.
@@ -445,7 +517,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       loadReliefChunk()
         .then(({ attachRelief }) => {
           if (!reliefCancelled) {
-            reliefHandle = attachRelief(map, { flags: relief, appearance: resolvedAppearance });
+            reliefHandle = attachRelief(map, {
+              flags: relief,
+              appearance: resolvedAppearance,
+              terrain3d: qualityRef.current.relief.terrain3d,
+            });
+            reliefRef.current = reliefHandle;
           }
         })
         .catch((cause: unknown) => {
@@ -744,6 +821,17 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       setReady(false);
       reliefCancelled = true;
       reliefHandle?.detach();
+      if (reliefRef.current === reliefHandle) reliefRef.current = null;
+      map.off('load', startRuntime);
+      runtimeCancelled = true;
+      runtimeHandle?.dispose();
+      setRuntime(null);
+      for (const type of interactions) {
+        container.removeEventListener(type, noteInteraction, { capture: true });
+      }
+      document.removeEventListener('visibilitychange', onVisibility);
+      clock.dispose();
+      if (clockRef.current === clock) clockRef.current = null;
       let camera: MapViewport | null = null;
       runEngineCommand('getCenter', () => {
         const centre = map.getCenter();
@@ -976,9 +1064,16 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // tiles, `building-3d` untouched — so a map has at most ONE three.js layer.
   // With neither, nothing is requested.
   const needsEngine = city3d || wantsModelEngine;
+  // The quality profile reaches the attached engine by TIER: a new tier is a
+  // new attach (budgets, shadow map, shaders); the rest of it is live below.
+  const qualityTier = quality.tier;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new quality tier is a new attach (the engine reads the profile through `qualityRef`)
   useEffect(() => {
     const map = mapRef.current;
-    if (!needsEngine || !map || !ready) return;
+    const clock = clockRef.current;
+    // `runtime` is set (to a handle, or to `null` if its chunk failed) once
+    // the map has loaded: the engine waits for it so the HUD's probe is in.
+    if (!needsEngine || !map || !ready || !clock || !runtime) return;
     let handle: City3dHandle | null = null;
     let cancelled = false;
     import('./city3dLayer.web')
@@ -988,6 +1083,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           : attachCity3d(map, {
               appearance: resolvedAppearance,
               light: city3dLightRef.current,
+              quality: qualityRef.current,
+              clock,
+              probe: runtime.handle?.probe ?? null,
               buildings: city3d,
               cityTiles,
               trees,
@@ -1026,6 +1124,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         setCity3dHandle(attached);
         // The light may have moved while the chunks downloaded.
         attached?.setLight(city3dLightRef.current);
+        // Dynamic resolution and the GPU benchmark follow the 3D city.
+        if (attached && city3d) runtime.handle?.set3d(true);
         attached?.setTime(skyAtRef.current);
         setSkyActive(citySky && attached !== null);
       })
@@ -1045,11 +1145,14 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       // A detached layer draws no landmark, so it owes no landmark credit.
       setLandmarkCredits(NO_CREDITS);
       handle?.detach();
+      runtime.handle?.set3d(false);
       setSkyActive(false);
       setCity3dCredits(NO_CREDITS);
     };
   }, [
     ready,
+    runtime,
+    qualityTier,
     resolvedAppearance,
     needsEngine,
     city3d,
@@ -1061,6 +1164,17 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     citySky,
     detailedCity,
   ]);
+
+  // The live part of the quality profile: the clock's rate and idle pause,
+  // the pixel-ratio clamp and dynamic resolution's limits.
+  useEffect(() => {
+    clockRef.current?.configure({
+      hz: quality.frame.animationHz,
+      idleMs: quality.frame.idlePauseMs,
+    });
+    runtime?.handle?.setQuality(quality);
+    reliefRef.current?.setTerrain3d(quality.relief.terrain3d);
+  }, [quality, runtime]);
 
   // Hand the models to the engine whenever either changes.
   useEffect(() => {

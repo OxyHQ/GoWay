@@ -58,9 +58,17 @@ import { reportMapDefect } from './shared';
 export interface AttachReliefOptions {
   flags: ReliefFlags;
   appearance: MapAppearance;
+  /**
+   * The quality profile's `relief.terrain3d` (`lib/map/quality/profile.ts`):
+   * `false` keeps the hillshade (and the globe) but never switches MapLibre's
+   * 3D terrain on. Defaults to `true`.
+   */
+  terrain3d?: boolean;
 }
 
 export interface ReliefHandle {
+  /** The quality profile changed: allow or forbid 3D terrain, live. */
+  setTerrain3d(allowed: boolean): void;
   /** Stop listening and give the container its background back. Idempotent. */
   detach(): void;
 }
@@ -78,6 +86,7 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
   const previousBackground = container.style.background;
   let detached = false;
   let terrainReady = false;
+  let terrain3d = options.terrain3d !== false;
 
   // Space is the container's own background: MapLibre clears to transparent
   // and draws nothing around the globe, so this is what shows there — with
@@ -116,7 +125,7 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
   const syncTerrain = () => {
     if (detached || !terrainReady) return;
     const on = map.getTerrain() !== null;
-    const wanted = terrainWanted(map.getPitch(), on);
+    const wanted = terrain3d && terrainWanted(map.getPitch(), on);
     if (wanted === on) return;
     try {
       map.setTerrain(wanted ? RELIEF_TERRAIN : null);
@@ -193,6 +202,11 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
   applySafely();
 
   return {
+    setTerrain3d(allowed) {
+      if (terrain3d === allowed) return;
+      terrain3d = allowed;
+      syncTerrain();
+    },
     detach() {
       if (detached) return;
       detached = true;

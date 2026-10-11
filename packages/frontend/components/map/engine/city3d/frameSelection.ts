@@ -18,6 +18,8 @@
  * did. {@link FrameSchedule} is that rule.
  */
 
+import type { TileId } from './tileMath';
+
 /**
  * The three.js layer the sun's shadow map renders: the BUILDINGS join it
  * (`cityMeshes.ts`), nothing else does. The scene also holds instanced trees
@@ -66,6 +68,8 @@ export function runsSkyOffscreenPass(input: { sky: boolean; buildings: boolean }
 /** One drawn tile, as the shadow map's cache key needs it. */
 export interface DrawnTile {
   key: string;
+  /** The tile it is drawn as (for whether it can cast into the shadow map). */
+  tile: TileId;
   /** The world copy it is drawn in (antimeridian). */
   wrap: number;
   /** Bumped whenever the tile's terrain lift changed (`terrainGround.ts`). */
@@ -74,10 +78,18 @@ export interface DrawnTile {
 
 /**
  * The part of the shadow map's cache key that depends on the buildings: which
- * tiles are drawn, where, and on what ground. A tile's terrain lift moving its
- * buildings up or down changes their shadows as surely as a new tile does
+ * tiles cast into it, where, and on what ground. A tile's terrain lift moving
+ * its buildings up or down changes their shadows as surely as a new tile does
  * (review of #125: shadows stayed at the old lift).
+ *
+ * A SET: sorted, so the same tiles in another order (the engine draws them
+ * nearest first, and "nearest" changes with every step of an orbit) are the
+ * same key. Before this, an orbit redrew the shadow map on every frame
+ * (`docs/MAP_PERFORMANCE.md` → hotspots). The caller passes only the tiles
+ * that can cast into the map (`shadows.ts` → `castsInto`), so a tile coming
+ * into view far beyond the shadow box redraws nothing either.
  */
 export function castersKey(drawn: readonly DrawnTile[], groundEpoch: number): string {
-  return `${groundEpoch}|${drawn.map((t) => `${t.key}@${t.wrap}#${t.groundRevision}`).join(',')}`;
+  const tiles = drawn.map((t) => `${t.key}@${t.wrap}#${t.groundRevision}`).sort();
+  return `${groundEpoch}|${tiles.join(',')}`;
 }

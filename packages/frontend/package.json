@@ -31,6 +31,7 @@
     "map:city-plan": "bun scripts/plan-city-regions.ts",
     "map:city-region": "bun scripts/build-city-region.ts",
     "map:city-manifest": "bun scripts/build-city-manifest.ts",
+    "bench:map": "bun scripts/bench-map.ts",
     "landmarks": "bun scripts/build-landmarks.ts",
     "landmarks:check": "bun scripts/build-landmarks.ts --check",
     "typecheck": "tsc --noEmit"
@@ -109,6 +110,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "fontkit": "^2",
     "meshoptimizer": "1.1.1",
+    "playwright-core": "1.61.1",
     "typescript": "^5.9.3"
   },
   "expo": {
