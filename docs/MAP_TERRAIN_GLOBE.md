@@ -159,14 +159,21 @@ tile under Gràcia spans 45–174 m, Andorra la Vella's 994–1,648 m, Montserra
 164–1,122 m. So one lift per tile cannot work (off by up to 650 m) and the city
 layer lifts each building (`terrainGround.ts`):
 
-- **What is sampled.** `map.queryTerrainElevation`, which reads the surface
-  MapLibre is *drawing*, so a building lands on the ground the user sees.
-  **1.1 µs per call** (20,000 calls, headless Chromium). Per tile, a 33 × 33
-  grid (≈55 m cells at z14 — the terrain mesh itself is ≈9–15 m, from ≈15 m DEM
-  pixels) costs **1–1.3 ms**, up to ~10 ms when it is the call that builds
-  MapLibre's coverage index; every building then reads the grid bilinearly, so
-  the cost does not grow with the building count (Barcelona: ~15,500 polygons
-  per tile).
+- **What is sampled.** MapLibre's terrain, read at the DEM source's own max
+  zoom (`map.terrain.getElevationForLngLatZoom`, in its typed API): the same
+  DEM, bilinear sampling and exaggeration the terrain is drawn with — at the
+  zooms the city layer draws (≥ z15.5) the terrain is over-zoomed from that
+  DEM. **0.5 µs per call** (20,000 calls, headless Chromium). The obvious
+  `map.queryTerrainElevation` was tried first and dropped on measurement: it
+  reads the *rendered* terrain tiles and, for a point outside them — which a
+  z14 building tile's grid always partly is, behind or under a pitched camera —
+  recomputes the covering tiles on every call: **~100 µs per call**, and one
+  tile's grid took 166 ms on the main thread. Per tile, a 33 × 33 grid (≈55 m
+  cells at z14; the terrain mesh itself is ≈9–15 m, from ≈15 m DEM pixels)
+  costs **~1 ms** (≈5 ms on the very first call, while MapLibre builds its
+  sampler cache); every building then reads the grid bilinearly, so the cost
+  does not grow with the building count (Barcelona: ~15,500 polygons per
+  tile).
 - **How a building is placed.** MapLibre's own rule for `fill-extrusion`: the
   whole building at the ground under its centre, so roofs stay flat as in the
   data. Its fixed 10 m base sink is replaced by a measured one — the drop from
