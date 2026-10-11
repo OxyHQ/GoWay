@@ -51,12 +51,6 @@ import type { CustomLayerInterface, Map as MapLibreMap, VectorTileSource } from 
 
 import { MAP_LANDMARKS_ENABLED } from '@/lib/config';
 import {
-  isCity3dTreeFillRequested,
-  isCity3dTreesRequested,
-  MAP_CITY3D_TREE_FILL_ENABLED,
-  MAP_CITY3D_TREES_ENABLED,
-} from '@/lib/map/city3dTreesFlag';
-import {
   CITY_COVERAGE_PATH,
   CITY_TILE_LAYER,
   CITY_TILE_PATH,
@@ -245,6 +239,16 @@ export interface AttachCity3dOptions {
    * re-attaches on. Ignored without `buildings`. Defaults to `false`.
    */
   cityTiles?: boolean;
+  /**
+   * Stand the trees OpenStreetMap records (`engine/city3d/trees.ts`): the
+   * registry's `city3dTrees` answer. Defaults to `false`.
+   */
+  trees?: boolean;
+  /**
+   * Also fill mapped woods with illustrative trees: the registry's
+   * `city3dTreeFill`. Ignored without `trees`. Defaults to `false`.
+   */
+  treeFill?: boolean;
   /** A model was drawn, or fell back to its marker. */
   onModelStatus?: (id: string, status: ModelStatus) => void;
   /**
@@ -354,19 +358,10 @@ export async function attachCity3d(
     treeConifer: trees.conifer,
     treeTrunk: trees.trunk,
   };
-  // Stylised trees in mapped woods and parks (`engine/city3d/trees.ts`).
-  const standTrees = isCity3dTreesRequested({
-    enabled: MAP_CITY3D_TREES_ENABLED,
-    // `typeof`: the attach tests run without the bundler's `__DEV__`.
-    development: typeof __DEV__ !== 'undefined' && __DEV__,
-    search: typeof window === 'undefined' ? '' : window.location.search,
-  });
-  // The styling fill of mapped woods: off unless asked for.
-  const fillWoods = isCity3dTreeFillRequested({
-    enabled: MAP_CITY3D_TREE_FILL_ENABLED,
-    development: typeof __DEV__ !== 'undefined' && __DEV__,
-    search: typeof window === 'undefined' ? '' : window.location.search,
-  });
+  // Stylised trees in mapped woods and parks (`engine/city3d/trees.ts`), and
+  // the styling fill of mapped woods: the registry's answers, handed in.
+  const standTrees = options.trees === true;
+  const fillWoods = standTrees && options.treeFill === true;
 
   // Landmarks replace per-building OSM ids, so they need the city tiles.
   const landmarksOn =

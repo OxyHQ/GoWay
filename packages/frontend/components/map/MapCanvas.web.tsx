@@ -247,6 +247,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // rebuild accordingly.
   const city3d = useMapFeature('city3d');
   const cityTiles = useMapFeature('cityTiles');
+  const trees = useMapFeature('city3dTrees');
+  const treeFill = useMapFeature('city3dTreeFill');
   const relief = useMapRelief();
   /**
    * What the last engine was built for, and where its camera was when it went.
@@ -908,7 +910,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     city3dRef.current?.setLight(sunLight.light);
   }, [sunLight.light]);
 
-  // A toggle of `city3d` or `cityTiles` in the layers panel re-runs this
+  // A toggle of the city, its tiles or its trees in the layers panel re-runs this
   // effect: the old layer detaches (giving `building-3d` back) and, if still
   // wanted, a new one attaches — live, without rebuilding the map.
   //
@@ -938,6 +940,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               light: city3dLightRef.current,
               buildings: city3d,
               cityTiles,
+              trees,
+              treeFill,
               onModelStatus: (id, status) =>
                 setModelsDrawn((current) => {
                   if ((status === 'drawn') === current.has(id)) return current;
@@ -987,7 +991,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       handle?.detach();
       if (CITY_SKY) setSkyActive(false);
     };
-  }, [ready, resolvedAppearance, needsEngine, city3d, cityTiles]);
+  }, [ready, resolvedAppearance, needsEngine, city3d, cityTiles, trees, treeFill]);
 
   // Hand the models to the engine whenever either changes.
   useEffect(() => {

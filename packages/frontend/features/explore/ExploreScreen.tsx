@@ -586,6 +586,19 @@ export default function ExploreScreen({
           </Suspense>
         ) : null}
 
+        {/* The layers button: top right, under the account button, as Apple Maps
+          parks its map options — the one corner no sheet, panel or notice of
+          this screen ever covers, in either layout. */}
+        {flying ? null : (
+          <View
+            pointerEvents="box-none"
+            className="absolute"
+            style={{ top: areaTop, right: sideGap }}
+          >
+            <MapLayersButton tilted={pitch >= TILTED_EPSILON} onTiltChange={handleTiltChange} />
+          </View>
+        )}
+
         {flyover && directions.active && directions.route && !mapError ? (
           <Suspense fallback={null}>
             <RouteFlyover
@@ -623,7 +636,6 @@ export default function ExploreScreen({
                 tone="neutral"
               />
             ) : null}
-            <MapLayersButton tilted={pitch >= TILTED_EPSILON} onTiltChange={handleTiltChange} />
             <Fab
               icon={RiFocus3Line}
               iconSize={22}

@@ -56,6 +56,7 @@ export function MapLayersButton({ tilted, onTiltChange }: MapLayersButtonProps) 
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Fab
+          size="sm"
           icon={RiStackLine}
           iconSize={22}
           accessibilityLabel={label}
@@ -66,9 +67,9 @@ export function MapLayersButton({ tilted, onTiltChange }: MapLayersButtonProps) 
         />
       </PopoverTrigger>
       <PopoverContent
-        side="left"
+        side="bottom"
         align="end"
-        sideOffset={12}
+        sideOffset={8}
         label={label}
         minWidth={PANEL_WIDTH}
         maxWidth={PANEL_WIDTH}

@@ -8,6 +8,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { isCity3dRequested } from '@/lib/map/city3dFlag';
+import { isCity3dTreeFillRequested, isCity3dTreesRequested } from '@/lib/map/city3dTreesFlag';
 import { isCityTilesRequested } from '@/lib/map/cityTilesFlag';
 import { isFlyoverRequested } from '@/lib/map/flyoverFlag';
 import {
@@ -56,6 +57,14 @@ function legacy(builds: Builds, development: boolean, search: string) {
     search,
   });
   const city3d = isCity3dRequested({ enabled: onBuild(builds.city3d), development, search });
+  // As `city3dTreesFlag.ts` read it, except that padding around a `0` now
+  // kills too, as it always did for the globe and terrain (the one spelling
+  // the shared parser unified; see `parseBuildSwitch`).
+  const treesBuild = !/^\s*(0|false)\s*$/i.test(builds.city3dTrees ?? '');
+  // The trees were only ever ASKED for by the city layer, so they were only
+  // ever drawn with it; the registry states that as a dependency.
+  const city3dTrees =
+    city3d && isCity3dTreesRequested({ enabled: treesBuild, development, search });
   return {
     globe: relief.globe,
     terrain: relief.terrain,
@@ -66,6 +75,10 @@ function legacy(builds: Builds, development: boolean, search: string) {
       development,
       search,
     }),
+    city3dTrees,
+    city3dTreeFill:
+      city3dTrees &&
+      isCity3dTreeFillRequested({ enabled: onBuild(builds.city3dTreeFill), development, search }),
     flyover: isFlyoverRequested({ enabled: onBuild(builds.flyover), development, search }),
   };
 }
@@ -87,9 +100,12 @@ describe('the registry', () => {
       ['terrain', true],
       ['city3d', false],
       ['cityTiles', false],
+      ['city3dTrees', false],
+      ['city3dTreeFill', false],
       ['flyover', false],
     ]);
-    // Nothing new is on by default: every Labs feature starts off.
+    // Nothing new is on by default: every Labs feature starts off. (The trees
+    // default on, but only with the 3D city, which is off.)
     for (const state of features.list) if (state.tier === 'labs') expect(state.on).toBe(false);
   });
 
@@ -128,12 +144,16 @@ describe('with no stored choice, every flag answers what it did before', () => {
     '?city3d=1&cityTiles=1',
     '?cityTiles=1',
     '?labs=1',
+    '?city3d=1&city3dTrees=0',
+    '?city3d=1&city3dTreeFill=1',
+    '?city3dTreeFill=true',
   ];
   for (const development of [false, true]) {
     test(`${development ? 'development' : 'production'} build`, () => {
       for (const value of values) {
-        for (const id of ['globe', 'terrain', 'city3d', 'cityTiles', 'flyover']) {
-          const builds = { [id]: value, ...(id === 'cityTiles' ? { city3d: '1' } : {}) };
+        for (const id of MAP_FEATURES.map((feature) => feature.id)) {
+          // A feature that needs the city is checked with the city built in.
+          const builds = { [id]: value, ...(id === 'city3d' ? {} : { city3d: '1' }) };
           for (const search of searches) {
             const now = resolve({ builds, development, search });
             const before = legacy(builds, development, search);

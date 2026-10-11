@@ -630,7 +630,7 @@ with `?city3d=1`, which a production build ignores (`lib/map/city3dFlag.ts`).
 
 | Piece | Where |
 | --- | --- |
-| Flag | `lib/config.ts` (`MAP_CITY3D_ENABLED`), `lib/map/city3dFlag.ts` (`?city3d=1` in development); trees: `lib/map/city3dTreesFlag.ts` (`EXPO_PUBLIC_MAP_CITY3D_TREES`, `?city3dTrees=0` in development), imported only by the lazy adapter |
+| Flag | The map-feature registry (`lib/map/mapFeatures.ts`, [`MAP_FEATURES.md`](./MAP_FEATURES.md)): `city3d`, `city3dTrees`, `city3dTreeFill`, switchable in the layers panel's Labs; their rules stay in `lib/map/city3dFlag.ts` (`?city3d=1` in development) and `lib/map/city3dTreesFlag.ts` (`?city3dTrees=0`, `?city3dTreeFill=1`). The adapter is handed the answers |
 | Gate | one effect in `components/map/MapCanvas.web.tsx` |
 | MapLibre adapter | `components/map/city3dLayer.web.ts` — adds `goway:city3d` before `building-3d`, hides `building-3d`, restores it on detach; on a style with no `building-3d` (the `openfreemap` escape hatch, a style-URL override) it declines and leaves the style untouched, rather than guessing an anchor in a document GoWay does not own |
 | Light | `components/map/city3dLight.ts` — the `building-3d` light (`useSunLight`'s, fed by `MapCanvas.web.tsx`) as the engine's `CityLight` |
@@ -695,7 +695,11 @@ same way against `main` at `28d10da` (city tiles, globe and terrain merged):
 The trees' own flag first lived in `lib/config.ts`, which is on the first-paint
 path: +292 B in `entry` with the prototype off. It moved to
 `lib/map/city3dTreesFlag.ts`, imported only by the lazy adapter, and
-`engine3dChunk.test.ts` now pins that.
+`engine3dChunk.test.ts` pinned that. Since the map-feature registry
+(`MAP_FEATURES.md`) the trees are switched live from the layers panel, so they
+are decided at first paint after all: the flag module is pure and reached only
+from `lib/map/mapFeatures.ts`, which `engine3dChunk.test.ts` now pins instead;
+the registry's whole first-paint cost is measured in `MAP_FEATURES.md`.
 
 ## Phase 2: GoWay city tiles
 
@@ -714,7 +718,7 @@ fallback.
 | Client mesh | `osmMesher.ts`, `roofs.ts`, `facades.ts` |
 | Client shader | `osmShaders.ts` |
 | Engine/worker seam | `protocol.ts` (`format`), `meshWorker.ts` (one branch, packed like the rest), `cityEngine.ts` (`tileFormat`, `maxTiles`), `cityMeshes.ts` + `packing.ts` (the two extra attributes) |
-| Flag | `lib/map/cityTilesFlag.ts` (`EXPO_PUBLIC_MAP_CITY_TILES`, `?cityTiles=1` in development; requires the city-3D flag) |
+| Flag | The registry's `cityTiles` (`lib/map/mapFeatures.ts`; `EXPO_PUBLIC_MAP_CITY_TILES`; offered in the layers panel only in a development build) over `lib/map/cityTilesFlag.ts` (`?cityTiles=1` in development; requires the city-3D flag) |
 | Adapter | `city3dLayer.web.ts` → `citySourceFor` |
 | Dev route | `scripts/dev-city-tiles.js`, wired in `metro.config.js`, only with `GOWAY_CITY_TILES_ARCHIVE` set |
 | Tests | `scripts/__tests__/cityTags.test.ts`, `scripts/__tests__/cityTiles.test.ts` (a synthetic PBF through the whole compiler; MVT against the client decoder; PMTiles against `worker/pmtiles.js`), `components/map/__tests__/city3dRoofs.test.ts`, `city3dOsmMesher.test.ts`, `city3dCitySource.test.ts`, `lib/map/__tests__/cityTilesFlag.test.ts` |
@@ -919,8 +923,10 @@ against this branch (separate Metro caches, `--clear`):
 | `lazyChunk` (lazy, three.js) | 3,498,341 B | 3,502,751 B (+1,092 gz) | the OSM shader strings |
 | `meshWorker` (sealed worker) | 40,934 B (14,410 gz) | 58,306 B (20,473 gz) | decoder, OSM mesher, roofs |
 
-Nothing new reaches first paint: the env read lives in `cityTilesFlag.ts`,
-imported only by the lazy adapter, which is why it is not in `lib/config.ts`.
+Nothing new reached first paint: the env read lived in `cityTilesFlag.ts`,
+imported only by the lazy adapter, which is why it was not in `lib/config.ts`.
+(It now lives in the map-feature registry, which is on first paint by design;
+see `MAP_FEATURES.md`.)
 `components/__tests__/engine3dChunk.test.ts` stays green (`osmShaders.ts` is
 imported only by the engine; the adapter imports `lib/map/cityTiles*` and the
 engine folder type-only).

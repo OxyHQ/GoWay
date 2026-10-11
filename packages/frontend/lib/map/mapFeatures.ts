@@ -35,6 +35,7 @@
  * every rule here is a test rather than a comment.
  */
 import { isCity3dRequested } from './city3dFlag';
+import { isCity3dTreeFillRequested, isCity3dTreesRequested } from './city3dTreesFlag';
 import { isCityTilesRequested } from './cityTilesFlag';
 import { isFlyoverRequested } from './flyoverFlag';
 import { resolveReliefFlags } from './reliefFlag';
@@ -142,6 +143,28 @@ export const MAP_FEATURES = [
     offer: 'development',
     request: (enabled, { development, search, on }) =>
       isCityTilesRequested({ city3d: on('city3d'), enabled, development, search }),
+  },
+  {
+    id: 'city3dTrees',
+    tier: 'labs',
+    // They come with the 3D city: on whenever it is, unless switched off.
+    defaultOn: true,
+    build: process.env.EXPO_PUBLIC_MAP_CITY3D_TREES,
+    requires: ['city3d'],
+    platforms: WEB,
+    request: (enabled, { development, search }) =>
+      isCity3dTreesRequested({ enabled, development, search }),
+  },
+  {
+    id: 'city3dTreeFill',
+    tier: 'labs',
+    // Owner decision: by default, trees only where OpenStreetMap maps one.
+    defaultOn: false,
+    build: process.env.EXPO_PUBLIC_MAP_CITY3D_TREE_FILL,
+    requires: ['city3dTrees'],
+    platforms: WEB,
+    request: (enabled, { development, search }) =>
+      isCity3dTreeFillRequested({ enabled, development, search }),
   },
   {
     id: 'flyover',

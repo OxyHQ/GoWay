@@ -17,7 +17,7 @@
  * Nothing here leaves the device.
  */
 import { useCallback } from 'react';
-import { View } from 'react-native';
+import { ScrollView, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { type Labels, localizedLabel } from '@goway.to/sdk';
 import { Button } from '@oxy.so/bloom/button';
@@ -46,11 +46,21 @@ export interface MapLayersPanelProps {
 
 type ViewMode = '2d' | '3d';
 
+/**
+ * Room the panel leaves on screen around itself: the top bar and the button it
+ * hangs from above it, a margin below. Past that the panel scrolls rather than
+ * running off the window — Labs alone is taller than a phone.
+ */
+const PANEL_CHROME_PX = 180;
+const PANEL_MIN_HEIGHT_PX = 240;
+
 export function MapLayersPanel({ tilted, onTiltChange, onClose }: MapLayersPanelProps) {
   const { locale } = useTranslation();
   const theme = useTheme();
   const router = useRouter();
   const { features, labs } = useMapFeatures();
+  const { height } = useWindowDimensions();
+  const maxHeight = Math.max(PANEL_MIN_HEIGHT_PX, height - PANEL_CHROME_PX);
   const say = useCallback((labels: Labels) => localizedLabel(labels, locale), [locale]);
 
   const offered = features.list.filter((state) => state.available);
@@ -64,7 +74,7 @@ export function MapLayersPanel({ tilted, onTiltChange, onClose }: MapLayersPanel
   }, [onClose, router]);
 
   return (
-    <View className="gap-space-12">
+    <ScrollView style={{ maxHeight }} contentContainerClassName="gap-space-12">
       <PopoverHeader>
         <PopoverTitle>{say(MAP_LAYERS_COPY.title)}</PopoverTitle>
       </PopoverHeader>
@@ -138,7 +148,7 @@ export function MapLayersPanel({ tilted, onTiltChange, onClose }: MapLayersPanel
           </View>
         </>
       ) : null}
-    </View>
+    </ScrollView>
   );
 }
 
