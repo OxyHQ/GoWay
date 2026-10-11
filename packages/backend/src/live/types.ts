@@ -19,7 +19,7 @@
  */
 
 import type { GeoBoundingBox, LiveEntity, LiveKind, LiveLink } from '@goway/contracts';
-import type { MatchHint, StaticGtfsLocation } from './staticGtfs';
+import type { MatchHint, StaticGtfs, StaticGtfsLocation } from './staticGtfs';
 
 /** What a poll may use. Injected, so every adapter is tested without a network. */
 export interface LiveFetchContext {
@@ -34,6 +34,8 @@ export interface LiveFetchContext {
    * feed ignores them (it is one request whatever is watched).
    */
   demand: readonly GeoBoundingBox[];
+  /** The source's static GTFS, once loaded (estimating adapters need its shapes and stops). */
+  staticGtfs?: StaticGtfs | null;
 }
 
 /** The slice of `fetch` the adapters use. */
@@ -83,6 +85,8 @@ export interface LiveSourceDefinition {
   licence: LiveLink;
   /** `null` for worldwide. */
   coverage: GeoBoundingBox | null;
+  /** Whether it carries a whole network in its coverage (`LiveSource.completeness`). */
+  completeness: 'network' | 'partial';
   /** The feed's public endpoint; `LIVE_SOURCE_<ID>_URL` overrides it. */
   defaultUrl: string;
   /** Needs `LIVE_SOURCE_<ID>_KEY`; off without one. */

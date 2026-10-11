@@ -179,6 +179,65 @@ export const FLEETS = {
       roof: '#ECECEC',
     },
   },
+  // New York City subway, estimated only (drawn flat — never in 3D): the
+  // numbered lines' narrower 51-ft cars and the lettered lines' 60-ft ones,
+  // stainless, ten to a train. The model sets the glyph's length.
+  'mta-subway-a': {
+    form: 'emu',
+    cars: 10,
+    carLength: 15.5,
+    gap: 0.5,
+    width: 2.68,
+    height: 3.6,
+    livery: {
+      lower: '#4B5157',
+      stripe: '#6D747B',
+      body: STAINLESS,
+      window: GLASS,
+      roof: '#A9AEB3',
+    },
+  },
+  'mta-subway-b': {
+    form: 'emu',
+    cars: 10,
+    carLength: 18.4,
+    gap: 0.5,
+    width: 3.05,
+    height: 3.7,
+    livery: {
+      lower: '#4B5157',
+      stripe: '#6D747B',
+      body: STAINLESS,
+      window: GLASS,
+      roof: '#A9AEB3',
+    },
+  },
+  // TMB Barcelona metro (no keyless feed yet; docs/MAP_LIVE.md): five cars, red band.
+  'tmb-metro': {
+    form: 'emu',
+    cars: 5,
+    carLength: 17.5,
+    gap: 0.5,
+    width: 2.9,
+    height: 3.6,
+    livery: {
+      lower: '#3A3D40',
+      stripe: '#D7261E',
+      body: '#E9EAEB',
+      window: GLASS,
+      roof: '#C9CCCF',
+    },
+  },
+  // AMB metropolitan buses (estimated only): white with a yellow band.
+  'amb-bus': {
+    form: 'bus',
+    cars: 1,
+    carLength: 12.0,
+    gap: 0,
+    width: 2.55,
+    height: 3.1,
+    livery: { lower: '#5F6368', stripe: '#F2B705', body: WHITE, window: GLASS, roof: WHITE },
+  },
   'generic-train': {
     form: 'emu',
     cars: 4,
@@ -265,6 +324,10 @@ export const FLEET_RULES: readonly FleetRule[] = [
   { sourceId: 'mta-bus', line: /^SIM/, fleet: 'mta-double-deck' },
   { sourceId: 'mta-bus', line: /^(X\d|BM|BXM|QM)/, fleet: 'mta-coach' },
   { sourceId: 'mta-bus', fleet: 'mta-bus' },
+  { sourceId: 'mta-subway', line: /^([1-7]X?|GS)$/, fleet: 'mta-subway-a' },
+  { sourceId: 'mta-subway', fleet: 'mta-subway-b' },
+  { sourceId: 'tmb-metro', fleet: 'tmb-metro' },
+  { sourceId: 'amb-bus', fleet: 'amb-bus' },
 ];
 
 /** The fleet a live entity is drawn as; generic when nothing in the registry knows it. */

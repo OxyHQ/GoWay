@@ -13,7 +13,8 @@
  *       if (bus.fresh && bus.tiles.has(`${x}/${y}`)) hideSimulatedBusesIn(x, y);
  *     });
  *
- * A tile is in a kind's set when a live source carrying that kind covers it
+ * A tile is in a kind's set when a live source carrying a WHOLE network of
+ * that kind covers it (a feed of only some operators' buses never counts)
  * AND it is in (or near) the visible map; `fresh` is false while every such
  * source is stale, unavailable or still starting — in which case a reader
  * should not treat the area as covered.

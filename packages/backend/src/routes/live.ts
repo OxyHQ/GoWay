@@ -12,7 +12,7 @@
  */
 
 import { liveShapePathSchema } from '@goway/contracts';
-import { Router } from 'express';
+import { type RequestHandler, Router } from 'express';
 import type { LiveService } from '../live';
 import { ApiError } from '../http/apiError';
 import { parsePath } from '../http/validation';
@@ -23,7 +23,10 @@ const SHAPE_CACHE_CONTROL = 'public, max-age=3600';
 /** Statuses and freshness move every few seconds; a shared cache may hold them briefly. */
 const SOURCES_CACHE_CONTROL = 'public, max-age=5';
 
-export function createLiveRouter(live: LiveService | null): Router {
+export function createLiveRouter(
+  live: LiveService | null,
+  shapeRateLimit?: RequestHandler,
+): Router {
   const router: Router = Router();
   router.get('/live/sources', (_request, response) => {
     if (!live) {
@@ -37,7 +40,8 @@ export function createLiveRouter(live: LiveService | null): Router {
   });
   // An operator's own published route shape, which a vehicle's `track`
   // points into: what the map draws it along.
-  router.get('/live/sources/:sourceId/shapes/:shapeId', (request, response) => {
+  const shapeLimit: RequestHandler[] = shapeRateLimit ? [shapeRateLimit] : [];
+  router.get('/live/sources/:sourceId/shapes/:shapeId', ...shapeLimit, (request, response) => {
     if (!live) {
       throw new ApiError(
         'service_unavailable',

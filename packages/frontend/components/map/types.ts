@@ -199,6 +199,11 @@ export interface MapLivePoint {
   parts?: readonly { coordinate: GeoCoordinate; heading: number }[];
   /** Not on a known track: drawn as reported, styled as approximate. */
   approximate?: boolean;
+  /**
+   * Not a reported position at all: estimated (from arrival predictions).
+   * Drawn in its own hollow style, and never in 3D.
+   */
+  estimated?: boolean;
 }
 
 /**

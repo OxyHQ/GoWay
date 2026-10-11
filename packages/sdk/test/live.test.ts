@@ -20,6 +20,7 @@ const source = {
   attribution: { label: 'Origen de los datos: Renfe Operadora', href: 'https://data.renfe.com' },
   licence: { label: 'CC BY 4.0', href: 'https://creativecommons.org/licenses/by/4.0/' },
   coverage: { west: -9.6, south: 35.8, east: 4.6, north: 44 },
+  completeness: 'network',
   status: 'live',
   lastUpdatedAt: '2026-10-11T12:00:00.000Z',
   pollIntervalSeconds: 20,
@@ -45,6 +46,7 @@ const train = {
   lineTextColor: '#FFFFFF',
   track: { shapeId: '51_R2N', alongMeters: 1200.5, offsetMeters: 0.1 },
   trackStatus: 'on_track',
+  positionBasis: 'reported',
 };
 
 describe('goway.live.sources', () => {

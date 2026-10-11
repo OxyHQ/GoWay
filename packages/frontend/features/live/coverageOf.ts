@@ -2,9 +2,10 @@
  * Which z12 tiles real vehicles of each kind are being drawn in — the value
  * `lib/live/coverage.ts` publishes for other features. Pure.
  *
- * A source counts only while it is `live` (fresh), only for the kinds of
- * vehicle it has actually sent, and only where its coverage meets the
- * (padded) visible map.
+ * A source counts only when it carries a whole network (`completeness:
+ * 'network'` — a feed of some operators' buses says nothing about the rest),
+ * only while it is `live` (fresh), only for the kinds of vehicle it has
+ * actually sent, and only where its coverage meets the (padded) visible map.
  */
 import type { LiveSource, LiveTransitMode } from '@goway.to/sdk/live';
 
@@ -64,6 +65,7 @@ export function coverageOf(
   if (!view || view.west > view.east) return { kinds };
   for (const source of sources) {
     if (source.kind !== 'transit' || source.status !== 'live') continue;
+    if (source.completeness !== 'network') continue;
     const modes = modesBySource.get(source.id);
     if (!modes || modes.size === 0) continue;
     const c = source.coverage ?? { west: -180, south: -85, east: 180, north: 85 };

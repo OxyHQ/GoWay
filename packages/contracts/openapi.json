@@ -12683,6 +12683,13 @@
               }
             ]
           },
+          "completeness": {
+            "type": "string",
+            "enum": [
+              "network",
+              "partial"
+            ]
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -12733,6 +12740,7 @@
           "attribution",
           "licence",
           "coverage",
+          "completeness",
           "status",
           "lastUpdatedAt",
           "pollIntervalSeconds",
@@ -13079,6 +13087,13 @@
                   "off_track",
                   "unknown"
                 ]
+              },
+              "positionBasis": {
+                "type": "string",
+                "enum": [
+                  "reported",
+                  "estimated"
+                ]
               }
             },
             "required": [
@@ -13097,7 +13112,8 @@
               "lineColor",
               "lineTextColor",
               "track",
-              "trackStatus"
+              "trackStatus",
+              "positionBasis"
             ]
           },
           {

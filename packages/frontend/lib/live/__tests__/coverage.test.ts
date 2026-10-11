@@ -30,6 +30,7 @@ function source(
     attribution: { label: id, href: 'https://example.org' },
     licence: { label: 'CC BY 4.0', href: 'https://example.org/l' },
     coverage,
+    completeness: 'network',
     status,
     lastUpdatedAt: null,
     pollIntervalSeconds: 20,

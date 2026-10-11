@@ -30,6 +30,7 @@ import {
   type OxyRequestUser,
 } from '@oxy.so/core/server';
 import type { Request, RequestHandler } from 'express';
+import { isLiveShapeRequest } from './liveShapeRequest';
 import type { OxyActorChain } from '../oxy/caller';
 import { config } from '../config';
 import { ApiError, type ApiErrorBody } from '../http/apiError';
@@ -127,7 +128,21 @@ export function createGoWayRateLimit(
  * Mounted on the API router rather than on the app, so the health probe stays
  * unlimited: a throttled probe reports a service down that is merely popular.
  */
-export const apiRateLimit: RequestHandler = createGoWayRateLimit();
+export const apiRateLimit: RequestHandler = createGoWayRateLimit({
+  exempt: (request) => isLiveShapeRequest(request),
+});
+
+/**
+ * The limit for an operator's published route shapes, INSTEAD of
+ * `apiRateLimit`: a map of New York draws vehicles on a few hundred lines, each
+ * fetched once (and cached by the browser for an hour). Static, small,
+ * read-only data, so the bucket is wider than the API's — not unlimited.
+ */
+export const liveShapeRateLimit: RequestHandler = createGoWayRateLimit({
+  authenticatedMax: 3000,
+  anonymousMax: 3000,
+  windowMs: 15 * 60_000,
+});
 
 /**
  * A limit for contributions — reviews, replies and gallery writes — on top of

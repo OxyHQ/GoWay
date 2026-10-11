@@ -75,6 +75,7 @@ export function normaliseGeotrenTrain(
     lineTextColor: null,
     track: null,
     trackStatus: 'unknown',
+    positionBasis: 'reported',
   }) as LiveTransitVehicle | null;
 }
 

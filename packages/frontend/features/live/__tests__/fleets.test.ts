@@ -27,6 +27,7 @@ function transit(sourceId: string, line: string | null, mode: 'bus' | 'rail' = '
     lineTextColor: null,
     track: null,
     trackStatus: 'unknown',
+    positionBasis: 'reported',
   };
 }
 
@@ -42,6 +43,10 @@ describe('the fleet registry', () => {
     expect(fleetOf(transit('mta-bus', 'SIM1C', 'bus'))).toBe('mta-double-deck');
     expect(fleetOf(transit('mta-bus', 'BXM2', 'bus'))).toBe('mta-coach');
     expect(fleetOf(transit('mta-bus', 'M50', 'bus'))).toBe('mta-bus');
+    expect(fleetOf(transit('mta-subway', '6'))).toBe('mta-subway-a');
+    expect(fleetOf(transit('mta-subway', '7X'))).toBe('mta-subway-a');
+    expect(fleetOf(transit('mta-subway', 'A'))).toBe('mta-subway-b');
+    expect(fleetOf(transit('amb-bus', 'V3', 'bus'))).toBe('amb-bus');
     expect(fleetOf(transit('somewhere', 'X', 'bus'))).toBe('generic-bus');
     expect(fleetOf(transit('somewhere', 'X'))).toBe('generic-train');
   });

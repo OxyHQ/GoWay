@@ -151,6 +151,13 @@ export const liveTransitVehicleSchema = z.object({
    * `unknown`: no shape is known for it.
    */
   trackStatus: z.enum(['on_track', 'off_track', 'unknown']),
+  /**
+   * `reported`: the operator's own position fix (GPS or its signalling).
+   * `estimated`: GoWay's estimate along the line from the operator's ARRIVAL
+   * PREDICTIONS (`TripUpdate`s) — for networks that publish no positions
+   * (New York's subway, AMB's buses). Never to be shown as a position fix.
+   */
+  positionBasis: z.enum(['reported', 'estimated']),
 });
 export type LiveTransitVehicle = z.infer<typeof liveTransitVehicleSchema>;
 

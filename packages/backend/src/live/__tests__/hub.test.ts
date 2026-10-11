@@ -42,6 +42,7 @@ function bus(id: string, latitude: number, longitude: number, observedAt: number
     lineTextColor: null,
     track: null,
     trackStatus: 'unknown',
+    positionBasis: 'reported',
   };
 }
 
@@ -144,6 +145,7 @@ function harness(overrides: Partial<LiveSourceDefinition> = {}): Harness {
     attribution: { label: 'Test', href: 'https://example.org' },
     licence: { label: 'CC BY 4.0', href: 'https://creativecommons.org/licenses/by/4.0/' },
     coverage: { west: 1.9, south: 41.2, east: 2.4, north: 41.6 },
+    completeness: 'network',
     defaultUrl: 'https://example.org/feed',
     requiresKey: false,
     pollIntervalSeconds: 10,
@@ -402,6 +404,7 @@ describe('the hub', () => {
     expect(placed).toMatchObject({
       lineColor: '#D0DF00',
       trackStatus: 'on_track',
+      positionBasis: 'reported',
       position: on.position,
     });
     if (placed?.kind !== 'transit') throw new Error('not transit');
@@ -410,6 +413,7 @@ describe('the hub', () => {
     expect(entities.find((entity) => entity.id === 'test-bus:off')).toMatchObject({
       track: null,
       trackStatus: 'off_track',
+      positionBasis: 'reported',
     });
     const shape = h.hub.shape('test-bus', 'line');
     expect(shape?.coordinates).toEqual([

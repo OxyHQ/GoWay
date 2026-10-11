@@ -56,6 +56,7 @@ function vehicle(id: string, latitude: number, longitude: number): LiveEntity {
     lineTextColor: null,
     track: null,
     trackStatus: 'unknown',
+    positionBasis: 'reported',
   };
 }
 

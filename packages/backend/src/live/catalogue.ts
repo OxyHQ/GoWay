@@ -19,6 +19,7 @@
  */
 
 import type { GeoBoundingBox } from '@goway/contracts';
+import { createArrivalEstimateAdapter } from './adapters/arrivalEstimates';
 import { createDigitrafficAdapter } from './adapters/digitraffic';
 import { createGbfsAdapter } from './adapters/gbfs';
 import { createGeotrenAdapter } from './adapters/geotren';
@@ -34,6 +35,21 @@ const CATALONIA: GeoBoundingBox = { west: 0.1, south: 40.5, east: 3.4, north: 42
 const NEW_YORK_CITY: GeoBoundingBox = { west: -74.3, south: 40.45, east: -73.65, north: 40.95 };
 /** The MTA's railroads: Long Island to the Hudson Valley and Connecticut. */
 const NEW_YORK_REGION: GeoBoundingBox = { west: -74.5, south: 40.4, east: -71.8, north: 41.9 };
+/** The Àrea Metropolitana de Barcelona's bus network. */
+const AMB_AREA: GeoBoundingBox = { west: 1.7, south: 41.2, east: 2.45, north: 41.65 };
+/** The Comunidad de Madrid. */
+const MADRID_REGION: GeoBoundingBox = { west: -4.6, south: 39.85, east: -3.05, north: 41.2 };
+
+/** Spain's national access point licence: its credit is required on every use. */
+const MITRAMS_CREDIT: LiveSourceDefinition['attribution'] = {
+  label: 'Powered by MITRAMS',
+  href: 'https://nap.transportes.gob.es',
+};
+const NAP_LICENCE: LiveSourceDefinition['licence'] = {
+  label: 'NAP open data licence',
+  href: 'https://nap.transportes.gob.es/licencia-datos',
+};
+
 /** The Baltic Sea and the Gulf of Finland, where Finland's AIS network hears ships. */
 const BALTIC: GeoBoundingBox = { west: 9.0, south: 53.0, east: 31.0, north: 66.5 };
 
@@ -72,6 +88,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     attribution: { label: '© adsb.lol contributors', href: 'https://adsb.lol' },
     licence: { label: 'ODbL 1.0', href: 'https://opendatacommons.org/licenses/odbl/1-0/' },
     coverage: null,
+    completeness: 'partial',
     defaultUrl: 'https://api.adsb.lol',
     requiresKey: false,
     // Per poll at most `LIVE_MAX_REGIONS_PER_POLL` circles, one request each,
@@ -91,6 +108,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     attribution: { label: 'Origen de los datos: Renfe Operadora', href: 'https://data.renfe.com' },
     licence: CC_BY_4,
     coverage: SPAIN,
+    completeness: 'network',
     defaultUrl: 'https://gtfsrt.renfe.com/vehicle_positions.pb',
     requiresKey: false,
     // Renfe republishes every 20 s.
@@ -124,6 +142,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     },
     licence: CC_BY_4,
     coverage: CATALONIA,
+    completeness: 'network',
     defaultUrl: 'https://dadesobertes.fgc.cat',
     requiresKey: false,
     // Two calls per poll against a 5,000-a-day quota; FGC republishes about once a minute.
@@ -152,6 +171,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     attribution: { label: 'Data: MTA', href: 'https://bustime.mta.info' },
     licence: MTA_TERMS,
     coverage: NEW_YORK_CITY,
+    completeness: 'network',
     defaultUrl: 'https://gtfsrt.prod.obanyc.com/vehiclePositions',
     // Documented as required, answered without one when this was written: a
     // configured key is always sent, and production registers one.
@@ -186,6 +206,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     attribution: { label: 'Data: MTA', href: 'https://www.mta.info/developers' },
     licence: MTA_TERMS,
     coverage: NEW_YORK_REGION,
+    completeness: 'network',
     defaultUrl: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr',
     requiresKey: false,
     pollIntervalSeconds: 20,
@@ -205,6 +226,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     attribution: { label: 'Data: MTA', href: 'https://www.mta.info/developers' },
     licence: MTA_TERMS,
     coverage: NEW_YORK_REGION,
+    completeness: 'network',
     defaultUrl: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/mnr%2Fgtfs-mnr',
     requiresKey: false,
     pollIntervalSeconds: 20,
@@ -223,6 +245,120 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
       ),
   },
   {
+    // New York's subway runs underground and publishes no coordinates: its
+    // trains are ESTIMATED along their line from the MTA's own arrival
+    // predictions, and drawn as estimates (`adapters/arrivalEstimates.ts`).
+    id: 'mta-subway',
+    kind: 'transit',
+    name: 'Subway — MTA (New York), estimated',
+    attribution: { label: 'Data: MTA', href: 'https://www.mta.info/developers' },
+    licence: MTA_TERMS,
+    coverage: NEW_YORK_CITY,
+    completeness: 'network',
+    defaultUrl: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs',
+    requiresKey: false,
+    pollIntervalSeconds: 30,
+    staleAfterSeconds: 120,
+    dropAfterSeconds: 300,
+    staticGtfs: { zip: 'https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip' },
+    create: (settings) =>
+      createArrivalEstimateAdapter(
+        {
+          sourceId: 'mta-subway',
+          operator: 'MTA',
+          defaultMode: 'subway',
+          // The eight feeds the subway is split over; the configured URL is the 1–7 one.
+          urls: [
+            settings.url,
+            ...['ace', 'bdfm', 'g', 'jz', 'nqrw', 'l', 'si'].map(
+              (feed) =>
+                `https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-${feed}`,
+            ),
+          ],
+          // Realtime ids are `<origin time>_<route>..<direction><pattern>`; the
+          // part after the first `_` is the static shape id (`1..S03R`).
+          shapeIdOf: (tripId) => tripId.split('_').slice(1).join('_') || null,
+        },
+        settings,
+      ),
+  },
+  {
+    // AMB publishes arrival predictions for its metropolitan buses (Nitbus
+    // included), no positions: estimated, like the subway. Not TMB's city
+    // buses, which publish nothing keyless (`docs/MAP_LIVE.md`).
+    id: 'amb-bus',
+    kind: 'transit',
+    name: 'Buses — AMB (Barcelona area), estimated',
+    attribution: { label: 'Font: AMB', href: 'https://www.ambmobilitat.cat' },
+    licence: {
+      label: 'Reuse under Llei 37/2007',
+      href: 'https://www.amb.cat/web/area-metropolitana/dades-obertes/condicions-d-us',
+    },
+    coverage: AMB_AREA,
+    completeness: 'partial',
+    defaultUrl: 'https://www.ambmobilitat.cat/transit/trips-updates/trips.bin',
+    requiresKey: false,
+    // The feed updates every 30 s.
+    pollIntervalSeconds: 30,
+    staleAfterSeconds: 120,
+    dropAfterSeconds: 300,
+    staticGtfs: { zip: 'https://www.ambmobilitat.cat/OpenData/google_transit.zip' },
+    create: (settings) =>
+      createArrivalEstimateAdapter(
+        { sourceId: 'amb-bus', operator: 'AMB', defaultMode: 'bus', urls: [settings.url] },
+        settings,
+      ),
+  },
+  {
+    // Real GPS positions of an interurban operator in the Comunidad de Madrid.
+    // Its ids do not join to the regional GTFS, so its buses are shown where
+    // reported, as approximate (no track).
+    id: 'aisa-bus',
+    kind: 'transit',
+    name: 'Buses — AISA (Madrid region)',
+    attribution: MITRAMS_CREDIT,
+    licence: NAP_LICENCE,
+    coverage: MADRID_REGION,
+    completeness: 'partial',
+    defaultUrl: 'http://gtfs-rt-crtm.aisa-grupo.net:8080/GTFS-RT/vehiculosPosicion',
+    requiresKey: false,
+    pollIntervalSeconds: 20,
+    staleAfterSeconds: 120,
+    dropAfterSeconds: 600,
+    create: (settings) =>
+      createGtfsRealtimeAdapter(
+        { sourceId: 'aisa-bus', operator: 'AISA', coverage: MADRID_REGION, defaultMode: 'bus' },
+        settings,
+      ),
+  },
+  {
+    // EMT Fuenlabrada: real GPS positions and a keyless static GTFS with shapes.
+    id: 'emt-fuenlabrada',
+    kind: 'transit',
+    name: 'Buses — EMT Fuenlabrada (Madrid region)',
+    attribution: MITRAMS_CREDIT,
+    licence: NAP_LICENCE,
+    coverage: MADRID_REGION,
+    completeness: 'partial',
+    defaultUrl:
+      'https://api.control.optibus.co/opendata/v1/gtfs-rt/vehicle-positions?uid=c-5cfcd2d1',
+    requiresKey: false,
+    pollIntervalSeconds: 20,
+    staleAfterSeconds: 120,
+    dropAfterSeconds: 600,
+    staticGtfs: { zip: 'https://api.control.optibus.co/opendata/v1/gtfs?uid=c-5cfcd2d1' },
+    create: (settings) =>
+      createGtfsRealtimeAdapter(
+        {
+          sourceId: 'emt-fuenlabrada',
+          operator: 'EMT Fuenlabrada',
+          coverage: MADRID_REGION,
+          defaultMode: 'bus',
+        },
+        settings,
+      ),
+  },
+  {
     id: 'nyc-bikeshare',
     kind: 'bikeshare',
     // The licence forbids using the operator's marks: a generic name, by design.
@@ -236,6 +372,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
       href: 'https://citibikenyc.com/data-sharing-policy',
     },
     coverage: NEW_YORK_CITY,
+    completeness: 'network',
     defaultUrl: 'https://gbfs.citibikenyc.com/gbfs/2.3/gbfs.json',
     requiresKey: false,
     // GBFS `ttl` is 60 s.
@@ -258,6 +395,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     },
     licence: CC_BY_4,
     coverage: BALTIC,
+    completeness: 'partial',
     defaultUrl: 'https://meri.digitraffic.fi',
     requiresKey: false,
     // Responses are cached for 60 s upstream; 30 s keeps moving ships smooth

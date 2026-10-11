@@ -29,8 +29,15 @@ export function pointOf(sample: LiveSample, selectedId: string | null): MapLiveP
   const tint = tintOf(entity);
   if (tint) point.tint = tint;
   point.length = fleetLength(fleet);
-  point.model = fleet;
   point.approximate = sample.approximate;
+  // An estimate is drawn flat only: in 3D a train placed by arithmetic would
+  // look like a sighting, and a subway train would stand on the street above
+  // its tunnel (`docs/MAP_LIVE.md` → Estimated positions).
+  if (sample.estimated) {
+    point.estimated = true;
+    return point;
+  }
+  point.model = fleet;
   // Each car on the track where it is; off a track, a straight line along
   // the reported heading (or none, when there is none — one body).
   if (sample.onTrack) {

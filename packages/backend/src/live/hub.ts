@@ -219,6 +219,7 @@ export class LiveHub {
         attribution: definition.attribution,
         licence: definition.licence,
         coverage: definition.coverage,
+        completeness: definition.completeness,
         status: this.statusOf(state, now),
         lastUpdatedAt:
           state.lastSuccessAt === null ? null : new Date(state.lastSuccessAt).toISOString(),
@@ -311,7 +312,13 @@ export class LiveHub {
     const timeout = setTimeout(() => abort.abort(), POLL_TIMEOUT_MS);
     state.abort = abort;
     const run = state.adapter
-      .poll({ signal: abort.signal, fetch: this.options.fetch, now: this.now, demand })
+      .poll({
+        signal: abort.signal,
+        fetch: this.options.fetch,
+        now: this.now,
+        demand,
+        staticGtfs: state.gtfs,
+      })
       .then(
         (result) => {
           if (this.stopped) return;
@@ -407,7 +414,8 @@ export class LiveHub {
     const gtfs = state.gtfs;
     if (!gtfs) return [...entities];
     return entities.map((entity) => {
-      if (entity.kind !== 'transit') return entity;
+      // An estimate is already on its shape, by construction.
+      if (entity.kind !== 'transit' || entity.positionBasis === 'estimated') return entity;
       const match = matchTrack(
         gtfs,
         hints?.get(entity.id) ?? {},

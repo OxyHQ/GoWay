@@ -56,6 +56,8 @@ export interface StaticGtfs {
   shapes: Map<string, GtfsShape>;
   /** Shape ids per route id and per route short name (`S1`, `R2N`). */
   shapesByRoute: Map<string, Set<string>>;
+  /** Stop positions, for estimating a vehicle between stops (`stops.txt`, when present). */
+  stops: Map<string, { latitude: number; longitude: number }>;
 }
 
 /** Minimal RFC 4180 CSV: quoted fields, doubled quotes, trimmed values (Renfe pads). */
@@ -107,6 +109,7 @@ export function buildStaticGtfs(files: {
   routes: string;
   trips: string;
   shapes: string;
+  stops?: string;
 }): StaticGtfs {
   const routes = new Map<string, GtfsRoute>();
   {
@@ -200,7 +203,19 @@ export function buildStaticGtfs(files: {
       }
     }
   }
-  return { routes, trips, shapes, shapesByRoute };
+  const stops = new Map<string, { latitude: number; longitude: number }>();
+  if (files.stops) {
+    const { header, rows } = parseCsv(files.stops);
+    const [id, la, lo] = columns(header, ['stop_id', 'stop_lat', 'stop_lon']);
+    for (const row of rows) {
+      const latitude = Number(row[la]);
+      const longitude = Number(row[lo]);
+      if (row[id] && Number.isFinite(latitude) && Number.isFinite(longitude)) {
+        stops.set(row[id] as string, { latitude, longitude });
+      }
+    }
+  }
+  return { routes, trips, shapes, shapesByRoute, stops };
 }
 
 export function makeShape(id: string, latLon: readonly (readonly [number, number])[]): GtfsShape {
@@ -363,7 +378,7 @@ export type StaticGtfsLocation =
   /** Several zips merged (MTA buses publish one per borough). */
   | { zips: readonly string[] };
 
-const FILES = ['routes.txt', 'trips.txt', 'shapes.txt'] as const;
+const FILES = ['routes.txt', 'trips.txt', 'shapes.txt', 'stops.txt'] as const;
 
 /** Fetch and build an operator's static GTFS. Throws on a missing file. */
 export async function loadStaticGtfs(
@@ -371,7 +386,7 @@ export async function loadStaticGtfs(
   read: (url: string) => Promise<Uint8Array>,
 ): Promise<StaticGtfs> {
   const decoder = new TextDecoder();
-  const parts: { routes: string; trips: string; shapes: string }[] = [];
+  const parts: { routes: string; trips: string; shapes: string; stops?: string }[] = [];
   const zips = 'zip' in location ? [location.zip] : 'zips' in location ? location.zips : [];
   for (const url of zips) {
     const entries = readZipEntries(await read(url), FILES);
@@ -380,10 +395,12 @@ export async function loadStaticGtfs(
       if (!bytes) throw new ZipError(`${name} missing from ${url}`);
       return decoder.decode(bytes);
     };
+    const stops = entries.get('stops.txt');
     parts.push({
       routes: text('routes.txt'),
       trips: text('trips.txt'),
       shapes: text('shapes.txt'),
+      ...(stops ? { stops: decoder.decode(stops) } : {}),
     });
   }
   if ('routes' in location) {
@@ -400,11 +417,13 @@ export async function loadStaticGtfs(
     trips: new Map(),
     shapes: new Map(),
     shapesByRoute: new Map(),
+    stops: new Map(),
   };
   for (const gtfs of built) {
     for (const [k, v] of gtfs.routes) merged.routes.set(k, v);
     for (const [k, v] of gtfs.trips) merged.trips.set(k, v);
     for (const [k, v] of gtfs.shapes) merged.shapes.set(k, v);
+    for (const [k, v] of gtfs.stops) merged.stops.set(k, v);
     for (const [k, v] of gtfs.shapesByRoute) {
       const set = merged.shapesByRoute.get(k) ?? new Set<string>();
       for (const id of v) set.add(id);
@@ -412,4 +431,28 @@ export async function loadStaticGtfs(
     }
   }
   return merged;
+}
+
+/** The point `along` metres along a shape (clamped). */
+export function pointOnShape(
+  shape: GtfsShape,
+  along: number,
+): { latitude: number; longitude: number } {
+  const s = Math.max(0, Math.min(shape.length, along));
+  let lo = 0;
+  let hi = shape.along.length - 2;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if ((shape.along[mid] as number) <= s) lo = mid;
+    else hi = mid - 1;
+  }
+  const a0 = shape.along[lo] as number;
+  const a1 = shape.along[lo + 1] as number;
+  const t = a1 > a0 ? (s - a0) / (a1 - a0) : 0;
+  return {
+    latitude:
+      (shape.lat[lo] as number) + ((shape.lat[lo + 1] as number) - (shape.lat[lo] as number)) * t,
+    longitude:
+      (shape.lon[lo] as number) + ((shape.lon[lo + 1] as number) - (shape.lon[lo] as number)) * t,
+  };
 }

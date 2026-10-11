@@ -154,6 +154,7 @@ describe('details', () => {
           attribution: { label: 's', href: 'https://s' },
           licence: { label: 'l', href: 'https://l' },
           coverage: null,
+          completeness: 'network',
           status: 'live',
           lastUpdatedAt: '2026-10-11T12:00:07Z',
           pollIntervalSeconds: 10,

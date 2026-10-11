@@ -138,12 +138,31 @@ export interface GtfsVehiclePosition {
   speed?: number;
   /** Seconds since the epoch. */
   timestamp?: number;
+  /** `VehicleStopStatus`: 0 incoming at, 1 stopped at, 2 in transit to. */
+  currentStatus?: number;
+  /** The stop the status refers to. */
+  stopId?: string;
+}
+
+/** One predicted stop of a trip. Times in seconds since the epoch. */
+export interface GtfsStopTimeUpdate {
+  stopId?: string;
+  arrival?: number;
+  departure?: number;
+}
+
+export interface GtfsTripUpdate {
+  tripId?: string;
+  routeId?: string;
+  stops: GtfsStopTimeUpdate[];
 }
 
 export interface GtfsFeed {
   /** Seconds since the epoch. */
   headerTimestamp?: number;
   vehicles: GtfsVehiclePosition[];
+  /** Arrival predictions (`TripUpdate`), when the feed carries them. */
+  tripUpdates: GtfsTripUpdate[];
 }
 
 function expectWire(actual: number, expected: number, what: string): void {
@@ -191,11 +210,50 @@ function readVehiclePosition(reader: ProtobufReader, out: GtfsVehiclePosition): 
     else if (field === 8 && wire === WIRE_BYTES) readVehicleDescriptor(reader.message(), out);
     else if (field === 2 && wire === WIRE_BYTES) readPosition(reader.message(), out);
     else if (field === 5 && wire === WIRE_VARINT) out.timestamp = reader.varint();
+    else if (field === 4 && wire === WIRE_VARINT) out.currentStatus = reader.varint();
+    else if (field === 7 && wire === WIRE_BYTES) out.stopId = reader.string();
     else reader.skip(wire);
   }
 }
 
-function readEntity(reader: ProtobufReader): GtfsVehiclePosition | null {
+function readEventTime(reader: ProtobufReader): number | undefined {
+  let time: number | undefined;
+  while (!reader.done) {
+    const { field, wire } = reader.tag();
+    if (field === 2 && wire === WIRE_VARINT) time = reader.varint();
+    else reader.skip(wire);
+  }
+  return time;
+}
+
+function readTripUpdate(reader: ProtobufReader): GtfsTripUpdate {
+  const out: GtfsTripUpdate = { stops: [] };
+  while (!reader.done) {
+    const { field, wire } = reader.tag();
+    if (field === 1 && wire === WIRE_BYTES) {
+      const trip: GtfsVehiclePosition = {};
+      readTrip(reader.message(), trip);
+      if (trip.tripId) out.tripId = trip.tripId;
+      if (trip.routeId) out.routeId = trip.routeId;
+    } else if (field === 2 && wire === WIRE_BYTES) {
+      const update = reader.message();
+      const stop: GtfsStopTimeUpdate = {};
+      while (!update.done) {
+        const tag = update.tag();
+        if (tag.field === 4 && tag.wire === WIRE_BYTES) stop.stopId = update.string();
+        else if (tag.field === 2 && tag.wire === WIRE_BYTES)
+          stop.arrival = readEventTime(update.message());
+        else if (tag.field === 3 && tag.wire === WIRE_BYTES)
+          stop.departure = readEventTime(update.message());
+        else update.skip(tag.wire);
+      }
+      out.stops.push(stop);
+    } else reader.skip(wire);
+  }
+  return out;
+}
+
+function readEntity(reader: ProtobufReader, feed: GtfsFeed): void {
   const out: GtfsVehiclePosition = {};
   let hasVehicle = false;
   while (!reader.done) {
@@ -205,15 +263,17 @@ function readEntity(reader: ProtobufReader): GtfsVehiclePosition | null {
     else if (field === 4 && wire === WIRE_BYTES) {
       hasVehicle = true;
       readVehiclePosition(reader.message(), out);
-    } else reader.skip(wire);
+    } else if (field === 3 && wire === WIRE_BYTES)
+      feed.tripUpdates.push(readTripUpdate(reader.message()));
+    else reader.skip(wire);
   }
-  return hasVehicle ? out : null;
+  if (hasVehicle) feed.vehicles.push(out);
 }
 
-/** Decode a `FeedMessage`, keeping only its `VehiclePosition` entities. Throws on malformed input. */
+/** Decode a `FeedMessage`: its `VehiclePosition`s and `TripUpdate`s. Throws on malformed input. */
 export function decodeGtfsRealtime(bytes: Uint8Array): GtfsFeed {
   const reader = new ProtobufReader(bytes);
-  const feed: GtfsFeed = { vehicles: [] };
+  const feed: GtfsFeed = { vehicles: [], tripUpdates: [] };
   let sawHeader = false;
   while (!reader.done) {
     const { field, wire } = reader.tag();
@@ -226,8 +286,7 @@ export function decodeGtfsRealtime(bytes: Uint8Array): GtfsFeed {
         else header.skip(tag.wire);
       }
     } else if (field === 2 && wire === WIRE_BYTES) {
-      const vehicle = readEntity(reader.message());
-      if (vehicle) feed.vehicles.push(vehicle);
+      readEntity(reader.message(), feed);
     } else {
       reader.skip(wire);
     }

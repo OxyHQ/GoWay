@@ -81,6 +81,7 @@ export interface GlyphVariant {
   /** The colour it is drawn in, when not the glyph's own (a line colour). */
   tint?: string;
   approximate?: boolean;
+  estimated?: boolean;
 }
 
 export function imageName(
@@ -88,8 +89,9 @@ export function imageName(
   directional: boolean,
   tint?: string,
   approximate?: boolean,
+  estimated?: boolean,
 ): string {
-  return `${GOWAY_LAYER_PREFIX}live:${glyph}:${directional ? 'dir' : 'still'}${tint ? `:${tint}` : ''}${approximate ? ':approx' : ''}`;
+  return `${GOWAY_LAYER_PREFIX}live:${glyph}:${directional ? 'dir' : 'still'}${tint ? `:${tint}` : ''}${approximate ? ':approx' : ''}${estimated ? ':est' : ''}`;
 }
 
 /** Glyph length in CSS pixels at `icon-size` 1, for the shapes drawn to scale. */
@@ -125,7 +127,7 @@ export function featureCollection(
       geometry: { type: 'Point', coordinates: [longitude, latitude] },
       properties: {
         id: point.id,
-        icon: imageName(point.glyph, directional, point.tint, point.approximate),
+        icon: imageName(point.glyph, directional, point.tint, point.approximate, point.estimated),
         heading: directional ? point.heading : 0,
         // With the 3D pass drawing a vehicle, its glyph steps back: an
         // airborne aircraft's becomes its shadow, a train's or bus's a faint
@@ -236,7 +238,17 @@ function glyphImage(glyph: MapLiveGlyph, variant: GlyphVariant): ImageData | nul
     ctx.lineWidth = 2.6 * GLYPH_PIXEL_RATIO;
     ctx.strokeStyle = '#ffffff';
     ctx.stroke();
-    if (variant.approximate) {
+    if (variant.estimated) {
+      // Estimated: hollow — a solid outline in its colour round a faint wash
+      // of it, and no windscreen. Never a vehicle anyone reported.
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 2 * GLYPH_PIXEL_RATIO;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+    } else if (variant.approximate) {
       // Approximate: a pale body with a dashed outline in its colour.
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
       ctx.fill();
@@ -291,6 +303,16 @@ function glyphImage(glyph: MapLiveGlyph, variant: GlyphVariant): ImageData | nul
   ctx.lineWidth = 2.4 * u;
   ctx.strokeStyle = '#ffffff';
   ctx.stroke();
+  if (variant.estimated) {
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1.8 * u;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+    return ctx.getImageData(0, 0, size, size);
+  }
   if (variant.approximate) {
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.fill();
@@ -330,7 +352,13 @@ export function attachLive(
   const images = new Set<string>();
   /** Draw a glyph variant the first time something needs it (line colours are open-ended). */
   const ensureImage = (variant: GlyphVariant) => {
-    const id = imageName(variant.glyph, variant.directional, variant.tint, variant.approximate);
+    const id = imageName(
+      variant.glyph,
+      variant.directional,
+      variant.tint,
+      variant.approximate,
+      variant.estimated,
+    );
     if (images.has(id) || map.hasImage(id)) return;
     const glyph = layer.glyphs[variant.glyph];
     if (!glyph) return;
@@ -430,12 +458,13 @@ export function attachLive(
     if (!source) return;
     const points = sampleNow();
     for (const point of points) {
-      if (!point.tint && !point.approximate) continue;
+      if (!point.tint && !point.approximate && !point.estimated) continue;
       ensureImage({
         glyph: point.glyph,
         directional: point.heading !== null && Number.isFinite(point.heading),
         tint: point.tint,
         approximate: point.approximate,
+        estimated: point.estimated,
       });
     }
     source.setData(featureCollection(points, { glyphs: layer.glyphs, threeD }));

@@ -58,8 +58,23 @@ export interface LiveHostProps {
 /** How often freshness text and fading are re-evaluated with nothing else happening. */
 const HEARTBEAT_MS = 1000;
 
+function meetsView(
+  coverage: { west: number; south: number; east: number; north: number } | null,
+  view: { west: number; south: number; east: number; north: number } | null,
+): boolean {
+  if (!coverage || !view) return true;
+  return (
+    coverage.west <= view.east &&
+    coverage.east >= view.west &&
+    coverage.south <= view.north &&
+    coverage.north >= view.south
+  );
+}
+
 /** Bike-share stations are drawn from this zoom: below it a city's docks are a carpet. */
 const BIKESHARE_MIN_ZOOM = 15;
+/** Lines are fetched from this zoom: below it a train is a few pixels and its curve invisible. */
+const SHAPES_MIN_ZOOM = 12;
 
 export default function LiveHost({ onLayer, top, right, compact = false }: LiveHostProps) {
   const listeners = useRef(new Set<() => void>());
@@ -162,6 +177,7 @@ export default function LiveHost({ onLayer, top, right, compact = false }: LiveH
       setViewport(view) {
         zoomRef.current = view.zoom;
         viewRef.current = padded(view.bounds, 0.25);
+        store.setShapeArea(view.zoom >= SHAPES_MIN_ZOOM ? viewRef.current : null);
         clientRef.current?.setView(view);
       },
       select(id) {
@@ -217,7 +233,7 @@ export default function LiveHost({ onLayer, top, right, compact = false }: LiveH
       clearInterval(timer);
       clearLiveCoverage();
     };
-  }, [notify, refreshCredits]);
+  }, [notify, refreshCredits, store]);
 
   const toggleKind = useCallback((kind: LiveKind) => {
     setKinds((current) => {
@@ -242,7 +258,8 @@ export default function LiveHost({ onLayer, top, right, compact = false }: LiveH
       kinds={kinds}
       onToggleKind={toggleKind}
       state={clientState}
-      sources={store.sources()}
+      // Only the feeds whose coverage meets the map: Barcelona does not list New York's.
+      sources={store.sources().filter((source) => meetsView(source.coverage, viewRef.current))}
       serverNow={store.serverNow()}
       selected={selectedSample}
       selectedSource={selectedSample ? store.source(selectedSample.entity.sourceId) : undefined}

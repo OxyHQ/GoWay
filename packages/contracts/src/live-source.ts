@@ -65,6 +65,13 @@ export const liveSourceSchema = z.object({
   licence: liveLinkSchema,
   /** Where it has data; `null` for worldwide. */
   coverage: geoBoundingBoxSchema.nullable(),
+  /**
+   * `network`: every vehicle of its kind in its coverage is in the feed (a
+   * whole operator network), so where it is live, nothing of that kind is
+   * missing. `partial`: only some operators' or some vehicles — a reader must
+   * not assume the rest are shown.
+   */
+  completeness: z.enum(['network', 'partial']),
   status: z.enum(LIVE_SOURCE_STATUSES),
   /** The last successful answer from the feed. */
   lastUpdatedAt: instantSchema.nullable(),

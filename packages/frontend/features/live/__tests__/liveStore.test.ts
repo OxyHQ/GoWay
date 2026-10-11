@@ -30,6 +30,7 @@ function source(id: string, staleAfterSeconds: number, dropAfterSeconds: number)
     attribution: { label: id, href: 'https://example.org' },
     licence: { label: 'ODbL 1.0', href: 'https://example.org/l' },
     coverage: null,
+    completeness: 'network',
     status: 'live',
     lastUpdatedAt: new Date(T0).toISOString(),
     pollIntervalSeconds: 10,
@@ -85,6 +86,7 @@ function train(
     lineTextColor: '#FFFFFF',
     track: track ? { ...track, offsetMeters: 0 } : null,
     trackStatus,
+    positionBasis: 'reported',
   };
 }
 
@@ -312,6 +314,29 @@ const SHAPES: ShapeSource = {
 };
 
 describe('the track', () => {
+  test('asks to load a line only for a vehicle inside the shape area', () => {
+    const asked: [string, boolean | undefined][] = [];
+    const store = new LiveStore(() => T0, {
+      get: (_source, id, load) => {
+        asked.push([id, load]);
+        return undefined;
+      },
+    });
+    store.applySnapshot(
+      message([train('1', 41.4, 2.105, T0, { shapeId: 'ell', alongMeters: 417 })]),
+    );
+    store.sample(ALL);
+    store.setShapeArea({ west: 2.0, south: 41.3, east: 2.2, north: 41.5 });
+    store.sample(ALL);
+    store.setShapeArea({ west: -74.1, south: 40.6, east: -73.8, north: 40.9 });
+    store.sample(ALL);
+    expect(asked).toEqual([
+      ['ell', false],
+      ['ell', true],
+      ['ell', false],
+    ]);
+  });
+
   test('reads position and heading at a distance, clamped to the line', () => {
     expect(pointAlong(ELL, 0)).toMatchObject({ latitude: 41.4, longitude: 2.1 });
     expect(pointAlong(ELL, 417).heading).toBeCloseTo(90, 0); // east

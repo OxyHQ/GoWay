@@ -13,7 +13,8 @@ import { matchLanguageTag } from '@goway.to/sdk';
 
 export const LIVE_EN: Record<string, string> = {
   'live.title': 'Live',
-  'live.real': 'Real positions from open feeds. Nothing here is simulated.',
+  'live.real':
+    'Real vehicles from open feeds. Hollow ones are estimated from arrival times. Nothing here is simulated.',
   'live.kind.aircraft': 'Aircraft',
   'live.kind.transit': 'Transit',
   'live.kind.bikeshare': 'Bikes',
@@ -33,12 +34,14 @@ export const LIVE_EN: Record<string, string> = {
   'live.status.unavailable': 'unavailable',
   'live.detail.close': 'Close',
   'live.detail.age': 'Position {age} old',
+  'live.detail.estimateAge': 'Predictions {age} old',
   'live.detail.stale': 'Stale: the source has not reported a newer position.',
   'live.detail.onTrack':
     'Drawn on its line as published by the operator; moves along it between reports.',
   'live.detail.approximate':
     'Approximate: not on a published track. Shown where reported, not animated.',
-  'live.detail.estimated': 'Estimated from arrival predictions, not a GPS position.',
+  'live.detail.estimated':
+    'Estimated from arrival predictions, not a GPS position: placed along its line between stops.',
   'live.detail.source': 'Source',
   'live.detail.licence': 'Licence',
   'live.detail.altitude': 'Altitude',
@@ -71,7 +74,8 @@ export const LIVE_EN: Record<string, string> = {
 
 export const LIVE_ES: Record<string, string> = {
   'live.title': 'En directo',
-  'live.real': 'Posiciones reales de fuentes abiertas. Nada de esto es simulado.',
+  'live.real':
+    'Vehículos reales de fuentes abiertas. Los huecos se estiman a partir de las horas de llegada. Nada de esto es simulado.',
   'live.kind.aircraft': 'Aviones',
   'live.kind.transit': 'Transporte',
   'live.kind.bikeshare': 'Bicis',
@@ -91,13 +95,14 @@ export const LIVE_ES: Record<string, string> = {
   'live.status.unavailable': 'no disponible',
   'live.detail.close': 'Cerrar',
   'live.detail.age': 'Posición de hace {age}',
+  'live.detail.estimateAge': 'Previsiones de hace {age}',
   'live.detail.stale': 'Desactualizado: la fuente no ha enviado una posición más reciente.',
   'live.detail.onTrack':
     'Dibujado sobre su línea tal como la publica el operador; avanza por ella entre informes.',
   'live.detail.approximate':
     'Aproximado: fuera de una vía publicada. Se muestra donde se informó, sin animar.',
   'live.detail.estimated':
-    'Estimado a partir de las previsiones de llegada, no es una posición GPS.',
+    'Estimado a partir de las previsiones de llegada, no es una posición GPS: situado sobre su línea entre paradas.',
   'live.detail.source': 'Fuente',
   'live.detail.licence': 'Licencia',
   'live.detail.altitude': 'Altitud',

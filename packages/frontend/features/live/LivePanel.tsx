@@ -107,6 +107,7 @@ function Details({
 }) {
   const theme = useTheme();
   const details = entityDetails(sample.entity, t);
+  const ageKey = sample.estimated ? 'live.detail.estimateAge' : 'live.detail.age';
   return (
     <View className="gap-space-4 border-t border-border pt-space-8" testID="live-details">
       <View className="flex-row items-start gap-space-8">
@@ -140,16 +141,18 @@ function Details({
         testID="live-details-age"
       >
         {sample.freshness === 'stale'
-          ? `${t('live.detail.age', { age: formatAge(sample.ageSeconds) })} · ${t('live.detail.stale')}`
-          : t('live.detail.age', { age: formatAge(sample.ageSeconds) })}
+          ? `${t(ageKey, { age: formatAge(sample.ageSeconds) })} · ${t('live.detail.stale')}`
+          : t(ageKey, { age: formatAge(sample.ageSeconds) })}
       </Text>
       {sample.entity.kind === 'transit' ? (
         <Text className="text-caption text-muted-foreground" testID="live-details-track">
-          {sample.approximate
-            ? t('live.detail.approximate')
-            : sample.onTrack
-              ? t('live.detail.onTrack')
-              : ''}
+          {sample.estimated
+            ? t('live.detail.estimated')
+            : sample.approximate
+              ? t('live.detail.approximate')
+              : sample.onTrack
+                ? t('live.detail.onTrack')
+                : ''}
         </Text>
       ) : null}
       {source ? (

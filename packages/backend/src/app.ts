@@ -23,6 +23,7 @@ import { errorHandler, unknownRouteHandler } from './http/errorHandler';
 import {
   accountRoles,
   apiRateLimit,
+  liveShapeRateLimit,
   contributionRateLimit,
   optionalAuth,
   placeFiles,
@@ -186,7 +187,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
    * GoWay Live: the feeds' credits, licences and freshness. Public, and inert
    * (503) unless `server.ts` built a live service. Positions are on Socket.IO.
    */
-  v1.use(createLiveRouter(options.live ?? null));
+  v1.use(createLiveRouter(options.live ?? null, liveShapeRateLimit));
   api.use('/v1', v1);
 
   app.use('/api', api);

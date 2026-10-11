@@ -78,8 +78,19 @@ interface Tracked {
 
 /** Where a vehicle's operator publishes the shape it runs along. */
 export interface ShapeSource {
-  /** The shape, when loaded; `undefined` asks for it to be loaded. */
-  get(sourceId: string, shapeId: string): TrackShape | undefined;
+  /**
+   * The shape, when loaded. `undefined` asks for it to be loaded — unless
+   * `load` is false (a vehicle nobody can see does not fetch its line).
+   */
+  get(sourceId: string, shapeId: string, load?: boolean): TrackShape | undefined;
+}
+
+/** Where shapes are worth fetching: the (padded) visible map at a street-ish zoom. */
+export interface ShapeArea {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
 }
 
 export interface LiveSample {
@@ -100,6 +111,8 @@ export interface LiveSample {
    * never moved along a path, and marked approximate.
    */
   approximate: boolean;
+  /** Not reported at all: estimated by the source from arrival predictions. */
+  estimated: boolean;
 }
 
 function roomOf(tile: string, kind: LiveKind): string {
@@ -108,6 +121,8 @@ function roomOf(tile: string, kind: LiveKind): string {
 
 export class LiveStore {
   private readonly tracked = new Map<string, Tracked>();
+  /** Shapes are fetched only for vehicles reported inside this; `null`: none fetched. */
+  private shapeArea: ShapeArea | null = null;
   private readonly sourcesById = new Map<string, LiveSource>();
   /** server clock − client clock, in ms. */
   private offset = 0;
@@ -281,11 +296,12 @@ export class LiveStore {
       freshness,
       opacity: opacityOf(freshness),
       ageSeconds,
+      estimated: item.entity.kind === 'transit' && item.entity.positionBasis === 'estimated',
     };
 
     // ── On a published track: one number, the distance along it ────────────
     const shape = item.track
-      ? this.shapes?.get(item.track.sourceId, item.track.shapeId)
+      ? this.shapes?.get(item.track.sourceId, item.track.shapeId, this.wantsShape(item.fix))
       : undefined;
     if (item.track && shape) {
       // A reported speed moves it forward along the line, briefly; nothing else predicts.
@@ -352,6 +368,26 @@ export class LiveStore {
       onTrack: null,
       approximate: false,
     };
+  }
+
+  /**
+   * Where a vehicle's line is worth fetching (a city view of New York has
+   * hundreds; the ones off screen or at a country zoom wait). Shapes already
+   * loaded are used anywhere.
+   */
+  setShapeArea(area: ShapeArea | null): void {
+    this.shapeArea = area;
+  }
+
+  private wantsShape(fix: { latitude: number; longitude: number }): boolean {
+    const area = this.shapeArea;
+    return (
+      area !== null &&
+      fix.latitude >= area.south &&
+      fix.latitude <= area.north &&
+      fix.longitude >= area.west &&
+      fix.longitude <= area.east
+    );
   }
 
   /**
