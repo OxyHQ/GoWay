@@ -160,6 +160,8 @@ export const MAP_FEATURES = [
     // The official building data merged into an archive (the Catastro's
     // storeys, NYC's 3D model; `docs/MAP_3D_SOURCES.md`) has no switch of its
     // own: it is part of the tiles this switch draws, credited while drawn.
+    // The planet build and the Worker routes exist; offering it everywhere is
+    // the last step of `docs/MAP_CITY_PLANET.md` → "Approval".
     offer: 'development',
     request: (enabled, { development, search, on }) =>
       isCityTilesRequested({ city3d: on('city3d'), enabled, development, search }),

@@ -57,6 +57,11 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   (space, a glow fitted to the limb), hillshade and 3D terrain: why Mapterhorn
   and why through GoWay's Worker, what self-hosting the DEM costs, how the 3D
   buildings stand on the terrain, and what native can and cannot draw.
+- [`MAP_CITY_PLANET.md`](MAP_CITY_PLANET.md) — the 3D city tiles and the
+  road graph for the whole world: regions sized to a hosted runner, which
+  tiles each owns, dated archives in R2 chosen per tile by a manifest in the
+  Worker, the CI workflow, what it measured and costs, and the owner's
+  approval steps (nothing is published yet).
 - [`MAP_CITY_LIFE.md`](MAP_CITY_LIFE.md) — simulated traffic and people on the
   real street network (off by default): why the road graph is compiled from OSM
   rather than read from the basemap, the lane graph, IDM car-following and

@@ -61,11 +61,15 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
+import { VectorTile } from '@mapbox/vector-tile';
+import { PbfReader } from 'pbf';
+
 import { decodeCityTile } from '../components/map/engine/city3d/osmTiles';
 import { decodeLod2Tile } from '../components/map/engine/city3d/lod2Tiles';
 import {
   CITY_TILE_EXTENT,
   CITY_TILE_LAYER,
+  CITY_TREE_LAYER,
   CITY_COVERAGE_METADATA_KEY,
   CITY_TILE_SCHEMA_VERSION,
   CITY_TILE_ZOOM,
@@ -601,11 +605,16 @@ async function verify(path: string, area?: string): Promise<string[]> {
           `tile ${z}/${centre.x + dx}/${centre.y + dy} is outside the region's ownership`,
         );
       }
-      const decoded = decodeCityTile(Bun.gunzipSync(tile.bytes));
+      const raw = Bun.gunzipSync(tile.bytes);
+      const decoded = decodeCityTile(raw);
       if (!decoded) {
-        problems.push(
-          `tile ${z}/${centre.x + dx}/${centre.y + dy} has no ${CITY_TILE_LAYER} layer`,
-        );
+        // A tile with trees and no building is real (a park, a wood's edge);
+        // one with neither layer is not.
+        if (!(CITY_TREE_LAYER in new VectorTile(new PbfReader(raw)).layers)) {
+          problems.push(
+            `tile ${z}/${centre.x + dx}/${centre.y + dy} has no ${CITY_TILE_LAYER} or ${CITY_TREE_LAYER} layer`,
+          );
+        }
         continue;
       }
       if (decoded.extent !== CITY_TILE_EXTENT) problems.push(`extent ${decoded.extent}`);

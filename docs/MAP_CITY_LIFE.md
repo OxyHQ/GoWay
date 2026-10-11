@@ -317,12 +317,12 @@ only through `components/engine3d/lazyChunk.ts`, and
 
 ## Hosting
 
-Nothing is served in production. Serving the road archive means exactly what
-the city tiles need (`MAP_3D_CITY.md` → Hosting): build from the same planet
-snapshot, upload under a versioned key, a Worker route for
-`/map/city-roads/{z}/{x}/{y}.pbf`, and — it is a Derivative Database of
-OpenStreetMap under the ODbL — publish the archive and its receipt before the
-flag is turned on for anyone.
+Nothing is served in production yet. The road archive is built beside the
+building archive for every region of the planet and served from
+`/map/city-roads/{z}/{x}/{y}.pbf` by the same manifest
+([`MAP_CITY_PLANET.md`](./MAP_CITY_PLANET.md)); like the buildings it is a
+Derivative Database of OpenStreetMap under the ODbL, published with its
+receipt (`/map/city/data/…`) before the flag is turned on for anyone.
 
 ## Limits and next steps
 
