@@ -14,6 +14,7 @@
     // a finished archive with exactly the code the edge serves it with — and a
     // file a program imports has to be in that program.
     "worker/pmtiles.js",
+    "worker/coverageTree.js",
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
     "nativewind-env.d.ts"

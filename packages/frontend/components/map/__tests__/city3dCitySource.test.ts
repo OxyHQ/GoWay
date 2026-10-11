@@ -73,4 +73,21 @@ describe('fetchCityCoverage', () => {
       );
     expect(await fetchCityCoverage('x', never, 10)).toEqual([]);
   });
+
+  test('production’s owned-tile set is passed on encoded, and only when it is one', async () => {
+    const tiles = { maxZoom: 14, bits: 'Ag==' };
+    expect(await fetchCityCoverage('x', answer(200, { schema: 2, tiles }))).toEqual([tiles]);
+    // The Worker with no manifest configured: covers nothing.
+    expect(
+      await fetchCityCoverage('x', answer(200, { schema: 2, regions: [], tiles: null })),
+    ).toEqual([]);
+    for (const bad of [
+      { maxZoom: 14 },
+      { maxZoom: '14', bits: 'Ag==' },
+      { maxZoom: 14, bits: 'not base64!' },
+      { maxZoom: 99, bits: 'Ag==' },
+    ]) {
+      expect(await fetchCityCoverage('x', answer(200, { schema: 2, tiles: bad }))).toEqual([]);
+    }
+  });
 });

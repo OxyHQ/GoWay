@@ -264,7 +264,15 @@ export interface CityTileTree {
 
 /**
  * Where a browser asks WHICH AREAS the city tiles cover, relative to the
- * page's origin: `{ "archives": [{ "coverage": [west, south, east, north] }] }`.
+ * page's origin. Two shapes:
+ *
+ *  - production (`worker/city.js`, the planet build of
+ *    `docs/MAP_CITY_PLANET.md`): `{ "schema": 2, "tiles": { "maxZoom": 14,
+ *    "bits": "…" } }` — the exact set of z14 tiles some regional archive owns,
+ *    as a coverage tree ({@link CityCoverageTiles});
+ *  - development (`scripts/dev-city-tiles.js` over compile boxes):
+ *    `{ "archives": [{ "coverage": [west, south, east, north] }] }`.
+ *
  *
  * Needed because a missing city tile and an EMPTY one look the same — the
  * archive stores no tile where no building stands, and the route answers 204
@@ -280,6 +288,20 @@ export const CITY_COVERAGE_METADATA_KEY = 'goway:coverage';
 
 /** An area in degrees: `[west, south, east, north]`. */
 export type CityCoverageBox = readonly [number, number, number, number];
+
+/**
+ * The tiles some archive owns, encoded (`worker/coverageTree.js`). Kept
+ * encoded here and decoded only by the engine (`coverageIndex.ts`): this
+ * module is shared by two lazy chunks and therefore loads at first paint, so
+ * the decoder must not live in it.
+ */
+export interface CityCoverageTiles {
+  readonly maxZoom: number;
+  readonly bits: string;
+}
+
+/** One entry of the coverage the engine is given: a box, or an owned tile set. */
+export type CityCoverageArea = CityCoverageBox | CityCoverageTiles;
 
 /**
  * The coverage document → its boxes. Anything malformed is dropped, so a

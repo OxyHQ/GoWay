@@ -10,6 +10,8 @@ import { describe, expect, test } from 'bun:test';
 import type { LodTile } from '@/components/map/engine/city3d/lod';
 import { assignSources } from '@/components/map/engine/city3d/sources';
 import { parseCityCoverage, tileCovered } from '@/lib/map/cityTiles';
+import { rectOwnership } from '@/scripts/citygen/ownership';
+import { encodeCoverageTree } from '@/worker/coverageTree.js';
 
 const BARCELONA: [number, number, number, number] = [2.052, 41.317, 2.228, 41.468];
 const CITY = { tileZoom: 15, coverage: [BARCELONA] };
@@ -78,6 +80,46 @@ describe('assignSources', () => {
     const inside = tileAt(2.1686, 41.3874);
     expect(assignSources([inside], null)[0].format).toBe('openmaptiles');
     expect(assignSources([inside], { tileZoom: 15, coverage: [] })[0].format).toBe('openmaptiles');
+  });
+});
+
+describe('assignSources over production’s owned-tile coverage', () => {
+  // The union of the published regions at z14, as `worker/city.js` serves it:
+  // here, the z14 tiles of a small rectangle around the Eixample.
+  const eixample = tileAt(2.1686, 41.3874);
+  const tiles = encodeCoverageTree(
+    rectOwnership(
+      { zoom: 14, x0: eixample.x - 1, y0: eixample.y - 1, x1: eixample.x + 2, y1: eixample.y + 1 },
+      14,
+    ),
+    14,
+  );
+  const city = { tileZoom: 15, coverage: [{ maxZoom: tiles.maxZoom, bits: tiles.bits }] };
+
+  test('a covered z14 tile: its four city tiles', () => {
+    const out = assignSources([eixample], city);
+    expect(out.map((t) => t.format)).toEqual(['goway', 'goway', 'goway', 'goway']);
+  });
+
+  test('the row below the rectangle and Madrid: the basemap', () => {
+    const below = { ...eixample, y: eixample.y + 1 };
+    expect(assignSources([below], city)[0].format).toBe('openmaptiles');
+    expect(assignSources([tileAt(-3.7038, 40.4168)], city)[0].format).toBe('openmaptiles');
+  });
+
+  test('a document that does not decode covers nothing', () => {
+    const broken = { tileZoom: 15, coverage: [{ maxZoom: 14, bits: 'Aw==' }] };
+    expect(assignSources([eixample], broken)[0].format).toBe('openmaptiles');
+  });
+
+  test('boxes and an owned-tile set together: either covers', () => {
+    const madrid = tileAt(-3.7038, 40.4168);
+    const mixed = {
+      tileZoom: 15,
+      coverage: [...city.coverage, [-3.8, 40.3, -3.6, 40.5] as const],
+    };
+    expect(assignSources([madrid], mixed)[0].format).toBe('goway');
+    expect(assignSources([eixample], mixed)[0].format).toBe('goway');
   });
 });
 

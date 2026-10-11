@@ -1,0 +1,3158 @@
+{
+  "generated": "2026-10-11",
+  "source": "https://download.geofabrik.de/index-v1.json",
+  "budget": {
+    "runnerMemoryMb": 16384,
+    "usableMemoryMb": 14000,
+    "peakMbPerPbfMb": 14,
+    "maxPartBytes": 1000000000
+  },
+  "regions": [
+    {
+      "id": "africa/algeria",
+      "name": "Algeria",
+      "pbfBytes": 300759274,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/angola",
+      "name": "Angola",
+      "pbfBytes": 85327708,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/benin",
+      "name": "Benin",
+      "pbfBytes": 48234153,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/botswana",
+      "name": "Botswana",
+      "pbfBytes": 88026849,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/burkina-faso",
+      "name": "Burkina Faso",
+      "pbfBytes": 84757420,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/burundi",
+      "name": "Burundi",
+      "pbfBytes": 46297913,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/cameroon",
+      "name": "Cameroon",
+      "pbfBytes": 223516769,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/canary-islands",
+      "name": "Canary Islands",
+      "pbfBytes": 59903716,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "africa/cape-verde",
+      "name": "Cape Verde",
+      "pbfBytes": 11700534,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/central-african-republic",
+      "name": "Central African Republic",
+      "pbfBytes": 99341744,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/chad",
+      "name": "Chad",
+      "pbfBytes": 135262610,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/comores",
+      "name": "Comores",
+      "pbfBytes": 3991390,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/congo-brazzaville",
+      "name": "Congo (Republic/Brazzaville)",
+      "pbfBytes": 32635893,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/congo-democratic-republic",
+      "name": "Congo (Democratic Republic/Kinshasa)",
+      "pbfBytes": 416300671,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/djibouti",
+      "name": "Djibouti",
+      "pbfBytes": 7025642,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/egypt",
+      "name": "Egypt",
+      "pbfBytes": 178738090,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/equatorial-guinea",
+      "name": "Equatorial Guinea",
+      "pbfBytes": 6545308,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/eritrea",
+      "name": "Eritrea",
+      "pbfBytes": 31679868,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/ethiopia",
+      "name": "Ethiopia",
+      "pbfBytes": 139901201,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/gabon",
+      "name": "Gabon",
+      "pbfBytes": 25486848,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/ghana",
+      "name": "Ghana",
+      "pbfBytes": 116160224,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/guinea",
+      "name": "Guinea",
+      "pbfBytes": 118413819,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/guinea-bissau",
+      "name": "Guinea-Bissau",
+      "pbfBytes": 11161618,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/ivory-coast",
+      "name": "Ivory Coast",
+      "pbfBytes": 85567694,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/kenya",
+      "name": "Kenya",
+      "pbfBytes": 351328108,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/lesotho",
+      "name": "Lesotho",
+      "pbfBytes": 127174575,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/liberia",
+      "name": "Liberia",
+      "pbfBytes": 37311769,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/libya",
+      "name": "Libya",
+      "pbfBytes": 76692968,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/madagascar",
+      "name": "Madagascar",
+      "pbfBytes": 390162099,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/malawi",
+      "name": "Malawi",
+      "pbfBytes": 155253050,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/mali",
+      "name": "Mali",
+      "pbfBytes": 173784991,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/mauritania",
+      "name": "Mauritania",
+      "pbfBytes": 30787569,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/mauritius",
+      "name": "Mauritius",
+      "pbfBytes": 9415512,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/morocco",
+      "name": "Morocco",
+      "pbfBytes": 243700797,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/mozambique",
+      "name": "Mozambique",
+      "pbfBytes": 255491832,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/namibia",
+      "name": "Namibia",
+      "pbfBytes": 54782238,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/niger",
+      "name": "Niger",
+      "pbfBytes": 78421408,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/nigeria",
+      "name": "Nigeria",
+      "pbfBytes": 710005275,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/rwanda",
+      "name": "Rwanda",
+      "pbfBytes": 67929111,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/saint-helena-ascension-and-tristan-da-cunha",
+      "name": "Saint Helena, Ascension, and Tristan da Cunha",
+      "pbfBytes": 900569,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/sao-tome-and-principe",
+      "name": "Sao Tome and Principe",
+      "pbfBytes": 1268328,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/senegal-and-gambia",
+      "name": "Senegal and Gambia",
+      "pbfBytes": 105328801,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/seychelles",
+      "name": "Seychelles",
+      "pbfBytes": 2762194,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/sierra-leone",
+      "name": "Sierra Leone",
+      "pbfBytes": 46311788,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/somalia",
+      "name": "Somalia",
+      "pbfBytes": 164732206,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/south-africa",
+      "name": "South Africa",
+      "pbfBytes": 422102628,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/south-sudan",
+      "name": "South Sudan",
+      "pbfBytes": 138910582,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/sudan",
+      "name": "Sudan",
+      "pbfBytes": 204627636,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/swaziland",
+      "name": "Swaziland",
+      "pbfBytes": 30834214,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/tanzania",
+      "name": "Tanzania",
+      "pbfBytes": 706320953,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/togo",
+      "name": "Togo",
+      "pbfBytes": 62320469,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/tunisia",
+      "name": "Tunisia",
+      "pbfBytes": 84194711,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/uganda",
+      "name": "Uganda",
+      "pbfBytes": 371349132,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/zambia",
+      "name": "Zambia",
+      "pbfBytes": 252053310,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "africa/zimbabwe",
+      "name": "Zimbabwe",
+      "pbfBytes": 179691442,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "antarctica",
+      "name": "Antarctica",
+      "pbfBytes": 33093759,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/afghanistan",
+      "name": "Afghanistan",
+      "pbfBytes": 112563276,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/armenia",
+      "name": "Armenia",
+      "pbfBytes": 53305134,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/azerbaijan",
+      "name": "Azerbaijan",
+      "pbfBytes": 46475943,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/bangladesh",
+      "name": "Bangladesh",
+      "pbfBytes": 355811912,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/bhutan",
+      "name": "Bhutan",
+      "pbfBytes": 23618434,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/anhui",
+      "name": "Anhui",
+      "pbfBytes": 43688499,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/chongqing",
+      "name": "Chongqing",
+      "pbfBytes": 31186290,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/fujian",
+      "name": "Fujian",
+      "pbfBytes": 42108355,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/gansu",
+      "name": "Gansu",
+      "pbfBytes": 61178812,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/guangdong",
+      "name": "Guangdong (with Hong Kong and Macau)",
+      "pbfBytes": 173463928,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/guangxi",
+      "name": "Guangxi",
+      "pbfBytes": 54499302,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/guizhou",
+      "name": "Guizhou",
+      "pbfBytes": 28934099,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/hainan",
+      "name": "Hainan",
+      "pbfBytes": 9886022,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/hebei",
+      "name": "Hebei (with Beijing and Tianjin)",
+      "pbfBytes": 108076817,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/heilongjiang",
+      "name": "Heilongjiang",
+      "pbfBytes": 36835739,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/henan",
+      "name": "Henan",
+      "pbfBytes": 49585641,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/hubei",
+      "name": "Hubei",
+      "pbfBytes": 55866788,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/hunan",
+      "name": "Hunan",
+      "pbfBytes": 50779553,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/inner-mongolia",
+      "name": "Inner Mongolia",
+      "pbfBytes": 42293487,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/jiangsu",
+      "name": "Jiangsu",
+      "pbfBytes": 79745578,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/jiangxi",
+      "name": "Jiangxi",
+      "pbfBytes": 49751363,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/jilin",
+      "name": "Jilin",
+      "pbfBytes": 27908972,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/liaoning",
+      "name": "Liaoning",
+      "pbfBytes": 28434493,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/ningxia",
+      "name": "Ningxia",
+      "pbfBytes": 8371619,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/qinghai",
+      "name": "Qinghai",
+      "pbfBytes": 33391748,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/shaanxi",
+      "name": "Shaanxi",
+      "pbfBytes": 93537987,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/shandong",
+      "name": "Shandong",
+      "pbfBytes": 71534504,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/shanghai",
+      "name": "Shanghai",
+      "pbfBytes": 25939233,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/shanxi",
+      "name": "Shanxi",
+      "pbfBytes": 31820678,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/sichuan",
+      "name": "Sichuan",
+      "pbfBytes": 107214349,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/tibet",
+      "name": "Tibet",
+      "pbfBytes": 50044904,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/xinjiang",
+      "name": "Xinjiang",
+      "pbfBytes": 48863799,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/yunnan",
+      "name": "Yunnan",
+      "pbfBytes": 93032412,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/china/zhejiang",
+      "name": "Zhejiang",
+      "pbfBytes": 90398649,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/gcc-states",
+      "name": "GCC States",
+      "pbfBytes": 254906166,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/india/central-zone",
+      "name": "Central Zone",
+      "pbfBytes": 351671138,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/india/eastern-zone",
+      "name": "Eastern Zone",
+      "pbfBytes": 247228237,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/india/north-eastern-zone",
+      "name": "North-Eastern Zone",
+      "pbfBytes": 109749798,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/india/northern-zone",
+      "name": "Northern Zone",
+      "pbfBytes": 223720355,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/india/southern-zone",
+      "name": "Southern Zone",
+      "pbfBytes": 558061016,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/india/western-zone",
+      "name": "Western Zone",
+      "pbfBytes": 221066848,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/iran",
+      "name": "Iran",
+      "pbfBytes": 229698357,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/iraq",
+      "name": "Iraq",
+      "pbfBytes": 90843419,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/israel-and-palestine",
+      "name": "Israel and Palestine",
+      "pbfBytes": 120210109,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/japan/chubu",
+      "name": "Chūbu region",
+      "pbfBytes": 511717989,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/japan/chugoku",
+      "name": "Chūgoku region",
+      "pbfBytes": 238850763,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/japan/hokkaido",
+      "name": "Hokkaidō",
+      "pbfBytes": 189517195,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/japan/kansai",
+      "name": "Kansai region (a.k.a. Kinki region)",
+      "pbfBytes": 352790428,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/japan/kanto",
+      "name": "Kantō region",
+      "pbfBytes": 517790355,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/japan/kyushu",
+      "name": "Kyūshū",
+      "pbfBytes": 315611552,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/japan/shikoku",
+      "name": "Shikoku",
+      "pbfBytes": 89709515,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/japan/tohoku",
+      "name": "Tōhoku region",
+      "pbfBytes": 309970100,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/jordan",
+      "name": "Jordan",
+      "pbfBytes": 31034425,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/kazakhstan",
+      "name": "Kazakhstan",
+      "pbfBytes": 224123940,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/kyrgyzstan",
+      "name": "Kyrgyzstan",
+      "pbfBytes": 76903549,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/lebanon",
+      "name": "Lebanon",
+      "pbfBytes": 52525107,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/maldives",
+      "name": "Maldives",
+      "pbfBytes": 3651738,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/mongolia",
+      "name": "Mongolia",
+      "pbfBytes": 62267772,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/nepal",
+      "name": "Nepal",
+      "pbfBytes": 414591140,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/north-korea",
+      "name": "North Korea",
+      "pbfBytes": 92629036,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/pakistan",
+      "name": "Pakistan",
+      "pbfBytes": 156739501,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/sea",
+      "name": "South-East Asia",
+      "pbfBytes": 3673241048,
+      "parts": 4,
+      "official": []
+    },
+    {
+      "id": "asia/south-korea",
+      "name": "South Korea",
+      "pbfBytes": 288878500,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/sri-lanka",
+      "name": "Sri Lanka",
+      "pbfBytes": 144433912,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/syria",
+      "name": "Syria",
+      "pbfBytes": 81901197,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/taiwan",
+      "name": "Taiwan",
+      "pbfBytes": 327422556,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/tajikistan",
+      "name": "Tajikistan",
+      "pbfBytes": 48600499,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/turkmenistan",
+      "name": "Turkmenistan",
+      "pbfBytes": 24967042,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/uzbekistan",
+      "name": "Uzbekistan",
+      "pbfBytes": 124837564,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "asia/yemen",
+      "name": "Yemen",
+      "pbfBytes": 43386970,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/american-oceania",
+      "name": "American Oceania",
+      "pbfBytes": 5379946,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/australia",
+      "name": "Australia",
+      "pbfBytes": 967384651,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/cook-islands",
+      "name": "Cook Islands",
+      "pbfBytes": 972950,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/fiji",
+      "name": "Fiji",
+      "pbfBytes": 17249740,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/ile-de-clipperton",
+      "name": "Île de Clipperton",
+      "pbfBytes": 42673,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/kiribati",
+      "name": "Kiribati",
+      "pbfBytes": 2450147,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/marshall-islands",
+      "name": "Marshall Islands",
+      "pbfBytes": 2219132,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/micronesia",
+      "name": "Micronesia",
+      "pbfBytes": 1985674,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/nauru",
+      "name": "Nauru",
+      "pbfBytes": 266540,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/new-caledonia",
+      "name": "New Caledonia",
+      "pbfBytes": 14221846,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/new-zealand",
+      "name": "New Zealand",
+      "pbfBytes": 404667354,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/niue",
+      "name": "Niue",
+      "pbfBytes": 424756,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/palau",
+      "name": "Palau",
+      "pbfBytes": 821196,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/papua-new-guinea",
+      "name": "Papua New Guinea",
+      "pbfBytes": 54353455,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/pitcairn-islands",
+      "name": "Pitcairn Islands",
+      "pbfBytes": 115483,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/polynesie-francaise",
+      "name": "Polynésie française (French Polynesia)",
+      "pbfBytes": 15657281,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/samoa",
+      "name": "Samoa",
+      "pbfBytes": 3458961,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/solomon-islands",
+      "name": "Solomon Islands",
+      "pbfBytes": 11925516,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/tokelau",
+      "name": "Tokelau",
+      "pbfBytes": 145292,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/tonga",
+      "name": "Tonga",
+      "pbfBytes": 3717741,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/tuvalu",
+      "name": "Tuvalu",
+      "pbfBytes": 369519,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/vanuatu",
+      "name": "Vanuatu",
+      "pbfBytes": 7893465,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "australia-oceania/wallis-et-futuna",
+      "name": "Wallis et Futuna",
+      "pbfBytes": 619579,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "central-america",
+      "name": "Central America",
+      "pbfBytes": 791347542,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/albania",
+      "name": "Albania",
+      "pbfBytes": 54218600,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/andorra",
+      "name": "Andorra",
+      "pbfBytes": 3488553,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/austria",
+      "name": "Austria",
+      "pbfBytes": 812039090,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/belarus",
+      "name": "Belarus",
+      "pbfBytes": 350011648,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/belgium",
+      "name": "Belgium",
+      "pbfBytes": 696099443,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/bosnia-herzegovina",
+      "name": "Bosnia-Herzegovina",
+      "pbfBytes": 161647559,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/bulgaria",
+      "name": "Bulgaria",
+      "pbfBytes": 174979910,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/croatia",
+      "name": "Croatia",
+      "pbfBytes": 200584796,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/cyprus",
+      "name": "Cyprus",
+      "pbfBytes": 37633179,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/czech-republic",
+      "name": "Czech Republic",
+      "pbfBytes": 948822789,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/denmark",
+      "name": "Denmark",
+      "pbfBytes": 495518574,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/estonia",
+      "name": "Estonia",
+      "pbfBytes": 123326548,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/faroe-islands",
+      "name": "Faroe Islands",
+      "pbfBytes": 7735535,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/finland",
+      "name": "Finland",
+      "pbfBytes": 770648521,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/alsace",
+      "name": "Alsace",
+      "pbfBytes": 131290298,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/aquitaine",
+      "name": "Aquitaine",
+      "pbfBytes": 296189585,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/auvergne",
+      "name": "Auvergne",
+      "pbfBytes": 156024117,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/basse-normandie",
+      "name": "Basse-Normandie",
+      "pbfBytes": 144141452,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/bourgogne",
+      "name": "Bourgogne",
+      "pbfBytes": 200226412,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/bretagne",
+      "name": "Bretagne",
+      "pbfBytes": 329654562,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/centre",
+      "name": "Centre",
+      "pbfBytes": 244182865,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/champagne-ardenne",
+      "name": "Champagne Ardenne",
+      "pbfBytes": 105433651,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/corse",
+      "name": "Corse",
+      "pbfBytes": 34476992,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/franche-comte",
+      "name": "Franche Comte",
+      "pbfBytes": 124737498,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/guyane",
+      "name": "Guyane",
+      "pbfBytes": 14353734,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/haute-normandie",
+      "name": "Haute-Normandie",
+      "pbfBytes": 107031656,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/ile-de-france",
+      "name": "Ile-de-France",
+      "pbfBytes": 339214421,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/languedoc-roussillon",
+      "name": "Languedoc-Roussillon",
+      "pbfBytes": 270075154,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/limousin",
+      "name": "Limousin",
+      "pbfBytes": 98863450,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/lorraine",
+      "name": "Lorraine",
+      "pbfBytes": 171074583,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/mayotte",
+      "name": "Mayotte",
+      "pbfBytes": 10916781,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/midi-pyrenees",
+      "name": "Midi-Pyrenees",
+      "pbfBytes": 362686784,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/nord-pas-de-calais",
+      "name": "Nord-Pas-de-Calais",
+      "pbfBytes": 240020554,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/pays-de-la-loire",
+      "name": "Pays de la Loire",
+      "pbfBytes": 373033604,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/picardie",
+      "name": "Picardie",
+      "pbfBytes": 133294878,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/poitou-charentes",
+      "name": "Poitou-Charentes",
+      "pbfBytes": 231141004,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/provence-alpes-cote-d-azur",
+      "name": "Provence Alpes-Cote-d'Azur",
+      "pbfBytes": 390249114,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/reunion",
+      "name": "Reunion",
+      "pbfBytes": 34481343,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/france/rhone-alpes",
+      "name": "Rhone-Alpes",
+      "pbfBytes": 530773316,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/georgia",
+      "name": "Georgia",
+      "pbfBytes": 102173914,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/germany/baden-wuerttemberg",
+      "name": "Baden-Württemberg",
+      "pbfBytes": 649819607,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/germany/bayern",
+      "name": "Bayern",
+      "pbfBytes": 854331153,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/germany/brandenburg",
+      "name": "Brandenburg (mit Berlin)",
+      "pbfBytes": 295971301,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/germany/hamburg",
+      "name": "Hamburg",
+      "pbfBytes": 53837530,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/germany/hessen",
+      "name": "Hessen",
+      "pbfBytes": 346321122,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/germany/mecklenburg-vorpommern",
+      "name": "Mecklenburg-Vorpommern",
+      "pbfBytes": 128297166,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/germany/niedersachsen",
+      "name": "Niedersachsen (mit Bremen)",
+      "pbfBytes": 507303783,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/germany/nordrhein-westfalen",
+      "name": "Nordrhein-Westfalen",
+      "pbfBytes": 914531009,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/germany/rheinland-pfalz",
+      "name": "Rheinland-Pfalz",
+      "pbfBytes": 271477721,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/germany/saarland",
+      "name": "Saarland",
+      "pbfBytes": 54860422,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/germany/sachsen",
+      "name": "Sachsen",
+      "pbfBytes": 268955351,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/germany/sachsen-anhalt",
+      "name": "Sachsen-Anhalt",
+      "pbfBytes": 175793864,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/germany/schleswig-holstein",
+      "name": "Schleswig-Holstein",
+      "pbfBytes": 158859441,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/germany/thueringen",
+      "name": "Thüringen",
+      "pbfBytes": 159780095,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/greece",
+      "name": "Greece",
+      "pbfBytes": 341673677,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/guernsey-jersey",
+      "name": "Guernsey and Jersey",
+      "pbfBytes": 3894669,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/hungary",
+      "name": "Hungary",
+      "pbfBytes": 326665424,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/iceland",
+      "name": "Iceland",
+      "pbfBytes": 64838442,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/ireland-and-northern-ireland",
+      "name": "Ireland and Northern Ireland",
+      "pbfBytes": 414899260,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/isle-of-man",
+      "name": "Isle of Man",
+      "pbfBytes": 6092046,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/italy/centro",
+      "name": "Centro",
+      "pbfBytes": 384857630,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/italy/isole",
+      "name": "Isole",
+      "pbfBytes": 215071429,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/italy/nord-est",
+      "name": "Nord-Est",
+      "pbfBytes": 625011207,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/italy/nord-ovest",
+      "name": "Nord-Ovest",
+      "pbfBytes": 592387157,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/italy/sud",
+      "name": "Sud",
+      "pbfBytes": 418771554,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/kosovo",
+      "name": "Kosovo",
+      "pbfBytes": 30791134,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/latvia",
+      "name": "Latvia",
+      "pbfBytes": 140793271,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/liechtenstein",
+      "name": "Liechtenstein",
+      "pbfBytes": 3464717,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/lithuania",
+      "name": "Lithuania",
+      "pbfBytes": 223101291,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/luxembourg",
+      "name": "Luxembourg",
+      "pbfBytes": 47674370,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/macedonia",
+      "name": "Macedonia",
+      "pbfBytes": 29790645,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/malta",
+      "name": "Malta",
+      "pbfBytes": 8926793,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/moldova",
+      "name": "Moldova",
+      "pbfBytes": 101272695,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/montenegro",
+      "name": "Montenegro",
+      "pbfBytes": 34526434,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/netherlands/drenthe",
+      "name": "Drenthe",
+      "pbfBytes": 63497219,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/netherlands/flevoland",
+      "name": "Flevoland",
+      "pbfBytes": 35650327,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/netherlands/friesland",
+      "name": "Friesland",
+      "pbfBytes": 88746900,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/netherlands/gelderland",
+      "name": "Gelderland",
+      "pbfBytes": 195240298,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/netherlands/groningen",
+      "name": "Groningen",
+      "pbfBytes": 56617914,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/netherlands/limburg",
+      "name": "Limburg",
+      "pbfBytes": 100796104,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/netherlands/noord-brabant",
+      "name": "Noord-Brabant",
+      "pbfBytes": 207058246,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/netherlands/noord-holland",
+      "name": "Noord-Holland",
+      "pbfBytes": 189587756,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/netherlands/overijssel",
+      "name": "Overijssel",
+      "pbfBytes": 114093778,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/netherlands/utrecht",
+      "name": "Utrecht",
+      "pbfBytes": 98780684,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/netherlands/zeeland",
+      "name": "Zeeland",
+      "pbfBytes": 44104160,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/netherlands/zuid-holland",
+      "name": "Zuid-Holland",
+      "pbfBytes": 211757436,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/norway/nord-norge",
+      "name": "Nord-Norge<br />(Northern Norway)",
+      "pbfBytes": 406815064,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/norway/ostlandet",
+      "name": "Østlandet<br />(Eastern Norway)",
+      "pbfBytes": 455406764,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/norway/sorlandet",
+      "name": "Sørlandet<br />(Southern Norway)",
+      "pbfBytes": 77127248,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/norway/svalbard-janmayen",
+      "name": "Svalbard and Jan Mayen",
+      "pbfBytes": 3042420,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/norway/trondelag",
+      "name": "Trøndelag<br />(Central Norway)",
+      "pbfBytes": 183196724,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/norway/vestlandet",
+      "name": "Vestlandet<br />(Western Norway)",
+      "pbfBytes": 257471998,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/dolnoslaskie",
+      "name": "Województwo dolnośląskie<br />(Lower Silesian Voivodeship)",
+      "pbfBytes": 181286412,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/kujawsko-pomorskie",
+      "name": "Województwo kujawsko-pomorskie<br />(Kuyavian-Pomeranian Voivodeship)",
+      "pbfBytes": 104988760,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/lodzkie",
+      "name": "Województwo łódzkie<br />(Łódź Voivodeship)",
+      "pbfBytes": 131799157,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/lubelskie",
+      "name": "Województwo lubelskie<br />(Lublin Voivodeship)",
+      "pbfBytes": 138935375,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/lubuskie",
+      "name": "Województwo lubuskie<br />(Lubusz Voivodeship)",
+      "pbfBytes": 62749393,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/malopolskie",
+      "name": "Województwo małopolskie<br />(Lesser Poland Voivodeship)",
+      "pbfBytes": 202424022,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/mazowieckie",
+      "name": "Województwo mazowieckie<br />(Mazovian Voivodeship)",
+      "pbfBytes": 300685386,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/opolskie",
+      "name": "Województwo opolskie<br />(Opole Voivodeship)",
+      "pbfBytes": 54594557,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/podkarpackie",
+      "name": "Województwo podkarpackie<br />(Subcarpathian Voivodeship)",
+      "pbfBytes": 153857287,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/podlaskie",
+      "name": "Województwo podlaskie<br />(Podlaskie Voivodeship)",
+      "pbfBytes": 77721005,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/pomorskie",
+      "name": "Województwo pomorskie<br />(Pomeranian Voivodeship)",
+      "pbfBytes": 117935297,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/slaskie",
+      "name": "Województwo śląskie<br />(Silesian Voivodeship)",
+      "pbfBytes": 185790830,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/swietokrzyskie",
+      "name": "Województwo świętokrzyskie<br />(Świętokrzyskie Voivodeship)",
+      "pbfBytes": 87736708,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/warminsko-mazurskie",
+      "name": "Województwo warmińsko-mazurskie<br />(Warmian-Masurian Voivodeship)",
+      "pbfBytes": 85164527,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/wielkopolskie",
+      "name": "Województwo wielkopolskie<br />(Greater Poland Voivodeship)",
+      "pbfBytes": 159024136,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/poland/zachodniopomorskie",
+      "name": "Województwo zachodniopomorskie<br />(West Pomeranian Voivodeship)",
+      "pbfBytes": 97626609,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/portugal",
+      "name": "Portugal",
+      "pbfBytes": 425117336,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/romania",
+      "name": "Romania",
+      "pbfBytes": 329923584,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/serbia",
+      "name": "Serbia",
+      "pbfBytes": 240649015,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/slovakia",
+      "name": "Slovakia",
+      "pbfBytes": 345657871,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/slovenia",
+      "name": "Slovenia",
+      "pbfBytes": 313563913,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/spain/andalucia",
+      "name": "Andalucía",
+      "pbfBytes": 194954259,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "europe/spain/aragon",
+      "name": "Aragón",
+      "pbfBytes": 94544019,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "europe/spain/asturias",
+      "name": "Asturias",
+      "pbfBytes": 36539503,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "europe/spain/cantabria",
+      "name": "Cantabria",
+      "pbfBytes": 35571818,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "europe/spain/castilla-la-mancha",
+      "name": "Castilla-La Mancha",
+      "pbfBytes": 107209688,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "europe/spain/castilla-y-leon",
+      "name": "Castilla y León",
+      "pbfBytes": 178221429,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "europe/spain/cataluna",
+      "name": "Cataluña",
+      "pbfBytes": 271255203,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "europe/spain/extremadura",
+      "name": "Extremadura",
+      "pbfBytes": 40060929,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "europe/spain/galicia",
+      "name": "Galicia",
+      "pbfBytes": 111588511,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "europe/spain/islas-baleares",
+      "name": "Islas Baleares",
+      "pbfBytes": 46774712,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "europe/spain/la-rioja",
+      "name": "La Rioja",
+      "pbfBytes": 13131372,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "europe/spain/madrid",
+      "name": "Madrid",
+      "pbfBytes": 85179504,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "europe/spain/murcia",
+      "name": "Murcia",
+      "pbfBytes": 35325203,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "europe/spain/navarra",
+      "name": "Navarra",
+      "pbfBytes": 37441172,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/spain/pais-vasco",
+      "name": "País Vasco",
+      "pbfBytes": 69003834,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/spain/valencia",
+      "name": "Valencia",
+      "pbfBytes": 140532775,
+      "parts": 1,
+      "official": ["es-catastro"]
+    },
+    {
+      "id": "europe/sweden",
+      "name": "Sweden",
+      "pbfBytes": 874874207,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/switzerland",
+      "name": "Switzerland",
+      "pbfBytes": 548037032,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/turkey",
+      "name": "Turkey",
+      "pbfBytes": 649790615,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/ukraine",
+      "name": "Ukraine (with Crimea)",
+      "pbfBytes": 879691516,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/bermuda",
+      "name": "Bermuda",
+      "pbfBytes": 2047662,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/bedfordshire",
+      "name": "Bedfordshire",
+      "pbfBytes": 15031965,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/berkshire",
+      "name": "Berkshire",
+      "pbfBytes": 22551326,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/bristol",
+      "name": "Bristol",
+      "pbfBytes": 13330641,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/buckinghamshire",
+      "name": "Buckinghamshire",
+      "pbfBytes": 22686018,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/cambridgeshire",
+      "name": "Cambridgeshire",
+      "pbfBytes": 34795075,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/cheshire",
+      "name": "Cheshire",
+      "pbfBytes": 38443800,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/cornwall",
+      "name": "Cornwall",
+      "pbfBytes": 34314045,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/cumbria",
+      "name": "Cumbria",
+      "pbfBytes": 45711889,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/derbyshire",
+      "name": "Derbyshire",
+      "pbfBytes": 43990731,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/devon",
+      "name": "Devon",
+      "pbfBytes": 58215828,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/dorset",
+      "name": "Dorset",
+      "pbfBytes": 30185611,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/durham",
+      "name": "Durham",
+      "pbfBytes": 23789311,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/east-sussex",
+      "name": "East Sussex",
+      "pbfBytes": 21804978,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/east-yorkshire-with-hull",
+      "name": "East Yorkshire with Hull",
+      "pbfBytes": 19325663,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/essex",
+      "name": "Essex",
+      "pbfBytes": 49954325,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/gloucestershire",
+      "name": "Gloucestershire",
+      "pbfBytes": 41040440,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/greater-london",
+      "name": "Greater London",
+      "pbfBytes": 129400218,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/greater-manchester",
+      "name": "Greater Manchester",
+      "pbfBytes": 51516055,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/hampshire",
+      "name": "Hampshire",
+      "pbfBytes": 62138057,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/herefordshire",
+      "name": "Herefordshire",
+      "pbfBytes": 11155253,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/hertfordshire",
+      "name": "Hertfordshire",
+      "pbfBytes": 39083931,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/isle-of-wight",
+      "name": "Isle of Wight",
+      "pbfBytes": 9025303,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/kent",
+      "name": "Kent",
+      "pbfBytes": 53821378,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/lancashire",
+      "name": "Lancashire",
+      "pbfBytes": 41964890,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/leicestershire",
+      "name": "Leicestershire",
+      "pbfBytes": 20447325,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/lincolnshire",
+      "name": "Lincolnshire",
+      "pbfBytes": 43116360,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/merseyside",
+      "name": "Merseyside",
+      "pbfBytes": 25402391,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/norfolk",
+      "name": "Norfolk",
+      "pbfBytes": 47092491,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/north-yorkshire",
+      "name": "North Yorkshire",
+      "pbfBytes": 61667755,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/northamptonshire",
+      "name": "Northamptonshire",
+      "pbfBytes": 22753698,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/northumberland",
+      "name": "Northumberland",
+      "pbfBytes": 26208802,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/nottinghamshire",
+      "name": "Nottinghamshire",
+      "pbfBytes": 38722265,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/oxfordshire",
+      "name": "Oxfordshire",
+      "pbfBytes": 28015563,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/rutland",
+      "name": "Rutland",
+      "pbfBytes": 1935143,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/shropshire",
+      "name": "Shropshire",
+      "pbfBytes": 25176725,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/somerset",
+      "name": "Somerset",
+      "pbfBytes": 49796340,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/south-yorkshire",
+      "name": "South Yorkshire",
+      "pbfBytes": 30893498,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/staffordshire",
+      "name": "Staffordshire",
+      "pbfBytes": 30823179,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/suffolk",
+      "name": "Suffolk",
+      "pbfBytes": 33390416,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/surrey",
+      "name": "Surrey",
+      "pbfBytes": 43203178,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/tyne-and-wear",
+      "name": "Tyne and Wear",
+      "pbfBytes": 19456025,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/warwickshire",
+      "name": "Warwickshire",
+      "pbfBytes": 24369930,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/west-midlands",
+      "name": "West Midlands",
+      "pbfBytes": 59580998,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/west-sussex",
+      "name": "West Sussex",
+      "pbfBytes": 49594471,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/west-yorkshire",
+      "name": "West Yorkshire",
+      "pbfBytes": 54132620,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/wiltshire",
+      "name": "Wiltshire",
+      "pbfBytes": 34309483,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/england/worcestershire",
+      "name": "Worcestershire",
+      "pbfBytes": 20319689,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/falklands",
+      "name": "Falkland Islands",
+      "pbfBytes": 5539070,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/scotland",
+      "name": "Scotland",
+      "pbfBytes": 327239153,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "europe/united-kingdom/wales",
+      "name": "Wales",
+      "pbfBytes": 148859639,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/alberta",
+      "name": "Alberta",
+      "pbfBytes": 351164905,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/british-columbia/interior-admreg",
+      "name": "Interior Administrative Region",
+      "pbfBytes": 162584477,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/british-columbia/island-admreg",
+      "name": "Island Administrative Region",
+      "pbfBytes": 110269482,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/british-columbia/kootenay-admreg",
+      "name": "Kootenay Administrative Region",
+      "pbfBytes": 63749485,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/british-columbia/north-admreg",
+      "name": "North Administrative Region",
+      "pbfBytes": 761658209,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/british-columbia/okanagan-admreg",
+      "name": "Okanagan Administrative Region",
+      "pbfBytes": 44776103,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/british-columbia/southcoast-admreg",
+      "name": "South Coast Administrative Region",
+      "pbfBytes": 116478696,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/manitoba",
+      "name": "Manitoba",
+      "pbfBytes": 225168230,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/new-brunswick",
+      "name": "New Brunswick",
+      "pbfBytes": 66421867,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/newfoundland-and-labrador",
+      "name": "Newfoundland and Labrador",
+      "pbfBytes": 259519046,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/northwest-territories",
+      "name": "Northwest Territories",
+      "pbfBytes": 417738709,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/nova-scotia",
+      "name": "Nova Scotia",
+      "pbfBytes": 99321547,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/nunavut/kitikmeot",
+      "name": "Kitikmeot Region",
+      "pbfBytes": 417505023,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/nunavut/kivalliq",
+      "name": "Kivalliq Region",
+      "pbfBytes": 492045972,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/nunavut/qikiqtaaluk",
+      "name": "Qikiqtaaluk Region",
+      "pbfBytes": 594967091,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/ontario",
+      "name": "Ontario",
+      "pbfBytes": 1032463040,
+      "parts": 2,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/prince-edward-island",
+      "name": "Prince Edward Island",
+      "pbfBytes": 11486375,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/quebec",
+      "name": "Quebec",
+      "pbfBytes": 1161570397,
+      "parts": 2,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/saskatchewan",
+      "name": "Saskatchewan",
+      "pbfBytes": 117908269,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/canada/yukon",
+      "name": "Yukon",
+      "pbfBytes": 78639694,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/greenland",
+      "name": "Greenland",
+      "pbfBytes": 26199211,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/mexico",
+      "name": "Mexico",
+      "pbfBytes": 646582098,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us-south",
+      "name": "US South",
+      "pbfBytes": 4140861002,
+      "parts": 5,
+      "official": []
+    },
+    {
+      "id": "north-america/us/alaska",
+      "name": "us/alaska",
+      "pbfBytes": 144088360,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/arizona",
+      "name": "us/arizona",
+      "pbfBytes": 303239281,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/california/norcal",
+      "name": "Northern California",
+      "pbfBytes": 653633172,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/california/socal",
+      "name": "Southern California",
+      "pbfBytes": 671172054,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/colorado",
+      "name": "us/colorado",
+      "pbfBytes": 384197914,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/connecticut",
+      "name": "us/connecticut",
+      "pbfBytes": 216919649,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/hawaii",
+      "name": "us/hawaii",
+      "pbfBytes": 27314444,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/idaho",
+      "name": "us/idaho",
+      "pbfBytes": 129422526,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/illinois",
+      "name": "us/illinois",
+      "pbfBytes": 361055323,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/indiana",
+      "name": "us/indiana",
+      "pbfBytes": 200057023,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/iowa",
+      "name": "us/iowa",
+      "pbfBytes": 133752094,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/kansas",
+      "name": "us/kansas",
+      "pbfBytes": 116664193,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/maine",
+      "name": "us/maine",
+      "pbfBytes": 90995378,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/massachusetts",
+      "name": "us/massachusetts",
+      "pbfBytes": 310911187,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/michigan",
+      "name": "us/michigan",
+      "pbfBytes": 314958168,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/minnesota",
+      "name": "us/minnesota",
+      "pbfBytes": 288228398,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/missouri",
+      "name": "us/missouri",
+      "pbfBytes": 198483798,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/montana",
+      "name": "us/montana",
+      "pbfBytes": 100694267,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/nebraska",
+      "name": "us/nebraska",
+      "pbfBytes": 101237191,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/nevada",
+      "name": "us/nevada",
+      "pbfBytes": 123642439,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/new-hampshire",
+      "name": "us/new-hampshire",
+      "pbfBytes": 71883432,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/new-jersey",
+      "name": "us/new-jersey",
+      "pbfBytes": 164165911,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/new-mexico",
+      "name": "us/new-mexico",
+      "pbfBytes": 136495720,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/new-york",
+      "name": "us/new-york",
+      "pbfBytes": 497425097,
+      "parts": 1,
+      "official": ["nyc-3dbm"]
+    },
+    {
+      "id": "north-america/us/north-dakota",
+      "name": "us/north-dakota",
+      "pbfBytes": 127992167,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/ohio",
+      "name": "us/ohio",
+      "pbfBytes": 325602950,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/oregon",
+      "name": "us/oregon",
+      "pbfBytes": 254327837,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/pennsylvania",
+      "name": "us/pennsylvania",
+      "pbfBytes": 348399361,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/rhode-island",
+      "name": "us/rhode-island",
+      "pbfBytes": 52316903,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/south-dakota",
+      "name": "us/south-dakota",
+      "pbfBytes": 49535349,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/utah",
+      "name": "us/utah",
+      "pbfBytes": 169811308,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/vermont",
+      "name": "us/vermont",
+      "pbfBytes": 45994078,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/washington",
+      "name": "us/washington",
+      "pbfBytes": 364489975,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/wisconsin",
+      "name": "us/wisconsin",
+      "pbfBytes": 294012301,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "north-america/us/wyoming",
+      "name": "us/wyoming",
+      "pbfBytes": 94578636,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "russia/central-fed-district",
+      "name": "Central Federal District",
+      "pbfBytes": 880229304,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "russia/far-eastern-fed-district",
+      "name": "Far Eastern Federal District",
+      "pbfBytes": 390207572,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "russia/north-caucasus-fed-district",
+      "name": "North Caucasus Federal District",
+      "pbfBytes": 128718938,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "russia/northwestern-fed-district",
+      "name": "Northwestern Federal District",
+      "pbfBytes": 654714602,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "russia/siberian-fed-district",
+      "name": "Siberian Federal District",
+      "pbfBytes": 586625015,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "russia/south-fed-district",
+      "name": "South Federal District",
+      "pbfBytes": 315379965,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "russia/ural-fed-district",
+      "name": "Ural Federal District",
+      "pbfBytes": 395637993,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "russia/volga-fed-district",
+      "name": "Volga Federal District",
+      "pbfBytes": 775065235,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/argentina",
+      "name": "Argentina",
+      "pbfBytes": 432573675,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/bolivia",
+      "name": "Bolivia",
+      "pbfBytes": 174114196,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/brazil/centro-oeste",
+      "name": "Centro-Oeste",
+      "pbfBytes": 206318760,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/brazil/nordeste",
+      "name": "Nordeste",
+      "pbfBytes": 442719760,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/brazil/norte",
+      "name": "Norte",
+      "pbfBytes": 160947453,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/brazil/sudeste",
+      "name": "Sudeste",
+      "pbfBytes": 861075073,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/brazil/sul",
+      "name": "Sul",
+      "pbfBytes": 426550568,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/chile",
+      "name": "Chile",
+      "pbfBytes": 349053085,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/colombia",
+      "name": "Colombia",
+      "pbfBytes": 331462401,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/ecuador",
+      "name": "Ecuador",
+      "pbfBytes": 125601965,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/guyana",
+      "name": "Guyana",
+      "pbfBytes": 15554318,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/paraguay",
+      "name": "Paraguay",
+      "pbfBytes": 154437473,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/peru",
+      "name": "Peru",
+      "pbfBytes": 256463275,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/suriname",
+      "name": "Suriname",
+      "pbfBytes": 21402439,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/uruguay",
+      "name": "Uruguay",
+      "pbfBytes": 56156673,
+      "parts": 1,
+      "official": []
+    },
+    {
+      "id": "south-america/venezuela",
+      "name": "Venezuela",
+      "pbfBytes": 127162148,
+      "parts": 1,
+      "official": []
+    }
+  ],
+  "skipped": [
+    {
+      "id": "africa/south-africa-and-lesotho",
+      "reason": "a grouping: 2 chosen regions inside it hold 100% of its extract"
+    },
+    {
+      "id": "asia/cambodia",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/china/beijing",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/china/hong-kong",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/china/macau",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/china/tianjin",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/east-timor",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/indonesia/java",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/indonesia/kalimantan",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/indonesia/maluku",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/indonesia/nusa-tenggara",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/indonesia/papua",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/indonesia/sulawesi",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/indonesia/sumatra",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/laos",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/malaysia-singapore-brunei",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/myanmar",
+      "reason": "Geofabrik publishes no polygon for it (empty .poly)"
+    },
+    {
+      "id": "asia/philippines",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/thailand",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "asia/vietnam",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "europe/alps",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "europe/azores",
+      "reason": "98% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "europe/britain-and-ireland",
+      "reason": "a grouping: 53 chosen regions inside it hold 183% of its extract"
+    },
+    {
+      "id": "europe/dach",
+      "reason": "a grouping: 19 chosen regions inside it hold 101% of its extract"
+    },
+    {
+      "id": "europe/france/guadeloupe",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "europe/france/martinique",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "europe/germany/berlin",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "europe/germany/bremen",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "europe/great-britain",
+      "reason": "a grouping: 49 chosen regions inside it hold 100% of its extract"
+    },
+    {
+      "id": "europe/monaco",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "europe/spain/ceuta",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "europe/spain/melilla",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us",
+      "reason": "a grouping: 55 chosen regions inside it hold 193% of its extract"
+    },
+    {
+      "id": "north-america/us-midwest",
+      "reason": "a grouping: 12 chosen regions inside it hold 100% of its extract"
+    },
+    {
+      "id": "north-america/us-northeast",
+      "reason": "a grouping: 9 chosen regions inside it hold 100% of its extract"
+    },
+    {
+      "id": "north-america/us-pacific",
+      "reason": "a grouping: 2 chosen regions inside it hold 100% of its extract"
+    },
+    {
+      "id": "north-america/us-west",
+      "reason": "a grouping: 12 chosen regions inside it hold 99% of its extract"
+    },
+    {
+      "id": "north-america/us/alabama",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/arkansas",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/delaware",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/district-of-columbia",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/florida",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/georgia",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/kentucky",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/louisiana",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/maryland",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/mississippi",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/north-carolina",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/oklahoma",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/puerto-rico",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/south-carolina",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/tennessee",
+      "reason": "Geofabrik publishes no polygon for it (empty .poly)"
+    },
+    {
+      "id": "north-america/us/texas",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/us-virgin-islands",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/virginia",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "north-america/us/west-virginia",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "russia/crimean-fed-district",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    },
+    {
+      "id": "russia/kaliningrad",
+      "reason": "100% of its polygon lies inside other chosen regions"
+    }
+  ]
+}

@@ -801,9 +801,12 @@ single-threaded, so the 94.9 GB planet is **~1.5–2.5 h of compute**; size runs
 — a quarter of the 84 GB basemap. The limit is memory, not time: the compiler
 keeps the positions of the nodes buildings use (5.3 per building in
 Catalonia, 24 B each), ~90 GB for the planet. So the planet build is
-**sharded by Geofabrik extract** (continents/countries, run in parallel), and
-the shards merged per tile, de-duplicating by feature id (extracts overlap at
-their borders; the id is the OSM element). Measure one continent first.
+**sharded by Geofabrik extract** (continents/countries, run in parallel).
+Built: [`MAP_CITY_PLANET.md`](./MAP_CITY_PLANET.md) — 416 regions sized to a
+16 GB runner, each owning the tiles wholly inside its polygon, NOT merged: the
+Worker picks the owning region's archive per tile from a manifest, so a region
+is rebuilt alone. Measured there on Portugal and the Netherlands, with the
+planet's size and cost.
 
 ### Tag coverage, measured
 
@@ -887,8 +890,13 @@ compiles any area; no `--area`/`--bbox` compiles the whole extract.
 
 ### Hosting: what production needs
 
-Nothing here is deployed. To serve the tiles on goway.to, mirroring the
-basemap exactly:
+**Superseded by [`MAP_CITY_PLANET.md`](./MAP_CITY_PLANET.md)**, which built
+it: regional archives under dated keys, `/map/city/*` and `/map/city-roads/*`
+in the Worker (`worker/city.js`) by manifest, `/map/city/coverage.json` as the
+union of the regions' tiles, the archives and receipts served for the ODbL,
+and the CI workflow — all inert until the owner sets `MAP_CITY_MANIFEST`
+([Approval](./MAP_CITY_PLANET.md#approval)). The plan as first written, kept
+for its reasons:
 
 1. **Build on the tiles machine** from the same planet snapshot as the
    basemap (same date stamp, so 2D and 3D agree), sharded as above; verify
@@ -952,7 +960,8 @@ engine folder type-only).
 - **Straight skeleton** for gabled/hipped roofs on non-rectangular footprints.
 - **Pre-meshing and neighbour AO** in the compiler, if client meshing ever
   shows up on mid-range devices.
-- **Planet**: shard, measure one continent, then the planet.
+- **Planet**: built, not yet run in CI or published —
+  [`MAP_CITY_PLANET.md`](./MAP_CITY_PLANET.md).
 - **Roads**: the same extract also compiles a road archive on the same z15 grid
   (`scripts/build-city-roads.ts`, kept OUT of the building tiles: +72% gzip
   measured) for the city-life simulation — see

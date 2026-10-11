@@ -2,8 +2,8 @@
  * Which source each drawn tile comes from: GoWay's city tiles where they
  * cover the ground, the basemap's OpenMapTiles buildings everywhere else.
  *
- * The city tiles exist only where an archive was compiled (Barcelona, New
- * York…). Asking them for Madrid answers 204 for every tile — the same answer
+ * The city tiles exist only where an archive was compiled (a city in
+ * development, the regions published so far in production). Asking them for Madrid answers 204 for every tile — the same answer
  * a tile of open sea INSIDE Barcelona gets — so the answer cannot decide; the
  * archives' declared coverage does (`lib/map/cityTiles.ts` →
  * `CITY_COVERAGE_PATH`). The first version had no such rule and drew a flat
@@ -20,7 +20,9 @@
  * One source per z14 tile, so the two never draw the same ground twice or
  * leave a gap between them. Pure; tested in `__tests__/city3dSources.test.ts`.
  */
-import { type CityCoverageBox, tileCovered } from '@/lib/map/cityTiles';
+import type { CityCoverageArea } from '@/lib/map/cityTiles';
+
+import { coverageCovers } from './coverageIndex';
 
 import type { LodTile } from './lod';
 import type { CityTileFormat } from './protocol';
@@ -33,7 +35,7 @@ export interface SourcedTile extends LodTile {
 /** What the engine knows about the city tiles: their zoom and coverage. */
 export interface CityCoverage {
   tileZoom: number;
-  coverage: readonly CityCoverageBox[];
+  coverage: readonly CityCoverageArea[];
 }
 
 /**
@@ -43,7 +45,7 @@ export interface CityCoverage {
 export function assignSources(tiles: readonly LodTile[], city: CityCoverage | null): SourcedTile[] {
   const out: SourcedTile[] = [];
   for (const tile of tiles) {
-    if (!city || tile.lod !== 0 || city.tileZoom < tile.z || !tileCovered(tile, city.coverage)) {
+    if (!city || tile.lod !== 0 || city.tileZoom < tile.z || !coverageCovers(tile, city.coverage)) {
       out.push({ ...tile, format: 'openmaptiles' });
       continue;
     }

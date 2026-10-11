@@ -20,6 +20,14 @@
  * cover — because a 204 inside them is empty ground and outside them is
  * "not compiled", and only coverage tells them apart (`lib/map/cityTiles.ts`).
  *
+ * A REGIONAL archive (the planet build's, `scripts/build-city-region.ts`)
+ * carries the tiles it owns in its metadata (`goway:ownership`); the route
+ * then answers as the production Worker does (`worker/city.js`): a tile from
+ * the first archive that owns it, 204 when that archive has nothing there,
+ * and — when every building archive is regional — the production coverage
+ * document, the union of their ownership at z14. To look at the production
+ * Worker itself instead, see `docs/MAP_CITY_PLANET.md` → "Dry run".
+ *
  * A side addition beside the Oxy preset (like `vendor-maplibre-worker.js`),
  * not a fork of it: it wraps whatever `server.enhanceMiddleware` the preset
  * set, if any.
@@ -40,10 +48,12 @@ function withDevCityTiles(config) {
   const paths = archivePath.split(',').map((item) => path.resolve(item.trim()));
 
   let archivesPromise = null;
+  let trees = null;
   const archives = () => {
     if (!archivesPromise) {
       archivesPromise = (async () => {
         const { PMTiles } = await import('../worker/pmtiles.js');
+        trees = await import('../worker/coverageTree.js');
         return Promise.all(
           paths.map(async (file) => {
             const handle = await open(file, 'r');
@@ -56,7 +66,9 @@ function withDevCityTiles(config) {
             });
             const metadata = await archive.metadata().catch(() => ({}));
             const kind = metadata?.['goway:kind'] === 'roads' ? 'city-roads' : 'city';
-            return { archive, kind };
+            const ownership = metadata?.['goway:ownership'];
+            const tree = ownership ? trees.decodeCoverageTree(ownership) : null;
+            return { archive, kind, tree, ownership };
           }),
         );
       })();
@@ -67,10 +79,26 @@ function withDevCityTiles(config) {
   const tileAt = async (kind, z, x, y) => {
     for (const entry of await archives()) {
       if (entry.kind !== kind) continue;
+      if (entry.tree) {
+        // A regional archive answers exactly the tiles it owns, empty or not.
+        const owned = trees.coverageAt(entry.tree, entry.ownership.maxZoom, z, x, y) === trees.FULL;
+        if (!owned) continue;
+        return entry.archive.getTile(z, x, y);
+      }
       const tile = await entry.archive.getTile(z, x, y);
       if (tile) return tile;
     }
     return null;
+  };
+
+  /** Every building archive regional: the production document (`worker/city.js`). */
+  const regionalCoverage = (list) => {
+    const buildings = list.filter((entry) => entry.kind === 'city');
+    if (buildings.length === 0 || !buildings.every((entry) => entry.tree)) return null;
+    let union = trees.EMPTY;
+    for (const entry of buildings) union = trees.unionCoverageTrees(union, entry.tree);
+    const encoded = trees.encodeCoverageTree(trees.coarsenCoverageTree(union, 14), 14);
+    return { schema: 2, tiles: { maxZoom: 14, bits: encoded.bits }, regions: [] };
   };
 
   const previous = config.server?.enhanceMiddleware;
@@ -87,18 +115,20 @@ function withDevCityTiles(config) {
             // What each archive covers: its compile box (`goway:coverage` in
             // its metadata), else its tiles' extent from the header.
             archives()
-              .then((list) =>
-                Promise.all(
-                  // Building archives only: road archives are not 3D coverage.
-                  list
-                    .filter((entry) => entry.kind === 'city')
-                    .map(async ({ archive }) => {
-                      const metadata = await archive.metadata().catch(() => ({}));
-                      const coverage =
-                        metadata['goway:coverage'] ?? (await archive.header()).bounds;
-                      return { coverage };
-                    }),
-                ),
+              .then(
+                (list) =>
+                  regionalCoverage(list) ??
+                  Promise.all(
+                    // Building archives only: road archives are not 3D coverage.
+                    list
+                      .filter((entry) => entry.kind === 'city')
+                      .map(async ({ archive }) => {
+                        const metadata = await archive.metadata().catch(() => ({}));
+                        const coverage =
+                          metadata['goway:coverage'] ?? (await archive.header()).bounds;
+                        return { coverage };
+                      }),
+                  ),
               )
               .then((covered) => {
                 response.writeHead(200, {
@@ -106,7 +136,9 @@ function withDevCityTiles(config) {
                   'cache-control': 'no-cache',
                   'content-type': 'application/json',
                 });
-                response.end(JSON.stringify({ archives: covered }));
+                response.end(
+                  JSON.stringify(Array.isArray(covered) ? { archives: covered } : covered),
+                );
               })
               .catch((error) => {
                 response.writeHead(500, { 'content-type': 'text/plain' });

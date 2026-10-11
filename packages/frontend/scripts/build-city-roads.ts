@@ -6,6 +6,8 @@
  * ```bash
  * bun run --cwd packages/frontend map:city-roads --pbf=<cataluna.osm.pbf> --area=barcelona
  * bun run --cwd packages/frontend map:city-roads --verify --archive=<path>
+ * # One region of the planet build (the region builder writes the file):
+ * bun run --cwd packages/frontend map:city-roads --pbf=<file> --ownership=<region.ownership.json>
  * ```
  *
  * A separate archive from the buildings (`build-city-tiles.ts`), on the same
@@ -37,9 +39,20 @@ import {
 import { CITY_TILE_EXTENT, CITY_TILE_ZOOM } from '../lib/map/cityTiles';
 import { COMPRESSION, PMTiles, TILE_TYPE } from '../worker/pmtiles.js';
 import { AREAS } from './build-city-tiles';
+import { peakRssMb } from './citygen/memory';
 import { encodeTileLayers } from './citygen/mvtEncode';
 import { readBlob, readHeader, scanBlobs } from './citygen/osmPbf';
 import { writePmtiles } from './citygen/pmtilesWriter';
+import {
+  assertOwned,
+  densestTile,
+  type LoadedOwnership,
+  loadOwnership,
+  ownershipOf,
+  PROBE_METADATA_KEY,
+  probeTile,
+  regionMetadata,
+} from './citygen/regionArchive';
 import { compileRoads, roadLayers } from './citygen/roads';
 
 const FRONTEND_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -52,6 +65,8 @@ interface Args {
   bbox?: [number, number, number, number];
   verify: boolean;
   archive?: string;
+  /** A region's ownership file (`citygen/regionArchive.ts`): build only its tiles. */
+  ownership?: string;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -62,6 +77,7 @@ function parseArgs(argv: string[]): Args {
     else if (flag === 'out' && value) args.out = value;
     else if (flag === 'archive' && value) args.archive = value;
     else if (flag === 'area' && value) args.area = value;
+    else if (flag === 'ownership' && value) args.ownership = value;
     else if (flag === 'verify') args.verify = true;
     else if (flag === 'bbox' && value) {
       const parts = value.split(',').map(Number);
@@ -89,14 +105,23 @@ async function build(args: Args): Promise<string> {
     throw new Error(`unknown --area=${args.area}; known: ${Object.keys(AREAS).join(', ')}`);
   }
   const bbox = args.bbox ?? area?.bbox;
-  const name = args.area ?? basename(args.pbf).replace(/\.osm\.pbf$/, '');
+  const owned: LoadedOwnership | null = args.ownership ? loadOwnership(args.ownership) : null;
+  if (owned && bbox) throw new Error('--ownership decides the area: drop --area/--bbox');
+  const name = owned?.file.region ?? args.area ?? basename(args.pbf).replace(/\.osm\.pbf$/, '');
   const zoom = CITY_TILE_ZOOM;
-  const out = args.out ?? join(BUILD_DIR, `city-roads-${name}-z${zoom}.pmtiles`);
+  const out =
+    args.out ?? join(BUILD_DIR, `city-roads-${name.replaceAll('/', '-')}-z${zoom}.pmtiles`);
   await mkdir(dirname(out), { recursive: true });
 
   console.log(`· compiling roads from ${args.pbf}${bbox ? ` within ${bbox.join(',')}` : ''}`);
   const started = performance.now();
-  const result = compileRoads({ pbf: args.pbf, zoom, bbox, log: (line) => console.log(line) });
+  const result = compileRoads({
+    pbf: args.pbf,
+    zoom,
+    bbox,
+    keepTile: owned?.keepTile,
+    log: (line) => console.log(line),
+  });
 
   const encodeStarted = performance.now();
   const tiles: { z: number; x: number; y: number; bytes: Uint8Array }[] = [];
@@ -110,6 +135,7 @@ async function build(args: Args): Promise<string> {
     gzSizes.push(gz.length);
   }
   const encodeMs = performance.now() - encodeStarted;
+  assertOwned(tiles, owned?.keepTile);
 
   let west = 180;
   let south = 90;
@@ -150,6 +176,8 @@ async function build(args: Args): Promise<string> {
       layer(CITY_RESTRICTION_LAYER, RESTRICTION_PROPS),
     ],
     [CITY_ARCHIVE_KIND_KEY]: 'roads',
+    ...(owned ? regionMetadata(owned.file) : {}),
+    [PROBE_METADATA_KEY]: densestTile(tiles),
     'goway:schema': CITY_ROAD_SCHEMA_VERSION,
     'goway:extent': CITY_TILE_EXTENT,
     'goway:source': basename(args.pbf),
@@ -193,7 +221,21 @@ async function build(args: Args): Promise<string> {
       {
         archive: out,
         bytes: archive.length,
-        source: { file: basename(args.pbf), extract: area?.extract, ...header },
+        source: {
+          file: basename(args.pbf),
+          extract: owned?.file.extract ?? area?.extract,
+          ...header,
+        },
+        region: owned
+          ? {
+              id: owned.file.region,
+              name: owned.file.name,
+              polygon: owned.file.polygon,
+              part: owned.file.part,
+              ownedTiles: owned.file.tiles,
+              bounds: owned.file.bounds,
+            }
+          : undefined,
         bbox,
         zoom,
         schema: CITY_ROAD_SCHEMA_VERSION,
@@ -202,6 +244,7 @@ async function build(args: Args): Promise<string> {
         tiles: tiles.length,
         tileGzipBytes: { p50: percentile(gzSizes, 50), p95: percentile(gzSizes, 95) },
         coverage: r,
+        peakRssMb: peakRssMb(),
         builtAt: new Date().toISOString(),
       },
       null,
@@ -229,11 +272,8 @@ async function verify(path: string): Promise<string[]> {
   if (metadata[CITY_ARCHIVE_KIND_KEY] !== 'roads') problems.push('not a road archive');
   if (metadata['goway:schema'] !== CITY_ROAD_SCHEMA_VERSION) problems.push('schema mismatch');
   const z = header.maxZoom;
-  const [w, s, e, n] = header.bounds as number[];
-  const span = 2 ** z;
-  const cx = Math.floor((((w + e) / 2 + 180) / 360) * span);
-  const lat = (((s + n) / 2) * Math.PI) / 180;
-  const cy = Math.floor(((1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2) * span);
+  const { x: cx, y: cy } = probeTile(metadata, header.bounds as number[], z);
+  const owns = ownershipOf(metadata);
   let opened = 0;
   let pieces = 0;
   let car = 0;
@@ -243,6 +283,9 @@ async function verify(path: string): Promise<string[]> {
       const tile = await archive.getTile(z, cx + dx, cy + dy);
       if (!tile) continue;
       opened++;
+      if (owns && !owns(cx + dx, cy + dy)) {
+        problems.push(`tile ${z}/${cx + dx}/${cy + dy} is outside the region's ownership`);
+      }
       const decoded = decodeRoadTile(Bun.gunzipSync(tile.bytes), { x: cx + dx, y: cy + dy });
       nodes += decoded.nodes.length;
       for (const piece of decoded.pieces) {

@@ -1,0 +1,319 @@
+# Build GoWay's 3D city tiles (buildings + trees) and the city-life road graph
+# for the WORLD, region by region, and — only when asked — publish them to R2.
+#
+# Design, measurements, cost and the approval steps: docs/MAP_CITY_PLANET.md.
+#
+# ## Why regions, and why this many jobs
+#
+# The compiler keeps a region's buildings in memory (~14 MB of RAM per MB of
+# extract at the dense end, measured on the Netherlands), so the planet is
+# built from Geofabrik extracts sized to THIS runner — GitHub's standard Linux
+# runner for a public repository, 4 vCPU and 16 GB — by
+# `packages/frontend/scripts/citygen/regions.json` (planned by
+# `map:city-plan`). Each job builds a batch of regions, one after another,
+# each compiler in its own process. A region too big for 16 GB is built in
+# PARTS (osmium cuts it on a tile grid). Nothing here needs a larger or a
+# self-hosted runner; if one is ever used, re-plan the catalogue with its
+# memory and fewer, larger regions follow.
+#
+# ## Dry run by default
+#
+# `publish` is off unless set. Off, every region is downloaded, compiled,
+# verified with the Worker's own reader and described (entries, receipts and
+# the manifest the run WOULD write are kept as artifacts) and nothing leaves
+# GitHub. On, the archives are uploaded under DATED keys that are never
+# overwritten, and the manifest — the one object the Worker reads — is
+# rewritten last, after every upload of the run has succeeded or been left out.
+# Serving is a further, separate switch: `MAP_CITY_MANIFEST` in
+# `packages/frontend/wrangler.toml`.
+#
+# ## Geofabrik
+#
+# A full run downloads ~83 GB of extracts from download.geofabrik.de. That is
+# what their service is for, but not daily: the schedule below is monthly, at
+# most 20 jobs run at once, and every request says who it is from.
+name: Build city tiles
+
+on:
+  workflow_dispatch:
+    inputs:
+      regions:
+        description: >-
+          Regions: "all", or ids and prefixes ending in "/" (comma-separated) from
+          packages/frontend/scripts/citygen/regions.json, e.g. "europe/portugal" or "europe/spain/"
+        required: true
+        default: europe/portugal
+      publish:
+        description: Upload the archives to R2 and rewrite the manifest (off = a dry run that publishes nothing)
+        type: boolean
+        default: false
+      keep_archives:
+        description: Dry run only — keep the built archives as workflow artifacts for 3 days
+        type: boolean
+        default: false
+      official:
+        description: >-
+          Merge official 3D building data where the catalogue lists it (Spain's Catastro, NYC's
+          3D model) — off until one region of each has been measured on this runner
+        type: boolean
+        default: false
+  # Monthly, the 5th, after the basemap's planet and the routing tiles (the
+  # 3rd). COMMENTED OUT until the owner approves a published run
+  # (docs/MAP_CITY_PLANET.md → "Approval"); a schedule has no inputs, so it
+  # would build "all" as a dry run — say so explicitly when enabling it.
+  # schedule:
+  #   - cron: '20 4 5 * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: goway-city-tiles
+  cancel-in-progress: false
+
+env:
+  R2_BUCKET: goway-map-tiles
+  MANIFEST_KEY: city/manifest.json
+  USER_AGENT: goway-city-tiles (+https://goway.to; https://github.com/OxyHQ/GoWay)
+
+jobs:
+  plan:
+    name: Plan the jobs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      batches: ${{ steps.plan.outputs.batches }}
+      stamp: ${{ steps.plan.outputs.stamp }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - id: plan
+        env:
+          REGIONS: ${{ inputs.regions || 'all' }}
+        run: |
+          set -euo pipefail
+          # The catalogue is all the planner reads, so no install is needed.
+          bun packages/frontend/scripts/city-batches.ts --regions="$REGIONS" >> "$GITHUB_OUTPUT"
+          # One stamp for the whole run: every key it writes shares it, and a
+          # rerun gets a new one (run_number), so no key is ever written twice.
+          echo "stamp=$(date -u +%Y%m%d)-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.batch.index }} (${{ matrix.batch.regions }})
+    needs: plan
+    runs-on: ubuntu-24.04
+    # A 4 GB region in 5 parts is the slowest job: ~40 min measured-and-scaled.
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        batch: ${{ fromJSON(needs.plan.outputs.batches) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - name: Install
+        # --ignore-scripts: the root postinstall builds the contracts and the
+        # SDK, which the compilers do not import.
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: osmium (cuts a region too large for this runner into parts)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool && osmium --version | head -1
+      - name: Work on the large volume
+        # ~14 GB free on /, ~70 GB on /mnt (build-routing-tiles.yml measured it).
+        run: |
+          sudo mkdir -p /mnt/city && sudo chown "$USER" /mnt/city
+          df -h / /mnt
+
+      - name: Build the regions
+        env:
+          REGIONS: ${{ matrix.batch.regions }}
+          STAMP: ${{ needs.plan.outputs.stamp }}
+          OUT: /mnt/city/out
+          OFFICIAL: ${{ inputs.official && 'yes' || 'no' }}
+        run: |
+          set -euo pipefail
+          for region in $REGIONS; do
+            echo "::group::$region"
+            dl="/mnt/city/dl/$region"
+            mkdir -p "$(dirname "$dl")"
+            base="https://download.geofabrik.de/$region"
+            curl -fsSL --retry 5 --retry-delay 30 -A "$USER_AGENT" -o "$dl.osm.pbf" "$base-latest.osm.pbf"
+            curl -fsSL --retry 5 -A "$USER_AGENT" -o "$dl.osm.pbf.md5" "$base-latest.osm.pbf.md5"
+            curl -fsSL --retry 5 -A "$USER_AGENT" -o "$dl.poly" "$base.poly"
+            # The md5 file names the file by its published name; check the bytes.
+            [ "$(md5sum < "$dl.osm.pbf" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$dl.osm.pbf.md5")" ] \
+              || { echo "::error::$region: the extract does not match its md5"; exit 1; }
+            # Official 3D building data (docs/MAP_3D_SOURCES.md), only where
+            # the catalogue lists a source for this region and only when asked.
+            # Fetched like the extract — the compiler never fetches anything.
+            official=()
+            if [ "$OFFICIAL" = yes ]; then
+              sources=$(jq -r --arg id "$region" '.regions[] | select(.id == $id) | .official[]' \
+                packages/frontend/scripts/citygen/regions.json)
+              for source in $sources; do
+                odir="/mnt/city/official/$region/$source"
+                mkdir -p "$odir"
+                case "$source" in
+                  es-catastro)
+                    # Every municipality whose box meets the region's polygon's box;
+                    # the build keeps only what lands in the tiles the region owns.
+                    box=$(awk 'NF == 2 && $1 ~ /^-?[0-9.Ee+-]+$/ { x = $1 + 0; y = $2 + 0;
+                      if (!n++) { w = e = x; s = nn = y }
+                      if (x < w) w = x; if (x > e) e = x; if (y < s) s = y; if (y > nn) nn = y }
+                      END { printf "%f,%f,%f,%f", w, s, e, nn }' "$dl.poly")
+                    bun run --cwd packages/frontend map:catastro-list --bbox="$box" > "$odir/urls.txt"
+                    (cd "$odir" && xargs -n1 -P4 curl -fsSLO --retry 3 -A "$USER_AGENT" < urls.txt \
+                      && for z in *.zip; do unzip -oq "$z" '*.buildingpart.gml' && rm "$z"; done)
+                    ;;
+                  nyc-3dbm)
+                    curl -fsSL --retry 3 -A "$USER_AGENT" -o "$odir/DA_WISE_GML.zip" \
+                      https://s-media.nyc.gov/agencies/oti/DA_WISE_GML.zip
+                    (cd "$odir" && unzip -oqj DA_WISE_GML.zip '*_3D_Buildings_Merged.gml' && rm DA_WISE_GML.zip)
+                    ;;
+                  *) echo "::error::$region: no fetch step for official source $source"; exit 1 ;;
+                esac
+                echo "$source: $(find "$odir" -name '*.gml' | wc -l) files, $(du -sh "$odir" | cut -f1)"
+                official+=("--official=$source:$odir")
+              done
+            fi
+            bun run --cwd packages/frontend map:city-region \
+              --region="$region" --pbf="$dl.osm.pbf" --poly="$dl.poly" \
+              --stamp="$STAMP" --out="$OUT" --osmium=osmium "${official[@]}"
+            rm -rf "$dl.osm.pbf" "/mnt/city/official/$region"
+            echo "::endgroup::"
+          done
+          du -sh "$OUT"
+
+      - name: Keep the archives (dry run, on request)
+        if: ${{ inputs.keep_archives && !inputs.publish }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: city-archives-${{ matrix.batch.index }}
+          path: /mnt/city/out/city*/
+          retention-days: 3
+
+      - name: Upload to R2 (publish only; dated keys, never overwritten)
+        if: ${{ inputs.publish }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.GOWAY_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.GOWAY_R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_DEFAULT_REGION: auto
+        working-directory: /mnt/city/out
+        run: |
+          set -euo pipefail
+          if [[ -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::GOWAY_R2_ACCESS_KEY_ID, GOWAY_R2_SECRET_ACCESS_KEY or CLOUDFLARE_ACCOUNT_ID is empty (docs/MAP_CITY_PLANET.md → Approval)."
+            exit 1
+          fi
+          endpoint="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          # A PMTiles archive is read by byte offset: overwriting one a Worker
+          # is reading serves another tile's bytes. So an existing key is an
+          # error, not something to replace.
+          find city city-roads -type f | sort | while read -r key; do
+            if aws s3api head-object --endpoint-url "$endpoint" --bucket "$R2_BUCKET" --key "$key" >/dev/null 2>&1; then
+              echo "::error::$key already exists in $R2_BUCKET; refusing to overwrite it."
+              exit 1
+            fi
+            case "$key" in
+              *.receipt.json) type=application/json ;;
+              *) type=application/vnd.pmtiles ;;
+            esac
+            aws s3 cp "$key" "s3://$R2_BUCKET/$key" --endpoint-url "$endpoint" \
+              --content-type "$type" --checksum-algorithm CRC32 --only-show-errors
+            echo "uploaded $key"
+          done
+
+      # LAST, and only when everything above succeeded: the manifest job reads
+      # these entries, and an entry must never name an archive that did not
+      # reach R2.
+      - name: Keep the entries and receipts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: city-entries-${{ matrix.batch.index }}
+          path: |
+            /mnt/city/out/entries/
+            /mnt/city/out/**/*.receipt.json
+          retention-days: 30
+
+  manifest:
+    name: Manifest
+    needs: [plan, build]
+    # Also after a partly failed build: a region whose job failed has no entry,
+    # so the manifest keeps what it named before for it.
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          pattern: city-entries-*
+          path: entries-download
+          merge-multiple: true
+
+      - name: The manifest now in R2 (publish only)
+        if: ${{ inputs.publish }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.GOWAY_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.GOWAY_R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          endpoint="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          if aws s3 cp "s3://$R2_BUCKET/$MANIFEST_KEY" previous.json --endpoint-url "$endpoint" --only-show-errors; then
+            echo "previous manifest: $(wc -c < previous.json) bytes"
+          else
+            echo "no manifest in R2 yet: this run's regions are the whole manifest"
+          fi
+
+      - name: Assemble
+        env:
+          STAMP: ${{ needs.plan.outputs.stamp }}
+        run: |
+          set -euo pipefail
+          entries="$PWD/entries-download/entries"
+          previous=""
+          [ -f "$PWD/previous.json" ] && previous="--previous=$PWD/previous.json"
+          bun run --cwd packages/frontend map:city-manifest \
+            --entries="$entries" $previous --out="$PWD/manifest.json" --retired="$PWD/retired.txt"
+          echo "### City manifest $STAMP" >> "$GITHUB_STEP_SUMMARY"
+          echo "Retired (still in R2; delete after the new manifest has been live a while):" >> "$GITHUB_STEP_SUMMARY"
+          sed 's/^/    /' "$PWD/retired.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: city-manifest
+          path: |
+            manifest.json
+            retired.txt
+          retention-days: 30
+
+      - name: Publish the manifest (publish only; the dated copy first, then the live one)
+        if: ${{ inputs.publish }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.GOWAY_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.GOWAY_R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_DEFAULT_REGION: auto
+          STAMP: ${{ needs.plan.outputs.stamp }}
+        run: |
+          set -euo pipefail
+          endpoint="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          dated="city/manifests/$STAMP.json"
+          # The dated copy is the rollback: copying an older one over the live
+          # key is the whole procedure.
+          aws s3 cp manifest.json "s3://$R2_BUCKET/$dated" --endpoint-url "$endpoint" \
+            --content-type application/json --only-show-errors
+          aws s3 cp manifest.json "s3://$R2_BUCKET/$MANIFEST_KEY" --endpoint-url "$endpoint" \
+            --content-type application/json --cache-control "no-cache" --only-show-errors
+          echo "published $MANIFEST_KEY (= $dated)"

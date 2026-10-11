@@ -64,7 +64,7 @@ import {
   selectLodTiles,
   type TileCost,
 } from './lod';
-import type { CityCoverageBox } from '@/lib/map/cityTiles';
+import type { CityCoverageArea } from '@/lib/map/cityTiles';
 
 import { hiddenFeatureIds, tilesAround } from './landmarkTiles';
 import type { CitySun, HostSkyColours, SkyAppearance } from './atmosphere';
@@ -125,7 +125,7 @@ export interface CityEngineOptions {
     sourceLayer: string;
     /** The city tiles' layer of trees OSM records (`CITY_TREE_LAYER`). */
     treeLayer: string;
-    coverage: readonly CityCoverageBox[];
+    coverage: readonly CityCoverageArea[];
   } | null;
   /**
    * Trees (`workerTrees.ts`): on city tiles the trees OSM records; with
