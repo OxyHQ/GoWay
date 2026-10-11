@@ -48,6 +48,7 @@
 import type { LightSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type { CustomLayerInterface, Map as MapLibreMap, VectorTileSource } from 'maplibre-gl';
 
+import { MAP_LANDMARKS_ENABLED } from '@/lib/config';
 import {
   isCity3dTreeFillRequested,
   isCity3dTreesRequested,
@@ -66,10 +67,14 @@ import {
 import { isCityLifeRequested, MAP_CITY_LIFE_ENABLED } from '@/lib/map/cityLifeFlag';
 import { CITY_ROAD_TILE_PATH } from '@/lib/map/cityRoads';
 import { isCityTilesRequested, MAP_CITY_TILES_ENABLED } from '@/lib/map/cityTilesFlag';
+import type { PreparedLandmark } from '@/lib/map/landmarks/load';
+import { nightFactor } from '@/lib/map/landmarks/night';
+import { isLandmarksRequested } from '@/lib/map/landmarksFlag';
 import {
   getMapSource,
   GOWAY_LAYER_PREFIX,
   type MapAppearance,
+  type MapAttributionLink,
   resolveMapAnchors,
 } from '@/lib/map/provider';
 import {
@@ -86,7 +91,7 @@ import { treeColours } from './city3dTrees';
 // Type-only on purpose: the engine chunk imports these modules at runtime, and
 // a module two lazy chunks share is hoisted into the first-paint `__common`
 // chunk (see `engine3d/lazyChunk.ts`; `components/__tests__/engine3dChunk.test.ts`).
-import type { CityEngine, CityEngineStats } from './engine/city3d/cityEngine';
+import type { CityEngine, CityEngineStats, LandmarkSpec } from './engine/city3d/cityEngine';
 import type { ModelSpec, ModelStatus } from './engine/city3d/models';
 import type { CityLight } from './engine/city3d/occlusion';
 import type { CityOverlay } from './engine/city3d/overlay';
@@ -162,6 +167,43 @@ const CITY_LIFE_SEED = 20261011;
 /** The custom layer's id, in GoWay's own namespace. */
 export const CITY3D_LAYER_ID = `${GOWAY_LAYER_PREFIX}city3d`;
 
+/**
+ * Landmarks are handed to the engine within this distance of the view's
+ * centre, and kept until they are past {@link LANDMARK_DROP_M} (hysteresis,
+ * so panning along the edge does not load, hide and re-mesh one repeatedly).
+ * The city tiles reach ~1.8 km from the centre; a landmark taller than its
+ * neighbours is worth drawing a little beyond them.
+ */
+const LANDMARK_RADIUS_M = 3_000;
+const LANDMARK_DROP_M = 4_000;
+/** At most this many landmarks are in the scene at once (the model layer allows 20 assets). */
+const MAX_LANDMARKS = 8;
+/** Below this zoom no landmark is loaded (the buildings appear from 15.5). */
+const LANDMARK_MIN_ZOOM = 14;
+
+/**
+ * Which landmarks the engine should hold for a view: the nearest within
+ * {@link LANDMARK_RADIUS_M}, plus those already held that are still within
+ * {@link LANDMARK_DROP_M}. Exported for the tests.
+ */
+export function landmarksForView(
+  all: readonly PreparedLandmark[],
+  held: ReadonlySet<string>,
+  view: { zoom: number; center: { lat: number; lng: number } },
+  near: (
+    list: readonly PreparedLandmark[],
+    centre: { latitude: number; longitude: number },
+    radius: number,
+  ) => PreparedLandmark[],
+): PreparedLandmark[] {
+  if (view.zoom < LANDMARK_MIN_ZOOM) return [];
+  const centre = { latitude: view.center.lat, longitude: view.center.lng };
+  const close = new Set(near(all, centre, LANDMARK_RADIUS_M).map((l) => l.entry.id));
+  return near(all, centre, LANDMARK_DROP_M)
+    .filter((l) => held.has(l.entry.id) || close.has(l.entry.id))
+    .slice(0, MAX_LANDMARKS);
+}
+
 /** The models' custom layer (same engine; see `modelsLayer` below). */
 export const MODELS_LAYER_ID = `${GOWAY_LAYER_PREFIX}models`;
 
@@ -196,6 +238,11 @@ export interface AttachCity3dOptions {
   buildings?: boolean;
   /** A model was drawn, or fell back to its marker. */
   onModelStatus?: (id: string, status: ModelStatus) => void;
+  /**
+   * The credits owed for the landmark models drawn right now
+   * (`docs/MAP_LANDMARKS.md`), for `MapAttribution`; called on every change.
+   */
+  onLandmarkCredits?: (links: readonly MapAttributionLink[]) => void;
 }
 
 export interface City3dHandle {
@@ -211,6 +258,12 @@ export interface City3dHandle {
   moveModel(id: string, placement: ModelSpec['placement']): void;
   /** The model drawn under a CSS-pixel point, or `null`. */
   pickModel(point: { x: number; y: number }): string | null;
+  /**
+   * Override how much of night the models and landmarks are lit for (0 … 1).
+   * By default it follows the appearance (`lib/map/landmarks/night.ts` →
+   * `nightFactor`); the sky's time of day hands its own here.
+   */
+  setNightFactor(nightFactor: number): void;
   /** Remove the layer, free the engine, and show `building-3d` again. Idempotent. */
   detach(): void;
 }
@@ -300,6 +353,66 @@ export async function attachCity3d(
     development: typeof __DEV__ !== 'undefined' && __DEV__,
     search: typeof window === 'undefined' ? '' : window.location.search,
   });
+
+  // Landmarks replace per-building OSM ids, so they need the city tiles.
+  const landmarksOn =
+    cityTiles &&
+    isLandmarksRequested({
+      enabled: MAP_LANDMARKS_ENABLED,
+      development: typeof __DEV__ !== 'undefined' && __DEV__,
+      search: typeof window !== 'undefined' ? window.location.search : '',
+    });
+  let landmarkModule: typeof import('@/lib/map/landmarks/load') | null = null;
+  let landmarkList: readonly PreparedLandmark[] = [];
+  const heldLandmarks = new Set<string>();
+  const drawnLandmarks = new Set<string>();
+  let night = nightFactor({ appearance: options.appearance });
+  if (landmarksOn) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    void import('@/lib/map/landmarks/load')
+      .then(async (module) => {
+        landmarkList = await module.loadLandmarks(origin);
+        landmarkModule = module;
+        map.triggerRepaint();
+      })
+      .catch((cause: unknown) =>
+        reportMapDefect('landmarks:load', `landmarks: not loaded (${String(cause)}).`),
+      );
+  }
+  const updateLandmarks = (view: { zoom: number; center: { lat: number; lng: number } }) => {
+    if (!engine || !landmarkModule || landmarkList.length === 0) return;
+    const next = landmarksForView(landmarkList, heldLandmarks, view, landmarkModule.landmarksNear);
+    const same =
+      next.length === heldLandmarks.size && next.every((l) => heldLandmarks.has(l.entry.id));
+    if (same) return;
+    heldLandmarks.clear();
+    for (const l of next) heldLandmarks.add(l.entry.id);
+    engine.setLandmarks(
+      next.map(
+        (l): LandmarkSpec => ({
+          id: l.entry.id,
+          url: l.url,
+          placement: l.placement,
+          sizing: { mode: 'world' },
+          // The engine draws landmarks only with the buildings (from the
+          // fade's start); a zoom window here would toggle "drawn", and with
+          // it the hidden buildings, on every zoom across it.
+          minZoom: 0,
+          maxZoom: 24,
+          occlusion: 'buildings',
+          hides: l.hides,
+        }),
+      ),
+    );
+  };
+  const onLandmarkStatus = (id: string, status: ModelStatus) => {
+    if (status === 'drawn') drawnLandmarks.add(id);
+    else drawnLandmarks.delete(id);
+    if (landmarkModule) {
+      options.onLandmarkCredits?.(landmarkModule.landmarkCredits(landmarkList, drawnLandmarks));
+    }
+  };
+
   let lightSpec = options.light;
   let applied: CityLight | null = null;
   let engine: CityEngine | null = null;
@@ -374,7 +487,9 @@ export async function attachCity3d(
       buildings,
       onModelStatus: options.onModelStatus,
       overlays,
+      onLandmarkStatus,
     });
+    engine.setNightFactor(night);
     if (queuedModels) engine.setModels(queuedModels);
     // On 3D terrain the buildings stand on the drawn ground, not at sea level.
     unfollowTerrain = followTerrain(map, engine);
@@ -416,7 +531,9 @@ export async function attachCity3d(
       ensureEngine(host, gl);
     },
     render(_gl, args) {
-      engine?.render(frameView(args));
+      const view = frameView(args);
+      if (landmarksOn) updateLandmarks(view);
+      engine?.render(view);
     },
     onRemove: releaseEngine,
   };
@@ -481,6 +598,10 @@ export async function attachCity3d(
     pickModel(point) {
       return engine?.pickModel(point) ?? null;
     },
+    setNightFactor(factor) {
+      night = factor;
+      engine?.setNightFactor(factor);
+    },
     detach() {
       if (detached) return;
       detached = true;
@@ -505,6 +626,7 @@ export async function attachCity3d(
       engine = null;
       chip?.remove();
       chip = null;
+      if (drawnLandmarks.size > 0) options.onLandmarkCredits?.([]);
     },
   };
 }

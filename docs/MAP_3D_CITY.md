@@ -492,6 +492,13 @@ second such guest: simulated cars and people are an OVERLAY of this engine
 (`engine/city3d/overlay.ts`) — the same scene, camera, light and terrain as the
 buildings, one instanced draw per vehicle model — never a renderer of their own.
 
+Hand-crafted **landmarks** ([`MAP_LANDMARKS.md`](./MAP_LANDMARKS.md)) are
+another guest: a second instance of the model layer in the same engine, drawn in the
+BUILDINGS' pass (right after the city tiles) and replacing the city-tile
+buildings they stand for — the mesh worker skips those OSM ids, and only
+while the model is drawn. They are styling of one curated building, not a
+relaxation of the honesty rules below for the city at large.
+
 ## Obligations
 
 **MapLibre and OpenFreeMap stay replaceable adapters.** The engine never imports

@@ -15,7 +15,7 @@
  * viewport read and the search limit — tens of rows, not thousands — so
  * virtualization would buy nothing and cost the gesture contract.
  */
-import { useMemo } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import { View } from 'react-native';
 import type { Place, PlaceWithDistance } from '@goway.to/sdk';
 import { Admonition } from '@oxy.so/bloom/admonition';
@@ -79,7 +79,16 @@ export function ExploreHeader({ explore }: { explore: ExploreController }) {
   );
 }
 
-export function ExploreBody({ explore }: { explore: ExploreController }) {
+/** Extra actions for a place's card, rendered beside Directions and Save (the landmark tour). */
+export type RenderPlaceActions = (place: Place) => ReactNode;
+
+export function ExploreBody({
+  explore,
+  renderPlaceActions,
+}: {
+  explore: ExploreController;
+  renderPlaceActions?: RenderPlaceActions;
+}) {
   if (explore.directions.active) {
     return (
       <DirectionsBody
@@ -94,7 +103,8 @@ export function ExploreBody({ explore }: { explore: ExploreController }) {
       />
     );
   }
-  if (explore.selection) return <SelectionBody explore={explore} />;
+  if (explore.selection)
+    return <SelectionBody explore={explore} renderPlaceActions={renderPlaceActions} />;
   if (explore.mode === 'search') return <SearchBody explore={explore} />;
   return <BrowseBody explore={explore} />;
 }
@@ -192,7 +202,13 @@ function SearchBody({ explore }: { explore: ExploreController }) {
 
 // ── Selection ───────────────────────────────────────────────────────────────
 
-function SelectionBody({ explore }: { explore: ExploreController }) {
+function SelectionBody({
+  explore,
+  renderPlaceActions,
+}: {
+  explore: ExploreController;
+  renderPlaceActions?: RenderPlaceActions;
+}) {
   const { selection } = explore;
   if (!selection) return null;
 
@@ -254,6 +270,7 @@ function SelectionBody({ explore }: { explore: ExploreController }) {
       // One tap, same as before: the planner opens with this place as the
       // destination and asks the device where you are for the starting point.
       onDirections={() => explore.directions.openTo(place)}
+      actions={renderPlaceActions?.(place)}
       testID="place-details"
     />
   );

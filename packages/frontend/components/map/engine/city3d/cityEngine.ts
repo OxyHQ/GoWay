@@ -66,6 +66,7 @@ import {
 } from './lod';
 import type { CityCoverageBox } from '@/lib/map/cityTiles';
 
+import { hiddenFeatureIds, tilesAround } from './landmarkTiles';
 import { createModelLayer, type ModelSpec, type ModelStatus } from './models';
 import type { CityLight } from './occlusion';
 import { OSM_FRAGMENT_SHADER, OSM_VERTEX_SHADER } from './osmShaders';
@@ -150,6 +151,18 @@ export interface CityEngineOptions {
   onModelStatus?: (id: string, status: ModelStatus) => void;
   /** Drawn in the same scene, camera, light and ground (`overlay.ts`): the city-life simulation. */
   overlays?: CityOverlay[];
+  /** A landmark model became drawn (its buildings hidden), or stopped being. */
+  onLandmarkStatus?: (id: string, status: ModelStatus) => void;
+}
+
+/**
+ * A hand-crafted landmark (`docs/MAP_LANDMARKS.md`): a model drawn in the
+ * BUILDINGS' pass — under the route line, like every building — that hides
+ * the city-tile buildings it replaces while (and only while) it is drawn.
+ */
+export interface LandmarkSpec extends ModelSpec {
+  /** City-tile feature ids of the buildings the model replaces. */
+  hides: readonly number[];
 }
 
 /** What the host knows about its camera this frame. */
@@ -199,6 +212,10 @@ export interface CityEngine {
   /** Coordinate-anchored models in the same scene (`models.ts`, SDK_MAP_MODELS phase 1). */
   setModels(specs: readonly ModelSpec[]): void;
   setModelPlacement(id: string, placement: ModelSpec['placement']): void;
+  /** The landmarks near the view (the host picks which; `setLandmarks([])` clears). */
+  setLandmarks(specs: readonly LandmarkSpec[]): void;
+  /** 0 (day) … 1 (night), for every model and landmark (`modelLook.ts`). */
+  setNightFactor(nightFactor: number): void;
   /** The model under a CSS-pixel point of the last frame, or `null`. */
   pickModel(point: { x: number; y: number }): string | null;
   /** Each drawn model's anchor on screen in the last frame (development checks). */
@@ -426,6 +443,46 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     onStatus: (id, status) => options.onModelStatus?.(id, status),
     pageOrigin: typeof location !== 'undefined' ? location.origin : null,
   });
+  // Landmarks: the same model layer, a second instance drawn in the
+  // buildings' pass. Their buildings are hidden only while they are drawn.
+  const landmarkHides = new Map<string, readonly number[]>();
+  const landmarkPositions = new Map<string, LandmarkSpec['placement']['position']>();
+  const drawnLandmarks = new Set<string>();
+  let hidden: number[] = [];
+  // Every change to the hidden set is a new version. A tile near the change
+  // is STALE until a mesh made with that version (or later) arrives — also
+  // one whose request was already in flight with the old set. Its old mesh
+  // draws meanwhile. Keyed by canonical tile (`z/x/y`): only city tiles, at
+  // full detail, carry per-building ids.
+  let hiddenVersion = 0;
+  const stale = new Map<string, number>();
+  const requestVersion = new Map<number, number>();
+  const canonical = (key: string) => {
+    const at = key.indexOf('@');
+    return at < 0 ? key : key.slice(0, at);
+  };
+  const rehide = (id: string) => {
+    hidden = hiddenFeatureIds(drawnLandmarks, landmarkHides);
+    hiddenVersion++;
+    const position = landmarkPositions.get(id);
+    if (position && options.city) {
+      // At the CITY tiles' zoom (15), not the basemap's (14): only they carry ids.
+      for (const key of tilesAround(position, options.city.tileZoom)) stale.set(key, hiddenVersion);
+    }
+    options.requestRepaint();
+  };
+  const landmarks = createModelLayer({
+    requestRepaint: options.requestRepaint,
+    onStatus: (id, status) => {
+      if ((status === 'drawn') === drawnLandmarks.has(id)) return;
+      if (status === 'drawn') drawnLandmarks.add(id);
+      else drawnLandmarks.delete(id);
+      rehide(id);
+      options.onLandmarkStatus?.(id, status);
+    },
+    pageOrigin: typeof location !== 'undefined' ? location.origin : null,
+  });
+
   // Models are drawn in their own pass (their own layer in the style), with
   // their own camera (see `models.ts` → Frames) but the same renderer and the
   // same depth buffer.
@@ -503,6 +560,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     if (disposed) return;
     const request = requests.get(reply.id);
     requests.delete(reply.id);
+    const meshedWith = requestVersion.get(reply.id) ?? 0;
+    requestVersion.delete(reply.id);
     if (!request) return;
 
     if (reply.type === 'cancelled') return;
@@ -524,6 +583,9 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       return;
     }
     if (!scheduler.succeeded(request, reply.id)) return;
+    // Meshed with the current hidden set (or none near it changed since).
+    const tileName = tileKey(request);
+    if ((stale.get(tileName) ?? 0) <= meshedWith) stale.delete(tileName);
     lastMeshMs = reply.meshMs;
     lastTreeMs = reply.treeMs;
     // GPU work waits for the upload budget (`admit`); the bookkeeping is done.
@@ -624,16 +686,20 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     const plan = scheduler.plan(
       wanted,
       now,
-      (key) => (cache.has(key) && !due(key)) || arrived.has(key),
+      (key) =>
+        (cache.has(key) && !due(key) && !stale.has(canonical(key))) ||
+        (arrived.has(key) && !stale.has(canonical(key))),
     );
     for (const id of plan.cancel) {
       pool.cancel(id, { type: 'cancel', id });
       requests.delete(id);
+      requestVersion.delete(id);
     }
     const room = pool.size * MAX_IN_FLIGHT_PER_WORKER - pool.inFlight;
     for (const request of plan.request.slice(0, Math.max(0, room))) {
       const id = nextRequestId++;
       requests.set(id, request);
+      requestVersion.set(id, hiddenVersion);
       scheduler.started(request, id);
       const tile: TileId = { z: request.z, x: request.x, y: request.y };
       pool.send(
@@ -646,6 +712,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
                 url: expandTemplate(options.city.tileUrlTemplate, tile),
                 sourceLayer: options.city.sourceLayer,
                 format: 'goway' as const,
+                ...(hidden.length > 0 ? { hidden } : {}),
                 // The fill reads the basemap's landcover: the city tiles
                 // carry buildings and the trees OSM records, no landcover.
                 ...(options.trees
@@ -776,6 +843,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         // after a custom layer returns, so nothing needs restoring after.
         renderer.resetState();
         renderer.render(scene, camera);
+        if (landmarks.active) {
+          renderer.resetState();
+          landmarks.render(renderer, view, {
+            width: options.canvas.clientWidth,
+            height: options.canvas.clientHeight,
+          });
+        }
       }
       if (active) options.requestRepaint();
 
@@ -795,6 +869,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       // does city life (on the same opened grid: `overlay.ts`).
       models.setGround(sample);
       for (const overlay of overlays) overlay.setGround(sample);
+      landmarks.setGround(sample);
       groundSampler = sample;
       liftRange = null;
       light.uGrounded.value = sample ? 1 : 0;
@@ -814,6 +889,19 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       models.setPlacement(id, placement);
     },
 
+    setLandmarks(specs) {
+      for (const spec of specs) {
+        landmarkHides.set(spec.id, spec.hides);
+        landmarkPositions.set(spec.id, spec.placement.position);
+      }
+      landmarks.setModels(specs);
+    },
+
+    setNightFactor(factor) {
+      models.setNightFactor(factor);
+      landmarks.setNightFactor(factor);
+    },
+
     pickModel(point) {
       return models.pick(point);
     },
@@ -829,6 +917,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       light.uLightColor.value.set(...next.color);
       models.setLight(next);
       for (const overlay of overlays) overlay.setLight(next);
+      landmarks.setLight(next);
       options.requestRepaint();
     },
 
@@ -850,6 +939,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       pool.terminate();
       models.dispose();
       for (const overlay of overlays) overlay.dispose();
+      landmarks.dispose();
       grounder.clear();
       for (const timer of retryTimers) clearTimeout(timer);
       retryTimers.clear();

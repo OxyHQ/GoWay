@@ -70,6 +70,8 @@ const ENGINES = [
   // The city-life renderer is an overlay of the same engine (`overlay.ts`),
   // reached only through `lazyChunk.ts`.
   'components/map/engine/cityLife/lifeRenderer.ts',
+  // How models (and landmarks) are lit by day and night, imported only by `models.ts`.
+  'components/map/engine/city3d/modelLook.ts',
 ];
 const CHUNK = 'components/engine3d/lazyChunk.ts';
 

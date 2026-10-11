@@ -27,6 +27,8 @@
     "map:tiles:upload": "bun scripts/build-map-tiles.ts --upload",
     "map:city-tiles": "bun scripts/build-city-tiles.ts",
     "map:city-roads": "bun scripts/build-city-roads.ts",
+    "landmarks": "bun scripts/build-landmarks.ts",
+    "landmarks:check": "bun scripts/build-landmarks.ts --check",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -88,6 +90,8 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@gltf-transform/core": "4.5.0",
+    "@gltf-transform/extensions": "4.5.0",
     "@tailwindcss/postcss": "4.3.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
@@ -99,6 +103,7 @@
     "eslint-plugin-expo": "^1.1.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "fontkit": "^2",
+    "meshoptimizer": "1.1.1",
     "typescript": "^5.9.3"
   },
   "expo": {

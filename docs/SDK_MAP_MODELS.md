@@ -477,6 +477,7 @@ web only, off unless `EXPO_PUBLIC_MAP_FLYOVER` (or `?flyover=1` in development):
 | `'ground'` altitude, heading/pitch/roll, `sizing`, zoom window, `occlusion`, `tint`, fallback | Built. |
 | Budgets | File size, triangles, distinct assets, instances enforced; `lite` files and the `deviceProfile` gate are not. |
 | Engine | The city engine's scene, in a second custom layer on the same renderer above GoWay's overlays — see `MAP_CAMERA_STUDIO.md` → "Two layers, one renderer" for why, and the one deviation from "one scene". |
+| Loader and shading | `EXT_meshopt_compression` decoded (three's `MeshoptDecoder`) with `KHR_mesh_quantization`. The camera is split into view and projection at the real eye (`eyeOf`), so smooth materials shade against true view vectors; a soft sky environment gives glass and steel something to reflect. Materials may glow at night from their own `extras.goway` (`night`, `uplight`, `decal`), driven by a `nightFactor` (`modelLook.ts`) — built for the landmarks ([`MAP_LANDMARKS.md`](./MAP_LANDMARKS.md)), generic to any GLB. |
 | Gates | NaN gate and frame tests (`components/map/__tests__/mapModels.test.ts`); alignment checked in a running build via `__gowayModelAlignment` (≤ 1e-8 px on settled frames) and against the host matrix in a unit test; bundle: three.js still loads only through `lazyChunk.ts` (`engine3dChunk.test.ts`), a map with no models requests none of it. |
 
 ## Open questions

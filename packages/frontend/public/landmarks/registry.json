@@ -1,0 +1,653 @@
+{
+  "version": 1,
+  "landmarks": [
+    {
+      "id": "empire-state-building",
+      "name": "Empire State Building",
+      "category": "culture.attraction",
+      "locality": "New York",
+      "osm": {
+        "element": "way/34633854",
+        "replaces": ["relation/10872054", "way/137425125", "way/137425127", "way/137425128", "way/137425129", "way/137425131", "way/137425133", "way/137425142", "way/137425144", "way/137425145", "way/265932618"]
+      },
+      "placeId": null,
+      "placement": {
+        "position": {
+          "latitude": 40.74844,
+          "longitude": -73.98566
+        },
+        "orientation": {
+          "heading": 119
+        }
+      },
+      "model": {
+        "path": "/landmarks/empire-state-building.glb",
+        "generator": "packages/frontend/scripts/landmarks/models/empireState.ts",
+        "bytes": 111992,
+        "sha256": "986d11d4ebd280d8c62d3532fb584830996d1753ee00e534aebd895d2a564d4d",
+        "triangles": 11594,
+        "boundsMeters": {
+          "min": [-29.76, 0, -66.2],
+          "max": [30.16, 443.2, 64.76]
+        }
+      },
+      "night": {
+        "uplight": {
+          "color": "#ffd9a8",
+          "reach": 60,
+          "strength": 0.6
+        }
+      },
+      "licence": {
+        "spdx": "CC0-1.0",
+        "method": "osm-enriched",
+        "author": "GoWay",
+        "source": "packages/frontend/scripts/landmarks/models/empireState.ts",
+        "credit": null,
+        "derivedFrom": ["openstreetmap"],
+        "verifiedAt": "2026-10-11",
+        "notes": "Setback plans are OpenStreetMap's building:part outlines for way/34633854 (ODbL, credited on every map as © OpenStreetMap); window rhythm, piers, crown and lights authored in the generator."
+      },
+      "tour": {
+        "zoom": 16.5,
+        "pitch": 58,
+        "orbitSeconds": 60,
+        "lookAtMeters": 186,
+        "startAngle": -40
+      }
+    },
+    {
+      "id": "sagrada-familia",
+      "name": "Sagrada Família",
+      "category": "worship",
+      "locality": "Barcelona",
+      "osm": {
+        "element": "relation/9194723",
+        "replaces": ["relation/16329170", "relation/16329171", "relation/16329172", "relation/16329173", "relation/16329174", "relation/16329175", "way/1207779418", "way/1207779425", "way/1207779426", "way/1207779427", "way/1207779428", "way/1207779447", "way/1207779448", "way/1207779469", "way/359084975", "way/359084980", "way/359084982", "way/359084983", "way/359084987", "way/359084990", "way/359084991", "way/359084993", "way/359086378", "way/359086380", "way/661321474"]
+      },
+      "placeId": null,
+      "placement": {
+        "position": {
+          "latitude": 41.403589,
+          "longitude": 2.174347
+        },
+        "orientation": {
+          "heading": 134
+        }
+      },
+      "model": {
+        "path": "/landmarks/sagrada-familia.glb",
+        "generator": "packages/frontend/scripts/landmarks/models/sagradaFamilia.ts",
+        "bytes": 247668,
+        "sha256": "c20a9245b9550ea96061f895f4e5df7ab9824a46ed666010e40b6ab6b12da6e4",
+        "triangles": 30320,
+        "boundsMeters": {
+          "min": [-51, 0, -53.1],
+          "max": [38.68, 172.5, 56.23]
+        }
+      },
+      "night": {
+        "uplight": {
+          "color": "#ffd9a8",
+          "reach": 120,
+          "strength": 0.75
+        }
+      },
+      "licence": {
+        "spdx": "CC0-1.0",
+        "method": "osm-enriched",
+        "author": "GoWay",
+        "source": "packages/frontend/scripts/landmarks/models/sagradaFamilia.ts",
+        "credit": null,
+        "derivedFrom": ["openstreetmap"],
+        "verifiedAt": "2026-10-11",
+        "notes": "Tower positions and the crossing's roof outlines are OpenStreetMap's building:part data for relation/9194723 (ODbL, credited on every map as © OpenStreetMap); the nave, transept, apse, facades, tower profiles, openings, pinnacles and lights are authored in the generator. Heights follow the published 2026 state (Jesus Christ tower 172.5 m with its cross, Mary 138 m, Evangelists 135 m, bell towers 98-112 m); the Glory facade is shown without its towers."
+      },
+      "tour": {
+        "zoom": 17.4,
+        "pitch": 58,
+        "orbitSeconds": 60,
+        "lookAtMeters": 72
+      }
+    },
+    {
+      "id": "torre-glories",
+      "name": "Torre Glòries",
+      "category": "office",
+      "locality": "Barcelona",
+      "osm": {
+        "element": "way/44213122",
+        "replaces": ["way/44213122"]
+      },
+      "placeId": null,
+      "placement": {
+        "position": {
+          "latitude": 41.4035152,
+          "longitude": 2.1895207
+        },
+        "orientation": {
+          "heading": 4.7
+        }
+      },
+      "model": {
+        "path": "/landmarks/torre-glories.glb",
+        "generator": "packages/frontend/scripts/landmarks/models/torreGlories.ts",
+        "bytes": 131532,
+        "sha256": "d211d06ad9ddf96fe38272174dc3235f25f2620abbf91d8c35a877bc539c8a5f",
+        "triangles": 14592,
+        "boundsMeters": {
+          "min": [-21.45, 0, -19.8],
+          "max": [21.45, 144.4, 19.8]
+        }
+      },
+      "night": {
+        "uplight": null
+      },
+      "licence": {
+        "spdx": "CC0-1.0",
+        "method": "osm-enriched",
+        "author": "GoWay",
+        "source": "packages/frontend/scripts/landmarks/models/torreGlories.ts",
+        "credit": null,
+        "derivedFrom": ["openstreetmap"],
+        "verifiedAt": "2026-10-11",
+        "notes": "Elliptical plan (40.1 × 37.0 m, long axis east–west) and 144.4 m height are OpenStreetMap's outline for way/44213122 (ODbL, credited on every map as © OpenStreetMap); the bullet profile, the colour-graded panel mosaic, the louvre rings, the glass dome and the night LED colours are authored in the generator."
+      },
+      "tour": {
+        "zoom": 17.7,
+        "pitch": 58,
+        "orbitSeconds": 50,
+        "lookAtMeters": 61
+      }
+    },
+    {
+      "id": "casa-batllo",
+      "name": "Casa Batlló",
+      "category": "culture.museum",
+      "locality": "Barcelona",
+      "osm": {
+        "element": "relation/9427554",
+        "replaces": ["way/940163405", "way/679019170", "way/679019107", "way/679019137", "way/679019197", "way/679019117", "way/679019193"]
+      },
+      "placeId": null,
+      "placement": {
+        "position": {
+          "latitude": 41.3915342,
+          "longitude": 2.164755
+        },
+        "orientation": {
+          "heading": 47
+        }
+      },
+      "model": {
+        "path": "/landmarks/casa-batllo.glb",
+        "generator": "packages/frontend/scripts/landmarks/models/casaBatllo.ts",
+        "bytes": 169104,
+        "sha256": "a674eee22b9053d5d4985e6c41b1fb59fadc80773f6266bc593396da52d930de",
+        "triangles": 25544,
+        "boundsMeters": {
+          "min": [-8.1, 0, -27],
+          "max": [8.48, 34, 26.73]
+        }
+      },
+      "night": {
+        "uplight": {
+          "color": "#ffd9a8",
+          "reach": 22,
+          "strength": 0.8
+        }
+      },
+      "licence": {
+        "spdx": "CC0-1.0",
+        "method": "osm-enriched",
+        "author": "GoWay",
+        "source": "packages/frontend/scripts/landmarks/models/casaBatllo.ts",
+        "credit": null,
+        "derivedFrom": ["openstreetmap"],
+        "verifiedAt": "2026-10-11",
+        "notes": "Plot and part outlines are OpenStreetMap's relation/9427554 and its building:parts (ODbL, credited on every map as © OpenStreetMap), simplified; the bone facade, mosaic wall, mask balconies, dragon-back roof and turret are authored in the generator."
+      },
+      "tour": {
+        "zoom": 19,
+        "pitch": 55,
+        "orbitSeconds": 45,
+        "lookAtMeters": 14
+      }
+    },
+    {
+      "id": "casa-mila",
+      "name": "Casa Milà",
+      "category": "culture.museum",
+      "locality": "Barcelona",
+      "osm": {
+        "element": "relation/8974896",
+        "replaces": ["way/646020670", "relation/8974893", "way/646020814", "relation/8974894", "way/646020768", "way/646020803", "way/646020560", "way/646020740", "relation/8974885", "relation/8974890", "way/646020507", "relation/8974887", "way/646020649", "way/646020439", "way/646020528", "way/646020710", "way/646020806", "way/646020720"]
+      },
+      "placeId": null,
+      "placement": {
+        "position": {
+          "latitude": 41.3953764,
+          "longitude": 2.1618814
+        },
+        "orientation": {
+          "heading": 180
+        }
+      },
+      "model": {
+        "path": "/landmarks/casa-mila.glb",
+        "generator": "packages/frontend/scripts/landmarks/models/casaMila.ts",
+        "bytes": 246728,
+        "sha256": "7d48ccf0ec43b908708010ba55897ae700842907cecaa8f1505a1892de3d6b6b",
+        "triangles": 38242,
+        "boundsMeters": {
+          "min": [-33.19, 0, -28.8],
+          "max": [32.78, 30.3, 24.46]
+        }
+      },
+      "night": {
+        "uplight": {
+          "color": "#ffd9a8",
+          "reach": 28,
+          "strength": 0.9
+        }
+      },
+      "licence": {
+        "spdx": "CC0-1.0",
+        "method": "osm-enriched",
+        "author": "GoWay",
+        "source": "packages/frontend/scripts/landmarks/models/casaMila.ts",
+        "credit": null,
+        "derivedFrom": ["openstreetmap"],
+        "verifiedAt": "2026-10-11",
+        "notes": "Outline and courtyards are OpenStreetMap's relation/8974896 (ODbL, credited on every map as © OpenStreetMap); the undulating stone strata, iron balconies, attic crest, stair towers and chimneys are authored in the generator."
+      },
+      "tour": {
+        "zoom": 18.7,
+        "pitch": 55,
+        "orbitSeconds": 50,
+        "lookAtMeters": 13
+      }
+    },
+    {
+      "id": "arc-de-triomf",
+      "name": "Arc de Triomf",
+      "category": "culture.monument",
+      "locality": "Barcelona",
+      "osm": {
+        "element": "way/377875377",
+        "replaces": ["way/1557592573", "way/1557592574", "way/818382565"]
+      },
+      "placeId": null,
+      "placement": {
+        "position": {
+          "latitude": 41.3910418,
+          "longitude": 2.1806458
+        },
+        "orientation": {
+          "heading": 314.2
+        }
+      },
+      "model": {
+        "path": "/landmarks/arc-de-triomf.glb",
+        "generator": "packages/frontend/scripts/landmarks/models/arcDeTriomf.ts",
+        "bytes": 91716,
+        "sha256": "db819db1a1bb6c5c63de07db7831e4e80c7f60717ea64f476ef36eef86ffd576",
+        "triangles": 9640,
+        "boundsMeters": {
+          "min": [-14.62, 0, -6.57],
+          "max": [14.62, 30.15, 6.57]
+        }
+      },
+      "night": {
+        "uplight": {
+          "color": "#ffcf96",
+          "reach": 30,
+          "strength": 0.38
+        }
+      },
+      "licence": {
+        "spdx": "CC0-1.0",
+        "method": "osm-enriched",
+        "author": "GoWay",
+        "source": "packages/frontend/scripts/landmarks/models/arcDeTriomf.ts",
+        "credit": null,
+        "derivedFrom": ["openstreetmap"],
+        "verifiedAt": "2026-10-11",
+        "notes": "Footprint (two piers with corner turrets, the span, 28 × 12.6 m) and 29 m height are OpenStreetMap's building:parts of way/377875377 (ODbL, credited on every map as © OpenStreetMap); the brickwork, stone bands, turret domes, arch ring, frieze, crest and crown are authored in the generator as stylised massing."
+      },
+      "tour": {
+        "zoom": 19,
+        "pitch": 55,
+        "orbitSeconds": 40,
+        "lookAtMeters": 13
+      }
+    },
+    {
+      "id": "palau-nacional",
+      "name": "Museu Nacional d'Art de Catalunya",
+      "category": "culture.museum",
+      "locality": "Barcelona",
+      "osm": {
+        "element": "relation/21195792",
+        "replaces": ["way/214445445", "way/214445447", "way/666599319", "way/666599336", "way/666599310", "way/214445448", "way/666599338", "way/214445442", "way/214445446", "way/666599312", "way/214445439", "way/666599320", "way/666599321", "way/666599313", "way/666599314"]
+      },
+      "placeId": null,
+      "placement": {
+        "position": {
+          "latitude": 41.3682512,
+          "longitude": 2.1537073
+        },
+        "orientation": {
+          "heading": 333
+        }
+      },
+      "model": {
+        "path": "/landmarks/palau-nacional.glb",
+        "generator": "packages/frontend/scripts/landmarks/models/palauNacional.ts",
+        "bytes": 108760,
+        "sha256": "658f26d003ccda75eb120d88d9456552892dd794041db4d5a0d6325222b7816d",
+        "triangles": 11372,
+        "boundsMeters": {
+          "min": [-83.67, 0, -71.08],
+          "max": [84.8, 66, 112]
+        }
+      },
+      "night": {
+        "uplight": {
+          "color": "#ffcf8f",
+          "reach": 45,
+          "strength": 1.2
+        }
+      },
+      "licence": {
+        "spdx": "CC0-1.0",
+        "method": "osm-enriched",
+        "author": "GoWay",
+        "source": "packages/frontend/scripts/landmarks/models/palauNacional.ts",
+        "credit": null,
+        "derivedFrom": ["openstreetmap"],
+        "verifiedAt": "2026-10-11",
+        "notes": "Outline and the positions of the domes and towers are OpenStreetMap's relation/21195792 and its building:parts (ODbL, credited on every map as © OpenStreetMap); heights, drum, dome, portico, towers and forecourt terraces are authored in the generator."
+      },
+      "tour": {
+        "zoom": 17.2,
+        "pitch": 55,
+        "orbitSeconds": 60,
+        "lookAtMeters": 28
+      }
+    },
+    {
+      "id": "w-barcelona",
+      "name": "W Barcelona",
+      "category": "lodging.hotel",
+      "locality": "Barcelona",
+      "osm": {
+        "element": "relation/21282017",
+        "replaces": ["relation/15019747", "way/1123149966", "way/1123149967", "way/1123149968", "way/1123149969", "way/1123149970", "way/1123149971", "way/1123149972", "way/1123149973", "way/1123149974", "way/1123149975", "way/1123149976", "way/1123149977", "way/1123149978", "way/1123149979", "way/1123149980", "way/1123149981", "way/1123149982", "way/1123149983", "way/1123149984", "way/1123149985", "way/1123149986", "way/1123149987", "way/1123149988", "way/1123149989", "way/1123149990", "way/1123149991", "way/1123149992", "way/1123149993", "way/1123149994", "way/1123149995", "way/1123149996", "way/1123149997", "way/1123149998", "way/1123149999", "way/1123150000", "way/1123150001", "way/1123150002", "way/1123150003", "way/1123150004", "way/1123150005", "way/1123150006", "way/1123150007", "way/1123150008", "way/1123150009", "way/1123150010", "way/1123150011", "way/1123150012", "way/1123150013", "way/646553854", "way/908035013"]
+      },
+      "placeId": null,
+      "placement": {
+        "position": {
+          "latitude": 41.36848,
+          "longitude": 2.19016
+        },
+        "orientation": {
+          "heading": 180
+        }
+      },
+      "model": {
+        "path": "/landmarks/w-barcelona.glb",
+        "generator": "packages/frontend/scripts/landmarks/models/wBarcelona.ts",
+        "bytes": 66384,
+        "sha256": "650cdc41a9a7b6c4cecc01146707bbf320d783e3def7d217e4b1e41b0d36fd19",
+        "triangles": 6081,
+        "boundsMeters": {
+          "min": [-53.32, 0, -26.03],
+          "max": [28.48, 102, 18.63]
+        }
+      },
+      "night": {
+        "uplight": {
+          "color": "#ffe0b8",
+          "reach": 14,
+          "strength": 0.35
+        }
+      },
+      "licence": {
+        "spdx": "CC0-1.0",
+        "method": "osm-enriched",
+        "author": "GoWay",
+        "source": "packages/frontend/scripts/landmarks/models/wBarcelona.ts",
+        "credit": null,
+        "derivedFrom": ["openstreetmap"],
+        "verifiedAt": "2026-10-11",
+        "notes": "The sail's lens plan, the podium, the 98.8 → 73.2 m roofline and the seaward lean are OpenStreetMap's outline and building:parts for relation/21282017 (ODbL, credited on every map as © OpenStreetMap); the mirrored curtain wall, floor bands, lit rooms and crown line are authored in the generator. No signage."
+      },
+      "tour": {
+        "zoom": 18.2,
+        "pitch": 55,
+        "orbitSeconds": 50,
+        "lookAtMeters": 43
+      }
+    },
+    {
+      "id": "statue-of-liberty",
+      "name": "Statue of Liberty",
+      "category": "culture.monument",
+      "locality": "New York",
+      "osm": {
+        "element": "way/32965412",
+        "replaces": ["relation/3079001", "relation/3079002", "relation/3079003", "relation/3079004", "relation/3079005", "relation/3079006", "relation/3079007", "relation/3079008", "relation/3079009", "relation/3079010", "relation/3079011", "relation/3079012", "relation/3079013", "relation/3079014", "relation/3079015", "relation/3079016", "way/229651143", "way/229651144", "way/229651145", "way/229651146", "way/229651147", "way/32965412"]
+      },
+      "placeId": null,
+      "placement": {
+        "position": {
+          "latitude": 40.689253,
+          "longitude": -74.0445314
+        },
+        "orientation": {
+          "heading": 147
+        }
+      },
+      "model": {
+        "path": "/landmarks/statue-of-liberty.glb",
+        "generator": "packages/frontend/scripts/landmarks/models/statueOfLiberty.ts",
+        "bytes": 92936,
+        "sha256": "fadad85aa42592b92d087b4ba7fa20af7eda5ec1e94fb981e77dca2349e7ddea",
+        "triangles": 11750,
+        "boundsMeters": {
+          "min": [-49.3, 0, -48.1],
+          "max": [46.5, 92.3, 52.1]
+        }
+      },
+      "night": {
+        "uplight": {
+          "color": "#ffcfa4",
+          "reach": 45,
+          "strength": 0.7
+        }
+      },
+      "licence": {
+        "spdx": "CC0-1.0",
+        "method": "osm-enriched",
+        "author": "GoWay",
+        "source": "packages/frontend/scripts/landmarks/models/statueOfLiberty.ts",
+        "credit": null,
+        "derivedFrom": ["openstreetmap"],
+        "verifiedAt": "2026-10-11",
+        "notes": "Fort Wood's star (way/32965412), the plinths (ways 229651143-229651147) and the flanking steps (relations 3079001-3079016) are OpenStreetMap outlines (ODbL, credited on every map as © OpenStreetMap). The pedestal's loggias, quoins and gallery and the whole figure (robe, arms, torch, tablet, crown) are authored in the generator to published dimensions; no third-party geometry."
+      },
+      "tour": {
+        "zoom": 18.1,
+        "pitch": 55,
+        "orbitSeconds": 50,
+        "lookAtMeters": 39
+      }
+    },
+    {
+      "id": "chrysler-building",
+      "name": "Chrysler Building",
+      "category": "office",
+      "locality": "New York",
+      "osm": {
+        "element": "way/42500770",
+        "replaces": ["way/196647416", "way/196647417", "way/196647423", "way/260904068", "way/260904069", "way/260904070", "way/260904071", "way/260904072", "way/260904073", "way/260904074", "way/260904075", "way/260904077", "way/260904078", "way/260904079", "way/260904080", "way/260904081", "way/260904082", "way/260904084", "way/260904086", "way/260904088", "way/260904089", "way/260904090", "way/260904091", "way/260904092", "way/260904093", "way/260904094", "way/260904095", "way/260904096", "way/260904097", "way/260904098", "way/260904100", "way/260904101", "way/260904104", "way/260904105", "way/260904107", "way/260904108", "way/260904109", "way/260904110", "way/260904111", "way/260904112", "way/260904113", "way/260904114", "way/260914102", "way/260914103", "way/260914104", "way/260914105", "way/260914106", "way/260914108", "way/260914109", "way/260914110", "way/260914111", "way/260914112", "way/260914114", "way/260914115", "way/260914116", "way/260914117", "way/260914118", "way/260914119", "way/260914120", "way/260914121", "way/260914122", "way/260914123", "way/260914124", "way/260914125", "way/260914126", "way/260914127", "way/260914128", "way/260914129", "way/260914130", "way/260914131", "way/260914132", "way/260914133", "way/260914134", "way/260914135", "way/260914136", "way/260914137", "way/260914138", "way/260914141", "way/260914143"]
+      },
+      "placeId": null,
+      "placement": {
+        "position": {
+          "latitude": 40.7516,
+          "longitude": -73.97533
+        },
+        "orientation": {
+          "heading": 299
+        }
+      },
+      "model": {
+        "path": "/landmarks/chrysler-building.glb",
+        "generator": "packages/frontend/scripts/landmarks/models/chryslerBuilding.ts",
+        "bytes": 61740,
+        "sha256": "3a3504c1ed887717df74d39a93346ef49c7f89356ab04b9de9cfd760774ba07c",
+        "triangles": 5548,
+        "boundsMeters": {
+          "min": [-30.76, 0, -31.36],
+          "max": [32.46, 319.2, 32.66]
+        }
+      },
+      "night": {
+        "uplight": {
+          "color": "#ffd9a8",
+          "reach": 70,
+          "strength": 0.5
+        }
+      },
+      "licence": {
+        "spdx": "CC0-1.0",
+        "method": "osm-enriched",
+        "author": "GoWay",
+        "source": "packages/frontend/scripts/landmarks/models/chryslerBuilding.ts",
+        "credit": null,
+        "derivedFrom": ["openstreetmap"],
+        "verifiedAt": "2026-10-11",
+        "notes": "Base wings, setbacks and shaft are OpenStreetMap's building:part outlines around way/42500770 (ODbL, credited on every map as © OpenStreetMap); the terraced arch crown, sunburst windows, eagles, spire, window rhythm and lights are authored in the generator."
+      },
+      "tour": {
+        "zoom": 16.5,
+        "pitch": 58,
+        "orbitSeconds": 60,
+        "lookAtMeters": 134,
+        "startAngle": -149
+      }
+    },
+    {
+      "id": "flatiron-building",
+      "name": "Flatiron Building",
+      "category": "office",
+      "locality": "New York",
+      "osm": {
+        "element": "way/264768896",
+        "replaces": ["way/764237515"]
+      },
+      "placeId": null,
+      "placement": {
+        "position": {
+          "latitude": 40.74106,
+          "longitude": -73.98969
+        },
+        "orientation": {
+          "heading": 29.5
+        }
+      },
+      "model": {
+        "path": "/landmarks/flatiron-building.glb",
+        "generator": "packages/frontend/scripts/landmarks/models/flatironBuilding.ts",
+        "bytes": 38408,
+        "sha256": "a988870267836739b82a6c74f9d52e96176aaa95a426a71f2ec3446f221db4a4",
+        "triangles": 2832,
+        "boundsMeters": {
+          "min": [-21.42, 0, -22.36],
+          "max": [2.75, 91, 23.33]
+        }
+      },
+      "night": {
+        "uplight": {
+          "color": "#ffd9a8",
+          "reach": 60,
+          "strength": 0.75
+        }
+      },
+      "licence": {
+        "spdx": "CC0-1.0",
+        "method": "osm-enriched",
+        "author": "GoWay",
+        "source": "packages/frontend/scripts/landmarks/models/flatironBuilding.ts",
+        "credit": null,
+        "derivedFrom": ["openstreetmap"],
+        "verifiedAt": "2026-10-11",
+        "notes": "Plan is OpenStreetMap's outline (part way/764237515 of way/264768896; ODbL, credited on every map as © OpenStreetMap), prow rounded; rusticated base, oriels, cornice, cowcatcher, window rhythm and lights are authored in the generator."
+      },
+      "tour": {
+        "zoom": 18.4,
+        "pitch": 55,
+        "orbitSeconds": 48,
+        "lookAtMeters": 38,
+        "startAngle": 35
+      }
+    },
+    {
+      "id": "one-world-trade-center",
+      "name": "One World Trade Center",
+      "category": "office",
+      "locality": "New York",
+      "osm": {
+        "element": "way/713565776",
+        "replaces": ["way/241029247", "way/241029248", "way/241029253", "way/783285127", "way/783285128", "way/783285129", "way/783285130"]
+      },
+      "placeId": null,
+      "placement": {
+        "position": {
+          "latitude": 40.713,
+          "longitude": -74.01319
+        },
+        "orientation": {
+          "heading": 297
+        }
+      },
+      "model": {
+        "path": "/landmarks/one-world-trade-center.glb",
+        "generator": "packages/frontend/scripts/landmarks/models/oneWorldTradeCenter.ts",
+        "bytes": 93364,
+        "sha256": "e066ec4e2bd1e06084508a8c1e0a5be3d24cc2c335f0d080a664ff7ed6bfe1be",
+        "triangles": 12380,
+        "boundsMeters": {
+          "min": [-33.5, 0, -33.5],
+          "max": [33.5, 541, 33.5]
+        }
+      },
+      "night": {
+        "uplight": {
+          "color": "#e9eeff",
+          "reach": 40,
+          "strength": 0.4
+        }
+      },
+      "licence": {
+        "spdx": "CC0-1.0",
+        "method": "osm-enriched",
+        "author": "GoWay",
+        "source": "packages/frontend/scripts/landmarks/models/oneWorldTradeCenter.ts",
+        "credit": null,
+        "derivedFrom": ["openstreetmap"],
+        "verifiedAt": "2026-10-11",
+        "notes": "Base square, the 45°-turned top square at 417 m, the spire platform and the spire height are OpenStreetMap's parts of way/713565776 (ODbL, credited on every map as © OpenStreetMap); the eight-triangle glass shaft between them, podium fins, floor banding, seams, parapet and spire rings are authored in the generator."
+      },
+      "tour": {
+        "zoom": 16.5,
+        "pitch": 60,
+        "orbitSeconds": 64,
+        "lookAtMeters": 300,
+        "startAngle": 20
+      }
+    }
+  ]
+}

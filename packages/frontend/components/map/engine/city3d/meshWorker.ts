@@ -31,6 +31,7 @@ import { meshBuildingsLod } from './lodMesher';
 import { meshBuildings } from './mesher';
 import { meshOsmBuildings } from './osmMesher';
 import { decodeCityTile } from './osmTiles';
+import { withoutHidden } from './landmarkTiles';
 import { type PackedMesh, packedTransferables, packMesh } from './packing';
 import type { MeshWorkerRequest, MeshWorkerResponse } from './protocol';
 import { tileSizeMetres } from './tileMath';
@@ -118,7 +119,7 @@ async function mesh(request: Extract<MeshWorkerRequest, { type: 'mesh' }>): Prom
     const size = tileSizeMetres(request.tile);
     const { mesh: result, footprints } =
       request.format === 'goway'
-        ? meshCityTile(bytes, size)
+        ? meshCityTile(bytes, size, request.hidden)
         : meshOpenMapTiles(bytes, request, size);
     const meshed = performance.now();
     const gathered = request.trees
@@ -189,14 +190,21 @@ function meshOpenMapTiles(bytes: ArrayBuffer, request: MeshRequest, size: number
  * Full detail only (`osmMesher.ts` has no far levels yet); packed with its
  * colour and facade lanes.
  */
-function meshCityTile(bytes: ArrayBuffer, size: number): Meshed {
+function meshCityTile(
+  bytes: ArrayBuffer,
+  size: number,
+  hidden: readonly number[] | undefined,
+): Meshed {
   const decoded = decodeCityTile(bytes);
   if (!decoded) return { mesh: null, footprints: { list: [], extent: 4096 } };
   const footprints = { list: decoded.buildings, extent: decoded.extent };
-  const mesh = meshOsmBuildings(decoded.buildings, {
-    extent: decoded.extent,
-    tileSizeMetres: size,
-  });
+  // A drawn landmark's buildings are not meshed (`landmarkTiles.ts`); their
+  // footprints still keep the trees off the ground the landmark stands on.
+  const buildings = withoutHidden(decoded.buildings, hidden);
+  const mesh =
+    buildings.length > 0
+      ? meshOsmBuildings(buildings, { extent: decoded.extent, tileSizeMetres: size })
+      : null;
   return { mesh: mesh ? packMesh(mesh, size) : null, footprints };
 }
 

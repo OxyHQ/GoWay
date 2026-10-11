@@ -47,6 +47,12 @@ export type MeshWorkerRequest =
        * tile's own tree layer name. Absent: the fill reads this tile.
        */
       treeFill?: { url: string; tile: TileId; mappedLayer: string };
+      /**
+       * City-tile feature ids (`osmId × 10 + 2|3`) NOT to mesh: buildings a
+       * drawn landmark model replaces (`docs/MAP_LANDMARKS.md`). Only the
+       * `goway` format has per-building ids; ignored for `openmaptiles`.
+       */
+      hidden?: readonly number[];
     }
   | { type: 'cancel'; id: number };
 

@@ -49,17 +49,25 @@ import { Linking, Pressable, View } from 'react-native';
 import { Text } from '@oxy.so/bloom/typography';
 import { useBottomEdgeInset } from '@oxy.so/bloom/layout';
 
-import { resolveMapAttribution } from '@/lib/map/provider';
+import { type MapAttributionLink, resolveMapAttribution } from '@/lib/map/provider';
 import { MAP_BRAND_CLEARANCE } from './MapBrand';
 import { MAP_RELIEF } from './reliefFlags';
 
 /** Breathing room between the credit and whatever is below it. */
 const ATTRIBUTION_GAP = 4;
 
-function MapAttributionComponent() {
+const NO_EXTRA: readonly MapAttributionLink[] = [];
+
+/**
+ * @param extra - credits owed only while something is drawn — a CC BY
+ *   landmark model's author (`docs/MAP_LANDMARKS.md`). Passed by `MapCanvas`
+ *   alone, from what its engine reports drawn; never by feature code.
+ */
+function MapAttributionComponent({ extra = NO_EXTRA }: { extra?: readonly MapAttributionLink[] }) {
   // The elevation credit rides along whenever the relief prototype draws
   // terrain or a hillshade (`docs/MAP_TERRAIN_GLOBE.md`).
   const attribution = resolveMapAttribution({ terrain: MAP_RELIEF.terrain });
+  const links = extra.length > 0 ? [...attribution.links, ...extra] : attribution.links;
   const bottomEdge = useBottomEdgeInset();
 
   const open = useCallback((href: string) => {
@@ -85,7 +93,7 @@ function MapAttributionComponent() {
         {attribution.prefix ? (
           <Text className="text-caption text-muted-foreground">{attribution.prefix}</Text>
         ) : null}
-        {attribution.links.map((link) => (
+        {links.map((link) => (
           <Pressable
             key={link.href}
             accessibilityRole="link"

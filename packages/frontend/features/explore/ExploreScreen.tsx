@@ -62,8 +62,10 @@ import { MAP_SHEET_HALF_RATIO, MapSheet, type MapSheetSnap } from '@/components/
 import { SidePanel } from '@/components/sheet/SidePanel';
 import { PANEL_WIDTH, useLayoutMode } from '@/lib/useLayoutMode';
 import { useAuthGate } from '@/lib/authGate';
-import { MAP_FLYOVER_ENABLED } from '@/lib/config';
+import { MAP_CITY3D_ENABLED, MAP_FLYOVER_ENABLED, MAP_LANDMARKS_ENABLED } from '@/lib/config';
+import { isCity3dRequested } from '@/lib/map/city3dFlag';
 import { isFlyoverRequested } from '@/lib/map/flyoverFlag';
+import { isLandmarksRequested } from '@/lib/map/landmarksFlag';
 import { useTranslation } from '@/lib/i18n';
 import type { LocationErrorReason } from '@/lib/map/useUserLocation';
 
@@ -71,7 +73,7 @@ import { slotName } from '@/features/directions/stops';
 import { takeReturnBounds } from '@/features/street3d/handoff';
 import { useStreet3dLayer } from '@/features/street3d/useStreet3dLayer';
 
-import { ExploreBody, ExploreHeader } from './ExploreContent';
+import { ExploreBody, ExploreHeader, type RenderPlaceActions } from './ExploreContent';
 import { ExploreMarker } from './ExploreMarker';
 import { clampFitPadding } from './mapPadding';
 import { MapTopBar } from './MapTopBar';
@@ -213,6 +215,31 @@ const RouteFlyover = lazy(() =>
 );
 const NO_MODELS: readonly MapModel[] = [];
 
+/**
+ * The 3D landmarks' tour (`docs/MAP_LANDMARKS.md`): decided once per page
+ * load — the landmarks flag AND the city-3D flag, since landmarks are drawn
+ * only by the city engine — and loaded only through
+ * `features/landmarks/lazy.ts`, so with either off this screen gains two
+ * constants and two `import()` stubs and nothing else.
+ */
+const LANDMARKS =
+  isLandmarksRequested({
+    enabled: MAP_LANDMARKS_ENABLED,
+    development: __DEV__,
+    search: typeof window !== 'undefined' ? window.location.search : '',
+  }) &&
+  isCity3dRequested({
+    enabled: MAP_CITY3D_ENABLED,
+    development: __DEV__,
+    search: typeof window !== 'undefined' ? window.location.search : '',
+  });
+const LandmarkOverlay = lazy(() =>
+  import('@/features/landmarks/lazy').then((chunk) => ({ default: chunk.LandmarkOverlay })),
+);
+const LandmarkPlaceAction = lazy(() =>
+  import('@/features/landmarks/lazy').then((chunk) => ({ default: chunk.LandmarkPlaceAction })),
+);
+
 export default function ExploreScreen({
   initialPlaceId = null,
   initialViewport = null,
@@ -245,6 +272,12 @@ export default function ExploreScreen({
    * transition that focuses it), and a fit issued against a canvas that is
    * not ready, or is zero-sized, is silently a no-op.
    */
+  // The settled view centre, for the landmarks' "Landmarks" pill.
+  const [settledCentre, setSettledCentre] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+
   const pendingFit = useRef<GeoBounds | null>(null);
   const mapReady = useRef(false);
   const applyPendingFit = useCallback(() => {
@@ -266,6 +299,13 @@ export default function ExploreScreen({
 
   const handleMapReady = useCallback(() => {
     mapReady.current = true;
+    // The pill needs a centre before the first move settles.
+    if (LANDMARKS) {
+      void mapRef.current?.getViewport().then((viewport) => {
+        if (viewport)
+          setSettledCentre({ latitude: viewport.latitude, longitude: viewport.longitude });
+      });
+    }
     street3d.onMapReady();
     setTimeout(applyPendingFit, RETURN_FIT_DELAY_MS);
   }, [applyPendingFit, street3d]);
@@ -293,6 +333,27 @@ export default function ExploreScreen({
   // step aside; the vehicle is a model on the canvas.
   const [flying, setFlying] = useState(false);
   const [flyoverModels, setFlyoverModels] = useState<readonly MapModel[]>(NO_MODELS);
+  // The landmark tour: which landmark it is on (`null`: not touring), the
+  // settled view centre for the "Landmarks" pill, and who to tell when the
+  // user moves the map (the tour pauses).
+  const [tourId, setTourId] = useState<string | null>(null);
+  const userMoveListeners = useRef(new Set<() => void>());
+  const subscribeUserMove = useCallback((listener: () => void) => {
+    userMoveListeners.current.add(listener);
+    return () => {
+      userMoveListeners.current.delete(listener);
+    };
+  }, []);
+  const renderPlaceActions = useCallback<RenderPlaceActions>(
+    (place) => (
+      <Suspense fallback={null}>
+        <LandmarkPlaceAction place={place} onOpen={setTourId} />
+      </Suspense>
+    ),
+    [],
+  );
+  // While the flyover flies or the tour tours, the map is the whole screen.
+  const immersive = flying || tourId !== null;
   // Only ever armed by pressing "My location" or asking for directions. The
   // canvas refuses to draw the dot without a granted permission anyway; not
   // arming it until then keeps the two rules independent of each other.
@@ -310,6 +371,15 @@ export default function ExploreScreen({
   const handleViewportChange = useCallback(
     (change: MapViewportChange) => {
       setBearing(change.viewport.bearing);
+      if (LANDMARKS) {
+        if (change.source === 'user') for (const listener of userMoveListeners.current) listener();
+        if (change.isFinal) {
+          setSettledCentre({
+            latitude: change.viewport.latitude,
+            longitude: change.viewport.longitude,
+          });
+        }
+      }
       explore.onViewportChange(change);
       street3d.onViewportChange(change);
     },
@@ -389,7 +459,12 @@ export default function ExploreScreen({
   }));
 
   const header = <ExploreHeader explore={explore} />;
-  const body = <ExploreBody explore={explore} />;
+  const body = (
+    <ExploreBody
+      explore={explore}
+      renderPlaceActions={LANDMARKS ? renderPlaceActions : undefined}
+    />
+  );
 
   return (
     // `MapTopBar` below carries the GoWay logo, so the badge `MapCanvas` draws
@@ -426,7 +501,7 @@ export default function ExploreScreen({
           camera frame — a camera the APP moved must never offer to re-run the
           search that moved it. It is hidden while the canvas is degraded: there
           is no visible area to search. */}
-        {explore.areaMoved && !mapError && !directions.active ? (
+        {explore.areaMoved && !mapError && !directions.active && !immersive ? (
           <View
             pointerEvents="box-none"
             className="absolute left-0 right-0 items-center"
@@ -447,7 +522,8 @@ export default function ExploreScreen({
         {street3d.wantingCapture.length > 0 &&
         !explore.areaMoved &&
         !mapError &&
-        !directions.active ? (
+        !directions.active &&
+        !immersive ? (
           <View
             pointerEvents="box-none"
             className="absolute left-0 right-0 items-center px-space-16"
@@ -483,6 +559,21 @@ export default function ExploreScreen({
           </View>
         ) : null}
 
+        {LANDMARKS && !mapError ? (
+          <Suspense fallback={null}>
+            <LandmarkOverlay
+              mapRef={mapRef}
+              top={areaTop}
+              centre={settledCentre}
+              startId={tourId}
+              showPill={!flying && !directions.active}
+              onStart={setTourId}
+              onClose={() => setTourId(null)}
+              subscribeUserMove={subscribeUserMove}
+            />
+          </Suspense>
+        ) : null}
+
         {FLYOVER && directions.active && directions.route && !mapError ? (
           <Suspense fallback={null}>
             <RouteFlyover
@@ -495,7 +586,7 @@ export default function ExploreScreen({
           </Suspense>
         ) : null}
 
-        {flying ? null : (
+        {immersive ? null : (
           <Animated.View
             pointerEvents="box-none"
             style={[
@@ -538,7 +629,7 @@ export default function ExploreScreen({
           out of the way. Every reason gets its own sentence — the control looks
           equally dead when the page is http:// or the device cannot fix, and
           neither of those is the user's doing. */}
-        {locationNotice && !flying ? (
+        {locationNotice && !immersive ? (
           <View
             pointerEvents="none"
             accessibilityRole="alert"
@@ -555,7 +646,7 @@ export default function ExploreScreen({
           </View>
         ) : null}
 
-        {flying ? null : layout === 'panel' ? (
+        {immersive ? null : layout === 'panel' ? (
           <SidePanel header={header} accessibilityLabel="Places" testID="explore-panel">
             {body}
           </SidePanel>

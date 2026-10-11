@@ -18,6 +18,9 @@
       // GENERATED map style, sprite index and TileJSON; `map:style:check` and
       // `map:sprite:check` compare the committed bytes against the generator.
       "!packages/frontend/public/map",
+      // GENERATED landmark registry layout and GLBs; `landmarks:check` compares
+      // the committed bytes against `scripts/build-landmarks.ts`.
+      "!packages/frontend/public/landmarks",
       // Glyph coverage fixture read by `map:glyphs:check`.
       "!packages/frontend/scripts/mapgen/fixtures",
       // The logo exactly as it was delivered, kept for provenance and imported by
