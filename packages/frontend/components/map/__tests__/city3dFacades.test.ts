@@ -133,7 +133,10 @@ describe('the analytic slope', () => {
     ]) {
       for (let x = e0 - 0.1; x <= e1 + 0.1; x += 0.013) {
         const h = 1e-6;
-        expect(stepD(e0, e1, x)).toBeCloseTo((step(e0, e1, x + h) - step(e0, e1, x - h)) / (2 * h), 4);
+        expect(stepD(e0, e1, x)).toBeCloseTo(
+          (step(e0, e1, x + h) - step(e0, e1, x - h)) / (2 * h),
+          4,
+        );
       }
     }
     expect(MATERIAL_GLSL).toContain('return 6.0 * t * (1.0 - t) / (e1 - e0);');
