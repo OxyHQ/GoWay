@@ -5,8 +5,10 @@ surface should offer for 3D models anchored at real coordinates. The map seam it
 extends is `packages/frontend/components/map/` (`types.ts`, `shared.ts`, the two
 `MapCanvas` forks); the wire primitives it builds on are
 `packages/contracts/src/geo.ts` and, for precedent, `src/street3d.ts`. The
-rendering engine is shared with the 3D city proposal in `docs/MAP_3D_CITY.md`,
-which is being written on a parallel branch and is not on `main` yet.*
+rendering engine is shared with the 3D city proposal in
+[`MAP_3D_CITY.md`](./MAP_3D_CITY.md), whose web prototype
+(`components/map/engine/city3d/`, off by default) is the engine this note's
+model layer joins.*
 
 The prompt for this note is [munim-maps](https://github.com/munimtechnologies/munim-maps)
 (Apache-2.0, `0.5.2` on npm at the time of writing): one React Native API over
@@ -27,7 +29,7 @@ Verified against `main` (`55614bc`). Nothing in this note is built.
 | How consumers get a map | [`integration/merchant-discovery.md`](integration/merchant-discovery.md#render-the-merchants) gives three options: vendor the seam, draw `Place.location` with your own renderer, or hand off to `goway.to`. |
 | The embed | `app/frame.tsx`, which `lib/map/embed.ts` parses: camera, at most 20 `marker=` points, `place=`, `interactive=0`, `theme=`. It deliberately accepts no GeoJSON and no style overrides. |
 | 3D in the style | A single `fill-extrusion` layer (`lib/map/style/buildings3d.ts`). There is no `raster-dem`, no terrain and no globe, so the map is flat Web Mercator. |
-| three.js | Already a frontend dependency (`three` `0.186.1`) for the Street 3D viewer, which loads it lazily in its own chunk (`components/street3d/engine/sparkEngine.ts`). |
+| three.js | Already a frontend dependency (`three` `0.186.1`) for the Street 3D viewer (`components/street3d/engine/sparkEngine.ts`) and the city-3D prototype (`components/map/engine/city3d/cityEngine.ts`). Both are reached ONLY through one lazy module, `components/engine3d/lazyChunk.ts` — see [Download](#performance-budgets-proposed-to-be-measured-in-phase-1). |
 | Native 3D hooks | `maplibre-react-native` 11.4 has no custom-layer API. Its layer components cover the style-spec types (fill, line, symbol, circle, heatmap, fill-extrusion, raster, background), and there is nothing to draw into its GL/Metal context. MapLibre GL JS 6.10 has `CustomLayerInterface`, and with `renderingMode: '3d'` it shares the depth buffer with the other layers. |
 
 The consumers named below don't use GoWay's map today. Moovo draws with
@@ -312,7 +314,7 @@ serves it with the right `Content-Type` and CORS headers is **unverified**.
 | Textures | ≤ 1024², at most 2 per asset |
 | Per viewport | ≤ 20 distinct assets and ≤ 300 drawn instances. Repeated assets are drawn with `InstancedMesh`. Past the cap, the farthest models fall back to markers, the same screen-space capping the marker path does (`lib/goway/markers.ts`). |
 | Frame | ≤ 4 ms of model work per frame on a mid-range phone. The layer redraws only when the camera moves or a model animates (`triggerRepaint`), never continuously. |
-| Download | three.js and the model layer load by dynamic `import()` only when `models` is non-empty, as Street 3D's engine chunk does. A map with no models pays nothing. |
+| Download | three.js and the model layer load by dynamic `import()` only when `models` is non-empty, and ONLY through `components/engine3d/lazyChunk.ts` — the model engine is re-exported from there, never imported from a lazy chunk of its own. A module two lazy chunks share is hoisted by Expo's serializer into the first-paint `__common` chunk: measured on the city-3D prototype, a second chunk importing `three` put 834 KB of renderer on every page load with the feature off ([`MAP_3D_CITY.md`](./MAP_3D_CITY.md#what-the-flag-costs-when-off)). `components/__tests__/engine3dChunk.test.ts` fails if anything else imports `three`. A map with no models pays nothing. |
 | Device gate | Reuse `components/street3d/deviceProfile.ts`. `unsupported` gets markers only. `preview` gets `lite` files, pixel ratio 1 and no animations. |
 
 ## Rendering
@@ -325,13 +327,17 @@ WebGL2 context (`autoClear` off, `resetState()` around every draw). It takes
 its camera from `defaultProjectionData.mainMatrix`, and its positions from
 `MercatorCoordinate.fromLngLat` relative to the per-frame origin.
 
-**This is the same engine `docs/MAP_3D_CITY.md` proposes for buildings, not a
-second one.** One custom layer, one three.js renderer and one scene graph hold
+**This is the same engine [`MAP_3D_CITY.md`](./MAP_3D_CITY.md) proposes for
+buildings, not a second one.** One custom layer, one three.js renderer and one scene graph hold
 both the city's meshes and these models. Two renderers on one GL context would
 each need to save and restore state around the other. They would also mean two
-copies of the same chunk and two sets of lights that disagree. Whichever lands
-first owns `components/map/engine/` (name provisional). The second adds a scene
-group to it. Occlusion by buildings is free within that engine. With extrusions
+copies of the same chunk and two sets of lights that disagree. The city-3D
+prototype landed first, so the engine is `components/map/engine/city3d/` (its
+host-neutral `cityEngine.ts`, behind the MapLibre adapter
+`components/map/city3dLayer.web.ts`); models add a scene group to it, reuse its
+centre-relative placement (`tileMath.ts`), and take the light it already
+follows — the map's own `light`, i.e. the sun from `useSunLight`
+(`components/map/city3dLight.ts`). Occlusion by buildings is free within that engine. With extrusions
 drawn by MapLibre, it comes from the shared depth buffer. With city meshes drawn
 by the shared scene, it comes from the scene itself. Below the zoom where
 `buildings3d.ts` fades extrusions in, there is nothing to occlude with, and
@@ -435,7 +441,7 @@ copy that pattern.
 0. **A consumable map.** Publish the `components/map` seam (`MapCanvas`,
    `MapMarker`, `MapOverlay` and so on) where consumers can install it. The
    packaging is an open question below. Land the shared three.js engine with
-   `docs/MAP_3D_CITY.md`'s first slice.
+   [`MAP_3D_CITY.md`](./MAP_3D_CITY.md)'s first slice.
 1. **Web models.** Add the `models` prop on the web fork. It takes consumer
    URLs and catalogue keys stubbed to a fixture, with `'ground'` altitude,
    heading/pitch/roll, `sizing`, the zoom window, `occlusion`, `tint`,
