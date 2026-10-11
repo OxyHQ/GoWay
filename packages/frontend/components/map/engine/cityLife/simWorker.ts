@@ -24,6 +24,7 @@ import {
   type OmtLine,
   piecesForTiles,
 } from './omtRoads';
+import type { CoveredTiles } from './realCoverage';
 import { type DecodedRoadTile, decodeRoadTile } from './roadTiles';
 import { drivingSideAt } from './sim/drivingSide';
 import { taxiLiveryAt } from './sim/liveries';
@@ -56,6 +57,8 @@ let frame: SimFrame | null = null;
 let sim: CitySimulation | null = null;
 let paused = false;
 let lastView: Extract<SimWorkerRequest, { type: 'view' }> | null = null;
+/** Real first: the tiles real data owns, kept across a fresh simulation. */
+let realCoverage: CoveredTiles = {};
 
 /**
  * Per z15 tile, where its roads come from — never both (`docs/MAP_CITY_LIFE.md`
@@ -223,6 +226,7 @@ function rebuild(): void {
   });
   if (!sim) sim = new CitySimulation(budget, seed);
   sim.taxiLivery = taxiLiveryAt(lastView.center.lng, lastView.center.lat);
+  sim.setRealCoverage(realCoverage);
   sim.setNetwork(network);
   applyView();
 }
@@ -343,6 +347,7 @@ function post(): void {
       carStyle: snapshot.carStyle,
       ranges: sim.cars.ranges,
       taxiDoors: sim.taxiLivery?.doors ?? null,
+      inView: sim.simulatedInView(),
       people: snapshot.people,
       peopleStyle: snapshot.peopleStyle,
     },
@@ -364,6 +369,9 @@ scope.onmessage = (event) => {
     budget = message.budget;
     loop();
   } else if (message.type === 'view') onView(message);
-  else if (message.type === 'pause') paused = true;
+  else if (message.type === 'coverage') {
+    realCoverage = message.tiles;
+    sim?.setRealCoverage(realCoverage);
+  } else if (message.type === 'pause') paused = true;
   else if (message.type === 'resume') paused = false;
 };

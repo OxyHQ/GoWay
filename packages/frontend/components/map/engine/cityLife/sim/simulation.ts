@@ -26,12 +26,16 @@
  * each is snapped to the nearest path heading its way within a few metres; one
  * that has none (its road is no longer loaded) is removed.
  */
+import { LIVE_COVERAGE_ZOOM } from '@/lib/live/coverage';
+
+import type { CoveredTiles, RealClass } from '../realCoverage';
 import type { TaxiLivery } from './liveries';
 import { createRng, type Rng } from './rng';
 import { type Network, type Path, pointAt, project } from './network';
 import {
   CAR_MODEL_SPECS,
   CAR_MODELS,
+  REAL_CLASS_OF_MODEL,
   type CarModel,
   Cars,
   extendRoute,
@@ -112,6 +116,12 @@ export class CitySimulation {
   time = 0;
   /** The taxis' livery where the city has one, else `null`: no taxis. */
   taxiLivery: TaxiLivery | null = null;
+  /**
+   * Real first (`realCoverage.ts`): per class, the z12 tiles where real
+   * vehicles of that class are live. The simulation runs none of that class
+   * there, and fades out any it already has.
+   */
+  private realTiles = new Map<RealClass, Set<string>>();
   view: SimView | null = null;
   readonly stats: SimStats = {
     cars: 0,
@@ -163,6 +173,47 @@ export class CitySimulation {
     if (previous) this.migrate(network);
     else this.warm = false;
     this.bucket();
+  }
+
+  /** Replace the real coverage (the worker forwards the live layer's, fresh only). */
+  setRealCoverage(tiles: CoveredTiles): void {
+    this.realTiles = new Map();
+    for (const [kind, list] of Object.entries(tiles) as [RealClass, string[]][]) {
+      if (list.length > 0) this.realTiles.set(kind, new Set(list));
+    }
+  }
+
+  /** Whether real vehicles of `kind` own the z12 tile under a point of the frame. */
+  isRealAt(kind: RealClass, x: number, y: number): boolean {
+    const tiles = this.realTiles.get(kind);
+    const network = this.network;
+    if (!tiles || !network) return false;
+    const { originX, originY, metresPerUnit } = network.frame;
+    const tileM = 4096 * metresPerUnit;
+    const shift = 2 ** (15 - LIVE_COVERAGE_ZOOM);
+    const tx = Math.floor((originX + x / tileM) / shift);
+    const ty = Math.floor((originY - y / tileM) / shift);
+    return tiles.has(`${tx}/${ty}`);
+  }
+
+  /** Simulated agents in the visible box, by what the label names (not counting those leaving). */
+  simulatedInView(): { cars: number; buses: number; people: number } {
+    const out = { cars: 0, buses: 0, people: 0 };
+    const view = this.view;
+    if (!view) return out;
+    const { cars, people } = this;
+    for (let car = 0; car < cars.capacity; car++) {
+      if (!cars.alive[car] || cars.leaving[car] >= 0) continue;
+      if (!this.inView(view, cars.x[car], cars.y[car])) continue;
+      if (REAL_CLASS_OF_MODEL[CAR_MODELS[cars.model[car]]] === 'bus') out.buses++;
+      else out.cars++;
+    }
+    for (let p = 0; p < people.capacity; p++) {
+      if (people.alive[p] && people.leaving[p] < 0 && this.inView(view, people.x[p], people.y[p])) {
+        out.people++;
+      }
+    }
+    return out;
   }
 
   setView(view: SimView): void {
@@ -314,7 +365,10 @@ export class CitySimulation {
       const dx = cars.x[car] - view.cx;
       const dy = cars.y[car] - view.cy;
       const visible = this.inView(view, cars.x[car], cars.y[car]);
+      const real = REAL_CLASS_OF_MODEL[CAR_MODELS[cars.model[car]]];
       if (dx * dx + dy * dy > far) cars.leaving[car] = FADE_S;
+      // Real vehicles of its class are live here: the simulated one goes.
+      else if (real && this.isRealAt(real, cars.x[car], cars.y[car])) cars.leaving[car] = FADE_S;
       else if (cars.stopped[car] > (visible ? 2 : 1) * STUCK_S) {
         cars.leaving[car] = FADE_S;
         this.stats.carsLeftStuck++;
@@ -461,6 +515,9 @@ export class CitySimulation {
       const s = rng.range(length + 2, lane.length - length - 4);
       pointAt(lane, s, this.scratch);
       if (!anywhere && attempt < 6 && this.inView(view, this.scratch.x, this.scratch.y)) continue;
+      // Never a simulated vehicle of a class real data covers here.
+      const real = REAL_CLASS_OF_MODEL[model];
+      if (real && this.isRealAt(real, this.scratch.x, this.scratch.y)) continue;
       // Room: nobody within 14 m either side.
       const queue = traffic.onPath[laneId];
       let clear = true;

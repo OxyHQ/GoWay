@@ -303,11 +303,15 @@ overlapping.
 `MAP_3D_CITY.md` → "Procedural detail is styling, never fact" governs
 buildings; the same rule, stronger, governs this:
 
-- **It is labelled.** A "Simulated traffic" label (`cityLifeChip.web.ts`,
-  English and Spanish; its accessible text says the cars and people are a
-  simulation and not live traffic) is on screen **for exactly as long as any
-  agent is drawn**: it is shown and hidden by the renderer's own
-  `onActiveChange`, not by a flag a screen could read differently.
+- **It is labelled, and says what is simulated and what is live.** The label
+  (`cityLifeChip.web.ts`, words in `cityLifeLabel.ts`) reads, e.g.,
+  "Simulated: cars and people · Live: buses" — the simulated things actually
+  drawn in view, and the classes with fresh real data in view. Every word is
+  in all twelve `LABEL_LANGUAGES` (machine-authored, review status in
+  `LABEL_TRANSLATIONS.md`); its accessible text says simulated things are not
+  live traffic. It is on screen **for exactly as long as any agent is drawn**:
+  shown and hidden by the renderer's own `onActiveChange`, not by a flag a
+  screen could read differently.
 - **It is never read.** Nothing leaves the worker but positions and paint for
   drawing. No route, ETA, search result, place screen, statistic or server
   request uses it. `components/__tests__/cityLifeIsolation.test.ts` fails if
@@ -320,6 +324,36 @@ buildings; the same rule, stronger, governs this:
   counts, speed limits, signals, crossings, pavements and turn restrictions are
   OpenStreetMap's. The agents, their routes, timings, signal phases and every
   default standing in for a missing tag are simulation parameters.
+
+## Real first: simulation fills the gaps
+
+**Real first; the simulation fills gaps; never both for the same class in the
+same place.** City life is filler for where GoWay has no real data, and it
+shrinks as real coverage grows.
+
+- **Per class.** The classes a real feed can carry are buses, trams, trains,
+  metro and ferries (`realCoverage.ts` → `REAL_CLASSES`). The live layer
+  reports, per class, the z12 tiles where it has active, FRESH real vehicles
+  from a source carrying the WHOLE network of that kind (`lib/live/coverage.ts`
+  → `subscribeLiveCoverage`; a feed of only some operators never counts). In those
+  tiles the simulation spawns none of that class, and any simulated vehicle of
+  that class already there — or driving into one — fades out. Today the
+  simulation's only such class is the bus (`REAL_CLASS_OF_MODEL`); trams,
+  trains and metro are not simulated at all, so real data is all there is.
+- **Cars and people stay simulated** everywhere: no open real source exists
+  for them.
+- **Stale is not real.** Coverage that is not fresh owns no tiles: a feed that
+  went quiet is filled again rather than left as an empty street.
+- **Live layer off ⇒ no coverage.** When the reader turns the live layer off,
+  it reports nothing, and the simulation fills everything as before — the
+  label then says only "Simulated: …".
+- **Wiring.** The renderer subscribes to the live layer's channel
+  (`lib/live/coverage.ts`, which imports nothing, so reading it loads nothing
+  of GoWay Live), forwards the fresh tiles to the simulation worker
+  (`{ type: 'coverage' }`) and reads the classes live in view for the label.
+  Kinds, zoom and tile key are the channel's own (`LIVE_COVERAGE_KINDS`,
+  `LIVE_COVERAGE_ZOOM`, `liveCoverageTileOf`). Tests:
+  `cityLifeRealFirst.test.ts`.
 
 ## Performance
 

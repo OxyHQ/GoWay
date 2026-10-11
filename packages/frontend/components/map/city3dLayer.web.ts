@@ -528,6 +528,7 @@ export async function attachCity3d(
           seed: CITY_LIFE_SEED,
           requestRepaint: () => host.triggerRepaint(),
           onActiveChange: (active) => label.setVisible(active),
+          onLabel: (content) => label.setContent(content),
           onStats: __DEV__ ? publishLifeStats : undefined,
         }),
       );

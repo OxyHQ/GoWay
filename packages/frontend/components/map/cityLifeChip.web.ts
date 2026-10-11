@@ -14,46 +14,38 @@
  * sheet that would cover a bottom edge; it is never interactive chrome: no
  * button, nothing to dismiss.
  *
+ * It names what is simulated and what is live in view — real first
+ * (`docs/MAP_CITY_LIFE.md`): "Simulated: cars, people · Live: buses".
+ *
  * Colours are Bloom's tokens, read as `var(--x)`; nothing is restated.
  */
-import { matchLanguageTag } from '@goway.to/sdk';
-
 import { deviceLocale } from '@/lib/i18n';
 
 import { MAP_CHIP_SLOT_ID } from './chipSlot';
-
-/** The label's copy, per locale. Every locale carries every key (`__tests__/cityLifeChip.test.ts`). */
-export const CITY_LIFE_MESSAGES = {
-  en: {
-    label: 'Simulated traffic',
-    detail:
-      'Cars and people here are a simulation on the real street network. They are not live traffic and say nothing about real conditions.',
-  },
-  es: {
-    label: 'Tráfico simulado',
-    detail:
-      'Los coches y las personas son una simulación sobre la red de calles real. No son tráfico en tiempo real ni indican el estado real de las calles.',
-  },
-} as const;
-
-export function cityLifeMessages(locale: string) {
-  const language = matchLanguageTag(Object.keys(CITY_LIFE_MESSAGES), locale) ?? 'en';
-  return CITY_LIFE_MESSAGES[language as keyof typeof CITY_LIFE_MESSAGES] ?? CITY_LIFE_MESSAGES.en;
-}
+import { type CityLifeLabelContent, cityLifeLabel } from './cityLifeLabel';
 
 export interface CityLifeChip {
   setVisible(visible: boolean): void;
+  /** What is simulated and what is live in view (`cityLifeLabel.ts`). */
+  setContent(content: CityLifeLabelContent): void;
   remove(): void;
 }
 
 export function mountCityLifeChip(container: HTMLElement): CityLifeChip {
-  const messages = cityLifeMessages(deviceLocale());
+  const locale = deviceLocale();
   const chip = document.createElement('div');
   chip.setAttribute('role', 'note');
-  chip.setAttribute('aria-label', `${messages.label}. ${messages.detail}`);
-  chip.title = messages.detail;
   chip.dataset.gowayCityLife = 'simulated';
-  chip.textContent = messages.label;
+  let shown = '';
+  const setContent = (content: CityLifeLabelContent) => {
+    const { text, detail } = cityLifeLabel(content, locale);
+    if (text === shown) return;
+    shown = text;
+    chip.textContent = text;
+    chip.title = detail;
+    chip.setAttribute('aria-label', `${text}. ${detail}`);
+  };
+  setContent({ simulated: ['cars', 'people'], live: [] });
   // In the screen's stack it flows; with no stack (the embed) it is placed.
   const slot = document.getElementById(MAP_CHIP_SLOT_ID);
   Object.assign(
@@ -85,6 +77,7 @@ export function mountCityLifeChip(container: HTMLElement): CityLifeChip {
     setVisible(visible) {
       chip.style.display = visible ? 'block' : 'none';
     },
+    setContent,
     remove() {
       chip.remove();
     },
