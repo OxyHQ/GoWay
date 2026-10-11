@@ -677,7 +677,7 @@
       },
       "patch": {
         "operationId": "updatePlace",
-        "summary": "Edit a place: community-editable until claimed, then claimant-only.",
+        "summary": "Edit a place, including atomic weekday-hour replacements: community-editable until claimed, then claimant-only.",
         "tags": [
           "Places"
         ],
@@ -13554,6 +13554,54 @@
                 "type": "null"
               }
             ]
+          },
+          "openingHoursDays": {
+            "minItems": 1,
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "day": {
+                  "type": "number",
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ]
+                },
+                "intervals": {
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "opens": {
+                        "type": "string",
+                        "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                      },
+                      "closes": {
+                        "type": "string",
+                        "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                      }
+                    },
+                    "required": [
+                      "opens",
+                      "closes"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "day",
+                "intervals"
+              ]
+            },
+            "description": "Atomic replacements of unique opening weekdays (0 Sunday to 6 Saturday). Empty intervals close a day. Omitted days remain unchanged. Mutually exclusive with openingHours. Unknown schedules require all seven days, otherwise conflict. The resulting week may contain at most 64 intervals."
           },
           "status": {
             "type": "string",
