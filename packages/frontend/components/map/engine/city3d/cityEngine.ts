@@ -79,6 +79,7 @@ import {
   type TileId,
   tileKey,
 } from './tileMath';
+import type { CityOverlay } from './overlay';
 import { type GroundSampler, type GroundStats, TileGrounder } from './terrainGround';
 import { incompleteRetryMs, TileCache, TileScheduler } from './tileScheduler';
 import { assignSources, type SourcedTile } from './sources';
@@ -147,6 +148,8 @@ export interface CityEngineOptions {
   buildings?: boolean;
   /** A model became drawn, or fell back to its marker (`models.ts`). */
   onModelStatus?: (id: string, status: ModelStatus) => void;
+  /** Drawn in the same scene, camera, light and ground (`overlay.ts`): the city-life simulation. */
+  overlays?: CityOverlay[];
 }
 
 /** What the host knows about its camera this frame. */
@@ -309,6 +312,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
   const scene = new THREE.Scene();
   const camera = new THREE.Camera();
+  const overlays = options.overlays ?? [];
+  for (const overlay of overlays) overlay.attach(scene);
 
   const light = {
     uLightPosition: { value: new THREE.Vector3(0, 0, 1) },
@@ -699,6 +704,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       treeUniforms.uTreeMinHeight.value = treeMinHeightM(view.zoom);
 
       const center = { x: mercatorXFromLng(view.center.lng), y: mercatorYFromLat(view.center.lat) };
+      for (const overlay of overlays) overlay.update({ view, center, opacity });
       transitions.begin();
       for (const tile of selected) {
         const best = bestFor(tile);
@@ -785,8 +791,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
     setGround(sample) {
       grounder.setSampler(sample);
-      // The models stand on the same drawn ground as the buildings.
+      // The models stand on the same drawn ground as the buildings, and so
+      // does city life (on the same opened grid: `overlay.ts`).
       models.setGround(sample);
+      for (const overlay of overlays) overlay.setGround(sample);
       groundSampler = sample;
       liftRange = null;
       light.uGrounded.value = sample ? 1 : 0;
@@ -820,6 +828,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       light.uLightIntensity.value = next.intensity;
       light.uLightColor.value.set(...next.color);
       models.setLight(next);
+      for (const overlay of overlays) overlay.setLight(next);
       options.requestRepaint();
     },
 
@@ -840,6 +849,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       disposed = true;
       pool.terminate();
       models.dispose();
+      for (const overlay of overlays) overlay.dispose();
       grounder.clear();
       for (const timer of retryTimers) clearTimeout(timer);
       retryTimers.clear();

@@ -47,6 +47,11 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   (space, a glow fitted to the limb), hillshade and 3D terrain: why Mapterhorn
   and why through GoWay's Worker, what self-hosting the DEM costs, how the 3D
   buildings stand on the terrain, and what native can and cannot draw.
+- [`MAP_CITY_LIFE.md`](MAP_CITY_LIFE.md) — simulated traffic and people on the
+  real street network (off by default): why the road graph is compiled from OSM
+  rather than read from the basemap, the lane graph, IDM car-following and
+  junction reservations, signals and crossings, the budget, GPU interpolation,
+  and the honesty rule — always labelled, never read.
 - [`PLACE_NAMES.md`](PLACE_NAMES.md) — how a place is named in more than one
   language, why `places.name` stayed, and what that means for duplicate
   detection, search, the SDK contract and the OpenStreetMap re-import.
