@@ -64,7 +64,7 @@ same day.
 | Id | What | Coverage | Licence | Attribution shown | Key | Polled | Verdict |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `adsb-lol` | Aircraft (ADS-B/MLAT), adsb.lol `/v2` | Worldwide, by region | **ODbL 1.0** ("The license for the API as well as all data ADSB.lol makes public is ODbL") | © adsb.lol contributors (ODbL 1.0) | None today; "in the future, you will require an API key which you can get by feeding" | 15 s per region, ≤ 4 regions/poll | Accept with conditions |
-| `renfe-cercanias` | Trains, Renfe Cercanías and **Rodalies de Catalunya** (GTFS-RT) | Spain | **CC BY 4.0** + Spanish public-sector reuse conditions ("permiten la reutilización … para fines comerciales y no comerciales") | Origen de los datos: Renfe Operadora | None | 20 s (Renfe republishes every 20 s) | Accept |
+| `renfe-cercanias` | Trains, Renfe: Cercanías and **Rodalies de Catalunya** — the regional R11–R17, RT1–2, RG1, RL3–4 included (`vehicle_positions.pb`) — and high-speed, long-distance and Media Distancia (`vehicle_positions_LD.pb`, `posicion-vehiculos-av-ld-md`): two GTFS-RT feeds, one source | Spain | **CC BY 4.0** + Spanish public-sector reuse conditions ("permiten la reutilización … para fines comerciales y no comerciales"), both feeds | Origen de los datos: Renfe Operadora | None | 20 s (both feeds republish every 15–20 s) | Accept |
 | `fgc-geotren` | Trains, FGC (Geotren, Opendatasoft) | Catalonia | **CC BY 4.0** | Ferrocarrils de la Generalitat de Catalunya | None; 5,000 calls/day/IP | 60 s (2 calls → 2,880/day) | Accept |
 | `mta-bus` | Buses, MTA Bus Time (GTFS-RT) | New York City | **MTA data feed terms**: "authorizes you to download and host the data on a non-MTA server … and to make the data available to others" | Data: MTA | Documented as required (free); answered without one on 2026-10-11 | 15 s | Accept with conditions |
 | `mta-lirr` | Trains, Long Island Rail Road (GTFS-RT) | NY region | MTA terms | Data: MTA | None | 20 s | Accept with conditions |
@@ -135,6 +135,15 @@ Conditions that come with the accepted ones:
   adsb.lol, AMB, AISA, EMT Fuenlabrada, Digitraffic). Only whole networks
   count as coverage for other features (`Coverage for other features` below).
 
+Renfe's two feeds are one source: a Rodalies regional train is in BOTH (11
+trains on 2026-10-12, matched by train number), and is drawn once, from the
+commuter feed, which carries its line and its track (`adapters/combined.ts`).
+The long-distance static file has no shapes: those trains are drawn where
+reported (approximate), named by their service (AVE, Alvia, MD, Regional).
+Measured on an all-Catalonia view at 21:45 local: 68 Renfe trains, 49 from
+the commuter feed (11 lines, R11 at Figueres, R15 at Tarragona, RL4 at
+Lleida among them) and 19 from the long-distance one.
+
 ### Rejected or deferred
 
 | Source | Why |
@@ -146,7 +155,7 @@ Conditions that come with the accepted ones:
 | **TMB** (Barcelona city buses, iBus; metro, iMetro) | No vehicle positions anywhere; arrival predictions only, behind an `app_id`/`app_key` registration. The terms allow derived works and commercial use, but a key is issued "solely for the application indicated" — so it is **deferred to GoWay registering its own key**, not built on a borrowed one. With a key, both join `arrivalEstimates.ts` as estimates (the `tmb-bus`, `tmb-bus-articulated` and `tmb-metro` fleets are ready). Barcelona's red city buses and its metro are therefore **not on the map**. |
 | **EMT Madrid** (MobilityLabs) | Arrival predictions only, ODbL; registration required and the per-account quota cannot feed a city-wide poll. Deferred. |
 | **CRTM** (Madrid region) | Static GTFS only; no open realtime. |
-| **Generalitat de Catalunya**, **Moventis**, **Sagalés** | No open realtime feed found. (Nitbus is AMB's and comes with `amb-bus`.) |
+| **Generalitat de Catalunya** (intercity buses), **Moventis**, **Sagalés**, **Monbus**, the urban buses of **Girona**, **Tarragona**, **Lleida**, **Reus**, **Sabadell**, **Terrassa** | No open realtime feed: the Mobility Database lists, for all of Catalonia, only AMB's (checked 2026-10-12), and the NAP lists none either. Outside the AMB's metropolitan area no bus is drawn. (Nitbus is AMB's and comes with `amb-bus`.) |
 | **Bicing via Open Data BCN** | CC BY 4.0 but the resource needs a registered token; registration pending. |
 | **FGC GTFS-RT** vehicle positions | Licence fine (CC BY 4.0); the file served 0 bytes on three tries. Geotren is used instead; switch when the GTFS-RT file is live. |
 | **NYC Ferry** vehicle positions | Endpoint not on the published developer tools; the grant is "to test, design, and support your products", not to redistribute. Held. |

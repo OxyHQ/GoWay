@@ -379,6 +379,7 @@ export type StaticGtfsLocation =
   | { zips: readonly string[] };
 
 const FILES = ['routes.txt', 'trips.txt', 'shapes.txt', 'stops.txt'] as const;
+const NO_SHAPES = 'shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\n';
 
 /** Fetch and build an operator's static GTFS. Throws on a missing file. */
 export async function loadStaticGtfs(
@@ -396,10 +397,13 @@ export async function loadStaticGtfs(
       return decoder.decode(bytes);
     };
     const stops = entries.get('stops.txt');
+    // Shapes are optional in GTFS (Renfe's long-distance file has none): its
+    // routes still name the lines; its vehicles are drawn where reported.
+    const shapes = entries.get('shapes.txt');
     parts.push({
       routes: text('routes.txt'),
       trips: text('trips.txt'),
-      shapes: text('shapes.txt'),
+      shapes: shapes ? decoder.decode(shapes) : NO_SHAPES,
       ...(stops ? { stops: decoder.decode(stops) } : {}),
     });
   }

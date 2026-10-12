@@ -4,16 +4,34 @@ import type { SourceAreas } from './areas';
 export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
   "renfe-cercanias": {
     "outer": {
-      "west": -8.28,
-      "south": 36.36,
-      "east": 3.21,
-      "north": 43.79
+      "west": -8.88,
+      "south": 36.08,
+      "east": 5.43,
+      "north": 45.81
     },
     "areas": [
       {
-        "west": -8.28,
-        "south": 43.44,
-        "east": -8.15,
+        "west": -8.88,
+        "south": 41.1,
+        "east": -8.5,
+        "north": 41.75
+      },
+      {
+        "west": -8.81,
+        "south": 42.47,
+        "east": -1.61,
+        "north": 43.05
+      },
+      {
+        "west": -8.76,
+        "south": 41.97,
+        "east": -3.62,
+        "north": 42.53
+      },
+      {
+        "west": -8.5,
+        "south": 42.97,
+        "east": -6.99,
         "north": 43.55
       },
       {
@@ -23,27 +41,45 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
         "north": 43.79
       },
       {
-        "west": -7.11,
-        "south": 43.43,
-        "east": -6.99,
-        "north": 43.54
+        "west": -7.28,
+        "south": 39.33,
+        "east": -6.34,
+        "north": 39.52
       },
       {
-        "west": -6.46,
-        "south": 38.04,
+        "west": -7.03,
+        "south": 38.46,
+        "east": -3.35,
+        "north": 39.04
+      },
+      {
+        "west": -7.01,
+        "south": 36.95,
+        "east": -2.54,
+        "north": 37.54
+      },
+      {
+        "west": -7,
+        "south": 37.47,
+        "east": -6.72,
+        "north": 37.98
+      },
+      {
+        "west": -6.69,
+        "south": 38,
         "east": -5.75,
         "north": 38.5
       },
       {
-        "west": -6.45,
-        "south": 38.51,
-        "east": -6.29,
-        "north": 39.51
+        "west": -6.53,
+        "south": 41.46,
+        "east": -4.38,
+        "north": 42.03
       },
       {
         "west": -6.43,
-        "south": 39.74,
-        "east": -4.23,
+        "south": 39.45,
+        "east": -3.22,
         "north": 40.03
       },
       {
@@ -51,12 +87,6 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
         "south": 36.36,
         "east": -6.02,
         "north": 36.96
-      },
-      {
-        "west": -6.26,
-        "south": 36.97,
-        "east": -5.74,
-        "north": 37.54
       },
       {
         "west": -6.16,
@@ -73,44 +103,38 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
       {
         "west": -5.92,
         "south": 37.5,
-        "east": -5.48,
-        "north": 37.98
+        "east": -3.21,
+        "north": 38.03
       },
       {
-        "west": -5.76,
-        "south": 42.49,
-        "east": -2.97,
-        "north": 43.05
+        "west": -5.71,
+        "south": 40.45,
+        "east": -2.79,
+        "north": 41.03
       },
       {
-        "west": -5.55,
-        "south": 41.97,
-        "east": -3.62,
-        "north": 42.51
-      },
-      {
-        "west": -4.96,
-        "south": 41,
+        "west": -5.63,
+        "south": 40.96,
         "east": -4.65,
-        "north": 41.37
+        "north": 41.54
       },
       {
-        "west": -4.81,
+        "west": -5.51,
+        "south": 36.08,
+        "east": -5.37,
+        "north": 36.52
+      },
+      {
+        "west": -5.44,
         "south": 36.49,
         "east": -4.38,
         "north": 36.96
       },
       {
-        "west": -4.78,
-        "south": 41.59,
-        "east": -4.38,
-        "north": 42.03
-      },
-      {
-        "west": -4.73,
-        "south": 40.45,
-        "east": -2.79,
-        "north": 41
+        "west": -4.62,
+        "south": 37.96,
+        "east": -3.47,
+        "north": 38.31
       },
       {
         "west": -3.93,
@@ -119,16 +143,46 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
         "north": 40.55
       },
       {
+        "west": -3.65,
+        "south": 38.96,
+        "east": -1.95,
+        "north": 39.45
+      },
+      {
         "west": -2.84,
         "south": 40.95,
-        "east": -1.59,
-        "north": 41.4
+        "east": -1.04,
+        "north": 41.54
+      },
+      {
+        "west": -2.69,
+        "south": 41.45,
+        "east": 2.87,
+        "north": 42.05
+      },
+      {
+        "west": -2.54,
+        "south": 36.78,
+        "east": -2.39,
+        "north": 37
       },
       {
         "west": -2.49,
         "south": 42.01,
         "east": -1.55,
-        "north": 42.97
+        "north": 42.53
+      },
+      {
+        "west": -2.19,
+        "south": 39.99,
+        "east": -2.09,
+        "north": 40.09
+      },
+      {
+        "west": -1.9,
+        "south": 38.46,
+        "east": -0.11,
+        "north": 39.05
       },
       {
         "west": -1.83,
@@ -143,22 +197,28 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
         "north": 38.02
       },
       {
-        "west": -1.57,
-        "south": 41.47,
-        "east": -0.49,
-        "north": 42.05
+        "west": -1.47,
+        "south": 37.99,
+        "east": -0.45,
+        "north": 38.53
+      },
+      {
+        "west": -1.41,
+        "south": 40.52,
+        "east": -1.21,
+        "north": 41.01
+      },
+      {
+        "west": -1.29,
+        "south": 39.96,
+        "east": -0.65,
+        "north": 40.51
       },
       {
         "west": -1.25,
         "south": 38.98,
         "east": 0,
         "north": 40.04
-      },
-      {
-        "west": -1.05,
-        "south": 37.99,
-        "east": -0.11,
-        "north": 39.04
       },
       {
         "west": -0.78,
@@ -185,16 +245,46 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
         "north": 41.05
       },
       {
-        "west": 0.58,
-        "south": 41.45,
-        "east": 2.87,
-        "north": 42.05
-      },
-      {
         "west": 1.85,
         "south": 41.98,
         "east": 3.21,
         "north": 42.51
+      },
+      {
+        "west": 2.83,
+        "south": 42.65,
+        "east": 2.93,
+        "north": 42.75
+      },
+      {
+        "west": 2.96,
+        "south": 43.14,
+        "east": 3.06,
+        "north": 43.24
+      },
+      {
+        "west": 3.83,
+        "south": 43.55,
+        "east": 4.84,
+        "north": 43.97
+      },
+      {
+        "west": 4.81,
+        "south": 45.71,
+        "east": 4.91,
+        "north": 45.81
+      },
+      {
+        "west": 4.93,
+        "south": 44.94,
+        "east": 5.03,
+        "north": 45.04
+      },
+      {
+        "west": 5.27,
+        "south": 43.25,
+        "east": 5.43,
+        "north": 43.51
       }
     ]
   },
