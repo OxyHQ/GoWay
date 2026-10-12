@@ -27,6 +27,7 @@ import { decodeGtfsRealtime, type GtfsTripUpdate, type GtfsVehiclePosition } fro
 import { accept, getBytes, instant } from '../normalise';
 import { findTrip, type GtfsShape, pointOnShape, project, type StaticGtfs } from '../staticGtfs';
 import type { LiveAdapter, LiveAdapterSettings, LiveFetchContext, LivePollResult } from '../types';
+import { GTFS_REALTIME_ACCEPT } from './gtfsRealtime';
 
 /** A next stop due further ahead than this is a trip that has not started. */
 export const MAX_LEAD_SECONDS = 600;
@@ -43,6 +44,10 @@ export interface ArrivalEstimateOptions {
   urls: readonly string[];
   /** A shape for a trip the static GTFS does not list by id. */
   shapeIdOf?: (tripId: string) => string | null;
+  /** Where a configured key goes, as in `gtfsRealtime.ts`. */
+  keyQueryParameter?: string;
+  keyHeaders?: (key: string) => Record<string, string>;
+  headers?: Record<string, string>;
 }
 
 interface Estimate {
@@ -238,12 +243,18 @@ export function createArrivalEstimateAdapter(
       let feedSeconds = 0;
       let failures = 0;
       let lastError: unknown = null;
-      for (const url of options.urls) {
+      for (const plain of options.urls) {
+        const url =
+          settings.key && options.keyQueryParameter
+            ? `${plain}${plain.includes('?') ? '&' : '?'}${options.keyQueryParameter}=${encodeURIComponent(settings.key)}`
+            : plain;
         try {
           const feed = decodeGtfsRealtime(
             await getBytes(context.fetch, url, context.signal, {
               'user-agent': settings.userAgent,
-              accept: 'application/x-protobuf, application/octet-stream',
+              accept: GTFS_REALTIME_ACCEPT,
+              ...(options.headers ?? {}),
+              ...(settings.key && options.keyHeaders ? options.keyHeaders(settings.key) : {}),
             }),
           );
           updates.push(...feed.tripUpdates);

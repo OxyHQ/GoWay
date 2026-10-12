@@ -39,10 +39,20 @@ export interface CreateLiveServiceOptions {
 /** The hub's sources from configuration: listed, known, and keyed when they must be. */
 export function configuredLiveSources(config: LiveConfig, logger: LiveHubLogger): LiveHubSource[] {
   const out: LiveHubSource[] = [];
+  const waitingForKeys: string[] = [];
+  const awaiting: string[] = [];
   for (const id of config.sources) {
     const definition = LIVE_SOURCES.find((source) => source.id === id);
     if (!definition) continue;
     const settings = config.settings[id] ?? {};
+    if (definition.awaiting && config.all && !config.named.includes(id)) {
+      awaiting.push(id);
+      continue;
+    }
+    if (definition.requiresKey && !settings.key && config.all) {
+      waitingForKeys.push(id);
+      continue;
+    }
     if (definition.requiresKey && !settings.key) {
       logger.warn(
         { source: id, variable: `LIVE_SOURCE_${liveSourceEnvName(id)}_KEY` },
@@ -59,6 +69,18 @@ export function configuredLiveSources(config: LiveConfig, logger: LiveHubLogger)
         maxRegionsPerPoll: config.maxRegionsPerPoll,
       },
     });
+  }
+  if (awaiting.length > 0) {
+    logger.info(
+      { count: awaiting.length, sources: awaiting },
+      'Live sources awaiting a permission (docs/MAP_LIVE.md); name them in LIVE_SOURCES once given',
+    );
+  }
+  if (waitingForKeys.length > 0) {
+    logger.info(
+      { count: waitingForKeys.length, sources: waitingForKeys },
+      'Live sources waiting for a key (LIVE_SOURCE_<ID>_KEY); off until set',
+    );
   }
   return out;
 }

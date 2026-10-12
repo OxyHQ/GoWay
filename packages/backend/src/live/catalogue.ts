@@ -22,6 +22,7 @@ import { derivedCoverage } from './areas';
 import type { GeoBoundingBox } from '@goway/contracts';
 import { createArrivalEstimateAdapter } from './adapters/arrivalEstimates';
 import { createCombinedAdapter } from './adapters/combined';
+import { LIVE_PROVIDERS, providerSource } from './providers';
 import { createDigitrafficAdapter } from './adapters/digitraffic';
 import { createGbfsAdapter } from './adapters/gbfs';
 import { createGeotrenAdapter } from './adapters/geotren';
@@ -109,8 +110,15 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     licence: { label: 'ODbL 1.0', href: 'https://opendatacommons.org/licenses/odbl/1-0/' },
     coverage: null,
     completeness: 'partial',
+    licenceCheck: {
+      verifiedOn: '2026-10-11',
+      source: 'https://www.adsb.lol/docs/open-data/api/',
+      quote: 'The license for the API as well as all data ADSB.lol makes public is ODbL',
+    },
     defaultUrl: 'https://api.adsb.lol',
     requiresKey: false,
+    // The operator asks production users to get in touch first (docs/MAP_LIVE.md → adsb.lol).
+    awaiting: "adsb.lol's answer to GoWay's production-use email",
     // Per poll at most `LIVE_POLICY.maxRegionsPerPoll` circles, one request each,
     // sequentially, stopping at the first 429. The aggregator's limit is
     // "dynamic"; measured from one IP on 2026-10-11, polling every 10 s drew a
@@ -130,6 +138,12 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     licence: CC_BY_4,
     coverage: RENFE_CERCANIAS_COVERAGE,
     completeness: 'network',
+    licenceCheck: {
+      verifiedOn: '2026-10-11',
+      source: 'https://data.renfe.com/dataset/ubicacion-vehiculos',
+      quote:
+        'license_id CC-BY-4.0 on both datasets (ubicacion-vehiculos, posicion-vehiculos-av-ld-md); its conditions "permiten la reutilización … para fines comerciales y no comerciales"',
+    },
     defaultUrl: 'https://gtfsrt.renfe.com/vehicle_positions.pb',
     requiresKey: false,
     // Renfe republishes every 20 s (the long-distance feed every ~15 s).
@@ -170,7 +184,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
               operator: 'Renfe',
               coverage: RENFE_CERCANIAS_COVERAGE,
               defaultMode: 'rail',
-              lineOf: () => null,
+              routeIdIsLine: false,
               labelOf: (vehicle) => vehicle.vehicleLabel ?? vehicle.vehicleId ?? null,
               idPrefix: 'ld-',
             },
@@ -197,6 +211,11 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     licence: CC_BY_4,
     coverage: FGC_GEOTREN_COVERAGE,
     completeness: 'network',
+    licenceCheck: {
+      verifiedOn: '2026-10-11',
+      source: 'https://dadesobertes.fgc.cat/explore/dataset/posicionament-dels-trens/information/',
+      quote: 'Dataset licence: CC BY 4.0 (posicionament-dels-trens)',
+    },
     defaultUrl: 'https://dadesobertes.fgc.cat',
     requiresKey: false,
     // Two calls per poll against a 5,000-a-day quota; FGC republishes about once a minute.
@@ -227,6 +246,12 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     licence: MTA_TERMS,
     coverage: MTA_BUS_COVERAGE,
     completeness: 'network',
+    licenceCheck: {
+      verifiedOn: '2026-10-11',
+      source: 'https://www.mta.info/developers/terms-and-conditions',
+      quote:
+        'MTA hereby authorizes you to download and host the data on a non-MTA server … and to make the data available to others',
+    },
     defaultUrl: 'https://gtfsrt.prod.obanyc.com/vehiclePositions',
     // Documented as required, answered without one when this was written: a
     // configured key is always sent, and production registers one.
@@ -263,6 +288,12 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     licence: MTA_TERMS,
     coverage: MTA_LIRR_COVERAGE,
     completeness: 'network',
+    licenceCheck: {
+      verifiedOn: '2026-10-11',
+      source: 'https://www.mta.info/developers/terms-and-conditions',
+      quote:
+        'MTA hereby authorizes you to download and host the data on a non-MTA server … and to make the data available to others',
+    },
     defaultUrl: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr',
     requiresKey: false,
     pollIntervalSeconds: 20,
@@ -289,6 +320,12 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     licence: MTA_TERMS,
     coverage: MTA_MNR_COVERAGE,
     completeness: 'network',
+    licenceCheck: {
+      verifiedOn: '2026-10-11',
+      source: 'https://www.mta.info/developers/terms-and-conditions',
+      quote:
+        'MTA hereby authorizes you to download and host the data on a non-MTA server … and to make the data available to others',
+    },
     defaultUrl: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/mnr%2Fgtfs-mnr',
     requiresKey: false,
     pollIntervalSeconds: 20,
@@ -318,6 +355,12 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     licence: MTA_TERMS,
     coverage: MTA_SUBWAY_COVERAGE,
     completeness: 'network',
+    licenceCheck: {
+      verifiedOn: '2026-10-11',
+      source: 'https://www.mta.info/developers/terms-and-conditions',
+      quote:
+        'MTA hereby authorizes you to download and host the data on a non-MTA server … and to make the data available to others',
+    },
     defaultUrl: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs',
     requiresKey: false,
     pollIntervalSeconds: 30,
@@ -360,6 +403,13 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     },
     coverage: AMB_BUS_COVERAGE,
     completeness: 'partial',
+    licenceCheck: {
+      verifiedOn: '2026-10-11',
+      source:
+        'https://www.amb.cat/web/area-metropolitana/dades-obertes/cataleg/detall/-/dataset/gtfs-real-time-bus-service/6332347/11692',
+      quote:
+        "Licence: Autorització segons Llei 37/2007 — Autorització lliure i gratuïta de reutilització de la informació pública segons la Llei 37/2007 … Que se'n citi la font … Que s'esmenti la data de l'última actualització",
+    },
     defaultUrl: 'https://www.ambmobilitat.cat/transit/trips-updates/trips.bin',
     requiresKey: false,
     // The feed updates every 30 s.
@@ -385,6 +435,12 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     licence: NAP_LICENCE,
     coverage: MADRID_REGION,
     completeness: 'partial',
+    licenceCheck: {
+      verifiedOn: '2026-10-11',
+      source: 'https://nap.transportes.gob.es/licencia-datos',
+      quote:
+        'Las presentes condiciones generales definidas en esta licencia permiten la reutilización de los documentos sometidos a ellas para fines comerciales y no comerciales',
+    },
     defaultUrl: 'http://gtfs-rt-crtm.aisa-grupo.net:8080/GTFS-RT/vehiculosPosicion',
     requiresKey: false,
     pollIntervalSeconds: 20,
@@ -406,6 +462,12 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     licence: NAP_LICENCE,
     coverage: EMT_FUENLABRADA_COVERAGE,
     completeness: 'partial',
+    licenceCheck: {
+      verifiedOn: '2026-10-11',
+      source: 'https://nap.transportes.gob.es/licencia-datos',
+      quote:
+        'Las presentes condiciones generales definidas en esta licencia permiten la reutilización de los documentos sometidos a ellas para fines comerciales y no comerciales',
+    },
     defaultUrl:
       'https://api.control.optibus.co/opendata/v1/gtfs-rt/vehicle-positions?uid=c-5cfcd2d1',
     requiresKey: false,
@@ -439,8 +501,16 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     },
     coverage: NYC_BIKESHARE_COVERAGE,
     completeness: 'network',
+    licenceCheck: {
+      verifiedOn: '2026-10-11',
+      source: 'https://citibikenyc.com/data-sharing-policy',
+      quote:
+        'Bikeshare hereby grants to you a non-exclusive, royalty-free … license to … distribute in your product or service and use the Data for any lawful purpose',
+    },
     defaultUrl: 'https://gbfs.citibikenyc.com/gbfs/2.3/gbfs.json',
     requiresKey: false,
+    // Whether a public map is a "stand-alone dataset" distribution is Lyft's question.
+    awaiting: "Lyft's answer on the Bikeshare Data License's stand-alone clause",
     // GBFS `ttl` is 60 s.
     pollIntervalSeconds: 60,
     staleAfterSeconds: 30 * 60,
@@ -462,6 +532,12 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     licence: CC_BY_4,
     coverage: BALTIC,
     completeness: 'partial',
+    licenceCheck: {
+      verifiedOn: '2026-10-11',
+      source: 'https://www.digitraffic.fi/en/terms-of-service/',
+      quote:
+        'It gives the right to distribute, remix, tweak, and build upon our data, even commercially, as long as you credit the source for the original creation.',
+    },
     defaultUrl: 'https://meri.digitraffic.fi',
     requiresKey: false,
     // Responses are cached for 60 s upstream; 30 s keeps moving ships smooth
@@ -475,6 +551,8 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
         settings,
       ),
   },
+  // Every provider around the world, by standard (`providers.ts`).
+  ...LIVE_PROVIDERS.map(providerSource),
 ];
 
 export const LIVE_SOURCE_IDS: readonly string[] = LIVE_SOURCES.map((source) => source.id);

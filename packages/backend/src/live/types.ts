@@ -99,10 +99,25 @@ export interface LiveSourceDefinition {
   transitModes?: readonly LiveTransitMode[];
   /** Whether it carries a whole network in its coverage (`LiveSource.completeness`). */
   completeness: 'network' | 'partial';
+  /**
+   * The licence as READ, not assumed: the day it was checked and the words
+   * that allow public, commercial redistribution (AGENTS.md: GoWay Live
+   * re-serves only such feeds). `licence.test.ts` refuses an entry without it.
+   */
+  licenceCheck: { verifiedOn: string; quote: string; source: string };
   /** The feed's public endpoint; `LIVE_SOURCE_<ID>_URL` overrides it. */
   defaultUrl: string;
   /** Needs `LIVE_SOURCE_<ID>_KEY`; off without one. */
   requiresKey: boolean;
+  /** Where the owner registers for that key (required when `requiresKey`). */
+  keyRegistrationUrl?: string;
+  /**
+   * What is still open outside the code before this source may be served —
+   * the licence allows it, but the operator asks to be contacted first, or a
+   * form must be filed. `LIVE_SOURCES=all` leaves it out; naming its id
+   * (`all,adsb-lol`) turns it on once the owner has done it.
+   */
+  awaiting?: string;
   pollIntervalSeconds: number;
   /**
    * `true` when one poll answers for only PART of the source's data (a

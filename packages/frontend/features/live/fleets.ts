@@ -350,6 +350,8 @@ export function fleetOf(entity: LiveEntity): FleetKey {
       continue;
     return rule.fleet;
   }
+  // Anything else, by its mode: a ferry is a vessel, a bus a bus, rail a train.
+  if (entity.mode === 'ferry') return 'vessel';
   return entity.mode === 'bus' ? 'generic-bus' : 'generic-train';
 }
 
