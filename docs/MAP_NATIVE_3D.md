@@ -353,7 +353,8 @@ sky's variant only) until the sky is ported, as the buildings do.
 
 Measured on Passeig de Gràcia (z18.4, 55°, four z15 road tiles, 226 k street
 triangles, 8 street draws), terrain on, sky off, four alternating rounds of
-10 s on a loaded host (load ~22):
+10 s on a loaded host (load ~22), before #165 (a schema-2 archive; the
+materials and the draws are the same):
 
 | Median of the p50s | `main` (GLSL) | TSL |
 | --- | ---: | ---: |
@@ -368,7 +369,9 @@ triangles, 8 street draws), terrain on, sky off, four alternating rounds of
   blend onto them. 5.5 k of 2.07 M pixels differ, all of them there.
 - **The visibility gate covers the streets now** (below). `main` and TSL
   measure the same shares. Streets that ignore the ground (built and run
-  once to prove it) fail it: asphalt 0% without the sky.
+  once to prove it) fail it.
+- **Budgets are the quality profile's** (`streets`, #165): the tiles and
+  triangles a frame may draw, and so the ground atlas's slots.
 
 Next, one material at a time, each deleting its GLSL twin: landmarks and
 models, city life, live 3D, and the sky and shadow passes (which retire the
@@ -417,13 +420,14 @@ geometry and rebuilds the ones that now read a lift. In-place re-grounding
 `packages/frontend/scripts/check-city3d-visible.ts` (`check:city3d-visible`)
 is the committed form of the check above. It is CI's `3D city visibility` job
 (`.github/workflows/ci.yml` → `city3d`), required by `CI complete` and by both
-deploys. **Every port PR runs it**, and its description reports the numbers.
+deploys: a matrix of one leg per sky (`--skies=sky`, `--skies=nosky`) side by
+side, so the wall time stays one leg's as the views grow. **Every port PR runs it**, and its description reports the numbers.
 The GPU-free gates (meshing, frame budget, `city3dGroundPacked`) cannot see
 this regression: they counted every buried tree as drawn.
 
 ```sh
 bun run --cwd packages/frontend export:web --dev --output-dir /tmp/city3d-gate
-bun run --cwd packages/frontend check:city3d-visible --dist=/tmp/city3d-gate [--out=dir] [--debug]
+bun run --cwd packages/frontend check:city3d-visible --dist=/tmp/city3d-gate [--skies=sky,nosky] [--out=dir] [--debug]
 ```
 
 It runs the real app, from a development export (only a dev build publishes
@@ -465,16 +469,16 @@ Per sky (on and off) it asserts:
   with the 3D city off. That reference has no basemap buildings, so MapLibre's
   extrusions cannot stand in for the city.
 - **Streets** (since step 5): the street detail drew triangles from the
-  fixture's road tiles (`roadTile`: a four-lane street with sidewalks in
-  every gap between blocks), and the asphalt-grey share is at least 0.5% and
-  3× the same view with streets off. Measured: 8.60% with the sky and 1.33%
-  without (0% with streets off), on `main` and TSL alike. The camera looks
-  mostly at a wall, hence the low floor. Streets drawn without their ground
-  measure 0%.
+  fixture's road tiles (`syntheticCity.ts` → `roadTile`, schema 3: one-way
+  three-lane streets with names, turn lanes, signals and zebra crossings in
+  every gap between blocks), and over a junction turning the streets on
+  changes at least 3% of the view (pixels moving more than 24 levels, below
+  the chips' rows). Measured: 14.24% with the sky and 14.29% without, on
+  `main` and TSL alike; streets drawn without their ground measure 0%.
 
-The streets are on in every city view, so the walls-and-windows share with
-the sky reads 87.6% since step 5 (sky-lit asphalt is darker than the noon
-basemap), against 72.6% in the table below.
+The streets are on in every city view, so the walls-and-windows share reads
+79.4% with the sky and 27.5% without since step 5 (asphalt and sidewalks are
+not the noon basemap), against 72.6% and 21.0% in the table below.
 
 The assertions are coverage, not frame time, so software GL is enough and
 the result does not depend on the runner: CI's two cores measured the same

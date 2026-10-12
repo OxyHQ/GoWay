@@ -49,8 +49,7 @@
  *    than the noon basemap (walls, windows) is at least 2% and 4× the same view
  *    with the 3D city off.
  *  - **Streets**: the street detail drew the fixture's road tiles (`roadTile`),
- *    and the asphalt-grey share is at least 0.5% and 3× the same view with
- *    streets off.
+ *    and over a junction turning it on changes at least 3% of the view.
  *
  * Without #152's re-grounding it fails (three runs of three; the no-sky trees
  * are buried every time). Measured numbers: the doc.
@@ -349,6 +348,8 @@ async function view(
   name: string,
   /** `empty`: no basemap buildings either — the reference for a map with no 3D at all. */
   basemap: 'buildings' | 'empty' = 'buildings',
+  /** Where the camera opens: the synthetic city's centre at z19 by default. */
+  at: { lat: number; lng: number; zoom: number } = { ...SYNTHETIC_CENTRE, zoom: 19 },
 ): Promise<View> {
   const started = Date.now();
   const context = await browser.newContext({ viewport: VIEWPORT });
@@ -396,11 +397,11 @@ async function view(
       ),
     choices,
   );
-  const { lat, lng } = SYNTHETIC_CENTRE;
+  const { lat, lng, zoom } = at;
   // `quality=high`: SwiftShader resolves to the low preset, which draws no 3D
   // terrain — and then nothing is ever grounded and the gate tests nothing. A
   // real desktop GPU (the owner's) is high.
-  const query = `lat=${lat}&lng=${lng}&zoom=19&quality=high${flags ? `&${flags}` : ''}`;
+  const query = `lat=${lat}&lng=${lng}&zoom=${zoom}&quality=high${flags ? `&${flags}` : ''}`;
   await page.goto(`${origin}/?${query}`, {
     waitUntil: 'load',
     timeout: 180_000,
@@ -491,11 +492,7 @@ async function view(
 }
 
 /** Share of `png`'s pixels that `test` accepts, in %. */
-async function share(
-  browser: Browser,
-  png: Buffer,
-  kind: 'canopy' | 'dark' | 'asphalt',
-): Promise<number> {
+async function share(browser: Browser, png: Buffer, kind: 'canopy' | 'dark'): Promise<number> {
   const page = await browser.newPage();
   const value = await page.evaluate(
     async ([data, which]) => {
@@ -509,22 +506,61 @@ async function share(
       let n = 0;
       for (let i = 0; i < px.length; i += 4) {
         const [r, gr, b] = [px[i], px[i + 1], px[i + 2]];
-        const hi = Math.max(r, gr, b);
         // Canopy: green over red and blue. Dark: below the noon basemap.
-        // Asphalt: the streets' cool grey (`streetPalette.ts`), bluer than the
-        // basemap's warm ground and the walls, lighter than a shadow.
-        if (
-          which === 'canopy'
-            ? gr > r + 12 && gr > b + 6
-            : which === 'dark'
-              ? hi < 170
-              : b >= r + 4 && hi - Math.min(r, gr, b) <= 24 && hi >= 150 && hi <= 228
-        )
-          n++;
+        if (which === 'canopy' ? gr > r + 12 && gr > b + 6 : Math.max(r, gr, b) < 170) n++;
       }
       return (100 * n) / (px.length / 4);
     },
     [png.toString('base64'), kind] as const,
+  );
+  await page.close();
+  return Number(value.toFixed(2));
+}
+
+/**
+ * Over a junction of the synthetic grid (the one north-west of the central
+ * block, `syntheticCity.ts` → `roadTile`), where the street detail fills the
+ * view: crossings, lanes, stop lines.
+ */
+const JUNCTION = { lat: 41.39259, lng: 2.16388, zoom: 18.5 };
+
+/**
+ * Share of pixels, in %, where two screenshots differ by more than
+ * `threshold` in a channel — below the top `skipTop` rows, where the map's
+ * chips sit (a layer's own, like "Landmarks", appears with it).
+ */
+async function differs(
+  browser: Browser,
+  a: Buffer,
+  b: Buffer,
+  threshold = 24,
+  skipTop = 110,
+): Promise<number> {
+  const page = await browser.newPage();
+  const value = await page.evaluate(
+    async ([one, two, limit, top]) => {
+      const pixels = async (data: string) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${data}`;
+        await img.decode();
+        const canvas = new OffscreenCanvas(img.width, img.height);
+        const g = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+        g.drawImage(img, 0, 0);
+        return g.getImageData(0, top, img.width, img.height - top).data;
+      };
+      const [x, y] = await Promise.all([pixels(one), pixels(two)]);
+      let n = 0;
+      for (let i = 0; i < x.length; i += 4) {
+        const d = Math.max(
+          Math.abs(x[i] - y[i]),
+          Math.abs(x[i + 1] - y[i + 1]),
+          Math.abs(x[i + 2] - y[i + 2]),
+        );
+        if (d > limit) n++;
+      }
+      return (100 * n) / (x.length / 4);
+    },
+    [a.toString('base64'), b.toString('base64'), threshold, skipTop] as const,
   );
   await page.close();
   return Number(value.toFixed(2));
@@ -546,7 +582,10 @@ const browser = await chromium.launch({
 const results: Record<string, Record<string, number>> = {};
 const failures: string[] = [];
 try {
+  // `--skies=sky,nosky` (both by default): CI runs one per job.
+  const skies = arg('skies', 'sky,nosky').split(',');
   for (const [label, { flags, choices }] of Object.entries(SKIES)) {
+    if (!skies.includes(label)) continue;
     const withTrees = await view(browser, origin, flags, choices, outDir, `${label}-trees`);
     if (DEBUG) {
       console.error(
@@ -562,6 +601,17 @@ try {
       outDir,
       `${label}-notrees`,
     );
+    // The streets from over a junction (the centre view looks at a wall).
+    const streets = await view(
+      browser,
+      origin,
+      flags,
+      choices,
+      outDir,
+      `${label}-streets`,
+      'buildings',
+      JUNCTION,
+    );
     const noStreets = await view(
       browser,
       origin,
@@ -569,6 +619,8 @@ try {
       choices,
       outDir,
       `${label}-nostreets`,
+      'buildings',
+      JUNCTION,
     );
     const noCity = await view(
       browser,
@@ -590,9 +642,8 @@ try {
       canopyPctWithoutTrees: await share(browser, noTrees.png, 'canopy'),
       darkPct: await share(browser, noTrees.png, 'dark'),
       darkPctWithoutCity: await share(browser, noCity.png, 'dark'),
-      streetTriangles: withTrees.streetTriangles,
-      asphaltPct: await share(browser, withTrees.png, 'asphalt'),
-      asphaltPctWithoutStreets: await share(browser, noStreets.png, 'asphalt'),
+      streetTriangles: streets.streetTriangles,
+      streetsChangedPct: await differs(browser, streets.png, noStreets.png),
     };
     results[label] = r;
     if (r.trees === 0)
@@ -609,9 +660,9 @@ try {
       );
     if (r.streetTriangles === 0)
       failures.push(`${label}: the engine drew no streets (the fixture is not reaching it)`);
-    else if (r.asphaltPct < Math.max(0.5, 3 * r.asphaltPctWithoutStreets))
+    else if (r.streetsChangedPct < 3)
       failures.push(
-        `${label}: ${r.streetTriangles} street triangles drawn, asphalt ${r.asphaltPct}% (${r.asphaltPctWithoutStreets}% without streets)`,
+        `${label}: ${r.streetTriangles} street triangles drawn, but streets on change ${r.streetsChangedPct}% of the view over a junction`,
       );
   }
 } finally {
