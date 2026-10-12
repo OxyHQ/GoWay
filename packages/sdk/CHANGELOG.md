@@ -33,9 +33,14 @@ taxonomy.
   `liveTileOf`, `liveTileBounds`), `liveSubscription()` and a parser per
   message (`parseLiveSnapshot`, `parseLiveDelta`, `parseLiveSources`,
   `parseLiveSubscriptionState`, each returning `null` for a payload that does
-  not match). Bring your own `socket.io-client`; the package still has one
-  dependency. Every entity states its source and the instant the source
-  observed it — show both.
+  not match). Rooms are tiles at a zoom per kind (`LIVE_ROOM_ZOOMS`;
+  `liveTileOf(position, kind)`, `liveTilesFor(box, kind)`); a delta carries
+  `moves` — `LiveMove` tuples for vehicles that only moved — beside its
+  upserts and removes; and a message over `LIVE_PACKED_MIN_BYTES` arrives as
+  gzip bytes: pass every payload through `unpackLivePayload` (async; keep
+  arrival order) before parsing. Bring your own `socket.io-client`; the
+  package still has one dependency. Every entity states its source and the
+  instant the source observed it — show both.
 - `places.update(id, { openingHoursDays })` replaces only explicitly named
   opening weekdays atomically; exported `OpeningHoursDayPatch` describes each
   replacement. Empty day intervals close that day. Unknown schedules require

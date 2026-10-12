@@ -39,7 +39,8 @@
 import {
   LIVE_KINDS,
   LIVE_MAX_ROOM_TILES,
-  LIVE_ROOM_ZOOM,
+  LIVE_PACKED_MIN_BYTES,
+  LIVE_ROOM_ZOOMS,
   LIVE_SOCKET_EVENTS,
   LIVE_SOCKET_NAMESPACE,
   LIVE_SOURCE_STATUSES,
@@ -64,7 +65,8 @@ import type {
 export {
   LIVE_KINDS,
   LIVE_MAX_ROOM_TILES,
-  LIVE_ROOM_ZOOM,
+  LIVE_PACKED_MIN_BYTES,
+  LIVE_ROOM_ZOOMS,
   LIVE_SOCKET_EVENTS,
   LIVE_SOCKET_NAMESPACE,
   LIVE_SOURCE_STATUSES,
@@ -83,6 +85,7 @@ export type {
   LiveEntity,
   LiveKind,
   LiveLink,
+  LiveMove,
   LiveShape,
   LiveSnapshot,
   LiveSource,
@@ -101,6 +104,37 @@ function parsed<T>(
 ): T | null {
   const result = schema.safeParse(payload);
   return result.success ? (result.data as T) : null;
+}
+
+/**
+ * A server → client payload as sent: JSON as is, or gzip bytes (a payload over
+ * {@link LIVE_PACKED_MIN_BYTES}) inflated and parsed. Resolves `null` for bytes
+ * that are not gzip JSON. Feed the result to the `parseLive*` functions — and
+ * keep messages in arrival order: inflating is asynchronous, so a client
+ * should chain them (`liveClient.ts` does).
+ */
+export async function unpackLivePayload(payload: unknown): Promise<unknown> {
+  const bytes =
+    payload instanceof ArrayBuffer
+      ? new Uint8Array(payload)
+      : ArrayBuffer.isView(payload)
+        ? new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength)
+        : null;
+  if (!bytes) return payload;
+  // The web streams API, present in browsers and Node ≥ 18; typed locally so
+  // the SDK keeps compiling without the DOM library.
+  const web = globalThis as unknown as {
+    Blob?: new (parts: unknown[]) => { stream(): { pipeThrough(transform: unknown): unknown } };
+    DecompressionStream?: new (format: 'gzip') => unknown;
+    Response?: new (body: unknown) => { text(): Promise<string> };
+  };
+  if (!web.Blob || !web.DecompressionStream || !web.Response) return null;
+  try {
+    const stream = new web.Blob([bytes]).stream().pipeThrough(new web.DecompressionStream('gzip'));
+    return JSON.parse(await new web.Response(stream).text()) as unknown;
+  } catch {
+    return null;
+  }
 }
 
 /** A `live:snapshot` payload, or `null`. */

@@ -11,6 +11,7 @@
 
 import '../../__tests__/testEnv';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { gunzipSync } from 'node:zlib';
 import { createServer, type Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import {
@@ -163,12 +164,15 @@ describe('the /live namespace', () => {
       zoom: 12,
       kinds: ['transit', 'aircraft'],
     });
-    expect(liveSubscriptionStateSchema.parse(await answer)).toEqual({
+    const state = liveSubscriptionStateSchema.parse(await answer);
+    expect(state).toMatchObject({
       state: 'ok',
-      tiles: [liveTileOf({ latitude: 41.39, longitude: 2.17 })],
       kinds: ['transit', 'aircraft'],
       retryAfterSeconds: null,
     });
+    // Each kind's rooms at its own zoom: transit z11, aircraft z7.
+    expect(state.tiles).toContain(liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'transit'));
+    expect(state.tiles).toContain(liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'aircraft'));
     // Nothing polled yet: an empty, authoritative snapshot.
     expect(liveSnapshotSchema.parse(await snapshot).entities).toEqual([]);
 
@@ -176,7 +180,7 @@ describe('the /live namespace', () => {
     await server.live.hub.tick();
     const received = liveDeltaSchema.parse(await delta);
     expect(received.upserts.map((entity) => entity.id)).toEqual(['renfe-cercanias:1']);
-    expect(received.tile).toBe('7/64/47');
+    expect(received.tile).toBe(liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'transit'));
   });
 
   it('sends a room only to its members', async () => {
@@ -230,6 +234,26 @@ describe('the /live namespace', () => {
     }
   });
 
+  it('sends a large message as gzip bytes that inflate to the same JSON', async () => {
+    const server = await start();
+    server.feed.result = {
+      entities: Array.from({ length: 60 }, (_, i) => vehicle(String(i), 41.39, 2.17 + i * 1e-4)),
+      rejected: 0,
+    };
+    const visitor = client(server);
+    await next(visitor, 'connect');
+    visitor.emit(LIVE_SOCKET_EVENTS.subscribe, { ...BARCELONA_BOX, zoom: 12, kinds: ['transit'] });
+    await next(visitor, LIVE_SOCKET_EVENTS.subscription);
+    const delta = next<unknown>(visitor, LIVE_SOCKET_EVENTS.delta);
+    await server.live.hub.tick();
+    const packed = await delta;
+    expect(packed).toBeInstanceOf(Buffer);
+    const json = gunzipSync(packed as Buffer).toString('utf8');
+    expect(liveDeltaSchema.parse(JSON.parse(json)).upserts).toHaveLength(60);
+    // Several times smaller on the wire.
+    expect((packed as Buffer).length).toBeLessThan(json.length / 5);
+  });
+
   it('rate-limits subscriptions and keeps the rooms it had', async () => {
     const server = await start({ subscribeBurst: 2, subscribePerMinute: 6 });
     const visitor = client(server);
@@ -244,7 +268,8 @@ describe('the /live namespace', () => {
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(answers.map((answer) => answer.state)).toEqual(['ok', 'ok', 'rate_limited']);
-    expect(answers[2]).toMatchObject({ tiles: ['7/64/47'], retryAfterSeconds: 10 });
+    expect(answers[2]).toMatchObject({ tiles: answers[1]?.tiles, retryAfterSeconds: 10 });
+    expect(answers[2]?.tiles.length).toBeGreaterThan(0);
   });
 
   it('refuses the handshake beyond the connection cap', async () => {
@@ -290,6 +315,36 @@ describe('live configuration', () => {
       sources: ['adsb-lol'],
       settings: { 'adsb-lol': { url: 'https://mirror.example', key: 'k' } },
     });
+  });
+
+  it('shares polling through Valkey when REDIS_URL (or LIVE_VALKEY_URL) is set, and never echoes it', () => {
+    const listed = { LIVE_SOURCES: 'adsb-lol' };
+    expect(parseLiveConfig(listed, ['adsb-lol']).valkeyUrl).toBeNull();
+    expect(
+      parseLiveConfig({ ...listed, REDIS_URL: 'redis://cache.internal:6379' }, ['adsb-lol'])
+        .valkeyUrl,
+    ).toBe('redis://cache.internal:6379');
+    expect(
+      parseLiveConfig(
+        { ...listed, REDIS_URL: 'redis://a:6379', LIVE_VALKEY_URL: 'rediss://live.internal:6380' },
+        ['adsb-lol'],
+      ).valkeyUrl,
+    ).toBe('rediss://live.internal:6380');
+    let message = '';
+    try {
+      parseLiveConfig({ ...listed, REDIS_URL: 'https://user:secret@x' }, ['adsb-lol']);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain('REDIS_URL');
+    expect(message).not.toContain('secret');
+  });
+
+  it('with no source listed (live off), the bus setting cannot stop the backend booting', () => {
+    for (const LIVE_SOURCES of [undefined, '', '  ']) {
+      const config = parseLiveConfig({ LIVE_SOURCES, REDIS_URL: 'not-a-url' }, ['adsb-lol']);
+      expect(config).toMatchObject({ sources: [], valkeyUrl: null });
+    }
   });
 
   it('is on exactly when a source is listed: no switch, and the retired one is ignored', () => {

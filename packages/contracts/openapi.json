@@ -13376,11 +13376,11 @@
             ]
           },
           "tiles": {
-            "maxItems": 20,
+            "maxItems": 80,
             "type": "array",
             "items": {
               "type": "string",
-              "pattern": "^7\\/\\d{1,3}\\/\\d{1,3}$"
+              "pattern": "^(7|11|13)\\/\\d{1,5}\\/\\d{1,5}$"
             }
           },
           "kinds": {
@@ -13421,7 +13421,7 @@
         "properties": {
           "tile": {
             "type": "string",
-            "pattern": "^7\\/\\d{1,3}\\/\\d{1,3}$"
+            "pattern": "^(7|11|13)\\/\\d{1,5}\\/\\d{1,5}$"
           },
           "kind": {
             "type": "string",
@@ -13456,7 +13456,7 @@
         "properties": {
           "tile": {
             "type": "string",
-            "pattern": "^7\\/\\d{1,3}\\/\\d{1,3}$"
+            "pattern": "^(7|11|13)\\/\\d{1,5}\\/\\d{1,5}$"
           },
           "kind": {
             "type": "string",
@@ -13478,6 +13478,83 @@
               "$ref": "#/components/schemas/LiveEntity"
             }
           },
+          "moves": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 160
+                },
+                {
+                  "type": "number",
+                  "minimum": -90,
+                  "maximum": 90
+                },
+                {
+                  "type": "number",
+                  "minimum": -180,
+                  "maximum": 180
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "exclusiveMaximum": 360
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "format": "date-time"
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              ],
+              "items": false,
+              "minItems": 8,
+              "maxItems": 8
+            }
+          },
           "removes": {
             "type": "array",
             "items": {
@@ -13492,6 +13569,7 @@
           "kind",
           "at",
           "upserts",
+          "moves",
           "removes"
         ]
       },

@@ -99,6 +99,14 @@ export interface LiveConfig extends LivePolicy {
   /** Source ids, as listed, de-duplicated. Checked against the catalogue by the caller. */
   sources: readonly string[];
   settings: Readonly<Record<string, LiveSourceSettings>>;
+  /**
+   * Valkey shared by the API tasks (`live/cluster.ts`): one task polls each
+   * feed and the others are told. `LIVE_VALKEY_URL`, else `REDIS_URL` (the
+   * fleet's shared Valkey, `/oxy/_shared/REDIS_URL`); unset, this process polls
+   * alone — right for one task, N× the upstream load for N. Read only when a
+   * source is listed: with live off nothing here can stop the backend booting.
+   */
+  valkeyUrl: string | null;
 }
 
 const sourceList = z.preprocess(
@@ -157,10 +165,29 @@ export function parseLiveConfig(
     settings[id] = entry;
   }
 
+  // The bus matters only to a deployment that serves live. With no source
+  // listed it is not read at all: a shared REDIS_URL another service owns
+  // must never be able to stop the backend from booting.
+  let valkeyUrl: string | null = null;
+  const rawValkey =
+    listed.length > 0
+      ? (emptyAsUndefined(source.LIVE_VALKEY_URL) ?? emptyAsUndefined(source.REDIS_URL))
+      : undefined;
+  if (rawValkey !== undefined) {
+    try {
+      const url = new URL(String(rawValkey).trim());
+      if (url.protocol !== 'redis:' && url.protocol !== 'rediss:') throw new Error('protocol');
+      valkeyUrl = url.toString();
+    } catch {
+      // Never echo the value: it may carry a password.
+      problems.push('  - LIVE_VALKEY_URL / REDIS_URL: must be a redis:// or rediss:// URL');
+    }
+  }
+
   if (problems.length > 0) {
     throw new Error(`Invalid live configuration:\n${problems.join('\n')}`);
   }
-  return { ...LIVE_POLICY, sources: listed, settings };
+  return { ...LIVE_POLICY, sources: listed, settings, valkeyUrl };
 }
 
 /** The one parse for this process, against the catalogue's ids. */

@@ -1,8 +1,9 @@
 # GoWay Live: real things moving on the map
 
 Aircraft, public-transport vehicles, bike-share stations and ships, drawn on
-the map from open real-time feeds, moving as the feeds report them. **Built,
-off by default, web only, served nowhere but a developer's machine.**
+the map from open real-time feeds, moving as the feeds report them. **On by
+default on the web, drawn wherever the backend serves it** — and goway.to's
+backend serves it once the owner lists `LIVE_SOURCES` (→ Production).
 
 Unlike a simulation, this is real data, so three things decide every design
 choice below: **licence** (may GoWay re-serve it, publicly, from a service that
@@ -213,7 +214,9 @@ accepted value is re-checked with `liveEntitySchema` before it leaves
 ### The hub (`hub.ts`, `tileIndex.ts`)
 
 - **In-memory spatial index**: the latest fix per entity, bucketed by **room**
-  = a z7 web-mercator tile × a kind. Rooms ARE the index: a subscription is
+  = a web-mercator tile × a kind, at a zoom per kind (`LIVE_ROOM_ZOOMS`:
+  aircraft and ships z7, ~300 km; transit z11, ~15 km; bike share z13,
+  ~3.7 km). Rooms ARE the index: a subscription is
   answered from the buckets its tiles cover, a delta is addressed to the bucket
   an entity is in, a box query walks only the buckets it touches. Replacing an
   entry discards the old fix: **positions are never stored as history**, and
@@ -231,8 +234,16 @@ accepted value is re-checked with `liveEntitySchema` before it leaves
   the source and the reason, never a URL (keys are redacted) and never a
   viewport.
 - **Deltas** per room, only for rooms somebody watches: upserts (new or
-  changed, by value) and removes. An entity crossing a room boundary is a
-  remove in one and an upsert in the other; the client resolves the race.
+  changed, by value), **moves** and removes. A vehicle whose only change is
+  its motion (position, heading, speed, time, place along its track) travels
+  as a compact `LiveMove` tuple — ~80 bytes instead of ~450. An entity crossing
+  a room boundary is a remove in one and an upsert in the other; the client
+  resolves the race.
+- **Packed**: a message over `LIVE_PACKED_MIN_BYTES` (2 KB) is sent as gzip
+  bytes (a Socket.IO binary attachment) and inflated by the client
+  (`unpackLivePayload`). In the application because Bun's WebSocket server
+  does not negotiate permessage-deflate (measured: `socket.io` under Node
+  answers `permessage-deflate`, under Bun nothing).
 
 ### The socket (`socket.ts`)
 
@@ -243,9 +254,10 @@ are public tiles × kinds, computed **by the server** from a box it validated.
 The default namespace keeps its Oxy auth; a test proves both.
 
 - `live:subscribe` `{ west, south, east, north, zoom, kinds }` → the server
-  computes the z7 tiles (refusing more than 20 as `too_wide`: below ~z8 the
-  map is a continent and tens of thousands of dots are noise), joins/leaves
-  rooms, answers `live:subscription` with the rooms it is in, then one
+  computes each kind's tiles at its zoom, leaves out a kind covering more than
+  20 (all of them: `too_wide` — below ~z8 the map is a continent and tens of
+  thousands of dots are noise), joins/leaves rooms, answers
+  `live:subscription` with the rooms and the kinds it kept, then one
   `live:snapshot` per new room. Empty `kinds` leaves everything.
 - Limits (`LIVE_POLICY`, `config/live.ts`): 2,000 sockets per process
   (handshake refused with `live_capacity`), and a token bucket per socket for
@@ -262,7 +274,7 @@ The default namespace keeps its Oxy auth; a test proves both.
 | Switch | The map-feature registry's `live` (`lib/map/mapFeatures.ts`, `docs/MAP_FEATURES.md`): the person's choice in the settings dialog (development builds), and `?live=1` in development only |
 | Gate | `features/explore/ExploreScreen.tsx`: `useMapFeature('live')` mounts the lazy `LiveHost` in the top-right stack, under the settings button and the Landmarks pill; off, it unmounts and the layer, its credits and the coverage go with it |
 | HTTP | `lib/live/client.ts`: one SDK client for `live.sources()` and `live.shape()`, always the real API (never the fixture transport) — shared by the shape cache and the settings dialog's **Live data sources** |
-| Socket client | `features/live/liveClient.ts` (`socket.io-client`, debounced subscriptions, honours `rate_limited`) |
+| Socket client | `features/live/liveClient.ts` (`socket.io-client`, WebSocket only, debounced subscriptions, honours `rate_limited`; bike share asked for from z15 only; packed messages inflated in arrival order) |
 | State and motion (pure, tested) | `features/live/liveStore.ts`, `motion.ts` |
 | Panel and copy | `features/live/LivePanel.tsx`, `format.ts`, `messages.ts` (en/es), `kinds.ts` (data colours) |
 | Map seam | `MapCanvasProps.live` (`MapLiveLayer`, a pull interface: no React render per frame), `MapAttribution` `extra` credits |
@@ -467,10 +479,24 @@ empty. Kinds come from the transit mode (`rail` → `train`, `subway` → `metro
 - **Backend** `LIVE_SOURCES` (each feed opted into by id; an unknown id fails
   the boot parse). There is no other switch: live runs when a usable source is
   listed. None: no poller, no `/live` namespace, `GET /live/sources` →
-  `503 service_unavailable`.
-- **Frontend** the registry's `live` (`docs/MAP_FEATURES.md`): the switch in
-  the settings dialog's Labs (offered in development builds only, until
-  goway.to has a live backend), or `?live=1` in a development build.
+  `503 service_unavailable`, and no other live setting (the Valkey URL
+  included) is read — none can stop the backend from booting.
+- **Frontend** the registry's `live` (`docs/MAP_FEATURES.md`): **on by
+  default**, a stable switch on the settings' Layers page (`?live=0` turns it
+  off for one tab in a development build). Safe on by default because the backend is the
+  gate: `LiveHost` asks `GET /live/sources` first, and a deployment without
+  live (503) draws nothing and opens no socket — and asks again (30 s, 1, 2,
+  then every 5 min), so a map left open finds live when the backend turns it
+  on. The panel starts folded to its pill; the quality profile's
+  `live.maxEntities` caps what is drawn.
+
+### What it costs on first paint
+
+`live` is on by default, so on the web the lazy `LiveHost` chunk (~48 KB),
+the shared `client` chunk and — only once `GET /live/sources` answers 200 —
+`socket.io-client` (~54 KB, the chunk `@oxy.so/core` already lazy-loads) and
+the `liveLayer` adapter (~8 KB) load AFTER first paint. First paint itself
+carries only the seam measured below; `__common` is unchanged.
 
 ### What the flag costs when off
 
@@ -508,6 +534,8 @@ importing the engine folders type-only).
 LIVE_SOURCES=adsb-lol,renfe-cercanias,fgc-geotren,mta-bus,mta-lirr,mta-mnr,mta-subway,amb-bus,aisa-bus,emt-fuenlabrada,nyc-bikeshare,digitraffic-ais \
 CORS_APP_ORIGINS=http://localhost:8081 \
   bun run --cwd packages/backend dev
+# Optional: REDIS_URL=redis://127.0.0.1:6379 shares polling with other local
+# backends on that Valkey/Redis (two processes, one poller).
 
 # Frontend against it
 EXPO_PUBLIC_API_URL=http://localhost:3000 bun run --cwd packages/frontend web
@@ -532,42 +560,188 @@ EXPO_PUBLIC_API_URL=http://localhost:3000 bun run --cwd packages/frontend web
 | AISA, EMT Fuenlabrada | 1 / 20 s each | none published |
 | Static GTFS | each file once a day per process (≤ 120 MB) | — |
 
-Polling is per PROCESS and demand-driven, so cost scales with the number of
-backend tasks and the areas watched, not with viewers. Upstream data is free.
-Egress is the cost: a dense room (all of New York: ~1,400 buses, ~2,500
-stations) is ~1.3 MB per snapshot and ~25–30 KB/s of deltas per viewer
-uncompressed. Bandwidth, not CPU, is the first limit.
+Polling is per DEPLOYMENT (one leader per source, → Production) and
+demand-driven, so cost scales with the areas watched, not with viewers or
+tasks. Upstream data is free. Egress was the cost — a whole-New-York view was
+1.2 MB of snapshot and 18 KB/s of deltas per viewer — and is now ~25 KB and
+<1 KB/s (→ Production, Bandwidth).
 
-## What production needs
+## Production
 
-1. **Licence follow-ups** — email adsb.lol before production use and plan a
-   feeder (their key requirement is coming); register an MTA Bus Time key; get
-   Lyft's (or counsel's) answer on `nyc-bikeshare` over a public socket, or do
-   not enable it; get an Open Data BCN token for Bicing and add the
-   no-discovery GBFS mode; publish the ODbL notice for re-served aircraft data
-   alongside the map's (the `GET /live/sources` licence link is the start).
-2. **One poller, many servers** — today every backend task polls on its own and
-   holds its own index. With more than one task, move polling to one worker (or
-   elect one) and fan out through the Socket.IO Redis/Valkey adapter
-   (ElastiCache Valkey is already in the stack) — otherwise N tasks multiply
-   upstream load by N and rate limits by N.
-3. **Bandwidth** — enable per-message deflate for `/live` (or send deltas as a
-   compact binary), and thin dense rooms by zoom (a z12 view does not need
-   2,500 bike stations; the client already hides them below z15 but still
-   receives them).
-4. **CORS / embeds** — the socket honours `CORS_APP_ORIGINS` for long-polling;
-   WebSocket upgrades are not CORS-checked by browsers. Decide whether
-   third-party embeds get `/live` (it needs the public lane and the licence
-   answers above).
-5. **Native** — `MapCanvas.native.tsx` ignores `live` today (and
-   the registry offers `live` on web only). MapLibre Native can draw the same
-   GeoJSON symbol layer with a `ShapeSource`; the pull interface would need a
-   ~2–4 Hz React update there instead of a frame loop. The 3D pass stays web
-   only, as the city engine does.
-6. **Observability** — per-source poll latency, failure counts and entity
-   counts as metrics (they are in `GET /live/sources` and the logs today).
-7. **Turn it on**: set `LIVE_SOURCES` to the vetted subset, then drop
-   `offer: 'development'` from the registry's `live` entry.
+### Several API tasks, one poller (`live/cluster.ts`)
+
+The API runs as ECS tasks behind one ALB. Each task serves its own sockets;
+the tasks share GoWay's Valkey (`REDIS_URL`, the fleet's
+`/oxy/_shared/REDIS_URL`):
+
+- **Demand** — every 2 s each task writes the room keys its sockets watch
+  (public tiles × kinds; no box, no viewer, nothing per socket) with a 10 s
+  TTL, and reads every task's. A source is wanted while ANY task has a viewer
+  in its coverage.
+- **One leader per source** — a lease (`SET NX PX 15000`, renewed by its
+  holder every 2 s through a compare-and-renew script). Only the holder polls;
+  it publishes each answer (the enriched entities, gzip + base64) on one
+  pub/sub channel, and every other task applies it to its own index exactly as
+  if it had polled, and tells its own sockets. Tasks that stop wanting a
+  source release its lease.
+- **Failover** — a leader that dies stops renewing; within 15 s another task
+  takes the lease and polls at once. Measured with two real backend processes
+  on one Valkey: the holder killed with `SIGKILL` at 11:24:58, the lease
+  moved at 11:25:14, and the surviving task went on serving New York.
+- **A task that starts** asks the leaders to republish what they hold
+  (`sync`), so its first viewer gets a full snapshot, not an empty one.
+- **Valkey down** — every task polls on its own (duplicate upstream requests,
+  logged once) until Valkey answers; then the leases decide again. A task
+  stops polling only once it is LISTENING again: Bun's client reconnects by
+  itself but does not restore subscriptions (measured: after a Redis restart
+  the old subscriber was connected and deaf), so a dropped or never-made
+  subscription is remade on a fresh connection, with a `sync`, before the
+  lease decides. Stopping closes the bus's connections whatever its state.
+- Nothing about a position is STORED in Valkey: positions pass through
+  pub/sub; the only keys are the leases and the demand, all with TTLs, so
+  `volatile-lru` may evict them under pressure (worst case: a second poller
+  for a few seconds).
+- Static GTFS is read by every task that has demand (once a day each): the
+  leader puts vehicles on their tracks, and any task may be asked for a shape.
+- The client uses WebSocket only (no long-polling), so no ALB stickiness is
+  needed: one connection is one task, whichever it is.
+
+Pinned in `live/__tests__/cluster.test.ts`: one upstream request for three
+tasks, every task serving the answer, failover after the lease, a late task
+synced, local polling while the bus is down — in memory, and against a real
+Valkey when `TEST_VALKEY_URL` is set (CI runs `valkey/valkey:8.0`).
+
+### Bandwidth
+
+Three changes, measured on New York with the real feeds at the same moment
+(2026-10-12, 04:20 local, so ~550 vehicles; daytime is ~3× that), one view
+on the old protocol and one on the new:
+
+| View | Before: first snapshots | Before: deltas | After: first snapshots | After: deltas |
+| --- | ---: | ---: | ---: | ---: |
+| All of New York, z12 | 1,225 KB | 18.1 KB/s | 25 KB | 0.7 KB/s |
+| Midtown, z15 | 1,225 KB | 18.1 KB/s | 24 KB | 0.3 KB/s |
+
+1. **Per-kind rooms** (`LIVE_ROOM_ZOOMS`): transit in ~15 km rooms, bike
+   share in ~3.7 km ones — a street view receives its neighbourhood, not the
+   city. And the client asks for bike share only from z15, where it draws it:
+   New York's 2,458 docks were most of the old snapshot.
+2. **Moves**: a vehicle that only moved is a tuple, not an entity.
+3. **Packing**: messages over 2 KB as gzip bytes (~9.6× on a transit
+   snapshot: 257 KB of JSON in 27 KB).
+
+### Configuration
+
+Backend (the ECS task definition). Values marked SSM are SecureString
+parameters the task definition names as `secrets`.
+
+| Variable | Value | Where |
+| --- | --- | --- |
+| `LIVE_SOURCES` | `renfe-cercanias,fgc-geotren,mta-lirr,mta-mnr,mta-subway,amb-bus,aisa-bus,emt-fuenlabrada,digitraffic-ais` to start; add `mta-bus` with its key, `adsb-lol` after the operator's answer, `nyc-bikeshare` after Lyft's (→ Licences) | environment |
+| `REDIS_URL` | `/oxy/_shared/REDIS_URL` (the fleet Valkey), as allo, clarity and moovo read it; `LIVE_VALKEY_URL` overrides it if live ever gets its own | SSM, `secrets` |
+| `LIVE_SOURCE_MTA_BUS_KEY` | the MTA Bus Time key | SSM `/oxy/goway/LIVE_SOURCE_MTA_BUS_KEY`, `secrets` |
+
+Nothing else: the user agent (`GoWay-Live/1.0 (+https://goway.to)`, which
+names a way to reach GoWay to feeds that ask callers to identify themselves),
+the connection cap (2,000 per task) and the rate limits are code
+(`LIVE_POLICY` in `config/live.ts`). Frontend: nothing — `live` is on by
+default.
+
+Capacity: a task holding every source's static GTFS measured 592 MB resident
+(902 MB peak while loading) against today's 1,024 MB task. Live needs **2,048
+MB** per task (CPU 512 is enough: polling is one task's work, serving is
+JSON per room).
+
+### Owner's checklist
+
+Infrastructure (`oxy-infra`; nothing here writes SSM or touches AWS):
+
+1. `aws ssm put-parameter --name /oxy/goway/LIVE_SOURCE_MTA_BUS_KEY --type SecureString --value <key>` once the key exists (below).
+2. `terraform-uswest2/app-goway.tf`: add the environment variable
+   `LIVE_SOURCES` above, `memory = "2048"`, and to `secrets`:
+   `{ name = "REDIS_URL", valueFrom = "${local.ssm}/oxy/_shared/REDIS_URL" }`
+   and `{ name = "LIVE_SOURCE_MTA_BUS_KEY", valueFrom = "${local.ssm}/oxy/goway/LIVE_SOURCE_MTA_BUS_KEY" }`
+   (replacing the comment that says GoWay reads no `REDIS_URL` — it does now).
+3. `terraform-uswest2/iam-goway-deploy.tf`, `goway_execution`: extend its
+   `ssm:GetParameters` resources with `/oxy/_shared/REDIS_URL` and
+   `/oxy/goway/LIVE_SOURCE_MTA_BUS_KEY` — the execution role reads only
+   `DATABASE_URL` today, and a task naming a secret it cannot read does not
+   start.
+4. Register a revision derived from the RUNNING one carrying those, repoint the
+   service once, and confirm it serves (`curl https://api.goway.to/api/v1/live/sources`
+   answers 200 with the sources) — the deploy carries the running revision
+   forward and never adds variables itself (`~/Oxy/docs/infra-and-deploys.md`).
+5. The tasks' security group already reaches Valkey (`redis-sg` admits
+   `tasks`); nothing to change.
+
+### Licences, per source
+
+| Source | Ready? | What is left |
+| --- | --- | --- |
+| `renfe-cercanias` | **yes** | Credit "Origen de los datos: Renfe Operadora" drawn while its trains are; every position's age shown. |
+| `fgc-geotren` | **yes** | Credit drawn; 2,880 calls a day against FGC's 5,000/IP — one poller now keeps it there whatever the task count. |
+| `mta-lirr`, `mta-mnr`, `mta-subway` | **yes** | "Data: MTA", no MTA marks, no data edits; subway positions labelled as estimates. |
+| `mta-bus` | after a key | Register the Bus Time key (below), set it, add `mta-bus` to `LIVE_SOURCES`. |
+| `amb-bus` | **yes** | Credit and update time shown; the estimate is labelled as GoWay's. |
+| `aisa-bus`, `emt-fuenlabrada` | **yes** | "Powered by MITRAMS" drawn. |
+| `digitraffic-ais` | **yes** | Credit drawn; `Digitraffic-User` sent. Baltic only. |
+| `adsb-lol` | after the operator's answer | The operator asks production users to get in touch first (email below), and an API key for non-feeders is announced: plan an ADS-B feeder (an RTL-SDR stick, an antenna and `readsb` on a small computer feeding adsb.lol). ODbL: the credit and the licence link are drawn and listed. |
+| `nyc-bikeshare` | **no, not yet** | The Bikeshare Data License forbids distributing the data "as a stand-alone dataset". Whether a public map that draws it, over a socket anyone can open, is that is Lyft's (or counsel's) question. Ask before listing it. |
+
+### MTA Bus Time key
+
+1. Open https://register.developer.obanyc.com/ (the MTA's OneBusAway NYC
+   developer registration, linked from https://new.mta.info/developers).
+2. Give a name, an email address that will read MTA notices, and a short
+   description — "GoWay (goway.to), a public map; draws MTA buses with the
+   credit 'Data: MTA', never MTA marks."
+3. Accept the MTA data feed terms. The key arrives by email (usually within
+   minutes; manual review at the MTA's discretion).
+4. Store it: checklist step 1. GoWay sends it as `?key=` on every Bus Time
+   request and never logs it (`redact` in `hub.ts`).
+
+### adsb.lol — the email to send
+
+> **Subject:** GoWay — production use of the adsb.lol API (ODbL, credited)
+>
+> Hi,
+>
+> I run GoWay (https://goway.to), an open map. We'd like to show live
+> aircraft from the adsb.lol API on the map, and your page asks production
+> users to get in touch first — so here we are.
+>
+> How we'd use it:
+> - Server-side only: one process polls `/v2/lat/{lat}/lon/{lon}/dist/{nm}` for the regions people
+>   are looking at, at most every 15 s and at most 4 regions per poll, and
+>   stops at the first 429 for as long as `Retry-After` says. Viewers never
+>   call you; one deployment makes the same requests whatever its traffic.
+> - Requests carry `User-Agent: GoWay-Live/1.0 (+https://goway.to)`.
+> - Aircraft flagged LADD or PIA in your data are dropped before display.
+> - Attribution: "© adsb.lol contributors" and the ODbL 1.0 link are shown
+>   whenever aircraft are on the map, and listed in the app's credits. The
+>   positions we re-serve to the map are under ODbL as well.
+>
+> We'd also like to contribute: we're planning to run a feeder. If you'd
+> rather we use an API key, or a different endpoint or rate, tell us and
+> we'll do that.
+>
+> Thanks for running this.
+> <name>, GoWay
+
+The address: the contact the operator lists on https://adsb.lol (its
+GitHub, `adsblol`, or the community Discord) — use whichever it names for API
+questions at the time.
+
+### Still open
+
+- **Native** — `MapCanvas.native.tsx` ignores `live` (the registry offers it
+  on web only). MapLibre Native can draw the same GeoJSON symbol layer with a
+  `ShapeSource` and a ~2–4 Hz React update; the 3D pass stays web only.
+- **Observability** — per-source poll latency, failures, entity counts and
+  lease holder as metrics (in `GET /live/sources` and the logs today).
+- **Embeds** — whether third-party embeds get `/live` is a licence question
+  first (the answers above).
+- Bicing (Open Data BCN token) and TMB (key) as further sources.
 
 ## Limits, honestly
 
@@ -584,7 +758,8 @@ uncompressed. Bandwidth, not CPU, is the first limit.
   on arrival. The UI states every age; it cannot make them younger.
 - adsb.lol's dynamic rate limit means aircraft can go stale for a poll or two
   under load; they are shown stale, not extrapolated.
-- One process holds everything in memory; a restart starts from empty and
+- Every task holds every source's current positions in memory; a task that
+  starts is synced by the leaders, and a deployment that restarts entirely
   refills within one poll interval.
 - HSL, Bicing, TMB, EMT Madrid, NYC Ferry and Baltic-only ships are
   documented above as next sources, not built.

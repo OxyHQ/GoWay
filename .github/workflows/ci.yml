@@ -379,6 +379,18 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      valkey:
+        # GoWay Live's bus between API tasks (`live/cluster.ts`): its leases,
+        # demand and fan-out are tested against a real server, the engine
+        # production runs (ElastiCache Valkey 8.0), not only an in-memory fake.
+        image: valkey/valkey:8.0
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -428,6 +440,8 @@ jobs:
           echo "PostGIS $version"
           case "$version" in 3.5.*) ;; *) echo "::error::expected PostGIS 3.5.x, got $version"; exit 1 ;; esac
       - name: Run the backend test suite
+        env:
+          TEST_VALKEY_URL: redis://127.0.0.1:6379
         run: bun run test:backend
 
   # THE one status check `main` should require. Everything above reports here.

@@ -12,14 +12,21 @@
  * the viewer: see `liveClient.ts`.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { GoWayUnavailableError } from '@goway.to/sdk';
 import type { LiveKind } from '@goway.to/sdk/live';
 
 import type { MapCreditLink, MapLiveLayer, MapLivePoint } from '@/components/map';
 import { API_URL } from '@/lib/config';
 
+import { watchLiveAvailability } from './availability';
 import { FLEETS } from './fleets';
 import { LIVE_GLYPHS, LIVE_KIND_ORDER } from './kinds';
-import { createLiveClient, type LiveClient, type LiveClientState } from './liveClient';
+import {
+  BIKESHARE_MIN_ZOOM,
+  createLiveClient,
+  type LiveClient,
+  type LiveClientState,
+} from './liveClient';
 import { LivePanel } from './LivePanel';
 import { LiveStore } from './liveStore';
 import { pointOf } from './points';
@@ -48,8 +55,6 @@ function inView(box: Box, point: { latitude: number; longitude: number }): boole
 
 export interface LiveHostProps {
   onLayer: (layer: MapLiveLayer | null) => void;
-  /** Start collapsed to a pill (a phone, where the panel would cover the map). */
-  compact?: boolean;
 }
 
 /** How often freshness text and fading are re-evaluated with nothing else happening. */
@@ -68,13 +73,11 @@ function meetsView(
   );
 }
 
-/** Bike-share stations are drawn from this zoom: below it a city's docks are a carpet. */
-const BIKESHARE_MIN_ZOOM = 15;
 /** Lines are fetched from this zoom: below it a train is a few pixels and its curve invisible. */
 const SHAPES_MIN_ZOOM = 12;
 
 /** Rendered in the map's top-right stack (`ExploreScreen`), which places it. */
-export default function LiveHost({ onLayer, compact = false }: LiveHostProps) {
+export default function LiveHost({ onLayer }: LiveHostProps) {
   const listeners = useRef(new Set<() => void>());
   // A shape arriving moves its vehicles onto the track: wake the canvas.
   const store = useMemo(
@@ -189,8 +192,30 @@ export default function LiveHost({ onLayer, compact = false }: LiveHostProps) {
     [store],
   );
 
+  // Whether this backend serves live at all: a deployment without it
+  // (no `LIVE_SOURCES`) answers 503 and the layer stays out of sight — the
+  // switch can be on by default before the backend is.
+  const [available, setAvailable] = useState(false);
+  useEffect(
+    () =>
+      watchLiveAvailability({
+        check: () =>
+          import('@/lib/live/client')
+            .then(({ liveApiClient }) => liveApiClient.live.sources())
+            .then(
+              () => 'yes' as const,
+              // Anything but "no live here" (offline, a blip) is the socket's
+              // to report and retry.
+              (error: unknown) => (error instanceof GoWayUnavailableError ? 'no' : 'yes'),
+            ),
+        onAvailable: () => setAvailable(true),
+      }),
+    [],
+  );
+
   // The connection: opened once per mount, closed on unmount.
   useEffect(() => {
+    if (!available) return;
     const client = createLiveClient({ apiUrl: API_URL, store });
     clientRef.current = client;
     client.setKinds([...kindsRef.current]);
@@ -205,7 +230,7 @@ export default function LiveHost({ onLayer, compact = false }: LiveHostProps) {
       clientRef.current = null;
       onLayer(null);
     };
-  }, [store, layer, onLayer, notify]);
+  }, [available, store, layer, onLayer, notify]);
 
   useEffect(() => {
     clientRef.current?.setKinds(LIVE_KIND_ORDER.filter((kind) => kinds.has(kind)));
@@ -248,9 +273,11 @@ export default function LiveHost({ onLayer, compact = false }: LiveHostProps) {
     if (selected && (!selectedSample || !kinds.has(selectedSample.entity.kind))) setSelected(null);
   }, [selected, selectedSample, kinds]);
 
+  if (!available) return null;
   return (
     <LivePanel
-      initiallyExpanded={!compact}
+      // On by default for everyone: it starts as the pill, opened on demand.
+      initiallyExpanded={false}
       kinds={kinds}
       onToggleKind={toggleKind}
       state={clientState}

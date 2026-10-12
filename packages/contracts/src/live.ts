@@ -27,14 +27,21 @@
  *
  * `GET /api/v1/live/sources` (HTTP, in `API_OPERATIONS`) lists the sources and
  * their freshness. Positions travel over Socket.IO, namespace
- * {@link LIVE_SOCKET_NAMESPACE}, in rooms keyed by a {@link LIVE_ROOM_ZOOM}
- * web-mercator tile and a kind — so a client receives only the kinds it asked
- * for, in the tiles it is looking at. The messages are the schemas below.
+ * {@link LIVE_SOCKET_NAMESPACE}, in rooms keyed by a web-mercator tile — at
+ * a zoom per kind ({@link LIVE_ROOM_ZOOMS}) — and a kind, so a client
+ * receives only the kinds it asked for, in the tiles it is looking at. The
+ * messages are the schemas below.
  */
 
 import { z } from 'zod';
 import { type GeoBoundingBox, geoBoundingBoxSchema, geoCoordinateSchema } from './geo';
-import { LIVE_KINDS, liveKindSchema, liveShapeIdSchema, liveSourceIdSchema } from './live-source';
+import {
+  LIVE_KINDS,
+  type LiveKind,
+  liveKindSchema,
+  liveShapeIdSchema,
+  liveSourceIdSchema,
+} from './live-source';
 import { instantSchema } from './time';
 
 // ---------------------------------------------------------------------------
@@ -209,23 +216,38 @@ export type LiveEntity = z.infer<typeof liveEntitySchema>;
 // ---------------------------------------------------------------------------
 
 /**
- * The zoom of the tile grid rooms are keyed on. A z7 tile is 2.8° of
- * longitude — about 235 × 310 km at Barcelona — so a city view is one or two
- * rooms, and an aircraft crossing a room boundary changes room every few
- * minutes rather than every few seconds.
+ * The zoom of the tile grid each kind's rooms are keyed on — coarse where
+ * things are sparse and fast, fine where they are dense and slow, so a
+ * street-level view of New York receives Midtown's buses and docks, not the
+ * city's.
+ *
+ * - aircraft, vessels: z7 — 2.8° of longitude, ~235 × 310 km at Barcelona. A
+ *   city view is one or two rooms, and an aircraft changes room every few
+ *   minutes rather than every few seconds.
+ * - transit: z11 — ~15 km. A borough, not a city.
+ * - bike share: z13 — ~3.7 km. A neighbourhood: its docks matter only at
+ *   street zooms (the map draws them from z15).
  */
-export const LIVE_ROOM_ZOOM = 7;
+export const LIVE_ROOM_ZOOMS: Readonly<Record<LiveKind, number>> = {
+  aircraft: 7,
+  vessel: 7,
+  transit: 11,
+  bikeshare: 13,
+};
 
 /**
- * The most rooms one subscription may cover. A wider viewport is refused with
- * `too_wide` and the client says "zoom in": 20 z7 tiles is roughly a z8
- * desktop viewport, and below that the map is a continent, where tens of
- * thousands of moving dots are noise rather than information.
+ * The most rooms one subscription may cover, PER KIND. A kind whose rooms a
+ * viewport covers more of is left out of the subscription (`kinds` says which
+ * were kept); if every kind is, the answer is `too_wide` and the client says
+ * "zoom in". 20 z7 tiles is roughly a z8 desktop viewport — below that the map
+ * is a continent; 20 z11 tiles a z12 one.
  */
 export const LIVE_MAX_ROOM_TILES = 20;
 
-/** A room tile, `7/x/y`. */
-export const liveTileKeySchema = z.string().regex(/^7\/\d{1,3}\/\d{1,3}$/, 'must be a live tile');
+/** A room tile, `z/x/y`, at one of the {@link LIVE_ROOM_ZOOMS}. */
+export const liveTileKeySchema = z
+  .string()
+  .regex(/^(7|11|13)\/\d{1,5}\/\d{1,5}$/, 'must be a live tile');
 
 const MAX_MERCATOR_LATITUDE = 85.051129;
 
@@ -243,19 +265,24 @@ function tileY(latitude: number, n: number): number {
   return Math.min(n - 1, Math.max(0, y));
 }
 
-/** The room tile a position falls in. */
-export function liveTileOf(position: { latitude: number; longitude: number }): string {
-  const n = 2 ** LIVE_ROOM_ZOOM;
-  return `${LIVE_ROOM_ZOOM}/${tileX(position.longitude, n)}/${tileY(position.latitude, n)}`;
+/** The room tile a position of a kind falls in. */
+export function liveTileOf(
+  position: { latitude: number; longitude: number },
+  kind: LiveKind,
+): string {
+  const zoom = LIVE_ROOM_ZOOMS[kind];
+  const n = 2 ** zoom;
+  return `${zoom}/${tileX(position.longitude, n)}/${tileY(position.latitude, n)}`;
 }
 
 /**
- * The room tiles a box covers, or `null` when that is more than
+ * A kind's room tiles a box covers, or `null` when that is more than
  * {@link LIVE_MAX_ROOM_TILES}. A box across the antimeridian (`west > east`)
  * covers both edges of the world.
  */
-export function liveTilesFor(box: GeoBoundingBox): string[] | null {
-  const n = 2 ** LIVE_ROOM_ZOOM;
+export function liveTilesFor(box: GeoBoundingBox, kind: LiveKind): string[] | null {
+  const zoom = LIVE_ROOM_ZOOMS[kind];
+  const n = 2 ** zoom;
   const yMin = tileY(box.north, n);
   const yMax = tileY(box.south, n);
   const columns: number[] = [];
@@ -271,8 +298,7 @@ export function liveTilesFor(box: GeoBoundingBox): string[] | null {
   const rows = yMax - yMin + 1;
   if (rows * columns.length > LIVE_MAX_ROOM_TILES) return null;
   const tiles: string[] = [];
-  for (const x of columns)
-    for (let y = yMin; y <= yMax; y++) tiles.push(`${LIVE_ROOM_ZOOM}/${x}/${y}`);
+  for (const x of columns) for (let y = yMin; y <= yMax; y++) tiles.push(`${zoom}/${x}/${y}`);
   return tiles;
 }
 
@@ -296,6 +322,16 @@ export function liveTileBounds(tile: string): GeoBoundingBox {
 
 /** The Socket.IO namespace. Open to signed-out visitors: the map is. */
 export const LIVE_SOCKET_NAMESPACE = '/live';
+
+/**
+ * A server → client payload larger than this, serialised, travels as gzip
+ * BYTES (a Socket.IO binary attachment) instead of JSON: a dense room's
+ * snapshot is mostly repeated keys and shrinks ~8×. The client inflates it
+ * (`@goway.to/sdk/live` → `unpackLivePayload`) and parses it as usual. Done in
+ * the application because the backend's WebSocket server (Bun) does not
+ * negotiate permessage-deflate.
+ */
+export const LIVE_PACKED_MIN_BYTES = 2048;
 
 /** Event names, in both directions. */
 export const LIVE_SOCKET_EVENTS = {
@@ -328,9 +364,12 @@ export type LiveSubscription = z.input<typeof liveSubscriptionSchema>;
 /**
  * The answer to a subscription.
  *
- * - `ok` — in `tiles` × `kinds` rooms now; a snapshot follows for each new one.
- * - `too_wide` — the box covers more than {@link LIVE_MAX_ROOM_TILES} rooms;
- *   nothing is sent until a narrower one arrives.
+ * - `ok` — in the `tiles` rooms of `kinds` now (each kind's tiles are at its
+ *   own zoom); a snapshot follows for each new room. A kind asked for but
+ *   missing from `kinds` covered more than {@link LIVE_MAX_ROOM_TILES} rooms
+ *   and was left out.
+ * - `too_wide` — every kind asked for covered more than
+ *   {@link LIVE_MAX_ROOM_TILES} rooms; nothing is sent until a narrower box.
  * - `rate_limited` — subscriptions are arriving too fast; the previous rooms
  *   (listed) are kept, retry after `retryAfterSeconds`.
  * - `invalid` — the message did not parse; the previous rooms are kept.
@@ -341,7 +380,7 @@ export const liveSubscriptionStateSchema = z.object({
    * The room tiles this connection is in NOW, and the kinds. A client drops
    * whatever it holds outside them: those rooms send nothing more.
    */
-  tiles: z.array(liveTileKeySchema).max(LIVE_MAX_ROOM_TILES),
+  tiles: z.array(liveTileKeySchema).max(LIVE_MAX_ROOM_TILES * LIVE_KINDS.length),
   kinds: z.array(liveKindSchema).max(LIVE_KINDS.length),
   retryAfterSeconds: z.number().int().min(1).nullable(),
 });
@@ -358,15 +397,39 @@ export const liveSnapshotSchema = z.object({
 export type LiveSnapshot = z.infer<typeof liveSnapshotSchema>;
 
 /**
+ * A vehicle that only MOVED, compactly: `[id, latitude, longitude, heading,
+ * speed, observedAt, alongMeters, offsetMeters]`. Everything else about it —
+ * kind, line, colours, labels, its track's shape — is what the client already
+ * holds; `headingDegrees`, `speedMetersPerSecond`, `observedAt` and, for a
+ * vehicle on a track, `track.alongMeters`/`offsetMeters` are replaced (`null`
+ * where it has no track). Most of a busy room's traffic is this: a bus is
+ * ~450 bytes as an entity and ~80 as a move.
+ */
+export const liveMoveSchema = z.tuple([
+  liveEntityIdSchema,
+  z.number().min(-90).max(90),
+  z.number().min(-180).max(180),
+  z.number().min(0).lt(360).nullable(),
+  z.number().min(0).nullable(),
+  instantSchema,
+  z.number().min(0).nullable(),
+  z.number().min(0).nullable(),
+]);
+export type LiveMove = z.infer<typeof liveMoveSchema>;
+
+/**
  * What changed in one room since the last message: entities that arrived or
- * moved (`upserts`) and ids that left (`removes` — gone from the feed, too old,
- * or moved to another room, whose own delta carries the upsert).
+ * changed (`upserts`), ones that only moved (`moves`), and ids that left
+ * (`removes` — gone from the feed, too old, or moved to another room, whose
+ * own delta carries the upsert). A move names an entity the room's previous
+ * messages delivered; a client that does not hold it ignores it.
  */
 export const liveDeltaSchema = z.object({
   tile: liveTileKeySchema,
   kind: liveKindSchema,
   at: instantSchema,
   upserts: z.array(liveEntitySchema),
+  moves: z.array(liveMoveSchema).default([]),
   removes: z.array(liveEntityIdSchema),
 });
 export type LiveDelta = z.infer<typeof liveDeltaSchema>;
