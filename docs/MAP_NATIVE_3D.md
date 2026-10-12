@@ -52,7 +52,7 @@ changes.
 
 | Piece | Where |
 | --- | --- |
-| Tile bytes → packed mesh, the function every host calls (moved out of the worker so a native thread can call it too) | `components/map/engine/city3d/tileMeshing.ts` (`meshWorker.ts` now imports it) |
+| Tile bytes → packed mesh, the function every host calls (moved out of the worker so a native thread can call it too) | `components/map/engine/city3d/tileMeshing.ts` (called by the mesh service, `meshService.ts`, which both hosts run: [Off-thread meshing](#phase-4-groundwork-off-thread-meshing)) |
 | The building material in TSL, term for term `shaders.ts` + `osmShaders.ts` (both formats since phase 2) | `components/map/engine/city3d/tsl/buildingMaterial.ts` |
 | One tile, meshed and drawn by `WebGPURenderer`; the host passes canvas, context, device, `present` | `components/map/engine/city3d/tsl/cityTileView.ts` |
 | Browser host | `scripts/tsl-tile-preview.ts` (serves) + `scripts/tsl-tile-preview.page.ts` (the page) |
@@ -579,6 +579,92 @@ on the frame's timing; the no-sky trees are the gate's deterministic catch.
 On failure the screenshots (`{sky,nosky}-{trees,notrees,streets,nostreets,nocity}.png`, `landmark.png`, `nolandmark.png`) are
 uploaded as the `city3d-visible-sky` / `city3d-visible-nosky` artifacts.
 
+## Phase 4 groundwork: off-thread meshing
+
+React Native has no Web Workers, and meshing a dense tile holds the JS thread
+for a second or more. This step answers phase 4's first question ([Risks →
+Workers on Hermes](#risks)): **can a react-native-worklets worker runtime run
+GoWay's mesher, unchanged, off the JS thread?** Yes, measured on the
+emulator below.
+
+### One service, two hosts
+
+The worker's body moved, unchanged in behaviour, into a host-neutral service.
+Both hosts run it, so a tile meshes the same on every platform. No module is
+forked and there is no native mesher.
+
+| Piece | Where |
+| --- | --- |
+| The mesh service: fetch, byte cache, mesh, trees, pack, cancel, reply in the protocol (`protocol.ts`). Takes a `MeshHost` (`post`, `fetch`, `now`) and needs no `AbortController` | `components/map/engine/city3d/meshService.ts` |
+| Web host: the Web Worker, now a thin wrapper around the service | `components/map/engine/city3d/meshWorker.ts` |
+| Native host: one worker runtime per pool slot, the service on it, the tile fetched on the RN thread | `components/map/engine/city3d/meshRuntime.ts` (`meshRuntimeWorker`) |
+| The pool takes any worker: its factory gets the reply and failure callbacks (`WorkerEvents`) and returns `postMessage`/`terminate`. `webWorker()` wires a Web Worker | `components/map/engine/city3d/workerPool.ts` |
+| Tests | `city3dMeshService.test.ts` (the service, including a host with no `AbortController`), `city3dMeshRuntime.test.ts` (the native host behind the real pool, with worklets stood in for), `city3dWorkerPool.test.ts` |
+
+What a worker runtime offers and lacks (Hermes, worklets 0.10.0, Bundle Mode,
+release build, measured):
+
+| Global | On a worker runtime | So |
+| --- | --- | --- |
+| `fetch` | **absent** | The RN thread fetches (asynchronous I/O, which does not hold the thread) and hands the bytes across. worklets' fetch preview (`FETCH_PREVIEW_ENABLED`) is experimental, and in 0.10 a release build crashes creating the runtime: worklets' init reads the `TurboModules` polyfill before its registry shim has installed it |
+| `AbortController` | **absent** | The service runs without it. A cancelled request's download finishes, then its result is dropped and the cancel acknowledged |
+| `TextDecoder`, `performance`, `setTimeout`, `queueMicrotask` | present | The decoder and the timings work as on the web |
+| Transfer | none | The reply's buffers are copied back: tens of milliseconds for a dense tile (below) |
+
+### Measured (emulator)
+
+**Emulator numbers, not a device benchmark.** Android 16 x86_64 emulator, 4
+vCPUs, SwiftShader GPU, Hermes release build, on a shared and loaded host.
+Same tile as phase 1: Barcelona 15/16580/12236, 273 KB, 252,354 triangles.
+JS-thread figures from ten launches, worker-runtime figures from the five
+that reached them; ranges span all of them.
+
+| | Mesh time | The JS thread meanwhile |
+| --- | --- | --- |
+| On the JS thread (today's only option on native) | 0.73–2.41 s | **frozen for the whole mesh**: longest frame 1.0–2.5 s |
+| On a worker runtime (`runOnRuntimeAsync`, the mesher directly) | 0.78–1.98 s; round trip +34–103 ms (the result copied back) | frame p50 16.6–16.8 ms (33 ms in one launch), longest 35–58 ms |
+| **The native host** (`WorkerPool` over two `meshRuntimeWorker`s, tile fetched on the RN thread from a local server) | 1.89–1.99 s mesh, 1.95–2.42 s request to reply | frame p50 16.8 ms, p95 26.6 ms, longest 84 ms |
+| Two runtimes at once | each 0.78–1.94 s | wall ≈ one mesh in 4 of 5 launches (853–897 ms for about 800 ms each); serialised once (2.25 s) |
+
+- **Meshing costs the same on a worker runtime.** It is the same Hermes on
+  another thread, so a mesh takes about as long. The difference is that the
+  JS thread keeps drawing frames: its longest frame drops from the whole mesh
+  (1–2.5 s) to under 0.1 s.
+- **Runtimes scale across cores**, so the pool's `quality.workers` means the
+  same on native as on the web.
+- **The byte cache works per runtime.** Three re-meshes of one tile made one
+  HTTP request, and a 404 came back as empty ground, as on the web.
+
+### What adopting it needs (phase 4)
+
+`meshRuntime.ts` runs only in Bundle Mode, where the service and the mesher
+are modules on the worker runtime. Nothing imports it yet. The native host
+will need:
+
+- **Bundle Mode in `@oxy.so/app-preset`**, never the app: the worklets Babel
+  plugin with `bundleMode: true` and this directory in
+  `importForwarding.relativePaths` (otherwise the mesher stays on the RN
+  thread and every call to it from the runtime throws "Tried to synchronously
+  call a Remote Function"), and Metro wrapped with
+  `getBundleModeMetroConfig`. On Android the harness also needed
+  `pickFirsts` for `libworklets.so`, which expo-modules-core's worklets
+  integration packages a second time; recheck that with a clean build when
+  the preset adopts Bundle Mode.
+- **No runtime disposal in worklets 0.10.** `terminate()` stops using a
+  runtime but cannot free it. The pool replaces a worker only when it fails,
+  so this is bounded, but a remounted map must reuse its pool.
+- **The tile cache** ([Risks](#risks)): the RN thread's `fetch` has no
+  offline cache or cancellation; phase 4's native tile cache goes behind the
+  host's `fetch`.
+
+### Running it
+
+The harness is the phase 1 throwaway Expo app (not committed), switched to
+Bundle Mode with `importForwarding` as above. It resolves `@/` into GoWay's
+frontend, logs `MESH_HOST` lines, and fetches the tile from a local server
+through `adb reverse tcp:8099 tcp:8099`. It needs `usesCleartextTraffic` for
+that server only.
+
 ## The base map
 
 Native cannot keep MapLibre Native under a WebGPU city. The two would be
@@ -631,9 +717,11 @@ GoWay today.
   seconds on the JS thread. The candidate is react-native-worklets worklet
   runtimes running the bundled modules ("Bundle Mode", which
   `react-native-webgpu` documents for three.js scenes and calls
-  **experimental**). Measuring that is phase 4's first task. If it fails, the
-  fallback is not a second mesher; it is fewer, smaller jobs (far levels,
-  smaller tiles) on the same code. Pre-meshing is 17× the bytes (above).
+  **experimental**). Measured on the emulator, it works: the unchanged
+  mesher runs on a worker runtime and the JS thread keeps its frames
+  ([Off-thread meshing](#phase-4-groundwork-off-thread-meshing)). What remains
+  is device numbers, and Bundle Mode in the preset. Pre-meshing is 17× the
+  bytes (above).
 - **Gestures.** They must feel native, which means the camera is driven on the
   UI thread and the frame rendered without a JS-thread hop.
   `react-native-webgpu` can render from the UI runtime (`runOnUI`). Running

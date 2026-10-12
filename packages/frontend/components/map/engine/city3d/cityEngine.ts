@@ -110,7 +110,7 @@ import { Transitions } from './transitions';
 import { treeMinHeightM } from './tsl/treeMaterial';
 import { createTslPass } from './tsl/tslPass';
 import type { TreeSourceLayers } from './treeSources';
-import { WorkerPool } from './workerPool';
+import { WorkerPool, webWorker } from './workerPool';
 
 /** The palette's building height ramp (`buildingHeightRamp` in `buildings3d.ts`), plus trees. */
 export interface CityPalette {
@@ -573,7 +573,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const buildings = options.buildings !== false;
   // No buildings, no workers: a models-only engine never fetches a tile.
   const pool = new WorkerPool<MeshWorkerRequest & { id: number }, MeshWorkerResponse>(
-    () => new Worker(new URL('./meshWorker', import.meta.url)),
+    (events) => webWorker(new Worker(new URL('./meshWorker', import.meta.url)), events),
     buildings ? quality.workers : 0,
     (reply) => onReply(reply),
     // A worker died with this request: retried like any failed tile.
