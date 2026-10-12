@@ -84,6 +84,8 @@ const MIN_PARTS: Record<string, number> = {
   // Measured 2026-10-12 on the runner: one part's roads were 302 MB (wrangler
   // stops at 314.6) and 13.2 GB of memory — the outback's tracks.
   'australia-oceania/australia': 2,
+  // Measured the same day: in 4 parts, one part's roads passed 300 MiB.
+  'asia/sea': 8,
 };
 
 interface IndexFeature {
