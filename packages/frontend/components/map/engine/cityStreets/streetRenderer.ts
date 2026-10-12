@@ -43,7 +43,6 @@ import {
 } from './streetMaterials';
 import type { StreetMeshStats } from './streetMesher';
 import type { QualityProfile } from '@/lib/map/quality/profile';
-import { markingShaders, surfaceShaders } from './streetShaders';
 
 /** Streets are drawn from this zoom; they fade in over the next quarter zoom. */
 export const STREETS_MIN_ZOOM = 16;
@@ -148,7 +147,7 @@ interface Entry {
   /** Its slot in the ground atlas while it holds one. */
   slot: number | null;
   groundVersion: number;
-  /** Its tile as the materials read it: GLSL uniforms, and (TSL) the mesh's `userData`. */
+  /** Its tile's live values, which the shared materials read through the mesh's `userData`. */
   uniforms: {
     uGroundSlot: { value: number };
     uGrounded: { value: number };
@@ -180,11 +179,8 @@ const vec3s = (list: readonly (readonly [number, number, number])[]) =>
   list.map(([r, g, b]) => new THREE.Vector3(r, g, b));
 
 export function createCityStreets(options: CityStreetsOptions): CityOverlay {
-  // Under the city sky the streets are GLSL and drawn in the engine's scene;
-  // without it, TSL in its TSL pass (`docs/MAP_NATIVE_3D.md` → Phase 2).
-  const group = new THREE.Group();
-  group.matrixAutoUpdate = false;
-  group.matrixWorldAutoUpdate = false;
+  // Drawn by the engine's one renderer (`tsl/tslPass.ts`), lit by the city
+  // sky when there is one (`setSky`).
   const tslGroup = new THREE.Group();
   tslGroup.matrixAutoUpdate = false;
   tslGroup.matrixWorldAutoUpdate = false;
@@ -212,23 +208,13 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     uNightFactor: { value: 0 },
     uFade: { value: 1 },
     uPxPerM: { value: 1 },
-    uDepthBias: { value: STREET_BUDGET.depthBias },
-    uAtlas: { value: atlas as THREE.Texture },
-    uGroundAtlas: { value: groundAtlas.texture as THREE.Texture },
     uSurfaceDay: { value: vec3s(options.palette.surfaces.day) },
     uSurfaceNight: { value: vec3s(options.palette.surfaces.night) },
     uPaintDay: { value: vec3s(options.palette.paint.day) },
     uPaintNight: { value: vec3s(options.palette.paint.night) },
   };
+  // The city sky's light inputs (`setSky`), before the first material is built.
   let sky: CityOverlaySky | null = null;
-  let shaders: {
-    surfaces: ReturnType<typeof surfaceShaders>;
-    markings: ReturnType<typeof markingShaders>;
-  } | null = null;
-  const shadersNow = (withSky: CityOverlaySky) => {
-    shaders ??= { surfaces: surfaceShaders(withSky), markings: markingShaders(withSky) };
-    return shaders;
-  };
   // One material per kind for every tile, built on first use.
   let materials: StreetMaterials | null = null;
   const materialsNow = () => {
@@ -243,6 +229,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       fade: () => shared.uFade.value,
       pxPerM: () => shared.uPxPerM.value,
       depthBias: STREET_BUDGET.depthBias,
+      sky,
     });
     return materials;
   };
@@ -275,9 +262,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     for (const mesh of [entry.surfaces, entry.markings]) {
       if (!mesh) continue;
       mesh.removeFromParent();
+      // The materials are shared by every tile (`streetMaterials.ts`).
       mesh.geometry.dispose();
-      // The GLSL materials are the mesh's own; the TSL ones are shared.
-      if (mesh.material instanceof THREE.RawShaderMaterial) mesh.material.dispose();
     }
     entry.surfaces = null;
     entry.markings = null;
@@ -300,25 +286,9 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       geometry.setAttribute('uv', new THREE.BufferAttribute(data.uvs, 2));
     }
     geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
-    const material = sky
-      ? new THREE.RawShaderMaterial({
-          glslVersion: THREE.GLSL3,
-          ...shadersNow(sky)[kind],
-          uniforms: { ...sky.uniforms, ...shared, ...entry.uniforms },
-          side: THREE.DoubleSide,
-          ...(kind === 'markings'
-            ? {
-                transparent: true,
-                depthWrite: false,
-                blending: THREE.CustomBlending,
-                blendSrc: THREE.OneFactor,
-                blendDst: THREE.OneMinusSrcAlphaFactor,
-              }
-            : {}),
-        })
-      : materialsNow()[kind];
+    const material = materialsNow()[kind];
     const mesh = new THREE.Mesh(geometry, material);
-    if (!sky) mesh.userData[STREET_TILE_USERDATA_KEY] = streetTileOf(entry.uniforms);
+    mesh.userData[STREET_TILE_USERDATA_KEY] = streetTileOf(entry.uniforms);
     mesh.frustumCulled = false;
     mesh.matrixAutoUpdate = false;
     mesh.matrixWorldAutoUpdate = false;
@@ -326,7 +296,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     // markings first among the blended (before city life's contact shadows).
     mesh.renderOrder = kind === 'surfaces' ? -3 : -2;
     mesh.visible = false;
-    (sky ? group : tslGroup).add(mesh);
+    tslGroup.add(mesh);
     return mesh;
   };
 
@@ -423,9 +393,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
   let lastSignature = '';
 
   const overlay: CityOverlay = {
-    attach(scene, tslScene) {
-      scene.add(group);
-      tslScene.add(tslGroup);
+    attach(scene) {
+      scene.add(tslGroup);
     },
 
     update({ view, center, opacity }: CityOverlayFrame) {
@@ -620,11 +589,9 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     },
 
     setSky(next) {
+      // Set once, before the first frame builds the materials; the sky's
+      // night factor is then the one the streets read, as every city material.
       sky = next;
-      shaders = null;
-      // The sky's night factor is the one every city material reads.
-      const night = next.uniforms.uNightFactor as { value: number } | undefined;
-      if (night) shared.uNightFactor = night;
     },
 
     setNightFactor(nightFactor) {
@@ -641,7 +608,6 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       materials?.dispose();
       atlas.dispose();
       groundAtlas.dispose();
-      group.removeFromParent();
       tslGroup.removeFromParent();
     },
   };

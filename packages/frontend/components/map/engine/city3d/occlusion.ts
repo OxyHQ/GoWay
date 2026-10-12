@@ -32,9 +32,9 @@
  * `docs/MAP_3D_CITY.md`.
  *
  * Every function here is pure and mirrored by the materials — TSL in
- * `tsl/common.ts` (`extrusionLit`), GLSL in the sky's `skyShaders.ts` — which
- * interpolates these same constants into its source, so the tested number and
- * the drawn number cannot drift apart. The light itself is MapLibre's, below.
+ * `tsl/common.ts` (`extrusionLit`) and the sky's `tsl/skyBuildingMaterial.ts`,
+ * which build these same constants into their shaders, so the tested number
+ * and the drawn number cannot drift apart. The light itself is MapLibre's, below.
  */
 
 /** A direction in local ENU: x east, y north, z up. */

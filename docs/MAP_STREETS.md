@@ -34,7 +34,7 @@ GOWAY_CITY_TILES_ARCHIVE=<buildings>.pmtiles,$PWD/packages/frontend/.tiles/city-
 | Mesher (pure, in the worker) | `cityStreets/streetMesher.ts`, buffers `meshBuffers.ts` |
 | SDF atlas: the map's glyphs, the arrows | `cityStreets/streetAtlas.ts` (glyph PBFs decoded with `scripts/mapgen/glyph-pbf.ts`, the build's own decoder) |
 | Worker, protocol | `cityStreets/streetWorker.ts`, `protocol.ts`, run through the engine's `WorkerPool` |
-| Renderer (a `CityOverlay` of the city engine) | `cityStreets/streetRenderer.ts`; materials: `streetMaterials.ts` (TSL, the engine's TSL pass), `streetShaders.ts` (GLSL, under the city sky only, until the sky is ported: `MAP_NATIVE_3D.md`); ground: `groundAtlas.ts` |
+| Renderer (a `CityOverlay` of the city engine) | `cityStreets/streetRenderer.ts`; materials: `streetMaterials.ts` (TSL, drawn by the engine's renderer; lit and hazed by the city sky when it is on); ground: `groundAtlas.ts` |
 | Palette (day, night) | `lib/map/style/streetPalette.ts` |
 | Adapter | `components/map/city3dLayer.web.ts` (`streets` option), `MapCanvas.web.tsx` (`useMapFeature('cityStreets')`) |
 | Tests | `components/map/__tests__/cityStreetsLanes.test.ts`, `cityStreetsMarkings.test.ts`, `cityStreetsMesher.test.ts`; `scripts/__tests__/cityStreetTags.test.ts`, `cityRoads.test.ts`; `lib/map/__tests__/mapFeatures.test.ts` |

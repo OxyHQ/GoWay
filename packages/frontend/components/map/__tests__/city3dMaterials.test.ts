@@ -1,18 +1,18 @@
 /**
- * The detailed city material (`engine/city3d/materials.ts`): the GLSL's
- * structure, the per-building seed, the window hash, and the lighting model's
- * promises — no black sides by day, buildings a step lighter than the ground
- * at night — computed by the JS mirror of the shader.
+ * The detailed city material (`engine/city3d/materials.ts`, its shader
+ * `tsl/detailedMaterial.ts`): what the shader is built from, the per-building
+ * seed, the window hash, and the lighting model's promises — no black sides by
+ * day, buildings a step lighter than the ground at night — computed by the JS
+ * mirror of the shader.
  *
- * The GLSL itself is compiled and drawn in a browser (the side-by-sides in
- * `docs/MAP_3D_CITY.md` → Art direction); here it is checked as TEXT.
+ * The shader itself is compiled and drawn in a browser (the visibility gate,
+ * and the side-by-sides in `docs/MAP_3D_CITY.md` → Art direction).
  */
 import { describe, expect, test } from 'bun:test';
 
 import {
-  DETAILED_DEFINE,
-  DETAILED_SKY_MATERIAL_GLSL,
-  MATERIAL_GLSL,
+  MATERIAL_FLOAT_STEMS,
+  MATERIAL_VEC3_STEMS,
   materialRamp,
   materialUniformValues,
   pcgHash,
@@ -23,9 +23,19 @@ import {
 import { computeSkyState } from '@/components/map/engine/city3d/atmosphere';
 import { buildingSeed, meshOsmBuildings } from '@/components/map/engine/city3d/osmMesher';
 import type { OsmBuilding } from '@/components/map/engine/city3d/osmTiles';
-import { OSM_BASE_GLSL, TAG_TEMPER } from '@/components/map/engine/city3d/osmShaders';
-import { skyCityFragmentShader } from '@/components/map/engine/city3d/skyShaders';
+import { TAG_TEMPER } from '@/components/map/engine/city3d/tsl/buildingSurface';
+import { createBuildingUniforms } from '@/components/map/engine/city3d/tsl/buildingMaterial';
+import {
+  buildingSeedOf,
+  createDetailedMaterial,
+} from '@/components/map/engine/city3d/tsl/detailedMaterial';
+import { createSkyBuildingMaterials } from '@/components/map/engine/city3d/tsl/skyBuildingMaterial';
+import { createSkyNodes } from '@/components/map/engine/city3d/tsl/skyNodes';
+import { float, vec3, vec4 } from 'three/tsl';
+import { FrontSide, Vector3 } from 'three/webgpu';
 import { CITY_GROUND_PALETTES, CITY_MATERIALS, type Rgb } from '@/lib/map/style/palette3d';
+
+import { constantsOf, nodesOf, skyRefs } from './tslGraph';
 
 const luma = (c: readonly number[]) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 const hexRgb = (hex: string): Rgb => {
@@ -35,19 +45,43 @@ const hexRgb = (hex: string): Rgb => {
 
 const ROOF = [0, 0, 1] as const;
 
-describe('the GLSL', () => {
+/**
+ * The material's values (`materialUniformValues`), every number made unique
+ * so a test can tell which one a node holds.
+ */
+function uniqueValues(values: Record<string, number | number[]>) {
+  const out: Record<string, number | number[]> = {};
+  let unique = 1000;
+  for (const [name, value] of Object.entries(values)) {
+    out[name] = Array.isArray(value) ? value.map(() => unique++) : unique++;
+  }
+  return out;
+}
+
+const lower = (stem: string) => stem[0].toLowerCase() + stem.slice(1);
+
+describe('the shader', () => {
   const values = materialUniformValues(CITY_MATERIALS);
 
-  test('declares every uniform the engine uploads, as a day/night pair', () => {
-    for (const name of Object.keys(values)) {
-      expect(MATERIAL_GLSL).toMatch(new RegExp(`uniform (vec3|float) ${name};`));
-    }
-    for (const name of Object.keys(values).filter((n) => !n.endsWith('Night'))) {
-      expect(values).toHaveProperty(`${name}Night`);
+  test('holds every value, as a day/night pair blended by the night seam', () => {
+    const unique = uniqueValues(values);
+    const night = float(0.5);
+    const { mat } = createDetailedMaterial(unique, night);
+    const fields = mat as unknown as Record<string, unknown>;
+    for (const stem of [...MATERIAL_VEC3_STEMS, ...MATERIAL_FLOAT_STEMS]) {
+      const field = fields[lower(stem)];
+      const held = constantsOf(field);
+      for (const name of [`uMat${stem}`, `uMat${stem}Night`]) {
+        const value = unique[name];
+        for (const v of Array.isArray(value) ? value : [value]) expect(held).toContain(v);
+      }
       // Blended by the engine's one night seam, never a factor of its own.
-      expect(MATERIAL_GLSL).toContain(`mix(${name}, ${name}Night, t)`);
+      expect(nodesOf(field)).toContain(night as never);
     }
-    expect(MATERIAL_GLSL).toContain('clamp(uNightFactor, 0.0, 1.0)');
+    // And there is no value the shader does not hold.
+    expect(Object.keys(values).length).toBe(
+      2 * (MATERIAL_VEC3_STEMS.length + MATERIAL_FLOAT_STEMS.length),
+    );
   });
 
   test('night darkens the shared day ramp by night.low / day.low', () => {
@@ -58,40 +92,34 @@ describe('the GLSL', () => {
     expect(values.uMatAlbedoScale).toEqual([1, 1, 1]);
   });
 
-  test('is behind the define and include-guarded, and the sky’s shaders are its one path', () => {
-    expect(MATERIAL_GLSL.trim().startsWith(`#ifdef ${DETAILED_DEFINE}`)).toBe(true);
-    expect(MATERIAL_GLSL).toContain('#ifndef GOWAY_MATERIAL_DECLS');
+  test('is the sky path’s response: both formats build with it', () => {
+    const sky = createSkyNodes(skyRefs(true), 12);
+    const detailed = createDetailedMaterial(values, sky.nightFactor);
+    const materials = createSkyBuildingMaterials({
+      uniforms: createBuildingUniforms({
+        uLow: { value: new Vector3() },
+        uTall: { value: new Vector3() },
+        uVeryTall: { value: new Vector3() },
+        uTallM: { value: 60 },
+        uVeryTallM: { value: 180 },
+        uLightPosition: { value: new Vector3(0, 0, 1) },
+        uLightIntensity: { value: 0.5 },
+        uLightColor: { value: new Vector3(1, 1, 1) },
+        uOpacity: { value: 1 },
+        uGrounded: { value: 0 },
+      }),
+      sky,
+      response: detailed.response,
+      detailedSurface: detailed.surface,
+      side: FrontSide,
+    });
     for (const format of ['openmaptiles', 'goway'] as const) {
-      const shader = skyCityFragmentShader(format, DETAILED_SKY_MATERIAL_GLSL);
-      expect(shader).not.toContain('${');
-      // Every conditional: `#ifdef`, `#ifndef` and `#if` (the shadow taps).
-      const opens = shader.match(/#if(?:n?def)?\s/g)?.length ?? 0;
-      expect(shader.match(/#endif/g)?.length ?? 0).toBe(opens);
-      expect(shader).toContain('vec3 cityMaterial(CitySurface s, CityLight l)');
+      for (const dithered of [false, true]) {
+        expect(materials.get(format, dithered).colorNode).toBeDefined();
+      }
     }
-    // No second path: the map-lit buildings are TSL (`tsl/buildingMaterial.ts`),
-    // which has no detailed lighting; only the sky's shaders reach it.
-  });
-
-  test('the sky material is the contract’s cityMaterial, over the same declarations', () => {
-    expect(DETAILED_SKY_MATERIAL_GLSL).toContain('vec3 cityMaterial(CitySurface s, CityLight l)');
-    expect(DETAILED_SKY_MATERIAL_GLSL.startsWith(MATERIAL_GLSL)).toBe(true);
-    expect(DETAILED_SKY_MATERIAL_GLSL).not.toContain('${');
-    // It uses the sky's light inputs, not the palette's stand-ins.
-    for (const input of [
-      'l.sun',
-      'l.sunDir',
-      'l.sunVisibility',
-      'l.skyUp',
-      'l.skyDown',
-      'l.emitted',
-    ]) {
-      expect(DETAILED_SKY_MATERIAL_GLSL).toContain(input);
-    }
-    const body = DETAILED_SKY_MATERIAL_GLSL.slice(
-      DETAILED_SKY_MATERIAL_GLSL.indexOf('vec3 cityMaterial('),
-    );
-    expect(body).not.toMatch(/m\.sky\b|m\.ground\b|m\.sun\b/);
+    // No second path: the map-lit buildings (`tsl/buildingMaterial.ts`) have
+    // no detailed lighting; only the sky's material reaches it.
   });
 
   test('the engine ramp is the day one', () => {
@@ -147,10 +175,10 @@ describe('windows', () => {
     // vColor arrives interpolated: 37/255 can read as 36.9999 on one pixel and
     // 37.0001 on the next. Truncated, one window got two seeds — two draws of
     // lit/unlit — and rendered as speckle (seen at night in Eixample).
-    expect(MATERIAL_GLSL).toContain(
-      'uint(color.r * 255.0 + 0.5) + 256u * uint(color.g * 255.0 + 0.5)',
-    );
-    expect(MATERIAL_GLSL).not.toMatch(/uint\(color\.[rg] \* 255\.0\)/);
+    const constants = constantsOf(buildingSeedOf(vec4(0.1, 0.2, 0, 0)));
+    expect(constants.filter((c) => c === 0.5)).toHaveLength(2);
+    expect(constants).toContain(255);
+    expect(constants).toContain(256);
   });
 
   test('none are lit by day', () => {
@@ -246,12 +274,12 @@ describe('tagged colours in the detailed look', () => {
     expect(black).toBeGreaterThan(luma(m.low) * 0.8);
   });
 
-  test('osmBase applies the clamp only in the detailed look', () => {
-    const detailed = OSM_BASE_GLSL.slice(
-      OSM_BASE_GLSL.indexOf(`#ifdef ${DETAILED_DEFINE}`),
-      OSM_BASE_GLSL.lastIndexOf('#else'),
-    );
-    expect(detailed).toContain('gm.tagSaturation');
+  test('the detailed surface applies the clamp, from the material’s own values', () => {
+    const unique = uniqueValues(materialUniformValues(CITY_MATERIALS));
+    const { surface } = createDetailedMaterial(unique, float(0));
+    const tagged = surface(vec3(0.5), vec3(0.4, 0.2, 0.1), vec4(0.4, 0.2, 0.1, 1));
+    expect(constantsOf(tagged)).toContain(unique.uMatTagSaturation as number);
+    expect(constantsOf(tagged)).toContain(unique.uMatTagBlend as number);
   });
 });
 

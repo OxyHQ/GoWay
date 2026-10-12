@@ -1,20 +1,22 @@
 /**
- * The facade relief (`engine/city3d/materials.ts` → `gowayFacade`) and the
- * per-building class and era it reads (`osmMesher.ts` → `buildingFlagsOf`).
+ * The facade relief (`engine/city3d/tsl/detailedMaterial.ts` → `facadeOf`,
+ * its tables in `materials.ts`) and the per-building class and era it reads
+ * (`osmMesher.ts` → `buildingFlagsOf`).
  *
  * What can be pinned without a GPU: the flag byte round-trips through the
  * shader's decode, the per-class tables keep every opening inside its bay and
- * storey, and the relief is wholly behind its define and gated on RECORDED
- * storeys. How it looks is in the side-by-sides (`docs/MAP_3D_CITY.md` →
- * Art direction, "Facades").
+ * storey and are the shader's own, and the analytic slope is smoothstep's
+ * derivative. How it looks is in the visibility gate and the side-by-sides
+ * (`docs/MAP_3D_CITY.md` → Art direction, "Facades").
  */
 import { describe, expect, test } from 'bun:test';
 
+import { FACADE_STYLES } from '@/components/map/engine/city3d/materials';
 import {
-  DETAILED_SKY_MATERIAL_GLSL,
-  FACADE_STYLES,
-  MATERIAL_GLSL,
-} from '@/components/map/engine/city3d/materials';
+  FACADE_TABLES,
+  stepD as shaderStepD,
+} from '@/components/map/engine/city3d/tsl/detailedMaterial';
+import { float } from 'three/tsl';
 import {
   buildingFlagsOf,
   VERTEX_ERA_SHIFT,
@@ -22,6 +24,8 @@ import {
   VERTEX_USE_SHIFT,
 } from '@/components/map/engine/city3d/osmMesher';
 import { BUILDING_ERAS, BUILDING_USES } from '@/lib/map/cityTiles';
+
+import { constantsOf } from './tslGraph';
 
 /** The shader's decode (`gowayFacade`), in JS. */
 const decode = (flags: number) => ({
@@ -74,48 +78,16 @@ describe('the per-class styles', () => {
     }
   });
 
-  test('the GLSL tables are generated from them', () => {
-    expect(MATERIAL_GLSL).toContain(`const vec4 GOWAY_OPENING[${FACADE_STYLES.length}]`);
-    expect(MATERIAL_GLSL).toContain('vec4(0.34, 0.18, 0.88, 0.16)'); // commercial
-    expect(MATERIAL_GLSL).not.toContain('${');
-  });
-});
-
-describe('the relief in the shader', () => {
-  test('is part of the one material response, read from the sky’s surface', () => {
-    const body = DETAILED_SKY_MATERIAL_GLSL.slice(
-      DETAILED_SKY_MATERIAL_GLSL.indexOf('vec3 cityMaterial('),
-    );
-    expect(body).toContain('gowayFacade(s.facade, s.color, s.flags, s.heightAboveGround, n)');
-    // The bent normal is what the light sees; occlusion still classifies by the wall's own.
-    expect(body).toContain('gowayWrap(m, r, l.sunDir)');
-    expect(body).toContain('gowayOcclusion(m, n,');
-  });
-
-  test('is gated on recorded storeys and walls, and fades out with distance', () => {
-    expect(MATERIAL_GLSL).toContain('float valid = step(0.5, levels)');
-    expect(MATERIAL_GLSL).toContain('(1.0 - step(0.3, abs(n.z)))');
-    expect(MATERIAL_GLSL).toMatch(
-      /float detail = \(1\.0 - smoothstep\(0\.12, 0\.3, max\(fw\.x, fw\.y\)\)\) \* valid;/,
-    );
-  });
-
-  test('is paid only near: one fwidth before any branch, then early returns', () => {
-    const body = MATERIAL_GLSL.slice(MATERIAL_GLSL.indexOf('GowayFacade gowayFacade('));
-    // No dFdx/dFdy: the slope is analytic, so the relief may sit behind a branch.
-    expect(body).not.toMatch(/dFd[xy]\(/);
-    const fw = body.indexOf('fwidth(');
-    const firstReturn = body.indexOf('return F;');
-    expect(fw).toBeGreaterThan(0);
-    expect(fw).toBeLessThan(firstReturn);
-    expect(body.split('fwidth(').length - 1).toBe(1);
-    expect(body).toContain('if (detail <= 0.0) return F;');
-    expect(body).toContain('if (near <= 0.0) return F;');
+  test('the shader’s tables are generated from them', () => {
+    const openings = constantsOf(FACADE_TABLES.openings);
+    const reliefs = constantsOf(FACADE_TABLES.reliefs);
+    expect(openings).toEqual(FACADE_STYLES.flatMap((f) => [...f.opening]));
+    expect(reliefs).toEqual(FACADE_STYLES.flatMap((f) => [...f.relief]));
   });
 });
 
 describe('the analytic slope', () => {
-  // The GLSL's smoothstep and the derivative `gowayStepD` uses, in JS.
+  // The shader's smoothstep and the derivative `stepD` uses, in JS.
   const step = (e0: number, e1: number, x: number) => {
     const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
     return t * t * (3 - 2 * t);
@@ -125,7 +97,7 @@ describe('the analytic slope', () => {
     return (6 * t * (1 - t)) / (e1 - e0);
   };
 
-  test('gowayStepD is smoothstep’s derivative (central differences)', () => {
+  test('stepD is smoothstep’s derivative (central differences)', () => {
     for (const [e0, e1] of [
       [0.3, 0.6],
       [-0.32, -0.22],
@@ -139,6 +111,9 @@ describe('the analytic slope', () => {
         );
       }
     }
-    expect(MATERIAL_GLSL).toContain('return 6.0 * t * (1.0 - t) / (e1 - e0);');
+    // The shader's is the same expression: 6·t·(1 − t) / (e1 − e0).
+    expect(constantsOf(shaderStepD(0.3, 0.6, float(0.4)))).toEqual(
+      expect.arrayContaining([6, 1, 0.3, 0.6]),
+    );
   });
 });

@@ -8,12 +8,13 @@
  * chunk) and handed to `createCityEngine`, which calls it at fixed points of
  * its frame; it never reaches into the engine.
  */
-import type { IUniform, Scene } from 'three';
+import type { Scene } from 'three/webgpu';
 
 import type { CityView } from './cityEngine';
 import type { CityLight } from './occlusion';
 import type { Ground } from './terrainGround';
 import type { MercatorPoint } from './tileMath';
+import type { SkyNodes } from './tsl/skyNodes';
 
 export interface CityOverlayFrame {
   view: CityView;
@@ -25,12 +26,11 @@ export interface CityOverlayFrame {
 
 export interface CityOverlay {
   /**
-   * Once, when the engine is created: add objects to its scene — `scene` for
-   * GLSL materials (drawn by `WebGLRenderer`), `tslScene` for TSL node
-   * materials (drawn first, by the TSL pass, `tsl/tslPass.ts`). Same camera,
-   * same depth buffer; `docs/MAP_NATIVE_3D.md` → Phase 2.
+   * Once, when the engine is created: add objects to its scene, drawn by the
+   * engine's one renderer (`tsl/tslPass.ts`) with TSL node materials. Same
+   * camera, same depth buffer; `docs/MAP_NATIVE_3D.md` → Phase 2.
    */
-  attach(scene: Scene, tslScene: Scene): void;
+  attach(scene: Scene): void;
   /** Every frame the host draws, before the scene renders. */
   update(frame: CityOverlayFrame): void;
   /** The map's light, whenever the buildings' changes. */
@@ -52,7 +52,7 @@ export interface CityOverlay {
   /**
    * How much of a night to draw (0 … 1, `lib/map/landmarks/night.ts`), whenever
    * the engine's changes and once at creation. Optional; under the city sky the
-   * same value also arrives as `uNightFactor` in {@link CityOverlaySky.uniforms}.
+   * same value also arrives as {@link SkyNodes.nightFactor}.
    */
   setNightFactor?(nightFactor: number): void;
   /** Free everything; the engine is going away. */
@@ -60,21 +60,14 @@ export interface CityOverlay {
 }
 
 /**
- * The city sky's light inputs, for an overlay's own materials (`sky.ts`).
- * `uniforms` are LIVE objects — spread them into a `RawShaderMaterial`'s
- * uniforms and they follow the sun, the shadow map and the night with no
- * further calls; `glsl` declares them and defines, for a fragment shader:
- *
- *  - `float sunVisibility(vec4 shadowClip)` — 1 lit … 0 in shadow (soft);
- *    `shadowClip` is `uShadowMatrix * worldPosition`, where `worldPosition`
- *    is the model matrix applied to the vertex (centre-relative mercator,
- *    exactly what `tileModelMatrix` produces);
- *  - `vec3 hazeTransmittance(float cameraHeightM, float dirZ, float distanceM)`
- *    and `vec3 skyColor(vec3 dirEnu)` — the haze, as the buildings get it;
- *  - the light: `uSunDir` (ENU), `uSunColor`, `uSkyAmbient`, `uGroundBounce`
- *    (linear, exposed), `uNightFactor`, `uCamera` (ENU metres), `uGroundZ`.
+ * The city sky's light inputs, for an overlay's own materials: the sky's TSL
+ * nodes (`tsl/skyNodes.ts`), LIVE — they follow the sun, the shadow map and
+ * the night with no further calls. Among them `sunVisibility(shadowClip)`
+ * (`shadowClip` is `shadowMatrix × world`, where `world` is the model matrix
+ * applied to the vertex — centre-relative mercator, exactly what
+ * `tileModelMatrix` produces), `hazeTransmittance`, `skyColor`, `aerial`,
+ * `groundLight`, and the light: `sunDir` (ENU), `sunColor`, `skyAmbient`,
+ * `groundBounce` (linear, exposed), `nightFactor`, `camera` (ENU metres),
+ * `groundZ`.
  */
-export interface CityOverlaySky {
-  uniforms: Record<string, IUniform>;
-  glsl: string;
-}
+export type CityOverlaySky = SkyNodes;

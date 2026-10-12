@@ -76,18 +76,20 @@ import { cityQuality } from '../quality';
 
 import { hexToRgb } from '@/lib/map/colour';
 import { hiddenFeatureIds, tilesAround } from './landmarkTiles';
-import {
-  DETAILED_DEFINE,
-  DETAILED_SKY_MATERIAL_GLSL,
-  materialRamp,
-  materialUniformValues,
-} from './materials';
+import { materialRamp, materialUniformValues } from './materials';
 import type { CitySun, HostSkyColours, SkyAppearance } from './atmosphere';
-import { type DrawnTile, FrameSchedule, runsSkyOffscreenPass } from './frameSelection';
+import {
+  type DrawnTile,
+  FrameSchedule,
+  runsSkyOffscreenPass,
+  SKY_PASS_LAYER,
+} from './frameSelection';
 import { createModelLayer, type ModelSpec, type ModelStatus } from './models';
 import type { CityLight } from './occlusion';
 import type { CityTileFormat, MeshWorkerRequest, MeshWorkerResponse } from './protocol';
 import { type CitySky, type CitySkyStats, type CitySkyView, createCitySky } from './sky';
+import { createDetailedMaterial } from './tsl/detailedMaterial';
+import { type CityMaterialResponse, clayResponse } from './tsl/skyBuildingMaterial';
 import {
   centeredProjection,
   type LngLatBox,
@@ -215,16 +217,17 @@ export interface CityEngineOptions {
     appearance: SkyAppearance;
     /**
      * The art direction's material response for the one sky-lit shading
-     * path: GLSL defining `vec3 cityMaterial(CitySurface s, CityLight l)`
-     * (`skyShaders.ts` documents both structs). Absent: the default clay.
+     * path (`tsl/skyBuildingMaterial.ts` documents the contract). Absent: the
+     * detailed look's when {@link CityEngineOptions.material} is set, else
+     * the default clay.
      */
-    material?: string;
+    response?: CityMaterialResponse;
   };
   /**
    * The detailed look (`materials.ts`, the `detailedCity` map feature): the material's
    * day and night, blended on the GPU by the night seam (`setNightFactor`).
    * With {@link CityEngineOptions.sky} — its one shading path — every building
-   * is drawn in the sky's light through this response (`sky.material`), and
+   * is drawn in the sky's light through this response, and
    * its day ramp replaces {@link CityEngineOptions.palette}'s. Without a sky,
    * or absent: the look is unchanged.
    */
@@ -279,8 +282,6 @@ export interface CityEngineStats {
   frameCpuMs: number;
   /** …of which the city's own draw calls (buildings, trees, overlays), smoothed. */
   drawCpuMs: number;
-  /** Which renderer drew the buildings: `tsl` (`tsl/tslPass.ts`), or `glsl` with the city sky. */
-  buildingPath: 'glsl' | 'tsl';
   /** Meshes waiting for the per-frame upload budget. */
   uploadsQueued: number;
   workers: number;
@@ -440,11 +441,6 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const trees = quality.treeBudget > 0 ? (options.trees ?? null) : null;
   const probe = options.probe;
   const now = options.now ?? (() => performance.now());
-  const renderer = new THREE.WebGLRenderer({ canvas: options.canvas, context: options.gl });
-  // The map owns the framebuffer: never clear what it has already drawn.
-  renderer.autoClear = false;
-
-  const scene = new THREE.Scene();
   const camera = new THREE.Camera();
   const overlays = options.overlays ?? [];
 
@@ -458,35 +454,40 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     // The night seam (`setNightFactor`): read by every night-time look.
     uNightFactor: { value: 0 },
   };
-  // City sky: its shaders and light inputs replace the buildings' own — one
-  // shading path (`skyShaders.ts`).
   // The detailed look is a response to the sky's light: its one shading path
   // (`materials.ts`). Without a sky there is nothing for it to answer.
   const detailed = options.sky ? options.material : undefined;
+  // City sky: its light inputs, shadow map and haze light the buildings in
+  // place of the map's light — one shading path (`tsl/skyBuildingMaterial.ts`).
   const sky: CitySky | null = options.sky
     ? createCitySky({
         appearance: options.sky.appearance,
-        // The art direction's response, when the detailed look is on.
-        material: options.sky.material ?? (detailed ? DETAILED_SKY_MATERIAL_GLSL : undefined),
         shadows: quality.shadows,
         now,
-        baseUniforms: light,
+        nightFactor: light.uNightFactor,
         requestRepaint: () => options.requestRepaint(),
       })
     : null;
-  // Overlays (city life) get the sky's live inputs too (`overlay.ts` → `setSky`).
-  if (sky) for (const overlay of overlays) overlay.setSky?.(sky.overlayInput);
+  // Overlays (city life, the streets) get the sky's live inputs too (`overlay.ts` → `setSky`).
+  if (sky) for (const overlay of overlays) overlay.setSky?.(sky.nodes);
+  // The sky's ground passes draw first in the same render as the buildings
+  // (`SKY_PASS_LAYER`); a frame with no city draws them alone.
+  camera.layers.enable(SKY_PASS_LAYER);
+  const skyPassCamera = new THREE.Camera();
+  skyPassCamera.layers.set(SKY_PASS_LAYER);
   const buildingUniforms = {
     ...light,
-    ...sky?.buildingUniforms,
     uLow: { value: new THREE.Vector3() },
     uTall: { value: new THREE.Vector3() },
     uVeryTall: { value: new THREE.Vector3() },
     uTallM: { value: 60 },
     uVeryTallM: { value: 180 },
-    // The detailed material's uniforms (day and night), only when it is on.
-    ...(detailed ? materialSlots(detailed) : {}),
   };
+  // The detailed look's response and surface tint (day and night), only when it is on.
+  const detailedMaterial =
+    detailed && sky
+      ? createDetailedMaterial(materialUniformValues(detailed), sky.nodes.nightFactor)
+      : null;
   let drawCpuMs = 0;
   const treeUniforms = {
     ...light,
@@ -495,35 +496,36 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     uTreeMinHeight: { value: 0 },
     uTrunk: { value: new THREE.Vector3(0.3, 0.3, 0.25) },
   };
-  // The TSL pass (`docs/MAP_NATIVE_3D.md` → Phase 2): three's
-  // `WebGPURenderer` in this same context, drawing every ported material —
-  // the trees, and the buildings whenever the city sky is off — bound to
-  // these same uniforms. Imported statically: a separate `import()` would
-  // share three's core with this chunk, and Expo hoists a module two async
-  // chunks share into the first-paint `__common` chunk (measured: 27.5 →
-  // 135.8 KB gzip for every visitor).
+  // The engine's one renderer (`docs/MAP_NATIVE_3D.md` → Phase 2): three's
+  // `WebGPURenderer` in this same context, drawing every material — the
+  // buildings (map-lit, or under the sky), the trees, the sky's passes and
+  // every overlay — bound to these same uniforms. Imported statically: a
+  // separate `import()` would share three's core with this chunk, and Expo
+  // hoists a module two async chunks share into the first-paint `__common`
+  // chunk (measured: 27.5 → 135.8 KB gzip for every visitor).
   const tslPass = createTslPass({
     gl: options.gl,
     canvas: options.canvas,
     buildingUniforms,
     treeUniforms,
     side: MESH_SIDES,
+    ...(sky
+      ? {
+          sky: {
+            nodes: sky.nodes,
+            response: options.sky?.response ?? detailedMaterial?.response ?? clayResponse,
+            detailedSurface: detailedMaterial?.surface,
+          },
+        }
+      : {}),
     onReady: () => options.requestRepaint(),
   });
-  // Overlays draw in this scene (GLSL) or the TSL pass's, as each is ported.
-  for (const overlay of overlays) overlay.attach(scene, tslPass.scene);
-  // The shared TSL materials draw every tile; with the sky, the buildings are
-  // still the sky's `RawShaderMaterial`s, one per tile entry (`cityMeshes.ts`,
-  // which also explains which faces each keeps: the model matrices mirror y,
-  // and three swaps its notion of "front" with the determinant).
-  const context = {
-    scene,
-    buildingUniforms,
-    // The detailed look: every building material compiles its response.
-    buildingDefines: (detailed ? { [DETAILED_DEFINE]: '' } : {}) as Record<string, string>,
-    buildingShaders: sky?.buildingShaders ?? null,
-    tsl: tslPass,
-  };
+  for (const overlay of overlays) overlay.attach(tslPass.scene);
+  if (sky) tslPass.scene.add(sky.passes);
+  // The shared materials draw every tile (`cityMeshes.ts`, which also explains
+  // which faces each keeps: the model matrices mirror y, and three swaps its
+  // notion of "front" with the determinant).
+  const context = { tsl: tslPass };
   // Where the city tiles draw instead of the basemap's buildings (`sources.ts`).
   const city = options.city
     ? { tileZoom: options.city.tileZoom, coverage: options.city.coverage }
@@ -686,7 +688,6 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       lastTreeMs,
       frameCpuMs,
       drawCpuMs,
-      buildingPath: sky ? 'glsl' : 'tsl',
       uploadsQueued: arrivals.length,
       workers: pool.size,
       errors,
@@ -1104,7 +1105,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       // anything to cast, and allocates its shadow target either way. Only
       // the buildings cast (`cityMeshes.ts` → `CASTER_LAYER`).
       probe?.enter('shadows');
-      sky.prerender(renderer, scene, prepared.skyView, prepared.casters);
+      sky.prerender(tslPass, tslPass.scene, prepared.skyView, prepared.casters);
       probe?.leave();
     },
 
@@ -1114,23 +1115,21 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       const frameOf = schedule.render() || !prepared ? prepare(view) : prepared;
       prepared = null;
 
-      // three caches GL state it believes it set; the map changed all of it
-      // since the last frame. MapLibre in turn marks its own state dirty
-      // after a custom layer returns, so nothing needs restoring after.
-      renderer.resetState();
+      // The pass resets three's view of the GL state the map changed before
+      // each draw; MapLibre in turn marks its own state dirty after a custom
+      // layer returns, so nothing needs restoring after.
       // The sky and the haze are drawn at every zoom the effect covers,
-      // buildings or not.
+      // buildings or not: in the buildings' render, or alone without them.
+      let skyPasses = false;
       if (sky) {
         probe?.enter('sky');
-        sky.drawBackground(renderer, frameOf.skyView);
+        skyPasses = sky.update(tslPass, frameOf.skyView);
+        if (skyPasses && frameOf.opacity <= 0) tslPass.drawScene(tslPass.scene, skyPassCamera);
         probe?.leave();
       }
       if (frameOf.opacity > 0) {
         const drawStarted = performance.now();
         tslPass.draw(camera);
-        // The TSL pass changed GL state behind this renderer's back.
-        renderer.resetState();
-        renderer.render(scene, camera);
         const drawn = performance.now() - drawStarted;
         drawCpuMs = drawCpuMs === 0 ? drawn : drawCpuMs * 0.9 + drawn * 0.1;
         if (landmarks.active) {
@@ -1287,10 +1286,6 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       shapes.dispose();
       requests.clear();
       arrivals.length = 0;
-      // `dispose()` frees three's own bookkeeping. NOT `forceContextLoss()`,
-      // which `sparkEngine` uses on its own canvas: this context is the MAP's,
-      // and losing it would blank the basemap.
-      renderer.dispose();
     },
   };
 
@@ -1306,16 +1301,4 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   }
   engine.setLight(options.light);
   return engine;
-}
-
-/** three uniform slots for every uniform the detailed material declares. */
-function materialSlots(material: {
-  day: CityMaterial;
-  night: CityMaterial;
-}): Record<string, { value: number | THREE.Vector3 }> {
-  const slots: Record<string, { value: number | THREE.Vector3 }> = {};
-  for (const [name, value] of Object.entries(materialUniformValues(material))) {
-    slots[name] = { value: Array.isArray(value) ? new THREE.Vector3().fromArray(value) : value };
-  }
-  return slots;
 }
