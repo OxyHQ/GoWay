@@ -102,9 +102,20 @@ export interface CityStreetsOptions {
    */
   onPaintedNames?: (points: readonly [number, number][]) => void;
   onStats?: (stats: CityStreetsStats) => void;
+  /** The clock (ms) for retries and the statistics' interval; absent: `performance.now`. */
+  now?: () => number;
 }
 
 export interface CityStreetsStats {
+  /** Tiles this view selects (inside the road coverage). */
+  tilesWanted: number;
+  /**
+   * …of which answered: meshed (`ready`) or known to hold no street
+   * (`empty`). With `pending` 0, `tilesSettled === tilesWanted` is "every tile
+   * the view wants is in" — the streets are SETTLED. A failed tile waiting
+   * for its retry is not settled.
+   */
+  tilesSettled: number;
   tilesDrawn: number;
   tilesFull: number;
   tilesCached: number;
@@ -236,6 +247,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     return materials;
   };
 
+  const clock = options.now ?? (() => performance.now());
   let namedKey = '';
   const entries = new Map<string, Entry>();
   const byId = new Map<number, Entry>();
@@ -326,7 +338,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     if (reply.type === 'error') {
       errors++;
       entry.state = 'failed';
-      entry.retryAt = performance.now() + 4000;
+      entry.retryAt = clock() + 4000;
       return;
     }
     if (reply.epoch !== atlasEpoch) {
@@ -408,6 +420,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
 
   let stats: CityStreetsStats | null = null;
   let lastStatsAt = 0;
+  let lastSignature = '';
 
   const overlay: CityOverlay = {
     attach(scene, tslScene) {
@@ -434,7 +447,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
 
       const selected = select(view);
       const wanted = new Set(selected.map((t) => tileKey(t)));
-      const now = performance.now();
+      const now = clock();
       // Ask for what is missing, nearest first, within the in-flight budget.
       let inFlight = byId.size;
       for (const tile of selected) {
@@ -563,9 +576,24 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
         (ratio * 512 * 2 ** view.zoom) /
         (EARTH_CIRCUMFERENCE_M * Math.cos((view.center.lat * Math.PI) / 180));
 
-      if (options.onStats && now - lastStatsAt > 500) {
+      // Counts that changed are reported AT ONCE; timings at most twice a
+      // second. Throttling the counts too left the last report stale for
+      // good: the frame that drew the last tiles fell inside the 500 ms, and
+      // a map at rest draws no frame after it, so `pending` read 2 forever
+      // while both tiles were on the screen (the visibility gate's landmark
+      // views never settled). The city engine's `reportStats` works the same way.
+      let tilesSettled = 0;
+      for (const tile of selected) {
+        const state = entries.get(tileKey(tile))?.state;
+        if (state === 'ready' || state === 'empty') tilesSettled++;
+      }
+      const signature = `${selected.length}|${tilesSettled}|${tilesDrawn}|${tilesFull}|${entries.size}|${byId.size}|${errors}`;
+      if (options.onStats && statsDue(signature, lastSignature, now, lastStatsAt)) {
         lastStatsAt = now;
+        lastSignature = signature;
         stats = {
+          tilesWanted: selected.length,
+          tilesSettled,
           tilesDrawn,
           tilesFull,
           tilesCached: entries.size,
@@ -661,4 +689,20 @@ export function streetLodPolicy(lat: number, maxTiles: number): LodPolicy {
     hysteresis: 0.1,
     boxHeightM: 20,
   };
+}
+
+/** Timings are refreshed at most this often; counts whenever they change. */
+export const STREET_STATS_INTERVAL_MS = 500;
+
+/**
+ * Whether a frame's statistics are reported: always when any count changed
+ * (`signature`), else once the interval has passed (the timings).
+ */
+export function statsDue(
+  signature: string,
+  lastSignature: string,
+  now: number,
+  lastAt: number,
+): boolean {
+  return signature !== lastSignature || now - lastAt > STREET_STATS_INTERVAL_MS;
 }
