@@ -317,27 +317,42 @@ describe('live configuration', () => {
     });
   });
 
-  it('shares polling through Valkey when REDIS_URL (or LIVE_VALKEY_URL) is set, and never echoes it', () => {
+  it('shares polling through Valkey when REDIS_URL is set', () => {
     const listed = { LIVE_SOURCES: 'adsb-lol' };
     expect(parseLiveConfig(listed, ['adsb-lol']).valkeyUrl).toBeNull();
     expect(
       parseLiveConfig({ ...listed, REDIS_URL: 'redis://cache.internal:6379' }, ['adsb-lol'])
         .valkeyUrl,
     ).toBe('redis://cache.internal:6379');
+    // One name for it: no second variable kept in case.
     expect(
-      parseLiveConfig(
-        { ...listed, REDIS_URL: 'redis://a:6379', LIVE_VALKEY_URL: 'rediss://live.internal:6380' },
-        ['adsb-lol'],
-      ).valkeyUrl,
-    ).toBe('rediss://live.internal:6380');
-    let message = '';
-    try {
-      parseLiveConfig({ ...listed, REDIS_URL: 'https://user:secret@x' }, ['adsb-lol']);
-    } catch (error) {
-      message = String(error);
+      parseLiveConfig({ ...listed, LIVE_VALKEY_URL: 'redis://other:6379' }, ['adsb-lol']).valkeyUrl,
+    ).toBeNull();
+  });
+
+  it('a malformed shared REDIS_URL never stops the backend booting: live runs without a bus', () => {
+    const warnings: Record<string, unknown>[] = [];
+    for (const REDIS_URL of [
+      'valkey://cache:6379',
+      'cache.internal:6379',
+      'https://user:secret@x',
+    ]) {
+      const config = parseLiveConfig({ LIVE_SOURCES: 'renfe-cercanias', REDIS_URL }, [
+        'renfe-cercanias',
+      ]);
+      expect(config).toMatchObject({ sources: ['renfe-cercanias'], valkeyUrl: null });
+      expect(config.valkeyUrlProblem).toContain('REDIS_URL');
+      const service = createLiveService({
+        config,
+        logger: { info: () => {}, warn: (object) => warnings.push(object) },
+      });
+      expect(service).not.toBeNull();
+      service?.stop();
     }
-    expect(message).toContain('REDIS_URL');
-    expect(message).not.toContain('secret');
+    // Reported, never echoed: it may carry a password.
+    expect(warnings).toHaveLength(3);
+    expect(JSON.stringify(warnings)).not.toContain('secret');
+    expect(JSON.stringify(warnings)).not.toContain('cache.internal');
   });
 
   it('with no source listed (live off), the bus setting cannot stop the backend booting', () => {

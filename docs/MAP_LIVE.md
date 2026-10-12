@@ -574,10 +574,16 @@ The API runs as ECS tasks behind one ALB. Each task serves its own sockets;
 the tasks share GoWay's Valkey (`REDIS_URL`, the fleet's
 `/oxy/_shared/REDIS_URL`):
 
-- **Demand** — every 2 s each task writes the room keys its sockets watch
-  (public tiles × kinds; no box, no viewer, nothing per socket) with a 10 s
-  TTL, and reads every task's. A source is wanted while ANY task has a viewer
-  in its coverage.
+- **Demand** — every 2 s each task writes, under
+  `goway:live:demand:<task id>` with a 10 s TTL, the **z6 tiles × kinds** in
+  which any of its sockets watches anything (`coarseDemand` in `hub.ts`), and
+  reads every task's. A z6 tile is ~5.6° of longitude — ~470 km across at New
+  York, a whole region — so what is stored says "someone on this task looks
+  at transit somewhere in the north-east US", never a viewport: not the box,
+  not the rooms (a bike-share room is ~3.7 km), no viewer, nothing per socket.
+  That is all the leader needs: a source is wanted while any task's z6 tiles
+  meet its coverage, and the aircraft feed polls one region per z6 tile
+  anyway. The rooms themselves never leave the process.
 - **One leader per source** — a lease (`SET NX PX 15000`, renewed by its
   holder every 2 s through a compare-and-renew script). Only the holder polls;
   it publishes each answer (the enriched entities, gzip + base64) on one
@@ -591,14 +597,32 @@ the tasks share GoWay's Valkey (`REDIS_URL`, the fleet's
 - **A task that starts** asks the leaders to republish what they hold
   (`sync`), so its first viewer gets a full snapshot, not an empty one.
 - **Valkey down** — every task polls on its own (duplicate upstream requests,
-  logged once) until Valkey answers; then the leases decide again. A task
-  stops polling only once it is LISTENING again: Bun's client reconnects by
-  itself but does not restore subscriptions (measured: after a Redis restart
-  the old subscriber was connected and deaf), so a dropped or never-made
-  subscription is remade on a fresh connection, with a `sync`, before the
-  lease decides. Stopping closes the bus's connections whatever its state.
+  logged once) until Valkey answers; then the leases decide again. Three
+  things make "answers again" true in practice, each measured on Bun 1.4.3
+  against a real `redis-server`:
+  - **Deadlines.** Every bus call is bounded at a third of the lease (5 s): a
+    call that does not answer counts as the bus being down, so the task polls
+    on its own at once instead of waiting out the client (~10.7 s per command
+    with Valkey stopped; minutes on a silent partition, long enough for the
+    lease to pass to a second poller while the first still polls).
+  - **Fresh connections.** After an outage of 8 s or more Bun's client gives up
+    for good: every later command fails `ERR_REDIS_CONNECTION_CLOSED` even
+    once Valkey is back, while a new client answers at once. A failed call
+    therefore replaces any connection that is no longer connected
+    (`LiveBus.recover`).
+  - **Listening first.** A task stops polling only once it is subscribed again
+    — a reconnected client does not restore subscriptions, and a subscriber
+    that closed (`onclose`) or is not connected counts as lost — so the
+    subscription is remade on a fresh connection, with a `sync`, before the
+    lease decides.
+
+  Pinned by a test that stops a real server for 10 s and starts it again: one
+  leader per source and the follower hearing the leader within a few rounds
+  (the previous code kept both tasks polling). Stopping closes the bus's
+  connections whatever its state.
 - Nothing about a position is STORED in Valkey: positions pass through
-  pub/sub; the only keys are the leases and the demand, all with TTLs, so
+  pub/sub; the only keys are the leases, the task list and the coarse demand
+  above, all with TTLs, so
   `volatile-lru` may evict them under pressure (worst case: a second poller
   for a few seconds).
 - Static GTFS is read by every task that has demand (once a day each): the
@@ -608,8 +632,11 @@ the tasks share GoWay's Valkey (`REDIS_URL`, the fleet's
 
 Pinned in `live/__tests__/cluster.test.ts`: one upstream request for three
 tasks, every task serving the answer, failover after the lease, a late task
-synced, local polling while the bus is down — in memory, and against a real
-Valkey when `TEST_VALKEY_URL` is set (CI runs `valkey/valkey:8.0`).
+synced, local polling while the bus is down or silent, coarse demand — in
+memory; against a real Valkey when `TEST_VALKEY_URL` is set (CI runs
+`valkey/valkey:8.0`); and through a real 10 s outage of a server the test
+starts itself when `valkey-server` or `redis-server` is installed (CI installs
+`redis-server`).
 
 ### Bandwidth
 
@@ -638,7 +665,7 @@ parameters the task definition names as `secrets`.
 | Variable | Value | Where |
 | --- | --- | --- |
 | `LIVE_SOURCES` | `renfe-cercanias,fgc-geotren,mta-lirr,mta-mnr,mta-subway,amb-bus,aisa-bus,emt-fuenlabrada,digitraffic-ais` to start; add `mta-bus` with its key, `adsb-lol` after the operator's answer, `nyc-bikeshare` after Lyft's (→ Licences) | environment |
-| `REDIS_URL` | `/oxy/_shared/REDIS_URL` (the fleet Valkey), as allo, clarity and moovo read it; `LIVE_VALKEY_URL` overrides it if live ever gets its own | SSM, `secrets` |
+| `REDIS_URL` | `/oxy/_shared/REDIS_URL` (the fleet Valkey), as allo, clarity and moovo read it. Read only when `LIVE_SOURCES` lists a source; if it is malformed, GoWay logs a warning (never the value) and live runs without a bus — a variable a dozen services share never stops GoWay booting | SSM, `secrets` |
 | `LIVE_SOURCE_MTA_BUS_KEY` | the MTA Bus Time key | SSM `/oxy/goway/LIVE_SOURCE_MTA_BUS_KEY`, `secrets` |
 
 Nothing else: the user agent (`GoWay-Live/1.0 (+https://goway.to)`, which

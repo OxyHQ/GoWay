@@ -101,12 +101,18 @@ export interface LiveConfig extends LivePolicy {
   settings: Readonly<Record<string, LiveSourceSettings>>;
   /**
    * Valkey shared by the API tasks (`live/cluster.ts`): one task polls each
-   * feed and the others are told. `LIVE_VALKEY_URL`, else `REDIS_URL` (the
-   * fleet's shared Valkey, `/oxy/_shared/REDIS_URL`); unset, this process polls
-   * alone — right for one task, N× the upstream load for N. Read only when a
-   * source is listed: with live off nothing here can stop the backend booting.
+   * feed and the others are told. `REDIS_URL` — the fleet's shared Valkey
+   * (`/oxy/_shared/REDIS_URL`), owned by oxy-infra and read by a dozen
+   * services; unset, this process polls alone (right for one task, N× the
+   * upstream load for N). Read only when a source is listed.
    */
   valkeyUrl: string | null;
+  /**
+   * Why `REDIS_URL` was not usable, when it was set and malformed — never the
+   * value. A shared variable another team owns must not stop GoWay booting:
+   * live then runs without a bus and `createLiveService` logs this.
+   */
+  valkeyUrlProblem: string | null;
 }
 
 const sourceList = z.preprocess(
@@ -166,28 +172,26 @@ export function parseLiveConfig(
   }
 
   // The bus matters only to a deployment that serves live. With no source
-  // listed it is not read at all: a shared REDIS_URL another service owns
-  // must never be able to stop the backend from booting.
+  // listed it is not read at all; when it is malformed it is reported, not
+  // fatal: REDIS_URL is shared by a dozen services, and a `valkey://` scheme
+  // or a bare host:port there must not take maps, search and routing down.
   let valkeyUrl: string | null = null;
-  const rawValkey =
-    listed.length > 0
-      ? (emptyAsUndefined(source.LIVE_VALKEY_URL) ?? emptyAsUndefined(source.REDIS_URL))
-      : undefined;
+  let valkeyUrlProblem: string | null = null;
+  const rawValkey = listed.length > 0 ? emptyAsUndefined(source.REDIS_URL) : undefined;
   if (rawValkey !== undefined) {
     try {
       const url = new URL(String(rawValkey).trim());
       if (url.protocol !== 'redis:' && url.protocol !== 'rediss:') throw new Error('protocol');
       valkeyUrl = url.toString();
     } catch {
-      // Never echo the value: it may carry a password.
-      problems.push('  - LIVE_VALKEY_URL / REDIS_URL: must be a redis:// or rediss:// URL');
+      valkeyUrlProblem = 'REDIS_URL is not a redis:// or rediss:// URL';
     }
   }
 
   if (problems.length > 0) {
     throw new Error(`Invalid live configuration:\n${problems.join('\n')}`);
   }
-  return { ...LIVE_POLICY, sources: listed, settings, valkeyUrl };
+  return { ...LIVE_POLICY, sources: listed, settings, valkeyUrl, valkeyUrlProblem };
 }
 
 /** The one parse for this process, against the catalogue's ids. */

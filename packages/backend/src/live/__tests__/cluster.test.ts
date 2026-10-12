@@ -16,7 +16,7 @@ import {
   MemoryLiveNetwork,
   ValkeyLiveBus,
 } from '../cluster';
-import { LiveHub } from '../hub';
+import { coarseDemand, LiveHub } from '../hub';
 import type { LivePollResult, LiveSourceDefinition } from '../types';
 
 const T0 = Date.parse('2026-10-12T12:00:00Z');
@@ -56,7 +56,7 @@ function task(
   liveBus: LiveBus,
   now: () => number,
   answer: () => LivePollResult,
-  cluster?: { leaseMs?: number; demandTtlMs?: number },
+  cluster?: { leaseMs?: number; demandTtlMs?: number; callTimeoutMs?: number },
 ): Task {
   const out: Task = { hub: null as unknown as LiveHub, polls: 0, deltas: [] };
   const definition: LiveSourceDefinition = {
@@ -103,6 +103,8 @@ describe('the Valkey bus subscription', () => {
   const fakeConnection = () => {
     const connection = {
       onconnect: null as (() => void) | null,
+      onclose: null as (() => void) | null,
+      connected: true,
       subscribed: 0,
       closed: false,
       async send() {
@@ -118,6 +120,7 @@ describe('the Valkey bus subscription', () => {
       },
       close() {
         connection.closed = true;
+        connection.connected = false;
       },
     };
     return connection;
@@ -125,11 +128,12 @@ describe('the Valkey bus subscription', () => {
 
   it('counts as lost after its connection reconnects, and resubscribes on a fresh one', async () => {
     const made: ReturnType<typeof fakeConnection>[] = [];
-    const liveBus = new ValkeyLiveBus(fakeConnection(), () => {
+    const liveBus = new ValkeyLiveBus(() => {
       const connection = fakeConnection();
       made.push(connection);
       return connection;
     });
+    made.shift(); // the command connection
     expect(liveBus.isSubscribed()).toBe(false);
     await liveBus.subscribe(() => {});
     expect(liveBus.isSubscribed()).toBe(true);
@@ -143,6 +147,29 @@ describe('the Valkey bus subscription', () => {
     await liveBus.close();
     expect(made[1]?.closed).toBe(true);
     expect(liveBus.isSubscribed()).toBe(false);
+  });
+
+  it('a client that gave up is replaced: the subscriber counts as lost, the command connection is rebuilt', async () => {
+    const made: ReturnType<typeof fakeConnection>[] = [];
+    const liveBus = new ValkeyLiveBus(() => {
+      const connection = fakeConnection();
+      made.push(connection);
+      return connection;
+    });
+    const commands = made[0] as ReturnType<typeof fakeConnection>;
+    await liveBus.subscribe(() => {});
+    const subscriber = made[1] as ReturnType<typeof fakeConnection>;
+    // Bun after a long outage: both connections failed for good, no reconnect.
+    commands.connected = false;
+    subscriber.connected = false;
+    subscriber.onclose?.();
+    expect(liveBus.isSubscribed()).toBe(false);
+    liveBus.recover();
+    expect(commands.closed).toBe(true);
+    expect(made).toHaveLength(3); // a fresh command connection
+    // A healthy connection is left alone.
+    liveBus.recover();
+    expect(made).toHaveLength(3);
   });
 });
 
@@ -321,6 +348,52 @@ describe('several tasks on one bus (in memory)', () => {
     expect(network.closed.has('a')).toBe(true);
   });
 
+  it('a bus that never answers counts as down within the deadline: the task polls locally', async () => {
+    const clock = { now: T0 };
+    const network = new MemoryLiveNetwork(() => clock.now);
+    const a = task(
+      network.bus('a'),
+      () => clock.now,
+      () => ({ entities: [bus('1', T0)], rejected: 0 }),
+      {
+        leaseMs: 15_000,
+        callTimeoutMs: 40,
+      },
+    );
+    await a.hub.connect();
+    a.hub.watch('viewer', [ROOM]);
+    await a.hub.coordinate();
+    // A silent partition: every call hangs.
+    network.hang = true;
+    const started = Date.now();
+    const settled = await Promise.race([
+      a.hub.coordinate().then(() => 'settled'),
+      new Promise((resolve) => setTimeout(() => resolve('hung'), 2_000)),
+    ]);
+    expect(settled).toBe('settled');
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(network.recoveries).toBeGreaterThan(0);
+    await a.hub.tick();
+    expect(a.polls).toBe(1);
+  });
+
+  it('shares only coarse demand: z6 tiles × kinds, never the rooms a viewer is in', async () => {
+    const { network, tasks } = setup();
+    const a = tasks[0] as Task;
+    await a.hub.connect();
+    const street = liveTileOf({ latitude: 41.3874, longitude: 2.1686 }, 'bikeshare');
+    a.hub.watch('viewer', [ROOM, { tile: street, kind: 'bikeshare' }]);
+    await a.hub.coordinate();
+    const shared = network.demand.get('a')?.rooms ?? [];
+    expect(shared.length).toBeGreaterThan(0);
+    expect(shared.every((room) => room.startsWith('6/'))).toBe(true);
+    expect(shared).toContain(`6/32/23|bikeshare`);
+    expect(coarseDemand([`${street}|bikeshare`, `${ROOM.tile}|transit`])).toEqual([
+      '6/32/23|bikeshare',
+      '6/32/23|transit',
+    ]);
+  });
+
   it('sends a vehicle that only moved as a compact move, not the whole entity', async () => {
     const { clock, tasks, everyone, setFleet } = setup();
     await everyone((t) => t.hub.connect());
@@ -390,4 +463,102 @@ describe.if(Boolean(VALKEY))('several tasks on a real Valkey', () => {
     for (const t of survivors)
       expect(t.hub.snapshot(ROOM.tile, 'transit').entities).toHaveLength(1);
   });
+});
+
+// ---------------------------------------------------------------------------
+// A real outage: a Valkey (or Redis) server this test starts, stops and starts
+// again. Needs the server binary (`valkey-server` or `redis-server`; CI
+// installs one) — skipped without it.
+// ---------------------------------------------------------------------------
+
+const SERVER_BIN = Bun.which('valkey-server') ?? Bun.which('redis-server');
+
+describe.if(Boolean(SERVER_BIN))('a Valkey outage of 10 s', () => {
+  it('leaves one leader per source and followers hearing again once Valkey is back', async () => {
+    const port = 50_000 + Math.floor(Math.random() * 10_000);
+    const url = `redis://127.0.0.1:${port}`;
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    let server: ReturnType<typeof Bun.spawn> | null = null;
+    const startServer = async () => {
+      server = Bun.spawn(
+        [SERVER_BIN as string, '--port', String(port), '--save', '', '--appendonly', 'no'],
+        {
+          stdout: 'ignore',
+          stderr: 'ignore',
+        },
+      );
+      for (let i = 0; i < 50; i++) {
+        const probe = new (await import('bun')).RedisClient(url);
+        try {
+          await probe.send('PING', []);
+          probe.close();
+          return;
+        } catch {
+          probe.close();
+          await sleep(100);
+        }
+      }
+      throw new Error('server did not start');
+    };
+    const stopServer = async () => {
+      server?.kill('SIGKILL');
+      await server?.exited;
+    };
+    await startServer();
+    try {
+      let fleet = [bus('before', Date.now())];
+      const answer = (): LivePollResult => ({ entities: fleet, rejected: 0 });
+      const timings = { leaseMs: 3_000, demandTtlMs: 4_000, callTimeoutMs: 1_000 };
+      const prefix = `goway:live:outage:${crypto.randomUUID().slice(0, 8)}`;
+      const tasks = ['p', 'q'].map((id) => {
+        const b = ValkeyLiveBus.fromUrl(url, prefix);
+        Object.defineProperty(b, 'taskId', { value: id });
+        opened.push(b);
+        return task(b, Date.now, answer, timings);
+      });
+      const everyone = async (step: (t: Task) => Promise<void>) => {
+        await Promise.all(tasks.map(step));
+      };
+      await everyone((t) => t.hub.connect());
+      for (const t of tasks) t.hub.watch('viewer', [ROOM]);
+      await everyone((t) => t.hub.coordinate());
+      await everyone((t) => t.hub.coordinate());
+      expect(tasks.filter((t) => t.hub.isLeader('test-bus'))).toHaveLength(1);
+
+      // Valkey goes away for 10 s; the tasks keep coordinating (and fail).
+      await stopServer();
+      const outageEnds = Date.now() + 10_000;
+      while (Date.now() < outageEnds) {
+        await everyone((t) => t.hub.coordinate());
+        await sleep(500);
+      }
+      // Down: every task polls on its own rather than nobody.
+      expect(tasks.every((t) => t.hub.isLeader('test-bus'))).toBe(true);
+
+      await startServer();
+      // Back: within a few rounds, ONE poller again.
+      let leaders = tasks.length;
+      for (let round = 0; round < 30 && leaders !== 1; round++) {
+        await everyone((t) => t.hub.coordinate());
+        leaders = tasks.filter((t) => t.hub.isLeader('test-bus')).length;
+        if (leaders !== 1) await sleep(300);
+      }
+      expect(leaders).toBe(1);
+      // And the follower hears the leader again.
+      const leader = tasks.find((t) => t.hub.isLeader('test-bus')) as Task;
+      const follower = tasks.find((t) => t !== leader) as Task;
+      fleet = [bus('after', Date.now())];
+      const pollsBefore = follower.polls;
+      await sleep(11_000); // the leader's next poll is due (10 s interval)
+      await everyone((t) => t.hub.tick());
+      await sleep(300);
+      expect(follower.polls).toBe(pollsBefore);
+      expect(follower.hub.snapshot(ROOM.tile, 'transit').entities.map((e) => e.id)).toEqual([
+        'test-bus:after',
+      ]);
+      for (const t of tasks) t.hub.stop();
+    } finally {
+      await stopServer();
+    }
+  }, 60_000);
 });

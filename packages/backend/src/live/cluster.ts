@@ -85,6 +85,14 @@ export interface LiveBus {
    * does not restore its subscriptions, so the hub subscribes again.
    */
   isSubscribed(): boolean;
+  /**
+   * After a failed or timed-out call: replace connections that are no longer
+   * connected. Bun's client gives up after a long outage and stays failed
+   * even once Valkey is back (measured: a 10 s stop of redis-server left both
+   * clients answering `ERR_REDIS_CONNECTION_CLOSED` for good, while a fresh
+   * client answered at once).
+   */
+  recover(): void;
   /** Take or renew a source's lease; true while this task holds it. */
   lease(sourceId: string, ttlMs: number): Promise<boolean>;
   release(sourceId: string): Promise<void>;
@@ -129,6 +137,10 @@ interface RedisLike {
   close(): void;
   /** Called on every (re)connect. */
   onconnect?: (() => void) | null;
+  /** Called when the connection closes (Bun: once it has given up reconnecting). */
+  onclose?: ((error?: unknown) => void) | null;
+  /** Whether the connection is up now. */
+  readonly connected?: boolean;
 }
 
 const LEASE_SCRIPT = `
@@ -146,28 +158,37 @@ return 0`;
 export class ValkeyLiveBus implements LiveBus {
   readonly taskId: string;
   private readonly channel: string;
+  private commands: RedisLike;
   private subscriber: RedisLike | null = null;
   private subscribed = false;
 
   constructor(
-    private readonly commands: RedisLike,
-    /** A new subscriber connection: one per subscription, replaced when it drops. */
-    private readonly newSubscriber: () => RedisLike,
+    /** A new connection: the command one, and one per subscription. */
+    private readonly connect: () => RedisLike,
     private readonly prefix = 'goway:live',
     taskId = newTaskId(),
   ) {
     this.taskId = taskId;
     this.channel = `${prefix}:bus`;
+    this.commands = connect();
   }
 
-  /** A command connection and subscriber connections to `url` (a subscriber cannot send commands). */
+  /** Connections to `url`, made lazily (a subscriber cannot send commands, so it has its own). */
   static fromUrl(url: string, prefix?: string): ValkeyLiveBus {
-    const commands = new RedisClient(url) as unknown as RedisLike;
-    return new ValkeyLiveBus(commands, () => new RedisClient(url) as unknown as RedisLike, prefix);
+    return new ValkeyLiveBus(() => new RedisClient(url) as unknown as RedisLike, prefix);
   }
 
   isSubscribed(): boolean {
-    return this.subscribed;
+    return this.subscribed && this.subscriber?.connected !== false;
+  }
+
+  recover(): void {
+    if (this.commands.connected === false) {
+      this.commands.close();
+      this.commands = this.connect();
+    }
+    // A dead subscriber is not listening; `subscribe` replaces it.
+    if (this.subscriber?.connected === false) this.subscribed = false;
   }
 
   async publish(message: LiveClusterMessage): Promise<void> {
@@ -181,13 +202,16 @@ export class ValkeyLiveBus implements LiveBus {
     // the listener.
     this.subscribed = false;
     this.subscriber?.close();
-    const subscriber = this.newSubscriber();
+    const subscriber = this.connect();
     this.subscriber = subscriber;
     let connects = 0;
     subscriber.onconnect = () => {
       connects++;
       // Any connect after the first is a reconnect: the subscription is gone.
       if (connects > 1 && this.subscriber === subscriber) this.subscribed = false;
+    };
+    subscriber.onclose = () => {
+      if (this.subscriber === subscriber) this.subscribed = false;
     };
     await subscriber.subscribe(this.channel, (text) => {
       const message = decodeMessage(text);
@@ -254,9 +278,11 @@ export class ValkeyLiveBus implements LiveBus {
 
   async close(): Promise<void> {
     this.subscribed = false;
-    this.commands.close();
-    this.subscriber?.close();
+    const subscriber = this.subscriber;
+    // Cleared first: its `onclose` then finds it is no longer ours.
     this.subscriber = null;
+    this.commands.close();
+    subscriber?.close();
   }
 }
 
@@ -270,8 +296,12 @@ export class MemoryLiveNetwork {
   readonly handlers = new Map<string, (message: LiveClusterMessage) => void>();
   /** Buses closed, by task id. */
   readonly closed = new Set<string>();
-  /** Set false to simulate Valkey being unreachable. */
+  /** Set false to simulate Valkey being unreachable (calls fail at once). */
   up = true;
+  /** Set true to simulate a silent partition: calls never answer. */
+  hang = false;
+  /** Times a bus asked to recover its connections. */
+  recoveries = 0;
 
   /** Valkey goes away: every connection drops, and with it every subscription. */
   disconnect(): void {
@@ -283,13 +313,14 @@ export class MemoryLiveNetwork {
 
   bus(taskId: string): LiveBus {
     const network = this;
-    const check = () => {
+    const check = async () => {
+      if (network.hang) await new Promise(() => {});
       if (!network.up) throw new Error('bus down');
     };
     return {
       taskId,
       async publish(message) {
-        check();
+        await check();
         // Through the wire format, as Valkey would carry it.
         const text = encodeMessage(message);
         for (const [id, handler] of network.handlers) {
@@ -299,14 +330,17 @@ export class MemoryLiveNetwork {
         }
       },
       async subscribe(handler) {
-        check();
+        await check();
         network.handlers.set(taskId, handler);
       },
       isSubscribed() {
         return network.up && network.handlers.has(taskId);
       },
+      recover() {
+        network.recoveries++;
+      },
       async lease(sourceId, ttlMs) {
-        check();
+        await check();
         const now = network.now();
         const current = network.leases.get(sourceId);
         if (current && current.owner !== taskId && current.until > now) return false;
@@ -314,11 +348,11 @@ export class MemoryLiveNetwork {
         return true;
       },
       async release(sourceId) {
-        check();
+        await check();
         if (network.leases.get(sourceId)?.owner === taskId) network.leases.delete(sourceId);
       },
       async exchangeDemand(rooms, ttlMs) {
-        check();
+        await check();
         const now = network.now();
         network.demand.set(taskId, { rooms: [...rooms], until: now + ttlMs });
         const out = new Set<string>();

@@ -444,6 +444,19 @@ jobs:
             -v ON_ERROR_STOP=1 -tAc "SELECT postgis_lib_version();")
           echo "PostGIS $version"
           case "$version" in 3.5.*) ;; *) echo "::error::expected PostGIS 3.5.x, got $version"; exit 1 ;; esac
+      - name: Install a Redis server binary for the live bus outage test
+        # `live/__tests__/cluster.test.ts` stops and restarts a server of its
+        # own (on a random port) to prove the tasks recover from a Valkey
+        # outage; the service container above cannot be stopped from a test.
+        # policy-rc.d keeps apt from starting it on 6379, which the Valkey
+        # service already holds.
+        run: |
+          set -euo pipefail
+          printf '#!/bin/sh\nexit 101\n' | sudo tee /usr/sbin/policy-rc.d >/dev/null
+          sudo chmod +x /usr/sbin/policy-rc.d
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends redis-server
+          redis-server --version
       - name: Run the backend test suite
         env:
           TEST_VALKEY_URL: redis://127.0.0.1:6379

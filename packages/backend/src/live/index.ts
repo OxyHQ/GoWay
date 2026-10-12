@@ -72,6 +72,13 @@ export function createLiveService(options: CreateLiveServiceOptions): LiveServic
     logger.warn({}, 'No listed live source is usable; live stays off');
     return null;
   }
+  if (config.valkeyUrlProblem && options.bus === undefined) {
+    // Never the value: it may carry a password.
+    logger.warn(
+      { problem: config.valkeyUrlProblem },
+      'Live runs without a shared bus: every task polls on its own',
+    );
+  }
   let namespace: Namespace | null = null;
   const bus =
     options.bus !== undefined

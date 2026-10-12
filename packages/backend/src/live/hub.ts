@@ -103,7 +103,13 @@ export interface LiveHubOptions {
   /** Shared with the other API tasks (`cluster.ts`); absent, this process is alone. */
   bus?: LiveBus | null;
   /** Lease and demand timings (`cluster.ts`); tests shorten them. */
-  cluster?: { leaseMs?: number; demandTtlMs?: number; coordinateMs?: number };
+  cluster?: {
+    leaseMs?: number;
+    demandTtlMs?: number;
+    coordinateMs?: number;
+    /** A bus call unanswered for this long counts as the bus being down (default lease ÷ 3). */
+    callTimeoutMs?: number;
+  };
 }
 
 interface SourceState {
@@ -198,7 +204,34 @@ export class LiveHub {
     return state ? this.leads(state) : false;
   }
 
+  /**
+   * A bus call, bounded. Unanswered within a third of the lease it counts as
+   * a failure — the task polls on its own — rather than leaving a follower
+   * neither polling nor hearing for as long as the client takes to give up
+   * (measured: ~10.7 s per command with Valkey stopped; minutes on a silent
+   * partition, long enough for the lease to pass to a second poller).
+   */
+  private bounded<T>(work: Promise<T>): Promise<T> {
+    const leaseMs = this.options.cluster?.leaseMs ?? LEASE_MS;
+    const ms = this.options.cluster?.callTimeoutMs ?? Math.round(leaseMs / 3);
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`live bus: no answer within ${ms} ms`)), ms);
+      work.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error: unknown) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      );
+    });
+  }
+
   private busFailed(error: unknown): void {
+    // Replace connections the client has given up on (Bun's never come back).
+    this.bus?.recover();
     if (!this.busDown) {
       this.options.logger?.warn(
         { reason: describe(error) },
@@ -224,19 +257,20 @@ export class LiveHub {
         // BEFORE giving up local polling — a follower that cannot hear the
         // leader must not stop polling.
         if (!bus.isSubscribed()) await this.join(bus);
-        this.clusterRooms = await bus.exchangeDemand(
-          [...this.roomWatchers.keys()],
-          this.options.cluster?.demandTtlMs ?? DEMAND_TTL_MS,
+        this.clusterRooms = await this.bounded(
+          bus.exchangeDemand(
+            coarseDemand(this.roomWatchers.keys()),
+            this.options.cluster?.demandTtlMs ?? DEMAND_TTL_MS,
+          ),
         );
         for (const state of this.states) {
           const wanted = this.demandFor(state.definition).length > 0;
           if (wanted)
-            state.leader = await bus.lease(
-              state.definition.id,
-              this.options.cluster?.leaseMs ?? LEASE_MS,
+            state.leader = await this.bounded(
+              bus.lease(state.definition.id, this.options.cluster?.leaseMs ?? LEASE_MS),
             );
           else if (state.leader) {
-            await bus.release(state.definition.id);
+            await this.bounded(bus.release(state.definition.id));
             state.leader = false;
           }
         }
@@ -266,8 +300,8 @@ export class LiveHub {
   }
 
   private async join(bus: LiveBus): Promise<void> {
-    await bus.subscribe((message) => this.receive(message));
-    await bus.publish({ type: 'sync', from: bus.taskId });
+    await this.bounded(bus.subscribe((message) => this.receive(message)));
+    await this.bounded(bus.publish({ type: 'sync', from: bus.taskId }));
   }
 
   /** Another task's message. */
@@ -280,16 +314,16 @@ export class LiveHub {
           .idsOfSource(state.definition.id)
           .map((id) => this.index.get(id))
           .filter((entity): entity is LiveEntity => entity !== undefined);
-        void this.bus
-          .publish({
+        void this.bounded(
+          this.bus.publish({
             type: 'state',
             from: this.bus.taskId,
             sourceId: state.definition.id,
             entities,
             lastSuccessAt: state.lastSuccessAt,
             failures: state.failures,
-          })
-          .catch((error: unknown) => this.busFailed(error));
+          }),
+        ).catch((error: unknown) => this.busFailed(error));
       }
       return;
     }
@@ -554,9 +588,9 @@ export class LiveHub {
       | Omit<Extract<LiveClusterMessage, { type: 'status' }>, 'from'>,
   ): void {
     if (!this.bus || this.busDown) return;
-    void this.bus
-      .publish({ ...message, from: this.bus.taskId } as LiveClusterMessage)
-      .catch((error: unknown) => this.busFailed(error));
+    void this.bounded(
+      this.bus.publish({ ...message, from: this.bus.taskId } as LiveClusterMessage),
+    ).catch((error: unknown) => this.busFailed(error));
   }
 
   /** Fetch (or refresh) a source's static GTFS; a failure retries with backoff and never stops the feed. */
@@ -775,6 +809,30 @@ export class LiveHub {
   ): boolean {
     return definition.coverage === null || contains(definition.coverage, point);
   }
+}
+
+/**
+ * The zoom demand is SHARED at: a z6 tile is ~5.6° of longitude (~470 km at
+ * New York). Enough for the leader — a source is wanted when any of these
+ * meets its coverage, and the aircraft feed polls one region per z6 tile
+ * anyway — and far coarser than any viewport.
+ */
+export const SHARED_DEMAND_ZOOM = 6;
+
+/**
+ * This task's watched rooms as it tells the other tasks: each room's z6
+ * ancestor × its kind, de-duplicated. The rooms themselves (a bike-share
+ * room is ~3.7 km) stay in this process.
+ */
+export function coarseDemand(rooms: Iterable<string>): string[] {
+  const out = new Set<string>();
+  for (const key of rooms) {
+    const [tile, kind] = key.split('|') as [string, string];
+    const [z, x, y] = tile.split('/').map(Number) as [number, number, number];
+    const shift = Math.max(0, z - SHARED_DEMAND_ZOOM);
+    out.add(`${Math.min(z, SHARED_DEMAND_ZOOM)}/${x >> shift}/${y >> shift}|${kind}`);
+  }
+  return [...out];
 }
 
 /** A timer that never keeps the process alive: shutdown closes the server and exits. */
