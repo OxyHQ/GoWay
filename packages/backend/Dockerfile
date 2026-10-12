@@ -1,9 +1,17 @@
 # Backend image for GoWay. Two-stage build on oven/bun (linux/arm64 for
 # AWS Graviton). Only the backend + contracts workspaces are built; the
 # heavy Expo frontend tree is excluded via .dockerignore.
+#
+# Both stages pin oven/bun by its multi-arch index digest after the tag
+# (`tag@sha256:...`). A tag is mutable: a re-pushed `oven/bun:1.4.3-alpine`
+# would change what this file builds without changing one byte of it, and
+# this file's bytes are what .github/scripts/reviewed-images.json pins. The
+# tag stays for readers and for scripts/check-dockerfile-workspaces.mjs; the
+# digest is what the build uses. Bumping bun means a new tag AND its index
+# digest (`docker buildx imagetools inspect oven/bun:<tag>`), and a re-review.
 
 # Stage 1: build (tsc → dist)
-FROM oven/bun:1.4.3-alpine AS builder
+FROM oven/bun:1.4.3-alpine@sha256:629e17411f1f129dbec3af78d5af9c9f2a937435c80349437206c6b0b7422373 AS builder
 WORKDIR /app
 
 # Root files first. bunfig.toml pins the hoisted linker; the root tsconfig is
@@ -33,7 +41,7 @@ RUN cd packages/contracts && bun run build
 RUN cd packages/backend && bun run build
 
 # Stage 2: runtime
-FROM oven/bun:1.4.3-alpine AS runtime
+FROM oven/bun:1.4.3-alpine@sha256:629e17411f1f129dbec3af78d5af9c9f2a937435c80349437206c6b0b7422373 AS runtime
 WORKDIR /app
 
 RUN addgroup -g 1001 -S appgroup && adduser -u 1001 -S appuser -G appgroup

@@ -6,7 +6,7 @@
       "services": ["goway"],
       "ecrRepository": "oxy/goway",
       "dockerfile": "packages/backend/Dockerfile",
-      "dockerfileSha256": "dd68b79d9dbe8745f4e9f043c9c066ac59ac7bc8a1454716daf1d9250fe9fe8d",
+      "dockerfileSha256": "2c803d220496968164751240dbc0cb57ac74c436d7b78036d0153032293983b1",
       "target": null,
       "tagSuffix": "",
       "cacheScope": "goway-backend"
