@@ -1,0 +1,113 @@
+diff --git a/node_modules/three/.bun-tag-a3f73ca48652ae4c b/.bun-tag-a3f73ca48652ae4c
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/build/three.core.js b/build/three.core.js
+index 0a1d6cb9ef3cabc97a50bd02394c85e8d1c513c2..d222e648814a46928b2deafcdbe766ed0e8f888f 100644
+--- a/build/three.core.js
++++ b/build/three.core.js
+@@ -2089,7 +2089,13 @@ function warnOnce( ...params ) {
+ 
+ /**
+  * Yields execution to the main thread to allow rendering and other tasks.
+- * Uses scheduler.yield() when available (Chrome 115+), falls back to requestAnimationFrame.
++ *
++ * Uses `scheduler.yield()` when available. Otherwise it yields one macrotask:
++ * a `MessageChannel` message (the standard `scheduler.yield()` fallback, e.g.
++ * Safari), or `requestIdleCallback()` where there is no `MessageChannel`
++ * (React Native, whose `setImmediate()` is a microtask and whose `setTimeout()`
++ * and `requestAnimationFrame()` wait for the next frame). Waiting for the next
++ * animation frame is the last resort: it costs a frame per yield.
+  *
+  * @return {Promise<void>}
+  */
+@@ -2101,6 +2107,35 @@ function yieldToMain() {
+ 
+ 	}
+ 
++	if ( typeof MessageChannel !== 'undefined' ) {
++
++		return new Promise( resolve => {
++
++			const channel = new MessageChannel();
++
++			channel.port1.onmessage = () => {
++
++				channel.port1.close();
++				resolve();
++
++			};
++
++			channel.port2.postMessage( null );
++
++		} );
++
++	}
++
++	if ( typeof requestIdleCallback !== 'undefined' ) {
++
++		return new Promise( resolve => {
++
++			requestIdleCallback( () => resolve() );
++
++		} );
++
++	}
++
+ 	return new Promise( resolve => {
+ 
+ 		requestAnimationFrame( resolve );
+diff --git a/src/utils.js b/src/utils.js
+index 829e88ec623ceab312571eaf4fbe8f4fd2256ec3..f80837a4e46dc37f59fc1bf4ff1fa80ec97cabe8 100644
+--- a/src/utils.js
++++ b/src/utils.js
+@@ -349,7 +349,13 @@ function warnOnce( ...params ) {
+ 
+ /**
+  * Yields execution to the main thread to allow rendering and other tasks.
+- * Uses scheduler.yield() when available (Chrome 115+), falls back to requestAnimationFrame.
++ *
++ * Uses `scheduler.yield()` when available. Otherwise it yields one macrotask:
++ * a `MessageChannel` message (the standard `scheduler.yield()` fallback, e.g.
++ * Safari), or `requestIdleCallback()` where there is no `MessageChannel`
++ * (React Native, whose `setImmediate()` is a microtask and whose `setTimeout()`
++ * and `requestAnimationFrame()` wait for the next frame). Waiting for the next
++ * animation frame is the last resort: it costs a frame per yield.
+  *
+  * @return {Promise<void>}
+  */
+@@ -361,6 +367,35 @@ function yieldToMain() {
+ 
+ 	}
+ 
++	if ( typeof MessageChannel !== 'undefined' ) {
++
++		return new Promise( resolve => {
++
++			const channel = new MessageChannel();
++
++			channel.port1.onmessage = () => {
++
++				channel.port1.close();
++				resolve();
++
++			};
++
++			channel.port2.postMessage( null );
++
++		} );
++
++	}
++
++	if ( typeof requestIdleCallback !== 'undefined' ) {
++
++		return new Promise( resolve => {
++
++			requestIdleCallback( () => resolve() );
++
++		} );
++
++	}
++
+ 	return new Promise( resolve => {
+ 
+ 		requestAnimationFrame( resolve );

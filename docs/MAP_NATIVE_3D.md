@@ -575,15 +575,21 @@ in the workers (`materialWarmup.ts`, `tsl/tslPass.ts` → `warm`):
   keys a build by material and layout, so a real tile later finds it built.
   They live in the engine's scene on `WARM_LAYER`, drawn by no camera but the
   warm-up's, and are kept for the engine's life (three drops a build no mesh
-  uses).
-- **How.** three's `compileAsync`, which builds in slices between frames. It
-  runs in three stages: the passes first (so the sky shows early), then the
-  city, then, in the background, the grounded variants (a tile on terrain),
-  so terrain arriving later lifts the drawn city in the frame it comes.
+  uses). The grounded variants are a second set beside the first. Lifting
+  the first set instead would change its layout, so its flat builds would
+  lose their only user and be dropped before a tile drew with them. The
+  yield fix below exposed this: the city warmed sooner, ahead of its tiles,
+  and a dropped build was redone in a frame (15–20 ms).
+- **How.** three's `compileAsync`, which builds in slices, yielding to the
+  event loop between them ([the yield](#the-yield-a-turn-of-the-event-loop-not-a-frame)).
+  It runs in three stages: the passes first (so the sky shows early), then
+  the city, then, in the background, the grounded variants (a tile on
+  terrain), so terrain arriving later lifts the drawn city in the frame it
+  comes.
 - **Nothing draws unbuilt.** The sky's passes show once theirs are built, and
   tile arrivals wait for the city's (then go up under the upload budget as
-  always), so no frame builds a material. A tile waiting for its first lift
-  now counts as pending, so "settled" means drawn.
+  always), so no frame builds a city material. A tile waiting for its first
+  lift now counts as pending, so "settled" means drawn.
 - **GL safety, with MapLibre in the same context.** `compileAsync`'s steps
   run between frames, where MapLibre leaves its last vertex array bound and
   later reuses it without rebinding. An index buffer made then would be bound
@@ -593,24 +599,130 @@ in the workers (`materialWarmup.ts`, `tsl/tslPass.ts` → `warm`):
   steps left to `compileAsync` (shader builds, uniform and vertex buffers,
   programs) touch no vertex array.
 
-**Measured** (the same harness; the synthetic city served from a separate
-process so its tile generation is not on the measured thread; three runs):
+### The yield: a turn of the event loop, not a frame
 
-| | Before | After |
-| --- | --- | --- |
-| Builds inside frames | 70–94 ms | 11–14 ms (three's one-time setup on the first build) |
-| Worst load frame | 44–56 ms | 19–26 ms |
-| Longest main-thread block | 44–55 ms | 18–26 ms |
-| City first drawn, with `scheduler.yield` (Chrome, Edge) | 123–143 ms | 370–400 ms |
-| City first drawn, without it (three yields one frame per slice) | 123–143 ms | about 1.7 s |
+`compileAsync` yields after every shader stage and every object, about 100
+yields for the city. three's `yieldToMain` used `scheduler.yield()` where the
+browser has it (Chrome, Edge, Firefox) and otherwise waited for the next
+animation frame. Safari has no `scheduler.yield`, and neither has Hermes. A
+frame per yield put the city about 1.7 s behind its tiles on the harness
+(2–3 s in a real page), with nothing to do in most of those frames.
 
-The cost is the wait: the city appears once its materials are built. The
-harness's tiles mesh instantly, so this is the worst case. In the app the
-warm-up runs while the first tiles are fetched and meshed, which takes a
-phone about a second for a dense tile ([Phase 1](#measured)), so the two
-overlap. Where the browser has no `scheduler.yield`, three's slices wait a
-frame each, and the city can appear up to that much later than its tiles. It
-does so without a stall.
+three is patched (`patches/three@0.186.1.patch`, `patchedDependencies`) so
+`yieldToMain` itself is the one yield, on every platform: `scheduler.yield()`
+where it exists (kept); else a `MessageChannel` message, the standard
+`scheduler.yield` fallback (Safari); else `requestIdleCallback`, the real macrotask
+React Native offers; a frame only as the last resort. It is
+three's own function, so every `compileAsync` yield (and every other caller
+in three) takes it. The patch is pinned to three's version and fails to
+install on another, and it belongs upstream.
+
+**Hermes, measured** (RN 0.86, bridgeless, release build, Android 16
+emulator): 120 slices of 4 ms work, yielding between them, while a
+`requestAnimationFrame` loop counts frames. Three runs each. There is no
+`scheduler`, no `MessageChannel`, and `self` is the global.
+
+| Yield | Total | Per yield | Frames during | Longest frame gap |
+| --- | --- | --- | --- | --- |
+| `setImmediate` | 482–518 ms | 0.02–0.3 ms | **0** | 482–518 ms |
+| `queueMicrotask` | 482 ms | 0.02 ms | **0** | 482 ms |
+| `setTimeout(0)` | 2,000 ms | 12.7 ms | 120 | 18 ms |
+| `requestAnimationFrame` | 2,000 ms | 12.7 ms | 120 | 18 ms |
+| **`requestIdleCallback`** | **484 ms** | **0.03 ms** | **29** | **20 ms** |
+
+`setImmediate` is a microtask in bridgeless React Native
+(`Libraries/Core/Timers/immediateShim.js`): it never lets a frame through.
+`setTimeout(0)` waits for the next frame: measured here on Android, and on
+iOS `RCTTiming` fires timers on the display link. React
+Native's `requestIdleCallback` is a task on its runtime scheduler, behind
+every timer and frame callback that is due, so it yields a real turn.
+
+**Browsers, measured** (the same probe, on a blank page, in Playwright's
+browsers):
+
+| | `MessageChannel` | A frame per yield | `scheduler.yield` |
+| --- | --- | --- | --- |
+| WebKit (Safari's engine) | 482 ms, 30 frames, longest gap 20 ms | 1,920 ms | none |
+| Chromium | 488 ms, 30 frames, longest gap 20 ms | 1,996 ms | 481 ms, **4 frames, longest gap 104 ms** |
+| Firefox | 483 ms, 11 frames, longest gap 68 ms | 1,997 ms | 480 ms, 29 frames, 20 ms |
+
+Chromium runs `scheduler.yield` continuations ahead of rendering for up to
+about 100 ms. That is where Chrome's head start comes from (see the remaining
+gap, below).
+
+**Measured** on the frame-budget harness. The synthetic city is served from a
+separate process, and bun stands in for the browser: with `scheduler.yield`
+defined (modelled as a `setTimeout(0)` continuation) and without it (three's
+fallback). Three runs each:
+
+| | Before the warm-up | Warm-up, a frame per yield | Warm-up, this yield |
+| --- | --- | --- | --- |
+| Builds inside frames | 70–94 ms | 11–14 ms | 11–12 ms |
+| Worst load frame | 44–56 ms | 19–26 ms | 18–23 ms |
+| Longest main-thread block | 44–55 ms | 18–26 ms | 19–33 ms |
+| City first drawn, with `scheduler.yield` | 123–143 ms | 370–400 ms | 335–370 ms |
+| City first drawn, without it (Safari, Hermes) | 123–143 ms | 1,730–1,746 ms | **252–259 ms** |
+
+The faster warm-up also uncovered an upload that was never budgeted. The
+city's first tiles now went up in the same frames as the street detail's,
+and a frame handed the GPU 5.0 MB against the low preset's 4 MiB
+(`frameBudget.test.ts`, one run in two). Until then the warm-up had held the
+city back long enough that they never met. The streets now take what the
+city's arrivals leave of the frame's upload budget (`overlay.ts` →
+`FrameUploadBudget`, glyph atlas included), and wait a frame otherwise.
+
+What is still built in a frame: three's one-time setup on the first build
+(7–8 ms), the upload material once per layout (1–2 ms each), and the sun's
+depth-only caster once per layout (about 1 ms each).
+`frameBudget.test.ts` pins the fix: frame callbacks that never come, and the
+city still loads (three's original fallback never finishes).
+
+**And in a real page**: the dev export, with the synthetic city served
+locally and terrain on. This measures the time from the engine's first frame
+to the city's first drawn triangles, four runs each. Chromium draws on this
+machine's GPU (ANGLE → D3D12 → RTX 5090). WebKit is Playwright's Linux
+build:
+
+| | `main` (no warm-up) | Warm-up, a frame per yield | Warm-up, this yield |
+| --- | --- | --- | --- |
+| Chromium | 350–393 ms | 647–687 ms | 646–698 ms |
+| Chromium without `scheduler.yield` | 358–404 ms | 2,219–2,253 ms | **688–841 ms** |
+| WebKit | 333–532 ms | 2,038–2,081 ms | **1,020–1,056 ms** |
+
+In a page the warm-up costs Chrome about 300 ms of first draw, as on the
+harness. The tiles were meshed by 150–190 ms, so the city waits for its
+materials. Without `scheduler.yield`, Chromium is now within 50 ms of
+Chromium in three runs of four (688–715 ms), and 143 ms behind in the
+fourth.
+
+**The remaining gap is not the yield.**
+
+- **Chromium without `scheduler.yield`.** Its 96 yields wait 65–93 ms in all,
+  under 1 ms each. The difference is the frames the browser draws in between:
+  a macrotask lets rendering in, while Chromium's `scheduler.yield` runs
+  continuations ahead of it.
+- **WebKit.** Its 90 yields wait 530–590 ms (about 6 ms each), and 245–257 ms
+  of that is the map's own frames. The rest is whatever WebKit had queued
+  first (worker messages, MapLibre, React): with no prioritised continuation
+  on Safari, a turn of the event loop waits behind them. This is
+  Playwright's WebKit on Linux, not Safari on an iPhone; measuring on a device
+  is still owed.
+
+On software GL (SwiftShader, which CI's gate uses) every frame and shader link
+costs tens of milliseconds, so all the numbers stretch:
+
+| | Chromium | Chromium without `scheduler.yield` | WebKit |
+| --- | --- | --- | --- |
+| Before this yield | 343–558 ms | 2,457–2,793 ms | 2,971–3,055 ms |
+| With it | 410–686 ms | 1,112–1,680 ms | 962–1,193 ms |
+
+Chromium's profiles show what else lands in that window. The app's GPU
+benchmark (`runGpuBenchmark`, from a `requestIdleCallback`) takes 400–550 ms
+on SwiftShader, and runs in the idle time a macrotask yield leaves.
+`scheduler.yield` leaves none, so with it the benchmark runs after the city
+appears. Waiting on shader links (`_completeCompile`) takes another
+60–490 ms. On a slow phone GPU the benchmark could land in the warm-up the
+same way. That is a follow-up for the quality profile, not for the yield.
 
 ## Correction: the terrain lift was not measured
 
