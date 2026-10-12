@@ -82,7 +82,12 @@ published; the city layer reads it once per attach (`city3dLayer.web.ts` →
 | `landmarks` | the models over their buildings; the pill and the tour | no model, no pill, no tour (`lib/map/landmarks/load.ts` → `offerLandmarks`), judged per z14 cell as the engine picks its source |
 
 An empty document is not a defect and logs nothing; one that cannot be read
-logs one `[goway/map]` warning.
+logs one `[goway/map]` warning. Verified on a production export against
+goway.to (2026-10-12): in Barcelona, Madrid and Manhattan the city and road
+tiles are requested and drawn (street detail, Casa Batlló's model, the
+Landmarks pill where a landmark is near); in Tokyo, no `/map/city/{z}/…` or
+`/map/city-roads/…` request at all, the basemap's buildings and traffic on the
+basemap's roads; no console error in any of the 16 views.
 
 **The engine is fetched near the city, not at first paint.** The 3D city's
 chunk (three.js and the engine, 1.42 MB gz), its mesh and simulation workers

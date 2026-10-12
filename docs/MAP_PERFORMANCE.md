@@ -329,6 +329,31 @@ engine, 1,418,706 B gz), its mesh worker (32 KB gz) and the simulation worker
 measured on the production export, that view loads none of them (JS heap
 54 MB, as `main`; 87 MB when the engine attached at once).
 
+**Measured** (2026-10-12, production exports served with `serve-map-build.ts
+--upstream=https://goway.to`: goway.to's basemap, terrain and published
+Catalonia / New York city and road tiles; phone profile at low, real GPU,
+interleaved A B C / C B A runs, values per run). The machine was shared with
+other agents' headless Chromiums (load average 14–21), so main-thread
+milliseconds swing ±30% between runs of the same build; the counts do not:
+
+| scene | build | main thread p50 / p95 ms | draws | triangles | GPU MB (est.) |
+| --- | --- | --- | --- | --- | --- |
+| eixample | `main` (globe + terrain, MapLibre's `building-3d`) | 23.7, 15.9 / 42.1, 28.3 | 111 | 1.14 M | 192 |
+| eixample | this branch, everything on | 25.9, 22.0 / 48.1, 41.0 | 151 | 2.32–2.36 M | 229 |
+| night | `main` | 19.9, 17.5 / 34.7, 28.3 | 94 | 0.96 M | 161–165 |
+| night | this branch | 23.5, 24.0 / 37.9, 38.7 | 159 | 2.53 M | 215 |
+| traffic (z18, agents moving) | this branch | 28.0, 25.6 / 38.4, 37.8 | 159–163 | 2.78 M | 171 |
+
+Against the phone budgets: draws 151–163 of ≤ 250, GPU memory 170–230 MB of a
+~1–1.5 GB tab, inside them; triangles 2.3–2.8 M are over the 1.5 M line, as
+the whole-3D-set measurement was before this change (2.20 M at low, #156) —
+the excess is terrain and basemap geometry beside the capped city, and the
+first real-device run should settle whether the line or the count moves. The
+main thread at CPU ÷4 is over 20 ms in every build here, `main` included: on
+this loaded host it measures contention, not the phone. Street detail on and
+off (a build with it switched off, interleaved, same scenes) drew the same
+counts at the benchmark's cameras (151 / 114 / 159–163 draws).
+
 **First paint** (`expo export --platform web --clear`, no map variables,
 `main` at `8896de0` against this change on it): `entry` 7,067,870 → 7,068,442 B
 (1,780,244 → 1,780,451 gz, **+207 B gz**: the registry's defaults and the
