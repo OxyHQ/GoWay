@@ -80,7 +80,7 @@ phone; a new chip (Live) is one more item in the stack. The slot is never
 hidden (the simulated label must show whenever the simulation draws, a tour
 included); a map with no slot — the embed — keeps the label at its own spot.
 
-The button opens Bloom's `SettingsModal` (`@oxy.so/bloom/settings-modal`): a
+The button opens Bloom's `SettingsModal` (`@oxy.so/bloom/settings-modal/modal`): a
 rail of pages beside the open page on a wide window (871×614, the rail
 narrowing on a tablet), and on a phone the section list first, then the page
 pushed over it with a back control — native included, through Bloom's own
@@ -220,23 +220,42 @@ measured then. Moving from the generic `Dialog` to Bloom's `SettingsModal`,
 | `__common` (first paint) | 81,785 B (22,838 gz) | 97,839 B (27,523 gz) | **+4,685 B gz**: Bloom's `Select`, hoisted (below) |
 | lazy, on the gear's first press | `MapSettingsPanel` 71,456 B (20,269 gz) | `MapSettingsModal` 243,718 B (69,921 gz) | the modal shell and every page Bloom's barrel links |
 
-`@oxy.so/bloom/settings-modal` is Bloom 6.2.1's only entry to `SettingsModal`,
+`@oxy.so/bloom/settings-modal` was Bloom 6.2.1's only entry to `SettingsModal`,
 and that barrel also links the Storage, Tools and Plan pages. Storage uses
 Bloom's `Select`, and so does Oxy's lazily loaded `EditProfileFieldScreen`.
 A module shared by two `import()`-ed chunks is hoisted into `__common`, which
 is unconditional at first paint (`~/Oxy/docs/build-and-runtime-traps.md` →
-Metro web chunking). The fix belongs in Bloom: a lean entry for the modal
-shell alone, as `settings-modal/rows` is for the rows. An app-side resolver
-alias would be config copied out of `@oxy.so/app-preset`, which AGENTS.md
-forbids. Measured by A/B build, never by
-per-source attribution (`~/Oxy/docs/build-and-runtime-traps.md`).
+Metro web chunking). The fix was Bloom's: 7.33.0 (Bloom#316) adds the lean
+`settings-modal/modal` entry for the shell alone, and `MapSettingsModal.tsx`
+imports only that. Never import the `settings-modal` barrel here: it puts
+`Select` back at first paint. An app-side resolver alias would have been
+config copied out of `@oxy.so/app-preset`, which AGENTS.md forbids.
+
+Bloom 6.2.1 → 7.33.1, same build (`--clear`, no map variables, gzip -9),
+three A/B builds so each change is measured alone:
+
+| Chunk | 6.2.1, barrel | 7.33.1, barrel | 7.33.1, `settings-modal/modal` |
+| --- | ---: | ---: | ---: |
+| `entry` (first paint) | 7,010,105 B (1,763,734 gz) | 7,061,853 B (1,778,378 gz) | 7,061,853 B (1,778,377 gz) |
+| `__common` (first paint) | 100,520 B (28,433 gz) | 100,921 B (28,547 gz) | **84,754 B (23,839 gz)** |
+| `global.css` (first paint) | 56,084 B (10,519 gz) | 89,889 B (15,192 gz) | 89,889 B (15,192 gz) |
+| `MapSettingsModal` (lazy) | 258,951 B (73,603 gz) | 264,012 B (74,888 gz) | **143,275 B (40,447 gz)** |
+
+The lean entry takes `__common` down 4,708 B gz and the modal chunk down
+34,441 B gz; `Select` now ships only in Oxy's lazy `EditProfileFieldScreen`
+chunk, and `FileUpload` nowhere. The version itself costs the entry
++14,644 B gz and `global.css` +4,673 B gz (Bloom 7's larger `theme.css`). The
+entry growth is spread over families GoWay already draws (radio and the
+collapsible it now links, layout, theme, tokens, button, text field, dialog),
+not one new family. Measured by A/B build, never by per-source attribution
+(`~/Oxy/docs/build-and-runtime-traps.md`).
 
 ## Limits
 
 - Native was typechecked, not run: the bottom-sheet presentation and the
   AsyncStorage hydration (defaults for the moment before storage answers, then
   the stored choices) are untested on a device.
-- Bloom 6.2.1's `Switch` starts its spring animation during render, so React
+- Bloom's `Switch` (6.2.1 through 7.33.1) starts its spring animation during render, so React
   logs "Cannot update a component while rendering `Switch`" in development on
   every controlled toggle. Harmless, and Bloom's to fix.
 - The 3D city attaches asynchronously: for the second or so its chunk and

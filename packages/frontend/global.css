@@ -12,22 +12,11 @@
 @source "./features/**/*.{js,jsx,ts,tsx}";
 @source "./lib/**/*.{js,jsx,ts,tsx}";
 
-/* App base color tokens — registers the color KEYS so utilities like
-   `bg-background` / `text-foreground` emit at build time. BloomThemeProvider
-   writes the real var values to the document at runtime. */
-@theme {
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-card: var(--card);
-}
+/* The base colour keys (`bg-background`, `text-foreground`, `border-border`,
+   `bg-primary` …) are registered by Bloom's own `design-tokens/theme.css`,
+   which the base import above pulls in; BloomThemeProvider writes their values
+   at runtime. Never restate one here (AGENTS.md): a restatement re-skins Bloom
+   from the inside, silently. */
 
 /* GoWay's BRAND ink — the logo's own two blues, and nothing else's.
 
