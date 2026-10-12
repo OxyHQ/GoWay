@@ -1,0 +1,17 @@
+# The GDAL the imagery build runs (`docs/MAP_SATELLITE.md` → Building), the
+# same locally and in `.github/workflows/build-satellite-tiles.yml`:
+#
+#   micromamba create -y -p <env> -f packages/frontend/scripts/imagery/environment.yml
+#   bun run --cwd packages/frontend map:satellite-set … --gdal=<env>/bin
+#
+# conda-forge rather than Ubuntu's apt GDAL (3.8 on ubuntu-24.04): the build
+# needs `gdal raster tile` (GDAL ≥ 3.11) with the WebP driver. Pinned exactly,
+# because a GDAL upgrade can change resampling and encoder output, and a
+# rebuild of one cell must look like its neighbours. Measured with these
+# versions; change them in one commit with a re-measured cell.
+name: goway-imagery
+channels:
+  - conda-forge
+dependencies:
+  - gdal=3.13.3
+  - libgdal-core=3.13.3

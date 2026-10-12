@@ -348,7 +348,10 @@ describe('the memory budget', () => {
 
   test('the ownership trees and the manifest fit their lines, and the lines fit the total', () => {
     expect(
-      MEMORY_BUDGET.directories + MEMORY_BUDGET.ownershipTrees + MEMORY_BUDGET.manifest,
+      MEMORY_BUDGET.directories +
+        MEMORY_BUDGET.ownershipTrees +
+        MEMORY_BUDGET.manifest +
+        MEMORY_BUDGET.satellite,
     ).toBeLessThanOrEqual(MEMORY_BUDGET.total);
     // A compact tree counts 5 bytes a node, and that is its arrays.
     const tree = compactCoverageTree(

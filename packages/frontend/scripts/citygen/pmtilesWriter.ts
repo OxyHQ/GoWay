@@ -39,13 +39,6 @@ export interface PmtilesOptions {
   rootBudgetBytes?: number;
 }
 
-interface Entry {
-  tileId: number;
-  offset: number;
-  length: number;
-  runLength: number;
-}
-
 /** The root must fit in the reader's first fetch together with the header. */
 const ROOT_BUDGET_BYTES = 16384 - HEADER_BYTES;
 
@@ -59,7 +52,7 @@ function pushVarint(out: number[], value: number): void {
 }
 
 /** Serialise a directory exactly as `decodeDirectory` reads it. */
-export function encodeDirectory(entries: readonly Entry[]): Uint8Array {
+export function encodeDirectory(entries: readonly PmtilesEntry[]): Uint8Array {
   const out: number[] = [];
   pushVarint(out, entries.length);
   let last = 0;
@@ -81,14 +74,14 @@ const gzip = (bytes: Uint8Array) => new Uint8Array(gzipSync(bytes, { level: 9 })
 
 /** Root (+ leaves when the root alone would not fit). */
 function buildDirectories(
-  entries: readonly Entry[],
+  entries: readonly PmtilesEntry[],
   budget: number,
 ): { root: Uint8Array; leaves: Uint8Array } {
   const flat = gzip(encodeDirectory(entries));
   if (flat.length <= budget) return { root: flat, leaves: new Uint8Array(0) };
   for (let leafSize = Math.min(4096, Math.ceil(entries.length / 8)); ; leafSize *= 2) {
     const leafChunks: Uint8Array[] = [];
-    const rootEntries: Entry[] = [];
+    const rootEntries: PmtilesEntry[] = [];
     let offset = 0;
     for (let i = 0; i < entries.length; i += leafSize) {
       const chunk = gzip(encodeDirectory(entries.slice(i, i + leafSize)));
@@ -109,39 +102,26 @@ function buildDirectories(
   }
 }
 
-/** Build a complete archive in memory. City-sized archives are tens of MB. */
-export function writePmtiles(tiles: readonly PmtilesTile[], options: PmtilesOptions): Uint8Array {
-  const sorted = tiles
-    .map((tile) => ({ tile, tileId: zxyToTileId(tile.z, tile.x, tile.y) }))
-    .sort((a, b) => a.tileId - b.tileId);
+/** A tile as the directory sees it: where its bytes are, in the data section. */
+export interface PmtilesEntry {
+  tileId: number;
+  offset: number;
+  length: number;
+  runLength: number;
+}
 
-  const entries: Entry[] = [];
-  const contents = new Map<string, { offset: number; length: number }>();
-  const chunks: Uint8Array[] = [];
-  let dataLength = 0;
-  for (const { tile, tileId } of sorted) {
-    // Identical tiles are stored once (rare for buildings, but free to do).
-    const key = Buffer.from(tile.bytes).toString('base64');
-    let stored = contents.get(key);
-    if (!stored) {
-      stored = { offset: dataLength, length: tile.bytes.length };
-      contents.set(key, stored);
-      chunks.push(tile.bytes);
-      dataLength += tile.bytes.length;
-    }
-    const last = entries[entries.length - 1];
-    if (
-      last &&
-      last.tileId + last.runLength === tileId &&
-      last.offset === stored.offset &&
-      last.length === stored.length
-    ) {
-      last.runLength += 1;
-    } else {
-      entries.push({ tileId, offset: stored.offset, length: stored.length, runLength: 1 });
-    }
-  }
-
+/**
+ * Everything of an archive BEFORE its tile data — header, root directory,
+ * metadata, leaf directories — for a directory whose entries already point
+ * into a data section of `dataLength` bytes. Shared by {@link writePmtiles}
+ * (in memory) and the imagery packer (`scripts/imagery/pmtilesStream.ts`),
+ * which streams gigabytes of tile data after it.
+ */
+export function pmtilesPrelude(
+  entries: readonly PmtilesEntry[],
+  counts: { addressed: number; contents: number; dataLength: number },
+  options: PmtilesOptions,
+): Uint8Array {
   const { root, leaves } = buildDirectories(entries, options.rootBudgetBytes ?? ROOT_BUDGET_BYTES);
   const metadata = gzip(new TextEncoder().encode(JSON.stringify(options.metadata)));
 
@@ -149,9 +129,8 @@ export function writePmtiles(tiles: readonly PmtilesTile[], options: PmtilesOpti
   const metadataOffset = rootOffset + root.length;
   const leavesOffset = metadataOffset + metadata.length;
   const dataOffset = leavesOffset + leaves.length;
-  const total = dataOffset + dataLength;
 
-  const out = new Uint8Array(total);
+  const out = new Uint8Array(dataOffset);
   const view = new DataView(out.buffer);
   out.set(new TextEncoder().encode('PMTiles'), 0);
   out[7] = 3;
@@ -163,10 +142,10 @@ export function writePmtiles(tiles: readonly PmtilesTile[], options: PmtilesOpti
   u64(40, leavesOffset);
   u64(48, leaves.length);
   u64(56, dataOffset);
-  u64(64, dataLength);
-  u64(72, sorted.length);
+  u64(64, counts.dataLength);
+  u64(72, counts.addressed);
   u64(80, entries.length);
-  u64(88, contents.size);
+  u64(88, counts.contents);
   out[96] = 1; // clustered
   out[97] = COMPRESSION.GZIP;
   out[98] = options.tileCompression ?? COMPRESSION.GZIP;
@@ -185,7 +164,62 @@ export function writePmtiles(tiles: readonly PmtilesTile[], options: PmtilesOpti
   out.set(root, rootOffset);
   out.set(metadata, metadataOffset);
   out.set(leaves, leavesOffset);
-  let at = dataOffset;
+  return out;
+}
+
+/**
+ * Append one tile to a directory being built in tile-id order: a run of
+ * identical neighbours becomes one entry (`runLength`).
+ */
+export function pushEntry(
+  entries: PmtilesEntry[],
+  tileId: number,
+  stored: { offset: number; length: number },
+): void {
+  const last = entries[entries.length - 1];
+  if (
+    last &&
+    last.tileId + last.runLength === tileId &&
+    last.offset === stored.offset &&
+    last.length === stored.length
+  ) {
+    last.runLength += 1;
+  } else {
+    entries.push({ tileId, offset: stored.offset, length: stored.length, runLength: 1 });
+  }
+}
+
+/** Build a complete archive in memory. City-sized archives are tens of MB. */
+export function writePmtiles(tiles: readonly PmtilesTile[], options: PmtilesOptions): Uint8Array {
+  const sorted = tiles
+    .map((tile) => ({ tile, tileId: zxyToTileId(tile.z, tile.x, tile.y) }))
+    .sort((a, b) => a.tileId - b.tileId);
+
+  const entries: PmtilesEntry[] = [];
+  const contents = new Map<string, { offset: number; length: number }>();
+  const chunks: Uint8Array[] = [];
+  let dataLength = 0;
+  for (const { tile, tileId } of sorted) {
+    // Identical tiles are stored once (rare for buildings, but free to do).
+    const key = Buffer.from(tile.bytes).toString('base64');
+    let stored = contents.get(key);
+    if (!stored) {
+      stored = { offset: dataLength, length: tile.bytes.length };
+      contents.set(key, stored);
+      chunks.push(tile.bytes);
+      dataLength += tile.bytes.length;
+    }
+    pushEntry(entries, tileId, stored);
+  }
+
+  const prelude = pmtilesPrelude(
+    entries,
+    { addressed: sorted.length, contents: contents.size, dataLength },
+    options,
+  );
+  const out = new Uint8Array(prelude.length + dataLength);
+  out.set(prelude, 0);
+  let at = prelude.length;
   for (const chunk of chunks) {
     out.set(chunk, at);
     at += chunk.length;

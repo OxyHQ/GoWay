@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Put the planet build's objects in R2 with `wrangler r2 object`, the way the
 # Worker needs them (docs/MAP_CITY_PLANET.md → "Keys"). Used by
-# .github/workflows/build-city-tiles.yml and, unchanged, by hand.
+# .github/workflows/build-city-tiles.yml and, unchanged, by hand — and by
+# .github/workflows/build-satellite-tiles.yml for the imagery
+# (docs/MAP_SATELLITE.md), with OBJECT_PREFIXES=satellite and
+# MANIFEST_KEY=satellite/manifest.json: the same three rules hold for both.
 #
-#   city-r2.sh put-tree <dir>              every city*/<stamp>/… file under <dir>
+#   city-r2.sh put-tree <dir>              every <prefix>/<…> file under <dir>
 #   city-r2.sh get-manifest <out-file>     the live manifest; exit 3 when there is none
 #   city-r2.sh publish-manifest <file> <stamp>
 #
@@ -25,6 +28,10 @@ set -euo pipefail
 
 BUCKET="${R2_BUCKET:-goway-map-tiles}"
 MANIFEST_KEY="${MANIFEST_KEY:-city/manifest.json}"
+# The top-level key prefixes `put-tree` uploads (space-separated).
+OBJECT_PREFIXES="${OBJECT_PREFIXES:-city city-roads}"
+# Every manifest ever published, beside the live one: city/manifests/<stamp>.json.
+MANIFESTS_DIR="${MANIFEST_KEY%/*}/manifests"
 # `wrangler r2 object put` refuses larger objects (MAX_UPLOAD_SIZE_BYTES in
 # wrangler 4: 300 MiB). The catalogue's largest part is 1 GB of extract,
 # measured at ≤ 0.22 bytes of archive per byte of extract (~220 MB).
@@ -92,9 +99,11 @@ case "${1:-}" in
     dir=${2:?put-tree <dir>}
     # Receipts after their archives: a receipt in the bucket then always
     # describes an archive that is there.
-    keys=$(cd "$dir" && find . -type f \( -path './city/*' -o -path './city-roads/*' \) | sed 's|^\./||')
+    keys=$(cd "$dir" && for prefix in $OBJECT_PREFIXES; do
+      [ -d "./$prefix" ] && find "./$prefix" -type f \( -name '*.pmtiles' -o -name '*.receipt.json' \)
+    done | sed 's|^\./||')
     if [ -z "$keys" ]; then
-      echo "::error::$dir holds no city/ or city-roads/ objects" >&2
+      echo "::error::$dir holds no objects under: $OBJECT_PREFIXES" >&2
       exit 1
     fi
     while read -r key; do put_one "$key" "$dir/$key"; done < <(
@@ -121,7 +130,7 @@ case "${1:-}" in
     sha=$(sha256sum < "$file" | cut -d' ' -f1)
     # The dated copy first: it is the rollback, and it must exist before the
     # live key moves.
-    put_one "city/manifests/$stamp.json" "$file"
+    put_one "$MANIFESTS_DIR/$stamp.json" "$file"
     landed=no
     for attempt in 1 2 3 4; do
       wrangler r2 object put "$BUCKET/$MANIFEST_KEY" --remote --file "$file" \
@@ -133,7 +142,7 @@ case "${1:-}" in
       echo "::error::$MANIFEST_KEY: the bytes read back are not the manifest built." >&2
       exit 1
     fi
-    echo "published $MANIFEST_KEY = city/manifests/$stamp.json (${sha:0:12})"
+    echo "published $MANIFEST_KEY = $MANIFESTS_DIR/$stamp.json (${sha:0:12})"
     ;;
   *)
     echo "usage: city-r2.sh put-tree <dir> | get-manifest <out> | publish-manifest <file> <stamp>" >&2

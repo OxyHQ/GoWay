@@ -71,6 +71,7 @@
 
 import { serveCity } from './city.js';
 import { archiveSource, serveArchiveTile } from './tiles.js';
+import { serveSatellite } from './satellite.js';
 
 /**
  * How long the edge may keep a vector tile.
@@ -545,6 +546,9 @@ export default {
     if (url.pathname.startsWith('/map/city/') || url.pathname.startsWith('/map/city-roads/')) {
       return serveCity(url, request, env, ctx);
     }
+    // Satellite imagery, per set and cell, by manifest (`satellite.js`,
+    // `docs/MAP_SATELLITE.md`). Inert until `MAP_SATELLITE_MANIFEST` is set.
+    if (url.pathname.startsWith('/map/satellite/')) return serveSatellite(url, request, env, ctx);
 
     return env.ASSETS.fetch(request);
   },
@@ -572,6 +576,7 @@ export {
   publicHeaders,
   serveCity,
   serveGlyphs,
+  serveSatellite,
   serveTerrain,
   serveTile,
 };

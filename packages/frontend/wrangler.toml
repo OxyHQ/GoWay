@@ -121,12 +121,18 @@ binding = "ASSETS"
 # `index.html` (a 200 the client would try to decode). With
 # `MAP_CITY_MANIFEST` below unset the Worker answers every one of them 404
 # and the coverage document covers nothing.
+#
+# `/map/satellite/*` is GoWay's satellite imagery (`worker/satellite.js`,
+# `docs/MAP_SATELLITE.md`): tiles, the coverage document, the manifest and its
+# receipts. No asset either; with `MAP_SATELLITE_MANIFEST` below unset every
+# tile is 404 and the coverage document lists no sets.
 run_worker_first = [
   "/map/tiles/*",
   "/map/fonts/*",
   "/map/terrain/*",
   "/map/city/*",
   "/map/city-roads/*",
+  "/map/satellite/*",
 ]
 
 # GoWay's OWN tiles: one PMTiles archive in R2, read by byte range.
@@ -214,6 +220,14 @@ MAP_TERRAIN_UPSTREAM = "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
 # this line out and deploy (every city tile 404, coverage empty: the map draws
 # the basemap's buildings, as before).
 MAP_CITY_MANIFEST = "city/manifest.json"
+
+# The satellite imagery's MANIFEST: its key in `MAP_TILES`. It names, per
+# imagery set, the dated stamp and the cells published (one archive per cell,
+# `satellite/<set>/<stamp>/<z>/<x>/<y>.pmtiles` + receipt), written by
+# `.github/workflows/build-satellite-tiles.yml` after the archives it names
+# (`docs/MAP_SATELLITE.md`). OFF until the owner approves a published run:
+# unset, every `/map/satellite/` tile is 404 and nothing touches storage.
+# MAP_SATELLITE_MANIFEST = "satellite/manifest.json"
 
 # The only name this deployment answers to, and the reason `workers_dev` is
 # off. `goway.to` is the zone apex: Cloudflare writes and manages the record

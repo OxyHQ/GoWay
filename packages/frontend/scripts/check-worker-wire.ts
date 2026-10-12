@@ -19,6 +19,12 @@
  * (stored gzip, header set by hand) and #68 (`encodeBody: 'manual'`, cached
  * response returned as is) fail; #69 (decode every tile) fails the gzip
  * client — it sends the tile uncompressed.
+ *
+ * Then the same four clients ask `/map/satellite/…` for a WebP tile stored as
+ * it is (`tileCompression: NONE`, `docs/MAP_SATELLITE.md`): every one must get
+ * exactly the stored bytes, `image/webp`, and NO `content-encoding` — an image
+ * is its own compression, and a gzip layer or a declared encoding on it is
+ * the same class of wire bug as above.
  */
 import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -28,6 +34,7 @@ import { gunzipSync } from 'node:zlib';
 
 import { convertV4MiniflareOptions, Miniflare } from 'miniflare';
 
+import { mergeEntries, mergeManifest } from './build-satellite-manifest';
 import { writePmtiles } from './citygen/pmtilesWriter';
 import { COMPRESSION, TILE_TYPE } from '../worker/pmtiles.js';
 
@@ -64,7 +71,49 @@ const archive = writePmtiles([{ ...TILE, bytes: Bun.gzipSync(TILE_BODY) }], {
   tileCompression: COMPRESSION.GZIP,
 });
 
-/** A fresh runtime (empty edge cache, empty bucket) holding the archive. */
+/** A satellite cell archive holding one WebP tile, and the manifest that publishes it. */
+const SAT_TILE = { z: 16, x: 33166, y: 24476 };
+// A WebP header and then incompressible bytes: what an image tile is.
+const SAT_BODY = new Uint8Array([
+  ...new TextEncoder().encode('RIFF\0\0\0\0WEBPVP8 '),
+  ...Array.from({ length: 4096 }, (_, i) => (i * 2654435761) >>> 24),
+]);
+const SAT_STAMP = '20261013-wire';
+const SAT_KEY = `satellite/icgc-ortofoto-2025/${SAT_STAMP}/13/4145/3059.pmtiles`;
+const SAT_ARCHIVE = writePmtiles([{ ...SAT_TILE, bytes: SAT_BODY }], {
+  minZoom: 16,
+  maxZoom: 16,
+  bounds: [-180, -85, 180, 85],
+  center: [0, 0, 16],
+  metadata: {},
+  tileType: TILE_TYPE.WEBP,
+  tileCompression: COMPRESSION.NONE,
+});
+const SAT_MANIFEST = mergeManifest(
+  null,
+  mergeEntries([
+    {
+      id: 'icgc-ortofoto-2025',
+      stamp: SAT_STAMP,
+      name: 'wire',
+      tiers: ['detail'],
+      minZoom: 13,
+      maxZoom: 18,
+      cellZoom: 13,
+      sources: ['icgc-ortofoto'],
+      vintage: '2025',
+      format: 'webp',
+      bbox: [2.1, 41.3, 2.3, 41.5],
+      cellKeys: ['13/4145/3059'],
+      tiles: 1,
+      bytes: SAT_ARCHIVE.length,
+      builtAt: '2026-10-13T00:00:00.000Z',
+    },
+  ]),
+  '2026-10-13T00:00:00.000Z',
+).manifest;
+
+/** A fresh runtime (empty edge cache, empty bucket) holding the archives. */
 async function runtime(workerDir: string) {
   const mf = new Miniflare(
     // Miniflare 5 takes its options in a new shape; the v4 shape, converted,
@@ -79,17 +128,27 @@ async function runtime(workerDir: string) {
       // wrangler.toml's, so the runtime behaves as the deployed Worker does.
       compatibilityDate: COMPATIBILITY_DATE,
       r2Buckets: ['MAP_TILES'],
-      bindings: { MAP_TILE_ARCHIVE: KEY },
+      bindings: { MAP_TILE_ARCHIVE: KEY, MAP_SATELLITE_MANIFEST: 'satellite/manifest.json' },
     }),
   );
-  const url = new URL(`/map/tiles/${TILE.z}/${TILE.x}/${TILE.y}.pbf`, await mf.ready);
+  const origin = await mf.ready;
+  const url = new URL(`/map/tiles/${TILE.z}/${TILE.x}/${TILE.y}.pbf`, origin);
+  const satellite = new URL(
+    `/map/satellite/detail/${SAT_TILE.z}/${SAT_TILE.x}/${SAT_TILE.y}.webp`,
+    origin,
+  );
   // Miniflare's R2 type is the workers-types one, which this program's DOM
   // types cannot name; only `put` is used.
   const bucket = (await mf.getR2Bucket('MAP_TILES')) as unknown as {
     put(key: string, value: Uint8Array): Promise<unknown>;
   };
   await bucket.put(KEY, archive);
-  return { mf, url };
+  await bucket.put(SAT_KEY, SAT_ARCHIVE);
+  await bucket.put(
+    'satellite/manifest.json',
+    new TextEncoder().encode(JSON.stringify(SAT_MANIFEST)),
+  );
+  return { mf, url, satellite };
 }
 
 /** A raw GET: the body exactly as it crossed the socket, nothing decoded. */
@@ -167,12 +226,44 @@ async function check(dir: string, quiet = false): Promise<string[]> {
   return problems;
 }
 
-const problems = await check(workerDir);
+/** Every client asks for the satellite tile, miss then hit: the stored bytes, never encoded. */
+async function checkSatellite(dir: string): Promise<string[]> {
+  const problems: string[] = [];
+  for (const client of CLIENTS) {
+    const { mf, satellite } = await runtime(dir);
+    try {
+      for (const pass of ['miss', 'hit']) {
+        const response = await raw(satellite, client.acceptEncoding);
+        const declared = response.headers['content-encoding'] ?? null;
+        const ok =
+          response.status === 200 &&
+          declared === null &&
+          response.headers['content-type'] === 'image/webp' &&
+          Buffer.compare(response.body, Buffer.from(SAT_BODY)) === 0;
+        console.log(
+          `${ok ? '✓' : '✗'} satellite ${client.name.padEnd(9)} ${pass.padEnd(4)} status ${response.status} · ${response.body.length} B · content-encoding ${declared ?? '—'}`,
+        );
+        if (!ok) {
+          problems.push(
+            `satellite ${client.name} ${pass}: status ${response.status}, content-encoding ${declared ?? 'none'}, ${response.body.length} B (stored ${SAT_BODY.length})`,
+          );
+        }
+      }
+    } finally {
+      await mf.dispose();
+    }
+  }
+  return problems;
+}
+
+const problems = [...(await check(workerDir)), ...(await checkSatellite(workerDir))];
 if (problems.length > 0) {
   for (const problem of problems) console.error(`✗ ${problem}`);
   process.exit(1);
 }
-console.log('✓ one gzip layer exactly where gzip is accepted, none elsewhere');
+console.log(
+  '✓ one gzip layer exactly where gzip is accepted, none elsewhere; satellite WebP as stored, never encoded',
+);
 
 // The control: this gate must be able to fail. The same Worker with #68's
 // mistake put back — the stored gzip declared WITHOUT `encodeBody: 'manual'`,
