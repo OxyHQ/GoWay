@@ -118,6 +118,7 @@ export interface CityStreetsStats {
   tilesDrawn: number;
   tilesFull: number;
   tilesCached: number;
+  /** Tiles being meshed, and meshed tiles held for a frame's upload budget. */
   pending: number;
   triangles: number;
   drawCalls: number;
@@ -146,6 +147,8 @@ interface Entry {
   paintedNames: [number, number][];
   /** Its slot in the ground atlas while it holds one. */
   slot: number | null;
+  /** Its meshes have gone to the GPU (within a frame's `upload` budget). */
+  uploaded: boolean;
   groundVersion: number;
   /** Its tile's live values, which the shared materials read through the mesh's `userData`. */
   uniforms: {
@@ -191,6 +194,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
   const groundAtlas = createGroundAtlas(maxCached + options.quality.maxTiles);
 
   const atlasBytes = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE);
+  /** Glyph patches arrived that the GPU's copy of the atlas lacks. */
+  let atlasDirty = false;
   const atlas = new THREE.DataTexture(
     atlasBytes,
     ATLAS_SIZE,
@@ -331,7 +336,9 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
         );
       }
     }
-    if (reply.patches.length > 0) atlas.needsUpdate = true;
+    // Uploaded with the first tile that goes up after it (`update`): only
+    // tiles meshed from now on read the new glyphs.
+    if (reply.patches.length > 0) atlasDirty = true;
     lastMeshMs = reply.meshMs;
     if (reply.stats) {
       meshMsSum += reply.meshMs;
@@ -342,6 +349,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     if (!reply.surfaces && !reply.markings) {
       entry.state = 'empty';
     } else {
+      entry.uploaded = false;
       if (reply.surfaces) {
         entry.surfaces = meshFor(entry, reply.surfaces, 'surfaces');
         entry.simpleSurfaces = reply.surfaces.simpleCount;
@@ -397,7 +405,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       scene.add(tslGroup);
     },
 
-    update({ view, center, opacity }: CityOverlayFrame) {
+    update({ view, center, opacity, upload }: CityOverlayFrame) {
       if (disposed) return;
       frameNo++;
       for (const entry of entries.values()) {
@@ -436,6 +444,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
             stats: null,
             paintedNames: [],
             slot: null,
+            uploaded: false,
             groundVersion: -1,
             uniforms: {
               uGroundSlot: { value: 0 },
@@ -475,6 +484,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       let drawCalls = 0;
       let tilesDrawn = 0;
       let tilesFull = 0;
+      /** Tiles meshed and wanted, held for a later frame's upload budget. */
+      let held = 0;
       const named: Entry[] = [];
       for (const tile of selected) {
         const entry = entries.get(tileKey(tile));
@@ -511,6 +522,28 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
           0,
           Math.min(1, (effective - (FULL_DETAIL_ZOOM - 0.1)) / 0.3),
         );
+        if (!entry.uploaded) {
+          // Its first draw hands its meshes (and any new glyphs) to the GPU:
+          // within what the frame's budget has left (`overlay.ts`).
+          let bytes = atlasDirty ? atlasBytes.byteLength : 0;
+          for (const mesh of [entry.surfaces, entry.markings]) {
+            if (!mesh) continue;
+            const geometry = mesh.geometry;
+            for (const attribute of Object.values(geometry.attributes))
+              bytes += (attribute as THREE.BufferAttribute).array.byteLength;
+            bytes += geometry.index?.array.byteLength ?? 0;
+          }
+          if (!upload.take(bytes)) {
+            held++;
+            options.requestRepaint();
+            continue;
+          }
+          entry.uploaded = true;
+          if (atlasDirty) {
+            atlas.needsUpdate = true;
+            atlasDirty = false;
+          }
+        }
         const matrix = tileModelMatrix(tile, center);
         tilesDrawn++;
         if (full) tilesFull++;
@@ -556,7 +589,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
         const state = entries.get(tileKey(tile))?.state;
         if (state === 'ready' || state === 'empty') tilesSettled++;
       }
-      const signature = `${selected.length}|${tilesSettled}|${tilesDrawn}|${tilesFull}|${entries.size}|${byId.size}|${errors}`;
+      const signature = `${selected.length}|${tilesSettled}|${tilesDrawn}|${tilesFull}|${entries.size}|${byId.size}|${held}|${errors}`;
       if (options.onStats && statsDue(signature, lastSignature, now, lastStatsAt)) {
         lastStatsAt = now;
         lastSignature = signature;
@@ -566,7 +599,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
           tilesDrawn,
           tilesFull,
           tilesCached: entries.size,
-          pending: byId.size,
+          pending: byId.size + held,
           triangles,
           drawCalls,
           lastMeshMs,

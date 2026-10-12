@@ -100,7 +100,7 @@ import {
   type TileId,
   tileKey,
 } from './tileMath';
-import type { CityOverlay } from './overlay';
+import type { CityOverlay, FrameUploadBudget } from './overlay';
 import {
   createGround,
   type Ground,
@@ -376,7 +376,8 @@ const MAX_CACHED_TILES = 160;
 // (`engine/quality.ts` → `cityQuality`; `docs/MAP_PERFORMANCE.md`): what one
 // frame may draw (bytes, vertices), what the cache may hold beyond it (panning
 // slack and fallback levels), the bytes of new meshes handed to the GPU per
-// frame (at least one mesh always goes), and tree instances per frame,
+// frame (at least one mesh always goes; the overlays get what the city's
+// arrivals leave, `overlay.ts` → `FrameUploadBudget`), and tree instances per frame,
 // nearest tiles first (a tile past it draws its buildings without trees).
 
 /**
@@ -385,6 +386,23 @@ const MAX_CACHED_TILES = 160;
  */
 const SLOW_FRAME_MS = 50;
 const IDLE_GAP_MS = 500;
+
+/**
+ * A frame's upload budget of `bytes` (`overlay.ts` → {@link FrameUploadBudget}):
+ * the first upload always fits, then only what is left.
+ */
+function frameUploadBudget(bytes: number): FrameUploadBudget {
+  let left = bytes;
+  let taken = false;
+  return {
+    take(size) {
+      if (taken && size > left) return false;
+      taken = true;
+      left -= size;
+      return true;
+    },
+  };
+}
 
 /** Requests in flight per worker: enough to overlap fetch and mesh, few enough to cancel. */
 const MAX_IN_FLIGHT_PER_WORKER = 2;
@@ -842,8 +860,16 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   /** Entries drawn at least once: their meshes are on the GPU. */
   const drawnEntries = new WeakSet<TileEntry>();
 
+  /** This frame's upload budget: the city's arrivals first, then the overlays. */
+  const uploadBudgetAt = (now: number) => {
+    // A long gap since the last frame is the map at rest, not a slow frame.
+    const gap = now - lastFrameAt;
+    const slow = lastFrameAt > 0 && gap > SLOW_FRAME_MS && gap < IDLE_GAP_MS;
+    return frameUploadBudget(slow ? 0 : quality.uploadBytesPerFrame);
+  };
+
   /** Hand queued meshes to the GPU, nearest first, within this frame's budget. */
-  const admit = (now: number) => {
+  const admit = (now: number, upload: FrameUploadBudget) => {
     // No tile becomes drawable before its materials are built
     // (`materialWarmup.ts`): its first draw would build them, in the frame.
     // Held here, the arrivals then go up under this budget as always.
@@ -851,19 +877,12 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     const rank = new Map<string, number>();
     for (const tile of selected) rank.set(lodKey(tileKey(tile), tile.lod), tile.r);
     arrivals.sort((a, b) => (rank.get(a.key) ?? 1e9) - (rank.get(b.key) ?? 1e9));
-    // A long gap since the last frame is the map at rest, not a slow frame.
-    const gap = now - lastFrameAt;
-    const slow = lastFrameAt > 0 && gap > SLOW_FRAME_MS && gap < IDLE_GAP_MS;
-    let budget = slow ? 0 : quality.uploadBytesPerFrame;
-    let admitted = 0;
     const wanted = protectedKeys();
     while (arrivals.length > 0) {
       const next = arrivals[0];
       const bytes = (next.reply.mesh?.bytes ?? 0) + (next.reply.trees?.data.byteLength ?? 0);
-      if (admitted > 0 && bytes > budget) break;
+      if (!upload.take(bytes)) break;
       arrivals.shift();
-      admitted++;
-      budget -= bytes;
       const entry = createTileEntry(
         context,
         shapes,
@@ -1027,7 +1046,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     const started = now();
     frame++;
     updateWanted(view, started);
-    admit(started);
+    const upload = uploadBudgetAt(started);
+    admit(started, upload);
     lastFrameAt = started;
 
     const span = options.fade.end - options.fade.start;
@@ -1038,7 +1058,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     const center = { x: mercatorXFromLng(view.center.lng), y: mercatorYFromLat(view.center.lat) };
     if (overlays.length > 0) {
       probe?.enter('life');
-      for (const overlay of overlays) overlay.update({ view, center, opacity });
+      for (const overlay of overlays) overlay.update({ view, center, opacity, upload });
       probe?.leave();
     }
     transitions.begin();
