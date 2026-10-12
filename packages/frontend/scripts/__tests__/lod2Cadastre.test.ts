@@ -23,7 +23,14 @@ import { feedEntries, georssBox } from '../catastro-municipalities';
 import { conflate } from '../citygen/lod2/conflate';
 import { ingest } from '../citygen/lod2/ingest';
 import { parseInspirePart, readInspireBuildingParts } from '../citygen/lod2/inspireBuildings';
-import { mercX, mercY } from '../citygen/lod2/prepare';
+import {
+  emptyPrepareStats,
+  implausibleStoreys,
+  mercX,
+  mercY,
+  prepareInspireBuilding,
+} from '../citygen/lod2/prepare';
+import type { InspirePart } from '../citygen/lod2/inspireBuildings';
 import { LOD2_SOURCES } from '../citygen/lod2/sources';
 import { heightForStoreys, STOREY_MODELS, storeysForHeight } from '../citygen/storeys';
 import { type CityTileFeature, encodeCityTile, type TilePoint } from '../citygen/mvtEncode';
@@ -213,6 +220,145 @@ describe('the Spanish storey model', () => {
       [CITY_PROPS.heightSource]: 'osm',
     });
     expect(tagged.properties[CITY_PROPS.renderHeight]).toBe(30);
+  });
+});
+
+/** A rectangular cadastral part of `w` × `h` metres at `x, y` (EPSG:25831). */
+function part(
+  id: string,
+  floors: number,
+  [x, y, w, h]: [number, number, number, number],
+): InspirePart {
+  const ring = new Float64Array([x, y, 0, x + w, y, 0, x + w, y + h, 0, x, y + h, 0]);
+  return {
+    id,
+    reference: id.replace(/_part\d+$/, ''),
+    floorsAbove: floors,
+    floorsBelow: 0,
+    srsName: 'urn:ogc:def:crs:EPSG::25831',
+    polygons: [[ring]],
+  };
+}
+
+describe('implausible storeys (the Pla d’en Coll needle)', () => {
+  test('a 111-storey part of 2 m² beside 5-storey parts is left out; the rest of the building stands', () => {
+    // As published 2026-10-12 at Montcada i Reixac (2239707DF3923G): 43 parts
+    // of 1–5 storeys and part3, recorded as 111 storeys on ~2 m², which the
+    // storey model drew as a 340 m needle.
+    const stats = emptyPrepareStats();
+    const building = prepareInspireBuilding(
+      'NEEDLE01',
+      [
+        part('NEEDLE01_part1', 5, [431000, 4582000, 30, 20]),
+        part('NEEDLE01_part2', 2, [431000, 4582020, 30, 10]),
+        part('NEEDLE01_part3', 111, [431010, 4582010, 1.4, 1.4]),
+      ],
+      CRS,
+      stats,
+    );
+    expect(building?.roofs.map((r) => r.levels)).toEqual([5, 2]);
+    expect(building?.height).toBe(heightForStoreys(5, STOREY_MODELS.es));
+    expect(stats.implausibleStoreys).toEqual({
+      aboveCeiling: 1,
+      spike: 0,
+      parts: ['NEEDLE01_part3:111:ceiling'],
+    });
+  });
+
+  test('a lone spike below the ceiling: 45 storeys on 24 m² over 5-storey parts', () => {
+    const stats = emptyPrepareStats();
+    const building = prepareInspireBuilding(
+      'SPIKE01',
+      [
+        part('SPIKE01_part1', 5, [431000, 4582000, 20, 20]),
+        part('SPIKE01_part2', 45, [431020, 4582000, 4, 6]),
+      ],
+      CRS,
+      stats,
+    );
+    expect(building?.roofs.map((r) => r.levels)).toEqual([5]);
+    expect(stats.implausibleStoreys).toMatchObject({ aboveCeiling: 0, spike: 1 });
+  });
+
+  test('a single-part building recorded as 50 storeys on 193 m² is not drawn at all', () => {
+    const stats = emptyPrepareStats();
+    const building = prepareInspireBuilding(
+      'SHED01',
+      [part('SHED01_part1', 50, [431000, 4582000, 13.9, 13.9])],
+      CRS,
+      stats,
+    );
+    expect(building).toBeNull();
+    expect(stats).toMatchObject({ noRoof: 1, implausibleStoreys: { spike: 1 } });
+  });
+
+  test('real towers stand: parts that rise together, and a wide slab on a podium', () => {
+    // Madrid's Cuatro Torres: every part of a tower at 50–59, some of them slender.
+    const tower = implausibleStoreys(
+      [
+        { floors: 59, areaM2: 73 },
+        { floors: 58, areaM2: 54 },
+        { floors: 57, areaM2: 805 },
+        { floors: 56, areaM2: 30 },
+      ],
+      STOREY_MODELS.es,
+    );
+    expect(tower.size).toBe(0);
+    // Barcelona's Hotel Arts: 44 storeys on 1,324 m² beside a 3-storey podium.
+    expect(
+      implausibleStoreys(
+        [
+          { floors: 44, areaM2: 1324 },
+          { floors: 3, areaM2: 4000 },
+        ],
+        STOREY_MODELS.es,
+      ).size,
+    ).toBe(0);
+    // A single-part 24-storey block on 884 m².
+    expect(implausibleStoreys([{ floors: 24, areaM2: 884 }], STOREY_MODELS.es).size).toBe(0);
+  });
+
+  test('a sentinel does not lend its storeys to support another', () => {
+    const verdicts = implausibleStoreys(
+      [
+        { floors: 100, areaM2: 50 },
+        { floors: 40, areaM2: 20 },
+        { floors: 4, areaM2: 400 },
+      ],
+      STOREY_MODELS.es,
+    );
+    expect([...verdicts]).toEqual([
+      [0, 'ceiling'],
+      [1, 'spike'],
+    ]);
+  });
+
+  test('conflation: the OSM building under a rejected single-part shed keeps OSM’s own height', () => {
+    const { buildings } = ingest(catastro, [FIXTURE], undefined);
+    const stats = emptyPrepareStats();
+    const shed = prepareInspireBuilding(
+      'SHED02',
+      [part('SHED02_part1', 100, [431100, 4582000, 16.5, 16.6])],
+      CRS,
+      stats,
+    );
+    expect(shed).toBeNull();
+    const underShed = osm(77, [431100, 4582000, 431116.5, 4582016.6], {
+      [CITY_PROPS.renderHeight]: 12,
+      [CITY_PROPS.height]: 12,
+      [CITY_PROPS.heightSource]: 'osm',
+    });
+    const result = conflate(new Map([[KEY, [underShed]]]), buildings, {
+      source: 'es-catastro',
+      zoom: Z,
+      policy: catastro.policy,
+    });
+    expect(result.stats.osmDrawnByModel).toBe(0);
+    expect(underShed.properties).toMatchObject({
+      [CITY_PROPS.renderHeight]: 12,
+      [CITY_PROPS.heightSource]: 'osm',
+    });
+    expect(underShed.properties[CITY_OFFICIAL_PROPS.drawnBy]).toBeUndefined();
   });
 });
 

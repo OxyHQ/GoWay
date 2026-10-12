@@ -147,6 +147,39 @@ field `fix/city-flat-block` (#131) writes `osm` into):
   its 1-storey rear wing and its open patio, not one prism — and the parts'
   recorded storeys draw the storey rhythm on their outline walls.
 
+### Implausible storeys
+
+Reported on production on 2026-10-12: a "super tall, very strange building"
+at the Pla d'en Coll (Montcada i Reixac). It was cadastral part
+`2239707DF3923G_part3`: **111 storeys** recorded on ~2 m², beside the
+building's 42 other parts of 1–5 storeys, drawn by the storey model as a
+340 m needle over OSM way 8850222. The value is in the Catastro's own file
+(`numberOfFloorsAboveGround` 111), not a parsing error. Every part of 20
+storeys or more in the 18 municipality files merged (Barcelona's 17 and
+Madrid) was listed: the junk is 100 and 111 (eight parts, 2–274 m²), 50 (two
+single-part buildings) and 45 on 24 m², each with no other part of its
+building above 5 storeys; real towers record high counts on every part
+(Madrid's Cuatro Torres 50–59, Torre Picasso 44–47) or stand wide (Hotel
+Arts, 44 storeys on 1,324 m²).
+
+`prepare.ts` → `implausibleStoreys` leaves out, counted in the receipt with
+their ids (`prepare.implausibleStoreys`):
+
+- **above the region's ceiling** (`StoreyModel.maxStoreys`; Spain 60, its
+  tallest record being 59), and
+- **lone spikes**: at least 20 storeys, no other part of the building above a
+  third of that, and a modelled height over 8 times the side of the part's
+  footprint. Measured on those files, lone parts of 20+ storeys split
+  cleanly: real at slenderness ≤ 4.7, junk at ≥ 8.3.
+
+Nothing is invented in their place: the part is not drawn, and the OSM
+building it fell on keeps OSM's height unless the building's other parts
+cover it. Rebuilt with the rules, Catalonia leaves out exactly those 12
+parts (9 above the ceiling, 3 spikes; 10 of them were drawn in the
+published archive at 139–340 m, the other two had no OSM building) and its
+tallest cadastral buildings are the real ones, the Hotel Arts (136 m) and
+Torre Mapfre (124 m); Madrid leaves out none and is unchanged.
+
 `map:catastro-list` reads the Catastro's feeds and prints the downloads an
 area needs (17 municipalities for the Barcelona box; Madrid's is one); the
 compiler takes the unzipped `*.buildingpart.gml` files.

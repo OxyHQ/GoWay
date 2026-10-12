@@ -9,6 +9,7 @@ import { describe, expect, test } from 'bun:test';
 import { METRES_PER_LEVEL, UNKNOWN_HEIGHT_M } from '../../lib/map/cityTiles';
 import {
   buildingKind,
+  contradictedHeight,
   defaultRoofHeight,
   parseAngle,
   parseColour,
@@ -194,6 +195,49 @@ describe('resolveProperties', () => {
         span,
       ).height_source,
     ).toBeUndefined();
+  });
+
+  test('a height its own storeys and footprint contradict is not read: the storeys set it', () => {
+    // As published 2026-10-12 in the Canary Islands: an elevation in `height`.
+    const house = resolveProperties(
+      { building: 'house', height: '940', 'building:levels': '1' },
+      'building',
+      span,
+      47,
+    );
+    expect(house.height).toBeUndefined();
+    expect(house.render_height).toBe(Math.round(METRES_PER_LEVEL * 10) / 10);
+    expect(house.levels).toBe(1);
+    expect(house.height_source).toBe('osm');
+  });
+
+  test('tall, real and single-storey stand: wide halls, parts, lifted spans, untagged storeys', () => {
+    expect(contradictedHeight(940, 1, 47)).toBe(true);
+    // A real tower with too few storeys tagged, on a wide footprint (NYC, 373.7 m on 4,359 m²).
+    expect(contradictedHeight(373.7, 1, 4359)).toBe(false);
+    // Plausible storeys: 295 m on 69 storeys.
+    expect(contradictedHeight(295, 69, 807)).toBe(false);
+    // Under 100 m: a church tower tagged one storey.
+    expect(contradictedHeight(93, 1, 40)).toBe(false);
+    // No storeys tagged: a chimney.
+    expect(contradictedHeight(273, undefined, 531)).toBe(false);
+    // Unknown footprint: no verdict.
+    expect(contradictedHeight(940, 1, undefined)).toBe(false);
+    // A building:part (a core, a spire) keeps its height, as does a lifted span.
+    const core = resolveProperties(
+      { 'building:part': 'yes', height: '107', 'building:levels': '1' },
+      'part',
+      span,
+      14,
+    );
+    expect(core.render_height).toBe(107);
+    const lifted = resolveProperties(
+      { building: 'yes', height: '206', min_height: '150', 'building:levels': '1' },
+      'building',
+      span,
+      23,
+    );
+    expect(lifted.render_height).toBe(206);
   });
 
   test('a tagged height is the top of the roof; the roof is carved out of it', () => {
