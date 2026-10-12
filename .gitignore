@@ -23,6 +23,10 @@ expo-env.d.ts.bak
 .env.local
 .env*.local
 
+# The local stand-in for the Street 3D scene bucket (STREET3D_SCENE_LOCAL_DIR).
+# It holds licensed scans: they are never committed.
+.street3d-scenes/
+
 # Logs
 *.log
 npm-debug.*

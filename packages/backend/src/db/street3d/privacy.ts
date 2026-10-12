@@ -388,6 +388,8 @@ export async function applyPrivacyResult(
             ? {
                 panoramaIndex: frame.panorama.index,
                 panoramaYawDegrees: frame.panorama.yawDegrees,
+                // Exactly as the worker stated it; absent stays NULL, never 0.
+                panoramaPitchDegrees: frame.panorama.pitchDegrees ?? null,
                 panoramaFovDegrees: frame.panorama.horizontalFovDegrees,
               }
             : {}),

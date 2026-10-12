@@ -3,11 +3,12 @@
  *
  *     status
  *     disable-version <versionId> --reason "<text>"
- *     enable-version  <versionId>
+ *     enable-version  <versionId> [--manifest <import.json>]
  *     rebuild-scene   <sceneId> [--profile draft|standard]
  *     block-capture   <assetId> --reason "<text>"
  *     cancel-job      <jobId>
  *     requeue-job     <jobId>
+ *     import-licensed --manifest <import.json>
  *
  * Asserts the database and migration ledger first, like the cleanup command.
  * Prints aggregate JSON; exits 1 on refusal. See `street3d/admin.ts`.
@@ -23,25 +24,27 @@ import {
   adminCancelJob,
   adminDisableVersion,
   adminEnableVersion,
+  adminImportLicensed,
   adminRebuildScene,
   adminRequeueJob,
   adminStatus,
   type AdminDeps,
 } from './admin';
-import { createConfiguredStreet3dServices } from './services';
+import { createConfiguredSceneBucket, createConfiguredStreet3dServices } from './services';
 
 const USAGE =
-  'Usage: street3d:admin <status|disable-version|enable-version|rebuild-scene|block-capture|cancel-job|requeue-job> ' +
-  '[id] --target-database=<name> [--reason <text>] [--profile draft|standard]';
+  'Usage: street3d:admin <status|disable-version|enable-version|rebuild-scene|block-capture|cancel-job|requeue-job|import-licensed> ' +
+  '[id] --target-database=<name> [--reason <text>] [--profile draft|standard] [--manifest <import.json>]';
 
 async function run(
   command: string,
   id: string | undefined,
-  values: { reason?: string; profile?: string },
+  values: { reason?: string; profile?: string; manifest?: string },
 ) {
   const deps: AdminDeps = {
     db: getDb(),
     services: createConfiguredStreet3dServices(),
+    bucket: createConfiguredSceneBucket(),
     config: street3dConfig,
   };
   const need = (what: string): string => {
@@ -59,7 +62,9 @@ async function run(
     case 'disable-version':
       return adminDisableVersion(deps, need('version id'), reason());
     case 'enable-version':
-      return adminEnableVersion(deps, need('version id'));
+      return adminEnableVersion(deps, need('version id'), {
+        ...(values.manifest ? { importManifest: values.manifest } : {}),
+      });
     case 'rebuild-scene': {
       const profile = values.profile ?? null;
       if (profile !== null && !(STREET_SCENE_PROFILES as readonly string[]).includes(profile)) {
@@ -73,6 +78,10 @@ async function run(
       return adminCancelJob(deps, need('job id'));
     case 'requeue-job':
       return adminRequeueJob(deps, need('job id'));
+    case 'import-licensed': {
+      if (!values.manifest?.trim()) throw new Error(`${command} needs --manifest.`);
+      return adminImportLicensed(deps, values.manifest);
+    }
     default:
       throw new Error(USAGE);
   }
@@ -82,6 +91,7 @@ function refused(result: Record<string, unknown>): boolean {
   return (
     result.disabled === false ||
     result.enabled === false ||
+    result.imported === false ||
     result.requested === false ||
     result.blocked === false ||
     result.cancelled === false ||
@@ -96,6 +106,7 @@ async function main() {
       'target-database': { type: 'string' },
       reason: { type: 'string' },
       profile: { type: 'string' },
+      manifest: { type: 'string' },
     },
   });
   const [command, id] = positionals;

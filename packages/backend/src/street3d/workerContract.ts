@@ -28,8 +28,9 @@
 import { z } from 'zod';
 import {
   CAPTURE_PROJECTIONS,
-  STREET_SCENE_ASSET_ROLES,
   STREET_SCENE_PROFILES,
+  type StreetSceneAssetFormat,
+  type StreetSceneAssetRole,
 } from '@goway/contracts';
 
 export const WORKER_CONTRACT_SCHEMA_VERSION = 1;
@@ -100,13 +101,19 @@ export const RETRYABLE_FAILURE_CODES: ReadonlySet<WorkerFailureCode> = new Set([
 /**
  * A perspective view cut from a 360° panorama: which panorama of the capture
  * (0 for a photo, the keyframe for a video), the view's yaw from the
- * panorama's centre (degrees, clockwise) and its horizontal field of view.
- * Reported by the privacy worker per derivative and handed back to the solve
- * in the manifest, which uses it to treat the views of one panorama as a rig.
+ * panorama's centre (degrees, clockwise), its pitch above the horizon and its
+ * horizontal field of view. Reported by the privacy worker per derivative and
+ * handed back to the solve in the manifest, which uses it to treat the views
+ * of one panorama as a rig.
+ *
+ * `pitchDegrees` is absent from a worker before `goway-privacy/3`, whose views
+ * all look at the horizon. A later view whose pitch a manifest omits is kept
+ * out of its panorama's rig by the solve, never placed on a guess.
  */
 export const panoramaViewSchema = z.object({
   index: nonNegativeInt,
   yawDegrees: z.number().min(0).lt(360),
+  pitchDegrees: z.number().min(-90).max(90).optional(),
   horizontalFovDegrees: z.number().gt(0).lt(180),
 });
 export type PanoramaView = z.infer<typeof panoramaViewSchema>;
@@ -347,9 +354,28 @@ export const capturePrivacyResultSchema = z
   );
 export type CapturePrivacyResult = z.infer<typeof capturePrivacyResultSchema>;
 
+/**
+ * The assets a worker reports, exactly as its pydantic `OutputAsset` names them.
+ *
+ * Narrower than the public contract on purpose: the worker emits one `spz`
+ * splat (and a preview) and a poster, and publication copies one object per
+ * asset. A `rad` level-of-detail tree — chunked, many objects — and an
+ * environment shell are published scene formats the worker does not produce,
+ * so a result naming one is refused here rather than half-published.
+ */
+const WORKER_SCENE_ASSET_ROLES = [
+  'splat',
+  'splat_preview',
+  'poster',
+] as const satisfies readonly StreetSceneAssetRole[];
+const WORKER_SCENE_ASSET_FORMATS = [
+  'spz',
+  'jpeg',
+] as const satisfies readonly StreetSceneAssetFormat[];
+
 const sceneAssetSchema = z.object({
-  role: z.enum(STREET_SCENE_ASSET_ROLES),
-  format: z.enum(['spz', 'jpeg']),
+  role: z.enum(WORKER_SCENE_ASSET_ROLES),
+  format: z.enum(WORKER_SCENE_ASSET_FORMATS),
   key: objectKey,
   sha256,
   byteSize: positiveInt,

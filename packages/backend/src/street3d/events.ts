@@ -44,7 +44,7 @@ import { street3dJobEvents, street3dJobs, street3dScenes } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import type { JobObjectStore } from './jobObjectStore';
 import { evaluateSceneResult } from './sceneValidation';
-import type { SceneAssetStore } from './sceneAssetStore';
+import type { PipelineSceneAssetStore } from './sceneAssetStore';
 import type { QueueMessage, WorkQueue } from './workQueue';
 import {
   capturePrivacyResultSchema,
@@ -57,7 +57,7 @@ import {
 export interface EventDeps {
   db: Database;
   jobStore: JobObjectStore;
-  sceneStore: SceneAssetStore;
+  sceneStore: PipelineSceneAssetStore;
   config: Street3dConfig;
   now: () => Date;
 }

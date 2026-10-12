@@ -72,4 +72,5 @@ Biome (root `biome.jsonc`) lints and formats every package: `bun run lint`, `bun
 - GoWay Live re-serves only feeds whose licence allows public, commercial redistribution (`live/catalogue.ts`), credits each while drawn, never persists a position and never stores or logs a viewport. Note: `docs/MAP_LIVE.md`.
 - A place photo is re-encoded on the device before upload (`features/explore/placePhoto.ts`), so its EXIF location is never published.
 - A capture's `motion` is gravity only (no position, heading or acceleration), sampled only while recording, kept no longer than its raw media and never published. Design note: `docs/STREET3D_MOTION_PRIORS.md`.
+- A licensed Street 3D import publishes only with a privacy attestation (served as `privacyBasis`) and claims no privacy pipeline version; it is never clustered, rebuilt or retracted. Note: `docs/STREET3D_PIPELINE.md`.
 - A capture's declared projection is a claim: the privacy worker verifies 360° media against its own metadata and 2:1 pixels and fails closed; panoramas are processed only as views, nadir masked. Design note: `docs/STREET3D_PIPELINE.md`.

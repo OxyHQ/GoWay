@@ -134,6 +134,27 @@
       "when": 1791709893986,
       "tag": "0018_goway_capture_motion",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791782949020,
+      "tag": "0019_goway_street3d_licensed_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791782949800,
+      "tag": "0020_goway_street3d_version_source_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791786482536,
+      "tag": "0021_goway_capture_panorama_pitch",
+      "breakpoints": true
     }
   ]
 }

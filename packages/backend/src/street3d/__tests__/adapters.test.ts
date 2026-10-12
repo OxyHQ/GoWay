@@ -10,6 +10,9 @@
 
 import { describe, expect, it } from 'bun:test';
 import { createHash } from 'node:crypto';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AwsFetch } from '../../aws/sigv4';
 import { createS3JobObjectStore } from '../jobObjectStore';
 import {
@@ -333,6 +336,84 @@ describe('scene asset store', () => {
         byteSize: 42,
       }),
     ).rejects.toThrow('digest');
+  });
+});
+
+describe('scene bucket uploads', () => {
+  const body = 'RADC licensed chunk bytes';
+  const bodyDigest = createHash('sha256').update(body).digest('hex');
+  const chunkKey = `scenes/scene-1/v1/${'e'.repeat(64)}/kabukicho-lod-0.radc`;
+  const file = () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'goway-put-')), 'kabukicho-lod-0.radc');
+    writeFileSync(path, body);
+    return path;
+  };
+  const store = (fetchImpl: AwsFetch) =>
+    createS3SceneAssetStore({
+      sceneBucket: 'goway-scenes',
+      scenePrefix: 'scenes',
+      region: 'eu-west-1',
+      resolveCredentials: credentials,
+      fetchImpl,
+      now,
+    });
+  const headWith = (checksum: string) =>
+    new Response(null, {
+      headers: {
+        'content-length': String(body.length),
+        'x-amz-checksum-sha256': Buffer.from(checksum, 'hex').toString('base64'),
+      },
+    });
+
+  it('PUTs a local file immutable, with a checksum S3 enforces, then verifies it', async () => {
+    const { fetchImpl, calls } = recorder((call) =>
+      call.method === 'HEAD' ? headWith(bodyDigest) : new Response(null),
+    );
+    await store(fetchImpl).putFile({
+      key: chunkKey,
+      filePath: file(),
+      contentType: 'application/octet-stream',
+      sha256: bodyDigest,
+      byteSize: body.length,
+    });
+    const put = defined(calls[0]);
+    expect(put.method).toBe('PUT');
+    expect(put.url).toBe(`https://goway-scenes.s3.eu-west-1.amazonaws.com/${chunkKey}`);
+    expect(put.body).toBe(body);
+    expect(put.headers['cache-control']).toBe(IMMUTABLE_CACHE_CONTROL);
+    expect(put.headers['content-type']).toBe('application/octet-stream');
+    expect(put.headers['x-amz-checksum-sha256']).toBe(
+      Buffer.from(bodyDigest, 'hex').toString('base64'),
+    );
+    expect(put.headers['x-amz-content-sha256']).toBe(bodyDigest);
+    expect(calls[1]?.method).toBe('HEAD');
+  });
+
+  it('refuses a stored object that is not the validated one, a key outside its prefix and a copy with no staging bucket', async () => {
+    const { fetchImpl } = recorder((call) =>
+      call.method === 'HEAD' ? headWith('d'.repeat(64)) : new Response(null),
+    );
+    const request = {
+      key: chunkKey,
+      filePath: file(),
+      contentType: 'application/octet-stream',
+      sha256: bodyDigest,
+      byteSize: body.length,
+    };
+    await expect(store(fetchImpl).putFile(request)).rejects.toThrow('digest');
+    await expect(store(fetchImpl).putFile({ ...request, key: 'captures/raw' })).rejects.toThrow(
+      'outside',
+    );
+    await expect(store(fetchImpl).putFile({ ...request, byteSize: 1 })).rejects.toThrow('size');
+    await expect(
+      store(fetchImpl).copyFromStaging({
+        sourceKey: 'jobs/j/a.spz',
+        destinationKey: chunkKey,
+        contentType: 'x',
+        sha256: bodyDigest,
+        byteSize: 1,
+      }),
+    ).rejects.toThrow('temporary bucket');
   });
 });
 

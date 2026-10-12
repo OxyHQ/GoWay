@@ -133,6 +133,35 @@ export const STREET3D_SCENE_STATES = [
 ] as const;
 export type Street3dSceneState = (typeof STREET3D_SCENE_STATES)[number];
 
+/**
+ * Where a scene, and each of its versions, came from.
+ *
+ * `reconstruction` is GoWay's own pipeline: contributions, privacy passes, a
+ * worker job per version. `licensed_import` is a scan GoWay licensed from a
+ * third party and published through an operator command
+ * (`street3d:admin import-licensed`): it has no capture inputs and no job, and
+ * nothing in the scheduler ever reconstructs, rebuilds or retracts it. A scene
+ * is one or the other for life, and so is every version it holds.
+ */
+export const STREET3D_SCENE_SOURCES = ['reconstruction', 'licensed_import'] as const;
+export type Street3dSceneSource = (typeof STREET3D_SCENE_SOURCES)[number];
+
+/**
+ * What a licence must grant before GoWay publishes a scan under it.
+ *
+ * - `public_display` — showing the scene to anyone, signed out, on the web and
+ *   in the apps. Always required.
+ * - `format_conversion` — re-encoding it (e.g. into a level-of-detail tree) and
+ *   rendering a poster from it. Required whenever the import names a converter.
+ * - `commercial_use` — recorded when granted; GoWay requires it of nothing yet.
+ */
+export const STREET3D_LICENCE_PERMISSIONS = [
+  'public_display',
+  'format_conversion',
+  'commercial_use',
+] as const;
+export type Street3dLicencePermission = (typeof STREET3D_LICENCE_PERMISSIONS)[number];
+
 /** Where one version of a scene is. Exactly one per scene may be `published`. */
 export const STREET3D_SCENE_VERSION_STATES = [
   'validating',

@@ -85,11 +85,11 @@ const DEFAULT_MAX_VIDEO_DURATION_SECONDS = 600;
 /**
  * Ceilings on one 360° (equirectangular) file, which replace the ones above.
  *
- * A 360° frame is eight views' worth of pixels, so the byte ceilings are
+ * A 360° frame is fourteen views' worth of pixels, so the byte ceilings are
  * higher; the resolution ceilings are what the privacy worker decodes
  * comfortably (an ~72 MP photo, an 8K video). Duration is SHORTER than for a
  * phone video: a minute of 360° video already covers a street from both
- * pavements, and every keyframe becomes eight derivatives.
+ * pavements, and every keyframe becomes fourteen derivatives.
  */
 const DEFAULT_MAX_EQUIRECTANGULAR_PHOTO_BYTES = 64 * 1024 * 1024;
 const DEFAULT_MAX_EQUIRECTANGULAR_PHOTO_WIDTH_PIXELS = 12_000;

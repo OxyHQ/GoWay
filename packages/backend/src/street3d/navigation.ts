@@ -87,17 +87,33 @@ export function decimateViewpoints(
   ).filter((viewpoint) => viewpoint !== undefined);
 }
 
-/** The navigation a result publishes, or `null` when the worker reported none. */
-export function publishedNavigation(result: SceneReconstructResult): StreetSceneNavigation | null {
-  if (!result.viewpoints && !result.captureFieldOfView) return null;
-  const navigation: StreetSceneNavigation = {
-    viewpoints: decimateViewpoints(result.viewpoints ?? []),
-  };
-  if (result.captureFieldOfView) {
+/**
+ * The navigation to publish for reported viewpoints, field of view and reach,
+ * or `null` when none was reported. Whoever reported them — the worker, or a
+ * licensor's capture rig for an imported scan — the same reduction applies.
+ * A reach only qualifies viewpoints, so it is never published without them.
+ */
+export function navigationOf(
+  viewpoints: readonly { position: Vector3; forward: Vector3 }[] | undefined,
+  fieldOfView: { horizontalDegrees: number; verticalDegrees: number } | undefined,
+  reachMeters?: number,
+): StreetSceneNavigation | null {
+  if (!viewpoints && !fieldOfView) return null;
+  const navigation: StreetSceneNavigation = { viewpoints: decimateViewpoints(viewpoints ?? []) };
+  if (fieldOfView) {
     navigation.fieldOfView = {
-      horizontalDegrees: round(result.captureFieldOfView.horizontalDegrees, 1),
-      verticalDegrees: round(result.captureFieldOfView.verticalDegrees, 1),
+      horizontalDegrees: round(fieldOfView.horizontalDegrees, 1),
+      verticalDegrees: round(fieldOfView.verticalDegrees, 1),
     };
   }
+  if (reachMeters !== undefined && navigation.viewpoints.length > 0) {
+    // Centimetres, like the positions it qualifies; never rounded to zero.
+    navigation.reachMeters = Math.max(0.01, round(reachMeters, 2));
+  }
   return navigation;
+}
+
+/** The navigation a result publishes, or `null` when the worker reported none. */
+export function publishedNavigation(result: SceneReconstructResult): StreetSceneNavigation | null {
+  return navigationOf(result.viewpoints, result.captureFieldOfView);
 }

@@ -3,9 +3,11 @@
  *
  * As `captureMapper` does for captures, this module READS the columns the
  * contract names and WRITES fresh contract objects — nothing is spread from a
- * row. A version's `assets` column carries its scene-bucket `key` beside the
- * public `url`; the key is dropped here. No capture id, derivative, input,
- * contributor, worker id or position prior is selected at all.
+ * row. A version's `assets` column carries its scene-bucket `key` (and a
+ * chunked RAD's chunk objects) beside the public `url`; both are dropped here.
+ * No capture id, derivative, input, contributor, worker id or position prior is
+ * selected at all, and of a licensed import's licence and privacy attestation
+ * only the attestation's `basis` is served — never who reviewed it or why.
  *
  * Only a version that is `published`, AND is its scene's current version, AND
  * belongs to a scene that is not disabled, is ever served. Disabling either
@@ -30,6 +32,7 @@ import {
   street3dSceneReports,
   street3dSceneVersions,
   street3dScenes,
+  type StoredSceneAsset,
 } from '../schema';
 import { contributionBand } from '../../street3d/geo';
 
@@ -43,7 +46,7 @@ const servedVersion = and(
   sql`${street3dScenes.state} <> 'disabled'`,
 );
 
-function publicAssets(assets: readonly (StreetSceneAsset & { key: string })[]): StreetSceneAsset[] {
+function publicAssets(assets: readonly StoredSceneAsset[]): StreetSceneAsset[] {
   return assets.map((asset) => ({
     role: asset.role,
     format: asset.format,
@@ -69,6 +72,7 @@ function publicNavigation(navigation: StreetSceneNavigation): StreetSceneNavigat
       verticalDegrees: navigation.fieldOfView.verticalDegrees,
     };
   }
+  if (navigation.reachMeters !== undefined) published.reachMeters = navigation.reachMeters;
   return published;
 }
 
@@ -101,7 +105,7 @@ function toManifest(row: VersionRow): StreetSceneManifest {
       profile: row.quality.profile,
       registrationRatio: row.quality.registrationRatio,
       alignmentResidualMeters: row.quality.alignmentResidualMeters,
-      heldOutPsnr: row.quality.heldOutPsnr,
+      ...(row.quality.heldOutPsnr !== undefined ? { heldOutPsnr: row.quality.heldOutPsnr } : {}),
       placement: row.quality.placement,
     },
     observedFrom: row.observedFrom.toISOString(),
@@ -111,6 +115,7 @@ function toManifest(row: VersionRow): StreetSceneManifest {
     privacyPipelineVersions: [...row.privacyPipelineVersions],
   };
   if (row.navigation) manifest.navigation = publicNavigation(row.navigation);
+  if (row.privacyAttestation) manifest.privacyBasis = row.privacyAttestation.basis;
   return manifest;
 }
 

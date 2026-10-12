@@ -29,16 +29,34 @@ import {
   requestRebuild,
   requeueJob,
 } from '../db/street3d/moderation';
+import {
+  ImportRefused,
+  importLicensedScene,
+  prepareLicensedImport,
+  restoreLicensedImportAssets,
+  type LicensedImportOutcome,
+} from './licensedImport';
+import { assetObjects, FORMAT_CONTENT_TYPE, storedAs } from './sceneAssetStore';
 import { purgeDisabledVersions, writeCancelMarkers, type SchedulerDeps } from './scheduler';
-import type { Street3dServices } from './services';
+import type { SceneBucketServices, Street3dServices } from './services';
 import { sceneReconstructResultSchema } from './workerContract';
 import type { QueueStats } from './workQueue';
 
 export interface AdminDeps {
   db: Database;
   services: Street3dServices | null;
+  /**
+   * The scene bucket alone, for a deployment (or a development machine) where
+   * it is configured without the pipeline. `services` carries it otherwise.
+   */
+  bucket?: SceneBucketServices | null;
   config: Street3dConfig;
   now?: () => Date;
+}
+
+/** The scene bucket this command may publish into and purge from, if any. */
+function sceneBucketOf(deps: AdminDeps): SceneBucketServices | null {
+  return deps.services ?? deps.bucket ?? null;
 }
 
 async function queueStats(
@@ -79,18 +97,22 @@ export async function adminStatus(deps: AdminDeps) {
     })
     .from(captureDerivatives)
     .groupBy(captureDerivatives.storageState);
+  // Every object an asset occupies: the asset, and a chunked RAD's chunks.
   const published = await deps.db
     .select({
+      source: street3dSceneVersions.source,
       state: street3dSceneVersions.state,
       count: count(),
-      bytes: sql<string>`coalesce(sum((select sum((value ->> 'byteSize')::bigint) from jsonb_array_elements(${street3dSceneVersions.assets}))), 0)`,
+      bytes: sql<string>`coalesce(sum((select sum((asset ->> 'byteSize')::bigint
+        + coalesce((select sum((chunk ->> 'byteSize')::bigint) from jsonb_array_elements(asset -> 'chunks') chunk), 0))
+        from jsonb_array_elements(${street3dSceneVersions.assets}) asset)), 0)`,
     })
     .from(street3dSceneVersions)
-    .groupBy(street3dSceneVersions.state);
+    .groupBy(street3dSceneVersions.source, street3dSceneVersions.state);
   const scenes = await deps.db
-    .select({ state: street3dScenes.state, count: count() })
+    .select({ source: street3dScenes.source, state: street3dScenes.state, count: count() })
     .from(street3dScenes)
-    .groupBy(street3dScenes.state);
+    .groupBy(street3dScenes.source, street3dScenes.state);
   const reports = await deps.db
     .select({ reason: street3dSceneReports.reason, count: count() })
     .from(street3dSceneReports)
@@ -128,12 +150,13 @@ export async function adminStatus(deps: AdminDeps) {
         count: row.count,
       })),
       sceneVersions: published.map((row) => ({
+        source: row.source,
         state: row.state,
         bytes: Number(row.bytes),
         count: row.count,
       })),
     },
-    scenes: scenes.map((row) => ({ state: row.state, count: row.count })),
+    scenes: scenes.map((row) => ({ source: row.source, state: row.state, count: row.count })),
     reports: {
       open: reports.reduce((sum, row) => sum + row.count, 0),
       openPrivacy: byReason.privacy ?? 0,
@@ -153,39 +176,82 @@ function schedulerDeps(deps: AdminDeps): SchedulerDeps | null {
     : null;
 }
 
+/** Purge disabled versions now, when the scene bucket is configured here. */
+async function purgeNow(deps: AdminDeps, now: Date) {
+  const bucket = sceneBucketOf(deps);
+  return bucket ? purgeDisabledVersions({ db: deps.db, config: deps.config, bucket }, now) : null;
+}
+
 /** `disable-version`: hide at once; purge public objects and invalidate the CDN now when possible. */
 export async function adminDisableVersion(deps: AdminDeps, versionId: string, reason: string) {
   const now = (deps.now ?? (() => new Date()))();
   const disabled = await disableVersion(deps.db, versionId, reason, now);
-  const scheduler = schedulerDeps(deps);
-  const purge = disabled && scheduler ? await purgeDisabledVersions(scheduler, now) : null;
-  return { disabled, purged: purge?.versions ?? 0, purgePending: disabled && !scheduler };
+  const purge = disabled ? await purgeNow(deps, now) : null;
+  return { disabled, purged: purge?.versions ?? 0, purgePending: disabled && purge === null };
 }
 
 /**
  * `enable-version`: only when every public object still exists — or can be
- * restored from the job's own result in the temporary bucket, verified by
- * digest — and no registered input has since been withdrawn or blocked.
+ * restored, verified by digest, from where it came from — and no registered
+ * input has since been withdrawn or blocked. A reconstruction restores from
+ * its job's own result in the temporary bucket; a licensed import from the
+ * files it was imported from (`importManifest`, the operator's `--manifest`),
+ * which must be the very import the version recorded.
  */
-export async function adminEnableVersion(deps: AdminDeps, versionId: string) {
+export async function adminEnableVersion(
+  deps: AdminDeps,
+  versionId: string,
+  options: { importManifest?: string } = {},
+) {
   const now = (deps.now ?? (() => new Date()))();
-  if (!deps.services) return { enabled: false, reason: 'pipeline_not_configured' };
+  const bucket = sceneBucketOf(deps);
+  if (!bucket) return { enabled: false, reason: 'pipeline_not_configured' };
   const [version] = await deps.db
     .select()
     .from(street3dSceneVersions)
     .where(eq(street3dSceneVersions.id, versionId));
   if (version?.state !== 'disabled') return { enabled: false, reason: 'not_disabled' };
 
+  let restored = 0;
+  if (version.source === 'licensed_import') {
+    const objects = version.assets.flatMap(assetObjects);
+    const present = await Promise.all(
+      objects.map(async (object) => storedAs(await bucket.sceneStore.head(object.key), object)),
+    );
+    if (!present.every(Boolean)) {
+      if (!options.importManifest) return { enabled: false, reason: 'assets_gone' };
+      try {
+        const plan = await prepareLicensedImport(options.importManifest, deps.config, now);
+        restored = await restoreLicensedImportAssets(bucket.sceneStore, deps.config, version, plan);
+      } catch (error) {
+        if (error instanceof ImportRefused) {
+          return {
+            enabled: false,
+            reason: error.reason,
+            ...(error.detail ? { detail: error.detail } : {}),
+          };
+        }
+        throw error;
+      }
+    }
+    const outcome = await enableVersion(deps.db, versionId, now);
+    return {
+      enabled: outcome === 'published' || outcome === 'superseded',
+      state: outcome,
+      restoredAssets: restored,
+    };
+  }
+
+  if (!deps.services) return { enabled: false, reason: 'pipeline_not_configured' };
   const missing = [];
   for (const asset of version.assets) {
     const stat = await deps.services.sceneStore.head(asset.key);
     if (!stat || stat.byteSize !== asset.byteSize) missing.push(asset);
   }
   if (missing.length > 0) {
-    const [job] = await deps.db
-      .select()
-      .from(street3dJobs)
-      .where(eq(street3dJobs.id, version.jobId));
+    const [job] = version.jobId
+      ? await deps.db.select().from(street3dJobs).where(eq(street3dJobs.id, version.jobId))
+      : [];
     const bytes = job?.resultKey
       ? await deps.services.jobStore.getBytes(job.resultKey, deps.config.maxResultBytes)
       : null;
@@ -206,7 +272,7 @@ export async function adminEnableVersion(deps: AdminDeps, versionId: string) {
       await deps.services.sceneStore.copyFromStaging({
         sourceKey: source.key,
         destinationKey: asset.key,
-        contentType: asset.format === 'jpeg' ? 'image/jpeg' : 'application/octet-stream',
+        contentType: FORMAT_CONTENT_TYPE[asset.format],
         sha256: asset.sha256,
         byteSize: asset.byteSize,
       });
@@ -218,6 +284,33 @@ export async function adminEnableVersion(deps: AdminDeps, versionId: string) {
     state: outcome,
     restoredAssets: missing.length,
   };
+}
+
+/**
+ * `import-licensed`: validate an import manifest and everything it names, then
+ * publish the scene GoWay licensed. See `street3d/licensedImport.ts`.
+ */
+export async function adminImportLicensed(
+  deps: AdminDeps,
+  manifestPath: string,
+): Promise<LicensedImportOutcome> {
+  const now = deps.now ?? (() => new Date());
+  try {
+    const plan = await prepareLicensedImport(manifestPath, deps.config, now());
+    return await importLicensedScene(
+      { db: deps.db, bucket: sceneBucketOf(deps), config: deps.config, now },
+      plan,
+    );
+  } catch (error) {
+    if (error instanceof ImportRefused) {
+      return {
+        imported: false,
+        reason: error.reason,
+        ...(error.detail ? { detail: error.detail } : {}),
+      };
+    }
+    throw error;
+  }
 }
 
 export async function adminRebuildScene(
@@ -234,8 +327,8 @@ export async function adminBlockCapture(deps: AdminDeps, assetId: string, reason
   const now = (deps.now ?? (() => new Date()))();
   const blocked = await blockCapture(deps.db, assetId, reason, now);
   if (!blocked) return { blocked: false };
+  const purge = await purgeNow(deps, now);
   const scheduler = schedulerDeps(deps);
-  const purge = scheduler ? await purgeDisabledVersions(scheduler, now) : null;
   if (scheduler) await writeCancelMarkers(scheduler, now);
   return {
     blocked: true,

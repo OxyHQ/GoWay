@@ -52,9 +52,12 @@ import {
   adminBlockCapture,
   adminDisableVersion,
   adminEnableVersion,
+  adminImportLicensed,
   adminRequeueJob,
   adminStatus,
 } from '../admin';
+import { assetObjects } from '../sceneAssetStore';
+import { writeLicensedImport } from './licensedImportFixtures';
 import { tick, type TickSummary } from '../scheduler';
 import {
   capturePrivacyResultSchema,
@@ -454,6 +457,66 @@ describe('360° captures', () => {
         expect(view.prior.headingDegrees).toBe((90 + (view.panorama?.yawDegrees ?? 0)) % 360);
         expect(view.camera).toBeUndefined();
       }
+    }
+  });
+
+  it('hands a goway-privacy/3 view its pitch exactly as the worker cut it, and a horizon-only view none', async () => {
+    const pitched = await contribute({ projection: 'equirectangular', heading: 90 });
+    const horizonOnly = await contribute({
+      projection: 'equirectangular',
+      heading: 90,
+      offsetMeters: 4,
+    });
+    await run();
+    const stated = new Map<string, unknown>();
+    for (const { envelope } of await worker.take()) {
+      const job = envelope as CapturePrivacyJob;
+      const completed = await worker.completePrivacy(job, {
+        frames: 14,
+        panorama: true,
+        pitched: job.assetId === pitched.assetId,
+      });
+      if (completed.type !== 'completed') throw new Error('unexpected');
+      const result = capturePrivacyResultSchema.parse(services.jobStore.json(completed.result.key));
+      for (const frame of result.frames) stated.set(frame.imageKey, frame.panorama);
+    }
+    await run();
+
+    // Stored as stated: the upper ring at +45°, the horizon at 0, a pre-/3 view NULL.
+    const rows = await db()
+      .select()
+      .from(captureDerivatives)
+      .where(eq(captureDerivatives.assetId, pitched.assetId));
+    expect(rows.map((row) => row.privacyPipelineVersion)).toEqual(
+      Array(14).fill('goway-privacy/3'),
+    );
+    expect(rows.map((row) => row.panoramaPitchDegrees).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual(
+      [...Array(8).fill(0), ...Array(6).fill(45)],
+    );
+    const legacyRows = await db()
+      .select()
+      .from(captureDerivatives)
+      .where(eq(captureDerivatives.assetId, horizonOnly.assetId));
+    expect(legacyRows.every((row) => row.panoramaPitchDegrees === null)).toBe(true);
+
+    // The manifest the solve reads hands every view back unchanged, pitch included.
+    const job = defined((await sceneJobs())[0]);
+    const frames = job.manifest.frames;
+    expect(frames).toHaveLength(28);
+    for (const frame of frames) expect(frame.panorama).toEqual(stated.get(frame.imageKey) as never);
+    const ofPitched = frames.filter((frame) => frame.captureAssetId === pitched.assetId);
+    expect(
+      ofPitched.map((frame) => frame.panorama?.pitchDegrees).filter((p) => p === 45),
+    ).toHaveLength(6);
+    for (const frame of ofPitched)
+      expect(frame.prior.headingDegrees).toBe((90 + (frame.panorama?.yawDegrees ?? 0)) % 360);
+    // A horizon-only worker never stated a pitch, so the manifest states none: the solve
+    // knows `goway-privacy/1` views look at the horizon, and GoWay does not guess for it.
+    const ofLegacy = frames.filter((frame) => frame.captureAssetId === horizonOnly.assetId);
+    expect(ofLegacy).toHaveLength(14);
+    for (const frame of ofLegacy) {
+      expect(frame.privacyPipelineVersion).toBe('goway-privacy/1');
+      expect('pitchDegrees' in (frame.panorama as object)).toBe(false);
     }
   });
 });
@@ -1077,6 +1140,89 @@ describe('motion priors', () => {
     );
     expect(summary).toMatchObject({ deleted: 1, failed: 0 });
     expect(await tracks(recorded.assetId)).toHaveLength(0);
+  });
+});
+
+describe('licensed imports beside contributions', () => {
+  /** A licensed scan of the same street the contributors are capturing. */
+  async function importedHere() {
+    const outcome = await adminImportLicensed(
+      { db: db(), services, config },
+      writeLicensedImport({}, { at: { ...PARIS, altitudeMeters: 35 } }).manifestPath,
+    );
+    if (!outcome.imported) throw new Error(`import refused: ${JSON.stringify(outcome)}`);
+    return outcome;
+  }
+
+  async function sceneRow(id: string) {
+    return defined((await db().select().from(street3dScenes).where(eq(street3dScenes.id, id)))[0]);
+  }
+
+  it('never clusters, queues or rebuilds an imported scene; captures form their own', async () => {
+    const licensed = await importedHere();
+    const contributions = await neighbourhood(3);
+    const jobs = await sceneJobs();
+    expect(jobs).toHaveLength(1);
+    const reconstruction = defined(jobs[0]).envelope.sceneId;
+    expect(reconstruction).not.toBe(licensed.sceneId);
+    expect((await sceneRow(reconstruction)).source).toBe('reconstruction');
+    expect(
+      await db().select().from(street3dJobs).where(eq(street3dJobs.sceneId, licensed.sceneId)),
+    ).toEqual([]);
+
+    // A withdrawal asks for rebuilds of what it reached — never the import.
+    const withdrawn = defined(contributions[0]);
+    await withdrawCaptureAsset(db(), withdrawn.assetId, withdrawn.owner);
+    await run();
+    expect(await sceneRow(licensed.sceneId)).toMatchObject({
+      state: 'published',
+      currentVersionId: licensed.versionId,
+      rebuildRequestedAt: null,
+      lastQueuedInputFingerprint: null,
+    });
+    expect((await findPublishedManifest(db(), licensed.sceneId))?.version).toBe(1);
+
+    // Both scenes are on the map, side by side.
+    const coverage = await findCoverage(db(), {
+      west: PARIS.longitude - 0.01,
+      south: PARIS.latitude - 0.01,
+      east: PARIS.longitude + 0.01,
+      north: PARIS.latitude + 0.01,
+    });
+    expect(coverage.scenes.map((scene) => scene.id)).toEqual([licensed.sceneId]);
+    expect(coverage.areas.every((area) => area.sceneId !== licensed.sceneId)).toBe(true);
+  });
+
+  it('leaves an imported scene alone through cleanup and capture moderation', async () => {
+    const licensed = await importedHere();
+    const [version] = await db()
+      .select()
+      .from(street3dSceneVersions)
+      .where(eq(street3dSceneVersions.id, licensed.versionId));
+    const objects = defined(version).assets.flatMap(assetObjects);
+    const capture = await contribute();
+    await clearPrivacy(1);
+
+    const muchLater = new Date(Date.now() + 500 * 86_400_000);
+    await db()
+      .update(captureDerivatives)
+      .set({ expiresAt: new Date(Date.now() + 1000), protectedUntil: null });
+    await sweepExpiredCaptures(
+      db(),
+      { deleteObject: async () => undefined },
+      { now: () => muchLater },
+      services.jobStore,
+    );
+    await adminBlockCapture({ db: db(), services, config }, capture.assetId, 'test block');
+    await run(muchLater);
+
+    for (const object of objects) expect(services.sceneStore.objects.has(object.key)).toBe(true);
+    expect(services.sceneStore.deleted).toEqual([]);
+    expect((await findPublishedManifest(db(), licensed.sceneId))?.version).toBe(1);
+    expect(await sceneRow(licensed.sceneId)).toMatchObject({
+      state: 'published',
+      rebuildRequestedAt: null,
+    });
   });
 });
 

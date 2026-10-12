@@ -10,6 +10,7 @@ import {
   decimateViewpoints,
   MAX_PUBLISHED_VIEWPOINTS,
   MIN_VIEWPOINT_SPACING_METERS,
+  navigationOf,
   publishedNavigation,
 } from '../navigation';
 import { sceneReconstructResultSchema, type SceneResultViewpoint } from '../workerContract';
@@ -105,6 +106,18 @@ describe('published navigation', () => {
     expect(minimumSpacing(navigation.viewpoints)).toBeGreaterThanOrEqual(
       MIN_VIEWPOINT_SPACING_METERS,
     );
+  });
+
+  it('carries a reported reach, rounded, only alongside viewpoints', () => {
+    expect(navigationOf(walk(3, 2), undefined, 3.456)).toEqual({
+      viewpoints: decimateViewpoints(walk(3, 2)),
+      reachMeters: 3.46,
+    });
+    expect(navigationOf([], { horizontalDegrees: 179, verticalDegrees: 120 }, 3)).toEqual({
+      viewpoints: [],
+      fieldOfView: { horizontalDegrees: 179, verticalDegrees: 120 },
+    });
+    expect(navigationOf(undefined, undefined, 3)).toBeNull();
   });
 
   it('is absent for a worker that reported none', () => {
