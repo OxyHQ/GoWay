@@ -251,10 +251,16 @@ schedule is written and commented out):
 Jobs: `plan` (the matrix, no install), `build` (≤ 20 at a time, `fail-fast:
 false`; entries are kept only after every upload of the job succeeded, so the
 manifest never names an archive that did not reach R2), `manifest` (runs after
-a partial failure too: a failed region keeps its previous entry). Secrets, used
-only with `publish`: `GOWAY_R2_ACCESS_KEY_ID`, `GOWAY_R2_SECRET_ACCESS_KEY`
-(an R2 API token, not the Workers token) and the existing
-`CLOUDFLARE_ACCOUNT_ID`.
+a partial failure too: a failed region keeps its previous entry, and then
+checks the edge serves the new manifest and every new region's densest tile
+— `scripts/city-check-live.ts`). Uploads go through `wrangler r2 object`
+(`scripts/city-r2.sh`) with the org's existing `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID`, only with `publish`: no key is overwritten (one
+holding the same bytes, from a re-run, is skipped), every object is read back
+and hashed, an unreadable manifest stops the run rather than counting as none,
+and an archive over wrangler's 300 MiB limit fails its job (the catalogue's
+parts stay under ~220 MB). Exclude regions with `-`:
+`regions: all,-europe/spain/madrid`.
 
 **Runner.** Everything is sized to `ubuntu-24.04` (4 vCPU, 16 GB, ~70 GB on
 `/mnt`); no larger or self-hosted runner is needed. A larger one (the tiles
@@ -347,11 +353,9 @@ Steps 1–3 were done by hand for the first three regions (above) with the
 account's Cloudflare API token instead of R2 keys; steps 4–5 are the PR that
 set `MAP_CITY_MANIFEST` and added the database to `/attribution`. In order:
 
-1. **R2 credentials.** In Cloudflare → R2 → Manage API tokens, an *Object Read
-   & Write* token scoped to `goway-map-tiles`; add its key id and secret as
-   repository secrets `GOWAY_R2_ACCESS_KEY_ID` and `GOWAY_R2_SECRET_ACCESS_KEY`
-   (repo-level is right here: there is no org-level one to shadow).
-   `CLOUDFLARE_ACCOUNT_ID` already exists for the frontend deploy.
+1. **R2 credentials.** None to create: the workflow uploads with
+   `wrangler r2 object put` and the org's `CLOUDFLARE_API_TOKEN`, which must
+   carry R2 write on `goway-map-tiles`.
 2. **A dry run in CI**: dispatch with `regions: europe/portugal`, `publish:
    false`; read the artifacts (entries, receipts, manifest).
 3. **A first published region**: the same with `publish: true`. Check

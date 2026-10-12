@@ -196,37 +196,22 @@ jobs:
           path: /mnt/city/out/city*/
           retention-days: 3
 
-      - name: Upload to R2 (publish only; dated keys, never overwritten)
+      - name: Upload to R2 (publish only; dated keys, never overwritten, read back)
         if: ${{ inputs.publish }}
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.GOWAY_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.GOWAY_R2_SECRET_ACCESS_KEY }}
+          # The token the frontend deploy already uses (an org secret); it
+          # must carry R2 write on the bucket. `city-r2.sh` refuses to
+          # overwrite a key, skips one that already holds these exact bytes (a
+          # re-run), and hashes every object read back against the file built.
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          AWS_DEFAULT_REGION: auto
-        working-directory: /mnt/city/out
         run: |
           set -euo pipefail
-          if [[ -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
-            echo "::error::GOWAY_R2_ACCESS_KEY_ID, GOWAY_R2_SECRET_ACCESS_KEY or CLOUDFLARE_ACCOUNT_ID is empty (docs/MAP_CITY_PLANET.md → Approval)."
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is empty."
             exit 1
           fi
-          endpoint="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          # A PMTiles archive is read by byte offset: overwriting one a Worker
-          # is reading serves another tile's bytes. So an existing key is an
-          # error, not something to replace.
-          find city city-roads -type f | sort | while read -r key; do
-            if aws s3api head-object --endpoint-url "$endpoint" --bucket "$R2_BUCKET" --key "$key" >/dev/null 2>&1; then
-              echo "::error::$key already exists in $R2_BUCKET; refusing to overwrite it."
-              exit 1
-            fi
-            case "$key" in
-              *.receipt.json) type=application/json ;;
-              *) type=application/vnd.pmtiles ;;
-            esac
-            aws s3 cp "$key" "s3://$R2_BUCKET/$key" --endpoint-url "$endpoint" \
-              --content-type "$type" --checksum-algorithm CRC32 --only-show-errors
-            echo "uploaded $key"
-          done
+          bash packages/frontend/scripts/city-r2.sh put-tree /mnt/city/out
 
       # LAST, and only when everything above succeeded: the manifest job reads
       # these entries, and an entry must never name an archive that did not
@@ -263,18 +248,16 @@ jobs:
       - name: The manifest now in R2 (publish only)
         if: ${{ inputs.publish }}
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.GOWAY_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.GOWAY_R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          AWS_DEFAULT_REGION: auto
         run: |
           set -euo pipefail
-          endpoint="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          if aws s3 cp "s3://$R2_BUCKET/$MANIFEST_KEY" previous.json --endpoint-url "$endpoint" --only-show-errors; then
-            echo "previous manifest: $(wc -c < previous.json) bytes"
-          else
-            echo "no manifest in R2 yet: this run's regions are the whole manifest"
-          fi
+          # Exit 3 is "there is none yet"; any other failure stops the run —
+          # treating an unreadable manifest as absent would publish this run's
+          # regions alone and drop every region published before.
+          status=0
+          bash packages/frontend/scripts/city-r2.sh get-manifest "$PWD/previous.json" || status=$?
+          if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then exit "$status"; fi
 
       - name: Assemble
         env:
@@ -301,19 +284,21 @@ jobs:
       - name: Publish the manifest (publish only; the dated copy first, then the live one)
         if: ${{ inputs.publish }}
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.GOWAY_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.GOWAY_R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          AWS_DEFAULT_REGION: auto
           STAMP: ${{ needs.plan.outputs.stamp }}
         run: |
           set -euo pipefail
-          endpoint="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          dated="city/manifests/$STAMP.json"
           # The dated copy is the rollback: copying an older one over the live
           # key is the whole procedure.
-          aws s3 cp manifest.json "s3://$R2_BUCKET/$dated" --endpoint-url "$endpoint" \
-            --content-type application/json --only-show-errors
-          aws s3 cp manifest.json "s3://$R2_BUCKET/$MANIFEST_KEY" --endpoint-url "$endpoint" \
-            --content-type application/json --cache-control "no-cache" --only-show-errors
-          echo "published $MANIFEST_KEY (= $dated)"
+          bash packages/frontend/scripts/city-r2.sh publish-manifest "$PWD/manifest.json" "$STAMP"
+
+      - name: Check it is live (publish only)
+        if: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          # Waits for the edge to serve this manifest, then asks every region
+          # of this run for its densest tile, and the named points below.
+          bun packages/frontend/scripts/city-check-live.ts --manifest="$PWD/manifest.json" \
+            --entries="$PWD/entries-download" --origin=https://goway.to \
+            --probe=barcelona:41.40363,2.17435
