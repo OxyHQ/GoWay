@@ -139,8 +139,12 @@ nothing about which model is which (`components/map/engine/city3d/modelLook.ts`)
 - `goway.night = { color, strength }`: emitted × the night factor — windows,
   crowns, lanterns, the torch, Torre Glòries' LED skin.
 - `goway.uplight = { color, reach, strength }` (from the registry's
-  `night.uplight`): a floodlight wash patched into the shader, strongest at
-  the base and on walls, fading over `reach` metres.
+  `night.uplight`): a floodlight wash added to the material's emission (a TSL
+  emissive node), strongest at the base and on walls, fading over `reach`
+  metres.
+
+The models are drawn by the city engine's TSL pass, as node twins of their
+glTF materials ([`MAP_NATIVE_3D.md`](./MAP_NATIVE_3D.md) → Phase 2, models).
 
 At night the sun and the sky light also dim and turn blue, so the warm light
 is what the eye reads. The input is **`nightFactor`** (0 day … 1 night),

@@ -1,6 +1,6 @@
 /**
  * The model layer's bookkeeping, run for real (three's GLTFLoader parsing the
- * shipped GLB) against a fake renderer that only records the scene it is asked
+ * shipped GLB) against a fake pass that only records the scene it is asked
  * to draw — no WebGL needed. Each test pins one review finding on PR #123:
  *
  *  - instances of one asset must not share (and so mutate) materials;
@@ -80,12 +80,12 @@ function harness() {
     onStatus: (id, status) => statuses.push([id, status]),
     pageOrigin: 'https://goway.to',
   });
-  const renderer = {
-    render: (scene: THREE.Scene) => {
+  const pass = {
+    drawScene: (scene: THREE.Scene) => {
       lastScene = scene;
     },
-  } as unknown as THREE.WebGLRenderer;
-  const draw = () => layer.render(renderer, VIEW, { width: 800, height: 600 });
+  };
+  const draw = () => layer.render(pass, VIEW, { width: 800, height: 600 });
   return { layer, statuses, draw, scene: () => lastScene };
 }
 

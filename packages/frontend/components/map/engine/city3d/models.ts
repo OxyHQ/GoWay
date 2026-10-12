@@ -56,6 +56,7 @@ import {
   environmentIntensity,
   type NightUniform,
   prepareNight,
+  toNodeMaterial,
 } from './modelLook';
 import type { CityLight } from './occlusion';
 import type { GroundSampler } from './terrainGround';
@@ -91,6 +92,11 @@ export interface ModelSpec {
 
 export type ModelStatus = 'drawn' | 'fallback';
 
+/** What draws the models: the city engine's TSL pass, into the map's frame and depth. */
+export interface ModelPass {
+  drawScene(scene: THREE.Scene, camera: THREE.Camera): void;
+}
+
 /** What the host knows about its camera this frame (a subset of `CityView`). */
 export interface ModelView {
   mercatorToClip: ArrayLike<number>;
@@ -108,12 +114,8 @@ export interface ModelLayer {
    * light and turns on what each asset says glows (`modelLook.ts`).
    */
   setNightFactor(nightFactor: number): void;
-  /** Draw. The caller has reset three's GL state. */
-  render(
-    renderer: THREE.WebGLRenderer,
-    view: ModelView,
-    canvas: { width: number; height: number },
-  ): void;
+  /** Draw, with the city engine's TSL pass (`tsl/tslPass.ts`). */
+  render(pass: ModelPass, view: ModelView, canvas: { width: number; height: number }): void;
   /** The model under a CSS-pixel point of the last frame, by its bounds. */
   pick(point: { x: number; y: number }): string | null;
   /**
@@ -287,7 +289,8 @@ function applyTint(root: THREE.Object3D, tint: string): void {
 }
 
 /**
- * One instance's copy of an asset: shared geometry, but MATERIALS OF ITS OWN.
+ * One instance's copy of an asset: shared geometry, but MATERIALS OF ITS OWN —
+ * the node twins the TSL pass draws (`modelLook.ts` → `toNodeMaterial`).
  *
  * `Object3D.clone` shares materials, and both occlusion (`depthTest`) and tint
  * are material state — so on a shared material the last instance configured
@@ -302,7 +305,7 @@ function instanceBody(source: THREE.Object3D): THREE.Object3D {
   const own = (material: THREE.Material) => {
     let copy = copies.get(material);
     if (!copy) {
-      copy = material.clone();
+      copy = toNodeMaterial(material.clone());
       copies.set(material, copy);
     }
     return copy;
@@ -407,8 +410,11 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
     if (light) lights.update({ ...light, night: night.value });
     scene.environmentIntensity = environmentIntensity(night.value);
   };
-  // Built on the first frame (it needs the renderer); `undefined`: not yet.
-  let environment: THREE.Texture | null | undefined;
+  // A soft sky to reflect (`modelLook.ts`); its up is the world's +z, the
+  // texture's +y: turned a quarter about x (three samples Rᵀ · direction).
+  const environment = createModelEnvironment();
+  scene.environment = environment;
+  scene.environmentRotation.set(Math.PI / 2, 0, 0);
 
   const loader = createGltfLoader();
   const assets = new Map<string, Promise<Asset>>();
@@ -592,7 +598,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       options.requestRepaint();
     },
 
-    render(renderer, view, canvas) {
+    render(pass, view, canvas) {
       if (disposed || instances.size === 0) return;
       const { matrix, center } = modelProjection(view);
       // The host hands one view-projection; split it so the camera stands
@@ -600,10 +606,6 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       // identity view the "eye" was the map's centre on the ground: every
       // view vector pointed down at it, the Fresnel term saw grazing angles
       // everywhere, and smooth materials (glass, steel) rendered near-black.
-      if (environment === undefined) {
-        environment = createModelEnvironment(renderer);
-        scene.environment = environment;
-      }
       const eye = eyeOf(matrix);
       camera.position.copy(eye);
       camera.updateMatrixWorld(true);
@@ -703,7 +705,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       }
       // Not forced: only subtrees flagged above (and animated ones) are re-derived.
       scene.updateMatrixWorld();
-      renderer.render(scene, camera);
+      pass.drawScene(scene, camera);
       if (options.animation) options.animation.setAnimating(animating);
       else if (animating) options.requestRepaint();
     },
@@ -749,7 +751,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       disposed = true;
       options.animation?.dispose();
       for (const id of [...instances.keys()]) remove(id);
-      environment?.dispose();
+      environment.dispose();
       pending.clear();
       // Geometries and materials of loaded assets.
       for (const promise of assets.values()) {

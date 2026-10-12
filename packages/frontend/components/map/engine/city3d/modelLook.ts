@@ -21,8 +21,40 @@
  * The night factor (0 day … 1 night) is the layer's, set by the host
  * (`lib/map/landmarks/night.ts` decides it). At night the sun and the sky
  * light dim and turn blue, so the emissive light is what the eye reads.
+ *
+ * ## Drawn by the TSL pass
+ *
+ * The models are three's own lit materials, drawn by the city engine's TSL
+ * pass (`tsl/tslPass.ts`, `docs/MAP_NATIVE_3D.md` → Phase 2): each glTF
+ * material becomes its node twin ({@link toNodeMaterial}), the uplight is an
+ * emissive node, and the output is encoded to sRGB in the material — the pass
+ * writes raw values into the map's frame, as `WebGLRenderer` encoded them.
  */
 import * as THREE from 'three';
+import {
+  MeshBasicNodeMaterial,
+  MeshPhysicalNodeMaterial,
+  MeshStandardNodeMaterial,
+  type Node,
+  type NodeMaterial,
+} from 'three/webgpu';
+import {
+  abs,
+  clamp,
+  dot,
+  exp,
+  float,
+  materialEmissive,
+  max,
+  normalGeometry,
+  normalize,
+  output,
+  positionGeometry,
+  sRGBTransferOETF,
+  uniform,
+  varying,
+  vec4,
+} from 'three/tsl';
 
 /** Linear RGB triple, as glTF factors and the extras carry colour. */
 type Rgb = [number, number, number];
@@ -45,6 +77,35 @@ const isRgb = (v: unknown): v is Rgb =>
 /** One shared factor for every patched material of a layer (a uniform object). */
 export interface NightUniform {
   value: number;
+}
+
+/** The node twin of each material type a glTF yields (`GLTFLoader`). */
+const NODE_TWINS: Record<string, new () => NodeMaterial> = {
+  MeshStandardMaterial: MeshStandardNodeMaterial,
+  MeshPhysicalMaterial: MeshPhysicalNodeMaterial,
+  // `KHR_materials_unlit`.
+  MeshBasicMaterial: MeshBasicNodeMaterial,
+};
+
+/**
+ * A glTF material as the TSL pass draws it: its node twin with every
+ * property carried over (as three's own `NodeLibrary.fromMaterial` does), and
+ * its output encoded to sRGB, as `WebGLRenderer` encoded it into the map's
+ * frame. A material of another type is returned as it is.
+ */
+export function toNodeMaterial(material: THREE.Material): THREE.Material {
+  if ((material as { isNodeMaterial?: boolean }).isNodeMaterial) return material;
+  const Twin = NODE_TWINS[material.type];
+  if (!Twin) return material;
+  const node = new Twin();
+  const source = material as unknown as Record<string, unknown>;
+  const target = node as unknown as Record<string, unknown>;
+  for (const key in material) target[key] = source[key];
+  // `output`: the material's own result; three's types leave it untyped.
+  const result = output as unknown as Node<'vec4'>;
+  const encoded = sRGBTransferOETF(result.rgb) as unknown as Node<'vec3'>;
+  node.outputNode = vec4(encoded, result.a);
+  return node;
 }
 
 /**
@@ -88,35 +149,20 @@ export function prepareNight(body: THREE.Object3D, night: NightUniform): THREE.M
         const colour = new THREE.Vector3(...uplight.color).multiplyScalar(
           Number(uplight.strength) || 0,
         );
-        standard.onBeforeCompile = (shader) => {
-          shader.uniforms.uGowayNight = night;
-          shader.uniforms.uGowayUplight = { value: colour };
-          shader.uniforms.uGowayReach = { value: uplight.reach };
-          shader.uniforms.uGowayHeightRow = { value: heightRow };
-          shader.uniforms.uGowayUp = { value: up };
-          shader.vertexShader = shader.vertexShader
-            .replace(
-              '#include <common>',
-              '#include <common>\nuniform vec4 uGowayHeightRow;\nuniform vec3 uGowayUp;\nvarying float vGowayHeight;\nvarying float vGowayWall;',
-            )
-            .replace(
-              '#include <begin_vertex>',
-              '#include <begin_vertex>\nvGowayHeight = dot(uGowayHeightRow, vec4(position, 1.0));\nvGowayWall = 1.0 - abs(dot(uGowayUp, normalize(normal)));',
-            );
-          shader.fragmentShader = shader.fragmentShader
-            .replace(
-              '#include <common>',
-              '#include <common>\nuniform float uGowayNight;\nuniform vec3 uGowayUplight;\nuniform float uGowayReach;\nvarying float vGowayHeight;\nvarying float vGowayWall;',
-            )
-            .replace(
-              '#include <emissivemap_fragment>',
-              // A floodlight wash: full at the base, ~5% at `reach`; walls
-              // take it, roofs a little.
-              '#include <emissivemap_fragment>\ntotalEmissiveRadiance += uGowayUplight * (uGowayNight * exp(-3.0 * max(vGowayHeight, 0.0) / uGowayReach) * (0.25 + 0.75 * clamp(vGowayWall, 0.0, 1.0)));',
-            );
-        };
-        // One program for every uplit material (the uniforms differ, the code does not).
-        standard.customProgramCacheKey = () => 'goway-uplight';
+        // A floodlight wash: full at the base, ~5% at `reach`; walls take
+        // it, roofs a little. Heights are asset metres (the node's own
+        // transform), and both terms are the vertex's, interpolated.
+        const height = varying(dot(uniform(heightRow), vec4(positionGeometry, 1)));
+        const wall = varying(float(1).sub(abs(dot(uniform(up), normalize(normalGeometry)))));
+        const wash = uniform(colour).mul(
+          uniform(night.value)
+            .onRenderUpdate(() => night.value)
+            .mul(exp(max(height, 0).mul(-3).div(uplight.reach)))
+            .mul(clamp(wall, 0, 1).mul(0.75).add(0.25)),
+        );
+        (standard as unknown as MeshStandardNodeMaterial).emissiveNode = materialEmissive.add(wash);
+        // What the wash was built from, for a test or a console to read.
+        standard.userData.gowayUplight = { heightRow, up, colour, reach: uplight.reach };
         standard.needsUpdate = true;
       }
     }
@@ -187,52 +233,32 @@ export function createModelLights(): ModelLights {
 /**
  * A soft sky to reflect: glass and steel read as glass and steel only when
  * they mirror something, and with no environment a smooth material mirrors
- * black. A gradient sphere (zenith blue, a warm bright horizon, a grey
- * ground), up being the world's +z, pre-filtered once with three's PMREM.
- *
- * PMREM renders into its own targets, and this runs INSIDE the host's frame,
- * with the host's framebuffer bound — which three cannot see. So the binding
- * and the viewport are saved and put back by hand, and three's cached state
- * is reset after. Returns `null` (no reflections, nothing else changes) if
- * the context cannot do it.
+ * black. A gradient over the sky's height — zenith blue, a warm bright
+ * horizon, a grey ground — as an equirectangular texture whose up is the
+ * world's +z (the model layer's world: mercator, y north, z up). The TSL pass
+ * pre-filters it for each roughness itself (three's PMREM node), on the GPU
+ * it draws with: no render into a target of our own inside the host's frame.
  */
-export function createModelEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture | null {
-  if (typeof renderer.getContext !== 'function') return null;
-  const gl = renderer.getContext();
-  const framebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
-  const viewport = gl.getParameter(gl.VIEWPORT) as Int32Array;
-  const sky = new THREE.SphereGeometry(10, 32, 16);
-  sky.rotateX(Math.PI / 2); // poles on ±z
-  const position = sky.attributes.position;
-  const colours = new Float32Array(position.count * 3);
+export function createModelEnvironment(): THREE.DataTexture {
+  const width = 64;
+  const height = 32;
+  const data = new Float32Array(width * height * 4);
   const zenith = new THREE.Color(0xb7cde6);
   const horizon = new THREE.Color(0xf4efe6);
   const ground = new THREE.Color(0x8f8d88);
   const c = new THREE.Color();
-  for (let i = 0; i < position.count; i++) {
-    const up = position.getZ(i) / 10;
+  for (let row = 0; row < height; row++) {
+    // Rows run from the top of the sphere (+1) to the bottom (−1).
+    const up = Math.cos((Math.PI * (row + 0.5)) / height);
     if (up >= 0) c.copy(horizon).lerp(zenith, Math.min(1, up * 1.6));
     else c.copy(horizon).lerp(ground, Math.min(1, -up * 4));
-    colours.set([c.r, c.g, c.b], i * 3);
+    for (let col = 0; col < width; col++) data.set([c.r, c.g, c.b, 1], (row * width + col) * 4);
   }
-  sky.setAttribute('color', new THREE.BufferAttribute(colours, 3));
-  const scene = new THREE.Scene();
-  const material = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide });
-  scene.add(new THREE.Mesh(sky, material));
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  let texture: THREE.Texture | null = null;
-  try {
-    texture = pmrem.fromScene(scene, 0, 0.1, 100).texture;
-  } catch {
-    texture = null;
-  } finally {
-    pmrem.dispose();
-    sky.dispose();
-    material.dispose();
-    renderer.resetState();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-    gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
-  }
+  const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.FloatType);
+  texture.mapping = THREE.EquirectangularReflectionMapping;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
   return texture;
 }
 
