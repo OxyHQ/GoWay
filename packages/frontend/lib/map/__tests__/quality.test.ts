@@ -62,6 +62,8 @@ describe('resolveQuality', () => {
       p.life.people,
       p.live.maxEntities,
       p.landmarks.max,
+      p.streets.maxTiles,
+      p.streets.drawTriangles,
       p.frame.animationHz,
     ];
     const [a, b, c] = [numbers(low), numbers(medium), numbers(high)];

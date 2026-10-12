@@ -31,7 +31,12 @@ describe('road tags', () => {
     expect(roadProperties({ highway: 'residential', access: 'private' })).toBeNull();
     expect(roadProperties({ highway: 'service', service: 'parking_aisle' })).toBeNull();
     expect(roadProperties({ highway: 'service', service: 'alley' })).toMatchObject({ car: true });
-    expect(roadProperties({ highway: 'cycleway' })).toBeNull();
+    // Kept for the street detail (schema 3), neither a car's nor a person's.
+    expect(roadProperties({ highway: 'cycleway' })).toMatchObject({
+      car: false,
+      foot: false,
+      cycle: true,
+    });
     expect(roadProperties({ highway: 'cycleway', foot: 'designated' })).toMatchObject({
       foot: true,
     });

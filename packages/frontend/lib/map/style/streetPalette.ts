@@ -63,6 +63,20 @@ const NIGHT: StreetColours = {
 
 export const STREET_PALETTES = { day: DAY, night: NIGHT } as const;
 
+/**
+ * The least WCAG contrast a marking keeps against the asphalt it is painted
+ * on (`streetPalette.test.ts` holds both ends to it). White paint — lane
+ * lines, crossings, stop lines, arrows, names — must read at a glance; yellow
+ * (centre lines) also reads by hue, so its floor by day is lower. Measured
+ * when this was set: day white 2.39:1 and yellow 1.53:1 on `#a2a5a9`; night
+ * 6.83:1 and 4.90:1 on `#303a52` (the pale `#c6c9cd` asphalt gave white
+ * 1.60:1 by day, which is why the ground palette's streets were darkened).
+ */
+export const MARKING_CONTRAST = {
+  day: { paint: 2.2, yellow: 1.5 },
+  night: { paint: 4.5, yellow: 3 },
+} as const;
+
 /** The renderer's input: sRGB triples in its slot order (`meshBuffers.ts` → `SURFACE`, `PAINT`). */
 export function streetPaletteInput(): {
   surfaces: { day: Rgb[]; night: Rgb[] };

@@ -69,6 +69,15 @@ export interface RoadPiece {
   cycleLane?: Side;
   parking?: Side;
   sidewalkWidth?: number;
+  /** `highway=cycleway` (schema 3): neither a car's nor a person's unless `car`/`foot` say so. */
+  cycle?: boolean;
+  /**
+   * `change:lanes*` (schema 3): per lane, in the tag's order, whether its
+   * traffic may change to the lane on its left / right.
+   */
+  changeLanes?: LaneChange[];
+  changeLanesForward?: LaneChange[];
+  changeLanesBackward?: LaneChange[];
   /** On a `footway=crossing` piece. */
   crossing?: string;
   crossingMarkings?: string;
@@ -138,6 +147,25 @@ export function parseTurnLanes(value: unknown): Turn[][] | undefined {
   return out;
 }
 
+/** Where a lane's traffic may change lanes, from the traveller's seat. */
+export interface LaneChange {
+  left: boolean;
+  right: boolean;
+}
+
+const CHANGE_CODES: Record<string, LaneChange> = {
+  y: { left: true, right: true },
+  n: { left: false, right: false },
+  l: { left: true, right: false },
+  r: { left: false, right: true },
+};
+
+/** `nly` (`lib/map/cityRoads.ts` → `changeLanes`) → per-lane changes, or `undefined` for junk. */
+export function parseChangeLanes(value: unknown): LaneChange[] | undefined {
+  if (typeof value !== 'string' || !/^[ynlr]{1,12}$/.test(value)) return undefined;
+  return [...value].map((c) => CHANGE_CODES[c]);
+}
+
 /** `--b` → `[false, false, true]`, or `undefined` for junk. */
 export function parseBusLanes(value: unknown): boolean[] | undefined {
   if (typeof value !== 'string' || !/^[b-]{1,12}$/.test(value)) return undefined;
@@ -168,6 +196,9 @@ function streetFields(p: Record<string, unknown>): Partial<RoadPiece> {
     sidewalkWidth: num(p.sidewalk_width, 0.5, 20),
     crossing: word(p.crossing),
     crossingMarkings: word(p.crossing_markings),
+    changeLanes: parseChangeLanes(p.change_lanes),
+    changeLanesForward: parseChangeLanes(p.change_lanes_forward),
+    changeLanesBackward: parseChangeLanes(p.change_lanes_backward),
   };
   for (const key of Object.keys(out) as (keyof RoadPiece)[]) {
     if (out[key] === undefined) delete out[key];
@@ -204,7 +235,9 @@ export function decodeRoadTile(
       if (typeof highway !== 'string' || !CLASSES.has(highway)) continue;
       const car = p.car === true;
       const foot = p.foot === true;
-      if (!car && !foot) continue;
+      // Schema 3: a separate cycle track, kept for the street detail only.
+      const cycle = p.cycle === true;
+      if (!car && !foot && !cycle) continue;
       const way = int(p.way, 0, Number.MAX_SAFE_INTEGER) ?? 0;
       const street = streetFields(p);
       for (const line of feature.loadGeometry()) {
@@ -214,6 +247,7 @@ export function decodeRoadTile(
           highway: highway as RoadClass,
           car,
           foot,
+          ...(cycle ? { cycle } : {}),
           roundabout: p.roundabout === true,
           tunnel: p.tunnel === true,
           points: line.map((point) => [ox + point.x * scale, oy + point.y * scale]),

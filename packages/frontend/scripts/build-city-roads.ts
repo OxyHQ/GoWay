@@ -216,7 +216,7 @@ async function build(args: Args): Promise<string> {
   );
   const st = r.street;
   console.log(
-    `  street     name ${pct(st.named, r.carWays)}% · width ${pct(st.width, r.carWays)}% · turn:lanes ${pct(st.turnLanes, r.carWays)}% · bus ${pct(st.busLanes, r.carWays)}% · cycle lane ${pct(st.cycleLanes, r.carWays)}% · parking ${pct(st.parking, r.carWays)}% of car ways; refused ${JSON.stringify(st.refused)}`,
+    `  street     name ${pct(st.named, r.carWays)}% · width ${pct(st.width, r.carWays)}% · turn:lanes ${pct(st.turnLanes, r.carWays)}% · bus ${pct(st.busLanes, r.carWays)}% · cycle lane ${pct(st.cycleLanes, r.carWays)}% · parking ${pct(st.parking, r.carWays)}% · change:lanes ${pct(st.changeLanes, r.carWays)}% of car ways · ${st.cycleways} cycleways; refused ${JSON.stringify(st.refused)}`,
   );
 
   await writeFile(

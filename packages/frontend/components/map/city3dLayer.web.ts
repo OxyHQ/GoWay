@@ -102,6 +102,7 @@ import type { GroundStats } from './engine/city3d/terrainGround';
 import type { CityLifeStats } from './engine/cityLife/lifeRenderer';
 import type { CityStreetsStats } from './engine/cityStreets/streetRenderer';
 import { type CityLifeChip, mountCityLifeChip } from './cityLifeChip.web';
+import { type StreetNameBlockers, mountStreetNameBlockers } from './streetNameBlockers.web';
 import type { AnimationClock } from './perf/animationClock';
 import { reportMapDefect } from './shared';
 
@@ -533,6 +534,9 @@ export async function attachCity3d(
   const previousHostSky = sky ? (map.getSky?.() ?? null) : null;
   let appliedHostSky = '';
   let chip: CityLifeChip | null = null;
+  let nameBlockers: StreetNameBlockers | null = null;
+  let pendingNames: readonly (readonly [number, number])[] | null = null;
+  let namesTimer: ReturnType<typeof setTimeout> | null = null;
 
   // The light as MapLibre would apply it to `building-3d` this frame: the
   // given spec (or the style's own), at the current bearing — which matters
@@ -551,6 +555,8 @@ export async function attachCity3d(
     engine?.dispose();
     engine = null;
     chip?.remove();
+    nameBlockers?.remove();
+    nameBlockers = null;
     chip = null;
   };
   const ensureEngine = (host: MapLibreMap, gl: WebGLRenderingContext | WebGL2RenderingContext) => {
@@ -566,7 +572,22 @@ export async function attachCity3d(
           glyphTemplate: absoluteGlyphs(host.getStyle()?.glyphs, origin),
           fontstack: STREET_FONTSTACK,
           palette: streetPaletteInput(),
+          quality: options.quality.streets,
           requestRepaint: () => host.triggerRepaint(),
+          // One name on a street, not two: the map's flat label yields where
+          // the name is painted (`streetNameBlockers.web.ts`).
+          // Reported from inside the frame; the style is changed after it.
+          onPaintedNames: (points) => {
+            pendingNames = points;
+            if (namesTimer) return;
+            namesTimer = setTimeout(() => {
+              namesTimer = null;
+              if (detached || !pendingNames) return;
+              nameBlockers ??= mountStreetNameBlockers(host);
+              nameBlockers.set(pendingNames);
+              pendingNames = null;
+            }, 0);
+          },
           onStats: __DEV__ ? publishStreetStats : undefined,
         }),
       );
@@ -904,6 +925,8 @@ export async function attachCity3d(
       engine?.dispose();
       engine = null;
       chip?.remove();
+      nameBlockers?.remove();
+      nameBlockers = null;
       chip = null;
       if (drawnLandmarks.size > 0) options.onLandmarkCredits?.([]);
     },
