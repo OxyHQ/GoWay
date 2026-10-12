@@ -637,7 +637,7 @@ async function verify(path: string, area?: string): Promise<string[]> {
       surfaces += decodeLod2Tile(Bun.gunzipSync(tile.bytes)).length;
     }
   }
-  if (opened === 0) problems.push('no tile around the archive centre');
+  if (opened === 0 && header.addressedTiles > 0) problems.push('no tile around the probe tile');
   for (const [id, item] of wanted) {
     if (!found.has(id)) problems.push(`${item.name} (${id}) is not in its tile`);
   }

@@ -80,7 +80,11 @@ const OFFICIAL: { source: string; include: string[]; exclude: string[] }[] = [
  * GML (`docs/MAP_CITY_PLANET.md` → "Official data"). Raise a region here
  * when a dry run with `official: true` shows it does not fit, and re-plan.
  */
-const MIN_PARTS: Record<string, number> = {};
+const MIN_PARTS: Record<string, number> = {
+  // Measured 2026-10-12 on the runner: one part's roads were 302 MB (wrangler
+  // stops at 314.6) and 13.2 GB of memory — the outback's tracks.
+  'australia-oceania/australia': 2,
+};
 
 interface IndexFeature {
   properties: { id: string; parent?: string; name: string; urls: { pbf: string } };

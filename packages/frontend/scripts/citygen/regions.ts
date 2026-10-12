@@ -62,24 +62,28 @@ export function catalogueRegion(id: string, regions = CITY_REGIONS.regions): Cit
 
 /**
  * Select regions for a run: `all`, or a comma-separated list of ids and
- * prefixes (`europe/` selects every European region). Unknown names throw, so
- * a typo in a workflow input fails the run instead of building nothing.
+ * prefixes (`europe/` selects every European region); an item starting with
+ * `-` takes ids or a prefix back out (`all,-europe/spain/madrid`). Unknown
+ * names throw, so a typo in a workflow input fails the run instead of
+ * building nothing — or everything.
  */
 export function selectRegions(selector: string, regions = CITY_REGIONS.regions): CityRegion[] {
-  const wanted = selector
+  const items = selector
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+  const wanted = items.filter((item) => !item.startsWith('-'));
+  const unwanted = items.filter((item) => item.startsWith('-')).map((item) => item.slice(1));
   if (wanted.length === 0) throw new Error('no regions selected');
-  if (wanted.includes('all')) return [...regions];
-  const out = new Set<CityRegion>();
-  for (const item of wanted) {
-    const matches = item.endsWith('/')
+  const match = (item: string) => {
+    const found = item.endsWith('/')
       ? regions.filter((region) => region.id.startsWith(item))
       : regions.filter((region) => region.id === item);
-    if (matches.length === 0) throw new Error(`"${item}" names no region in citygen/regions.json`);
-    for (const match of matches) out.add(match);
-  }
+    if (found.length === 0) throw new Error(`"${item}" names no region in citygen/regions.json`);
+    return found;
+  };
+  const out = new Set<CityRegion>(wanted.includes('all') ? regions : wanted.flatMap(match));
+  for (const item of unwanted) for (const region of match(item)) out.delete(region);
   return regions.filter((region) => out.has(region));
 }
 

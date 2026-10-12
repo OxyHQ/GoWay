@@ -96,9 +96,13 @@ jobs:
           set -euo pipefail
           # The catalogue is all the planner reads, so no install is needed.
           bun packages/frontend/scripts/city-batches.ts --regions="$REGIONS" >> "$GITHUB_OUTPUT"
-          # One stamp for the whole run: every key it writes shares it, and a
-          # rerun gets a new one (run_number), so no key is ever written twice.
-          echo "stamp=$(date -u +%Y%m%d)-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          # One stamp for the whole run: every key it writes shares it. `r` +
+          # run_number keeps CI's stamps apart from hand-published ones
+          # (`20261012-1`, measured: the first CI run's `-1` collided, and
+          # city-r2.sh refused to overwrite the dated manifest). Re-running
+          # failed jobs keeps the stamp; city-r2.sh skips keys already holding
+          # the same bytes.
+          echo "stamp=$(date -u +%Y%m%d)-r${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.batch.index }} (${{ matrix.batch.regions }})
@@ -129,6 +133,7 @@ jobs:
           df -h / /mnt
 
       - name: Build the regions
+        id: build
         env:
           REGIONS: ${{ matrix.batch.regions }}
           STAMP: ${{ needs.plan.outputs.stamp }}
@@ -136,8 +141,13 @@ jobs:
           OFFICIAL: ${{ inputs.official && 'yes' || 'no' }}
         run: |
           set -euo pipefail
-          for region in $REGIONS; do
-            echo "::group::$region"
+          # One region failing (a download, a compiler, a verifier) must not
+          # cost the batch the regions that built: each builds into its own
+          # directory, moved into $OUT only when it succeeded; the failures are
+          # listed and fail the job AFTER the others are uploaded and recorded.
+          build_region() {
+            region=$1
+            rout=$2
             dl="/mnt/city/dl/$region"
             mkdir -p "$(dirname "$dl")"
             base="https://download.geofabrik.de/$region"
@@ -182,11 +192,37 @@ jobs:
             fi
             bun run --cwd packages/frontend map:city-region \
               --region="$region" --pbf="$dl.osm.pbf" --poly="$dl.poly" \
-              --stamp="$STAMP" --out="$OUT" --osmium=osmium "${official[@]}"
-            rm -rf "$dl.osm.pbf" "/mnt/city/official/$region"
+              --stamp="$STAMP" --out="$rout" --osmium=osmium "${official[@]}"
+            # wrangler r2 object put stops at 300 MiB: a region past it is
+            # built in more parts (MIN_PARTS in plan-city-regions.ts).
+            big=$(find "$rout" -name '*.pmtiles' -size +314572800c)
+            if [ -n "$big" ]; then
+              echo "::error::$region: over wrangler's 300 MiB: $big — raise its MIN_PARTS"
+              exit 1
+            fi
+          }
+          failed=()
+          for region in $REGIONS; do
+            echo "::group::$region"
+            rout="/mnt/city/tmp/${region//\//_}"
+            rm -rf "$rout"
+            set +e
+            ( set -euo pipefail; build_region "$region" "$rout" )
+            status=$?
+            set -e
+            if [ "$status" -eq 0 ]; then
+              mkdir -p "$OUT"
+              cp -a "$rout/." "$OUT/"
+            else
+              echo "::error::$region failed ($status); its archives are not uploaded"
+              failed+=("$region")
+            fi
+            rm -rf "$rout" "/mnt/city/dl/$region.osm.pbf" "/mnt/city/official/$region"
             echo "::endgroup::"
           done
+          mkdir -p "$OUT"
           du -sh "$OUT"
+          echo "failed=${failed[*]}" >> "$GITHUB_OUTPUT"
 
       - name: Keep the archives (dry run, on request)
         if: ${{ inputs.keep_archives && !inputs.publish }}
@@ -196,37 +232,22 @@ jobs:
           path: /mnt/city/out/city*/
           retention-days: 3
 
-      - name: Upload to R2 (publish only; dated keys, never overwritten)
+      - name: Upload to R2 (publish only; dated keys, never overwritten, read back)
         if: ${{ inputs.publish }}
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.GOWAY_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.GOWAY_R2_SECRET_ACCESS_KEY }}
+          # The token the frontend deploy already uses (an org secret); it
+          # must carry R2 write on the bucket. `city-r2.sh` refuses to
+          # overwrite a key, skips one that already holds these exact bytes (a
+          # re-run), and hashes every object read back against the file built.
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          AWS_DEFAULT_REGION: auto
-        working-directory: /mnt/city/out
         run: |
           set -euo pipefail
-          if [[ -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
-            echo "::error::GOWAY_R2_ACCESS_KEY_ID, GOWAY_R2_SECRET_ACCESS_KEY or CLOUDFLARE_ACCOUNT_ID is empty (docs/MAP_CITY_PLANET.md → Approval)."
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is empty."
             exit 1
           fi
-          endpoint="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          # A PMTiles archive is read by byte offset: overwriting one a Worker
-          # is reading serves another tile's bytes. So an existing key is an
-          # error, not something to replace.
-          find city city-roads -type f | sort | while read -r key; do
-            if aws s3api head-object --endpoint-url "$endpoint" --bucket "$R2_BUCKET" --key "$key" >/dev/null 2>&1; then
-              echo "::error::$key already exists in $R2_BUCKET; refusing to overwrite it."
-              exit 1
-            fi
-            case "$key" in
-              *.receipt.json) type=application/json ;;
-              *) type=application/vnd.pmtiles ;;
-            esac
-            aws s3 cp "$key" "s3://$R2_BUCKET/$key" --endpoint-url "$endpoint" \
-              --content-type "$type" --checksum-algorithm CRC32 --only-show-errors
-            echo "uploaded $key"
-          done
+          bash packages/frontend/scripts/city-r2.sh put-tree /mnt/city/out
 
       # LAST, and only when everything above succeeded: the manifest job reads
       # these entries, and an entry must never name an archive that did not
@@ -239,6 +260,14 @@ jobs:
             /mnt/city/out/entries/
             /mnt/city/out/**/*.receipt.json
           retention-days: 30
+
+      - name: Fail for the regions that did not build
+        if: ${{ steps.build.outputs.failed != '' }}
+        env:
+          FAILED: ${{ steps.build.outputs.failed }}
+        run: |
+          echo "::error::did not build: $FAILED (the rest of the batch is uploaded and recorded)"
+          exit 1
 
   manifest:
     name: Manifest
@@ -263,18 +292,16 @@ jobs:
       - name: The manifest now in R2 (publish only)
         if: ${{ inputs.publish }}
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.GOWAY_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.GOWAY_R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          AWS_DEFAULT_REGION: auto
         run: |
           set -euo pipefail
-          endpoint="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          if aws s3 cp "s3://$R2_BUCKET/$MANIFEST_KEY" previous.json --endpoint-url "$endpoint" --only-show-errors; then
-            echo "previous manifest: $(wc -c < previous.json) bytes"
-          else
-            echo "no manifest in R2 yet: this run's regions are the whole manifest"
-          fi
+          # Exit 3 is "there is none yet"; any other failure stops the run —
+          # treating an unreadable manifest as absent would publish this run's
+          # regions alone and drop every region published before.
+          status=0
+          bash packages/frontend/scripts/city-r2.sh get-manifest "$PWD/previous.json" || status=$?
+          if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then exit "$status"; fi
 
       - name: Assemble
         env:
@@ -301,19 +328,21 @@ jobs:
       - name: Publish the manifest (publish only; the dated copy first, then the live one)
         if: ${{ inputs.publish }}
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.GOWAY_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.GOWAY_R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          AWS_DEFAULT_REGION: auto
           STAMP: ${{ needs.plan.outputs.stamp }}
         run: |
           set -euo pipefail
-          endpoint="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          dated="city/manifests/$STAMP.json"
           # The dated copy is the rollback: copying an older one over the live
           # key is the whole procedure.
-          aws s3 cp manifest.json "s3://$R2_BUCKET/$dated" --endpoint-url "$endpoint" \
-            --content-type application/json --only-show-errors
-          aws s3 cp manifest.json "s3://$R2_BUCKET/$MANIFEST_KEY" --endpoint-url "$endpoint" \
-            --content-type application/json --cache-control "no-cache" --only-show-errors
-          echo "published $MANIFEST_KEY (= $dated)"
+          bash packages/frontend/scripts/city-r2.sh publish-manifest "$PWD/manifest.json" "$STAMP"
+
+      - name: Check it is live (publish only)
+        if: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          # Waits for the edge to serve this manifest, then asks every region
+          # of this run for its densest tile, and the named points below.
+          bun packages/frontend/scripts/city-check-live.ts --manifest="$PWD/manifest.json" \
+            --entries="$PWD/entries-download" --origin=https://goway.to \
+            --probe=barcelona:41.40363,2.17435
