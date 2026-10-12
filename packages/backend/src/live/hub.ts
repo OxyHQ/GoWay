@@ -135,6 +135,10 @@ interface SourceState {
   settings: LiveAdapterSettings;
   /** Whether this task holds the source's lease (always, without a bus). */
   leader: boolean;
+  /** This task's lease epoch while it leads (`LiveBus.lease`); 0 otherwise. */
+  epoch: number;
+  /** The newest leader epoch heard for this source: older messages are dropped. */
+  heardEpoch: number;
 }
 
 /** Static GTFS is re-read this often while a source is watched. */
@@ -181,13 +185,16 @@ export class LiveHub {
       matches: new Map(),
       settings,
       leader: !options.bus,
+      epoch: 0,
+      heardEpoch: 0,
     }));
     this.bus = options.bus ?? null;
   }
 
   private readonly bus: LiveBus | null;
   /** Every task's watched room keys, as of the last {@link coordinate}. */
-  private clusterRooms = new Set<string>();
+  /** Every task's demand entries (`demandEntries`), as of the last {@link coordinate}. */
+  private clusterDemand = new Set<string>();
   /** The bus failed: this process polls on its own until it answers again. */
   private busDown = false;
   private coordinateTimer: ReturnType<typeof setInterval> | null = null;
@@ -257,21 +264,27 @@ export class LiveHub {
         // BEFORE giving up local polling — a follower that cannot hear the
         // leader must not stop polling.
         if (!bus.isSubscribed()) await this.join(bus);
-        this.clusterRooms = await this.bounded(
+        this.clusterDemand = await this.bounded(
           bus.exchangeDemand(
-            coarseDemand(this.roomWatchers.keys()),
+            demandEntries(
+              this.states.map((state) => state.definition),
+              (definition) => this.localDemandFor(definition),
+            ),
             this.options.cluster?.demandTtlMs ?? DEMAND_TTL_MS,
           ),
         );
         for (const state of this.states) {
           const wanted = this.demandFor(state.definition).length > 0;
-          if (wanted)
-            state.leader = await this.bounded(
+          if (wanted) {
+            state.epoch = await this.bounded(
               bus.lease(state.definition.id, this.options.cluster?.leaseMs ?? LEASE_MS),
             );
-          else if (state.leader) {
+            state.leader = state.epoch > 0;
+            if (state.leader) state.heardEpoch = Math.max(state.heardEpoch, state.epoch);
+          } else if (state.leader) {
             await this.bounded(bus.release(state.definition.id));
             state.leader = false;
+            state.epoch = 0;
           }
         }
         if (this.busDown) {
@@ -322,6 +335,7 @@ export class LiveHub {
             entities,
             lastSuccessAt: state.lastSuccessAt,
             failures: state.failures,
+            epoch: state.epoch,
           }),
         ).catch((error: unknown) => this.busFailed(error));
       }
@@ -330,6 +344,10 @@ export class LiveHub {
     const state = this.states.find((candidate) => candidate.definition.id === message.sourceId);
     // Not configured here, or this task polls it itself.
     if (!state || this.leads(state)) return;
+    // From a holder older than one already heard: a publish abandoned at its
+    // deadline and delivered late, after the lease moved on. Never applied.
+    if (message.epoch < state.heardEpoch) return;
+    state.heardEpoch = message.epoch;
     if (message.type === 'status') {
       state.failures = message.failures;
       state.lastSuccessAt = message.lastSuccessAt;
@@ -426,17 +444,31 @@ export class LiveHub {
     return now - state.lastSuccessAt > 3 * interval + POLL_TIMEOUT_MS ? 'stale' : 'live';
   }
 
-  /** The watched room boxes inside a source's coverage, of its kind — this task's and, with a bus, every task's. */
-  private demandFor(definition: LiveSourceDefinition): GeoBoundingBox[] {
+  /** The rooms THIS task's sockets watch inside a source's coverage, of its kind: exact, never shared. */
+  private localDemandFor(definition: LiveSourceDefinition): GeoBoundingBox[] {
     const boxes: GeoBoundingBox[] = [];
-    const keys = new Set(this.roomWatchers.keys());
-    for (const key of this.clusterRooms) keys.add(key);
-    for (const key of keys) {
+    for (const key of this.roomWatchers.keys()) {
       const room = parseRoom(key);
       if (room.kind !== definition.kind) continue;
       const box = liveTileBounds(room.tile);
       if (definition.coverage && !intersects(box, definition.coverage)) continue;
       boxes.push(box);
+    }
+    return boxes;
+  }
+
+  /**
+   * Where a source is wanted: this task's rooms, and — with a bus — what the
+   * other tasks said they want (`demandEntries`): the source by id, or for a
+   * regional feed its z6 regions.
+   */
+  private demandFor(definition: LiveSourceDefinition): GeoBoundingBox[] {
+    const boxes = this.localDemandFor(definition);
+    for (const entry of this.clusterDemand) {
+      const [id, region] = entry.split('@') as [string, string | undefined];
+      if (id !== definition.id) continue;
+      // A whole-feed source needs no region; its coverage stands for "wanted".
+      boxes.push(region ? liveTileBounds(region) : (definition.coverage ?? WORLD));
     }
     return boxes;
   }
@@ -497,9 +529,16 @@ export class LiveHub {
       }
       state.idleSince = null;
       state.everActive = true;
-      // Every task with demand reads the static GTFS: the leader to put
-      // vehicles on their tracks, all of them to serve the shapes route.
-      if (state.definition.staticGtfs && !state.gtfsLoading && now >= state.gtfsDueAt) {
+      // The static GTFS is read by the leader (to put vehicles on their
+      // tracks) and by a task whose own viewers watch the source (they ask it
+      // for shapes) — not by every task the source is wanted somewhere for.
+      const needsStatic = this.leads(state) || this.localDemandFor(state.definition).length > 0;
+      if (
+        needsStatic &&
+        state.definition.staticGtfs &&
+        !state.gtfsLoading &&
+        now >= state.gtfsDueAt
+      ) {
         started.push(this.loadStatic(state));
       }
       // Another task polls it and publishes what it gets (`receive`).
@@ -540,6 +579,7 @@ export class LiveHub {
             sourceId: state.definition.id,
             entities,
             lastSuccessAt: state.lastSuccessAt,
+            epoch: state.epoch,
           });
         },
         (error: unknown) => {
@@ -568,6 +608,7 @@ export class LiveHub {
             sourceId: state.definition.id,
             failures: state.failures,
             lastSuccessAt: state.lastSuccessAt,
+            epoch: state.epoch,
           });
         },
       )
@@ -811,28 +852,59 @@ export class LiveHub {
   }
 }
 
-/**
- * The zoom demand is SHARED at: a z6 tile is ~5.6° of longitude (~470 km at
- * New York). Enough for the leader — a source is wanted when any of these
- * meets its coverage, and the aircraft feed polls one region per z6 tile
- * anyway — and far coarser than any viewport.
- */
-export const SHARED_DEMAND_ZOOM = 6;
+const WORLD: GeoBoundingBox = { west: -180, south: -85, east: 180, north: 85 };
 
 /**
- * This task's watched rooms as it tells the other tasks: each room's z6
- * ancestor × its kind, de-duplicated. The rooms themselves (a bike-share
- * room is ~3.7 km) stay in this process.
+ * The zoom a REGIONAL feed's demand is shared at (the aircraft feed, polled
+ * per z6 region by `readsb.ts → planRegions`): ~5.6° of longitude.
  */
-export function coarseDemand(rooms: Iterable<string>): string[] {
+export const SHARED_REGION_ZOOM = 6;
+
+/**
+ * What a task tells the others it wants — computed from its exact rooms,
+ * which never leave the process:
+ *
+ * - `<sourceId>` for every source one of its rooms falls in (a source id
+ *   says no more than the source's coverage, ~a city or a country);
+ * - `<sourceId>@<z6 tile>` for a regional feed (`partialPolls`), whose leader
+ *   polls one region per z6 tile anyway.
+ *
+ * So a viewer in Philadelphia asks for no New York feed: the decision is made
+ * on the exact rooms, here, not on a coarse tile somewhere else.
+ */
+export function demandEntries(
+  definitions: readonly LiveSourceDefinition[],
+  localDemandFor: (definition: LiveSourceDefinition) => readonly GeoBoundingBox[],
+): string[] {
   const out = new Set<string>();
-  for (const key of rooms) {
-    const [tile, kind] = key.split('|') as [string, string];
-    const [z, x, y] = tile.split('/').map(Number) as [number, number, number];
-    const shift = Math.max(0, z - SHARED_DEMAND_ZOOM);
-    out.add(`${Math.min(z, SHARED_DEMAND_ZOOM)}/${x >> shift}/${y >> shift}|${kind}`);
+  for (const definition of definitions) {
+    const boxes = localDemandFor(definition);
+    if (boxes.length === 0) continue;
+    if (!definition.partialPolls) {
+      out.add(definition.id);
+      continue;
+    }
+    for (const box of boxes) {
+      const lat = (box.south + box.north) / 2;
+      const lon = (box.west + box.east) / 2;
+      out.add(`${definition.id}@${regionTileOf(lat, lon)}`);
+    }
   }
   return [...out];
+}
+
+function regionTileOf(latitude: number, longitude: number): string {
+  const n = 2 ** SHARED_REGION_ZOOM;
+  const x = Math.min(n - 1, Math.max(0, Math.floor(((longitude + 180) / 360) * n)));
+  const radians = (Math.max(-85.05, Math.min(85.05, latitude)) * Math.PI) / 180;
+  const y = Math.min(
+    n - 1,
+    Math.max(
+      0,
+      Math.floor(((1 - Math.log(Math.tan(radians) + 1 / Math.cos(radians)) / Math.PI) / 2) * n),
+    ),
+  );
+  return `${SHARED_REGION_ZOOM}/${x}/${y}`;
 }
 
 /** A timer that never keeps the process alive: shutdown closes the server and exits. */

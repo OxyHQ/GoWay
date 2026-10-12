@@ -574,18 +574,23 @@ The API runs as ECS tasks behind one ALB. Each task serves its own sockets;
 the tasks share GoWay's Valkey (`REDIS_URL`, the fleet's
 `/oxy/_shared/REDIS_URL`):
 
-- **Demand** — every 2 s each task writes, under
-  `goway:live:demand:<task id>` with a 10 s TTL, the **z6 tiles × kinds** in
-  which any of its sockets watches anything (`coarseDemand` in `hub.ts`), and
-  reads every task's. A z6 tile is ~5.6° of longitude — ~470 km across at New
-  York, a whole region — so what is stored says "someone on this task looks
-  at transit somewhere in the north-east US", never a viewport: not the box,
-  not the rooms (a bike-share room is ~3.7 km), no viewer, nothing per socket.
-  That is all the leader needs: a source is wanted while any task's z6 tiles
-  meet its coverage, and the aircraft feed polls one region per z6 tile
-  anyway. The rooms themselves never leave the process.
+- **Demand** — every 2 s each task decides, from its sockets' exact rooms
+  (which never leave the process), which SOURCES it wants, and writes only
+  that under `goway:live:demand:<task id>` with a 10 s TTL: source ids
+  (`mta-subway`, `renfe-cercanias`), plus, for the one regional feed polled
+  per region (aircraft), `adsb-lol@<z6 tile>` (~470 km). A source id says no
+  more than the source's coverage — a city or a country — so nothing stored is
+  a viewport, and nothing names a viewer or a socket (`demandEntries` in
+  `hub.ts`). Because the decision is made on the exact rooms, a viewer in
+  Philadelphia turns on no New York feed even though both lie in one z6 tile
+  (pinned by a test). Every task reads the union; a source is wanted while any
+  task wants it.
 - **One leader per source** — a lease (`SET NX PX 15000`, renewed by its
-  holder every 2 s through a compare-and-renew script). Only the holder polls;
+  holder every 2 s through a compare-and-renew script) that carries an
+  **epoch**: Valkey's clock when this holder took it, so a later holder's is
+  always larger. Every message is stamped with it and a follower drops one
+  older than the newest it has heard — a publish abandoned at its deadline
+  and delivered after the lease moved on is never applied. Only the holder polls;
   it publishes each answer (the enriched entities, gzip + base64) on one
   pub/sub channel, and every other task applies it to its own index exactly as
   if it had polled, and tells its own sockets. Tasks that stop wanting a
@@ -607,9 +612,10 @@ the tasks share GoWay's Valkey (`REDIS_URL`, the fleet's
     lease to pass to a second poller while the first still polls).
   - **Fresh connections.** After an outage of 8 s or more Bun's client gives up
     for good: every later command fails `ERR_REDIS_CONNECTION_CLOSED` even
-    once Valkey is back, while a new client answers at once. A failed call
-    therefore replaces any connection that is no longer connected
-    (`LiveBus.recover`).
+    once Valkey is back, while a new client answers at once. A client whose
+    call failed on its connection, or that connected and then dropped, is
+    replaced (`LiveBus.recover`); one still making its first connection is
+    left alone.
   - **Listening first.** A task stops polling only once it is subscribed again
     — a reconnected client does not restore subscriptions, and a subscriber
     that closed (`onclose`) or is not connected counts as lost — so the
@@ -625,8 +631,9 @@ the tasks share GoWay's Valkey (`REDIS_URL`, the fleet's
   above, all with TTLs, so
   `volatile-lru` may evict them under pressure (worst case: a second poller
   for a few seconds).
-- Static GTFS is read by every task that has demand (once a day each): the
-  leader puts vehicles on their tracks, and any task may be asked for a shape.
+- Static GTFS is read by the leader (to put vehicles on their tracks) and by
+  a task whose own viewers watch the source (they ask it for shapes) — not by
+  every task the source is wanted somewhere for.
 - The client uses WebSocket only (no long-polling), so no ALB stickiness is
   needed: one connection is one task, whichever it is.
 

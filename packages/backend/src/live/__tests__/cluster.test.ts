@@ -16,7 +16,8 @@ import {
   MemoryLiveNetwork,
   ValkeyLiveBus,
 } from '../cluster';
-import { coarseDemand, LiveHub } from '../hub';
+import { LIVE_SOURCES } from '../catalogue';
+import { demandEntries, LiveHub } from '../hub';
 import type { LivePollResult, LiveSourceDefinition } from '../types';
 
 const T0 = Date.parse('2026-10-12T12:00:00Z');
@@ -149,6 +150,35 @@ describe('the Valkey bus subscription', () => {
     expect(liveBus.isSubscribed()).toBe(false);
   });
 
+  it('a client still connecting is never replaced; one that connected and dropped, or failed, is', async () => {
+    const made: ReturnType<typeof fakeConnection>[] = [];
+    const liveBus = new ValkeyLiveBus(() => {
+      const connection = fakeConnection();
+      connection.connected = false; // mid-handshake
+      made.push(connection);
+      return connection;
+    });
+    liveBus.recover();
+    expect(made).toHaveLength(1);
+    expect(made[0]?.closed).toBe(false);
+    // It connects, then the connection drops: now it is dead.
+    (made[0] as ReturnType<typeof fakeConnection>).connected = true;
+    made[0]?.onconnect?.();
+    (made[0] as ReturnType<typeof fakeConnection>).connected = false;
+    liveBus.recover();
+    expect(made).toHaveLength(2);
+    // A call that fails on its connection marks the client failed, connected or not.
+    const failing = made[1] as ReturnType<typeof fakeConnection>;
+    failing.send = async () => {
+      throw Object.assign(new Error('Connection has failed'), {
+        code: 'ERR_REDIS_CONNECTION_CLOSED',
+      });
+    };
+    await expect(liveBus.lease('x', 1000)).rejects.toThrow();
+    liveBus.recover();
+    expect(made).toHaveLength(3);
+  });
+
   it('a client that gave up is replaced: the subscriber counts as lost, the command connection is rebuilt', async () => {
     const made: ReturnType<typeof fakeConnection>[] = [];
     const liveBus = new ValkeyLiveBus(() => {
@@ -160,6 +190,7 @@ describe('the Valkey bus subscription', () => {
     await liveBus.subscribe(() => {});
     const subscriber = made[1] as ReturnType<typeof fakeConnection>;
     // Bun after a long outage: both connections failed for good, no reconnect.
+    commands.onconnect?.();
     commands.connected = false;
     subscriber.connected = false;
     subscriber.onclose?.();
@@ -181,6 +212,7 @@ describe('the bus wire format', () => {
       sourceId: 'test-bus',
       entities: Array.from({ length: 200 }, (_, i) => bus(String(i), T0)),
       lastSuccessAt: T0,
+      epoch: 7,
     };
     const text = encodeMessage(message);
     expect(decodeMessage(text)).toEqual(message);
@@ -377,20 +409,100 @@ describe('several tasks on one bus (in memory)', () => {
     expect(a.polls).toBe(1);
   });
 
-  it('shares only coarse demand: z6 tiles × kinds, never the rooms a viewer is in', async () => {
-    const { network, tasks } = setup();
-    const a = tasks[0] as Task;
-    await a.hub.connect();
-    const street = liveTileOf({ latitude: 41.3874, longitude: 2.1686 }, 'bikeshare');
-    a.hub.watch('viewer', [ROOM, { tile: street, kind: 'bikeshare' }]);
-    await a.hub.coordinate();
-    const shared = network.demand.get('a')?.rooms ?? [];
-    expect(shared.length).toBeGreaterThan(0);
-    expect(shared.every((room) => room.startsWith('6/'))).toBe(true);
-    expect(shared).toContain(`6/32/23|bikeshare`);
-    expect(coarseDemand([`${street}|bikeshare`, `${ROOM.tile}|transit`])).toEqual([
-      '6/32/23|bikeshare',
-      '6/32/23|transit',
+  it('shares source ids decided on the exact rooms: a viewer in Philadelphia wants no New York feed', async () => {
+    // The real catalogue's New York feeds, their upstreams faked and counted.
+    const ids = ['mta-subway', 'mta-lirr', 'mta-mnr', 'mta-bus'];
+    const definitions = ids.map(
+      (id) => LIVE_SOURCES.find((d) => d.id === id) as LiveSourceDefinition,
+    );
+    const network = new MemoryLiveNetwork(() => T0);
+    const upstream: string[] = [];
+    const make = (taskId: string) =>
+      new LiveHub({
+        sources: definitions.map((definition) => ({
+          definition: {
+            ...definition,
+            create: () => ({
+              poll: async () => {
+                upstream.push(`poll ${definition.id}`);
+                return { entities: [], rejected: 0 };
+              },
+            }),
+          },
+          settings: { url: definition.defaultUrl, userAgent: 'test', maxRegionsPerPoll: 1 },
+        })),
+        fetch: async (url) => {
+          upstream.push(`static ${url}`);
+          throw new Error('not fetched in this test');
+        },
+        now: () => T0,
+        bus: network.bus(taskId),
+        publish: () => {},
+      });
+    const a = make('a');
+    const b = make('b');
+    await a.connect();
+    await b.connect();
+    const room = (latitude: number, longitude: number) => ({
+      tile: liveTileOf({ latitude, longitude }, 'transit'),
+      kind: 'transit' as const,
+    });
+    // Philadelphia: the same z6 tile as New York, ~130 km from the MTA's coverage.
+    a.watch('viewer', [room(39.9526, -75.1652)]);
+    for (let round = 0; round < 2; round++) {
+      await a.coordinate();
+      await b.coordinate();
+    }
+    await a.tick();
+    await b.tick();
+    expect(network.demand.get('a')?.rooms).toEqual([]);
+    expect(ids.some((id) => a.isLeader(id) || b.isLeader(id))).toBe(false);
+    expect(upstream).toEqual([]);
+
+    // Manhattan: wanted, polled by one task; the other — no viewer of its own —
+    // reads no static GTFS.
+    a.watch('viewer', [room(40.758, -73.9855)]);
+    for (let round = 0; round < 2; round++) {
+      await a.coordinate();
+      await b.coordinate();
+    }
+    expect([...(network.demand.get('a')?.rooms ?? [])].sort()).toEqual([...ids].sort());
+    expect(ids.every((id) => a.isLeader(id) !== b.isLeader(id))).toBe(true);
+    upstream.length = 0;
+    await b.tick();
+    expect(upstream.filter((entry) => entry.startsWith('static'))).toEqual([]);
+    a.stop();
+    b.stop();
+  });
+
+  it('a regional feed shares z6 regions, never a room', () => {
+    const aircraft = LIVE_SOURCES.find((d) => d.id === 'adsb-lol') as LiveSourceDefinition;
+    const box = { west: 2.16, south: 41.38, east: 2.18, north: 41.4 };
+    expect(demandEntries([aircraft], () => [box])).toEqual(['adsb-lol@6/32/23']);
+    const renfe = LIVE_SOURCES.find((d) => d.id === 'renfe-cercanias') as LiveSourceDefinition;
+    expect(demandEntries([renfe, aircraft], (d) => (d === renfe ? [box] : []))).toEqual([
+      'renfe-cercanias',
+    ]);
+  });
+
+  it('drops a message from an older leader delivered after a newer one', async () => {
+    const { tasks, everyone } = setup();
+    const follower = tasks[1] as Task;
+    await everyone((t) => t.hub.connect());
+    follower.hub.watch('viewer', [ROOM]);
+    const message = (epoch: number, id: string) => ({
+      type: 'poll' as const,
+      from: 'someone',
+      sourceId: 'test-bus',
+      entities: [bus(id, T0)],
+      lastSuccessAt: T0,
+      epoch,
+    });
+    follower.hub.receive(message(5, 'newer'));
+    // A publish abandoned at its deadline by the previous holder, arriving late.
+    follower.hub.receive(message(4, 'stale'));
+    expect(follower.hub.snapshot(ROOM.tile, 'transit').entities.map((e) => e.id)).toEqual([
+      'test-bus:newer',
     ]);
   });
 

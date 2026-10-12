@@ -48,6 +48,8 @@ export type LiveClusterMessage =
       /** A full answer replaces what a follower holds (unless the source's polls are partial). */
       entities: LiveEntity[];
       lastSuccessAt: number;
+      /** The sender's lease epoch: a follower drops anything older than the newest it heard. */
+      epoch: number;
     }
   /** A leader's poll failed: its status, so every task reports the same. */
   | {
@@ -56,6 +58,7 @@ export type LiveClusterMessage =
       sourceId: string;
       failures: number;
       lastSuccessAt: number | null;
+      epoch: number;
     }
   /** A task started: leaders, republish what you hold. */
   | { type: 'sync'; from: string }
@@ -67,6 +70,7 @@ export type LiveClusterMessage =
       entities: LiveEntity[];
       lastSuccessAt: number | null;
       failures: number;
+      epoch: number;
     };
 
 /** The shared medium. `ValkeyLiveBus` in production, `MemoryLiveBus` in tests. */
@@ -93,11 +97,20 @@ export interface LiveBus {
    * client answered at once).
    */
   recover(): void;
-  /** Take or renew a source's lease; true while this task holds it. */
-  lease(sourceId: string, ttlMs: number): Promise<boolean>;
+  /**
+   * Take or renew a source's lease. While this task holds it, its EPOCH — the
+   * Valkey clock when this holder took it, so every later holder's is larger
+   * — else 0. Messages carry it, and a message from an older holder (a
+   * publish abandoned at its deadline and delivered late) is dropped.
+   */
+  lease(sourceId: string, ttlMs: number): Promise<number>;
   release(sourceId: string): Promise<void>;
-  /** Report this task's watched room keys; returns the union over every live task. */
-  exchangeDemand(rooms: readonly string[], ttlMs: number): Promise<Set<string>>;
+  /**
+   * Report this task's demand entries (`demandEntries` in `hub.ts`: source
+   * ids, and z6 regions for a regional feed); returns the union over every
+   * live task.
+   */
+  exchangeDemand(entries: readonly string[], ttlMs: number): Promise<Set<string>>;
   close(): Promise<void>;
 }
 
@@ -116,6 +129,12 @@ export function decodeMessage(text: string): LiveClusterMessage | null {
   } catch {
     return null;
   }
+}
+
+/** A Bun Redis error about the connection itself, not about a command. */
+export function isConnectionFailure(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && code.startsWith('ERR_REDIS_CONNECTION');
 }
 
 export function newTaskId(): string {
@@ -143,16 +162,28 @@ interface RedisLike {
   readonly connected?: boolean;
 }
 
+/**
+ * The lease is `<task>|<epoch>`. Renewing keeps the epoch; taking it stamps
+ * Valkey's own clock (ms), so epochs only grow, whichever task's clock is off.
+ */
 const LEASE_SCRIPT = `
-if redis.call('GET', KEYS[1]) == ARGV[1] then
-  redis.call('PEXPIRE', KEYS[1], ARGV[2])
-  return 1
+local held = redis.call('GET', KEYS[1])
+if held then
+  local owner, epoch = string.match(held, '^(.*)|(%d+)$')
+  if owner == ARGV[1] then
+    redis.call('PEXPIRE', KEYS[1], ARGV[2])
+    return tonumber(epoch)
+  end
+  return 0
 end
-if redis.call('SET', KEYS[1], ARGV[1], 'NX', 'PX', ARGV[2]) then return 1 end
-return 0`;
+local now = redis.call('TIME')
+local epoch = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+redis.call('SET', KEYS[1], ARGV[1] .. '|' .. epoch, 'PX', ARGV[2])
+return epoch`;
 
 const RELEASE_SCRIPT = `
-if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end
+local held = redis.call('GET', KEYS[1])
+if held and string.match(held, '^(.*)|%d+$') == ARGV[1] then return redis.call('DEL', KEYS[1]) end
 return 0`;
 
 export class ValkeyLiveBus implements LiveBus {
@@ -161,6 +192,10 @@ export class ValkeyLiveBus implements LiveBus {
   private commands: RedisLike;
   private subscriber: RedisLike | null = null;
   private subscribed = false;
+  /** Clients whose connection failed under a call, or dropped after connecting. */
+  private readonly failed = new WeakSet<RedisLike>();
+  /** Clients that have connected at least once. */
+  private readonly established = new WeakSet<RedisLike>();
 
   constructor(
     /** A new connection: the command one, and one per subscription. */
@@ -170,7 +205,22 @@ export class ValkeyLiveBus implements LiveBus {
   ) {
     this.taskId = taskId;
     this.channel = `${prefix}:bus`;
-    this.commands = connect();
+    this.commands = this.open();
+  }
+
+  private open(): RedisLike {
+    const client = this.connect();
+    const previous = client.onconnect;
+    client.onconnect = () => {
+      this.established.add(client);
+      previous?.();
+    };
+    return client;
+  }
+
+  /** Given up on: its connection failed under a call, or dropped after it had connected. */
+  private dead(client: RedisLike): boolean {
+    return this.failed.has(client) || (this.established.has(client) && client.connected === false);
   }
 
   /** Connections to `url`, made lazily (a subscriber cannot send commands, so it has its own). */
@@ -183,16 +233,36 @@ export class ValkeyLiveBus implements LiveBus {
   }
 
   recover(): void {
-    if (this.commands.connected === false) {
+    if (this.dead(this.commands)) {
       this.commands.close();
-      this.commands = this.connect();
+      this.commands = this.open();
     }
     // A dead subscriber is not listening; `subscribe` replaces it.
-    if (this.subscriber?.connected === false) this.subscribed = false;
+    if (this.subscriber && this.dead(this.subscriber)) this.subscribed = false;
   }
 
   async publish(message: LiveClusterMessage): Promise<void> {
-    await this.commands.publish(this.channel, encodeMessage(message));
+    await this.watch(this.commands, (client) =>
+      client.publish(this.channel, encodeMessage(message)),
+    );
+  }
+
+  private send(command: string, args: string[]): Promise<unknown> {
+    return this.watch(this.commands, (client) => client.send(command, args));
+  }
+
+  /**
+   * Run a call, noting a client that failed on its CONNECTION (as opposed to
+   * a command error): that one is replaced by `recover`. A client that is
+   * merely not connected YET — just made, mid-handshake — is left alone.
+   */
+  private async watch<T>(client: RedisLike, call: (client: RedisLike) => Promise<T>): Promise<T> {
+    try {
+      return await call(client);
+    } catch (error) {
+      if (isConnectionFailure(error)) this.failed.add(client);
+      throw error;
+    }
   }
 
   async subscribe(handler: (message: LiveClusterMessage) => void): Promise<void> {
@@ -206,6 +276,7 @@ export class ValkeyLiveBus implements LiveBus {
     this.subscriber = subscriber;
     let connects = 0;
     subscriber.onconnect = () => {
+      this.established.add(subscriber);
       connects++;
       // Any connect after the first is a reconnect: the subscription is gone.
       if (connects > 1 && this.subscriber === subscriber) this.subscribed = false;
@@ -213,54 +284,52 @@ export class ValkeyLiveBus implements LiveBus {
     subscriber.onclose = () => {
       if (this.subscriber === subscriber) this.subscribed = false;
     };
-    await subscriber.subscribe(this.channel, (text) => {
-      const message = decodeMessage(text);
-      if (message && message.from !== this.taskId) handler(message);
-    });
+    await this.watch(subscriber, (client) =>
+      client.subscribe(this.channel, (text) => {
+        const message = decodeMessage(text);
+        if (message && message.from !== this.taskId) handler(message);
+      }),
+    );
     if (this.subscriber === subscriber) this.subscribed = true;
   }
 
-  async lease(sourceId: string, ttlMs: number): Promise<boolean> {
-    const held = await this.commands.send('EVAL', [
+  async lease(sourceId: string, ttlMs: number): Promise<number> {
+    const epoch = await this.send('EVAL', [
       LEASE_SCRIPT,
       '1',
       `${this.prefix}:lease:${sourceId}`,
       this.taskId,
       String(ttlMs),
     ]);
-    return Number(held) === 1;
+    const value = Number(epoch);
+    return Number.isFinite(value) && value > 0 ? value : 0;
   }
 
   async release(sourceId: string): Promise<void> {
-    await this.commands.send('EVAL', [
-      RELEASE_SCRIPT,
-      '1',
-      `${this.prefix}:lease:${sourceId}`,
-      this.taskId,
-    ]);
+    await this.send('EVAL', [RELEASE_SCRIPT, '1', `${this.prefix}:lease:${sourceId}`, this.taskId]);
   }
 
   async exchangeDemand(rooms: readonly string[], ttlMs: number): Promise<Set<string>> {
     const now = Date.now();
     const tasks = `${this.prefix}:tasks`;
-    await this.commands.send('SET', [
+    await this.send('SET', [
       `${this.prefix}:demand:${this.taskId}`,
       JSON.stringify(rooms),
       'PX',
       String(ttlMs),
     ]);
-    await this.commands.send('ZADD', [tasks, String(now), this.taskId]);
-    await this.commands.send('ZREMRANGEBYSCORE', [tasks, '-inf', String(now - ttlMs)]);
+    await this.send('ZADD', [tasks, String(now), this.taskId]);
+    await this.send('ZREMRANGEBYSCORE', [tasks, '-inf', String(now - ttlMs)]);
     // The set expires too, should every task stop.
-    await this.commands.send('PEXPIRE', [tasks, String(ttlMs * 3)]);
-    const ids = (await this.commands.send('ZRANGEBYSCORE', [
+    await this.send('PEXPIRE', [tasks, String(ttlMs * 3)]);
+    const ids = (await this.send('ZRANGEBYSCORE', [
       tasks,
       String(now - ttlMs),
       '+inf',
     ])) as string[];
     const out = new Set(rooms);
     if (!Array.isArray(ids) || ids.length === 0) return out;
-    const values = (await this.commands.send(
+    const values = (await this.send(
       'MGET',
       ids.map((id) => `${this.prefix}:demand:${id}`),
     )) as (string | null)[];
@@ -291,7 +360,13 @@ export class ValkeyLiveBus implements LiveBus {
 // ---------------------------------------------------------------------------
 
 export class MemoryLiveNetwork {
-  readonly leases = new Map<string, { owner: string; until: number }>();
+  readonly leases = new Map<string, { owner: string; until: number; epoch: number }>();
+  private epochs = 0;
+  /** A new, larger epoch (Valkey uses its clock). */
+  nextEpoch(): number {
+    this.epochs++;
+    return this.epochs;
+  }
   readonly demand = new Map<string, { rooms: string[]; until: number }>();
   readonly handlers = new Map<string, (message: LiveClusterMessage) => void>();
   /** Buses closed, by task id. */
@@ -343,9 +418,14 @@ export class MemoryLiveNetwork {
         await check();
         const now = network.now();
         const current = network.leases.get(sourceId);
-        if (current && current.owner !== taskId && current.until > now) return false;
-        network.leases.set(sourceId, { owner: taskId, until: now + ttlMs });
-        return true;
+        if (current && current.until > now) {
+          if (current.owner !== taskId) return 0;
+          current.until = now + ttlMs;
+          return current.epoch;
+        }
+        const epoch = network.nextEpoch();
+        network.leases.set(sourceId, { owner: taskId, until: now + ttlMs, epoch });
+        return epoch;
       },
       async release(sourceId) {
         await check();
