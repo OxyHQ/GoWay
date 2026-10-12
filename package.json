@@ -24,7 +24,7 @@
     "android": "bun run --cwd packages/frontend android",
     "ios": "bun run --cwd packages/frontend ios",
     "lint": "biome check . && bun run lint:frontend",
-    "typecheck": "tsc -b && tsc -p packages/backend/tsconfig.tools.json && bun run --cwd packages/frontend typecheck && bun run --cwd packages/sdk typecheck",
+    "typecheck": "bun check -b && bun check -p packages/backend/tsconfig.tools.json && bun run --cwd packages/frontend typecheck && bun run --cwd packages/sdk typecheck",
     "test": "bun run --cwd packages/backend test && bun run --cwd packages/sdk test && bun run test:frontend",
     "doctor:oxy": "oxy-doctor --ci",
     "db:generate": "bun run --cwd packages/backend db:generate",

@@ -2,7 +2,13 @@
   "extends": "@oxy.so/app-preset/tsconfig/backend.json",
   "compilerOptions": {
     "rootDir": "./src",
-    "outDir": "./dist"
+    "outDir": "./dist",
+    // Node16 instead of the preset's `node` (node10), which TypeScript 7 and
+    // `bun check` reject. The package has no `"type": "module"` and no dynamic
+    // `import()`, so it still emits the same CommonJS, byte for byte.
+    "module": "node16",
+    "moduleResolution": "node16",
+    "types": []
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

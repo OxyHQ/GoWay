@@ -88,6 +88,11 @@ jobs:
 
       - name: Typecheck
         run: bun run typecheck
+      - name: Build the backend
+        # `typecheck` runs `bun check` (TypeScript 7), which emits nothing. The
+        # runtime image is still compiled by tsc 5.9, so this keeps that
+        # compile in CI, as `tsc -b` in `typecheck` used to.
+        run: bun run build:backend
       - name: Lint and format (Biome)
         # One root config (`biome.jsonc`) for every package. `ci` is `check`
         # without writes: lint errors AND unformatted files fail.

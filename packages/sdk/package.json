@@ -85,7 +85,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "typecheck": "bun check -p tsconfig.json && bun check -p tsconfig.test.json",
     "test": "vitest run",
     "smoke": "node scripts/smoke.mjs",
     "prepublishOnly": "bun run typecheck && bun run test && bun run build && bun run smoke"

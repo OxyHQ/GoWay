@@ -22,7 +22,6 @@
     "types": [],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "baseUrl": ".",
     "paths": {
       "@goway/contracts": ["../contracts/src/index.ts"],
       "@goway/contracts/*": ["../contracts/src/*"]
