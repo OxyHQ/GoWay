@@ -3,7 +3,7 @@
  * animation clock (render on demand, pause when hidden or idle), dynamic
  * resolution, frame statistics, and the GL counters every measurement uses.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -11,6 +11,8 @@ import { createAnimationClock } from '@/components/map/perf/animationClock';
 import { DynamicResolution } from '@/components/map/perf/dynamicResolution';
 import { percentile, SectionTimer, summarise } from '@/components/map/perf/frameStats';
 import { createGlCounterState, instrumentWebGl2 } from '@/components/map/perf/glCounters';
+import { attachMapRuntime } from '@/components/map/perf/mapRuntime.web';
+import { QUALITY_PRESETS } from '@/lib/map/quality/profile';
 
 /** A manual clock and timer queue. */
 function fakeTime() {
@@ -383,5 +385,77 @@ describe('one GPU timer per frame', () => {
         readFileSync(join(root, file), 'utf8').includes('beginQuery('),
     );
     expect(found).toEqual(['components/map/perf/mapRuntime.web.ts']);
+  });
+});
+
+describe('dynamic resolution reads the frame GPU time', () => {
+  // The runtime on a stand-in map and context: the frame's main thread is
+  // cheap (5 ms) and only its GPU time differs, so whatever moves the pixel
+  // ratio is the GPU timer — the one the runtime opens around MapLibre's frame
+  // (`docs/MAP_PERFORMANCE.md` → "One GPU timer per frame").
+  async function ratioAfter(gpuMs: number): Promise<number> {
+    let now = 1000;
+    const clock = spyOn(performance, 'now').mockImplementation(() => now);
+    const scope = globalThis as unknown as Record<string, unknown>;
+    const hadWindow = 'window' in scope;
+    const previousWindow = scope.window;
+    scope.window = { devicePixelRatio: 2, addEventListener() {}, removeEventListener() {} };
+    const TIME_ELAPSED = 0x88bf;
+    const gl = {
+      QUERY_RESULT: 0x8866,
+      QUERY_RESULT_AVAILABLE: 0x8867,
+      RENDERER: 0x1f01,
+      getExtension: (name: string) =>
+        name === 'EXT_disjoint_timer_query_webgl2'
+          ? { TIME_ELAPSED_EXT: TIME_ELAPSED, GPU_DISJOINT_EXT: 0x8fbb }
+          : null,
+      getParameter: (p: number) => (p === 0x1f01 ? 'stand-in' : false),
+      createQuery: () => ({}),
+      beginQuery() {},
+      endQuery() {},
+      deleteQuery() {},
+      getQueryParameter: (_q: unknown, name: number) => (name === 0x8867 ? true : gpuMs * 1e6),
+    };
+    let ratio = 2;
+    const map = {
+      _render() {
+        now += 5;
+      },
+      getCanvas: () => ({ getContext: () => gl, width: 100, height: 100 }),
+      getContainer: () => ({ addEventListener() {}, removeEventListener() {} }),
+      getPixelRatio: () => ratio,
+      setPixelRatio(next: number) {
+        ratio = next;
+      },
+      isMoving: () => false,
+      once() {},
+    };
+    const runtime = attachMapRuntime(map as never, {
+      quality: { ...QUALITY_PRESETS.medium, reason: 'test' },
+      clock: createAnimationClock({ hz: 30, idleMs: 45_000, requestFrame: () => {} }),
+      hud: false,
+      gpuRecord: null,
+      onGpuRecord: () => {},
+    });
+    try {
+      runtime.set3d(true);
+      // Two seconds of 30 Hz frames, the resizes the runtime defers between them.
+      for (let i = 0; i < 60; i++) {
+        now += 28;
+        (map as { _render(): void })._render();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      return ratio;
+    } finally {
+      runtime.dispose();
+      clock.mockRestore();
+      if (hadWindow) scope.window = previousWindow;
+      else delete scope.window;
+    }
+  }
+
+  test('a frame over budget on the GPU alone lowers the ratio; a cheap one keeps it', async () => {
+    expect(await ratioAfter(30)).toBeLessThan(2);
+    expect(await ratioAfter(3)).toBe(2);
   });
 });

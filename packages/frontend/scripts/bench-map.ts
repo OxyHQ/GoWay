@@ -3,13 +3,19 @@
  * scenes GoWay draws, every 3D feature on, measured the same way on any
  * commit (`docs/MAP_PERFORMANCE.md` → "The benchmark").
  *
- *   bun run --cwd packages/frontend bench:map --url=http://localhost:8117 \
- *     [--scenes=eixample,manhattan] [--device=desktop|laptop|pixel6a|iphone12] \
- *     [--gpu=real|software] [--quality=auto|low|medium|high] [--out=bench.json]
+ *   bun run --cwd packages/frontend bench:map --url=http://localhost:8119 \
+ *     [--scenes=eixample,manhattan] [--device=desktop|laptop|laptop-2x|pixel6a|iphone12] \
+ *     [--dpr=3] [--gpu=real|software] [--quality=low|medium|high] [--tier=…] \
+ *     [--no-counters] [--profile] [--out=bench.json]
  *
- * The page needs the dev server (query flags are honoured only in a
- * development build) with the city and road archives served
- * (`GOWAY_CITY_TILES_ARCHIVE`, see `docs/MAP_CITY_LIFE.md` → Turning it on).
+ * Time a production export served with the city and road archives
+ * (`scripts/serve-map-build.ts`, `docs/MAP_PERFORMANCE.md` → "The
+ * benchmark"); the dev server's numbers are not what users run.
+ *
+ * The GPU timer: WebGL 2 allows one timer query at a time, and a build with
+ * the perf runtime times every 3D frame itself (dynamic resolution reads it).
+ * The benchmark then reads the map's results instead of opening its own, and
+ * records whose timer measured (`gpuTimedBy`).
  *
  * ## What is measured, and how
  *
@@ -288,6 +294,7 @@ function pageProbe(args: {
         }
       }
       timer = mapGl.getExtension('EXT_disjoint_timer_query_webgl2') as typeof timer;
+      if (timer) observeMapTimer(mapGl, timer.TIME_ELAPSED_EXT);
     }
     return context;
   } as typeof getContext;
@@ -300,6 +307,8 @@ function pageProbe(args: {
     /** The frame's callbacks: the first one's start and the last one's end (performance.now). */
     from: number;
     to: number;
+    /** The canvas's width in device pixels: dynamic resolution's doing, frame by frame. */
+    width: number;
   }
   const frames: FrameRecord[] = [];
   // Main-thread work OUTSIDE the frame callbacks (worker replies, tile
@@ -321,28 +330,84 @@ function pageProbe(args: {
   let from = 0;
   let to = 0;
   let query: WebGLQuery | null = null;
+  let tickQueries: WebGLQuery[] = [];
   const pending: Array<{ query: WebGLQuery; frame: FrameRecord }> = [];
+  // WebGL 2 allows ONE timer query at a time (`docs/MAP_PERFORMANCE.md` →
+  // "One GPU timer per frame"). A build with the perf runtime times every
+  // frame of the 3D map itself — the measurement dynamic resolution reads — so
+  // the benchmark must not open a second one: it reads the map's results as
+  // the map reads them, and times a frame itself only when the map does not
+  // (a build without the runtime, or a frame it left untimed).
+  let mapQueries: WebGLQuery[] = [];
+  let mapTimedLastTick = false;
+  const mapResults = new Map<WebGLQuery, FrameRecord>();
+  let gpuSource: { map: number; bench: number } = { map: 0, bench: 0 };
+  // The context's own query calls: the benchmark's timer uses these, so only
+  // the PAGE's calls go through the observer below.
+  let rawBegin: ((target: number, q: WebGLQuery) => void) | null = null;
+  let rawRead: ((q: WebGLQuery, name: number) => unknown) | null = null;
+  function observeMapTimer(gl: WebGL2RenderingContext, timeElapsed: number) {
+    const begin = gl.beginQuery.bind(gl);
+    const end = gl.endQuery.bind(gl);
+    const read = gl.getQueryParameter.bind(gl);
+    rawBegin = begin;
+    rawRead = read;
+    gl.beginQuery = (target: number, q: WebGLQuery) => {
+      if (target === timeElapsed) {
+        // The map's own timer: ours, if open, gives way (and is discarded).
+        if (query) {
+          end(timeElapsed);
+          gl.deleteQuery(query);
+          query = null;
+        }
+        mapQueries.push(q);
+      }
+      begin(target, q);
+    };
+    gl.getQueryParameter = ((q: WebGLQuery, name: number) => {
+      const value = read(q, name);
+      const frame = mapResults.get(q);
+      if (frame && name === gl.QUERY_RESULT) {
+        frame.gpu = (frame.gpu ?? 0) + (value as number) / 1e6;
+        mapResults.delete(q);
+      }
+      return value;
+    }) as typeof gl.getQueryParameter;
+  }
 
   const closeTick = () => {
     if (tick < 0) return;
-    const record: FrameRecord = { t: tick, cpu, gpu: null, gl: { ...state.frame }, from, to };
+    const record: FrameRecord = {
+      t: tick,
+      cpu,
+      gpu: null,
+      gl: { ...state.frame },
+      from,
+      to,
+      width: mapGl?.drawingBufferWidth ?? 0,
+    };
     for (const key of Object.keys(state.frame)) state.frame[key] = 0;
-    if (mapGl && timer && query) {
-      mapGl.endQuery(timer.TIME_ELAPSED_EXT);
-      pending.push({ query, frame: record });
-      query = null;
+    for (const q of mapQueries) mapResults.set(q, record);
+    mapTimedLastTick = mapQueries.length > 0;
+    if (record.gl.draws > 0) {
+      if (mapTimedLastTick) gpuSource.map++;
+      else if (tickQueries.length > 0) gpuSource.bench++;
     }
+    mapQueries = [];
+    for (const q of tickQueries) pending.push({ query: q, frame: record });
+    tickQueries = [];
     if (record.gl.draws > 0) frames.push(record);
     cpu = 0;
   };
   const pollQueries = () => {
     if (!mapGl || !timer) return;
     const disjoint = mapGl.getParameter(timer.GPU_DISJOINT_EXT);
+    const read = rawRead ?? mapGl.getQueryParameter.bind(mapGl);
     while (pending.length > 0) {
       const { query: q, frame } = pending[0];
-      if (!mapGl.getQueryParameter(q, mapGl.QUERY_RESULT_AVAILABLE)) break;
+      if (!read(q, mapGl.QUERY_RESULT_AVAILABLE)) break;
       pending.shift();
-      if (!disjoint) frame.gpu = mapGl.getQueryParameter(q, mapGl.QUERY_RESULT) / 1e6;
+      if (!disjoint) frame.gpu = (frame.gpu ?? 0) + (read(q, mapGl.QUERY_RESULT) as number) / 1e6;
       mapGl.deleteQuery(q);
     }
   };
@@ -354,18 +419,31 @@ function pageProbe(args: {
         pollQueries();
         tick = t;
         from = 0;
-        if (mapGl && timer && !query && pending.length < 8) {
-          query = mapGl.createQuery();
-          if (query) mapGl.beginQuery(timer.TIME_ELAPSED_EXT, query);
-        }
+      }
+      // The benchmark's own timer, where the map has none: around each frame
+      // callback, kept only for the callbacks that drew (the map's render) —
+      // never across the gap between frames or around a callback that sends
+      // the GPU nothing: measured, those read the GPU's idle waits (a
+      // Montserrat orbit 10.8 ms a frame against the map's own 1.65 ms).
+      if (mapGl && timer && !mapTimedLastTick && pending.length + tickQueries.length < 16) {
+        query = mapGl.createQuery();
+        if (query) (rawBegin ?? mapGl.beginQuery.bind(mapGl))(timer.TIME_ELAPSED_EXT, query);
       }
       const started = performance.now();
       if (from === 0) from = started;
+      const drawsBefore = state.frame.draws ?? 0;
       try {
         callback(t);
       } finally {
         to = performance.now();
         cpu += to - started;
+        // Still ours (the map's own timer did not take over): close it.
+        if (query && mapGl && timer) {
+          mapGl.endQuery(timer.TIME_ELAPSED_EXT);
+          if ((state.frame.draws ?? 0) > drawsBefore) tickQueries.push(query);
+          else mapGl.deleteQuery(query);
+          query = null;
+        }
       }
     });
 
@@ -384,13 +462,14 @@ function pageProbe(args: {
     reset() {
       closeTick();
       frames.length = 0;
+      gpuSource = { map: 0, bench: 0 };
       longTaskMs = 0;
       longTasks = 0;
     },
     take() {
       closeTick();
       pollQueries();
-      return { frames: frames.splice(0), longTaskMs, longTasks };
+      return { frames: frames.splice(0), longTaskMs, longTasks, gpuSource };
     },
     memory() {
       const heap = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
@@ -506,6 +585,7 @@ interface FrameRecord {
   gl: Record<string, number>;
   from: number;
   to: number;
+  width: number;
 }
 
 function report(frames: FrameRecord[], durationMs: number) {
@@ -526,6 +606,15 @@ function report(frames: FrameRecord[], durationMs: number) {
     cpuMs: round(summarise(frames.map((f) => f.cpu))),
     gpuMs: gpu.length > 0 ? round(summarise(gpu)) : null,
     gpuSamples: gpu.length,
+    // The canvas's width over the path (device pixels): first, last, least.
+    canvasWidth:
+      frames.length > 0
+        ? {
+            first: frames[0].width,
+            last: frames[frames.length - 1].width,
+            min: Math.min(...frames.map((f) => f.width)),
+          }
+        : null,
     perFrame: {
       draws: round(gl('draws'), 0),
       triangles: round(gl('triangles'), 0),
@@ -578,6 +667,17 @@ async function benchScene(
     await page.evaluate(setup);
     await page.waitForTimeout(3000);
   }
+  // A still scene is measured from a touch, as a person's would be: loading
+  // takes longer than the low preset's 20 s idle pause, which would otherwise
+  // stop the map before the measurement starts. A Shift key on the map: the
+  // clock counts it as interaction, and nothing on the map moves.
+  if (scene.path === 'still') {
+    await page.evaluate(() =>
+      document
+        .querySelector('canvas.maplibregl-canvas')
+        ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true })),
+    );
+  }
   if (device.cpuThrottle > 1)
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: device.cpuThrottle });
   await page.evaluate(() =>
@@ -616,6 +716,7 @@ async function benchScene(
         frames: FrameRecord[];
         longTaskMs: number;
         longTasks: number;
+        gpuSource: { map: number; bench: number };
       },
   );
   const frames = taken.frames;
@@ -644,6 +745,9 @@ async function benchScene(
     notes,
     errors,
     ...report(frames, elapsed),
+    // Whose GPU timer measured the frames: the map's own (the perf runtime's,
+    // what dynamic resolution reads) or the benchmark's, where the map has none.
+    gpuTimedBy: taken.gpuSource,
     ...(process.argv.includes('--raw') ? { raw: frames } : {}),
     ...(profile ? { profile } : {}),
     // Share of the measured time the main thread spent in long tasks (> 50 ms).
@@ -884,9 +988,12 @@ function arg(name: string, fallback: string): string {
 export async function main() {
   const base = arg('url', 'http://localhost:8117').replace(/\/$/, '');
   const deviceName = arg('device', 'desktop');
-  const device = DEVICES[deviceName];
-  if (!device)
+  const named = DEVICES[deviceName];
+  if (!named)
     throw new Error(`unknown device ${deviceName}; one of ${Object.keys(DEVICES).join(', ')}`);
+  // `--dpr=`: the device at another pixel ratio (a fill-rate experiment).
+  const dpr = Number(arg('dpr', '')) || null;
+  const device = dpr ? { ...named, deviceScaleFactor: dpr } : named;
   const gpu = arg('gpu', 'real');
   const qualityArg = arg('quality', '');
   const quality = qualityArg === '' ? null : qualityArg;
@@ -915,7 +1022,7 @@ export async function main() {
       const result = await benchScene(context, base, scene, device, quality);
       results.push(result);
       console.error(
-        `${scene.id.padEnd(10)} ${String(result.fps).padStart(5)} fps  cpu p50 ${result.cpuMs.p50} p95 ${result.cpuMs.p95}  gpu p50 ${result.gpuMs?.p50 ?? '—'} p95 ${result.gpuMs?.p95 ?? '—'}  draws ${result.perFrame.draws.p50}  tris ${result.perFrame.triangles.p50}  ${result.renderer}`,
+        `${scene.id.padEnd(10)} ${String(result.fps).padStart(5)} fps  cpu p50 ${result.cpuMs.p50} p95 ${result.cpuMs.p95}  gpu p50 ${result.gpuMs?.p50 ?? '—'} p95 ${result.gpuMs?.p95 ?? '—'}  draws ${result.perFrame.draws.p50}  tris ${result.perFrame.triangles.p50}  gpu timer ${result.gpuTimedBy.map > 0 ? 'map' : 'bench'}  ${result.renderer}`,
       );
     } catch (cause) {
       results.push({ scene: scene.id, error: String(cause).slice(0, 400) });
