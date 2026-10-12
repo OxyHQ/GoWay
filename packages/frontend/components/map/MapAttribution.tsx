@@ -55,36 +55,73 @@
  * spelled out, with an ⓘ at the end to fold it; or just the ⓘ, in the same
  * corner, which opens it. The links stay links. `MapCanvas` renders it on
  * every map with no prop to turn it off — the embed included.
+ *
+ * ## The simulation's label rides here
+ *
+ * While the city-life simulation draws anything, the credit says so
+ * (`docs/MAP_CITY_LIFE.md` → Honesty): spelled out, its first line is the
+ * whole label ("Simulated: cars and people · Live: buses"); folded, the ⓘ
+ * carries the one word "Simulated" beside it, and pressing either opens the
+ * whole label. So the simulation is labelled in BOTH states, for exactly as
+ * long as it draws — the credit's corner is the one no screen, sheet or panel
+ * may take, which is why the label moved here from the top-right stack.
  */
 import { memo, useCallback } from 'react';
-import { Linking, Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import {
+  type LayoutChangeEvent,
+  Linking,
+  Pressable,
+  type StyleProp,
+  View,
+  type ViewStyle,
+} from 'react-native';
+import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { localizedLabel } from '@goway.to/sdk';
 import { Text } from '@oxy.so/bloom/typography';
 import { useBottomEdgeInset } from '@oxy.so/bloom/layout';
 import { RiInformationLine } from '@oxy.so/bloom/icons/RiInformationLine';
 import { useTheme } from '@oxy.so/bloom/theme';
 
+import { useBrandedChrome } from '@/components/brand';
 import { useTranslation } from '@/lib/i18n';
+import { creditDisclosure } from '@/lib/map/compactCredit';
 import { CREDIT_LABELS } from '@/lib/map/creditLabels';
+import { CREDIT_GAP, MAP_CREDIT_CLEARANCE } from '@/lib/map/creditRise';
 
 import { type MapAttributionLink, resolveMapAttribution } from '@/lib/map/provider';
 import { type MapChromeLift, useMapChromeLift } from './chromeLift';
+import { useMapCreditHeight } from './creditHeight';
 import { MAP_BRAND_CLEARANCE } from './MapBrand';
 import { useMapRelief } from './reliefFlags';
 
 /** Breathing room between the credit and whatever is below it. */
-const ATTRIBUTION_GAP = 4;
+const ATTRIBUTION_GAP = CREDIT_GAP;
+/** From the left edge when no mark is drawn there: the plate's own right inset. */
+const CREDIT_SIDE_INSET = 8;
 
 /**
- * How much of the bottom-right the credit occupies above the bottom edge: its
- * gap, one caption line on its plate, and room to breathe. Bottom-right chrome
- * a screen floats there ("My location") starts above it, so the two never
- * overlap — exported for the same reason `MAP_BRAND_CLEARANCE` is.
+ * How much of the bottom-right the credit occupies above the bottom edge when
+ * it is one line (`lib/map/creditRise.ts`). Bottom-right chrome a screen
+ * floats there ("My location") starts above it and rises by the credit's
+ * measured extra height (`creditHeight.ts`), so the two never overlap —
+ * exported for the same reason `MAP_BRAND_CLEARANCE` is.
  */
-export const MAP_CREDIT_CLEARANCE = 36;
+export { MAP_CREDIT_CLEARANCE };
 
 const NO_EXTRA: readonly MapAttributionLink[] = [];
+
+/**
+ * What the credit must disclose about the map right now: the city-life
+ * simulation's label (`cityLifeLabel.ts`), already in the reader's language.
+ */
+export interface MapCreditDisclosure {
+  /** The whole label: "Simulated: cars and people · Live: buses". */
+  text: string;
+  /** That simulated is not live traffic — read with it by a screen reader. */
+  detail: string;
+  /** One word, beside the folded ⓘ: "Simulated". */
+  short: string;
+}
 
 /**
  * @param extra - credits owed only while something is drawn — a CC BY
@@ -94,10 +131,16 @@ const NO_EXTRA: readonly MapAttributionLink[] = [];
  */
 function MapAttributionComponent({
   extra = NO_EXTRA,
+  disclosure = null,
   expanded,
   onToggle,
 }: {
   extra?: readonly MapAttributionLink[];
+  /**
+   * The simulation's label while it draws, `null` otherwise. Passed by
+   * `MapCanvas` alone, from what the city layer says it draws.
+   */
+  disclosure?: MapCreditDisclosure | null;
   /** Spelled out, or folded into the ⓘ (`useCompactCredit`). */
   expanded: boolean;
   onToggle: () => void;
@@ -110,9 +153,21 @@ function MapAttributionComponent({
   const relief = useMapRelief();
   const attribution = resolveMapAttribution({ terrain: relief.terrain });
   const links = extra.length > 0 ? [...attribution.links, ...extra] : attribution.links;
+  // The simulation's label: the whole line spelled out, one word folded.
+  const shown = creditDisclosure(expanded, disclosure);
   const bottomEdge = useBottomEdgeInset();
   // Above a sheet's LIVE top edge where the screen provides one (phones).
   const chromeLift = useMapChromeLift();
+  // The mark stands down where the screen's chrome carries the logo (`MapBrand`).
+  const brandDrawn = !useBrandedChrome();
+  // Its own height, for the chrome a screen floats above it.
+  const heightOut = useMapCreditHeight();
+  const measure = useCallback(
+    (event: LayoutChangeEvent) => {
+      heightOut?.set(withTiming(event.nativeEvent.layout.height, { duration: 160 }));
+    },
+    [heightOut],
+  );
 
   const open = useCallback((href: string) => {
     void Linking.openURL(href).catch(() => {
@@ -128,43 +183,68 @@ function MapAttributionComponent({
         // edge, so the plain gap is added to it rather than the safe-area-aware
         // one.
         bottom: bottomEdge > 0 ? bottomEdge + ATTRIBUTION_GAP : ATTRIBUTION_GAP,
-        // Never overlap the mark in the other corner, however the text wraps.
-        left: MAP_BRAND_CLEARANCE,
+        // Never overlap the mark in the other corner, however the text wraps;
+        // where the screen's chrome carries the logo instead (the explore
+        // screen, `BrandedChromeProvider`), the corner is free and a phone
+        // gets the width back — fewer lines for the chrome above to clear.
+        left: brandDrawn ? MAP_BRAND_CLEARANCE : CREDIT_SIDE_INSET,
       }}
     >
       <View
-        className="flex-row flex-wrap items-center justify-end gap-space-4 rounded-radius-8 bg-card/80 px-space-8 py-space-2"
+        className="items-end gap-space-2 rounded-radius-8 bg-card/80 px-space-8 py-space-2"
+        onLayout={heightOut ? measure : undefined}
         testID="map-credit"
       >
-        {expanded ? (
-          <>
-            {attribution.prefix ? (
-              <Text className="text-caption text-muted-foreground">{attribution.prefix}</Text>
-            ) : null}
-            {links.map((link) => (
-              <Pressable
-                key={`${link.label}|${link.href}`}
-                accessibilityRole="link"
-                accessibilityLabel={link.label}
-                onPress={() => open(link.href)}
-                hitSlop={6}
-              >
-                <Text className="text-caption text-muted-foreground underline">{link.label}</Text>
-              </Pressable>
-            ))}
-          </>
+        {shown.line && disclosure ? (
+          <Text
+            accessibilityLabel={`${shown.line}. ${disclosure.detail}`}
+            className="text-right text-caption font-semibold text-foreground"
+            testID="map-credit-simulated"
+          >
+            {shown.line}
+          </Text>
         ) : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={toggleLabel}
-          aria-expanded={expanded}
-          onPress={onToggle}
-          hitSlop={10}
-          className="items-center justify-center rounded-radius-max active:opacity-70"
-          testID="map-credit-toggle"
-        >
-          <RiInformationLine width={18} height={18} fill={theme.colors.textSecondary} />
-        </Pressable>
+        <View className="flex-row flex-wrap items-center justify-end gap-space-4">
+          {expanded ? (
+            <>
+              {attribution.prefix ? (
+                <Text className="text-caption text-muted-foreground">{attribution.prefix}</Text>
+              ) : null}
+              {links.map((link) => (
+                <Pressable
+                  key={`${link.label}|${link.href}`}
+                  accessibilityRole="link"
+                  accessibilityLabel={link.label}
+                  onPress={() => open(link.href)}
+                  hitSlop={6}
+                >
+                  <Text className="text-caption text-muted-foreground underline">{link.label}</Text>
+                </Pressable>
+              ))}
+            </>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              shown.tag && disclosure ? `${disclosure.text}. ${toggleLabel}` : toggleLabel
+            }
+            aria-expanded={expanded}
+            onPress={onToggle}
+            hitSlop={10}
+            className="flex-row items-center justify-center gap-space-4 rounded-radius-max active:opacity-70"
+            testID="map-credit-toggle"
+          >
+            {shown.tag ? (
+              <Text
+                className="text-caption font-semibold text-foreground"
+                testID="map-credit-simulated-short"
+              >
+                {shown.tag}
+              </Text>
+            ) : null}
+            <RiInformationLine width={18} height={18} fill={theme.colors.textSecondary} />
+          </Pressable>
+        </View>
       </View>
     </CreditBox>
   );

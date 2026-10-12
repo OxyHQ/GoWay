@@ -1,41 +1,171 @@
 /**
- * The time-of-day scrubber's strings, per locale.
+ * The time-of-day scrubber's words, in every `LABEL_LANGUAGES` language
+ * (AGENTS.md: an in-code vocabulary label carries every language, read only
+ * through `localizedLabel` with the whole locale). Machine-authored; review
+ * status in `docs/LABEL_TRANSLATIONS.md`.
  *
- * NOT merged into `lib/i18n.tsx`'s tables: those are in the first-paint
- * bundle, and the scrubber only exists behind the city-sky flag
- * (`lib/map/citySkyFlag.ts`), in its own lazy chunk. The scrubber picks its
- * table with the same `matchLanguageTag` rule `LocaleProvider` uses, so the
- * two can never disagree about the language. `__tests__/citySkyMessages.test.ts`
- * asserts every locale carries every key.
+ * NOT in `lib/i18n.tsx`'s first-paint tables: the scrubber is its own lazy
+ * chunk, opened on demand, so these words load with it. The control that
+ * opens it says only its name, which is in `lib/map/timeOfDayTriggerLabel.ts`.
+ * `__tests__/citySkyMessages.test.ts` checks every language and placeholder.
  */
+import type { Labels } from '@goway.to/sdk';
 
-export const CITY_SKY_EN: Record<string, string> = {
-  'citySky.label': 'Time of day',
-  'citySky.now': 'Now',
-  'citySky.earlierDay': 'Previous day',
-  'citySky.laterDay': 'Next day',
-  'citySky.slider': 'Hour of the day',
-  'citySky.phase.day': 'Sun {degrees}° up',
-  'citySky.phase.golden': 'Golden hour',
-  'citySky.phase.civil': 'Blue hour',
-  'citySky.phase.nautical': 'Twilight',
-  'citySky.phase.night': 'Night',
-};
+export const CITY_SKY_LABELS = {
+  label: {
+    en: 'Time of day',
+    ar: 'وقت اليوم',
+    bn: 'দিনের সময়',
+    ca: 'Hora del dia',
+    de: 'Tageszeit',
+    es: 'Hora del día',
+    fr: 'Heure de la journée',
+    hi: 'दिन का समय',
+    ja: '時刻',
+    'pt-BR': 'Hora do dia',
+    ru: 'Время суток',
+    'zh-Hans': '时刻',
+  },
+  now: {
+    en: 'Now',
+    ar: 'الآن',
+    bn: 'এখন',
+    ca: 'Ara',
+    de: 'Jetzt',
+    es: 'Ahora',
+    fr: 'Maintenant',
+    hi: 'अभी',
+    ja: '現在',
+    'pt-BR': 'Agora',
+    ru: 'Сейчас',
+    'zh-Hans': '现在',
+  },
+  close: {
+    en: 'Close and go back to now',
+    ar: 'إغلاق والعودة إلى الآن',
+    bn: 'বন্ধ করে এখনকার সময়ে ফিরুন',
+    ca: 'Tanca i torna a ara',
+    de: 'Schließen und zurück zu jetzt',
+    es: 'Cerrar y volver a ahora',
+    fr: 'Fermer et revenir à maintenant',
+    hi: 'बंद करें और अभी के समय पर लौटें',
+    ja: '閉じて現在に戻る',
+    'pt-BR': 'Fechar e voltar para agora',
+    ru: 'Закрыть и вернуться к текущему времени',
+    'zh-Hans': '关闭并回到现在',
+  },
+  earlierDay: {
+    en: 'Previous day',
+    ar: 'اليوم السابق',
+    bn: 'আগের দিন',
+    ca: 'Dia anterior',
+    de: 'Vorheriger Tag',
+    es: 'Día anterior',
+    fr: 'Jour précédent',
+    hi: 'पिछला दिन',
+    ja: '前の日',
+    'pt-BR': 'Dia anterior',
+    ru: 'Предыдущий день',
+    'zh-Hans': '前一天',
+  },
+  laterDay: {
+    en: 'Next day',
+    ar: 'اليوم التالي',
+    bn: 'পরের দিন',
+    ca: 'Dia següent',
+    de: 'Nächster Tag',
+    es: 'Día siguiente',
+    fr: 'Jour suivant',
+    hi: 'अगला दिन',
+    ja: '次の日',
+    'pt-BR': 'Próximo dia',
+    ru: 'Следующий день',
+    'zh-Hans': '后一天',
+  },
+  slider: {
+    en: 'Hour of the day',
+    ar: 'ساعة اليوم',
+    bn: 'দিনের ঘণ্টা',
+    ca: 'Hora del dia',
+    de: 'Uhrzeit',
+    es: 'Hora del día',
+    fr: 'Heure de la journée',
+    hi: 'दिन का घंटा',
+    ja: '時間',
+    'pt-BR': 'Hora do dia',
+    ru: 'Час дня',
+    'zh-Hans': '一天中的时间',
+  },
+  'phase.day': {
+    en: 'Sun {degrees}° up',
+    ar: 'الشمس على ارتفاع {degrees}°',
+    bn: 'সূর্য {degrees}° উপরে',
+    ca: 'Sol a {degrees}°',
+    de: 'Sonne {degrees}° hoch',
+    es: 'Sol a {degrees}°',
+    fr: 'Soleil à {degrees}°',
+    hi: 'सूरज {degrees}° ऊपर',
+    ja: '太陽高度 {degrees}°',
+    'pt-BR': 'Sol a {degrees}°',
+    ru: 'Солнце на {degrees}°',
+    'zh-Hans': '太阳高度 {degrees}°',
+  },
+  'phase.golden': {
+    en: 'Golden hour',
+    ar: 'الساعة الذهبية',
+    bn: 'গোল্ডেন আওয়ার',
+    ca: 'Hora daurada',
+    de: 'Goldene Stunde',
+    es: 'Hora dorada',
+    fr: 'Heure dorée',
+    hi: 'गोल्डन आवर',
+    ja: 'ゴールデンアワー',
+    'pt-BR': 'Hora dourada',
+    ru: 'Золотой час',
+    'zh-Hans': '黄金时刻',
+  },
+  'phase.civil': {
+    en: 'Blue hour',
+    ar: 'الساعة الزرقاء',
+    bn: 'ব্লু আওয়ার',
+    ca: 'Hora blava',
+    de: 'Blaue Stunde',
+    es: 'Hora azul',
+    fr: 'Heure bleue',
+    hi: 'ब्लू आवर',
+    ja: 'ブルーアワー',
+    'pt-BR': 'Hora azul',
+    ru: 'Синий час',
+    'zh-Hans': '蓝调时刻',
+  },
+  'phase.nautical': {
+    en: 'Twilight',
+    ar: 'الشفق',
+    bn: 'গোধূলি',
+    ca: 'Crepuscle',
+    de: 'Dämmerung',
+    es: 'Crepúsculo',
+    fr: 'Crépuscule',
+    hi: 'गोधूलि',
+    ja: '薄明',
+    'pt-BR': 'Crepúsculo',
+    ru: 'Сумерки',
+    'zh-Hans': '暮光',
+  },
+  'phase.night': {
+    en: 'Night',
+    ar: 'ليل',
+    bn: 'রাত',
+    ca: 'Nit',
+    de: 'Nacht',
+    es: 'Noche',
+    fr: 'Nuit',
+    hi: 'रात',
+    ja: '夜',
+    'pt-BR': 'Noite',
+    ru: 'Ночь',
+    'zh-Hans': '夜',
+  },
+} as const satisfies Readonly<Record<string, Labels>>;
 
-export const CITY_SKY_ES: Record<string, string> = {
-  'citySky.label': 'Hora del día',
-  'citySky.now': 'Ahora',
-  'citySky.earlierDay': 'Día anterior',
-  'citySky.laterDay': 'Día siguiente',
-  'citySky.slider': 'Hora del día',
-  'citySky.phase.day': 'Sol a {degrees}°',
-  'citySky.phase.golden': 'Hora dorada',
-  'citySky.phase.civil': 'Hora azul',
-  'citySky.phase.nautical': 'Crepúsculo',
-  'citySky.phase.night': 'Noche',
-};
-
-export const CITY_SKY_MESSAGES: Record<string, Record<string, string>> = {
-  en: CITY_SKY_EN,
-  es: CITY_SKY_ES,
-};
+export type CitySkyLabelKey = keyof typeof CITY_SKY_LABELS;

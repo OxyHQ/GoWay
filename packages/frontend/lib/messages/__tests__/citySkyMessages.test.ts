@@ -1,27 +1,44 @@
+/**
+ * The time-of-day scrubber's words and its button's name: every
+ * `LABEL_LANGUAGES` language, the same placeholders as English, and read with
+ * the whole locale (AGENTS.md).
+ */
 import { describe, expect, test } from 'bun:test';
+import { LABEL_LANGUAGES, type Labels, localizedLabel } from '@goway.to/sdk';
 
-import { CITY_SKY_EN, CITY_SKY_ES, CITY_SKY_MESSAGES } from '../citySky';
+import { TIME_OF_DAY_TRIGGER_LABEL } from '@/lib/map/timeOfDayTriggerLabel';
+import type { SunPhase } from '@/lib/map/timeOfDay';
 
-describe('time-of-day scrubber messages', () => {
-  test('every locale carries exactly the same keys', () => {
-    for (const table of Object.values(CITY_SKY_MESSAGES)) {
-      expect(Object.keys(table).sort()).toEqual(Object.keys(CITY_SKY_EN).sort());
-    }
-  });
+import { CITY_SKY_LABELS } from '../citySky';
 
-  test('placeholders match across locales', () => {
-    const placeholders = (text: string) => (text.match(/\{\w+\}/g) ?? []).sort();
-    for (const [key, english] of Object.entries(CITY_SKY_EN)) {
-      expect({ key, placeholders: placeholders(CITY_SKY_ES[key]) }).toEqual({
-        key,
-        placeholders: placeholders(english),
-      });
-    }
+const placeholders = (text: string) => (text.match(/\{\w+\}/g) ?? []).sort();
+
+function expectComplete(name: string, labels: Labels) {
+  expect(Object.keys(labels).sort(), name).toEqual([...LABEL_LANGUAGES].sort());
+  for (const language of LABEL_LANGUAGES) {
+    const label = labels[language];
+    expect(label.trim().length, `${name}.${language}`).toBeGreaterThan(0);
+    expect(label, `${name}.${language}`).toBe(label.trim());
+    expect(label, `${name}.${language}`).toBe(label.normalize('NFC'));
+    expect(placeholders(label), `${name}.${language}`).toEqual(placeholders(labels.en));
+  }
+}
+
+describe('time-of-day words', () => {
+  test('every word in every LABEL_LANGUAGES language, placeholders intact', () => {
+    for (const [key, labels] of Object.entries(CITY_SKY_LABELS)) expectComplete(key, labels);
+    expectComplete('trigger', TIME_OF_DAY_TRIGGER_LABEL);
   });
 
   test('every sun phase the caption can show has a string', () => {
-    for (const phase of ['day', 'golden', 'civil', 'nautical', 'night']) {
-      expect(CITY_SKY_EN[`citySky.phase.${phase}`]).toBeDefined();
-    }
+    const phases: SunPhase[] = ['day', 'golden', 'civil', 'nautical', 'night'];
+    for (const phase of phases) expect(CITY_SKY_LABELS[`phase.${phase}`]).toBeDefined();
+  });
+
+  test('read with the whole locale', () => {
+    expect(localizedLabel(CITY_SKY_LABELS.now, 'ca-ES')).toBe('Ara');
+    expect(localizedLabel(CITY_SKY_LABELS.now, 'es-MX')).toBe('Ahora');
+    expect(localizedLabel(CITY_SKY_LABELS.close, 'pt-BR')).toBe('Fechar e voltar para agora');
+    expect(localizedLabel(TIME_OF_DAY_TRIGGER_LABEL, 'zh-CN')).toBe('时刻');
   });
 });

@@ -329,14 +329,32 @@ overlapping.
 buildings; the same rule, stronger, governs this:
 
 - **It is labelled, and says what is simulated and what is live.** The label
-  (`cityLifeChip.web.ts`, words in `cityLifeLabel.ts`) reads, e.g.,
-  "Simulated: cars and people · Live: buses" — the simulated things actually
-  drawn in view, and the classes with fresh real data in view. Every word is
-  in all twelve `LABEL_LANGUAGES` (machine-authored, review status in
-  `LABEL_TRANSLATIONS.md`); its accessible text says simulated things are not
-  live traffic. It is on screen **for exactly as long as any agent is drawn**:
-  shown and hidden by the renderer's own `onActiveChange`, not by a flag a
-  screen could read differently.
+  (words in `cityLifeLabel.ts`) reads, e.g., "Simulated: cars and people ·
+  Live: buses" — the simulated things actually drawn in view, and the classes
+  with fresh real data in view. Every word is in all twelve `LABEL_LANGUAGES`
+  (machine-authored, review status in `LABEL_TRANSLATIONS.md`); its accessible
+  text says simulated things are not live traffic. It exists **for exactly as
+  long as any agent is drawn**: `cityLifeReporter` (tested) turns the
+  renderer's own `onActiveChange` and `onLabel` into the label or `null`, not
+  a flag a screen could read differently.
+- **It rides in the map's data credit** (since 2026-10-12; it was a chip in
+  the top-right stack, which crowded phones). The city layer hands the label
+  to `MapCanvas` (`onCityLife`), which hands it to `MapAttribution` — rendered
+  on every map with no prop to turn it off, the embed included, in the one
+  corner no sheet, panel or screen may take. The credit shows it in BOTH
+  states: spelled out, the whole label is its first line (and at load the
+  credit is spelled out); folded into its ⓘ, the word "Simulated" stays beside
+  the ⓘ and opens the whole label. **The choice, and why:** the owner asked for
+  the label in the credit, visible at least while the credit is spelled out at
+  load. But the simulation starts only once the reader has zoomed into a city
+  — by when their first zoom has already folded the credit — so a label shown
+  only while spelled out would in practice almost never be seen, and a
+  simulation would be drawn unlabelled. The folded word is what keeps
+  "labelled whenever drawn" (AGENTS.md) true at a fraction of the chip's
+  width. `lib/map/__tests__/compactCredit.test.ts` holds the credit to it over
+  every sequence of its events. Where the credit itself fades — a phone's
+  sheet dragged past half the screen on its way to full, where the sheet then
+  covers the map — so does the label, with the map it labels.
 - **It is never read.** Nothing leaves the worker but positions and paint for
   drawing. No route, ETA, search result, place screen, statistic or server
   request uses it. `components/__tests__/cityLifeIsolation.test.ts` fails if

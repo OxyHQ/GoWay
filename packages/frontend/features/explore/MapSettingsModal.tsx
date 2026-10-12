@@ -13,8 +13,9 @@
  * (`lib/map/mapSettingsPages.ts`), never from a list kept here:
  *
  *  - **Map**: the 2D/3D view (the camera, not a feature) and the `map`
- *    features — Globe, Terrain, Sky & time of day, the detailed city look,
- *    street detail — and Performance.
+ *    features — Globe, Terrain, Sky & time of day (with "Change time…",
+ *    which opens the scrubber on the map, while the sky draws), the detailed
+ *    city look, street detail — and Performance.
  *  - **Layers**: the `layers` features (Street 3D, 3D city, city tiles and the
  *    official data they carry, trees, simulated traffic, landmarks, the
  *    flyover and Camera Studio); the woods fill and live data only once Labs
@@ -30,7 +31,7 @@
  * nothing else; the map applies it itself, live where it can. All copy is in
  * the twelve label languages (`lib/map/mapFeatureLabels.ts`).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
@@ -78,6 +79,11 @@ export interface MapSettingsModalProps {
   tilted: boolean;
   /** Tilt the camera to 3D, or level it to 2D. */
   onTiltChange: (tilted: boolean) => void;
+  /**
+   * Close the modal and open the time-of-day scrubber on the map. Passed only
+   * while the sky draws, so "Change time…" is offered only then.
+   */
+  onChangeTime?: () => void;
 }
 
 type ViewMode = '2d' | '3d';
@@ -198,6 +204,7 @@ export function MapSettingsModal({
   initialPage,
   tilted,
   onTiltChange,
+  onChangeTime,
 }: MapSettingsModalProps) {
   const { locale } = useTranslation();
   const router = useRouter();
@@ -251,7 +258,25 @@ export function MapSettingsModal({
             </SegmentedControl>
           </SettingsRow>
           {layout.features.map.map((state) => (
-            <FeatureRow key={state.id} state={state} say={say} />
+            <Fragment key={state.id}>
+              <FeatureRow state={state} say={say} />
+              {state.id === 'citySky' && state.on && onChangeTime ? (
+                <SettingsRow
+                  label={say(MAP_SETTINGS_COPY.timeOfDay)}
+                  description={say(MAP_SETTINGS_COPY.timeOfDayHint)}
+                  testID="map-settings-time-of-day-row"
+                >
+                  <Button
+                    size="sm"
+                    appearance="outline"
+                    onPress={onChangeTime}
+                    testID="map-settings-change-time"
+                  >
+                    {say(MAP_SETTINGS_COPY.changeTime)}
+                  </Button>
+                </SettingsRow>
+              ) : null}
+            </Fragment>
           ))}
         </SettingsCard>
         <SettingsSection description={say(MAP_SETTINGS_COPY.performanceHint)}>

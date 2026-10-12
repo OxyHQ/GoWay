@@ -47,3 +47,18 @@ export function creditReducer(state: CreditState, event: CreditEvent): CreditSta
       return { expanded: !state.expanded, auto: false };
   }
 }
+
+/**
+ * What the credit shows of a disclosure it carries — the city-life
+ * simulation's label (`docs/MAP_CITY_LIFE.md` → Honesty): spelled out, the
+ * whole label as its first line; folded, its one word beside the ⓘ. In
+ * neither state is it hidden, so whatever folds the credit can never hide the
+ * label; without a disclosure, nothing.
+ */
+export function creditDisclosure(
+  expanded: boolean,
+  disclosure: { text: string; short: string } | null,
+): { line: string | null; tag: string | null } {
+  if (!disclosure) return { line: null, tag: null };
+  return expanded ? { line: disclosure.text, tag: null } : { line: null, tag: disclosure.short };
+}
