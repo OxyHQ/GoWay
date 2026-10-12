@@ -42,7 +42,6 @@ import type {
 import { DEFAULT_VIEWPORT } from '@/components/map';
 import { sameLabelSet } from '@/components/map/labels';
 import { useDirections, type DirectionsController } from '@/features/directions/useDirections';
-import { boundsCenter, distanceMeters } from '@/lib/map/geo';
 import { declutterMarkerLabels, describeLabel, reconcileLabel } from '@/lib/goway/basemapLabels';
 import { ecosystemCapabilities } from '@/lib/goway/capabilities';
 import { shortcutCategories } from '@/lib/goway/categories';
@@ -57,6 +56,8 @@ import {
 } from '@/lib/goway/queries';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { useUserLocation } from '@/lib/map/useUserLocation';
+
+import { boxOf, type CommittedBox, nextBoxStep } from './committedBox';
 
 /** What the sheet is currently about. */
 export type ExploreMode = 'browse' | 'search' | 'details';
@@ -79,18 +80,6 @@ export type ExploreSelection =
 /** How long the search box waits for typing to stop. */
 const SEARCH_DEBOUNCE_MS = 250;
 
-/**
- * How far the camera must move before "Search this area" offers itself, as a
- * fraction of the viewport's own diagonal.
- *
- * A fraction rather than a distance, because the same drag means something
- * different at every zoom: 300 m is most of the screen at z17 and invisible at
- * z11. A zoom change of a full level counts on its own — the same centre at
- * twice the scale is a different question.
- */
-const AREA_MOVE_FRACTION = 0.3;
-const AREA_ZOOM_DELTA = 1;
-
 /** Nothing reported yet. A stable identity, so it is not a new array per render. */
 const NO_LABELS: readonly MapLabelFeature[] = [];
 
@@ -109,12 +98,6 @@ const CLUSTER_FIT_PADDING = 96;
  * value. This is only what a caller that forgets gets.
  */
 const ROUTE_FIT_PADDING = 72;
-
-interface Committed {
-  bounds: GeoBounds;
-  center: GeoCoordinate;
-  zoom: number;
-}
 
 export interface ExploreController {
   mode: ExploreMode;
@@ -247,7 +230,7 @@ export function useExplore(
     setBasemapLabels((current) => (sameLabelSet(current, next) ? current : next));
   }, []);
 
-  const [committed, setCommitted] = useState<Committed | null>(null);
+  const [committed, setCommitted] = useState<CommittedBox | null>(null);
   const [zoom, setZoom] = useState(DEFAULT_VIEWPORT.zoom);
   const [areaMoved, setAreaMoved] = useState(false);
   /** The camera as last reported, for the biasing and movement tests. */
@@ -360,9 +343,18 @@ export function useExplore(
   // ── Camera ───────────────────────────────────────────────────────────────
 
   const commitViewport = useCallback((viewport: ResolvedMapViewport, bounds: GeoBounds) => {
-    setCommitted({ bounds, center: boundsCenter(bounds), zoom: viewport.zoom });
+    setCommitted(boxOf({ viewport, bounds }));
     setAreaMoved(false);
   }, []);
+
+  /**
+   * The deep link's framing (`/place/<id>`) is the map's opening framing:
+   * until it runs, a camera the app reports is held, not committed — see
+   * `committedBox.ts`. `deepLinkFramed` flips when the framing is issued (or
+   * abandoned), before its camera settles, so the settle commits.
+   */
+  const deepLinkFramed = useRef(!options.initialPlaceId);
+  const heldOpening = useRef<MapViewportChange | null>(null);
 
   const onViewportChange = useCallback(
     (change: MapViewportChange) => {
@@ -375,30 +367,25 @@ export function useExplore(
         Math.abs(current - change.viewport.zoom) >= 0.25 ? change.viewport.zoom : current,
       );
 
-      if (!change.isFinal) return;
-
-      if (!committed) {
-        // The first settled frame is the box the user opened into; results come
-        // from it without anybody pressing anything.
-        commitViewport(change.viewport, change.bounds);
-        return;
+      const step = nextBoxStep(committed, change, {
+        awaitingOpeningFraming: !deepLinkFramed.current,
+      });
+      switch (step.kind) {
+        case 'hold':
+          heldOpening.current = change;
+          return;
+        case 'commit':
+          setCommitted(step.box);
+          setAreaMoved(false);
+          return;
+        case 'area':
+          setAreaMoved(step.moved);
+          return;
+        case 'none':
+          return;
       }
-
-      // `source` is why this exists on the event at all: a camera the APP moved
-      // (opening a result, fitting a cluster) must never arm the button for the
-      // search that is already showing.
-      if (change.source !== 'user') return;
-
-      const diagonal = distanceMeters(
-        { latitude: change.bounds.south, longitude: change.bounds.west },
-        { latitude: change.bounds.north, longitude: change.bounds.east },
-      );
-      const moved = distanceMeters(committed.center, change.viewport);
-      const zoomed = Math.abs(change.viewport.zoom - committed.zoom) >= AREA_ZOOM_DELTA;
-
-      setAreaMoved(moved > diagonal * AREA_MOVE_FRACTION || zoomed);
     },
-    [committed, commitViewport],
+    [committed],
   );
 
   const searchThisArea = useCallback(() => {
@@ -500,7 +487,6 @@ export function useExplore(
    * user owns the camera, and re-framing on every refetch would yank the map
    * back from wherever they had dragged it.
    */
-  const deepLinkFramed = useRef(!options.initialPlaceId);
   useEffect(() => {
     if (deepLinkFramed.current) return;
     const place = placeQuery.data;
@@ -508,6 +494,20 @@ export function useExplore(
     deepLinkFramed.current = true;
     mapRef.current?.moveTo(place.location, { zoom: DETAIL_ZOOM, duration: cameraDuration });
   }, [placeQuery.data, options.initialPlaceId, cameraDuration, mapRef]);
+
+  /**
+   * The deep link's framing will not come — the place failed to load, or the
+   * reader left it before it did — so the camera held meanwhile is the opening
+   * box after all.
+   */
+  const openingPlaceGone = selectedPlaceId !== options.initialPlaceId || placeQuery.isError;
+  useEffect(() => {
+    if (deepLinkFramed.current || !openingPlaceGone) return;
+    deepLinkFramed.current = true;
+    const held = heldOpening.current;
+    heldOpening.current = null;
+    if (held) setCommitted((current) => current ?? boxOf(held));
+  }, [openingPlaceGone]);
 
   const setQuery = useCallback((value: string) => {
     setQueryState(value);

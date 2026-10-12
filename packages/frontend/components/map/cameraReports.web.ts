@@ -1,6 +1,6 @@
 /**
- * The web canvas's camera reports: MapLibre's `load`, `move` and `moveend`
- * turned into `MapCanvasProps.onViewportChange`.
+ * The web canvas's camera reports: MapLibre's `load`, `movestart`, `move` and
+ * `moveend` turned into `MapCanvasProps.onViewportChange`.
  *
  * Its own module so it runs against a fake engine in a test (the real one
  * needs WebGL); `MapCanvas.web.tsx` attaches it to every map it builds.
@@ -12,11 +12,12 @@
  *    animation (`MapCameraOptions.transient`), which `move` already reported.
  *
  * `source` comes from the marker GoWay puts on its own camera commands: a
- * marked move is `programmatic` and never arms "Search this area".
+ * marked move is `programmatic` and never arms "Search this area"; so is a
+ * container resize (`moveSourceOf`).
  */
 import type { Map as MapLibreMap } from 'maplibre-gl';
 
-import { type CameraReading, loadedCameraChange } from './loadedCamera';
+import { type CameraReading, createLoadedCameraReporter } from './loadedCamera';
 import { runEngineCommand } from './shared';
 import type { MapMoveSource, MapViewportChange } from './types';
 
@@ -40,9 +41,29 @@ export const PROGRAMMATIC_TRANSIENT = { gowayProgrammatic: true, gowayTransient:
 /** Streaming viewport updates while a drag is in progress. */
 export const MOVE_THROTTLE_MS = 100;
 
+/**
+ * Who moved the camera: GoWay (a marked command), the engine itself because
+ * its container changed size, or — anything else — the reader.
+ *
+ * A container resize keeps the centre and zoom and changes only how much is
+ * on screen; nobody chose it, so it must neither arm "Search this area" nor
+ * end what a reader's move ends (a landmark tour).
+ */
 export function moveSourceOf(event: unknown): MapMoveSource {
   const marked = event as { gowayProgrammatic?: unknown } | null | undefined;
-  return marked?.gowayProgrammatic === true ? 'programmatic' : 'user';
+  if (marked?.gowayProgrammatic === true) return 'programmatic';
+  return isContainerResize(event) ? 'programmatic' : 'user';
+}
+
+/**
+ * A move MapLibre made because its container was resized. Its ResizeObserver
+ * hands the observer's entries to `resize()` as the event data, so the move's
+ * events carry them — the test MapLibre's own GeolocateControl uses
+ * (`event[0] instanceof ResizeObserverEntry`).
+ */
+export function isContainerResize(event: unknown): boolean {
+  if (typeof ResizeObserverEntry === 'undefined') return false;
+  return (event as { 0?: unknown } | null | undefined)?.[0] instanceof ResizeObserverEntry;
 }
 
 /** A camera move a pointer, wheel, key or touch caused (MapLibre attaches it). */
@@ -57,7 +78,7 @@ export function isTransientMove(event: unknown): boolean {
 /** The part of a MapLibre map the reports read and listen to. */
 export type CameraEngine = Pick<
   MapLibreMap,
-  'on' | 'off' | 'getCenter' | 'getBounds' | 'getZoom' | 'getBearing' | 'getPitch' | 'isMoving'
+  'on' | 'off' | 'getCenter' | 'getBounds' | 'getZoom' | 'getBearing' | 'getPitch'
 >;
 
 /**
@@ -71,11 +92,11 @@ export function attachCameraReports(
   now: () => number = Date.now,
 ): () => void {
   let lastMoveReport = 0;
-  // Whether the camera stands on a frame of a caller-driven animation: the
-  // last move to END says so. A command issued before `load` ends its move
-  // before `load` too (`jumpTo` fires `moveend` synchronously), so this is
-  // right at `load` as well.
-  let onTransientFrame = false;
+  // This engine's one loaded-camera report (`loadedCamera.ts`). A command
+  // issued before `load` starts and ends its move before `load` too (`jumpTo`
+  // fires both synchronously; `easeTo` is still moving), so the reporter knows
+  // at `load` whether the camera is settled.
+  const loaded = createLoadedCameraReporter();
 
   // `getCenter`/`getBounds` BUILD `LngLat`s out of the live transform, so a
   // camera that has gone non-finite throws HERE — and this runs from the
@@ -115,11 +136,9 @@ export function attachCameraReports(
     if (next) change(next);
   };
 
-  const handleLoad = () => {
-    report((reading) =>
-      loadedCameraChange(reading, { moving: map.isMoving(), transient: onTransientFrame }),
-    );
-  };
+  const handleLoad = () => loaded.loaded(read, listener);
+
+  const handleMoveStart = () => loaded.moveStarted();
 
   const handleMove = (event: unknown) => {
     const at = now();
@@ -129,17 +148,20 @@ export function attachCameraReports(
   };
 
   const handleMoveEnd = (event: unknown) => {
-    onTransientFrame = isTransientMove(event);
-    if (onTransientFrame) return;
+    const transient = isTransientMove(event);
+    loaded.moveEnded(transient);
+    if (transient) return;
     lastMoveReport = 0;
     report((reading) => ({ ...reading, source: moveSourceOf(event), isFinal: true }));
   };
 
   map.on('load', handleLoad);
+  map.on('movestart', handleMoveStart);
   map.on('move', handleMove);
   map.on('moveend', handleMoveEnd);
   return () => {
     map.off('load', handleLoad);
+    map.off('movestart', handleMoveStart);
     map.off('move', handleMove);
     map.off('moveend', handleMoveEnd);
   };
