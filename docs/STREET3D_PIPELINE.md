@@ -99,7 +99,7 @@ Derivatives are re-encoded pixels only (no EXIF, XMP, ICC or maker notes),
 sRGB: a photo's embedded profile (an iPhone's Display P3) and a video's colour
 signalling (matrix, range, primaries; HLG and PQ HDR tone-mapped) are converted
 into the pixels before the metadata is dropped. HEIC is decoded (`pillow-heif`).
-JPEG q95, 4:4:4; a photo keeps up to 4096 px (`STREET3D_KEYFRAME_*`).
+JPEG q95, 4:4:4; a photo keeps up to 4096 px (`keyframe*` in `STREET3D_POLICY`).
 
 Blur and exclusion are separate regions (`privacy/redact.py`):
 
@@ -125,7 +125,7 @@ separately.
 A contribution declares `projection: "equirectangular"` for a full 360°
 panorama, photo or video ([#91](https://github.com/OxyHQ/GoWay/issues/91)). The
 upload policy publishes separate 360° ceilings (`equirectangular`: bytes,
-duration, width), and `CAPTURE_EQUIRECTANGULAR_ENABLED` switches acceptance off.
+duration, width); 360° acceptance has no switch.
 
 - **The claim never decides.** The `capture_privacy` envelope carries the
   declaration. The worker reads the projection the bytes themselves carry —
@@ -282,7 +282,7 @@ bun run street3d:admin import-licensed --manifest=<import.json> --target-databas
 - **Honest quality.** `heldOutPsnr` is absent (GoWay trained nothing to hold
   frames out of; the contract allows that). `registrationRatio` is 1,
   `alignmentResidualMeters` and `placement` come from the manifest, and
-  `precise` is refused above `STREET3D_PRECISE_PLACEMENT_RESIDUAL_METERS`. The
+  `precise` is refused above `precisePlacementResidualMeters` (3 m). The
   profile is the smallest whose budget holds the tree's Gaussians and bytes,
   else the largest: a paged tree is never loaded whole. `provenance` is
   `import:licensed/1` with the manifest's components (capture device,
@@ -376,27 +376,27 @@ validation) and `src/db/street3d/` (every statement). Migration
 `0006_goway_street3d` (`pre`) adds its tables; `0019` and `0020` (`pre`) add
 scene and version sources for licensed imports.
 
-### Switching it on
+### Configuring it
 
-Nothing but the read API runs until configured; `/ready` never depends on it.
+There is no switch. The read API is always on (it serves what is published).
+The pipeline — and its in-process scheduler, ticking every 60 s after the
+server listens — runs when everything it needs is configured, and not
+otherwise; `/ready` never depends on it.
 
 | Variable | Purpose |
 | --- | --- |
-| `STREET3D_SCHEDULER_ENABLED` | Run `tick()` in-process after the server listens (default `false`). |
-| `STREET3D_SCHEDULER_INTERVAL_SECONDS` | Seconds between ticks (default 60). |
-| `STREET3D_VIEWING_ENABLED` | Serve the public read API (default `true`: it reads only published scenes; `false` answers 503/404). |
-| `STREET3D_AWS_REGION` | Queues and scene bucket (falls back to `AWS_REGION`). |
+| `AWS_REGION` | Queues and scene bucket (falls back to `CAPTURE_S3_REGION`). |
 | `STREET3D_JOBS_QUEUE_URL`, `STREET3D_EVENTS_QUEUE_URL` | The two queues. |
 | `STREET3D_JOBS_DLQ_URL` | Optional: the jobs DLQ, for `status` and failing dead-lettered jobs. |
-| `STREET3D_SCENE_BUCKET`, `STREET3D_SCENE_KEY_PREFIX` | Published assets (prefix default `scenes`). |
+| `STREET3D_SCENE_BUCKET` | Published assets, under `scenes/`. |
 | `STREET3D_PUBLIC_ASSET_BASE_URL` | Origin the scene bucket is served from. |
 | `STREET3D_SCENE_LOCAL_DIR` | Development only, never beside `STREET3D_SCENE_BUCKET`: a local directory standing in for the scene bucket, for licensed imports, served by `street3d:serve-assets`. |
 | `STREET3D_CDN_DISTRIBUTION_ID` | Optional: invalidated on disable. |
 | `CAPTURE_S3_*` | The temporary bucket; `derived/` and `jobs/` live beside `captures/`. |
 
-Thresholds, gates and per-profile budgets are documented in
-`packages/backend/.env.example`; gates and budgets are written into every input
-manifest and re-checked on the result.
+Thresholds, gates and per-profile budgets are `STREET3D_POLICY` in
+`packages/backend/src/config/street3d.ts` — code, not configuration; gates and
+budgets are written into every input manifest and re-checked on the result.
 
 Each tick drains events, fails dead-lettered jobs, recovers stale leases,
 writes cancel markers, queues privacy passes, forms scenes, refreshes coverage,

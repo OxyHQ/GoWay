@@ -69,15 +69,18 @@ import {
 import { fakeServices, FakeWorker, type FakeServices } from './fakes';
 import { defined } from '../../__tests__/defined';
 
-const config = parseStreet3dConfig({
-  STREET3D_MIN_ELIGIBLE_FRAMES: '4',
-  STREET3D_MIN_HEADING_SECTORS: '1',
-  STREET3D_REBUILD_MIN_NEW_FRAMES: '2',
-  STREET3D_SUPERSEDE_MIN_NEW_FRAMES: '3',
-  STREET3D_GATE_MIN_REGISTERED_FRAMES: '2',
+const defaults = parseStreet3dConfig({
   STREET3D_PUBLIC_ASSET_BASE_URL: 'https://cdn.example.test/street3d',
-  STREET3D_EVENT_WAIT_SECONDS: '0',
 });
+const config = {
+  ...defaults,
+  minEligibleFrames: 4,
+  minHeadingSectors: 1,
+  rebuildMinNewFrames: 2,
+  supersedeMinNewFrames: 3,
+  gates: { ...defaults.gates, minRegisteredFrames: 2 },
+  eventWaitSeconds: 0,
+};
 
 /** Rue du Faubourg Saint-Honoré — near the contract fixture's anchor. */
 // biome-ignore lint/suspicious/noApproximativeNumericConstant: a longitude in Paris, not ln 10.

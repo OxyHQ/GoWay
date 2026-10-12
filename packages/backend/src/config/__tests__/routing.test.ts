@@ -15,17 +15,13 @@
 
 import '../../__tests__/testEnv';
 import { describe, expect, it } from 'bun:test';
-import type { EnvironmentSource } from '../index';
 import { parseRoutingConfig } from '../routing';
-
-const CONFIGURED: EnvironmentSource = { ROUTING_VALHALLA_URL: 'https://valhalla.example/route' };
 
 describe('parseRoutingConfig', () => {
   it('parses an empty environment as "this deployment has no routing engine"', () => {
     const settings = parseRoutingConfig({});
     expect(settings.enabled).toBe(false);
     expect(settings.valhallaUrl).toBeUndefined();
-    expect(settings.provider).toBe('valhalla');
     expect(settings.timeoutMs).toBe(10_000);
     expect(settings.maxAlternatives).toBe(2);
     expect(settings.modes).toEqual(['drive', 'walk', 'bike']);
@@ -66,86 +62,25 @@ describe('parseRoutingConfig', () => {
     ).toThrow(/valhallaUrl/);
   });
 
-  it('treats an empty string as absent so a default can apply', () => {
+  it('treats an empty string as absent', () => {
     // A shell exports an empty string for a variable set to nothing, which zod
     // sees as a present value.
-    const settings = parseRoutingConfig({
-      ROUTING_VALHALLA_URL: '',
-      ROUTING_TIMEOUT_MS: '',
-      ROUTING_MODES: '',
-      ROUTING_USER_AGENT: '',
-      ROUTING_VALHALLA_API_KEY: '',
-    });
+    const settings = parseRoutingConfig({ ROUTING_VALHALLA_URL: '', ROUTING_VALHALLA_API_KEY: '' });
     expect(settings.enabled).toBe(false);
-    expect(settings.timeoutMs).toBe(10_000);
-    expect(settings.modes).toEqual(['drive', 'walk', 'bike']);
     expect(settings.valhallaApiKey).toBeUndefined();
   });
 
-  it('narrows the offered modes, so a deployment can say what it cannot route', () => {
-    const settings = parseRoutingConfig({ ...CONFIGURED, ROUTING_MODES: 'drive, walk' });
-    expect(settings.modes).toEqual(['drive', 'walk']);
-  });
-
-  it('refuses a mode that is not in the contract', () => {
-    expect(() => parseRoutingConfig({ ...CONFIGURED, ROUTING_MODES: 'drive,helicopter' })).toThrow(
-      /modes/,
-    );
-  });
-
-  it('reads a list of nothing but separators as absent, so the default applies', () => {
-    // The same rule the rest of the configuration follows: a shell spells
-    // "unset" as an empty value, and an empty mode list would otherwise mean a
-    // deployment that routes nothing at all.
-    expect(parseRoutingConfig({ ...CONFIGURED, ROUTING_MODES: ',,' }).modes).toEqual([
-      'drive',
-      'walk',
-      'bike',
-    ]);
-  });
-
-  it('bounds the timeout rather than accepting any number a shell offers', () => {
-    expect(parseRoutingConfig({ ...CONFIGURED, ROUTING_TIMEOUT_MS: '2500' }).timeoutMs).toBe(2500);
-    expect(() => parseRoutingConfig({ ...CONFIGURED, ROUTING_TIMEOUT_MS: '0' })).toThrow(
-      /timeoutMs/,
-    );
-    expect(() => parseRoutingConfig({ ...CONFIGURED, ROUTING_TIMEOUT_MS: '600000' })).toThrow(
-      /timeoutMs/,
-    );
-    expect(() => parseRoutingConfig({ ...CONFIGURED, ROUTING_TIMEOUT_MS: 'soon' })).toThrow(
-      /timeoutMs/,
-    );
-  });
-
-  it('accepts zero alternatives, which switches the feature off', () => {
+  it('ignores the retired tuning variables a task definition may still carry', () => {
+    const configured = { ROUTING_VALHALLA_URL: 'https://valhalla.example/route' };
     expect(
-      parseRoutingConfig({ ...CONFIGURED, ROUTING_MAX_ALTERNATIVES: '0' }).maxAlternatives,
-    ).toBe(0);
-    expect(() => parseRoutingConfig({ ...CONFIGURED, ROUTING_MAX_ALTERNATIVES: '50' })).toThrow(
-      /maxAlternatives/,
-    );
-  });
-
-  it('refuses an engine it does not know how to drive', () => {
-    expect(() => parseRoutingConfig({ ...CONFIGURED, ROUTING_PROVIDER: 'osrm' })).toThrow(
-      /provider/,
-    );
-  });
-
-  it('names every bad variable at once, not just the first', () => {
-    // A deployment with three bad values should take one round trip to fix.
-    let message = '';
-    try {
       parseRoutingConfig({
-        ROUTING_VALHALLA_URL: 'nonsense',
+        ...configured,
+        ROUTING_PROVIDER: 'osrm',
         ROUTING_TIMEOUT_MS: '0',
-        ROUTING_MODES: 'fly',
-      });
-    } catch (error) {
-      message = (error as Error).message;
-    }
-    expect(message).toContain('valhallaUrl');
-    expect(message).toContain('timeoutMs');
-    expect(message).toContain('modes');
+        ROUTING_MODES: 'drive',
+        ROUTING_MAX_ALTERNATIVES: '50',
+        ROUTING_USER_AGENT: 'someone else',
+      }),
+    ).toEqual(parseRoutingConfig(configured));
   });
 });

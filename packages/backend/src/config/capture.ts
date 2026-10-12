@@ -8,15 +8,19 @@
  * feature, not the product — so "no store configured" is a per-request
  * `service_unavailable` on the upload-intent route rather than a boot failure.
  *
+ * What a deployment configures is WHERE contributions go (the bucket, its
+ * region, an endpoint for a local store) and, during a closed pilot, WHO may
+ * contribute. Everything else is {@link CAPTURE_POLICY}.
+ *
  * ## The retention numbers live here because they are POLICY, not contract
  *
- * #10 is explicit: exact durations must be configuration-driven, not hardcoded
+ * #10 is explicit: exact durations must be defined in one place, not hardcoded
  * throughout the codebase, and they are never a public guarantee. So they are
- * env-overridable defaults in ONE module, the API publishes them as a
+ * constants in ONE module, the API publishes them as a
  * {@link CaptureUploadPolicy} so a contributor can be told before they submit,
  * and the database enforces a separate, much coarser CEILING
- * (`ABSOLUTE_RETENTION_CEILING_DAYS`) that no configuration can raise. Policy
- * moves; the backstop does not.
+ * (`ABSOLUTE_RETENTION_CEILING_DAYS`) that no code here can raise. Policy
+ * moves, in a reviewed commit; the backstop does not.
  *
  * The defaults are the conservative end of the epic's stated posture: ~90 days
  * for an original photo, far less for raw video, and derived reconstruction
@@ -29,131 +33,105 @@ import type { CaptureRetentionClass } from '@goway/contracts';
 import type { EnvironmentSource } from './index';
 import { oxyUserIdList } from './oxyUserIds';
 
-/**
- * Default retention windows, in days, per capture retention class.
- *
- * A TOTAL `Record<CaptureRetentionClass, number>` rather than a partial map with
- * a fallback: a class added to the tuple in `@goway/contracts` and forgotten
- * here is a compile error, instead of a new kind of stored object silently
- * inheriting somebody else's window — which is precisely how a temporary store
- * grows a permanent corner.
- *
- * - `raw_photo` 90 days — the long end of the epic's 60–90 day posture, because
- *   a photo's value is that a second contributor may photograph the same
- *   façade weeks later.
- * - `raw_video` 30 days — a video is a DERIVATION SOURCE. Its useful content is
- *   its keyframes, it costs an order of magnitude more per second of coverage
- *   than a photo, and #10 asks for it to go substantially earlier. The
- *   `deletionEligibleAt` below usually retires it long before this.
- * - the derived classes 180 days — they exist BECAUSE they are smaller and
- *   privacy-processed. Expiring them on the originals' schedule would throw
- *   away the cheap thing to keep the expensive one.
- */
-const DEFAULT_RETENTION_DAYS: Readonly<Record<CaptureRetentionClass, number>> = {
-  raw_photo: 90,
-  raw_video: 30,
-  extracted_keyframe: 180,
-  privacy_safe_proxy: 180,
-  thumbnail: 180,
+/** What GoWay accepts and keeps. Constants: a change is a reviewed commit, not a task definition. */
+export interface CapturePolicy {
+  /**
+   * The single key prefix every contributed object lands under. One prefix,
+   * server-chosen, because the object-store lifecycle backstop is configured on
+   * it: an object written outside it would never be reaped if the
+   * application's own sweeper missed it.
+   */
+  keyPrefix: string;
+  /** How long a presigned upload target stays valid, in seconds. A bearer token in a URL: short. */
+  uploadIntentTtlSeconds: number;
+  /**
+   * The version of the contribution consent text a new session must accept.
+   * A string rather than a boolean, because "they consented" is not a fact that
+   * survives the text changing. Recorded per session (`capture_sessions.consent_version`).
+   */
+  consentVersion: string;
+  /**
+   * Ceilings on one contributed file, published in the upload policy so a
+   * client can refuse a file BEFORE a contributor waits through an upload the
+   * API was always going to reject.
+   */
+  maxPhotoBytes: number;
+  maxVideoBytes: number;
+  maxVideoDurationSeconds: number;
+  /**
+   * The media types GoWay accepts. Server-side and authoritative — a client's
+   * declared content type is a claim, and the presigned target pins it. HEIC
+   * is here because it is what an iPhone actually produces.
+   */
+  photoContentTypes: readonly string[];
+  videoContentTypes: readonly string[];
+  /**
+   * Ceilings on one 360° (equirectangular) file, which replace the ones above.
+   * A 360° frame is fourteen views' worth of pixels, so the byte ceilings are
+   * higher; the resolution ceilings are what the privacy worker decodes
+   * comfortably (an ~72 MP photo, an 8K video). Duration is SHORTER than for a
+   * phone video: a minute of 360° video already covers a street from both
+   * pavements, and every keyframe becomes fourteen derivatives.
+   */
+  maxEquirectangularPhotoBytes: number;
+  maxEquirectangularPhotoWidthPixels: number;
+  maxEquirectangularVideoBytes: number;
+  maxEquirectangularVideoDurationSeconds: number;
+  maxEquirectangularVideoWidthPixels: number;
+  /**
+   * Retention window per class, in days — the map the upload policy publishes.
+   *
+   * A TOTAL `Record<CaptureRetentionClass, number>`: a class added to the tuple
+   * in `@goway/contracts` and forgotten here is a compile error, instead of a
+   * new kind of stored object silently inheriting somebody else's window.
+   *
+   * - `raw_photo` 90 days — the long end of the epic's 60–90 day posture,
+   *   because a photo's value is that a second contributor may photograph the
+   *   same façade weeks later.
+   * - `raw_video` 30 days — a video is a DERIVATION SOURCE. Its useful content
+   *   is its keyframes, it costs an order of magnitude more per second of
+   *   coverage than a photo, and #10 asks for it to go substantially earlier.
+   *   `videoDeletionEligibleDays` usually retires it long before this.
+   * - the derived classes 180 days — they exist BECAUSE they are smaller and
+   *   privacy-processed. Expiring them on the originals' schedule would throw
+   *   away the cheap thing to keep the expensive one.
+   */
+  retentionDays: Readonly<Record<CaptureRetentionClass, number>>;
+  /**
+   * How long a raw video is protected from the sweeper before its keyframes can
+   * retire it, in days. Long enough that a failed keyframe extraction can be
+   * diagnosed against the original; short enough that the expensive bytes do
+   * not sit for a month.
+   */
+  videoDeletionEligibleDays: number;
+}
+
+export const CAPTURE_POLICY: CapturePolicy = {
+  keyPrefix: 'captures',
+  uploadIntentTtlSeconds: 900,
+  consentVersion: '2026-09-01',
+  maxPhotoBytes: 48 * 1024 * 1024,
+  maxVideoBytes: 512 * 1024 * 1024,
+  maxVideoDurationSeconds: 600,
+  photoContentTypes: ['image/jpeg', 'image/png', 'image/heic', 'image/heif'],
+  videoContentTypes: ['video/mp4', 'video/quicktime'],
+  maxEquirectangularPhotoBytes: 64 * 1024 * 1024,
+  maxEquirectangularPhotoWidthPixels: 12_000,
+  maxEquirectangularVideoBytes: 2 * 1024 * 1024 * 1024,
+  maxEquirectangularVideoDurationSeconds: 300,
+  maxEquirectangularVideoWidthPixels: 7_680,
+  retentionDays: {
+    raw_photo: 90,
+    raw_video: 30,
+    extracted_keyframe: 180,
+    privacy_safe_proxy: 180,
+    thumbnail: 180,
+  },
+  videoDeletionEligibleDays: 3,
 };
-
-/**
- * How long a raw video is protected from the sweeper before its keyframes can
- * retire it, in days.
- *
- * Not "delete as soon as keyframes exist": #10 asks for a short window to
- * validate the upload, complete privacy processing and troubleshoot. Three days
- * is long enough that a failed keyframe extraction can be diagnosed against the
- * original, and short enough that the expensive bytes do not sit for a month.
- */
-const DEFAULT_VIDEO_DELETION_ELIGIBLE_DAYS = 3;
-
-/** How long a presigned upload target stays valid, in seconds. */
-const DEFAULT_UPLOAD_INTENT_TTL_SECONDS = 900;
-
-/**
- * Ceilings on one contributed file.
- *
- * Both are rollout dials rather than truths, which is why they are published in
- * the upload policy: a client must be able to refuse a file BEFORE a contributor
- * waits through an upload that the API was always going to reject.
- */
-const DEFAULT_MAX_PHOTO_BYTES = 48 * 1024 * 1024;
-const DEFAULT_MAX_VIDEO_BYTES = 512 * 1024 * 1024;
-const DEFAULT_MAX_VIDEO_DURATION_SECONDS = 600;
-
-/**
- * Ceilings on one 360° (equirectangular) file, which replace the ones above.
- *
- * A 360° frame is fourteen views' worth of pixels, so the byte ceilings are
- * higher; the resolution ceilings are what the privacy worker decodes
- * comfortably (an ~72 MP photo, an 8K video). Duration is SHORTER than for a
- * phone video: a minute of 360° video already covers a street from both
- * pavements, and every keyframe becomes fourteen derivatives.
- */
-const DEFAULT_MAX_EQUIRECTANGULAR_PHOTO_BYTES = 64 * 1024 * 1024;
-const DEFAULT_MAX_EQUIRECTANGULAR_PHOTO_WIDTH_PIXELS = 12_000;
-const DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
-const DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_DURATION_SECONDS = 300;
-const DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_WIDTH_PIXELS = 7_680;
-
-/**
- * The media types GoWay accepts.
- *
- * Server-side and authoritative — a client's declared content type is a claim,
- * and the presigned target pins it so the stored object cannot be something
- * else. HEIC is here because it is what an iPhone actually produces; leaving it
- * out would make "contribute a photo from your library" fail for most iOS
- * contributors on their first try.
- */
-const DEFAULT_PHOTO_CONTENT_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/heic',
-  'image/heif',
-] as const;
-const DEFAULT_VIDEO_CONTENT_TYPES = ['video/mp4', 'video/quicktime'] as const;
-
-/**
- * The version of the contribution consent text a new session must accept.
- *
- * A bare string rather than a boolean, because "they consented" is not a fact
- * that survives the text changing. Recorded per session (see
- * `capture_sessions.consent_version`) so what somebody agreed to stays legible
- * afterwards.
- */
-const DEFAULT_CONSENT_VERSION = '2026-09-01';
 
 const emptyAsUndefined = (value: unknown): unknown =>
   typeof value === 'string' && value.trim().length === 0 ? undefined : value;
-
-const positiveInteger = (fallback: number, maximum: number) =>
-  z.preprocess(emptyAsUndefined, z.coerce.number().int().min(1).max(maximum).default(fallback));
-
-/** A comma- or whitespace-separated media-type list. */
-const mediaTypeList = (fallback: readonly string[]) =>
-  z.preprocess(
-    (value) => {
-      if (value === undefined || value === null || value === '') return [...fallback];
-      if (Array.isArray(value)) return value;
-      return String(value)
-        .split(/[\s,]+/)
-        .map((entry) => entry.trim().toLowerCase())
-        .filter(Boolean);
-    },
-    z.array(z.string().regex(/^[a-z]+\/[a-z0-9.+-]+$/, 'must be a media type')).min(1),
-  );
-
-/**
- * A retention window in days.
- *
- * Bounded ABOVE by 365 rather than left open, and the bound is not cosmetic: a
- * typo in a task definition is the most likely way a "temporary" store acquires
- * a permanent corner, and a configuration that a human reviewed is still a
- * configuration. The database's own ceiling sits above this at 400 days and is
- * the part no environment variable can move.
- */
-const retentionDays = (fallback: number) => positiveInteger(fallback, 365);
 
 /** `s3://`-free: a bucket NAME, because the scheme, region and endpoint are separate knobs. */
 const bucketName = z
@@ -175,76 +153,6 @@ const schema = z.object({
    */
   endpoint: z.preprocess(emptyAsUndefined, z.string().trim().url().optional()),
   /**
-   * The key prefix every contributed object lands under.
-   *
-   * One prefix, server-chosen, because the object-store lifecycle backstop is
-   * configured per prefix: an object written outside it is an object the
-   * backstop will never reap if the application's own sweeper misses it.
-   */
-  keyPrefix: z.preprocess(
-    emptyAsUndefined,
-    z
-      .string()
-      .trim()
-      .regex(/^[a-z0-9][a-z0-9/_-]*$/, 'must be a simple key prefix')
-      .default('captures'),
-  ),
-  uploadIntentTtlSeconds: positiveInteger(DEFAULT_UPLOAD_INTENT_TTL_SECONDS, 3600),
-
-  consentVersion: z.preprocess(
-    emptyAsUndefined,
-    z.string().trim().min(1).default(DEFAULT_CONSENT_VERSION),
-  ),
-
-  maxPhotoBytes: positiveInteger(DEFAULT_MAX_PHOTO_BYTES, 1024 * 1024 * 1024),
-  maxVideoBytes: positiveInteger(DEFAULT_MAX_VIDEO_BYTES, 8 * 1024 * 1024 * 1024),
-  maxVideoDurationSeconds: positiveInteger(DEFAULT_MAX_VIDEO_DURATION_SECONDS, 3600),
-  photoContentTypes: mediaTypeList(DEFAULT_PHOTO_CONTENT_TYPES),
-  videoContentTypes: mediaTypeList(DEFAULT_VIDEO_CONTENT_TYPES),
-
-  /**
-   * Whether 360° (equirectangular) photos and videos are accepted. On by
-   * default; switch it off while the privacy worker that verifies and cuts
-   * them is not deployed — the backend refuses a privacy result that did not
-   * process a declared panorama as one, so such contributions would otherwise
-   * fail their privacy gate.
-   */
-  equirectangularEnabled: z.preprocess((value) => {
-    const normalized = emptyAsUndefined(value);
-    if (normalized === undefined) return undefined;
-    const text = String(normalized).trim().toLowerCase();
-    if (['1', 'true', 'yes', 'on'].includes(text)) return true;
-    if (['0', 'false', 'no', 'off'].includes(text)) return false;
-    return normalized;
-  }, z.boolean().default(true)),
-  maxEquirectangularPhotoBytes: positiveInteger(
-    DEFAULT_MAX_EQUIRECTANGULAR_PHOTO_BYTES,
-    1024 * 1024 * 1024,
-  ),
-  maxEquirectangularPhotoWidthPixels: positiveInteger(
-    DEFAULT_MAX_EQUIRECTANGULAR_PHOTO_WIDTH_PIXELS,
-    16_384,
-  ),
-  maxEquirectangularVideoBytes: positiveInteger(
-    DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_BYTES,
-    8 * 1024 * 1024 * 1024,
-  ),
-  maxEquirectangularVideoDurationSeconds: positiveInteger(
-    DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_DURATION_SECONDS,
-    3600,
-  ),
-  maxEquirectangularVideoWidthPixels: positiveInteger(
-    DEFAULT_MAX_EQUIRECTANGULAR_VIDEO_WIDTH_PIXELS,
-    16_384,
-  ),
-
-  rawPhotoRetentionDays: retentionDays(DEFAULT_RETENTION_DAYS.raw_photo),
-  rawVideoRetentionDays: retentionDays(DEFAULT_RETENTION_DAYS.raw_video),
-  keyframeRetentionDays: retentionDays(DEFAULT_RETENTION_DAYS.extracted_keyframe),
-  privacyProxyRetentionDays: retentionDays(DEFAULT_RETENTION_DAYS.privacy_safe_proxy),
-  thumbnailRetentionDays: retentionDays(DEFAULT_RETENTION_DAYS.thumbnail),
-  videoDeletionEligibleDays: positiveInteger(DEFAULT_VIDEO_DELETION_ELIGIBLE_DAYS, 90),
-  /**
    * A closed pilot: when set, ONLY these Oxy user ids may contribute.
    *
    * Contribution reaches a pipeline whose privacy and operational controls are
@@ -257,12 +165,11 @@ const schema = z.object({
   pilotOxyUserIds: oxyUserIdList,
 });
 
-export type CaptureConfig = Readonly<z.infer<typeof schema>> & {
-  /** Whether an object store is configured at all. */
-  readonly enabled: boolean;
-  /** Retention window per class, in days — the map the upload policy publishes. */
-  readonly retentionDays: Readonly<Record<CaptureRetentionClass, number>>;
-};
+export type CaptureConfig = Readonly<z.infer<typeof schema>> &
+  Readonly<CapturePolicy> & {
+    /** Whether an object store is configured at all. */
+    readonly enabled: boolean;
+  };
 
 /**
  * Parse `source` into a {@link CaptureConfig}.
@@ -274,27 +181,6 @@ export function parseCaptureConfig(source: EnvironmentSource = process.env): Cap
     bucket: source.CAPTURE_S3_BUCKET,
     region: source.CAPTURE_S3_REGION ?? source.AWS_REGION,
     endpoint: source.CAPTURE_S3_ENDPOINT,
-    keyPrefix: source.CAPTURE_S3_KEY_PREFIX,
-    uploadIntentTtlSeconds: source.CAPTURE_UPLOAD_INTENT_TTL_SECONDS,
-    consentVersion: source.CAPTURE_CONSENT_VERSION,
-    maxPhotoBytes: source.CAPTURE_MAX_PHOTO_BYTES,
-    maxVideoBytes: source.CAPTURE_MAX_VIDEO_BYTES,
-    maxVideoDurationSeconds: source.CAPTURE_MAX_VIDEO_DURATION_SECONDS,
-    photoContentTypes: source.CAPTURE_PHOTO_CONTENT_TYPES,
-    videoContentTypes: source.CAPTURE_VIDEO_CONTENT_TYPES,
-    equirectangularEnabled: source.CAPTURE_EQUIRECTANGULAR_ENABLED,
-    maxEquirectangularPhotoBytes: source.CAPTURE_MAX_EQUIRECTANGULAR_PHOTO_BYTES,
-    maxEquirectangularPhotoWidthPixels: source.CAPTURE_MAX_EQUIRECTANGULAR_PHOTO_WIDTH_PIXELS,
-    maxEquirectangularVideoBytes: source.CAPTURE_MAX_EQUIRECTANGULAR_VIDEO_BYTES,
-    maxEquirectangularVideoDurationSeconds:
-      source.CAPTURE_MAX_EQUIRECTANGULAR_VIDEO_DURATION_SECONDS,
-    maxEquirectangularVideoWidthPixels: source.CAPTURE_MAX_EQUIRECTANGULAR_VIDEO_WIDTH_PIXELS,
-    rawPhotoRetentionDays: source.CAPTURE_RETENTION_DAYS_RAW_PHOTO,
-    rawVideoRetentionDays: source.CAPTURE_RETENTION_DAYS_RAW_VIDEO,
-    keyframeRetentionDays: source.CAPTURE_RETENTION_DAYS_KEYFRAME,
-    privacyProxyRetentionDays: source.CAPTURE_RETENTION_DAYS_PRIVACY_PROXY,
-    thumbnailRetentionDays: source.CAPTURE_RETENTION_DAYS_THUMBNAIL,
-    videoDeletionEligibleDays: source.CAPTURE_VIDEO_DELETION_ELIGIBLE_DAYS,
     pilotOxyUserIds: source.CAPTURE_PILOT_OXY_USER_IDS,
   });
 
@@ -312,18 +198,12 @@ export function parseCaptureConfig(source: EnvironmentSource = process.env): Cap
 
   const parsed = result.data;
   return {
+    ...CAPTURE_POLICY,
     ...parsed,
     // A bucket without a region cannot be signed for, so both are required
     // before contribution is considered available. Reporting "enabled" on half
     // a configuration would turn a deployment mistake into a 500 per upload.
     enabled: parsed.bucket !== undefined && parsed.region !== undefined,
-    retentionDays: {
-      raw_photo: parsed.rawPhotoRetentionDays,
-      raw_video: parsed.rawVideoRetentionDays,
-      extracted_keyframe: parsed.keyframeRetentionDays,
-      privacy_safe_proxy: parsed.privacyProxyRetentionDays,
-      thumbnail: parsed.thumbnailRetentionDays,
-    },
   };
 }
 

@@ -247,9 +247,9 @@ The default namespace keeps its Oxy auth; a test proves both.
   map is a continent and tens of thousands of dots are noise), joins/leaves
   rooms, answers `live:subscription` with the rooms it is in, then one
   `live:snapshot` per new room. Empty `kinds` leaves everything.
-- Limits: `LIVE_MAX_CONNECTIONS` per process (handshake refused with
-  `live_capacity`), and a token bucket per socket for subscriptions
-  (`LIVE_SUBSCRIBE_BURST`, `LIVE_SUBSCRIBE_PER_MINUTE`) — beyond it,
+- Limits (`LIVE_POLICY`, `config/live.ts`): 2,000 sockets per process
+  (handshake refused with `live_capacity`), and a token bucket per socket for
+  subscriptions (a burst of 10, 60 a minute) — beyond it,
   `rate_limited` with `retryAfterSeconds`, and the previous rooms are kept.
 - **Nothing about the viewer is kept**: the box is used to pick rooms and
   dropped — not stored on the socket, not counted per address, not logged. A
@@ -259,7 +259,7 @@ The default namespace keeps its Oxy auth; a test proves both.
 
 | Piece | Where |
 | --- | --- |
-| Switch | The map-feature registry's `live` (`lib/map/mapFeatures.ts`, `docs/MAP_FEATURES.md`): `EXPO_PUBLIC_MAP_LIVE`, the person's choice in the settings dialog (development builds), and `?live=1` in development only (`lib/map/liveFlag.ts`) |
+| Switch | The map-feature registry's `live` (`lib/map/mapFeatures.ts`, `docs/MAP_FEATURES.md`): the person's choice in the settings dialog (development builds), and `?live=1` in development only |
 | Gate | `features/explore/ExploreScreen.tsx`: `useMapFeature('live')` mounts the lazy `LiveHost` in the top-right stack, under the settings button and the Landmarks pill; off, it unmounts and the layer, its credits and the coverage go with it |
 | HTTP | `lib/live/client.ts`: one SDK client for `live.sources()` and `live.shape()`, always the real API (never the fixture transport) — shared by the shape cache and the settings dialog's **Live data sources** |
 | Socket client | `features/live/liveClient.ts` (`socket.io-client`, debounced subscriptions, honours `rate_limited`) |
@@ -464,13 +464,13 @@ empty. Kinds come from the transit mode (`rail` → `train`, `subway` → `metro
 
 ## Gates
 
-- **Backend** `LIVE_ENABLED` (default off) and `LIVE_SOURCES` (each feed opted
-  into by id; an unknown id fails the boot parse). Off: no poller, no `/live`
-  namespace, `GET /live/sources` → `503 service_unavailable`.
-- **Frontend** the registry's `live` (`docs/MAP_FEATURES.md`): `EXPO_PUBLIC_MAP_LIVE=1`
-  (a build decision; no production deployment sets it), the switch in the
-  settings dialog's Labs (offered in development builds only, until goway.to
-  has a live backend), or `?live=1` in a development build.
+- **Backend** `LIVE_SOURCES` (each feed opted into by id; an unknown id fails
+  the boot parse). There is no other switch: live runs when a usable source is
+  listed. None: no poller, no `/live` namespace, `GET /live/sources` →
+  `503 service_unavailable`.
+- **Frontend** the registry's `live` (`docs/MAP_FEATURES.md`): the switch in
+  the settings dialog's Labs (offered in development builds only, until
+  goway.to has a live backend), or `?live=1` in a development build.
 
 ### What the flag costs when off
 
@@ -505,7 +505,6 @@ importing the engine folders type-only).
 
 ```bash
 # Backend (needs its Postgres as always; live itself stores nothing)
-LIVE_ENABLED=1 \
 LIVE_SOURCES=adsb-lol,renfe-cercanias,fgc-geotren,mta-bus,mta-lirr,mta-mnr,mta-subway,amb-bus,aisa-bus,emt-fuenlabrada,nyc-bikeshare,digitraffic-ais \
 CORS_APP_ORIGINS=http://localhost:8081 \
   bun run --cwd packages/backend dev
@@ -567,8 +566,8 @@ uncompressed. Bandwidth, not CPU, is the first limit.
    only, as the city engine does.
 6. **Observability** — per-source poll latency, failure counts and entity
    counts as metrics (they are in `GET /live/sources` and the logs today).
-7. **Flip** `LIVE_ENABLED` with the vetted subset of `LIVE_SOURCES`, then
-   `EXPO_PUBLIC_MAP_LIVE`.
+7. **Turn it on**: set `LIVE_SOURCES` to the vetted subset, then drop
+   `offer: 'development'` from the registry's `live` entry.
 
 ## Limits, honestly
 

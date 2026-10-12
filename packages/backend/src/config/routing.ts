@@ -9,6 +9,10 @@
  * variable here is therefore optional, and the module exports enough for a
  * caller to tell "configured" from "not configured" without guessing.
  *
+ * What a deployment configures is WHERE its engine is (and a key, for a hosted
+ * one). How GoWay calls it — timeout, alternatives, modes, how it identifies
+ * itself — is {@link ROUTING_POLICY}, in code.
+ *
  * `parseRoutingConfig` takes its source as an argument (defaulting to
  * `process.env`) so a test can hand it a fake environment without mutating the
  * real one — a mutation leaks into every other test in the same worker, and the
@@ -26,33 +30,37 @@
  */
 
 import { z } from 'zod';
-import { TRAVEL_MODES } from '@goway/contracts';
+import { TRAVEL_MODES, type TravelMode } from '@goway/contracts';
 import type { EnvironmentSource } from './index';
 
-/** Engines this backend knows how to drive. One today; the seam is the point. */
-export const ROUTING_PROVIDERS = ['valhalla'] as const;
-export type RoutingProviderName = (typeof ROUTING_PROVIDERS)[number];
+export interface RoutingPolicy {
+  /**
+   * How long one upstream routing call may take, in milliseconds.
+   *
+   * Under `@goway.to/sdk`'s own 15 s budget, so a slow engine surfaces as GoWay
+   * answering `provider_unavailable` — which a client can act on — rather than
+   * as the SDK's timeout, which tells the caller nothing about who was slow.
+   * One attempt, no retries: a directions request is interactive.
+   */
+  timeoutMs: number;
+  /** Alternatives asked for when a caller sets `alternatives: true`. */
+  maxAlternatives: number;
+  /** The travel modes GoWay's engine is built for: every mode in the contract. */
+  modes: readonly TravelMode[];
+  /**
+   * Identifies GoWay to the routing engine. Community-run map services ask
+   * callers to identify themselves so abuse can be traced to a project rather
+   * than to an IP range.
+   */
+  userAgent: string;
+}
 
-/**
- * How long one upstream routing call may take, in milliseconds.
- *
- * Under `@goway.to/sdk`'s own 15 s budget, so a slow engine surfaces as GoWay
- * answering `provider_unavailable` — which a client can act on — rather than as
- * the SDK's timeout, which tells the caller nothing about who was slow.
- */
-const DEFAULT_TIMEOUT_MS = 10_000;
-
-/** Alternatives asked for when a caller sets `alternatives: true`. */
-const DEFAULT_MAX_ALTERNATIVES = 2;
-
-/**
- * Identifies GoWay to the routing engine.
- *
- * Community-run map services ask callers to identify themselves so abuse can be
- * traced to a project rather than to an IP range. Sending nothing is how a
- * shared endpoint ends up blocking everyone behind a NAT.
- */
-const DEFAULT_USER_AGENT = 'GoWay/1.0 (+https://goway.to)';
+export const ROUTING_POLICY: RoutingPolicy = {
+  timeoutMs: 10_000,
+  maxAlternatives: 2,
+  modes: TRAVEL_MODES,
+  userAgent: 'GoWay/1.0 (+https://goway.to)',
+};
 
 const emptyAsUndefined = (value: unknown): unknown =>
   typeof value === 'string' && value.trim().length === 0 ? undefined : value;
@@ -91,69 +99,27 @@ const routeEndpointUrl = z
   }, 'must be an http(s) route endpoint without credentials, query or fragment')
   .transform((value) => value.replace(/\/+$/, ''));
 
-const integerFromEnv = (
-  fallback: number,
-  { minimum, maximum }: { minimum: number; maximum: number },
-) =>
-  z.preprocess(
-    emptyAsUndefined,
-    z.coerce.number().int().min(minimum).max(maximum).default(fallback),
-  );
-
-/**
- * The travel modes this deployment offers.
- *
- * A deployment whose tiles were built without bicycle costing should say so
- * here, so a caller gets `unsupported_mode` — a stable answer they can hide a
- * button for — instead of an engine error they cannot interpret.
- */
-const modeList = z.preprocess(
-  (value) => {
-    if (value === undefined || value === null || value === '') return undefined;
-    if (Array.isArray(value)) return value;
-    const members = String(value)
-      .split(/[\s,]+/)
-      .map((entry) => entry.trim().toLowerCase())
-      .filter(Boolean);
-    return members.length === 0 ? undefined : [...new Set(members)];
-  },
-  z
-    .array(z.enum(TRAVEL_MODES))
-    .min(1)
-    .default([...TRAVEL_MODES]),
-);
-
 const schema = z.object({
-  provider: z.preprocess(emptyAsUndefined, z.enum(ROUTING_PROVIDERS).default('valhalla')),
   valhallaUrl: z.preprocess(emptyAsUndefined, routeEndpointUrl.optional()),
   valhallaApiKey: z.preprocess(emptyAsUndefined, z.string().min(1).optional()),
-  timeoutMs: integerFromEnv(DEFAULT_TIMEOUT_MS, { minimum: 250, maximum: 60_000 }),
-  modes: modeList,
-  maxAlternatives: integerFromEnv(DEFAULT_MAX_ALTERNATIVES, { minimum: 0, maximum: 5 }),
-  userAgent: z.preprocess(emptyAsUndefined, z.string().min(1).max(200).default(DEFAULT_USER_AGENT)),
 });
 
 /** The parsed routing configuration. */
-export type RoutingConfig = Readonly<z.infer<typeof schema>> & {
-  /** Whether an engine endpoint is configured at all. */
-  readonly enabled: boolean;
-};
+export type RoutingConfig = Readonly<z.infer<typeof schema>> &
+  Readonly<RoutingPolicy> & {
+    /** Whether an engine endpoint is configured at all. */
+    readonly enabled: boolean;
+  };
 
 /**
  * Parse `source` into a {@link RoutingConfig}.
  *
- * @throws {Error} Naming every variable that failed, not just the first — a
- *   deployment with three bad values should take one round trip to fix.
+ * @throws {Error} Naming every variable that failed, not just the first.
  */
 export function parseRoutingConfig(source: EnvironmentSource = process.env): RoutingConfig {
   const result = schema.safeParse({
-    provider: source.ROUTING_PROVIDER,
     valhallaUrl: source.ROUTING_VALHALLA_URL,
     valhallaApiKey: source.ROUTING_VALHALLA_API_KEY,
-    timeoutMs: source.ROUTING_TIMEOUT_MS,
-    modes: source.ROUTING_MODES,
-    maxAlternatives: source.ROUTING_MAX_ALTERNATIVES,
-    userAgent: source.ROUTING_USER_AGENT,
   });
 
   if (!result.success) {
@@ -169,7 +135,7 @@ export function parseRoutingConfig(source: EnvironmentSource = process.env): Rou
   }
 
   const parsed = result.data;
-  return { ...parsed, enabled: parsed.valhallaUrl !== undefined };
+  return { ...ROUTING_POLICY, ...parsed, enabled: parsed.valhallaUrl !== undefined };
 }
 
 /** The one routing parse for this process. */

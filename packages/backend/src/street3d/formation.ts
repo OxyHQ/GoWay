@@ -9,21 +9,21 @@
  * opposite pavement can be what makes a scene solvable. So a scene is queued
  * only when its eligible input set:
  *
- *   1. is RECONSTRUCTABLE at all — at least `STREET3D_MIN_ELIGIBLE_FRAMES`
- *      frames, spanning `STREET3D_MIN_HEADING_SECTORS` of eight 45° sectors
+ *   1. is RECONSTRUCTABLE at all — at least `minEligibleFrames` frames,
+ *      spanning `minHeadingSectors` of eight 45° sectors
  *      when the frames report a heading at all (library photos often do not,
  *      and refusing them would refuse most contributions);
  *   2. is not the set last queued (`last_queued_input_fingerprint`) — so a
  *      `needs_more_capture` scene is never re-run on identical inputs; and
  *   3. for a scene that was queued before: brings at least
- *      `STREET3D_REBUILD_MIN_NEW_FRAMES` new frames, OR new frames covering a
+ *      `rebuildMinNewFrames` new frames, OR new frames covering a
  *      heading sector the last job lacked, OR new frames that will expire
  *      within the at-risk window — or a rebuild was requested (a source was
  *      withdrawn or blocked, or an operator asked).
  *
  * A job that is still waiting for the worker (never started) is SUPERSEDED when
- * the input set has grown by `STREET3D_SUPERSEDE_MIN_NEW_FRAMES` since it was
- * queued: the worker may be offline for days, and the next job it picks up
+ * the input set has grown by `supersedeMinNewFrames` since it was queued
+ * (`STREET3D_POLICY`, `config/street3d.ts`): the worker may be offline for days, and the next job it picks up
  * should be the best one available. A job the worker has started is never
  * superseded — that would throw away GPU time already spent.
  */

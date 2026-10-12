@@ -318,8 +318,9 @@ extract.
 Scheduling, the external worker contract, publication and moderation are
 described in [the pipeline doc](../../docs/STREET3D_PIPELINE.md), including its
 operator section (environment, IAM, `street3d:tick` and `street3d:admin`). The
-feature is inert until configured: with no `STREET3D_*` variable set the
-scheduler never starts and the read API below answers 503/404.
+pipeline runs when it is configured — its queues and buckets — and there is no
+switch: with no `STREET3D_*` variable set the scheduler never starts, and the
+read API below, which is always on, serves an empty coverage page and 404s.
 
 | route | auth | answers |
 | --- | --- | --- |

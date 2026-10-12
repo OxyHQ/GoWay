@@ -159,21 +159,17 @@ export function currentUploadPolicy(oxyUserId?: string): CaptureUploadPolicy {
       maxByteSize: captureConfig.maxVideoBytes,
       maxDurationSeconds: captureConfig.maxVideoDurationSeconds,
     },
-    ...(captureConfig.equirectangularEnabled
-      ? {
-          equirectangular: {
-            photo: {
-              maxByteSize: captureConfig.maxEquirectangularPhotoBytes,
-              maxWidthPixels: captureConfig.maxEquirectangularPhotoWidthPixels,
-            },
-            video: {
-              maxByteSize: captureConfig.maxEquirectangularVideoBytes,
-              maxDurationSeconds: captureConfig.maxEquirectangularVideoDurationSeconds,
-              maxWidthPixels: captureConfig.maxEquirectangularVideoWidthPixels,
-            },
-          },
-        }
-      : {}),
+    equirectangular: {
+      photo: {
+        maxByteSize: captureConfig.maxEquirectangularPhotoBytes,
+        maxWidthPixels: captureConfig.maxEquirectangularPhotoWidthPixels,
+      },
+      video: {
+        maxByteSize: captureConfig.maxEquirectangularVideoBytes,
+        maxDurationSeconds: captureConfig.maxEquirectangularVideoDurationSeconds,
+        maxWidthPixels: captureConfig.maxEquirectangularVideoWidthPixels,
+      },
+    },
     retentionDays: { ...captureConfig.retentionDays },
   };
 }
@@ -265,8 +261,8 @@ function assertAcceptableMedia(body: {
 }
 
 /**
- * Refuse a 360° declaration this deployment cannot honour, or one the
- * declared dimensions already contradict.
+ * Refuse a 360° declaration the declared dimensions already contradict, or
+ * one larger than the privacy worker decodes.
  *
  * This is the cheap, early half. The declaration — dimensions included — is
  * still a claim, and the privacy worker re-checks it against the stored bytes
@@ -277,13 +273,6 @@ function assertAcceptablePanorama(body: {
   mediaKind: 'photo' | 'video';
   camera?: { widthPixels?: number | undefined; heightPixels?: number | undefined } | undefined;
 }): void {
-  if (!captureConfig.equirectangularEnabled) {
-    throw new ApiError(
-      'validation_failed',
-      'GoWay does not accept 360° media on this deployment yet.',
-      { field: 'projection' },
-    );
-  }
   const width = body.camera?.widthPixels;
   const height = body.camera?.heightPixels;
   const maxWidth =

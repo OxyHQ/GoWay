@@ -21,10 +21,10 @@
  *
  * ## Limits
  *
- *  - connections: `LIVE_MAX_CONNECTIONS` per process; beyond it the handshake
- *    is refused with `live_capacity`;
- *  - subscriptions: a token bucket per socket (`LIVE_SUBSCRIBE_BURST`,
- *    `LIVE_SUBSCRIBE_PER_MINUTE`) — a client pans continuously, and should
+ *  - connections: `maxConnections` per process (`LIVE_POLICY`); beyond it the
+ *    handshake is refused with `live_capacity`;
+ *  - subscriptions: a token bucket per socket (`subscribeBurst`,
+ *    `subscribePerMinute`) — a client pans continuously, and should
  *    debounce; one that does not is told `rate_limited` and keeps its rooms;
  *  - size: a box covering more than `LIVE_MAX_ROOM_TILES` rooms is `too_wide`.
  */

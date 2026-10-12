@@ -91,7 +91,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     completeness: 'partial',
     defaultUrl: 'https://api.adsb.lol',
     requiresKey: false,
-    // Per poll at most `LIVE_MAX_REGIONS_PER_POLL` circles, one request each,
+    // Per poll at most `LIVE_POLICY.maxRegionsPerPoll` circles, one request each,
     // sequentially, stopping at the first 429. The aggregator's limit is
     // "dynamic"; measured from one IP on 2026-10-11, polling every 10 s drew a
     // 429 about once a minute, so this is kept at 15 s.

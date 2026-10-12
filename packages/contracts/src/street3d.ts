@@ -323,9 +323,8 @@ export const streetCoverageSchema = z.object({
 export type StreetCoverage = z.infer<typeof streetCoverageSchema>;
 
 /**
- * `GET /street3d/coverage`. The span cap is the deployment's
- * (`STREET3D_COVERAGE_MAX_SPAN_DEGREES`), so it is enforced server-side and not
- * here; `west > east` is the antimeridian, not an inversion.
+ * `GET /street3d/coverage`. The span cap is the server's
+ * (`coverageMaxSpanDegrees`), so it is enforced server-side and not here; `west > east` is the antimeridian, not an inversion.
  */
 export const streetCoverageQuerySchema = geoBoundingBoxSchema
   .strict()

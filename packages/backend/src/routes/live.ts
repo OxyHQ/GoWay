@@ -6,9 +6,9 @@
  * show that feed's credit and licence wherever it is embedded. The positions
  * themselves travel over Socket.IO (`live/socket.ts`).
  *
- * Off unless switched on: with no live service (`LIVE_ENABLED` unset, or no
- * source configured) this answers `service_unavailable`, the same answer a
- * client can feature-detect on.
+ * On when configured: with no live service (`LIVE_SOURCES` lists no usable
+ * source) this answers `service_unavailable`, the same answer a client can
+ * feature-detect on.
  */
 
 import { liveShapePathSchema } from '@goway/contracts';

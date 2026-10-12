@@ -20,13 +20,21 @@ describe('parseConfig', () => {
     expect(config.databaseUrl).toBe(DATABASE_URL);
     expect(config.port).toBe(3000);
     expect(config.nodeEnv).toBe('development');
-    expect(config.databasePoolMax).toBe(10);
-    expect(config.databaseIdleTimeoutSeconds).toBe(30);
-    expect(config.databaseConnectTimeoutSeconds).toBe(10);
     expect(config.corsAppOrigins).toEqual([]);
     expect(config.oxyApiUrl).toBe('https://api.oxy.so');
     expect(config.isProduction).toBe(false);
     expect(config.isTest).toBe(false);
+  });
+
+  it('ignores the retired pool variables a task definition may still carry', () => {
+    expect(
+      parseConfig({
+        ...MINIMAL,
+        DATABASE_POOL_MAX: '0',
+        DATABASE_IDLE_TIMEOUT_SECONDS: 'never',
+        DATABASE_CONNECT_TIMEOUT_SECONDS: '-1',
+      }),
+    ).toEqual(parseConfig(MINIMAL));
   });
 
   it('refuses an absent DATABASE_URL', () => {

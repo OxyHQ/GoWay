@@ -104,6 +104,16 @@ const postgresUrl = z
 // everything else, instead of throwing later inside the logger constructor.
 const LOG_LEVELS = ['silent', 'trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
 
+/**
+ * The connection pool. Constants, not configuration: one task holds one pool,
+ * and its size is a property of the code that uses it.
+ */
+export const DATABASE_POOL = {
+  max: 10,
+  idleTimeoutSeconds: 30,
+  connectTimeoutSeconds: 10,
+} as const;
+
 const schema = z.object({
   nodeEnv: z.preprocess(
     emptyAsUndefined,
@@ -111,11 +121,12 @@ const schema = z.object({
   ),
   port: integerFromEnv(3000),
   databaseUrl: postgresUrl,
-  databasePoolMax: integerFromEnv(10, { maximum: 1000 }),
-  databaseIdleTimeoutSeconds: integerFromEnv(30, { maximum: 86_400 }),
-  databaseConnectTimeoutSeconds: integerFromEnv(10, { maximum: 3600 }),
   corsAppOrigins: originList,
   oxyApiUrl: z.preprocess(emptyAsUndefined, httpOrigin.default('https://api.oxy.so')),
+  /**
+   * Kept as a variable for an operational reason: raising the log level of a
+   * running deployment during an incident must not need a release.
+   */
   logLevel: z.preprocess(emptyAsUndefined, z.enum(LOG_LEVELS).optional()),
   /**
    * The Oxy user ids that may use `/moderation`: approve claims, verify
@@ -147,9 +158,6 @@ export function parseConfig(source: EnvironmentSource = process.env): Config {
     nodeEnv: source.NODE_ENV,
     port: source.PORT,
     databaseUrl: source.DATABASE_URL,
-    databasePoolMax: source.DATABASE_POOL_MAX,
-    databaseIdleTimeoutSeconds: source.DATABASE_IDLE_TIMEOUT_SECONDS,
-    databaseConnectTimeoutSeconds: source.DATABASE_CONNECT_TIMEOUT_SECONDS,
     corsAppOrigins: source.CORS_APP_ORIGINS,
     oxyApiUrl: source.OXY_API_URL,
     logLevel: source.LOG_LEVEL,

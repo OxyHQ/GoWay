@@ -10,12 +10,11 @@
  * Reporting is identity-bound: it is a moderation request somebody is
  * accountable for, so it sits behind `requireAuth` and a tighter rate limit.
  *
- * ## On unless switched off
+ * ## Always on
  *
- * With `STREET3D_VIEWING_ENABLED` false (it defaults true) coverage answers
- * `service_unavailable` and a scene answers `not_found` — the same answer a
- * scene that does not exist gets — so a client can feature-detect without the
- * deployment advertising what it holds.
+ * There is no switch: the reads serve what is published, which on a deployment
+ * with no pipeline is nothing — an empty coverage page, and `not_found` for any
+ * scene id.
  *
  * ## Coarse by contract
  *
@@ -71,12 +70,6 @@ export function createStreet3dRouter(dependencies: Street3dRouterDependencies): 
   router.get(
     '/street3d/coverage',
     route(async (request, response) => {
-      if (!settings.viewingEnabled) {
-        throw new ApiError(
-          'service_unavailable',
-          'Street 3D is not available on this GoWay deployment.',
-        );
-      }
       const box = parseQuery(streetCoverageQuerySchema, request.query);
       // The cap is this deployment's, so it is checked here rather than in the
       // contract: a continent-sized box is a scan the row limit would truncate
@@ -101,9 +94,7 @@ export function createStreet3dRouter(dependencies: Street3dRouterDependencies): 
     '/street3d/scenes/:sceneId',
     route(async (request, response) => {
       const sceneId = sceneIdParam(request);
-      const manifest = settings.viewingEnabled
-        ? await findPublishedManifest(getDb(), sceneId)
-        : null;
+      const manifest = await findPublishedManifest(getDb(), sceneId);
       if (!manifest) throw new ApiError('not_found', 'No published Street 3D scene has that id.');
       response.setHeader('Cache-Control', MANIFEST_CACHE_CONTROL);
       response.json(manifest);
@@ -121,12 +112,10 @@ export function createStreet3dRouter(dependencies: Street3dRouterDependencies): 
         throw new ApiError('unauthorized', 'Reporting a scene requires an Oxy session.');
       }
       const input = parseBody(streetSceneReportInputSchema, request.body ?? {});
-      const result = settings.viewingEnabled
-        ? await createSceneReport(getDb(), sceneId, reporter, {
-            reason: input.reason,
-            ...(input.note ? { note: input.note } : {}),
-          })
-        : null;
+      const result = await createSceneReport(getDb(), sceneId, reporter, {
+        reason: input.reason,
+        ...(input.note ? { note: input.note } : {}),
+      });
       if (!result) throw new ApiError('not_found', 'No published Street 3D scene has that id.');
       response.status(result.created ? 201 : 200).json(result.report);
     }),

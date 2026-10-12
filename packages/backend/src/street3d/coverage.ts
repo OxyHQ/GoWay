@@ -27,7 +27,7 @@
  *
  * When an at-risk cell receives a NEW eligible contribution, the derivatives
  * there that would expire within the window are extended once — by
- * `STREET3D_RESCUE_EXTENSION_DAYS`, at most `MAX_RETENTION_EXTENSIONS` times
+ * `rescueExtensionDays` (`STREET3D_POLICY`), at most `MAX_RETENTION_EXTENSIONS` times
  * per derivative, never past the absolute ceiling (the schema refuses it), and
  * marked `rescue_extension` so the reason is visible. One rescue per new
  * contribution, recorded in `last_rescue_at`.

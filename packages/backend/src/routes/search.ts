@@ -15,7 +15,7 @@
  *
  * A blended list has no keyset, so a cursor carries how many results earlier
  * pages served, bound to the query and its filters, and the list ends at
- * `SEARCH_MAX_DEPTH`. `limit` above this deployment's `SEARCH_MAX_LIMIT` is
+ * `SEARCH_MAX_DEPTH`. `limit` above `SEARCH_POLICY.maxLimit` is
  * refused as `validation_failed` rather than silently clamped: a caller who
  * asked for 40 and got 25 would conclude there were 25.
  *

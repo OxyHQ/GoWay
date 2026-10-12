@@ -8,45 +8,50 @@
 
 import { describe, expect, it } from 'bun:test';
 import { parseSearchConfig, type EnvironmentSource } from '../../config/search';
+import { createProviders } from '../providers';
 
 const EMPTY: EnvironmentSource = {};
 
 describe('parseSearchConfig', () => {
-  it('defaults to Photon alone', () => {
+  it('defaults to Photon alone, on the policy in code', () => {
     const config = parseSearchConfig(EMPTY);
+    expect(config.photon.baseUrl).toBe('https://photon.komoot.io');
     // Nominatim is absent deliberately: its public instance forbids
     // autocomplete, so an operator enables it for explicit lookups knowingly.
-    expect(config.providers).toEqual(['photon']);
-    expect(config.photon.baseUrl).toBe('https://photon.komoot.io');
-    expect(config.nominatim.baseUrl).toBe('https://nominatim.openstreetmap.org');
-    expect(config.nominatim.userAgent).toContain('GoWay');
-    expect(config.nominatim.email).toBeUndefined();
+    expect(config.nominatim).toBeNull();
+    expect(createProviders({ config }).map((provider) => provider.id)).toEqual(['photon']);
     expect(config.timeoutMs).toBe(4_000);
-    // No retry by default: a retry inside a keystroke doubles the wait.
+    // No retry: a retry inside a keystroke doubles the wait.
     expect(config.attempts).toBe(1);
     expect(config.defaultLimit).toBe(10);
     expect(config.maxLimit).toBe(25);
   });
 
-  it('reads an ordered, de-duplicated provider list', () => {
-    expect(
-      parseSearchConfig({ SEARCH_PROVIDERS: 'nominatim, photon ,nominatim' }).providers,
-    ).toEqual(['nominatim', 'photon']);
-  });
-
-  it('refuses a provider it has no adapter for', () => {
-    expect(() => parseSearchConfig({ SEARCH_PROVIDERS: 'google' })).toThrow(/providers/);
+  it('turns Nominatim on when an instance is named, after Photon', () => {
+    const config = parseSearchConfig({
+      SEARCH_NOMINATIM_BASE_URL: 'https://nominatim.example.com/',
+      SEARCH_NOMINATIM_EMAIL: 'ops@goway.to',
+    });
+    expect(config.nominatim).toEqual({
+      baseUrl: 'https://nominatim.example.com',
+      userAgent: expect.stringContaining('GoWay'),
+      email: 'ops@goway.to',
+    });
+    expect(createProviders({ config }).map((provider) => provider.id)).toEqual([
+      'photon',
+      'nominatim',
+    ]);
   });
 
   it('treats an empty value as unset so the default applies', () => {
     const config = parseSearchConfig({
-      SEARCH_PROVIDERS: '',
-      SEARCH_TIMEOUT_MS: '',
       SEARCH_PHOTON_BASE_URL: '',
+      SEARCH_NOMINATIM_BASE_URL: '',
+      SEARCH_PHOTON_LANGUAGES: ' ',
     });
-    expect(config.providers).toEqual(['photon']);
-    expect(config.timeoutMs).toBe(4_000);
     expect(config.photon.baseUrl).toBe('https://photon.komoot.io');
+    expect(config.photon.languages).toEqual(['de', 'en', 'fr', 'it']);
+    expect(config.nominatim).toBeNull();
   });
 
   it('accepts a self-hosted instance behind a path and trims the trailing slash', () => {
@@ -64,17 +69,9 @@ describe('parseSearchConfig', () => {
       parseSearchConfig({ SEARCH_PHOTON_BASE_URL: 'https://maps.example.com?key=abc' }),
     ).toThrow();
     expect(() => parseSearchConfig({ SEARCH_PHOTON_BASE_URL: 'ftp://maps.example.com' })).toThrow();
-  });
-
-  it('bounds the retry count so no configuration can express an infinite retry', () => {
-    expect(parseSearchConfig({ SEARCH_UPSTREAM_ATTEMPTS: '3' }).attempts).toBe(3);
-    expect(() => parseSearchConfig({ SEARCH_UPSTREAM_ATTEMPTS: '99' })).toThrow(/attempts/);
-  });
-
-  it('refuses a default limit above the maximum', () => {
-    expect(() => parseSearchConfig({ SEARCH_DEFAULT_LIMIT: '40', SEARCH_MAX_LIMIT: '20' })).toThrow(
-      /defaultLimit/,
-    );
+    expect(() =>
+      parseSearchConfig({ SEARCH_NOMINATIM_BASE_URL: 'https://nominatim.example.com#x' }),
+    ).toThrow(/nominatimBaseUrl/);
   });
 
   it('reads the Photon language whitelist', () => {
@@ -87,21 +84,16 @@ describe('parseSearchConfig', () => {
     );
   });
 
-  it('carries the Nominatim contact address the usage policy asks for', () => {
-    const config = parseSearchConfig({
-      SEARCH_NOMINATIM_USER_AGENT: 'GoWay/1.0 (+https://goway.to)',
-      SEARCH_NOMINATIM_EMAIL: 'ops@goway.to',
-    });
-    expect(config.nominatim.userAgent).toBe('GoWay/1.0 (+https://goway.to)');
-    expect(config.nominatim.email).toBe('ops@goway.to');
-  });
-
-  it('allows the cache to be switched off', () => {
-    const config = parseSearchConfig({
+  it('ignores the retired provider list and tuning variables a deployment may still carry', () => {
+    const retired = parseSearchConfig({
+      SEARCH_PROVIDERS: 'nominatim',
+      SEARCH_TIMEOUT_MS: '0',
+      SEARCH_UPSTREAM_ATTEMPTS: '99',
+      SEARCH_DEFAULT_LIMIT: '40',
+      SEARCH_MAX_LIMIT: '20',
       SEARCH_CACHE_TTL_SECONDS: '0',
-      SEARCH_CACHE_MAX_ENTRIES: '0',
+      SEARCH_NOMINATIM_USER_AGENT: 'somebody else',
     });
-    expect(config.cacheTtlSeconds).toBe(0);
-    expect(config.cacheMaxEntries).toBe(0);
+    expect(retired).toEqual(parseSearchConfig(EMPTY));
   });
 });

@@ -23,7 +23,7 @@ import {
   readMigrationPhases,
 } from '@oxy.so/db/migrate';
 import type postgres from 'postgres';
-import { config } from '../config';
+import { config, DATABASE_POOL } from '../config';
 import { logger } from '../utils/logger';
 import { MIGRATIONS_FOLDER } from './migrationsFolder';
 import * as schema from './schema';
@@ -100,17 +100,17 @@ let client: postgres.Sql | null = null;
 export async function connectPostgres(): Promise<Database> {
   if (db) return db;
 
-  // `config` parsed and validated DATABASE_URL and every pool setting at module
+  // `config` parsed and validated DATABASE_URL at module
   // load, so there is nothing left to check here: a bad value failed the process
   // before this function could be called.
-  const maxPoolSize = config.databasePoolMax;
+  const maxPoolSize = DATABASE_POOL.max;
   const instance = createDatabase({
     databaseUrl: config.databaseUrl,
     schema,
     client: {
       max: maxPoolSize,
-      idle_timeout: config.databaseIdleTimeoutSeconds,
-      connect_timeout: config.databaseConnectTimeoutSeconds,
+      idle_timeout: DATABASE_POOL.idleTimeoutSeconds,
+      connect_timeout: DATABASE_POOL.connectTimeoutSeconds,
       onnotice: (notice) => logger.info({ notice: notice.message }, 'Postgres notice'),
     },
   });
