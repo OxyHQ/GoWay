@@ -65,12 +65,16 @@ const get = (path: string) =>
 let served = '';
 for (let attempt = 0; attempt < 40; attempt++) {
   const response = await get('/map/city/manifest.json');
-  served = response.ok ? (((await response.json()) as { generatedAt?: string }).generatedAt ?? '') : '';
+  served = response.ok
+    ? (((await response.json()) as { generatedAt?: string }).generatedAt ?? '')
+    : '';
   if (served === manifest.generatedAt) break;
   await Bun.sleep(15_000);
 }
 if (served !== manifest.generatedAt) {
-  problems.push(`the edge serves the manifest of ${served || 'nothing'}, not ${manifest.generatedAt}`);
+  problems.push(
+    `the edge serves the manifest of ${served || 'nothing'}, not ${manifest.generatedAt}`,
+  );
 } else {
   console.log(`· ${origin} serves the manifest of ${served}`);
 }
@@ -83,7 +87,9 @@ const listed = new Set((coverage.regions ?? []).map((region) => region.id));
 for (const region of manifest.regions) {
   if (!listed.has(region.id)) problems.push(`coverage does not list ${region.id}`);
 }
-console.log(`· coverage lists ${listed.size} regions (the manifest has ${manifest.regions.length})`);
+console.log(
+  `· coverage lists ${listed.size} regions (the manifest has ${manifest.regions.length})`,
+);
 
 // 3. Each region of this run answers its densest tile.
 const tileOf = (lat: number, lng: number) => {
@@ -106,7 +112,8 @@ for (const entry of fresh) {
   }
   const city = await get(`/map/city/${tile}.pbf`);
   const bytes = (await city.arrayBuffer()).byteLength;
-  if (city.status !== 200 || bytes === 0) problems.push(`${entry.id}: /map/city/${tile} → ${city.status}, ${bytes} B`);
+  if (city.status !== 200 || bytes === 0)
+    problems.push(`${entry.id}: /map/city/${tile} → ${city.status}, ${bytes} B`);
   const roads = await get(`/map/city-roads/${tile}.pbf`);
   await roads.arrayBuffer();
   if (entry.roads && roads.status !== 200 && roads.status !== 204) {
@@ -121,7 +128,8 @@ for (const probe of probes) {
   const response = await get(`/map/city/15/${x}/${y}.pbf`);
   const bytes = (await response.arrayBuffer()).byteLength;
   const ok = response.status === probe.status;
-  if (!ok) problems.push(`${probe.name} 15/${x}/${y}: ${response.status}, expected ${probe.status}`);
+  if (!ok)
+    problems.push(`${probe.name} 15/${x}/${y}: ${response.status}, expected ${probe.status}`);
   console.log(`· ${probe.name} 15/${x}/${y}: ${response.status} (${bytes} B)${ok ? '' : ' ✗'}`);
 }
 
