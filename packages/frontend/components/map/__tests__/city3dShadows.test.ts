@@ -159,6 +159,43 @@ describe('shadowFrame', () => {
     }
   });
 
+  test('equal keys mean identical matrices, whichever way the map pans', () => {
+    // The cached map is reused while the key stands (`sky.ts`), and read with
+    // the NEW frame's matrix: any difference slides every shadow off its
+    // caster. Mercator's scale runs with latitude, so a pan north or south is
+    // the case that broke (the matrix moved ~2.5 m per metre panned).
+    let reused = 0;
+    for (const sun of SUNS) {
+      for (const lat of [BARCELONA.lat, 40.7549, -33.86, 59.33]) {
+        const centre = { lng: BARCELONA.lng, lat };
+        const base = frameFor(sun, centre);
+        for (const [east, north] of [
+          [0, 3],
+          [0, -10],
+          [0, 40],
+          [7, 7],
+          [-20, 15],
+        ]) {
+          const k = mercatorPerMetre(lat);
+          const moved = frameFor(sun, {
+            lng: centre.lng + east * k * 360,
+            lat: lat + (north / 6_371_008.8) * (180 / Math.PI),
+          });
+          if (moved.key !== base.key) continue;
+          reused++;
+          expect(moved.lightFromMercator).toEqual(base.lightFromMercator);
+          // The point every pixel looks up lands on the same texel and depth.
+          const point = at(centre, 300, -200, 0);
+          const a = apply(base.lightFromMercator, point);
+          const b = apply(moved.lightFromMercator, point);
+          for (let i = 0; i < 3; i++) expect(Math.abs(a[i] - b[i])).toBeLessThan(1e-12);
+        }
+      }
+    }
+    // Most of those small pans keep the map (or the test proves nothing).
+    expect(reused).toBeGreaterThan(40);
+  });
+
   test('the radius steps by √2, so zooming a little does not redraw', () => {
     const sun = SUNS[0];
     expect(frameFor(sun, BARCELONA, 900).key).toBe(frameFor(sun, BARCELONA, 1000).key);

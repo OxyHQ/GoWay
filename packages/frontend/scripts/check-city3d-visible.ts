@@ -55,6 +55,12 @@
  *  - **City life** (the `objects` leg, sky off, low preset): its simulated
  *    traffic on the fixture's streets changes at least 0.05% of the view from
  *    z17.5 over a junction (measured 0.10–0.13%; not drawn, 0%).
+ *  - **A pan holds still** (the `sky` leg: its sun shadows): dragged north in
+ *    steps from straight above, each frame is the one before moved by the
+ *    drag — under {@link PAN_MAX_CHANGED_PCT} of the map differs once
+ *    aligned. Born of the shadow map read through a matrix it was not drawn
+ *    with on every north–south pan (`shadows.ts` → `SHADOW_LATITUDE_STEP_DEG`):
+ *    the shadows slid and snapped back, the ground lit and unlit wholesale.
  *
  * Without #152's re-grounding it fails (three runs of three; the no-sky trees
  * are buried every time). Measured numbers: the doc.
@@ -596,6 +602,153 @@ async function differs(
 }
 
 /**
+ * The pan: from straight above (no 3D terrain, so a drag moves the whole map
+ * by exactly the pointer's travel, give or take the buildings' parallax), in
+ * the morning (long shadows), dragged {@link PAN_STEPS} times by
+ * {@link PAN_STEP_PX} towards the top of the screen.
+ */
+const PAN = { ...SYNTHETIC_CENTRE, zoom: 18 };
+const PAN_STEPS = 5;
+const PAN_STEP_PX = 30;
+const PAN_MORNING = new Date('2026-06-21T09:00:00+02:00');
+/**
+ * The most of the map, in %, that may differ between two frames of the pan
+ * once aligned. Measured (SwiftShader): 0.04–0.06% per step; the shadow map read
+ * through a stale matrix (before `SHADOW_LATITUDE_STEP_DEG`): 4.5–25.6% on every
+ * step after the first.
+ */
+const PAN_MAX_CHANGED_PCT = 0.5;
+/** How many rows a pixel may move beyond the drag and still match, for the parallax. */
+const PAN_SLACK_PX = 4;
+
+/**
+ * Share of pixels, in %, where `b` differs from `a` moved up by `dy` (more
+ * than `threshold` in a channel), over the rows both cover below `skipTop`.
+ * Each pixel is matched within ±{@link PAN_SLACK_PX} rows of the drag: the
+ * roofs and crowns move a few pixels more than the ground they stand on (the
+ * camera's parallax), a shadow sliding off its caster moves tens.
+ */
+async function differsMoved(
+  browser: Browser,
+  a: Buffer,
+  b: Buffer,
+  dy: number,
+  threshold = 24,
+  skipTop = 110,
+): Promise<number> {
+  const page = await browser.newPage();
+  const value = await page.evaluate(
+    async ([one, two, shift, slack, limit, top]) => {
+      const pixels = async (data: string) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${data}`;
+        await img.decode();
+        const canvas = new OffscreenCanvas(img.width, img.height);
+        const g = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+        g.drawImage(img, 0, 0);
+        const { data: px } = g.getImageData(0, 0, img.width, img.height);
+        return { px, w: img.width, h: img.height };
+      };
+      const [x, y] = await Promise.all([pixels(one), pixels(two)]);
+      let n = 0;
+      let total = 0;
+      for (let row = top + slack; row + shift + slack < x.h; row++) {
+        for (let col = 0; col < x.w; col++) {
+          const i = (row * x.w + col) * 4;
+          let best = 255;
+          for (let s = shift - slack; s <= shift + slack && best > limit; s++) {
+            const j = ((row + s) * x.w + col) * 4;
+            best = Math.min(
+              best,
+              Math.max(
+                Math.abs(x.px[j] - y.px[i]),
+                Math.abs(x.px[j + 1] - y.px[i + 1]),
+                Math.abs(x.px[j + 2] - y.px[i + 2]),
+              ),
+            );
+          }
+          if (best > limit) n++;
+          total++;
+        }
+      }
+      return (100 * n) / total;
+    },
+    [a.toString('base64'), b.toString('base64'), dy, PAN_SLACK_PX, threshold, skipTop] as const,
+  );
+  await page.close();
+  return Number(value.toFixed(2));
+}
+
+/** The pan's frames' changed shares, in %, one per step. */
+async function panSteps(
+  browser: Browser,
+  origin: string,
+  flags: string,
+  choices: Record<string, boolean>,
+  outDir: string,
+): Promise<number[]> {
+  const context = await browser.newContext({ viewport: VIEWPORT });
+  await context.route('**/*', (route) => answer(route, origin, 'buildings', Promise.resolve()));
+  const page = await context.newPage();
+  await page.clock.setFixedTime(PAN_MORNING);
+  await page.addInitScript(() => {
+    const scope = globalThis as {
+      reliefMap?: () => ReliefMap | undefined;
+      __gowayReliefMap?: ReliefMap & { setPixelRatio?: (ratio: number) => void };
+    };
+    scope.reliefMap = () => scope.__gowayReliefMap;
+    const pin = setInterval(() => {
+      const map = scope.__gowayReliefMap;
+      if (!map) return;
+      map.setPixelRatio = () => {};
+      clearInterval(pin);
+    }, 20);
+  });
+  await page.addInitScript(
+    (stored) =>
+      localStorage.setItem(
+        'goway.mapFeatures',
+        JSON.stringify({ v: 1, choices: stored, labs: true }),
+      ),
+    choices,
+  );
+  const query = `lat=${PAN.lat}&lng=${PAN.lng}&zoom=${PAN.zoom}&quality=high&${flags}`;
+  await page.goto(`${origin}/?${query}`, { waitUntil: 'load', timeout: 180_000 });
+  if (!(await until(page, () => reliefMap() !== undefined))) {
+    throw new Error('pan: the map never came up');
+  }
+  const still = async () => {
+    await settled(page, false);
+    await until(page, () => Boolean(reliefMap()?.areTilesLoaded()));
+    // The shadow map's caster redraw is throttled (`sky.ts`), and fades end.
+    await page.waitForTimeout(1500);
+  };
+  await still();
+  await page.addStyleTag({ content: '[data-goway-perf-hud] { display: none !important; }' });
+  const shot = (i: number) =>
+    page.screenshot({ clip: CLIP, path: join(outDir, `pan-${i}.png`), timeout: SETTLE_TIMEOUT_MS });
+  const x = CLIP.x + CLIP.width / 2;
+  let y = CLIP.y + CLIP.height / 2 + (PAN_STEPS * PAN_STEP_PX) / 2;
+  const frames = [await shot(0)];
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  for (let i = 1; i <= PAN_STEPS; i++) {
+    // Held down between steps: no inertia, the map is exactly where it was dragged.
+    y -= PAN_STEP_PX;
+    await page.mouse.move(x, y, { steps: 3 });
+    await still();
+    frames.push(await shot(i));
+  }
+  await page.mouse.up();
+  await context.close();
+  const changed: number[] = [];
+  for (let i = 1; i < frames.length; i++) {
+    changed.push(await differsMoved(browser, frames[i - 1], frames[i], PAN_STEP_PX));
+  }
+  return changed;
+}
+
+/**
  * A landmark of the registry (`public/landmarks/registry.json`) inside the
  * synthetic city: the Sagrada Família stands where it really does, its spires
  * far above the made-up blocks. Looked at from 110 m north of it at z17.5,
@@ -701,6 +854,16 @@ try {
     else if (r.streetsChangedPct < 3)
       failures.push(
         `${label}: ${r.streetTriangles} street triangles drawn, but streets on change ${r.streetsChangedPct}% of the view over a junction`,
+      );
+  }
+  if (!DEBUG && skies.includes('sky')) {
+    const { flags, choices } = SKIES.sky;
+    const changed = await panSteps(browser, origin, flags, choices, outDir);
+    results.pan = { maxChangedPct: Math.max(...changed), steps: changed.length };
+    console.error(`pan: changed ${changed.join(', ')}% per step`);
+    if (Math.max(...changed) > PAN_MAX_CHANGED_PCT)
+      failures.push(
+        `pan: a frame differs ${Math.max(...changed)}% from the one before once aligned (over ${PAN_MAX_CHANGED_PCT}%): the map changes under a pan`,
       );
   }
   if (!DEBUG && skies.includes('objects')) {

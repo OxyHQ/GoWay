@@ -597,6 +597,15 @@ Per sky (on and off) it asserts:
   `landmarks` on it must change at least 1% of the map against the same view
   with them off, below the top 110 rows where the layer's own chip appears.
   Measured: 31.5%.
+- **A pan holds still** (sky leg: its sun shadows): opened from straight
+  above at z18 at 09:00 (long shadows, no 3D terrain, so a drag moves the
+  map by exactly the pointer's travel), dragged north in five 30 px steps,
+  each settled and shot. Every frame, aligned with the one before (each
+  pixel matched within ±4 rows of the drag, for the roofs' parallax), may
+  differ in at most 0.5% of the map. Measured: 0.04–0.06% per step; before
+  the shadow box's scale was pinned (`shadows.ts` →
+  `SHADOW_LATITUDE_STEP_DEG`), 4.5–25.6% on every step after the first —
+  the owner's "everything flickers while panning".
 
 The streets are on in every city view, so the walls-and-windows share reads
 79.4% with the sky and 27.5% without since step 5 (asphalt and sidewalks are
