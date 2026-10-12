@@ -16,6 +16,8 @@ import {
 } from '@/lib/map/mapFeatureStore';
 import { MAP_FEATURES } from '@/lib/map/mapFeatures';
 
+// The examples are features still off by default (the woods fill, live data),
+// so a choice of `true` is a real change from the default.
 const IDS = new Set<string>(MAP_FEATURES.map((feature) => feature.id));
 
 function memoryStorage(initial: string | null = null) {
@@ -49,13 +51,13 @@ describe('persistence', () => {
   test('a choice is saved, and read back by the next page', () => {
     const first = memoryStorage();
     const { instance } = store(first.storage);
-    instance.setChoice('city3d', true);
-    expect(instance.getSnapshot().features.on('city3d')).toBe(true);
+    instance.setChoice('city3dTreeFill', true);
+    expect(instance.getSnapshot().features.on('city3dTreeFill')).toBe(true);
     expect(first.saved).toHaveLength(1);
 
     const second = memoryStorage(first.saved[0]);
     const { instance: next } = store(second.storage);
-    expect(next.getSnapshot().features.on('city3d')).toBe(true);
+    expect(next.getSnapshot().features.on('city3dTreeFill')).toBe(true);
     // A plain read writes nothing back.
     expect(second.saved).toHaveLength(0);
   });
@@ -82,11 +84,11 @@ describe('persistence', () => {
     let heard = 0;
     const unsubscribe = instance.subscribe(() => heard++);
     const before = instance.getSnapshot();
-    instance.setChoice('flyover', true);
+    instance.setChoice('live', true);
     expect(heard).toBe(1);
     expect(instance.getSnapshot()).not.toBe(before);
     unsubscribe();
-    instance.setChoice('flyover', false);
+    instance.setChoice('live', false);
     expect(heard).toBe(1);
   });
 });
@@ -102,7 +104,7 @@ describe('storage failures keep the defaults', () => {
     const snapshot = instance.getSnapshot();
     expect(snapshot.hydrated).toBe(true);
     expect(snapshot.features.on('globe')).toBe(true);
-    expect(snapshot.features.on('city3d')).toBe(false);
+    expect(snapshot.features.on('city3dTreeFill')).toBe(false);
     expect(errors).toEqual(['load']);
   });
 
@@ -113,8 +115,8 @@ describe('storage failures keep the defaults', () => {
         throw new Error('QuotaExceededError');
       },
     });
-    instance.setChoice('city3d', true);
-    expect(instance.getSnapshot().features.on('city3d')).toBe(true);
+    instance.setChoice('city3dTreeFill', true);
+    expect(instance.getSnapshot().features.on('city3dTreeFill')).toBe(true);
     expect(errors).toEqual(['save']);
   });
 
@@ -126,16 +128,22 @@ describe('storage failures keep the defaults', () => {
     expect(instance.getSnapshot().hydrated).toBe(false);
     await settle();
     expect(instance.getSnapshot().hydrated).toBe(true);
-    instance.setChoice('flyover', true);
-    expect(instance.getSnapshot().features.on('flyover')).toBe(true);
+    instance.setChoice('live', true);
+    expect(instance.getSnapshot().features.on('live')).toBe(true);
     await settle();
     expect(errors).toEqual(['load', 'save']);
   });
 
   test('garbage in storage', () => {
-    for (const raw of ['not json', '[]', 'null', '42', '{"v":2,"choices":{"city3d":true}}']) {
+    for (const raw of [
+      'not json',
+      '[]',
+      'null',
+      '42',
+      '{"v":2,"choices":{"city3dTreeFill":true}}',
+    ]) {
       const { instance } = store(memoryStorage(raw).storage);
-      expect(instance.getSnapshot().features.on('city3d')).toBe(false);
+      expect(instance.getSnapshot().features.on('city3dTreeFill')).toBe(false);
     }
   });
 });
@@ -168,20 +176,20 @@ describe('native: storage answers later', () => {
         saved.push(value);
       },
     });
-    instance.setChoice('city3d', true);
+    instance.setChoice('city3dTreeFill', true);
     expect(saved).toHaveLength(0);
     answer(
       serializePreferences({
         ...NO_PREFERENCES,
-        choices: { city3d: false, flyover: true },
+        choices: { city3dTreeFill: false, live: true },
         labs: false,
       }),
     );
     await settle();
     const { features } = instance.getSnapshot();
-    expect(features.on('city3d')).toBe(true);
-    expect(features.on('flyover')).toBe(true);
-    expect(JSON.parse(saved.at(-1) ?? '{}').choices).toEqual({ city3d: true, flyover: true });
+    expect(features.on('city3dTreeFill')).toBe(true);
+    expect(features.on('live')).toBe(true);
+    expect(JSON.parse(saved.at(-1) ?? '{}').choices).toEqual({ city3dTreeFill: true, live: true });
   });
 });
 
@@ -228,11 +236,11 @@ describe('parsePreferences', () => {
   test('keeps only known ids with boolean values', () => {
     const raw = JSON.stringify({
       v: 1,
-      choices: { city3d: true, globe: 'no', teleport: true },
+      choices: { city3dTreeFill: true, globe: 'no', teleport: true },
       labs: 'yes',
     });
     expect(parsePreferences(raw, IDS)).toEqual({
-      choices: { city3d: true },
+      choices: { city3dTreeFill: true },
       labs: false,
       performance: 'auto',
       gpu: null,
@@ -287,7 +295,7 @@ describe('performance', () => {
   test('the GPU record persists beside the choices, and does not disturb them', () => {
     const first = memoryStorage();
     const { instance } = store(first.storage);
-    instance.setChoice('city3d', true);
+    instance.setChoice('city3dTreeFill', true);
     instance.setGpuRecord({
       v: 1,
       renderer: 'r',
@@ -297,7 +305,7 @@ describe('performance', () => {
     });
     const saved = JSON.parse(first.saved.at(-1) ?? '{}');
     expect(saved.gpu.tier).toBe('medium');
-    expect(saved.choices.city3d).toBe(true);
+    expect(saved.choices.city3dTreeFill).toBe(true);
   });
 
   test('a choice made before native storage answers wins over the stored one', async () => {

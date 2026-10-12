@@ -65,6 +65,36 @@ export function loadLandmarks(
   return pending;
 }
 
+/**
+ * The landmarks the map can draw right now — those over published city tiles
+ * (`components/map/city3dLayer.web.ts` decides, from the coverage document).
+ * The tour and its "Landmarks" pill offer only these, so nobody is flown to a
+ * model the map cannot draw: none at all while no city tiles are published,
+ * or while the 3D city is off. Shared through this module because both its
+ * importers reach it by `import()`, so they share one instance.
+ */
+let offered: ReadonlySet<string> = new Set();
+const offeredListeners = new Set<(ids: ReadonlySet<string>) => void>();
+
+/** Set by the map adapter; `[]` when it detaches. */
+export function offerLandmarks(ids: readonly string[]): void {
+  const next = new Set(ids);
+  if (next.size === offered.size && ids.every((id) => offered.has(id))) return;
+  offered = next;
+  for (const listener of offeredListeners) listener(offered);
+}
+
+/** Called at once with the ids offered now, then on every change. Returns the unsubscribe. */
+export function subscribeOfferedLandmarks(
+  listener: (ids: ReadonlySet<string>) => void,
+): () => void {
+  offeredListeners.add(listener);
+  listener(offered);
+  return () => {
+    offeredListeners.delete(listener);
+  };
+}
+
 /** Every entry, drawable. Entries whose placement does not parse are left out. */
 export function prepareLandmarks(registry: LandmarkRegistry, origin: string): PreparedLandmark[] {
   const out: PreparedLandmark[] = [];

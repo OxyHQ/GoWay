@@ -50,6 +50,7 @@ import {
   SHADOW_FRAGMENT_SHADER,
   SHADOW_VERTEX_SHADER,
 } from './lifeShaders';
+import type { CityCoverageArea } from '@/lib/map/cityTiles';
 import { getLiveCoverage, type LiveCoverage, subscribeLiveCoverage } from '@/lib/live/coverage';
 
 import { coveredTiles, liveClassesInView, type RealClass } from './realCoverage';
@@ -74,6 +75,11 @@ const STEP_S = 0.05;
 export interface CityLifeOptions {
   /** Absolute `{z}/{x}/{y}` template of the road tiles. */
   roadTileTemplate: string;
+  /**
+   * Where the road archive is published (`fetchCityCoverage` → `roads`): no
+   * tile outside it is asked for. `null`: unknown, every tile is asked.
+   */
+  roadCoverage: readonly CityCoverageArea[] | null;
   /** The basemap's vector tiles, for roads where no road archive tile exists (`omtRoads.ts`). */
   basemapRoads?: { template: string; zoom: number; sourceLayer: string };
   budget: SimBudget;
@@ -324,6 +330,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
   send({
     type: 'init',
     template: options.roadTileTemplate,
+    roadCoverage: options.roadCoverage,
     seed: options.seed,
     budget: options.budget,
     fallback: options.basemapRoads,

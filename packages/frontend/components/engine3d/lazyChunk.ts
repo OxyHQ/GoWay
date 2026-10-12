@@ -29,6 +29,9 @@
  */
 export { createSceneEngine } from '../street3d/engine/sparkEngine';
 export { createCityEngine } from '../map/engine/city3d/cityEngine';
+// The city coverage's decoder, for the adapter's own questions (which
+// landmarks stand over published tiles): the engine's, so the same chunk.
+export { coverageCovers } from '../map/engine/city3d/coverageIndex';
 export { createCityLife } from '../map/engine/cityLife/lifeRenderer';
 // GoWay Live's 3D shapes: a pass of the city engine, so the same chunk.
 export { createLivePass } from '../map/engine/live3d/livePass';

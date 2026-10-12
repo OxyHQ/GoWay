@@ -95,10 +95,24 @@ function withDevCityTiles(config) {
   const regionalCoverage = (list) => {
     const buildings = list.filter((entry) => entry.kind === 'city');
     if (buildings.length === 0 || !buildings.every((entry) => entry.tree)) return null;
-    let union = trees.EMPTY;
-    for (const entry of buildings) union = trees.unionCoverageTrees(union, entry.tree);
-    const encoded = trees.encodeCoverageTree(trees.coarsenCoverageTree(union, 14), 14);
-    return { schema: 2, tiles: { maxZoom: 14, bits: encoded.bits }, regions: [] };
+    const encode = (entries) => {
+      let union = trees.EMPTY;
+      for (const entry of entries) union = trees.unionCoverageTrees(union, entry.tree);
+      return {
+        maxZoom: 14,
+        bits: trees.encodeCoverageTree(trees.coarsenCoverageTree(union, 14), 14).bits,
+      };
+    };
+    // The road archives' own coverage, as the Worker answers it; left out
+    // (the client then asks every road tile) unless every one is regional.
+    const roads = list.filter((entry) => entry.kind === 'city-roads');
+    const roadsRegional = roads.length > 0 && roads.every((entry) => entry.tree);
+    return {
+      schema: 2,
+      tiles: encode(buildings),
+      ...(roadsRegional ? { roads: encode(roads) } : {}),
+      regions: [],
+    };
   };
 
   const previous = config.server?.enhanceMiddleware;

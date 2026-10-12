@@ -7,10 +7,13 @@ look is Apple Maps' detailed streets (the owner's references: Sixth Avenue at
 Rockefeller Center by night); nothing of Apple's — no asset, no data — is
 used.
 
-**Labs, off by default, web only, development builds only** (nothing serves the
-road archive on goway.to yet). It is the registry's `cityStreets`
-(`lib/map/mapFeatures.ts`, needs `city3d`): the settings dialog's Labs,
-or `?cityStreets=1` in a development tab ([`MAP_FEATURES.md`](./MAP_FEATURES.md)).
+**On by default since 2026-10-12, web only** ([`MAP_FEATURES.md`](./MAP_FEATURES.md)
+→ Defaults). It is the registry's `cityStreets` (`lib/map/mapFeatures.ts`,
+needs `city3d`), on the settings dialog's Map page, and `?cityStreets=0/1` in
+a development tab. It asks only for road tiles the coverage document's
+`roads` tree covers (`city3dLayer.web.ts` → `fetchCityCoverageDocument`),
+chosen before the tile budget fills: elsewhere no overlay is made and no road
+tile is requested.
 
 ```bash
 # Road archive, schema 2 (the same one city life drives on):

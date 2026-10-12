@@ -8,15 +8,15 @@ traffic and pedestrians on the city's street network") and Procedural Tokyo's
 ("cars drive on the real road graph, keep left, obey signals and one-way
 streets"); the data, the compiler and the renderer are GoWay's.
 
-**It is a simulation, labelled as one, off by default, web only.** Nothing here
+**It is a simulation, labelled as one, on by default (2026-10-12), web only.** Nothing here
 is real traffic, and nothing GoWay computes or shows is derived from it (see
 [Honesty](#honesty)).
 
 ## Turning it on
 
 Three map features (`MAP_FEATURES.md`), each a refinement of the one before,
-all off by default. A person turns them on in the settings modal's Labs (city
-tiles and city life are offered there only in a development build); a
+all on by default since 2026-10-12 ([`MAP_FEATURES.md`](./MAP_FEATURES.md) →
+Defaults). A person switches them off in the settings modal's Layers page; a
 development tab also takes them from its address:
 
 | Feature | Per tab, development builds only |
@@ -32,9 +32,11 @@ any archive, `?city3d=1&cityLife=1` shows traffic in any city:
 `…/?city3d=1&cityLife=1&lat=-23.5614&lng=-46.6559&zoom=17.8&pitch=55` (São
 Paulo, Avenida Paulista).
 All three are entries in the map-feature registry ([`MAP_FEATURES.md`](./MAP_FEATURES.md)),
-so in a development build they can also be switched in the settings modal's Labs
-(`?labs=1`); city life is offered there only in development builds until its
-frame cost is budgeted on mid-range devices.
+and their agents are the quality profile's `life` (300 + 300 on a phone, 700 +
+700 on a laptop, 1,200 + 1,200 on a desktop GPU; [`MAP_PERFORMANCE.md`](./MAP_PERFORMANCE.md)
+→ "Default on"). Where the coverage document's `roads` tree does not cover a
+tile, the worker asks for no road tile and drives on the basemap's roads at
+once.
 
 ```bash
 # 1. Compile the road archive (same extract, same z15 grid as the buildings).
@@ -432,12 +434,13 @@ only through `components/engine3d/lazyChunk.ts`, and
 
 ## Hosting
 
-Nothing is served in production yet. The road archive is built beside the
+The road archive is built beside the
 building archive for every region of the planet and served from
 `/map/city-roads/{z}/{x}/{y}.pbf` by the same manifest
 ([`MAP_CITY_PLANET.md`](./MAP_CITY_PLANET.md)); like the buildings it is a
 Derivative Database of OpenStreetMap under the ODbL, published with its
-receipt (`/map/city/data/…`) before the flag is turned on for anyone.
+receipt (`/map/city/data/…`) before it is served; the client asks only for
+road tiles the coverage document's `roads` tree covers.
 
 ## Limits and next steps
 

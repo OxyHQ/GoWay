@@ -49,28 +49,41 @@ describe('the registry', () => {
     expect(new Set(queries).size).toBe(queries.length);
   });
 
-  test('defaults: globe, terrain and Street 3D on, everything else off', () => {
+  test('defaults: everything on goway.to but the woods fill and live data', () => {
     const features = resolve();
     expect(features.list.map((state) => [state.id, state.on])).toEqual([
       ['globe', true],
       ['terrain', true],
       ['street3d', true],
-      ['city3d', false],
-      ['citySky', false],
-      ['detailedCity', false],
-      ['cityTiles', false],
-      ['city3dTrees', false],
+      ['city3d', true],
+      ['citySky', true],
+      ['detailedCity', true],
+      ['cityTiles', true],
+      ['city3dTrees', true],
       ['city3dTreeFill', false],
-      ['cityLife', false],
-      ['cityStreets', false],
-      ['landmarks', false],
+      ['cityLife', true],
+      ['cityStreets', true],
+      ['landmarks', true],
       ['live', false],
-      ['flyover', false],
+      ['flyover', true],
     ]);
-    // Nothing new is on by default: every Labs feature starts off. (The trees
-    // default on, but only with the 3D city, which is off.)
-    for (const state of features.list) if (state.tier === 'labs') expect(state.on).toBe(false);
-    for (const state of features.list) expect(state.source).toBe('default');
+    // Every stable feature is on and offered in production; every Labs one starts off.
+    for (const state of features.list) {
+      expect(state.on).toBe(state.tier === 'stable');
+      if (state.tier === 'stable') expect(state.available).toBe(true);
+      expect(state.source).toBe('default');
+    }
+  });
+
+  test('native: only what native draws is on', () => {
+    const ios = resolve({ platform: 'ios' });
+    expect(ios.list.filter((state) => state.on).map((state) => state.id)).toEqual([
+      'terrain',
+      'street3d',
+      'flyover',
+    ]);
+    // So the explore screen never offers a landmark tour native cannot draw.
+    expect(ios.on('landmarks')).toBe(false);
   });
 
   test('a production build answers the same with any address: defaults, then choices', () => {
@@ -116,15 +129,15 @@ describe('the person decides', () => {
   test('a stored value that is not a boolean is no choice', () => {
     const choices = { city3d: 'yes' } as unknown as Record<string, boolean>;
     expect(resolve({ choices }).get('city3d').choice).toBeNull();
-    expect(resolve({ choices }).on('city3d')).toBe(false);
+    expect(resolve({ choices }).on('city3d')).toBe(true);
   });
 
   test('a choice also reaches a feature the panel does not offer in this build', () => {
     // How the benchmark switches production-unserved features on: it stores
     // the choices the panel would (`scripts/bench-map.ts`).
-    const features = resolve({ choices: { city3d: true, cityTiles: true } });
-    expect(features.get('cityTiles').available).toBe(false);
-    expect(features.on('cityTiles')).toBe(true);
+    const features = resolve({ choices: { live: true } });
+    expect(features.get('live').available).toBe(false);
+    expect(features.on('live')).toBe(true);
   });
 });
 
@@ -183,7 +196,7 @@ describe('a development page’s address', () => {
 
 describe('dependencies', () => {
   test('city tiles need the 3D city', () => {
-    const blocked = resolve({ development: true, choices: { cityTiles: true } });
+    const blocked = resolve({ development: true, choices: { city3d: false, cityTiles: true } });
     expect(blocked.on('cityTiles')).toBe(false);
     expect(blocked.get('cityTiles').blockedBy).toEqual(['city3d']);
 
@@ -200,15 +213,15 @@ describe('dependencies', () => {
     expect(fill.get('city3dTreeFill').blockedBy).toEqual(['city3dTrees']);
   });
 
-  test('street detail needs the 3D city; `?cityStreets=1` works in a development build only', () => {
+  test('street detail needs the 3D city; `?cityStreets=0` works in a development build only', () => {
     const page = { search: '?cityStreets=1' };
-    expect(resolve({ ...page, development: true }).get('cityStreets').blockedBy).toEqual([
-      'city3d',
-    ]);
     expect(
-      resolve({ ...page, development: true, choices: { city3d: true } }).get('cityStreets').on,
-    ).toBe(true);
-    expect(resolve({ ...page, choices: { city3d: true } }).get('cityStreets').on).toBe(false);
+      resolve({ ...page, development: true, choices: { city3d: false } }).get('cityStreets')
+        .blockedBy,
+    ).toEqual(['city3d']);
+    const off = { search: '?cityStreets=0' };
+    expect(resolve({ ...off, development: true }).get('cityStreets').on).toBe(false);
+    expect(resolve(off).get('cityStreets').on).toBe(true);
   });
 
   test('a generic dependency switches its dependant off with it', () => {
@@ -247,10 +260,16 @@ describe('what the panel offers', () => {
     expect(resolve().get('city3d').available).toBe(true);
   });
 
-  test('what production cannot serve yet only in a development build', () => {
-    for (const id of ['cityTiles', 'cityLife', 'cityStreets', 'landmarks', 'live']) {
-      expect(resolve().get(id).available).toBe(false);
-      expect(resolve({ development: true }).get(id).available).toBe(true);
+  test('the city archives’ features are offered on goway.to', () => {
+    // Each draws only where the coverage document says its data is published,
+    // and the basemap (or nothing) elsewhere (`city3dCitySource.test.ts`).
+    for (const id of ['cityTiles', 'cityLife', 'cityStreets', 'landmarks']) {
+      expect(resolve().get(id).available).toBe(true);
     }
+  });
+
+  test('what production cannot serve yet only in a development build: live data', () => {
+    expect(resolve().get('live').available).toBe(false);
+    expect(resolve({ development: true }).get('live').available).toBe(true);
   });
 });

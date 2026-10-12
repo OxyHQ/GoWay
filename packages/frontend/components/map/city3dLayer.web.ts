@@ -56,6 +56,7 @@ import {
   CITY_TILE_ZOOM,
   CITY_TREE_LAYER,
   type CityCoverageArea,
+  type CityCoverageTiles,
   parseCityCoverage,
 } from '@/lib/map/cityTiles';
 import { CITY_LOD2_SOURCES } from '@/lib/map/cityOfficial';
@@ -79,6 +80,7 @@ import { streetPaletteInput } from '@/lib/map/style/streetPalette';
 import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
 import type { QualityProfile } from '@/lib/map/quality/profile';
 import { sunPosition } from '@/lib/map/sun';
+import { mercatorX, mercatorY } from '@/lib/map/geo';
 
 import { followTerrain } from './city3dGround.web';
 import { cityLightFromSpec, sameCityLight } from './city3dLight';
@@ -139,46 +141,96 @@ export function citySourceFor(
 }
 
 /**
- * The areas the city-tile archives cover (`CITY_COVERAGE_PATH`). Any failure
- * — unreachable, slow, malformed — is NO coverage: the layer then draws the
- * basemap's buildings everywhere rather than a flat map. Exported for tests.
- *
- * The production document's owned-tile set is passed on ENCODED; the engine
- * decodes it (`engine/city3d/coverageIndex.ts`), so its decoder ships in the
- * engine's chunk only. The shape is checked here all the same, so a document
- * that is neither form is "no coverage" and reported, not a decode error
- * later.
+ * What the city archives cover, from `CITY_COVERAGE_PATH`: where the
+ * building tiles draw, and where the road archive (street detail, and city
+ * life's exact roads) is published.
  */
+export interface CityCoverageDocument {
+  buildings: CityCoverageArea[];
+  /**
+   * The road archive's coverage, or `null` where the document does not say
+   * (development's compile boxes): then every road tile is asked for, and a
+   * 204/404 is the basemap — what development always did.
+   */
+  roads: CityCoverageArea[] | null;
+  /** The document could not be had (unreachable, slow, not a 200, malformed). */
+  failed: boolean;
+}
+
+const NO_COVERAGE: CityCoverageDocument = { buildings: [], roads: [], failed: true };
+
+/** An encoded owned-tile set, checked; `null` if it is not one. */
+function coverageTree(value: unknown): CityCoverageTiles | null {
+  if (!value || typeof value !== 'object') return null;
+  const { maxZoom, bits } = value as { maxZoom?: unknown; bits?: unknown };
+  const valid =
+    typeof maxZoom === 'number' &&
+    Number.isInteger(maxZoom) &&
+    maxZoom >= 0 &&
+    maxZoom <= 24 &&
+    typeof bits === 'string' &&
+    bits.length > 0 &&
+    /^[A-Za-z0-9+/]*={0,2}$/.test(bits);
+  return valid ? { maxZoom, bits } : null;
+}
+
+/**
+ * The coverage document. Any failure — unreachable, slow, malformed — is NO
+ * coverage: the layer then draws the basemap's buildings everywhere rather
+ * than a flat map, and asks for no road tile. Exported for tests.
+ *
+ * The production document (`worker/city.js`) carries owned-tile sets, passed
+ * on ENCODED; the engine decodes them (`engine/city3d/coverageIndex.ts`), so
+ * the decoder ships in the engine's chunk only. The shape is checked here all
+ * the same, so a document that is neither form is "no coverage" and reported,
+ * not a decode error later. Production before any region is published answers
+ * `{ schema: 2, regions: [], tiles: null }`: nothing covered, not a failure.
+ */
+export async function fetchCityCoverageDocument(
+  origin: string,
+  fetcher: (url: string, init: { signal: AbortSignal }) => Promise<Response> = fetch,
+  timeoutMs = 4000,
+): Promise<CityCoverageDocument> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetcher(`${origin}${CITY_COVERAGE_PATH}`, { signal: controller.signal });
+    if (!response.ok) return NO_COVERAGE;
+    const document = (await response.json()) as {
+      schema?: unknown;
+      tiles?: unknown;
+      roads?: unknown;
+    } | null;
+    if (document?.schema === 2 || (document && 'tiles' in document)) {
+      const tiles = coverageTree(document.tiles);
+      const roads = coverageTree(document.roads);
+      // `tiles` present but not a tree (and not the unpublished `null`): broken.
+      if (!tiles && document.tiles != null) return NO_COVERAGE;
+      return {
+        buildings: tiles ? [tiles] : [],
+        // A document without `roads` (an older Worker, the development
+        // regional form) says nothing about them; one with no tiles at all
+        // has no road archive either.
+        roads: roads ? [roads] : 'roads' in document || !tiles ? [] : null,
+        failed: false,
+      };
+    }
+    const boxes = parseCityCoverage(document);
+    return { buildings: boxes, roads: null, failed: false };
+  } catch {
+    return NO_COVERAGE;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Where the building tiles draw ({@link fetchCityCoverageDocument}`.buildings`). */
 export async function fetchCityCoverage(
   origin: string,
   fetcher: (url: string, init: { signal: AbortSignal }) => Promise<Response> = fetch,
   timeoutMs = 4000,
 ): Promise<CityCoverageArea[]> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetcher(`${origin}${CITY_COVERAGE_PATH}`, { signal: controller.signal });
-    if (!response.ok) return [];
-    const document = (await response.json()) as { tiles?: unknown };
-    const tiles = document?.tiles as { maxZoom?: unknown; bits?: unknown } | null | undefined;
-    if (tiles && typeof tiles === 'object') {
-      const { maxZoom, bits } = tiles;
-      const valid =
-        typeof maxZoom === 'number' &&
-        Number.isInteger(maxZoom) &&
-        maxZoom >= 0 &&
-        maxZoom <= 24 &&
-        typeof bits === 'string' &&
-        bits.length > 0 &&
-        /^[A-Za-z0-9+/]*={0,2}$/.test(bits);
-      return valid ? [{ maxZoom, bits }] : [];
-    }
-    return parseCityCoverage(document);
-  } catch {
-    return [];
-  } finally {
-    clearTimeout(timer);
-  }
+  return (await fetchCityCoverageDocument(origin, fetcher, timeoutMs)).buildings;
 }
 
 /** One fixed seed: the same view opens on the same simulated city. */
@@ -196,6 +248,9 @@ export const CITY3D_LAYER_ID = `${GOWAY_LAYER_PREFIX}city3d`;
  */
 const LANDMARK_RADIUS_M = 3_000;
 const LANDMARK_DROP_M = 4_000;
+/** The basemap's tile zoom: the engine picks a source per z14 cell (`sources.ts`). */
+const LANDMARK_COVERAGE_ZOOM = 14;
+
 /** Below this zoom no landmark is loaded (the buildings appear from 15.5). */
 const LANDMARK_MIN_ZOOM = 14;
 
@@ -414,7 +469,7 @@ export async function attachCity3d(
     reportMapDefect('city3d:source', 'city3d: the style has no tiled vector source; not attached.');
     return null;
   }
-  const { createCityEngine, createCityLife, createCityStreets } = await import(
+  const { coverageCovers, createCityEngine, createCityLife, createCityStreets } = await import(
     '@/components/engine3d/lazyChunk'
   );
   // City tiles replace the BUILDINGS' source; a models-only engine (the city
@@ -427,13 +482,24 @@ export async function attachCity3d(
   const cityLife = buildings && options.cityLife === true;
   // The registry's `cityStreets`, handed in: drawn from the road archive.
   const streets = buildings && options.streets === true;
-  const coverage = cityTiles ? await fetchCityCoverage(origin) : [];
-  if (cityTiles && coverage.length === 0) {
+  // One coverage document says where the building tiles AND the road archive
+  // are published. Nothing published (goway.to before its first region, or
+  // anywhere outside one) is the basemap: its buildings, its roads for city
+  // life, no street detail and no landmark — and no request for a tile that
+  // cannot exist.
+  const coverageDocument =
+    cityTiles || cityLife || streets
+      ? await fetchCityCoverageDocument(origin)
+      : { buildings: [], roads: [], failed: false };
+  if (coverageDocument.failed) {
     reportMapDefect(
       'city3d:city-coverage',
-      'city3d: the city tiles report no coverage; drawing the basemap buildings instead.',
+      'city3d: the city coverage could not be read; drawing the basemap buildings instead.',
     );
   }
+  const coverage = cityTiles ? coverageDocument.buildings : [];
+  const roadCoverage = coverageDocument.roads;
+  const roadsPublished = roadCoverage === null || roadCoverage.length > 0;
   const citySource = citySourceFor(
     { template, maxzoom: source?.maxzoom ?? 14 },
     cityTiles,
@@ -458,7 +524,7 @@ export async function attachCity3d(
 
   // Landmarks replace per-building OSM ids, so they need the city tiles.
   // The registry's `landmarks`, handed in.
-  const landmarksOn = cityTiles && options.landmarks === true;
+  const landmarksOn = cityTiles && coverage.length > 0 && options.landmarks === true;
   let landmarkModule: typeof import('@/lib/map/landmarks/load') | null = null;
   let landmarkList: readonly PreparedLandmark[] = [];
   const heldLandmarks = new Set<string>();
@@ -468,8 +534,25 @@ export async function attachCity3d(
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     void import('@/lib/map/landmarks/load')
       .then(async (module) => {
-        landmarkList = await module.loadLandmarks(origin);
+        // Only the landmarks over published city tiles: a model elsewhere
+        // would replace nothing and draw nothing. Asked of the z14 cell, as
+        // the engine chooses its source (`engine/city3d/sources.ts`), so a
+        // landmark in a partly published cell at a region's edge is not
+        // offered either. The same list is what the tour and its pill offer
+        // (`offerLandmarks`).
+        landmarkList = (await module.loadLandmarks(origin)).filter(({ placement }) =>
+          coverageCovers(
+            {
+              z: LANDMARK_COVERAGE_ZOOM,
+              x: Math.floor(mercatorX(placement.position.longitude) * 2 ** LANDMARK_COVERAGE_ZOOM),
+              y: Math.floor(mercatorY(placement.position.latitude) * 2 ** LANDMARK_COVERAGE_ZOOM),
+            },
+            coverage,
+          ),
+        );
+        if (detached) return;
         landmarkModule = module;
+        module.offerLandmarks(landmarkList.map(({ entry }) => entry.id));
         map.triggerRepaint();
       })
       .catch((cause: unknown) =>
@@ -564,11 +647,12 @@ export async function attachCity3d(
     if (engine) return engine;
     applied = currentLight();
     const overlays: CityOverlay[] = [];
-    if (streets) {
+    if (streets && roadsPublished) {
       // First, so the streets are in the scene under everything else.
       overlays.push(
         createCityStreets({
           roadTileTemplate: `${origin}${CITY_ROAD_TILE_PATH}`,
+          roadCoverage,
           glyphTemplate: absoluteGlyphs(host.getStyle()?.glyphs, origin),
           fontstack: STREET_FONTSTACK,
           palette: streetPaletteInput(),
@@ -599,6 +683,7 @@ export async function attachCity3d(
       overlays.push(
         createCityLife({
           roadTileTemplate: `${origin}${CITY_ROAD_TILE_PATH}`,
+          roadCoverage,
           // Worldwide: where no road archive tile exists, the basemap's own roads.
           basemapRoads: template
             ? {
@@ -929,6 +1014,7 @@ export async function attachCity3d(
       nameBlockers = null;
       chip = null;
       if (drawnLandmarks.size > 0) options.onLandmarkCredits?.([]);
+      landmarkModule?.offerLandmarks([]);
     },
   };
 }

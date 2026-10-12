@@ -15,6 +15,7 @@
  */
 import { CITY_TILE_ZOOM } from '@/lib/map/cityTiles';
 
+import { coverageCovers } from '../city3d/coverageIndex';
 import { mercatorXFromLng, mercatorYFromLat, tileKey } from '../city3d/tileMath';
 import type { SimWorkerRequest, SimWorkerResponse } from './protocol';
 import { drivingSideAt } from '../roads/drivingSide';
@@ -52,6 +53,8 @@ const REBASE_M = 6000;
 const REBUILD_DEBOUNCE_MS = 250;
 
 let template = '';
+/** The road archive's published coverage; `null` asks for every tile. */
+let roadCoverage: Extract<SimWorkerRequest, { type: 'init' }>['roadCoverage'] = null;
 let seed = 1;
 let budget: SimBudget = { cars: 0, people: 0 };
 let frame: SimFrame | null = null;
@@ -107,6 +110,14 @@ function fetchTiles(): void {
     if (inflight.size >= FETCHES) return;
     const key = tileKey({ z: CITY_TILE_ZOOM, ...tile });
     if (tiles.has(key) || inflight.has(key)) continue;
+    if (roadCoverage !== null && !coverageCovers({ z: CITY_TILE_ZOOM, ...tile }, roadCoverage)) {
+      // No published road archive here (goway.to before any region, Tokyo
+      // after): not asked for — the basemap's roads, healed, at once.
+      tiles.set(key, { ...tile, data: null, source: 'basemap' });
+      fetchBasemap(tile);
+      scheduleRebuild();
+      continue;
+    }
     const controller = new AbortController();
     inflight.set(key, controller);
     const url = template
@@ -365,6 +376,7 @@ scope.onmessage = (event) => {
   const message = event.data;
   if (message.type === 'init') {
     template = message.template;
+    roadCoverage = message.roadCoverage;
     fallback = message.fallback ?? null;
     seed = message.seed;
     budget = message.budget;

@@ -32,29 +32,44 @@ describe('the settings pages', () => {
     }
   });
 
-  test('Labs hidden: the stable features — Street 3D on Layers — and no Labs page', () => {
+  test('Labs hidden: the whole 3D city — sky, look and streets on Map, the layers on Layers', () => {
     const { pages, features } = layout({ labs: false });
     expect(pages).toEqual(['map', 'layers', 'general', 'about']);
-    expect(ids(features.map)).toEqual(['globe', 'terrain']);
-    expect(ids(features.layers)).toEqual(['street3d']);
-  });
-
-  test('Labs revealed (production): sky on Map, the layers on Layers, and a Labs page', () => {
-    const { pages, features } = layout({ labs: true });
-    expect(pages).toEqual(['map', 'layers', 'labs', 'general', 'about']);
-    expect(ids(features.map)).toEqual(['globe', 'terrain', 'citySky', 'detailedCity']);
-    // City tiles, simulated traffic and landmarks have nothing to draw over in
-    // production, and goway.to's backend serves no live data yet.
+    expect(ids(features.map)).toEqual([
+      'globe',
+      'terrain',
+      'citySky',
+      'detailedCity',
+      'cityStreets',
+    ]);
     expect(ids(features.layers)).toEqual([
       'street3d',
       'city3d',
+      'cityTiles',
       'city3dTrees',
-      'city3dTreeFill',
+      'cityLife',
+      'landmarks',
       'flyover',
     ]);
   });
 
-  test('Labs revealed (development): the development-only layers join', () => {
+  test('Labs revealed (production): the woods fill joins, and a Labs page', () => {
+    const { pages, features } = layout({ labs: true });
+    expect(pages).toEqual(['map', 'layers', 'labs', 'general', 'about']);
+    // goway.to's backend serves no live data yet.
+    expect(ids(features.layers)).toEqual([
+      'street3d',
+      'city3d',
+      'cityTiles',
+      'city3dTrees',
+      'city3dTreeFill',
+      'cityLife',
+      'landmarks',
+      'flyover',
+    ]);
+  });
+
+  test('Labs revealed (development): live data joins', () => {
     const { features } = layout({ labs: true, development: true });
     expect(ids(features.layers)).toEqual([
       'street3d',
