@@ -303,13 +303,26 @@ const MAX_DIRECTORY_DEPTH = 4;
  * somebody made rather than a threshold somebody tuned.
  */
 export class PMTiles {
-  constructor(source) {
+  /**
+   * @param source the byte source (`read(offset, length, { hot })`).
+   * @param options.memo a {@link DirectoryMemo} that outlives this reader — the
+   *   Worker keeps one per isolate, so a warm isolate reads an archive's header
+   *   and directories once, not once per tile.
+   * @param options.name the archive's identity in the memo (its object key).
+   */
+  constructor(source, options = {}) {
     this.source = source;
+    this.memo = options.memo ?? null;
+    this.name = options.name ?? '';
     this.headerPromise = null;
   }
 
   /** The parsed header, and the root directory bytes if they came for free. */
   async open() {
+    if (!this.headerPromise && this.memo) {
+      const remembered = this.memo.get(`${this.name}|header`);
+      if (remembered) this.headerPromise = remembered;
+    }
     if (!this.headerPromise) {
       this.headerPromise = (async () => {
         const head = await this.source.read(0, INITIAL_READ_BYTES, { hot: true });
@@ -321,8 +334,26 @@ export class PMTiles {
             : await this.source.read(header.rootDirOffset, header.rootDirLength, { hot: true });
         return { header, rootBytes };
       })();
+      if (this.memo) {
+        const key = `${this.name}|header`;
+        const promise = this.headerPromise;
+        this.memo.set(key, promise);
+        // A failed read must not be remembered as the archive's header.
+        promise.catch(() => this.memo.delete(key));
+      }
     }
     return this.headerPromise;
+  }
+
+  /** A directory's entries, decoded once per memo. */
+  async directory(key, load) {
+    const memoKey = `${this.name}|${key}`;
+    const remembered = this.memo?.get(memoKey);
+    if (remembered) return remembered;
+    const { header } = await this.open();
+    const entries = decodeDirectory(await decompress(await load(), header.internalCompression));
+    this.memo?.set(memoKey, entries);
+    return entries;
   }
 
   /** The parsed header alone. */
@@ -351,7 +382,7 @@ export class PMTiles {
     if (z < header.minZoom || z > header.maxZoom) return null;
 
     const tileId = zxyToTileId(z, x, y);
-    let directory = decodeDirectory(await decompress(rootBytes, header.internalCompression));
+    let directory = await this.directory('root', async () => rootBytes);
 
     for (let depth = 0; depth < MAX_DIRECTORY_DEPTH; depth += 1) {
       const entry = findEntry(directory, tileId);
@@ -362,11 +393,52 @@ export class PMTiles {
         });
         return { bytes, compression: header.tileCompression, type: header.tileType };
       }
-      const leaf = await this.source.read(header.leafDirsOffset + entry.offset, entry.length, {
-        hot: true,
-      });
-      directory = decodeDirectory(await decompress(leaf, header.internalCompression));
+      const offset = header.leafDirsOffset + entry.offset;
+      directory = await this.directory(`leaf@${offset}`, () =>
+        this.source.read(offset, entry.length, { hot: true }),
+      );
     }
     throw new Error(`tile ${z}/${x}/${y} is nested deeper than ${MAX_DIRECTORY_DEPTH} directories`);
+  }
+}
+
+/**
+ * What a warm isolate remembers about the archives it reads: each one's parsed
+ * header and its decoded directories, least recently used out first.
+ *
+ * Without it every tile request re-read the header and directories — from the
+ * colo's cache when lucky, from R2 when not — and decoded them again. With it,
+ * a tile request in a warm isolate costs exactly one storage read: the tile.
+ * The bound is on entries: a decoded leaf directory of a few thousand entries
+ * is a few hundred kilobytes of objects, and an isolate has 128 MB.
+ */
+export class DirectoryMemo {
+  constructor(maxEntries = 128) {
+    this.maxEntries = maxEntries;
+    this.entries = new Map();
+  }
+
+  get(key) {
+    const value = this.entries.get(key);
+    if (value === undefined) return undefined;
+    this.entries.delete(key);
+    this.entries.set(key, value);
+    return value;
+  }
+
+  set(key, value) {
+    this.entries.delete(key);
+    this.entries.set(key, value);
+    while (this.entries.size > this.maxEntries) {
+      this.entries.delete(this.entries.keys().next().value);
+    }
+  }
+
+  delete(key) {
+    this.entries.delete(key);
+  }
+
+  get size() {
+    return this.entries.size;
   }
 }

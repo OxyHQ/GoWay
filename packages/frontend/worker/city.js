@@ -51,7 +51,7 @@
  */
 
 import { coverageAt, decodeCoverageTree, FULL } from './coverageTree.js';
-import { PMTiles, decompress } from './pmtiles.js';
+import { serveArchiveTile } from './tiles.js';
 
 /** `/map/city/{z}/{x}/{y}.pbf` and `/map/city-roads/…`, and nothing that merely resembles them. */
 const CITY_TILE_PATH = /^\/map\/(city|city-roads)\/(\d{1,2})\/(\d{1,9})\/(\d{1,9})\.pbf$/;
@@ -90,9 +90,6 @@ const TILE_TTL = 86400;
 
 /** Seconds the manifest, and anything derived from it, may be kept. */
 const MANIFEST_TTL = 300;
-
-/** Seconds a directory read may be kept at the edge (immutable per archive key). */
-const DIRECTORY_TTL = 604800;
 
 function headers(cacheSeconds, extra = {}) {
   return {
@@ -183,36 +180,64 @@ function archiveKeysOf(region) {
  * within `MANIFEST_TTL` + a minute, and one request only ever reads one
  * manifest. Nothing it names can go stale meanwhile, because archives are
  * never overwritten — a manifest only ever points at immutable keys.
+ *
+ * The planet's manifest is 2.6 MB of JSON. Re-reading and re-parsing it every
+ * minute in every isolate was the largest CPU cost of a city tile, so the
+ * colo's copy carries the R2 object's etag: when the minute is up and the
+ * etag is the one already parsed, the isolate keeps what it has (and the
+ * ownership trees it decoded) without reading the body. Concurrent requests
+ * in a cold isolate share one load.
  */
-const memory = { key: null, at: 0, value: null };
+const memory = { key: null, at: 0, value: null, etag: null, loading: null, loadingKey: null };
 
 async function loadManifest(env, ctx) {
   const key = env.MAP_CITY_MANIFEST;
-  const now = Date.now();
-  if (memory.key === key && memory.value && now - memory.at < 60_000) return memory.value;
+  if (memory.key === key && memory.value && Date.now() - memory.at < 60_000) return memory.value;
+  if (memory.loading && memory.loadingKey === key) return memory.loading;
+  memory.loadingKey = key;
+  memory.loading = refreshManifest(env, ctx, key).finally(() => {
+    memory.loading = null;
+  });
+  return memory.loading;
+}
 
+async function refreshManifest(env, ctx, key) {
   const cacheKey = new Request(`https://goway.internal/city-manifest/${encodeURIComponent(key)}`);
   const cache = caches.default;
   let body = null;
+  let etag = null;
   const hit = await cache.match(cacheKey);
-  if (hit) body = await hit.text();
+  if (hit) {
+    etag = hit.headers.get('x-goway-etag');
+    if (etag && memory.key === key && memory.value && etag === memory.etag) {
+      await hit.body?.cancel();
+      memory.at = Date.now();
+      return memory.value;
+    }
+    body = await hit.text();
+  }
   if (!body) {
     const object = await env.MAP_TILES.get(key);
     if (!object) throw new Error(`the city manifest "${key}" is missing from the bucket`);
     body = await object.text();
+    etag = object.etag ?? null;
     ctx.waitUntil(
       cache.put(
         cacheKey,
         new Response(body, {
-          headers: { 'cache-control': `public, max-age=${MANIFEST_TTL}` },
+          headers: {
+            'cache-control': `public, max-age=${MANIFEST_TTL}`,
+            ...(etag ? { 'x-goway-etag': etag } : {}),
+          },
         }),
       ),
     );
   }
   const value = { ...parseCityManifest(JSON.parse(body)), body };
   memory.key = key;
-  memory.at = now;
+  memory.at = Date.now();
   memory.value = value;
+  memory.etag = etag;
   return value;
 }
 
@@ -239,38 +264,6 @@ export function ownerOf(manifest, x, y) {
   return null;
 }
 
-/** A PMTiles byte source over R2, with directories cached at the edge (as the basemap's). */
-function archiveSource(bucket, key, ctx) {
-  const cache = caches.default;
-  return {
-    async read(offset, length, options = {}) {
-      const range = { offset, length };
-      if (!options.hot) {
-        const object = await bucket.get(key, { range });
-        if (!object) throw new Error(`the archive "${key}" is missing from the bucket`);
-        return new Uint8Array(await object.arrayBuffer());
-      }
-      const cacheKey = new Request(
-        `https://goway.internal/pmtiles/${encodeURIComponent(key)}/${offset}-${length}`,
-      );
-      const hit = await cache.match(cacheKey);
-      if (hit) return new Uint8Array(await hit.arrayBuffer());
-      const object = await bucket.get(key, { range });
-      if (!object) throw new Error(`the archive "${key}" is missing from the bucket`);
-      const bytes = new Uint8Array(await object.arrayBuffer());
-      ctx.waitUntil(
-        cache.put(
-          cacheKey,
-          new Response(bytes, {
-            headers: { 'cache-control': `public, max-age=${DIRECTORY_TTL}` },
-          }),
-        ),
-      );
-      return bytes;
-    },
-  };
-}
-
 /** `/map/city/{z}/{x}/{y}.pbf` and `/map/city-roads/{z}/{x}/{y}.pbf`. */
 export async function serveCityTile(url, request, env, ctx) {
   const match = CITY_TILE_PATH.exec(url.pathname);
@@ -289,48 +282,39 @@ export async function serveCityTile(url, request, env, ctx) {
   }
 
   let manifest;
+  const manifestStarted = Date.now();
   try {
     manifest = await loadManifest(env, ctx);
   } catch (error) {
     return text(502, `The city manifest could not be read: ${error.message}`, 0);
   }
+  const manifestMs = Date.now() - manifestStarted;
   const owner = ownerOf(manifest, x, y);
   const ref = owner?.[kind];
   if (!ref) {
     return withMethod(request, text(404, 'No published region covers this tile.', MANIFEST_TTL));
   }
 
-  const cache = caches.default;
-  const cacheKey = new Request(
-    `https://goway.internal/map/city/${encodeURIComponent(ref.key)}/${z}/${x}/${y}.pbf`,
-  );
-  const hit = await cache.match(cacheKey);
-  if (hit) return withMethod(request, hit);
-
-  let tile;
-  try {
-    tile = await new PMTiles(archiveSource(env.MAP_TILES, ref.key, ctx)).getTile(z, x, y);
-  } catch (error) {
-    return text(502, `The city archive could not be read: ${error.message}`, 0);
-  }
-  if (!tile) {
-    // Owned and empty: sea, fields. A fact about an immutable archive.
-    const empty = new Response(null, { status: 204, headers: headers(TILE_TTL) });
-    ctx.waitUntil(cache.put(cacheKey, empty.clone()));
-    return empty;
-  }
-  // Decoded here, as the basemap's are: workerd drops a hand-set
-  // `content-encoding`, so gzip bytes must not leave labelled as MVT
-  // (`index.js` → `serveTileFromArchive` has the measured story).
-  const body = await decompress(tile.bytes, tile.compression);
-  const response = new Response(body, {
-    headers: headers(TILE_TTL, {
-      'content-type': 'application/vnd.mapbox-vector-tile',
-      'content-length': String(body.length),
-    }),
+  // Owned and empty (sea, fields) is a 204 — a fact about an immutable
+  // archive, cached for a day. A tile goes out as the archive stores it,
+  // gzipped, declared, and never re-encoded (`tiles.js`).
+  const response = await serveArchiveTile({
+    request,
+    ctx,
+    bucket: env.MAP_TILES,
+    key: ref.key,
+    z,
+    x,
+    y,
+    cacheKey: `map/city/${encodeURIComponent(ref.key)}/${z}/${x}/${y}.pbf`,
+    cacheSeconds: TILE_TTL,
+    contentType: 'application/vnd.mapbox-vector-tile',
+    publicHeaders: headers(TILE_TTL),
+    missStatus: 204,
+    what: 'city archive',
   });
-  ctx.waitUntil(cache.put(cacheKey, response.clone()));
-  return withMethod(request, response);
+  response.headers.append('server-timing', `manifest;dur=${manifestMs}`);
+  return response;
 }
 
 /**
@@ -467,4 +451,6 @@ export function forgetCityManifest() {
   memory.key = null;
   memory.at = 0;
   memory.value = null;
+  memory.etag = null;
+  memory.loading = null;
 }

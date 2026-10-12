@@ -169,7 +169,29 @@ next manifest (five minutes). Edge cache keys name the archive key, so a
 rebuilt region never mixes with the old at the edge; directories are cached a
 week per archive, as the basemap's. The manifest is read once per colo per five
 minutes and kept per isolate for a minute; a tile is matched against regions by
-bounding box first, and only those few ownership trees are decoded.
+bounding box first, and only those few ownership trees are decoded. An
+isolate re-reads the 2.6 MB manifest only when its etag changes.
+
+**On the wire** (`worker/tiles.js`, shared with the basemap and the elevation
+tiles): the archives store gzipped tiles, and a client that accepts gzip gets
+those bytes as they are, `content-encoding: gzip`, built with
+`encodeBody: 'manual'` — no compression work per request; any other client
+gets them decoded, `Vary: Accept-Encoding`. The edge cache holds the stored
+bytes opaquely and every answer is rebuilt from them. Measured on the edge
+(PDX) before the change was deployed: Madrid's densest city tile 502,915 →
+274,015 B, its roads 58,790 → 24,750 B, a dense basemap tile 936,345 →
+558,473 B, decoded by Chromium to the identical tile.
+
+**One storage read per tile.** An isolate keeps each archive's header and
+decoded directories (`DirectoryMemo`, 192 entries); the colo's cache keeps the
+directory bytes for a week; R2 is asked for the tile alone once the leaf is
+known. Every answer says so in `Server-Timing` (`r2;desc="N reads"`). What a
+miss costs is then the R2 range reads themselves: from PDX to the bucket
+(WEUR) one read measured 450–900 ms, so a tile in a leaf the colo has not
+seen yet (2 reads) is 1.0–1.5 s and any other miss one read. That floor is
+the bucket's distance, not the Worker; closing it means data nearer the
+reader (a replica, or leaf directories in a global store), which is a
+Cloudflare-resource decision.
 
 **Off until configured.** With `MAP_CITY_MANIFEST` unset — production now —
 every tile is 404, the coverage document covers nothing (the client draws the
