@@ -1,10 +1,18 @@
 import { describe, expect, test } from 'bun:test';
 import type { StreetSceneManifest } from '@goway.to/sdk';
 
-import { isAllowedAssetUrl, planSceneAssets } from '../assets';
+import { isAllowedAssetUrl, planSceneAssets, radChunksAllowed } from '../assets';
 import { embedUrl, encodeBridgeMessage, isOnOrigin, parseBridgeMessage } from '../bridge';
 import { createCameraRig, MAX_PITCH } from '../cameraRig';
-import { assessDevice, MAX_PIXEL_RATIO } from '../deviceProfile';
+import {
+  assessDevice,
+  DISCRETE_GPU_MAX_LOD_SCALE,
+  DISCRETE_GPU_MAX_PIXEL_RATIO,
+  FULL_LOD_SCALE,
+  hasDiscreteGpu,
+  MAX_PIXEL_RATIO,
+  PREVIEW_LOD_SCALE,
+} from '../deviceProfile';
 import type { Vec3 } from '../types';
 
 const close = (a: readonly number[], b: readonly number[], digits = 6) => {
@@ -28,9 +36,42 @@ describe('assessDevice', () => {
     const result = assessDevice(capable);
     expect(result.tier).toBe('full');
     expect(result.pixelRatio).toBe(MAX_PIXEL_RATIO);
+    expect(result.lodScale).toBe(FULL_LOD_SCALE);
   });
 
-  test('any constrained signal degrades to preview at pixel ratio 1', () => {
+  test('only a discrete GPU in a computer gets headroom above the base budget', () => {
+    const rtx =
+      'ANGLE (NVIDIA, NVIDIA GeForce RTX 5090 (0x00002B85) Direct3D11 vs_5_0 ps_5_0, D3D11)';
+    const desktop = assessDevice({ ...capable, gpuRenderer: rtx, mobile: false });
+    expect(desktop.maxLodScale).toBe(DISCRETE_GPU_MAX_LOD_SCALE);
+    expect(desktop.maxPixelRatio).toBe(DISCRETE_GPU_MAX_PIXEL_RATIO);
+    // Starting where every computer starts: the governor climbs from there.
+    expect(desktop.lodScale).toBe(FULL_LOD_SCALE);
+
+    for (const gpu of [
+      'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      'ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      'Apple GPU',
+      'Mali-G78',
+      undefined,
+    ]) {
+      const result = assessDevice({ ...capable, gpuRenderer: gpu, mobile: false });
+      expect(result.maxLodScale).toBe(FULL_LOD_SCALE);
+      expect(result.maxPixelRatio).toBe(MAX_PIXEL_RATIO);
+    }
+    expect(assessDevice({ ...capable, gpuRenderer: rtx, mobile: true }).maxLodScale).toBe(
+      FULL_LOD_SCALE,
+    );
+    expect(hasDiscreteGpu('ANGLE (AMD, AMD Radeon RX 7900 XTX Direct3D11)')).toBe(true);
+  });
+
+  test('a preview device never climbs past where it started', () => {
+    const result = assessDevice({ ...capable, saveData: true });
+    expect(result.maxLodScale).toBe(result.lodScale);
+    expect(result.maxPixelRatio).toBe(result.pixelRatio);
+  });
+
+  test('any constrained signal degrades to preview at pixel ratio 1 and a smaller LoD budget', () => {
     for (const signal of [
       { deviceMemoryGb: 2 },
       { hardwareConcurrency: 2 },
@@ -42,6 +83,8 @@ describe('assessDevice', () => {
       const result = assessDevice({ ...capable, ...signal });
       expect(result.tier).toBe('preview');
       expect(result.pixelRatio).toBe(1);
+      expect(result.lodScale).toBe(PREVIEW_LOD_SCALE);
+      expect(result.lodScale).toBeLessThan(FULL_LOD_SCALE);
       expect(result.reasons.length).toBeGreaterThan(0);
     }
   });
@@ -52,14 +95,20 @@ describe('assessDevice', () => {
 });
 
 describe('planSceneAssets', () => {
-  const asset = (role: 'splat' | 'splat_preview' | 'poster', url: string) =>
+  type Asset = StreetSceneManifest['assets'][number];
+  const asset = (role: Asset['role'], url: string) =>
     ({
       role,
       url,
-      format: role === 'poster' ? 'jpeg' : 'spz',
+      format:
+        role === 'poster'
+          ? 'jpeg'
+          : role === 'splat_environment' || url.endsWith('.rad')
+            ? 'rad'
+            : 'spz',
       byteSize: 1,
       sha256: '',
-    }) as StreetSceneManifest['assets'][number];
+    }) as Asset;
   const manifest = {
     assets: [
       asset('splat', 'https://cdn.example/full.spz'),
@@ -101,6 +150,106 @@ describe('planSceneAssets', () => {
       upgrade: null,
       poster: { role: 'poster' },
     });
+  });
+
+  describe('a rad splat', () => {
+    const lod = {
+      assets: [
+        asset('splat', 'https://cdn.example/scene-lod.rad'),
+        asset('splat_preview', 'https://cdn.example/preview.spz'),
+        asset('splat_environment', 'https://cdn.example/sky-lod.rad'),
+        asset('poster', 'https://cdn.example/poster.jpg'),
+      ],
+    };
+
+    test('is loaded alone on every tier that draws, with its environment', () => {
+      for (const tier of ['full', 'preview'] as const) {
+        expect(planSceneAssets(lod, tier, open)).toMatchObject({
+          first: { role: 'splat', format: 'rad' },
+          upgrade: null,
+          environment: { role: 'splat_environment' },
+          poster: { role: 'poster' },
+        });
+      }
+      expect(planSceneAssets(lod, 'unsupported', open)).toMatchObject({
+        first: null,
+        environment: null,
+      });
+    });
+
+    test('loads without an environment, and an environment never draws alone', () => {
+      expect(planSceneAssets({ assets: [lod.assets[0]] }, 'full', open).environment).toBeNull();
+      const environmentOnly = { assets: [lod.assets[2], lod.assets[3]] };
+      for (const tier of ['full', 'preview'] as const)
+        expect(planSceneAssets(environmentOnly, tier, open)).toMatchObject({
+          first: null,
+          environment: null,
+        });
+    });
+
+    test('an spz scene keeps its environment wherever it draws', () => {
+      const spz = { assets: [...manifest.assets, lod.assets[2]] };
+      expect(planSceneAssets(spz, 'full', open)).toMatchObject({
+        first: { role: 'splat_preview' },
+        upgrade: { role: 'splat' },
+        environment: { role: 'splat_environment' },
+      });
+      expect(planSceneAssets(spz, 'preview', open).environment?.role).toBe('splat_environment');
+    });
+
+    test('the environment passes the asset origin policy too', () => {
+      const locked = { allowedOrigin: 'https://cdn.example', allowInsecure: false };
+      const elsewhere = {
+        assets: [lod.assets[0], asset('splat_environment', 'https://other.example/sky-lod.rad')],
+      };
+      expect(planSceneAssets(elsewhere, 'full', locked)).toMatchObject({
+        first: { role: 'splat' },
+        environment: null,
+      });
+    });
+  });
+
+  test('a RAD header may name chunks only beside itself, under the same policy', () => {
+    const header = 'https://cdn.example/scenes/s1/v3/scene-lod.rad';
+    const chunk = (filename?: string) => [{ filename }];
+    expect(
+      radChunksAllowed(
+        header,
+        [{ filename: 'scene-lod-0.radc' }, { filename: 'scene-lod-1.radc' }],
+        open,
+      ),
+    ).toBe(true);
+    // A single-file RAD: every chunk is a range of the header's own file.
+    expect(radChunksAllowed(header, [{}, {}], open)).toBe(true);
+    expect(radChunksAllowed(header, [], open)).toBe(true);
+    for (const outside of [
+      '../v2/scene-lod-1.radc',
+      '/scenes/s1/v3/../v2/scene-lod-1.radc',
+      'nested/scene-lod-1.radc',
+      'https://evil.example/scenes/s1/v3/scene-lod-1.radc',
+      '//evil.example/scenes/s1/v3/scene-lod-1.radc',
+      'http://cdn.example/scenes/s1/v3/scene-lod-1.radc',
+    ])
+      expect(radChunksAllowed(header, chunk(outside), open)).toBe(false);
+    // An absolute URL that IS beside the header is beside the header.
+    expect(
+      radChunksAllowed(header, chunk('https://cdn.example/scenes/s1/v3/scene-lod-1.radc'), open),
+    ).toBe(true);
+    // The origin lock applies to chunks exactly as to the header.
+    const locked = { allowedOrigin: 'https://scenes.example', allowInsecure: false };
+    expect(radChunksAllowed(header, chunk('scene-lod-1.radc'), locked)).toBe(false);
+    expect(
+      radChunksAllowed(
+        'https://scenes.example/s1/scene-lod.rad',
+        chunk('scene-lod-1.radc'),
+        locked,
+      ),
+    ).toBe(true);
+    expect(radChunksAllowed('not a url', chunk('scene-lod-1.radc'), open)).toBe(false);
+    // Loopback HTTP is a local asset server: its chunks are as local as it is.
+    expect(
+      radChunksAllowed('http://127.0.0.1:8791/scene-lod.rad', chunk('scene-lod-0.radc'), open),
+    ).toBe(true);
   });
 
   test('the asset origin policy is enforced', () => {

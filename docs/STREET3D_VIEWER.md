@@ -40,20 +40,42 @@ canvas, never splat pixels.
 A Gaussian scene is only trustworthy from where it was observed; free flight
 exposes unobserved space as shards and needles, worst at the edges of a portrait
 capture shown on a landscape screen. When a manifest publishes `navigation`, the
-viewer opens in guided **Walk** mode (`components/street3d/guidedNavigation.ts`):
+viewer opens in guided **Walk** mode: you walk freely, but only over the ground
+the scene was observed from. No viewpoint is ever shown or snapped to; there
+are no arrows or markers.
 
-- The camera stands on a viewpoint (the one nearest `initialView.position`,
-  facing `initialView.target`) and glides (~400 ms, eased) to the next one:
-  W/S or the up/down arrows, the on-screen arrows, a click ahead, or a ground
-  marker. The next viewpoint is the best within 45° of the requested ground
-  direction and 0.5–6 m away. A/D and left/right turn; nothing strafes.
-- Look is free in yaw; pitch is clamped to ±35°.
+- **Walkable region** (`components/street3d/walkableRegion.ts`). Viewpoints
+  carry no order, so they are linked by a Gabriel graph (no other viewpoint
+  inside the circle on the link as diameter) limited to 6 m; the region is the
+  union of ground capsules of radius `reach` around the links, plus a disc around
+  any unlinked viewpoint. `reach` is the manifest's `navigation.reachMeters`,
+  else 3 m for a panorama (horizontal FOV ≥ 170°) and 1.2 m otherwise. All in
+  the ground plane of `sceneUp(enuFromScene)`; queries use a uniform grid and
+  allocate nothing.
+- **Every frame** the wished-for position is clamped to the nearest walkable
+  point, so pushing into the edge slides along it (no visible wall). The camera
+  stands at the captured height there: each viewpoint's height is the median of
+  those within 3 m, then blended over the nearby links so the height stays
+  continuous.
+- **Start**: `initialView.position` clamped into the region, facing
+  `initialView.target`.
+- **Keyboard**: W/S or ↑/↓ walk forward/back along the ground, A/D strafe, ←/→
+  turn (as in Street View), Shift runs. 1.4 m/s walking, 3.5 m/s running.
+- **Mouse**: drag to look. Click glides (eased, 2.5 m/s on average, 0.35–2.5 s)
+  to the ground under the pointer, at most 25 m away and clamped into the
+  region. The ground is 1.6 m below the captured height. While hovering, a
+  ring under the pointer shows where a click goes, only over walkable ground.
+- **Touch**: one-finger drag to look. A touch landing in the lower two thirds
+  of the left third becomes a thumbstick there once it moves: up walks
+  forward, sideways strafes, full deflection (56 px) runs. It disappears on
+  release. A double tap glides to that ground point; pinch narrows the FOV.
+- Look is free in yaw. Pitch is clamped to ±35°, or ±60° when the capture's
+  vertical FOV is at least 100° (a panorama saw sky and ground).
 - The vertical FOV is the captured one (wheel/pinch only narrow it). Where the
   screen's horizontal FOV exceeds the captured horizontal FOV × 1.3, the sides
   are shaded instead of drawn; every edge is softly vignetted.
-- Ground markers (1.6 m below each reachable viewpoint, one per direction
-  sector) appear on hover or drag and after each step.
 
+The native app gets the same controls through the embedded web viewer.
 Orbit stays available behind the toggle as the free, secondary mode. Without
 `navigation`, the viewer behaves as before (free orbit/walk).
 
@@ -62,28 +84,43 @@ Orbit stays available behind the toggle as the free, secondary mode. Without
 `deviceProfile.ts` judges the device before the engine is fetched:
 
 - no WebGL2 → `unsupported`: no engine download, the poster and a sentence;
-- low memory, few cores, Save-Data, a slow connection, a small max texture or a
-  splat too large for reported memory → `preview`: the light splat only, pixel
-  ratio 1;
-- otherwise `full`: `splat_preview` first, then `splat` streamed in and swapped,
-  pixel ratio capped at 1.5.
+- low memory, few cores, Save-Data, a slow connection, a small max texture or an
+  `spz` splat too large for reported memory → `preview`: pixel ratio 1, and the
+  light `spz` splat only, or a `rad` scene at half the LoD budget;
+- otherwise `full`: pixel ratio capped at 1.5; an `spz` scene draws
+  `splat_preview` first, then `splat` streamed in and swapped.
 
-The engine stops drawing in hidden tabs and on unmount frees both meshes, the
-Spark renderer and the WebGL context. Splats are fetched without credentials.
-A development build shows fps, bytes and load timings behind the `perf` toggle.
+A `rad` splat is a Spark level-of-detail tree, loaded paged on every tier that
+draws, with no preview: its coarse levels draw first (`preview`), and the phase
+is `full` once the pager has been idle for 500 ms. Spark's per-platform budget
+(2.5M splats desktop, 1.5M iOS, 1M Android) is scaled by `lodSplatScale` 1
+(`full`) or 0.5 (`preview`). The page pool holds extended splats (float32
+centres: packed float16 steps by 12.5 cm beyond 128 m, which stripes a street
+block) at half Spark's splat count, so its memory stays Spark's, scaled by the
+tier. A chunked RAD's header names its `.radc` chunks; the viewer reads the
+header first and refuses the scene unless every chunk resolves beside it and
+passes the `STREET3D_ASSET_ORIGIN` rule. A `splat_environment` (always `rad`) is
+paged into the same budget and drawn behind the scene by Spark's depth sort;
+it loads only with a scene, and its failure is not an error.
+
+The engine stops drawing in hidden tabs and on unmount frees every mesh, the
+Spark renderer (page pool and workers included) and the WebGL context. Splats
+are fetched without credentials. A development build shows fps, splats drawn,
+bytes and load timings behind the `perf` toggle.
 
 ## Configuration
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `EXPO_PUBLIC_STREET3D_ENABLED` | off | Coverage layer and viewer. A 404 (no GoWay body) from coverage switches the layer off for the session; 503 hides it until the next viewport. |
+| `EXPO_PUBLIC_MAP_STREET3D` | on | The coverage layer is the `street3d` map feature: on by default, switched off per device in the map's settings, and only `0`/`false` removes it from a build (`docs/MAP_FEATURES.md`). `/street3d/<id>` always opens. A 404 (no GoWay body) from coverage switches the layer off for the session; 503 hides it until the next viewport. |
 | `EXPO_PUBLIC_STREET3D_ASSET_ORIGIN` | unset | When set, the only origin assets may come from. Otherwise any `https:` URL (the SDK's manifest parser already refuses anything else). |
 | `EXPO_PUBLIC_WEB_ORIGIN` | `https://goway.to` | What the native WebView loads. |
 | `EXPO_PUBLIC_STREET3D_FIXTURE_*` | unset | Fixture splat/poster URLs, anchor, opening view and credit (see `.env.example`). With an anchor, the fixtures are one scene, `s3d_fixture_anchor`, and two cells beside it; without, Barcelona examples. `…_NAVIGATION_URL` attaches a `navigation` JSON to the first fixture scene. |
 
 `public/_headers` sets no CSP. If one is added, it must allow the asset origin
 in `connect-src` and `img-src`, and `blob:` in `worker-src`. The scene CDN must
-answer with `Access-Control-Allow-Origin`.
+answer with `Access-Control-Allow-Origin` and allow the `Range` request header
+(a RAD header is read by range).
 
 No sample splat is committed or linked by default: GoWay ships only assets whose
 licence has been verified. Point the fixture variables at a `.spz` you are

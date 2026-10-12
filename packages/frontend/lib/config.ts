@@ -45,16 +45,6 @@ export const MERCARIA_API_URL =
   origin(process.env.EXPO_PUBLIC_MERCARIA_API_URL) ?? DEFAULT_MERCARIA_API_BASE_URL;
 
 /**
- * Whether Street 3D VIEWING is on: the coverage layer on the map and the
- * scene viewer route.
- *
- * Off unless `EXPO_PUBLIC_STREET3D_ENABLED` is `1`/`true`. Even when on, a
- * coverage endpoint that answers 404 or 503 hides the layer silently — the map
- * never shows an error for an optional layer.
- */
-export const STREET3D_ENABLED = /^(1|true)$/i.test(process.env.EXPO_PUBLIC_STREET3D_ENABLED ?? '');
-
-/**
  * The origin published scene assets (splats, posters) are served from, when
  * it is not the API's.
  *

@@ -20,8 +20,9 @@ export type Vec3 = [number, number, number];
  * Where the viewer is.
  *
  *  - `loading`  nothing drawable yet; the poster is showing.
- *  - `preview`  the light splat is drawing; full detail may still stream in.
- *  - `full`     the full splat is drawing.
+ *  - `preview`  the light splat, or a level-of-detail tree's coarse levels, is
+ *               drawing; full detail may still stream in.
+ *  - `full`     the full splat is drawing, or the tree has streamed this view.
  *  - `error`    the scene could not be loaded or the GPU context was lost.
  *  - `unsupported` this device cannot draw a scene at all (no WebGL2).
  */
@@ -33,8 +34,9 @@ export type SceneViewerControlMode = 'orbit' | 'walk';
 /**
  * What the device can afford.
  *
- * `preview` caps the viewer at the light splat: a low-memory or slow device
- * gets a scene it can hold rather than one that crashes the tab.
+ * `preview` caps the viewer at the light splat, or a level-of-detail scene at
+ * a smaller budget: a low-memory or slow device gets a scene it can hold
+ * rather than one that crashes the tab.
  */
 export type SceneDeviceTier = 'full' | 'preview' | 'unsupported';
 
@@ -44,9 +46,13 @@ export interface SceneViewerStats {
   firstFrameMs: number | null;
   previewLoadMs: number | null;
   fullLoadMs: number | null;
+  /** Splats drawn in the last frame. */
+  splats: number;
   /** Splat bytes received so far. */
   bytes: number;
   pixelRatio: number;
+  /** The LoD budget multiplier the quality governor holds now. */
+  lodScale: number;
   tier: SceneDeviceTier;
 }
 

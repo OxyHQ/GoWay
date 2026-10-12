@@ -23,7 +23,15 @@ export interface DeviceSignals {
   effectiveType?: string;
   /** `MAX_TEXTURE_SIZE` of the WebGL2 context. */
   maxTextureSize?: number;
-  /** Byte size of the full splat, to compare against memory. */
+  /** The unmasked WebGL renderer string, where the browser reports it. */
+  gpuRenderer?: string;
+  /** A phone or tablet (`navigator.userAgentData.mobile`, else the user agent). */
+  mobile?: boolean;
+  /**
+   * Byte size of a full splat that loads WHOLE (`spz`), to compare against
+   * memory. Absent for a level-of-detail tree, which holds only what its
+   * budget draws.
+   */
   fullSplatBytes?: number;
 }
 
@@ -31,6 +39,21 @@ export interface DeviceAssessment {
   tier: SceneDeviceTier;
   /** Cap on the canvas pixel ratio. Splat cost is per pixel; retina is a luxury. */
   pixelRatio: number;
+  /**
+   * Multiplier on the renderer's per-platform level-of-detail budget — the
+   * splats a `rad` scene may draw at once, which is also what it streams and
+   * holds. No effect on an `spz` scene.
+   */
+  lodScale: number;
+  /**
+   * How far the quality governor (`qualityGovernor.ts`) may climb from
+   * `lodScale` / `pixelRatio` once frames show the device keeping up, and how
+   * far it may fall when they show it is not. The page pool is sized for
+   * `maxLodScale`, so it is decided here, before anything is allocated.
+   */
+  maxLodScale: number;
+  maxPixelRatio: number;
+  minLodScale: number;
   /** Why the tier is not `full` — for the dev overlay, never for users. */
   reasons: string[];
 }
@@ -41,13 +64,56 @@ const SLOW_CONNECTIONS = new Set(['slow-2g', '2g', '3g']);
 export const MAX_PIXEL_RATIO = 1.5;
 /** Preview-tier pixel ratio cap. */
 export const PREVIEW_PIXEL_RATIO = 1;
+/**
+ * Full-tier detail budget: the renderer's own per-platform base (Spark: 2.5M
+ * splats on desktop, 1.5M on iOS, 1M on Android), which already separates a
+ * phone from a computer. An integrated laptop GPU draws it at the 1.5 pixel
+ * ratio cap; the dev overlay's splat count and fps are where to re-tune it.
+ */
+export const FULL_LOD_SCALE = 1;
+/**
+ * Preview-tier detail budget: half the base. A constrained device draws, sorts,
+ * streams and pools half as many splats — the whole scene still, coarser —
+ * rather than a separate light asset.
+ */
+export const PREVIEW_LOD_SCALE = 0.5;
+/**
+ * The governor's ceiling on a discrete GPU in a computer: twice the desktop
+ * base, 5M splats — the most a street block shows from walking distance, and
+ * what a 192-page pool (`sparkEngine.ts`) holds with room to turn around.
+ */
+export const DISCRETE_GPU_MAX_LOD_SCALE = 2;
+/** Its pixel-ratio ceiling: a 2× canvas, where the screen has one. */
+export const DISCRETE_GPU_MAX_PIXEL_RATIO = 2;
+/** The governor's floor on every tier: a scene still recognisable, never a blank. */
+export const MIN_LOD_SCALE = 0.3;
+
+/**
+ * A GPU with its own memory. Integrated GPUs (Intel UHD/Iris, AMD Radeon
+ * Graphics/Vega, Apple, Mali, Adreno) share the system's, so a large splat pool
+ * starves the browser; they keep the base budget as their ceiling.
+ */
+const DISCRETE_GPU = /\b(GeForce|RTX|Quadro|NVIDIA (A|L)\d|Radeon (RX|Pro)|Arc\(TM\) A|Arc A\d)/i;
+
+export function hasDiscreteGpu(renderer: string | undefined): boolean {
+  return renderer !== undefined && DISCRETE_GPU.test(renderer);
+}
 
 export function assessDevice(signals: DeviceSignals): DeviceAssessment {
   const dpr =
     Number.isFinite(signals.devicePixelRatio) && signals.devicePixelRatio > 0
       ? signals.devicePixelRatio
       : 1;
-  if (!signals.webgl2) return { tier: 'unsupported', pixelRatio: 1, reasons: ['no WebGL2'] };
+  if (!signals.webgl2)
+    return {
+      tier: 'unsupported',
+      pixelRatio: 1,
+      lodScale: 0,
+      maxLodScale: 0,
+      maxPixelRatio: 1,
+      minLodScale: 0,
+      reasons: ['no WebGL2'],
+    };
 
   const reasons: string[] = [];
   if (signals.deviceMemoryGb !== undefined && signals.deviceMemoryGb <= 2)
@@ -71,6 +137,24 @@ export function assessDevice(signals: DeviceSignals): DeviceAssessment {
   }
 
   if (reasons.length > 0)
-    return { tier: 'preview', pixelRatio: Math.min(dpr, PREVIEW_PIXEL_RATIO), reasons };
-  return { tier: 'full', pixelRatio: Math.min(dpr, MAX_PIXEL_RATIO), reasons };
+    return {
+      tier: 'preview',
+      pixelRatio: Math.min(dpr, PREVIEW_PIXEL_RATIO),
+      lodScale: PREVIEW_LOD_SCALE,
+      // A constrained device streams no more than it started with.
+      maxLodScale: PREVIEW_LOD_SCALE,
+      maxPixelRatio: Math.min(dpr, PREVIEW_PIXEL_RATIO),
+      minLodScale: MIN_LOD_SCALE,
+      reasons,
+    };
+  const headroom = !signals.mobile && hasDiscreteGpu(signals.gpuRenderer);
+  return {
+    tier: 'full',
+    pixelRatio: Math.min(dpr, MAX_PIXEL_RATIO),
+    lodScale: FULL_LOD_SCALE,
+    maxLodScale: headroom ? DISCRETE_GPU_MAX_LOD_SCALE : FULL_LOD_SCALE,
+    maxPixelRatio: Math.min(dpr, headroom ? DISCRETE_GPU_MAX_PIXEL_RATIO : MAX_PIXEL_RATIO),
+    minLodScale: MIN_LOD_SCALE,
+    reasons,
+  };
 }

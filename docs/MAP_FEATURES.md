@@ -1,6 +1,6 @@
 # Map features: the registry, the settings modal and the credit
 
-GoWay's map has optional features: the globe, terrain, the 3D city and its
+GoWay's map has optional features: the globe, terrain, Street 3D, the 3D city and its
 trees, GoWay's own city tiles, the simulated city life, the landmarks, the
 route flyover. Each one used to be a
 build-time `EXPO_PUBLIC_MAP_*` flag plus a development-only `?param=1`, so the
@@ -49,6 +49,7 @@ now kills the trees, as a padded `0` always killed the globe and terrain.
 | --- | --- | --- | --- | --- | --- | --- |
 | `globe` | stable | **on** | web | `EXPO_PUBLIC_MAP_GLOBE` | `?globe=0/1` | redraws the map at the same camera |
 | `terrain` | stable | **on** | web, native (hillshade only) | `EXPO_PUBLIC_MAP_TERRAIN` | `?terrain=0/1` | web: redraws at the same camera; native: live |
+| `street3d` | stable | **on** | web, native | `EXPO_PUBLIC_MAP_STREET3D` | — | live (the coverage layer comes and goes; `/street3d/<id>` always opens) |
 | `city3d` | labs | off | web | `EXPO_PUBLIC_MAP_CITY3D` | `?city3d=1` | live (attach/detach) |
 | `citySky` | labs | off | web (needs `city3d`) | `EXPO_PUBLIC_MAP_CITY_SKY` | `?citysky=1` | live (re-attach; the time-of-day scrubber shows only while it draws) |
 | `detailedCity` | labs | off | web (needs `city3d`; brings its own live-clock sky without `citySky`) | `EXPO_PUBLIC_MAP_DETAILED_CITY` | `?detailedCity=1` | live (re-attach) |

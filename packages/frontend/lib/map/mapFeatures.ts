@@ -139,6 +139,18 @@ export const MAP_FEATURES = [
         .terrain,
   },
   {
+    id: 'street3d',
+    tier: 'stable',
+    // Published Street 3D scenes on the map. On for everyone: nothing in
+    // `.env` is needed, and a coverage endpoint that is absent (404) or down
+    // (503) only hides the layer (`features/street3d/queries.ts`).
+    defaultOn: true,
+    build: process.env.EXPO_PUBLIC_MAP_STREET3D,
+    requires: [],
+    // The native viewer embeds the web one (`docs/STREET3D_VIEWER.md`).
+    platforms: EVERYWHERE,
+  },
+  {
     id: 'city3d',
     section: 'layers',
     tier: 'labs',

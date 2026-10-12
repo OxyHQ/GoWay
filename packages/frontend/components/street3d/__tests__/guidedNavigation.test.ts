@@ -1,107 +1,36 @@
 import { describe, expect, test } from 'bun:test';
-import type { StreetSceneViewpoint } from '@goway.to/sdk';
 
 import { createCameraRig } from '../cameraRig';
 import {
-  clampPitch,
   easeInOut,
+  GLIDE_MAX_MS,
+  GLIDE_MIN_MS,
+  GO_MAX_METERS,
+  glideDurationMs,
   GUIDED_MAX_PITCH_DEGREES,
+  groundHit,
   HORIZONTAL_FOV_SLACK,
-  lerp3,
-  nearestViewpoint,
-  nextViewpoint,
-  reachableViewpoints,
+  pitchLimitDegrees,
+  STICK_DEAD_ZONE_PX,
+  STICK_RADIUS_PX,
+  stickInput,
+  TALL_CAPTURE_MAX_PITCH_DEGREES,
   viewFrustum,
 } from '../guidedNavigation';
 import type { Vec3 } from '../types';
 
 /** ENU scene: z up, ground ≈ 0, cameras at eye height. */
 const UP: Vec3 = [0, 0, 1];
-const vp = (x: number, y: number, z = 1.7): StreetSceneViewpoint => ({
-  position: [x, y, z],
-  forward: [0, 1, 0],
-});
 
-// A street running north (+y) with a side branch to the east at y = 6.
-const STREET: StreetSceneViewpoint[] = [
-  vp(0, 0), // 0
-  vp(0, 2), // 1 — 2 m ahead
-  vp(-0.1, 4.5), // 2 — further ahead, a touch west
-  vp(0, -2), // 3 — behind
-  vp(0.1, 0.2), // 4 — too close to be a step from 0
-  vp(0, 20), // 5 — too far
-  vp(3, 2.2), // 6 — ahead-right, ~56° off north from 0
-];
-
-describe('nearestViewpoint', () => {
-  test('finds the closest viewpoint in 3D', () => {
-    expect(nearestViewpoint(STREET, [0.1, 1.8, 1.6])).toBe(1);
-    expect(nearestViewpoint(STREET, [0, -5, 0])).toBe(3);
-  });
-  test('-1 for no viewpoints', () => {
-    expect(nearestViewpoint([], [0, 0, 0])).toBe(-1);
-  });
-});
-
-describe('nextViewpoint', () => {
-  test('forward picks the next place ahead, not the farthest in line', () => {
-    expect(nextViewpoint(STREET, 0, [0, 1, 0], UP)?.index).toBe(1);
-  });
-
-  test('backward picks the one behind', () => {
-    expect(nextViewpoint(STREET, 0, [0, -1, 0], UP)?.index).toBe(3);
-  });
-
-  test('ignores viewpoints closer than 0.5 m or farther than 6 m', () => {
-    const only = [vp(0, 0), vp(0, 0.2), vp(0, 9)];
-    expect(nextViewpoint(only, 0, [0, 1, 0], UP)).toBeNull();
-  });
-
-  test('ignores viewpoints outside the 45° cone', () => {
-    // Looking east-north-east (30° off east): 6 is inside, the street ahead is not.
-    const eastish: Vec3 = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6), 0];
-    expect(nextViewpoint(STREET, 0, eastish, UP)?.index).toBe(6);
-    // Looking due west: nothing.
-    expect(nextViewpoint(STREET, 0, [-1, 0, 0], UP)).toBeNull();
-  });
-
-  test('pitch does not matter — only the ground direction', () => {
-    expect(nextViewpoint(STREET, 0, [0, 1, 3], UP)?.index).toBe(1);
-    expect(nextViewpoint(STREET, 0, [0, 0, 1], UP)).toBeNull();
-  });
-
-  test('a height difference between viewpoints is not distance', () => {
-    const stairs = [vp(0, 0, 1.7), vp(0, 5.5, 4.5)];
-    expect(nextViewpoint(stairs, 0, [0, 1, 0], UP)?.index).toBe(1);
-  });
-
-  test('reports angle and ground distance', () => {
-    const step = nextViewpoint(STREET, 0, [0, 1, 0], UP);
-    expect(step?.distance).toBeCloseTo(2, 6);
-    expect(step?.angle).toBeCloseTo(0, 6);
-  });
-});
-
-describe('reachableViewpoints', () => {
-  test('one marker per direction sector, nearest first, within range', () => {
-    const markers = reachableViewpoints(STREET, 0, UP);
-    expect(markers).toContain(1);
-    expect(markers).toContain(3);
-    expect(markers).toContain(6);
-    // 2 shares 1's sector and is farther; 4 is too close; 5 is too far.
-    expect(markers).not.toContain(2);
-    expect(markers).not.toContain(4);
-    expect(markers).not.toContain(5);
-    expect(markers[0]).toBe(1);
-  });
-});
-
-describe('clamps', () => {
-  test('pitch is limited to ±35° by default', () => {
-    const max = (GUIDED_MAX_PITCH_DEGREES * Math.PI) / 180;
-    expect(clampPitch(1.2)).toBeCloseTo(max, 9);
-    expect(clampPitch(-1.2)).toBeCloseTo(-max, 9);
-    expect(clampPitch(0.1)).toBe(0.1);
+describe('pitch', () => {
+  test('±35° for a phone capture, ±60° for one that saw sky and ground', () => {
+    expect(pitchLimitDegrees(undefined)).toBe(GUIDED_MAX_PITCH_DEGREES);
+    expect(pitchLimitDegrees({ horizontalDegrees: 66, verticalDegrees: 50 })).toBe(
+      GUIDED_MAX_PITCH_DEGREES,
+    );
+    expect(pitchLimitDegrees({ horizontalDegrees: 179, verticalDegrees: 120 })).toBe(
+      TALL_CAPTURE_MAX_PITCH_DEGREES,
+    );
   });
 
   test('the guided rig never pitches past the limit', () => {
@@ -123,6 +52,79 @@ describe('clamps', () => {
     rig.lookToward([1, 0, 0]);
     expect(rig.pose().position).toEqual([4, 4, 1.7]);
     expect(rig.direction()[0]).toBeCloseTo(1, 6);
+  });
+
+  test('walk axes are horizontal whatever the pitch, and written in place', () => {
+    const rig = createCameraRig({ position: [0, 0, 1.7], target: [0, 10, 1.7], up: UP });
+    rig.setMode('walk');
+    rig.look(Math.PI / 2, 0.5);
+    const forward: Vec3 = [0, 0, 0];
+    const right: Vec3 = [0, 0, 0];
+    rig.walkAxes(forward, right);
+    // A quarter turn right from north faces east; right is then south.
+    expect(forward[0]).toBeCloseTo(1, 9);
+    expect(forward[2]).toBeCloseTo(0, 9);
+    expect(right[1]).toBeCloseTo(-1, 9);
+    const out = { position: [0, 0, 0] as Vec3, target: [0, 0, 0] as Vec3, up: [0, 0, 0] as Vec3 };
+    expect(rig.pose(out)).toBe(out);
+    expect(out.position).toEqual([0, 0, 1.7]);
+  });
+});
+
+describe('groundHit', () => {
+  const out: Vec3 = [0, 0, 0];
+
+  test('a ray looking down meets the ground plane', () => {
+    expect(groundHit([0, 0, 1.6], [0, 1, -1], UP, 0, out)).toBe(true);
+    expect(out[0]).toBeCloseTo(0, 9);
+    expect(out[1]).toBeCloseTo(1.6, 9);
+    expect(out[2]).toBeCloseTo(0, 9);
+  });
+
+  test('a ray at or above the horizon never does', () => {
+    expect(groundHit([0, 0, 1.6], [0, 1, 0], UP, 0, out)).toBe(false);
+    expect(groundHit([0, 0, 1.6], [0, 1, 0.2], UP, 0, out)).toBe(false);
+  });
+
+  test('a far hit is cut to the longest go along the ground', () => {
+    expect(groundHit([0, 0, 1.6], [0, 1, -0.001], UP, 0, out)).toBe(true);
+    expect(out[1]).toBeCloseTo(GO_MAX_METERS, 6);
+    expect(out[2]).toBeGreaterThan(1.5);
+  });
+
+  test('the plane follows the scene up', () => {
+    // Y-up scene: the ground is y = 0.
+    expect(groundHit([0, 1.6, 0], [0, -1, -1], [0, 1, 0], 0, out)).toBe(true);
+    expect(out[1]).toBeCloseTo(0, 9);
+    expect(out[2]).toBeCloseTo(-1.6, 9);
+  });
+});
+
+describe('glide and thumbstick', () => {
+  test('a glide lasts in proportion to its length, within bounds', () => {
+    expect(glideDurationMs(0.1)).toBe(GLIDE_MIN_MS);
+    expect(glideDurationMs(5)).toBe(2000);
+    expect(glideDurationMs(100)).toBe(GLIDE_MAX_MS);
+  });
+
+  test('ease-in-out starts and ends at rest and passes the midpoint', () => {
+    expect(easeInOut(0)).toBe(0);
+    expect(easeInOut(1)).toBe(1);
+    expect(easeInOut(0.5)).toBeCloseTo(0.5, 9);
+    expect(easeInOut(0.1)).toBeLessThan(0.1);
+    expect(easeInOut(2)).toBe(1);
+  });
+
+  test('the stick: dead zone, proportional, full past its radius; up is forward', () => {
+    const out: [number, number] = [9, 9];
+    expect(stickInput(STICK_DEAD_ZONE_PX - 1, 0, out)).toEqual([0, 0]);
+    stickInput(0, -STICK_RADIUS_PX, out);
+    expect(out[0]).toBeCloseTo(1, 9);
+    expect(out[1]).toBeCloseTo(0, 9);
+    stickInput(STICK_RADIUS_PX * 3, 0, out);
+    expect(out[1]).toBeCloseTo(1, 9);
+    stickInput(0, (STICK_RADIUS_PX + STICK_DEAD_ZONE_PX) / 2, out);
+    expect(out[0]).toBeCloseTo(-0.5, 9);
   });
 });
 
@@ -158,19 +160,5 @@ describe('viewFrustum', () => {
 
   test('no captured FOV: the default vertical, nothing masked', () => {
     expect(viewFrustum(2, undefined)).toMatchObject({ verticalDegrees: 60, sideMask: 0 });
-  });
-});
-
-describe('glide', () => {
-  test('ease-in-out starts and ends at rest and passes the midpoint', () => {
-    expect(easeInOut(0)).toBe(0);
-    expect(easeInOut(1)).toBe(1);
-    expect(easeInOut(0.5)).toBeCloseTo(0.5, 9);
-    expect(easeInOut(0.1)).toBeLessThan(0.1);
-    expect(easeInOut(2)).toBe(1);
-  });
-
-  test('lerp3', () => {
-    expect(lerp3([0, 0, 0], [2, 4, 6], 0.5)).toEqual([1, 2, 3]);
   });
 });

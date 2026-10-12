@@ -1,178 +1,110 @@
 /**
- * Street-View-style guided navigation over a scene's captured viewpoints.
+ * Guided Walk over a scene that publishes where it was captured from.
  *
  * A Gaussian scene is trustworthy only from where it was observed: fly the
  * camera into a gap and the splats turn into shards and needles. So when a
- * manifest publishes `navigation`, the camera's POSITION lives on the
- * viewpoint graph — it starts at a viewpoint and glides to the next one — and
- * its LOOK is free but bounded: pitch is clamped and the field of view never
- * exceeds what the source imagery covered, with the excess darkened rather
- * than drawn.
+ * manifest publishes `navigation`, the camera WALKS freely but only over the
+ * observed ground (`walkableRegion.ts`), at the height it was captured from,
+ * and its LOOK is free but bounded: pitch is clamped and the field of view
+ * never exceeds what the source imagery covered, with the excess darkened
+ * rather than drawn.
  *
  * Pure numbers, no renderer: the engine asks these questions every input and
  * every frame, and they are unit-tested here.
  */
-import type { StreetSceneFieldOfView, StreetSceneViewpoint } from '@goway.to/sdk';
+import type { StreetSceneFieldOfView } from '@goway.to/sdk';
 
 import type { Vec3 } from './types';
 
 const DEG = Math.PI / 180;
 
-export interface StepOptions {
-  /** Widest angle between the look direction and a step, degrees. */
-  maxAngleDegrees?: number;
-  /** Nearer than this is "the same place", metres. */
-  minDistanceMeters?: number;
-  /** Farther than this is a jump across unobserved space, metres. */
-  maxDistanceMeters?: number;
-}
-
-export const STEP_MAX_ANGLE_DEGREES = 45;
-export const STEP_MIN_DISTANCE_METERS = 0.5;
-export const STEP_MAX_DISTANCE_METERS = 6;
 /** Guided pitch limit: enough to look at a facade, not at the unobserved sky or ground. */
 export const GUIDED_MAX_PITCH_DEGREES = 35;
-/** How far the ground is below a viewpoint (a hand-held camera's height). */
-export const VIEWPOINT_HEIGHT_METERS = 1.6;
-/** Glide duration between viewpoints. */
-export const STEP_DURATION_MS = 400;
+/** A capture at least this tall vertically (a 360° rig) saw sky and ground too… */
+export const TALL_CAPTURE_VERTICAL_DEGREES = 100;
+/** …so its pitch may reach this far. */
+export const TALL_CAPTURE_MAX_PITCH_DEGREES = 60;
+/** How far the ground is below a capture position (a hand-held or pole camera's height). */
+export const CAPTURE_HEIGHT_METERS = 1.6;
+/** Walking pace, metres per second. */
+export const WALK_SPEED_MPS = 1.4;
+/** Shift: a run, metres per second. */
+export const RUN_SPEED_MPS = 3.5;
+/** A click glides at this average speed, metres per second… */
+export const GLIDE_SPEED_MPS = 2.5;
+/** …taking no less and no more than these, ms. */
+export const GLIDE_MIN_MS = 350;
+export const GLIDE_MAX_MS = 2500;
+/** A click farther than this along the ground glides only this far toward it, metres. */
+export const GO_MAX_METERS = 25;
 /** Horizontal view may exceed the captured horizontal FOV by this factor before it is masked. */
 export const HORIZONTAL_FOV_SLACK = 1.3;
 /** Vertical FOV when a manifest publishes none. */
 export const DEFAULT_VERTICAL_FOV_DEGREES = 60;
+/** Thumbstick deflection for full speed, px. */
+export const STICK_RADIUS_PX = 56;
+/** Thumbstick deflection ignored as a resting thumb, px. */
+export const STICK_DEAD_ZONE_PX = 8;
 
-const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const scale = (a: Vec3, s: number): Vec3 => [a[0] * s, a[1] * s, a[2] * s];
-
-/** `v` with its component along `up` removed: the part that moves you over the ground. */
-export function horizontal(v: Vec3, up: Vec3): Vec3 {
-  return sub(v, scale(up, dot(v, up)));
-}
-
-/** The viewpoint nearest `position`, or `-1` for none. */
-export function nearestViewpoint(
-  viewpoints: readonly StreetSceneViewpoint[],
-  position: Vec3,
-): number {
-  let best = -1;
-  let bestDistance = Infinity;
-  viewpoints.forEach((viewpoint, index) => {
-    const d = sub(viewpoint.position, position);
-    const distance = dot(d, d);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = index;
-    }
-  });
-  return best;
-}
-
-export interface StepCandidate {
-  index: number;
-  /** Horizontal distance, metres. */
-  distance: number;
-  /** Angle from the requested direction, radians. */
-  angle: number;
-}
-
-interface GroundOffset {
-  index: number;
-  distance: number;
-  offset: Vec3;
-}
-
-/** Every viewpoint a step from `from` may land on, in any direction. */
-export function stepCandidates(
-  viewpoints: readonly StreetSceneViewpoint[],
-  from: number,
-  up: Vec3,
-  options: StepOptions = {},
-): GroundOffset[] {
-  const min = options.minDistanceMeters ?? STEP_MIN_DISTANCE_METERS;
-  const max = options.maxDistanceMeters ?? STEP_MAX_DISTANCE_METERS;
-  const origin = viewpoints[from]?.position;
-  if (!origin) return [];
-  const result: GroundOffset[] = [];
-  viewpoints.forEach((viewpoint, index) => {
-    if (index === from) return;
-    const offset = horizontal(sub(viewpoint.position, origin), up);
-    const distance = Math.hypot(offset[0], offset[1], offset[2]);
-    if (distance >= min && distance <= max) result.push({ index, distance, offset });
-  });
-  return result;
+/** How far the view may pitch, degrees: further when the capture saw sky and ground. */
+export function pitchLimitDegrees(captured: StreetSceneFieldOfView | undefined): number {
+  return (captured?.verticalDegrees ?? 0) >= TALL_CAPTURE_VERTICAL_DEGREES
+    ? TALL_CAPTURE_MAX_PITCH_DEGREES
+    : GUIDED_MAX_PITCH_DEGREES;
 }
 
 /**
- * The viewpoint a step in `direction` lands on, or `null` when there is none
- * within the cone.
- *
- * Prefers small angles over short distances, but not absolutely: a viewpoint
- * 1 m away at 30° beats one 5 m away dead ahead, because Street View's arrow
- * goes to the next PLACE along the street, not the farthest one in line.
+ * Where a ray from `origin` along `direction` meets the ground plane at
+ * `groundHeight` (a coordinate along unit `up`), written into `out`; capped at
+ * {@link GO_MAX_METERS} along the ground. `false` when the ray never comes
+ * down to it (the sky, the horizon).
  */
-export function nextViewpoint(
-  viewpoints: readonly StreetSceneViewpoint[],
-  from: number,
+export function groundHit(
+  origin: Vec3,
   direction: Vec3,
   up: Vec3,
-  options: StepOptions = {},
-): StepCandidate | null {
-  const maxAngle = (options.maxAngleDegrees ?? STEP_MAX_ANGLE_DEGREES) * DEG;
-  const wanted = horizontal(direction, up);
-  const wantedLength = Math.hypot(wanted[0], wanted[1], wanted[2]);
-  if (!(wantedLength > 1e-9)) return null;
+  groundHeight: number,
+  out: Vec3,
+): boolean {
+  const fall = direction[0] * up[0] + direction[1] * up[1] + direction[2] * up[2];
+  const above = origin[0] * up[0] + origin[1] * up[1] + origin[2] * up[2] - groundHeight;
+  if (!(fall < -1e-6) || !(above > 0)) return false;
+  let t = above / -fall;
+  // The run along the ground, without the drop.
+  const along = Math.sqrt(
+    Math.max(0, direction[0] ** 2 + direction[1] ** 2 + direction[2] ** 2 - fall * fall),
+  );
+  if (along * t > GO_MAX_METERS) t = GO_MAX_METERS / along;
+  out[0] = origin[0] + direction[0] * t;
+  out[1] = origin[1] + direction[1] * t;
+  out[2] = origin[2] + direction[2] * t;
+  return true;
+}
 
-  let best: StepCandidate | null = null;
-  let bestScore = Infinity;
-  for (const candidate of stepCandidates(viewpoints, from, up, options)) {
-    const cos = dot(candidate.offset, wanted) / (candidate.distance * wantedLength);
-    const angle = Math.acos(Math.max(-1, Math.min(1, cos)));
-    if (angle > maxAngle) continue;
-    const score = candidate.distance * (1 + 2 * (angle / maxAngle));
-    if (score < bestScore) {
-      bestScore = score;
-      best = { index: candidate.index, distance: candidate.distance, angle };
-    }
-  }
-  return best;
+/** How long a glide over `meters` takes, ms: proportional, within bounds. */
+export function glideDurationMs(meters: number): number {
+  return Math.max(GLIDE_MIN_MS, Math.min(GLIDE_MAX_MS, (meters / GLIDE_SPEED_MPS) * 1000));
 }
 
 /**
- * The "next step" markers to offer from `from`: the best viewpoint per
- * direction sector, so a dense capture shows a few chevrons, not a carpet.
+ * A thumbstick deflection (screen px, y down) as walking input: `forward` and
+ * `right` in −1…1, zero inside the dead zone, full past
+ * {@link STICK_RADIUS_PX}, and proportional between — a light thumb strolls.
+ * Written into `out` as `[forward, right]`.
  */
-export function reachableViewpoints(
-  viewpoints: readonly StreetSceneViewpoint[],
-  from: number,
-  up: Vec3,
-  { sectors = 8, ...options }: StepOptions & { sectors?: number } = {},
-): number[] {
-  const candidates = stepCandidates(viewpoints, from, up, options);
-  if (candidates.length === 0) return [];
-  // Sector angles measured in the ground plane, from any fixed horizontal axis.
-  const axisX = horizontal(Math.abs(up[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], up);
-  const lengthX = Math.hypot(axisX[0], axisX[1], axisX[2]);
-  const ex = scale(axisX, 1 / lengthX);
-  const ey: Vec3 = [
-    up[1] * ex[2] - up[2] * ex[1],
-    up[2] * ex[0] - up[0] * ex[2],
-    up[0] * ex[1] - up[1] * ex[0],
-  ];
-  const best = new Map<number, { index: number; distance: number }>();
-  for (const candidate of candidates) {
-    const angle = Math.atan2(dot(candidate.offset, ey), dot(candidate.offset, ex));
-    const sector = Math.floor(((angle + Math.PI) / (2 * Math.PI)) * sectors) % sectors;
-    const current = best.get(sector);
-    if (!current || candidate.distance < current.distance) best.set(sector, candidate);
+export function stickInput(dx: number, dy: number, out: [number, number]): [number, number] {
+  const length = Math.hypot(dx, dy);
+  if (!(length > STICK_DEAD_ZONE_PX)) {
+    out[0] = 0;
+    out[1] = 0;
+    return out;
   }
-  return [...best.values()].sort((a, b) => a.distance - b.distance).map((entry) => entry.index);
-}
-
-/** Clamp a pitch (radians) to ± `maxDegrees`. */
-export function clampPitch(pitch: number, maxDegrees: number = GUIDED_MAX_PITCH_DEGREES): number {
-  const max = maxDegrees * DEG;
-  return Math.max(-max, Math.min(max, pitch));
+  const strength =
+    Math.min(STICK_RADIUS_PX, length - STICK_DEAD_ZONE_PX) / (STICK_RADIUS_PX - STICK_DEAD_ZONE_PX);
+  const k = Math.min(1, strength) / length;
+  out[0] = -dy * k;
+  out[1] = dx * k;
+  return out;
 }
 
 export interface ViewFrustum {
@@ -225,9 +157,4 @@ export function viewFrustum(
 export function easeInOut(t: number): number {
   const x = Math.max(0, Math.min(1, t));
   return x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2;
-}
-
-/** Linear interpolation of two points. */
-export function lerp3(a: Vec3, b: Vec3, t: number): Vec3 {
-  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }

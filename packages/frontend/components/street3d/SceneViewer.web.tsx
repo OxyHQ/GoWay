@@ -11,27 +11,25 @@
  *
  * Device capability is judged BEFORE the engine is fetched: a device without
  * WebGL2 never downloads a renderer it cannot run, and a constrained one is
- * told to load the preview only (`deviceProfile.ts`).
+ * told to load the preview only, or a level-of-detail scene at a smaller
+ * budget (`deviceProfile.ts`).
  *
- * Labels are React elements positioned by direct style writes from the
- * engine's per-frame projection — sixty React renders a second for forty
- * labels is the wrong tool, and a label lagging its building by a frame
- * reads as the label sliding.
+ * Labels, the ground cursor and the touch thumbstick are elements positioned
+ * by direct style writes from the engine's per-frame projection — sixty React
+ * renders a second for forty labels is the wrong tool, and a label lagging its
+ * building by a frame reads as the label sliding.
  */
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { Fab } from '@oxy.so/bloom/fab';
-import { RiArrowDownLine } from '@oxy.so/bloom/icons/RiArrowDownLine';
-import { RiArrowUpLine } from '@oxy.so/bloom/icons/RiArrowUpLine';
 import { Text } from '@oxy.so/bloom/typography';
 
 import { STREET3D_ASSET_ORIGIN } from '@/lib/config';
-import { useTranslation } from '@/lib/i18n';
 import { sceneUp } from '@/lib/street3d/geodesy';
 
 import { planSceneAssets } from './assets';
 import { assessDevice, type DeviceSignals } from './deviceProfile';
 import type { SceneEngine } from './engine/sparkEngine';
+import { STICK_RADIUS_PX } from './guidedNavigation';
 import type {
   SceneViewerLabel,
   SceneViewerPhase,
@@ -44,6 +42,8 @@ interface NavigatorSignals {
   deviceMemory?: number;
   hardwareConcurrency?: number;
   connection?: { saveData?: boolean; effectiveType?: string };
+  userAgentData?: { mobile?: boolean };
+  userAgent?: string;
 }
 
 /** Read what the browser will tell us. Probes WebGL2 on a throwaway canvas. */
@@ -51,12 +51,15 @@ function readDeviceSignals(fullSplatBytes: number | undefined): DeviceSignals {
   const nav = (typeof navigator !== 'undefined' ? navigator : {}) as NavigatorSignals;
   let webgl2 = false;
   let maxTextureSize: number | undefined;
+  let gpuRenderer: string | undefined;
   try {
     const probe = document.createElement('canvas');
     const gl = probe.getContext('webgl2');
     if (gl) {
       webgl2 = true;
       maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+      const info = gl.getExtension('WEBGL_debug_renderer_info');
+      if (info) gpuRenderer = String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL));
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     }
   } catch {
@@ -70,6 +73,8 @@ function readDeviceSignals(fullSplatBytes: number | undefined): DeviceSignals {
     saveData: nav.connection?.saveData,
     effectiveType: nav.connection?.effectiveType,
     maxTextureSize,
+    gpuRenderer,
+    mobile: nav.userAgentData?.mobile ?? /Android|iPhone|iPad|Mobile/i.test(nav.userAgent ?? ''),
     fullSplatBytes,
   };
 }
@@ -93,13 +98,12 @@ function SceneViewerComponent({
   const engineRef = useRef<SceneEngine | null>(null);
   const labelElements = useRef(new Map<string, HTMLElement>());
   const [stats, setStats] = useState<SceneViewerStats | null>(null);
-  const { t } = useTranslation();
-  // Guided navigation: the reachable viewpoints (markers) and the side mask.
-  const [reachable, setReachable] = useState<readonly number[]>([]);
+  // Guided walk: the side mask, the ground cursor and the touch thumbstick.
   const [sideMask, setSideMask] = useState(0);
-  const stepElements = useRef(new Map<number, HTMLElement>());
+  const cursorRef = useRef<HTMLDivElement | null>(null);
+  const stickRef = useRef<HTMLDivElement | null>(null);
+  const knobRef = useRef<HTMLDivElement | null>(null);
   const hasNavigation = (manifest.navigation?.viewpoints.length ?? 0) > 0;
-  const guided = hasNavigation && controlMode === 'walk';
 
   // Callbacks change identity every render; the engine is built once per
   // manifest and reads them through this ref.
@@ -126,15 +130,20 @@ function SceneViewerComponent({
     };
 
     const full = manifest.assets.find((asset) => asset.role === 'splat');
-    const device = assessDevice(readDeviceSignals(full?.byteSize));
+    // Only a splat loaded whole is weighed against memory: a `rad` tree holds
+    // what its budget draws, and its `byteSize` is a header's.
+    const device = assessDevice(
+      readDeviceSignals(full?.format === 'spz' ? full.byteSize : undefined),
+    );
     if (device.tier === 'unsupported') {
       report('unsupported');
       return;
     }
-    const plan = planSceneAssets(manifest, device.tier, {
+    const assetPolicy = {
       allowedOrigin: STREET3D_ASSET_ORIGIN,
       allowInsecure: ALLOW_INSECURE_ASSETS,
-    });
+    };
+    const plan = planSceneAssets(manifest, device.tier, assetPolicy);
     if (!plan.first && device.tier === 'full') {
       // Every splat URL was refused by the asset policy, or none was published.
       report('error');
@@ -155,7 +164,12 @@ function SceneViewerComponent({
             target: manifest.initialView.target,
           },
           up,
-          pixelRatio: device.pixelRatio,
+          quality: {
+            start: { lodScale: device.lodScale, pixelRatio: device.pixelRatio },
+            max: { lodScale: device.maxLodScale, pixelRatio: device.maxPixelRatio },
+            min: { lodScale: device.minLodScale, pixelRatio: 1 },
+          },
+          assetPolicy,
           tier: device.tier,
           onPhase: report,
           onStats: (next) => {
@@ -164,26 +178,32 @@ function SceneViewerComponent({
             setStats(next);
           },
           navigation: manifest.navigation,
-          onReachable: (indices) => {
-            if (!cancelled) setReachable(indices);
-          },
           onFrustum: (frustum) => {
             if (!cancelled) setSideMask(Math.round(frustum.sideMask * 1000) / 1000);
           },
-          onSteps: (positions) => {
-            for (const [index, element] of stepElements.current) {
-              const at = positions.get(index);
-              if (!at) {
-                element.style.opacity = '0';
-                element.style.pointerEvents = 'none';
-                continue;
-              }
-              element.style.opacity = '1';
-              element.style.pointerEvents = 'auto';
-              element.style.width = `${(at.radius * 2).toFixed(1)}px`;
-              element.style.height = `${(at.radius * 2).toFixed(1)}px`;
-              element.style.transform = `translate(${(at.x - at.radius).toFixed(1)}px, ${(at.y - at.radius).toFixed(1)}px) scaleY(${at.squash.toFixed(3)})`;
+          onCursor: (at) => {
+            const element = cursorRef.current;
+            if (!element) return;
+            if (!at) {
+              element.style.opacity = '0';
+              return;
             }
+            element.style.opacity = '1';
+            element.style.width = `${(at.radius * 2).toFixed(1)}px`;
+            element.style.height = `${(at.radius * 2).toFixed(1)}px`;
+            element.style.transform = `translate(${(at.x - at.radius).toFixed(1)}px, ${(at.y - at.radius).toFixed(1)}px) scaleY(${at.squash.toFixed(3)})`;
+          },
+          onStick: (at) => {
+            const base = stickRef.current;
+            const knob = knobRef.current;
+            if (!base || !knob) return;
+            if (!at) {
+              base.style.opacity = '0';
+              return;
+            }
+            base.style.opacity = '1';
+            base.style.transform = `translate(${(at.x - STICK_RADIUS_PX).toFixed(1)}px, ${(at.y - STICK_RADIUS_PX).toFixed(1)}px)`;
+            knob.style.transform = `translate(${at.dx.toFixed(1)}px, ${at.dy.toFixed(1)}px)`;
           },
           onLabels: (positions) => {
             for (const [id, element] of labelElements.current) {
@@ -202,8 +222,8 @@ function SceneViewerComponent({
         engineRef.current = engine;
         engine.setLabels(latest.current.labels);
         engine.setMode(latest.current.controlMode);
-        // A full-screen viewer takes the keyboard: W/S and the arrows work at
-        // once, without a first click (which, guided, is itself a step).
+        // A full-screen viewer takes the keyboard: WASD and the arrows work at
+        // once, without a first click (which, walking, is itself a move).
         host.focus({ preventScroll: true });
         const resize = () => engine.resize(host.clientWidth, host.clientHeight);
         resize();
@@ -228,15 +248,6 @@ function SceneViewerComponent({
   useEffect(() => {
     engineRef.current?.setLabels(visibleLabels);
   }, [visibleLabels]);
-
-  const registerStep = useCallback((index: number, element: HTMLElement | null) => {
-    if (element) {
-      element.style.opacity = '0';
-      stepElements.current.set(index, element);
-    } else {
-      stepElements.current.delete(index);
-    }
-  }, []);
 
   const registerLabel = useCallback((id: string, element: HTMLElement | null) => {
     if (element) {
@@ -271,21 +282,14 @@ function SceneViewerComponent({
         }}
       />
       {hasNavigation ? <EdgeShade sideMask={sideMask} /> : null}
-      {guided
-        ? reachable.map((index) => (
-            // A real button for assistive tech, kept out of the tab order: the
-            // keyboard path is the focusable host's arrow and W/S keys.
-            <button
-              key={index}
-              type="button"
-              tabIndex={-1}
-              ref={(node) => registerStep(index, node)}
-              aria-label={t('street3d.viewer.stepHere')}
-              onClick={() => engineRef.current?.goTo(index)}
-              style={STEP_MARKER_STYLE}
-            />
-          ))
-        : null}
+      {hasNavigation ? (
+        <>
+          <div ref={cursorRef} aria-hidden style={CURSOR_STYLE} />
+          <div ref={stickRef} aria-hidden style={STICK_STYLE}>
+            <div ref={knobRef} style={KNOB_STYLE} />
+          </div>
+        </>
+      ) : null}
       <View
         pointerEvents="box-none"
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
@@ -299,56 +303,60 @@ function SceneViewerComponent({
           />
         ))}
       </View>
-      {guided ? (
-        <View
-          pointerEvents="box-none"
-          className="absolute left-0 right-0 items-center gap-space-8"
-          style={{ bottom: 72 }}
-        >
-          <Fab
-            size="sm"
-            icon={RiArrowUpLine}
-            appearance="subtle"
-            tone="neutral"
-            accessibilityLabel={t('street3d.viewer.stepForward')}
-            onPress={() => engineRef.current?.step(1)}
-          />
-          <Fab
-            size="sm"
-            icon={RiArrowDownLine}
-            appearance="subtle"
-            tone="neutral"
-            accessibilityLabel={t('street3d.viewer.stepBack')}
-            onPress={() => engineRef.current?.step(-1)}
-          />
-        </View>
-      ) : null}
       {showStats && stats ? <StatsOverlay stats={stats} /> : null}
     </View>
   );
 }
 
 /**
- * A ground "step here" marker. Translucent white with a soft ring, like Street
- * View's chevrons: it sits ON the photograph, where a theme colour would read
- * as UI pasted over the street. Positioned per frame by the engine.
+ * The ground cursor: where a click walks to, under the pointer, drawn only
+ * while that ground is walkable. Translucent white with a soft ring, like
+ * Street View's: it sits ON the photograph, where a theme colour would read as
+ * UI pasted over the street. Positioned per frame by the engine; it never
+ * takes the pointer.
  */
-const STEP_MARKER_STYLE = {
+const CURSOR_STYLE = {
   position: 'absolute',
   left: 0,
   top: 0,
-  // A <button>'s user-agent box: border-box sizing and padding would shrink the
-  // disc the engine sizes by `width`/`height`, so restore a plain box.
-  boxSizing: 'content-box',
-  padding: 0,
   borderRadius: '50%',
-  background: 'rgba(255, 255, 255, 0.28)',
+  background: 'rgba(255, 255, 255, 0.22)',
   border: '2px solid rgba(255, 255, 255, 0.85)',
   boxShadow: '0 0 8px rgba(0, 0, 0, 0.35)',
-  cursor: 'pointer',
+  pointerEvents: 'none',
   opacity: 0,
-  transition: 'opacity 160ms ease-out',
+  transition: 'opacity 120ms ease-out',
   transformOrigin: '50% 50%',
+} as const;
+
+/**
+ * The touch thumbstick, where the thumb landed and only while it holds: a
+ * ring of the stick's reach and a knob that follows the thumb. Photographic
+ * white over the scene, like the cursor. Positioned by the engine.
+ */
+const STICK_STYLE = {
+  position: 'absolute',
+  left: 0,
+  top: 0,
+  width: STICK_RADIUS_PX * 2,
+  height: STICK_RADIUS_PX * 2,
+  borderRadius: '50%',
+  background: 'rgba(255, 255, 255, 0.12)',
+  border: '2px solid rgba(255, 255, 255, 0.6)',
+  boxSizing: 'border-box',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  pointerEvents: 'none',
+  opacity: 0,
+} as const;
+
+const KNOB_STYLE = {
+  width: 40,
+  height: 40,
+  borderRadius: '50%',
+  background: 'rgba(255, 255, 255, 0.7)',
+  boxShadow: '0 0 8px rgba(0, 0, 0, 0.35)',
 } as const;
 
 /**
@@ -414,6 +422,7 @@ const SceneLabel = memo(function SceneLabel({
 
 function StatsOverlay({ stats }: { stats: SceneViewerStats }) {
   const kb = Math.round(stats.bytes / 1024);
+  const splats = `${(stats.splats / 1e6).toFixed(2)}M`;
   return (
     // Below the screen's top chrome, which owns the corners.
     <View
@@ -422,7 +431,7 @@ function StatsOverlay({ stats }: { stats: SceneViewerStats }) {
       style={{ top: 64, left: 16 }}
     >
       <Text className="text-caption text-muted-foreground">
-        {`${stats.fps} fps · ${kb} KB · dpr ${stats.pixelRatio} · ${stats.tier}`}
+        {`${stats.fps} fps · ${splats} splats · ${kb} KB · dpr ${stats.pixelRatio} · lod ×${stats.lodScale.toFixed(2)} · ${stats.tier}`}
       </Text>
       <Text className="text-caption text-muted-foreground">
         {`first ${stats.firstFrameMs ?? '–'} ms · preview ${stats.previewLoadMs ?? '–'} ms · full ${stats.fullLoadMs ?? '–'} ms`}
