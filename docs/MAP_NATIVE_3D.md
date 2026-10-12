@@ -577,6 +577,26 @@ Nothing comes from the network:
   (`streetRenderer.ts` → `statsDue`). It was the report, not the map:
   goway.to at the Sagrada Família (`?quality=high`) loads the landmark once,
   has no request after 30 s, and draws the same city at 240 s as at 30 s.
+- **The screenshot waits for the GPU, explicitly.** On two software-GL cores
+  the page queues frames far faster than SwiftShader rasterises them: every
+  frame of the load, the tilt and the terrain's lift (one tile re-grounded per
+  frame, each a full 3D-terrain frame) — 1–4 minutes of work per view on CI.
+  A screenshot waits for the compositor's next frame, which comes only after
+  that queue, and its own 240 s timeout ran out behind it: the `objects` leg
+  failed on `main` (7d54a3d) and on every PR after b6f21f3. Nothing in those
+  merges made a frame heavier — the green runs were already at 236–252 s for
+  the `life` and `landmark` shots. The backlog had been hidden by the settle
+  timing out (the landmark views' flat settle idled the full 240 s while the
+  GPU caught up); as settling got faster (64 s, then 10 s with the street fix
+  above) the whole backlog moved into the screenshot. Now each view drains
+  the GPU before it shoots (`drainGpu`: a 1-px `readPixels` of the map's own
+  context returns only when its queue is done) and the shot takes a second;
+  `GATE_DRAIN_EACH=1` drains after every step to show where the time goes.
+  The `objects` views (a model, the traffic) also tilt in one jump instead of
+  six eased steps, at the low preset (no MSAA, pixel ratio 1) and with trees
+  off on both sides of each comparison: every eased frame was a full terrain
+  frame (40–60 s of rasterising per view, measured), and the buildings' and
+  trees' grounding order is the `sky`/`nosky` legs' subject, not theirs.
 - **Quality**: `?quality=high`. On SwiftShader the profile would resolve to
   low, which draws no 3D terrain, so nothing would ever be lifted and the
   gate would pass on the broken code (it did, until this was added).

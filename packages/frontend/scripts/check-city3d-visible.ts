@@ -389,8 +389,28 @@ async function view(
   quality: 'low' | 'high' = 'high',
   /** A landmark the view must have drawn (or failed) before it is settled. */
   landmark: string | null = null,
+  /**
+   * `ease`: tilt in six eased steps, as a person does (the buildings' and
+   * trees' grounding order is the subject). `jump`: one jump to the tilt —
+   * for the views whose subject is a model or the traffic: every eased frame
+   * is a full 3D-terrain frame, and on two software-GL cores those queued
+   * frames took the GPU 40–60 s to drain per view (measured).
+   */
+  tilt: 'ease' | 'jump' = 'ease',
 ): Promise<View> {
   const started = Date.now();
+  // Per-view progress on stderr, so a CI log says WHICH view and WHICH step
+  // a timeout was in (a screenshot that never came looked like any other).
+  const step = async (what: string) => {
+    console.error(`${name}: ${what} at ${Math.round((Date.now() - started) / 1000)}s`);
+    // `GATE_DRAIN_EACH=1`: drain after every step too, to see where the
+    // software rasteriser's time goes.
+    if (process.env.GATE_DRAIN_EACH) {
+      const t = Date.now();
+      await drainGpu(page);
+      console.error(`${name}:   drained ${Math.round((Date.now() - t) / 1000)}s`);
+    }
+  };
   const context = await browser.newContext({ viewport: VIEWPORT });
   let releaseTerrain = () => {};
   const terrain = new Promise<void>((done) => {
@@ -451,28 +471,31 @@ async function view(
   if (!(await until(page, () => reliefMap() !== undefined))) {
     throw new Error(`${name}: the map never came up`);
   }
+  await step('map up');
   const wants: SettledWants = { streets: city && flags.includes('cityStreets=1'), landmark };
   if (city) await settled(page, wants, `${name} (flat)`);
   else await page.waitForTimeout(3000);
+  await step('flat settled');
   // Then tilted: MapLibre's 3D terrain comes on with the tilt
   // (`lib/map/style/relief.ts` → `terrainWanted`), and its elevation is still
   // held back, so the tilted view's tiles are drawn ungrounded too. Eased
   // steps as a person tilts, but to ABSOLUTE pitches and each waited out: the
   // keyboard's relative steps land short when frames are slower than the
   // ease, and the camera would depend on the runner.
-  for (let pitch = 10; pitch <= TILT; pitch += 10) {
+  for (let pitch = tilt === 'jump' ? TILT : 10; pitch <= TILT; pitch += 10) {
     await page.evaluate(
-      (to) =>
+      ({ to, jump }) =>
         new Promise<void>((done) => {
           const map = reliefMap();
           if (!map) return done();
           map.once('moveend', () => done());
-          map.easeTo({ pitch: to, duration: 300 });
+          map.easeTo({ pitch: to, duration: jump ? 0 : 300 });
         }),
-      pitch,
+      { to: pitch, jump: tilt === 'jump' },
     );
   }
   if (city) await settled(page, wants, `${name} (tilted)`);
+  await step('tilted settled');
   if (!(await until(page, () => Boolean(reliefMap()?.getTerrain())))) {
     throw new Error(`${name}: 3D terrain never came on: the gate would test nothing`);
   }
@@ -489,6 +512,7 @@ async function view(
   });
   if (!lifted)
     throw new Error(`${name}: the terrain never lifted the map: the gate would test nothing`);
+  await step('terrain lifted');
   const stats = city ? await settled(page, wants, name) : null;
   const landmarkFailed =
     landmark !== null &&
@@ -520,6 +544,9 @@ async function view(
     }));
     console.error(`[probe] ${JSON.stringify(probe)}`);
   }
+  await step(`settled; ${await framesNow(page)}`);
+  await drainGpu(page);
+  await step('GPU drained');
   // A screenshot waits for a fresh frame, and on two software-GL cores a frame
   // with the sky's passes takes seconds.
   const png = await page.screenshot({
@@ -542,6 +569,90 @@ async function view(
     triangles: stats?.triangles ?? 0,
     streetTriangles: stats?.streetTriangles ?? 0,
   };
+}
+
+/**
+ * Wait until the GPU has done every frame already asked of it. A screenshot
+ * waits for the compositor's NEXT frame, and on two software-GL cores that
+ * comes only after the whole queue: every frame drawn while the view loaded
+ * and the terrain lifted (one tile is re-grounded per frame, each a full 3D
+ * terrain frame) — 1–4 minutes of rasterising that the screenshot's own
+ * timeout then ran out on (#186). A 1-px read of the map's context returns
+ * only once its queue is done; after it the screenshot takes a second.
+ */
+async function drainGpu(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>('.maplibregl-canvas');
+    const gl = canvas?.getContext('webgl2');
+    gl?.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  });
+}
+
+/**
+ * How the page is drawing right now, for the log: frames in 3 s (0: the page
+ * is producing none, so a screenshot would wait), and the engine's own
+ * numbers — what is still uploading, grounding or rendering.
+ */
+async function framesNow(page: Page): Promise<string> {
+  const frames = await page
+    .evaluate(
+      () =>
+        new Promise<number>((done) => {
+          let n = 0;
+          const end = performance.now() + 3000;
+          const tick = () => {
+            n++;
+            if (performance.now() < end) requestAnimationFrame(tick);
+            else done(n);
+          };
+          requestAnimationFrame(tick);
+          setTimeout(() => done(n), 6000);
+        }),
+    )
+    .catch(() => -1);
+  const engine = await page.evaluate(() => {
+    const scope = globalThis as {
+      __gowayCity3d?: Record<string, unknown>;
+      __gowayCity3dGround?: Record<string, unknown>;
+    };
+    const c = scope.__gowayCity3d;
+    return c
+      ? {
+          frameCpuMs: Math.round(Number(c.frameCpuMs)),
+          triangles: c.triangles,
+          treeTriangles: c.treeTriangles,
+          uploadsQueued: c.uploadsQueued,
+          grounded: scope.__gowayCity3dGround?.tilesGrounded,
+        }
+      : null;
+  });
+  // How often the MAP renders: a map at rest renders nothing.
+  const renders = await page
+    .evaluate(
+      () =>
+        new Promise<number>((done) => {
+          const map = (
+            globalThis as {
+              __gowayReliefMap?: {
+                on: (e: string, f: () => void) => void;
+                off: (e: string, f: () => void) => void;
+              };
+            }
+          ).__gowayReliefMap;
+          if (!map) return done(-1);
+          let n = 0;
+          const count = () => {
+            n++;
+          };
+          map.on('render', count);
+          setTimeout(() => {
+            map.off('render', count);
+            done(n);
+          }, 3000);
+        }),
+    )
+    .catch(() => -2);
+  return `${frames} frames and ${renders} map renders in 3 s, engine ${JSON.stringify(engine)}`;
 }
 
 /** Share of `png`'s pixels that `test` accepts, in %. */
@@ -747,10 +858,11 @@ async function panSteps(
     throw new Error('pan: the map never came up');
   }
   const still = async () => {
-    await settled(page, false);
+    await settled(page, { streets: false, landmark: null }, 'pan');
     await until(page, () => Boolean(reliefMap()?.areTilesLoaded()));
     // The shadow map's caster redraw is throttled (`sky.ts`), and fades end.
     await page.waitForTimeout(1500);
+    await drainGpu(page);
   };
   await still();
   await page.addStyleTag({ content: '[data-goway-perf-hud] { display: none !important; }' });
@@ -900,7 +1012,13 @@ try {
   if (!DEBUG && skies.includes('objects')) {
     // Models (`models.ts`, drawn by the TSL pass): the landmark on and off,
     // without the sky (models are drawn the same way under either).
-    const { flags, choices } = SKIES.nosky;
+    const { flags: skyless, choices } = SKIES.nosky;
+    // Trees off on both sides of the comparison: they are the other legs'
+    // subject, and at this zoom they are 1.5 M of the view's 1.8 M triangles —
+    // on two software-GL cores the frames queued while the view settles took
+    // the GPU minutes to drain, and the screenshot (which waits for the next
+    // frame) timed out behind them (#186's first CI run).
+    const flags = `${skyless}&city3dTrees=0`;
     const withLandmark = await view(
       browser,
       origin,
@@ -910,8 +1028,9 @@ try {
       'landmark',
       'buildings',
       LANDMARK,
-      'high',
+      'low',
       LANDMARK.id,
+      'jump',
     );
     const without = await view(
       browser,
@@ -922,6 +1041,9 @@ try {
       'nolandmark',
       'buildings',
       LANDMARK,
+      'low',
+      null,
+      'jump',
     );
     const changed = await differs(browser, withLandmark.png, without.png);
     results.landmark = { changedPct: changed };
@@ -940,7 +1062,13 @@ try {
     // seconds, and a screenshot waits for one). The simulation is seeded and
     // the clock fixed, but the agents move with real time: the share is a
     // floor, not a match.
-    const { flags, choices } = SKIES.nosky;
+    const { flags: skyless, choices } = SKIES.nosky;
+    // Trees off on both sides of the comparison: they are the other legs'
+    // subject, and at this zoom they are 1.5 M of the view's 1.8 M triangles —
+    // on two software-GL cores the frames queued while the view settles took
+    // the GPU minutes to drain, and the screenshot (which waits for the next
+    // frame) timed out behind them (#186's first CI run).
+    const flags = `${skyless}&city3dTrees=0`;
     // The low preset's 300 cars and 300 people (`profile.ts` → `life`): the
     // high one's 2,400 agents keep two software-GL cores from ever finishing
     // a frame for the screenshot. From z17.5 over the junction several
@@ -956,6 +1084,8 @@ try {
       'buildings',
       TRAFFIC,
       'low',
+      null,
+      'jump',
     );
     const without = await view(
       browser,
@@ -967,6 +1097,8 @@ try {
       'buildings',
       TRAFFIC,
       'low',
+      null,
+      'jump',
     );
     const changed = await differs(browser, withLife.png, without.png, 24, 0);
     results.life = { changedPct: changed };
