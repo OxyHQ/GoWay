@@ -79,7 +79,7 @@ import { viewRays } from './viewRays';
  * rays `viewRays.ts` reconstructs are not the drawn surface. The relief
  * layer's own MapLibre sky covers those zooms.
  */
-const EFFECT_ZOOM: readonly [number, number] = [12, 13];
+export const EFFECT_ZOOM: readonly [number, number] = [12, 13];
 
 /**
  * While only the set of shadow casters changes (the box and the sun do not),

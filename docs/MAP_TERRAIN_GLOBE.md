@@ -150,6 +150,41 @@ radial gradient fitted to the globe's outline, recomputed on every `move`
 the pitch — an exact ellipse, so the glow hugs the limb when tilted too. The
 light stays the buildings'.
 
+### Day and night
+
+The globe is lit by the real sun: day on one side, night on the other, a
+smooth twilight band of ~1,500 km between them, moving with the live clock or
+with the time-of-day scrubber (`MapCanvas` hands the scrubber's instant to
+the relief handle's `setTime`). `components/map/globeNightLayer.web.ts`, a
+custom layer added with the globe; the model and shader are
+`lib/map/style/globeNight.ts`, pinned by `__tests__/globeNight.test.ts`.
+
+- **Per pixel, not per polygon.** Each pixel is ray-cast onto MapLibre's unit
+  globe (the inverse of `defaultProjectionData.mainMatrix`) and its sun
+  altitude read off the angle to the subsolar point (`lib/map/sun.ts` →
+  `subsolarPoint`). No tiles or polygons: the poles and the antimeridian need
+  nothing, and the twilight is a gradient. Through MapLibre's globe → mercator
+  transition (z11–12) the same ray also meets the mercator plane
+  (`fallbackMatrix`) and the two are mixed by `projectionTransition`.
+- **A multiply under the 3D layers and the labels** (inserted before
+  `building-3d`): the labels stay legible on the night side. The night is the
+  city sky's own (`pow(sky ambient, 1/2.2)` at a sun 20° down, the blue-violet
+  the street-level ground pass ends at), the twilight fitted to that pass
+  within 0.1 at every sun altitude. The dark appearance gets its gentler
+  night. Without night-lights data the night side is dark: no city lights are
+  invented.
+- **It hands over to the city sky** by fading out over z12–13, the zooms the
+  sky's ground pass fades in over (`sky.ts` → `EFFECT_ZOOM`, pinned). Where
+  the city engine is not attached yet (it comes at z14 or a 45° tilt), the map
+  between z13 and z14 is the plain basemap, as before.
+- **Cost**: one full-screen pass of a ray–sphere test below z13, nothing above;
+  the quality profile's `relief.globeNight` (on in every preset: cheaper than
+  the hillshade). It animates only with the live clock: one repaint a minute
+  while the map is otherwise still.
+- **MapLibre's own atmosphere stays off**: it is lit by the buildings' style
+  light and draws over the labels (above). The glow around the globe is
+  unchanged (the same on both sides).
+
 ## Hillshade and 3D terrain
 
 - **Hillshade** from z3 to z17, strongest across the regional zooms
@@ -287,7 +322,12 @@ they and the city layer stand on the same ground.
 read, not assumed: its `<Map>` has **no** `projection`, `terrain` or `sky` prop,
 and nothing in its Android or iOS sources sets one. So:
 
-- **Globe, 3D terrain, sky: web only**, until the wrapper exposes them.
+- **Globe, 3D terrain, sky: web only**, until the wrapper exposes them. So is
+  the globe's day and night: native has no globe to light, and its wrapper
+  exposes no custom layer. A flat-map terminator could be a GeoJSON `fill`
+  of night polygons (the wrapper has `GeoJSONSource` and `fill`), stepped into
+  bands rather than a gradient; not done — the native globe is the engine's
+  (`MAP_NATIVE_3D.md`).
 - **Hillshade: native too.** `RasterDEMSource` (with `encoding: 'terrarium'`)
   and a `hillshade` layer exist in 11.4, so `MapCanvas.native.tsx` draws the
   same `hillshadeLayer()` under `water` — on by default like the web, switched

@@ -538,6 +538,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               appearance: resolvedAppearance,
               terrain3d: qualityRef.current.relief.terrain3d,
               terrainTextureScale: qualityRef.current.relief.terrainTextureScale,
+              globeNight: qualityRef.current.relief.globeNight,
+              at: skyAtRef.current,
             });
             reliefRef.current = reliefHandle;
           }
@@ -1055,6 +1057,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   useEffect(() => {
     skyAtRef.current = skyAt;
     city3dRef.current?.setTime(skyAt);
+    // The globe's day and night follow the same instant.
+    reliefRef.current?.setTime(skyAt);
   }, [skyAt]);
   // The screen's time-of-day control exists only while there is a sky to set.
   const skyDrawn = citySky && skyActive;
@@ -1232,6 +1236,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     runtime?.handle?.setQuality(quality);
     reliefRef.current?.setTerrain3d(quality.relief.terrain3d);
     reliefRef.current?.setTerrainTextureScale(quality.relief.terrainTextureScale);
+    reliefRef.current?.setGlobeNight(quality.relief.globeNight);
   }, [quality, runtime]);
 
   // Hand the models to the engine whenever either changes.

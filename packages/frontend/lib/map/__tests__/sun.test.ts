@@ -24,7 +24,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { sunPosition } from '@/lib/map/sun';
+import { subsolarPoint, sunPosition } from '@/lib/map/sun';
 
 /** Obliquity of the ecliptic, 2024 — the solstice declination. */
 const SOLSTICE_DEC = 23.436;
@@ -190,4 +190,30 @@ test('non-finite in, non-finite out — never a throw', () => {
   const position = sunPosition(new Date(Number.NaN), 41, 2);
   expect(Number.isFinite(position.azimuthDeg)).toBe(false);
   expect(Number.isFinite(position.altitudeDeg)).toBe(false);
+});
+
+describe('subsolarPoint', () => {
+  test('the sun stands at the zenith there, at any instant', () => {
+    for (const iso of [
+      '2026-03-20T14:46:00Z',
+      '2026-06-21T06:30:00Z',
+      '2026-09-23T00:05:00Z',
+      '2026-12-21T20:00:00Z',
+      '2031-02-11T11:11:11Z',
+    ]) {
+      const date = new Date(iso);
+      const point = subsolarPoint(date);
+      expect(point.lng).toBeGreaterThanOrEqual(-180);
+      expect(point.lng).toBeLessThan(180);
+      expect(sunPosition(date, point.lat, point.lng).altitudeDeg).toBeGreaterThan(89.99);
+    }
+  });
+
+  test('it stands over the tropics at the solstices, and moves west 15° an hour', () => {
+    expect(subsolarPoint(new Date('2026-06-21T12:00:00Z')).lat).toBeCloseTo(23.44, 1);
+    expect(subsolarPoint(new Date('2026-12-21T12:00:00Z')).lat).toBeCloseTo(-23.44, 1);
+    const a = subsolarPoint(new Date('2026-06-21T12:00:00Z')).lng;
+    const b = subsolarPoint(new Date('2026-06-21T13:00:00Z')).lng;
+    expect(a - b).toBeCloseTo(15, 1);
+  });
 });
