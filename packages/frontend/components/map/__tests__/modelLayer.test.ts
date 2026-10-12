@@ -182,4 +182,26 @@ describe('model layer', () => {
     expect(h.statuses).toEqual([['big', 'fallback']]);
     expect(pulled).toBeLessThanOrEqual(MAX_MODEL_FILE_BYTES + 2 * CHUNK);
   });
+
+  test('a model whose asset cannot load says so once — and only that one', async () => {
+    serve(() => new Response('not found', { status: 404 }));
+    const failed: string[] = [];
+    const statuses: Array<[string, ModelStatus]> = [];
+    const layer = createModelLayer({
+      requestRepaint: () => {},
+      onStatus: (id, status) => statuses.push([id, status]),
+      onLoadFailed: (id) => failed.push(id),
+      pageOrigin: 'https://goway.to',
+    });
+    layer.setModels([spec('broken')]);
+    await until(() => failed.length > 0);
+    expect(failed).toEqual(['broken']);
+    expect(statuses).toEqual([['broken', 'fallback']]);
+
+    // A model that loads is never reported as failed.
+    serve(() => new Response(GLB));
+    layer.setModels([spec('fine', { url: 'https://models.example/fine.glb' })]);
+    await until(() => layer.active);
+    expect(failed).toEqual(['broken']);
+  });
 });

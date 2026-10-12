@@ -251,6 +251,46 @@ const LANDMARK_DROP_M = 4_000;
 /** The basemap's tile zoom: the engine picks a source per z14 cell (`sources.ts`). */
 const LANDMARK_COVERAGE_ZOOM = 14;
 
+/**
+ * The landmarks the map can actually draw — the ONE list the engine is handed
+ * and the tour and its pill offer (`offerLandmarks`), so nobody is flown to a
+ * model that never appears:
+ *
+ *  - its z14 cell is wholly published (`covers`, the engine's own source rule,
+ *    `engine/city3d/sources.ts`): a partly published cell at a region's edge
+ *    is drawn from the basemap, whose blocks carry no per-building ids, so the
+ *    model would replace nothing — and is not drawn there;
+ *  - its model has not failed to load (`failed`): a broken asset never draws,
+ *    at any camera, in any preset.
+ *
+ * Every preset holds at least one landmark (`landmarks.max` ≥ 2, nearest the
+ * view first), and the tour's camera stands at the landmark, so an offered
+ * landmark is the nearest — and held — when the tour arrives. Exported for tests.
+ */
+export function drawableLandmarks(
+  landmarks: readonly PreparedLandmark[],
+  coverage: readonly CityCoverageArea[],
+  failed: ReadonlySet<string>,
+  covers: (
+    tile: { z: number; x: number; y: number },
+    areas: readonly CityCoverageArea[],
+  ) => boolean,
+): PreparedLandmark[] {
+  const n = 2 ** LANDMARK_COVERAGE_ZOOM;
+  return landmarks.filter(
+    ({ entry, placement }) =>
+      !failed.has(entry.id) &&
+      covers(
+        {
+          z: LANDMARK_COVERAGE_ZOOM,
+          x: Math.floor(mercatorX(placement.position.longitude) * n),
+          y: Math.floor(mercatorY(placement.position.latitude) * n),
+        },
+        coverage,
+      ),
+  );
+}
+
 /** Below this zoom no landmark is loaded (the buildings appear from 15.5). */
 const LANDMARK_MIN_ZOOM = 14;
 
@@ -529,30 +569,24 @@ export async function attachCity3d(
   let landmarkList: readonly PreparedLandmark[] = [];
   const heldLandmarks = new Set<string>();
   const drawnLandmarks = new Set<string>();
+  const failedLandmarks = new Set<string>();
+  let allLandmarks: readonly PreparedLandmark[] = [];
+  /** Recompute what can be drawn, and tell the tour. */
+  const reofferLandmarks = () => {
+    landmarkList = drawableLandmarks(allLandmarks, coverage, failedLandmarks, coverageCovers);
+    landmarkModule?.offerLandmarks(landmarkList.map(({ entry }) => entry.id));
+  };
   let night = nightFactor({ appearance: options.appearance });
   if (landmarksOn) {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     void import('@/lib/map/landmarks/load')
       .then(async (module) => {
-        // Only the landmarks over published city tiles: a model elsewhere
-        // would replace nothing and draw nothing. Asked of the z14 cell, as
-        // the engine chooses its source (`engine/city3d/sources.ts`), so a
-        // landmark in a partly published cell at a region's edge is not
-        // offered either. The same list is what the tour and its pill offer
-        // (`offerLandmarks`).
-        landmarkList = (await module.loadLandmarks(origin)).filter(({ placement }) =>
-          coverageCovers(
-            {
-              z: LANDMARK_COVERAGE_ZOOM,
-              x: Math.floor(mercatorX(placement.position.longitude) * 2 ** LANDMARK_COVERAGE_ZOOM),
-              y: Math.floor(mercatorY(placement.position.latitude) * 2 ** LANDMARK_COVERAGE_ZOOM),
-            },
-            coverage,
-          ),
-        );
+        // Only what the map can draw (`drawableLandmarks`): the engine is
+        // handed exactly the list the tour and its pill offer.
+        allLandmarks = await module.loadLandmarks(origin);
         if (detached) return;
         landmarkModule = module;
-        module.offerLandmarks(landmarkList.map(({ entry }) => entry.id));
+        reofferLandmarks();
         map.triggerRepaint();
       })
       .catch((cause: unknown) =>
@@ -737,6 +771,13 @@ export async function attachCity3d(
         : undefined,
       overlays,
       onLandmarkStatus,
+      onLandmarkFailed: (id) => {
+        // A model that cannot load is never drawn: neither held nor offered.
+        failedLandmarks.add(id);
+        reofferLandmarks();
+        // The next frame hands the engine the list without it.
+        map.triggerRepaint();
+      },
       sky: sky ? { appearance: options.appearance } : undefined,
       // The detailed response; the night seam blends its day and night.
       material: detailed ? cityMaterials() : undefined,
