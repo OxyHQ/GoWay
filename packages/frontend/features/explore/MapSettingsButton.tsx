@@ -33,9 +33,21 @@ export interface MapSettingsButtonProps {
   tilted: boolean;
   /** Tilt the camera to 3D, or level it to 2D. */
   onTiltChange: (tilted: boolean) => void;
+  /**
+   * Open the time-of-day scrubber — Settings → Map → "Change time…". Passed
+   * only while the sky draws; absent, the row is not offered.
+   */
+  onChangeTime?: () => void;
+  /** A phone: the smaller round control, like the rest of its stack. */
+  compact?: boolean;
 }
 
-export function MapSettingsButton({ tilted, onTiltChange }: MapSettingsButtonProps) {
+export function MapSettingsButton({
+  tilted,
+  onTiltChange,
+  onChangeTime,
+  compact = false,
+}: MapSettingsButtonProps) {
   const { locale } = useTranslation();
   const [open, setOpen] = useState(false);
   // Requested on the first press, then kept: the chunk is never fetched for
@@ -56,13 +68,18 @@ export function MapSettingsButton({ tilted, onTiltChange }: MapSettingsButtonPro
     show('labs');
   }, [show]);
   const close = useCallback(() => setOpen(false), []);
+  // The scrubber is on the map, so the modal steps out of its way first.
+  const changeTime = useCallback(() => {
+    setOpen(false);
+    onChangeTime?.();
+  }, [onChangeTime]);
 
   return (
     <>
       <Fab
-        size="sm"
+        size={compact ? 'xs' : 'sm'}
         icon={RiSettings3Line}
-        iconSize={22}
+        iconSize={compact ? 20 : 22}
         accessibilityLabel={label}
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -80,6 +97,7 @@ export function MapSettingsButton({ tilted, onTiltChange }: MapSettingsButtonPro
             initialPage={initialPage}
             tilted={tilted}
             onTiltChange={onTiltChange}
+            onChangeTime={onChangeTime ? changeTime : undefined}
           />
         </Suspense>
       ) : null}

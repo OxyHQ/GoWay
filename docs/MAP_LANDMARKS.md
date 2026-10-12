@@ -11,9 +11,9 @@ published city tiles, so the adapter keeps only the landmarks it can draw —
 over a WHOLLY published z14 cell (the engine's own source rule: at a region's
 ragged edge the cell is the basemap's), with a model that has not failed to
 load — hands exactly those to the engine, and offers exactly those to the
-tour and its pill (`city3dLayer.web.ts` → `drawableLandmarks`,
+tour and its Landmarks control (`city3dLayer.web.ts` → `drawableLandmarks`,
 `lib/map/landmarks/load.ts` → `offerLandmarks`; `drawableLandmarks.test.ts`). Where nothing is published
-(goway.to until its first region) there is no pill, no tour and no request
+(goway.to until its first region) there is no Landmarks control, no tour and no request
 for a model.
 
 It builds on two earlier pieces: the city-3D engine and GoWay city tiles
@@ -199,9 +199,10 @@ views and preview-class devices is the next step (`SDK_MAP_MODELS.md`'s
 
 ## The tour
 
-`features/landmarks/` (one lazy chunk), entered from the "Landmarks" pill (when
-a landmark is within 6 km of the view; opens on the nearest; it sits in the
-map's top-right stack, under the settings button) or from a place
+`features/landmarks/` (one lazy chunk), entered from the "Landmarks" control
+(when a landmark is within 6 km of the view; opens on the nearest; a round
+control in the map's top-right stack, under the settings button — labelled on
+a wide window, its building alone on a phone) or from a place
 sheet's "Landmark tour" (when the place IS a landmark, by its OSM source or
 Place ID). The camera is driven through the map seam only (`MapApi.moveTo`,
 `transient` per frame) — the feature imports neither three.js nor MapLibre:

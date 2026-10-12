@@ -1187,14 +1187,17 @@ at that ray's hit.
 
 ### The time-of-day scrubber
 
-`components/map/TimeOfDayScrubber.web.tsx`, shown only while the layer is
-attached, in its own lazy chunk: an hour slider, previous/next day (±183) and
-**Now** (the default; a live clock re-reads the sun every 30 s). The device's
+`components/map/TimeOfDayScrubber.web.tsx`, in its own lazy chunk, opened on
+demand while the layer is attached (the sun in the explore screen's top-right
+stack, or Settings → "Change time…"; closing it is going back to now —
+[`MAP_FEATURES.md`](./MAP_FEATURES.md) → "The time of day"): an hour slider,
+previous/next day (±183), **Now** and × (closed, the map is lit for now; a
+live clock re-reads the sun every 30 s). The device's
 clock: a whole day is still every hour of a far city's day, and the caption
 says what the sun is doing *there* (`Sun 34° up`, `Golden hour`, `Blue hour`,
 `Twilight`, `Night`, from its altitude over the map centre). Strings are in
-`lib/messages/citySky.ts` (English, Spanish), kept out of the first-paint
-tables. The arithmetic (`lib/map/timeOfDay.ts`) uses `setHours`, so a
+`lib/messages/citySky.ts`, in the twelve `LABEL_LANGUAGES`, kept out of the
+first-paint tables. The arithmetic (`lib/map/timeOfDay.ts`) uses `setHours`, so a
 daylight-saving day is the platform's problem, not an hour off every label.
 
 ### Measured

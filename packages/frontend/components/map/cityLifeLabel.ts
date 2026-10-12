@@ -9,7 +9,8 @@
  * `localizedLabel` (AGENTS.md); the review state of these strings is in
  * `docs/LABEL_TRANSLATIONS.md`.
  *
- * Pure: the chip (`cityLifeChip.web.ts`) draws it.
+ * Pure: the city layer resolves it (`city3dLayer.web.ts` → `onCityLife`) and
+ * the map's data credit draws it (`MapAttribution.tsx`).
  */
 import { type Labels, localizedLabel } from '@goway.to/sdk';
 
@@ -32,6 +33,22 @@ const SIMULATED: Labels = {
   'pt-BR': 'Simulado: {list}',
   ru: 'Симуляция: {list}',
   'zh-Hans': '模拟：{list}',
+};
+
+/** The label folded to one word, beside the credit's ⓘ while it is folded. */
+const SIMULATED_SHORT: Labels = {
+  en: 'Simulated',
+  ar: 'محاكاة',
+  bn: 'সিমুলেটেড',
+  ca: 'Simulat',
+  de: 'Simuliert',
+  es: 'Simulado',
+  fr: 'Simulé',
+  hi: 'सिम्युलेटेड',
+  ja: 'シミュレーション',
+  'pt-BR': 'Simulado',
+  ru: 'Симуляция',
+  'zh-Hans': '模拟',
 };
 
 const LIVE: Labels = {
@@ -197,11 +214,21 @@ export interface CityLifeLabelContent {
   live: RealClass[];
 }
 
-/** The label's text and its accessible detail, in the reader's language. */
-export function cityLifeLabel(
-  content: CityLifeLabelContent,
-  locale: string,
-): { text: string; detail: string } {
+/** The label as the map's data credit shows it (`MapAttribution` → disclosure). */
+export interface CityLifeLabel {
+  /** "Simulated: cars and people · Live: buses". */
+  text: string;
+  /** That simulated is not live traffic, for the accessible name. */
+  detail: string;
+  /** "Simulated", beside the folded credit's ⓘ. */
+  short: string;
+}
+
+/**
+ * The label's text, its accessible detail and its one-word form ("Simulated",
+ * for the folded credit), in the reader's language.
+ */
+export function cityLifeLabel(content: CityLifeLabelContent, locale: string): CityLifeLabel {
   const parts: string[] = [];
   const nouns = (things: (SimulatedThing | RealClass)[]) =>
     join(
@@ -214,12 +241,70 @@ export function cityLifeLabel(
   if (content.live.length > 0) {
     parts.push(localizedLabel(LIVE, locale).replace('{list}', nouns(content.live)));
   }
-  return { text: parts.join(' · '), detail: localizedLabel(CITY_LIFE_DETAIL, locale) };
+  return {
+    text: parts.join(' · '),
+    detail: localizedLabel(CITY_LIFE_DETAIL, locale),
+    // The label exists only while something simulated is drawn, so the one
+    // word is always the warning.
+    short: localizedLabel(SIMULATED_SHORT, locale),
+  };
+}
+
+/**
+ * What the city layer tells the map about the simulation: the label while
+ * anything simulated is drawn, `null` the moment nothing is — fed by the
+ * renderer's own `onActiveChange` and `onLabel`, and told only on a change.
+ * This is the whole of "agents drawn ⇒ label shown" (`docs/MAP_CITY_LIFE.md`
+ * → Honesty), so it is a pure function with its test.
+ */
+export interface CityLifeReporter {
+  /** The renderer started or stopped drawing anything simulated. */
+  setActive(active: boolean): void;
+  /** What is simulated and what is live in view changed. */
+  setContent(content: CityLifeLabelContent): void;
+  /** Detached: nothing is drawn any more. */
+  end(): void;
+}
+
+export function cityLifeReporter(
+  report: (label: CityLifeLabel | null) => void,
+  locale: string,
+): CityLifeReporter {
+  let content: CityLifeLabelContent = { simulated: ['cars', 'people'], live: [] };
+  let active = false;
+  let reported: string | null = null;
+  const tell = () => {
+    if (!active) {
+      if (reported === null) return;
+      reported = null;
+      report(null);
+      return;
+    }
+    const label = cityLifeLabel(content, locale);
+    if (label.text === reported) return;
+    reported = label.text;
+    report(label);
+  };
+  return {
+    setActive(next) {
+      active = next;
+      tell();
+    },
+    setContent(next) {
+      content = next;
+      tell();
+    },
+    end() {
+      active = false;
+      tell();
+    },
+  };
 }
 
 /** Every template and noun, for the tests. */
 export const CITY_LIFE_LABELS: readonly Labels[] = [
   SIMULATED,
+  SIMULATED_SHORT,
   LIVE,
   CITY_LIFE_DETAIL,
   ...Object.values(CITY_LIFE_NOUNS),

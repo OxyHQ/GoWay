@@ -16,7 +16,9 @@ and every tag is canonical (`normalizeLanguageTag`).
 | capability keys, enum values, groups | `capability-registry.ts`, as `Labels` | all twelve, **required** by the type |
 | categories | `place_category_labels`, in the database | `en` **required**; any others. Seeded with all twelve by `0016` |
 | the app's generic pin and "Other" heading | `frontend/lib/goway/{categories,capabilities}.ts` | all twelve |
-| the city-life label ("Simulated: cars · Live: buses") | `frontend/components/map/cityLifeLabel.ts`, as `Labels` | all twelve, **required** by the type; machine-authored, same review status as below |
+| the city-life label ("Simulated: cars · Live: buses", and "Simulated" beside the folded credit) | `frontend/components/map/cityLifeLabel.ts`, as `Labels` | all twelve, **required** by the type; machine-authored, same review status as below |
+| the time of day (its button, the scrubber, the sun's captions) | `frontend/lib/map/timeOfDayTriggerLabel.ts`, `frontend/lib/messages/citySky.ts` | all twelve; machine-authored, same review status as below |
+| the landmark tour's ways in ("Landmarks", "Landmark tour") | `frontend/lib/map/landmarks/labels.ts` | all twelve; machine-authored, same review status as below |
 
 Capability labels require every language, so the vocabulary never renders as a
 patchwork: a reader sees all of it in their language or all of it in English.
