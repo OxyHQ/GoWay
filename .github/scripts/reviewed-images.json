@@ -3,13 +3,11 @@
   "recipes": [
     {
       "name": "goway",
-      "services": ["goway"],
       "ecrRepository": "oxy/goway",
       "dockerfile": "packages/backend/Dockerfile",
-      "dockerfileSha256": "2c803d220496968164751240dbc0cb57ac74c436d7b78036d0153032293983b1",
+      "context": ".",
       "target": null,
-      "tagSuffix": "",
-      "cacheScope": "goway-backend"
+      "buildInputsSha256": "f9a5c2c44a83185dca0ece3e1961ccad344b3e900e4b8ff76b2fc50bde8bbaea"
     }
   ]
 }
