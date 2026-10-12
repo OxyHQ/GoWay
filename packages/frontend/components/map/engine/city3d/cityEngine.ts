@@ -439,7 +439,6 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const scene = new THREE.Scene();
   const camera = new THREE.Camera();
   const overlays = options.overlays ?? [];
-  for (const overlay of overlays) overlay.attach(scene);
 
   const light = {
     uLightPosition: { value: new THREE.Vector3(0, 0, 1) },
@@ -503,6 +502,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     side: MESH_SIDES,
     onReady: () => options.requestRepaint(),
   });
+  // Overlays draw in this scene (GLSL) or the TSL pass's, as each is ported.
+  for (const overlay of overlays) overlay.attach(scene, tslPass.scene);
   // The shared TSL materials draw every tile; with the sky, the buildings are
   // still the sky's `RawShaderMaterial`s, one per tile entry (`cityMeshes.ts`,
   // which also explains which faces each keeps: the model matrices mirror y,

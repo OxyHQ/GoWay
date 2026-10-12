@@ -77,6 +77,8 @@ const TSL = 'components/map/engine/city3d/tsl/';
 const TSL_REACHERS = [
   'components/map/engine/city3d/cityEngine.ts',
   'components/map/engine/city3d/cityMeshes.ts',
+  // The street detail's TSL materials (`docs/MAP_NATIVE_3D.md` → step 5).
+  'components/map/engine/cityStreets/streetMaterials.ts',
 ];
 const CHUNK = 'components/engine3d/lazyChunk.ts';
 /**
@@ -86,6 +88,11 @@ const CHUNK = 'components/engine3d/lazyChunk.ts';
  */
 const ENGINE_PARTS: Record<string, string> = {
   'components/map/engine/city3d/sky.ts': 'components/map/engine/city3d/cityEngine.ts',
+  // The street detail's TSL materials and ground atlas, parts of its renderer.
+  'components/map/engine/cityStreets/streetMaterials.ts':
+    'components/map/engine/cityStreets/streetRenderer.ts',
+  'components/map/engine/cityStreets/groundAtlas.ts':
+    'components/map/engine/cityStreets/streetRenderer.ts',
 };
 
 describe('the three.js chunk', () => {

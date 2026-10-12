@@ -19,7 +19,7 @@ import type { CityView } from '../city3d/cityEngine';
 import { type LodPolicy, metresPerPixel, selectLodTiles } from '../city3d/lod';
 import type { CityLight } from '../city3d/occlusion';
 import type { CityOverlay, CityOverlayFrame, CityOverlaySky } from '../city3d/overlay';
-import { GROUND, type Ground } from '../city3d/terrainGround';
+import type { Ground } from '../city3d/terrainGround';
 import {
   EARTH_CIRCUMFERENCE_M,
   tileKey,
@@ -30,7 +30,14 @@ import {
 import { WorkerPool } from '../city3d/workerPool';
 import type { PackedMarkings, PackedSurfaces } from './meshBuffers';
 import type { StreetWorkerRequest, StreetWorkerResponse } from './protocol';
+import { createGroundAtlas } from './groundAtlas';
 import { ATLAS_SIZE } from './streetAtlas';
+import {
+  createStreetMaterials,
+  STREET_TILE_USERDATA_KEY,
+  type StreetMaterials,
+  type StreetTile,
+} from './streetMaterials';
 import type { StreetMeshStats } from './streetMesher';
 import type { QualityProfile } from '@/lib/map/quality/profile';
 import { markingShaders, surfaceShaders } from './streetShaders';
@@ -118,10 +125,12 @@ interface Entry {
   simpleMarkings: number;
   stats: StreetMeshStats | null;
   paintedNames: [number, number][];
-  ground: THREE.DataTexture | null;
+  /** Its slot in the ground atlas while it holds one. */
+  slot: number | null;
   groundVersion: number;
+  /** Its tile as the materials read it: GLSL uniforms, and (TSL) the mesh's `userData`. */
   uniforms: {
-    uGround: { value: THREE.Texture | null };
+    uGroundSlot: { value: number };
     uGrounded: { value: number };
     uTileSize: { value: number };
     uDetail: { value: number };
@@ -129,13 +138,41 @@ interface Entry {
   lastUsed: number;
 }
 
+/** The entry's tile as the TSL materials read it, live from its uniforms. */
+function streetTileOf(uniforms: Entry['uniforms']): StreetTile {
+  return {
+    get slot() {
+      return uniforms.uGroundSlot.value;
+    },
+    get grounded() {
+      return uniforms.uGrounded.value;
+    },
+    get tileSizeM() {
+      return uniforms.uTileSize.value;
+    },
+    get detail() {
+      return uniforms.uDetail.value;
+    },
+  };
+}
+
 const vec3s = (list: readonly (readonly [number, number, number])[]) =>
   list.map(([r, g, b]) => new THREE.Vector3(r, g, b));
 
 export function createCityStreets(options: CityStreetsOptions): CityOverlay {
+  // Under the city sky the streets are GLSL and drawn in the engine's scene;
+  // without it, TSL in its TSL pass (`docs/MAP_NATIVE_3D.md` → Phase 2).
   const group = new THREE.Group();
   group.matrixAutoUpdate = false;
   group.matrixWorldAutoUpdate = false;
+  const tslGroup = new THREE.Group();
+  tslGroup.matrixAutoUpdate = false;
+  tslGroup.matrixWorldAutoUpdate = false;
+  // Every cached tile's ground grid, one slot each: the quality profile's
+  // tiles (`streets.maxTiles`) times what is kept per drawn tile, and the
+  // drawn ones again for the moment a cache overflows before it evicts.
+  const maxCached = Math.max(4, options.quality.maxTiles * STREET_BUDGET.cachedPerDrawn);
+  const groundAtlas = createGroundAtlas(maxCached + options.quality.maxTiles);
 
   const atlasBytes = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE);
   const atlas = new THREE.DataTexture(
@@ -157,6 +194,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     uPxPerM: { value: 1 },
     uDepthBias: { value: STREET_BUDGET.depthBias },
     uAtlas: { value: atlas as THREE.Texture },
+    uGroundAtlas: { value: groundAtlas.texture as THREE.Texture },
     uSurfaceDay: { value: vec3s(options.palette.surfaces.day) },
     uSurfaceNight: { value: vec3s(options.palette.surfaces.night) },
     uPaintDay: { value: vec3s(options.palette.paint.day) },
@@ -167,12 +205,28 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     surfaces: ReturnType<typeof surfaceShaders>;
     markings: ReturnType<typeof markingShaders>;
   } | null = null;
-  const shadersNow = () => {
-    shaders ??= { surfaces: surfaceShaders(sky), markings: markingShaders(sky) };
+  const shadersNow = (withSky: CityOverlaySky) => {
+    shaders ??= { surfaces: surfaceShaders(withSky), markings: markingShaders(withSky) };
     return shaders;
   };
+  // One material per kind for every tile, built on first use.
+  let materials: StreetMaterials | null = null;
+  const materialsNow = () => {
+    materials ??= createStreetMaterials({
+      groundAtlas: groundAtlas.texture,
+      sdfAtlas: atlas,
+      surfaceDay: shared.uSurfaceDay.value,
+      surfaceNight: shared.uSurfaceNight.value,
+      paintDay: shared.uPaintDay.value,
+      paintNight: shared.uPaintNight.value,
+      nightFactor: () => shared.uNightFactor.value,
+      fade: () => shared.uFade.value,
+      pxPerM: () => shared.uPxPerM.value,
+      depthBias: STREET_BUDGET.depthBias,
+    });
+    return materials;
+  };
 
-  const maxCached = Math.max(4, options.quality.maxTiles * STREET_BUDGET.cachedPerDrawn);
   let namedKey = '';
   const entries = new Map<string, Entry>();
   const byId = new Map<number, Entry>();
@@ -201,12 +255,14 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       if (!mesh) continue;
       mesh.removeFromParent();
       mesh.geometry.dispose();
-      (mesh.material as THREE.Material).dispose();
+      // The GLSL materials are the mesh's own; the TSL ones are shared.
+      if (mesh.material instanceof THREE.RawShaderMaterial) mesh.material.dispose();
     }
     entry.surfaces = null;
     entry.markings = null;
-    entry.ground?.dispose();
-    entry.ground = null;
+    if (entry.slot !== null) groundAtlas.release(entry.slot);
+    entry.slot = null;
+    entry.uniforms.uGrounded.value = 0;
     entry.groundVersion = -1;
   };
 
@@ -223,23 +279,25 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       geometry.setAttribute('uv', new THREE.BufferAttribute(data.uvs, 2));
     }
     geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
-    const source = shadersNow()[kind];
-    const material = new THREE.RawShaderMaterial({
-      glslVersion: THREE.GLSL3,
-      ...source,
-      uniforms: { ...(sky?.uniforms ?? {}), ...shared, ...entry.uniforms },
-      side: THREE.DoubleSide,
-      ...(kind === 'markings'
-        ? {
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.CustomBlending,
-            blendSrc: THREE.OneFactor,
-            blendDst: THREE.OneMinusSrcAlphaFactor,
-          }
-        : {}),
-    });
+    const material = sky
+      ? new THREE.RawShaderMaterial({
+          glslVersion: THREE.GLSL3,
+          ...shadersNow(sky)[kind],
+          uniforms: { ...sky.uniforms, ...shared, ...entry.uniforms },
+          side: THREE.DoubleSide,
+          ...(kind === 'markings'
+            ? {
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.CustomBlending,
+                blendSrc: THREE.OneFactor,
+                blendDst: THREE.OneMinusSrcAlphaFactor,
+              }
+            : {}),
+        })
+      : materialsNow()[kind];
     const mesh = new THREE.Mesh(geometry, material);
+    if (!sky) mesh.userData[STREET_TILE_USERDATA_KEY] = streetTileOf(entry.uniforms);
     mesh.frustumCulled = false;
     mesh.matrixAutoUpdate = false;
     mesh.matrixWorldAutoUpdate = false;
@@ -247,7 +305,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     // markings first among the blended (before city life's contact shadows).
     mesh.renderOrder = kind === 'surfaces' ? -3 : -2;
     mesh.visible = false;
-    group.add(mesh);
+    (sky ? group : tslGroup).add(mesh);
     return mesh;
   };
 
@@ -343,8 +401,9 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
   let lastStatsAt = 0;
 
   const overlay: CityOverlay = {
-    attach(scene) {
+    attach(scene, tslScene) {
       scene.add(group);
+      tslScene.add(tslGroup);
     },
 
     update({ view, center, opacity }: CityOverlayFrame) {
@@ -385,10 +444,10 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
             simpleMarkings: 0,
             stats: null,
             paintedNames: [],
-            ground: null,
+            slot: null,
             groundVersion: -1,
             uniforms: {
-              uGround: { value: null },
+              uGroundSlot: { value: 0 },
               uGrounded: { value: 0 },
               uTileSize: { value: tileSizeMetres({ z: 15, x: tile.x, y: tile.y }) },
               uDetail: { value: 0 },
@@ -432,22 +491,13 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
         if (ground) {
           const at = { z: 15, x: tile.x, y: tile.y };
           if (entry.groundVersion !== groundVersion) {
-            if (!ground.hasGrid(at) && groundBudget-- <= 0) {
+            entry.slot ??= groundAtlas.claim();
+            if (entry.slot === null || (!ground.hasGrid(at) && groundBudget-- <= 0)) {
               options.requestRepaint();
               if (entry.groundVersion < 0) continue;
             } else {
-              const grid = ground.grid(at);
-              entry.ground?.dispose();
-              const texture = new THREE.DataTexture(
-                grid,
-                GROUND.grid,
-                GROUND.grid,
-                THREE.RedFormat,
-                THREE.FloatType,
-              );
-              texture.needsUpdate = true;
-              entry.ground = texture;
-              entry.uniforms.uGround.value = texture;
+              groundAtlas.write(entry.slot, ground.grid(at));
+              entry.uniforms.uGroundSlot.value = entry.slot;
               entry.groundVersion = groundVersion;
             }
           }
@@ -551,8 +601,11 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       pool.terminate();
       for (const entry of entries.values()) disposeMeshes(entry);
       entries.clear();
+      materials?.dispose();
       atlas.dispose();
+      groundAtlas.dispose();
       group.removeFromParent();
+      tslGroup.removeFromParent();
     },
   };
 

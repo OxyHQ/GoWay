@@ -333,10 +333,46 @@ the instance's own variant from a small data texture by vertex index
 ms. The draws a tile's trees cost are already bounded by the shape count,
 not by the tree count.
 
-Next, one material at a time, each deleting its GLSL twin:
-street markings (once `feat/street-detail` merges), landmarks/models, city
-life, live 3D, and the sky and shadow passes (which retire the last building
-GLSL).
+## Phase 2, step 5: street detail
+
+The streets' surfaces and markings (`cityStreets/`, #159) are TSL whenever
+the city sky is off (`streetMaterials.ts`), drawn by the TSL pass; their
+unlit GLSL is gone. Under the sky they stay GLSL (`streetShaders.ts`, now the
+sky's variant only) until the sky is ported, as the buildings do.
+
+- **One material per kind for every tile.** The GLSL path built a material
+  and a ground texture per tile. Every street tile's ground grid now has a
+  slot in one float texture (`groundAtlas.ts`), and a mesh reads its slot,
+  size, detail and grounding per object. The sky's GLSL reads the same atlas,
+  so there is one ground path.
+- **Overlays choose their scene.** `CityOverlay.attach(scene, tslScene)`: a
+  ported overlay adds its meshes to the TSL pass's scene.
+- **Same placement, line for line.** The ground read, the 6 cm lift, the
+  per-layer clip-space depth nudge, the sub-pixel line widening (with the
+  projection's `[3][3]` read per render) and the SDF arrows and words.
+
+Measured on Passeig de Gràcia (z18.4, 55°, four z15 road tiles, 226 k street
+triangles, 8 street draws), terrain on, sky off, four alternating rounds of
+10 s on a loaded host (load ~22):
+
+| Median of the p50s | `main` (GLSL) | TSL |
+| --- | ---: | ---: |
+| Engine frame CPU | 1.08 ms | 1.12 ms |
+| Engine draw CPU | 0.81 ms | 0.89 ms |
+| GPU (the perf runtime's frame timer) | 4.56 ms | 4.50 ms |
+
+- **Pixels:** the same, except around trees. The GLSL streets drew after
+  the TSL pass and failed the depth test wherever a tree's contact shadow had
+  written depth, leaving pale holes in the road around every street tree. The
+  TSL streets draw first among the opaque (`renderOrder`), and the shadows
+  blend onto them. 5.5 k of 2.07 M pixels differ, all of them there.
+- **The visibility gate covers the streets now** (below). `main` and TSL
+  measure the same shares. Streets that ignore the ground (built and run
+  once to prove it) fail it: asphalt 0% without the sky.
+
+Next, one material at a time, each deleting its GLSL twin: landmarks and
+models, city life, live 3D, and the sky and shadow passes (which retire the
+last building and street GLSL).
 
 ## Correction: the terrain lift was not measured
 
@@ -428,6 +464,17 @@ Per sky (on and off) it asserts:
   than the noon basemap (walls, windows) is at least 2% and 4× the same view
   with the 3D city off. That reference has no basemap buildings, so MapLibre's
   extrusions cannot stand in for the city.
+- **Streets** (since step 5): the street detail drew triangles from the
+  fixture's road tiles (`roadTile`: a four-lane street with sidewalks in
+  every gap between blocks), and the asphalt-grey share is at least 0.5% and
+  3× the same view with streets off. Measured: 8.60% with the sky and 1.33%
+  without (0% with streets off), on `main` and TSL alike. The camera looks
+  mostly at a wall, hence the low floor. Streets drawn without their ground
+  measure 0%.
+
+The streets are on in every city view, so the walls-and-windows share with
+the sky reads 87.6% since step 5 (sky-lit asphalt is darker than the noon
+basemap), against 72.6% in the table below.
 
 The assertions are coverage, not frame time, so software GL is enough and
 the result does not depend on the runner: CI's two cores measured the same
@@ -446,7 +493,7 @@ Without the fix, the trees without the sky are buried in every run, and the
 rest in most: with the sky on, one run in three drew its trees anyway. What
 re-creates a mesh's render objects (and so, by chance, its program) depends
 on the frame's timing; the no-sky trees are the gate's deterministic catch.
-On failure the screenshots (`{sky,nosky}-{trees,notrees,nocity}.png`) are
+On failure the screenshots (`{sky,nosky}-{trees,notrees,nostreets,nocity}.png`) are
 uploaded as the `city3d-visible` artifact.
 
 ## The base map
