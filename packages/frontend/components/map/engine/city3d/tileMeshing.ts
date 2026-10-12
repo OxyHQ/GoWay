@@ -9,6 +9,7 @@
  */
 import { CITY_TILE_EXTENT } from '@/lib/map/cityTiles';
 
+import { meshVolumes } from '../camera/volumes';
 import { decodeBuildings } from './decode';
 import { withoutHidden } from './landmarkTiles';
 import { concatTileMeshes, meshLod2Surfaces } from './lod2Mesher';
@@ -20,6 +21,15 @@ import { meshOsmBuildings } from './osmMesher';
 import { decodeCityTile } from './osmTiles';
 import { type PackedMesh, packMesh } from './packing';
 import type { Footprint } from './workerTrees';
+
+/**
+ * A packed mesh with its units as prisms for the camera (`camera/volumes.ts`),
+ * built here, off the main thread, from the vertices just packed.
+ */
+function withVolumes(mesh: PackedMesh | null): PackedMesh | null {
+  if (mesh) mesh.volumes = meshVolumes(mesh);
+  return mesh;
+}
 
 /** Nothing to draw: a fresh value, so no caller can share (or mutate) another's. */
 const nothing = (): Meshed => ({ mesh: null, footprints: { list: [], extent: 4096 }, sources: [] });
@@ -43,13 +53,13 @@ export function meshOpenMapTiles(
   const options = { extent: decoded.extent, tileSizeMetres: size };
   if (request.lod !== 0) {
     return {
-      mesh: meshBuildingsLod(decoded.features, options, request.lod),
+      mesh: withVolumes(meshBuildingsLod(decoded.features, options, request.lod)),
       footprints,
       sources: [],
     };
   }
   const full = meshBuildings(decoded.features, options);
-  return { mesh: full ? packMesh(full, size) : null, footprints, sources: [] };
+  return { mesh: withVolumes(full ? packMesh(full, size) : null), footprints, sources: [] };
 }
 
 /**
@@ -87,7 +97,7 @@ export function meshCityTile(
   const lod2 = shown.length > 0 ? meshLod2Surfaces(shown, options, decoded?.buildings) : null;
   const mesh = concatTileMeshes(osm, lod2);
   return {
-    mesh: mesh ? packMesh(mesh, size) : null,
+    mesh: withVolumes(mesh ? packMesh(mesh, size) : null),
     footprints,
     sources: lod2 ? [...new Set(shown.map((s) => s.source))] : [],
   };
