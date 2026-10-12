@@ -12,6 +12,7 @@ import {
   CREDIT_AUTO_COLLAPSE_MS,
   type CreditEvent,
   type CreditState,
+  creditDisclosure,
   creditReducer,
   INITIAL_CREDIT_STATE,
 } from '@/lib/map/compactCredit';
@@ -59,6 +60,43 @@ describe('the compact credit', () => {
   });
 });
 
+describe('the simulation’s label in the credit', () => {
+  const simulated = {
+    text: 'Simulated: cars and people · Live: buses',
+    short: 'Simulated',
+  };
+
+  test('spelled out, the whole label is its first line', () => {
+    expect(creditDisclosure(true, simulated)).toEqual({ line: simulated.text, tag: null });
+  });
+
+  test('folded, the one word stays beside the ⓘ', () => {
+    expect(creditDisclosure(false, simulated)).toEqual({ line: null, tag: 'Simulated' });
+  });
+
+  test('nothing folds it away: shown after every sequence of credit events', () => {
+    const types: CreditEvent['type'][] = ['elapsed', 'mapInteraction', 'toggle'];
+    const sequences: CreditEvent['type'][][] = [[]];
+    for (let length = 1; length <= 4; length++) {
+      for (const prefix of sequences.filter((sequence) => sequence.length === length - 1)) {
+        for (const type of types) sequences.push([...prefix, type]);
+      }
+    }
+    for (const sequence of sequences) {
+      const { expanded } = run(sequence);
+      const shown = creditDisclosure(expanded, simulated);
+      expect(shown.line ?? shown.tag, sequence.join(' → ')).not.toBeNull();
+    }
+    // At load, spelled out: the WHOLE label.
+    expect(creditDisclosure(INITIAL_CREDIT_STATE.expanded, simulated).line).toBe(simulated.text);
+  });
+
+  test('with nothing simulated drawn, the credit says nothing of it', () => {
+    expect(creditDisclosure(true, null)).toEqual({ line: null, tag: null });
+    expect(creditDisclosure(false, null)).toEqual({ line: null, tag: null });
+  });
+});
+
 describe('wired on every map', () => {
   const read = (path: string) =>
     readFileSync(join(import.meta.dir, '..', '..', '..', path), 'utf8');
@@ -79,6 +117,19 @@ describe('wired on every map', () => {
     const web = read('components/map/MapCanvas.web.tsx');
     expect(web).toContain('if (isGestureMove(event)) noteCreditInteraction();');
     expect(web).toContain('?.originalEvent != null');
+  });
+
+  test('the web fork hands the credit what the city layer says the simulation draws', () => {
+    const web = read('components/map/MapCanvas.web.tsx');
+    expect(web).toMatch(/<MapAttribution[^>]*disclosure=\{cityLifeDisclosure\}/);
+    expect(web).toContain('onCityLife: (disclosure) =>');
+    // Detached, nothing simulated is drawn, so nothing is disclosed.
+    expect(web).toContain('setCityLifeDisclosure(null);');
+    const layer = read('components/map/city3dLayer.web.ts');
+    expect(layer).toContain('onActiveChange: (active) => life.setActive(active)');
+    expect(layer).toContain('onLabel: (content) => life.setContent(content)');
+    // No second, separate label anywhere on the map.
+    expect(layer).not.toMatch(/createElement\(/);
   });
 
   test('no MapCanvas prop can switch the credit off', () => {

@@ -442,6 +442,15 @@ describe('the region catalogue', () => {
     expect(selectRegions('europe/spain/').length).toBeGreaterThan(10);
     expect(selectRegions('all')).toHaveLength(regions.length);
     expect(() => selectRegions('europe/portgual')).toThrow(/names no region/);
+    // Taking regions back out — the ones already published with official data.
+    const rest = selectRegions('europe/spain/,-europe/spain/madrid,-europe/spain/cataluna');
+    expect(rest.map((r) => r.id)).not.toContain('europe/spain/madrid');
+    expect(rest).toHaveLength(selectRegions('europe/spain/').length - 2);
+    expect(selectRegions('all,-europe/')).toHaveLength(
+      regions.length - selectRegions('europe/').length,
+    );
+    expect(() => selectRegions('all,-europe/portgual')).toThrow(/names no region/);
+    expect(() => selectRegions('-europe/')).toThrow(/no regions selected/);
   });
 
   test('batches within the matrix limit, every region exactly once', () => {

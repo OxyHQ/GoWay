@@ -59,6 +59,7 @@ import { mapFeatureStore, useMapFeature } from '@/lib/map/useMapFeatures';
 import { clampPixelRatio } from '@/lib/map/quality/profile';
 import { useMapQuality } from '@/lib/map/quality/useMapQuality';
 import { maxPitchFor } from '@/lib/map/citySkyFlag';
+import { litInstant } from '@/lib/map/timeOfDayControl';
 import { cityEngineWanted } from '@/lib/map/cityEngineGate';
 import {
   type MapAttributionLink,
@@ -81,7 +82,7 @@ import {
   pickLabelFeature,
   type QueriedLabel,
 } from './labels';
-import { MapAttribution } from './MapAttribution';
+import { MapAttribution, type MapCreditDisclosure } from './MapAttribution';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
 import { initialMapRelief, useMapRelief } from './reliefFlags';
@@ -179,9 +180,10 @@ const PERF_HUD =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('perf') === '1';
 
 /**
- * The time-of-day scrubber is its own lazy chunk: rendered only while the
- * registry's `citySky` is on and the layer that draws the sky is attached, so
- * with it off the `import()` below is never evaluated and nothing downloads.
+ * The time-of-day scrubber is its own lazy chunk: rendered only once the
+ * screen opens it (`timeOfDayOpen`) while the registry's `citySky` is on and
+ * the layer that draws the sky is attached, so until somebody opens it the
+ * `import()` below is never evaluated and nothing downloads.
  */
 const TimeOfDayScrubber = lazy(() => import('./TimeOfDayScrubber.web'));
 
@@ -236,6 +238,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     renderMarker,
     overlays,
     live,
+    timeOfDayOpen = false,
+    onTimeOfDayClose,
+    onSkyActiveChange,
     showUserLocation = false,
     interaction,
     onViewportChange,
@@ -307,6 +312,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // City sky: whether the layer that draws it is attached (the scrubber and
   // the higher pitch ceiling exist only then). See the city-3D section below.
   const [skyActive, setSkyActive] = useState(false);
+  // What the city-life simulation says it is drawing, for the credit
+  // (`MapAttribution` → the disclosure); `null` while nothing simulated is.
+  const [cityLifeDisclosure, setCityLifeDisclosure] = useState<MapCreditDisclosure | null>(null);
   // The data credit: spelled out once the map has loaded, folded into its ⓘ
   // after five seconds or at the reader's first pan, zoom or tap
   // (`lib/map/compactCredit.ts`). Always rendered; nothing can switch it off.
@@ -530,6 +538,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               appearance: resolvedAppearance,
               terrain3d: qualityRef.current.relief.terrain3d,
               terrainTextureScale: qualityRef.current.relief.terrainTextureScale,
+              globeNight: qualityRef.current.relief.globeNight,
+              at: skyAtRef.current,
             });
             reliefRef.current = reliefHandle;
           }
@@ -1029,16 +1039,32 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const [landmarkCredits, setLandmarkCredits] = useState<readonly MapAttributionLink[]>(NO_CREDITS);
   const city3dLightRef = useRef(sunLight.light);
 
-  // City sky: the instant the layer is lit for (`null`: now), whether the
-  // layer that draws it is actually attached (the scrubber shows only then),
-  // and the sun's altitude over the centre for the scrubber's caption.
-  const [skyAt, setSkyAt] = useState<Date | null>(null);
+  // City sky: the instant the layer is lit for (`null`: now) and the sun's
+  // altitude over the centre for the scrubber's caption.
+  // The scrubber is opened on demand by the screen (`timeOfDayOpen`), and
+  // only while the sky draws. Shut — by its own close, by the screen, or by
+  // the sky going away — the map goes back to now: no other time is ever
+  // drawn without the control that says so on screen (`timeOfDayControl.ts`).
+  const timeOfDayShown = timeOfDayOpen && citySky && skyActive;
+  const [chosenSkyAt, setSkyAt] = useState<Date | null>(null);
+  const skyAt = litInstant(timeOfDayShown, chosenSkyAt);
+  useEffect(() => {
+    // Opened again, it starts from now, not from the last time it showed.
+    if (!timeOfDayShown) setSkyAt(null);
+  }, [timeOfDayShown]);
   const [sunAltitude, setSunAltitude] = useState<number | null>(null);
   const skyAtRef = useRef(skyAt);
   useEffect(() => {
     skyAtRef.current = skyAt;
     city3dRef.current?.setTime(skyAt);
+    // The globe's day and night follow the same instant.
+    reliefRef.current?.setTime(skyAt);
   }, [skyAt]);
+  // The screen's time-of-day control exists only while there is a sky to set.
+  const skyDrawn = citySky && skyActive;
+  useEffect(() => {
+    onSkyActiveChange?.(skyDrawn);
+  }, [onSkyActiveChange, skyDrawn]);
   // Credits the city layer owes while it draws an official 3D model.
   const [city3dCredits, setCity3dCredits] = useState<readonly MapAttributionLink[]>(NO_CREDITS);
   // Credits for the GoWay Live data on screen (set by the live effect below).
@@ -1136,6 +1162,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
                   }
                 : undefined,
               onCredits: (links) => setCity3dCredits(links.length === 0 ? NO_CREDITS : links),
+              // The simulation's label rides in the credit, for exactly as
+              // long as anything simulated is drawn (`docs/MAP_CITY_LIFE.md`).
+              onCityLife: (disclosure) =>
+                setCityLifeDisclosure((current) =>
+                  sameDisclosure(current, disclosure) ? current : disclosure,
+                ),
             }),
       )
       .then((attached) => {
@@ -1174,6 +1206,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       runtime.handle?.set3d(false);
       setSkyActive(false);
       setCity3dCredits(NO_CREDITS);
+      // A detached layer draws nothing simulated.
+      setCityLifeDisclosure(null);
     };
   }, [
     ready,
@@ -1202,6 +1236,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     runtime?.handle?.setQuality(quality);
     reliefRef.current?.setTerrain3d(quality.relief.terrain3d);
     reliefRef.current?.setTerrainTextureScale(quality.relief.terrainTextureScale);
+    reliefRef.current?.setGlobeNight(quality.relief.globeNight);
   }, [quality, runtime]);
 
   // Hand the models to the engine whenever either changes.
@@ -1624,11 +1659,21 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           in somebody else's page. See MapBrand.tsx. `extra` only ADDS the
           credits of data the city-3D layer is drawing right now. */}
       <MapBrand />
-      <MapAttribution extra={credits} expanded={credit.expanded} onToggle={credit.toggle} />
+      <MapAttribution
+        extra={credits}
+        disclosure={cityLifeDisclosure}
+        expanded={credit.expanded}
+        onToggle={credit.toggle}
+      />
 
-      {citySky && skyActive ? (
+      {timeOfDayShown ? (
         <Suspense fallback={null}>
-          <TimeOfDayScrubber value={skyAt} onChange={setSkyAt} sunAltitudeDeg={sunAltitude} />
+          <TimeOfDayScrubber
+            value={skyAt}
+            onChange={setSkyAt}
+            onClose={onTimeOfDayClose}
+            sunAltitudeDeg={sunAltitude}
+          />
         </Suspense>
       ) : null}
 
@@ -1642,6 +1687,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 // ---------------------------------------------------------------------------
 
 const EMPTY_LABELS: readonly MapLabelFeature[] = [];
+
+function sameDisclosure(a: MapCreditDisclosure | null, b: MapCreditDisclosure | null): boolean {
+  return a === b || (a !== null && b !== null && a.text === b.text && a.detail === b.detail);
+}
 
 function sameCredits(a: readonly MapCreditLink[], b: readonly MapCreditLink[]): boolean {
   return (

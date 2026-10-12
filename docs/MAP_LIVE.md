@@ -272,7 +272,7 @@ The default namespace keeps its Oxy auth; a test proves both.
 | Piece | Where |
 | --- | --- |
 | Switch | The map-feature registry's `live` (`lib/map/mapFeatures.ts`, `docs/MAP_FEATURES.md`): the person's choice in the settings dialog (development builds), and `?live=1` in development only |
-| Gate | `features/explore/ExploreScreen.tsx`: `useMapFeature('live')` mounts the lazy `LiveHost` in the top-right stack, under the settings button and the Landmarks pill; off, it unmounts and the layer, its credits and the coverage go with it |
+| Gate | `features/explore/ExploreScreen.tsx`: `useMapFeature('live')` mounts the lazy `LiveHost` in the top-right stack, under the settings button, the time of day and the Landmarks control; off, it unmounts and the layer, its credits and the coverage go with it |
 | HTTP | `lib/live/client.ts`: one SDK client for `live.sources()` and `live.shape()`, always the real API (never the fixture transport) — shared by the shape cache and the settings dialog's **Live data sources** |
 | Socket client | `features/live/liveClient.ts` (`socket.io-client`, WebSocket only, debounced subscriptions, honours `rate_limited`; bike share asked for from z15 only; packed messages inflated in arrival order) |
 | State and motion (pure, tested) | `features/live/liveStore.ts`, `motion.ts` |

@@ -125,6 +125,13 @@ export interface QualityProfile {
      * in them).
      */
     terrainTextureScale: 1 | 2;
+    /**
+     * Day and night on the globe (`components/map/globeNightLayer.web.ts`):
+     * one full-screen pass of a ray–sphere test per pixel below z13, nothing
+     * above. Cheaper than the hillshade under it, so every preset keeps it;
+     * the knob is for a device that cannot.
+     */
+    globeNight: boolean;
   };
 }
 
@@ -164,7 +171,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     live: { maxEntities: 500 },
     landmarks: { max: 2 },
     streets: { maxTiles: 6, drawTriangles: 400_000 },
-    relief: { terrain3d: true, terrainTextureScale: 1 },
+    relief: { terrain3d: true, terrainTextureScale: 1, globeNight: true },
   },
   medium: {
     tier: 'medium',
@@ -192,7 +199,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     live: { maxEntities: 2_000 },
     landmarks: { max: 4 },
     streets: { maxTiles: 10, drawTriangles: 900_000 },
-    relief: { terrain3d: true, terrainTextureScale: 2 },
+    relief: { terrain3d: true, terrainTextureScale: 2, globeNight: true },
   },
   high: {
     tier: 'high',
@@ -220,7 +227,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     live: { maxEntities: 5_000 },
     landmarks: { max: 8 },
     streets: { maxTiles: 16, drawTriangles: 2_000_000 },
-    relief: { terrain3d: true, terrainTextureScale: 2 },
+    relief: { terrain3d: true, terrainTextureScale: 2, globeNight: true },
   },
 };
 

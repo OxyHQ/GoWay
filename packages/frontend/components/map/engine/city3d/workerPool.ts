@@ -1,10 +1,13 @@
 /**
- * A small pool of mesh Web Workers, so a dense tile meshing on one core does
- * not hold up every other tile behind it.
+ * A small pool of mesh workers, so a dense tile meshing on one core does not
+ * hold up every other tile behind it.
  *
- * The pool never constructs a worker itself: the engine hands it a factory
- * that spells `new Worker(new URL('./meshWorker', import.meta.url))`, the one
- * form Expo's Metro bundles as a sealed worker chunk (see `meshWorker.ts`).
+ * The pool never constructs a worker itself: the engine hands it a factory.
+ * On the web that spells `new Worker(new URL('./meshWorker', import.meta.url))`,
+ * the one form Expo's Metro bundles as a sealed worker chunk (see
+ * `meshWorker.ts`), and wires it with {@link webWorker}; on native it starts a
+ * worklet runtime (`meshRuntime.ts`). The pool needs only {@link PoolWorker}
+ * of either, and tells each one where its replies go ({@link WorkerEvents}).
  *
  * ## Which worker gets a request
  *
@@ -48,6 +51,29 @@ export interface PoolMessage {
   type?: string;
 }
 
+/** Where a worker's replies go: given to the factory for the worker it makes. */
+export interface WorkerEvents<Response> {
+  message(response: Response): void;
+  /** The worker died; every request it held is lost. */
+  error(message: string): void;
+}
+
+/** What the pool needs of a worker, once its replies are wired. */
+export interface PoolWorker {
+  postMessage(message: unknown): void;
+  terminate(): void;
+}
+
+/** A Web Worker, its replies and its death wired to `events`. */
+export function webWorker<Response>(worker: Worker, events: WorkerEvents<Response>): PoolWorker {
+  worker.onmessage = (event: MessageEvent<Response>) => events.message(event.data);
+  worker.onerror = (event: ErrorEvent) => {
+    event.preventDefault?.();
+    events.error(event.message || 'worker failed');
+  };
+  return worker;
+}
+
 /**
  * Routes requests to workers, cancels them, and survives a worker dying.
  *
@@ -63,41 +89,52 @@ export interface PoolMessage {
  *    otherwise they stayed pending forever and their tiles never drew.
  */
 export class WorkerPool<Request extends PoolMessage, Response extends PoolMessage> {
-  private readonly workers: Worker[];
+  private readonly workers: PoolWorker[];
   private readonly loads: number[];
   private readonly owner = new Map<number, number>();
   private readonly cancelled = new Set<number>();
 
   constructor(
-    private readonly factory: () => Worker,
+    private readonly factory: (events: WorkerEvents<Response>) => PoolWorker,
     size: number,
     private readonly onMessage: (response: Response) => void,
     /** A request lost to a worker that died; the engine treats it as an error. */
     private readonly onFailed: (id: number, message: string) => void,
   ) {
     // 0 is allowed: an engine drawing no buildings starts no worker.
-    this.workers = Array.from({ length: Math.max(0, size) }, () => factory());
-    this.loads = this.workers.map(() => 0);
-    this.workers.forEach((worker, index) => {
-      this.attach(worker, index);
-    });
+    this.workers = [];
+    this.loads = [];
+    for (let index = 0; index < Math.max(0, size); index++) {
+      this.loads.push(0);
+      this.workers.push(this.start(index));
+    }
   }
 
-  private attach(worker: Worker, index: number): void {
-    worker.onmessage = (event: MessageEvent<Response>) => {
-      if (this.workers[index] !== worker) return;
-      const { id, type } = event.data;
-      if (this.owner.get(id) !== index) return;
-      this.owner.delete(id);
-      this.loads[index] = Math.max(0, this.loads[index] - 1);
-      if (this.cancelled.delete(id) || type === 'cancelled') return;
-      this.onMessage(event.data);
-    };
-    worker.onerror = (event: ErrorEvent) => {
-      if (this.workers[index] !== worker) return;
-      event.preventDefault?.();
-      this.replace(index, event.message || 'mesh worker failed');
-    };
+  /**
+   * A worker for slot `index`. Its replies count only while it still holds
+   * the slot: a replaced worker's late words are dropped.
+   */
+  private start(index: number): PoolWorker {
+    let worker: PoolWorker | null = null;
+    const current = () => worker !== null && this.workers[index] === worker;
+    worker = this.factory({
+      message: (response) => {
+        if (current()) this.received(index, response);
+      },
+      error: (message) => {
+        if (current()) this.replace(index, message || 'mesh worker failed');
+      },
+    });
+    return worker;
+  }
+
+  private received(index: number, response: Response): void {
+    const { id, type } = response;
+    if (this.owner.get(id) !== index) return;
+    this.owner.delete(id);
+    this.loads[index] = Math.max(0, this.loads[index] - 1);
+    if (this.cancelled.delete(id) || type === 'cancelled') return;
+    this.onMessage(response);
   }
 
   /** Fail every request the worker at `index` held, and start a new one. */
@@ -110,9 +147,7 @@ export class WorkerPool<Request extends PoolMessage, Response extends PoolMessag
     }
     this.loads[index] = 0;
     this.workers[index].terminate();
-    const fresh = this.factory();
-    this.workers[index] = fresh;
-    this.attach(fresh, index);
+    this.workers[index] = this.start(index);
   }
 
   get size(): number {

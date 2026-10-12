@@ -9,7 +9,7 @@
     "dev": "bun --watch server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "bun dist/server.js",
-    "typecheck": "tsc -b tsconfig.json && tsc -p tsconfig.tools.json",
+    "typecheck": "bun check -b -p tsconfig.json && bun check -p tsconfig.tools.json",
     "test": "bun test",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "db:generate": "bun --bun --env-file=.env drizzle-kit generate",

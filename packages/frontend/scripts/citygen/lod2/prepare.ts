@@ -95,6 +95,12 @@ export interface PrepareStats {
   triangulated: number;
   droppedSteep: number;
   untypedClassified: number;
+  /**
+   * Cadastral parts whose recorded storeys are not a building's
+   * ({@link implausibleStoreys}): left out, never re-heighted. By reason, and
+   * the first {@link MAX_LISTED_IMPLAUSIBLE} part ids for the receipt.
+   */
+  implausibleStoreys: { aboveCeiling: number; spike: number; parts: string[] };
 }
 
 export function emptyPrepareStats(): PrepareStats {
@@ -107,6 +113,7 @@ export function emptyPrepareStats(): PrepareStats {
     triangulated: 0,
     droppedSteep: 0,
     untypedClassified: 0,
+    implausibleStoreys: { aboveCeiling: 0, spike: 0, parts: [] },
   };
 }
 
@@ -448,6 +455,64 @@ export function representativePoint2(ring: Float64Array): [number, number] {
   return [(ring[0] + ring[2]) / 2, (ring[1] + ring[3]) / 2];
 }
 
+/** Part ids a receipt lists of the implausible storey counts it left out. */
+export const MAX_LISTED_IMPLAUSIBLE = 200;
+/** A part at least this many storeys tall is checked for being a lone spike… */
+export const SPIKE_MIN_STOREYS = 20;
+/** …which it is when no other part of its building has more than this share of its storeys… */
+export const SPIKE_SUPPORT_SHARE = 1 / 3;
+/** …and it would stand taller than this many times the side of its own footprint. */
+export const SPIKE_SLENDERNESS = 8;
+
+/** One part as the plausibility rules see it. */
+export interface StoreyedPart {
+  floors: number;
+  /** Footprint area, m². */
+  areaM2: number;
+}
+
+/**
+ * Which recorded storey counts of one cadastral building are NOT a
+ * building's storeys, and why — by index into `parts`:
+ *
+ *  - `ceiling`: more than the region has (`StoreyModel.maxStoreys`; Spain
+ *    60, its tallest towers record 59).
+ *  - `spike`: a part of at least {@link SPIKE_MIN_STOREYS} that no other
+ *    part of its building comes within {@link SPIKE_SUPPORT_SHARE} of (or
+ *    with no other part at all), on a footprint so small the modelled height
+ *    is more than {@link SPIKE_SLENDERNESS} times its side. A real tower's
+ *    parts rise together (every part of Madrid's Torre de Cristal records
+ *    50–59) and stand on hundreds of square metres; a podium tower's slab
+ *    is wide (Barcelona's Hotel Arts: 44 storeys on 1,324 m², slenderness
+ *    3.7). Measured on every Barcelona-area and Madrid part of 20 storeys or
+ *    more, the lone ones split cleanly: real at slenderness ≤ 4.7, junk at
+ *    ≥ 8.3 (a 111-storey part of 2 m² beside parts of 5 at Montcada i
+ *    Reixac's Pla d'en Coll; 50 and 100 storeys on single-part sheds).
+ *
+ * Such a count is left out — the part is not drawn and the OSM building
+ * under it keeps OSM's own height — never "corrected" to a guess.
+ */
+export function implausibleStoreys(
+  parts: readonly StoreyedPart[],
+  model: StoreyModel,
+): Map<number, 'ceiling' | 'spike'> {
+  const verdicts = new Map<number, 'ceiling' | 'spike'>();
+  parts.forEach((part, i) => {
+    if (part.floors > model.maxStoreys) verdicts.set(i, 'ceiling');
+  });
+  parts.forEach((part, i) => {
+    if (verdicts.has(i) || part.floors < SPIKE_MIN_STOREYS) return;
+    let support = 0;
+    parts.forEach((other, j) => {
+      if (j !== i && !verdicts.has(j)) support = Math.max(support, other.floors);
+    });
+    if (support > part.floors * SPIKE_SUPPORT_SHARE) return;
+    const height = heightForStoreys(part.floors, model);
+    if (height > SPIKE_SLENDERNESS * Math.sqrt(Math.max(part.areaM2, 0))) verdicts.set(i, 'spike');
+  });
+  return verdicts;
+}
+
 /**
  * One cadastral building (its INSPIRE `BuildingPart`s) → a prepared building
  * of FLAT roofs, one per part, each at the height its recorded storeys stand
@@ -455,7 +520,9 @@ export function representativePoint2(ring: Float64Array): [number, number] {
  * floor, 3.05 m upper floors, 0.9 m parapet).
  *
  * Parts with no storeys above ground (a basement's roof, a patio) carry
- * nothing to draw and are left out; a building with none at all is `null`.
+ * nothing to draw and are left out, as are parts whose count is not a
+ * building's storeys ({@link implausibleStoreys}); a building with none left
+ * is `null`.
  */
 export function prepareInspireBuilding(
   reference: string,
@@ -468,12 +535,14 @@ export function prepareInspireBuilding(
   const roofs: RoofSurface[] = [];
   const footprint: Float64Array[] = [];
   let height = 0;
+  const storeyed: (StoreyedPart & { part: InspirePart; polygons: Float64Array[][] })[] = [];
   for (const part of parts) {
     const floors = part.floorsAbove;
     if (floors === null || floors < 1) continue;
-    const h = heightForStoreys(floors, storeys);
-    for (const polygon of part.polygons) {
-      const rings = polygon.map((ring) => {
+    let areaMerc = 0;
+    let midY = 0;
+    const polygons = part.polygons.map((polygon) =>
+      polygon.map((ring, r) => {
         const n = ring.length / 3;
         const merc = new Float64Array(n * 2);
         for (let i = 0; i < n; i++) {
@@ -481,8 +550,28 @@ export function prepareInspireBuilding(
           merc[i * 2] = mercX(lon);
           merc[i * 2 + 1] = mercY(lat);
         }
+        const area = Math.abs(ringArea2(merc));
+        areaMerc += r === 0 ? area : -area;
+        midY = merc[1];
         return merc;
-      });
+      }),
+    );
+    const unit = metresPerMercator(midY);
+    storeyed.push({ part, floors, polygons, areaM2: Math.max(0, areaMerc) * unit * unit });
+  }
+  const verdicts = implausibleStoreys(storeyed, storeys);
+  storeyed.forEach(({ part, floors, polygons }, i) => {
+    const verdict = verdicts.get(i);
+    if (verdict) {
+      if (verdict === 'ceiling') stats.implausibleStoreys.aboveCeiling++;
+      else stats.implausibleStoreys.spike++;
+      if (stats.implausibleStoreys.parts.length < MAX_LISTED_IMPLAUSIBLE) {
+        stats.implausibleStoreys.parts.push(`${part.id}:${floors}:${verdict}`);
+      }
+      return;
+    }
+    const h = heightForStoreys(floors, storeys);
+    for (const rings of polygons) {
       roofs.push({
         rings,
         heights: rings.map((ring) => new Float64Array(ring.length / 2).fill(h)),
@@ -492,7 +581,7 @@ export function prepareInspireBuilding(
       stats.roofs++;
     }
     height = Math.max(height, h);
-  }
+  });
   if (roofs.length === 0) {
     stats.noRoof++;
     return null;

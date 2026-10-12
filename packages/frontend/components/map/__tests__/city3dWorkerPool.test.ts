@@ -6,16 +6,19 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { WorkerPool } from '@/components/map/engine/city3d/workerPool';
+import {
+  WorkerPool,
+  webWorker,
+  type WorkerEvents,
+} from '@/components/map/engine/city3d/workerPool';
 
 type Message = { id: number; type?: string };
 
-/** A stand-in Worker: records what it is sent; the test answers for it. */
+/** A stand-in worker: records what it is sent; the test answers for it. */
 class FakeWorker {
   sent: unknown[] = [];
   terminated = false;
-  onmessage: ((event: MessageEvent<Message>) => void) | null = null;
-  onerror: ((event: ErrorEvent) => void) | null = null;
+  constructor(private readonly events: WorkerEvents<Message>) {}
   postMessage(message: unknown) {
     this.sent.push(message);
   }
@@ -23,10 +26,10 @@ class FakeWorker {
     this.terminated = true;
   }
   reply(data: Message) {
-    this.onmessage?.({ data } as MessageEvent<Message>);
+    this.events.message(data);
   }
   crash() {
-    this.onerror?.({ message: 'boom', preventDefault() {} } as unknown as ErrorEvent);
+    this.events.error('boom');
   }
 }
 
@@ -35,10 +38,10 @@ function pool(size: number) {
   const replies: Message[] = [];
   const failed: number[] = [];
   const instance = new WorkerPool<Message, Message>(
-    () => {
-      const worker = new FakeWorker();
+    (events) => {
+      const worker = new FakeWorker(events);
       made.push(worker);
-      return worker as unknown as Worker;
+      return worker;
     },
     size,
     (reply) => replies.push(reply),
@@ -92,5 +95,35 @@ describe('WorkerPool', () => {
     instance.cancel(1, { type: 'cancel', id: 1 });
     made[0].crash();
     expect(failed).toEqual([2]);
+  });
+});
+
+describe('webWorker', () => {
+  test("wires a Web Worker's replies and its death to the pool's events", () => {
+    const worker = {
+      onmessage: null as ((event: MessageEvent<Message>) => void) | null,
+      onerror: null as ((event: ErrorEvent) => void) | null,
+      postMessage() {},
+      terminate() {},
+    };
+    const replies: Message[] = [];
+    const errors: string[] = [];
+    let prevented = false;
+    const wired = webWorker<Message>(worker as unknown as Worker, {
+      message: (reply) => replies.push(reply),
+      error: (message) => errors.push(message),
+    });
+    expect(wired).toBe(worker as unknown as Worker);
+    worker.onmessage?.({ data: { id: 7 } } as MessageEvent<Message>);
+    worker.onerror?.({
+      message: '',
+      preventDefault: () => {
+        prevented = true;
+      },
+    } as unknown as ErrorEvent);
+    expect(replies).toEqual([{ id: 7 }]);
+    // An unnamed error still fails the worker, and never reaches the console.
+    expect(errors).toEqual(['worker failed']);
+    expect(prevented).toBe(true);
   });
 });

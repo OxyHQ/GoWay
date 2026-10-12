@@ -347,7 +347,7 @@ async function build(args: Args): Promise<string> {
     });
     const c = merged.stats;
     console.log(
-      `  lod2         ${input.source}: ${ingested.prepare.kept} buildings prepared (${ingested.outside} outside the area), ${c.drawn} drawn, ${c.unconfirmed} not in OSM, ${c.stale} stale, ${c.osmRicher} where OSM's 3D is richer; ${c.osmDrawnByModel} of ${c.osmFeatures} OSM features drawn by it, ${c.osmHeightsSet} given its height (${c.osmHeightsFromDefault} had none), ${c.osmLevelsRemodelled} OSM storey counts re-heighted, ${c.osmConflicts} in height conflict; ${c.roofFeatures} roof surfaces (${c.slopedRoofFeatures} sloped); read ${(readMs / 1000).toFixed(1)} s, conflate ${(conflateMs / 1000).toFixed(1)} s`,
+      `  lod2         ${input.source}: ${ingested.prepare.kept} buildings prepared (${ingested.outside} outside the area, ${ingested.prepare.implausibleStoreys.aboveCeiling + ingested.prepare.implausibleStoreys.spike} parts' storeys implausible), ${c.drawn} drawn, ${c.unconfirmed} not in OSM, ${c.stale} stale, ${c.osmRicher} where OSM's 3D is richer; ${c.osmDrawnByModel} of ${c.osmFeatures} OSM features drawn by it, ${c.osmHeightsSet} given its height (${c.osmHeightsFromDefault} had none), ${c.osmLevelsRemodelled} OSM storey counts re-heighted, ${c.osmConflicts} in height conflict; ${c.roofFeatures} roof surfaces (${c.slopedRoofFeatures} sloped); read ${(readMs / 1000).toFixed(1)} s, conflate ${(conflateMs / 1000).toFixed(1)} s`,
     );
   }
 
@@ -637,7 +637,7 @@ async function verify(path: string, area?: string): Promise<string[]> {
       surfaces += decodeLod2Tile(Bun.gunzipSync(tile.bytes)).length;
     }
   }
-  if (opened === 0) problems.push('no tile around the archive centre');
+  if (opened === 0 && header.addressedTiles > 0) problems.push('no tile around the probe tile');
   for (const [id, item] of wanted) {
     if (!found.has(id)) problems.push(`${item.name} (${id}) is not in its tile`);
   }

@@ -25,6 +25,10 @@ import { meshStreetTile } from '@/components/map/engine/cityStreets/streetMesher
 import { StreetAtlas } from '@/components/map/engine/cityStreets/streetAtlas';
 import { createStreetMaterials } from '@/components/map/engine/cityStreets/streetMaterials';
 import { createGroundAtlas } from '@/components/map/engine/cityStreets/groundAtlas';
+import {
+  lifeBodyMaterial,
+  lifeShadowMaterial,
+} from '@/components/map/engine/cityLife/lifeMaterials';
 import { GROUND } from '@/components/map/engine/city3d/terrainGround';
 import { mercatorXFromLng, mercatorYFromLat } from '@/components/map/engine/city3d/tileMath';
 
@@ -220,5 +224,46 @@ describe('the TSL street materials', () => {
     expect(atlas.claim()).toBeNull();
     atlas.release(a ?? 0);
     expect(atlas.claim()).toBe(a);
+  });
+});
+
+describe('the TSL city-life materials', () => {
+  const frame = {
+    alpha: () => 0.5,
+    time: () => 1,
+    step: 0.05,
+    pxPerM: () => 2,
+    taxiDoors: new Vector3(1, 0.8, 0.3),
+  };
+  const light = {
+    position: new Vector3(0, 0, 1),
+    intensity: () => 0.5,
+    color: new Vector3(1, 1, 1),
+  };
+  const model = (person: boolean, taxi = false) => ({
+    person,
+    taxi,
+    doorBand: [0.2, 0.8] as [number, number],
+    maxLength: 5,
+    modelLength: 4.5,
+    nearSize: person ? 2.6 : 4.5,
+    shadowHalfSize: [2, 1] as [number, number],
+    shadowStrength: 0.4,
+  });
+
+  test('a body per model and level, a shadow per model: what each draws with', () => {
+    for (const m of [model(true), model(false), model(false, true)]) {
+      for (const lod of [0, 1] as const) {
+        const body = lifeBodyMaterial(frame, light, m, lod);
+        expect(body.vertexNode).toBeTruthy();
+        expect(body.colorNode).toBeTruthy();
+        // The engine's model matrix is mirrored (`cityMeshes.ts`).
+        expect(body.side).toBe(BackSide);
+        expect(body.transparent).toBe(false);
+      }
+      const shadow = lifeShadowMaterial(frame, m);
+      expect(shadow.transparent).toBe(true);
+      expect(shadow.depthWrite).toBe(false);
+    }
   });
 });

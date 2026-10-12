@@ -479,6 +479,20 @@ export interface MapCanvasProps {
    */
   live?: MapLiveLayer | null;
   /**
+   * The time-of-day scrubber (web, while the city sky draws): open, or not.
+   * Closed — and absent, as on every map but the explore screen — the map is
+   * lit for NOW: closing it is going back to now. A screen opens it from its
+   * own control (`docs/MAP_FEATURES.md` → "The time of day"). Native ignores it.
+   */
+  timeOfDayOpen?: boolean;
+  /** The scrubber asked to close: its close button, or Escape. */
+  onTimeOfDayClose?: () => void;
+  /**
+   * Whether the city sky is drawn — so whether there is a time of day to
+   * change. A screen shows its time-of-day control only while it is.
+   */
+  onSkyActiveChange?: (active: boolean) => void;
+  /**
    * Draw the blue user-location dot.
    *
    * Honoured ONLY when foreground location permission has already been

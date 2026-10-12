@@ -722,10 +722,16 @@ export function compile(options: CompileOptions): CompileResult {
           across: parseOrientation(tags['roof:orientation']) === 'across',
         })
       : null;
+    let footprint = 0;
+    for (const polygon of building.polygons) {
+      footprint += Math.abs(ringArea(polygon.outer));
+      for (const hole of polygon.holes) footprint -= Math.abs(ringArea(hole));
+    }
     const properties = resolveProperties(
       tags,
       building.kind,
       frame ? { halfWidth: frame.halfWidth, halfLength: frame.halfLength } : undefined,
+      footprint * metresPerUnit * metresPerUnit,
     );
     const fromOutline = building.kind === 'part' ? inherited.get(building) : undefined;
     if (fromOutline?.use && properties[CITY_PROPS.use] === undefined) {

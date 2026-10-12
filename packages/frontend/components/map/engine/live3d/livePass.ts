@@ -6,9 +6,10 @@
  * to the ground point it is over.
  *
  * "One engine, one scene" (`docs/MAP_3D_CITY.md`): this is not a second
- * renderer. It is a {@link CityPass} — objects the city engine draws with its
- * own `WebGLRenderer`, in a style layer of their own above the buildings
- * (`city3dLayer.web.ts → addPass`), sharing MapLibre's depth buffer.
+ * renderer. It is a {@link CityPass} — objects the city engine's TSL pass
+ * draws (`docs/MAP_NATIVE_3D.md` → Phase 2), in a style layer of their own
+ * above the buildings (`city3dLayer.web.ts → addPass`), sharing MapLibre's
+ * depth buffer.
  *
  * Reached only through `components/engine3d/lazyChunk.ts`.
  *
@@ -23,8 +24,10 @@
  * any map light. Stale things are drawn grey.
  */
 import * as THREE from 'three';
+import { LineBasicNodeMaterial, MeshBasicNodeMaterial, type Node } from 'three/webgpu';
+import { output, sRGBTransferOETF, vec4 } from 'three/tsl';
 
-import type { CityPass, CityView } from '../city3d/cityEngine';
+import type { CityPass, CityPassRenderer, CityView } from '../city3d/cityEngine';
 import {
   centeredProjection,
   mercatorPerMetre,
@@ -59,6 +62,15 @@ export interface LivePassOptions {
 }
 
 export type LivePass = CityPass;
+
+/**
+ * The material's result encoded to sRGB, as `WebGLRenderer` encoded three's
+ * built-in materials into the map's frame (the TSL pass writes raw values).
+ */
+function encodedOutput(): Node<'vec4'> {
+  const result = output as unknown as Node<'vec4'>;
+  return vec4(sRGBTransferOETF(result.rgb) as unknown as Node<'vec3'>, result.a);
+}
 
 interface Batch {
   mesh: THREE.InstancedMesh;
@@ -97,7 +109,10 @@ export function createLivePass(options: LivePassOptions): LivePass {
   const camera = new THREE.Camera();
   // Unlit: the light is baked into the vertex colours. Both sides, because
   // the model matrix mirrors y (mercator is south-down).
-  const material = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  // Each instance's colour (white, or grey when stale) multiplies the vertex
+  // colour: three's instancing does it for a node material too.
+  const material = new MeshBasicNodeMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  material.outputNode = encodedOutput();
   const geometries = new Map<string, THREE.BufferGeometry>();
   const batches = new Map<string, Batch>();
   // The shared model library (`../vehicles/`): nothing is drawn until it has loaded.
@@ -153,11 +168,12 @@ export function createLivePass(options: LivePassOptions): LivePass {
   // Stalks: one segment per airborne aircraft, ground → altitude.
   const stalkGeometry = new THREE.BufferGeometry();
   let stalkCapacity = 0;
-  const stalkMaterial = new THREE.LineBasicMaterial({
+  const stalkMaterial = new LineBasicNodeMaterial({
     color: 0x6b7280,
     transparent: true,
     opacity: 0.7,
   });
+  stalkMaterial.outputNode = encodedOutput();
   const stalks = new THREE.LineSegments(stalkGeometry, stalkMaterial);
   stalks.frustumCulled = false;
   scene.add(stalks);
@@ -169,7 +185,7 @@ export function createLivePass(options: LivePassOptions): LivePass {
 
   return {
     id: 'live3d',
-    render(renderer: THREE.WebGLRenderer, view: CityView) {
+    render(renderer: CityPassRenderer, view: CityView) {
       const center = { x: mercatorXFromLng(view.center.lng), y: mercatorYFromLat(view.center.lat) };
       camera.projectionMatrix.fromArray(centeredProjection(view.mercatorToClip, center));
       camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
@@ -282,7 +298,7 @@ export function createLivePass(options: LivePassOptions): LivePass {
       }
       stalkGeometry.setDrawRange(0, stalkCount * 2);
 
-      renderer.render(scene, camera);
+      renderer.drawScene(scene, camera);
     },
     dispose() {
       disposed = true;

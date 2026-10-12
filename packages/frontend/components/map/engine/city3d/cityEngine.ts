@@ -110,7 +110,7 @@ import { Transitions } from './transitions';
 import { treeMinHeightM } from './tsl/treeMaterial';
 import { createTslPass } from './tsl/tslPass';
 import type { TreeSourceLayers } from './treeSources';
-import { WorkerPool } from './workerPool';
+import { WorkerPool, webWorker } from './workerPool';
 
 /** The palette's building height ramp (`buildingHeightRamp` in `buildings3d.ts`), plus trees. */
 export interface CityPalette {
@@ -290,16 +290,22 @@ export interface CityEngineStats {
   nightFactor: number;
 }
 
+/** What a {@link CityPass} draws with: the engine's TSL pass (`tsl/tslPass.ts`). */
+export interface CityPassRenderer {
+  /** Draw `scene` with `camera` into the map's frame and depth buffer. */
+  drawScene(scene: THREE.Scene, camera: THREE.Camera): unknown;
+}
+
 /**
- * Another feature's objects, drawn with THIS engine's renderer in a style
- * layer of their own (`city3dLayer.web.ts → addPass`) — one renderer, one
- * depth buffer, as "One engine, one scene" in `docs/MAP_3D_CITY.md` asks.
- * GoWay Live's 3D shapes are one (`engine/live3d/livePass.ts`).
+ * Another feature's objects, drawn by THIS engine's TSL pass in a style layer
+ * of their own (`city3dLayer.web.ts → addPass`) — one renderer, one depth
+ * buffer, as "One engine, one scene" in `docs/MAP_3D_CITY.md` asks. GoWay
+ * Live's 3D shapes are one (`engine/live3d/livePass.ts`).
  */
 export interface CityPass {
   readonly id: string;
-  /** Draw with `renderer` (its GL state already reset) for this frame's camera. */
-  render(renderer: THREE.WebGLRenderer, view: CityView): void;
+  /** Draw through `renderer` (it resets its own GL state) for this frame's camera. */
+  render(renderer: CityPassRenderer, view: CityView): void;
   dispose(): void;
 }
 
@@ -567,7 +573,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const buildings = options.buildings !== false;
   // No buildings, no workers: a models-only engine never fetches a tile.
   const pool = new WorkerPool<MeshWorkerRequest & { id: number }, MeshWorkerResponse>(
-    () => new Worker(new URL('./meshWorker', import.meta.url)),
+    (events) => webWorker(new Worker(new URL('./meshWorker', import.meta.url)), events),
     buildings ? quality.workers : 0,
     (reply) => onReply(reply),
     // A worker died with this request: retried like any failed tile.
@@ -1182,9 +1188,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
     renderPass(pass, view) {
       if (disposed) return;
-      // The same reset as `render`: the map changed GL state since three last looked.
-      renderer.resetState();
-      pass.render(renderer, view);
+      // The TSL pass resets three's view of the GL state before it draws.
+      pass.render(tslPass, view);
     },
 
     setGround(sample) {

@@ -33,10 +33,12 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 
 import {
   type MapAppearance,
+  resolveMapAnchors,
   resolveOwnsStyleDocument,
   resolveTerrainTileUrl,
 } from '@/lib/map/provider';
 import type { ReliefFlags } from '@/lib/map/reliefFlag';
+import { BUILDING_3D_LAYER_ID } from '@/lib/map/style/buildings3d';
 import {
   GLOBE_MERCATOR_ZOOM,
   GLOBE_PROJECTION,
@@ -53,6 +55,7 @@ import {
   terrainWanted,
 } from '@/lib/map/style/relief';
 
+import { createGlobeNightLayer, GLOBE_NIGHT_LAYER_ID } from './globeNightLayer.web';
 import { reportMapDefect } from './shared';
 
 export interface AttachReliefOptions {
@@ -70,6 +73,10 @@ export interface AttachReliefOptions {
    * is 2). Defaults to 2.
    */
   terrainTextureScale?: number;
+  /** The quality profile's `relief.globeNight`: day and night on the globe. Defaults to `true`. */
+  globeNight?: boolean;
+  /** The instant the globe is lit for (the time-of-day scrubber's); `null`, the default, is now. */
+  at?: Date | null;
 }
 
 export interface ReliefHandle {
@@ -77,6 +84,10 @@ export interface ReliefHandle {
   setTerrain3d(allowed: boolean): void;
   /** The quality profile changed: the terrain textures' scale, live (the terrain is re-made). */
   setTerrainTextureScale(scale: number): void;
+  /** The quality profile changed: day and night on the globe, or not. */
+  setGlobeNight(enabled: boolean): void;
+  /** The instant to light the globe for (the time-of-day scrubber); `null` is now. */
+  setTime(at: Date | null): void;
   /** Stop listening and give the container its background back. Idempotent. */
   detach(): void;
 }
@@ -119,6 +130,14 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
   let terrainReady = false;
   let terrain3d = options.terrain3d !== false;
   let textureScale = options.terrainTextureScale ?? 2;
+  const night = flags.globe
+    ? createGlobeNightLayer({
+        appearance,
+        at: options.at ?? null,
+        enabled: options.globeNight !== false,
+        onDefect: (message) => reportMapDefect('relief:night', message),
+      })
+    : null;
 
   // Space is the container's own background: MapLibre clears to transparent
   // and draws nothing around the globe, so this is what shows there — with
@@ -186,6 +205,22 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
     syncTerrain();
   };
 
+  // The night goes under the 3D layers (the city layer is put right before
+  // `building-3d` later, so it ends up above this) and under the labels,
+  // which stay legible on the night side. Only into a style with one of
+  // those anchors: over somebody else's labels it would dim them.
+  const addNight = () => {
+    if (!night || map.getLayer(GLOBE_NIGHT_LAYER_ID)) return;
+    const labels = resolveMapAnchors().beforeLabels;
+    const before = map.getLayer(BUILDING_3D_LAYER_ID)
+      ? BUILDING_3D_LAYER_ID
+      : labels && map.getLayer(labels)
+        ? labels
+        : null;
+    if (!before) return;
+    map.addLayer(night, before);
+  };
+
   /** `false` while the style is not loaded yet (nothing was changed). */
   const apply = (): boolean => {
     if (detached) return true;
@@ -199,6 +234,7 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
     }
     if (flags.globe) map.setProjection(GLOBE_PROJECTION);
     if (flags.terrain) addTerrain();
+    addNight();
     return true;
   };
 
@@ -254,9 +290,17 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
         }
       }
     },
+    setGlobeNight(enabled) {
+      night?.setEnabled(enabled);
+    },
+    setTime(at) {
+      night?.setTime(at);
+    },
     detach() {
       if (detached) return;
       detached = true;
+      // Its live-clock timer; the layer goes with the map.
+      night?.setEnabled(false);
       map.off('pitch', syncTerrain);
       map.off('pitchend', syncTerrain);
       map.off('move', updateSpace);

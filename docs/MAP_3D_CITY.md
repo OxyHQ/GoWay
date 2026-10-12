@@ -584,6 +584,15 @@ fabricated places on the public map; the same rule governs buildings:
   on the ground), so what draws it can tell a default from a fact. A default
   is not "corrected" to look like a city.
 
+  *A fact its own record contradicts is not read.* A recorded height that
+  the same record makes impossible is dropped and counted, not adjusted:
+  an OSM outline's `height` of 100 m or more that is over 20 m a tagged
+  storey AND over 20 times the side of its footprint (`tags.ts` →
+  `contradictedHeight`: 14 outlines in every published region, elevations
+  typed into `height`), and a cadastral part's storeys above the region's
+  ceiling or standing alone as a needle (`MAP_3D_SOURCES.md` → Implausible
+  storeys). What remains is the next source down the precedence.
+
   *Measured ≠ invented — and why nothing is measured.* A height measured from
   a surface model would be data, not a guess, and was tried for the default
   buildings (the flat block at Passeig de Gràcia / Mallorca: OSM ways
@@ -1164,7 +1173,14 @@ at that ray's hit.
   round the map centre — radius from the view, rounded up in √2 steps; centre
   snapped to an eighth of it; box turned to face the sun so a low sun gets *more*
   resolution; window snapped to whole texels in absolute light space so a
-  moved box does not shimmer. ~0.6–1.6 m texels at street zooms. The REAL sun
+  moved box does not shimmer. ~0.6–1.6 m texels at street zooms. The box's
+  metres are measured at the centre's latitude rounded to 0.25°
+  (`SHADOW_LATITUDE_STEP_DEG`), so equal keys mean identical matrices: at
+  the live latitude a pan north or south moved the snap grid ~2.5 m per metre
+  panned while the cached map stayed, and the shadows slid off their casters
+  — or the ground lit wholesale — until the next redraw snapped them back
+  (the owner's missing ground shadows and pan flicker; pinned by
+  `city3dShadows.test.ts` and the visibility gate's pan). The REAL sun
   (`lib/map/sun.ts` over the map centre), not `building-3d`'s shaped light:
   a shadow's length is a fact.
 - **MapLibre's own sky** follows this one while it is attached
@@ -1187,14 +1203,17 @@ at that ray's hit.
 
 ### The time-of-day scrubber
 
-`components/map/TimeOfDayScrubber.web.tsx`, shown only while the layer is
-attached, in its own lazy chunk: an hour slider, previous/next day (±183) and
-**Now** (the default; a live clock re-reads the sun every 30 s). The device's
+`components/map/TimeOfDayScrubber.web.tsx`, in its own lazy chunk, opened on
+demand while the layer is attached (the sun in the explore screen's top-right
+stack, or Settings → "Change time…"; closing it is going back to now —
+[`MAP_FEATURES.md`](./MAP_FEATURES.md) → "The time of day"): an hour slider,
+previous/next day (±183), **Now** and × (closed, the map is lit for now; a
+live clock re-reads the sun every 30 s). The device's
 clock: a whole day is still every hour of a far city's day, and the caption
 says what the sun is doing *there* (`Sun 34° up`, `Golden hour`, `Blue hour`,
 `Twilight`, `Night`, from its altitude over the map centre). Strings are in
-`lib/messages/citySky.ts` (English, Spanish), kept out of the first-paint
-tables. The arithmetic (`lib/map/timeOfDay.ts`) uses `setHours`, so a
+`lib/messages/citySky.ts`, in the twelve `LABEL_LANGUAGES`, kept out of the
+first-paint tables. The arithmetic (`lib/map/timeOfDay.ts`) uses `setHours`, so a
 daylight-saving day is the platform's problem, not an hour off every label.
 
 ### Measured

@@ -1,7 +1,7 @@
 /**
  * The city-life renderer: simulated cars and people drawn in the city-3D
  * scene, as one instanced draw per model, placed between the simulation's
- * last two states on the GPU (`lifeShaders.ts`).
+ * last two states on the GPU (`lifeMaterials.ts`, drawn by the TSL pass).
  *
  * A {@link CityOverlay} of the city engine — same scene, camera, depth buffer
  * and light as the buildings, so a building occludes a car behind it and the
@@ -44,12 +44,13 @@ import {
 } from '../city3d/tileMath';
 import { type LibraryLod, type LibraryModel, loadModelLibrary } from '../vehicles/library';
 import {
-  LIFE_FRAGMENT_SHADER,
+  type LifeFrame,
+  type LifeLight,
+  type LifeModel,
   LOD_MIN_PX,
-  LIFE_VERTEX_SHADER,
-  SHADOW_FRAGMENT_SHADER,
-  SHADOW_VERTEX_SHADER,
-} from './lifeShaders';
+  lifeBodyMaterial,
+  lifeShadowMaterial,
+} from './lifeMaterials';
 import type { CityCoverageArea } from '@/lib/map/cityTiles';
 import { getLiveCoverage, type LiveCoverage, subscribeLiveCoverage } from '@/lib/live/coverage';
 
@@ -135,11 +136,13 @@ function shadowQuad(): THREE.InstancedBufferGeometry {
  * One model's instances: the four instanced attributes, shared by THREE
  * draws over them — the near mesh, the far mesh, and the contact shadow —
  * so an instance is uploaded once and drawn as whichever it should be
- * (`lifeShaders.ts` → level of detail).
+ * (`lifeMaterials.ts` → level of detail).
  */
 interface Batch {
   geometries: THREE.InstancedBufferGeometry[];
-  materials: THREE.RawShaderMaterial[];
+  /** The near, far and shadow meshes: hidden while the model has no agent. */
+  meshes: THREE.Mesh[];
+  materials: THREE.Material[];
   /** The model's size for the detail test, m. */
   nearSize: number;
   prev: THREE.InstancedBufferAttribute;
@@ -160,6 +163,19 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     uStep: { value: STEP_S },
     uPxPerM: { value: 0 },
     uTaxiDoors: { value: new THREE.Vector3(1, 0.8, 0.3) },
+  };
+  // What the TSL materials read on every render (`lifeMaterials.ts`).
+  const frame: LifeFrame = {
+    alpha: () => shared.uAlpha.value,
+    time: () => shared.uTime.value,
+    step: STEP_S,
+    pxPerM: () => shared.uPxPerM.value,
+    taxiDoors: shared.uTaxiDoors.value,
+  };
+  const lifeLight: LifeLight = {
+    position: light.uLightPosition.value,
+    intensity: () => light.uLightIntensity.value,
+    color: light.uLightColor.value,
   };
   const group = new THREE.Group();
   group.matrixAutoUpdate = false;
@@ -188,20 +204,23 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     const ground = new THREE.InstancedBufferAttribute(new Float32Array(1), 1);
     for (const attribute of [prev, curr, style, ground]) attribute.setUsage(THREE.DynamicDrawUsage);
     const nearSize = isPerson ? 2.6 : length;
-    const perModel = {
-      uIsPerson: { value: isPerson ? 1 : 0 },
-      uIsTaxi: { value: model.taxi ? 1 : 0 },
+    const lifeModel: LifeModel = {
+      person: isPerson,
+      taxi: model.taxi,
       // The kit taxi's door panels, between its sills and its waist.
-      uDoorBand: { value: new THREE.Vector2(height * 0.15, height * 0.6) },
-      uMaxLength: { value: model.maxLength },
-      uModelLength: { value: length },
-      uNearSize: { value: nearSize },
+      doorBand: [height * 0.15, height * 0.6],
+      maxLength: model.maxLength,
+      modelLength: length,
+      nearSize,
+      shadowHalfSize: isPerson ? [0.45, 0.45] : [length / 2, width / 2],
+      shadowStrength: isPerson ? 0.3 : 0.42,
     };
     const geometries: THREE.InstancedBufferGeometry[] = [];
-    const materials: THREE.RawShaderMaterial[] = [];
+    const meshes: THREE.Mesh[] = [];
+    const materials: THREE.Material[] = [];
     const add = (
       geometry: THREE.InstancedBufferGeometry,
-      material: THREE.RawShaderMaterial,
+      material: THREE.Material,
       renderOrder: number,
     ) => {
       geometry.setAttribute('aPrev', prev);
@@ -217,64 +236,19 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       mesh.renderOrder = renderOrder;
       group.add(mesh);
       geometries.push(geometry);
+      meshes.push(mesh);
       materials.push(material);
     };
     for (const [lod, level] of [
       [0, model.near],
       [1, model.far],
     ] as const) {
-      add(
-        level,
-        new THREE.RawShaderMaterial({
-          glslVersion: THREE.GLSL3,
-          vertexShader: LIFE_VERTEX_SHADER,
-          fragmentShader: LIFE_FRAGMENT_SHADER,
-          uniforms: {
-            ...shared,
-            ...light,
-            ...perModel,
-            uLod: { value: lod },
-          },
-          // The engine's model matrix is mirrored, so three calls the models'
-          // outward faces back faces — as with the buildings (`cityEngine.ts`).
-          side: THREE.BackSide,
-          blending: THREE.CustomBlending,
-          blendSrc: THREE.OneFactor,
-          blendDst: THREE.OneMinusSrcAlphaFactor,
-          transparent: false,
-        }),
-        0,
-      );
+      add(level, lifeBodyMaterial(frame, lifeLight, lifeModel, lod), 0);
     }
     // The contact shadow, after the opaque city (three draws transparent
     // last), depth-tested so a building in front hides it.
-    add(
-      shadowQuad(),
-      new THREE.RawShaderMaterial({
-        glslVersion: THREE.GLSL3,
-        vertexShader: SHADOW_VERTEX_SHADER,
-        fragmentShader: SHADOW_FRAGMENT_SHADER,
-        uniforms: {
-          ...shared,
-          ...perModel,
-          uLod: { value: 2 },
-          uHalfSize: {
-            value: isPerson
-              ? new THREE.Vector2(0.45, 0.45)
-              : new THREE.Vector2(length / 2, width / 2),
-          },
-          uShadowStrength: { value: isPerson ? 0.3 : 0.42 },
-        },
-        side: THREE.DoubleSide,
-        blending: THREE.CustomBlending,
-        blendSrc: THREE.OneFactor,
-        blendDst: THREE.OneMinusSrcAlphaFactor,
-        transparent: true,
-        depthWrite: false,
-      }),
-      -1,
-    );
-    return { geometries, materials, nearSize, prev, curr, style, ground };
+    add(shadowQuad(), lifeShadowMaterial(frame, lifeModel), -1);
+    return { geometries, meshes, materials, nearSize, prev, curr, style, ground };
   };
 
   // People are city life's own (`people.ts`); vehicles come from the library.
@@ -521,11 +495,15 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       batch.style.needsUpdate = true;
     }
     for (const geometry of batch.geometries) geometry.instanceCount = to - from;
+    // A model with no agent costs no draw: the TSL pass pays its CPU per draw,
+    // and seven vehicle models × three draws are not all on every street.
+    for (const mesh of batch.meshes) mesh.visible = to > from;
   };
 
   const overlay: CityOverlay = {
-    attach(scene) {
-      scene.add(group);
+    attach(_scene, tslScene) {
+      // Drawn by the TSL pass (`docs/MAP_NATIVE_3D.md` → Phase 2).
+      tslScene.add(group);
     },
 
     update({ view, center, opacity }: CityOverlayFrame) {

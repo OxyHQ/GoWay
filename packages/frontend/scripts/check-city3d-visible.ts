@@ -50,8 +50,17 @@
  *    with the 3D city off.
  *  - **Streets**: the street detail drew the fixture's road tiles (`roadTile`),
  *    and over a junction turning it on changes at least 3% of the view.
- *  - **Models** (once, without the sky): the Sagrada Família, a landmark of
- *    the registry, changes at least 1% of the map against landmarks off.
+ *  - **Models** (the `objects` leg, sky off): the Sagrada Família, a landmark
+ *    of the registry, changes at least 1% of the map against landmarks off.
+ *  - **City life** (the `objects` leg, sky off, low preset): its simulated
+ *    traffic on the fixture's streets changes at least 0.05% of the view from
+ *    z17.5 over a junction (measured 0.10–0.13%; not drawn, 0%).
+ *  - **A pan holds still** (the `sky` leg: its sun shadows): dragged north in
+ *    steps from straight above, each frame is the one before moved by the
+ *    drag — under {@link PAN_MAX_CHANGED_PCT} of the map differs once
+ *    aligned. Born of the shadow map read through a matrix it was not drawn
+ *    with on every north–south pan (`shadows.ts` → `SHADOW_LATITUDE_STEP_DEG`):
+ *    the shadows slid and snapped back, the ground lit and unlit wholesale.
  *
  * Without #152's re-grounding it fails (three runs of three; the no-sky trees
  * are buried every time). Measured numbers: the doc.
@@ -363,6 +372,8 @@ async function view(
   basemap: 'buildings' | 'empty' = 'buildings',
   /** Where the camera opens: the synthetic city's centre at z19 by default. */
   at: { lat: number; lng: number; zoom: number } = { ...SYNTHETIC_CENTRE, zoom: 19 },
+  /** The quality preset (`lib/map/quality/profile.ts`); see `query` below. */
+  quality: 'low' | 'high' = 'high',
 ): Promise<View> {
   const started = Date.now();
   const context = await browser.newContext({ viewport: VIEWPORT });
@@ -414,7 +425,7 @@ async function view(
   // `quality=high`: SwiftShader resolves to the low preset, which draws no 3D
   // terrain — and then nothing is ever grounded and the gate tests nothing. A
   // real desktop GPU (the owner's) is high.
-  const query = `lat=${lat}&lng=${lng}&zoom=${zoom}&quality=high${flags ? `&${flags}` : ''}`;
+  const query = `lat=${lat}&lng=${lng}&zoom=${zoom}&quality=${quality}${flags ? `&${flags}` : ''}`;
   await page.goto(`${origin}/?${query}`, {
     waitUntil: 'load',
     timeout: 180_000,
@@ -536,11 +547,14 @@ async function share(browser: Browser, png: Buffer, kind: 'canopy' | 'dark'): Pr
  * view: crossings, lanes, stop lines.
  */
 const JUNCTION = { lat: 41.39259, lng: 2.16388, zoom: 18.5 };
+/** The same junction from higher up, where several streets' traffic is in view. */
+const TRAFFIC = { ...JUNCTION, zoom: 17.5 };
 
 /**
  * Share of pixels, in %, where two screenshots differ by more than
  * `threshold` in a channel — below the top `skipTop` rows, where the map's
- * chips sit (a layer's own, like "Landmarks", appears with it).
+ * chips sit (a layer's own, like "Landmarks", appears with it). With
+ * `skipTop` 0, only the chips' corner (the top-right 240 × 100 px) is left out.
  */
 async function differs(
   browser: Browser,
@@ -559,11 +573,19 @@ async function differs(
         const canvas = new OffscreenCanvas(img.width, img.height);
         const g = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
         g.drawImage(img, 0, 0);
-        return g.getImageData(0, top, img.width, img.height - top).data;
+        return {
+          data: g.getImageData(0, top, img.width, img.height - top).data,
+          width: img.width,
+        };
       };
-      const [x, y] = await Promise.all([pixels(one), pixels(two)]);
+      const [{ data: x, width }, { data: y }] = await Promise.all([pixels(one), pixels(two)]);
       let n = 0;
+      let counted = 0;
       for (let i = 0; i < x.length; i += 4) {
+        const px = (i / 4) % width;
+        const py = Math.floor(i / 4 / width) + top;
+        if (top === 0 && px >= width - 240 && py < 100) continue;
+        counted++;
         const d = Math.max(
           Math.abs(x[i] - y[i]),
           Math.abs(x[i + 1] - y[i + 1]),
@@ -571,12 +593,159 @@ async function differs(
         );
         if (d > limit) n++;
       }
-      return (100 * n) / (x.length / 4);
+      return (100 * n) / counted;
     },
     [a.toString('base64'), b.toString('base64'), threshold, skipTop] as const,
   );
   await page.close();
   return Number(value.toFixed(2));
+}
+
+/**
+ * The pan: from straight above (no 3D terrain, so a drag moves the whole map
+ * by exactly the pointer's travel, give or take the buildings' parallax), in
+ * the morning (long shadows), dragged {@link PAN_STEPS} times by
+ * {@link PAN_STEP_PX} towards the top of the screen.
+ */
+const PAN = { ...SYNTHETIC_CENTRE, zoom: 18 };
+const PAN_STEPS = 5;
+const PAN_STEP_PX = 30;
+const PAN_MORNING = new Date('2026-06-21T09:00:00+02:00');
+/**
+ * The most of the map, in %, that may differ between two frames of the pan
+ * once aligned. Measured (SwiftShader): 0.04–0.06% per step; the shadow map read
+ * through a stale matrix (before `SHADOW_LATITUDE_STEP_DEG`): 4.5–25.6% on every
+ * step after the first.
+ */
+const PAN_MAX_CHANGED_PCT = 0.5;
+/** How many rows a pixel may move beyond the drag and still match, for the parallax. */
+const PAN_SLACK_PX = 4;
+
+/**
+ * Share of pixels, in %, where `b` differs from `a` moved up by `dy` (more
+ * than `threshold` in a channel), over the rows both cover below `skipTop`.
+ * Each pixel is matched within ±{@link PAN_SLACK_PX} rows of the drag: the
+ * roofs and crowns move a few pixels more than the ground they stand on (the
+ * camera's parallax), a shadow sliding off its caster moves tens.
+ */
+async function differsMoved(
+  browser: Browser,
+  a: Buffer,
+  b: Buffer,
+  dy: number,
+  threshold = 24,
+  skipTop = 110,
+): Promise<number> {
+  const page = await browser.newPage();
+  const value = await page.evaluate(
+    async ([one, two, shift, slack, limit, top]) => {
+      const pixels = async (data: string) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${data}`;
+        await img.decode();
+        const canvas = new OffscreenCanvas(img.width, img.height);
+        const g = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+        g.drawImage(img, 0, 0);
+        const { data: px } = g.getImageData(0, 0, img.width, img.height);
+        return { px, w: img.width, h: img.height };
+      };
+      const [x, y] = await Promise.all([pixels(one), pixels(two)]);
+      let n = 0;
+      let total = 0;
+      for (let row = top + slack; row + shift + slack < x.h; row++) {
+        for (let col = 0; col < x.w; col++) {
+          const i = (row * x.w + col) * 4;
+          let best = 255;
+          for (let s = shift - slack; s <= shift + slack && best > limit; s++) {
+            const j = ((row + s) * x.w + col) * 4;
+            best = Math.min(
+              best,
+              Math.max(
+                Math.abs(x.px[j] - y.px[i]),
+                Math.abs(x.px[j + 1] - y.px[i + 1]),
+                Math.abs(x.px[j + 2] - y.px[i + 2]),
+              ),
+            );
+          }
+          if (best > limit) n++;
+          total++;
+        }
+      }
+      return (100 * n) / total;
+    },
+    [a.toString('base64'), b.toString('base64'), dy, PAN_SLACK_PX, threshold, skipTop] as const,
+  );
+  await page.close();
+  return Number(value.toFixed(2));
+}
+
+/** The pan's frames' changed shares, in %, one per step. */
+async function panSteps(
+  browser: Browser,
+  origin: string,
+  flags: string,
+  choices: Record<string, boolean>,
+  outDir: string,
+): Promise<number[]> {
+  const context = await browser.newContext({ viewport: VIEWPORT });
+  await context.route('**/*', (route) => answer(route, origin, 'buildings', Promise.resolve()));
+  const page = await context.newPage();
+  await page.clock.setFixedTime(PAN_MORNING);
+  await page.addInitScript(() => {
+    const scope = globalThis as {
+      reliefMap?: () => ReliefMap | undefined;
+      __gowayReliefMap?: ReliefMap & { setPixelRatio?: (ratio: number) => void };
+    };
+    scope.reliefMap = () => scope.__gowayReliefMap;
+    const pin = setInterval(() => {
+      const map = scope.__gowayReliefMap;
+      if (!map) return;
+      map.setPixelRatio = () => {};
+      clearInterval(pin);
+    }, 20);
+  });
+  await page.addInitScript(
+    (stored) =>
+      localStorage.setItem(
+        'goway.mapFeatures',
+        JSON.stringify({ v: 1, choices: stored, labs: true }),
+      ),
+    choices,
+  );
+  const query = `lat=${PAN.lat}&lng=${PAN.lng}&zoom=${PAN.zoom}&quality=high&${flags}`;
+  await page.goto(`${origin}/?${query}`, { waitUntil: 'load', timeout: 180_000 });
+  if (!(await until(page, () => reliefMap() !== undefined))) {
+    throw new Error('pan: the map never came up');
+  }
+  const still = async () => {
+    await settled(page, false);
+    await until(page, () => Boolean(reliefMap()?.areTilesLoaded()));
+    // The shadow map's caster redraw is throttled (`sky.ts`), and fades end.
+    await page.waitForTimeout(1500);
+  };
+  await still();
+  await page.addStyleTag({ content: '[data-goway-perf-hud] { display: none !important; }' });
+  const shot = (i: number) =>
+    page.screenshot({ clip: CLIP, path: join(outDir, `pan-${i}.png`), timeout: SETTLE_TIMEOUT_MS });
+  const x = CLIP.x + CLIP.width / 2;
+  let y = CLIP.y + CLIP.height / 2 + (PAN_STEPS * PAN_STEP_PX) / 2;
+  const frames = [await shot(0)];
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  for (let i = 1; i <= PAN_STEPS; i++) {
+    // Held down between steps: no inertia, the map is exactly where it was dragged.
+    y -= PAN_STEP_PX;
+    await page.mouse.move(x, y, { steps: 3 });
+    await still();
+    frames.push(await shot(i));
+  }
+  await page.mouse.up();
+  await context.close();
+  const changed: number[] = [];
+  for (let i = 1; i < frames.length; i++) {
+    changed.push(await differsMoved(browser, frames[i - 1], frames[i], PAN_STEP_PX));
+  }
+  return changed;
 }
 
 /**
@@ -603,8 +772,9 @@ const browser = await chromium.launch({
 const results: Record<string, Record<string, number>> = {};
 const failures: string[] = [];
 try {
-  // `--skies=sky,nosky` (both by default): CI runs one per job.
-  const skies = arg('skies', 'sky,nosky').split(',');
+  // `--skies=sky,nosky,objects` (all by default): CI runs one per job. The
+  // `objects` leg holds the views that are not per sky (models, city life).
+  const skies = arg('skies', 'sky,nosky,objects').split(',');
   for (const [label, { flags, choices }] of Object.entries(SKIES)) {
     if (!skies.includes(label)) continue;
     const withTrees = await view(browser, origin, flags, choices, outDir, `${label}-trees`);
@@ -686,9 +856,19 @@ try {
         `${label}: ${r.streetTriangles} street triangles drawn, but streets on change ${r.streetsChangedPct}% of the view over a junction`,
       );
   }
-  if (!DEBUG && skies.includes('nosky')) {
+  if (!DEBUG && skies.includes('sky')) {
+    const { flags, choices } = SKIES.sky;
+    const changed = await panSteps(browser, origin, flags, choices, outDir);
+    results.pan = { maxChangedPct: Math.max(...changed), steps: changed.length };
+    console.error(`pan: changed ${changed.join(', ')}% per step`);
+    if (Math.max(...changed) > PAN_MAX_CHANGED_PCT)
+      failures.push(
+        `pan: a frame differs ${Math.max(...changed)}% from the one before once aligned (over ${PAN_MAX_CHANGED_PCT}%): the map changes under a pan`,
+      );
+  }
+  if (!DEBUG && skies.includes('objects')) {
     // Models (`models.ts`, drawn by the TSL pass): the landmark on and off,
-    // with the no-sky leg (models are drawn the same way under either).
+    // without the sky (models are drawn the same way under either).
     const { flags, choices } = SKIES.nosky;
     const withLandmark = await view(
       browser,
@@ -716,6 +896,47 @@ try {
       failures.push(
         `landmark: ${LANDMARK.id} changes ${changed}% of the map (on against off): it is not on the screen`,
       );
+  }
+  if (!DEBUG && skies.includes('objects')) {
+    // City life (`cityLife/`, drawn by the TSL pass): its simulated traffic on
+    // the fixture's streets, on and off, over the junction, without the sky
+    // (the agents are drawn the same way under either, and city life keeps
+    // the map rendering: on software GL a frame with the sky's passes takes
+    // seconds, and a screenshot waits for one). The simulation is seeded and
+    // the clock fixed, but the agents move with real time: the share is a
+    // floor, not a match.
+    const { flags, choices } = SKIES.nosky;
+    // The low preset's 300 cars and 300 people (`profile.ts` → `life`): the
+    // high one's 2,400 agents keep two software-GL cores from ever finishing
+    // a frame for the screenshot. From z17.5 over the junction several
+    // streets are in view, so their traffic shows whenever the shot is taken;
+    // the whole frame counts but the chips' corner.
+    const withLife = await view(
+      browser,
+      origin,
+      `${flags}&cityLife=1`,
+      { ...choices, cityLife: true },
+      outDir,
+      'life',
+      'buildings',
+      TRAFFIC,
+      'low',
+    );
+    const without = await view(
+      browser,
+      origin,
+      flags,
+      choices,
+      outDir,
+      'nolife',
+      'buildings',
+      TRAFFIC,
+      'low',
+    );
+    const changed = await differs(browser, withLife.png, without.png, 24, 0);
+    results.life = { changedPct: changed };
+    if (changed < 0.05)
+      failures.push(`city life: its agents change ${changed}% of the view: not on the screen`);
   }
 } finally {
   await browser.close();

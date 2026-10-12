@@ -10,8 +10,9 @@
  *
  *  - `position`, `normal` — float metres in the glTF frame (+Y up, front +Z,
  *    +X the model's left, origin on the ground at the footprint's centre).
- *    `vehicles/glsl.ts` → `LIBRARY_FRAME` turns it into a map's x-forward,
- *    y-left, z-up frame in the shader, so the arrays are never copied.
+ *    `vehicles/libraryNodes.ts` → `libraryFrame` turns it into a map's
+ *    x-forward, y-left, z-up frame in the material, so the arrays are never
+ *    copied.
  *  - `color` — linear vertex colour (windows, trim, tyres, lamps); on
  *    the tintable paint, a grey: the shade the paint is multiplied by.
  *  - `paint` — 1 on the tintable body, 0 elsewhere.

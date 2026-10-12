@@ -14,7 +14,7 @@ of its own. (City life's simulated PEOPLE are its own rounded walkers,
 | Build | `packages/frontend/scripts/build-model-library.ts`, `scripts/library/` |
 | Built assets | `packages/frontend/public/models/library/` (`manifest.json` + one GLB per model) |
 | Runtime loader | `packages/frontend/components/map/engine/vehicles/library.ts` |
-| Shader helpers | `packages/frontend/components/map/engine/vehicles/glsl.ts` |
+| Material helpers (TSL nodes) | `packages/frontend/components/map/engine/vehicles/libraryNodes.ts` |
 | Tests | `components/map/__tests__/modelLibrary.test.ts`, `features/live/__tests__/fleets.test.ts` |
 
 ## The models
@@ -113,7 +113,7 @@ import {
   type LibraryModel,      // { entry, near: LibraryLod, far: LibraryLod }
   type LibraryLod,        // { geometry: THREE.BufferGeometry, triangles }
 } from '../vehicles/library';
-import { LIBRARY_GLSL } from '../vehicles/glsl';
+import { libraryColour, libraryFrame } from '../vehicles/libraryNodes';
 ```
 
 - `loadModelLibrary({ keys?, baseUrl?, signal? })` fetches the manifest from
@@ -122,13 +122,13 @@ import { LIBRARY_GLSL } from '../vehicles/glsl';
   every primitive of a level into ONE indexed `BufferGeometry` (one draw per
   level) with `position`, `normal` (float, glTF frame, metres), `color` and
   `paint`. The caller owns the geometries and disposes them.
-- `LIBRARY_GLSL` (GLSL ES 3.00): `libraryFrame(g)` turns the glTF frame into
-  a map's x-forward, y-left, z-up frame (a cyclic swap: winding preserved);
-  `libraryColour(color, paint, tintSrgb)`.
+- `libraryNodes.ts` (TSL, for the city engine's TSL pass): `libraryFrame(g)`
+  turns the glTF frame into a map's x-forward, y-left, z-up frame (a cyclic
+  swap: winding preserved); `libraryColour(color, paint, tintSrgb)`.
 
-City life (`cityLife/lifeRenderer.ts`, `lifeShaders.ts`) draws each model as
+City life (`cityLife/lifeRenderer.ts`, `lifeMaterials.ts`) draws each model as
 an instanced near/far pair over shared instance buffers with the library's
-GLSL, stretching a car along its length to its simulated one (normals
+nodes, stretching a car along its length to its simulated one (normals
 corrected for the stretch). GoWay Live (`live3d/liveModels.ts → buildLiveModel(model, detail,
 source)`) maps each live form to a library key (`LIVE_LIBRARY_KEYS`),
 stretches it per axis to the fleet's real dimensions and bakes the fleet's

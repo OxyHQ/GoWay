@@ -9,7 +9,7 @@
  * people read better at street zooms as these simple figures than as the
  * kit's big-headed characters. Generic forms only: no textures, no faces.
  *
- * The shader (`lifeShaders.ts`) reads {@link PERSON_PART}: legs swing about
+ * The material (`lifeMaterials.ts`) reads {@link PERSON_PART}: legs swing about
  * the hip with the distance walked between two states, so a person waiting at
  * a kerb stands still (with a slight idle sway); clothes take the person's
  * colour and skin one of five tones, both per instance.

@@ -16,7 +16,8 @@ modal — Bloom's `SettingsModal` — reached from a gear on the map.
 | Per-device store: choices, Labs, hydration | `lib/map/mapFeatureStore.ts`; the app's one instance and hooks in `lib/map/useMapFeatures.ts` |
 | Storage | `lib/map/mapFeatureStorage.web.ts` (`localStorage`, synchronous) and `mapFeatureStorage.ts` (AsyncStorage, native) |
 | The settings modal | `features/explore/MapSettingsButton.tsx` (first paint), `MapSettingsModal.tsx` (loaded on first press), its pages from `lib/map/mapSettingsPages.ts` |
-| The compact data credit | `lib/map/compactCredit.ts` (the rule), `components/map/useCompactCredit.ts`, `components/map/MapAttribution.tsx` |
+| The compact data credit | `lib/map/compactCredit.ts` (the rule, and what it shows of the simulation's label), `components/map/useCompactCredit.ts`, `components/map/MapAttribution.tsx`; the chrome above it rises by `lib/map/creditRise.ts` |
+| The time of day | `lib/map/timeOfDayControl.ts` (the rule), `features/explore/TimeOfDayButton.tsx` (the sun), `components/map/TimeOfDayScrubber.web.tsx` (lazy) |
 | Tests | `lib/map/__tests__/mapFeatures.test.ts`, `mapFeatureStore.test.ts`, `mapFeatureLabels.test.ts` |
 
 ## How a feature's answer is decided
@@ -49,14 +50,14 @@ starts off. Shipping it is deleting that line.
 | `terrain` | stable | **on** | web, native (hillshade only) | `?terrain=0/1` | web: redraws at the same camera; native: live |
 | `street3d` | stable | **on** | web, native | — | live (the coverage layer comes and goes; `/street3d/<id>` always opens) |
 | `city3d` | stable | **on** | web | `?city3d=0/1` | live (attach/detach); attached once the camera reaches z14 or tilts 45° (below) |
-| `citySky` | stable | **on** | web (needs `city3d`) | `?citysky=0/1` | live (re-attach; the time-of-day scrubber shows only while it draws) |
+| `citySky` | stable | **on** | web (needs `city3d`) | `?citysky=0/1` | live (re-attach; the time of day can be changed only while it draws — [below](#the-time-of-day)) |
 | `detailedCity` | stable | **on** | web (needs `city3d`; brings its own live-clock sky without `citySky`) | `?detailedCity=0/1` | live (re-attach) |
 | `cityTiles` | stable | **on** | web (needs `city3d`) | `?cityTiles=0/1` | live (re-attach). Draws where `/map/city/coverage.json` covers the ground, the basemap's buildings elsewhere. Official building data merged into the archive (Catastro storeys, NYC 3D model, `MAP_3D_SOURCES.md`) rides on it: no switch of its own |
 | `city3dTrees` | stable | **on** | web (needs `city3d`) | `?city3dTrees=0` | live (re-attach) |
 | `city3dTreeFill` | labs | off | web | `?city3dTreeFill=1` | live (re-attach) |
 | `cityLife` | stable | **on** | web (needs `city3d`; the road archive where published, the basemap's roads everywhere else) | `?cityLife=0/1` | live (re-attach) |
 | `cityStreets` | stable | **on** | web (needs `city3d`; draws only where the road archive is published) | `?cityStreets=0/1` | live (re-attach) — [`MAP_STREETS.md`](./MAP_STREETS.md) |
-| `landmarks` | stable | **on** | web (needs `city3d`; a model draws, and the tour offers it, only over published city tiles) | `?landmarks=0/1` | live (re-attach; the pill and "Landmark tour" come and go, a running tour ends) |
+| `landmarks` | stable | **on** | web (needs `city3d`; a model draws, and the tour offers it, only over published city tiles) | `?landmarks=0/1` | live (re-attach; the Landmarks control and "Landmark tour" come and go, a running tour ends) |
 | `live` | stable | **on** | web (draws only where the backend lists `LIVE_SOURCES`: `GET /live/sources` 503 → nothing, asked again while open; `docs/MAP_LIVE.md` → Production) | `?live=0/1` | live (mount/unmount: the panel in the top-right stack, the layer, its credits and the coverage channel come and go) |
 | `flyover` | stable | **on** | web, native | `?flyover=0/1` | live ("Fly the route", `/studio`) |
 
@@ -79,13 +80,13 @@ published; the city layer reads it once per attach (`city3dLayer.web.ts` →
 | `cityTiles` | GoWay's building tiles (with the official data merged in) | the basemap's OpenMapTiles buildings, extruded by the same engine — never a flat map (`engine/city3d/sources.ts`) |
 | `cityStreets` | lanes, crossings, names from the road archive | no overlay, no request; the basemap's roads |
 | `cityLife` | the road archive's exact roads | the basemap's own roads, healed (#137); no road-tile request |
-| `landmarks` | the models over their buildings; the pill and the tour | no model, no pill, no tour (`lib/map/landmarks/load.ts` → `offerLandmarks`), judged per z14 cell as the engine picks its source |
+| `landmarks` | the models over their buildings; the Landmarks control and the tour | no model, no control, no tour (`lib/map/landmarks/load.ts` → `offerLandmarks`), judged per z14 cell as the engine picks its source |
 
 An empty document is not a defect and logs nothing; one that cannot be read
 logs one `[goway/map]` warning. Verified on a production export against
 goway.to (2026-10-12): in Barcelona, Madrid and Manhattan the city and road
 tiles are requested and drawn (street detail, Casa Batlló's model, the
-Landmarks pill where a landmark is near); in Tokyo, no `/map/city/{z}/…` or
+Landmarks control where a landmark is near); in Tokyo, no `/map/city/{z}/…` or
 `/map/city-roads/…` request at all, the basemap's buildings and traffic on the
 basemap's roads; no console error in any of the 16 views.
 
@@ -108,12 +109,28 @@ that neither the sheet, the side panel nor any notice covers, in either layout.
 
 It is the first item of the explore screen's **top-right stack**: ONE column
 (`items-end`, 8 px apart) under the account button holding, in order, the
-settings button, the "Landmarks" pill, and a slot (`components/map/chipSlot.ts`)
-the map's own DOM chips mount into — the "Simulated traffic" label. Nothing
-there is absolutely positioned on its own, so nothing overlaps on desktop or
-phone; a new chip (Live) is one more item in the stack. The slot is never
-hidden (the simulated label must show whenever the simulation draws, a tour
-included); a map with no slot — the embed — keeps the label at its own spot.
+settings button, the time of day (a sun, while the sky draws —
+[below](#the-time-of-day)), the Landmarks control (while a landmark is near)
+and, in development builds with Live on, GoWay Live's panel. They are round
+Bloom `Fab`s: 48 px on a wide window, where Landmarks also shows its word;
+40 px on a phone — the compass's size — with Landmarks as its building alone
+(its name stays for screen readers, and a landmark's place sheet has
+"Landmark tour"). Nothing there is absolutely positioned on its own, so
+nothing overlaps on desktop or phone; a new control is one more item in the
+stack. The simulation's label is NOT in the stack any more: it rides in the
+data credit, bottom right, the one corner no screen may take
+([below](#the-compact-data-credit)).
+
+**Phone layout, measured** (2026-10-12, production export served with
+`serve-map-build.ts --upstream=https://goway.to`, Passeig de Gràcia z16.8,
+pitch 60°, bearing 30°, everything on, sheet at half; light and dark): at
+360×740, 390×844 and 412×915 and on a 1440×900 desktop, no two of the stack,
+the compass, "My location", the credit (folded and spelled out), the
+time-of-day scrubber and the sheet overlap — checked on their bounding boxes,
+not by eye. The one overlap that measurement found — at 360×740, the credit
+spelled out over three lines under a rotated map's compass, which then ran into
+a 48 px stack — is why the phone stack is 40 px and the bottom-right column
+rises over the credit.
 
 The button opens Bloom's `SettingsModal` (`@oxy.so/bloom/settings-modal/modal`): a
 rail of pages beside the open page on a wide window (871×614, the rail
@@ -132,8 +149,9 @@ page with nothing to list leaves the rail.
 
 - **Map**: the view, 2D / 3D — the camera, not a feature: 3D tilts to 60°
   where the map already is, 2D levels it, and it follows a gesture tilt — then
-  Globe, Terrain, Sky & time of day, the detailed city look and street
-  detail, and **Performance** (Auto, Battery saver or High quality: a
+  Globe, Terrain, Sky & time of day (while the sky draws, a "Time of day" row
+  whose "Change time…" closes the modal and opens the scrubber on the map),
+  the detailed city look and street detail, and **Performance** (Auto, Battery saver or High quality: a
   three-way choice kept in the same store, `setPerformance`, which picks the
   map's quality profile — [`MAP_PERFORMANCE.md`](./MAP_PERFORMANCE.md); it
   applies live).
@@ -165,6 +183,44 @@ and hold the settings button, which opens the modal on the Labs page. It works i
 still starts off, so a shared link can never switch an experimental renderer
 on for somebody else.
 
+## The time of day
+
+The sky's hour is chosen on demand, never there by default: on a phone the
+scrubber (an hour slider, previous/next day, **Now**) sat over a third of the
+map whenever the sky drew. Now (`lib/map/timeOfDayControl.ts`, tested):
+
+- **Closed by default.** The map is lit for now, the live clock.
+- **Opened** by the sun in the top-right stack, or Settings → Map → "Change
+  time…". Both exist only while the city sky draws (`MapCanvas`'s
+  `onSkyActiveChange`): there is no hour to set without it.
+- **Closed** by the sun pressed again, the scrubber's ×, or Escape while focus
+  is inside it — and every close goes **back to now**. The sky going away
+  (zoomed out, switched off) closes it too. So the map is never lit for
+  another time without the control on screen that says so; reopened, it
+  starts from now.
+- **Keyboard and screen readers.** The sun is a disclosure button
+  (`aria-expanded`); opening moves focus to the hour slider (a native range
+  input: arrow keys step five minutes); closing returns focus to the sun. Every
+  word — the button's name, the scrubber's, its captions — is in the twelve
+  `LABEL_LANGUAGES` (`lib/map/timeOfDayTriggerLabel.ts`,
+  `lib/messages/citySky.ts`; they were English and Spanish only).
+- **Where it sits.** Bottom centre, above the sheet's live edge on a phone and
+  clear of "My location" at the right (`chromeLift.ts`), and above the credit
+  however many lines the credit takes (`creditRise.ts`). Two rows, so a 360 px
+  phone shows the whole time: the hour, date and sun with **Now** and × on
+  top, the slider between the day steps below.
+- **Cost.** The scrubber is still its own lazy chunk, now requested only on
+  the first open (14,701 B, 5,737 gz, with its twelve languages); the first
+  paint carries the sun, its name and the rule. The whole change — this, the
+  label in the credit and the phone stack — measured by A/B production export
+  (`expo export --platform web --clear`, `main` aa3bbb4): `entry` +5,901 B
+  (+1,644 gz), `__common` unchanged; lazily, the landmarks chunk +4,216 B
+  (its twelve languages), the settings modal +4,398 B, `city3dLayer`
+  −414 B (no DOM label).
+
+Only the explore screen opens it: every other map (the embed, the studio,
+contribute) passes no `timeOfDayOpen`, so its sky is always now.
+
 ## The compact data credit
 
 The credit bottom-right follows the OSMF Attribution Guidelines' compact form
@@ -177,6 +233,28 @@ dynamic: Mapterhorn while terrain is on, a landmark model's author while it is
 drawn, live feeds while their data is shown. `MapCanvas` renders it on both
 platforms and in the embed, with no prop to turn it off; the rule and its test
 are `lib/map/compactCredit.ts` and `__tests__/compactCredit.test.ts`.
+
+**The simulation's label rides in the credit** (owner, 2026-10-12: it crowded
+the top right on phones). While the city-life simulation draws anything, the
+credit discloses it in BOTH states — spelled out, its first line is the whole
+label ("Simulated: cars and people · Live: buses"); folded, the one
+word "Simulated" stays beside the ⓘ, and pressing either opens the whole
+label. It is never folded away: `creditDisclosure` is tested over every
+sequence of the credit's events. At load the credit is spelled out, so a map
+that opens on moving traffic shows the whole label first. Why the folded word
+rather than the label only while spelled out: the simulation usually starts
+once the reader has zoomed in, by when their first zoom has folded the credit
+— a label behind the ⓘ would then never be seen, and AGENTS.md wants it
+labelled whenever drawn ([`MAP_CITY_LIFE.md`](./MAP_CITY_LIFE.md) → Honesty).
+
+**The chrome above it rises with it.** Spelled out on a phone the credit
+wraps (sources, official building data while drawn, the simulation's label),
+so it measures itself (`components/map/creditHeight.ts`) and "My location",
+the location notice and the time-of-day scrubber rise by `creditRise`
+(`lib/map/creditRise.ts`, tested) — nothing moves while it is folded. Where
+the screen's own chrome carries the logo (the explore screen), the mark is
+not drawn bottom-left, so the credit takes the width from the left edge
+instead of starting after the mark: fewer lines on a phone.
 
 ### How a change reaches the map
 

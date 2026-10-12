@@ -59,6 +59,7 @@ import {
   type CityCoverageTiles,
   parseCityCoverage,
 } from '@/lib/map/cityTiles';
+import { deviceLocale } from '@/lib/i18n';
 import { CITY_LOD2_SOURCES } from '@/lib/map/cityOfficial';
 import { CITY_ROAD_TILE_PATH } from '@/lib/map/cityRoads';
 import type { PreparedLandmark } from '@/lib/map/landmarks/load';
@@ -103,7 +104,7 @@ import type { CityOverlay } from './engine/city3d/overlay';
 import type { GroundStats } from './engine/city3d/terrainGround';
 import type { CityLifeStats } from './engine/cityLife/lifeRenderer';
 import type { CityStreetsStats } from './engine/cityStreets/streetRenderer';
-import { type CityLifeChip, mountCityLifeChip } from './cityLifeChip.web';
+import { type CityLifeLabel, cityLifeReporter } from './cityLifeLabel';
 import { type StreetNameBlockers, mountStreetNameBlockers } from './streetNameBlockers.web';
 import type { AnimationClock } from './perf/animationClock';
 import { reportMapDefect } from './shared';
@@ -431,6 +432,14 @@ export interface AttachCity3dOptions {
    * none is. `MapCanvas` adds them to its credit line.
    */
   onCredits?: (links: readonly MapAttributionLink[]) => void;
+  /**
+   * What the city-life simulation is drawing, in the reader's language, or
+   * `null` once nothing simulated is: told the moment it changes, and `null`
+   * on detach. `MapCanvas` hands it to the credit, so the label is on screen
+   * for exactly as long as anything simulated is drawn
+   * (`docs/MAP_CITY_LIFE.md` → Honesty).
+   */
+  onCityLife?: (label: CityLifeLabel | null) => void;
 }
 
 /** Source ids → their credit links, unknown ids dropped. Exported for the tests. */
@@ -650,7 +659,10 @@ export async function attachCity3d(
   // whatever was there before (the relief prototype's) comes back on detach.
   const previousHostSky = sky ? (map.getSky?.() ?? null) : null;
   let appliedHostSky = '';
-  let chip: CityLifeChip | null = null;
+  // The simulation's label: reported through `onCityLife` rather than drawn
+  // here, so it sits in the map's credit; tied to the renderer's own
+  // `onActiveChange`, not to a flag a screen could read differently.
+  const life = cityLifeReporter((label) => options.onCityLife?.(label), deviceLocale());
   let nameBlockers: StreetNameBlockers | null = null;
   let pendingNames: readonly (readonly [number, number])[] | null = null;
   let namesTimer: ReturnType<typeof setTimeout> | null = null;
@@ -671,10 +683,9 @@ export async function attachCity3d(
     unfollowTerrain = null;
     engine?.dispose();
     engine = null;
-    chip?.remove();
+    life.end();
     nameBlockers?.remove();
     nameBlockers = null;
-    chip = null;
   };
   const ensureEngine = (host: MapLibreMap, gl: WebGLRenderingContext | WebGL2RenderingContext) => {
     liveLayers++;
@@ -712,8 +723,6 @@ export async function attachCity3d(
     }
     if (cityLife) {
       // Labelled for exactly as long as anything simulated is drawn.
-      const label = mountCityLifeChip(host.getContainer());
-      chip = label;
       overlays.push(
         createCityLife({
           roadTileTemplate: `${origin}${CITY_ROAD_TILE_PATH}`,
@@ -731,8 +740,8 @@ export async function attachCity3d(
           budget: { cars: options.quality.life.cars, people: options.quality.life.people },
           seed: CITY_LIFE_SEED,
           clock: options.clock,
-          onActiveChange: (active) => label.setVisible(active),
-          onLabel: (content) => label.setContent(content),
+          onActiveChange: (active) => life.setActive(active),
+          onLabel: (content) => life.setContent(content),
           onStats: __DEV__ ? publishLifeStats : undefined,
         }),
       );
@@ -1050,10 +1059,9 @@ export async function attachCity3d(
       unfollowTerrain = null;
       engine?.dispose();
       engine = null;
-      chip?.remove();
+      life.end();
       nameBlockers?.remove();
       nameBlockers = null;
-      chip = null;
       if (drawnLandmarks.size > 0) options.onLandmarkCredits?.([]);
       landmarkModule?.offerLandmarks([]);
     },
