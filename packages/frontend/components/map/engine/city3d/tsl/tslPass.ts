@@ -29,8 +29,10 @@ import {
   DoubleSide,
   LinearSRGBColorSpace,
   type Material,
+  Mesh,
   MeshBasicNodeMaterial,
   NoToneMapping,
+  PerspectiveCamera,
   type RenderTarget,
   Scene,
   type Side,
@@ -87,7 +89,34 @@ export interface TslPass {
   drawOffscreen(scene: Scene, camera: Camera, target: RenderTarget, override: Material): boolean;
   /** Allocate `target`'s attachments without drawing (a sampled texture must exist). */
   initTarget(target: RenderTarget): boolean;
+  /**
+   * Build what `scene` draws with `camera` before it is drawn
+   * (`materialWarmup.ts`), one {@link Warming.step} per frame from the host's
+   * render callback: each step makes one mesh's index buffer, with the state
+   * reset; once all are made, three's `compileAsync` builds the shaders in
+   * slices between frames. The order is the safety: an index buffer made
+   * between frames would be bound into whatever vertex array the map left
+   * bound (MapLibre leaves its last one, and reuses it without rebinding); a
+   * shader build, a uniform buffer or a vertex buffer touches no vertex array.
+   */
+  warm(scene: Scene, camera: Camera): Warming;
   dispose(): void;
+}
+
+/** How long a warm-up step may spend making index buffers in one frame, ms. */
+const WARM_UPLOAD_MS = 4;
+
+/** A warm-up in progress (`TslPass.warm`). */
+export interface Warming {
+  /**
+   * One step, from the render callback: the next meshes' index buffers, or —
+   * once all are made — the start of the builds. The scene's meshes must be
+   * as visible as they were when the warm-up began. `true` while it needs
+   * another frame; the builds then run on their own until {@link done}.
+   */
+  step(): boolean;
+  /** Every material built (or failed to: it then builds on first use, as without a warm-up). */
+  readonly done: Promise<void>;
 }
 
 /** The canvas as three may see it: its size, read-only; its events, the real ones. */
@@ -176,6 +205,14 @@ export function createTslPass(options: {
   const caster = new MeshBasicNodeMaterial();
   caster.colorNode = vec4(1);
   caster.side = DoubleSide;
+  // Draws nothing (no colour, no depth): it only makes a mesh's buffers (`warm`).
+  const uploader = new MeshBasicNodeMaterial();
+  uploader.colorNode = vec4(0);
+  uploader.colorWrite = false;
+  uploader.depthWrite = false;
+  uploader.depthTest = false;
+  uploader.side = DoubleSide;
+  const uploadCamera = new PerspectiveCamera();
   const shared: BuildingMaterials = options.sky
     ? createSkyBuildingMaterials({
         uniforms: buildingUniforms,
@@ -240,6 +277,47 @@ export function createTslPass(options: {
       renderer.setRenderTarget(null);
       return true;
     },
+    warm(target, camera) {
+      // One geometry per index buffer: those are what must be made here, and
+      // meshes share them (every tile's trees, one index per tree shape).
+      const byIndex = new Map<unknown, Mesh['geometry']>();
+      target.traverseVisible((object) => {
+        const mesh = object as Mesh;
+        const index = mesh.isMesh && mesh.layers.test(camera.layers) ? mesh.geometry.index : null;
+        if (index && !byIndex.has(index)) byIndex.set(index, mesh.geometry);
+      });
+      const pending = [...byIndex.values()];
+      let resolve: () => void = () => {};
+      const done = new Promise<void>((settle) => {
+        resolve = settle;
+      });
+      let building = false;
+      const upload = new Mesh(undefined, uploader);
+      upload.frustumCulled = false;
+      const uploads = new Scene();
+      uploads.add(upload);
+      return {
+        done,
+        step() {
+          if (building || disposed) return false;
+          if (!ready) return true;
+          if (pending.length > 0) {
+            // Drawn with one trivial material: one small build per vertex
+            // layout, not one per material. As many as fit the step's budget
+            // (at least one): past the first of a layout, each is a buffer.
+            const started = performance.now();
+            do {
+              upload.geometry = pending.pop() as Mesh['geometry'];
+              drawScene(uploads, uploadCamera);
+            } while (pending.length > 0 && performance.now() - started < WARM_UPLOAD_MS);
+            return true;
+          }
+          building = true;
+          renderer.compileAsync(target, camera).then(resolve, resolve);
+          return false;
+        },
+      };
+    },
     initTarget(renderTarget) {
       if (!ready || disposed) return false;
       prepare();
@@ -250,6 +328,7 @@ export function createTslPass(options: {
       disposed = true;
       buildings.dispose();
       caster.dispose();
+      uploader.dispose();
       trees.dispose();
       renderer.dispose();
     },

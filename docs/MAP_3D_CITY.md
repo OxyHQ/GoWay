@@ -190,7 +190,9 @@ tile the camera sees**, each at the level of detail its distance affords
   tile changing level is re-meshed from memory. Replies are handed to the GPU
   within a per-frame upload budget (12 MiB; one mesh only after a frame slower
   than 50 ms), nearest first, so three dense tiles landing together do not stall
-  one frame. Least-recently-used meshes are evicted past the cache budgets,
+  one frame. The street detail's tiles (and its glyph atlas) take what the
+  city's arrivals leave of the same budget (`overlay.ts` →
+  `FrameUploadBudget`), and wait a frame otherwise. Least-recently-used meshes are evicted past the cache budgets,
   never one that is wanted or still fading. Empty tiles are cached as empty;
   failed tiles retry with backoff (1, 2, 4, 8 s, then a 5-minute cooldown) even
   while the view stands still — `building-3d` is hidden, so nothing else would
@@ -245,7 +247,7 @@ a loaded 32-core machine and vary ±30% run to run; the sizes are exact.
 | GPU bytes drawn per frame | 128 MiB | `city.drawBytes` | Barcelona at 80°: 107 MiB; at 60°: 69 MiB (was 130) |
 | GPU bytes cached (drawn + slack + fallbacks) | 192 MiB, 160 entries | `city.cacheBytes`, `MAX_CACHED_TILES` | LRU, wanted and fading entries spared |
 | Tiles drawn | ≤ 48, ≤ 6 at full detail | `city.maxTiles`, `city.maxFullTiles` (`LOD_POLICY` holds the rest) | |
-| Upload per frame | 12 MiB (1 mesh after a > 50 ms frame) | `city.uploadBytesPerFrame` | |
+| Upload per frame | 12 MiB (1 mesh after a > 50 ms frame), shared with the street detail | `city.uploadBytesPerFrame` | |
 | Requests in flight | 2 per worker, ≤ 3 workers | `MAX_IN_FLIGHT_PER_WORKER`, `city.maxWorkers` | |
 | Worker time per tile | level 0 ≤ 200 ms, levels 1–2 ≤ 60 ms, trees ≤ 50 ms (Bun, dense tiles) | — | table above |
 | Trees | ≤ 24,000 per tile, ≤ 40,000 drawn per frame (nearest tiles first); ≤ 98 triangles near, ≤ 30 far (far past the full-detail distance, even on a level-0 tile); shorter than `treeMinHeightM(zoom)` not drawn | `TREES.maxPerTile`, `city.treeBudget`, `treeGeometry.ts`, `tsl/treeMaterial.ts` | Central Park: 18,233 trees, 1.28 M triangles; Barcelona at 80°: 20,523 |
