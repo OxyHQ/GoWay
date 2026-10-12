@@ -1,6 +1,6 @@
 /**
  * The in-memory spatial index of live entities: the latest fix per entity,
- * bucketed by room — a web-mercator tile at its kind's zoom
+ * bucketed by room — a web-mercator tile at each of its kind's levels
  * (`LIVE_ROOM_ZOOMS`) and the kind.
  *
  * Rooms ARE the spatial index. A subscription is answered from the buckets of
@@ -22,8 +22,8 @@ import {
   type LiveEntity,
   type LiveKind,
   type LiveMove,
-  liveTileOf,
   liveTilesFor,
+  liveTilesOf,
 } from '@goway/contracts';
 
 export function roomKey(tile: string, kind: LiveKind): string {
@@ -32,7 +32,8 @@ export function roomKey(tile: string, kind: LiveKind): string {
 
 interface Entry {
   entity: LiveEntity;
-  room: string;
+  /** Its room at each of its kind's levels, coarsest first. */
+  rooms: string[];
   /** What a client would receive, as text: the change test. */
   signature: string;
   /** The same without what a move carries: equal ones differ only in motion. */
@@ -91,37 +92,47 @@ export class LiveTileIndex {
     return this.entries.get(id)?.entity;
   }
 
-  /** Insert or replace. Returns the changes — none when nothing a client sees changed. */
+  /**
+   * Insert or replace. Returns the changes — none when nothing a client sees
+   * changed — per room: an entity is in one room at each of its kind's
+   * levels (`LIVE_ROOM_ZOOMS`), and a subscriber is in one level's rooms.
+   */
   upsert(entity: LiveEntity): IndexChange[] {
-    const room = roomKey(liveTileOf(entity.position, entity.kind), entity.kind);
+    const rooms = liveTilesOf(entity.position, entity.kind).map((tile) =>
+      roomKey(tile, entity.kind),
+    );
     const signature = JSON.stringify(entity);
     const existing = this.entries.get(entity.id);
     if (existing && existing.signature === signature) return [];
     const fixed = fixedSignature(entity);
-    if (existing && existing.room === room && existing.fixed === fixed) {
-      this.entries.set(entity.id, { entity, room, signature, fixed });
-      return [{ type: 'move', room, entity }];
-    }
+    const onlyMoved = existing !== undefined && existing.fixed === fixed;
     const changes: IndexChange[] = [];
-    if (existing && existing.room !== room) {
-      this.rooms.get(existing.room)?.delete(entity.id);
-      this.dropEmptyRoom(existing.room);
-      changes.push({ type: 'remove', room: existing.room, id: entity.id });
-    }
-    this.entries.set(entity.id, { entity, room, signature, fixed });
-    let members = this.rooms.get(room);
-    if (!members) {
-      members = new Set();
-      this.rooms.set(room, members);
-    }
-    members.add(entity.id);
+    rooms.forEach((room, level) => {
+      const before = existing?.rooms[level];
+      if (before === room && onlyMoved) {
+        changes.push({ type: 'move', room, entity });
+        return;
+      }
+      if (before !== undefined && before !== room) {
+        this.rooms.get(before)?.delete(entity.id);
+        this.dropEmptyRoom(before);
+        changes.push({ type: 'remove', room: before, id: entity.id });
+      }
+      let members = this.rooms.get(room);
+      if (!members) {
+        members = new Set();
+        this.rooms.set(room, members);
+      }
+      members.add(entity.id);
+      changes.push({ type: 'upsert', room, entity });
+    });
+    this.entries.set(entity.id, { entity, rooms, signature, fixed });
     let owned = this.sources.get(entity.sourceId);
     if (!owned) {
       owned = new Set();
       this.sources.set(entity.sourceId, owned);
     }
     owned.add(entity.id);
-    changes.push({ type: 'upsert', room, entity });
     return changes;
   }
 
@@ -129,12 +140,16 @@ export class LiveTileIndex {
     const existing = this.entries.get(id);
     if (!existing) return [];
     this.entries.delete(id);
-    this.rooms.get(existing.room)?.delete(id);
-    this.dropEmptyRoom(existing.room);
+    const changes: IndexChange[] = [];
+    for (const room of existing.rooms) {
+      this.rooms.get(room)?.delete(id);
+      this.dropEmptyRoom(room);
+      changes.push({ type: 'remove', room, id });
+    }
     const owned = this.sources.get(existing.entity.sourceId);
     owned?.delete(id);
     if (owned?.size === 0) this.sources.delete(existing.entity.sourceId);
-    return [{ type: 'remove', room: existing.room, id }];
+    return changes;
   }
 
   /** The ids a source currently has in the index. A copy: safe to mutate while iterating. */

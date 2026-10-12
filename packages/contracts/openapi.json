@@ -13380,7 +13380,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "pattern": "^(7|11|13)\\/\\d{1,5}\\/\\d{1,5}$"
+              "pattern": "^(7|9|11|13)\\/\\d{1,5}\\/\\d{1,5}$"
             }
           },
           "kinds": {
@@ -13421,7 +13421,7 @@
         "properties": {
           "tile": {
             "type": "string",
-            "pattern": "^(7|11|13)\\/\\d{1,5}\\/\\d{1,5}$"
+            "pattern": "^(7|9|11|13)\\/\\d{1,5}\\/\\d{1,5}$"
           },
           "kind": {
             "type": "string",
@@ -13456,7 +13456,7 @@
         "properties": {
           "tile": {
             "type": "string",
-            "pattern": "^(7|11|13)\\/\\d{1,5}\\/\\d{1,5}$"
+            "pattern": "^(7|9|11|13)\\/\\d{1,5}\\/\\d{1,5}$"
           },
           "kind": {
             "type": "string",

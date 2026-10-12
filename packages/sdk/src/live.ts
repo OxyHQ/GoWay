@@ -53,6 +53,7 @@ import {
   liveTileBounds,
   liveTileOf,
   liveTilesFor,
+  liveTilesOf,
 } from './contract';
 import type {
   LiveDelta,
@@ -74,6 +75,7 @@ export {
   liveTileBounds,
   liveTileOf,
   liveTilesFor,
+  liveTilesOf,
 };
 
 export type {

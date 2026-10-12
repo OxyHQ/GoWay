@@ -33,8 +33,9 @@ taxonomy.
   `liveTileOf`, `liveTileBounds`), `liveSubscription()` and a parser per
   message (`parseLiveSnapshot`, `parseLiveDelta`, `parseLiveSources`,
   `parseLiveSubscriptionState`, each returning `null` for a payload that does
-  not match). Rooms are tiles at a zoom per kind (`LIVE_ROOM_ZOOMS`;
-  `liveTileOf(position, kind)`, `liveTilesFor(box, kind)`); a delta carries
+  not match). Rooms are tiles at a few levels per kind (`LIVE_ROOM_ZOOMS`;
+  `liveTileOf(position, kind, zoom?)`, `liveTilesOf(position, kind)`,
+  `liveTilesFor(box, kind)` — the finest level that covers the box); a delta carries
   `moves` — `LiveMove` tuples for vehicles that only moved — beside its
   upserts and removes; and a message over `LIVE_PACKED_MIN_BYTES` arrives as
   gzip bytes: pass every payload through `unpackLivePayload` (async; keep

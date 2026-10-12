@@ -148,6 +148,7 @@ export {
   LIVE_SOCKET_EVENTS,
   liveTileOf,
   liveTilesFor,
+  liveTilesOf,
   liveTileBounds,
   // Search and directions
   SEARCH_RESULT_KINDS,

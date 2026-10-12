@@ -214,9 +214,13 @@ accepted value is re-checked with `liveEntitySchema` before it leaves
 ### The hub (`hub.ts`, `tileIndex.ts`)
 
 - **In-memory spatial index**: the latest fix per entity, bucketed by **room**
-  = a web-mercator tile × a kind, at a zoom per kind (`LIVE_ROOM_ZOOMS`:
-  aircraft and ships z7, ~300 km; transit z11, ~15 km; bike share z13,
-  ~3.7 km). Rooms ARE the index: a subscription is
+  = a web-mercator tile × a kind, at each of the kind's levels
+  (`LIVE_ROOM_ZOOMS`: aircraft and ships z7, ~300 km; transit z7, z9 and z11 —
+  a region, ~60 km, ~15 km; bike share z13, ~3.7 km). Every entity is in one
+  room per level; a subscription takes, per kind, the finest level that
+  covers the view in at most 20 rooms — a borough at a city zoom, all of
+  Catalonia (every Rodalies train, Girona's and Tarragona's included) from
+  the z7 rooms at a regional one. Rooms ARE the index: a subscription is
   answered from the buckets its tiles cover, a delta is addressed to the bucket
   an entity is in, a box query walks only the buckets it touches. Replacing an
   entry discards the old fix: **positions are never stored as history**, and
@@ -656,9 +660,10 @@ on the old protocol and one on the new:
 | All of New York, z12 | 1,225 KB | 18.1 KB/s | 25 KB | 0.7 KB/s |
 | Midtown, z15 | 1,225 KB | 18.1 KB/s | 24 KB | 0.3 KB/s |
 
-1. **Per-kind rooms** (`LIVE_ROOM_ZOOMS`): transit in ~15 km rooms, bike
-   share in ~3.7 km ones — a street view receives its neighbourhood, not the
-   city. And the client asks for bike share only from z15, where it draws it:
+1. **Per-kind rooms at several levels** (`LIVE_ROOM_ZOOMS`): at a street or
+   city zoom transit comes in ~15 km rooms and bike share in ~3.7 km ones — a
+   street view receives its neighbourhood, not the city; zoomed out to a
+   region, the coarser rooms keep every vehicle there. And the client asks for bike share only from z15, where it draws it:
    New York's 2,458 docks were most of the old snapshot.
 2. **Moves**: a vehicle that only moved is a tuple, not an entity.
 3. **Packing**: messages over 2 KB as gzip bytes (~9.6× on a transit

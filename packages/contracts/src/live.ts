@@ -212,42 +212,43 @@ export const liveEntitySchema = z.discriminatedUnion('kind', [
 export type LiveEntity = z.infer<typeof liveEntitySchema>;
 
 // ---------------------------------------------------------------------------
-// Rooms: web-mercator tiles at one zoom
+// Rooms: web-mercator tiles at a few zooms per kind
 // ---------------------------------------------------------------------------
 
 /**
- * The zoom of the tile grid each kind's rooms are keyed on — coarse where
- * things are sparse and fast, fine where they are dense and slow, so a
- * street-level view of New York receives Midtown's buses and docks, not the
- * city's.
+ * The zooms of the tile grids each kind's rooms are keyed on, coarsest
+ * first. Every entity is in one room at EACH of its kind's levels; a
+ * subscription takes, per kind, the FINEST level whose rooms cover the
+ * viewport in at most {@link LIVE_MAX_ROOM_TILES}. So a street view of New
+ * York receives Midtown's buses, and a view of all Catalonia still receives
+ * every Rodalies train — from coarser rooms.
  *
- * - aircraft, vessels: z7 — 2.8° of longitude, ~235 × 310 km at Barcelona. A
- *   city view is one or two rooms, and an aircraft changes room every few
- *   minutes rather than every few seconds.
- * - transit: z11 — ~15 km. A borough, not a city.
- * - bike share: z13 — ~3.7 km. A neighbourhood: its docks matter only at
- *   street zooms (the map draws them from z15).
+ * - aircraft, vessels: z7 — 2.8° of longitude, ~235 × 310 km at Barcelona.
+ * - transit: z7 (a region or a country), z9 (~60 km: a metropolitan area)
+ *   and z11 (~15 km: a borough).
+ * - bike share: z13 — ~3.7 km. Its docks matter only at street zooms (the map
+ *   draws, and asks for, them from z15).
  */
-export const LIVE_ROOM_ZOOMS: Readonly<Record<LiveKind, number>> = {
-  aircraft: 7,
-  vessel: 7,
-  transit: 11,
-  bikeshare: 13,
+export const LIVE_ROOM_ZOOMS: Readonly<Record<LiveKind, readonly number[]>> = {
+  aircraft: [7],
+  vessel: [7],
+  transit: [7, 9, 11],
+  bikeshare: [13],
 };
 
 /**
- * The most rooms one subscription may cover, PER KIND. A kind whose rooms a
- * viewport covers more of is left out of the subscription (`kinds` says which
- * were kept); if every kind is, the answer is `too_wide` and the client says
- * "zoom in". 20 z7 tiles is roughly a z8 desktop viewport — below that the map
- * is a continent; 20 z11 tiles a z12 one.
+ * The most rooms one subscription may cover, PER KIND, at the level it
+ * takes. A kind whose COARSEST level still needs more is left out of the
+ * subscription (`kinds` says which were kept); if every kind is, the answer is
+ * `too_wide` and the client says "zoom in". 20 z7 tiles is roughly a z8
+ * desktop viewport — below that the map is a continent.
  */
 export const LIVE_MAX_ROOM_TILES = 20;
 
 /** A room tile, `z/x/y`, at one of the {@link LIVE_ROOM_ZOOMS}. */
 export const liveTileKeySchema = z
   .string()
-  .regex(/^(7|11|13)\/\d{1,5}\/\d{1,5}$/, 'must be a live tile');
+  .regex(/^(7|9|11|13)\/\d{1,5}\/\d{1,5}$/, 'must be a live tile');
 
 const MAX_MERCATOR_LATITUDE = 85.051129;
 
@@ -265,23 +266,30 @@ function tileY(latitude: number, n: number): number {
   return Math.min(n - 1, Math.max(0, y));
 }
 
-/** The room tile a position of a kind falls in. */
+function finest(kind: LiveKind): number {
+  const levels = LIVE_ROOM_ZOOMS[kind];
+  return levels[levels.length - 1] as number;
+}
+
+/** The room tile a position of a kind falls in, at one of its levels (default: the finest). */
 export function liveTileOf(
   position: { latitude: number; longitude: number },
   kind: LiveKind,
+  zoom: number = finest(kind),
 ): string {
-  const zoom = LIVE_ROOM_ZOOMS[kind];
   const n = 2 ** zoom;
   return `${zoom}/${tileX(position.longitude, n)}/${tileY(position.latitude, n)}`;
 }
 
-/**
- * A kind's room tiles a box covers, or `null` when that is more than
- * {@link LIVE_MAX_ROOM_TILES}. A box across the antimeridian (`west > east`)
- * covers both edges of the world.
- */
-export function liveTilesFor(box: GeoBoundingBox, kind: LiveKind): string[] | null {
-  const zoom = LIVE_ROOM_ZOOMS[kind];
+/** The room tiles a position of a kind falls in: one per level, coarsest first. */
+export function liveTilesOf(
+  position: { latitude: number; longitude: number },
+  kind: LiveKind,
+): string[] {
+  return LIVE_ROOM_ZOOMS[kind].map((zoom) => liveTileOf(position, kind, zoom));
+}
+
+function tilesAt(box: GeoBoundingBox, zoom: number): string[] | null {
   const n = 2 ** zoom;
   const yMin = tileY(box.north, n);
   const yMax = tileY(box.south, n);
@@ -300,6 +308,21 @@ export function liveTilesFor(box: GeoBoundingBox, kind: LiveKind): string[] | nu
   const tiles: string[] = [];
   for (const x of columns) for (let y = yMin; y <= yMax; y++) tiles.push(`${zoom}/${x}/${y}`);
   return tiles;
+}
+
+/**
+ * A kind's room tiles for a box: at the finest of its levels that covers the
+ * box in at most {@link LIVE_MAX_ROOM_TILES}, or `null` when even the
+ * coarsest needs more. A box across the antimeridian (`west > east`) covers
+ * both edges of the world.
+ */
+export function liveTilesFor(box: GeoBoundingBox, kind: LiveKind): string[] | null {
+  const levels = LIVE_ROOM_ZOOMS[kind];
+  for (let i = levels.length - 1; i >= 0; i--) {
+    const tiles = tilesAt(box, levels[i] as number);
+    if (tiles) return tiles;
+  }
+  return null;
 }
 
 /** The box a room tile covers, in degrees. */

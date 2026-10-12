@@ -16,6 +16,7 @@ import {
   liveTileBounds,
   liveTileOf,
   liveTilesFor,
+  liveTilesOf,
 } from '@goway/contracts';
 import { LiveHub, MAX_BACKOFF_MS } from '../hub';
 import { contains, LiveTileIndex } from '../tileIndex';
@@ -80,6 +81,25 @@ describe('room tiles', () => {
     expect((liveTilesFor(street, 'bikeshare') ?? []).every((t) => t.startsWith('13/'))).toBe(true);
   });
 
+  it('serves a whole region from coarser rooms: all of Catalonia, every train', () => {
+    const catalonia = { west: 0.2, south: 40.6, east: 3.3, north: 42.8 };
+    const tiles = liveTilesFor(catalonia, 'transit') ?? [];
+    expect(tiles.length).toBeGreaterThan(0);
+    expect(tiles.length).toBeLessThanOrEqual(LIVE_MAX_ROOM_TILES);
+    // Catalonia is 25 z9 rooms: it takes the z7 ones (4).
+    expect(tiles).toEqual(['7/64/47', '7/64/48', '7/65/47', '7/65/48']);
+    // The Barcelona region (~80 km) takes z9 rooms; a city view z11.
+    const metro = liveTilesFor({ west: 1.6, south: 41.1, east: 2.6, north: 41.8 }, 'transit') ?? [];
+    expect(metro.every((tile) => tile.startsWith('9/'))).toBe(true);
+    // Girona and Tarragona, far from Barcelona, are inside the region's rooms.
+    for (const [latitude, longitude] of [
+      [41.98, 2.82],
+      [41.12, 1.25],
+    ] as const) {
+      expect(tiles).toContain(liveTileOf({ latitude, longitude }, 'transit', 7));
+    }
+  });
+
   it('refuses a box wider than the room budget, and crosses the antimeridian', () => {
     expect(liveTilesFor({ west: -30, south: 20, east: 30, north: 60 }, 'aircraft')).toBeNull();
     const pacific = liveTilesFor({ west: 179, south: -1, east: -179, north: 1 }, 'aircraft');
@@ -96,23 +116,34 @@ describe('room tiles', () => {
 });
 
 describe('the tile index', () => {
-  it('reports changes, ignores repeats, and moves between rooms', () => {
+  it('reports changes, ignores repeats, and moves between rooms — at every level', () => {
     const index = new LiveTileIndex();
     const first = bus('1', 41.39, 2.17, T0);
-    expect(index.upsert(first)).toEqual([
-      { type: 'upsert', room: `${BARCELONA_TILE}|transit`, entity: first },
-    ]);
+    const rooms = (latitude: number, longitude: number) =>
+      liveTilesOf({ latitude, longitude }, 'transit').map((tile) => `${tile}|transit`);
+    const barcelona = rooms(41.39, 2.17);
+    const newYork = rooms(40.75, -73.98);
+    // One room per transit level: z7, z9, z11.
+    expect(barcelona.map((room) => room.split('/')[0])).toEqual(['7', '9', '11']);
+    expect(index.upsert(first)).toEqual(
+      barcelona.map((room) => ({ type: 'upsert', room, entity: first })),
+    );
     expect(index.upsert({ ...first })).toEqual([]);
     const moved = bus('1', 40.75, -73.98, T0 + 1000);
-    expect(index.upsert(moved)).toEqual([
-      { type: 'remove', room: `${BARCELONA_TILE}|transit`, id: 'test-bus:1' },
-      { type: 'upsert', room: `${NEW_YORK_TILE}|transit`, entity: moved },
-    ]);
+    expect(index.upsert(moved)).toEqual(
+      barcelona.flatMap((room, level) => [
+        { type: 'remove', room, id: 'test-bus:1' },
+        { type: 'upsert', room: newYork[level], entity: moved },
+      ]),
+    );
     expect(index.inRoom(BARCELONA_TILE, 'transit')).toEqual([]);
     expect(index.inRoom(NEW_YORK_TILE, 'transit')).toEqual([moved]);
+    expect(index.inRoom((newYork[0] as string).split('|')[0] as string, 'transit')).toEqual([
+      moved,
+    ]);
     expect(index.inRoom(NEW_YORK_TILE, 'aircraft')).toEqual([]);
     expect(index.countOfSource('test-bus')).toBe(1);
-    expect(index.remove('test-bus:1')).toHaveLength(1);
+    expect(index.remove('test-bus:1')).toHaveLength(3);
     expect(index.size).toBe(0);
     expect(index.countOfSource('test-bus')).toBe(0);
   });
