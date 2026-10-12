@@ -289,15 +289,17 @@ export const MAP_FEATURES = [
   {
     id: 'live',
     section: 'layers',
-    tier: 'labs',
-    defaultOn: false,
+    tier: 'stable',
+    // Real vehicles, for everyone. Safe on by default because the BACKEND is
+    // the gate: a deployment without `LIVE_ENABLED` answers 503 and the layer
+    // draws nothing (`LiveHost`); which feeds are served — and so which
+    // licences are in play — is `LIVE_SOURCES`, set by the owner
+    // (`docs/MAP_LIVE.md` → Production). The panel starts folded to its pill,
+    // and `live.maxEntities` (`QualityProfile`) caps what is drawn.
+    defaultOn: true,
     build: process.env.EXPO_PUBLIC_MAP_LIVE,
     requires: [],
     platforms: WEB,
-    // GoWay Live needs a backend with `LIVE_ENABLED` and its feeds' licence
-    // follow-ups done; goway.to has neither yet (`docs/MAP_LIVE.md` → What
-    // production needs), so the switch is offered where a backend can serve it.
-    offer: 'development',
     request: (enabled, { development, search }) =>
       isLiveRequested({ enabled, development, search }),
   },

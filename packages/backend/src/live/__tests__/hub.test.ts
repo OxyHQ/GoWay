@@ -56,23 +56,33 @@ const STATIC_FILES: Record<string, string> = {
   'https://gtfs.example/shapes.txt':
     'shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\nline,41.39,2.16,1\nline,41.39,2.18,2\n',
 };
-const BARCELONA_TILE = liveTileOf(BARCELONA);
-const NEW_YORK_TILE = liveTileOf({ latitude: 40.75, longitude: -73.98 });
+const BARCELONA_TILE = liveTileOf(BARCELONA, 'transit');
+const BARCELONA_AIR_TILE = liveTileOf(BARCELONA, 'aircraft');
+const NEW_YORK_TILE = liveTileOf({ latitude: 40.75, longitude: -73.98 }, 'transit');
 
 // ---------------------------------------------------------------------------
 // Room tiles (contracts) and the index
 // ---------------------------------------------------------------------------
 
 describe('room tiles', () => {
-  it('puts a city in one or two z7 rooms', () => {
-    expect(BARCELONA_TILE).toBe('7/64/47');
-    const city = liveTilesFor({ west: 2.05, south: 41.32, east: 2.25, north: 41.47 });
-    expect(city).toEqual(['7/64/47']);
+  it('keys each kind at its own zoom: a city is one aircraft room, a few transit ones', () => {
+    expect(BARCELONA_AIR_TILE).toBe('7/64/47');
+    const city = { west: 2.05, south: 41.32, east: 2.25, north: 41.47 };
+    expect(liveTilesFor(city, 'aircraft')).toEqual(['7/64/47']);
+    expect(liveTilesFor(city, 'vessel')).toEqual(['7/64/47']);
+    const transit = liveTilesFor(city, 'transit') ?? [];
+    expect(transit.length).toBeGreaterThan(1);
+    expect(transit.every((tile) => tile.startsWith('11/'))).toBe(true);
+    expect(BARCELONA_TILE.startsWith('11/')).toBe(true);
+    // Bike share: a neighbourhood at street zoom; a whole city is too wide.
+    expect(liveTilesFor(city, 'bikeshare')).toBeNull();
+    const street = { west: 2.16, south: 41.385, east: 2.175, north: 41.395 };
+    expect((liveTilesFor(street, 'bikeshare') ?? []).every((t) => t.startsWith('13/'))).toBe(true);
   });
 
   it('refuses a box wider than the room budget, and crosses the antimeridian', () => {
-    expect(liveTilesFor({ west: -30, south: 20, east: 30, north: 60 })).toBeNull();
-    const pacific = liveTilesFor({ west: 179, south: -1, east: -179, north: 1 });
+    expect(liveTilesFor({ west: -30, south: 20, east: 30, north: 60 }, 'aircraft')).toBeNull();
+    const pacific = liveTilesFor({ west: 179, south: -1, east: -179, north: 1 }, 'aircraft');
     expect(pacific).toEqual(['7/127/63', '7/127/64', '7/0/63', '7/0/64']);
     expect((pacific ?? []).length).toBeLessThanOrEqual(LIVE_MAX_ROOM_TILES);
   });
@@ -81,7 +91,7 @@ describe('room tiles', () => {
     const box = liveTileBounds(BARCELONA_TILE);
     expect(contains(box, BARCELONA)).toBe(true);
     const centre = { latitude: (box.north + box.south) / 2, longitude: (box.east + box.west) / 2 };
-    expect(liveTileOf(centre)).toBe(BARCELONA_TILE);
+    expect(liveTileOf(centre, 'transit')).toBe(BARCELONA_TILE);
   });
 });
 
@@ -199,7 +209,7 @@ describe('the hub', () => {
     expect(h.polls).toHaveLength(0);
     // Aircraft over Barcelona, and buses over New York: neither is this source's demand.
     h.hub.watch('a', [
-      { tile: BARCELONA_TILE, kind: 'aircraft' },
+      { tile: BARCELONA_AIR_TILE, kind: 'aircraft' },
       { tile: NEW_YORK_TILE, kind: 'transit' },
     ]);
     await h.hub.tick();

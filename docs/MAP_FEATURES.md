@@ -59,7 +59,7 @@ now kills the trees, as a padded `0` always killed the globe and terrain.
 | `cityLife` | labs | off | web, **development builds only** | `EXPO_PUBLIC_MAP_CITY_LIFE` | `?cityLife=1` | live (re-attach) |
 | `cityStreets` | labs | off | web, **development builds only** (needs `city3d`; draws from the road archive) | `EXPO_PUBLIC_MAP_CITY_STREETS` | `?cityStreets=1` | live (re-attach) — [`MAP_STREETS.md`](./MAP_STREETS.md) |
 | `landmarks` | labs | off | web, **development builds only** (needs `city3d`; models draw only over city tiles) | `EXPO_PUBLIC_MAP_LANDMARKS` | `?landmarks=1` | live (re-attach; the pill and "Landmark tour" come and go, a running tour ends) |
-| `live` | labs | off | web, **development builds only** (needs a backend with `LIVE_ENABLED`; `docs/MAP_LIVE.md`) | `EXPO_PUBLIC_MAP_LIVE` | `?live=1` | live (mount/unmount: the panel in the top-right stack, the layer, its credits and the coverage channel come and go) |
+| `live` | stable | **on** | web (draws only where the backend serves live: `GET /live/sources` 503 → nothing; `docs/MAP_LIVE.md` → Production) | `EXPO_PUBLIC_MAP_LIVE` | `?live=1` | live (mount/unmount: the panel in the top-right stack, the layer, its credits and the coverage channel come and go) |
 | `flyover` | labs | off | web, native | `EXPO_PUBLIC_MAP_FLYOVER` | `?flyover=1` | live ("Fly the route", `/studio`) |
 
 No production default changed: globe and terrain stay on (#128), everything
@@ -103,9 +103,9 @@ page with nothing to list leaves the rail.
   three-way choice kept in the same store, `setPerformance`, which picks the
   map's quality profile — [`MAP_PERFORMANCE.md`](./MAP_PERFORMANCE.md); it
   applies live), and Sky & time of day once Labs is revealed.
-- **Layers**, once Labs is revealed: 3D city, city tiles (and the official
-  building data they carry), trees and woods fill, landmarks, simulated
-  traffic, live data (development builds, until goway.to's backend serves it), and the flyover with "Open Camera
+- **Layers**: Street 3D and live data for everyone; once Labs is revealed,
+  3D city, city tiles (and the official building data they carry), trees and
+  woods fill, landmarks, simulated traffic, and the flyover with "Open Camera
   Studio" while it is on — each with what it shows, under the note that they
   may be slow.
 - **Labs**, only once revealed: what Labs is, and "Hide Labs".

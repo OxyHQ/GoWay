@@ -17,6 +17,14 @@
  *
  * Nothing about the viewer is sent: the subscription is the visible box, the
  * zoom and the kinds — no location, no session, no identifier.
+ *
+ * ## Asking only for what is drawn
+ *
+ * Bike-share docks are drawn from z{@link BIKESHARE_MIN_ZOOM}: below it they
+ * are not asked for at all (New York's 2,500 docks were most of a city view's
+ * traffic). Large messages arrive as gzip bytes and are inflated
+ * (`unpackLivePayload`); because that is asynchronous, every message goes
+ * through one queue, so they apply in the order they arrived.
  */
 
 import type { Socket } from 'socket.io-client';
@@ -27,6 +35,7 @@ import {
   liveSubscription,
   liveTilesFor,
   parseLiveDelta,
+  unpackLivePayload,
   parseLiveSnapshot,
   parseLiveSources,
   parseLiveSubscriptionState,
@@ -35,6 +44,13 @@ import {
 import type { LiveStore } from './liveStore';
 
 export const SUBSCRIBE_DEBOUNCE_MS = 350;
+/** Bike-share docks are drawn, and so asked for, from this zoom. */
+export const BIKESHARE_MIN_ZOOM = 15;
+
+/** The kinds worth asking for at a zoom. Exported for the tests. */
+export function kindsAtZoom(kinds: readonly LiveKind[], zoom: number): LiveKind[] {
+  return kinds.filter((kind) => kind !== 'bikeshare' || zoom >= BIKESHARE_MIN_ZOOM);
+}
 
 export type LiveConnectionState = 'connecting' | 'connected' | 'offline';
 export type LiveCoverageState = 'ok' | 'too_wide' | 'waiting';
@@ -100,15 +116,20 @@ export function createLiveClient(options: { apiUrl: string; store: LiveStore }):
       return;
     }
     const bounds = normaliseBounds(view.bounds);
+    const wanted = kindsAtZoom(kinds, view.zoom);
     const subscription = liveSubscription({
       ...bounds,
       zoom: Math.max(0, Math.min(24, view.zoom)),
-      kinds,
+      kinds: wanted,
     });
     const key = JSON.stringify(subscription);
     if (key === sent) return;
     sent = key;
-    coverage = kinds.length === 0 || liveTilesFor(bounds) ? 'waiting' : 'too_wide';
+    // Too wide only when no kind asked for fits (the server keeps the ones that do).
+    coverage =
+      wanted.length === 0 || wanted.some((kind) => liveTilesFor(bounds, kind))
+        ? 'waiting'
+        : 'too_wide';
     notify();
     socket?.emit(LIVE_SOCKET_EVENTS.subscribe, subscription);
   };
@@ -126,9 +147,10 @@ export function createLiveClient(options: { apiUrl: string; store: LiveStore }):
     .then(({ io }) => {
       if (closed) return;
       const live: Socket = io(`${options.apiUrl}${LIVE_SOCKET_NAMESPACE}`, {
-        // WebSocket first: no long-polling requests through the API's CORS lane
-        // unless the WebSocket cannot be opened at all.
-        transports: ['websocket', 'polling'],
+        // WebSocket only. Long-polling would need every request of a session
+        // to reach the same API task (ALB stickiness); a WebSocket is one
+        // connection to one task, whichever it is (`docs/MAP_LIVE.md`).
+        transports: ['websocket'],
         withCredentials: false,
         reconnectionDelay: 2000,
         reconnectionDelayMax: 30_000,
@@ -149,13 +171,25 @@ export function createLiveClient(options: { apiUrl: string; store: LiveStore }):
         notify();
       });
 
-      live.on(LIVE_SOCKET_EVENTS.sources, (payload: unknown) => {
+      // One queue for every message: inflating is asynchronous, and a delta
+      // applied before the snapshot it follows would be lost.
+      let inbox: Promise<void> = Promise.resolve();
+      const receive = (event: string, handle: (payload: unknown) => void) =>
+        live.on(event, (raw: unknown) => {
+          inbox = inbox
+            .then(() => unpackLivePayload(raw))
+            .then((payload) => {
+              if (!closed) handle(payload);
+            })
+            .catch(() => {});
+        });
+      receive(LIVE_SOCKET_EVENTS.sources, (payload: unknown) => {
         const page = parseLiveSources(payload);
         if (!page) return;
         store.setSources(page.items);
         notify();
       });
-      live.on(LIVE_SOCKET_EVENTS.subscription, (payload: unknown) => {
+      receive(LIVE_SOCKET_EVENTS.subscription, (payload: unknown) => {
         const state = parseLiveSubscriptionState(payload);
         if (!state) return;
         if (state.state === 'rate_limited') {
@@ -169,13 +203,13 @@ export function createLiveClient(options: { apiUrl: string; store: LiveStore }):
         coverage = state.state === 'too_wide' ? 'too_wide' : 'ok';
         notify();
       });
-      live.on(LIVE_SOCKET_EVENTS.snapshot, (payload: unknown) => {
+      receive(LIVE_SOCKET_EVENTS.snapshot, (payload: unknown) => {
         const snapshot = parseLiveSnapshot(payload);
         if (!snapshot) return;
         store.applySnapshot(snapshot);
         notify();
       });
-      live.on(LIVE_SOCKET_EVENTS.delta, (payload: unknown) => {
+      receive(LIVE_SOCKET_EVENTS.delta, (payload: unknown) => {
         const delta = parseLiveDelta(payload);
         if (!delta) return;
         store.applyDelta(delta);

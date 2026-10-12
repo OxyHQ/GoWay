@@ -101,7 +101,8 @@ function legacy(builds: Builds, development: boolean, search: string) {
     // As `ExploreScreen` decided it: the landmarks flag AND the 3D city.
     landmarks:
       city3d && isLandmarksRequested({ enabled: onBuild(builds.landmarks), development, search }),
-    live: isLiveRequested({ enabled: onBuild(builds.live), development, search }),
+    // On by default since live went to production: off only where the build kills it.
+    live: isLiveRequested({ enabled: enabledUnlessKilled(builds.live), development, search }),
     flyover: isFlyoverRequested({ enabled: onBuild(builds.flyover), development, search }),
   };
 }
@@ -116,7 +117,7 @@ describe('the registry', () => {
     }
   });
 
-  test('defaults: globe, terrain and Street 3D on, everything else off', () => {
+  test('defaults: globe, terrain, Street 3D and live on, everything else off', () => {
     const features = resolve();
     expect(features.list.map((state) => [state.id, state.on])).toEqual([
       ['globe', true],
@@ -131,7 +132,7 @@ describe('the registry', () => {
       ['cityLife', false],
       ['cityStreets', false],
       ['landmarks', false],
-      ['live', false],
+      ['live', true],
       ['flyover', false],
     ]);
     // Nothing new is on by default: every Labs feature starts off. (The trees
@@ -296,9 +297,13 @@ describe('dependencies', () => {
 });
 
 describe('what the panel offers', () => {
-  test('live is offered in development builds only, where a live backend can serve it', () => {
-    expect(resolve({ development: false }).get('live').available).toBe(false);
-    expect(resolve({ development: true }).get('live').available).toBe(true);
+  test('live is offered everywhere on the web, and on by default', () => {
+    for (const development of [false, true]) {
+      const live = resolve({ development }).get('live');
+      expect(live.available).toBe(true);
+      expect(live.on).toBe(true);
+    }
+    expect(resolve({ platform: 'ios' }).get('live').available).toBe(false);
   });
 
   test('per platform', () => {

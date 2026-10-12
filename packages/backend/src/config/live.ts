@@ -102,6 +102,13 @@ export interface LiveConfig {
   subscribePerMinute: number;
   /** Upstream requests a regional source (aircraft) may make per poll cycle. */
   maxRegionsPerPoll: number;
+  /**
+   * Valkey shared by the API tasks (`live/cluster.ts`): one task polls each
+   * feed and the others are told. `LIVE_VALKEY_URL`, else `REDIS_URL` (the
+   * fleet's shared Valkey, `/oxy/_shared/REDIS_URL`); unset, this process polls
+   * alone — right for one task, N× the upstream load for N.
+   */
+  valkeyUrl: string | null;
 }
 
 const baseSchema = z.object({
@@ -179,10 +186,23 @@ export function parseLiveConfig(
     settings[id] = entry;
   }
 
+  let valkeyUrl: string | null = null;
+  const rawValkey = emptyAsUndefined(source.LIVE_VALKEY_URL) ?? emptyAsUndefined(source.REDIS_URL);
+  if (rawValkey !== undefined) {
+    try {
+      const url = new URL(String(rawValkey).trim());
+      if (url.protocol !== 'redis:' && url.protocol !== 'rediss:') throw new Error('protocol');
+      valkeyUrl = url.toString();
+    } catch {
+      // Never echo the value: it may carry a password.
+      problems.push('  - LIVE_VALKEY_URL / REDIS_URL: must be a redis:// or rediss:// URL');
+    }
+  }
+
   if (problems.length > 0 || !result.success) {
     throw new Error(`Invalid live configuration:\n${problems.join('\n')}`);
   }
-  return { ...result.data, settings };
+  return { ...result.data, settings, valkeyUrl };
 }
 
 /** The one parse for this process, against the catalogue's ids. */

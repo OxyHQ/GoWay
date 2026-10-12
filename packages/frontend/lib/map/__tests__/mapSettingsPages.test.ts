@@ -32,11 +32,11 @@ describe('the settings pages', () => {
     }
   });
 
-  test('Labs hidden: the stable features — Street 3D on Layers — and no Labs page', () => {
+  test('Labs hidden: the stable features — Street 3D and live data on Layers — and no Labs page', () => {
     const { pages, features } = layout({ labs: false });
     expect(pages).toEqual(['map', 'layers', 'general', 'about']);
     expect(ids(features.map)).toEqual(['globe', 'terrain']);
-    expect(ids(features.layers)).toEqual(['street3d']);
+    expect(ids(features.layers)).toEqual(['street3d', 'live']);
   });
 
   test('Labs revealed (production): sky on Map, the layers on Layers, and a Labs page', () => {
@@ -44,12 +44,13 @@ describe('the settings pages', () => {
     expect(pages).toEqual(['map', 'layers', 'labs', 'general', 'about']);
     expect(ids(features.map)).toEqual(['globe', 'terrain', 'citySky', 'detailedCity']);
     // City tiles, simulated traffic and landmarks have nothing to draw over in
-    // production, and goway.to's backend serves no live data yet.
+    // production.
     expect(ids(features.layers)).toEqual([
       'street3d',
       'city3d',
       'city3dTrees',
       'city3dTreeFill',
+      'live',
       'flyover',
     ]);
   });
