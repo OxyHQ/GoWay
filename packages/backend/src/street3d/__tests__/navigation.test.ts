@@ -120,6 +120,14 @@ describe('published navigation', () => {
     expect(navigationOf(undefined, undefined, 3)).toBeNull();
   });
 
+  it('carries a reported capture height, rounded, only alongside viewpoints', () => {
+    expect(navigationOf(walk(3, 2), undefined, undefined, 2.418)).toEqual({
+      viewpoints: decimateViewpoints(walk(3, 2)),
+      captureHeightMeters: 2.42,
+    });
+    expect(navigationOf([], undefined, undefined, 2.4)).toEqual({ viewpoints: [] });
+  });
+
   it('is absent for a worker that reported none', () => {
     const older = { ...result(), viewpoints: undefined, captureFieldOfView: undefined };
     expect(publishedNavigation(older)).toBeNull();

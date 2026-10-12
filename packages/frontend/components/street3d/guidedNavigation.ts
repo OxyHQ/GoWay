@@ -24,8 +24,11 @@ export const GUIDED_MAX_PITCH_DEGREES = 35;
 export const TALL_CAPTURE_VERTICAL_DEGREES = 100;
 /** …so its pitch may reach this far. */
 export const TALL_CAPTURE_MAX_PITCH_DEGREES = 60;
-/** How far the ground is below a capture position (a hand-held or pole camera's height). */
-export const CAPTURE_HEIGHT_METERS = 1.6;
+/**
+ * How far the ground is below a capture position when the scene does not say
+ * (`navigation.captureHeightMeters`): a hand-held camera's height.
+ */
+export const DEFAULT_CAPTURE_HEIGHT_METERS = 1.6;
 /** Walking pace, metres per second. */
 export const WALK_SPEED_MPS = 1.4;
 /** Shift: a run, metres per second. */

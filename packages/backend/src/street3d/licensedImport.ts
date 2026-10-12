@@ -504,6 +504,7 @@ export async function prepareLicensedImport(
       manifest.navigation?.viewpoints,
       manifest.navigation?.fieldOfView,
       manifest.navigation?.reachMeters,
+      manifest.navigation?.captureHeightMeters,
     ),
   };
 }

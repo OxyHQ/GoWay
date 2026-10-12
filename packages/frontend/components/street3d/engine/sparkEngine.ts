@@ -40,7 +40,7 @@ import type { StreetSceneAsset, StreetSceneNavigation } from '@goway.to/sdk';
 
 import { createCameraRig, MAX_PITCH, type CameraPose, type CameraRig } from '../cameraRig';
 import {
-  CAPTURE_HEIGHT_METERS,
+  DEFAULT_CAPTURE_HEIGHT_METERS,
   easeInOut,
   glideDurationMs,
   groundHit,
@@ -250,6 +250,9 @@ export function createSceneEngine(options: EngineOptions): SceneEngine {
   scene.add(spark);
 
   const rig: CameraRig = createCameraRig({ ...options.initialView, up: options.up });
+  // The ground is this far below the captured height: a click and the cursor
+  // ring land on it. A pole-carried scanner says so; a phone is the default.
+  const captureHeight = options.navigation?.captureHeightMeters ?? DEFAULT_CAPTURE_HEIGHT_METERS;
 
   // ── Guided walk ──────────────────────────────────────────────────────────
   //
@@ -360,13 +363,7 @@ export function createSceneEngine(options: EngineOptions): SceneEngine {
     rayDirection[0] = ray.x;
     rayDirection[1] = ray.y;
     rayDirection[2] = ray.z;
-    return groundHit(
-      standing,
-      rayDirection,
-      up,
-      region.heightAt(standing) - CAPTURE_HEIGHT_METERS,
-      hit,
-    );
+    return groundHit(standing, rayDirection, up, region.heightAt(standing) - captureHeight, hit);
   }
 
   /** Click or double tap: glide to the walkable ground nearest the point under (x, y). */

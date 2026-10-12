@@ -63,7 +63,8 @@ are no arrows or markers.
   turn (as in Street View), Shift runs. 1.4 m/s walking, 3.5 m/s running.
 - **Mouse**: drag to look. Click glides (eased, 2.5 m/s on average, 0.35–2.5 s)
   to the ground under the pointer, at most 25 m away and clamped into the
-  region. The ground is 1.6 m below the captured height. While hovering, a
+  region. The ground is `navigation.captureHeightMeters` below the captured
+  height (a pole-carried scanner's 2.4 m, say), else 1.6 m, a hand-held camera. While hovering, a
   ring under the pointer shows where a click goes, only over walkable ground.
 - **Touch**: one-finger drag to look. A touch landing in the lower two thirds
   of the left third becomes a thumbstick there once it moves: up walks
