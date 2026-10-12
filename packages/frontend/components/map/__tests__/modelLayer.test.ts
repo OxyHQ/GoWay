@@ -80,13 +80,20 @@ function harness() {
     onStatus: (id, status) => statuses.push([id, status]),
     pageOrigin: 'https://goway.to',
   });
+  // Whether the pass's backend is up (`tsl/tslPass.ts` → `drawScene`).
+  let up = true;
   const pass = {
     drawScene: (scene: THREE.Scene) => {
+      if (!up) return false;
       lastScene = scene;
+      return true;
     },
   };
   const draw = () => layer.render(pass, VIEW, { width: 800, height: 600 });
-  return { layer, statuses, draw, scene: () => lastScene };
+  const setUp = (next: boolean) => {
+    up = next;
+  };
+  return { layer, statuses, draw, scene: () => lastScene, setUp };
 }
 
 async function until(check: () => boolean, ms = 3000): Promise<void> {
@@ -128,6 +135,31 @@ describe('model layer', () => {
     expect(shared).toEqual([]);
     expect(a.every((m) => m.depthTest)).toBe(true);
     expect(b.every((m) => !m.depthTest)).toBe(true);
+  });
+
+  test('a model is drawn only after a pass that drew: until then its marker stays', async () => {
+    // Devin on #169: the TSL pass starts asynchronously (and may fail); a
+    // model reported drawn hides its fallback marker and the building a
+    // landmark replaces, so it must not be reported before a frame has it.
+    serve(() => new Response(GLB));
+    const h = harness();
+    h.setUp(false);
+    h.layer.setModels([spec('car')]);
+    await until(() => h.layer.active);
+    h.draw();
+    h.draw();
+    expect(h.statuses).toEqual([]);
+    expect(h.layer.anchors()).toEqual([]);
+    h.setUp(true);
+    h.draw();
+    expect(h.statuses).toEqual([['car', 'drawn']]);
+    // A pass that stops drawing (the backend lost) brings the marker back.
+    h.setUp(false);
+    h.draw();
+    expect(h.statuses).toEqual([
+      ['car', 'drawn'],
+      ['car', 'fallback'],
+    ]);
   });
 
   test('a removed model reports fallback, so its id re-added starts as a marker', async () => {
