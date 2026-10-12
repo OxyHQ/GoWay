@@ -79,6 +79,8 @@ const TSL_REACHERS = [
   'components/map/engine/city3d/cityMeshes.ts',
   // The street detail's TSL materials (`docs/MAP_NATIVE_3D.md` → step 5).
   'components/map/engine/cityStreets/streetMaterials.ts',
+  // City life's TSL materials.
+  'components/map/engine/cityLife/lifeMaterials.ts',
 ];
 const CHUNK = 'components/engine3d/lazyChunk.ts';
 /**
@@ -95,6 +97,11 @@ const ENGINE_PARTS: Record<string, string> = {
     'components/map/engine/cityStreets/streetRenderer.ts',
   // Still, untextured models as one or two draws (`docs/MAP_NATIVE_3D.md`).
   'components/map/engine/city3d/modelBatch.ts': 'components/map/engine/city3d/models.ts',
+  // City life's TSL materials, and the library's nodes they read.
+  'components/map/engine/cityLife/lifeMaterials.ts':
+    'components/map/engine/cityLife/lifeRenderer.ts',
+  'components/map/engine/vehicles/libraryNodes.ts':
+    'components/map/engine/cityLife/lifeMaterials.ts',
 };
 
 describe('the three.js chunk', () => {

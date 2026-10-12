@@ -270,14 +270,14 @@ jobs:
   city3d:
     name: 3D city visibility (${{ matrix.sky }})
     runs-on: ubuntu-latest
-    # One leg per sky, side by side: each runs its own views (`--skies`), so
-    # the wall time stays one leg's (~13 minutes on two SwiftShader cores)
-    # however many views the gate grows. `CI complete` needs `city3d`, whose
-    # result is a success only when every leg's is.
+    # One leg per sky, and one for what is not per sky (city life, models),
+    # side by side: each runs its own views (`--skies`), so the wall time
+    # stays one leg's however many views the gate grows. `CI complete` needs
+    # `city3d`, whose result is a success only when every leg's is.
     strategy:
       fail-fast: false
       matrix:
-        sky: [sky, nosky]
+        sky: [sky, nosky, objects]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

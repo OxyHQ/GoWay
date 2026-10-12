@@ -50,8 +50,11 @@
  *    with the 3D city off.
  *  - **Streets**: the street detail drew the fixture's road tiles (`roadTile`),
  *    and over a junction turning it on changes at least 3% of the view.
- *  - **Models** (once, without the sky): the Sagrada Família, a landmark of
- *    the registry, changes at least 1% of the map against landmarks off.
+ *  - **Models** (the `objects` leg, sky off): the Sagrada Família, a landmark
+ *    of the registry, changes at least 1% of the map against landmarks off.
+ *  - **City life** (the `objects` leg, sky off, low preset): its simulated
+ *    traffic on the fixture's streets changes at least 0.05% of the view from
+ *    z17.5 over a junction (measured 0.10–0.13%; not drawn, 0%).
  *
  * Without #152's re-grounding it fails (three runs of three; the no-sky trees
  * are buried every time). Measured numbers: the doc.
@@ -363,6 +366,8 @@ async function view(
   basemap: 'buildings' | 'empty' = 'buildings',
   /** Where the camera opens: the synthetic city's centre at z19 by default. */
   at: { lat: number; lng: number; zoom: number } = { ...SYNTHETIC_CENTRE, zoom: 19 },
+  /** The quality preset (`lib/map/quality/profile.ts`); see `query` below. */
+  quality: 'low' | 'high' = 'high',
 ): Promise<View> {
   const started = Date.now();
   const context = await browser.newContext({ viewport: VIEWPORT });
@@ -414,7 +419,7 @@ async function view(
   // `quality=high`: SwiftShader resolves to the low preset, which draws no 3D
   // terrain — and then nothing is ever grounded and the gate tests nothing. A
   // real desktop GPU (the owner's) is high.
-  const query = `lat=${lat}&lng=${lng}&zoom=${zoom}&quality=high${flags ? `&${flags}` : ''}`;
+  const query = `lat=${lat}&lng=${lng}&zoom=${zoom}&quality=${quality}${flags ? `&${flags}` : ''}`;
   await page.goto(`${origin}/?${query}`, {
     waitUntil: 'load',
     timeout: 180_000,
@@ -536,11 +541,14 @@ async function share(browser: Browser, png: Buffer, kind: 'canopy' | 'dark'): Pr
  * view: crossings, lanes, stop lines.
  */
 const JUNCTION = { lat: 41.39259, lng: 2.16388, zoom: 18.5 };
+/** The same junction from higher up, where several streets' traffic is in view. */
+const TRAFFIC = { ...JUNCTION, zoom: 17.5 };
 
 /**
  * Share of pixels, in %, where two screenshots differ by more than
  * `threshold` in a channel — below the top `skipTop` rows, where the map's
- * chips sit (a layer's own, like "Landmarks", appears with it).
+ * chips sit (a layer's own, like "Landmarks", appears with it). With
+ * `skipTop` 0, only the chips' corner (the top-right 240 × 100 px) is left out.
  */
 async function differs(
   browser: Browser,
@@ -559,11 +567,19 @@ async function differs(
         const canvas = new OffscreenCanvas(img.width, img.height);
         const g = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
         g.drawImage(img, 0, 0);
-        return g.getImageData(0, top, img.width, img.height - top).data;
+        return {
+          data: g.getImageData(0, top, img.width, img.height - top).data,
+          width: img.width,
+        };
       };
-      const [x, y] = await Promise.all([pixels(one), pixels(two)]);
+      const [{ data: x, width }, { data: y }] = await Promise.all([pixels(one), pixels(two)]);
       let n = 0;
+      let counted = 0;
       for (let i = 0; i < x.length; i += 4) {
+        const px = (i / 4) % width;
+        const py = Math.floor(i / 4 / width) + top;
+        if (top === 0 && px >= width - 240 && py < 100) continue;
+        counted++;
         const d = Math.max(
           Math.abs(x[i] - y[i]),
           Math.abs(x[i + 1] - y[i + 1]),
@@ -571,7 +587,7 @@ async function differs(
         );
         if (d > limit) n++;
       }
-      return (100 * n) / (x.length / 4);
+      return (100 * n) / counted;
     },
     [a.toString('base64'), b.toString('base64'), threshold, skipTop] as const,
   );
@@ -603,8 +619,9 @@ const browser = await chromium.launch({
 const results: Record<string, Record<string, number>> = {};
 const failures: string[] = [];
 try {
-  // `--skies=sky,nosky` (both by default): CI runs one per job.
-  const skies = arg('skies', 'sky,nosky').split(',');
+  // `--skies=sky,nosky,objects` (all by default): CI runs one per job. The
+  // `objects` leg holds the views that are not per sky (models, city life).
+  const skies = arg('skies', 'sky,nosky,objects').split(',');
   for (const [label, { flags, choices }] of Object.entries(SKIES)) {
     if (!skies.includes(label)) continue;
     const withTrees = await view(browser, origin, flags, choices, outDir, `${label}-trees`);
@@ -686,9 +703,9 @@ try {
         `${label}: ${r.streetTriangles} street triangles drawn, but streets on change ${r.streetsChangedPct}% of the view over a junction`,
       );
   }
-  if (!DEBUG && skies.includes('nosky')) {
+  if (!DEBUG && skies.includes('objects')) {
     // Models (`models.ts`, drawn by the TSL pass): the landmark on and off,
-    // with the no-sky leg (models are drawn the same way under either).
+    // without the sky (models are drawn the same way under either).
     const { flags, choices } = SKIES.nosky;
     const withLandmark = await view(
       browser,
@@ -716,6 +733,47 @@ try {
       failures.push(
         `landmark: ${LANDMARK.id} changes ${changed}% of the map (on against off): it is not on the screen`,
       );
+  }
+  if (!DEBUG && skies.includes('objects')) {
+    // City life (`cityLife/`, drawn by the TSL pass): its simulated traffic on
+    // the fixture's streets, on and off, over the junction, without the sky
+    // (the agents are drawn the same way under either, and city life keeps
+    // the map rendering: on software GL a frame with the sky's passes takes
+    // seconds, and a screenshot waits for one). The simulation is seeded and
+    // the clock fixed, but the agents move with real time: the share is a
+    // floor, not a match.
+    const { flags, choices } = SKIES.nosky;
+    // The low preset's 300 cars and 300 people (`profile.ts` → `life`): the
+    // high one's 2,400 agents keep two software-GL cores from ever finishing
+    // a frame for the screenshot. From z17.5 over the junction several
+    // streets are in view, so their traffic shows whenever the shot is taken;
+    // the whole frame counts but the chips' corner.
+    const withLife = await view(
+      browser,
+      origin,
+      `${flags}&cityLife=1`,
+      { ...choices, cityLife: true },
+      outDir,
+      'life',
+      'buildings',
+      TRAFFIC,
+      'low',
+    );
+    const without = await view(
+      browser,
+      origin,
+      flags,
+      choices,
+      outDir,
+      'nolife',
+      'buildings',
+      TRAFFIC,
+      'low',
+    );
+    const changed = await differs(browser, withLife.png, without.png, 24, 0);
+    results.life = { changedPct: changed };
+    if (changed < 0.05)
+      failures.push(`city life: its agents change ${changed}% of the view: not on the screen`);
   }
 } finally {
   await browser.close();
