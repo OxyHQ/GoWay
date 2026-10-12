@@ -187,6 +187,42 @@ by it where enough frames agree, instead of assuming the phones were held
 level. Design, measurements and limits:
 [`STREET3D_MOTION_PRIORS.md`](./STREET3D_MOTION_PRIORS.md).
 
+### Features
+
+The camera solve matches local features between the bounded pairs, then COLMAP
+verifies the matches geometrically and maps them (`recon/sfm.py`). The feature
+set is one of three:
+
+- `sift` — COLMAP's SIFT on the CPU;
+- `aliked` — ALIKED-n16 detects and describes, LightGlue matches;
+- `raco` — RaCo detects and its ranker keeps the most reliable points,
+  ALIKED-n16 describes them, LightGlue+ (LightGlue retrained on RaCo
+  keypoints) matches.
+
+The learned sets run on the worker's PyTorch (`recon/features.py`, kornia and
+the vendored RaCo network); the pycolmap wheel's own ALIKED needs an ONNX build
+it does not ship. Every weight file is pinned by digest in `models.py` and
+reviewed in `LICENSES.md`. Masks hold for every set: a keypoint survives only
+on a fully trusted pixel, and masked points are dropped before the keypoint
+budget is spent (`tests/test_features.py` checks each set).
+
+Jobs use `FEATURES` in `recon/sfm.py`, recorded in the result's
+`provenance.components.features`. It changes only on evidence from
+`bench-sfm`, which solves a scene with each set and reports registered frames,
+sparse points, reprojection error, track length, verified pairs and time, plus
+held-out PSNR with `--train N` (the same budget for every set, no depth prior).
+A job leaves `frames.json`, `images/` and `masks/` in its scratch, which is a
+bench scene as it stands:
+
+```sh
+bun run worker:bench -- SCENE=<scene dir>
+bun run worker:bench -- SCENE=<scene dir> ARGS="--features sift raco --train 7000"
+```
+
+A set replaces SIFT only if, on a Panoramax street sequence, a phone video and
+a 360° panorama sequence, it registers at least as many frames with no higher
+reprojection error and no lower held-out PSNR, within the job's time budget.
+
 ## Scheduling and the capture graph
 
 - Captures cluster around scene anchors by `ST_DWithin` on the asset anchors, not
