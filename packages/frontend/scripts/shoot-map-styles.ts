@@ -19,6 +19,7 @@
  * machine with no GPU; it waits for the network to fall quiet before each
  * shot, since a map is finished when its tiles are.
  */
+import { existsSync, statSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
@@ -52,6 +53,9 @@ const [width, height] = arg('size', '640x420').split('x').map(Number);
 const playwrightPath = arg('playwright', 'playwright-core');
 const settleMs = Number(arg('settle', '1500'));
 const features = arg('features', '');
+const resume = process.argv.includes('--resume');
+/** Under this a screenshot is one flat colour: the tiles never arrived. */
+const BLANK_BYTES = 10_000;
 
 interface Shot {
   style: string;
@@ -89,15 +93,22 @@ async function main(): Promise<void> {
   for (const { style, light } of styles) {
     for (const place of places) {
       for (const zoom of zooms) {
-        for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const file = `${style}-${light}-${place}-z${zoom}.png`;
+        // `--resume`: a shot already taken (and not blank) is kept.
+        if (resume && existsSync(join(out, file)) && statSync(join(out, file)).size > BLANK_BYTES) {
+          shots.push({ style, light, place, zoom, file });
+          continue;
+        }
+        for (let attempt = 1; attempt <= 4; attempt += 1) {
           const page = await context.newPage();
           // The sky and the night passes read the device clock: every shot is
-          // taken at the place's local solar noon (day, dawn, dusk presets) or
-          // at 23:00 (night), on a fixed date, so a sheet made at night is the
-          // same sheet as one made at noon.
+          // taken on the March equinox — sunrise and sunset at 06:00 and 18:00
+          // local solar time at every latitude — at noon for day, 23:00 for
+          // night, and with the sun just under the horizon for dawn and dusk,
+          // so a sheet made at night is the same sheet as one made at noon.
           const solarHour =
-            light === 'night' ? 23 : light === 'dawn' ? 7 : light === 'dusk' ? 18.5 : 12;
-          const at = Date.UTC(2026, 5, 21) + (solarHour - PLACES[place].longitude / 15) * 3_600_000;
+            light === 'night' ? 23 : light === 'dawn' ? 5.85 : light === 'dusk' ? 18.15 : 12;
+          const at = Date.UTC(2026, 2, 20) + (solarHour - PLACES[place].longitude / 15) * 3_600_000;
           await page.addInitScript((instant: number) => {
             const offset = instant - Date.now();
             const RealDate = Date;
@@ -114,6 +125,7 @@ async function main(): Promise<void> {
           }, at);
           let inflight = 0;
           let last = Date.now();
+          let dropped = false;
           page.on('request', () => {
             inflight += 1;
             last = Date.now();
@@ -122,10 +134,18 @@ async function main(): Promise<void> {
             inflight = Math.max(0, inflight - 1);
             last = Date.now();
           };
-          page.on('requestfinished', done);
+          page.on('requestfinished', (request) => {
+            // A tile or style the server refused (rate limit, an edge error)
+            // spoils the shot as surely as a dropped connection.
+            void request.response().then((response) => {
+              const status = response?.status() ?? 0;
+              if (status === 429 || status >= 500) dropped = true;
+            });
+            done();
+          });
           // A request the network dropped (not one the page aborted) spoils the
           // shot: a missing tile or style is a blank map, not a style.
-          let dropped = false;
+
           page.on('requestfailed', (request) => {
             if (!/ERR_ABORTED/.test(request.failure()?.errorText ?? '')) dropped = true;
             done();
@@ -149,13 +169,16 @@ async function main(): Promise<void> {
             await page.waitForTimeout(250);
           }
           await page.waitForTimeout(600);
-          const file = `${style}-${light}-${place}-z${zoom}.png`;
-          if (dropped && attempt < 3) {
+          const shot = await page.screenshot();
+          // A map whose tiles never came is one flat colour: a few KB of PNG.
+          const blank = shot.length <= BLANK_BYTES;
+          if ((dropped || blank) && attempt < 4) {
             await page.close();
-            console.log(`retry ${file}: the network dropped a request`);
+            console.log(`retry ${file}: ${blank ? 'blank' : 'the network dropped a request'}`);
+            await new Promise((r) => setTimeout(r, 3000 * attempt));
             continue;
           }
-          await page.screenshot({ path: join(out, file) });
+          await writeFile(join(out, file), shot);
           await page.close();
           shots.push({ style, light, place, zoom, file });
           console.log(`shot ${file}`);
