@@ -29,10 +29,27 @@ import {
 } from '@/lib/goway/fixtures';
 import {
   createFixtureFetch,
+  fixturesOn,
   setFixtureFaults,
   type FixtureFaults,
 } from '@/lib/goway/mockTransport';
 import { defined } from '../../__tests__/defined';
+
+describe('which builds are served by the fixtures', () => {
+  test('a development build by default, a production build never by default', () => {
+    expect(fixturesOn(undefined, true)).toBe(true);
+    expect(fixturesOn('', true)).toBe(true);
+    expect(fixturesOn(undefined, false)).toBe(false);
+    expect(fixturesOn('yes', false)).toBe(false);
+  });
+
+  test('an explicit 0/false or 1/true decides either way', () => {
+    expect(fixturesOn('0', true)).toBe(false);
+    expect(fixturesOn('FALSE', true)).toBe(false);
+    expect(fixturesOn('1', false)).toBe(true);
+    expect(fixturesOn(' true ', false)).toBe(true);
+  });
+});
 
 const API = 'https://api.goway.to';
 const BARCELONA = { west: 2.1, south: 41.35, east: 2.22, north: 41.42 };

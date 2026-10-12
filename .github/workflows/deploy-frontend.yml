@@ -1,13 +1,10 @@
 # Deploy the GoWay web app to Cloudflare as a Worker serving static assets.
 #
-# ## What this ships, and why it is useful before the backend exists
+# ## What this ships
 #
-# `packages/frontend/lib/goway/client.ts` injects a fixture `fetch` into the
-# REAL `@goway.to/sdk` client whenever `EXPO_PUBLIC_GOWAY_FIXTURES` is not
-# `0`/`false`, so the exported bundle is a complete, browsable map — search,
-# place details, routing, every degraded state — that makes no network call to
-# a GoWay API at all. A static deploy is therefore the whole product today, and
-# `goway.to` serving nothing is a deployment gap, not a missing backend.
+# A production `expo export` of the app, talking to `api.goway.to` — never the
+# fixture layer, which only a development build uses by default
+# (`fixturesOn`, `packages/frontend/lib/goway/mockTransport.ts`).
 #
 # ## This workflow has NO `push` trigger, deliberately
 #
@@ -118,38 +115,10 @@ jobs:
           # defaults to the same origin; it is pinned here, like the API above,
           # so what production talks to is read off this file.
           EXPO_PUBLIC_MERCARIA_API_URL: https://api.mercaria.co
-          # FIXTURES OFF. This is the cutover the line above used to promise,
-          # and this comment is its record.
-          #
-          # `api.goway.to` is live and answering: `/health` reports the database
-          # up, `GET /search?q=barcelona` returns real Photon results, and
-          # `POST /routes` returns a real 621 km road route from GoWay's own
-          # Valhalla deployment. The fixtures were written when none of that
-          # existed. Keeping them now would mean goway.to shows a route that is
-          # a straight line at 1.25× the crow's distance while the API behind it
-          # knows the actual roads, which is the defect this change exists to
-          # remove.
-          #
-          # WHAT THIS COSTS, stated rather than discovered: `GET /places/bounds`
-          # answers `[]` on production, because GoWay Places has no rows yet. So
-          # the GoWay-owned Places layer — the pins, their capabilities, their
-          # cards — is EMPTY on the live site until Places is seeded, where
-          # before it showed fourteen fixture places in Barcelona.
-          #
-          # That trade was taken on purpose, and the reasoning is the same
-          # honesty rule as the route line. Those fixtures are real Barcelona
-          # names (the Boqueria, Museu Picasso, Bar Marsella) carrying INVENTED
-          # facts — opening hours, accessibility, which of them take FairCoin —
-          # served from goway.to as if GoWay knew them. Fabricated place data on
-          # a public map is the same defect as a fabricated route, and an empty
-          # layer is not an empty map: the basemap draws every POI it has and
-          # every name on it is tappable (#51), search is real, and directions
-          # are real. What is gone is the pretence.
-          #
-          # `lib/goway/client.ts` still DEFAULTS fixtures on, so `bun run
-          # dev:frontend` against no backend is unchanged. Only what ships is
-          # live.
-          EXPO_PUBLIC_GOWAY_FIXTURES: '0'
+          # No fixtures variable: a production build never uses the fixture
+          # layer by default (`fixturesOn`, lib/goway/mockTransport.ts), because
+          # fixture places are real names carrying invented facts. goway.to
+          # talks to api.goway.to, and GoWay Places shows what it really holds.
 
       # A precondition check, not a test: it costs nothing and it fails HERE,
       # before anything is published, rather than as a mystery in the live

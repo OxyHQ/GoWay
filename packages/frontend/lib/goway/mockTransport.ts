@@ -103,6 +103,23 @@ export interface FixtureFaults {
 let faults: FixtureFaults = {};
 
 /**
+ * Whether a build is served by the fixture layer, given
+ * `EXPO_PUBLIC_GOWAY_FIXTURES` and `__DEV__`.
+ *
+ * A development build is, by default — `bun run dev:frontend` works with no
+ * backend. A production build never is by default: fixture places are real
+ * names carrying invented facts, and a release that forgot a variable must not
+ * publish them. `0`/`false` or `1`/`true` overrides either way (a development
+ * build against a local backend; the benchmark's production export, which
+ * measures the map rather than the network).
+ */
+export function fixturesOn(value: string | undefined, development: boolean): boolean {
+  if (/^\s*(1|true)\s*$/i.test(value ?? '')) return true;
+  if (/^\s*(0|false)\s*$/i.test(value ?? '')) return false;
+  return development;
+}
+
+/**
  * Force an endpoint family to fail.
  *
  * Exists so the "search unavailable" and "map data unavailable" states can be

@@ -931,7 +931,7 @@ for (const location of items) {
 - **Anonymous.** Every read works signed out, and the sheet sends no Oxy token
   to Mercaria.
 - **Configuration.** `EXPO_PUBLIC_MERCARIA_API_URL`, defaulting to the SDK's
-  own `https://api.mercaria.co`. Under `EXPO_PUBLIC_GOWAY_FIXTURES` the client
+  own `https://api.mercaria.co`. With the fixture layer on (a development build) the client
   is served by `lib/mercaria/mockTransport.ts` through the real SDK, and
   `EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS=mercaria` exercises the retry.
 

@@ -19,10 +19,10 @@
  *
  * ## Fixtures
  *
- * Under `EXPO_PUBLIC_GOWAY_FIXTURES` — the switch `lib/goway/client.ts` reads —
- * the client is handed the fixture `fetch` in `mockTransport.ts`, so local
- * development shows the Boqueria's stalls with no Mercaria running, through
- * the REAL SDK's parser. The deployed build sets fixtures off and reads
+ * With the fixture layer on (`USING_FIXTURES`, `lib/goway/client.ts`: a
+ * development build by default) the client is handed the fixture `fetch` in
+ * `mockTransport.ts`, so local development shows the Boqueria's stalls with no
+ * Mercaria running, through the REAL SDK's parser. A production build reads
  * `EXPO_PUBLIC_MERCARIA_API_URL`.
  */
 import { createMercariaClient, type MercariaClient } from '@mercaria.co/sdk';
