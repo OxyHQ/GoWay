@@ -133,6 +133,7 @@ jobs:
           df -h / /mnt
 
       - name: Build the regions
+        id: build
         env:
           REGIONS: ${{ matrix.batch.regions }}
           STAMP: ${{ needs.plan.outputs.stamp }}
@@ -140,8 +141,13 @@ jobs:
           OFFICIAL: ${{ inputs.official && 'yes' || 'no' }}
         run: |
           set -euo pipefail
-          for region in $REGIONS; do
-            echo "::group::$region"
+          # One region failing (a download, a compiler, a verifier) must not
+          # cost the batch the regions that built: each builds into its own
+          # directory, moved into $OUT only when it succeeded; the failures are
+          # listed and fail the job AFTER the others are uploaded and recorded.
+          build_region() {
+            region=$1
+            rout=$2
             dl="/mnt/city/dl/$region"
             mkdir -p "$(dirname "$dl")"
             base="https://download.geofabrik.de/$region"
@@ -186,11 +192,37 @@ jobs:
             fi
             bun run --cwd packages/frontend map:city-region \
               --region="$region" --pbf="$dl.osm.pbf" --poly="$dl.poly" \
-              --stamp="$STAMP" --out="$OUT" --osmium=osmium "${official[@]}"
-            rm -rf "$dl.osm.pbf" "/mnt/city/official/$region"
+              --stamp="$STAMP" --out="$rout" --osmium=osmium "${official[@]}"
+            # wrangler r2 object put stops at 300 MiB: a region past it is
+            # built in more parts (MIN_PARTS in plan-city-regions.ts).
+            big=$(find "$rout" -name '*.pmtiles' -size +314572800c)
+            if [ -n "$big" ]; then
+              echo "::error::$region: over wrangler's 300 MiB: $big — raise its MIN_PARTS"
+              exit 1
+            fi
+          }
+          failed=()
+          for region in $REGIONS; do
+            echo "::group::$region"
+            rout="/mnt/city/tmp/${region//\//_}"
+            rm -rf "$rout"
+            set +e
+            ( set -euo pipefail; build_region "$region" "$rout" )
+            status=$?
+            set -e
+            if [ "$status" -eq 0 ]; then
+              mkdir -p "$OUT"
+              cp -a "$rout/." "$OUT/"
+            else
+              echo "::error::$region failed ($status); its archives are not uploaded"
+              failed+=("$region")
+            fi
+            rm -rf "$rout" "/mnt/city/dl/$region.osm.pbf" "/mnt/city/official/$region"
             echo "::endgroup::"
           done
+          mkdir -p "$OUT"
           du -sh "$OUT"
+          echo "failed=${failed[*]}" >> "$GITHUB_OUTPUT"
 
       - name: Keep the archives (dry run, on request)
         if: ${{ inputs.keep_archives && !inputs.publish }}
@@ -228,6 +260,14 @@ jobs:
             /mnt/city/out/entries/
             /mnt/city/out/**/*.receipt.json
           retention-days: 30
+
+      - name: Fail for the regions that did not build
+        if: ${{ steps.build.outputs.failed != '' }}
+        env:
+          FAILED: ${{ steps.build.outputs.failed }}
+        run: |
+          echo "::error::did not build: $FAILED (the rest of the batch is uploaded and recorded)"
+          exit 1
 
   manifest:
     name: Manifest

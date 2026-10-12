@@ -306,7 +306,11 @@ async function verify(path: string): Promise<string[]> {
       }
     }
   }
-  if (opened === 0 || car === 0) problems.push('no drivable road around the archive centre');
+  // An archive with tiles must open some around its densest one. A region
+  // whose densest tile has no drivable road (Clipperton: an atoll with a
+  // footpath) is real, not broken — said, not failed.
+  if (opened === 0 && header.addressedTiles > 0) problems.push('no tile around the probe tile');
+  if (opened > 0 && car === 0) console.log('  (no drivable road around the probe tile)');
   await handle.close();
   const { size } = await stat(path);
   console.log(

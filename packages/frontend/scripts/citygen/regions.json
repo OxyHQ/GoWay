@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-11",
+  "generated": "2026-10-12",
   "source": "https://download.geofabrik.de/index-v1.json",
   "budget": {
     "runnerMemoryMb": 16384,
@@ -901,7 +901,7 @@
       "id": "australia-oceania/australia",
       "name": "Australia",
       "pbfBytes": 967384651,
-      "parts": 1,
+      "parts": 2,
       "official": []
     },
     {
