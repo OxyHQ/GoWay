@@ -140,6 +140,7 @@ export const MAP_FEATURES = [
   },
   {
     id: 'street3d',
+    section: 'layers',
     tier: 'stable',
     // Published Street 3D scenes on the map. On for everyone: nothing in
     // `.env` is needed, and a coverage endpoint that is absent (404) or down
