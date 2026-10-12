@@ -24,8 +24,13 @@ export interface CityOverlayFrame {
 }
 
 export interface CityOverlay {
-  /** Once, when the engine is created: add objects to its scene. */
-  attach(scene: Scene): void;
+  /**
+   * Once, when the engine is created: add objects to its scene — `scene` for
+   * GLSL materials (drawn by `WebGLRenderer`), `tslScene` for TSL node
+   * materials (drawn first, by the TSL pass, `tsl/tslPass.ts`). Same camera,
+   * same depth buffer; `docs/MAP_NATIVE_3D.md` → Phase 2.
+   */
+  attach(scene: Scene, tslScene: Scene): void;
   /** Every frame the host draws, before the scene renders. */
   update(frame: CityOverlayFrame): void;
   /** The map's light, whenever the buildings' changes. */

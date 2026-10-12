@@ -19,7 +19,13 @@ import {
 } from '@/components/map/engine/city3d/tsl/buildingMaterial';
 import { encodeCityTile, type TilePoint } from '@/scripts/citygen/mvtEncode';
 import { decodeLod2Tile } from '@/components/map/engine/city3d/lod2Tiles';
-import { cityTile, SYNTHETIC_CENTRE } from './fixtures/syntheticCity';
+import { cityTile, roadTile, SYNTHETIC_CENTRE } from './fixtures/syntheticCity';
+import { decodeRoadTile } from '@/components/map/engine/roads/roadTiles';
+import { meshStreetTile } from '@/components/map/engine/cityStreets/streetMesher';
+import { StreetAtlas } from '@/components/map/engine/cityStreets/streetAtlas';
+import { createStreetMaterials } from '@/components/map/engine/cityStreets/streetMaterials';
+import { createGroundAtlas } from '@/components/map/engine/cityStreets/groundAtlas';
+import { GROUND } from '@/components/map/engine/city3d/terrainGround';
 import { mercatorXFromLng, mercatorYFromLat } from '@/components/map/engine/city3d/tileMath';
 
 const TILE = { z: 15, x: 16580, y: 12236 };
@@ -101,6 +107,24 @@ describe('tile meshing, shared by the web worker and the native host', () => {
     expect(meshed.mesh?.triangles ?? 0).toBeGreaterThan(0);
   });
 
+  test('the visibility gate’s road fixture meshes into street surfaces and markings', () => {
+    const n = 2 ** 15;
+    const tile = {
+      x: Math.floor(mercatorXFromLng(SYNTHETIC_CENTRE.lng) * n),
+      y: Math.floor(mercatorYFromLat(SYNTHETIC_CENTRE.lat) * n),
+    };
+    const data = decodeRoadTile(roadTile(15, tile.x, tile.y), tile);
+    expect(data.pieces.length).toBeGreaterThan(4);
+    const mesh = meshStreetTile({
+      tile,
+      tiles: [{ ...tile, data }],
+      rules: { drivingSide: 'right', yellowCentre: false },
+      atlas: new StreetAtlas(),
+    });
+    expect(mesh.surfaces.indices.length).toBeGreaterThan(0);
+    expect(mesh.markings.indices.length).toBeGreaterThan(0);
+  });
+
   test('an empty tile is nothing to draw, not an error', () => {
     const empty = new ArrayBuffer(0);
     expect(meshCityTile(empty, tileSizeMetres(TILE), undefined).mesh).toBeNull();
@@ -153,5 +177,48 @@ describe('the TSL building material', () => {
         expect(material.transparent).toBe(false);
       }
     }
+  });
+});
+
+describe('the TSL street materials', () => {
+  const inputs = () => ({
+    groundAtlas: createGroundAtlas(4).texture,
+    sdfAtlas: createGroundAtlas(1).texture,
+    surfaceDay: [new Vector3(), new Vector3(), new Vector3(), new Vector3()],
+    surfaceNight: [new Vector3(), new Vector3(), new Vector3(), new Vector3()],
+    paintDay: Array.from({ length: 5 }, () => new Vector3()),
+    paintNight: Array.from({ length: 5 }, () => new Vector3()),
+    nightFactor: () => 0,
+    fade: () => 1,
+    pxPerM: () => 1,
+    depthBias: 2e-6,
+  });
+
+  test('one material per kind for every tile: surfaces opaque, markings blended under nothing', () => {
+    const materials = createStreetMaterials(inputs());
+    const { surfaces, markings } = materials;
+    expect(surfaces.vertexNode).toBeTruthy();
+    expect(markings.vertexNode).toBeTruthy();
+    expect(surfaces.transparent).toBe(false);
+    expect(markings.transparent).toBe(true);
+    expect(markings.depthWrite).toBe(false);
+    materials.dispose();
+  });
+
+  test('the ground atlas: a slot per tile, each grid at its own rows', () => {
+    const atlas = createGroundAtlas(3);
+    const a = atlas.claim();
+    const b = atlas.claim();
+    expect(a).not.toBe(b);
+    const cells = GROUND.grid * GROUND.grid;
+    atlas.write(b ?? 0, new Float32Array(cells).fill(7));
+    const data = atlas.texture.image.data as Float32Array;
+    expect(data[(b ?? 0) * cells]).toBe(7);
+    expect(data[(a ?? 0) * cells]).toBe(0);
+    expect(atlas.texture.image.height).toBe(GROUND.grid * 3);
+    atlas.claim();
+    expect(atlas.claim()).toBeNull();
+    atlas.release(a ?? 0);
+    expect(atlas.claim()).toBe(a);
   });
 });

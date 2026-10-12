@@ -263,9 +263,16 @@ jobs:
   # as drawn. Nothing comes from the network, and software GL is enough
   # because the assertions are coverage, not frame time.
   city3d:
-    name: 3D city visibility
+    name: 3D city visibility (${{ matrix.sky }})
     runs-on: ubuntu-latest
-    # Measured: 16 minutes, 13 of them the gate on two cores of SwiftShader.
+    # One leg per sky, side by side: each runs its own views (`--skies`), so
+    # the wall time stays one leg's (~13 minutes on two SwiftShader cores)
+    # however many views the gate grows. `CI complete` needs `city3d`, whose
+    # result is a success only when every leg's is.
+    strategy:
+      fail-fast: false
+      matrix:
+        sky: [sky, nosky]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -287,15 +294,16 @@ jobs:
       - name: Export the web app (development build)
         working-directory: packages/frontend
         run: bun run export:web --dev --output-dir "$RUNNER_TEMP/city3d-gate"
-      - name: Trees and buildings are on the screen, sky on and off
+      - name: What the engine drew is on the screen
         run: >-
           bun run --cwd packages/frontend check:city3d-visible
           --dist="$RUNNER_TEMP/city3d-gate" --out="$RUNNER_TEMP/city3d-visible"
+          --skies=${{ matrix.sky }}
       - name: Keep the screenshots of a failed run
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
         with:
-          name: city3d-visible
+          name: city3d-visible-${{ matrix.sky }}
           path: ${{ runner.temp }}/city3d-visible
           retention-days: 14
 

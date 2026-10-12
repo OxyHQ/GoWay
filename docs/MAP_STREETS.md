@@ -34,7 +34,7 @@ GOWAY_CITY_TILES_ARCHIVE=<buildings>.pmtiles,$PWD/packages/frontend/.tiles/city-
 | Mesher (pure, in the worker) | `cityStreets/streetMesher.ts`, buffers `meshBuffers.ts` |
 | SDF atlas: the map's glyphs, the arrows | `cityStreets/streetAtlas.ts` (glyph PBFs decoded with `scripts/mapgen/glyph-pbf.ts`, the build's own decoder) |
 | Worker, protocol | `cityStreets/streetWorker.ts`, `protocol.ts`, run through the engine's `WorkerPool` |
-| Renderer (a `CityOverlay` of the city engine) | `cityStreets/streetRenderer.ts`, `streetShaders.ts` |
+| Renderer (a `CityOverlay` of the city engine) | `cityStreets/streetRenderer.ts`; materials: `streetMaterials.ts` (TSL, the engine's TSL pass), `streetShaders.ts` (GLSL, under the city sky only, until the sky is ported: `MAP_NATIVE_3D.md`); ground: `groundAtlas.ts` |
 | Palette (day, night) | `lib/map/style/streetPalette.ts` |
 | Adapter | `components/map/city3dLayer.web.ts` (`streets` option), `MapCanvas.web.tsx` (`useMapFeature('cityStreets')`) |
 | Tests | `components/map/__tests__/cityStreetsLanes.test.ts`, `cityStreetsMarkings.test.ts`, `cityStreetsMesher.test.ts`; `scripts/__tests__/cityStreetTags.test.ts`, `cityRoads.test.ts`; `lib/map/__tests__/mapFeatures.test.ts` |
@@ -239,7 +239,9 @@ crash) starts a new atlas and the renderer re-meshes everything.
 - **On the drawn ground**: each vertex reads its tile's ground grid in the
   vertex shader — the same grid the buildings, trees and city life stand on
   (the engine's one `Ground`, `terrainGround.ts`: the same cached 33² grid per tile) — from
-  a float texture, bilinearly. No per-vertex CPU work. Strips are cut every
+  one float texture holding every street tile's grid in its own slot
+  (`groundAtlas.ts`), bilinearly. No per-vertex CPU work, and one material
+  per kind for every tile. Strips are cut every
   6 m so they bend with the ground instead of cutting through a crest (the
   Procedural Tokyo lesson: markings split along the terrain mesh).
 - **No z-fighting**: 6 cm of lift over the ground, and coplanar layers

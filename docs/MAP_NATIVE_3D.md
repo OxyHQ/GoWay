@@ -333,10 +333,49 @@ the instance's own variant from a small data texture by vertex index
 ms. The draws a tile's trees cost are already bounded by the shape count,
 not by the tree count.
 
-Next, one material at a time, each deleting its GLSL twin:
-street markings (once `feat/street-detail` merges), landmarks/models, city
-life, live 3D, and the sky and shadow passes (which retire the last building
-GLSL).
+## Phase 2, step 5: street detail
+
+The streets' surfaces and markings (`cityStreets/`, #159) are TSL whenever
+the city sky is off (`streetMaterials.ts`), drawn by the TSL pass; their
+unlit GLSL is gone. Under the sky they stay GLSL (`streetShaders.ts`, now the
+sky's variant only) until the sky is ported, as the buildings do.
+
+- **One material per kind for every tile.** The GLSL path built a material
+  and a ground texture per tile. Every street tile's ground grid now has a
+  slot in one float texture (`groundAtlas.ts`), and a mesh reads its slot,
+  size, detail and grounding per object. The sky's GLSL reads the same atlas,
+  so there is one ground path.
+- **Overlays choose their scene.** `CityOverlay.attach(scene, tslScene)`: a
+  ported overlay adds its meshes to the TSL pass's scene.
+- **Same placement, line for line.** The ground read, the 6 cm lift, the
+  per-layer clip-space depth nudge, the sub-pixel line widening (with the
+  projection's `[3][3]` read per render) and the SDF arrows and words.
+
+Measured on Passeig de Gràcia (z18.4, 55°, four z15 road tiles, 226 k street
+triangles, 8 street draws), terrain on, sky off, four alternating rounds of
+10 s on a loaded host (load ~22), before #165 (a schema-2 archive; the
+materials and the draws are the same):
+
+| Median of the p50s | `main` (GLSL) | TSL |
+| --- | ---: | ---: |
+| Engine frame CPU | 1.08 ms | 1.12 ms |
+| Engine draw CPU | 0.81 ms | 0.89 ms |
+| GPU (the perf runtime's frame timer) | 4.56 ms | 4.50 ms |
+
+- **Pixels:** the same, except around trees. The GLSL streets drew after
+  the TSL pass and failed the depth test wherever a tree's contact shadow had
+  written depth, leaving pale holes in the road around every street tree. The
+  TSL streets draw first among the opaque (`renderOrder`), and the shadows
+  blend onto them. 5.5 k of 2.07 M pixels differ, all of them there.
+- **The visibility gate covers the streets now** (below). `main` and TSL
+  measure the same shares. Streets that ignore the ground (built and run
+  once to prove it) fail it.
+- **Budgets are the quality profile's** (`streets`, #165): the tiles and
+  triangles a frame may draw, and so the ground atlas's slots.
+
+Next, one material at a time, each deleting its GLSL twin: landmarks and
+models, city life, live 3D, and the sky and shadow passes (which retire the
+last building and street GLSL).
 
 ## Correction: the terrain lift was not measured
 
@@ -381,13 +420,14 @@ geometry and rebuilds the ones that now read a lift. In-place re-grounding
 `packages/frontend/scripts/check-city3d-visible.ts` (`check:city3d-visible`)
 is the committed form of the check above. It is CI's `3D city visibility` job
 (`.github/workflows/ci.yml` → `city3d`), required by `CI complete` and by both
-deploys. **Every port PR runs it**, and its description reports the numbers.
+deploys: a matrix of one leg per sky (`--skies=sky`, `--skies=nosky`) side by
+side, so the wall time stays one leg's as the views grow. **Every port PR runs it**, and its description reports the numbers.
 The GPU-free gates (meshing, frame budget, `city3dGroundPacked`) cannot see
 this regression: they counted every buried tree as drawn.
 
 ```sh
 bun run --cwd packages/frontend export:web --dev --output-dir /tmp/city3d-gate
-bun run --cwd packages/frontend check:city3d-visible --dist=/tmp/city3d-gate [--out=dir] [--debug]
+bun run --cwd packages/frontend check:city3d-visible --dist=/tmp/city3d-gate [--skies=sky,nosky] [--out=dir] [--debug]
 ```
 
 It runs the real app, from a development export (only a dev build publishes
@@ -428,6 +468,17 @@ Per sky (on and off) it asserts:
   than the noon basemap (walls, windows) is at least 2% and 4× the same view
   with the 3D city off. That reference has no basemap buildings, so MapLibre's
   extrusions cannot stand in for the city.
+- **Streets** (since step 5): the street detail drew triangles from the
+  fixture's road tiles (`syntheticCity.ts` → `roadTile`, schema 3: one-way
+  three-lane streets with names, turn lanes, signals and zebra crossings in
+  every gap between blocks), and over a junction turning the streets on
+  changes at least 3% of the view (pixels moving more than 24 levels, below
+  the chips' rows). Measured: 14.24% with the sky and 14.29% without, on
+  `main` and TSL alike; streets drawn without their ground measure 0%.
+
+The streets are on in every city view, so the walls-and-windows share reads
+79.4% with the sky and 27.5% without since step 5 (asphalt and sidewalks are
+not the noon basemap), against 72.6% and 21.0% in the table below.
 
 The assertions are coverage, not frame time, so software GL is enough and
 the result does not depend on the runner: CI's two cores measured the same
@@ -446,7 +497,7 @@ Without the fix, the trees without the sky are buried in every run, and the
 rest in most: with the sky on, one run in three drew its trees anyway. What
 re-creates a mesh's render objects (and so, by chance, its program) depends
 on the frame's timing; the no-sky trees are the gate's deterministic catch.
-On failure the screenshots (`{sky,nosky}-{trees,notrees,nocity}.png`) are
+On failure the screenshots (`{sky,nosky}-{trees,notrees,nostreets,nocity}.png`) are
 uploaded as the `city3d-visible` artifact.
 
 ## The base map

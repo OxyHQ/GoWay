@@ -115,3 +115,8 @@ export function packSurfaces(simple: Buffers[], full: Buffers[]): PackedSurfaces
 export function packMarkings(simple: Buffers[], full: Buffers[]): PackedMarkings {
   return concat(simple, full);
 }
+
+/** Lift over the ground, metres: above the terrain mesh's own interpolation error at street zooms. */
+export const STREET_LIFT_M = 0.06;
+/** Half a line's drawn width never goes under this many device pixels. */
+export const MIN_HALF_PX = 0.6;
