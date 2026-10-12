@@ -51,7 +51,7 @@ export class People {
   readonly transferLength: Float32Array;
   readonly age: Float32Array;
   readonly leaving: Float32Array;
-  /** Clothes sRGB and the walking phase (`lifeShaders.ts`). */
+  /** Clothes sRGB and the walking phase (`lifeMaterials.ts`). */
   readonly style: Uint8Array;
   readonly x: Float32Array;
   readonly y: Float32Array;

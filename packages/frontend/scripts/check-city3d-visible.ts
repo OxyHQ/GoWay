@@ -50,8 +50,10 @@
  *    with the 3D city off.
  *  - **Streets**: the street detail drew the fixture's road tiles (`roadTile`),
  *    and over a junction turning it on changes at least 3% of the view.
- *  - **Models** (once, without the sky): the Sagrada Família, a landmark of
- *    the registry, changes at least 1% of the map against landmarks off.
+ *  - **Models** (the `objects` leg, sky off): the Sagrada Família, a landmark
+ *    of the registry, changes at least 1% of the map against landmarks off.
+ *  - **City life** (the `objects` leg, sky on): its simulated traffic on the
+ *    fixture's streets changes at least 0.5% of the junction's view.
  *
  * Without #152's re-grounding it fails (three runs of three; the no-sky trees
  * are buried every time). Measured numbers: the doc.
@@ -603,8 +605,9 @@ const browser = await chromium.launch({
 const results: Record<string, Record<string, number>> = {};
 const failures: string[] = [];
 try {
-  // `--skies=sky,nosky` (both by default): CI runs one per job.
-  const skies = arg('skies', 'sky,nosky').split(',');
+  // `--skies=sky,nosky,objects` (all by default): CI runs one per job. The
+  // `objects` leg holds the views that are not per sky (models, city life).
+  const skies = arg('skies', 'sky,nosky,objects').split(',');
   for (const [label, { flags, choices }] of Object.entries(SKIES)) {
     if (!skies.includes(label)) continue;
     const withTrees = await view(browser, origin, flags, choices, outDir, `${label}-trees`);
@@ -686,9 +689,9 @@ try {
         `${label}: ${r.streetTriangles} street triangles drawn, but streets on change ${r.streetsChangedPct}% of the view over a junction`,
       );
   }
-  if (!DEBUG && skies.includes('nosky')) {
+  if (!DEBUG && skies.includes('objects')) {
     // Models (`models.ts`, drawn by the TSL pass): the landmark on and off,
-    // with the no-sky leg (models are drawn the same way under either).
+    // without the sky (models are drawn the same way under either).
     const { flags, choices } = SKIES.nosky;
     const withLandmark = await view(
       browser,
@@ -715,6 +718,40 @@ try {
     if (changed < 1)
       failures.push(
         `landmark: ${LANDMARK.id} changes ${changed}% of the map (on against off): it is not on the screen`,
+      );
+  }
+  if (!DEBUG && skies.includes('objects')) {
+    // City life (`cityLife/`, drawn by the TSL pass): its simulated traffic on
+    // the fixture's streets, on and off, over the junction, with the sky on
+    // (the agents are drawn the same way under either). The simulation is
+    // seeded and the clock fixed, but the agents move with real time: the
+    // share is a floor, not a match.
+    const { flags, choices } = SKIES.sky;
+    const withLife = await view(
+      browser,
+      origin,
+      `${flags}&cityLife=1`,
+      { ...choices, cityLife: true },
+      outDir,
+      'life',
+      'buildings',
+      JUNCTION,
+    );
+    const without = await view(
+      browser,
+      origin,
+      flags,
+      choices,
+      outDir,
+      'nolife',
+      'buildings',
+      JUNCTION,
+    );
+    const changed = await differs(browser, withLife.png, without.png);
+    results.life = { changedPct: changed };
+    if (changed < 0.5)
+      failures.push(
+        `city life: its agents change ${changed}% of the view over a junction: not on the screen`,
       );
   }
 } finally {

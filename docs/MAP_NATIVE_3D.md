@@ -425,6 +425,39 @@ another against `main` again (0.82 ms there): compare within a session.
 on and off, changes 31.50% of the map (31.48% on `main`). With the models not
 drawn it changes 0%, and the gate fails.
 
+## Phase 2: city life
+
+City life's agents (`cityLife/lifeMaterials.ts`) are TSL, drawn by the TSL
+pass under either sky; `lifeShaders.ts` and the model library's GLSL
+(`vehicles/glsl.ts`) are gone, its frame and colours now
+`vehicles/libraryNodes.ts`. The instanced near/far/shadow draws, the
+GPU-side level of detail, the interpolation between the simulation's two
+states and the walk are the same, line for line. What a model is (person or
+vehicle, taxi or not, near or far) is decided when its material is built, so
+each material is the one branch it needs; the frame's and the light's
+uniform nodes are one set for every material (updated once per render).
+
+Measured on Passeig de Gràcia (z18.4, 55°, 1,200 simulated agents, terrain
+on, sky off), four alternating rounds on a quiet host (load ~2.5):
+
+| Median of the p50s | `main` (GLSL) | TSL |
+| --- | ---: | ---: |
+| Engine frame CPU, city life on | 0.94 ms | 1.06 ms |
+| … city life off (the same builds) | 0.74–0.80 ms | 0.84–0.96 ms |
+| City life's own cost (on − off) | ~0.17 ms | ~0.16 ms |
+| Instanced draws city life adds | 24 | 24 |
+
+- **The same 24 draws** (8 models × near, far, shadow). The shadow quads
+  draw in one pass (`forceSinglePass`): a double-sided transparent material
+  is otherwise two.
+- **The same picture**: the simulation is seeded and the agents stand in the
+  same places on both builds, in the same colours.
+- **GPU** time is within the host's noise (medians 2.8 and 3.6 ms, rounds
+  2.1–4.5 ms).
+
+**The visibility gate checks city life** (below, the `objects` leg): its
+traffic over the junction changes 1.96% of the view (2.01% on `main`).
+
 ## Phase 2: GoWay Live in 3D
 
 GoWay Live's vehicles (`live3d/livePass.ts`, a `CityPass`) are drawn by the
@@ -446,6 +479,7 @@ three's and the pass's own, unchanged.
   nothing live to compare pixel by pixel. The same node-twin pattern is what
   the landmarks were compared with (`models.ts`, above).
 - **Cost**: a few draws (one per live model kind, the stalks), as before.
+
 
 Next: the sky and shadow passes (which retire the last building and street
 GLSL), with the sky's building material and the detailed look's material
@@ -494,14 +528,15 @@ geometry and rebuilds the ones that now read a lift. In-place re-grounding
 `packages/frontend/scripts/check-city3d-visible.ts` (`check:city3d-visible`)
 is the committed form of the check above. It is CI's `3D city visibility` job
 (`.github/workflows/ci.yml` → `city3d`), required by `CI complete` and by both
-deploys: a matrix of one leg per sky (`--skies=sky`, `--skies=nosky`) side by
-side, so the wall time stays one leg's as the views grow. **Every port PR runs it**, and its description reports the numbers.
+deploys: a matrix of one leg per sky (`--skies=sky`, `--skies=nosky`) and one
+for the views that are not per sky (`--skies=objects`: city life, models),
+side by side, so the wall time stays one leg's as the views grow. **Every port PR runs it**, and its description reports the numbers.
 The GPU-free gates (meshing, frame budget, `city3dGroundPacked`) cannot see
 this regression: they counted every buried tree as drawn.
 
 ```sh
 bun run --cwd packages/frontend export:web --dev --output-dir /tmp/city3d-gate
-bun run --cwd packages/frontend check:city3d-visible --dist=/tmp/city3d-gate [--skies=sky,nosky] [--out=dir] [--debug]
+bun run --cwd packages/frontend check:city3d-visible --dist=/tmp/city3d-gate [--skies=sky,nosky,objects] [--out=dir] [--debug]
 ```
 
 It runs the real app, from a development export (only a dev build publishes
@@ -542,6 +577,10 @@ Per sky (on and off) it asserts:
   than the noon basemap (walls, windows) is at least 2% and 4× the same view
   with the 3D city off. That reference has no basemap buildings, so MapLibre's
   extrusions cannot stand in for the city.
+- **City life** (the `objects` leg, sky on): its simulated traffic on the
+  fixture's streets, on and off, over the junction, must change at least
+  0.5% of the view. Measured: 1.96% (`main` 2.01%). The agents move with real
+  time, so the share is a floor, not a match.
 - **Streets** (since step 5): the street detail drew triangles from the
   fixture's road tiles (`syntheticCity.ts` → `roadTile`, schema 3: one-way
   three-lane streets with names, turn lanes, signals and zebra crossings in
@@ -549,7 +588,7 @@ Per sky (on and off) it asserts:
   changes at least 3% of the view (pixels moving more than 24 levels, below
   the chips' rows). Measured: 14.24% with the sky and 14.29% without, on
   `main` and TSL alike; streets drawn without their ground measure 0%.
-- **Models** (no sky; models draw alike under either): a landmark of the
+- **Models** (the `objects` leg, sky off; models draw alike under either): a landmark of the
   registry, the Sagrada Família, stands in the synthetic city. With
   `landmarks` on it must change at least 1% of the map against the same view
   with them off, below the top 110 rows where the layer's own chip appears.
@@ -576,8 +615,8 @@ Without the fix, the trees without the sky are buried in every run, and the
 rest in most: with the sky on, one run in three drew its trees anyway. What
 re-creates a mesh's render objects (and so, by chance, its program) depends
 on the frame's timing; the no-sky trees are the gate's deterministic catch.
-On failure the screenshots (`{sky,nosky}-{trees,notrees,streets,nostreets,nocity}.png`, `landmark.png`, `nolandmark.png`) are
-uploaded as the `city3d-visible-sky` / `city3d-visible-nosky` artifacts.
+On failure the screenshots (`{sky,nosky}-{trees,notrees,streets,nostreets,nocity}.png`, `landmark.png`, `nolandmark.png`, `life.png`, `nolife.png`) are
+uploaded as the `city3d-visible-{sky,nosky,objects}` artifacts.
 
 ## The base map
 
