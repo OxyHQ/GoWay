@@ -68,6 +68,20 @@ export const SHADOW_GROUND_STEP_M = 10;
 /** How far the terrain may rise or fall across the box from its centre, metres. */
 export const SHADOW_SLOPE_M = 150;
 
+/**
+ * The latitude the box's metres are measured at is the centre's, rounded to
+ * this, degrees (≈ 28 km). Mercator's scale runs with latitude, and the box's
+ * snap grid is anchored at mercator 0: measured at the LIVE latitude, a pan
+ * north or south rescaled the grid — and moved every snapped coordinate by
+ * about 2.5 m per metre panned (the grid index is ~10⁵) — while the key stayed
+ * the same, so the cached map was read through a matrix it was not drawn
+ * with: shadows slid off their casters, or lit and unlit wholesale, until
+ * the next redraw snapped them back (the flicker on a pan, and the ground's
+ * missing shadows). Rounded, equal keys mean identical matrices again; the
+ * scale error it leaves (≤ 0.4 % at 60°) only sizes the box.
+ */
+export const SHADOW_LATITUDE_STEP_DEG = 0.25;
+
 /** The receiver box's radius is clamped to this, in metres. */
 export const SHADOW_RADIUS_RANGE_M: readonly [number, number] = [300, 1400];
 
@@ -156,7 +170,9 @@ export function shadowFrame(input: {
   if (!(sun.altitudeDeg >= SHADOW_MIN_ALTITUDE_DEG)) return null;
   if (!Number.isFinite(sun.azimuthDeg) || !Number.isFinite(center.lat)) return null;
   const size = input.mapSize ?? SHADOW_MAP_SIZE;
-  const k = mercatorPerMetre(center.lat);
+  // Everything below scales with `k`: it must not move while the key stands.
+  const latStep = Math.round(center.lat / SHADOW_LATITUDE_STEP_DEG);
+  const k = mercatorPerMetre(latStep * SHADOW_LATITUDE_STEP_DEG);
 
   // Radius rounded up to a power of √2 metres: stable across small zooms.
   const wanted = Math.max(1, input.radiusM);
@@ -247,7 +263,7 @@ export function shadowFrame(input: {
 
   const sunKey = `${sun.azimuthDeg.toFixed(2)},${sun.altitudeDeg.toFixed(2)}`;
   return {
-    key: `${step}:${ix}:${iy}:${sunKey}:${size}:${groundM}`,
+    key: `${step}:${latStep}:${ix}:${iy}:${sunKey}:${size}:${groundM}`,
     lightFromMercator: m,
     radiusM,
     texelM: Math.max(texelX, texelY) / k,
