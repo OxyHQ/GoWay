@@ -15,10 +15,8 @@ dependency; what was taken is the shape of the tools.
 
 **Off by default.** A person turns it on in the map's settings modal, under Labs
 (the registry's `flyover`; [`MAP_FEATURES.md`](./MAP_FEATURES.md)), and the
-panel then offers "Open Camera Studio". `EXPO_PUBLIC_MAP_FLYOVER=1` turns it on
-for a build (no production deployment sets it) and `0` removes it; a
-development build also takes `?flyover=1` per tab, which a production build
-ignores (`lib/map/flyoverFlag.ts`, the `city3dFlag.ts` pattern). With it off the planner shows no "Fly the route",
+panel then offers "Open Camera Studio". A development build also takes
+`?flyover=1` per tab, which a production build ignores. With it off the planner shows no "Fly the route",
 `/studio` redirects to the map at the tour's first camera, and the feature's
 chunk is never requested.
 

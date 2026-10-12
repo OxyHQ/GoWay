@@ -1,19 +1,20 @@
 /**
  * Builds the configured adapters.
  *
- * The ONE place a provider id becomes a concrete geocoder. Everything else in
+ * The ONE place configuration becomes concrete geocoders. Everything else in
  * this package — the service, the merge, the routes — sees `SearchProvider[]`
  * and cannot tell which implementations are behind it, which is what makes
  * "point the same contracts at a self-hosted instance with no consumer API
  * redesign" a configuration change rather than a refactor.
  *
- * The `Record<SearchProviderId, …>` is TOTAL on purpose: adding an id to
- * `SEARCH_PROVIDER_IDS` without writing its adapter is a compile error rather
- * than an `undefined` that only shows up as a runtime crash in the one
- * deployment that enabled it.
+ * Photon is always first: it serves the search box. Nominatim follows it when
+ * a deployment configures an instance (`SEARCH_NOMINATIM_BASE_URL`) — for
+ * explicit forward, reverse and structured lookups only, which its own adapter
+ * enforces. Order decides which adapter's candidate represents a group of
+ * duplicates, and which failure is reported when every provider fails.
  */
 
-import type { SearchConfig, SearchProviderId } from '../config/search';
+import type { SearchConfig } from '../config/search';
 import { createNominatimProvider } from './nominatimProvider';
 import { createPhotonProvider } from './photonProvider';
 import type { FetchLike, SearchProvider } from './provider';
@@ -34,10 +35,9 @@ export function createProviders(options: ProviderFactoryOptions): SearchProvider
 
   const shared = { fetch: fetchImpl, timeoutMs: config.timeoutMs, attempts: config.attempts };
 
-  const factories: Record<SearchProviderId, () => SearchProvider> = {
-    photon: () => createPhotonProvider({ config: config.photon, ...shared }),
-    nominatim: () => createNominatimProvider({ config: config.nominatim, ...shared }),
-  };
-
-  return config.providers.map((id) => factories[id]());
+  const providers = [createPhotonProvider({ config: config.photon, ...shared })];
+  if (config.nominatim) {
+    providers.push(createNominatimProvider({ config: config.nominatim, ...shared }));
+  }
+  return providers;
 }

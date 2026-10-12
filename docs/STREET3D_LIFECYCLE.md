@@ -84,8 +84,8 @@ instead of recording false erasure. Suspending versioning does not purge old
 versions. Supporting an existing versioned bucket requires explicit version
 purging before this adapter can be used safely.
 
-Configure S3 Lifecycle on the temporary prefix as a backstop. For the default
-`CAPTURE_S3_KEY_PREFIX=captures`, a conservative rule is:
+Configure S3 Lifecycle on the temporary prefix as a backstop. For the capture
+prefix, `captures/` (`CAPTURE_POLICY.keyPrefix`), a conservative rule is:
 
 ```json
 {
@@ -100,8 +100,8 @@ Configure S3 Lifecycle on the temporary prefix as a backstop. For the default
 ```
 
 The 401-day backstop sits above the schema's 400-day absolute retention ceiling;
-ordinary photo/video expiry remains driven by the configured, much shorter
-application policy. Adapt the prefix to the deployment and merge with existing
+ordinary photo/video expiry remains driven by the much shorter
+application policy (`CAPTURE_POLICY`). Merge with existing
 bucket lifecycle rules. Never include published scene prefixes or an archive
 transition. S3 lifecycle deletion is asynchronous and is not a precise product
 deadline. The backstop also covers a PUT that started before its signed URL
@@ -126,7 +126,7 @@ expired and finished unusually late, after application deletion.
   bounded (at most `MAX_RETENTION_EXTENSIONS`, never past the absolute ceiling)
   and applied only when an at-risk area receives a new contribution.
 - Finished jobs' `jobs/` artifacts (and a failed privacy job's `derived/`
-  output) are deleted after `STREET3D_JOB_ARTIFACT_RETENTION_DAYS`. Published
+  output) are deleted after `jobArtifactRetentionDays` (7). Published
   assets live in the scene bucket and are untouched by this sweeper.
 - Storage budgets are still reported, not enforced, and near-duplicate
   decisions remain with the capture graph.

@@ -6,6 +6,8 @@ Always **bun**; commit `bun.lock` with its `package.json`.
 
 Biome (root `biome.jsonc`) lints and formats every package: `bun run lint`, `bun run lint:fix`. ESLint survives only in `packages/frontend/eslint.config.js`, for rules Biome lacks; never add ESLint or Prettier elsewhere.
 
+An env variable is only what differs per deployment (secrets, origins, buckets, queues, ids). No feature on/off variable: shipped means on, infrastructure-backed means on when configured; tuning is a constant in code.
+
 ## Oxy SDK (do not deviate)
 
 - ONE `OxyProvider` from `@oxy.so/services` (web + native) with the registered `clientId` (`EXPO_PUBLIC_OXY_CLIENT_ID`); sign-in is the in-app `OxyAccountDialog`, never a redirect to an IdP.
@@ -44,7 +46,7 @@ Biome (root `biome.jsonc`) lints and formats every package: `bun run lint`, `bun
 - A route is only ever a routing engine's answer: no fixture, fallback or client draws one, and no engine is an error state. `check:routing` proves every mode.
 - Every 3D vehicle and vessel drawn comes from the model library (`engine/vehicles/`, CC0 only); never a second model set. Note: `docs/MODEL_LIBRARY.md`.
 - City life is SIMULATED traffic: labelled whenever drawn, never read by routing, ETAs or any feature (`cityLifeIsolation.test.ts`). Note: `docs/MAP_CITY_LIFE.md`.
-- An optional map feature is one `MAP_FEATURES` entry (`lib/map/mapFeatures.ts`), labelled in `mapFeatureLabels.ts`, read via `useMapFeature`; never its own `EXPO_PUBLIC_MAP_*` read or `lib/config.ts` flag. Its choice stays on the device. Note: `docs/MAP_FEATURES.md`.
+- An optional map feature is one `MAP_FEATURES` entry (`lib/map/mapFeatures.ts`), labelled in `mapFeatureLabels.ts`, read via `useMapFeature`; never a build variable or `lib/config.ts` flag (unserved yet: `offer: 'development'`). Its choice stays on the device. Note: `docs/MAP_FEATURES.md`.
 - A map layer's budgets come from the `QualityProfile` (`lib/map/quality/profile.ts`) and it animates only through the map's animation clock; a new cost is a profile knob, never a budget of its own. Note: `docs/MAP_PERFORMANCE.md`.
 - The logo is geometry (`packages/frontend/components/brand/artwork.ts`), drawn and never fetched; `public/brand/*` is generated from it and gated by `brand:check`. Its blue is ink (`--color-brand-goway`), never Bloom's `--primary`.
 - Every GoWay-enriched place gets a stable GoWay Place ID independent of provider IDs; deep links use it (`https://goway.to/place/<placeId>`). Preserve source provenance and never destructively overwrite a source fact.

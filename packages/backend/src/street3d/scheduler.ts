@@ -23,11 +23,11 @@
  * tick continues with the next: SQS being unreachable must not stop coverage
  * from being computed, and nothing here can take the API down.
  *
- * ## Inert by default
+ * ## On when configured
  *
- * The in-process loop starts only when `STREET3D_SCHEDULER_ENABLED` is true and
- * the pipeline is configured. `bun run street3d:tick` runs one tick on demand.
- * Neither is a dependency of `/ready`.
+ * The in-process loop starts whenever the pipeline is configured, and only
+ * then. `bun run street3d:tick` runs one tick on demand. Neither is a
+ * dependency of `/ready`.
  */
 
 import { and, asc, eq, isNotNull, isNull, lte, or } from 'drizzle-orm';

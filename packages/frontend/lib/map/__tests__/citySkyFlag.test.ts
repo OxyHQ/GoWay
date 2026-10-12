@@ -1,46 +1,10 @@
 /**
- * The city sky is off unless a build or a DEVELOPMENT tab asks for it, and
- * never without the city-3D layer that draws it.
+ * The map's pitch ceiling with and without the city sky. Whether the sky draws
+ * is the registry's (`mapFeatures.test.ts`).
  */
 import { describe, expect, test } from 'bun:test';
 
-import {
-  CITY_SKY_MAX_PITCH,
-  DEFAULT_MAX_PITCH,
-  isCitySkyRequested,
-  maxPitchFor,
-} from '@/lib/map/citySkyFlag';
-
-const off = { city3d: true, enabled: false, development: false, search: '' };
-
-describe('isCitySkyRequested', () => {
-  test('off by default, in development and production alike', () => {
-    expect(isCitySkyRequested(off)).toBe(false);
-    expect(isCitySkyRequested({ ...off, development: true })).toBe(false);
-  });
-
-  test('the build flag turns it on — with the city layer', () => {
-    expect(isCitySkyRequested({ ...off, enabled: true })).toBe(true);
-    expect(isCitySkyRequested({ ...off, enabled: true, city3d: false })).toBe(false);
-  });
-
-  test('the query parameter works in development only, and only with the city layer', () => {
-    expect(isCitySkyRequested({ ...off, development: true, search: '?citysky=1' })).toBe(true);
-    expect(isCitySkyRequested({ ...off, development: true, search: '?a=b&citysky=true' })).toBe(
-      true,
-    );
-    expect(isCitySkyRequested({ ...off, search: '?citysky=1' })).toBe(false);
-    expect(
-      isCitySkyRequested({ ...off, city3d: false, development: true, search: '?citysky=1' }),
-    ).toBe(false);
-  });
-
-  test('anything but 1/true is not a yes', () => {
-    for (const search of ['?citysky=0', '?citysky', '?xcitysky=1', '?city3d=1']) {
-      expect(isCitySkyRequested({ ...off, development: true, search })).toBe(false);
-    }
-  });
-});
+import { CITY_SKY_MAX_PITCH, DEFAULT_MAX_PITCH, maxPitchFor } from '@/lib/map/citySkyFlag';
 
 describe('maxPitchFor', () => {
   test('the sky raises the ceiling only while it is drawn, and only where tilting is allowed', () => {

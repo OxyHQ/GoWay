@@ -2,8 +2,7 @@
  * THE 3D CITY'S VISIBILITY GATE (`docs/MAP_NATIVE_3D.md` → "The visibility
  * gate"): what the engine says it drew must be on the screen.
  *
- *   EXPO_PUBLIC_MAP_CITY3D=1 EXPO_PUBLIC_MAP_CITY_TILES=1 EXPO_PUBLIC_MAP_CITY_SKY=1 \
- *     bun run --cwd packages/frontend export:web --dev --output-dir /tmp/city3d-gate
+ *   bun run --cwd packages/frontend export:web --dev --output-dir /tmp/city3d-gate
  *   bun run --cwd packages/frontend check:city3d-visible --dist=/tmp/city3d-gate
  *
  * Born of a regression the GPU-free gates could not see (main @432fd6a): on 3D

@@ -52,7 +52,7 @@ let serving = false;
 // Not started outside ECS — see src/platformActivity.ts. Without a workload
 // identity `activity` is undefined and every observer below is skipped.
 const activity = startPlatformActivity(() => serving);
-// GoWay Live: `null` unless LIVE_ENABLED and at least one source is configured.
+// GoWay Live: `null` unless LIVE_SOURCES lists at least one usable source.
 // Built here, started after listen, never a readiness dependency.
 const live = createLiveService({ config: liveConfig, logger: createLogger('live') });
 const app = createApp({ activity: activity?.observeHttp, live });
@@ -65,18 +65,15 @@ const io = attachRealtime(server, {
 let stopStreet3d: (() => void) | null = null;
 
 /**
- * Start the Street 3D scheduler, AFTER the server is listening and only when
- * explicitly enabled. It is never a readiness dependency: a missing queue or an
- * offline external worker leaves the map serving. Misconfiguration is logged
- * (without values) and the scheduler stays off.
+ * Start the Street 3D scheduler, AFTER the server is listening, whenever the
+ * pipeline is configured (its queues, the scene bucket and the temporary
+ * capture bucket; `config/street3d.ts`). There is no switch: a deployment that
+ * configures the pipeline runs it, one that does not runs none. It is never a
+ * readiness dependency: an offline external worker leaves the map serving.
  */
 function startStreet3d(): void {
-  if (!street3dConfig.schedulerEnabled) return;
   const services = createConfiguredStreet3dServices();
-  if (!services) {
-    logger.warn('Street 3D scheduler is enabled but the pipeline is not configured; it stays off');
-    return;
-  }
+  if (!services) return;
   stopStreet3d = startScheduler(
     { db: getDb(), services, config: street3dConfig, logger: createLogger('street3d') },
     street3dConfig.schedulerIntervalSeconds,

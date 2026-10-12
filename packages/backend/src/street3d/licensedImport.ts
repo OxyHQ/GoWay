@@ -462,7 +462,7 @@ export async function prepareLicensedImport(
   ) {
     throw new ImportRefused(
       'placement_inconsistent',
-      'a precise placement needs alignmentResidualMeters within STREET3D_PRECISE_PLACEMENT_RESIDUAL_METERS',
+      `a precise placement needs alignmentResidualMeters within ${config.precisePlacementResidualMeters} m`,
     );
   }
   if (Object.keys(manifest.provenance.components).length === 0) {

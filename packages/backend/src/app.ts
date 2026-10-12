@@ -58,7 +58,7 @@ export interface CreateAppOptions {
   activity?: RequestHandler;
   /**
    * The live layer (`src/live`), built and started by `server.ts` when
-   * `LIVE_ENABLED` is set. Absent, `GET /live/sources` answers
+   * `LIVE_SOURCES` lists a usable source. Absent, `GET /live/sources` answers
    * `service_unavailable` and nothing else changes.
    */
   live?: LiveService | null;
@@ -178,8 +178,8 @@ export function createApp(options: CreateAppOptions = {}): Express {
   );
   /**
    * Street 3D viewing (#14/#15): coverage and published scene manifests,
-   * signed out, plus authenticated reports. On by default; inert — 503/404 —
-   * when `STREET3D_VIEWING_ENABLED` is `false`. It reads only the database: no queue,
+   * signed out, plus authenticated reports. Always on, with no switch: it
+   * serves what is published. It reads only the database: no queue,
    * bucket or external worker is on the request path.
    */
   v1.use(createStreet3dRouter({ requireAuth, reportRateLimit }));

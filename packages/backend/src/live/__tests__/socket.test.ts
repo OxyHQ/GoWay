@@ -27,7 +27,7 @@ import {
   liveTileOf,
 } from '@goway/contracts';
 import { io as connect, type Socket as ClientSocket } from 'socket.io-client';
-import { parseLiveConfig } from '../../config/live';
+import { type LivePolicy, parseLiveConfig } from '../../config/live';
 import { attachRealtime } from '../../realtime';
 import { createLiveService, type LiveService } from '../index';
 import type { LivePollResult, LiveSourceDefinition } from '../types';
@@ -70,12 +70,12 @@ interface Running {
 
 let running: Running | null = null;
 
-async function start(limits: Record<string, string> = {}): Promise<Running> {
+async function start(limits: Partial<LivePolicy> = {}): Promise<Running> {
   const feed = { result: { entities: [vehicle('1', 41.39, 2.17)], rejected: 0 } as LivePollResult };
-  const config = parseLiveConfig(
-    { LIVE_ENABLED: '1', LIVE_SOURCES: 'renfe-cercanias', ...limits },
-    ['renfe-cercanias'],
-  );
+  const config = {
+    ...parseLiveConfig({ LIVE_SOURCES: 'renfe-cercanias' }, ['renfe-cercanias']),
+    ...limits,
+  };
   const live = createLiveService({
     config,
     logger: { info: () => {}, warn: () => {} },
@@ -231,7 +231,7 @@ describe('the /live namespace', () => {
   });
 
   it('rate-limits subscriptions and keeps the rooms it had', async () => {
-    const server = await start({ LIVE_SUBSCRIBE_BURST: '2', LIVE_SUBSCRIBE_PER_MINUTE: '6' });
+    const server = await start({ subscribeBurst: 2, subscribePerMinute: 6 });
     const visitor = client(server);
     await next(visitor, 'connect');
     const answers = collect<LiveSubscriptionState>(visitor, LIVE_SOCKET_EVENTS.subscription);
@@ -248,7 +248,7 @@ describe('the /live namespace', () => {
   });
 
   it('refuses the handshake beyond the connection cap', async () => {
-    const server = await start({ LIVE_MAX_CONNECTIONS: '1' });
+    const server = await start({ maxConnections: 1 });
     const first = client(server);
     await next(first, 'connect');
     const second = client(server);
@@ -268,8 +268,8 @@ describe('the subscription bucket', () => {
 });
 
 describe('live configuration', () => {
-  it('is off by default and refuses unknown sources and malformed URLs', () => {
-    expect(parseLiveConfig({}, ['adsb-lol'])).toMatchObject({ enabled: false, sources: [] });
+  it('lists nothing by default and refuses unknown sources and malformed URLs', () => {
+    expect(parseLiveConfig({}, ['adsb-lol'])).toMatchObject({ sources: [] });
     expect(() => parseLiveConfig({ LIVE_SOURCES: 'adsb-lol,nope' }, ['adsb-lol'])).toThrow(
       /unknown source "nope"/,
     );
@@ -280,7 +280,6 @@ describe('live configuration', () => {
     ).toThrow(/LIVE_SOURCE_ADSB_LOL_URL/);
     const parsed = parseLiveConfig(
       {
-        LIVE_ENABLED: 'true',
         LIVE_SOURCES: ' adsb-lol, adsb-lol ',
         LIVE_SOURCE_ADSB_LOL_URL: 'https://mirror.example/',
         LIVE_SOURCE_ADSB_LOL_KEY: ' k ',
@@ -288,17 +287,24 @@ describe('live configuration', () => {
       ['adsb-lol'],
     );
     expect(parsed).toMatchObject({
-      enabled: true,
       sources: ['adsb-lol'],
       settings: { 'adsb-lol': { url: 'https://mirror.example', key: 'k' } },
     });
   });
 
-  it('builds nothing when off, or when no source is configured', () => {
+  it('is on exactly when a source is listed: no switch, and the retired one is ignored', () => {
     const logger = { info: () => {}, warn: () => {} };
     expect(createLiveService({ config: parseLiveConfig({}, []), logger })).toBeNull();
     expect(
       createLiveService({ config: parseLiveConfig({ LIVE_ENABLED: '1' }, []), logger }),
     ).toBeNull();
+    const listed = createLiveService({
+      config: parseLiveConfig({ LIVE_ENABLED: 'false', LIVE_SOURCES: 'renfe-cercanias' }, [
+        'renfe-cercanias',
+      ]),
+      logger,
+    });
+    expect(listed).not.toBeNull();
+    listed?.stop();
   });
 });

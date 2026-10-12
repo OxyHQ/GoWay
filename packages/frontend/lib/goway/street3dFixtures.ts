@@ -1,7 +1,7 @@
 /**
  * Street 3D fixtures: coverage and scene manifests, typed as the published
  * contract (`packages/contracts/src/street3d.ts`) and served by
- * `mockTransport.ts` when `EXPO_PUBLIC_GOWAY_FIXTURES` is on.
+ * `mockTransport.ts` when the fixture layer is on (`USING_FIXTURES`).
  *
  * ## The splat itself is configuration, not a file in this repository
  *

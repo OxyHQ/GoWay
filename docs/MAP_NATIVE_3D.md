@@ -386,8 +386,7 @@ The GPU-free gates (meshing, frame budget, `city3dGroundPacked`) cannot see
 this regression: they counted every buried tree as drawn.
 
 ```sh
-EXPO_PUBLIC_MAP_CITY3D=1 EXPO_PUBLIC_MAP_CITY_TILES=1 EXPO_PUBLIC_MAP_CITY_SKY=1 \
-  bun run --cwd packages/frontend export:web --dev --output-dir /tmp/city3d-gate
+bun run --cwd packages/frontend export:web --dev --output-dir /tmp/city3d-gate
 bun run --cwd packages/frontend check:city3d-visible --dist=/tmp/city3d-gate [--out=dir] [--debug]
 ```
 

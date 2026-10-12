@@ -10,8 +10,7 @@ used.
 **Labs, off by default, web only, development builds only** (nothing serves the
 road archive on goway.to yet). It is the registry's `cityStreets`
 (`lib/map/mapFeatures.ts`, needs `city3d`): the settings dialog's Labs,
-`?cityStreets=1` in a development tab, or `EXPO_PUBLIC_MAP_CITY_STREETS=1` for a
-build ([`MAP_FEATURES.md`](./MAP_FEATURES.md)).
+or `?cityStreets=1` in a development tab ([`MAP_FEATURES.md`](./MAP_FEATURES.md)).
 
 ```bash
 # Road archive, schema 2 (the same one city life drives on):

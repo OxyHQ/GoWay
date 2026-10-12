@@ -69,7 +69,7 @@ describe('the live chunk', () => {
     for (const path of [
       'features/live/LiveHost.tsx',
       'components/map/liveLayer.web.ts',
-      'lib/map/liveFlag.ts',
+      'lib/map/mapFeatures.ts',
     ])
       expect(files.some((f) => f.path === path)).toBe(true);
   });
@@ -147,8 +147,8 @@ describe('the live chunk', () => {
     ]);
   });
 
-  test('the flag module and the coverage channel import nothing', () => {
-    for (const path of ['lib/map/liveFlag.ts', 'lib/live/coverage.ts']) {
+  test('the registry and the coverage channel import nothing', () => {
+    for (const path of ['lib/map/mapFeatures.ts', 'lib/live/coverage.ts']) {
       const file = files.find((f) => f.path === path);
       expect(file).toBeDefined();
       expect(staticImports(file?.text ?? '')).toEqual([]);

@@ -31,7 +31,7 @@
 import { parseArgs } from 'node:util';
 import { assertMigrationTarget } from '@oxy.so/db/migrate';
 import postgres from 'postgres';
-import { config } from '../config';
+import { config, DATABASE_POOL } from '../config';
 import { logger } from '../utils/logger';
 import {
   CONVERSION_STEPS,
@@ -117,7 +117,7 @@ async function main(): Promise<void> {
 
   const session = postgres(config.databaseUrl, {
     max: 1,
-    connect_timeout: config.databaseConnectTimeoutSeconds,
+    connect_timeout: DATABASE_POOL.connectTimeoutSeconds,
     onnotice: () => undefined,
   });
   try {

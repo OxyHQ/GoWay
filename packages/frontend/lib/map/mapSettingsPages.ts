@@ -8,8 +8,8 @@
  *  - **labs**: what Labs is and how to hide it — only once Labs is revealed.
  *  - **general**, **about**: always.
  *
- * A feature is listed only where the panel offers it (`available`: the build
- * carries it and this platform draws it), and a `labs` feature only once Labs
+ * A feature is listed only where the panel offers it (`available`: this build
+ * offers it and this platform draws it), and a `labs` feature only once Labs
  * is revealed. A page with nothing to list leaves the rail (the map page
  * always has the view). Pure, so these rules are tests
  * (`__tests__/mapSettingsPages.test.ts`).

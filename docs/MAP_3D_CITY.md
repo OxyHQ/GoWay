@@ -416,9 +416,8 @@ tree where none is mapped).
    grid the buildings stand on — the terrain as drawn (`MAP_TERRAIN_GLOBE.md`
    → "The ground is the drawn terrain", which also records why #126's
    de-noising of it was removed: in these cities the terrain is bare earth).
-4. **The styling fill — off unless asked for** (`?city3dTreeFill=1` in
-   development, `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL=1` for a build;
-   `trees.ts`): the 3D equivalent of the tree pattern a paper map prints over
+4. **The styling fill — off unless asked for** (the `city3dTreeFill` map
+   feature in Labs, or `?city3dTreeFill=1` in development; `trees.ts`): the 3D equivalent of the tree pattern a paper map prints over
    a forest, **in mapped woods only** (`landcover` `class=wood`: wood,
    forest), never in a park or a garden:
    - one tree per ~7 m, kept off everything mapped as something else — water,
@@ -461,8 +460,8 @@ the fill is switched on — stands for no tree: none stands outside a mapped
 wood, within 9 m of a mapped tree, or on anything mapped as something else,
 and their number, species mix, size and position are not data. That is the rule above — procedural detail is
 styling, never fact — applied to vegetation. The trees can be switched off on
-their own: `EXPO_PUBLIC_MAP_CITY3D_TREES=0` for a build, or `?city3dTrees=0` in
-a development tab (`lib/map/city3dTreesFlag.ts`).
+their own: the `city3dTrees` map feature in Labs, or `?city3dTrees=0` in a
+development tab.
 
 **Not done, and why.** Municipal tree inventories are far richer than OSM where
 they exist — Barcelona's *Arbrat viari* / *Arbrat zona* (every street and park
@@ -626,13 +625,13 @@ fabricated places on the public map; the same rule governs buildings:
 
 ## The prototype
 
-**Off by default; web only.** Turn it on with `EXPO_PUBLIC_MAP_CITY3D=1` (a build
-decision; no production deployment sets it), or in a development build per tab
-with `?city3d=1`, which a production build ignores (`lib/map/city3dFlag.ts`).
+**Off by default; web only.** A person turns it on in the settings modal's
+Labs, or a development build per tab with `?city3d=1`, which a production build
+ignores (`lib/map/mapFeatures.ts`).
 
 | Piece | Where |
 | --- | --- |
-| Flag | The map-feature registry (`lib/map/mapFeatures.ts`, [`MAP_FEATURES.md`](./MAP_FEATURES.md)): `city3d`, `city3dTrees`, `city3dTreeFill`, switchable in the settings modal's Labs; their rules stay in `lib/map/city3dFlag.ts` (`?city3d=1` in development) and `lib/map/city3dTreesFlag.ts` (`?city3dTrees=0`, `?city3dTreeFill=1`). The adapter is handed the answers |
+| Flag | The map-feature registry (`lib/map/mapFeatures.ts`, [`MAP_FEATURES.md`](./MAP_FEATURES.md)): `city3d`, `city3dTrees`, `city3dTreeFill`, switchable in the settings modal's Labs, and per development tab with `?city3d=1`, `?city3dTrees=0`, `?city3dTreeFill=1`. The adapter is handed the answers |
 | Gate | one effect in `components/map/MapCanvas.web.tsx` |
 | MapLibre adapter | `components/map/city3dLayer.web.ts` — adds `goway:city3d` before `building-3d`, hides `building-3d`, restores it on detach; on a style with no `building-3d` (the `openfreemap` escape hatch, a style-URL override) it declines and leaves the style untouched, rather than guessing an anchor in a document GoWay does not own |
 | Light | `components/map/city3dLight.ts` — the `building-3d` light (`useSunLight`'s, fed by `MapCanvas.web.tsx`) as the engine's `CityLight` |
@@ -695,13 +694,12 @@ same way against `main` at `28d10da` (city tiles, globe and terrain merged):
 | `meshWorker` | 59,195 B | 79,393 B | far-field mesher, simplification, packing, tree placement |
 
 The trees' own flag first lived in `lib/config.ts`, which is on the first-paint
-path: +292 B in `entry` with the prototype off. It moved to
-`lib/map/city3dTreesFlag.ts`, imported only by the lazy adapter, and
-`engine3dChunk.test.ts` pinned that. Since the map-feature registry
-(`MAP_FEATURES.md`) the trees are switched live from the settings modal, so they
-are decided at first paint after all: the flag module is pure and reached only
-from `lib/map/mapFeatures.ts`, which `engine3dChunk.test.ts` now pins instead;
-the registry's whole first-paint cost is measured in `MAP_FEATURES.md`.
+path: +292 B in `entry` with the prototype off. It moved to a module imported
+only by the lazy adapter. Since the map-feature registry (`MAP_FEATURES.md`)
+the trees are switched live from the settings modal, so they are decided at
+first paint after all, by `lib/map/mapFeatures.ts` (which reads no build
+variable; `engine3dChunk.test.ts` pins that); the registry's whole first-paint
+cost is measured in `MAP_FEATURES.md`.
 
 ## Phase 2: GoWay city tiles
 
@@ -720,10 +718,10 @@ fallback.
 | Client mesh | `osmMesher.ts`, `roofs.ts`, `facades.ts` |
 | Client material | `tsl/buildingMaterial.ts` (with the city sky: `osmShaders.ts` → `osmBase`, `skyShaders.ts`) |
 | Engine/worker seam | `protocol.ts` (`format`), `meshWorker.ts` (one branch, packed like the rest), `cityEngine.ts` (`tileFormat`, `maxTiles`), `cityMeshes.ts` + `packing.ts` (the two extra attributes) |
-| Flag | The registry's `cityTiles` (`lib/map/mapFeatures.ts`; `EXPO_PUBLIC_MAP_CITY_TILES`; offered in the settings modal only in a development build) over `lib/map/cityTilesFlag.ts` (`?cityTiles=1` in development; requires the city-3D flag) |
+| Flag | The registry's `cityTiles` (`lib/map/mapFeatures.ts`; offered in the settings modal only in a development build; `?cityTiles=1` in development; requires `city3d`) |
 | Adapter | `city3dLayer.web.ts` → `citySourceFor` |
 | Dev route | `scripts/dev-city-tiles.js`, wired in `metro.config.js`, only with `GOWAY_CITY_TILES_ARCHIVE` set |
-| Tests | `scripts/__tests__/cityTags.test.ts`, `scripts/__tests__/cityTiles.test.ts` (a synthetic PBF through the whole compiler; MVT against the client decoder; PMTiles against `worker/pmtiles.js`), `components/map/__tests__/city3dRoofs.test.ts`, `city3dOsmMesher.test.ts`, `city3dCitySource.test.ts`, `lib/map/__tests__/cityTilesFlag.test.ts` |
+| Tests | `scripts/__tests__/cityTags.test.ts`, `scripts/__tests__/cityTiles.test.ts` (a synthetic PBF through the whole compiler; MVT against the client decoder; PMTiles against `worker/pmtiles.js`), `components/map/__tests__/city3dRoofs.test.ts`, `city3dOsmMesher.test.ts`, `city3dCitySource.test.ts`, `lib/map/__tests__/mapFeatures.test.ts` |
 
 ### Format: MVT with a GoWay schema, in PMTiles
 
@@ -915,8 +913,8 @@ for its reasons:
    elsewhere; without it, the city layer falls back to the basemap everywhere.
 5. **ODbL**: publish the archive's URL and its receipt (see Obligations)
    before the flag is turned on for anyone.
-6. **Flip** `EXPO_PUBLIC_MAP_CITY_TILES` only together with
-   `EXPO_PUBLIC_MAP_CITY3D`, after Phase 1's device gating.
+6. **Offer** `cityTiles` in the settings modal everywhere (drop its
+   `offer: 'development'`), after Phase 1's device gating.
 
 Cost: ~20 GB in R2 is about $0.30 a month; egress is free; the build machine
 is the real cost, as for the basemap.
@@ -934,10 +932,9 @@ against this branch (separate Metro caches, `--clear`):
 | `lazyChunk` (lazy, three.js) | 3,498,341 B | 3,502,751 B (+1,092 gz) | the OSM shader strings |
 | `meshWorker` (sealed worker) | 40,934 B (14,410 gz) | 58,306 B (20,473 gz) | decoder, OSM mesher, roofs |
 
-Nothing new reached first paint: the env read lived in `cityTilesFlag.ts`,
-imported only by the lazy adapter, which is why it was not in `lib/config.ts`.
-(It now lives in the map-feature registry, which is on first paint by design;
-see `MAP_FEATURES.md`.)
+Nothing new reached first paint: the decision was then read only by the lazy
+adapter, which is why it was not in `lib/config.ts`. (It now lives in the
+map-feature registry, which is on first paint by design; see `MAP_FEATURES.md`.)
 `components/__tests__/engine3dChunk.test.ts` stays green (`osmShaders.ts` is
 imported only by the engine; the adapter imports `lib/map/cityTiles*` and the
 engine folder type-only).
@@ -975,10 +972,9 @@ and sky). Its own note: [`MAP_STREETS.md`](./MAP_STREETS.md).
 
 ## Phase 3: sky, atmosphere, shadows and time of day
 
-**Off by default; web only; on top of the city layer.** `EXPO_PUBLIC_MAP_CITY_SKY=1`
-(a build decision; no deployment sets it) or `?citysky=1` in a development build,
-and only together with the city layer (`?city3d=1&citysky=1`):
-`lib/map/citySkyFlag.ts`. It is the map-feature registry's `citySky`, so a
+**Off by default; web only; on top of the city layer.** `?citysky=1` in a
+development build, and only together with the city layer
+(`?city3d=1&citysky=1`). It is the map-feature registry's `citySky`, so a
 person can also switch it on in the settings modal's Labs
 ([`MAP_FEATURES.md`](./MAP_FEATURES.md)); the scrubber rides above a phone's
 sheet with the credit and keeps clear of "My location". Without the city layer the answer is `false`, not
@@ -1251,8 +1247,8 @@ result.
 
 **Target: Apple Maps' "Detailed City Experience", by look, never by asset or
 data.** It is one optional map feature, `detailedCity` (`lib/map/mapFeatures.ts`;
-Labs in the settings dialog, `?detailedCity=1` per tab in a development build,
-`EXPO_PUBLIC_MAP_DETAILED_CITY` as the build's say), off by default and needing
+Labs in the settings dialog, `?detailedCity=1` per tab in a development build),
+off by default and needing
 `city3d`. With it off, the city layer draws exactly what it drew before, so the
 two can be compared side by side at the same camera.
 

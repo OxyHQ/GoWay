@@ -130,8 +130,9 @@ export const SEARCH_MAX_DEPTH = 50;
 export const MAX_SEARCH_QUERY_LENGTH = 256;
 
 /**
- * Absent means "the deployment's default" (`SEARCH_DEFAULT_LIMIT`), which the
- * server applies — a default baked in here would make that variable a lie.
+ * Absent means "the server's default" (`SEARCH_POLICY.defaultLimit` in the
+ * backend), which the server applies — a default baked in here would be a
+ * second copy of it.
  */
 const searchLimitSchema = z.number().int().min(1).max(SEARCH_MAX_LIMIT);
 

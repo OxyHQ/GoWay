@@ -1,7 +1,7 @@
 /**
  * The public Street 3D API over a real socket and a real PostGIS database.
  *
- * Asserted: it is off unless switched on; coverage is coarse and capped; only a
+ * Asserted: coverage is coarse and capped; only a
  * served version is ever returned, and returned without internal keys; reports
  * need a session and are idempotent per reporter and version.
  *
@@ -43,8 +43,7 @@ import { defined } from '../../__tests__/defined';
 
 let suite: SuiteDatabase | null = null;
 const servers: Server[] = [];
-let on: string;
-let off: string;
+let api: string;
 
 const requireAuth: RequestHandler = (request, _response, next) => {
   const user = request.header('x-test-user');
@@ -57,12 +56,10 @@ const requireAuth: RequestHandler = (request, _response, next) => {
 };
 const passThrough: RequestHandler = (_request, _response, next) => next();
 
-async function listen(viewingEnabled: boolean): Promise<string> {
+async function listen(): Promise<string> {
   const app = express();
   app.use(express.json());
-  const config = parseStreet3dConfig({
-    STREET3D_VIEWING_ENABLED: viewingEnabled ? 'true' : 'false',
-  });
+  const config = parseStreet3dConfig({});
   app.use('/api/v1', createStreet3dRouter({ requireAuth, reportRateLimit: passThrough, config }));
   app.use(unknownRouteHandler);
   app.use(errorHandler);
@@ -204,8 +201,7 @@ async function scene(
 
 beforeAll(async () => {
   suite = await createSuiteDatabase();
-  on = await listen(true);
-  off = await listen(false);
+  api = await listen();
 }, SUITE_SETUP_TIMEOUT_MS);
 afterAll(async () => {
   await Promise.all(
@@ -220,20 +216,6 @@ beforeEach(async () => {
 });
 
 const box = 'west=2.29&south=48.86&east=2.31&north=48.87';
-
-describe('switched off', () => {
-  it('answers 503 for coverage and 404 for scenes and reports', async () => {
-    const sceneId = await scene();
-    expect((await fetch(`${off}/street3d/coverage?${box}`)).status).toBe(503);
-    expect((await fetch(`${off}/street3d/scenes/${sceneId}`)).status).toBe(404);
-    const report = await fetch(`${off}/street3d/scenes/${sceneId}/reports`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-test-user': 'u-1' },
-      body: JSON.stringify({ reason: 'privacy' }),
-    });
-    expect(report.status).toBe(404);
-  });
-});
 
 describe('coverage', () => {
   it('returns served scenes and coarse areas, and caps the box', async () => {
@@ -255,7 +237,7 @@ describe('coverage', () => {
         atRiskUntil: new Date('2026-10-20T00:00:00Z'),
         sceneId,
       });
-    const response = await fetch(`${on}/street3d/coverage?${box}`);
+    const response = await fetch(`${api}/street3d/coverage?${box}`);
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('public, max-age=60');
     const raw: unknown = await response.json();
@@ -278,15 +260,15 @@ describe('coverage', () => {
       },
     ]);
     expect(JSON.stringify(raw)).not.toContain('u09wh2h');
-    expect((await fetch(`${on}/street3d/coverage?west=0&south=0&east=10&north=10`)).status).toBe(
+    expect((await fetch(`${api}/street3d/coverage?west=0&south=0&east=10&north=10`)).status).toBe(
       422,
     );
-    expect((await fetch(`${on}/street3d/coverage?west=2&south=49&east=2.1&north=48`)).status).toBe(
+    expect((await fetch(`${api}/street3d/coverage?west=2&south=49&east=2.1&north=48`)).status).toBe(
       422,
     );
     // The antimeridian is a wrap, not an inversion.
     expect(
-      (await fetch(`${on}/street3d/coverage?west=179.9&south=0&east=-179.9&north=0.1`)).status,
+      (await fetch(`${api}/street3d/coverage?west=179.9&south=0&east=-179.9&north=0.1`)).status,
     ).toBe(200);
   });
 });
@@ -294,7 +276,7 @@ describe('coverage', () => {
 describe('scene manifests', () => {
   it('serves only the current published version, without internal keys', async () => {
     const sceneId = await scene();
-    const response = await fetch(`${on}/street3d/scenes/${sceneId}`);
+    const response = await fetch(`${api}/street3d/scenes/${sceneId}`);
     expect(response.status).toBe(200);
     const raw: unknown = await response.json();
     const manifest = streetSceneManifestSchema.parse(raw);
@@ -314,11 +296,11 @@ describe('scene manifests', () => {
       fieldOfView: { horizontalDegrees: 66, verticalDegrees: 50 },
     });
 
-    expect((await fetch(`${on}/street3d/scenes/${await scene('failed_quality')}`)).status).toBe(
+    expect((await fetch(`${api}/street3d/scenes/${await scene('failed_quality')}`)).status).toBe(
       404,
     );
-    expect((await fetch(`${on}/street3d/scenes/${await scene('disabled')}`)).status).toBe(404);
-    expect((await fetch(`${on}/street3d/scenes/does-not-exist`)).status).toBe(404);
+    expect((await fetch(`${api}/street3d/scenes/${await scene('disabled')}`)).status).toBe(404);
+    expect((await fetch(`${api}/street3d/scenes/does-not-exist`)).status).toBe(404);
   });
 });
 
@@ -326,7 +308,7 @@ describe('reports', () => {
   it('needs a session, validates, and is idempotent per reporter and version', async () => {
     const sceneId = await scene();
     const post = (user: string | null, body: unknown) =>
-      fetch(`${on}/street3d/scenes/${sceneId}/reports`, {
+      fetch(`${api}/street3d/scenes/${sceneId}/reports`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...(user ? { 'x-test-user': user } : {}) },
         body: JSON.stringify(body),
@@ -345,6 +327,6 @@ describe('reports', () => {
     expect(streetSceneReportSchema.parse(await again.json()).id).toBe(report.id);
     expect((await post('u-2', { reason: 'inaccurate' })).status).toBe(201);
     // No automatic disable.
-    expect((await fetch(`${on}/street3d/scenes/${sceneId}`)).status).toBe(200);
+    expect((await fetch(`${api}/street3d/scenes/${sceneId}`)).status).toBe(200);
   });
 });

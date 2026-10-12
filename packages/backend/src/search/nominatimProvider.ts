@@ -11,15 +11,16 @@
  * can turn it on. `/geocode`, `/geocode/reverse` and `/geocode/structured` are
  * explicit, user-initiated lookups and may use it.
  *
- * It is also absent from the default `SEARCH_PROVIDERS`, so an operator enables
- * it deliberately — after choosing which instance it points at.
+ * It is also off unless a deployment names an instance
+ * (`SEARCH_NOMINATIM_BASE_URL`), so an operator enables it deliberately — by
+ * choosing which instance it points at.
  *
  * ## Identifying the caller is part of the contract
  *
  * The policy REQUIRES a `User-Agent` that identifies the application. It comes
- * from configuration (`SEARCH_NOMINATIM_USER_AGENT`) and is sent on every
- * request; `SEARCH_NOMINATIM_EMAIL` adds the operator contact the policy also
- * asks for, so a problem gets an email rather than a block.
+ * from configuration (`config/search.ts`) and is sent on every request;
+ * `SEARCH_NOMINATIM_EMAIL` adds the operator contact the policy also asks for,
+ * so a problem gets an email rather than a block.
  *
  * ## Payload traps
  *

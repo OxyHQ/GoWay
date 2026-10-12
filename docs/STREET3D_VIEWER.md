@@ -112,7 +112,6 @@ bytes and load timings behind the `perf` toggle.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `EXPO_PUBLIC_MAP_STREET3D` | on | The coverage layer is the `street3d` map feature: on by default, switched off per device in the map's settings, and only `0`/`false` removes it from a build (`docs/MAP_FEATURES.md`). `/street3d/<id>` always opens. A 404 (no GoWay body) from coverage switches the layer off for the session; 503 hides it until the next viewport. |
 | `EXPO_PUBLIC_STREET3D_ASSET_ORIGIN` | unset | When set, the only origin assets may come from. Otherwise any `https:` URL (the SDK's manifest parser already refuses anything else). |
 | `EXPO_PUBLIC_WEB_ORIGIN` | `https://goway.to` | What the native WebView loads. |
 | `EXPO_PUBLIC_STREET3D_FIXTURE_*` | unset | Fixture splat/poster URLs, anchor, opening view and credit (see `.env.example`). With an anchor, the fixtures are one scene, `s3d_fixture_anchor`, and two cells beside it; without, Barcelona examples. `…_NAVIGATION_URL` attaches a `navigation` JSON to the first fixture scene. |

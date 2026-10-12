@@ -32,7 +32,7 @@ import type {
 } from '../../search/searchService';
 import { createSearchRouter } from '../search';
 
-const CONFIG = parseSearchConfig({ SEARCH_DEFAULT_LIMIT: '3', SEARCH_MAX_LIMIT: '5' });
+const CONFIG = { ...parseSearchConfig({}), defaultLimit: 3, maxLimit: 5 };
 
 const EMPTY_WINDOW: SearchWindow = { results: [], hasMore: false, providers: ['photon'] };
 const EMPTY_RESULTS: SearchResults = { items: [], nextCursor: null, providers: ['photon'] };

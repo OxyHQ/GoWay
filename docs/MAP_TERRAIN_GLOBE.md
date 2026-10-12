@@ -8,17 +8,15 @@ places on the terrain.
 
 ## On by default, and how to turn it off
 
-| | Kill switch (any build) | Per tab (development builds only) |
+| | On this device | Per tab (development builds only) |
 | --- | --- | --- |
-| Globe, space, glow | `EXPO_PUBLIC_MAP_GLOBE=0` | `?globe=0` (or `=1`) |
-| Hillshade + 3D terrain | `EXPO_PUBLIC_MAP_TERRAIN=0` | `?terrain=0` (or `=1`) |
+| Globe, space, glow | the `globe` map feature | `?globe=0` (or `=1`) |
+| Hillshade + 3D terrain | the `terrain` map feature | `?terrain=0` (or `=1`) |
 
-Both are on with no environment at all — which is how the production build
-(`.github/workflows/deploy-frontend.yml`) is made: it sets neither variable.
-Only an explicit `0`/`false` kills one (`enabledUnlessKilled`), so an empty or
-mistyped value cannot switch relief off by accident. A production build ignores
-the query parameters both ways (`lib/map/reliefFlag.ts`, pinned by
-`reliefFlag.test.ts`), so no goway.to link changes anyone else's renderer.
+Both are on for everyone, with no build variable: a person switches either off
+in the map's settings (`MAP_FEATURES.md`). A production build ignores the query
+parameters both ways (`lib/map/mapFeatures.ts`, pinned by
+`mapFeatures.test.ts`), so no goway.to link changes anyone else's renderer.
 
 The elevation tiles come from GoWay's own Worker route,
 `https://goway.to/map/terrain/{z}/{x}/{y}.webp` (live since #124).
@@ -26,7 +24,7 @@ The elevation tiles come from GoWay's own Worker route,
 
 | Piece | Where |
 | --- | --- |
-| Flags | The map-feature registry's `globe` and `terrain` (`lib/map/mapFeatures.ts`, [`MAP_FEATURES.md`](./MAP_FEATURES.md)): the kill switches, then the person's choice in the settings modal; `lib/map/reliefFlag.ts` for the development query; read live through `components/map/reliefFlags.ts` (`useMapRelief`) |
+| Flags | The map-feature registry's `globe` and `terrain` (`lib/map/mapFeatures.ts`, [`MAP_FEATURES.md`](./MAP_FEATURES.md)): the person's choice in the settings modal, and `?globe=`/`?terrain=` in a development build; read live through `components/map/reliefFlags.ts` (`useMapRelief`) |
 | Style fragments (pure, spec-validated) | `lib/map/style/relief.ts` — DEM sources, hillshade, terrain, sky, globe outline, space |
 | DEM endpoint, vendor, credit | `lib/map/provider.ts` (`GOWAY_MAP_PATHS.terrain`, `MAPTERHORN_ENDPOINTS`, `TERRAIN_ATTRIBUTION_LINK`, `resolveTerrainTileUrl`) |
 | Worker route | `worker/index.js` → `serveTerrain`; `wrangler.toml` (`run_worker_first`, `MAP_TERRAIN_UPSTREAM`, optional `MAP_TERRAIN_ARCHIVE`) |
@@ -292,8 +290,8 @@ and nothing in its Android or iOS sources sets one. So:
 - **Globe, 3D terrain, sky: web only**, until the wrapper exposes them.
 - **Hillshade: native too.** `RasterDEMSource` (with `encoding: 'terrarium'`)
   and a `hillshade` layer exist in 11.4, so `MapCanvas.native.tsx` draws the
-  same `hillshadeLayer()` under `water` — on by default like the web, killed by
-  `EXPO_PUBLIC_MAP_TERRAIN=0`. Its style-spec `paint` reaches native through
+  same `hillshadeLayer()` under `water` — on by default like the web, switched
+  off with the `terrain` map feature. Its style-spec `paint` reaches native through
   the wrapper's own kebab→camel conversion (`nativeHillshade.test.ts`).
   Type-checked; **not yet verified on a device**.
 

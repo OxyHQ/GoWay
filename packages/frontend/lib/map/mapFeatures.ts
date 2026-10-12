@@ -1,7 +1,7 @@
 /**
- * The map's optional features, in ONE registry: what each is, whether this
- * build carries it, and how its on/off answer is decided for this device and
- * this page (`docs/MAP_FEATURES.md`).
+ * The map's optional features, in ONE registry: what each is, where it is
+ * offered, and how its on/off answer is decided for this device and this page
+ * (`docs/MAP_FEATURES.md`).
  *
  * Every feature is one entry in {@link MAP_FEATURES}. Its human labels are in
  * `mapFeatureLabels.ts` (keyed by the same id, every `LABEL_LANGUAGES`
@@ -11,38 +11,27 @@
  *
  * ## How the answer is decided
  *
- * For each feature, in registry order (a dependency comes first):
+ * A PERSON decides, in the settings modal; the build never does — there is no
+ * build variable. For each feature, in registry order (a dependency comes
+ * first):
  *
- *  1. **The build's kill switch.** Its `EXPO_PUBLIC_MAP_*` variable set to
- *     `0`/`false`: the build does not carry it. Off, and absent from the panel;
- *     no stored choice can bring it back.
- *  2. **The person's own choice**, made in the settings modal and kept on this
- *     device only (`mapFeatureStore.ts`).
- *  3. **The build's default.** The variable set to `1`/`true` turns a feature
- *     on by default for that build — what it always did — but no longer past a
- *     person who switched it off.
- *  4. **The registry's default** (`defaultOn`).
+ *  1. **The person's own choice**, made in the settings modal and kept on this
+ *     device only (`mapFeatureStore.ts`);
+ *  2. otherwise **the registry's default** (`defaultOn`);
+ *  3. in a DEVELOPMENT build only, this page's address can override either:
+ *     `?<query>=1` (or `true`) turns the feature on, `?<query>=0` (or `false`)
+ *     off — a per-tab switch for comparing with and without it. A production
+ *     build ignores the address, so a goway.to link can never switch a
+ *     renderer on or off for somebody else;
+ *  4. last, a feature is off while anything it `requires` is off.
  *
- * That answer is then handed to the feature's own flag module (`request`) —
- * `city3dFlag.ts`, `reliefFlag.ts` and the rest, unchanged — exactly where the
- * build boolean used to go. So with no stored choice every flag answers what it
- * answered before this registry existed, the development-only `?city3d=1`-style
- * query parameters included; that is a test (`__tests__/mapFeatures.test.ts`).
- *
- * Last, a feature is off while anything it `requires` is off.
+ * A feature production cannot serve yet is not switched off by a build: it is
+ * `offer: 'development'` — not offered in the panel outside a development
+ * build — and starts off.
  *
  * Pure: the store passes in the choices, platform, `__DEV__` and the URL, so
  * every rule here is a test rather than a comment.
  */
-import { isCity3dRequested } from './city3dFlag';
-import { isCity3dTreeFillRequested, isCity3dTreesRequested } from './city3dTreesFlag';
-import { isCitySkyRequested } from './citySkyFlag';
-import { isCityLifeRequested } from './cityLifeFlag';
-import { isCityTilesRequested } from './cityTilesFlag';
-import { isFlyoverRequested } from './flyoverFlag';
-import { isLandmarksRequested } from './landmarksFlag';
-import { isLiveRequested } from './liveFlag';
-import { resolveReliefFlags } from './reliefFlag';
 
 /** `stable` shows in the panel for everyone; `labs` only once Labs is revealed. */
 export type MapFeatureTier = 'stable' | 'labs';
@@ -53,29 +42,12 @@ export type MapFeatureSection = 'map' | 'layers';
 /** `Platform.OS`, narrowed to the platforms GoWay ships. */
 export type MapPlatform = 'web' | 'ios' | 'android';
 
-/** What a feature's own flag module is given, besides the registry's answer. */
-export interface MapFeatureRequestContext {
-  /** `__DEV__`. */
-  development: boolean;
-  /** `window.location.search`, or `''` where there is no window (native). */
-  search: string;
-  /** Whether a feature EARLIER in the registry ended up on. Throws for an unknown id. */
-  on(id: string): boolean;
-}
-
 export interface MapFeatureDefinition {
   /** Stable: it keys the stored choice and the labels. Never rename one. */
   id: string;
   tier: MapFeatureTier;
-  /** On or off when neither the build nor the person says otherwise. */
+  /** On or off when the person has not chosen. */
   defaultOn: boolean;
-  /**
-   * The build variable, READ AS A LITERAL `process.env.EXPO_PUBLIC_MAP_*`
-   * member expression in this file — the only spelling Metro inlines, and what
-   * `expo/no-dynamic-env-var` checks. `0`/`false` kills the feature;
-   * `1`/`true` makes it the build's default.
-   */
-  build: string | undefined;
   /** Features (earlier in the registry) that must be on for this one to be. */
   requires: readonly string[];
   /**
@@ -95,11 +67,10 @@ export interface MapFeatureDefinition {
    */
   offer?: 'always' | 'development' | 'never';
   /**
-   * The feature's own flag module, given the registry's answer where it used
-   * to be given the build boolean: the place a development-only query
-   * parameter keeps working. Omitted, the registry's answer stands.
+   * The query parameter a DEVELOPMENT build reads to force it on (`1`/`true`)
+   * or off (`0`/`false`) for one tab. Omitted: the address cannot.
    */
-  request?: (enabled: boolean, context: MapFeatureRequestContext) => boolean;
+  query?: string;
 }
 
 const WEB: readonly MapPlatform[] = ['web'];
@@ -118,35 +89,28 @@ export const MAP_FEATURES = [
     section: 'map',
     tier: 'stable',
     defaultOn: true,
-    build: process.env.EXPO_PUBLIC_MAP_GLOBE,
     requires: [],
     platforms: WEB,
-    request: (enabled, { development, search }) =>
-      resolveReliefFlags({ enabled: { globe: enabled, terrain: enabled }, development, search })
-        .globe,
+    query: 'globe',
   },
   {
     id: 'terrain',
     section: 'map',
     tier: 'stable',
     defaultOn: true,
-    build: process.env.EXPO_PUBLIC_MAP_TERRAIN,
     requires: [],
     // Native draws the hillshade only (its MapLibre has no terrain API).
     platforms: EVERYWHERE,
-    request: (enabled, { development, search }) =>
-      resolveReliefFlags({ enabled: { globe: enabled, terrain: enabled }, development, search })
-        .terrain,
+    query: 'terrain',
   },
   {
     id: 'street3d',
     section: 'layers',
     tier: 'stable',
-    // Published Street 3D scenes on the map. On for everyone: nothing in
-    // `.env` is needed, and a coverage endpoint that is absent (404) or down
-    // (503) only hides the layer (`features/street3d/queries.ts`).
+    // Published Street 3D scenes on the map. On for everyone: a coverage
+    // endpoint that is absent (404) or down (503) only hides the layer
+    // (`features/street3d/queries.ts`).
     defaultOn: true,
-    build: process.env.EXPO_PUBLIC_MAP_STREET3D,
     requires: [],
     // The native viewer embeds the web one (`docs/STREET3D_VIEWER.md`).
     platforms: EVERYWHERE,
@@ -156,23 +120,19 @@ export const MAP_FEATURES = [
     section: 'layers',
     tier: 'labs',
     defaultOn: false,
-    build: process.env.EXPO_PUBLIC_MAP_CITY3D,
     requires: [],
     platforms: WEB,
-    request: (enabled, { development, search }) =>
-      isCity3dRequested({ enabled, development, search }),
+    query: 'city3d',
   },
   {
     id: 'citySky',
     section: 'map',
     tier: 'labs',
     defaultOn: false,
-    build: process.env.EXPO_PUBLIC_MAP_CITY_SKY,
     // The sky, haze and shadows are drawn by the city layer.
     requires: ['city3d'],
     platforms: WEB,
-    request: (enabled, { development, search, on }) =>
-      isCitySkyRequested({ city3d: on('city3d'), enabled, development, search }),
+    query: 'citysky',
   },
   {
     id: 'detailedCity',
@@ -180,21 +140,18 @@ export const MAP_FEATURES = [
     section: 'map',
     tier: 'labs',
     defaultOn: false,
-    build: process.env.EXPO_PUBLIC_MAP_DETAILED_CITY,
     // The art-directed look of the city layer (`docs/MAP_3D_CITY.md` → Art
     // direction): clay buildings in the sky's light, a 3D-mode ground, warm
     // windows at night. It brings its own live-clock sky when `citySky` is off.
     requires: ['city3d'],
     platforms: WEB,
-    request: (enabled, { development, search }) =>
-      queryOverride('detailedCity', enabled, { development, search }),
+    query: 'detailedCity',
   },
   {
     id: 'cityTiles',
     section: 'layers',
     tier: 'labs',
     defaultOn: false,
-    build: process.env.EXPO_PUBLIC_MAP_CITY_TILES,
     requires: ['city3d'],
     platforms: WEB,
     // Not hosted on goway.to yet, and ODbL wants the archive and its receipt
@@ -205,8 +162,7 @@ export const MAP_FEATURES = [
     // The planet build and the Worker routes exist; offering it everywhere is
     // the last step of `docs/MAP_CITY_PLANET.md` → "Approval".
     offer: 'development',
-    request: (enabled, { development, search, on }) =>
-      isCityTilesRequested({ city3d: on('city3d'), enabled, development, search }),
+    query: 'cityTiles',
   },
   {
     id: 'city3dTrees',
@@ -214,11 +170,9 @@ export const MAP_FEATURES = [
     tier: 'labs',
     // They come with the 3D city: on whenever it is, unless switched off.
     defaultOn: true,
-    build: process.env.EXPO_PUBLIC_MAP_CITY3D_TREES,
     requires: ['city3d'],
     platforms: WEB,
-    request: (enabled, { development, search }) =>
-      isCity3dTreesRequested({ enabled, development, search }),
+    query: 'city3dTrees',
   },
   {
     id: 'city3dTreeFill',
@@ -226,18 +180,15 @@ export const MAP_FEATURES = [
     tier: 'labs',
     // Owner decision: by default, trees only where OpenStreetMap maps one.
     defaultOn: false,
-    build: process.env.EXPO_PUBLIC_MAP_CITY3D_TREE_FILL,
     requires: ['city3dTrees'],
     platforms: WEB,
-    request: (enabled, { development, search }) =>
-      isCity3dTreeFillRequested({ enabled, development, search }),
+    query: 'city3dTreeFill',
   },
   {
     id: 'cityLife',
     section: 'layers',
     tier: 'labs',
     defaultOn: false,
-    build: process.env.EXPO_PUBLIC_MAP_CITY_LIFE,
     // Drawn by the city engine; it drives on the road archive where one exists
     // and on the basemap's own roads, healed, everywhere else — no city tiles.
     requires: ['city3d'],
@@ -245,13 +196,7 @@ export const MAP_FEATURES = [
     // Development only until the frame-cost budget is measured on mid-range
     // devices (`docs/MAP_CITY_LIFE.md` → Performance).
     offer: 'development',
-    request: (enabled, { development, search, on }) =>
-      isCityLifeRequested({
-        city3d: on('city3d'),
-        enabled,
-        development,
-        search,
-      }),
+    query: 'cityLife',
   },
   {
     id: 'cityStreets',
@@ -259,21 +204,19 @@ export const MAP_FEATURES = [
     section: 'map',
     tier: 'labs',
     defaultOn: false,
-    build: process.env.EXPO_PUBLIC_MAP_CITY_STREETS,
     // Drawn by the city-3D engine, from the road archive (`docs/MAP_STREETS.md`).
     requires: ['city3d'],
     platforms: WEB,
     // Nothing serves the road tiles on goway.to yet (`docs/MAP_CITY_LIFE.md` →
     // Hosting); outside a compiled archive there is nothing to draw.
     offer: 'development',
-    request: (enabled, context) => queryOverride('cityStreets', enabled, context),
+    query: 'cityStreets',
   },
   {
     id: 'landmarks',
     section: 'layers',
     tier: 'labs',
     defaultOn: false,
-    build: process.env.EXPO_PUBLIC_MAP_LANDMARKS,
     // The tour and its entry need the city engine; the models themselves
     // draw only over GoWay city tiles (they replace per-building OSM ids),
     // which the city layer checks on its own.
@@ -283,79 +226,56 @@ export const MAP_FEATURES = [
     // nowhere (`docs/MAP_LANDMARKS.md` → Needs city tiles), so the switch is
     // offered where they can be seen.
     offer: 'development',
-    request: (enabled, { development, search }) =>
-      isLandmarksRequested({ enabled, development, search }),
+    query: 'landmarks',
   },
   {
     id: 'live',
     section: 'layers',
     tier: 'labs',
     defaultOn: false,
-    build: process.env.EXPO_PUBLIC_MAP_LIVE,
     requires: [],
     platforms: WEB,
-    // GoWay Live needs a backend with `LIVE_ENABLED` and its feeds' licence
-    // follow-ups done; goway.to has neither yet (`docs/MAP_LIVE.md` → What
-    // production needs), so the switch is offered where a backend can serve it.
+    // GoWay Live needs a backend that lists live sources (`LIVE_SOURCES`) and
+    // its feeds' licence follow-ups done; goway.to has neither yet
+    // (`docs/MAP_LIVE.md` → What production needs), so the switch is offered
+    // where a backend can serve it.
     offer: 'development',
-    request: (enabled, { development, search }) =>
-      isLiveRequested({ enabled, development, search }),
+    query: 'live',
   },
   {
     id: 'flyover',
     section: 'layers',
     tier: 'labs',
     defaultOn: false,
-    build: process.env.EXPO_PUBLIC_MAP_FLYOVER,
     requires: [],
     // It flies on native too (the vehicle is a marker there); the video export
     // is web only, and says so itself.
     platforms: EVERYWHERE,
-    request: (enabled, { development, search }) =>
-      isFlyoverRequested({ enabled, development, search }),
+    query: 'flyover',
   },
 ] as const satisfies readonly MapFeatureDefinition[];
 
 export type MapFeatureId = (typeof MAP_FEATURES)[number]['id'];
 
 /**
- * The flag modules' shared development rule for a default-off feature:
- * `?<name>=1`/`true` turns it on in a development build only.
+ * What a development page's address says about one feature: `1`/`true` on,
+ * `0`/`false` off, anything else (or a production build) nothing.
  */
-export function queryOverride(
-  name: string,
-  enabled: boolean,
+export function pageOverride(
+  query: string | undefined,
   input: { development: boolean; search: string },
-): boolean {
-  if (enabled) return true;
-  if (!input.development) return false;
-  const value = new URLSearchParams(input.search).get(name);
-  return value === '1' || value === 'true';
-}
-
-/** What a build variable says: kill the feature, default it on, or nothing. */
-export type BuildSwitch = 'killed' | 'on' | null;
-
-/**
- * `0`/`false` (any case, surrounding space ignored) kills; `1`/`true` turns on;
- * anything else — unset, empty, a typo — says nothing. The two spellings are
- * the ones `enabledUnlessKilled` and `MAP_CITY3D_ENABLED` already accepted, so
- * no build that set one changes meaning.
- */
-export function parseBuildSwitch(value: string | undefined): BuildSwitch {
-  if (/^\s*(0|false)\s*$/i.test(value ?? '')) return 'killed';
-  if (/^(1|true)$/i.test(value ?? '')) return 'on';
+): boolean | null {
+  if (!input.development || query === undefined) return null;
+  const value = new URLSearchParams(input.search).get(query);
+  if (value === '1' || value === 'true') return true;
+  if (value === '0' || value === 'false') return false;
   return null;
 }
 
 /** Why a feature is on or off. */
 export type MapFeatureSource =
-  /** The build's kill switch. */
-  | 'killed'
   /** The person's stored choice. */
   | 'choice'
-  /** The build variable's `1`/`true`. */
-  | 'build'
   /** The registry's `defaultOn`. */
   | 'default'
   /** This page's own address (a development query parameter) overrode the above. */
@@ -367,7 +287,7 @@ export interface MapFeatureState {
   section: MapFeatureSection;
   /** THE answer: whether the feature draws on this page. */
   on: boolean;
-  /** Whether the panel offers it: the build carries it and this platform draws it. */
+  /** Whether the panel offers it: this platform draws it, and this build offers it. */
   available: boolean;
   /** The person's stored choice, or `null` for none. */
   choice: boolean | null;
@@ -401,34 +321,24 @@ export function resolveMapFeatures(input: ResolveMapFeaturesInput): ResolvedMapF
     if (!state) throw new Error(`map feature "${id}" is unknown, or not earlier in the registry`);
     return state;
   };
-  const context: MapFeatureRequestContext = {
-    development: input.development,
-    search: input.search,
-    on: (id) => lookup(id).on,
-  };
 
   for (const feature of input.features) {
-    const build = parseBuildSwitch(feature.build);
-    const killed = build === 'killed';
     const stored = input.choices[feature.id];
     const choice = typeof stored === 'boolean' ? stored : null;
-    const baseline = build === 'on' ? true : feature.defaultOn;
+    const page = pageOverride(feature.query, input);
 
-    let enabled: boolean;
+    let requested: boolean;
     let source: MapFeatureSource;
-    if (killed) {
-      enabled = false;
-      source = 'killed';
+    if (page !== null && page !== (choice ?? feature.defaultOn)) {
+      requested = page;
+      source = 'page';
     } else if (choice !== null) {
-      enabled = choice;
+      requested = choice;
       source = 'choice';
     } else {
-      enabled = baseline;
-      source = build === 'on' ? 'build' : 'default';
+      requested = feature.defaultOn;
+      source = 'default';
     }
-
-    const requested = feature.request ? feature.request(enabled, context) : enabled;
-    if (requested !== enabled) source = 'page';
     const blockedBy = feature.requires.filter((id) => !lookup(id).on);
 
     byId.set(feature.id, {
@@ -437,12 +347,11 @@ export function resolveMapFeatures(input: ResolveMapFeaturesInput): ResolvedMapF
       section: feature.section,
       on: requested && blockedBy.length === 0,
       available:
-        !killed &&
         feature.platforms.includes(input.platform) &&
         feature.offer !== 'never' &&
         (feature.offer !== 'development' || input.development),
       choice,
-      baseline: killed ? false : baseline,
+      baseline: feature.defaultOn,
       source,
       blockedBy,
     });

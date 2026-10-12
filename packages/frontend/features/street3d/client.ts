@@ -4,7 +4,7 @@
  *
  *  - Public reads (`coverage`, `scene`) go through the app's one `gowayClient`,
  *    like every other public read — including its fixture transport when
- *    `EXPO_PUBLIC_GOWAY_FIXTURES` is on.
+ *    the fixture layer is on (`USING_FIXTURES`).
  *  - The identity-bound write (`report`) goes through the Oxy linked client,
  *    like captures, so Oxy stays the session and refresh authority. With
  *    fixtures on it stays on `gowayClient`, whose fixture transport answers it.

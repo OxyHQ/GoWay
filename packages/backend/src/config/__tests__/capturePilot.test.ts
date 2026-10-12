@@ -34,27 +34,23 @@ describe('closed contribution pilot', () => {
   });
 });
 
-describe('360° media', () => {
-  test('is accepted by default, with its own ceilings', () => {
+describe('policy', () => {
+  test('360° media has its own ceilings', () => {
     const config = parseCaptureConfig(store);
-    expect(config.equirectangularEnabled).toBe(true);
     expect(config.maxEquirectangularPhotoBytes).toBeGreaterThan(config.maxPhotoBytes);
     expect(config.maxEquirectangularVideoWidthPixels).toBe(7680);
   });
 
-  test('can be switched off and bounded by configuration', () => {
-    const config = parseCaptureConfig({
+  test('is code, not configuration: retired variables a task definition may carry are ignored', () => {
+    const retired = parseCaptureConfig({
       ...store,
       CAPTURE_EQUIRECTANGULAR_ENABLED: 'false',
       CAPTURE_MAX_EQUIRECTANGULAR_VIDEO_DURATION_SECONDS: '90',
+      CAPTURE_RETENTION_DAYS_RAW_PHOTO: '400',
+      CAPTURE_S3_KEY_PREFIX: 'elsewhere',
     });
-    expect(config.equirectangularEnabled).toBe(false);
-    expect(config.maxEquirectangularVideoDurationSeconds).toBe(90);
-    expect(
-      parseCaptureConfig({ ...store, CAPTURE_EQUIRECTANGULAR_ENABLED: '' }).equirectangularEnabled,
-    ).toBe(true);
-    expect(() =>
-      parseCaptureConfig({ ...store, CAPTURE_EQUIRECTANGULAR_ENABLED: 'perhaps' }),
-    ).toThrow();
+    expect(retired).toEqual(parseCaptureConfig(store));
+    expect(retired.retentionDays.raw_photo).toBe(90);
+    expect(retired.keyPrefix).toBe('captures');
   });
 });

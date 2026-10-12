@@ -5,8 +5,8 @@
  * GoWay's basemap tiles carry no individual trees; GoWay's city tiles carry
  * the `natural=tree` points OSM records (`workerTrees.ts`, drawn by default).
  * This fill is the 3D equivalent of the tree pattern a paper map prints over
- * a forest: switched on only with `?city3dTreeFill=1` (development) or
- * `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL=1`, it stands trees in areas mapped as
+ * a forest: switched on only by the person (the registry's `city3dTreeFill`,
+ * Labs) or `?city3dTreeFill=1` (development), it stands trees in areas mapped as
  * wood (`landcover` `class=wood`) and NEVER in a park or garden (owner review:
  * "trees at random everywhere"), clear of everything mapped as something else
  * and of mapped trees. None of it is data; see `docs/MAP_3D_CITY.md` →

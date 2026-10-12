@@ -1,6 +1,6 @@
 /**
  * Native: the map-feature document in AsyncStorage, the device's own app
- * storage. Asynchronous, so the map draws the build's defaults for the moment
+ * storage. Asynchronous, so the map draws the registry's defaults for the moment
  * before it answers (`mapFeatureStore.ts`). The web fork is
  * `mapFeatureStorage.web.ts`.
  */

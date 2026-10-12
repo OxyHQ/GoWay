@@ -3,7 +3,7 @@
  * draws, and the panel — everything the feature is, behind ONE lazy import.
  *
  * `ExploreScreen` loads this with `React.lazy` only when
- * `lib/map/liveFlag.ts` says the page asked for the layer, and hands the
+ * the map-feature registry says `live` is on, and hands the
  * resulting {@link MapLiveLayer} to `MapCanvas` through `onLayer`. With the
  * flag off this module, `socket.io-client` and the SDK's live protocol are
  * never requested.

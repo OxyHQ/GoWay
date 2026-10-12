@@ -471,7 +471,7 @@ copy that pattern.
 ## Phase 1 status
 
 Built for the route flyover's vehicle ([`MAP_CAMERA_STUDIO.md`](./MAP_CAMERA_STUDIO.md)),
-web only, off unless `EXPO_PUBLIC_MAP_FLYOVER` (or `?flyover=1` in development):
+web only, off unless the person turns on the `flyover` map feature (or `?flyover=1` in development):
 
 | Item | State |
 | --- | --- |

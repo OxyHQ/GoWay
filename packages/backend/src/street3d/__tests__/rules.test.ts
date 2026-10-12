@@ -19,14 +19,9 @@ import {
 import { sanitizeDetail } from '../../db/street3d/jobs';
 
 describe('Street 3D configuration', () => {
-  it('with nothing set, serves what is published and runs no pipeline', () => {
+  it('with nothing set, runs no pipeline, on the policy in code', () => {
     const config = parseStreet3dConfig({});
-    expect(config).toMatchObject({
-      schedulerEnabled: false,
-      viewingEnabled: true,
-      pipelineConfigured: false,
-      sceneKeyPrefix: 'scenes',
-    });
+    expect(config).toMatchObject({ pipelineConfigured: false, sceneKeyPrefix: 'scenes' });
     expect(config.budgets.draft).toEqual({
       maxTrainingIterations: 7000,
       maxGaussians: 1_500_000,
@@ -43,25 +38,30 @@ describe('Street 3D configuration', () => {
       STREET3D_EVENTS_QUEUE_URL: 'https://sqs.eu-west-1.amazonaws.com/1/events',
       STREET3D_SCENE_BUCKET: 'goway-scenes',
       STREET3D_PUBLIC_ASSET_BASE_URL: 'https://scenes.example.test',
-      STREET3D_SCHEDULER_ENABLED: 'true',
     };
-    expect(parseStreet3dConfig(base)).toMatchObject({
-      pipelineConfigured: true,
-      schedulerEnabled: true,
-    });
+    expect(parseStreet3dConfig(base).pipelineConfigured).toBe(true);
     expect(parseStreet3dConfig({ ...base, STREET3D_SCENE_BUCKET: '' }).pipelineConfigured).toBe(
       false,
     );
+    expect(parseStreet3dConfig({ ...base, AWS_REGION: '' }).pipelineConfigured).toBe(false);
+  });
+
+  it('ignores the retired switches and tuning variables a task definition may still carry', () => {
+    const retired = parseStreet3dConfig({
+      STREET3D_SCHEDULER_ENABLED: 'false',
+      STREET3D_VIEWING_ENABLED: 'false',
+      STREET3D_MIN_ELIGIBLE_FRAMES: '-1',
+    });
+    expect(retired).toEqual(parseStreet3dConfig({}));
   });
 
   it('names every malformed variable at once', () => {
     expect(() =>
       parseStreet3dConfig({
         STREET3D_JOBS_QUEUE_URL: 'not a url',
-        STREET3D_MIN_ELIGIBLE_FRAMES: '-1',
-        STREET3D_SCHEDULER_ENABLED: 'perhaps',
+        STREET3D_CDN_DISTRIBUTION_ID: 'lower-case',
       }),
-    ).toThrow(/jobsQueueUrl[\s\S]*minEligibleFrames|minEligibleFrames[\s\S]*jobsQueueUrl/);
+    ).toThrow(/jobsQueueUrl[\s\S]*cdnDistributionId|cdnDistributionId[\s\S]*jobsQueueUrl/);
   });
 });
 
@@ -101,11 +101,12 @@ function frame(id: string, fields: Partial<EligibleFrame> = {}): EligibleFrame {
 }
 
 describe('information gain', () => {
-  const config = parseStreet3dConfig({
-    STREET3D_MIN_ELIGIBLE_FRAMES: '3',
-    STREET3D_MIN_HEADING_SECTORS: '2',
-    STREET3D_REBUILD_MIN_NEW_FRAMES: '4',
-  });
+  const config = {
+    ...parseStreet3dConfig({}),
+    minEligibleFrames: 3,
+    minHeadingSectors: 2,
+    rebuildMinNewFrames: 4,
+  };
 
   it('needs enough frames, and enough headings when headings are known at all', () => {
     expect(isReconstructable([frame('1'), frame('2')], config)).toBe(false);
@@ -201,10 +202,7 @@ describe('information gain', () => {
     ]);
     expect(manifest.every((entry) => entry.camera === undefined)).toBe(true);
     // One panorama covers every sector, so it satisfies the heading rule alone.
-    const strict = parseStreet3dConfig({
-      STREET3D_MIN_ELIGIBLE_FRAMES: '8',
-      STREET3D_MIN_HEADING_SECTORS: '6',
-    });
+    const strict = { ...parseStreet3dConfig({}), minEligibleFrames: 8, minHeadingSectors: 6 };
     expect(isReconstructable(views, strict)).toBe(true);
     // Their worker stated no pitch, so neither does the manifest: no 0 made up for it.
     expect(manifest.every((entry) => !('pitchDegrees' in (entry.panorama as object)))).toBe(true);

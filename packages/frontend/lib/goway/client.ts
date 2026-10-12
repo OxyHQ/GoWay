@@ -11,10 +11,9 @@
  * ## Fixtures, and the backend that has replaced them
  *
  * `api.goway.to` is live: Places, search, geocoding and real Valhalla routing.
- * **The deployed site runs against it** —
- * `.github/workflows/deploy-frontend.yml` sets `EXPO_PUBLIC_GOWAY_FIXTURES: '0'`
- * — and the fixture layer is now a LOCAL convenience only, for working on the
- * app with no backend running.
+ * **Every production build runs against it** — a production build never uses
+ * the fixture layer unless told to (`fixturesOn`) — and the fixture layer is a
+ * LOCAL convenience only, for working on the app with no backend running.
  *
  * Rather than stub the client, this module injects a fixture `fetch`
  * (`mockTransport.ts`) into the REAL client, so every request still goes
@@ -26,9 +25,10 @@
  * createGoWayClient({ apiBaseUrl: API_URL, getAccessToken, fetch: fixtures })  // local
  * ```
  *
- * The default is still ON, so `bun run dev:frontend` works with nothing else
- * running. Set `EXPO_PUBLIC_GOWAY_FIXTURES=0` in `packages/frontend/.env` to
- * develop against the real API, which is what the deployed bundle does.
+ * A development build defaults it ON, so `bun run dev:frontend` works with
+ * nothing else running. Set `EXPO_PUBLIC_GOWAY_FIXTURES=0` in
+ * `packages/frontend/.env` to develop against the real API, which is what every
+ * production build does.
  *
  * ## Directions are NEVER a fixture
  *
@@ -70,17 +70,10 @@ import { API_URL } from '@/lib/config';
 import { deviceLocale } from '@/lib/i18n';
 import { oxyServices } from '@/lib/oxyServices';
 
-import { createFixtureFetch, parseFixtureFaults } from './mockTransport';
+import { createFixtureFetch, fixturesOn, parseFixtureFaults } from './mockTransport';
 
-/**
- * Whether this build is served by the fixture layer.
- *
- * Defaults to `true`. An explicit `0`/`false` turns it off; anything else
- * (including the variable being absent) keeps fixtures, because "no backend"
- * is the current state of the world and a blank map is a worse default than an
- * obviously-local dataset.
- */
-export const USING_FIXTURES = !/^(0|false)$/i.test(process.env.EXPO_PUBLIC_GOWAY_FIXTURES ?? '');
+/** Whether this build is served by the fixture layer (`fixturesOn`). */
+export const USING_FIXTURES = fixturesOn(process.env.EXPO_PUBLIC_GOWAY_FIXTURES, __DEV__);
 
 export const gowayClient: GoWayClient = createGoWayClient({
   apiBaseUrl: API_URL,

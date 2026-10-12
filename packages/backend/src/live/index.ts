@@ -56,13 +56,13 @@ export function configuredLiveSources(config: LiveConfig, logger: LiveHubLogger)
   return out;
 }
 
-/** `null` when live is off (`LIVE_ENABLED`) or no source survived configuration. */
+/** `null` when `LIVE_SOURCES` lists nothing, or no listed source survived configuration. */
 export function createLiveService(options: CreateLiveServiceOptions): LiveService | null {
   const { config, logger } = options;
-  if (!config.enabled) return null;
+  if (config.sources.length === 0) return null;
   const sources = configuredLiveSources(config, logger);
   if (sources.length === 0) {
-    logger.warn({}, 'LIVE_ENABLED is set but no live source is configured; live stays off');
+    logger.warn({}, 'No listed live source is usable; live stays off');
     return null;
   }
   let namespace: Namespace | null = null;

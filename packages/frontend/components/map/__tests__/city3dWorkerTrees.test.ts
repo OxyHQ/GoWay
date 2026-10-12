@@ -3,7 +3,7 @@
  * everywhere". The fixes, pinned:
  *
  *  - no tree (mapped or fill) stands inside a building footprint;
- *  - the fill is off unless asked for, and then only in mapped woods;
+ *  - the fill is off by default (the registry's `city3dTreeFill`), and then only in mapped woods;
  *  - trees stand on the same ground as the buildings: the drawn terrain
  *    (in these cities a bare-earth model, measured — so not "de-noised", which
  *    only buried buildings on real knolls);
@@ -26,8 +26,6 @@ import { incompleteRetryMs } from '@/components/map/engine/city3d/tileScheduler'
 import { standTrees, type TreePoint, type TreeSources } from '@/components/map/engine/city3d/trees';
 import { dropTreesInBuildings, treesFor } from '@/components/map/engine/city3d/workerTrees';
 import type { Point2 } from '@/components/map/engine/city3d/mesher';
-import { isCity3dTreeFillRequested } from '@/lib/map/city3dTreesFlag';
-
 const square = (x0: number, y0: number, x1: number, y1: number): Point2[] => [
   [x0, y0],
   [x1, y0],
@@ -72,23 +70,6 @@ describe('the fill', () => {
     const points = standTrees(sources(), { x: 1, y: 1 }, 4096);
     expect(points.length).toBeGreaterThan(1000);
     expect(points.every((p) => p.x <= 500 && p.y <= 500)).toBe(true);
-  });
-
-  test('is off unless a build or a development tab asks for it', () => {
-    expect(isCity3dTreeFillRequested({ enabled: false, development: true, search: '' })).toBe(
-      false,
-    );
-    expect(
-      isCity3dTreeFillRequested({
-        enabled: false,
-        development: false,
-        search: '?city3dTreeFill=1',
-      }),
-    ).toBe(false);
-    expect(
-      isCity3dTreeFillRequested({ enabled: false, development: true, search: '?city3dTreeFill=1' }),
-    ).toBe(true);
-    expect(isCity3dTreeFillRequested({ enabled: true, development: false, search: '' })).toBe(true);
   });
 });
 

@@ -89,12 +89,13 @@ that passes CI. The build is an `expo export --platform web` of
 `packages/frontend`; the Worker is configured entirely by
 `packages/frontend/wrangler.toml`.
 
-**It runs against the live API.** `.github/workflows/deploy-frontend.yml` sets
-`EXPO_PUBLIC_GOWAY_FIXTURES: '0'`, so goway.to talks to `api.goway.to`: real
-search, real geocoding, and real turn-by-turn routing from GoWay's own Valhalla
-(`packages/routing-engine`). `packages/frontend/lib/goway/client.ts` still
-DEFAULTS fixtures on, so `bun run dev:frontend` works with no backend running —
-for everything except directions, which are never a fixture (below).
+**It runs against the live API.** A production build never uses the fixture
+layer (`fixturesOn`, `packages/frontend/lib/goway/mockTransport.ts`), so
+goway.to talks to `api.goway.to`: real search, real geocoding, and real
+turn-by-turn routing from GoWay's own Valhalla (`packages/routing-engine`). A
+development build DEFAULTS fixtures on, so `bun run dev:frontend` works with no
+backend running — for everything except directions, which are never a fixture
+(below).
 
 One thing is knowingly empty: **GoWay Places has no rows in production**, so
 `/places/bounds` answers an empty page and the GoWay-owned pin layer is blank until it is
