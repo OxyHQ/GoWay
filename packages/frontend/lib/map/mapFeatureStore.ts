@@ -18,13 +18,13 @@
  * web it is `localStorage`, read synchronously, so the very first frame
  * already honours a choice (a globe switched off never flashes on). On native
  * it is AsyncStorage, read asynchronously: until it answers, the map draws the
- * build's defaults, then follows the stored choices.
+ * registry's defaults, then follows the stored choices.
  *
  * Storage is a convenience, never a dependency: a store that throws, rejects,
  * or holds garbage leaves the map on its defaults, and a choice that cannot be
  * saved still applies to this session.
  *
- * A choice equal to what the build would decide anyway is not stored: it is
+ * A choice equal to the feature's default is not stored: it is
  * cleared, so a later change of default reaches the person.
  */
 import {
@@ -140,9 +140,9 @@ export interface MapFeatureSnapshot {
 export interface MapFeatureStore {
   getSnapshot(): MapFeatureSnapshot;
   subscribe(listener: () => void): () => void;
-  /** Turn a feature on or off on this device. Ignored for a killed or unknown feature. */
+  /** Turn a feature on or off on this device. Ignored for an unknown feature. */
   setChoice(id: string, on: boolean): void;
-  /** Forget the choice for a feature, back to the build's answer. */
+  /** Forget the choice for a feature, back to the default. */
   clearChoice(id: string): void;
   setLabs(visible: boolean): void;
   /** Settings → Performance. */
@@ -261,8 +261,7 @@ export function createMapFeatureStore(options: CreateMapFeatureStoreOptions): Ma
   const setChoiceValue = (id: string, value: boolean | null) => {
     if (!knownIds.has(id)) return;
     const state = snapshot.features.get(id);
-    if (state.source === 'killed') return;
-    // Equal to what the build decides anyway: forget it instead of pinning it.
+    // Equal to the default anyway: forget it instead of pinning it.
     const next = value === null || value === state.baseline ? null : value;
     if (!hydrated) changedEarly.set(id, next);
     const choices: Record<string, boolean> = { ...preferences.choices };

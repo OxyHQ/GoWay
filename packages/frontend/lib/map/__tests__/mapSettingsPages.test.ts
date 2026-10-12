@@ -15,7 +15,7 @@ import { mapSettingsLayout } from '@/lib/map/mapSettingsPages';
 
 function layout(options: { labs: boolean; development?: boolean; platform?: MapPlatform }) {
   const features = resolveMapFeatures({
-    features: MAP_FEATURES.map((feature) => ({ ...feature, build: undefined })),
+    features: MAP_FEATURES,
     choices: {},
     platform: options.platform ?? 'web',
     development: options.development ?? false,

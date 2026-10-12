@@ -6,7 +6,7 @@
  * A {@link CityOverlay} of the city engine — same scene, camera, depth buffer
  * and light as the buildings, so a building occludes a car behind it and the
  * sun lights both alike. Reached only through `components/engine3d/lazyChunk.ts`
- * (it imports three.js), and only when `lib/map/cityLifeFlag.ts` asked for it.
+ * (it imports three.js), and only when the registry's `cityLife` is on.
  *
  * ## Time
  *

@@ -4,8 +4,7 @@
  * production mode, minified bundles, no development HUD — instead of the dev
  * server (`docs/MAP_PERFORMANCE.md` → "The benchmark").
  *
- *   EXPO_PUBLIC_MAP_CITY3D=1 EXPO_PUBLIC_MAP_CITY_TILES=1 … \
- *     bunx expo export --platform web --output-dir dist-bench
+ *   EXPO_PUBLIC_GOWAY_FIXTURES=1 bunx expo export --platform web --output-dir dist-bench
  *   GOWAY_CITY_TILES_ARCHIVE=… bun scripts/serve-map-build.ts --dir=dist-bench --port=8119
  *
  * The tiles are answered by the same middleware the dev server uses

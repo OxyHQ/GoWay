@@ -14,13 +14,9 @@ import {
   parsePreferences,
   serializePreferences,
 } from '@/lib/map/mapFeatureStore';
-import { MAP_FEATURES, type MapFeatureDefinition } from '@/lib/map/mapFeatures';
+import { MAP_FEATURES } from '@/lib/map/mapFeatures';
 
-const FEATURES: MapFeatureDefinition[] = MAP_FEATURES.map((feature) => ({
-  ...feature,
-  build: undefined,
-}));
-const IDS = new Set(FEATURES.map((feature) => feature.id));
+const IDS = new Set<string>(MAP_FEATURES.map((feature) => feature.id));
 
 function memoryStorage(initial: string | null = null) {
   const saved: string[] = [];
@@ -33,13 +29,10 @@ function memoryStorage(initial: string | null = null) {
   return { storage, saved };
 }
 
-function store(
-  storage: MapFeatureStorage,
-  overrides: Partial<{ search: string; features: MapFeatureDefinition[] }> = {},
-) {
+function store(storage: MapFeatureStorage, overrides: Partial<{ search: string }> = {}) {
   const errors: string[] = [];
   const instance = createMapFeatureStore({
-    features: overrides.features ?? FEATURES,
+    features: MAP_FEATURES,
     storage,
     platform: 'web',
     development: false,
@@ -67,7 +60,7 @@ describe('persistence', () => {
     expect(second.saved).toHaveLength(0);
   });
 
-  test('choosing what the build decides anyway forgets the choice', () => {
+  test('choosing the default anyway forgets the choice', () => {
     const { storage, saved } = memoryStorage();
     const { instance } = store(storage);
     instance.setChoice('globe', false);
@@ -75,17 +68,6 @@ describe('persistence', () => {
     instance.setChoice('globe', true);
     expect(instance.getSnapshot().features.get('globe').choice).toBeNull();
     expect(JSON.parse(saved.at(-1) ?? '{}').choices).toEqual({});
-  });
-
-  test('a killed feature cannot be chosen', () => {
-    const { storage, saved } = memoryStorage();
-    const features = FEATURES.map((feature) =>
-      feature.id === 'city3d' ? { ...feature, build: '0' } : feature,
-    );
-    const { instance } = store(storage, { features });
-    instance.setChoice('city3d', true);
-    expect(instance.getSnapshot().features.on('city3d')).toBe(false);
-    expect(saved).toHaveLength(0);
   });
 
   test('an unknown id is ignored', () => {

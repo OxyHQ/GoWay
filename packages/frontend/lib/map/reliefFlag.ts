@@ -1,18 +1,12 @@
 /**
- * Whether this page draws the globe, and terrain — both ON by default, with
- * two ways to turn either off, deliberately unequal (`docs/MAP_TERRAIN_GLOBE.md`):
+ * The globe and terrain's shared pieces (`docs/MAP_TERRAIN_GLOBE.md`): how
+ * their sources and layers are recognised, the globe projection and the space
+ * behind it, and how the style is handed over with the globe on.
  *
- *  - `EXPO_PUBLIC_MAP_GLOBE=0` / `EXPO_PUBLIC_MAP_TERRAIN=0`, read by the
- *    map-feature registry (`mapFeatures.ts`): a BUILD decision, the kill
- *    switch. Every page of that build loses it. Short of that, the person can
- *    switch either off in the settings modal, on this device.
- *  - `?globe=0` / `?terrain=0` (or `=1` to turn a killed one back on) on the
- *    URL: a per-tab switch for comparing beside the flat map without
- *    rebuilding — honoured ONLY in a development build (`__DEV__`), so a link
- *    cannot change the renderer for somebody using goway.to.
- *
- * Pure, with its inputs passed in, so "production ignores the query string" is
- * a test rather than a comment (`__tests__/reliefFlag.test.ts`).
+ * Whether either draws is the map-feature registry's answer
+ * (`mapFeatures.ts`: both on by default, switched off per device in the
+ * settings modal, and `?globe=0` / `?terrain=0` per tab in a development
+ * build), read through `components/map/reliefFlags.ts`.
  */
 import type { ProjectionSpecification, StyleSpecification } from '@maplibre/maplibre-gl-style-spec';
 
@@ -28,42 +22,11 @@ export function isReliefId(id: string | undefined): boolean {
   return typeof id === 'string' && id.startsWith(RELIEF_ID_PREFIX);
 }
 
-/**
- * A default-ON build flag: anything but an explicit `0`/`false` (any case,
- * surrounding space ignored) leaves it on — unset, empty and typos included,
- * because the kill switch must be something somebody meant.
- */
-export function enabledUnlessKilled(value: string | undefined): boolean {
-  return !/^\s*(0|false)\s*$/i.test(value ?? '');
-}
-
-/** The relief features a page can ask for. */
+/** The relief features a page can draw. */
 export type ReliefFeature = 'globe' | 'terrain';
 
-export interface ReliefFlagInput {
-  /** The registry's answers for `globe` / `terrain` (`mapFeatures.ts`; on unless killed or switched off). */
-  enabled: Readonly<Record<ReliefFeature, boolean>>;
-  /** `__DEV__`. */
-  development: boolean;
-  /** `window.location.search`, or `''` where there is no window (native). */
-  search: string;
-}
-
-/** What this page draws: each feature on or off, decided once per load. */
+/** What this page draws: each feature on or off. */
 export type ReliefFlags = Readonly<Record<ReliefFeature, boolean>>;
-
-function requested(input: ReliefFlagInput, feature: ReliefFeature): boolean {
-  if (input.development) {
-    const value = new URLSearchParams(input.search).get(feature);
-    if (value === '0' || value === 'false') return false;
-    if (value === '1' || value === 'true') return true;
-  }
-  return input.enabled[feature];
-}
-
-export function resolveReliefFlags(input: ReliefFlagInput): ReliefFlags {
-  return { globe: requested(input, 'globe'), terrain: requested(input, 'terrain') };
-}
 
 /**
  * MapLibre's `globe`: a sphere ("vertical perspective") to z11, easing into

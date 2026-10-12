@@ -108,7 +108,7 @@ import { reportMapDefect } from './shared';
 
 /**
  * Which tiles to mesh: always the basemap's own `building` layer, and — when
- * this page asked for them (`lib/map/cityTilesFlag.ts`) — GoWay's city tiles
+ * this page asked for them (the registry's `cityTiles`) — GoWay's city tiles
  * INSTEAD wherever `coverage` says they were compiled (per tile, by the
  * engine's `sources.ts`). Outside every archive, or with no coverage at all
  * (the route unreachable), the basemap's buildings draw: never a flat map.

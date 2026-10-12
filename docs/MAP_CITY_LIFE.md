@@ -14,16 +14,18 @@ is real traffic, and nothing GoWay computes or shows is derived from it (see
 
 ## Turning it on
 
-Three flags, each a refinement of the one before, all off in production:
+Three map features (`MAP_FEATURES.md`), each a refinement of the one before,
+all off by default. A person turns them on in the settings modal's Labs (city
+tiles and city life are offered there only in a development build); a
+development tab also takes them from its address:
 
-| Flag | Build switch | Per tab, development builds only |
-| --- | --- | --- |
-| City 3D | `EXPO_PUBLIC_MAP_CITY3D=1` | `?city3d=1` |
-| City tiles | `EXPO_PUBLIC_MAP_CITY_TILES=1` | `?cityTiles=1` |
-| **City life** | `EXPO_PUBLIC_MAP_CITY_LIFE=1` | `?cityLife=1` |
+| Feature | Per tab, development builds only |
+| --- | --- |
+| City 3D (`city3d`) | `?city3d=1` |
+| City tiles (`cityTiles`) | `?cityTiles=1` |
+| **City life** (`cityLife`) | `?cityLife=1` |
 
-`lib/map/cityLifeFlag.ts` requires the city-3D flag (the engine draws the
-agents). It does NOT require the city tiles: traffic runs anywhere — on the
+City life requires the 3D city (the engine draws the agents). It does NOT require the city tiles: traffic runs anywhere — on the
 compiled road archive where one covers a tile, on the basemap's own roads,
 healed, everywhere else ([Worldwide](#worldwide-the-basemap-healed)). Without
 any archive, `?city3d=1&cityLife=1` shows traffic in any city:
@@ -423,9 +425,8 @@ the `main` it is rebased on (28d10da), separate Metro caches, `--clear`:
 | `simWorker` (sealed worker) | — | 67,609 B (23,270 gz) | the whole simulation; started only with city life on |
 
 Nothing new reached first paint: the flag was read only by the lazy adapter
-(`cityLifeFlag.ts`, like `cityTilesFlag.ts`; since the map-feature registry it
-is decided there, at first paint, and handed to the adapter — `MAP_FEATURES.md`
-measures the registry), the renderer and its worker load
+(since the map-feature registry it is decided there, at first paint, and
+handed to the adapter — `MAP_FEATURES.md` measures the registry), the renderer and its worker load
 only through `components/engine3d/lazyChunk.ts`, and
 `components/__tests__/engine3dChunk.test.ts` pins that.
 

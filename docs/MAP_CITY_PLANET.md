@@ -315,7 +315,7 @@ bun run --cwd packages/frontend map:city-region --region=europe/portugal \
   --pbf=<portugal-latest.osm.pbf> --poly=<portugal.poly> --stamp=20261011-local --out=<dir>
 bun run --cwd packages/frontend map:city-manifest --entries=<dir>/entries --out=<dir>/manifest.json
 # Through the real Worker: put the objects in a local R2, then
-#   (packages/frontend, with dist/ an export built with EXPO_PUBLIC_MAP_CITY3D=1 EXPO_PUBLIC_MAP_CITY_TILES=1)
+#   (packages/frontend, with dist/ a development export, opened with ?city3d=1&cityTiles=1)
 bunx wrangler@4 r2 object put goway-map-tiles/<key> --file=<dir>/<key> --local --persist-to=<state>
 bunx wrangler@4 dev --local --persist-to=<state> --var MAP_CITY_MANIFEST:city/manifest.json --var MAP_TILE_ARCHIVE:
 ```
@@ -367,8 +367,7 @@ set `MAP_CITY_MANIFEST` and added the database to `/attribution`. In order:
    are served to anyone — steps 3–4 publish them; this makes them findable.
 6. **Offer it**: `cityTiles` (and `cityLife`) are `offer: 'development'` in
    `lib/map/mapFeatures.ts`; change to `'always'` when the 3D city is ready for
-   Labs users. Until then only development builds and builds with
-   `EXPO_PUBLIC_MAP_CITY_TILES=1` ask for the tiles.
+   Labs users. Until then only development builds ask for the tiles.
 7. **Official data** (optional, before or after 8): dry-run `regions:
    europe/spain/madrid` and `europe/spain/cataluna` with `official: true`;
    raise `MIN_PARTS` for any that does not fit; then publish them with it.

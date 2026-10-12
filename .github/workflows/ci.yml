@@ -282,13 +282,10 @@ jobs:
         run: bunx playwright-core install --with-deps chromium
       # A DEVELOPMENT export: only a dev build publishes what the engine drew
       # (`__gowayCity3d`), which is what makes a blank screen fail rather than
-      # pass as "nothing to draw".
+      # pass as "nothing to draw" — and only a dev build honours the
+      # `?city3d=1&cityTiles=1&citysky=1` the gate opens it with.
       - name: Export the web app (development build)
         working-directory: packages/frontend
-        env:
-          EXPO_PUBLIC_MAP_CITY3D: '1'
-          EXPO_PUBLIC_MAP_CITY_TILES: '1'
-          EXPO_PUBLIC_MAP_CITY_SKY: '1'
         run: bun run export:web --dev --output-dir "$RUNNER_TEMP/city3d-gate"
       - name: Trees and buildings are on the screen, sky on and off
         run: >-

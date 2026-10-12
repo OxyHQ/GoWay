@@ -41,11 +41,11 @@ numbers are on `globalThis.__gowayPerf`.
 
 ```bash
 # Time a PRODUCTION export — what users run (the dev server's numbers are not:
-# see below). Every 3D feature compiled in, with source maps for --profile:
+# see below), with source maps for --profile. The benchmark turns every 3D
+# feature on itself, as stored choices (a production build ignores ?city3d=1);
+# fixtures keep the places layer off the network:
 cd packages/frontend
-EXPO_PUBLIC_MAP_CITY3D=1 EXPO_PUBLIC_MAP_CITY_TILES=1 EXPO_PUBLIC_MAP_CITY_SKY=1 \
-EXPO_PUBLIC_MAP_DETAILED_CITY=1 EXPO_PUBLIC_MAP_CITY_LIFE=1 EXPO_PUBLIC_MAP_LANDMARKS=1 \
-  bunx expo export --platform web --source-maps --output-dir dist-bench
+EXPO_PUBLIC_GOWAY_FIXTURES=1 bunx expo export --platform web --source-maps --output-dir dist-bench
 # Serve it with the city and road archives (docs/MAP_CITY_LIFE.md → Turning it on):
 GOWAY_CITY_TILES_ARCHIVE=… bun scripts/serve-map-build.ts --dir=dist-bench --port=8119
 bun run bench:map --url=http://localhost:8119 \

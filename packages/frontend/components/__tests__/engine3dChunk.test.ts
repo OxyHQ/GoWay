@@ -157,18 +157,12 @@ describe('the three.js chunk', () => {
     expect(importers).toEqual(['components/map/engine/city3d/cityEngine.ts']);
   });
 
-  test('the trees flag is reached only from the map-feature registry', () => {
-    // The registry (`lib/map/mapFeatures.ts`) is on the first-paint path by
-    // design — the settings modal switches the trees live — so the flag is a
-    // few pure lines there, and reads no env var of its own: the registry
-    // reads `EXPO_PUBLIC_MAP_CITY3D_TREES*` and the adapter is handed the
-    // answers. Anything else importing it would be a second way to decide.
-    const importers = files
-      .filter((f) => runtimeImports(f.text, /(lib\/map\/|^\.\/)city3dTreesFlag$/).length > 0)
-      .map((f) => f.path);
-    expect(importers).toEqual(['lib/map/mapFeatures.ts']);
-    const flag = files.find((f) => f.path === 'lib/map/city3dTreesFlag.ts');
-    expect(flag?.text).not.toMatch(/process\.env/);
+  test('the map-feature registry reads no build variable', () => {
+    // A person decides in the settings modal; the adapter is handed the
+    // answers. A build switch here would be a second way to decide.
+    const registry = files.find((f) => f.path === 'lib/map/mapFeatures.ts');
+    expect(registry).toBeDefined();
+    expect(registry?.text).not.toMatch(/process\.env/);
   });
 
   test('the MapLibre adapter imports the city engine folder type-only', () => {

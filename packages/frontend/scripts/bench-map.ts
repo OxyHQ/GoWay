@@ -42,6 +42,7 @@ import { type Browser, type BrowserContext, chromium, type Page } from 'playwrig
 
 import { createGlCounterState, instrumentWebGl2 } from '../components/map/perf/glCounters';
 import { summarise } from '../components/map/perf/frameStats';
+import { MAP_FEATURES, type MapFeatureDefinition } from '../lib/map/mapFeatures';
 
 interface Device {
   viewport: { width: number; height: number };
@@ -96,7 +97,11 @@ interface Scene {
   id: string;
   title: string;
   camera: { lat: number; lng: number; zoom: number; pitch: number; bearing: number };
-  /** Development query flags (the map-feature registry's dev parameters). */
+  /**
+   * The map-feature registry's development query parameters. A development
+   * server reads them from the address; a production export is handed them as
+   * stored choices (`sceneChoices`).
+   */
   flags: Record<string, string>;
   path: Path;
   durationMs: number;
@@ -199,15 +204,26 @@ export const SCENES: Scene[] = [
   },
 ];
 
+/** A scene's development flags as the map-feature choices they stand for. */
+function sceneChoices(scene: Scene): Record<string, boolean> {
+  const choices: Record<string, boolean> = {};
+  for (const feature of MAP_FEATURES as readonly MapFeatureDefinition[]) {
+    const value = feature.query ? scene.flags[feature.query] : undefined;
+    if (value !== undefined) choices[feature.id] = value === '1';
+  }
+  return choices;
+}
+
 /**
  * Installed in every page before any of its scripts. Self-contained: it gets
- * the counter's source and nothing else.
+ * the counter's source and the scene's choices, and nothing else.
  */
 function pageProbe(args: {
   counterSource: string;
   stateSource: string;
   at: string | null;
   tier: string | null;
+  choices: Record<string, boolean>;
   counters: boolean;
 }) {
   const w = window as unknown as Record<string, unknown>;
@@ -227,10 +243,13 @@ function pageProbe(args: {
     w.Date = ShiftedDate;
   }
   // After the clock is moved: the record's date must not be in the scene's future.
+  // A production build ignores the address (`?city3d=1`, `?quality=`), so the
+  // scene's features are stored as the person's choices, exactly as the
+  // settings modal stores them (`lib/map/mapFeatureStore.ts`).
+  let gpu: Record<string, unknown> | undefined;
   if (args.tier) {
-    // A production build ignores `?quality=`: store a GPU record for THIS
-    // renderer at the tier asked for, as the map's own benchmark would, so
-    // Auto resolves it (`lib/map/quality/gpuTier.ts`).
+    // A GPU record for THIS renderer at the tier asked for, as the map's own
+    // benchmark would write it, so Auto resolves it (`lib/map/quality/gpuTier.ts`).
     try {
       const probe = document.createElement('canvas').getContext('webgl2');
       const info = probe?.getExtension('WEBGL_debug_renderer_info');
@@ -238,18 +257,18 @@ function pageProbe(args: {
         probe && info ? String(probe.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '';
       probe?.getExtension('WEBGL_lose_context')?.loseContext();
       const mpx = args.tier === 'high' ? 10 : args.tier === 'medium' ? 1 : 0.1;
-      localStorage.setItem(
-        'goway.mapFeatures',
-        JSON.stringify({
-          v: 1,
-          choices: {},
-          labs: false,
-          gpu: { v: 1, renderer, megapixelsPerMs: mpx, tier: args.tier, at: Date.now() },
-        }),
-      );
+      gpu = { v: 1, renderer, megapixelsPerMs: mpx, tier: args.tier, at: Date.now() };
     } catch {
-      // No storage: Auto decides.
+      // No WebGL 2 probe: Auto decides.
     }
+  }
+  try {
+    localStorage.setItem(
+      'goway.mapFeatures',
+      JSON.stringify({ v: 1, choices: args.choices, labs: false, ...(gpu ? { gpu } : {}) }),
+    );
+  } catch {
+    // No storage: only a development build's address switches features on.
   }
   // The benchmark injects its own instrument, by source.
   const instrument = new Function(`return (${args.counterSource})`)() as (
@@ -641,6 +660,7 @@ async function benchScene(
     stateSource: createGlCounterState.toString(),
     at: scene.at ?? null,
     tier: arg('tier', '') || null,
+    choices: sceneChoices(scene),
     counters: !process.argv.includes('--no-counters'),
   });
   const cdp = await context.newCDPSession(page);

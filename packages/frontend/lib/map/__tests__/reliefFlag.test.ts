@@ -1,77 +1,16 @@
 /**
- * Globe and terrain are ON unless a build kills them — and only a DEVELOPMENT
- * tab may override either way: a production build ignores `?globe=0` /
- * `?terrain=0`, so no goway.to link can change somebody else's renderer.
+ * The globe and terrain's shared pieces: their ids, and how the style is
+ * handed over with the globe on. Whether either draws is the registry's
+ * (`mapFeatures.test.ts`).
  */
 import { describe, expect, test } from 'bun:test';
 
 import {
-  enabledUnlessKilled,
   GLOBE_PROJECTION,
   isReliefId,
   mapStyleLoading,
   RELIEF_ID_PREFIX,
-  resolveReliefFlags,
 } from '@/lib/map/reliefFlag';
-
-const ON = { globe: true, terrain: true };
-const OFF = { globe: false, terrain: false };
-
-describe('enabledUnlessKilled (the build flags)', () => {
-  test('unset, empty, 1, true and typos all leave it on — production gets relief with no env', () => {
-    for (const value of [undefined, '', '1', 'true', 'TRUE', 'yes', 'flase']) {
-      expect(enabledUnlessKilled(value)).toBe(true);
-    }
-  });
-
-  test('only an explicit 0 or false kills it', () => {
-    for (const value of ['0', 'false', 'FALSE', ' 0 ', 'False']) {
-      expect(enabledUnlessKilled(value)).toBe(false);
-    }
-  });
-});
-
-describe('resolveReliefFlags', () => {
-  test('the build flags decide, in production and in development without a parameter', () => {
-    expect(resolveReliefFlags({ enabled: ON, development: false, search: '' })).toEqual(ON);
-    expect(resolveReliefFlags({ enabled: ON, development: true, search: '' })).toEqual(ON);
-    expect(resolveReliefFlags({ enabled: OFF, development: false, search: '' })).toEqual(OFF);
-    expect(
-      resolveReliefFlags({
-        enabled: { globe: true, terrain: false },
-        development: false,
-        search: '',
-      }),
-    ).toEqual({ globe: true, terrain: false });
-  });
-
-  test('a development tab can turn either off, or a killed one back on', () => {
-    expect(
-      resolveReliefFlags({ enabled: ON, development: true, search: '?globe=0&terrain=false' }),
-    ).toEqual(OFF);
-    expect(
-      resolveReliefFlags({ enabled: ON, development: true, search: '?lat=1&terrain=0' }),
-    ).toEqual({ globe: true, terrain: false });
-    expect(
-      resolveReliefFlags({ enabled: OFF, development: true, search: '?globe=1&terrain=true' }),
-    ).toEqual(ON);
-  });
-
-  test('a production build ignores the query string both ways', () => {
-    expect(
-      resolveReliefFlags({ enabled: ON, development: false, search: '?globe=0&terrain=0' }),
-    ).toEqual(ON);
-    expect(
-      resolveReliefFlags({ enabled: OFF, development: false, search: '?globe=1&terrain=1' }),
-    ).toEqual(OFF);
-  });
-
-  test('an unrecognised value leaves the build flag in charge', () => {
-    expect(
-      resolveReliefFlags({ enabled: ON, development: true, search: '?globe=no&terrain=' }),
-    ).toEqual(ON);
-  });
-});
 
 describe('isReliefId', () => {
   test('recognises the prefix and nothing else', () => {

@@ -59,8 +59,7 @@ export const STREET3D_ASSET_ORIGIN = origin(process.env.EXPO_PUBLIC_STREET3D_ASS
 
 /*
  * The map's optional features — the 3D city, city tiles, the globe, terrain,
- * the route flyover — are NOT here: each is an entry in the map-feature
- * registry (`lib/map/mapFeatures.ts`), which reads its `EXPO_PUBLIC_MAP_*`
- * build switch there and combines it with the person's choice in the layers
- * panel. See `docs/MAP_FEATURES.md`.
+ * the route flyover — are NOT here, and have no variable at all: each is an
+ * entry in the map-feature registry (`lib/map/mapFeatures.ts`), and a person
+ * turns it on or off in the map's settings. See `docs/MAP_FEATURES.md`.
  */
