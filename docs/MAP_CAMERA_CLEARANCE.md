@@ -144,13 +144,44 @@ The buildings' ground is the engine's own `Ground` (unchanged here).
 | | |
 | --- | --- |
 | Per camera change (unit test, nine dense synthetic z15 tiles, 20,000 street-level changes) | **≈3 µs** |
-| Per camera change (development build in the browser, SwiftShader, both scenes) | see the PR |
+| Per camera change, in the browser (development export, headless Chromium on SwiftShader, a host at load 35+; the browser check's drives) | Sagrada Família 0.31 ms mean, 19 ms worst (346 changes); One Vanderbilt 0.41 ms mean, 13 ms worst (293) |
 | Worker, per tile (synthetic z15 city tile: 952 units, 37,800 vertices) | 0.6 ms |
 | Memory, per tile (same tile) | 86 KB (8% of its mesh); fixed 32 KB of grid + ~40 B a unit |
+| A landmark's columns, once per asset as it loads (the Sagrada Família, 30,320 triangles → 536 columns, 68 KB) | 36 ms, on the main thread beside its glTF parse |
+| First paint (`entry`) | ~1.4 KB gzip (`cameraClearance.web.ts` + `clearance.ts`, minified); the index and field are in the engine chunk and the mesh worker |
 | The frame-budget gate (`frameBudget.test.ts`) | identical draws, triangles, passes, shadow redraws and per-frame uploads before and after; the load-time upload counts move run to run with arrival order, the same spread in two runs of either build |
 
 The rule is not run below z13, and returns before measuring anything when the
-eye is above every tile's tallest prism.
+eye is above every tile's tallest prism. It needs no `QualityProfile` knob:
+it draws nothing, so no preset draws more or less for it, and it animates only
+through MapLibre's own camera (the still camera's one `easeTo`), never a timer
+or a frame loop of its own.
+
+## The browser check
+
+`packages/frontend/scripts/check-camera-clearance.ts`, against a development
+export served with `serve-map-build.ts --upstream=https://goway.to` (it needs
+goway.to's tiles, so it is a local check, not a CI job). At the Sagrada
+Família (the landmark model) and One Vanderbilt (a city-tile tower, 427 m), at
+76° (the city sky's ceiling is 80°), by real input: a slow Ctrl-drag onto the
+tower, tilts towards the horizon there, rotations past and back through it, a
+programmatic `easeTo` orbit through it, and the wheel. Every frame MapLibre
+draws, the drawn eye is sampled against the prisms (no margin, no ramp), and
+the rule's eye against MapLibre's own (`getCameraLngLat`/`getCameraAltitude`:
+identical in every frame of both runs).
+
+"Before" is the same export with the rule's answer discarded (measured, never
+applied), so both builds draw the same city:
+
+| Scene | Build | Frames | Frames with the eye inside | Deepest | Pitch reached |
+| --- | --- | ---: | ---: | ---: | --- |
+| Sagrada Família | before | 1,241 | **121** | 129.8 m under the tops | 20–80° |
+| Sagrada Família | this change | 1,302 | **0** | — | 20–76° |
+| One Vanderbilt | before | 1,367 | **132** | 307 m | 20–80° |
+| One Vanderbilt | this change | 1,415 | **0** | — | 20–60.8° |
+
+The pitch a drive reached is the rule at work: tilting towards the horizon
+beside One Vanderbilt holds the camera at 61° instead of entering the tower.
 
 ## Native
 
