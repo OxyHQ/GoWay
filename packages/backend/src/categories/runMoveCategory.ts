@@ -18,7 +18,6 @@
  * steps a moved place's column and its recorded statement disagree.
  */
 
-import 'dotenv/config';
 import { parseArgs } from 'node:util';
 import { assertMigrationTarget } from '@oxy.so/db/migrate';
 import postgres from 'postgres';

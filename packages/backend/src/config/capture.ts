@@ -24,16 +24,10 @@
  * deriving them.
  */
 
-import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
 import type { CaptureRetentionClass } from '@goway/contracts';
 import type { EnvironmentSource } from './index';
 import { oxyUserIdList } from './oxyUserIds';
-
-// Type-only import above, so this module does not pull the core configuration
-// parse in as a side effect. dotenv never overrides an already-set variable, so
-// calling it a second time is free.
-loadDotenv();
 
 /**
  * Default retention windows, in days, per capture retention class.

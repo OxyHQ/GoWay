@@ -31,17 +31,10 @@
  * instance it points at.
  */
 
-import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
 import type { EnvironmentSource } from './index';
 
 export type { EnvironmentSource };
-
-// Idempotent, and deliberately not dependent on `config/index.ts` having been
-// imported first: a tool that imports only the search configuration should see
-// the same `.env` a server does. In ECS every variable arrives from the task
-// definition and there is no file to find, so a missing one is not an error.
-loadDotenv();
 
 /** The external geocoders this backend knows how to speak to. */
 export const SEARCH_PROVIDER_IDS = ['photon', 'nominatim'] as const;

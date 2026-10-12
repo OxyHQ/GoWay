@@ -34,12 +34,9 @@
  * `LIVE_SOURCES` must not silently serve nothing.
  */
 
-import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
 import { LIVE_SOURCE_IDS } from '../live/catalogue';
 import type { EnvironmentSource } from './index';
-
-loadDotenv();
 
 const emptyAsUndefined = (value: unknown): unknown =>
   typeof value === 'string' && value.trim().length === 0 ? undefined : value;

@@ -7,7 +7,6 @@
  * nothing. Prints the aggregate summary as JSON; exits 1 when a phase failed.
  */
 
-import 'dotenv/config';
 import { parseArgs } from 'node:util';
 import { assertMigrationTarget } from '@oxy.so/db/migrate';
 import { street3dConfig } from '../config/street3d';

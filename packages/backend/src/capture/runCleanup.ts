@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { parseArgs } from 'node:util';
 import { assertMigrationTarget } from '@oxy.so/db/migrate';
 import { assertMigrationsCurrent, closePostgres, connectPostgres, getDb } from '../db/postgres';
