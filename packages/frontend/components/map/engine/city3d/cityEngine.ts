@@ -104,6 +104,7 @@ import type { CityOverlay, FrameUploadBudget } from './overlay';
 import {
   createGround,
   type Ground,
+  type GroundLattice,
   type GroundSampler,
   type GroundStats,
   TileGrounder,
@@ -354,14 +355,15 @@ export interface CityEngine {
   modelAnchors(): ReturnType<ReturnType<typeof createModelLayer>['anchors']>;
   /**
    * The terrain the buildings and trees stand on, as a sampler of the drawn
-   * ground, or `null` for none. Call again whenever the terrain changes (a DEM
-   * tile arrived); every tile is then re-grounded, a few per frame.
+   * ground and the DEM lattice it is drawn from (`terrainGround.ts`), or
+   * `null` for none. Call again whenever the terrain changes (a DEM tile
+   * arrived); every tile is then re-grounded, a few per frame.
    */
-  setGround(sample: GroundSampler | null): void;
+  setGround(sample: GroundSampler | null, lattice?: GroundLattice): void;
   dispose(): void;
 }
 
-/** Tiles re-grounded per frame: each is a 1,089-sample grid plus a pass over its vertices. */
+/** Tiles re-grounded per frame: each is a grid on the DEM lattice (4,356 samples for a z15 tile) plus a pass over its vertices. */
 const GROUND_TILES_PER_FRAME = 1;
 
 /**
@@ -1292,11 +1294,11 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       pass.render(tslPass, view);
     },
 
-    setGround(sample) {
+    setGround(sample, lattice) {
       // One terrain path and ONE cache of it (`terrainGround.ts` → `Ground`):
-      // buildings and trees (the grids), city life (the same grids), models,
+      // buildings, trees, the street detail and city life (the grids), models,
       // landmarks and live vehicles (the same sampler, at their anchor).
-      ground = sample ? createGround(sample) : null;
+      ground = sample ? createGround(sample, lattice) : null;
       grounder.setGround(ground);
       models.setGround(sample);
       for (const overlay of overlays) overlay.setGround(ground);

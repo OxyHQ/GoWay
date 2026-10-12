@@ -456,7 +456,7 @@ export function groundTileFor(entry: TileEntry, tile: TileId): GroundTile {
         for (let k = 0; k < instances.count; k++) {
           const u = (instances.data[k * 4] * instances.unitM) / tileSizeM;
           const v = (instances.data[k * 4 + 1] * instances.unitM) / tileSizeM;
-          const lift = gridAt(grid, GROUND.grid, u, v);
+          const lift = gridAt(grid, u, v);
           values[at + k] = lift;
           if (lift < min) min = lift;
           if (lift > max) max = lift;

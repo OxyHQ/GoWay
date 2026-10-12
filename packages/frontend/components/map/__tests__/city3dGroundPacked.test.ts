@@ -26,8 +26,10 @@ import {
   createGround,
   GROUND,
   gridAt,
+  latticeCells,
   polygonGround,
   sampleGroundGrid,
+  TERRAIN_LATTICE,
   TileGrounder,
   vertexGround,
 } from '@/components/map/engine/city3d/terrainGround';
@@ -108,8 +110,8 @@ describe('grounding a packed entry', () => {
     const packed = packMesh(mesh, SIZE);
     expect(packed.chunks[0].index).toBeInstanceOf(Uint32Array);
     const entry = createTileEntry(context(), createTreeShapes(), 'k@0', 0, packed, null);
-    const grid = sampleGroundGrid(TILE, GROUND.grid, hill);
-    const placed = polygonGround(grid, GROUND.grid, SIZE, mesh.polygonBoxes);
+    const grid = sampleGroundGrid(TILE, latticeCells(TILE, TERRAIN_LATTICE), hill);
+    const placed = polygonGround(grid, SIZE, mesh.polygonBoxes);
     const reference = vertexGround(mesh.positions, mesh.polygonStarts, placed).values;
     const lifted = groundTileFor(entry as NonNullable<typeof entry>, TILE).lift?.(placed, grid);
     let at = 0;
@@ -152,15 +154,15 @@ describe('grounding a packed entry', () => {
       SIZE,
     );
     const entry = createTileEntry(context(), createTreeShapes(), 't@0', 0, null, trees);
-    const grid = sampleGroundGrid(TILE, GROUND.grid, hill);
-    const placed = polygonGround(grid, GROUND.grid, SIZE, new Float32Array(0));
+    const grid = sampleGroundGrid(TILE, latticeCells(TILE, TERRAIN_LATTICE), hill);
+    const placed = polygonGround(grid, SIZE, new Float32Array(0));
     const lifted = groundTileFor(entry as NonNullable<typeof entry>, TILE).lift?.(placed, grid);
     expect(lifted?.values.length).toBe(2);
     // Packing sorts trees by shape: read each one's position back from it.
     for (let k = 0; k < 2; k++) {
       const u = ((trees?.data[k * 4] ?? 0) * (trees?.unitM ?? 0)) / SIZE;
       const v = ((trees?.data[k * 4 + 1] ?? 0) * (trees?.unitM ?? 0)) / SIZE;
-      expect(lifted?.values[k]).toBeCloseTo(gridAt(grid, GROUND.grid, u, v), 4);
+      expect(lifted?.values[k]).toBeCloseTo(gridAt(grid, u, v), 4);
     }
   });
 

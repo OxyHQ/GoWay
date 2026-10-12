@@ -51,6 +51,13 @@
  *    with the 3D city off.
  *  - **Streets**: the street detail drew the fixture's road tiles (`roadTile`),
  *    and over a junction turning it on changes at least 3% of the view.
+ *  - **Streets on a sloped, creased ground** (the `nosky` leg): the same
+ *    junction on a terrain with swells and metre-scale folds a few DEM pixels
+ *    across ({@link creasedMetres}), served at every zoom from one surface as
+ *    Mapterhorn's tiles are. Turning the street detail on must change at least
+ *    {@link CREASED_MIN_SHARE} of what it changes on flat ground: where the
+ *    drawn terrain rose through the street meshes (the Mallorca–Marina
+ *    report), the street was hidden under it and changed nothing there.
  *  - **Models** (the `objects` leg, sky off): the Sagrada Família, a landmark
  *    of the registry, changes at least 1% of the map against landmarks off.
  *  - **City life** (the `objects` leg, sky off, low preset): its simulated
@@ -162,6 +169,11 @@ function terrariumTile(metres: number, size = 512): Uint8Array {
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) raw.set(rgb, y * (size * 3 + 1) + 1 + x * 3);
   }
+  return png24(raw, size);
+}
+
+/** An RGB PNG from filtered scanlines (a 0 filter byte, then `size` RGB triples, per row). */
+function png24(raw: Uint8Array, size: number): Uint8Array {
   const header = new Uint8Array(13);
   const view = new DataView(header.buffer);
   view.setUint32(0, size);
@@ -182,6 +194,49 @@ function terrariumTile(metres: number, size = 512): Uint8Array {
   return out;
 }
 const TERRAIN_PNG = terrariumTile(TERRAIN_M);
+
+/**
+ * The creased ground, metres at a mercator point: TERRAIN_M with 3 m swells
+ * ~250 m across and 0.5 m folds ~120 m across (four to nine DEM pixels at
+ * z12) — bare-earth-like relief whose creases a coarser copy of the surface
+ * misses (`city3dStreetLattice.test.ts` uses the same folds).
+ */
+function creasedMetres(mx: number, my: number): number {
+  const metresPerUnit = 40_075_016.7 * Math.cos((SYNTHETIC_CENTRE.lat * Math.PI) / 180);
+  const m = (mx - (SYNTHETIC_CENTRE.lng + 180) / 360) * metresPerUnit;
+  const n = my * metresPerUnit;
+  return (
+    TERRAIN_M +
+    3 * Math.sin(m / 45) * Math.cos(n / 38) +
+    0.5 * Math.sin(m / 22 + 1) * Math.sin(n / 18)
+  );
+}
+
+/** A Terrarium PNG of {@link creasedMetres} for one DEM tile, its pixels at their centres. */
+const creasedTiles = new Map<string, Uint8Array>();
+function creasedTile(z: number, x: number, y: number, size = 512): Uint8Array {
+  const key = `${z}/${x}/${y}`;
+  const known = creasedTiles.get(key);
+  if (known) return known;
+  const raw = new Uint8Array(size * (size * 3 + 1));
+  for (let j = 0; j < size; j++) {
+    const my = (y + (j + 0.5) / size) / 2 ** z;
+    for (let i = 0; i < size; i++) {
+      const v =
+        Math.round((creasedMetres((x + (i + 0.5) / size) / 2 ** z, my) + 32768) * 256) / 256;
+      raw.set(
+        [Math.floor(v / 256), Math.floor(v) % 256, Math.round((v % 1) * 256)],
+        j * (size * 3 + 1) + 1 + i * 3,
+      );
+    }
+  }
+  const png = png24(raw, size);
+  creasedTiles.set(key, png);
+  return png;
+}
+
+/** How much of the flat ground's street change the creased ground must keep. */
+const CREASED_MIN_SHARE = 0.85;
 
 // --- The app: a dev server, or an `expo export --dev` output served here ----
 
@@ -270,6 +325,7 @@ async function answer(
   origin: string,
   basemap: 'buildings' | 'empty',
   terrain: Promise<void>,
+  relief: 'flat' | 'creased' = 'flat',
 ): Promise<void> {
   const url = new URL(route.request().url());
   const path = url.pathname;
@@ -287,7 +343,12 @@ async function answer(
   }
   if (path.includes('/map/terrain/')) {
     await terrain;
-    await route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from(TERRAIN_PNG) });
+    const at = /\/(\d+)\/(\d+)\/(\d+)\.\w+$/.exec(path);
+    const body =
+      relief === 'creased' && at
+        ? creasedTile(Number(at[1]), Number(at[2]), Number(at[3]))
+        : TERRAIN_PNG;
+    await route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from(body) });
     return;
   }
   for (const prefix of ['/map/fonts/', '/map/sprites/']) {
@@ -408,6 +469,8 @@ async function view(
   tilt: 'ease' | 'jump' = 'ease',
   /** The page's clock: local noon, or the night view's midnight. */
   time: Date = NOON,
+  /** The ground: flat at TERRAIN_M, or {@link creasedMetres}. */
+  relief: 'flat' | 'creased' = 'flat',
 ): Promise<View> {
   const started = Date.now();
   // Per-view progress on stderr, so a CI log says WHICH view and WHICH step
@@ -427,7 +490,7 @@ async function view(
   const terrain = new Promise<void>((done) => {
     releaseTerrain = done;
   });
-  await context.route('**/*', (route) => answer(route, origin, basemap, terrain));
+  await context.route('**/*', (route) => answer(route, origin, basemap, terrain, relief));
   const page = await context.newPage();
   if (DEBUG) {
     page.on('console', (m) => {
@@ -1033,7 +1096,7 @@ try {
       // the reference is a map with no buildings standing at all.
       'empty',
     );
-    const r = {
+    const r: Record<string, number> = {
       trees: withTrees.trees,
       triangles: noTrees.triangles,
       canopyPct: await share(browser, withTrees.png, 'canopy'),
@@ -1044,6 +1107,36 @@ try {
       streetsChangedPct: await differs(browser, streets.png, noStreets.png),
     };
     results[label] = r;
+    if (label === 'nosky') {
+      // The same junction on a sloped, creased ground.
+      const creased = (name: string, withStreets: boolean) =>
+        view(
+          browser,
+          origin,
+          withStreets ? flags : flags.replace('&cityStreets=1', ''),
+          choices,
+          outDir,
+          name,
+          'buildings',
+          JUNCTION,
+          'high',
+          null,
+          'ease',
+          NOON,
+          'creased',
+        );
+      const on = await creased(`${label}-creased-streets`, true);
+      const off = await creased(`${label}-creased-nostreets`, false);
+      const pct = await differs(browser, on.png, off.png);
+      r.creasedStreetTriangles = on.streetTriangles;
+      r.creasedStreetsChangedPct = pct;
+      if (on.streetTriangles === 0)
+        failures.push(`${label}: no streets drawn on the creased ground`);
+      else if (pct < CREASED_MIN_SHARE * r.streetsChangedPct)
+        failures.push(
+          `${label}: on a creased ground the streets change ${pct}% of the view, on flat ground ${r.streetsChangedPct}%: the terrain covers the street detail`,
+        );
+    }
     if (r.trees === 0)
       failures.push(`${label}: the engine drew no trees (the fixture is not reaching it)`);
     else if (r.canopyPct < Math.max(1, 3 * r.canopyPctWithoutTrees))
