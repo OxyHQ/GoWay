@@ -231,20 +231,20 @@ imports only that. Never import the `settings-modal` barrel here: it puts
 `Select` back at first paint. An app-side resolver alias would have been
 config copied out of `@oxy.so/app-preset`, which AGENTS.md forbids.
 
-Bloom 6.2.1 → 7.33.0, same build (`--clear`, no map variables, gzip -9),
+Bloom 6.2.1 → 7.33.1, same build (`--clear`, no map variables, gzip -9),
 three A/B builds so each change is measured alone:
 
-| Chunk | 6.2.1, barrel | 7.33.0, barrel | 7.33.0, `settings-modal/modal` |
+| Chunk | 6.2.1, barrel | 7.33.1, barrel | 7.33.1, `settings-modal/modal` |
 | --- | ---: | ---: | ---: |
-| `entry` (first paint) | 7,010,105 B (1,763,732 gz) | 7,061,569 B (1,778,321 gz) | 7,061,569 B (1,778,328 gz) |
-| `__common` (first paint) | 100,520 B (28,427 gz) | 100,921 B (28,554 gz) | **84,754 B (23,837 gz)** |
+| `entry` (first paint) | 7,010,105 B (1,763,734 gz) | 7,061,853 B (1,778,378 gz) | 7,061,853 B (1,778,377 gz) |
+| `__common` (first paint) | 100,520 B (28,433 gz) | 100,921 B (28,547 gz) | **84,754 B (23,839 gz)** |
 | `global.css` (first paint) | 56,084 B (10,519 gz) | 89,889 B (15,192 gz) | 89,889 B (15,192 gz) |
-| `MapSettingsModal` (lazy) | 258,951 B (73,607 gz) | 264,012 B (74,889 gz) | **143,275 B (40,450 gz)** |
+| `MapSettingsModal` (lazy) | 258,951 B (73,603 gz) | 264,012 B (74,888 gz) | **143,275 B (40,447 gz)** |
 
-The lean entry takes `__common` down 4,717 B gz and the modal chunk down
-34,439 B gz; `Select` now ships only in Oxy's lazy `EditProfileFieldScreen`
+The lean entry takes `__common` down 4,708 B gz and the modal chunk down
+34,441 B gz; `Select` now ships only in Oxy's lazy `EditProfileFieldScreen`
 chunk, and `FileUpload` nowhere. The version itself costs the entry
-+14,589 B gz and `global.css` +4,673 B gz (Bloom 7's larger `theme.css`). The
++14,644 B gz and `global.css` +4,673 B gz (Bloom 7's larger `theme.css`). The
 entry growth is spread over families GoWay already draws (radio and the
 collapsible it now links, layout, theme, tokens, button, text field, dialog),
 not one new family. Measured by A/B build, never by per-source attribution
@@ -255,7 +255,7 @@ not one new family. Measured by A/B build, never by per-source attribution
 - Native was typechecked, not run: the bottom-sheet presentation and the
   AsyncStorage hydration (defaults for the moment before storage answers, then
   the stored choices) are untested on a device.
-- Bloom's `Switch` (6.2.1 through 7.33.0) starts its spring animation during render, so React
+- Bloom's `Switch` (6.2.1 through 7.33.1) starts its spring animation during render, so React
   logs "Cannot update a component while rendering `Switch`" in development on
   every controlled toggle. Harmless, and Bloom's to fix.
 - The 3D city attaches asynchronously: for the second or so its chunk and
