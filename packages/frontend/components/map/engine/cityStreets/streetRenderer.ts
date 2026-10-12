@@ -30,7 +30,7 @@ import {
   tileSizeMetres,
   type ViewTile,
 } from '../city3d/tileMath';
-import { WorkerPool } from '../city3d/workerPool';
+import { WorkerPool, webWorker } from '../city3d/workerPool';
 import type { PackedMarkings, PackedSurfaces } from './meshBuffers';
 import type { StreetWorkerRequest, StreetWorkerResponse } from './protocol';
 import { createGroundAtlas } from './groundAtlas';
@@ -253,7 +253,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
   const previousLods = new Map<string, 0 | 1 | 2>();
 
   const pool = new WorkerPool<StreetWorkerRequest & { id: number }, StreetWorkerResponse>(
-    () => new Worker(new URL('./streetWorker', import.meta.url)),
+    (events) => webWorker(new Worker(new URL('./streetWorker', import.meta.url)), events),
     1,
     (reply) => onReply(reply),
     (id, message) => onReply({ type: 'error', id, message }),
