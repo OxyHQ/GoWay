@@ -61,19 +61,15 @@ const JD_UNIX_EPOCH = 2_440_587.5;
 const JD_J2000 = 2_451_545;
 const DAYS_PER_JULIAN_CENTURY = 36_525;
 
-/**
- * The sun's azimuth and altitude at `date`, seen from (`latitudeDeg`,
- * `longitudeDeg`).
- *
- * Longitude is degrees east and may be UNWRAPPED (MapLibre reports 181° for a
- * point just past the antimeridian): only its sine and cosine survive into the
- * hour angle, so 181 and −179 give the same answer.
- *
- * Total over numbers: a non-finite input gives a non-finite output rather than
- * a throw. Deciding what to do about that is the caller's business, and the
- * one caller falls back to the static style light.
- */
-export function sunPosition(date: Date, latitudeDeg: number, longitudeDeg: number): SunPosition {
+/** Where the sun is against the earth at an instant: what every point's sky follows from. */
+interface SolarEphemeris {
+  /** Declination, radians. */
+  declination: number;
+  /** Equation of time, minutes: how far the sundial runs ahead of the clock. */
+  equationOfTimeMin: number;
+}
+
+function solarEphemeris(date: Date): SolarEphemeris {
   const julianDay = date.getTime() / MS_PER_DAY + JD_UNIX_EPOCH;
   // Julian centuries since J2000. UT is used for TT; the ~70 s between them
   // moves the sun by about 0.0008°.
@@ -115,6 +111,24 @@ export function sunPosition(date: Date, latitudeDeg: number, longitudeDeg: numbe
       0.5 * y * y * Math.sin(4 * l0) -
       1.25 * eccentricity * eccentricity * Math.sin(2 * m));
 
+  return { declination, equationOfTimeMin };
+}
+
+/**
+ * The sun's azimuth and altitude at `date`, seen from (`latitudeDeg`,
+ * `longitudeDeg`).
+ *
+ * Longitude is degrees east and may be UNWRAPPED (MapLibre reports 181° for a
+ * point just past the antimeridian): only its sine and cosine survive into the
+ * hour angle, so 181 and −179 give the same answer.
+ *
+ * Total over numbers: a non-finite input gives a non-finite output rather than
+ * a throw. Deciding what to do about that is the caller's business, and the
+ * one caller falls back to the static style light.
+ */
+export function sunPosition(date: Date, latitudeDeg: number, longitudeDeg: number): SunPosition {
+  const { declination, equationOfTimeMin } = solarEphemeris(date);
+
   // True solar time at the point, in minutes since solar midnight, and from
   // it the hour angle: 0 at local solar noon, positive in the afternoon.
   const utcMinutes = mod(date.getTime() / 60_000, 1440);
@@ -142,6 +156,20 @@ export function sunPosition(date: Date, latitudeDeg: number, longitudeDeg: numbe
     azimuthDeg: mod(fromSouth / DEG + 180, 360),
     altitudeDeg: altitude / DEG,
   };
+}
+
+/**
+ * The SUBSOLAR POINT at `date`: where on the earth the sun stands at the
+ * zenith (latitude = the declination; longitude where it is solar noon). The
+ * globe's day and night are drawn from it (`style/globeNight.ts`): a point's
+ * sun altitude is 90° minus its angle from here.
+ */
+export function subsolarPoint(date: Date): { lat: number; lng: number } {
+  const { declination, equationOfTimeMin } = solarEphemeris(date);
+  const utcMinutes = mod(date.getTime() / 60_000, 1440);
+  // Solar noon: utc + EoT + 4·lng ≡ 720 minutes.
+  const lng = mod((720 - utcMinutes - equationOfTimeMin) / 4 + 180, 360) - 180;
+  return { lat: declination / DEG, lng };
 }
 
 /** Floored modulo: always in `[0, n)`, which `%` is not for a negative input. */
