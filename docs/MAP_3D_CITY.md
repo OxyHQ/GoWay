@@ -584,6 +584,15 @@ fabricated places on the public map; the same rule governs buildings:
   on the ground), so what draws it can tell a default from a fact. A default
   is not "corrected" to look like a city.
 
+  *A fact its own record contradicts is not read.* A recorded height that
+  the same record makes impossible is dropped and counted, not adjusted:
+  an OSM outline's `height` of 100 m or more that is over 20 m a tagged
+  storey AND over 20 times the side of its footprint (`tags.ts` →
+  `contradictedHeight`: 14 outlines in every published region, elevations
+  typed into `height`), and a cadastral part's storeys above the region's
+  ceiling or standing alone as a needle (`MAP_3D_SOURCES.md` → Implausible
+  storeys). What remains is the next source down the precedence.
+
   *Measured ≠ invented — and why nothing is measured.* A height measured from
   a surface model would be data, not a guess, and was tried for the default
   buildings (the flat block at Passeig de Gràcia / Mallorca: OSM ways

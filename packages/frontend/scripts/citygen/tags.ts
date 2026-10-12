@@ -40,6 +40,15 @@ export type Tags = Readonly<Record<string, string>>;
 const MAX_HEIGHT_M = 1000;
 /** The most storeys any building has (Burj Khalifa: 163). */
 const MAX_LEVELS = 200;
+/**
+ * A tagged `height` this tall is checked against the building's own tagged
+ * storeys and footprint ({@link contradictedHeight}).
+ */
+export const CHECKED_HEIGHT_M = 100;
+/** Metres a storey: above this on average, `height` and `building:levels` contradict. */
+export const MAX_METRES_PER_STOREY = 20;
+/** Height over the side of the footprint above which nothing built stands (pencil towers: ~15). */
+export const MAX_SLENDERNESS = 20;
 const FEET = 0.3048;
 const INCHES = 0.0254;
 
@@ -436,6 +445,35 @@ export function parseLitAtNight(tags: Tags): boolean {
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
 /**
+ * Whether a tagged `height` is contradicted by the same building's own
+ * tags and shape, and so is not read: a whole building outline (not a
+ * `building:part` — 3D mappers model thin cores and spires as parts on
+ * purpose) standing on the ground (no `min_height`/`building:min_level`)
+ * whose `height` is at least {@link CHECKED_HEIGHT_M}, more than
+ * {@link MAX_METRES_PER_STOREY} a tagged storey, AND more than
+ * {@link MAX_SLENDERNESS} times the side of its footprint. All three at once
+ * is a typo or a different number in the height key (an elevation above sea
+ * level: 940 m on a 47 m² one-storey house in the Canaries), not a building.
+ * Measured on every region published on 2026-10-12: of 2.18 million
+ * features tagged with both keys, 14 outlines pass, all of them 140–940 m
+ * on 1–6 storeys and 16–1,270 m²; the first two tests alone would also take
+ * wide single-storey halls, church towers and chimneys. The storeys then set
+ * the height, as for a building with no `height` at all, and the dropped
+ * tag counts as rejected in the receipt like any unreadable one.
+ */
+export function contradictedHeight(
+  height: number,
+  levels: number | undefined,
+  footprintM2: number | undefined,
+): boolean {
+  if (height < CHECKED_HEIGHT_M || levels === undefined || levels < 1) return false;
+  if (footprintM2 === undefined || !(footprintM2 > 0)) return false;
+  return (
+    height > levels * MAX_METRES_PER_STOREY && height > MAX_SLENDERNESS * Math.sqrt(footprintM2)
+  );
+}
+
+/**
  * Tags → tile properties.
  *
  * `span` is the footprint's roof frame, needed only when a shaped roof has
@@ -446,13 +484,24 @@ export function resolveProperties(
   tags: Tags,
   kind: 'building' | 'part',
   span: RoofSpan | undefined,
+  /** The footprint's area, m², for {@link contradictedHeight}. */
+  footprintM2?: number,
 ): CityFeatureProperties {
   const props: CityFeatureProperties = {};
 
-  const height = parseLength(tags.height);
   const minHeight = parseLength(tags.min_height, true);
   const levels = parseLevels(tags['building:levels']);
   const minLevel = parseLevels(tags['building:min_level']);
+  let height = parseLength(tags.height);
+  if (
+    height !== undefined &&
+    kind === 'building' &&
+    minHeight === undefined &&
+    minLevel === undefined &&
+    contradictedHeight(height, levels, footprintM2)
+  ) {
+    height = undefined;
+  }
   const roofLevels = parseLevels(tags['roof:levels']);
 
   // The roof, if it has a shape.

@@ -43,6 +43,16 @@
  * These are typical values from the rules, not measurements of each building:
  * the storey count is the recorded fact, the metres are a model, and the doc
  * (`docs/MAP_3D_SOURCES.md`) says so.
+ *
+ * ## The most storeys a region has
+ *
+ * `maxStoreys` is the ceiling above which a recorded count is not a building's
+ * storeys at all. Spain's tallest towers record 59 above ground in the
+ * Catastro (Madrid's Cuatro Torres, every part of each tower at 50–59); the
+ * Catastro's 100 and 111 are not storeys — they stand on 2–274 m² parts
+ * (a chimney's footprint, a single-part shed) whose neighbours have 2–5, and
+ * the storey model turned them into 307–340 m needles on the map
+ * (`docs/MAP_3D_SOURCES.md` → Implausible storeys).
  */
 
 export interface StoreyModel {
@@ -52,13 +62,15 @@ export interface StoreyModel {
   upper: number;
   /** Above the top floor's ceiling: parapet or roof edge, metres. */
   parapet: number;
+  /** More recorded storeys than this is not a storey count (see the module header). */
+  maxStoreys: number;
 }
 
 export const STOREY_MODELS = {
   /** OpenMapTiles' 3.66 m a storey, for anywhere without a better rule. */
-  default: { ground: 3.66, upper: 3.66, parapet: 0 },
+  default: { ground: 3.66, upper: 3.66, parapet: 0, maxStoreys: 200 },
   /** Spain; see the module header for the sources. */
-  es: { ground: 4.0, upper: 3.05, parapet: 0.9 },
+  es: { ground: 4.0, upper: 3.05, parapet: 0.9, maxStoreys: 60 },
 } as const satisfies Record<string, StoreyModel>;
 
 export type StoreyRegion = keyof typeof STOREY_MODELS;
