@@ -263,6 +263,51 @@ export function findEntry(entries, tileId) {
   return null;
 }
 
+/**
+ * A directory decoded into four typed arrays — 24 bytes an entry — rather than
+ * an object per entry (~80 bytes in V8). Measured 2026-10-12: the planet
+ * basemap's 2,917 leaf directories hold 17,685 entries each (~1.4 MB as
+ * objects, 424 kB here), the city archives' 4,096. The Worker keeps these.
+ */
+export function decodeDirectoryCompact(bytes) {
+  const state = { bytes, offset: 0 };
+  const count = readVarint(state);
+  const tileIds = new Float64Array(count);
+  const runLengths = new Uint32Array(count);
+  const lengths = new Uint32Array(count);
+  const offsets = new Float64Array(count);
+  let tileId = 0;
+  for (let i = 0; i < count; i += 1) {
+    tileId += readVarint(state);
+    tileIds[i] = tileId;
+  }
+  for (let i = 0; i < count; i += 1) runLengths[i] = readVarint(state);
+  for (let i = 0; i < count; i += 1) lengths[i] = readVarint(state);
+  for (let i = 0; i < count; i += 1) {
+    const value = readVarint(state);
+    offsets[i] = value === 0 && i > 0 ? offsets[i - 1] + lengths[i - 1] : value - 1;
+  }
+  return { count, tileIds, runLengths, lengths, offsets, bytes: count * 24 };
+}
+
+/** {@link findEntry} over a compact directory: the entry's index, or -1. */
+export function findEntryCompact(directory, tileId) {
+  const { tileIds, runLengths } = directory;
+  let low = 0;
+  let high = directory.count - 1;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    const delta = tileId - tileIds[middle];
+    if (delta > 0) low = middle + 1;
+    else if (delta < 0) high = middle - 1;
+    else return middle;
+  }
+  if (high < 0) return -1;
+  if (runLengths[high] === 0) return high;
+  if (tileId - tileIds[high] < runLengths[high]) return high;
+  return -1;
+}
+
 /** Undo the archive's internal compression. Only gzip is ever written. */
 export async function decompress(bytes, compression) {
   if (compression === COMPRESSION.NONE) return bytes;
@@ -317,11 +362,15 @@ export class PMTiles {
     this.headerPromise = null;
   }
 
-  /** The parsed header, and the root directory bytes if they came for free. */
+  /**
+   * The parsed header and the decoded root directory, from the memo when it
+   * has them. The root's bytes are not kept: a warm isolate needs only the
+   * decoded form.
+   */
   async open() {
     if (!this.headerPromise && this.memo) {
       const remembered = this.memo.get(`${this.name}|header`);
-      if (remembered) this.headerPromise = remembered;
+      if (remembered) this.headerPromise = Promise.resolve(remembered);
     }
     if (!this.headerPromise) {
       this.headerPromise = (async () => {
@@ -332,28 +381,28 @@ export class PMTiles {
           end <= head.length
             ? head.subarray(header.rootDirOffset, end)
             : await this.source.read(header.rootDirOffset, header.rootDirLength, { hot: true });
-        return { header, rootBytes };
+        const root = decodeDirectoryCompact(
+          await decompress(rootBytes, header.internalCompression),
+        );
+        const opened = { header, root };
+        // The header object is small; the root is counted at 24 B an entry.
+        this.memo?.set(`${this.name}|header`, opened, root.bytes + 512);
+        return opened;
       })();
-      if (this.memo) {
-        const key = `${this.name}|header`;
-        const promise = this.headerPromise;
-        this.memo.set(key, promise);
-        // A failed read must not be remembered as the archive's header.
-        promise.catch(() => this.memo.delete(key));
-      }
     }
     return this.headerPromise;
   }
 
-  /** A directory's entries, decoded once per memo. */
-  async directory(key, load) {
-    const memoKey = `${this.name}|${key}`;
-    const remembered = this.memo?.get(memoKey);
+  /** A leaf directory, decoded once per memo. */
+  async leaf(offset, length) {
+    const key = `${this.name}|leaf@${offset}`;
+    const remembered = this.memo?.get(key);
     if (remembered) return remembered;
     const { header } = await this.open();
-    const entries = decodeDirectory(await decompress(await load(), header.internalCompression));
-    this.memo?.set(memoKey, entries);
-    return entries;
+    const bytes = await this.source.read(offset, length, { hot: true });
+    const directory = decodeDirectoryCompact(await decompress(bytes, header.internalCompression));
+    this.memo?.set(key, directory, directory.bytes);
+    return directory;
   }
 
   /** The parsed header alone. */
@@ -378,24 +427,26 @@ export class PMTiles {
    * the Atlantic into an incident.
    */
   async getTile(z, x, y) {
-    const { header, rootBytes } = await this.open();
+    const { header, root } = await this.open();
     if (z < header.minZoom || z > header.maxZoom) return null;
 
     const tileId = zxyToTileId(z, x, y);
-    let directory = await this.directory('root', async () => rootBytes);
+    let directory = root;
 
     for (let depth = 0; depth < MAX_DIRECTORY_DEPTH; depth += 1) {
-      const entry = findEntry(directory, tileId);
-      if (!entry) return null;
-      if (entry.runLength > 0) {
-        const bytes = await this.source.read(header.tileDataOffset + entry.offset, entry.length, {
-          hot: false,
-        });
+      const index = findEntryCompact(directory, tileId);
+      if (index < 0) return null;
+      if (directory.runLengths[index] > 0) {
+        const bytes = await this.source.read(
+          header.tileDataOffset + directory.offsets[index],
+          directory.lengths[index],
+          { hot: false },
+        );
         return { bytes, compression: header.tileCompression, type: header.tileType };
       }
-      const offset = header.leafDirsOffset + entry.offset;
-      directory = await this.directory(`leaf@${offset}`, () =>
-        this.source.read(offset, entry.length, { hot: true }),
+      directory = await this.leaf(
+        header.leafDirsOffset + directory.offsets[index],
+        directory.lengths[index],
       );
     }
     throw new Error(`tile ${z}/${x}/${y} is nested deeper than ${MAX_DIRECTORY_DEPTH} directories`);
@@ -403,39 +454,52 @@ export class PMTiles {
 }
 
 /**
- * What a warm isolate remembers about the archives it reads: each one's parsed
- * header and its decoded directories, least recently used out first.
+ * What a warm isolate remembers about the archives it reads — each one's
+ * header with its decoded root, and decoded leaf directories — bounded by
+ * BYTES, least recently used out first.
  *
- * Without it every tile request re-read the header and directories — from the
- * colo's cache when lucky, from R2 when not — and decoded them again. With it,
- * a tile request in a warm isolate costs exactly one storage read: the tile.
- * The bound is on entries: a decoded leaf directory of a few thousand entries
- * is a few hundred kilobytes of objects, and an isolate has 128 MB.
+ * Bytes, not entries, because entries differ by a factor of four: a planet
+ * leaf is 17,685 entries (424 kB compact), a city leaf 4,096 (98 kB). A value
+ * larger than the whole budget is not kept at all; the edge cache still has
+ * its bytes.
  */
 export class DirectoryMemo {
-  constructor(maxEntries = 128) {
-    this.maxEntries = maxEntries;
+  constructor(maxBytes) {
+    this.maxBytes = maxBytes;
+    this.bytes = 0;
     this.entries = new Map();
   }
 
   get(key) {
-    const value = this.entries.get(key);
-    if (value === undefined) return undefined;
+    const slot = this.entries.get(key);
+    if (slot === undefined) return undefined;
     this.entries.delete(key);
-    this.entries.set(key, value);
-    return value;
+    this.entries.set(key, slot);
+    return slot.value;
   }
 
-  set(key, value) {
-    this.entries.delete(key);
-    this.entries.set(key, value);
-    while (this.entries.size > this.maxEntries) {
-      this.entries.delete(this.entries.keys().next().value);
+  set(key, value, bytes) {
+    this.delete(key);
+    if (!(bytes <= this.maxBytes)) return;
+    this.entries.set(key, { value, bytes });
+    this.bytes += bytes;
+    while (this.bytes > this.maxBytes) {
+      const [oldest, slot] = this.entries.entries().next().value;
+      this.entries.delete(oldest);
+      this.bytes -= slot.bytes;
     }
   }
 
   delete(key) {
+    const slot = this.entries.get(key);
+    if (slot === undefined) return;
     this.entries.delete(key);
+    this.bytes -= slot.bytes;
+  }
+
+  clear() {
+    this.entries.clear();
+    this.bytes = 0;
   }
 
   get size() {

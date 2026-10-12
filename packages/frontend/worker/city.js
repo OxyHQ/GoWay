@@ -50,7 +50,9 @@
  * bucket.
  */
 
-import { coverageAt, decodeCoverageTree, FULL } from './coverageTree.js';
+import { MEMORY_BUDGET } from './budget.js';
+import { compactCoverageAt, compactCoverageTree, FULL } from './coverageTree.js';
+import { DirectoryMemo } from './pmtiles.js';
 import { serveArchiveTile } from './tiles.js';
 
 /** `/map/city/{z}/{x}/{y}.pbf` and `/map/city-roads/…`, and nothing that merely resembles them. */
@@ -153,10 +155,9 @@ export function parseCityManifest(document) {
     return {
       id: region.id,
       bbox,
-      ownership: region.ownership,
+      ownership: { maxZoom: region.ownership.maxZoom, bits: region.ownership.bits },
       city: ref(region.city, 'city'),
       roads: ref(region.roads, 'city-roads'),
-      tree: null,
     };
   });
   for (const kind of ['coverage', 'roadsCoverage']) {
@@ -165,7 +166,60 @@ export function parseCityManifest(document) {
       throw new Error(`${kind} is not a z${COVERAGE_ZOOM} coverage tree`);
     }
   }
-  return { document, regions, keys: new Set(regions.flatMap(archiveKeysOf)) };
+  // What `/map/city/coverage.json` answers, built once per manifest: the
+  // parsed document itself is not kept (its 2.6 MB of objects would be the
+  // largest thing in the isolate), only what the routes read.
+  const coverageBody = JSON.stringify({
+    schema: 2,
+    generatedAt: document.generatedAt,
+    tileZoom: CITY_ZOOM,
+    tiles: { maxZoom: document.coverage.maxZoom, bits: document.coverage.bits },
+    roads: { maxZoom: document.roadsCoverage.maxZoom, bits: document.roadsCoverage.bits },
+    regions: document.regions.map((region) => ({
+      id: region.id,
+      name: region.name,
+      bbox: region.bbox,
+      replicationTimestamp: region.source?.replicationTimestamp,
+    })),
+    manifest: '/map/city/manifest.json',
+  });
+  return {
+    version: String(document.generatedAt ?? ''),
+    regions,
+    keys: new Set(regions.flatMap(archiveKeysOf)),
+    coverageBody,
+  };
+}
+
+/**
+ * Bytes a parsed manifest holds, by the strings and small objects it keeps —
+ * an estimate on the high side (two bytes a character, ~300 B a region), for
+ * the memory budget and its test.
+ */
+export function manifestBytes(manifest) {
+  let bytes = manifest.coverageBody.length * 2;
+  for (const region of manifest.regions) {
+    bytes += 300 + region.id.length * 2 + region.ownership.bits.length * 2;
+    for (const ref of [region.city, region.roads]) if (ref) bytes += 4 * ref.key.length + 64;
+  }
+  return bytes;
+}
+
+/**
+ * Decoded ownership trees, compact (5 B a node), least recently used out
+ * first within their byte budget: an isolate holds the regions it is asked
+ * about, not the planet's 4.58 M nodes.
+ */
+const ownershipTrees = new DirectoryMemo(MEMORY_BUDGET.ownershipTrees);
+
+function ownershipTree(manifest, region) {
+  const key = `${manifest.version}|${region.id}`;
+  let tree = ownershipTrees.get(key);
+  if (!tree) {
+    tree = compactCoverageTree(region.ownership);
+    ownershipTrees.set(key, tree, tree.bytes);
+  }
+  return tree;
 }
 
 function archiveKeysOf(region) {
@@ -201,39 +255,53 @@ async function loadManifest(env, ctx) {
   return memory.loading;
 }
 
-async function refreshManifest(env, ctx, key) {
-  const cacheKey = new Request(`https://goway.internal/city-manifest/${encodeURIComponent(key)}`);
+function manifestCacheKey(key) {
+  return new Request(`https://goway.internal/city-manifest/${encodeURIComponent(key)}`);
+}
+
+/** The manifest's text and etag, from the colo's cache or R2 (then cached). */
+async function fetchManifest(env, ctx, key, knownEtag) {
   const cache = caches.default;
-  let body = null;
-  let etag = null;
-  const hit = await cache.match(cacheKey);
+  const hit = await cache.match(manifestCacheKey(key));
   if (hit) {
-    etag = hit.headers.get('x-goway-etag');
-    if (etag && memory.key === key && memory.value && etag === memory.etag) {
+    const etag = hit.headers.get('x-goway-etag');
+    if (etag && knownEtag && etag === knownEtag) {
       await hit.body?.cancel();
-      memory.at = Date.now();
-      return memory.value;
+      return { body: null, etag };
     }
-    body = await hit.text();
+    return { body: await hit.text(), etag };
   }
-  if (!body) {
-    const object = await env.MAP_TILES.get(key);
-    if (!object) throw new Error(`the city manifest "${key}" is missing from the bucket`);
-    body = await object.text();
-    etag = object.etag ?? null;
-    ctx.waitUntil(
-      cache.put(
-        cacheKey,
-        new Response(body, {
-          headers: {
-            'cache-control': `public, max-age=${MANIFEST_TTL}`,
-            ...(etag ? { 'x-goway-etag': etag } : {}),
-          },
-        }),
-      ),
-    );
+  const object = await env.MAP_TILES.get(key);
+  if (!object) throw new Error(`the city manifest "${key}" is missing from the bucket`);
+  const body = await object.text();
+  const etag = object.etag ?? null;
+  ctx.waitUntil(
+    cache.put(
+      manifestCacheKey(key),
+      new Response(body, {
+        headers: {
+          'cache-control': `public, max-age=${MANIFEST_TTL}`,
+          ...(etag ? { 'x-goway-etag': etag } : {}),
+        },
+      }),
+    ),
+  );
+  return { body, etag };
+}
+
+/** The manifest as published, for `/map/city/manifest.json`. */
+async function manifestText(env, ctx) {
+  return (await fetchManifest(env, ctx, env.MAP_CITY_MANIFEST, null)).body;
+}
+
+async function refreshManifest(env, ctx, key) {
+  const known = memory.key === key && memory.value ? memory.etag : null;
+  const { body, etag } = await fetchManifest(env, ctx, key, known);
+  if (body === null) {
+    memory.at = Date.now();
+    return memory.value;
   }
-  const value = { ...parseCityManifest(JSON.parse(body)), body };
+  const value = parseCityManifest(JSON.parse(body));
   memory.key = key;
   memory.at = Date.now();
   memory.value = value;
@@ -258,8 +326,7 @@ export function ownerOf(manifest, x, y) {
   for (const region of manifest.regions) {
     const [w, s, e, nn] = region.bbox;
     if (lon < w || lon > e || lat < s || lat > nn) continue;
-    region.tree ??= decodeCoverageTree(region.ownership);
-    if (coverageAt(region.tree, CITY_ZOOM, CITY_ZOOM, x, y) === FULL) return region;
+    if (compactCoverageAt(ownershipTree(manifest, region), CITY_ZOOM, x, y) === FULL) return region;
   }
   return null;
 }
@@ -341,21 +408,7 @@ export async function serveCityCoverage(request, env, ctx) {
     // Not a 200: the client reads any failure as "no coverage" and draws the basemap.
     return text(503, `The city manifest could not be read: ${error.message}`, 0);
   }
-  const document = manifest.document;
-  const body = JSON.stringify({
-    schema: 2,
-    generatedAt: document.generatedAt,
-    tileZoom: CITY_ZOOM,
-    tiles: { maxZoom: document.coverage.maxZoom, bits: document.coverage.bits },
-    roads: { maxZoom: document.roadsCoverage.maxZoom, bits: document.roadsCoverage.bits },
-    regions: document.regions.map((region) => ({
-      id: region.id,
-      name: region.name,
-      bbox: region.bbox,
-      replicationTimestamp: region.source?.replicationTimestamp,
-    })),
-    manifest: '/map/city/manifest.json',
-  });
+  const body = manifest.coverageBody;
   return withMethod(
     request,
     new Response(body, {
@@ -368,15 +421,16 @@ export async function serveCityCoverage(request, env, ctx) {
 export async function serveCityManifest(request, env, ctx) {
   if (!configured(env))
     return withMethod(request, text(404, 'No city manifest is published.', 300));
-  let manifest;
+  // Read, not remembered: the isolate keeps only the slim parse.
+  let body;
   try {
-    manifest = await loadManifest(env, ctx);
+    body = await manifestText(env, ctx);
   } catch (error) {
     return text(503, `The city manifest could not be read: ${error.message}`, 0);
   }
   return withMethod(
     request,
-    new Response(manifest.body, {
+    new Response(body, {
       headers: headers(MANIFEST_TTL, { 'content-type': 'application/json' }),
     }),
   );
@@ -448,6 +502,7 @@ export async function serveCity(url, request, env, ctx) {
 
 /** For tests: forget the per-isolate manifest. */
 export function forgetCityManifest() {
+  ownershipTrees.clear();
   memory.key = null;
   memory.at = 0;
   memory.value = null;

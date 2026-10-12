@@ -31,7 +31,8 @@
  * Reading a tile is: the archive's header and root directory, usually one
  * leaf directory, then the tile's bytes. The tile is read once per colo (then
  * the edge cache answers); the header and directories are the same few
- * kilobytes for every tile of an archive, so they are kept three ways, nearest
+ * kilobytes for every tile of an archive (a planet leaf is 34 kB gzipped,
+ * 17,685 entries), so they are kept three ways, nearest
  * first: decoded, in this isolate's {@link DirectoryMemo}; as bytes, in the
  * colo's cache for a week (keyed by archive key — immutable); and in R2.
  * A warm isolate therefore reads exactly one range from R2 for a tile the
@@ -40,6 +41,7 @@
  * in production.
  */
 
+import { MEMORY_BUDGET } from './budget.js';
 import { COMPRESSION, DirectoryMemo, PMTiles, decompress } from './pmtiles.js';
 
 /** How long a directory read may be kept at the edge: a week (immutable per archive key). */
@@ -50,15 +52,16 @@ const STORED_COMPRESSION = 'x-goway-tile-compression';
 
 /**
  * The isolate's memory of archive headers and directories, shared by every
- * route. 192 entries: a header, a root and a leaf or two for each of the
- * archives a busy isolate touches (the basemap, and the few city regions in
- * view).
+ * route, bounded by bytes (`budget.js`): decoded compactly at 24 B an entry,
+ * 12 MiB holds ~28 of the planet's 17,685-entry leaves or ~120 city leaves —
+ * the leaves of the areas this isolate is being asked about. Past that, the
+ * least recently used leaf goes back to the edge cache.
  */
-const memo = new DirectoryMemo(192);
+const memo = new DirectoryMemo(MEMORY_BUDGET.directories);
 
 /** For tests: forget what this isolate has read. */
 export function forgetDirectories() {
-  memo.entries.clear();
+  memo.clear();
 }
 
 /**
@@ -160,15 +163,41 @@ export async function fromTileCacheEntry(entry) {
   };
 }
 
-/** Whether the client takes gzip (`Accept-Encoding`, `q=0` refusing it). */
+/**
+ * Whether the CLIENT takes gzip.
+ *
+ * Not the request's `Accept-Encoding`: Cloudflare rewrites it before the
+ * Worker runs (to `br, gzip`, Miniflare emulates the same), so it always says
+ * yes. The header the client actually sent is `request.cf.clientAcceptEncoding`
+ * — empty when it sent none. The request header is only the fallback for a
+ * runtime without `cf` (tests). And Cloudflare does not decode a vector tile
+ * for a client that cannot take gzip (it compresses only the content types it
+ * knows), so this answer is the whole decision: curl without `--compressed`,
+ * Java's HttpURLConnection, Python's urllib and GIS tools ask for nothing and
+ * must get the tile plain.
+ *
+ * RFC 9110 weights: an explicit `gzip` (or `x-gzip`) decides by its q; else a
+ * `*` does; `q=0` refuses (`*, gzip;q=0` is a no).
+ */
 export function acceptsGzip(request) {
-  const header = request.headers.get('accept-encoding') ?? '';
-  return header.split(',').some((part) => {
+  const cf = request.cf;
+  const header =
+    cf && typeof cf.clientAcceptEncoding === 'string'
+      ? cf.clientAcceptEncoding
+      : (request.headers.get('accept-encoding') ?? '');
+  let gzip = null;
+  let any = null;
+  for (const part of header.split(',')) {
     const [coding, ...params] = part.trim().toLowerCase().split(';');
-    if (coding !== 'gzip' && coding !== '*') return false;
+    if (!coding) continue;
     const q = params.map((p) => p.trim()).find((p) => p.startsWith('q='));
-    return !q || Number(q.slice(2)) > 0;
-  });
+    const weight = q === undefined ? 1 : Number(q.slice(2));
+    const value = Number.isFinite(weight) ? weight : 0;
+    if (coding === 'gzip' || coding === 'x-gzip') gzip = Math.max(gzip ?? 0, value);
+    else if (coding === '*') any = value;
+  }
+  if (gzip !== null) return gzip > 0;
+  return any !== null && any > 0;
 }
 
 /**

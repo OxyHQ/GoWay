@@ -8,9 +8,21 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { writePmtiles } from '../../scripts/citygen/pmtilesWriter';
+import { rectOwnership } from '../../scripts/citygen/ownership';
+import { encodeDirectory, writePmtiles } from '../../scripts/citygen/pmtilesWriter';
+import { MEMORY_BUDGET } from '../budget.js';
+import { manifestBytes } from '../city.js';
+import { compactCoverageTree, encodeCoverageTree } from '../coverageTree.js';
 import { serveTerrain, serveTile } from '../index.js';
-import { COMPRESSION, TILE_TYPE } from '../pmtiles.js';
+import {
+  COMPRESSION,
+  DirectoryMemo,
+  decodeDirectory,
+  decodeDirectoryCompact,
+  findEntry,
+  findEntryCompact,
+  TILE_TYPE,
+} from '../pmtiles.js';
 import { acceptsGzip, forgetDirectories, fromTileCacheEntry, tileCacheEntry } from '../tiles.js';
 
 const encoder = new TextEncoder();
@@ -190,6 +202,23 @@ describe('compressed on the wire', () => {
     expect(acceptsGzip(r('gzip;q=0'))).toBe(false);
     expect(acceptsGzip(r('br'))).toBe(false);
     expect(acceptsGzip(r(''))).toBe(false);
+    // An explicit gzip weight beats the wildcard (finding 6 of the review).
+    expect(acceptsGzip(r('*, gzip;q=0'))).toBe(false);
+    expect(acceptsGzip(r('*;q=0, gzip'))).toBe(true);
+    expect(acceptsGzip(r('x-gzip'))).toBe(true);
+  });
+
+  test("Cloudflare's rewritten Accept-Encoding is ignored for the client's own", () => {
+    // In production the Worker's request says `br, gzip` whatever the client
+    // sent; `cf.clientAcceptEncoding` is what it sent ('' for nothing).
+    const seen = (client) => ({
+      headers: new Headers({ 'accept-encoding': 'br, gzip' }),
+      cf: { clientAcceptEncoding: client },
+    });
+    expect(acceptsGzip(seen('gzip, deflate, br'))).toBe(true);
+    expect(acceptsGzip(seen(''))).toBe(false);
+    expect(acceptsGzip(seen('identity'))).toBe(false);
+    expect(acceptsGzip(seen('br'))).toBe(false);
   });
 
   test('a cache entry round-trips the stored bytes and the miss status', async () => {
@@ -259,5 +288,83 @@ describe('one storage read per tile', () => {
     await tile(one, 8100);
     await tile(two, 8100);
     expect(two.MAP_TILES.reads).toHaveLength(3);
+  });
+});
+
+describe('the memory budget', () => {
+  // Measured 2026-10-12 in R2: the planet basemap's leaves hold 17,685
+  // entries each (2,917 of them), the city archives' 4,096.
+  const PLANET_LEAF = 17685;
+
+  function leafBytes(count, firstTileId = 0) {
+    const entries = [];
+    for (let i = 0; i < count; i++) {
+      entries.push({
+        tileId: firstTileId + i * 3,
+        runLength: 1,
+        length: 900 + (i % 400),
+        offset: i * 2000,
+      });
+    }
+    return encodeDirectory(entries);
+  }
+
+  test('a compact planet leaf is 24 bytes an entry, and that is what it counts', () => {
+    const leaf = decodeDirectoryCompact(leafBytes(PLANET_LEAF));
+    expect(leaf.count).toBe(PLANET_LEAF);
+    const actual =
+      leaf.tileIds.byteLength +
+      leaf.runLengths.byteLength +
+      leaf.lengths.byteLength +
+      leaf.offsets.byteLength;
+    expect(leaf.bytes).toBe(actual);
+    expect(leaf.bytes).toBe(PLANET_LEAF * 24);
+    // The same lookups as the object form.
+    const objects = decodeDirectory(leafBytes(PLANET_LEAF));
+    for (const tileId of [0, 1, 3, 5000, 53052, 53055, 99999]) {
+      const index = findEntryCompact(leaf, tileId);
+      const entry = findEntry(objects, tileId);
+      expect(index < 0 ? null : leaf.offsets[index]).toBe(entry ? entry.offset : null);
+    }
+  });
+
+  test('filled with a hundred planet leaves, the directory memo stays inside its bytes', () => {
+    const memo = new DirectoryMemo(MEMORY_BUDGET.directories);
+    for (let i = 0; i < 100; i++) {
+      const leaf = decodeDirectoryCompact(leafBytes(PLANET_LEAF, i * 100000));
+      memo.set(`planet|leaf@${i}`, leaf, leaf.bytes);
+      expect(memo.bytes).toBeLessThanOrEqual(MEMORY_BUDGET.directories);
+    }
+    // ~28 planet leaves fit; the most recent ones are the ones kept.
+    expect(memo.size).toBe(Math.floor(MEMORY_BUDGET.directories / (PLANET_LEAF * 24)));
+    expect(memo.get('planet|leaf@99')).toBeDefined();
+    expect(memo.get('planet|leaf@0')).toBeUndefined();
+    // A value larger than the whole budget is not kept, and evicts nothing.
+    const before = memo.size;
+    memo.set('huge', {}, MEMORY_BUDGET.directories + 1);
+    expect(memo.get('huge')).toBeUndefined();
+    expect(memo.size).toBe(before);
+  });
+
+  test('the ownership trees and the manifest fit their lines, and the lines fit the total', () => {
+    expect(
+      MEMORY_BUDGET.directories + MEMORY_BUDGET.ownershipTrees + MEMORY_BUDGET.manifest,
+    ).toBeLessThanOrEqual(MEMORY_BUDGET.total);
+    // A compact tree counts 5 bytes a node, and that is its arrays.
+    const tree = compactCoverageTree(
+      encodeCoverageTree(rectOwnership({ zoom: 15, x0: 1000, y0: 2000, x1: 1777, y1: 2333 }), 15),
+    );
+    expect(tree.bytes).toBe(tree.codes.byteLength + tree.skip.byteLength);
+    // The planet's manifest: 430 entries with ~3.7 kB of ownership each.
+    const manifest = {
+      coverageBody: 'x'.repeat(320_000),
+      regions: Array.from({ length: 450 }, (_, i) => ({
+        id: `continent/country-${i}`,
+        ownership: { bits: 'A'.repeat(3700) },
+        city: { key: `city/20261012-r8/continent/country-${i}.pmtiles` },
+        roads: { key: `city-roads/20261012-r8/continent/country-${i}.pmtiles` },
+      })),
+    };
+    expect(manifestBytes(manifest)).toBeLessThanOrEqual(MEMORY_BUDGET.manifest);
   });
 });
