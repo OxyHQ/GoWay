@@ -49,6 +49,7 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { ModelPlacement } from '@goway.to/sdk';
 
 import { createGltfLoader } from './gltf';
+import { batchable, batchAsset } from './modelBatch';
 import {
   applyNight,
   createModelEnvironment,
@@ -137,6 +138,11 @@ export interface ModelLayer {
 
 interface Asset {
   scene: THREE.Group;
+  /**
+   * The asset as one or two draws (`modelBatch.ts`), when it is still and
+   * untextured — every landmark — else `null`: drawn mesh by mesh.
+   */
+  batched: THREE.Group | null;
   /** Bounds in the asset's own metres. */
   bounds: THREE.Box3;
   animations: THREE.AnimationClip[];
@@ -458,7 +464,8 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       const triangles = countTriangles(gltf.scene);
       if (triangles > MAX_MODEL_TRIANGLES) throw new Error('model over the triangle budget');
       const bounds = new THREE.Box3().setFromObject(gltf.scene);
-      return { scene: gltf.scene, bounds, animations: gltf.animations };
+      const batched = batchable(gltf.scene, gltf.animations) ? batchAsset(gltf.scene, night) : null;
+      return { scene: gltf.scene, batched, bounds, animations: gltf.animations };
     })();
     assets.set(url, promise);
     return promise;
@@ -466,7 +473,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
 
   const instantiate = (spec: ModelSpec, asset: Asset): Instance => {
     const root = new THREE.Group();
-    const body = instanceBody(asset.scene);
+    const body = instanceBody(asset.batched ?? asset.scene);
     if (spec.tint) applyTint(body, spec.tint);
     setDepthTest(body, spec.occlusion !== 'none');
     const glowing = prepareNight(body, night);
@@ -756,14 +763,17 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       // Geometries and materials of loaded assets.
       for (const promise of assets.values()) {
         promise.then(
-          (asset) =>
-            asset.scene.traverse((child) => {
-              const mesh = child as THREE.Mesh;
-              if (!mesh.isMesh) return;
-              mesh.geometry.dispose();
-              for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material])
-                material.dispose();
-            }),
+          (asset) => {
+            for (const tree of [asset.scene, ...(asset.batched ? [asset.batched] : [])]) {
+              tree.traverse((child) => {
+                const mesh = child as THREE.Mesh;
+                if (!mesh.isMesh) return;
+                mesh.geometry.dispose();
+                const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                for (const material of materials) material.dispose();
+              });
+            }
+          },
           () => {},
         );
       }
