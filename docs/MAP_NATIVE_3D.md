@@ -395,26 +395,31 @@ and depth buffer. `WebGLRenderer` no longer draws a model.
   node), turned so its up is the world's +z (`scene.environmentRotation`).
   Nothing renders off-screen, on any backend, native included.
 
+- **A landmark is one or two draws** (`modelBatch.ts`). The TSL pass pays
+  its CPU per draw: `WebGPURenderer`'s WebGL2 backend issues about 30 GL
+  calls for a lit draw against `WebGLRenderer`'s 13. A landmark was 5–25
+  meshes of one material each, so a still, untextured asset (every shipped
+  landmark) is merged into its own space at load, each material's look baked
+  per vertex (colour, roughness, metalness, day emission, night glow, the
+  wash) and read back by one node material; decals are a second batch with
+  their depth bias. A tintable or animated model (the SDK's vehicles) is
+  still drawn mesh by mesh.
+
 Measured on the Sagrada Família (z17.6, 60°, terrain on), alternating builds:
 
-| | `main` (GLSL) | TSL |
-| --- | ---: | ---: |
-| The landmarks' own CPU per frame (perf runtime section, median of 4) | 0.57 ms | 1.17 ms |
-| GL calls per frame the landmarks add (16 meshes) | 212 | 485 |
-| Draws | 363 | 363 |
-| Pixels, day / night (dark map) | — | 85 k / 39 k of 2.07 M differ, all ≤ 8 levels but 151 / 117 |
+| | `main` (GLSL) | TSL, mesh by mesh | TSL, batched |
+| --- | ---: | ---: | ---: |
+| The landmarks' own CPU per frame (perf runtime section, median of 4) | 0.57 / **0.82** ms | 1.17 ms | **0.33** ms |
+| Draws the landmarks add (the Sagrada Família, Torre Glòries and their neighbours in view) | 71 | 71 | **10** |
+| Pixels against `main`, day / night (dark map) | — | within 8 levels but ~150 | the same as mesh by mesh |
 
-- **The cost is the backend's per-draw overhead.** `WebGPURenderer`'s WebGL2
-  backend issues about 30 GL calls per lit draw against `WebGLRenderer`'s 13
-  (uniform buffers, samplers, state). The landmarks are 10–25 meshes each,
-  one material per mesh. Merging a landmark's meshes by material would cut
-  draws on either path; it is not done here.
-- **GPU** time could not be told apart from the host's noise (load ~20):
-  medians 5.3 and 6.1 ms over four rounds, with rounds ranging 4.0–10.6
-  and 3.7–14.7 ms.
-- **The pixels differ only in the reflections**: a texture pre-filtered by
-  three's node PMREM against a sphere pre-filtered by `WebGLRenderer`'s, both
-  at most a few levels. The night look (windows, uplight) is the same.
+The first two columns were measured in one session and the batched one in
+another against `main` again (0.82 ms there): compare within a session.
+
+- **Reflections** differ by a few levels (three's node PMREM of a texture
+  against `WebGLRenderer`'s of a sphere); the night look (windows, crowns,
+  uplight) is the same.
+- **GPU** time could not be told apart from the host's noise (load ~20).
 
 **The visibility gate checks a landmark now** (below): the Sagrada Família,
 on and off, changes 31.50% of the map (31.48% on `main`). With the models not
