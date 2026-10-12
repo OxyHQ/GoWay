@@ -74,7 +74,9 @@ import {
   OPENFREEMAP_ENDPOINTS,
   type MapAppearance,
 } from '../lib/map/provider';
+import { MAP_IMAGERY_MODES, type MapImageryMode } from '../lib/map/imagery';
 import { buildGowayMapStyle } from '../lib/map/style';
+import { buildImageryStyle, IMAGERY_ID_PREFIX } from '../lib/map/style/imagery';
 import { applyGroundOverrides } from '../lib/map/style/city3dGround';
 import { CITY3D_GROUND_METADATA_KEY, type GroundOverride } from '../lib/map/style/palette3d';
 import { GOWAY_STYLE_LAYER_ID_LIST } from '../lib/map/style/layers';
@@ -107,6 +109,15 @@ const OUTPUT_DIR = join(FRONTEND_ROOT, 'public', 'map');
 const OUTPUTS: Record<MapAppearance, string> = {
   light: join(OUTPUT_DIR, 'goway-light.json'),
   dark: join(OUTPUT_DIR, 'goway-dark.json'),
+};
+
+/**
+ * The imagery documents (`lib/map/style/imagery.ts`, `docs/MAP_SATELLITE.md`):
+ * derived from the dark document, so they change exactly when it does.
+ */
+const IMAGERY_OUTPUTS: Record<MapImageryMode, string> = {
+  satellite: join(OUTPUT_DIR, 'goway-satellite.json'),
+  hybrid: join(OUTPUT_DIR, 'goway-hybrid.json'),
 };
 
 /**
@@ -386,7 +397,7 @@ function checkOne(appearance: MapAppearance, style: StyleSpecification, problems
  * hosting its own tiles changed the origin, not the licence.
  */
 function checkFirstPartyOrigins(
-  appearance: MapAppearance,
+  appearance: MapAppearance | MapImageryMode,
   style: StyleSpecification,
   problems: string[],
 ): void {
@@ -534,7 +545,7 @@ function unsafeOrderingOperand(operand: unknown): string | null {
  * already `true`/`false` and never throws.
  */
 function checkFilterSafety(
-  appearance: MapAppearance,
+  appearance: MapAppearance | MapImageryMode,
   style: StyleSpecification,
   problems: string[],
 ): void {
@@ -653,6 +664,30 @@ function checkCity3dGround(
   for (const error of validateStyleMin(overridden)) problems.push(where(error.message));
 }
 
+/**
+ * An imagery document: the spec, GoWay's origin only, every layer either one
+ * the dark document has (same id) or an imagery raster, and the label anchor
+ * kept — overlays are inserted against it on every style GoWay owns.
+ */
+function checkImagery(
+  mode: MapImageryMode,
+  style: StyleSpecification,
+  dark: StyleSpecification,
+  problems: string[],
+): void {
+  const where = (message: string): string => `[${mode}] ${message}`;
+  for (const error of validateStyleMin(style)) problems.push(where(`style-spec: ${error.message}`));
+  const darkIds = new Set(dark.layers.map((layer) => layer.id));
+  for (const layer of style.layers) {
+    if (!darkIds.has(layer.id) && !layer.id.startsWith(IMAGERY_ID_PREFIX)) {
+      problems.push(where(`layer "${layer.id}" is neither the dark document's nor imagery`));
+    }
+  }
+  if (!style.layers.some((layer) => layer.id === GOWAY_LABEL_ANCHOR_LAYER_ID)) {
+    problems.push(where(`the label anchor "${GOWAY_LABEL_ANCHOR_LAYER_ID}" is missing`));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -673,6 +708,14 @@ async function main(): Promise<void> {
     checkFilterSafety(appearance, built[appearance], problems);
   }
   checkPair(built.light, built.dark, problems);
+  const imagery = Object.fromEntries(
+    MAP_IMAGERY_MODES.map((mode) => [mode, buildImageryStyle(built.dark, mode, GOWAY_MAP_ORIGIN)]),
+  ) as Record<MapImageryMode, StyleSpecification>;
+  for (const mode of MAP_IMAGERY_MODES) {
+    checkImagery(mode, imagery[mode], built.dark, problems);
+    checkFirstPartyOrigins(mode, imagery[mode], problems);
+    checkFilterSafety(mode, imagery[mode], problems);
+  }
   for (const appearance of APPEARANCES) checkCity3dGround(appearance, built[appearance], problems);
   if (online) await checkOnline(problems);
 
@@ -683,6 +726,10 @@ async function main(): Promise<void> {
       ...APPEARANCES.map((appearance): [string, string] => [
         OUTPUTS[appearance],
         serialise(built[appearance]),
+      ]),
+      ...MAP_IMAGERY_MODES.map((mode): [string, string] => [
+        IMAGERY_OUTPUTS[mode],
+        serialise(imagery[mode]),
       ]),
       [TILEJSON_OUTPUT, tileJson],
     ];
@@ -720,6 +767,12 @@ async function main(): Promise<void> {
     await writeFile(OUTPUTS[appearance], serialise(built[appearance]), 'utf8');
     console.log(
       `map style: wrote ${OUTPUTS[appearance]} (${built[appearance].layers.length} layers)`,
+    );
+  }
+  for (const mode of MAP_IMAGERY_MODES) {
+    await writeFile(IMAGERY_OUTPUTS[mode], serialise(imagery[mode]), 'utf8');
+    console.log(
+      `map style: wrote ${IMAGERY_OUTPUTS[mode]} (${imagery[mode].layers.length} layers)`,
     );
   }
   await writeFile(TILEJSON_OUTPUT, tileJson, 'utf8');

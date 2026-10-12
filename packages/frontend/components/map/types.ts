@@ -20,6 +20,7 @@ import type { ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 import type { ModelPlacementInput } from '@goway.to/sdk';
 
+import type { MapImageryMode } from '@/lib/map/imagery';
 import type { MapAppearance } from '@/lib/map/provider';
 
 export type { MapAppearance };
@@ -468,6 +469,15 @@ export interface MapCanvasProps {
   initialViewport?: MapViewport;
   /** Cartographic appearance. Defaults to following the Bloom theme. */
   appearance?: MapAppearance;
+  /**
+   * Satellite imagery: `satellite` (the imagery alone) or `hybrid` (under
+   * GoWay's roads and labels); `null` for the map. The style system's choice
+   * (`lib/map/imagery.ts`, `docs/MAP_SATELLITE.md`): the canvas loads that
+   * style document and names each imagery source while it is on screen.
+   * Absent, a DEVELOPMENT build reads `?imagery=` from the page; production
+   * never does.
+   */
+  imagery?: MapImageryMode | null;
   markers?: readonly MapMarker[];
   /**
    * Custom marker body. Receives the marker and returns Bloom UI; the renderer

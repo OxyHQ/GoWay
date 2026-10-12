@@ -68,8 +68,12 @@ import {
   pickLabelFeature,
   type QueriedLabel,
 } from './labels';
+import { resolveImageryMode } from '@/lib/map/imagery';
+import type { ImageryView } from '@/lib/map/imageryCoverage';
+
 import { MapAttribution } from './MapAttribution';
 import { useCompactCredit } from './useCompactCredit';
+import { useImageryCredits } from './useImageryCredits';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
 import { drawableModels, modelFallbackMarker, modelIdOfMarker } from './models';
@@ -115,6 +119,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   {
     initialViewport = DEFAULT_VIEWPORT,
     appearance,
+    imagery,
     markers,
     renderMarker,
     overlays,
@@ -187,7 +192,16 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   }
 
   const resolvedAppearance = appearance ?? (theme.isDark ? 'dark' : 'light');
-  const styleUrl = useMemo(() => resolveMapStyleUrl(resolvedAppearance), [resolvedAppearance]);
+  // Satellite or hybrid (`lib/map/imagery.ts`): the screen's choice. Native
+  // has no page address, so only the prop can ask for it.
+  const imageryMode = resolveImageryMode(imagery, { development: __DEV__, search: '' });
+  const styleUrl = useMemo(
+    () => resolveMapStyleUrl(resolvedAppearance, imageryMode),
+    [resolvedAppearance, imageryMode],
+  );
+  // The imagery sources on screen, re-read at every settled camera.
+  const [imageryView, setImageryView] = useState<ImageryView | null>(null);
+  const imageryCredits = useImageryCredits(imageryMode, imageryView);
   // `undefined` when the loaded style makes no anchor promise; `<Layer>`
   // then appends on top, which is what native did before GoWay owned a style.
   const overlayAnchor = useMemo(() => resolveMapAnchors().beforeLabels, []);
@@ -197,8 +211,13 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // A toggle in the settings modal adds or removes it live.
   const { terrain } = useMapRelief();
   const hillshade = useMemo(
-    () => (terrain && resolveOwnsStyleDocument() ? hillshadeLayer(resolvedAppearance) : null),
-    [terrain, resolvedAppearance],
+    // Not over imagery: the photograph has its own shading, and its document
+    // has no `water` to go under (`lib/map/style/imagery.ts`).
+    () =>
+      terrain && !imageryMode && resolveOwnsStyleDocument()
+        ? hillshadeLayer(resolvedAppearance)
+        : null,
+    [terrain, imageryMode, resolvedAppearance],
   );
   const gestures = resolveInteraction(interaction);
 
@@ -589,6 +608,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           // The settled frame is also when the basemap's labels are worth
           // re-reading — see `reportLabels`.
           const [longitude, latitude] = event.nativeEvent.center;
+          if (imageryMode) {
+            const [west, south, east, north] = event.nativeEvent.bounds;
+            setImageryView({ zoom: event.nativeEvent.zoom, west, south, east, north });
+          }
           reportLabels({ latitude, longitude });
           // And when the sun is re-read for the new centre: once per settle,
           // never on `onRegionIsChanging`. Unconditional, unlike the label
@@ -720,7 +743,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           credit must be on every map GoWay draws, including the embed in
           somebody else's page. See MapBrand.tsx. */}
       <MapBrand />
-      <MapAttribution expanded={credit.expanded} onToggle={credit.toggle} />
+      <MapAttribution extra={imageryCredits} expanded={credit.expanded} onToggle={credit.toggle} />
 
       {error ? <MapErrorState error={error} onRetry={retry} /> : null}
     </View>

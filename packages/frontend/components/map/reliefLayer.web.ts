@@ -26,8 +26,10 @@
  * document, and apply to any style. The hillshade is ANCHORED in the
  * document (directly under `water`), so — exactly like the city layer — it is
  * added only to GoWay's own style (`resolveOwnsStyleDocument`) and only when
- * that anchor is there. The terrain goes with it: a 3D surface under a
- * fallback style that was never drawn for one is a restyle, not a fallback.
+ * that anchor is there. The terrain goes with GoWay's own style: a 3D surface
+ * under a fallback style that was never drawn for one is a restyle, not a
+ * fallback. GoWay's imagery documents (satellite, hybrid) have no `water`:
+ * they get the terrain, which the photograph drapes over, and no hillshade.
  */
 import type { Map as MapLibreMap } from 'maplibre-gl';
 
@@ -39,6 +41,7 @@ import {
 } from '@/lib/map/provider';
 import type { ReliefFlags } from '@/lib/map/reliefFlag';
 import { BUILDING_3D_LAYER_ID } from '@/lib/map/style/buildings3d';
+import { imageryLayerId } from '@/lib/map/style/imagery';
 import {
   GLOBE_MERCATOR_ZOOM,
   GLOBE_PROJECTION,
@@ -187,18 +190,25 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
   };
 
   const addTerrain = () => {
-    if (!resolveOwnsStyleDocument() || !map.getLayer(HILLSHADE_BEFORE_LAYER_ID)) {
+    // GoWay's imagery documents have no `water` (the photograph is the land
+    // and the sea, `lib/map/style/imagery.ts`): they get the 3D terrain the
+    // imagery drapes over, and no hillshade — a photograph has its own shadows.
+    const shaded = map.getLayer(HILLSHADE_BEFORE_LAYER_ID) !== undefined;
+    const imagery = map.getLayer(imageryLayerId('base')) !== undefined;
+    if (!resolveOwnsStyleDocument() || (!shaded && !imagery)) {
       reportMapDefect(
         'relief:not-owned',
-        `relief: the style is not GoWay's (or has no "${HILLSHADE_BEFORE_LAYER_ID}"); no hillshade or terrain.`,
+        `relief: the style is not GoWay's (or has neither "${HILLSHADE_BEFORE_LAYER_ID}" nor imagery); no hillshade or terrain.`,
       );
       return;
     }
     const tiles = resolveTerrainTileUrl();
-    for (const id of [RELIEF_SOURCE_IDS.hillshade, RELIEF_SOURCE_IDS.terrain]) {
+    for (const id of shaded
+      ? [RELIEF_SOURCE_IDS.hillshade, RELIEF_SOURCE_IDS.terrain]
+      : [RELIEF_SOURCE_IDS.terrain]) {
       if (!map.getSource(id)) map.addSource(id, reliefDemSource(tiles));
     }
-    if (!map.getLayer(HILLSHADE_LAYER_ID)) {
+    if (shaded && !map.getLayer(HILLSHADE_LAYER_ID)) {
       map.addLayer(hillshadeLayer(appearance), HILLSHADE_BEFORE_LAYER_ID);
     }
     terrainReady = true;

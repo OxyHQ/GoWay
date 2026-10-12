@@ -123,6 +123,7 @@ const PAGE_TITLES = {
 const CREDIT_HEADINGS = {
   basemap: MAP_SETTINGS_COPY.creditsBasemap,
   elevation: MAP_SETTINGS_COPY.creditsElevation,
+  imagery: MAP_SETTINGS_COPY.creditsImagery,
   buildings: MAP_SETTINGS_COPY.creditsBuildings,
   cityData: MAP_SETTINGS_COPY.creditsCityData,
   models: MAP_SETTINGS_COPY.creditsModels,
@@ -131,6 +132,7 @@ const CREDIT_HEADINGS = {
 const CREDIT_BODIES: Record<CreditSection['id'], Labels | null> = {
   basemap: MAP_SETTINGS_COPY.creditsBasemapBody,
   elevation: null,
+  imagery: null,
   buildings: MAP_SETTINGS_COPY.creditsBuildingsBody,
   cityData: MAP_SETTINGS_COPY.creditsCityDataBody,
   models: MAP_SETTINGS_COPY.creditsModelsBody,

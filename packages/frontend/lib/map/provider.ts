@@ -42,6 +42,7 @@
  * @see `packages/frontend/README.md` for the cartography notes and the native
  *      build requirement.
  */
+import type { MapImageryMode } from './imagery';
 import { OPENMAPTILES_SOURCE_LAYERS } from './style/schema';
 
 /** Which of the two cartographic appearances a style document is for. */
@@ -326,6 +327,16 @@ const GOWAY_STYLE_PATHS: Record<MapAppearance, string> = {
   dark: '/map/goway-dark.json',
 };
 
+/**
+ * The imagery documents (`lib/map/style/imagery.ts`), generated beside the
+ * two above. One per mode, not per appearance: a photograph has no dark mode,
+ * and the hybrid's labels are the dark palette's, which read over any photo.
+ */
+const GOWAY_IMAGERY_STYLE_PATHS: Record<MapImageryMode, string> = {
+  satellite: '/map/goway-satellite.json',
+  hybrid: '/map/goway-hybrid.json',
+};
+
 /** GoWay's canonical origin (AGENTS.md → Product boundaries). */
 const GOWAY_ORIGIN = 'https://goway.to';
 
@@ -543,10 +554,46 @@ function absoluteStyleUrl(url: string): string {
   return `${browserOrigin ?? GOWAY_ORIGIN}${url}`;
 }
 
-/** The style document URL for an appearance. The ONLY way to obtain one. */
-export function resolveMapStyleUrl(appearance: MapAppearance): string {
+/**
+ * The style document URL for an appearance — or, with `imagery`, for the
+ * satellite or hybrid document (`docs/MAP_SATELLITE.md`). The ONLY way to
+ * obtain one.
+ *
+ * Imagery is GoWay's own document over GoWay's own tiles, so it is drawn only
+ * while the active source is GoWay's: under the `openfreemap` escape hatch or
+ * a style-URL override the deployment has deliberately routed around GoWay's
+ * plumbing, and the map stays on that document.
+ */
+export function resolveMapStyleUrl(
+  appearance: MapAppearance,
+  imagery: MapImageryMode | null = null,
+): string {
+  if (imagery && resolveImageryAvailable()) {
+    return absoluteStyleUrl(GOWAY_IMAGERY_STYLE_PATHS[imagery]);
+  }
   return absoluteStyleUrl(getMapSource().styleUrl[appearance]);
 }
+
+/**
+ * A path on GoWay's map origin (`/map/satellite/coverage.json`) as both
+ * engines' hosts can fetch it — resolved exactly as a style document is
+ * ({@link absoluteStyleUrl}).
+ */
+export function resolveMapAssetUrl(path: string): string {
+  return absoluteStyleUrl(path);
+}
+
+/** Whether this deployment's map source can draw GoWay's imagery styles at all. */
+export function resolveImageryAvailable(): boolean {
+  return resolveOwnsStyleDocument();
+}
+
+/**
+ * The imagery credit's link: GoWay's attribution page, which lists every
+ * imagery source with the notice its licence asks for
+ * (`lib/map/imagerySources.ts`). Each source's own short credit is the label.
+ */
+export const IMAGERY_ATTRIBUTION_HREF = `${GOWAY_ORIGIN}/attribution#imagery`;
 
 /**
  * The attribution GoWay must display for the active source — plus the
