@@ -425,9 +425,31 @@ another against `main` again (0.82 ms there): compare within a session.
 on and off, changes 31.50% of the map (31.48% on `main`). With the models not
 drawn it changes 0%, and the gate fails.
 
-Next, one material at a time, each deleting its GLSL twin: city life, live
-3D, and the sky and shadow passes (which retire the last building and street
-GLSL).
+## Phase 2: GoWay Live in 3D
+
+GoWay Live's vehicles (`live3d/livePass.ts`, a `CityPass`) are drawn by the
+TSL pass: `CityPass.render` receives it (`drawScene`) instead of the engine's
+`WebGLRenderer`. Its materials were three's built-ins (an unlit, vertex-
+coloured `MeshBasicMaterial` with a per-instance tint for stale vehicles, a
+translucent `LineBasicMaterial` for the aircraft's stalks), which
+`WebGLRenderer` encoded to sRGB; now their node twins
+(`MeshBasicNodeMaterial`, `LineBasicNodeMaterial`) with the same encoding
+in the material. Instancing, the instance colour and the baked light are
+three's and the pass's own, unchanged.
+
+- **Tested** (`livePass.test.ts`): the library loaded from disk, a live bus
+  placed, and the scene handed to the pass holds node materials with the
+  encoded output.
+- **Not compared on screen**: at the time of the run the open feeds had no
+  surface vehicle drawn as a model in view (Barcelona's buses and Rodalies
+  were estimated, drawn hollow in 2D; no aircraft low enough), so there was
+  nothing live to compare pixel by pixel. The same node-twin pattern is what
+  the landmarks were compared with (`models.ts`, above).
+- **Cost**: a few draws (one per live model kind, the stalks), as before.
+
+Next: the sky and shadow passes (which retire the last building and street
+GLSL), with the sky's building material and the detailed look's material
+response.
 
 ## Correction: the terrain lift was not measured
 
