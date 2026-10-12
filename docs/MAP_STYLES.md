@@ -26,6 +26,8 @@ hand-written JSON file, and no layer list is copied.
 | `standard` (default) | day, dawn, dusk, night | The everyday map: GoWay's measured, Apple-grade look (`palette.ts`), POIs in their category colours, the detailed 3D city. House numbers from z18. |
 | `streets` | day, night | The road map: a coloured road hierarchy (amber expressways, honey trunks, cream primaries; ember at night), denser POIs (half again as many marks and names, the minor tier from z16), footprints from z14, street names as written, house numbers from z17. |
 | `outdoors` | day, night | The terrain map: its own hillshade and contour lines from GoWay's elevation tiles (index lines and heights from z12), bare rock and glaciers, protected areas' dashed edges, trails coloured by difficulty from z12, lifts and cable cars, peaks with their heights from z9, and the shelters, campsites, drinking water and crags the other styles leave out. |
+| `navigation` | day, night | For driving: roads 1.25× wider with dark casings by day, amber expressways and honey trunks, a cool quiet ground that leaves the route line the most saturated thing on screen, one-way arrows, names as written a point larger, and only the stops a driver makes (fuel, charging, parking, rental — and stations). GoWay has no live traffic data; the style is ready for a traffic overlay (cool roads, no red in the network) but draws none. |
+| `monochrome` | day, night | Standard with every colour at 6% of its chroma — lightness, so the whole hierarchy, kept — built FROM Standard so it follows every change to it; the 3D clay and street detail go grey with it. |
 | `light` | day (fixed) | A quiet light basemap for somebody else's data: Bloom's neutral greys, no POIs, arterial names only, no one-way arrows. |
 | `dark` | night (fixed) | Its dark twin. |
 
@@ -181,10 +183,23 @@ Every style keeps the mark bottom-left and the compact credit bottom-right:
   light the style lacks resolves to the nearest it has; `theme=` remains the
   short spelling of day and night. The embed never follows the visitor's own
   map setting: the embedder decides.
-- **`@goway.to/sdk`**: the style and light vocabularies, the index's zod
-  schema and a URL builder move into `packages/contracts` and the SDK in the
-  Navigation/Monochrome change (below), so Mercaria, Homiio and Mention name a
-  style the way the app does.
+- **`@goway.to/sdk`**: the vocabulary and the catalogue are defined ONCE, in
+  `packages/contracts/src/map-style.ts` (`MAP_STYLE_IDS`, `MAP_LIGHT_PRESETS`,
+  `MAP_STYLE_CATALOGUE`, `resolveMapStyle`, `mapStylePath`, and the zod schema
+  of `index.json`); the app's catalogue reads them from there. The SDK
+  exports them, plus `client.links.mapStyle(style, light?)` (the document URL
+  for `new maplibregl.Map({ style })` or MapLibre Native's `mapStyle`),
+  `client.links.embed(viewport, { style, light })` and
+  `client.links.mapStyleIndex()` with `parseMapStyleIndex` — open, so a style
+  GoWay adds later is listed rather than refused. The documents are static
+  files on GoWay's origin, not `/api/v1` operations, so there is no
+  `API_OPERATIONS` entry and nothing for `bun run openapi` to add:
+
+  ```ts
+  import { createGoWayClient } from '@goway.to/sdk';
+  const goway = createGoWayClient();
+  new maplibregl.Map({ container, style: goway.links.mapStyle('streets', 'night') });
+  ```
 
 ## Imagery plugs in as one more style
 

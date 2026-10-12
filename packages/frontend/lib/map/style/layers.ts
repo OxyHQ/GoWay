@@ -332,11 +332,19 @@ const POI_GROUPS: readonly (readonly [keyof CartographyPalette['poi'], string[]]
 interface PoiVocabulary {
   groups: typeof POI_GROUPS;
   clutter: readonly string[];
+  /** Only these classes (and the stations), when a style names few. */
+  only?: readonly string[];
 }
 
 const OUTDOOR_CLASSES = ['shelter', 'campsite', 'drinking_water', 'climbing'];
 
 const STANDARD_POIS: PoiVocabulary = { groups: POI_GROUPS, clutter: POI_CLUTTER_CLASSES };
+
+/** What a driver stops for: the `vehicle` group (fuel, charging, parking, rental). */
+const DRIVING_POIS: PoiVocabulary = {
+  ...STANDARD_POIS,
+  only: POI_GROUPS.find(([group]) => group === 'vehicle')?.[1] ?? [],
+};
 
 const OUTDOOR_POIS: PoiVocabulary = {
   groups: POI_GROUPS.map(([group, classes]) =>
@@ -446,6 +454,7 @@ function poiFilter(
   }
 
   const notStation = ['!', ['in', ['get', 'class'], ['literal', POI_STATION_CLASSES]]];
+  const only = vocabulary.only ? [['in', ['get', 'class'], ['literal', vocabulary.only]]] : [];
 
   if (tier === 'major') {
     return filter([
@@ -454,6 +463,7 @@ function poiFilter(
       ['has', 'name'],
       notClutter,
       notStation,
+      ...only,
       PRINCIPAL_STOP,
       ['!', ['in', ['get', 'class'], ['literal', POI_LATE_CLASSES]]],
       ['<=', rank, caps.major],
@@ -467,6 +477,7 @@ function poiFilter(
     ['has', 'name'],
     notClutter,
     notStation,
+    ...only,
     PRINCIPAL_STOP,
     ['<=', rank, caps.minor],
     ['any', ['>', rank, caps.major], ['in', ['get', 'class'], ['literal', POI_LATE_CLASSES]]],
@@ -704,7 +715,13 @@ export function buildLayers(
   const showPois = options.poi !== 'none';
   const outdoors = options.outdoors ? (palette.outdoors ?? null) : null;
   if (options.outdoors && !outdoors) throw new Error('layers: the Outdoors options need the palette\'s outdoors ink');
-  const pois = outdoors ? OUTDOOR_POIS : STANDARD_POIS;
+  const pois = outdoors ? OUTDOOR_POIS : options.poi === 'driving' ? DRIVING_POIS : STANDARD_POIS;
+  // Navigation's wider network: every road width, and so every casing
+  // derived from it, by one factor.
+  const widen = (stops: readonly (readonly [number, number])[]) =>
+    options.roadWidthScale === 1
+      ? stops
+      : stops.map(([z, w]) => [z, Number((w * options.roadWidthScale).toFixed(2))] as const);
 
   /** A `fill` over one source-layer. */
   const fill = (
@@ -935,9 +952,9 @@ export function buildLayers(
     classIn('motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'minor', 'service'),
   ]);
   if (tunnelTone.casing) {
-    line('road-tunnel-casing', SL.transportation, tunnelFilter, tunnelTone.casing, casingWidths(ROAD_WIDTHS.tunnel), { minzoom: 12 });
+    line('road-tunnel-casing', SL.transportation, tunnelFilter, tunnelTone.casing, casingWidths(widen(ROAD_WIDTHS.tunnel)), { minzoom: 12 });
   }
-  line('road-tunnel', SL.transportation, tunnelFilter, tunnelTone.fill, ROAD_WIDTHS.tunnel, { minzoom: 12, dash: [0.6, 0.3] });
+  line('road-tunnel', SL.transportation, tunnelFilter, tunnelTone.fill, widen(ROAD_WIDTHS.tunnel), { minzoom: 12, dash: [0.6, 0.3] });
 
   /** `class` + optional `ramp` test shared by a tier's casing and its fill. */
   const tierFilter = (tier: (typeof ROAD_TIERS)[number]): FilterSpecification =>
@@ -959,7 +976,7 @@ export function buildLayers(
     const casingColor = tone.casingLowZoom
       ? colorByZoom([[9, tone.casingLowZoom], [14, tone.casing]])
       : tone.casing;
-    line(`${tier.id}-casing`, SL.transportation, tierFilter(tier), casingColor, casingWidths(tier.widths), {
+    line(`${tier.id}-casing`, SL.transportation, tierFilter(tier), casingColor, casingWidths(widen(tier.widths)), {
       minzoom: tier.minzoom,
     });
   }
@@ -971,7 +988,7 @@ export function buildLayers(
     const fillColor = tone.fillLowZoom
       ? colorByZoom([[9, tone.fillLowZoom], [13, tone.fill]])
       : tone.fill;
-    line(tier.id, SL.transportation, tierFilter(tier), fillColor, tier.widths, { minzoom: tier.minzoom });
+    line(tier.id, SL.transportation, tierFilter(tier), fillColor, widen(tier.widths), { minzoom: tier.minzoom });
   }
 
   // Footways last of the road block so a park path is not buried under the

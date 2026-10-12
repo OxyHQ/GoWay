@@ -37,6 +37,22 @@
       "file": "/map/styles/thumbs/outdoors-night.jpg",
       "layers": "f4fb37755691014f"
     },
+    "navigation/day": {
+      "file": "/map/styles/thumbs/navigation-day.jpg",
+      "layers": "15b924bde9aef17e"
+    },
+    "navigation/night": {
+      "file": "/map/styles/thumbs/navigation-night.jpg",
+      "layers": "058d97480dfc59cf"
+    },
+    "monochrome/day": {
+      "file": "/map/styles/thumbs/monochrome-day.jpg",
+      "layers": "862adab220072590"
+    },
+    "monochrome/night": {
+      "file": "/map/styles/thumbs/monochrome-night.jpg",
+      "layers": "7369937b52456e3a"
+    },
     "light/day": {
       "file": "/map/styles/thumbs/light-day.jpg",
       "layers": "96c3b39b258fb13b"
