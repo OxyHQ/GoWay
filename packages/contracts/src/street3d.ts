@@ -211,6 +211,13 @@ export const streetSceneNavigationSchema = z.object({
    * still holds up. Absent: the viewer derives it from `fieldOfView`.
    */
   reachMeters: z.number().positive().max(10).optional(),
+  /**
+   * How far above the ground the capture positions are, in metres — a phone
+   * held at chest height, a scanner carried on a pole. A viewer finds the
+   * ground below the camera with it. Absent: the viewer assumes a hand-held
+   * camera.
+   */
+  captureHeightMeters: z.number().positive().max(10).optional(),
 });
 export type StreetSceneNavigation = z.infer<typeof streetSceneNavigationSchema>;
 

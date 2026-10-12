@@ -88,15 +88,18 @@ export function decimateViewpoints(
 }
 
 /**
- * The navigation to publish for reported viewpoints, field of view and reach,
+ * The navigation to publish for reported viewpoints, field of view, reach and
+ * capture height,
  * or `null` when none was reported. Whoever reported them — the worker, or a
  * licensor's capture rig for an imported scan — the same reduction applies.
- * A reach only qualifies viewpoints, so it is never published without them.
+ * A reach or a capture height only qualifies viewpoints, so neither is
+ * published without them.
  */
 export function navigationOf(
   viewpoints: readonly { position: Vector3; forward: Vector3 }[] | undefined,
   fieldOfView: { horizontalDegrees: number; verticalDegrees: number } | undefined,
   reachMeters?: number,
+  captureHeightMeters?: number,
 ): StreetSceneNavigation | null {
   if (!viewpoints && !fieldOfView) return null;
   const navigation: StreetSceneNavigation = { viewpoints: decimateViewpoints(viewpoints ?? []) };
@@ -109,6 +112,9 @@ export function navigationOf(
   if (reachMeters !== undefined && navigation.viewpoints.length > 0) {
     // Centimetres, like the positions it qualifies; never rounded to zero.
     navigation.reachMeters = Math.max(0.01, round(reachMeters, 2));
+  }
+  if (captureHeightMeters !== undefined && navigation.viewpoints.length > 0) {
+    navigation.captureHeightMeters = Math.max(0.01, round(captureHeightMeters, 2));
   }
   return navigation;
 }

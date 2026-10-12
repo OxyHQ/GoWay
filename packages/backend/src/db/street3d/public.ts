@@ -73,6 +73,8 @@ function publicNavigation(navigation: StreetSceneNavigation): StreetSceneNavigat
     };
   }
   if (navigation.reachMeters !== undefined) published.reachMeters = navigation.reachMeters;
+  if (navigation.captureHeightMeters !== undefined)
+    published.captureHeightMeters = navigation.captureHeightMeters;
   return published;
 }
 

@@ -309,6 +309,7 @@ describe('street3d responses', () => {
       ],
       fieldOfView: { horizontalDegrees: 66, verticalDegrees: 50 },
       reachMeters: 1.5,
+      captureHeightMeters: 2.4,
     };
     const parsed = await manifestFrom({
       ...manifest,
@@ -343,6 +344,8 @@ describe('street3d responses', () => {
       { viewpoints: [], reachMeters: -1 },
       { viewpoints: [], reachMeters: 11 },
       { viewpoints: [], reachMeters: '3' },
+      { viewpoints: [], captureHeightMeters: 0 },
+      { viewpoints: [], captureHeightMeters: 10.5 },
       'nearby',
     ];
     for (const bad of malformed) {

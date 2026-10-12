@@ -241,9 +241,11 @@ centimetres, sorts them by position, thins them so none is within 1.5 m of
 another and keeps at most 1000: what is published is the set of places the
 scene was seen from, never a capture sequence, a time or a contributor's path.
 A licensed import's `navigation` may also state `reachMeters`, how far from a
-capture position its scene holds up (published to the centimetre, only with
-viewpoints); a worker reports none, and the viewer derives it from the field
-of view (`docs/STREET3D_VIEWER.md`).
+capture position its scene holds up, and `captureHeightMeters`, how far above
+the ground the rig carried its cameras (both published to the centimetre, only
+with viewpoints); a worker reports neither, and the viewer derives the reach
+from the field of view and assumes a hand-held height
+(`docs/STREET3D_VIEWER.md`).
 
 ## Licensed imports
 
