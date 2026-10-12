@@ -689,10 +689,9 @@ will need:
   `importForwarding.relativePaths` (otherwise the mesher stays on the RN
   thread and every call to it from the runtime throws "Tried to synchronously
   call a Remote Function"), and Metro wrapped with
-  `getBundleModeMetroConfig`. On Android the harness also needed
-  `pickFirsts` for `libworklets.so`, which expo-modules-core's worklets
-  integration packages a second time; recheck that with a clean build when
-  the preset adopts Bundle Mode.
+  `getBundleModeMetroConfig`. Nothing else: a duplicate `libworklets.so`
+  the harness once hit was stale native build output, and a clean build needs
+  no `pickFirsts`.
 - **No runtime disposal in worklets 0.10.** `terminate()` stops using a
   runtime but cannot free it. The pool replaces a worker only when it fails,
   so this is bounded, but a remounted map must reuse its pool.
