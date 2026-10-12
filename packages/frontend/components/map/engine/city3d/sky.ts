@@ -1,8 +1,11 @@
 /**
  * The city layer's sky, atmosphere, sun shadows and time-of-day light — the
  * three.js half. The model is `atmosphere.ts`, the shadow camera `shadows.ts`,
- * the camera recovery `viewRays.ts`, the GLSL `skyShaders.ts`; this module
- * only owns GPU objects and decides when to redraw them.
+ * the camera recovery `viewRays.ts`, the TSL `tsl/skyNodes.ts` (light, haze,
+ * shadow), `tsl/skyPasses.ts` (the ground passes) and
+ * `tsl/skyBuildingMaterial.ts` (the buildings); this module only owns GPU
+ * objects and decides when to redraw them. Everything is drawn by the
+ * engine's one renderer (`tsl/tslPass.ts`).
  *
  * Reached only through `cityEngine.ts` (so only through
  * `components/engine3d/lazyChunk.ts`), and only when the city-sky flag is on
@@ -23,7 +26,7 @@
  *     shadow box, or the set of loaded tiles (`shadows.ts`) — so a still map
  *     or a short pan costs nothing.
  *  2. **`render`**, before the buildings: full-screen passes BLENDED over
- *     the basemap (`skyShaders.ts`): multiply by light × shadow × haze
+ *     the basemap (`tsl/skyPasses.ts`): multiply by light × shadow × haze
  *     transmittance, then add haze in-scatter and, above the horizon, the sky.
  *     Blending is the one thing a layer can do to pixels it did not draw.
  *  3. Then the buildings, with the same light, the shadow map and the same
@@ -32,32 +35,38 @@
  * Labels, POIs and overlays are drawn by MapLibre after this layer, so they
  * stay exactly as legible as before: the haze is under them.
  */
-import * as THREE from 'three';
+import {
+  Camera,
+  ClampToEdgeWrapping,
+  DataTexture,
+  DepthTexture,
+  type Group,
+  LessEqualCompare,
+  LinearFilter,
+  Matrix4,
+  RedFormat,
+  RenderTarget,
+  RGBAFormat,
+  type Scene,
+  UnsignedByteType,
+  UnsignedIntType,
+  Vector2,
+  Vector3,
+} from 'three/webgpu';
 
 import {
   type CitySun,
-  SKY_LUT_HEIGHT,
-  SKY_LUT_WIDTH,
-  type SkyAppearance,
   encodeGamma,
   type HostSkyColours,
   hostSkyColours,
+  SKY_LUT_HEIGHT,
+  SKY_LUT_WIDTH,
+  type SkyAppearance,
   type SkyState,
   skyStateFor,
   sunDirection,
 } from './atmosphere';
-import {
-  SHADOW_CASTER_FRAGMENT_SHADER,
-  SHADOW_CASTER_VERTEX_SHADER,
-  SKY_PASS_VERTEX_SHADER,
-  skyCityFragmentShader,
-  skyCityVertexShader,
-  skyOverlayGlsl,
-  skyPassFragmentShader,
-} from './skyShaders';
 import { castersKey, type DrawnTile, SHADOW_CASTER_LAYER } from './frameSelection';
-import type { CityOverlaySky } from './overlay';
-import type { CityTileFormat } from './protocol';
 import {
   castsInto,
   type ShadowFrame,
@@ -67,6 +76,10 @@ import {
   shadowRadiusForView,
 } from './shadows';
 import { type LngLatBox, mercatorPerMetre } from './tileMath';
+import type { UniformRef } from './tsl/common';
+import { createSkyNodes, type SkyNodes, type SkyUniformRefs } from './tsl/skyNodes';
+import { createSkyPasses, type SkyPassUniformRefs } from './tsl/skyPasses';
+import type { TslPass } from './tsl/tslPass';
 import { viewRays } from './viewRays';
 
 /**
@@ -128,16 +141,12 @@ export interface CitySkyStats {
 
 export interface CitySky {
   /**
-   * The sky-lit building shaders, by tile format, for the engine to build its
-   * per-tile materials with (`cityMeshes.ts`) instead of its own — ONE shading
-   * path (`skyShaders.ts` → the contract).
+   * The sky's light inputs as TSL nodes (`tsl/skyNodes.ts`): what the
+   * sky-lit buildings are built with (`tsl/skyBuildingMaterial.ts`) and what
+   * an overlay gets (`overlay.ts` → `setSky`). Live: they follow the sun, the
+   * shadow map and the night with no further calls.
    */
-  readonly buildingShaders: Record<
-    CityTileFormat,
-    { vertexShader: string; fragmentShader: string }
-  >;
-  /** The uniforms those shaders need beyond the engine's own; live, shared objects. */
-  readonly buildingUniforms: Record<string, THREE.IUniform>;
+  readonly nodes: SkyNodes;
   /**
    * What the MapLibre-style light the engine still uses elsewhere (the trees)
    * should be for this sky: the sun's direction and the light on an up-facing
@@ -149,38 +158,36 @@ export interface CitySky {
   } | null;
   /** The host map's own sky colours for the current sun (`hostSkyColours`), or `null` before one. */
   readonly hostSky: HostSkyColours | null;
-  /** What an overlay gets (`overlay.ts` → `setSky`): live uniforms and the GLSL that reads them. */
-  readonly overlayInput: CityOverlaySky;
   setSun(sun: CitySun): void;
   /**
    * MapLibre's offscreen pass: redraw the shadow map if it is stale — the
-   * sun, the snapped box, or the tiles that can cast into it changed.
+   * sun, the snapped box, or the tiles that can cast into it changed. Only
+   * the buildings in `scene` cast (`frameSelection.ts` → `SHADOW_CASTER_LAYER`).
    */
   prerender(
-    renderer: THREE.WebGLRenderer,
-    scene: THREE.Scene,
+    pass: TslPass,
+    scene: Scene,
     view: CitySkyView,
     casters: { tiles: readonly DrawnTile[]; groundEpoch: number },
   ): void;
-  /** Before the buildings, in the map's own framebuffer: ground light, haze, sky. */
-  drawBackground(renderer: THREE.WebGLRenderer, view: CitySkyView): void;
+  /**
+   * The ground light, haze and sky passes (`tsl/skyPasses.ts`), for the
+   * engine to add to its scene: they draw first in the same render as the
+   * buildings, on `SKY_PASS_LAYER`, while the effect is on.
+   */
+  readonly passes: Group;
+  /**
+   * Every frame, before the scene is drawn: the camera, the ground and the
+   * shadow box the passes and sky-lit materials read, and whether the passes
+   * show at this zoom. Returns whether they do.
+   */
+  update(pass: TslPass, view: CitySkyView): boolean;
   readonly stats: CitySkyStats;
   dispose(): void;
 }
 
-/**
- * The building material's uniforms that `cityEngine` owns (palette, opacity,
- * terrain); the sky adds its own beside them, sharing the objects.
- */
-export type CityBaseUniforms = Record<string, THREE.IUniform>;
-
 export function createCitySky(options: {
   appearance: SkyAppearance;
-  /**
-   * The material response, a GLSL chunk defining `cityMaterial(CitySurface,
-   * CityLight)` (`skyShaders.ts` → the contract). Absent: the default clay.
-   */
-  material?: string;
   /**
    * The sun's shadows at this quality (`engine/quality.ts`): the map's side
    * and the PCF taps, or `null` for none — then no shadow map is allocated,
@@ -189,164 +196,83 @@ export function createCitySky(options: {
   shadows: { mapSize: number; taps: number } | null;
   /** The engine's clock (`CityEngineOptions.now`): the redraw throttle reads it. */
   now?: () => number;
-  baseUniforms: CityBaseUniforms;
+  /** The engine's night seam (`CityEngine.setNightFactor`), read by every night look. */
+  nightFactor: UniformRef<number>;
   /** Ask the host for a frame. */
   requestRepaint: () => void;
 }): CitySky {
-  const lutTexture = new THREE.DataTexture(
+  const lutTexture = new DataTexture(
     new Uint8Array(SKY_LUT_WIDTH * SKY_LUT_HEIGHT * 4),
     SKY_LUT_WIDTH,
     SKY_LUT_HEIGHT,
-    THREE.RGBAFormat,
-    THREE.UnsignedByteType,
+    RGBAFormat,
+    UnsignedByteType,
   );
-  lutTexture.magFilter = THREE.LinearFilter;
-  lutTexture.minFilter = THREE.LinearFilter;
-  lutTexture.wrapS = THREE.ClampToEdgeWrapping;
-  lutTexture.wrapT = THREE.ClampToEdgeWrapping;
+  lutTexture.magFilter = LinearFilter;
+  lutTexture.minFilter = LinearFilter;
+  lutTexture.wrapS = ClampToEdgeWrapping;
+  lutTexture.wrapT = ClampToEdgeWrapping;
   lutTexture.generateMipmaps = false;
+  lutTexture.needsUpdate = true;
 
   const shadowSize = options.shadows?.mapSize ?? 0;
   const shadowTaps = options.shadows ? options.shadows.taps : 0;
-  let depthTexture: THREE.DepthTexture | null = null;
-  let shadowTarget: THREE.WebGLRenderTarget | null = null;
+  let depthTexture: DepthTexture | null = null;
+  let shadowTarget: RenderTarget | null = null;
   if (options.shadows) {
-    depthTexture = new THREE.DepthTexture(shadowSize, shadowSize);
-    depthTexture.type = THREE.UnsignedIntType;
-    depthTexture.compareFunction = THREE.LessEqualCompare;
-    depthTexture.magFilter = THREE.LinearFilter;
-    depthTexture.minFilter = THREE.LinearFilter;
+    depthTexture = new DepthTexture(shadowSize, shadowSize);
+    depthTexture.type = UnsignedIntType;
+    depthTexture.compareFunction = LessEqualCompare;
+    depthTexture.magFilter = LinearFilter;
+    depthTexture.minFilter = LinearFilter;
     // The colour attachment is never read; one byte a texel is the least three
     // will make.
-    shadowTarget = new THREE.WebGLRenderTarget(shadowSize, shadowSize, {
-      format: THREE.RedFormat,
-      type: THREE.UnsignedByteType,
+    shadowTarget = new RenderTarget(shadowSize, shadowSize, {
+      format: RedFormat,
+      type: UnsignedByteType,
       depthBuffer: true,
       depthTexture,
       generateMipmaps: false,
     });
   }
 
-  const shared = {
+  const refs = {
     uSkyLut: { value: lutTexture },
     uSunAzimuth: { value: 0 },
     uShadowMap: { value: depthTexture },
     uShadowStrength: { value: 0 },
     uShadowTexel: {
-      value: new THREE.Vector2(1 / Math.max(1, shadowSize), 1 / Math.max(1, shadowSize)),
+      value: new Vector2(1 / Math.max(1, shadowSize), 1 / Math.max(1, shadowSize)),
     },
     uShadowBias: { value: 0 },
-    uCamera: { value: new THREE.Vector3(0, 0, 1000) },
-    uSunDir: { value: new THREE.Vector3(0, 0, 1) },
-    uSunColor: { value: new THREE.Vector3(1, 1, 1) },
-    uSkyAmbient: { value: new THREE.Vector3(0.2, 0.2, 0.2) },
-    // The ground plane's elevation, metres (`CitySkyView.groundM`).
     uGroundZ: { value: 0 },
-  };
-
-  const buildingUniforms: Record<string, THREE.IUniform> = {
-    ...shared,
-    uGroundBounce: { value: new THREE.Vector3(0.05, 0.05, 0.05) },
-    uStreetGlow: { value: new THREE.Vector3() },
-    uShadowMatrix: { value: new THREE.Matrix4() },
+    uCamera: { value: new Vector3(0, 0, 1000) },
+    uSunDir: { value: new Vector3(0, 0, 1) },
+    uSunColor: { value: new Vector3(1, 1, 1) },
+    uSkyAmbient: { value: new Vector3(0.2, 0.2, 0.2) },
+    uGroundBounce: { value: new Vector3(0.05, 0.05, 0.05) },
+    uStreetGlow: { value: new Vector3() },
+    uShadowMatrix: { value: new Matrix4() },
     uMetresPerMercator: { value: 1 },
     uShadowNormalOffset: { value: 1 },
-  };
-  const buildingShaders = {
-    openmaptiles: {
-      vertexShader: skyCityVertexShader('openmaptiles'),
-      fragmentShader: skyCityFragmentShader('openmaptiles', options.material, shadowTaps),
-    },
-    goway: {
-      vertexShader: skyCityVertexShader('goway'),
-      fragmentShader: skyCityFragmentShader('goway', options.material, shadowTaps),
-    },
-  };
-  let hostLight: CitySky['hostLight'] = null;
-  let hostSky: HostSkyColours | null = null;
-  const overlayInput: CityOverlaySky = {
-    uniforms: {
-      ...buildingUniforms,
-      ...(options.baseUniforms.uNightFactor
-        ? { uNightFactor: options.baseUniforms.uNightFactor }
-        : {}),
-    },
-    glsl: skyOverlayGlsl(shadowTaps),
-  };
+    uNightFactor: options.nightFactor,
+  } satisfies SkyUniformRefs;
+  const nodes = createSkyNodes(refs, shadowTaps);
 
-  const passUniforms = {
-    ...shared,
-    uCorners: { value: [0, 1, 2, 3].map(() => new THREE.Vector3()) },
-    uShadowEnu: { value: new THREE.Matrix4() },
-    uSunDisc: { value: new THREE.Vector3() },
+  const passRefs = {
+    uCorners: { value: [0, 1, 2, 3].map(() => new Vector3()) },
+    uShadowEnu: { value: new Matrix4() },
+    uSunDisc: { value: new Vector3() },
     uEffect: { value: 0 },
-  };
-  const passMaterial = (pass: 'fill' | 'multiply' | 'add') =>
-    new THREE.RawShaderMaterial({
-      glslVersion: THREE.GLSL3,
-      vertexShader: SKY_PASS_VERTEX_SHADER,
-      fragmentShader: skyPassFragmentShader(pass, shadowTaps),
-      uniforms: passUniforms,
-      depthTest: false,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      blending: THREE.CustomBlending,
-      ...(pass === 'fill'
-        ? {
-            // src × (1 − dst alpha) + dst: only where nothing was drawn.
-            blendSrc: THREE.OneMinusDstAlphaFactor,
-            blendDst: THREE.OneFactor,
-            blendSrcAlpha: THREE.OneMinusDstAlphaFactor,
-            blendDstAlpha: THREE.OneFactor,
-          }
-        : pass === 'multiply'
-          ? {
-              // dst × src (alpha kept: src alpha is 1)
-              blendSrc: THREE.ZeroFactor,
-              blendDst: THREE.SrcColorFactor,
-              blendSrcAlpha: THREE.ZeroFactor,
-              blendDstAlpha: THREE.OneFactor,
-            }
-          : {
-              // dst + src; the sky makes the pixel opaque even where the
-              // basemap left it transparent.
-              blendSrc: THREE.OneFactor,
-              blendDst: THREE.OneFactor,
-              blendSrcAlpha: THREE.OneFactor,
-              blendDstAlpha: THREE.OneFactor,
-            }),
-    });
-  const quad = new THREE.BufferGeometry();
-  quad.setAttribute(
-    'position',
-    new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0]), 3),
-  );
-  quad.setIndex([0, 1, 2, 2, 1, 3]);
-  const skyScene = new THREE.Scene();
-  const passes = (['fill', 'multiply', 'add'] as const).map(
-    (pass) => new THREE.Mesh(quad, passMaterial(pass)),
-  );
-  for (const [i, mesh] of passes.entries()) {
-    mesh.frustumCulled = false;
-    mesh.renderOrder = i;
-    skyScene.add(mesh);
-  }
-  const passCamera = new THREE.Camera();
+  } satisfies SkyPassUniformRefs;
+  const passes = createSkyPasses(nodes, passRefs);
 
-  const casterMaterial = new THREE.RawShaderMaterial({
-    glslVersion: THREE.GLSL3,
-    vertexShader: SHADOW_CASTER_VERTEX_SHADER,
-    fragmentShader: SHADOW_CASTER_FRAGMENT_SHADER,
-    // The engine's own uniform object: buildings cast from where terrain put them.
-    uniforms: { uGrounded: options.baseUniforms.uGrounded ?? { value: 0 } },
-    // Both faces: the mirrored model matrices make "front" ambiguous (see
-    // `cityEngine`), and a closed solid casts the same shadow either way.
-    side: THREE.DoubleSide,
-  });
-  const shadowCamera = new THREE.Camera();
+  const shadowCamera = new Camera();
   // Only the buildings cast (`frameSelection.ts` → `SHADOW_CASTER_LAYER`).
   shadowCamera.layers.set(SHADOW_CASTER_LAYER);
 
+  let hostLight: CitySky['hostLight'] = null;
+  let hostSky: HostSkyColours | null = null;
   let sun: CitySun | null = null;
   let state: SkyState | null = null;
   let frame: ShadowFrame | null = null;
@@ -369,22 +295,31 @@ export function createCitySky(options: {
     groundM: 0,
   };
 
+  /**
+   * The shadow map must exist before any program samples it — at night none
+   * is ever drawn — so its attachments are allocated, once, before the first
+   * draw that could read them.
+   */
+  const ensureTarget = (pass: TslPass) => {
+    if (targetReady || !shadowTarget) return;
+    targetReady = pass.initTarget(shadowTarget);
+  };
+
   const applyState = (next: SkyState) => {
     state = next;
     (lutTexture.image.data as Uint8Array).set(next.lut);
     lutTexture.needsUpdate = true;
-    shared.uSunColor.value.set(...next.sunColor);
-    shared.uSkyAmbient.value.set(...next.skyAmbient);
+    refs.uSunColor.value.set(...next.sunColor);
+    refs.uSkyAmbient.value.set(...next.skyAmbient);
     hostSky = hostSkyColours(next.lut);
-    buildingUniforms.uGroundBounce.value.set(...next.groundBounce);
-    buildingUniforms.uStreetGlow.value.set(...next.streetGlow);
-    passUniforms.uSunDisc.value.set(...next.sunDisc);
+    refs.uGroundBounce.value.set(...next.groundBounce);
+    refs.uStreetGlow.value.set(...next.streetGlow);
+    passRefs.uSunDisc.value.set(...next.sunDisc);
   };
 
   const sky: CitySky = {
-    buildingShaders,
-    buildingUniforms,
-    overlayInput,
+    nodes,
+    passes: passes.group,
     get hostLight() {
       return hostLight;
     },
@@ -402,8 +337,8 @@ export function createCitySky(options: {
       stats.lastSkyMs = nextState === state ? 0 : performance.now() - started;
       if (nextState !== state) applyState(nextState);
       const direction = sunDirection(next);
-      shared.uSunDir.value.set(...direction);
-      shared.uSunAzimuth.value = (next.azimuthDeg * Math.PI) / 180;
+      refs.uSunDir.value.set(...direction);
+      refs.uSunAzimuth.value = (next.azimuthDeg * Math.PI) / 180;
       // The same light for what the engine still lights MapLibre's way (the
       // trees): from the real sun while it is up (overhead at night, when
       // only the colour matters), coloured by the light on the ground — the
@@ -421,17 +356,9 @@ export function createCitySky(options: {
       options.requestRepaint();
     },
 
-    prerender(renderer, scene, view, casters) {
+    prerender(pass, scene, view, casters) {
       if (disposed || !sun || !state || !shadowTarget) return;
-      if (!targetReady) {
-        // Every program that DECLARES the shadow sampler fails to draw while
-        // its depth texture has never been allocated with compare mode on —
-        // whether it reads it or not (WebGL: INVALID_OPERATION). At night no
-        // shadow is ever rendered, so the target is allocated, once, here.
-        renderer.resetState();
-        renderer.initRenderTarget(shadowTarget);
-        targetReady = true;
-      }
+      ensureTarget(pass);
       frame =
         state.shadowStrength > 0 && view.opacity > 0
           ? shadowFrame({
@@ -472,15 +399,7 @@ export function createCitySky(options: {
       }
       shadowCamera.projectionMatrix.fromArray(shadowMatrixForCentre(frame, view.center));
       shadowCamera.projectionMatrixInverse.copy(shadowCamera.projectionMatrix).invert();
-      renderer.resetState();
-      renderer.setRenderTarget(shadowTarget);
-      renderer.setClearColor(0xffffff, 1);
-      renderer.clear(true, true, false);
-      const previous = scene.overrideMaterial;
-      scene.overrideMaterial = casterMaterial;
-      renderer.render(scene, shadowCamera);
-      scene.overrideMaterial = previous;
-      renderer.setRenderTarget(null);
+      if (!pass.drawOffscreen(scene, shadowCamera, shadowTarget, pass.caster)) return;
       renderedKey = key;
       lastShadowAt = started;
       stats.shadowRenders++;
@@ -488,50 +407,45 @@ export function createCitySky(options: {
       stats.shadowTexelM = frame.texelM;
     },
 
-    drawBackground(renderer, view) {
-      if (disposed || !sun || !state) return;
-      if (!targetReady && shadowTarget) {
-        // Belt and braces for the rule in `prerender`: a host that skipped the
-        // offscreen pass must not leave every program with a shadow sampler
-        // undrawable. `initRenderTarget` rebinds the framebuffer, so state is
-        // reset after it, before anything is drawn into the map's.
-        renderer.initRenderTarget(shadowTarget);
-        targetReady = true;
-        renderer.resetState();
-      }
+    update(pass, view) {
+      passes.group.visible = false;
+      if (disposed || !sun || !state) return false;
+      // A host that skipped the offscreen pass must not leave every program
+      // with a shadow sampler reading a texture that was never allocated.
+      ensureTarget(pass);
       const effect = Math.max(
         0,
         Math.min(1, (view.zoom - EFFECT_ZOOM[0]) / (EFFECT_ZOOM[1] - EFFECT_ZOOM[0])),
       );
       const metresPerMercator = 1 / mercatorPerMetre(view.centerLngLat.lat);
       const rays = viewRays(view.projection, metresPerMercator);
-      if (!rays) return;
+      if (!rays) return false;
 
-      shared.uCamera.value.set(...rays.camera);
-      shared.uGroundZ.value = view.groundM;
+      refs.uCamera.value.set(...rays.camera);
+      refs.uGroundZ.value = view.groundM;
       stats.groundM = view.groundM;
       stats.cameraHeightM = rays.camera[2];
       rays.corners.forEach((corner, i) => {
-        passUniforms.uCorners.value[i].set(...corner);
+        passRefs.uCorners.value[i].set(...corner);
       });
-      passUniforms.uEffect.value = effect;
+      passRefs.uEffect.value = effect;
 
       if (frame) {
-        shared.uShadowStrength.value = state.shadowStrength * view.opacity;
-        shared.uShadowBias.value = frame.depthPerMetre * frame.texelM * 1.5;
-        passUniforms.uShadowEnu.value.fromArray(
+        refs.uShadowStrength.value = state.shadowStrength * view.opacity;
+        refs.uShadowBias.value = frame.depthPerMetre * frame.texelM * 1.5;
+        passRefs.uShadowEnu.value.fromArray(
           shadowMatrixForEnu(frame, view.center, 1 / metresPerMercator),
         );
-        buildingUniforms.uShadowMatrix.value.fromArray(shadowMatrixForCentre(frame, view.center));
-        buildingUniforms.uShadowNormalOffset.value = frame.texelM;
+        refs.uShadowMatrix.value.fromArray(shadowMatrixForCentre(frame, view.center));
+        refs.uShadowNormalOffset.value = frame.texelM;
       } else {
-        shared.uShadowStrength.value = 0;
+        refs.uShadowStrength.value = 0;
       }
-      stats.shadowStrength = shared.uShadowStrength.value;
-      buildingUniforms.uMetresPerMercator.value = metresPerMercator;
+      stats.shadowStrength = refs.uShadowStrength.value;
+      refs.uMetresPerMercator.value = metresPerMercator;
 
-      if (effect <= 0) return;
-      renderer.render(skyScene, passCamera);
+      passes.group.visible = effect > 0;
+      return passes.group.visible;
     },
 
     dispose() {
@@ -542,9 +456,7 @@ export function createCitySky(options: {
       lutTexture.dispose();
       depthTexture?.dispose();
       shadowTarget?.dispose();
-      for (const pass of passes) pass.material.dispose();
-      quad.dispose();
-      casterMaterial.dispose();
+      passes.dispose();
     },
   };
   return sky;

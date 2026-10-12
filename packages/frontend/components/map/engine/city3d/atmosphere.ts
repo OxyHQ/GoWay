@@ -268,7 +268,7 @@ const NIGHT_SKY_HORIZON: Rgb = [0x27 / 255, 0x30 / 255, 0x8c / 255];
 
 /**
  * A warm light at street level at night, on walls only, fading out over the
- * first {@link STREET_GLOW_HEIGHT_M} metres (`skyShaders.ts`). Linear,
+ * first {@link STREET_GLOW_HEIGHT_M} metres (`tsl/skyBuildingMaterial.ts`). Linear,
  * relative to the night's adapted brightness.
  *
  * HONESTY (`docs/MAP_3D_CITY.md`): this is lighting, applied to every wall of
@@ -283,7 +283,7 @@ const STREET_GLOW: Rgb = [0.3, 0.16, 0.06];
  * or `lit` on the building: `CITY_PROPS.floodlit`): a warm uplight on the
  * walls, brightest at the foot and fading up the facade, with a little on the
  * roof. Linear, exposed units (the night's roofs are ~0.15), scaled by
- * `nightFactor` (`skyShaders.ts`). The fact is the tag; the look of the light
+ * `nightFactor` (`tsl/skyBuildingMaterial.ts`). The fact is the tag; the look of the light
  * — its colour, fall-off and strength — is styling.
  */
 export const FLOODLIGHT = {
@@ -498,7 +498,7 @@ export function skyRadiance(elevation: number, deltaAzimuth: number, sunAltitude
 }
 
 // ---------------------------------------------------------------------------
-// Aerial perspective (mirrored in GLSL by `skyShaders.ts`)
+// Aerial perspective (mirrored in TSL by `tsl/skyNodes.ts`)
 // ---------------------------------------------------------------------------
 
 /** The per-channel extinction at sea level and its scale heights, as the haze shader takes them. */

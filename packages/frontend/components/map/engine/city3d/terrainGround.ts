@@ -8,7 +8,7 @@
  * building, how far up to lift it, so that it sits where MapLibre draws the
  * ground. Pure: no renderer, no map engine; `cityEngine.ts` uploads the result
  * as one float per vertex and the material adds it (`tsl/common.ts` →
- * `terrainLift`; with the sky, `skyShaders.ts`).
+ * `terrainLift`, which both building materials read).
  *
  * ## What is sampled, and why a grid
  *

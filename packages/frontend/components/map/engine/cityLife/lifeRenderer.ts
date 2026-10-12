@@ -501,7 +501,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
   };
 
   const overlay: CityOverlay = {
-    attach(_scene, tslScene) {
+    attach(tslScene) {
       // Drawn by the TSL pass (`docs/MAP_NATIVE_3D.md` → Phase 2).
       tslScene.add(group);
     },

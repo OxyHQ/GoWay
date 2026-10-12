@@ -5,11 +5,11 @@
  * Reached only from `cityEngine.ts` (and so only through the lazy three.js
  * chunk; `components/__tests__/engine3dChunk.test.ts` pins that).
  *
- * Every entry owns two materials (buildings, trees) built from the engine's
- * shared uniforms — light, palette, zoom fade — plus its OWN fade pair
- * (`uFade`, `uFadeOut`), shared by both, so a level-of-detail cross-fade
- * dissolves a tile's buildings and trees together (`transitions.ts`). The
- * materials share one shader each, so three compiles each program once.
+ * Every entry's meshes draw with the engine's SHARED materials (`tsl/`: the
+ * buildings map-lit or sky-lit, the trees), on the engine's uniforms — light,
+ * palette, zoom fade — and read the entry's OWN fade pair per mesh, shared by
+ * its buildings and trees, so a level-of-detail cross-fade dissolves a tile's
+ * buildings and trees together (`transitions.ts`).
  */
 import * as THREE from 'three';
 
@@ -44,11 +44,11 @@ export interface TileEntry {
    * The engine's TSL pass and this tile's format, so a fade can switch the
    * tile's meshes to the shared dithered variants (`tsl/tslPass.ts`).
    */
-  tsl: { pass: Pick<TslPass, 'buildings' | 'trees'>; format: CityTileFormat; buildings: boolean };
+  tsl: { pass: Pick<TslPass, 'buildings' | 'trees'>; format: CityTileFormat };
   /** Instanced trees: broadleaf, then conifers (each one draw call, when present). */
   trees: THREE.Mesh[];
   fade: { uFadeFrom: { value: number }; uFadeTo: { value: number } };
-  /** Whether its materials carry the screen-door `discard` (see `setEntryFade`). */
+  /** Whether its meshes draw the dithered variants (see `setEntryFade`). */
   dithering: boolean;
   unitM: number;
   /** Local metres of the buildings' stored origin (`PackedMesh.originM`). */
@@ -73,17 +73,6 @@ export interface TileEntry {
 
 /** What the engine shares with every entry it builds. */
 export interface EntryContext {
-  scene: THREE.Scene;
-  /** The building material's uniforms (light, palette, zoom fade). */
-  buildingUniforms: Record<string, THREE.IUniform>;
-  /** Preprocessor defines every building material compiles with (the detailed look's). */
-  buildingDefines?: Record<string, string>;
-  /**
-   * The city sky's building shaders by source (`skyShaders.ts`): with them
-   * the buildings are drawn with `WebGLRenderer` in `scene`. Without them
-   * (no sky) they are drawn by the TSL pass, as the trees always are.
-   */
-  buildingShaders: Record<CityTileFormat, { vertexShader: string; fragmentShader: string }> | null;
   /** The engine's TSL pass (`tsl/tslPass.ts`): its scene and shared materials. */
   tsl: Pick<TslPass, 'scene' | 'buildings' | 'trees'>;
 }
@@ -108,29 +97,6 @@ const SIDE = { buildings: THREE.FrontSide, trees: THREE.BackSide } as const;
 
 /** Both sides, for the TSL pass's shared materials. */
 export const MESH_SIDES = SIDE;
-
-/** Common material settings. */
-function materialFor(
-  vertexShader: string,
-  fragmentShader: string,
-  uniforms: Record<string, THREE.IUniform>,
-  side: THREE.Side,
-  defines: Record<string, string> = {},
-): THREE.RawShaderMaterial {
-  return new THREE.RawShaderMaterial({
-    glslVersion: THREE.GLSL3,
-    vertexShader,
-    fragmentShader,
-    uniforms,
-    // A copy: the dither toggle (`setEntryFade`) rewrites it per material.
-    defines: { ...defines },
-    side,
-    blending: THREE.CustomBlending,
-    blendSrc: THREE.OneFactor,
-    blendDst: THREE.OneMinusSrcAlphaFactor,
-    transparent: false,
-  });
-}
 
 /**
  * The unit trees' buffers, uploaded once and shared by every tile: for each
@@ -221,7 +187,7 @@ export function createTileEntry(
     key,
     lod,
     buildings: [],
-    tsl: { pass: context.tsl, format, buildings: context.buildingShaders === null },
+    tsl: { pass: context.tsl, format },
     trees: [],
     fade,
     dithering: false,
@@ -239,16 +205,7 @@ export function createTileEntry(
   };
 
   if (mesh) {
-    const shaders = context.buildingShaders?.[format];
-    const material = shaders
-      ? materialFor(
-          shaders.vertexShader,
-          shaders.fragmentShader,
-          { ...context.buildingUniforms, ...fade },
-          SIDE.buildings,
-          context.buildingDefines,
-        )
-      : context.tsl.buildings.get(format, false);
+    const material = context.tsl.buildings.get(format, false);
     // Bounds from the worker, in stored units: three never walks the vertices.
     const box = new THREE.Box3(
       new THREE.Vector3(...mesh.bounds.min),
@@ -260,24 +217,19 @@ export function createTileEntry(
       geometry.setAttribute('position', new THREE.BufferAttribute(chunk.position, 4));
       geometry.setAttribute('normal', new THREE.BufferAttribute(chunk.normal, 4, true));
       geometry.setIndex(new THREE.BufferAttribute(chunk.index, 1));
-      // GoWay city tiles' surface colour and storey rhythm (`tsl/buildingMaterial.ts`;
-      // with the sky, `osmShaders.ts` → `osmBase`).
+      // GoWay city tiles' surface colour and storey rhythm (`tsl/buildingSurface.ts`);
+      // their per-building flags ride in the normal's spare lane (`packing.ts`).
       if (chunk.color)
         geometry.setAttribute('color', new THREE.BufferAttribute(chunk.color, 4, true));
       if (chunk.facade) geometry.setAttribute('facade', new THREE.BufferAttribute(chunk.facade, 4));
-      // Per-building night flags (`osmMesher.ts` → `VERTEX_FLAG_*`), read by the city sky.
-      // (Only with the GLSL city sky, the one reader; a 1-byte stride is not
-      // a WebGPU vertex format.)
-      if (chunk.flags && shaders)
-        geometry.setAttribute('flags', new THREE.BufferAttribute(chunk.flags, 1));
       geometry.boundingBox = box;
       geometry.boundingSphere = sphere;
       const part = hide(new THREE.Mesh(geometry, material));
-      // The TSL materials are shared by every tile and read its fade per mesh.
-      if (!shaders) part.userData[FADE_USERDATA_KEY] = fade;
+      // The materials are shared by every tile and read its fade per mesh.
+      part.userData[FADE_USERDATA_KEY] = fade;
       // Buildings cast the city sky's sun shadows (`frameSelection.ts`).
       part.layers.enable(SHADOW_CASTER_LAYER);
-      (shaders ? context.scene : context.tsl.scene).add(part);
+      context.tsl.scene.add(part);
       entry.buildings.push(part);
     }
     entry.bytes += mesh.bytes;
@@ -358,33 +310,11 @@ export function setEntryFade(entry: TileEntry, from: number, to: number): void {
   const dither = from > 0 || to < 1;
   if (dither === entry.dithering) return;
   entry.dithering = dither;
-  // The TSL meshes switch to their shared dithered variants.
+  // The meshes switch to their shared dithered variants.
   const trees = entry.tsl.pass.trees.get(dither);
   for (const mesh of entry.trees) mesh.material = trees;
-  if (entry.tsl.buildings) {
-    const buildings = entry.tsl.pass.buildings.get(entry.tsl.format, dither);
-    for (const mesh of entry.buildings) mesh.material = buildings;
-  }
-  for (const material of entryMaterials(entry)) {
-    if (dither) material.defines = { ...material.defines, DITHER: 1 };
-    else {
-      const { DITHER: _, ...rest } = material.defines ?? {};
-      material.defines = rest;
-    }
-    material.needsUpdate = true;
-  }
-}
-
-/**
- * The entry's own GLSL materials: the sky's building materials, one per tile.
- * The TSL ones are shared, and freed by their pass.
- */
-function entryMaterials(entry: TileEntry): Set<THREE.RawShaderMaterial> {
-  const materials = new Set<THREE.RawShaderMaterial>();
-  for (const mesh of entry.buildings) {
-    if (mesh.material instanceof THREE.RawShaderMaterial) materials.add(mesh.material);
-  }
-  return materials;
+  const buildings = entry.tsl.pass.buildings.get(entry.tsl.format, dither);
+  for (const mesh of entry.buildings) mesh.material = buildings;
 }
 
 /**
@@ -419,9 +349,8 @@ export function setEntryVisible(entry: TileEntry, visible: boolean): void {
 
 /** Free an entry's GPU buffers and materials. */
 export function disposeEntry(entry: TileEntry): void {
-  const materials = entryMaterials(entry);
   for (const mesh of entry.buildings) {
-    // In `scene`, or in the TSL pass's scene: wherever it was added.
+    // The materials are shared, and freed by their pass.
     mesh.removeFromParent();
     mesh.geometry.dispose();
   }
@@ -439,7 +368,6 @@ export function disposeEntry(entry: TileEntry): void {
     geometry.setIndex(null);
     geometry.dispose();
   }
-  for (const material of materials) material.dispose();
 }
 
 /** The last source-vertex index `<= s` in sorted `starts`, or −1. */
@@ -582,7 +510,7 @@ export function applyGround(entry: TileEntry, result: GroundResult | null): void
     }
     at += count;
   }
-  if (gainedBuildingLift && entry.tsl.buildings) entry.tsl.pass.buildings.invalidate();
+  if (gainedBuildingLift) entry.tsl.pass.buildings.invalidate();
   if (!result || !entry.instances) return;
   let from = 0;
   entry.instances.ranges.forEach((count) => {

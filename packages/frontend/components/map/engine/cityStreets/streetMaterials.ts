@@ -1,8 +1,10 @@
 /**
- * The street surfaces and markings in TSL (`docs/MAP_NATIVE_3D.md` → Phase 2):
- * drawn by the city engine's TSL pass whenever the city sky is off, the same
- * look the GLSL had (`streetShaders.ts`, which now carries only the sky's
- * variant, until the sky itself is ported).
+ * The street surfaces and markings in TSL (`docs/MAP_NATIVE_3D.md` → Phase 2),
+ * drawn by the city engine's renderer, the same look the GLSL had.
+ * Without the city sky they are unlit, like the basemap they cover; under it
+ * they are lit and hazed exactly as the sky's ground pass lights the basemap
+ * (`tsl/skyPasses.ts`: sun × shadow + sky, `^1/2.2`, then haze), so the
+ * streets take the buildings' shadows.
  *
  * One material per kind serves every tile: a mesh's tile — its ground slot
  * (`groundAtlas.ts`), size, whether it is grounded and how much of its fine
@@ -15,7 +17,7 @@
  * - **Lines never vanish**: a painted line thinner than a pixel is drawn a
  *   pixel wide at proportionally less alpha (`MIN_HALF_PX`), anti-aliased
  *   by its own across-coordinate; arrows and letters are SDF.
- * - **Unlit**, like the basemap they cover; day and night are two palettes.
+ * - **Day and night are two palettes**, blended by the night factor.
  */
 import {
   CustomBlending,
@@ -46,6 +48,7 @@ import {
   min,
   mix,
   modelViewMatrix,
+  modelWorldMatrix,
   screenCoordinate,
   select,
   smoothstep,
@@ -60,6 +63,7 @@ import {
 } from 'three/tsl';
 
 import { mapBlending, perObject } from '../city3d/tsl/common';
+import type { SkyNodes } from '../city3d/tsl/skyNodes';
 import { GROUND } from '../city3d/terrainGround';
 import { MIN_HALF_PX, STREET_LIFT_M } from './meshBuffers';
 import { ATLAS_SIZE, SDF_EDGE } from './streetAtlas';
@@ -92,6 +96,8 @@ export interface StreetMaterialInputs {
   /** Device pixels per metre at the screen centre. */
   pxPerM: () => number;
   depthBias: number;
+  /** The city sky's light inputs; `null` or absent: unlit. Its night factor replaces `nightFactor`. */
+  sky?: SkyNodes | null;
 }
 
 export interface StreetMaterials {
@@ -112,7 +118,8 @@ export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMater
   const grounded = tileValue((t) => t.grounded, 0);
   const tileSize = tileValue((t) => t.tileSizeM, 1);
   const detail = tileValue((t) => t.detail, 0);
-  const night = uniform(0).onRenderUpdate(() => inputs.nightFactor());
+  const sky = inputs.sky ?? null;
+  const night = sky ? sky.nightFactor : uniform(0).onRenderUpdate(() => inputs.nightFactor());
   const fade = uniform(1).onRenderUpdate(() => inputs.fade());
   // `projectionMatrix[3][3]` scales the anchor's w as the GLSL did.
   const pxPerM = uniform(1).onRenderUpdate(
@@ -133,16 +140,33 @@ export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMater
       return select(grounded.greaterThan(0.5), h, float(0));
     })();
 
+  /** On the ground, in model space. */
+  const onGround = (p: Node<'vec3'>) => vec4(p.xy, p.z.add(groundAt(p.xy)).add(STREET_LIFT_M), 1);
+
   /** On the ground, in clip space, nudged toward the camera by its layer. */
   const place = (p: Node<'vec3'>, layer: Node<'float'>) => {
-    const local = vec4(p.xy, p.z.add(groundAt(p.xy)).add(STREET_LIFT_M), 1);
-    const clip = cameraProjectionMatrix.mul(modelViewMatrix).mul(local);
+    const clip = cameraProjectionMatrix.mul(modelViewMatrix).mul(onGround(p));
     return vec4(clip.xy, clip.z.sub(layer.add(1).mul(depthBias).mul(clip.w)), clip.w);
   };
 
-  /** The day and night palettes, blended. */
-  const shade = (day: Node<'vec3'>, nightColour: Node<'vec3'>) =>
-    mix(day, nightColour, clamp(night, 0, 1));
+  /**
+   * The day and night palettes, blended — and under the sky, lit as the
+   * ground pass lights the basemap and seen through the haze. `p` is the
+   * vertex (the same one `place` puts on the ground).
+   */
+  const shadeAt = (p: Node<'vec3'>) => {
+    if (!sky) {
+      return (day: Node<'vec3'>, nightColour: Node<'vec3'>) =>
+        mix(day, nightColour, clamp(night, 0, 1));
+    }
+    const world = modelWorldMatrix.mul(onGround(p));
+    const vWorld = varying(sky.enu(world.xyz));
+    const vShadow = varying(sky.shadowMatrix.mul(world));
+    return (day: Node<'vec3'>, nightColour: Node<'vec3'>) => {
+      const albedo = mix(day, nightColour, clamp(night, 0, 1));
+      return sky.aerial(albedo.mul(sky.groundLight(sky.sunVisibility(vShadow))), vWorld);
+    };
+  };
 
   // --- Surfaces: paving, asphalt, tints ---------------------------------------
   const surfaces = mapBlending(new MeshBasicNodeMaterial());
@@ -151,6 +175,7 @@ export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMater
     // material, shade, depth layer, —
     const attr = attribute('attr', 'vec4');
     surfaces.vertexNode = place(position, attr.z);
+    const shade = shadeAt(position);
     const vMaterial = varying(attr.x);
     const vShade = varying(attr.y.div(255));
     const day = vec3Array(inputs.surfaceDay);
@@ -188,6 +213,7 @@ export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMater
       position.z,
     );
     markings.vertexNode = place(p, attr.z);
+    const shade = shadeAt(p);
     const vColour = varying(attr.x);
     const vMode = varying(mode);
     const vUv = varying(select(isLine, vec2(uv.x.mul(pad), 0), uv));
@@ -208,6 +234,10 @@ export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMater
       return vec4(shade(day.element(c), nightColours.element(c)).mul(alpha), alpha);
     })();
     markings.side = DoubleSide;
+    // One pass: three draws a transparent double-sided material twice (back
+    // faces, then front) unless told not to, and a flat marking is only ever
+    // one of the two from any view — the second draw would draw nothing.
+    markings.forceSinglePass = true;
     markings.transparent = true;
     markings.depthWrite = false;
     markings.blending = CustomBlending;

@@ -9,9 +9,11 @@ import {
   CustomBlending,
   type MeshBasicNodeMaterial,
   type Node,
+  type Matrix4,
   type NodeMaterial,
   OneFactor,
   OneMinusSrcAlphaFactor,
+  type Vector2,
   type Vector3,
 } from 'three/webgpu';
 import {
@@ -47,8 +49,23 @@ export function bindFloat(ref: UniformRef<number>) {
   return uniform(ref.value).onRenderUpdate(() => ref.value);
 }
 
+/*
+ * A vector or matrix uniform holds the engine's OWN object, which the engine
+ * mutates in place (it never assigns a new one): three reads it as each
+ * object is drawn, with no per-render callback. A callback is a node update
+ * per draw per uniform, and a sky-lit building reads dozens.
+ */
+
 export function bindVec3(ref: UniformRef<Vector3>) {
-  return uniform(ref.value).onRenderUpdate(() => ref.value);
+  return uniform(ref.value);
+}
+
+export function bindVec2(ref: UniformRef<Vector2>) {
+  return uniform(ref.value);
+}
+
+export function bindMat4(ref: UniformRef<Matrix4>) {
+  return uniform(ref.value);
 }
 
 /** A per-mesh number, read from `object.userData[key]` as each mesh is drawn. */
@@ -122,7 +139,7 @@ export interface FadeRefs {
 }
 
 /**
- * The fade's screen door (`transitions.ts` → `DITHER_GLSL`): interleaved
+ * The fade's screen door (`transitions.ts`): interleaved
  * gradient noise on the fragment's pixel, kept inside the mesh's own
  * `[from, to)` (`userData[FADE_USERDATA_KEY]`), so one material serves every
  * tile. Only the dithered variant of a material carries it: a shader that may

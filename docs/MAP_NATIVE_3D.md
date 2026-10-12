@@ -141,9 +141,9 @@ emulator with `-gpu swiftshader_indirect`.
 **Built and measured behind a registry flag (`cityTsl`, since removed: step 2
 made it the only path).** The 3D city's buildings are drawn by three's
 `WebGPURenderer` on its WebGL2 backend, with the TSL material, in MapLibre GL
-JS's own context. What is not ported yet stays on `WebGLRenderer` in the same
-frame. With the city sky the buildings keep the sky's GLSL material, which is
-not ported yet.
+JS's own context. What was not ported yet stayed on `WebGLRenderer` in the same
+frame, until [the city sky's port](#phase-2-the-city-sky-its-shadows-and-the-last-glsl)
+removed it.
 
 | Piece | Where |
 | --- | --- |
@@ -204,8 +204,8 @@ and 1,309,323 triangles on the phone viewport (412×915 @2.625), 2,154,551 at
   Loading it with a separate `import()` was tried and refused: Expo hoists a
   module that two async chunks share into the first-paint `__common` chunk,
   and three's core went there (27.5 → 135.8 KB gzip for every visitor). The
-  extra goes when the last GLSL material does and `WebGLRenderer` leaves the
-  chunk.
+  city engine no longer uses `WebGLRenderer` (the sky's port); the street-3D
+  viewer (`sparkEngine.ts`) still does, in the same chunk.
 
 ## Phase 2, step 2: trees, and TSL is the only path
 
@@ -214,12 +214,12 @@ same change.** No material exists twice; the 3D city is Labs. So:
 
 - **The TSL pass always runs** (`tsl/tslPass.ts`). It draws the **trees**
   always and the **buildings** whenever the city sky is off. With the sky the
-  buildings stay the sky's GLSL material, drawn by `WebGLRenderer` right after
-  the pass, into the same depth buffer.
+  buildings stayed the sky's GLSL material, drawn by `WebGLRenderer` right
+  after the pass, until the sky was ported too.
 - **Deleted:** `treeShaders.ts`, the plain building shaders
   (`CITY_*_SHADER`, `OSM_VERTEX/FRAGMENT_SHADER`) and the `cityTsl` flag.
-  `OSM_BASE_GLSL`, `TAG_TEMPER` and `glslFloat` stay, because only the sky
-  path (and the detailed look, which needs the sky) reads them now.
+  `OSM_BASE_GLSL`, `TAG_TEMPER` and `glslFloat` stayed for the sky path
+  (and the detailed look, which needs the sky) until its port.
 - **`tsl/treeMaterial.ts`** ports the instanced trees: placement, yaw, width,
   lean and tint from the instance's four numbers; the canopy occlusion; the
   contact shadow; the zoom threshold; the terrain lift (`aGround`). One
@@ -337,8 +337,9 @@ not by the tree count.
 
 The streets' surfaces and markings (`cityStreets/`, #159) are TSL whenever
 the city sky is off (`streetMaterials.ts`), drawn by the TSL pass; their
-unlit GLSL is gone. Under the sky they stay GLSL (`streetShaders.ts`, now the
-sky's variant only) until the sky is ported, as the buildings do.
+unlit GLSL is gone. Under the sky they stayed GLSL (`streetShaders.ts`) until
+the sky was ported; now one TSL material per kind serves both, lit by the sky
+when it is on.
 
 - **One material per kind for every tile.** The GLSL path built a material
   and a ground texture per tile. Every street tile's ground grid now has a
@@ -483,6 +484,77 @@ three's and the pass's own, unchanged.
 Next: the sky and shadow passes (which retire the last building and street
 GLSL), with the sky's building material and the detailed look's material
 response.
+
+## Phase 2: the city sky, its shadows, and the last GLSL
+
+The city sky (`sky.ts`) was the last of the engine's GLSL, and with it the
+engine's second renderer goes: **the city engine draws everything with one
+`WebGPURenderer`** (`tsl/tslPass.ts`). It was ported after the sky's own fixes
+(#182: the shadow matrix's north–south drift and the pan-stability check;
+#183: the globe's day and night, a separate MapLibre layer that is not part
+of the engine).
+
+| Piece | Where |
+| --- | --- |
+| The sky's light inputs as TSL nodes: haze (`hazeTransmittance`), the sky table (`skyColor`), the sun's soft shadow (`sunVisibility`, 12/8/4/0 PCF taps from the profile), `aerial`, `groundLight`. One copy, read by every sky-lit material and by overlays (`setSky`) | `tsl/skyNodes.ts` |
+| The ground and sky passes (fill, multiply, add), blended over the basemap as before | `tsl/skyPasses.ts` |
+| The buildings under the sky: the one shading path's contract (`CitySurface`, `CitySkyLight`, `CityMaterialResponse`), clay by default | `tsl/skyBuildingMaterial.ts` |
+| The detailed look: its response (facade relief, windows, day/night) and its surface tint | `tsl/detailedMaterial.ts` (the design and the JS mirror stay in `materials.ts`) |
+| The surface both building materials light: the ramp, the tempered tag, the storey openings | `tsl/buildingSurface.ts` |
+| The shadow map: a `RenderTarget` drawn by the same pass (`drawOffscreen`), the casters through an override material that keeps each building's own position | `sky.ts`, `tsl/tslPass.ts` |
+| The streets under the sky: the same TSL materials, given the sky's nodes | `cityStreets/streetMaterials.ts` |
+| Deleted | `skyShaders.ts`, `osmShaders.ts`, `shaders.ts`, `cityStreets/streetShaders.ts`, the GLSL in `materials.ts` and `transitions.ts`, the engine's `WebGLRenderer` and its scene, per-tile GLSL materials in `cityMeshes.ts` |
+
+**Measured** (the visibility gate's sky view at z19, tilted, terrain on;
+headless Chromium on SwiftShader; `main` 7d54a3d against the port, the same
+export settings):
+
+| | Result |
+| --- | --- |
+| Pixels, noon | 423 of 1,024,000 differ by more than 8 levels (0.04%); the rest of the difference is ≤ 8 levels in the shadows' penumbra (the PCF kernel's per-pixel rotation reads three's screen coordinate, whose origin is the top) |
+| Pixels, night (detailed look: window glow, floodlights) | 110 differ by more than 8 levels; the lit windows are the same windows |
+| Frame-budget gate (`frameBudget.test.ts`, every scene × preset) | draws and triangles identical to `main` |
+| Steady frame CPU on the gate's harness (skyline, high; `render()`, p50) | `main` 0.40 ms, the port 0.38 ms |
+| First frames, while the city loads (same harness, every `render()` until settled) | `main` 124–145 ms in all, worst frame 30–45 ms; the port 221–238 ms, worst 59–73 ms: TSL builds each node material's shaders in JavaScript on its first draw (the sky-lit buildings, the three passes, the casters). Once per material per session |
+| Bundle (production `expo export`, gzip) | lazy 3D chunk 1,421,084 → 1,413,292 B (−7.8 KB); first paint (`__common`) unchanged |
+| Orbit in the browser (SwiftShader) | Frame interval p50 16 ms on both. Not conclusive past that: the shared host ran at load 12–19 and one build's own runs differed tenfold; the harness numbers above are the ones to read |
+
+How it was brought to parity, for the next port:
+
+- **A texture node is updated per draw.** On the WebGL2 backend every
+  `texture()` read carries a flip uniform that three refreshes for every object
+  drawn. The first port read the shadow map in 12 unrolled taps: 1,254 node
+  updates a frame for the skyline (+0.2 ms CPU). The taps are now one read in
+  a constant `Loop` (a constant loop is uniform control flow, which WGSL's
+  comparison samples need): 154.
+- **A vector uniform is bound by reference.** `bindVec3`/`bindMat4` hold the
+  engine's own object, which it mutates in place, instead of a per-render
+  callback; the detailed look's day and night values, fixed for an engine's
+  life, are constants. Only floats keep a callback.
+- **The shadow casters' material is rebuilt with the buildings'.** A node
+  material decides once, when it is built, whether a mesh has a terrain lift
+  (`terrainLift`). The casters' override material was built before any tile
+  was grounded and never rebuilt: on terrain every building cast from 50 m
+  below the street, and nothing was in shadow. It is now the pass's
+  (`tslPass.caster`) and `buildings.invalidate()` rebuilds it too.
+- **TSL reads a texture top-down.** v = 0 is the top in WebGPU, and three
+  flips render targets on WebGL to match, so the shadow lookup flips the
+  shadow clip's y.
+- **A transparent double-sided material draws twice** (back faces, then
+  front) unless `forceSinglePass`: the street markings drew 4 extra draws per
+  frame until set.
+- **The flags lane.** The per-building night flags were a one-byte vertex
+  lane, which three's WebGPU backend cannot read (single-component formats
+  must be 32-bit). They ride in the normal's spare `w` now (`packing.ts`),
+  one byte less per vertex.
+- three's WebGL2 backend logs `drawBuffers: BACK or NONE` when it re-sends a
+  render target's draw buffers after a state reset: it issues the call before
+  binding the target's framebuffer. Harmless (an FBO's draw buffer is already
+  attachment 0); upstream's order.
+
+For native (phase 4), still open: the shadow camera's and MapLibre's
+projections are GL's (`z` in [−1, 1]); on WebGPU three expects [0, 1], so the
+native host converts both.
 
 ## Correction: the terrain lift was not measured
 
@@ -785,7 +857,7 @@ Estimates are one engineer who knows the codebase, and they are estimates.
 | Phase | What | Parity after it | Estimate |
 | --- | --- | --- | --- |
 | **1. Prototype** (this change) | Shared meshing; TSL building material; one tile on WebGL2, browser WebGPU and Android Dawn; measured | Web unchanged; native unchanged | Done |
-| **2. The engine on `WebGPURenderer`, web first** | ~~First prove `WebGPURenderer` with the WebGL backend inside MapLibre's custom layer (external context, shared depth, `resetState`)~~ (done: [step 1](#phase-2-step-1-buildings-through-webgpurenderer-inside-maplibre); trees and the flip: [step 2](#phase-2-step-2-trees-and-tsl-is-the-only-path)). Then port every material to TSL: OpenMapTiles buildings, trees, sky/atmosphere/shadow passes, city life, live vehicles, landmarks (`modelLook`), street markings, terrain lift and LOD dither. Delete the GLSL as each lands: one copy at every step | Web identical (same pixels, same budgets); native unchanged | 4–6 weeks |
+| **2. The engine on `WebGPURenderer`, web first** | ~~First prove `WebGPURenderer` with the WebGL backend inside MapLibre's custom layer (external context, shared depth, `resetState`)~~ (done: [step 1](#phase-2-step-1-buildings-through-webgpurenderer-inside-maplibre); trees and the flip: [step 2](#phase-2-step-2-trees-and-tsl-is-the-only-path)). Then port every material to TSL: OpenMapTiles buildings, trees, sky/atmosphere/shadow passes, city life, live vehicles, landmarks (`modelLook`), street markings, terrain lift and LOD dither. Delete the GLSL as each lands: one copy at every step. **Done**: the last, the sky, removed `WebGLRenderer` from the city engine ([the sky's port](#phase-2-the-city-sky-its-shadows-and-the-last-glsl)) | Web identical (same pixels, same budgets); native unchanged | 4–6 weeks |
 | **3. The engine draws the base map** (web, behind a flag) | Vector-tile fill and line tessellation in the workers; style expressions via `maplibre-gl-style-spec`; terrain from GoWay's DEM and the globe; SDF labels from GoWay's glyphs, with line placement, collision and fading; one camera and gesture controller; the `MapCanvas` contract (markers, overlays, label taps, `onViewportChange`) on the new renderer | Web with the flag = web today; MapLibre still the default | **4–6 months.** Labels are the long pole (6–10 weeks of it) |
 | **4. Native host** | `MapCanvas.native.tsx` on `react-native-webgpu`. Off-thread meshing and decoding (worklet runtimes); a native tile cache; gestures on the UI thread (Gesture Handler + Reanimated feeding the shared camera). The config plugin goes in `@oxy.so/app-preset`, never the app. MapLibre Native removed. Device gate on a mid-range Android (Adreno 6xx) and an A14-class iPhone | **Native = web**, every feature | 4–6 weeks + device benchmarks |
 | **5. Web switches** | The new renderer becomes the web default after the same gate on mid-range Android Chrome; `maplibre-gl` removed | One renderer everywhere | 2–4 weeks |

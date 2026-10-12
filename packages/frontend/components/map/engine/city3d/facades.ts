@@ -20,7 +20,7 @@
  *
  * `building:colour`/`roof:colour` and `building:material`/`roof:material` are
  * recorded facts and are drawn — but blended into the cartographic palette,
- * not painted over it (`TAG_TEMPER`, `osmShaders.ts`): `buildings3d.ts` refused raw
+ * not painted over it (`TAG_TEMPER`, `tsl/buildingSurface.ts`): `buildings3d.ts` refused raw
  * `colour` because a city painted from it is "a patchwork with black towers in
  * it", and the blend is what keeps the fact without the patchwork. A material
  * draws as its typical colour, weaker than a tagged colour (it is a

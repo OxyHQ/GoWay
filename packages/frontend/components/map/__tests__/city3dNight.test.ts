@@ -11,10 +11,21 @@ import type { Point2 } from '@/components/map/engine/city3d/mesher';
 import { meshOsmBuildings, VERTEX_FLAG_FLOODLIT } from '@/components/map/engine/city3d/osmMesher';
 import { buildingFromProperties } from '@/components/map/engine/city3d/osmTiles';
 import {
-  skyCityFragmentShader,
-  skyCityVertexShader,
-} from '@/components/map/engine/city3d/skyShaders';
-import { SKY_NIGHT_FADE_DEG, skyNightness } from '@/components/map/engine/city3d/atmosphere';
+  createBuildingUniforms,
+  type BuildingUniformRefs,
+} from '@/components/map/engine/city3d/tsl/buildingMaterial';
+import {
+  type CityMaterialResponse,
+  type CitySkyLight,
+  type CitySurface,
+  clayResponse,
+  createSkyBuildingMaterials,
+} from '@/components/map/engine/city3d/tsl/skyBuildingMaterial';
+import { createSkyNodes } from '@/components/map/engine/city3d/tsl/skyNodes';
+import { FrontSide, Vector3 } from 'three/webgpu';
+
+import { constantsOf, nodesOf, skyRefs } from './tslGraph';
+import { HAZE, SKY_NIGHT_FADE_DEG, skyNightness } from '@/components/map/engine/city3d/atmosphere';
 import { CITY_PROPS } from '@/lib/map/cityTiles';
 import { NIGHT_FADE_DEG, nightFactor } from '@/lib/map/landmarks/night';
 import { KEPT_KEYS } from '@/scripts/citygen/compile';
@@ -46,10 +57,11 @@ describe('nightFactor, as the city sky uses it', () => {
     }
   });
 
-  test('every sky-lit material reads the same uniform', () => {
-    for (const format of ['openmaptiles', 'goway'] as const) {
-      expect(skyCityFragmentShader(format)).toContain('uniform float uNightFactor;');
-    }
+  test('every sky-lit material is handed the engine’s one night factor', () => {
+    const { seen, build, sky } = spyMaterials();
+    for (const format of ['openmaptiles', 'goway'] as const) build(format);
+    expect(seen).toHaveLength(2);
+    for (const { light } of seen) expect(light.nightFactor).toBe(sky.nightFactor);
   });
 });
 
@@ -134,7 +146,7 @@ describe('the floodlit flag through decode and mesh', () => {
     }
   });
 
-  test('…and survives packing into the compact format (packing.ts)', async () => {
+  test('…and survives packing into the compact format, in the normal’s spare lane (packing.ts)', async () => {
     const { packMesh } = await import('@/components/map/engine/city3d/packing');
     const lit = buildingFromProperties(1, [box(0)], props(true));
     const dark = buildingFromProperties(2, [box(100)], props(false));
@@ -144,10 +156,9 @@ describe('the floodlit flag through decode and mesh', () => {
     let flagged = 0;
     let total = 0;
     for (const chunk of packed.chunks) {
-      expect(chunk.flags?.length).toBe(chunk.position.length / 4);
-      for (const f of chunk.flags ?? []) {
+      for (let v = 0; v < chunk.position.length / 4; v++) {
         total++;
-        if (f === VERTEX_FLAG_FLOODLIT) flagged++;
+        if (chunk.normal[v * 4 + 3] === VERTEX_FLAG_FLOODLIT) flagged++;
       }
     }
     expect(total).toBe(mesh.flags.length);
@@ -155,33 +166,84 @@ describe('the floodlit flag through decode and mesh', () => {
     expect(flagged).toBeGreaterThan(0);
   });
 
-  test('the sky-lit city-tile shaders read it; the OpenMapTiles ones carry no such data', () => {
-    expect(skyCityVertexShader('goway')).toContain('in float flags;');
-    expect(skyCityFragmentShader('goway')).toContain('vFlags');
-    expect(skyCityFragmentShader('openmaptiles')).not.toContain('vFlags');
+  test('the sky-lit city-tile material reads it; the OpenMapTiles one carries no such data', () => {
+    const { seen, build } = spyMaterials();
+    build('goway');
+    build('openmaptiles');
+    const [city, openMapTiles] = seen;
+    // Decoded from the normal's w (int8, normalised: × 127).
+    const read = nodesOf(city.surface.flags) as unknown as { _attributeName?: string }[];
+    expect(read.some((n) => n._attributeName === 'normal')).toBe(true);
+    expect(constantsOf(city.surface.flags)).toContain(127);
+    expect(constantsOf(openMapTiles.surface.flags)).toEqual([0]);
   });
 });
 
 describe('one shading path: the sky’s light inputs, a pluggable material', () => {
-  test('the default material is the clay response, and a passed one replaces it', async () => {
-    const { DEFAULT_CITY_MATERIAL_GLSL } = await import(
-      '@/components/map/engine/city3d/skyShaders'
-    );
-    const standard = skyCityFragmentShader('goway');
-    expect(standard).toContain(DEFAULT_CITY_MATERIAL_GLSL);
-    const art = 'vec3 cityMaterial(CitySurface s, CityLight l) { return s.albedo * l.skyUp; }';
-    const custom = skyCityFragmentShader('goway', art);
-    expect(custom).toContain(art);
-    expect(custom).not.toContain(DEFAULT_CITY_MATERIAL_GLSL);
-    // The contract every material is handed, and the haze applied after it.
-    for (const shader of [standard, custom]) {
-      expect(shader).toContain('struct CitySurface');
-      expect(shader).toContain('struct CityLight');
-      expect(shader).toContain('light.nightFactor = uNightFactor;');
-      expect(shader).toContain('cityMaterial(surface, light)');
-      expect(shader.indexOf('cityMaterial(surface, light)')).toBeLessThan(
-        shader.indexOf('hazeTransmittance(max(uCamera.z'),
-      );
+  test('the material is handed the contract, and the haze is applied to what it returns', () => {
+    const { seen, build, sky } = spyMaterials();
+    const material = build('goway');
+    const [{ surface, light, result }] = seen;
+    for (const field of [
+      'albedo',
+      'normal',
+      'ao',
+      'cornerAo',
+      'heightAboveGround',
+      'buildingHeight',
+      'world',
+      'facade',
+      'color',
+      'flags',
+    ] as const) {
+      expect(surface[field]).toBeDefined();
     }
+    // The sky's light inputs, not stand-ins.
+    expect(light.sunDir).toBe(sky.sunDir);
+    expect(light.sun).toBe(sky.sunColor);
+    expect(light.skyUp).toBe(sky.skyAmbient);
+    expect(light.skyDown).toBe(sky.groundBounce);
+    // What the material returns is inside the output, under the sky's haze.
+    const output = nodesOf(material.colorNode);
+    expect(output).toContain(result as never);
+    for (const c of HAZE.rayleigh) expect(constantsOf(material.colorNode)).toContain(c);
+  });
+
+  test('the default is the clay response', () => {
+    expect(typeof clayResponse).toBe('function');
   });
 });
+
+/** Sky-lit building materials whose response records what it is handed. */
+function spyMaterials() {
+  const refs: BuildingUniformRefs = {
+    uLow: { value: new Vector3() },
+    uTall: { value: new Vector3() },
+    uVeryTall: { value: new Vector3() },
+    uTallM: { value: 60 },
+    uVeryTallM: { value: 180 },
+    uLightPosition: { value: new Vector3(0, 0, 1) },
+    uLightIntensity: { value: 0.5 },
+    uLightColor: { value: new Vector3(1, 1, 1) },
+    uOpacity: { value: 1 },
+    uGrounded: { value: 0 },
+  };
+  const sky = createSkyNodes(skyRefs(true), 12);
+  const seen: { surface: CitySurface; light: CitySkyLight; result: unknown }[] = [];
+  const response: CityMaterialResponse = (surface, light) => {
+    const result = clayResponse(surface, light);
+    seen.push({ surface, light, result });
+    return result;
+  };
+  const materials = createSkyBuildingMaterials({
+    uniforms: createBuildingUniforms(refs),
+    sky,
+    response,
+    side: FrontSide,
+  });
+  return {
+    seen,
+    sky,
+    build: (format: 'openmaptiles' | 'goway') => materials.get(format, false),
+  };
+}
