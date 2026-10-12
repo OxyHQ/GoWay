@@ -9,9 +9,11 @@ import * as THREE from 'three';
 import { eyeOf } from '@/components/map/engine/city3d/models';
 import {
   applyNight,
+  createModelEnvironment,
   createModelLights,
   environmentIntensity,
   prepareNight,
+  toNodeMaterial,
 } from '@/components/map/engine/city3d/modelLook';
 
 describe('eyeOf', () => {
@@ -52,24 +54,24 @@ describe('night from the asset', () => {
     expect(material.emissive.b).toBeCloseTo(0.25);
   });
 
-  test('an `uplight` material gets the shader patch, with heights in asset metres', () => {
+  test('an `uplight` material gets the emissive wash, with heights in asset metres', () => {
     const { root, material } = body({
       uplight: { color: [1, 0.8, 0.6], reach: 40, strength: 0.5 },
     });
-    const night = { value: 1 };
-    expect(prepareNight(root, night)).toEqual([]);
-    const shader = {
-      uniforms: {} as Record<string, { value: unknown }>,
-      vertexShader: '#include <common>\n#include <begin_vertex>',
-      fragmentShader: '#include <common>\n#include <emissivemap_fragment>',
+    expect(prepareNight(root, { value: 1 })).toEqual([]);
+    // The wash is an emissive node over the material's own emission.
+    expect((material as unknown as { emissiveNode: unknown }).emissiveNode).toBeTruthy();
+    const built = material.userData.gowayUplight as {
+      heightRow: THREE.Vector4;
+      colour: THREE.Vector3;
+      reach: number;
     };
-    material.onBeforeCompile(shader as never, undefined as never);
-    expect(shader.uniforms.uGowayNight).toBe(night);
     // y in metres = 10·y + 5 for this node.
-    const row = shader.uniforms.uGowayHeightRow.value as THREE.Vector4;
-    expect([row.x, row.y, row.z, row.w]).toEqual([0, 10, 0, 5]);
-    expect((shader.uniforms.uGowayUplight.value as THREE.Vector3).x).toBeCloseTo(0.5);
-    expect(shader.fragmentShader).toContain('totalEmissiveRadiance += uGowayUplight');
+    expect([built.heightRow.x, built.heightRow.y, built.heightRow.z, built.heightRow.w]).toEqual([
+      0, 10, 0, 5,
+    ]);
+    expect(built.colour.x).toBeCloseTo(0.5);
+    expect(built.reach).toBe(40);
   });
 
   test('materials without extras, or with malformed ones, are left alone', () => {
@@ -102,5 +104,44 @@ describe('decals', () => {
     prepareNight(root, { value: 0 });
     expect(material.polygonOffset).toBe(true);
     expect(material.polygonOffsetUnits).toBeLessThan(0);
+  });
+});
+
+describe('drawn by the TSL pass', () => {
+  test('a glTF material becomes its node twin, every property kept, its output sRGB-encoded', () => {
+    const map = new THREE.Texture();
+    const standard = new THREE.MeshStandardMaterial({ color: 0x336699, roughness: 0.3, map });
+    standard.name = 'paint';
+    const twin = toNodeMaterial(standard) as THREE.MeshStandardMaterial & {
+      isNodeMaterial: boolean;
+      outputNode: unknown;
+    };
+    expect(twin).not.toBe(standard);
+    expect(twin.isNodeMaterial).toBe(true);
+    expect(twin.color.getHex()).toBe(0x336699);
+    expect(twin.roughness).toBe(0.3);
+    expect(twin.map).toBe(map);
+    expect(twin.name).toBe('paint');
+    expect(twin.outputNode).toBeTruthy();
+    expect(toNodeMaterial(twin)).toBe(twin);
+    // A type glTF never yields is left as it is.
+    const lambert = new THREE.MeshLambertMaterial();
+    expect(toNodeMaterial(lambert)).toBe(lambert);
+  });
+
+  test('the sky to reflect: blue overhead, grey underfoot, an equirectangular map', () => {
+    const sky = createModelEnvironment();
+    expect(sky.mapping).toBe(THREE.EquirectangularReflectionMapping);
+    const { data, width, height } = sky.image as {
+      data: Float32Array;
+      width: number;
+      height: number;
+    };
+    const at = (row: number) => [data[row * width * 4], data[row * width * 4 + 2]];
+    const [topR, topB] = at(0);
+    const [bottomR, bottomB] = at(height - 1);
+    expect(topB).toBeGreaterThan(topR);
+    expect(Math.abs(bottomR - bottomB)).toBeLessThan(0.05);
+    sky.dispose();
   });
 });

@@ -645,12 +645,11 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   });
 
   // Models are drawn in their own pass (their own layer in the style), with
-  // their own camera (see `models.ts` → Frames) but the same renderer and the
-  // same depth buffer.
+  // their own camera (see `models.ts` → Frames) but by the same TSL pass, into
+  // the same depth buffer.
   const drawModels = (view: CityView) => {
     if (!models.active) return;
-    renderer.resetState();
-    models.render(renderer, view, {
+    models.render(tslPass, view, {
       width: options.canvas.clientWidth,
       height: options.canvas.clientHeight,
     });
@@ -1130,8 +1129,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         drawCpuMs = drawCpuMs === 0 ? drawn : drawCpuMs * 0.9 + drawn * 0.1;
         if (landmarks.active) {
           probe?.enter('landmarks');
-          renderer.resetState();
-          landmarks.render(renderer, view, {
+          landmarks.render(tslPass, view, {
             width: options.canvas.clientWidth,
             height: options.canvas.clientHeight,
           });

@@ -324,8 +324,10 @@ serves it with the right `Content-Type` and CORS headers is **unverified**.
 ### Web: one three.js custom layer, shared with the city
 
 The model layer is a MapLibre GL JS `CustomLayerInterface` with
-`renderingMode: '3d'`. A three.js `WebGLRenderer` is bound to the map's own
-WebGL2 context (`autoClear` off, `resetState()` around every draw). It takes
+`renderingMode: '3d'`. The city engine's TSL pass (three's `WebGPURenderer`,
+WebGL2 backend on the web) draws it into the map's own WebGL2 context
+(`autoClear` off, its state reset around every draw), with each glTF material
+as its node twin ([`MAP_NATIVE_3D.md`](./MAP_NATIVE_3D.md) → Phase 2). It takes
 its camera from `defaultProjectionData.mainMatrix`, and its positions from
 `MercatorCoordinate.fromLngLat` relative to the per-frame origin.
 

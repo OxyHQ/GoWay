@@ -93,6 +93,8 @@ const ENGINE_PARTS: Record<string, string> = {
     'components/map/engine/cityStreets/streetRenderer.ts',
   'components/map/engine/cityStreets/groundAtlas.ts':
     'components/map/engine/cityStreets/streetRenderer.ts',
+  // Still, untextured models as one or two draws (`docs/MAP_NATIVE_3D.md`).
+  'components/map/engine/city3d/modelBatch.ts': 'components/map/engine/city3d/models.ts',
 };
 
 describe('the three.js chunk', () => {

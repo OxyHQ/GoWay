@@ -373,9 +373,61 @@ materials and the draws are the same):
 - **Budgets are the quality profile's** (`streets`, #165): the tiles and
   triangles a frame may draw, and so the ground atlas's slots.
 
-Next, one material at a time, each deleting its GLSL twin: landmarks and
-models, city life, live 3D, and the sky and shadow passes (which retire the
-last building and street GLSL).
+## Phase 2: models and landmarks
+
+The model layer (`models.ts`: the SDK's models, the route flyover's
+vehicle, GoWay's landmarks) is drawn by the TSL pass: `drawScene(scene,
+camera)` draws its own scene with its own y-north camera into the same frame
+and depth buffer. `WebGLRenderer` no longer draws a model.
+
+- **Node twins.** Each glTF material becomes its node twin (`MeshStandard`,
+  `MeshPhysical` or `MeshBasicNodeMaterial`, every property carried over as
+  three's own `NodeLibrary` does: `modelLook.ts` → `toNodeMaterial`). Its
+  output is encoded to sRGB in the material, as `WebGLRenderer` encoded it,
+  because the pass writes raw values into the map's frame.
+- **The uplight is an emissive node.** The GLSL `onBeforeCompile` patch is
+  gone. The wash (asset-metre height from the node's own transform, wall
+  facing, night factor) is added to the material's emission.
+- **The reflected sky is a texture, not a render.** The GLSL path rendered a
+  gradient sphere through `WebGLRenderer`'s PMREM inside the host's frame,
+  saving and restoring the map's framebuffer by hand. Now it is a 64×32
+  equirectangular gradient that the pass pre-filters itself (three's PMREM
+  node), turned so its up is the world's +z (`scene.environmentRotation`).
+  Nothing renders off-screen, on any backend, native included.
+
+- **A landmark is one or two draws** (`modelBatch.ts`). The TSL pass pays
+  its CPU per draw: `WebGPURenderer`'s WebGL2 backend issues about 30 GL
+  calls for a lit draw against `WebGLRenderer`'s 13. A landmark was 5–25
+  meshes of one material each, so a still, untextured asset (every shipped
+  landmark) is merged into its own space at load, each material's look baked
+  per vertex (colour, roughness, metalness, day emission, night glow, the
+  wash) and read back by one node material; decals are a second batch with
+  their depth bias. A tintable or animated model (the SDK's vehicles) is
+  still drawn mesh by mesh.
+
+Measured on the Sagrada Família (z17.6, 60°, terrain on), alternating builds:
+
+| | `main` (GLSL) | TSL, mesh by mesh | TSL, batched |
+| --- | ---: | ---: | ---: |
+| The landmarks' own CPU per frame (perf runtime section, median of 4) | 0.57 / **0.82** ms | 1.17 ms | **0.33** ms |
+| Draws the landmarks add (the Sagrada Família, Torre Glòries and their neighbours in view) | 71 | 71 | **10** |
+| Pixels against `main`, day / night (dark map) | — | within 8 levels but ~150 | the same as mesh by mesh |
+
+The first two columns were measured in one session and the batched one in
+another against `main` again (0.82 ms there): compare within a session.
+
+- **Reflections** differ by a few levels (three's node PMREM of a texture
+  against `WebGLRenderer`'s of a sphere); the night look (windows, crowns,
+  uplight) is the same.
+- **GPU** time could not be told apart from the host's noise (load ~20).
+
+**The visibility gate checks a landmark now** (below): the Sagrada Família,
+on and off, changes 31.50% of the map (31.48% on `main`). With the models not
+drawn it changes 0%, and the gate fails.
+
+Next, one material at a time, each deleting its GLSL twin: city life, live
+3D, and the sky and shadow passes (which retire the last building and street
+GLSL).
 
 ## Correction: the terrain lift was not measured
 
@@ -475,6 +527,11 @@ Per sky (on and off) it asserts:
   changes at least 3% of the view (pixels moving more than 24 levels, below
   the chips' rows). Measured: 14.24% with the sky and 14.29% without, on
   `main` and TSL alike; streets drawn without their ground measure 0%.
+- **Models** (no sky; models draw alike under either): a landmark of the
+  registry, the Sagrada Família, stands in the synthetic city. With
+  `landmarks` on it must change at least 1% of the map against the same view
+  with them off, below the top 110 rows where the layer's own chip appears.
+  Measured: 31.5%.
 
 The streets are on in every city view, so the walls-and-windows share reads
 79.4% with the sky and 27.5% without since step 5 (asphalt and sidewalks are
@@ -497,8 +554,8 @@ Without the fix, the trees without the sky are buried in every run, and the
 rest in most: with the sky on, one run in three drew its trees anyway. What
 re-creates a mesh's render objects (and so, by chance, its program) depends
 on the frame's timing; the no-sky trees are the gate's deterministic catch.
-On failure the screenshots (`{sky,nosky}-{trees,notrees,nostreets,nocity}.png`) are
-uploaded as the `city3d-visible` artifact.
+On failure the screenshots (`{sky,nosky}-{trees,notrees,streets,nostreets,nocity}.png`, `landmark.png`, `nolandmark.png`) are
+uploaded as the `city3d-visible-sky` / `city3d-visible-nosky` artifacts.
 
 ## The base map
 

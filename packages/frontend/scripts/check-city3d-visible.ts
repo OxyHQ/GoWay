@@ -50,6 +50,8 @@
  *    with the 3D city off.
  *  - **Streets**: the street detail drew the fixture's road tiles (`roadTile`),
  *    and over a junction turning it on changes at least 3% of the view.
+ *  - **Models** (once, without the sky): the Sagrada Família, a landmark of
+ *    the registry, changes at least 1% of the map against landmarks off.
  *
  * Without #152's re-grounding it fails (three runs of three; the no-sky trees
  * are buried every time). Measured numbers: the doc.
@@ -577,6 +579,14 @@ async function differs(
   return Number(value.toFixed(2));
 }
 
+/**
+ * A landmark of the registry (`public/landmarks/registry.json`) inside the
+ * synthetic city: the Sagrada Família stands where it really does, its spires
+ * far above the made-up blocks. Looked at from 110 m north of it at z17.5,
+ * the camera's usual tilt and bearing: it stands in the middle of the view.
+ */
+const LANDMARK = { id: 'sagrada-familia', lat: 41.4046, lng: 2.174347, zoom: 17.5 };
+
 // --- Run -------------------------------------------------------------------------
 
 const outDir = resolve(arg('out', '.city3d-visible'));
@@ -674,6 +684,37 @@ try {
     else if (r.streetsChangedPct < 3)
       failures.push(
         `${label}: ${r.streetTriangles} street triangles drawn, but streets on change ${r.streetsChangedPct}% of the view over a junction`,
+      );
+  }
+  if (!DEBUG && skies.includes('nosky')) {
+    // Models (`models.ts`, drawn by the TSL pass): the landmark on and off,
+    // with the no-sky leg (models are drawn the same way under either).
+    const { flags, choices } = SKIES.nosky;
+    const withLandmark = await view(
+      browser,
+      origin,
+      `${flags}&landmarks=1`,
+      { ...choices, landmarks: true },
+      outDir,
+      'landmark',
+      'buildings',
+      LANDMARK,
+    );
+    const without = await view(
+      browser,
+      origin,
+      flags,
+      choices,
+      outDir,
+      'nolandmark',
+      'buildings',
+      LANDMARK,
+    );
+    const changed = await differs(browser, withLandmark.png, without.png);
+    results.landmark = { changedPct: changed };
+    if (changed < 1)
+      failures.push(
+        `landmark: ${LANDMARK.id} changes ${changed}% of the map (on against off): it is not on the screen`,
       );
   }
 } finally {

@@ -52,6 +52,11 @@ export interface TslPass {
   readonly ready: boolean;
   /** Draw the scene into the map's frame with `camera` (MapLibre's projection). */
   draw(camera: Camera): void;
+  /**
+   * Draw another scene with its own camera into the same frame and depth
+   * buffer: the model layer's (`models.ts` → Frames), whose world is y-north.
+   */
+  drawScene(scene: Scene, camera: Camera): void;
   dispose(): void;
 }
 
@@ -136,6 +141,19 @@ export function createTslPass(options: {
   );
   const trees = createTreeMaterials(options.treeUniforms, options.side.trees);
 
+  const drawScene = (target: Scene, camera: Camera) => {
+    if (!ready || disposed) return;
+    // Follow the map's canvas: three's size is in logical pixels × ratio 1,
+    // and `setSize` only writes the (ignored) view and the viewport.
+    if (size.width !== canvas.width || size.height !== canvas.height) {
+      size = { width: canvas.width, height: canvas.height };
+      renderer.setPixelRatio(1);
+      renderer.setSize(size.width, size.height, false);
+    }
+    (renderer.backend as ResettableBackend).resetState?.();
+    renderer.render(target, camera);
+  };
+
   return {
     scene,
     buildings,
@@ -144,17 +162,9 @@ export function createTslPass(options: {
       return ready;
     },
     draw(camera) {
-      if (!ready || disposed) return;
-      // Follow the map's canvas: three's size is in logical pixels × ratio 1,
-      // and `setSize` only writes the (ignored) view and the viewport.
-      if (size.width !== canvas.width || size.height !== canvas.height) {
-        size = { width: canvas.width, height: canvas.height };
-        renderer.setPixelRatio(1);
-        renderer.setSize(size.width, size.height, false);
-      }
-      (renderer.backend as ResettableBackend).resetState?.();
-      renderer.render(scene, camera);
+      drawScene(scene, camera);
     },
+    drawScene,
     dispose() {
       disposed = true;
       buildings.dispose();
