@@ -347,6 +347,23 @@ checks passed on each archive (`--verify --area=barcelona|madrid|manhattan`:
 the Sagrada Família's and the cathedral's roofs, the Carrer de Mallorca
 block's official height, the Empire State Building's model).
 
+### The planet, 2026-10-12
+
+All 416 regions of the catalogue are published (430 entries with parts;
+manifest `city/manifests/20261012-r8.json`): 14.83 GB of building archives and
+17.90 GB of road archives, coverage 192,819,247 z14 tiles. Built by the
+workflow on free runners in five dispatches (stamps `20261012-r2`, `-r4` …
+`-r8`, ~3 h 45 min end to end), uploaded with the org's Cloudflare token, every
+object read back and hashed; Catalonia and Madrid with the Catastro and New
+York with NYC's model by hand (`20261012-2`, `20261012-1`). What the run taught
+the pipeline, each now handled: a roadless region (Clipperton) failed its
+batch → regions fail alone; Geofabrik served empty `.poly` files mid-run →
+re-fetched; the Cloudflare API answered large puts with 524s → retried;
+Australia (302 MB of roads in one part) and South-East Asia (a part over
+300 MiB) → `MIN_PARTS`, as Nigeria and Mexico now are for headroom. The 12
+regions whose OSM `height` held elevations and Catalonia (Pla d'en Coll's
+111-storey Catastro part, 340 m) were rebuilt after #184's plausibility rules.
+
 ## Approval
 
 Steps 1–3 were done by hand for the first three regions (above) with the

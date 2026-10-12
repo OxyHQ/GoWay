@@ -86,6 +86,10 @@ const MIN_PARTS: Record<string, number> = {
   'australia-oceania/australia': 2,
   // Measured the same day: in 4 parts, one part's roads passed 300 MiB.
   'asia/sea': 8,
+  // Published whole on 2026-10-12 with a roads archive of 311.8 MB (Nigeria)
+  // and 300.4 MB (Mexico), against wrangler's 314.6: two parts for headroom.
+  'africa/nigeria': 2,
+  'north-america/mexico': 2,
 };
 
 interface IndexFeature {
