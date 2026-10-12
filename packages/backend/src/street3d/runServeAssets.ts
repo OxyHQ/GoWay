@@ -9,7 +9,6 @@
  * and it binds that host alone.
  */
 
-import 'dotenv/config';
 import { street3dConfig } from '../config/street3d';
 import { serveLocalAsset } from './localAssetServer';
 

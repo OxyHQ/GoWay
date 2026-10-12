@@ -62,7 +62,7 @@ local backend routes every mode.
 ### Checks
 
 ```bash
-bun run typecheck        # tsc -b across every package, plus the non-emitting tools program
+bun run typecheck        # bun check (TypeScript 7) on contracts, backend, its tools program and the SDK; tsc on the frontend
 bun run lint             # Biome (lint + format check) everywhere, then the frontend's minimal Expo ESLint
 bun run lint:fix         # apply Biome's safe fixes and formatting
 bun run format           # Biome formatter only
