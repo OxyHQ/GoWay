@@ -96,9 +96,13 @@ jobs:
           set -euo pipefail
           # The catalogue is all the planner reads, so no install is needed.
           bun packages/frontend/scripts/city-batches.ts --regions="$REGIONS" >> "$GITHUB_OUTPUT"
-          # One stamp for the whole run: every key it writes shares it, and a
-          # rerun gets a new one (run_number), so no key is ever written twice.
-          echo "stamp=$(date -u +%Y%m%d)-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          # One stamp for the whole run: every key it writes shares it. `r` +
+          # run_number keeps CI's stamps apart from hand-published ones
+          # (`20261012-1`, measured: the first CI run's `-1` collided, and
+          # city-r2.sh refused to overwrite the dated manifest). Re-running
+          # failed jobs keeps the stamp; city-r2.sh skips keys already holding
+          # the same bytes.
+          echo "stamp=$(date -u +%Y%m%d)-r${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.batch.index }} (${{ matrix.batch.regions }})
