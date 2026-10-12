@@ -62,7 +62,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=https://github.com/OxyHQ/GoWay
             io.oxy.source.tree=${{ steps.guard.outputs.source_tree }}
-            io.oxy.dockerfile.sha256=dd68b79d9dbe8745f4e9f043c9c066ac59ac7bc8a1454716daf1d9250fe9fe8d
+            io.oxy.dockerfile.sha256=2c803d220496968164751240dbc0cb57ac74c436d7b78036d0153032293983b1
           cache-from: type=gha,scope=goway-backend
           cache-to: type=gha,mode=max,scope=goway-backend
       - name: Verify authenticated ECR bytes
