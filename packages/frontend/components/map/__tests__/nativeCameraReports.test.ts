@@ -77,7 +77,7 @@ describe('the native canvas reports the camera a loaded map opened at', () => {
     const view = pendingViewState();
 
     camera.loaded(view.getViewState);
-    camera.regionWillChange();
+    camera.regionWillChange(region(true));
     view.answer(TOKYO);
     await settle();
     expect(changes).toEqual([]);
@@ -92,7 +92,7 @@ describe('the native canvas reports the camera a loaded map opened at', () => {
     const view = pendingViewState();
 
     camera.loaded(view.getViewState);
-    camera.regionWillChange();
+    camera.regionWillChange(region(false));
     camera.regionDidChange(region(false));
     view.answer({ ...TOKYO, center: [0, 0] });
     await settle();
@@ -104,7 +104,7 @@ describe('the native canvas reports the camera a loaded map opened at', () => {
   test('a camera moving at load is left to its own settle', async () => {
     const { camera, changes } = reports();
 
-    camera.regionWillChange();
+    camera.regionWillChange(region(false));
     camera.loaded(async () => TOKYO);
     await settle();
 
@@ -113,7 +113,7 @@ describe('the native canvas reports the camera a loaded map opened at', () => {
 
   test('a remounted engine (a retry) has new reports: a move the old one never finished does not silence it', async () => {
     const old = reports();
-    old.camera.regionWillChange();
+    old.camera.regionWillChange(region(false));
     old.camera.loaded(async () => TOKYO);
     await settle();
     expect(old.changes).toEqual([]);
@@ -170,15 +170,62 @@ describe('region events', () => {
     const { camera, changes } = reports();
 
     camera.commanded(true);
-    camera.regionWillChange();
+    camera.regionWillChange(region(false));
     expect(camera.regionDidChange(region(false))).toBe(false);
     camera.loaded(async () => TOKYO);
     await settle();
     expect(changes.map((change) => change.isFinal)).toEqual([false]);
 
     camera.commanded(false);
-    camera.regionWillChange();
+    camera.regionWillChange(region(false));
     expect(camera.regionDidChange(region(false))).toBe(true);
     expect(changes.map((change) => change.isFinal)).toEqual([false, true]);
+  });
+
+  test('a flyover the reader interrupts leaves nothing behind: the reader’s settles are final', () => {
+    const { camera, changes } = reports();
+
+    // Frames of a flyover, and no closing ordinary move: the reader grabbed the map.
+    camera.commanded(true);
+    camera.regionWillChange(region(false));
+    camera.regionDidChange(region(false));
+    camera.regionWillChange(region(true));
+    camera.regionDidChange(region(true));
+    // …and their next move, with no command in between.
+    camera.regionWillChange(region(true));
+    camera.regionDidChange(region(true));
+    // An app move that follows is settled too.
+    camera.regionWillChange(region(false));
+    camera.regionDidChange(region(false));
+
+    expect(changes.map((change) => [change.source, change.isFinal])).toEqual([
+      ['programmatic', false],
+      ['user', true],
+      ['user', true],
+      ['programmatic', true],
+    ]);
+  });
+
+  test('a reader’s settle during a flyover is final even before their move started', () => {
+    const { camera, changes } = reports();
+
+    camera.commanded(true);
+    camera.regionDidChange(region(true));
+
+    expect(changes.map((change) => change.isFinal)).toEqual([true]);
+  });
+
+  test('flyover frames whose commands run ahead of their region events stay transient', () => {
+    const { camera, changes } = reports();
+
+    // Two frames cross the bridge before the first frame's events come back.
+    camera.commanded(true);
+    camera.commanded(true);
+    for (let frame = 0; frame < 2; frame += 1) {
+      camera.regionWillChange(region(false));
+      camera.regionDidChange(region(false));
+    }
+
+    expect(changes.map((change) => change.isFinal)).toEqual([false, false]);
   });
 });
