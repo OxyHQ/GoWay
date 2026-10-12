@@ -113,10 +113,22 @@ def posed_images(model: pycolmap.Reconstruction) -> list[pycolmap.Image]:
     return [img for img in sorted(model.images.values(), key=lambda i: i.name) if img.has_pose]
 
 
+# Below this displacement at the image corner (pixels), undistortion is skipped
+# rather than spending a resampling generation on it (a 360° view is rendered
+# distortion-free; the solve may leave a vanishing k1 on it).
+NEGLIGIBLE_DISTORTION_PX = 0.1
+
+
 def undistort_frame(
     model: pycolmap.Reconstruction, img: pycolmap.Image, images_dir: Path, masks_dir: Path
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """A frame at full resolution, undistorted: BGR image, privacy mask, valid area (uint8) and K."""
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """A frame at full resolution, undistorted: BGR image, trusted pixels (bool) and K.
+
+    A pixel is trusted only when the privacy mask allows it AND it lies inside
+    the undistorted image, both fully: undistortion interpolates the mask, so a
+    pixel next to an excluded one (where blur may have bled) reads below 255
+    and is dropped with it.
+    """
     cam = model.cameras[img.camera_id]
     f, cx, cy = cam.params[0], cam.params[1], cam.params[2]
     k1 = cam.params[3] if len(cam.params) > 3 else 0.0
@@ -125,25 +137,39 @@ def undistort_frame(
     if bgr is None or mask is None:
         raise FileNotFoundError("frame or mask missing from scratch")
     K = np.array([[f, 0, cx], [0, f, cy], [0, 0, 1]], dtype=np.float64)
+    h, w = mask.shape
+    corner = math.hypot(max(cx, w - cx), max(cy, h - cy)) / f
+    if abs(k1) * corner**3 * f < NEGLIGIBLE_DISTORTION_PX:
+        return bgr, mask >= 255, K
     dist = np.array([k1, 0, 0, 0], dtype=np.float64)
     bgr = cv2.undistort(bgr, K, dist)
     valid = cv2.undistort(np.full(mask.shape, 255, np.uint8), K, dist)
     mask = cv2.undistort(mask, K, dist)
-    return bgr, mask, valid, K
+    return bgr, (mask >= 255) & (valid >= 255), K
+
+
+def shrink_trusted(trusted: np.ndarray, size: tuple[int, int]) -> np.ndarray:
+    """``trusted`` at ``size`` (w, h): a pixel is trusted only if ALL the pixels it averages are.
+
+    Nearest-neighbour would keep a pixel whose colour (area-averaged with the
+    image) partly comes from an excluded neighbour.
+    """
+    if (trusted.shape[1], trusted.shape[0]) == tuple(size):
+        return trusted
+    return cv2.resize(trusted.astype(np.float32), size, interpolation=cv2.INTER_AREA) >= 1.0 - 1e-4
 
 
 def load_views(model: pycolmap.Reconstruction, images_dir: Path, masks_dir: Path, long_edge: int, device: torch.device) -> list[View]:
-    """Undistort and downscale every registered frame and its mask."""
+    """Undistort and downscale every registered frame and its trusted pixels."""
     views: list[View] = []
     for img in posed_images(model):
-        bgr, mask, valid, K = undistort_frame(model, img, images_dir, masks_dir)
+        bgr, trusted, K = undistort_frame(model, img, images_dir, masks_dir)
         h, w = bgr.shape[:2]
         scale = min(1.0, long_edge / max(h, w))
         if scale < 1.0:
             size = (round(w * scale), round(h * scale))
             bgr = cv2.resize(bgr, size, interpolation=cv2.INTER_AREA)
-            mask = cv2.resize(mask, size, interpolation=cv2.INTER_NEAREST)
-            valid = cv2.resize(valid, size, interpolation=cv2.INTER_NEAREST)
+            trusted = shrink_trusted(trusted, size)
         Ks = K.copy()
         Ks[:2] *= scale
         viewmat = np.eye(4)
@@ -152,7 +178,7 @@ def load_views(model: pycolmap.Reconstruction, images_dir: Path, masks_dir: Path
             View(
                 name=img.name,
                 image=torch.from_numpy(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)).to(device),
-                mask=torch.from_numpy((mask > 127) & (valid > 127)).to(device),
+                mask=torch.from_numpy(trusted).to(device),
                 K=torch.tensor(Ks, dtype=torch.float32, device=device),
                 viewmat=torch.tensor(viewmat, dtype=torch.float32, device=device),
                 center=img.projection_center(),
@@ -695,9 +721,16 @@ class Trainer:
 
     @torch.no_grad()
     def initial_view(self, views: list[View]) -> tuple[View, list[float], list[float]]:
-        """The world-space frame nearest the middle of the capture, looking where it looked."""
+        """The world-space frame nearest the middle of the capture, looking where it looked.
+
+        Only a frame looking roughly level (within 30° of the horizon, scene z
+        up) when there is one: a 360° capture's upper views look at the sky.
+        """
         centers = np.array([v.center for v in views])
         inlier = inlier_cameras(centers)
+        level = np.array([abs(float((v.viewmat[:3, :3].cpu().numpy().T @ np.array([0.0, 0.0, 1.0]))[2])) <= 0.5 for v in views])
+        if (inlier & level).any():
+            inlier = inlier & level
         views = [v for v, ok in zip(views, inlier) if ok]
         centers = centers[inlier]
         view = views[int(np.argmin(np.linalg.norm(centers - centers.mean(0), axis=1)))]

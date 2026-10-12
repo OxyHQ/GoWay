@@ -124,3 +124,16 @@ def test_results_round_trip_unchanged():
     ):
         raw = load(name)
         assert model.model_validate(raw).model_dump(exclude_none=True) == raw
+
+
+def test_panorama_views_state_their_pitch_and_older_ones_need_not():
+    result = CapturePrivacyResult.model_validate(load("result.capture_privacy.equirectangular.json"))
+    assert [f.panorama.pitchDegrees for f in result.frames] == [0.0, 0.0, 45.0]
+    manifest = SceneInputManifest.model_validate(load("scene_input_manifest.json"))
+    assert [f.panorama.pitchDegrees for f in manifest.frames if f.panorama] == [0.0, 0.0]
+    legacy = SceneInputManifest.model_validate(load("scene_input_manifest.pre-gravity.json"))
+    assert [f.panorama.pitchDegrees for f in legacy.frames if f.panorama] == [None, None]  # not known, not guessed
+    bad = load("result.capture_privacy.equirectangular.json")
+    bad["frames"][2]["panorama"]["pitchDegrees"] = 91.0
+    with pytest.raises(ValidationError):
+        CapturePrivacyResult.model_validate(bad)

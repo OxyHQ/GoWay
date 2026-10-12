@@ -59,6 +59,7 @@ from ..contract import (
 )
 from ..storage import ContentCache
 from . import spz
+from ..privacy.panorama import HORIZON_ONLY_PIPELINES
 from .sfm import RigView, SfmError, SfmFrame, enu_to_geodetic, frame_image_name, geodetic_to_enu, georeference, solve
 from .train import Trainer, View, load_views, train_scene
 
@@ -153,6 +154,18 @@ def _smoke_test(original: np.ndarray, data: bytes, view: View, sh_degree: int, d
     return -10 * math.log10(max(mse, 1e-10))
 
 
+def rig_view(f: InputFrame) -> RigView | None:
+    """A 360° view's place in its panorama's rig. Its pitch is never guessed (see ``FramePanorama``)."""
+    if f.panorama is None:
+        return None
+    pitch = f.panorama.pitchDegrees
+    if pitch is None and f.privacyPipelineVersion in HORIZON_ONLY_PIPELINES:
+        pitch = 0.0
+    return RigView(
+        panorama=f"{f.captureAssetId}-{f.panorama.index:05d}", yaw=f.panorama.yawDegrees, fov=f.panorama.horizontalFovDegrees, pitch=pitch,
+    )
+
+
 def sfm_frame(f: InputFrame, name: str, rig: RigView | None, anchor: tuple[float, float]) -> SfmFrame:
     """The solver's view of one manifest frame: its priors in metres around the anchor."""
     east, north, _ = geodetic_to_enu(f.prior.latitude, f.prior.longitude, 0.0, *anchor, 0.0)
@@ -192,11 +205,7 @@ def run(
     by_name: dict[str, str] = {}
     for i, f in enumerate(manifest.frames):
         ctx.report(i / len(manifest.frames))
-        rig = (
-            RigView(panorama=f"{f.captureAssetId}-{f.panorama.index:05d}", yaw=f.panorama.yawDegrees, fov=f.panorama.horizontalFovDegrees)
-            if f.panorama
-            else None
-        )
+        rig = rig_view(f)
         name = frame_image_name(f.sequenceGroup, f.frameId, f.width, f.height, rig)
         if name in by_name:
             raise JobFailure("corrupt_input", "two input frames claim the same image")
@@ -321,7 +330,11 @@ def run(
     posed = [img for img in model.images.values() if img.has_pose]
     centers = np.array([img.projection_center() for img in posed])
     viewpoints = []
-    for img in posed[:: max(1, len(posed) // 2000 + 1)]:
+    # Navigation faces where a person looks: a 360° panorama's upper ring (or a
+    # view of unknown pitch) is not a facing to move into.
+    rigs = {f.image_name: f.rig for f in frames if f.rig is not None}
+    facing = [img for img in posed if (rig := rigs.get(img.name)) is None or rig.pitch == 0.0]
+    for img in facing[:: max(1, len(facing) // 2000 + 1)]:
         forward = img.cam_from_world().rotation.matrix().T @ np.array([0.0, 0.0, 1.0])
         viewpoints.append(Viewpoint(position=[round(float(x), 3) for x in img.projection_center()], forward=[round(float(x), 4) for x in forward]))
     fovs = []

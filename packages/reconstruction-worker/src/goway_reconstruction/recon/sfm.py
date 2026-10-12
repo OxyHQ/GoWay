@@ -13,16 +13,22 @@ their priors are close AND their pixels verify geometrically, which is how a
 second contributor's photos join the first one's scene.
 
 Views cut from a 360° panorama are not independent cameras. They share a
-centre and differ by a known yaw, so they are paired and solved as a rig:
+centre and differ by a known rotation (yaw, and pitch for the upper ring), so
+they are paired and solved as a rig:
 
-- views of the same panorama are matched with their neighbouring yaws;
-- each yaw is matched along the sequence, like a forward-facing video, and
-  with the neighbouring yaws of the next few panoramas (turning views);
+- views of the same panorama are matched with the views whose axes lie within
+  a field of view of theirs;
+- each view direction is matched along the sequence, like a forward-facing
+  video, and with the neighbouring directions of the next few panoramas
+  (turning views);
 - across sequences, views pair spatially as any frame does, preferring views
   that face the same way when both carry a heading;
 - the solver is told the rig (``pycolmap.apply_rig_config``): every panorama
-  is one frame of a rig whose sensors are its yaws, with the relative
-  rotations fixed, so a panorama is solved as one pose instead of eight.
+  is one frame of a rig whose sensors are its view directions, with the
+  relative rotations fixed, so a panorama is solved as one pose instead of
+  fourteen. A view whose pitch the manifest does not state is solved as its
+  own camera (with its exact intrinsics) instead of being placed in the rig
+  on a guess.
 
 Feature extraction honours the privacy masks: no keypoint is detected on a
 masked person or vehicle.
@@ -38,6 +44,7 @@ map (``georeference``).
 
 from __future__ import annotations
 
+import functools
 import logging
 import math
 from dataclasses import dataclass
@@ -71,6 +78,21 @@ class RigView:
     panorama: str  # unique per panorama: every view of it shares this
     yaw: float  # degrees clockwise from the panorama's centre
     fov: float  # horizontal field of view, degrees
+    pitch: float | None = 0.0  # degrees above the horizon; None when not known
+
+    @property
+    def rigged(self) -> bool:
+        return self.pitch is not None
+
+    def axis(self) -> tuple[float, float, float]:
+        """The view's optical axis in panorama axes (unknown pitch taken as 0, for pairing only)."""
+        return _axis(self.yaw, self.pitch or 0.0)
+
+
+@functools.lru_cache(maxsize=4096)
+def _axis(yaw: float, pitch: float) -> tuple[float, float, float]:
+    x, y, z = cam_from_pano(yaw, pitch)[2]
+    return float(x), float(y), float(z)
 
 
 @dataclass
@@ -97,9 +119,10 @@ def frame_image_name(group: str, frame_id: str, width: int, height: int, rig: Ri
 
     A rig view is named ``<sensor prefix><panorama>.jpg``: COLMAP groups the
     images of one rig frame by the name left after the sensor's prefix, so
-    every view of a panorama must end in the same name.
+    every view of a panorama must end in the same name. A view outside the rig
+    (pitch unknown) is named like any frame.
     """
-    if rig is None:
+    if rig is None or not rig.rigged:
         return f"{group}/{frame_id}.jpg"
     return f"{_rig_prefix(width, height, rig)}{rig.panorama}.jpg"
 
@@ -108,13 +131,24 @@ def _rig_bucket(width: int, height: int, fov: float) -> str:
     return f"rig-{width}x{height}-f{round(fov * 100):05d}/"
 
 
+def _sensor(yaw: float, pitch: float) -> str:
+    # Pitch 0 keeps the name horizon-only pipelines always had.
+    return f"y{round(yaw * 100):05d}" + (f"p{round(pitch * 100):+06d}" if pitch else "")
+
+
 def _rig_prefix(width: int, height: int, rig: RigView) -> str:
-    return f"{_rig_bucket(width, height, rig.fov)}y{round(rig.yaw * 100):05d}/"
+    return f"{_rig_bucket(width, height, rig.fov)}{_sensor(rig.yaw, rig.pitch or 0.0)}/"
 
 
 def _yaw_gap(a: float, b: float) -> float:
     d = abs(a - b) % 360.0
     return min(d, 360.0 - d)
+
+
+def _axis_gap(a: RigView, b: RigView) -> float:
+    """Degrees between two views' optical axes."""
+    (ax, ay, az), (bx, by, bz) = a.axis(), b.axis()
+    return math.degrees(math.acos(max(-1.0, min(1.0, ax * bx + ay * by + az * bz))))
 
 
 @dataclass
@@ -172,22 +206,22 @@ def _rig_pairs(frames: list[SfmFrame], positions: dict[str, int], pairs: set[tup
             jump *= 2
         for a in views:
             assert a.rig is not None
-            # Same panorama: neighbouring yaws overlap; views a full FOV apart do not.
+            # Same panorama: overlapping neighbours; views a full FOV apart do not overlap.
             for b in views:
                 assert b.rig is not None
-                if 0 < _yaw_gap(a.rig.yaw, b.rig.yaw) < a.rig.fov:
+                if b is not a and _axis_gap(a.rig, b.rig) < a.rig.fov:
                     add(a, b)
-            # Same yaw along the sequence, with exponential jumps for wide baselines.
+            # The same direction along the sequence, with exponential jumps for wide baselines.
             for step in steps:
                 for b in slots.get((group, position + step), ()):
                     assert b.rig is not None
-                    if _yaw_gap(a.rig.yaw, b.rig.yaw) < 1e-3:
+                    if _axis_gap(a.rig, b.rig) < 1e-3:
                         add(a, b)
-            # Turning views: neighbouring yaws of the next few panoramas.
+            # Turning views: neighbouring directions of the next few panoramas.
             for step in range(1, RIG_TURN_WINDOW + 1):
                 for b in slots.get((group, position + step), ()):
                     assert b.rig is not None
-                    if 1e-3 <= _yaw_gap(a.rig.yaw, b.rig.yaw) <= a.rig.fov:
+                    if 1e-3 <= _axis_gap(a.rig, b.rig) <= a.rig.fov:
                         add(a, b)
 
 
@@ -277,36 +311,42 @@ def _camera_groups(frames: list[SfmFrame]) -> list[list[SfmFrame]]:
     """Frames that share one camera: a contribution sequence, or one rig sensor."""
     groups: dict[str, list[SfmFrame]] = {}
     for f in frames:
-        key = f"seq:{f.group}" if f.rig is None else f"rig:{_rig_prefix(f.width, f.height, f.rig)}"
+        if f.rig is None:
+            key = f"seq:{f.group}"
+        elif f.rig.rigged:
+            key = f"rig:{_rig_prefix(f.width, f.height, f.rig)}"
+        else:  # outside the rig, but the same intrinsics as every view of its size
+            key = f"view:{_rig_bucket(f.width, f.height, f.rig.fov)}"
         groups.setdefault(key, []).append(f)
     return list(groups.values())
 
 
 def rig_configs(frames: list[SfmFrame]) -> list[pycolmap.RigConfig]:
-    """One rig per view size and field of view; its sensors are the yaws.
+    """One rig per view size and field of view; its sensors are the view directions.
 
-    Each sensor's pose in the rig is a pure rotation about the vertical axis
-    (``cam_from_pano``, the same convention the views were cut with) and no
-    translation: the views of one panorama share its centre. The reference
-    sensor is the yaw seen most often, so as many rig frames as possible
-    carry it.
+    Each sensor's pose in the rig is a pure rotation (``cam_from_pano``, the
+    same convention the views were cut with) and no translation: the views of
+    one panorama share its centre. The reference sensor is the direction seen
+    most often, so as many rig frames as possible carry it. Views of unknown
+    pitch are not part of any rig.
     """
-    buckets: dict[str, dict[float, int]] = {}
+    buckets: dict[str, dict[tuple[float, float], int]] = {}
     for f in frames:
-        if f.rig is not None:
-            yaws = buckets.setdefault(_rig_bucket(f.width, f.height, f.rig.fov), {})
-            yaws[f.rig.yaw] = yaws.get(f.rig.yaw, 0) + 1
+        if f.rig is not None and f.rig.rigged:
+            sensors = buckets.setdefault(_rig_bucket(f.width, f.height, f.rig.fov), {})
+            key = (f.rig.yaw, f.rig.pitch or 0.0)
+            sensors[key] = sensors.get(key, 0) + 1
     configs = []
-    for bucket, yaws in sorted(buckets.items()):
-        reference = max(sorted(yaws), key=lambda yaw: yaws[yaw])
+    for bucket, sensors in sorted(buckets.items()):
+        reference = max(sorted(sensors), key=lambda sensor: sensors[sensor])
         cameras = []
         # COLMAP requires the reference sensor first.
-        for yaw in sorted(yaws, key=lambda value: (value != reference, value)):
-            prefix = f"{bucket}y{round(yaw * 100):05d}/"
-            if yaw == reference:
+        for sensor in sorted(sensors, key=lambda value: (value != reference, value)):
+            prefix = f"{bucket}{_sensor(*sensor)}/"
+            if sensor == reference:
                 cameras.append(pycolmap.RigConfigCamera(ref_sensor=True, image_prefix=prefix))
                 continue
-            rotation = cam_from_pano(yaw) @ cam_from_pano(reference).T
+            rotation = cam_from_pano(*sensor) @ cam_from_pano(*reference).T
             cam_from_rig = pycolmap.Rigid3d(pycolmap.Rotation3d(rotation), np.zeros(3))
             cameras.append(pycolmap.RigConfigCamera(ref_sensor=False, image_prefix=prefix, cam_from_rig=cam_from_rig))
         configs.append(pycolmap.RigConfig(cameras=cameras))
@@ -564,13 +604,20 @@ def georeference(result: SfmResult, frames: list[SfmFrame], *, max_error_m: floa
     # they count once — eight views of one place are not eight GPS agreements.
     stations: dict[str, tuple[list[np.ndarray], list[float]]] = {}
     downs = []
+    uncertain_downs = []  # views of unknown pitch: used only if nothing else is posed
     gravities = []
     for img in model.images.values():
         if not img.has_pose:
             continue
         f = by_name[img.name]
         rot = img.cam_from_world().rotation.matrix()
-        downs.append(rot.T @ np.array([0.0, 1.0, 0.0]))
+        if f.rig is None:
+            downs.append(rot.T @ np.array([0.0, 1.0, 0.0]))
+        elif f.rig.rigged:
+            # A pitched view's own "down" leans forward; its panorama's down does not.
+            downs.append(rot.T @ (cam_from_pano(f.rig.yaw, f.rig.pitch or 0.0) @ np.array([0.0, 1.0, 0.0])))
+        else:
+            uncertain_downs.append(rot.T @ np.array([0.0, 1.0, 0.0]))
         if f.gravity is not None:
             gravities.append(rot.T @ _unit(np.asarray(f.gravity, dtype=float)))
         key = f"rig:{f.rig.panorama}" if f.rig is not None else f"frame:{f.frame_id}"
@@ -580,7 +627,7 @@ def georeference(result: SfmResult, frames: list[SfmFrame], *, max_error_m: floa
     if len(centers) < 3:
         raise SfmError("georeference_failed", "fewer than three solved cameras")
     centers_np, targets_np = np.array(centers), np.array(targets)
-    vertical = level(np.array(downs), np.array(gravities).reshape(-1, 3))
+    vertical = level(np.array(downs or uncertain_downs), np.array(gravities).reshape(-1, 3))
     if vertical.gravity_frames:
         log.info(
             "leveled by %s: %d frames carry gravity, median residual %.1f°",

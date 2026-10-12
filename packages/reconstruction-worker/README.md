@@ -63,12 +63,15 @@ to AWS.
 ## What runs, in order
 
 1. **`capture_privacy`**: download one raw object (digest-checked), decode it
-   (EXIF orientation applied; video reduced to sharp keyframes), detect faces,
-   plates, people and vehicles, destroy those regions, re-encode without any
-   metadata, and upload the derivative and a training mask. Any failure is
-   `privacy_failed` or `corrupt_input`. Nothing partial is reported. A capture
-   declared 360° is first verified against its own projection metadata and its
-   2:1 pixels, then each panorama is cut into eight 90° views that are
+   (EXIF orientation applied, colour converted to sRGB, HEIC included; video
+   reduced to sharp keyframes over its whole length), detect faces, plates,
+   people and vehicles, destroy faces, heads, plates, people, vehicles and
+   every vehicle's plate band, re-encode without any metadata, and upload the
+   derivative and a training mask (what was destroyed, with a margin). Any
+   failure is `privacy_failed` or `corrupt_input`. Nothing partial is
+   reported. A capture declared 360° is first verified against its own
+   projection metadata and its 2:1 pixels, then each panorama is cut into
+   fourteen 90° views (eight on the horizon, six pitched up) that are
    processed one by one, with the nadir always masked
    (`docs/STREET3D_PIPELINE.md` → 360° captures).
 2. **`scene_reconstruct`**: fetch the backend's input manifest and the listed

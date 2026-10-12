@@ -11,7 +11,11 @@ and its pixels confirm the declaration (``projection.py``). Each panorama — th
 photo, or each video keyframe — is then cut into overlapping perspective views
 (``panorama.py``), and every view goes through detection, redaction and masking
 on its own, with the nadir always masked. A view is a derivative like any other
-frame, plus the panorama it came from and its yaw.
+frame, plus the panorama it came from and where it looks (yaw and pitch).
+
+Blur is judged per panorama, not per view: a view of plain sky or a bare wall
+has almost no edges, and rejecting it as blurred would cut holes in the
+sphere. A panorama is rejected whole when even its sharpest view is blurred.
 """
 
 from __future__ import annotations
@@ -26,8 +30,8 @@ from ..context import JobContext, JobFailure
 from ..contract import CapturePrivacyJob, CapturePrivacyResult, Detections, ModelRef, PanoramaView, PrivacyFrame
 from ..models import PRIVACY_MODELS
 from .detectors import PrivacyDetectors
-from .media import CorruptMediaError, decode_photo, decode_video, iter_video_keyframes, sharpness
-from .panorama import PANORAMA_LONG_EDGE, ViewCutter
+from .media import CorruptMediaError, decode_photo, decode_video_keyframes, plan_video_keyframes, sharpness
+from .panorama import PANORAMA_MAX_LONG_EDGE, ViewCutter
 from .projection import ProjectionMismatch, media_evidence, verify_declaration, verify_frame
 from .redact import MAX_MASKED_FRACTION, MIN_SHARPNESS, MetadataSurvivedError, redact
 
@@ -48,8 +52,9 @@ class _Deriver:
         *,
         always: np.ndarray | None = None,
         panorama: PanoramaView | None = None,
+        sharpness_gated: bool = True,
     ) -> None:
-        if frame_sharpness < MIN_SHARPNESS:
+        if sharpness_gated and frame_sharpness < MIN_SHARPNESS:
             self.rejected += 1
             return
         try:
@@ -136,23 +141,26 @@ def run(job: CapturePrivacyJob, ctx: JobContext, aws: Aws, detectors: PrivacyDet
     )
 
 
+def _decoded(job: CapturePrivacyJob, raw: Path, long_edge: int):  # noqa: ANN202 - (count, iterator of DecodedFrame)
+    if job.mediaKind == "photo":
+        frames = decode_photo(raw, job.keyframes, long_edge=long_edge)
+        raw.unlink(missing_ok=True)  # decoded: the raw bytes go now, not with the job
+        return len(frames), iter(frames)
+    # Streamed: the raw file stays on disk until the last keyframe is decoded.
+    picks = plan_video_keyframes(raw, job.keyframes)
+    return len(picks), decode_video_keyframes(raw, picks, long_edge=long_edge)
+
+
 def _perspective(job: CapturePrivacyJob, ctx: JobContext, raw: Path, deriver: _Deriver) -> None:
-    decoded = decode_photo(raw, job.keyframes) if job.mediaKind == "photo" else decode_video(raw, job.keyframes)
-    raw.unlink(missing_ok=True)
-    for index, frame in enumerate(decoded):
-        ctx.report(index / max(1, len(decoded)))
+    total, frames = _decoded(job, raw, job.keyframes.maxLongEdgePixels)
+    for index, frame in enumerate(frames):
+        ctx.report(min(index / total, 0.99))
         deriver.add(frame.rgb, frame.sharpness, frame.timestamp_seconds)
 
 
 def _panoramas(job: CapturePrivacyJob, ctx: JobContext, raw: Path, deriver: _Deriver) -> None:
     cutter = ViewCutter()
-    if job.mediaKind == "photo":
-        panoramas = iter(decode_photo(raw, job.keyframes, long_edge=PANORAMA_LONG_EDGE))
-        total = 1
-    else:
-        # Streamed: the raw file stays on disk until the last keyframe is decoded.
-        panoramas = iter_video_keyframes(raw, job.keyframes, long_edge=PANORAMA_LONG_EDGE)
-        total = job.keyframes.maxFrames
+    total, panoramas = _decoded(job, raw, PANORAMA_MAX_LONG_EDGE)
     for index, pano in enumerate(panoramas):
         ctx.report(min(index / total, 0.99))
         h, w = pano.rgb.shape[:2]
@@ -164,11 +172,21 @@ def _panoramas(job: CapturePrivacyJob, ctx: JobContext, raw: Path, deriver: _Der
             views = cutter.cut(pano.rgb)
         except Exception as error:  # noqa: BLE001 - a view that cannot be cut is not processed
             raise JobFailure("privacy_failed", "a panorama could not be cut into views") from error
-        for view in views:
+        scores = [sharpness(view.rgb) for view in views]
+        if max(scores) < MIN_SHARPNESS:
+            deriver.rejected += len(views)
+            continue
+        for view, score in zip(views, scores):
             deriver.add(
                 view.rgb,
-                sharpness(view.rgb),
+                score,
                 pano.timestamp_seconds,
                 always=view.nadir,
-                panorama=PanoramaView(index=index, yawDegrees=view.yaw_degrees, horizontalFovDegrees=cutter.fov_degrees),
+                panorama=PanoramaView(
+                    index=index,
+                    yawDegrees=view.yaw_degrees,
+                    pitchDegrees=view.pitch_degrees,
+                    horizontalFovDegrees=cutter.fov_degrees,
+                ),
+                sharpness_gated=False,
             )

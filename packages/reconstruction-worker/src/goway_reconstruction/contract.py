@@ -83,6 +83,10 @@ class ObjectRef(_Input):
 
 
 class KeyframePolicy(_Input):
+    """How a video becomes keyframes: the sharpest frame of each window, the
+    windows tiling the whole recording — one per ``minIntervalSeconds`` up to
+    ``maxFrames``, wider windows beyond. Photos are bounded by ``maxLongEdgePixels``."""
+
     maxFrames: int = Field(ge=1, le=600)
     minIntervalSeconds: float = Field(gt=0, le=60)
     maxLongEdgePixels: int = Field(ge=256, le=8192)
@@ -146,10 +150,17 @@ class FrameCamera(_Input):
 
 
 class FramePanorama(_Input):
-    """A perspective view cut from a 360° panorama: which panorama, and where it looks."""
+    """A perspective view cut from a 360° panorama: which panorama, and where it looks.
+
+    ``pitchDegrees`` is absent from a backend that does not carry it. A view
+    from a horizon-only privacy pipeline (``panorama.HORIZON_ONLY_PIPELINES``)
+    then looks at the horizon; any other view's pitch is unknown, and the solve
+    keeps it out of the panorama's rig rather than guess.
+    """
 
     index: int = Field(ge=0)
     yawDegrees: float = Field(ge=0, lt=360)
+    pitchDegrees: float | None = Field(default=None, ge=-90, le=90)
     horizontalFovDegrees: float = Field(gt=0, lt=180)
 
 
@@ -233,12 +244,14 @@ class PanoramaView(_Output):
 
     ``index`` is the panorama within the capture (0 for a photo, the keyframe
     for a video); ``yawDegrees`` is the view's direction from the panorama's
-    centre, clockwise. Views of one panorama share a centre, which the solve
-    uses to treat them as a rig.
+    centre, clockwise, and ``pitchDegrees`` its elevation above the horizon.
+    Views of one panorama share a centre, which the solve uses to treat them
+    as a rig.
     """
 
     index: int = Field(ge=0)
     yawDegrees: float = Field(ge=0, lt=360)
+    pitchDegrees: float = Field(default=0.0, ge=-90, le=90)
     horizontalFovDegrees: float = Field(gt=0, lt=180)
 
 

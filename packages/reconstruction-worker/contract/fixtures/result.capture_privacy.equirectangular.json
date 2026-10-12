@@ -5,7 +5,7 @@
   "attempt": 1,
   "assetId": "3f7a1c55-9e2b-4d18-b6a0-5c8e2d9f1b34",
   "verdict": "passed",
-  "privacyPipelineVersion": "goway-privacy/2",
+  "privacyPipelineVersion": "goway-privacy/3",
   "projection": "equirectangular",
   "models": [
     {
@@ -48,6 +48,7 @@
       "panorama": {
         "index": 0,
         "yawDegrees": 0.0,
+        "pitchDegrees": 0.0,
         "horizontalFovDegrees": 90.0
       }
     },
@@ -73,6 +74,7 @@
       "panorama": {
         "index": 0,
         "yawDegrees": 45.0,
+        "pitchDegrees": 0.0,
         "horizontalFovDegrees": 90.0
       }
     },
@@ -98,6 +100,7 @@
       "panorama": {
         "index": 1,
         "yawDegrees": 0.0,
+        "pitchDegrees": 45.0,
         "horizontalFovDegrees": 90.0
       }
     }
