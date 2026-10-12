@@ -456,7 +456,7 @@ on, sky off), four alternating rounds on a quiet host (load ~2.5):
   2.1–4.5 ms).
 
 **The visibility gate checks city life** (below, the `objects` leg): its
-traffic over the junction changes 1.96% of the view (2.01% on `main`).
+traffic changes 0.10–0.13% of the view (0.10–0.11% on `main`).
 
 ## Phase 2: GoWay Live in 3D
 
@@ -479,7 +479,6 @@ three's and the pass's own, unchanged.
   nothing live to compare pixel by pixel. The same node-twin pattern is what
   the landmarks were compared with (`models.ts`, above).
 - **Cost**: a few draws (one per live model kind, the stalks), as before.
-
 
 Next: the sky and shadow passes (which retire the last building and street
 GLSL), with the sky's building material and the detailed look's material
@@ -577,10 +576,15 @@ Per sky (on and off) it asserts:
   than the noon basemap (walls, windows) is at least 2% and 4× the same view
   with the 3D city off. That reference has no basemap buildings, so MapLibre's
   extrusions cannot stand in for the city.
-- **City life** (the `objects` leg, sky on): its simulated traffic on the
-  fixture's streets, on and off, over the junction, must change at least
-  0.5% of the view. Measured: 1.96% (`main` 2.01%). The agents move with real
-  time, so the share is a floor, not a match.
+- **City life** (the `objects` leg, sky off, the low preset's 600 agents):
+  its simulated traffic on the fixture's streets, on and off, seen from
+  z17.5 over a junction, must change at least 0.05% of the whole view (but
+  the chips' corner). Measured over five runs: 0.10–0.13% on this branch,
+  0.10–0.11% on `main`. The agents move with real time, so the share is a
+  floor, not a match; it was taken from higher up (several streets in view)
+  because one street's traffic came and went (0–1.3%), and at the low preset
+  because the high one's 2,400 agents kept two software-GL cores from
+  finishing a frame for the screenshot.
 - **Streets** (since step 5): the street detail drew triangles from the
   fixture's road tiles (`syntheticCity.ts` → `roadTile`, schema 3: one-way
   three-lane streets with names, turn lanes, signals and zebra crossings in
