@@ -21,24 +21,28 @@
  *
  * ## Why it is generated, not hand-written JSON
  *
- * Two appearances × ~45 layers is ~90 objects that must stay structurally
- * identical and differ only in colour. Hand-maintained that is a guarantee that
- * survives exactly one edit. Generated from one layer list and two palettes, it
- * is a property of the code: `scripts/build-map-style.ts` renders the JSON into
- * `public/map/`, validates it against the real MapLibre style spec, and fails
- * if the committed files have drifted from the source.
+ * Every style in every light × ~70 layers is well over a thousand objects
+ * that must stay structurally one map and differ only where a style says so.
+ * Hand-maintained that is a guarantee that survives exactly one edit.
+ * Generated from ONE layer list, a theme per (style, light) (`themes.ts`) and
+ * the catalogue (`catalogue.ts`), it is a property of the code:
+ * `scripts/build-map-style.ts` renders the JSON into `public/map/styles/`,
+ * validates it against the real MapLibre style spec, and fails if the
+ * committed files have drifted from the source (`docs/MAP_STYLES.md`).
  */
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec';
 
-import type { MapAppearance } from '../provider';
 import { BUILDINGS_LIGHT } from './buildings3d';
+import type { MapLightPreset, MapStyleId, MapStyleSelection } from './catalogue';
 import { buildCity3dGroundOverrides } from './city3dGround';
 import { buildLayers, GOWAY_STYLE_LAYER_ID_LIST, LABEL_ANCHOR_LAYER_ID } from './layers';
-import { CARTOGRAPHY_PALETTES } from './palette';
 import { CITY3D_GROUND_METADATA_KEY } from './palette3d';
+import { styleTheme } from './themes';
 
 export { LABEL_ANCHOR_LAYER_ID, GOWAY_STYLE_LAYER_IDS, GOWAY_STYLE_LAYER_ID_LIST } from './layers';
 export { CARTOGRAPHY_PALETTES, DARK_PALETTE, LIGHT_PALETTE } from './palette';
+export * from './catalogue';
+export { styleTheme, type StyleTheme } from './themes';
 export type { CartographyPalette, PoiPalette, RoadTone } from './palette';
 export * from './schema';
 
@@ -70,13 +74,22 @@ export interface MapStyleEndpoints {
 }
 
 /** Human names, used in the style's `name` and in MapLibre's debug output. */
-const STYLE_NAMES: Record<MapAppearance, string> = {
-  light: 'GoWay Daylight',
-  dark: 'GoWay Night',
+const STYLE_NAMES: Record<MapStyleId, string> = {
+  standard: 'GoWay Standard',
+  streets: 'GoWay Streets',
+  light: 'GoWay Light',
+  dark: 'GoWay Dark',
+};
+
+const LIGHT_NAMES: Record<MapLightPreset, string> = {
+  day: 'Day',
+  dawn: 'Dawn',
+  dusk: 'Dusk',
+  night: 'Night',
 };
 
 /**
- * Build the complete style document for one appearance.
+ * Build the complete style document for one style in one light.
  *
  * The result is a plain object: pass it to `maplibre-gl` directly, or serialise
  * it to a `.json` and serve it. `scripts/build-map-style.ts` does the latter,
@@ -84,18 +97,21 @@ const STYLE_NAMES: Record<MapAppearance, string> = {
  * handed an object at all.
  */
 export function buildGowayMapStyle(
-  appearance: MapAppearance,
+  selection: MapStyleSelection,
   endpoints: MapStyleEndpoints,
 ): StyleSpecification {
-  const palette = CARTOGRAPHY_PALETTES[appearance];
+  const theme = styleTheme(selection);
+  const { appearance, palette, options } = theme;
 
   return {
     version: 8,
-    name: STYLE_NAMES[appearance],
+    name: `${STYLE_NAMES[selection.style]} · ${LIGHT_NAMES[selection.preset]}`,
     // Read by nothing at runtime; present so that a style document found on
     // disk, in a cache or in a bug report can be traced back to what produced
     // it and to the contract it promises.
     metadata: {
+      'goway:style': selection.style,
+      'goway:light': selection.preset,
       'goway:appearance': appearance,
       'goway:schema': 'openmaptiles-v3',
       'goway:anchor:beforeLabels': LABEL_ANCHOR_LAYER_ID,
@@ -104,7 +120,7 @@ export function buildGowayMapStyle(
       // The ground the detailed 3D city switches this document to: paint
       // overrides generated from `palette3d.ts` (`city3dGround.ts`), applied
       // and undone at runtime by the city-3D adapter only. Inert otherwise.
-      [CITY3D_GROUND_METADATA_KEY]: buildCity3dGroundOverrides(appearance, endpoints.sourceId),
+      [CITY3D_GROUND_METADATA_KEY]: buildCity3dGroundOverrides(theme, endpoints.sourceId),
     },
     // The document-level light. It shades nothing but `building-3d`, and it is
     // here rather than in `buildings3d.ts` only because MapLibre puts `light`
@@ -128,6 +144,6 @@ export function buildGowayMapStyle(
         attribution: endpoints.attribution,
       },
     },
-    layers: buildLayers(palette, endpoints.sourceId),
+    layers: buildLayers(palette, endpoints.sourceId, options),
   };
 }

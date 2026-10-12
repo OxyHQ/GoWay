@@ -98,6 +98,7 @@ import { ExploreBody, ExploreHeader, type RenderPlaceActions } from './ExploreCo
 import { ExploreMarker } from './ExploreMarker';
 import { clampFitPadding } from './mapPadding';
 import { MapSettingsButton } from './MapSettingsButton';
+import { MapStyleButton } from './MapStyleButton';
 import { MapTopBar } from './MapTopBar';
 import { focusTimeOfDayButton, TimeOfDayButton } from './TimeOfDayButton';
 import { useExplore } from './useExplore';
@@ -348,6 +349,10 @@ export default function ExploreScreen({
   // `docs/MAP_PERFORMANCE.md`). React skips a set to the same value.
   const [rotated, setRotated] = useState(false);
   const [tilted, setTilted] = useState(false);
+  // The style picker (`MapStyleButton`), opened from its button or from
+  // Settings → Map → Style.
+  const [stylePickerOpen, setStylePickerOpen] = useState(false);
+  const openStylePicker = useCallback(() => setStylePickerOpen(true), []);
   const flyover = useMapFeature('flyover');
   const landmarks = useMapFeature('landmarks');
   const live = useMapFeature('live');
@@ -679,6 +684,14 @@ export default function ExploreScreen({
                   onChangeTime={
                     timeOfDayButtonShown(timeOfDay) && !mapError ? openTimeOfDay : undefined
                   }
+                  onChooseStyle={openStylePicker}
+                />
+              )}
+              {immersive ? null : (
+                <MapStyleButton
+                  open={stylePickerOpen}
+                  onOpenChange={setStylePickerOpen}
+                  compact={layout === 'sheet'}
                 />
               )}
               {timeOfDayButtonShown(timeOfDay) && !mapError && !immersive ? (

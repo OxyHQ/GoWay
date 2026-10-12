@@ -232,6 +232,36 @@ describe('Labs', () => {
   });
 });
 
+describe('the map style', () => {
+  test('a style and a light are kept on the device, and the defaults are not stored', () => {
+    const first = memoryStorage();
+    const { instance } = store(first.storage);
+    instance.setStyle('streets');
+    instance.setLight('sun');
+    expect(instance.getSnapshot().style).toBe('streets');
+    expect(instance.getSnapshot().light).toBe('sun');
+    const saved = JSON.parse(first.saved.at(-1) ?? '{}');
+    expect(saved.style).toBe('streets');
+    expect(saved.light).toBe('sun');
+
+    const { instance: next } = store(memoryStorage(first.saved.at(-1) ?? null).storage);
+    expect(next.getSnapshot().style).toBe('streets');
+    next.setStyle('standard');
+    next.setLight('app');
+    expect(serializePreferences({ ...NO_PREFERENCES })).not.toContain('style');
+  });
+
+  test('an unknown style or light is refused, not stored', () => {
+    const memory = memoryStorage();
+    const { instance } = store(memory.storage);
+    instance.setStyle('hologram' as never);
+    instance.setLight('noon' as never);
+    expect(instance.getSnapshot().style).toBe('standard');
+    expect(instance.getSnapshot().light).toBe('app');
+    expect(memory.saved).toHaveLength(0);
+  });
+});
+
 describe('parsePreferences', () => {
   test('keeps only known ids with boolean values', () => {
     const raw = JSON.stringify({
@@ -243,9 +273,23 @@ describe('parsePreferences', () => {
       choices: { city3dTreeFill: true },
       labs: false,
       performance: 'auto',
+      style: 'standard',
+      light: 'app',
       gpu: null,
     });
     expect(parsePreferences(null, IDS)).toBe(NO_PREFERENCES);
+  });
+
+  test('reads the style and the light leniently: anything unknown is the default', () => {
+    const read = (style: unknown, light: unknown) => {
+      const parsed = parsePreferences(JSON.stringify({ v: 1, choices: {}, style, light }), IDS);
+      return [parsed.style, parsed.light];
+    };
+    expect(read('streets', 'sun')).toEqual(['streets', 'sun']);
+    expect(read('dark', 'night')).toEqual(['dark', 'night']);
+    // A style a newer build publishes, or garbage: the default, never an error.
+    expect(read('hologram', 'dusk')).toEqual(['standard', 'app']);
+    expect(read(7, null)).toEqual(['standard', 'app']);
   });
 
   test('reads the performance choice leniently: anything unknown is auto', () => {

@@ -46,6 +46,7 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 - A route is only ever a routing engine's answer: no fixture, fallback or client draws one, and no engine is an error state. `check:routing` proves every mode.
 - Every 3D vehicle and vessel drawn comes from the model library (`engine/vehicles/`, CC0 only); never a second model set. Note: `docs/MODEL_LIBRARY.md`.
 - City life is SIMULATED traffic: labelled whenever drawn, never read by routing, ETAs or any feature (`cityLifeIsolation.test.ts`). Note: `docs/MAP_CITY_LIFE.md`.
+- A basemap style is one `MAP_STYLES` entry (`lib/map/style/catalogue.ts`) and its recipe in `themes.ts`, drawn by the one layer list; never a hand-written style JSON or a second layer list. Note: `docs/MAP_STYLES.md`.
 - An optional map feature is one `MAP_FEATURES` entry (`lib/map/mapFeatures.ts`), labelled in `mapFeatureLabels.ts`, read via `useMapFeature`; never a build variable or `lib/config.ts` flag (unserved yet: `offer: 'development'`). Its choice stays on the device. Note: `docs/MAP_FEATURES.md`.
 - A map layer's budgets come from the `QualityProfile` (`lib/map/quality/profile.ts`) and it animates only through the map's animation clock; a new cost is a profile knob, never a budget of its own. Note: `docs/MAP_PERFORMANCE.md`.
 - The logo is geometry (`packages/frontend/components/brand/artwork.ts`), drawn and never fetched; `public/brand/*` is generated from it and gated by `brand:check`. Its blue is ink (`--color-brand-goway`), never Bloom's `--primary`.

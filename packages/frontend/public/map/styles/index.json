@@ -1,0 +1,58 @@
+{
+  "v": 1,
+  "default": "standard",
+  "styles": [
+    {
+      "id": "standard",
+      "light": "follows",
+      "presets": [
+        "day",
+        "dawn",
+        "dusk",
+        "night"
+      ],
+      "defaultPreset": "day",
+      "urls": {
+        "day": "https://goway.to/map/styles/standard/day.json",
+        "dawn": "https://goway.to/map/styles/standard/dawn.json",
+        "dusk": "https://goway.to/map/styles/standard/dusk.json",
+        "night": "https://goway.to/map/styles/standard/night.json"
+      }
+    },
+    {
+      "id": "streets",
+      "light": "follows",
+      "presets": [
+        "day",
+        "night"
+      ],
+      "defaultPreset": "day",
+      "urls": {
+        "day": "https://goway.to/map/styles/streets/day.json",
+        "night": "https://goway.to/map/styles/streets/night.json"
+      }
+    },
+    {
+      "id": "light",
+      "light": "fixed",
+      "presets": [
+        "day"
+      ],
+      "defaultPreset": "day",
+      "urls": {
+        "day": "https://goway.to/map/styles/light/day.json"
+      }
+    },
+    {
+      "id": "dark",
+      "light": "fixed",
+      "presets": [
+        "night"
+      ],
+      "defaultPreset": "night",
+      "urls": {
+        "night": "https://goway.to/map/styles/dark/night.json"
+      }
+    }
+  ]
+}
