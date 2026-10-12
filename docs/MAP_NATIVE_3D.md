@@ -608,14 +608,17 @@ animation frame. Safari has no `scheduler.yield`, and neither has Hermes. A
 frame per yield put the city about 1.7 s behind its tiles on the harness
 (2–3 s in a real page), with nothing to do in most of those frames.
 
-three is patched (`patches/three@0.186.1.patch`, `patchedDependencies`) so
-`yieldToMain` itself is the one yield, on every platform: `scheduler.yield()`
-where it exists (kept); else a `MessageChannel` message, the standard
-`scheduler.yield` fallback (Safari); else `requestIdleCallback`, the real macrotask
-React Native offers; a frame only as the last resort. It is
-three's own function, so every `compileAsync` yield (and every other caller
-in three) takes it. The patch is pinned to three's version and fails to
-install on another, and it belongs upstream.
+**three is not patched.** GoWay takes upstream fixes, not local patches of a
+dependency, so `compileAsync` still waits a frame per yield wherever
+`scheduler.yield` is missing. What a turn of the event loop instead would buy
+was measured with three patched locally (`yieldToMain`: `scheduler.yield()`
+where it exists, else a `MessageChannel` message, else
+`requestIdleCallback`, the macrotask React Native offers), in the "a
+macrotask yield" columns below. That build is not shipped; the change is
+proposed upstream. Nor can the engine own the yields with three's public
+API: `compileAsync` is its only way to build a material without drawing
+it, and a build is keyed by the render context it is made for (an offscreen
+draw builds a program the map's frame does not reuse, measured).
 
 **Hermes, measured** (RN 0.86, bridgeless, release build, Android 16
 emulator): 120 slices of 4 ms work, yielding between them, while a
@@ -655,7 +658,7 @@ separate process, and bun stands in for the browser: with `scheduler.yield`
 defined (modelled as a `setTimeout(0)` continuation) and without it (three's
 fallback). Three runs each:
 
-| | Before the warm-up | Warm-up, a frame per yield | Warm-up, this yield |
+| | Before the warm-up | Warm-up, a frame per yield (shipped) | Warm-up, a macrotask yield (three patched) |
 | --- | --- | --- | --- |
 | Builds inside frames | 70–94 ms | 11–14 ms | 11–12 ms |
 | Worst load frame | 44–56 ms | 19–26 ms | 18–23 ms |
@@ -663,7 +666,7 @@ fallback). Three runs each:
 | City first drawn, with `scheduler.yield` | 123–143 ms | 370–400 ms | 335–370 ms |
 | City first drawn, without it (Safari, Hermes) | 123–143 ms | 1,730–1,746 ms | **252–259 ms** |
 
-The faster warm-up also uncovered an upload that was never budgeted. The
+A faster warm-up also uncovered an upload that was never budgeted. The
 city's first tiles now went up in the same frames as the street detail's,
 and a frame handed the GPU 5.0 MB against the low preset's 4 MiB
 (`frameBudget.test.ts`, one run in two). Until then the warm-up had held the
@@ -674,8 +677,6 @@ city's arrivals leave of the frame's upload budget (`overlay.ts` →
 What is still built in a frame: three's one-time setup on the first build
 (7–8 ms), the upload material once per layout (1–2 ms each), and the sun's
 depth-only caster once per layout (about 1 ms each).
-`frameBudget.test.ts` pins the fix: frame callbacks that never come, and the
-city still loads (three's original fallback never finishes).
 
 **And in a real page**: the dev export, with the synthetic city served
 locally and terrain on. This measures the time from the engine's first frame
@@ -683,7 +684,7 @@ to the city's first drawn triangles, four runs each. Chromium draws on this
 machine's GPU (ANGLE → D3D12 → RTX 5090). WebKit is Playwright's Linux
 build:
 
-| | `main` (no warm-up) | Warm-up, a frame per yield | Warm-up, this yield |
+| | `main` (no warm-up) | Warm-up, a frame per yield (shipped) | Warm-up, a macrotask yield (three patched) |
 | --- | --- | --- | --- |
 | Chromium | 350–393 ms | 647–687 ms | 646–698 ms |
 | Chromium without `scheduler.yield` | 358–404 ms | 2,219–2,253 ms | **688–841 ms** |
@@ -691,11 +692,11 @@ build:
 
 In a page the warm-up costs Chrome about 300 ms of first draw, as on the
 harness. The tiles were meshed by 150–190 ms, so the city waits for its
-materials. Without `scheduler.yield`, Chromium is now within 50 ms of
-Chromium in three runs of four (688–715 ms), and 143 ms behind in the
-fourth.
+materials. With a macrotask yield, Chromium without `scheduler.yield` is
+within 50 ms of Chromium in three runs of four (688–715 ms), and 143 ms
+behind in the fourth.
 
-**The remaining gap is not the yield.**
+**With a macrotask yield, the remaining gap is not the yield.**
 
 - **Chromium without `scheduler.yield`.** Its 96 yields wait 65–93 ms in all,
   under 1 ms each. The difference is the frames the browser draws in between:
@@ -713,8 +714,8 @@ costs tens of milliseconds, so all the numbers stretch:
 
 | | Chromium | Chromium without `scheduler.yield` | WebKit |
 | --- | --- | --- | --- |
-| Before this yield | 343–558 ms | 2,457–2,793 ms | 2,971–3,055 ms |
-| With it | 410–686 ms | 1,112–1,680 ms | 962–1,193 ms |
+| A frame per yield (shipped) | 343–558 ms | 2,457–2,793 ms | 2,971–3,055 ms |
+| A macrotask yield (three patched) | 410–686 ms | 1,112–1,680 ms | 962–1,193 ms |
 
 Chromium's profiles show what else lands in that window. The app's GPU
 benchmark (`runGpuBenchmark`, from a `requestIdleCallback`) takes 400–550 ms

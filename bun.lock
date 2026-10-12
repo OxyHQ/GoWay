@@ -146,9 +146,6 @@
       },
     },
   },
-  "patchedDependencies": {
-    "three@0.186.1": "patches/three@0.186.1.patch",
-  },
   "overrides": {
     "@oxy.so/bloom": "7.33.1",
     "@oxy.so/contracts": "4.9.0",

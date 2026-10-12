@@ -18,9 +18,6 @@ WORKDIR /app
 # Root files first. bunfig.toml pins the hoisted linker; the root tsconfig is
 # the solution base each package extends.
 COPY package.json bun.lock bunfig.toml tsconfig.json ./
-# The dependency patches (`patchedDependencies` in package.json): a frozen
-# install applies them, and refuses to run without them.
-COPY patches/ patches/
 
 # Every workspace member's package.json is required for a frozen-lockfile install
 # to reconcile, even the ones we do not build here.
@@ -51,7 +48,6 @@ WORKDIR /app
 RUN addgroup -g 1001 -S appgroup && adduser -u 1001 -S appuser -G appgroup
 
 COPY --from=builder /app/package.json /app/bun.lock /app/bunfig.toml ./
-COPY --from=builder /app/patches/ patches/
 COPY --from=builder /app/packages/contracts/package.json packages/contracts/
 COPY --from=builder /app/packages/backend/package.json packages/backend/
 COPY --from=builder /app/packages/frontend/package.json packages/frontend/

@@ -492,24 +492,6 @@ describe('frame budget gate', () => {
     expect((lifted as GlFrameCounts | null)?.triangles ?? 0).toBeGreaterThan(1000);
   }, 120_000);
 
-  test('the materials are built between frames without waiting for one (no `scheduler.yield`: Safari, Hermes)', async () => {
-    const scope = globalThis as unknown as Record<string, unknown>;
-    // Vacuity: bun, like Safari and Hermes, has no `scheduler.yield`, so
-    // three's `compileAsync` takes its fallback between build steps.
-    expect((scope.scheduler as { yield?: unknown } | undefined)?.yield).toBeUndefined();
-    // Frame callbacks that never come. Waiting a frame per step (three's own
-    // fallback, patched: `patches/three@*.patch`) would never finish the
-    // warm-up, and no tile would be drawn.
-    const frame = scope.requestAnimationFrame;
-    scope.requestAnimationFrame = () => 0;
-    try {
-      const measured = await measure(SCENES[0], 'medium');
-      expect(measured.draws).toBeGreaterThan(0);
-    } finally {
-      scope.requestAnimationFrame = frame;
-    }
-  }, 120_000);
-
   test('the counts are deterministic (the same scene twice, the same frame)', async () => {
     const [a, b] = [await measure(SCENES[0], 'high'), await measure(SCENES[0], 'high')];
     expect(b.draws).toBe(a.draws);
