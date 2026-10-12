@@ -65,10 +65,10 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           # NOT a literal version, exactly as ci.yml does it:
-          # `packageManager: "bun@x.y.z"` in package.json is the same string the
-          # Dockerfile and check-lockfile-sync.mjs read, so CI, the image, the
-          # lockfile gate and this deploy cannot disagree about which bun built
-          # what shipped.
+          # `packageManager: "bun@x.y.z"` in package.json is the one pin;
+          # check-lockfile-sync.mjs reads it and check:dockerfile holds the
+          # image's literal tag to it, so CI, the image, the lockfile gate and
+          # this deploy cannot disagree about which bun built what shipped.
           bun-version-file: package.json
 
       - name: Install exact dependency graph

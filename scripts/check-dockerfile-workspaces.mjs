@@ -27,6 +27,13 @@
  * from structure — the workspace list from JSON, the COPY targets from the
  * Dockerfile — rather than grepped for a string, so a commented-out COPY does
  * not satisfy it.
+ *
+ * It also checks that every `FROM oven/bun:<version>…` stage runs the bun that
+ * the root `packageManager` pins. CI's setup-bun reads that pin
+ * (`bun-version-file: package.json`), but the image tag is a literal, so a bump
+ * that misses it builds the image with a different bun from the one that wrote
+ * bun.lock. The frozen install then either fails in the image build or, worse,
+ * passes on a bun nobody tested.
  */
 
 import { readFileSync } from 'node:fs';
@@ -61,6 +68,41 @@ if (copied.size === 0) {
   process.exit(1);
 }
 
+const pinnedBun = /^bun@(\d+\.\d+\.\d+)$/.exec(
+  String(JSON.parse(readFileSync(`${ROOT}package.json`, 'utf8')).packageManager ?? ''),
+)?.[1];
+if (!pinnedBun) {
+  console.error(
+    '::error::root package.json must pin `packageManager` as bun@<x.y.z>; without it the image tag cannot be checked.',
+  );
+  process.exit(1);
+}
+
+/** Every `FROM oven/bun:<tag>` stage, ignoring comments. */
+const bunStages = [];
+for (const raw of dockerfile.split('\n')) {
+  const line = raw.trim();
+  if (line.startsWith('#')) continue;
+  const m = /^FROM\s+(?:--\S+\s+)*oven\/bun(?::(\S+))?/i.exec(line);
+  if (m) bunStages.push(m[1] ?? 'latest');
+}
+if (bunStages.length === 0) {
+  console.error(
+    `::error::parsed no \`FROM oven/bun\` stage out of ${DOCKERFILE}; the bun pin check would measure nothing.`,
+  );
+  process.exit(1);
+}
+const wrongBun = bunStages.filter((tag) => tag.split('-')[0] !== pinnedBun);
+if (wrongBun.length > 0) {
+  for (const tag of wrongBun) {
+    console.error(
+      `::error::${DOCKERFILE} builds on oven/bun:${tag}, but package.json pins bun@${pinnedBun}. ` +
+        'The image must run the bun that wrote bun.lock and that CI tests with.',
+    );
+  }
+  process.exit(1);
+}
+
 const missing = workspaces.filter((ws) => !copied.has(`${ws}/package.json`));
 
 if (missing.length > 0) {
@@ -75,5 +117,6 @@ if (missing.length > 0) {
 
 console.log(
   `Dockerfile workspace coverage is sound: all ${workspaces.length} workspace member(s) ` +
-    `(${workspaces.join(', ')}) have their manifest copied before the frozen install.`,
+    `(${workspaces.join(', ')}) have their manifest copied before the frozen install; ` +
+    `all ${bunStages.length} oven/bun stage(s) run the pinned bun ${pinnedBun}.`,
 );

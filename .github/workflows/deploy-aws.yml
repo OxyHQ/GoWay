@@ -15,8 +15,9 @@
 # `workflow_dispatch` remains, as the manual escape hatch for a re-deploy of a
 # commit that is already green.
 #
-# Keep the bun version here aligned with the Dockerfile's `FROM oven/bun:<ver>`;
-# `bun-version-file: package.json` is how the rest of CI does it.
+# The bun version comes from package.json's `packageManager`
+# (`bun-version-file`), and check:dockerfile holds the Dockerfile's literal
+# `FROM oven/bun:<ver>` to that same pin.
 name: Deploy to AWS
 
 on:
