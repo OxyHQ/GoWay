@@ -297,6 +297,37 @@ export const MAP_FEATURE_LABELS: Readonly<Record<MapFeatureId, MapFeatureLabels>
       'zh-Hans': '真实街道上的模拟车辆和行人，并非真实交通。',
     },
   },
+  cityStreets: {
+    name: {
+      en: 'Street detail',
+      ar: 'تفاصيل الشوارع',
+      bn: 'রাস্তার বিস্তারিত',
+      ca: 'Detall dels carrers',
+      de: 'Straßendetails',
+      es: 'Detalle de las calles',
+      fr: 'Détail des rues',
+      hi: 'सड़कों का विवरण',
+      ja: '道路の詳細',
+      'pt-BR': 'Detalhes das ruas',
+      ru: 'Детали улиц',
+      'zh-Hans': '街道细节',
+    },
+    description: {
+      en: 'Lanes, crossings, sidewalks and street names on the road, as OpenStreetMap records them.',
+      ar: 'المسارات وممرات المشاة والأرصفة وأسماء الشوارع على الطريق، كما تسجلها OpenStreetMap.',
+      bn: 'রাস্তায় লেন, পারাপার, ফুটপাত ও রাস্তার নাম, OpenStreetMap যেমন লিপিবদ্ধ করে।',
+      ca: 'Carrils, passos de vianants, voreres i noms dels carrers sobre la calçada, tal com els recull OpenStreetMap.',
+      de: 'Fahrstreifen, Überwege, Gehwege und Straßennamen auf der Fahrbahn, wie OpenStreetMap sie erfasst.',
+      es: 'Carriles, pasos de peatones, aceras y nombres de calles sobre la calzada, tal como los recoge OpenStreetMap.',
+      fr: "Voies, passages piétons, trottoirs et noms de rues sur la chaussée, tels qu'OpenStreetMap les enregistre.",
+      hi: 'सड़क पर लेन, क्रॉसिंग, फुटपाथ और सड़कों के नाम, जैसे OpenStreetMap उन्हें दर्ज करता है।',
+      ja: 'OpenStreetMap の記録どおりに、車線・横断歩道・歩道・通り名を路面に表示します。',
+      'pt-BR':
+        'Faixas, travessias, calçadas e nomes de ruas no asfalto, como o OpenStreetMap os registra.',
+      ru: 'Полосы, переходы, тротуары и названия улиц на дороге — как их записывает OpenStreetMap.',
+      'zh-Hans': '按 OpenStreetMap 的记录，在路面上显示车道、人行横道、人行道和街道名称。',
+    },
+  },
   landmarks: {
     name: {
       en: '3D landmarks',

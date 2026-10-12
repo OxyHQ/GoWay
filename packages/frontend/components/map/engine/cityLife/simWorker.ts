@@ -17,6 +17,9 @@ import { CITY_TILE_ZOOM } from '@/lib/map/cityTiles';
 
 import { mercatorXFromLng, mercatorYFromLat, tileKey } from '../city3d/tileMath';
 import type { SimWorkerRequest, SimWorkerResponse } from './protocol';
+import { drivingSideAt } from '../roads/drivingSide';
+import { type SimFrame, simFrame } from '../roads/roadGraph';
+import { type DecodedRoadTile, decodeRoadTile } from '../roads/roadTiles';
 import {
   decodeOmtRoads,
   type HealStats,
@@ -25,10 +28,8 @@ import {
   piecesForTiles,
 } from './omtRoads';
 import type { CoveredTiles } from './realCoverage';
-import { type DecodedRoadTile, decodeRoadTile } from './roadTiles';
-import { drivingSideAt } from './sim/drivingSide';
 import { taxiLiveryAt } from './sim/liveries';
-import { buildNetwork, type SimFrame, simFrame } from './sim/network';
+import { buildNetwork } from './sim/network';
 import { activeRadius, CitySimulation, type SimBudget, STEP_S } from './sim/simulation';
 
 interface WorkerScope {

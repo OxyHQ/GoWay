@@ -6,15 +6,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import type { DecodedRoadTile, RoadPiece } from '../engine/cityLife/roadTiles';
-import { drivingSideAt } from '../engine/cityLife/sim/drivingSide';
-import {
-  buildNetwork,
-  type Network,
-  offsetPolyline,
-  phaseGreen,
-  simFrame,
-} from '../engine/cityLife/sim/network';
+import { buildNetwork, type Network, phaseGreen } from '../engine/cityLife/sim/network';
 import { PERSON_STATE } from '../engine/cityLife/sim/pedestrians';
 import {
   activeRadius,
@@ -23,6 +15,9 @@ import {
   STEP_S,
 } from '../engine/cityLife/sim/simulation';
 import { holds, IDM, idmAcceleration, ROUTE_LENGTH } from '../engine/cityLife/sim/traffic';
+import { drivingSideAt } from '../engine/roads/drivingSide';
+import { offsetPolyline, simFrame } from '../engine/roads/roadGraph';
+import type { DecodedRoadTile, RoadPiece } from '../engine/roads/roadTiles';
 
 // ── Building tiles by hand ───────────────────────────────────────────────
 

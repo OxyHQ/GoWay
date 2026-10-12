@@ -3,9 +3,12 @@
  * in GLOBAL tile units (`lib/map/cityRoads.ts` says why those make topology
  * exact).
  *
- * Runs in the simulation worker. Every property came over the network, so
- * each is type- and range-checked and a bad one is dropped: a piece with a
- * nonsense lane count gets the simulation's default, never the nonsense.
+ * Runs in the simulation worker, and in the street-detail worker
+ * (`engine/cityStreets/`), which reads the schema-2 street properties too
+ * (`STREET_PROPS`; absent on a schema-1 tile). Every property came over the
+ * network, so each is type- and range-checked and a bad one is dropped: a
+ * piece with a nonsense lane count gets the simulation's default, never the
+ * nonsense, and one with a garbled `turn_lanes` gets no arrows, never wrong ones.
  */
 import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
@@ -18,8 +21,12 @@ import {
   ROAD_NODE_KINDS,
   type RoadClass,
   type RoadNodeKind,
+  SIDES,
   SIDEWALKS,
+  type Side,
   type Sidewalk,
+  TURNS,
+  type Turn,
 } from '@/lib/map/cityRoads';
 import { CITY_TILE_EXTENT } from '@/lib/map/cityTiles';
 
@@ -42,11 +49,38 @@ export interface RoadPiece {
   tunnel: boolean;
   /** Global tile units (`local + tile × extent`), y down. */
   points: [number, number][];
+  // ── Street detail (schema 2, `STREET_PROPS`): absent = not recorded readably ──
+  bridge?: boolean;
+  name?: string;
+  /** Carriageway width, metres. */
+  width?: number;
+  /** Per lane, in the tag's order (the traveller's left to right), its turns; `[]` for `none`. */
+  turnLanes?: Turn[][];
+  turnLanesForward?: Turn[][];
+  turnLanesBackward?: Turn[][];
+  /** Per lane, in the tag's order: designated for buses. */
+  busLanes?: boolean[];
+  busLanesForward?: boolean[];
+  busLanesBackward?: boolean[];
+  busway?: Side;
+  lanesBus?: number;
+  lanesBusForward?: number;
+  lanesBusBackward?: number;
+  cycleLane?: Side;
+  parking?: Side;
+  sidewalkWidth?: number;
+  /** On a `footway=crossing` piece. */
+  crossing?: string;
+  crossingMarkings?: string;
 }
 
 export interface RoadNode {
   kind: RoadNodeKind;
   crossing?: string;
+  /** Schema 2: `crossing:markings`, `crossing_ref`, a signal's or sign's facing. */
+  crossingMarkings?: string;
+  crossingRef?: string;
+  direction?: 'forward' | 'backward';
   /** Global tile units. */
   x: number;
   y: number;
@@ -71,10 +105,75 @@ const CLASSES = new Set<string>(ROAD_CLASSES);
 const KINDS = new Set<string>(ROAD_NODE_KINDS);
 const SIDEWALK_VALUES = new Set<string>(SIDEWALKS);
 
+const SIDE_VALUES = new Set<string>(SIDES);
+const TURN_VALUES = new Set<string>(TURNS);
+
 const int = (value: unknown, min: number, max: number): number | undefined =>
   typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max
     ? value
     : undefined;
+
+const num = (value: unknown, min: number, max: number): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
+    ? value
+    : undefined;
+
+const word = (value: unknown): string | undefined =>
+  typeof value === 'string' && /^[a-z_:;]{1,24}$/.test(value) ? value : undefined;
+
+const side = (value: unknown): Side | undefined =>
+  typeof value === 'string' && SIDE_VALUES.has(value) ? (value as Side) : undefined;
+
+/** `left|through;right|none` → `[['left'], ['through', 'right'], []]`, or `undefined` for junk. */
+export function parseTurnLanes(value: unknown): Turn[][] | undefined {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 240) return undefined;
+  const lanes = value.split('|');
+  if (lanes.length > 12) return undefined;
+  const out: Turn[][] = [];
+  for (const lane of lanes) {
+    const turns = lane.split(';');
+    if (turns.some((t) => !TURN_VALUES.has(t))) return undefined;
+    out.push(turns.filter((t) => t !== 'none') as Turn[]);
+  }
+  return out;
+}
+
+/** `--b` → `[false, false, true]`, or `undefined` for junk. */
+export function parseBusLanes(value: unknown): boolean[] | undefined {
+  if (typeof value !== 'string' || !/^[b-]{1,12}$/.test(value)) return undefined;
+  return [...value].map((c) => c === 'b');
+}
+
+/** The schema-2 street properties of a `road` feature, only those that read. */
+function streetFields(p: Record<string, unknown>): Partial<RoadPiece> {
+  const out: Partial<RoadPiece> = {
+    bridge: p.bridge === true ? true : undefined,
+    name:
+      typeof p.name === 'string' && p.name.trim() !== '' && p.name.length <= 120
+        ? p.name.trim()
+        : undefined,
+    width: num(p.width, 2, 60),
+    turnLanes: parseTurnLanes(p.turn_lanes),
+    turnLanesForward: parseTurnLanes(p.turn_lanes_forward),
+    turnLanesBackward: parseTurnLanes(p.turn_lanes_backward),
+    busLanes: parseBusLanes(p.bus_lanes),
+    busLanesForward: parseBusLanes(p.bus_lanes_forward),
+    busLanesBackward: parseBusLanes(p.bus_lanes_backward),
+    busway: side(p.busway),
+    lanesBus: int(p.lanes_bus, 1, 12),
+    lanesBusForward: int(p.lanes_bus_forward, 1, 12),
+    lanesBusBackward: int(p.lanes_bus_backward, 1, 12),
+    cycleLane: side(p.cycle_lane),
+    parking: side(p.parking),
+    sidewalkWidth: num(p.sidewalk_width, 0.5, 20),
+    crossing: word(p.crossing),
+    crossingMarkings: word(p.crossing_markings),
+  };
+  for (const key of Object.keys(out) as (keyof RoadPiece)[]) {
+    if (out[key] === undefined) delete out[key];
+  }
+  return out;
+}
 
 /**
  * Decode one tile. `tile` is where it sits (its `x`/`y` at the archive's
@@ -107,6 +206,7 @@ export function decodeRoadTile(
       const foot = p.foot === true;
       if (!car && !foot) continue;
       const way = int(p.way, 0, Number.MAX_SAFE_INTEGER) ?? 0;
+      const street = streetFields(p);
       for (const line of feature.loadGeometry()) {
         if (line.length < 2) continue;
         const piece: RoadPiece = {
@@ -117,6 +217,7 @@ export function decodeRoadTile(
           roundabout: p.roundabout === true,
           tunnel: p.tunnel === true,
           points: line.map((point) => [ox + point.x * scale, oy + point.y * scale]),
+          ...street,
         };
         if (p.oneway === 1 || p.oneway === -1) piece.oneway = p.oneway;
         const lanes = int(p.lanes, 1, 12);
@@ -159,6 +260,11 @@ export function decodeRoadTile(
     if (typeof p.kind !== 'string' || !KINDS.has(p.kind)) return;
     const node: RoadNode = { kind: p.kind as RoadNodeKind, x, y };
     if (typeof p.crossing === 'string') node.crossing = p.crossing;
+    const markings = word(p.crossing_markings);
+    if (markings) node.crossingMarkings = markings;
+    const ref = word(p.crossing_ref);
+    if (ref) node.crossingRef = ref;
+    if (p.direction === 'forward' || p.direction === 'backward') node.direction = p.direction;
     out.nodes.push(node);
   });
   points(CITY_RESTRICTION_LAYER, (x, y, p) => {

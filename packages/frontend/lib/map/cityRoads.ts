@@ -1,7 +1,7 @@
 /**
  * The road layers of GoWay's city tiles: the schema the compiler writes
  * (`scripts/citygen/roads.ts`) and the city-life simulation reads
- * (`components/map/engine/cityLife/roadTiles.ts`).
+ * (`components/map/engine/roads/roadTiles.ts`).
  *
  * They are cut on the SAME z15 grid as the buildings (`lib/map/cityTiles.ts`)
  * but live in their own archive ({@link CITY_ROAD_TILE_PATH}), as three MVT
@@ -47,8 +47,14 @@
  */
 export const CITY_ROAD_TILE_PATH = '/map/city-roads/{z}/{x}/{y}.pbf';
 
-/** Bumped when a property changes meaning; written into the archive's metadata. */
-export const CITY_ROAD_SCHEMA_VERSION = 1;
+/**
+ * Bumped when a property changes meaning or the street properties grow;
+ * written into the archive's metadata. 2: the street-detail properties
+ * ({@link STREET_PROPS}, {@link STREET_NODE_PROPS}) — additive, so a v1 reader
+ * (the simulation) reads a v2 tile unchanged, and a v1 archive draws the
+ * generic class markings only (`docs/MAP_STREETS.md`).
+ */
+export const CITY_ROAD_SCHEMA_VERSION = 2;
 
 /** The archive metadata key that says which kind of city archive a file is. */
 export const CITY_ARCHIVE_KIND_KEY = 'goway:kind';
@@ -92,6 +98,48 @@ export const ROAD_PROPS = {
   tunnel: 'tunnel',
 } as const;
 
+/**
+ * `road` feature properties the street-detail renderer reads
+ * (`docs/MAP_STREETS.md`), schema 2. Each is present only when OSM records it
+ * in a form the compiler could read; a value it could not is refused and
+ * counted in the receipt, never coerced.
+ */
+export const STREET_PROPS = {
+  /** `name`: the local-language name, as `places.name` (never `name:<lang>`). */
+  name: 'name',
+  /** `width` of the carriageway, metres (`ft`/`'` converted). */
+  width: 'width',
+  /** `turn:lanes`, normalised: lanes `|`, values `;`, each one of {@link TURNS}. */
+  turnLanes: 'turn_lanes',
+  turnLanesForward: 'turn_lanes_forward',
+  turnLanesBackward: 'turn_lanes_backward',
+  /**
+   * `bus:lanes`/`psv:lanes` (and `:forward`/`:backward`) as one character per
+   * lane, in the tag's own order: `b` designated for buses, `-` anything else.
+   */
+  busLanes: 'bus_lanes',
+  busLanesForward: 'bus_lanes_forward',
+  busLanesBackward: 'bus_lanes_backward',
+  /** A bus lane on a side, from `busway*=lane` (`busway=lane`: `both`). One of {@link SIDES}. */
+  busway: 'busway',
+  /** `lanes:bus`/`lanes:psv` counts, when tagged. */
+  lanesBus: 'lanes_bus',
+  lanesBusForward: 'lanes_bus_forward',
+  lanesBusBackward: 'lanes_bus_backward',
+  /** A painted cycle lane ON the carriageway, from `cycleway*=lane|opposite_lane`. One of {@link SIDES}. */
+  cycleLane: 'cycle_lane',
+  /** On-carriageway parking (`parking:lane:*`, `parking:*=lane`). One of {@link SIDES}. */
+  parking: 'parking',
+  /** `sidewalk:width` (or `sidewalk:both|left|right:width`), metres. */
+  sidewalkWidth: 'sidewalk_width',
+  /** `true` for `bridge=*` other than `no`: drawn by the basemap only. */
+  bridge: 'bridge',
+  /** `crossing=*` on a `footway=crossing` way. */
+  crossing: 'crossing',
+  /** `crossing:markings=*` on a `footway=crossing` way (or the node, below). */
+  crossingMarkings: 'crossing_markings',
+} as const;
+
 /** `road_node` feature properties. */
 export const ROAD_NODE_PROPS = {
   /** One of {@link ROAD_NODE_KINDS}. */
@@ -99,6 +147,36 @@ export const ROAD_NODE_PROPS = {
   /** `crossing=*` on a crossing node, when tagged. */
   crossing: 'crossing',
 } as const;
+
+/** `road_node` properties of schema 2, for the street-detail renderer. */
+export const STREET_NODE_PROPS = {
+  /** `crossing:markings=*` on a crossing node, lower case. */
+  crossingMarkings: 'crossing_markings',
+  /** `crossing_ref=*` (`zebra`, `pelican`, …) on a crossing node. */
+  crossingRef: 'crossing_ref',
+  /** `forward`/`backward`: which way a signal or sign faces (`traffic_signals:direction`, `direction`). */
+  direction: 'direction',
+} as const;
+
+/** The sides a lane property names, relative to the way's drawn direction. */
+export const SIDES = ['left', 'right', 'both'] as const;
+export type Side = (typeof SIDES)[number];
+
+/** `turn:lanes` values the compiler keeps (`none` stands for an empty lane). */
+export const TURNS = [
+  'none',
+  'left',
+  'slight_left',
+  'sharp_left',
+  'through',
+  'right',
+  'slight_right',
+  'sharp_right',
+  'reverse',
+  'merge_to_left',
+  'merge_to_right',
+] as const;
+export type Turn = (typeof TURNS)[number];
 
 /** `restriction` feature properties. */
 export const RESTRICTION_PROPS = {

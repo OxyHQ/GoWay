@@ -31,7 +31,8 @@ import { LIVE_COVERAGE_ZOOM } from '@/lib/live/coverage';
 import type { CoveredTiles, RealClass } from '../realCoverage';
 import type { TaxiLivery } from './liveries';
 import { createRng, type Rng } from './rng';
-import { type Network, type Path, pointAt, project } from './network';
+import { pointAt, project } from '../../roads/roadGraph';
+import type { Network, Path } from './network';
 import {
   CAR_MODEL_SPECS,
   CAR_MODELS,

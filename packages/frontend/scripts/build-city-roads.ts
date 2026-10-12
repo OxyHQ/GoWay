@@ -25,7 +25,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
-import { decodeRoadTile } from '../components/map/engine/cityLife/roadTiles';
+import { decodeRoadTile } from '../components/map/engine/roads/roadTiles';
 import {
   CITY_ARCHIVE_KIND_KEY,
   CITY_RESTRICTION_LAYER,
@@ -213,6 +213,10 @@ async function build(args: Args): Promise<string> {
   );
   console.log(
     `  turns      ${r.restrictions} node-via restrictions (${r.restrictionsSkipped} via-way or unreadable, skipped)`,
+  );
+  const st = r.street;
+  console.log(
+    `  street     name ${pct(st.named, r.carWays)}% · width ${pct(st.width, r.carWays)}% · turn:lanes ${pct(st.turnLanes, r.carWays)}% · bus ${pct(st.busLanes, r.carWays)}% · cycle lane ${pct(st.cycleLanes, r.carWays)}% · parking ${pct(st.parking, r.carWays)}% of car ways; refused ${JSON.stringify(st.refused)}`,
   );
 
   await writeFile(

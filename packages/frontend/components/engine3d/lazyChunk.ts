@@ -32,3 +32,5 @@ export { createCityEngine } from '../map/engine/city3d/cityEngine';
 export { createCityLife } from '../map/engine/cityLife/lifeRenderer';
 // GoWay Live's 3D shapes: a pass of the city engine, so the same chunk.
 export { createLivePass } from '../map/engine/live3d/livePass';
+// Street detail: an overlay of the city engine, so the same chunk.
+export { createCityStreets } from '../map/engine/cityStreets/streetRenderer';

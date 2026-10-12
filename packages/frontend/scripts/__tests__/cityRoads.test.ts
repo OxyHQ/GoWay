@@ -11,7 +11,7 @@ import { deflateSync } from 'node:zlib';
 
 import { PbfWriter } from 'pbf';
 
-import { decodeRoadTile } from '../../components/map/engine/cityLife/roadTiles';
+import { decodeRoadTile } from '../../components/map/engine/roads/roadTiles';
 import { CITY_TILE_EXTENT, CITY_TILE_ZOOM } from '../../lib/map/cityTiles';
 import { encodeTileLayers } from '../citygen/mvtEncode';
 import {
@@ -256,18 +256,40 @@ beforeAll(() => {
     { id: 5, x: 0, y: -150 },
     { id: 6, x: 0, y: 150 },
     { id: 7, x: 80, y: -15 },
-    { id: 8, x: 80, y: 0, tags: { highway: 'crossing', crossing: 'zebra' } },
+    {
+      id: 8,
+      x: 80,
+      y: 0,
+      tags: { highway: 'crossing', crossing: 'zebra', 'crossing:markings': 'Zebra' },
+    },
     { id: 9, x: 80, y: 15 },
   ];
   const ways: Way[] = [
     {
       id: 100,
       refs: [1, 2, 3, 8, 4],
-      tags: { highway: 'primary', lanes: '4', maxspeed: '50', name: 'x' },
+      tags: {
+        highway: 'primary',
+        lanes: '4',
+        maxspeed: '50',
+        name: 'x',
+        'turn:lanes:forward': 'left|through',
+        'bus:lanes:backward': '|designated',
+        'turn:lanes:backward': 'left|straight', // junk: refused, counted
+      },
     },
     { id: 200, refs: [5, 2], tags: { highway: 'residential', oneway: 'yes' } },
     { id: 201, refs: [2, 6], tags: { highway: 'residential' } },
-    { id: 300, refs: [7, 8, 9], tags: { highway: 'footway', footway: 'crossing' } },
+    {
+      id: 300,
+      refs: [7, 8, 9],
+      tags: {
+        highway: 'footway',
+        footway: 'crossing',
+        crossing: 'traffic_signals',
+        'crossing:markings': 'ladder',
+      },
+    },
     { id: 400, refs: [5, 1], tags: { highway: 'rail' } },
   ];
   const relations: Relation[] = [
@@ -319,5 +341,16 @@ describe('compileRoads', () => {
       expect(ends.has(`${node.x},${node.y}`)).toBe(true);
     // The restriction's via node is the junction: a piece end too.
     expect(ends.has(`${restrictions[0].x},${restrictions[0].y}`)).toBe(true);
+    // Street detail (schema 2) survives the encoding and the shared decoder.
+    expect(primary.every((p) => p.name === 'x')).toBe(true);
+    expect(primary[0].turnLanesForward).toEqual([['left'], ['through']]);
+    expect(primary[0].busLanesBackward).toEqual([false, true]);
+    expect(primary[0].turnLanesBackward).toBeUndefined();
+    expect(result.coverage.street.refused['turn:lanes:backward']).toBe(1);
+    expect(
+      crossing.every((p) => p.crossingMarkings === 'ladder' && p.crossing === 'traffic_signals'),
+    ).toBe(true);
+    const zebra = decoded.flatMap((t) => t.nodes).find((n) => n.kind === 'crossing');
+    expect(zebra?.crossingMarkings).toBe('zebra');
   });
 });

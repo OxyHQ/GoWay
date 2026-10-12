@@ -51,6 +51,9 @@ const ENGINES = [
   // The city-life renderer is an overlay of the same engine (`overlay.ts`),
   // reached only through `lazyChunk.ts`.
   'components/map/engine/cityLife/lifeRenderer.ts',
+  // The street-detail renderer is another overlay of the same engine,
+  // reached only through `lazyChunk.ts` (`docs/MAP_STREETS.md`).
+  'components/map/engine/cityStreets/streetRenderer.ts',
   // How models (and landmarks) are lit by day and night, imported only by `models.ts`.
   'components/map/engine/city3d/modelLook.ts',
   // GoWay Live's 3D shapes: a pass the city engine draws (`docs/MAP_LIVE.md`).
@@ -138,7 +141,7 @@ describe('the three.js chunk', () => {
         (f) =>
           runtimeImports(
             f.text,
-            /(sparkEngine|city3d\/cityEngine|cityLife\/lifeRenderer|live3d\/livePass)$/,
+            /(sparkEngine|city3d\/cityEngine|cityLife\/lifeRenderer|live3d\/livePass|cityStreets\/streetRenderer)$/,
           ).length > 0,
       )
       .map((f) => f.path);
@@ -174,7 +177,9 @@ describe('the three.js chunk', () => {
     // was, until the adapter stopped importing its defaults.
     const adapter = files.find((f) => f.path === 'components/map/city3dLayer.web.ts');
     expect(adapter).toBeDefined();
-    expect(runtimeImports(adapter?.text ?? '', /engine\/(city3d|cityLife)\//)).toEqual([]);
+    expect(runtimeImports(adapter?.text ?? '', /engine\/(city3d|cityLife|cityStreets)\//)).toEqual(
+      [],
+    );
   });
 
   test('the live adapter imports the engine folders type-only', () => {

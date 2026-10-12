@@ -87,6 +87,15 @@ mapped sidewalks). **Decision: compile.** `scripts/build-city-roads.ts` +
 - Way ids are written only for the ways a restriction names: on every piece
   they were a third of the archive.
 
+**Schema 2** adds the street-detail properties (names, widths, `turn:lanes`,
+bus, cycle and parking lanes, crossing patterns) for the street renderer
+([`MAP_STREETS.md`](./MAP_STREETS.md)); the simulation reads them through the
+same decoder and ignores them. The decoder, the graph's frame and geometry, the
+piece chaining and the driving-side table are shared code in
+`components/map/engine/roads/` (`roadTiles.ts`, `roadGraph.ts`,
+`drivingSide.ts`) — road data, not simulation, so the streets reuse them
+without reaching into `cityLife/`.
+
 **Its own archive** (`/map/city-roads/{z}/{x}/{y}.pbf`, `goway:kind=roads`),
 not three more layers in the building tiles: measured on Barcelona, putting
 them in the building tiles added **+72% gzip to every building tile** (4.45 MB

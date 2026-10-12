@@ -16,7 +16,8 @@ import {
   type OmtLine,
   piecesForTiles,
 } from '../engine/cityLife/omtRoads';
-import { buildNetwork, simFrame } from '../engine/cityLife/sim/network';
+import { buildNetwork } from '../engine/cityLife/sim/network';
+import { simFrame } from '../engine/roads/roadGraph';
 import { CitySimulation } from '../engine/cityLife/sim/simulation';
 
 const ORIGIN = { x: 16584, y: 12231 };

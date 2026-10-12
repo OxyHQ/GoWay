@@ -6,7 +6,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import type { DecodedRoadTile, RoadPiece } from '../engine/cityLife/roadTiles';
+import type { DecodedRoadTile, RoadPiece } from '../engine/roads/roadTiles';
 import {
   LIVE_COVERAGE_KINDS,
   type LiveCoverage,
@@ -15,7 +15,8 @@ import {
 } from '@/lib/live/coverage';
 
 import { coveredTiles, liveClassesInView } from '../engine/cityLife/realCoverage';
-import { buildNetwork, simFrame } from '../engine/cityLife/sim/network';
+import { buildNetwork } from '../engine/cityLife/sim/network';
+import { simFrame } from '../engine/roads/roadGraph';
 import { CitySimulation } from '../engine/cityLife/sim/simulation';
 
 const ORIGIN = { x: 16584, y: 12231 };

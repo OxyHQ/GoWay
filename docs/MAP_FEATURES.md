@@ -35,7 +35,7 @@ That answer is handed to the feature's own flag module where the build boolean
 used to go, so a development build's `?city3d=1`, `?globe=0` and the rest work
 exactly as before. Last, a feature is off while anything it `requires` is off
 (the trees and the city tiles need the 3D city; the woods fill needs the trees;
-city life needs the city tiles; the landmarks and the sky need the 3D city).
+city life needs the city tiles; the landmarks, the sky and street detail need the 3D city).
 
 With no stored choice, every feature answers exactly what its flag answered
 before the registry: `mapFeatures.test.ts` checks every feature against the old
@@ -56,6 +56,7 @@ now kills the trees, as a padded `0` always killed the globe and terrain.
 | `city3dTrees` | labs | on, with the city | web | `EXPO_PUBLIC_MAP_CITY3D_TREES` | `?city3dTrees=0` | live (re-attach) |
 | `city3dTreeFill` | labs | off | web | `EXPO_PUBLIC_MAP_CITY3D_TREE_FILL` | `?city3dTreeFill=1` | live (re-attach) |
 | `cityLife` | labs | off | web, **development builds only** | `EXPO_PUBLIC_MAP_CITY_LIFE` | `?cityLife=1` | live (re-attach) |
+| `cityStreets` | labs | off | web, **development builds only** (needs `city3d`; draws from the road archive) | `EXPO_PUBLIC_MAP_CITY_STREETS` | `?cityStreets=1` | live (re-attach) — [`MAP_STREETS.md`](./MAP_STREETS.md) |
 | `landmarks` | labs | off | web, **development builds only** (needs `city3d`; models draw only over city tiles) | `EXPO_PUBLIC_MAP_LANDMARKS` | `?landmarks=1` | live (re-attach; the pill and "Landmark tour" come and go, a running tour ends) |
 | `live` | labs | off | web, **development builds only** (needs a backend with `LIVE_ENABLED`; `docs/MAP_LIVE.md`) | `EXPO_PUBLIC_MAP_LIVE` | `?live=1` | live (mount/unmount: the panel in the top-right stack, the layer, its credits and the coverage channel come and go) |
 | `flyover` | labs | off | web, native | `EXPO_PUBLIC_MAP_FLYOVER` | `?flyover=1` | live ("Fly the route", `/studio`) |
@@ -147,7 +148,7 @@ are `lib/map/compactCredit.ts` and `__tests__/compactCredit.test.ts`.
 The store notifies; components read it through `useMapFeature(id)`:
 
 - `MapCanvas.web.tsx`: the city layer's effect depends on `city3d`,
-  `cityTiles`, `city3dTrees`, `city3dTreeFill`, `cityLife`, `landmarks`, so a toggle detaches the old
+  `cityTiles`, `city3dTrees`, `city3dTreeFill`, `cityLife`, `landmarks`, `cityStreets`, so a toggle detaches the old
   layer (giving `building-3d` back) and attaches a new one — no reload. A
   `globe`/`terrain` toggle rebuilds the MapLibre engine, because the globe is
   part of how the style is loaded; the new engine starts at the camera the old
@@ -200,7 +201,7 @@ in `lib/config.ts`, and no `process.env.EXPO_PUBLIC_MAP_*` read of its own):
    the dependencies of the effect that attaches it, so a toggle applies live.
    Hand the answer to a lazy adapter as an option rather than letting the
    adapter read a flag (`city3dLayer.web.ts` takes `cityTiles`, `trees`,
-   `treeFill`, `cityLife`, `landmarks`); anything it shows at the top right
+   `treeFill`, `cityLife`, `landmarks`, `streets`); anything it shows at the top right
    goes in the top-right stack, never at its own absolute position. If it truly cannot apply live, make it part of what rebuilds the
    engine, as `globe` is.
 

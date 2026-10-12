@@ -125,6 +125,7 @@ describe('the registry', () => {
       ['city3dTrees', false],
       ['city3dTreeFill', false],
       ['cityLife', false],
+      ['cityStreets', false],
       ['landmarks', false],
       ['live', false],
       ['flyover', false],
@@ -305,11 +306,27 @@ describe('what the panel offers', () => {
     expect(resolve().get('city3d').available).toBe(true);
   });
 
-  test('city tiles, city life and landmarks only in a development build (no tiles served yet)', () => {
-    for (const id of ['cityTiles', 'cityLife', 'landmarks']) {
+  test('city tiles, city life, street detail and landmarks only in a development build (no tiles served yet)', () => {
+    for (const id of ['cityTiles', 'cityLife', 'cityStreets', 'landmarks']) {
       expect(resolve().get(id).available).toBe(false);
       expect(resolve({ development: true }).get(id).available).toBe(true);
     }
+  });
+});
+
+describe('street detail', () => {
+  test('needs the 3D city; `?cityStreets=1` turns it on in a development build only', () => {
+    const page = { search: '?cityStreets=1' };
+    expect(resolve({ ...page, development: true }).get('cityStreets').blockedBy).toEqual([
+      'city3d',
+    ]);
+    expect(
+      resolve({ ...page, development: true, choices: { city3d: true } }).get('cityStreets').on,
+    ).toBe(true);
+    expect(resolve({ ...page, choices: { city3d: true } }).get('cityStreets').on).toBe(false);
+    expect(resolve({ choices: { city3d: true, cityStreets: true } }).get('cityStreets').on).toBe(
+      true,
+    );
   });
 });
 

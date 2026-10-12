@@ -1226,6 +1226,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       light.uNightFactor.value = factor;
       models.setNightFactor(factor);
       landmarks.setNightFactor(factor);
+      for (const overlay of overlays) overlay.setNightFactor?.(factor);
     },
 
     pickModel(point) {

@@ -34,6 +34,13 @@ import { CITY_TILE_EXTENT } from '../../lib/map/cityTiles';
 import { collectGarbage, rssMb } from './memory';
 import { type EncodedFeature, type EncodedLayer, encodeLines, encodePoint } from './mvtEncode';
 import { type BlobRef, MEMBER_NODE, MEMBER_WAY, readBlob, readBlock, scanBlobs } from './osmPbf';
+import {
+  type Refusals,
+  STREET_WAY_KEYS,
+  type StreetProperties,
+  streetNodeProperties,
+  streetProperties,
+} from './streetTags';
 
 type Tags = Record<string, string>;
 
@@ -61,6 +68,8 @@ const KEPT_WAY_KEYS = new Set([
   'tunnel',
   'covered',
   'indoor',
+  // The street-detail properties (`streetTags.ts`).
+  ...STREET_WAY_KEYS,
 ]);
 
 const CLASSES = new Set<string>(ROAD_CLASSES);
@@ -99,7 +108,7 @@ const NO = new Set(['no', 'private', 'false']);
 const YES = new Set(['yes', 'designated', 'permissive', 'destination', 'true', '1']);
 
 /** The properties a `road` feature carries; absent = OSM does not record it. */
-export type RoadProperties = {
+export type RoadProperties = StreetProperties & {
   highway: RoadClass;
   car: boolean;
   foot: boolean;
@@ -205,6 +214,15 @@ export function roadProperties(tags: Tags): RoadProperties | null {
   return props;
 }
 
+/** A tagged node's properties on the tile: its kind, and the street detail it records. */
+export type RoadNodeProperties = {
+  kind: RoadNodeKind;
+  crossing?: string;
+  crossing_markings?: string;
+  crossing_ref?: string;
+  direction?: 'forward' | 'backward';
+};
+
 /** What a tagged node is to the simulation, or `null`. */
 export function roadNodeKind(tags: Tags): { kind: RoadNodeKind; crossing?: string } | null {
   const highway = tags.highway;
@@ -217,6 +235,23 @@ export function roadNodeKind(tags: Tags): { kind: RoadNodeKind; crossing?: strin
   if (highway === 'give_way') return { kind: 'give_way' };
   return null;
 }
+
+/** {@link roadNodeKind} plus the street-detail properties (`streetTags.ts`). */
+export function roadNodeProperties(tags: Tags, refused?: Refusals): RoadNodeProperties | null {
+  const kind = roadNodeKind(tags);
+  if (!kind) return null;
+  return { ...kind, ...streetNodeProperties(tags, refused) };
+}
+
+/** The node keys {@link roadNodeProperties} reads. */
+const KEPT_NODE_KEYS = new Set([
+  'highway',
+  'crossing',
+  'crossing:markings',
+  'crossing_ref',
+  'direction',
+  'traffic_signals:direction',
+]);
 
 const RESTRICTIONS =
   /^(no_left_turn|no_right_turn|no_straight_on|no_u_turn|only_left_turn|only_right_turn|only_straight_on)$/;
@@ -239,6 +274,16 @@ export interface RoadCoverage {
   restrictions: number;
   restrictionsSkipped: number;
   missingNodes: number;
+  /** Street detail (`streetTags.ts`): car ways recording each, and values refused by key. */
+  street: {
+    named: number;
+    width: number;
+    turnLanes: number;
+    busLanes: number;
+    cycleLanes: number;
+    parking: number;
+    refused: Refusals;
+  };
 }
 
 export interface RoadTile {
@@ -358,6 +403,7 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
   const restrictions: { from: number; via: number; to: number; type: 'no' | 'only' }[] = [];
   let restrictionsSkipped = 0;
   let maxspeedRefused = 0;
+  const refused: Refusals = {};
   for (const blob of blobs) {
     if (blob.type !== 'OSMData') continue;
     const bytes = readBlob(fd, blob);
@@ -380,8 +426,9 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
           const key = strings[keys[i]];
           if (KEPT_WAY_KEYS.has(key)) tags[key] = strings[vals[i]];
         }
-        const props = roadProperties(tags);
-        if (!props) return;
+        const base = roadProperties(tags);
+        if (!base) return;
+        const props: RoadProperties = { ...base, ...streetProperties(tags, base.car, refused) };
         if (props.car && tags.maxspeed !== undefined && props.maxspeed === undefined) {
           maxspeedRefused++;
         }
@@ -461,7 +508,7 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
   const nodeIds = all.subarray(0, unique);
   const nodeX = new Float64Array(unique).fill(Number.NaN);
   const nodeY = new Float64Array(unique).fill(Number.NaN);
-  const special = new Map<number, { kind: RoadNodeKind; crossing?: string }>();
+  const special = new Map<number, RoadNodeProperties>();
   for (const blob of nodeBlobs) {
     let strings: string[] = [];
     readBlock(readBlob(fd, blob), {
@@ -477,17 +524,17 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
         }
       },
       onTaggedNode(id, _lon, _lat, keys, vals) {
-        let highway: string | undefined;
-        let crossing: string | undefined;
+        let tags: Tags | null = null;
         for (let i = 0; i < keys.length; i++) {
           const key = strings[keys[i]];
-          if (key === 'highway') highway = strings[vals[i]];
-          else if (key === 'crossing') crossing = strings[vals[i]];
+          if (!KEPT_NODE_KEYS.has(key)) continue;
+          tags ??= {};
+          tags[key] = strings[vals[i]];
         }
-        if (!highway) return;
+        if (!tags?.highway) return;
         const index = lowerBound(nodeIds, id);
         if (index >= unique || nodeIds[index] !== id) return;
-        const kind = roadNodeKind(crossing ? { highway, crossing } : { highway });
+        const kind = roadNodeProperties(tags, refused);
         if (kind) special.set(index, kind);
       },
     });
@@ -541,6 +588,7 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
     restrictions: 0,
     restrictionsSkipped,
     missingNodes: 0,
+    street: { named: 0, width: 0, turnLanes: 0, busLanes: 0, cycleLanes: 0, parking: 0, refused },
   };
 
   const indexOf = (ref: number): number => {
@@ -601,7 +649,7 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
             id: 0,
             type: 1,
             geometry: encodePoint([gx - tx * CITY_TILE_EXTENT, gy - ty * CITY_TILE_EXTENT]),
-            properties: kind.crossing ? { kind: kind.kind, crossing: kind.crossing } : { ...kind },
+            properties: { ...kind },
           });
           coverage.nodes[kind.kind] = (coverage.nodes[kind.kind] ?? 0) + 1;
         }
@@ -620,6 +668,27 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
     if (props.footway === 'sidewalk') coverage.sidewalkFootways++;
     if (props.footway === 'crossing') coverage.crossingFootways++;
     if (props.tunnel) coverage.tunnels++;
+    if (props.car) {
+      const street = coverage.street;
+      if (props.name) street.named++;
+      if (props.width !== undefined) street.width++;
+      if (props.turn_lanes || props.turn_lanes_forward || props.turn_lanes_backward) {
+        street.turnLanes++;
+      }
+      if (
+        props.bus_lanes ||
+        props.bus_lanes_forward ||
+        props.bus_lanes_backward ||
+        props.busway ||
+        props.lanes_bus ||
+        props.lanes_bus_forward ||
+        props.lanes_bus_backward
+      ) {
+        street.busLanes++;
+      }
+      if (props.cycle_lane) street.cycleLanes++;
+      if (props.parking) street.parking++;
+    }
   }
 
   for (const restriction of restrictions) {
