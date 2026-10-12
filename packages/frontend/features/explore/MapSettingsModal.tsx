@@ -116,6 +116,7 @@ const CREDIT_HEADINGS = {
   basemap: MAP_SETTINGS_COPY.creditsBasemap,
   elevation: MAP_SETTINGS_COPY.creditsElevation,
   buildings: MAP_SETTINGS_COPY.creditsBuildings,
+  cityData: MAP_SETTINGS_COPY.creditsCityData,
   models: MAP_SETTINGS_COPY.creditsModels,
 } satisfies Record<CreditSection['id'], Labels>;
 
@@ -123,6 +124,7 @@ const CREDIT_BODIES: Record<CreditSection['id'], Labels | null> = {
   basemap: MAP_SETTINGS_COPY.creditsBasemapBody,
   elevation: null,
   buildings: MAP_SETTINGS_COPY.creditsBuildingsBody,
+  cityData: MAP_SETTINGS_COPY.creditsCityDataBody,
   models: MAP_SETTINGS_COPY.creditsModelsBody,
 };
 

@@ -61,6 +61,23 @@ const BUILDING_DATA_LINKS: readonly CreditLink[] = [
 ];
 
 /**
+ * GoWay's 3D city tiles — buildings, trees and the street network — are a
+ * Derivative Database of OpenStreetMap, so the ODbL obliges GoWay to offer the
+ * database to anyone it serves the tiles to. The manifest the Worker serves
+ * (`worker/city.js`, `docs/MAP_CITY_PLANET.md`) lists every published
+ * regional archive with its receipt — the OSM extract and replication date it
+ * was built from, and the official data merged into it — and each is
+ * downloadable from `/map/city/data/<key>`. The canonical origin, as the
+ * elevation credit's link (`provider.ts`).
+ */
+export const CITY_DATA_LINKS: readonly CreditLink[] = [
+  {
+    label: 'City tile archives and receipts (manifest.json)',
+    href: 'https://goway.to/map/city/manifest.json',
+  },
+];
+
+/**
  * The 3D vehicles and vessels the map draws (the model library,
  * `lib/map/modelLibrary.ts`): Kenney's kits, CC0 — no credit is owed, and it
  * is given anyway. Every asset's source is in the library's manifest.
@@ -78,7 +95,7 @@ export interface CreditLink {
 
 export interface CreditSection {
   /** Stable anchor (`/attribution#elevation`) and the i18n key suffix. */
-  id: 'basemap' | 'elevation' | 'buildings' | 'models';
+  id: 'basemap' | 'elevation' | 'buildings' | 'cityData' | 'models';
   links: readonly CreditLink[];
   /** Licence notices, verbatim. */
   notices: readonly string[];
@@ -100,5 +117,6 @@ export const CREDIT_SECTIONS: readonly CreditSection[] = [
     links: BUILDING_DATA_LINKS,
     notices: [BUILDING_DATA_NOTICES.catastro, BUILDING_DATA_NOTICES.nyc],
   },
+  { id: 'cityData', links: CITY_DATA_LINKS, notices: [] },
   { id: 'models', links: MODEL_LINKS, notices: [] },
 ];

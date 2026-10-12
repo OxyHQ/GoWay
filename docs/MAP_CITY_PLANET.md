@@ -4,8 +4,9 @@ GoWay's 3D city tiles (buildings and trees, [`MAP_3D_CITY.md`](./MAP_3D_CITY.md)
 → Phase 2) and the city-life road graph ([`MAP_CITY_LIFE.md`](./MAP_CITY_LIFE.md))
 were compiled on a developer's machine for two cities. This note is how they
 are built for the **whole planet**, served from R2 by the Worker, and what that
-costs. **Built and dry-run proven; nothing is uploaded, deployed or scheduled.**
-The owner's steps to turn it on are at the end ([Approval](#approval)).
+costs. **Live for three regions since 2026-10-12** (below, "Published");
+the rest of the world waits for the workflow's first published run. The
+owner's remaining steps are at the end ([Approval](#approval)).
 
 | Piece | Where |
 | --- | --- |
@@ -319,9 +320,32 @@ bunx wrangler@4 r2 object put goway-map-tiles/<key> --file=<dir>/<key> --local -
 bunx wrangler@4 dev --local --persist-to=<state> --var MAP_CITY_MANIFEST:city/manifest.json --var MAP_TILE_ARCHIVE:
 ```
 
+## Published
+
+The first regions were built by hand on 2026-10-12 with `map:city-region` on
+`main`'s compiler (building schema 2 with official data, road schema 3),
+extracts of 2026-10-11, uploaded with `wrangler r2 object put --remote`, and
+each object downloaded back and hashed against the local file:
+
+| Region | Official data | `city/20261012-1/…` | `city-roads/20261012-1/…` | Owned z15 tiles |
+| --- | --- | ---: | ---: | ---: |
+| `europe/spain/cataluna` | Catastro, 17 Barcelona-area municipalities (127,744 buildings drawn; 47,260 OSM buildings that had no height given one) | 49.9 MB | 60.5 MB | 68,447 |
+| `europe/spain/madrid` | Catastro, Madrid (111,508 drawn; 94,202 given a height) | 31.6 MB | 17.6 MB | 9,343 |
+| `north-america/us/new-york` | NYC 3D Building Model, delivery areas 10, 12, 13 — Manhattan (92,332 drawn) | 113.6 MB | 83.9 MB | 178,710 |
+
+Peaks: Catalonia 12.9 GB, Madrid 8.7 GB, New York 23.5 GB (buildings with
+official data) — the measurement behind "Official data" above, and why the
+workflow's `official` input stays off for hosted runners. The manifest is
+`city/manifest.json` (= `city/manifests/20261012-1.json`, 12.8 kB). Landmark
+checks passed on each archive (`--verify --area=barcelona|madrid|manhattan`:
+the Sagrada Família's and the cathedral's roofs, the Carrer de Mallorca
+block's official height, the Empire State Building's model).
+
 ## Approval
 
-Nothing below has been done. In order:
+Steps 1–3 were done by hand for the first three regions (above) with the
+account's Cloudflare API token instead of R2 keys; steps 4–5 are the PR that
+set `MAP_CITY_MANIFEST` and added the database to `/attribution`. In order:
 
 1. **R2 credentials.** In Cloudflare → R2 → Manage API tokens, an *Object Read
    & Write* token scoped to `goway-map-tiles`; add its key id and secret as
