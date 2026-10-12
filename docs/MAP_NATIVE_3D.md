@@ -560,6 +560,23 @@ Nothing comes from the network:
      `GATE_TERRAIN_DELAY_MS`), and wait until MapLibre reads more than 40 m
      under the camera. A run where the terrain never lifts the map fails
      rather than passing on a flat map.
+- **Settled** means one thing (`scripts/city3dSettled.ts` → `unsettled`,
+  tested): the city wants tiles and has every one loaded with none pending or
+  queued for upload; when the view draws the street detail, every street tile
+  it wants is answered (meshed, or known to hold no street) with none
+  pending; when it expects a landmark, the registry is read and the engine
+  holds that landmark's model drawn — or failed, which the gate then reports
+  as such. A view that never settles fails the gate with the reason, instead
+  of being measured mid-load. Until this, "some street tile drawn" stood in
+  for the streets, and the street renderer reported its counts at most every
+  500 ms: the frame that drew the last tiles fell inside that window and a
+  map at rest draws no frame after it, so `pending` read 2 forever while both
+  tiles were on the screen. Both `landmark` views sat out the whole 240 s
+  timeout on every run (250 s in #181's), until the tilt's frames refreshed
+  the report. The renderer now reports counts the frame they change
+  (`streetRenderer.ts` → `statsDue`). It was the report, not the map:
+  goway.to at the Sagrada Família (`?quality=high`) loads the landmark once,
+  has no request after 30 s, and draws the same city at 240 s as at 30 s.
 - **Quality**: `?quality=high`. On SwiftShader the profile would resolve to
   low, which draws no 3D terrain, so nothing would ever be lifted and the
   gate would pass on the broken code (it did, until this was added).
@@ -595,8 +612,9 @@ Per sky (on and off) it asserts:
 - **Models** (the `objects` leg, sky off; models draw alike under either): a landmark of the
   registry, the Sagrada Família, stands in the synthetic city. With
   `landmarks` on it must change at least 1% of the map against the same view
-  with them off, below the top 110 rows where the layer's own chip appears.
-  Measured: 31.5%.
+  with them off, below the top 110 rows where the layer's own chip appears;
+  a model that failed to load fails the gate by name. Measured: 31.5%; both
+  views settle in 10–12 s locally (they timed out at 240 s before).
 - **A pan holds still** (sky leg: its sun shadows): opened from straight
   above at z18 at 09:00 (long shadows, no 3D terrain, so a drag moves the
   map by exactly the pointer's travel), dragged north in five 30 px steps,
