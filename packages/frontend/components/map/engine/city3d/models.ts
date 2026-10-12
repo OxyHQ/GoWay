@@ -385,6 +385,11 @@ export interface ModelLayerOptions {
    */
   animation?: AnimationTicket;
   onStatus: (id: string, status: ModelStatus) => void;
+  /**
+   * A model's asset could not be loaded or parsed: it will never draw, at any
+   * camera (its status stays `fallback`). The landmarks stop offering it.
+   */
+  onLoadFailed?: (id: string) => void;
   /** Where relative URLs resolve and which origin counts as "this page". */
   pageOrigin: string | null;
 }
@@ -562,6 +567,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
             if (typeof __DEV__ !== 'undefined' && __DEV__)
               console.warn(`[goway/map] model "${spec.id}" not drawn: ${String(cause)}`);
             options.onStatus(spec.id, 'fallback');
+            options.onLoadFailed?.(spec.id);
           },
         );
       });

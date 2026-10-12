@@ -203,6 +203,8 @@ export interface CityEngineOptions {
   overlays?: CityOverlay[];
   /** A landmark model became drawn (its buildings hidden), or stopped being. */
   onLandmarkStatus?: (id: string, status: ModelStatus) => void;
+  /** A landmark's model could not be loaded: it will never draw. */
+  onLandmarkFailed?: (id: string) => void;
   /**
    * Sky, haze, sun shadows and physical light (`sky.ts`), behind the city-sky
    * flag. Absent: the engine draws exactly what it always has, lit by
@@ -637,6 +639,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       rehide(id);
       options.onLandmarkStatus?.(id, status);
     },
+    onLoadFailed: (id) => options.onLandmarkFailed?.(id),
     pageOrigin: typeof location !== 'undefined' ? location.origin : null,
   });
 

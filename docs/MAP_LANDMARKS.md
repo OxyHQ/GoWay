@@ -7,9 +7,12 @@ orbit camera, the landmark's name and category as a caption, and ◀ ▶ / play
 to move between a city's landmarks. Web only, **on by default**
 since 2026-10-12 (the map-feature registry's `landmarks`,
 [`MAP_FEATURES.md`](./MAP_FEATURES.md)) — but a model draws only over
-published city tiles, so the adapter keeps only the landmarks the coverage
-document covers and offers exactly those to the tour and its pill
-(`lib/map/landmarks/load.ts` → `offerLandmarks`). Where nothing is published
+published city tiles, so the adapter keeps only the landmarks it can draw —
+over a WHOLLY published z14 cell (the engine's own source rule: at a region's
+ragged edge the cell is the basemap's), with a model that has not failed to
+load — hands exactly those to the engine, and offers exactly those to the
+tour and its pill (`city3dLayer.web.ts` → `drawableLandmarks`,
+`lib/map/landmarks/load.ts` → `offerLandmarks`; `drawableLandmarks.test.ts`). Where nothing is published
 (goway.to until its first region) there is no pill, no tour and no request
 for a model.
 
