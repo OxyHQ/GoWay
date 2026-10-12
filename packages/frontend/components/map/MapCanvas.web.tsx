@@ -262,6 +262,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const trees = useMapFeature('city3dTrees');
   const treeFill = useMapFeature('city3dTreeFill');
   const cityLife = useMapFeature('cityLife');
+  const cityStreets = useMapFeature('cityStreets');
   const landmarks = useMapFeature('landmarks');
   // The sky, haze, sun shadows and time-of-day scrubber (`citySkyFlag.ts`).
   const citySky = useMapFeature('citySky');
@@ -1093,6 +1094,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               cityLife,
               landmarks,
               detailed: detailedCity,
+              streets: cityStreets,
               onModelStatus: (id, status) =>
                 setModelsDrawn((current) => {
                   if ((status === 'drawn') === current.has(id)) return current;
@@ -1161,6 +1163,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     treeFill,
     cityLife,
     landmarks,
+    cityStreets,
     citySky,
     detailedCity,
   ]);

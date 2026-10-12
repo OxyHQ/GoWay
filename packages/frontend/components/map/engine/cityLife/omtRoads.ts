@@ -43,7 +43,7 @@ import { PbfReader } from 'pbf';
 
 import type { RoadClass } from '@/lib/map/cityRoads';
 
-import type { DecodedRoadTile, RoadNode, RoadPiece } from './roadTiles';
+import type { DecodedRoadTile, RoadNode, RoadPiece } from '../roads/roadTiles';
 
 /** Ends this close (metres) are one junction. */
 export const SNAP_M = 4;

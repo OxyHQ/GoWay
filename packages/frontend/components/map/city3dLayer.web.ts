@@ -75,6 +75,7 @@ import {
   buildingHeightRamp,
 } from '@/lib/map/style/buildings3d';
 import { CARTOGRAPHY_PALETTES } from '@/lib/map/style/palette';
+import { streetPaletteInput } from '@/lib/map/style/streetPalette';
 import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
 import type { QualityProfile } from '@/lib/map/quality/profile';
 import { sunPosition } from '@/lib/map/sun';
@@ -99,6 +100,7 @@ import type { CityLight } from './engine/city3d/occlusion';
 import type { CityOverlay } from './engine/city3d/overlay';
 import type { GroundStats } from './engine/city3d/terrainGround';
 import type { CityLifeStats } from './engine/cityLife/lifeRenderer';
+import type { CityStreetsStats } from './engine/cityStreets/streetRenderer';
 import { type CityLifeChip, mountCityLifeChip } from './cityLifeChip.web';
 import type { AnimationClock } from './perf/animationClock';
 import { reportMapDefect } from './shared';
@@ -303,6 +305,12 @@ export interface AttachCity3dOptions {
   clock: AnimationClock;
   /** `?perf=1`: the HUD's frame probe (`perf/mapRuntime.web.ts`). */
   probe?: FrameProbe | null;
+  /**
+   * Draw the streets — surfaces, sidewalks, lane markings, crossings, names —
+   * from the road archive (`docs/MAP_STREETS.md`): the registry's
+   * `cityStreets`. Ignored without `buildings`. Defaults to `false`.
+   */
+  streets?: boolean;
   /** A model was drawn, or fell back to its marker. */
   onModelStatus?: (id: string, status: ModelStatus) => void;
   /**
@@ -405,7 +413,9 @@ export async function attachCity3d(
     reportMapDefect('city3d:source', 'city3d: the style has no tiled vector source; not attached.');
     return null;
   }
-  const { createCityEngine, createCityLife } = await import('@/components/engine3d/lazyChunk');
+  const { createCityEngine, createCityLife, createCityStreets } = await import(
+    '@/components/engine3d/lazyChunk'
+  );
   // City tiles replace the BUILDINGS' source; a models-only engine (the city
   // flag off) draws no buildings, so it never asks.
   const cityTiles = buildings && options.cityTiles === true;
@@ -414,6 +424,8 @@ export async function attachCity3d(
   // on the basemap's roads, healed, everywhere else: the registry's `cityLife`,
   // handed in, needs no city tiles.
   const cityLife = buildings && options.cityLife === true;
+  // The registry's `cityStreets`, handed in: drawn from the road archive.
+  const streets = buildings && options.streets === true;
   const coverage = cityTiles ? await fetchCityCoverage(origin) : [];
   if (cityTiles && coverage.length === 0) {
     reportMapDefect(
@@ -546,6 +558,19 @@ export async function attachCity3d(
     if (engine) return engine;
     applied = currentLight();
     const overlays: CityOverlay[] = [];
+    if (streets) {
+      // First, so the streets are in the scene under everything else.
+      overlays.push(
+        createCityStreets({
+          roadTileTemplate: `${origin}${CITY_ROAD_TILE_PATH}`,
+          glyphTemplate: absoluteGlyphs(host.getStyle()?.glyphs, origin),
+          fontstack: STREET_FONTSTACK,
+          palette: streetPaletteInput(),
+          requestRepaint: () => host.triggerRepaint(),
+          onStats: __DEV__ ? publishStreetStats : undefined,
+        }),
+      );
+    }
     if (cityLife) {
       // Labelled for exactly as long as anything simulated is drawn.
       const label = mountCityLifeChip(host.getContainer());
@@ -906,6 +931,21 @@ function publishModelAlignment(map: MapLibreMap, engine: CityEngine): void {
       error: Math.hypot(p.x - a.x, p.y - a.y),
     };
   });
+}
+
+/** The style's glyph stack street names are painted in (`streetAtlas.ts`). */
+const STREET_FONTSTACK = 'Inter Bold';
+
+/** A style's glyph template made absolute for a worker; `null` when the style has none. */
+export function absoluteGlyphs(glyphs: string | undefined, origin: string): string | null {
+  if (!glyphs) return null;
+  if (/^https?:\/\//.test(glyphs)) return glyphs;
+  return glyphs.startsWith('/') ? `${origin}${glyphs}` : null;
+}
+
+/** Development only: the street renderer's numbers on `globalThis.__gowayCityStreets`. */
+function publishStreetStats(stats: CityStreetsStats): void {
+  (globalThis as { __gowayCityStreets?: CityStreetsStats }).__gowayCityStreets = stats;
 }
 
 /**

@@ -59,9 +59,9 @@ import type {
   SimWorkerRequest,
   SimWorkerResponse,
 } from './protocol';
+import { simFrame } from '../roads/roadGraph';
 import { type PersonGeometry, person } from './people';
 import { CAR_MODEL_SPECS, CAR_MODELS, type CarModel } from './sim/fleet';
-import { simFrame } from './sim/network';
 import type { SimBudget } from './sim/simulation';
 
 /** How far behind real time the city is drawn, ms (two simulation steps). */

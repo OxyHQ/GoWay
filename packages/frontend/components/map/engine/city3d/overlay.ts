@@ -44,6 +44,12 @@ export interface CityOverlay {
    * sun's direction and the light on an up-facing surface), as the trees are.
    */
   setSky?(sky: CityOverlaySky): void;
+  /**
+   * How much of a night to draw (0 … 1, `lib/map/landmarks/night.ts`), whenever
+   * the engine's changes and once at creation. Optional; under the city sky the
+   * same value also arrives as `uNightFactor` in {@link CityOverlaySky.uniforms}.
+   */
+  setNightFactor?(nightFactor: number): void;
   /** Free everything; the engine is going away. */
   dispose(): void;
 }

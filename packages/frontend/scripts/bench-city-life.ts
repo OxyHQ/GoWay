@@ -19,9 +19,10 @@ import {
   type OmtLine,
   piecesForTiles,
 } from '../components/map/engine/cityLife/omtRoads';
-import { type DecodedRoadTile, decodeRoadTile } from '../components/map/engine/cityLife/roadTiles';
-import { drivingSideAt } from '../components/map/engine/cityLife/sim/drivingSide';
-import { buildNetwork, simFrame } from '../components/map/engine/cityLife/sim/network';
+import { buildNetwork } from '../components/map/engine/cityLife/sim/network';
+import { drivingSideAt } from '../components/map/engine/roads/drivingSide';
+import { simFrame } from '../components/map/engine/roads/roadGraph';
+import { type DecodedRoadTile, decodeRoadTile } from '../components/map/engine/roads/roadTiles';
 import {
   activeRadius,
   CitySimulation,

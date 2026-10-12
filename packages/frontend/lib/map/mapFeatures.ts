@@ -241,6 +241,21 @@ export const MAP_FEATURES = [
       }),
   },
   {
+    id: 'cityStreets',
+    // How the city itself is drawn: its streets, as the detailed look is its buildings.
+    section: 'map',
+    tier: 'labs',
+    defaultOn: false,
+    build: process.env.EXPO_PUBLIC_MAP_CITY_STREETS,
+    // Drawn by the city-3D engine, from the road archive (`docs/MAP_STREETS.md`).
+    requires: ['city3d'],
+    platforms: WEB,
+    // Nothing serves the road tiles on goway.to yet (`docs/MAP_CITY_LIFE.md` →
+    // Hosting); outside a compiled archive there is nothing to draw.
+    offer: 'development',
+    request: (enabled, context) => queryOverride('cityStreets', enabled, context),
+  },
+  {
     id: 'landmarks',
     section: 'layers',
     tier: 'labs',

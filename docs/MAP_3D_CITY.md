@@ -966,6 +966,13 @@ engine folder type-only).
   measured) for the city-life simulation — see
   [`MAP_CITY_LIFE.md`](./MAP_CITY_LIFE.md).
 
+## Street detail
+
+Road surfaces, raised sidewalks with kerbs, lane lines, crossings, stop lines,
+turn arrows, bus and cycle lanes and street names painted on the road — from
+the road archive's tags, as another overlay of this engine (same scene, terrain
+and sky). Its own note: [`MAP_STREETS.md`](./MAP_STREETS.md).
+
 ## Phase 3: sky, atmosphere, shadows and time of day
 
 **Off by default; web only; on top of the city layer.** `EXPO_PUBLIC_MAP_CITY_SKY=1`
