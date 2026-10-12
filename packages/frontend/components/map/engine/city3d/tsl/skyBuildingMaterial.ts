@@ -22,7 +22,12 @@
  * and variant, shared by every tile, on the engine's uniforms; a tile's fade
  * is read per mesh.
  */
-import { MeshBasicNodeMaterial, type Node, type Side } from 'three/webgpu';
+import {
+  InterpolationSamplingType,
+  MeshBasicNodeMaterial,
+  type Node,
+  type Side,
+} from 'three/webgpu';
 import {
   abs,
   attribute,
@@ -152,6 +157,21 @@ export function createSkyBuildingMaterials(options: {
   };
 }
 
+/**
+ * The per-building flags (`osmMesher.ts` → `VERTEX_FLAG_*`), from the
+ * normal's spare lane (`packing.ts`), as the fragment reads them: FLAT, the
+ * provoking vertex's integer exactly. Every vertex of a building carries the
+ * same flags, but an interpolated varying does not return that integer: it
+ * comes back a hair either side of it, pixel by pixel, and `mod(flags, 2)`
+ * read 0.0001 or 1.9999 for an unlit building. That was the white speckle on
+ * every wall at night (the floodlight, at double strength on half the pixels).
+ */
+export function buildingFlags(normal: Node<'vec4'>): Float {
+  return varying(floor(normal.w.mul(127).add(0.5))).setInterpolation(
+    InterpolationSamplingType.FLAT,
+  ) as unknown as Float;
+}
+
 function buildMaterial(
   format: CityTileFormat,
   isDithered: boolean,
@@ -182,8 +202,7 @@ function buildMaterial(
     sky.shadowNormalOffset.div(sky.metresPerMercator),
   );
   const vShadow = varying(sky.shadowMatrix.mul(vec4(world.add(offset), 1)));
-  // The per-building flags ride in the normal's spare lane (`packing.ts`).
-  const vFlags = varying(floor(normal.w.mul(127).add(0.5)));
+  const vFlags = buildingFlags(normal);
   const vColor = osm ? varying(attribute('color', 'vec4')) : vec4(0);
   const vFacade = osm ? varying(attribute('facade', 'vec4')) : vec4(0);
 

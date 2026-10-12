@@ -177,6 +177,20 @@ describe('the floodlit flag through decode and mesh', () => {
     expect(constantsOf(city.surface.flags)).toContain(127);
     expect(constantsOf(openMapTiles.surface.flags)).toEqual([0]);
   });
+
+  test('…and reaches the fragment flat: the vertex’s integer, never interpolated', () => {
+    // Interpolated, a building's constant flags came back a hair either side
+    // of the integer pixel by pixel, and the floodlight's `mod(flags, 2)` lit
+    // every wall on half its pixels at night (#188, the white speckle).
+    const { seen, build } = spyMaterials();
+    build('goway');
+    const flags = seen[0].surface.flags as unknown as {
+      isVaryingNode?: boolean;
+      interpolationType?: string | null;
+    };
+    expect(flags.isVaryingNode).toBe(true);
+    expect(flags.interpolationType).toBe('flat');
+  });
 });
 
 describe('one shading path: the sky’s light inputs, a pluggable material', () => {

@@ -34,7 +34,8 @@
  *    glyphs and sprite (`public/map`). Every other request is refused.
  *  - **Quality**: the high preset (`?quality=high`). SwiftShader alone would
  *    resolve to low, which draws no 3D terrain: nothing would be grounded.
- *  - **Clock**: local noon (the sky's light, the crowns' green).
+ *  - **Clock**: local noon (the sky's light, the crowns' green); the night
+ *    view at half past midnight.
  *  - **Camera**: opened flat at z19 over the city, then tilted to 60° in six
  *    eased 10° steps to ABSOLUTE pitches, each waited out: the keyboard's
  *    relative steps land short when frames are slower than the ease.
@@ -55,6 +56,12 @@
  *  - **City life** (the `objects` leg, sky off, low preset): its simulated
  *    traffic on the fixture's streets changes at least 0.05% of the view from
  *    z17.5 over a junction (measured 0.10–0.13%; not drawn, 0%).
+ *  - **No speckle at night** (the `sky` leg, or `--skies=night` alone): the
+ *    city sky at night over OSM city-tile walls, where under
+ *    {@link NIGHT_MAX_SPECKLE_PCT}% of the map may be a pixel standing out
+ *    from all four neighbours ({@link speckle}). Born of #188: the building
+ *    flags reached the fragment interpolated, and the floodlight's
+ *    `mod(flags, 2)` lit every wall on half its pixels.
  *  - **A pan holds still** (the `sky` leg: its sun shadows): dragged north in
  *    steps from straight above, each frame is the one before moved by the
  *    drag — under {@link PAN_MAX_CHANGED_PCT} of the map differs once
@@ -96,6 +103,8 @@ const TERRAIN_M = 50;
 /** The camera's pitch once tilted, degrees. */
 const TILT = 60;
 const NOON = new Date('2026-06-21T12:00:00+02:00');
+/** The night view's clock: the sun far below the horizon, the windows and floodlights on. */
+const MIDNIGHT = new Date('2026-06-21T00:30:00+02:00');
 /**
  * Moving things off, as stored choices: they differ between page loads. And
  * street detail, on by default since the 3D city is: the fixture has no road
@@ -397,6 +406,8 @@ async function view(
    * frames took the GPU 40–60 s to drain per view (measured).
    */
   tilt: 'ease' | 'jump' = 'ease',
+  /** The page's clock: local noon, or the night view's midnight. */
+  time: Date = NOON,
 ): Promise<View> {
   const started = Date.now();
   // Per-view progress on stderr, so a CI log says WHICH view and WHICH step
@@ -431,7 +442,7 @@ async function view(
       if (!r.url().includes('/_expo/')) console.error(`[${r.status()}] ${r.url().slice(0, 160)}`);
     });
   }
-  await page.clock.setFixedTime(NOON);
+  await page.clock.setFixedTime(time);
   // The map the relief layer attached to, published by a development build.
   await page.addInitScript(() => {
     const scope = globalThis as {
@@ -680,6 +691,59 @@ async function share(browser: Browser, png: Buffer, kind: 'canopy' | 'dark'): Pr
   await page.close();
   return Number(value.toFixed(2));
 }
+
+/**
+ * Speckle, in % of the map: pixels brighter or darker than ALL four of their
+ * neighbours by more than {@link SPECKLE_LEVELS} (luma, 0–255). A window, an
+ * edge or a shadow is a run of pixels and is never that; a value that changes
+ * pixel by pixel across a wall is. Over the view's shot ({@link CLIP}).
+ */
+async function speckle(browser: Browser, png: Buffer): Promise<number> {
+  const page = await browser.newPage();
+  const value = await page.evaluate(
+    async ([data, levels]) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${data}`;
+      await img.decode();
+      const canvas = new OffscreenCanvas(img.width, img.height);
+      const g = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+      g.drawImage(img, 0, 0);
+      const { width: w, height: h } = img;
+      const px = g.getImageData(0, 0, w, h).data;
+      const luma = new Float32Array(w * h);
+      for (let i = 0; i < w * h; i++)
+        luma[i] = 0.2126 * px[4 * i] + 0.7152 * px[4 * i + 1] + 0.0722 * px[4 * i + 2];
+      let n = 0;
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const i = y * w + x;
+          const v = luma[i];
+          const around = [luma[i - 1], luma[i + 1], luma[i - w], luma[i + w]];
+          if (around.every((a) => v - a > levels) || around.every((a) => a - v > levels)) n++;
+        }
+      }
+      return (100 * n) / ((w - 2) * (h - 2));
+    },
+    [png.toString('base64'), SPECKLE_LEVELS] as const,
+  );
+  await page.close();
+  return Number(value.toFixed(3));
+}
+
+/**
+ * Four blocks east of the centre, clear of the official (LOD2) blocks, whose
+ * walls carry no class or era: OSM city-tile walls with a facade style and a
+ * non-zero flag byte, as a real city's.
+ */
+const NIGHT_VIEW = { lat: SYNTHETIC_CENTRE.lat, lng: SYNTHETIC_CENTRE.lng + 0.006, zoom: 18 };
+
+/** How far a pixel must stand out from all four neighbours to count as speckle. */
+const SPECKLE_LEVELS = 24;
+/**
+ * The night view's most speckle, %. Measured on SwiftShader: 0.003% with the
+ * flags flat, 0.74% with them interpolated (#188, main @660a706).
+ */
+const NIGHT_MAX_SPECKLE_PCT = 0.1;
 
 /**
  * Over a junction of the synthetic grid (the one north-west of the central
@@ -1007,6 +1071,35 @@ try {
     if (Math.max(...changed) > PAN_MAX_CHANGED_PCT)
       failures.push(
         `pan: a frame differs ${Math.max(...changed)}% from the one before once aligned (over ${PAN_MAX_CHANGED_PCT}%): the map changes under a pan`,
+      );
+  }
+  if (!DEBUG && (skies.includes('sky') || skies.includes('night'))) {
+    // The city sky at night, looking at the synthetic city's walls: windows
+    // lit, floodlights on, no sun. Born of #188: an interpolated building
+    // flag lit every wall's floodlight on half its pixels, pixel by pixel.
+    const { flags, choices } = SKIES.sky;
+    const night = await view(
+      browser,
+      origin,
+      flags,
+      choices,
+      outDir,
+      'sky-night',
+      'buildings',
+      NIGHT_VIEW,
+      'high',
+      null,
+      'jump',
+      MIDNIGHT,
+    );
+    const speckled = await speckle(browser, night.png);
+    results.night = { triangles: night.triangles, specklePct: speckled };
+    console.error(`night: speckle ${speckled}% of the map`);
+    if (night.triangles === 0)
+      failures.push('night: the engine drew no buildings (the fixture is not reaching it)');
+    else if (speckled > NIGHT_MAX_SPECKLE_PCT)
+      failures.push(
+        `night: ${speckled}% of the map is speckle (over ${NIGHT_MAX_SPECKLE_PCT}%): a surface value changes pixel by pixel`,
       );
   }
   if (!DEBUG && skies.includes('objects')) {
