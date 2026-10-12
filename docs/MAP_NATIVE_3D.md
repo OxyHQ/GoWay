@@ -515,7 +515,7 @@ export settings):
 | Pixels, night (detailed look: window glow, floodlights) | 110 differ by more than 8 levels; the lit windows are the same windows |
 | Frame-budget gate (`frameBudget.test.ts`, every scene × preset) | draws and triangles identical to `main` |
 | Steady frame CPU on the gate's harness (skyline, high; `render()`, p50) | `main` 0.40 ms, the port 0.38 ms |
-| First frames, while the city loads (same harness, every `render()` until settled) | `main` 124–145 ms in all, worst frame 30–45 ms; the port 221–238 ms, worst 59–73 ms: TSL builds each node material's shaders in JavaScript on its first draw (the sky-lit buildings, the three passes, the casters). Once per material per session |
+| First frames, while the city loads (same harness, every `render()` until settled) | `main` 124–145 ms in all, worst frame 30–45 ms; the port 221–238 ms, worst 59–73 ms: TSL builds each node material's shaders in JavaScript on its first draw (the sky-lit buildings, the three passes, the casters). Once per material per session. Since removed: [materials built ahead of the tiles](#materials-built-ahead-of-the-tiles) |
 | Bundle (production `expo export`, gzip) | lazy 3D chunk 1,421,084 → 1,413,292 B (−7.8 KB); first paint (`__common`) unchanged |
 | Orbit in the browser (SwiftShader) | Frame interval p50 16 ms on both. Not conclusive past that: the shared host ran at load 12–19 and one build's own runs differed tenfold; the harness numbers above are the ones to read |
 
@@ -555,6 +555,62 @@ How it was brought to parity, for the next port:
 For native (phase 4), still open: the shadow camera's and MapLibre's
 projections are GL's (`z` in [−1, 1]); on WebGPU three expects [0, 1], so the
 native host converts both.
+
+## Materials built ahead of the tiles
+
+A TSL material is built (its node graph turned into shaders, in JavaScript)
+the first time a mesh draws with it, once per material and vertex layout.
+Left to the first tiles, every build landed in the frames the tiles arrived
+in. Measured on the frame-budget harness (above): 70–94 ms of builds inside
+frames, a worst load frame of 44–56 ms. On a phone or laptop that is a
+visible stall when the city appears.
+
+So the engine builds them while the tiles are still being fetched and meshed
+in the workers (`materialWarmup.ts`, `tsl/tslPass.ts` → `warm`):
+
+- **What is warmed.** One warm-up mesh per variant the city draws: each tile
+  format, settled and dithered, the trees once, and the sky's three passes.
+  The meshes are real tile entries (`createTileEntry`) over a one-triangle
+  mesh and one tree, so their vertex layouts are exactly the tiles'. three
+  keys a build by material and layout, so a real tile later finds it built.
+  They live in the engine's scene on `WARM_LAYER`, drawn by no camera but the
+  warm-up's, and are kept for the engine's life (three drops a build no mesh
+  uses).
+- **How.** three's `compileAsync`, which builds in slices between frames. It
+  runs in three stages: the passes first (so the sky shows early), then the
+  city, then, in the background, the grounded variants (a tile on terrain),
+  so terrain arriving later lifts the drawn city in the frame it comes.
+- **Nothing draws unbuilt.** The sky's passes show once theirs are built, and
+  tile arrivals wait for the city's (then go up under the upload budget as
+  always), so no frame builds a material. A tile waiting for its first lift
+  now counts as pending, so "settled" means drawn.
+- **GL safety, with MapLibre in the same context.** `compileAsync`'s steps
+  run between frames, where MapLibre leaves its last vertex array bound and
+  later reuses it without rebinding. An index buffer made then would be bound
+  into it. So each warm-up step first makes the index buffers in the map's
+  render callback, with the state reset, drawing each geometry once with one
+  trivial material (one small build per layout), within 4 ms a frame. The
+  steps left to `compileAsync` (shader builds, uniform and vertex buffers,
+  programs) touch no vertex array.
+
+**Measured** (the same harness; the synthetic city served from a separate
+process so its tile generation is not on the measured thread; three runs):
+
+| | Before | After |
+| --- | --- | --- |
+| Builds inside frames | 70–94 ms | 11–14 ms (three's one-time setup on the first build) |
+| Worst load frame | 44–56 ms | 19–26 ms |
+| Longest main-thread block | 44–55 ms | 18–26 ms |
+| City first drawn, with `scheduler.yield` (Chrome, Edge) | 123–143 ms | 370–400 ms |
+| City first drawn, without it (three yields one frame per slice) | 123–143 ms | about 1.7 s |
+
+The cost is the wait: the city appears once its materials are built. The
+harness's tiles mesh instantly, so this is the worst case. In the app the
+warm-up runs while the first tiles are fetched and meshed, which takes a
+phone about a second for a dense tile ([Phase 1](#measured)), so the two
+overlap. Where the browser has no `scheduler.yield`, three's slices wait a
+frame each, and the city can appear up to that much later than its tiles. It
+does so without a stall.
 
 ## Correction: the terrain lift was not measured
 

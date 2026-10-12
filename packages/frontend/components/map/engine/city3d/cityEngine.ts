@@ -83,7 +83,9 @@ import {
   FrameSchedule,
   runsSkyOffscreenPass,
   SKY_PASS_LAYER,
+  WARM_LAYER,
 } from './frameSelection';
+import { createMaterialWarmup } from './materialWarmup';
 import { createModelLayer, type ModelSpec, type ModelStatus } from './models';
 import type { CityLight } from './occlusion';
 import type { CityTileFormat, MeshWorkerRequest, MeshWorkerResponse } from './protocol';
@@ -110,7 +112,7 @@ import { incompleteRetryMs, TileCache, TileScheduler } from './tileScheduler';
 import { assignSources, type SourcedTile } from './sources';
 import { Transitions } from './transitions';
 import { treeMinHeightM } from './tsl/treeMaterial';
-import { createTslPass } from './tsl/tslPass';
+import { createTslPass, type Warming } from './tsl/tslPass';
 import type { TreeSourceLayers } from './treeSources';
 import { WorkerPool, webWorker } from './workerPool';
 
@@ -531,6 +533,69 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     ? { tileZoom: options.city.tileZoom, coverage: options.city.coverage }
     : null;
   const shapes = createTreeShapes();
+  // The materials, built while the first tiles are still meshing
+  // (`materialWarmup.ts`): every format this engine draws, on its one pass.
+  const warmup = createMaterialWarmup(
+    context,
+    shapes,
+    city ? ['openmaptiles', 'goway'] : ['openmaptiles'],
+  );
+  // What the city's warm-up builds: its own meshes (the sky's passes are
+  // warmed first, on their own, with `skyPassCamera`).
+  const warmCamera = new THREE.Camera();
+  warmCamera.layers.set(WARM_LAYER);
+  // The passes' warm-up done (the sky may draw), the city's (its tiles may
+  // arrive), and whether the grounded variants were started. The passes go
+  // first: three builds, so the sky shows without waiting for the city's.
+  // The grounded variants (a tile on terrain) follow in the background, so
+  // terrain arriving later lifts the drawn city in the frame it comes.
+  let passesWarmed = false;
+  let warmed = false;
+  let groundStarted = false;
+  let warming: Warming | null = null;
+  const startWarming = (camera: THREE.Camera, finish: () => void) => {
+    const started = withPassesShown(() => tslPass.warm(tslPass.scene, camera));
+    warming = started;
+    void started.done.then(() => {
+      if (disposed || warming !== started) return;
+      warming = null;
+      finish();
+      options.requestRepaint();
+    });
+  };
+  /** One step of the warm-up in progress, from the render callback. */
+  const stepWarming = () => {
+    if (!warming && tslPass.ready) {
+      if (sky && !passesWarmed) {
+        startWarming(skyPassCamera, () => {
+          passesWarmed = true;
+        });
+      } else if (!warmed) {
+        // Terrain already in: its grounded variants are the ones the tiles need.
+        if (ground) groundStarted = warmup.ground();
+        startWarming(warmCamera, () => {
+          warmed = true;
+        });
+      } else if (!groundStarted) {
+        groundStarted = true;
+        if (warmup.ground()) startWarming(warmCamera, () => {});
+      }
+    }
+    const current = warming;
+    // The next step is the next frame's; the builds then ask for one when done.
+    if (current && withPassesShown(() => current.step())) options.requestRepaint();
+  };
+  /** `run` with the sky's passes shown: the warm-up builds them too. */
+  const withPassesShown = <T>(run: () => T): T => {
+    const passes = sky?.passes;
+    const shown = passes?.visible ?? false;
+    if (passes) passes.visible = true;
+    try {
+      return run();
+    } finally {
+      if (passes) passes.visible = shown;
+    }
+  };
   const transitions = new Transitions<TileEntry>();
 
   // `null` entries are empty tiles (sea, fields): cached so they are not
@@ -568,6 +633,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   let lastStatsAt = 0;
   let lastSignature = '';
   let drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
+  // Tiles this frame wanted to draw but could not yet: on terrain, not lifted.
+  const unlifted = new Set<string>();
   // Measured full-detail cost per canonical tile, and a running mean of it.
   const measured = new Map<string, TileCost>();
   let meanFull: TileCost = UNKNOWN_FULL;
@@ -673,14 +740,15 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       if (cache.has(lodKey(tileKey(tile), tile.lod))) loaded++;
     }
     // Counts that changed are reported at once; timings at most 4× a second.
-    const signature = `${byLod.join()}|${loaded}|${scheduler.pendingCount}|${arrivals.length}|${errors}`;
+    const signature = `${byLod.join()}|${loaded}|${scheduler.pendingCount}|${arrivals.length}|${unlifted.size}|${errors}`;
     if (!force && signature === lastSignature && at - lastStatsAt < 250) return;
     lastSignature = signature;
     lastStatsAt = at;
     options.onStats({
       tilesWanted: selected.length,
       tilesLoaded: loaded,
-      tilesPending: scheduler.pendingCount + arrivals.length,
+      // On terrain a tile is not drawn until it is lifted: pending until then.
+      tilesPending: scheduler.pendingCount + arrivals.length + unlifted.size,
       tilesByLod: byLod,
       ...drawn,
       gpuBytes: cache.bytes,
@@ -776,7 +844,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
   /** Hand queued meshes to the GPU, nearest first, within this frame's budget. */
   const admit = (now: number) => {
-    if (arrivals.length === 0) return;
+    // No tile becomes drawable before its materials are built
+    // (`materialWarmup.ts`): its first draw would build them, in the frame.
+    // Held here, the arrivals then go up under this budget as always.
+    if (arrivals.length === 0 || !warmed) return;
     const rank = new Map<string, number>();
     for (const tile of selected) rank.set(lodKey(tileKey(tile), tile.lod), tile.r);
     arrivals.sort((a, b) => (rank.get(a.key) ?? 1e9) - (rank.get(b.key) ?? 1e9));
@@ -1028,6 +1099,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
     for (const entry of cache.values()) setEntryVisible(entry, false);
     drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
+    unlifted.clear();
     const casting: DrawnTile[] = [];
     const sources = new Set<string>();
     if (opacity > 0) {
@@ -1044,7 +1116,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       )[0];
       for (const { value: entry, from, to } of draws) {
         if (!entry.placement) continue;
-        if (grounded && (!grounder.hasGround(entry.key) || firstGrounded.has(entry.key))) continue;
+        if (grounded && (!grounder.hasGround(entry.key) || firstGrounded.has(entry.key))) {
+          unlifted.add(entry.key);
+          continue;
+        }
         placeEntry(entry, entry.placement, center);
         setEntryTreeDetail(entry, shapes, r(entry) < nearTreesWithin);
         setEntryFade(entry, from, to);
@@ -1123,10 +1198,16 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       let skyPasses = false;
       if (sky) {
         probe?.enter('sky');
-        skyPasses = sky.update(tslPass, frameOf.skyView);
+        skyPasses = sky.update(tslPass, frameOf.skyView) && passesWarmed;
+        sky.passes.visible = skyPasses;
         if (skyPasses && frameOf.opacity <= 0) tslPass.drawScene(tslPass.scene, skyPassCamera);
         probe?.leave();
       }
+      // Once the pass is up, and again when the terrain first arrives: build
+      // the materials ahead of the tiles (after the sky has allocated its
+      // shadow map, which they sample), here in the map's render callback
+      // (`tsl/tslPass.ts` → `warm`).
+      stepWarming();
       if (frameOf.opacity > 0) {
         const drawStarted = performance.now();
         tslPass.draw(camera);
@@ -1282,6 +1363,9 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       retryTimers.clear();
       transitions.clear();
       cache.clear();
+      // After any build still in flight: disposing detaches the shared tree
+      // buffers its meshes read.
+      void (warming?.done ?? Promise.resolve()).then(() => warmup.dispose());
       tslPass.dispose();
       shapes.dispose();
       requests.clear();

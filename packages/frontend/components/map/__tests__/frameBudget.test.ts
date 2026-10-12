@@ -469,8 +469,11 @@ describe('frame budget gate', () => {
     // Vacuity: tiles were lifted, and uploaded.
     expect(lifting.length).toBeGreaterThan(2);
     expect(measured.loadFrames.some((f) => f.uploadBytes > 0)).toBe(true);
-    // A lifting frame uploads at most a few uniforms (bytes), never a mesh (MBs).
-    for (const frame of lifting) expect(frame.uploadBytes).toBeLessThan(1024);
+    // A lifting frame uploads at most a few uniforms (bytes), never a mesh
+    // (MBs): each object drawn for the first time adds its uniform buffers
+    // (~150 B), and a frame may draw a few — a tile's meshes come in hundreds
+    // of kilobytes.
+    for (const frame of lifting) expect(frame.uploadBytes).toBeLessThan(4096);
     expect(measured.draws).toBeGreaterThan(0);
   }, 120_000);
 

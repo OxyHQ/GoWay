@@ -99,6 +99,8 @@ const CHUNK = 'components/engine3d/lazyChunk.ts';
  */
 const ENGINE_PARTS: Record<string, string> = {
   'components/map/engine/city3d/sky.ts': 'components/map/engine/city3d/cityEngine.ts',
+  // The materials built ahead of the first tiles, over real tile entries.
+  'components/map/engine/city3d/materialWarmup.ts': 'components/map/engine/city3d/cityEngine.ts',
   // The street detail's TSL materials and ground atlas, parts of its renderer.
   'components/map/engine/cityStreets/streetMaterials.ts':
     'components/map/engine/cityStreets/streetRenderer.ts',
@@ -179,7 +181,11 @@ describe('the three.js chunk', () => {
     const importers = files
       .filter((f) => runtimeImports(f.text, /(^|\/)cityMeshes$/).length > 0)
       .map((f) => f.path);
-    expect(importers).toEqual(['components/map/engine/city3d/cityEngine.ts']);
+    expect(importers.sort()).toEqual([
+      'components/map/engine/city3d/cityEngine.ts',
+      // The material warm-up's tile entries: an engine part (below).
+      'components/map/engine/city3d/materialWarmup.ts',
+    ]);
   });
 
   test('the map-feature registry reads no build variable', () => {
