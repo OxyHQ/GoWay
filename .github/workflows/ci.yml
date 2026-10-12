@@ -192,6 +192,14 @@ jobs:
       # exactly that before (@oxyhq/services@30.0.0, `lib/` empty, 26 of 33
       # exports targets pointing at nothing — `npm publish <tarball>` runs zero
       # lifecycle scripts, so nothing was there to catch it).
+      - name: Serve tiles through the real Workers runtime (gzip layers on the wire)
+        # The unit tests cannot see encoding: Bun's Response ignores
+        # `encodeBody`, and the map went blank once for exactly that (#68).
+        # This runs worker/ under workerd (Miniflare) and counts gzip layers
+        # for a miss and a hit, for gzip, identity, br-only and no-header
+        # clients — and proves it can fail on a Worker that double-encodes.
+        run: bun run --cwd packages/frontend check:worker-wire
+
       - name: Test the SDK
         run: bun run test:sdk
 

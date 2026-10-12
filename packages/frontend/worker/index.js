@@ -70,7 +70,7 @@
  */
 
 import { serveCity } from './city.js';
-import { PMTiles, decompress } from './pmtiles.js';
+import { archiveSource, serveArchiveTile } from './tiles.js';
 
 /**
  * How long the edge may keep a vector tile.
@@ -83,21 +83,7 @@ import { PMTiles, decompress } from './pmtiles.js';
  */
 const TILE_EDGE_TTL_SECONDS = 86400;
 
-/**
- * How long the edge may keep a piece of the archive's directory tree.
- *
- * This is the number that decides the OPERATIONS bill — the storage bill is
- * decided by the archive and is about a dollar fifty. Every tile request needs
- * the header, the root directory and usually one leaf directory before it can
- * ask for a single byte of map, and those are the same few kilobytes for every
- * visitor in a colo. Cached, a warm tile request is ONE R2 read; uncached it
- * would be three or four, and the Class B operations — not the bytes — are
- * what R2 charges for.
- *
- * A week rather than a day because a directory is immutable for the life of an
- * archive key, which is the same reason it is safe to cache at all.
- */
-const DIRECTORY_EDGE_TTL_SECONDS = 604800;
+// Directories are kept a week at the edge and decoded per isolate: `tiles.js`.
 
 /** The media type a vector tile is served as. */
 const TILE_CONTENT_TYPE = 'application/vnd.mapbox-vector-tile';
@@ -303,136 +289,31 @@ async function upstreamTileTemplate(upstreamTileJson, ctx) {
 const MAX_TILE_ZOOM = 14;
 
 /**
- * A PMTiles byte source backed by an R2 bucket and the colo's shared cache.
- *
- * `hot` reads — the header, the root directory, a leaf directory — go through
- * `caches.default` and are therefore read from R2 once per colo per week
- * rather than once per tile. Tile bodies do not: they are cached as whole
- * responses by {@link serveTileFromArchive}, and caching them twice would
- * double the edge storage for nothing.
- *
- * The cache key names the archive key, so pointing `MAP_TILE_ARCHIVE` at a new
- * build invalidates every cached directory in the world at the moment of the
- * deploy. That is the entire cutover procedure, and the reason a rebuild is
- * never written over the object a Worker is mid-request against: a PMTiles
- * archive is addressed by byte offset, so overwriting one in place does not
- * serve a stale tile, it serves whatever now lives at that offset.
- */
-function archiveSource(bucket, key, ctx) {
-  const cache = caches.default;
-  return {
-    async read(offset, length, options = {}) {
-      const range = { offset, length };
-      if (!options.hot) {
-        const object = await bucket.get(key, { range });
-        if (!object) throw new Error(`the archive "${key}" is missing from the bucket`);
-        return new Uint8Array(await object.arrayBuffer());
-      }
-
-      const cacheKey = new Request(
-        `https://goway.internal/pmtiles/${encodeURIComponent(key)}/${offset}-${length}`,
-      );
-      const hit = await cache.match(cacheKey);
-      if (hit) return new Uint8Array(await hit.arrayBuffer());
-
-      const object = await bucket.get(key, { range });
-      if (!object) throw new Error(`the archive "${key}" is missing from the bucket`);
-      const bytes = new Uint8Array(await object.arrayBuffer());
-      ctx.waitUntil(
-        cache.put(
-          cacheKey,
-          new Response(bytes, {
-            headers: { 'cache-control': `public, max-age=${DIRECTORY_EDGE_TTL_SECONDS}` },
-          }),
-        ),
-      );
-      return bytes;
-    },
-  };
-}
-
-/**
  * `/map/tiles/{z}/{x}/{y}.pbf`, out of GoWay's own archive in R2.
  *
- * ## The bytes are never decompressed
- *
- * Planetiler writes gzipped MVT and the PMTiles header says so, so the stored
- * bytes ARE the response body and `content-encoding: gzip` is the whole of the
- * work. Decompressing here to let the platform re-compress on the wire would
- * burn CPU on every tile to arrive at the same bytes. This is also the one
- * place where getting a header wrong produces the classic unexplained failure:
- * a gzipped body forwarded WITHOUT `content-encoding` is a `.pbf` MapLibre
- * cannot parse and will not explain.
- *
- * ## A missing tile is a 404 and that is correct
- *
- * An OpenMapTiles build omits every tile that would be empty — mid-ocean,
- * empty desert — and MapLibre treats a 404 as an empty tile. Turning that into
- * a 502 would make the Atlantic an incident. It is cached for the full TTL
- * like any other answer, because a tile absent from a given archive key is
- * absent from it forever.
+ * Planetiler writes gzipped MVT; the stored bytes go to the browser as they
+ * are, with `content-encoding: gzip` (`tiles.js` has why, and why #69's
+ * decode-every-tile was the wrong lesson from #68). A tile the archive does
+ * not hold is a 404 — every ocean tile — which MapLibre draws as empty, cached
+ * like any other answer: absent from an archive key is absent forever.
  */
-async function serveTileFromArchive(z, x, y, request, env, ctx) {
-  const cache = caches.default;
+function serveTileFromArchive(z, x, y, request, env, ctx) {
   const key = env.MAP_TILE_ARCHIVE;
-  const cacheKey = new Request(
-    `https://goway.internal/map/tiles/${encodeURIComponent(key)}/${z}/${x}/${y}.pbf`,
-  );
-
-  const hit = await cache.match(cacheKey);
-  if (hit) {
-    // `status` has to be carried across, not defaulted. A cached MISS is a
-    // 404, and `new Response(null, { headers })` is a 200 — a HEAD for an
-    // ocean tile would have answered "this tile exists" with an empty body.
-    return request.method === 'HEAD'
-      ? new Response(null, { status: hit.status, headers: hit.headers })
-      : hit;
-  }
-
-  let tile;
-  try {
-    tile = await new PMTiles(archiveSource(env.MAP_TILES, key, ctx)).getTile(z, x, y);
-  } catch (error) {
-    // A bucket that answers and an archive that does not parse are different
-    // problems from an empty tile, and only this one deserves a 5xx.
-    return new Response(`The tile archive could not be read: ${error.message}`, {
-      status: 502,
-      headers: { ...publicHeaders(0), 'content-type': 'text/plain; charset=utf-8' },
-    });
-  }
-
-  const headers = new Headers(publicHeaders(TILE_EDGE_TTL_SECONDS));
-  if (!tile) {
-    const miss = new Response(null, { status: 404, headers });
-    ctx.waitUntil(cache.put(cacheKey, miss.clone()));
-    return miss;
-  }
-
-  headers.set('content-type', TILE_CONTENT_TYPE);
-
-  // The stored bytes are gzip and they are DECOMPRESSED here, which the
-  // docblock above argues against on CPU grounds. It was wrong, and the map was
-  // blank for it.
-  //
-  // Forwarding the gzip and declaring it does not work on this runtime.
-  // workerd owns transfer encoding: it treats a body handed to `Response` as
-  // already-decoded content and re-derives the header, so a hand-set
-  // `content-encoding` is dropped on the way out. `encodeBody: 'manual'` was
-  // tried first and changed nothing — measured against the live edge, the body
-  // still arrived `1f8b…` with no header, which is a `.pbf` MapLibre cannot
-  // parse and does not explain: the map said "Map data unavailable" with an
-  // empty console and no failed request.
-  //
-  // So the bytes are decoded here and go out plain. Cloudflare compresses them
-  // again on the wire for any client that asks, so the same bytes reach the
-  // browser and the only cost is the gunzip. That cost is real and bounded: it
-  // is a stream, and the edge cache means it is paid once per tile per colo
-  // rather than once per request.
-  const body = await decompress(tile.bytes, tile.compression);
-  headers.set('content-length', String(body.length));
-  const response = new Response(body, { headers });
-  ctx.waitUntil(cache.put(cacheKey, response.clone()));
-  return request.method === 'HEAD' ? new Response(null, { headers }) : response;
+  return serveArchiveTile({
+    request,
+    ctx,
+    bucket: env.MAP_TILES,
+    key,
+    z,
+    x,
+    y,
+    cacheKey: `map/tiles/${encodeURIComponent(key)}/${z}/${x}/${y}.pbf`,
+    cacheSeconds: TILE_EDGE_TTL_SECONDS,
+    contentType: TILE_CONTENT_TYPE,
+    publicHeaders: publicHeaders(TILE_EDGE_TTL_SECONDS),
+    missStatus: 404,
+    what: 'tile archive',
+  });
 }
 
 /**
@@ -559,42 +440,29 @@ async function serveTerrain(url, request, env, ctx) {
   return reissue(response, TERRAIN_EDGE_TTL_SECONDS);
 }
 
-/** `/map/terrain/{z}/{x}/{y}.webp`, out of an elevation archive in R2. */
-async function serveTerrainFromArchive(z, x, y, request, env, ctx) {
-  const cache = caches.default;
+/**
+ * `/map/terrain/{z}/{x}/{y}.webp`, out of an elevation archive in R2. WebP is
+ * compressed already and stored with tile compression `none`, so the bytes
+ * pass as they are; through the same path as the vector tiles all the same, so
+ * the caching and the accounting are one implementation.
+ */
+function serveTerrainFromArchive(z, x, y, request, env, ctx) {
   const key = env.MAP_TERRAIN_ARCHIVE;
-  const cacheKey = new Request(
-    `https://goway.internal/map/terrain/${encodeURIComponent(key)}/${z}/${x}/${y}.webp`,
-  );
-  const hit = await cache.match(cacheKey);
-  if (hit) {
-    return request.method === 'HEAD'
-      ? new Response(null, { status: hit.status, headers: hit.headers })
-      : hit;
-  }
-
-  let tile;
-  try {
-    tile = await new PMTiles(archiveSource(env.MAP_TILES, key, ctx)).getTile(z, x, y);
-  } catch (error) {
-    return new Response(`The elevation archive could not be read: ${error.message}`, {
-      status: 502,
-      headers: { ...publicHeaders(0), 'content-type': 'text/plain; charset=utf-8' },
-    });
-  }
-
-  const headers = new Headers(publicHeaders(TERRAIN_EDGE_TTL_SECONDS));
-  if (!tile) {
-    const miss = new Response(null, { status: 404, headers });
-    ctx.waitUntil(cache.put(cacheKey, miss.clone()));
-    return miss;
-  }
-  headers.set('content-type', 'image/webp');
-  const body = await decompress(tile.bytes, tile.compression);
-  headers.set('content-length', String(body.length));
-  const response = new Response(body, { headers });
-  ctx.waitUntil(cache.put(cacheKey, response.clone()));
-  return request.method === 'HEAD' ? new Response(null, { headers }) : response;
+  return serveArchiveTile({
+    request,
+    ctx,
+    bucket: env.MAP_TILES,
+    key,
+    z,
+    x,
+    y,
+    cacheKey: `map/terrain/${encodeURIComponent(key)}/${z}/${x}/${y}.webp`,
+    cacheSeconds: TERRAIN_EDGE_TTL_SECONDS,
+    contentType: 'image/webp',
+    publicHeaders: publicHeaders(TERRAIN_EDGE_TTL_SECONDS),
+    missStatus: 404,
+    what: 'elevation archive',
+  });
 }
 
 /**
