@@ -72,6 +72,13 @@ import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
 
 import type { City3dHandle } from './city3dLayer.web';
 import type { LiveLayerHandle } from './liveLayer.web';
+import {
+  attachCameraReports,
+  isGestureMove,
+  isTransientMove,
+  PROGRAMMATIC,
+  PROGRAMMATIC_TRANSIENT,
+} from './cameraReports.web';
 import { applyDragAxes } from './dragAxes';
 import { DefaultMapMarker } from './DefaultMapMarker';
 import {
@@ -121,7 +128,6 @@ import {
   type MapCreditLink,
   type MapLabelFeature,
   type MapMarker,
-  type MapMoveSource,
   type MapOverlay,
   type MapViewport,
   type ResolvedMapViewport,
@@ -190,40 +196,6 @@ const TimeOfDayScrubber = lazy(() => import('./TimeOfDayScrubber.web'));
 const DEGENERATE_FIT_ZOOM = 15;
 const DEFAULT_FIT_PADDING = 48;
 const DEFAULT_CAMERA_DURATION_MS = 500;
-/** Streaming viewport updates while a drag is in progress. */
-const MOVE_THROTTLE_MS = 100;
-
-/**
- * Marker put on every camera COMMAND GoWay issues, read back off the event.
- *
- * Marking our own commands (rather than sniffing for a DOM `originalEvent`) is
- * the safer direction of failure: a command somebody forgets to mark reads as a
- * user gesture, so "Search this area" appears once when it need not have. The
- * alternative — treat anything unrecognised as programmatic — hides the button
- * for good and looks like the feature was never built.
- */
-const PROGRAMMATIC = { gowayProgrammatic: true } as const;
-
-/**
- * One frame of a caller-driven animation (`MapCameraOptions.transient`): a
- * programmatic move whose `moveend` is not a settled camera.
- */
-const PROGRAMMATIC_TRANSIENT = { gowayProgrammatic: true, gowayTransient: true } as const;
-
-function moveSourceOf(event: unknown): MapMoveSource {
-  const marked = event as { gowayProgrammatic?: unknown } | null | undefined;
-  return marked?.gowayProgrammatic === true ? 'programmatic' : 'user';
-}
-
-/** A camera move a pointer, wheel, key or touch caused (MapLibre attaches it). */
-function isGestureMove(event: unknown): boolean {
-  return (event as { originalEvent?: unknown } | null | undefined)?.originalEvent != null;
-}
-
-function isTransientMove(event: unknown): boolean {
-  return (event as { gowayTransient?: unknown } | null | undefined)?.gowayTransient === true;
-}
-
 interface MarkerSlot {
   id: string;
   marker: maplibregl.Marker;
@@ -306,7 +278,6 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   } | null>(null);
   const markerSlots = useRef<Map<string, MarkerSlot>>(new Map());
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
-  const lastMoveEmit = useRef(0);
 
   const [ready, setReady] = useState(false);
   // City sky: whether the layer that draws it is attached (the scrubber and
@@ -560,60 +531,23 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       handlers.current.onReady?.();
     };
 
-    const emitViewport = (isFinal: boolean, source: MapMoveSource) => {
-      const change = handlers.current.onViewportChange;
-      if (!change) return;
-      // `getCenter`/`getBounds` BUILD `LngLat`s out of the live transform, so a
-      // camera that has gone non-finite throws HERE — and this runs from the
-      // engine's own `move` event, which `jumpTo` fires synchronously inside
-      // whatever effect commanded it. Not reporting a viewport is a stale
-      // "Search this area"; throwing is the error boundary.
-      runEngineCommand('getViewport', () => {
-        const center = map.getCenter();
-        const bounds = map.getBounds();
-        change({
-          viewport: {
-            latitude: center.lat,
-            longitude: center.lng,
-            zoom: map.getZoom(),
-            bearing: map.getBearing(),
-            pitch: map.getPitch(),
-          },
-          bounds: {
-            west: bounds.getWest(),
-            south: bounds.getSouth(),
-            east: bounds.getEast(),
-            north: bounds.getNorth(),
-          },
-          source,
-          isFinal,
-        });
-      });
-    };
-
     const handleMove = (event: unknown) => {
       // The reader moving the map folds the credit; nothing else does. Only a
       // move carrying the input event that caused it is a gesture: MapLibre
       // also moves the camera itself (padding, resize, terrain), unmarked.
       if (isGestureMove(event)) noteCreditInteraction();
-      const now = Date.now();
-      if (now - lastMoveEmit.current < MOVE_THROTTLE_MS) return;
-      lastMoveEmit.current = now;
-      emitViewport(false, moveSourceOf(event));
     };
 
     const handleMoveEnd = (event: unknown) => {
-      // A frame of a caller-driven animation is not a settled camera: `move`
-      // already reported it (throttled), and the sun is re-read when the
-      // animation's closing, ordinary `moveTo` settles.
+      // A frame of a caller-driven animation is not a settled camera: the sun
+      // is re-read when the animation's closing, ordinary `moveTo` settles.
       if (isTransientMove(event)) return;
-      lastMoveEmit.current = 0;
-      emitViewport(true, moveSourceOf(event));
       // The settled camera is when the sun is re-read for the new centre —
-      // never `move`, which is every frame. Separate from `emitViewport`, which
-      // returns early for a caller with no `onViewportChange` (the embed), and
-      // which must not decide whether the buildings are lit. `getCenter` builds
-      // a `LngLat` and can throw on a broken transform, hence the wrapper.
+      // never `move`, which is every frame. Separate from the camera reports,
+      // which report nothing to a caller with no `onViewportChange` (the
+      // embed), and which must not decide whether the buildings are lit.
+      // `getCenter` builds a `LngLat` and can throw on a broken transform,
+      // hence the wrapper.
       runEngineCommand('getCenter', () => {
         const centre = map.getCenter();
         settleSunLight({ latitude: centre.lat, longitude: centre.lng });
@@ -809,6 +743,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       });
     };
 
+    // Before `handleLoad`, so the camera the map opened at is reported before
+    // `onReady` tells the caller the map is there (`loadedCamera.ts`).
+    const detachCameraReports = attachCameraReports(map, () => handlers.current.onViewportChange);
     map.on('load', handleLoad);
     map.on('move', handleMove);
     map.on('moveend', handleMoveEnd);
@@ -820,6 +757,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     map.on('error', handleError);
 
     return () => {
+      detachCameraReports();
       map.off('load', handleLoad);
       map.off('move', handleMove);
       map.off('moveend', handleMoveEnd);

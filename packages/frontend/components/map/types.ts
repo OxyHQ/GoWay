@@ -503,6 +503,12 @@ export interface MapCanvasProps {
    */
   showUserLocation?: boolean;
   interaction?: MapInteractionOptions;
+  /**
+   * The camera: live while it moves, `isFinal` when it settles — including
+   * the camera the map opened at, reported once it has loaded (`programmatic`,
+   * so it never reads as the reader's move; `loadedCamera.ts`). A frame of a
+   * `transient` animation is never final.
+   */
   onViewportChange?: (change: MapViewportChange) => void;
   /**
    * A tap on the map, carrying the basemap label under it when there was one.

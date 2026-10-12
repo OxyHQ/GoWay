@@ -72,6 +72,7 @@ import { MapAttribution } from './MapAttribution';
 import { useCompactCredit } from './useCompactCredit';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
+import { type CameraReading, loadedCameraChange } from './loadedCamera';
 import { drawableModels, modelFallbackMarker, modelIdOfMarker } from './models';
 import { useMapRelief } from './reliefFlags';
 import {
@@ -103,6 +104,27 @@ import {
   type ResolvedMapViewport,
 } from './types';
 import { useSunLight } from './useSunLight';
+
+/** MapLibre Native's view state, in GoWay's terms. */
+function cameraReadingOf(view: {
+  center: readonly [number, number];
+  zoom: number;
+  bearing: number;
+  pitch: number;
+  bounds: readonly [number, number, number, number];
+}): CameraReading {
+  const [west, south, east, north] = view.bounds;
+  return {
+    viewport: {
+      latitude: view.center[1],
+      longitude: view.center[0],
+      zoom: view.zoom,
+      bearing: view.bearing,
+      pitch: view.pitch,
+    },
+    bounds: { west, south, east, north },
+  };
+}
 
 /** Zoom used when a "fit" has nothing with area to fit — see `isDegenerateBounds`. */
 const DEGENERATE_FIT_ZOOM = 15;
@@ -163,6 +185,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // A frame of a caller-driven animation is not a settled camera (see
   // `MapCameraOptions.transient`); set by `moveTo`, read by `onRegionDidChange`.
   const transientMove = useRef(false);
+  // A region change has begun and not yet settled; the loaded camera is not
+  // reported while one is under way (`loadedCamera.ts`).
+  const cameraMoving = useRef(false);
 
   const [error, setError] = useState<MapCanvasError | null>(null);
   // Remounting the engine is the only reliable retry MapLibre Native offers:
@@ -391,25 +416,41 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       // The reader moving the map folds the credit; the app moving it does not.
       if (event.nativeEvent.userInteraction) noteCreditInteraction();
       if (!onViewportChange) return;
-      const { center, zoom, bearing, pitch, bounds, userInteraction } = event.nativeEvent;
-      const [west, south, east, north] = bounds;
       onViewportChange({
-        viewport: {
-          latitude: center[1],
-          longitude: center[0],
-          zoom,
-          bearing,
-          pitch,
-        },
-        bounds: { west, south, east, north },
+        ...cameraReadingOf(event.nativeEvent),
         // The engine tells us straight out whether a finger caused this, so
         // GoWay never has to infer it from a marker on the command.
-        source: userInteraction ? 'user' : 'programmatic',
+        source: event.nativeEvent.userInteraction ? 'user' : 'programmatic',
         isFinal,
       });
     },
     [onViewportChange, noteCreditInteraction],
   );
+
+  /**
+   * The camera the map opened at, reported as settled — the rule both forks
+   * share (`loadedCamera.ts`). MapLibre Native may or may not follow its first
+   * frame with `onRegionDidChange`; a caller cannot depend on a maybe. When it
+   * does, the second report is the same camera, programmatic, and harmless.
+   */
+  const reportLoadedCamera = useCallback(() => {
+    const report = onViewportChange;
+    const map = mapRef.current;
+    if (!report || !map) return;
+    map
+      .getViewState()
+      .then((view) => {
+        const change = loadedCameraChange(cameraReadingOf(view), {
+          moving: cameraMoving.current,
+          transient: transientMove.current,
+        });
+        if (change) report(change);
+      })
+      .catch(() => {
+        // An engine that cannot answer has no camera to report; the next
+        // settled move will.
+      });
+  }, [onViewportChange]);
 
   /**
    * A tap, resolved against the basemap's own labels.
@@ -528,8 +569,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const handleStyleLoaded = useCallback(() => {
     setStyleLoaded(true);
     setError(null);
+    reportLoadedCamera();
     onReady?.();
-  }, [onReady]);
+  }, [onReady, reportLoadedCamera]);
 
   const handleStyleFailed = useCallback(() => {
     // MapLibre Native reports a style/source failure as one event and surfaces
@@ -576,8 +618,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         compass={gestures.rotate}
         compassPosition={{ top: 8, right: 8 }}
         onPress={handlePress}
+        onRegionWillChange={() => {
+          cameraMoving.current = true;
+        }}
         onRegionIsChanging={(event) => emitViewport(event, false)}
         onRegionDidChange={(event) => {
+          cameraMoving.current = false;
           if (transientMove.current) {
             // One frame of a flyover: in progress, not settled.
             emitViewport(event, false);
