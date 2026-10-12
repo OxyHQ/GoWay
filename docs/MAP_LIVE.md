@@ -483,7 +483,10 @@ empty. Kinds come from the transit mode (`rail` → `train`, `subway` → `metro
   default**, a stable switch on the settings' Layers page, killed by a build
   with `EXPO_PUBLIC_MAP_LIVE=0`. Safe on by default because the backend is the
   gate: `LiveHost` asks `GET /live/sources` first, and a deployment without
-  live (503) draws nothing and opens no socket. The panel starts folded to its
+  live (503) draws nothing and opens no socket — and asks again (30 s, 1, 2,
+  then every 5 min), so a map left open finds live when the backend turns it
+  on. With `LIVE_ENABLED` off the backend reads no other live setting, so no
+  live variable can stop it from booting. The panel starts folded to its
   pill; the quality profile's `live.maxEntities` caps what is drawn.
 
 ### What it costs on first paint
@@ -588,7 +591,12 @@ the tasks share GoWay's Valkey (`REDIS_URL`, the fleet's
 - **A task that starts** asks the leaders to republish what they hold
   (`sync`), so its first viewer gets a full snapshot, not an empty one.
 - **Valkey down** — every task polls on its own (duplicate upstream requests,
-  logged once) until Valkey answers; then the leases decide again.
+  logged once) until Valkey answers; then the leases decide again. A task
+  stops polling only once it is LISTENING again: Bun's client reconnects by
+  itself but does not restore subscriptions (measured: after a Redis restart
+  the old subscriber was connected and deaf), so a dropped or never-made
+  subscription is remade on a fresh connection, with a `sync`, before the
+  lease decides. Stopping closes the bus's connections whatever its state.
 - Nothing about a position is STORED in Valkey: positions pass through
   pub/sub; the only keys are the leases and the demand, all with TTLs, so
   `volatile-lru` may evict them under pressure (worst case: a second poller

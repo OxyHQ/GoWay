@@ -147,6 +147,13 @@ export function parseLiveConfig(
   source: EnvironmentSource = process.env,
   knownSourceIds: readonly string[] = [],
 ): LiveConfig {
+  // Off is off: with live disabled nothing else here is read, so no live
+  // setting — a stale source list, a shared REDIS_URL another service owns —
+  // can stop the backend from booting. Production runs with live off today.
+  const enabled = baseSchema.shape.enabled.safeParse(source.LIVE_ENABLED);
+  if (enabled.success && !enabled.data) {
+    return { ...baseSchema.parse({}), enabled: false, sources: [], settings: {}, valkeyUrl: null };
+  }
   const result = baseSchema.safeParse({
     enabled: source.LIVE_ENABLED,
     sources: source.LIVE_SOURCES,

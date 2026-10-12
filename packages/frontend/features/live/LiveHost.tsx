@@ -18,6 +18,7 @@ import type { LiveKind } from '@goway.to/sdk/live';
 import type { MapCreditLink, MapLiveLayer, MapLivePoint } from '@/components/map';
 import { API_URL } from '@/lib/config';
 
+import { watchLiveAvailability } from './availability';
 import { FLEETS } from './fleets';
 import { LIVE_GLYPHS, LIVE_KIND_ORDER } from './kinds';
 import {
@@ -194,25 +195,27 @@ export default function LiveHost({ onLayer }: LiveHostProps) {
   // Whether this backend serves live at all: a deployment without it
   // (`LIVE_ENABLED` off) answers 503 and the layer stays out of sight — the
   // switch can be on by default before the backend is.
-  const [available, setAvailable] = useState<'checking' | 'yes' | 'no'>('checking');
-  useEffect(() => {
-    let current = true;
-    void import('@/lib/live/client')
-      .then(({ liveApiClient }) => liveApiClient.live.sources())
-      .then(
-        () => current && setAvailable('yes'),
-        (error: unknown) =>
-          // Anything else (offline, a blip) is the socket's to report and retry.
-          current && setAvailable(error instanceof GoWayUnavailableError ? 'no' : 'yes'),
-      );
-    return () => {
-      current = false;
-    };
-  }, []);
+  const [available, setAvailable] = useState(false);
+  useEffect(
+    () =>
+      watchLiveAvailability({
+        check: () =>
+          import('@/lib/live/client')
+            .then(({ liveApiClient }) => liveApiClient.live.sources())
+            .then(
+              () => 'yes' as const,
+              // Anything but "no live here" (offline, a blip) is the socket's
+              // to report and retry.
+              (error: unknown) => (error instanceof GoWayUnavailableError ? 'no' : 'yes'),
+            ),
+        onAvailable: () => setAvailable(true),
+      }),
+    [],
+  );
 
   // The connection: opened once per mount, closed on unmount.
   useEffect(() => {
-    if (available !== 'yes') return;
+    if (!available) return;
     const client = createLiveClient({ apiUrl: API_URL, store });
     clientRef.current = client;
     client.setKinds([...kindsRef.current]);
@@ -270,7 +273,7 @@ export default function LiveHost({ onLayer }: LiveHostProps) {
     if (selected && (!selectedSample || !kinds.has(selectedSample.entity.kind))) setSelected(null);
   }, [selected, selectedSample, kinds]);
 
-  if (available !== 'yes') return null;
+  if (!available) return null;
   return (
     <LivePanel
       // On by default for everyone: it starts as the pill, opened on demand.

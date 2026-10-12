@@ -219,6 +219,11 @@ export class LiveHub {
     const bus = this.bus;
     const run = (async () => {
       try {
+        // Not listening (the first connect failed, or the subscriber's
+        // connection dropped and came back deaf): listen again and catch up
+        // BEFORE giving up local polling — a follower that cannot hear the
+        // leader must not stop polling.
+        if (!bus.isSubscribed()) await this.join(bus);
         this.clusterRooms = await bus.exchangeDemand(
           [...this.roomWatchers.keys()],
           this.options.cluster?.demandTtlMs ?? DEMAND_TTL_MS,
@@ -254,11 +259,15 @@ export class LiveHub {
   async connect(): Promise<void> {
     if (!this.bus) return;
     try {
-      await this.bus.subscribe((message) => this.receive(message));
-      await this.bus.publish({ type: 'sync', from: this.bus.taskId });
+      await this.join(this.bus);
     } catch (error) {
       this.busFailed(error);
     }
+  }
+
+  private async join(bus: LiveBus): Promise<void> {
+    await bus.subscribe((message) => this.receive(message));
+    await bus.publish({ type: 'sync', from: bus.taskId });
   }
 
   /** Another task's message. */
@@ -421,14 +430,16 @@ export class LiveHub {
     this.timer = null;
     this.coordinateTimer = null;
     for (const state of this.states) state.abort?.abort();
-    // Hand the leases over now rather than after they expire.
+    // Hand the leases over now rather than after they expire (when the bus
+    // answers), and close its connections whatever its state.
     const bus = this.bus;
-    if (bus && !this.busDown) {
-      void Promise.all(
-        this.states
-          .filter((state) => state.leader)
-          .map((state) => bus.release(state.definition.id).catch(() => {})),
-      ).finally(() => void bus.close().catch(() => {}));
+    if (bus) {
+      const releases = this.busDown
+        ? []
+        : this.states
+            .filter((state) => state.leader)
+            .map((state) => bus.release(state.definition.id).catch(() => {}));
+      void Promise.all(releases).finally(() => void bus.close().catch(() => {}));
     }
   }
 

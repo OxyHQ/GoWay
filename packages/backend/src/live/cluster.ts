@@ -74,8 +74,17 @@ export interface LiveBus {
   /** This task's id: unique per process. */
   readonly taskId: string;
   publish(message: LiveClusterMessage): Promise<void>;
-  /** Every message from OTHER tasks. Resolves once subscribed. */
+  /**
+   * Every message from OTHER tasks. Resolves once subscribed. Calling it again
+   * replaces the subscription (after one was lost).
+   */
   subscribe(handler: (message: LiveClusterMessage) => void): Promise<void>;
+  /**
+   * Whether the subscription is in place NOW. False before `subscribe`, after
+   * it failed, and once its connection dropped — a reconnected Valkey client
+   * does not restore its subscriptions, so the hub subscribes again.
+   */
+  isSubscribed(): boolean;
   /** Take or renew a source's lease; true while this task holds it. */
   lease(sourceId: string, ttlMs: number): Promise<boolean>;
   release(sourceId: string): Promise<void>;
@@ -118,6 +127,8 @@ interface RedisLike {
     listener: (message: string, channel: string) => void,
   ): Promise<unknown>;
   close(): void;
+  /** Called on every (re)connect. */
+  onconnect?: (() => void) | null;
 }
 
 const LEASE_SCRIPT = `
@@ -135,10 +146,13 @@ return 0`;
 export class ValkeyLiveBus implements LiveBus {
   readonly taskId: string;
   private readonly channel: string;
+  private subscriber: RedisLike | null = null;
+  private subscribed = false;
 
   constructor(
     private readonly commands: RedisLike,
-    private readonly subscriber: RedisLike,
+    /** A new subscriber connection: one per subscription, replaced when it drops. */
+    private readonly newSubscriber: () => RedisLike,
     private readonly prefix = 'goway:live',
     taskId = newTaskId(),
   ) {
@@ -146,11 +160,14 @@ export class ValkeyLiveBus implements LiveBus {
     this.channel = `${prefix}:bus`;
   }
 
-  /** Two connections to `url` (a subscriber cannot send commands). They connect lazily. */
+  /** A command connection and subscriber connections to `url` (a subscriber cannot send commands). */
   static fromUrl(url: string, prefix?: string): ValkeyLiveBus {
     const commands = new RedisClient(url) as unknown as RedisLike;
-    const subscriber = new RedisClient(url) as unknown as RedisLike;
-    return new ValkeyLiveBus(commands, subscriber, prefix);
+    return new ValkeyLiveBus(commands, () => new RedisClient(url) as unknown as RedisLike, prefix);
+  }
+
+  isSubscribed(): boolean {
+    return this.subscribed;
   }
 
   async publish(message: LiveClusterMessage): Promise<void> {
@@ -158,10 +175,25 @@ export class ValkeyLiveBus implements LiveBus {
   }
 
   async subscribe(handler: (message: LiveClusterMessage) => void): Promise<void> {
-    await this.subscriber.subscribe(this.channel, (text) => {
+    // A fresh connection every time: Bun's client reconnects by itself but
+    // does NOT restore subscriptions (measured: a Redis restart left the old
+    // subscriber connected and deaf), and re-subscribing on it would double
+    // the listener.
+    this.subscribed = false;
+    this.subscriber?.close();
+    const subscriber = this.newSubscriber();
+    this.subscriber = subscriber;
+    let connects = 0;
+    subscriber.onconnect = () => {
+      connects++;
+      // Any connect after the first is a reconnect: the subscription is gone.
+      if (connects > 1 && this.subscriber === subscriber) this.subscribed = false;
+    };
+    await subscriber.subscribe(this.channel, (text) => {
       const message = decodeMessage(text);
       if (message && message.from !== this.taskId) handler(message);
     });
+    if (this.subscriber === subscriber) this.subscribed = true;
   }
 
   async lease(sourceId: string, ttlMs: number): Promise<boolean> {
@@ -221,8 +253,10 @@ export class ValkeyLiveBus implements LiveBus {
   }
 
   async close(): Promise<void> {
+    this.subscribed = false;
     this.commands.close();
-    this.subscriber.close();
+    this.subscriber?.close();
+    this.subscriber = null;
   }
 }
 
@@ -234,8 +268,16 @@ export class MemoryLiveNetwork {
   readonly leases = new Map<string, { owner: string; until: number }>();
   readonly demand = new Map<string, { rooms: string[]; until: number }>();
   readonly handlers = new Map<string, (message: LiveClusterMessage) => void>();
+  /** Buses closed, by task id. */
+  readonly closed = new Set<string>();
   /** Set false to simulate Valkey being unreachable. */
   up = true;
+
+  /** Valkey goes away: every connection drops, and with it every subscription. */
+  disconnect(): void {
+    this.up = false;
+    this.handlers.clear();
+  }
 
   constructor(readonly now: () => number = Date.now) {}
 
@@ -259,6 +301,9 @@ export class MemoryLiveNetwork {
       async subscribe(handler) {
         check();
         network.handlers.set(taskId, handler);
+      },
+      isSubscribed() {
+        return network.up && network.handlers.has(taskId);
       },
       async lease(sourceId, ttlMs) {
         check();
@@ -284,6 +329,7 @@ export class MemoryLiveNetwork {
       async close() {
         network.handlers.delete(taskId);
         network.demand.delete(taskId);
+        network.closed.add(taskId);
       },
     };
   }

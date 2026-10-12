@@ -295,13 +295,18 @@ describe('the subscription bucket', () => {
 describe('live configuration', () => {
   it('is off by default and refuses unknown sources and malformed URLs', () => {
     expect(parseLiveConfig({}, ['adsb-lol'])).toMatchObject({ enabled: false, sources: [] });
-    expect(() => parseLiveConfig({ LIVE_SOURCES: 'adsb-lol,nope' }, ['adsb-lol'])).toThrow(
-      /unknown source "nope"/,
-    );
     expect(() =>
-      parseLiveConfig({ LIVE_SOURCES: 'adsb-lol', LIVE_SOURCE_ADSB_LOL_URL: 'https://x/?key=1' }, [
-        'adsb-lol',
-      ]),
+      parseLiveConfig({ LIVE_ENABLED: '1', LIVE_SOURCES: 'adsb-lol,nope' }, ['adsb-lol']),
+    ).toThrow(/unknown source "nope"/);
+    expect(() =>
+      parseLiveConfig(
+        {
+          LIVE_ENABLED: '1',
+          LIVE_SOURCES: 'adsb-lol',
+          LIVE_SOURCE_ADSB_LOL_URL: 'https://x/?key=1',
+        },
+        ['adsb-lol'],
+      ),
     ).toThrow(/LIVE_SOURCE_ADSB_LOL_URL/);
     const parsed = parseLiveConfig(
       {
@@ -321,23 +326,44 @@ describe('live configuration', () => {
 
   it('shares polling through Valkey when REDIS_URL (or LIVE_VALKEY_URL) is set, and never echoes it', () => {
     expect(parseLiveConfig({}, ['adsb-lol']).valkeyUrl).toBeNull();
-    expect(parseLiveConfig({ REDIS_URL: 'redis://cache.internal:6379' }, []).valkeyUrl).toBe(
-      'redis://cache.internal:6379',
-    );
+    expect(
+      parseLiveConfig({ LIVE_ENABLED: '1', REDIS_URL: 'redis://cache.internal:6379' }, [])
+        .valkeyUrl,
+    ).toBe('redis://cache.internal:6379');
     expect(
       parseLiveConfig(
-        { REDIS_URL: 'redis://a:6379', LIVE_VALKEY_URL: 'rediss://live.internal:6380' },
+        {
+          LIVE_ENABLED: '1',
+          REDIS_URL: 'redis://a:6379',
+          LIVE_VALKEY_URL: 'rediss://live.internal:6380',
+        },
         [],
       ).valkeyUrl,
     ).toBe('rediss://live.internal:6380');
     let message = '';
     try {
-      parseLiveConfig({ REDIS_URL: 'https://user:secret@x' }, []);
+      parseLiveConfig({ LIVE_ENABLED: '1', REDIS_URL: 'https://user:secret@x' }, []);
     } catch (error) {
       message = String(error);
     }
     expect(message).toContain('REDIS_URL');
     expect(message).not.toContain('secret');
+  });
+
+  it('with live off, no live setting can stop the backend from booting', () => {
+    for (const LIVE_ENABLED of [undefined, '', '0', 'false', 'off']) {
+      const config = parseLiveConfig(
+        {
+          LIVE_ENABLED,
+          REDIS_URL: 'not-a-url',
+          LIVE_SOURCES: 'adsb-lol,no-such-source',
+          LIVE_SOURCE_ADSB_LOL_URL: 'https://x/?key=1',
+          LIVE_MAX_CONNECTIONS: 'lots',
+        },
+        ['adsb-lol'],
+      );
+      expect(config).toMatchObject({ enabled: false, sources: [], valkeyUrl: null });
+    }
   });
 
   it('builds nothing when off, or when no source is configured', () => {

@@ -98,6 +98,54 @@ function task(
   return out;
 }
 
+describe('the Valkey bus subscription', () => {
+  /** A connection whose (re)connects the test drives. */
+  const fakeConnection = () => {
+    const connection = {
+      onconnect: null as (() => void) | null,
+      subscribed: 0,
+      closed: false,
+      async send() {
+        return null;
+      },
+      async publish() {
+        return 0;
+      },
+      async subscribe() {
+        connection.onconnect?.();
+        connection.subscribed++;
+        return 1;
+      },
+      close() {
+        connection.closed = true;
+      },
+    };
+    return connection;
+  };
+
+  it('counts as lost after its connection reconnects, and resubscribes on a fresh one', async () => {
+    const made: ReturnType<typeof fakeConnection>[] = [];
+    const liveBus = new ValkeyLiveBus(fakeConnection(), () => {
+      const connection = fakeConnection();
+      made.push(connection);
+      return connection;
+    });
+    expect(liveBus.isSubscribed()).toBe(false);
+    await liveBus.subscribe(() => {});
+    expect(liveBus.isSubscribed()).toBe(true);
+    // Valkey restarted: the client reconnected by itself, without its subscription.
+    made[0]?.onconnect?.();
+    expect(liveBus.isSubscribed()).toBe(false);
+    await liveBus.subscribe(() => {});
+    expect(liveBus.isSubscribed()).toBe(true);
+    expect(made).toHaveLength(2);
+    expect(made[0]?.closed).toBe(true);
+    await liveBus.close();
+    expect(made[1]?.closed).toBe(true);
+    expect(liveBus.isSubscribed()).toBe(false);
+  });
+});
+
 describe('the bus wire format', () => {
   it('round-trips a message, compressed, and refuses junk', () => {
     const message = {
@@ -213,6 +261,64 @@ describe('several tasks on one bus (in memory)', () => {
     network.up = true;
     await everyone((t) => t.hub.coordinate());
     expect(tasks.filter((t) => t.hub.isLeader('test-bus'))).toHaveLength(1);
+  });
+
+  it('a follower that could not subscribe hears the leader once the bus is back', async () => {
+    const { network, tasks, everyone } = setup();
+    const [a, b] = tasks as [Task, Task, Task];
+    // Valkey is away when every task starts: nobody subscribes.
+    network.disconnect();
+    await everyone((t) => t.hub.connect());
+    a.hub.watch('viewer', [ROOM]);
+    b.hub.watch('viewer', [ROOM]);
+    network.up = true;
+    // a first, so a takes the lease; b follows.
+    await a.hub.coordinate();
+    await b.hub.coordinate();
+    expect(a.hub.isLeader('test-bus')).toBe(true);
+    expect(b.hub.isLeader('test-bus')).toBe(false);
+    await a.hub.tick();
+    await b.hub.tick();
+    expect(b.polls).toBe(0);
+    // b stopped polling, so it must be listening: the leader's answer reached it.
+    expect(b.hub.snapshot(ROOM.tile, 'transit').entities.map((e) => e.id)).toEqual(['test-bus:1']);
+  });
+
+  it('a subscription lost with its connection is restored, and the follower catches up', async () => {
+    const { clock, network, tasks, everyone, setFleet } = setup();
+    const [a, b] = tasks as [Task, Task, Task];
+    await everyone((t) => t.hub.connect());
+    a.hub.watch('viewer', [ROOM]);
+    b.hub.watch('viewer', [ROOM]);
+    await a.hub.coordinate();
+    await b.hub.coordinate();
+    await a.hub.tick();
+    // Valkey restarts: connections drop and come back without their subscriptions.
+    network.disconnect();
+    network.up = true;
+    await a.hub.coordinate();
+    await b.hub.coordinate();
+    setFleet([bus('1', T0 + 10_000), bus('2', T0 + 10_000, 2.18)]);
+    clock.now += 10_000;
+    await a.hub.tick();
+    expect(
+      b.hub
+        .snapshot(ROOM.tile, 'transit')
+        .entities.map((e) => e.id)
+        .sort(),
+    ).toEqual(['test-bus:1', 'test-bus:2']);
+  });
+
+  it('stopping during an outage still closes the bus', async () => {
+    const { network, tasks, everyone } = setup();
+    const a = tasks[0] as Task;
+    await everyone((t) => t.hub.connect());
+    a.hub.watch('viewer', [ROOM]);
+    network.up = false;
+    await a.hub.coordinate(); // the bus is down: a polls locally
+    a.hub.stop();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(network.closed.has('a')).toBe(true);
   });
 
   it('sends a vehicle that only moved as a compact move, not the whole entity', async () => {
