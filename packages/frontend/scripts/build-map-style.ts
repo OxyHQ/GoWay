@@ -82,6 +82,7 @@ import {
   mapStylePath,
 } from '../lib/map/style/catalogue';
 import { applyGroundOverrides } from '../lib/map/style/city3dGround';
+import { QUALITY_LOW_METADATA_KEY, type QualityOverride } from '../lib/map/style/qualityOverrides';
 import { CITY3D_GROUND_METADATA_KEY, type GroundOverride } from '../lib/map/style/palette3d';
 import { GOWAY_STYLE_LAYER_ID_LIST } from '../lib/map/style/layers';
 import {
@@ -714,6 +715,45 @@ function checkCity3dGround(name: string, style: StyleSpecification, problems: st
   for (const error of validateStyleMin(overridden)) problems.push(where(error.message));
 }
 
+/**
+ * The low tier's overrides (`metadata['goway:quality-low']`, see
+ * `lib/map/style/qualityOverrides.ts`): aimed only at layers that exist, and —
+ * applied as the web map applies them — still a style MapLibre accepts.
+ */
+function checkQualityOverrides(name: string, style: StyleSpecification, problems: string[]): void {
+  const where = (message: string): string => `[${name}] quality overrides: ${message}`;
+  const overrides = (style.metadata as Record<string, unknown> | undefined)?.[
+    QUALITY_LOW_METADATA_KEY
+  ] as QualityOverride[] | undefined;
+  if (!Array.isArray(overrides)) {
+    problems.push(where('missing from the style metadata'));
+    return;
+  }
+  const layers = style.layers.map((layer) => {
+    const o = overrides.find((override) => override.layer === layer.id);
+    if (!o) return layer;
+    const next = { ...layer } as Record<string, unknown>;
+    if (o.minzoom !== undefined) next.minzoom = o.minzoom;
+    if (o.filter !== undefined) next.filter = o.filter;
+    for (const part of ['layout', 'paint'] as const) {
+      if (!o[part]) continue;
+      const merged = { ...((next[part] as Record<string, unknown>) ?? {}) };
+      for (const [key, value] of Object.entries(o[part] ?? {})) {
+        if (value === undefined) delete merged[key];
+        else merged[key] = value;
+      }
+      next[part] = merged;
+    }
+    return next as LayerSpecification;
+  });
+  for (const o of overrides) {
+    if (!style.layers.some((layer) => layer.id === o.layer)) {
+      problems.push(where(`override for missing layer "${o.layer}"`));
+    }
+  }
+  for (const error of validateStyleMin({ ...style, layers })) problems.push(where(error.message));
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -737,6 +777,8 @@ async function main(): Promise<void> {
     checkCity3dGround(name, style, problems);
   }
   checkCatalogue(built, problems);
+  for (const [selection, style] of built)
+    checkQualityOverrides(labelOf(selection), style, problems);
   if (online) await checkOnline(problems);
 
   const documentOf = (selection: MapStyleSelection): StyleSpecification => {

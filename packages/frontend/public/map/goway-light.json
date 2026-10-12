@@ -854,7 +854,8 @@
           "#15652d"
         ]
       }
-    ]
+    ],
+    "goway:quality-low": []
   },
   "light": {
     "anchor": "viewport",

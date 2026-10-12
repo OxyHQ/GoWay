@@ -133,6 +133,16 @@ export interface QualityProfile {
      */
     globeNight: boolean;
   };
+  basemap: {
+    /**
+     * How densely the basemap names and marks places (`docs/MAP_STYLES.md` →
+     * Performance). `style` draws what the style asks for; `standard` draws a
+     * denser style (Streets) at Standard's density — its documents carry the
+     * difference as overrides (`goway:quality-low`), applied at load. Colour
+     * never changes; only how many POIs, and from which zoom, are placed.
+     */
+    density: 'style' | 'standard';
+  };
 }
 
 const MiB = 1024 * 1024;
@@ -172,6 +182,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     landmarks: { max: 2 },
     streets: { maxTiles: 6, drawTriangles: 400_000 },
     relief: { terrain3d: true, terrainTextureScale: 1, globeNight: true },
+    basemap: { density: 'standard' },
   },
   medium: {
     tier: 'medium',
@@ -200,6 +211,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     landmarks: { max: 4 },
     streets: { maxTiles: 10, drawTriangles: 900_000 },
     relief: { terrain3d: true, terrainTextureScale: 2, globeNight: true },
+    basemap: { density: 'style' },
   },
   high: {
     tier: 'high',
@@ -228,6 +240,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     landmarks: { max: 8 },
     streets: { maxTiles: 16, drawTriangles: 2_000_000 },
     relief: { terrain3d: true, terrainTextureScale: 2, globeNight: true },
+    basemap: { density: 'style' },
   },
 };
 

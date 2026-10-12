@@ -227,10 +227,24 @@ Barcelona, Manhattan, Tokyo, Chamonix (the Alps) and São Paulo, z5/12/16/18,
 every style in every light, the clock fixed (local solar noon for day, 23:00
 for night), SwiftShader. The sheet for each change is linked from its PR.
 
-**Performance.** A style change is colour and density; the only style that
-draws more is Streets (denser POI caps and earlier footprints). Measured with
-`bench:map --device=pixel6a --quality=low --scenes=eixample,manhattan
---style=<style>` against the same export, see the PR for the table.
+**Performance.** A style change is colour and density. Colour costs
+nothing; density does, and the only style that draws more than Standard is
+Streets (half again as many POI marks and names, the minor tier and house
+numbers a zoom sooner, footprints from z14): measured on the phone profile,
+~14% more draw calls at the Eixample. So density is a QualityProfile knob
+(`basemap.density`, AGENTS.md: a new cost is a profile knob): on the LOW tier
+a dense style is drawn at Standard's density. A document is a static file, so
+the build writes the difference into its own metadata (`goway:quality-low`:
+the same layers' filters, zoom ranges and sizes at Standard's density, from
+running the one layer list twice — `lib/map/style/qualityOverrides.ts`), and
+the web map applies it while the profile asks and undoes it exactly when it
+stops (`components/map/qualityOverrides.ts`, tested). Medium and high draw
+the style as designed. Every other style is at most Standard's density
+(Light and Dark draw fewer layers than Standard: no POIs, no house numbers,
+no one-way arrows). The CI frame-budget gate (`frameBudget.test.ts`) measures
+the 3D city, which no style changes the cost of. The bench numbers for each
+change are in its PR (`bench:map --device=pixel6a --quality=low
+--scenes=eixample,manhattan --style=<style>`).
 
 ## Limits
 

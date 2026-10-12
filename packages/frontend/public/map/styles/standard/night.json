@@ -786,7 +786,8 @@
           "#8df6c7"
         ]
       }
-    ]
+    ],
+    "goway:quality-low": []
   },
   "light": {
     "anchor": "viewport",

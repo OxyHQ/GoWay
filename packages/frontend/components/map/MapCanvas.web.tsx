@@ -135,6 +135,7 @@ import {
 } from './types';
 import { useCompactCredit } from './useCompactCredit';
 import { useMapStyle } from './useMapStyle';
+import { applyQualityOverrides, type QualityHost } from './qualityOverrides';
 import { useSunLight } from './useSunLight';
 
 /**
@@ -1083,6 +1084,22 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       map.off('pitch', check);
     };
   }, [city3dFeature, cityZoomReached, ready]);
+  // The low tier draws a dense style (Streets) at Standard's density: the
+  // loaded document's own overrides (`qualityOverrides.ts`), applied while
+  // the profile asks for them and undone when it stops, with no rebuild.
+  const standardDensity = quality.basemap.density === 'standard';
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !standardDensity) return;
+    let undo: (() => void) | null = null;
+    runEngineCommand('qualityOverrides', () => {
+      undo = applyQualityOverrides(map as unknown as QualityHost);
+    });
+    return () => {
+      if (mapRef.current === map) runEngineCommand('qualityOverrides', () => undo?.());
+    };
+  }, [ready, standardDensity]);
+
   const needsEngine = city3d || wantsModelEngine;
   // The quality profile reaches the attached engine by TIER: a new tier is a
   // new attach (budgets, shadow map, shaders); the rest of it is live below.

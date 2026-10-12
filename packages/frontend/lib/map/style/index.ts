@@ -37,6 +37,7 @@ import type { MapLightPreset, MapStyleId, MapStyleSelection } from './catalogue'
 import { buildCity3dGroundOverrides } from './city3dGround';
 import { buildLayers, GOWAY_STYLE_LAYER_ID_LIST, LABEL_ANCHOR_LAYER_ID } from './layers';
 import { CITY3D_GROUND_METADATA_KEY } from './palette3d';
+import { buildQualityOverrides, QUALITY_LOW_METADATA_KEY } from './qualityOverrides';
 import { styleTheme } from './themes';
 
 export { LABEL_ANCHOR_LAYER_ID, GOWAY_STYLE_LAYER_IDS, GOWAY_STYLE_LAYER_ID_LIST } from './layers';
@@ -121,6 +122,9 @@ export function buildGowayMapStyle(
       // overrides generated from `palette3d.ts` (`city3dGround.ts`), applied
       // and undone at runtime by the city-3D adapter only. Inert otherwise.
       [CITY3D_GROUND_METADATA_KEY]: buildCity3dGroundOverrides(theme, endpoints.sourceId),
+      // The same layers at Standard's density, for the low quality tier
+      // (`qualityOverrides.ts`): empty for a style already drawn at it.
+      [QUALITY_LOW_METADATA_KEY]: buildQualityOverrides(palette, options, endpoints.sourceId),
     },
     // The document-level light. It shades nothing but `building-3d`, and it is
     // here rather than in `buildings3d.ts` only because MapLibre puts `light`

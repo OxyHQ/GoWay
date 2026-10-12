@@ -82,7 +82,8 @@
       "label-place-country"
     ],
     "goway:generator": "packages/frontend/scripts/build-map-style.ts",
-    "goway:city3d-ground": []
+    "goway:city3d-ground": [],
+    "goway:quality-low": []
   },
   "light": {
     "anchor": "viewport",
