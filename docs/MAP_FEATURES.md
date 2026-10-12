@@ -31,9 +31,11 @@ dependency comes first):
    off, for that tab — the feature's `query` (`?city3d=1`, `?globe=0`,
    `?city3dTrees=0`, `?citysky=1`). A production build ignores the address, so
    a goway.to link can never switch a renderer on or off for somebody else.
-4. Last, a feature is off while anything it `requires` is off (the trees and
-   the city tiles need the 3D city; the woods fill needs the trees; city life,
-   the landmarks, the sky and street detail need the 3D city).
+4. Last, a feature is off while anything it `requires` is off (the trees, the
+   city tiles, city life, the landmarks, the sky, the detailed look and street
+   detail need the 3D city; the woods fill needs the trees), and off on a
+   platform its entry does not list (`platforms`): native never says
+   `landmarks` is on, so it never offers a tour of models it cannot draw.
 
 A feature production cannot serve yet is never switched off by a build: it is
 `offer: 'development'`, offered in the panel only in a development build, and
@@ -46,24 +48,54 @@ starts off. Shipping it is deleting that line.
 | `globe` | stable | **on** | web | `?globe=0/1` | redraws the map at the same camera |
 | `terrain` | stable | **on** | web, native (hillshade only) | `?terrain=0/1` | web: redraws at the same camera; native: live |
 | `street3d` | stable | **on** | web, native | — | live (the coverage layer comes and goes; `/street3d/<id>` always opens) |
-| `city3d` | labs | off | web | `?city3d=1` | live (attach/detach) |
-| `citySky` | labs | off | web (needs `city3d`) | `?citysky=1` | live (re-attach; the time-of-day scrubber shows only while it draws) |
-| `detailedCity` | labs | off | web (needs `city3d`; brings its own live-clock sky without `citySky`) | `?detailedCity=1` | live (re-attach) |
-| `cityTiles` | labs | off | web, **development builds only** | `?cityTiles=1` | live (re-attach). Official building data merged into the archive (Catastro storeys, NYC 3D model, `MAP_3D_SOURCES.md`) rides on it: no switch of its own |
-| `city3dTrees` | labs | on, with the city | web | `?city3dTrees=0` | live (re-attach) |
+| `city3d` | stable | **on** | web | `?city3d=0/1` | live (attach/detach); attached once the camera reaches z14 or tilts 45° (below) |
+| `citySky` | stable | **on** | web (needs `city3d`) | `?citysky=0/1` | live (re-attach; the time-of-day scrubber shows only while it draws) |
+| `detailedCity` | stable | **on** | web (needs `city3d`; brings its own live-clock sky without `citySky`) | `?detailedCity=0/1` | live (re-attach) |
+| `cityTiles` | stable | **on** | web (needs `city3d`) | `?cityTiles=0/1` | live (re-attach). Draws where `/map/city/coverage.json` covers the ground, the basemap's buildings elsewhere. Official building data merged into the archive (Catastro storeys, NYC 3D model, `MAP_3D_SOURCES.md`) rides on it: no switch of its own |
+| `city3dTrees` | stable | **on** | web (needs `city3d`) | `?city3dTrees=0` | live (re-attach) |
 | `city3dTreeFill` | labs | off | web | `?city3dTreeFill=1` | live (re-attach) |
-| `cityLife` | labs | off | web, **development builds only** | `?cityLife=1` | live (re-attach) |
-| `cityStreets` | labs | off | web, **development builds only** (needs `city3d`; draws from the road archive) | `?cityStreets=1` | live (re-attach) — [`MAP_STREETS.md`](./MAP_STREETS.md) |
-| `landmarks` | labs | off | web, **development builds only** (needs `city3d`; models draw only over city tiles) | `?landmarks=1` | live (re-attach; the pill and "Landmark tour" come and go, a running tour ends) |
+| `cityLife` | stable | **on** | web (needs `city3d`; the road archive where published, the basemap's roads everywhere else) | `?cityLife=0/1` | live (re-attach) |
+| `cityStreets` | stable | **on** | web (needs `city3d`; draws only where the road archive is published) | `?cityStreets=0/1` | live (re-attach) — [`MAP_STREETS.md`](./MAP_STREETS.md) |
+| `landmarks` | stable | **on** | web (needs `city3d`; a model draws, and the tour offers it, only over published city tiles) | `?landmarks=0/1` | live (re-attach; the pill and "Landmark tour" come and go, a running tour ends) |
 | `live` | labs | off | web, **development builds only** (needs a backend that lists `LIVE_SOURCES`; `docs/MAP_LIVE.md`) | `?live=1` | live (mount/unmount: the panel in the top-right stack, the layer, its credits and the coverage channel come and go) |
-| `flyover` | labs | off | web, native | `?flyover=1` | live ("Fly the route", `/studio`) |
+| `flyover` | stable | **on** | web, native | `?flyover=0/1` | live ("Fly the route", `/studio`) |
 
-Globe, terrain and Street 3D are on for everyone; everything else is off until
-somebody turns it on. City tiles, city life, street detail and the landmarks
-(whose models draw only over city tiles) are offered in the panel only in a
-development build, because nothing serves those archives on goway.to yet and
-ODbL wants each archive and its receipt published first (`MAP_3D_CITY.md` and
-`MAP_CITY_LIFE.md` → Hosting).
+**Everything is on on goway.to** (owner, 2026-10-12: "everything should be
+active on goway.to, no flags"), except the illustrative woods fill (an owner
+decision: trees only where OpenStreetMap maps one) and GoWay Live (its backend
+and feed licences are separate work) — Labs holds only those two. Every
+feature is a switch in Settings a person can turn off on their device. How
+much each draws is the quality profile's, a phone's included
+([`MAP_PERFORMANCE.md`](./MAP_PERFORMANCE.md) → "Default on").
+
+**Data that is not published draws nothing, quietly.** One document,
+`/map/city/coverage.json` (`worker/city.js`: today Catalonia, Madrid and New
+York State), says where the building tiles and the road archive are
+published; the city layer reads it once per attach (`city3dLayer.web.ts` →
+`fetchCityCoverageDocument`) and nothing asks for a tile it does not cover:
+
+| Feature | Covered | Not covered — or nothing published, or the document unreadable |
+| --- | --- | --- |
+| `cityTiles` | GoWay's building tiles (with the official data merged in) | the basemap's OpenMapTiles buildings, extruded by the same engine — never a flat map (`engine/city3d/sources.ts`) |
+| `cityStreets` | lanes, crossings, names from the road archive | no overlay, no request; the basemap's roads |
+| `cityLife` | the road archive's exact roads | the basemap's own roads, healed (#137); no road-tile request |
+| `landmarks` | the models over their buildings; the pill and the tour | no model, no pill, no tour (`lib/map/landmarks/load.ts` → `offerLandmarks`), judged per z14 cell as the engine picks its source |
+
+An empty document is not a defect and logs nothing; one that cannot be read
+logs one `[goway/map]` warning. Verified on a production export against
+goway.to (2026-10-12): in Barcelona, Madrid and Manhattan the city and road
+tiles are requested and drawn (street detail, Casa Batlló's model, the
+Landmarks pill where a landmark is near); in Tokyo, no `/map/city/{z}/…` or
+`/map/city-roads/…` request at all, the basemap's buildings and traffic on the
+basemap's roads; no console error in any of the 16 views.
+
+**The engine is fetched near the city, not at first paint.** The 3D city's
+chunk (three.js and the engine, 1.42 MB gz), its mesh and simulation workers
+are requested once the camera has reached z14 or tilted 45° — one and a half
+zooms before the buildings fade in, or wherever the sky can show
+(`lib/map/cityEngineGate.ts`) — and then stay for the session. goway.to opens
+at z11, flat: measured on the production export, that view fetches none of it
+(54 MB of JS heap, as `main`; 87 MB attaching at once).
 
 A stored choice is honoured even for a feature this build does not offer in the
 panel: that is how the benchmark turns the whole 3D stack on in a production
@@ -100,15 +132,16 @@ page with nothing to list leaves the rail.
 
 - **Map**: the view, 2D / 3D — the camera, not a feature: 3D tilts to 60°
   where the map already is, 2D levels it, and it follows a gesture tilt — then
-  Globe and Terrain, **Performance** (Auto, Battery saver or High quality: a
+  Globe, Terrain, Sky & time of day, the detailed city look and street
+  detail, and **Performance** (Auto, Battery saver or High quality: a
   three-way choice kept in the same store, `setPerformance`, which picks the
   map's quality profile — [`MAP_PERFORMANCE.md`](./MAP_PERFORMANCE.md); it
-  applies live), and Sky & time of day once Labs is revealed.
-- **Layers**, once Labs is revealed: 3D city, city tiles (and the official
-  building data they carry), trees and woods fill, landmarks, simulated
-  traffic, live data (development builds, until goway.to's backend serves it), and the flyover with "Open Camera
-  Studio" while it is on — each with what it shows, under the note that they
-  may be slow.
+  applies live).
+- **Layers**: Street 3D, the 3D city, its tiles (and the official building
+  data they carry), trees, simulated traffic, landmarks, and the flyover with
+  "Open Camera Studio" while it is on — each with what it shows. Once Labs is
+  revealed, the woods fill joins, and live data in development builds (until
+  goway.to's backend serves it).
 - **Labs**, only once revealed: what Labs is, and "Hide Labs".
 - **General**: what GoWay already lets a person set — the theme (light, dark,
   system: Bloom's own mode, persisted by `BloomProvider` under `goway.theme`)
@@ -128,9 +161,10 @@ back first returns to the section list.
 
 **Revealing Labs** is deliberately not an `.env` decision: `?labs=1` on any
 goway.to address once (remembered on the device; `?labs=0` forgets), or press
-and hold the settings button, which opens the modal on the Labs page. It works in production — it only SHOWS switches,
-every Labs feature still starts off, so a shared link can never switch an
-experimental renderer on for somebody else.
+and hold the settings button, which opens the modal on the Labs page. It works in production — it only SHOWS switches
+(the woods fill; live data in development builds), and every Labs feature
+still starts off, so a shared link can never switch an experimental renderer
+on for somebody else.
 
 ## The compact data credit
 

@@ -4,6 +4,8 @@
  *
  * Types only, so both sides import it without pulling in the other's code.
  */
+import type { CityCoverageArea } from '@/lib/map/cityTiles';
+
 import type { LngLatBox } from '../city3d/tileMath';
 import type { HealStats } from './omtRoads';
 import type { CoveredTiles } from './realCoverage';
@@ -22,6 +24,12 @@ export type SimWorkerRequest =
        * tile exists (`omtRoads.ts`). Absent: the archive only.
        */
       fallback?: { template: string; zoom: number; sourceLayer: string };
+      /**
+       * Where the road archive is published (the coverage document's `roads`):
+       * a tile outside it is not asked for, it drives on the basemap's roads.
+       * `null`: not known (a development archive), so every tile is asked.
+       */
+      roadCoverage: readonly CityCoverageArea[] | null;
     }
   | {
       type: 'view';

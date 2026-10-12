@@ -1,7 +1,8 @@
 # City 3D: buildings beyond `fill-extrusion`
 
 What GoWay's 3D buildings should become, how to get there, and what it costs.
-Includes a working **web-only prototype, off by default**, that proves the
+Includes a working **web-only renderer, on by default since 2026-10-12**
+([`MAP_FEATURES.md`](./MAP_FEATURES.md) → Defaults), that proves the
 rendering path (`components/map/engine/city3d/`). Coordinate-anchored 3D models
 in the SDK are designed in [`SDK_MAP_MODELS.md`](./SDK_MAP_MODELS.md); the
 three.js engine here is meant to be **shared** with that work, not duplicated
@@ -625,13 +626,14 @@ fabricated places on the public map; the same rule governs buildings:
 
 ## The prototype
 
-**Off by default; web only.** A person turns it on in the settings modal's
-Labs, or a development build per tab with `?city3d=1`, which a production build
-ignores (`lib/map/mapFeatures.ts`).
+**On by default (2026-10-12); web only.** A person switches it off in the
+settings modal (Layers); a development tab takes `?city3d=0/1`, which a
+production build ignores (`lib/map/mapFeatures.ts`). Its chunk is fetched only
+once the camera reaches z14 or tilts 45° (`lib/map/cityEngineGate.ts`).
 
 | Piece | Where |
 | --- | --- |
-| Flag | The map-feature registry (`lib/map/mapFeatures.ts`, [`MAP_FEATURES.md`](./MAP_FEATURES.md)): `city3d`, `city3dTrees`, `city3dTreeFill`, switchable in the settings modal's Labs, and per development tab with `?city3d=1`, `?city3dTrees=0`, `?city3dTreeFill=1`. The adapter is handed the answers |
+| Flag | The map-feature registry (`lib/map/mapFeatures.ts`, [`MAP_FEATURES.md`](./MAP_FEATURES.md)): `city3d`, `city3dTrees`, `city3dTreeFill`, switchable in the settings modal (the woods fill in Labs), and per development tab with `?city3d=1`, `?city3dTrees=0`, `?city3dTreeFill=1`. The adapter is handed the answers |
 | Gate | one effect in `components/map/MapCanvas.web.tsx` |
 | MapLibre adapter | `components/map/city3dLayer.web.ts` — adds `goway:city3d` before `building-3d`, hides `building-3d`, restores it on detach; on a style with no `building-3d` (the `openfreemap` escape hatch, a style-URL override) it declines and leaves the style untouched, rather than guessing an anchor in a document GoWay does not own |
 | Light | `components/map/city3dLight.ts` — the `building-3d` light (`useSunLight`'s, fed by `MapCanvas.web.tsx`) as the engine's `CityLight` |
@@ -703,7 +705,9 @@ cost is measured in `MAP_FEATURES.md`.
 
 ## Phase 2: GoWay city tiles
 
-**Built, off by default, web only, served nowhere but a developer's machine.**
+**Built, on by default (2026-10-12), web only; drawn wherever `coverage.json`
+says a region is published (Catalonia, Madrid, New York State), the basemap's
+buildings elsewhere.**
 An offline compiler turns an OpenStreetMap extract into GoWay-owned
 per-building tiles, and the city-3D engine has a second source mode that reads
 them. The OpenMapTiles path is untouched and stays the default and the
@@ -972,10 +976,10 @@ and sky). Its own note: [`MAP_STREETS.md`](./MAP_STREETS.md).
 
 ## Phase 3: sky, atmosphere, shadows and time of day
 
-**Off by default; web only; on top of the city layer.** `?citysky=1` in a
-development build, and only together with the city layer
-(`?city3d=1&citysky=1`). It is the map-feature registry's `citySky`, so a
-person can also switch it on in the settings modal's Labs
+**On by default (2026-10-12); web only; on top of the city layer.**
+`?citysky=0/1` in a development build, and only together with the city
+layer. It is the map-feature registry's `citySky`, so a person can switch it
+off in the settings modal's Map page
 ([`MAP_FEATURES.md`](./MAP_FEATURES.md)); the scrubber rides above a phone's
 sheet with the credit and keeps clear of "My location". Without the city layer the answer is `false`, not
 half a feature.
@@ -1247,8 +1251,8 @@ result.
 
 **Target: Apple Maps' "Detailed City Experience", by look, never by asset or
 data.** It is one optional map feature, `detailedCity` (`lib/map/mapFeatures.ts`;
-Labs in the settings dialog, `?detailedCity=1` per tab in a development build),
-off by default and needing
+the settings dialog's Map page, `?detailedCity=0/1` per tab in a development
+build), on by default since 2026-10-12 and needing
 `city3d`. With it off, the city layer draws exactly what it drew before, so the
 two can be compared side by side at the same camera.
 

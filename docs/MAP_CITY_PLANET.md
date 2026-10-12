@@ -365,9 +365,10 @@ set `MAP_CITY_MANIFEST` and added the database to `/attribution`. In order:
    every archive and receipt) to `/attribution` beside the OpenStreetMap
    credit. AGENTS.md requires archive + receipt published *before* the tiles
    are served to anyone — steps 3–4 publish them; this makes them findable.
-6. **Offer it**: `cityTiles` (and `cityLife`) are `offer: 'development'` in
-   `lib/map/mapFeatures.ts`; change to `'always'` when the 3D city is ready for
-   Labs users. Until then only development builds ask for the tiles.
+6. **Offer it**: done (2026-10-12). `cityTiles`, `cityStreets`, `cityLife` and
+   `landmarks` are on by default everywhere; each asks only for what
+   `coverage.json` says is published (its `tiles` and `roads` trees), so the
+   client follows the manifest with no release of its own.
 7. **Official data** (optional, before or after 8): dry-run `regions:
    europe/spain/madrid` and `europe/spain/cataluna` with `official: true`;
    raise `MIN_PARTS` for any that does not fit; then publish them with it.

@@ -294,6 +294,74 @@ screen, and an animated model repainted on every animation frame. The clock is
 created by `MapCanvas.web.tsx` with the map (it must exist before any layer
 attaches), so it is in the entry bundle; it is ~1 KB.
 
+## Default on (2026-10-12)
+
+The 3D city and everything in it is on for everyone on goway.to
+([`MAP_FEATURES.md`](./MAP_FEATURES.md) → Defaults). Nothing is switched off
+by preset: every device draws every feature, and the profile decides how
+much. What each preset gets:
+
+| Feature | Low (phones, battery saver) | Medium | High |
+| --- | --- | --- | --- |
+| Engine fetched | once the camera reaches z14 or tilts 45° (all presets) | same | same |
+| 3D city (buildings, city tiles where published) | 2 M vertices, 20 tiles (3 full), 80 MiB cache, 1 worker | 4 M, 32 (4), 128 MiB, 2 | 8 M, 48 (6), 192 MiB, 3 |
+| Trees | 6,000 | 16,000 | 40,000 |
+| Sky, haze, time of day | 3 sky passes, **no shadow map** | + 1024² shadows, 8 taps | + 2048², 12 taps |
+| Detailed look | on: shading only — the CI gate counts the same draws, triangles and GPU bytes with and without it | on | on |
+| Simulated traffic | 300 cars + 300 people, 20 Hz clock, paused after 20 s untouched (battery: 15 Hz, 10 s) | 700 + 700, 30 Hz, 45 s | 1,200 + 1,200, 30 Hz, 120 s |
+| Street detail (where the road archive is published) | 6 tiles, 400 k triangles | 10, 900 k | 16, 2 M |
+| Landmarks (over published city tiles) | 2 held | 4 | 8 |
+| Flyover | on (no cost until a route is flown) | on | on |
+
+Why Low keeps every feature: the phone budget rows above were measured
+with the whole 3D set on (#151/#154/#156: Eixample at low, 149 draws, 225 MB
+GPU estimate, against ≤ 250 draws and iOS Safari's ~1–1.5 GB), and the two
+costs that had no measurement then are capped by the profile — street detail
+(at most 12 draw calls and 400 k triangles on a phone) and the detailed look
+(no count changes, in the gate). The sky stays because Low already budgets
+its three passes without shadow taps; traffic stays because it pauses with
+the clock and its agents are a quarter of a desktop's.
+
+**Nothing until the camera is near.** The engine (three.js and the city
+engine, 1,418,706 B gz), its mesh worker (32 KB gz) and the simulation worker
+(31 KB gz) are fetched only once the camera has been at z14 or tilted 45°
+(`lib/map/cityEngineGate.ts`). goway.to opens at z11, flat:
+measured on the production export, that view loads none of them (JS heap
+54 MB, as `main`; 87 MB when the engine attached at once).
+
+**Measured** (2026-10-12, production exports served with `serve-map-build.ts
+--upstream=https://goway.to`: goway.to's basemap, terrain and published
+Catalonia / New York city and road tiles; phone profile at low, real GPU,
+interleaved A B C / C B A runs, values per run). The machine was shared with
+other agents' headless Chromiums (load average 14–21), so main-thread
+milliseconds swing ±30% between runs of the same build; the counts do not:
+
+| scene | build | main thread p50 / p95 ms | draws | triangles | GPU MB (est.) |
+| --- | --- | --- | --- | --- | --- |
+| eixample | `main` (globe + terrain, MapLibre's `building-3d`) | 23.7, 15.9 / 42.1, 28.3 | 111 | 1.14 M | 192 |
+| eixample | this branch, everything on | 25.9, 22.0 / 48.1, 41.0 | 151 | 2.32–2.36 M | 229 |
+| night | `main` | 19.9, 17.5 / 34.7, 28.3 | 94 | 0.96 M | 161–165 |
+| night | this branch | 23.5, 24.0 / 37.9, 38.7 | 159 | 2.53 M | 215 |
+| traffic (z18, agents moving) | this branch | 28.0, 25.6 / 38.4, 37.8 | 159–163 | 2.78 M | 171 |
+
+Against the phone budgets: draws 151–163 of ≤ 250, GPU memory 170–230 MB of a
+~1–1.5 GB tab, inside them; triangles 2.3–2.8 M are over the 1.5 M line, as
+the whole-3D-set measurement was before this change (2.20 M at low, #156) —
+the excess is terrain and basemap geometry beside the capped city, and the
+first real-device run should settle whether the line or the count moves. The
+main thread at CPU ÷4 is over 20 ms in every build here, `main` included: on
+this loaded host it measures contention, not the phone. Street detail on and
+off (a build with it switched off, interleaved, same scenes) drew the same
+counts at the benchmark's cameras (151 / 114 / 159–163 draws).
+
+**First paint** (`expo export --platform web --clear`, no map variables,
+`main` at `8896de0` against this change on it): `entry` 7,067,870 → 7,068,442 B
+(1,780,244 → 1,780,451 gz, **+207 B gz**: the registry's defaults and the
+engine's zoom gate); `__common` and `global.css` identical. Lazy:
+`city3dLayer` +319 B gz (the coverage document's road tree, the landmark
+offer), `simWorker` +1,381 B gz (the coverage decoder), `MapSettingsModal`
++61 B gz.
+
 ## The QualityProfile contract
 
 Every feature that draws on the map honours this (`AGENTS.md`):

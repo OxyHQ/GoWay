@@ -13,10 +13,12 @@
  * (`lib/map/mapSettingsPages.ts`), never from a list kept here:
  *
  *  - **Map**: the 2D/3D view (the camera, not a feature) and the `map`
- *    features — Globe, Terrain, and Sky & time of day once Labs is revealed.
- *  - **Layers**: the `layers` features (3D city, city tiles and the official
- *    data they carry, trees, landmarks, simulated traffic, live data, the
- *    flyover and Camera Studio), shown once Labs is revealed.
+ *    features — Globe, Terrain, Sky & time of day, the detailed city look,
+ *    street detail — and Performance.
+ *  - **Layers**: the `layers` features (Street 3D, 3D city, city tiles and the
+ *    official data they carry, trees, simulated traffic, landmarks, the
+ *    flyover and Camera Studio); the woods fill and live data only once Labs
+ *    is revealed.
  *  - **Labs**, only once revealed: what Labs is, and how to hide it again.
  *  - **General**: the theme (Bloom's own, persisted by `BloomProvider`) and the
  *    language, which follows the device and is shown, not offered.
@@ -283,8 +285,10 @@ export function MapSettingsModal({
         </SettingsSection>
       </View>
     ),
+    // Most layers are on for everyone now: the "experimental" note belongs to
+    // the Labs page alone.
     layers: (
-      <SettingsSection description={say(MAP_SETTINGS_COPY.labsHint)}>
+      <SettingsSection>
         <SettingsCard>
           {layout.features.layers.map((state) => (
             <FeatureRow key={state.id} state={state} say={say} />

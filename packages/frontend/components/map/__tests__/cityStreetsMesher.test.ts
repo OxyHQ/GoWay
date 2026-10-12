@@ -288,6 +288,26 @@ describe('levels of detail', () => {
     expect(tiles.some((t) => t.lod === 0)).toBe(true);
     expect(tiles.some((t) => t.lod === 1)).toBe(true);
   });
+
+  test('at a road archive’s edge, unpublished tiles never take a published one’s place', () => {
+    const view = camera({ lng: 2.164, lat: 41.3925, zoom: 17.2, pitch: 60 });
+    const every = selectLodTiles(view, 15, streetLodPolicy(41.3925, 99));
+    expect(every.length).toBeGreaterThanOrEqual(4);
+    // A budget one short of the view, and its two nearest tiles unpublished.
+    const policy = streetLodPolicy(41.3925, every.length - 1);
+    const nearest = new Set(every.slice(0, 2).map((t) => `${t.x}/${t.y}`));
+    const published = selectLodTiles(
+      view,
+      15,
+      policy,
+      undefined,
+      (t) => !nearest.has(`${t.x}/${t.y}`),
+    );
+    // Every published tile in view is drawn — not the budget minus the two
+    // unpublished ones a filter after selection would have left.
+    expect(published.length).toBe(every.length - 2);
+    expect(published.some((t) => nearest.has(`${t.x}/${t.y}`))).toBe(false);
+  });
 });
 
 describe('schema 3: cycle tracks and painted-name spans', () => {

@@ -37,7 +37,7 @@
  *    eased 10° steps to ABSOLUTE pitches, each waited out: the keyboard's
  *    relative steps land short when frames are slower than the ease.
  *  - **Moving things off** (simulated traffic, live data, landmarks, flyover):
- *    they differ between page loads.
+ *    they differ between page loads. Street detail off: no road fixture.
  *
  * ## What it asserts, per sky (on and off)
  *
@@ -79,8 +79,19 @@ const TERRAIN_M = 50;
 /** The camera's pitch once tilted, degrees. */
 const TILT = 60;
 const NOON = new Date('2026-06-21T12:00:00+02:00');
-/** Moving things off, as stored choices: they differ between page loads. */
-const STILL = { cityLife: false, live: false, landmarks: false, flyover: false };
+/**
+ * Moving things off, as stored choices: they differ between page loads. And
+ * street detail, on by default since the 3D city is: the fixture has no road
+ * archive (the gate refuses `/map/city-roads/`), and what is under test is
+ * the buildings and trees, not the street surface over the ground.
+ */
+const STILL = {
+  cityLife: false,
+  live: false,
+  landmarks: false,
+  flyover: false,
+  cityStreets: false,
+};
 /**
  * The two skies. A development build honours the registry's query flags
  * (`lib/map/mapFeatures.ts`), so the export needs no build variables.

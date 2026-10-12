@@ -15,7 +15,10 @@
  */
 import * as THREE from 'three';
 
+import type { CityCoverageArea } from '@/lib/map/cityTiles';
+
 import type { CityView } from '../city3d/cityEngine';
+import { coverageCovers } from '../city3d/coverageIndex';
 import { type LodPolicy, metresPerPixel, selectLodTiles } from '../city3d/lod';
 import type { CityLight } from '../city3d/occlusion';
 import type { CityOverlay, CityOverlayFrame, CityOverlaySky } from '../city3d/overlay';
@@ -72,6 +75,12 @@ export interface StreetPaletteInput {
 export interface CityStreetsOptions {
   /** Absolute `{z}/{x}/{y}` template of the road tiles. */
   roadTileTemplate: string;
+  /**
+   * Where the road archive is published (`fetchCityCoverage` → `roads`): a
+   * tile outside it is neither asked for nor drawn, and the basemap's roads
+   * show there. `null`: unknown (a development archive), every tile is asked.
+   */
+  roadCoverage: readonly CityCoverageArea[] | null;
   /** The map style's glyph template (absolute), or `null`: no names or words. */
   glyphTemplate: string | null;
   fontstack: string;
@@ -563,11 +572,14 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       ground && Number.isFinite(centreM)
         ? { centreM, minM: centreM - 300, maxM: centreM + 300 }
         : undefined;
+    const { roadCoverage } = options;
     const tiles = selectLodTiles(
       { ...view, terrain },
       15,
       streetLodPolicy(view.center.lat, options.quality.maxTiles),
       previousLods,
+      // Only where the road archive is published, before the tile budget fills.
+      roadCoverage === null ? undefined : (t) => coverageCovers(t, roadCoverage),
     ).filter((t) => t.lod < 2);
     previousLods.clear();
     for (const t of tiles) previousLods.set(tileKey(t), t.lod);

@@ -118,8 +118,13 @@ export const MAP_FEATURES = [
   {
     id: 'city3d',
     section: 'layers',
-    tier: 'labs',
-    defaultOn: false,
+    tier: 'stable',
+    // On for everyone (owner, 2026-10-12: "everything active on goway.to"),
+    // and with it everything below that needs it: what each draws is capped
+    // by the quality profile, a phone's included (`docs/MAP_PERFORMANCE.md`
+    // → "Default on"). Its chunk is fetched only once the camera nears the
+    // buildings or tilts (`lib/map/cityEngineGate.ts`).
+    defaultOn: true,
     requires: [],
     platforms: WEB,
     query: 'city3d',
@@ -127,8 +132,8 @@ export const MAP_FEATURES = [
   {
     id: 'citySky',
     section: 'map',
-    tier: 'labs',
-    defaultOn: false,
+    tier: 'stable',
+    defaultOn: true,
     // The sky, haze and shadows are drawn by the city layer.
     requires: ['city3d'],
     platforms: WEB,
@@ -138,8 +143,8 @@ export const MAP_FEATURES = [
     id: 'detailedCity',
     // How the map itself is drawn, beside the sky.
     section: 'map',
-    tier: 'labs',
-    defaultOn: false,
+    tier: 'stable',
+    defaultOn: true,
     // The art-directed look of the city layer (`docs/MAP_3D_CITY.md` → Art
     // direction): clay buildings in the sky's light, a 3D-mode ground, warm
     // windows at night. It brings its own live-clock sky when `citySky` is off.
@@ -150,24 +155,23 @@ export const MAP_FEATURES = [
   {
     id: 'cityTiles',
     section: 'layers',
-    tier: 'labs',
-    defaultOn: false,
+    tier: 'stable',
+    defaultOn: true,
     requires: ['city3d'],
     platforms: WEB,
-    // Not hosted on goway.to yet, and ODbL wants the archive and its receipt
-    // published before anyone is served them (`docs/MAP_3D_CITY.md` → Hosting).
-    // The official building data merged into an archive (the Catastro's
-    // storeys, NYC's 3D model; `docs/MAP_3D_SOURCES.md`) has no switch of its
-    // own: it is part of the tiles this switch draws, credited while drawn.
-    // The planet build and the Worker routes exist; offering it everywhere is
-    // the last step of `docs/MAP_CITY_PLANET.md` → "Approval".
-    offer: 'development',
+    // Drawn only where `/map/city/coverage.json` says a published region
+    // (archive + receipt, ODbL) covers the ground, the basemap's buildings
+    // everywhere else — an empty or unreadable document is the basemap alone,
+    // never a flat map (`engine/city3d/sources.ts`). The official building
+    // data merged into an archive (the Catastro's storeys, NYC's 3D model;
+    // `docs/MAP_3D_SOURCES.md`) has no switch of its own: it is part of the
+    // tiles, credited while drawn.
     query: 'cityTiles',
   },
   {
     id: 'city3dTrees',
     section: 'layers',
-    tier: 'labs',
+    tier: 'stable',
     // They come with the 3D city: on whenever it is, unless switched off.
     defaultOn: true,
     requires: ['city3d'],
@@ -187,45 +191,41 @@ export const MAP_FEATURES = [
   {
     id: 'cityLife',
     section: 'layers',
-    tier: 'labs',
-    defaultOn: false,
+    tier: 'stable',
+    defaultOn: true,
     // Drawn by the city engine; it drives on the road archive where one exists
     // and on the basemap's own roads, healed, everywhere else — no city tiles.
     requires: ['city3d'],
     platforms: WEB,
-    // Development only until the frame-cost budget is measured on mid-range
-    // devices (`docs/MAP_CITY_LIFE.md` → Performance).
-    offer: 'development',
+    // Its agents are the quality profile's (`life`): 300 + 300 on a phone
+    // (`docs/MAP_PERFORMANCE.md` → "Default on").
     query: 'cityLife',
   },
   {
     id: 'cityStreets',
     // How the city itself is drawn: its streets, as the detailed look is its buildings.
     section: 'map',
-    tier: 'labs',
-    defaultOn: false,
+    tier: 'stable',
+    defaultOn: true,
     // Drawn by the city-3D engine, from the road archive (`docs/MAP_STREETS.md`).
     requires: ['city3d'],
     platforms: WEB,
-    // Nothing serves the road tiles on goway.to yet (`docs/MAP_CITY_LIFE.md` →
-    // Hosting); outside a compiled archive there is nothing to draw.
-    offer: 'development',
+    // Asks for road tiles only where the coverage document's `roads` tree
+    // covers the ground; elsewhere it draws nothing and the basemap's roads
+    // stay.
     query: 'cityStreets',
   },
   {
     id: 'landmarks',
     section: 'layers',
-    tier: 'labs',
-    defaultOn: false,
-    // The tour and its entry need the city engine; the models themselves
-    // draw only over GoWay city tiles (they replace per-building OSM ids),
-    // which the city layer checks on its own.
+    tier: 'stable',
+    defaultOn: true,
+    // The tour and its entry need the city engine. A model draws only over
+    // GoWay city tiles (it replaces per-building OSM ids; `docs/MAP_LANDMARKS.md`
+    // → Needs city tiles), so the tour and its pill offer only the landmarks
+    // the coverage document covers — none while it covers nothing.
     requires: ['city3d'],
     platforms: WEB,
-    // Without city tiles — not served on goway.to yet — the models draw
-    // nowhere (`docs/MAP_LANDMARKS.md` → Needs city tiles), so the switch is
-    // offered where they can be seen.
-    offer: 'development',
     query: 'landmarks',
   },
   {
@@ -245,8 +245,8 @@ export const MAP_FEATURES = [
   {
     id: 'flyover',
     section: 'layers',
-    tier: 'labs',
-    defaultOn: false,
+    tier: 'stable',
+    defaultOn: true,
     requires: [],
     // It flies on native too (the vehicle is a marker there); the video export
     // is web only, and says so itself.
@@ -340,14 +340,17 @@ export function resolveMapFeatures(input: ResolveMapFeaturesInput): ResolvedMapF
       source = 'default';
     }
     const blockedBy = feature.requires.filter((id) => !lookup(id).on);
+    // A feature this platform does not draw is off on it, whatever its
+    // default: native shows no landmark pill for models it cannot draw.
+    const drawnHere = feature.platforms.includes(input.platform);
 
     byId.set(feature.id, {
       id: feature.id,
       tier: feature.tier,
       section: feature.section,
-      on: requested && blockedBy.length === 0,
+      on: requested && blockedBy.length === 0 && drawnHere,
       available:
-        feature.platforms.includes(input.platform) &&
+        drawnHere &&
         feature.offer !== 'never' &&
         (feature.offer !== 'development' || input.development),
       choice,

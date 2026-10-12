@@ -21,6 +21,7 @@ import type { CityEngine, CityView } from '@/components/map/engine/city3d/cityEn
 import { createCityEngine } from '@/components/map/engine/city3d/cityEngine';
 import { createCityStreets } from '@/components/map/engine/cityStreets/streetRenderer';
 import { streetPaletteInput } from '@/lib/map/style/streetPalette';
+import { cityMaterials } from '@/components/map/city3dStyle';
 import type { GroundSampler } from '@/components/map/engine/city3d/terrainGround';
 import {
   createGlCounterState,
@@ -148,6 +149,8 @@ async function measure(
     ? [
         createCityStreets({
           roadTileTemplate: `${server.origin}/roads/{z}/{x}/{y}.pbf`,
+          // As production asks: only the road tiles the coverage covers.
+          roadCoverage: syntheticCoverage(),
           glyphTemplate: `${server.origin}/fonts/{fontstack}/{range}.pbf`,
           fontstack: 'Inter Bold',
           palette: streetPaletteInput(),
@@ -193,6 +196,8 @@ async function measure(
     quality: { ...QUALITY_PRESETS[tier], reason: 'gate' },
     sky: { appearance: 'light' },
     overlays,
+    // The detailed look, as goway.to draws it by default (`detailedCity`).
+    material: cityMaterials(),
     onStats: (s) => {
       if (process.env.GATE_DEBUG) console.log(JSON.stringify(s));
       pending = s.tilesPending + s.uploadsQueued;

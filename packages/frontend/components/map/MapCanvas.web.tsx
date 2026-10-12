@@ -59,6 +59,7 @@ import { mapFeatureStore, useMapFeature } from '@/lib/map/useMapFeatures';
 import { clampPixelRatio } from '@/lib/map/quality/profile';
 import { useMapQuality } from '@/lib/map/quality/useMapQuality';
 import { maxPitchFor } from '@/lib/map/citySkyFlag';
+import { cityEngineWanted } from '@/lib/map/cityEngineGate';
 import {
   type MapAttributionLink,
   overlayLayerId,
@@ -257,7 +258,14 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // The optional features (`lib/map/mapFeatures.ts`), live: a toggle in the
   // settings modal re-renders this, and the effects below attach, detach or
   // rebuild accordingly.
-  const city3d = useMapFeature('city3d');
+  const city3dFeature = useMapFeature('city3d');
+  // The 3D city is on for everyone, but its chunk (three.js), its workers and
+  // its GPU memory are fetched only once this map has been near the buildings
+  // or tilted towards the horizon, where the sky shows (`cityEngineWanted`):
+  // a visit that stays on a flat country or region pays nothing for it. Once
+  // reached, it stays attached for the session.
+  const [cityZoomReached, setCityZoomReached] = useState(false);
+  const city3d = city3dFeature && cityZoomReached;
   const cityTiles = useMapFeature('cityTiles');
   const trees = useMapFeature('city3dTrees');
   const treeFill = useMapFeature('city3dTreeFill');
@@ -1064,6 +1072,22 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // flag off but models to draw, it attaches with `buildings: false` — no
   // tiles, `building-3d` untouched — so a map has at most ONE three.js layer.
   // With neither, nothing is requested.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!city3dFeature || cityZoomReached || !map || !ready) return;
+    const check = () => {
+      if (cityEngineWanted({ zoom: map.getZoom(), pitch: map.getPitch() })) {
+        setCityZoomReached(true);
+      }
+    };
+    check();
+    map.on('zoom', check);
+    map.on('pitch', check);
+    return () => {
+      map.off('zoom', check);
+      map.off('pitch', check);
+    };
+  }, [city3dFeature, cityZoomReached, ready]);
   const needsEngine = city3d || wantsModelEngine;
   // The quality profile reaches the attached engine by TIER: a new tier is a
   // new attach (budgets, shadow map, shaders); the rest of it is live below.

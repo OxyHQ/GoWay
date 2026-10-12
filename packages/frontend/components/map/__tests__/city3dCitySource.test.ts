@@ -6,7 +6,11 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { citySourceFor, fetchCityCoverage } from '@/components/map/city3dLayer.web';
+import {
+  citySourceFor,
+  fetchCityCoverage,
+  fetchCityCoverageDocument,
+} from '@/components/map/city3dLayer.web';
 import {
   CITY_COVERAGE_PATH,
   CITY_TILE_LAYER,
@@ -88,6 +92,54 @@ describe('fetchCityCoverage', () => {
       { maxZoom: 99, bits: 'Ag==' },
     ]) {
       expect(await fetchCityCoverage('x', answer(200, { schema: 2, tiles: bad }))).toEqual([]);
+    }
+  });
+});
+
+describe('fetchCityCoverageDocument: where the road archive is published', () => {
+  const answer = (status: number, body: unknown) => async () =>
+    new Response(JSON.stringify(body), { status });
+  const tiles = { maxZoom: 14, bits: 'Ag==' };
+  const roads = { maxZoom: 14, bits: 'Aw==' };
+
+  test('goway.to before any region: nothing covered, no road tile asked for, not a failure', async () => {
+    // What production answers today (`worker/city.js` with no manifest).
+    expect(
+      await fetchCityCoverageDocument('x', answer(200, { schema: 2, regions: [], tiles: null })),
+    ).toEqual({ buildings: [], roads: [], failed: false });
+  });
+
+  test('the Worker’s document: its building and road trees, each as published', async () => {
+    expect(
+      await fetchCityCoverageDocument('x', answer(200, { schema: 2, tiles, roads, regions: [] })),
+    ).toEqual({ buildings: [tiles], roads: [roads], failed: false });
+    // Buildings published, roads not said (an older Worker): ask every road tile.
+    expect(await fetchCityCoverageDocument('x', answer(200, { schema: 2, tiles }))).toEqual({
+      buildings: [tiles],
+      roads: null,
+      failed: false,
+    });
+  });
+
+  test('development’s compile boxes say nothing about roads: every road tile is asked', async () => {
+    expect(
+      await fetchCityCoverageDocument('x', answer(200, { archives: [{ coverage: BARCELONA }] })),
+    ).toEqual({ buildings: [BARCELONA], roads: null, failed: false });
+  });
+
+  test('a failure covers nothing and asks for nothing, and says it failed', async () => {
+    for (const fetcher of [
+      answer(503, {}),
+      answer(200, { schema: 2, tiles: { maxZoom: 14 } }),
+      async () => {
+        throw new TypeError('Failed to fetch');
+      },
+    ]) {
+      expect(await fetchCityCoverageDocument('x', fetcher)).toEqual({
+        buildings: [],
+        roads: [],
+        failed: true,
+      });
     }
   });
 });

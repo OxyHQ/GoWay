@@ -305,6 +305,12 @@ export function selectLodTiles(
   tileZoom: number,
   policy: LodPolicy = LOD_POLICY,
   previous?: ReadonlyMap<string, Lod>,
+  /**
+   * Only tiles this accepts are candidates — decided BEFORE the budget fills,
+   * so a tile with nothing to draw (street detail outside the road archive)
+   * never takes the place of a farther one that has.
+   */
+  include?: (tile: ViewTile) => boolean,
 ): LodTile[] {
   const eye = eyeFromProjection(view.mercatorToClip);
   const toZ = mercatorPerMetre(view.center.lat);
@@ -352,6 +358,7 @@ export function selectLodTiles(
       const r = Math.hypot(dx, dy, height) / unit;
       if (r >= limits[2] * (1 + policy.hysteresis)) continue;
       const tile: ViewTile = { z: tileZoom, x: ((x % n) + n) % n, y, wrap: Math.floor(x / n) };
+      if (include && !include(tile)) continue;
       candidates.push({ tile, r, key: tileKey(tile) });
     }
   }
