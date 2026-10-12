@@ -37,6 +37,8 @@ export type StreetWorkerResponse =
       /** The worker instance whose atlas the UVs index: a new one means a fresh atlas. */
       epoch: number;
       meshMs: number;
+      /** `[lng, lat]` points along the names this tile paints (`StreetMesh.paintedNames`). */
+      paintedNames: [number, number][];
     }
   | { type: 'error'; id: number; message: string }
   | { type: 'cancelled'; id: number };

@@ -19,6 +19,8 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
 import type { CityEngine, CityView } from '@/components/map/engine/city3d/cityEngine';
 import { createCityEngine } from '@/components/map/engine/city3d/cityEngine';
+import { createCityStreets } from '@/components/map/engine/cityStreets/streetRenderer';
+import { streetPaletteInput } from '@/lib/map/style/streetPalette';
 import type { GroundSampler } from '@/components/map/engine/city3d/terrainGround';
 import {
   createGlCounterState,
@@ -40,6 +42,8 @@ const HEIGHT = 1080;
 
 interface Scene {
   id: string;
+  /** Draw the street detail too (`MAP_STREETS.md`), from the synthetic road tiles. */
+  streets?: boolean;
   /** Camera keyframes: the frames after loading are drawn along them. */
   path: Array<{ zoom: number; pitch: number; bearing: number; dLng?: number; dLat?: number }>;
 }
@@ -52,6 +56,12 @@ const SCENES: Scene[] = [
   },
   {
     id: 'street',
+    path: Array.from({ length: 4 }, (_, i) => ({ zoom: 17.6, pitch: 55, bearing: i * 2 })),
+  },
+  {
+    // The street view again, with the street detail on: its line in the budget.
+    id: 'street-detail',
+    streets: true,
     path: Array.from({ length: 4 }, (_, i) => ({ zoom: 17.6, pitch: 55, bearing: i * 2 })),
   },
   {
@@ -132,6 +142,23 @@ async function measure(
   const counters = createGlCounterState();
   instrumentWebGl2(gl, counters);
   let pending = 1;
+  // The street renderer reports its own pending tiles (until it has: one).
+  let streetsPending = scene.streets ? 1 : 0;
+  const overlays = scene.streets
+    ? [
+        createCityStreets({
+          roadTileTemplate: `${server.origin}/roads/{z}/{x}/{y}.pbf`,
+          glyphTemplate: `${server.origin}/fonts/{fontstack}/{range}.pbf`,
+          fontstack: 'Inter Bold',
+          palette: streetPaletteInput(),
+          quality: QUALITY_PRESETS[tier].streets,
+          requestRepaint: () => {},
+          onStats: (s) => {
+            streetsPending = s.pending + (s.tilesDrawn === 0 ? 1 : 0);
+          },
+        }),
+      ]
+    : [];
   // The engine runs on a virtual clock: the same counts every run.
   const clock = { ms: 0 };
   let lifted = 0;
@@ -165,6 +192,7 @@ async function measure(
     now: () => clock.ms,
     quality: { ...QUALITY_PRESETS[tier], reason: 'gate' },
     sky: { appearance: 'light' },
+    overlays,
     onStats: (s) => {
       if (process.env.GATE_DEBUG) console.log(JSON.stringify(s));
       pending = s.tilesPending + s.uploadsQueued;
@@ -185,7 +213,7 @@ async function measure(
     const loaded = await settle(
       engine,
       first,
-      () => ({ pending }),
+      () => ({ pending: pending + streetsPending }),
       clock,
       () => {
         loadUploadBytes += counters.frame.uploadBytes;
@@ -209,7 +237,8 @@ async function measure(
       return { ...counters.frame };
     });
     // Settle the path's own tiles too (an orbit reveals more), then measure it.
-    for (const step of scene.path) await settle(engine, view(step), () => ({ pending }), clock);
+    for (const step of scene.path)
+      await settle(engine, view(step), () => ({ pending: pending + streetsPending }), clock);
     // A second at rest on the first view: anything deferred (the shadow map's
     // catch-up) is drawn, so every run starts the path from the same state.
     clock.ms += 1000;
@@ -314,6 +343,34 @@ const FRAME_BUDGETS: Record<string, Record<QualityTier, Budget>> = {
       gpuBytes: 32_286_239,
     },
   },
+  // The street view with the street detail on (`MAP_STREETS.md`): +8 draws
+  // (4 road tiles, 2 each), ~61 k triangles, ~4 MB over 'street'.
+  'street-detail': {
+    low: {
+      draws: 38,
+      triangles: 851_497,
+      offscreenPasses: 0,
+      loadUploadBytes: 15_487_348,
+      shadowRedraws: 0,
+      gpuBytes: 13_622_768,
+    },
+    medium: {
+      draws: 48,
+      triangles: 1_222_760,
+      offscreenPasses: 0,
+      loadUploadBytes: 15_529_528,
+      shadowRedraws: 0,
+      gpuBytes: 19_423_569,
+    },
+    high: {
+      draws: 48,
+      triangles: 1_222_760,
+      offscreenPasses: 0,
+      loadUploadBytes: 15_529_528,
+      shadowRedraws: 0,
+      gpuBytes: 36_725_073,
+    },
+  },
   skyline: {
     low: {
       draws: 37,
@@ -380,6 +437,21 @@ describe('frame budget gate', () => {
       expect(medium.draws).toBeLessThanOrEqual(high.draws);
       // Low draws no shadow map at all.
       expect(low.offscreenPasses).toBe(0);
+    }
+  });
+
+  test('the street detail is drawn, and within its preset’s budget (vacuity of its line)', () => {
+    for (const tier of ['low', 'medium', 'high'] as const) {
+      const plain = results.get(`street/${tier}`);
+      const detailed = results.get(`street-detail/${tier}`);
+      expect(plain && detailed, tier).toBeTruthy();
+      if (!plain || !detailed) continue;
+      // Two draws per road tile; at least one tile drawn.
+      expect(detailed.draws - plain.draws).toBeGreaterThanOrEqual(2);
+      expect(detailed.triangles - plain.triangles).toBeGreaterThan(0);
+      expect(detailed.triangles - plain.triangles).toBeLessThanOrEqual(
+        QUALITY_PRESETS[tier].streets.drawTriangles,
+      );
     }
   });
 

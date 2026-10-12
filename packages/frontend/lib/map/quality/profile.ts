@@ -97,6 +97,15 @@ export interface QualityProfile {
     /** Landmark models held in the scene at once. */
     max: number;
   };
+  streets: {
+    /** Road tiles drawn with street detail, two draw calls each (`MAP_STREETS.md`). */
+    maxTiles: number;
+    /**
+     * Street triangles drawn per frame: past it the farthest tiles fall back to
+     * the simplified level (no kerb faces, arrows, words or names), then out.
+     */
+    drawTriangles: number;
+  };
   relief: {
     /**
      * 3D terrain while the camera is tilted (`docs/MAP_TERRAIN_GLOBE.md`).
@@ -154,6 +163,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     life: { cars: 300, people: 300 },
     live: { maxEntities: 500 },
     landmarks: { max: 2 },
+    streets: { maxTiles: 6, drawTriangles: 400_000 },
     relief: { terrain3d: true, terrainTextureScale: 1 },
   },
   medium: {
@@ -181,6 +191,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     life: { cars: 700, people: 700 },
     live: { maxEntities: 2_000 },
     landmarks: { max: 4 },
+    streets: { maxTiles: 10, drawTriangles: 900_000 },
     relief: { terrain3d: true, terrainTextureScale: 2 },
   },
   high: {
@@ -208,6 +219,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     life: { cars: 1200, people: 1200 },
     live: { maxEntities: 5_000 },
     landmarks: { max: 8 },
+    streets: { maxTiles: 16, drawTriangles: 2_000_000 },
     relief: { terrain3d: true, terrainTextureScale: 2 },
   },
 };

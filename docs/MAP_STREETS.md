@@ -37,7 +37,7 @@ GOWAY_CITY_TILES_ARCHIVE=<buildings>.pmtiles,$PWD/packages/frontend/.tiles/city-
 | Adapter | `components/map/city3dLayer.web.ts` (`streets` option), `MapCanvas.web.tsx` (`useMapFeature('cityStreets')`) |
 | Tests | `components/map/__tests__/cityStreetsLanes.test.ts`, `cityStreetsMarkings.test.ts`, `cityStreetsMesher.test.ts`; `scripts/__tests__/cityStreetTags.test.ts`, `cityRoads.test.ts`; `lib/map/__tests__/mapFeatures.test.ts` |
 
-## The data: one road archive, schema 2
+## The data: one road archive, schema 3
 
 The road archive the city-life simulation already drives on
 ([`MAP_CITY_LIFE.md`](./MAP_CITY_LIFE.md)) carried classes, lane counts,
@@ -66,6 +66,12 @@ Measured on the same extracts as before (Bun 1.4.2, one core, loaded machine):
 | Compile | 39.7 s | 27.1 s |
 | Car ways with a name / `turn:lanes` / bus lanes / cycle lane / parking / `width` | 80% / 15.6% / 5.6% / 12% / 4.7% / 1.1% | 83% / 5.9% / 6.4% / 0.3% / 1.1% / 7.9% |
 | Values refused (top) | `crossing:markings` 301, `width` 126 | `crossing:markings` 86, `width` 39 |
+
+**Schema 3** adds `change:lanes*` (per lane: `y`es, `n`o, `l` only left —
+`not_right` —, `r` only right) and keeps `highway=cycleway` ways (`cycle`), and
+reads `width` on every way (a cycleway's or footway's is its own). Measured:
+Barcelona 3.49 → 3.68 MB (5,843 cycleways; `change:lanes` on 3.9% of car ways),
+Manhattan 2.38 → 2.40 MB (885 cycleways; 0.21%).
 
 What the two cities record differs, and it shows: New York records the
 crossing pattern on the crossing WAY (`crossing=traffic_signals` +
@@ -125,6 +131,15 @@ records it.** Sizes, colours and patterns are styling.
   references). Never every lane of a road. The word "BUS" and the
   terracotta tint are styling; Apple's "ONLY" is not drawn — it would be a
   claim the data does not make.
+- **`change:lanes`** (schema 3): between two same-direction lanes the line is
+  dashed where both may cross, **solid** where neither may, and a solid line
+  beside a dashed one where only one may — the solid on the side whose traffic
+  may not cross (`lanes.ts` → `laneLine`). It is usually tagged on the stretch
+  before a junction, which is where these solid lines appear. A count that does
+  not match the lanes, or an unknown value, draws the default dashed line.
+- **Separate cycle tracks** (`highway=cycleway`, schema 3: kept by the
+  compiler although neither a car's nor a person's; the simulation skips them)
+  are drawn as a tinted asphalt track, their recorded `width` or 2 m (styling).
 - **Cycle lanes** (`cycleway*=lane`) tinted green beside a solid line;
   **parking** lanes widen the carriageway, unpainted.
 - **The street's name** (`name`, the local language) painted along long
@@ -137,6 +152,30 @@ records it.** Sizes, colours and patterns are styling.
   script that needs shaping (Arabic, Hebrew, the Indic scripts, Thai) is not
   painted rather than painted wrong; a name with any glyph missing is not
   painted at all.
+
+## One name per street: the map's flat labels yield
+
+At street zoom the map's own road labels (`label-road-*`, OpenMapTiles
+`transportation_name`) and the painted names would say the same thing twice.
+Where a name is painted, the flat label gives way, **segment by segment**,
+through MapLibre's own collision (`components/map/streetNameBlockers.web.ts`):
+
+- The street worker reports, for each painted name, points every 6 m along its
+  text (`StreetMesh.paintedNames`); the renderer hands the host the points of
+  the tiles it draws at full detail (names fade in there), whenever that set
+  changes.
+- The adapter keeps them as an invisible symbol layer of blockers directly
+  ABOVE the road-label layers (`blockerAnchor`: after the last
+  `transportation_name` symbol layer). MapLibre places symbols from the top
+  layer down, so the blockers (always placed) take their room first, and a road
+  label that would land on a painted name is placed further along its line or
+  not at all. The same street keeps its flat label wherever its name is not
+  painted; labels above the blockers (POIs, places) are untouched.
+- Why not a filter: MapLibre's `within` needs a label's whole line inside ONE
+  polygon (measured with the style spec: a line across two adjacent squares of
+  a MultiPolygon is not within), and OpenMapTiles merges a street's name line
+  across its whole tile, so it would almost never match; a name filter would
+  drop the street's label everywhere at once.
 
 ## Surfaces
 
@@ -233,11 +272,23 @@ art-direction change moves both. The rest is this feature's own:
 
 | | Day | Night |
 | --- | --- | --- |
-| Asphalt / sidewalk (the ground palette's primary road fill / casing) | `#c6c9cd` / `#fbfbfa` | `#303a52` / `#53607e` |
+| Asphalt / sidewalk (the ground palette's primary road fill / casing) | `#a2a5a9` / `#fbfbfa` (was `#c6c9cd`) | `#303a52` / `#53607e` |
 | Kerb face | `#d8d7d2` | `#475068` |
 | Paving | `#e7e4dd` | `#5b6479` |
 | Paint (white / yellow) | `#fbfbfa` / `#f0c75a` | `#c3c9d6` / `#c6a75c` (dimmed, no glare) |
 | Bus / cycle tint | `#cf8c80` / `#9ccf9c` | `#6c4a55` / `#3f6a5d` |
+
+**Markings read on the asphalt.** Each marking keeps a WCAG contrast floor
+against the asphalt it is painted on (`streetPalette.ts` → `MARKING_CONTRAST`,
+held by `streetPalette.test.ts`): white paint 2.2:1 by day and 4.5:1 at night,
+yellow 1.5:1 by day (it reads by hue too) and 3:1 at night. Measured on the
+first palette, white was **1.60:1** by day on `#c6c9cd` (1.39:1 on local
+streets) — lane lines barely showed (owner review of #159). The fix is in the
+one palette, not a second one: every street tier of `palette3d.ts`'s light
+ground moved down by the same `0x24` (primary `#c6c9cd` → `#a2a5a9`, the ramp's
+order kept), which gives white **2.39:1** and yellow 1.53:1 by day; night was
+already 6.83:1 and 4.90:1. The road-label ink walked down to `#1f2322` so the
+map's labels keep 4.5:1 on every street fill, the darkest (motorway) included.
 
 Unlit, like the basemap they cover; under the city sky (and so always in the
 detailed look, which draws in the sky's light) lit exactly as the sky's ground
@@ -261,12 +312,24 @@ noisy):
 
 | Budget | Value | Where |
 | --- | --- | --- |
-| Tiles drawn | ≤ 16 (two draw calls each, so ≤ 32) | `STREET_BUDGET.maxTiles` |
-| Meshes cached | 32, least recently used evicted | `maxCached` |
+| Tiles drawn | the profile's `streets.maxTiles`: 6 / 10 / 16 (low / medium / high), two draw calls each | `lib/map/quality/profile.ts` |
+| Triangles drawn | the profile's `streets.drawTriangles`: 400 k / 900 k / 2 M — nearest first; past it a tile draws its simplified level, then nothing | same |
+| Meshes cached | twice the tiles drawn, least recently used evicted | `STREET_BUDGET.cachedPerDrawn` |
 | Requests in flight | 3, one worker | `maxInFlight` |
 | Ground grids sampled per frame | 2 new ones (≈ 1,000 terrain reads each); grids the engine already holds are free | `groundsPerFrame` |
 | Typical street view (z18.4, 55°) | 2 tiles, ~115 k triangles, 4 draw calls | — |
 | Main thread per frame | selection + placement only; measured within the city engine's `frameCpuMs` (2–15 ms on SwiftShader, dominated by the GPU emulation) | — |
+
+**In the CI frame-budget gate** (`components/map/__tests__/frameBudget.test.ts`,
+`docs/MAP_PERFORMANCE.md` → "The CI gate"): a `street-detail` scene draws the
+gate's street view with the street detail on, over synthetic road tiles of the
+synthetic city (`fixtures/syntheticCity.ts` → `roadTile`: every street between
+its blocks, three lanes, turn lanes, names, a signal at every junction and a
+zebra on every arm), through the real street worker and the map's glyphs. Over
+the plain street view it adds **+8 draw calls (4 road tiles), ~61 k triangles
+and ~4 MB of GPU memory**, at every preset (4 tiles fit all three); the budget
+is that plus 10%, and a test asserts the streets really drew and stayed inside
+the preset's triangles.
 
 Not measured: a real GPU, and a mid-range Android device (the city's Phase 1
 device gating applies here too).
@@ -302,11 +365,12 @@ simulation itself is still reached by nothing but the lazy chunk).
   node, so their polygons overlap (harmless: one colour); lane lines of one
   carriageway can run into the other's junction near a cluster.
 - **Bridges** are left to the basemap; **tunnels** are hidden.
-- **Turn lanes** are read per way end; `change:lanes` (solid lines before a
-  junction), `placement`, `lanes:both_ways` (centre turn lanes), speed bumps and
-  bus stops are not read yet.
-- **Separate cycleways** (`highway=cycleway`) are not drawn: the road layer
-  does not keep them (they are neither car nor foot ways).
+- **Turn lanes** are read per way end; `placement`, `lanes:both_ways` (centre
+  turn lanes), speed bumps and bus stops are not read yet.
+- **Label blockers** take a painted name's room at its points every 6 m, sized
+  for the name by zoom; a label at a steep angle across them can still find a
+  gap, and a painted name the camera cannot see (behind a building) still keeps
+  its stretch clear.
 - **Names** are placed once per link, on its straight middle; curved streets
   get no name.
 - **Native**: none — the city layer's custom-layer limit (`MAP_3D_CITY.md`).

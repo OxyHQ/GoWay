@@ -10,6 +10,8 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import { contrastRatio, relativeLuminance as luminance } from '@/lib/map/colour';
+
 import { buildLayers } from '@/lib/map/style/layers';
 import { CARTOGRAPHY_PALETTES } from '@/lib/map/style/palette';
 import { CITY_GROUND_FADE, CITY_GROUND_PALETTES, CITY_MATERIALS } from '@/lib/map/style/palette3d';
@@ -19,19 +21,7 @@ import {
   crossFadeByZoom,
 } from '@/lib/map/style/city3dGround';
 
-/** WCAG relative luminance of `#rrggbb`. */
-function luminance(hex: string): number {
-  const n = Number.parseInt(hex.slice(1, 7), 16);
-  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-const contrast = (a: string, b: string): number => {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
-};
+const contrast = contrastRatio;
 
 describe('the material’s two ends', () => {
   test('day has no emissive light; night has warm windows', () => {

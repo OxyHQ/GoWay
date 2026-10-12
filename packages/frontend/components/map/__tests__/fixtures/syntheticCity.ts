@@ -13,13 +13,18 @@
  */
 import {
   type CityTileFeature,
+  type EncodedFeature,
   encodeCityTile,
+  encodeLines,
+  encodePoint,
   encodeTileLayers,
   encodePolygons,
   encodeTreeLayer,
   type TilePoint,
   type TilePolygon,
 } from '@/scripts/citygen/mvtEncode';
+import { splitAtTileEdges } from '@/scripts/citygen/roads';
+import { CITY_ROAD_LAYER, CITY_ROAD_NODE_LAYER } from '@/lib/map/cityRoads';
 import { CITY_TILE_EXTENT, type CityTileTree } from '@/lib/map/cityTiles';
 import { CITY_LOD2_PROPS, CITY_OFFICIAL_PROPS, CITY_TILE_LOD2_LAYER } from '@/lib/map/cityOfficial';
 import {
@@ -336,6 +341,80 @@ export function openMapTilesTile(z: number, x: number, y: number): Uint8Array {
   return encodeTileLayers([{ name: 'building', features }]);
 }
 
+/** Streets run down the 20 m between blocks; a crossing this far out on every arm. */
+const STREET_GAP_M = PITCH_M - BLOCK_M;
+const CROSSING_OUT_M = 9;
+
+/**
+ * A z15 ROAD tile (`lib/map/cityRoads.ts`, schema 3) of the same grid, for
+ * the street-detail line of the gate: every street between the blocks, one-way
+ * by alternating direction, three lanes with turn lanes on one in three, a
+ * name, a signal at every junction and a zebra crossing on every arm — cut at
+ * junctions, crossings and tile edges by the compiler's own `splitAtTileEdges`.
+ */
+export function roadTile(z: number, x: number, y: number): Uint8Array {
+  const box = tileBox(z, x, y);
+  const unit = box.n * CITY_TILE_EXTENT;
+  const global = ([mx, my]: Metres): [number, number] => [
+    (originX + mx * k) * unit,
+    (originY + my * k) * unit,
+  ];
+  const ox = x * CITY_TILE_EXTENT;
+  const oy = y * CITY_TILE_EXTENT;
+  const roads: EncodedFeature[] = [];
+  const nodes: EncodedFeature[] = [];
+  const node = ([gx, gy]: [number, number], properties: Record<string, string>) => {
+    if (gx < ox || gx >= ox + CITY_TILE_EXTENT || gy < oy || gy >= oy + CITY_TILE_EXTENT) return;
+    nodes.push({ id: 0, type: 1, geometry: encodePoint([gx - ox, gy - oy]), properties });
+  };
+  const street = (from: Metres, to: Metres, index: number, vertical: boolean) => {
+    const length = Math.hypot(to[0] - from[0], to[1] - from[1]);
+    const at = (d: number): Metres => [
+      from[0] + ((to[0] - from[0]) * d) / length,
+      from[1] + ((to[1] - from[1]) * d) / length,
+    ];
+    const stops = [0, CROSSING_OUT_M, length - CROSSING_OUT_M, length];
+    const properties = {
+      highway: 'secondary',
+      car: true,
+      foot: false,
+      oneway: index % 2 === 0 ? 1 : -1,
+      lanes: 3,
+      name: `${vertical ? 'Carrer' : 'Avinguda'} ${index}`,
+      ...(index % 3 === 0 ? { turn_lanes: 'left|through|through;right' } : {}),
+    };
+    for (let s = 0; s + 1 < stops.length; s++) {
+      const a = global(at(stops[s]));
+      const b = global(at(stops[s + 1]));
+      for (const piece of splitAtTileEdges([a, b])) {
+        if (piece.tx !== x || piece.ty !== y) continue;
+        roads.push({
+          id: 0,
+          type: 2,
+          geometry: encodeLines([piece.points.map(([px, py]) => [px - ox, py - oy] as TilePoint)]),
+          properties,
+        });
+      }
+    }
+    for (const d of [CROSSING_OUT_M, length - CROSSING_OUT_M]) {
+      node(global(at(d)), { kind: 'crossing', crossing: 'marked' });
+    }
+  };
+  for (const [i, j] of blocksIn(box.minX, box.minY, box.maxX, box.maxY)) {
+    const [x0, y0] = blockOrigin(i, j);
+    // The junction north-west of the block, and the streets from it east and south.
+    const corner: Metres = [x0 - STREET_GAP_M / 2, y0 - STREET_GAP_M / 2];
+    node(global(corner), { kind: 'signals' });
+    street(corner, [corner[0] + PITCH_M, corner[1]], j, false);
+    street(corner, [corner[0], corner[1] + PITCH_M], i, true);
+  }
+  if (roads.length === 0 && nodes.length === 0) return new Uint8Array(0);
+  return encodeTileLayers([
+    { name: CITY_ROAD_LAYER, features: roads },
+    { name: CITY_ROAD_NODE_LAYER, features: nodes },
+  ]);
+}
+
 /** The coverage box the engine's city source needs: the whole synthetic city. */
 export function syntheticCoverage(): Array<[number, number, number, number]> {
   const dLat = (SYNTHETIC_RADIUS_M + 500) / 111_320;
@@ -350,7 +429,10 @@ export function syntheticCoverage(): Array<[number, number, number, number]> {
   ];
 }
 
-/** Serve both formats on a local port: `/city/{z}/{x}/{y}.pbf`, `/omt/{z}/{x}/{y}.pbf`. */
+/**
+ * Serve on a local port: `/city/{z}/{x}/{y}.pbf`, `/omt/{z}/{x}/{y}.pbf`,
+ * `/roads/{z}/{x}/{y}.pbf` and the map's glyphs at `/fonts/{fontstack}/{range}.pbf`.
+ */
 export function serveSyntheticCity(): { origin: string; requests: string[]; stop(): void } {
   const requests: string[] = [];
   const server = Bun.serve({
@@ -358,11 +440,24 @@ export function serveSyntheticCity(): { origin: string; requests: string[]; stop
     hostname: '127.0.0.1',
     fetch(request) {
       const url = new URL(request.url);
-      const match = /^\/(city|omt)\/(\d+)\/(\d+)\/(\d+)\.pbf$/.exec(url.pathname);
+      const font = /^\/fonts\/([^/]+)\/(\d+-\d+)\.pbf$/.exec(url.pathname);
+      if (font) {
+        // The map's committed glyphs, for the street names.
+        const file = Bun.file(
+          `${import.meta.dir}/../../../../public/map/fonts/${decodeURIComponent(font[1])}/${font[2]}.pbf`,
+        );
+        return new Response(file);
+      }
+      const match = /^\/(city|omt|roads)\/(\d+)\/(\d+)\/(\d+)\.pbf$/.exec(url.pathname);
       if (!match) return new Response(null, { status: 404 });
       requests.push(url.pathname);
       const [z, x, y] = [Number(match[2]), Number(match[3]), Number(match[4])];
-      const bytes = match[1] === 'city' ? cityTile(z, x, y) : openMapTilesTile(z, x, y);
+      const bytes =
+        match[1] === 'city'
+          ? cityTile(z, x, y)
+          : match[1] === 'roads'
+            ? roadTile(z, x, y)
+            : openMapTilesTile(z, x, y);
       if (bytes.length === 0) return new Response(null, { status: 204 });
       return new Response(new Blob([bytes as Uint8Array<ArrayBuffer>]), {
         headers: { 'content-type': 'application/x-protobuf' },

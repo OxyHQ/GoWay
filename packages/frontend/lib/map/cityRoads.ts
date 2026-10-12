@@ -52,9 +52,11 @@ export const CITY_ROAD_TILE_PATH = '/map/city-roads/{z}/{x}/{y}.pbf';
  * written into the archive's metadata. 2: the street-detail properties
  * ({@link STREET_PROPS}, {@link STREET_NODE_PROPS}) — additive, so a v1 reader
  * (the simulation) reads a v2 tile unchanged, and a v1 archive draws the
- * generic class markings only (`docs/MAP_STREETS.md`).
+ * generic class markings only (`docs/MAP_STREETS.md`). 3: `change:lanes`
+ * ({@link STREET_PROPS} `changeLanes*`) and separate cycleways
+ * (`ROAD_PROPS.cycle`, kept for drawing; the simulation skips them) — additive.
  */
-export const CITY_ROAD_SCHEMA_VERSION = 2;
+export const CITY_ROAD_SCHEMA_VERSION = 3;
 
 /** The archive metadata key that says which kind of city archive a file is. */
 export const CITY_ARCHIVE_KIND_KEY = 'goway:kind';
@@ -78,6 +80,12 @@ export const ROAD_PROPS = {
   car: 'car',
   /** `true` when a person may walk it (class, `foot`, `access`). */
   foot: 'foot',
+  /**
+   * `true` on a `highway=cycleway` (schema 3): a separate cycle track, kept so
+   * the street detail can draw it even where neither cars nor people may use
+   * it (the simulation reads only `car` and `foot`).
+   */
+  cycle: 'cycle',
   /** `1` or `-1` (against the drawn direction) when one-way for cars; absent: both ways. */
   oneway: 'oneway',
   /** `lanes`, when tagged: all lanes, both directions. */
@@ -138,6 +146,14 @@ export const STREET_PROPS = {
   crossing: 'crossing',
   /** `crossing:markings=*` on a `footway=crossing` way (or the node, below). */
   crossingMarkings: 'crossing_markings',
+  /**
+   * `change:lanes` (and `:forward`/`:backward`): per lane, in the tag's order,
+   * where its traffic may change lanes — `y` either way, `n` neither, `l` only
+   * to the left (`not_right`), `r` only to the right (`not_left`).
+   */
+  changeLanes: 'change_lanes',
+  changeLanesForward: 'change_lanes_forward',
+  changeLanesBackward: 'change_lanes_backward',
 } as const;
 
 /** `road_node` feature properties. */

@@ -30,7 +30,7 @@ import type { RoadClass, Side, Turn } from '@/lib/map/cityRoads';
 
 import type { DrivingSide } from '../roads/drivingSide';
 import { defaultLanes } from '../roads/roadGraph';
-import type { RoadPiece } from '../roads/roadTiles';
+import type { LaneChange, RoadPiece } from '../roads/roadTiles';
 
 /** Where the paint differs by country: the side traffic keeps to, and the centre line's colour. */
 export interface PaintRules {
@@ -50,9 +50,15 @@ export interface Band {
   right: number;
   /** Recorded turns of this lane (`[]`: recorded as none); `null`: not recorded. */
   turns: Turn[] | null;
+  /** Recorded `change:lanes` of this lane (from the traveller's seat); `null`: not recorded. */
+  change: LaneChange | null;
 }
 
-export type LineStyle = 'dashed' | 'solid' | 'double';
+/**
+ * `mixed`: a solid line beside a dashed one (`change:lanes` lets one side
+ * cross, not the other) — the solid one on {@link Divider.solidOn}'s side.
+ */
+export type LineStyle = 'dashed' | 'solid' | 'double' | 'mixed';
 export type PaintColour = 'white' | 'yellow';
 
 export interface Divider {
@@ -63,6 +69,8 @@ export interface Divider {
   width: number;
   /** Why: `lanes` same-direction lanes, `centre`, `bus`, `cycle`, `edge`. */
   role: 'lanes' | 'centre' | 'bus' | 'cycle' | 'edge';
+  /** `mixed` only: the drawn side (of the way's direction) the solid line is on. */
+  solidOn?: 'left' | 'right';
 }
 
 export interface CrossSection {
@@ -196,6 +204,7 @@ function kerbSide(dir: 1 | -1, rules: PaintRules): 'left' | 'right' {
 }
 
 interface Lane {
+  change: LaneChange | null;
   kind: 'lane' | 'bus';
   dir: 1 | -1;
   turns: Turn[] | null;
@@ -212,7 +221,12 @@ function directionLanes(
   recorded: boolean,
   rules: PaintRules,
 ): Lane[] {
-  const lanes: Lane[] = Array.from({ length: count }, () => ({ kind: 'lane', dir, turns: null }));
+  const lanes: Lane[] = Array.from({ length: count }, () => ({
+    kind: 'lane',
+    dir,
+    turns: null,
+    change: null,
+  }));
   if (!recorded || count === 0) return lanes;
   const oneway = piece.oneway === 1 || piece.oneway === -1;
   // A one-way road's plain key describes its only direction; a two-way road's
@@ -231,6 +245,13 @@ function directionLanes(
   );
   if (turns) {
     for (let i = 0; i < count; i++) lanes[i].turns = turns[i];
+  }
+  const changes = fits(
+    forDirection(piece.changeLanes, piece.changeLanesForward, piece.changeLanesBackward),
+    count,
+  );
+  if (changes) {
+    for (let i = 0; i < count; i++) lanes[i].change = changes[i];
   }
   const busPattern = fits(
     forDirection(piece.busLanes, piece.busLanesForward, piece.busLanesBackward),
@@ -331,15 +352,21 @@ export function crossSection(piece: RoadPiece, rules: PaintRules): CrossSection 
 
   const bands: Band[] = [];
   let at = width / 2;
-  const push = (kind: BandKind, dir: 1 | -1, w: number, turns: Turn[] | null) => {
-    bands.push({ kind, dir, left: at, right: at - w, turns });
+  const push = (
+    kind: BandKind,
+    dir: 1 | -1,
+    w: number,
+    turns: Turn[] | null,
+    change: LaneChange | null = null,
+  ) => {
+    bands.push({ kind, dir, left: at, right: at - w, turns, change });
     at -= w;
   };
   const edgeDir = (side: 'left' | 'right'): 1 | -1 =>
     (side === 'left' ? travel[0]?.dir : travel.at(-1)?.dir) ?? travelDir;
   if (parking.left) push('parking', edgeDir('left'), PARKING_WIDTH_M, null);
   if (cycle.left) push('cycle', edgeDir('left'), CYCLE_LANE_WIDTH_M, null);
-  for (const lane of travel) push(lane.kind, lane.dir, laneWidth, lane.turns);
+  for (const lane of travel) push(lane.kind, lane.dir, laneWidth, lane.turns, lane.change);
   if (cycle.right) push('cycle', edgeDir('right'), CYCLE_LANE_WIDTH_M, null);
   if (parking.right) push('parking', edgeDir('right'), PARKING_WIDTH_M, null);
 
@@ -352,6 +379,23 @@ export function crossSection(piece: RoadPiece, rules: PaintRules): CrossSection 
     recorded,
     widthRecorded,
   };
+}
+
+/**
+ * The line between two same-direction lanes: dashed, unless `change:lanes`
+ * records that one or both may not cross — solid where neither may, a solid
+ * line beside a dashed one where only one may (the solid on the side whose
+ * traffic may not cross). `a` is the drawn-left band.
+ */
+export function laneLine(a: Band, b: Band): Pick<Divider, 'style' | 'solidOn'> {
+  if (!a.change || !b.change) return { style: 'dashed' };
+  // Toward the other band: from the drawn left, that is the traveller's right
+  // when the lanes run with the way, their left when against it.
+  const aCrosses = a.dir === 1 ? a.change.right : a.change.left;
+  const bCrosses = b.dir === 1 ? b.change.left : b.change.right;
+  if (aCrosses && bCrosses) return { style: 'dashed' };
+  if (!aCrosses && !bCrosses) return { style: 'solid' };
+  return { style: 'mixed', solidOn: aCrosses ? 'right' : 'left' };
 }
 
 /** The line painted between each pair of bands, and at the edges. */
@@ -406,10 +450,10 @@ export function dividersFor(
       } else {
         out.push({
           offset,
-          style: 'dashed',
           colour: 'white',
           width: LINE_WIDTH_M.lanes,
           role: 'lanes',
+          ...laneLine(a, b),
         });
       }
     } else if (a.kind === 'cycle' || b.kind === 'cycle') {
@@ -457,7 +501,12 @@ export function sameSection(a: CrossSection, b: CrossSection): boolean {
   }
   return (
     a.dividers.length === b.dividers.length &&
-    a.dividers.every((d, i) => d.style === b.dividers[i].style && d.colour === b.dividers[i].colour)
+    a.dividers.every(
+      (d, i) =>
+        d.style === b.dividers[i].style &&
+        d.colour === b.dividers[i].colour &&
+        d.solidOn === b.dividers[i].solidOn,
+    )
   );
 }
 
@@ -474,6 +523,14 @@ export function reverseSection(section: CrossSection): CrossSection {
     bands: section.bands
       .map((b) => ({ ...b, dir: (b.dir === 1 ? -1 : 1) as 1 | -1, left: -b.right, right: -b.left }))
       .reverse(),
-    dividers: section.dividers.map((d) => ({ ...d, offset: -d.offset })).reverse(),
+    dividers: section.dividers
+      .map((d) => ({
+        ...d,
+        offset: -d.offset,
+        ...(d.solidOn
+          ? { solidOn: d.solidOn === 'left' ? ('right' as const) : ('left' as const) }
+          : {}),
+      }))
+      .reverse(),
   };
 }

@@ -6,6 +6,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   normaliseBusLanes,
+  normaliseChangeLanes,
   normaliseCrossingMarkings,
   normaliseTurnLanes,
   parseLengthM,
@@ -120,5 +121,25 @@ describe('a node', () => {
       direction: 'forward',
     });
     expect(streetNodeProperties({ highway: 'stop', direction: 'both' })).toEqual({});
+  });
+});
+
+describe('change:lanes', () => {
+  test('per lane: yes, no, not_right (left only), not_left (right only); junk refuses the tag', () => {
+    expect(normaliseChangeLanes('no|not_right|yes|not_left')).toBe('nlyr');
+    expect(normaliseChangeLanes('no|maybe')).toBeNull();
+    const refused: Refusals = {};
+    const props = streetProperties(
+      { 'change:lanes:forward': 'not_left|no', 'change:lanes:backward': 'nope' },
+      true,
+      refused,
+    );
+    expect(props.change_lanes_forward).toBe('rn');
+    expect(props.change_lanes_backward).toBeUndefined();
+    expect(refused).toEqual({ 'change:lanes:backward': 1 });
+  });
+
+  test('a cycleway keeps its width (a footway its own)', () => {
+    expect(streetProperties({ highway: 'cycleway', width: '2.5' }, false).width).toBe(2.5);
   });
 });

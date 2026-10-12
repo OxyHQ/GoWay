@@ -154,6 +154,8 @@ export interface StreetMeshStats {
   words: number;
   names: number;
   sidewalks: number;
+  /** Separate cycle tracks drawn (schema 3). */
+  cycleways: number;
   surfaceTriangles: number;
   markingTriangles: number;
 }
@@ -162,7 +164,16 @@ export interface StreetMesh {
   surfaces: PackedSurfaces;
   markings: PackedMarkings;
   stats: StreetMeshStats;
+  /**
+   * Where each painted name lies: points every few metres along its text, in
+   * tile metres — so the host can keep its own flat label for that street off
+   * exactly that stretch (`city3dLayer.web.ts` → the label blockers).
+   */
+  paintedNames: [number, number][];
 }
+
+/** Spacing of the {@link StreetMesh.paintedNames} points along a name, metres. */
+export const PAINTED_NAME_STEP_M = 6;
 
 const cross = (ax: number, ay: number, bx: number, by: number) => ax * by - ay * bx;
 
@@ -243,6 +254,7 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
     return false;
   };
 
+  const paintedNames: [number, number][] = [];
   const stats: StreetMeshStats = {
     links: 0,
     junctions: 0,
@@ -252,6 +264,7 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
     words: 0,
     names: 0,
     sidewalks: 0,
+    cycleways: 0,
     surfaceTriangles: 0,
     markingTriangles: 0,
   };
@@ -1008,31 +1021,38 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
         emitTintQuad([l[i], r[i], r[i + 1], l[i + 1]], colour);
       }
     }
-    // Dividers.
+    // Dividers: each is one or two painted lines, solid or dashed.
     for (const divider of section.dividers) {
       const colour = divider.colour === 'yellow' ? PAINT.yellow : PAINT.white;
-      const offsets =
+      const apart = (LINE_WIDTH_M.doubleGap + divider.width) / 2;
+      const lines: { offset: number; dashed: boolean }[] =
         divider.style === 'double'
           ? [
-              divider.offset + (LINE_WIDTH_M.doubleGap + divider.width) / 2,
-              divider.offset - (LINE_WIDTH_M.doubleGap + divider.width) / 2,
+              { offset: divider.offset + apart, dashed: false },
+              { offset: divider.offset - apart, dashed: false },
             ]
-          : [divider.offset];
+          : divider.style === 'mixed'
+            ? [
+                { offset: divider.offset + apart, dashed: divider.solidOn !== 'left' },
+                { offset: divider.offset - apart, dashed: divider.solidOn !== 'right' },
+              ]
+            : [{ offset: divider.offset, dashed: divider.style === 'dashed' }];
       for (const [a, b] of open(s0, s1)) {
-        const spans: [number, number][] = [];
-        if (divider.style === 'dashed') {
-          const [dash, gap] = STREET.dashM;
-          const period = dash + gap;
-          for (let k = Math.floor(a / period); k * period < b; k++) {
-            const x = Math.max(a, k * period);
-            const y = Math.min(b, k * period + dash);
-            if (y - x > 0.3) spans.push([x, y]);
-          }
-        } else spans.push([a, b]);
-        for (const [x, y] of spans) {
-          const centre = resample(slice(line, x, y), STREET.stepM);
-          for (const offset of offsets)
+        for (const { offset, dashed } of lines) {
+          const spans: [number, number][] = [];
+          if (dashed) {
+            const [dash, gap] = STREET.dashM;
+            const period = dash + gap;
+            for (let k = Math.floor(a / period); k * period < b; k++) {
+              const x = Math.max(a, k * period);
+              const y = Math.min(b, k * period + dash);
+              if (y - x > 0.3) spans.push([x, y]);
+            }
+          } else spans.push([a, b]);
+          for (const [x, y] of spans) {
+            const centre = resample(slice(line, x, y), STREET.stepM);
             emitLine(lateral(centre, offset), divider.width / 2, colour);
+          }
         }
       }
     }
@@ -1200,6 +1220,11 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
           if (!inTile(c[0], c[1])) continue;
           stats.names++;
           emitText(text, c, along, emM);
+          const steps = Math.max(1, Math.round(length / PAINTED_NAME_STEP_M));
+          for (let k = 0; k <= steps; k++) {
+            const d = -length / 2 + (length * k) / steps;
+            paintedNames.push([c[0] + along[0] * d, c[1] + along[1] * d]);
+          }
         }
       }
     }
@@ -1272,6 +1297,27 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
       emitFace(edge(r), 0, STREET.kerbM, 170);
       continue;
     }
+    if (piece.highway === 'cycleway') {
+      // A separate cycle track (schema 3): asphalt, tinted as a cycle lane is,
+      // its recorded width or a styling 2 m.
+      stats.cycleways++;
+      const halfWidth = Math.min(2.5, Math.max(0.6, (piece.width ?? 2) / 2));
+      emitStrip(
+        body,
+        body.map(() => halfWidth),
+        body.map(() => -halfWidth),
+        0,
+        SURFACE.asphalt,
+        LAYER.asphalt,
+      );
+      const l = lateral(body, halfWidth);
+      const r = lateral(body, -halfWidth);
+      for (let i = 0; i + 1 < body.length; i++) {
+        if (!inTile((body[i][0] + body[i + 1][0]) / 2, (body[i][1] + body[i + 1][1]) / 2)) continue;
+        emitTintQuad([l[i], r[i], r[i + 1], l[i + 1]], PAINT.cycle);
+      }
+      continue;
+    }
     const half =
       piece.highway === 'pedestrian' && piece.width ? piece.width / 2 : PATH_HALF[piece.highway];
     if (!half) continue;
@@ -1289,5 +1335,5 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
   const markings = packMarkings([tint, paint], [sdf]);
   stats.surfaceTriangles = surfaces.indices.length / 3;
   stats.markingTriangles = markings.indices.length / 3;
-  return { surfaces, markings, stats };
+  return { surfaces, markings, stats, paintedNames };
 }

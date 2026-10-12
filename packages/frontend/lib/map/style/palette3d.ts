@@ -88,29 +88,34 @@ const LIGHT_GROUND: CityGroundFields = {
   // already measured; kept, and with it labelWater's 4.53:1.
   water: LIGHT_PALETTE.water,
   waterway: LIGHT_PALETTE.waterway,
+  // The asphalt is mid-grey, not pale: the 3D streets paint their lanes,
+  // crossings and names in white on the primary fill, and white needs 2.2:1
+  // on it to read by day (`streetPalette.ts` → `MARKING_CONTRAST`; it was
+  // 1.60:1 at #c6c9cd). Every tier moved down by the same 0x24, so the ramp
+  // keeps its order.
   roads: {
     motorway: {
-      fill: '#a9adb4',
-      casing: '#9da1a8',
+      fill: '#858990',
+      casing: '#797d84',
       fillLowZoom: LIGHT_PALETTE.roads.motorway.fillLowZoom,
     },
-    motorwayLink: { fill: '#b2b5bb', casing: '#a6a9af' },
-    trunk: { fill: '#babdc2', casing: '#fbfbfa' },
-    trunkLink: { fill: '#c0c3c7', casing: '#fbfbfa' },
-    primary: { fill: '#c6c9cd', casing: '#fbfbfa' },
-    secondary: { fill: '#cbced2', casing: '#fbfbfa' },
-    tertiary: { fill: '#cfd1d5', casing: '#fbfbfa' },
-    local: { fill: '#d5d7da', casing: '#fbfbfa' },
-    service: { fill: '#dcdddf', casing: '#f7f7f6' },
+    motorwayLink: { fill: '#8e9197', casing: '#82858b' },
+    trunk: { fill: '#96999e', casing: '#fbfbfa' },
+    trunkLink: { fill: '#9c9fa3', casing: '#fbfbfa' },
+    primary: { fill: '#a2a5a9', casing: '#fbfbfa' },
+    secondary: { fill: '#a7aaae', casing: '#fbfbfa' },
+    tertiary: { fill: '#abadb1', casing: '#fbfbfa' },
+    local: { fill: '#b1b3b6', casing: '#fbfbfa' },
+    service: { fill: '#b8b9bb', casing: '#f7f7f6' },
     track: { fill: '#e3e0d8', casing: '#d6d3ca' },
     path: { fill: '#d8d4ca', casing: null },
     tunnel: { fill: '#e2e3e5', casing: '#d6d8db' },
   },
   // Type on the new ground, walked down its own lightness axis until it
   // clears 4.5:1 again (the method palette.ts uses for POI type): a street
-  // label on the palest asphalt (#dcdddf) and on primary (#c6c9cd); a park
+  // label on every street fill, the darkest (motorway) included; a park
   // label on the more saturated park.
-  labelRoad: '#515554', // from #636766 (3.45:1 on primary) -> 4.5:1 on every street fill
+  labelRoad: '#1f2322', // from #515554 after the street-detail contrast pass -> 4.52:1 on motorway
   labelPark: '#15652d', // from #166a2f (4.30:1 on #acdd8c) -> 4.5:1
   // The flat footprint under the meshes, seen between z14 and the buildings'
   // fade. Its outline keeps the 2D ramp: that one cross-fades across the very

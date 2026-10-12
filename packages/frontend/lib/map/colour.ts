@@ -44,3 +44,20 @@ export function hexToPacked(value: unknown): number | undefined {
     ? (parsed[0] << 16) | (parsed[1] << 8) | parsed[2]
     : undefined;
 }
+
+/** WCAG 2 relative luminance of `#rrggbb` (0 black … 1 white); `NaN` for anything else. */
+export function relativeLuminance(hex: string): number {
+  const parsed = parseHexColour(hex);
+  if (!parsed) return Number.NaN;
+  const [r, g, b] = parsed.map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** WCAG 2 contrast ratio of two `#rrggbb` colours, 1 … 21, whichever is lighter. */
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}

@@ -381,6 +381,8 @@ export function buildNetwork(input: NetworkInput): Network {
   const crossingPieceNodes = new Set<number>();
   for (const tile of input.tiles) {
     for (const piece of tile.data.pieces) {
+      // A separate cycle track (schema 3) is drawn, never simulated.
+      if (!piece.car && !piece.foot) continue;
       const first = piece.points[0];
       const last = piece.points[piece.points.length - 1];
       let a = nodeAt(first[0], first[1]);

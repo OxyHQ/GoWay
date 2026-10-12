@@ -23,6 +23,8 @@ import {
 import { streetLodPolicy } from '@/components/map/engine/cityStreets/streetRenderer';
 import { decodeGlyphs } from '@/scripts/mapgen/glyph-pbf';
 
+import { QUALITY_PRESETS } from '@/lib/map/quality/profile';
+
 import { camera } from './fixtures/mapCamera';
 
 const TILE = { x: 16580, y: 12238 };
@@ -266,7 +268,11 @@ describe('geometry helpers', () => {
 describe('levels of detail', () => {
   const at = (zoom: number, pitch = 0) => {
     const view = camera({ lng: 2.164, lat: 41.3925, zoom, pitch });
-    return selectLodTiles(view, 15, streetLodPolicy(41.3925)).filter((t) => t.lod < 2);
+    return selectLodTiles(
+      view,
+      15,
+      streetLodPolicy(41.3925, QUALITY_PRESETS.high.streets.maxTiles),
+    ).filter((t) => t.lod < 2);
   };
   test('full detail from z17, simplified at z16, none below', () => {
     expect(at(17.5).length).toBeGreaterThan(0);
@@ -281,5 +287,38 @@ describe('levels of detail', () => {
     const tiles = at(17.2, 60);
     expect(tiles.some((t) => t.lod === 0)).toBe(true);
     expect(tiles.some((t) => t.lod === 1)).toBe(true);
+  });
+});
+
+describe('schema 3: cycle tracks and painted-name spans', () => {
+  test('a separate cycleway is drawn as a tinted track', () => {
+    const data = crossroads({});
+    data.pieces.push(
+      road([at(300, 300), at(1500, 300)], {
+        highway: 'cycleway',
+        car: false,
+        foot: false,
+        cycle: true,
+        lanes: undefined,
+        width: 2.5,
+      }),
+    );
+    const m = mesh(data);
+    expect(m.stats.cycleways).toBe(1);
+    expect(mesh(crossroads({})).stats.cycleways).toBe(0);
+  });
+
+  test('every painted name reports where it lies, along its text, inside the tile', () => {
+    const m = mesh(crossroads({ name: 'Carrer de Mallorca' }), TILE, glyphAtlas());
+    expect(m.stats.names).toBeGreaterThan(0);
+    expect(m.paintedNames.length).toBeGreaterThan(m.stats.names);
+    const size = simFrame(TILE.x, TILE.y).metresPerUnit * 4096;
+    for (const [x, y] of m.paintedNames) {
+      expect(x).toBeGreaterThan(-5);
+      expect(x).toBeLessThan(size + 5);
+      // On the east–west street's axis (the name sits in a lane of it).
+      expect(Math.abs(y - -2048 * simFrame(TILE.x, TILE.y).metresPerUnit)).toBeLessThan(6);
+    }
+    expect(mesh(crossroads({})).paintedNames).toEqual([]);
   });
 });

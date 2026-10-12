@@ -178,6 +178,7 @@ holds are under [The CI gate](#the-ci-gate).
 | City life (cars + people) | 300 + 300 | 700 + 700 | 1,200 + 1,200 |
 | Live entities | 500 | 2,000 | 5,000 |
 | Landmarks held | 2 | 4 | 8 |
+| Street detail: tiles / triangles per frame (`MAP_STREETS.md`) | 6 / 400 k | 10 / 900 k | 16 / 2 M |
 | 3D terrain (textures: the 2D layers MapLibre caches per terrain tile) | on, textures 1× the terrain tile (1,024²) | on, 2× (2,048², MapLibre's own) | on, 2× |
 | Animation clock | 20 Hz, idle pause 20 s (battery: 15 Hz, 10 s) | 30 Hz, 45 s | 30 Hz, 120 s |
 
@@ -319,7 +320,8 @@ clock), `city` (draw, cache, tiles, LOD tolerance, upload, workers, trees — th
 city engine), `sky` (shadow map size, PCF taps — the sky), `life` (agents —
 city life), `live` (entities — the live layer: drawn at most, nearest the
 centre first, `liveLayer.web.ts` → `nearestLivePoints`), `landmarks` (models
-held — the adapter), `relief` (3D terrain and its textures' scale — the
+held — the adapter), `streets` (street-detail tiles and triangles drawn — the
+street renderer, farthest tiles simplified then dropped past the budget), `relief` (3D terrain and its textures' scale — the
 relief adapter, live).
 
 Who animates through the clock today: city life (`'cityLife'`, its worker
@@ -587,7 +589,8 @@ the real mesh workers. The renderer draws into a stand-in WebGL 2 context
 program linking, no pixels), instrumented by the same `glCounters.ts` the HUD
 uses. The engine runs on a virtual clock (`CityEngineOptions.now`). So the
 counts are deterministic — no GPU, no wall clock, no network — and the gate
-asserts, per scene (an orbit at 62°, a street at z17.6, a 75° skyline) and per
+asserts, per scene (an orbit at 62°, a street at z17.6, the same street with
+the street detail on — `MAP_STREETS.md` — and a 75° skyline) and per
 preset, the worst frame's draw calls and triangles, offscreen passes, shadow
 redraws along the path, bytes uploaded while loading, GPU memory held, and that
 no loading frame uploads more than the preset's budget; that a lower preset

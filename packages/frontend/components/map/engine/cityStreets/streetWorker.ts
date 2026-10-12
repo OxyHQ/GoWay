@@ -11,7 +11,7 @@ import { decodeGlyphs, rangeNameFor } from '@/scripts/mapgen/glyph-pbf';
 
 import { drivingSideAt } from '../roads/drivingSide';
 import { type DecodedRoadTile, decodeRoadTile } from '../roads/roadTiles';
-import { latFromMercatorY } from '../city3d/tileMath';
+import { latFromMercatorY, tileSizeMetres } from '../city3d/tileMath';
 import { paintRulesAt } from './lanes';
 import type { StreetWorkerRequest, StreetWorkerResponse } from './protocol';
 import { paintableScript, paintedName, meshStreetTile } from './streetMesher';
@@ -80,6 +80,15 @@ function loadRange(template: string, fontstack: string, range: string): Promise<
   return pending;
 }
 
+/** A z15 tile's local metres (x east, y north from its north-west corner) → `[lng, lat]`. */
+function toLngLat(x: number, y: number, mx: number, my: number): [number, number] {
+  const n = 2 ** 15;
+  const size = tileSizeMetres({ z: 15, x, y });
+  const fx = x + mx / size;
+  const fy = y - my / size;
+  return [(fx / n) * 360 - 180, latFromMercatorY(fy / n)];
+}
+
 async function mesh(request: Extract<StreetWorkerRequest, { type: 'mesh' }>): Promise<void> {
   const controller = new AbortController();
   inflight.set(request.id, controller);
@@ -100,6 +109,7 @@ async function mesh(request: Extract<StreetWorkerRequest, { type: 'mesh' }>): Pr
         patches: [],
         epoch,
         meshMs: 0,
+        paintedNames: [],
       });
       return;
     }
@@ -167,6 +177,7 @@ async function mesh(request: Extract<StreetWorkerRequest, { type: 'mesh' }>): Pr
         patches,
         epoch,
         meshMs,
+        paintedNames: result.paintedNames.map(([mx, my]) => toLngLat(x, y, mx, my)),
       },
       transfer,
     );

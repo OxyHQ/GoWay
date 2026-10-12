@@ -32,6 +32,7 @@ import type { PackedMarkings, PackedSurfaces } from './meshBuffers';
 import type { StreetWorkerRequest, StreetWorkerResponse } from './protocol';
 import { ATLAS_SIZE } from './streetAtlas';
 import type { StreetMeshStats } from './streetMesher';
+import type { QualityProfile } from '@/lib/map/quality/profile';
 import { markingShaders, surfaceShaders } from './streetShaders';
 
 /** Streets are drawn from this zoom; they fade in over the next quarter zoom. */
@@ -40,12 +41,14 @@ const FADE_ZOOMS = 0.25;
 /** Where the street is at this zoom on screen or closer, full detail. */
 export const FULL_DETAIL_ZOOM = 17;
 
-/** Budgets (measured against in `docs/MAP_STREETS.md` → Budgets). */
+/**
+ * Fixed working limits (`docs/MAP_STREETS.md` → Budgets). What a frame may
+ * DRAW — tiles and triangles — is the quality profile's `streets`
+ * (`lib/map/quality/profile.ts`), never a number of this module's.
+ */
 export const STREET_BUDGET = {
-  /** Tiles drawn at once (two draw calls each). */
-  maxTiles: 16,
-  /** Meshes kept, drawn or not. */
-  maxCached: 32,
+  /** Meshes kept, drawn or not, per tile the profile lets us draw. */
+  cachedPerDrawn: 2,
   /** Requests in flight. */
   maxInFlight: 3,
   /** Ground grids sampled per frame (each ~1,000 terrain reads). */
@@ -73,7 +76,15 @@ export interface CityStreetsOptions {
   glyphTemplate: string | null;
   fontstack: string;
   palette: StreetPaletteInput;
+  /** The quality profile's `streets`: tiles and triangles a frame may draw. */
+  quality: QualityProfile['streets'];
   requestRepaint: () => void;
+  /**
+   * Where painted names are on screen now: `[lng, lat]` points along each,
+   * from the tiles drawn at full detail. Called when that set changes; the
+   * host keeps its flat road labels off those stretches.
+   */
+  onPaintedNames?: (points: readonly [number, number][]) => void;
   onStats?: (stats: CityStreetsStats) => void;
 }
 
@@ -106,6 +117,7 @@ interface Entry {
   simpleSurfaces: number;
   simpleMarkings: number;
   stats: StreetMeshStats | null;
+  paintedNames: [number, number][];
   ground: THREE.DataTexture | null;
   groundVersion: number;
   uniforms: {
@@ -160,6 +172,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     return shaders;
   };
 
+  const maxCached = Math.max(4, options.quality.maxTiles * STREET_BUDGET.cachedPerDrawn);
+  let namedKey = '';
   const entries = new Map<string, Entry>();
   const byId = new Map<number, Entry>();
   let nextId = 1;
@@ -275,6 +289,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       meshCount++;
     }
     entry.stats = reply.stats;
+    entry.paintedNames = reply.paintedNames;
     if (!reply.surfaces && !reply.markings) {
       entry.state = 'empty';
     } else {
@@ -311,12 +326,12 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
   };
 
   const evict = (wanted: ReadonlySet<string>) => {
-    if (entries.size <= STREET_BUDGET.maxCached) return;
+    if (entries.size <= maxCached) return;
     const idle = [...entries.values()]
       .filter((e) => !wanted.has(e.key))
       .sort((a, b) => a.lastUsed - b.lastUsed);
     for (const entry of idle) {
-      if (entries.size <= STREET_BUDGET.maxCached) break;
+      if (entries.size <= maxCached) break;
       if (entry.state === 'pending') pool.cancel(entry.id, { type: 'cancel', id: entry.id });
       byId.delete(entry.id);
       disposeMeshes(entry);
@@ -341,7 +356,13 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       }
       const fade = Math.max(0, Math.min(1, (view.zoom - STREETS_MIN_ZOOM) / FADE_ZOOMS));
       shared.uFade.value = fade * (opacity > 0 ? 1 : 0);
-      if (shared.uFade.value <= 0) return;
+      if (shared.uFade.value <= 0) {
+        if (namedKey !== '') {
+          namedKey = '';
+          options.onPaintedNames?.([]);
+        }
+        return;
+      }
 
       const selected = select(view);
       const wanted = new Set(selected.map((t) => tileKey(t)));
@@ -363,6 +384,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
             simpleSurfaces: 0,
             simpleMarkings: 0,
             stats: null,
+            paintedNames: [],
             ground: null,
             groundVersion: -1,
             uniforms: {
@@ -403,6 +425,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       let drawCalls = 0;
       let tilesDrawn = 0;
       let tilesFull = 0;
+      const named: Entry[] = [];
       for (const tile of selected) {
         const entry = entries.get(tileKey(tile));
         if (entry?.state !== 'ready') continue;
@@ -432,7 +455,16 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
         } else {
           entry.uniforms.uGrounded.value = 0;
         }
-        const full = tile.lod === 0;
+        // The profile's triangles: nearest first, a tile that would pass them
+        // draws its simplified level instead, and past that not at all.
+        const cost = (mesh: THREE.Mesh | null, simple: number, all: boolean) =>
+          mesh ? (all ? (mesh.geometry.index?.count ?? 0) : simple) / 3 : 0;
+        const costOf = (all: boolean) =>
+          cost(entry.surfaces, entry.simpleSurfaces, all) +
+          cost(entry.markings, entry.simpleMarkings, all);
+        let full = tile.lod === 0;
+        if (full && triangles + costOf(true) > options.quality.drawTriangles) full = false;
+        if (!full && triangles + costOf(false) > options.quality.drawTriangles) continue;
         const effective = view.zoom - Math.log2(Math.max(tile.r, 1e-6));
         entry.uniforms.uDetail.value = Math.max(
           0,
@@ -456,6 +488,15 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
         }
         if (entry.stats)
           for (const k of Object.keys(drawn) as (keyof typeof drawn)[]) drawn[k] += entry.stats[k];
+        if (full && entry.uniforms.uDetail.value >= 0.5 && entry.paintedNames.length > 0) {
+          named.push(entry);
+        }
+      }
+      // The painted names on screen, reported only when the set changes.
+      const key = named.map((e) => e.key).join(',');
+      if (key !== namedKey) {
+        namedKey = key;
+        options.onPaintedNames?.(named.flatMap((e) => e.paintedNames));
       }
       // Device pixels per metre at the centre: 512-px tiles, mercator's 1/cos(lat).
       const ratio = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1;
@@ -506,6 +547,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     dispose() {
       if (disposed) return;
       disposed = true;
+      if (namedKey !== '') options.onPaintedNames?.([]);
       pool.terminate();
       for (const entry of entries.values()) disposeMeshes(entry);
       entries.clear();
@@ -524,7 +566,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     const tiles = selectLodTiles(
       { ...view, terrain },
       15,
-      streetLodPolicy(view.center.lat),
+      streetLodPolicy(view.center.lat, options.quality.maxTiles),
       previousLods,
     ).filter((t) => t.lod < 2);
     previousLods.clear();
@@ -542,10 +584,10 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
  * (`lodThresholds`: a level starts at `r = error / metresPerPixel`). No floors:
  * at z16.5 nothing is at full detail, as the levels say. Exported for the tests.
  */
-export function streetLodPolicy(lat: number): LodPolicy {
+export function streetLodPolicy(lat: number, maxTiles: number): LodPolicy {
   return {
-    maxFullTiles: STREET_BUDGET.maxTiles,
-    maxTiles: STREET_BUDGET.maxTiles,
+    maxFullTiles: maxTiles,
+    maxTiles,
     levelErrorM: [metresPerPixel(FULL_DETAIL_ZOOM, lat), metresPerPixel(STREETS_MIN_ZOOM, lat)],
     pixelTolerance: 1,
     minFullWithin: 0,

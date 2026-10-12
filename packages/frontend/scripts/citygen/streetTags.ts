@@ -52,6 +52,9 @@ export const STREET_WAY_KEYS = [
   'bridge',
   'crossing',
   'crossing:markings',
+  'change:lanes',
+  'change:lanes:forward',
+  'change:lanes:backward',
 ] as const;
 
 /** The street properties of one way; absent = OSM does not record it (readably). */
@@ -74,6 +77,9 @@ export interface StreetProperties {
   bridge?: boolean;
   crossing?: string;
   crossing_markings?: string;
+  change_lanes?: string;
+  change_lanes_forward?: string;
+  change_lanes_backward?: string;
 }
 
 /** What could not be read, by tag key (the receipt's `refused`). */
@@ -191,6 +197,26 @@ const PARKING_ON_CARRIAGEWAY = new Set([
   'lane',
 ]);
 
+const CHANGE: Record<string, string> = { yes: 'y', no: 'n', not_right: 'l', not_left: 'r' };
+
+/**
+ * `change:lanes` → one character per lane (`lib/map/cityRoads.ts` →
+ * `STREET_PROPS.changeLanes`), or `null` when any lane's value is unknown —
+ * one wrong lane would shift every line after it.
+ */
+export function normaliseChangeLanes(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  const lanes = value.split('|');
+  if (lanes.length < 1 || lanes.length > 12) return null;
+  let out = '';
+  for (const lane of lanes) {
+    const code = CHANGE[lane.trim().toLowerCase()];
+    if (!code) return null;
+    out += code;
+  }
+  return out;
+}
+
 /** `crossing:markings` values: the documented set, plus `yes` and `no`. */
 export const CROSSING_MARKINGS = new Set([
   'yes',
@@ -237,6 +263,13 @@ export function streetProperties(tags: Tags, car: boolean, refused?: Refusals): 
     else refuse(refused, 'name');
   }
   if (tags.bridge !== undefined && tags.bridge !== 'no') props.bridge = true;
+  // A width on any way (a carriageway's is checked against its lanes by the
+  // renderer; a cycleway's or a footway's is its own).
+  if (tags.width !== undefined) {
+    const width = parseLengthM(tags.width);
+    if (width !== undefined && width >= 0.5 && width <= 60) props.width = width;
+    else refuse(refused, 'width');
+  }
 
   if (!car) {
     if (tags.footway === 'crossing') {
@@ -250,12 +283,6 @@ export function streetProperties(tags: Tags, car: boolean, refused?: Refusals): 
     return props;
   }
 
-  if (tags.width !== undefined) {
-    const width = parseLengthM(tags.width);
-    if (width !== undefined && width >= 2 && width <= 60) props.width = width;
-    else refuse(refused, 'width');
-  }
-
   for (const [key, prop] of [
     ['turn:lanes', 'turn_lanes'],
     ['turn:lanes:forward', 'turn_lanes_forward'],
@@ -264,6 +291,17 @@ export function streetProperties(tags: Tags, car: boolean, refused?: Refusals): 
     if (tags[key] === undefined) continue;
     const turns = normaliseTurnLanes(tags[key]);
     if (turns) props[prop] = turns;
+    else refuse(refused, key);
+  }
+
+  for (const [key, prop] of [
+    ['change:lanes', 'change_lanes'],
+    ['change:lanes:forward', 'change_lanes_forward'],
+    ['change:lanes:backward', 'change_lanes_backward'],
+  ] as const) {
+    if (tags[key] === undefined) continue;
+    const change = normaliseChangeLanes(tags[key]);
+    if (change) props[prop] = change;
     else refuse(refused, key);
   }
 

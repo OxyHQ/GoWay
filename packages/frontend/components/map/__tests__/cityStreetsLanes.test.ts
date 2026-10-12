@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   type RoadPiece,
   parseBusLanes,
+  parseChangeLanes,
   parseTurnLanes,
 } from '@/components/map/engine/roads/roadTiles';
 import {
@@ -211,5 +212,44 @@ describe('sections compare and reverse', () => {
     expect(r.bands[0].kind).toBe('parking');
     expect(sameSection(reverseSection(r), s)).toBe(true);
     expect(sameSection(r, s)).toBe(false);
+  });
+});
+
+describe('change:lanes', () => {
+  const lines = (change: string, oneway: 1 | -1 = 1) =>
+    crossSection(
+      piece({ oneway, lanes: 3, changeLanes: parseChangeLanes(change) }),
+      RHT,
+    ).dividers.map((d) => (d.style === 'mixed' ? `mixed:${d.solidOn}` : d.style));
+
+  test('dashed where both may cross, solid where neither may', () => {
+    expect(lines('yyy')).toEqual(['dashed', 'dashed']);
+    expect(lines('nnn')).toEqual(['solid', 'solid']);
+  });
+
+  test('a solid line beside a dashed one where only one side may cross, on that side', () => {
+    // Lane 1 may go left only, lane 2 may go either way: the solid line is on lane 1's side.
+    expect(lines('lyy')).toEqual(['mixed:left', 'dashed']);
+    // Against the drawn direction the traveller's left is the drawn right.
+    expect(lines('lyy', -1)).toEqual(['dashed', 'mixed:right']);
+  });
+
+  test('unrecorded or junk: dashed, as before', () => {
+    expect(lines('')).toEqual(['dashed', 'dashed']);
+    expect(parseChangeLanes('y|n')).toBeUndefined();
+    expect(parseChangeLanes('yx')).toBeUndefined();
+    // A count that does not match the lanes draws the default.
+    expect(lines('nn')).toEqual(['dashed', 'dashed']);
+  });
+
+  test('reversing a section keeps the solid line on its lane', () => {
+    const s = crossSection(
+      piece({ oneway: 1, lanes: 2, changeLanes: parseChangeLanes('ly') }),
+      RHT,
+    );
+    const r = reverseSection(s);
+    expect(s.dividers[0].solidOn).toBe('left');
+    expect(r.dividers[0].solidOn).toBe('right');
+    expect(sameSection(reverseSection(r), s)).toBe(true);
   });
 });

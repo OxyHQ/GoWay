@@ -112,6 +112,7 @@ export type RoadProperties = StreetProperties & {
   highway: RoadClass;
   car: boolean;
   foot: boolean;
+  cycle?: boolean;
   oneway?: 1 | -1;
   lanes?: number;
   lanes_forward?: number;
@@ -183,9 +184,13 @@ export function roadProperties(tags: Tags): RoadProperties | null {
   let foot = FOOT_CLASSES.has(highway) || (highway === 'cycleway' && YES.has(tags.foot ?? ''));
   if (foot && tags.foot !== undefined && NO.has(tags.foot)) foot = false;
   if (foot && access === 'no' && !(tags.foot && YES.has(tags.foot))) foot = false;
-  if (!car && !foot) return null;
+  // A separate cycle track is kept for the street detail even where it is
+  // neither a car's nor a person's (`ROAD_PROPS.cycle`).
+  const cycle = highway === 'cycleway';
+  if (!car && !foot && !cycle) return null;
 
   const props: RoadProperties = { highway: highway as RoadClass, car, foot };
+  if (cycle) props.cycle = true;
   const roundabout = tags.junction === 'roundabout' || tags.junction === 'circular';
   if (roundabout) props.roundabout = true;
   if (car) {
@@ -282,6 +287,8 @@ export interface RoadCoverage {
     busLanes: number;
     cycleLanes: number;
     parking: number;
+    changeLanes: number;
+    cycleways: number;
     refused: Refusals;
   };
 }
@@ -588,7 +595,17 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
     restrictions: 0,
     restrictionsSkipped,
     missingNodes: 0,
-    street: { named: 0, width: 0, turnLanes: 0, busLanes: 0, cycleLanes: 0, parking: 0, refused },
+    street: {
+      named: 0,
+      width: 0,
+      turnLanes: 0,
+      busLanes: 0,
+      cycleLanes: 0,
+      parking: 0,
+      changeLanes: 0,
+      cycleways: 0,
+      refused,
+    },
   };
 
   const indexOf = (ref: number): number => {
@@ -668,6 +685,7 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
     if (props.footway === 'sidewalk') coverage.sidewalkFootways++;
     if (props.footway === 'crossing') coverage.crossingFootways++;
     if (props.tunnel) coverage.tunnels++;
+    if (props.cycle) coverage.street.cycleways++;
     if (props.car) {
       const street = coverage.street;
       if (props.name) street.named++;
@@ -688,6 +706,9 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
       }
       if (props.cycle_lane) street.cycleLanes++;
       if (props.parking) street.parking++;
+      if (props.change_lanes || props.change_lanes_forward || props.change_lanes_backward) {
+        street.changeLanes++;
+      }
     }
   }
 
