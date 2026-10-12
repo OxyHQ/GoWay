@@ -122,6 +122,8 @@ export function citySourceFor(
   cityTiles: boolean,
   origin: string,
   coverage: readonly CityCoverageArea[] = [],
+  /** Whether a road archive is published: the trees read it for their setting. */
+  roadsPublished = false,
 ) {
   const base = {
     tileUrlTemplate: basemap.template,
@@ -136,6 +138,7 @@ export function citySourceFor(
       tileZoom: CITY_TILE_ZOOM,
       sourceLayer: CITY_TILE_LAYER,
       treeLayer: CITY_TREE_LAYER,
+      ...(roadsPublished ? { roadTileUrlTemplate: `${origin}${CITY_ROAD_TILE_PATH}` } : {}),
       coverage,
     },
   };
@@ -554,6 +557,7 @@ export async function attachCity3d(
     cityTiles,
     origin,
     coverage,
+    roadsPublished,
   );
 
   const cartography = CARTOGRAPHY_PALETTES[options.appearance];

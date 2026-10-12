@@ -98,6 +98,45 @@ describe('createMeshService', () => {
     expect(h.fetched).toHaveLength(1);
   });
 
+  test('the tiles its trees are read against are asked for beside the tile, once each', async () => {
+    const order: string[] = [];
+    const h = host(async (url) => {
+      order.push(url);
+      return url === URL_OK ? response(200, tileBytes) : response(404);
+    });
+    const handle = createMeshService(h.value);
+    const next = h.replied();
+    handle({
+      ...(request(1) as Extract<MeshWorkerRequest, { type: 'mesh' }>),
+      trees: {
+        landcover: 'landcover',
+        landuse: 'landuse',
+        water: 'water',
+        transportation: 'transportation',
+        building: 'building',
+      },
+      treeContext: {
+        url: 'https://tiles.test/omt.pbf',
+        tile: { z: 14, x: TILE.x >> 1, y: TILE.y >> 1 },
+        roadsUrl: 'https://tiles.test/roads.pbf',
+        mappedLayer: 'tree',
+      },
+    });
+    await next;
+    // Before the tile's own bytes were in: not after it was meshed.
+    expect(order).toEqual(['https://tiles.test/omt.pbf', 'https://tiles.test/roads.pbf', URL_OK]);
+    const reply = h.posted[0].message;
+    if (reply.type !== 'mesh') throw new Error(reply.type);
+    expect(reply.trees?.count).toBeGreaterThan(0);
+    // No road tile and no basemap here (404s): every tree is set, none moved.
+    expect(reply.treeSettings).toEqual({
+      street: 0,
+      nature: reply.trees?.count ?? -1,
+      nudged: 0,
+      offCarriageway: 0,
+    });
+  });
+
   test('a tile the archive does not have is empty ground; a failed one is an error', async () => {
     const h = host(async (url) => response(url.endsWith('404') ? 404 : 500));
     const handle = createMeshService(h.value);

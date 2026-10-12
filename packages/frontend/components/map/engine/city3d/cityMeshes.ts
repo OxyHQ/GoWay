@@ -263,6 +263,14 @@ export function createTileEntry(
           4,
         ),
       );
+      // Crown base and diameter, decimetres (`trees.ts` → `treeForm`).
+      geometry.setAttribute(
+        'aForm',
+        new THREE.InstancedBufferAttribute(
+          instances.form.subarray(from * 2, (from + count) * 2),
+          2,
+        ),
+      );
       geometry.instanceCount = count;
       const trees = hide(new THREE.Mesh(geometry, material));
       // Which instances it draws (its terrain lifts, `applyGround`), as which
@@ -282,7 +290,7 @@ export function createTileEntry(
       entry.trees.push(trees);
       entry.treeTriangles += count * shape.triangles;
     }
-    entry.bytes += instances.data.byteLength;
+    entry.bytes += instances.data.byteLength + instances.form.byteLength;
     entry.treeCount = instances.count;
   }
   return entry;

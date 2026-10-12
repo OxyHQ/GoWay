@@ -1,5 +1,6 @@
 /**
- * A vector tile's bytes → what `trees.ts` places trees from.
+ * A vector tile's bytes → what `trees.ts` places trees from, and what
+ * `treeContext.ts` reads a mapped tree's setting from.
  *
  * Same decoders and the same rule as `decode.ts`: the source-layer names are
  * OpenMapTiles' and are passed in by the caller (from
@@ -9,12 +10,16 @@
 import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 
+import { CITY_TREE_PROPS } from '@/lib/map/cityTiles';
+
 import type { Point2 } from './mesher';
 import {
   type AreaRings,
   type AreaRole,
+  isUrbanLanduse,
   landcoverRole,
   landuseRole,
+  type MappedTreeInput,
   pathHalfWidthM,
   type TreeSources,
 } from './trees';
@@ -36,37 +41,41 @@ type Geometry = ReturnType<ReturnType<VectorTile['layers'][string]['feature']>['
 const toRings = (geometry: Geometry): AreaRings =>
   geometry.map((ring) => ring.map((p): Point2 => [p.x, p.y]));
 
-/**
- * Decode the tree sources of a tile. `null` when the tile has no landcover or
- * landuse that could hold a tree (most tiles: sea, fields, dense centres) —
- * checked before anything else is decoded, so those tiles cost one layer scan.
- */
-export function decodeTreeSources(
-  bytes: ArrayBuffer | Uint8Array,
-  layers: TreeSourceLayers,
-): TreeSources | null {
-  const tile = new VectorTile(
-    new PbfReader(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)),
-  );
-  const sources: TreeSources = {
+/** A tile's areas by what they mean for trees, in its tile units. */
+export interface TreeAreas {
+  extent: number;
+  wood: AreaRings[];
+  park: AreaRings[];
+  lawn: AreaRings[];
+  blocked: AreaRings[];
+  /** Urban landuse (`isUrbanLanduse`): read by the setting, not the fill. */
+  urban: AreaRings[];
+}
+
+/** Parse a tile once, for {@link treeAreasOf} and {@link treeSourcesOf}. */
+export function openTile(bytes: ArrayBuffer | Uint8Array): VectorTile {
+  return new VectorTile(new PbfReader(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)));
+}
+
+/** The landcover and landuse areas of a parsed tile, by role. */
+export function treeAreasOf(tile: VectorTile, layers: TreeSourceLayers): TreeAreas {
+  const areas: TreeAreas = {
     extent: 4096,
     wood: [],
     park: [],
     lawn: [],
     blocked: [],
-    paths: [],
+    urban: [],
   };
   const add = (role: AreaRole, rings: AreaRings) => {
-    if (role === 'wood') sources.wood.push(rings);
-    else if (role === 'park') sources.park.push(rings);
-    else if (role === 'lawn') sources.lawn.push(rings);
-    else if (role === 'blocked') sources.blocked.push(rings);
+    if (role === 'wood') areas.wood.push(rings);
+    else if (role === 'park') areas.park.push(rings);
+    else if (role === 'lawn') areas.lawn.push(rings);
+    else if (role === 'blocked') areas.blocked.push(rings);
   };
-
   const landcover = tile.layers[layers.landcover];
-  const landuse = tile.layers[layers.landuse];
   if (landcover) {
-    sources.extent = landcover.extent;
+    areas.extent = landcover.extent;
     for (let i = 0; i < landcover.length; i++) {
       const feature = landcover.feature(i);
       if (feature.type !== POLYGON) continue;
@@ -74,16 +83,39 @@ export function decodeTreeSources(
       add(landcoverRole(cls, subclass), toRings(feature.loadGeometry()));
     }
   }
+  const landuse = tile.layers[layers.landuse];
   if (landuse) {
-    sources.extent = landuse.extent;
+    areas.extent = landuse.extent;
     for (let i = 0; i < landuse.length; i++) {
       const feature = landuse.feature(i);
       if (feature.type !== POLYGON) continue;
-      add(landuseRole(feature.properties.class), toRings(feature.loadGeometry()));
+      const cls = feature.properties.class;
+      if (isUrbanLanduse(cls)) areas.urban.push(toRings(feature.loadGeometry()));
+      else add(landuseRole(cls), toRings(feature.loadGeometry()));
     }
   }
-  if (sources.wood.length === 0 && sources.park.length === 0) return null;
+  return areas;
+}
 
+/**
+ * The fill's sources of a parsed tile whose areas are `areas`. `null` when it
+ * has no wood or park (most tiles: sea, fields, dense centres) — decided
+ * before anything else is decoded, so those tiles cost the area scan alone.
+ */
+export function treeSourcesOf(
+  tile: VectorTile,
+  layers: TreeSourceLayers,
+  areas: TreeAreas,
+): TreeSources | null {
+  if (areas.wood.length === 0 && areas.park.length === 0) return null;
+  const sources: TreeSources = {
+    extent: areas.extent,
+    wood: areas.wood,
+    park: areas.park,
+    lawn: areas.lawn,
+    blocked: [...areas.blocked],
+    paths: [],
+  };
   const water = tile.layers[layers.water];
   if (water) {
     for (let i = 0; i < water.length; i++) {
@@ -118,28 +150,34 @@ export function decodeTreeSources(
   return sources;
 }
 
-/** One tree OpenStreetMap records, from a GoWay city tile's `tree` layer. */
-export interface MappedTree {
-  id: number;
-  /** Tile units, y down. */
-  x: number;
-  y: number;
-  crown?: string;
-  heightM?: number;
+/**
+ * Decode the fill's sources of a tile. `null` when the tile has no landcover
+ * or landuse that could hold a tree.
+ */
+export function decodeTreeSources(
+  bytes: ArrayBuffer | Uint8Array,
+  layers: TreeSourceLayers,
+): TreeSources | null {
+  const tile = openTile(bytes);
+  return treeSourcesOf(tile, layers, treeAreasOf(tile, layers));
 }
+
+/** One tree OpenStreetMap records, from a GoWay city tile's `tree` layer. */
+export type MappedTree = MappedTreeInput;
+
+const positive = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 
 /**
  * The `natural=tree` points of a GoWay city tile (`lib/map/cityTiles.ts` →
- * `CITY_TREE_LAYER`, passed in as `layer`). Empty when the tile has none.
+ * `CITY_TREE_LAYER`, passed in as `layer`), with what each records
+ * (`CITY_TREE_PROPS`). Empty when the tile has none.
  */
 export function decodeMappedTrees(
   bytes: ArrayBuffer | Uint8Array,
   layer: string,
 ): { extent: number; trees: MappedTree[] } {
-  const tile = new VectorTile(
-    new PbfReader(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)),
-  );
-  const source = tile.layers[layer];
+  const source = openTile(bytes).layers[layer];
   if (!source) return { extent: 4096, trees: [] };
   const trees: MappedTree[] = [];
   for (let i = 0; i < source.length; i++) {
@@ -147,14 +185,21 @@ export function decodeMappedTrees(
     if (feature.type !== 1) continue;
     const point = feature.loadGeometry()[0]?.[0];
     if (!point) continue;
-    const { crown, height } = feature.properties;
-    trees.push({
+    const p = feature.properties;
+    const crown = p[CITY_TREE_PROPS.crown];
+    const tree: MappedTree = {
       id: Number(feature.id ?? i),
       x: point.x,
       y: point.y,
       crown: typeof crown === 'string' ? crown : undefined,
-      heightM: typeof height === 'number' && height > 0 ? height : undefined,
-    });
+      heightM: positive(p[CITY_TREE_PROPS.height]),
+    };
+    const crownDiameterM = positive(p[CITY_TREE_PROPS.crownDiameter]);
+    if (crownDiameterM !== undefined) tree.crownDiameterM = crownDiameterM;
+    const circumferenceM = positive(p[CITY_TREE_PROPS.circumference]);
+    if (circumferenceM !== undefined) tree.circumferenceM = circumferenceM;
+    if (p[CITY_TREE_PROPS.street] === true) tree.street = true;
+    trees.push(tree);
   }
   return { extent: source.extent, trees };
 }
