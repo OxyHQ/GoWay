@@ -333,11 +333,19 @@ The first regions were built by hand on 2026-10-12 with `map:city-region` on
 extracts of 2026-10-11, uploaded with `wrangler r2 object put --remote`, and
 each object downloaded back and hashed against the local file:
 
-| Region | Official data | `city/20261012-1/…` | `city-roads/20261012-1/…` | Owned z15 tiles |
-| --- | --- | ---: | ---: | ---: |
-| `europe/spain/cataluna` | Catastro, 17 Barcelona-area municipalities (127,744 buildings drawn; 47,260 OSM buildings that had no height given one) | 49.9 MB | 60.5 MB | 68,447 |
-| `europe/spain/madrid` | Catastro, Madrid (111,508 drawn; 94,202 given a height) | 31.6 MB | 17.6 MB | 9,343 |
-| `north-america/us/new-york` | NYC 3D Building Model, delivery areas 10, 12, 13 — Manhattan (92,332 drawn) | 113.6 MB | 83.9 MB | 178,710 |
+| Region | Official data | Live stamp | `city/<stamp>/…` | `city-roads/<stamp>/…` | Owned z15 tiles |
+| --- | --- | --- | ---: | ---: | ---: |
+| `europe/spain/cataluna` | Catastro, 17 Barcelona-area municipalities (127,741 buildings drawn; 47,255 OSM buildings that had no height given one; 12 parts' implausible storey counts dropped, Pla d'en Coll's 111 among them) | `20261012-2` | 49.9 MB | 60.5 MB | 68,447 |
+| `europe/spain/madrid` | Catastro, Madrid (111,508 drawn; 94,202 given a height) | `20261012-2` | 31.6 MB | 17.6 MB | 9,343 |
+| `north-america/us/new-york` | NYC 3D Building Model, delivery areas 10, 12, 13 — Manhattan (92,332 drawn) | `20261012-3` | 113.6 MB | 83.9 MB | 178,710 |
+
+All three were rebuilt under #184's plausibility rules (stamps `20261012-2`
+and `20261012-3`); the `20261012-1` keys stay in the bucket for rollback.
+New York's rebuild, from the same extract (replication 4939, 2026-10-11), is
+**byte-identical** to `20261012-1` (SHA-256 `2f87fc86…`): 4,507,743 buildings,
+182,992 model surfaces and 137,405 trees in both, no height changed, the
+tallest still One World Trade Center's spire (541 m, from OSM) and the Empire
+State Building's model (443.7 m) — the rules find nothing to drop there.
 
 Peaks: Catalonia 12.9 GB, Madrid 8.7 GB, New York 23.5 GB (buildings with
 official data) — the measurement behind "Official data" above, and why the
@@ -355,7 +363,8 @@ manifest `city/manifests/20261012-r8.json`): 14.83 GB of building archives and
 workflow on free runners in five dispatches (stamps `20261012-r2`, `-r4` …
 `-r8`, ~3 h 45 min end to end), uploaded with the org's Cloudflare token, every
 object read back and hashed; Catalonia and Madrid with the Catastro and New
-York with NYC's model by hand (`20261012-2`, `20261012-1`). What the run taught
+York with NYC's model by hand (`20261012-2`, `20261012-3`; manifest
+`city/manifests/20261012-3.json`). What the run taught
 the pipeline, each now handled: a roadless region (Clipperton) failed its
 batch → regions fail alone; Geofabrik served empty `.poly` files mid-run →
 re-fetched; the Cloudflare API answered large puts with 524s → retried;
