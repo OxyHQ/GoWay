@@ -117,10 +117,10 @@ binding = "ASSETS"
 #
 # `/map/city/*` and `/map/city-roads/*` are GoWay's 3D city tiles and their
 # road graph (`worker/city.js`, `docs/MAP_CITY_PLANET.md`): no asset either.
-# Listed now so that the SPA fallback never answers a tile path with
-# `index.html` (a 200 the client would try to decode); until
-# `MAP_CITY_MANIFEST` below is set the Worker answers every one of them 404
-# and the coverage document covers nothing, so nothing a user sees changes.
+# Listed so that the SPA fallback never answers a tile path with
+# `index.html` (a 200 the client would try to decode). With
+# `MAP_CITY_MANIFEST` below unset the Worker answers every one of them 404
+# and the coverage document covers nothing.
 run_worker_first = [
   "/map/tiles/*",
   "/map/fonts/*",
@@ -203,17 +203,17 @@ MAP_TERRAIN_UPSTREAM = "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
 
 # The city tiles' MANIFEST: its object key in `MAP_TILES`. The manifest names
 # one dated archive per region (buildings and roads) and which tiles each
-# owns; `.github/workflows/build-city-tiles.yml` writes it after uploading
-# the archives it names. Unset, every `/map/city/*` tile is a 404 and
-# `/map/city/coverage.json` covers nothing, which is production today.
+# owns (`worker/city.js`, `docs/MAP_CITY_PLANET.md`). Written after the
+# archives it names are uploaded — by `.github/workflows/build-city-tiles.yml`,
+# or by hand for the first regions (Catalonia, Madrid and New York State,
+# stamp 20261012-1, with the Catastro and NYC 3D model merged).
 #
-# TO TURN IT ON (the owner's call — `docs/MAP_CITY_PLANET.md` → "Approval"):
-# run the workflow with `publish: true`, check `city/manifest.json` and a
-# region's archive and receipt in the bucket, uncomment the line below,
-# deploy. Then `EXPO_PUBLIC_MAP_CITY_TILES` with `EXPO_PUBLIC_MAP_CITY3D`.
-# Rollback: comment it out and deploy, or copy a previous
-# `city/manifests/<stamp>.json` over `city/manifest.json`.
-# MAP_CITY_MANIFEST = "city/manifest.json"
+# ON since 2026-10-12, on the owner's approval. Every manifest ever published
+# is also kept as `city/manifests/<stamp>.json`. Rollback: copy a previous one
+# over `city/manifest.json` (live within ~6 minutes, no deploy), or comment
+# this line out and deploy (every city tile 404, coverage empty: the map draws
+# the basemap's buildings, as before).
+MAP_CITY_MANIFEST = "city/manifest.json"
 
 # The only name this deployment answers to, and the reason `workers_dev` is
 # off. `goway.to` is the zone apex: Cloudflare writes and manages the record

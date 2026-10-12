@@ -47,6 +47,15 @@ describe('the attribution page', () => {
     expect(buildings?.notices).toContain(BUILDING_DATA_NOTICES.nyc);
   });
 
+  test('the city tiles’ database is offered where the page says so (ODbL)', () => {
+    const cityData = CREDIT_SECTIONS.find((section) => section.id === 'cityData');
+    // The Worker's own route (`worker/city.js` → `serveCityManifest`).
+    expect(cityData?.links.map((link) => link.href)).toEqual([
+      'https://goway.to/map/city/manifest.json',
+    ]);
+    expect(CREDITS_EN['credits.cityData.body']).toContain('Open Database License');
+  });
+
   test("the map's elevation credit leads to this page's elevation section", () => {
     const credit = resolveMapAttribution({ terrain: true }).links.at(-1);
     expect(credit?.href).toBe('https://goway.to/attribution#elevation');

@@ -792,6 +792,36 @@ export const MAP_SETTINGS_COPY = {
     'zh-Hans':
       '在 3D 城市中，建筑的高度和形状来自与 OpenStreetMap 合并的官方记录：西班牙为 Dirección General del Catastro，纽约市为 3-D Building Model。每个来源在地图上显示时均会注明。',
   },
+  creditsCityData: {
+    en: '3D city database (ODbL)',
+    ar: 'قاعدة بيانات المدينة ثلاثية الأبعاد (ODbL)',
+    bn: '3D শহরের ডেটাবেস (ODbL)',
+    ca: 'Base de dades de la ciutat en 3D (ODbL)',
+    de: '3D-Stadtdatenbank (ODbL)',
+    es: 'Base de datos de la ciudad en 3D (ODbL)',
+    fr: 'Base de données de la ville en 3D (ODbL)',
+    hi: '3D शहर डेटाबेस (ODbL)',
+    ja: '3D 都市データベース（ODbL）',
+    'pt-BR': 'Banco de dados da cidade em 3D (ODbL)',
+    ru: 'База данных 3D-города (ODbL)',
+    'zh-Hans': '3D 城市数据库（ODbL）',
+  },
+  creditsCityDataBody: {
+    en: "GoWay's 3D buildings, trees and streets are compiled from OpenStreetMap and offered under the ODbL: every archive, with the receipt saying what it was built from, is listed and downloadable.",
+    ar: 'تُجمع مباني GoWay وأشجارها وشوارعها ثلاثية الأبعاد من OpenStreetMap وتُتاح بموجب ترخيص ODbL: كل أرشيف مُدرج وقابل للتنزيل، مع إيصال يبيّن مصدر بنائه.',
+    bn: 'GoWay-এর 3D ভবন, গাছ ও রাস্তা OpenStreetMap থেকে তৈরি এবং ODbL-এর অধীনে দেওয়া হয়: প্রতিটি আর্কাইভ, কী থেকে তৈরি তা জানানো রসিদসহ, তালিকাভুক্ত ও ডাউনলোডযোগ্য।',
+    ca: "Els edificis, arbres i carrers en 3D de GoWay es compilen a partir d'OpenStreetMap i s'ofereixen sota l'ODbL: cada arxiu, amb el rebut que diu de què s'ha construït, es llista i es pot descarregar.",
+    de: 'GoWays 3D-Gebäude, -Bäume und -Straßen werden aus OpenStreetMap erstellt und unter der ODbL angeboten: Jedes Archiv ist samt Beleg, woraus es gebaut wurde, aufgelistet und herunterladbar.',
+    es: 'Los edificios, árboles y calles en 3D de GoWay se compilan a partir de OpenStreetMap y se ofrecen bajo la ODbL: cada archivo, con el recibo que dice de qué se construyó, está listado y se puede descargar.',
+    fr: 'Les bâtiments, arbres et rues 3D de GoWay sont compilés à partir d’OpenStreetMap et proposés sous ODbL : chaque archive, avec le reçu indiquant de quoi elle a été construite, est listée et téléchargeable.',
+    hi: 'GoWay की 3D इमारतें, पेड़ और सड़कें OpenStreetMap से बनाई जाती हैं और ODbL के तहत उपलब्ध हैं: हर आर्काइव, यह बताने वाली रसीद के साथ कि वह किससे बना, सूचीबद्ध है और डाउनलोड किया जा सकता है।',
+    ja: 'GoWay の 3D の建物・樹木・街路は OpenStreetMap から作成し、ODbL で提供しています。各アーカイブは、何から作成したかを示す記録とともに一覧でき、ダウンロードできます。',
+    'pt-BR':
+      'Os edifícios, árvores e ruas em 3D do GoWay são compilados a partir do OpenStreetMap e oferecidos sob a ODbL: cada arquivo, com o recibo que diz de onde foi construído, está listado e pode ser baixado.',
+    ru: '3D-здания, деревья и улицы GoWay собраны из OpenStreetMap и предоставляются по лицензии ODbL: каждый архив вместе с квитанцией о том, из чего он построен, указан в списке и доступен для скачивания.',
+    'zh-Hans':
+      'GoWay 的 3D 建筑、树木和街道由 OpenStreetMap 编译而成，并依据 ODbL 提供：每个归档及说明其构建来源的凭据均已列出并可下载。',
+  },
   creditsModels: {
     en: '3D vehicles',
     ar: 'المركبات ثلاثية الأبعاد',
