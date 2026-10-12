@@ -38,6 +38,7 @@ import {
   boolean,
   check,
   doublePrecision,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -51,6 +52,7 @@ import {
 import { createdAt, generatedId, inList, timestamptz, updatedAt } from '@oxy.so/db';
 import {
   STREET_COVERAGE_AREA_STATES,
+  STREET_SCENE_PRIVACY_BASES,
   STREET_SCENE_PROFILES,
   STREET_SCENE_REPORT_REASONS,
   DELETION_REASONS,
@@ -58,6 +60,7 @@ import {
   type StreetSceneAsset,
   type StreetSceneInitialView,
   type StreetSceneNavigation,
+  type StreetScenePrivacyBasis,
   type StreetSceneQuality,
   type StreetSceneWorldTransform,
 } from '@goway/contracts';
@@ -77,13 +80,64 @@ import {
   DERIVATIVE_STORAGE_STATES,
   STREET3D_JOB_KINDS,
   STREET3D_JOB_STATES,
+  STREET3D_SCENE_SOURCES,
   STREET3D_SCENE_STATES,
   STREET3D_SCENE_VERSION_STATES,
   STREET3D_TERMINAL_JOB_STATES,
+  type Street3dLicencePermission,
 } from './valueSets';
 
 const SHA256_PATTERN = "'^[0-9a-f]{64}$'";
 const terminalJobStates = sql.raw(inList(STREET3D_TERMINAL_JOB_STATES));
+
+/**
+ * One object in the scene bucket beyond an asset's own: a chunk of a chunked
+ * RAD, stored beside its header under its own file name.
+ */
+export interface StoredSceneObject {
+  key: string;
+  sha256: string;
+  byteSize: number;
+}
+
+/**
+ * A published asset as a version row stores it: the public contract shape,
+ * plus its scene-bucket `key` and, for a chunked RAD, every chunk object the
+ * header names. Neither extra is ever served (`db/street3d/public.ts` writes
+ * the contract shape fresh); both are what purge, enable and status act on.
+ */
+export type StoredSceneAsset = StreetSceneAsset & {
+  key: string;
+  chunks?: StoredSceneObject[];
+};
+
+/**
+ * The licence a `licensed_import` version was published under, as data.
+ *
+ * Internal, never served: the public credit is the version's `attributions`.
+ * `importRun` names the operator command run that recorded it.
+ */
+export interface Street3dLicence {
+  licensor: string;
+  name: string;
+  tier?: string;
+  grantReference: string;
+  /** ISO 8601 date the licence was granted. */
+  grantedAt: string;
+  permits: Street3dLicencePermission[];
+  importRun: { command: 'import-licensed'; runId: string; at: string };
+}
+
+/**
+ * How a `licensed_import` version was cleared for publication without GoWay's
+ * capture privacy pipeline. `basis` is published (`privacyBasis`); who
+ * reviewed it and their note are accountability, never served.
+ */
+export interface Street3dPrivacyAttestation {
+  basis: StreetScenePrivacyBasis;
+  reviewedBy: string;
+  note: string;
+}
 
 /**
  * A reconstruction area.
@@ -101,6 +155,8 @@ export const street3dScenes = pgTable(
   'street3d_scenes',
   {
     id: generatedId(),
+    /** Where the scene came from, for life. See {@link STREET3D_SCENE_SOURCES}. */
+    source: text().notNull().default('reconstruction'),
     state: text().notNull().default('candidate'),
     anchorLatitude: latitude().notNull(),
     anchorLongitude: longitude().notNull(),
@@ -132,6 +188,7 @@ export const street3dScenes = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
+    closedSet('street3d_scenes_source_check', table.source, STREET3D_SCENE_SOURCES),
     closedSet('street3d_scenes_state_check', table.state, STREET3D_SCENE_STATES),
     closedSet('street3d_scenes_rebuild_profile_check', table.rebuildProfile, STREET_SCENE_PROFILES),
     check('street3d_scenes_latitude_range_check', sql`${table.anchorLatitude} between -90 and 90`),
@@ -168,6 +225,22 @@ export const street3dScenes = pgTable(
       'street3d_scenes_published_check',
       sql`${table.state} <> 'published' or ${table.currentVersionId} is not null`,
     ),
+    /**
+     * A licensed import is never reconstruction work: it is never queued,
+     * reconstructing or awaiting capture, and holds no rebuild request or
+     * queued input set. Without a served version it is `candidate` — nothing
+     * published, nothing in flight. A code path that tried to rebuild one
+     * fails here rather than queuing a job with no inputs.
+     */
+    check(
+      'street3d_scenes_import_check',
+      sql`${table.source} = 'reconstruction'
+          or (${table.state} in ('candidate', 'published', 'disabled')
+              and ${table.lastQueuedInputFingerprint} is null
+              and ${table.rebuildRequestedAt} is null and ${table.rebuildProfile} is null)`,
+    ),
+    /** The target of `street3d_versions_scene_source_fk`: a version's source is its scene's. */
+    unique('street3d_scenes_id_source_key').on(table.id, table.source),
     /** The clustering index. See `capture_assets_geo_gist` for why `ST_DWithin` and not a cell. */
     index('street3d_scenes_geo_gist').using('gist', table.anchorGeo),
     index('street3d_scenes_state_idx').on(table.state),
@@ -359,9 +432,16 @@ export const captureDerivatives = pgTable(
      * centre (degrees, clockwise) and its horizontal field of view. All three
      * or none. The views of one panorama share a centre, which the solve uses
      * to treat them as one rig.
+     *
+     * `panoramaPitchDegrees` is the view's elevation above the horizon, as the
+     * privacy worker cut it, and only ever set on a view. NULL on a view from a
+     * worker that did not state it (before `goway-privacy/3`, whose views all
+     * look at the horizon): the manifest then omits it and the solve decides
+     * from the pipeline version, never from a value GoWay made up.
      */
     panoramaIndex: integer(),
     panoramaYawDegrees: doublePrecision(),
+    panoramaPitchDegrees: doublePrecision(),
     panoramaFovDegrees: doublePrecision(),
     /**
      * Gravity at this frame's instant, as the capturing phone measured it: a
@@ -423,6 +503,13 @@ export const captureDerivatives = pgTable(
           or coalesce(${table.panoramaIndex} >= 0 and ${table.panoramaYawDegrees} >= 0 and ${table.panoramaYawDegrees} < 360
               and ${table.panoramaFovDegrees} > 0 and ${table.panoramaFovDegrees} < 180, false)`,
     ),
+    /** A pitch belongs to a view, and points no further than straight up or down. */
+    check(
+      'capture_derivatives_panorama_pitch_check',
+      sql`${table.panoramaPitchDegrees} is null
+          or coalesce(${table.panoramaIndex} is not null
+              and ${table.panoramaPitchDegrees} >= -90 and ${table.panoramaPitchDegrees} <= 90, false)`,
+    ),
     check(
       'capture_derivatives_gravity_check',
       sql`(${table.gravityX} is null and ${table.gravityY} is null and ${table.gravityZ} is null)
@@ -475,14 +562,22 @@ export const captureDerivatives = pgTable(
 );
 
 /**
- * One version of a scene: a validated reconstruction, published or not.
+ * One version of a scene: a validated reconstruction or a licensed import,
+ * published or not.
  *
  * `assets` holds PUBLIC data only — scene-bucket keys and the URLs they are
  * served at, digests, sizes. `provenance` holds the pipeline and component
  * versions and nothing that identifies a contributor; which captures went in is
  * `street3d_scene_inputs`, internal. `quality` is the published
- * {@link StreetSceneQuality}; `metrics` is the worker's full numeric report,
- * kept for cost accounting and never served.
+ * {@link StreetSceneQuality}; `metrics` is the worker's full numeric report (or
+ * an import's own counts), kept for cost accounting and never served.
+ *
+ * A `reconstruction` names the job that produced it, and `result_sha256` is
+ * the digest of that job's `result.json`. A `licensed_import` has no job; its
+ * `result_sha256` is the import digest (`street3d/licensedImport.ts`), over
+ * every asset byte and every manifest value, which is what makes re-running an
+ * import a no-op. It carries its `licence` and `privacy_attestation` as data
+ * and claims no privacy pipeline version — none of its imagery entered one.
  */
 export const street3dSceneVersions = pgTable(
   'street3d_scene_versions',
@@ -492,9 +587,10 @@ export const street3dSceneVersions = pgTable(
       .notNull()
       .references(() => street3dScenes.id, { onDelete: 'restrict' }),
     version: integer().notNull(),
-    jobId: text()
-      .notNull()
-      .references(() => street3dJobs.id, { onDelete: 'restrict' }),
+    /** Set iff `source` is `reconstruction`. */
+    jobId: text().references(() => street3dJobs.id, { onDelete: 'restrict' }),
+    /** Always its scene's (`street3d_versions_scene_source_fk`). */
+    source: text().notNull().default('reconstruction'),
     state: text().notNull().default('validating'),
     profile: text().notNull(),
     boundsWest: longitude().notNull(),
@@ -506,12 +602,18 @@ export const street3dSceneVersions = pgTable(
     initialView: jsonb().notNull().$type<StreetSceneInitialView>(),
     /** Published guided navigation, already decimated and reordered. Null when the worker reported none. */
     navigation: jsonb().$type<StreetSceneNavigation>(),
-    assets: jsonb().notNull().$type<(StreetSceneAsset & { key: string })[]>(),
+    assets: jsonb().notNull().$type<StoredSceneAsset[]>(),
     quality: jsonb().notNull().$type<StreetSceneQuality>(),
     metrics: jsonb().notNull().$type<Record<string, number>>(),
-    provenance: jsonb()
-      .notNull()
-      .$type<{ pipelineVersion: string; components: Record<string, string> }>(),
+    /**
+     * The pipeline and component versions. A licensed import adds why its
+     * placement is what it says (`placementNote`). Never served.
+     */
+    provenance: jsonb().notNull().$type<{
+      pipelineVersion: string;
+      components: Record<string, string>;
+      placementNote?: string;
+    }>(),
     /** Gate failures for a `failed_quality` version. Empty otherwise. */
     gateFailures: text().array().notNull().default(sql`'{}'::text[]`),
     observedFrom: timestamptz().notNull(),
@@ -519,6 +621,10 @@ export const street3dSceneVersions = pgTable(
     privacyPipelineVersions: text().array().notNull(),
     attributions: text().array().notNull().default(sql`'{}'::text[]`),
     resultSha256: text().notNull(),
+    /** Set iff `source` is `licensed_import`. Internal, never served. */
+    licence: jsonb().$type<Street3dLicence>(),
+    /** Set iff `source` is `licensed_import`. Only `basis` is served. */
+    privacyAttestation: jsonb().$type<Street3dPrivacyAttestation>(),
     publishedAt: timestamptz(),
     disabledAt: timestamptz(),
     disabledReason: text(),
@@ -529,6 +635,34 @@ export const street3dSceneVersions = pgTable(
   },
   (table) => [
     closedSet('street3d_versions_state_check', table.state, STREET3D_SCENE_VERSION_STATES),
+    closedSet('street3d_versions_source_check', table.source, STREET3D_SCENE_SOURCES),
+    foreignKey({
+      name: 'street3d_versions_scene_source_fk',
+      columns: [table.sceneId, table.source],
+      foreignColumns: [street3dScenes.id, street3dScenes.source],
+    }),
+    /** A reconstruction is one job's output; an import is no job's. */
+    check(
+      'street3d_versions_job_source_check',
+      sql`(${table.source} = 'reconstruction') = (${table.jobId} is not null)`,
+    ),
+    check(
+      'street3d_versions_licence_check',
+      sql`(${table.source} = 'licensed_import') = (${table.licence} is not null)
+          and (${table.licence} is null or jsonb_typeof(${table.licence}) = 'object')`,
+    ),
+    /**
+     * An import says how it was cleared, in a closed set, and claims no
+     * privacy pipeline its imagery never entered. `coalesce`: a missing
+     * `basis` key yields null, which a bare CHECK would let through.
+     */
+    check(
+      'street3d_versions_privacy_attestation_check',
+      sql`(${table.source} = 'licensed_import') = (${table.privacyAttestation} is not null)
+          and (${table.privacyAttestation} is null
+               or coalesce(${table.privacyAttestation} ->> 'basis' in (${sql.raw(inList(STREET_SCENE_PRIVACY_BASES))}), false))
+          and (${table.source} <> 'licensed_import' or cardinality(${table.privacyPipelineVersions}) = 0)`,
+    ),
     closedSet('street3d_versions_profile_check', table.profile, STREET_SCENE_PROFILES),
     check('street3d_versions_version_check', sql`${table.version} > 0`),
     check(
@@ -563,6 +697,10 @@ export const street3dSceneVersions = pgTable(
     ),
     unique('street3d_versions_scene_version_key').on(table.sceneId, table.version),
     unique('street3d_versions_job_key').on(table.jobId),
+    /** One version per import digest: a re-run import finds this row instead of adding one. */
+    uniqueIndex('street3d_versions_import_key')
+      .on(table.resultSha256)
+      .where(sql`${table.source} = 'licensed_import'`),
     /** At most ONE served version per scene; publication supersedes in the same transaction. */
     uniqueIndex('street3d_versions_published_key')
       .on(table.sceneId)

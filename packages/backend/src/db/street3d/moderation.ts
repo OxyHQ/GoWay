@@ -282,7 +282,11 @@ export async function enableVersion(
   });
 }
 
-/** Request a rebuild; the next formation pass queues it if the scene is reconstructable. */
+/**
+ * Request a rebuild; the next formation pass queues it if the scene is
+ * reconstructable. Refused for a licensed import, which has no inputs to
+ * rebuild from: a new delivery is a new import.
+ */
 export async function requestRebuild(
   db: Database,
   sceneId: string,
@@ -292,7 +296,13 @@ export async function requestRebuild(
   const rows = await db
     .update(street3dScenes)
     .set({ rebuildRequestedAt: now, rebuildProfile: profile, updatedAt: now })
-    .where(and(eq(street3dScenes.id, sceneId), ne(street3dScenes.state, 'disabled')))
+    .where(
+      and(
+        eq(street3dScenes.id, sceneId),
+        eq(street3dScenes.source, 'reconstruction'),
+        ne(street3dScenes.state, 'disabled'),
+      ),
+    )
     .returning({ id: street3dScenes.id });
   return rows.length === 1;
 }

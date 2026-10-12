@@ -8,7 +8,9 @@
  * the street onto its side.
  *
  * No three.js: positions are `[x, y, z]` and the engine copies them into its
- * camera each frame, so this is tested in isolation.
+ * camera each frame, so this is tested in isolation. What the engine calls per
+ * frame or per pointer move (`look`, `placeAt`, `pose(out)`, `direction(out)`,
+ * `walkAxes`) works in place and allocates nothing.
  */
 import type { SceneViewerControlMode, Vec3 } from './types';
 
@@ -49,10 +51,13 @@ export interface CameraRig {
   zoom(factor: number): void;
   /** Slide the view sideways and vertically, in metres. */
   pan(right: number, up: number): void;
-  pose(): CameraPose;
+  /** The pose, written into `out` when given. */
+  pose(out?: CameraPose): CameraPose;
   reset(): void;
-  /** The current view direction (unit). */
-  direction(): Vec3;
+  /** The current view direction (unit), written into `out` when given. */
+  direction(out?: Vec3): Vec3;
+  /** The horizontal forward and right (unit) that walking moves along, written in place. */
+  walkAxes(forward: Vec3, right: Vec3): void;
   /** Stand at `position`, keeping the view direction (guided navigation). */
   placeAt(position: Vec3): void;
   /** Face `direction` (any length), keeping the position. */
@@ -77,17 +82,38 @@ export function createCameraRig(initial: { position: Vec3; target: Vec3; up: Vec
   let yaw = 0;
   let pitch = 0;
   let distance = 0;
-  let target: Vec3 = [0, 0, 0];
+  const target: Vec3 = [0, 0, 0];
+  const position: Vec3 = [0, 0, 0];
 
-  function direction(): Vec3 {
-    const horizontal = add(scale(F, Math.cos(yaw)), scale(R, Math.sin(yaw)));
-    return add(scale(horizontal, Math.cos(pitch)), scale(up, Math.sin(pitch)));
+  function direction(out: Vec3 = [0, 0, 0]): Vec3 {
+    const cy = Math.cos(yaw) * Math.cos(pitch);
+    const sy = Math.sin(yaw) * Math.cos(pitch);
+    const sp = Math.sin(pitch);
+    for (let i = 0; i < 3; i++) out[i] = F[i] * cy + R[i] * sy + up[i] * sp;
+    return out;
   }
-  function horizontalForward(): Vec3 {
-    return add(scale(F, Math.cos(yaw)), scale(R, Math.sin(yaw)));
+  function walkAxes(forward: Vec3, right: Vec3) {
+    const c = Math.cos(yaw);
+    const s = Math.sin(yaw);
+    for (let i = 0; i < 3; i++) {
+      forward[i] = F[i] * c + R[i] * s;
+      right[i] = -F[i] * s + R[i] * c;
+    }
   }
-  function horizontalRight(): Vec3 {
-    return add(scale(F, -Math.sin(yaw)), scale(R, Math.cos(yaw)));
+  const ahead: Vec3 = [0, 0, 0];
+  const aside: Vec3 = [0, 0, 0];
+  const look: Vec3 = [0, 0, 0];
+  /** `position` (orbit) or `target` (walk) from the other, the direction and distance. */
+  function sync() {
+    direction(look);
+    if (mode === 'orbit') for (let i = 0; i < 3; i++) position[i] = target[i] - look[i] * distance;
+    else for (let i = 0; i < 3; i++) target[i] = position[i] + look[i] * distance;
+  }
+  function translate(delta: Vec3) {
+    for (let i = 0; i < 3; i++) {
+      position[i] += delta[i];
+      target[i] += delta[i];
+    }
   }
 
   function reset() {
@@ -99,18 +125,13 @@ export function createCameraRig(initial: { position: Vec3; target: Vec3; up: Vec
       Math.min(MAX_PITCH, Math.asin(Math.max(-1, Math.min(1, dot(dir, up))))),
     );
     yaw = Math.atan2(dot(dir, R), dot(dir, F));
-    target = [...initial.target];
+    for (let i = 0; i < 3; i++) target[i] = initial.target[i];
   }
   reset();
 
   // The camera position is DERIVED in both modes: orbit keeps the target and
   // distance, walk keeps the position. Switching modes keeps the view.
-  let position: Vec3 = sub(target, scale(direction(), distance));
-
-  function sync() {
-    if (mode === 'orbit') position = sub(target, scale(direction(), distance));
-    else target = add(position, scale(direction(), distance));
-  }
+  sync();
 
   return {
     get mode() {
@@ -125,12 +146,10 @@ export function createCameraRig(initial: { position: Vec3; target: Vec3; up: Vec
       sync();
     },
     move(forwardMeters, rightMeters, upMeters) {
-      const delta = add(
-        add(scale(horizontalForward(), forwardMeters), scale(horizontalRight(), rightMeters)),
-        scale(up, upMeters),
+      walkAxes(ahead, aside);
+      translate(
+        add(add(scale(ahead, forwardMeters), scale(aside, rightMeters)), scale(up, upMeters)),
       );
-      position = add(position, delta);
-      target = add(target, delta);
     },
     zoom(factor) {
       if (!(factor > 0) || !Number.isFinite(factor)) return;
@@ -139,31 +158,38 @@ export function createCameraRig(initial: { position: Vec3; target: Vec3; up: Vec
         sync();
       } else {
         // Walking, a pinch or a wheel step moves you along the view.
-        const step = (factor - 1) * -10;
-        const delta = scale(direction(), step);
-        position = add(position, delta);
-        target = add(target, delta);
+        translate(scale(direction(), (factor - 1) * -10));
       }
     },
     pan(rightMeters, upMeters) {
-      const delta = add(scale(horizontalRight(), rightMeters), scale(up, upMeters));
-      position = add(position, delta);
-      target = add(target, delta);
+      walkAxes(ahead, aside);
+      translate(add(scale(aside, rightMeters), scale(up, upMeters)));
     },
-    pose() {
-      return { position: [...position], target: [...target], up: [...up] };
+    pose(out) {
+      if (!out) return { position: [...position], target: [...target], up: [...up] };
+      for (let i = 0; i < 3; i++) {
+        out.position[i] = position[i];
+        out.target[i] = target[i];
+        out.up[i] = up[i];
+      }
+      return out;
     },
     reset() {
       reset();
       pitch = Math.max(-pitchLimit, Math.min(pitchLimit, pitch));
-      position = sub(target, scale(direction(), distance));
+      direction(look);
+      for (let i = 0; i < 3; i++) position[i] = target[i] - look[i] * distance;
     },
-    direction() {
-      return direction();
+    direction(out) {
+      return direction(out);
     },
+    walkAxes,
     placeAt(next) {
-      position = [...next];
-      target = add(position, scale(direction(), distance));
+      direction(look);
+      for (let i = 0; i < 3; i++) {
+        position[i] = next[i];
+        target[i] = next[i] + look[i] * distance;
+      }
     },
     lookToward(dir) {
       const d = unit(dir);

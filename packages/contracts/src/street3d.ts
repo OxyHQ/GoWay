@@ -47,9 +47,49 @@ const footprintSchema = z.object({
   coordinates: z.array(z.array(z.array(z.number()).min(2).max(3))),
 });
 
-/** The asset roles a published version carries. */
-export const STREET_SCENE_ASSET_ROLES = ['splat', 'splat_preview', 'poster'] as const;
+/**
+ * The asset roles a published version carries.
+ *
+ * - `splat` — the scene's Gaussians.
+ * - `splat_preview` — a light `spz` a viewer may draw while an `spz` splat
+ *   loads. Beside a `rad` splat it is never needed: the tree's coarse levels
+ *   arrive first.
+ * - `splat_environment` — an optional far shell (sky, distant city) drawn
+ *   behind the scene, in the same scene coordinates. Always a `rad`.
+ * - `poster` — a still image shown before, or instead of, the scene.
+ */
+export const STREET_SCENE_ASSET_ROLES = [
+  'splat',
+  'splat_preview',
+  'splat_environment',
+  'poster',
+] as const;
 export type StreetSceneAssetRole = (typeof STREET_SCENE_ASSET_ROLES)[number];
+
+/**
+ * How an asset is encoded.
+ *
+ * - `spz` — Gaussian splats, loaded whole.
+ * - `rad` — Gaussian splats as a level-of-detail tree, streamed by detail: a
+ *   viewer fetches only the chunks its view and budget need, coarse levels
+ *   first. A `rad` may be chunked: `url` is then a small header, and the chunk
+ *   files it names (`<name>-lod-<n>.radc`) live BESIDE it — same origin, same
+ *   directory — and are as immutable as it is. `byteSize` and `sha256`
+ *   describe the header only.
+ * - `jpeg` — the poster.
+ */
+export const STREET_SCENE_ASSET_FORMATS = ['spz', 'rad', 'jpeg'] as const;
+export type StreetSceneAssetFormat = (typeof STREET_SCENE_ASSET_FORMATS)[number];
+
+/** The formats each role may be published in. */
+export const STREET_SCENE_ASSET_ROLE_FORMATS: Readonly<
+  Record<StreetSceneAssetRole, readonly StreetSceneAssetFormat[]>
+> = {
+  splat: ['spz', 'rad'],
+  splat_preview: ['spz'],
+  splat_environment: ['rad'],
+  poster: ['jpeg'],
+};
 
 /**
  * One downloadable asset of a published version.
@@ -58,16 +98,21 @@ export type StreetSceneAssetRole = (typeof STREET_SCENE_ASSET_ROLES)[number];
  * a client may cache it indefinitely and verify it with `sha256`. A disabled
  * version stops being served; its URL then answers an error, never other bytes.
  */
-export const streetSceneAssetSchema = z.object({
-  role: z.enum(STREET_SCENE_ASSET_ROLES),
-  /** `spz` for Gaussian splats, `jpeg` for the poster. */
-  format: z.enum(['spz', 'jpeg']),
-  url: httpsUrlSchema,
-  byteSize: z.number().int().min(0),
-  sha256: z.string().regex(/^[0-9a-f]{64}$/, 'must be a lower-case hex SHA-256 digest'),
-  /** Gaussian count, for splat roles. */
-  gaussians: z.number().int().min(0).optional(),
-});
+export const streetSceneAssetSchema = z
+  .object({
+    role: z.enum(STREET_SCENE_ASSET_ROLES),
+    /** One of {@link STREET_SCENE_ASSET_ROLE_FORMATS} for the role. */
+    format: z.enum(STREET_SCENE_ASSET_FORMATS),
+    url: httpsUrlSchema,
+    byteSize: z.number().int().min(0),
+    sha256: z.string().regex(/^[0-9a-f]{64}$/, 'must be a lower-case hex SHA-256 digest'),
+    /** Gaussian count, for splat roles. */
+    gaussians: z.number().int().min(0).optional(),
+  })
+  .refine((asset) => STREET_SCENE_ASSET_ROLE_FORMATS[asset.role].includes(asset.format), {
+    message: 'format is not one this role may be published in',
+    path: ['format'],
+  });
 export type StreetSceneAsset = z.infer<typeof streetSceneAssetSchema>;
 
 /**
@@ -93,8 +138,12 @@ export const streetSceneQualitySchema = z.object({
   registrationRatio: z.number().min(0).max(1),
   /** Median distance between solved cameras and their position priors, in metres. */
   alignmentResidualMeters: z.number().min(0),
-  /** Held-out reconstruction quality, in dB. Higher is better. */
-  heldOutPsnr: z.number(),
+  /**
+   * Held-out reconstruction quality, in dB. Higher is better. Absent for a
+   * version GoWay did not reconstruct (a licensed scan): no frames were held
+   * out of a training GoWay never ran, so there is nothing to measure.
+   */
+  heldOutPsnr: z.number().optional(),
   /**
    * `precise` when alignment residual is within the configured tolerance;
    * `approximate` otherwise. An approximate scene must not be presented as
@@ -103,6 +152,20 @@ export const streetSceneQualitySchema = z.object({
   placement: z.enum(['precise', 'approximate']),
 });
 export type StreetSceneQuality = z.infer<typeof streetSceneQualitySchema>;
+
+/**
+ * How a version whose imagery never passed GoWay's capture privacy pipeline was
+ * cleared for publication instead — a scan GoWay licensed rather than
+ * reconstructed from contributions.
+ *
+ * - `licensor_redacted` — the licensor delivered the scan with faces, number
+ *   plates and identifiable people already removed, and GoWay reviewed the
+ *   delivered scene before publishing it.
+ * - `goway_splat_review` — GoWay reviewed the scene itself (splat and poster)
+ *   and found, or removed, everything identifiable before publishing it.
+ */
+export const STREET_SCENE_PRIVACY_BASES = ['licensor_redacted', 'goway_splat_review'] as const;
+export type StreetScenePrivacyBasis = (typeof STREET_SCENE_PRIVACY_BASES)[number];
 
 /** The camera a viewer opens on, in scene coordinates. */
 export const streetSceneInitialViewSchema = z.object({
@@ -136,13 +199,18 @@ export type StreetSceneFieldOfView = z.infer<typeof streetSceneFieldOfViewSchema
  * where, or when.
  *
  * A Gaussian scene is only trustworthy from where it was observed. A viewer
- * should keep the camera near these positions and its view within the captured
- * `fieldOfView` — moving between viewpoints Street-View-style rather than
- * flying freely — because unobserved space renders poorly.
+ * should keep the camera within `reachMeters` of these positions (walking
+ * freely there, not flying) and its view within the captured `fieldOfView`,
+ * because unobserved space renders poorly.
  */
 export const streetSceneNavigationSchema = z.object({
   viewpoints: z.array(streetSceneViewpointSchema),
   fieldOfView: streetSceneFieldOfViewSchema.optional(),
+  /**
+   * How far from a capture position, in metres over the ground, the scene
+   * still holds up. Absent: the viewer derives it from `fieldOfView`.
+   */
+  reachMeters: z.number().positive().max(10).optional(),
 });
 export type StreetSceneNavigation = z.infer<typeof streetSceneNavigationSchema>;
 
@@ -167,8 +235,18 @@ export const streetSceneManifestSchema = z.object({
   publishedAt: instantSchema,
   /** Data credits this version must display, e.g. an open imagery licence. */
   attributions: z.array(z.string().min(1)),
-  /** The privacy pipeline versions every input passed. */
+  /**
+   * The privacy pipeline versions every input passed. Empty for a version
+   * whose imagery never entered that pipeline; `privacyBasis` then says how it
+   * was cleared instead.
+   */
   privacyPipelineVersions: z.array(z.string().min(1)),
+  /**
+   * Present only for a version GoWay did not reconstruct (a licensed scan):
+   * the basis on which it was cleared for publication. Absent for a
+   * reconstruction, whose clearance is `privacyPipelineVersions`.
+   */
+  privacyBasis: z.enum(STREET_SCENE_PRIVACY_BASES).optional(),
 });
 export type StreetSceneManifest = z.infer<typeof streetSceneManifestSchema>;
 

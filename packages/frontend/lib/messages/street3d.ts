@@ -114,10 +114,9 @@ export const STREET3D_EN: Record<string, string> = {
   'street3d.viewer.controls.hint':
     'Drag to look · WASD or arrows to move · scroll or pinch to zoom',
   'street3d.viewer.controls.hintGuided':
-    'Drag to look · W/S, arrows or click ahead to walk · A/D to turn',
-  'street3d.viewer.stepForward': 'Step forward',
-  'street3d.viewer.stepBack': 'Step back',
-  'street3d.viewer.stepHere': 'Go here',
+    'Drag to look · WASD or ↑/↓ to walk, ←/→ to turn, Shift to run · click the ground to go there',
+  'street3d.viewer.controls.hintGuidedTouch':
+    'Drag to look · thumb on the lower left to walk · double-tap the ground to go there',
 
   // Report
   'street3d.report.title': 'Report this 3D view',
@@ -351,10 +350,9 @@ export const STREET3D_ES: Record<string, string> = {
   'street3d.viewer.controls.hint':
     'Arrastra para mirar · WASD o flechas para moverte · rueda o pellizco para acercar',
   'street3d.viewer.controls.hintGuided':
-    'Arrastra para mirar · W/S, flechas o clic delante para caminar · A/D para girar',
-  'street3d.viewer.stepForward': 'Avanzar',
-  'street3d.viewer.stepBack': 'Retroceder',
-  'street3d.viewer.stepHere': 'Ir aquí',
+    'Arrastra para mirar · WASD o ↑/↓ para caminar, ←/→ para girar, Mayús para correr · clic en el suelo para ir allí',
+  'street3d.viewer.controls.hintGuidedTouch':
+    'Arrastra para mirar · pulgar abajo a la izquierda para caminar · doble toque en el suelo para ir allí',
 
   'street3d.report.title': 'Denunciar esta vista 3D',
   'street3d.report.reason.privacy':

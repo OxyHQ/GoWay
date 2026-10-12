@@ -148,7 +148,7 @@ def test_held_out_frames_never_reach_depth_inference(monkeypatch):
 
     def undistort(_model, img, *_args):
         seen.append(img.name)
-        return np.zeros((2, 2, 3), np.uint8), np.zeros((2, 2), np.uint8), np.zeros((2, 2), np.uint8), K
+        return np.zeros((2, 2, 3), np.uint8), np.zeros((2, 2), bool), K
 
     monkeypatch.setattr(dense, "DenseDepthModel", FakeNet)
     monkeypatch.setattr(dense, "undistort_frame", undistort)
@@ -274,3 +274,44 @@ def test_dense_depth_weights_are_pinned():
         assert m in models.ALL_MODELS
     # Only the Apache-2.0 checkpoint; the larger DA3 checkpoints are non-commercial.
     assert not any(bad in m.url.upper() for m in models.ALL_MODELS for bad in ("DA3-LARGE", "DA3-GIANT", "NESTED"))
+
+
+def test_a_downscaled_pixel_is_trusted_only_if_all_its_sources_are():
+    from goway_reconstruction.recon.train import shrink_trusted
+
+    trusted = np.ones((8, 8), bool)
+    trusted[2, 5] = False  # one excluded pixel, e.g. the edge of a blurred face
+    small = shrink_trusted(trusted, (4, 4))
+    # Its 2×2 block is dropped whole; nearest-neighbour would have kept it
+    # while the image, area-averaged, carries the excluded pixel's colour.
+    assert not small[1, 2] and small.sum() == 15
+    assert not shrink_trusted(trusted, (3, 3))[0:2, 1:3].all()  # non-integer factors too
+    assert shrink_trusted(trusted, (8, 8)) is trusted
+
+
+def test_undistortion_drops_pixels_next_to_excluded_ones(tmp_path):
+    import cv2
+
+    from goway_reconstruction.recon.train import undistort_frame
+
+    class Cam:
+        def __init__(self, k1):
+            self.params = [100.0, 32.0, 24.0, k1]
+
+    class Img:
+        name, camera_id = "f.jpg", 0
+
+    class Model:
+        def __init__(self, k1):
+            self.cameras = {0: Cam(k1)}
+
+    cv2.imwrite(str(tmp_path / "f.jpg"), np.full((48, 64, 3), 128, np.uint8))
+    mask = np.full((48, 64), 255, np.uint8)
+    mask[8:16, 8:14] = 0  # off-centre, where the distortion moves pixels by fractions
+    cv2.imwrite(str(tmp_path / "f.jpg.png"), mask)
+    _bgr, plain, _K = undistort_frame(Model(0.0), Img(), tmp_path, tmp_path)
+    assert (plain == (mask == 255)).all()  # no distortion: no resampling at all
+    _bgr, warped, K = undistort_frame(Model(-0.3), Img(), tmp_path, tmp_path)
+    interpolated = cv2.undistort(mask, K, np.array([-0.3, 0, 0, 0]))
+    edge = (interpolated > 127) & (interpolated < 255)
+    assert edge.any() and not warped[edge].any()  # partly-excluded pixels are dropped, not rounded in

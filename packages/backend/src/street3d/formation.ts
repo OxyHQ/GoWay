@@ -158,9 +158,14 @@ export function manifestFrames(jobId: string, frames: readonly EligibleFrame[]):
         ? {
             // A view's intrinsics are its field of view; a 360° camera's own
             // focal length describes a lens the view was never taken through.
+            // A pitch the worker never stated stays absent: the solve reads
+            // that from the pipeline version, and a 0 here would be a guess.
             panorama: {
               index: frame.panoramaIndex,
               yawDegrees: frame.panoramaYawDegrees,
+              ...(frame.panoramaPitchDegrees !== null
+                ? { pitchDegrees: frame.panoramaPitchDegrees }
+                : {}),
               horizontalFovDegrees: frame.panoramaFovDegrees,
             },
           }

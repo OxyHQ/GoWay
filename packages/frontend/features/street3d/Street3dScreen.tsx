@@ -17,7 +17,7 @@
  * showed is painted first and scales in, the scene fades in over it once it
  * draws, and closing frames the map on the scene's bounds (see `handoff.ts`).
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Animated, { FadeOut, Keyframe } from 'react-native-reanimated';
@@ -44,7 +44,7 @@ import {
   type SceneViewerPhase,
 } from '@/components/street3d';
 import { useAuthGate } from '@/lib/authGate';
-import { STREET3D_ENABLED, WEB_ORIGIN } from '@/lib/config';
+import { WEB_ORIGIN } from '@/lib/config';
 import { classifyGoWayError } from '@/lib/goway/errors';
 import { usePlacesInBounds } from '@/lib/goway/queries';
 import { useTranslation } from '@/lib/i18n';
@@ -86,17 +86,24 @@ export function Street3dScreen() {
   const { width, height } = useWindowDimensions();
 
   const summary = sceneId ? sceneSummary(sceneId) : undefined;
-  const scene = useStreetScene(STREET3D_ENABLED && sceneId ? sceneId : null);
+  const scene = useStreetScene(sceneId);
   const manifest = scene.data;
 
   const [phase, setPhase] = useState<SceneViewerPhase>('loading');
   // Guided Walk is the default whenever the scene publishes where it can be
-  // walked; free Orbit stays behind the toggle. `null` = not chosen yet.
+  // walked (freely, over the observed ground); free Orbit stays behind the
+  // toggle. `null` = not chosen yet.
   const [chosenMode, setMode] = useState<SceneViewerControlMode | null>(null);
   const guidedAvailable = (manifest?.navigation?.viewpoints.length ?? 0) > 0;
   const mode: SceneViewerControlMode = chosenMode ?? (guidedAvailable ? 'walk' : 'orbit');
   const [reporting, setReporting] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  // A touch screen walks with a thumbstick, not keys: its hint says so. Read
+  // after mount, so a static render and the first client render agree.
+  const [touch, setTouch] = useState(false);
+  useEffect(() => {
+    if (IS_WEB) setTouch(window.matchMedia?.('(pointer: coarse)').matches === true);
+  }, []);
 
   // Labels: web only. On native the embedded page draws its own.
   const places = usePlacesInBounds(manifest?.bounds ?? null, {
@@ -163,7 +170,7 @@ export function Street3dScreen() {
   }, [gate, router]);
 
   const failure = scene.error ? classifyGoWayError(scene.error) : null;
-  const unavailable = !STREET3D_ENABLED || !sceneId || failure?.kind === 'notFound';
+  const unavailable = !sceneId || failure?.kind === 'notFound';
   const drawn = phase === 'preview' || phase === 'full';
   const poster = posterOf(manifest, summary?.posterUrl);
   const top = windowEdgeGap(insets.top);
@@ -307,7 +314,11 @@ export function Street3dScreen() {
                 ))}
                 <Text className="text-caption text-muted-foreground">
                   {guidedAvailable && mode === 'walk'
-                    ? t('street3d.viewer.controls.hintGuided')
+                    ? t(
+                        touch
+                          ? 'street3d.viewer.controls.hintGuidedTouch'
+                          : 'street3d.viewer.controls.hintGuided',
+                      )
                     : t('street3d.viewer.controls.hint')}
                 </Text>
                 {__DEV__ ? (

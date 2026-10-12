@@ -8,8 +8,9 @@
  * that power over the map. Every variable here is optional. With none set:
  *
  *   - the scheduler never starts (`STREET3D_SCHEDULER_ENABLED` defaults false);
- *   - the public Street 3D read API answers `service_unavailable` / `not_found`
- *     (`STREET3D_VIEWING_ENABLED` defaults false);
+ *   - the public Street 3D read API serves what is published, which is nothing
+ *     until a scene is (`STREET3D_VIEWING_ENABLED` defaults true; `false`
+ *     makes it answer `service_unavailable` / `not_found`);
  *   - `/ready` does not consult a single value here — an SQS outage, a missing
  *     bucket or an external worker that has been offline for a week changes
  *     nothing about whether the map, Places, search and routing can serve.
@@ -35,14 +36,15 @@ import type { EnvironmentSource } from './index';
 const emptyAsUndefined = (value: unknown): unknown =>
   typeof value === 'string' && value.trim().length === 0 ? undefined : value;
 
-const booleanFlag = z.preprocess((value) => {
-  const normalized = emptyAsUndefined(value);
-  if (normalized === undefined) return undefined;
-  const text = String(normalized).trim().toLowerCase();
-  if (['1', 'true', 'yes', 'on'].includes(text)) return true;
-  if (['0', 'false', 'no', 'off'].includes(text)) return false;
-  return normalized;
-}, z.boolean().default(false));
+const booleanFlag = (fallback: boolean) =>
+  z.preprocess((value) => {
+    const normalized = emptyAsUndefined(value);
+    if (normalized === undefined) return undefined;
+    const text = String(normalized).trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(text)) return true;
+    if (['0', 'false', 'no', 'off'].includes(text)) return false;
+    return normalized;
+  }, z.boolean().default(fallback));
 
 const integer = (fallback: number, minimum: number, maximum: number) =>
   z.preprocess(
@@ -142,85 +144,104 @@ const budgetSchema = (profile: StreetSceneProfile) =>
     ),
   });
 
-const schema = z.object({
-  schedulerEnabled: booleanFlag,
-  schedulerIntervalSeconds: integer(60, 10, 3600),
-  viewingEnabled: booleanFlag,
+const schema = z
+  .object({
+    schedulerEnabled: booleanFlag(false),
+    schedulerIntervalSeconds: integer(60, 10, 3600),
+    // On by default: it reads only published rows from the database, so with
+    // nothing published it answers an empty map, not an error.
+    viewingEnabled: booleanFlag(true),
 
-  /** Region of the queues, the scene bucket and the temporary bucket's own region fallback. */
-  region: z.preprocess(emptyAsUndefined, z.string().trim().min(1).optional()),
-  jobsQueueUrl: serviceUrl,
-  eventsQueueUrl: serviceUrl,
-  /** The jobs queue's dead-letter queue. Optional: read for `status` and to fail dead-lettered jobs. */
-  jobsDeadLetterQueueUrl: serviceUrl,
-  /** An explicit SQS endpoint for a local emulator; absent means the queue URL's own origin. */
-  sqsEndpoint: serviceUrl,
+    /** Region of the queues, the scene bucket and the temporary bucket's own region fallback. */
+    region: z.preprocess(emptyAsUndefined, z.string().trim().min(1).optional()),
+    jobsQueueUrl: serviceUrl,
+    eventsQueueUrl: serviceUrl,
+    /** The jobs queue's dead-letter queue. Optional: read for `status` and to fail dead-lettered jobs. */
+    jobsDeadLetterQueueUrl: serviceUrl,
+    /** An explicit SQS endpoint for a local emulator; absent means the queue URL's own origin. */
+    sqsEndpoint: serviceUrl,
 
-  sceneBucket: bucketName,
-  sceneKeyPrefix: keyPrefix('scenes'),
-  /** An explicit S3 endpoint for the scene bucket, for a local store. */
-  sceneEndpoint: serviceUrl,
-  /** Public origin (and optional path) the scene bucket is served from, e.g. a CDN. */
-  publicAssetBaseUrl: serviceUrl,
-  cdnDistributionId: z.preprocess(
-    emptyAsUndefined,
-    z
-      .string()
-      .trim()
-      .regex(/^[A-Z0-9]{8,32}$/, 'must be a CloudFront distribution id')
-      .optional(),
-  ),
+    sceneBucket: bucketName,
+    sceneKeyPrefix: keyPrefix('scenes'),
+    /** An explicit S3 endpoint for the scene bucket, for a local store. */
+    sceneEndpoint: serviceUrl,
+    /**
+     * A local directory standing in for the scene bucket, for development: an
+     * operator's licensed import writes there, and `street3d:serve-assets`
+     * serves it at `publicAssetBaseUrl`. Never beside `sceneBucket`.
+     */
+    sceneLocalDir: z.preprocess(emptyAsUndefined, z.string().trim().min(1).optional()),
+    /** Public origin (and optional path) the scene bucket is served from, e.g. a CDN. */
+    publicAssetBaseUrl: serviceUrl,
+    cdnDistributionId: z.preprocess(
+      emptyAsUndefined,
+      z
+        .string()
+        .trim()
+        .regex(/^[A-Z0-9]{8,32}$/, 'must be a CloudFront distribution id')
+        .optional(),
+    ),
 
-  // ── Scheduling ──────────────────────────────────────────────────────────
-  clusterRadiusMeters: decimal(90, 10, 1000),
-  minEligibleFrames: integer(12, 2, 10_000),
-  /** Distinct 45° heading sectors required when the frames report headings at all. */
-  minHeadingSectors: integer(2, 1, 8),
-  /** New frames, versus the last queued job, that justify another reconstruction. */
-  rebuildMinNewFrames: integer(8, 1, 10_000),
-  /** New frames, versus a job still waiting for the worker, that justify superseding it. */
-  supersedeMinNewFrames: integer(24, 1, 10_000),
-  defaultProfile: z.preprocess(emptyAsUndefined, z.enum(STREET_SCENE_PROFILES).default('draft')),
-  atRiskWindowDays: integer(14, 1, 180),
-  rescueExtensionDays: integer(30, 1, 180),
-  /** A raw photo stays this long after its privacy-safe derivative exists, for audit. */
-  rawAuditWindowDays: integer(3, 0, 90),
-  privacyMaxAttempts: integer(3, 1, 20),
-  jobMaxAttempts: integer(4, 1, 20),
-  heartbeatStaleSeconds: integer(1800, 60, 86_400),
-  /** Bounded protection a job holds on its inputs, refreshed by heartbeats. */
-  inputProtectionHours: integer(48, 1, 720),
-  /** A derivative expiring within this window is not put into a new manifest. */
-  jobWindowHours: integer(72, 1, 720),
-  /** `jobs/` artifacts of finished jobs are deleted after this many days. */
-  jobArtifactRetentionDays: integer(7, 1, 90),
-  privacyBatchSize: integer(50, 1, 1000),
-  eventBatchSize: integer(100, 1, 1000),
-  eventWaitSeconds: integer(1, 0, 20),
-  maxResultBytes: integer(1024 * 1024, 1024, 16 * 1024 * 1024),
+    // ── Scheduling ──────────────────────────────────────────────────────────
+    clusterRadiusMeters: decimal(90, 10, 1000),
+    minEligibleFrames: integer(12, 2, 10_000),
+    /** Distinct 45° heading sectors required when the frames report headings at all. */
+    minHeadingSectors: integer(2, 1, 8),
+    /** New frames, versus the last queued job, that justify another reconstruction. */
+    rebuildMinNewFrames: integer(8, 1, 10_000),
+    /** New frames, versus a job still waiting for the worker, that justify superseding it. */
+    supersedeMinNewFrames: integer(24, 1, 10_000),
+    defaultProfile: z.preprocess(emptyAsUndefined, z.enum(STREET_SCENE_PROFILES).default('draft')),
+    atRiskWindowDays: integer(14, 1, 180),
+    rescueExtensionDays: integer(30, 1, 180),
+    /** A raw photo stays this long after its privacy-safe derivative exists, for audit. */
+    rawAuditWindowDays: integer(3, 0, 90),
+    privacyMaxAttempts: integer(3, 1, 20),
+    jobMaxAttempts: integer(4, 1, 20),
+    heartbeatStaleSeconds: integer(1800, 60, 86_400),
+    /** Bounded protection a job holds on its inputs, refreshed by heartbeats. */
+    inputProtectionHours: integer(48, 1, 720),
+    /** A derivative expiring within this window is not put into a new manifest. */
+    jobWindowHours: integer(72, 1, 720),
+    /** `jobs/` artifacts of finished jobs are deleted after this many days. */
+    jobArtifactRetentionDays: integer(7, 1, 90),
+    privacyBatchSize: integer(50, 1, 1000),
+    eventBatchSize: integer(100, 1, 1000),
+    eventWaitSeconds: integer(1, 0, 20),
+    maxResultBytes: integer(1024 * 1024, 1024, 16 * 1024 * 1024),
 
-  // ── Privacy job settings ────────────────────────────────────────────────
-  keyframeMaxFrames: integer(60, 1, 1000),
-  keyframeMinIntervalSeconds: decimal(0.5, 0.05, 60),
-  keyframeMaxLongEdgePixels: integer(2048, 256, 8192),
+    // ── Privacy job settings ────────────────────────────────────────────────
+    /**
+     * A video's keyframes tile its WHOLE length: one per `minIntervalSeconds`,
+     * up to `maxFrames` (wider windows beyond), so a 10-minute walk gets one
+     * every 2.5 s rather than its first 30 s. At most 600, the worker's own bound.
+     */
+    keyframeMaxFrames: integer(240, 1, 600),
+    keyframeMinIntervalSeconds: decimal(0.5, 0.05, 60),
+    /** A phone photo (4032 px) keeps its resolution; the solve and trainer downscale on their own. */
+    keyframeMaxLongEdgePixels: integer(4096, 256, 8192),
 
-  // ── Quality gates ───────────────────────────────────────────────────────
-  gateMinRegisteredFrames: integer(8, 2, 10_000),
-  gateMinRegistrationRatio: decimal(0.5, 0, 1),
-  gateMaxMeanReprojectionErrorPx: decimal(2.0, 0.01, 100),
-  gateMinGeoreferenceInliers: integer(5, 0, 10_000),
-  gateMaxMedianGeoreferenceResidualMeters: decimal(8.0, 0.01, 1000),
-  gateMinHeldOutPsnr: decimal(17.0, 0, 100),
-  /** Alignment residual at or under which a scene is presented as `precise`. */
-  precisePlacementResidualMeters: decimal(3.0, 0.01, 1000),
+    // ── Quality gates ───────────────────────────────────────────────────────
+    gateMinRegisteredFrames: integer(8, 2, 10_000),
+    gateMinRegistrationRatio: decimal(0.5, 0, 1),
+    gateMaxMeanReprojectionErrorPx: decimal(2.0, 0.01, 100),
+    gateMinGeoreferenceInliers: integer(5, 0, 10_000),
+    gateMaxMedianGeoreferenceResidualMeters: decimal(8.0, 0.01, 1000),
+    gateMinHeldOutPsnr: decimal(17.0, 0, 100),
+    /** Alignment residual at or under which a scene is presented as `precise`. */
+    precisePlacementResidualMeters: decimal(3.0, 0.01, 1000),
 
-  draftBudgets: budgetSchema('draft'),
-  standardBudgets: budgetSchema('standard'),
+    draftBudgets: budgetSchema('draft'),
+    standardBudgets: budgetSchema('standard'),
 
-  // ── Coverage ────────────────────────────────────────────────────────────
-  coverageCellPrecision: integer(7, 5, 8),
-  coverageMaxSpanDegrees: decimal(0.5, 0.01, 10),
-});
+    // ── Coverage ────────────────────────────────────────────────────────────
+    coverageCellPrecision: integer(7, 5, 8),
+    coverageMaxSpanDegrees: decimal(0.5, 0.01, 10),
+  })
+  .refine((parsed) => !(parsed.sceneBucket && parsed.sceneLocalDir), {
+    message: 'set STREET3D_SCENE_BUCKET or STREET3D_SCENE_LOCAL_DIR, not both',
+    path: ['sceneLocalDir'],
+  });
 
 type Parsed = z.infer<typeof schema>;
 
@@ -255,6 +276,7 @@ export function parseStreet3dConfig(source: EnvironmentSource = process.env): St
     sceneBucket: source.STREET3D_SCENE_BUCKET,
     sceneKeyPrefix: source.STREET3D_SCENE_KEY_PREFIX,
     sceneEndpoint: source.STREET3D_SCENE_S3_ENDPOINT,
+    sceneLocalDir: source.STREET3D_SCENE_LOCAL_DIR,
     publicAssetBaseUrl: source.STREET3D_PUBLIC_ASSET_BASE_URL,
     cdnDistributionId: source.STREET3D_CDN_DISTRIBUTION_ID,
     clusterRadiusMeters: source.STREET3D_CLUSTER_RADIUS_METERS,

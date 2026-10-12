@@ -33,9 +33,15 @@
  * local scene, also give its anchor and opening camera:
  *
  *     EXPO_PUBLIC_STREET3D_FIXTURE_ANCHOR=lat,lng,altitude
+ *     EXPO_PUBLIC_STREET3D_FIXTURE_TRANSFORM=m0,…,m15        # enuFromScene, column-major; identity when unset
  *     EXPO_PUBLIC_STREET3D_FIXTURE_VIEW=px,py,pz,tx,ty,tz   # scene coordinates
  *     EXPO_PUBLIC_STREET3D_FIXTURE_ATTRIBUTION=…            # the asset's credit
  *     EXPO_PUBLIC_STREET3D_FIXTURE_NAVIGATION_URL=…         # JSON, `navigation` shape
+ *
+ * A splat URL ending in `.rad` is a Spark level-of-detail tree, streamed and
+ * paged: it is published as `rad` with no preview (the coarse levels arrive
+ * first), and `EXPO_PUBLIC_STREET3D_FIXTURE_ENVIRONMENT_URL` (also `.rad`) adds
+ * the far environment shell drawn behind it.
  *
  * The navigation URL is fetched by the app (so it needs CORS for the dev
  * origin) and attached to the first fixture scene as `navigation`, which turns
@@ -62,6 +68,7 @@ const SPLAT_URL = env(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_SPLAT_URL);
 const PREVIEW_URL = env(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_PREVIEW_URL);
 const POSTER_URL = env(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_POSTER_URL);
 const ATTRIBUTION = env(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_ATTRIBUTION);
+const ENVIRONMENT_URL = env(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_ENVIRONMENT_URL);
 
 /** `"a,b,c"` → numbers, or `undefined` unless exactly `count` finite values. */
 function numbers(value: string | undefined, count: number): number[] | undefined {
@@ -78,6 +85,7 @@ for (const [name, url] of [
   ['SPLAT', SPLAT_URL],
   ['PREVIEW', PREVIEW_URL],
   ['POSTER', POSTER_URL],
+  ['ENVIRONMENT', ENVIRONMENT_URL],
 ] as const) {
   if (url && !/^https:\/\//i.test(url)) {
     console.warn(
@@ -90,6 +98,7 @@ const NAVIGATION_URL = env(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_NAVIGATION_U
 
 const ANCHOR = numbers(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_ANCHOR, 3);
 const VIEW = numbers(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_VIEW, 6);
+const TRANSFORM = numbers(process.env.EXPO_PUBLIC_STREET3D_FIXTURE_TRANSFORM, 16);
 
 const DAY_MS = 86_400_000;
 const NOW = Date.now();
@@ -99,24 +108,44 @@ const FAKE_SHA = '0'.repeat(64);
 
 function assets(id: string): StreetSceneAsset[] {
   const splat = SPLAT_URL ?? `${UNSET_ORIGIN}/${id}/scene.spz`;
-  const list: StreetSceneAsset[] = [
-    {
-      role: 'splat_preview',
-      format: 'spz',
-      url: PREVIEW_URL ?? splat,
-      byteSize: 2_400_000,
+  const list: StreetSceneAsset[] = /\.rad$/i.test(splat)
+    ? [
+        {
+          role: 'splat',
+          format: 'rad',
+          url: splat,
+          byteSize: 18_000,
+          sha256: FAKE_SHA,
+          gaussians: 8_000_000,
+        },
+      ]
+    : [
+        {
+          role: 'splat_preview',
+          format: 'spz',
+          url: PREVIEW_URL ?? splat,
+          byteSize: 2_400_000,
+          sha256: FAKE_SHA,
+          gaussians: 150_000,
+        },
+        {
+          role: 'splat',
+          format: 'spz',
+          url: splat,
+          byteSize: 18_000_000,
+          sha256: FAKE_SHA,
+          gaussians: 1_200_000,
+        },
+      ];
+  if (ENVIRONMENT_URL) {
+    list.push({
+      role: 'splat_environment',
+      format: 'rad',
+      url: ENVIRONMENT_URL,
+      byteSize: 1_600,
       sha256: FAKE_SHA,
-      gaussians: 150_000,
-    },
-    {
-      role: 'splat',
-      format: 'spz',
-      url: splat,
-      byteSize: 18_000_000,
-      sha256: FAKE_SHA,
-      gaussians: 1_200_000,
-    },
-  ];
+    });
+  }
   list.push({
     role: 'poster',
     format: 'jpeg',
@@ -200,7 +229,11 @@ function manifestOf(seed: SceneSeed): StreetSceneManifest {
     version: 3,
     bounds: seed.bounds,
     footprint: rectangle(west, south, east, north),
-    worldTransform: { anchor: seed.anchor, frame: 'enu', enuFromScene: [...IDENTITY] },
+    worldTransform: {
+      anchor: seed.anchor,
+      frame: 'enu',
+      enuFromScene: [...(TRANSFORM ?? IDENTITY)],
+    },
     // Eye height above ground (z ≈ 0), 30 m south of the anchor, looking north.
     initialView: VIEW
       ? { position: [VIEW[0], VIEW[1], VIEW[2]], target: [VIEW[3], VIEW[4], VIEW[5]] }

@@ -19,11 +19,11 @@ import {
 import { sanitizeDetail } from '../../db/street3d/jobs';
 
 describe('Street 3D configuration', () => {
-  it('is inert with nothing set', () => {
+  it('with nothing set, serves what is published and runs no pipeline', () => {
     const config = parseStreet3dConfig({});
     expect(config).toMatchObject({
       schedulerEnabled: false,
-      viewingEnabled: false,
+      viewingEnabled: true,
       pipelineConfigured: false,
       sceneKeyPrefix: 'scenes',
     });
@@ -89,6 +89,7 @@ function frame(id: string, fields: Partial<EligibleFrame> = {}): EligibleFrame {
     focalLength35mm: null,
     panoramaIndex: null,
     panoramaYawDegrees: null,
+    panoramaPitchDegrees: null,
     panoramaFovDegrees: null,
     gravityX: null,
     gravityY: null,
@@ -205,6 +206,33 @@ describe('information gain', () => {
       STREET3D_MIN_HEADING_SECTORS: '6',
     });
     expect(isReconstructable(views, strict)).toBe(true);
+    // Their worker stated no pitch, so neither does the manifest: no 0 made up for it.
+    expect(manifest.every((entry) => !('pitchDegrees' in (entry.panorama as object)))).toBe(true);
+  });
+
+  it('hands the solve each pitched view with the pitch its worker stated', () => {
+    const views = [
+      [0, 0],
+      [45, 0],
+      [0, 45],
+      [60, 45],
+      [120, -30],
+    ].map(([yaw, pitch], k) =>
+      frame(`v${k}`, {
+        assetId: 'a-pano',
+        frameIndex: k,
+        headingDegrees: 300,
+        privacyPipelineVersion: 'goway-privacy/3',
+        panoramaIndex: 0,
+        panoramaYawDegrees: yaw,
+        panoramaPitchDegrees: pitch,
+        panoramaFovDegrees: 90,
+      }),
+    );
+    const manifest = manifestFrames('job-1', views);
+    expect(manifest.map((entry) => entry.panorama?.pitchDegrees)).toEqual([0, 0, 45, 45, -30]);
+    // Pitch leaves the heading prior alone: a view looking up still faces the capture heading plus its yaw.
+    expect(manifest.map((entry) => entry.prior.headingDegrees)).toEqual([300, 345, 300, 0, 60]);
   });
 });
 

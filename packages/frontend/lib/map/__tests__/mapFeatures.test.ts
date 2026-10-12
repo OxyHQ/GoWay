@@ -72,6 +72,9 @@ function legacy(builds: Builds, development: boolean, search: string) {
   return {
     globe: relief.globe,
     terrain: relief.terrain,
+    // Not a legacy answer: `EXPO_PUBLIC_STREET3D_ENABLED` defaulted it OFF, and
+    // the owner turned it on for everyone (2026-10-12). Only a kill switch is left.
+    street3d: !/^\s*(0|false)\s*$/i.test(builds.street3d ?? ''),
     city3d,
     cityTiles: isCityTilesRequested({
       city3d,
@@ -113,11 +116,12 @@ describe('the registry', () => {
     }
   });
 
-  test('defaults: globe and terrain on, everything else off', () => {
+  test('defaults: globe, terrain and Street 3D on, everything else off', () => {
     const features = resolve();
     expect(features.list.map((state) => [state.id, state.on])).toEqual([
       ['globe', true],
       ['terrain', true],
+      ['street3d', true],
       ['city3d', false],
       ['citySky', false],
       ['detailedCity', false],

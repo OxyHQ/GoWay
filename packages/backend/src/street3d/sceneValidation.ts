@@ -33,7 +33,11 @@ import type { Database } from '../db/postgres';
 import { captureDerivatives } from '../db/schema';
 import { inArray } from 'drizzle-orm';
 import type { JobObjectStore } from './jobObjectStore';
-import { sceneAssetKey, type SceneAssetStore } from './sceneAssetStore';
+import {
+  FORMAT_CONTENT_TYPE,
+  sceneAssetKey,
+  type PipelineSceneAssetStore,
+} from './sceneAssetStore';
 import type { SceneReconstructResult, SceneResultAsset } from './workerContract';
 
 const ROLE_FORMAT: Readonly<Record<SceneResultAsset['role'], SceneResultAsset['format']>> = {
@@ -41,15 +45,11 @@ const ROLE_FORMAT: Readonly<Record<SceneResultAsset['role'], SceneResultAsset['f
   splat_preview: 'spz',
   poster: 'jpeg',
 };
-const FORMAT_CONTENT_TYPE: Readonly<Record<SceneResultAsset['format'], string>> = {
-  spz: 'application/octet-stream',
-  jpeg: 'image/jpeg',
-};
 
 export interface SceneValidationDeps {
   db: Database;
   jobStore: JobObjectStore;
-  sceneStore: SceneAssetStore;
+  sceneStore: PipelineSceneAssetStore;
   config: Street3dConfig;
 }
 

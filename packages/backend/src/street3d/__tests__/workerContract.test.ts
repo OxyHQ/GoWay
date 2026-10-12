@@ -12,6 +12,9 @@ import { describe, expect, it } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { z } from 'zod';
+import { streetSceneAssetSchema } from '@goway/contracts';
+import type { EligibleFrame } from '../../db/street3d/scenes';
+import { manifestFrames } from '../formation';
 import {
   capturePrivacyResultSchema,
   jobEnvelopeSchema,
@@ -153,6 +156,34 @@ describe('worker contract fixtures', () => {
     ).toBe(false);
   });
 
+  it('takes only the assets the worker produces, each one the public contract can publish', () => {
+    const result = fixture('result.scene_reconstruct.json') as { assets: { role: string }[] };
+    const assets = sceneReconstructResultSchema.parse(result).assets;
+    expect(assets.map((asset) => asset.role).sort()).toEqual(['poster', 'splat', 'splat_preview']);
+    for (const asset of assets) {
+      const published = streetSceneAssetSchema.safeParse({
+        ...asset,
+        url: `https://scenes.example.test/${asset.sha256}`,
+      });
+      expect(published.success).toBe(true);
+    }
+    // A level-of-detail tree and an environment shell are published formats
+    // the worker does not emit and publication cannot copy (a chunked RAD is
+    // many objects): refused, never half-published.
+    const splat = result.assets[0];
+    for (const bad of [
+      { ...splat, format: 'rad' },
+      { ...splat, role: 'splat_environment', format: 'rad' },
+    ]) {
+      expect(
+        sceneReconstructResultSchema.safeParse({
+          ...result,
+          assets: [bad, ...result.assets.slice(1)],
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it('refuses keys that escape their prefix', () => {
     const job = fixture('job.capture_privacy.json');
     expect(jobEnvelopeSchema.safeParse({ ...job, outputPrefix: '../captures/' }).success).toBe(
@@ -199,5 +230,78 @@ describe('worker contract fixtures', () => {
       frames: [{ ...frames[0], panorama: { index: 0, yawDegrees: 360, horizontalFovDegrees: 90 } }],
     };
     expect(capturePrivacyResultSchema.safeParse(badYaw).success).toBe(false);
+    // An upper-ring view states its pitch; a horizon-only worker's views omit it.
+    expect(parsed.frames.map((frame) => frame.panorama?.pitchDegrees)).toEqual([0, 0, 45]);
+    const { pitchDegrees: _omitted, ...horizonOnly } = frames[0].panorama as Record<
+      string,
+      unknown
+    >;
+    expect(
+      capturePrivacyResultSchema.safeParse({
+        ...views,
+        frames: [{ ...frames[0], panorama: horizonOnly }],
+      }).success,
+    ).toBe(true);
+    const badPitch = {
+      ...views,
+      frames: [{ ...frames[0], panorama: { ...(frames[0].panorama as object), pitchDegrees: 91 } }],
+    };
+    expect(capturePrivacyResultSchema.safeParse(badPitch).success).toBe(false);
+  });
+
+  it("hands a privacy result's views back to the solve with the pitch the worker stated", () => {
+    // The fixture result's views, as `applyPrivacyResult` stores them and `loadEligibleFrames` reads them back.
+    const result = capturePrivacyResultSchema.parse(
+      fixture('result.capture_privacy.equirectangular.json'),
+    );
+    const stored = (pitchOf: (stated: number | undefined) => number | null) =>
+      result.frames.map(
+        (frame): EligibleFrame => ({
+          derivativeId: `d-${frame.frameIndex}`,
+          assetId: result.assetId,
+          sessionId: 's-1',
+          frameIndex: frame.frameIndex,
+          imageKey: frame.imageKey,
+          imageSha256: frame.imageSha256,
+          maskKey: frame.maskKey ?? null,
+          maskSha256: frame.maskSha256 ?? null,
+          width: frame.width,
+          height: frame.height,
+          privacyPipelineVersion: result.privacyPipelineVersion,
+          expiresAt: new Date('2027-01-01T00:00:00.000Z'),
+          capturedAt: null,
+          privacyCompletedAt: null,
+          latitude: 48.8684,
+          longitude: 2.3021,
+          accuracyMeters: null,
+          altitudeMeters: null,
+          headingDegrees: null,
+          focalLength35mm: null,
+          panoramaIndex: frame.panorama?.index ?? null,
+          panoramaYawDegrees: frame.panorama?.yawDegrees ?? null,
+          panoramaPitchDegrees: pitchOf(frame.panorama?.pitchDegrees),
+          panoramaFovDegrees: frame.panorama?.horizontalFovDegrees ?? null,
+          gravityX: null,
+          gravityY: null,
+          gravityZ: null,
+          geoCell: 'u09whb',
+          assetState: 'waiting_for_overlap',
+        }),
+      );
+    const manifestWith = (frames: EligibleFrame[]) =>
+      sceneInputManifestSchema.parse({
+        ...fixture('scene_input_manifest.json'),
+        frames: manifestFrames('job-1', frames),
+      });
+    const manifest = manifestWith(stored((stated) => stated ?? null));
+    expect(manifest.frames.map((frame) => frame.panorama)).toEqual(
+      result.frames.map((frame) => frame.panorama),
+    );
+    expect(manifest.frames.map((frame) => frame.panorama?.pitchDegrees)).toEqual([0, 0, 45]);
+    // A view stored without a pitch (from a horizon-only worker) is handed back without one.
+    const legacy = manifestWith(stored(() => null));
+    expect(legacy.frames.every((frame) => !('pitchDegrees' in (frame.panorama as object)))).toBe(
+      true,
+    );
   });
 });

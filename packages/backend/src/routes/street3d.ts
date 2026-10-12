@@ -10,9 +10,9 @@
  * Reporting is identity-bound: it is a moderation request somebody is
  * accountable for, so it sits behind `requireAuth` and a tighter rate limit.
  *
- * ## Off unless switched on
+ * ## On unless switched off
  *
- * With `STREET3D_VIEWING_ENABLED` false (the default) coverage answers
+ * With `STREET3D_VIEWING_ENABLED` false (it defaults true) coverage answers
  * `service_unavailable` and a scene answers `not_found` — the same answer a
  * scene that does not exist gets — so a client can feature-detect without the
  * deployment advertising what it holds.

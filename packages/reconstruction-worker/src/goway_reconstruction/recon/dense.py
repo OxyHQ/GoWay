@@ -47,7 +47,7 @@ import pycolmap
 import torch
 
 from ..models import DENSE_DEPTH_MODEL_FILES, DENSE_DEPTH_REVISION, ensure_model
-from .train import held_out, inlier_cameras, posed_images, undistort_frame
+from .train import held_out, inlier_cameras, posed_images, shrink_trusted, undistort_frame
 
 log = logging.getLogger("goway.worker")
 
@@ -423,9 +423,9 @@ def dense_points(
             batch = [training[i] for i in chunk]
             rgbs, masks, exts, ixts = [], [], [], []
             for img in batch:
-                bgr, mask, valid, K = undistort_frame(model, img, images_dir, masks_dir)
+                bgr, trusted, K = undistort_frame(model, img, images_dir, masks_dir)
                 rgbs.append(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
-                masks.append(((mask > 127) & (valid > 127)).astype(np.uint8))
+                masks.append(trusted)
                 E = np.eye(4)
                 E[:3] = img.cam_from_world().matrix()
                 exts.append(E)
@@ -441,7 +441,7 @@ def dense_points(
                     dropped += 1
                     continue
                 depth = (depth / ratio).astype(np.float32)
-                mask = cv2.resize(masks[j], (sw, sh), interpolation=cv2.INTER_NEAREST)[top : top + h, left : left + w] > 0
+                mask = shrink_trusted(masks[j], (sw, sh))[top : top + h, left : left + w]
                 rgb = cv2.resize(rgbs[j], (sw, sh), interpolation=cv2.INTER_AREA)[top : top + h, left : left + w]
                 conf = pred["conf"][j] if pred["conf"] is not None else None
                 sky = pred["sky"][j] if pred["sky"] is not None else None

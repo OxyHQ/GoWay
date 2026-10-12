@@ -2,7 +2,7 @@
  * Street 3D on the main map: published scene footprints, coverage areas, and
  * a chip per scene that opens the viewer.
  *
- * The layer is OFF unless `EXPO_PUBLIC_STREET3D_ENABLED` is on, draws nothing
+ * The layer follows the `street3d` map feature (on by default), draws nothing
  * below street zoom (`STREET3D_MIN_ZOOM`), fetches only for a SETTLED viewport
  * (debounced, never per camera frame), and stays silent on every failure —
  * see `queries.ts`. The map is public; nothing here needs a session or a
@@ -14,8 +14,8 @@ import { useTheme } from '@oxy.so/bloom/theme';
 import type { StreetCoverageArea } from '@goway.to/sdk';
 
 import type { GeoBounds, MapApi, MapMarker, MapOverlay, MapViewportChange } from '@/components/map';
-import { STREET3D_ENABLED } from '@/lib/config';
 import { useTranslation } from '@/lib/i18n';
+import { useMapFeature } from '@/lib/map/useMapFeatures';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 import {
@@ -60,7 +60,7 @@ export function useStreet3dLayer(
   const router = useRouter();
   const theme = useTheme();
   const { t } = useTranslation();
-  const on = STREET3D_ENABLED && enabled;
+  const on = useMapFeature('street3d') && enabled;
 
   const [view, setView] = useState<SettledView | null>(null);
   const settled = useDebouncedValue(view, SETTLE_MS);

@@ -45,7 +45,8 @@ import { sceneEnvelope } from '../db/street3d/scenes';
 import { refreshCoverage, type CoverageSummary } from './coverage';
 import { drainDeadLetters, drainEvents, type EventSummary } from './events';
 import { formScenes } from './formation';
-import type { Street3dServices } from './services';
+import { assetObjects, sceneVersionPrefix } from './sceneAssetStore';
+import type { SceneBucketServices, Street3dServices } from './services';
 
 /** Logs counters and error CLASSES only — never a coordinate, key, URL or message body. */
 export interface SchedulerLogger {
@@ -215,14 +216,21 @@ function cdnPath(config: Street3dConfig, key: string): string {
   return `${base}/${key}`;
 }
 
+export interface PurgeDeps {
+  db: Database;
+  config: Street3dConfig;
+  /** The scene bucket and CDN only: purging needs nothing of the pipeline. */
+  bucket: SceneBucketServices;
+}
+
 /**
- * Phase 9: purge disabled versions — delete their public objects, then
- * invalidate the CDN path, then record it. A failure leaves the version in the
- * outbox for the next tick; the version is ALREADY hidden from the API, which
- * reads only `published`.
+ * Phase 9: purge disabled versions — delete their public objects (every chunk
+ * of a chunked RAD included), then invalidate the CDN path, then record it. A
+ * failure leaves the version in the outbox for the next tick; the version is
+ * ALREADY hidden from the API, which reads only `published`.
  */
 export async function purgeDisabledVersions(
-  deps: SchedulerDeps,
+  deps: PurgeDeps,
   now: Date,
 ): Promise<{ versions: number; objects: number }> {
   const pending = await deps.db
@@ -237,13 +245,17 @@ export async function purgeDisabledVersions(
     .limit(BATCH);
   let objects = 0;
   for (const version of pending) {
-    for (const asset of version.assets) {
-      await deps.services.sceneStore.delete(asset.key);
+    for (const object of version.assets.flatMap(assetObjects)) {
+      await deps.bucket.sceneStore.delete(object.key);
       objects += 1;
     }
-    if (deps.services.cdn && version.assets.length > 0) {
-      const prefix = `${deps.config.sceneKeyPrefix}/${version.sceneId}/v${version.version}/`;
-      await deps.services.cdn.invalidate(
+    if (deps.bucket.cdn && version.assets.length > 0) {
+      const prefix = sceneVersionPrefix(
+        deps.config.sceneKeyPrefix,
+        version.sceneId,
+        version.version,
+      );
+      await deps.bucket.cdn.invalidate(
         [`${cdnPath(deps.config, prefix)}*`],
         `goway-street3d-disable-${version.id}`,
       );
@@ -317,7 +329,9 @@ export async function tick(deps: SchedulerDeps): Promise<TickSummary> {
     );
   }
   await run('dispatch', () => dispatchJobs(deps, clock()));
-  await run('purge', () => purgeDisabledVersions(deps, clock()));
+  await run('purge', () =>
+    purgeDisabledVersions({ db: deps.db, config: deps.config, bucket: deps.services }, clock()),
+  );
   return summary;
 }
 

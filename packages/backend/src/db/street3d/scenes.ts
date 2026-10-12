@@ -23,6 +23,11 @@
  * (`ST_DWithin` on the GiST-indexed points). Captures with no scene and at
  * least one eligible neighbour seed a new one. A geohash boundary is never a
  * scene boundary.
+ *
+ * Only RECONSTRUCTION scenes cluster captures. A licensed import is not built
+ * from contributions and is never rebuilt, so a capture beside one joins (or
+ * seeds) a reconstruction scene of GoWay's own instead of waiting forever on a
+ * scene that will never use it.
  */
 
 import { and, desc, eq, inArray, isNotNull, sql, type Column } from 'drizzle-orm';
@@ -70,6 +75,8 @@ export interface EligibleFrame {
   /** Set for a view cut from a 360° capture; see `capture_derivatives.panorama_*`. */
   panoramaIndex: number | null;
   panoramaYawDegrees: number | null;
+  /** NULL when the privacy worker did not state it (before `goway-privacy/3`). */
+  panoramaPitchDegrees: number | null;
   panoramaFovDegrees: number | null;
   /** Measured gravity in the frame's camera axes; see `capture_derivatives.gravity_*`. */
   gravityX: number | null;
@@ -125,6 +132,7 @@ export async function loadEligibleFrames(
       focalLength35mm: captureAssets.focalLengthEquivalentMm,
       panoramaIndex: captureDerivatives.panoramaIndex,
       panoramaYawDegrees: captureDerivatives.panoramaYawDegrees,
+      panoramaPitchDegrees: captureDerivatives.panoramaPitchDegrees,
       panoramaFovDegrees: captureDerivatives.panoramaFovDegrees,
       gravityX: captureDerivatives.gravityX,
       gravityY: captureDerivatives.gravityY,
@@ -152,7 +160,11 @@ export async function loadEligibleFrames(
     .orderBy(captureAssets.id, captureDerivatives.frameIndex);
 }
 
-/** Nearest scene (any state) within its radius, per capture. Disabled scenes absorb but never build. */
+/**
+ * Nearest reconstruction scene (any state) within its radius, per capture.
+ * Disabled scenes absorb but never build; licensed imports neither absorb nor
+ * build (see this module's header).
+ */
 export async function nearestScenes(
   db: Database,
   assetIds: readonly string[],
@@ -167,7 +179,8 @@ export async function nearestScenes(
       assetId: captureAssets.id,
       sceneId: sql<string | null>`(
         select ${qualified(street3dScenes.id)} from ${street3dScenes}
-        where ST_DWithin(${qualified(street3dScenes.anchorGeo)}, ${qualified(captureAssets.anchorGeo)}, ${qualified(street3dScenes.radiusMeters)})
+        where ${qualified(street3dScenes.source)} = 'reconstruction'
+          and ST_DWithin(${qualified(street3dScenes.anchorGeo)}, ${qualified(captureAssets.anchorGeo)}, ${qualified(street3dScenes.radiusMeters)})
         order by ${qualified(street3dScenes.anchorGeo)} <-> ${qualified(captureAssets.anchorGeo)}
         limit 1
       )`,
@@ -333,7 +346,11 @@ export async function createSceneJob(
       .from(street3dScenes)
       .where(eq(street3dScenes.id, input.scene.id))
       .for('update');
-    if (!scene || scene.state === 'disabled' || scene.lastAllocatedVersion + 1 !== input.version)
+    if (
+      scene?.source !== 'reconstruction' ||
+      scene.state === 'disabled' ||
+      scene.lastAllocatedVersion + 1 !== input.version
+    )
       return false;
 
     if (input.supersede) {

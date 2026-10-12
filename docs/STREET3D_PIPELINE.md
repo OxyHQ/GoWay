@@ -40,9 +40,11 @@ languages cannot drift silently. Database rows are never serialized into SQS.
 Two job types exist:
 
 - `capture_privacy` — one asset. Downloads the raw object, extracts keyframes
-  from video, detects faces, plates, people and vehicles, writes privacy-safe
-  derivatives (sensitive regions irreversibly blurred, metadata stripped) and
-  training masks (people and vehicles excluded), and reports a verdict.
+  from video (the sharpest frame of each window, the windows tiling the WHOLE
+  recording: one per `minIntervalSeconds`, up to `maxFrames`, wider beyond),
+  detects faces, plates, people and vehicles, writes privacy-safe derivatives
+  (sensitive regions irreversibly blurred, metadata stripped) and training
+  masks (people and vehicles excluded), and reports a verdict.
 - `scene_reconstruct` — one scene version. Consumes ONLY privacy-safe
   derivatives listed in a backend-written input manifest, solves cameras,
   georeferences, trains, compresses, evaluates gates and writes a result.
@@ -90,13 +92,29 @@ verdict naming the privacy pipeline version (`capture_assets` makes the
 eligibility column generated, so no other path can open it). The worker fails
 closed: a missing model, a checksum mismatch, a detector error or derivative
 metadata that survives stripping all produce `privacy_failed` and no derivative
-is reported.
+is reported. The current version is `goway-privacy/3`
+(`goway_reconstruction/__init__.py` says what each version changed).
 
-Derivatives are re-encoded pixels only (no EXIF, XMP, ICC or maker notes). Faces,
-plate regions and the heads of detected people are blurred irreversibly in the
-derivative. People and vehicles are excluded from feature extraction and from the
-training loss through masks, so they do not become geometry. Raw media is never
-read by matching or training.
+Derivatives are re-encoded pixels only (no EXIF, XMP, ICC or maker notes),
+sRGB: a photo's embedded profile (an iPhone's Display P3) and a video's colour
+signalling (matrix, range, primaries; HLG and PQ HDR tone-mapped) are converted
+into the pixels before the metadata is dropped. HEIC is decoded (`pillow-heif`).
+JPEG q95, 4:4:4; a photo keeps up to 4096 px (`STREET3D_KEYFRAME_*`).
+
+Blur and exclusion are separate regions (`privacy/redact.py`):
+
+- **Destroyed** (mosaic, then blur; the cell grows with the frame, so a higher
+  resolution never leaves more of a face): faces, the heads of detected people,
+  detected plates, every person and vehicle within its instance outline, and
+  the plate band of every vehicle box (its lower 60 %, a two-wheeler's whole
+  box) — so a plate the plate detector missed is still unreadable.
+- **Excluded** from features, training and the dense point cloud: everything
+  destroyed, plus a margin (16 px around boxes, the soft edge around
+  outlines), so blur never becomes appearance. The rest of a vehicle's box —
+  road, kerb, shopfront — is kept. The trainer downsamples masks by area and
+  keeps only pixels whose every source pixel is trusted.
+
+Raw media is never read by matching or training.
 
 The models and their licences are reviewed in
 `packages/reconstruction-worker/LICENSES.md`. Code and model weights are reviewed
@@ -117,33 +135,46 @@ duration, width), and `CAPTURE_EQUIRECTANGULAR_ENABLED` switches acceptance off.
   evidence of 360° on a capture declared perspective, a cubemap, stereo or
   cropped panorama, or a frame that is not 2:1: `privacy_failed`.
 - **Views, not panoramas.** Each panorama (the photo, or each video keyframe,
-  streamed so a long 8K video is never held whole) is resized so 90° spans one
-  view width and cut into 8 perspective views of 1280 × 960 at yaw 0°, 45° …
-  315°, pitch 0, 90° horizontal field of view — neighbours overlap by half.
-  Detection, redaction and masking run on every view on its own; any failure
-  fails the job.
+  streamed so a long 8K video is never held whole) is cut into 14 perspective
+  views with a 90° horizontal field of view: 8 at pitch 0 (yaw 0°, 45° …
+  315°, neighbours overlapping by half) and 6 at pitch +45° (yaw 0°, 60° …
+  300°) for the upper storeys a horizon view cuts off. A view is 4:3, as wide
+  as the panorama's own pixels over 90° (a 5.7K camera gives 1440 × 1080, at
+  most 2048), resampled straight from the decoded panorama. Detection,
+  redaction and masking run on every view on its own; any failure fails the
+  job. Blur is judged per panorama: a plain-sky view is kept, a panorama whose
+  sharpest view is blurred is dropped whole.
 - **The nadir is always masked.** Every view pixel more than 30° below the
   horizon is destroyed in the derivative and excluded from reconstruction,
-  whether or not a detector saw the operator or the mount there.
+  whether or not a detector saw the operator or the mount there. (There is no
+  downward ring: below the horizon views lies almost only the nadir.)
 - **Derivatives know their panorama.** Each view reports
-  `panorama: { index, yawDegrees, horizontalFovDegrees }` (`index` is the
-  keyframe; 0 for a photo), stored on `capture_derivatives` and handed back in
-  the manifest. A view's prior heading is the capture's heading plus its yaw,
-  and its intrinsics come from its field of view, not the 360° lens.
+  `panorama: { index, yawDegrees, pitchDegrees, horizontalFovDegrees }`
+  (`index` is the keyframe; 0 for a photo), stored on `capture_derivatives`
+  and handed back in the manifest. A view's prior heading is the capture's
+  heading plus its yaw, and its intrinsics come from its field of view, not
+  the 360° lens. `pitchDegrees` is absent from `goway-privacy/1` and `/2`
+  views, which all look at the horizon; a later view whose manifest entry
+  lacks it is solved as its own camera, never placed in the rig on a guess.
+  The backend stores exactly what the worker stated
+  (`capture_derivatives.panorama_pitch_degrees`, NULL when absent, and only
+  on a view) and the manifest omits a NULL rather than write a 0 for it.
 - **Fail closed at the backend too.** A result is refused, without retrying
   the attempt, unless its verified `projection` equals the declaration — so a
   worker that predates 360° support, which would process a panorama as one flat
   image, cannot open the gate. Views without a panorama verdict, or a panorama
   verdict without views, fail the contract on both sides.
-- **The solve treats a panorama as a rig.** Views pair with their neighbouring
-  yaws in the same panorama, with the same yaw along the sequence (20
-  panoramas, plus exponential jumps), and with neighbouring yaws in the next 4
-  panoramas; across sequences they pair spatially as any frame does, skipping
-  views that face apart when both carry a heading. `pycolmap.apply_rig_config`
-  then makes each panorama one rig frame whose sensors are its yaws, with the
-  relative rotations fixed (`refine_sensor_from_rig` off). If the rig cannot be
-  applied the solve continues on pairing alone. Georeferencing counts one
-  position per panorama, not eight.
+- **The solve treats a panorama as a rig.** Views pair with the views of the
+  same panorama whose axes lie within a field of view, with the same direction
+  along the sequence (20 panoramas, plus exponential jumps), and with
+  neighbouring directions in the next 4 panoramas; across sequences they pair
+  spatially as any frame does, skipping views that face apart when both carry a
+  heading. `pycolmap.apply_rig_config` then makes each panorama one rig frame
+  whose sensors are its (yaw, pitch) directions, with the relative rotations
+  fixed (`refine_sensor_from_rig` off). If the rig cannot be applied the solve
+  continues on pairing alone. Georeferencing counts one position per panorama,
+  not fourteen, and levels by each view's panorama "down", not the pitched
+  view's own. Navigation viewpoints and the initial view use level views only.
 
 ### Motion priors
 
@@ -196,13 +227,135 @@ manifest.
 Published manifests carry no contributor identity, no device metadata and no
 source object keys.
 
+The worker publishes `spz` splats and a `jpeg` poster only. The contract's
+`rad` level-of-detail format and `splat_environment` role are viewer formats
+this pipeline does not produce: a result naming one is refused, because a
+chunked RAD is many objects and publication copies one per asset. Today they
+reach the scene bucket only through a [licensed import](#licensed-imports).
+
 A result may report `viewpoints` (solved camera positions and facings, at most
 2000) and a `captureFieldOfView`. They are published as the manifest's optional
-`navigation`, so a viewer can move between observed positions instead of flying
-into unobserved space. Before storing, the backend rounds positions to
+`navigation`, so a viewer can walk where the scene was observed instead of
+flying into unobserved space. Before storing, the backend rounds positions to
 centimetres, sorts them by position, thins them so none is within 1.5 m of
 another and keeps at most 1000: what is published is the set of places the
 scene was seen from, never a capture sequence, a time or a contributor's path.
+A licensed import's `navigation` may also state `reachMeters`, how far from a
+capture position its scene holds up (published to the centimetre, only with
+viewpoints); a worker reports none, and the viewer derives it from the field
+of view (`docs/STREET3D_VIEWER.md`).
+
+## Licensed imports
+
+A scene GoWay licensed rather than reconstructed — the first is Kabukicho
+Ichibangai, Shinjuku, a 3D Gaussian scan bought from Locahun 3D (Kawaii World
+Industries Co., Ltd.), captured with an XGRIDS PortalCam on 2026-09-13/14 — is
+published by an operator, not the worker:
+
+```sh
+bun run street3d:admin import-licensed --manifest=<import.json> --target-database=goway
+```
+
+- **A source, for life.** The scene and every version carry
+  `source = 'licensed_import'` (a version's source is its scene's, by foreign
+  key). It has no job (`job_id` is set iff `reconstruction`), no capture inputs
+  and no edges. The schema refuses it a queued, reconstructing or
+  needs-capture state, a rebuild request or a queued input set; formation never
+  clusters a capture into it (contributions beside it form GoWay's own scene),
+  `rebuild-scene` refuses it, and no withdrawal or block can reach it, having
+  no inputs. Disable and enable work as for any version.
+- **Licence as data.** `licence` records licensor, licence name and tier,
+  grant reference and date, what it permits (`public_display`,
+  `format_conversion`, `commercial_use`) and the command run that imported it.
+  Both `public_display` and `format_conversion` are required: viewers get a
+  converted level-of-detail tree and a poster. The public credit is the
+  manifest's `attributions`; the licence itself is never served.
+- **Privacy: attested, never bypassed.** The imagery never entered the capture
+  privacy pipeline, so the version claims no pipeline version
+  (`privacyPipelineVersions` is empty, by CHECK). The import manifest must
+  carry `privacy: { basis, reviewedBy, note }` with `basis` one of
+  `licensor_redacted` (the licensor delivered faces, plates and people
+  removed, and GoWay reviewed the scene) or `goway_splat_review` (GoWay
+  reviewed the splat and poster itself); without it nothing is uploaded or
+  recorded. The public manifest gains only `privacyBasis`; who reviewed it and
+  why stays in `privacy_attestation`.
+- **Honest quality.** `heldOutPsnr` is absent (GoWay trained nothing to hold
+  frames out of; the contract allows that). `registrationRatio` is 1,
+  `alignmentResidualMeters` and `placement` come from the manifest, and
+  `precise` is refused above `STREET3D_PRECISE_PLACEMENT_RESIDUAL_METERS`. The
+  profile is the smallest whose budget holds the tree's Gaussians and bytes,
+  else the largest: a paged tree is never loaded whole. `provenance` is
+  `import:licensed/1` with the manifest's components (capture device,
+  converter versions) and the placement note.
+- **Chunked RADs stay together.** The importer reads the RAD header (`RAD0`,
+  metadata length, JSON, 8-byte padding; `street3d/radHeader.ts`) and requires
+  every chunk it names beside it, at the declared size, starting `RADC`, under
+  a plain `*.radc` name. Header and chunks are published under their own names
+  in a directory named by the digest of the whole tree:
+  `<prefix>/<sceneId>/v<version>/<treeSha256>/<name>-lod.rad` beside
+  `<name>-lod-<n>.radc`, so the viewer's "beside the header" rule holds and no
+  two trees ever share a key. A version's `assets` keep each chunk's key; purge
+  deletes them, `status` counts them.
+- **Idempotent.** Everything is validated and hashed before the first upload;
+  uploads are PUTs (`Cache-Control: immutable`, S3-checked SHA-256) and the
+  scene and version are recorded in one transaction. The import digest covers
+  every manifest value and asset byte (not file paths), is the version's
+  `result_sha256` and is unique among imports: a re-run records nothing and only
+  restores missing objects. A re-run of a DISABLED version is refused rather
+  than putting its bytes back online;
+  `enable-version <id> --manifest=<import.json>` restores them from the same
+  files, digest-checked. Naming `sceneId` publishes a new delivery as the
+  scene's next version.
+
+The manifest (paths relative to it; every viewer-facing value is parsed with
+the public contract's schemas):
+
+```json
+{
+  "schemaVersion": 1,
+  "anchor": { "latitude": 35.69388, "longitude": 139.70224, "altitudeMeters": 39.5 },
+  "enuFromScene": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+  "initialView": { "position": [0, -20, 1.6], "target": [0, 10, 1.6] },
+  "navigation": {
+    "viewpoints": [{ "position": [0, -20, 1.6], "forward": [0, 1, 0] }],
+    "fieldOfView": { "horizontalDegrees": 90, "verticalDegrees": 70 }
+  },
+  "footprint": { "type": "Polygon", "coordinates": [[[139.7013, 35.6930], [139.7031, 35.6930], [139.7031, 35.6948], [139.7013, 35.6948], [139.7013, 35.6930]]] },
+  "bounds": { "west": 139.7013, "south": 35.6930, "east": 139.7031, "north": 35.6948 },
+  "observedFrom": "2026-09-13T00:00:00+09:00",
+  "observedTo": "2026-09-14T23:59:59+09:00",
+  "attributions": ["3D scan © Kawaii World Industries Co., Ltd. (Locahun 3D)"],
+  "licence": {
+    "licensor": "Kawaii World Industries Co., Ltd. (Locahun 3D)",
+    "name": "<licence name>", "tier": "<tier>",
+    "grantReference": "<order or contract reference>", "grantedAt": "2026-09-20",
+    "permits": ["public_display", "format_conversion", "commercial_use"]
+  },
+  "privacy": { "basis": "licensor_redacted", "reviewedBy": "<operator>", "note": "<what was checked>" },
+  "placement": "approximate",
+  "placementNote": "<how the scan was georeferenced>",
+  "alignmentResidualMeters": 4,
+  "provenance": { "components": { "capture": "XGRIDS PortalCam", "spark-build-lod": "2.3.1" } },
+  "assets": { "splat": "kabukicho-lod.rad", "environment": "kabukicho-env-lod.rad", "poster": "poster.jpg" }
+}
+```
+
+The command prints aggregate JSON (`imported`, `created`, `sceneId`,
+`versionId`, `version`, `profile`, `objects`, `bytes`, `uploaded`) or
+`{ "imported": false, "reason", "detail" }` naming a field or a file's role,
+never a value or a path. It needs the scene bucket only — `STREET3D_SCENE_BUCKET`
+(the backend task role's `s3:PutObject`/`s3:GetObject` on `<prefix>/*`) or, in
+development, `STREET3D_SCENE_LOCAL_DIR` — and `STREET3D_PUBLIC_ASSET_BASE_URL`;
+no queue or worker. Locally:
+
+```sh
+# packages/backend/.env
+STREET3D_SCENE_LOCAL_DIR=../../.street3d-scenes
+STREET3D_PUBLIC_ASSET_BASE_URL=http://127.0.0.1:8790
+
+bun run street3d:admin import-licensed --manifest=/path/to/import.json --target-database=goway_dev
+bun run street3d:serve-assets   # CORS, byte ranges, immutable; loopback only
+```
 
 ## Retention
 
@@ -220,22 +373,24 @@ scene was seen from, never a capture sequence, a time or a contributor's path.
 
 The backend half lives in `packages/backend/src/street3d/` (scheduler, adapters,
 validation) and `src/db/street3d/` (every statement). Migration
-`0006_goway_street3d` (`pre`) adds its tables.
+`0006_goway_street3d` (`pre`) adds its tables; `0019` and `0020` (`pre`) add
+scene and version sources for licensed imports.
 
 ### Switching it on
 
-Nothing runs until configured; `/ready` never depends on it.
+Nothing but the read API runs until configured; `/ready` never depends on it.
 
 | Variable | Purpose |
 | --- | --- |
 | `STREET3D_SCHEDULER_ENABLED` | Run `tick()` in-process after the server listens (default `false`). |
 | `STREET3D_SCHEDULER_INTERVAL_SECONDS` | Seconds between ticks (default 60). |
-| `STREET3D_VIEWING_ENABLED` | Serve the public read API (default `false`). |
+| `STREET3D_VIEWING_ENABLED` | Serve the public read API (default `true`: it reads only published scenes; `false` answers 503/404). |
 | `STREET3D_AWS_REGION` | Queues and scene bucket (falls back to `AWS_REGION`). |
 | `STREET3D_JOBS_QUEUE_URL`, `STREET3D_EVENTS_QUEUE_URL` | The two queues. |
 | `STREET3D_JOBS_DLQ_URL` | Optional: the jobs DLQ, for `status` and failing dead-lettered jobs. |
 | `STREET3D_SCENE_BUCKET`, `STREET3D_SCENE_KEY_PREFIX` | Published assets (prefix default `scenes`). |
 | `STREET3D_PUBLIC_ASSET_BASE_URL` | Origin the scene bucket is served from. |
+| `STREET3D_SCENE_LOCAL_DIR` | Development only, never beside `STREET3D_SCENE_BUCKET`: a local directory standing in for the scene bucket, for licensed imports, served by `street3d:serve-assets`. |
 | `STREET3D_CDN_DISTRIBUTION_ID` | Optional: invalidated on disable. |
 | `CAPTURE_S3_*` | The temporary bucket; `derived/` and `jobs/` live beside `captures/`. |
 
@@ -258,7 +413,7 @@ command can overlap. The attempt number travels as the SQS message attribute
 | Temporary bucket `jobs/*` | `s3:PutObject` (manifests, cancel markers), `s3:GetObject` (results; source of copies), `s3:DeleteObject` |
 | Temporary bucket `derived/*` | `s3:GetObject`, `s3:DeleteObject` |
 | Temporary bucket | `s3:ListBucket` conditioned on `s3:prefix` `jobs/*` and `derived/*` |
-| Scene bucket `<prefix>/*` | `s3:PutObject` (server-side copy target), `s3:GetObject` (HEAD verification), `s3:DeleteObject` |
+| Scene bucket `<prefix>/*` | `s3:PutObject` (server-side copy target; a licensed import's uploads), `s3:GetObject` (HEAD verification), `s3:DeleteObject` |
 | Jobs queue | `sqs:SendMessage`, `sqs:GetQueueAttributes` |
 | Events queue | `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` |
 | Jobs DLQ (optional) | `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` |
@@ -276,11 +431,12 @@ customer-managed key add `kms:GenerateDataKey`/`kms:Decrypt` for both.
 bun run street3d:tick  --target-database=goway
 bun run street3d:admin status                                   --target-database=goway
 bun run street3d:admin disable-version <versionId> --reason "…" --target-database=goway
-bun run street3d:admin enable-version  <versionId>              --target-database=goway
+bun run street3d:admin enable-version  <versionId> [--manifest=<import.json>] --target-database=goway
 bun run street3d:admin rebuild-scene   <sceneId> [--profile standard] --target-database=goway
 bun run street3d:admin block-capture   <assetId> --reason "…"   --target-database=goway
 bun run street3d:admin cancel-job      <jobId>                  --target-database=goway
 bun run street3d:admin requeue-job     <jobId>                  --target-database=goway
+bun run street3d:admin import-licensed --manifest=<import.json> --target-database=goway
 ```
 
 The image ships them as `dist/src/street3d/runTick.js` and `runAdmin.js`. Both
@@ -297,8 +453,9 @@ assert the database and the migration ledger first, print aggregate JSON only
   in the same command when the pipeline is configured; otherwise the next tick
   purges. `enable-version` succeeds only if every asset still exists in the scene
   bucket or can be restored, digest-verified, from the job's result while its
-  `jobs/` artifacts are retained, and only if no registered input has since
-  been withdrawn or blocked.
+  `jobs/` artifacts are retained (a licensed import: from `--manifest`, the
+  files it was imported from), and only if no registered input has since been
+  withdrawn or blocked.
 - `block-capture` is permanent: the capture's gate is `blocked`, its content hash
   is recorded so identical bytes are refused too, open jobs are cancelled, every
   version that registered it is disabled and purged, and a rebuild without it is

@@ -14,6 +14,7 @@
 import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import { constraintNameOf } from '@oxy.so/db';
 import { createCaptureSession, registerAsset } from '../capture/captureRepository';
 import {
@@ -202,6 +203,32 @@ describe('derivatives are temporary and never raw', () => {
           .values(derivative({ frameIndex: 14, ...view, panoramaIndex: -1 })),
       ),
     ).toContain('capture_derivatives_panorama_check');
+  });
+
+  it('records a view’s pitch only on a view, no further than straight up or down, and none when unstated', async () => {
+    const db = requireSuite(suite).db;
+    const view = { panoramaIndex: 0, panoramaYawDegrees: 60, panoramaFovDegrees: 90 };
+    // An upper-ring view, the horizon, straight down, and a pre-/3 view that stated none.
+    for (const [frameIndex, pitch] of [
+      [15, 45],
+      [16, 0],
+      [17, -90],
+      [18, null],
+    ] as const)
+      await db
+        .insert(captureDerivatives)
+        .values(derivative({ frameIndex, ...view, panoramaPitchDegrees: pitch }));
+    for (const [frameIndex, fields] of [
+      [30, { ...view, panoramaPitchDegrees: 90.5 }],
+      [31, { ...view, panoramaPitchDegrees: -91 }],
+      // A pitch on a frame that is no panorama view at all.
+      [32, { panoramaPitchDegrees: 0 }],
+    ] as const)
+      expect(
+        await refusedBy(() =>
+          db.insert(captureDerivatives).values(derivative({ frameIndex, ...fields })),
+        ),
+      ).toContain('capture_derivatives_panorama_pitch_check');
   });
 });
 
@@ -394,6 +421,146 @@ describe('versions and the graph', () => {
         }),
       ),
     ).toContain('street3d_capture_edges_order_check');
+  });
+});
+
+describe('licensed imports', () => {
+  const licence = {
+    licensor: 'Licensor',
+    name: 'Licence',
+    grantReference: 'REF-1',
+    grantedAt: '2026-09-20',
+    permits: ['public_display' as const, 'format_conversion' as const],
+    importRun: { command: 'import-licensed' as const, runId: 'run', at: '2026-10-01T00:00:00Z' },
+  };
+  const attestation = {
+    basis: 'licensor_redacted' as const,
+    reviewedBy: 'operator',
+    note: 'reviewed',
+  };
+  const importedVersion = (
+    scene: string,
+    number: number,
+    overrides: Record<string, unknown> = {},
+  ) => ({
+    sceneId: scene,
+    version: number,
+    source: 'licensed_import',
+    state: 'superseded',
+    profile: 'standard',
+    publishedAt: new Date(),
+    boundsWest: 139.7,
+    boundsSouth: 35.69,
+    boundsEast: 139.71,
+    boundsNorth: 35.7,
+    footprint: { type: 'Polygon' as const, coordinates: [] },
+    worldTransform: {
+      anchor: { latitude: 35.69, longitude: 139.7, altitudeMeters: 40 },
+      frame: 'enu' as const,
+      enuFromScene: [],
+    },
+    initialView: {
+      position: [0, 0, 0] as [number, number, number],
+      target: [0, 1, 0] as [number, number, number],
+    },
+    assets: [],
+    quality: {
+      profile: 'standard' as const,
+      registrationRatio: 1,
+      alignmentResidualMeters: 4,
+      placement: 'approximate' as const,
+    },
+    metrics: {},
+    provenance: { pipelineVersion: 'import:licensed/1', components: { converter: '1' } },
+    observedFrom: new Date(),
+    observedTo: new Date(),
+    privacyPipelineVersions: [] as string[],
+    resultSha256: digest(String(number % 10)),
+    licence,
+    privacyAttestation: attestation,
+    ...overrides,
+  });
+
+  it('keeps an imported scene out of reconstruction, and each version true to its source', async () => {
+    const db = requireSuite(suite).db;
+    const imported = defined(
+      (
+        await db
+          .insert(street3dScenes)
+          .values({
+            source: 'licensed_import',
+            anchorLatitude: 35.69,
+            anchorLongitude: 139.7,
+            radiusMeters: 150,
+          })
+          .returning()
+      )[0],
+    );
+    for (const change of [
+      { rebuildRequestedAt: new Date() },
+      { rebuildProfile: 'standard' },
+      { lastQueuedInputFingerprint: digest('d') },
+      { state: 'queued' },
+      { state: 'needs_more_capture' },
+    ]) {
+      expect(
+        await refusedBy(() =>
+          db.update(street3dScenes).set(change).where(eq(street3dScenes.id, imported.id)),
+        ),
+      ).toContain('street3d_scenes_import_check');
+    }
+
+    await db.insert(street3dSceneVersions).values(importedVersion(imported.id, 1));
+    // An import's version on a reconstruction scene, and the reverse.
+    expect(
+      await refusedBy(() => db.insert(street3dSceneVersions).values(importedVersion(sceneId, 2))),
+    ).toContain('street3d_versions_scene_source_fk');
+    const job = defined(
+      (
+        await db
+          .insert(street3dJobs)
+          .values(sceneJob(30, { state: 'completed', finishedAt: new Date() }))
+          .returning()
+      )[0],
+    );
+    expect(
+      await refusedBy(() =>
+        db.insert(street3dSceneVersions).values(importedVersion(imported.id, 3, { jobId: job.id })),
+      ),
+    ).toContain('street3d_versions_job_source_check');
+    expect(
+      await refusedBy(() =>
+        db.insert(street3dSceneVersions).values(
+          importedVersion(sceneId, 30, {
+            source: 'reconstruction',
+            licence: null,
+            privacyAttestation: null,
+          }),
+        ),
+      ),
+    ).toContain('street3d_versions_job_source_check');
+
+    for (const [overrides, constraint] of [
+      [{ licence: null }, 'street3d_versions_licence_check'],
+      [{ privacyAttestation: null }, 'street3d_versions_privacy_attestation_check'],
+      [
+        { privacyAttestation: { ...attestation, basis: 'trust_me' } },
+        'street3d_versions_privacy_attestation_check',
+      ],
+      [
+        { privacyAttestation: { reviewedBy: 'x', note: 'y' } },
+        'street3d_versions_privacy_attestation_check',
+      ],
+      [{ privacyPipelineVersions: ['p/1'] }, 'street3d_versions_privacy_attestation_check'],
+      // The same import digest twice.
+      [{ resultSha256: digest('1') }, 'street3d_versions_import_key'],
+    ] as const) {
+      expect(
+        await refusedBy(() =>
+          db.insert(street3dSceneVersions).values(importedVersion(imported.id, 4, overrides)),
+        ),
+      ).toContain(constraint);
+    }
   });
 });
 

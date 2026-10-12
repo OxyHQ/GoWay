@@ -13,10 +13,16 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import type { StoredObjectStat } from '../../storage/objectStore';
 import type { JobObjectStore } from '../jobObjectStore';
 import { assertScopedKey, DERIVED_PREFIX, JOBS_PREFIX, serializeJson } from '../jobObjectStore';
-import type { CdnInvalidator, CopyAssetRequest, SceneAssetStore } from '../sceneAssetStore';
+import type {
+  CdnInvalidator,
+  CopyAssetRequest,
+  PipelineSceneAssetStore,
+  PutAssetRequest,
+} from '../sceneAssetStore';
 import type { Street3dServices } from '../services';
 import type { QueueMessage, QueueStats, ReceiveOptions, WorkQueue } from '../workQueue';
 import {
@@ -133,9 +139,10 @@ export class FakeJobStore implements JobObjectStore {
   }
 }
 
-export class FakeSceneStore implements SceneAssetStore {
+export class FakeSceneStore implements PipelineSceneAssetStore {
   readonly objects = new Map<string, { bytes: Uint8Array; contentType: string }>();
   readonly copies: CopyAssetRequest[] = [];
+  readonly puts: PutAssetRequest[] = [];
   readonly deleted: string[] = [];
 
   constructor(private readonly staging: FakeJobStore) {}
@@ -147,6 +154,14 @@ export class FakeSceneStore implements SceneAssetStore {
       throw new Error('digest');
     this.copies.push(request);
     this.objects.set(request.destinationKey, { bytes, contentType: request.contentType });
+  }
+
+  async putFile(request: PutAssetRequest) {
+    const bytes = new Uint8Array(await readFile(request.filePath));
+    if (sha256(bytes) !== request.sha256 || bytes.byteLength !== request.byteSize)
+      throw new Error('digest');
+    this.puts.push(request);
+    this.objects.set(request.key, { bytes, contentType: request.contentType });
   }
 
   async head(key: string) {
@@ -210,6 +225,28 @@ function event(
   } as WorkerEvent;
 }
 
+/**
+ * The `frameIndex`-th view of a `goway-privacy/3` capture, in the order its
+ * worker cuts them (`privacy/panorama.py` `view_directions`): per panorama the
+ * horizon ring of eight 45° apart, then six 60° apart pitched 45° up.
+ */
+function pitchedView(frameIndex: number) {
+  const k = frameIndex % 14;
+  return k < 8
+    ? {
+        index: Math.floor(frameIndex / 14),
+        yawDegrees: k * 45,
+        pitchDegrees: 0,
+        horizontalFovDegrees: 90,
+      }
+    : {
+        index: Math.floor(frameIndex / 14),
+        yawDegrees: (k - 8) * 60,
+        pitchDegrees: 45,
+        horizontalFovDegrees: 90,
+      };
+}
+
 /** The external worker, scripted, speaking only the contract. */
 export class FakeWorker {
   constructor(private readonly services: FakeServices) {}
@@ -259,7 +296,9 @@ export class FakeWorker {
    * `panorama` reports the frames as views of 360° panoramas (eight per
    * panorama, 45° apart) under a verified `equirectangular` projection;
    * without it the result names no projection, as a worker that predates 360°
-   * captures would.
+   * captures would. `pitched` (with `panorama`) reports them as
+   * `goway-privacy/3` cuts them instead: fourteen per panorama, the horizon
+   * ring of eight then six looking 45° up, every view stating its pitch.
    */
   async completePrivacy(
     job: CapturePrivacyJob,
@@ -269,6 +308,7 @@ export class FakeWorker {
       attempt?: number;
       seed?: string;
       panorama?: boolean;
+      pitched?: boolean;
       /** Video keyframes of this size, `frameIndex × timestampStep` seconds into the recording. */
       keyframes?: { width: number; height: number; timestampStep: number };
     } = {},
@@ -298,11 +338,13 @@ export class FakeWorker {
                 ? {
                     width: 1280,
                     height: 960,
-                    panorama: {
-                      index: Math.floor(frameIndex / 8),
-                      yawDegrees: (frameIndex % 8) * 45,
-                      horizontalFovDegrees: 90,
-                    },
+                    panorama: options.pitched
+                      ? pitchedView(frameIndex)
+                      : {
+                          index: Math.floor(frameIndex / 8),
+                          yawDegrees: (frameIndex % 8) * 45,
+                          horizontalFovDegrees: 90,
+                        },
                   }
                 : options.keyframes
                   ? {
@@ -321,7 +363,8 @@ export class FakeWorker {
       attempt,
       assetId: job.assetId,
       verdict,
-      privacyPipelineVersion: 'goway-privacy/1',
+      privacyPipelineVersion:
+        options.panorama && options.pitched ? 'goway-privacy/3' : 'goway-privacy/1',
       ...(options.panorama ? { projection: 'equirectangular' } : {}),
       models: [{ name: 'face', version: '1', sha256: 'a'.repeat(64) }],
       metadataStripped: true,

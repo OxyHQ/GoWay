@@ -12439,6 +12439,11 @@
                   "horizontalDegrees",
                   "verticalDegrees"
                 ]
+              },
+              "reachMeters": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 10
               }
             },
             "required": [
@@ -12455,6 +12460,7 @@
                   "enum": [
                     "splat",
                     "splat_preview",
+                    "splat_environment",
                     "poster"
                   ]
                 },
@@ -12462,6 +12468,7 @@
                   "type": "string",
                   "enum": [
                     "spz",
+                    "rad",
                     "jpeg"
                   ]
                 },
@@ -12527,7 +12534,6 @@
               "profile",
               "registrationRatio",
               "alignmentResidualMeters",
-              "heldOutPsnr",
               "placement"
             ]
           },
@@ -12559,6 +12565,13 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "privacyBasis": {
+            "type": "string",
+            "enum": [
+              "licensor_redacted",
+              "goway_splat_review"
+            ]
           }
         },
         "required": [

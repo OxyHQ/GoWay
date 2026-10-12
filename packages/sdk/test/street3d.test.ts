@@ -253,6 +253,48 @@ describe('street3d responses', () => {
     ).toBeInstanceOf(GoWayResponseError);
   });
 
+  it('read a rad level-of-detail scene and its environment, and refuse a format its role cannot have', async () => {
+    const lod = {
+      ...manifest,
+      assets: [
+        {
+          role: 'splat',
+          format: 'rad',
+          url: 'https://cdn.example.test/scenes/scene-1/v3/scene-lod.rad',
+          byteSize: 4096,
+          sha256: digest,
+          gaussians: 8_100_000,
+        },
+        {
+          role: 'splat_environment',
+          format: 'rad',
+          url: 'https://cdn.example.test/scenes/scene-1/v3/sky-lod.rad',
+          byteSize: 1024,
+          sha256: digest,
+        },
+        manifest.assets[1],
+      ],
+    };
+    expect((await manifestFrom(lod)).assets.map(({ role, format }) => [role, format])).toEqual([
+      ['splat', 'rad'],
+      ['splat_environment', 'rad'],
+      ['poster', 'jpeg'],
+    ]);
+    for (const [role, format] of [
+      ['splat_preview', 'rad'],
+      ['splat_environment', 'spz'],
+      ['poster', 'rad'],
+      ['splat', 'jpeg'],
+      ['splat', 'ply'],
+    ]) {
+      expect(
+        await rejection(
+          manifestFrom({ ...manifest, assets: [{ ...manifest.assets[0], role, format }] }),
+        ),
+      ).toBeInstanceOf(GoWayResponseError);
+    }
+  });
+
   it('parse guided navigation strictly when present and leave it absent otherwise', async () => {
     expect(await manifestFrom(manifest)).not.toHaveProperty('navigation');
     // `null` is not "absent": the contract field is optional, not nullable.
@@ -266,6 +308,7 @@ describe('street3d responses', () => {
         { position: [0.1, 2.5, 1.6], forward: [0, 1, 0] },
       ],
       fieldOfView: { horizontalDegrees: 66, verticalDegrees: 50 },
+      reachMeters: 1.5,
     };
     const parsed = await manifestFrom({
       ...manifest,
@@ -296,6 +339,10 @@ describe('street3d responses', () => {
       { viewpoints: [], fieldOfView: { horizontalDegrees: 0, verticalDegrees: 50 } },
       { viewpoints: [], fieldOfView: { horizontalDegrees: 66, verticalDegrees: 180 } },
       { viewpoints: [], fieldOfView: { horizontalDegrees: 66 } },
+      { viewpoints: [], reachMeters: 0 },
+      { viewpoints: [], reachMeters: -1 },
+      { viewpoints: [], reachMeters: 11 },
+      { viewpoints: [], reachMeters: '3' },
       'nearby',
     ];
     for (const bad of malformed) {

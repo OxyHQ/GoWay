@@ -127,3 +127,75 @@ def test_plain_frames_are_paired_as_before():
     assert rig_configs(plain) == []
     pairs = set(_pairs(plain))
     assert ("p/p-0.jpg", "p/p-1.jpg") in pairs and ("p/p-0.jpg", "p/p-20.jpg") in pairs
+
+
+# ── The upper ring: pitched sensors ─────────────────────────────────────────
+
+
+def with_upper_ring(group: str, count: int, *, known: bool = True):
+    frames = panoramas(group, count)
+    for p in range(count):
+        for k in range(6):
+            rig = RigView(panorama=f"{group}-asset-{p:05d}", yaw=k * 60.0, fov=90.0, pitch=45.0 if known else None)
+            frame_id = f"{group}-{p}-u{k}"
+            frames.append(
+                SfmFrame(frame_id, group, p * 14 + 8 + k, frame_image_name(group, frame_id, 1280, 960, rig), 1280, 960, p * 2.0, 0.0, 0.0, None, rig=rig)
+            )
+    return frames
+
+
+def upper(frames, p: int, k: int, group: str = "g"):
+    return next(f for f in frames if f.frame_id == f"{group}-{p}-u{k}")
+
+
+def test_upper_views_are_sensors_of_their_panoramas_rig():
+    frames = with_upper_ring("g", 3)
+    assert len({f.image_name.rsplit("/", 1)[-1] for f in frames if f.rig.panorama.endswith("00000")}) == 1
+    # Horizon sensors keep the names they always had; pitched ones are told apart.
+    assert view(frames, 0, 0).image_name == "rig-1280x960-f09000/y00000/g-asset-00000.jpg"
+    assert upper(frames, 0, 1).image_name == "rig-1280x960-f09000/y06000p+04500/g-asset-00000.jpg"
+    (config,) = rig_configs(frames)
+    assert len(config.cameras) == 14
+    by_prefix = {f.image_name.rsplit("/", 1)[0] + "/": f.rig for f in frames}
+    reference = by_prefix[config.cameras[0].image_prefix]
+    for camera in config.cameras[1:]:
+        rig = by_prefix[camera.image_prefix]
+        expected = cam_from_pano(rig.yaw, rig.pitch) @ cam_from_pano(reference.yaw, reference.pitch).T
+        assert np.allclose(camera.cam_from_rig.rotation.matrix(), expected, atol=1e-9)
+
+
+def test_upper_views_pair_with_the_views_they_overlap():
+    frames = with_upper_ring("g", 6)
+    pairs = set(_pairs(frames))
+    assert paired(pairs, upper(frames, 2, 0), view(frames, 2, 0))  # straight below it, 45° apart
+    assert paired(pairs, upper(frames, 2, 0), upper(frames, 2, 1))  # its ring neighbour, ~41° apart
+    assert not paired(pairs, upper(frames, 2, 0), view(frames, 2, 4))  # behind it
+    assert paired(pairs, upper(frames, 2, 0), upper(frames, 4, 0))  # the same sensor along the sequence
+
+
+def test_views_of_unknown_pitch_stay_out_of_the_rig():
+    frames = with_upper_ring("g", 3, known=False)
+    loose = upper(frames, 1, 0)
+    assert loose.image_name == "g/g-1-u0.jpg"  # named like a plain frame, so no name can collide
+    (config,) = rig_configs(frames)
+    assert len(config.cameras) == 8  # only the horizon sensors
+    pairs = set(_pairs(frames))
+    assert paired(pairs, loose, view(frames, 1, 0))  # still matched within its panorama
+
+
+def test_a_manifest_view_without_pitch_is_horizon_only_for_older_pipelines():
+    from goway_reconstruction.contract import InputFrame
+    from goway_reconstruction.recon.job import rig_view
+
+    base = {
+        "frameId": "f", "captureAssetId": "a", "imageKey": "derived/x.jpg", "imageSha256": "0" * 64, "maskKey": "derived/x.png",
+        "maskSha256": "0" * 64, "width": 1280, "height": 960, "sequenceGroup": "g", "sequenceIndex": 0,
+        "prior": {"latitude": 0, "longitude": 0},
+    }
+    panorama = {"index": 2, "yawDegrees": 45.0, "horizontalFovDegrees": 90.0}
+    legacy = rig_view(InputFrame.model_validate(base | {"privacyPipelineVersion": "goway-privacy/2", "panorama": panorama}))
+    assert legacy.pitch == 0.0 and legacy.rigged
+    lost = rig_view(InputFrame.model_validate(base | {"privacyPipelineVersion": "goway-privacy/3", "panorama": panorama}))
+    assert lost.pitch is None and not lost.rigged
+    stated = rig_view(InputFrame.model_validate(base | {"privacyPipelineVersion": "goway-privacy/3", "panorama": panorama | {"pitchDegrees": 45.0}}))
+    assert stated.pitch == 45.0 and stated.panorama == "a-00002"

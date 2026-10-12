@@ -19,7 +19,16 @@ from goway_reconstruction.context import JobContext, JobFailure
 from goway_reconstruction.contract import CapturePrivacyJob
 from goway_reconstruction.privacy import job as privacy_job
 from goway_reconstruction.privacy.detectors import FrameDetections
-from goway_reconstruction.privacy.panorama import NADIR_MASK_DEGREES, ViewCutter, cam_from_pano, focal_pixels
+from goway_reconstruction.privacy.panorama import (
+    NADIR_MASK_DEGREES,
+    PANORAMA_MAX_LONG_EDGE,
+    UPPER_PITCH_DEGREES,
+    VIEW_MAX_WIDTH,
+    ViewCutter,
+    cam_from_pano,
+    focal_pixels,
+    view_size,
+)
 from goway_reconstruction.privacy.projection import (
     ProjectionEvidence,
     ProjectionMismatch,
@@ -218,11 +227,21 @@ def direction_panorama(h: int = 512, w: int = 1024) -> np.ndarray:
     return np.stack([np.cos(np.radians(lon)), np.sin(np.radians(lon)), lat], -1).astype(np.float32)
 
 
-def test_views_look_where_their_yaw_says():
+def lon_lat(c: np.ndarray) -> tuple[float, float]:
+    return math.degrees(math.atan2(c[1], c[0])), float(c[2])
+
+
+def test_views_look_where_their_yaw_and_pitch_say():
     cutter = ViewCutter(width=320, height=240)
     views = cutter.cut(direction_panorama())
-    assert [v.yaw_degrees for v in views] == [0, 45, 90, 135, 180, 225, 270, 315]
+    assert [(v.yaw_degrees, v.pitch_degrees) for v in views] == [(k * 45.0, 0.0) for k in range(8)] + [
+        (k * 60.0, UPPER_PITCH_DEGREES) for k in range(6)
+    ]
     for view in views:
+        lon, lat = lon_lat(view.rgb[120, 160])
+        assert abs((lon - view.yaw_degrees + 180) % 360 - 180) < 1.0
+        assert abs(lat - view.pitch_degrees) < 0.5
+    for view in views[:8]:
         c = view.rgb[120, 160]
         assert abs((math.degrees(math.atan2(c[1], c[0])) - view.yaw_degrees + 180) % 360 - 180) < 1.0
         assert abs(c[2]) < 0.5
@@ -234,32 +253,52 @@ def test_views_look_where_their_yaw_says():
 def test_neighbouring_views_overlap_by_half():
     cutter = ViewCutter(width=320, height=240)
     seen = np.zeros(360, int)
-    for view in cutter.cut(direction_panorama()):
+    for view in cutter.cut(direction_panorama())[:8]:
         row = view.rgb[120]
         lons = np.degrees(np.arctan2(row[:, 1], row[:, 0])) % 360
         seen[np.unique(lons.astype(int) % 360)] += 1
     assert seen.min() >= 2  # every direction at the horizon is in at least two views
 
 
-def test_cam_from_pano_matches_the_cut():
+@pytest.mark.parametrize("index", [3, 9, 12])  # a horizon view and two upper ones
+def test_cam_from_pano_matches_the_cut(index):
     cutter = ViewCutter(width=320, height=240)
     f = focal_pixels(320)
-    view = cutter.cut(direction_panorama())[3]
-    x, y = 300, 40
-    ray = np.array([x + 0.5 - 160, y + 0.5 - 120, f])
-    pano = cam_from_pano(view.yaw_degrees).T @ (ray / np.linalg.norm(ray))
-    lon, lat = math.degrees(math.atan2(pano[0], pano[2])), math.degrees(math.asin(-pano[1]))
-    c = view.rgb[y, x]
-    assert abs(math.degrees(math.atan2(c[1], c[0])) - lon) < 1.0 and abs(c[2] - lat) < 1.0
+    view = cutter.cut(direction_panorama())[index]
+    for x, y in ((300, 40), (10, 230), (160, 0)):
+        ray = np.array([x + 0.5 - 160, y + 0.5 - 120, f])
+        pano = cam_from_pano(view.yaw_degrees, view.pitch_degrees).T @ (ray / np.linalg.norm(ray))
+        lon, lat = math.degrees(math.atan2(pano[0], pano[2])), math.degrees(math.asin(-pano[1]))
+        c_lon, c_lat = lon_lat(view.rgb[y, x])
+        assert abs((c_lon - lon + 180) % 360 - 180) < 1.0 and abs(c_lat - lat) < 1.0
+
+
+def test_upper_views_are_upright_and_reach_the_upper_storeys():
+    cutter = ViewCutter(width=320, height=240)
+    for view in cutter.cut(direction_panorama())[8:]:
+        lat = view.rgb[..., 2]
+        # Upright: latitude falls from the top row to the bottom row, the same across a row's centre.
+        assert lat[0, 160] > lat[120, 160] > lat[239, 160]
+        assert lat[0, 160] > 75 and lat[239, 160] < 30  # far above the horizon ring, overlapping it
+        assert not view.nadir.any()
 
 
 def test_the_nadir_is_masked_and_nothing_above_it():
     cutter = ViewCutter(width=320, height=240)
-    view = cutter.cut(direction_panorama())[0]
-    lat = view.rgb[..., 2]
-    assert view.nadir.any() and not view.nadir[:120].any()
-    clear = np.abs(lat + NADIR_MASK_DEGREES) > 1.0
-    assert (view.nadir[clear] == (lat[clear] < -NADIR_MASK_DEGREES)).all()
+    for view in cutter.cut(direction_panorama())[:8]:
+        lat = view.rgb[..., 2]
+        assert view.nadir.any() and not view.nadir[:120].any()
+        clear = np.abs(lat + NADIR_MASK_DEGREES) > 1.0
+        assert (view.nadir[clear] == (lat[clear] < -NADIR_MASK_DEGREES)).all()
+
+
+def test_views_are_sized_from_the_panorama():
+    assert view_size(5760) == (1440, 1080)  # a 5.7K camera: one source pixel per view pixel
+    assert view_size(7680) == (1920, 1440)
+    assert view_size(12000) == (VIEW_MAX_WIDTH, VIEW_MAX_WIDTH * 3 // 4)  # reduced first, to PANORAMA_MAX_LONG_EDGE
+    assert PANORAMA_MAX_LONG_EDGE == VIEW_MAX_WIDTH * 4
+    views = ViewCutter().cut(textured(512, 1024))
+    assert {v.rgb.shape for v in views} == {(192, 256, 3)}
 
 
 # ── The privacy job, fail-closed ────────────────────────────────────────────
@@ -295,7 +334,7 @@ class FakeDetectors:
 @pytest.fixture
 def small_views(monkeypatch):
     monkeypatch.setattr(privacy_job, "ViewCutter", lambda: ViewCutter(width=256, height=192))
-    monkeypatch.setattr(privacy_job, "PANORAMA_LONG_EDGE", 1024)
+    monkeypatch.setattr(privacy_job, "PANORAMA_MAX_LONG_EDGE", 1024)
 
 
 def privacy_job_for(path: Path, *, kind: str, projection: str) -> CapturePrivacyJob:
@@ -319,19 +358,26 @@ def run_job(tmp_path: Path, source: Path, *, kind: str = "photo", projection: st
     return result, aws, detectors
 
 
-def test_a_360_photo_becomes_eight_masked_views(tmp_path, small_views):
+def test_a_360_photo_becomes_fourteen_masked_views(tmp_path, small_views):
     source = tmp_path / "pano.jpg"
     source.write_bytes(jpeg(textured(512, 1024), GPANO_ELEMENTS))
     result, aws, detectors = run_job(tmp_path, source)
     assert result.verdict == "passed" and result.projection == "equirectangular"
-    assert detectors.calls == 8 and len(result.frames) == 8
-    assert [(f.panorama.index, f.panorama.yawDegrees, f.panorama.horizontalFovDegrees) for f in result.frames] == [
-        (0, k * 45.0, 90.0) for k in range(8)
-    ]
+    assert result.privacyPipelineVersion == "goway-privacy/3"
+    assert detectors.calls == 14 and len(result.frames) == 14
+    assert [(f.panorama.index, f.panorama.yawDegrees, f.panorama.pitchDegrees, f.panorama.horizontalFovDegrees) for f in result.frames] == [
+        (0, k * 45.0, 0.0, 90.0) for k in range(8)
+    ] + [(0, k * 60.0, UPPER_PITCH_DEGREES, 90.0) for k in range(6)]
     for frame in result.frames:
         assert (frame.width, frame.height) == (256, 192)
         mask = np.asarray(Image.open(io.BytesIO(aws.objects[frame.maskKey])))
-        assert (mask[-1, 128] == 0) and (mask[0, 128] == 255)  # nadir excluded, sky kept
+        image = np.asarray(Image.open(io.BytesIO(aws.objects[frame.imageKey])))
+        if frame.panorama.pitchDegrees == 0:
+            # The nadir is excluded AND destroyed, whatever the detectors saw; the sky is kept.
+            assert (mask[-1, 128] == 0) and (mask[0, 128] == 255)
+            assert image[-12:, 100:156].std() < 25
+        else:
+            assert mask[-1, 128] == 255  # an upper view never reaches the nadir
         assert (mask[15:25, 15:25] == 0).all()  # the detected face too
         assert frame.maskedFraction > 0
 
@@ -346,7 +392,7 @@ def test_a_360_video_cuts_every_keyframe(tmp_path, small_views):
     assert indexes == [0, 1, 2, 3]  # one panorama per 0.5 s window
     for index in indexes:
         views = [f for f in result.frames if f.panorama.index == index]
-        assert len(views) == 8 and len({f.timestampSeconds for f in views}) == 1
+        assert len(views) == 14 and len({f.timestampSeconds for f in views}) == 1
 
 
 @pytest.mark.parametrize(
@@ -387,3 +433,20 @@ def test_a_perspective_photo_is_unchanged(tmp_path):
     result, _aws, detectors = run_job(tmp_path, source, projection="perspective")
     assert result.projection == "perspective" and detectors.calls == 1
     assert len(result.frames) == 1 and result.frames[0].panorama is None
+
+
+def test_plain_sky_views_are_kept_and_only_a_blurred_panorama_is_dropped(tmp_path, small_views):
+    pano = textured(512, 1024)
+    pano[:256] = (150, 180, 220)  # a cloudless sky over a textured street
+    source = tmp_path / "sky.jpg"
+    source.write_bytes(jpeg(pano, GPANO_ELEMENTS))
+    result, _aws, _detectors = run_job(tmp_path, source)
+    upper = [f for f in result.frames if f.panorama.pitchDegrees > 0]
+    assert len(result.frames) == 14 and result.rejectedFrames == 0
+    assert all(f.sharpness < 12 for f in upper)  # each would have failed a per-view gate
+
+    flat = tmp_path / "flat.jpg"
+    flat.write_bytes(jpeg(np.full((512, 1024, 3), 128, np.uint8), GPANO_ELEMENTS))
+    with pytest.raises(JobFailure) as failure:
+        run_job(tmp_path, flat)
+    assert failure.value.code == "corrupt_input"  # every view rejected: nothing usable, nothing reported
