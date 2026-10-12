@@ -12,6 +12,7 @@ import { IMAGERY_TIERS } from '../../lib/map/imagery';
 import { countCoverageTiles } from '../../worker/coverageTree.js';
 import { PMTiles, TILE_TYPE } from '../../worker/pmtiles.js';
 import { mergeEntries, mergeManifest } from '../build-satellite-manifest';
+import { withWaterMask } from '../build-satellite-set';
 import { checkSet, IMAGERY_SETS, type ImagerySetDefinition } from '../imagery/catalogue';
 import {
   cellLonLat,
@@ -98,6 +99,29 @@ describe('the catalogue', () => {
     expect(() =>
       mergeManifest(manifest, mergeEntries([entry('20261013-b', 12, '12/2072/1529')]), 'later'),
     ).toThrow(/cell zoom/);
+  });
+});
+
+describe('the water mask', () => {
+  test('a dataset mask from green and NIR replaces the bands’ nodata', () => {
+    const vrt = `<VRTDataset rasterXSize="2" rasterYSize="2">
+  <VRTRasterBand dataType="Byte" band="1">
+    <NoDataValue>0</NoDataValue>
+  </VRTRasterBand>
+</VRTDataset>`;
+    const out = withWaterMask(vrt, '/x/raw.vrt');
+    expect(out).not.toContain('NoDataValue');
+    expect(out).toContain('<MaskBand>');
+    expect(out).toContain('<PixelFunctionType>expression</PixelFunctionType>');
+    // NDWI > 0 and NIR < 800 is water (masked); B1 green, B2 NIR, from the raw VRT.
+    expect(out).toContain('(B1 - B2) / (B1 + B2)) &gt; 0');
+    expect(out).toContain('(B2 &lt; 800)');
+    expect(out.match(/<SourceBand>(\d)<\/SourceBand>/g)).toEqual([
+      '<SourceBand>2</SourceBand>',
+      '<SourceBand>4</SourceBand>',
+    ]);
+    expect(out.trim().endsWith('</VRTDataset>')).toBe(true);
+    expect(() => withWaterMask('<nope/>', 'x')).toThrow();
   });
 });
 

@@ -46,6 +46,7 @@ import {
   type ImagerySetDefinition,
   WORLDCOVER_BUCKET,
   WORLDCOVER_STRETCH,
+  WORLDCOVER_WATER,
 } from './imagery/catalogue';
 import {
   type Cell,
@@ -424,6 +425,8 @@ async function prepareCell(
       '2',
       '-b',
       '3',
+      '-b',
+      '4',
       ...configArgs(GDAL_HTTP_CONFIG),
       raw,
       ...urls,
@@ -442,11 +445,16 @@ async function prepareCell(
     '255',
     '-exponent',
     String(WORLDCOVER_STRETCH.exponent),
-    '-a_nodata',
-    '0',
+    '-b',
+    '1',
+    '-b',
+    '2',
+    '-b',
+    '3',
     raw,
     stretched,
   ]);
+  await maskWater(stretched, raw);
   const dataset = await warpToCell(gdal, set, cell, [stretched], dir, args.strips);
   return {
     dataset,
@@ -457,8 +465,48 @@ async function prepareCell(
       year: input.year,
       tiles: keys.map((key) => `${WORLDCOVER_BUCKET}/${key}`),
       stretch: WORLDCOVER_STRETCH,
+      water: { ndwiAbove: WORLDCOVER_WATER.ndwi, nirBelow: WORLDCOVER_WATER.nir },
     },
   };
+}
+
+/**
+ * Make the composite's water transparent: a dataset mask computed from its
+ * green and NIR bands (`WORLDCOVER_WATER`: NDWI above a threshold and NIR
+ * below a ceiling is water; nodata, 0, is masked too). The composite keeps
+ * near-shore water and masks the open sea in blocks, and its water stretches
+ * to a grey-blue that met the style's ocean in visible steps along every
+ * coast; masked, every sea, lake and wide river is the one ocean colour at
+ * every zoom, Blue Marble's.
+ */
+async function maskWater(stretched: string, raw: string): Promise<void> {
+  await writeFile(stretched, withWaterMask(await readFile(stretched, 'utf8'), raw));
+}
+
+/** {@link maskWater}'s rewrite of a VRT document: pure, so it is a test. */
+export function withWaterMask(xml: string, raw: string): string {
+  const { ndwi, nir } = WORLDCOVER_WATER;
+  // muparser, in an XML attribute: B1 is green (B03), B2 is NIR (B08).
+  const expression = `(B1 == 0) ? 0 : (((((B1 - B2) / (B1 + B2)) &gt; ${ndwi}) &amp;&amp; (B2 &lt; ${nir})) ? 0 : 255)`;
+  const source = (band: number) => `      <SimpleSource>
+        <SourceFilename relativeToVRT="0">${raw}</SourceFilename>
+        <SourceBand>${band}</SourceBand>
+      </SimpleSource>`;
+  const mask = `  <MaskBand>
+    <VRTRasterBand dataType="Byte" subClass="VRTDerivedRasterBand">
+      <PixelFunctionType>expression</PixelFunctionType>
+      <PixelFunctionArguments expression="${expression}" dialect="muparser" />
+      <SourceTransferType>Float32</SourceTransferType>
+${source(2)}
+${source(4)}
+    </VRTRasterBand>
+  </MaskBand>
+</VRTDataset>`;
+  if (!xml.includes('</VRTDataset>')) throw new Error('not a VRT document');
+  // The bands' inherited NoDataValue would win over the mask in gdalwarp; the
+  // mask covers nodata already.
+  const bands = xml.replace(/\s*<NoDataValue>[^<]*<\/NoDataValue>/g, '');
+  return bands.replace('</VRTDataset>', mask);
 }
 
 /** Read the archive back as the Worker will, and compare every tile to what was tiled. */

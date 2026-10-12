@@ -304,6 +304,18 @@ stored once: ICGC paints its sea one flat blue, and 418 of those tiles packed
 into 88 kB) → **verify** — every tile read back through `worker/pmtiles.js`
 and compared byte for byte → **receipt**.
 
+**WorldCover's water is made transparent.** The composite keeps near-shore
+water (stretched to a grey-blue, ≈ RGB 50, 58, 79) but masks the open sea in
+blocks, so the first proof showed a stepped coastline where its water met the
+style's ocean. The build now masks water with the standard water index on the
+composite's own bands — NDWI = (G − NIR)/(G + NIR) > 0 **and** NIR < 0.08
+(`WORLDCOVER_WATER`, a VRT mask band computed by GDAL's `expression` pixel
+function): NDWI alone also caught blue and white port roofs, whose NIR is
+high; water's stays low even when turbid. Every sea, lake and wide river is
+then the one ocean colour at every zoom. Checked by eye on the whole 1° tile
+of Barcelona (coast, port basins, the Llobregat delta, reservoirs): no false
+holes in the city, a clean coastline.
+
 ### The workflow
 
 `.github/workflows/build-satellite-tiles.yml`, manual dispatch only:

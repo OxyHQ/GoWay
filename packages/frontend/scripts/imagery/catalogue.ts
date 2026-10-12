@@ -80,6 +80,19 @@ export const WORLDCOVER_BUCKET = 'https://esa-worldcover-s2.s3.eu-central-1.amaz
  */
 export const WORLDCOVER_STRETCH = { max: 4000, exponent: 1 / 2.2 } as const;
 
+/**
+ * Which WorldCover pixels are WATER, made transparent so every sea, lake and
+ * wide river is the style's one ocean colour (`build-satellite-set.ts` →
+ * `maskWater`): NDWI = (G − NIR)/(G + NIR) above `ndwi` AND NIR (reflectance
+ * × 10⁴) below `nir`. Water reflects almost no near-infrared, so its NDWI is
+ * positive (sampled off Barcelona: G 157, NIR 84 → 0.30); vegetation and soil
+ * are negative. NDWI alone also caught blue and white port roofs (NDWI ≈ 0,
+ * NIR ≥ 0.1); the NIR ceiling keeps them, and even turbid water (NIR ≤ 0.05)
+ * stays below it. Checked by eye on the whole of N41E002 (Barcelona's coast,
+ * port, the Llobregat delta and inland reservoirs).
+ */
+export const WORLDCOVER_WATER = { ndwi: 0, nir: 800 } as const;
+
 export const IMAGERY_SETS: readonly ImagerySetDefinition[] = [
   {
     id: 'icgc-ortofoto-2025',
