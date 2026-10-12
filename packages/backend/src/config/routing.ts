@@ -25,16 +25,9 @@
  * repository points at one by default.
  */
 
-import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
 import { TRAVEL_MODES } from '@goway/contracts';
 import type { EnvironmentSource } from './index';
-
-// Type-only import above, so this module does NOT pull the core configuration
-// parse in as a side effect. It still wants a `.env` file when one exists, and
-// dotenv never overrides a variable the environment already set, so calling it
-// a second time is free.
-loadDotenv();
 
 /** Engines this backend knows how to drive. One today; the seam is the point. */
 export const ROUTING_PROVIDERS = ['valhalla'] as const;

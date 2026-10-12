@@ -28,7 +28,6 @@
  * in that session's `pg_temp`.
  */
 
-import 'dotenv/config';
 import { parseArgs } from 'node:util';
 import { assertMigrationTarget } from '@oxy.so/db/migrate';
 import postgres from 'postgres';

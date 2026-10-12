@@ -1,8 +1,9 @@
-// `.env` BEFORE anything reads DATABASE_URL below. drizzle-kit loads this file
-// itself, outside the application's own bootstrap, so nothing else has loaded
-// dotenv by the time it runs — and without this `db:generate` fails for a
-// developer whose DATABASE_URL lives only in packages/backend/.env.
-import 'dotenv/config';
+// `db:generate` runs drizzle-kit as `bun --bun --env-file=.env drizzle-kit`:
+// drizzle-kit loads this file itself, outside the application's own bootstrap,
+// and Bun does not autoload `.env` for a package binary, so without the explicit
+// `--env-file` `db:generate` fails for a developer whose DATABASE_URL lives only
+// in packages/backend/.env. A missing file is not an error, and a variable the
+// shell already set wins.
 import { DATABASE_CASING } from '@oxy.so/db';
 import { defineConfig } from 'drizzle-kit';
 

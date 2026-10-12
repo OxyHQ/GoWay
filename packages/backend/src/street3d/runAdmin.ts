@@ -13,7 +13,6 @@
  * Prints aggregate JSON; exits 1 on refusal. See `street3d/admin.ts`.
  */
 
-import 'dotenv/config';
 import { parseArgs } from 'node:util';
 import { assertMigrationTarget } from '@oxy.so/db/migrate';
 import { STREET_SCENE_PROFILES, type StreetSceneProfile } from '@goway/contracts';

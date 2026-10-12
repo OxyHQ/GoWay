@@ -28,12 +28,9 @@
  * worker that reported `passed` against a laxer reading cannot publish.
  */
 
-import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
 import { STREET_SCENE_PROFILES, type StreetSceneProfile } from '@goway/contracts';
 import type { EnvironmentSource } from './index';
-
-loadDotenv();
 
 const emptyAsUndefined = (value: unknown): unknown =>
   typeof value === 'string' && value.trim().length === 0 ? undefined : value;

@@ -14,15 +14,13 @@
  * take.
  */
 
-import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
 import { oxyUserIdList } from './oxyUserIds';
 
-// Before the parse below, and therefore before anything can import a parsed
-// value. A `.env` file is a developer convenience only: in ECS every variable
-// arrives from the task definition and there is no file to find, so a missing
-// one is not an error.
-loadDotenv();
+// Bun loads a `.env` file from the working directory into `process.env` before
+// any module runs, so the parse below already sees it. That file is a developer
+// convenience only: in ECS every variable arrives from the task definition and
+// there is no file to find, so a missing one is not an error.
 
 /** What a parser reads. `process.env` satisfies it; so does a plain object. */
 export type EnvironmentSource = Record<string, string | undefined>;
