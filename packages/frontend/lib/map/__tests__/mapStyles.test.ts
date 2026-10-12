@@ -47,6 +47,11 @@ const ENDPOINTS = {
   glyphs: 'https://goway.to/map/fonts/{fontstack}/{range}.pbf',
   sprite: 'https://goway.to/map/sprites/goway',
   attribution: '© OpenMapTiles © OpenStreetMap contributors',
+  terrain: {
+    tiles: 'https://goway.to/map/terrain/{z}/{x}/{y}.webp',
+    contours: 'https://goway.to/map/contours/{z}/{x}/{y}.pbf',
+    attribution: '© Mapterhorn',
+  },
 };
 
 const label = (s: MapStyleSelection) => `${s.style}/${s.preset}`;

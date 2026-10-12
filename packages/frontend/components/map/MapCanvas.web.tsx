@@ -313,6 +313,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const settleMapStyle = mapStyleState.settle;
   const resolvedAppearance = presetAppearance(stylePreset);
   const styleFollowsLight = mapStyleDefinition(styleId).light === 'follows';
+  // A style with its own relief (Outdoors) shows elevation data whatever the
+  // Terrain switch says, so its credit rides along.
+  const styleDrawsRelief = mapStyleDefinition(styleId).relief === true;
   const styleUrl = useMemo(
     () => resolveMapStyleUrl({ style: styleId, preset: stylePreset }),
     [styleId, stylePreset],
@@ -1648,6 +1651,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           credits of data the city-3D layer is drawing right now. */}
       <MapBrand />
       <MapAttribution
+        elevation={styleDrawsRelief}
         extra={credits}
         disclosure={cityLifeDisclosure}
         expanded={credit.expanded}

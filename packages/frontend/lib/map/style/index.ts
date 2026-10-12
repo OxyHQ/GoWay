@@ -35,7 +35,13 @@ import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec';
 import { BUILDINGS_LIGHT } from './buildings3d';
 import type { MapLightPreset, MapStyleId, MapStyleSelection } from './catalogue';
 import { buildCity3dGroundOverrides } from './city3dGround';
-import { buildLayers, GOWAY_STYLE_LAYER_ID_LIST, LABEL_ANCHOR_LAYER_ID } from './layers';
+import {
+  buildLayers,
+  CONTOUR_SOURCE_ID,
+  GOWAY_STYLE_LAYER_ID_LIST,
+  LABEL_ANCHOR_LAYER_ID,
+  TERRAIN_SOURCE_ID,
+} from './layers';
 import { CITY3D_GROUND_METADATA_KEY } from './palette3d';
 import { buildQualityOverrides, QUALITY_LOW_METADATA_KEY } from './qualityOverrides';
 import { styleTheme } from './themes';
@@ -72,12 +78,45 @@ export interface MapStyleEndpoints {
   sprite?: string;
   /** The credit line stamped onto the source, per the OSM/ODbL obligation. */
   attribution: string;
+  /**
+   * GoWay's elevation tiles (`{z}/{x}/{y}` Terrarium WebP) and the contour
+   * tiles traced from them, with the elevation credit — read only by a style
+   * that draws its own relief (Outdoors).
+   */
+  terrain?: { tiles: string; contours: string; attribution: string };
+}
+
+/**
+ * The two sources a style with its own relief declares: the elevation tiles
+ * the hillshade reads (`RELIEF_DEM`'s shape) and the contour tiles the Worker
+ * traces from them (`worker/contours.js`: z9–14, over-zoomed above).
+ */
+function reliefSources(terrain: NonNullable<MapStyleEndpoints['terrain']>) {
+  return {
+    [TERRAIN_SOURCE_ID]: {
+      type: 'raster-dem' as const,
+      tiles: [terrain.tiles],
+      encoding: 'terrarium' as const,
+      tileSize: 512,
+      minzoom: 0,
+      maxzoom: 12,
+      attribution: terrain.attribution,
+    },
+    [CONTOUR_SOURCE_ID]: {
+      type: 'vector' as const,
+      tiles: [terrain.contours],
+      minzoom: 9,
+      maxzoom: 14,
+      attribution: terrain.attribution,
+    },
+  };
 }
 
 /** Human names, used in the style's `name` and in MapLibre's debug output. */
 const STYLE_NAMES: Record<MapStyleId, string> = {
   standard: 'GoWay Standard',
   streets: 'GoWay Streets',
+  outdoors: 'GoWay Outdoors',
   light: 'GoWay Light',
   dark: 'GoWay Dark',
 };
@@ -103,6 +142,11 @@ export function buildGowayMapStyle(
 ): StyleSpecification {
   const theme = styleTheme(selection);
   const { appearance, palette, options } = theme;
+  if (options.outdoors && !endpoints.terrain) {
+    throw new Error(
+      `map style ${selection.style}: draws its own relief, so it needs the terrain endpoints`,
+    );
+  }
 
   return {
     version: 8,
@@ -137,6 +181,7 @@ export function buildGowayMapStyle(
     glyphs: endpoints.glyphs,
     ...(endpoints.sprite === undefined ? {} : { sprite: endpoints.sprite }),
     sources: {
+      ...(options.outdoors && endpoints.terrain ? reliefSources(endpoints.terrain) : {}),
       [endpoints.sourceId]: {
         type: 'vector',
         url: endpoints.tileJsonUrl,

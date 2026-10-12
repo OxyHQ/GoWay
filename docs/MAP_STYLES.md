@@ -25,6 +25,7 @@ hand-written JSON file, and no layer list is copied.
 | --- | --- | --- |
 | `standard` (default) | day, dawn, dusk, night | The everyday map: GoWay's measured, Apple-grade look (`palette.ts`), POIs in their category colours, the detailed 3D city. House numbers from z18. |
 | `streets` | day, night | The road map: a coloured road hierarchy (amber expressways, honey trunks, cream primaries; ember at night), denser POIs (half again as many marks and names, the minor tier from z16), footprints from z14, street names as written, house numbers from z17. |
+| `outdoors` | day, night | The terrain map: its own hillshade and contour lines from GoWay's elevation tiles (index lines and heights from z12), bare rock and glaciers, protected areas' dashed edges, trails coloured by difficulty from z12, lifts and cable cars, peaks with their heights from z9, and the shelters, campsites, drinking water and crags the other styles leave out. |
 | `light` | day (fixed) | A quiet light basemap for somebody else's data: Bloom's neutral greys, no POIs, arterial names only, no one-way arrows. |
 | `dark` | night (fixed) | Its dark twin. |
 
@@ -211,13 +212,52 @@ What a style wants that the served OpenMapTiles schema does not have:
 
 | Want | In the tiles? | Plan |
 | --- | --- | --- |
-| Contours (Outdoors) | No — relief is a raster DEM | Next change: generated from the same Mapterhorn DEM the hillshade already downloads (decision and measurements in that PR) |
-| Trail difficulty (`sac_scale`) | No — `transportation` carries `mtb_scale` and `surface`, not `sac_scale` | Outdoors draws what is there (path/track, `mtb_scale`, surface); `sac_scale` needs a Planetiler profile change in `scripts/build-map-tiles.ts` (one attribute on `transportation` for `path`/`footway`) and a tile rebuild — scoped follow-up |
+| Contours (Outdoors) | No — relief is a raster DEM | Done: traced at the edge from GoWay's elevation tiles ([Contours](#contours)) |
+| Trail difficulty (`sac_scale`) | No — `transportation` carries `subclass`, `mtb_scale` (0–6) and `surface`, not `sac_scale` | Outdoors colours trails by `mtb_scale` (0–1, 2–3, 4+), and town footways stay quiet; `sac_scale` needs a Planetiler profile change in `scripts/build-map-tiles.ts` (one attribute on `transportation` for `path`) and a tile rebuild — scoped follow-up |
 | Ski pistes | No (`landuse`/`landcover` have no piste class) | Same follow-up: `piste:type` lines into a new source-layer |
 | Peaks with elevations | Yes — `mountain_peak` (`name`, `ele`, `rank`, `class`) | Outdoors |
 | Huts, viewpoints, springs | Huts and viewpoints as `poi` classes; springs not in the default profile | Outdoors draws the ones present |
 | Protected areas | Yes — the `park` layer | Drawn in every style; Outdoors outlines them |
 | POI icons | The SDF sprite has 16 category icons; no layer uses `icon-image` | Follow-up for Streets and Standard: a disc-and-glyph icon needs either a composited non-SDF sprite per category or two collision-linked layers |
+
+## Contours
+
+The OpenMapTiles schema has no contours; Outdoors traces them from the same
+Mapterhorn DEM (Terrarium WebP, z0–12) the hillshade and 3D terrain read, and
+the choice of WHERE was made for phones:
+
+| Where | Phones | Native, integrators | Cost |
+| --- | --- | --- | --- |
+| In the browser (maplibre-contour's protocol in a web worker) | download nine DEM tiles per contour tile and trace them on the device's CPU and battery | none: MapLibre Native has no protocol hook, and a style URL cannot carry one | nothing server-side |
+| A planet batch (contour tiles z9–14 into R2) | a vector tile | yes | a multi-day job, hundreds of GB, rebuilt with every DEM |
+| **At the edge, on demand** (`worker/contours.js`) | **a vector tile** | **yes — one URL** | the first request for a tile traces it; every later one is an edge-cache hit; storage only for what is seen |
+
+So `https://goway.to/map/contours/{z}/{x}/{y}.pbf` (z9–14, over-zoomed above)
+is made by the Worker: it fetches the nine DEM tiles around a tile through the
+terrain route (the R2 archive when configured, Mapterhorn upstream
+otherwise), decodes them with libwebp compiled to WebAssembly
+(`worker/webpDecode.js`, `@jsquash/webp`, 138 KB — a Worker has no image
+decoder), traces them with maplibre-contour's `LocalDemManager` (the same
+marching squares, seam stitching and MVT encoder its browser protocol runs)
+and caches the tile for a year, keyed by the DEM archive. One source-layer,
+`contours`: `ele` in metres, `level` 1 on index lines; intervals 200/1000 m at
+z9–10, 100/500 at z11, 50/250 at z12, 20/100 at z13, 10/50 at z14.
+
+Measured: the Worker bundles to 313 KiB (90 KiB gz) with the decoder; under
+`wrangler dev --local` (workerd) the Chamonix z12 tile took 0.73 s cold,
+including nine upstream DEM fetches, and its neighbour 0.22 s; 68 KB, the
+densest case (the Mont Blanc massif at 50 m). The bytes are identical to the
+Node path `scripts/serve-map-build.ts` serves locally with the same module.
+`worker/__tests__/contours.test.js` traces a synthetic mountain through the
+real tracer.
+
+The style document carries the relief itself — a `raster-dem` source over
+`/map/terrain`, a `hillshade` layer, the contour source and its three layers —
+so every renderer that loads it draws them: native and integrators included.
+The relief toggle's own hillshade steps aside on a style that has one
+(`reliefLayer.web.ts`, `MapCanvas.native.tsx`), and the elevation credit shows
+whenever such a style draws, whatever the Terrain switch says
+(`MapAttribution`'s `elevation`, from the catalogue's `relief`).
 
 ## The quality bar
 
@@ -254,6 +294,9 @@ change are in its PR (`bench:map --device=pixel6a --quality=low
   city at night still takes a blue cast from the sky. A per-style night tint
   belongs in `engine/city3d/atmosphere.ts` and is a follow-up for the sky's
   owners.
+- A development server (`expo start`) has no `/map/contours` until the route
+  is deployed: Outdoors draws without contours there. A local production
+  export served with `serve-map-build.ts --upstream=…` makes them.
 - Native was typechecked, not run: the style swap is a `mapStyle` prop change
   on the same view, which MapLibre Native supports; the thumbnails load by
   absolute URL.

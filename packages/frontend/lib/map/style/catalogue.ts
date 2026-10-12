@@ -19,7 +19,7 @@
 import type { MapAppearance } from '../provider';
 
 /** Every style GoWay publishes, in the order the picker shows them. */
-export const MAP_STYLE_IDS = ['standard', 'streets', 'light', 'dark'] as const;
+export const MAP_STYLE_IDS = ['standard', 'streets', 'outdoors', 'light', 'dark'] as const;
 export type MapStyleId = (typeof MAP_STYLE_IDS)[number];
 
 /** The lights a style can be drawn in. */
@@ -36,6 +36,13 @@ export interface MapStyleDefinition {
   presets: readonly MapLightPreset[];
   /** Whether it follows the person's light, or keeps its own. */
   light: 'follows' | 'fixed';
+  /**
+   * The documents carry their own terrain — a hillshade and contour lines
+   * from GoWay's elevation tiles — so the map credits the elevation data
+   * whatever the Terrain switch says, and the relief adapters add no second
+   * hillshade over it.
+   */
+  relief?: true;
 }
 
 export const MAP_STYLES: readonly MapStyleDefinition[] = [
@@ -43,6 +50,8 @@ export const MAP_STYLES: readonly MapStyleDefinition[] = [
   { id: 'standard', presets: ['day', 'dawn', 'dusk', 'night'], light: 'follows' },
   // Denser places, a coloured road hierarchy, house numbers.
   { id: 'streets', presets: ['day', 'night'], light: 'follows' },
+  // The terrain map: contours, hillshade, trails, peaks, huts.
+  { id: 'outdoors', presets: ['day', 'night'], light: 'follows', relief: true },
   // Quiet basemaps for data drawn over them, from Bloom's neutral tokens.
   { id: 'light', presets: ['day'], light: 'fixed' },
   { id: 'dark', presets: ['night'], light: 'fixed' },

@@ -257,6 +257,12 @@ export const GOWAY_MAP_PATHS = {
    * prototype adds it, at runtime.
    */
   terrain: '/map/terrain/{z}/{x}/{y}.webp',
+  /**
+   * Contour lines, traced by the Worker from the elevation tiles above and
+   * cached at the edge (`worker/contours.js`, z9–14). Named by the Outdoors
+   * style documents.
+   */
+  contours: '/map/contours/{z}/{x}/{y}.pbf',
 } as const;
 
 /**
@@ -367,6 +373,8 @@ export function gowayMapEndpoints(origin: string): {
   tiles: string;
   glyphs: string;
   sprite: string;
+  terrain: string;
+  contours: string;
 } {
   const base = origin.replace(/\/+$/, '');
   return {
@@ -374,6 +382,8 @@ export function gowayMapEndpoints(origin: string): {
     tiles: `${base}${GOWAY_MAP_PATHS.tiles}`,
     glyphs: `${base}${GOWAY_MAP_PATHS.glyphs}`,
     sprite: `${base}${GOWAY_MAP_PATHS.sprite}`,
+    terrain: `${base}${GOWAY_MAP_PATHS.terrain}`,
+    contours: `${base}${GOWAY_MAP_PATHS.contours}`,
   };
 }
 

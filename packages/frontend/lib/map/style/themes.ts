@@ -51,7 +51,13 @@ import {
 } from './catalogue';
 import { type CartographyPalette, DARK_PALETTE, LIGHT_PALETTE, type RoadTier } from './palette';
 import { CITY_GROUND_PALETTES, CITY_MATERIALS, type CityMaterial, type Rgb } from './palette3d';
-import { DATA_OPTIONS, STANDARD_OPTIONS, STREETS_OPTIONS, type StyleOptions } from './options';
+import {
+  DATA_OPTIONS,
+  OUTDOORS_OPTIONS,
+  STANDARD_OPTIONS,
+  STREETS_OPTIONS,
+  type StyleOptions,
+} from './options';
 import { type StreetColours, STREET_PALETTES } from './streetPalette';
 
 export type { StyleOptions } from './options';
@@ -124,6 +130,19 @@ export function enforceTypeContrast(palette: CartographyPalette): CartographyPal
     labelWater: ensureContrast(palette.labelWater, [palette.water], 4.5),
     labelPark: ensureContrast(palette.labelPark, [palette.park], 4.5),
     poiLabel,
+    ...(palette.outdoors
+      ? {
+          outdoors: {
+            ...palette.outdoors,
+            labelPeak: ensureContrast(
+              palette.outdoors.labelPeak,
+              [...ground, palette.natural],
+              4.5,
+            ),
+            labelContour: ensureContrast(palette.outdoors.labelContour, ground, 4.5),
+          },
+        }
+      : {}),
   };
 }
 
@@ -269,6 +288,85 @@ function streetsDay(): CartographyPalette {
     building: '#e6e1d7',
     buildingOutline: '#d4cdbf',
     labelRoad: '#4a4e53',
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Outdoors: Standard's map, with the terrain drawn
+// ---------------------------------------------------------------------------
+
+/**
+ * The terrain map's extra ink. Contours are warm browns by day (the colour
+ * every topographic map has taught its readers) and cool blue-greys at night
+ * over Standard's slate; trails are red-brown, red where `mtb_scale` says
+ * hard, near-black (by day) where it says expert; rock is a pale stone and
+ * glaciers white with a blue edge. Chosen against Chamonix, the Pyrenees and
+ * Montserrat on the contact sheet.
+ */
+const OUTDOORS_INK: Record<MapAppearance, NonNullable<CartographyPalette['outdoors']>> = {
+  light: {
+    rock: '#e2ded5',
+    glacier: '#f3f8fb',
+    glacierOutline: '#9cc8e0',
+    protectedOutline: '#5e9c55',
+    contour: '#d2bb94',
+    contourIndex: '#b49260',
+    labelContour: '#8a6a3d',
+    trail: '#b4532d',
+    trailHard: '#cf2f1f',
+    trailExpert: '#2f2626',
+    aerialway: '#545a61',
+    labelPeak: '#4a3925',
+    hillshade: { shadow: '#5b5244', highlight: '#ffffff', accent: '#6d614e' },
+  },
+  dark: {
+    rock: '#434b5d',
+    glacier: '#4d5e7a',
+    glacierOutline: '#80a0c8',
+    protectedOutline: '#4cae96',
+    contour: '#566887',
+    contourIndex: '#7587a8',
+    labelContour: '#a3b3ce',
+    trail: '#e3955d',
+    trailHard: '#ff6f5c',
+    trailExpert: '#f3e8da',
+    aerialway: '#9ba7b9',
+    labelPeak: '#e6d8c4',
+    hillshade: { shadow: '#04070e', highlight: '#6c82a3', accent: '#0a111f' },
+  },
+};
+
+/** Outdoors in an appearance: Standard's palette, greener woods, white glaciers, the terrain ink. */
+function outdoorsPalette(appearance: MapAppearance): CartographyPalette {
+  const base = appearance === 'light' ? LIGHT_PALETTE : DARK_PALETTE;
+  const ink = OUTDOORS_INK[appearance];
+  return enforceTypeContrast({
+    ...base,
+    ...(appearance === 'light'
+      ? {
+          land: '#f4f2e8',
+          natural: '#bcdca0',
+          farmland: '#efeedc',
+          park: '#cbe6af',
+          sand: '#ece0c4',
+        }
+      : {
+          natural: '#1f4640',
+          park: '#0d5f57',
+          // The town streets a step deeper than Standard's night, so their
+          // white names clear 4.5:1 on the fill (as Streets' night does).
+          roads: {
+            ...base.roads,
+            primary: { ...base.roads.primary, fill: '#5c6c84' },
+            secondary: { ...base.roads.secondary, fill: '#58697f' },
+            tertiary: { ...base.roads.tertiary, fill: '#536379' },
+            local: { ...base.roads.local, fill: '#4e5d72' },
+            service: { ...base.roads.service, fill: '#48576b' },
+          },
+        }),
+    ice: ink.glacier,
+    parkOutline: ink.protectedOutline,
+    outdoors: ink,
   });
 }
 
@@ -457,7 +555,7 @@ const quietChroma = (lch: [number, number, number]): [number, number, number] =>
 function asCityGround(style: CartographyPalette, ground: CartographyPalette): CartographyPalette {
   const typeOf = Object.fromEntries(
     Object.entries(style).filter(
-      ([key]) => isTypeField(key) || key === 'poiLabel' || key === 'poi',
+      ([key]) => isTypeField(key) || key === 'poiLabel' || key === 'poi' || key === 'outdoors',
     ),
   );
   const merged: CartographyPalette = { ...ground, ...typeOf, appearance: style.appearance };
@@ -523,6 +621,17 @@ const RECIPES: Record<MapStyleId, StyleRecipe> = {
         landBuiltUp: ground.landBuiltUp,
         building: ground.building,
       });
+    },
+  },
+  outdoors: {
+    options: OUTDOORS_OPTIONS,
+    palette: (preset) => lit(preset, outdoorsPalette('light'), outdoorsPalette('dark')),
+    // In a town the detailed ground is the maquette's, under the terrain ink;
+    // the trails keep the style's colours (theirs is a difficulty, not ground).
+    cityGround: (preset) => {
+      const style = lit(preset, outdoorsPalette('light'), outdoorsPalette('dark'));
+      const ground = lit(preset, STANDARD_GROUND.day, STANDARD_GROUND.night);
+      return asCityGround(style, { ...ground, roads: { ...ground.roads, path: style.roads.path } });
     },
   },
   light: {

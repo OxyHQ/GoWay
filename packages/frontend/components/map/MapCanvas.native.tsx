@@ -57,7 +57,7 @@ import {
   RELIEF_SOURCE_IDS,
 } from '@/lib/map/style/relief';
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
-import { presetAppearance } from '@/lib/map/style/catalogue';
+import { mapStyleDefinition, presetAppearance } from '@/lib/map/style/catalogue';
 import { LABEL_LAYER_IDS, TAP_LAYER_IDS } from '@/lib/map/tapLayers';
 
 import { DefaultMapMarker } from './DefaultMapMarker';
@@ -195,6 +195,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const { style: styleId, preset: stylePreset } = mapStyleState.selection;
   const settleMapStyle = mapStyleState.settle;
   const resolvedAppearance = presetAppearance(stylePreset);
+  const styleDrawsRelief = mapStyleDefinition(styleId).relief === true;
   const styleUrl = useMemo(
     () => resolveMapStyleUrl({ style: styleId, preset: stylePreset }),
     [styleId, stylePreset],
@@ -208,8 +209,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // A toggle in the settings modal adds or removes it live.
   const { terrain } = useMapRelief();
   const hillshade = useMemo(
-    () => (terrain && resolveOwnsStyleDocument() ? hillshadeLayer(resolvedAppearance) : null),
-    [terrain, resolvedAppearance],
+    () =>
+      // A style with its own relief (Outdoors) already shades the ground.
+      terrain && resolveOwnsStyleDocument() && !styleDrawsRelief
+        ? hillshadeLayer(resolvedAppearance)
+        : null,
+    [terrain, resolvedAppearance, styleDrawsRelief],
   );
   const gestures = resolveInteraction(interaction);
 
@@ -732,7 +737,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           credit must be on every map GoWay draws, including the embed in
           somebody else's page. See MapBrand.tsx. */}
       <MapBrand />
-      <MapAttribution expanded={credit.expanded} onToggle={credit.toggle} />
+      <MapAttribution
+        elevation={styleDrawsRelief}
+        expanded={credit.expanded}
+        onToggle={credit.toggle}
+      />
 
       {error ? <MapErrorState error={error} onRetry={retry} /> : null}
     </View>
