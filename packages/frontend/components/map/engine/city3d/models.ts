@@ -95,7 +95,11 @@ export type ModelStatus = 'drawn' | 'fallback';
 
 /** What draws the models: the city engine's TSL pass, into the map's frame and depth. */
 export interface ModelPass {
-  drawScene(scene: THREE.Scene, camera: THREE.Camera): void;
+  /**
+   * Draw `scene`; `false` when nothing was drawn (the pass's backend not up
+   * yet, failed, or gone). A model is `drawn` only after a pass that drew.
+   */
+  drawScene(scene: THREE.Scene, camera: THREE.Camera): boolean;
 }
 
 /** What the host knows about its camera this frame (a subset of `CityView`). */
@@ -630,6 +634,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       const delta = lastFrame > 0 ? (now - lastFrame) / 1000 : 0;
       lastFrame = now;
       let animating = false;
+      const shown: Instance[] = [];
       const corner = new THREE.Vector3();
       const clipCorner = new THREE.Vector4();
       for (const instance of instances.values()) {
@@ -714,11 +719,15 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
           a.w > 0
             ? { x: ((a.x / a.w + 1) / 2) * canvas.width, y: ((1 - a.y / a.w) / 2) * canvas.height }
             : null;
-        report(instance, 'drawn');
+        shown.push(instance);
       }
       // Not forced: only subtrees flagged above (and animated ones) are re-derived.
       scene.updateMatrixWorld();
-      pass.drawScene(scene, camera);
+      // Drawn only if the pass drew: a backend not up yet (it starts
+      // asynchronously) or one that failed draws nothing, and a model reported
+      // drawn hides its fallback marker and the building a landmark replaces.
+      const drew = pass.drawScene(scene, camera);
+      for (const instance of shown) report(instance, drew ? 'drawn' : 'fallback');
       if (options.animation) options.animation.setAnimating(animating);
       else if (animating) options.requestRepaint();
     },

@@ -56,7 +56,7 @@ export interface TslPass {
    * Draw another scene with its own camera into the same frame and depth
    * buffer: the model layer's (`models.ts` → Frames), whose world is y-north.
    */
-  drawScene(scene: Scene, camera: Camera): void;
+  drawScene(scene: Scene, camera: Camera): boolean;
   dispose(): void;
 }
 
@@ -141,8 +141,9 @@ export function createTslPass(options: {
   );
   const trees = createTreeMaterials(options.treeUniforms, options.side.trees);
 
-  const drawScene = (target: Scene, camera: Camera) => {
-    if (!ready || disposed) return;
+  /** `false`: nothing drawn (the backend is not up, failed, or is gone). */
+  const drawScene = (target: Scene, camera: Camera): boolean => {
+    if (!ready || disposed) return false;
     // Follow the map's canvas: three's size is in logical pixels × ratio 1,
     // and `setSize` only writes the (ignored) view and the viewport.
     if (size.width !== canvas.width || size.height !== canvas.height) {
@@ -152,6 +153,7 @@ export function createTslPass(options: {
     }
     (renderer.backend as ResettableBackend).resetState?.();
     renderer.render(target, camera);
+    return true;
   };
 
   return {
