@@ -176,15 +176,21 @@ isolate re-reads the 2.6 MB manifest only when its etag changes.
 tiles): the archives store gzipped tiles, and a client that accepts gzip gets
 those bytes as they are, `content-encoding: gzip`, built with
 `encodeBody: 'manual'` — no compression work per request; any other client
-gets them decoded, `Vary: Accept-Encoding`. The edge cache holds the stored
+gets them decoded, `Vary: Accept-Encoding`. "Accepts" is the client's own
+header (`cf.clientAcceptEncoding`): Cloudflare rewrites the one the Worker
+sees. `check:worker-wire` (CI) serves a tile under workerd and counts the
+gzip layers on the wire. The edge cache holds the stored
 bytes opaquely and every answer is rebuilt from them. Measured on the edge
 (PDX) before the change was deployed: Madrid's densest city tile 502,915 →
 274,015 B, its roads 58,790 → 24,750 B, a dense basemap tile 936,345 →
 558,473 B, decoded by Chromium to the identical tile.
 
 **One storage read per tile.** An isolate keeps each archive's header and
-decoded directories (`DirectoryMemo`, 192 entries); the colo's cache keeps the
-directory bytes for a week; R2 is asked for the tile alone once the leaf is
+decoded directories, compact (24 B an entry) and bounded by bytes — the
+planet's leaves hold 17,685 entries, the city archives' 4,096 — inside a
+memory budget of 24 MiB for the whole map (`worker/budget.js`: 12 MiB of
+directories, 6 MiB of ownership trees at 5 B a node, a 4.1 MiB slim
+manifest); the colo's cache keeps the directory bytes for a week; R2 is asked for the tile alone once the leaf is
 known. Every answer says so in `Server-Timing` (`r2;desc="N reads"`). What a
 miss costs is then the R2 range reads themselves: from PDX to the bucket
 (WEUR) one read measured 450–900 ms, so a tile in a leaf the colo has not
