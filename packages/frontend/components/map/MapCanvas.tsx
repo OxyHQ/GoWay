@@ -26,7 +26,7 @@ import type { MapApi, MapCanvasProps } from './types';
 
 /** No-op handle, so a caller's `mapRef.current?.moveTo(...)` is still safe. */
 const UNSUPPORTED_API: MapApi = {
-  moveTo: () => {},
+  moveTo: () => false,
   fitBounds: () => {},
   fitCoordinates: () => {},
   setBearing: () => {},

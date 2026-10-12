@@ -247,7 +247,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     () => ({
       moveTo(target, options) {
         const camera = cameraRef.current;
-        if (!camera) return;
+        if (!camera) return false;
         const coordinate = isViewport(target)
           ? { latitude: target.latitude, longitude: target.longitude }
           : target;
@@ -258,7 +258,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
             'moveTo',
             `Ignored moveTo: target is not drawable (${describeNumbers(coordinate)}).`,
           );
-          return;
+          return false;
         }
         const viewport = isViewport(target) ? target : undefined;
         // Same rule as web: `undefined` means "leave this axis alone", which is
@@ -272,10 +272,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           pitch: asFinite(options?.pitch) ?? asFinite(viewport?.pitch),
         };
         if (duration <= 0) {
-          runEngineCommand('jumpTo', () => camera.jumpTo(stop));
-          return;
+          return runEngineCommand('jumpTo', () => camera.jumpTo(stop));
         }
-        runEngineCommand('easeTo', () => camera.easeTo({ ...stop, duration, easing: 'ease' }));
+        return runEngineCommand('easeTo', () =>
+          camera.easeTo({ ...stop, duration, easing: 'ease' }),
+        );
       },
       fitBounds(bounds, options) {
         const camera = cameraRef.current;
@@ -293,6 +294,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         if (!fitPadding) return;
         const maxZoom = asFinite(options?.maxZoom);
         const duration = asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS;
+        cameraReports.current?.commanded(false);
         if (isDegenerateBounds(bounds)) {
           runEngineCommand('easeTo', () =>
             camera.easeTo({
@@ -328,6 +330,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         }
         const camera = cameraRef.current;
         if (!camera) return;
+        cameraReports.current?.commanded(false);
         runEngineCommand('setStop', () =>
           camera.setStop({
             bearing: heading,
@@ -339,6 +342,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       resetNorth(options) {
         const camera = cameraRef.current;
         if (!camera) return;
+        cameraReports.current?.commanded(false);
         runEngineCommand('setStop', () =>
           camera.setStop({
             bearing: 0,
@@ -573,7 +577,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         compass={gestures.rotate}
         compassPosition={{ top: 8, right: 8 }}
         onPress={handlePress}
-        onRegionWillChange={() => cameraReports.current?.regionWillChange()}
+        onRegionWillChange={(event) => cameraReports.current?.regionWillChange(event.nativeEvent)}
         onRegionIsChanging={(event) => {
           foldOnReaderMove(event);
           cameraReports.current?.regionIsChanging(event.nativeEvent);

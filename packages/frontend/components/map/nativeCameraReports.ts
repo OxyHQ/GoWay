@@ -50,7 +50,7 @@ export function cameraReadingOf(view: NativeViewState): CameraReading {
 export interface NativeCameraReports {
   /** GoWay commanded the camera; `transient` for one frame of a caller-driven animation. */
   commanded(transient: boolean): void;
-  regionWillChange(): void;
+  regionWillChange(region: NativeRegionChange): void;
   regionIsChanging(region: NativeRegionChange): void;
   /** `true` when the change was a settled camera, `false` for a transient frame. */
   regionDidChange(region: NativeRegionChange): boolean;
@@ -62,8 +62,14 @@ export function createNativeCameraReports(
   listener: () => ((change: MapViewportChange) => void) | null | undefined,
 ): NativeCameraReports {
   const loadedReport = createLoadedCameraReporter();
-  // A frame of a caller-driven animation is not a settled camera; set by the
-  // command, read when its region change ends.
+  // A frame of a caller-driven animation is not a settled camera. The flag is
+  // the latest COMMAND's: every camera command declares it, and a move the
+  // reader starts ends it — a flyover the reader interrupted, or one that
+  // stopped without its closing ordinary move, leaves nothing behind, so the
+  // reader's settles are final again (on the web the marker is per event).
+  // Not cleared at every move start: a flyover's frames cross the bridge as
+  // commands ahead of their region events, so the next command's flag can
+  // already be set when the previous frame's move starts.
   let transientCommand = false;
 
   const report = (region: NativeRegionChange, isFinal: boolean) => {
@@ -78,16 +84,18 @@ export function createNativeCameraReports(
     commanded(transient) {
       transientCommand = transient;
     },
-    regionWillChange() {
+    regionWillChange(region) {
+      if (region.userInteraction) transientCommand = false;
       loadedReport.moveStarted();
     },
     regionIsChanging(region) {
       report(region, false);
     },
     regionDidChange(region) {
-      loadedReport.moveEnded(transientCommand);
-      report(region, !transientCommand);
-      return !transientCommand;
+      const transient = transientCommand && !region.userInteraction;
+      loadedReport.moveEnded(transient);
+      report(region, !transient);
+      return !transient;
     },
     loaded(getViewState) {
       loadedReport.loaded(async () => cameraReadingOf(await getViewState()), listener);

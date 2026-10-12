@@ -11,14 +11,15 @@
  *     camera is held rather than committed, so a map that loads before the
  *     place arrives does not commit the default camera's box (Barcelona) for a
  *     reader who is looking at Tokyo; the framing's own settle commits. If the
- *     place never comes, the held camera is committed instead
- *     ({@link heldOpeningBox}). The reader's own move always commits: they
- *     chose.
+ *     place never comes, or the framing could not be issued at all (no engine
+ *     to move), the held camera is committed instead ({@link OpeningFraming}).
+ *     The reader's own move always commits: they chose.
  *  2. **The same framing, another box, is the same question.** A settle at the
- *     committed centre and zoom with different bounds — the container grew or
- *     shrank (a window resize, a phone's toolbar) — recommits the new box, so
- *     the list covers what is on screen. Nothing about it is a new place to
- *     look, so it never arms "Search this area".
+ *     committed centre, zoom, heading and tilt with different bounds — the
+ *     container grew or shrank (a window resize, a phone's toolbar) —
+ *     recommits the new box, so the list covers what is on screen. Nothing
+ *     about it is a new place to look, so it never arms "Search this area".
+ *     A rotation or a tilt is not the same framing and changes nothing.
  *  3. **Only the reader's move arms "Search this area"**, and only when it is
  *     far enough to be a different question. An app move (opening a result,
  *     fitting a cluster) never does, and never replaces the box.
@@ -33,6 +34,9 @@ export interface CommittedBox {
   /** The camera's centre when it was committed — with a tilt, not the box's. */
   camera: GeoCoordinate;
   zoom: number;
+  /** The camera's heading and tilt when it was committed: part of its framing. */
+  bearing: number;
+  pitch: number;
 }
 
 /**
@@ -47,9 +51,10 @@ export interface CommittedBox {
 export const AREA_MOVE_FRACTION = 0.3;
 export const AREA_ZOOM_DELTA = 1;
 
-/** Under this, two centres are the same framing (a resize keeps the centre). */
+/** Under these, two cameras are the same framing (a resize keeps all four). */
 const SAME_CENTRE_M = 1;
 const SAME_ZOOM = 1e-6;
+const SAME_ANGLE_DEG = 1e-6;
 
 export type BoxStep =
   /** Commit this box (and the button has nothing to offer). */
@@ -72,6 +77,8 @@ export function boxOf(change: Pick<MapViewportChange, 'bounds' | 'viewport'>): C
     center: boundsCenter(change.bounds),
     camera: { latitude: change.viewport.latitude, longitude: change.viewport.longitude },
     zoom: change.viewport.zoom,
+    bearing: change.viewport.bearing,
+    pitch: change.viewport.pitch,
   };
 }
 
@@ -105,23 +112,74 @@ export function nextBoxStep(
   return { kind: 'area', moved: moved > diagonal * AREA_MOVE_FRACTION || zoomed };
 }
 
-/**
- * The opening framing will not come (the place failed to load, or the reader
- * left it first): the camera held meanwhile is the opening box after all.
- */
-export function heldOpeningBox(
-  committed: CommittedBox | null,
-  held: MapViewportChange | null,
-): CommittedBox | null {
-  return committed || !held ? null : boxOf(held);
+/** A deep link's opening framing (`/place/<id>`), from waiting for it to done. */
+export interface OpeningFraming {
+  /** The framing is still to come: an app-reported camera is held, not committed. */
+  readonly awaiting: boolean;
+  /** Keep a camera reported while the framing is awaited. */
+  hold(change: MapViewportChange): void;
+  /**
+   * Issue the framing with `move`, which answers whether a move was really
+   * issued (`MapApi.moveTo`). Returns the box to commit NOW: the held camera
+   * when no move was issued — no settle will ever come to commit — else
+   * `null`, and the move's own settle commits.
+   */
+  frame(move: () => boolean): CommittedBox | null;
+  /** The framing will never come (the place failed, the reader left it): the held box, if any. */
+  abandon(): CommittedBox | null;
 }
 
-/** Same centre and zoom: what a container resize leaves alone. */
+export function createOpeningFraming(deepLinked: boolean): OpeningFraming {
+  let awaiting = deepLinked;
+  let held: MapViewportChange | null = null;
+  const release = () => {
+    const box = held ? boxOf(held) : null;
+    held = null;
+    awaiting = false;
+    return box;
+  };
+  return {
+    get awaiting() {
+      return awaiting;
+    },
+    hold(change) {
+      held = change;
+    },
+    frame(move) {
+      if (!awaiting) return null;
+      // Done waiting BEFORE the move: a jump (no animation) settles inside
+      // `move`, and that settle is the framing — it must commit, not be held.
+      awaiting = false;
+      if (move()) {
+        held = null;
+        return null;
+      }
+      return release();
+    },
+    abandon() {
+      return awaiting ? release() : null;
+    },
+  };
+}
+
+/**
+ * Same centre, zoom, heading and tilt: what a container resize leaves alone.
+ * A rotation or a tilt about the same centre (the 2D/3D toggle, reset north)
+ * is a different framing, and a different box nobody asked the list about.
+ */
 function sameFraming(committed: CommittedBox, change: MapViewportChange): boolean {
   return (
     Math.abs(change.viewport.zoom - committed.zoom) < SAME_ZOOM &&
+    angleBetween(change.viewport.bearing, committed.bearing) < SAME_ANGLE_DEG &&
+    Math.abs(change.viewport.pitch - committed.pitch) < SAME_ANGLE_DEG &&
     distanceMeters(committed.camera, change.viewport) < SAME_CENTRE_M
   );
+}
+
+/** Degrees between two headings, the short way round (359° and 1° are 2° apart). */
+function angleBetween(a: number, b: number): number {
+  const turn = Math.abs(a - b) % 360;
+  return turn > 180 ? 360 - turn : turn;
 }
 
 function sameBounds(a: GeoBounds, b: GeoBounds): boolean {

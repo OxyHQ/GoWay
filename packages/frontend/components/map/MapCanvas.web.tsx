@@ -1330,7 +1330,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     () => ({
       moveTo(target, options) {
         const map = mapRef.current;
-        if (!map) return;
+        if (!map) return false;
         const coordinate = isViewport(target)
           ? { latitude: target.latitude, longitude: target.longitude }
           : target;
@@ -1341,7 +1341,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
             'moveTo',
             `Ignored moveTo: target is not drawable (${describeNumbers(coordinate)}).`,
           );
-          return;
+          return false;
         }
         const viewport = isViewport(target) ? target : undefined;
         // `asFinite` on every scalar: a NaN zoom does not tilt the camera oddly,
@@ -1365,10 +1365,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           runEngineCommand('setVerticalFieldOfView', () => map.setVerticalFieldOfView(fov, marker));
         }
         if (duration <= 0) {
-          runEngineCommand('jumpTo', () => map.jumpTo(camera, marker));
-          return;
+          return runEngineCommand('jumpTo', () => map.jumpTo(camera, marker));
         }
-        runEngineCommand('easeTo', () => map.easeTo({ ...camera, duration }, marker));
+        return runEngineCommand('easeTo', () => map.easeTo({ ...camera, duration }, marker));
       },
       fitBounds(bounds, options) {
         const map = mapRef.current;

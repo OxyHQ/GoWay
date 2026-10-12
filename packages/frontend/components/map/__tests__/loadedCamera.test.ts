@@ -34,6 +34,7 @@ import {
   createLoadedCameraReporter,
   loadedCameraChange,
 } from '@/components/map/loadedCamera';
+import { runEngineCommand } from '@/components/map/shared';
 import type { MapViewportChange } from '@/components/map/types';
 
 import { attachToFake, fakeCameraEngine } from './fakeCameraEngine';
@@ -261,6 +262,17 @@ describe('the rule both forks apply (loadedCamera.ts)', () => {
   });
 });
 
+describe('runEngineCommand answers whether the command ran', () => {
+  test('true when it ran, false when the engine threw', () => {
+    expect(runEngineCommand('test', () => {})).toBe(true);
+    expect(
+      runEngineCommand('test', () => {
+        throw new Error('Invalid LngLat object: (NaN, NaN)');
+      }),
+    ).toBe(false);
+  });
+});
+
 describe('wired on both canvases', () => {
   const read = (path: string) => readFileSync(join(import.meta.dir, '..', path), 'utf8');
 
@@ -281,12 +293,44 @@ describe('wired on both canvases', () => {
     expect(body).toContain('cameraReports.current?.loaded(');
     expect(body).toContain('return map.getViewState();');
     expect(native).toContain(
-      'onRegionWillChange={() => cameraReports.current?.regionWillChange()}',
+      'onRegionWillChange={(event) => cameraReports.current?.regionWillChange(event.nativeEvent)}',
     );
     expect(native).toContain('cameraReports.current?.regionIsChanging(event.nativeEvent);');
     expect(native).toContain('cameraReports.current?.regionDidChange(event.nativeEvent)');
     expect(native).toContain('cameraReports.current?.commanded(options?.transient === true);');
     expect(native).toContain('onDidFinishLoadingStyle={handleStyleLoaded}');
+  });
+
+  test('every native camera command declares whether it is a transient frame', () => {
+    const native = read('MapCanvas.native.tsx');
+    const api = native.slice(native.indexOf('      moveTo(target, options) {'));
+    for (const command of [
+      'fitBounds(bounds, options) {',
+      'setBearing(bearing, options) {',
+      'resetNorth(options) {',
+    ]) {
+      const body = api.slice(api.indexOf(command));
+      const end = body.indexOf('\n      },');
+      expect(body.slice(0, end)).toContain('cameraReports.current?.commanded(false);');
+    }
+  });
+
+  test('moveTo answers whether it issued a move, on both canvases', () => {
+    for (const [file, engine] of [
+      ['MapCanvas.web.tsx', 'map'],
+      ['MapCanvas.native.tsx', 'camera'],
+    ] as const) {
+      const source = read(file);
+      const start = source.indexOf('      moveTo(target, options) {');
+      const body = source.slice(start, source.indexOf('      fitBounds(bounds, options) {', start));
+      // No engine, and an undrawable target: nothing issued.
+      expect(body).toContain(`if (!${engine}) return false;`);
+      expect(body.match(/return false;/g)).toHaveLength(2);
+      // Otherwise the engine command's own answer (`false` when it threw).
+      expect(body).toMatch(/return runEngineCommand\('jumpTo'/);
+      expect(body).toMatch(/return runEngineCommand\('easeTo'/);
+    }
+    expect(read('MapCanvas.tsx')).toContain('moveTo: () => false,');
   });
 
   test('a native retry (a remounted engine) gets new reports', () => {

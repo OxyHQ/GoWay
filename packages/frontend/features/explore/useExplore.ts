@@ -57,7 +57,7 @@ import {
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { useUserLocation } from '@/lib/map/useUserLocation';
 
-import { boxOf, type CommittedBox, nextBoxStep } from './committedBox';
+import { boxOf, type CommittedBox, createOpeningFraming, nextBoxStep } from './committedBox';
 
 /** What the sheet is currently about. */
 export type ExploreMode = 'browse' | 'search' | 'details';
@@ -350,11 +350,9 @@ export function useExplore(
   /**
    * The deep link's framing (`/place/<id>`) is the map's opening framing:
    * until it runs, a camera the app reports is held, not committed — see
-   * `committedBox.ts`. `deepLinkFramed` flips when the framing is issued (or
-   * abandoned), before its camera settles, so the settle commits.
+   * `committedBox.ts`.
    */
-  const deepLinkFramed = useRef(!options.initialPlaceId);
-  const heldOpening = useRef<MapViewportChange | null>(null);
+  const [opening] = useState(() => createOpeningFraming(Boolean(options.initialPlaceId)));
 
   const onViewportChange = useCallback(
     (change: MapViewportChange) => {
@@ -368,11 +366,11 @@ export function useExplore(
       );
 
       const step = nextBoxStep(committed, change, {
-        awaitingOpeningFraming: !deepLinkFramed.current,
+        awaitingOpeningFraming: opening.awaiting,
       });
       switch (step.kind) {
         case 'hold':
-          heldOpening.current = change;
+          opening.hold(change);
           return;
         case 'commit':
           setCommitted(step.box);
@@ -385,7 +383,7 @@ export function useExplore(
           return;
       }
     },
-    [committed],
+    [committed, opening],
   );
 
   const searchThisArea = useCallback(() => {
@@ -488,12 +486,18 @@ export function useExplore(
    * back from wherever they had dragged it.
    */
   useEffect(() => {
-    if (deepLinkFramed.current) return;
+    if (!opening.awaiting) return;
     const place = placeQuery.data;
     if (!place || place.id !== options.initialPlaceId) return;
-    deepLinkFramed.current = true;
-    mapRef.current?.moveTo(place.location, { zoom: DETAIL_ZOOM, duration: cameraDuration });
-  }, [placeQuery.data, options.initialPlaceId, cameraDuration, mapRef]);
+    // A move that was never issued (no engine yet) never settles: then the
+    // camera held meanwhile is the box, now — not after a pan.
+    const unframed = opening.frame(
+      () =>
+        mapRef.current?.moveTo(place.location, { zoom: DETAIL_ZOOM, duration: cameraDuration }) ??
+        false,
+    );
+    if (unframed) setCommitted((current) => current ?? unframed);
+  }, [opening, placeQuery.data, options.initialPlaceId, cameraDuration, mapRef]);
 
   /**
    * The deep link's framing will not come — the place failed to load, or the
@@ -502,12 +506,10 @@ export function useExplore(
    */
   const openingPlaceGone = selectedPlaceId !== options.initialPlaceId || placeQuery.isError;
   useEffect(() => {
-    if (deepLinkFramed.current || !openingPlaceGone) return;
-    deepLinkFramed.current = true;
-    const held = heldOpening.current;
-    heldOpening.current = null;
-    if (held) setCommitted((current) => current ?? boxOf(held));
-  }, [openingPlaceGone]);
+    if (!openingPlaceGone) return;
+    const held = opening.abandon();
+    if (held) setCommitted((current) => current ?? held);
+  }, [opening, openingPlaceGone]);
 
   const setQuery = useCallback((value: string) => {
     setQueryState(value);
