@@ -1,10 +1,10 @@
 /**
  * The material warm-up (`engine/city3d/materialWarmup.ts`): one real tile
  * entry per format, settled and dithered, with the trees once; drawn by no
- * camera but the warm-up's; grounded through the tiles' own `applyGround`
- * once. What it buys — no material built in a frame — is measured on the
- * frame-budget harness (`docs/MAP_NATIVE_3D.md` → "Materials built ahead of
- * the tiles"); this pins what it builds.
+ * camera but the warm-up's; a grounded set added through the tiles' own
+ * `applyGround` once. What it buys — no material built in a frame — is
+ * measured on the frame-budget harness (`docs/MAP_NATIVE_3D.md` → "Materials
+ * built ahead of the tiles"); this pins what it builds.
  */
 import { describe, expect, test } from 'bun:test';
 import { type Material, MeshBasicMaterial, type Mesh, Scene } from 'three';
@@ -85,24 +85,35 @@ describe('createMaterialWarmup', () => {
     }
   });
 
-  test('grounded once, through the tiles’ own lift', () => {
+  test('grounded once, through the tiles’ own lift, beside the flat set', () => {
     const { scene, context, invalidated } = harness();
     const warmup = createMaterialWarmup(context, createTreeShapes(), ['openmaptiles']);
+    const flat = [...meshesOf(scene)];
     expect(warmup.ground()).toBe(true);
-    for (const mesh of meshesOf(scene)) {
-      const name = (mesh.material as Material).name;
-      expect(
-        mesh.geometry.getAttribute(name.startsWith('trees') ? 'aGround' : 'ground'),
-      ).toBeDefined();
+    const lifted = meshesOf(scene).filter((mesh) => !flat.includes(mesh));
+    expect(lifted.map((mesh) => (mesh.material as Material).name).sort()).toEqual(
+      flat.map((mesh) => (mesh.material as Material).name).sort(),
+    );
+    const lift = (mesh: Mesh) =>
+      mesh.geometry.getAttribute(
+        (mesh.material as Material).name.startsWith('trees') ? 'aGround' : 'ground',
+      );
+    for (const mesh of lifted) {
+      expect(lift(mesh)).toBeDefined();
+      expect(mesh.layers.mask).toBe(1 << WARM_LAYER);
     }
+    // The flat set keeps its layout: its builds keep a user until a tile draws with them.
+    for (const mesh of flat) expect(lift(mesh)).toBeUndefined();
     expect(invalidated.buildings).toBeGreaterThan(0);
     expect(invalidated.trees).toBeGreaterThan(0);
     expect(warmup.ground()).toBe(false);
+    expect(meshesOf(scene).length).toBe(flat.length * 2);
   });
 
   test('disposed, it leaves the scene', () => {
     const { scene, context } = harness();
     const warmup = createMaterialWarmup(context, createTreeShapes(), ['openmaptiles', 'goway']);
+    warmup.ground();
     warmup.dispose();
     expect(scene.children).toEqual([]);
   });

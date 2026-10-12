@@ -14,11 +14,14 @@
  * The warm-up meshes are REAL tile entries (`cityMeshes.ts` →
  * `createTileEntry`) over a one-triangle mesh and one tree, so their
  * vertex layouts are exactly the tiles' — what three keys a build by — with
- * nothing restated here. One per tile format, settled and dithered; on terrain
- * they gain the lift through the same `applyGround` a tile does, and are
- * warmed again for those variants. They live in the engine's scene on
+ * nothing restated here. One per tile format, settled and dithered; for terrain
+ * a second set gains the lift through the same `applyGround` a tile does, and
+ * is warmed for those variants. They live in the engine's scene on
  * {@link WARM_LAYER}, which only the warm-up's camera draws, and are kept for
- * the engine's life: three drops a build no mesh uses any more.
+ * the engine's life: three drops a build no mesh uses any more. That is also
+ * why the grounded set is a second set and not the first one lifted: lifting
+ * a mesh changes its layout, and the settled builds would lose their only
+ * user before a tile drew with them.
  */
 import { WARM_LAYER } from './frameSelection';
 import {
@@ -36,8 +39,8 @@ import { TREE_SHAPES, type TreeInstances } from './trees';
 
 export interface MaterialWarmup {
   /**
-   * Give the warm-up meshes the terrain lift (the grounded variants); `true`
-   * the first time, when there is something new to build.
+   * Add warm-up meshes with the terrain lift (the grounded variants), beside
+   * the others; `true` the first time, when there is something new to build.
    */
   ground(): boolean;
   dispose(): void;
@@ -70,8 +73,8 @@ function warmMesh(format: CityTileFormat): PackedMesh {
 
 /**
  * One tree, of zero height: every shape draws with the same material and
- * vertex layout, so one builds them all — and each warm-up mesh costs
- * `compileAsync` a yield (a frame, where the browser has no `scheduler.yield`).
+ * vertex layout, so one builds them all, and each warm-up mesh costs
+ * `compileAsync` a turn of the event loop.
  */
 function warmTrees(): TreeInstances {
   return {
@@ -82,18 +85,20 @@ function warmTrees(): TreeInstances {
   };
 }
 
-export function createMaterialWarmup(
+/** One warm-up entry per format, settled and dithered, with the trees once. */
+function warmEntries(
   context: EntryContext,
   shapes: TreeShapes,
   formats: readonly CityTileFormat[],
-): MaterialWarmup {
+  variant: string,
+): TileEntry[] {
   const entries: TileEntry[] = [];
   formats.forEach((format, f) => {
     for (const dithered of [false, true]) {
       const entry = createTileEntry(
         context,
         shapes,
-        `warmup:${format}:${dithered}`,
+        `warmup:${variant}:${format}:${dithered}`,
         0,
         warmMesh(format),
         // The trees' materials do not depend on the format: warmed once.
@@ -112,16 +117,26 @@ export function createMaterialWarmup(
       entries.push(entry);
     }
   });
+  return entries;
+}
+
+export function createMaterialWarmup(
+  context: EntryContext,
+  shapes: TreeShapes,
+  formats: readonly CityTileFormat[],
+): MaterialWarmup {
+  const entries = warmEntries(context, shapes, formats, 'flat');
   let grounded = false;
 
   return {
     ground() {
       if (grounded) return false;
       grounded = true;
-      for (const entry of entries) {
+      for (const entry of warmEntries(context, shapes, formats, 'grounded')) {
         let lifts = entry.instances?.count ?? 0;
         for (const chunk of entry.packed?.chunks ?? []) lifts += chunk.position.length / 4;
         applyGround(entry, { values: new Float32Array(lifts), min: 0, max: 0, changed: false });
+        entries.push(entry);
       }
       return true;
     },
