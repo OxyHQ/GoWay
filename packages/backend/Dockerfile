@@ -5,7 +5,8 @@
 # Both stages pin oven/bun by its multi-arch index digest after the tag
 # (`tag@sha256:...`). A tag is mutable: a re-pushed `oven/bun:1.4.3-alpine`
 # would change what this file builds without changing one byte of it, and
-# this file's bytes are what .github/scripts/reviewed-images.json pins. The
+# this file's bytes, with .dockerignore, are what
+# .github/scripts/reviewed-images.json pins (reviewed-image.py). The
 # tag stays for readers and for scripts/check-dockerfile-workspaces.mjs; the
 # digest is what the build uses. Bumping bun means a new tag AND its index
 # digest (`docker buildx imagetools inspect oven/bun:<tag>`), and a re-review.
