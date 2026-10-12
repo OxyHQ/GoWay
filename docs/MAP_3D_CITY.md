@@ -1173,7 +1173,14 @@ at that ray's hit.
   round the map centre — radius from the view, rounded up in √2 steps; centre
   snapped to an eighth of it; box turned to face the sun so a low sun gets *more*
   resolution; window snapped to whole texels in absolute light space so a
-  moved box does not shimmer. ~0.6–1.6 m texels at street zooms. The REAL sun
+  moved box does not shimmer. ~0.6–1.6 m texels at street zooms. The box's
+  metres are measured at the centre's latitude rounded to 0.25°
+  (`SHADOW_LATITUDE_STEP_DEG`), so equal keys mean identical matrices: at
+  the live latitude a pan north or south moved the snap grid ~2.5 m per metre
+  panned while the cached map stayed, and the shadows slid off their casters
+  — or the ground lit wholesale — until the next redraw snapped them back
+  (the owner's missing ground shadows and pan flicker; pinned by
+  `city3dShadows.test.ts` and the visibility gate's pan). The REAL sun
   (`lib/map/sun.ts` over the map centre), not `building-3d`'s shaped light:
   a shadow's length is a fact.
 - **MapLibre's own sky** follows this one while it is attached
