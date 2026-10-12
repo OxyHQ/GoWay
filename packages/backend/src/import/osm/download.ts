@@ -23,7 +23,7 @@
  *  - the final size is asserted against `Content-Length`, and a file that
  *    SHRANK between attempts fails loudly.
  *
- * The runtime image is `oven/bun:1.4.2-alpine` and has no `curl`, which is why
+ * The runtime image is `oven/bun:1.4.3-alpine` and has no `curl`, which is why
  * this is `fetch` and a stream rather than a shell-out to the downloader
  * `packages/frontend/scripts/build-map-tiles.ts` uses. That script is a build
  * tool on a workstation; this runs in a 512 MB container with busybox.
