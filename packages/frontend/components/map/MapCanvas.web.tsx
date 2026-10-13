@@ -535,6 +535,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               // A style with a fixed light (the data basemaps) is not darkened
               // by the sun: its night side would be a different map.
               globeNight: qualityRef.current.relief.globeNight && styleFollowsLight,
+              // The globe's night is the style's, over the light its document draws.
+              style: { style: styleId, preset: stylePreset },
               at: skyAtRef.current,
             });
             reliefRef.current = reliefHandle;

@@ -76,7 +76,11 @@ import {
   BUILDINGS_3D_FADE,
   buildingHeightRamp,
 } from '@/lib/map/style/buildings3d';
-import { appearancePreset, type MapStyleSelection } from '@/lib/map/style/catalogue';
+import {
+  appearancePreset,
+  type MapStyleSelection,
+  presetDocumentLight,
+} from '@/lib/map/style/catalogue';
 import { styleTheme } from '@/lib/map/style/themes';
 import { streetPaletteInput } from '@/lib/map/style/streetPalette';
 import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
@@ -820,7 +824,9 @@ export async function attachCity3d(
         // The next frame hands the engine the list without it.
         map.triggerRepaint();
       },
-      sky: sky ? { appearance: options.appearance } : undefined,
+      sky: sky
+        ? { appearance: presetDocumentLight(theme.selection.preset), nightSky: theme.nightSky }
+        : undefined,
       // The detailed response; the night seam blends its day and night.
       material: detailed ? cityMaterials(theme.materials) : undefined,
     });
