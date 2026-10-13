@@ -266,7 +266,7 @@ function weekdayOf(date: string): number {
  * the tz database does not know). `null` becomes `unknown`, never an answer in
  * the device's own zone.
  */
-function localClock(timezone: string, now: Date): { date: string; minute: number } | null {
+export function localClock(timezone: string, now: Date): { date: string; minute: number } | null {
   try {
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: timezone,

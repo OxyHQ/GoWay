@@ -44,6 +44,11 @@ import {
 } from './search';
 import { liveShapePathSchema } from './live-source';
 import { streetCoverageQuerySchema } from './street3d';
+import {
+  roadRuleSetListQuerySchema,
+  roadRulesQuerySchema,
+  roadZoneListQuerySchema,
+} from './road-rules';
 
 /**
  * Who may call an operation.
@@ -69,7 +74,8 @@ export type ApiTag =
   | 'Directions'
   | 'Captures'
   | 'Street 3D'
-  | 'Live';
+  | 'Live'
+  | 'Road rules';
 
 export interface ApiOperation {
   readonly operationId: string;
@@ -1027,6 +1033,55 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     pathParameters: liveShapePathSchema,
     responses: { 200: 'LiveShape' },
     errors: ['bad_request', 'not_found', 'service_unavailable'],
+  },
+  // ── Road rules ────────────────────────────────────────────────────────────
+  {
+    operationId: 'listRoadRuleSets',
+    method: 'get',
+    path: '/roads/rule-sets',
+    tag: 'Road rules',
+    summary:
+      "Each country's road rules GoWay holds: the side traffic keeps to and the speed an implicit `maxspeed` such as `ES:urban` means.",
+    auth: 'public',
+    query: roadRuleSetListQuerySchema,
+    responses: { 200: 'RoadRuleSetPage' },
+    errors: [...READ_ERRORS, 'service_unavailable'],
+  },
+  {
+    operationId: 'getRoadRules',
+    method: 'get',
+    path: '/roads/rules',
+    tag: 'Road rules',
+    summary:
+      "The rules at a position: the country it is in, that country's rule set (null where GoWay holds none) and every zone covering it.",
+    auth: 'public',
+    query: roadRulesQuerySchema,
+    responses: { 200: 'RoadRules' },
+    errors: [...READ_ERRORS, 'service_unavailable'],
+  },
+  {
+    operationId: 'listRoadZones',
+    method: 'get',
+    path: '/roads/zones',
+    tag: 'Road rules',
+    summary:
+      'Low emission, congestion charge and restricted access zones in a box or a country, with their schedule, policy and source.',
+    auth: 'public',
+    query: roadZoneListQuerySchema,
+    responses: { 200: 'RoadZonePage' },
+    errors: [...READ_ERRORS, 'service_unavailable'],
+  },
+  {
+    operationId: 'evaluateRoadAccess',
+    method: 'post',
+    path: '/roads/access',
+    tag: 'Road rules',
+    summary:
+      "May this vehicle enter this position now? The strictest decision among the zones covering it, with each zone's verdict. The vehicle is used for this answer and never stored.",
+    auth: 'public',
+    body: 'RoadAccessInput',
+    responses: { 200: 'RoadAccessDecision' },
+    errors: [...READ_ERRORS, 'service_unavailable'],
   },
 ];
 

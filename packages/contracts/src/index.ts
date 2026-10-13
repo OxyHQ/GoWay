@@ -37,6 +37,8 @@ export * from './street3d';
 export * from './model';
 export * from './search';
 export * from './directions';
+export * from './road-access';
+export * from './road-rules';
 export * from './live-source';
 export * from './map-style';
 export * from './live';

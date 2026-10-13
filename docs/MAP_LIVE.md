@@ -282,6 +282,21 @@ returned.
 | Chicago (US) | commuter rail | `chicago-metra` | Metra GTFS Realtime API License Agreement | yes — [register](https://metra.com/developers) | off until its key is set |
 | Portland (US) | bus, MAX, streetcar | `portland-trimet` | TriMet Developer Terms of Use | yes — [register](https://developer.trimet.org/appid/registration/) | off until its key is set |
 | Toronto (CA) | bike share (stations) | `toronto-bikeshare` | OGL – Toronto | no | live; 1075 stations at probe |
+| Valencia (ES) | bike share (stations) | `valenbisi` | Licence Ouverte (JCDecaux) | no | added 2026-10-13; 276 stations at probe |
+| Dublin (IE) | bike share (stations) | `dublinbikes` | Licence Ouverte (JCDecaux) | no | added 2026-10-13; 115 stations at probe |
+| Brussels (BE) | bike share (stations) | `villo` | Licence Ouverte (JCDecaux) | no | added 2026-10-13; 360 stations at probe |
+| Lyon (FR) | bike share (stations) | `velov` | Licence Ouverte (JCDecaux) | no | added 2026-10-13; 465 stations at probe |
+| Nantes (FR) | bike share (stations) | `naolib-velo` | Licence Ouverte (JCDecaux) | no | added 2026-10-13; 119 stations at probe |
+| Toulouse (FR) | bike share (stations) | `velotoulouse` | Licence Ouverte (JCDecaux) | no | added 2026-10-13; 466 stations at probe |
+| Luxembourg (LU) | bike share (stations) | `veloh` | Licence Ouverte (JCDecaux) | no | added 2026-10-13; 146 stations at probe |
+| Vilnius (LT) | bike share (stations) | `cyclocity-vilnius` | Licence Ouverte (JCDecaux) | no | added 2026-10-13; 36 stations at probe |
+| Lille (FR) | bike share (stations) | `lille-vlille` | Licence Ouverte 2.0 | no | added 2026-10-13; 268 stations at probe |
+| Tampere (FI) | bus, tram | `tampere-nysse` | CC BY 4.0 | no | added 2026-10-13; 122 vehicles at probe |
+| Le Havre (FR) | bus, tram | `lehavre-lia` | ODbL 1.0 | no | added 2026-10-13; 8 vehicles at probe |
+| Washington DC area (US) | bike share (stations) | `cabi-bikeshare` | Bikeshare Data License Agreement | no | **awaiting Lyft's answer**; 866 stations at probe |
+| Chicago (US) | bike share (stations) | `divvy-bikeshare` | Bikeshare Data License Agreement | no | **awaiting Lyft's answer**; 2074 stations at probe |
+| San Francisco Bay Area (US) | bike share (stations) | `baywheels-bikeshare` | Bikeshare Data License Agreement | no | **awaiting Lyft's answer**; 645 stations at probe |
+| Boston area (US) | bike share (stations) | `bluebikes-bikeshare` | Bikeshare Data License Agreement | no | **awaiting Lyft's answer**; 626 stations at probe |
 | Rio de Janeiro (BR) | bus | `rio-bus` | CC BY 4.0 | no | live; 1063 vehicles at probe |
 | Rio de Janeiro (BR) | BRT | `rio-brt` | CC BY 4.0 | no | live; 150 vehicles at probe |
 | Brisbane / South East Queensland (AU) | bus, train, ferry, tram | `brisbane-translink` | CC BY 4.0 | no | live; 1440 vehicles at probe |
@@ -349,7 +364,6 @@ verifiable) and 18 more for having no usable feed — below.
 | **Philadelphia** (SEPTA) | The licence covers "Trip Planning Data", not the realtime feeds. |
 | **Minneapolis** (Metro Transit) | No licence published. |
 | **Victoria BC** (BC Transit) | Redistribution granted, commercial use never mentioned. |
-| **Chicago, Washington, Boston bike share** (Lyft GBFS) | The same Bikeshare Data License as `nyc-bikeshare`: "stand-alone dataset" clause awaiting Lyft's answer. |
 | **Hakodate**, **Okayama Uno Bus** (ODPT, GTFS-RU) | Operator permission required for passenger information. |
 | **Japan, keyed ODPT feeds** (Tokyo Metro, JR East, Yokohama…) | The ODPT Basic Licence text was not readable; "Challenge" feeds are contest-only. |
 | **São Paulo** (SPTrans), **Curitiba** (URBS) | Keyed JSON, terms not public. |
@@ -928,7 +942,7 @@ parameters the task definition names as `secrets`.
 
 | Variable | Value | Where |
 | --- | --- | --- |
-| `LIVE_SOURCES` | `all`: every catalogue and worldwide source whose licence is read, **except** those still `awaiting` a permission (`adsb-lol`, `nyc-bikeshare`, `york-yrt` — → Licences) and keyed ones without their key, which are skipped with one log line each kind. Name an awaiting source beside it once its permission is in (`all,adsb-lol`). A list of ids still works as before | environment |
+| `LIVE_SOURCES` | `all`: every catalogue and worldwide source whose licence is read, **except** those still `awaiting` a permission (`adsb-lol`, `nyc-bikeshare`, the four Lyft systems `cabi-bikeshare`, `divvy-bikeshare`, `baywheels-bikeshare`, `bluebikes-bikeshare`, `york-yrt` — → Licences) and keyed ones without their key, which are skipped with one log line each kind. Name an awaiting source beside it once its permission is in (`all,adsb-lol`). A list of ids still works as before | environment |
 | `REDIS_URL` | `/oxy/_shared/REDIS_URL` (the fleet Valkey), as allo, clarity and moovo read it. Read only when `LIVE_SOURCES` lists a source; if it is malformed, GoWay logs a warning (never the value) and live runs without a bus — a variable a dozen services share never stops GoWay booting | SSM, `secrets` |
 | `LIVE_SOURCE_MTA_BUS_KEY` | the MTA Bus Time key | SSM `/oxy/goway/LIVE_SOURCE_MTA_BUS_KEY`, `secrets` |
 | `LIVE_SOURCE_<ID>_KEY` | one per keyed worldwide feed, once registered (→ Keys to register) | SSM `/oxy/goway/LIVE_SOURCE_<ID>_KEY`, `secrets` |

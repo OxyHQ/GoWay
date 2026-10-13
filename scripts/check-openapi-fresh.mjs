@@ -155,6 +155,10 @@ export const EXPECTED_OPERATIONS = [
   // GoWay Live: the feeds' credits, licences and freshness (positions are on Socket.IO).
   { method: 'get', path: '/live/sources', body: false, auth: false },
   { method: 'get', path: '/live/sources/{sourceId}/shapes/{shapeId}', body: false, auth: false },
+  { method: 'get', path: '/roads/rule-sets', body: false, auth: false },
+  { method: 'get', path: '/roads/rules', body: false, auth: false },
+  { method: 'get', path: '/roads/zones', body: false, auth: false },
+  { method: 'post', path: '/roads/access', body: true, auth: false },
 ];
 
 /** A layer that examines nothing must fail, not pass. */

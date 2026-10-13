@@ -16,10 +16,19 @@ import { z } from 'zod';
 import { geoCoordinateSchema, geoJsonLineStringSchema } from './geo';
 import { languageTagSchema } from './language';
 import { placeIdSchema } from './place';
+import { roadZoneVerdictSchema, vehicleProfileSchema } from './road-rules';
+import { instantSchema } from './time';
 
 /** Travel modes supported in v1. The contract leaves room for transit later. */
 export const TRAVEL_MODES = ['drive', 'walk', 'bike'] as const;
 export type TravelMode = (typeof TRAVEL_MODES)[number];
+
+/**
+ * What a drive may be asked to avoid. Closed: each is something the engine
+ * can honour, and a value it cannot is `validation_failed`, never ignored.
+ */
+export const ROUTE_EXCLUDES = ['toll', 'motorway', 'ferry'] as const;
+export type RouteExclude = (typeof ROUTE_EXCLUDES)[number];
 
 /**
  * The most intermediate stops one request may carry.
@@ -74,6 +83,18 @@ export const routeRequestSchema = z.object({
   alternatives: z.boolean().optional(),
   /** BCP 47 tag for maneuver instruction text. */
   locale: languageTagSchema.optional(),
+  /**
+   * The vehicle, for `mode: 'drive'` only. With it the route avoids the zones
+   * that refuse this vehicle at `departureAt` (except one the origin or
+   * destination lies in — you cannot reach it without entering), and drives as
+   * that kind of vehicle: a bus on bus roads, a lorry where lorries may go.
+   * Used for this one answer and never stored.
+   */
+  vehicle: vehicleProfileSchema.optional(),
+  /** What to avoid, `mode: 'drive'` only. */
+  exclude: z.array(z.enum(ROUTE_EXCLUDES)).max(ROUTE_EXCLUDES.length).optional(),
+  /** When the trip starts, for zones that apply on a schedule. Default: now. */
+  departureAt: instantSchema.optional(),
 });
 
 /** A directions request, with `mode` typed as the modes GoWay knows. */
@@ -137,6 +158,13 @@ export const routeSchema = z.object({
   /** The full route line, in GeoJSON longitude-first order. */
   geometry: geoJsonLineStringSchema,
   legs: z.array(routeLegSchema),
+  /**
+   * The restricted zones in force that the route enters, with what each says to
+   * the request's vehicle (`unknown` when no vehicle was described, or too
+   * little of one). Evaluated at the departure time, which can differ from the
+   * time of arrival for a long trip. Empty: it enters none that GoWay holds.
+   */
+  zones: z.array(roadZoneVerdictSchema).default([]),
 });
 export type Route = z.infer<typeof routeSchema>;
 

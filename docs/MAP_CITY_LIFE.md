@@ -77,8 +77,9 @@ mapped sidewalks). **Decision: compile.** `scripts/build-city-roads.ts` +
   motorways and roundabouts), `lanes`/`lanes:forward`/`lanes:backward`,
   `maxspeed` (km/h; `mph` converted; country-implicit values like `ES:urban`
   refused), `sidewalk*`, `footway=sidewalk|crossing`, tunnels, and access
-  (`private`, `motor_vehicle=no`, parking aisles and driveways are not roads a
-  simulated car uses).
+  for every road user (`ROAD_RULES.md`: `private`, `motor_vehicle=no`, parking
+  aisles and driveways are not roads a simulated car uses; a bus lane is the
+  buses' alone; a road only buses may use is kept for them).
 - `highway=traffic_signals|crossing|stop|give_way` nodes, and node-via
   `type=restriction` relations (`no_*`/`only_*`; via-way restrictions are
   skipped and counted).
@@ -141,8 +142,8 @@ simplified: 16–29% of ends land on another line's interior, 36–50% on
 nothing):
 
 - **Classify**: motorway … service become car roads (`minor` → residential,
-  `ramp` → `*_link`; parking aisles, driveways and `access=private|no`
-  dropped); `path` with a pedestrian subclass becomes a footway. Lanes and
+  `ramp` → `*_link`; parking aisles, driveways and closed access dropped, read
+  by the same reader as the archive's — `ROAD_RULES.md`); `path` with a pedestrian subclass becomes a footway. Lanes and
   speeds then come from the class (the same defaults as a missing tag), one-way
   from the tag (implied on motorways).
 - **Clip** each basemap tile's lines to the tile (tiles overlap by a buffer).

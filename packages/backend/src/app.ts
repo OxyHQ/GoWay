@@ -43,6 +43,7 @@ import { createPlaceMediaRouter } from './routes/placeMedia';
 import { createPlaceReviewsRouter } from './routes/placeReviews';
 import { createPlacesRouter } from './routes/places';
 import { createRoutesRouter } from './routes/directions';
+import { createRoadRulesRouter } from './routes/roadRules';
 import { createSearchRouter } from './routes/search';
 import { createStreet3dRouter } from './routes/street3d';
 import { createConfiguredObjectStore } from './storage';
@@ -188,6 +189,8 @@ export function createApp(options: CreateAppOptions = {}): Express {
    * (503) unless `server.ts` built a live service. Positions are on Socket.IO.
    */
   v1.use(createLiveRouter(options.live ?? null, liveShapeRateLimit));
+  /** Road rules: country rule sets, zones and "may this vehicle enter", signed out. */
+  v1.use(createRoadRulesRouter());
   api.use('/v1', v1);
 
   app.use('/api', api);

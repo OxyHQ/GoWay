@@ -48,6 +48,8 @@
 // First: nothing references the taxonomy by foreign key — `places.categories`
 // is held to it by a trigger (`categories.ts`).
 export * from './categories';
+// Road rules reference nothing: a sync keeps them, `places` never reads them.
+export * from './roadRules';
 export * from './places';
 export * from './capture';
 // After `capture`: derivatives, jobs and scene inputs reference `capture_assets`.

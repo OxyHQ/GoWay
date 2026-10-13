@@ -2,7 +2,7 @@
 // Refreshed weekly by .github/workflows/live-areas.yml, which opens a pull request on a change.
 //
 // Each feed, the day what it was derived from last changed, and its fingerprint:
-//   renfe-cercanias                2026-10-13  sha256:24a6d4d860340993
+//   renfe-cercanias                2026-10-13  sha256:391d3c5c0a29e25e
 //   fgc-geotren                    2026-10-13  sha256:9295a9b24aacc033
 //   mta-bus                        2026-10-13  sha256:4a69f1d89a9fd24c
 //   mta-lirr                       2026-10-13  sha256:1ff28555db6bedac
@@ -11,15 +11,30 @@
 //   amb-bus                        2026-10-13  sha256:c99665c2bff9a08a
 //   emt-fuenlabrada                2026-10-13  sha256:322bf103b9ed28d8
 //   nyc-bikeshare                  2026-10-13  sha256:9105fe26b02c146f
-//   helsinki-hsl                   2026-10-13  sha256:e18b497a2d7e0360
+//   helsinki-hsl                   2026-10-13  sha256:6c30d95b1ec7d615
 //   netherlands-ovapi              2026-10-13  sha256:6494039ec718b075
 //   norway-entur                   2026-10-13  sha256:f20d0f6bfead0b10
 //   oslo-bysykkel                  2026-10-13  sha256:69135d164ac3fa4b
 //   bergen-bysykkel                2026-10-13  sha256:3396a0da1c862a64
 //   trondheim-bysykkel             2026-10-13  sha256:36cbc2683642b69a
-//   prague-pid                     2026-10-13  sha256:16a1cb745d458f2a
+//   cabi-bikeshare                 2026-10-13  sha256:58068ad3e8c20677
+//   divvy-bikeshare                2026-10-13  sha256:f2291e6830019a31
+//   baywheels-bikeshare            2026-10-13  sha256:657c54c6ef479bcf
+//   bluebikes-bikeshare            2026-10-13  sha256:9abd62097d15fd32
+//   valenbisi                      2026-10-13  sha256:89001e4924c99b9f
+//   dublinbikes                    2026-10-13  sha256:92e344a0fc8335ae
+//   villo                          2026-10-13  sha256:af561b84a57d51aa
+//   velov                          2026-10-13  sha256:add744afaf7c3fd1
+//   naolib-velo                    2026-10-13  sha256:44969461f20f7881
+//   velotoulouse                   2026-10-13  sha256:33b38f5ce52ecb55
+//   veloh                          2026-10-13  sha256:8b28867d281f27e5
+//   cyclocity-vilnius              2026-10-13  sha256:2ef2a4fd8b26da2f
+//   lille-vlille                   2026-10-13  sha256:c435fdca2e660607
+//   tampere-nysse                  2026-10-13  sha256:47d671867b68be55
+//   lehavre-lia                    2026-10-13  sha256:bdd5ae6e6a63033a
+//   prague-pid                     2026-10-13  sha256:dc6ff342263e42a9
 //   bilbao-metro                   2026-10-13  sha256:dbfd55ebf61c3df2
-//   bordeaux-tbm                   2026-10-13  sha256:2e16d07a160679a5
+//   bordeaux-tbm                   2026-10-13  sha256:4163eb4b9f44442b
 //   montpellier-tam                2026-10-13  sha256:d776f805f90fd8d1
 //   nice-lignes-azur               2026-10-13  sha256:e703991c765c24e6
 //   ireland-nta                    2026-10-13  sha256:00d4e7ff3adb6def
@@ -69,7 +84,7 @@ import type { DerivedSource } from './areas';
 export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
   "renfe-cercanias": {
     "readOn": "2026-10-13",
-    "sha256": "24a6d4d86034099325eeacf7984698759f52f19e4b0fb3c0e56c5747811c4260",
+    "sha256": "391d3c5c0a29e25ec4d527fc0dd0c5fca67a55c7578954aa5792f3a922bf388d",
     "modes": [
       "bus",
       "rail"
@@ -561,7 +576,7 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
   },
   "helsinki-hsl": {
     "readOn": "2026-10-13",
-    "sha256": "e18b497a2d7e03605a2c47af74bfec4c423eda590f3ef778630d7a6b16bc88fd",
+    "sha256": "6c30d95b1ec7d615c2c160f65ed2a3270638c676070cc49c1d951c3df036730e",
     "modes": [
       "bus",
       "ferry",
@@ -1676,9 +1691,318 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
       }
     ]
   },
+  "cabi-bikeshare": {
+    "readOn": "2026-10-13",
+    "sha256": "58068ad3e8c20677d9fd93f7d6dc069df68f13d1db46df10b714bfdafb643be6",
+    "modes": [],
+    "outer": {
+      "west": -77.47,
+      "south": 38.66,
+      "east": -76.78,
+      "north": 39.18
+    },
+    "areas": [
+      {
+        "west": -77.47,
+        "south": 38.66,
+        "east": -76.78,
+        "north": 39.18
+      }
+    ]
+  },
+  "divvy-bikeshare": {
+    "readOn": "2026-10-13",
+    "sha256": "f2291e6830019a3171daed3db753128effef099409fd5e836c71652b342d4863",
+    "modes": [],
+    "outer": {
+      "west": -87.89,
+      "south": 41.6,
+      "east": -87.48,
+      "north": 42.11
+    },
+    "areas": [
+      {
+        "west": -87.89,
+        "south": 41.6,
+        "east": -87.48,
+        "north": 42.11
+      }
+    ]
+  },
+  "baywheels-bikeshare": {
+    "readOn": "2026-10-13",
+    "sha256": "657c54c6ef479bcf1d1c12568069a35fe9b308a6e68d67b731dd3c2a998d785e",
+    "modes": [],
+    "outer": {
+      "west": -122.56,
+      "south": 37.26,
+      "east": -121.81,
+      "north": 37.94
+    },
+    "areas": [
+      {
+        "west": -122.56,
+        "south": 37.64,
+        "east": -122.15,
+        "north": 37.94
+      },
+      {
+        "west": -121.97,
+        "south": 37.26,
+        "east": -121.81,
+        "north": 37.42
+      }
+    ]
+  },
+  "bluebikes-bikeshare": {
+    "readOn": "2026-10-13",
+    "sha256": "9abd62097d15fd32dbd8447fb94dcbc437d0944122cbb431ff3322a5d27abc28",
+    "modes": [],
+    "outer": {
+      "west": -71.3,
+      "south": 42.2,
+      "east": -70.82,
+      "north": 42.58
+    },
+    "areas": [
+      {
+        "west": -71.3,
+        "south": 42.2,
+        "east": -70.85,
+        "north": 42.54
+      },
+      {
+        "west": -70.96,
+        "south": 42.45,
+        "east": -70.82,
+        "north": 42.58
+      }
+    ]
+  },
+  "valenbisi": {
+    "readOn": "2026-10-13",
+    "sha256": "89001e4924c99b9fde234ef98236f0e55012ccf4a26bc60506d59b2d7ae5464c",
+    "modes": [],
+    "outer": {
+      "west": -0.48,
+      "south": 39.39,
+      "east": -0.27,
+      "north": 39.55
+    },
+    "areas": [
+      {
+        "west": -0.48,
+        "south": 39.39,
+        "east": -0.27,
+        "north": 39.55
+      }
+    ]
+  },
+  "dublinbikes": {
+    "readOn": "2026-10-13",
+    "sha256": "92e344a0fc8335ae745b8e4229b47a25b4ce8a41d8eba67fe8f04eade4fc1392",
+    "modes": [],
+    "outer": {
+      "west": -6.36,
+      "south": 53.28,
+      "east": -6.18,
+      "north": 53.41
+    },
+    "areas": [
+      {
+        "west": -6.36,
+        "south": 53.28,
+        "east": -6.18,
+        "north": 53.41
+      }
+    ]
+  },
+  "villo": {
+    "readOn": "2026-10-13",
+    "sha256": "af561b84a57d51aabce4223a0fa60d4947d5925c385115b8e5ae7121f736162e",
+    "modes": [],
+    "outer": {
+      "west": 4.22,
+      "south": 50.74,
+      "east": 4.52,
+      "north": 50.95
+    },
+    "areas": [
+      {
+        "west": 4.22,
+        "south": 50.74,
+        "east": 4.52,
+        "north": 50.95
+      }
+    ]
+  },
+  "velov": {
+    "readOn": "2026-10-13",
+    "sha256": "add744afaf7c3fd1ce459a5df5ecaedee8be0c1c9091ec7269f9c9710fee0566",
+    "modes": [],
+    "outer": {
+      "west": 4.73,
+      "south": 45.64,
+      "east": 5.02,
+      "north": 45.94
+    },
+    "areas": [
+      {
+        "west": 4.73,
+        "south": 45.64,
+        "east": 5.02,
+        "north": 45.94
+      }
+    ]
+  },
+  "naolib-velo": {
+    "readOn": "2026-10-13",
+    "sha256": "44969461f20f78817caca8be7cfa1c638d2124a8783dfbcc7b6595e371e9ed3d",
+    "modes": [],
+    "outer": {
+      "west": -1.64,
+      "south": 47.13,
+      "east": -1.47,
+      "north": 47.3
+    },
+    "areas": [
+      {
+        "west": -1.64,
+        "south": 47.13,
+        "east": -1.47,
+        "north": 47.3
+      }
+    ]
+  },
+  "velotoulouse": {
+    "readOn": "2026-10-13",
+    "sha256": "33b38f5ce52ecb550348a8f9143819d61d883b1ff7f0bca277b2122858965cdf",
+    "modes": [],
+    "outer": {
+      "west": 0.95,
+      "south": 43.49,
+      "east": 1.57,
+      "north": 43.72
+    },
+    "areas": [
+      {
+        "west": 0.95,
+        "south": 43.49,
+        "east": 1.57,
+        "north": 43.72
+      }
+    ]
+  },
+  "veloh": {
+    "readOn": "2026-10-13",
+    "sha256": "8b28867d281f27e53026a3ae5ff8f54fd7e62fcb206d134c69bdbb6f5a421741",
+    "modes": [],
+    "outer": {
+      "west": 5.93,
+      "south": 49.52,
+      "east": 6.31,
+      "north": 49.71
+    },
+    "areas": [
+      {
+        "west": 5.93,
+        "south": 49.52,
+        "east": 6.31,
+        "north": 49.71
+      }
+    ]
+  },
+  "cyclocity-vilnius": {
+    "readOn": "2026-10-13",
+    "sha256": "2ef2a4fd8b26da2fe00f6028828b7be520b4671250e83f5a3ab9c69cbe027603",
+    "modes": [],
+    "outer": {
+      "west": 25.21,
+      "south": 54.62,
+      "east": 25.36,
+      "north": 54.76
+    },
+    "areas": [
+      {
+        "west": 25.21,
+        "south": 54.62,
+        "east": 25.36,
+        "north": 54.76
+      }
+    ]
+  },
+  "lille-vlille": {
+    "readOn": "2026-10-13",
+    "sha256": "c435fdca2e6606070dccd6b0f5c84ef202ddafac68abefe906a1cc5e4f8b82bb",
+    "modes": [],
+    "outer": {
+      "west": 2.93,
+      "south": 50.55,
+      "east": 3.25,
+      "north": 50.79
+    },
+    "areas": [
+      {
+        "west": 2.93,
+        "south": 50.55,
+        "east": 3.25,
+        "north": 50.79
+      }
+    ]
+  },
+  "tampere-nysse": {
+    "readOn": "2026-10-13",
+    "sha256": "47d671867b68be5530c87c28d4196c689c81732456cd678d4716b624412d650f",
+    "modes": [
+      "bus",
+      "tram"
+    ],
+    "outer": {
+      "west": 23.17,
+      "south": 61.08,
+      "east": 25.23,
+      "north": 61.93
+    },
+    "areas": [
+      {
+        "west": 23.17,
+        "south": 61.08,
+        "east": 24.85,
+        "north": 61.55
+      },
+      {
+        "west": 23.17,
+        "south": 61.45,
+        "east": 25.23,
+        "north": 61.93
+      }
+    ]
+  },
+  "lehavre-lia": {
+    "readOn": "2026-10-13",
+    "sha256": "bdd5ae6e6a63033a037ae78002e57f6f45a309eaa0090873e8039a12a1ce5d61",
+    "modes": [
+      "bus",
+      "tram"
+    ],
+    "outer": {
+      "west": 0.02,
+      "south": 49.41,
+      "east": 0.48,
+      "north": 49.75
+    },
+    "areas": [
+      {
+        "west": 0.02,
+        "south": 49.41,
+        "east": 0.48,
+        "north": 49.75
+      }
+    ]
+  },
   "prague-pid": {
     "readOn": "2026-10-13",
-    "sha256": "16a1cb745d458f2a03b1dc37b6abba9e02a089598fa3d2e79de81f8be9dde2a0",
+    "sha256": "dc6ff342263e42a99dea3647b9ee82782b3b3ce96b336d547135eb07ea5421ff",
     "modes": [
       "bus",
       "cable",
@@ -1743,7 +2067,7 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
   },
   "bordeaux-tbm": {
     "readOn": "2026-10-13",
-    "sha256": "2e16d07a160679a5a31c3f595719ed3888f1937f61d32478df57323ecd98e3fe",
+    "sha256": "4163eb4b9f44442baf935805e6d5be6ef33c0805c1517d1b93066edb2e0f39dc",
     "modes": [
       "bus",
       "ferry",

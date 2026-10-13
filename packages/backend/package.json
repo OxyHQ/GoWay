@@ -15,6 +15,7 @@
     "db:generate": "bun --bun --env-file=.env drizzle-kit generate",
     "db:migrate": "bun run src/db/migrate.ts",
     "import:osm": "bun run src/import/osm/run.ts",
+    "roadrules:sync": "bun run src/roadrules/runSync.ts",
     "places:convert-legacy": "bun run src/places/runConvertLegacy.ts",
     "categories:move": "bun run src/categories/runMoveCategory.ts",
     "captures:cleanup": "bun run src/capture/runCleanup.ts",

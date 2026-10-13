@@ -28,7 +28,14 @@
  * today; the shape simply does not stand in their way.
  */
 
-import type { GeoCoordinate, Route, TravelMode } from '@goway/contracts';
+import type {
+  GeoCoordinate,
+  GeoGeometry,
+  Route,
+  RouteExclude,
+  TravelMode,
+  VehicleUser,
+} from '@goway/contracts';
 
 /** A point a route passes through, already resolved to a coordinate. */
 export interface RoutePoint {
@@ -50,6 +57,16 @@ export interface RoutingRequest {
   alternatives: boolean;
   /** BCP-47 tag for maneuver instruction text. */
   locale?: string;
+  /** The kind of vehicle, for `mode: 'drive'`; absent: an ordinary car. */
+  vehicle?: VehicleUser;
+  /** What the route must avoid; `drive` only. */
+  exclude?: readonly RouteExclude[];
+  /**
+   * Areas the route must not enter (restricted zones that refuse the vehicle).
+   * Polygons and multipolygons; a hole is not expressible to every engine, so
+   * an adapter may treat an area as its outer ring — avoiding more, never less.
+   */
+  avoid?: readonly Extract<GeoGeometry, { type: 'Polygon' | 'MultiPolygon' }>[];
 }
 
 /** Per-call controls that are not part of the question being asked. */
