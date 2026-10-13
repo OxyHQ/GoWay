@@ -20,10 +20,9 @@ import type {
   Map as MapLibreMap,
 } from 'maplibre-gl';
 
-import type { MapAppearance } from '@/lib/map/provider';
 import {
   GLOBE_NIGHT_FRAGMENT_SHADER,
-  GLOBE_NIGHT_LIGHT,
+  type GlobeNight,
   GLOBE_NIGHT_VERTEX_SHADER,
   globeNightOpacity,
   globeVector,
@@ -176,7 +175,8 @@ function compile(gl: WebGL2RenderingContext, type: number, source: string): WebG
 }
 
 export function createGlobeNightLayer(options: {
-  appearance: MapAppearance;
+  /** The map's night and the light its document draws (`globeNightFor`, from its style). */
+  night: GlobeNight;
   at: Date | null;
   enabled: boolean;
   /** A defect worth one quiet report (the program did not build). */
@@ -189,9 +189,8 @@ export function createGlobeNightLayer(options: {
   let at = options.at;
   let enabled = options.enabled;
   let timer: ReturnType<typeof setInterval> | null = null;
-  const night = new Float32Array(
-    GLOBE_NIGHT_LIGHT[options.appearance === 'dark' ? 'dark' : 'light'],
-  );
+  const night = new Float32Array(options.night.night);
+  const documentLight = new Float32Array(options.night.document);
 
   const repaint = () => map?.triggerRepaint();
   const syncTimer = () => {
@@ -233,6 +232,7 @@ export function createGlobeNightLayer(options: {
         'uGlobeness',
         'uSun',
         'uNight',
+        'uDocument',
         'uOpacity',
       ]) {
         uniforms[name] = gl.getUniformLocation(program, name);
@@ -268,6 +268,7 @@ export function createGlobeNightLayer(options: {
       gl.uniform1f(uniforms.uGlobeness, data.projectionTransition);
       gl.uniform3fv(uniforms.uSun, globeVector(sun.lat, sun.lng));
       gl.uniform3fv(uniforms.uNight, night);
+      gl.uniform3fv(uniforms.uDocument, documentLight);
       gl.uniform1f(uniforms.uOpacity, opacity);
       // A multiply that keeps the canvas's alpha: dst.rgb × src.rgb.
       gl.disable(gl.DEPTH_TEST);

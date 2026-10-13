@@ -108,6 +108,24 @@ export function isMapLightMode(value: unknown): value is MapLightMode {
  */
 export const SUN_LIGHT_BAND = { day: 4, night: -6 } as const;
 
+/**
+ * The sun altitude a dawn or dusk document stands for: the middle of
+ * {@link SUN_LIGHT_BAND}. What darkens the map with the real sun (the globe's
+ * night, the city sky's ground pass) draws only the darkening past it over a
+ * twilight map, never the twilight the document already shows.
+ */
+export const TWILIGHT_DOCUMENT_DEG = (SUN_LIGHT_BAND.day + SUN_LIGHT_BAND.night) / 2;
+
+/**
+ * The light a preset's document already draws, as what darkens the map with
+ * the real sun reads it (the city sky's `SkyAppearance`, the globe's night):
+ * a day map, a dawn or dusk map, a night map.
+ */
+export function presetDocumentLight(preset: MapLightPreset): 'light' | 'twilight' | 'dark' {
+  if (preset === 'night') return 'dark';
+  return preset === 'day' ? 'light' : 'twilight';
+}
+
 /** The sun's apparent horizon: the upper limb with refraction. */
 const HORIZON_DEG = -0.833;
 

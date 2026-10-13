@@ -53,6 +53,8 @@
  * "light the building's linear albedo by `M`, then encode" (what the building
  * shader does) give the same colour for the same surface.
  */
+import { TWILIGHT_DOCUMENT_DEG } from '@/lib/map/style/catalogue';
+import { CITY_NIGHT_SKY, type CityNightSky } from '@/lib/map/style/nightSky';
 
 export type Rgb = [number, number, number];
 
@@ -205,13 +207,6 @@ const SKY_GAIN = 3.2;
  */
 const MAX_SUN = 2.4;
 
-/**
- * The night: a fixed, faint, blue ambient (relative to the reference
- * daylight's illuminance), and the sky radiance it comes from. Stylised — a
- * moonless, city-glow-free sky — and deliberately the only light at night.
- */
-const NIGHT_AMBIENT: Rgb = [0.0014, 0.0027, 0.0074];
-
 /** The sun as a white source (sRGB's white is daylight's). */
 const SUN_IRRADIANCE: Rgb = [1, 1, 1];
 
@@ -256,29 +251,6 @@ const PRIMARY_STEPS = 20;
 export const SHADOW_OPACITY = 0.78;
 
 /**
- * The night sky, as display sRGB: a deep blue-violet, lighter at the horizon.
- * A stylised colour, not a measurement: a moonless sky over a city is a dull
- * orange-grey glow nobody wants on a map, and the art direction asks for the
- * blue-violet of an illustrated night. It takes over from the physical sky
- * through nautical twilight — the same window as `nightFactor`, so the city's
- * lights come on as the sky goes dark ({@link SKY_NIGHT_FADE_DEG}).
- */
-const NIGHT_SKY_ZENITH: Rgb = [0x14 / 255, 0x16 / 255, 0x58 / 255];
-const NIGHT_SKY_HORIZON: Rgb = [0x27 / 255, 0x30 / 255, 0x8c / 255];
-
-/**
- * A warm light at street level at night, on walls only, fading out over the
- * first {@link STREET_GLOW_HEIGHT_M} metres (`tsl/skyBuildingMaterial.ts`). Linear,
- * relative to the night's adapted brightness.
- *
- * HONESTY (`docs/MAP_3D_CITY.md`): this is lighting, applied to every wall of
- * every building alike — the ambience of lit streets — and says nothing
- * about any one building. No lit windows, no floodlit landmarks, no
- * storefronts: those would be facts about a building the data does not hold.
- */
-const STREET_GLOW: Rgb = [0.3, 0.16, 0.06];
-
-/**
  * Floodlighting, on buildings that RECORD being lit at night (OSM `floodlit`
  * or `lit` on the building: `CITY_PROPS.floodlit`): a warm uplight on the
  * walls, brightest at the foot and fading up the facade, with a little on the
@@ -287,7 +259,7 @@ const STREET_GLOW: Rgb = [0.3, 0.16, 0.06];
  * — its colour, fall-off and strength — is styling.
  */
 export const FLOODLIGHT = {
-  color: [1, 0.64, 0.34] as Rgb,
+  // Its colour is the style's (`nightSky.ts` → `CityNightSky.floodlight`).
   intensity: 1.6,
   /** What is left of it at the top of the facade, and on a roof. */
   top: 0.3,
@@ -571,7 +543,13 @@ export interface SkyState {
   streetGlow: Rgb;
 }
 
-export type SkyAppearance = 'light' | 'dark';
+/**
+ * The light the map's DOCUMENT already draws (`lib/map/style/catalogue.ts` →
+ * its light preset): a day map (`light`), a night map (`dark`), or a dawn or
+ * dusk one (`twilight`). The sky lights the ground relative to it, so a
+ * darkening the document already shows is never drawn a second time.
+ */
+export type SkyAppearance = 'light' | 'twilight' | 'dark';
 
 /** Linear interpolation over a sorted `[x, y]` table, clamped at both ends. */
 function curve(table: readonly (readonly [number, number])[], x: number): number {
@@ -588,6 +566,11 @@ function curve(table: readonly (readonly [number, number])[], x: number): number
 
 /** The adapted brightness of a horizontal surface for a sun `altitudeDeg` up. */
 export function adaptedBrightness(altitudeDeg: number, appearance: SkyAppearance): number {
+  if (appearance === 'twilight') {
+    // The day map's light, over the light the twilight document already shows.
+    const document = curve(BRIGHTNESS_CURVE.light, TWILIGHT_DOCUMENT_DEG);
+    return Math.min(1, curve(BRIGHTNESS_CURVE.light, altitudeDeg) / document);
+  }
   return curve(BRIGHTNESS_CURVE[appearance], altitudeDeg);
 }
 
@@ -733,7 +716,17 @@ function referenceDaylight(): number {
  * Pure but not free — a few milliseconds of ray marching — so it is cached per
  * rounded altitude and appearance ({@link skyStateFor}).
  */
-export function computeSkyState(altitudeDeg: number, appearance: SkyAppearance): SkyState {
+export function computeSkyState(
+  altitudeDeg: number,
+  appearance: SkyAppearance,
+  /**
+   * The style's night (`lib/map/style/nightSky.ts`, from
+   * the style's theme): the night's light and the stylised dome, which take
+   * over through nautical twilight ({@link SKY_NIGHT_FADE_DEG}). Standard's
+   * by default.
+   */
+  nightSky: CityNightSky = CITY_NIGHT_SKY,
+): SkyState {
   const altitude = altitudeDeg * DEG;
   const reference = referenceDaylight();
 
@@ -761,7 +754,7 @@ export function computeSkyState(altitudeDeg: number, appearance: SkyAppearance):
   };
 
   const irradiance = irradianceAt(altitude, sampleLut);
-  const night: Rgb = NIGHT_AMBIENT.map((v) => v * reference) as Rgb;
+  const night: Rgb = nightSky.ambient.map((v) => v * reference) as Rgb;
   const sinAlt = Math.max(0, Math.sin(altitude));
   const direct: Rgb = irradiance.sun.map((v) => v * sinAlt) as Rgb;
   const sky: Rgb = [0, 1, 2].map((c) => irradiance.sky[c] * SKY_GAIN + night[c]) as Rgb;
@@ -816,7 +809,7 @@ export function computeSkyState(altitudeDeg: number, appearance: SkyAppearance):
       // Through nautical twilight the stylised night sky takes over.
       const t = Math.sin(el) ** 0.6;
       for (let c = 0; c < 3; c++) {
-        const styled = NIGHT_SKY_HORIZON[c] + (NIGHT_SKY_ZENITH[c] - NIGHT_SKY_HORIZON[c]) * t;
+        const styled = nightSky.horizon[c] + (nightSky.zenith[c] - nightSky.horizon[c]) * t;
         const v = display[c] + (styled - display[c]) * nightness;
         lut[o + c] = Math.round(Math.max(0, Math.min(1, v)) * 255);
       }
@@ -839,7 +832,7 @@ export function computeSkyState(altitudeDeg: number, appearance: SkyAppearance):
     sunDisc,
     lut,
     brightness,
-    streetGlow: STREET_GLOW.map((v) => v * brightness * nightness) as Rgb,
+    streetGlow: nightSky.streetGlow.map((v) => v * brightness * nightness) as Rgb,
   };
 }
 
@@ -887,13 +880,23 @@ export function quantizeAltitude(altitudeDeg: number): number {
 }
 
 const CACHE_LIMIT = 48;
-const cache = new Map<string, SkyState>();
+/** Per style's night (the theme's object, memoised): rounded altitude and appearance → state. */
+const caches = new WeakMap<CityNightSky, Map<string, SkyState>>();
 
 /**
  * {@link computeSkyState}, cached by rounded altitude and appearance. A scrub
  * across a day visits each rounded altitude once; panning visits none.
  */
-export function skyStateFor(altitudeDeg: number, appearance: SkyAppearance): SkyState {
+export function skyStateFor(
+  altitudeDeg: number,
+  appearance: SkyAppearance,
+  nightSky: CityNightSky = CITY_NIGHT_SKY,
+): SkyState {
+  let cache = caches.get(nightSky);
+  if (!cache) {
+    cache = new Map();
+    caches.set(nightSky, cache);
+  }
   const altitude = quantizeAltitude(altitudeDeg);
   const key = `${appearance}:${altitude}`;
   const hit = cache.get(key);
@@ -903,7 +906,7 @@ export function skyStateFor(altitudeDeg: number, appearance: SkyAppearance): Sky
     cache.set(key, hit);
     return hit;
   }
-  const state = computeSkyState(altitude, appearance);
+  const state = computeSkyState(altitude, appearance, nightSky);
   cache.set(key, state);
   if (cache.size > CACHE_LIMIT) {
     const oldest = cache.keys().next().value;

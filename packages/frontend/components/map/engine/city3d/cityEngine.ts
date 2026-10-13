@@ -41,6 +41,7 @@
  * and ~165 ms of meshing at full detail (measured, see `docs/MAP_3D_CITY.md`);
  * on the main thread that is ten dropped frames per tile.
  */
+import type { CityNightSky } from '@/lib/map/style/nightSky';
 import * as THREE from 'three';
 
 import type { CityMaterial } from '@/lib/map/style/palette3d';
@@ -228,6 +229,11 @@ export interface CityEngineOptions {
    */
   sky?: {
     appearance: SkyAppearance;
+    /**
+     * The active style's night (`lib/map/style/nightSky.ts`): the
+     * night's light on the city and the sky dome. Standard's when absent.
+     */
+    nightSky?: CityNightSky;
     /**
      * The art direction's material response for the one sky-lit shading
      * path (`tsl/skyBuildingMaterial.ts` documents the contract). Absent: the
@@ -516,6 +522,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const sky: CitySky | null = options.sky
     ? createCitySky({
         appearance: options.sky.appearance,
+        nightSky: options.sky.nightSky,
         shadows: quality.shadows,
         now,
         nightFactor: light.uNightFactor,

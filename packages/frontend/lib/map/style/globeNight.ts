@@ -27,6 +27,8 @@
  * plane through `fallbackMatrix`, mixed by `projectionTransition`).
  */
 
+import { TWILIGHT_DOCUMENT_DEG } from './catalogue';
+
 /** The zooms over which the night fades out: the city sky's EFFECT_ZOOM (pinned by the test). */
 export const GLOBE_NIGHT_FADE_ZOOM: readonly [number, number] = [12, 13];
 
@@ -38,28 +40,69 @@ export const GLOBE_NIGHT_FADE_ZOOM: readonly [number, number] = [12, 13];
  */
 export const GLOBE_TWILIGHT_DEG: readonly [number, number] = [4, -10];
 
-/**
- * The ground's light at full night, per appearance: the city sky's ground
- * pass at a sun 20° down (`pow(sky ambient, 1/2.2)`, `atmosphere.ts`), clamped
- * to 1 (a multiply cannot brighten). Restated, not imported: that module is
- * the engine chunk's, and a module two lazy chunks share is hoisted into the
- * first-paint bundle. The test pins them together.
- */
-export const GLOBE_NIGHT_LIGHT = {
-  light: [0.29, 0.391, 0.619],
-  dark: [0.591, 0.796, 1],
-} as const satisfies Record<string, readonly [number, number, number]>;
+type Rgb3 = [number, number, number];
 
-/** The light, 0…1 per channel, for a sun `altitudeDeg` up — what the shader computes. */
-export function globeLight(
-  altitudeDeg: number,
-  appearance: keyof typeof GLOBE_NIGHT_LIGHT,
-): [number, number, number] {
+/**
+ * How bright the ground is drawn at full night over a day map and over a
+ * night map: the city sky's adapted brightness there (`atmosphere.ts` →
+ * `BRIGHTNESS_CURVE`). Restated, not imported: that module is the engine
+ * chunk's, and a module two lazy chunks share is hoisted into the first-paint
+ * bundle. The test pins them together.
+ */
+export const GLOBE_NIGHT_BRIGHTNESS = { light: 0.13, dark: 0.62 } as const;
+
+/**
+ * The globe's light for one map: its night end, and the light its document
+ * already draws (`1` but for a dawn or dusk map). Both from the style's night
+ * (`palette3d.ts` → `CityNightSky`), as the city sky's.
+ */
+export interface GlobeNight {
+  /** The ground's light at full night: the city sky's ground pass at a sun 20° down. */
+  night: Rgb3;
+  /** The light the document stands for, which is not drawn again. */
+  document: Rgb3;
+}
+
+/**
+ * The globe's night for a style's night light (`CityNightSky.ambient`) over
+ * a map drawn in `appearance`'s light:
+ *
+ * - at full night, the ground pass's own light, `pow(brightness × the night's
+ *   tint, 1/2.2)`, clamped to 1 (a multiply cannot brighten);
+ * - over a dawn or dusk map, the day map's night relative to the light that
+ *   map already shows, the twilight at {@link TWILIGHT_DOCUMENT_DEG}: no
+ *   darker than the document while the sun is above that, darker only as it
+ *   goes on down. Without it the low sun's dimming was drawn twice, the
+ *   document's and this one's, and the dusk map went dull.
+ */
+export function globeNightFor(
+  ambient: readonly [number, number, number],
+  appearance: 'light' | 'twilight' | 'dark',
+): GlobeNight {
+  const luma = 0.2126 * ambient[0] + 0.7152 * ambient[1] + 0.0722 * ambient[2];
+  const end = (brightness: number) =>
+    ambient.map((v) =>
+      Math.min(1, ((brightness * v) / Math.max(luma, 1e-12)) ** (1 / 2.2)),
+    ) as Rgb3;
+  if (appearance === 'dark')
+    return { night: end(GLOBE_NIGHT_BRIGHTNESS.dark), document: [1, 1, 1] };
+  const night = end(GLOBE_NIGHT_BRIGHTNESS.light);
+  if (appearance === 'light') return { night, document: [1, 1, 1] };
+  return { night, document: falling(TWILIGHT_DOCUMENT_DEG, night) };
+}
+
+/** The light falling from 1 to `night` over the twilight, for a sun `altitudeDeg` up. */
+function falling(altitudeDeg: number, night: Rgb3): Rgb3 {
   const [from, to] = GLOBE_TWILIGHT_DEG;
   const t = Math.max(0, Math.min(1, (altitudeDeg - from) / (to - from)));
-  const night = t * t * (3 - 2 * t);
-  const n = GLOBE_NIGHT_LIGHT[appearance];
-  return [0, 1, 2].map((c) => 1 + (n[c] - 1) * night) as [number, number, number];
+  const s = t * t * (3 - 2 * t);
+  return night.map((n) => 1 + (n - 1) * s) as Rgb3;
+}
+
+/** The light, 0…1 per channel, for a sun `altitudeDeg` up — what the shader computes. */
+export function globeLight(altitudeDeg: number, globe: GlobeNight): Rgb3 {
+  const light = falling(altitudeDeg, globe.night);
+  return light.map((v, c) => Math.min(1, v / globe.document[c])) as Rgb3;
 }
 
 /** How much of the night is drawn at `zoom`, 0…1. */
@@ -106,6 +149,8 @@ uniform float uGlobeness;
 // The subsolar point on the unit sphere.
 uniform vec3 uSun;
 uniform vec3 uNight;
+// The light the document already draws (globeNightFor): divided out.
+uniform vec3 uDocument;
 uniform float uOpacity;
 const float PI = 3.141592653589793;
 const float TWILIGHT_FROM = ${glslFloat(GLOBE_TWILIGHT_DEG[0])};
@@ -149,7 +194,8 @@ void main() {
   float alt = degrees(asin(clamp(s, -1.0, 1.0)));
   float t = clamp((alt - TWILIGHT_FROM) / (TWILIGHT_TO - TWILIGHT_FROM), 0.0, 1.0);
   float night = t * t * (3.0 - 2.0 * t);
+  vec3 light = min(vec3(1.0), mix(vec3(1.0), uNight, night) / uDocument);
   // Blended as a multiply (dst × src): 1 leaves the basemap as it is.
-  fragColor = vec4(mix(vec3(1.0), uNight, night * uOpacity), 1.0);
+  fragColor = vec4(mix(vec3(1.0), light, uOpacity), 1.0);
 }
 `;
