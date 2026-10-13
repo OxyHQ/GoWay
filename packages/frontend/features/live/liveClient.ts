@@ -199,7 +199,7 @@ export function createLiveClient(options: { apiUrl: string; store: LiveStore }):
           return;
         }
         if (state.state === 'invalid') return;
-        store.retain(state.tiles, state.kinds);
+        store.retain(state.tiles);
         coverage = state.state === 'too_wide' ? 'too_wide' : 'ok';
         notify();
       });

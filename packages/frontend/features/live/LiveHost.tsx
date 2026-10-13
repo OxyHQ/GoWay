@@ -13,7 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GoWayUnavailableError } from '@goway.to/sdk';
-import type { LiveKind } from '@goway.to/sdk/live';
+import { LIVE_SHAPES_MIN_ZOOM, type LiveKind } from '@goway.to/sdk/live';
 
 import type { MapCreditLink, MapLiveLayer, MapLivePoint } from '@/components/map';
 import { API_URL } from '@/lib/config';
@@ -72,9 +72,6 @@ function meetsView(
     coverage.north >= view.south
   );
 }
-
-/** Lines are fetched from this zoom: below it a train is a few pixels and its curve invisible. */
-const SHAPES_MIN_ZOOM = 12;
 
 /** Rendered in the map's top-right stack (`ExploreScreen`), which places it. */
 export default function LiveHost({ onLayer }: LiveHostProps) {
@@ -178,7 +175,7 @@ export default function LiveHost({ onLayer }: LiveHostProps) {
       setViewport(view) {
         zoomRef.current = view.zoom;
         viewRef.current = padded(view.bounds, 0.25);
-        store.setShapeArea(view.zoom >= SHAPES_MIN_ZOOM ? viewRef.current : null);
+        store.setShapeArea(view.zoom >= LIVE_SHAPES_MIN_ZOOM ? viewRef.current : null);
         clientRef.current?.setView(view);
       },
       select(id) {

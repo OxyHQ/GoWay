@@ -118,24 +118,24 @@ describe('room tiles', () => {
 describe('the tile index', () => {
   it('reports changes, ignores repeats, and moves between rooms — at every level', () => {
     const index = new LiveTileIndex();
-    const first = bus('1', 41.39, 2.17, T0);
+    const train = (latitude: number, longitude: number, at: number) =>
+      ({ ...bus('1', latitude, longitude, at), mode: 'rail' }) as LiveEntity;
+    const first = train(41.39, 2.17, T0);
     const rooms = (latitude: number, longitude: number) =>
-      liveTilesOf({ latitude, longitude }, 'transit').map((tile) => `${tile}|transit`);
+      liveTilesOf({ latitude, longitude }, 'transit', 'rail').map((tile) => `${tile}|transit`);
     const barcelona = rooms(41.39, 2.17);
     const newYork = rooms(40.75, -73.98);
-    // One room per transit level: z7, z9, z11.
+    // A train is in one room per transit level: z7, z9, z11.
     expect(barcelona.map((room) => room.split('/')[0])).toEqual(['7', '9', '11']);
     expect(index.upsert(first)).toEqual(
       barcelona.map((room) => ({ type: 'upsert', room, entity: first })),
     );
     expect(index.upsert({ ...first })).toEqual([]);
-    const moved = bus('1', 40.75, -73.98, T0 + 1000);
-    expect(index.upsert(moved)).toEqual(
-      barcelona.flatMap((room, level) => [
-        { type: 'remove', room, id: 'test-bus:1' },
-        { type: 'upsert', room: newYork[level], entity: moved },
-      ]),
-    );
+    const moved = train(40.75, -73.98, T0 + 1000);
+    expect(index.upsert(moved)).toEqual([
+      ...barcelona.map((room) => ({ type: 'remove' as const, room, id: 'test-bus:1' })),
+      ...newYork.map((room) => ({ type: 'upsert' as const, room, entity: moved })),
+    ]);
     expect(index.inRoom(BARCELONA_TILE, 'transit')).toEqual([]);
     expect(index.inRoom(NEW_YORK_TILE, 'transit')).toEqual([moved]);
     expect(index.inRoom((newYork[0] as string).split('|')[0] as string, 'transit')).toEqual([
@@ -146,6 +146,25 @@ describe('the tile index', () => {
     expect(index.remove('test-bus:1')).toHaveLength(3);
     expect(index.size).toBe(0);
     expect(index.countOfSource('test-bus')).toBe(0);
+  });
+
+  it('puts a bus in its city-zoom room only, and moves a vehicle between levels when its mode is learnt', () => {
+    const index = new LiveTileIndex();
+    const [z7, z9, z11] = liveTilesOf({ latitude: 41.39, longitude: 2.17 }, 'transit', 'rail');
+    const street = bus('1', 41.39, 2.17, T0);
+    expect(index.upsert(street).map((change) => change.room)).toEqual([`${z11}|transit`]);
+    expect(index.inRoom(z7 as string, 'transit')).toEqual([]);
+    expect(index.inRoom(z9 as string, 'transit')).toEqual([]);
+    // Its operator's routes.txt says it is a train: now regional too.
+    const train = { ...street, mode: 'rail' } as LiveEntity;
+    expect(
+      index.upsert(train).map((change) => `${change.type} ${change.room.split('/')[0]}`),
+    ).toEqual(['upsert 7', 'upsert 9', 'upsert 11']);
+    // And back: it leaves the regional rooms.
+    expect(
+      index.upsert(street).map((change) => `${change.type} ${change.room.split('/')[0]}`),
+    ).toEqual(['remove 7', 'remove 9', 'upsert 11']);
+    expect(index.inRoom(z9 as string, 'transit')).toEqual([]);
   });
 
   it('answers a box query exactly, by kind', () => {

@@ -214,9 +214,17 @@ export class LiveStore {
     }
   }
 
-  /** Keep only the rooms the server says this connection is in. */
-  retain(tiles: readonly string[], kinds: readonly LiveKind[]): void {
-    const rooms = new Set(tiles.flatMap((tile) => kinds.map((kind) => roomOf(tile, kind))));
+  /**
+   * Keep only the rooms the server says this connection is in — exactly those
+   * (tile, kind) pairs: an aircraft room's z7 tile does not keep the transit
+   * room of the same tile, whose buses would otherwise freeze there.
+   */
+  retain(tiles: Readonly<Partial<Record<LiveKind, readonly string[]>>>): void {
+    const rooms = new Set(
+      (Object.entries(tiles) as [LiveKind, readonly string[]][]).flatMap(([kind, list]) =>
+        list.map((tile) => roomOf(tile, kind)),
+      ),
+    );
     for (const [id, item] of this.tracked) if (!rooms.has(item.room)) this.tracked.delete(id);
   }
 

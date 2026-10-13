@@ -1,7 +1,7 @@
 /**
  * The in-memory spatial index of live entities: the latest fix per entity,
- * bucketed by room — a web-mercator tile at each of its kind's levels
- * (`LIVE_ROOM_ZOOMS`) and the kind.
+ * bucketed by room — a web-mercator tile at each of its levels
+ * (`liveRoomZoomsOf`: its kind's, but a bus only at city zoom) and the kind.
  *
  * Rooms ARE the spatial index. A subscription is answered from the buckets of
  * the tiles it covers (`liveTilesFor`), a delta is addressed to the bucket an
@@ -32,7 +32,7 @@ export function roomKey(tile: string, kind: LiveKind): string {
 
 interface Entry {
   entity: LiveEntity;
-  /** Its room at each of its kind's levels, coarsest first. */
+  /** Its room at each of its levels (`liveRoomZoomsOf`), coarsest first. */
   rooms: string[];
   /** What a client would receive, as text: the change test. */
   signature: string;
@@ -98,7 +98,8 @@ export class LiveTileIndex {
    * levels (`LIVE_ROOM_ZOOMS`), and a subscriber is in one level's rooms.
    */
   upsert(entity: LiveEntity): IndexChange[] {
-    const rooms = liveTilesOf(entity.position, entity.kind).map((tile) =>
+    const mode = entity.kind === 'transit' ? entity.mode : undefined;
+    const rooms = liveTilesOf(entity.position, entity.kind, mode).map((tile) =>
       roomKey(tile, entity.kind),
     );
     const signature = JSON.stringify(entity);
@@ -107,16 +108,18 @@ export class LiveTileIndex {
     const fixed = fixedSignature(entity);
     const onlyMoved = existing !== undefined && existing.fixed === fixed;
     const changes: IndexChange[] = [];
-    rooms.forEach((room, level) => {
-      const before = existing?.rooms[level];
-      if (before === room && onlyMoved) {
+    // Rooms it left — moved out, or no longer at that level (a bus whose
+    // static file said "train" a moment ago).
+    for (const before of existing?.rooms ?? []) {
+      if (rooms.includes(before)) continue;
+      this.rooms.get(before)?.delete(entity.id);
+      this.dropEmptyRoom(before);
+      changes.push({ type: 'remove', room: before, id: entity.id });
+    }
+    for (const room of rooms) {
+      if (onlyMoved && existing?.rooms.includes(room)) {
         changes.push({ type: 'move', room, entity });
-        return;
-      }
-      if (before !== undefined && before !== room) {
-        this.rooms.get(before)?.delete(entity.id);
-        this.dropEmptyRoom(before);
-        changes.push({ type: 'remove', room: before, id: entity.id });
+        continue;
       }
       let members = this.rooms.get(room);
       if (!members) {
@@ -125,7 +128,7 @@ export class LiveTileIndex {
       }
       members.add(entity.id);
       changes.push({ type: 'upsert', room, entity });
-    });
+    }
     this.entries.set(entity.id, { entity, rooms, signature, fixed });
     let owned = this.sources.get(entity.sourceId);
     if (!owned) {

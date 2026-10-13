@@ -102,8 +102,7 @@ export function attachLiveNamespace(io: SocketIOServer, options: AttachLiveOptio
       options.now,
     );
     // What this socket is in, as the server decided it — never the box.
-    let tiles: string[] = [];
-    let kinds: LiveKind[] = [];
+    let tiles: LiveSubscriptionState['tiles'] = {};
 
     const answer = (state: LiveSubscriptionState) =>
       socket.emit(LIVE_SOCKET_EVENTS.subscription, state);
@@ -116,39 +115,33 @@ export function attachLiveNamespace(io: SocketIOServer, options: AttachLiveOptio
     socket.on(LIVE_SOCKET_EVENTS.subscribe, (payload: unknown) => {
       const wait = bucket.take();
       if (wait > 0) {
-        answer({ state: 'rate_limited', tiles, kinds, retryAfterSeconds: wait });
+        answer({ state: 'rate_limited', tiles, retryAfterSeconds: wait });
         return;
       }
       const parsed = liveSubscriptionSchema.safeParse(payload);
       if (!parsed.success) {
-        answer({ state: 'invalid', tiles, kinds, retryAfterSeconds: null });
+        answer({ state: 'invalid', tiles, retryAfterSeconds: null });
         return;
       }
       const subscription = parsed.data;
       const asked = [...new Set(subscription.kinds)];
       // Each kind's rooms at its own zoom; a kind covering too many is left out.
       const rooms: { tile: string; kind: LiveKind }[] = [];
-      const nextKinds: LiveKind[] = [];
-      const nextTiles = new Set<string>();
+      const nextTiles: LiveSubscriptionState['tiles'] = {};
       for (const kind of asked) {
         const covered = liveTilesFor(subscription, kind);
         if (!covered) continue;
-        nextKinds.push(kind);
-        for (const tile of covered) {
-          rooms.push({ tile, kind });
-          nextTiles.add(tile);
-        }
+        nextTiles[kind] = covered;
+        for (const tile of covered) rooms.push({ tile, kind });
       }
       const { joined, left } = hub.watch(socket.id, rooms);
       for (const room of left) void socket.leave(liveRoomName(room.tile, room.kind));
       for (const room of joined) void socket.join(liveRoomName(room.tile, room.kind));
-      tiles = [...nextTiles];
-      kinds = nextKinds;
+      tiles = nextTiles;
       answer({
         // No kinds asked: leave everything, whatever the box — that is `ok`.
-        state: asked.length > 0 && nextKinds.length === 0 ? 'too_wide' : 'ok',
+        state: asked.length > 0 && rooms.length === 0 ? 'too_wide' : 'ok',
         tiles,
-        kinds,
         retryAfterSeconds: null,
       });
       // After the answer, so a client knows which rooms the snapshots belong to.

@@ -475,6 +475,61 @@ describe('several tasks on one bus (in memory)', () => {
     b.stop();
   });
 
+  it('a regional view wakes the rail feeds, not the buses; only a street view reads static GTFS', async () => {
+    const ids = ['mta-subway', 'mta-lirr', 'mta-mnr', 'mta-bus'];
+    const definitions = ids.map(
+      (id) => LIVE_SOURCES.find((d) => d.id === id) as LiveSourceDefinition,
+    );
+    const network = new MemoryLiveNetwork(() => T0);
+    const statics: Record<string, string[]> = { a: [], b: [] };
+    const make = (taskId: 'a' | 'b') =>
+      new LiveHub({
+        sources: definitions.map((definition) => ({
+          definition: {
+            ...definition,
+            create: () => ({ poll: async () => ({ entities: [], rejected: 0 }) }),
+          },
+          settings: { url: definition.defaultUrl, userAgent: 'test', maxRegionsPerPoll: 1 },
+        })),
+        fetch: async (url) => {
+          statics[taskId]?.push(url);
+          throw new Error('not fetched in this test');
+        },
+        now: () => T0,
+        bus: network.bus(taskId),
+        publish: () => {},
+      });
+    const a = make('a');
+    const b = make('b');
+    await a.connect();
+    await b.connect();
+    const midtown = { latitude: 40.758, longitude: -73.9855 };
+    const at = (zoom: number) => ({
+      tile: liveTileOf(midtown, 'transit', zoom),
+      kind: 'transit' as const,
+    });
+    // A regional view (z9 rooms): trains and the subway, no buses.
+    a.watch('viewer', [at(9)]);
+    for (let round = 0; round < 2; round++) {
+      await a.coordinate();
+      await b.coordinate();
+    }
+    expect([...(network.demand.get('a')?.rooms ?? [])].sort()).toEqual(
+      ['mta-lirr', 'mta-mnr', 'mta-subway'].sort(),
+    );
+    expect(a.isLeader('mta-bus') || b.isLeader('mta-bus')).toBe(false);
+    // Another task's regional viewer: it leads nothing and asks no shapes.
+    b.watch('viewer', [at(9)]);
+    await b.tick();
+    expect(statics.b).toEqual([]);
+    // Its viewer zooms into the street: now it may be asked for shapes.
+    b.watch('viewer', [at(11)]);
+    await b.tick();
+    expect(statics.b?.length).toBeGreaterThan(0);
+    a.stop();
+    b.stop();
+  });
+
   it('a regional feed shares z6 regions, never a room', () => {
     const aircraft = LIVE_SOURCES.find((d) => d.id === 'adsb-lol') as LiveSourceDefinition;
     const box = { west: 2.16, south: 41.38, east: 2.18, north: 41.4 };
@@ -504,6 +559,30 @@ describe('several tasks on one bus (in memory)', () => {
     expect(follower.hub.snapshot(ROOM.tile, 'transit').entities.map((e) => e.id)).toEqual([
       'test-bus:newer',
     ]);
+  });
+
+  it('hears a leader whose epoch went backwards once the newer one has been silent a whole lease', async () => {
+    const { clock, tasks, everyone } = setup();
+    const follower = tasks[1] as Task;
+    await everyone((t) => t.hub.connect());
+    follower.hub.watch('viewer', [ROOM]);
+    const message = (epoch: number, id: string) => ({
+      type: 'poll' as const,
+      from: 'someone',
+      sourceId: 'test-bus',
+      entities: [bus(id, clock.now)],
+      lastSuccessAt: clock.now,
+      epoch,
+    });
+    follower.hub.receive(message(9, 'before'));
+    // A failover lost the counter: the only leader now stamps a lower epoch.
+    clock.now += 5_000;
+    follower.hub.receive(message(2, 'after'));
+    const ids = () => follower.hub.snapshot(ROOM.tile, 'transit').entities.map((e) => e.id);
+    expect(ids()).toEqual(['test-bus:before']);
+    clock.now += 15_000;
+    follower.hub.receive(message(2, 'after'));
+    expect(ids()).toEqual(['test-bus:after']);
   });
 
   it('sends a vehicle that only moved as a compact move, not the whole entity', async () => {
@@ -574,6 +653,23 @@ describe.if(Boolean(VALKEY))('several tasks on a real Valkey', () => {
     await sleep(150);
     for (const t of survivors)
       expect(t.hub.snapshot(ROOM.tile, 'transit').entities).toHaveLength(1);
+  });
+
+  it('stamps leases from a per-source counter, never a clock', async () => {
+    const first = open('first');
+    const second = open('second');
+    const one = await first.lease('counted', 60_000);
+    expect(await first.lease('counted', 60_000)).toBe(one); // renewing keeps it
+    expect(await second.lease('counted', 60_000)).toBe(0); // held
+    await first.release('counted');
+    expect(await second.lease('counted', 60_000)).toBe(one + 1);
+    // Small integers, not milliseconds since 1970 — and the counter never
+    // expires, so the fleet Valkey's volatile-lru cannot evict it.
+    expect(one).toBeLessThan(1_000_000);
+    const { RedisClient } = await import('bun');
+    const raw = new RedisClient(VALKEY as string);
+    expect(Number(await raw.send('PTTL', [`${prefix}:epoch:counted`]))).toBe(-1);
+    raw.close();
   });
 });
 

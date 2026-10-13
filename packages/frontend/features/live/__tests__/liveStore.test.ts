@@ -222,8 +222,19 @@ describe('LiveStore', () => {
     });
     expect(store.get('renfe-cercanias:a')?.position.latitude).toBe(40.9);
     // Leaving a room drops what it held.
-    store.retain(['7/64/47'], ['transit']);
+    store.retain({ transit: ['7/64/47'] });
     expect(store.size).toBe(0);
+  });
+
+  test('keeps exactly the rooms answered: an aircraft room never keeps a transit room of the same tile', () => {
+    const store = new LiveStore(() => T0);
+    store.applySnapshot(message([train('bus', 41.3, 2.1, T0)]));
+    store.applySnapshot(message([aircraft()]));
+    expect(store.size).toBe(2);
+    // Zoomed in: aircraft still in their z7 room; transit now in z11 rooms.
+    store.retain({ aircraft: ['7/64/47'], transit: ['11/1036/764'] });
+    expect(store.get('adsb-lol:abc123')).toBeDefined();
+    expect(store.get('renfe-cercanias:bus')).toBeUndefined();
   });
 
   test('ignores an older fix arriving after a newer one', () => {

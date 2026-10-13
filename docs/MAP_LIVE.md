@@ -217,17 +217,30 @@ accepted value is re-checked with `liveEntitySchema` before it leaves
   = a web-mercator tile × a kind, at each of the kind's levels
   (`LIVE_ROOM_ZOOMS`: aircraft and ships z7, ~300 km; transit z7, z9 and z11 —
   a region, ~60 km, ~15 km; bike share z13, ~3.7 km). Every entity is in one
-  room per level; a subscription takes, per kind, the finest level that
-  covers the view in at most 20 rooms — a borough at a city zoom, all of
-  Catalonia (every Rodalies train, Girona's and Tarragona's included) from
-  the z7 rooms at a regional one. Rooms ARE the index: a subscription is
+  room per level — except that **only rail is regional**: a train or a metro
+  (`LIVE_REGIONAL_TRANSIT_MODES`) is in all three transit levels, a bus, tram,
+  ferry, cable car or vehicle of unknown mode in the z11 rooms alone
+  (`liveRoomZoomsOf`); a vehicle whose mode its operator's `routes.txt`
+  changes moves between levels. A subscription takes, per kind, the finest
+  level that covers the view in at most 20 rooms — a borough at a city zoom
+  with its buses; all of Catalonia (every Rodalies train, Girona's and
+  Tarragona's included) from the z7 rooms at a regional one, and no bus. Rooms ARE the index: a subscription is
   answered from the buckets its tiles cover, a delta is addressed to the bucket
   an entity is in, a box query walks only the buckets it touches. Replacing an
   entry discards the old fix: **positions are never stored as history**, and
   nothing is written to a database.
 - **Demand-driven polling**: a source is polled only while somebody watches a
-  room of its kind inside its coverage. No viewers in New York, no requests to
-  New York's feeds. A source unwatched for 60 s drops what it holds.
+  room of its kind that meets its **areas** — boxes round its operator's own
+  stops (`areas.ts`, derived by `bun run --cwd packages/backend live:areas`
+  into `areas.generated.ts`: 0.5° cells holding stops, each row's run of cells
+  one box shrunk to its stops and padded 5 km). Renfe's one box ran from
+  Galicia to Catalonia and took in Toulouse; its 31 areas follow its lines,
+  and a street view of Toulouse wakes nothing (pinned by a test). A source's
+  `coverage` is the box round its areas; a source with no published stops
+  (adsb.lol, AISA, Digitraffic) keeps a hand-drawn one. A regional room wakes
+  only a source that may carry rail (`transitModes`): New York's buses are
+  not polled for a regional view. No viewers in New York, no requests to New
+  York's feeds. A source unwatched for 60 s drops what it holds.
 - **Freshness is the feed's**: anything older than its source's
   `dropAfterSeconds` (by its own `observedAt`) is removed on the next tick,
   whatever the feed still lists. Full-snapshot feeds also remove whatever a poll
@@ -261,7 +274,8 @@ The default namespace keeps its Oxy auth; a test proves both.
   computes each kind's tiles at its zoom, leaves out a kind covering more than
   20 (all of them: `too_wide` — below ~z8 the map is a continent and tens of
   thousands of dots are noise), joins/leaves rooms, answers
-  `live:subscription` with the rooms and the kinds it kept, then one
+  `live:subscription` with the rooms it is in, per kind (`tiles: { transit:
+  [...], aircraft: [...] }`; a kind left out is absent), then one
   `live:snapshot` per new room. Empty `kinds` leaves everything.
 - Limits (`LIVE_POLICY`, `config/live.ts`): 2,000 sockets per process
   (handshake refused with `live_capacity`), and a token bucket per socket for
@@ -591,10 +605,15 @@ the tasks share GoWay's Valkey (`REDIS_URL`, the fleet's
   task wants it.
 - **One leader per source** — a lease (`SET NX PX 15000`, renewed by its
   holder every 2 s through a compare-and-renew script) that carries an
-  **epoch**: Valkey's clock when this holder took it, so a later holder's is
-  always larger. Every message is stamped with it and a follower drops one
-  older than the newest it has heard — a publish abandoned at its deadline
-  and delivered after the lease moved on is never applied. Only the holder polls;
+  **epoch**: the next value of the source's counter (`INCR
+  goway:live:epoch:<source>`, no TTL) when this holder took it — never a
+  clock, which a failover to a replica whose clock lags would turn backwards.
+  Every message is stamped with it and a follower drops one older than the
+  newest it has heard — a publish abandoned at its deadline and delivered
+  after the lease moved on is never applied — unless that newest has been
+  silent for a whole lease: then the counter itself went backwards (a
+  failover that lost it), and the follower takes the lower mark rather than
+  stay deaf to the only leader there is. Only the holder polls;
   it publishes each answer (the enriched entities, gzip + base64) on one
   pub/sub channel, and every other task applies it to its own index exactly as
   if it had polled, and tells its own sockets. Tasks that stop wanting a
@@ -632,12 +651,14 @@ the tasks share GoWay's Valkey (`REDIS_URL`, the fleet's
   connections whatever its state.
 - Nothing about a position is STORED in Valkey: positions pass through
   pub/sub; the only keys are the leases, the task list and the coarse demand
-  above, all with TTLs, so
-  `volatile-lru` may evict them under pressure (worst case: a second poller
-  for a few seconds).
+  above, all with TTLs, so `volatile-lru` may evict them under pressure (worst
+  case: a second poller for a few seconds) — and one epoch counter per
+  source, an integer with no TTL, which it never evicts.
 - Static GTFS is read by the leader (to put vehicles on their tracks) and by
-  a task whose own viewers watch the source (they ask it for shapes) — not by
-  every task the source is wanted somewhere for.
+  a task whose own viewers are close enough to ask it for shapes — the
+  finest transit rooms, where a view from `LIVE_SHAPES_MIN_ZOOM` (z12) is —
+  not by every task the source is wanted somewhere for, nor for a regional
+  view.
 - The client uses WebSocket only (no long-polling), so no ALB stickiness is
   needed: one connection is one task, whichever it is.
 
@@ -663,8 +684,18 @@ on the old protocol and one on the new:
 1. **Per-kind rooms at several levels** (`LIVE_ROOM_ZOOMS`): at a street or
    city zoom transit comes in ~15 km rooms and bike share in ~3.7 km ones — a
    street view receives its neighbourhood, not the city; zoomed out to a
-   region, the coarser rooms keep every vehicle there. And the client asks for bike share only from z15, where it draws it:
-   New York's 2,458 docks were most of the old snapshot.
+   region, the coarser rooms keep every TRAIN there, and no bus. And the
+   client asks for bike share only from z15, where it draws it: New York's
+   2,458 docks were most of the old snapshot.
+
+   A regional view of New York (~z9.5, four z9 rooms), measured with the real
+   feeds on 2026-10-12 at 21:15 local: **3.4 KiB** of first snapshots (77
+   trains and subway cars) where every vehicle under those rooms would be
+   **100.2 KiB** (2,344, nearly all buses); deltas 16.3 KiB over 19 s (one
+   bus poll) against 34.8 KiB. The subscription's answer lists its rooms per
+   kind, so a client drops exactly the rooms it left — an aircraft room's z7
+   tile no longer keeps the transit room of the same tile, whose buses froze
+   there after zooming in.
 2. **Moves**: a vehicle that only moved is a tuple, not an entity.
 3. **Packing**: messages over 2 KB as gzip bytes (~9.6× on a transit
    snapshot: 257 KB of JSON in 27 KB).

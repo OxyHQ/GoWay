@@ -98,9 +98,9 @@ export interface LiveBus {
    */
   recover(): void;
   /**
-   * Take or renew a source's lease. While this task holds it, its EPOCH — the
-   * Valkey clock when this holder took it, so every later holder's is larger
-   * — else 0. Messages carry it, and a message from an older holder (a
+   * Take or renew a source's lease. While this task holds it, its EPOCH — a
+   * per-source counter drawn when this holder took it, so every later
+   * holder's is larger — else 0. Messages carry it, and a message from an older holder (a
    * publish abandoned at its deadline and delivered late) is dropped.
    */
   lease(sourceId: string, ttlMs: number): Promise<number>;
@@ -163,8 +163,10 @@ interface RedisLike {
 }
 
 /**
- * The lease is `<task>|<epoch>`. Renewing keeps the epoch; taking it stamps
- * Valkey's own clock (ms), so epochs only grow, whichever task's clock is off.
+ * The lease is `<task>|<epoch>`. Renewing keeps the epoch; taking it draws
+ * the next value of the source's counter (`INCR`, KEYS[2]) — never a clock,
+ * which a failover to a replica whose clock lags would turn backwards. The
+ * counter has no TTL, so the fleet Valkey's `volatile-lru` never evicts it.
  */
 const LEASE_SCRIPT = `
 local held = redis.call('GET', KEYS[1])
@@ -176,8 +178,7 @@ if held then
   end
   return 0
 end
-local now = redis.call('TIME')
-local epoch = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+local epoch = redis.call('INCR', KEYS[2])
 redis.call('SET', KEYS[1], ARGV[1] .. '|' .. epoch, 'PX', ARGV[2])
 return epoch`;
 
@@ -296,8 +297,9 @@ export class ValkeyLiveBus implements LiveBus {
   async lease(sourceId: string, ttlMs: number): Promise<number> {
     const epoch = await this.send('EVAL', [
       LEASE_SCRIPT,
-      '1',
+      '2',
       `${this.prefix}:lease:${sourceId}`,
+      `${this.prefix}:epoch:${sourceId}`,
       this.taskId,
       String(ttlMs),
     ]);
@@ -362,7 +364,7 @@ export class ValkeyLiveBus implements LiveBus {
 export class MemoryLiveNetwork {
   readonly leases = new Map<string, { owner: string; until: number; epoch: number }>();
   private epochs = 0;
-  /** A new, larger epoch (Valkey uses its clock). */
+  /** A new, larger epoch (Valkey's per-source `INCR` counter). */
   nextEpoch(): number {
     this.epochs++;
     return this.epochs;

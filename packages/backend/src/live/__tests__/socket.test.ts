@@ -165,14 +165,16 @@ describe('the /live namespace', () => {
       kinds: ['transit', 'aircraft'],
     });
     const state = liveSubscriptionStateSchema.parse(await answer);
-    expect(state).toMatchObject({
-      state: 'ok',
-      kinds: ['transit', 'aircraft'],
-      retryAfterSeconds: null,
-    });
-    // Each kind's rooms at its own zoom: transit z11, aircraft z7.
-    expect(state.tiles).toContain(liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'transit'));
-    expect(state.tiles).toContain(liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'aircraft'));
+    expect(state).toMatchObject({ state: 'ok', retryAfterSeconds: null });
+    // Each kind's rooms at its own zoom, listed per kind: transit z11,
+    // aircraft z7 — the aircraft tile is not a transit room.
+    expect(state.tiles.transit).toContain(
+      liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'transit'),
+    );
+    expect(state.tiles.aircraft).toEqual([
+      liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'aircraft'),
+    ]);
+    expect(state.tiles.transit).not.toContain(state.tiles.aircraft?.[0]);
     // Nothing polled yet: an empty, authoritative snapshot.
     expect(liveSnapshotSchema.parse(await snapshot).entities).toEqual([]);
 
@@ -218,7 +220,7 @@ describe('the /live namespace', () => {
       zoom: 3,
       kinds: ['transit'],
     });
-    expect(await answer).toMatchObject({ state: 'too_wide', tiles: [], kinds: [] });
+    expect(await answer).toMatchObject({ state: 'too_wide', tiles: {} });
 
     for (const junk of [
       null,
@@ -230,7 +232,7 @@ describe('the /live namespace', () => {
     ]) {
       answer = next<LiveSubscriptionState>(visitor, LIVE_SOCKET_EVENTS.subscription);
       visitor.emit(LIVE_SOCKET_EVENTS.subscribe, junk);
-      expect(await answer).toMatchObject({ state: 'invalid', tiles: [] });
+      expect(await answer).toMatchObject({ state: 'invalid', tiles: {} });
     }
   });
 
@@ -269,7 +271,7 @@ describe('the /live namespace', () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(answers.map((answer) => answer.state)).toEqual(['ok', 'ok', 'rate_limited']);
     expect(answers[2]).toMatchObject({ tiles: answers[1]?.tiles, retryAfterSeconds: 10 });
-    expect(answers[2]?.tiles.length).toBeGreaterThan(0);
+    expect(answers[2]?.tiles.transit?.length).toBeGreaterThan(0);
   });
 
   it('refuses the handshake beyond the connection cap', async () => {

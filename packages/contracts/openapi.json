@@ -13376,25 +13376,42 @@
             ]
           },
           "tiles": {
-            "maxItems": 80,
-            "type": "array",
-            "items": {
-              "type": "string",
-              "pattern": "^(7|9|11|13)\\/\\d{1,5}\\/\\d{1,5}$"
-            }
-          },
-          "kinds": {
-            "maxItems": 4,
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "aircraft",
-                "transit",
-                "bikeshare",
-                "vessel"
-              ]
-            }
+            "type": "object",
+            "properties": {
+              "aircraft": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(7|9|11|13)\\/\\d{1,5}\\/\\d{1,5}$"
+                }
+              },
+              "transit": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(7|9|11|13)\\/\\d{1,5}\\/\\d{1,5}$"
+                }
+              },
+              "bikeshare": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(7|9|11|13)\\/\\d{1,5}\\/\\d{1,5}$"
+                }
+              },
+              "vessel": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(7|9|11|13)\\/\\d{1,5}\\/\\d{1,5}$"
+                }
+              }
+            },
+            "additionalProperties": false
           },
           "retryAfterSeconds": {
             "anyOf": [
@@ -13412,7 +13429,6 @@
         "required": [
           "state",
           "tiles",
-          "kinds",
           "retryAfterSeconds"
         ]
       },

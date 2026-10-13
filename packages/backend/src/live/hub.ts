@@ -37,8 +37,11 @@
  * one — or while it is unreachable — this process polls on its own.
  */
 
+import { meetsSource } from './areas';
 import {
   type GeoBoundingBox,
+  isRegionalTransitMode,
+  LIVE_ROOM_ZOOMS,
   type LiveDelta,
   type LiveEntity,
   type LiveKind,
@@ -139,6 +142,8 @@ interface SourceState {
   epoch: number;
   /** The newest leader epoch heard for this source: older messages are dropped. */
   heardEpoch: number;
+  /** When a message at {@link heardEpoch} last arrived. */
+  heardAt: number;
 }
 
 /** Static GTFS is re-read this often while a source is watched. */
@@ -187,6 +192,7 @@ export class LiveHub {
       leader: !options.bus,
       epoch: 0,
       heardEpoch: 0,
+      heardAt: 0,
     }));
     this.bus = options.bus ?? null;
   }
@@ -218,9 +224,12 @@ export class LiveHub {
    * (measured: ~10.7 s per command with Valkey stopped; minutes on a silent
    * partition, long enough for the lease to pass to a second poller).
    */
+  private leaseMs(): number {
+    return this.options.cluster?.leaseMs ?? LEASE_MS;
+  }
+
   private bounded<T>(work: Promise<T>): Promise<T> {
-    const leaseMs = this.options.cluster?.leaseMs ?? LEASE_MS;
-    const ms = this.options.cluster?.callTimeoutMs ?? Math.round(leaseMs / 3);
+    const ms = this.options.cluster?.callTimeoutMs ?? Math.round(this.leaseMs() / 3);
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`live bus: no answer within ${ms} ms`)), ms);
       work.then(
@@ -276,9 +285,7 @@ export class LiveHub {
         for (const state of this.states) {
           const wanted = this.demandFor(state.definition).length > 0;
           if (wanted) {
-            state.epoch = await this.bounded(
-              bus.lease(state.definition.id, this.options.cluster?.leaseMs ?? LEASE_MS),
-            );
+            state.epoch = await this.bounded(bus.lease(state.definition.id, this.leaseMs()));
             state.leader = state.epoch > 0;
             if (state.leader) state.heardEpoch = Math.max(state.heardEpoch, state.epoch);
           } else if (state.leader) {
@@ -345,9 +352,14 @@ export class LiveHub {
     // Not configured here, or this task polls it itself.
     if (!state || this.leads(state)) return;
     // From a holder older than one already heard: a publish abandoned at its
-    // deadline and delivered late, after the lease moved on. Never applied.
-    if (message.epoch < state.heardEpoch) return;
+    // deadline and delivered late, after the lease moved on. Never applied —
+    // unless the newer holder has been silent for a whole lease: then the
+    // counter went backwards (a Valkey failover lost it) and the mark goes
+    // with it, rather than leave this task deaf to the only leader there is.
+    const silentFor = this.now() - state.heardAt;
+    if (message.epoch < state.heardEpoch && silentFor < this.leaseMs()) return;
     state.heardEpoch = message.epoch;
+    state.heardAt = this.now();
     if (message.type === 'status') {
       state.failures = message.failures;
       state.lastSuccessAt = message.lastSuccessAt;
@@ -444,14 +456,32 @@ export class LiveHub {
     return now - state.lastSuccessAt > 3 * interval + POLL_TIMEOUT_MS ? 'stale' : 'live';
   }
 
-  /** The rooms THIS task's sockets watch inside a source's coverage, of its kind: exact, never shared. */
-  private localDemandFor(definition: LiveSourceDefinition): GeoBoundingBox[] {
+  /**
+   * The rooms THIS task's sockets watch inside a source's coverage, of its
+   * kind: exact, never shared. A regional transit room counts only for a
+   * source that may carry rail (the only vehicles in it, `liveRoomZoomsOf`);
+   * for `shapes`, only the rooms a client asks shapes in
+   * (`LIVE_SHAPES_MIN_ZOOM`: the finest transit level).
+   */
+  private localDemandFor(
+    definition: LiveSourceDefinition,
+    purpose: 'poll' | 'shapes' = 'poll',
+  ): GeoBoundingBox[] {
     const boxes: GeoBoundingBox[] = [];
+    const levels = LIVE_ROOM_ZOOMS[definition.kind];
+    const finest = levels[levels.length - 1];
+    const regional =
+      !definition.transitModes || definition.transitModes.some(isRegionalTransitMode);
     for (const key of this.roomWatchers.keys()) {
       const room = parseRoom(key);
       if (room.kind !== definition.kind) continue;
+      if (room.kind === 'transit') {
+        const zoom = Number(room.tile.slice(0, room.tile.indexOf('/')));
+        if (zoom !== finest && (purpose === 'shapes' || !regional)) continue;
+      }
       const box = liveTileBounds(room.tile);
-      if (definition.coverage && !intersects(box, definition.coverage)) continue;
+      // Its operator's stops, not one box round them all (`areas.ts`).
+      if (!meetsSource(definition, box)) continue;
       boxes.push(box);
     }
     return boxes;
@@ -530,9 +560,11 @@ export class LiveHub {
       state.idleSince = null;
       state.everActive = true;
       // The static GTFS is read by the leader (to put vehicles on their
-      // tracks) and by a task whose own viewers watch the source (they ask it
-      // for shapes) — not by every task the source is wanted somewhere for.
-      const needsStatic = this.leads(state) || this.localDemandFor(state.definition).length > 0;
+      // tracks) and by a task whose own viewers are close enough to ask it
+      // for shapes — not by every task the source is wanted somewhere for,
+      // nor for a regional view, which never asks.
+      const needsStatic =
+        this.leads(state) || this.localDemandFor(state.definition, 'shapes').length > 0;
       if (
         needsStatic &&
         state.definition.staticGtfs &&
@@ -923,12 +955,6 @@ function round6(value: number): number {
 function parseRoom(key: string): Room {
   const [tile, kind] = key.split('|') as [string, LiveKind];
   return { tile, kind };
-}
-
-function intersects(a: GeoBoundingBox, b: GeoBoundingBox): boolean {
-  if (a.north < b.south || a.south > b.north) return false;
-  // Neither of GoWay's coverages crosses the antimeridian; a room tile never does.
-  return a.west <= b.east && a.east >= b.west;
 }
 
 function describe(error: unknown): string {
