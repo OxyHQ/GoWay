@@ -202,9 +202,9 @@ their static GTFS or GBFS stations (Norway's 141,654 stops in 89 areas, the
 Netherlands' in 75), and their `coverage` is the box round them; the rest —
 no public stops, or a host that refused `live:areas` (Hamilton, STM, TriMet,
 listed in `LIVE_SOURCES_UNREAD`) — keep the box drawn from their observed
-vehicles. A feed naming one mode (`defaultMode` other than `other`) is a
-source of that mode only, so a bus-only feed is never woken by a regional
-view.
+vehicles. A feed's `transitModes` are its default mode and every mode its
+routes name (read by `live:areas`), so a bus-only feed is never woken by a
+regional view and a feed whose routes include a railway always is.
 
 **Modes come from the operator's own `routes.txt`.** A `VehiclePosition`
 names a route, not a mode; Helsinki's or Prague's buses, trams, metros,
@@ -447,7 +447,15 @@ accepted value is re-checked with `liveEntitySchema` before it leaves
   `coverage` is the box round its areas; a source with no published stops
   (adsb.lol, AISA, Digitraffic) keeps a hand-drawn one. A regional room wakes
   only a source that may carry rail (`transitModes`): New York's buses are
-  not polled for a regional view. No viewers in New York, no requests to New
+  not polled for a regional view. Each declaration must include every mode
+  its adapter emits and every mode its operator's `routes.txt` names
+  (`modes.test.ts`; the routes' modes are recorded by `live:areas`) — Renfe's
+  routes include replacement buses, FGC's its rack railways, funiculars and
+  Vallès metro lines, the subway's feed the Staten Island Railway.
+  `areas.generated.ts` opens with each feed's date and SHA-256 of what it was
+  derived from; a weekly workflow (`.github/workflows/live-areas.yml`)
+  regenerates it, runs the area and mode tests on the new data and opens a
+  pull request when anything changed, so a network that moved on is seen. No viewers in New York, no requests to New
   York's feeds. A source unwatched for 60 s drops what it holds.
 - **Freshness is the feed's**: anything older than its source's
   `dropAfterSeconds` (by its own `observedAt`) is removed on the next tick,
@@ -822,7 +830,11 @@ the tasks share GoWay's Valkey (`REDIS_URL`, the fleet's
   after the lease moved on is never applied — unless that newest has been
   silent for a whole lease: then the counter itself went backwards (a
   failover that lost it), and the follower takes the lower mark rather than
-  stay deaf to the only leader there is. Only the holder polls;
+  stay deaf to the only leader there is. "Silent" means no poll AND no
+  heartbeat: every coordination round (2 s) a leader publishes the epochs of
+  the sources it holds (`epochs`), so a source polled every 60 s still has a
+  follower's mark refreshed every 2 s, and the window never opens while its
+  leader is alive. Only the holder polls;
   it publishes each answer (the enriched entities, gzip + base64) on one
   pub/sub channel, and every other task applies it to its own index exactly as
   if it had polled, and tells its own sockets. Tasks that stop wanting a

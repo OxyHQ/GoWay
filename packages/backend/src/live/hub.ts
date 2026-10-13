@@ -303,6 +303,12 @@ export class LiveHub {
             state.epoch = 0;
           }
         }
+        // The heartbeat: every source this task holds, with its epoch.
+        const epochs: Record<string, number> = {};
+        for (const state of this.states)
+          if (state.leader) epochs[state.definition.id] = state.epoch;
+        if (Object.keys(epochs).length > 0)
+          await this.bounded(bus.publish({ type: 'epochs', from: bus.taskId, epochs }));
         if (this.busDown) {
           this.options.logger?.info({}, 'Live bus answering again; sharing polls');
           this.busDown = false;
@@ -357,18 +363,17 @@ export class LiveHub {
       }
       return;
     }
+    if (message.type === 'epochs') {
+      for (const [sourceId, epoch] of Object.entries(message.epochs)) {
+        const state = this.states.find((candidate) => candidate.definition.id === sourceId);
+        if (state && !this.leads(state)) this.hear(state, epoch);
+      }
+      return;
+    }
     const state = this.states.find((candidate) => candidate.definition.id === message.sourceId);
     // Not configured here, or this task polls it itself.
     if (!state || this.leads(state)) return;
-    // From a holder older than one already heard: a publish abandoned at its
-    // deadline and delivered late, after the lease moved on. Never applied —
-    // unless the newer holder has been silent for a whole lease: then the
-    // counter went backwards (a Valkey failover lost it) and the mark goes
-    // with it, rather than leave this task deaf to the only leader there is.
-    const silentFor = this.now() - state.heardAt;
-    if (message.epoch < state.heardEpoch && silentFor < this.leaseMs()) return;
-    state.heardEpoch = message.epoch;
-    state.heardAt = this.now();
+    if (!this.hear(state, message.epoch)) return;
     if (message.type === 'status') {
       state.failures = message.failures;
       state.lastSuccessAt = message.lastSuccessAt;
@@ -378,6 +383,24 @@ export class LiveHub {
       this.apply(state, message.entities);
     }
     this.notifySources();
+  }
+
+  /**
+   * Whether a message stamped `epoch` is from the current holder, marking it
+   * heard. One from a holder older than one already heard — a publish
+   * abandoned at its deadline and delivered late, after the lease moved on —
+   * is not, unless the newer holder has been silent (no poll, no heartbeat)
+   * for a whole lease: then the counter went backwards (a Valkey failover
+   * lost it) and the mark goes with it, rather than leave this task deaf to
+   * the only leader there is. A live leader heartbeats every round, so the
+   * window never opens while it lives.
+   */
+  private hear(state: SourceState, epoch: number): boolean {
+    const silentFor = this.now() - state.heardAt;
+    if (epoch < state.heardEpoch && silentFor < this.leaseMs()) return false;
+    state.heardEpoch = epoch;
+    state.heardAt = this.now();
+    return true;
   }
 
   // ── Watchers ──────────────────────────────────────────────────────────────

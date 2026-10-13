@@ -132,7 +132,8 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
   {
     id: 'renfe-cercanias',
     kind: 'transit',
-    transitModes: ['rail'],
+    // Its routes name replacement and connecting buses beside the trains.
+    transitModes: ['bus', 'rail'],
     name: 'Trains — Renfe (Rodalies, Cercanías, regional and long distance)',
     attribution: { label: 'Origen de los datos: Renfe Operadora', href: 'https://data.renfe.com' },
     licence: CC_BY_4,
@@ -202,7 +203,9 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
   {
     id: 'fgc-geotren',
     kind: 'transit',
-    transitModes: ['rail'],
+    // Its routes: the railways, the Vallès metro lines, the rack railways and
+    // funiculars, and connecting buses.
+    transitModes: ['bus', 'cable', 'rail', 'subway'],
     name: 'Trains — FGC (Catalonia)',
     attribution: {
       label: 'Ferrocarrils de la Generalitat de Catalunya',
@@ -349,7 +352,8 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     // predictions, and drawn as estimates (`adapters/arrivalEstimates.ts`).
     id: 'mta-subway',
     kind: 'transit',
-    transitModes: ['subway'],
+    // The Staten Island Railway is in the subway's feed, as rail.
+    transitModes: ['rail', 'subway'],
     name: 'Subway — MTA (New York), estimated',
     attribution: { label: 'Data: MTA', href: 'https://www.mta.info/developers' },
     licence: MTA_TERMS,

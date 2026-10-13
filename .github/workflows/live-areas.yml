@@ -1,0 +1,83 @@
+# Weekly refresh of GoWay Live's derived source areas and route modes.
+#
+# `packages/backend/src/live/areas.generated.ts` is derived from each live
+# source's published stops and routes (`live:areas`, `runAreas.ts`): the
+# areas that decide which viewers wake a feed, its coverage, and the modes its
+# routes name (which `modes.test.ts` checks every declaration against).
+# Networks change — a new line, a new mode, a station opened — and a file that
+# silently fell behind would wake a feed for the wrong viewers or let a
+# declaration go stale unseen.
+#
+# This regenerates it from the operators' current files. Each source's entry
+# carries the day its inputs last changed and their SHA-256, so an unchanged
+# network rewrites nothing; any difference becomes a pull request for a
+# person to review, saying whether the area and mode tests pass on the new
+# data (they run here: a pull request opened with the workflow's token starts
+# no CI of its own until someone pushes to it). A source whose server is down
+# keeps its previous areas and date, so the header shows how stale it is.
+#
+# It writes only a branch and a pull request: no deploy, no secrets beyond the
+# workflow's own token. Opening the pull request needs the repository setting
+# "Allow GitHub Actions to create and approve pull requests"; without it the
+# run fails loudly rather than leaving the refresh unseen.
+name: Refresh live source areas
+
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: live-areas
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - name: Install exact dependency graph
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Build the contracts
+        run: bun run build:contracts
+      - name: Derive the areas and modes from the operators' current files
+        run: bun run --cwd packages/backend live:areas
+      - name: Test the declarations against the new data
+        id: tests
+        continue-on-error: true
+        working-directory: packages/backend
+        run: bun test src/live/__tests__/areas.test.ts src/live/__tests__/modes.test.ts
+      - name: Open a pull request when anything changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESTS: ${{ steps.tests.outcome }}
+        run: |
+          set -euo pipefail
+          file=packages/backend/src/live/areas.generated.ts
+          if git diff --quiet -- "$file"; then
+            echo "Every source's areas are current."
+            exit 0
+          fi
+          branch="chore/live-areas-$(date -u +%Y-%m-%d)"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$branch"
+          git add "$file"
+          git commit -m "chore(live): refresh the derived source areas and route modes"
+          git push --force origin "$branch"
+          changed=$(git diff --stat HEAD~1 -- "$file" | tail -1)
+          if gh pr view "$branch" >/dev/null 2>&1; then
+            echo "Pull request for $branch already open; updated."
+            exit 0
+          fi
+          gh pr create --base main --head "$branch" \
+            --title "chore(live): refresh the derived source areas and route modes" \
+            --body "The weekly \`live:areas\` run found networks whose stops or routes changed ($changed). Each changed source's header line carries its new date and fingerprint. The area and mode tests on the new data: **$TESTS**. A failure is a source whose routes now name a mode it does not declare (\`modes.test.ts\`): update its \`transitModes\` in this branch."

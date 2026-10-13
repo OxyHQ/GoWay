@@ -17,7 +17,7 @@
  */
 import type { GeoBoundingBox, LiveKind, LiveTransitMode } from '@goway/contracts';
 import { createArrivalEstimateAdapter } from './adapters/arrivalEstimates';
-import { derivedCoverage } from './areas';
+import { derivedCoverage, sourceAreas } from './areas';
 import { createGbfsAdapter } from './adapters/gbfs';
 import { createGtfsRealtimeAdapter } from './adapters/gtfsRealtime';
 import { createSiriVmAdapter } from './adapters/siriVm';
@@ -71,6 +71,17 @@ export interface LiveProvider {
 const STALE_SECONDS = 120;
 const DROP_SECONDS = 600;
 
+/**
+ * The modes a provider's vehicles can have: its default, and every mode its
+ * operator's `routes.txt` names (`areas.generated.ts`) — the static file the
+ * hub reads them from. A default of `other` with no routes read: any.
+ */
+function transitModesOf(provider: LiveProvider): { transitModes?: LiveTransitMode[] } {
+  const routes = sourceAreas(provider.id)?.modes;
+  if (!routes && provider.defaultMode === 'other') return {};
+  return { transitModes: [...new Set([provider.defaultMode, ...(routes ?? [])])].sort() };
+}
+
 /** A provider entry as a catalogue source. */
 export function providerSource(provider: LiveProvider): LiveSourceDefinition {
   const { auth } = provider;
@@ -85,10 +96,7 @@ export function providerSource(provider: LiveProvider): LiveSourceDefinition {
     // Derived from its stops where they are published (`areas.ts`).
     coverage: derivedCoverage(provider.id, provider.coverage),
     completeness: provider.completeness,
-    // A feed that names one mode carries only it; `other` may carry any.
-    ...(provider.kind === 'transit' && provider.defaultMode !== 'other'
-      ? { transitModes: [provider.defaultMode] }
-      : {}),
+    ...(provider.kind === 'transit' ? transitModesOf(provider) : {}),
     defaultUrl: provider.url,
     requiresKey: keyed,
     ...(keyed ? { keyRegistrationUrl: auth.registrationUrl } : {}),
