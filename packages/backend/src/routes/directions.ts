@@ -46,13 +46,15 @@ import {
   type Response,
 } from 'express';
 import type { z } from 'zod';
-import type { GeoCoordinate, PlaceId, RouteResponse, TravelMode } from '@goway/contracts';
+import type { GeoCoordinate, PlaceId, RoadZone, RouteResponse, TravelMode } from '@goway/contracts';
 import { routeRequestSchema, TRAVEL_MODES } from '@goway/contracts';
 import { findPlaceById } from '../db/places/placesRepository';
+import { zonesIn } from '../db/roadRules/roadRulesRepository';
 import { getDb } from '../db/postgres';
 import { ApiError } from '../http/apiError';
 import { parseBody } from '../http/validation';
 import { getRoutingProvider, type RoutePoint, type RoutingProvider } from '../routing';
+import { areasToAvoid, zoneSearchBox, zonesEntered } from '../routing/zoneRouting';
 
 type RouteRequestInput = z.output<typeof routeRequestSchema>;
 type RouteLocationInput = RouteRequestInput['origin'];
@@ -90,6 +92,11 @@ const resolveFromPlaces: PlaceLocationResolver = async (placeId) => {
   return place === null ? null : place.location;
 };
 
+/** The active restricted zones near a set of stops. */
+export type ZoneLoader = (box: ReturnType<typeof zoneSearchBox>) => Promise<RoadZone[]>;
+
+const loadZonesFromDatabase: ZoneLoader = (box) => zonesIn(getDb(), box);
+
 export interface RoutesRouterDependencies {
   /** Resolves a session when one is present and continues regardless. */
   optionalAuth: RequestHandler;
@@ -102,6 +109,8 @@ export interface RoutesRouterDependencies {
   provider?: RoutingProvider | null;
   /** Omit for the Places repository. Injected in tests so none need a database. */
   resolvePlaceLocation?: PlaceLocationResolver;
+  /** Omit for the road-rules tables. Injected in tests so none need a database. */
+  loadZones?: ZoneLoader;
 }
 
 /** Narrows the caller's `mode` to the contract, or says GoWay does not route it. */
@@ -183,6 +192,7 @@ async function resolveLocations(
 export function createRoutesRouter(dependencies: RoutesRouterDependencies): Router {
   const { optionalAuth } = dependencies;
   const resolvePlaceLocation = dependencies.resolvePlaceLocation ?? resolveFromPlaces;
+  const loadZones = dependencies.loadZones ?? loadZonesFromDatabase;
   // `undefined` means "ask configuration"; an explicit `null` means "there is
   // none", which is a state a test has to be able to express.
   const providerOf = (): RoutingProvider | null =>
@@ -217,13 +227,37 @@ export function createRoutesRouter(dependencies: RoutesRouterDependencies): Rout
         );
       }
 
+      // A vehicle and exclusions describe a drive; on a walk they would be
+      // accepted and meaningless, which is an answer to a question not asked.
+      if (mode !== 'drive' && (input.vehicle !== undefined || input.exclude !== undefined)) {
+        throw new ApiError('validation_failed', 'A vehicle and exclusions apply to drive only.', {
+          field: input.vehicle !== undefined ? 'vehicle' : 'exclude',
+          issue: 'drive_only',
+        });
+      }
+
       const locations = await resolveLocations(input, resolvePlaceLocation);
+      const at = input.departureAt ? new Date(input.departureAt) : new Date();
+      const vehicle = input.vehicle ?? { user: 'car' as const };
+      const stops = locations.map((point) => point.coordinate);
+      // Only a drive meets zones; a walk and a ride are not stopped by them.
+      const zones = mode === 'drive' ? await loadZones(zoneSearchBox(stops)) : [];
+      // Zones are avoided on the strength of a vehicle the caller described,
+      // never on the default one: refusing a stranger's route for a label they
+      // were never asked about would be a guess.
+      const avoid =
+        input.vehicle === undefined ? [] : areasToAvoid(zones, input.vehicle, at, stops);
+
       const routes = await provider.route({
         locations,
         mode,
         alternatives: input.alternatives ?? false,
         ...(input.locale === undefined ? {} : { locale: input.locale }),
+        ...(input.vehicle === undefined ? {} : { vehicle: input.vehicle.user ?? 'car' }),
+        ...(input.exclude === undefined ? {} : { exclude: input.exclude }),
+        ...(avoid.length === 0 ? {} : { avoid }),
       });
+      for (const route of routes) route.zones = zonesEntered(zones, route, vehicle, at);
 
       // A route is a user's precise movement. No shared cache keeps a copy.
       response.set('Cache-Control', 'no-store');

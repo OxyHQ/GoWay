@@ -17,7 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import express, { Router, type RequestHandler } from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { GeoCoordinate, Route, TravelMode } from '@goway/contracts';
+import type { GeoCoordinate, RoadZone, Route, TravelMode } from '@goway/contracts';
 import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import type { RoutingProvider, RoutingRequest } from '../../routing';
 import { createRoutesRouter, type PlaceLocationResolver } from '../directions';
@@ -36,6 +36,7 @@ function sampleRoute(mode: TravelMode): Route {
         [2.1764, 41.3902],
       ],
     },
+    zones: [],
     legs: [
       {
         distanceMeters: 635,
@@ -54,6 +55,9 @@ function sampleRoute(mode: TravelMode): Route {
     ],
   };
 }
+
+/** The zones the fake road-rules tables hold near any request. */
+let zonesNear: RoadZone[] = [];
 
 /** The engine's last question, so a test can assert what it was asked. */
 let lastRequest: RoutingRequest | null = null;
@@ -103,6 +107,7 @@ beforeAll(async () => {
         return engineConfigured ? fakeProvider : null;
       },
       resolvePlaceLocation,
+      loadZones: () => Promise.resolve(zonesNear),
     }),
   );
   app.use('/api/v1', v1);
@@ -352,5 +357,127 @@ describe('a deployment with no routing engine', () => {
     expect(answer.status).toBe(503);
     expect(answer.body.error?.code).toBe('service_unavailable');
     engineConfigured = true;
+  });
+});
+
+/** A weekday low emission zone around the sample route, Spain's labels: only B, C, ECO and 0 enter. */
+const ZBE: RoadZone = {
+  id: 'es-test-zbe',
+  name: 'ZBE de prueba',
+  kind: 'low_emission',
+  countryCode: 'ES',
+  geometry: {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [2.1, 41.35],
+        [2.2, 41.35],
+        [2.2, 41.43],
+        [2.1, 41.43],
+        [2.1, 41.35],
+      ],
+    ],
+  },
+  boundingBox: { west: 2.1, south: 41.35, east: 2.2, north: 41.43 },
+  timezone: 'Europe/Madrid',
+  policy: {
+    rules: [{ scheme: 'es_dgt', labels: ['b', 'c', 'eco', '0'], decision: 'allowed' }],
+    otherwise: 'denied',
+  },
+  source: {
+    attribution: {
+      label: 'OpenStreetMap contributors',
+      href: 'https://www.openstreetmap.org/copyright',
+    },
+    licence: { label: 'ODbL 1.0', href: 'https://opendatacommons.org/licenses/odbl/1-0/' },
+    retrievedAt: '2026-10-13T00:00:00.000Z',
+  },
+};
+
+/** Two stops far enough outside the zone that neither lies in it. */
+const OUTSIDE = {
+  origin: { coordinate: { latitude: 41.5, longitude: 2.0 } },
+  destination: { coordinate: { latitude: 41.5, longitude: 2.3 } },
+};
+
+describe('POST /routes with a vehicle and restricted zones', () => {
+  it('routes around a zone that refuses the vehicle, and says nothing is entered', async () => {
+    zonesNear = [ZBE];
+    nextRoutes = [
+      {
+        ...sampleRoute('drive'),
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [2.0, 41.5],
+            [2.3, 41.5],
+          ],
+        },
+      },
+    ];
+    const answer = await directions({
+      ...OUTSIDE,
+      mode: 'drive',
+      vehicle: { fuel: 'diesel', standard: 'euro_3' },
+    });
+    expect(answer.status).toBe(200);
+    expect(lastRequest?.avoid).toEqual([ZBE.geometry]);
+    expect(lastRequest?.vehicle).toBe('car');
+    expect(answer.body.routes?.[0]?.zones).toEqual([]);
+  });
+
+  it('does not avoid a zone that admits the vehicle, or one it cannot judge', async () => {
+    zonesNear = [ZBE];
+    await directions({ ...OUTSIDE, mode: 'drive', vehicle: { fuel: 'electric' } });
+    expect(lastRequest?.avoid).toBeUndefined();
+    // No fuel or label: the rule cannot be applied, so it is reported and not enforced.
+    await directions({ ...OUTSIDE, mode: 'drive', vehicle: { user: 'car' } });
+    expect(lastRequest?.avoid).toBeUndefined();
+  });
+
+  it('never avoids a zone that holds a stop: it cannot be reached without entering', async () => {
+    zonesNear = [ZBE];
+    await directions({
+      ...COORDINATES,
+      mode: 'drive',
+      vehicle: { fuel: 'diesel', standard: 'euro_3' },
+    });
+    expect(lastRequest?.avoid).toBeUndefined();
+  });
+
+  it('annotates the zones a route enters with the verdict for the vehicle', async () => {
+    zonesNear = [ZBE];
+    nextRoutes = [sampleRoute('drive')];
+    const old = await directions({
+      ...COORDINATES,
+      mode: 'drive',
+      vehicle: { fuel: 'diesel', standard: 'euro_3' },
+    });
+    expect(old.body.routes?.[0]?.zones).toMatchObject([
+      { zoneId: 'es-test-zbe', decision: 'denied', inForce: true },
+    ]);
+    nextRoutes = [sampleRoute('drive')];
+    const anonymous = await directions({ ...COORDINATES, mode: 'drive' });
+    expect(anonymous.body.routes?.[0]?.zones).toMatchObject([{ decision: 'unknown' }]);
+  });
+
+  it('refuses a vehicle or an exclusion on anything but a drive', async () => {
+    const walk = await directions({ ...COORDINATES, mode: 'walk', vehicle: { user: 'car' } });
+    expect(walk.status).toBe(422);
+    expect(walk.body.error?.code).toBe('validation_failed');
+    const bike = await directions({ ...COORDINATES, mode: 'bike', exclude: ['toll'] });
+    expect(bike.status).toBe(422);
+  });
+
+  it('passes exclusions and the kind of vehicle to the engine', async () => {
+    zonesNear = [];
+    nextRoutes = [sampleRoute('drive')];
+    await directions({
+      ...COORDINATES,
+      mode: 'drive',
+      vehicle: { user: 'bus' },
+      exclude: ['toll', 'ferry'],
+    });
+    expect(lastRequest).toMatchObject({ vehicle: 'bus', exclude: ['toll', 'ferry'] });
   });
 });

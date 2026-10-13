@@ -480,3 +480,66 @@ describe('failure mapping', () => {
     expect(serialized).not.toContain('2.17');
   });
 });
+
+describe('vehicles, exclusions and avoided areas', () => {
+  const polygon = {
+    type: 'Polygon' as const,
+    coordinates: [
+      [
+        [2.1, 41.35],
+        [2.2, 41.35],
+        [2.2, 41.43],
+        [2.1, 41.35],
+      ],
+    ],
+  };
+
+  async function bodyFor(extra: Partial<Parameters<ReturnType<typeof provider>['route']>[0]>) {
+    let seen = '';
+    const spy: FetchLike = (_url, init) => {
+      seen = String(init.body);
+      return Promise.resolve(
+        new Response(JSON.stringify({ trip: valhallaTrip() }), { status: 200 }),
+      );
+    };
+    await provider(spy).route({
+      locations: [ORIGIN, DESTINATION],
+      mode: 'drive',
+      alternatives: false,
+      ...extra,
+    });
+    return JSON.parse(seen) as Record<string, unknown>;
+  }
+
+  it('drives as the kind of vehicle it is', async () => {
+    expect((await bodyFor({ vehicle: 'bus' })).costing).toBe('bus');
+    expect((await bodyFor({ vehicle: 'hgv' })).costing).toBe('truck');
+    expect((await bodyFor({ vehicle: 'moped' })).costing).toBe('motor_scooter');
+    expect((await bodyFor({})).costing).toBe('auto');
+  });
+
+  it("turns exclusions into the costing's own weights", async () => {
+    const body = await bodyFor({ exclude: ['toll', 'motorway'] });
+    expect(body.costing_options).toEqual({ auto: { use_tolls: 0, use_highways: 0 } });
+  });
+
+  it('refuses an exclusion the costing cannot honour instead of ignoring it', async () => {
+    expect(
+      await codeOf(
+        provider(answering({})).route({
+          locations: [ORIGIN, DESTINATION],
+          mode: 'drive',
+          alternatives: false,
+          vehicle: 'moped',
+          exclude: ['toll'],
+        }),
+      ),
+    ).toBe('validation_failed');
+  });
+
+  it('sends avoided areas as exclude_polygons, outer rings in lon/lat', async () => {
+    const body = await bodyFor({ avoid: [polygon] });
+    expect(body.exclude_polygons).toEqual([polygon.coordinates[0]]);
+    expect((await bodyFor({})).exclude_polygons).toBeUndefined();
+  });
+});

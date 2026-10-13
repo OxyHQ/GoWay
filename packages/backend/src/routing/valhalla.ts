@@ -41,7 +41,9 @@ import {
   type Route,
   type RouteLeg,
   type RouteManeuver,
+  type RouteExclude,
   type TravelMode,
+  type VehicleUser,
 } from '@goway/contracts';
 import { ApiError } from '../http/apiError';
 import { createLogger } from '../utils/logger';
@@ -79,6 +81,37 @@ const COSTING: Readonly<Record<TravelMode, string>> = {
   drive: 'auto',
   walk: 'pedestrian',
   bike: 'bicycle',
+};
+
+/**
+ * The costing model for each kind of vehicle on a `drive`. TOTAL, like
+ * {@link COSTING}: a vehicle the contract learns fails to compile here until
+ * someone decides how an engine drives it.
+ */
+const VEHICLE_COSTING: Readonly<Record<VehicleUser, string>> = {
+  car: 'auto',
+  van: 'auto',
+  taxi: 'taxi',
+  bus: 'bus',
+  hgv: 'truck',
+  motorcycle: 'motorcycle',
+  moped: 'motor_scooter',
+};
+
+/**
+ * What each costing honours of `exclude`, as Valhalla's 0–1 "use" weights
+ * (0: avoid as far as possible, hard-avoid for tolls and ferries). A costing
+ * that has no such weight cannot honour the request, and the request is
+ * refused rather than answered as if it had.
+ */
+const EXCLUDE_OPTIONS: Readonly<
+  Partial<Record<string, Readonly<Partial<Record<RouteExclude, string>>>>>
+> = {
+  auto: { toll: 'use_tolls', motorway: 'use_highways', ferry: 'use_ferry' },
+  taxi: { toll: 'use_tolls', motorway: 'use_highways', ferry: 'use_ferry' },
+  bus: { toll: 'use_tolls', motorway: 'use_highways', ferry: 'use_ferry' },
+  truck: { toll: 'use_tolls', motorway: 'use_highways', ferry: 'use_ferry' },
+  motorcycle: { toll: 'use_tolls', motorway: 'use_highways', ferry: 'use_ferry' },
 };
 
 /**
@@ -320,6 +353,8 @@ function toRoute(trip: ValhallaTrip, mode: TravelMode): Route {
     durationSeconds: Math.max(0, trip.summary?.time ?? 0),
     geometry: { type: 'LineString', coordinates },
     legs: legs.map((leg, index) => toLeg(leg, coordinates, legOffsets[index] ?? 0, metres)),
+    // Filled by the HTTP layer, which knows the zones; an engine does not.
+    zones: [],
   };
 }
 
@@ -415,6 +450,32 @@ class ValhallaProvider implements RoutingProvider {
       });
     }
 
+    const costing =
+      request.mode === 'drive' && request.vehicle !== undefined
+        ? VEHICLE_COSTING[request.vehicle]
+        : COSTING[request.mode];
+    const costingOptions: Record<string, number> = {};
+    for (const exclude of request.exclude ?? []) {
+      const option = EXCLUDE_OPTIONS[costing]?.[exclude];
+      if (option === undefined) {
+        throw new ApiError(
+          'validation_failed',
+          'This vehicle cannot be routed with that exclusion.',
+          {
+            field: 'exclude',
+            issue: 'unsupported_for_vehicle',
+          },
+        );
+      }
+      costingOptions[option] = 0;
+    }
+    const excludePolygons = (request.avoid ?? []).flatMap((area) =>
+      (area.type === 'Polygon' ? [area.coordinates] : area.coordinates).map(
+        // Valhalla takes outer rings, `[lon, lat]`.
+        (rings) => (rings[0] ?? []).map((p) => [p[0], p[1]]),
+      ),
+    );
+
     const body = {
       locations: request.locations.map((point) => ({
         lat: point.coordinate.latitude,
@@ -423,7 +484,11 @@ class ValhallaProvider implements RoutingProvider {
         // legs the contract promises: one per pair of consecutive stops.
         type: 'break' as const,
       })),
-      costing: COSTING[request.mode],
+      costing,
+      ...(Object.keys(costingOptions).length > 0
+        ? { costing_options: { [costing]: costingOptions } }
+        : {}),
+      ...(excludePolygons.length > 0 ? { exclude_polygons: excludePolygons } : {}),
       directions_options: {
         units: 'kilometers',
         ...(request.locale === undefined ? {} : { language: request.locale }),

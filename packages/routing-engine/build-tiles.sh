@@ -55,6 +55,18 @@ echo "==> building tiles from $extract"
     --mjolnir-timezone /data/timezones.sqlite \
     --mjolnir-admin /data/admins.sqlite \
     > /data/valhalla.json
+  # Restricted zones are routed around with \`exclude_polygons\`, whose total
+  # perimeter Valhalla caps at 10 km by default: one city's low emission zone
+  # is several times that, and the request would be refused. valhalla_build_config
+  # is a Python script, so its interpreter is here; the value (2,000 km) is
+  # several cities' zones at once and still bounds a request.
+  python3 - <<'PY'
+import json
+path = '/data/valhalla.json'
+config = json.load(open(path))
+config['service_limits']['max_exclude_polygons_length'] = 2000000
+json.dump(config, open(path, 'w'), indent=2)
+PY
   # Timezones and admins FIRST: admin areas decide which side of the road a
   # country drives on and what its default speeds are, and tiles built without
   # them route Spain like Britain.

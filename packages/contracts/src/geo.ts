@@ -120,6 +120,57 @@ export const geoGeometrySchema = z.discriminatedUnion('type', [
 ]);
 export type GeoGeometry = z.infer<typeof geoGeometrySchema>;
 
+/** Whether `[longitude, latitude]` lies in one linear ring (even-odd rule, planar). */
+function ringContains(ring: readonly GeoPosition[], longitude: number, latitude: number): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i];
+    const b = ring[j];
+    if (!a || !b) continue;
+    const [xi, yi] = a;
+    const [xj, yj] = b;
+    if (
+      yi > latitude !== yj > latitude &&
+      longitude < ((xj - xi) * (latitude - yi)) / (yj - yi) + xi
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** A polygon's rings: inside its exterior ring and outside every hole. */
+function polygonContains(
+  rings: readonly (readonly GeoPosition[])[],
+  longitude: number,
+  latitude: number,
+): boolean {
+  const [exterior, ...holes] = rings;
+  if (!exterior || !ringContains(exterior, longitude, latitude)) return false;
+  return !holes.some((hole) => ringContains(hole, longitude, latitude));
+}
+
+/**
+ * Whether a point is inside a Polygon or MultiPolygon. Planar on longitude and
+ * latitude, which is exact enough for city-scale areas and wrong across the
+ * antimeridian or a pole — areas this is used for (zones, regions) are neither.
+ * A point on an edge may fall either side; any other geometry contains nothing.
+ */
+export function geoGeometryContains(
+  geometry: GeoGeometry,
+  point: Readonly<{ latitude: number; longitude: number }>,
+): boolean {
+  if (geometry.type === 'Polygon') {
+    return polygonContains(geometry.coordinates, point.longitude, point.latitude);
+  }
+  if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates.some((rings) =>
+      polygonContains(rings, point.longitude, point.latitude),
+    );
+  }
+  return false;
+}
+
 /**
  * Map camera state, provider-neutral.
  *

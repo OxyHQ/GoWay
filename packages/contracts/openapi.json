@@ -47,6 +47,9 @@
     },
     {
       "name": "Live"
+    },
+    {
+      "name": "Road rules"
     }
   ],
   "paths": {
@@ -8691,6 +8694,445 @@
           }
         }
       }
+    },
+    "/roads/rule-sets": {
+      "get": {
+        "operationId": "listRoadRuleSets",
+        "summary": "Each country's road rules GoWay holds: the side traffic keeps to and the speed an implicit `maxspeed` such as `ES:urban` means.",
+        "tags": [
+          "Road rules"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoadRuleSetPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refused values: `validation_failed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/roads/rules": {
+      "get": {
+        "operationId": "getRoadRules",
+        "summary": "The rules at a position: the country it is in, that country's rule set (null where GoWay holds none) and every zone covering it.",
+        "tags": [
+          "Road rules"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "latitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            }
+          },
+          {
+            "name": "longitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoadRules"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refused values: `validation_failed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/roads/zones": {
+      "get": {
+        "operationId": "listRoadZones",
+        "summary": "Low emission, congestion charge and restricted access zones in a box or a country, with their schedule, policy and source.",
+        "tags": [
+          "Road rules"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "west",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            }
+          },
+          {
+            "name": "south",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            }
+          },
+          {
+            "name": "east",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            }
+          },
+          {
+            "name": "north",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "low_emission",
+                "congestion_charge",
+                "restricted_access"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoadZonePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refused values: `validation_failed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/roads/access": {
+      "post": {
+        "operationId": "evaluateRoadAccess",
+        "summary": "May this vehicle enter this position now? The strictest decision among the zones covering it, with each zone's verdict. The vehicle is used for this answer and never stored.",
+        "tags": [
+          "Road rules"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoadAccessInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoadAccessDecision"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refused values: `validation_failed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -11417,6 +11859,69 @@
                 "maneuvers"
               ]
             }
+          },
+          "zones": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "zoneId": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "low_emission",
+                    "congestion_charge",
+                    "restricted_access"
+                  ]
+                },
+                "decision": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "allowed",
+                        "fee",
+                        "permit",
+                        "denied"
+                      ]
+                    },
+                    {
+                      "type": "string",
+                      "const": "unknown"
+                    }
+                  ]
+                },
+                "inForce": {
+                  "type": "boolean"
+                },
+                "scheme": {
+                  "type": "string",
+                  "enum": [
+                    "es_dgt",
+                    "fr_critair",
+                    "de_plakette",
+                    "uk_ulez"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "zoneId",
+                "name",
+                "kind",
+                "decision",
+                "inForce"
+              ]
+            }
           }
         },
         "required": [
@@ -11425,7 +11930,8 @@
           "distanceMeters",
           "durationSeconds",
           "geometry",
-          "legs"
+          "legs",
+          "zones"
         ]
       },
       "RouteResponse": {
@@ -13644,6 +14150,669 @@
           "lengthMeters"
         ]
       },
+      "RoadRuleSet": {
+        "type": "object",
+        "properties": {
+          "countryCode": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "drivingSide": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right"
+            ]
+          },
+          "speedLimitsKmh": {
+            "type": "object",
+            "properties": {
+              "urban": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 200
+              },
+              "rural": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 200
+              },
+              "trunk": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 200
+              },
+              "motorway": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 200
+              },
+              "living_street": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 200
+              }
+            }
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "attribution": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "href": {
+                    "type": "string",
+                    "pattern": "^https:\\/\\/"
+                  }
+                },
+                "required": [
+                  "label",
+                  "href"
+                ]
+              },
+              "licence": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "href": {
+                    "type": "string",
+                    "pattern": "^https:\\/\\/"
+                  }
+                },
+                "required": [
+                  "label",
+                  "href"
+                ]
+              },
+              "retrievedAt": {
+                "type": "string",
+                "minLength": 1,
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "attribution",
+              "licence",
+              "retrievedAt"
+            ]
+          }
+        },
+        "required": [
+          "countryCode",
+          "drivingSide",
+          "speedLimitsKmh",
+          "source"
+        ]
+      },
+      "RoadRuleSetPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoadRuleSet"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^[A-Za-z0-9_-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "RoadZone": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "low_emission",
+              "congestion_charge",
+              "restricted_access"
+            ]
+          },
+          "countryCode": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "geometry": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "Polygon"
+                  },
+                  "coordinates": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "minItems": 4,
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number",
+                                "minimum": -180,
+                                "maximum": 180
+                              },
+                              {
+                                "type": "number",
+                                "minimum": -90,
+                                "maximum": 90
+                              }
+                            ],
+                            "items": false,
+                            "minItems": 2,
+                            "maxItems": 2
+                          },
+                          {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number",
+                                "minimum": -180,
+                                "maximum": 180
+                              },
+                              {
+                                "type": "number",
+                                "minimum": -90,
+                                "maximum": 90
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ],
+                            "items": false,
+                            "minItems": 3,
+                            "maxItems": 3
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "coordinates"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "MultiPolygon"
+                  },
+                  "coordinates": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "minItems": 4,
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "array",
+                              "prefixItems": [
+                                {
+                                  "type": "number",
+                                  "minimum": -180,
+                                  "maximum": 180
+                                },
+                                {
+                                  "type": "number",
+                                  "minimum": -90,
+                                  "maximum": 90
+                                }
+                              ],
+                              "items": false,
+                              "minItems": 2,
+                              "maxItems": 2
+                            },
+                            {
+                              "type": "array",
+                              "prefixItems": [
+                                {
+                                  "type": "number",
+                                  "minimum": -180,
+                                  "maximum": 180
+                                },
+                                {
+                                  "type": "number",
+                                  "minimum": -90,
+                                  "maximum": 90
+                                },
+                                {
+                                  "type": "number"
+                                }
+                              ],
+                              "items": false,
+                              "minItems": 3,
+                              "maxItems": 3
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "coordinates"
+                ]
+              }
+            ]
+          },
+          "boundingBox": {
+            "$ref": "#/components/schemas/GeoBoundingBox"
+          },
+          "timezone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "schedule": {
+            "type": "object",
+            "properties": {
+              "intervals": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "opens": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    },
+                    "closes": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    },
+                    "day": {
+                      "type": "number",
+                      "enum": [
+                        0,
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6
+                      ]
+                    }
+                  },
+                  "required": [
+                    "opens",
+                    "closes",
+                    "day"
+                  ]
+                }
+              },
+              "raw": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "intervals"
+            ]
+          },
+          "effectiveFrom": {
+            "type": "string"
+          },
+          "effectiveUntil": {
+            "type": "string"
+          },
+          "policy": {
+            "type": "object",
+            "properties": {
+              "rules": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "users": {
+                      "minItems": 1,
+                      "maxItems": 7,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "car",
+                          "taxi",
+                          "van",
+                          "hgv",
+                          "bus",
+                          "motorcycle",
+                          "moped"
+                        ]
+                      }
+                    },
+                    "scheme": {
+                      "type": "string",
+                      "enum": [
+                        "es_dgt",
+                        "fr_critair",
+                        "de_plakette",
+                        "uk_ulez"
+                      ]
+                    },
+                    "labels": {
+                      "minItems": 1,
+                      "maxItems": 8,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 16
+                      }
+                    },
+                    "decision": {
+                      "type": "string",
+                      "enum": [
+                        "allowed",
+                        "fee",
+                        "permit",
+                        "denied"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "scheme",
+                    "labels",
+                    "decision"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "otherwise": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "allowed",
+                      "fee",
+                      "permit",
+                      "denied"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "const": "unknown"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "rules",
+              "otherwise"
+            ],
+            "additionalProperties": false
+          },
+          "rulesUrl": {
+            "type": "string",
+            "pattern": "^https:\\/\\/"
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "attribution": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "href": {
+                    "type": "string",
+                    "pattern": "^https:\\/\\/"
+                  }
+                },
+                "required": [
+                  "label",
+                  "href"
+                ]
+              },
+              "licence": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "href": {
+                    "type": "string",
+                    "pattern": "^https:\\/\\/"
+                  }
+                },
+                "required": [
+                  "label",
+                  "href"
+                ]
+              },
+              "retrievedAt": {
+                "type": "string",
+                "minLength": 1,
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "attribution",
+              "licence",
+              "retrievedAt"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "countryCode",
+          "geometry",
+          "boundingBox",
+          "timezone",
+          "policy",
+          "source"
+        ]
+      },
+      "RoadZonePage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoadZone"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^[A-Za-z0-9_-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "RoadRules": {
+        "type": "object",
+        "properties": {
+          "countryCode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z]{2}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ruleSet": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoadRuleSet"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoadZone"
+            }
+          }
+        },
+        "required": [
+          "countryCode",
+          "ruleSet",
+          "zones"
+        ]
+      },
+      "RoadAccessDecision": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "allowed",
+                  "fee",
+                  "permit",
+                  "denied"
+                ]
+              },
+              {
+                "type": "string",
+                "const": "unknown"
+              }
+            ]
+          },
+          "verdicts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "zoneId": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "low_emission",
+                    "congestion_charge",
+                    "restricted_access"
+                  ]
+                },
+                "decision": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "allowed",
+                        "fee",
+                        "permit",
+                        "denied"
+                      ]
+                    },
+                    {
+                      "type": "string",
+                      "const": "unknown"
+                    }
+                  ]
+                },
+                "inForce": {
+                  "type": "boolean"
+                },
+                "scheme": {
+                  "type": "string",
+                  "enum": [
+                    "es_dgt",
+                    "fr_critair",
+                    "de_plakette",
+                    "uk_ulez"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "zoneId",
+                "name",
+                "kind",
+                "decision",
+                "inForce"
+              ]
+            }
+          },
+          "at": {
+            "type": "string",
+            "minLength": 1,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "decision",
+          "verdicts",
+          "at"
+        ]
+      },
       "PlaceCreateInput": {
         "type": "object",
         "properties": {
@@ -15676,6 +16845,115 @@
           "locale": {
             "type": "string",
             "maxLength": 35
+          },
+          "vehicle": {
+            "type": "object",
+            "properties": {
+              "user": {
+                "default": "car",
+                "type": "string",
+                "enum": [
+                  "car",
+                  "taxi",
+                  "van",
+                  "hgv",
+                  "bus",
+                  "motorcycle",
+                  "moped"
+                ]
+              },
+              "fuel": {
+                "type": "string",
+                "enum": [
+                  "petrol",
+                  "diesel",
+                  "hybrid",
+                  "plug_in_hybrid",
+                  "electric",
+                  "hydrogen",
+                  "lpg",
+                  "cng"
+                ]
+              },
+              "standard": {
+                "type": "string",
+                "enum": [
+                  "euro_1",
+                  "euro_2",
+                  "euro_3",
+                  "euro_4",
+                  "euro_5",
+                  "euro_6"
+                ]
+              },
+              "electricRangeKm": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 2000
+              },
+              "labels": {
+                "type": "object",
+                "properties": {
+                  "es_dgt": {
+                    "type": "string",
+                    "enum": [
+                      "0",
+                      "eco",
+                      "c",
+                      "b",
+                      "none"
+                    ]
+                  },
+                  "fr_critair": {
+                    "type": "string",
+                    "enum": [
+                      "1",
+                      "2",
+                      "3",
+                      "4",
+                      "5",
+                      "e",
+                      "none"
+                    ]
+                  },
+                  "de_plakette": {
+                    "type": "string",
+                    "enum": [
+                      "green",
+                      "yellow",
+                      "red",
+                      "none"
+                    ]
+                  },
+                  "uk_ulez": {
+                    "type": "string",
+                    "enum": [
+                      "compliant",
+                      "non_compliant"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "exclude": {
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "toll",
+                "motorway",
+                "ferry"
+              ]
+            }
+          },
+          "departureAt": {
+            "type": "string",
+            "minLength": 1,
+            "format": "date-time"
           }
         },
         "required": [
@@ -16107,6 +17385,126 @@
           "north",
           "zoom",
           "kinds"
+        ],
+        "additionalProperties": false
+      },
+      "RoadAccessInput": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "vehicle": {
+            "default": {
+              "user": "car"
+            },
+            "type": "object",
+            "properties": {
+              "user": {
+                "default": "car",
+                "type": "string",
+                "enum": [
+                  "car",
+                  "taxi",
+                  "van",
+                  "hgv",
+                  "bus",
+                  "motorcycle",
+                  "moped"
+                ]
+              },
+              "fuel": {
+                "type": "string",
+                "enum": [
+                  "petrol",
+                  "diesel",
+                  "hybrid",
+                  "plug_in_hybrid",
+                  "electric",
+                  "hydrogen",
+                  "lpg",
+                  "cng"
+                ]
+              },
+              "standard": {
+                "type": "string",
+                "enum": [
+                  "euro_1",
+                  "euro_2",
+                  "euro_3",
+                  "euro_4",
+                  "euro_5",
+                  "euro_6"
+                ]
+              },
+              "electricRangeKm": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 2000
+              },
+              "labels": {
+                "type": "object",
+                "properties": {
+                  "es_dgt": {
+                    "type": "string",
+                    "enum": [
+                      "0",
+                      "eco",
+                      "c",
+                      "b",
+                      "none"
+                    ]
+                  },
+                  "fr_critair": {
+                    "type": "string",
+                    "enum": [
+                      "1",
+                      "2",
+                      "3",
+                      "4",
+                      "5",
+                      "e",
+                      "none"
+                    ]
+                  },
+                  "de_plakette": {
+                    "type": "string",
+                    "enum": [
+                      "green",
+                      "yellow",
+                      "red",
+                      "none"
+                    ]
+                  },
+                  "uk_ulez": {
+                    "type": "string",
+                    "enum": [
+                      "compliant",
+                      "non_compliant"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "at": {
+            "type": "string",
+            "minLength": 1,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude"
         ],
         "additionalProperties": false
       }

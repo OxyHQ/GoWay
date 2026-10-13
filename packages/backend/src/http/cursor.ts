@@ -60,6 +60,8 @@ export const CURSOR_KINDS = [
   'structured-geocode',
   'capture-sessions',
   'capture-assets',
+  'road-rule-sets',
+  'road-zones',
 ] as const;
 export type CursorKind = (typeof CURSOR_KINDS)[number];
 

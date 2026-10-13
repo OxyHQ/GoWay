@@ -27,6 +27,26 @@ taxonomy.
   frames the embeddable map in one; `client.links.mapStyleIndex()` and
   `parseMapStyleIndex` read the catalogue document, open to styles added
   later. Static documents on GoWay's origin, not API operations.
+- **Road rules.** `goway.roads.ruleSets()`, `.rules({ latitude, longitude })`,
+  `.zones({ country | box })` and `.access({ latitude, longitude, vehicle })`
+  (`GET /roads/rule-sets`, `/roads/rules`, `/roads/zones`, `POST /roads/access`):
+  each country's driving side and implicit speeds, and low emission / congestion
+  charge / restricted access zones with their schedule, policy and source. A
+  `VehicleProfile` (kind, fuel, emission standard or a label you hold) is used for
+  the one answer and never stored. The evaluation is exported and pure:
+  `environmentalLabelOf`, `evaluateZone`, `decideAccess`, `zoneInForce`,
+  `parseMaxspeedKmh`, `geoGeometryContains`. `unknown` means the vehicle was
+  not described well enough, never "allowed".
+- `goway.routes.directions` accepts `vehicle`, `exclude` (`toll`, `motorway`,
+  `ferry`) and `departureAt` for `drive`; routes carry `zones`, the in-force
+  restricted zones they enter. With a vehicle, zones that refuse it are routed
+  around.
+- **Road access**, a new entry point **`@goway.to/sdk/road-access`**: the
+  road users (`ROAD_USERS`), what a road can say to each (`ACCESS_VALUES`,
+  `accessLevel`), OSM's access hierarchy as `resolveRoadAccess(highway, tags)`,
+  class defaults, and the compact form a city tile carries
+  (`accessOverrides`, `formatAccessOverrides`, `parseAccessOverrides`,
+  `roadAccessOf`). Pure functions; no client. See `docs/ROAD_RULES.md`.
 - 3D model placement, phase 1 of `docs/SDK_MAP_MODELS.md`: the
   `ModelPlacement`/`ModelPlacementInput` types (position, `'ground'` altitude,
   heading/pitch/roll, scale; latitude within Web Mercator's ±85.0511°,
