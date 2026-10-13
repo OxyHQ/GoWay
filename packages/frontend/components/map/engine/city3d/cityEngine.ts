@@ -41,6 +41,7 @@
  * and ~165 ms of meshing at full detail (measured, see `docs/MAP_3D_CITY.md`);
  * on the main thread that is ten dropped frames per tile.
  */
+import type { CityNightSky } from '@/lib/map/style/nightSky';
 import * as THREE from 'three';
 
 import type { CityMaterial } from '@/lib/map/style/palette3d';
@@ -72,6 +73,7 @@ import type { CityCoverageArea } from '@/lib/map/cityTiles';
 
 import type { ClearanceField } from '../camera/clearance';
 import { createVolumeField, type ModelVolumes, type TileVolumes } from '../camera/field';
+import type { VolumeIndex } from '../camera/volumes';
 import type { QualityProfile } from '@/lib/map/quality/profile';
 
 import type { AnimationClock } from '../../perf/animationClock';
@@ -227,6 +229,11 @@ export interface CityEngineOptions {
    */
   sky?: {
     appearance: SkyAppearance;
+    /**
+     * The active style's night (`lib/map/style/nightSky.ts`): the
+     * night's light on the city and the sky dome. Standard's when absent.
+     */
+    nightSky?: CityNightSky;
     /**
      * The art direction's material response for the one sky-lit shading
      * path (`tsl/skyBuildingMaterial.ts` documents the contract). Absent: the
@@ -514,6 +521,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const sky: CitySky | null = options.sky
     ? createCitySky({
         appearance: options.sky.appearance,
+        nightSky: options.sky.nightSky,
         shadows: quality.shadows,
         now,
         nightFactor: light.uNightFactor,
@@ -676,7 +684,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       const [z, x, y] = name.split('/').map(Number);
       finest.set(name, {
         lod: entry.lod,
-        tile: { tile: { z, x, y }, volumes, polygonBoxes: entry.packed.polygonBoxes },
+        tile: { tile: { z, x, y }, volumes },
       });
     }
     volumeTiles = [...finest.values()].map((f) => f.tile);
@@ -696,6 +704,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   });
   const scheduler = new TileScheduler<LodRequest>((t) => lodKey(tileKey(t), t.lod));
   const requests = new Map<number, LodRequest>();
+  // Landmark columns being measured by the workers, by request id.
+  const measures = new Map<number, (volumes: VolumeIndex | null) => void>();
   const retryTimers = new Set<ReturnType<typeof setTimeout>>();
   const arrivals: Arrival[] = [];
   // Tiles drawn from an incomplete answer, and when to ask for them again.
@@ -815,8 +825,19 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     },
     onLoadFailed: (id) => options.onLandmarkFailed?.(id),
     pageOrigin: typeof location !== 'undefined' ? location.origin : null,
-    // The eye must not enter them (`camera/clearance.ts`).
-    volumes: true,
+    // The eye must not enter them (`camera/clearance.ts`): their columns are
+    // measured by the mesh workers, never on this thread.
+    measureVolumes: (meshes, cellM) =>
+      new Promise((resolve) => {
+        if (disposed || pool.size === 0) return resolve(null);
+        const id = nextRequestId++;
+        measures.set(id, resolve);
+        pool.send({ type: 'volumes', id, meshes, cellM }, `volumes:${id}`);
+      }),
+    onVolumes: () => {
+      volumesVersion++;
+      options.requestRepaint();
+    },
   });
 
   // Models are drawn in their own pass (their own layer in the style), with
@@ -897,6 +918,14 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
   const onReply = (reply: MeshWorkerResponse) => {
     if (disposed) return;
+    // A landmark's columns (`measureVolumes`), or the worker that held them died.
+    const measure = measures.get(reply.id);
+    if (measure) {
+      measures.delete(reply.id);
+      measure(reply.type === 'volumes' ? reply.volumes : null);
+      return;
+    }
+    if (reply.type === 'volumes') return;
     const request = requests.get(reply.id);
     requests.delete(reply.id);
     const meshedWith = requestVersion.get(reply.id) ?? 0;
@@ -1087,6 +1116,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
                 format: 'openmaptiles' as const,
               }),
           lod: request.lod,
+          // What its camera volumes may hold (the profile's `camera`).
+          volumes: quality.volumes,
           trees: trees && request.lod < 2 ? trees.sourceLayers : null,
           treeFillWoods: trees?.fillWoods === true,
         },

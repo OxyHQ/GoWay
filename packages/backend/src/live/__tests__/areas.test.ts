@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'bun:test';
 import { liveTileOf } from '@goway/contracts';
 import { areasOf, sourceAreas } from '../areas';
+import { LIVE_SOURCES_UNREAD } from '../areas.generated';
 import { LIVE_SOURCES } from '../catalogue';
 import { LiveHub } from '../hub';
 import type { LiveSourceDefinition } from '../types';
@@ -35,7 +36,11 @@ describe('areas from stops', () => {
 
   it('exist for every source whose stops are published, and are its coverage', () => {
     for (const source of LIVE_SOURCES) {
-      const stops = Boolean(source.staticGtfs) || source.kind === 'bikeshare';
+      // Its stops are published, and were read when `live:areas` last ran
+      // (an operator's server down that day is listed, not hidden).
+      const stops =
+        (Boolean(source.staticGtfs) || source.kind === 'bikeshare') &&
+        !LIVE_SOURCES_UNREAD.includes(source.id);
       const derived = sourceAreas(source.id);
       expect({ id: source.id, derived: Boolean(derived) }).toEqual({
         id: source.id,

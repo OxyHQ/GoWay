@@ -56,6 +56,13 @@ import {
 } from '@/lib/map/style/relief';
 
 import { createGlobeNightLayer, GLOBE_NIGHT_LAYER_ID } from './globeNightLayer.web';
+import {
+  appearancePreset,
+  type MapStyleSelection,
+  presetDocumentLight,
+} from '@/lib/map/style/catalogue';
+import { globeNightFor } from '@/lib/map/style/globeNight';
+import { styleNightSky } from '@/lib/map/style/nightSky';
 import { STYLE_HILLSHADE_LAYER_ID } from '@/lib/map/style/layers';
 import { reportMapDefect } from './shared';
 
@@ -76,6 +83,12 @@ export interface AttachReliefOptions {
   terrainTextureScale?: number;
   /** The quality profile's `relief.globeNight`: day and night on the globe. Defaults to `true`. */
   globeNight?: boolean;
+  /**
+   * The map's style and light: the globe's night is the style's
+   * (`nightSky.ts`), over the light its document draws (`globeNight.ts` →
+   * `globeNightFor`). Absent: Standard's, over a map in `appearance`'s light.
+   */
+  style?: MapStyleSelection;
   /** The instant the globe is lit for (the time-of-day scrubber's); `null`, the default, is now. */
   at?: Date | null;
 }
@@ -133,7 +146,10 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
   let textureScale = options.terrainTextureScale ?? 2;
   const night = flags.globe
     ? createGlobeNightLayer({
-        appearance,
+        night: globeNightFor(
+          styleNightSky(options.style?.style ?? 'standard').ambient,
+          presetDocumentLight(options.style?.preset ?? appearancePreset(appearance)),
+        ),
         at: options.at ?? null,
         enabled: options.globeNight !== false,
         onDefect: (message) => reportMapDefect('relief:night', message),

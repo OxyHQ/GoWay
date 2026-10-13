@@ -55,6 +55,9 @@ export function glyphOf(entity: LiveEntity): string {
     case 'aircraft':
       return entity.onGround ? 'aircraft-ground' : 'aircraft';
     case 'transit':
+      // A feed that does not say what the vehicle is: a neutral marker, never
+      // a guessed bus or train.
+      if (entity.mode === 'other') return 'transit-other';
       return entity.mode === 'bus' ? 'bus' : 'train';
     case 'bikeshare':
       return entity.renting && entity.bikesAvailable > 0 ? 'bikeshare' : 'bikeshare-empty';

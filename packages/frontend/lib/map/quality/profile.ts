@@ -117,6 +117,19 @@ export interface QualityProfile {
      */
     groundSubdivision: 1 | 2;
   };
+  camera: {
+    /**
+     * The most bytes one tile's building volumes may hold on the main thread:
+     * the prisms the map's eye is kept out of (`docs/MAP_CAMERA_CLEARANCE.md`,
+     * `components/map/engine/camera/volumes.ts`), built by the mesh worker
+     * beside each mesh. Past it a tile's footprints become rectangles, then the
+     * grid's cells (coarser, never more). A dense Barcelona city tile holds
+     * ~210 KB (2% of its mesh).
+     */
+    volumeBytesPerTile: number;
+    /** The most vertices one footprint keeps; a rounder one is its smallest enclosing rectangle. */
+    footprintVertices: number;
+  };
   relief: {
     /**
      * 3D terrain while the camera is tilted (`docs/MAP_TERRAIN_GLOBE.md`).
@@ -156,7 +169,8 @@ export interface QualityProfile {
   };
 }
 
-const MiB = 1024 * 1024;
+const KiB = 1024;
+const MiB = 1024 * KiB;
 
 /**
  * The presets. Every number is a budget from `docs/MAP_PERFORMANCE.md` →
@@ -192,6 +206,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     live: { maxEntities: 500 },
     landmarks: { max: 2 },
     streets: { maxTiles: 6, drawTriangles: 400_000, groundSubdivision: 1 },
+    camera: { volumeBytesPerTile: 256 * KiB, footprintVertices: 8 },
     relief: { terrain3d: true, terrainTextureScale: 1, globeNight: true },
     basemap: { density: 'standard' },
   },
@@ -221,6 +236,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     live: { maxEntities: 2_000 },
     landmarks: { max: 4 },
     streets: { maxTiles: 10, drawTriangles: 900_000, groundSubdivision: 1 },
+    camera: { volumeBytesPerTile: 512 * KiB, footprintVertices: 12 },
     relief: { terrain3d: true, terrainTextureScale: 2, globeNight: true },
     basemap: { density: 'style' },
   },
@@ -250,6 +266,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     live: { maxEntities: 5_000 },
     landmarks: { max: 8 },
     streets: { maxTiles: 16, drawTriangles: 2_000_000, groundSubdivision: 2 },
+    camera: { volumeBytesPerTile: 1 * MiB, footprintVertices: 16 },
     relief: { terrain3d: true, terrainTextureScale: 2, globeNight: true },
     basemap: { density: 'style' },
   },

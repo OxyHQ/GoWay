@@ -9,7 +9,7 @@
  */
 import { CITY_TILE_EXTENT } from '@/lib/map/cityTiles';
 
-import { meshVolumes } from '../camera/volumes';
+import { meshVolumes, UNLIMITED_VOLUMES, type VolumeLimits } from '../camera/volumes';
 import { decodeBuildings } from './decode';
 import { withoutHidden } from './landmarkTiles';
 import { concatTileMeshes, meshLod2Surfaces } from './lod2Mesher';
@@ -26,8 +26,8 @@ import type { Footprint } from './workerTrees';
  * A packed mesh with its units as prisms for the camera (`camera/volumes.ts`),
  * built here, off the main thread, from the vertices just packed.
  */
-function withVolumes(mesh: PackedMesh | null): PackedMesh | null {
-  if (mesh) mesh.volumes = meshVolumes(mesh);
+function withVolumes(mesh: PackedMesh | null, limits: VolumeLimits): PackedMesh | null {
+  if (mesh) mesh.volumes = meshVolumes(mesh, limits);
   return mesh;
 }
 
@@ -44,7 +44,7 @@ export interface Meshed {
 /** OpenMapTiles' `building` layer, at the level of detail asked for. */
 export function meshOpenMapTiles(
   bytes: ArrayBuffer,
-  request: { sourceLayer: string; lod: Lod },
+  request: { sourceLayer: string; lod: Lod; volumes?: VolumeLimits },
   size: number,
 ): Meshed {
   const decoded = decodeBuildings(bytes, request.sourceLayer);
@@ -53,13 +53,20 @@ export function meshOpenMapTiles(
   const options = { extent: decoded.extent, tileSizeMetres: size };
   if (request.lod !== 0) {
     return {
-      mesh: withVolumes(meshBuildingsLod(decoded.features, options, request.lod)),
+      mesh: withVolumes(
+        meshBuildingsLod(decoded.features, options, request.lod),
+        request.volumes ?? UNLIMITED_VOLUMES,
+      ),
       footprints,
       sources: [],
     };
   }
   const full = meshBuildings(decoded.features, options);
-  return { mesh: withVolumes(full ? packMesh(full, size) : null), footprints, sources: [] };
+  return {
+    mesh: withVolumes(full ? packMesh(full, size) : null, request.volumes ?? UNLIMITED_VOLUMES),
+    footprints,
+    sources: [],
+  };
 }
 
 /**
@@ -71,6 +78,8 @@ export function meshCityTile(
   bytes: ArrayBuffer,
   size: number,
   hidden: readonly number[] | undefined,
+  /** What the camera's volumes may hold (the profile's `camera`); absent: no limit. */
+  limits: VolumeLimits = UNLIMITED_VOLUMES,
 ): Meshed {
   const decoded = decodeCityTile(bytes);
   // Where the compiler merged official building data: its surfaces, in place
@@ -97,7 +106,7 @@ export function meshCityTile(
   const lod2 = shown.length > 0 ? meshLod2Surfaces(shown, options, decoded?.buildings) : null;
   const mesh = concatTileMeshes(osm, lod2);
   return {
-    mesh: withVolumes(mesh ? packMesh(mesh, size) : null),
+    mesh: withVolumes(mesh ? packMesh(mesh, size) : null, limits),
     footprints,
     sources: lod2 ? [...new Set(shown.map((s) => s.source))] : [],
   };

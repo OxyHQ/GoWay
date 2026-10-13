@@ -59,6 +59,7 @@ describe('the fleet registry', () => {
     expect(fleetOf(transit('mta-subway', 'A'))).toBe('mta-subway-b');
     expect(fleetOf(transit('amb-bus', 'V3', 'bus'))).toBe('amb-bus');
     expect(fleetOf(transit('somewhere', 'X', 'bus'))).toBe('generic-bus');
+    expect(fleetOf({ ...transit('somewhere', 'F1'), mode: 'ferry' } as LiveEntity)).toBe('vessel');
     expect(fleetOf(transit('somewhere', 'X'))).toBe('generic-train');
   });
 

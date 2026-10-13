@@ -102,8 +102,10 @@ export interface SkyUniformRefs {
   uSunColor: UniformRef<Vector3>;
   uSkyAmbient: UniformRef<Vector3>;
   uGroundBounce: UniformRef<Vector3>;
-  /** Warm street-level light on walls at night (`atmosphere.ts` → STREET_GLOW). */
+  /** The street-level light on walls at night (the style's `CityNightSky.streetGlow`). */
   uStreetGlow: UniformRef<Vector3>;
+  /** The floodlights' colour (the style's `CityNightSky.floodlight`). */
+  uFloodlight: UniformRef<Vector3>;
   /** Centre-relative mercator → shadow clip. */
   uShadowMatrix: UniformRef<Matrix4>;
   uMetresPerMercator: UniformRef<number>;
@@ -120,6 +122,8 @@ export interface SkyNodes {
   skyAmbient: Vec3;
   groundBounce: Vec3;
   streetGlow: Vec3;
+  /** The floodlights' colour, the style's (`atmosphere.ts` → `FLOODLIGHT`). */
+  floodlight: Vec3;
   nightFactor: Float;
   camera: Vec3;
   groundZ: Float;
@@ -268,6 +272,7 @@ export function createSkyNodes(refs: SkyUniformRefs, shadowTaps: number): SkyNod
     skyAmbient,
     groundBounce: bindVec3(refs.uGroundBounce),
     streetGlow: bindVec3(refs.uStreetGlow),
+    floodlight: bindVec3(refs.uFloodlight),
     nightFactor: bindFloat(refs.uNightFactor),
     camera,
     groundZ,

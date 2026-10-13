@@ -22,8 +22,9 @@
  * last report (a route's two directional shapes overlap exactly).
  */
 
+import type { LiveTransitMode } from '@goway/contracts';
 import type { LiveTransitVehicle } from '@goway/contracts';
-import { readZipEntries, ZipError } from './zip';
+import { readZipEntries, readZipEntriesRanged, ZipError, type ZipRange } from './zip';
 
 /** How far from its operator's shape a report may be and still be drawn on it. */
 export const SNAP_TOLERANCE_METERS = 75;
@@ -48,6 +49,44 @@ export interface GtfsRoute {
   /** `#RRGGBB`, or `null` when the feed gives none. */
   color: string | null;
   textColor: string | null;
+  /** The mode its `route_type` names (basic or extended types), or `null`. */
+  mode: LiveTransitMode | null;
+}
+
+/**
+ * GTFS `route_type` → a live mode: the basic types (0–12) and the extended
+ * (Google's hierarchical) ones by their hundreds.
+ */
+export function modeOfRouteType(value: string | undefined): LiveTransitMode | null {
+  const type = Number(value);
+  if (!Number.isInteger(type) || type < 0) return null;
+  switch (type) {
+    case 0:
+    case 5:
+      return 'tram';
+    case 1:
+    case 12:
+      return 'subway';
+    case 2:
+      return 'rail';
+    case 3:
+    case 11:
+      return 'bus';
+    case 4:
+      return 'ferry';
+    case 6:
+    case 7:
+      return 'cable';
+  }
+  if (type >= 100 && type < 200) return 'rail';
+  if (type >= 200 && type < 300) return 'bus'; // coach
+  if (type >= 400 && type < 500) return 'subway';
+  if (type >= 700 && type < 900) return 'bus'; // bus, trolleybus
+  if (type >= 900 && type < 1000) return 'tram';
+  // 1000s water transport and 1200s ferries; the 1100s are AIR services (Avinor's), never a boat.
+  if ((type >= 1000 && type < 1100) || (type >= 1200 && type < 1300)) return 'ferry';
+  if (type >= 1300 && type < 1500) return 'cable';
+  return null;
 }
 
 export interface StaticGtfs {
@@ -114,12 +153,13 @@ export function buildStaticGtfs(files: {
   const routes = new Map<string, GtfsRoute>();
   {
     const { header, rows } = parseCsv(files.routes);
-    const [id, short, long, rc, tc] = columns(header, [
+    const [id, short, long, rc, tc, rt] = columns(header, [
       'route_id',
       'route_short_name',
       'route_long_name',
       'route_color',
       'route_text_color',
+      'route_type',
     ]);
     for (const row of rows) {
       const routeId = row[id];
@@ -129,6 +169,7 @@ export function buildStaticGtfs(files: {
         longName: row[long] || null,
         color: color(row[rc]),
         textColor: color(row[tc]),
+        mode: rt >= 0 ? modeOfRouteType(row[rt]) : null,
       });
     }
   }
@@ -339,8 +380,8 @@ export function matchTrack(
   const routeByHint =
     route ??
     (hint.route
-      ? ([...gtfs.routes.values()].find((r) => r.shortName === hint.route) ??
-        gtfs.routes.get(hint.route) ??
+      ? (gtfs.routes.get(hint.route) ??
+        [...gtfs.routes.values()].find((r) => r.shortName === hint.route) ??
         null)
       : null);
   if (candidates.length === 0) return { route: routeByHint, track: null, trackStatus: 'unknown' };
@@ -371,31 +412,57 @@ export function matchTrack(
   };
 }
 
+/**
+ * How much of a static GTFS to read. A big network's shapes and trips cost
+ * hundreds of megabytes once parsed (Prague's ~2 GB, Helsinki's ~1 GB), so a
+ * feed whose vehicles name their route reads only `routes.txt` — the line,
+ * its colours and its mode — and one whose vehicles name only their trip
+ * reads `trips.txt` too. Neither puts a vehicle on a track.
+ */
+export type StaticGtfsDepth = 'routes' | 'trips';
+
 /** Where an operator's static GTFS is: one zip, or the three files separately (FGC's portal). */
 export type StaticGtfsLocation =
-  | { zip: string }
+  | { zip: string; only?: StaticGtfsDepth }
   | { routes: string; trips: string; shapes: string }
   /** Several zips merged (MTA buses publish one per borough). */
   | { zips: readonly string[] };
 
 const FILES = ['routes.txt', 'trips.txt', 'shapes.txt', 'stops.txt'] as const;
 const NO_SHAPES = 'shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\n';
+const NO_TRIPS = 'route_id,trip_id\n';
 
 /** Fetch and build an operator's static GTFS. Throws on a missing file. */
 export async function loadStaticGtfs(
   location: StaticGtfsLocation,
   read: (url: string) => Promise<Uint8Array>,
+  /** Ranged reads: with `only`, a big archive's few small files without the rest. */
+  readRange?: (url: string, range: string) => Promise<ZipRange>,
 ): Promise<StaticGtfs> {
   const decoder = new TextDecoder();
   const parts: { routes: string; trips: string; shapes: string; stops?: string }[] = [];
   const zips = 'zip' in location ? [location.zip] : 'zips' in location ? location.zips : [];
+  const only = 'zip' in location ? location.only : undefined;
+  const files =
+    only === 'routes' ? FILES.slice(0, 1) : only === 'trips' ? FILES.slice(0, 2) : FILES;
   for (const url of zips) {
-    const entries = readZipEntries(await read(url), FILES);
+    const entries =
+      only && readRange
+        ? await readZipEntriesRanged((range) => readRange(url, range), files)
+        : readZipEntries(await read(url), files);
     const text = (name: (typeof FILES)[number]) => {
       const bytes = entries.get(name);
       if (!bytes) throw new ZipError(`${name} missing from ${url}`);
       return decoder.decode(bytes);
     };
+    if (only) {
+      parts.push({
+        routes: text('routes.txt'),
+        trips: only === 'trips' ? text('trips.txt') : NO_TRIPS,
+        shapes: NO_SHAPES,
+      });
+      continue;
+    }
     const stops = entries.get('stops.txt');
     // Shapes are optional in GTFS (Renfe's long-distance file has none): its
     // routes still name the lines; its vehicles are drawn where reported.

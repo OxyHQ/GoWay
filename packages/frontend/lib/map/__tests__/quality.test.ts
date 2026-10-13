@@ -64,6 +64,8 @@ describe('resolveQuality', () => {
       p.landmarks.max,
       p.streets.maxTiles,
       p.streets.drawTriangles,
+      p.camera.volumeBytesPerTile,
+      p.camera.footprintVertices,
       p.frame.animationHz,
     ];
     const [a, b, c] = [numbers(low), numbers(medium), numbers(high)];

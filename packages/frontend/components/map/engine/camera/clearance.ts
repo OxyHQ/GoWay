@@ -64,7 +64,13 @@ export const CAMERA_CLEARANCE = {
   settleMs: 120,
   /** The longest frame gap counted towards that settling, ms. */
   maxStepMs: 100,
-  /** Below this zoom nothing the city draws is near the eye (buildings start at z15.5). */
+  /**
+   * Below this zoom nothing the city draws is near the eye (buildings start
+   * at z15.5), and the rule is not run. So a camera opened from a link
+   * (`loadedCamera.ts`, #191: the canvas reports the camera a map opened at,
+   * unprompted) is the one drawn below it; above it, a deep link into a tower
+   * is lifted on its first update and that is what is reported.
+   */
   minZoom: 13,
   /** An eye this far from the last one, metres, has jumped: corrected exactly. */
   jumpM: 2000,
@@ -218,6 +224,42 @@ export function requirementFor(
   }
   return { altitudeM, marginM };
 }
+
+/** How far a pose's eye must rise to clear what is there (0: it is clear). */
+export function liftFor(pose: CameraPose, field: ClearanceField | null, ground: GroundAt): number {
+  return Math.max(0, requirementFor(pose, field, ground).altitudeM - eyeOf(pose).altitudeM);
+}
+
+/**
+ * The camera ASKED for, held at the surface on the two axes a gesture pushes
+ * the eye into a building with: a zoom in or a tilt towards the horizon that
+ * would raise the lift needed is taken back to where the gesture was the
+ * update before (`previous`), so the camera asked for never runs ahead into
+ * the building and reversing the pinch or the tilt answers at once — no dead
+ * zone. The bearing is never held: a rotation still lifts the eye over a
+ * tower and sets it back down. The host writes the answer back into the
+ * camera its gesture accumulates (`cameraClearance.web.ts`).
+ */
+export function holdAtSurface(
+  pose: CameraPose,
+  previous: { zoom: number; pitch: number },
+  field: ClearanceField | null,
+  ground: GroundAt,
+): { zoom: number; pitch: number } {
+  let held = pose;
+  if (pose.pitch > previous.pitch) {
+    const back = applyCorrection(held, { pitch: previous.pitch, zoom: held.zoom });
+    if (liftFor(held, field, ground) > liftFor(back, field, ground) + HOLD_EPSILON_M) held = back;
+  }
+  if (held.zoom > previous.zoom) {
+    const back = applyCorrection(held, { pitch: held.pitch, zoom: previous.zoom });
+    if (liftFor(held, field, ground) > liftFor(back, field, ground) + HOLD_EPSILON_M) held = back;
+  }
+  return { zoom: held.zoom, pitch: held.pitch };
+}
+
+/** A change of lift smaller than this, metres, is not a push into anything. */
+const HOLD_EPSILON_M = 0.01;
 
 /**
  * Whether the eye is INSIDE something: a building's prism (no margin, no

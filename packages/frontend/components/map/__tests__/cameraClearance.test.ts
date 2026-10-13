@@ -15,104 +15,41 @@ import { describe, expect, test } from 'bun:test';
 import * as THREE from 'three';
 
 import { cityTile, SYNTHETIC_CENTRE } from '@/components/map/__tests__/fixtures/syntheticCity';
+import { cityQuality } from '@/components/map/engine/quality';
+import { QUALITY_PRESETS } from '@/lib/map/quality/profile';
+import {
+  at,
+  building,
+  FLAT,
+  field,
+  footprint,
+  K,
+  SIZE,
+  TILE,
+  tileVolumes,
+} from './fixtures/clearanceCity';
 import {
   applyCorrection,
   CAMERA_CLEARANCE,
   type CameraPose,
-  type ClearanceField,
   createCameraClearance,
   eyeInside,
   eyeOf,
   liftedPose,
   requirementFor,
 } from '@/components/map/engine/camera/clearance';
+import type { ModelVolumes, TileVolumes } from '@/components/map/engine/camera/field';
 import {
-  createVolumeField,
-  type ModelVolumes,
-  type TileVolumes,
-} from '@/components/map/engine/camera/field';
-import { meshVolumes, prismRequirement, volumeBytes } from '@/components/map/engine/camera/volumes';
-import {
-  meshBuildings,
-  type BuildingFeature,
-  type Point2,
-} from '@/components/map/engine/city3d/mesher';
+  CELL_INDEX_MAX_BYTES,
+  prismRequirement,
+  volumeBytes,
+} from '@/components/map/engine/camera/volumes';
 import { createGltfLoader } from '@/components/map/engine/city3d/gltf';
 import { assetVolumes } from '@/components/map/engine/city3d/models';
-import { packMesh } from '@/components/map/engine/city3d/packing';
 import { createGround } from '@/components/map/engine/city3d/terrainGround';
 import { tileSizeMetres } from '@/components/map/engine/city3d/tileMath';
 import { meshCityTile } from '@/components/map/engine/city3d/tileMeshing';
 import { EARTH_CIRCUMFERENCE_M, mercatorX, mercatorY } from '@/lib/map/geo';
-
-const TILE = { z: 15, x: 16580, y: 12236 };
-const N = 2 ** TILE.z;
-const SIZE = tileSizeMetres(TILE);
-const EXTENT = 4096;
-/** Mercator units per metre in the test tile. */
-const K = 1 / SIZE / N;
-const FLAT = () => 0;
-
-/** A mercator point of the test tile, from metres east and south of its north-west corner. */
-const at = (east: number, south: number) => ({
-  x: (TILE.x + east / SIZE) / N,
-  y: (TILE.y + south / SIZE) / N,
-});
-
-/** A rectangular building, `w` × `d` metres, centred on a mercator point, turned `angle`° clockwise. */
-function building(
-  centre: { x: number; y: number },
-  w: number,
-  d: number,
-  height: number,
-  angle = 0,
-): BuildingFeature {
-  const cx = (centre.x * N - TILE.x) * EXTENT;
-  const cy = (centre.y * N - TILE.y) * EXTENT;
-  const perM = EXTENT / SIZE;
-  const a = (angle * Math.PI) / 180;
-  const corners: Point2[] = [
-    [-w / 2, -d / 2],
-    [w / 2, -d / 2],
-    [w / 2, d / 2],
-    [-w / 2, d / 2],
-  ].map(([x, y]) => [
-    cx + (x * Math.cos(a) - y * Math.sin(a)) * perM,
-    cy + (x * Math.sin(a) + y * Math.cos(a)) * perM,
-  ]);
-  return {
-    rings: [[...corners, corners[0]]],
-    properties: { render_height: height, render_min_height: 0 },
-  };
-}
-
-/** The real path: mesher → packed mesh → the worker's volume index. */
-function tileVolumes(features: BuildingFeature[]): TileVolumes {
-  const mesh = meshBuildings(features, { extent: EXTENT, tileSizeMetres: SIZE });
-  if (!mesh) throw new Error('nothing meshed');
-  const packed = packMesh(mesh, SIZE);
-  return { tile: TILE, volumes: meshVolumes(packed), polygonBoxes: packed.polygonBoxes };
-}
-
-function field(
-  tiles: TileVolumes[],
-  options: { models?: ModelVolumes[]; ground?: ReturnType<typeof createGround> | null } = {},
-): ClearanceField & { setTiles(next: TileVolumes[]): void } {
-  let version = 1;
-  let held = tiles;
-  const f = createVolumeField({
-    version: () => version,
-    tiles: () => held,
-    models: () => options.models ?? [],
-    ground: () => options.ground ?? null,
-  });
-  return Object.assign(f, {
-    setTiles(next: TileVolumes[]) {
-      held = next;
-      version++;
-    },
-  });
-}
 
 /** A street-level camera over the test tile: MapLibre's at a 1080 px tall screen. */
 function pose(over: Partial<CameraPose> = {}): CameraPose {
@@ -439,8 +376,14 @@ describe('the camera rule', () => {
 });
 
 describe('cost', () => {
-  test('a fraction of a millisecond per camera change over a dense synthetic district', () => {
-    // Nine z15 city tiles around the synthetic centre: Eixample-like blocks.
+  test('a fraction of a millisecond per camera change over a dense synthetic district, at the low preset', () => {
+    // Nine z15 city tiles around the synthetic centre: Eixample-like blocks,
+    // indexed within the low preset's bounds (phones).
+    const { low } = QUALITY_PRESETS;
+    const limits = {
+      maxBytes: low.camera.volumeBytesPerTile,
+      maxFootprintVertices: low.camera.footprintVertices,
+    };
     const n = 2 ** 15;
     const cx = Math.floor(mercatorX(SYNTHETIC_CENTRE.lng) * n);
     const cy = Math.floor(mercatorY(SYNTHETIC_CENTRE.lat) * n);
@@ -453,9 +396,9 @@ describe('cost', () => {
           bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
           tileSizeMetres(tile),
           undefined,
+          limits,
         );
-        if (mesh?.volumes)
-          tiles.push({ tile, volumes: mesh.volumes, polygonBoxes: mesh.polygonBoxes });
+        if (mesh?.volumes) tiles.push({ tile, volumes: mesh.volumes });
       }
     }
     expect(tiles.length).toBe(9);
@@ -478,9 +421,89 @@ describe('cost', () => {
     }
     const perCallMs = (performance.now() - started) / calls;
     console.log(
-      `camera clearance: ${(perCallMs * 1000).toFixed(1)} µs per camera change (${calls} changes, ${corrected} corrected, 9 dense tiles)`,
+      `camera clearance, low preset: ${(perCallMs * 1000).toFixed(1)} µs per camera change (${calls} changes, ${corrected} corrected, 9 dense tiles)`,
     );
     expect(corrected).toBeGreaterThan(0);
     expect(perCallMs).toBeLessThan(0.25);
+  });
+});
+
+describe('the index is bounded by the quality profile (`camera`)', () => {
+  const circle = (r: number, sides: number) =>
+    Array.from({ length: sides }, (_, i): [number, number] => [
+      r * Math.cos((2 * Math.PI * i) / sides),
+      r * Math.sin((2 * Math.PI * i) / sides),
+    ]);
+
+  test('a round footprint past the vertex cap is its enclosing rectangle, never smaller', () => {
+    const centre = at(300, 300);
+    const round = footprint(centre, circle(20, 24), 40);
+    const free = tileVolumes([round]).volumes;
+    const capped = tileVolumes([round], {
+      maxBytes: Number.POSITIVE_INFINITY,
+      maxFootprintVertices: 8,
+    }).volumes;
+    expect(free.hullStarts[1] - free.hullStarts[0]).toBeGreaterThan(8);
+    expect(capped.hullStarts[1] - capped.hullStarts[0]).toBe(4);
+    // Every point of the circle is still inside the capped prism.
+    const f = field([{ tile: TILE, volumes: capped }]);
+    for (const [east, south] of circle(19.8, 24)) {
+      const p = at(300 + east, 300 + south);
+      expect(f.requiredHeight(p.x, p.y, prisms, 0)).toBeCloseTo(40, 0);
+    }
+  });
+
+  test('over its bytes, a tile falls back to rectangles, then to cells: never over, never thinner', () => {
+    // A dense district of turned, many-sided buildings.
+    const features = [];
+    const centres: Array<{ x: number; y: number; h: number }> = [];
+    for (let i = 0; i < 30; i++) {
+      for (let j = 0; j < 30; j++) {
+        const c = at(60 + i * 28, 60 + j * 28);
+        const h = 10 + ((i * 7 + j * 3) % 40);
+        features.push(footprint(c, circle(8, 12), h, (i * 13 + j * 7) % 90));
+        centres.push({ ...c, h });
+      }
+    }
+    const unlimited = volumeBytes(tileVolumes(features).volumes);
+    for (const maxBytes of [Math.floor(unlimited * 0.8), CELL_INDEX_MAX_BYTES]) {
+      const { volumes } = tileVolumes(features, { maxBytes, maxFootprintVertices: 16 });
+      expect(volumeBytes(volumes)).toBeLessThanOrEqual(maxBytes);
+      const f = field([{ tile: TILE, volumes }]);
+      for (const c of centres) {
+        expect(f.requiredHeight(c.x, c.y, prisms, 0)).toBeGreaterThanOrEqual(c.h - 0.05);
+      }
+    }
+  });
+
+  test('every preset can honour its cap, and the low one holds a dense district', () => {
+    for (const tier of ['low', 'medium', 'high'] as const) {
+      const { camera } = QUALITY_PRESETS[tier];
+      expect(camera.volumeBytesPerTile).toBeGreaterThanOrEqual(CELL_INDEX_MAX_BYTES);
+      expect(cityQuality({ ...QUALITY_PRESETS[tier], reason: 'test' }, 4).volumes).toEqual({
+        maxBytes: camera.volumeBytesPerTile,
+        maxFootprintVertices: camera.footprintVertices,
+      });
+    }
+    const n = 2 ** 15;
+    const tile = {
+      z: 15,
+      x: Math.floor(mercatorX(SYNTHETIC_CENTRE.lng) * n),
+      y: Math.floor(mercatorY(SYNTHETIC_CENTRE.lat) * n),
+    };
+    const bytes = cityTile(tile.z, tile.x, tile.y);
+    const { low } = QUALITY_PRESETS;
+    const { mesh } = meshCityTile(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+      tileSizeMetres(tile),
+      undefined,
+      {
+        maxBytes: low.camera.volumeBytesPerTile,
+        maxFootprintVertices: low.camera.footprintVertices,
+      },
+    );
+    expect(mesh?.volumes).toBeDefined();
+    if (!mesh?.volumes) return;
+    expect(volumeBytes(mesh.volumes)).toBeLessThanOrEqual(low.camera.volumeBytesPerTile);
   });
 });

@@ -28,6 +28,8 @@ export function pointOf(sample: LiveSample, selectedId: string | null): MapLiveP
 
   const tint = tintOf(entity);
   if (tint) point.tint = tint;
+  // A vehicle of no stated mode has no size or body to give it: flat, a marker.
+  if (entity.mode === 'other') return point;
   point.length = fleetLength(fleet);
   point.approximate = sample.approximate;
   // An estimate is drawn flat only: in 3D a train placed by arithmetic would

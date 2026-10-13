@@ -35,6 +35,7 @@
  * Labels, POIs and overlays are drawn by MapLibre after this layer, so they
  * stay exactly as legible as before: the haze is under them.
  */
+import { CITY_NIGHT_SKY, type CityNightSky } from '@/lib/map/style/nightSky';
 import {
   Camera,
   ClampToEdgeWrapping,
@@ -188,6 +189,8 @@ export interface CitySky {
 
 export function createCitySky(options: {
   appearance: SkyAppearance;
+  /** The style's night (`CityEngineOptions.sky.nightSky`); Standard's when absent. */
+  nightSky?: CityNightSky;
   /**
    * The sun's shadows at this quality (`engine/quality.ts`): the map's side
    * and the PCF taps, or `null` for none — then no shadow map is allocated,
@@ -252,6 +255,7 @@ export function createCitySky(options: {
     uSkyAmbient: { value: new Vector3(0.2, 0.2, 0.2) },
     uGroundBounce: { value: new Vector3(0.05, 0.05, 0.05) },
     uStreetGlow: { value: new Vector3() },
+    uFloodlight: { value: new Vector3(...(options.nightSky ?? CITY_NIGHT_SKY).floodlight) },
     uShadowMatrix: { value: new Matrix4() },
     uMetresPerMercator: { value: 1 },
     uShadowNormalOffset: { value: 1 },
@@ -333,7 +337,7 @@ export function createCitySky(options: {
       if (sun && sun.azimuthDeg === next.azimuthDeg && sun.altitudeDeg === next.altitudeDeg) return;
       sun = next;
       const started = performance.now();
-      const nextState = skyStateFor(next.altitudeDeg, options.appearance);
+      const nextState = skyStateFor(next.altitudeDeg, options.appearance, options.nightSky);
       stats.lastSkyMs = nextState === state ? 0 : performance.now() - started;
       if (nextState !== state) applyState(nextState);
       const direction = sunDirection(next);

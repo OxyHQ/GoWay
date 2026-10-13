@@ -78,6 +78,7 @@ export function skyRefs(shadows: boolean): SkyUniformRefs {
     uSkyAmbient: { value: new Vector3() },
     uGroundBounce: { value: new Vector3() },
     uStreetGlow: { value: new Vector3() },
+    uFloodlight: { value: new Vector3(1, 0.64, 0.34) },
     uShadowMatrix: { value: new Matrix4() },
     uMetresPerMercator: { value: 1 },
     uShadowNormalOffset: { value: 1 },

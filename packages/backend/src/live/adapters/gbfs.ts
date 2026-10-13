@@ -39,6 +39,8 @@ export interface GbfsOptions {
   coverage: { west: number; south: number; east: number; north: number } | null;
   /** The discovery language to prefer; the first one otherwise. */
   language?: string;
+  /** Extra headers an operator asks callers to send (Urban Sharing's `Client-Identifier`). */
+  headers?: Record<string, string>;
 }
 
 interface StationInfo {
@@ -199,7 +201,7 @@ export function createGbfsAdapter(
   let electric: Set<string> = new Set();
   let staticFetchedAt = 0;
 
-  const headers = { 'user-agent': settings.userAgent };
+  const headers = { 'user-agent': settings.userAgent, ...(options.headers ?? {}) };
 
   async function refreshStatic(context: LiveFetchContext): Promise<void> {
     const discovery = await getJson(context.fetch, settings.url, context.signal, headers);

@@ -70,6 +70,7 @@ function task(
     completeness: 'network',
     defaultUrl: 'https://example.org/feed',
     requiresKey: false,
+    licenceCheck: { verifiedOn: '2026-10-12', source: 'https://example.org', quote: 'test' },
     pollIntervalSeconds: 10,
     staleAfterSeconds: 60,
     dropAfterSeconds: 120,

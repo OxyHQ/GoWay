@@ -51,6 +51,8 @@ import {
 } from './catalogue';
 import { type CartographyPalette, DARK_PALETTE, LIGHT_PALETTE, type RoadTier } from './palette';
 import { CITY_GROUND_PALETTES, CITY_MATERIALS, type CityMaterial, type Rgb } from './palette3d';
+import { monochrome, quietChroma } from './chroma';
+import { type CityNightSky, styleNightSky } from './nightSky';
 import {
   DATA_OPTIONS,
   MONOCHROME_OPTIONS,
@@ -80,6 +82,8 @@ export interface StyleTheme {
   materials: { day: CityMaterial; night: CityMaterial };
   /** The 3D street detail's day and night. */
   streets: { day: StreetColours; night: StreetColours };
+  /** The city sky's night: its lights' tints and the dome (`nightSky.ts`). */
+  nightSky: CityNightSky;
 }
 
 /** Every colour of a palette through one function; `appearance` kept. */
@@ -507,19 +511,6 @@ function navigationNight(): CartographyPalette {
 // Monochrome: Standard with the colour taken out
 // ---------------------------------------------------------------------------
 
-/**
- * Every colour at a whisper of its chroma — lightness, and so the whole
- * hierarchy, kept — then the type walked back to 4.5:1 (a POI's category
- * colour goes, its name stays legible). Built FROM Standard rather than drawn
- * again, so every change to Standard's cartography reaches it.
- */
-const MONO_CHROMA = 0.06;
-const monochrome = (lch: [number, number, number]): [number, number, number] => [
-  lch[0],
-  lch[1] * MONO_CHROMA,
-  lch[2],
-];
-
 /** Standard's night with the deeper town streets its greys need to keep street names legible. */
 const monoNightBase = (): CartographyPalette => ({
   ...DARK_PALETTE,
@@ -688,6 +679,8 @@ function mapMaterial(
     tall: recolour(material.tall),
     veryTall: recolour(material.veryTall),
     glass: recolour(material.glass),
+    windowGlow: recolour(material.windowGlow),
+    windowGlowCool: recolour(material.windowGlowCool),
   };
 }
 
@@ -697,13 +690,6 @@ function mapStreets(colours: StreetColours, fn: (hex: string) => string): Street
     Object.entries(colours).map(([k, v]) => [k, fn(v)]),
   ) as unknown as StreetColours;
 }
-
-/** Desaturate to a whisper of chroma: what the data basemaps do to the clay and pavements. */
-const quietChroma = (lch: [number, number, number]): [number, number, number] => [
-  lch[0],
-  lch[1] * 0.2,
-  lch[2],
-];
 
 /**
  * A city ground under a style: the ground's colours with the STYLE's type,
@@ -868,6 +854,7 @@ export function styleTheme(selection: MapStyleSelection): StyleTheme {
   const recipe = RECIPES[selection.style];
   const materials = recipe.materials ? recipe.materials(CITY_MATERIALS) : CITY_MATERIALS;
   const streets = recipe.streets ? recipe.streets(STREET_PALETTES) : STREET_PALETTES;
+  const nightSky = styleNightSky(selection.style);
   const theme: StyleTheme = {
     selection,
     appearance: presetAppearance(selection.preset),
@@ -876,6 +863,7 @@ export function styleTheme(selection: MapStyleSelection): StyleTheme {
     cityGround: recipe.cityGround(selection.preset),
     materials,
     streets,
+    nightSky,
   };
   cache.set(key, theme);
   return theme;

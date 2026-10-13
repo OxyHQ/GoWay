@@ -11,6 +11,7 @@ hand-written JSON file, and no layer list is copied.
 | The catalogue: style ids, the lights each is published in, paths, the light modes | `packages/frontend/lib/map/style/catalogue.ts` |
 | A style's switches over the shared layers | `lib/map/style/options.ts` |
 | A (style, light)'s colours: 2D palette, 3D ground, clay, street detail | `lib/map/style/themes.ts` |
+| A style's NIGHT under the city sky and on the globe: the night's light, the sky dome, street light, floodlights | `lib/map/style/nightSky.ts` (with `chroma.ts`, the recipes' shared colour functions) |
 | The one layer list | `lib/map/style/layers.ts` |
 | The documents, the catalogue index, the checks | `scripts/build-map-style.ts` → `public/map/styles/` |
 | The picker's thumbnails (real renderer) | `scripts/build-map-thumbs.ts` → `public/map/styles/thumbs/` |
@@ -139,6 +140,25 @@ The light is the real sun, not the time-of-day scrubber: changing the document
 rebuilds the web engine (a few hundred ms, the camera kept), which is right a
 handful of times a day and wrong forty times a second under a slider. The
 scrubber keeps relighting the scene through the sky's passes, as before.
+
+**The night is the style's.** The city sky's night (its one light, the
+sky dome, the street light on the walls, the floodlights) and the globe's
+night side come from `nightSky.ts`: Standard's art-directed blue-violet, and
+every other style's derived from it by the colour function its recipe applies
+to its palette. Monochrome's is 6% chroma, the data basemaps' and
+Navigation's quiet. Each light keeps its brightness, so a style changes the
+night's colour, never how dark it is. Monochrome at night is achromatic,
+windows included (`lib/map/__tests__/nightSky.test.ts`).
+
+**What darkens the map with the sun draws only what the document does not.**
+A dawn or dusk document already draws the low sun's light. It stands for the
+middle of its band (`TWILIGHT_DOCUMENT_DEG`, −1°). Over it, the globe's
+night and the city sky's ground light darken the map only as the sun goes on
+below that, relative to the document's own light
+(`catalogue.ts` → `presetDocumentLight`). Before, both darkenings were drawn,
+the document's and the pass's, and a dusk map went a dull blue-grey. Measured
+at Madrid with the sun 3.2° down, Standard dusk at z9: the dusk colours now
+stand, darkened only past −1°.
 
 A style change rebuilds the MapLibre engine at the camera the old one had —
 as a relief toggle always did; a theme change now does too (it used to jump

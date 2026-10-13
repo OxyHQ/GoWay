@@ -224,7 +224,7 @@ function buildMaterial(
   const flags = osm ? vFlags : float(0);
 
   // The light inputs — the sky's side of the contract. Warm street-level
-  // light on the walls' foot at night (atmosphere.ts → STREET_GLOW).
+  // light on the walls' foot at night (the style's `CityNightSky.streetGlow`).
   const street = float(1)
     .sub(abs(n.z))
     .mul(float(1).sub(smoothstep(0, STREET_GLOW_HEIGHT_M, vHeightAboveGround)));
@@ -236,7 +236,7 @@ function buildMaterial(
     const onWall = mix(1, FLOODLIGHT.top, rise);
     const shape = mix(onWall, FLOODLIGHT.roof, step(0.7, abs(n.z)));
     emitted = emitted.add(
-      vec3(...FLOODLIGHT.color)
+      sky.floodlight
         .mul(FLOODLIGHT.intensity)
         .mul(floodlit)
         .mul(shape)

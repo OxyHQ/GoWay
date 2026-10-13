@@ -43,8 +43,8 @@ const SPAN = 65_535;
 const GRID = 64;
 /** Stored units per grid cell. */
 const CELL = 1024;
-/** A vertex this close above a unit's lowest one is on its footprint (stored z, 1/32 m). */
-const FOOT_Z = Math.round(0.5 * Z_UNITS_PER_METRE);
+/** A vertex this close above a unit's lowest one is on its footprint, metres. */
+const FOOT_M = 0.5;
 
 /** One mesh's (or model's) buildings, as prisms, with a grid over them. */
 export interface VolumeIndex {
@@ -62,14 +62,28 @@ export interface VolumeIndex {
   top: Float32Array;
   /** The grid: cell `c` (row-major, {@link GRID}² of {@link CELL} units) lists `cellUnits[cellStarts[c] … cellStarts[c+1])`. */
   cellStarts: Uint32Array;
-  cellUnits: Uint32Array;
+  /** 16-bit while the index has at most 65,536 units (every tile measured), else 32-bit. */
+  cellUnits: Uint16Array | Uint32Array;
   /** Per cell: the highest top of its units (0 for none). */
   cellTop: Float32Array;
   /** The highest top of all. */
   maxTop: number;
 }
 
-/** Bytes an index holds (its arrays travel in `packing.ts` → `packedTransferables`). */
+/** The arrays an index is made of, for a worker's transfer list. */
+export function volumeTransferables(index: VolumeIndex): ArrayBuffer[] {
+  return [
+    index.hullStarts.buffer as ArrayBuffer,
+    index.hull.buffer as ArrayBuffer,
+    index.box.buffer as ArrayBuffer,
+    index.top.buffer as ArrayBuffer,
+    index.cellStarts.buffer as ArrayBuffer,
+    index.cellUnits.buffer as ArrayBuffer,
+    index.cellTop.buffer as ArrayBuffer,
+  ];
+}
+
+/** Bytes an index holds. */
 export function volumeBytes(index: VolumeIndex): number {
   return (
     index.hullStarts.byteLength +
@@ -172,7 +186,10 @@ function finishIndex(
   }
   const cellStarts = new Uint32Array(GRID * GRID + 1);
   for (let c = 0; c < GRID * GRID; c++) cellStarts[c + 1] = cellStarts[c] + counts[c];
-  const cellUnits = new Uint32Array(cellStarts[GRID * GRID]);
+  const cellUnits =
+    units <= 65_536
+      ? new Uint16Array(cellStarts[GRID * GRID])
+      : new Uint32Array(cellStarts[GRID * GRID]);
   const cellTop = new Float32Array(GRID * GRID);
   const fill = cellStarts.slice(0, GRID * GRID);
   for (let u = 0; u < units; u++) {
@@ -199,13 +216,144 @@ export interface VolumeSource {
 }
 
 /**
+ * How much one index may hold: the quality profile's `camera` knobs
+ * (`lib/map/quality/profile.ts`), handed to the mesh worker with each tile.
+ */
+export interface VolumeLimits {
+  /** The most bytes one tile's index may hold. */
+  maxBytes: number;
+  /** The most vertices of one footprint; a rounder one is its smallest enclosing rectangle. */
+  maxFootprintVertices: number;
+}
+
+/** No limit: what the tests and a caller without a profile get. */
+export const UNLIMITED_VOLUMES: VolumeLimits = {
+  maxBytes: Number.POSITIVE_INFINITY,
+  maxFootprintVertices: Number.POSITIVE_INFINITY,
+};
+
+/**
+ * The most bytes an index of only grid cells can hold ({@link meshVolumes}'
+ * last fallback): each of the {@link GRID}² cells a unit of four corners,
+ * listed in up to four cells. A `maxBytes` under this cannot be honoured.
+ */
+export const CELL_INDEX_MAX_BYTES =
+  GRID * GRID * (4 * 4 + 4 + 8 + 4 + 4 * 2) + (GRID * GRID + 1) * 4 + GRID * GRID * 4 + 4;
+
+/**
+ * Replace the `count` hull points at `out[from…]` (a flat `x, y` list) by
+ * their smallest enclosing rectangle (rotating calipers over the hull's
+ * edges), its corners rounded outward: never smaller than the footprint.
+ */
+function enclosingRectangle(out: number[], from: number, count: number): void {
+  let best = Number.POSITIVE_INFINITY;
+  let corners: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const j = (i + 1) % count;
+    const ex = out[from + j * 2] - out[from + i * 2];
+    const ey = out[from + j * 2 + 1] - out[from + i * 2 + 1];
+    const length = Math.hypot(ex, ey);
+    if (length === 0) continue;
+    const ux = ex / length;
+    const uy = ey / length;
+    let minA = Number.POSITIVE_INFINITY;
+    let maxA = Number.NEGATIVE_INFINITY;
+    let minB = Number.POSITIVE_INFINITY;
+    let maxB = Number.NEGATIVE_INFINITY;
+    for (let k = 0; k < count; k++) {
+      const x = out[from + k * 2];
+      const y = out[from + k * 2 + 1];
+      const a = x * ux + y * uy;
+      const b = -x * uy + y * ux;
+      if (a < minA) minA = a;
+      if (a > maxA) maxA = a;
+      if (b < minB) minB = b;
+      if (b > maxB) maxB = b;
+    }
+    const area = (maxA - minA) * (maxB - minB);
+    if (area >= best) continue;
+    best = area;
+    // Back from (along the edge, across it) to (x, y), in the order
+    // `appendHull` writes (positive turns).
+    const at = (a: number, b: number) => [a * ux - b * uy, a * uy + b * ux];
+    corners = [...at(minA, minB), ...at(maxA, minB), ...at(maxA, maxB), ...at(minA, maxB)];
+  }
+  if (corners.length === 0) return;
+  const cx = (corners[0] + corners[4]) / 2;
+  const cy = (corners[1] + corners[5]) / 2;
+  const outward = (v: number, centre: number) =>
+    Math.max(0, Math.min(SPAN, v < centre ? Math.floor(v) : Math.ceil(v)));
+  out.length = from;
+  for (let k = 0; k < 4; k++) {
+    out.push(outward(corners[k * 2], cx), outward(corners[k * 2 + 1], cy));
+  }
+}
+
+/** Every unit of an index as its smallest enclosing rectangle (the first fallback). */
+function rectangles(index: VolumeIndex): VolumeIndex {
+  const units = index.top.length;
+  const hullStarts = new Uint32Array(units + 1);
+  const hull: number[] = [];
+  for (let u = 0; u < units; u++) {
+    hullStarts[u] = hull.length / 2;
+    const from = hull.length;
+    const n = index.hullStarts[u + 1] - index.hullStarts[u];
+    for (let p = index.hullStarts[u]; p < index.hullStarts[u + 1]; p++) {
+      hull.push(index.hull[p * 2], index.hull[p * 2 + 1]);
+    }
+    if (n > 4) enclosingRectangle(hull, from, n);
+  }
+  hullStarts[units] = hull.length / 2;
+  return finishIndex(index.unitM, index.originM, hullStarts, Uint16Array.from(hull), index.top);
+}
+
+/**
+ * The grid's cells as the units, each as tall as its tallest building (the
+ * last fallback): at most {@link GRID}² units whatever the tile holds, so
+ * never more than {@link CELL_INDEX_MAX_BYTES}. Coarse — a street narrower
+ * than a cell rises to its buildings — but bounded.
+ */
+function cells(index: VolumeIndex): VolumeIndex {
+  const hull: number[] = [];
+  const starts: number[] = [];
+  const tops: number[] = [];
+  for (let cy = 0; cy < GRID; cy++) {
+    for (let cx = 0; cx < GRID; cx++) {
+      const top = index.cellTop[cy * GRID + cx];
+      if (top <= 0) continue;
+      const x0 = cx * CELL;
+      const y0 = cy * CELL;
+      const x1 = Math.min(SPAN, x0 + CELL - 1);
+      const y1 = Math.min(SPAN, y0 + CELL - 1);
+      starts.push(hull.length / 2);
+      hull.push(x0, y0, x1, y0, x1, y1, x0, y1);
+      tops.push(top);
+    }
+  }
+  starts.push(hull.length / 2);
+  return finishIndex(
+    index.unitM,
+    index.originM,
+    Uint32Array.from(starts),
+    Uint16Array.from(hull),
+    Float32Array.from(tops),
+  );
+}
+
+/**
  * The volume index of a packed tile mesh: per unit (`polygonStarts`), the
- * convex hull of its lowest vertices and its highest `z`. Units index the
- * mesh's own (`polygonBoxes`, the grounder's anchors), one for one.
+ * convex hull of its lowest vertices — a rounder footprint than
+ * `maxFootprintVertices` is its smallest enclosing rectangle — and its highest
+ * `z`. An index over `maxBytes` falls back to every footprint's rectangle,
+ * then to the grid's cells, so it never holds more (for any `maxBytes` of at
+ * least {@link CELL_INDEX_MAX_BYTES}).
  *
  * Measured on the mesh worker: see `docs/MAP_CAMERA_CLEARANCE.md` → Cost.
  */
-export function meshVolumes(mesh: VolumeSource): VolumeIndex {
+export function meshVolumes(
+  mesh: VolumeSource,
+  limits: VolumeLimits = UNLIMITED_VOLUMES,
+): VolumeIndex {
   // The units' vertex runs cross chunk seams only in the abstract (every
   // mesh is one chunk today, `packing.ts`); joined, they never do.
   const position =
@@ -226,6 +374,8 @@ export function meshVolumes(mesh: VolumeSource): VolumeIndex {
   const hullStarts = new Uint32Array(units + 1);
   const top = new Float32Array(units);
   const hull: number[] = [];
+  // Inside the function: `packing.ts` imports this module too.
+  const footZ = Math.round(FOOT_M * Z_UNITS_PER_METRE);
   for (let u = 0; u < units; u++) {
     const from = starts[u];
     const to = u + 1 < units ? starts[u + 1] : vertices;
@@ -239,21 +389,28 @@ export function meshVolumes(mesh: VolumeSource): VolumeIndex {
     let n = 0;
     if (keys.length < to - from) keys = new Uint32Array(Math.max(keys.length * 2, to - from));
     for (let v = from; v < to; v++) {
-      if (position[v * 4 + 2] > minZ + FOOT_Z) continue;
+      if (position[v * 4 + 2] > minZ + footZ) continue;
       keys[n++] = position[v * 4] * 65_536 + position[v * 4 + 1];
     }
     hullStarts[u] = hull.length / 2;
-    if (n > 0) appendHull(keys, n, hull);
+    if (n > 0) {
+      const at = hull.length;
+      const count = appendHull(keys, n, hull);
+      if (count > limits.maxFootprintVertices) enclosingRectangle(hull, at, count);
+    }
     top[u] = to > from ? maxZ / Z_UNITS_PER_METRE : 0;
   }
   hullStarts[units] = hull.length / 2;
-  return finishIndex(
+  const index = finishIndex(
     mesh.unitM,
     [mesh.originM[0], mesh.originM[1]],
     hullStarts,
     Uint16Array.from(hull),
     top,
   );
+  if (volumeBytes(index) <= limits.maxBytes) return index;
+  const boxed = rectangles(index);
+  return volumeBytes(boxed) <= limits.maxBytes ? boxed : cells(index);
 }
 
 /** Columns lower than this are ground, a plinth or a lawn: not an obstacle. */
