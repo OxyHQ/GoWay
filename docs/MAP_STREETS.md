@@ -236,27 +236,29 @@ crash) starts a new atlas and the renderer re-meshes everything.
 
 ## Terrain and depth
 
-- **On the drawn ground**: each vertex reads its tile's ground grid in the
-  vertex shader — the same grid the buildings, trees and city life stand on
-  (the engine's one `Ground`, `terrainGround.ts`: the DEM sampled at its own
-  pixel centres, 66² for a z15 tile) — from one float texture holding every
-  street tile's grid in its own slot (`groundAtlas.ts`), bilinearly between
-  the four pixel centres around it: MapLibre's own `get_elevation`. No
-  per-vertex CPU work, and one material per kind for every tile.
-- **Bent where the terrain bends**: the drawn terrain is creased along the
-  lines through the DEM's pixel centres (≈14 m apart at Barcelona's latitude)
-  and a GPU draws a triangle flat, so a triangle across a crease cuts under a
-  ridge — a junction polygon is 30 m of asphalt with no vertex inside it. The
-  worker cuts every surface, tint and painted word along those lines, and adds
-  a point to every painted line where it crosses one (`groundLattice.ts`; a
-  line is never cut ACROSS: its vertices are centre points the shader widens);
-  the profile's `streets.groundSubdivision` adds the lines halfway between
-  (high). Strips are also cut every 6 m along. Measured, the terrain over the
-  street on the Mallorca–Marina tile: 22.5% of it on `main` (the sampler read a
-  coarser DEM tile through a 33² grid), 0.42% with the right ground but uncut,
-  0.02% cut (`MAP_TERRAIN_GLOBE.md` → "Everything on the drawn ground").
-  The cut is computed from the DEM's lattice before any terrain is on (GoWay's
-  DEM, `TERRAIN_LATTICE`), so tilting the map never re-meshes a tile.
+- **On the drawn ground, every layer on one plane**: the street stands on
+  MapLibre's own terrain mesh on its z15 tile — 128 squares a side, each corner
+  the DEM read bilinearly between pixel centres, each square two flat triangles
+  split north-west to south-east — each corner raised by the most a finer
+  terrain tile rises above it nearby (`terrainGround.ts` → `streetGround`; why
+  and how much: `MAP_TERRAIN_GLOBE.md` → "Everything on the drawn ground").
+  The corners of every street tile sit in their own layer of one float array
+  texture (`groundAtlas.ts`, 133² with two past each edge), read facet-wise in
+  the vertex shader: no per-vertex CPU work, one material per kind for every
+  tile.
+- **Cut to the facets**: a GPU draws a triangle flat, the street is several
+  layers of different triangles, and a junction polygon is 30 m of asphalt
+  with no vertex inside it — so the worker cuts every surface, tint, crossing,
+  arrow and word along the mesh's lines and diagonals, and adds a point to
+  every painted line where it crosses one (`groundLattice.ts`; a line is never
+  cut ACROSS: its vertices are centre points the shader widens). Every piece
+  then lies flat on one facet, so the asphalt never rises through the paint and
+  the terrain never through the asphalt. Measured on Mallorca–Marina: the
+  terrain over 22.5% of the street on `main` (the sampler read a coarser DEM
+  tile through a 33² grid), and with every vertex on the bilinear DEM, cut, the
+  asphalt over 6.8% of the paint; now 0% of either. Strips are also cut every
+  6 m along. The cut is made for MapLibre's mesh before any terrain is on, so
+  tilting the map never re-meshes a tile.
 - **No z-fighting**: 6 cm of lift over the ground, and coplanar layers
   (paving, asphalt, sidewalk, tint, paint) are told apart by a per-layer depth
   nudge toward the camera in clip space (`2e-6 · layer · w`) — a polygon
@@ -333,8 +335,8 @@ noisy):
 | Triangles drawn | the profile's `streets.drawTriangles`: 400 k / 900 k / 2 M — nearest first; past it a tile draws its simplified level, then nothing | same |
 | Meshes cached | twice the tiles drawn, least recently used evicted | `STREET_BUDGET.cachedPerDrawn` |
 | Requests in flight | 3, one worker | `maxInFlight` |
-| Ground grids sampled per frame | 2 new ones (4,356 terrain reads each, ~2 ms); grids the engine already holds are free | `groundsPerFrame` |
-| Cut along the terrain's lattice | 1 line per DEM pixel (low, medium), 2 (high): ~2× / ~3× an uncut tile's surface triangles | the profile's `streets.groundSubdivision` |
+| Ground grids sampled per frame | 2 new ones (4,356 terrain reads each, ~2 ms, plus the street's 133² corners, ~1 ms); grids the engine already holds are free | `groundsPerFrame` |
+| Cut to the terrain's facets | ~4.5× an uncut tile's surface triangles (Mallorca–Marina 55 k → 248 k), within `streets.drawTriangles` | `groundLattice.ts` |
 | Typical street view (z18.4, 55°) | 2 tiles, ~115 k triangles, 4 draw calls | — |
 | Main thread per frame | selection + placement only; measured within the city engine's `frameCpuMs` (2–15 ms on SwiftShader, dominated by the GPU emulation) | — |
 

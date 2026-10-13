@@ -77,6 +77,12 @@ export type GroundSampler = (lng: number, lat: number) => number;
 export interface GroundLattice {
   zoom: number;
   tileSize: number;
+  /**
+   * Squares a side of MapLibre's terrain mesh on each terrain tile
+   * (`Terrain.meshSize`): the facets the street detail stands on
+   * (`facetAt`, `cityStreets/groundLattice.ts`).
+   */
+  meshCells: number;
 }
 
 /**
@@ -85,7 +91,7 @@ export interface GroundLattice {
  * `city3dGroundLattice.test.ts`; not imported, the relief is another chunk).
  * What a street tile is cut for before any terrain is on.
  */
-export const TERRAIN_LATTICE: GroundLattice = { zoom: 12, tileSize: 512 };
+export const TERRAIN_LATTICE: GroundLattice = { zoom: 12, tileSize: 512, meshCells: 128 };
 
 export const GROUND = {
   /**
@@ -239,8 +245,10 @@ export function createGround(
  */
 export function gridAt(grid: GroundGrid, u: number, v: number): number {
   const { values, cells, size } = grid;
-  const x = Math.max(0, Math.min(1, u)) * cells + 0.5;
-  const y = Math.max(0, Math.min(1, v)) * cells + 0.5;
+  // As far as the grid reaches — a pixel past each edge, where geometry owned
+  // by this tile overhangs it — and held at its last sample beyond.
+  const x = Math.max(0, Math.min(cells + 1, u * cells + 0.5));
+  const y = Math.max(0, Math.min(cells + 1, v * cells + 0.5));
   const i = Math.min(cells, Math.floor(x));
   const j = Math.min(cells, Math.floor(y));
   const fx = x - i;
@@ -250,6 +258,138 @@ export function gridAt(grid: GroundGrid, u: number, v: number): number {
   const c = values[(j + 1) * size + i];
   const d = values[(j + 1) * size + i + 1];
   return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+}
+
+/**
+ * The ground the street detail stands on, at `u` east, `v` south across the
+ * grid's tile: MapLibre's terrain mesh on THAT tile as a terrain tile — `cells`
+ * squares a side (`GroundLattice.meshCells`, 128), each corner the DEM read
+ * bilinearly ({@link gridAt}, `get_elevation`), each square two flat triangles
+ * split from its north-west corner to its south-east one, MapLibre's own
+ * split. For a z15 street tile that is exactly the mesh MapLibre draws on its
+ * z15 terrain tile (`city3dTerrainSampler.test.ts`); finer terrain tiles
+ * subdivide each facet toward {@link gridAt}.
+ *
+ * Why facets, not the bilinear surface: a GPU draws a triangle flat, and the
+ * street's layers — asphalt, kerbs, paint, words — are different triangles
+ * over the same ground. Over a curved ground two layers' flat pieces part (by
+ * centimetres where the DEM is creased) and the asphalt rose through the
+ * paint: letters missing, measured on Balmes and Margarit. Every street piece
+ * is cut to one facet (`cityStreets/groundLattice.ts`), so every layer lies on
+ * the same plane there. The vertex shader does the same arithmetic
+ * (`cityStreets/streetMaterials.ts`).
+ */
+export function facetAt(grid: GroundGrid, u: number, v: number, cells: number): number {
+  const x = u * cells;
+  const y = v * cells;
+  const i = Math.floor(x);
+  const j = Math.floor(y);
+  const fx = x - i;
+  const fy = y - j;
+  const at = (di: number, dj: number) => gridAt(grid, (i + di) / cells, (j + dj) / cells);
+  const tl = at(0, 0);
+  const br = at(1, 1);
+  if (fy >= fx) {
+    const bl = at(0, 1);
+    return tl + (bl - tl) * fy + (br - bl) * fx;
+  }
+  const tr = at(1, 0);
+  return tl + (tr - tl) * fx + (br - tr) * fy;
+}
+
+/**
+ * Corners past each edge of a tile that its street ground holds: a piece the
+ * tile owns (a junction, a strip's last step) overhangs it by up to a DEM
+ * pixel, two mesh squares.
+ */
+export const STREET_GROUND_MARGIN = 2;
+
+/**
+ * The ground the street detail stands on, per corner of MapLibre's terrain
+ * mesh over a street tile (`cells` squares a side, {@link STREET_GROUND_MARGIN}
+ * past each edge), row-major from the north-west: each corner's height on
+ * the z15 mesh ({@link facetAt}), RAISED by the most the terrain can rise
+ * above that mesh in the squares around the corner on any finer terrain tile.
+ *
+ * Inside a square the DEM is one bilinear patch (the mesh's lines run on and
+ * halfway between the pixel centres), whose corners the facets meet; it
+ * departs from the two facets only by its twist `d = tl + br − tr − bl`, by
+ * `−d · fx · (1 − fy)` — above them where `d < 0`, by at most `−d / 4` at the
+ * diagonal's middle, and finer terrain meshes interpolate that patch, so they
+ * rise no higher. Each corner takes the largest such rise of the (up to four)
+ * squares round it; read facet-wise ({@link streetGroundAt}), the result is
+ * at or above every square's rise, so the street is never under the terrain
+ * MapLibre draws at street level (z15–z18 tiles; `city3dTerrainSampler.test.ts`),
+ * and still flat on each facet, so the street's layers stay one plane.
+ * Measured on Barcelona street tiles: 1.6 cm at the median, 6–9 cm at p95.
+ */
+export interface StreetGround {
+  values: Float32Array;
+  /** Mesh squares across the tile. */
+  cells: number;
+  /** Corners across the grid: `cells + 1 + 2 · STREET_GROUND_MARGIN`. */
+  size: number;
+}
+
+export function streetGround(grid: GroundGrid, cells: number): StreetGround {
+  const m = STREET_GROUND_MARGIN;
+  const size = cells + 1 + 2 * m;
+  const heights = new Float64Array(size * size);
+  for (let j = 0; j < size; j++) {
+    for (let i = 0; i < size; i++)
+      heights[j * size + i] = gridAt(grid, (i - m) / cells, (j - m) / cells);
+  }
+  // Each square's rise above its facets: −twist / 4 where the twist is negative.
+  const rise = new Float64Array((size - 1) * (size - 1));
+  for (let j = 0; j + 1 < size; j++) {
+    for (let i = 0; i + 1 < size; i++) {
+      const twist =
+        heights[j * size + i] +
+        heights[(j + 1) * size + i + 1] -
+        heights[j * size + i + 1] -
+        heights[(j + 1) * size + i];
+      rise[j * (size - 1) + i] = Math.max(0, -twist) / 4;
+    }
+  }
+  const values = new Float32Array(size * size);
+  for (let j = 0; j < size; j++) {
+    for (let i = 0; i < size; i++) {
+      let most = 0;
+      for (const [di, dj] of [
+        [-1, -1],
+        [0, -1],
+        [-1, 0],
+        [0, 0],
+      ]) {
+        const ci = i + di;
+        const cj = j + dj;
+        if (ci < 0 || cj < 0 || ci >= size - 1 || cj >= size - 1) continue;
+        most = Math.max(most, rise[cj * (size - 1) + ci]);
+      }
+      values[j * size + i] = heights[j * size + i] + most;
+    }
+  }
+  return { values, cells, size };
+}
+
+/** {@link StreetGround} at `u` east, `v` south across its tile: facet-wise, as the street's vertex shader reads it. */
+export function streetGroundAt(ground: StreetGround, u: number, v: number): number {
+  const { values, cells, size } = ground;
+  const m = STREET_GROUND_MARGIN;
+  const x = Math.max(0, Math.min(size - 1, u * cells + m));
+  const y = Math.max(0, Math.min(size - 1, v * cells + m));
+  const i = Math.min(size - 2, Math.floor(x));
+  const j = Math.min(size - 2, Math.floor(y));
+  const fx = x - i;
+  const fy = y - j;
+  const tl = values[j * size + i];
+  const br = values[(j + 1) * size + i + 1];
+  if (fy >= fx) {
+    const bl = values[(j + 1) * size + i];
+    return tl + (bl - tl) * fy + (br - bl) * fx;
+  }
+  const tr = values[j * size + i + 1];
+  return tl + (tr - tl) * fx + (br - tr) * fy;
 }
 
 export interface PolygonGround {

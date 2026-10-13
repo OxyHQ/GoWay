@@ -275,15 +275,15 @@ Street detail, building feet, tree trunks, city life, models and live vehicles
 all stand on ONE ground (`terrainGround.ts` → `Ground`), and that ground is
 the surface MapLibre's terrain draws — not a copy of it at another resolution.
 
-**What MapLibre draws.** Each terrain tile is a 128 × 128-cell mesh; each
+**What MapLibre draws.** Each terrain tile is a 128 × 128-square mesh; each
 vertex reads the DEM bilinearly between pixel CENTRES (`get_elevation` in its
 vertex prelude; `Terrain.getElevationSampler` is the CPU twin), times the
-exaggeration; the GPU draws each triangle flat between its vertices. A terrain
-tile at zoom `z` reads the DEM tile at `z − deltaZoom` (`TerrainTileManager`,
-`deltaZoom` 1), at most the source's max zoom. At street level (terrain tiles
-z15–z18) that is always the z12 tile, and the mesh has two to sixteen vertices
-per DEM pixel ON the lines through the pixel centres, so it differs from the
-bilinear DEM only by the bilinear twist inside a pixel's square.
+exaggeration; each square is two flat triangles split from its north-west
+corner to its south-east one. A terrain tile at zoom `z` reads the DEM tile at
+`z − deltaZoom` (`TerrainTileManager`, `deltaZoom` 1), at most the source's
+max zoom: at street level (terrain tiles z15–z18) always the z12 tile. A z15
+terrain tile has two mesh lines a DEM pixel, on and halfway between the pixel
+centres; finer ones subdivide it toward the bilinear DEM.
 
 **What GoWay reads.**
 
@@ -293,48 +293,73 @@ bilinear DEM only by the bilinear twist inside a pixel's square.
   z11 tile: Barcelona at 29 m pixels under a terrain drawn from 14 m ones.
 - **The same resolution:** each tile's grid (`GroundGrid`) is the DEM sampled
   at its own pixel centres, one past each edge (66 × 66 for a z15 tile, 130 ×
-  130 for z14), so reading it bilinearly anywhere IS MapLibre's bilinear read.
-  It used to be 33 × 33 whatever the DEM.
-- **The same creases:** a GPU draws the street detail flat between its own
-  vertices too, and a 30 m junction polygon has none inside it. The street
-  worker cuts every surface along the lattice through the DEM's pixel centres
-  (and halfway between them on the high preset) and adds a point to every
-  painted line where it crosses one (`cityStreets/groundLattice.ts`,
-  `MAP_STREETS.md` → Terrain and depth).
+  130 for z14), so reading it bilinearly anywhere IS MapLibre's bilinear read
+  (`gridAt`). It used to be 33 × 33 whatever the DEM. Buildings, trees, city
+  life and models stand on it.
+- **The same facets, for the street detail:** a GPU draws a triangle flat, the
+  street is several layers of different triangles (asphalt, sidewalks, kerbs,
+  paint, words), and a 30 m junction polygon has no vertex inside it. Over the
+  bilinear DEM, every vertex on it, the layers' flat pieces still parted: the
+  asphalt rose through the paint (Balmes: 8% of the paint under the asphalt,
+  by up to 12 cm — letters missing from painted names) and the terrain through
+  the asphalt. So the street stands on MapLibre's own mesh on its z15 tile
+  (`facetAt`), and the street worker cuts every surface, tint and word along
+  the mesh's lines and diagonals and adds a point to every painted line where
+  it crosses one (`cityStreets/groundLattice.ts`, `MAP_STREETS.md` → Terrain
+  and depth): every piece of every layer lies flat on one facet, so the layers
+  share its plane.
+- **Never under a finer terrain tile:** inside a z15 square the DEM is one
+  bilinear patch whose corners the facets meet; it departs from them only by
+  its twist `d = tl + br − tr − bl`, rising above them where `d < 0`, by at most
+  `−d / 4`, and finer meshes interpolate that patch. Each corner of the street's
+  ground is raised by the largest such rise of the squares round it
+  (`streetGround`), read facet-wise (`streetGroundAt`): never under the
+  terrain on z15–z18 tiles, still flat on each facet. The raise is the data's
+  own: on Barcelona's street tiles 1.6 cm at the median, 6–9 cm at p95, 9–19 cm
+  at p99 (DEM noise), 0 where the patch is not twisted.
 
-**Measured** (the Mallorca–Marina report: terrain triangles across the lanes,
-markings and painted name of Carrer de Mallorca; the street tile 15/16581/12236
-on goway.to's own DEM, its real road tile, MapLibre's mesh rebuilt from the
-same z12 pixels; "covered" = where the drawn terrain rises above the street's
-6 cm lift):
+**Measured.** The street tiles of the reports, their real road tiles, the z12
+DEM goway.to serves, MapLibre's meshes rebuilt from the same pixels; "terrain
+over" = where the drawn terrain rises above the street's surfaces before its
+6 cm lift (`main`'s column with the lift), "paint under" = where the asphalt
+rises above a tint, crossing, arrow or word:
 
-| | Terrain over the street | Worst |
+| Mallorca–Marina 15/16581/12236 | Terrain over the street (z16 tiles) | Paint under the asphalt |
 | --- | ---: | ---: |
-| `main`: z11 DEM, 33² grid | 22.5% of its area | 1.75 m |
-| z12 DEM, 33² grid | 15.6% | 1.15 m |
-| z12 DEM at every vertex, uncut | 0.42% | 0.25 m |
-| …cut on the lattice (low, medium) | 0.02% | 0.06 m |
+| `main`: z11 DEM, 33² grid (with the 6 cm lift) | **22.5%**, worst 1.75 m | — |
+| bilinear z12 DEM at every vertex, uncut | 0.44%, worst 0.25 m | — |
+| …cut along the mesh | 0.001%, worst 6 cm | **6.8%**, worst 5 cm |
+| this: on the facets, raised by the twist | **0.000%** (z15–z18) | **0.00%** |
 
-On Montjuïc (15/16580/12240) and upper Balmes (15/16579/12237), z17 terrain
-tiles: uncut 1.1% / 1.7% (worst 0.66 / 0.40 m); cut at the pixel centres
-0.06% / 0.10%; cut at half pixels too (high) 0.01% / 0.00%. Against MapLibre's
-own `Terrain` and `DEMData` (`city3dTerrainSampler.test.ts`): identical at
-every mesh vertex, and between them within 2.8 cm on z15 terrain tiles, 7 mm on
-z16, 1.7 mm on z17, 0.4 mm on z18.
+Upper Balmes 15/16579/12237 and Carrer de Margarit (Montjuïc) 15/16580/12240,
+the same way: on the bilinear DEM, cut, the paint is under the asphalt over
+5.1% / 4.2% of it; on the bare z15 facets the terrain of z16–z18 tiles rises
+above the street over 0.05–0.09% / 0.37–0.54% of it (worst 0.2 / 0.37 m); with
+the raise, 0.000% and 0.00% on both. Against MapLibre's own `Terrain`,
+`DEMData` and mesh (`city3dTerrainSampler.test.ts`): the sampler and the grid
+are identical at every mesh vertex and within 2.8 cm / 7 mm / 1.7 mm / 0.4 mm
+between vertices on z15 / z16 / z17 / z18 tiles; the facets ARE the z15 mesh;
+the street's ground is never under any of them.
 
-**What it does not match.** Terrain tiles kilometres out (z ≤ 12) are drawn
-from a COARSER DEM tile than the street level's; nothing GoWay stands on the
-ground is drawn there. While the z12 DEM tile is still loading, MapLibre draws
-from a loaded parent and so does the sampler (the same `getSourceTile`); the
-ground is re-sampled when the tile arrives.
+**What it does not match.** Terrain tiles kilometres out (z ≤ 14) are drawn
+from coarser meshes or DEM tiles than the street level's; the street detail is
+not drawn there. While the z12 DEM tile is still loading, MapLibre draws from
+a loaded parent and so does the sampler (the same `getSourceTile`); the ground
+is re-sampled when the tile arrives.
 
 **Cost.** ~0.4 µs a sample (headless Chromium): a z15 grid is 4,356 samples
 (~2 ms), a z14 one 16,900 (~7 ms), once per terrain, cached, one tile per
-frame (`GROUND_TILES_PER_FRAME`, the streets' `groundsPerFrame`). The cut
-doubles a street tile's surface triangles at the pixel centres (Barcelona
-15/16581/12236: 55 k → 112 k; buffers 2.8 → 4.3 MB) and triples them with the
-half lines (173 k, 5.9 MB) — the profile's `streets.groundSubdivision`
-(1 on low and medium, 2 on high), counted against `streets.drawTriangles`.
+frame (`GROUND_TILES_PER_FRAME`, the streets' `groundsPerFrame`); a street
+tile's 133² corners (`streetGround`) another ~1 ms. The cut is the big one: the
+DEM's noise twists nearly every square, so a street tile's surfaces go from
+55 k to 248 k triangles (Mallorca–Marina; Balmes 61 k → 276 k), counted
+against the profile's `streets.drawTriangles` (farther tiles fall back to the
+simplified level, then out, sooner), meshed in the worker (~0.15–0.25 s a
+tile). Each tile's ground slot is a layer of one array texture, uploaded on
+its own (69 KB); a tile's two meshes go to the GPU in separate frames within
+the profile's upload budget. Cutting only where facets are not coplanar would
+win most of it back on a smooth DEM, and nothing on this one; that needs the
+ground in the worker, and is not done here.
 
 ## Buildings on terrain
 

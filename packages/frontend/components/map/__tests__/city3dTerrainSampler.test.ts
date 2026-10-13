@@ -25,6 +25,9 @@ import { dirname, join } from 'node:path';
 import { followTerrain } from '@/components/map/city3dGround.web';
 import {
   createGround,
+  facetAt,
+  streetGround,
+  streetGroundAt,
   type GroundLattice,
   type GroundSampler,
   gridAt,
@@ -188,7 +191,7 @@ describe('the drawn ground', () => {
   const grid = ground.grid(STREET_TILE);
 
   test('the host samples the DEM tile the terrain draws, not the coarser one at its max zoom', () => {
-    expect(host.lattice).toEqual({ zoom: DEM_ZOOM, tileSize: DEM_SIZE });
+    expect(host.lattice).toEqual({ zoom: DEM_ZOOM, tileSize: DEM_SIZE, meshCells: 128 });
     // A z15 terrain tile reads the z12 DEM tile — the one MapLibre draws at street level.
     const drawn = new OverscaledTileID(15, 0, 15, STREET_TILE.x, STREET_TILE.y);
     let ours = 0;
@@ -256,4 +259,69 @@ describe('the drawn ground', () => {
       expect(between).toBeLessThan(z >= 17 ? 0.01 : 0.04);
     });
   }
+
+  test("the street's facets ARE MapLibre's z15 terrain mesh on its tile, everywhere", () => {
+    const { z, x, y } = STREET_TILE;
+    const mesh = drawnMesh(terrain, z, x, y);
+    let gap = 0;
+    for (let t = 0; t < mesh.indices.length; t += 3) {
+      const [a, b, c] = [mesh.indices[t], mesh.indices[t + 1], mesh.indices[t + 2]];
+      for (const [wa, wb, wc] of [
+        [1, 0, 0],
+        [1 / 3, 1 / 3, 1 / 3],
+        [0.5, 0.5, 0],
+        [0.2, 0.1, 0.7],
+      ]) {
+        const px =
+          mesh.positions[a * 3] * wa + mesh.positions[b * 3] * wb + mesh.positions[c * 3] * wc;
+        const py =
+          mesh.positions[a * 3 + 1] * wa +
+          mesh.positions[b * 3 + 1] * wb +
+          mesh.positions[c * 3 + 1] * wc;
+        const drawn = mesh.height[a] * wa + mesh.height[b] * wb + mesh.height[c] * wc;
+        gap = Math.max(gap, Math.abs(facetAt(grid, px / EXTENT, py / EXTENT, 128) - drawn));
+      }
+    }
+    expect(gap).toBeLessThan(1e-3);
+  });
+
+  test("the street's ground is never under MapLibre's terrain at street level, and on the z15 mesh where it is not twisted", () => {
+    const street = streetGround(grid, 128);
+    let raised = 0;
+    for (const z of [15, 16, 17, 18]) {
+      const scale = 2 ** (z - STREET_TILE.z);
+      const tx = STREET_TILE.x * scale + (scale >> 1);
+      const ty = STREET_TILE.y * scale + (scale >> 1);
+      const mesh = drawnMesh(terrain, z, tx, ty);
+      let under = 0;
+      for (let t = 0; t < mesh.indices.length; t += 3) {
+        const [a, b, c] = [mesh.indices[t], mesh.indices[t + 1], mesh.indices[t + 2]];
+        for (const [wa, wb, wc] of [
+          [1, 0, 0],
+          [1 / 3, 1 / 3, 1 / 3],
+          [0.5, 0.5, 0],
+          [0, 0.5, 0.5],
+        ]) {
+          const px =
+            mesh.positions[a * 3] * wa + mesh.positions[b * 3] * wb + mesh.positions[c * 3] * wc;
+          const py =
+            mesh.positions[a * 3 + 1] * wa +
+            mesh.positions[b * 3 + 1] * wb +
+            mesh.positions[c * 3 + 1] * wc;
+          const drawn = mesh.height[a] * wa + mesh.height[b] * wb + mesh.height[c] * wc;
+          const [mx, my] = mercatorOf(z, tx, ty, px, py);
+          const n = 2 ** STREET_TILE.z;
+          const u = mx * n - STREET_TILE.x;
+          const v = my * n - STREET_TILE.y;
+          const ours = streetGroundAt(street, u, v);
+          under = Math.max(under, drawn - ours);
+          raised = Math.max(raised, ours - facetAt(grid, u, v, 128));
+        }
+      }
+      expect(under).toBeLessThan(1e-3);
+    }
+    // Raised by the twist alone: centimetres on this ground, never a constant.
+    expect(raised).toBeGreaterThan(0);
+    expect(raised).toBeLessThan(0.1);
+  });
 });

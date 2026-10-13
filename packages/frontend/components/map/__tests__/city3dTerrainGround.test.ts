@@ -100,12 +100,14 @@ describe('sampleGroundGrid', () => {
 describe('gridAt', () => {
   // West 0 → east 10, north 0 → south 100: a plane, which bilinear reads exactly.
   const grid = planeGrid(1, (u, v) => 10 * u + 100 * v);
-  test('corners, centre, and clamping outside the tile', () => {
+  test('corners, centre, and held at the last sample past the edge', () => {
     expect(gridAt(grid, 0, 0)).toBeCloseTo(0, 5);
     expect(gridAt(grid, 1, 0)).toBeCloseTo(10, 5);
     expect(gridAt(grid, 0, 1)).toBeCloseTo(100, 5);
     expect(gridAt(grid, 0.5, 0.5)).toBeCloseTo(55, 5);
-    expect(gridAt(grid, -3, 9)).toBeCloseTo(100, 5);
+    // The grid reaches half a cell past each edge (its samples at −½ and 1½).
+    expect(gridAt(grid, -0.25, 0)).toBeCloseTo(-2.5, 5);
+    expect(gridAt(grid, -3, 9)).toBeCloseTo(-5 + 150, 5);
   });
 });
 

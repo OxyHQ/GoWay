@@ -21,10 +21,8 @@ export type StreetWorkerRequest =
       /** Absolute glyph template of the map's style (`{fontstack}`, `{range}`), or `null`: no words. */
       glyphs: string | null;
       fontstack: string;
-      /** The terrain DEM's pixels across the tile, to cut the meshes along (`groundLattice.ts`). */
-      groundCells: number;
-      /** Lattice lines per DEM pixel (the profile's `streets.groundSubdivision`). */
-      groundSubdivision: number;
+      /** Squares a side of the terrain mesh on the tile, to cut the meshes to (`groundLattice.ts`). */
+      groundMeshCells: number;
     }
   | { type: 'cancel'; id: number };
 

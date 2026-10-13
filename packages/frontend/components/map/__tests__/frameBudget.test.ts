@@ -352,35 +352,36 @@ const FRAME_BUDGETS: Record<string, Record<QualityTier, Budget>> = {
   },
   // The street view with the street detail on (`MAP_STREETS.md`): +8 draws
   // (4 road tiles, 2 each), ~61 k triangles, ~4 MB over 'street'.
-  // Raised with the terrain lattice (`cityStreets/groundLattice.ts`): the
-  // street meshes are cut where the drawn terrain creases, so they no longer
-  // dip under it — +7% triangles at low and medium, +11% at high (cut at half
-  // pixels too), the same draws; the ground grids are the DEM's own pixels
-  // (66² a slot, was 33²). Measured on this branch, plus 10% / 25% as above.
+  // Raised with the terrain's facets (`cityStreets/groundLattice.ts`): the
+  // street meshes are cut to MapLibre's own terrain mesh, so no layer dips
+  // under the terrain or under another — +30% frame triangles at low, +21% at
+  // medium and high, the same draws; each tile's ground slot holds the mesh's
+  // 133² corners (was a 33² grid), a layer of an array texture uploaded on
+  // its own. Measured on this branch, plus 10% / 25%.
   'street-detail': {
     low: {
       draws: 38,
-      triangles: 914_580,
+      triangles: 1_106_596,
       offscreenPasses: 0,
-      loadUploadBytes: 20_056_520,
+      loadUploadBytes: 25_247_605,
       shadowRedraws: 0,
-      gpuBytes: 16_461_469,
+      gpuBytes: 20_939_569,
     },
     medium: {
       draws: 48,
-      triangles: 1_285_843,
+      triangles: 1_477_859,
       offscreenPasses: 0,
-      loadUploadBytes: 20_389_085,
+      loadUploadBytes: 25_295_050,
       shadowRedraws: 0,
-      gpuBytes: 22_495_647,
+      gpuBytes: 26_744_260,
     },
     high: {
       draws: 48,
-      triangles: 1_359_576,
+      triangles: 1_477_859,
       offscreenPasses: 0,
-      loadUploadBytes: 22_894_875,
+      loadUploadBytes: 25_291_690,
       shadowRedraws: 0,
-      gpuBytes: 42_004_992,
+      gpuBytes: 44_045_764,
     },
   },
   skyline: {
