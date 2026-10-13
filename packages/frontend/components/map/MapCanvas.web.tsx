@@ -73,6 +73,7 @@ import { mapStyleDefinition, presetAppearance } from '@/lib/map/style/catalogue'
 
 import type { City3dHandle } from './city3dLayer.web';
 import type { LiveLayerHandle } from './liveLayer.web';
+import { attachCameraClearance } from './cameraClearance.web';
 import {
   attachCameraReports,
   isGestureMove,
@@ -476,6 +477,16 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     // which is where the sun tracker was just restarted: aim it here.
     if (resume) settleSunLight({ latitude: start.latitude, longitude: start.longitude });
 
+    // The map's eye never inside a building or under the ground
+    // (`cameraClearance.web.ts`): every camera change — gestures, inertia,
+    // flyovers, tours, deep links — goes through MapLibre's
+    // `transformCameraUpdate`, and the buildings are the 3D city's, read live
+    // through the ref (none until the engine attaches; then the ground alone).
+    const clearance = attachCameraClearance(map, {
+      field: () => city3dRef.current?.clearance() ?? null,
+      eventData: PROGRAMMATIC,
+    });
+
     // The ONE animation clock (`perf/animationClock.ts`): everything that moves
     // by itself asks it for frames; it pauses when the tab is hidden or the
     // map has been left alone for the profile's idle time.
@@ -815,6 +826,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       document.removeEventListener('visibilitychange', onVisibility);
       clock.dispose();
       if (clockRef.current === clock) clockRef.current = null;
+      clearance.dispose();
       let camera: MapViewport | null = null;
       runEngineCommand('getCenter', () => {
         const centre = map.getCenter();

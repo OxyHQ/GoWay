@@ -91,6 +91,7 @@ import { treeColours } from './city3dTrees';
 // Type-only on purpose: the engine chunk imports these modules at runtime, and
 // a module two lazy chunks share is hoisted into the first-paint `__common`
 // chunk (see `engine3d/lazyChunk.ts`; `components/__tests__/engine3dChunk.test.ts`).
+import type { ClearanceField } from './engine/camera/clearance';
 import type { CitySun } from './engine/city3d/atmosphere';
 import type {
   CityEngine,
@@ -499,6 +500,12 @@ export interface City3dHandle {
    * point (`queryTerrainElevation` re-derives covering tiles per call).
    */
   ground(): ((longitude: number, latitude: number) => number) | null;
+  /**
+   * The buildings drawn, as the height field the map's eye must clear
+   * (`engine/camera/clearance.ts`), or `null` before the engine is up.
+   * `cameraClearance.web.ts` reads it on every camera change.
+   */
+  clearance(): ClearanceField | null;
   /** Remove the layer, free the engine, and show `building-3d` again. Idempotent. */
   detach(): void;
 }
@@ -1010,6 +1017,9 @@ export async function attachCity3d(
   return {
     ground() {
       return engine?.ground?.sample ?? null;
+    },
+    clearance() {
+      return detached ? null : (engine?.clearance ?? null);
     },
     addPass(pass) {
       const id = `${GOWAY_LAYER_PREFIX}${pass.id}`;

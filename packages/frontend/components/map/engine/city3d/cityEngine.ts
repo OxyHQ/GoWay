@@ -69,6 +69,9 @@ import {
   type TileCost,
 } from './lod';
 import type { CityCoverageArea } from '@/lib/map/cityTiles';
+
+import type { ClearanceField } from '../camera/clearance';
+import { createVolumeField, type ModelVolumes, type TileVolumes } from '../camera/field';
 import type { QualityProfile } from '@/lib/map/quality/profile';
 
 import type { AnimationClock } from '../../perf/animationClock';
@@ -348,6 +351,11 @@ export interface CityEngine {
   renderModels(view: CityView): void;
   /** The drawn ground everything stands on (`setGround`), or `null` on a flat map. */
   readonly ground: Ground | null;
+  /**
+   * The buildings held and the landmarks drawn, as the height field the
+   * camera must clear (`camera/clearance.ts`, `docs/MAP_CAMERA_CLEARANCE.md`).
+   */
+  readonly clearance: ClearanceField;
   /** Draw a pass with this engine's renderer. Not faded with the buildings: a pass owns its own visibility. */
   renderPass(pass: CityPass, view: CityView): void;
   /** The map's light, re-applied whenever `building-3d`'s would change (the sun). */
@@ -647,6 +655,45 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     transitions.drop(entry);
     disposeEntry(entry);
     grounder.forget(entry.key);
+    volumesVersion++;
+  });
+  // The camera's height field (`camera/field.ts`): the finest mesh held per
+  // tile and the landmarks drawn, re-listed only when one of them (or the
+  // ground) changed — a tile admitted or evicted, a landmark drawn or not.
+  let volumesVersion = 0;
+  let volumesListed = -1;
+  let volumeTiles: TileVolumes[] = [];
+  let volumeModels: ModelVolumes[] = [];
+  const listVolumes = () => {
+    if (volumesListed === volumesVersion) return;
+    volumesListed = volumesVersion;
+    const finest = new Map<string, { lod: Lod; tile: TileVolumes }>();
+    for (const entry of cache.values()) {
+      const volumes = entry?.packed?.volumes;
+      if (!entry?.packed || !volumes) continue;
+      const name = entry.key.slice(0, entry.key.indexOf('@'));
+      const known = finest.get(name);
+      if (known && known.lod <= entry.lod) continue;
+      const [z, x, y] = name.split('/').map(Number);
+      finest.set(name, {
+        lod: entry.lod,
+        tile: { tile: { z, x, y }, volumes, polygonBoxes: entry.packed.polygonBoxes },
+      });
+    }
+    volumeTiles = [...finest.values()].map((f) => f.tile);
+    volumeModels = landmarks.volumes();
+  };
+  const clearance = createVolumeField({
+    version: () => volumesVersion,
+    tiles: () => {
+      listVolumes();
+      return volumeTiles;
+    },
+    models: () => {
+      listVolumes();
+      return volumeModels;
+    },
+    ground: () => ground,
   });
   const scheduler = new TileScheduler<LodRequest>((t) => lodKey(tileKey(t), t.lod));
   const requests = new Map<number, LodRequest>();
@@ -763,11 +810,14 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       if ((status === 'drawn') === drawnLandmarks.has(id)) return;
       if (status === 'drawn') drawnLandmarks.add(id);
       else drawnLandmarks.delete(id);
+      volumesVersion++;
       rehide(id);
       options.onLandmarkStatus?.(id, status);
     },
     onLoadFailed: (id) => options.onLandmarkFailed?.(id),
     pageOrigin: typeof location !== 'undefined' ? location.origin : null,
+    // The eye must not enter them (`camera/clearance.ts`).
+    volumes: true,
   });
 
   // Models are drawn in their own pass (their own layer in the style), with
@@ -947,6 +997,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         incomplete.delete(next.key);
       }
       cache.put(next.key, entry, entry?.bytes ?? 0, frame, wanted);
+      if (entry?.packed?.volumes) volumesVersion++;
     }
     if (arrivals.length > 0) options.requestRepaint();
     reportStats(true);
@@ -1331,6 +1382,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       return ground;
     },
 
+    clearance,
+
     renderModels(view) {
       if (disposed || !models.active) return;
       probe?.enter('models');
@@ -1349,6 +1402,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       // buildings, trees, the street detail and city life (the grids), models,
       // landmarks and live vehicles (the same sampler, at their anchor).
       ground = sample ? createGround(sample, lattice) : null;
+      volumesVersion++;
       grounder.setGround(ground);
       models.setGround(sample);
       for (const overlay of overlays) overlay.setGround(ground);

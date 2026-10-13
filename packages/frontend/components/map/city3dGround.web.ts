@@ -46,7 +46,7 @@ const REFRESH_AFTER_MS = 250;
  * takes MapLibre's own `LngLat`, so one from `getCenter()` is reused rather
  * than importing maplibre-gl here.
  */
-function groundOf(
+export function groundOf(
   map: MapLibreMap,
   source: string,
 ): { sample: GroundSampler; lattice: GroundLattice } {
