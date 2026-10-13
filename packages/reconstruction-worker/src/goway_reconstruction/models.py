@@ -104,8 +104,47 @@ DENSE_DEPTH_MODEL_FILES = (
     ),
 )
 
+_ALIKED_COMMIT = "683d7c65197395c0b3f01ebe76e1084a27e73a65"
+_LIGHTGLUE_RELEASE = "https://github.com/cvg/LightGlue/releases/download/v0.1_arxiv"
+
+# Learned features for the camera solve (recon/features.py). ALIKED-n16 is the
+# descriptor both LightGlue checkpoints were trained on; RaCo only detects.
+ALIKED_MODEL = PinnedModel(
+    name="aliked-n16",
+    version=_ALIKED_COMMIT[:12],
+    filename="features/aliked-n16.pth",
+    url=f"https://github.com/Shiaoming/ALIKED/raw/{_ALIKED_COMMIT}/models/aliked-n16.pth",
+    sha256="5be8704840ed662d9d8c561bf7279c222092674e7eb05fd0feab94899e9d82f2",
+)
+
+ALIKED_LIGHTGLUE_MODEL = PinnedModel(
+    name="lightglue-aliked",
+    version="v0.1_arxiv",
+    filename="features/aliked_lightglue.pth",
+    url=f"{_LIGHTGLUE_RELEASE}/aliked_lightglue.pth",
+    sha256="d975e965b105311a6143194852297dff4f02aea5cc2e10cecfed966ca0e22503",
+)
+
+RACO_MODEL = PinnedModel(
+    name="raco",
+    version="v1.0.0",
+    filename="features/raco.pth",
+    url="https://github.com/cvg/RaCo/releases/download/v1.0.0/raco.pth",
+    sha256="79f0d862bb41abedd8dda33a9b0120f4dcd619c43a90398175bad1a019192e3a",
+)
+
+# "LightGlue+": LightGlue retrained on RaCo keypoints with ALIKED descriptors.
+RACO_LIGHTGLUE_MODEL = PinnedModel(
+    name="lightglue-raco-aliked",
+    version="v0.1_arxiv",
+    filename="features/raco_aliked_lightglue.pth",
+    url=f"{_LIGHTGLUE_RELEASE}/raco_aliked_lightglue.pth",
+    sha256="a804c3fe2851cc3c765cda6a9f412845893c8d8e2a3048f848d7f6ba172e6312",
+)
+
+FEATURE_MODELS = (ALIKED_MODEL, ALIKED_LIGHTGLUE_MODEL, RACO_MODEL, RACO_LIGHTGLUE_MODEL)
 PRIVACY_MODELS = (FACE_DETECTOR, PLATE_DETECTOR, INSTANCE_SEGMENTER)
-ALL_MODELS = (*PRIVACY_MODELS, *DEPTH_MODEL_FILES, *DENSE_DEPTH_MODEL_FILES)
+ALL_MODELS = (*PRIVACY_MODELS, *DEPTH_MODEL_FILES, *DENSE_DEPTH_MODEL_FILES, *FEATURE_MODELS)
 
 
 class ModelIntegrityError(RuntimeError):

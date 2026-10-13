@@ -5,6 +5,8 @@
     goway-worker status                      queue, ledger, cache, scratch, GPU
     goway-worker run [--max-jobs N] [--max-hours H]
     goway-worker drain                       finish the current job, then stop
+    goway-worker bench-sfm SCENE [--features sift aliked raco] [--train N]
+                                             solve one scene with each feature set
 
 Exit status is nonzero when ``doctor`` finds a blocking problem, so it can gate
 an automated start.
@@ -17,6 +19,7 @@ import json
 import logging
 import sys
 import time
+from pathlib import Path
 
 from . import __version__, config as config_module
 from .telemetry import free_disk_gb, gpu_state
@@ -236,6 +239,70 @@ def cmd_drain(cfg: config_module.WorkerConfig) -> int:
     return 0
 
 
+# Training budget of `bench-sfm --train`: the standard profile's, the same for
+# every feature set, and no depth prior, so the held-out PSNR compares the
+# cameras and nothing else.
+BENCH_MAX_GAUSSIANS = 1_500_000
+BENCH_LONG_EDGE = 1600
+BENCH_SH_DEGREE = 3
+
+
+def cmd_bench_sfm(cfg: config_module.WorkerConfig, scene: Path, feature_sets: list[str], train_iterations: int) -> int:
+    """Solve a scene (``frames.json``, ``images/``, ``masks/``: what a job leaves in its scratch) with each feature set."""
+    from . import toolchain
+
+    toolchain.prepare(cfg.build_dir)  # before torch and gsplat load, as the runner does
+    import numpy as np
+    import torch
+
+    from .recon.sfm import SfmError, read_frames, solve
+
+    frames = read_frames(scene / "frames.json")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    rows = []
+    for name in feature_sets:
+        out = scene / "bench" / name
+        started = time.monotonic()
+        try:
+            solved = solve(frames, scene / "images", scene / "masks", out, features=name, models_dir=cfg.models_dir, device=device)
+        except SfmError as error:
+            rows.append({"features": name, "error": error.code})
+            continue
+        inliers = [n for _a, _b, n in solved.edges]
+        row = {
+            "features": name,
+            "registered": len(solved.registered),
+            "frames": len(frames),
+            "sparsePoints": solved.sparse_points,
+            "meanReprojectionErrorPx": round(solved.mean_reprojection_error, 3),
+            "meanTrackLength": round(solved.reconstruction.compute_mean_track_length(), 2),
+            "verifiedPairs": len(inliers),
+            "medianInliers": int(np.median(inliers)) if inliers else 0,
+            "solveSeconds": round(time.monotonic() - started, 1),
+        }
+        if train_iterations:
+            from .recon.train import train_scene
+
+            trained = train_scene(
+                solved.reconstruction,
+                scene / "images",
+                scene / "masks",
+                out / "train",
+                iterations=train_iterations,
+                max_gaussians=BENCH_MAX_GAUSSIANS,
+                long_edge=BENCH_LONG_EDGE,
+                sh_degree=BENCH_SH_DEGREE,
+                on_progress=lambda _p: None,
+                device=device,
+            )
+            row["heldOutPsnr"] = round(trained.psnr, 3)
+        rows.append(row)
+        print(json.dumps(row), flush=True)
+    (scene / "bench").mkdir(exist_ok=True)
+    (scene / "bench" / "results.json").write_text(json.dumps(rows, indent=2))
+    return 0 if all("error" not in row for row in rows) else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="goway-worker")
     parser.add_argument("--config", help="path to the local worker config (default ~/.config/goway-worker/config.toml)")
@@ -248,13 +315,15 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--max-jobs", type=int)
     run.add_argument("--max-hours", type=float)
     sub.add_parser("drain")
+    bench = sub.add_parser("bench-sfm")
+    bench.add_argument("scene", help="a directory with frames.json, images/ and masks/ (a job's scratch)")
+    bench.add_argument("--features", nargs="+", default=["sift", "aliked", "raco"], help="feature sets to compare")
+    bench.add_argument("--train", type=int, default=0, metavar="N", help="also train N iterations per set and report held-out PSNR")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     for noisy in ("botocore", "boto3", "urllib3"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
-    from pathlib import Path
-
     cfg = config_module.load(Path(args.config) if args.config else None)
     if args.command == "setup":
         return cmd_setup(cfg)
@@ -266,6 +335,14 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_run(cfg, args.max_jobs, args.max_hours)
     if args.command == "drain":
         return cmd_drain(cfg)
+    if args.command == "bench-sfm":
+        from .recon.sfm import FEATURE_SETS
+
+        unknown = sorted(set(args.features) - set(FEATURE_SETS))
+        if unknown:
+            print(f"unknown feature set(s): {', '.join(unknown)} (choose from {', '.join(FEATURE_SETS)})", file=sys.stderr)
+            return 2
+        return cmd_bench_sfm(cfg, Path(args.scene), args.features, args.train)
     return 2
 
 
