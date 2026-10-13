@@ -21,6 +21,7 @@
 import { derivedCoverage } from './areas';
 import type { GeoBoundingBox } from '@goway/contracts';
 import { createArrivalEstimateAdapter } from './adapters/arrivalEstimates';
+import { createCombinedAdapter } from './adapters/combined';
 import { createDigitrafficAdapter } from './adapters/digitraffic';
 import { createGbfsAdapter } from './adapters/gbfs';
 import { createGeotrenAdapter } from './adapters/geotren';
@@ -78,6 +79,10 @@ const MTA_TERMS: LiveSourceDefinition['licence'] = {
 };
 
 /** Renfe's `vehicle.label` is `<line>-<train>[-PLATF.(n)]`: the line is the first part. */
+/** Renfe's high-speed, long-distance and Media Distancia trains (CC BY 4.0, data.renfe.com). */
+const RENFE_LD_REALTIME = 'https://gtfsrt.renfe.com/vehicle_positions_LD.pb';
+const RENFE_LD_STATIC = 'https://ssl.renfe.com/gtransit/Fichero_AV_LD/google_transit.zip';
+
 function renfeLine(label: string | undefined): string | null {
   const line = label?.split('-')[0]?.trim();
   return line && /^[A-Z][A-Z0-9]{0,5}$/i.test(line) ? line : null;
@@ -120,32 +125,64 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     id: 'renfe-cercanias',
     kind: 'transit',
     transitModes: ['rail'],
-    name: 'Trains — Renfe Cercanías and Rodalies',
+    name: 'Trains — Renfe (Rodalies, Cercanías, regional and long distance)',
     attribution: { label: 'Origen de los datos: Renfe Operadora', href: 'https://data.renfe.com' },
     licence: CC_BY_4,
     coverage: RENFE_CERCANIAS_COVERAGE,
     completeness: 'network',
     defaultUrl: 'https://gtfsrt.renfe.com/vehicle_positions.pb',
     requiresKey: false,
-    // Renfe republishes every 20 s.
+    // Renfe republishes every 20 s (the long-distance feed every ~15 s).
     pollIntervalSeconds: 20,
     staleAfterSeconds: 120,
     dropAfterSeconds: 600,
-    // The same open-data portal and licence (CC BY 4.0, `horarios-cercanias`):
-    // line colours, and the shapes trains are drawn along. Realtime trip ids
-    // are its `trips.txt` ids (215 of 215 matched, 2026-10-11).
-    staticGtfs: { zip: 'https://ssl.renfe.com/ftransit/Fichero_CER_FOMENTO/fomento_transit.zip' },
+    // The same open-data portal and licence (CC BY 4.0): the Cercanías file
+    // (`horarios-cercanias`: all Rodalies lines, regional ones included —
+    // R11–R17, RT1–2, RG1, RL3–4 — with shapes) and the high-speed,
+    // long-distance and Media Distancia file (route names, no shapes).
+    // Realtime trip ids are their `trips.txt` ids.
+    staticGtfs: {
+      zips: [
+        'https://ssl.renfe.com/ftransit/Fichero_CER_FOMENTO/fomento_transit.zip',
+        RENFE_LD_STATIC,
+      ],
+    },
     create: (settings) =>
-      createGtfsRealtimeAdapter(
-        {
-          sourceId: 'renfe-cercanias',
-          operator: 'Renfe',
-          coverage: RENFE_CERCANIAS_COVERAGE,
-          defaultMode: 'rail',
-          lineOf: (vehicle) => renfeLine(vehicle.vehicleLabel),
-          labelOf: (vehicle) => renfeTrain(vehicle.vehicleLabel),
-        },
-        settings,
+      createCombinedAdapter(
+        [
+          createGtfsRealtimeAdapter(
+            {
+              sourceId: 'renfe-cercanias',
+              operator: 'Renfe',
+              coverage: RENFE_CERCANIAS_COVERAGE,
+              defaultMode: 'rail',
+              lineOf: (vehicle) => renfeLine(vehicle.vehicleLabel),
+              labelOf: (vehicle) => renfeTrain(vehicle.vehicleLabel),
+            },
+            settings,
+          ),
+          // AVE, Alvia, Avant, Euromed, Media Distancia and regional trains
+          // (`posicion-vehiculos-av-ld-md`, CC BY 4.0). Its line comes from the
+          // static file's route name; its label is the train number.
+          createGtfsRealtimeAdapter(
+            {
+              sourceId: 'renfe-cercanias',
+              operator: 'Renfe',
+              coverage: RENFE_CERCANIAS_COVERAGE,
+              defaultMode: 'rail',
+              lineOf: () => null,
+              labelOf: (vehicle) => vehicle.vehicleLabel ?? vehicle.vehicleId ?? null,
+              idPrefix: 'ld-',
+            },
+            { ...settings, url: RENFE_LD_REALTIME },
+          ),
+        ],
+        // A Rodalies regional train is in both feeds: one train, drawn once
+        // (the commuter feed's, which carries its line and its track).
+        (entity) =>
+          entity.kind === 'transit' && entity.vehicleLabel
+            ? `train:${entity.vehicleLabel}`
+            : entity.id,
       ),
   },
   {

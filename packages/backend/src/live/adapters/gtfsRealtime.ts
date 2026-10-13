@@ -42,6 +42,8 @@ export interface GtfsRealtimeOptions {
   lineOf?: (vehicle: GtfsVehiclePosition) => string | null;
   /** The vehicle's label; the descriptor's `label` when absent. */
   labelOf?: (vehicle: GtfsVehiclePosition) => string | null;
+  /** Prefixed to the provider's id: keeps two feeds of one source apart (`renfe-cercanias:ld-…`). */
+  idPrefix?: string;
   /** Where a configured key goes: a query parameter (`key` for MTA Bus Time) or headers. */
   keyQueryParameter?: string;
   keyHeaders?: (key: string) => Record<string, string>;
@@ -64,7 +66,7 @@ export function normaliseGtfsVehicle(
   const line = options.lineOf?.(vehicle) ?? text(vehicle.routeId, 32);
   return accept({
     kind: 'transit',
-    id: `${options.sourceId}:${providerId}`,
+    id: `${options.sourceId}:${options.idPrefix ?? ''}${providerId}`,
     sourceId: options.sourceId,
     position: { latitude: round(where.latitude, 6), longitude: round(where.longitude, 6) },
     headingDegrees: heading(vehicle.bearing),

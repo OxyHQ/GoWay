@@ -313,6 +313,13 @@ interface FleetRule {
 
 /** First match wins. */
 export const FLEET_RULES: readonly FleetRule[] = [
+  // Renfe's long-distance feed (high-speed, Alvia, Media Distancia, regional):
+  // its line is the service name from the static file. Not a Civia unit.
+  {
+    sourceId: 'renfe-cercanias',
+    line: /^(AVE|AVLO|ALVIA|AVANT|EUROMED|INTERCITY|MD|REGIONAL|REG\.EXP\.|PROXIMDAD|TRENCELTA)/i,
+    fleet: 'generic-train',
+  },
   { sourceId: 'renfe-cercanias', line: /^R/, fleet: 'rodalies-civia' },
   { sourceId: 'renfe-cercanias', fleet: 'cercanias-civia' },
   // Barcelona–Vallès: S1, S2, L6, L7, L12; everything else FGC runs is Llobregat–Anoia or rural.

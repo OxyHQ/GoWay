@@ -42,6 +42,10 @@ describe('the fleet registry', () => {
   test('maps each operator and line to its fleet, falling back to generic', () => {
     expect(fleetOf(transit('renfe-cercanias', 'R2N'))).toBe('rodalies-civia');
     expect(fleetOf(transit('renfe-cercanias', 'C4'))).toBe('cercanias-civia');
+    // Regional and long-distance trains from Renfe's second feed.
+    expect(fleetOf(transit('renfe-cercanias', 'REGIONAL'))).toBe('generic-train');
+    expect(fleetOf(transit('renfe-cercanias', 'AVE'))).toBe('generic-train');
+    expect(fleetOf(transit('renfe-cercanias', 'R11'))).toBe('rodalies-civia');
     expect(fleetOf(transit('fgc-geotren', 'S1'))).toBe('fgc-bv');
     expect(fleetOf(transit('fgc-geotren', 'R5'))).toBe('fgc-lla');
     expect(fleetOf(transit('mta-lirr', null))).toBe('lirr-emu');
