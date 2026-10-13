@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import type { GeoJsonPolygon } from '@goway/contracts';
 import { buildCountryIndex } from '../countryIndex';
 import { simplifyArea, simplifyLine } from '../simplify';
 
@@ -30,8 +31,8 @@ describe('simplification', () => {
   });
 
   it('rounds to a metre and drops a ring the tolerance erases', () => {
-    const tiny = {
-      type: 'Polygon' as const,
+    const tiny: GeoJsonPolygon = {
+      type: 'Polygon',
       coordinates: [
         [
           [0, 0],
@@ -42,8 +43,8 @@ describe('simplification', () => {
       ],
     };
     expect(simplifyArea(tiny, 0.01)).toBeNull();
-    const square = {
-      type: 'Polygon' as const,
+    const square: GeoJsonPolygon = {
+      type: 'Polygon',
       coordinates: [
         [
           [0.123456789, 0],

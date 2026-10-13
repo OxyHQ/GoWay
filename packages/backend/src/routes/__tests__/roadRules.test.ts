@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import express, { Router } from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { RoadRuleSet, RoadZone } from '@goway/contracts';
+import type { GeoJsonPolygon, RoadRuleSet, RoadZone } from '@goway/contracts';
 import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import { buildCountryIndex } from '../../roadrules/countryIndex';
 import { createRoadRulesRouter, type RoadRulesStore } from '../roadRules';
@@ -23,19 +23,18 @@ const source = {
   retrievedAt: '2026-10-13T00:00:00.000Z',
 };
 
-const square = (west: number, south: number, east: number, north: number) =>
-  ({
-    type: 'Polygon',
-    coordinates: [
-      [
-        [west, south],
-        [east, south],
-        [east, north],
-        [west, north],
-        [west, south],
-      ],
+const square = (west: number, south: number, east: number, north: number): GeoJsonPolygon => ({
+  type: 'Polygon',
+  coordinates: [
+    [
+      [west, south],
+      [east, south],
+      [east, north],
+      [west, north],
+      [west, south],
     ],
-  }) as const;
+  ],
+});
 
 const zone = (
   id: string,
