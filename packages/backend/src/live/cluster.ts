@@ -62,6 +62,13 @@ export type LiveClusterMessage =
     }
   /** A task started: leaders, republish what you hold. */
   | { type: 'sync'; from: string }
+  /**
+   * A leader's heartbeat, every coordination round: the epoch of each source
+   * it holds. A follower's mark stays fresh between polls (a source polled
+   * every 60 s), so the window in which it accepts a LOWER epoch — meant for
+   * a counter lost in a failover — never opens while a leader is alive.
+   */
+  | { type: 'epochs'; from: string; epochs: Record<string, number> }
   /** A leader's answer to `sync`: what it holds now. */
   | {
       type: 'state';
@@ -124,7 +131,7 @@ export function decodeMessage(text: string): LiveClusterMessage | null {
     if (typeof value !== 'object' || value === null) return null;
     const message = value as { type?: unknown; from?: unknown };
     if (typeof message.from !== 'string') return null;
-    if (!['poll', 'status', 'sync', 'state'].includes(String(message.type))) return null;
+    if (!['poll', 'status', 'sync', 'state', 'epochs'].includes(String(message.type))) return null;
     return value as LiveClusterMessage;
   } catch {
     return null;

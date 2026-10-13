@@ -586,6 +586,37 @@ describe('several tasks on one bus (in memory)', () => {
     expect(ids()).toEqual(['test-bus:after']);
   });
 
+  it('a live leader heartbeats its epoch, so a late publish from an older one is dropped however slow its polls', async () => {
+    const { clock, tasks, everyone } = setup();
+    await everyone((t) => t.hub.connect());
+    (tasks[2] as Task).hub.watch('viewer', [ROOM]);
+    await everyone((t) => t.hub.coordinate());
+    await everyone((t) => t.hub.coordinate());
+    await everyone((t) => t.hub.tick());
+    const leader = tasks.find((t) => t.hub.isLeader('test-bus')) as Task;
+    const follower = tasks.find((t) => t !== leader) as Task;
+    follower.hub.watch('viewer', [ROOM]);
+    const ids = () => follower.hub.snapshot(ROOM.tile, 'transit').entities.map((e) => e.id);
+    expect(ids()).toEqual(['test-bus:1']);
+    // 40 s with no poll answered (a source polled every 60 s), the leader alive
+    // and coordinating every 2 s.
+    for (let round = 0; round < 20; round++) {
+      clock.now += 2_000;
+      await everyone((t) => t.hub.coordinate());
+    }
+    // A publish from the holder before this one, abandoned at its deadline and
+    // delivered now.
+    follower.hub.receive({
+      type: 'poll',
+      from: 'old-holder',
+      sourceId: 'test-bus',
+      entities: [bus('ghost', clock.now)],
+      lastSuccessAt: clock.now,
+      epoch: 0,
+    });
+    expect(ids()).toEqual(['test-bus:1']);
+  });
+
   it('sends a vehicle that only moved as a compact move, not the whole entity', async () => {
     const { clock, tasks, everyone, setFleet } = setup();
     await everyone((t) => t.hub.connect());

@@ -47,6 +47,9 @@ describe('areas from stops', () => {
         derived: stops,
       });
       if (!derived) continue;
+      // Dated and fingerprinted, so a refresh shows what changed and when.
+      expect(/^\d{4}-\d{2}-\d{2}$/.test(derived.readOn)).toBe(true);
+      expect(/^[0-9a-f]{64}$/.test(derived.sha256)).toBe(true);
       expect(source.coverage).toEqual(derived.outer);
       for (const area of derived.areas) {
         expect(area.west).toBeGreaterThanOrEqual(derived.outer.west);

@@ -16,7 +16,7 @@
  * empty land between two networks is in none.
  */
 
-import type { GeoBoundingBox } from '@goway/contracts';
+import type { GeoBoundingBox, LiveTransitMode } from '@goway/contracts';
 import { LIVE_SOURCE_AREAS } from './areas.generated';
 
 /** The grid the points are bucketed on, in degrees (~55 km of latitude). */
@@ -28,6 +28,20 @@ export interface SourceAreas {
   /** One box round every area: the source's `coverage`. */
   outer: GeoBoundingBox;
   areas: readonly GeoBoundingBox[];
+}
+
+/** What `live:areas` derived for one source, and from what. */
+export interface DerivedSource extends SourceAreas {
+  /** The day what it was derived from last changed (or was first read): `YYYY-MM-DD`. */
+  readOn: string;
+  /** SHA-256 of what it was derived from: the stops' positions and the route types. */
+  sha256: string;
+  /**
+   * The modes its operator's `routes.txt` names (`modeOfRouteType`), sorted;
+   * empty for bike share. A source's declared `transitModes` must include
+   * every one (`modes.test.ts`).
+   */
+  modes: readonly LiveTransitMode[];
 }
 
 const round = (value: number) => Math.round(value * 100) / 100;
@@ -129,7 +143,7 @@ export function areasOf(points: readonly (readonly [number, number])[]): SourceA
 }
 
 /** A source's derived areas, when its stops are known (`areas.generated.ts`). */
-export function sourceAreas(sourceId: string): SourceAreas | null {
+export function sourceAreas(sourceId: string): DerivedSource | null {
   return LIVE_SOURCE_AREAS[sourceId] ?? null;
 }
 
