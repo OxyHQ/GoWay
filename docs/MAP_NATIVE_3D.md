@@ -615,10 +615,21 @@ was measured with three patched locally (`yieldToMain`: `scheduler.yield()`
 where it exists, else a `MessageChannel` message, else
 `requestIdleCallback`, the macrotask React Native offers), in the "a
 macrotask yield" columns below. That build is not shipped; the change is
-proposed upstream. Nor can the engine own the yields with three's public
-API: `compileAsync` is its only way to build a material without drawing
-it, and a build is keyed by the render context it is made for (an offscreen
-draw builds a program the map's frame does not reuse, measured).
+proposed upstream (mrdoob/three.js#34980). Nor can the engine own the
+yields with three's public API: `compileAsync` is its only way to build a
+material without drawing it, and a build is keyed by the render context it
+is made for (an offscreen draw builds a program the map's frame does not
+reuse, measured).
+
+**Until it lands, the platform gets `scheduler.yield()`** where it lacks it
+(`lib/platform/schedulerYield.ts`, installed at startup), and three takes its
+own fast path unpatched. On the web that is the spec authors' polyfill,
+`scheduler-polyfill` (GoogleChromeLabs, Apache-2.0, pinned at 1.3.0): the
+whole `scheduler` on a `MessageChannel`, installed only where `self.scheduler`
+is undefined (where only `yield` is missing, it adds that one over the native
+`postTask`). On Hermes the polyfill would fall back to `setTimeout(0)`, which
+waits a frame there (measured below), so the same module installs `yield()`
+alone on `requestIdleCallback`. Chrome and Edge are untouched.
 
 **Hermes, measured** (RN 0.86, bridgeless, release build, Android 16
 emulator): 120 slices of 4 ms work, yielding between them, while a
