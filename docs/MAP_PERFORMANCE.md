@@ -179,7 +179,6 @@ holds are under [The CI gate](#the-ci-gate).
 | Live entities | 500 | 2,000 | 5,000 |
 | Landmarks held | 2 | 4 | 8 |
 | Street detail: tiles / triangles per frame (`MAP_STREETS.md`) | 6 / 400 k | 10 / 900 k | 16 / 2 M |
-| Street detail: cut along the terrain's lattice (lines per DEM pixel, `MAP_STREETS.md` → Terrain and depth) | 1 | 1 | 2 |
 | 3D terrain (textures: the 2D layers MapLibre caches per terrain tile) | on, textures 1× the terrain tile (1,024²) | on, 2× (2,048², MapLibre's own) | on, 2× |
 | Animation clock | 20 Hz, idle pause 20 s (battery: 15 Hz, 10 s) | 30 Hz, 45 s | 30 Hz, 120 s |
 | Basemap density (`MAP_STYLES.md` → Performance) | Standard's: a denser style (Streets) applies its `goway:quality-low` overrides | the style's | the style's |
@@ -391,7 +390,7 @@ clock), `city` (draw, cache, tiles, LOD tolerance, upload, workers, trees — th
 city engine), `sky` (shadow map size, PCF taps — the sky), `life` (agents —
 city life), `live` (entities — the live layer: drawn at most, nearest the
 centre first, `liveLayer.web.ts` → `nearestLivePoints`), `landmarks` (models
-held — the adapter), `streets` (street-detail tiles and triangles drawn, and how finely they are cut along the terrain — the
+held — the adapter), `streets` (street-detail tiles and triangles drawn — the
 street renderer, farthest tiles simplified then dropped past the budget), `camera` (the bytes and footprint
 corners of each tile's building volumes — the mesh worker, `MAP_CAMERA_CLEARANCE.md`), `relief` (3D terrain and its textures' scale — the
 relief adapter, live).

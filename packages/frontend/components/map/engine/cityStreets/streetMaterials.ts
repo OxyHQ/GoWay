@@ -10,8 +10,9 @@
  * (`groundAtlas.ts`), size, whether it is grounded and how much of its fine
  * detail shows — is read per mesh from `userData[STREET_TILE_USERDATA_KEY]`.
  *
- * - **On the drawn ground**: each vertex reads its tile's ground grid,
- *   bilinearly, from the atlas, lifted `STREET_LIFT_M` over it.
+ * - **On the drawn ground**: each vertex reads its tile's ground — MapLibre's
+ *   terrain facets, raised by their twist — from the atlas, lifted `STREET_LIFT_M`.
+ *   Every piece is cut to one facet, so every layer lies on the same plane.
  * - **No z-fighting**: coplanar layers are nudged toward the camera in clip
  *   space (`depthBias` × layer × w), a per-vertex polygon offset.
  * - **Lines never vanish**: a painted line thinner than a pixel is drawn a

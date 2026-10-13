@@ -888,8 +888,8 @@ Per sky (on and off) it asserts:
   flat ground. Measured: `main` (cd11022) **8.19%** against 14.29% flat — the
   drawn terrain rose through whole stretches of the street, which read the
   ground from a coarser DEM tile through a 33² grid — and **14.39%** with the
-  terrain lattice (`MAP_TERRAIN_GLOBE.md` → "Everything on the drawn
-  ground").
+  street on the terrain's facets (`MAP_TERRAIN_GLOBE.md` → "Everything on the
+  drawn ground").
 - **Models** (the `objects` leg, sky off; models draw alike under either): a landmark of the
   registry, the Sagrada Família, stands in the synthetic city. With
   `landmarks` on it must change at least 1% of the map against the same view
