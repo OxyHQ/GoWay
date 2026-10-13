@@ -45,6 +45,8 @@ export interface GtfsRealtimeOptions {
   /** Where a configured key goes: a query parameter (`key` for MTA Bus Time) or headers. */
   keyQueryParameter?: string;
   keyHeaders?: (key: string) => Record<string, string>;
+  /** Headers an operator asks every caller to send (Entur's `ET-Client-Name`). */
+  headers?: Readonly<Record<string, string>>;
 }
 
 export function normaliseGtfsVehicle(
@@ -126,6 +128,7 @@ export function createGtfsRealtimeAdapter(
   return {
     async poll(context: LiveFetchContext): Promise<LivePollResult> {
       const headers: Record<string, string> = {
+        ...options.headers,
         'user-agent': settings.userAgent,
         accept: 'application/x-protobuf, application/octet-stream',
         ...(settings.key && options.keyHeaders ? options.keyHeaders(settings.key) : {}),

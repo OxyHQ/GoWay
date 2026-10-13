@@ -112,6 +112,15 @@ import {
   liveSubscriptionStateSchema,
 } from './live';
 import { liveShapeSchema, liveSourcePageSchema, liveSourceSchema } from './live-source';
+import {
+  roadAccessDecisionSchema,
+  roadAccessInputSchema,
+  roadRuleSetPageSchema,
+  roadRuleSetSchema,
+  roadRulesSchema,
+  roadZonePageSchema,
+  roadZoneSchema,
+} from './road-rules';
 import { searchResultSchema, searchResultsSchema } from './search';
 import {
   streetCoverageSchema,
@@ -218,6 +227,13 @@ export const CONTRACT_SCHEMA_NAMES = [
   'LiveSnapshot',
   'LiveDelta',
   'LiveShape',
+  'RoadRuleSet',
+  'RoadRuleSetPage',
+  'RoadZone',
+  'RoadZonePage',
+  'RoadRules',
+  'RoadAccessInput',
+  'RoadAccessDecision',
 ] as const;
 
 export type ContractSchemaName = (typeof CONTRACT_SCHEMA_NAMES)[number];
@@ -321,6 +337,13 @@ export const CONTRACT_SCHEMAS: Readonly<Record<ContractSchemaName, ContractSchem
   LiveSnapshot: response(liveSnapshotSchema),
   LiveDelta: response(liveDeltaSchema),
   LiveShape: response(liveShapeSchema),
+  RoadRuleSet: response(roadRuleSetSchema),
+  RoadRuleSetPage: response(roadRuleSetPageSchema),
+  RoadZone: response(roadZoneSchema),
+  RoadZonePage: response(roadZonePageSchema),
+  RoadRules: response(roadRulesSchema),
+  RoadAccessInput: request(roadAccessInputSchema),
+  RoadAccessDecision: response(roadAccessDecisionSchema),
 };
 
 /** JSON Schema draft 2020-12 — the dialect OpenAPI 3.1 speaks. */

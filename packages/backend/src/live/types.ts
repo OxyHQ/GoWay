@@ -107,6 +107,15 @@ export interface LiveSourceDefinition {
    * watched, refreshed daily. Must be under the same licence as the feed.
    */
   staticGtfs?: StaticGtfsLocation;
+  /**
+   * For an operator whose feed carries several modes (a city's buses, trams and
+   * metro) under route ids riders never see: take the mode from the matched
+   * route's `route_type`, and the line from its short name, in the static GTFS.
+   * Until that table has loaded, or for a route it cannot match, the adapter's
+   * mode stands — so set that to `other` rather than a mode the vehicle may not
+   * be — and the line is the feed's own.
+   */
+  routesFromStaticGtfs?: boolean;
   create(settings: LiveAdapterSettings): LiveAdapter;
 }
 

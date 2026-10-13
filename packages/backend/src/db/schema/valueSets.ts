@@ -191,3 +191,20 @@ export type DerivativeStorageState = (typeof DERIVATIVE_STORAGE_STATES)[number];
  */
 export const CATEGORY_EVENT_ACTIONS = ['created', 'updated', 'label_set', 'label_removed'] as const;
 export type CategoryEventAction = (typeof CATEGORY_EVENT_ACTIONS)[number];
+
+/**
+ * Whether a road rule is in force as far as GoWay knows. `withdrawn` is a zone
+ * its source stopped publishing or an authority repealed: it stays, with its
+ * history, and is no longer served. Internal — a client sees only what is
+ * served.
+ */
+export const ROAD_RULE_STATUSES = ['active', 'withdrawn'] as const;
+export type RoadRuleStatus = (typeof ROAD_RULE_STATUSES)[number];
+
+/** What a road-rule sync did to one rule. */
+export const ROAD_RULE_EVENT_ACTIONS = ['created', 'updated', 'withdrawn', 'restored'] as const;
+export type RoadRuleEventAction = (typeof ROAD_RULE_EVENT_ACTIONS)[number];
+
+/** The kinds of road rule an event can be about. */
+export const ROAD_RULE_SUBJECTS = ['rule_set', 'zone', 'country'] as const;
+export type RoadRuleSubject = (typeof ROAD_RULE_SUBJECTS)[number];

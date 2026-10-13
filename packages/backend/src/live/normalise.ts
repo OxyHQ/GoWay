@@ -8,6 +8,7 @@
  * observation time, an id — refuses the whole record.
  */
 
+import type { RangeSource } from './zip';
 import { type LiveEntity, liveEntitySchema } from '@goway/contracts';
 import { type LiveFetch, LiveUpstreamError } from './types';
 
@@ -116,6 +117,77 @@ export async function getBytes(
     throw new LiveUpstreamError(`upstream body too large (${body.byteLength} bytes)`);
   }
   return body;
+}
+
+/**
+ * A remote file asked for in slices — or, from a server that ignores `Range`,
+ * the whole of it.
+ *
+ * The first request asks for the LAST `tailBytes` (a suffix range): a server
+ * that honours it answers 206 with `Content-Range: bytes a-b/total`, which
+ * gives the file's length and the end of a zip where its directory is. One
+ * that answers 200 sent the whole body, which is then returned as bytes (and
+ * bounded by `maxBytes`, like any other download). Every later slice is checked
+ * to be the length asked for: a short read is an error, never a smaller file.
+ */
+export async function getRangeSource(
+  fetch: LiveFetch,
+  url: string,
+  signal: AbortSignal,
+  headers: Record<string, string>,
+  tailBytes: number,
+  maxBytes: number,
+): Promise<Uint8Array | RangeSource> {
+  const response = await fetch(url, {
+    signal,
+    headers: { ...headers, range: `bytes=-${tailBytes}` },
+  });
+  if (response.status === 200) {
+    const length = Number.parseInt(response.headers.get('content-length') ?? '', 10);
+    if (Number.isFinite(length) && length > maxBytes) {
+      throw new LiveUpstreamError(`upstream body too large (${length} bytes)`);
+    }
+    const body = new Uint8Array(await response.arrayBuffer());
+    if (body.byteLength > maxBytes) {
+      throw new LiveUpstreamError(`upstream body too large (${body.byteLength} bytes)`);
+    }
+    return body;
+  }
+  if (response.status !== 206) {
+    throw new LiveUpstreamError(`upstream answered ${response.status}`, null, response.status);
+  }
+  const total = Number.parseInt(
+    /\/(\d+)$/.exec(response.headers.get('content-range') ?? '')?.[1] ?? '',
+    10,
+  );
+  if (!Number.isFinite(total) || total <= 0) {
+    throw new LiveUpstreamError('upstream answered a range without its total length');
+  }
+  const tail = new Uint8Array(await response.arrayBuffer());
+  const tailStart = total - tail.byteLength;
+  return {
+    size: total,
+    async read(start, end) {
+      if (start >= tailStart && end < total)
+        return tail.subarray(start - tailStart, end - tailStart + 1);
+      const slice = await fetch(url, {
+        signal,
+        headers: { ...headers, range: `bytes=${start}-${end}` },
+      });
+      if (slice.status !== 206) {
+        throw new LiveUpstreamError(
+          `upstream answered ${slice.status} to a range`,
+          null,
+          slice.status,
+        );
+      }
+      const bytes = new Uint8Array(await slice.arrayBuffer());
+      if (bytes.byteLength !== end - start + 1) {
+        throw new LiveUpstreamError('upstream answered a range of the wrong length');
+      }
+      return bytes;
+    },
+  };
 }
 
 /** GET and parse JSON, or throw {@link LiveUpstreamError}. */

@@ -22,8 +22,8 @@
  * last report (a route's two directional shapes overlap exactly).
  */
 
-import type { LiveTransitVehicle } from '@goway/contracts';
-import { readZipEntries, ZipError } from './zip';
+import type { LiveTransitMode, LiveTransitVehicle } from '@goway/contracts';
+import { type RangeSource, readZipEntries, readZipEntriesRanged, ZipError } from './zip';
 
 /** How far from its operator's shape a report may be and still be drawn on it. */
 export const SNAP_TOLERANCE_METERS = 75;
@@ -41,7 +41,68 @@ export interface GtfsShape {
   bbox: [number, number, number, number];
 }
 
+/**
+ * A GTFS `route_type` as a GoWay mode: the basic types 0–12 and the extended
+ * (HVT) hundreds — 100 rail, 200 coach, 400 urban rail / metro, 700 bus,
+ * 800 trolleybus, 900 tram, 1000 and 1200 water, 1300 aerial lift, 1400
+ * funicular. `null` for what is no vehicle on the road or rails GoWay draws
+ * (or a value it does not know), never a guess.
+ */
+export function modeOfRouteType(routeType: number): LiveTransitMode | null {
+  if (!Number.isInteger(routeType) || routeType < 0) return null;
+  switch (routeType) {
+    case 0:
+      return 'tram';
+    case 1:
+      return 'subway';
+    case 2:
+      return 'rail';
+    case 3:
+    case 11:
+      return 'bus';
+    case 4:
+      return 'ferry';
+    case 5:
+    case 6:
+    case 7:
+      return 'cable';
+    case 12:
+      return 'other';
+    default:
+  }
+  const hundreds = Math.floor(routeType / 100);
+  switch (hundreds) {
+    case 1:
+    case 3:
+      return 'rail';
+    case 2:
+    case 7:
+    case 8:
+      return 'bus';
+    case 4:
+    case 5:
+    case 6:
+      return 'subway';
+    case 9:
+      return 'tram';
+    case 10:
+    case 12:
+      return 'ferry';
+    case 13:
+    case 14:
+      return 'cable';
+    case 11:
+    case 15:
+    case 17:
+      return 'other';
+    default:
+      return null;
+  }
+}
+
 export interface GtfsRoute {
+  /** From `route_type`; `null` when the feed gives none GoWay can read. */
+  mode: LiveTransitMode | null;
   shortName: string | null;
   /** `route_long_name`, for operators with no short name (LIRR's "Babylon Branch"). */
   longName: string | null;
@@ -60,9 +121,12 @@ export interface StaticGtfs {
   stops: Map<string, { latitude: number; longitude: number }>;
 }
 
-/** Minimal RFC 4180 CSV: quoted fields, doubled quotes, trimmed values (Renfe pads). */
-export function parseCsv(text: string): { header: string[]; rows: string[][] } {
-  const rows: string[][] = [];
+/**
+ * Minimal RFC 4180 CSV, one row at a time: quoted fields, doubled quotes,
+ * trimmed values (Renfe pads). A generator, so a 40 MB `shapes.txt` is read
+ * without holding a million row arrays at once — the first row is the header.
+ */
+export function* csvRows(text: string): Generator<string[]> {
   let field = '';
   let row: string[] = [];
   let quoted = false;
@@ -85,16 +149,28 @@ export function parseCsv(text: string): { header: string[]; rows: string[][] } {
       if (c === '\r' && text[i + 1] === '\n') i++;
       row.push(field.trim());
       field = '';
-      if (row.length > 1 || row[0] !== '') rows.push(row);
+      if (row.length > 1 || row[0] !== '') yield row;
       row = [];
     } else field += c;
   }
   if (field !== '' || row.length > 0) {
     row.push(field.trim());
-    rows.push(row);
+    yield row;
   }
-  const header = (rows.shift() ?? []).map((name) => name.replace(/^﻿/, ''));
-  return { header, rows };
+}
+
+/** A table: its header (BOM removed) and a lazy walk over the rows after it. */
+function table(text: string): { header: string[]; rows: Iterable<string[]> } {
+  const walk = csvRows(text);
+  const first = walk.next();
+  const header = (first.done ? [] : first.value).map((name) => name.replace(/^\uFEFF/, ''));
+  return { header, rows: { [Symbol.iterator]: () => walk } };
+}
+
+/** The whole table in memory — for small inputs and tests; the loaders walk it lazily. */
+export function parseCsv(text: string): { header: string[]; rows: string[][] } {
+  const { header, rows } = table(text);
+  return { header, rows: [...rows] };
 }
 
 function columns(header: string[], names: readonly string[]): number[] {
@@ -113,13 +189,14 @@ export function buildStaticGtfs(files: {
 }): StaticGtfs {
   const routes = new Map<string, GtfsRoute>();
   {
-    const { header, rows } = parseCsv(files.routes);
-    const [id, short, long, rc, tc] = columns(header, [
+    const { header, rows } = table(files.routes);
+    const [id, short, long, rc, tc, rt] = columns(header, [
       'route_id',
       'route_short_name',
       'route_long_name',
       'route_color',
       'route_text_color',
+      'route_type',
     ]);
     for (const row of rows) {
       const routeId = row[id];
@@ -127,6 +204,7 @@ export function buildStaticGtfs(files: {
       routes.set(routeId, {
         shortName: row[short] || null,
         longName: row[long] || null,
+        mode: rt >= 0 && row[rt] ? modeOfRouteType(Number(row[rt])) : null,
         color: color(row[rc]),
         textColor: color(row[tc]),
       });
@@ -135,7 +213,7 @@ export function buildStaticGtfs(files: {
 
   const points = new Map<string, [number, number, number][]>();
   {
-    const { header, rows } = parseCsv(files.shapes);
+    const { header, rows } = table(files.shapes);
     const [id, la, lo, seq] = columns(header, [
       'shape_id',
       'shape_pt_lat',
@@ -173,7 +251,7 @@ export function buildStaticGtfs(files: {
   const trips = new Map<string, { routeId: string; shapeId: string | null }>();
   const shapesByRoute = new Map<string, Set<string>>();
   {
-    const { header, rows } = parseCsv(files.trips);
+    const { header, rows } = table(files.trips);
     const [rid, tid, sid, tsn] = columns(header, [
       'route_id',
       'trip_id',
@@ -205,7 +283,7 @@ export function buildStaticGtfs(files: {
   }
   const stops = new Map<string, { latitude: number; longitude: number }>();
   if (files.stops) {
-    const { header, rows } = parseCsv(files.stops);
+    const { header, rows } = table(files.stops);
     const [id, la, lo] = columns(header, ['stop_id', 'stop_lat', 'stop_lon']);
     for (const row of rows) {
       const latitude = Number(row[la]);
@@ -373,41 +451,84 @@ export function matchTrack(
 
 /** Where an operator's static GTFS is: one zip, or the three files separately (FGC's portal). */
 export type StaticGtfsLocation =
-  | { zip: string }
+  /**
+   * `routesOnly`: read `routes.txt` and nothing else — for a national archive
+   * whose trips and shapes are gigabytes (Norway's is 2.3 GB of shapes). Vehicles
+   * then match on the route their feed names, which is all their mode, line
+   * and colour need.
+   */
+  | { zip: string; routesOnly?: boolean }
   | { routes: string; trips: string; shapes: string }
   /** Several zips merged (MTA buses publish one per borough). */
   | { zips: readonly string[] };
 
 const FILES = ['routes.txt', 'trips.txt', 'shapes.txt', 'stops.txt'] as const;
 
+/**
+ * The most a file the loader could do without may inflate to before it is left
+ * out of a RANGED read (`readZipEntriesRanged`): shapes of a whole country are
+ * gigabytes, and the vehicles keep their mode, line and colour without them.
+ */
+export const MAX_OPTIONAL_INFLATED_BYTES = 160 * 1024 * 1024;
+
+/** A zip's bytes, or a way to ask a remote one for slices (`readStaticZip`). */
+export type StaticZip = Uint8Array | RangeSource;
+
+type GtfsFiles = { routes: string; trips: string; shapes: string; stops?: string };
+
+/** The files a zip gives, from whole bytes or by range, as text; `routes.txt` is required. */
+async function filesOfZip(url: string, zip: StaticZip, routesOnly: boolean): Promise<GtfsFiles> {
+  const decoder = new TextDecoder();
+  const wanted = routesOnly ? ['routes.txt'] : FILES;
+  let entries: Map<string, Uint8Array>;
+  if (zip instanceof Uint8Array) {
+    entries = readZipEntries(zip, wanted);
+  } else {
+    // Only `routes.txt` is required; the rest degrade to "no tracks" when too large.
+    ({ entries } = await readZipEntriesRanged(zip, wanted, (name) =>
+      name === 'routes.txt' ? Number.POSITIVE_INFINITY : MAX_OPTIONAL_INFLATED_BYTES,
+    ));
+  }
+  const text = (name: (typeof FILES)[number]) => {
+    const bytes = entries.get(name);
+    return bytes ? decoder.decode(bytes) : undefined;
+  };
+  const routes = text('routes.txt');
+  if (routes === undefined) throw new ZipError(`routes.txt missing from ${url}`);
+  const trips = text('trips.txt');
+  // Without `trips.txt` (left out as too large, or not asked for) a vehicle
+  // matches on the route its feed names; with a whole zip it is required.
+  if (trips === undefined && !routesOnly && zip instanceof Uint8Array) {
+    throw new ZipError(`trips.txt missing from ${url}`);
+  }
+  const stops = text('stops.txt');
+  return {
+    routes,
+    trips: trips ?? '',
+    // `shapes.txt` is optional in GTFS: an operator without one still gives each
+    // route its mode and colour, just no line to draw vehicles along.
+    shapes: text('shapes.txt') ?? '',
+    ...(stops === undefined ? {} : { stops }),
+  };
+}
+
 /** Fetch and build an operator's static GTFS. Throws on a missing file. */
 export async function loadStaticGtfs(
   location: StaticGtfsLocation,
-  read: (url: string) => Promise<Uint8Array>,
+  read: (url: string, kind: 'zip' | 'file') => Promise<StaticZip>,
 ): Promise<StaticGtfs> {
   const decoder = new TextDecoder();
-  const parts: { routes: string; trips: string; shapes: string; stops?: string }[] = [];
+  const parts: GtfsFiles[] = [];
   const zips = 'zip' in location ? [location.zip] : 'zips' in location ? location.zips : [];
+  const routesOnly = 'zip' in location && location.routesOnly === true;
   for (const url of zips) {
-    const entries = readZipEntries(await read(url), FILES);
-    const text = (name: (typeof FILES)[number]) => {
-      const bytes = entries.get(name);
-      if (!bytes) throw new ZipError(`${name} missing from ${url}`);
-      return decoder.decode(bytes);
-    };
-    const stops = entries.get('stops.txt');
-    parts.push({
-      routes: text('routes.txt'),
-      trips: text('trips.txt'),
-      shapes: text('shapes.txt'),
-      ...(stops ? { stops: decoder.decode(stops) } : {}),
-    });
+    parts.push(await filesOfZip(url, await read(url, 'zip'), routesOnly));
   }
   if ('routes' in location) {
     parts.push({
-      routes: decoder.decode(await read(location.routes)),
-      trips: decoder.decode(await read(location.trips)),
-      shapes: decoder.decode(await read(location.shapes)),
+      routes: decoder.decode(await readBytes(read, location.routes)),
+      trips: decoder.decode(await readBytes(read, location.trips)),
+      shapes: decoder.decode(await readBytes(read, location.shapes)),
     });
   }
   const built = parts.map(buildStaticGtfs);
@@ -431,6 +552,15 @@ export async function loadStaticGtfs(
     }
   }
   return merged;
+}
+
+async function readBytes(
+  read: (url: string, kind: 'zip' | 'file') => Promise<StaticZip>,
+  url: string,
+): Promise<Uint8Array> {
+  const bytes = await read(url, 'file');
+  if (!(bytes instanceof Uint8Array)) throw new ZipError(`${url} is a file, not a zip`);
+  return bytes;
 }
 
 /** The point `along` metres along a shape (clamped). */

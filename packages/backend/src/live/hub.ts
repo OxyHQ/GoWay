@@ -41,7 +41,7 @@ import {
   type LiveSourceStatus,
   liveTileBounds,
 } from '@goway/contracts';
-import { getBytes } from './normalise';
+import { getBytes, getRangeSource } from './normalise';
 import {
   loadStaticGtfs,
   type MatchHint,
@@ -115,6 +115,8 @@ interface SourceState {
 export const STATIC_GTFS_REFRESH_MS = 24 * 3600_000;
 /** The largest static GTFS download (Renfe Cercanías' zip is ~14 MB). */
 export const MAX_STATIC_GTFS_BYTES = 120 * 1024 * 1024;
+/** The end of a zip asked for first: its central-directory record is in the last 64 KB. */
+export const STATIC_GTFS_TAIL_BYTES = 65_557;
 
 interface Room {
   tile: string;
@@ -368,14 +370,21 @@ export class LiveHub {
     if (!location) return Promise.resolve();
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), 120_000);
-    const read = (url: string) =>
-      getBytes(
-        this.options.fetch,
-        url,
-        abort.signal,
-        { 'user-agent': state.settings.userAgent },
-        MAX_STATIC_GTFS_BYTES,
-      );
+    // By range where the server allows it: the directory and the few files
+    // wanted, not a national archive's gigabytes. A server that ignores ranges
+    // sends the whole file, bounded as before.
+    const headers = { 'user-agent': state.settings.userAgent };
+    const read = (url: string, kind: 'zip' | 'file') =>
+      kind === 'zip'
+        ? getRangeSource(
+            this.options.fetch,
+            url,
+            abort.signal,
+            headers,
+            STATIC_GTFS_TAIL_BYTES,
+            MAX_STATIC_GTFS_BYTES,
+          )
+        : getBytes(this.options.fetch, url, abort.signal, headers, MAX_STATIC_GTFS_BYTES);
     const run = loadStaticGtfs(location, read)
       .then(
         (gtfs) => {
@@ -430,7 +439,13 @@ export class LiveHub {
       else state.matches.delete(entity.id);
       return {
         ...entity,
-        line: entity.line ?? match.route?.shortName ?? match.route?.longName?.slice(0, 32) ?? null,
+        mode: (state.definition.routesFromStaticGtfs && match.route?.mode) || entity.mode,
+        line:
+          (state.definition.routesFromStaticGtfs ? match.route?.shortName : null) ??
+          entity.line ??
+          match.route?.shortName ??
+          match.route?.longName?.slice(0, 32) ??
+          null,
         lineColor: match.route?.color ?? null,
         lineTextColor: match.route?.textColor ?? null,
         track: match.track,

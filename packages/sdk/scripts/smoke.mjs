@@ -92,6 +92,10 @@ const EXPECTED_FILES = [
   'package/dist/live.d.cts',
   'package/dist/live.d.ts',
   'package/dist/live.js',
+  'package/dist/roadAccess.cjs',
+  'package/dist/roadAccess.d.cts',
+  'package/dist/roadAccess.d.ts',
+  'package/dist/roadAccess.js',
   'package/package.json',
 ];
 
@@ -186,6 +190,10 @@ async function main() {
       'live.cjs',
       'live.d.ts',
       'live.d.cts',
+      'roadAccess.js',
+      'roadAccess.cjs',
+      'roadAccess.d.ts',
+      'roadAccess.d.cts',
     ]) {
       await stat(join(root, 'dist', file)).catch(() =>
         fail(`dist/${file} is missing — run the build first`),
@@ -332,6 +340,12 @@ async function main() {
     run(process.execPath, ['live.mjs'], consumer, 'node ESM import of /live');
     run(process.execPath, ['live.cjs'], consumer, 'node CJS require of /live');
     pass('@goway.to/sdk/live: ESM and CJS resolve, parse a snapshot, refuse junk');
+
+    await writeFile(join(consumer, 'road-access.mjs'), CONSUMER_ROAD_ACCESS_ESM);
+    await writeFile(join(consumer, 'road-access.cjs'), CONSUMER_ROAD_ACCESS_CJS);
+    run(process.execPath, ['road-access.mjs'], consumer, 'node ESM import of /road-access');
+    run(process.execPath, ['road-access.cjs'], consumer, 'node CJS require of /road-access');
+    pass('@goway.to/sdk/road-access: ESM and CJS resolve, a bus lane opens a road to buses only');
 
     // ── 4. Bun ────────────────────────────────────────────────────────────────
     run('bun', ['program.mjs'], consumer, 'bun import');
@@ -544,6 +558,22 @@ ${LIVE_PROGRAM}`;
 
 const CONSUMER_LIVE_CJS = `const live = require('@goway.to/sdk/live');
 ${LIVE_PROGRAM}`;
+
+const ROAD_ACCESS_PROGRAM = `
+const assert = require('node:assert');
+const access = roadAccess.resolveRoadAccess('residential', { access: 'no', bus: 'designated' });
+assert.strictEqual(roadAccess.accessLevel(access.bus), 'through');
+assert.strictEqual(roadAccess.accessLevel(access.car), 'none');
+assert.deepStrictEqual(roadAccess.parseAccessOverrides('car=no;horse=yes'), { car: 'no' });
+`;
+
+const CONSUMER_ROAD_ACCESS_ESM = `import { createRequire } from 'node:module';
+import * as roadAccess from '@goway.to/sdk/road-access';
+const require = createRequire(import.meta.url);
+${ROAD_ACCESS_PROGRAM}`;
+
+const CONSUMER_ROAD_ACCESS_CJS = `const roadAccess = require('@goway.to/sdk/road-access');
+${ROAD_ACCESS_PROGRAM}`;
 
 const BUNDLE_ENTRY = `
 import { createGoWayClient } from '@goway.to/sdk';

@@ -102,6 +102,14 @@ import {
   liveShapePathSchema,
   liveShapeSchema,
   liveSourcePageSchema,
+  roadAccessDecisionSchema,
+  roadAccessInputSchema,
+  roadRuleSetListQuerySchema,
+  roadRuleSetPageSchema,
+  roadRulesQuerySchema,
+  roadRulesSchema,
+  roadZoneListQuerySchema,
+  roadZonePageSchema,
 } from './contract';
 import type {
   AccountClaimListQuery,
@@ -184,6 +192,14 @@ import type {
   SearchResults,
   LiveShape,
   LiveSourcePage,
+  RoadAccessDecision,
+  RoadAccessInput,
+  RoadRuleSetListQuery,
+  RoadRuleSetPage,
+  RoadRules,
+  RoadRulesQuery,
+  RoadZoneListQuery,
+  RoadZonePage,
   StreetCoverage,
   StreetCoverageQuery,
   StreetSceneManifest,
@@ -786,6 +802,27 @@ export interface GoWayLiveApi {
   shape(sourceId: string, shapeId: string, options?: GoWayRequestOptions): Promise<LiveShape>;
 }
 
+/**
+ * Road rules by place: what differs from one country or city to the next, and
+ * whether a vehicle may enter where it is going. Public — none of it needs an
+ * account, and the vehicle you describe is used for the one answer and never
+ * stored.
+ */
+export interface GoWayRoadsApi {
+  /** Each country's road rules: driving side, and what an implicit `maxspeed` such as `ES:urban` means. */
+  ruleSets(query?: RoadRuleSetListQuery, options?: GoWayRequestOptions): Promise<RoadRuleSetPage>;
+  /** The rules at a position: its country's rule set (`null` where GoWay holds none) and the zones covering it. */
+  rules(query: RoadRulesQuery, options?: GoWayRequestOptions): Promise<RoadRules>;
+  /** Low emission, congestion charge and restricted access zones in a box or a country. */
+  zones(query: RoadZoneListQuery, options?: GoWayRequestOptions): Promise<RoadZonePage>;
+  /**
+   * May this vehicle enter this position now? The strictest decision among the
+   * zones covering it, and each zone's own verdict. `unknown` means the vehicle
+   * was not described well enough for a zone's rules — never a silent "allowed".
+   */
+  access(input: RoadAccessInput, options?: GoWayRequestOptions): Promise<RoadAccessDecision>;
+}
+
 export interface GoWayClient {
   readonly places: GoWayPlacesApi;
   readonly categories: GoWayCategoriesApi;
@@ -797,6 +834,7 @@ export interface GoWayClient {
   readonly captures: GoWayCapturesApi;
   readonly street3d: GoWayStreet3dApi;
   readonly live: GoWayLiveApi;
+  readonly roads: GoWayRoadsApi;
   readonly links: GoWayLinks;
 }
 
@@ -2016,6 +2054,53 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     },
   });
 
+  const roads: GoWayRoadsApi = Object.freeze({
+    ruleSets: async (query: RoadRuleSetListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: '/roads/rule-sets',
+          query: validInput(roadRuleSetListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        roadRuleSetPageSchema,
+      ),
+    rules: async (query: RoadRulesQuery, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: '/roads/rules',
+          query: validInput(roadRulesQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        roadRulesSchema,
+      ),
+    zones: async (query: RoadZoneListQuery, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: '/roads/zones',
+          query: validInput(roadZoneListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        roadZonePageSchema,
+      ),
+    access: async (input: RoadAccessInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'POST',
+          path: '/roads/access',
+          body: validInput(roadAccessInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        roadAccessDecisionSchema,
+      ),
+  });
+
   return Object.freeze({
     places,
     categories,
@@ -2027,6 +2112,7 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     captures,
     street3d,
     live,
+    roads,
     links: createLinks(webBaseUrl),
   });
 }

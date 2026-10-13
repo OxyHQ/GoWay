@@ -11,8 +11,9 @@
  *                       under `node16`/`nodenext` does not see ESM types
  *                       masquerading as CJS
  *
- * Two entries: `index` (`@goway.to/sdk`, the HTTP client) and `live`
- * (`@goway.to/sdk/live`, the GoWay Live socket protocol). Each is bundled ON
+ * Three entries: `index` (`@goway.to/sdk`, the HTTP client), `live`
+ * (`@goway.to/sdk/live`, the GoWay Live socket protocol) and `roadAccess`
+ * (`@goway.to/sdk/road-access`, the road-access rules). Each is bundled ON
  * ITS OWN — no shared chunk — so loading one never loads the other: the live
  * schemas stay out of every HTTP-only consumer, GoWay's own first paint
  * included, and a contract module both reach is simply inlined twice.
@@ -64,7 +65,7 @@ import ts from 'typescript';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
-const ENTRIES = ['index', 'live'];
+const ENTRIES = ['index', 'live', 'roadAccess'];
 const tsconfig = join(root, 'tsconfig.json');
 
 /** The runtime dependency, kept out of both bundles: `zod` and any subpath of it. */

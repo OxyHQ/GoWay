@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
+import { randomBytes } from 'node:crypto';
 import { deflateRawSync } from 'node:zlib';
 import {
   buildStaticGtfs,
@@ -12,11 +13,13 @@ import {
   loadStaticGtfs,
   makeShape,
   matchTrack,
+  modeOfRouteType,
   parseCsv,
   project,
   SNAP_TOLERANCE_METERS,
 } from '../staticGtfs';
-import { readZipEntries, ZipError } from '../zip';
+import { getRangeSource } from '../normalise';
+import { type RangeSource, readZipEntries, readZipEntriesRanged, ZipError } from '../zip';
 
 /** A zip with deflated entries, built by hand (local headers + central directory). */
 function zip(files: Record<string, string>): Uint8Array {
@@ -107,6 +110,14 @@ describe('the zip reader', () => {
       loadStaticGtfs({ zip: 'x' }, async () => zip({ 'routes.txt': ROUTES })),
     ).rejects.toThrow(/trips.txt missing/);
   });
+
+  it('loads an operator whose zip has no shapes.txt: modes and colours, no tracks', async () => {
+    const loaded = await loadStaticGtfs({ zip: 'x' }, async () =>
+      zip({ 'routes.txt': ROUTES, 'trips.txt': TRIPS }),
+    );
+    expect(loaded.shapes.size).toBe(0);
+    expect(loaded.routes.get('R2N_B')?.mode).toBe('rail');
+  });
 });
 
 describe('the static GTFS', () => {
@@ -118,6 +129,7 @@ describe('the static GTFS', () => {
     expect(gtfs.routes.get('R2N_A')).toEqual({
       shortName: 'R2N',
       longName: 'Aeroport - Maçanet',
+      mode: 'rail',
       color: '#D0DF00',
       textColor: '#FFFFFF',
     });
@@ -184,5 +196,179 @@ describe('projection and matching', () => {
       along: westAt + 300,
     });
     expect(flipped.track?.shapeId).toBe('east');
+  });
+});
+
+describe('route_type → mode', () => {
+  it('reads the basic types and the extended hundreds, and refuses what it does not know', () => {
+    expect([0, 1, 2, 3, 4, 5, 7, 11, 12].map(modeOfRouteType)).toEqual([
+      'tram',
+      'subway',
+      'rail',
+      'bus',
+      'ferry',
+      'cable',
+      'cable',
+      'bus',
+      'other',
+    ]);
+    expect([101, 200, 401, 700, 800, 900, 1000, 1200, 1300, 1400].map(modeOfRouteType)).toEqual([
+      'rail',
+      'bus',
+      'subway',
+      'bus',
+      'bus',
+      'tram',
+      'ferry',
+      'ferry',
+      'cable',
+      'cable',
+    ]);
+    expect(modeOfRouteType(-1)).toBeNull();
+    expect(modeOfRouteType(2.5)).toBeNull();
+    expect(modeOfRouteType(9999)).toBeNull();
+  });
+
+  it('is on each route that states one', () => {
+    const gtfs = buildStaticGtfs({
+      routes: ROUTES,
+      trips: 'route_id,trip_id\n',
+      shapes: 'shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\n',
+    });
+    expect(gtfs.routes.get('R2N_B')?.mode).toBe('rail');
+  });
+});
+
+/** A remote file served from memory, remembering which bytes were asked for. */
+function remote(bytes: Uint8Array): RangeSource & { asked: [number, number][] } {
+  const asked: [number, number][] = [];
+  return {
+    size: bytes.byteLength,
+    asked,
+    async read(start, end) {
+      asked.push([start, end]);
+      return bytes.slice(start, end + 1);
+    },
+  };
+}
+
+describe('reading a zip by range', () => {
+  const archive = zip({
+    'routes.txt': ROUTES,
+    'trips.txt': TRIPS,
+    // Large enough that fetching it by mistake would show in what was asked for.
+    'shapes.txt': `${SHAPES}\n${randomBytes(60_000).toString('base64')}`,
+    'stop_times.txt': randomBytes(200_000).toString('base64'),
+  });
+
+  it('fetches the directory and the files wanted, and never the ones not', async () => {
+    const source = remote(archive);
+    const { entries } = await readZipEntriesRanged(source, ['routes.txt', 'trips.txt']);
+    expect(new TextDecoder().decode(entries.get('routes.txt'))).toBe(ROUTES);
+    expect(entries.has('shapes.txt')).toBe(false);
+    const fetched = source.asked.reduce((total, [a, b]) => total + (b - a + 1), 0);
+    // Directory + two small files and their headers, a fraction of the archive.
+    expect(fetched).toBeLessThan(archive.byteLength / 2);
+  });
+
+  it('skips a file larger than its limit and says so, instead of reading or failing', async () => {
+    const { entries, skipped } = await readZipEntriesRanged(
+      remote(archive),
+      ['routes.txt', 'shapes.txt'],
+      (name) => (name === 'shapes.txt' ? 1_000 : Number.POSITIVE_INFINITY),
+    );
+    expect(entries.has('routes.txt')).toBe(true);
+    expect(entries.has('shapes.txt')).toBe(false);
+    expect(skipped.get('shapes.txt')).toBeGreaterThan(50_000);
+  });
+
+  it('builds a network from a ranged zip, routes only, with modes', async () => {
+    const loaded = await loadStaticGtfs({ zip: 'x', routesOnly: true }, async () =>
+      remote(archive),
+    );
+    expect(loaded.routes.get('R2N_A')?.mode).toBe('rail');
+    expect(loaded.trips.size).toBe(0);
+    expect(loaded.shapes.size).toBe(0);
+  });
+
+  it('refuses a truncated remote archive', async () => {
+    await expect(
+      readZipEntriesRanged(remote(archive.subarray(0, archive.byteLength - 100)), ['routes.txt']),
+    ).rejects.toThrow(ZipError);
+  });
+});
+
+describe('getRangeSource', () => {
+  const body = new TextEncoder().encode('0123456789abcdefghij');
+  const headersOf = (values: Record<string, string>) => ({
+    get: (name: string) => values[name.toLowerCase()] ?? null,
+  });
+
+  it('serves the tail it already holds without another request, and other slices by range', async () => {
+    const requests: string[] = [];
+    const fetch = async (_url: string, init: { headers: Record<string, string> }) => {
+      const range = init.headers.range as string;
+      requests.push(range);
+      const match = /bytes=(-?)(\d+)(?:-(\d+))?/.exec(range) as RegExpExecArray;
+      const [from, to] = match[1]
+        ? [body.length - Number(match[2]), body.length - 1]
+        : [Number(match[2]), Number(match[3])];
+      const slice = body.slice(from, to + 1);
+      return {
+        status: 206,
+        headers: headersOf({ 'content-range': `bytes ${from}-${to}/${body.length}` }),
+        arrayBuffer: async () =>
+          slice.buffer.slice(slice.byteOffset, slice.byteOffset + slice.byteLength) as ArrayBuffer,
+      };
+    };
+    const source = (await getRangeSource(
+      fetch,
+      'https://x/z.zip',
+      new AbortController().signal,
+      {},
+      8,
+      100,
+    )) as RangeSource;
+    expect(source.size).toBe(20);
+    expect(new TextDecoder().decode(await source.read(14, 17))).toBe('efgh');
+    expect(requests).toEqual(['bytes=-8']);
+    expect(new TextDecoder().decode(await source.read(2, 4))).toBe('234');
+    expect(requests).toEqual(['bytes=-8', 'bytes=2-4']);
+  });
+
+  it('takes the whole file from a server that ignores Range, within the size limit', async () => {
+    const whole = async () => ({
+      status: 200,
+      headers: headersOf({ 'content-length': String(body.length) }),
+      arrayBuffer: async () => body.buffer.slice(0) as ArrayBuffer,
+    });
+    const got = await getRangeSource(whole, 'https://x', new AbortController().signal, {}, 8, 100);
+    expect(got).toBeInstanceOf(Uint8Array);
+    await expect(
+      getRangeSource(whole, 'https://x', new AbortController().signal, {}, 8, 10),
+    ).rejects.toThrow(/too large/);
+  });
+
+  it('is an error when a slice comes back the wrong length', async () => {
+    let calls = 0;
+    const fetch = async () => {
+      calls++;
+      const bytes = calls === 1 ? body.slice(12) : body.slice(0, 2);
+      return {
+        status: 206,
+        headers: headersOf({ 'content-range': `bytes 12-19/${body.length}` }),
+        arrayBuffer: async () =>
+          bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+      };
+    };
+    const source = (await getRangeSource(
+      fetch,
+      'https://x',
+      new AbortController().signal,
+      {},
+      8,
+      100,
+    )) as RangeSource;
+    await expect(source.read(0, 4)).rejects.toThrow(/wrong length/);
   });
 });

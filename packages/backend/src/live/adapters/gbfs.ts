@@ -16,7 +16,7 @@
  * without information (a station added since the information was cached) is
  * skipped until the next refresh, and counted as rejected.
  *
- *  - `num_bikes_available` → bikes (GBFS counts every rentable vehicle there,
+ *  - `num_bikes_available` (v3: `num_vehicles_available`) → bikes (GBFS counts every rentable vehicle there,
  *    electric included); `num_ebikes_available`, else the electric share of
  *    `vehicle_types_available` per `vehicle_types`, else `null`.
  *  - `is_installed && is_renting` → renting; `is_returning` → returning. GBFS
@@ -39,6 +39,8 @@ export interface GbfsOptions {
   coverage: { west: number; south: number; east: number; north: number } | null;
   /** The discovery language to prefer; the first one otherwise. */
   language?: string;
+  /** Extra request headers an operator asks for (Urban Sharing's `Client-Identifier`). */
+  headers?: Readonly<Record<string, string>>;
 }
 
 interface StationInfo {
@@ -149,7 +151,8 @@ export function normaliseGbfsStation(
   const status = record(raw);
   const id = text(status?.station_id, 80);
   if (!status || !id || !info) return null;
-  const bikes = within(status.num_bikes_available, 0, 10_000);
+  // v3 renamed the count; a v2 feed never carries the new name.
+  const bikes = within(status.num_bikes_available ?? status.num_vehicles_available, 0, 10_000);
   if (bikes === null || !Number.isInteger(bikes)) return null;
   const docks = within(status.num_docks_available, 0, 10_000);
 
@@ -199,7 +202,7 @@ export function createGbfsAdapter(
   let electric: Set<string> = new Set();
   let staticFetchedAt = 0;
 
-  const headers = { 'user-agent': settings.userAgent };
+  const headers = { ...options.headers, 'user-agent': settings.userAgent };
 
   async function refreshStatic(context: LiveFetchContext): Promise<void> {
     const discovery = await getJson(context.fetch, settings.url, context.signal, headers);

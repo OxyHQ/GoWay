@@ -76,6 +76,9 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   rather than read from the basemap, the lane graph, IDM car-following and
   junction reservations, signals and crossings, the budget, GPU interpolation,
   and the honesty rule — always labelled, never read.
+- [`ROAD_RULES.md`](ROAD_RULES.md) — who may use which road: the one access
+  reader (`@goway.to/sdk/road-access`), tile schema 4, what simulated traffic
+  does with it, and the specified (not built) zones, country rule sets and API.
 - [`MAP_3D_SOURCES.md`](MAP_3D_SOURCES.md) — official building datasets
   (Spain, Barcelona, New York, and a world survey): licence verdicts against
   ODbL city tiles, how the Spanish Catastro's storeys replace the 5 m default

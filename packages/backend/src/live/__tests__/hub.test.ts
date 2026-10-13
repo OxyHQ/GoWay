@@ -51,7 +51,7 @@ const BARCELONA = { latitude: 41.39, longitude: 2.17 };
 /** A one-line static GTFS through Barcelona, served by the harness's fetch. */
 const STATIC_FILES: Record<string, string> = {
   'https://gtfs.example/routes.txt':
-    'route_id,route_short_name,route_color,route_text_color\nR2N,R2N,D0DF00,FFFFFF\n',
+    'route_id,route_short_name,route_type,route_color,route_text_color\nR2N,R2N,0,D0DF00,FFFFFF\n',
   'https://gtfs.example/trips.txt': 'route_id,service_id,trip_id,shape_id\nR2N,s,T1,line\n',
   'https://gtfs.example/shapes.txt':
     'shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\nline,41.39,2.16,1\nline,41.39,2.18,2\n',
@@ -422,6 +422,33 @@ describe('the hub', () => {
     ]);
     expect(shape?.lengthMeters).toBeGreaterThan(1600);
     expect(h.hub.shape('test-bus', 'nope')).toBeNull();
+  });
+
+  it("takes the mode from the static GTFS only for a source that asks, and keeps the adapter's otherwise", async () => {
+    for (const [routesFromStaticGtfs, expected] of [
+      [true, 'tram'],
+      [false, 'bus'],
+    ] as const) {
+      const h = harness({
+        routesFromStaticGtfs,
+        staticGtfs: {
+          routes: 'https://gtfs.example/routes.txt',
+          trips: 'https://gtfs.example/trips.txt',
+          shapes: 'https://gtfs.example/shapes.txt',
+        },
+      });
+      h.hub.watch('a', [{ tile: BARCELONA_TILE, kind: 'transit' }]);
+      h.answer.next = async () => ({
+        entities: [bus('m', 41.3901, 2.17, T0)],
+        rejected: 0,
+        hints: new Map([['test-bus:m', { route: 'R2N' }]]),
+      });
+      await h.hub.tick();
+      h.clock.now += 10_000;
+      await h.hub.tick();
+      const [entity] = h.hub.snapshot(BARCELONA_TILE, 'transit').entities;
+      expect(entity).toMatchObject({ mode: expected });
+    }
   });
 
   it('counts room watchers, so one viewer leaving keeps the room for another', async () => {

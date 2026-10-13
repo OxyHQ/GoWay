@@ -24,7 +24,11 @@ import {
   type VesselMetadata,
 } from '../adapters/digitraffic';
 import { geotrenPublishedMs, normaliseGeotrenTrain } from '../adapters/geotren';
-import { normaliseGtfsFeed, normaliseGtfsVehicle } from '../adapters/gtfsRealtime';
+import {
+  normaliseGtfsFeed,
+  normaliseGtfsVehicle,
+  createGtfsRealtimeAdapter,
+} from '../adapters/gtfsRealtime';
 import {
   createReadsbAdapter,
   isWithheld,
@@ -575,6 +579,96 @@ describe('GBFS stations', () => {
       'https://feed/status',
       'https://feed/status',
     ]);
+  });
+});
+
+describe('GTFS-Realtime operator headers', () => {
+  it('sends the headers an operator asks for beside the user agent', async () => {
+    let seen: Record<string, string> = {};
+    const fetch: LiveFetch = async (_url, init) => {
+      seen = init.headers;
+      return {
+        status: 200,
+        headers: { get: () => null },
+        arrayBuffer: async () => new Uint8Array(0).buffer as ArrayBuffer,
+      };
+    };
+    const adapter = createGtfsRealtimeAdapter(
+      {
+        sourceId: 'x',
+        operator: 'X',
+        coverage: null,
+        defaultMode: 'bus',
+        headers: { 'et-client-name': 'oxy-goway' },
+      },
+      { url: 'https://feed/vp.pb', userAgent: 'test', maxRegionsPerPoll: 1 },
+    );
+    // The empty body is not a feed and the poll says so; the request is what is under test.
+    await adapter
+      .poll({ signal: new AbortController().signal, fetch, now: () => NOW, demand: [] })
+      .catch(() => undefined);
+    expect(seen['et-client-name']).toBe('oxy-goway');
+    expect(seen['user-agent']).toBe('test');
+  });
+});
+
+describe('GBFS 3.0 and operator headers', () => {
+  const info = parseStationInformation(INFORMATION, GBFS_OPTIONS.coverage).get('s1');
+
+  it('reads a v3 status row, where the count is `num_vehicles_available`', () => {
+    const station = normaliseGbfsStation(
+      GBFS_OPTIONS,
+      {
+        station_id: 's1',
+        num_vehicles_available: 7,
+        is_renting: true,
+        is_returning: true,
+        is_installed: true,
+        last_reported: new Date(NOW - 5_000).toISOString(),
+      },
+      info,
+      new Set(),
+      null,
+      NOW,
+    );
+    expect(station).toMatchObject({ bikesAvailable: 7, renting: true });
+  });
+
+  it('sends the headers an operator asks for on every request, beside the user agent', async () => {
+    const seen: Record<string, string>[] = [];
+    const fetch: LiveFetch = async (url, init) => {
+      seen.push(init.headers);
+      const body = url.endsWith('gbfs.json')
+        ? {
+            data: {
+              nb: {
+                feeds: [
+                  { name: 'station_information', url: 'https://feed/info' },
+                  { name: 'station_status', url: 'https://feed/status' },
+                ],
+              },
+            },
+          }
+        : url.endsWith('info')
+          ? INFORMATION
+          : { last_updated: NOW / 1000, data: { stations: [] } };
+      return {
+        status: 200,
+        headers: { get: () => null },
+        arrayBuffer: async () =>
+          new TextEncoder().encode(JSON.stringify(body)).buffer as ArrayBuffer,
+      };
+    };
+    const adapter = createGbfsAdapter(
+      { ...GBFS_OPTIONS, headers: { 'client-identifier': 'goway-live' } },
+      { url: 'https://feed/gbfs.json', userAgent: 'test', maxRegionsPerPoll: 1 },
+    );
+    await adapter.poll({ signal: new AbortController().signal, fetch, now: () => NOW, demand: [] });
+    expect(seen).toHaveLength(3);
+    for (const headers of seen) {
+      expect(headers['client-identifier']).toBe('goway-live');
+      expect(headers['user-agent']).toBe('test');
+    }
   });
 });
 

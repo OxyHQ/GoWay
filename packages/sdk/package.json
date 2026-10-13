@@ -67,6 +67,24 @@
         "default": "./dist/live.js"
       }
     },
+    "./road-access": {
+      "react-native": {
+        "types": "./dist/roadAccess.d.ts",
+        "default": "./dist/roadAccess.js"
+      },
+      "import": {
+        "types": "./dist/roadAccess.d.ts",
+        "default": "./dist/roadAccess.js"
+      },
+      "require": {
+        "types": "./dist/roadAccess.d.cts",
+        "default": "./dist/roadAccess.cjs"
+      },
+      "default": {
+        "types": "./dist/roadAccess.d.ts",
+        "default": "./dist/roadAccess.js"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [

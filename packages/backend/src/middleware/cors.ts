@@ -259,6 +259,27 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
     path: '/live/sources/:sourceId/shapes/:shapeId',
     because: "an operator's published route shape the live layer draws vehicles along",
   },
+  {
+    method: 'GET',
+    path: '/roads/rule-sets',
+    because: "each country's road rules, the same for every caller",
+  },
+  { method: 'GET', path: '/roads/rules', because: 'the road rules at a position, signed out' },
+  {
+    method: 'GET',
+    path: '/roads/zones',
+    because: 'low emission and restricted access zones, the same for every caller',
+  },
+  {
+    method: 'POST',
+    path: '/roads/access',
+    /**
+     * A READ, as `POST /routes` is: the vehicle profile does not belong in a
+     * URL that proxies and logs keep, and nothing is stored. The handler
+     * writes no row and sets `Cache-Control: no-store`.
+     */
+    because: 'may this vehicle enter here: a read whose argument is a vehicle, kept out of URLs',
+  },
 ];
 
 /**

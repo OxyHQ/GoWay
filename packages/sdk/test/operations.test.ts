@@ -139,6 +139,10 @@ async function callEverything(): Promise<Set<string>> {
     goway.street3d.report('scene1', { reason: 'privacy' }),
     goway.live.sources(),
     goway.live.shape('renfe-cercanias', '51_R2N'),
+    goway.roads.ruleSets(),
+    goway.roads.rules({ latitude: 41.39, longitude: 2.16 }),
+    goway.roads.zones({ country: 'ES' }),
+    goway.roads.access({ latitude: 41.39, longitude: 2.16 }),
   ];
   await Promise.allSettled(calls);
   return issued;
