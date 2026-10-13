@@ -130,9 +130,9 @@ describe('the live chunk', () => {
   });
 
   test('the live HTTP client is only ever import()ed — two lazy chunks share it', () => {
-    // The shape cache (live chunk) and the settings dialog (its own chunk) both
-    // use it; a static import from either would hoist it into `__common`
-    // (measured: +272 B there before both were import()s).
+    // The live chunk (its availability check and shape cache) and the settings
+    // dialog (its own chunk) all use it; a static import from either would
+    // hoist it into `__common` (measured: +272 B there before both were import()s).
     const statics = files
       .filter((f) => staticImports(f.text).some((spec) => /lib\/live\/client$/.test(spec)))
       .map((f) => f.path);
@@ -143,6 +143,7 @@ describe('the live chunk', () => {
       .sort();
     expect(dynamics).toEqual([
       'features/explore/MapSettingsModal.tsx',
+      'features/live/LiveHost.tsx',
       'features/live/shapeCache.ts',
     ]);
   });

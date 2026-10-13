@@ -102,8 +102,19 @@ import {
   liveShapePathSchema,
   liveShapeSchema,
   liveSourcePageSchema,
+  DEFAULT_MAP_STYLE,
+  isMapLightPreset,
+  isMapStyleId,
+  MAP_LIGHT_PRESETS,
+  MAP_STYLE_IDS,
+  MAP_STYLE_INDEX_PATH,
+  mapStylePath,
+  resolveMapStyle,
 } from './contract';
 import type {
+  MapLightPreset,
+  MapStyleId,
+  MapStyleSelection,
   AccountClaimListQuery,
   CapabilityKey,
   ContentReportInput,
@@ -716,6 +727,22 @@ export interface GoWayLinks {
   place(place: PlaceLinkTarget): string;
   /** The map, framed on a viewport: `https://goway.to/?lat=…&lng=…&zoom=…`. */
   map(viewport: MapViewport): string;
+  /**
+   * A GoWay map style, as a complete MapLibre style document you can hand to
+   * `new maplibregl.Map({ style })` or MapLibre Native's `mapStyle`:
+   * `https://goway.to/map/styles/<style>/<light>.json`. `light` defaults to
+   * the style's own; a light the style is not published in resolves to the
+   * nearest one it is (a fixed style keeps its one). Tiles, glyphs, sprite and
+   * the credit are all in the document.
+   */
+  mapStyle(style: MapStyleId, light?: MapLightPreset): string;
+  /** The catalogue of every published style and its documents (`parseMapStyleIndex` reads it). */
+  mapStyleIndex(): string;
+  /**
+   * The embeddable map (`<iframe src>`), framed on a viewport, in a GoWay
+   * style and light: `https://goway.to/frame?lat=…&lng=…&zoom=…&style=…`.
+   */
+  embed(viewport: MapViewport, options?: { style?: MapStyleId; light?: MapLightPreset }): string;
 }
 
 /**
@@ -974,34 +1001,66 @@ function finiteNumberOf(value: unknown, what: string): number {
   return value;
 }
 
+/** The map's viewport as sorted query parameters (shared by `map` and `embed`). */
+function viewportQuery(viewport: MapViewport): Record<string, QueryValue> {
+  const record: Record<string, unknown> = isRecord(viewport) ? viewport : {};
+  const center = validInput(
+    geoCoordinateSchema,
+    { latitude: record.latitude, longitude: record.longitude },
+    'viewport',
+  );
+  const query: Record<string, QueryValue> = {
+    lat: center.latitude,
+    lng: center.longitude,
+    zoom: finiteNumberOf(record.zoom, 'viewport.zoom'),
+  };
+  if (record.bearing !== undefined)
+    query.bearing = finiteNumberOf(record.bearing, 'viewport.bearing');
+  if (record.pitch !== undefined) query.pitch = finiteNumberOf(record.pitch, 'viewport.pitch');
+  return query;
+}
+
+function serializeQuery(query: Record<string, QueryValue>): string {
+  return Object.keys(query)
+    .sort()
+    .map((key) => `${key}=${encodeURIComponent(String(query[key]))}`)
+    .join('&');
+}
+
+/** A style id and an optional light, checked against the catalogue. */
+function styleSelection(style: unknown, light: unknown): MapStyleSelection {
+  if (!isMapStyleId(style)) {
+    throw new GoWayValidationError(`style must be one of ${MAP_STYLE_IDS.join(', ')}`);
+  }
+  if (light !== undefined && !isMapLightPreset(light)) {
+    throw new GoWayValidationError(`light must be one of ${MAP_LIGHT_PRESETS.join(', ')}`);
+  }
+  return resolveMapStyle(style, light);
+}
+
 function createLinks(webBaseUrl: string): GoWayLinks {
   return Object.freeze({
+    mapStyle: (style: MapStyleId, light?: MapLightPreset) =>
+      `${webBaseUrl}${mapStylePath(styleSelection(style, light))}`,
+    mapStyleIndex: () => `${webBaseUrl}${MAP_STYLE_INDEX_PATH}`,
+    embed: (
+      viewport: MapViewport,
+      options: { style?: MapStyleId; light?: MapLightPreset } = {},
+    ) => {
+      const query = viewportQuery(viewport);
+      if (options.style !== undefined || options.light !== undefined) {
+        const selection = styleSelection(options.style ?? DEFAULT_MAP_STYLE, options.light);
+        query.style = selection.style;
+        query.light = selection.preset;
+      }
+      return `${webBaseUrl}/frame?${serializeQuery(query)}`;
+    },
     place: (place: PlaceLinkTarget) => {
       const id = placeIdOf(place);
       if (id.trim() === '') throw new GoWayValidationError('a place id must be a non-empty string');
       return `${webBaseUrl}/place/${encodeURIComponent(id)}`;
     },
-    map: (viewport: MapViewport) => {
-      const record: Record<string, unknown> = isRecord(viewport) ? viewport : {};
-      const center = validInput(
-        geoCoordinateSchema,
-        { latitude: record.latitude, longitude: record.longitude },
-        'viewport',
-      );
-      const query: Record<string, QueryValue> = {
-        lat: center.latitude,
-        lng: center.longitude,
-        zoom: finiteNumberOf(record.zoom, 'viewport.zoom'),
-      };
-      if (record.bearing !== undefined)
-        query.bearing = finiteNumberOf(record.bearing, 'viewport.bearing');
-      if (record.pitch !== undefined) query.pitch = finiteNumberOf(record.pitch, 'viewport.pitch');
-      const serialized = Object.keys(query)
-        .sort()
-        .map((key) => `${key}=${encodeURIComponent(String(query[key]))}`)
-        .join('&');
-      return `${webBaseUrl}/?${serialized}`;
-    },
+    map: (viewport: MapViewport) => `${webBaseUrl}/?${serializeQuery(viewportQuery(viewport))}`,
   });
 }
 

@@ -114,6 +114,19 @@ export function createMeshService(host: MeshHost): (request: MeshWorkerRequest) 
     };
     inflight.set(request.id, job);
     try {
+      // The tiles a city tile's trees are read against (`treeContext.ts`) are
+      // asked for now, beside the tile itself, so their round trips overlap
+      // the tile's own and its meshing instead of following them.
+      const early = new Map<string, Promise<ArrayBuffer | null>>();
+      if (request.trees && request.treeContext) {
+        for (const url of [request.treeContext.url, request.treeContext.roadsUrl]) {
+          if (!url) continue;
+          const pending = tileBytes(url, job);
+          // Read (and its failure handled) by `treesFor`, or not needed.
+          pending.catch(() => {});
+          early.set(url, pending);
+        }
+      }
       const bytes = await tileBytes(request.url, job);
       if (job.aborted) {
         acknowledge(request.id);
@@ -146,8 +159,14 @@ export function createMeshService(host: MeshHost): (request: MeshWorkerRequest) 
         : meshOpenMapTiles(bytes, request, size);
       const meshed = host.now();
       const gathered = request.trees
-        ? await treesFor(request, bytes, size, footprints, (url) => tileBytes(url, job))
-        : { points: [], complete: true };
+        ? await treesFor(
+            request,
+            bytes,
+            size,
+            footprints,
+            (url) => early.get(url) ?? tileBytes(url, job),
+          )
+        : { points: [], complete: true, settings: undefined };
       const trees = packTrees(gathered.points, size);
       const treeMs = host.now() - meshed;
       if (job.aborted) {
@@ -158,7 +177,7 @@ export function createMeshService(host: MeshHost): (request: MeshWorkerRequest) 
       // Transfer, not copy, where the host can: a dense tile is tens of
       // megabytes of buffers.
       const transfer = result ? packedTransferables(result) : [];
-      if (trees) transfer.push(trees.data.buffer as ArrayBuffer);
+      if (trees) transfer.push(trees.data.buffer as ArrayBuffer, trees.form.buffer as ArrayBuffer);
       host.post(
         {
           type: 'mesh',
@@ -168,6 +187,7 @@ export function createMeshService(host: MeshHost): (request: MeshWorkerRequest) 
           meshMs: meshed - started,
           treeMs,
           treesComplete: gathered.complete,
+          ...(gathered.settings ? { treeSettings: gathered.settings } : {}),
           ...(sources.length > 0 ? { sources } : {}),
         },
         transfer,

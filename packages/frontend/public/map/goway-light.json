@@ -1,7 +1,9 @@
 {
   "version": 8,
-  "name": "GoWay Daylight",
+  "name": "GoWay Standard · Day",
   "metadata": {
+    "goway:style": "standard",
+    "goway:light": "day",
     "goway:appearance": "light",
     "goway:schema": "openmaptiles-v3",
     "goway:anchor:beforeLabels": "goway:anchor:labels",
@@ -13,6 +15,8 @@
       "landcover-ice",
       "landcover-wetland",
       "landcover-sand",
+      "landcover-rock",
+      "landcover-ice-outline",
       "landuse-pitch",
       "landuse-cemetery",
       "landuse-medical",
@@ -20,6 +24,9 @@
       "landuse-park",
       "park",
       "park-outline",
+      "hillshade",
+      "contour",
+      "contour-index",
       "water",
       "waterway",
       "aeroway-area",
@@ -51,6 +58,7 @@
       "road-ferry",
       "road-rail",
       "road-rail-hatch",
+      "road-aerialway",
       "building",
       "building-3d",
       "boundary-region",
@@ -60,6 +68,8 @@
       "poi-dot-minor",
       "poi-transit-dot",
       "road-oneway",
+      "label-housenumber",
+      "label-contour",
       "label-waterway",
       "label-water-line",
       "label-water-point",
@@ -70,6 +80,7 @@
       "label-poi",
       "label-poi-transit",
       "label-aerodrome",
+      "label-peak",
       "label-park",
       "label-place-minor",
       "label-place-village",
@@ -851,7 +862,8 @@
           "#15652d"
         ]
       }
-    ]
+    ],
+    "goway:quality-low": []
   },
   "light": {
     "anchor": "viewport",
@@ -4958,6 +4970,49 @@
         "text-opacity": 0.55,
         "text-halo-color": "#ffffff",
         "text-halo-width": 0.8
+      }
+    },
+    {
+      "id": "label-housenumber",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "housenumber",
+      "minzoom": 18,
+      "filter": [
+        "has",
+        "housenumber"
+      ],
+      "layout": {
+        "text-field": [
+          "get",
+          "housenumber"
+        ],
+        "text-font": [
+          "Inter Regular"
+        ],
+        "text-size": [
+          "interpolate",
+          [
+            "exponential",
+            1.2
+          ],
+          [
+            "zoom"
+          ],
+          18,
+          8.5,
+          19,
+          10,
+          20,
+          11
+        ],
+        "text-padding": 2
+      },
+      "paint": {
+        "text-color": "#646969",
+        "text-halo-color": "rgba(246,244,235,0.95)",
+        "text-halo-width": 1.2,
+        "text-halo-blur": 0.3
       }
     },
     {

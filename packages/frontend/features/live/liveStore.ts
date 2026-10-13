@@ -18,7 +18,7 @@
  * may arrive in its new room's delta before the old room's remove does.
  */
 
-import type { LiveEntity, LiveKind, LiveSource } from '@goway.to/sdk/live';
+import type { LiveEntity, LiveKind, LiveMove, LiveSource } from '@goway.to/sdk/live';
 
 import {
   blend,
@@ -115,6 +115,23 @@ export interface LiveSample {
   estimated: boolean;
 }
 
+/** An entity with a {@link LiveMove}'s motion: everything else as held. Exported for the tests. */
+export function applyMove(entity: LiveEntity, move: LiveMove): LiveEntity {
+  const [, latitude, longitude, headingDegrees, speedMetersPerSecond, observedAt, along, offset] =
+    move;
+  const moved = {
+    ...entity,
+    position: { latitude, longitude },
+    headingDegrees,
+    speedMetersPerSecond,
+    observedAt,
+  } as LiveEntity;
+  if (moved.kind === 'transit' && moved.track && along !== null) {
+    return { ...moved, track: { ...moved.track, alongMeters: along, offsetMeters: offset ?? 0 } };
+  }
+  return moved;
+}
+
 function roomOf(tile: string, kind: LiveKind): string {
   return `${tile}|${kind}`;
 }
@@ -179,6 +196,7 @@ export class LiveStore {
     kind: LiveKind;
     at: string;
     upserts: readonly LiveEntity[];
+    moves?: readonly LiveMove[];
     removes: readonly string[];
   }): void {
     this.observeServerTime(delta.at);
@@ -187,11 +205,26 @@ export class LiveStore {
       if (this.tracked.get(id)?.room === room) this.tracked.delete(id);
     }
     for (const entity of delta.upserts) this.upsert(entity, room);
+    // A move patches what this room already delivered; one we do not hold is
+    // ignored (its room's next snapshot or upsert will bring it).
+    for (const move of delta.moves ?? []) {
+      const item = this.tracked.get(move[0]);
+      if (!item || item.room !== room) continue;
+      this.upsert(applyMove(item.entity, move), room);
+    }
   }
 
-  /** Keep only the rooms the server says this connection is in. */
-  retain(tiles: readonly string[], kinds: readonly LiveKind[]): void {
-    const rooms = new Set(tiles.flatMap((tile) => kinds.map((kind) => roomOf(tile, kind))));
+  /**
+   * Keep only the rooms the server says this connection is in — exactly those
+   * (tile, kind) pairs: an aircraft room's z7 tile does not keep the transit
+   * room of the same tile, whose buses would otherwise freeze there.
+   */
+  retain(tiles: Readonly<Partial<Record<LiveKind, readonly string[]>>>): void {
+    const rooms = new Set(
+      (Object.entries(tiles) as [LiveKind, readonly string[]][]).flatMap(([kind, list]) =>
+        list.map((tile) => roomOf(tile, kind)),
+      ),
+    );
     for (const [id, item] of this.tracked) if (!rooms.has(item.room)) this.tracked.delete(id);
   }
 

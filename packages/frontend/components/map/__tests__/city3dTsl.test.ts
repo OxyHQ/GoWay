@@ -29,7 +29,7 @@ import {
   lifeBodyMaterial,
   lifeShadowMaterial,
 } from '@/components/map/engine/cityLife/lifeMaterials';
-import { GROUND } from '@/components/map/engine/city3d/terrainGround';
+import { latticeCells, TERRAIN_LATTICE } from '@/components/map/engine/city3d/terrainGround';
 import { mercatorXFromLng, mercatorYFromLat } from '@/components/map/engine/city3d/tileMath';
 
 const TILE = { z: 15, x: 16580, y: 12236 };
@@ -185,8 +185,9 @@ describe('the TSL building material', () => {
 
 describe('the TSL street materials', () => {
   const inputs = () => ({
-    groundAtlas: createGroundAtlas(4).texture,
-    sdfAtlas: createGroundAtlas(1).texture,
+    groundAtlas: createGroundAtlas(4, 66).texture,
+    groundCells: 64,
+    sdfAtlas: createGroundAtlas(1, 66).texture,
     surfaceDay: [new Vector3(), new Vector3(), new Vector3(), new Vector3()],
     surfaceNight: [new Vector3(), new Vector3(), new Vector3(), new Vector3()],
     paintDay: Array.from({ length: 5 }, () => new Vector3()),
@@ -209,16 +210,21 @@ describe('the TSL street materials', () => {
   });
 
   test('the ground atlas: a slot per tile, each grid at its own rows', () => {
-    const atlas = createGroundAtlas(3);
+    // A z15 street tile on GoWay's DEM: 64 pixels across, one more each side.
+    const cellsAcross = latticeCells({ z: 15 }, TERRAIN_LATTICE);
+    expect(cellsAcross).toBe(64);
+    const size = cellsAcross + 2;
+    const atlas = createGroundAtlas(3, size);
     const a = atlas.claim();
     const b = atlas.claim();
     expect(a).not.toBe(b);
-    const cells = GROUND.grid * GROUND.grid;
-    atlas.write(b ?? 0, new Float32Array(cells).fill(7));
+    const cells = size * size;
+    atlas.write(b ?? 0, { values: new Float32Array(cells).fill(7), cells: cellsAcross, size });
     const data = atlas.texture.image.data as Float32Array;
     expect(data[(b ?? 0) * cells]).toBe(7);
     expect(data[(a ?? 0) * cells]).toBe(0);
-    expect(atlas.texture.image.height).toBe(GROUND.grid * 3);
+    expect(atlas.texture.image.height).toBe(size * 3);
+    expect(() => atlas.write(a ?? 0, { values: new Float32Array(9), cells: 1, size: 3 })).toThrow();
     atlas.claim();
     expect(atlas.claim()).toBeNull();
     atlas.release(a ?? 0);

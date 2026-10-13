@@ -262,6 +262,7 @@ describe('attachLive', () => {
     let removed = 0;
     handle.setCity({
       ground: () => null,
+      clearance: () => null,
       setLight: () => {},
       setModels: () => {},
       moveModel: () => {},

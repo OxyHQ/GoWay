@@ -153,6 +153,9 @@ export interface TreeCoverage {
   crowns: Record<string, number>;
   withHeight: number;
   withCrownDiameter: number;
+  withCircumference: number;
+  /** Recorded as street or avenue trees (`treeTags.ts` → `street`). */
+  street: number;
 }
 
 interface StoredWay {
@@ -362,6 +365,8 @@ export function compile(options: CompileOptions): CompileResult {
   // ── Pass 1: buildings among ways and relations ──────────────────────────
   const ways = new Map<number, StoredWay>();
   const relations: StoredRelation[] = [];
+  // The nodes of `natural=tree_row` ways: a tree among them is a row tree.
+  const treeRowNodes = new Set<number>();
   for (const blob of blobs) {
     const bytes = readBlob(fd, blob);
     if (blob.type === 'OSMHeader') {
@@ -370,11 +375,23 @@ export function compile(options: CompileOptions): CompileResult {
     }
     if (blob.type !== 'OSMData') continue;
     let strings: string[] = [];
+    let naturalKey = -1;
+    let treeRowValue = -1;
     const contents = readBlock(bytes, {
       onStrings(table) {
         strings = table;
+        naturalKey = table.indexOf('natural');
+        treeRowValue = table.indexOf('tree_row');
       },
       onWay(id, keys, vals, refs) {
+        if (naturalKey >= 0 && treeRowValue >= 0) {
+          for (let i = 0; i < keys.length; i++) {
+            if (keys[i] === naturalKey && vals[i] === treeRowValue) {
+              for (const ref of refs) treeRowNodes.add(ref);
+              return;
+            }
+          }
+        }
         if (!looksLikeBuilding(strings, keys)) return;
         const tags = tagsOf(strings, keys, vals);
         if (!buildingKind(tags)) return;
@@ -764,11 +781,13 @@ export function compile(options: CompileOptions): CompileResult {
     crowns: {},
     withHeight: 0,
     withCrownDiameter: 0,
+    withCircumference: 0,
+    street: 0,
   };
   for (const node of treeNodes) {
     if (box && (node.x < box.x0 || node.x > box.x1 || node.y < box.y0 || node.y > box.y1)) continue;
     if (!tileKept(node.x, node.y)) continue;
-    const properties = treeProperties(node.tags);
+    const properties = treeProperties(node.tags, treeRowNodes.has(node.id));
     treeCoverage.trees++;
     if (properties.crown) {
       treeCoverage.withCrown++;
@@ -776,6 +795,8 @@ export function compile(options: CompileOptions): CompileResult {
     }
     if (properties.height !== undefined) treeCoverage.withHeight++;
     if (properties.crown_diameter !== undefined) treeCoverage.withCrownDiameter++;
+    if (properties.circumference !== undefined) treeCoverage.withCircumference++;
+    if (properties.street) treeCoverage.street++;
     const tx = Math.min(span - 1, Math.floor(node.x * span));
     const ty = Math.min(span - 1, Math.floor(node.y * span));
     const key = `${options.zoom}/${tx}/${ty}`;

@@ -20,6 +20,12 @@ import {
   buildCity3dGroundOverrides,
   crossFadeByZoom,
 } from '@/lib/map/style/city3dGround';
+import { appearancePreset } from '@/lib/map/style/catalogue';
+import { styleTheme } from '@/lib/map/style/themes';
+
+/** Standard in an appearance's light: what the 3D ground used to be keyed by. */
+const standardIn = (appearance: 'light' | 'dark') =>
+  styleTheme({ style: 'standard', preset: appearancePreset(appearance) });
 
 const contrast = contrastRatio;
 
@@ -97,7 +103,7 @@ describe('the 3D city ground', () => {
 describe('the ground overrides', () => {
   for (const appearance of ['light', 'dark'] as const) {
     test(`${appearance}: every override is a colour cross-fade from the 2D value to the city value`, () => {
-      const overrides = buildCity3dGroundOverrides(appearance);
+      const overrides = buildCity3dGroundOverrides(standardIn(appearance));
       expect(overrides.length).toBeGreaterThan(20);
       const base = buildLayers(CARTOGRAPHY_PALETTES[appearance], 'openmaptiles');
       const city = buildLayers(CITY_GROUND_PALETTES[appearance], 'openmaptiles');
@@ -116,7 +122,7 @@ describe('the ground overrides', () => {
     });
 
     test(`${appearance}: the hidden extrusion is never overridden, and applying keeps the layer list`, () => {
-      const overrides = buildCity3dGroundOverrides(appearance);
+      const overrides = buildCity3dGroundOverrides(standardIn(appearance));
       expect(overrides.some((o) => o.layer === 'building-3d')).toBe(false);
       const base = buildLayers(CARTOGRAPHY_PALETTES[appearance], 'openmaptiles');
       const applied = applyGroundOverrides(base, overrides);

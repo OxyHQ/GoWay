@@ -106,6 +106,12 @@ describe('the zip reader', () => {
     await expect(
       loadStaticGtfs({ zip: 'x' }, async () => zip({ 'routes.txt': ROUTES })),
     ).rejects.toThrow(/trips.txt missing/);
+    // Shapes are optional (Renfe's long-distance file has none): lines, no tracks.
+    const shapeless = await loadStaticGtfs({ zip: 'x' }, async () =>
+      zip({ 'routes.txt': ROUTES, 'trips.txt': TRIPS }),
+    );
+    expect(shapeless.shapes.size).toBe(0);
+    expect(shapeless.routes.size).toBeGreaterThan(0);
   });
 });
 

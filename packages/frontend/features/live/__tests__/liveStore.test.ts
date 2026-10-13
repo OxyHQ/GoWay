@@ -16,7 +16,8 @@ import {
   positionAt,
   velocityOf,
 } from '../motion';
-import { BLEND_MS, LiveStore, type ShapeSource } from '../liveStore';
+import { kindsAtZoom } from '../liveClient';
+import { applyMove, BLEND_MS, LiveStore, type ShapeSource } from '../liveStore';
 import { consistAlong, consistStraight, pointAlong, type TrackShape } from '../track';
 
 const T0 = Date.parse('2026-10-11T12:00:00Z');
@@ -221,8 +222,19 @@ describe('LiveStore', () => {
     });
     expect(store.get('renfe-cercanias:a')?.position.latitude).toBe(40.9);
     // Leaving a room drops what it held.
-    store.retain(['7/64/47'], ['transit']);
+    store.retain({ transit: ['7/64/47'] });
     expect(store.size).toBe(0);
+  });
+
+  test('keeps exactly the rooms answered: an aircraft room never keeps a transit room of the same tile', () => {
+    const store = new LiveStore(() => T0);
+    store.applySnapshot(message([train('bus', 41.3, 2.1, T0)]));
+    store.applySnapshot(message([aircraft()]));
+    expect(store.size).toBe(2);
+    // Zoomed in: aircraft still in their z7 room; transit now in z11 rooms.
+    store.retain({ aircraft: ['7/64/47'], transit: ['11/1036/764'] });
+    expect(store.get('adsb-lol:abc123')).toBeDefined();
+    expect(store.get('renfe-cercanias:bus')).toBeUndefined();
   });
 
   test('ignores an older fix arriving after a newer one', () => {
@@ -415,5 +427,65 @@ describe('the track', () => {
     );
     now += 1;
     expect(store.sample(ALL)[0]?.onTrack?.along).toBeCloseTo(1280, 3);
+  });
+});
+
+describe('compact moves', () => {
+  test('a move replaces only the motion, and a move for something not held is ignored', () => {
+    const now = T0;
+    const store = new LiveStore(() => now);
+    store.applySnapshot(
+      message([train('1', 41.4, 2.105, T0, { shapeId: 'ell', alongMeters: 417 })]),
+    );
+    const tile = message([]).tile;
+    store.applyDelta({
+      tile,
+      kind: 'transit',
+      at: new Date(T0 + 20_000).toISOString(),
+      upserts: [],
+      moves: [
+        ['renfe-cercanias:1', 41.401, 2.106, 45, 12, new Date(T0 + 20_000).toISOString(), 600, 3],
+        ['renfe-cercanias:unknown', 41, 2, null, null, new Date(T0).toISOString(), null, null],
+      ],
+      removes: [],
+    });
+    const entity = store.get('renfe-cercanias:1');
+    expect(entity?.position).toEqual({ latitude: 41.401, longitude: 2.106 });
+    expect(entity?.headingDegrees).toBe(45);
+    expect(entity?.kind === 'transit' && entity.track).toEqual({
+      shapeId: 'ell',
+      alongMeters: 600,
+      offsetMeters: 3,
+    });
+    // Everything else as it was.
+    expect(entity?.kind === 'transit' && entity.line).toBe('R2N');
+    expect(store.get('renfe-cercanias:unknown')).toBeUndefined();
+  });
+
+  test('applyMove keeps a vehicle off any track off it', () => {
+    const off = train('2', 41.4, 2.1, T0);
+    const moved = applyMove(off, [
+      'renfe-cercanias:2',
+      41.5,
+      2.2,
+      null,
+      null,
+      new Date(T0).toISOString(),
+      null,
+      null,
+    ]);
+    expect(moved.kind === 'transit' && moved.track).toBeNull();
+    expect(moved.position.latitude).toBe(41.5);
+  });
+});
+
+describe('asking only for what is drawn', () => {
+  test('bike-share docks are asked for from z15 only', () => {
+    expect(kindsAtZoom(['aircraft', 'transit', 'bikeshare'], 13)).toEqual(['aircraft', 'transit']);
+    expect(kindsAtZoom(['aircraft', 'transit', 'bikeshare'], 15)).toEqual([
+      'aircraft',
+      'transit',
+      'bikeshare',
+    ]);
   });
 });

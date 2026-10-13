@@ -27,11 +27,10 @@
 import { parseHexColour } from '../colour';
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec';
 
-import type { MapAppearance } from '../provider';
 import { BUILDING_3D_LAYER_ID } from './buildings3d';
 import { buildLayers } from './layers';
-import { CARTOGRAPHY_PALETTES } from './palette';
-import { CITY_GROUND_FADE, CITY_GROUND_PALETTES, type GroundOverride } from './palette3d';
+import { CITY_GROUND_FADE, type GroundOverride } from './palette3d';
+import type { StyleTheme } from './themes';
 
 /** A zoom-only interpolate with literal stops: `['interpolate', type, ['zoom'], z, v, …]`. */
 type ZoomStops = { type: unknown; stops: [number, unknown][] };
@@ -107,16 +106,18 @@ export function crossFadeByZoom(
 const isColourProperty = (property: string): boolean => property.endsWith('-color');
 
 /**
- * The overrides for one appearance: every paint colour the city palette
- * changes, cross-faded by zoom. Throws on a value it cannot cross-fade, so a
- * palette change that would need a different mechanism fails the build.
+ * The overrides for one style in one light: every paint colour its city
+ * ground changes, cross-faded by zoom. Throws on a value it cannot
+ * cross-fade, so a palette change that would need a different mechanism
+ * fails the build. A style whose ground IS its city ground (the data
+ * basemaps) has none, and the 3D city then leaves its ground alone.
  */
 export function buildCity3dGroundOverrides(
-  appearance: MapAppearance,
+  theme: Pick<StyleTheme, 'palette' | 'cityGround' | 'options'>,
   source = 'openmaptiles',
 ): GroundOverride[] {
-  const base = buildLayers(CARTOGRAPHY_PALETTES[appearance], source);
-  const city = buildLayers(CITY_GROUND_PALETTES[appearance], source);
+  const base = buildLayers(theme.palette, source, theme.options);
+  const city = buildLayers(theme.cityGround, source, theme.options);
   if (base.length !== city.length) {
     throw new Error('city ground: the city palette changed the layer list');
   }

@@ -536,7 +536,9 @@ const snapshot = {
 if (live.LIVE_SOCKET_NAMESPACE !== '/live') throw new Error('namespace');
 if (live.parseLiveSnapshot(snapshot)?.entities.length !== 1) throw new Error('snapshot did not parse');
 if (live.parseLiveSnapshot({ nonsense: true }) !== null) throw new Error('junk parsed');
-if (live.liveTileOf({ latitude: 41.39, longitude: 2.17 }) !== '7/64/47') throw new Error('tile');
+if (live.liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'aircraft') !== '7/64/47') throw new Error('tile');
+if (live.liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'transit') !== '11/1036/764') throw new Error('transit tile');
+if (typeof live.unpackLivePayload !== 'function') throw new Error('unpackLivePayload');
 `;
 
 const CONSUMER_LIVE_ESM = `import * as live from '@goway.to/sdk/live';

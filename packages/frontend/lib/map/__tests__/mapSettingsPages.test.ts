@@ -49,6 +49,7 @@ describe('the settings pages', () => {
       'city3dTrees',
       'cityLife',
       'landmarks',
+      'live',
       'flyover',
     ]);
   });
@@ -56,7 +57,6 @@ describe('the settings pages', () => {
   test('Labs revealed (production): the woods fill joins, and a Labs page', () => {
     const { pages, features } = layout({ labs: true });
     expect(pages).toEqual(['map', 'layers', 'labs', 'general', 'about']);
-    // goway.to's backend serves no live data yet.
     expect(ids(features.layers)).toEqual([
       'street3d',
       'city3d',
@@ -65,11 +65,12 @@ describe('the settings pages', () => {
       'city3dTreeFill',
       'cityLife',
       'landmarks',
+      'live',
       'flyover',
     ]);
   });
 
-  test('Labs revealed (development): live data joins', () => {
+  test('Labs revealed (development): the same layers as production', () => {
     const { features } = layout({ labs: true, development: true });
     expect(ids(features.layers)).toEqual([
       'street3d',

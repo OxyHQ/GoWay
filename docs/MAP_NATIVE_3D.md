@@ -615,10 +615,21 @@ was measured with three patched locally (`yieldToMain`: `scheduler.yield()`
 where it exists, else a `MessageChannel` message, else
 `requestIdleCallback`, the macrotask React Native offers), in the "a
 macrotask yield" columns below. That build is not shipped; the change is
-proposed upstream. Nor can the engine own the yields with three's public
-API: `compileAsync` is its only way to build a material without drawing
-it, and a build is keyed by the render context it is made for (an offscreen
-draw builds a program the map's frame does not reuse, measured).
+proposed upstream (mrdoob/three.js#34980). Nor can the engine own the
+yields with three's public API: `compileAsync` is its only way to build a
+material without drawing it, and a build is keyed by the render context it
+is made for (an offscreen draw builds a program the map's frame does not
+reuse, measured).
+
+**Until it lands, the platform gets `scheduler.yield()`** where it lacks it
+(`lib/platform/schedulerYield.ts`, installed at startup), and three takes its
+own fast path unpatched. On the web that is the spec authors' polyfill,
+`scheduler-polyfill` (GoogleChromeLabs, Apache-2.0, pinned at 1.3.0): the
+whole `scheduler` on a `MessageChannel`, installed only where `self.scheduler`
+is undefined (where only `yield` is missing, it adds that one over the native
+`postTask`). On Hermes the polyfill would fall back to `setTimeout(0)`, which
+waits a frame there (measured below), so the same module installs `yield()`
+alone on `requestIdleCallback`. Chrome and Edge are untouched.
 
 **Hermes, measured** (RN 0.86, bridgeless, release build, Android 16
 emulator): 120 slices of 4 ms work, yielding between them, while a
@@ -870,6 +881,15 @@ Per sky (on and off) it asserts:
   changes at least 3% of the view (pixels moving more than 24 levels, below
   the chips' rows). Measured: 14.24% with the sky and 14.29% without, on
   `main` and TSL alike; streets drawn without their ground measure 0%.
+- **Streets on a sloped, creased ground** (the `nosky` leg): the same junction
+  on a terrain of 3 m swells and 0.5 m folds a few DEM pixels across, every
+  DEM tile generated from that one surface at its own zoom (as Mapterhorn's
+  are). Turning the streets on must change at least 85% of what it changes on
+  flat ground. Measured: `main` (cd11022) **8.19%** against 14.29% flat — the
+  drawn terrain rose through whole stretches of the street, which read the
+  ground from a coarser DEM tile through a 33² grid — and **14.39%** with the
+  terrain lattice (`MAP_TERRAIN_GLOBE.md` → "Everything on the drawn
+  ground").
 - **Models** (the `objects` leg, sky off; models draw alike under either): a landmark of the
   registry, the Sagrada Família, stands in the synthetic city. With
   `landmarks` on it must change at least 1% of the map against the same view
@@ -907,7 +927,7 @@ Without the fix, the trees without the sky are buried in every run, and the
 rest in most: with the sky on, one run in three drew its trees anyway. What
 re-creates a mesh's render objects (and so, by chance, its program) depends
 on the frame's timing; the no-sky trees are the gate's deterministic catch.
-On failure the screenshots (`{sky,nosky}-{trees,notrees,streets,nostreets,nocity}.png`, `landmark.png`, `nolandmark.png`, `life.png`, `nolife.png`) are
+On failure the screenshots (`{sky,nosky}-{trees,notrees,streets,nostreets,nocity}.png`, `nosky-creased-{streets,nostreets}.png`, `landmark.png`, `nolandmark.png`, `life.png`, `nolife.png`) are
 uploaded as the `city3d-visible-{sky,nosky,objects}` artifacts.
 
 ## Phase 4 groundwork: off-thread meshing

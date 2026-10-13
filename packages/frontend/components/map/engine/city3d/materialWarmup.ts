@@ -79,6 +79,8 @@ function warmMesh(format: CityTileFormat): PackedMesh {
 function warmTrees(): TreeInstances {
   return {
     data: new Uint16Array(4),
+    // Crown base and diameter: the same vertex layout as every tile's trees.
+    form: new Uint16Array(2),
     count: 1,
     ranges: TREE_SHAPES.map((_, i) => (i === 0 ? 1 : 0)),
     unitM: 1,

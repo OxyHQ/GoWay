@@ -10,6 +10,8 @@ import type { Namespace, Server as SocketIOServer } from 'socket.io';
 import type { LiveConfig } from '../config/live';
 import { liveSourceEnvName } from '../config/live';
 import { LIVE_SOURCES } from './catalogue';
+import { type LiveBus, ValkeyLiveBus } from './cluster';
+import { packLivePayload } from './pack';
 import { LiveHub, type LiveHubLogger, type LiveHubSource } from './hub';
 import { attachLiveNamespace, liveRoomName } from './socket';
 import type { LiveFetch } from './types';
@@ -27,6 +29,11 @@ export interface CreateLiveServiceOptions {
   logger: LiveHubLogger;
   fetch?: LiveFetch;
   now?: () => number;
+  /**
+   * The bus shared with the other API tasks. Default: Valkey at
+   * `config.valkeyUrl` when set, else none (this process polls alone).
+   */
+  bus?: LiveBus | null;
 }
 
 /** The hub's sources from configuration: listed, known, and keyed when they must be. */
@@ -65,20 +72,48 @@ export function createLiveService(options: CreateLiveServiceOptions): LiveServic
     logger.warn({}, 'No listed live source is usable; live stays off');
     return null;
   }
+  if (config.valkeyUrlProblem && options.bus === undefined) {
+    // Never the value: it may carry a password.
+    logger.warn(
+      { problem: config.valkeyUrlProblem },
+      'Live runs without a shared bus: every task polls on its own',
+    );
+  }
   let namespace: Namespace | null = null;
+  const bus =
+    options.bus !== undefined
+      ? options.bus
+      : config.valkeyUrl
+        ? ValkeyLiveBus.fromUrl(config.valkeyUrl)
+        : null;
   const hub = new LiveHub({
+    bus,
     sources,
     fetch: options.fetch ?? (globalThis.fetch as unknown as LiveFetch),
     ...(options.now ? { now: options.now } : {}),
     logger,
     publish: (delta: LiveDelta) => {
-      namespace?.to(liveRoomName(delta.tile, delta.kind)).emit(LIVE_SOCKET_EVENTS.delta, delta);
+      // Packed once per room, whoever is in it.
+      namespace
+        ?.to(liveRoomName(delta.tile, delta.kind))
+        .emit(LIVE_SOCKET_EVENTS.delta, packLivePayload(delta));
     },
     onSourcesChanged: () => {
-      namespace?.emit(LIVE_SOCKET_EVENTS.sources, { items: hub.sources(), nextCursor: null });
+      namespace?.emit(
+        LIVE_SOCKET_EVENTS.sources,
+        packLivePayload({ items: hub.sources(), nextCursor: null }),
+      );
     },
   });
-  logger.info({ sources: sources.map((source) => source.definition.id) }, 'Live layer configured');
+  logger.info(
+    {
+      sources: sources.map((source) => source.definition.id),
+      // Never the URL: it may carry credentials.
+      shared: bus !== null,
+      ...(bus ? { task: bus.taskId } : {}),
+    },
+    'Live layer configured',
+  );
   return {
     hub,
     attach(io) {

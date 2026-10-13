@@ -263,6 +263,14 @@ export function createTileEntry(
           4,
         ),
       );
+      // Crown base and diameter, decimetres (`trees.ts` → `treeForm`).
+      geometry.setAttribute(
+        'aForm',
+        new THREE.InstancedBufferAttribute(
+          instances.form.subarray(from * 2, (from + count) * 2),
+          2,
+        ),
+      );
       geometry.instanceCount = count;
       const trees = hide(new THREE.Mesh(geometry, material));
       // Which instances it draws (its terrain lifts, `applyGround`), as which
@@ -282,7 +290,7 @@ export function createTileEntry(
       entry.trees.push(trees);
       entry.treeTriangles += count * shape.triangles;
     }
-    entry.bytes += instances.data.byteLength;
+    entry.bytes += instances.data.byteLength + instances.form.byteLength;
     entry.treeCount = instances.count;
   }
   return entry;
@@ -456,7 +464,7 @@ export function groundTileFor(entry: TileEntry, tile: TileId): GroundTile {
         for (let k = 0; k < instances.count; k++) {
           const u = (instances.data[k * 4] * instances.unitM) / tileSizeM;
           const v = (instances.data[k * 4 + 1] * instances.unitM) / tileSizeM;
-          const lift = gridAt(grid, GROUND.grid, u, v);
+          const lift = gridAt(grid, u, v);
           values[at + k] = lift;
           if (lift < min) min = lift;
           if (lift > max) max = lift;

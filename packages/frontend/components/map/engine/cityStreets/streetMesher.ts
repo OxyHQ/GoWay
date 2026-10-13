@@ -51,6 +51,7 @@ import {
   reverseSection,
   sameSection,
 } from './lanes';
+import { densifyToLattice, type StreetLattice, splitToLattice } from './groundLattice';
 import { arrowKey, arrowParts, type CrossingStyle, crossingStyle } from './markings';
 import {
   Buffers,
@@ -143,6 +144,16 @@ export interface StreetMeshInput {
   tiles: readonly { x: number; y: number; data: DecodedRoadTile }[];
   rules: PaintRules;
   atlas: StreetAtlas;
+  /**
+   * The terrain DEM's pixels across this tile (`terrainGround.ts` →
+   * `latticeCells`): every surface is cut along the lines through their
+   * centres, and every painted line gets a point where it crosses one, so the
+   * street bends exactly where the drawn ground does (`groundLattice.ts`).
+   * Absent: not cut (a flat map, or a test of the layout alone).
+   */
+  groundCells?: number;
+  /** Lattice lines per DEM pixel (`StreetLattice.sub`; the profile's `streets.groundSubdivision`). */
+  groundSubdivision?: number;
 }
 
 export interface StreetMeshStats {
@@ -253,6 +264,11 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
     }
     return false;
   };
+
+  const lattice: StreetLattice | null =
+    input.groundCells && input.groundCells > 0
+      ? { cells: input.groundCells, sizeM: size, sub: input.groundSubdivision ?? 1 }
+      : null;
 
   const paintedNames: [number, number][] = [];
   const stats: StreetMeshStats = {
@@ -602,13 +618,14 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
 
   /** A painted line (strip of centre points + half-width offsets), owned segment by segment. */
   const emitLine = (
-    points: readonly [number, number][],
+    path: readonly [number, number][],
     halfWidth: number,
     colour: number,
     into = paint,
     owned = true,
   ) => {
-    if (points.length < 2) return;
+    if (path.length < 2) return;
+    const points = lattice ? densifyToLattice(path, lattice) : path;
     const normals = rightNormals(points);
     let prev: [number, number] | null = null;
     for (let i = 0; i < points.length; i++) {
@@ -1331,6 +1348,9 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
     );
   }
 
+  if (lattice) {
+    for (const buffers of [surf.simple, surf.full, tint, sdf]) splitToLattice(buffers, lattice);
+  }
   const surfaces = packSurfaces([surf.simple], [surf.full]);
   const markings = packMarkings([tint, paint], [sdf]);
   stats.surfaceTriangles = surfaces.indices.length / 3;

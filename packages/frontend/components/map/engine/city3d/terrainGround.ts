@@ -1,28 +1,49 @@
 /**
- * City-3D buildings standing ON the terrain, not at sea level.
+ * Everything we draw on the ground, standing on the SAME surface MapLibre's 3D
+ * terrain draws — not at sea level, and not on a coarser copy of it.
  *
  * With 3D terrain on, MapLibre's custom-layer matrix places `z` at ABSOLUTE
  * elevation — the camera rides `elevation` metres up — so a mesh built from
  * the ground (`z = 0`) is drawn at sea level: under the hillside in Barcelona's
- * Gràcia, hundreds of metres under it in Andorra. This module works out, per
- * building, how far up to lift it, so that it sits where MapLibre draws the
- * ground. Pure: no renderer, no map engine; `cityEngine.ts` uploads the result
- * as one float per vertex and the material adds it (`tsl/common.ts` →
- * `terrainLift`, which both building materials read).
+ * Gràcia, hundreds of metres under it in Andorra. This module works out how far
+ * up to lift everything: each building, each tree, each street vertex, city
+ * life and the models. Pure: no renderer, no map engine; `cityEngine.ts`
+ * uploads the result as one float per vertex and the materials add it
+ * (`tsl/common.ts` → `terrainLift`), and the street detail reads the grids in
+ * its vertex shader (`cityStreets/groundAtlas.ts`).
  *
- * ## What is sampled, and why a grid
+ * ## The surface MapLibre draws, exactly
  *
- * The host hands over a sampler of the RENDERED surface — on MapLibre,
- * `map.queryTerrainElevation`, which reads the DEM tiles the terrain is drawing
- * with, so a building agrees with the ground under it rather than with some
- * finer model of it. Asking it once per building is the obvious design and the
- * wrong one: a dense Barcelona tile has ~15,500 polygons, and every one needs
- * its centre and its corners. Instead each tile asks {@link GROUND.grid}² points
- * (1,089) and every building reads that grid bilinearly — the same order of
- * resolution as the terrain mesh itself (MapLibre draws each terrain tile as a
- * 128-cell grid, ≈ 9–15 m at these zooms, from DEM pixels of ≈ 15 m), at a
- * cost that does not grow with the number of buildings. Measured costs are in
- * `docs/MAP_TERRAIN_GLOBE.md`.
+ * MapLibre draws each terrain tile as a 128-cell grid whose vertices read the
+ * DEM bilinearly between pixel CENTRES (`get_elevation` in its vertex prelude;
+ * `Terrain.getElevationSampler` on the CPU, the same arithmetic), with the
+ * exaggeration applied — and a terrain tile at zoom `z` reads the DEM tile at
+ * `z − deltaZoom` (its `TerrainTileManager`, `deltaZoom` 1), clamped to the
+ * source's max zoom. Everything here reproduces that surface:
+ *
+ * - **The same DEM tile.** The host samples at `maxzoom + deltaZoom`, which is
+ *   the DEM's finest tile, the one every terrain tile at street level draws
+ *   (`city3dGround.web.ts`). Asking for `maxzoom` itself — what this module was
+ *   given until the Mallorca–Marina report — reads the tile ONE zoom coarser
+ *   (Barcelona: 29 m pixels instead of 14 m), a different surface: up to 10 m
+ *   off around the Sagrada Família, metres on any slope.
+ * - **The same resolution.** Each tile's grid ({@link GroundGrid}) is sampled
+ *   at the DEM's own pixel centres, plus one pixel round the edge, so a
+ *   bilinear read of the grid IS MapLibre's bilinear read of the DEM, to float
+ *   rounding — at every point, not only at the samples. The grid used to be
+ *   33 × 33 per tile whatever the DEM (29 m cells over 14 m pixels); between
+ *   its samples the drawn terrain rose up to 1.2 m above it, and 16% of a
+ *   Barcelona street tile was under the terrain even with the right DEM.
+ * - **The same exaggeration** (the sampler's own).
+ *
+ * What remains is MapLibre's mesh against its own bilinear surface: a terrain
+ * tile at `z ≥ 15` has two or more vertices per DEM pixel ON the pixel centres'
+ * lines, so the two differ only by the bilinear twist inside a pixel —
+ * measured at most 1.4 mm on z18 terrain tiles, 9 mm on z17, 16 cm on z16 and
+ * only beside the Sagrada Família's 31 m DEM spike (`docs/MAP_TERRAIN_GLOBE.md`
+ * → "Everything on the drawn ground"). Far terrain tiles (z ≤ 12 terrain tiles,
+ * kilometres out) are drawn from a COARSER DEM than this; nothing GoWay draws
+ * on the ground is drawn there.
  *
  * ## How a building is placed — MapLibre's rule, made a little better
  *
@@ -42,12 +63,38 @@
  */
 import { latFromMercatorY, type TileId } from './tileMath';
 
-/** Ground elevation, in metres as DRAWN (terrain exaggeration included), at a point. */
+/**
+ * Ground elevation, in metres as DRAWN (terrain exaggeration included), at a
+ * point: the DEM's finest tile read as MapLibre's terrain reads it.
+ */
 export type GroundSampler = (lng: number, lat: number) => number;
 
+/**
+ * The DEM the terrain is drawn from: its finest zoom and its tiles' side in
+ * pixels. Its pixel centres are the lattice every grid is sampled on, and the
+ * lines the street geometry is cut along (`cityStreets/groundLattice.ts`).
+ */
+export interface GroundLattice {
+  zoom: number;
+  tileSize: number;
+}
+
+/**
+ * GoWay's terrain: Mapterhorn's Terrarium tiles, 512 px, to z12
+ * (`lib/map/style/relief.ts` → `RELIEF_DEM`, held equal by
+ * `city3dGroundLattice.test.ts`; not imported, the relief is another chunk).
+ * What a street tile is cut for before any terrain is on.
+ */
+export const TERRAIN_LATTICE: GroundLattice = { zoom: 12, tileSize: 512 };
+
 export const GROUND = {
-  /** Samples per tile side. 33 → cells of 1/32 of a tile: ~57 m at z14, ~29 m at z15 in Barcelona. */
-  grid: 33,
+  /**
+   * The most DEM pixels a grid holds across one tile: GoWay's DEM at a z14
+   * tile (128). A finer DEM (a foreign style's) is sampled no finer than
+   * this, and then only approximately: the budget is ~17,000 samples (~7 ms
+   * on the main thread) for one tile.
+   */
+  maxCells: 128,
   /** The least any building's foot is sunk below its centre's ground. */
   minSinkM: 2,
   /** Added to the measured centre-to-lowest-corner drop. */
@@ -57,6 +104,22 @@ export const GROUND = {
   /** A vertex this close to `z = 0` is a building's foot. */
   footM: 0.01,
 } as const;
+
+/** DEM pixels across a tile — the cells of its grid — within {@link GROUND.maxCells}. */
+export function latticeCells(tile: { z: number }, lattice: GroundLattice): number {
+  return Math.max(1, Math.min(GROUND.maxCells, lattice.tileSize * 2 ** (lattice.zoom - tile.z)));
+}
+
+/**
+ * One tile's ground: the DEM sampled at its pixel centres across the tile,
+ * one pixel past each edge. Row-major from the north-west; sample `k` (column
+ * or row) sits at `(k − ½) / cells` of the tile, so `size = cells + 2`.
+ */
+export interface GroundGrid {
+  values: Float32Array;
+  cells: number;
+  size: number;
+}
 
 /** What the mesher records about each polygon (`TileMesh.polygonStarts`/`polygonBoxes`). */
 export interface GroundTile {
@@ -77,29 +140,31 @@ export interface GroundTile {
    */
   lift?: (
     placed: PolygonGround,
-    grid: Float32Array,
+    grid: GroundGrid,
     out?: Float32Array,
   ) => { values: Float32Array; min: number; max: number };
 }
 
-/** Sample the ground over a tile, row-major from its north-west corner. */
-export function sampleGroundGrid(tile: TileId, size: number, sample: GroundSampler): Float32Array {
+/** Sample the ground over a tile on its DEM lattice ({@link GroundGrid}). */
+export function sampleGroundGrid(tile: TileId, cells: number, sample: GroundSampler): GroundGrid {
   const n = 2 ** tile.z;
-  const grid = new Float32Array(size * size);
+  const size = cells + 2;
+  const values = new Float32Array(size * size);
+  const lngs = new Float64Array(size);
+  for (let i = 0; i < size; i++) lngs[i] = ((tile.x + (i - 0.5) / cells) / n) * 360 - 180;
   for (let j = 0; j < size; j++) {
-    const lat = latFromMercatorY((tile.y + j / (size - 1)) / n);
+    const lat = latFromMercatorY((tile.y + (j - 0.5) / cells) / n);
     for (let i = 0; i < size; i++) {
-      const lng = ((tile.x + i / (size - 1)) / n) * 360 - 180;
-      const elevation = sample(lng, lat);
-      grid[j * size + i] = Number.isFinite(elevation) ? elevation : 0;
+      const elevation = sample(lngs[i], lat);
+      values[j * size + i] = Number.isFinite(elevation) ? elevation : 0;
     }
   }
-  return grid;
+  return { values, cells, size };
 }
 
 /**
- * The ground of a tile, as buildings, trees, models and city life stand on it:
- * the DRAWN terrain itself, sampled on the {@link GROUND.grid} grid.
+ * The ground of a tile, as buildings, trees, streets, models and city life
+ * stand on it: the DRAWN terrain itself, on the DEM's own lattice.
  *
  * Not de-noised. #126 opened it (a minimum then maximum filter, ~145 m) on the
  * premise that the terrain is Copernicus GLO-30, a surface model that records
@@ -112,32 +177,43 @@ export function sampleGroundGrid(tile: TileId, size: number, sample: GroundSampl
  * the roads and labels drape over the same bumps; standing on what is drawn
  * keeps everything on one surface.
  */
-export function groundGrid(tile: TileId, sample: GroundSampler): Float32Array {
-  return sampleGroundGrid(tile, GROUND.grid, sample);
+export function groundGrid(
+  tile: TileId,
+  sample: GroundSampler,
+  lattice: GroundLattice,
+): GroundGrid {
+  return sampleGroundGrid(tile, latticeCells(tile, lattice), sample);
 }
 
 /**
- * The drawn ground for everything that stands on it — buildings, trees, city
- * life, live vehicles, models: the sampler, and each tile's grid sampled ONCE
- * per terrain and kept (least recently used past `maxTiles`). Before this the
- * buildings' grounder and city life each sampled and cached the same z15
- * grids, and the live layer asked MapLibre per point
- * (`docs/MAP_PERFORMANCE.md` → duplication).
+ * The drawn ground for everything that stands on it — buildings, trees, the
+ * street detail, city life, live vehicles, models: the sampler, its lattice,
+ * and each tile's grid sampled ONCE per terrain and kept (least recently used
+ * past `maxTiles`). Before this the buildings' grounder and city life each
+ * sampled and cached the same z15 grids, and the live layer asked MapLibre
+ * per point (`docs/MAP_PERFORMANCE.md` → duplication).
  */
 export interface Ground {
-  /** Metres as drawn at a point (`map.terrain`'s DEM, ~0.5 µs a call). */
+  /** Metres as drawn at a point (`map.terrain`'s finest DEM tile, ~0.4 µs a call). */
   readonly sample: GroundSampler;
+  /** The DEM's lattice the grids are sampled on. */
+  readonly lattice: GroundLattice;
   /** A tile's grid ({@link groundGrid}), sampled on first use. */
-  grid(tile: TileId): Float32Array;
+  grid(tile: TileId): GroundGrid;
   /** Whether {@link Ground.grid} would answer without sampling. */
   hasGrid(tile: TileId): boolean;
 }
 
-export function createGround(sample: GroundSampler, maxTiles = 256): Ground {
-  const grids = new Map<string, Float32Array>();
+export function createGround(
+  sample: GroundSampler,
+  lattice: GroundLattice = TERRAIN_LATTICE,
+  maxTiles = 256,
+): Ground {
+  const grids = new Map<string, GroundGrid>();
   const key = (tile: TileId) => `${tile.z}/${tile.x}/${tile.y}`;
   return {
     sample,
+    lattice,
     grid(tile) {
       const k = key(tile);
       let grid = grids.get(k);
@@ -145,7 +221,7 @@ export function createGround(sample: GroundSampler, maxTiles = 256): Ground {
         // Most recently used last.
         grids.delete(k);
       } else {
-        grid = groundGrid(tile, sample);
+        grid = groundGrid(tile, sample, lattice);
         if (grids.size >= maxTiles) grids.delete(grids.keys().next().value as string);
       }
       grids.set(k, grid);
@@ -155,18 +231,24 @@ export function createGround(sample: GroundSampler, maxTiles = 256): Ground {
   };
 }
 
-/** Bilinear read of a {@link sampleGroundGrid} grid at `u` east, `v` south, both 0–1. */
-export function gridAt(grid: Float32Array, size: number, u: number, v: number): number {
-  const x = Math.max(0, Math.min(1, u)) * (size - 1);
-  const y = Math.max(0, Math.min(1, v)) * (size - 1);
-  const i = Math.min(size - 2, Math.floor(x));
-  const j = Math.min(size - 2, Math.floor(y));
+/**
+ * The ground at `u` east, `v` south across the grid's tile (both 0–1): the
+ * DEM read bilinearly between the four pixel centres around the point —
+ * MapLibre's `get_elevation`, on the CPU. The street detail's vertex shader
+ * reads its atlas with the same arithmetic (`cityStreets/streetMaterials.ts`).
+ */
+export function gridAt(grid: GroundGrid, u: number, v: number): number {
+  const { values, cells, size } = grid;
+  const x = Math.max(0, Math.min(1, u)) * cells + 0.5;
+  const y = Math.max(0, Math.min(1, v)) * cells + 0.5;
+  const i = Math.min(cells, Math.floor(x));
+  const j = Math.min(cells, Math.floor(y));
   const fx = x - i;
   const fy = y - j;
-  const a = grid[j * size + i];
-  const b = grid[j * size + i + 1];
-  const c = grid[(j + 1) * size + i];
-  const d = grid[(j + 1) * size + i + 1];
+  const a = values[j * size + i];
+  const b = values[j * size + i + 1];
+  const c = values[(j + 1) * size + i];
+  const d = values[(j + 1) * size + i + 1];
   return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
 }
 
@@ -179,8 +261,7 @@ export interface PolygonGround {
 
 /** Place every polygon of a tile on a sampled grid. */
 export function polygonGround(
-  grid: Float32Array,
-  size: number,
+  grid: GroundGrid,
   tileSizeM: number,
   boxes: Float32Array,
 ): PolygonGround {
@@ -195,13 +276,13 @@ export function polygonGround(
     const minY = boxes[p * 4 + 1];
     const maxX = boxes[p * 4 + 2];
     const maxY = boxes[p * 4 + 3];
-    const centre = gridAt(grid, size, u((minX + maxX) / 2), v((minY + maxY) / 2));
+    const centre = gridAt(grid, u((minX + maxX) / 2), v((minY + maxY) / 2));
     const lowest = Math.min(
       centre,
-      gridAt(grid, size, u(minX), v(minY)),
-      gridAt(grid, size, u(maxX), v(minY)),
-      gridAt(grid, size, u(minX), v(maxY)),
-      gridAt(grid, size, u(maxX), v(maxY)),
+      gridAt(grid, u(minX), v(minY)),
+      gridAt(grid, u(maxX), v(minY)),
+      gridAt(grid, u(minX), v(maxY)),
+      gridAt(grid, u(maxX), v(maxY)),
     );
     anchor[p] = centre;
     sink[p] = Math.max(GROUND.minSinkM, centre - lowest + GROUND.sinkMarginM);
@@ -290,7 +371,7 @@ interface TileState {
   anchor: Float32Array;
   sink: Float32Array;
   /** The sampled grid, kept when the tile lifts itself (it may lift more than polygons). */
-  grid?: Float32Array;
+  grid?: GroundGrid;
   result: GroundResult;
 }
 
@@ -353,7 +434,7 @@ export class TileGrounder {
     const started = this.now();
     const grid = ground.grid(tile.tile);
     const sampled = this.now();
-    const placed = polygonGround(grid, GROUND.grid, tile.tileSizeM, tile.polygonBoxes);
+    const placed = polygonGround(grid, tile.tileSizeM, tile.polygonBoxes);
     const previous = this.tiles.get(key);
     let result: GroundResult;
     // Compare the two lifts the GPU actually draws — the roof (`anchor`) and
@@ -367,7 +448,8 @@ export class TileGrounder {
       largestChange(previous.anchor, placed.anchor) <= GROUND.epsilonM &&
       largestFootChange(previous, placed) <= GROUND.epsilonM &&
       (!tile.lift ||
-        (previous.grid !== undefined && largestChange(previous.grid, grid) <= GROUND.epsilonM))
+        (previous.grid !== undefined &&
+          largestChange(previous.grid.values, grid.values) <= GROUND.epsilonM))
     ) {
       result = { ...previous.result, changed: false };
       this.tiles.set(key, { ...previous, version: this.version, result });

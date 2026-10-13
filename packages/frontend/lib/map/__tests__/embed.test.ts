@@ -155,6 +155,19 @@ describe('interactivity and theme', () => {
     expect(parseEmbedParams({ interactive: 'false' }).interactive).toBe(false);
   });
 
+  test('takes one of GoWay’s own styles and lights by id, and ignores anything else', () => {
+    expect(parseEmbedParams({ style: 'streets' }).style).toBe('streets');
+    expect(parseEmbedParams({ style: 'dark', light: 'night' })).toMatchObject({
+      style: 'dark',
+      lightPreset: 'night',
+    });
+    expect(parseEmbedParams({ light: 'dusk' }).lightPreset).toBe('dusk');
+    // Not an id GoWay publishes: no style at all (Standard draws), never a URL.
+    expect(parseEmbedParams({ style: 'https://evil.example/style.json' }).style).toBeUndefined();
+    expect(parseEmbedParams({ style: 'satellite-ish' }).style).toBeUndefined();
+    expect(parseEmbedParams({ light: 'noon' }).lightPreset).toBeUndefined();
+  });
+
   test('takes a theme only when it names one of the two appearances', () => {
     expect(parseEmbedParams({ theme: 'dark' }).appearance).toBe('dark');
     expect(parseEmbedParams({ theme: 'chartreuse' }).appearance).toBeUndefined();
@@ -232,6 +245,8 @@ describe('the contract: never throws, never emits a non-finite number', () => {
       'marker',
       'place',
       'theme',
+      'style',
+      'light',
       'interactive',
     ];
     let seed = 20260920;

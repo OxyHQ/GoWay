@@ -407,7 +407,16 @@ copied; no asset or code is (all shapes are generated in `treeGeometry.ts`).
   city-tile compiler now writes them as a `tree` layer (`lib/map/cityTiles.ts` →
   `CITY_TREE_LAYER`; `scripts/citygen/treeTags.ts` reads only what is recorded:
   crown from `leaf_type`, genus/species/taxon or family; `height`;
-  `diameter_crown`). Barcelona's archive grew 6.16 → 6.99 MB with them.
+  `diameter_crown`; the trunk's `circumference`; and `street` when the tree is
+  recorded as a street or avenue tree — a node of a `natural=tree_row`, or
+  `denotation=avenue|urban`). Barcelona's archive grew 6.16 → 6.99 MB with them.
+  Measured on the extracts of 2026-10-11 (`natural=tree` nodes; Barcelona's box,
+  Madrid's extract, New York City's box): `denotation=avenue|urban` 6.5% / 3.1% /
+  5.8%; `circumference` 0.02% / 0.15% / 0.01%; a node of a `tree_row` 0.03% /
+  0.05% / 0.01%; `height` 0.04% / 5.1% / 1.8%. Barcelona's street trees mostly
+  record nothing but `natural=tree` — which is why the client reads a tree's
+  setting from what surrounds it (below), and the compiler's `street` and
+  `circumference` only add to it once an archive is rebuilt.
 
 **What is drawn.** By default, only trees the data records (owner decision
 after review: "trees on top of buildings, trees at random everywhere" — no
@@ -415,19 +424,59 @@ tree where none is mapped).
 
 1. **Mapped trees** (GoWay city tiles, `?cityTiles=1`): every `natural=tree`
    point, at its position, with its crown form when recorded (else broadleaf),
-   its height when recorded (else a typical size for the crown —
-   `MAPPED_TREE_HEIGHT_M`, a size for the eye), turned and varied by a seed
-   from its OSM id, so it is the same tree every visit. With the default
+   its height and crown diameter when recorded (a crown estimated from a
+   recorded `circumference` otherwise: 1.5 m + 0.2 m per cm of trunk, 2–20 m),
+   else its setting's typical size (item 2), turned and varied by a seed from
+   its OSM id, so it is the same tree every visit. With the default
    OpenMapTiles source there are no tree points, so no trees are drawn.
-2. **No tree in a building** (`workerTrees.ts`): every tree — mapped or fill —
+2. **Street trees and park trees** (owner report on Carrer de Mallorca: "the
+   trees in the middle of the city cover the whole street; in mountains,
+   woods and parks it's fine"; `treeContext.ts`). The worker reads what
+   surrounds each mapped tree — the road archive's tile at the same address
+   (carriageways as wide as the street detail draws them, `cityStreets/lanes.ts`
+   → `crossSection`; mapped sidewalks) and the basemap tile under it (parks,
+   gardens and woods; urban landuse). A tree is a **street tree** when it stands
+   within 3 m of a kerb (a park's edge included: its crown is over the street),
+   or, outside a park or wood, when it is recorded as one (`street`), stands
+   within 8 m of a kerb or 4 m of a mapped sidewalk, or stands in urban landuse
+   (residential, commercial, retail, industrial). A street tree is drawn as
+   Apple's Detailed City street tree — a modest lollipop on a clear trunk
+   (`trees.ts` → `STREET_TREE`): 8.5–11.5 m unless recorded, its crown starting
+   at 45% of its height (2.5–6 m: 3.8–5.2 m by default, above a bus), its crown
+   about as wide as it is tall and at most 6.5 m unless recorded, its trunk
+   slimmer. Every other tree — park, garden, wood, countryside — and every
+   palm keeps the proportions it had (`MAPPED_TREE_HEIGHT_M`, the unit tree
+   scaled by its height). The shader stretches the one unit tree to each
+   tree's form (`treeGeometry.ts` → `CROWN_FRAMES`, `tsl/treeMaterial.ts`): two
+   more 16-bit numbers per tree, the crown base and diameter.
+3. **Never on a carriageway** (`treeContext.ts`). A mapped point inside a
+   drawn carriageway by at most 1.5 m is a kerb tree a little off (OSM
+   positions and centrelines are each good to a metre or two, and an
+   unrecorded road width is the class default): it is moved square to the
+   kerb and 0.75 m past it. Deeper in the road (a mis-mapped point, or a
+   planted median the road's one centreline runs through), or moved into a
+   crossing street, it is not drawn. Both are counted (`treeSettings` in the
+   engine's development stats: street, nature, nudged, offCarriageway).
+   Shared surfaces (`living_street`, `pedestrian`), tunnels and bridges have
+   no carriageway at ground level. Measured on Barcelona's Eixample tiles
+   (z15 16581–16583/12235–12237, 6,445 mapped trees): 0.6–1.7% nudged, at most
+   0.2% left out (five on one tile: a row deep in Avinguda Diagonal's
+   carriageway), 49–72% street trees per tile — the rest Plaça de Gaudí,
+   Glòries and the blocks' inner gardens. Cost: one more fetch per city tile
+   (its road tile, normally already cached by the street detail) and the
+   basemap tile the fill already read, both asked for beside the tile itself
+   (`meshService.ts`) so their round trips overlap its own; 17 ms of worker time, warm, on the
+   densest of them (3,032 trees: road tile 5 ms, areas 2 ms, settling 8 ms),
+   inside the trees' 50 ms.
+4. **No tree in a building** (`workerTrees.ts`): every tree — mapped or fill —
    whose point falls inside a footprint of its tile's own buildings is dropped
    (a courtyard is a hole, so a courtyard tree stays). Buildings of a
    neighbouring tile spilling over the edge are not consulted.
-3. **On the same ground as the buildings**: on 3D terrain the trees read the
+5. **On the same ground as the buildings**: on 3D terrain the trees read the
    grid the buildings stand on — the terrain as drawn (`MAP_TERRAIN_GLOBE.md`
    → "The ground is the drawn terrain", which also records why #126's
    de-noising of it was removed: in these cities the terrain is bare earth).
-4. **The styling fill — off unless asked for** (the `city3dTreeFill` map
+6. **The styling fill — off unless asked for** (the `city3dTreeFill` map
    feature in Labs, or `?city3dTreeFill=1` in development; `trees.ts`): the 3D equivalent of the tree pattern a paper map prints over
    a forest, **in mapped woods only** (`landcover` `class=wood`: wood,
    forest), never in a park or a garden:
@@ -444,29 +493,33 @@ tree where none is mapped).
    tile's quarter of it; a parent tile that fails to FETCH (not one that is
    absent) marks the tile incomplete and it is asked for again at 2, 8 and
    30 s (PR #126 review — it used to be cached without its fill for good).
-3. **Shapes** (`treeGeometry.ts`): three broadleaf canopy variants (an icosphere
+7. **Shapes** (`treeGeometry.ts`): three broadleaf canopy variants (an icosphere
    pushed out by five soft lobes, not a sphere; 98 triangles with trunk and
    shadow), a two-tier cone conifer (34), a palm of seven drooping V-section
    fronds (74); far tiles (level 1) draw a 20-triangle canopy, a 6-triangle cone
    and a 30-triangle palm, no shadow; level 2 draws no trees. The trunk leans a
    little (palms more), the canopy rides it.
-4. **Zoomed out, the tallest first**: trees shorter than `treeMinHeightM(zoom)`
+8. **Zoomed out, the tallest first**: trees shorter than `treeMinHeightM(zoom)`
    — 10 m at zoom 15.5, 0 from zoom 18 — shrink away over 3 m rather than pop
    (`tsl/treeMaterial.ts`), which is also what keeps a whole-city view affordable.
-5. **Colour** (`components/map/city3dTrees.ts`): canopies are the palette's PARK
+9. **Colour** (`components/map/city3dTrees.ts`): canopies are the palette's PARK
    colour desaturated to a matte sage, a step darker than the ground on the
    light map and lighter on the dark one; conifers cooler and deeper; palms a
    touch warmer; trunks are the palette's BUILDING clay, darker. A few tint
    variants per seed. Lit by MapLibre's extrusion formula under the map's light,
    with a soft occlusion (underside darker, crown lighter).
-6. **GPU instancing**: one shared unit tree per shape, four 16-bit numbers per
-   tree (position, seed, kind + height); the vertex shader turns, sizes, leans
-   and places each one, so thousands of trees cost the CPU nothing per frame.
+10. **GPU instancing**: one shared unit tree per shape, six 16-bit numbers per
+   tree (position, seed, kind + height; crown base and crown diameter); the
+   vertex shader turns, sizes, stretches, leans and places each one, so thousands of trees cost the CPU nothing per frame.
    Instances are sorted by shape in the worker, so a tile is at most five
    instanced draws.
 
 **Honesty.** A mapped tree is drawn where OSM records it and as what OSM
-records; its unrecorded size and its turn are styling. A fill tree — only when
+records; its unrecorded size, its setting's proportions and its turn are
+styling. A kerb tree moved off the carriageway moves by at most 2.25 m, square
+to the kerb; one deeper in the road is not drawn rather than drawn somewhere
+OSM does not put it. No tree is added in a city: the fill stands only in
+mapped woods. A fill tree — only when
 the fill is switched on — stands for no tree: none stands outside a mapped
 wood, within 9 m of a mapped tree, or on anything mapped as something else,
 and their number, species mix, size and position are not data. That is the rule above — procedural detail is
@@ -474,14 +527,18 @@ styling, never fact — applied to vegetation. The trees can be switched off on
 their own: the `city3dTrees` map feature in Labs, or `?city3dTrees=0` in a
 development tab.
 
-**Not done, and why.** Municipal tree inventories are far richer than OSM where
-they exist — Barcelona's *Arbrat viari* / *Arbrat zona* (every street and park
-tree, species and height class) and New York's 2015 Street Tree Census — and
-are the natural next source for the compiler's `tree` layer, merged with
-`natural=tree` by position. Each needs its licence verified (both are published
-as open data; the exact terms and attribution wording were not checked here) and
-its credit added to `MapAttribution` while drawn, as the Obligations require.
-Crown diameter is compiled but not yet used to size the canopy.
+**Not done, and why: official street-tree inventories** (a proposal for the
+owner, nothing imported; checked 2026-10-12). Each would be merged with
+`natural=tree` by position in the compiler's `tree` layer, credited in
+`MapAttribution` while drawn, and recorded in `MAP_3D_SOURCES.md` like the
+building sources — the AGENTS.md rule ("a licence-reviewed official model").
+
+| Inventory | Licence | Per tree | Fit |
+| --- | --- | --- | --- |
+| Barcelona *Arbrat viari* (Ajuntament de Barcelona, Open Data BCN `arbrat-viari`; *Arbrat zona* and park trees are separate sets) | CC BY 4.0, updated weekly | 145,176 street trees and palms: position (ETRS89 and WGS84), species (scientific, Catalan, Spanish), `categoria_arbrat` (PRIMERA / SEGONA / TERCERA / EXEMPLAR — a size class whose definition the metadata does not give), planting date (22%), address, irrigation. **No height, no girth** | Best fit for Barcelona: species → crown form for every street tree (OSM has 12%); 88 on Carrer de Mallorca by Marina alone. CC BY 4.0 inside an ODbL derivative needs the same review the Catastro got (attribution, and CC BY's no-technical-restrictions term) |
+| Paris *Les arbres* (Ville de Paris, opendata.paris.fr `les-arbres`) | **ODbL** — the city tiles' own licence | 220,218 trees: position, genus, species, cultivar, **height (m)**, **circumference (cm)**, development stage, `domanialite` (`Alignement` = street tree, `Jardin`, …), remarkable | Cleanest: same licence, real heights and girths, and street vs park recorded; Paris's city tiles are published (Île-de-France) |
+| New York 2015 Street Tree Census (`uvpi-gqnh`) / Forestry Tree Points (`hn5i-inap`, live, NYC Parks) | NYC Open Data Terms of Use (no licence on the dataset; free reuse with the City's disclaimer) | 683,788 street trees (2015): position, species, **trunk diameter (DBH)**, curb location, health, sidewalk damage. The live set: DBH, condition, planted date | Good: DBH → crown via the circumference rule; curb location confirms the street setting. The terms need the owner's reading (no named licence) |
+| Madrid *Arbolado en parques y zonas verdes de Madrid (detalle)* (Ayuntamiento de Madrid, datos.madrid.es `300761-0-arbolado-especies`) | CC BY 4.0 | Street (*viario*) and green-area trees counted one by one (palms and forest masses excluded): position (ETRS89 UTM 30N), species code, **perimeter**, **total height** | Good: heights and girths for street trees; same CC BY 4.0 review as Barcelona |
 
 ### One engine, one scene
 

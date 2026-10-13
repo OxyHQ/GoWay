@@ -11,7 +11,8 @@
  *
  * One small JSON document under {@link MAP_FEATURES_STORAGE_KEY}: which
  * features the person turned on or off, whether Labs is revealed, the
- * Performance choice (`lib/map/quality/profile.ts`) and what the device's GPU
+ * Performance choice (`lib/map/quality/profile.ts`), the map style and its
+ * light (`lib/map/style/catalogue.ts`) and what the device's GPU
  * measured (`lib/map/quality/gpuTier.ts`), so the next visit resolves its
  * quality before the first frame. Nothing
  * is sent anywhere — no request carries it, and no server learns it. On the
@@ -35,6 +36,13 @@ import {
 } from './mapFeatures';
 import { type GpuTierRecord, parseGpuRecord } from './quality/gpuTier';
 import { type PerformanceMode, parsePerformanceMode } from './quality/profile';
+import {
+  DEFAULT_MAP_STYLE,
+  isMapLightMode,
+  isMapStyleId,
+  type MapLightMode,
+  type MapStyleId,
+} from './style/catalogue';
 
 export const MAP_FEATURES_STORAGE_KEY = 'goway.mapFeatures';
 
@@ -52,6 +60,10 @@ export interface MapFeaturePreferences {
   labs: boolean;
   /** Settings → Performance. */
   performance: PerformanceMode;
+  /** The map style (the layers picker). */
+  style: MapStyleId;
+  /** How the map picks its light (Settings → Map → Light). */
+  light: MapLightMode;
   /** What this device's GPU measured, or `null` before it has been. */
   gpu: GpuTierRecord | null;
 }
@@ -60,6 +72,8 @@ export const NO_PREFERENCES: MapFeaturePreferences = {
   choices: {},
   labs: false,
   performance: 'auto',
+  style: DEFAULT_MAP_STYLE,
+  light: 'app',
   gpu: null,
 };
 
@@ -85,6 +99,8 @@ export function parsePreferences(
     choices?: unknown;
     labs?: unknown;
     performance?: unknown;
+    style?: unknown;
+    light?: unknown;
     gpu?: unknown;
   };
   if (document.v !== 1) return NO_PREFERENCES;
@@ -98,6 +114,10 @@ export function parsePreferences(
     choices,
     labs: document.labs === true,
     performance: parsePerformanceMode(document.performance),
+    // A style this build does not publish (an older or newer build's) is
+    // the default, never an error.
+    style: isMapStyleId(document.style) ? document.style : DEFAULT_MAP_STYLE,
+    light: isMapLightMode(document.light) ? document.light : 'app',
     gpu: parseGpuRecord(document.gpu, now),
   };
 }
@@ -109,6 +129,8 @@ export function serializePreferences(preferences: MapFeaturePreferences): string
     labs: preferences.labs,
     // The default is not stored, so a later change of default reaches the person.
     ...(preferences.performance === 'auto' ? {} : { performance: preferences.performance }),
+    ...(preferences.style === DEFAULT_MAP_STYLE ? {} : { style: preferences.style }),
+    ...(preferences.light === 'app' ? {} : { light: preferences.light }),
     ...(preferences.gpu ? { gpu: preferences.gpu } : {}),
   });
 }
@@ -131,6 +153,10 @@ export interface MapFeatureSnapshot {
   labs: boolean;
   /** Settings → Performance. */
   performance: PerformanceMode;
+  /** The map style. */
+  style: MapStyleId;
+  /** How the map picks its light. */
+  light: MapLightMode;
   /** What this device's GPU measured, or `null`. */
   gpu: GpuTierRecord | null;
   /** Whether the stored choices have been read (always `true` on web). */
@@ -147,6 +173,10 @@ export interface MapFeatureStore {
   setLabs(visible: boolean): void;
   /** Settings → Performance. */
   setPerformance(mode: PerformanceMode): void;
+  /** The layers picker: the map style. */
+  setStyle(style: MapStyleId): void;
+  /** Settings → Map → Light. */
+  setLight(mode: MapLightMode): void;
   /** Remember what this device's GPU measured (`lib/map/quality/gpuTier.ts`). */
   setGpuRecord(record: GpuTierRecord): void;
 }
@@ -185,6 +215,8 @@ export function createMapFeatureStore(options: CreateMapFeatureStoreOptions): Ma
   const changedEarly = new Map<string, boolean | null>();
   let labsChangedEarly: boolean | null = null;
   let performanceChangedEarly: PerformanceMode | null = null;
+  let styleChangedEarly: MapStyleId | null = null;
+  let lightChangedEarly: MapLightMode | null = null;
   let gpuChangedEarly: GpuTierRecord | null = null;
   let hydrated = false;
   const listeners = new Set<() => void>();
@@ -199,6 +231,8 @@ export function createMapFeatureStore(options: CreateMapFeatureStoreOptions): Ma
     }),
     labs: preferences.labs,
     performance: preferences.performance,
+    style: preferences.style,
+    light: preferences.light,
     gpu: preferences.gpu,
     hydrated,
   });
@@ -229,15 +263,19 @@ export function createMapFeatureStore(options: CreateMapFeatureStoreOptions): Ma
     }
     const labs = labsChangedEarly ?? labsRequested ?? stored.labs;
     const performance = performanceChangedEarly ?? stored.performance;
+    const style = styleChangedEarly ?? stored.style;
+    const light = lightChangedEarly ?? stored.light;
     const gpu = gpuChangedEarly ?? stored.gpu;
     hydrated = true;
     // Persist only when the page itself changed something (`?labs=`, or a
     // toggle before the document arrived); a plain read writes nothing.
     commit(
-      { choices, labs, performance, gpu },
+      { choices, labs, performance, style, light, gpu },
       labs !== stored.labs ||
         changedEarly.size > 0 ||
         performanceChangedEarly !== null ||
+        styleChangedEarly !== null ||
+        lightChangedEarly !== null ||
         gpuChangedEarly !== null,
     );
   };
@@ -289,6 +327,18 @@ export function createMapFeatureStore(options: CreateMapFeatureStoreOptions): Ma
       if (!hydrated) performanceChangedEarly = mode;
       if (mode === preferences.performance) return;
       commit({ ...preferences, performance: mode }, hydrated);
+    },
+    setStyle(style) {
+      if (!isMapStyleId(style)) return;
+      if (!hydrated) styleChangedEarly = style;
+      if (style === preferences.style) return;
+      commit({ ...preferences, style }, hydrated);
+    },
+    setLight(mode) {
+      if (!isMapLightMode(mode)) return;
+      if (!hydrated) lightChangedEarly = mode;
+      if (mode === preferences.light) return;
+      commit({ ...preferences, light: mode }, hydrated);
     },
     setGpuRecord(record) {
       if (!hydrated) gpuChangedEarly = record;

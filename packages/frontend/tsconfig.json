@@ -15,6 +15,9 @@
     // file a program imports has to be in that program.
     "worker/pmtiles.js",
     "worker/coverageTree.js",
+    // The contour maker, likewise: `scripts/serve-map-build.ts` runs the
+    // edge's own module so a local export draws the contours goway.to will.
+    "worker/contours.js",
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
     "nativewind-env.d.ts"
