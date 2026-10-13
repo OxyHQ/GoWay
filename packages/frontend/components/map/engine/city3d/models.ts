@@ -156,7 +156,10 @@ interface Asset {
   batched: THREE.Group | null;
   /** Bounds in the asset's own metres. */
   bounds: THREE.Box3;
-  /** Its columns for the camera, when the layer measures them (`ModelLayerOptions.volumes`). */
+  /**
+   * Its columns for the camera, once measured (`ModelLayerOptions.measureVolumes`);
+   * `null` until then, or for a layer that does not measure.
+   */
   volumes: VolumeIndex | null;
   animations: THREE.AnimationClip[];
 }
@@ -416,11 +419,15 @@ export interface ModelLayerOptions {
   /** Where relative URLs resolve and which origin counts as "this page". */
   pageOrigin: string | null;
   /**
-   * Measure each asset's columns for the camera when it loads
-   * (`assetVolumes`), and report the drawn models in `volumes()`: the
-   * landmarks, which the eye must not enter. Off for vehicles and SDK models.
+   * Measure each asset's columns for the camera as it loads and report the
+   * drawn models in `volumes()`: the landmarks, which the eye must not enter.
+   * The layer only gathers the asset's triangles ({@link assetSurfaces}); this
+   * measures them off the main thread (the engine's mesh worker). Absent: not
+   * measured (vehicles, SDK models).
    */
-  volumes?: boolean;
+  measureVolumes?: (meshes: SurfaceMesh[], cellM: number) => Promise<VolumeIndex | null>;
+  /** An asset's columns arrived (the camera's field changed). */
+  onVolumes?: () => void;
 }
 
 /** Whether a model matrix is unchanged (`modelMatrix` is float64 arithmetic: exact equality). */
@@ -430,12 +437,15 @@ function sameMatrix(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
 }
 
 /**
- * A model's columns for the camera (`camera/volumes.ts` → `surfaceVolumes`),
- * from its own triangles in its own metres: x east, y north at heading 0
- * (glTF's −X and +Z), z up. Columns of 1.5–8 m, about 32 across the model: a
- * spire stays a spire. Exported for the tests.
+ * A model's triangles for its columns (`camera/volumes.ts` →
+ * `surfaceVolumes`), in its own metres: x east, y north at heading 0 (glTF's
+ * −X and +Z), z up, with the column width to measure them at — 1.5–8 m,
+ * about 32 across the model, so a spire stays a spire. Only a copy of the
+ * vertices on this thread; the sampling, the expensive part, is the worker's.
  */
-export function assetVolumes(scene: THREE.Object3D): VolumeIndex | null {
+export function assetSurfaces(
+  scene: THREE.Object3D,
+): { meshes: SurfaceMesh[]; cellM: number } | null {
   scene.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(scene);
   if (box.isEmpty()) return null;
@@ -456,9 +466,15 @@ export function assetVolumes(scene: THREE.Object3D): VolumeIndex | null {
       enu[i * 3 + 2] = point.y;
     }
     const index = mesh.geometry.getIndex();
-    meshes.push({ positions: enu, index: index ? index.array : null });
+    meshes.push({ positions: enu, index: index ? Uint32Array.from(index.array) : null });
   });
-  return surfaceVolumes(meshes, cellM);
+  return { meshes, cellM };
+}
+
+/** A model's columns, measured here: for the tests (the layer measures on the worker). */
+export function assetVolumes(scene: THREE.Object3D): VolumeIndex | null {
+  const surfaces = assetSurfaces(scene);
+  return surfaces ? surfaceVolumes(surfaces.meshes, surfaces.cellM) : null;
 }
 
 export function createModelLayer(options: ModelLayerOptions): ModelLayer {
@@ -522,9 +538,26 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       if (triangles > MAX_MODEL_TRIANGLES) throw new Error('model over the triangle budget');
       const bounds = new THREE.Box3().setFromObject(gltf.scene);
       const batched = batchable(gltf.scene, gltf.animations) ? batchAsset(gltf.scene, night) : null;
-      // Measured here, with the parse, not on the first camera change that asks.
-      const volumes = options.volumes ? assetVolumes(gltf.scene) : null;
-      return { scene: gltf.scene, batched, bounds, volumes, animations: gltf.animations };
+      const asset: Asset = {
+        scene: gltf.scene,
+        batched,
+        bounds,
+        volumes: null,
+        animations: gltf.animations,
+      };
+      // Measured as it loads, off this thread, never on the camera change that asks.
+      const surfaces = options.measureVolumes ? assetSurfaces(gltf.scene) : null;
+      if (surfaces && options.measureVolumes) {
+        options.measureVolumes(surfaces.meshes, surfaces.cellM).then(
+          (volumes) => {
+            if (disposed || !volumes) return;
+            asset.volumes = volumes;
+            options.onVolumes?.();
+          },
+          () => {},
+        );
+      }
+      return asset;
     })();
     assets.set(url, promise);
     return promise;

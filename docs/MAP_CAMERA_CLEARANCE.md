@@ -80,15 +80,37 @@ plane is a fiftieth of the screen height in its camera's pixels: 4 m at z18,
 8 m at z17), measured at the distance AFTER the lift so the answer is a fixed
 point. Over the ground too: MapLibre's own rule keeps none.
 
+**Held at the surface, on zoom and pitch.** MapLibre accumulates a gesture
+in the camera asked for (`_requestedCameraState`), and the drawn one is
+corrected from it. Left alone, a pinch pushed into a roof keeps zooming in the
+camera asked for — up to four zoom levels deep, or 19° of tilt — and reversing
+it moved nothing until it came back out: a dead zone. So a frame's zoom in or
+tilt towards the horizon that would raise the lift needed is taken back in
+that accumulated camera (`holdAtSurface`): the gesture stops at the surface,
+and reversing it answers on the next frame. The bearing is never held, so a
+rotation still lifts the eye over a tower and sets it back down where it was.
+Inertia is an `easeTo` that sets each frame's zoom outright: its frames are
+held the same way, and its `moveend` hands the next gesture the camera drawn.
+The camera asked for is reached through `Camera._requestedCameraState` (in
+MapLibre's typings, not its documented API: the one reach past it, as
+`dragAxes.ts` does for its handlers); without it the eye is still held, with
+the dead zone back.
+
 **Data arriving under the eye** is the one change the field cannot make
 smooth: a tile or a landmark appearing where the eye is. The rule passes at
 once the part of a change that the camera's own motion explains (a fixed field
 changes by at most `slope + 1` per metre the eye moves, plus its own change of
 height and margin) and eases the rest with a 120 ms time constant
 (`createCameraClearance`). A still camera gets no camera updates, so the host
-eases it: when the field's version changes and the map is not moving,
-`cameraClearance.web.ts` asks `settle` and runs one 350 ms `easeTo`, which the
-first frame of a gesture interrupts.
+eases it: when the field's version changes, it asks the map's animation clock
+for one tick (`clock.join('cameraClearance')`), and on it — if no pointer,
+touch or button is down on the map and no gesture is moving — runs one 350 ms
+`easeTo`, marked `PROGRAMMATIC` so it arms no "Search this area", pauses no
+tour and folds no credit. An `easeTo` stops MapLibre's handlers, so started
+under a resting finger it would end the drag that finger begins: the ease
+waits for the last pointer up (on the window: a drag can end off the map) or
+the `moveend`. A paused clock (the tab hidden, the map idle) runs it on the
+first tick after.
 
 **Programmatic animations are corrected too**, not left alone. Tours,
 flyovers and Camera Studio paths are authored without building heights; a
@@ -98,12 +120,18 @@ path is adjusted where (and only where) it would clip, smoothly, and the tour
 itself is unchanged. The landmark tours orbit outside their landmark and are
 not touched unless a neighbour stands in the way.
 
-**Limits.** A gesture pushed into a building keeps going in the camera asked
-for; reversing it moves the drawn camera only once the camera asked for comes
-back out (within that one gesture: MapLibre's own terrain rule does the same).
-A footprint is the convex hull of a unit's lowest vertices: an L-shaped
-building or a courtyard is filled. A part that starts in the air (a skybridge)
-is a prism from the ground: the eye goes over it, never under.
+**Limits.** A footprint is the convex hull of a unit's lowest vertices: an
+L-shaped building or a courtyard is filled. A part that starts in the air (a
+skybridge) is a prism from the ground: the eye goes over it, never under. A
+pinch out while a rotation holds the eye over a tower still has the lift to
+climb out of before it shows. A rotation near a tower can arm "Search this
+area": the zoom drops as the eye rises, and the area on screen really is
+larger.
+
+**Deep links.** The canvas reports the camera a map opened at (#191,
+`loadedCamera.ts`). Below z13 the rule never runs, so that camera is the one
+drawn; a link into a tower above it is lifted on its first update, and that
+camera is what the next report carries.
 
 ## The buildings, as prisms
 
@@ -126,10 +154,23 @@ come and go as the view turns).
 
 Landmark models are hand-made, taller than their footprint prism and far from
 a prism: the Sagrada Família is a 45 m nave under 172 m towers. Their index is
-made from their own triangles (`models.ts` → `assetVolumes`): every triangle
-sampled at half a column's width, columns of 1.5–8 m (about 32 across the
-model), each as tall as the model is there; placed by the landmark's heading,
-scale and ground. A spire is a spire.
+made from their own triangles: the main thread copies the asset's vertices out
+of three.js as it loads (`models.ts` → `assetSurfaces`), and a mesh worker
+samples every triangle at half a column's width into columns of 1.5–8 m
+(about 32 across the model), each as tall as the model is there
+(`volumes.ts` → `surfaceVolumes`, a `volumes` request in `protocol.ts`). The
+engine places them by the landmark's heading, scale and ground. A spire is a
+spire.
+
+**Bounded by the quality profile** (`QualityProfile.camera`): a tile's index
+may hold at most `volumeBytesPerTile` (256 KiB at low, 512 KiB at medium,
+1 MiB at high), and a footprint at most `footprintVertices` corners (8, 12,
+16; a rounder one is its smallest enclosing rectangle, never smaller). An index
+over its bytes falls back to every footprint's rectangle, then to the grid's
+cells, each as tall as its tallest building (coarser, never thinner, never
+over: at most ~196 KB, under every preset's cap). Measured on goway.to's
+densest Barcelona city tile (15/16580/12236: 3,117 units, 320,000 vertices):
+214 KB, 2% of its 10 MB mesh, 14.8 ms of the worker's 612 ms.
 
 ## The ground
 
@@ -144,19 +185,35 @@ the terrain agree on one surface. The buildings' ground is the engine's own
 
 | | |
 | --- | --- |
-| Per camera change (unit test, nine dense synthetic z15 tiles, 20,000 street-level changes) | **≈3 µs** |
-| Per camera change, in the browser (development export, headless Chromium on SwiftShader, a host at load 35+; the browser check's drives) | Sagrada Família 0.31 ms mean, 19 ms worst (346 changes); One Vanderbilt 0.41 ms mean, 13 ms worst (293) |
-| Worker, per tile (synthetic z15 city tile: 952 units, 37,800 vertices) | 0.6 ms |
-| Memory, per tile (same tile) | 86 KB (8% of its mesh); fixed 32 KB of grid + ~40 B a unit |
-| A landmark's columns, once per asset as it loads (the Sagrada Família, 30,320 triangles → 536 columns, 68 KB) | 36 ms, on the main thread beside its glTF parse |
+| Per camera change, the low preset (unit test, nine dense synthetic z15 tiles indexed within low's bounds, 20,000 street-level changes, a loaded host) | **3–9 µs** |
+| Per camera change, the low preset, in the browser (`?quality=low` development export, headless Chromium on SwiftShader, a host at load 35+; the browser check's drives) | Sagrada Família 0.31 ms mean, 19 ms worst (346 changes); One Vanderbilt 0.41 ms mean, 13 ms worst (293) |
+| Per camera change, the CI leg (`?quality=low`, the synthetic city, 41 jumps) | 0.54 ms mean, 5 ms worst |
+| Worker, per tile (goway.to's densest Barcelona tile; the synthetic z15 tile) | 14.8 ms of 612 ms; 0.6 ms |
+| Memory, per tile (same tiles) | 214 KB (2% of its mesh); 86 KB — capped by `camera.volumeBytesPerTile` |
+| A landmark's columns, once per asset as it loads (the Sagrada Família, 30,320 triangles → 536 columns, 59 KB) | 19–36 ms on a mesh worker; the main thread only copies its vertices |
 | First paint (`entry`) | ~1.4 KB gzip (`cameraClearance.web.ts` + `clearance.ts`, minified); the index and field are in the engine chunk and the mesh worker |
 | The frame-budget gate (`frameBudget.test.ts`) | identical draws, triangles, passes, shadow redraws and per-frame uploads before and after; the load-time upload counts move run to run with arrival order, the same spread in two runs of either build |
 
 The rule is not run below z13, and returns before measuring anything when the
-eye is above every tile's tallest prism. It needs no `QualityProfile` knob:
-it draws nothing, so no preset draws more or less for it, and it animates only
-through MapLibre's own camera (the still camera's one `easeTo`), never a timer
-or a frame loop of its own.
+eye is above every tile's tallest prism. Its memory is the profile's
+(`camera`, above); it draws nothing, so no draw budget moves for it; and it
+animates only through the map's clock and MapLibre's own camera (the still
+camera's one `easeTo`), never a timer or a frame loop of its own.
+
+## In CI: the visibility gate's `objects` leg
+
+`check-city3d-visible.ts` (`docs/MAP_NATIVE_3D.md` → The visibility gate), on
+its settled landmark view (the Sagrada Família's model in the synthetic city):
+the camera is jumped through the model at 60° and z19 (`cameraClearanceDrive.ts`),
+41 bearings, and every drawn eye is checked against the prisms. It fails when
+a drawn eye is inside, and when no camera asked for one (it would test
+nothing). Measured: 9 of 41 cameras asked for an eye inside, 0 drawn inside;
+with the rule's answer discarded, 9 drawn inside, 105 m deep — FAIL. The unit
+and host tests (`cameraClearance.test.ts`, `cameraClearanceHost.test.ts`)
+fail on: the hook's answer dropped, the canvas not attaching it, the settle
+path removed or unmarked, the settle ignoring a resting finger, either margin
+at 0, the hold removed, the field read once, the footprint or byte caps
+removed.
 
 ## The browser check
 

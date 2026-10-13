@@ -183,6 +183,7 @@ holds are under [The CI gate](#the-ci-gate).
 | 3D terrain (textures: the 2D layers MapLibre caches per terrain tile) | on, textures 1× the terrain tile (1,024²) | on, 2× (2,048², MapLibre's own) | on, 2× |
 | Animation clock | 20 Hz, idle pause 20 s (battery: 15 Hz, 10 s) | 30 Hz, 45 s | 30 Hz, 120 s |
 | Basemap density (`MAP_STYLES.md` → Performance) | Standard's: a denser style (Streets) applies its `goway:quality-low` overrides | the style's | the style's |
+| Camera volumes: bytes per tile / corners per footprint (`MAP_CAMERA_CLEARANCE.md`) | 256 KiB / 8 | 512 KiB / 12 | 1 MiB / 16 |
 
 High is exactly what the engine drew before this profile existed, so a
 capable machine loses nothing.
@@ -391,7 +392,8 @@ city engine), `sky` (shadow map size, PCF taps — the sky), `life` (agents —
 city life), `live` (entities — the live layer: drawn at most, nearest the
 centre first, `liveLayer.web.ts` → `nearestLivePoints`), `landmarks` (models
 held — the adapter), `streets` (street-detail tiles and triangles drawn, and how finely they are cut along the terrain — the
-street renderer, farthest tiles simplified then dropped past the budget), `relief` (3D terrain and its textures' scale — the
+street renderer, farthest tiles simplified then dropped past the budget), `camera` (the bytes and footprint
+corners of each tile's building volumes — the mesh worker, `MAP_CAMERA_CLEARANCE.md`), `relief` (3D terrain and its textures' scale — the
 relief adapter, live).
 
 Who animates through the clock today: city life (`'cityLife'`, its worker

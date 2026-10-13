@@ -26,6 +26,7 @@
  * GoWay's own 3D tiles removes the duplication altogether; see
  * `docs/MAP_3D_CITY.md` → "Phase 2".
  */
+import { surfaceVolumes, type VolumeIndex, volumeTransferables } from '../camera/volumes';
 import { packedTransferables } from './packing';
 import type { MeshWorkerRequest, MeshWorkerResponse } from './protocol';
 import { tileSizeMetres } from './tileMath';
@@ -155,7 +156,7 @@ export function createMeshService(host: MeshHost): (request: MeshWorkerRequest) 
         footprints,
         sources,
       } = request.format === 'goway'
-        ? meshCityTile(bytes, size, request.hidden)
+        ? meshCityTile(bytes, size, request.hidden, request.volumes)
         : meshOpenMapTiles(bytes, request, size);
       const meshed = host.now();
       const gathered = request.trees
@@ -213,6 +214,21 @@ export function createMeshService(host: MeshHost): (request: MeshWorkerRequest) 
   };
 
   return (request) => {
+    if (request.type === 'volumes') {
+      // A landmark's columns (`models.ts`): pure arithmetic on what was sent.
+      let volumes: VolumeIndex | null = null;
+      try {
+        volumes = surfaceVolumes(request.meshes, request.cellM);
+      } catch {
+        // A model that cannot be measured is drawn all the same; the camera
+        // just has no columns for it.
+      }
+      host.post(
+        { type: 'volumes', id: request.id, volumes },
+        volumes ? volumeTransferables(volumes) : [],
+      );
+      return;
+    }
     if (request.type === 'cancel') {
       const job = inflight.get(request.id);
       if (!job) return;

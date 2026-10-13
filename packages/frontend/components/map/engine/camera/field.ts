@@ -5,9 +5,8 @@
  * engine stands them on (`terrainGround.ts`).
  *
  * Reads only what the engine already keeps: each cached tile's volume index
- * (built by the mesh worker beside the mesh, `tileMeshing.ts`) and its units'
- * footprint boxes (`PackedMesh.polygonBoxes`, the same boxes the grounder
- * places each building by), and each drawn landmark's columns. Nothing is
+ * (built by the mesh worker beside the mesh, `tileMeshing.ts`) and each drawn
+ * landmark's columns (measured by the same worker, `models.ts`). Nothing is
  * downloaded and no geometry is copied.
  *
  * Pure: no three.js. The engine hands it its tiles, landmarks and ground.
@@ -23,8 +22,6 @@ import { type Clearance, type VolumeIndex, requiredHeight } from './volumes';
 export interface TileVolumes {
   tile: TileId;
   volumes: VolumeIndex;
-  /** The mesh's units' footprint boxes, local metres (`PackedMesh.polygonBoxes`). */
-  polygonBoxes: Float32Array;
 }
 
 /** One drawn model's prisms, placed. */
@@ -82,7 +79,7 @@ export function createVolumeField(source: VolumeSource): ClearanceField {
     requiredHeight(x: number, y: number, clearance: Clearance, floor: number): number {
       let best = floor;
       const ground = source.ground();
-      for (const { tile, volumes, polygonBoxes } of source.tiles()) {
+      for (const { tile, volumes } of source.tiles()) {
         const n = 2 ** tile.z;
         const sizeM = tileSizeMetres(tile);
         // The nearest world copy of the point, relative to the tile.
@@ -106,14 +103,17 @@ export function createVolumeField(source: VolumeSource): ClearanceField {
             unitM: volumes.unitM,
             topScale: 1,
             anchorMax: grid ? highest(grid) : 0,
-            // Where the grounder stands the unit: the drawn ground at its box's centre.
+            // Where the grounder stands the unit: the drawn ground at the
+            // centre of its footprint's box (`terrainGround.ts` →
+            // `polygonGround`, there from the mesher's box of the same
+            // vertices), read from the same grid.
             anchorOf: grid
-              ? (u) =>
-                  gridAt(
-                    grid,
-                    (polygonBoxes[u * 4] + polygonBoxes[u * 4 + 2]) / 2 / sizeM,
-                    -(polygonBoxes[u * 4 + 1] + polygonBoxes[u * 4 + 3]) / 2 / sizeM,
-                  )
+              ? (u) => {
+                  const { box, unitM, originM } = volumes;
+                  const east = originM[0] + ((box[u * 4] + box[u * 4 + 2]) / 2) * unitM;
+                  const north = originM[1] - ((box[u * 4 + 1] + box[u * 4 + 3]) / 2) * unitM;
+                  return gridAt(grid, east / sizeM, -north / sizeM);
+                }
               : () => 0,
           },
           clearance,

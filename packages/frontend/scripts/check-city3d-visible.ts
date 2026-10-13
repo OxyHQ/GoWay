@@ -85,6 +85,7 @@ import { extname, join, resolve } from 'node:path';
 import { type Browser, chromium, type Page, type Route } from 'playwright-core';
 
 import { CITY_COVERAGE_PATH } from '../lib/map/cityTiles';
+import { centreFor, landmarkPosition, sweepThrough } from './cameraClearanceDrive';
 import { type PublishedStats, type SettledWants, unsettled } from './city3dSettled';
 import {
   cityTile,
@@ -374,6 +375,8 @@ interface View {
   settled: boolean;
   /** The expected landmark's model failed to load. */
   landmarkFailed: boolean;
+  /** What `inspect` measured. */
+  inspected?: Record<string, number>;
   trees: number;
   triangles: number;
   streetTriangles: number;
@@ -471,6 +474,8 @@ async function view(
   time: Date = NOON,
   /** The ground: flat at TERRAIN_M, or {@link creasedMetres}. */
   relief: 'flat' | 'creased' = 'flat',
+  /** Something more to measure on the settled page, before it closes. */
+  inspect?: (page: Page) => Promise<Record<string, number>>,
 ): Promise<View> {
   const started = Date.now();
   // Per-view progress on stderr, so a CI log says WHICH view and WHICH step
@@ -628,6 +633,7 @@ async function view(
     path: join(outDir, `${name}.png`),
     timeout: SETTLE_TIMEOUT_MS,
   });
+  const inspected = inspect ? await inspect(page) : undefined;
   await context.close();
   // A view that never settled was measured mid-load: whatever it shows, the
   // gate cannot vouch for it, and a timeout is a finding, not a pass.
@@ -642,6 +648,7 @@ async function view(
     trees: stats?.trees ?? 0,
     triangles: stats?.triangles ?? 0,
     streetTriangles: stats?.streetTriangles ?? 0,
+    ...(inspected ? { inspected } : {}),
   };
 }
 
@@ -1024,6 +1031,30 @@ async function panSteps(
  */
 const LANDMARK = { id: 'sagrada-familia', lat: 41.4046, lng: 2.174347, zoom: 17.5 };
 
+/**
+ * The camera rule's CI leg (`docs/MAP_CAMERA_CLEARANCE.md`): on the settled
+ * landmark view, the camera is jumped through the Sagrada Família's model at
+ * 60° (the ceiling without the city sky) and z19, where its eye stands ~70 m
+ * up among towers of up to 172 m — every drawn eye checked against the
+ * prisms (`cameraClearanceDrive.ts`). Waits for the model's columns (measured
+ * on the mesh worker as it loads) before it sweeps: until the camera asked
+ * for at bearing 0 is inside it, the sweep would test nothing.
+ */
+async function clearanceSweep(page: Page): Promise<Record<string, number>> {
+  const target = landmarkPosition(LANDMARK.id);
+  const camera = { zoom: 19, pitch: 60, centre: centreFor(target, 19, 60, VIEWPORT.height) };
+  const by = Date.now() + 60_000;
+  while (Date.now() < by) {
+    const probe = await sweepThrough(page, camera, [0]);
+    if (probe.askedInside > 0) break;
+    await page.waitForTimeout(1000);
+  }
+  const bearings = Array.from({ length: 41 }, (_, i) => -40 + i * 2);
+  const sweep = await sweepThrough(page, camera, bearings);
+  console.error(`camera clearance: ${JSON.stringify(sweep)}`);
+  return { ...sweep };
+}
+
 // --- Run -------------------------------------------------------------------------
 
 const outDir = resolve(arg('out', '.city3d-visible'));
@@ -1217,6 +1248,11 @@ try {
       'low',
       LANDMARK.id,
       'jump',
+      NOON,
+      'flat',
+      // The camera rule (`docs/MAP_CAMERA_CLEARANCE.md`): swept through the
+      // model, the drawn eye is never inside it.
+      clearanceSweep,
     );
     const without = await view(
       browser,
@@ -1233,6 +1269,16 @@ try {
     );
     const changed = await differs(browser, withLandmark.png, without.png);
     results.landmark = { changedPct: changed };
+    const sweep = withLandmark.inspected;
+    if (sweep) results.clearance = sweep;
+    if (!sweep || sweep.askedInside === 0)
+      failures.push(
+        `camera clearance: the sweep never asked for an eye inside ${LANDMARK.id}: it tests nothing`,
+      );
+    else if (sweep.inside > 0 || sweep.drawnInside > 0)
+      failures.push(
+        `camera clearance: ${sweep.inside} of ${sweep.steps} cameras drew the eye inside ${LANDMARK.id} (${sweep.maxDepthM.toFixed(1)} m deep)`,
+      );
     if (withLandmark.landmarkFailed)
       failures.push(`landmark: ${LANDMARK.id}'s model failed to load (its buildings stayed)`);
     else if (changed < 1)

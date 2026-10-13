@@ -13,6 +13,11 @@ import {
   type MeshHost,
   type TileResponse,
 } from '@/components/map/engine/city3d/meshService';
+import {
+  CELL_INDEX_MAX_BYTES,
+  volumeBytes,
+  volumeTransferables,
+} from '@/components/map/engine/camera/volumes';
 import { packedTransferables } from '@/components/map/engine/city3d/packing';
 import type {
   MeshWorkerRequest,
@@ -135,6 +140,41 @@ describe('createMeshService', () => {
       nudged: 0,
       offCarriageway: 0,
     });
+  });
+
+  test('a tile’s camera volumes come back with it, within the profile’s bytes, offered for transfer', async () => {
+    const h = host(async () => response(200, tileBytes));
+    const handle = createMeshService(h.value);
+    const next = h.replied();
+    const mesh1 = request(1) as Extract<MeshWorkerRequest, { type: 'mesh' }>;
+    handle({ ...mesh1, volumes: { maxBytes: CELL_INDEX_MAX_BYTES, maxFootprintVertices: 4 } });
+    await next;
+    const message = h.posted[0].message;
+    const mesh = message.type === 'mesh' ? message.mesh : null;
+    expect(mesh?.volumes).toBeDefined();
+    if (!mesh?.volumes) return;
+    expect(volumeBytes(mesh.volumes)).toBeLessThanOrEqual(CELL_INDEX_MAX_BYTES);
+    for (const buffer of volumeTransferables(mesh.volumes)) {
+      expect(h.posted[0].transfer).toContain(buffer);
+    }
+  });
+
+  test('a landmark’s columns are measured here, off the main thread, and offered for transfer', () => {
+    const h = host(async () => response(404));
+    const handle = createMeshService(h.value);
+    // A 10 × 10 m, 30 m tall box: its top two triangles are enough.
+    const positions = Float32Array.from([0, 0, 30, 10, 0, 30, 10, 10, 30, 0, 10, 30]);
+    handle({
+      type: 'volumes',
+      id: 9,
+      meshes: [{ positions, index: [0, 1, 2, 0, 2, 3] }],
+      cellM: 2,
+    });
+    const message = h.posted[0].message;
+    expect(message.type).toBe('volumes');
+    const volumes = message.type === 'volumes' ? message.volumes : null;
+    expect(volumes?.maxTop).toBeCloseTo(30, 3);
+    if (volumes) expect(h.posted[0].transfer).toEqual(volumeTransferables(volumes));
   });
 
   test('a tile the archive does not have is empty ground; a failed one is an error', async () => {

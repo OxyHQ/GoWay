@@ -477,16 +477,6 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     // which is where the sun tracker was just restarted: aim it here.
     if (resume) settleSunLight({ latitude: start.latitude, longitude: start.longitude });
 
-    // The map's eye never inside a building or under the ground
-    // (`cameraClearance.web.ts`): every camera change — gestures, inertia,
-    // flyovers, tours, deep links — goes through MapLibre's
-    // `transformCameraUpdate`, and the buildings are the 3D city's, read live
-    // through the ref (none until the engine attaches; then the ground alone).
-    const clearance = attachCameraClearance(map, {
-      field: () => city3dRef.current?.clearance() ?? null,
-      eventData: PROGRAMMATIC,
-    });
-
     // The ONE animation clock (`perf/animationClock.ts`): everything that moves
     // by itself asks it for frames; it pauses when the tab is hidden or the
     // map has been left alone for the profile's idle time.
@@ -496,6 +486,19 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       requestFrame: () => map.triggerRepaint(),
     });
     clockRef.current = clock;
+
+    // The map's eye never inside a building or under the ground
+    // (`cameraClearance.web.ts`): every camera change — gestures, inertia,
+    // flyovers, tours, deep links — goes through MapLibre's
+    // `transformCameraUpdate`, and the buildings are the 3D city's, read live
+    // through the ref (none until the engine attaches; then the ground alone).
+    // A still camera is eased clear on the clock's tick, never under a finger.
+    const clearance = attachCameraClearance(map, {
+      field: () => city3dRef.current?.clearance() ?? null,
+      clock,
+      container,
+      releaseTarget: window,
+    });
     const noteInteraction = () => clock.noteInteraction();
     const onVisibility = () => clock.setHidden(document.visibilityState === 'hidden');
     const interactions = ['pointerdown', 'wheel', 'keydown', 'touchstart'] as const;
