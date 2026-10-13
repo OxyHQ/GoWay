@@ -1,4 +1,4 @@
-# Root-level entry points: `bun run worker:setup|worker:doctor|worker:run`.
+# Root-level entry points: `bun run worker:setup|worker:doctor|worker:run|worker:bench`.
 # The worker manages its own Python environment with uv; the Bun workspace
 # deliberately does not try to own it. Extra CLI flags go through ARGS, e.g.
 #   bun run worker:run -- ARGS="--max-jobs 1"
@@ -6,7 +6,7 @@
 UV ?= uv
 ARGS ?=
 
-.PHONY: setup doctor run status drain test
+.PHONY: setup doctor run status drain test bench
 
 # fused-ssim (the `gpu` extra) compiles against the venv's torch with the
 # venv's pinned CUDA toolkit, so the toolkit is installed first.
@@ -31,3 +31,7 @@ drain:
 
 test:
 	$(UV) run --locked pytest -q
+
+# Solve one scene with each feature set: SCENE=<dir with frames.json, images/, masks/>
+bench:
+	$(UV) run --locked --extra gpu goway-worker bench-sfm $(SCENE) $(ARGS)

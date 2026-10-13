@@ -153,7 +153,16 @@ jobs:
             base="https://download.geofabrik.de/$region"
             curl -fsSL --retry 5 --retry-delay 30 -A "$USER_AGENT" -o "$dl.osm.pbf" "$base-latest.osm.pbf"
             curl -fsSL --retry 5 -A "$USER_AGENT" -o "$dl.osm.pbf.md5" "$base-latest.osm.pbf.md5"
-            curl -fsSL --retry 5 -A "$USER_AGENT" -o "$dl.poly" "$base.poly"
+            # Geofabrik's .poly is regenerated in place and was measured
+            # empty or truncated mid-run (Hokkaido, Shikoku, Kyushu on
+            # 2026-10-12): a whole polygon has a ring and the file's END.
+            for attempt in 1 2 3 4 5; do
+              curl -fsSL --retry 5 -A "$USER_AGENT" -o "$dl.poly" "$base.poly"
+              [ "$(grep -c '^END' "$dl.poly" || true)" -ge 2 ] && break
+              echo "$region: the .poly is incomplete ($(wc -c < "$dl.poly") B); retrying"
+              [ "$attempt" -eq 5 ] && { echo "::error::$region: no complete .poly from Geofabrik"; exit 1; }
+              sleep 120
+            done
             # The md5 file names the file by its published name; check the bytes.
             [ "$(md5sum < "$dl.osm.pbf" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$dl.osm.pbf.md5")" ] \
               || { echo "::error::$region: the extract does not match its md5"; exit 1; }

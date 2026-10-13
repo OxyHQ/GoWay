@@ -50,8 +50,10 @@
  * bucket.
  */
 
-import { coverageAt, decodeCoverageTree, FULL } from './coverageTree.js';
-import { PMTiles, decompress } from './pmtiles.js';
+import { MEMORY_BUDGET } from './budget.js';
+import { compactCoverageAt, compactCoverageTree, FULL } from './coverageTree.js';
+import { DirectoryMemo } from './pmtiles.js';
+import { serveArchiveTile } from './tiles.js';
 
 /** `/map/city/{z}/{x}/{y}.pbf` and `/map/city-roads/…`, and nothing that merely resembles them. */
 const CITY_TILE_PATH = /^\/map\/(city|city-roads)\/(\d{1,2})\/(\d{1,9})\/(\d{1,9})\.pbf$/;
@@ -90,9 +92,6 @@ const TILE_TTL = 86400;
 
 /** Seconds the manifest, and anything derived from it, may be kept. */
 const MANIFEST_TTL = 300;
-
-/** Seconds a directory read may be kept at the edge (immutable per archive key). */
-const DIRECTORY_TTL = 604800;
 
 function headers(cacheSeconds, extra = {}) {
   return {
@@ -156,10 +155,9 @@ export function parseCityManifest(document) {
     return {
       id: region.id,
       bbox,
-      ownership: region.ownership,
+      ownership: { maxZoom: region.ownership.maxZoom, bits: region.ownership.bits },
       city: ref(region.city, 'city'),
       roads: ref(region.roads, 'city-roads'),
-      tree: null,
     };
   });
   for (const kind of ['coverage', 'roadsCoverage']) {
@@ -168,7 +166,60 @@ export function parseCityManifest(document) {
       throw new Error(`${kind} is not a z${COVERAGE_ZOOM} coverage tree`);
     }
   }
-  return { document, regions, keys: new Set(regions.flatMap(archiveKeysOf)) };
+  // What `/map/city/coverage.json` answers, built once per manifest: the
+  // parsed document itself is not kept (its 2.6 MB of objects would be the
+  // largest thing in the isolate), only what the routes read.
+  const coverageBody = JSON.stringify({
+    schema: 2,
+    generatedAt: document.generatedAt,
+    tileZoom: CITY_ZOOM,
+    tiles: { maxZoom: document.coverage.maxZoom, bits: document.coverage.bits },
+    roads: { maxZoom: document.roadsCoverage.maxZoom, bits: document.roadsCoverage.bits },
+    regions: document.regions.map((region) => ({
+      id: region.id,
+      name: region.name,
+      bbox: region.bbox,
+      replicationTimestamp: region.source?.replicationTimestamp,
+    })),
+    manifest: '/map/city/manifest.json',
+  });
+  return {
+    version: String(document.generatedAt ?? ''),
+    regions,
+    keys: new Set(regions.flatMap(archiveKeysOf)),
+    coverageBody,
+  };
+}
+
+/**
+ * Bytes a parsed manifest holds, by the strings and small objects it keeps —
+ * an estimate on the high side (two bytes a character, ~300 B a region), for
+ * the memory budget and its test.
+ */
+export function manifestBytes(manifest) {
+  let bytes = manifest.coverageBody.length * 2;
+  for (const region of manifest.regions) {
+    bytes += 300 + region.id.length * 2 + region.ownership.bits.length * 2;
+    for (const ref of [region.city, region.roads]) if (ref) bytes += 4 * ref.key.length + 64;
+  }
+  return bytes;
+}
+
+/**
+ * Decoded ownership trees, compact (5 B a node), least recently used out
+ * first within their byte budget: an isolate holds the regions it is asked
+ * about, not the planet's 4.58 M nodes.
+ */
+const ownershipTrees = new DirectoryMemo(MEMORY_BUDGET.ownershipTrees);
+
+function ownershipTree(manifest, region) {
+  const key = `${manifest.version}|${region.id}`;
+  let tree = ownershipTrees.get(key);
+  if (!tree) {
+    tree = compactCoverageTree(region.ownership);
+    ownershipTrees.set(key, tree, tree.bytes);
+  }
+  return tree;
 }
 
 function archiveKeysOf(region) {
@@ -183,36 +234,78 @@ function archiveKeysOf(region) {
  * within `MANIFEST_TTL` + a minute, and one request only ever reads one
  * manifest. Nothing it names can go stale meanwhile, because archives are
  * never overwritten — a manifest only ever points at immutable keys.
+ *
+ * The planet's manifest is 2.6 MB of JSON. Re-reading and re-parsing it every
+ * minute in every isolate was the largest CPU cost of a city tile, so the
+ * colo's copy carries the R2 object's etag: when the minute is up and the
+ * etag is the one already parsed, the isolate keeps what it has (and the
+ * ownership trees it decoded) without reading the body. Concurrent requests
+ * in a cold isolate share one load.
  */
-const memory = { key: null, at: 0, value: null };
+const memory = { key: null, at: 0, value: null, etag: null, loading: null, loadingKey: null };
 
 async function loadManifest(env, ctx) {
   const key = env.MAP_CITY_MANIFEST;
-  const now = Date.now();
-  if (memory.key === key && memory.value && now - memory.at < 60_000) return memory.value;
+  if (memory.key === key && memory.value && Date.now() - memory.at < 60_000) return memory.value;
+  if (memory.loading && memory.loadingKey === key) return memory.loading;
+  memory.loadingKey = key;
+  memory.loading = refreshManifest(env, ctx, key).finally(() => {
+    memory.loading = null;
+  });
+  return memory.loading;
+}
 
-  const cacheKey = new Request(`https://goway.internal/city-manifest/${encodeURIComponent(key)}`);
+function manifestCacheKey(key) {
+  return new Request(`https://goway.internal/city-manifest/${encodeURIComponent(key)}`);
+}
+
+/** The manifest's text and etag, from the colo's cache or R2 (then cached). */
+async function fetchManifest(env, ctx, key, knownEtag) {
   const cache = caches.default;
-  let body = null;
-  const hit = await cache.match(cacheKey);
-  if (hit) body = await hit.text();
-  if (!body) {
-    const object = await env.MAP_TILES.get(key);
-    if (!object) throw new Error(`the city manifest "${key}" is missing from the bucket`);
-    body = await object.text();
-    ctx.waitUntil(
-      cache.put(
-        cacheKey,
-        new Response(body, {
-          headers: { 'cache-control': `public, max-age=${MANIFEST_TTL}` },
-        }),
-      ),
-    );
+  const hit = await cache.match(manifestCacheKey(key));
+  if (hit) {
+    const etag = hit.headers.get('x-goway-etag');
+    if (etag && knownEtag && etag === knownEtag) {
+      await hit.body?.cancel();
+      return { body: null, etag };
+    }
+    return { body: await hit.text(), etag };
   }
-  const value = { ...parseCityManifest(JSON.parse(body)), body };
+  const object = await env.MAP_TILES.get(key);
+  if (!object) throw new Error(`the city manifest "${key}" is missing from the bucket`);
+  const body = await object.text();
+  const etag = object.etag ?? null;
+  ctx.waitUntil(
+    cache.put(
+      manifestCacheKey(key),
+      new Response(body, {
+        headers: {
+          'cache-control': `public, max-age=${MANIFEST_TTL}`,
+          ...(etag ? { 'x-goway-etag': etag } : {}),
+        },
+      }),
+    ),
+  );
+  return { body, etag };
+}
+
+/** The manifest as published, for `/map/city/manifest.json`. */
+async function manifestText(env, ctx) {
+  return (await fetchManifest(env, ctx, env.MAP_CITY_MANIFEST, null)).body;
+}
+
+async function refreshManifest(env, ctx, key) {
+  const known = memory.key === key && memory.value ? memory.etag : null;
+  const { body, etag } = await fetchManifest(env, ctx, key, known);
+  if (body === null) {
+    memory.at = Date.now();
+    return memory.value;
+  }
+  const value = parseCityManifest(JSON.parse(body));
   memory.key = key;
-  memory.at = now;
+  memory.at = Date.now();
   memory.value = value;
+  memory.etag = etag;
   return value;
 }
 
@@ -233,42 +326,9 @@ export function ownerOf(manifest, x, y) {
   for (const region of manifest.regions) {
     const [w, s, e, nn] = region.bbox;
     if (lon < w || lon > e || lat < s || lat > nn) continue;
-    region.tree ??= decodeCoverageTree(region.ownership);
-    if (coverageAt(region.tree, CITY_ZOOM, CITY_ZOOM, x, y) === FULL) return region;
+    if (compactCoverageAt(ownershipTree(manifest, region), CITY_ZOOM, x, y) === FULL) return region;
   }
   return null;
-}
-
-/** A PMTiles byte source over R2, with directories cached at the edge (as the basemap's). */
-function archiveSource(bucket, key, ctx) {
-  const cache = caches.default;
-  return {
-    async read(offset, length, options = {}) {
-      const range = { offset, length };
-      if (!options.hot) {
-        const object = await bucket.get(key, { range });
-        if (!object) throw new Error(`the archive "${key}" is missing from the bucket`);
-        return new Uint8Array(await object.arrayBuffer());
-      }
-      const cacheKey = new Request(
-        `https://goway.internal/pmtiles/${encodeURIComponent(key)}/${offset}-${length}`,
-      );
-      const hit = await cache.match(cacheKey);
-      if (hit) return new Uint8Array(await hit.arrayBuffer());
-      const object = await bucket.get(key, { range });
-      if (!object) throw new Error(`the archive "${key}" is missing from the bucket`);
-      const bytes = new Uint8Array(await object.arrayBuffer());
-      ctx.waitUntil(
-        cache.put(
-          cacheKey,
-          new Response(bytes, {
-            headers: { 'cache-control': `public, max-age=${DIRECTORY_TTL}` },
-          }),
-        ),
-      );
-      return bytes;
-    },
-  };
 }
 
 /** `/map/city/{z}/{x}/{y}.pbf` and `/map/city-roads/{z}/{x}/{y}.pbf`. */
@@ -289,48 +349,39 @@ export async function serveCityTile(url, request, env, ctx) {
   }
 
   let manifest;
+  const manifestStarted = Date.now();
   try {
     manifest = await loadManifest(env, ctx);
   } catch (error) {
     return text(502, `The city manifest could not be read: ${error.message}`, 0);
   }
+  const manifestMs = Date.now() - manifestStarted;
   const owner = ownerOf(manifest, x, y);
   const ref = owner?.[kind];
   if (!ref) {
     return withMethod(request, text(404, 'No published region covers this tile.', MANIFEST_TTL));
   }
 
-  const cache = caches.default;
-  const cacheKey = new Request(
-    `https://goway.internal/map/city/${encodeURIComponent(ref.key)}/${z}/${x}/${y}.pbf`,
-  );
-  const hit = await cache.match(cacheKey);
-  if (hit) return withMethod(request, hit);
-
-  let tile;
-  try {
-    tile = await new PMTiles(archiveSource(env.MAP_TILES, ref.key, ctx)).getTile(z, x, y);
-  } catch (error) {
-    return text(502, `The city archive could not be read: ${error.message}`, 0);
-  }
-  if (!tile) {
-    // Owned and empty: sea, fields. A fact about an immutable archive.
-    const empty = new Response(null, { status: 204, headers: headers(TILE_TTL) });
-    ctx.waitUntil(cache.put(cacheKey, empty.clone()));
-    return empty;
-  }
-  // Decoded here, as the basemap's are: workerd drops a hand-set
-  // `content-encoding`, so gzip bytes must not leave labelled as MVT
-  // (`index.js` → `serveTileFromArchive` has the measured story).
-  const body = await decompress(tile.bytes, tile.compression);
-  const response = new Response(body, {
-    headers: headers(TILE_TTL, {
-      'content-type': 'application/vnd.mapbox-vector-tile',
-      'content-length': String(body.length),
-    }),
+  // Owned and empty (sea, fields) is a 204 — a fact about an immutable
+  // archive, cached for a day. A tile goes out as the archive stores it,
+  // gzipped, declared, and never re-encoded (`tiles.js`).
+  const response = await serveArchiveTile({
+    request,
+    ctx,
+    bucket: env.MAP_TILES,
+    key: ref.key,
+    z,
+    x,
+    y,
+    cacheKey: `map/city/${encodeURIComponent(ref.key)}/${z}/${x}/${y}.pbf`,
+    cacheSeconds: TILE_TTL,
+    contentType: 'application/vnd.mapbox-vector-tile',
+    publicHeaders: headers(TILE_TTL),
+    missStatus: 204,
+    what: 'city archive',
   });
-  ctx.waitUntil(cache.put(cacheKey, response.clone()));
-  return withMethod(request, response);
+  response.headers.append('server-timing', `manifest;dur=${manifestMs}`);
+  return response;
 }
 
 /**
@@ -357,21 +408,7 @@ export async function serveCityCoverage(request, env, ctx) {
     // Not a 200: the client reads any failure as "no coverage" and draws the basemap.
     return text(503, `The city manifest could not be read: ${error.message}`, 0);
   }
-  const document = manifest.document;
-  const body = JSON.stringify({
-    schema: 2,
-    generatedAt: document.generatedAt,
-    tileZoom: CITY_ZOOM,
-    tiles: { maxZoom: document.coverage.maxZoom, bits: document.coverage.bits },
-    roads: { maxZoom: document.roadsCoverage.maxZoom, bits: document.roadsCoverage.bits },
-    regions: document.regions.map((region) => ({
-      id: region.id,
-      name: region.name,
-      bbox: region.bbox,
-      replicationTimestamp: region.source?.replicationTimestamp,
-    })),
-    manifest: '/map/city/manifest.json',
-  });
+  const body = manifest.coverageBody;
   return withMethod(
     request,
     new Response(body, {
@@ -384,15 +421,16 @@ export async function serveCityCoverage(request, env, ctx) {
 export async function serveCityManifest(request, env, ctx) {
   if (!configured(env))
     return withMethod(request, text(404, 'No city manifest is published.', 300));
-  let manifest;
+  // Read, not remembered: the isolate keeps only the slim parse.
+  let body;
   try {
-    manifest = await loadManifest(env, ctx);
+    body = await manifestText(env, ctx);
   } catch (error) {
     return text(503, `The city manifest could not be read: ${error.message}`, 0);
   }
   return withMethod(
     request,
-    new Response(manifest.body, {
+    new Response(body, {
       headers: headers(MANIFEST_TTL, { 'content-type': 'application/json' }),
     }),
   );
@@ -464,7 +502,10 @@ export async function serveCity(url, request, env, ctx) {
 
 /** For tests: forget the per-isolate manifest. */
 export function forgetCityManifest() {
+  ownershipTrees.clear();
   memory.key = null;
   memory.at = 0;
   memory.value = null;
+  memory.etag = null;
+  memory.loading = null;
 }

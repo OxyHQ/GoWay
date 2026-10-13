@@ -190,7 +190,9 @@ tile the camera sees**, each at the level of detail its distance affords
   tile changing level is re-meshed from memory. Replies are handed to the GPU
   within a per-frame upload budget (12 MiB; one mesh only after a frame slower
   than 50 ms), nearest first, so three dense tiles landing together do not stall
-  one frame. Least-recently-used meshes are evicted past the cache budgets,
+  one frame. The street detail's tiles (and its glyph atlas) take what the
+  city's arrivals leave of the same budget (`overlay.ts` →
+  `FrameUploadBudget`), and wait a frame otherwise. Least-recently-used meshes are evicted past the cache budgets,
   never one that is wanted or still fading. Empty tiles are cached as empty;
   failed tiles retry with backoff (1, 2, 4, 8 s, then a 5-minute cooldown) even
   while the view stands still — `building-3d` is hidden, so nothing else would
@@ -245,7 +247,7 @@ a loaded 32-core machine and vary ±30% run to run; the sizes are exact.
 | GPU bytes drawn per frame | 128 MiB | `city.drawBytes` | Barcelona at 80°: 107 MiB; at 60°: 69 MiB (was 130) |
 | GPU bytes cached (drawn + slack + fallbacks) | 192 MiB, 160 entries | `city.cacheBytes`, `MAX_CACHED_TILES` | LRU, wanted and fading entries spared |
 | Tiles drawn | ≤ 48, ≤ 6 at full detail | `city.maxTiles`, `city.maxFullTiles` (`LOD_POLICY` holds the rest) | |
-| Upload per frame | 12 MiB (1 mesh after a > 50 ms frame) | `city.uploadBytesPerFrame` | |
+| Upload per frame | 12 MiB (1 mesh after a > 50 ms frame), shared with the street detail | `city.uploadBytesPerFrame` | |
 | Requests in flight | 2 per worker, ≤ 3 workers | `MAX_IN_FLIGHT_PER_WORKER`, `city.maxWorkers` | |
 | Worker time per tile | level 0 ≤ 200 ms, levels 1–2 ≤ 60 ms, trees ≤ 50 ms (Bun, dense tiles) | — | table above |
 | Trees | ≤ 24,000 per tile, ≤ 40,000 drawn per frame (nearest tiles first); ≤ 98 triangles near, ≤ 30 far (far past the full-detail distance, even on a level-0 tile); shorter than `treeMinHeightM(zoom)` not drawn | `TREES.maxPerTile`, `city.treeBudget`, `treeGeometry.ts`, `tsl/treeMaterial.ts` | Central Park: 18,233 trees, 1.28 M triangles; Barcelona at 80°: 20,523 |
@@ -397,7 +399,16 @@ copied; no asset or code is (all shapes are generated in `treeGeometry.ts`).
   city-tile compiler now writes them as a `tree` layer (`lib/map/cityTiles.ts` →
   `CITY_TREE_LAYER`; `scripts/citygen/treeTags.ts` reads only what is recorded:
   crown from `leaf_type`, genus/species/taxon or family; `height`;
-  `diameter_crown`). Barcelona's archive grew 6.16 → 6.99 MB with them.
+  `diameter_crown`; the trunk's `circumference`; and `street` when the tree is
+  recorded as a street or avenue tree — a node of a `natural=tree_row`, or
+  `denotation=avenue|urban`). Barcelona's archive grew 6.16 → 6.99 MB with them.
+  Measured on the extracts of 2026-10-11 (`natural=tree` nodes; Barcelona's box,
+  Madrid's extract, New York City's box): `denotation=avenue|urban` 6.5% / 3.1% /
+  5.8%; `circumference` 0.02% / 0.15% / 0.01%; a node of a `tree_row` 0.03% /
+  0.05% / 0.01%; `height` 0.04% / 5.1% / 1.8%. Barcelona's street trees mostly
+  record nothing but `natural=tree` — which is why the client reads a tree's
+  setting from what surrounds it (below), and the compiler's `street` and
+  `circumference` only add to it once an archive is rebuilt.
 
 **What is drawn.** By default, only trees the data records (owner decision
 after review: "trees on top of buildings, trees at random everywhere" — no
@@ -405,19 +416,59 @@ tree where none is mapped).
 
 1. **Mapped trees** (GoWay city tiles, `?cityTiles=1`): every `natural=tree`
    point, at its position, with its crown form when recorded (else broadleaf),
-   its height when recorded (else a typical size for the crown —
-   `MAPPED_TREE_HEIGHT_M`, a size for the eye), turned and varied by a seed
-   from its OSM id, so it is the same tree every visit. With the default
+   its height and crown diameter when recorded (a crown estimated from a
+   recorded `circumference` otherwise: 1.5 m + 0.2 m per cm of trunk, 2–20 m),
+   else its setting's typical size (item 2), turned and varied by a seed from
+   its OSM id, so it is the same tree every visit. With the default
    OpenMapTiles source there are no tree points, so no trees are drawn.
-2. **No tree in a building** (`workerTrees.ts`): every tree — mapped or fill —
+2. **Street trees and park trees** (owner report on Carrer de Mallorca: "the
+   trees in the middle of the city cover the whole street; in mountains,
+   woods and parks it's fine"; `treeContext.ts`). The worker reads what
+   surrounds each mapped tree — the road archive's tile at the same address
+   (carriageways as wide as the street detail draws them, `cityStreets/lanes.ts`
+   → `crossSection`; mapped sidewalks) and the basemap tile under it (parks,
+   gardens and woods; urban landuse). A tree is a **street tree** when it stands
+   within 3 m of a kerb (a park's edge included: its crown is over the street),
+   or, outside a park or wood, when it is recorded as one (`street`), stands
+   within 8 m of a kerb or 4 m of a mapped sidewalk, or stands in urban landuse
+   (residential, commercial, retail, industrial). A street tree is drawn as
+   Apple's Detailed City street tree — a modest lollipop on a clear trunk
+   (`trees.ts` → `STREET_TREE`): 8.5–11.5 m unless recorded, its crown starting
+   at 45% of its height (2.5–6 m: 3.8–5.2 m by default, above a bus), its crown
+   about as wide as it is tall and at most 6.5 m unless recorded, its trunk
+   slimmer. Every other tree — park, garden, wood, countryside — and every
+   palm keeps the proportions it had (`MAPPED_TREE_HEIGHT_M`, the unit tree
+   scaled by its height). The shader stretches the one unit tree to each
+   tree's form (`treeGeometry.ts` → `CROWN_FRAMES`, `tsl/treeMaterial.ts`): two
+   more 16-bit numbers per tree, the crown base and diameter.
+3. **Never on a carriageway** (`treeContext.ts`). A mapped point inside a
+   drawn carriageway by at most 1.5 m is a kerb tree a little off (OSM
+   positions and centrelines are each good to a metre or two, and an
+   unrecorded road width is the class default): it is moved square to the
+   kerb and 0.75 m past it. Deeper in the road (a mis-mapped point, or a
+   planted median the road's one centreline runs through), or moved into a
+   crossing street, it is not drawn. Both are counted (`treeSettings` in the
+   engine's development stats: street, nature, nudged, offCarriageway).
+   Shared surfaces (`living_street`, `pedestrian`), tunnels and bridges have
+   no carriageway at ground level. Measured on Barcelona's Eixample tiles
+   (z15 16581–16583/12235–12237, 6,445 mapped trees): 0.6–1.7% nudged, at most
+   0.2% left out (five on one tile: a row deep in Avinguda Diagonal's
+   carriageway), 49–72% street trees per tile — the rest Plaça de Gaudí,
+   Glòries and the blocks' inner gardens. Cost: one more fetch per city tile
+   (its road tile, normally already cached by the street detail) and the
+   basemap tile the fill already read, both asked for beside the tile itself
+   (`meshService.ts`) so their round trips overlap its own; 17 ms of worker time, warm, on the
+   densest of them (3,032 trees: road tile 5 ms, areas 2 ms, settling 8 ms),
+   inside the trees' 50 ms.
+4. **No tree in a building** (`workerTrees.ts`): every tree — mapped or fill —
    whose point falls inside a footprint of its tile's own buildings is dropped
    (a courtyard is a hole, so a courtyard tree stays). Buildings of a
    neighbouring tile spilling over the edge are not consulted.
-3. **On the same ground as the buildings**: on 3D terrain the trees read the
+5. **On the same ground as the buildings**: on 3D terrain the trees read the
    grid the buildings stand on — the terrain as drawn (`MAP_TERRAIN_GLOBE.md`
    → "The ground is the drawn terrain", which also records why #126's
    de-noising of it was removed: in these cities the terrain is bare earth).
-4. **The styling fill — off unless asked for** (the `city3dTreeFill` map
+6. **The styling fill — off unless asked for** (the `city3dTreeFill` map
    feature in Labs, or `?city3dTreeFill=1` in development; `trees.ts`): the 3D equivalent of the tree pattern a paper map prints over
    a forest, **in mapped woods only** (`landcover` `class=wood`: wood,
    forest), never in a park or a garden:
@@ -434,29 +485,33 @@ tree where none is mapped).
    tile's quarter of it; a parent tile that fails to FETCH (not one that is
    absent) marks the tile incomplete and it is asked for again at 2, 8 and
    30 s (PR #126 review — it used to be cached without its fill for good).
-3. **Shapes** (`treeGeometry.ts`): three broadleaf canopy variants (an icosphere
+7. **Shapes** (`treeGeometry.ts`): three broadleaf canopy variants (an icosphere
    pushed out by five soft lobes, not a sphere; 98 triangles with trunk and
    shadow), a two-tier cone conifer (34), a palm of seven drooping V-section
    fronds (74); far tiles (level 1) draw a 20-triangle canopy, a 6-triangle cone
    and a 30-triangle palm, no shadow; level 2 draws no trees. The trunk leans a
    little (palms more), the canopy rides it.
-4. **Zoomed out, the tallest first**: trees shorter than `treeMinHeightM(zoom)`
+8. **Zoomed out, the tallest first**: trees shorter than `treeMinHeightM(zoom)`
    — 10 m at zoom 15.5, 0 from zoom 18 — shrink away over 3 m rather than pop
    (`tsl/treeMaterial.ts`), which is also what keeps a whole-city view affordable.
-5. **Colour** (`components/map/city3dTrees.ts`): canopies are the palette's PARK
+9. **Colour** (`components/map/city3dTrees.ts`): canopies are the palette's PARK
    colour desaturated to a matte sage, a step darker than the ground on the
    light map and lighter on the dark one; conifers cooler and deeper; palms a
    touch warmer; trunks are the palette's BUILDING clay, darker. A few tint
    variants per seed. Lit by MapLibre's extrusion formula under the map's light,
    with a soft occlusion (underside darker, crown lighter).
-6. **GPU instancing**: one shared unit tree per shape, four 16-bit numbers per
-   tree (position, seed, kind + height); the vertex shader turns, sizes, leans
-   and places each one, so thousands of trees cost the CPU nothing per frame.
+10. **GPU instancing**: one shared unit tree per shape, six 16-bit numbers per
+   tree (position, seed, kind + height; crown base and crown diameter); the
+   vertex shader turns, sizes, stretches, leans and places each one, so thousands of trees cost the CPU nothing per frame.
    Instances are sorted by shape in the worker, so a tile is at most five
    instanced draws.
 
 **Honesty.** A mapped tree is drawn where OSM records it and as what OSM
-records; its unrecorded size and its turn are styling. A fill tree — only when
+records; its unrecorded size, its setting's proportions and its turn are
+styling. A kerb tree moved off the carriageway moves by at most 2.25 m, square
+to the kerb; one deeper in the road is not drawn rather than drawn somewhere
+OSM does not put it. No tree is added in a city: the fill stands only in
+mapped woods. A fill tree — only when
 the fill is switched on — stands for no tree: none stands outside a mapped
 wood, within 9 m of a mapped tree, or on anything mapped as something else,
 and their number, species mix, size and position are not data. That is the rule above — procedural detail is
@@ -464,20 +519,24 @@ styling, never fact — applied to vegetation. The trees can be switched off on
 their own: the `city3dTrees` map feature in Labs, or `?city3dTrees=0` in a
 development tab.
 
-**Not done, and why.** Municipal tree inventories are far richer than OSM where
-they exist — Barcelona's *Arbrat viari* / *Arbrat zona* (every street and park
-tree, species and height class) and New York's 2015 Street Tree Census — and
-are the natural next source for the compiler's `tree` layer, merged with
-`natural=tree` by position. Each needs its licence verified (both are published
-as open data; the exact terms and attribution wording were not checked here) and
-its credit added to `MapAttribution` while drawn, as the Obligations require.
-Crown diameter is compiled but not yet used to size the canopy.
+**Not done, and why: official street-tree inventories** (a proposal for the
+owner, nothing imported; checked 2026-10-12). Each would be merged with
+`natural=tree` by position in the compiler's `tree` layer, credited in
+`MapAttribution` while drawn, and recorded in `MAP_3D_SOURCES.md` like the
+building sources — the AGENTS.md rule ("a licence-reviewed official model").
+
+| Inventory | Licence | Per tree | Fit |
+| --- | --- | --- | --- |
+| Barcelona *Arbrat viari* (Ajuntament de Barcelona, Open Data BCN `arbrat-viari`; *Arbrat zona* and park trees are separate sets) | CC BY 4.0, updated weekly | 145,176 street trees and palms: position (ETRS89 and WGS84), species (scientific, Catalan, Spanish), `categoria_arbrat` (PRIMERA / SEGONA / TERCERA / EXEMPLAR — a size class whose definition the metadata does not give), planting date (22%), address, irrigation. **No height, no girth** | Best fit for Barcelona: species → crown form for every street tree (OSM has 12%); 88 on Carrer de Mallorca by Marina alone. CC BY 4.0 inside an ODbL derivative needs the same review the Catastro got (attribution, and CC BY's no-technical-restrictions term) |
+| Paris *Les arbres* (Ville de Paris, opendata.paris.fr `les-arbres`) | **ODbL** — the city tiles' own licence | 220,218 trees: position, genus, species, cultivar, **height (m)**, **circumference (cm)**, development stage, `domanialite` (`Alignement` = street tree, `Jardin`, …), remarkable | Cleanest: same licence, real heights and girths, and street vs park recorded; Paris's city tiles are published (Île-de-France) |
+| New York 2015 Street Tree Census (`uvpi-gqnh`) / Forestry Tree Points (`hn5i-inap`, live, NYC Parks) | NYC Open Data Terms of Use (no licence on the dataset; free reuse with the City's disclaimer) | 683,788 street trees (2015): position, species, **trunk diameter (DBH)**, curb location, health, sidewalk damage. The live set: DBH, condition, planted date | Good: DBH → crown via the circumference rule; curb location confirms the street setting. The terms need the owner's reading (no named licence) |
+| Madrid *Arbolado en parques y zonas verdes de Madrid (detalle)* (Ayuntamiento de Madrid, datos.madrid.es `300761-0-arbolado-especies`) | CC BY 4.0 | Street (*viario*) and green-area trees counted one by one (palms and forest masses excluded): position (ETRS89 UTM 30N), species code, **perimeter**, **total height** | Good: heights and girths for street trees; same CC BY 4.0 review as Barcelona |
 
 ### One engine, one scene
 
 The city engine and the SDK's coordinate-anchored models
 ([`SDK_MAP_MODELS.md`](./SDK_MAP_MODELS.md)) must be **one** custom layer, one
-`WebGLRenderer`, one scene and one camera. Two custom layers each wrapping
+renderer (since phase 2 of `MAP_NATIVE_3D.md`, three's `WebGPURenderer`), one scene and one camera. Two custom layers each wrapping
 their own three.js renderer around MapLibre's context double the state
 resets, cannot depth-sort against each other's transparency, and each re-solve
 the precision problem. The engine's per-tile placement
@@ -569,7 +628,7 @@ fabricated places on the public map; the same rule governs buildings:
 - Colour comes from the cartographic palette's height ramp (shared with
   `building-3d` via `buildingHeightRamp`). On the city tiles a tagged
   `building:colour`/`roof:colour` or `*:material` is drawn **tempered** into
-  that ramp (`osmShaders.ts`): desaturated and pulled most of the way to the
+  that ramp (`tsl/buildingSurface.ts`): desaturated and pulled most of the way to the
   ramp's lightness, so it is a hint (warm brick, cool glass, a tiled roof)
   rather than the patchwork `buildings3d.ts` refused raw `colour` for — the
   first untempered render of Lower Manhattan proved that point with a black
@@ -729,7 +788,7 @@ fallback.
 | Compiler internals | `scripts/citygen/` — `osmPbf.ts` (reader, relation roles included), `compile.ts` (passes, assembly, parts, tiling), `tags.ts` (+ `cssColours.ts`), `mvtEncode.ts`, `pmtilesWriter.ts` |
 | Client decode | `components/map/engine/city3d/osmTiles.ts` |
 | Client mesh | `osmMesher.ts`, `roofs.ts`, `facades.ts` |
-| Client material | `tsl/buildingMaterial.ts` (with the city sky: `osmShaders.ts` → `osmBase`, `skyShaders.ts`) |
+| Client material | `tsl/buildingSurface.ts` (the surface), `tsl/buildingMaterial.ts` (map-lit), `tsl/skyBuildingMaterial.ts` (under the city sky) |
 | Engine/worker seam | `protocol.ts` (`format`), `meshWorker.ts` (one branch, packed like the rest), `cityEngine.ts` (`tileFormat`, `maxTiles`), `cityMeshes.ts` + `packing.ts` (the two extra attributes) |
 | Flag | The registry's `cityTiles` (`lib/map/mapFeatures.ts`; offered in the settings modal only in a development build; `?cityTiles=1` in development; requires `city3d`) |
 | Adapter | `city3dLayer.web.ts` → `citySourceFor` |
@@ -948,7 +1007,7 @@ against this branch (separate Metro caches, `--clear`):
 Nothing new reached first paint: the decision was then read only by the lazy
 adapter, which is why it was not in `lib/config.ts`. (It now lives in the
 map-feature registry, which is on first paint by design; see `MAP_FEATURES.md`.)
-`components/__tests__/engine3dChunk.test.ts` stays green (`osmShaders.ts` is
+`components/__tests__/engine3dChunk.test.ts` stays green (the TSL materials are
 imported only by the engine; the adapter imports `lib/map/cityTiles*` and the
 engine folder type-only).
 
@@ -1057,17 +1116,17 @@ material gets (one shared `{ value }` object, `cityEngine.ts` → `light`), or
 as `CityEngine.nightFactor` — that same live object, to hand to a material
 built elsewhere. Per-building inputs for night looks travel in one
 per-vertex byte, `OsmTileMesh.flags` (`osmMesher.ts`) → `PackedChunk.flags`
-(`packing.ts`) → the `flags` attribute; bit 0 is `VERTEX_FLAG_FLOODLIT`, and
+(`packing.ts`) → the normal's spare lane (`w`); bit 0 is `VERTEX_FLAG_FLOODLIT`, and
 a new bit is a new constant, never a new meaning for an old one.
 
 **City life and other overlays** (`overlay.ts`) get the sky two ways: through
 `setLight`, the sun's direction and the light on an up-facing surface, as the
 trees get it — so the simulated traffic darkens and cools at night with no
-change of its own — and, optionally, through `setSky`: the live uniforms
-(sun, sky, bounce, shadow map and matrix, night factor, camera, ground) and
-the GLSL that reads them (`SKY_OVERLAY_GLSL`: `sunVisibility`,
-`hazeTransmittance`, `skyColor`), for an overlay that wants the sun's shadows
-and the haze on its own objects. Only the buildings cast into the shadow map
+change of its own — and, optionally, through `setSky`: the sky's live TSL
+nodes (`tsl/skyNodes.ts`: the sun, sky, bounce, shadow matrix, night factor,
+camera and ground, and `sunVisibility`, `hazeTransmittance`, `skyColor`,
+`aerial`, `groundLight`), for an overlay that wants the sun's shadows and the
+haze on its own objects (the street detail does). Only the buildings cast into the shadow map
 (`SHADOW_CASTER_LAYER`); the instanced trees and the overlays do not.
 
 **The palette** (`atmosphere.ts`): a deep blue-violet sky (`#141658` overhead to
@@ -1168,7 +1227,7 @@ at that ray's hit.
   own colours, `1` at reference daylight, with a pure 2.2 gamma so "multiply
   the basemap's sRGB pixel" and "light the building's linear albedo" agree.
   Both tile formats (OpenMapTiles and GoWay city tiles, whose colour function
-  is shared: `OSM_BASE_GLSL`) and terrain grounding are supported.
+  is shared: `tsl/buildingSurface.ts`) and terrain grounding are supported.
 - **Shadows** (`shadows.ts`): one orthographic map over a square receiver box
   round the map centre — radius from the view, rounded up in √2 steps; centre
   snapped to an eighth of it; box turned to face the sun so a low sun gets *more*
@@ -1280,7 +1339,7 @@ two can be compared side by side at the same camera.
 | Feature entry | `lib/map/mapFeatures.ts` (`detailedCity`), labels in `mapFeatureLabels.ts` |
 | Palette: the 3D ground, the material (day, night) | `lib/map/style/palette3d.ts` |
 | The ground as paint overrides, generated | `lib/map/style/city3dGround.ts` → style `metadata['goway:city3d-ground']` (`scripts/build-map-style.ts`) |
-| Material response (the sky's `cityMaterial`) + uniforms + JS mirror | `components/map/engine/city3d/materials.ts`; the surface colour under `#ifdef GOWAY_DETAILED` in `osmShaders.ts` → `osmBase` |
+| Material response (the sky's `CityMaterialResponse`) and its surface tint | `components/map/engine/city3d/tsl/detailedMaterial.ts`; tables, values and the JS mirror in `materials.ts` |
 | Per-building seed | `osmMesher.ts` → `buildingSeed` (an untagged surface's unused rgb) |
 | Adapter half (material data, ground apply/undo) | `components/map/city3dStyle.ts`, wired in `city3dLayer.web.ts` (`detailed`) |
 | Tests | `lib/map/__tests__/palette3d.test.ts`, `components/map/__tests__/city3dMaterials.test.ts`, `city3dStyle.test.ts` |
@@ -1392,8 +1451,8 @@ colour  = albedo · tint · (sun · wrap · shadow + fill)
           + albedo · emitted  +  edge · chamfer(n.z) · fill       the 45° bevel catches light
 ```
 
-It is `DETAILED_SKY_MATERIAL_GLSL`, the `cityMaterial(CitySurface,
-CityLight)` the sky's shading path calls through `CityEngineOptions.sky.material`,
+It is `tsl/detailedMaterial.ts`, the `CityMaterialResponse` (`CitySurface`,
+`CitySkyLight`) the sky's shading path calls (`CityEngineOptions.sky.response`),
 in the sky's linear light, with its real sun, soft shadow, sky, bounce and
 emitted light; roll-off, gamma and haze stay the sky's. **There is no second
 path**: the detailed look is always drawn in the city sky's light, and the map
@@ -1411,9 +1470,10 @@ white lid on a grey box. Here no face is lit by the sun alone — a wall facing
 away keeps the whole sky fill — so the shaded side is ~20% under the lit one
 and cooler (blue sky, warm sun): clay, not cardboard.
 
-The surface colour is shared by both paths too: `osmBase` (`osmShaders.ts`)
-applies the tag clamp and the per-building tint under the define, and leaves
-the openings to the material.
+The surface colour is shared too: `tsl/buildingSurface.ts` (the ramp and the
+tempered tag), then the detailed look's tag clamp and per-building tint
+(`detailedMaterial.ts` → `surface`), which leaves the openings to the
+response.
 
 ### Night
 
@@ -1470,7 +1530,7 @@ stay plain walls: the relief shows on its neighbours that do (a 6th Avenue
 block), not on the complex `nav1` shows.
 
 **What is drawn** (per-class numbers in `FACADE_STYLES`, generated into the
-GLSL; era nudges them):
+shader's tables; era nudges them):
 
 | Element | How |
 | --- | --- |

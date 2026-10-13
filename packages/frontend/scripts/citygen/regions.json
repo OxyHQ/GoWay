@@ -271,7 +271,7 @@
       "id": "africa/nigeria",
       "name": "Nigeria",
       "pbfBytes": 710005275,
-      "parts": 1,
+      "parts": 2,
       "official": []
     },
     {
@@ -831,7 +831,7 @@
       "id": "asia/sea",
       "name": "South-East Asia",
       "pbfBytes": 3673241048,
-      "parts": 4,
+      "parts": 8,
       "official": []
     },
     {
@@ -2497,7 +2497,7 @@
       "id": "north-america/mexico",
       "name": "Mexico",
       "pbfBytes": 646582098,
-      "parts": 1,
+      "parts": 2,
       "official": []
     },
     {

@@ -21,6 +21,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import type { ModelPlacementInput } from '@goway.to/sdk';
 
 import type { MapAppearance } from '@/lib/map/provider';
+import type { MapLightPreset, MapStyleId } from '@/lib/map/style/catalogue';
 
 export type { MapAppearance };
 
@@ -386,8 +387,14 @@ export interface MapFitOptions {
  * prevent.
  */
 export interface MapApi {
-  /** Move the camera. A bare coordinate keeps the current zoom/bearing/pitch. */
-  moveTo(target: GeoCoordinate | MapViewport, options?: MapCameraOptions): void;
+  /**
+   * Move the camera. A bare coordinate keeps the current zoom/bearing/pitch.
+   *
+   * Answers whether a move was ISSUED: `false` when there is no engine yet, the
+   * target is not drawable, or the engine refused it — a move whose settle
+   * will never be reported, so a caller waiting for that settle must not.
+   */
+  moveTo(target: GeoCoordinate | MapViewport, options?: MapCameraOptions): boolean;
   /** Frame a declared area. */
   fitBounds(bounds: GeoBounds, options?: MapFitOptions): void;
   /** Frame a set of points. A single point is treated as a `moveTo`. */
@@ -460,8 +467,19 @@ export interface MapInteractionOptions {
 export interface MapCanvasProps {
   /** Camera on first render. Uncontrolled afterwards — move it via {@link MapApi}. */
   initialViewport?: MapViewport;
-  /** Cartographic appearance. Defaults to following the Bloom theme. */
+  /**
+   * Day or night, as the older spelling of {@link lightPreset}. Absent with
+   * `lightPreset`, the light is this device's choice (`useMapStyle.ts`).
+   */
   appearance?: MapAppearance;
+  /**
+   * The map style (`lib/map/style/catalogue.ts`). Absent, the person's
+   * choice on this device — set from the layers picker. A screen that must
+   * not follow the visitor (the embed) passes its own.
+   */
+  mapStyle?: MapStyleId;
+  /** The light: day, dawn, dusk or night. Absent, this device's choice. */
+  lightPreset?: MapLightPreset;
   markers?: readonly MapMarker[];
   /**
    * Custom marker body. Receives the marker and returns Bloom UI; the renderer
@@ -503,6 +521,12 @@ export interface MapCanvasProps {
    */
   showUserLocation?: boolean;
   interaction?: MapInteractionOptions;
+  /**
+   * The camera: live while it moves, `isFinal` when it settles — including
+   * the camera the map opened at, reported once it has loaded (`programmatic`,
+   * so it never reads as the reader's move; `loadedCamera.ts`). A frame of a
+   * `transient` animation is never final.
+   */
   onViewportChange?: (change: MapViewportChange) => void;
   /**
    * A tap on the map, carrying the basemap label under it when there was one.

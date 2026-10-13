@@ -25,7 +25,13 @@ import {
 } from '@/scripts/citygen/mvtEncode';
 import { splitAtTileEdges } from '@/scripts/citygen/roads';
 import { CITY_ROAD_LAYER, CITY_ROAD_NODE_LAYER } from '@/lib/map/cityRoads';
-import { CITY_TILE_EXTENT, type CityTileTree } from '@/lib/map/cityTiles';
+import {
+  BUILDING_ERAS,
+  BUILDING_USES,
+  CITY_PROPS,
+  CITY_TILE_EXTENT,
+  type CityTileTree,
+} from '@/lib/map/cityTiles';
 import { CITY_LOD2_PROPS, CITY_OFFICIAL_PROPS, CITY_TILE_LOD2_LAYER } from '@/lib/map/cityOfficial';
 import {
   mercatorPerMetre,
@@ -73,6 +79,13 @@ interface Building {
   ring: Metres[];
   height: number;
   levels: number;
+  /**
+   * Class and era, as real city tiles record them (`CITY_PROPS.use`/`era`):
+   * every building's flag byte is non-zero, as in a real city. A flag of 0
+   * hid #188's night speckle (an interpolated 0 is still exactly 0).
+   */
+  use: (typeof BUILDING_USES)[number];
+  era: (typeof BUILDING_ERAS)[number];
 }
 
 function blockBuildings(i: number, j: number): Building[] {
@@ -90,6 +103,9 @@ function blockBuildings(i: number, j: number): Building[] {
       ring: ring.map(([x, y]) => [x0 + x, y0 + y] as Metres),
       height: h,
       levels: Math.round(h / 3.66),
+      // Homes, shops and civic buildings, of every era.
+      use: BUILDING_USES[Math.floor(hash(i, j, n + 101) * 3)],
+      era: BUILDING_ERAS[Math.floor(hash(i, j, n + 211) * BUILDING_ERAS.length)],
     });
     n++;
   };
@@ -254,6 +270,8 @@ export function cityTile(
           render_height: building.height,
           render_min_height: 0,
           levels: building.levels,
+          [CITY_PROPS.use]: building.use,
+          [CITY_PROPS.era]: building.era,
           height_source: official ? 'lod2' : 'osm',
           ...(official ? { [CITY_OFFICIAL_PROPS.drawnBy]: 'es-catastro' } : {}),
         },

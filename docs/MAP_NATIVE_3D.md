@@ -141,9 +141,9 @@ emulator with `-gpu swiftshader_indirect`.
 **Built and measured behind a registry flag (`cityTsl`, since removed: step 2
 made it the only path).** The 3D city's buildings are drawn by three's
 `WebGPURenderer` on its WebGL2 backend, with the TSL material, in MapLibre GL
-JS's own context. What is not ported yet stays on `WebGLRenderer` in the same
-frame. With the city sky the buildings keep the sky's GLSL material, which is
-not ported yet.
+JS's own context. What was not ported yet stayed on `WebGLRenderer` in the same
+frame, until [the city sky's port](#phase-2-the-city-sky-its-shadows-and-the-last-glsl)
+removed it.
 
 | Piece | Where |
 | --- | --- |
@@ -204,8 +204,8 @@ and 1,309,323 triangles on the phone viewport (412×915 @2.625), 2,154,551 at
   Loading it with a separate `import()` was tried and refused: Expo hoists a
   module that two async chunks share into the first-paint `__common` chunk,
   and three's core went there (27.5 → 135.8 KB gzip for every visitor). The
-  extra goes when the last GLSL material does and `WebGLRenderer` leaves the
-  chunk.
+  city engine no longer uses `WebGLRenderer` (the sky's port); the street-3D
+  viewer (`sparkEngine.ts`) still does, in the same chunk.
 
 ## Phase 2, step 2: trees, and TSL is the only path
 
@@ -214,12 +214,12 @@ same change.** No material exists twice; the 3D city is Labs. So:
 
 - **The TSL pass always runs** (`tsl/tslPass.ts`). It draws the **trees**
   always and the **buildings** whenever the city sky is off. With the sky the
-  buildings stay the sky's GLSL material, drawn by `WebGLRenderer` right after
-  the pass, into the same depth buffer.
+  buildings stayed the sky's GLSL material, drawn by `WebGLRenderer` right
+  after the pass, until the sky was ported too.
 - **Deleted:** `treeShaders.ts`, the plain building shaders
   (`CITY_*_SHADER`, `OSM_VERTEX/FRAGMENT_SHADER`) and the `cityTsl` flag.
-  `OSM_BASE_GLSL`, `TAG_TEMPER` and `glslFloat` stay, because only the sky
-  path (and the detailed look, which needs the sky) reads them now.
+  `OSM_BASE_GLSL`, `TAG_TEMPER` and `glslFloat` stayed for the sky path
+  (and the detailed look, which needs the sky) until its port.
 - **`tsl/treeMaterial.ts`** ports the instanced trees: placement, yaw, width,
   lean and tint from the instance's four numbers; the canopy occlusion; the
   contact shadow; the zoom threshold; the terrain lift (`aGround`). One
@@ -337,8 +337,9 @@ not by the tree count.
 
 The streets' surfaces and markings (`cityStreets/`, #159) are TSL whenever
 the city sky is off (`streetMaterials.ts`), drawn by the TSL pass; their
-unlit GLSL is gone. Under the sky they stay GLSL (`streetShaders.ts`, now the
-sky's variant only) until the sky is ported, as the buildings do.
+unlit GLSL is gone. Under the sky they stayed GLSL (`streetShaders.ts`) until
+the sky was ported; now one TSL material per kind serves both, lit by the sky
+when it is on.
 
 - **One material per kind for every tile.** The GLSL path built a material
   and a ground texture per tile. Every street tile's ground grid now has a
@@ -484,6 +485,246 @@ Next: the sky and shadow passes (which retire the last building and street
 GLSL), with the sky's building material and the detailed look's material
 response.
 
+## Phase 2: the city sky, its shadows, and the last GLSL
+
+The city sky (`sky.ts`) was the last of the engine's GLSL, and with it the
+engine's second renderer goes: **the city engine draws everything with one
+`WebGPURenderer`** (`tsl/tslPass.ts`). It was ported after the sky's own fixes
+(#182: the shadow matrix's north–south drift and the pan-stability check;
+#183: the globe's day and night, a separate MapLibre layer that is not part
+of the engine).
+
+| Piece | Where |
+| --- | --- |
+| The sky's light inputs as TSL nodes: haze (`hazeTransmittance`), the sky table (`skyColor`), the sun's soft shadow (`sunVisibility`, 12/8/4/0 PCF taps from the profile), `aerial`, `groundLight`. One copy, read by every sky-lit material and by overlays (`setSky`) | `tsl/skyNodes.ts` |
+| The ground and sky passes (fill, multiply, add), blended over the basemap as before | `tsl/skyPasses.ts` |
+| The buildings under the sky: the one shading path's contract (`CitySurface`, `CitySkyLight`, `CityMaterialResponse`), clay by default | `tsl/skyBuildingMaterial.ts` |
+| The detailed look: its response (facade relief, windows, day/night) and its surface tint | `tsl/detailedMaterial.ts` (the design and the JS mirror stay in `materials.ts`) |
+| The surface both building materials light: the ramp, the tempered tag, the storey openings | `tsl/buildingSurface.ts` |
+| The shadow map: a `RenderTarget` drawn by the same pass (`drawOffscreen`), the casters through an override material that keeps each building's own position | `sky.ts`, `tsl/tslPass.ts` |
+| The streets under the sky: the same TSL materials, given the sky's nodes | `cityStreets/streetMaterials.ts` |
+| Deleted | `skyShaders.ts`, `osmShaders.ts`, `shaders.ts`, `cityStreets/streetShaders.ts`, the GLSL in `materials.ts` and `transitions.ts`, the engine's `WebGLRenderer` and its scene, per-tile GLSL materials in `cityMeshes.ts` |
+
+**Measured** (the visibility gate's sky view at z19, tilted, terrain on;
+headless Chromium on SwiftShader; `main` 7d54a3d against the port, the same
+export settings):
+
+| | Result |
+| --- | --- |
+| Pixels, noon | 423 of 1,024,000 differ by more than 8 levels (0.04%); the rest of the difference is ≤ 8 levels in the shadows' penumbra (the PCF kernel's per-pixel rotation reads three's screen coordinate, whose origin is the top) |
+| Pixels, night (detailed look: window glow, floodlights) | 110 differ by more than 8 levels; the lit windows are the same windows |
+| Frame-budget gate (`frameBudget.test.ts`, every scene × preset) | draws and triangles identical to `main` |
+| Steady frame CPU on the gate's harness (skyline, high; `render()`, p50) | `main` 0.40 ms, the port 0.38 ms |
+| First frames, while the city loads (same harness, every `render()` until settled) | `main` 124–145 ms in all, worst frame 30–45 ms; the port 221–238 ms, worst 59–73 ms: TSL builds each node material's shaders in JavaScript on its first draw (the sky-lit buildings, the three passes, the casters). Once per material per session. Since removed: [materials built ahead of the tiles](#materials-built-ahead-of-the-tiles) |
+| Bundle (production `expo export`, gzip) | lazy 3D chunk 1,421,084 → 1,413,292 B (−7.8 KB); first paint (`__common`) unchanged |
+| Orbit in the browser (SwiftShader) | Frame interval p50 16 ms on both. Not conclusive past that: the shared host ran at load 12–19 and one build's own runs differed tenfold; the harness numbers above are the ones to read |
+
+How it was brought to parity, for the next port:
+
+- **A texture node is updated per draw.** On the WebGL2 backend every
+  `texture()` read carries a flip uniform that three refreshes for every object
+  drawn. The first port read the shadow map in 12 unrolled taps: 1,254 node
+  updates a frame for the skyline (+0.2 ms CPU). The taps are now one read in
+  a constant `Loop` (a constant loop is uniform control flow, which WGSL's
+  comparison samples need): 154.
+- **A vector uniform is bound by reference.** `bindVec3`/`bindMat4` hold the
+  engine's own object, which it mutates in place, instead of a per-render
+  callback; the detailed look's day and night values, fixed for an engine's
+  life, are constants. Only floats keep a callback.
+- **The shadow casters' material is rebuilt with the buildings'.** A node
+  material decides once, when it is built, whether a mesh has a terrain lift
+  (`terrainLift`). The casters' override material was built before any tile
+  was grounded and never rebuilt: on terrain every building cast from 50 m
+  below the street, and nothing was in shadow. It is now the pass's
+  (`tslPass.caster`) and `buildings.invalidate()` rebuilds it too.
+- **TSL reads a texture top-down.** v = 0 is the top in WebGPU, and three
+  flips render targets on WebGL to match, so the shadow lookup flips the
+  shadow clip's y.
+- **A transparent double-sided material draws twice** (back faces, then
+  front) unless `forceSinglePass`: the street markings drew 4 extra draws per
+  frame until set.
+- **The flags lane.** The per-building night flags were a one-byte vertex
+  lane, which three's WebGPU backend cannot read (single-component formats
+  must be 32-bit). They ride in the normal's spare `w` now (`packing.ts`),
+  one byte less per vertex.
+- three's WebGL2 backend logs `drawBuffers: BACK or NONE` when it re-sends a
+  render target's draw buffers after a state reset: it issues the call before
+  binding the target's framebuffer. Harmless (an FBO's draw buffer is already
+  attachment 0); upstream's order.
+
+For native (phase 4), still open: the shadow camera's and MapLibre's
+projections are GL's (`z` in [−1, 1]); on WebGPU three expects [0, 1], so the
+native host converts both.
+
+## Materials built ahead of the tiles
+
+A TSL material is built (its node graph turned into shaders, in JavaScript)
+the first time a mesh draws with it, once per material and vertex layout.
+Left to the first tiles, every build landed in the frames the tiles arrived
+in. Measured on the frame-budget harness (above): 70–94 ms of builds inside
+frames, a worst load frame of 44–56 ms. On a phone or laptop that is a
+visible stall when the city appears.
+
+So the engine builds them while the tiles are still being fetched and meshed
+in the workers (`materialWarmup.ts`, `tsl/tslPass.ts` → `warm`):
+
+- **What is warmed.** One warm-up mesh per variant the city draws: each tile
+  format, settled and dithered, the trees once, and the sky's three passes.
+  The meshes are real tile entries (`createTileEntry`) over a one-triangle
+  mesh and one tree, so their vertex layouts are exactly the tiles'. three
+  keys a build by material and layout, so a real tile later finds it built.
+  They live in the engine's scene on `WARM_LAYER`, drawn by no camera but the
+  warm-up's, and are kept for the engine's life (three drops a build no mesh
+  uses). The grounded variants are a second set beside the first. Lifting
+  the first set instead would change its layout, so its flat builds would
+  lose their only user and be dropped before a tile drew with them. The
+  yield fix below exposed this: the city warmed sooner, ahead of its tiles,
+  and a dropped build was redone in a frame (15–20 ms).
+- **How.** three's `compileAsync`, which builds in slices, yielding to the
+  event loop between them ([the yield](#the-yield-a-turn-of-the-event-loop-not-a-frame)).
+  It runs in three stages: the passes first (so the sky shows early), then
+  the city, then, in the background, the grounded variants (a tile on
+  terrain), so terrain arriving later lifts the drawn city in the frame it
+  comes.
+- **Nothing draws unbuilt.** The sky's passes show once theirs are built, and
+  tile arrivals wait for the city's (then go up under the upload budget as
+  always), so no frame builds a city material. A tile waiting for its first
+  lift now counts as pending, so "settled" means drawn.
+- **GL safety, with MapLibre in the same context.** `compileAsync`'s steps
+  run between frames, where MapLibre leaves its last vertex array bound and
+  later reuses it without rebinding. An index buffer made then would be bound
+  into it. So each warm-up step first makes the index buffers in the map's
+  render callback, with the state reset, drawing each geometry once with one
+  trivial material (one small build per layout), within 4 ms a frame. The
+  steps left to `compileAsync` (shader builds, uniform and vertex buffers,
+  programs) touch no vertex array.
+
+### The yield: a turn of the event loop, not a frame
+
+`compileAsync` yields after every shader stage and every object, about 100
+yields for the city. three's `yieldToMain` used `scheduler.yield()` where the
+browser has it (Chrome, Edge, Firefox) and otherwise waited for the next
+animation frame. Safari has no `scheduler.yield`, and neither has Hermes. A
+frame per yield put the city about 1.7 s behind its tiles on the harness
+(2–3 s in a real page), with nothing to do in most of those frames.
+
+**three is not patched.** GoWay takes upstream fixes, not local patches of a
+dependency, so `compileAsync` still waits a frame per yield wherever
+`scheduler.yield` is missing. What a turn of the event loop instead would buy
+was measured with three patched locally (`yieldToMain`: `scheduler.yield()`
+where it exists, else a `MessageChannel` message, else
+`requestIdleCallback`, the macrotask React Native offers), in the "a
+macrotask yield" columns below. That build is not shipped; the change is
+proposed upstream. Nor can the engine own the yields with three's public
+API: `compileAsync` is its only way to build a material without drawing
+it, and a build is keyed by the render context it is made for (an offscreen
+draw builds a program the map's frame does not reuse, measured).
+
+**Hermes, measured** (RN 0.86, bridgeless, release build, Android 16
+emulator): 120 slices of 4 ms work, yielding between them, while a
+`requestAnimationFrame` loop counts frames. Three runs each. There is no
+`scheduler`, no `MessageChannel`, and `self` is the global.
+
+| Yield | Total | Per yield | Frames during | Longest frame gap |
+| --- | --- | --- | --- | --- |
+| `setImmediate` | 482–518 ms | 0.02–0.3 ms | **0** | 482–518 ms |
+| `queueMicrotask` | 482 ms | 0.02 ms | **0** | 482 ms |
+| `setTimeout(0)` | 2,000 ms | 12.7 ms | 120 | 18 ms |
+| `requestAnimationFrame` | 2,000 ms | 12.7 ms | 120 | 18 ms |
+| **`requestIdleCallback`** | **484 ms** | **0.03 ms** | **29** | **20 ms** |
+
+`setImmediate` is a microtask in bridgeless React Native
+(`Libraries/Core/Timers/immediateShim.js`): it never lets a frame through.
+`setTimeout(0)` waits for the next frame: measured here on Android, and on
+iOS `RCTTiming` fires timers on the display link. React
+Native's `requestIdleCallback` is a task on its runtime scheduler, behind
+every timer and frame callback that is due, so it yields a real turn.
+
+**Browsers, measured** (the same probe, on a blank page, in Playwright's
+browsers):
+
+| | `MessageChannel` | A frame per yield | `scheduler.yield` |
+| --- | --- | --- | --- |
+| WebKit (Safari's engine) | 482 ms, 30 frames, longest gap 20 ms | 1,920 ms | none |
+| Chromium | 488 ms, 30 frames, longest gap 20 ms | 1,996 ms | 481 ms, **4 frames, longest gap 104 ms** |
+| Firefox | 483 ms, 11 frames, longest gap 68 ms | 1,997 ms | 480 ms, 29 frames, 20 ms |
+
+Chromium runs `scheduler.yield` continuations ahead of rendering for up to
+about 100 ms. That is where Chrome's head start comes from (see the remaining
+gap, below).
+
+**Measured** on the frame-budget harness. The synthetic city is served from a
+separate process, and bun stands in for the browser: with `scheduler.yield`
+defined (modelled as a `setTimeout(0)` continuation) and without it (three's
+fallback). Three runs each:
+
+| | Before the warm-up | Warm-up, a frame per yield (shipped) | Warm-up, a macrotask yield (three patched) |
+| --- | --- | --- | --- |
+| Builds inside frames | 70–94 ms | 11–14 ms | 11–12 ms |
+| Worst load frame | 44–56 ms | 19–26 ms | 18–23 ms |
+| Longest main-thread block | 44–55 ms | 18–26 ms | 19–33 ms |
+| City first drawn, with `scheduler.yield` | 123–143 ms | 370–400 ms | 335–370 ms |
+| City first drawn, without it (Safari, Hermes) | 123–143 ms | 1,730–1,746 ms | **252–259 ms** |
+
+A faster warm-up also uncovered an upload that was never budgeted. The
+city's first tiles now went up in the same frames as the street detail's,
+and a frame handed the GPU 5.0 MB against the low preset's 4 MiB
+(`frameBudget.test.ts`, one run in two). Until then the warm-up had held the
+city back long enough that they never met. The streets now take what the
+city's arrivals leave of the frame's upload budget (`overlay.ts` →
+`FrameUploadBudget`, glyph atlas included), and wait a frame otherwise.
+
+What is still built in a frame: three's one-time setup on the first build
+(7–8 ms), the upload material once per layout (1–2 ms each), and the sun's
+depth-only caster once per layout (about 1 ms each).
+
+**And in a real page**: the dev export, with the synthetic city served
+locally and terrain on. This measures the time from the engine's first frame
+to the city's first drawn triangles, four runs each. Chromium draws on this
+machine's GPU (ANGLE → D3D12 → RTX 5090). WebKit is Playwright's Linux
+build:
+
+| | `main` (no warm-up) | Warm-up, a frame per yield (shipped) | Warm-up, a macrotask yield (three patched) |
+| --- | --- | --- | --- |
+| Chromium | 350–393 ms | 647–687 ms | 646–698 ms |
+| Chromium without `scheduler.yield` | 358–404 ms | 2,219–2,253 ms | **688–841 ms** |
+| WebKit | 333–532 ms | 2,038–2,081 ms | **1,020–1,056 ms** |
+
+In a page the warm-up costs Chrome about 300 ms of first draw, as on the
+harness. The tiles were meshed by 150–190 ms, so the city waits for its
+materials. With a macrotask yield, Chromium without `scheduler.yield` is
+within 50 ms of Chromium in three runs of four (688–715 ms), and 143 ms
+behind in the fourth.
+
+**With a macrotask yield, the remaining gap is not the yield.**
+
+- **Chromium without `scheduler.yield`.** Its 96 yields wait 65–93 ms in all,
+  under 1 ms each. The difference is the frames the browser draws in between:
+  a macrotask lets rendering in, while Chromium's `scheduler.yield` runs
+  continuations ahead of it.
+- **WebKit.** Its 90 yields wait 530–590 ms (about 6 ms each), and 245–257 ms
+  of that is the map's own frames. The rest is whatever WebKit had queued
+  first (worker messages, MapLibre, React): with no prioritised continuation
+  on Safari, a turn of the event loop waits behind them. This is
+  Playwright's WebKit on Linux, not Safari on an iPhone; measuring on a device
+  is still owed.
+
+On software GL (SwiftShader, which CI's gate uses) every frame and shader link
+costs tens of milliseconds, so all the numbers stretch:
+
+| | Chromium | Chromium without `scheduler.yield` | WebKit |
+| --- | --- | --- | --- |
+| A frame per yield (shipped) | 343–558 ms | 2,457–2,793 ms | 2,971–3,055 ms |
+| A macrotask yield (three patched) | 410–686 ms | 1,112–1,680 ms | 962–1,193 ms |
+
+Chromium's profiles show what else lands in that window. The app's GPU
+benchmark (`runGpuBenchmark`, from a `requestIdleCallback`) takes 400–550 ms
+on SwiftShader, and runs in the idle time a macrotask yield leaves.
+`scheduler.yield` leaves none, so with it the benchmark runs after the city
+appears. Waiting on shader links (`_completeCompile`) takes another
+60–490 ms. On a slow phone GPU the benchmark could land in the warm-up the
+same way. That is a follow-up for the quality profile, not for the yield.
+
 ## Correction: the terrain lift was not measured
 
 Steps 1–3 reported the TSL materials pixel-identical "on Park Güell's slope,
@@ -560,6 +801,43 @@ Nothing comes from the network:
      `GATE_TERRAIN_DELAY_MS`), and wait until MapLibre reads more than 40 m
      under the camera. A run where the terrain never lifts the map fails
      rather than passing on a flat map.
+- **Settled** means one thing (`scripts/city3dSettled.ts` → `unsettled`,
+  tested): the city wants tiles and has every one loaded with none pending or
+  queued for upload; when the view draws the street detail, every street tile
+  it wants is answered (meshed, or known to hold no street) with none
+  pending; when it expects a landmark, the registry is read and the engine
+  holds that landmark's model drawn — or failed, which the gate then reports
+  as such. A view that never settles fails the gate with the reason, instead
+  of being measured mid-load. Until this, "some street tile drawn" stood in
+  for the streets, and the street renderer reported its counts at most every
+  500 ms: the frame that drew the last tiles fell inside that window and a
+  map at rest draws no frame after it, so `pending` read 2 forever while both
+  tiles were on the screen. Both `landmark` views sat out the whole 240 s
+  timeout on every run (250 s in #181's), until the tilt's frames refreshed
+  the report. The renderer now reports counts the frame they change
+  (`streetRenderer.ts` → `statsDue`). It was the report, not the map:
+  goway.to at the Sagrada Família (`?quality=high`) loads the landmark once,
+  has no request after 30 s, and draws the same city at 240 s as at 30 s.
+- **The screenshot waits for the GPU, explicitly.** On two software-GL cores
+  the page queues frames far faster than SwiftShader rasterises them: every
+  frame of the load, the tilt and the terrain's lift (one tile re-grounded per
+  frame, each a full 3D-terrain frame) — 1–4 minutes of work per view on CI.
+  A screenshot waits for the compositor's next frame, which comes only after
+  that queue, and its own 240 s timeout ran out behind it: the `objects` leg
+  failed on `main` (7d54a3d) and on every PR after b6f21f3. Nothing in those
+  merges made a frame heavier — the green runs were already at 236–252 s for
+  the `life` and `landmark` shots. The backlog had been hidden by the settle
+  timing out (the landmark views' flat settle idled the full 240 s while the
+  GPU caught up); as settling got faster (64 s, then 10 s with the street fix
+  above) the whole backlog moved into the screenshot. Now each view drains
+  the GPU before it shoots (`drainGpu`: a 1-px `readPixels` of the map's own
+  context returns only when its queue is done) and the shot takes a second;
+  `GATE_DRAIN_EACH=1` drains after every step to show where the time goes.
+  The `objects` views (a model, the traffic) also tilt in one jump instead of
+  six eased steps, at the low preset (no MSAA, pixel ratio 1) and with trees
+  off on both sides of each comparison: every eased frame was a full terrain
+  frame (40–60 s of rasterising per view, measured), and the buildings' and
+  trees' grounding order is the `sky`/`nosky` legs' subject, not theirs.
 - **Quality**: `?quality=high`. On SwiftShader the profile would resolve to
   low, which draws no 3D terrain, so nothing would ever be lifted and the
   gate would pass on the broken code (it did, until this was added).
@@ -592,11 +870,21 @@ Per sky (on and off) it asserts:
   changes at least 3% of the view (pixels moving more than 24 levels, below
   the chips' rows). Measured: 14.24% with the sky and 14.29% without, on
   `main` and TSL alike; streets drawn without their ground measure 0%.
+- **Streets on a sloped, creased ground** (the `nosky` leg): the same junction
+  on a terrain of 3 m swells and 0.5 m folds a few DEM pixels across, every
+  DEM tile generated from that one surface at its own zoom (as Mapterhorn's
+  are). Turning the streets on must change at least 85% of what it changes on
+  flat ground. Measured: `main` (cd11022) **8.19%** against 14.29% flat — the
+  drawn terrain rose through whole stretches of the street, which read the
+  ground from a coarser DEM tile through a 33² grid — and **14.39%** with the
+  terrain lattice (`MAP_TERRAIN_GLOBE.md` → "Everything on the drawn
+  ground").
 - **Models** (the `objects` leg, sky off; models draw alike under either): a landmark of the
   registry, the Sagrada Família, stands in the synthetic city. With
   `landmarks` on it must change at least 1% of the map against the same view
-  with them off, below the top 110 rows where the layer's own chip appears.
-  Measured: 31.5%.
+  with them off, below the top 110 rows where the layer's own chip appears;
+  a model that failed to load fails the gate by name. Measured: 31.5%; both
+  views settle in 10–12 s locally (they timed out at 240 s before).
 - **A pan holds still** (sky leg: its sun shadows): opened from straight
   above at z18 at 09:00 (long shadows, no 3D terrain, so a drag moves the
   map by exactly the pointer's travel), dragged north in five 30 px steps,
@@ -628,7 +916,7 @@ Without the fix, the trees without the sky are buried in every run, and the
 rest in most: with the sky on, one run in three drew its trees anyway. What
 re-creates a mesh's render objects (and so, by chance, its program) depends
 on the frame's timing; the no-sky trees are the gate's deterministic catch.
-On failure the screenshots (`{sky,nosky}-{trees,notrees,streets,nostreets,nocity}.png`, `landmark.png`, `nolandmark.png`, `life.png`, `nolife.png`) are
+On failure the screenshots (`{sky,nosky}-{trees,notrees,streets,nostreets,nocity}.png`, `nosky-creased-{streets,nostreets}.png`, `landmark.png`, `nolandmark.png`, `life.png`, `nolife.png`) are
 uploaded as the `city3d-visible-{sky,nosky,objects}` artifacts.
 
 ## Phase 4 groundwork: off-thread meshing
@@ -698,10 +986,9 @@ will need:
   `importForwarding.relativePaths` (otherwise the mesher stays on the RN
   thread and every call to it from the runtime throws "Tried to synchronously
   call a Remote Function"), and Metro wrapped with
-  `getBundleModeMetroConfig`. On Android the harness also needed
-  `pickFirsts` for `libworklets.so`, which expo-modules-core's worklets
-  integration packages a second time; recheck that with a clean build when
-  the preset adopts Bundle Mode.
+  `getBundleModeMetroConfig`. Nothing else: a duplicate `libworklets.so`
+  the harness once hit was stale native build output, and a clean build needs
+  no `pickFirsts`.
 - **No runtime disposal in worklets 0.10.** `terminate()` stops using a
   runtime but cannot free it. The pool replaces a worker only when it fails,
   so this is bounded, but a remounted map must reuse its pool.
@@ -747,7 +1034,7 @@ Estimates are one engineer who knows the codebase, and they are estimates.
 | Phase | What | Parity after it | Estimate |
 | --- | --- | --- | --- |
 | **1. Prototype** (this change) | Shared meshing; TSL building material; one tile on WebGL2, browser WebGPU and Android Dawn; measured | Web unchanged; native unchanged | Done |
-| **2. The engine on `WebGPURenderer`, web first** | ~~First prove `WebGPURenderer` with the WebGL backend inside MapLibre's custom layer (external context, shared depth, `resetState`)~~ (done: [step 1](#phase-2-step-1-buildings-through-webgpurenderer-inside-maplibre); trees and the flip: [step 2](#phase-2-step-2-trees-and-tsl-is-the-only-path)). Then port every material to TSL: OpenMapTiles buildings, trees, sky/atmosphere/shadow passes, city life, live vehicles, landmarks (`modelLook`), street markings, terrain lift and LOD dither. Delete the GLSL as each lands: one copy at every step | Web identical (same pixels, same budgets); native unchanged | 4–6 weeks |
+| **2. The engine on `WebGPURenderer`, web first** | ~~First prove `WebGPURenderer` with the WebGL backend inside MapLibre's custom layer (external context, shared depth, `resetState`)~~ (done: [step 1](#phase-2-step-1-buildings-through-webgpurenderer-inside-maplibre); trees and the flip: [step 2](#phase-2-step-2-trees-and-tsl-is-the-only-path)). Then port every material to TSL: OpenMapTiles buildings, trees, sky/atmosphere/shadow passes, city life, live vehicles, landmarks (`modelLook`), street markings, terrain lift and LOD dither. Delete the GLSL as each lands: one copy at every step. **Done**: the last, the sky, removed `WebGLRenderer` from the city engine ([the sky's port](#phase-2-the-city-sky-its-shadows-and-the-last-glsl)) | Web identical (same pixels, same budgets); native unchanged | 4–6 weeks |
 | **3. The engine draws the base map** (web, behind a flag) | Vector-tile fill and line tessellation in the workers; style expressions via `maplibre-gl-style-spec`; terrain from GoWay's DEM and the globe; SDF labels from GoWay's glyphs, with line placement, collision and fading; one camera and gesture controller; the `MapCanvas` contract (markers, overlays, label taps, `onViewportChange`) on the new renderer | Web with the flag = web today; MapLibre still the default | **4–6 months.** Labels are the long pole (6–10 weeks of it) |
 | **4. Native host** | `MapCanvas.native.tsx` on `react-native-webgpu`. Off-thread meshing and decoding (worklet runtimes); a native tile cache; gestures on the UI thread (Gesture Handler + Reanimated feeding the shared camera). The config plugin goes in `@oxy.so/app-preset`, never the app. MapLibre Native removed. Device gate on a mid-range Android (Adreno 6xx) and an A14-class iPhone | **Native = web**, every feature | 4–6 weeks + device benchmarks |
 | **5. Web switches** | The new renderer becomes the web default after the same gate on mid-range Android Chrome; `maplibre-gl` removed | One renderer everywhere | 2–4 weeks |

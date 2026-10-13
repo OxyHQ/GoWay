@@ -114,7 +114,61 @@ streets. Everything drawn on the terrain (roads, buildings) is lifted
 consistently, so nothing floats relative to anything else; the absolute height
 is what is off. Where a national bare-earth model exists it fixes this at z12
 already, not only above it: measured in Barcelona, Madrid and Manhattan, the
-z12 tiles show no buildings at all ("The ground is the drawn terrain" below).
+z12 tiles show no buildings at all ("The ground is the drawn terrain" below) —
+with one measured exception, the Sagrada Família ("A building in the bare
+earth" below).
+
+### A building in the bare earth: the Sagrada Família
+
+The owner's second report: "here the terrain should be almost flat, but it
+makes a mini mountain" (Plaça de la Sagrada Família, night). Measured on the
+tiles goway.to serves (2026-10-13), on a 10 m grid in the Eixample's own axes
+around the basilica, against a plane fitted 90–150 m out:
+
+| Source | Plane at the basilica | Slope (to the sea) | Above the plane at the basilica |
+| --- | ---: | ---: | ---: |
+| Mapterhorn z12 (what the map draws) | 32.4 m | 3.2% | up to **+31 m** over ~4,000 m² of the basilica's footprint (and −4 m where the crypt is) |
+| Mapterhorn z13–z16 | 32.4 m | 3.2% | the same spike, +52–54 m at its top |
+| IGN MDT05 (WCS `Elevacion4258_5`, CC BY 4.0 scne.es) | 32.2 m | 3.1% | ≤ 2.2 m (whole-metre values) |
+| ICGC MET 5 m (WCS `icc:met`, CC BY 4.0) | 32.7 m | 3.2% | ≤ 0.7 m |
+
+So the Eixample here is bare earth in every source, sloping ~3% to the sea,
+and the block is 32–33 m, not 40–45 m. Mapterhorn's tiles are bare earth too
+except over the basilica itself: one of its Spanish sources (IGN's MDT02 or
+the 0.5 m MDT of the third LiDAR coverage, 2022–2025, both listed in its
+`attribution.json`) classified part of the building as ground. MapLibre's
+bilinear read spreads that spike over the pixels around it, ~14 m each way:
+the mound, the plaza paths draped over it, and the low buildings beside it cut
+by it. GoWay's sampler then read the z11 tile and a 29 m grid, which smeared it
+wider still; since the fix everything stands on the spike exactly as drawn,
+which is right for the drawing and still wrong for the world.
+
+Not fixed in code, on purpose: flattening the terrain under footprints would
+invent ground the data does not have (and is wrong where a building does stand
+on a hill), and only the data is wrong here.
+
+**The fix is the data** (owner's decision; nothing published):
+
+1. **Report it to Mapterhorn** (open pipeline, GitHub) with the coordinates and
+   the MDT05/MET comparison: the source priority or ground classification is
+   theirs. Free; no date.
+2. **A GoWay regional archive in front of Mapterhorn**: Terrarium WebP tiles,
+   z0–12, built from ICGC's MET 2 m for Catalonia (CC BY 4.0) or IGN's MDT05 for
+   Spain (CC BY 4.0, scne.es), in a dated PMTiles key the Worker's
+   `/map/terrain/*` route reads first where it covers (Mapterhorn or
+   `MAP_TERRAIN_ARCHIVE` elsewhere), feathered into Mapterhorn over its last
+   kilometre, with the source's credit in `credits.ts` and the attribution
+   page. Size: Catalonia ~600 z12 tiles (~80 MB with the pyramid), all of
+   Spain ~10 k (~1 GB): cents a month on R2; one build job (download MDT05,
+   reproject, encode). Also check the result for the same artefact first.
+3. **Planet-wide** most of the world only has GLO-30, a surface model: cities
+   are smoothed roofs. The open bare-earth answers are model-based:
+   **GEDTM30** (OpenGeoHub, 30 m, ensemble of Copernicus/ALOS with object
+   heights removed against ICESat-2/GEDI; published as CC BY — to verify on its
+   Zenodo record before use) is the candidate; **FABDEM** is CC BY-NC-SA, not
+   usable commercially. Either way 30 m data cannot hold a street-level ground;
+   national LiDAR DTMs (Mapterhorn's z13+ sources) are the only real answer,
+   city by city.
 
 ## The globe
 
@@ -215,6 +269,73 @@ custom layer added with the globe; the model and shader are
   globe still applies. A failed DEM tile is reported once and never raises
   "Map data unavailable": flat ground is still a map.
 
+## Everything on the drawn ground
+
+Street detail, building feet, tree trunks, city life, models and live vehicles
+all stand on ONE ground (`terrainGround.ts` → `Ground`), and that ground is
+the surface MapLibre's terrain draws — not a copy of it at another resolution.
+
+**What MapLibre draws.** Each terrain tile is a 128 × 128-cell mesh; each
+vertex reads the DEM bilinearly between pixel CENTRES (`get_elevation` in its
+vertex prelude; `Terrain.getElevationSampler` is the CPU twin), times the
+exaggeration; the GPU draws each triangle flat between its vertices. A terrain
+tile at zoom `z` reads the DEM tile at `z − deltaZoom` (`TerrainTileManager`,
+`deltaZoom` 1), at most the source's max zoom. At street level (terrain tiles
+z15–z18) that is always the z12 tile, and the mesh has two to sixteen vertices
+per DEM pixel ON the lines through the pixel centres, so it differs from the
+bilinear DEM only by the bilinear twist inside a pixel's square.
+
+**What GoWay reads.**
+
+- **The same DEM tile:** the host samples at `maxzoom + deltaZoom`
+  (`city3dGround.web.ts`). It used to ask for `maxzoom` itself — which
+  `getElevationForLngLatZoom` treats as a terrain tile's zoom, so it read the
+  z11 tile: Barcelona at 29 m pixels under a terrain drawn from 14 m ones.
+- **The same resolution:** each tile's grid (`GroundGrid`) is the DEM sampled
+  at its own pixel centres, one past each edge (66 × 66 for a z15 tile, 130 ×
+  130 for z14), so reading it bilinearly anywhere IS MapLibre's bilinear read.
+  It used to be 33 × 33 whatever the DEM.
+- **The same creases:** a GPU draws the street detail flat between its own
+  vertices too, and a 30 m junction polygon has none inside it. The street
+  worker cuts every surface along the lattice through the DEM's pixel centres
+  (and halfway between them on the high preset) and adds a point to every
+  painted line where it crosses one (`cityStreets/groundLattice.ts`,
+  `MAP_STREETS.md` → Terrain and depth).
+
+**Measured** (the Mallorca–Marina report: terrain triangles across the lanes,
+markings and painted name of Carrer de Mallorca; the street tile 15/16581/12236
+on goway.to's own DEM, its real road tile, MapLibre's mesh rebuilt from the
+same z12 pixels; "covered" = where the drawn terrain rises above the street's
+6 cm lift):
+
+| | Terrain over the street | Worst |
+| --- | ---: | ---: |
+| `main`: z11 DEM, 33² grid | 22.5% of its area | 1.75 m |
+| z12 DEM, 33² grid | 15.6% | 1.15 m |
+| z12 DEM at every vertex, uncut | 0.42% | 0.25 m |
+| …cut on the lattice (low, medium) | 0.02% | 0.06 m |
+
+On Montjuïc (15/16580/12240) and upper Balmes (15/16579/12237), z17 terrain
+tiles: uncut 1.1% / 1.7% (worst 0.66 / 0.40 m); cut at the pixel centres
+0.06% / 0.10%; cut at half pixels too (high) 0.01% / 0.00%. Against MapLibre's
+own `Terrain` and `DEMData` (`city3dTerrainSampler.test.ts`): identical at
+every mesh vertex, and between them within 2.8 cm on z15 terrain tiles, 7 mm on
+z16, 1.7 mm on z17, 0.4 mm on z18.
+
+**What it does not match.** Terrain tiles kilometres out (z ≤ 12) are drawn
+from a COARSER DEM tile than the street level's; nothing GoWay stands on the
+ground is drawn there. While the z12 DEM tile is still loading, MapLibre draws
+from a loaded parent and so does the sampler (the same `getSourceTile`); the
+ground is re-sampled when the tile arrives.
+
+**Cost.** ~0.4 µs a sample (headless Chromium): a z15 grid is 4,356 samples
+(~2 ms), a z14 one 16,900 (~7 ms), once per terrain, cached, one tile per
+frame (`GROUND_TILES_PER_FRAME`, the streets' `groundsPerFrame`). The cut
+doubles a street tile's surface triangles at the pixel centres (Barcelona
+15/16581/12236: 55 k → 112 k; buffers 2.8 → 4.3 MB) and triples them with the
+half lines (173 k, 5.9 MB) — the profile's `streets.groundSubdivision`
+(1 on low and medium, 2 on high), counted against `streets.drawTriangles`.
+
 ## Buildings on terrain
 
 With terrain on, MapLibre's custom-layer matrix puts `z` at **absolute**
@@ -223,21 +344,16 @@ tile under Gràcia spans 45–174 m, Andorra la Vella's 994–1,648 m, Montserra
 164–1,122 m. So one lift per tile cannot work (off by up to 650 m) and the city
 layer lifts each building (`terrainGround.ts`):
 
-- **What is sampled.** MapLibre's terrain, read at the DEM source's own max
-  zoom (`map.terrain.getElevationForLngLatZoom`, in its typed API): the same
-  DEM, bilinear sampling and exaggeration the terrain is drawn with — at the
-  zooms the city layer draws (≥ z15.5) the terrain is over-zoomed from that
-  DEM. **0.5 µs per call** (20,000 calls, headless Chromium). The obvious
-  `map.queryTerrainElevation` was tried first and dropped on measurement: it
-  reads the *rendered* terrain tiles and, for a point outside them — which a
-  z14 building tile's grid always partly is, behind or under a pitched camera —
-  recomputes the covering tiles on every call: **~100 µs per call**, and one
-  tile's grid took 166 ms on the main thread. Per tile, a 33 × 33 grid (≈55 m
-  cells at z14; the terrain mesh itself is ≈9–15 m, from ≈15 m DEM pixels)
-  costs **~1 ms** (≈5 ms on the very first call, while MapLibre builds its
-  sampler cache); every building then reads the grid bilinearly, so the cost
-  does not grow with the building count (Barcelona: ~15,500 polygons per
-  tile).
+- **What is sampled.** MapLibre's terrain as it draws it: the DEM tile it
+  draws from, at its own pixels — see "Everything on the drawn ground" above.
+  The obvious `map.queryTerrainElevation` was tried first and dropped on
+  measurement: it reads the *rendered* terrain tiles and, for a point outside
+  them — which a z14 building tile's grid always partly is, behind or under a
+  pitched camera — recomputes the covering tiles on every call: **~100 µs per
+  call**, and one tile's grid took 166 ms on the main thread.
+  `map.terrain.getElevationForLngLatZoom` (typed API) costs ~0.4 µs a call;
+  every building reads its tile's grid bilinearly, so the cost does not grow
+  with the building count (Barcelona: ~15,500 polygons per tile).
 - **The ground is the drawn terrain.** #126 opened the sampled grid (a
   minimum then a maximum filter over ~145 m, on a 65 × 65 grid sampled past
   the tile's edge) on the premise that the terrain is GLO-30, a surface model
@@ -264,8 +380,8 @@ layer lifts each building (`terrainGround.ts`):
     candidate for the original report is the procedural fill of parks and
     gardens, which is now off by default and limited to mapped woods.
   So the opening is gone: buildings, trees, models and city life stand on the
-  terrain as drawn (`groundGrid`), the grid is back to 33 × 33 (1,089 samples
-  a tile instead of 5,329), and `city3dWorkerTrees.test.ts` pins a building on
+  terrain as drawn (`groundGrid`, since on the DEM's own lattice), and
+  `city3dWorkerTrees.test.ts` pins a building on
   a 100 m knoll standing on it. Where the terrain IS GLO-30 (no national
   model), roads and labels drape over its roofs and canopy too; standing on
   the same surface keeps things together, and better terrain is the fix there.
@@ -393,9 +509,11 @@ tilted terrain view is the one most likely to drop frames.
 
 1. Upload `planet.pmtiles` and set `MAP_TERRAIN_ARCHIVE` — before traffic grows
    (see "Is the proxy safe").
-2. Coverage-aware maxzoom for the national models (sharper Montserrat, a bare-
+2. The Sagrada Família's spike: report it to Mapterhorn, and decide on a
+   regional bare-earth archive (see "A building in the bare earth").
+3. Coverage-aware maxzoom for the national models (sharper Montserrat, a bare-
    earth Barcelona).
-3. Device benchmarks; then decide whether tilted terrain should follow the city
+4. Device benchmarks; then decide whether tilted terrain should follow the city
    layer's device gating on weak GPUs, and whether `Save-Data` should drop the
    hillshade.
-4. Native globe and terrain when maplibre-react-native exposes them.
+5. Native globe and terrain when maplibre-react-native exposes them.

@@ -38,6 +38,8 @@ export interface MapSettingsButtonProps {
    * only while the sky draws; absent, the row is not offered.
    */
   onChangeTime?: () => void;
+  /** Open the style picker — Settings → Map → Style → "Choose…". */
+  onChooseStyle?: () => void;
   /** A phone: the smaller round control, like the rest of its stack. */
   compact?: boolean;
 }
@@ -46,6 +48,7 @@ export function MapSettingsButton({
   tilted,
   onTiltChange,
   onChangeTime,
+  onChooseStyle,
   compact = false,
 }: MapSettingsButtonProps) {
   const { locale } = useTranslation();
@@ -73,6 +76,11 @@ export function MapSettingsButton({
     setOpen(false);
     onChangeTime?.();
   }, [onChangeTime]);
+  // So is the style picker: one panel at a time.
+  const chooseStyle = useCallback(() => {
+    setOpen(false);
+    onChooseStyle?.();
+  }, [onChooseStyle]);
 
   return (
     <>
@@ -98,6 +106,7 @@ export function MapSettingsButton({
             tilted={tilted}
             onTiltChange={onTiltChange}
             onChangeTime={onChangeTime ? changeTime : undefined}
+            onChooseStyle={onChooseStyle ? chooseStyle : undefined}
           />
         </Suspense>
       ) : null}

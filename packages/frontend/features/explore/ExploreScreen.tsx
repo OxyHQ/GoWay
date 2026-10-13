@@ -98,6 +98,7 @@ import { ExploreBody, ExploreHeader, type RenderPlaceActions } from './ExploreCo
 import { ExploreMarker } from './ExploreMarker';
 import { clampFitPadding } from './mapPadding';
 import { MapSettingsButton } from './MapSettingsButton';
+import { MapStyleButton } from './MapStyleButton';
 import { MapTopBar } from './MapTopBar';
 import { focusTimeOfDayButton, TimeOfDayButton } from './TimeOfDayButton';
 import { useExplore } from './useExplore';
@@ -283,7 +284,7 @@ export default function ExploreScreen({
 
   // Street 3D coverage: off unless the feature flag is on, and out of the way
   // while the directions planner owns the map.
-  const street3d = useStreet3dLayer(mapRef, { enabled: !directions.active });
+  const street3d = useStreet3dLayer({ enabled: !directions.active });
 
   /**
    * Coming back from a Street 3D scene: frame the map on the scene the user
@@ -321,15 +322,8 @@ export default function ExploreScreen({
 
   const handleMapReady = useCallback(() => {
     mapReady.current = true;
-    // The landmarks pill needs a centre before the first move settles (and
-    // may be switched on later, so the centre is always kept).
-    void mapRef.current?.getViewport().then((viewport) => {
-      if (viewport)
-        setSettledCentre({ latitude: viewport.latitude, longitude: viewport.longitude });
-    });
-    street3d.onMapReady();
     setTimeout(applyPendingFit, RETURN_FIT_DELAY_MS);
-  }, [applyPendingFit, street3d]);
+  }, [applyPendingFit]);
 
   const overlays = useMemo(
     () =>
@@ -355,6 +349,10 @@ export default function ExploreScreen({
   // `docs/MAP_PERFORMANCE.md`). React skips a set to the same value.
   const [rotated, setRotated] = useState(false);
   const [tilted, setTilted] = useState(false);
+  // The style picker (`MapStyleButton`), opened from its button or from
+  // Settings → Map → Style.
+  const [stylePickerOpen, setStylePickerOpen] = useState(false);
+  const openStylePicker = useCallback(() => setStylePickerOpen(true), []);
   const flyover = useMapFeature('flyover');
   const landmarks = useMapFeature('landmarks');
   const live = useMapFeature('live');
@@ -686,6 +684,14 @@ export default function ExploreScreen({
                   onChangeTime={
                     timeOfDayButtonShown(timeOfDay) && !mapError ? openTimeOfDay : undefined
                   }
+                  onChooseStyle={openStylePicker}
+                />
+              )}
+              {immersive ? null : (
+                <MapStyleButton
+                  open={stylePickerOpen}
+                  onOpenChange={setStylePickerOpen}
+                  compact={layout === 'sheet'}
                 />
               )}
               {timeOfDayButtonShown(timeOfDay) && !mapError && !immersive ? (

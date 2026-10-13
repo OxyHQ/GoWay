@@ -56,7 +56,7 @@
   "provenance": {
     "pipelineVersion": "goway-reconstruction/1",
     "privacyPipelineVersions": ["goway-privacy/1"],
-    "components": { "sfm": "pycolmap 4.2.1", "trainer": "gsplat 1.5.3", "torch": "2.14.1+cu130" },
+    "components": { "sfm": "pycolmap 4.2.1", "features": "sift", "trainer": "gsplat 1.5.3", "torch": "2.14.1+cu130" },
     "inputs": [
       { "frameId": "f-01", "imageSha256": "aa00000000000000000000000000000000000000000000000000000000000001" },
       { "frameId": "f-02", "imageSha256": "aa00000000000000000000000000000000000000000000000000000000000002" }

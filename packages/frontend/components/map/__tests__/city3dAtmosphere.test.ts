@@ -23,11 +23,10 @@ import {
   sunDirection,
   tonemapSky,
 } from '@/components/map/engine/city3d/atmosphere';
-import { glslFloat } from '@/components/map/engine/city3d/shaders';
-import {
-  skyCityFragmentShader,
-  skyPassFragmentShader,
-} from '@/components/map/engine/city3d/skyShaders';
+import { createSkyNodes } from '@/components/map/engine/city3d/tsl/skyNodes';
+import { float } from 'three/tsl';
+
+import { constantsOf, skyRefs } from './tslGraph';
 
 const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) <= eps;
 
@@ -103,15 +102,15 @@ describe('aerial perspective', () => {
     for (let c = 0; c < 3; c++) expect(Math.abs(level[c] - almost[c])).toBeLessThan(1e-9);
   });
 
-  test('the shaders are generated from the same constants', () => {
-    for (const shader of [
-      skyCityFragmentShader('openmaptiles'),
-      skyCityFragmentShader('goway'),
-      skyPassFragmentShader('multiply'),
-    ]) {
-      expect(shader).toContain(`const float HAZE_MIE = ${glslFloat(HAZE.mie)};`);
-      expect(shader).toContain(glslFloat(HAZE.rayleigh[2]));
-    }
+  test('the shader is built from the same constants', () => {
+    // The ONE haze every sky-lit material reads (`tsl/skyNodes.ts`).
+    const sky = createSkyNodes(skyRefs(true), 12);
+    const values = constantsOf(sky.hazeTransmittance(float(200), float(-0.1), float(5000)));
+    expect(values).toContain(HAZE.mie);
+    expect(values).toContain(HAZE.rayleighScaleHeightM);
+    expect(values).toContain(HAZE.mieScaleHeightM);
+    expect(values).toContain(HAZE_CLEAR_M);
+    for (const c of HAZE.rayleigh) expect(values).toContain(c);
   });
 });
 

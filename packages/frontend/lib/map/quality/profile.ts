@@ -105,6 +105,17 @@ export interface QualityProfile {
      * the simplified level (no kerb faces, arrows, words or names), then out.
      */
     drawTriangles: number;
+    /**
+     * Lattice lines per DEM pixel the street detail is cut along so it bends
+     * where the drawn terrain does (`cityStreets/groundLattice.ts`,
+     * `MAP_STREETS.md` → Terrain and depth). 1 cuts at the pixel centres —
+     * every crease of the terrain, about twice the triangles of an uncut tile;
+     * 2 also halfway between, as MapLibre's own mesh is at street level —
+     * about three times, and a quarter of the bilinear twist left between
+     * vertices (measured on Montjuïc: terrain over 0.06% of the street at 1,
+     * 0.01% at 2).
+     */
+    groundSubdivision: 1 | 2;
   };
   relief: {
     /**
@@ -132,6 +143,16 @@ export interface QualityProfile {
      * the knob is for a device that cannot.
      */
     globeNight: boolean;
+  };
+  basemap: {
+    /**
+     * How densely the basemap names and marks places (`docs/MAP_STYLES.md` →
+     * Performance). `style` draws what the style asks for; `standard` draws a
+     * denser style (Streets) at Standard's density — its documents carry the
+     * difference as overrides (`goway:quality-low`), applied at load. Colour
+     * never changes; only how many POIs, and from which zoom, are placed.
+     */
+    density: 'style' | 'standard';
   };
 }
 
@@ -170,8 +191,9 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     life: { cars: 300, people: 300 },
     live: { maxEntities: 500 },
     landmarks: { max: 2 },
-    streets: { maxTiles: 6, drawTriangles: 400_000 },
+    streets: { maxTiles: 6, drawTriangles: 400_000, groundSubdivision: 1 },
     relief: { terrain3d: true, terrainTextureScale: 1, globeNight: true },
+    basemap: { density: 'standard' },
   },
   medium: {
     tier: 'medium',
@@ -198,8 +220,9 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     life: { cars: 700, people: 700 },
     live: { maxEntities: 2_000 },
     landmarks: { max: 4 },
-    streets: { maxTiles: 10, drawTriangles: 900_000 },
+    streets: { maxTiles: 10, drawTriangles: 900_000, groundSubdivision: 1 },
     relief: { terrain3d: true, terrainTextureScale: 2, globeNight: true },
+    basemap: { density: 'style' },
   },
   high: {
     tier: 'high',
@@ -226,8 +249,9 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     life: { cars: 1200, people: 1200 },
     live: { maxEntities: 5_000 },
     landmarks: { max: 8 },
-    streets: { maxTiles: 16, drawTriangles: 2_000_000 },
+    streets: { maxTiles: 16, drawTriangles: 2_000_000, groundSubdivision: 2 },
     relief: { terrain3d: true, terrainTextureScale: 2, globeNight: true },
+    basemap: { density: 'style' },
   },
 };
 

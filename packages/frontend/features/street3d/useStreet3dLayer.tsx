@@ -8,12 +8,12 @@
  * see `queries.ts`. The map is public; nothing here needs a session or a
  * location.
  */
-import { useCallback, useMemo, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@oxy.so/bloom/theme';
 import type { StreetCoverageArea } from '@goway.to/sdk';
 
-import type { GeoBounds, MapApi, MapMarker, MapOverlay, MapViewportChange } from '@/components/map';
+import type { GeoBounds, MapMarker, MapOverlay, MapViewportChange } from '@/components/map';
 import { useTranslation } from '@/lib/i18n';
 import { useMapFeature } from '@/lib/map/useMapFeatures';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
@@ -40,8 +40,6 @@ export interface Street3dLayer {
   /** Areas in view where another photo is what is missing. */
   wantingCapture: readonly StreetCoverageArea[];
   onViewportChange: (change: MapViewportChange) => void;
-  /** Seed from the camera the map opened on; the canvas emits no event for it. */
-  onMapReady: () => void;
   /** `true` when the marker is this layer's, and it handled the press. */
   handleMarkerPress: (marker: MapMarker) => boolean;
   /** This layer's marker body, or `null` for any other marker. */
@@ -53,10 +51,7 @@ interface SettledView {
   zoom: number;
 }
 
-export function useStreet3dLayer(
-  mapRef: RefObject<MapApi | null>,
-  { enabled }: { enabled: boolean },
-): Street3dLayer {
+export function useStreet3dLayer({ enabled }: { enabled: boolean }): Street3dLayer {
   const router = useRouter();
   const theme = useTheme();
   const { t } = useTranslation();
@@ -79,15 +74,6 @@ export function useStreet3dLayer(
     },
     [on],
   );
-
-  const onMapReady = useCallback(() => {
-    if (!on) return;
-    const api = mapRef.current;
-    if (!api) return;
-    void Promise.all([api.getViewport(), api.getBounds()]).then(([viewport, bounds]) => {
-      if (viewport && bounds) setView((current) => current ?? { bounds, zoom: viewport.zoom });
-    });
-  }, [mapRef, on]);
 
   const overlays = useMemo(
     () => (data ? coverageOverlays(data, theme.colors) : EMPTY_OVERLAYS),
@@ -154,7 +140,6 @@ export function useStreet3dLayer(
     markers,
     wantingCapture,
     onViewportChange,
-    onMapReady,
     handleMarkerPress,
     renderMarker,
   };

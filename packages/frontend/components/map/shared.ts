@@ -449,15 +449,20 @@ export function reportMapDefect(key: string, message: string): void {
  * It is not a licence to stop validating: a swallowed throw is a `console.warn`
  * nobody reads, so anything we can name is still refused BEFORE it gets here,
  * by a check that says which value was wrong and why.
+ *
+ * Answers whether the command ran: `false` is a dropped command, which a
+ * caller waiting on its outcome (a camera move's settle) must not wait for.
  */
-export function runEngineCommand(command: string, run: () => void): void {
+export function runEngineCommand(command: string, run: () => void): boolean {
   try {
     run();
+    return true;
   } catch (cause) {
     reportMapDefect(
       `engine:${command}`,
       `The map engine threw on "${command}" and the command was dropped: ${String(cause)}`,
     );
+    return false;
   }
 }
 

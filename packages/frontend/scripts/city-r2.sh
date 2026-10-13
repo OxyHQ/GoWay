@@ -68,12 +68,23 @@ put_one() {
     echo "::error::$key already exists in $BUCKET with other bytes; refusing to overwrite it." >&2
     exit 1
   fi
-  wrangler r2 object put "$BUCKET/$key" --remote --file "$file" --content-type "$type" >/dev/null
-  if [ "$(remote_sha "$key")" != "$local_sha" ]; then
-    echo "::error::$key: the bytes read back from R2 are not the bytes uploaded." >&2
-    exit 1
-  fi
-  echo "put     $key $size ${local_sha:0:12}"
+  # The Cloudflare API answers a large put with a 524 now and then (measured
+  # in the planet run), and a read-back can come back short. The key is new
+  # and no manifest names it yet, so trying again is safe; four tries, then
+  # the job fails and the region keeps its previous entry.
+  local attempt
+  for attempt in 1 2 3 4; do
+    wrangler r2 object put "$BUCKET/$key" --remote --file "$file" --content-type "$type" \
+      >/dev/null 2>&1 || true
+    if [ "$(remote_sha "$key")" = "$local_sha" ]; then
+      echo "put     $key $size ${local_sha:0:12} (try $attempt)"
+      return 0
+    fi
+    echo "$key: try $attempt did not land; retrying" >&2
+    sleep $((attempt * 30))
+  done
+  echo "::error::$key: the bytes read back from R2 are not the bytes uploaded, after 4 tries." >&2
+  exit 1
 }
 
 case "${1:-}" in
@@ -111,9 +122,14 @@ case "${1:-}" in
     # The dated copy first: it is the rollback, and it must exist before the
     # live key moves.
     put_one "city/manifests/$stamp.json" "$file"
-    wrangler r2 object put "$BUCKET/$MANIFEST_KEY" --remote --file "$file" \
-      --content-type application/json --cache-control no-cache >/dev/null
-    if [ "$(remote_sha "$MANIFEST_KEY")" != "$sha" ]; then
+    landed=no
+    for attempt in 1 2 3 4; do
+      wrangler r2 object put "$BUCKET/$MANIFEST_KEY" --remote --file "$file" \
+        --content-type application/json --cache-control no-cache >/dev/null 2>&1 || true
+      if [ "$(remote_sha "$MANIFEST_KEY")" = "$sha" ]; then landed=yes; break; fi
+      sleep $((attempt * 30))
+    done
+    if [ "$landed" != yes ]; then
       echo "::error::$MANIFEST_KEY: the bytes read back are not the manifest built." >&2
       exit 1
     fi

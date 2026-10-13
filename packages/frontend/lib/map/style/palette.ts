@@ -156,6 +156,34 @@ export interface PoiPalette {
   other: string;
 }
 
+/**
+ * The Outdoors style's extra ink (`themes.ts`): what only a terrain map draws.
+ * Absent on every other style, whose layer list then emits none of it.
+ */
+export interface OutdoorsPalette {
+  /** Bare rock and scree (`landcover class=rock`). */
+  rock: string;
+  /** Glaciers: brighter than the plain `ice` fill, with a visible edge. */
+  glacier: string;
+  glacierOutline: string;
+  /** Protected areas' edge (`park` source-layer). */
+  protectedOutline: string;
+  /** Contour lines, and every index line (`/map/contours`). */
+  contour: string;
+  contourIndex: string;
+  labelContour: string;
+  /** Hiking trails by difficulty: no `mtb_scale` or 0–1, 2–3, 4 and up. */
+  trail: string;
+  trailHard: string;
+  trailExpert: string;
+  /** Cable cars, gondolas, chair and drag lifts. */
+  aerialway: string;
+  /** Mountain peaks' names and heights. */
+  labelPeak: string;
+  /** The hillshade's shadow, highlight and accent (MapLibre's three). */
+  hillshade: { shadow: string; highlight: string; accent: string };
+}
+
 export interface CartographyPalette {
   /** Which appearance this palette IS, so a builder cannot mix them up. */
   appearance: 'light' | 'dark';
@@ -260,6 +288,9 @@ export interface CartographyPalette {
    * dark mode's POI type is measurably dimmer than Apple's and stays that way.
    */
   poiLabel: PoiPalette;
+
+  /** Only on the Outdoors style. */
+  outdoors?: OutdoorsPalette;
 }
 
 /**

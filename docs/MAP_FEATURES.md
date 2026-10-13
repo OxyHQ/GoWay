@@ -109,7 +109,8 @@ that neither the sheet, the side panel nor any notice covers, in either layout.
 
 It is the first item of the explore screen's **top-right stack**: ONE column
 (`items-end`, 8 px apart) under the account button holding, in order, the
-settings button, the time of day (a sun, while the sky draws —
+settings button, the style button (the layers picker —
+[`MAP_STYLES.md`](./MAP_STYLES.md)), the time of day (a sun, while the sky draws —
 [below](#the-time-of-day)), the Landmarks control (while a landmark is near)
 and, in development builds with Live on, GoWay Live's panel. They are round
 Bloom `Fab`s: 48 px on a wide window, where Landmarks also shows its word;
@@ -151,7 +152,9 @@ page with nothing to list leaves the rail.
   where the map already is, 2D levels it, and it follows a gesture tilt — then
   Globe, Terrain, Sky & time of day (while the sky draws, a "Time of day" row
   whose "Change time…" closes the modal and opens the scrubber on the map),
-  the detailed city look and street detail, and **Performance** (Auto, Battery saver or High quality: a
+  the detailed city look and street detail, the map **Style** ("Choose…"
+  opens the layers picker) and its **Light** (App, Sun, Day or Night —
+  [`MAP_STYLES.md`](./MAP_STYLES.md) → The light), and **Performance** (Auto, Battery saver or High quality: a
   three-way choice kept in the same store, `setPerformance`, which picks the
   map's quality profile — [`MAP_PERFORMANCE.md`](./MAP_PERFORMANCE.md); it
   applies live).
@@ -275,7 +278,7 @@ The store notifies; components read it through `useMapFeature(id)`:
 ## Privacy
 
 Preferences stay on the device: one JSON document, `goway.mapFeatures`
-(`{v:1, choices, labs, performance?, gpu?}`), in `localStorage` on the web and
+(`{v:1, choices, labs, performance?, style?, light?, gpu?}`), in `localStorage` on the web and
 AsyncStorage on native. `gpu` is what this device's GPU measured (its
 renderer string, a benchmark score and the tier they give, re-measured after
 30 days or on a new GPU), so a later visit picks its quality before the first

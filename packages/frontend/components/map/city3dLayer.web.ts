@@ -76,7 +76,8 @@ import {
   BUILDINGS_3D_FADE,
   buildingHeightRamp,
 } from '@/lib/map/style/buildings3d';
-import { CARTOGRAPHY_PALETTES } from '@/lib/map/style/palette';
+import { appearancePreset, type MapStyleSelection } from '@/lib/map/style/catalogue';
+import { styleTheme } from '@/lib/map/style/themes';
 import { streetPaletteInput } from '@/lib/map/style/streetPalette';
 import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
 import type { QualityProfile } from '@/lib/map/quality/profile';
@@ -122,6 +123,8 @@ export function citySourceFor(
   cityTiles: boolean,
   origin: string,
   coverage: readonly CityCoverageArea[] = [],
+  /** Whether a road archive is published: the trees read it for their setting. */
+  roadsPublished = false,
 ) {
   const base = {
     tileUrlTemplate: basemap.template,
@@ -136,6 +139,7 @@ export function citySourceFor(
       tileZoom: CITY_TILE_ZOOM,
       sourceLayer: CITY_TILE_LAYER,
       treeLayer: CITY_TREE_LAYER,
+      ...(roadsPublished ? { roadTileUrlTemplate: `${origin}${CITY_ROAD_TILE_PATH}` } : {}),
       coverage,
     },
   };
@@ -338,6 +342,13 @@ function modelsLayerBefore(map: MapLibreMap): string | undefined {
 
 export interface AttachCity3dOptions {
   appearance: MapAppearance;
+  /**
+   * The map style and its light (`lib/map/style/catalogue.ts`): the
+   * buildings' ramp, the trees, the detailed clay and the street detail all
+   * come from its theme (`themes.ts`), so the 3D city matches the style it
+   * stands on. Absent, Standard in the appearance's light.
+   */
+  style?: MapStyleSelection;
   /**
    * The light `MapCanvas.web.tsx` gives `building-3d`: `useSunLight`'s sun
    * light, or `null` when GoWay leaves the style document's own light alone
@@ -554,9 +565,13 @@ export async function attachCity3d(
     cityTiles,
     origin,
     coverage,
+    roadsPublished,
   );
 
-  const cartography = CARTOGRAPHY_PALETTES[options.appearance];
+  const theme = styleTheme(
+    options.style ?? { style: 'standard', preset: appearancePreset(options.appearance) },
+  );
+  const cartography = theme.palette;
   const trees = treeColours(cartography);
   // The art-directed look (the registry's `detailedCity`).
   const detailed = buildings && options.detailed === true;
@@ -580,6 +595,19 @@ export async function attachCity3d(
   const drawnLandmarks = new Set<string>();
   const failedLandmarks = new Set<string>();
   let allLandmarks: readonly PreparedLandmark[] = [];
+  let landmarksLoaded = false;
+  // Development only: what the landmarks are doing, for a headless check
+  // (the visibility gate waits for its landmark to be drawn or failed).
+  const reportLandmarks = () => {
+    if (!__DEV__) return;
+    publishLandmarkStats({
+      loaded: landmarksLoaded,
+      offered: landmarkList.map(({ entry }) => entry.id),
+      held: [...heldLandmarks],
+      drawn: [...drawnLandmarks],
+      failed: [...failedLandmarks],
+    });
+  };
   /** Recompute what can be drawn, and tell the tour. */
   const reofferLandmarks = () => {
     landmarkList = drawableLandmarks(allLandmarks, coverage, failedLandmarks, coverageCovers);
@@ -595,7 +623,9 @@ export async function attachCity3d(
         allLandmarks = await module.loadLandmarks(origin);
         if (detached) return;
         landmarkModule = module;
+        landmarksLoaded = true;
         reofferLandmarks();
+        reportLandmarks();
         map.triggerRepaint();
       })
       .catch((cause: unknown) =>
@@ -616,6 +646,7 @@ export async function attachCity3d(
     if (same) return;
     heldLandmarks.clear();
     for (const l of next) heldLandmarks.add(l.entry.id);
+    reportLandmarks();
     engine.setLandmarks(
       next.map(
         (l): LandmarkSpec => ({
@@ -637,6 +668,7 @@ export async function attachCity3d(
   const onLandmarkStatus = (id: string, status: ModelStatus) => {
     if (status === 'drawn') drawnLandmarks.add(id);
     else drawnLandmarks.delete(id);
+    reportLandmarks();
     if (landmarkModule) {
       options.onLandmarkCredits?.(landmarkModule.landmarkCredits(landmarkList, drawnLandmarks));
     }
@@ -700,7 +732,7 @@ export async function attachCity3d(
           roadCoverage,
           glyphTemplate: absoluteGlyphs(host.getStyle()?.glyphs, origin),
           fontstack: STREET_FONTSTACK,
-          palette: streetPaletteInput(),
+          palette: streetPaletteInput(theme.streets),
           quality: options.quality.streets,
           requestRepaint: () => host.triggerRepaint(),
           // One name on a street, not two: the map's flat label yields where
@@ -784,12 +816,13 @@ export async function attachCity3d(
         // A model that cannot load is never drawn: neither held nor offered.
         failedLandmarks.add(id);
         reofferLandmarks();
+        reportLandmarks();
         // The next frame hands the engine the list without it.
         map.triggerRepaint();
       },
       sky: sky ? { appearance: options.appearance } : undefined,
       // The detailed response; the night seam blends its day and night.
-      material: detailed ? cityMaterials() : undefined,
+      material: detailed ? cityMaterials(theme.materials) : undefined,
     });
     engine.setNightFactor(night);
     updateSun();
@@ -1099,6 +1132,23 @@ export function absoluteGlyphs(glyphs: string | undefined, origin: string): stri
   if (!glyphs) return null;
   if (/^https?:\/\//.test(glyphs)) return glyphs;
   return glyphs.startsWith('/') ? `${origin}${glyphs}` : null;
+}
+
+/** What the landmarks are doing, on `globalThis.__gowayLandmarks` (development only). */
+export interface LandmarkStats {
+  /** The registry has been read. */
+  loaded: boolean;
+  /** Ids the map can draw (in coverage, not failed). */
+  offered: string[];
+  /** Ids handed to the engine for this view. */
+  held: string[];
+  drawn: string[];
+  /** Ids whose model could not load: their buildings stay. */
+  failed: string[];
+}
+
+function publishLandmarkStats(stats: LandmarkStats): void {
+  (globalThis as { __gowayLandmarks?: LandmarkStats }).__gowayLandmarks = stats;
 }
 
 /** Development only: the street renderer's numbers on `globalThis.__gowayCityStreets`. */

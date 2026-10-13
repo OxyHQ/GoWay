@@ -55,6 +55,12 @@
  *  - `interactive=0` — a still map. See {@link EmbedParams.interactive}.
  *  - `theme=light|dark` — because an embedder's page has a theme and ours
  *    should not fight it.
+ *  - `style=<id>` and `light=day|dawn|dusk|night` — one of GoWay's own
+ *    published styles (`lib/map/style/catalogue.ts`: `standard`, `streets`,
+ *    `light`, `dark`, …) in one of its lights, the same ids `@goway.to/sdk`
+ *    names. An unknown id is ignored (Standard draws); a light the style is
+ *    not published in resolves to the nearest one it is. `light` wins over
+ *    `theme`, which remains the shorter spelling of day and night.
  *
  * Deliberately NOT accepted, and each for a reason:
  *
@@ -62,13 +68,21 @@
  *    embed parameter that can carry a megabyte, and the URL length limit
  *    becomes the only thing standing between us and a denial of service.
  *    Overlays belong to `@goway.to/sdk`, where the caller owns the page.
- *  - No style or colour overrides. The cartography is the product. An embedder
- *    who needs different colours needs the SDK, not a query string.
+ *  - No colour overrides and no style document from elsewhere. Choosing among
+ *    GoWay's own styles is choosing GoWay's cartography; recolouring it is
+ *    not, and an embedder who needs different colours needs the SDK, not a
+ *    query string.
  *  - No API key, and nothing that identifies the embedder. There is nothing to
  *    meter: the read surface is public. Adding a key would be adding a way for
  *    the embed to stop working.
  */
 import { MERCATOR_MAX_LATITUDE } from './geo';
+import {
+  isMapLightPreset,
+  isMapStyleId,
+  type MapLightPreset,
+  type MapStyleId,
+} from './style/catalogue';
 import type { GeoBounds, GeoCoordinate, MapViewport } from '@/components/map/types';
 import { DEFAULT_VIEWPORT } from '@/components/map/types';
 
@@ -132,6 +146,10 @@ export interface EmbedParams {
   interactive: boolean;
   /** `theme=light|dark`. Absent means "follow the Bloom theme", as the app does. */
   appearance?: 'light' | 'dark';
+  /** `style=` — a published GoWay style id. Absent: Standard, whatever the visitor chose. */
+  style?: MapStyleId;
+  /** `light=` — the light to draw it in. Absent: `theme`, else the Bloom theme. */
+  lightPreset?: MapLightPreset;
 }
 
 /**
@@ -289,6 +307,10 @@ export function parseEmbedParams(params: RawParams): EmbedParams {
 
   const themeRaw = first(params, 'theme');
   const appearance = themeRaw === 'light' || themeRaw === 'dark' ? themeRaw : undefined;
+  const styleRaw = first(params, 'style');
+  const style = isMapStyleId(styleRaw) ? styleRaw : undefined;
+  const lightRaw = first(params, 'light');
+  const lightPreset = isMapLightPreset(lightRaw) ? lightRaw : undefined;
 
   const interactiveRaw = first(params, 'interactive');
   // Anything other than an explicit opt-out is interactive. An embedder who
@@ -314,6 +336,8 @@ export function parseEmbedParams(params: RawParams): EmbedParams {
     ...(placeId ? { placeId } : {}),
     interactive,
     ...(appearance ? { appearance } : {}),
+    ...(style ? { style } : {}),
+    ...(lightPreset ? { lightPreset } : {}),
   };
 }
 

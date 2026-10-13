@@ -286,6 +286,14 @@ export const CITY_TREE_PROPS = {
   height: 'height',
   /** `diameter_crown`, parsed, metres. */
   crownDiameter: 'crown_diameter',
+  /** The trunk's `circumference` (at breast height), parsed, metres. */
+  circumference: 'circumference',
+  /**
+   * `true` when OSM records the tree as a street or avenue tree: a node of a
+   * `natural=tree_row` way, or `denotation=avenue|urban`. Absent otherwise
+   * (the client still reads the setting from what surrounds the tree).
+   */
+  street: 'street',
 } as const;
 
 /** One tree as the compiler writes it: a point in tile units and its properties. */
@@ -293,7 +301,13 @@ export interface CityTileTree {
   /** The OSM node id: the tree's own stable seed (turn, variant). */
   id: number;
   point: [number, number];
-  properties: { crown?: TreeCrown; height?: number; crown_diameter?: number };
+  properties: {
+    crown?: TreeCrown;
+    height?: number;
+    crown_diameter?: number;
+    circumference?: number;
+    street?: boolean;
+  };
 }
 
 /**

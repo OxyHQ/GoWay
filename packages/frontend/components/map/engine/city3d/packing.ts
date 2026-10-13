@@ -8,12 +8,11 @@
  * | attribute  | type        | per vertex | meaning                                   |
  * | ---------- | ----------- | ---------: | ----------------------------------------- |
  * | `position` | `uint16 ×4` |        8 B | x, y in tile units; z in 1/32 m; w shade  |
- * | `normal`   | `int8 ×4`   |        4 B | unit normal ×127, padded to 4 bytes       |
+ * | `normal`   | `int8 ×4`   |        4 B | unit normal ×127; w the per-building flags (GoWay city tiles, `VERTEX_FLAG_*`; 0 otherwise) |
  * | index      | `uint16`/`uint32` | 2/4 B | 16-bit while a tile has ≤ 65,536 vertices |
  * | `color`    | `uint8 ×4`  |        4 B | GoWay city tiles only, as `osmMesher` set it |
  * | `facade`   | `uint16 ×4` |        8 B | GoWay city tiles only, as `osmMesher` set it |
- * | `flags`    | `uint8 ×1`  |        1 B | GoWay city tiles only: per-building night flags (`VERTEX_FLAG_*`) |
- *
+ *  *
  * against float32 positions (12 B), `int8 ×3` normals (3 B), `uint8 ×2` shade
  * (2 B) and `uint32` indices (4 B) before. Measured on the dense Barcelona tile
  * (`docs/MAP_3D_CITY.md` → "Budgets"), the full-detail mesh goes from 26.2 MB
@@ -83,8 +82,6 @@ export interface PackedChunk {
    */
   color?: Uint8Array;
   facade?: Uint16Array;
-  /** GoWay city tiles only: per-building flags (`osmMesher.ts` → `VERTEX_FLAG_*`). */
-  flags?: Uint8Array;
 }
 
 /** A float mesh, with the GoWay city tiles' extra lanes when it has them (`OsmTileMesh`). */
@@ -100,8 +97,7 @@ function chunkBytes(chunk: PackedChunk): number {
     chunk.normal.byteLength +
     chunk.index.byteLength +
     (chunk.color?.byteLength ?? 0) +
-    (chunk.facade?.byteLength ?? 0) +
-    (chunk.flags?.byteLength ?? 0)
+    (chunk.facade?.byteLength ?? 0)
   );
 }
 
@@ -146,7 +142,6 @@ export function packedTransferables(mesh: PackedMesh): ArrayBuffer[] {
     );
     if (chunk.color) out.push(chunk.color.buffer as ArrayBuffer);
     if (chunk.facade) out.push(chunk.facade.buffer as ArrayBuffer);
-    if (chunk.flags) out.push(chunk.flags.buffer as ArrayBuffer);
   }
   out.push(
     mesh.polygonStarts.buffer as ArrayBuffer,
@@ -352,6 +347,9 @@ function copyVertices(
     normal[q] = normals[p];
     normal[q + 1] = normals[p + 1];
     normal[q + 2] = normals[p + 2];
+    // The normal's spare lane carries the building's flags (≤ 63): a separate
+    // one-byte lane is not a vertex format WebGPU's three backend reads.
+    if (flags) normal[q + 3] = flags[v];
     if (x < min[0]) min[0] = x;
     if (y < min[1]) min[1] = y;
     if (z < min[2]) min[2] = z;
@@ -366,7 +364,6 @@ function copyVertices(
       // The city tiles' lanes are already per vertex, in vertex order.
       ...(colors ? { color: colors.slice(0, count * 4) } : {}),
       ...(facade ? { facade: facade.slice(0, count * 4) } : {}),
-      ...(flags ? { flags: flags.slice(0, count) } : {}),
     },
     bounds: { min, max },
   };

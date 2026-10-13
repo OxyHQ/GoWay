@@ -76,18 +76,22 @@ import { cityQuality } from '../quality';
 
 import { hexToRgb } from '@/lib/map/colour';
 import { hiddenFeatureIds, tilesAround } from './landmarkTiles';
-import {
-  DETAILED_DEFINE,
-  DETAILED_SKY_MATERIAL_GLSL,
-  materialRamp,
-  materialUniformValues,
-} from './materials';
+import { materialRamp, materialUniformValues } from './materials';
 import type { CitySun, HostSkyColours, SkyAppearance } from './atmosphere';
-import { type DrawnTile, FrameSchedule, runsSkyOffscreenPass } from './frameSelection';
+import {
+  type DrawnTile,
+  FrameSchedule,
+  runsSkyOffscreenPass,
+  SKY_PASS_LAYER,
+  WARM_LAYER,
+} from './frameSelection';
+import { createMaterialWarmup } from './materialWarmup';
 import { createModelLayer, type ModelSpec, type ModelStatus } from './models';
 import type { CityLight } from './occlusion';
 import type { CityTileFormat, MeshWorkerRequest, MeshWorkerResponse } from './protocol';
 import { type CitySky, type CitySkyStats, type CitySkyView, createCitySky } from './sky';
+import { createDetailedMaterial } from './tsl/detailedMaterial';
+import { type CityMaterialResponse, clayResponse } from './tsl/skyBuildingMaterial';
 import {
   centeredProjection,
   type LngLatBox,
@@ -96,10 +100,11 @@ import {
   type TileId,
   tileKey,
 } from './tileMath';
-import type { CityOverlay } from './overlay';
+import type { CityOverlay, FrameUploadBudget } from './overlay';
 import {
   createGround,
   type Ground,
+  type GroundLattice,
   type GroundSampler,
   type GroundStats,
   TileGrounder,
@@ -108,7 +113,8 @@ import { incompleteRetryMs, TileCache, TileScheduler } from './tileScheduler';
 import { assignSources, type SourcedTile } from './sources';
 import { Transitions } from './transitions';
 import { treeMinHeightM } from './tsl/treeMaterial';
-import { createTslPass } from './tsl/tslPass';
+import { createTslPass, type Warming } from './tsl/tslPass';
+import type { TreeSettingCounts } from './treeContext';
 import type { TreeSourceLayers } from './treeSources';
 import { WorkerPool, webWorker } from './workerPool';
 
@@ -145,6 +151,11 @@ export interface CityEngineOptions {
     sourceLayer: string;
     /** The city tiles' layer of trees OSM records (`CITY_TREE_LAYER`). */
     treeLayer: string;
+    /**
+     * `{z}/{x}/{y}` of the road archive's tiles (`CITY_ROAD_TILE_PATH`), read
+     * for the trees' setting (`treeContext.ts`); absent where none is published.
+     */
+    roadTileUrlTemplate?: string;
     coverage: readonly CityCoverageArea[];
   } | null;
   /**
@@ -215,16 +226,17 @@ export interface CityEngineOptions {
     appearance: SkyAppearance;
     /**
      * The art direction's material response for the one sky-lit shading
-     * path: GLSL defining `vec3 cityMaterial(CitySurface s, CityLight l)`
-     * (`skyShaders.ts` documents both structs). Absent: the default clay.
+     * path (`tsl/skyBuildingMaterial.ts` documents the contract). Absent: the
+     * detailed look's when {@link CityEngineOptions.material} is set, else
+     * the default clay.
      */
-    material?: string;
+    response?: CityMaterialResponse;
   };
   /**
    * The detailed look (`materials.ts`, the `detailedCity` map feature): the material's
    * day and night, blended on the GPU by the night seam (`setNightFactor`).
    * With {@link CityEngineOptions.sky} — its one shading path — every building
-   * is drawn in the sky's light through this response (`sky.material`), and
+   * is drawn in the sky's light through this response, and
    * its day ramp replaces {@link CityEngineOptions.palette}'s. Without a sky,
    * or absent: the look is unchanged.
    */
@@ -270,6 +282,11 @@ export interface CityEngineStats {
   /** Trees (instances) and their triangles drawn last frame. */
   trees: number;
   treeTriangles: number;
+  /**
+   * Where the drawn tiles' mapped trees went (`treeContext.ts`): street or
+   * nature, moved off a carriageway to the kerb, or left out of one.
+   */
+  treeSettings: TreeSettingCounts;
   /** GPU bytes held by the tile cache. */
   gpuBytes: number;
   /** Worker time for the last tile: decode + mesh, and tree placement. */
@@ -279,8 +296,6 @@ export interface CityEngineStats {
   frameCpuMs: number;
   /** …of which the city's own draw calls (buildings, trees, overlays), smoothed. */
   drawCpuMs: number;
-  /** Which renderer drew the buildings: `tsl` (`tsl/tslPass.ts`), or `glsl` with the city sky. */
-  buildingPath: 'glsl' | 'tsl';
   /** Meshes waiting for the per-frame upload budget. */
   uploadsQueued: number;
   workers: number;
@@ -351,14 +366,15 @@ export interface CityEngine {
   modelAnchors(): ReturnType<ReturnType<typeof createModelLayer>['anchors']>;
   /**
    * The terrain the buildings and trees stand on, as a sampler of the drawn
-   * ground, or `null` for none. Call again whenever the terrain changes (a DEM
-   * tile arrived); every tile is then re-grounded, a few per frame.
+   * ground and the DEM lattice it is drawn from (`terrainGround.ts`), or
+   * `null` for none. Call again whenever the terrain changes (a DEM tile
+   * arrived); every tile is then re-grounded, a few per frame.
    */
-  setGround(sample: GroundSampler | null): void;
+  setGround(sample: GroundSampler | null, lattice?: GroundLattice): void;
   dispose(): void;
 }
 
-/** Tiles re-grounded per frame: each is a 1,089-sample grid plus a pass over its vertices. */
+/** Tiles re-grounded per frame: each is a grid on the DEM lattice (4,356 samples for a z15 tile) plus a pass over its vertices. */
 const GROUND_TILES_PER_FRAME = 1;
 
 /**
@@ -373,7 +389,8 @@ const MAX_CACHED_TILES = 160;
 // (`engine/quality.ts` → `cityQuality`; `docs/MAP_PERFORMANCE.md`): what one
 // frame may draw (bytes, vertices), what the cache may hold beyond it (panning
 // slack and fallback levels), the bytes of new meshes handed to the GPU per
-// frame (at least one mesh always goes), and tree instances per frame,
+// frame (at least one mesh always goes; the overlays get what the city's
+// arrivals leave, `overlay.ts` → `FrameUploadBudget`), and tree instances per frame,
 // nearest tiles first (a tile past it draws its buildings without trees).
 
 /**
@@ -382,6 +399,23 @@ const MAX_CACHED_TILES = 160;
  */
 const SLOW_FRAME_MS = 50;
 const IDLE_GAP_MS = 500;
+
+/**
+ * A frame's upload budget of `bytes` (`overlay.ts` → {@link FrameUploadBudget}):
+ * the first upload always fits, then only what is left.
+ */
+function frameUploadBudget(bytes: number): FrameUploadBudget {
+  let left = bytes;
+  let taken = false;
+  return {
+    take(size) {
+      if (taken && size > left) return false;
+      taken = true;
+      left -= size;
+      return true;
+    },
+  };
+}
 
 /** Requests in flight per worker: enough to overlap fetch and mesh, few enough to cancel. */
 const MAX_IN_FLIGHT_PER_WORKER = 2;
@@ -406,17 +440,29 @@ function expandTemplate(template: string, tile: TileId): string {
     .replace('{y}', String(tile.y));
 }
 
-/** The fill's source tile for a city tile: its ancestor at the fill source's zoom. */
-function treeFill(
+/**
+ * What surrounds a city tile's trees (`treeContext.ts`): its ancestor at the
+ * basemap's zoom (areas; the fill's landcover) and the road tile at its own
+ * address.
+ */
+function treeContextFor(
   tile: TileId,
-  fill: { tileUrlTemplate: string; tileZoom: number; mappedLayer: string },
-): { url: string; tile: TileId; mappedLayer: string } {
-  const shift = Math.max(0, tile.z - fill.tileZoom);
+  source: {
+    tileUrlTemplate: string;
+    tileZoom: number;
+    mappedLayer: string;
+    roadTileUrlTemplate?: string;
+  },
+): { url: string; tile: TileId; roadsUrl?: string; mappedLayer: string } {
+  const shift = Math.max(0, tile.z - source.tileZoom);
   const parent = { z: tile.z - shift, x: tile.x >> shift, y: tile.y >> shift };
   return {
-    url: expandTemplate(fill.tileUrlTemplate, parent),
+    url: expandTemplate(source.tileUrlTemplate, parent),
     tile: parent,
-    mappedLayer: fill.mappedLayer,
+    ...(source.roadTileUrlTemplate
+      ? { roadsUrl: expandTemplate(source.roadTileUrlTemplate, tile) }
+      : {}),
+    mappedLayer: source.mappedLayer,
   };
 }
 
@@ -440,11 +486,6 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   const trees = quality.treeBudget > 0 ? (options.trees ?? null) : null;
   const probe = options.probe;
   const now = options.now ?? (() => performance.now());
-  const renderer = new THREE.WebGLRenderer({ canvas: options.canvas, context: options.gl });
-  // The map owns the framebuffer: never clear what it has already drawn.
-  renderer.autoClear = false;
-
-  const scene = new THREE.Scene();
   const camera = new THREE.Camera();
   const overlays = options.overlays ?? [];
 
@@ -458,35 +499,40 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     // The night seam (`setNightFactor`): read by every night-time look.
     uNightFactor: { value: 0 },
   };
-  // City sky: its shaders and light inputs replace the buildings' own — one
-  // shading path (`skyShaders.ts`).
   // The detailed look is a response to the sky's light: its one shading path
   // (`materials.ts`). Without a sky there is nothing for it to answer.
   const detailed = options.sky ? options.material : undefined;
+  // City sky: its light inputs, shadow map and haze light the buildings in
+  // place of the map's light — one shading path (`tsl/skyBuildingMaterial.ts`).
   const sky: CitySky | null = options.sky
     ? createCitySky({
         appearance: options.sky.appearance,
-        // The art direction's response, when the detailed look is on.
-        material: options.sky.material ?? (detailed ? DETAILED_SKY_MATERIAL_GLSL : undefined),
         shadows: quality.shadows,
         now,
-        baseUniforms: light,
+        nightFactor: light.uNightFactor,
         requestRepaint: () => options.requestRepaint(),
       })
     : null;
-  // Overlays (city life) get the sky's live inputs too (`overlay.ts` → `setSky`).
-  if (sky) for (const overlay of overlays) overlay.setSky?.(sky.overlayInput);
+  // Overlays (city life, the streets) get the sky's live inputs too (`overlay.ts` → `setSky`).
+  if (sky) for (const overlay of overlays) overlay.setSky?.(sky.nodes);
+  // The sky's ground passes draw first in the same render as the buildings
+  // (`SKY_PASS_LAYER`); a frame with no city draws them alone.
+  camera.layers.enable(SKY_PASS_LAYER);
+  const skyPassCamera = new THREE.Camera();
+  skyPassCamera.layers.set(SKY_PASS_LAYER);
   const buildingUniforms = {
     ...light,
-    ...sky?.buildingUniforms,
     uLow: { value: new THREE.Vector3() },
     uTall: { value: new THREE.Vector3() },
     uVeryTall: { value: new THREE.Vector3() },
     uTallM: { value: 60 },
     uVeryTallM: { value: 180 },
-    // The detailed material's uniforms (day and night), only when it is on.
-    ...(detailed ? materialSlots(detailed) : {}),
   };
+  // The detailed look's response and surface tint (day and night), only when it is on.
+  const detailedMaterial =
+    detailed && sky
+      ? createDetailedMaterial(materialUniformValues(detailed), sky.nodes.nightFactor)
+      : null;
   let drawCpuMs = 0;
   const treeUniforms = {
     ...light,
@@ -495,40 +541,104 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     uTreeMinHeight: { value: 0 },
     uTrunk: { value: new THREE.Vector3(0.3, 0.3, 0.25) },
   };
-  // The TSL pass (`docs/MAP_NATIVE_3D.md` → Phase 2): three's
-  // `WebGPURenderer` in this same context, drawing every ported material —
-  // the trees, and the buildings whenever the city sky is off — bound to
-  // these same uniforms. Imported statically: a separate `import()` would
-  // share three's core with this chunk, and Expo hoists a module two async
-  // chunks share into the first-paint `__common` chunk (measured: 27.5 →
-  // 135.8 KB gzip for every visitor).
+  // The engine's one renderer (`docs/MAP_NATIVE_3D.md` → Phase 2): three's
+  // `WebGPURenderer` in this same context, drawing every material — the
+  // buildings (map-lit, or under the sky), the trees, the sky's passes and
+  // every overlay — bound to these same uniforms. Imported statically: a
+  // separate `import()` would share three's core with this chunk, and Expo
+  // hoists a module two async chunks share into the first-paint `__common`
+  // chunk (measured: 27.5 → 135.8 KB gzip for every visitor).
   const tslPass = createTslPass({
     gl: options.gl,
     canvas: options.canvas,
     buildingUniforms,
     treeUniforms,
     side: MESH_SIDES,
+    ...(sky
+      ? {
+          sky: {
+            nodes: sky.nodes,
+            response: options.sky?.response ?? detailedMaterial?.response ?? clayResponse,
+            detailedSurface: detailedMaterial?.surface,
+          },
+        }
+      : {}),
     onReady: () => options.requestRepaint(),
   });
-  // Overlays draw in this scene (GLSL) or the TSL pass's, as each is ported.
-  for (const overlay of overlays) overlay.attach(scene, tslPass.scene);
-  // The shared TSL materials draw every tile; with the sky, the buildings are
-  // still the sky's `RawShaderMaterial`s, one per tile entry (`cityMeshes.ts`,
-  // which also explains which faces each keeps: the model matrices mirror y,
-  // and three swaps its notion of "front" with the determinant).
-  const context = {
-    scene,
-    buildingUniforms,
-    // The detailed look: every building material compiles its response.
-    buildingDefines: (detailed ? { [DETAILED_DEFINE]: '' } : {}) as Record<string, string>,
-    buildingShaders: sky?.buildingShaders ?? null,
-    tsl: tslPass,
-  };
+  for (const overlay of overlays) overlay.attach(tslPass.scene);
+  if (sky) tslPass.scene.add(sky.passes);
+  // The shared materials draw every tile (`cityMeshes.ts`, which also explains
+  // which faces each keeps: the model matrices mirror y, and three swaps its
+  // notion of "front" with the determinant).
+  const context = { tsl: tslPass };
   // Where the city tiles draw instead of the basemap's buildings (`sources.ts`).
   const city = options.city
     ? { tileZoom: options.city.tileZoom, coverage: options.city.coverage }
     : null;
   const shapes = createTreeShapes();
+  // The materials, built while the first tiles are still meshing
+  // (`materialWarmup.ts`): every format this engine draws, on its one pass.
+  const warmup = createMaterialWarmup(
+    context,
+    shapes,
+    city ? ['openmaptiles', 'goway'] : ['openmaptiles'],
+  );
+  // What the city's warm-up builds: its own meshes (the sky's passes are
+  // warmed first, on their own, with `skyPassCamera`).
+  const warmCamera = new THREE.Camera();
+  warmCamera.layers.set(WARM_LAYER);
+  // The passes' warm-up done (the sky may draw), the city's (its tiles may
+  // arrive), and whether the grounded variants were started. The passes go
+  // first: three builds, so the sky shows without waiting for the city's.
+  // The grounded variants (a tile on terrain) follow in the background, so
+  // terrain arriving later lifts the drawn city in the frame it comes.
+  let passesWarmed = false;
+  let warmed = false;
+  let groundStarted = false;
+  let warming: Warming | null = null;
+  const startWarming = (camera: THREE.Camera, finish: () => void) => {
+    const started = withPassesShown(() => tslPass.warm(tslPass.scene, camera));
+    warming = started;
+    void started.done.then(() => {
+      if (disposed || warming !== started) return;
+      warming = null;
+      finish();
+      options.requestRepaint();
+    });
+  };
+  /** One step of the warm-up in progress, from the render callback. */
+  const stepWarming = () => {
+    if (!warming && tslPass.ready) {
+      if (sky && !passesWarmed) {
+        startWarming(skyPassCamera, () => {
+          passesWarmed = true;
+        });
+      } else if (!warmed) {
+        // Terrain already in: its grounded variants are the ones the tiles need.
+        if (ground) groundStarted = warmup.ground();
+        startWarming(warmCamera, () => {
+          warmed = true;
+        });
+      } else if (!groundStarted) {
+        groundStarted = true;
+        if (warmup.ground()) startWarming(warmCamera, () => {});
+      }
+    }
+    const current = warming;
+    // The next step is the next frame's; the builds then ask for one when done.
+    if (current && withPassesShown(() => current.step())) options.requestRepaint();
+  };
+  /** `run` with the sky's passes shown: the warm-up builds them too. */
+  const withPassesShown = <T>(run: () => T): T => {
+    const passes = sky?.passes;
+    const shown = passes?.visible ?? false;
+    if (passes) passes.visible = true;
+    try {
+      return run();
+    } finally {
+      if (passes) passes.visible = shown;
+    }
+  };
   const transitions = new Transitions<TileEntry>();
 
   // `null` entries are empty tiles (sea, fields): cached so they are not
@@ -554,6 +664,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   let errors = 0;
   // Which official datasets each tile entry draws, and the set last reported.
   const entrySources = new WeakMap<object, readonly string[]>();
+  // Where each tile entry's mapped trees went (`treeContext.ts`), for the stats.
+  const entryTreeSettings = new WeakMap<object, TreeSettingCounts>();
   let drawnSources = '';
   const reportSources = (sources: ReadonlySet<string>) => {
     const key = [...sources].sort().join(',');
@@ -565,7 +677,15 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   let lastFrameAt = 0;
   let lastStatsAt = 0;
   let lastSignature = '';
-  let drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
+  let drawn = {
+    triangles: 0,
+    vertices: 0,
+    trees: 0,
+    treeTriangles: 0,
+    treeSettings: { street: 0, nature: 0, nudged: 0, offCarriageway: 0 },
+  };
+  // Tiles this frame wanted to draw but could not yet: on terrain, not lifted.
+  const unlifted = new Set<string>();
   // Measured full-detail cost per canonical tile, and a running mean of it.
   const measured = new Map<string, TileCost>();
   let meanFull: TileCost = UNKNOWN_FULL;
@@ -671,14 +791,15 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       if (cache.has(lodKey(tileKey(tile), tile.lod))) loaded++;
     }
     // Counts that changed are reported at once; timings at most 4× a second.
-    const signature = `${byLod.join()}|${loaded}|${scheduler.pendingCount}|${arrivals.length}|${errors}`;
+    const signature = `${byLod.join()}|${loaded}|${scheduler.pendingCount}|${arrivals.length}|${unlifted.size}|${errors}`;
     if (!force && signature === lastSignature && at - lastStatsAt < 250) return;
     lastSignature = signature;
     lastStatsAt = at;
     options.onStats({
       tilesWanted: selected.length,
       tilesLoaded: loaded,
-      tilesPending: scheduler.pendingCount + arrivals.length,
+      // On terrain a tile is not drawn until it is lifted: pending until then.
+      tilesPending: scheduler.pendingCount + arrivals.length + unlifted.size,
       tilesByLod: byLod,
       ...drawn,
       gpuBytes: cache.bytes,
@@ -686,7 +807,6 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       lastTreeMs,
       frameCpuMs,
       drawCpuMs,
-      buildingPath: sky ? 'glsl' : 'tsl',
       uploadsQueued: arrivals.length,
       workers: pool.size,
       errors,
@@ -773,25 +893,32 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   /** Entries drawn at least once: their meshes are on the GPU. */
   const drawnEntries = new WeakSet<TileEntry>();
 
-  /** Hand queued meshes to the GPU, nearest first, within this frame's budget. */
-  const admit = (now: number) => {
-    if (arrivals.length === 0) return;
-    const rank = new Map<string, number>();
-    for (const tile of selected) rank.set(lodKey(tileKey(tile), tile.lod), tile.r);
-    arrivals.sort((a, b) => (rank.get(a.key) ?? 1e9) - (rank.get(b.key) ?? 1e9));
+  /** This frame's upload budget: the city's arrivals first, then the overlays. */
+  const uploadBudgetAt = (now: number) => {
     // A long gap since the last frame is the map at rest, not a slow frame.
     const gap = now - lastFrameAt;
     const slow = lastFrameAt > 0 && gap > SLOW_FRAME_MS && gap < IDLE_GAP_MS;
-    let budget = slow ? 0 : quality.uploadBytesPerFrame;
-    let admitted = 0;
+    return frameUploadBudget(slow ? 0 : quality.uploadBytesPerFrame);
+  };
+
+  /** Hand queued meshes to the GPU, nearest first, within this frame's budget. */
+  const admit = (now: number, upload: FrameUploadBudget) => {
+    // No tile becomes drawable before its materials are built
+    // (`materialWarmup.ts`): its first draw would build them, in the frame.
+    // Held here, the arrivals then go up under this budget as always.
+    if (arrivals.length === 0 || !warmed) return;
+    const rank = new Map<string, number>();
+    for (const tile of selected) rank.set(lodKey(tileKey(tile), tile.lod), tile.r);
+    arrivals.sort((a, b) => (rank.get(a.key) ?? 1e9) - (rank.get(b.key) ?? 1e9));
     const wanted = protectedKeys();
     while (arrivals.length > 0) {
       const next = arrivals[0];
-      const bytes = (next.reply.mesh?.bytes ?? 0) + (next.reply.trees?.data.byteLength ?? 0);
-      if (admitted > 0 && bytes > budget) break;
+      const bytes =
+        (next.reply.mesh?.bytes ?? 0) +
+        (next.reply.trees?.data.byteLength ?? 0) +
+        (next.reply.trees?.form.byteLength ?? 0);
+      if (!upload.take(bytes)) break;
       arrivals.shift();
-      admitted++;
-      budget -= bytes;
       const entry = createTileEntry(
         context,
         shapes,
@@ -802,6 +929,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         next.format,
       );
       if (entry && next.reply.sources) entrySources.set(entry, next.reply.sources);
+      if (entry && next.reply.treeSettings) entryTreeSettings.set(entry, next.reply.treeSettings);
       remember(next.key.slice(0, next.key.indexOf('@')), next.lod, entry);
       if (next.reply.treesComplete === false) {
         const attempts = (incomplete.get(next.key)?.attempts ?? 0) + 1;
@@ -889,14 +1017,16 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
                 sourceLayer: options.city.sourceLayer,
                 format: 'goway' as const,
                 ...(hidden.length > 0 ? { hidden } : {}),
-                // The fill reads the basemap's landcover: the city tiles
+                // The trees' setting reads the basemap's areas and the road
+                // archive; the fill the basemap's landcover: the city tiles
                 // carry buildings and the trees OSM records, no landcover.
                 ...(trees
                   ? {
-                      treeFill: treeFill(tile, {
+                      treeContext: treeContextFor(tile, {
                         tileUrlTemplate: options.tileUrlTemplate,
                         tileZoom: options.tileZoom,
                         mappedLayer: options.city.treeLayer,
+                        roadTileUrlTemplate: options.city.roadTileUrlTemplate,
                       }),
                     }
                   : {}),
@@ -955,7 +1085,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     const started = now();
     frame++;
     updateWanted(view, started);
-    admit(started);
+    const upload = uploadBudgetAt(started);
+    admit(started, upload);
     lastFrameAt = started;
 
     const span = options.fade.end - options.fade.start;
@@ -966,7 +1097,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     const center = { x: mercatorXFromLng(view.center.lng), y: mercatorYFromLat(view.center.lat) };
     if (overlays.length > 0) {
       probe?.enter('life');
-      for (const overlay of overlays) overlay.update({ view, center, opacity });
+      for (const overlay of overlays) overlay.update({ view, center, opacity, upload });
       probe?.leave();
     }
     transitions.begin();
@@ -1026,7 +1157,14 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     }
 
     for (const entry of cache.values()) setEntryVisible(entry, false);
-    drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
+    drawn = {
+      triangles: 0,
+      vertices: 0,
+      trees: 0,
+      treeTriangles: 0,
+      treeSettings: { street: 0, nature: 0, nudged: 0, offCarriageway: 0 },
+    };
+    unlifted.clear();
     const casting: DrawnTile[] = [];
     const sources = new Set<string>();
     if (opacity > 0) {
@@ -1043,7 +1181,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       )[0];
       for (const { value: entry, from, to } of draws) {
         if (!entry.placement) continue;
-        if (grounded && (!grounder.hasGround(entry.key) || firstGrounded.has(entry.key))) continue;
+        if (grounded && (!grounder.hasGround(entry.key) || firstGrounded.has(entry.key))) {
+          unlifted.add(entry.key);
+          continue;
+        }
         placeEntry(entry, entry.placement, center);
         setEntryTreeDetail(entry, shapes, r(entry) < nearTreesWithin);
         setEntryFade(entry, from, to);
@@ -1064,6 +1205,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         } else {
           drawn.trees += entry.treeCount;
           drawn.treeTriangles += entry.treeTriangles;
+          const settings = entryTreeSettings.get(entry);
+          if (settings) {
+            drawn.treeSettings.street += settings.street;
+            drawn.treeSettings.nature += settings.nature;
+            drawn.treeSettings.nudged += settings.nudged;
+            drawn.treeSettings.offCarriageway += settings.offCarriageway;
+          }
         }
       }
     }
@@ -1104,7 +1252,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       // anything to cast, and allocates its shadow target either way. Only
       // the buildings cast (`cityMeshes.ts` → `CASTER_LAYER`).
       probe?.enter('shadows');
-      sky.prerender(renderer, scene, prepared.skyView, prepared.casters);
+      sky.prerender(tslPass, tslPass.scene, prepared.skyView, prepared.casters);
       probe?.leave();
     },
 
@@ -1114,23 +1262,27 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       const frameOf = schedule.render() || !prepared ? prepare(view) : prepared;
       prepared = null;
 
-      // three caches GL state it believes it set; the map changed all of it
-      // since the last frame. MapLibre in turn marks its own state dirty
-      // after a custom layer returns, so nothing needs restoring after.
-      renderer.resetState();
+      // The pass resets three's view of the GL state the map changed before
+      // each draw; MapLibre in turn marks its own state dirty after a custom
+      // layer returns, so nothing needs restoring after.
       // The sky and the haze are drawn at every zoom the effect covers,
-      // buildings or not.
+      // buildings or not: in the buildings' render, or alone without them.
+      let skyPasses = false;
       if (sky) {
         probe?.enter('sky');
-        sky.drawBackground(renderer, frameOf.skyView);
+        skyPasses = sky.update(tslPass, frameOf.skyView) && passesWarmed;
+        sky.passes.visible = skyPasses;
+        if (skyPasses && frameOf.opacity <= 0) tslPass.drawScene(tslPass.scene, skyPassCamera);
         probe?.leave();
       }
+      // Once the pass is up, and again when the terrain first arrives: build
+      // the materials ahead of the tiles (after the sky has allocated its
+      // shadow map, which they sample), here in the map's render callback
+      // (`tsl/tslPass.ts` → `warm`).
+      stepWarming();
       if (frameOf.opacity > 0) {
         const drawStarted = performance.now();
         tslPass.draw(camera);
-        // The TSL pass changed GL state behind this renderer's back.
-        renderer.resetState();
-        renderer.render(scene, camera);
         const drawn = performance.now() - drawStarted;
         drawCpuMs = drawCpuMs === 0 ? drawn : drawCpuMs * 0.9 + drawn * 0.1;
         if (landmarks.active) {
@@ -1192,11 +1344,11 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       pass.render(tslPass, view);
     },
 
-    setGround(sample) {
+    setGround(sample, lattice) {
       // One terrain path and ONE cache of it (`terrainGround.ts` → `Ground`):
-      // buildings and trees (the grids), city life (the same grids), models,
+      // buildings, trees, the street detail and city life (the grids), models,
       // landmarks and live vehicles (the same sampler, at their anchor).
-      ground = sample ? createGround(sample) : null;
+      ground = sample ? createGround(sample, lattice) : null;
       grounder.setGround(ground);
       models.setGround(sample);
       for (const overlay of overlays) overlay.setGround(ground);
@@ -1283,14 +1435,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       retryTimers.clear();
       transitions.clear();
       cache.clear();
+      // After any build still in flight: disposing detaches the shared tree
+      // buffers its meshes read.
+      void (warming?.done ?? Promise.resolve()).then(() => warmup.dispose());
       tslPass.dispose();
       shapes.dispose();
       requests.clear();
       arrivals.length = 0;
-      // `dispose()` frees three's own bookkeeping. NOT `forceContextLoss()`,
-      // which `sparkEngine` uses on its own canvas: this context is the MAP's,
-      // and losing it would blank the basemap.
-      renderer.dispose();
     },
   };
 
@@ -1306,16 +1457,4 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   }
   engine.setLight(options.light);
   return engine;
-}
-
-/** three uniform slots for every uniform the detailed material declares. */
-function materialSlots(material: {
-  day: CityMaterial;
-  night: CityMaterial;
-}): Record<string, { value: number | THREE.Vector3 }> {
-  const slots: Record<string, { value: number | THREE.Vector3 }> = {};
-  for (const [name, value] of Object.entries(materialUniformValues(material))) {
-    slots[name] = { value: Array.isArray(value) ? new THREE.Vector3().fromArray(value) : value };
-  }
-  return slots;
 }

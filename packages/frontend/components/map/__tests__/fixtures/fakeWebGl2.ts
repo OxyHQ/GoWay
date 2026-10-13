@@ -32,6 +32,10 @@ export function createFakeWebGl2(
   gl: WebGL2RenderingContext;
   canvas: FakeCanvas;
 } {
+  // three's texture nodes test `image instanceof ImageBitmap`, a browser
+  // global bun does not have; no image here is one.
+  const scope = globalThis as { ImageBitmap?: unknown };
+  scope.ImageBitmap ??= class ImageBitmap {};
   const canvas: FakeCanvas = {
     width,
     height,

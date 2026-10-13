@@ -82,6 +82,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { useTheme } from '@oxy.so/bloom/theme';
 import { Text } from '@oxy.so/bloom/typography';
 
 import { MapCanvas, type MapApi, type MapMarker } from '@/components/map';
@@ -110,6 +111,18 @@ const GOWAY_ORIGIN = 'https://goway.to';
 export default function FrameRoute() {
   const params = useLocalSearchParams<Record<string, string | string[]>>();
   const parsed = parseEmbedParams(params);
+  // The embed's light is the embedder's (`light=`, `theme=`) or the page's
+  // theme — never this device's own map setting, which belongs to goway.to.
+  const themeDark = useTheme().isDark;
+  const lightPreset =
+    parsed.lightPreset ??
+    (parsed.appearance
+      ? parsed.appearance === 'dark'
+        ? 'night'
+        : 'day'
+      : themeDark
+        ? 'night'
+        : 'day');
   const mapRef = useRef<MapApi>(null);
 
   // Only ever enabled when the embedder asked for a place by id, so the normal
@@ -225,7 +238,9 @@ export default function FrameRoute() {
       <MapCanvas
         ref={mapRef}
         initialViewport={initialViewportFrom(parsed)}
-        {...(parsed.appearance ? { appearance: parsed.appearance } : {})}
+        // The embedder's style, never the visitor's: Standard unless `style=`.
+        mapStyle={parsed.style ?? 'standard'}
+        lightPreset={lightPreset}
         markers={markers}
         interaction={
           parsed.interactive

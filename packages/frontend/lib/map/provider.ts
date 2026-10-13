@@ -42,6 +42,12 @@
  * @see `packages/frontend/README.md` for the cartography notes and the native
  *      build requirement.
  */
+import {
+  type MapStyleSelection,
+  mapStylePath,
+  mapStyleThumbnailPath,
+  presetAppearance,
+} from './style/catalogue';
 import { OPENMAPTILES_SOURCE_LAYERS } from './style/schema';
 
 /** Which of the two cartographic appearances a style document is for. */
@@ -130,9 +136,13 @@ export interface MapSourceConfig {
   id: string;
   /** Human label, e.g. for a future "map data" credit sheet. */
   label: string;
-  /** Style document URL per appearance. May be origin-relative; see
-   *  {@link resolveMapStyleUrl}. */
-  styleUrl: Record<MapAppearance, string>;
+  /**
+   * The style document for a (style, light) — GoWay's catalogue
+   * (`lib/map/style/catalogue.ts`) — or, for a source that publishes only
+   * a light and a dark document, the one for the selection's appearance. May
+   * be origin-relative; see {@link resolveMapStyleUrl}.
+   */
+  styleUrl: (selection: MapStyleSelection) => string;
   attribution: MapAttribution;
   ids: MapSourceIds;
   minZoom: number;
@@ -247,6 +257,12 @@ export const GOWAY_MAP_PATHS = {
    * prototype adds it, at runtime.
    */
   terrain: '/map/terrain/{z}/{x}/{y}.webp',
+  /**
+   * Contour lines, traced by the Worker from the elevation tiles above and
+   * cached at the edge (`worker/contours.js`, z9–14). Named by the Outdoors
+   * style documents.
+   */
+  contours: '/map/contours/{z}/{x}/{y}.pbf',
 } as const;
 
 /**
@@ -314,17 +330,17 @@ export const GOWAY_BASEMAP_SOURCE_ID = 'openmaptiles';
 
 /**
  * Where the generated style documents are served from, relative to the app's
- * own origin.
+ * own origin: `/map/styles/<style>/<light>.json`, one per entry of the style
+ * catalogue (`docs/MAP_STYLES.md`).
  *
  * `expo export --platform web` copies `public/` into `dist/` verbatim and
  * `wrangler.toml` serves `dist/`, so these paths are live on `goway.to` with no
  * deploy step of their own. See {@link resolveMapStyleUrl} for how a *native*
- * build — which has no origin — resolves them.
+ * build — which has no origin — resolves them. (`/map/goway-light.json` and
+ * `/map/goway-dark.json` are still published, as copies of Standard by day
+ * and by night, for builds that name them.)
  */
-const GOWAY_STYLE_PATHS: Record<MapAppearance, string> = {
-  light: '/map/goway-light.json',
-  dark: '/map/goway-dark.json',
-};
+const gowayStylePath = (selection: MapStyleSelection): string => mapStylePath(selection);
 
 /** GoWay's canonical origin (AGENTS.md → Product boundaries). */
 const GOWAY_ORIGIN = 'https://goway.to';
@@ -357,6 +373,8 @@ export function gowayMapEndpoints(origin: string): {
   tiles: string;
   glyphs: string;
   sprite: string;
+  terrain: string;
+  contours: string;
 } {
   const base = origin.replace(/\/+$/, '');
   return {
@@ -364,6 +382,8 @@ export function gowayMapEndpoints(origin: string): {
     tiles: `${base}${GOWAY_MAP_PATHS.tiles}`,
     glyphs: `${base}${GOWAY_MAP_PATHS.glyphs}`,
     sprite: `${base}${GOWAY_MAP_PATHS.sprite}`,
+    terrain: `${base}${GOWAY_MAP_PATHS.terrain}`,
+    contours: `${base}${GOWAY_MAP_PATHS.contours}`,
   };
 }
 
@@ -412,7 +432,7 @@ export const GOWAY_MAP_ORIGIN = process.env.GOWAY_MAP_ORIGIN || GOWAY_ORIGIN;
 export const GOWAY_SOURCE: MapSourceConfig = {
   id: 'goway',
   label: 'GoWay',
-  styleUrl: GOWAY_STYLE_PATHS,
+  styleUrl: gowayStylePath,
   attribution: ATTRIBUTION,
   ids: {
     basemap: GOWAY_BASEMAP_SOURCE_ID,
@@ -441,10 +461,12 @@ export const GOWAY_SOURCE: MapSourceConfig = {
 export const OPENFREEMAP_SOURCE: MapSourceConfig = {
   id: 'openfreemap',
   label: 'OpenFreeMap',
-  styleUrl: {
-    light: 'https://tiles.openfreemap.org/styles/liberty',
-    dark: 'https://tiles.openfreemap.org/styles/fiord',
-  },
+  // Two documents and no catalogue: every GoWay style falls back to the one
+  // for its light's appearance.
+  styleUrl: (selection) =>
+    presetAppearance(selection.preset) === 'dark'
+      ? 'https://tiles.openfreemap.org/styles/fiord'
+      : 'https://tiles.openfreemap.org/styles/liberty',
   attribution: ATTRIBUTION,
   ids: {
     basemap: GOWAY_BASEMAP_SOURCE_ID,
@@ -494,15 +516,16 @@ export function getMapSource(): MapSourceConfig {
   const requested = process.env.EXPO_PUBLIC_MAP_SOURCE;
   const base = (requested && SOURCES[requested]) || GOWAY_SOURCE;
 
-  const light = process.env.EXPO_PUBLIC_MAP_STYLE_URL_LIGHT;
-  const dark = process.env.EXPO_PUBLIC_MAP_STYLE_URL_DARK;
-  if (!light && !dark) return base;
+  const lightOverride = process.env.EXPO_PUBLIC_MAP_STYLE_URL_LIGHT;
+  const darkOverride = process.env.EXPO_PUBLIC_MAP_STYLE_URL_DARK;
+  if (!lightOverride && !darkOverride) return base;
 
   return {
     ...base,
-    styleUrl: {
-      light: light || base.styleUrl.light,
-      dark: dark || base.styleUrl.dark,
+    // An override names one document per appearance, for every style.
+    styleUrl: (selection) => {
+      const dark = presetAppearance(selection.preset) === 'dark';
+      return (dark ? darkOverride : lightOverride) || base.styleUrl(selection);
     },
     ids: {
       ...base.ids,
@@ -543,9 +566,17 @@ function absoluteStyleUrl(url: string): string {
   return `${browserOrigin ?? GOWAY_ORIGIN}${url}`;
 }
 
-/** The style document URL for an appearance. The ONLY way to obtain one. */
-export function resolveMapStyleUrl(appearance: MapAppearance): string {
-  return absoluteStyleUrl(getMapSource().styleUrl[appearance]);
+/**
+ * A style's picker thumbnail (`scripts/build-map-thumbs.ts` renders them with
+ * the real renderer), resolved like a style document so native can load it.
+ */
+export function resolveMapStyleThumbnailUrl(selection: MapStyleSelection): string {
+  return absoluteStyleUrl(mapStyleThumbnailPath(selection));
+}
+
+/** The style document URL for a style in a light. The ONLY way to obtain one. */
+export function resolveMapStyleUrl(selection: MapStyleSelection): string {
+  return absoluteStyleUrl(getMapSource().styleUrl(selection));
 }
 
 /**

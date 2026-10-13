@@ -6,7 +6,7 @@
  * `useSunLight` produces (`lib/map/sunLight.ts`), or the style document's own
  * when GoWay does not own the style — so that switching renderers changes the
  * bevels and the occlusion and nothing else. This module is the translation,
- * and the shader in `engine/city3d/shaders.ts` is MapLibre's own
+ * and the material in `engine/city3d/tsl/common.ts` (`extrusionLit`) is MapLibre's own
  * `fill-extrusion` lighting formula, so the two agree face for face.
  *
  * ## MapLibre's frame, read off maplibre-gl 6.10

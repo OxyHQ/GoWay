@@ -69,9 +69,17 @@ import {
   resolveMapStyleUrl,
 } from '@/lib/map/provider';
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
+import { mapStyleDefinition, presetAppearance } from '@/lib/map/style/catalogue';
 
 import type { City3dHandle } from './city3dLayer.web';
 import type { LiveLayerHandle } from './liveLayer.web';
+import {
+  attachCameraReports,
+  isGestureMove,
+  isTransientMove,
+  PROGRAMMATIC,
+  PROGRAMMATIC_TRANSIENT,
+} from './cameraReports.web';
 import { applyDragAxes } from './dragAxes';
 import { DefaultMapMarker } from './DefaultMapMarker';
 import {
@@ -121,12 +129,13 @@ import {
   type MapCreditLink,
   type MapLabelFeature,
   type MapMarker,
-  type MapMoveSource,
   type MapOverlay,
   type MapViewport,
   type ResolvedMapViewport,
 } from './types';
 import { useCompactCredit } from './useCompactCredit';
+import { useMapStyle } from './useMapStyle';
+import { applyQualityOverrides, type QualityHost } from './qualityOverrides';
 import { useSunLight } from './useSunLight';
 
 /**
@@ -190,40 +199,6 @@ const TimeOfDayScrubber = lazy(() => import('./TimeOfDayScrubber.web'));
 const DEGENERATE_FIT_ZOOM = 15;
 const DEFAULT_FIT_PADDING = 48;
 const DEFAULT_CAMERA_DURATION_MS = 500;
-/** Streaming viewport updates while a drag is in progress. */
-const MOVE_THROTTLE_MS = 100;
-
-/**
- * Marker put on every camera COMMAND GoWay issues, read back off the event.
- *
- * Marking our own commands (rather than sniffing for a DOM `originalEvent`) is
- * the safer direction of failure: a command somebody forgets to mark reads as a
- * user gesture, so "Search this area" appears once when it need not have. The
- * alternative — treat anything unrecognised as programmatic — hides the button
- * for good and looks like the feature was never built.
- */
-const PROGRAMMATIC = { gowayProgrammatic: true } as const;
-
-/**
- * One frame of a caller-driven animation (`MapCameraOptions.transient`): a
- * programmatic move whose `moveend` is not a settled camera.
- */
-const PROGRAMMATIC_TRANSIENT = { gowayProgrammatic: true, gowayTransient: true } as const;
-
-function moveSourceOf(event: unknown): MapMoveSource {
-  const marked = event as { gowayProgrammatic?: unknown } | null | undefined;
-  return marked?.gowayProgrammatic === true ? 'programmatic' : 'user';
-}
-
-/** A camera move a pointer, wheel, key or touch caused (MapLibre attaches it). */
-function isGestureMove(event: unknown): boolean {
-  return (event as { originalEvent?: unknown } | null | undefined)?.originalEvent != null;
-}
-
-function isTransientMove(event: unknown): boolean {
-  return (event as { gowayTransient?: unknown } | null | undefined)?.gowayTransient === true;
-}
-
 interface MarkerSlot {
   id: string;
   marker: maplibregl.Marker;
@@ -234,6 +209,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   {
     initialViewport = DEFAULT_VIEWPORT,
     appearance,
+    mapStyle,
+    lightPreset,
     markers,
     renderMarker,
     overlays,
@@ -295,9 +272,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const [runtime, setRuntime] = useState<{ handle: MapRuntime | null } | null>(null);
   /**
    * What the last engine was built for, and where its camera was when it went.
-   * A rebuild for a RELIEF toggle (same style, same retry) starts where the
-   * person was looking; an appearance change or a retry still starts at
-   * `initialViewport`, as before — `useSunLight` is keyed on exactly those two.
+   * A rebuild for a relief toggle, a new style or a new light starts where the
+   * person was looking — changing the map's look never moves the map; only a
+   * retry starts again at `initialViewport`.
    */
   const lastEngine = useRef<{
     styleUrl: string;
@@ -306,7 +283,6 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   } | null>(null);
   const markerSlots = useRef<Map<string, MarkerSlot>>(new Map());
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
-  const lastMoveEmit = useRef(0);
 
   const [ready, setReady] = useState(false);
   // City sky: whether the layer that draws it is attached (the scrubber and
@@ -326,8 +302,24 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // when the marker set changes.
   const [slots, setSlots] = useState<readonly MarkerSlot[]>([]);
 
-  const resolvedAppearance = appearance ?? (theme.isDark ? 'dark' : 'light');
-  const styleUrl = useMemo(() => resolveMapStyleUrl(resolvedAppearance), [resolvedAppearance]);
+  // The style and its light (`useMapStyle.ts`): the screen's, or this
+  // device's choice. The appearance everything else reads — the buildings'
+  // light, the relief, the 3D city — is the light's.
+  const mapStyleState = useMapStyle(
+    { style: mapStyle, lightPreset, appearance },
+    isDrawableCoordinate(initialViewport) ? initialViewport : DEFAULT_VIEWPORT,
+  );
+  const { style: styleId, preset: stylePreset } = mapStyleState.selection;
+  const settleMapStyle = mapStyleState.settle;
+  const resolvedAppearance = presetAppearance(stylePreset);
+  const styleFollowsLight = mapStyleDefinition(styleId).light === 'follows';
+  // A style with its own relief (Outdoors) shows elevation data whatever the
+  // Terrain switch says, so its credit rides along.
+  const styleDrawsRelief = mapStyleDefinition(styleId).relief === true;
+  const styleUrl = useMemo(
+    () => resolveMapStyleUrl({ style: styleId, preset: stylePreset }),
+    [styleId, stylePreset],
+  );
   const gestures = resolveInteraction(interaction);
   const accent = theme.colors.primary;
 
@@ -429,8 +421,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     // A relief toggle rebuilds the engine (the globe is part of how the style
     // is loaded); it must not also move the camera.
     const previous = lastEngine.current;
-    const resume =
-      previous?.styleUrl === styleUrl && previous.reloadKey === reloadKey ? previous.camera : null;
+    const resume = previous && previous.reloadKey === reloadKey ? previous.camera : null;
     const containerBackground = container.style.background;
 
     // A camera the engine cannot build is not a reason to have no map: the
@@ -481,6 +472,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     }
 
     mapRef.current = map;
+    // A resumed engine starts where the old one was, not at `initialViewport`,
+    // which is where the sun tracker was just restarted: aim it here.
+    if (resume) settleSunLight({ latitude: start.latitude, longitude: start.longitude });
 
     // The ONE animation clock (`perf/animationClock.ts`): everything that moves
     // by itself asks it for frames; it pauses when the tab is hidden or the
@@ -538,7 +532,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               appearance: resolvedAppearance,
               terrain3d: qualityRef.current.relief.terrain3d,
               terrainTextureScale: qualityRef.current.relief.terrainTextureScale,
-              globeNight: qualityRef.current.relief.globeNight,
+              // A style with a fixed light (the data basemaps) is not darkened
+              // by the sun: its night side would be a different map.
+              globeNight: qualityRef.current.relief.globeNight && styleFollowsLight,
               at: skyAtRef.current,
             });
             reliefRef.current = reliefHandle;
@@ -560,63 +556,27 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       handlers.current.onReady?.();
     };
 
-    const emitViewport = (isFinal: boolean, source: MapMoveSource) => {
-      const change = handlers.current.onViewportChange;
-      if (!change) return;
-      // `getCenter`/`getBounds` BUILD `LngLat`s out of the live transform, so a
-      // camera that has gone non-finite throws HERE — and this runs from the
-      // engine's own `move` event, which `jumpTo` fires synchronously inside
-      // whatever effect commanded it. Not reporting a viewport is a stale
-      // "Search this area"; throwing is the error boundary.
-      runEngineCommand('getViewport', () => {
-        const center = map.getCenter();
-        const bounds = map.getBounds();
-        change({
-          viewport: {
-            latitude: center.lat,
-            longitude: center.lng,
-            zoom: map.getZoom(),
-            bearing: map.getBearing(),
-            pitch: map.getPitch(),
-          },
-          bounds: {
-            west: bounds.getWest(),
-            south: bounds.getSouth(),
-            east: bounds.getEast(),
-            north: bounds.getNorth(),
-          },
-          source,
-          isFinal,
-        });
-      });
-    };
-
     const handleMove = (event: unknown) => {
       // The reader moving the map folds the credit; nothing else does. Only a
       // move carrying the input event that caused it is a gesture: MapLibre
       // also moves the camera itself (padding, resize, terrain), unmarked.
       if (isGestureMove(event)) noteCreditInteraction();
-      const now = Date.now();
-      if (now - lastMoveEmit.current < MOVE_THROTTLE_MS) return;
-      lastMoveEmit.current = now;
-      emitViewport(false, moveSourceOf(event));
     };
 
     const handleMoveEnd = (event: unknown) => {
-      // A frame of a caller-driven animation is not a settled camera: `move`
-      // already reported it (throttled), and the sun is re-read when the
-      // animation's closing, ordinary `moveTo` settles.
+      // A frame of a caller-driven animation is not a settled camera: the sun
+      // is re-read when the animation's closing, ordinary `moveTo` settles.
       if (isTransientMove(event)) return;
-      lastMoveEmit.current = 0;
-      emitViewport(true, moveSourceOf(event));
       // The settled camera is when the sun is re-read for the new centre —
-      // never `move`, which is every frame. Separate from `emitViewport`, which
-      // returns early for a caller with no `onViewportChange` (the embed), and
-      // which must not decide whether the buildings are lit. `getCenter` builds
-      // a `LngLat` and can throw on a broken transform, hence the wrapper.
+      // never `move`, which is every frame. Separate from the camera reports,
+      // which report nothing to a caller with no `onViewportChange` (the
+      // embed), and which must not decide whether the buildings are lit.
+      // `getCenter` builds a `LngLat` and can throw on a broken transform,
+      // hence the wrapper.
       runEngineCommand('getCenter', () => {
         const centre = map.getCenter();
         settleSunLight({ latitude: centre.lat, longitude: centre.lng });
+        settleMapStyle({ latitude: centre.lat, longitude: centre.lng });
       });
     };
 
@@ -809,6 +769,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       });
     };
 
+    // Before `handleLoad`, so the camera the map opened at is reported before
+    // `onReady` tells the caller the map is there (`loadedCamera.ts`).
+    const detachCameraReports = attachCameraReports(map, () => handlers.current.onViewportChange);
     map.on('load', handleLoad);
     map.on('move', handleMove);
     map.on('moveend', handleMoveEnd);
@@ -820,6 +783,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     map.on('error', handleError);
 
     return () => {
+      detachCameraReports();
       map.off('load', handleLoad);
       map.off('move', handleMove);
       map.off('moveend', handleMoveEnd);
@@ -870,7 +834,16 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     };
     // `initialViewport` is initial by contract — re-reading it here would make
     // a parent's inline object literal reset the camera on every render.
-  }, [styleUrl, reloadKey, relief, emitError, settleSunLight, noteCreditInteraction]);
+  }, [
+    styleUrl,
+    styleFollowsLight,
+    reloadKey,
+    relief,
+    emitError,
+    settleSunLight,
+    settleMapStyle,
+    noteCreditInteraction,
+  ]);
 
   // --- Buildings light ----------------------------------------------------
 
@@ -1114,6 +1087,22 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       map.off('pitch', check);
     };
   }, [city3dFeature, cityZoomReached, ready]);
+  // The low tier draws a dense style (Streets) at Standard's density: the
+  // loaded document's own overrides (`qualityOverrides.ts`), applied while
+  // the profile asks for them and undone when it stops, with no rebuild.
+  const standardDensity = quality.basemap.density === 'standard';
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !standardDensity) return;
+    let undo: (() => void) | null = null;
+    runEngineCommand('qualityOverrides', () => {
+      undo = applyQualityOverrides(map as unknown as QualityHost);
+    });
+    return () => {
+      if (mapRef.current === map) runEngineCommand('qualityOverrides', () => undo?.());
+    };
+  }, [ready, standardDensity]);
+
   const needsEngine = city3d || wantsModelEngine;
   // The quality profile reaches the attached engine by TIER: a new tier is a
   // new attach (budgets, shadow map, shaders); the rest of it is live below.
@@ -1133,6 +1122,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           ? null
           : attachCity3d(map, {
               appearance: resolvedAppearance,
+              style: { style: styleId, preset: stylePreset },
               light: city3dLightRef.current,
               quality: qualityRef.current,
               clock,
@@ -1214,6 +1204,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     runtime,
     qualityTier,
     resolvedAppearance,
+    styleId,
+    stylePreset,
     needsEngine,
     city3d,
     cityTiles,
@@ -1392,7 +1384,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     () => ({
       moveTo(target, options) {
         const map = mapRef.current;
-        if (!map) return;
+        if (!map) return false;
         const coordinate = isViewport(target)
           ? { latitude: target.latitude, longitude: target.longitude }
           : target;
@@ -1403,7 +1395,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
             'moveTo',
             `Ignored moveTo: target is not drawable (${describeNumbers(coordinate)}).`,
           );
-          return;
+          return false;
         }
         const viewport = isViewport(target) ? target : undefined;
         // `asFinite` on every scalar: a NaN zoom does not tilt the camera oddly,
@@ -1427,10 +1419,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           runEngineCommand('setVerticalFieldOfView', () => map.setVerticalFieldOfView(fov, marker));
         }
         if (duration <= 0) {
-          runEngineCommand('jumpTo', () => map.jumpTo(camera, marker));
-          return;
+          return runEngineCommand('jumpTo', () => map.jumpTo(camera, marker));
         }
-        runEngineCommand('easeTo', () => map.easeTo({ ...camera, duration }, marker));
+        return runEngineCommand('easeTo', () => map.easeTo({ ...camera, duration }, marker));
       },
       fitBounds(bounds, options) {
         const map = mapRef.current;
@@ -1660,6 +1651,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           credits of data the city-3D layer is drawing right now. */}
       <MapBrand />
       <MapAttribution
+        elevation={styleDrawsRelief}
         extra={credits}
         disclosure={cityLifeDisclosure}
         expanded={credit.expanded}
