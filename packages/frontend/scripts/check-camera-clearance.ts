@@ -27,7 +27,7 @@ import { existsSync, mkdirSync, readdirSync, renameSync, writeFileSync } from 'n
 import { join, resolve } from 'node:path';
 import type { Browser, Page } from 'playwright-core';
 
-import { metersPerPixel } from '../lib/map/geo';
+import { centreFor, landmarkPosition } from './cameraClearanceDrive';
 import { type PublishedStats, unsettled } from './city3dSettled';
 
 function arg(name: string, fallback = ''): string {
@@ -36,7 +36,6 @@ function arg(name: string, fallback = ''): string {
 }
 
 const VIEWPORT = { width: 1280, height: 720 };
-const FOV = 36.87;
 const NOON = new Date('2026-06-21T12:00:00+02:00');
 const SETTLE_TIMEOUT_MS = Number(process.env.CLEARANCE_SETTLE_TIMEOUT_MS ?? 300_000);
 /** A frame inside a building this soon after new data under the eye is the rule settling it. */
@@ -58,7 +57,7 @@ const SCENES: Scene[] = [
   {
     id: 'sagrada',
     name: 'Sagrada Família',
-    target: { lat: 41.403589, lng: 2.174347 },
+    target: landmarkPosition('sagrada-familia'),
     landmark: 'sagrada-familia',
     zoom: 18.2,
     pitch: 76,
@@ -72,18 +71,6 @@ const SCENES: Scene[] = [
     pitch: 76,
   },
 ];
-
-/**
- * The centre whose eye is the target at bearing 0: north of it by the eye's
- * horizontal distance (MapLibre's camera, `clearance.ts` → `eyeOf`).
- */
-function centreFor(scene: Scene): { lat: number; lng: number } {
-  const distanceM =
-    ((0.5 * VIEWPORT.height) / Math.tan((FOV * Math.PI) / 360)) *
-    metersPerPixel(scene.target.lat, scene.zoom);
-  const horizontal = distanceM * Math.sin((scene.pitch * Math.PI) / 180);
-  return { lat: scene.target.lat + horizontal / 111_320, lng: scene.target.lng };
-}
 
 /** Moving things off, as stored choices: they cost frames and are not the subject. */
 const CHOICES = {
@@ -225,7 +212,7 @@ async function runScene(
       ),
     CHOICES,
   );
-  const centre = centreFor(scene);
+  const centre = centreFor(scene.target, scene.zoom, scene.pitch, VIEWPORT.height);
   // MapLibre's Ctrl-drag turns 0.8° a pixel: 75 px brings the eye onto the target.
   const startBearing = -60;
   const query = `lat=${centre.lat}&lng=${centre.lng}&zoom=${scene.zoom}&pitch=60&bearing=${startBearing}&quality=${QUALITY}&${FLAGS}`;

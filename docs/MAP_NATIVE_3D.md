@@ -896,6 +896,11 @@ Per sky (on and off) it asserts:
   with them off, below the top 110 rows where the layer's own chip appears;
   a model that failed to load fails the gate by name. Measured: 31.5%; both
   views settle in 10–12 s locally (they timed out at 240 s before).
+- **The camera stays out of the model** (the `objects` leg, on the landmark
+  view): the camera jumped through the Sagrada Família at 60°, z19, over 41
+  bearings, never draws its eye inside it, and at least one camera asked for
+  an eye inside (else it tests nothing). Measured: 9 asked inside, 0 drawn;
+  with the rule's answer discarded, 9 drawn inside (`MAP_CAMERA_CLEARANCE.md`).
 - **A pan holds still** (sky leg: its sun shadows): opened from straight
   above at z18 at 09:00 (long shadows, no 3D terrain, so a drag moves the
   map by exactly the pointer's travel), dragged north in five 30 px steps,

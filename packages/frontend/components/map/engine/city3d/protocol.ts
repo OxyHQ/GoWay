@@ -4,6 +4,7 @@
  * Types only — nothing here exists at runtime — so both sides can import it
  * without either pulling the other's dependencies into its bundle.
  */
+import type { SurfaceMesh, VolumeIndex, VolumeLimits } from '../camera/volumes';
 import type { Lod } from './lod';
 import type { PackedMesh } from './packing';
 import type { TreeSettingCounts } from './treeContext';
@@ -57,7 +58,17 @@ export type MeshWorkerRequest =
        * `goway` format has per-building ids; ignored for `openmaptiles`.
        */
       hidden?: readonly number[];
+      /**
+       * What the camera's volume index of this tile may hold (the quality
+       * profile's `camera`, `camera/volumes.ts`). Absent: no limit.
+       */
+      volumes?: VolumeLimits;
     }
+  /**
+   * Measure a landmark's columns for the camera (`camera/volumes.ts` →
+   * `surfaceVolumes`) off the main thread: its triangles in its own metres.
+   */
+  | { type: 'volumes'; id: number; meshes: SurfaceMesh[]; cellM: number }
   | { type: 'cancel'; id: number };
 
 export type MeshWorkerResponse =
@@ -86,6 +97,7 @@ export type MeshWorkerResponse =
        */
       sources?: string[];
     }
+  | { type: 'volumes'; id: number; volumes: VolumeIndex | null }
   | { type: 'error'; id: number; message: string }
   /** A cancel took effect: the request will not be answered (`workerPool.ts`). */
   | { type: 'cancelled'; id: number };
