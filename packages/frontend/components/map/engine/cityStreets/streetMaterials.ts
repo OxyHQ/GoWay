@@ -64,6 +64,7 @@ import {
 
 import { mapBlending, perObject } from '../city3d/tsl/common';
 import type { SkyNodes } from '../city3d/tsl/skyNodes';
+import { STREET_GROUND_MARGIN } from '../city3d/terrainGround';
 import { MIN_HALF_PX, STREET_LIFT_M } from './meshBuffers';
 import { ATLAS_SIZE, SDF_EDGE } from './streetAtlas';
 
@@ -84,8 +85,12 @@ export interface StreetTile {
 /** The overlay's shared values the materials read on every render. */
 export interface StreetMaterialInputs {
   groundAtlas: Texture;
-  /** DEM pixels across a street tile: each slot is `groundCells + 2` samples square (`groundAtlas.ts`). */
-  groundCells: number;
+  /**
+   * Squares a side of MapLibre's terrain mesh on a street tile (128): the
+   * facets the street stands on and its meshes were cut to (`terrainGround.ts`
+   * → `facetAt`).
+   */
+  groundMeshCells: number;
   sdfAtlas: Texture;
   surfaceDay: Vector3[];
   surfaceNight: Vector3[];
@@ -128,19 +133,38 @@ export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMater
   );
   const depthBias = float(inputs.depthBias);
 
-  // The tile's ground grid: the DEM's pixel centres across the tile and one
-  // past each edge, read bilinearly between the four around the vertex —
-  // MapLibre's own `get_elevation`, and `terrainGround.ts` → `gridAt`.
-  const cells = inputs.groundCells;
+  // The ground the street stands on (`terrainGround.ts` → `streetGround`,
+  // `streetGroundAt`, line for line): MapLibre's terrain mesh on this tile as
+  // a terrain tile, each corner raised by the most a finer terrain tile rises
+  // above it nearby, read facet-wise — each square two flat triangles split
+  // north-west to south-east, as MapLibre splits them. Every street piece
+  // lies inside one of them (`groundLattice.ts`), so every layer of the
+  // street lies on the same flat facet: the paint stays on the asphalt, and
+  // both above the terrain.
+  const meshCells = inputs.groundMeshCells;
+  const size = meshCells + 1 + 2 * STREET_GROUND_MARGIN;
   const groundAt = (p: Node<'vec2'>) =>
     Fn(() => {
-      const uv = clamp(vec2(p.x, p.y.negate()).div(tileSize), 0, 1).mul(cells).add(0.5);
-      const cell = min(floor(uv), vec2(cells));
-      const t = uv.sub(cell);
-      const i = ivec2(cell).add(ivec2(int(0), int(slot).mul(cells + 2)));
+      const mesh = clamp(
+        vec2(p.x, p.y.negate()).div(tileSize).mul(meshCells).add(STREET_GROUND_MARGIN),
+        0,
+        size - 1,
+      );
+      const corner = min(floor(mesh), vec2(size - 2));
+      const f = mesh.sub(corner);
+      const i = ivec2(corner);
+      const layer = int(slot);
       const at = (dx: number, dy: number) =>
-        textureLoad(inputs.groundAtlas, i.add(ivec2(dx, dy))).r;
-      const h = mix(mix(at(0, 0), at(1, 0), t.x), mix(at(0, 1), at(1, 1), t.x), t.y);
+        textureLoad(inputs.groundAtlas, i.add(ivec2(dx, dy))).depth(layer).r;
+      const tl = at(0, 0);
+      const tr = at(1, 0);
+      const bl = at(0, 1);
+      const br = at(1, 1);
+      const h = select(
+        f.y.greaterThanEqual(f.x),
+        tl.add(bl.sub(tl).mul(f.y)).add(br.sub(bl).mul(f.x)),
+        tl.add(tr.sub(tl).mul(f.x)).add(br.sub(tr).mul(f.y)),
+      );
       return select(grounded.greaterThan(0.5), h, float(0));
     })();
 

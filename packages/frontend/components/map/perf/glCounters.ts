@@ -371,6 +371,18 @@ export function instrumentWebGl2(gl: WebGL2RenderingContext, state: GlCounterSta
     upload(a[9] ? bytes : 0);
     if ((a[1] as number) === 0) setHeld(textures, 'textures', textureFor(a[0] as number), bytes);
   });
+  wrap('texSubImage3D', (a) => {
+    // (target, level, x, y, z, w, h, d, format, type, data): an array texture's
+    // layers (the street ground's slots, `cityStreets/groundAtlas.ts`).
+    if (typeof a[8] === 'number' && typeof a[9] === 'number') {
+      upload(
+        (a[5] as number) *
+          (a[6] as number) *
+          (a[7] as number) *
+          texelBytes(0, a[8] as number, a[9] as number),
+      );
+    }
+  });
   wrap('texStorage2D', (a) => {
     const levels = a[1] as number;
     const bytes = (a[3] as number) * (a[4] as number) * texelBytes(a[2] as number, 0, 0);

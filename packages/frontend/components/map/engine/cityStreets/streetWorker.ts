@@ -152,8 +152,7 @@ async function mesh(request: Extract<StreetWorkerRequest, { type: 'mesh' }>): Pr
       tiles: around,
       rules: paintRulesAt(lng, lat, drivingSideAt(lng, lat)),
       atlas,
-      groundCells: request.groundCells,
-      groundSubdivision: request.groundSubdivision,
+      groundMeshCells: request.groundMeshCells,
     });
     const meshMs = performance.now() - started;
     const patches = atlas.takePatches();

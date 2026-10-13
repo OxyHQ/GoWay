@@ -29,7 +29,10 @@ import {
   lifeBodyMaterial,
   lifeShadowMaterial,
 } from '@/components/map/engine/cityLife/lifeMaterials';
-import { latticeCells, TERRAIN_LATTICE } from '@/components/map/engine/city3d/terrainGround';
+import {
+  STREET_GROUND_MARGIN,
+  TERRAIN_LATTICE,
+} from '@/components/map/engine/city3d/terrainGround';
 import { mercatorXFromLng, mercatorYFromLat } from '@/components/map/engine/city3d/tileMath';
 
 const TILE = { z: 15, x: 16580, y: 12236 };
@@ -186,8 +189,8 @@ describe('the TSL building material', () => {
 
 describe('the TSL street materials', () => {
   const inputs = () => ({
-    groundAtlas: createGroundAtlas(4, 66).texture,
-    groundCells: 64,
+    groundAtlas: createGroundAtlas(4, 133).texture,
+    groundMeshCells: 128,
     sdfAtlas: createGroundAtlas(1, 66).texture,
     surfaceDay: [new Vector3(), new Vector3(), new Vector3(), new Vector3()],
     surfaceNight: [new Vector3(), new Vector3(), new Vector3(), new Vector3()],
@@ -211,10 +214,10 @@ describe('the TSL street materials', () => {
   });
 
   test('the ground atlas: a slot per tile, each grid at its own rows', () => {
-    // A z15 street tile on GoWay's DEM: 64 pixels across, one more each side.
-    const cellsAcross = latticeCells({ z: 15 }, TERRAIN_LATTICE);
-    expect(cellsAcross).toBe(64);
-    const size = cellsAcross + 2;
+    // A z15 street tile: MapLibre's 128-square mesh, its corners and two more each side.
+    const cellsAcross = TERRAIN_LATTICE.meshCells;
+    const size = cellsAcross + 1 + 2 * STREET_GROUND_MARGIN;
+    expect(size).toBe(133);
     const atlas = createGroundAtlas(3, size);
     const a = atlas.claim();
     const b = atlas.claim();
@@ -224,7 +227,13 @@ describe('the TSL street materials', () => {
     const data = atlas.texture.image.data as Float32Array;
     expect(data[(b ?? 0) * cells]).toBe(7);
     expect(data[(a ?? 0) * cells]).toBe(0);
-    expect(atlas.texture.image.height).toBe(size * 3);
+    expect([
+      atlas.texture.image.width,
+      atlas.texture.image.height,
+      atlas.texture.image.depth,
+    ]).toEqual([size, size, 3]);
+    // Writing a slot uploads its layer alone.
+    expect([...atlas.texture.layerUpdates]).toEqual([b ?? 0]);
     expect(() => atlas.write(a ?? 0, { values: new Float32Array(9), cells: 1, size: 3 })).toThrow();
     atlas.claim();
     expect(atlas.claim()).toBeNull();

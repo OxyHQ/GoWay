@@ -1,5 +1,5 @@
 /**
- * The street detail cut along the terrain's lattice (`cityStreets/
+ * The street detail cut to the terrain's own facets (`cityStreets/
  * groundLattice.ts`, `docs/MAP_STREETS.md` → Terrain and depth): every
  * surface triangle inside one square of DEM pixel centres, every painted line
  * bent where it crosses one — so the drawn ground, creased along those lines,
@@ -18,8 +18,10 @@ import { StreetAtlas } from '@/components/map/engine/cityStreets/streetAtlas';
 import { meshStreetTile, type StreetMesh } from '@/components/map/engine/cityStreets/streetMesher';
 import { decodeRoadTile } from '@/components/map/engine/roads/roadTiles';
 import {
-  type GroundGrid,
+  facetAt,
   gridAt,
+  streetGround,
+  streetGroundAt,
   latticeCells,
   sampleGroundGrid,
   TERRAIN_LATTICE,
@@ -30,18 +32,22 @@ import { roadTile, SYNTHETIC_CENTRE } from './fixtures/syntheticCity';
 
 const LATTICE: StreetLattice = { cells: 4, sizeM: 100 };
 /** Line k of {@link LATTICE}, metres from the north-west corner. */
-const line = (k: number) => (k + 0.5) * 25;
+const line = (k: number) => k * 25;
 
 /** The cell a coordinate lies in, a point ON a line counting for both sides. */
 function cellsOf(c: number): [number, number] {
-  const f = c / 25 - 0.5;
+  const f = c / 25;
   const k = Math.round(f);
   return Math.abs(f - k) < 1e-6 ? [k - 1, k] : [Math.floor(f), Math.floor(f)];
 }
 
 describe('the lattice', () => {
   test("is GoWay's DEM: what the streets are cut for before any terrain is on", () => {
-    expect(TERRAIN_LATTICE).toEqual({ zoom: RELIEF_DEM.maxzoom, tileSize: RELIEF_DEM.tileSize });
+    expect(TERRAIN_LATTICE).toEqual({
+      zoom: RELIEF_DEM.maxzoom,
+      tileSize: RELIEF_DEM.tileSize,
+      meshCells: 128,
+    });
     expect(latticeCells({ z: 15 }, TERRAIN_LATTICE)).toBe(64);
   });
 });
@@ -69,7 +75,7 @@ describe('splitToLattice', () => {
     );
   };
 
-  test('no piece crosses a line; area and winding kept', () => {
+  test('no piece crosses a line or a square’s diagonal; area and winding kept', () => {
     const b = quad();
     const before = area(b, 0) + area(b, 3);
     splitToLattice(b, LATTICE);
@@ -90,11 +96,19 @@ describe('splitToLattice', () => {
         const hi = Math.min(...coords.map((c) => cellsOf(c)[1]));
         expect(lo).toBeLessThanOrEqual(hi);
       }
+      // …and one of its two triangles: the north-west/south-east diagonal
+      // (east − south constant) does not pass between its vertices.
+      const lx = verts.map((v) => b.positions[v * 3] / 25);
+      const ls = verts.map((v) => -b.positions[v * 3 + 1] / 25);
+      const kx = Math.floor((lx[0] + lx[1] + lx[2]) / 3);
+      const ks = Math.floor((ls[0] + ls[1] + ls[2]) / 3);
+      const side = verts.map((_, k) => lx[k] - kx - (ls[k] - ks));
+      expect(Math.min(...side) >= -1e-9 || Math.max(...side) <= 1e-9).toBe(true);
     }
     expect(after).toBeCloseTo(before, 6);
   });
 
-  test('a cut vertex lies on its line, its attributes interpolated, its bytes the primitive’s', () => {
+  test('a cut vertex lies on its line or diagonal, its attributes interpolated, its bytes the primitive’s', () => {
     const b = quad();
     const original = b.positions.length / 3;
     splitToLattice(b, LATTICE);
@@ -102,9 +116,11 @@ describe('splitToLattice', () => {
     for (let v = original; v < b.positions.length / 3; v++) {
       const x = b.positions[v * 3];
       const s = -b.positions[v * 3 + 1];
-      const onX = [0, 1, 2, 3].some((k) => Math.abs(x - line(k)) < 1e-9);
-      const onY = [0, 1, 2, 3].some((k) => Math.abs(s - line(k)) < 1e-9);
-      expect(onX || onY).toBe(true);
+      const onX = [0, 1, 2, 3, 4].some((k) => Math.abs(x - line(k)) < 1e-9);
+      const onY = [0, 1, 2, 3, 4].some((k) => Math.abs(s - line(k)) < 1e-9);
+      const d = x / 25 - s / 25;
+      const onDiagonal = Math.abs(d - Math.round(d)) < 1e-9;
+      expect(onX || onY || onDiagonal).toBe(true);
       onLines++;
       expect([...b.attrs.slice(v * 4, v * 4 + 4)]).toEqual([7, 255, 2, 0]);
       // uv runs with the quad's own corners: inside its 0–10 square.
@@ -120,7 +136,7 @@ describe('splitToLattice', () => {
   test('crack-free: the shared edge is cut once, both triangles use the same vertex', () => {
     const b = quad();
     splitToLattice(b, LATTICE);
-    // The shared edge 0–2 crosses x = 12.5, 37.5 and y = −12.5, −37.5, −62.5:
+    // The shared edge 0–2 crosses x = 25, 50 and y = −25, −50, −75 (and diagonals):
     // each of those points is ONE vertex, used by pieces of both triangles.
     const p = b.positions;
     for (let v = 4; v < p.length / 3; v++) {
@@ -131,11 +147,11 @@ describe('splitToLattice', () => {
     }
   });
 
-  test('a triangle inside one cell is left as it is', () => {
+  test('a triangle inside one facet is left as it is', () => {
     const b = new Buffers();
-    b.vertex(13, -13, 0, [0, 0, 0, 0]);
-    b.vertex(30, -14, 0, [0, 0, 0, 0]);
-    b.vertex(20, -35, 0, [0, 0, 0, 0]);
+    b.vertex(27, -26, 0, [0, 0, 0, 0]);
+    b.vertex(45, -28, 0, [0, 0, 0, 0]);
+    b.vertex(45, -40, 0, [0, 0, 0, 0]);
     b.triangle(0, 1, 2);
     splitToLattice(b, LATTICE);
     expect(b.indices).toEqual([0, 1, 2]);
@@ -143,8 +159,17 @@ describe('splitToLattice', () => {
   });
 });
 
+/** Points equal to within float rounding. */
+function expectPoints(actual: [number, number][], expected: [number, number][]) {
+  expect(actual.length).toBe(expected.length);
+  actual.forEach(([x, y], i) => {
+    expect(x).toBeCloseTo(expected[i][0], 9);
+    expect(y).toBeCloseTo(expected[i][1], 9);
+  });
+}
+
 describe('densifyToLattice', () => {
-  test('a point wherever the line crosses a lattice line, in order, on the line', () => {
+  test('a point wherever the line crosses a mesh line or a diagonal, in order, on the line', () => {
     const out = densifyToLattice(
       [
         [0, -20],
@@ -153,33 +178,21 @@ describe('densifyToLattice', () => {
       ],
       LATTICE,
     );
-    expect(out).toEqual([
+    // y −20 is 0.8 of its square south: diagonals at 20 and 45, lines at 25
+    // and 50; then, 0.4 of its square east, lines at −25, −50 and diagonals at
+    // −35, −60.
+    expectPoints(out, [
       [0, -20],
-      [12.5, -20],
-      [37.5, -20],
+      [20, -20],
+      [25, -20],
+      [45, -20],
+      [50, -20],
       [60, -20],
-      [60, -37.5],
-      [60, -62.5],
+      [60, -25],
+      [60, -35],
+      [60, -50],
+      [60, -60],
       [60, -70],
-    ]);
-  });
-
-  test('with two lines a pixel, the pixel centres and the lines halfway between them', () => {
-    expect(
-      densifyToLattice(
-        [
-          [0, -1],
-          [60, -1],
-        ],
-        { ...LATTICE, sub: 2 },
-      ),
-    ).toEqual([
-      [0, -1],
-      [12.5, -1],
-      [25, -1],
-      [37.5, -1],
-      [50, -1],
-      [60, -1],
     ]);
   });
 });
@@ -194,17 +207,29 @@ function surface(lng: number, lat: number): number {
   return 40 + 0.03 * (n % 10_000) + 0.5 * Math.sin(m / 22 + 1) * Math.sin(n / 18);
 }
 
-/** How far the drawn ground rises above a street's surfaces, at worst, and over how much of them. */
-function terrainOverStreet(mesh: StreetMesh, grid: GroundGrid, sizeM: number) {
-  const ground = (x: number, y: number) => gridAt(grid, x / sizeM, -y / sizeM);
-  const { positions: p, indices } = mesh.surfaces;
+type Ground = (x: number, y: number) => number;
+
+/**
+ * Sample points inside every triangle of a packed buffer (positions x, y, z),
+ * placed as the vertex shader places them — each vertex on `street`, plus its
+ * own z — against `drawn` at the same point: how far `drawn` rises above
+ * them, at worst, over how many of them, and the largest gap either way.
+ */
+function against(
+  buffers: { positions: Float32Array; indices: Uint32Array },
+  street: Ground,
+  drawn: Ground,
+  only?: (vertex: number) => boolean,
+) {
+  const { positions: p, indices } = buffers;
   let worst = 0;
+  let gap = 0;
   let samples = 0;
   let over = 0;
   for (let t = 0; t < indices.length; t += 3) {
     const v = [indices[t], indices[t + 1], indices[t + 2]];
-    // As the vertex shader places them: each vertex on the ground, plus its own z.
-    const h = v.map((i) => ground(p[i * 3], p[i * 3 + 1]) + p[i * 3 + 2]);
+    if (only && !only(v[0])) continue;
+    const h = v.map((i) => street(p[i * 3], p[i * 3 + 1]) + p[i * 3 + 2]);
     const n = 8;
     for (let i = 0; i <= n; i++) {
       for (let j = 0; i + j <= n; j++) {
@@ -213,15 +238,15 @@ function terrainOverStreet(mesh: StreetMesh, grid: GroundGrid, sizeM: number) {
         const x = p[v[0] * 3] * a + p[v[1] * 3] * b + p[v[2] * 3] * c;
         const y = p[v[0] * 3 + 1] * a + p[v[1] * 3 + 1] * b + p[v[2] * 3 + 1] * c;
         const z = p[v[0] * 3 + 2] * a + p[v[1] * 3 + 2] * b + p[v[2] * 3 + 2] * c;
-        const street = h[0] * a + h[1] * b + h[2] * c;
-        const rise = ground(x, y) + z - street;
+        const rise = drawn(x, y) + z - (h[0] * a + h[1] * b + h[2] * c);
         samples++;
         if (rise > 0.005) over++;
         if (rise > worst) worst = rise;
+        if (Math.abs(rise) > gap) gap = Math.abs(rise);
       }
     }
   }
-  return { worst, overPct: (100 * over) / samples };
+  return { worst, gap, overPct: (100 * over) / samples };
 }
 
 describe('a street tile on a creased ground', () => {
@@ -242,43 +267,54 @@ describe('a street tile on a creased ground', () => {
   const cells = latticeCells(tile, TERRAIN_LATTICE);
   const grid = sampleGroundGrid(tile, cells, surface);
   const sizeM = tileSizeMetres(tile);
+  /** The DEM, bilinear: what MapLibre's terrain tiles converge to at street level. */
+  const bilinear: Ground = (px, py) => gridAt(grid, px / sizeM, -py / sizeM);
+  /** The street's ground, what its shader reads: the terrain mesh, raised by its twist allowance. */
+  const street = streetGround(grid, 128);
+  const facets: Ground = (px, py) => streetGroundAt(street, px / sizeM, -py / sizeM);
+  /** The terrain mesh itself on the tile (MapLibre's z15 mesh). */
+  const mesh15: Ground = (px, py) => facetAt(grid, px / sizeM, -py / sizeM, 128);
   const rules = { drivingSide: 'right', yellowCentre: false } as const;
-  const meshed = (groundSubdivision?: number) =>
+  const meshed = (groundMeshCells?: number) =>
     meshStreetTile({
       tile: { x, y },
       tiles,
       rules,
       atlas: new StreetAtlas(),
-      ...(groundSubdivision ? { groundCells: cells, groundSubdivision } : {}),
+      ...(groundMeshCells ? { groundMeshCells } : {}),
     });
   const uncut = meshed();
-  const cut = meshed(1);
-  const fine = meshed(2);
+  const cut = meshed(128);
 
-  test('uncut, the street is under the ground between its vertices', () => {
-    const { worst, overPct } = terrainOverStreet(uncut, grid, sizeM);
+  test('uncut, with every vertex on the DEM, the street is under it between its vertices', () => {
+    const { worst, overPct } = against(uncut.surfaces, bilinear, bilinear);
     expect(worst).toBeGreaterThan(STREET_LIFT_M);
     expect(overPct).toBeGreaterThan(10);
   });
 
-  test('cut at the pixel centres, the ground never rises through the lifted street', () => {
+  test('cut: every piece ON its facet, and under the lift from the bilinear DEM', () => {
     expect(cut.stats.surfaceTriangles).toBeGreaterThan(uncut.stats.surfaceTriangles);
-    const { worst, overPct } = terrainOverStreet(cut, grid, sizeM);
-    // What is left is the bilinear twist inside a pixel's square, over
-    // pieces of at most 6 m by a pixel: under the street's lift.
-    expect(worst).toBeLessThan(STREET_LIFT_M);
-    expect(overPct).toBeLessThan(3);
+    // Flat pieces on flat facets: exactly the ground the shader reads.
+    expect(against(cut.surfaces, facets, facets).gap).toBeLessThan(1e-4);
+    // Never under the terrain: not under the bilinear DEM (what finer terrain
+    // tiles converge to), not under MapLibre's z15 mesh — before any lift.
+    expect(against(cut.surfaces, facets, bilinear).worst).toBeLessThan(1e-4);
+    expect(against(cut.surfaces, facets, mesh15).worst).toBeLessThan(1e-4);
   });
 
-  test('cut at half pixels too (the high preset), a quarter of that', () => {
-    expect(fine.stats.surfaceTriangles).toBeGreaterThan(cut.stats.surfaceTriangles);
-    const coarse = terrainOverStreet(cut, grid, sizeM);
-    const { worst, overPct } = terrainOverStreet(fine, grid, sizeM);
-    expect(worst).toBeLessThan(coarse.worst / 2);
-    expect(overPct).toBeLessThan(coarse.overPct / 2);
+  test('cut: the paint lies on the asphalt’s plane (no layer rises through another)', () => {
+    // Tints, crossings, arrows and words (not lines: a line's vertices are
+    // centre points the shader widens), at every point inside them.
+    const { attrs } = cut.markings;
+    const flat = (vertex: number) => attrs[vertex * 4 + 1] !== MODE.line;
+    expect(against(cut.markings, facets, facets, flat).gap).toBeLessThan(1e-4);
+    // Uncut on the bilinear DEM, the same paint is off the asphalt's plane.
+    const { attrs: before } = uncut.markings;
+    const flatBefore = (vertex: number) => before[vertex * 4 + 1] !== MODE.line;
+    expect(against(uncut.markings, bilinear, bilinear, flatBefore).gap).toBeGreaterThan(0.005);
   });
 
-  test('painted lines follow the creases: a vertex at every lattice crossing', () => {
+  test('painted lines follow the creases: a vertex at every mesh crossing', () => {
     const lineVertices = (m: StreetMesh) => {
       let count = 0;
       for (let i = 0; i < m.markings.positions.length / 3; i++) {
@@ -287,6 +323,5 @@ describe('a street tile on a creased ground', () => {
       return count;
     };
     expect(lineVertices(cut)).toBeGreaterThan(lineVertices(uncut));
-    expect(lineVertices(fine)).toBeGreaterThan(lineVertices(cut));
   });
 });

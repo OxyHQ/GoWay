@@ -53,7 +53,11 @@ export function groundOf(
   const terrain = map.terrain;
   // A `raster-dem` source always has both (MapLibre's defaults: 22 and 512).
   const dem = map.getSource(source) as { maxzoom: number; tileSize: number } | undefined;
-  const lattice: GroundLattice = { zoom: dem?.maxzoom ?? 22, tileSize: dem?.tileSize ?? 512 };
+  const lattice: GroundLattice = {
+    zoom: dem?.maxzoom ?? 22,
+    tileSize: dem?.tileSize ?? 512,
+    meshCells: terrain?.meshSize ?? 128,
+  };
   const zoom = lattice.zoom + (terrain?.tileManager.deltaZoom ?? 1);
   const at = map.getCenter();
   return {
