@@ -517,7 +517,6 @@ describe('tree shapes and shader', () => {
         uLightPosition: v(),
         uLightIntensity: { value: 0.5 },
         uLightColor: v(),
-        uOpacity: { value: 1 },
         uGrounded: { value: 0 },
       },
       THREE.BackSide,

@@ -51,7 +51,7 @@ import {
   dithered,
   extrusionLit,
   mapBlending,
-  premultiplied,
+  opaque,
   terrainLift,
   type UniformRef,
 } from './common';
@@ -66,7 +66,6 @@ export interface BuildingUniformRefs {
   uLightPosition: UniformRef<Vector3>;
   uLightIntensity: UniformRef<number>;
   uLightColor: UniformRef<Vector3>;
-  uOpacity: UniformRef<number>;
   uGrounded: UniformRef<number>;
 }
 
@@ -84,7 +83,6 @@ export function createBuildingUniforms(refs: BuildingUniformRefs) {
     uLightPosition: bindVec3(refs.uLightPosition),
     uLightIntensity: bindFloat(refs.uLightIntensity),
     uLightColor: bindVec3(refs.uLightColor),
-    uOpacity: bindFloat(refs.uOpacity),
     uGrounded: bindFloat(refs.uGrounded),
   };
 }
@@ -166,7 +164,7 @@ function buildMaterial(
   const ground = float(AO.groundMin).add(
     float(1 - AO.groundMin).mul(smoothstep(0, AO.groundReachM, vHeightAboveGround)),
   );
-  const color = premultiplied(extrusionLit(base, n, ground.mul(vCornerAo), u), u.uOpacity);
+  const color = opaque(extrusionLit(base, n, ground.mul(vCornerAo), u));
 
   const material = mapBlending(new MeshBasicNodeMaterial());
   // The lift is metres; stored z is 1/32 m, scaled back by the model matrix.

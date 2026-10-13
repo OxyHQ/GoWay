@@ -78,6 +78,7 @@ import { extname, join, resolve } from 'node:path';
 import { type Browser, chromium, type Page, type Route } from 'playwright-core';
 
 import { CITY_COVERAGE_PATH } from '../lib/map/cityTiles';
+import { BUILDINGS_3D_FADE } from '../lib/map/style/buildings3d';
 import { type PublishedStats, type SettledWants, unsettled } from './city3dSettled';
 import {
   cityTile,
@@ -316,6 +317,11 @@ interface View {
   trees: number;
   triangles: number;
   streetTriangles: number;
+  /**
+   * With `backdrops`: the view again with only the 3D city drawn, over a
+   * black and then a white backdrop (every other layer hidden, no sky).
+   */
+  backdrops: [Buffer, Buffer] | null;
 }
 
 /** The few members of the development build's MapLibre map the gate uses. */
@@ -408,6 +414,13 @@ async function view(
   tilt: 'ease' | 'jump' = 'ease',
   /** The page's clock: local noon, or the night view's midnight. */
   time: Date = NOON,
+  /** Also shoot the city alone over black and white (see {@link View.backdrops}). */
+  backdrops = false,
+  /**
+   * Once grounded, jump to this zoom and settle there (the city opens where
+   * it is known to settle on software GL, then shows another zoom).
+   */
+  zoomTo: number | null = null,
 ): Promise<View> {
   const started = Date.now();
   // Per-view progress on stderr, so a CI log says WHICH view and WHICH step
@@ -524,6 +537,19 @@ async function view(
   if (!lifted)
     throw new Error(`${name}: the terrain never lifted the map: the gate would test nothing`);
   await step('terrain lifted');
+  if (zoomTo !== null) {
+    await page.evaluate(
+      (zoom) =>
+        new Promise<void>((done) => {
+          const map = reliefMap();
+          if (!map) return done();
+          map.once('moveend', () => done());
+          (map as unknown as { jumpTo(options: { zoom: number }): void }).jumpTo({ zoom });
+        }),
+      zoomTo,
+    );
+    await step(`at z${zoomTo}`);
+  }
   const stats = city ? await settled(page, wants, name) : null;
   const landmarkFailed =
     landmark !== null &&
@@ -565,6 +591,12 @@ async function view(
     path: join(outDir, `${name}.png`),
     timeout: SETTLE_TIMEOUT_MS,
   });
+  const overBackdrops = backdrops
+    ? ([
+        await overBackdrop(page, '#000000', join(outDir, `${name}-over-black.png`)),
+        await overBackdrop(page, '#ffffff', join(outDir, `${name}-over-white.png`)),
+      ] as [Buffer, Buffer])
+    : null;
   await context.close();
   // A view that never settled was measured mid-load: whatever it shows, the
   // gate cannot vouch for it, and a timeout is a finding, not a pass.
@@ -576,6 +608,7 @@ async function view(
     png,
     settled: !city || stats !== null,
     landmarkFailed,
+    backdrops: overBackdrops,
     trees: stats?.trees ?? 0,
     triangles: stats?.triangles ?? 0,
     streetTriangles: stats?.streetTriangles ?? 0,
@@ -744,6 +777,95 @@ const SPECKLE_LEVELS = 24;
  * flags flat, 0.74% with them interpolated (#188, main @660a706).
  */
 const NIGHT_MAX_SPECKLE_PCT = 0.1;
+
+/**
+ * The view with only the 3D city drawn over a flat `colour`: every other
+ * layer hidden, the sky off, the colour behind the map's canvas. Two of
+ * these give each pixel's coverage by the city ({@link layeredPct}).
+ */
+async function overBackdrop(page: Page, colour: string, path: string): Promise<Buffer> {
+  await page.evaluate(async (fill) => {
+    const map = reliefMap() as unknown as {
+      getStyle(): { layers: { id: string; type: string }[] };
+      getLayoutProperty(id: string, name: string): unknown;
+      setLayoutProperty(id: string, name: string, value: unknown): void;
+      setSky(sky: unknown): void;
+      triggerRepaint(): void;
+      getCanvas(): HTMLCanvasElement;
+      once(event: string, listener: () => void): void;
+    };
+    // Once: everything but the city hidden, so the map's own pixels are
+    // transparent wherever the city does not cover them.
+    const others = map
+      .getStyle()
+      .layers.filter((layer) => !(layer.type === 'custom' && layer.id.endsWith('city3d')));
+    if (others.some((layer) => map.getLayoutProperty(layer.id, 'visibility') !== 'none')) {
+      for (const layer of others) map.setLayoutProperty(layer.id, 'visibility', 'none');
+      map.setSky(undefined);
+      await new Promise<void>((done) => {
+        map.once('idle', () => done());
+        map.triggerRepaint();
+      });
+    }
+    // The backdrop is the canvas element's own: the page composites the
+    // map's frame over it, exactly as the city's coverage says.
+    map.getCanvas().style.background = fill;
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+  }, colour);
+  await drainGpu(page);
+  return page.screenshot({ clip: CLIP, path, timeout: SETTLE_TIMEOUT_MS });
+}
+
+/**
+ * Of the pixels the city covers, the share (%) where it covers only PARTLY
+ * but more than {@link FADE_MID_COVERAGE} would: more than one surface of it
+ * blended over the pixel, so a wall or a street behind a building shows
+ * through it. From the city alone over black and over white: a pixel's
+ * coverage is 1 − (white − black) / 255. A solid layer covers each pixel
+ * fully or not at all (a dither), or by the fade's one share (an alpha).
+ */
+async function layeredPct(browser: Browser, black: Buffer, white: Buffer): Promise<number> {
+  const page = await browser.newPage();
+  const value = await page.evaluate(
+    async ([b, w, mid]) => {
+      const pixels = async (data: string) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${data}`;
+        await img.decode();
+        const canvas = new OffscreenCanvas(img.width, img.height);
+        const g = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+        g.drawImage(img, 0, 0);
+        return g.getImageData(0, 0, img.width, img.height).data;
+      };
+      const [x, y] = await Promise.all([pixels(b), pixels(w)]);
+      let covered = 0;
+      let layered = 0;
+      for (let i = 0; i < x.length; i += 4) {
+        const through = (y[i] - x[i] + (y[i + 1] - x[i + 1]) + (y[i + 2] - x[i + 2])) / (3 * 255);
+        const coverage = 1 - through;
+        if (coverage < 0.05) continue;
+        covered++;
+        if (coverage > mid + 0.1 && coverage < 0.95) layered++;
+      }
+      return covered === 0 ? 0 : (100 * layered) / covered;
+    },
+    [black.toString('base64'), white.toString('base64'), FADE_MID_COVERAGE] as const,
+  );
+  await page.close();
+  return Number(value.toFixed(2));
+}
+
+/**
+ * Mid-fade, the most of the city's pixels that may show a surface through
+ * another, %. Measured on SwiftShader at z16: 37% on main @52dde03 (every
+ * surface blended at the fade's alpha: coverage 0.5, 0.8, 0.9 by the
+ * surfaces behind), 0.3% with the fade dithered (coverage 0 or 1).
+ */
+const FADE_MAX_LAYERED_PCT = 2;
+
+/** The zoom fade's share at the mid-fade view's zoom (`BUILDINGS_3D_FADE`). */
+const FADE_MID_COVERAGE =
+  (16 - BUILDINGS_3D_FADE.start) / (BUILDINGS_3D_FADE.end - BUILDINGS_3D_FADE.start);
 
 /**
  * Over a junction of the synthetic grid (the one north-west of the central
@@ -1100,6 +1222,44 @@ try {
     else if (speckled > NIGHT_MAX_SPECKLE_PCT)
       failures.push(
         `night: ${speckled}% of the map is speckle (over ${NIGHT_MAX_SPECKLE_PCT}%): a surface value changes pixel by pixel`,
+      );
+  }
+  if (!DEBUG && (skies.includes('nosky') || skies.includes('fade'))) {
+    // Mid-fade, at a resting zoom inside `BUILDINGS_3D_FADE`: the city must
+    // draw as ONE solid layer, never a wall or a street behind a building
+    // showing through it. Born of main @cd11022: every surface was blended at
+    // the fade's alpha, so walls and streets showed through the blocks. Without
+    // the sky, whose passes draw over the backdrop; trees off (their contact
+    // shadows are blended by design).
+    const { flags, choices } = SKIES.nosky;
+    // Street detail off: it starts above this zoom, and would never settle.
+    const mid = await view(
+      browser,
+      origin,
+      `${flags.replace('&cityStreets=1', '')}&city3dTrees=0`,
+      choices,
+      outDir,
+      'fade-mid',
+      'buildings',
+      { ...SYNTHETIC_CENTRE, zoom: 18 },
+      // At z16 the high preset draws a city of tiles that two software-GL
+      // cores take minutes a frame over; what is under test is the blend.
+      'low',
+      null,
+      'jump',
+      NOON,
+      true,
+      16,
+    );
+    const [black, white] = mid.backdrops ?? [mid.png, mid.png];
+    const layered = await layeredPct(browser, black, white);
+    results.fade = { triangles: mid.triangles, layeredPct: layered };
+    console.error(`fade: ${layered}% of the city's pixels show a surface behind another`);
+    if (mid.triangles === 0)
+      failures.push('fade: the engine drew no buildings mid-fade (the fixture is not reaching it)');
+    else if (layered > FADE_MAX_LAYERED_PCT)
+      failures.push(
+        `fade: ${layered}% of the city's pixels show a surface behind another (over ${FADE_MAX_LAYERED_PCT}%): walls and streets show through the buildings`,
       );
   }
   if (!DEBUG && skies.includes('objects')) {

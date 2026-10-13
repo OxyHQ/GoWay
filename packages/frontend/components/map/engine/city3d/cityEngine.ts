@@ -468,7 +468,6 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     uLightPosition: { value: new THREE.Vector3(0, 0, 1) },
     uLightIntensity: { value: 0.5 },
     uLightColor: { value: new THREE.Vector3(1, 1, 1) },
-    uOpacity: { value: 1 },
     // On 3D terrain: read the per-vertex lift (`terrainGround.ts`).
     uGrounded: { value: 0 },
     // The night seam (`setNightFactor`): read by every night-time look.
@@ -1052,7 +1051,6 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
 
     const span = options.fade.end - options.fade.start;
     const opacity = Math.max(0, Math.min(1, (view.zoom - options.fade.start) / span));
-    light.uOpacity.value = opacity;
     treeUniforms.uTreeMinHeight.value = treeMinHeightM(view.zoom);
 
     const center = { x: mercatorXFromLng(view.center.lng), y: mercatorYFromLat(view.center.lat) };
@@ -1142,7 +1140,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         }
         placeEntry(entry, entry.placement, center);
         setEntryTreeDetail(entry, shapes, r(entry) < nearTreesWithin);
-        setEntryFade(entry, from, to);
+        // The zoom fade (`BUILDINGS_3D_FADE`) is the same screen door as a
+        // level's: its share of the transition's pixels, so the city draws as
+        // one solid layer, and never shows what is behind a wall through it.
+        setEntryFade(entry, from * opacity, to * opacity);
         setEntryVisible(entry, true);
         drawnEntries.add(entry);
         for (const source of entrySources.get(entry) ?? []) sources.add(source);

@@ -140,7 +140,6 @@ export async function createCityTileView(options: CityTileViewOptions): Promise<
     uLightPosition: v(light.position),
     uLightIntensity: { value: light.intensity },
     uLightColor: v(light.color),
-    uOpacity: { value: 1 },
     uGrounded: { value: 0 },
   });
   // `cityMeshes.ts` → SIDE: the stored units mirror y once. In the map that is

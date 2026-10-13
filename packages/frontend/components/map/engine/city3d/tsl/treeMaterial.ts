@@ -45,7 +45,7 @@ import {
   extrusionLit,
   mapBlending,
   perObject,
-  premultiplied,
+  opaque,
   terrainLift,
   type UniformRef,
 } from './common';
@@ -75,7 +75,6 @@ export interface TreeUniformRefs {
   uLightPosition: UniformRef<Vector3>;
   uLightIntensity: UniformRef<number>;
   uLightColor: UniformRef<Vector3>;
-  uOpacity: UniformRef<number>;
   uGrounded: UniformRef<number>;
 }
 
@@ -103,7 +102,6 @@ export function createTreeMaterials(refs: TreeUniformRefs, side: Side): TreeMate
     uLightPosition: bindVec3(refs.uLightPosition),
     uLightIntensity: bindFloat(refs.uLightIntensity),
     uLightColor: bindVec3(refs.uLightColor),
-    uOpacity: bindFloat(refs.uOpacity),
     uGrounded: bindFloat(refs.uGrounded),
   };
   const built = new Map<boolean, MeshBasicNodeMaterial>();
@@ -135,7 +133,6 @@ function buildMaterial(
     uLightPosition: ReturnType<typeof bindVec3>;
     uLightIntensity: ReturnType<typeof bindFloat>;
     uLightColor: ReturnType<typeof bindVec3>;
-    uOpacity: ReturnType<typeof bindFloat>;
     uGrounded: ReturnType<typeof bindFloat>;
   },
   side: Side,
@@ -220,11 +217,9 @@ function buildMaterial(
     mix(float(AO.groundMin + 0.1), 1, smoothstep(-0.6, 0.55, n.z)).mul(mix(0.9, 1.05, vCrown)),
     float(AO.groundMin).add(smoothstep(0, 3, vHeight).mul(0.2)),
   );
-  const lit = premultiplied(extrusionLit(surface, n, occlusion, u), u.uOpacity);
+  const lit = opaque(extrusionLit(surface, n, occlusion, u));
   // The contact shadow: premultiplied black, fading to nothing at its rim.
-  const shadowAlpha = float(TREE_SHADOW_ALPHA)
-    .mul(float(1).sub(smoothstep(0.15, 1, vRadial)))
-    .mul(u.uOpacity);
+  const shadowAlpha = float(TREE_SHADOW_ALPHA).mul(float(1).sub(smoothstep(0.15, 1, vRadial)));
   const color = select(vPart.greaterThan(SHADOW - 0.5), vec4(vec3(0), shadowAlpha), lit);
 
   const material = mapBlending(new MeshBasicNodeMaterial());

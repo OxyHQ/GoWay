@@ -76,12 +76,11 @@ export function perObject(key: string, read: (value: unknown) => number, fallbac
   });
 }
 
-/** The light the engine hands every material (`occlusion.ts` → `CityLight`), plus opacity and terrain. */
+/** The light the engine hands every material (`occlusion.ts` → `CityLight`), plus terrain. */
 export interface LightUniforms {
   uLightPosition: ReturnType<typeof bindVec3>;
   uLightIntensity: ReturnType<typeof bindFloat>;
   uLightColor: ReturnType<typeof bindVec3>;
-  uOpacity: ReturnType<typeof bindFloat>;
   uGrounded: ReturnType<typeof bindFloat>;
 }
 
@@ -107,9 +106,13 @@ export function extrusionLit(base: Vec3, n: Vec3, occlusion: Float, u: LightUnif
   );
 }
 
-/** Premultiplied, as MapLibre blends custom layers. */
-export const premultiplied = (color: Vec3, opacity: Float): Node<'vec4'> =>
-  vec4(color.mul(opacity), opacity);
+/**
+ * An opaque surface's output. The buildings and trees are never blended: the
+ * zoom fade (`BUILDINGS_3D_FADE`) is the dither's, as every other fade
+ * ({@link dithered}), so they draw as one solid layer with their depth, and
+ * nothing behind a wall shows through it.
+ */
+export const opaque = (color: Vec3): Node<'vec4'> => vec4(color, 1);
 
 /** Blend as MapLibre blends custom layers: premultiplied alpha, opaque pass. */
 export function mapBlending<T extends NodeMaterial | MeshBasicNodeMaterial>(material: T): T {
