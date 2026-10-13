@@ -98,6 +98,41 @@ describe('lane geometry', () => {
     expect(junk.width).toBeCloseTo(3 * LANE_WIDTH_M.secondary);
   });
 
+  test('a measured width survives missing lane counts without inventing lane dividers', () => {
+    for (const rules of [RHT, LHT]) {
+      const s = crossSection(piece({ highway: 'residential', oneway: 1, width: 14 }), rules);
+      expect(s.width).toBe(14);
+      expect(s.widthRecorded).toBe(true);
+      expect(s.recorded).toBe(false);
+      expect(s.dividers).toEqual([]);
+      expect(s.bands[0].left).toBe(7);
+      expect(s.bands.at(-1)?.right).toBe(-7);
+    }
+  });
+
+  test('directional lane lists also count lanes on a one-way street', () => {
+    const turns = parseTurnLanes('left|through|through|right');
+    const forward = crossSection(piece({ oneway: 1, turnLanesForward: turns }), RHT);
+    const backward = crossSection(piece({ oneway: -1, turnLanesBackward: turns }), LHT);
+    expect([forward.forward, forward.backward]).toEqual([4, 0]);
+    expect([backward.forward, backward.backward]).toEqual([0, 4]);
+    expect(forward.width).toBe(13);
+    expect(backward.width).toBe(13);
+    expect(forward.bands.every((b) => b.turns !== null)).toBe(true);
+  });
+
+  test('change lists record lane counts, and supported counts are never truncated to eight', () => {
+    const s = crossSection(
+      piece({ oneway: 1, changeLanes: parseChangeLanes('y'.repeat(10)) }),
+      RHT,
+    );
+    expect(s.forward).toBe(10);
+    expect(s.width).toBe(32.5);
+    expect(s.dividers).toHaveLength(9);
+    expect(s.bands.every((b) => b.change !== null)).toBe(true);
+    expect(crossSection(piece({ oneway: 1, lanes: 12 }), RHT).forward).toBe(12);
+  });
+
   test('turn lanes go to their lanes in the traveller’s order, both directions', () => {
     const s = crossSection(
       piece({

@@ -23,23 +23,23 @@ import type { GroundSampler } from './engine/city3d/terrainGround';
 const REFRESH_AFTER_MS = 250;
 
 /**
- * The drawn ground, as a sampler: MapLibre's terrain read at the DEM source's
- * own max zoom.
+ * The drawn ground, sampled at the terrain zoom that selects the finest DEM.
  *
  * Not `map.queryTerrainElevation`, measured: it reads the rendered terrain
  * tiles, and for a point outside them — which a z14 building tile's grid
  * always partly is, behind or under a pitched camera — it falls back to
  * computing the covering tiles PER CALL. One grid then took 166 ms instead of
- * ~1 ms. Reading the DEM at its max zoom (`Terrain.getElevationForLngLatZoom`,
- * part of MapLibre's typed API) is the same surface at every zoom the city
- * layer draws (≥ z15.5 the terrain is over-zoomed from that DEM), with the same
- * bilinear sampling and exaggeration, at a constant cost. It takes MapLibre's
- * own `LngLat`, so one from `getCenter()` is reused rather than importing
- * maplibre-gl here.
+ * ~1 ms. `Terrain.getElevationForLngLatZoom` has constant cost, but
+ * terrain tile zoom is not DEM source zoom: its tile manager subtracts
+ * `deltaZoom` before choosing a DEM. Asking at the source max zoom therefore
+ * selected a coarser parent even when the rendered terrain used the child.
+ * Include that offset, so streets and buildings sample the drawn DEM.
+ * It takes MapLibre's own `LngLat`, so one from `getCenter()` is reused
+ * rather than importing maplibre-gl here.
  */
-function groundSampler(map: MapLibreMap, source: string): GroundSampler {
+export function groundSampler(map: MapLibreMap, source: string): GroundSampler {
   const terrain = map.terrain;
-  const zoom = map.getSource(source)?.maxzoom ?? 12;
+  const zoom = (map.getSource(source)?.maxzoom ?? 12) + (terrain?.tileManager.deltaZoom ?? 0);
   const at = map.getCenter();
   return (lng, lat) => {
     if (!terrain) return 0;

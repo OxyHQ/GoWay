@@ -11,9 +11,17 @@ require('./scripts/vendor-maplibre-worker').vendorMaplibreWorker();
 
 // No `sharedTypesPackage`: the app reaches GoWay's contracts only through the
 // built `@goway.to/sdk`, never the private `@goway/contracts` package directly.
-// Development only, and only with `GOWAY_CITY_TILES_ARCHIVE` set: serve a
-// locally compiled city-tile archive at `/map/city/*` (see the file). Unset —
-// every export and CI run — the preset's config is returned untouched.
+// Development only: serve published city data from the same Metro origin,
+// or local archives when `GOWAY_CITY_TILES_ARCHIVE` is set. Exports serve no middleware.
 const { withDevCityTiles } = require('./scripts/dev-city-tiles');
+const { withDevTerrain } = require('./scripts/dev-terrain');
 
-module.exports = withDevCityTiles(createOxyMetroConfig(__dirname));
+module.exports = withDevTerrain(
+  withDevCityTiles(
+    createOxyMetroConfig(__dirname, {
+      // The Python/CUDA worker is not a JS workspace. Watching its virtualenv
+      // and vendor trees can stall Metro before it opens the development port.
+      extraBlockList: [require('node:path').resolve(__dirname, '../reconstruction-worker')],
+    }),
+  ),
+);

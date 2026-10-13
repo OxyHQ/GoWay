@@ -586,6 +586,16 @@ fabricated places on the public map; the same rule governs buildings:
   on the ground), so what draws it can tell a default from a fact. A default
   is not "corrected" to look like a city.
 
+  Geometry precedence also requires representational compatibility. A roof-only
+  LOD2 model whose walls extend to ground cannot replace an OSM building with
+  recorded elevated `building:part` volumes: it would fill its underside voids
+  and can lower a cantilever. The compiler rejects that conflation; the runtime
+  `buildingSources.ts` applies the same ownership rule to existing archives,
+  restores the retained original OSM height/storey facts and credits only the
+  official geometry actually drawn. Adjacent buildings that merely touch keep
+  their official model. This preserves recorded volumes; it does not synthesize
+  an architectural model.
+
   *A fact its own record contradicts is not read.* A recorded height that
   the same record makes impossible is dropped and counted, not adjusted:
   an OSM outline's `height` of 100 m or more that is over 20 m a tagged

@@ -41,7 +41,7 @@ import type {
 
 import { GOWAY_LABEL_ANCHOR_LAYER_ID } from '../provider';
 import { BUILDING_3D_LAYER_ID, buildBuildings3dLayer } from './buildings3d';
-import type { CartographyPalette, RoadTier, RoadTone } from './palette';
+import { CARTOGRAPHY_PALETTES, type CartographyPalette, type RoadTier, type RoadTone } from './palette';
 import { FONT_STACKS, OPENMAPTILES_SOURCE_LAYERS as SL } from './schema';
 import { LOCAL_ROAD_FILL, SHOW_BASEMAP_POIS, SHOW_ROAD_AND_POI_LABELS } from './tuning';
 
@@ -135,7 +135,7 @@ export const GOWAY_STYLE_LAYER_IDS = {
   /** The reserved overlay anchor. Nothing renders it. */
   anchor: [LABEL_ANCHOR_LAYER_ID],
   /** POI markers. All *(flag)* — `SHOW_BASEMAP_POIS`. */
-  poi: ['poi-dot', 'poi-dot-minor', 'poi-transit-dot'],
+  poi: [],
   /** Type. `label-road-*` and `label-poi*` are *(flag)* —
    *  `SHOW_ROAD_AND_POI_LABELS`. */
   labels: [
@@ -293,11 +293,12 @@ const POI_GROUPS: readonly (readonly [keyof CartographyPalette['poi'], string[]]
   ['vehicle', ['parking', 'fuel', 'car', 'bicycle', 'bicycle_rental', 'motorcycle']],
 ];
 
-/** `match` on `poi.class` producing the group's colour. */
-function poiColor(palette: CartographyPalette): ExpressionSpecification {
+/** One composited category badge and its name share a collision decision. */
+function poiBadgeImage(palette: CartographyPalette): ExpressionSpecification {
+  const theme = palette === CARTOGRAPHY_PALETTES.dark ? 'dark' : 'light';
   const match: unknown[] = ['match', ['get', 'class']];
-  for (const [group, classes] of POI_GROUPS) match.push(classes, palette.poi[group]);
-  match.push(palette.poi.other);
+  for (const [group, classes] of POI_GROUPS) match.push(classes, `goway-poi-${theme}-${group}`);
+  match.push(`goway-poi-${theme}-other`);
   return expr(match);
 }
 
@@ -333,29 +334,9 @@ const POI_LATE_CLASSES = ['bus', 'atm', 'post', 'toilets', 'picnic_site', 'bicyc
 /** Which of the three POI layers a filter is for. */
 type PoiTier = 'station' | 'major' | 'minor';
 
-/**
- * How far down the importance ordering a layer reaches.
- *
- * There are TWO of these, and the difference between them is the whole design.
- * A name is placed by MapLibre's collision detection, so asking for more names
- * than fit costs nothing — the ones that do not fit are simply not drawn. A dot
- * is a `circle`, and a circle layer has no collision at all: every feature that
- * passes the filter draws, always. So the two cannot share a cap. They did, and
- * widening it to get Apple's mix of shops and restaurants put ~250 dots over a
- * z15 Eixample with names on 58 of them — a field of anonymous coloured specks,
- * which is a worse map than the institutional one it replaced.
- *
- * {@link POI_DOT_CAPS} is therefore "how many places does this map acknowledge"
- * and {@link POI_LABEL_CAPS} is "how many is it willing to name". The first is
- * a hard density budget; the second is a candidate pool that collision thins.
- */
-interface PoiCaps {
-  major: number;
-  minor: number;
-}
+/** Candidate limits; the combined icon and name participate in symbol collision. */
+interface PoiCaps { major: number; minor: number; }
 
-/** The marks. Hard budget — every one of these draws. */
-const POI_DOT_CAPS: PoiCaps = { major: 12, minor: 30 };
 /** The names. A candidate pool; `text-padding` and collision do the thinning. */
 const POI_LABEL_CAPS: PoiCaps = { major: 18, minor: 40 };
 
@@ -989,38 +970,6 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
 
   // --- POIs --------------------------------------------------------------
 
-  if (SHOW_BASEMAP_POIS) {
-    const dot = (id: string, layerFilter: FilterSpecification, minzoom: number, radius: readonly (readonly [number, number])[]): void => {
-      layers.push({
-        id,
-        type: 'circle',
-        source,
-        'source-layer': SL.poi,
-        minzoom,
-        filter: layerFilter,
-        paint: {
-          'circle-color': poiColor(palette),
-          'circle-radius': byZoom(radius, 1.2),
-          // A ring in the ground colour is what stops a dot dissolving into a
-          // park fill or a building of a similar value.
-          'circle-stroke-color': palette.land,
-          'circle-stroke-width': byZoom([[15, 0.6], [18, 1.2]], 1),
-          'circle-opacity': 0.95,
-        },
-      });
-    };
-
-    // Bigger than they were. Apple's POI mark is a ~14px filled circle carrying
-    // a white glyph; GoWay has no SDF glyph set to put inside one, so the mark
-    // is the disc alone — but at a 2.4px radius it read as a speck of dust
-    // beside the label rather than as the label's own mark. These radii put the
-    // disc at roughly two thirds of Apple's diameter, which is as large as a
-    // glyph-less dot can go before it starts looking like a missing icon.
-    dot('poi-dot', poiFilter('major', POI_DOT_CAPS), 14, [[14, 2.8], [15, 3.2], [17, 4.4], [19, 5.4]]);
-    dot('poi-dot-minor', poiFilter('minor', POI_DOT_CAPS), 17, [[17, 3], [19, 4]]);
-    dot('poi-transit-dot', poiFilter('station', POI_DOT_CAPS), 14, [[14, 3.2], [17, 5], [19, 6]]);
-  }
-
   // --- Type --------------------------------------------------------------
 
   /** A line-following label (roads, rivers). */
@@ -1090,7 +1039,8 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
       halo?: string;
       haloWidth?: number;
       offset?: [number, number];
-      anchor?: 'center' | 'top' | 'bottom';
+      anchor?: 'center' | 'top' | 'bottom' | 'left';
+      poi?: boolean;
       /** Extra px around the collision box. A zoom ramp thins by density. */
       padding?: number | ExpressionSpecification;
       uppercase?: boolean;
@@ -1108,6 +1058,15 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
       ...(options.maxzoom === undefined ? {} : { maxzoom: options.maxzoom }),
       filter: layerFilter,
       layout: {
+        ...(options.poi && SHOW_BASEMAP_POIS ? {
+          'icon-image': poiBadgeImage(palette),
+          'icon-size': byZoom([[14, 0.55], [17, 0.65], [20, 0.75]], 1),
+          'icon-padding': 3,
+          'icon-optional': false,
+          'text-optional': false,
+          'icon-allow-overlap': false,
+          'text-allow-overlap': false,
+        } : {}),
         'text-field': LABEL_TEXT,
         'text-font': options.font ?? REGULAR,
         'text-size': byZoom(sizes, 1.2),
@@ -1267,7 +1226,7 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     // zoom and a tight one high up produces the ramp without touching supply.
     const poiPadding = byZoom([[14, 30], [15, 16], [16, 8], [18, 4], [20, 3]], 1);
     pointLabel('label-poi-minor', SL.poi, poiFilter('minor'), poiLabelColor(palette), [[17, 9], [19, 10.5]], {
-      minzoom: 17, anchor: 'top', offset: [0, 0.85], maxWidth: 9, sortKey: key, padding: poiPadding,
+      poi: true, minzoom: 17, anchor: 'left', offset: [1.15, 0], maxWidth: 9, sortKey: key, padding: poiPadding,
     });
     // From z14, not z15. Apple already names a dozen places at z14 — Sagrada
     // Família, Park Güell, the Arc de Triomf, a supermarket — and GoWay named
@@ -1275,10 +1234,10 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     // matched frame came from the transit layer, which is one hue. The padding
     // ramp keeps it to the handful that fit.
     pointLabel('label-poi', SL.poi, poiFilter('major'), poiLabelColor(palette), [[14, 9], [15, 9.5], [18, 11], [20, 12]], {
-      minzoom: 14, anchor: 'top', offset: [0, 0.9], maxWidth: 9, sortKey: key, padding: poiPadding,
+      poi: true, minzoom: 14, anchor: 'left', offset: [1.2, 0], maxWidth: 9, sortKey: key, padding: poiPadding,
     });
     pointLabel('label-poi-transit', SL.poi, poiFilter('station'), poiLabelColor(palette), [[14, 9.5], [18, 11.5]], {
-      minzoom: 14, anchor: 'top', offset: [0, 1], maxWidth: 9, sortKey: key,
+      poi: true, minzoom: 14, anchor: 'left', offset: [1.2, 0], maxWidth: 9, sortKey: key,
       padding: byZoom([[14, 34], [16, 18], [18, 8]], 1),
     });
   }

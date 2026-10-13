@@ -11,7 +11,8 @@ import { join } from 'node:path';
 import { selectLodTiles } from '@/components/map/engine/city3d/lod';
 import type { DecodedRoadTile, RoadNode, RoadPiece } from '@/components/map/engine/roads/roadTiles';
 import { parseTurnLanes } from '@/components/map/engine/roads/roadTiles';
-import { simFrame } from '@/components/map/engine/roads/roadGraph';
+import { simFrame, polyline, pointAt } from '@/components/map/engine/roads/roadGraph';
+import { StreetSurface } from '../engine/cityStreets/streetSurface';
 import { MODE } from '@/components/map/engine/cityStreets/meshBuffers';
 import { StreetAtlas } from '@/components/map/engine/cityStreets/streetAtlas';
 import {
@@ -140,6 +141,32 @@ describe('junctions and surfaces', () => {
     const vertices = m.surfaces.positions.length / 3;
     expect(Math.max(...m.surfaces.indices)).toBeLessThan(vertices);
     for (const v of m.surfaces.positions) expect(Number.isFinite(v)).toBe(true);
+  });
+
+  test('nearby junctions preserve the complete curved carriageway between them', () => {
+    const bend = [at(2000, 2000), at(2020, 2040), at(2040, 2120), at(2100, 2100)];
+    const pieces = [
+      road(bend),
+      road([bend[0], at(2000, 1600)]),
+      road([bend[0], at(1600, 2000)]),
+      road([bend[3], at(2500, 2100)]),
+      road([bend[3], at(2100, 2500)]),
+    ];
+    const result = mesh({ pieces, nodes: [], restrictions: [] });
+    const surface = new StreetSurface();
+    surface.set('curve', { ...TILE, z: 15 }, result.surfaces);
+    const m = simFrame(TILE.x, TILE.y).metresPerUnit;
+    const line = polyline(bend.map(([x, y]) => [(x - OX) * m, -(y - OY) * m]));
+    const p = { x: 0, y: 0, h: 0 };
+    for (let s = 0.2; s < line.length; s += 0.5) {
+      pointAt(line, s, p);
+      for (const offset of [-2, 0, 2]) {
+        expect(
+          surface.at('curve', p.x - Math.sin(p.h) * offset, p.y + Math.cos(p.h) * offset),
+          `station ${s}, lateral ${offset}`,
+        ).not.toBeNull();
+      }
+    }
   });
 
   test('a tile draws only what lies in it: its neighbour draws none of this crossroads', () => {

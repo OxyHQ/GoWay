@@ -52,6 +52,7 @@ import {
   cameraProjectionMatrix,
   clamp,
   cos,
+  cross,
   distance,
   dot,
   float,
@@ -168,10 +169,13 @@ const glslMod = (x: Float, y: number): Float => x.sub(floor(x.div(y)).mul(y));
 function place(frame: LifeFrame, model: LifeModel, lod: 0 | 1 | 2) {
   const prev = attribute('aPrev', 'vec4');
   const curr = attribute('aCurr', 'vec4');
-  const ground = attribute('aGround', 'float');
+  const currentGround = attribute('aGround', 'vec3');
+  const previousGround = attribute('aPrevGround', 'vec3');
   const { alpha } = shared(frame);
   // A slot re-used by a new agent, or one that just appeared: no sweep across the map.
   const fresh = prev.w.equal(0).or(distance(prev.xy, curr.xy).greaterThan(40));
+  const pose = select(fresh, currentGround, mix(previousGround, currentGround, alpha));
+  const ground = pose.x;
   const at: Vec2 = select(fresh, curr.xy, mix(prev.xy, curr.xy, alpha));
   const turn = glslMod(curr.z.sub(prev.z).add(Math.PI), 2 * Math.PI).sub(Math.PI);
   const heading: Float = select(fresh, curr.z, prev.z.add(turn.mul(alpha)));
@@ -191,18 +195,17 @@ function place(frame: LifeFrame, model: LifeModel, lod: 0 | 1 | 2) {
     const near = onScreen.and(px.greaterThanEqual(LOD_MIN_PX));
     scale = lod === 0 ? select(near, scale, float(0)) : select(near, float(0), scale);
   }
-  return { prev, curr, ground, fresh, at, heading, scale };
+  return { prev, curr, ground, slope: pose.yz, fresh, at, heading, scale };
 }
 
-/** `local` turned by `heading` and stood at `at` on the ground. */
-function toWorld(local: Vec3, at: Vec2, heading: Float, z: Float): Vec3 {
+/** A rigid frame: vehicles pitch and roll with their contact plane. */
+function onSlope(local: Vec3, heading: Float, slope: Vec2): Vec3 {
   const c = cos(heading);
   const s = sin(heading);
-  return vec3(
-    at.x.add(c.mul(local.x)).sub(s.mul(local.y)),
-    at.y.add(s.mul(local.x)).add(c.mul(local.y)),
-    z,
-  );
+  const up = normalize(vec3(slope.negate(), 1));
+  const forward = normalize(vec3(c, s, c.mul(slope.x).add(s.mul(slope.y))));
+  const left = normalize(cross(up, forward));
+  return forward.mul(local.x).add(left.mul(local.y)).add(up.mul(local.z));
 }
 
 /** Blend as MapLibre blends custom layers: premultiplied. */
@@ -315,10 +318,8 @@ export function lifeBodyMaterial(
     gloss = paint;
   }
   const scaled = local.mul(p.scale);
-  const world = toWorld(scaled, p.at, p.heading, scaled.z.add(p.ground));
-  const c = cos(p.heading);
-  const s = sin(p.heading);
-  const vNormal = varying(vec3(c.mul(n.x).sub(s.mul(n.y)), s.mul(n.x).add(c.mul(n.y)), n.z));
+  const world = vec3(p.at, p.ground).add(onSlope(scaled, p.heading, p.slope));
+  const vNormal = varying(onSlope(n, p.heading, p.slope));
   const vColor = varying(colour);
   const vGloss = varying(gloss);
 
@@ -358,7 +359,7 @@ export function lifeShadowMaterial(frame: LifeFrame, model: LifeModel): MeshBasi
     .mul(vec2(...model.shadowHalfSize))
     .mul(vec2(lengthScale.mul(1.12), 1.3))
     .mul(p.scale);
-  const world = toWorld(vec3(local2, 0), p.at, p.heading, p.ground.add(0.04));
+  const world = vec3(p.at, p.ground.add(0.04)).add(onSlope(vec3(local2, 0), p.heading, p.slope));
   const vUv = varying(position.xy);
 
   const material = premultipliedBlending(new MeshBasicNodeMaterial());

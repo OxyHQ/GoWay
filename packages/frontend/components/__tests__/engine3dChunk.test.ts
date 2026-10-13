@@ -101,10 +101,8 @@ const ENGINE_PARTS: Record<string, string> = {
   'components/map/engine/city3d/sky.ts': 'components/map/engine/city3d/cityEngine.ts',
   // The materials built ahead of the first tiles, over real tile entries.
   'components/map/engine/city3d/materialWarmup.ts': 'components/map/engine/city3d/cityEngine.ts',
-  // The street detail's TSL materials and ground atlas, parts of its renderer.
+  // The street detail's TSL materials, part of its renderer.
   'components/map/engine/cityStreets/streetMaterials.ts':
-    'components/map/engine/cityStreets/streetRenderer.ts',
-  'components/map/engine/cityStreets/groundAtlas.ts':
     'components/map/engine/cityStreets/streetRenderer.ts',
   // Still, untextured models as one or two draws (`docs/MAP_NATIVE_3D.md`).
   'components/map/engine/city3d/modelBatch.ts': 'components/map/engine/city3d/models.ts',

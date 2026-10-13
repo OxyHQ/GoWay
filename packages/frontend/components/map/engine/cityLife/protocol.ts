@@ -51,6 +51,9 @@ export interface SimFrameMessage {
   origin: { x: number; y: number };
   /** Per car slot: x, y, heading (radians from east, counter-clockwise), scale (0: not drawn). */
   cars: Float32Array;
+  /** Surface class at each agent: ground (0) or a mapped bridge (1). */
+  carBridges: Uint8Array;
+  peopleBridges: Uint8Array;
   /** Per car slot: paint sRGB and length as a fraction of the model's longest. */
   carStyle: Uint8Array;
   /** The taxis' door colour where the city has a taxi livery (`sim/liveries.ts`), else `null`. */

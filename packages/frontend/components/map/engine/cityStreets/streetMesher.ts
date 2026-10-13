@@ -13,11 +13,11 @@
  *    chained junction to junction by `chainPieces` (`roads/roadGraph.ts`),
  *    continuing through a node only where the carriageway does not change
  *    (`lanes.ts` → `sameSection`) and does not turn sharply.
- * 2. **Junctions.** Where three or more links meet (or two that differ), each
- *    arm is cut back until its kerbs clear the next arm's round a kerb fillet,
- *    and the junction is the polygon of the arm mouths and the fillets —
- *    asphalt, with sidewalk corners where both arms record a sidewalk.
- * 3. **Links** are strips between their cuts, `crossSection` wide; recorded
+ * 2. **Junctions.** Complete road corridors meet at their actual end
+ *    cross-sections. Cuts reserve room for paint; they never erase a bend.
+ *    `StreetTopology` unions corridors, subtracts them from sidewalks and
+ *    paving, and triangulates one non-overlapping partition per bridge level.
+ * 3. **Links** are full centreline strips, `crossSection` wide; recorded
  *    sidewalks are raised slabs beside them; a separately mapped
  *    `footway=sidewalk` is a slab along its line, widened to the nearest
  *    parallel kerb.
@@ -26,19 +26,19 @@
  *    give-way signs, arrows from `turn:lanes`, bus and cycle lanes, and the
  *    street's name on long straight stretches.
  *
- * Every primitive belongs to the tile its anchor lies in (a strip segment's
- * midpoint, a junction's node, a crossing's node), so neighbouring tiles never
- * draw the same thing twice.
+ * Surfaces are clipped to their owning tile after all neighbours contribute
+ * to the union. Paint belongs to its anchor's tile. Both have one owner.
  */
-import earcut from 'earcut';
 
 import type { DecodedRoadTile, RoadNode, RoadPiece } from '../roads/roadTiles';
+import { BRIDGE_MEMBER_MAX_OFFSET_M } from '../roads/bridgeGeometry';
 import {
   chainPieces,
   offsetPolyline,
   type Polyline,
   pointAt,
   polyline,
+  project,
   simFrame,
   slice,
 } from '../roads/roadGraph';
@@ -61,9 +61,11 @@ import {
   type PackedSurfaces,
   packMarkings,
   packSurfaces,
+  subdivideSurfaces,
   SURFACE,
 } from './meshBuffers';
 import { ARROW_CELL, type StreetAtlas } from './streetAtlas';
+import { StreetTopology } from './surfaceTopology';
 
 const EXTENT = 4096;
 
@@ -79,8 +81,6 @@ export const STREET = {
   kerbReachM: 8,
   /** Longest straight piece of any strip, so the ground can follow terrain, metres. */
   stepM: 6,
-  /** Kerb fillet radius at junctions, by the larger class meeting there. */
-  filletM: { major: 5, minor: 3.5 },
   /** Crossing width along the road, metres. */
   crossingM: 3,
   zebraBarM: 0.5,
@@ -99,7 +99,7 @@ export const STREET = {
   nameClearM: 14,
   /** Names repeat every so often on a long link. */
   nameEveryM: 180,
-  /** Widest junction cut, metres. */
+  /** Furthest paint is held back at an acute junction, metres. */
   maxTrimM: 40,
 } as const;
 
@@ -115,7 +115,7 @@ interface Link {
   endSection: CrossSection;
   piece: RoadPiece;
   drawable: boolean;
-  /** Sidewalk width on each side (0: none recorded; negative: mapped separately). */
+  /** Attached sidewalk width on each side (0: absent or mapped separately). */
   walkLeft: number;
   walkRight: number;
   /** Interior nodes and their stations. */
@@ -176,6 +176,26 @@ export interface StreetMesh {
 export const PAINTED_NAME_STEP_M = 6;
 
 const cross = (ax: number, ay: number, bx: number, by: number) => ax * by - ay * bx;
+
+/** Signed offset along a sidewalk's (possibly mitred) left normal to a kerb segment. */
+export function kerbOffset(
+  x: number,
+  y: number,
+  nx: number,
+  ny: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number | null {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const det = cross(nx, ny, dx, dy);
+  if (Math.abs(det) < 1e-6) return null;
+  const along = cross(ax - x, ay - y, nx, ny) / det;
+  if (along < 0 || along > 1) return null;
+  return cross(ax - x, ay - y, dx, dy) / det;
+}
 
 /** Unit right normals of a polyline, mitred (the simulation's `offsetPolyline` at 1 m). */
 function rightNormals(points: readonly [number, number][]): [number, number][] {
@@ -248,8 +268,16 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
   const inTile = (x: number, y: number) => x >= 0 && x < size && y <= 0 && y > -size;
   /** Whether a polyline comes within `margin` metres of the tile (else nothing of it is ours). */
   const touches = (points: readonly [number, number][], margin = 1) => {
-    for (const [x, y] of points) {
-      if (x >= -margin && x <= size + margin && y <= margin && y >= -size - margin) return true;
+    for (let i = 1; i < points.length; i++) {
+      const [ax, ay] = points[i - 1],
+        [bx, by] = points[i];
+      if (
+        Math.max(ax, bx) >= -margin &&
+        Math.min(ax, bx) <= size + margin &&
+        Math.max(ay, by) >= -size - margin &&
+        Math.min(ay, by) <= margin
+      )
+        return true;
     }
     return false;
   };
@@ -297,7 +325,7 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
       const a = nodeOf(first[0], first[1]);
       const b = nodeOf(last[0], last[1]);
       const points = piece.points.map(([gx, gy]) => toMetres(gx, gy));
-      if (!piece.car) {
+      if (!piece.car && !piece.motorOnly) {
         if (piece.footway === 'crossing') {
           for (const [end, from, to] of [
             [a, points[0], points[1]],
@@ -311,7 +339,7 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
               });
             }
           }
-        } else if (!piece.tunnel && !piece.bridge) {
+        } else if (!piece.tunnel) {
           footways.push({ points, piece });
         }
         continue;
@@ -321,15 +349,9 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
       let pts = points;
       let [pa, pb] = [a, b];
       const sw = piece.sidewalkWidth ?? STREET.sidewalkM;
-      // A recorded sidewalk is a slab beside the road; `separate` means it is
-      // mapped as its own way (drawn from that way), so only the junction
-      // corners it turns are filled here — marked by a negative width.
+      // A separate sidewalk is drawn only from its own mapped geometry.
       const walk = (side: 'left' | 'right') =>
-        piece.sidewalk === 'both' || piece.sidewalk === side
-          ? sw
-          : piece.sidewalk === 'separate'
-            ? -STREET.sidewalkM
-            : 0;
+        piece.sidewalk === 'both' || piece.sidewalk === side ? sw : 0;
       let walkLeft = walk('left');
       let walkRight = walk('right');
       if (piece.oneway === -1) {
@@ -415,7 +437,7 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
       startSection: first.section,
       endSection: last.section,
       piece: chain[Math.floor(chain.length / 2)].piece,
-      drawable: !first.piece.tunnel && !first.piece.bridge,
+      drawable: !first.piece.tunnel,
       walkLeft: first.walkLeft,
       walkRight: first.walkRight,
       interior,
@@ -426,16 +448,58 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
   }
   stats.links = links.length;
 
-  // ── Junctions: arms, cuts, polygons ──
+  // Bridge spans are chained independently of lane/sidewalk section changes.
+  // A change of width must not anchor the middle of a deck to the valley floor.
+  const bridgePaths: [number, number][][] = [];
+  const bridgePieces = carPieces.filter((p) => p.piece.bridge && !p.piece.tunnel);
+  const bridgeDegree = new Map<number, number>();
+  for (const p of bridgePieces)
+    for (const n of [p.a, p.b]) bridgeDegree.set(n, (bridgeDegree.get(n) ?? 0) + 1);
+  for (const chain of chainPieces(
+    bridgePieces,
+    (n) => bridgeDegree.get(n) ?? 0,
+    reverse,
+    () => true,
+  )) {
+    bridgePaths.push(chain.flatMap((p, i) => (i ? p.points.slice(1) : p.points)));
+  }
+  const bridgeLines = bridgePaths.map(polyline);
+  const bridgeOf = (points: [number, number][], bridge?: boolean) => {
+    if (!bridge) return 0;
+    const line = polyline(points),
+      middle = { x: 0, y: 0, h: 0 };
+    pointAt(line, line.length / 2, middle);
+    let best = -1,
+      distance = Infinity;
+    for (let i = 0; i < bridgeLines.length; i++) {
+      const match = project(bridgeLines[i], middle.x, middle.y);
+      const at = { x: 0, y: 0, h: 0 };
+      pointAt(bridgeLines[i], match.s, at);
+      if (
+        match.d < distance &&
+        match.d < BRIDGE_MEMBER_MAX_OFFSET_M &&
+        Math.abs(Math.cos(at.h - middle.h)) > 0.9
+      ) {
+        best = i;
+        distance = match.d;
+      }
+    }
+    if (best >= 0) return best + 1;
+    bridgePaths.push(points);
+    bridgeLines.push(line);
+    return bridgePaths.length;
+  };
+  const linkBridge = new Map(links.map((link) => [link, bridgeOf(link.points, link.piece.bridge)]));
+  let activeBridge = 0;
+  const bridgeDomains: [number, number][][][] = [];
+
+  // ── Junction arms and paint clearances ──
   interface Arm {
     link: Link;
     atA: boolean;
     u: [number, number];
     angle: number;
     hw: number;
-    /** Sidewalk widths on the arm's own left/right, looking away from the junction. */
-    walkLeft: number;
-    walkRight: number;
     need: number;
   }
   const armsAt = new Map<number, Arm[]>();
@@ -455,8 +519,6 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
         u: [dx / len, dy / len],
         angle: Math.atan2(dy, dx),
         hw: link.section.width / 2,
-        walkLeft: atA ? link.walkLeft : link.walkRight,
-        walkRight: atA ? link.walkRight : link.walkLeft,
         need: 0,
       };
       const list = armsAt.get(node);
@@ -464,32 +526,16 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
       else armsAt.set(node, [arm]);
     }
   }
-  const MAJOR = new Set(['motorway', 'trunk', 'primary', 'secondary']);
-  interface Corner {
-    convex: boolean;
-    /** Corner parameters along arm k's left kerb and arm k+1's right kerb. */
-    t: number;
-    s: number;
-    d: number;
-    r: number;
-  }
-  const corners = new Map<number, Corner[]>();
   for (const [node, arms] of armsAt) {
     if (arms.length < 2) continue;
     arms.sort((p, q) => p.angle - q.angle);
-    const major = arms.some((a) => MAJOR.has(a.link.piece.highway));
-    const r = major ? STREET.filletM.major : STREET.filletM.minor;
-    const list: Corner[] = [];
     for (let k = 0; k < arms.length; k++) {
       const p = arms[k];
       const q = arms[(k + 1) % arms.length];
       let delta = q.angle - p.angle;
       if (k === arms.length - 1) delta += 2 * Math.PI;
       const convex = delta < Math.PI - 0.1 && delta > 0.05;
-      if (!convex) {
-        list.push({ convex, t: 0, s: 0, d: 0, r });
-        continue;
-      }
+      if (!convex) continue;
       const n1: [number, number] = [-p.u[1], p.u[0]];
       const n2: [number, number] = [-q.u[1], q.u[0]];
       const wx = -n2[0] * q.hw - n1[0] * p.hw;
@@ -497,12 +543,9 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
       const det = cross(p.u[0], p.u[1], q.u[0], q.u[1]);
       const t = cross(wx, wy, q.u[0], q.u[1]) / det;
       const s = cross(wx, wy, p.u[0], p.u[1]) / det;
-      const d = Math.min(r / Math.tan(delta / 2), 30);
-      list.push({ convex, t, s, d, r });
-      p.need = Math.max(p.need, t + d);
-      q.need = Math.max(q.need, s + d);
+      p.need = Math.max(p.need, t);
+      q.need = Math.max(q.need, s);
     }
-    corners.set(node, list);
     // A two-arm junction carrying a crossing keeps the crossing clear of lane lines.
     const crossingHere = tagged.get(node)?.kind === 'crossing' || crossingWays.has(node);
     const minimum = arms.length === 2 ? (crossingHere ? STREET.crossingM / 2 + 0.5 : 2) : 1;
@@ -522,43 +565,24 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
   }
 
   // Builders: simple level (z16+) and full (z17+), surfaces and markings.
+  const linkBodies = new Map(
+    links.map((link) => [
+      link,
+      resample(slice(link.line, link.trimA, link.line.length - link.trimB), STREET.stepM),
+    ]),
+  );
   const surf = { simple: new Buffers(), full: new Buffers() };
+  const topology = new StreetTopology(size, STREET.stepM * 4);
   const tint = new Buffers();
   const paint = new Buffers();
   const sdf = new Buffers();
 
-  const surfaceAttr = (material: number, layer: number, shade = 255) => [material, shade, layer, 0];
-  const emitPolygon = (
-    ring: readonly [number, number][],
-    z: number,
-    material: number,
-    layer: number,
-    into = surf.simple,
-  ) => {
-    if (ring.length < 3) return;
-    const flat: number[] = [];
-    for (const [x, y] of ring) flat.push(x, y);
-    const triangles = earcut(flat);
-    const base = into.vertexCount;
-    for (const [x, y] of ring) into.vertex(x, y, z, surfaceAttr(material, layer));
-    for (let i = 0; i < triangles.length; i += 3) {
-      into.triangle(base + triangles[i], base + triangles[i + 1], base + triangles[i + 2]);
+  const emitPolygon = (ring: readonly [number, number][], z: number, material: number) => {
+    if (activeBridge) {
+      bridgeDomains[activeBridge - 1] ??= [];
+      bridgeDomains[activeBridge - 1].push(ring.map(([x, y]) => [x, y]));
     }
-  };
-  /** A vertical face along a path, from `z0` up to `z1`. */
-  const emitFace = (path: readonly [number, number][], z0: number, z1: number, shade: number) => {
-    for (let i = 0; i + 1 < path.length; i++) {
-      const [ax, ay] = path[i];
-      const [bx, by] = path[i + 1];
-      if (!inTile((ax + bx) / 2, (ay + by) / 2)) continue;
-      const attr = surfaceAttr(SURFACE.kerb, LAYER.sidewalk, shade);
-      const v0 = surf.full.vertex(ax, ay, z0, attr);
-      const v1 = surf.full.vertex(bx, by, z0, attr);
-      const v2 = surf.full.vertex(bx, by, z1, attr);
-      const v3 = surf.full.vertex(ax, ay, z1, attr);
-      surf.full.triangle(v0, v1, v2);
-      surf.full.triangle(v0, v2, v3);
-    }
+    topology.add(ring, z, material, activeBridge);
   };
   /**
    * A strip along `points` between lateral offsets `left[i]` and `right[i]`
@@ -570,32 +594,21 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
     right: readonly number[],
     z: number,
     material: number,
-    layer: number,
   ) => {
     if (points.length < 2) return;
     const normals = rightNormals(points);
-    let prev: [number, number] | null = null;
-    for (let i = 0; i < points.length; i++) {
-      const [x, y] = points[i];
-      const [nx, ny] = normals[i];
-      const l = surf.simple.vertex(
-        x - nx * left[i],
-        y - ny * left[i],
-        z,
-        surfaceAttr(material, layer),
-      );
-      const r = surf.simple.vertex(
-        x - nx * right[i],
-        y - ny * right[i],
-        z,
-        surfaceAttr(material, layer),
-      );
-      if (prev && inTile((x + points[i - 1][0]) / 2, (y + points[i - 1][1]) / 2)) {
-        surf.simple.triangle(prev[0], prev[1], r);
-        surf.simple.triangle(prev[0], r, l);
-      }
-      prev = [l, r];
-    }
+    const edge = (i: number, offset: number): [number, number] => [
+      points[i][0] - normals[i][0] * offset,
+      points[i][1] - normals[i][1] * offset,
+    ];
+    emitPolygon(
+      [
+        ...points.map((_, i) => edge(i, left[i])),
+        ...points.map((_, i) => edge(i, right[i])).reverse(),
+      ],
+      z,
+      material,
+    );
   };
   const lateral = (points: readonly [number, number][], offset: number) =>
     offsetPolyline(points, -offset);
@@ -614,7 +627,7 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
     for (let i = 0; i < points.length; i++) {
       const [x, y] = points[i];
       const [nx, ny] = normals[i];
-      const attr = [colour, MODE.line, LAYER.paint, 0];
+      const attr = [colour, MODE.line, LAYER.paint, activeBridge];
       const l = into.vertex(x, y, 0, attr, [-nx * halfWidth, -ny * halfWidth], [-1, 0]);
       const r = into.vertex(x, y, 0, attr, [nx * halfWidth, ny * halfWidth], [1, 0]);
       if (prev && (!owned || inTile((x + points[i - 1][0]) / 2, (y + points[i - 1][1]) / 2))) {
@@ -626,7 +639,7 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
   };
   /** A flat tinted quad. */
   const emitTintQuad = (corners4: readonly [number, number][], colour: number) => {
-    const attr = [colour, MODE.flat, LAYER.tint, 0];
+    const attr = [colour, MODE.flat, LAYER.tint, activeBridge];
     const base = tint.vertexCount;
     for (const [x, y] of corners4) tint.vertex(x, y, 0, attr, [0, 0], [0, 0]);
     tint.triangle(base, base + 1, base + 2);
@@ -644,7 +657,7 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
     halfRight: number,
     rect: { x: number; y: number; w: number; h: number },
   ) => {
-    const attr = [PAINT.white, MODE.sdf, LAYER.paint, 0];
+    const attr = [PAINT.white, MODE.sdf, LAYER.paint, activeBridge];
     const corner = (su: number, sr: number): [number, number] => [
       centre[0] + up[0] * halfUp * su + right[0] * halfRight * sr,
       centre[1] + up[1] * halfUp * su + right[1] * halfRight * sr,
@@ -720,83 +733,56 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
   };
 
   // ── Junction surfaces ──
+  // The only extra area is the bevel between the actual end cross-sections.
+  // A fillet extrapolated from distant tangents can erase bends and create
+  // fictitious circular islands when neighbouring intersections are close.
   for (const [node, arms] of armsAt) {
-    if (arms.length < 2) continue;
-    const list = corners.get(node);
-    if (!list) continue;
+    if (arms.length < 2 || arms.every((a) => !a.link.drawable)) continue;
     const [jx, jy] = nodePos[node];
-    if (!inTile(jx, jy)) continue;
-    if (arms.every((a) => !a.link.drawable)) continue;
-    stats.junctions++;
-    const trimOf = (a: Arm) => (a.atA ? a.link.trimA : a.link.trimB);
-    const at = (a: Arm, along: number, side: number): [number, number] => [
-      jx + a.u[0] * along - a.u[1] * side,
-      jy + a.u[1] * along + a.u[0] * side,
-    ];
-    const ring: [number, number][] = [];
-    const paved = arms.every((a) => a.link.paving);
-    for (let k = 0; k < arms.length; k++) {
-      const p = arms[k];
-      const q = arms[(k + 1) % arms.length];
-      const c = list[k];
-      const tp = trimOf(p);
-      const tq = trimOf(q);
-      ring.push(at(p, tp, -p.hw), at(p, tp, p.hw));
-      const kerb: [number, number][] = [at(p, tp, p.hw)];
-      let arc: [number, number][] = [];
-      if (c.convex && c.t + c.d <= tp + 1e-6 && c.s + c.d <= tq + 1e-6 && c.d > 0) {
-        const A = at(p, c.t + c.d, p.hw);
-        const B = at(q, c.s + c.d, -q.hw);
-        const C: [number, number] = [A[0] - p.u[1] * c.r, A[1] + p.u[0] * c.r];
-        const a0 = Math.atan2(A[1] - C[1], A[0] - C[0]);
-        const a1 = Math.atan2(B[1] - C[1], B[0] - C[0]);
-        const sweep = Math.atan2(Math.sin(a1 - a0), Math.cos(a1 - a0));
-        const rad = Math.hypot(A[0] - C[0], A[1] - C[1]);
-        for (let i = 0; i <= 6; i++) {
-          const a = a0 + (sweep * i) / 6;
-          arc.push([C[0] + Math.cos(a) * rad, C[1] + Math.sin(a) * rad]);
-        }
-        ring.push(...arc);
-        kerb.push(...arc);
-      } else arc = [];
-      kerb.push(at(q, tq, -q.hw));
-      // A sidewalk corner where both arms record one on the facing sides.
-      if (c.convex && p.walkLeft !== 0 && q.walkRight !== 0 && p.link.drawable && q.link.drawable) {
-        const ow1 = p.hw + Math.abs(p.walkLeft);
-        const ow2 = q.hw + Math.abs(q.walkRight);
-        const n1: [number, number] = [-p.u[1], p.u[0]];
-        const n2: [number, number] = [-q.u[1], q.u[0]];
-        const wx = -n2[0] * ow2 - n1[0] * ow1;
-        const wy = -n2[1] * ow2 - n1[1] * ow1;
-        const det = cross(p.u[0], p.u[1], q.u[0], q.u[1]);
-        const t = cross(wx, wy, q.u[0], q.u[1]) / det;
-        const Q = at(p, t, ow1);
-        if (Math.hypot(Q[0] - jx, Q[1] - jy) < STREET.maxTrimM) {
-          const outer = [at(q, Math.max(tq, 0), -ow2), Q, at(p, Math.max(tp, 0), ow1)];
-          emitPolygon([...kerb, ...outer], STREET.kerbM, SURFACE.sidewalk, LAYER.sidewalk);
-          emitFace(kerb, 0, STREET.kerbM, 170);
-        }
-      }
+    if (inTile(jx, jy)) stats.junctions++;
+    activeBridge = arms.every((a) => a.link.piece.bridge) ? (linkBridge.get(arms[0].link) ?? 0) : 0;
+    const endpoints: [number, number][] = [];
+    for (const arm of arms) {
+      const pts = arm.atA ? arm.link.points : arm.link.points.slice().reverse();
+      const dx = pts[1][0] - pts[0][0],
+        dy = pts[1][1] - pts[0][1];
+      const length = Math.hypot(dx, dy) || 1;
+      for (const side of [-1, 1])
+        endpoints.push([jx - (dy / length) * arm.hw * side, jy + (dx / length) * arm.hw * side]);
     }
+    endpoints.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const half = (points: [number, number][]) => {
+      const hull: [number, number][] = [];
+      for (const p of points) {
+        while (hull.length >= 2) {
+          const a = hull[hull.length - 2],
+            b = hull[hull.length - 1];
+          if (cross(b[0] - a[0], b[1] - a[1], p[0] - b[0], p[1] - b[1]) > 0) break;
+          hull.pop();
+        }
+        hull.push(p);
+      }
+      return hull.slice(0, -1);
+    };
     emitPolygon(
-      ring,
+      [...half(endpoints), ...half(endpoints.slice().reverse())],
       0,
-      paved ? SURFACE.paving : SURFACE.asphalt,
-      paved ? LAYER.paving : LAYER.asphalt,
+      arms.every((a) => a.link.paving) ? SURFACE.paving : SURFACE.asphalt,
     );
   }
 
   // ── Kerb lines (for mapped sidewalks to reach), on a 10 m grid ──
-  const kerbGrid = new Map<number, [number, number, number, number][]>();
+  const kerbGrid = new Map<number, [number, number, number, number, number][]>();
   const cellKey = (cx: number, cy: number) => (cx + 4096) * 8192 + (cy + 4096);
   const cell = (x: number, y: number) => cellKey(Math.floor(x / 10), Math.floor(y / 10));
   const addKerb = (pts: readonly [number, number][]) => {
     for (let i = 0; i + 1 < pts.length; i++) {
-      const seg: [number, number, number, number] = [
+      const seg: [number, number, number, number, number] = [
         pts[i][0],
         pts[i][1],
         pts[i + 1][0],
         pts[i + 1][1],
+        activeBridge,
       ];
       const cells = new Set([
         cell(seg[0], seg[1]),
@@ -880,6 +866,7 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
     const style = crossingAt(node);
     if (!style) continue;
     const wide = arms[0].hw >= arms[1].hw ? arms[0] : arms[1];
+    activeBridge = linkBridge.get(wide.link) ?? 0;
     paintCrossing(nodePos[node], wide.u, wide.hw * 2, style, node);
   }
 
@@ -917,45 +904,46 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
   };
 
   for (const link of links) {
-    if (!link.drawable || !touches(link.points, STREET.kerbReachM)) continue;
+    if (!link.drawable || (!link.piece.bridge && !touches(link.points, STREET.kerbReachM)))
+      continue;
+    activeBridge = linkBridge.get(link) ?? 0;
     const { section, line } = link;
     const s0 = link.trimA;
     const s1 = line.length - link.trimB;
-    if (s1 - s0 < 0.2) continue;
     const hw = section.width / 2;
-    const body = resample(slice(line, s0, s1), STREET.stepM);
+    const body = linkBodies.get(link) ?? [];
     const material = link.paving ? SURFACE.paving : SURFACE.asphalt;
-    const layer = link.paving ? LAYER.paving : LAYER.asphalt;
+    // The surface follows the complete surveyed centreline. Junction cuts
+    // limit markings and kerbs, never erase the road's underlying corridor.
+    const corridor = link.points;
     emitStrip(
-      body,
-      body.map(() => hw),
-      body.map(() => -hw),
+      corridor,
+      corridor.map(() => hw),
+      corridor.map(() => -hw),
       0,
       material,
-      layer,
     );
-    addKerb(lateral(body, hw));
-    addKerb(lateral(body, -hw));
+    addKerb(lateral(corridor, hw));
+    addKerb(lateral(corridor, -hw));
     for (const [side, width] of [
       [1, link.walkLeft],
       [-1, link.walkRight],
     ] as const) {
       if (width <= 0) continue;
       stats.sidewalks++;
-      const inner = body.map(() => side * hw);
-      const outer = body.map(() => side * (hw + width));
+      const inner = corridor.map(() => side * hw);
+      const outer = corridor.map(() => side * (hw + width));
       emitStrip(
-        body,
+        corridor,
         side > 0 ? outer : inner,
         side > 0 ? inner : outer,
         STREET.kerbM,
         SURFACE.sidewalk,
-        LAYER.sidewalk,
       );
-      emitFace(lateral(body, side * hw), 0, STREET.kerbM, 170);
-      emitFace(lateral(body, side * (hw + width)), 0, STREET.kerbM, 140);
     }
 
+    // Cuts affect paint only; short links still retain their full surface.
+    if (s1 - s0 < 0.2) continue;
     // Markings.
     const crosswalks = crosswalksOf.get(link) ?? [];
     const blocked: [number, number][] = crosswalks
@@ -1237,19 +1225,21 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
     const cy = Math.floor(y / 10);
     for (let i = -1; i <= 1; i++) {
       for (let j = -1; j <= 1; j++) {
-        for (const [ax, ay, bx, by] of kerbGrid.get(cellKey(cx + i, cy + j)) ?? []) {
+        for (const [ax, ay, bx, by, bridge] of kerbGrid.get(cellKey(cx + i, cy + j)) ?? []) {
+          if (bridge !== activeBridge) continue;
           const dx = bx - ax;
           const dy = by - ay;
           const len2 = dx * dx + dy * dy;
           if (len2 < 1e-6) continue;
-          if (Math.abs(dx * tx + dy * ty) / Math.sqrt(len2) < 0.7) continue;
-          const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2));
-          const qx = ax + dx * t - x;
-          const qy = ay + dy * t - y;
-          const d = Math.hypot(qx, qy);
-          if (d > STREET.kerbReachM) continue;
-          if (cross(tx, ty, qx, qy) > 0) best.left = Math.min(best.left, d);
-          else best.right = Math.min(best.right, d);
+          if (Math.abs(dx * tx + dy * ty) / (Math.sqrt(len2) * Math.hypot(tx, ty)) < 0.7) continue;
+          // Intersect the actual lateral ray, never reach diagonally for a
+          // segment endpoint beyond a junction. That Euclidean distance
+          // widened sidewalks into triangular wedges over the carriageway.
+          const offset = kerbOffset(x, y, -ty, tx, ax, ay, bx, by);
+          if (offset === null || Math.abs(offset) * Math.hypot(tx, ty) > STREET.kerbReachM)
+            continue;
+          if (offset > 0) best.left = Math.min(best.left, offset);
+          else best.right = Math.min(best.right, -offset);
         }
       }
     }
@@ -1263,17 +1253,17 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
     track: 1.25,
   };
   for (const { points, piece } of footways) {
-    if (!touches(points)) continue;
+    if (!piece.bridge && !touches(points)) continue;
+    activeBridge = bridgeOf(points, piece.bridge);
     const body = resample(points, 4);
     if (piece.footway === 'sidewalk') {
       stats.sidewalks++;
       const left: number[] = [];
       const right: number[] = [];
+      const normals = rightNormals(body);
       for (let i = 0; i < body.length; i++) {
-        const [ax, ay] = body[Math.max(0, i - 1)];
-        const [bx, by] = body[Math.min(body.length - 1, i + 1)];
-        const len = Math.hypot(bx - ax, by - ay) || 1;
-        const kerb = nearestKerb(body[i][0], body[i][1], (bx - ax) / len, (by - ay) / len);
+        const [nx, ny] = normals[i];
+        const kerb = nearestKerb(body[i][0], body[i][1], -ny, nx);
         // Reach the kerb on the road's side (never past it), the default the other way.
         left.push(
           Number.isFinite(kerb.left) ? Math.max(0.3, kerb.left - 0.02) : STREET.footwayHalfM,
@@ -1286,15 +1276,7 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
         v.map((_, i) => Math.min(v[Math.max(0, i - 1)], v[i], v[Math.min(v.length - 1, i + 1)]));
       const l = smooth(left);
       const r = smooth(right).map((x) => -x);
-      emitStrip(body, l, r, STREET.kerbM, SURFACE.sidewalk, LAYER.sidewalk);
-      const normals = rightNormals(body);
-      const edge = (offsets: number[]) =>
-        body.map(
-          ([x, y], i) =>
-            [x - normals[i][0] * offsets[i], y - normals[i][1] * offsets[i]] as [number, number],
-        );
-      emitFace(edge(l), 0, STREET.kerbM, 170);
-      emitFace(edge(r), 0, STREET.kerbM, 170);
+      emitStrip(body, l, r, STREET.kerbM, SURFACE.sidewalk);
       continue;
     }
     if (piece.highway === 'cycleway') {
@@ -1308,7 +1290,6 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
         body.map(() => -halfWidth),
         0,
         SURFACE.asphalt,
-        LAYER.asphalt,
       );
       const l = lateral(body, halfWidth);
       const r = lateral(body, -halfWidth);
@@ -1327,11 +1308,18 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
       body.map(() => -half),
       0,
       SURFACE.paving,
-      LAYER.paving,
     );
   }
 
+  topology.build(surf.simple, surf.full);
+  subdivideSurfaces(surf.simple, STREET.stepM);
+  subdivideSurfaces(surf.full, STREET.stepM);
+  subdivideSurfaces(tint, STREET.stepM);
+  subdivideSurfaces(paint, STREET.stepM);
+  subdivideSurfaces(sdf, STREET.stepM);
   const surfaces = packSurfaces([surf.simple], [surf.full]);
+  surfaces.bridges = bridgePaths;
+  surfaces.bridgeDomains = bridgePaths.map((_, i) => bridgeDomains[i] ?? []);
   const markings = packMarkings([tint, paint], [sdf]);
   stats.surfaceTriangles = surfaces.indices.length / 3;
   stats.markingTriangles = markings.indices.length / 3;

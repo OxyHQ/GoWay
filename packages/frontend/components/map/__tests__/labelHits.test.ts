@@ -356,14 +356,11 @@ describe('the layer ids native queries, since it cannot read its style', () => {
     for (const id of TAP_LAYER_IDS) expect(published.has(id)).toBe(true);
   });
 
-  test('the tap list carries the POI dots and the label list does not', () => {
-    // The distinction is the whole of why there are two lists: `poi-dot` is a
-    // CIRCLE layer, which has no collision detection at all, so it renders
-    // whether or not its label won a collision. A dot is therefore not evidence
-    // that the basemap is showing the user a NAME.
-    expect(TAP_LAYER_IDS).toContain('poi-dot');
-    expect(LABEL_LAYER_IDS).not.toContain('poi-dot');
-    expect(LABEL_LAYER_IDS).not.toContain('poi-transit-dot');
+  test('the category icon and name have one tappable symbol, with no orphan dots', () => {
+    expect(TAP_LAYER_IDS).toContain('label-poi');
+    expect(LABEL_LAYER_IDS).toContain('label-poi');
+    expect(TAP_LAYER_IDS).not.toContain('poi-dot');
+    expect(TAP_LAYER_IDS).not.toContain('poi-transit-dot');
   });
 
   test('every text the style draws is queried, streets and water included', () => {

@@ -28,6 +28,7 @@
  */
 import earcut from 'earcut';
 
+import { insideRing } from '../rings';
 import { heightForStoreys, STOREY_MODELS, type StoreyModel } from '../storeys';
 import type { RawBuilding, RawPolygon } from './cityGml';
 import type { Crs } from './crs';
@@ -146,20 +147,6 @@ export function ringArea2(ring: ArrayLike<number>): number {
       (ring[i * 2] - ox) * (ring[j * 2 + 1] - oy) - (ring[j * 2] - ox) * (ring[i * 2 + 1] - oy);
   }
   return sum / 2;
-}
-
-/** Point in an open `[x, y, …]` ring (even–odd). */
-export function insideRing2(ring: ArrayLike<number>, x: number, y: number): boolean {
-  let inside = false;
-  const n = ring.length / 2;
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = ring[i * 2];
-    const yi = ring[i * 2 + 1];
-    const xj = ring[j * 2];
-    const yj = ring[j * 2 + 1];
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
 }
 
 /**
@@ -450,7 +437,7 @@ export function representativePoint2(ring: Float64Array): [number, number] {
   }
   if (a !== 0) {
     const point: [number, number] = [ox + cx / (3 * a), oy + cy / (3 * a)];
-    if (insideRing2(ring, point[0], point[1])) return point;
+    if (insideRing(ring, point[0], point[1])) return point;
   }
   return [(ring[0] + ring[2]) / 2, (ring[1] + ring[3]) / 2];
 }

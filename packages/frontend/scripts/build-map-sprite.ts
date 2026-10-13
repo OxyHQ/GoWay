@@ -25,16 +25,9 @@
  * flag, because the flag is a property of how the image was rasterised, not a
  * setting that can be flipped afterwards.
  *
- * ## Status: available, not yet rendering
- *
- * Stated plainly because it would be easy to read this file as a feature: **no
- * layer in `lib/map/style/**` currently sets `icon-image`, and this change does
- * not add one.** The sprite is published, referenced by the style document's
- * `sprite` URL, and downloaded by MapLibre — and then nothing asks for an image
- * out of it. It is infrastructure placed ahead of the cartography that will use
- * it. Whoever wires up the first `icon-image` should expect to iterate on sizes
- * and on which icons exist; that is a cheap change, because this file is where
- * the set is defined.
+ * POIs use composited colour badges (disc, white glyph and rim). Each badge
+ * and its label live in ONE symbol, so they collide and disappear together.
+ * The original SDF entries remain available to other map layers.
  *
  * ## The licence, quoted from the file in node_modules
  *
@@ -95,6 +88,8 @@
  * just wrote and verifies that every declared rectangle actually contains the
  * icon it claims.
  */
+import { CARTOGRAPHY_PALETTES } from '../lib/map/style/palette';
+import { POI_BADGE_ICONS } from '../lib/map/style/poiBadges';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -250,7 +245,7 @@ interface SpriteEntry {
   width: number;
   height: number;
   pixelRatio: number;
-  sdf: true;
+  sdf: boolean;
 }
 
 /**
@@ -307,8 +302,15 @@ interface Sheet {
 function buildSheet(paths: Map<string, string>, pixelRatio: number): Sheet {
   const cell = (ICON_BOX + 2 * ICON_BUFFER) * pixelRatio;
 
+  const badges = Object.entries(CARTOGRAPHY_PALETTES).flatMap(([theme, palette]) =>
+    Object.entries(POI_BADGE_ICONS).map(([group, icon]) => ({
+      name: `goway-poi-${theme}-${group}`,
+      icon,
+      color: palette.poi[group as keyof typeof palette.poi],
+    })),
+  );
   const packed = shelfPack(
-    ICONS.map((icon) => ({ name: icon.name, width: cell, height: cell })),
+    [...ICONS, ...badges].map((icon) => ({ name: icon.name, width: cell, height: cell })),
     ATLAS_WIDTH * pixelRatio,
   );
 
@@ -317,7 +319,8 @@ function buildSheet(paths: Map<string, string>, pixelRatio: number): Sheet {
 
   const index: Record<string, SpriteEntry> = {};
   for (const box of packed.boxes) {
-    const path = paths.get(box.name);
+    const badge = badges.find((item) => item.name === box.name);
+    const path = paths.get(badge?.icon ?? box.name);
     if (path === undefined) throw new Error(`${box.name}: packed, but there is no path to draw`);
     const field = renderIcon(path, pixelRatio);
     if (field.length !== cell * cell) {
@@ -335,9 +338,28 @@ function buildSheet(paths: Map<string, string>, pixelRatio: number): Sheet {
         data[target + 1] = 255;
         data[target + 2] = 255;
         data[target + 3] = field[row * cell + column];
+        if (badge) {
+          const x = (column + 0.5) / pixelRatio - 15;
+          const y = (row + 0.5) / pixelRatio - 15;
+          const r = Math.hypot(x, y);
+          const coverage = Math.max(0, Math.min(1, (13 - r) * pixelRatio + 0.5));
+          const rim = Math.max(0, Math.min(1, (r - 11.8) * pixelRatio + 0.5));
+          // Rescale the existing SDF drawing into the disc's 16px interior.
+          const sx = Math.floor((15 + x * 1.5) * pixelRatio);
+          const sy = Math.floor((15 + y * 1.5) * pixelRatio);
+          const d = sx >= 0 && sx < cell && sy >= 0 && sy < cell ? field[sy * cell + sx] / 255 : 0;
+          const glyph = Math.max(0, Math.min(1, (d - 0.75) * 16 + 0.5));
+          const white = Math.max(glyph, rim);
+          const rgb = [1, 3, 5].map((offset) =>
+            Number.parseInt(badge.color.slice(offset, offset + 2), 16),
+          );
+          for (let c = 0; c < 3; c++)
+            data[target + c] = Math.round(rgb[c] * (1 - white) + 255 * white);
+          data[target + 3] = Math.round(coverage * 255);
+        }
       }
     }
-    index[box.name] = { x: box.x, y: box.y, width: cell, height: cell, pixelRatio, sdf: true };
+    index[box.name] = { x: box.x, y: box.y, width: cell, height: cell, pixelRatio, sdf: !badge };
   }
 
   for (const [alias, target] of Object.entries(ALIASES)) {

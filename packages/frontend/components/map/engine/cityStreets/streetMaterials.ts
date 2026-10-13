@@ -6,14 +6,13 @@
  * (`tsl/skyPasses.ts`: sun × shadow + sky, `^1/2.2`, then haze), so the
  * streets take the buildings' shadows.
  *
- * One material per kind serves every tile: a mesh's tile — its ground slot
- * (`groundAtlas.ts`), size, whether it is grounded and how much of its fine
- * detail shows — is read per mesh from `userData[STREET_TILE_USERDATA_KEY]`.
+ * One material per kind serves every tile. Its fine-detail visibility is
+ * read per mesh from `userData[STREET_TILE_USERDATA_KEY]`.
  *
- * - **On the drawn ground**: each vertex reads its tile's ground grid,
- *   bilinearly, from the atlas, lifted `STREET_LIFT_M` over it.
- * - **No z-fighting**: coplanar layers are nudged toward the camera in clip
- *   space (`depthBias` × layer × w), a per-vertex polygon offset.
+ * - **Shared geometry**: absolute vertex heights are baked from the terrain
+ *   source, adaptively refined, and also used by vehicle contact.
+ * - **Physical separation**: asphalt, kerbs and paint have actual heights,
+ *   without camera-dependent displacement of surface depth.
  * - **Lines never vanish**: a painted line thinner than a pixel is drawn a
  *   pixel wide at proportionally less alpha (`MIN_HALF_PX`), anti-aliased
  *   by its own across-coordinate; arrows and letters are SDF.
@@ -37,15 +36,12 @@ import {
   Discard,
   dot,
   float,
-  floor,
   Fn,
   fract,
   fwidth,
   int,
-  ivec2,
   length,
   max,
-  min,
   mix,
   modelViewMatrix,
   modelWorldMatrix,
@@ -53,7 +49,6 @@ import {
   select,
   smoothstep,
   texture,
-  textureLoad,
   uniform,
   uniformArray,
   varying,
@@ -64,7 +59,6 @@ import {
 
 import { mapBlending, perObject } from '../city3d/tsl/common';
 import type { SkyNodes } from '../city3d/tsl/skyNodes';
-import { GROUND } from '../city3d/terrainGround';
 import { MIN_HALF_PX, STREET_LIFT_M } from './meshBuffers';
 import { ATLAS_SIZE, SDF_EDGE } from './streetAtlas';
 
@@ -73,18 +67,12 @@ export const STREET_TILE_USERDATA_KEY = 'streetTile';
 
 /** A street mesh's tile, read per mesh by the shared materials. */
 export interface StreetTile {
-  /** Its slot in the ground atlas. */
-  slot: number;
-  /** 1 while its slot holds its ground; 0 on a flat map. */
-  grounded: number;
-  tileSizeM: number;
   /** Arrows, words and names: 0 … 1 with the effective zoom. */
   detail: number;
 }
 
 /** The overlay's shared values the materials read on every render. */
 export interface StreetMaterialInputs {
-  groundAtlas: Texture;
   sdfAtlas: Texture;
   surfaceDay: Vector3[];
   surfaceNight: Vector3[];
@@ -95,7 +83,6 @@ export interface StreetMaterialInputs {
   fade: () => number;
   /** Device pixels per metre at the screen centre. */
   pxPerM: () => number;
-  depthBias: number;
   /** The city sky's light inputs; `null` or absent: unlit. Its night factor replaces `nightFactor`. */
   sky?: SkyNodes | null;
 }
@@ -114,9 +101,6 @@ const tileValue = (read: (tile: StreetTile) => number, fallback: number) =>
   perObject(STREET_TILE_USERDATA_KEY, (tile) => read(tile as StreetTile), fallback);
 
 export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMaterials {
-  const slot = tileValue((t) => t.slot, 0);
-  const grounded = tileValue((t) => t.grounded, 0);
-  const tileSize = tileValue((t) => t.tileSizeM, 1);
   const detail = tileValue((t) => t.detail, 0);
   const sky = inputs.sky ?? null;
   const night = sky ? sky.nightFactor : uniform(0).onRenderUpdate(() => inputs.nightFactor());
@@ -125,29 +109,10 @@ export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMater
   const pxPerM = uniform(1).onRenderUpdate(
     ({ camera }) => inputs.pxPerM() * (camera?.projectionMatrix.elements[15] ?? 0),
   );
-  const depthBias = float(inputs.depthBias);
-
-  // The tile's ground grid (row-major from the north-west corner), bilinear.
-  const groundAt = (p: Node<'vec2'>) =>
-    Fn(() => {
-      const uv = clamp(vec2(p.x, p.y.negate()).div(tileSize), 0, 1).mul(GROUND.grid - 1);
-      const cell = min(floor(uv), vec2(GROUND.grid - 2));
-      const t = uv.sub(cell);
-      const i = ivec2(cell).add(ivec2(int(0), int(slot).mul(GROUND.grid)));
-      const at = (dx: number, dy: number) =>
-        textureLoad(inputs.groundAtlas, i.add(ivec2(dx, dy))).r;
-      const h = mix(mix(at(0, 0), at(1, 0), t.x), mix(at(0, 1), at(1, 1), t.x), t.y);
-      return select(grounded.greaterThan(0.5), h, float(0));
-    })();
-
-  /** On the ground, in model space. */
-  const onGround = (p: Node<'vec3'>) => vec4(p.xy, p.z.add(groundAt(p.xy)).add(STREET_LIFT_M), 1);
-
-  /** On the ground, in clip space, nudged toward the camera by its layer. */
-  const place = (p: Node<'vec3'>, layer: Node<'float'>) => {
-    const clip = cameraProjectionMatrix.mul(modelViewMatrix).mul(onGround(p));
-    return vec4(clip.xy, clip.z.sub(layer.add(1).mul(depthBias).mul(clip.w)), clip.w);
-  };
+  // Absolute elevations are baked once into the mesh from the shared ground
+  // source. Contact, shadows and drawing read these exact same vertices.
+  const onGround = (p: Node<'vec3'>) => vec4(p.xy, p.z.add(STREET_LIFT_M), 1);
+  const place = (p: Node<'vec3'>) => cameraProjectionMatrix.mul(modelViewMatrix).mul(onGround(p));
 
   /**
    * The day and night palettes, blended — and under the sky, lit as the
@@ -174,7 +139,7 @@ export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMater
     const position = attribute('position', 'vec3');
     // material, shade, depth layer, —
     const attr = attribute('attr', 'vec4');
-    surfaces.vertexNode = place(position, attr.z);
+    surfaces.vertexNode = place(position);
     const shade = shadeAt(position);
     const vMaterial = varying(attr.x);
     const vShade = varying(attr.y.div(255));
@@ -212,7 +177,7 @@ export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMater
       select(isLine, position.xy.add(offset.mul(widen).mul(pad)), position.xy),
       position.z,
     );
-    markings.vertexNode = place(p, attr.z);
+    markings.vertexNode = place(p);
     const shade = shadeAt(p);
     const vColour = varying(attr.x);
     const vMode = varying(mode);
@@ -240,6 +205,12 @@ export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMater
     markings.forceSinglePass = true;
     markings.transparent = true;
     markings.depthWrite = false;
+    // Paint and asphalt have different triangle edges on sloping terrain.
+    // Use slope-aware decal offset in addition to the layer ordering, so a
+    // bus/cycle tint cannot disappear into its own carriageway between vertices.
+    markings.polygonOffset = true;
+    markings.polygonOffsetFactor = -1;
+    markings.polygonOffsetUnits = -1;
     markings.blending = CustomBlending;
     markings.blendSrc = OneFactor;
     markings.blendDst = OneMinusSrcAlphaFactor;

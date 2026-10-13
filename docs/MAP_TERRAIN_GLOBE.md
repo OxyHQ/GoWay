@@ -67,7 +67,7 @@ week.
 
 **Is the proxy safe for full production traffic?** For launch-scale traffic,
 yes: the cache absorbs repeat views, Mapterhorn's endpoint is itself served from
-Cloudflare with a week's `max-age`, and the Worker refuses anything past z12 or
+Cloudflare with a week's `max-age`, and the Worker refuses anything past z16 or
 outside the world before fetching. What it is not is a contract: Mapterhorn
 publishes no usage policy, so GoWay's relief depends on a volunteer service's
 goodwill, and each colo's first view of a tile still reaches it. The R2 archive
@@ -77,18 +77,35 @@ nice-to-have.
 **Production path** (`MAP_TERRAIN_ARCHIVE`): upload Mapterhorn's
 `planet.pmtiles` to the `MAP_TILES` bucket under a dated key and set the var;
 the Worker then reads it by byte range with the same `pmtiles.js` reader the
-vector tiles use, and no request leaves Cloudflare. Cost on R2: 356 GB ×
+vector tiles use. Fine tiles absent from that archive use the configured
+upstream; a coarse archive must not suppress regional detail. Cost on R2: 356 GB ×
 $0.015/GB-month ≈ **$5.3/month**, egress free, ~1 class-B read per edge-cache
 miss ($0.36 per million). Adding the high-resolution regional files for the
 markets that matter is the upgrade path (all of them: ~$149/month).
 
-**`maxzoom` 12.** Mapterhorn is complete to z12 and patchy above; a missing
-z13+ tile is a 404 that MapLibre answers by walking up one zoom at a time —
-several failed requests per tile across most of the planet. At 12 the source
-is complete everywhere and over-zoomed (≈15 m/px at Barcelona's latitude from
-30 m data). The Worker refuses z > 12 before fetching anything. Serving the
-finer national models where they exist needs a coverage-aware choice of zoom
-(Mapterhorn publishes a `coverage-index.pmtiles`); not in this change.
+**Regional detail through z16.** The source and edge accept the finer national
+models instead of stretching z12 to street scale. Missing finer tiles use
+MapLibre's parent fallback. The browser still asks only GoWay's origin; Metro
+uses the production terrain route too (`scripts/dev-terrain.js`). This is a
+global source policy, with no viewport or city exceptions.
+
+**Bridges are surfaces, not earth.** Some source terrain includes returns from
+bridge decks. On web, `terrainDem.web.ts` registers one raster preparation
+protocol for both terrain and hillshade. A single worker reads the published
+road geometry, chains the recorded bridge ways, and groups parallel bridge
+sidewalks with their carriageway. Within that footprint only, terrain above
+both banks is replaced by an interpolation of the exterior elevations.
+Abutment cross-sections, exterior land, lower depressions and natural slopes
+are preserved. Unknown exterior elevations leave the source unchanged.
+This reconstructs obscured ground; it is not a surveyed under-bridge model.
+It never uses a fixed bridge height, minimum clearance or location exception.
+
+The result is a lossless raster DEM, used by MapLibre and therefore by the
+common ground sampler for streets, buildings and vehicles. The separate deck
+uses its mapped abutments; it is not a second terrain. Processing is in one
+worker and decoded tiles are bounded by `QualityProfile.relief.demCacheTiles`
+(16 low, 32 medium/high); terrain and hillshade share prepared tile results.
+Native's hillshade still reads the unconditioned source.
 
 **Credit, and the Copernicus notices.** Every map frame carries `© Mapterhorn`
 in the data credit while relief is drawn (now always), on web and native. It

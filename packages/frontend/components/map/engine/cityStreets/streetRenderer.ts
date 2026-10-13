@@ -28,12 +28,12 @@ import {
   tileKey,
   tileModelMatrix,
   tileSizeMetres,
+  latFromMercatorY,
   type ViewTile,
 } from '../city3d/tileMath';
 import { WorkerPool, webWorker } from '../city3d/workerPool';
-import type { PackedMarkings, PackedSurfaces } from './meshBuffers';
+import { STREET_LIFT_M, type PackedMarkings, type PackedSurfaces } from './meshBuffers';
 import type { StreetWorkerRequest, StreetWorkerResponse } from './protocol';
-import { createGroundAtlas } from './groundAtlas';
 import { ATLAS_SIZE } from './streetAtlas';
 import {
   createStreetMaterials,
@@ -42,6 +42,7 @@ import {
   type StreetTile,
 } from './streetMaterials';
 import type { StreetMeshStats } from './streetMesher';
+import { StreetSurface } from './streetSurface';
 import type { QualityProfile } from '@/lib/map/quality/profile';
 
 /** Streets are drawn from this zoom; they fade in over the next quarter zoom. */
@@ -60,10 +61,6 @@ export const STREET_BUDGET = {
   cachedPerDrawn: 2,
   /** Requests in flight. */
   maxInFlight: 3,
-  /** Ground grids sampled per frame (each ~1,000 terrain reads). */
-  groundsPerFrame: 2,
-  /** Clip-space depth nudge per layer (×w). */
-  depthBias: 2e-6,
 } as const;
 
 /** sRGB 0–1 per slot, in the order of `meshBuffers.ts` → `SURFACE` and `PAINT` (`streetPalette.ts`). */
@@ -79,6 +76,8 @@ export interface StreetPaletteInput {
 }
 
 export interface CityStreetsOptions {
+  surface?: StreetSurface;
+  onCoverage?: (tiles: { x: number; y: number }[]) => void;
   /** Absolute `{z}/{x}/{y}` template of the road tiles. */
   roadTileTemplate: string;
   /**
@@ -145,16 +144,12 @@ interface Entry {
   simpleMarkings: number;
   stats: StreetMeshStats | null;
   paintedNames: [number, number][];
-  /** Its slot in the ground atlas while it holds one. */
-  slot: number | null;
   /** Its meshes have gone to the GPU (within a frame's `upload` budget). */
   uploaded: boolean;
   groundVersion: number;
+  paintGroundVersion: number;
   /** Its tile's live values, which the shared materials read through the mesh's `userData`. */
   uniforms: {
-    uGroundSlot: { value: number };
-    uGrounded: { value: number };
-    uTileSize: { value: number };
     uDetail: { value: number };
   };
   lastUsed: number;
@@ -163,15 +158,6 @@ interface Entry {
 /** The entry's tile as the TSL materials read it, live from its uniforms. */
 function streetTileOf(uniforms: Entry['uniforms']): StreetTile {
   return {
-    get slot() {
-      return uniforms.uGroundSlot.value;
-    },
-    get grounded() {
-      return uniforms.uGrounded.value;
-    },
-    get tileSizeM() {
-      return uniforms.uTileSize.value;
-    },
     get detail() {
       return uniforms.uDetail.value;
     },
@@ -187,11 +173,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
   const tslGroup = new THREE.Group();
   tslGroup.matrixAutoUpdate = false;
   tslGroup.matrixWorldAutoUpdate = false;
-  // Every cached tile's ground grid, one slot each: the quality profile's
-  // tiles (`streets.maxTiles`) times what is kept per drawn tile, and the
-  // drawn ones again for the moment a cache overflows before it evicts.
   const maxCached = Math.max(4, options.quality.maxTiles * STREET_BUDGET.cachedPerDrawn);
-  const groundAtlas = createGroundAtlas(maxCached + options.quality.maxTiles);
+  const surface = options.surface ?? new StreetSurface();
 
   const atlasBytes = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE);
   /** Glyph patches arrived that the GPU's copy of the atlas lacks. */
@@ -224,7 +207,6 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
   let materials: StreetMaterials | null = null;
   const materialsNow = () => {
     materials ??= createStreetMaterials({
-      groundAtlas: groundAtlas.texture,
       sdfAtlas: atlas,
       surfaceDay: shared.uSurfaceDay.value,
       surfaceNight: shared.uSurfaceNight.value,
@@ -233,7 +215,6 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       nightFactor: () => shared.uNightFactor.value,
       fade: () => shared.uFade.value,
       pxPerM: () => shared.uPxPerM.value,
-      depthBias: STREET_BUDGET.depthBias,
       sky,
     });
     return materials;
@@ -241,6 +222,13 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
 
   const clock = options.now ?? (() => performance.now());
   let namedKey = '';
+  let coverageKey = '';
+  const reportCoverage = (keys: string[]) => {
+    const key = keys.slice().sort().join(',');
+    if (key === coverageKey) return;
+    coverageKey = key;
+    options.onCoverage?.(keys.map((k) => (entries.get(k) as Entry).tile));
+  };
   const entries = new Map<string, Entry>();
   const byId = new Map<number, Entry>();
   let nextId = 1;
@@ -264,6 +252,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
   );
 
   const disposeMeshes = (entry: Entry) => {
+    surface.delete(entry.key);
     for (const mesh of [entry.surfaces, entry.markings]) {
       if (!mesh) continue;
       mesh.removeFromParent();
@@ -272,9 +261,6 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     }
     entry.surfaces = null;
     entry.markings = null;
-    if (entry.slot !== null) groundAtlas.release(entry.slot);
-    entry.slot = null;
-    entry.uniforms.uGrounded.value = 0;
     entry.groundVersion = -1;
   };
 
@@ -352,6 +338,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       entry.uploaded = false;
       if (reply.surfaces) {
         entry.surfaces = meshFor(entry, reply.surfaces, 'surfaces');
+        surface.set(entry.key, { z: 15, ...entry.tile }, reply.surfaces);
         entry.simpleSurfaces = reply.surfaces.simpleCount;
       }
       if (reply.markings) {
@@ -415,6 +402,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       const fade = Math.max(0, Math.min(1, (view.zoom - STREETS_MIN_ZOOM) / FADE_ZOOMS));
       shared.uFade.value = fade * (opacity > 0 ? 1 : 0);
       if (shared.uFade.value <= 0) {
+        surface.activate([]);
+        reportCoverage([]);
         if (namedKey !== '') {
           namedKey = '';
           options.onPaintedNames?.([]);
@@ -443,13 +432,10 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
             simpleMarkings: 0,
             stats: null,
             paintedNames: [],
-            slot: null,
             uploaded: false,
             groundVersion: -1,
+            paintGroundVersion: -2,
             uniforms: {
-              uGroundSlot: { value: 0 },
-              uGrounded: { value: 0 },
-              uTileSize: { value: tileSizeMetres({ z: 15, x: tile.x, y: tile.y }) },
               uDetail: { value: 0 },
             },
             lastUsed: frameNo,
@@ -478,7 +464,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       evict(wanted);
 
       // Place, ground and draw.
-      let groundBudget = STREET_BUDGET.groundsPerFrame;
+      let groundBudget = options.quality.groundsPerFrame;
       const drawn = { crossings: 0, stopLines: 0, arrows: 0, names: 0, words: 0, junctions: 0 };
       let triangles = 0;
       let drawCalls = 0;
@@ -487,25 +473,40 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       /** Tiles meshed and wanted, held for a later frame's upload budget. */
       let held = 0;
       const named: Entry[] = [];
+      const surfaceKeys: string[] = [];
       for (const tile of selected) {
         const entry = entries.get(tileKey(tile));
         if (entry?.state !== 'ready') continue;
-        if (ground) {
-          const at = { z: 15, x: tile.x, y: tile.y };
-          if (entry.groundVersion !== groundVersion) {
-            entry.slot ??= groundAtlas.claim();
-            if (entry.slot === null || (!ground.hasGrid(at) && groundBudget-- <= 0)) {
-              options.requestRepaint();
-              if (entry.groundVersion < 0) continue;
-            } else {
-              groundAtlas.write(entry.slot, ground.grid(at));
-              entry.uniforms.uGroundSlot.value = entry.slot;
-              entry.groundVersion = groundVersion;
+        if (entry.groundVersion !== groundVersion) {
+          if (ground && groundBudget-- <= 0) {
+            options.requestRepaint();
+            if (entry.groundVersion < 0) continue;
+          } else {
+            const source = ground;
+            const size = tileSizeMetres({ z: 15, ...entry.tile });
+            const data = surface.setGround(
+              entry.key,
+              source
+                ? (x, y) =>
+                    source.sample(
+                      ((tile.x + x / size) / 2 ** 15) * 360 - 180,
+                      latFromMercatorY((tile.y - y / size) / 2 ** 15),
+                    )
+                : null,
+              { errorM: options.quality.groundErrorM, minEdgeM: options.quality.groundMinEdgeM },
+            );
+            if (entry.surfaces && data) {
+              entry.surfaces.geometry.dispose();
+              const geometry = new THREE.BufferGeometry();
+              geometry.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
+              geometry.setAttribute('attr', new THREE.BufferAttribute(data.attrs, 4));
+              geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
+              entry.surfaces.geometry = geometry;
+              entry.simpleSurfaces = data.simpleCount;
+              entry.uploaded = false;
             }
+            entry.groundVersion = groundVersion;
           }
-          entry.uniforms.uGrounded.value = 1;
-        } else {
-          entry.uniforms.uGrounded.value = 0;
         }
         // The profile's triangles: nearest first, a tile that would pass them
         // draws its simplified level instead, and past that not at all.
@@ -544,8 +545,26 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
             atlasDirty = false;
           }
         }
+        if (entry.markings && entry.paintGroundVersion !== groundVersion) {
+          const geometry = entry.markings.geometry;
+          const positions = geometry.getAttribute('position') as THREE.BufferAttribute;
+          const offsets = geometry.getAttribute('offset') as THREE.BufferAttribute;
+          const attrs = geometry.getAttribute('attr') as THREE.BufferAttribute;
+          for (let i = 0; i < positions.count; i++) {
+            const x = positions.getX(i) + offsets.getX(i);
+            const y = positions.getY(i) + offsets.getY(i);
+            const terrain = surface.terrainAt(entry.key, x, y);
+            const height =
+              surface.at(entry.key, x, y, attrs.getW(i) > 0) ?? terrain + STREET_LIFT_M;
+            // Physical paint thickness, measured from the same triangle cars stand on.
+            positions.setZ(i, height - STREET_LIFT_M + 0.003);
+          }
+          positions.needsUpdate = true;
+          entry.paintGroundVersion = groundVersion;
+        }
         const matrix = tileModelMatrix(tile, center);
         tilesDrawn++;
+        surfaceKeys.push(entry.key);
         if (full) tilesFull++;
         for (const [mesh, simple] of [
           [entry.surfaces, entry.simpleSurfaces],
@@ -566,6 +585,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
           named.push(entry);
         }
       }
+      surface.activate(surfaceKeys);
+      reportCoverage(shared.uFade.value >= 1 ? surfaceKeys : []);
       // The painted names on screen, reported only when the set changes.
       const key = named.map((e) => e.key).join(',');
       if (key !== namedKey) {
@@ -634,13 +655,13 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     dispose() {
       if (disposed) return;
       disposed = true;
+      reportCoverage([]);
       if (namedKey !== '') options.onPaintedNames?.([]);
       pool.terminate();
       for (const entry of entries.values()) disposeMeshes(entry);
       entries.clear();
       materials?.dispose();
       atlas.dispose();
-      groundAtlas.dispose();
       tslGroup.removeFromParent();
     },
   };

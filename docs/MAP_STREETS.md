@@ -34,7 +34,7 @@ GOWAY_CITY_TILES_ARCHIVE=<buildings>.pmtiles,$PWD/packages/frontend/.tiles/city-
 | Mesher (pure, in the worker) | `cityStreets/streetMesher.ts`, buffers `meshBuffers.ts` |
 | SDF atlas: the map's glyphs, the arrows | `cityStreets/streetAtlas.ts` (glyph PBFs decoded with `scripts/mapgen/glyph-pbf.ts`, the build's own decoder) |
 | Worker, protocol | `cityStreets/streetWorker.ts`, `protocol.ts`, run through the engine's `WorkerPool` |
-| Renderer (a `CityOverlay` of the city engine) | `cityStreets/streetRenderer.ts`; materials: `streetMaterials.ts` (TSL, drawn by the engine's renderer; lit and hazed by the city sky when it is on); ground: `groundAtlas.ts` |
+| Renderer (a `CityOverlay` of the city engine) | `cityStreets/streetRenderer.ts`; materials: `streetMaterials.ts`; shared contact: `streetSurface.ts`; adaptive terrain mesh: `groundMesh.ts` |
 | Palette (day, night) | `lib/map/style/streetPalette.ts` |
 | Adapter | `components/map/city3dLayer.web.ts` (`streets` option), `MapCanvas.web.tsx` (`useMapFeature('cityStreets')`) |
 | Tests | `components/map/__tests__/cityStreetsLanes.test.ts`, `cityStreetsMarkings.test.ts`, `cityStreetsMesher.test.ts`; `scripts/__tests__/cityStreetTags.test.ts`, `cityRoads.test.ts`; `lib/map/__tests__/mapFeatures.test.ts` |
@@ -98,10 +98,14 @@ records it.** Sizes, colours and patterns are styling.
   the larger half forward (the split is styling, the total is not);
   inconsistent counts (`lanes=2` + `lanes:forward=2` on a two-way road) are not
   drawn as recorded. A recorded `width` sets the lane width when it leaves each
-  lane 2.3–5 m, and is refused otherwise.
+  lane 2.3–5 m, and is refused otherwise. Directional turn, bus and change
+  lists also count lanes on one-way streets; counts supported by the road
+  decoder (up to 12) are never truncated by the renderer.
 - **Where lanes are NOT recorded** the carriageway still needs a width: the
   simulation's class default lane count (`roadGraph.ts` → `defaultLanes`) at a
-  class lane width (`LANE_WIDTH_M`). That width is styling, and so is the only
+  class lane width (`LANE_WIDTH_M`), unless `width` records the carriageway's
+  measured width. An assumed count cannot invalidate that measurement, and
+  a width alone never invents lane dividers. The fallback width is styling, and so is the only
   paint such a road gets: **a dashed centre line on a two-way through road
   (`tertiary` and up), solid edge lines on a motorway or trunk, nothing else** —
   no lane dividers, arrows or bus lanes from a default.
@@ -185,26 +189,41 @@ through MapLibre's own collision (`components/map/streetNameBlockers.web.ts`):
   neighbours (so a junction near an edge sees every arm) are chained junction
   to junction by the simulation's own `chainPieces` (`roads/roadGraph.ts`),
   continuing through a node only where the carriageway is the same and does not
-  turn by more than ~50°. At a junction every arm is cut back until its kerbs
-  clear the next arm's round a kerb fillet (5 m where a major road meets, 3.5 m
-  otherwise — styling), and the junction is the polygon of the arm mouths and
-  the fillets. Where only the carriageway changes (a two-arm junction), a short
-  transition; a crossing on such a node is painted there.
+  turn by more than ~50°. Complete centreline corridors remain intact through
+  every junction. Actual end cross-sections form a local bevel; no distant
+  tangent replaces a curved street, and no assumed fillet invents an island.
+  Cuts reserve room for paint only.
+- **One surface topology.** `surfaceTopology.ts` unions the corridors, then
+  subtracts their footprint from sidewalks and paving at the same bridge
+  level. Boolean polygon operations preserve real holes and eliminate
+  overlapping slabs. Small spatial patches bound triangulation aspect ratios
+  before terrain refinement; they add no visible seams or kerbs.
 - **Sidewalks.** Recorded `sidewalk=both|left|right` is a 15 cm slab beside the
-  carriageway (`sidewalk:width`, else 2.5 m — styling) with kerb faces, and
-  fills the junction corners round the fillet where both arms record one.
-  `sidewalk=separate` (New York, Barcelona) means the sidewalk is mapped as its
-  own way: that way is a slab along its line, widened toward the nearest
-  parallel kerb within 8 m (never past it), and the junction corners are filled
-  as above.
+  carriageway (`sidewalk:width`, else 2.5 m — styling).
+  `sidewalk=separate` means only its mapped way supplies the geometry, widened
+  laterally toward a parallel kerb within 8 m, never beyond it. Kerb faces
+  come from the final union boundary, not each input strip.
 - **Paving**: `living_street` and `pedestrian` carriageways, footways and paths
   are flat paving, lighter than asphalt.
-- **Not drawn**: tunnels (hidden by definition) and bridges (the basemap draws
-  them; a deck at its height is a next step).
+- **Bridges** use mapped spans, chained independently of lane-width changes.
+  Their estimated longitudinal profile joins terrain across the complete
+  abutment cross-sections and spans depressions. Its constraints sample the
+  whole deck footprint, including junction bevels. Adaptive sampling resolves
+  terrain crests between initial samples with the same error budget as the
+  ground mesh. These constraints precede tile clipping; adjacent tiles solve
+  the same full span.
+  The terrain adapter removes deck returns from the bare-earth raster inside
+  mapped bridge footprints (`MAP_TERRAIN_GLOBE.md`), so raising a deck no longer
+  leaves a solid earth embankment underneath it.
+  Decks, sidewalks, paint and traffic share it. The 0.4 m
+  deck-edge thickness is cartographic styling; supports and towers are not
+  invented. The archive does not yet carry surveyed deck elevations.
+- **Tunnels** remain hidden.
 
-Every primitive belongs to the tile its anchor lies in (a strip segment's
-midpoint, a junction's node, a crossing's node, a word's centre), so two tiles
-never draw the same thing.
+Surfaces are clipped to their tile after neighbouring geometry contributes to
+the union. Tile boundaries never create artificial kerbs or deck walls.
+Paint belongs to the tile of its anchor (crossing node, word centre, line
+segment midpoint). Adjacent tiles have complementary ownership.
 
 ## Arrows, words and names: one SDF atlas
 
@@ -236,22 +255,43 @@ crash) starts a new atlas and the renderer re-meshes everything.
 
 ## Terrain and depth
 
-- **On the drawn ground**: each vertex reads its tile's ground grid in the
-  vertex shader — the same grid the buildings, trees and city life stand on
-  (the engine's one `Ground`, `terrainGround.ts`: the same cached 33² grid per tile) — from
-  one float texture holding every street tile's grid in its own slot
-  (`groundAtlas.ts`), bilinearly. No per-vertex CPU work, and one material
-  per kind for every tile. Strips are cut every
-  6 m so they bend with the ground instead of cutting through a crest (the
-  Procedural Tokyo lesson: markings split along the terrain mesh).
-- **No z-fighting**: 6 cm of lift over the ground, and coplanar layers
-  (paving, asphalt, sidewalk, tint, paint) are told apart by a per-layer depth
-  nudge toward the camera in clip space (`2e-6 · layer · w`) — a polygon
-  offset per vertex. Paint draws after the surfaces without writing depth.
+- **Same DEM as the host**: the MapLibre adapter samples at the DEM source's
+  max zoom plus the terrain manager's `deltaZoom`. That manager subtracts
+  the offset before choosing a source tile; using the source zoom alone
+  selected a coarser parent and let the drawn terrain cross the asphalt.
+- **One geometry for contact and drawing**: vertices read the shared terrain
+  sampler directly. There is no separate street DEM texture, GPU ground
+  re-interpolation or camera-dependent clip-depth displacement. The surface
+  registry keeps the uploaded triangles; vehicles and paint use those same
+  triangles. Bridge/ground identity travels with each simulated agent.
+- **Terrain curvature**: initial edges are at most 6 m. On terrain changes,
+  `groundMesh.ts` splits triangles whose sampled height error exceeds the
+  profile's `streets.groundErrorM` (1.5 cm), down to `groundMinEdgeM` (25 cm).
+  Heights stay sampled elevations, rather than a blanket lift. Grounding,
+  uploads and the resulting triangle count obey the profile budgets.
+- **Junction topology** retains the mapped curves and dissolves overlaps
+  before triangulation. Sidewalks intersect the actual lateral ray with a
+  kerb segment, never the diagonal distance to its endpoint.
+- **Physical separation**: asphalt is 6 cm above its terrain surface, kerbs
+  15 cm above asphalt and paint 3 mm above its contact triangle. Paint uses
+  normal decal offset without depth writes. The renderer restores polygon
+  offset after every pass so it cannot leak into MapLibre terrain.
+- **One road owner**: at full opacity, complete basemap road features inside
+  the joined drawn-tile coverage yield to the detailed mesh. Unloading
+  restores the fallback. Features crossing the coverage boundary remain
+  conservatively; tunnels and rail retain their existing owner.
+- **One cross-section**: simulation and mesher read the same lane bands,
+  including recorded widths and allocation to buses, cycles and parking.
+
 - **Thin lines never vanish**: a line thinner than ~1.2 device px is drawn
   that wide at proportionally less alpha, anti-aliased by its own
   across-coordinate (at z17 in Barcelona a 15 cm lane line is a third of a
   pixel).
+
+The terrain-safe subdivision raises the low-preset synthetic street-detail
+scene's resident GPU memory to 14,051,648 bytes. Its CI memory ceiling keeps
+the existing 10% headroom (15,456,813 bytes); draw/triangle limits and the
+medium/high ceilings are unchanged.
 
 ## Levels of detail
 
@@ -320,9 +360,9 @@ noisy):
 | Triangles drawn | the profile's `streets.drawTriangles`: 400 k / 900 k / 2 M — nearest first; past it a tile draws its simplified level, then nothing | same |
 | Meshes cached | twice the tiles drawn, least recently used evicted | `STREET_BUDGET.cachedPerDrawn` |
 | Requests in flight | 3, one worker | `maxInFlight` |
-| Ground grids sampled per frame | 2 new ones (≈ 1,000 terrain reads each); grids the engine already holds are free | `groundsPerFrame` |
+| Street meshes grounded per frame | 1; adaptive to the terrain error bound | profile's `streets.groundsPerFrame`, `groundErrorM`, `groundMinEdgeM` |
 | Typical street view (z18.4, 55°) | 2 tiles, ~115 k triangles, 4 draw calls | — |
-| Main thread per frame | selection + placement only; measured within the city engine's `frameCpuMs` (2–15 ms on SwiftShader, dominated by the GPU emulation) | — |
+| Main thread | selection and placement; terrain arrivals also ground/refine one mesh and update contact geometry | — |
 
 **In the CI frame-budget gate** (`components/map/__tests__/frameBudget.test.ts`,
 `docs/MAP_PERFORMANCE.md` → "The CI gate"): a `street-detail` scene draws the
@@ -368,7 +408,8 @@ simulation itself is still reached by nothing but the lazy chunk).
 - **Junction clusters** (dual carriageways, slip roads) are joined node by
   node, so their polygons overlap (harmless: one colour); lane lines of one
   carriageway can run into the other's junction near a cluster.
-- **Bridges** are left to the basemap; **tunnels** are hidden.
+- **Bridge heights** are terrain-derived estimates, not surveyed elevations.
+  Stacked bridge levels need richer archive data. **Tunnels** are hidden.
 - **Turn lanes** are read per way end; `placement`, `lanes:both_ways` (centre
   turn lanes), speed bumps and bus stops are not read yet.
 - **Label blockers** take a painted name's room at its points every 6 m, sized

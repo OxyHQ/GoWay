@@ -32,8 +32,8 @@
     "sdf": true
   },
   "goway-bar": {
-    "x": 120,
-    "y": 180,
+    "x": 0,
+    "y": 360,
     "width": 60,
     "height": 60,
     "pixelRatio": 2,
@@ -72,8 +72,8 @@
     "sdf": true
   },
   "goway-cafe": {
-    "x": 120,
-    "y": 180,
+    "x": 0,
+    "y": 360,
     "width": 60,
     "height": 60,
     "pixelRatio": 2,
@@ -223,73 +223,249 @@
     "pixelRatio": 2,
     "sdf": true
   },
-  "goway-restaurant": {
+  "goway-poi-dark-civic": {
     "x": 120,
     "y": 180,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-dark-culture": {
+    "x": 180,
+    "y": 180,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-dark-foodDrink": {
+    "x": 240,
+    "y": 180,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-dark-health": {
+    "x": 300,
+    "y": 180,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-dark-lodging": {
+    "x": 360,
+    "y": 180,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-dark-other": {
+    "x": 420,
+    "y": 180,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-dark-outdoors": {
+    "x": 0,
+    "y": 240,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-dark-shopping": {
+    "x": 60,
+    "y": 240,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-dark-transit": {
+    "x": 120,
+    "y": 240,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-dark-vehicle": {
+    "x": 180,
+    "y": 240,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-dark-worship": {
+    "x": 240,
+    "y": 240,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-light-civic": {
+    "x": 300,
+    "y": 240,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-light-culture": {
+    "x": 360,
+    "y": 240,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-light-foodDrink": {
+    "x": 420,
+    "y": 240,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-light-health": {
+    "x": 0,
+    "y": 300,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-light-lodging": {
+    "x": 60,
+    "y": 300,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-light-other": {
+    "x": 120,
+    "y": 300,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-light-outdoors": {
+    "x": 180,
+    "y": 300,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-light-shopping": {
+    "x": 240,
+    "y": 300,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-light-transit": {
+    "x": 300,
+    "y": 300,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-light-vehicle": {
+    "x": 360,
+    "y": 300,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-poi-light-worship": {
+    "x": 420,
+    "y": 300,
+    "width": 60,
+    "height": 60,
+    "pixelRatio": 2,
+    "sdf": false
+  },
+  "goway-restaurant": {
+    "x": 0,
+    "y": 360,
     "width": 60,
     "height": 60,
     "pixelRatio": 2,
     "sdf": true
   },
   "goway-route": {
-    "x": 180,
-    "y": 180,
+    "x": 60,
+    "y": 360,
     "width": 60,
     "height": 60,
     "pixelRatio": 2,
     "sdf": true
   },
   "goway-search": {
-    "x": 240,
-    "y": 180,
+    "x": 120,
+    "y": 360,
     "width": 60,
     "height": 60,
     "pixelRatio": 2,
     "sdf": true
   },
   "goway-shop": {
-    "x": 300,
-    "y": 180,
+    "x": 180,
+    "y": 360,
     "width": 60,
     "height": 60,
     "pixelRatio": 2,
     "sdf": true
   },
   "goway-star": {
-    "x": 360,
-    "y": 180,
+    "x": 240,
+    "y": 360,
     "width": 60,
     "height": 60,
     "pixelRatio": 2,
     "sdf": true
   },
   "goway-train": {
-    "x": 420,
-    "y": 180,
+    "x": 300,
+    "y": 360,
     "width": 60,
     "height": 60,
     "pixelRatio": 2,
     "sdf": true
   },
   "goway-transit-station": {
-    "x": 0,
-    "y": 240,
+    "x": 360,
+    "y": 360,
     "width": 60,
     "height": 60,
     "pixelRatio": 2,
     "sdf": true
   },
   "goway-verified": {
-    "x": 60,
-    "y": 240,
+    "x": 420,
+    "y": 360,
     "width": 60,
     "height": 60,
     "pixelRatio": 2,
     "sdf": true
   },
   "goway-walk": {
-    "x": 120,
-    "y": 240,
+    "x": 0,
+    "y": 420,
     "width": 60,
     "height": 60,
     "pixelRatio": 2,

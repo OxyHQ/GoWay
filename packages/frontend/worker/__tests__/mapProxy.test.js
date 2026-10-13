@@ -431,10 +431,20 @@ describe('serveTerrain, proxied', () => {
     expect(response.headers.get('server')).toBeNull();
   });
 
-  test('refuses a zoom past z12 and a coordinate outside the world, without asking upstream', async () => {
-    expect((await serve('/map/terrain/13/0/0.webp')).status).toBe(404);
+  test('refuses a zoom past z16 and a coordinate outside the world, without asking upstream', async () => {
+    expect((await serve('/map/terrain/17/0/0.webp')).status).toBe(404);
     expect((await serve('/map/terrain/2/4/0.webp')).status).toBe(404);
     expect(fetched).toEqual([]);
+  });
+
+  test('serves regional detail beyond the global planet archive', async () => {
+    upstream.set(
+      'https://tiles.mapterhorn.com/16/33165/24475.webp',
+      () => new Response('fine terrain'),
+    );
+    const response = await serve('/map/terrain/16/33165/24475.webp');
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('fine terrain');
   });
 
   test('answers 503 rather than inventing an upstream', async () => {

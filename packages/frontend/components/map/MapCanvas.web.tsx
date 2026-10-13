@@ -67,6 +67,7 @@ import {
   overlaySourceId,
   resolveMapAnchors,
   resolveMapStyleUrl,
+  resolveMapStyleAsset,
 } from '@/lib/map/provider';
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
 
@@ -426,6 +427,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       map = new maplibregl.Map({
         container,
         ...styleLoading.construct,
+        transformRequest: (url) => ({ url: resolveMapStyleAsset(url, styleUrl) }),
         center: toLngLat(start),
         zoom: asFinite(start.zoom) ?? DEFAULT_VIEWPORT.zoom,
         bearing: asFinite(start.bearing) ?? 0,
@@ -506,6 +508,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           if (!reliefCancelled) {
             reliefHandle = attachRelief(map, {
               flags: relief,
+              addProtocol: maplibregl.addProtocol,
+              removeProtocol: maplibregl.removeProtocol,
+              demCacheTiles: qualityRef.current.relief.demCacheTiles,
               appearance: resolvedAppearance,
               terrain3d: qualityRef.current.relief.terrain3d,
               terrainTextureScale: qualityRef.current.relief.terrainTextureScale,
@@ -1174,6 +1179,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     runtime?.handle?.setQuality(quality);
     reliefRef.current?.setTerrain3d(quality.relief.terrain3d);
     reliefRef.current?.setTerrainTextureScale(quality.relief.terrainTextureScale);
+    reliefRef.current?.setDemCacheTiles(quality.relief.demCacheTiles);
     reliefRef.current?.setGlobeNight(quality.relief.globeNight);
   }, [quality, runtime]);
 

@@ -38,6 +38,12 @@
  * Pure and synchronous; positions are GLOBAL z15 tile units, like the road
  * archive's, so the two can sit side by side in one network.
  */
+import {
+  accessLevel,
+  accessOverrides,
+  type RoadAccess,
+  resolveRoadAccess,
+} from '@goway.to/sdk/road-access';
 import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 
@@ -58,6 +64,8 @@ export interface OmtLine {
   highway: RoadClass;
   car: boolean;
   foot: boolean;
+  /** Who may use it where that differs from the class (`road-access`); the basemap records only `access`/`service`. */
+  access?: Partial<RoadAccess>;
   oneway?: 1 | -1;
   tunnel: boolean;
   /** Bridges and tunnels never join what they pass over or under. */
@@ -74,7 +82,6 @@ const CAR_CLASS: Record<string, RoadClass> = {
   service: 'service',
 };
 const FOOT_SUBCLASSES = new Set(['footway', 'pedestrian', 'path', 'steps']);
-const PRIVATE_SERVICE = new Set(['parking_aisle', 'driveway', 'drive-through']);
 const MAJOR = new Set<string>(['trunk', 'primary', 'secondary']);
 
 /** What a basemap `transportation` feature is to the simulation, or `null`. */
@@ -88,12 +95,18 @@ export function classifyOmt(props: Record<string, unknown>): Omit<OmtLine, 'poin
   const tunnel = brunnel === 'tunnel';
   const base = CAR_CLASS[cls];
   if (base) {
-    if (cls === 'service' && PRIVATE_SERVICE.has(String(props.service ?? ''))) return null;
-    if (props.access === 'no' || props.access === 'private') return null;
+    // The basemap records only `access` and `service`; the contract reads them like OSM's.
+    const access = resolveRoadAccess(base, {
+      ...(typeof props.access === 'string' ? { access: props.access } : {}),
+      ...(typeof props.service === 'string' ? { service: props.service } : {}),
+    });
+    if (accessLevel(access.car) === 'none') return null;
+    const overrides = accessOverrides(base, access);
     const link =
       props.ramp === 1 && ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'].includes(base);
     const highway = (link ? `${base}_link` : base) as RoadClass;
     const line: Omit<OmtLine, 'points'> = { highway, car: true, foot: false, tunnel, level };
+    if (Object.keys(overrides).length > 0) line.access = overrides;
     if (props.oneway === 1) line.oneway = 1;
     else if (props.oneway === -1) line.oneway = -1;
     else if (cls === 'motorway' && !link) line.oneway = 1;
@@ -445,6 +458,7 @@ export function healRoads(
             points: run,
           };
           if (line.oneway) piece.oneway = line.oneway;
+          if (line.access) piece.access = line.access;
           // A footway meeting a car road where they crossed: a crossing.
           if (
             line.foot &&

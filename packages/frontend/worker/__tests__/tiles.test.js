@@ -193,6 +193,29 @@ describe('compressed on the wire', () => {
     expect(await response.text()).toBe('RIFF....WEBP');
   });
 
+  test('a coarse terrain archive does not mask regional detail supplied by the upstream', async () => {
+    const original = globalThis.fetch;
+    const requested = [];
+    globalThis.fetch = async (url) => {
+      requested.push(String(url));
+      return new Response('regional DEM');
+    };
+    try {
+      const env = {
+        MAP_TILES: bucketOver(archive({ gzip: false })),
+        MAP_TERRAIN_ARCHIVE: 'terrain/coarse.pmtiles',
+        MAP_TERRAIN_UPSTREAM: 'https://terrain.example/{z}/{x}/{y}.webp',
+      };
+      const { request, url } = get('/map/terrain/16/33165/24475.webp', GZIP);
+      const response = await serveTerrain(url, request, env, ctx);
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe('regional DEM');
+      expect(requested).toEqual(['https://terrain.example/16/33165/24475.webp']);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
   test('Accept-Encoding is read as a list with weights', () => {
     const r = (value) =>
       new Request('https://x', { headers: value ? { 'accept-encoding': value } : {} });

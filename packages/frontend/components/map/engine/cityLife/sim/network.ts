@@ -40,10 +40,11 @@
  *  6. **Footways.** Walkable pieces as they are, plus a virtual sidewalk on
  *     each side of a road whose `sidewalk` tag says there is one.
  */
+import { roadAccessOf } from '@goway.to/sdk/road-access';
+
 import type { DrivingSide } from '../../roads/drivingSide';
 import {
   chainPieces,
-  defaultLanes,
   offsetPolyline,
   type Polyline,
   polyline,
@@ -53,6 +54,13 @@ import {
 } from '../../roads/roadGraph';
 import type { DecodedRoadTile, RoadPiece } from '../../roads/roadTiles';
 import { createRng } from './rng';
+import { ALL_USERS, BUS_LANE_USERS, GENERAL_USERS, userMasks } from './vehicleAccess';
+import {
+  crossSection,
+  reverseSection,
+  sameSection,
+  type CrossSection,
+} from '../../cityStreets/lanes';
 
 const EXTENT = 4096;
 
@@ -61,10 +69,6 @@ export const SIGNAL_REACH_M = 30;
 
 /** Junction nodes closer than this share a signal controller. */
 const CLUSTER_M = 25;
-
-/** Lane width, metres. */
-const LANE_WIDTH = 3.2;
-const MOTORWAY_LANE_WIDTH = 3.6;
 
 /** Default speed per class, km/h, where `maxspeed` is not recorded. A simulation parameter. */
 export const DEFAULT_SPEED_KMH: Record<string, number> = {
@@ -85,6 +89,40 @@ export const DEFAULT_SPEED_KMH: Record<string, number> = {
   road: 30,
 };
 
+/**
+ * How much traffic a lane of each class carries, relative to a primary road
+ * (1): the spawn density of a lane is its class's weight, so a service lane
+ * holds a fraction of an avenue's cars. A simulation parameter, not a measured
+ * flow.
+ */
+export const SPAWN_WEIGHT: Record<string, number> = {
+  motorway: 1.3,
+  motorway_link: 0.7,
+  trunk: 1.2,
+  trunk_link: 0.7,
+  primary: 1,
+  primary_link: 0.6,
+  secondary: 0.8,
+  secondary_link: 0.5,
+  tertiary: 0.55,
+  tertiary_link: 0.35,
+  unclassified: 0.3,
+  residential: 0.25,
+  road: 0.25,
+  living_street: 0.06,
+  service: 0.06,
+};
+
+/**
+ * What a service road inside a park, garden or cemetery keeps of its class's
+ * weight (`ROAD_PROPS.park`): a path for maintenance and the odd delivery, not
+ * a lane of a block. A simulation parameter, like the weights above.
+ */
+export const PARK_LANE_FACTOR = 0.1;
+
+/** The share of a lane's weight that a user who may only reach it (not pass) is given. */
+export const LOCAL_ENTRY_WEIGHT = 0.15;
+
 export interface CrossingStop {
   s: number;
   crossing: number;
@@ -104,6 +142,13 @@ export interface Path extends Polyline {
   speed: number;
   /** Drawn hidden (tunnels). */
   hidden: boolean;
+  bridge?: boolean;
+  /** Lanes: the road users (`vehicleAccess.ts` bits) that may drive through it; connectors: all. */
+  users: number;
+  /** Lanes: the users that may enter only to reach somewhere on it. */
+  local: number;
+  /** Lanes: spawn weight, `SPAWN_WEIGHT` of its class. */
+  weight: number;
   /** Lanes: the connectors it may continue onto. Connectors: its one target lane. */
   next: number[];
   /** Stops for people on crossings along it. */
@@ -163,6 +208,7 @@ export interface PedEdge extends Polyline {
   /** The crossing it is part of, or −1. */
   crossing: number;
   hidden: boolean;
+  bridge?: boolean;
 }
 
 export interface NetworkNode {
@@ -296,9 +342,16 @@ interface CarPiece {
   oneway: boolean;
   fwd: number;
   bwd: number;
+  section: CrossSection;
   highway: string;
   speedKmh: number;
   tunnel: boolean;
+  bridge: boolean;
+  /** Road users that may drive / only enter this piece (`userMasks`). */
+  users: number;
+  local: number;
+  /** Inside a park-like area: a tenth of the traffic. */
+  park: boolean;
   way: number;
   /** Sidewalks relative to the piece's (possibly reversed) direction. */
   walkLeft: boolean;
@@ -313,9 +366,14 @@ interface Link {
   oneway: boolean;
   fwd: number;
   bwd: number;
+  section: CrossSection;
   highway: string;
   speed: number;
   tunnel: boolean;
+  bridge: boolean;
+  users: number;
+  local: number;
+  park: boolean;
   wayAtA: number;
   wayAtB: number;
   walkLeft: boolean;
@@ -382,7 +440,9 @@ export function buildNetwork(input: NetworkInput): Network {
   for (const tile of input.tiles) {
     for (const piece of tile.data.pieces) {
       // A separate cycle track (schema 3) is drawn, never simulated.
-      if (!piece.car && !piece.foot) continue;
+      const masks = userMasks(roadAccessOf(piece.highway, piece.access));
+      const drivable = masks.through !== 0 || masks.local !== 0;
+      if (!drivable && !piece.foot) continue;
       const first = piece.points[0];
       const last = piece.points[piece.points.length - 1];
       let a = nodeAt(first[0], first[1]);
@@ -396,7 +456,7 @@ export function buildNetwork(input: NetworkInput): Network {
           crossingPieceNodes.add(b);
         }
       }
-      if (!piece.car) continue;
+      if (!drivable) continue;
       const oneway = piece.oneway !== undefined || piece.roundabout;
       let reversed = false;
       if (piece.oneway === -1) {
@@ -404,21 +464,10 @@ export function buildNetwork(input: NetworkInput): Network {
         [a, b] = [b, a];
         reversed = true;
       }
-      let fwd: number;
-      let bwd: number;
-      if (oneway) {
-        fwd = piece.lanesForward ?? piece.lanes ?? defaultLanes(piece.highway, true);
-        if (piece.oneway === -1 && piece.lanesBackward) fwd = piece.lanesBackward;
-        bwd = 0;
-      } else {
-        const total = piece.lanes;
-        fwd =
-          piece.lanesForward ??
-          (total ? Math.max(1, Math.floor(total / 2)) : defaultLanes(piece.highway, false));
-        bwd =
-          piece.lanesBackward ??
-          (total ? Math.max(1, total - fwd) : defaultLanes(piece.highway, false));
-      }
+      const originalSection = crossSection(piece, { drivingSide, yellowCentre: false });
+      const section = reversed ? reverseSection(originalSection) : originalSection;
+      const fwd = section.forward,
+        bwd = section.backward;
       const sidewalk = piece.sidewalk;
       let walkLeft = sidewalk === 'both' || sidewalk === 'left';
       let walkRight = sidewalk === 'both' || sidewalk === 'right';
@@ -428,11 +477,16 @@ export function buildNetwork(input: NetworkInput): Network {
         b,
         points,
         oneway,
-        fwd: Math.min(4, Math.max(1, fwd)),
-        bwd: oneway ? 0 : Math.min(4, Math.max(1, bwd)),
+        fwd,
+        bwd,
+        section,
         highway: piece.highway,
         speedKmh: piece.maxspeed ?? DEFAULT_SPEED_KMH[piece.highway] ?? 30,
         tunnel: piece.tunnel,
+        bridge: piece.bridge ?? false,
+        users: masks.through,
+        local: masks.local,
+        park: piece.park === true,
         way: piece.way,
         walkLeft,
         walkRight,
@@ -447,6 +501,7 @@ export function buildNetwork(input: NetworkInput): Network {
     a: p.b,
     b: p.a,
     points: p.points.slice().reverse(),
+    section: reverseSection(p.section),
     fwd: p.bwd,
     bwd: p.fwd,
     walkLeft: p.walkRight,
@@ -454,9 +509,14 @@ export function buildNetwork(input: NetworkInput): Network {
   });
   const compatible = (p: CarPiece, q: CarPiece) =>
     p.oneway === q.oneway &&
+    sameSection(p.section, q.section) &&
     p.fwd === q.fwd &&
     p.bwd === q.bwd &&
     p.tunnel === q.tunnel &&
+    p.bridge === q.bridge &&
+    p.users === q.users &&
+    p.park === q.park &&
+    p.local === q.local &&
     p.walkLeft === q.walkLeft &&
     p.walkRight === q.walkRight;
 
@@ -471,24 +531,28 @@ export function buildNetwork(input: NetworkInput): Network {
     }
     const first = chain[0];
     const last = chain[chain.length - 1];
-    const width = first.highway === 'motorway' ? MOTORWAY_LANE_WIDTH : LANE_WIDTH;
     links.push({
       a: first.a,
       b: last.b,
       line: polyline(points),
       points,
       oneway: first.oneway,
+      section: first.section,
       fwd: first.fwd,
       bwd: first.bwd,
       highway: first.highway,
       speed: first.speedKmh / 3.6,
       tunnel: first.tunnel,
+      bridge: first.bridge,
+      users: first.users,
+      local: first.local,
+      park: first.park,
       wayAtA: first.way,
       wayAtB: last.way,
       walkLeft: first.walkLeft,
       walkRight: first.walkRight,
       interior,
-      halfWidth: (width * (first.fwd + first.bwd)) / 2,
+      halfWidth: first.section.width / 2,
       lanes: [[], []],
     });
   }
@@ -548,6 +612,9 @@ export function buildNetwork(input: NetworkInput): Network {
       kind,
       speed,
       hidden,
+      users: ALL_USERS,
+      local: 0,
+      weight: 0,
       next: [],
       crossings: [],
       signals: [],
@@ -567,24 +634,31 @@ export function buildNetwork(input: NetworkInput): Network {
   };
   let laneMetres = 0;
   links.forEach((link, linkIndex) => {
-    const width = link.highway === 'motorway' ? MOTORWAY_LANE_WIDTH : LANE_WIDTH;
     for (const dir of [0, 1] as const) {
-      const count = dir === 0 ? link.fwd : link.bwd;
+      const direction = dir === 0 ? 1 : -1;
+      const bands = link.section.bands
+        .filter((b) => (b.kind === 'lane' || b.kind === 'bus') && b.dir === direction)
+        .sort((a, b) => (a.left + a.right - b.left - b.right) * sideSign * direction);
+      const count = bands.length;
       if (count === 0) continue;
       const travel = dir === 0 ? link.points : link.points.slice().reverse();
       const startNode = dir === 0 ? link.a : link.b;
       const endNode = dir === 0 ? link.b : link.a;
       for (let i = 0; i < count; i++) {
-        // Lane 0 is the kerb lane. Two-way: the lanes fill one side of the
-        // centre line; one-way: they are centred on it.
-        const fromCentre = link.oneway
-          ? ((count - 1) / 2 - i) * width
-          : (count - 1 - i + 0.5) * width;
-        const line = polyline(offsetPolyline(travel, fromCentre * sideSign));
+        // The same band centres the street mesher draws, including recorded
+        // width, bus/cycle/parking allocation and left-hand traffic.
+        const band = bands[i];
+        const offset = (-(band.left + band.right) / 2) * direction;
+        const line = polyline(offsetPolyline(travel, offset));
         const s0 = setback(startNode, link);
         const s1 = line.length - setback(endNode, link);
         const trimmed = s1 - s0 > 0.5 ? polyline(slice(line, s0, s1)) : line;
         const path = newPath('lane', trimmed, link.speed, link.tunnel);
+        path.bridge = link.bridge;
+        // A bus lane is the buses'; every other lane is the road's.
+        path.users = band.kind === 'bus' ? link.users & BUS_LANE_USERS : link.users;
+        path.local = band.kind === 'bus' ? 0 : link.local;
+        path.weight = (SPAWN_WEIGHT[link.highway] ?? 0.25) * (link.park ? PARK_LANE_FACTOR : 1);
         path.link = linkIndex;
         path.endNode = endNode;
         path.laneIndex = i;
@@ -655,7 +729,14 @@ export function buildNetwork(input: NetworkInput): Network {
         if (options.length !== before) restrictionsApplied++;
       }
       const laneCount = inc.lanes.length;
+      // Lanes shut to ordinary traffic (a bus lane at the kerb) come first:
+      // ordinary traffic's own kerb lane is the first one open to it, so a car
+      // still turns kerb-side from beside a bus lane, never from inside it.
+      const general = (id: number) => ((paths[id].users | paths[id].local) & GENERAL_USERS) !== 0;
+      const base = Math.max(0, inc.lanes.findIndex(general));
+      const generalCount = laneCount - base;
       for (let i = 0; i < laneCount; i++) {
+        const rel = Math.max(0, i - base);
         const fromPath = paths[inc.lanes[i]];
         const h0 = heading(fromPath, true);
         const end: [number, number] = [
@@ -679,11 +760,11 @@ export function buildNetwork(input: NetworkInput): Network {
         }
         // Lane discipline: kerb lane turns kerb-side, inner lane far-side.
         let allowed = candidates;
-        if (laneCount > 1) {
+        if (generalCount > 1) {
           allowed = candidates.filter((c) =>
-            i === 0
+            rel === 0
               ? c.kind !== 'far'
-              : i === laneCount - 1
+              : rel === generalCount - 1
                 ? c.kind !== 'kerb'
                 : c.kind === 'straight',
           );
@@ -691,13 +772,17 @@ export function buildNetwork(input: NetworkInput): Network {
         }
         for (const { out, kind } of allowed) {
           const m = out.lanes.length;
-          const j = kind === 'kerb' ? 0 : kind === 'far' ? m - 1 : Math.min(i, m - 1);
+          // A kerb-side turn lands in the target's kerb lane, or — from an
+          // ordinary lane — its first lane open to ordinary traffic.
+          const kerbTarget = i < base ? 0 : Math.max(0, out.lanes.findIndex(general));
+          const j = kind === 'kerb' ? kerbTarget : kind === 'far' ? m - 1 : Math.min(i, m - 1);
           const target = paths[out.lanes[j]];
           const start: [number, number] = [target.xs[0], target.ys[0]];
           const uTurn = out.link === inc.link && out.dir !== inc.dir;
           const line = polyline(bezier(end, h0, start, heading(target, false), uTurn));
           const speed = Math.min(fromPath.speed, target.speed, kind === 'straight' ? 1e9 : 6);
           const connector = newPath('connector', line, speed, fromPath.hidden && target.hidden);
+          connector.bridge = Boolean(fromPath.bridge && target.bridge);
           connector.node = node;
           connector.from = fromPath.id;
           connector.next = [target.id];
@@ -863,6 +948,7 @@ export function buildNetwork(input: NetworkInput): Network {
     b: number,
     points: [number, number][],
     hidden: boolean,
+    bridge = false,
   ): PedEdge => {
     const edge: PedEdge = {
       ...polyline(points),
@@ -871,6 +957,7 @@ export function buildNetwork(input: NetworkInput): Network {
       b,
       crossing: -1,
       hidden,
+      bridge,
     };
     pedEdges.push(edge);
     pedAdjacency[a].push(edge.id);
@@ -881,7 +968,7 @@ export function buildNetwork(input: NetworkInput): Network {
   const crossingEdges: { edge: PedEdge; node: number }[] = [];
   for (const { a, b, points, piece } of footPieces) {
     if (points.length < 2) continue;
-    const edge = addPedEdge(a, b, points, piece.tunnel);
+    const edge = addPedEdge(a, b, points, piece.tunnel, piece.bridge);
     if (piece.footway === 'crossing') {
       const roadEnd = nodes[a].carDegree > 0 ? a : nodes[b].carDegree > 0 ? b : -1;
       if (roadEnd >= 0) crossingEdges.push({ edge, node: roadEnd });
@@ -891,7 +978,7 @@ export function buildNetwork(input: NetworkInput): Network {
     for (const side of [link.walkRight ? 1 : 0, link.walkLeft ? -1 : 0]) {
       if (side === 0) continue;
       const points = offsetPolyline(link.points, side * (link.halfWidth + 2));
-      addPedEdge(link.a, link.b, points, link.tunnel);
+      addPedEdge(link.a, link.b, points, link.tunnel, link.bridge);
     }
   }
 

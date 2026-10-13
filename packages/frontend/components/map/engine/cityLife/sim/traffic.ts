@@ -30,9 +30,10 @@
  * All of it is SIMULATION: plausible motion on the real street network, never
  * a statement about real traffic.
  */
-import { type Network, type Path, phaseGreen } from './network';
+import { LOCAL_ENTRY_WEIGHT, type Network, type Path, phaseGreen } from './network';
 import { CAR_MODEL_SPECS, CAR_MODELS, type CarModel, slotRanges } from './fleet';
 import type { Rng } from './rng';
+import { modelBit } from './vehicleAccess';
 
 /** IDM parameters. Textbook urban values (Treiber & Kesting, *Traffic Flow Dynamics*, tab. 11.2). */
 export const IDM = {
@@ -190,24 +191,35 @@ export interface TrafficContext {
   crossingOccupancy: Int32Array;
 }
 
-/** Choose where a car goes after `lane`: weighted towards straight on, rarely a U-turn. */
-export function chooseConnector(paths: readonly Path[], lane: Path, rng: Rng): number {
-  const options = lane.next;
-  if (options.length === 0) return -1;
-  if (options.length === 1) return options[0];
+/**
+ * Choose where a car goes after `lane`: weighted towards straight on, rarely a
+ * U-turn, never onto a lane its `user` bit may not drive (`vehicleAccess.ts`),
+ * and rarely onto one it may only enter to reach somewhere. -1 when every way
+ * on is shut to it.
+ */
+export function chooseConnector(
+  paths: readonly Path[],
+  lane: Path,
+  rng: Rng,
+  user: number,
+): number {
   let total = 0;
-  const weights = options.map((id) => {
-    const turn = paths[id].turn;
-    const w = turn === 0 ? 4 : turn === 3 ? 0.05 : 1;
+  const weights = lane.next.map((id) => {
+    const connector = paths[id];
+    const target = paths[connector.next[0]];
+    const entry = target.users & user ? 1 : target.local & user ? LOCAL_ENTRY_WEIGHT : 0;
+    const w = entry * (connector.turn === 0 ? 4 : connector.turn === 3 ? 0.05 : 1);
     total += w;
     return w;
   });
+  if (total === 0) return -1;
   let pick = rng.next() * total;
-  for (let i = 0; i < options.length; i++) {
+  for (let i = 0; i < lane.next.length; i++) {
+    if (weights[i] === 0) continue;
     pick -= weights[i];
-    if (pick <= 0) return options[i];
+    if (pick <= 0) return lane.next[i];
   }
-  return options[options.length - 1];
+  return lane.next[weights.findLastIndex((w) => w > 0)];
 }
 
 /** Extend a car's route until it holds `ROUTE_LENGTH` paths or meets the network's edge. */
@@ -217,7 +229,9 @@ export function extendRoute(ctx: TrafficContext, car: number): void {
   while (cars.routeLength[car] < ROUTE_LENGTH) {
     const last = network.paths[cars.route[base + cars.routeLength[car] - 1]];
     const next =
-      last.kind === 'connector' ? last.next[0] : chooseConnector(network.paths, last, ctx.rng);
+      last.kind === 'connector'
+        ? last.next[0]
+        : chooseConnector(network.paths, last, ctx.rng, modelBit(CAR_MODELS[cars.model[car]]));
     if (next === undefined || next < 0) return;
     cars.route[base + cars.routeLength[car]] = next;
     cars.routeLength[car]++;

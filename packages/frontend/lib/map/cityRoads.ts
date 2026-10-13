@@ -55,8 +55,11 @@ export const CITY_ROAD_TILE_PATH = '/map/city-roads/{z}/{x}/{y}.pbf';
  * generic class markings only (`docs/MAP_STREETS.md`). 3: `change:lanes`
  * ({@link STREET_PROPS} `changeLanes*`) and separate cycleways
  * (`ROAD_PROPS.cycle`, kept for drawing; the simulation skips them) — additive.
+ * 4: `access` ({@link ROAD_PROPS}), who may use a road where it differs from
+ * its class, and roads only buses, taxis or other motor traffic may use —
+ * additive: a v3 reader sees `car` false on those and skips them.
  */
-export const CITY_ROAD_SCHEMA_VERSION = 3;
+export const CITY_ROAD_SCHEMA_VERSION = 4;
 
 /** The archive metadata key that says which kind of city archive a file is. */
 export const CITY_ARCHIVE_KIND_KEY = 'goway:kind';
@@ -86,6 +89,17 @@ export const ROAD_PROPS = {
    * it (the simulation reads only `car` and `foot`).
    */
   cycle: 'cycle',
+  /**
+   * Schema 4: access that differs from the class default, `bus=designated;car=no`
+   * (`@goway.to/sdk/road-access`, the one reader). Absent: the class default.
+   */
+  access: 'access',
+  /**
+   * Schema 4: `true` on a service road inside a park, garden or cemetery
+   * (`scripts/citygen/parkAreas.ts`): the simulation sends it a fraction of the
+   * traffic a service road elsewhere gets.
+   */
+  park: 'park',
   /** `1` or `-1` (against the drawn direction) when one-way for cars; absent: both ways. */
   oneway: 'oneway',
   /** `lanes`, when tagged: all lanes, both directions. */

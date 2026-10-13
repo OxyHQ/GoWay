@@ -548,6 +548,20 @@ export function resolveMapStyleUrl(appearance: MapAppearance): string {
   return absoluteStyleUrl(getMapSource().styleUrl[appearance]);
 }
 
+/** Generated sprites and fonts belong to the same deployment as their style. */
+export function resolveMapStyleAsset(url: string, styleUrl: string): string {
+  const style = new URL(styleUrl);
+  const asset = new URL(url, styleUrl);
+  if (
+    Object.values(GOWAY_STYLE_PATHS).includes(style.pathname) &&
+    asset.origin === new URL(GOWAY_MAP_ORIGIN).origin &&
+    (asset.pathname.startsWith('/map/sprites/') || asset.pathname.startsWith('/map/fonts/'))
+  ) {
+    return new URL(`${asset.pathname}${asset.search}`, style.origin).href;
+  }
+  return url;
+}
+
 /**
  * The attribution GoWay must display for the active source — plus the
  * elevation credit while the relief prototype draws terrain or a hillshade.
@@ -561,15 +575,14 @@ export function resolveMapAttribution(options?: { terrain?: boolean }): MapAttri
 /**
  * The `{z}/{x}/{y}` template of the elevation tiles the relief prototype draws.
  *
- * GoWay's own Worker route by default — absolute, like the tiles inside the
- * style documents, so a native build and `expo start --web` read the same
- * production path. `EXPO_PUBLIC_MAP_TERRAIN_TILES` overrides it (a preview,
+ * The current web deployment's Worker route (also served by Metro); native
+ * uses the canonical GoWay origin. `EXPO_PUBLIC_MAP_TERRAIN_TILES` overrides it (a preview,
  * or a development session before the Worker route is deployed).
  */
 export function resolveTerrainTileUrl(): string {
   const configured = process.env.EXPO_PUBLIC_MAP_TERRAIN_TILES;
   if (configured) return configured;
-  return `${GOWAY_ORIGIN}${GOWAY_MAP_PATHS.terrain}`;
+  return absoluteStyleUrl(GOWAY_MAP_PATHS.terrain);
 }
 
 /**

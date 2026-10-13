@@ -33,6 +33,7 @@ import type { TaxiLivery } from './liveries';
 import { createRng, type Rng } from './rng';
 import { pointAt, project } from '../../roads/roadGraph';
 import type { Network, Path } from './network';
+import { modelBit } from './vehicleAccess';
 import {
   CAR_MODEL_SPECS,
   CAR_MODELS,
@@ -71,10 +72,13 @@ export const FADE_S = 0.6;
 /** Simulated seconds run before the first frame of a fresh network. */
 export const WARMUP_S = 12;
 
-/** Cars per kilometre of lane inside the active radius, at full density. */
+/** Cars per kilometre of lane of a primary road inside the active radius, at full density (`SPAWN_WEIGHT` scales it per class). */
 export const CAR_DENSITY_PER_KM = 22;
 /** People per kilometre of footway inside the active radius, at full density. */
 export const PEOPLE_DENSITY_PER_KM = 26;
+
+/** A bus is spawned only on lanes at least this heavy (`SPAWN_WEIGHT`): through roads, not service lanes. */
+const BUS_MIN_LANE_WEIGHT = 0.25;
 
 /** Most agents spawned (or sent away) per step, so changes ramp rather than pop. */
 const SPAWN_PER_STEP = 30;
@@ -452,8 +456,8 @@ export class CitySimulation {
     let total = 0;
     for (const id of network.lanes) {
       const lane = network.paths[id];
-      if (lane.hidden || lane.length < 12 || !within(lane)) continue;
-      total += lane.length;
+      if (lane.hidden || lane.length < 12 || lane.weight === 0 || !within(lane)) continue;
+      total += lane.length * lane.weight;
       this.spawnLanes.push(id);
       this.spawnLaneCum.push(total);
     }
@@ -506,7 +510,11 @@ export class CitySimulation {
       const laneId = this.sample(this.spawnLanes, this.spawnLaneCum);
       if (laneId < 0) return false;
       const lane = network.paths[laneId];
-      if (model === 'bus' && lane.speed < 8) continue;
+      // Only a user the lane admits, even just to arrive (a bus lane is the buses').
+      const bit = modelBit(model);
+      if (!((lane.users | lane.local) & bit)) continue;
+      // A bus runs the roads that carry through traffic, not the service lanes.
+      if (model === 'bus' && lane.weight < BUS_MIN_LANE_WEIGHT) continue;
       if (lane.length < length * 2 + 8) continue;
       const s = rng.range(length + 2, lane.length - length - 4);
       pointAt(lane, s, this.scratch);
@@ -695,12 +703,16 @@ export class CitySimulation {
   snapshot(): {
     cars: Float32Array;
     carStyle: Uint8Array;
+    carBridges: Uint8Array;
+    peopleBridges: Uint8Array;
     people: Float32Array;
     peopleStyle: Uint8Array;
   } {
     const network = this.network;
     const { cars, people } = this;
     const carOut = new Float32Array(cars.capacity * 4);
+    const carBridges = new Uint8Array(cars.capacity);
+    const peopleBridges = new Uint8Array(people.capacity);
     const peopleOut = new Float32Array(people.capacity * 4);
     const fade = (age: number, leaving: number) =>
       Math.min(1, age / FADE_S) * (leaving >= 0 ? Math.max(0, leaving / FADE_S) : 1);
@@ -708,6 +720,7 @@ export class CitySimulation {
       for (let car = 0; car < cars.capacity; car++) {
         if (!cars.alive[car]) continue;
         const o = car * 4;
+        carBridges[car] = Number(Boolean(network.paths[cars.path[car]].bridge));
         carOut[o] = cars.x[car];
         carOut[o + 1] = cars.y[car];
         carOut[o + 2] = cars.h[car];
@@ -719,6 +732,7 @@ export class CitySimulation {
         if (!people.alive[p]) continue;
         const o = p * 4;
         const edge = network.pedEdges[people.edge[p]];
+        peopleBridges[p] = Number(Boolean(edge?.bridge));
         peopleOut[o] = people.x[p];
         peopleOut[o + 1] = people.y[p];
         peopleOut[o + 2] = people.h[p];
@@ -727,6 +741,8 @@ export class CitySimulation {
     }
     return {
       cars: carOut,
+      carBridges,
+      peopleBridges,
       carStyle: cars.style.slice(),
       people: peopleOut,
       peopleStyle: people.style.slice(),

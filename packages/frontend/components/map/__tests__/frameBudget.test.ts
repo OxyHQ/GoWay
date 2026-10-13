@@ -348,32 +348,34 @@ const FRAME_BUDGETS: Record<string, Record<QualityTier, Budget>> = {
       gpuBytes: 32_286_239,
     },
   },
-  // The street view with the street detail on (`MAP_STREETS.md`): +8 draws
-  // (4 road tiles, 2 each), ~61 k triangles, ~4 MB over 'street'.
+  // Unified street topology, clipped tile ownership and 6 m terrain seeds.
+  // Re-measured after dissolving road/sidewalk surfaces: 34/43 draws;
+  // 894,660/1,232,172 total scene triangles. Keep the same 10% headroom;
+  // upload-per-frame and the renderer's QualityProfile caps remain unchanged.
   'street-detail': {
     low: {
       draws: 38,
-      triangles: 851_497,
+      triangles: 984_126,
       offscreenPasses: 0,
-      loadUploadBytes: 15_487_348,
+      loadUploadBytes: 18_573_320,
       shadowRedraws: 0,
-      gpuBytes: 13_622_768,
+      gpuBytes: 17_322_734,
     },
     medium: {
       draws: 48,
-      triangles: 1_222_760,
+      triangles: 1_355_390,
       offscreenPasses: 0,
-      loadUploadBytes: 15_529_528,
+      loadUploadBytes: 18_612_220,
       shadowRedraws: 0,
-      gpuBytes: 19_423_569,
+      gpuBytes: 23_127_355,
     },
     high: {
       draws: 48,
-      triangles: 1_222_760,
+      triangles: 1_355_390,
       offscreenPasses: 0,
-      loadUploadBytes: 15_529_528,
+      loadUploadBytes: 18_612_220,
       shadowRedraws: 0,
-      gpuBytes: 36_725_073,
+      gpuBytes: 40_428_859,
     },
   },
   skyline: {

@@ -123,6 +123,25 @@ function run(features: CityTileFeature[], buildings: PreparedBuilding[]) {
 }
 
 describe('conflate', () => {
+  test('roof-only sources preserve an elevated part even under the cadastre policy', () => {
+    const part = osm(12, rect(0, 0, 20, 10), {
+      render_height: 30,
+      render_min_height: 11,
+      levels: 10,
+      min_level: 3,
+      part: true,
+    });
+    const result = conflate(new Map([[KEY, [part]]]), [flatModel('B1', rect(0, 0, 20, 10), 20)], {
+      source: 'es-catastro',
+      zoom: Z,
+      policy: { staleCheck: false, osmRicher: 'roofs', heightSource: 'cadastre', storeys: 'es' },
+    });
+    expect(result.stats.osmRicher).toBe(1);
+    expect(result.stats.drawn).toBe(0);
+    expect(part.properties.render_height).toBe(30);
+    expect(part.properties.render_min_height).toBe(11);
+    expect(part.properties.drawn_by).toBeUndefined();
+  });
   test('a model building OSM confirms draws it; the OSM feature keeps every fact and says so', () => {
     const feature = osm(12, rect(0, 0, 20, 10), {
       [CITY_PROPS.renderHeight]: 30,
