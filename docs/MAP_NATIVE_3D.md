@@ -887,9 +887,10 @@ Per sky (on and off) it asserts:
   are). Turning the streets on must change at least 85% of what it changes on
   flat ground. Measured: `main` (cd11022) **8.19%** against 14.29% flat — the
   drawn terrain rose through whole stretches of the street, which read the
-  ground from a coarser DEM tile through a 33² grid — and **14.39%** with the
-  street on the terrain's facets (`MAP_TERRAIN_GLOBE.md` → "Everything on the
-  drawn ground").
+  ground from a coarser DEM tile through a 33² grid; 14.39% against 14.29%
+  once on the right DEM (#198), and **15.12%** against 15.02% with the street
+  on the terrain's facets (CI, #210; `MAP_TERRAIN_GLOBE.md` → "Everything on
+  the drawn ground"). The view's street triangles: 60,682 → 185,060 → 292,590.
 - **Models** (the `objects` leg, sky off; models draw alike under either): a landmark of the
   registry, the Sagrada Família, stands in the synthetic city. With
   `landmarks` on it must change at least 1% of the map against the same view
