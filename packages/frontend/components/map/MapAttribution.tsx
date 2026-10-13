@@ -130,11 +130,14 @@ export interface MapCreditDisclosure {
  *   alone, from what is drawn; never by feature code.
  */
 function MapAttributionComponent({
+  elevation = false,
   extra = NO_EXTRA,
   disclosure = null,
   expanded,
   onToggle,
 }: {
+  /** The style itself draws elevation data (Outdoors' hillshade and contours). */
+  elevation?: boolean;
   extra?: readonly MapAttributionLink[];
   /**
    * The simulation's label while it draws, `null` otherwise. Passed by
@@ -151,7 +154,7 @@ function MapAttributionComponent({
   // The elevation credit rides along whenever the relief prototype draws
   // terrain or a hillshade (`docs/MAP_TERRAIN_GLOBE.md`).
   const relief = useMapRelief();
-  const attribution = resolveMapAttribution({ terrain: relief.terrain });
+  const attribution = resolveMapAttribution({ terrain: relief.terrain || elevation });
   const links = extra.length > 0 ? [...attribution.links, ...extra] : attribution.links;
   // The simulation's label: the whole line spelled out, one word folded.
   const shown = creditDisclosure(expanded, disclosure);

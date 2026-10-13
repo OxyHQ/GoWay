@@ -173,7 +173,7 @@ def test_job_falls_back_to_sparse_init_on_any_dense_failure(monkeypatch, tmp_pat
         points, component = job._dense_init(None, tmp_path, tmp_path, tmp_path / "resume", tmp_path, torch.device("cpu"), ctx, max_points=10)
     assert points is None and component is None
     assert "RuntimeError" in caplog.text and "/private/path" not in caplog.text
-    assert job._components(component).keys() == {"sfm", "trainer", "torch"}
+    assert job._components(component).keys() == {"sfm", "features", "trainer", "torch"}
 
 
 def test_job_never_swallows_cancellation(monkeypatch, tmp_path):

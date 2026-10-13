@@ -515,7 +515,7 @@ export settings):
 | Pixels, night (detailed look: window glow, floodlights) | 110 differ by more than 8 levels; the lit windows are the same windows |
 | Frame-budget gate (`frameBudget.test.ts`, every scene × preset) | draws and triangles identical to `main` |
 | Steady frame CPU on the gate's harness (skyline, high; `render()`, p50) | `main` 0.40 ms, the port 0.38 ms |
-| First frames, while the city loads (same harness, every `render()` until settled) | `main` 124–145 ms in all, worst frame 30–45 ms; the port 221–238 ms, worst 59–73 ms: TSL builds each node material's shaders in JavaScript on its first draw (the sky-lit buildings, the three passes, the casters). Once per material per session |
+| First frames, while the city loads (same harness, every `render()` until settled) | `main` 124–145 ms in all, worst frame 30–45 ms; the port 221–238 ms, worst 59–73 ms: TSL builds each node material's shaders in JavaScript on its first draw (the sky-lit buildings, the three passes, the casters). Once per material per session. Since removed: [materials built ahead of the tiles](#materials-built-ahead-of-the-tiles) |
 | Bundle (production `expo export`, gzip) | lazy 3D chunk 1,421,084 → 1,413,292 B (−7.8 KB); first paint (`__common`) unchanged |
 | Orbit in the browser (SwiftShader) | Frame interval p50 16 ms on both. Not conclusive past that: the shared host ran at load 12–19 and one build's own runs differed tenfold; the harness numbers above are the ones to read |
 
@@ -555,6 +555,175 @@ How it was brought to parity, for the next port:
 For native (phase 4), still open: the shadow camera's and MapLibre's
 projections are GL's (`z` in [−1, 1]); on WebGPU three expects [0, 1], so the
 native host converts both.
+
+## Materials built ahead of the tiles
+
+A TSL material is built (its node graph turned into shaders, in JavaScript)
+the first time a mesh draws with it, once per material and vertex layout.
+Left to the first tiles, every build landed in the frames the tiles arrived
+in. Measured on the frame-budget harness (above): 70–94 ms of builds inside
+frames, a worst load frame of 44–56 ms. On a phone or laptop that is a
+visible stall when the city appears.
+
+So the engine builds them while the tiles are still being fetched and meshed
+in the workers (`materialWarmup.ts`, `tsl/tslPass.ts` → `warm`):
+
+- **What is warmed.** One warm-up mesh per variant the city draws: each tile
+  format, settled and dithered, the trees once, and the sky's three passes.
+  The meshes are real tile entries (`createTileEntry`) over a one-triangle
+  mesh and one tree, so their vertex layouts are exactly the tiles'. three
+  keys a build by material and layout, so a real tile later finds it built.
+  They live in the engine's scene on `WARM_LAYER`, drawn by no camera but the
+  warm-up's, and are kept for the engine's life (three drops a build no mesh
+  uses). The grounded variants are a second set beside the first. Lifting
+  the first set instead would change its layout, so its flat builds would
+  lose their only user and be dropped before a tile drew with them. The
+  yield fix below exposed this: the city warmed sooner, ahead of its tiles,
+  and a dropped build was redone in a frame (15–20 ms).
+- **How.** three's `compileAsync`, which builds in slices, yielding to the
+  event loop between them ([the yield](#the-yield-a-turn-of-the-event-loop-not-a-frame)).
+  It runs in three stages: the passes first (so the sky shows early), then
+  the city, then, in the background, the grounded variants (a tile on
+  terrain), so terrain arriving later lifts the drawn city in the frame it
+  comes.
+- **Nothing draws unbuilt.** The sky's passes show once theirs are built, and
+  tile arrivals wait for the city's (then go up under the upload budget as
+  always), so no frame builds a city material. A tile waiting for its first
+  lift now counts as pending, so "settled" means drawn.
+- **GL safety, with MapLibre in the same context.** `compileAsync`'s steps
+  run between frames, where MapLibre leaves its last vertex array bound and
+  later reuses it without rebinding. An index buffer made then would be bound
+  into it. So each warm-up step first makes the index buffers in the map's
+  render callback, with the state reset, drawing each geometry once with one
+  trivial material (one small build per layout), within 4 ms a frame. The
+  steps left to `compileAsync` (shader builds, uniform and vertex buffers,
+  programs) touch no vertex array.
+
+### The yield: a turn of the event loop, not a frame
+
+`compileAsync` yields after every shader stage and every object, about 100
+yields for the city. three's `yieldToMain` used `scheduler.yield()` where the
+browser has it (Chrome, Edge, Firefox) and otherwise waited for the next
+animation frame. Safari has no `scheduler.yield`, and neither has Hermes. A
+frame per yield put the city about 1.7 s behind its tiles on the harness
+(2–3 s in a real page), with nothing to do in most of those frames.
+
+**three is not patched.** GoWay takes upstream fixes, not local patches of a
+dependency, so `compileAsync` still waits a frame per yield wherever
+`scheduler.yield` is missing. What a turn of the event loop instead would buy
+was measured with three patched locally (`yieldToMain`: `scheduler.yield()`
+where it exists, else a `MessageChannel` message, else
+`requestIdleCallback`, the macrotask React Native offers), in the "a
+macrotask yield" columns below. That build is not shipped; the change is
+proposed upstream. Nor can the engine own the yields with three's public
+API: `compileAsync` is its only way to build a material without drawing
+it, and a build is keyed by the render context it is made for (an offscreen
+draw builds a program the map's frame does not reuse, measured).
+
+**Hermes, measured** (RN 0.86, bridgeless, release build, Android 16
+emulator): 120 slices of 4 ms work, yielding between them, while a
+`requestAnimationFrame` loop counts frames. Three runs each. There is no
+`scheduler`, no `MessageChannel`, and `self` is the global.
+
+| Yield | Total | Per yield | Frames during | Longest frame gap |
+| --- | --- | --- | --- | --- |
+| `setImmediate` | 482–518 ms | 0.02–0.3 ms | **0** | 482–518 ms |
+| `queueMicrotask` | 482 ms | 0.02 ms | **0** | 482 ms |
+| `setTimeout(0)` | 2,000 ms | 12.7 ms | 120 | 18 ms |
+| `requestAnimationFrame` | 2,000 ms | 12.7 ms | 120 | 18 ms |
+| **`requestIdleCallback`** | **484 ms** | **0.03 ms** | **29** | **20 ms** |
+
+`setImmediate` is a microtask in bridgeless React Native
+(`Libraries/Core/Timers/immediateShim.js`): it never lets a frame through.
+`setTimeout(0)` waits for the next frame: measured here on Android, and on
+iOS `RCTTiming` fires timers on the display link. React
+Native's `requestIdleCallback` is a task on its runtime scheduler, behind
+every timer and frame callback that is due, so it yields a real turn.
+
+**Browsers, measured** (the same probe, on a blank page, in Playwright's
+browsers):
+
+| | `MessageChannel` | A frame per yield | `scheduler.yield` |
+| --- | --- | --- | --- |
+| WebKit (Safari's engine) | 482 ms, 30 frames, longest gap 20 ms | 1,920 ms | none |
+| Chromium | 488 ms, 30 frames, longest gap 20 ms | 1,996 ms | 481 ms, **4 frames, longest gap 104 ms** |
+| Firefox | 483 ms, 11 frames, longest gap 68 ms | 1,997 ms | 480 ms, 29 frames, 20 ms |
+
+Chromium runs `scheduler.yield` continuations ahead of rendering for up to
+about 100 ms. That is where Chrome's head start comes from (see the remaining
+gap, below).
+
+**Measured** on the frame-budget harness. The synthetic city is served from a
+separate process, and bun stands in for the browser: with `scheduler.yield`
+defined (modelled as a `setTimeout(0)` continuation) and without it (three's
+fallback). Three runs each:
+
+| | Before the warm-up | Warm-up, a frame per yield (shipped) | Warm-up, a macrotask yield (three patched) |
+| --- | --- | --- | --- |
+| Builds inside frames | 70–94 ms | 11–14 ms | 11–12 ms |
+| Worst load frame | 44–56 ms | 19–26 ms | 18–23 ms |
+| Longest main-thread block | 44–55 ms | 18–26 ms | 19–33 ms |
+| City first drawn, with `scheduler.yield` | 123–143 ms | 370–400 ms | 335–370 ms |
+| City first drawn, without it (Safari, Hermes) | 123–143 ms | 1,730–1,746 ms | **252–259 ms** |
+
+A faster warm-up also uncovered an upload that was never budgeted. The
+city's first tiles now went up in the same frames as the street detail's,
+and a frame handed the GPU 5.0 MB against the low preset's 4 MiB
+(`frameBudget.test.ts`, one run in two). Until then the warm-up had held the
+city back long enough that they never met. The streets now take what the
+city's arrivals leave of the frame's upload budget (`overlay.ts` →
+`FrameUploadBudget`, glyph atlas included), and wait a frame otherwise.
+
+What is still built in a frame: three's one-time setup on the first build
+(7–8 ms), the upload material once per layout (1–2 ms each), and the sun's
+depth-only caster once per layout (about 1 ms each).
+
+**And in a real page**: the dev export, with the synthetic city served
+locally and terrain on. This measures the time from the engine's first frame
+to the city's first drawn triangles, four runs each. Chromium draws on this
+machine's GPU (ANGLE → D3D12 → RTX 5090). WebKit is Playwright's Linux
+build:
+
+| | `main` (no warm-up) | Warm-up, a frame per yield (shipped) | Warm-up, a macrotask yield (three patched) |
+| --- | --- | --- | --- |
+| Chromium | 350–393 ms | 647–687 ms | 646–698 ms |
+| Chromium without `scheduler.yield` | 358–404 ms | 2,219–2,253 ms | **688–841 ms** |
+| WebKit | 333–532 ms | 2,038–2,081 ms | **1,020–1,056 ms** |
+
+In a page the warm-up costs Chrome about 300 ms of first draw, as on the
+harness. The tiles were meshed by 150–190 ms, so the city waits for its
+materials. With a macrotask yield, Chromium without `scheduler.yield` is
+within 50 ms of Chromium in three runs of four (688–715 ms), and 143 ms
+behind in the fourth.
+
+**With a macrotask yield, the remaining gap is not the yield.**
+
+- **Chromium without `scheduler.yield`.** Its 96 yields wait 65–93 ms in all,
+  under 1 ms each. The difference is the frames the browser draws in between:
+  a macrotask lets rendering in, while Chromium's `scheduler.yield` runs
+  continuations ahead of it.
+- **WebKit.** Its 90 yields wait 530–590 ms (about 6 ms each), and 245–257 ms
+  of that is the map's own frames. The rest is whatever WebKit had queued
+  first (worker messages, MapLibre, React): with no prioritised continuation
+  on Safari, a turn of the event loop waits behind them. This is
+  Playwright's WebKit on Linux, not Safari on an iPhone; measuring on a device
+  is still owed.
+
+On software GL (SwiftShader, which CI's gate uses) every frame and shader link
+costs tens of milliseconds, so all the numbers stretch:
+
+| | Chromium | Chromium without `scheduler.yield` | WebKit |
+| --- | --- | --- | --- |
+| A frame per yield (shipped) | 343–558 ms | 2,457–2,793 ms | 2,971–3,055 ms |
+| A macrotask yield (three patched) | 410–686 ms | 1,112–1,680 ms | 962–1,193 ms |
+
+Chromium's profiles show what else lands in that window. The app's GPU
+benchmark (`runGpuBenchmark`, from a `requestIdleCallback`) takes 400–550 ms
+on SwiftShader, and runs in the idle time a macrotask yield leaves.
+`scheduler.yield` leaves none, so with it the benchmark runs after the city
+appears. Waiting on shader links (`_completeCompile`) takes another
+60–490 ms. On a slow phone GPU the benchmark could land in the warm-up the
+same way. That is a follow-up for the quality profile, not for the yield.
 
 ## Correction: the terrain lift was not measured
 
@@ -701,6 +870,15 @@ Per sky (on and off) it asserts:
   changes at least 3% of the view (pixels moving more than 24 levels, below
   the chips' rows). Measured: 14.24% with the sky and 14.29% without, on
   `main` and TSL alike; streets drawn without their ground measure 0%.
+- **Streets on a sloped, creased ground** (the `nosky` leg): the same junction
+  on a terrain of 3 m swells and 0.5 m folds a few DEM pixels across, every
+  DEM tile generated from that one surface at its own zoom (as Mapterhorn's
+  are). Turning the streets on must change at least 85% of what it changes on
+  flat ground. Measured: `main` (cd11022) **8.19%** against 14.29% flat — the
+  drawn terrain rose through whole stretches of the street, which read the
+  ground from a coarser DEM tile through a 33² grid — and **14.39%** with the
+  terrain lattice (`MAP_TERRAIN_GLOBE.md` → "Everything on the drawn
+  ground").
 - **Models** (the `objects` leg, sky off; models draw alike under either): a landmark of the
   registry, the Sagrada Família, stands in the synthetic city. With
   `landmarks` on it must change at least 1% of the map against the same view
@@ -738,7 +916,7 @@ Without the fix, the trees without the sky are buried in every run, and the
 rest in most: with the sky on, one run in three drew its trees anyway. What
 re-creates a mesh's render objects (and so, by chance, its program) depends
 on the frame's timing; the no-sky trees are the gate's deterministic catch.
-On failure the screenshots (`{sky,nosky}-{trees,notrees,streets,nostreets,nocity}.png`, `landmark.png`, `nolandmark.png`, `life.png`, `nolife.png`) are
+On failure the screenshots (`{sky,nosky}-{trees,notrees,streets,nostreets,nocity}.png`, `nosky-creased-{streets,nostreets}.png`, `landmark.png`, `nolandmark.png`, `life.png`, `nolife.png`) are
 uploaded as the `city3d-visible-{sky,nosky,objects}` artifacts.
 
 ## Phase 4 groundwork: off-thread meshing

@@ -14,7 +14,7 @@
  */
 import { EARTH_CIRCUMFERENCE_M } from '@/lib/map/geo';
 
-import { GROUND, type Ground, gridAt } from '../city3d/terrainGround';
+import { type Ground, type GroundGrid, gridAt } from '../city3d/terrainGround';
 import { type TileId, tileSizeMetres } from '../city3d/tileMath';
 import type { ClearanceField } from './clearance';
 import { type Clearance, type VolumeIndex, requiredHeight } from './volumes';
@@ -63,12 +63,12 @@ const SPAN = 65_535;
 const NEAR_ENOUGH_M = 300;
 
 /** The highest ground of a tile's grid, cached per grid (grids are kept by `Ground`). */
-const gridMax = new WeakMap<Float32Array, number>();
-function highest(grid: Float32Array): number {
+const gridMax = new WeakMap<GroundGrid, number>();
+function highest(grid: GroundGrid): number {
   let max = gridMax.get(grid);
   if (max === undefined) {
     max = -Infinity;
-    for (const value of grid) if (value > max) max = value;
+    for (const value of grid.values) if (value > max) max = value;
     gridMax.set(grid, max);
   }
   return max;
@@ -111,7 +111,6 @@ export function createVolumeField(source: VolumeSource): ClearanceField {
               ? (u) =>
                   gridAt(
                     grid,
-                    GROUND.grid,
                     (polygonBoxes[u * 4] + polygonBoxes[u * 4 + 2]) / 2 / sizeM,
                     -(polygonBoxes[u * 4 + 1] + polygonBoxes[u * 4 + 3]) / 2 / sizeM,
                   )

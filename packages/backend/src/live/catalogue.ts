@@ -18,6 +18,7 @@
  * are generic.
  */
 
+import { derivedCoverage } from './areas';
 import type { GeoBoundingBox } from '@goway/contracts';
 import { createArrivalEstimateAdapter } from './adapters/arrivalEstimates';
 import { createDigitrafficAdapter } from './adapters/digitraffic';
@@ -52,6 +53,20 @@ const NAP_LICENCE: LiveSourceDefinition['licence'] = {
 
 /** The Baltic Sea and the Gulf of Finland, where Finland's AIS network hears ships. */
 const BALTIC: GeoBoundingBox = { west: 9.0, south: 53.0, east: 31.0, north: 66.5 };
+
+/**
+ * Each source's coverage, derived from its operator's stops (`areas.ts`);
+ * the hand-drawn boxes above stand until `live:areas` has derived one.
+ */
+const RENFE_CERCANIAS_COVERAGE = derivedCoverage('renfe-cercanias', SPAIN);
+const FGC_GEOTREN_COVERAGE = derivedCoverage('fgc-geotren', CATALONIA);
+const MTA_BUS_COVERAGE = derivedCoverage('mta-bus', NEW_YORK_CITY);
+const MTA_LIRR_COVERAGE = derivedCoverage('mta-lirr', NEW_YORK_REGION);
+const MTA_MNR_COVERAGE = derivedCoverage('mta-mnr', NEW_YORK_REGION);
+const MTA_SUBWAY_COVERAGE = derivedCoverage('mta-subway', NEW_YORK_CITY);
+const AMB_BUS_COVERAGE = derivedCoverage('amb-bus', AMB_AREA);
+const EMT_FUENLABRADA_COVERAGE = derivedCoverage('emt-fuenlabrada', MADRID_REGION);
+const NYC_BIKESHARE_COVERAGE = derivedCoverage('nyc-bikeshare', NEW_YORK_CITY);
 
 const CC_BY_4: LiveSourceDefinition['licence'] = {
   label: 'CC BY 4.0',
@@ -104,10 +119,11 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
   {
     id: 'renfe-cercanias',
     kind: 'transit',
+    transitModes: ['rail'],
     name: 'Trains — Renfe Cercanías and Rodalies',
     attribution: { label: 'Origen de los datos: Renfe Operadora', href: 'https://data.renfe.com' },
     licence: CC_BY_4,
-    coverage: SPAIN,
+    coverage: RENFE_CERCANIAS_COVERAGE,
     completeness: 'network',
     defaultUrl: 'https://gtfsrt.renfe.com/vehicle_positions.pb',
     requiresKey: false,
@@ -124,7 +140,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
         {
           sourceId: 'renfe-cercanias',
           operator: 'Renfe',
-          coverage: SPAIN,
+          coverage: RENFE_CERCANIAS_COVERAGE,
           defaultMode: 'rail',
           lineOf: (vehicle) => renfeLine(vehicle.vehicleLabel),
           labelOf: (vehicle) => renfeTrain(vehicle.vehicleLabel),
@@ -135,13 +151,14 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
   {
     id: 'fgc-geotren',
     kind: 'transit',
+    transitModes: ['rail'],
     name: 'Trains — FGC (Catalonia)',
     attribution: {
       label: 'Ferrocarrils de la Generalitat de Catalunya',
       href: 'https://dadesobertes.fgc.cat',
     },
     licence: CC_BY_4,
-    coverage: CATALONIA,
+    coverage: FGC_GEOTREN_COVERAGE,
     completeness: 'network',
     defaultUrl: 'https://dadesobertes.fgc.cat',
     requiresKey: false,
@@ -167,10 +184,11 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
   {
     id: 'mta-bus',
     kind: 'transit',
+    transitModes: ['bus'],
     name: 'Buses — MTA Bus Time (New York)',
     attribution: { label: 'Data: MTA', href: 'https://bustime.mta.info' },
     licence: MTA_TERMS,
-    coverage: NEW_YORK_CITY,
+    coverage: MTA_BUS_COVERAGE,
     completeness: 'network',
     defaultUrl: 'https://gtfsrt.prod.obanyc.com/vehiclePositions',
     // Documented as required, answered without one when this was written: a
@@ -191,7 +209,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
         {
           sourceId: 'mta-bus',
           operator: 'MTA',
-          coverage: NEW_YORK_CITY,
+          coverage: MTA_BUS_COVERAGE,
           defaultMode: 'bus',
           labelOf: (vehicle) => mtaBusNumber(vehicle.vehicleId),
           keyQueryParameter: 'key',
@@ -202,10 +220,11 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
   {
     id: 'mta-lirr',
     kind: 'transit',
+    transitModes: ['rail'],
     name: 'Trains — Long Island Rail Road',
     attribution: { label: 'Data: MTA', href: 'https://www.mta.info/developers' },
     licence: MTA_TERMS,
-    coverage: NEW_YORK_REGION,
+    coverage: MTA_LIRR_COVERAGE,
     completeness: 'network',
     defaultUrl: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr',
     requiresKey: false,
@@ -215,17 +234,23 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     staticGtfs: { zip: 'https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip' },
     create: (settings) =>
       createGtfsRealtimeAdapter(
-        { sourceId: 'mta-lirr', operator: 'LIRR', coverage: NEW_YORK_REGION, defaultMode: 'rail' },
+        {
+          sourceId: 'mta-lirr',
+          operator: 'LIRR',
+          coverage: MTA_LIRR_COVERAGE,
+          defaultMode: 'rail',
+        },
         settings,
       ),
   },
   {
     id: 'mta-mnr',
     kind: 'transit',
+    transitModes: ['rail'],
     name: 'Trains — Metro-North Railroad',
     attribution: { label: 'Data: MTA', href: 'https://www.mta.info/developers' },
     licence: MTA_TERMS,
-    coverage: NEW_YORK_REGION,
+    coverage: MTA_MNR_COVERAGE,
     completeness: 'network',
     defaultUrl: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/mnr%2Fgtfs-mnr',
     requiresKey: false,
@@ -238,7 +263,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
         {
           sourceId: 'mta-mnr',
           operator: 'Metro-North',
-          coverage: NEW_YORK_REGION,
+          coverage: MTA_MNR_COVERAGE,
           defaultMode: 'rail',
         },
         settings,
@@ -250,10 +275,11 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     // predictions, and drawn as estimates (`adapters/arrivalEstimates.ts`).
     id: 'mta-subway',
     kind: 'transit',
+    transitModes: ['subway'],
     name: 'Subway — MTA (New York), estimated',
     attribution: { label: 'Data: MTA', href: 'https://www.mta.info/developers' },
     licence: MTA_TERMS,
-    coverage: NEW_YORK_CITY,
+    coverage: MTA_SUBWAY_COVERAGE,
     completeness: 'network',
     defaultUrl: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs',
     requiresKey: false,
@@ -288,13 +314,14 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     // buses, which publish nothing keyless (`docs/MAP_LIVE.md`).
     id: 'amb-bus',
     kind: 'transit',
+    transitModes: ['bus'],
     name: 'Buses — AMB (Barcelona area), estimated',
     attribution: { label: 'Font: AMB', href: 'https://www.ambmobilitat.cat' },
     licence: {
       label: 'Reuse under Llei 37/2007',
       href: 'https://www.amb.cat/web/area-metropolitana/dades-obertes/condicions-d-us',
     },
-    coverage: AMB_AREA,
+    coverage: AMB_BUS_COVERAGE,
     completeness: 'partial',
     defaultUrl: 'https://www.ambmobilitat.cat/transit/trips-updates/trips.bin',
     requiresKey: false,
@@ -315,6 +342,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     // reported, as approximate (no track).
     id: 'aisa-bus',
     kind: 'transit',
+    transitModes: ['bus'],
     name: 'Buses — AISA (Madrid region)',
     attribution: MITRAMS_CREDIT,
     licence: NAP_LICENCE,
@@ -335,10 +363,11 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     // EMT Fuenlabrada: real GPS positions and a keyless static GTFS with shapes.
     id: 'emt-fuenlabrada',
     kind: 'transit',
+    transitModes: ['bus'],
     name: 'Buses — EMT Fuenlabrada (Madrid region)',
     attribution: MITRAMS_CREDIT,
     licence: NAP_LICENCE,
-    coverage: MADRID_REGION,
+    coverage: EMT_FUENLABRADA_COVERAGE,
     completeness: 'partial',
     defaultUrl:
       'https://api.control.optibus.co/opendata/v1/gtfs-rt/vehicle-positions?uid=c-5cfcd2d1',
@@ -352,7 +381,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
         {
           sourceId: 'emt-fuenlabrada',
           operator: 'EMT Fuenlabrada',
-          coverage: MADRID_REGION,
+          coverage: EMT_FUENLABRADA_COVERAGE,
           defaultMode: 'bus',
         },
         settings,
@@ -371,7 +400,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
       label: 'Bikeshare Data License Agreement',
       href: 'https://citibikenyc.com/data-sharing-policy',
     },
-    coverage: NEW_YORK_CITY,
+    coverage: NYC_BIKESHARE_COVERAGE,
     completeness: 'network',
     defaultUrl: 'https://gbfs.citibikenyc.com/gbfs/2.3/gbfs.json',
     requiresKey: false,

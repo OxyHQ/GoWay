@@ -141,12 +141,18 @@ export {
   LIVE_KINDS,
   LIVE_TRANSIT_MODES,
   LIVE_SOURCE_STATUSES,
-  LIVE_ROOM_ZOOM,
+  LIVE_REGIONAL_TRANSIT_MODES,
+  LIVE_SHAPES_MIN_ZOOM,
+  LIVE_ROOM_ZOOMS,
   LIVE_MAX_ROOM_TILES,
+  LIVE_PACKED_MIN_BYTES,
   LIVE_SOCKET_NAMESPACE,
   LIVE_SOCKET_EVENTS,
   liveTileOf,
+  isRegionalTransitMode,
+  liveRoomZoomsOf,
   liveTilesFor,
+  liveTilesOf,
   liveTileBounds,
   // Search and directions
   SEARCH_RESULT_KINDS,
@@ -180,9 +186,28 @@ export {
   API_ERROR_STATUS,
   isApiErrorCode,
   GOWAY_API_BASE_PATH,
+  // Map styles (`docs/MAP_STYLES.md`): published documents, not API operations
+  MAP_STYLE_IDS,
+  MAP_LIGHT_PRESETS,
+  MAP_STYLE_LIGHT_KINDS,
+  MAP_STYLE_CATALOGUE,
+  MAP_STYLE_INDEX_PATH,
+  DEFAULT_MAP_STYLE,
+  isMapStyleId,
+  isMapLightPreset,
+  mapStyleDefinition,
+  mapStylePath,
+  resolveMapStyle,
 } from '@goway/contracts';
 
 export type {
+  // Map styles
+  MapLightPreset,
+  MapStyleDefinition,
+  MapStyleId,
+  MapStyleIndex,
+  MapStyleLightKind,
+  MapStyleSelection,
   // Geography
   GeoBoundingBox,
   GeoCoordinate,
@@ -396,6 +421,7 @@ export type {
   LiveKind,
   LiveLink,
   LiveSnapshot,
+  LiveMove,
   LiveSource,
   LiveShape,
   LiveSourcePage,
@@ -432,6 +458,8 @@ export type {
 // ── Schemas: the SDK's own use only, never re-exported from `index.ts` ───────
 
 export {
+  // Map styles
+  mapStyleIndexSchema,
   // Path parameters
   assetPathSchema,
   mediaPathSchema,

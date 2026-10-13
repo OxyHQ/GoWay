@@ -16,10 +16,11 @@ import { PbfWriter } from 'pbf';
 
 import {
   createGround,
-  GROUND,
   gridAt,
   groundGrid,
+  latticeCells,
   sampleGroundGrid,
+  TERRAIN_LATTICE,
   TileGrounder,
 } from '@/components/map/engine/city3d/terrainGround';
 import { incompleteRetryMs } from '@/components/map/engine/city3d/tileScheduler';
@@ -154,14 +155,15 @@ describe('treesFor', () => {
 });
 
 describe('the ground is the drawn terrain', () => {
-  const size = GROUND.grid;
   const tile = { z: 14, x: 8290, y: 6119 };
   const n = 2 ** 14;
   const uOf = (lng: number) => ((lng + 180) / 360) * n - tile.x;
 
   test('exactly the terrain sampled on the grid: nothing filtered away', () => {
     const sampler = (lng: number, lat: number) => 20 + 300 * (lng - 2.16) + 90 * (lat - 41.38);
-    expect([...groundGrid(tile, sampler)]).toEqual([...sampleGroundGrid(tile, size, sampler)]);
+    expect(groundGrid(tile, sampler, TERRAIN_LATTICE)).toEqual(
+      sampleGroundGrid(tile, latticeCells(tile, TERRAIN_LATTICE), sampler),
+    );
   });
 
   test('a building on a knoll narrower than a block stands on the knoll, not buried in it', () => {
@@ -172,8 +174,8 @@ describe('the ground is the drawn terrain', () => {
       const u = uOf(lng);
       return u > 0.47 && u < 0.53 ? 37 : 20;
     };
-    const grid = groundGrid(tile, sampler);
-    expect(gridAt(grid, size, 0.5, 0.5)).toBeCloseTo(37, 5);
+    const grid = groundGrid(tile, sampler, TERRAIN_LATTICE);
+    expect(gridAt(grid, 0.5, 0.5)).toBeCloseTo(37, 5);
     const grounder = new TileGrounder();
     grounder.setGround(createGround(sampler));
     const result = grounder.ground('k', {

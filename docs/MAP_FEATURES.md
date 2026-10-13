@@ -58,7 +58,7 @@ starts off. Shipping it is deleting that line.
 | `cityLife` | stable | **on** | web (needs `city3d`; the road archive where published, the basemap's roads everywhere else) | `?cityLife=0/1` | live (re-attach) |
 | `cityStreets` | stable | **on** | web (needs `city3d`; draws only where the road archive is published) | `?cityStreets=0/1` | live (re-attach) — [`MAP_STREETS.md`](./MAP_STREETS.md) |
 | `landmarks` | stable | **on** | web (needs `city3d`; a model draws, and the tour offers it, only over published city tiles) | `?landmarks=0/1` | live (re-attach; the Landmarks control and "Landmark tour" come and go, a running tour ends) |
-| `live` | labs | off | web, **development builds only** (needs a backend that lists `LIVE_SOURCES`; `docs/MAP_LIVE.md`) | `?live=1` | live (mount/unmount: the panel in the top-right stack, the layer, its credits and the coverage channel come and go) |
+| `live` | stable | **on** | web (draws only where the backend lists `LIVE_SOURCES`: `GET /live/sources` 503 → nothing, asked again while open; `docs/MAP_LIVE.md` → Production) | `?live=0/1` | live (mount/unmount: the panel in the top-right stack, the layer, its credits and the coverage channel come and go) |
 | `flyover` | stable | **on** | web, native | `?flyover=0/1` | live ("Fly the route", `/studio`) |
 
 **Everything is on on goway.to** (owner, 2026-10-12: "everything should be
@@ -109,7 +109,8 @@ that neither the sheet, the side panel nor any notice covers, in either layout.
 
 It is the first item of the explore screen's **top-right stack**: ONE column
 (`items-end`, 8 px apart) under the account button holding, in order, the
-settings button, the time of day (a sun, while the sky draws —
+settings button, the style button (the layers picker —
+[`MAP_STYLES.md`](./MAP_STYLES.md)), the time of day (a sun, while the sky draws —
 [below](#the-time-of-day)), the Landmarks control (while a landmark is near)
 and, in development builds with Live on, GoWay Live's panel. They are round
 Bloom `Fab`s: 48 px on a wide window, where Landmarks also shows its word;
@@ -151,15 +152,16 @@ page with nothing to list leaves the rail.
   where the map already is, 2D levels it, and it follows a gesture tilt — then
   Globe, Terrain, Sky & time of day (while the sky draws, a "Time of day" row
   whose "Change time…" closes the modal and opens the scrubber on the map),
-  the detailed city look and street detail, and **Performance** (Auto, Battery saver or High quality: a
+  the detailed city look and street detail, the map **Style** ("Choose…"
+  opens the layers picker) and its **Light** (App, Sun, Day or Night —
+  [`MAP_STYLES.md`](./MAP_STYLES.md) → The light), and **Performance** (Auto, Battery saver or High quality: a
   three-way choice kept in the same store, `setPerformance`, which picks the
   map's quality profile — [`MAP_PERFORMANCE.md`](./MAP_PERFORMANCE.md); it
   applies live).
 - **Layers**: Street 3D, the 3D city, its tiles (and the official building
-  data they carry), trees, simulated traffic, landmarks, and the flyover with
-  "Open Camera Studio" while it is on — each with what it shows. Once Labs is
-  revealed, the woods fill joins, and live data in development builds (until
-  goway.to's backend serves it).
+  data they carry), trees, simulated traffic, landmarks, live data, and the
+  flyover with "Open Camera Studio" while it is on — each with what it shows.
+  Once Labs is revealed, the woods fill joins.
 - **Labs**, only once revealed: what Labs is, and "Hide Labs".
 - **General**: what GoWay already lets a person set — the theme (light, dark,
   system: Bloom's own mode, persisted by `BloomProvider` under `goway.theme`)
@@ -180,7 +182,7 @@ back first returns to the section list.
 **Revealing Labs** is deliberately not an `.env` decision: `?labs=1` on any
 goway.to address once (remembered on the device; `?labs=0` forgets), or press
 and hold the settings button, which opens the modal on the Labs page. It works in production — it only SHOWS switches
-(the woods fill; live data in development builds), and every Labs feature
+(the woods fill), and every Labs feature
 still starts off, so a shared link can never switch an experimental renderer
 on for somebody else.
 
@@ -276,7 +278,7 @@ The store notifies; components read it through `useMapFeature(id)`:
 ## Privacy
 
 Preferences stay on the device: one JSON document, `goway.mapFeatures`
-(`{v:1, choices, labs, performance?, gpu?}`), in `localStorage` on the web and
+(`{v:1, choices, labs, performance?, style?, light?, gpu?}`), in `localStorage` on the web and
 AsyncStorage on native. `gpu` is what this device's GPU measured (its
 renderer string, a benchmark score and the tier they give, re-measured after
 30 days or on a new GPU), so a later visit picks its quality before the first

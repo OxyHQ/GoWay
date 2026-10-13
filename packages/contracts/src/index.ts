@@ -38,6 +38,7 @@ export * from './model';
 export * from './search';
 export * from './directions';
 export * from './live-source';
+export * from './map-style';
 export * from './live';
 export * from './health';
 export * from './json-schema';

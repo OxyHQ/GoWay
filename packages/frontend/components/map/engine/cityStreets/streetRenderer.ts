@@ -22,7 +22,7 @@ import { coverageCovers } from '../city3d/coverageIndex';
 import { type LodPolicy, metresPerPixel, selectLodTiles } from '../city3d/lod';
 import type { CityLight } from '../city3d/occlusion';
 import type { CityOverlay, CityOverlayFrame, CityOverlaySky } from '../city3d/overlay';
-import type { Ground } from '../city3d/terrainGround';
+import { type Ground, latticeCells, TERRAIN_LATTICE } from '../city3d/terrainGround';
 import {
   EARTH_CIRCUMFERENCE_M,
   tileKey,
@@ -60,7 +60,7 @@ export const STREET_BUDGET = {
   cachedPerDrawn: 2,
   /** Requests in flight. */
   maxInFlight: 3,
-  /** Ground grids sampled per frame (each ~1,000 terrain reads). */
+  /** Ground grids sampled per frame (each 4,356 terrain reads, ~2 ms, on GoWay's DEM). */
   groundsPerFrame: 2,
   /** Clip-space depth nudge per layer (×w). */
   depthBias: 2e-6,
@@ -118,6 +118,7 @@ export interface CityStreetsStats {
   tilesDrawn: number;
   tilesFull: number;
   tilesCached: number;
+  /** Tiles being meshed, and meshed tiles held for a frame's upload budget. */
   pending: number;
   triangles: number;
   drawCalls: number;
@@ -146,6 +147,8 @@ interface Entry {
   paintedNames: [number, number][];
   /** Its slot in the ground atlas while it holds one. */
   slot: number | null;
+  /** Its meshes have gone to the GPU (within a frame's `upload` budget). */
+  uploaded: boolean;
   groundVersion: number;
   /** Its tile's live values, which the shared materials read through the mesh's `userData`. */
   uniforms: {
@@ -188,9 +191,16 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
   // tiles (`streets.maxTiles`) times what is kept per drawn tile, and the
   // drawn ones again for the moment a cache overflows before it evicts.
   const maxCached = Math.max(4, options.quality.maxTiles * STREET_BUDGET.cachedPerDrawn);
-  const groundAtlas = createGroundAtlas(maxCached + options.quality.maxTiles);
+  const groundSlots = maxCached + options.quality.maxTiles;
+  // The terrain's lattice over a street tile: the DEM pixels across it. The
+  // meshes are cut along it (`groundLattice.ts`) and the atlas holds a grid
+  // of it per slot; GoWay's DEM until a terrain says otherwise.
+  let groundCells = latticeCells({ z: 15 }, TERRAIN_LATTICE);
+  let groundAtlas = createGroundAtlas(groundSlots, groundCells + 2);
 
   const atlasBytes = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE);
+  /** Glyph patches arrived that the GPU's copy of the atlas lacks. */
+  let atlasDirty = false;
   const atlas = new THREE.DataTexture(
     atlasBytes,
     ATLAS_SIZE,
@@ -220,6 +230,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
   const materialsNow = () => {
     materials ??= createStreetMaterials({
       groundAtlas: groundAtlas.texture,
+      groundCells,
       sdfAtlas: atlas,
       surfaceDay: shared.uSurfaceDay.value,
       surfaceNight: shared.uSurfaceNight.value,
@@ -331,7 +342,9 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
         );
       }
     }
-    if (reply.patches.length > 0) atlas.needsUpdate = true;
+    // Uploaded with the first tile that goes up after it (`update`): only
+    // tiles meshed from now on read the new glyphs.
+    if (reply.patches.length > 0) atlasDirty = true;
     lastMeshMs = reply.meshMs;
     if (reply.stats) {
       meshMsSum += reply.meshMs;
@@ -342,6 +355,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     if (!reply.surfaces && !reply.markings) {
       entry.state = 'empty';
     } else {
+      entry.uploaded = false;
       if (reply.surfaces) {
         entry.surfaces = meshFor(entry, reply.surfaces, 'surfaces');
         entry.simpleSurfaces = reply.surfaces.simpleCount;
@@ -369,6 +383,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
         template: options.roadTileTemplate,
         glyphs: options.glyphTemplate,
         fontstack: options.fontstack,
+        groundCells,
+        groundSubdivision: options.quality.groundSubdivision,
       },
       entry.key,
     );
@@ -397,7 +413,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       scene.add(tslGroup);
     },
 
-    update({ view, center, opacity }: CityOverlayFrame) {
+    update({ view, center, opacity, upload }: CityOverlayFrame) {
       if (disposed) return;
       frameNo++;
       for (const entry of entries.values()) {
@@ -436,6 +452,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
             stats: null,
             paintedNames: [],
             slot: null,
+            uploaded: false,
             groundVersion: -1,
             uniforms: {
               uGroundSlot: { value: 0 },
@@ -475,6 +492,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       let drawCalls = 0;
       let tilesDrawn = 0;
       let tilesFull = 0;
+      /** Tiles meshed and wanted, held for a later frame's upload budget. */
+      let held = 0;
       const named: Entry[] = [];
       for (const tile of selected) {
         const entry = entries.get(tileKey(tile));
@@ -511,6 +530,28 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
           0,
           Math.min(1, (effective - (FULL_DETAIL_ZOOM - 0.1)) / 0.3),
         );
+        if (!entry.uploaded) {
+          // Its first draw hands its meshes (and any new glyphs) to the GPU:
+          // within what the frame's budget has left (`overlay.ts`).
+          let bytes = atlasDirty ? atlasBytes.byteLength : 0;
+          for (const mesh of [entry.surfaces, entry.markings]) {
+            if (!mesh) continue;
+            const geometry = mesh.geometry;
+            for (const attribute of Object.values(geometry.attributes))
+              bytes += (attribute as THREE.BufferAttribute).array.byteLength;
+            bytes += geometry.index?.array.byteLength ?? 0;
+          }
+          if (!upload.take(bytes)) {
+            held++;
+            options.requestRepaint();
+            continue;
+          }
+          entry.uploaded = true;
+          if (atlasDirty) {
+            atlas.needsUpdate = true;
+            atlasDirty = false;
+          }
+        }
         const matrix = tileModelMatrix(tile, center);
         tilesDrawn++;
         if (full) tilesFull++;
@@ -556,7 +597,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
         const state = entries.get(tileKey(tile))?.state;
         if (state === 'ready' || state === 'empty') tilesSettled++;
       }
-      const signature = `${selected.length}|${tilesSettled}|${tilesDrawn}|${tilesFull}|${entries.size}|${byId.size}|${errors}`;
+      const signature = `${selected.length}|${tilesSettled}|${tilesDrawn}|${tilesFull}|${entries.size}|${byId.size}|${held}|${errors}`;
       if (options.onStats && statsDue(signature, lastSignature, now, lastStatsAt)) {
         lastStatsAt = now;
         lastSignature = signature;
@@ -566,7 +607,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
           tilesDrawn,
           tilesFull,
           tilesCached: entries.size,
-          pending: byId.size,
+          pending: byId.size + held,
           triangles,
           drawCalls,
           lastMeshMs,
@@ -585,6 +626,22 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     setGround(next) {
       ground = next;
       groundVersion++;
+      const cells = next ? latticeCells({ z: 15 }, next.lattice) : groundCells;
+      if (cells !== groundCells) {
+        // A terrain on another DEM (never GoWay's own): every mesh was cut
+        // for the old lattice and every slot is the old size. Start over.
+        for (const entry of entries.values()) {
+          if (entry.state === 'pending') pool.cancel(entry.id, { type: 'cancel', id: entry.id });
+          disposeMeshes(entry);
+        }
+        entries.clear();
+        byId.clear();
+        materials?.dispose();
+        materials = null;
+        groundAtlas.dispose();
+        groundCells = cells;
+        groundAtlas = createGroundAtlas(groundSlots, groundCells + 2);
+      }
       options.requestRepaint();
     },
 

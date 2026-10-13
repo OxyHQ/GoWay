@@ -4,13 +4,18 @@ import {
   LIVE_SOCKET_EVENTS,
   LIVE_SOCKET_NAMESPACE,
   liveSubscription,
+  LIVE_REGIONAL_TRANSIT_MODES,
+  liveRoomZoomsOf,
   liveTileOf,
+  liveTilesOf,
   liveTilesFor,
   parseLiveDelta,
   parseLiveSnapshot,
   parseLiveSources,
   parseLiveSubscriptionState,
+  unpackLivePayload,
 } from '../src/live';
+import { gzipSync } from 'node:zlib';
 import { fakeFetch, rejection } from './helpers';
 
 const source = {
@@ -114,11 +119,19 @@ describe('@goway.to/sdk/live', () => {
     expect(
       parseLiveSubscriptionState({
         state: 'ok',
+        tiles: { transit: ['7/64/47'], aircraft: ['7/64/47'] },
+        retryAfterSeconds: null,
+      })?.tiles.transit,
+    ).toEqual(['7/64/47']);
+    // The old flat shape, which let one kind's tile keep another kind's room.
+    expect(
+      parseLiveSubscriptionState({
+        state: 'ok',
         tiles: ['7/64/47'],
         kinds: ['transit'],
         retryAfterSeconds: null,
-      })?.state,
-    ).toBe('ok');
+      }),
+    ).toBeNull();
     for (const junk of [
       null,
       'x',
@@ -151,10 +164,43 @@ describe('@goway.to/sdk/live', () => {
     ).toThrow(TypeError);
   });
 
-  it('computes the same rooms the server does', () => {
-    expect(liveTileOf({ latitude: 41.39, longitude: 2.17 })).toBe('7/64/47');
-    expect(liveTilesFor({ west: 2.05, south: 41.32, east: 2.25, north: 41.47 })).toEqual([
+  it('computes the same rooms the server does, at each kind’s zoom', () => {
+    expect(liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'aircraft')).toBe('7/64/47');
+    expect(liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'transit')).toBe('11/1036/764');
+    expect(
+      liveTilesFor({ west: 2.05, south: 41.32, east: 2.25, north: 41.47 }, 'aircraft'),
+    ).toEqual(['7/64/47']);
+  });
+
+  it('puts a train in every transit level, a bus only at city zoom', () => {
+    const barcelona = { latitude: 41.39, longitude: 2.17 };
+    expect(liveTilesOf(barcelona, 'transit', 'rail')).toEqual([
       '7/64/47',
+      '9/259/191',
+      '11/1036/764',
     ]);
+    expect(liveTilesOf(barcelona, 'transit', 'bus')).toEqual(['11/1036/764']);
+    expect(liveRoomZoomsOf({ kind: 'transit', mode: 'tram' })).toEqual([11]);
+    expect(LIVE_REGIONAL_TRANSIT_MODES).toEqual(['rail', 'subway']);
+  });
+
+  it('inflates a packed payload and passes JSON through', async () => {
+    const delta = {
+      tile: '11/1036/764',
+      kind: 'transit',
+      at: '2026-10-12T12:00:00.000Z',
+      upserts: [],
+      removes: [],
+    };
+    expect(await unpackLivePayload(delta)).toBe(delta);
+    const packed = gzipSync(Buffer.from(JSON.stringify(delta)));
+    const unpacked = await unpackLivePayload(new Uint8Array(packed));
+    expect(parseLiveDelta(unpacked)).toEqual({ ...delta, moves: [] });
+    expect(
+      await unpackLivePayload(
+        packed.buffer.slice(packed.byteOffset, packed.byteOffset + packed.byteLength),
+      ),
+    ).toEqual(delta);
+    expect(await unpackLivePayload(new Uint8Array([1, 2, 3]))).toBeNull();
   });
 });

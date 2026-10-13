@@ -40,6 +40,7 @@ import {
 import type { Namespace, Server as SocketIOServer, Socket } from 'socket.io';
 import type { LiveConfig } from '../config/live';
 import type { LiveHub } from './hub';
+import { packLivePayload } from './pack';
 
 export function liveRoomName(tile: string, kind: LiveKind): string {
   return `live:${tile}:${kind}`;
@@ -101,45 +102,54 @@ export function attachLiveNamespace(io: SocketIOServer, options: AttachLiveOptio
       options.now,
     );
     // What this socket is in, as the server decided it — never the box.
-    let tiles: string[] = [];
-    let kinds: LiveKind[] = [];
+    let tiles: LiveSubscriptionState['tiles'] = {};
 
     const answer = (state: LiveSubscriptionState) =>
       socket.emit(LIVE_SOCKET_EVENTS.subscription, state);
 
-    socket.emit(LIVE_SOCKET_EVENTS.sources, { items: hub.sources(), nextCursor: null });
+    socket.emit(
+      LIVE_SOCKET_EVENTS.sources,
+      packLivePayload({ items: hub.sources(), nextCursor: null }),
+    );
 
     socket.on(LIVE_SOCKET_EVENTS.subscribe, (payload: unknown) => {
       const wait = bucket.take();
       if (wait > 0) {
-        answer({ state: 'rate_limited', tiles, kinds, retryAfterSeconds: wait });
+        answer({ state: 'rate_limited', tiles, retryAfterSeconds: wait });
         return;
       }
       const parsed = liveSubscriptionSchema.safeParse(payload);
       if (!parsed.success) {
-        answer({ state: 'invalid', tiles, kinds, retryAfterSeconds: null });
+        answer({ state: 'invalid', tiles, retryAfterSeconds: null });
         return;
       }
       const subscription = parsed.data;
-      const nextKinds = [...new Set(subscription.kinds)];
-      // No kinds: leave everything, whatever the box.
-      const covered = nextKinds.length === 0 ? [] : liveTilesFor(subscription);
-      const nextTiles = covered ?? [];
-      const rooms = nextTiles.flatMap((tile) => nextKinds.map((kind) => ({ tile, kind })));
+      const asked = [...new Set(subscription.kinds)];
+      // Each kind's rooms at its own zoom; a kind covering too many is left out.
+      const rooms: { tile: string; kind: LiveKind }[] = [];
+      const nextTiles: LiveSubscriptionState['tiles'] = {};
+      for (const kind of asked) {
+        const covered = liveTilesFor(subscription, kind);
+        if (!covered) continue;
+        nextTiles[kind] = covered;
+        for (const tile of covered) rooms.push({ tile, kind });
+      }
       const { joined, left } = hub.watch(socket.id, rooms);
       for (const room of left) void socket.leave(liveRoomName(room.tile, room.kind));
       for (const room of joined) void socket.join(liveRoomName(room.tile, room.kind));
       tiles = nextTiles;
-      kinds = covered ? nextKinds : [];
       answer({
-        state: covered ? 'ok' : 'too_wide',
+        // No kinds asked: leave everything, whatever the box — that is `ok`.
+        state: asked.length > 0 && rooms.length === 0 ? 'too_wide' : 'ok',
         tiles,
-        kinds,
         retryAfterSeconds: null,
       });
       // After the answer, so a client knows which rooms the snapshots belong to.
       for (const room of joined)
-        socket.emit(LIVE_SOCKET_EVENTS.snapshot, hub.snapshot(room.tile, room.kind));
+        socket.emit(
+          LIVE_SOCKET_EVENTS.snapshot,
+          packLivePayload(hub.snapshot(room.tile, room.kind)),
+        );
     });
 
     socket.on('disconnect', () => hub.unwatch(socket.id));

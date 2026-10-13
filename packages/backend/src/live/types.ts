@@ -18,7 +18,13 @@
  * every viewer's socket.
  */
 
-import type { GeoBoundingBox, LiveEntity, LiveKind, LiveLink } from '@goway/contracts';
+import type {
+  GeoBoundingBox,
+  LiveEntity,
+  LiveKind,
+  LiveLink,
+  LiveTransitMode,
+} from '@goway/contracts';
 import type { MatchHint, StaticGtfs, StaticGtfsLocation } from './staticGtfs';
 
 /** What a poll may use. Injected, so every adapter is tested without a network. */
@@ -85,6 +91,12 @@ export interface LiveSourceDefinition {
   licence: LiveLink;
   /** `null` for worldwide. */
   coverage: GeoBoundingBox | null;
+  /**
+   * The transit modes it can carry, when it is sure (MTA buses: `['bus']`).
+   * A source of street-level modes only is not woken by a regional view: its
+   * vehicles are in city-zoom rooms alone (`liveRoomZoomsOf`). Absent: any.
+   */
+  transitModes?: readonly LiveTransitMode[];
   /** Whether it carries a whole network in its coverage (`LiveSource.completeness`). */
   completeness: 'network' | 'partial';
   /** The feed's public endpoint; `LIVE_SOURCE_<ID>_URL` overrides it. */

@@ -133,11 +133,12 @@ scale and ground. A spire is a spire.
 
 ## The ground
 
-The host reads the terrain the way MapLibre's own rule reads it,
-`Terrain.getElevationForLngLatZoom(eye, zoom)`, in `cameraClearance.web.ts` →
-`groundAt` — the one function to switch to the shared elevation sampler when
-it lands, so the eye, the buildings and the terrain mesh agree on one surface.
-The buildings' ground is the engine's own `Ground` (unchanged here).
+The eye's ground is the drawn terrain, read by the same sampler the city
+stands its buildings, trees and streets on (`city3dGround.web.ts` →
+`groundOf`, #198: the DEM's finest tile, read as MapLibre's terrain mesh reads
+it), in `cameraClearance.web.ts` → `groundAt`. So the eye, the buildings and
+the terrain agree on one surface. The buildings' ground is the engine's own
+`Ground` grids, from the same sampler.
 
 ## Cost
 

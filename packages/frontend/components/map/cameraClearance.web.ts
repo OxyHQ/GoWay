@@ -24,15 +24,17 @@
  *    animation through MapLibre's render loop, which the first frame of a
  *    gesture interrupts, never a timer of its own.
  *
- * The ground is read the way MapLibre's own terrain rule reads it
- * (`Terrain.getElevationForLngLatZoom` at the camera's zoom), so the two
- * agree; it is the one place to switch when the shared elevation sampler
- * lands (`docs/MAP_CAMERA_CLEARANCE.md` → The ground).
+ * The ground is the drawn terrain, read by the SAME sampler the city stands
+ * its buildings, trees and streets on (`city3dGround.web.ts` → `groundOf`:
+ * the DEM's finest tile, as MapLibre's terrain mesh reads it), so the eye, the
+ * buildings and the terrain agree on one surface
+ * (`docs/MAP_CAMERA_CLEARANCE.md` → The ground).
  */
-import type { LngLat, Map as MapLibreMap } from 'maplibre-gl';
+import type { Map as MapLibreMap } from 'maplibre-gl';
 
 import { latitudeFromMercatorY, longitudeFromMercatorX, mercatorX, mercatorY } from '@/lib/map/geo';
 
+import { groundOf } from './city3dGround.web';
 import {
   applyCorrection,
   type CameraPose,
@@ -44,6 +46,7 @@ import {
   type GroundAt,
   requirementFor,
 } from './engine/camera/clearance';
+import type { GroundSampler } from './engine/city3d/terrainGround';
 
 /** MapLibre's near plane: a fiftieth of the screen's height, in its camera's pixels (`_calcMatrices`). */
 const NEAR_PER_HEIGHT = 1 / 50;
@@ -107,17 +110,18 @@ export function attachCameraClearance(
   },
 ): CameraClearanceHandle {
   const rule = createCameraClearance();
-  // One `LngLat` reused for every ground read (MapLibre's own type, without importing it).
-  const at: LngLat = map.getCenter();
-  const groundAt =
-    (zoom: number): GroundAt =>
-    (x, y) => {
-      const terrain = map.terrain;
-      if (!terrain) return 0;
-      at.lng = longitudeFromMercatorX(x);
-      at.lat = latitudeFromMercatorY(y);
-      return terrain.getElevationForLngLatZoom(at, zoom);
-    };
+  // The drawn ground: the city's own sampler over whatever terrain the map
+  // has, made again only when the terrain (or its DEM source) changes.
+  let sampler: { terrain: unknown; source: string; sample: GroundSampler } | null = null;
+  const groundAt: GroundAt = (x, y) => {
+    const terrain = map.terrain;
+    const source = map.getTerrain()?.source;
+    if (!terrain || !source) return 0;
+    if (sampler?.terrain !== terrain || sampler.source !== source) {
+      sampler = { terrain, source, sample: groundOf(map, source).sample };
+    }
+    return sampler.sample(longitudeFromMercatorX(x), latitudeFromMercatorY(y));
+  };
   const stats: ClearanceStats | null = __DEV__
     ? { updates: 0, corrected: 0, askedInside: 0, drawnInside: 0, totalMs: 0, maxMs: 0, settles: 0 }
     : null;
@@ -126,7 +130,7 @@ export function attachCameraClearance(
     const started = performance.now();
     const pose = poseOf(next as unknown as TransformLike);
     const field = options.field();
-    const ground = groundAt(pose.zoom);
+    const ground = groundAt;
     const correction = rule.constrain(pose, field, ground, started);
     if (stats) {
       const ms = performance.now() - started;
@@ -160,7 +164,7 @@ export function attachCameraClearance(
     if (!field || field.version === seen || map.isMoving()) return;
     seen = field.version;
     const pose = drawnPose();
-    const correction = rule.settle(pose, field, groundAt(pose.zoom));
+    const correction = rule.settle(pose, field, groundAt);
     if (!correction) return;
     if (stats) stats.settles++;
     // Not inside MapLibre's own frame: the next task starts the ease.
@@ -179,7 +183,7 @@ export function attachCameraClearance(
       probe() {
         const pose = drawnPose();
         const field = options.field();
-        const ground = groundAt(pose.zoom);
+        const ground = groundAt;
         const eye = eyeOf(pose);
         const inside = eyeInside(pose, field, ground);
         return {

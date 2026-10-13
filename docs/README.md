@@ -57,6 +57,12 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   and the OSMF-compact data credit: how each optional feature's on/off is decided (kill
   switch, the person's choice on the device, defaults), Labs, what applies
   live, and the three-step recipe for registering a new feature.
+- [`MAP_STYLES.md`](MAP_STYLES.md) — the style engine and catalogue
+  (Standard, Streets, Light, Dark, … in day, dawn, dusk and night): one layer
+  list, a theme per style that also colours the 3D city, the documents at
+  stable URLs for integrators, the light (app theme, the real sun, or fixed),
+  the layers picker with thumbnails from the real renderer, the data gaps and
+  how imagery plugs in.
 - [`MAP_LANDMARKS.md`](MAP_LANDMARKS.md) — hand-crafted 3D landmarks (off by
   default): the reviewed registry and why it is data, not a table; the
   licence policy; procedural modelling and the GLB profile; replacing OSM

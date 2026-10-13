@@ -17,6 +17,16 @@ taxonomy.
 
 ### Added
 
+- **Map styles.** GoWay's published styles by id, as Mapbox's style URLs are:
+  `MAP_STYLE_IDS` (`standard`, `streets`, `outdoors`, `navigation`,
+  `monochrome`, `light`, `dark`), `MAP_LIGHT_PRESETS` (`day`, `dawn`, `dusk`,
+  `night`), `MAP_STYLE_CATALOGUE` (the lights each is published in) and
+  `resolveMapStyle`. `client.links.mapStyle(style, light?)` is a complete
+  MapLibre style document URL (`https://goway.to/map/styles/<style>/<light>.json`)
+  for `new maplibregl.Map({ style })` or MapLibre Native; `client.links.embed`
+  frames the embeddable map in one; `client.links.mapStyleIndex()` and
+  `parseMapStyleIndex` read the catalogue document, open to styles added
+  later. Static documents on GoWay's origin, not API operations.
 - 3D model placement, phase 1 of `docs/SDK_MAP_MODELS.md`: the
   `ModelPlacement`/`ModelPlacementInput` types (position, `'ground'` altitude,
   heading/pitch/roll, scale; latitude within Web Mercator's ±85.0511°,
@@ -33,9 +43,19 @@ taxonomy.
   `liveTileOf`, `liveTileBounds`), `liveSubscription()` and a parser per
   message (`parseLiveSnapshot`, `parseLiveDelta`, `parseLiveSources`,
   `parseLiveSubscriptionState`, each returning `null` for a payload that does
-  not match). Bring your own `socket.io-client`; the package still has one
-  dependency. Every entity states its source and the instant the source
-  observed it — show both.
+  not match). Rooms are tiles at a few levels per kind (`LIVE_ROOM_ZOOMS`;
+  `liveTileOf(position, kind, zoom?)`, `liveTilesOf(position, kind, mode?)`,
+  `liveTilesFor(box, kind)` — the finest level that covers the box); only
+  rail (`LIVE_REGIONAL_TRANSIT_MODES`, `isRegionalTransitMode`) is in the
+  regional transit levels, a bus or other street-level vehicle only in the
+  finest (`liveRoomZoomsOf`); a subscription's answer lists its rooms per
+  kind (`tiles: { transit: [...], aircraft: [...] }`); a delta carries
+  `moves` — `LiveMove` tuples for vehicles that only moved — beside its
+  upserts and removes; and a message over `LIVE_PACKED_MIN_BYTES` arrives as
+  gzip bytes: pass every payload through `unpackLivePayload` (async; keep
+  arrival order) before parsing. Bring your own `socket.io-client`; the
+  package still has one dependency. Every entity states its source and the
+  instant the source observed it — show both.
 - `places.update(id, { openingHoursDays })` replaces only explicitly named
   opening weekdays atomically; exported `OpeningHoursDayPatch` describes each
   replacement. Empty day intervals close that day. Unknown schedules require

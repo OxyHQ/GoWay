@@ -16,12 +16,31 @@ import type { Ground } from './terrainGround';
 import type { MercatorPoint } from './tileMath';
 import type { SkyNodes } from './tsl/skyNodes';
 
+/**
+ * One frame's budget of bytes handed to the GPU, shared by the city's
+ * arrivals and its overlays: the profile's `uploadBytesPerFrame`
+ * (`lib/map/quality/profile.ts`), or none in a slow frame while the map
+ * moves. The first upload of a frame always fits, so one item larger than
+ * the budget still goes up, alone.
+ */
+export interface FrameUploadBudget {
+  /** Whether `bytes` may go to the GPU this frame; if they may, they are counted. */
+  take(bytes: number): boolean;
+}
+
 export interface CityOverlayFrame {
   view: CityView;
   /** The camera centre in mercator, float64: what `tileModelMatrix` is relative to. */
   center: MercatorPoint;
   /** The buildings' zoom fade, 0–1. At 0 the engine draws nothing this frame. */
   opacity: number;
+  /**
+   * What is left of this frame's upload budget once the city's own arrivals
+   * are in. An overlay that hands the GPU new geometry or textures after
+   * `attach` takes them from it, and holds what does not fit for a later
+   * frame (counting it as pending).
+   */
+  upload: FrameUploadBudget;
 }
 
 export interface CityOverlay {

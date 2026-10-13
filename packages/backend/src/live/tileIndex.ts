@@ -1,6 +1,7 @@
 /**
  * The in-memory spatial index of live entities: the latest fix per entity,
- * bucketed by room — a `LIVE_ROOM_ZOOM` web-mercator tile and a kind.
+ * bucketed by room — a web-mercator tile at each of its levels
+ * (`liveRoomZoomsOf`: its kind's, but a bus only at city zoom) and the kind.
  *
  * Rooms ARE the spatial index. A subscription is answered from the buckets of
  * the tiles it covers (`liveTilesFor`), a delta is addressed to the bucket an
@@ -10,15 +11,19 @@
  * rule in code.
  *
  * Every mutation reports the rooms it touched, so the hub can turn a poll into
- * per-room deltas without diffing whole buckets.
+ * per-room deltas without diffing whole buckets — and says when an entity only
+ * MOVED within its room (`move`: nothing but its position, heading, speed,
+ * time and place along its track changed), which travels as a compact
+ * `LiveMove` instead of the whole entity.
  */
 
 import {
   type GeoBoundingBox,
   type LiveEntity,
   type LiveKind,
-  liveTileOf,
+  type LiveMove,
   liveTilesFor,
+  liveTilesOf,
 } from '@goway/contracts';
 
 export function roomKey(tile: string, kind: LiveKind): string {
@@ -27,14 +32,50 @@ export function roomKey(tile: string, kind: LiveKind): string {
 
 interface Entry {
   entity: LiveEntity;
-  room: string;
+  /** Its room at each of its levels (`liveRoomZoomsOf`), coarsest first. */
+  rooms: string[];
   /** What a client would receive, as text: the change test. */
   signature: string;
+  /** The same without what a move carries: equal ones differ only in motion. */
+  fixed: string;
+}
+
+/** Everything about an entity but its motion, as text. */
+function fixedSignature(entity: LiveEntity): string {
+  const {
+    position: _p,
+    headingDegrees: _h,
+    speedMetersPerSecond: _s,
+    observedAt: _o,
+    ...rest
+  } = entity;
+  if (rest.kind === 'transit' && rest.track) {
+    const { alongMeters: _a, offsetMeters: _f, ...track } = rest.track;
+    return JSON.stringify({ ...rest, track });
+  }
+  return JSON.stringify(rest);
+}
+
+/** An entity's motion, as a {@link LiveMove}. */
+export function moveOf(entity: LiveEntity): LiveMove {
+  const track = entity.kind === 'transit' ? entity.track : null;
+  return [
+    entity.id,
+    entity.position.latitude,
+    entity.position.longitude,
+    entity.headingDegrees,
+    entity.speedMetersPerSecond,
+    entity.observedAt,
+    track ? track.alongMeters : null,
+    track ? track.offsetMeters : null,
+  ];
 }
 
 export type IndexChange =
   /** New, or changed in place. */
   | { type: 'upsert'; room: string; entity: LiveEntity }
+  /** Only moved, within the same room: its motion changed and nothing else. */
+  | { type: 'move'; room: string; entity: LiveEntity }
   /** Gone from this room — deleted, or moved out (a matching `upsert` names the new room). */
   | { type: 'remove'; room: string; id: string };
 
@@ -51,32 +92,50 @@ export class LiveTileIndex {
     return this.entries.get(id)?.entity;
   }
 
-  /** Insert or replace. Returns the changes — none when nothing a client sees changed. */
+  /**
+   * Insert or replace. Returns the changes — none when nothing a client sees
+   * changed — per room: an entity is in one room at each of its kind's
+   * levels (`LIVE_ROOM_ZOOMS`), and a subscriber is in one level's rooms.
+   */
   upsert(entity: LiveEntity): IndexChange[] {
-    const room = roomKey(liveTileOf(entity.position), entity.kind);
+    const mode = entity.kind === 'transit' ? entity.mode : undefined;
+    const rooms = liveTilesOf(entity.position, entity.kind, mode).map((tile) =>
+      roomKey(tile, entity.kind),
+    );
     const signature = JSON.stringify(entity);
     const existing = this.entries.get(entity.id);
     if (existing && existing.signature === signature) return [];
+    const fixed = fixedSignature(entity);
+    const onlyMoved = existing !== undefined && existing.fixed === fixed;
     const changes: IndexChange[] = [];
-    if (existing && existing.room !== room) {
-      this.rooms.get(existing.room)?.delete(entity.id);
-      this.dropEmptyRoom(existing.room);
-      changes.push({ type: 'remove', room: existing.room, id: entity.id });
+    // Rooms it left — moved out, or no longer at that level (a bus whose
+    // static file said "train" a moment ago).
+    for (const before of existing?.rooms ?? []) {
+      if (rooms.includes(before)) continue;
+      this.rooms.get(before)?.delete(entity.id);
+      this.dropEmptyRoom(before);
+      changes.push({ type: 'remove', room: before, id: entity.id });
     }
-    this.entries.set(entity.id, { entity, room, signature });
-    let members = this.rooms.get(room);
-    if (!members) {
-      members = new Set();
-      this.rooms.set(room, members);
+    for (const room of rooms) {
+      if (onlyMoved && existing?.rooms.includes(room)) {
+        changes.push({ type: 'move', room, entity });
+        continue;
+      }
+      let members = this.rooms.get(room);
+      if (!members) {
+        members = new Set();
+        this.rooms.set(room, members);
+      }
+      members.add(entity.id);
+      changes.push({ type: 'upsert', room, entity });
     }
-    members.add(entity.id);
+    this.entries.set(entity.id, { entity, rooms, signature, fixed });
     let owned = this.sources.get(entity.sourceId);
     if (!owned) {
       owned = new Set();
       this.sources.set(entity.sourceId, owned);
     }
     owned.add(entity.id);
-    changes.push({ type: 'upsert', room, entity });
     return changes;
   }
 
@@ -84,12 +143,16 @@ export class LiveTileIndex {
     const existing = this.entries.get(id);
     if (!existing) return [];
     this.entries.delete(id);
-    this.rooms.get(existing.room)?.delete(id);
-    this.dropEmptyRoom(existing.room);
+    const changes: IndexChange[] = [];
+    for (const room of existing.rooms) {
+      this.rooms.get(room)?.delete(id);
+      this.dropEmptyRoom(room);
+      changes.push({ type: 'remove', room, id });
+    }
     const owned = this.sources.get(existing.entity.sourceId);
     owned?.delete(id);
     if (owned?.size === 0) this.sources.delete(existing.entity.sourceId);
-    return [{ type: 'remove', room: existing.room, id }];
+    return changes;
   }
 
   /** The ids a source currently has in the index. A copy: safe to mutate while iterating. */
@@ -115,14 +178,14 @@ export class LiveTileIndex {
 
   /**
    * Entities inside a box, of the given kinds. `null` when the box covers more
-   * rooms than a subscription may (`LIVE_MAX_ROOM_TILES`).
+   * of a kind's rooms than a subscription may (`LIVE_MAX_ROOM_TILES`).
    */
   query(box: GeoBoundingBox, kinds: readonly LiveKind[]): LiveEntity[] | null {
-    const tiles = liveTilesFor(box);
-    if (!tiles) return null;
     const out: LiveEntity[] = [];
-    for (const tile of tiles) {
-      for (const kind of kinds) {
+    for (const kind of kinds) {
+      const tiles = liveTilesFor(box, kind);
+      if (!tiles) return null;
+      for (const tile of tiles) {
         for (const entity of this.inRoom(tile, kind)) {
           if (contains(box, entity.position)) out.push(entity);
         }

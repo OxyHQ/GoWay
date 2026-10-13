@@ -350,30 +350,35 @@ const FRAME_BUDGETS: Record<string, Record<QualityTier, Budget>> = {
   },
   // The street view with the street detail on (`MAP_STREETS.md`): +8 draws
   // (4 road tiles, 2 each), ~61 k triangles, ~4 MB over 'street'.
+  // Raised with the terrain lattice (`cityStreets/groundLattice.ts`): the
+  // street meshes are cut where the drawn terrain creases, so they no longer
+  // dip under it — +7% triangles at low and medium, +11% at high (cut at half
+  // pixels too), the same draws; the ground grids are the DEM's own pixels
+  // (66² a slot, was 33²). Measured on this branch, plus 10% / 25% as above.
   'street-detail': {
     low: {
       draws: 38,
-      triangles: 851_497,
+      triangles: 914_580,
       offscreenPasses: 0,
-      loadUploadBytes: 15_487_348,
+      loadUploadBytes: 20_056_520,
       shadowRedraws: 0,
-      gpuBytes: 13_622_768,
+      gpuBytes: 16_461_469,
     },
     medium: {
       draws: 48,
-      triangles: 1_222_760,
+      triangles: 1_285_843,
       offscreenPasses: 0,
-      loadUploadBytes: 15_529_528,
+      loadUploadBytes: 20_389_085,
       shadowRedraws: 0,
-      gpuBytes: 19_423_569,
+      gpuBytes: 22_495_647,
     },
     high: {
       draws: 48,
-      triangles: 1_222_760,
+      triangles: 1_359_576,
       offscreenPasses: 0,
-      loadUploadBytes: 15_529_528,
+      loadUploadBytes: 22_894_875,
       shadowRedraws: 0,
-      gpuBytes: 36_725_073,
+      gpuBytes: 42_004_992,
     },
   },
   skyline: {
@@ -469,8 +474,11 @@ describe('frame budget gate', () => {
     // Vacuity: tiles were lifted, and uploaded.
     expect(lifting.length).toBeGreaterThan(2);
     expect(measured.loadFrames.some((f) => f.uploadBytes > 0)).toBe(true);
-    // A lifting frame uploads at most a few uniforms (bytes), never a mesh (MBs).
-    for (const frame of lifting) expect(frame.uploadBytes).toBeLessThan(1024);
+    // A lifting frame uploads at most a few uniforms (bytes), never a mesh
+    // (MBs): each object drawn for the first time adds its uniform buffers
+    // (~150 B), and a frame may draw a few — a tile's meshes come in hundreds
+    // of kilobytes.
+    for (const frame of lifting) expect(frame.uploadBytes).toBeLessThan(4096);
     expect(measured.draws).toBeGreaterThan(0);
   }, 120_000);
 
